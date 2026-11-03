@@ -271,12 +271,7 @@ std::string ClusterResourceManager::DebugString(
     buffer << node.second.GetLocalView().DebugString();
     ++num_nodes_included;
   }
-  buffer << " " << bundle_location_index_.DebugString();
   return buffer.str();
-}
-
-BundleLocationIndex &ClusterResourceManager::GetBundleLocationIndex() {
-  return bundle_location_index_;
 }
 
 void ClusterResourceManager::SetNodeLabels(

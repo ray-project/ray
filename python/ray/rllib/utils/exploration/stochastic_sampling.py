@@ -49,6 +49,8 @@ class StochasticSampling(Exploration):
             random_timesteps: The number of timesteps for which to act
                 completely randomly. Only after this number of timesteps,
                 actual samples will be drawn to get exploration actions.
+            **kwargs: Forwarded to the parent `Exploration` constructor and to the
+                underlying `Random` exploration module.
         """
         assert framework is not None
         super().__init__(action_space, model=model, framework=framework, **kwargs)

@@ -78,6 +78,13 @@ class NormalizeAndClipActions(ConnectorV2):
         """Initializes a DefaultModuleToEnv (connector piece) instance.
 
         Args:
+            input_observation_space: The (optional) input observation space for this
+                connector piece. This is the space coming from a previous connector
+                piece in the (env-to-module or learner) pipeline or is directly
+                defined within the gym.Env.
+            input_action_space: The (optional) input action space for this connector
+                piece. This is the space coming from a previous connector piece in the
+                (module-to-env) pipeline or is directly defined within the gym.Env.
             normalize_actions: If True, actions coming from the RLModule's distribution
                 (or are directly computed by the RLModule w/o sampling) will
                 be assumed 0.0 centered with a small stddev (only affecting Box
@@ -96,6 +103,7 @@ class NormalizeAndClipActions(ConnectorV2):
                 mean and stddev as 0.1 and exp(0.2), and we sample an action of 0.9
                 from the resulting distribution, then this 0.9 will be clipped to 0.5
                 to fit into the [-0.5 0.5] interval.
+            **kwargs: Forward API-compatibility kwargs.
         """
         self._action_space_struct = None
 

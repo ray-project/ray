@@ -1,12 +1,11 @@
-"""
-Deep Q-Networks (DQN, Rainbow, Parametric DQN)
+"""Deep Q-Networks (DQN, Rainbow, Parametric DQN)
 ==============================================
 
 This file defines the distributed Algorithm class for the Deep Q-Networks
 algorithm. See `dqn_[tf|torch]_policy.py` for the definition of the policies.
 
 Detailed documentation:
-https://docs.ray.io/en/master/rllib-algorithms.html#deep-q-networks-dqn-rainbow-parametric-dqn
+https://docs.ray.io/en/latest/rllib/algorithms.html#deep-q-networks-dqn-rainbow-parametric-dqn
 """  # noqa: E501
 
 import logging
@@ -286,6 +285,9 @@ class DQNConfig(AlgorithmConfig):
                 data.
                 - This is False AND restoring from a checkpoint that does contain
                 buffer data.
+            lr_schedule: Deprecated (old API stack only). Learning rate schedule in
+                the format of [[timestep, lr-value], [timestep, lr-value], ...].
+                Use `lr` with a schedule on the new API stack instead.
             epsilon: Epsilon exploration schedule. In the format of [[timestep, value],
                 [timestep, value], ...]. A schedule must start from
                 timestep 0.
@@ -348,6 +350,8 @@ class DQNConfig(AlgorithmConfig):
                 initial state - zero or an outdated recorded state. Consider setting
                 this parameter to a positive integer if your stateful RLModule faces
                 convergence challenges or exhibits signs of catastrophic forgetting.
+            **kwargs: Additional config settings, forwarded to the parent
+                `AlgorithmConfig.training()` method.
 
         Returns:
             This updated AlgorithmConfig object.

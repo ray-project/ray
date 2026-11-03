@@ -146,6 +146,9 @@ class MultiAgentPrioritizedEpisodeReplayBuffer(
                 `sample()`.
             alpha: The amount of prioritization to be used: `alpha=1.0` means full
                 prioritization, `alpha=0.0` means no prioritization.
+            metrics_num_episodes_for_smoothing: The number of episodes to use for
+                smoothing (windowed averaging) of this buffer's metrics.
+            **kwargs: Forward compatibility kwargs. Passed on to the super classes.
         """
         # Initialize the parents.
         MultiAgentEpisodeReplayBuffer.__init__(
@@ -527,6 +530,7 @@ class MultiAgentPrioritizedEpisodeReplayBuffer(
             beta: The exponent of the importance sampling weight (see Schaul et
                 al. (2016)). A `beta=0.0` does not correct for the bias introduced
                 by prioritized replay and `beta=1.0` fully corrects for it.
+            **kwargs: Forward compatibility kwargs. Ignored by this buffer.
 
         Returns:
             A list of 1-step long single-agent episodes containing all basic episode
@@ -585,6 +589,8 @@ class MultiAgentPrioritizedEpisodeReplayBuffer(
         Args:
             priorities: Numpy array containing the new priorities to be used
                 in sampling for the items in the last sampled batch.
+            module_id: The module ID whose last sampled indices the `priorities`
+                belong to.
         """
 
         assert len(priorities) == len(self._module_to_last_sampled_indices[module_id])
@@ -692,8 +698,14 @@ class MultiAgentPrioritizedEpisodeReplayBuffer(
         """Adds the module indices for new episode chunks.
 
         Args:
-            multi_agent_episode: The multi-agent episode to add the module indices for.
-            episode_idx: The index of the episode in the `self.episodes`.
+            ma_episode: The multi-agent episode to add the module indices for.
+            ma_episode_idx: The index of the episode in the `self.episodes`.
+            ma_episode_exists: Whether `ma_episode` is already in this buffer (with a
+                predecessor chunk to which we'll concatenate `ma_episode` later).
+            weight: The initial priority weight(s) to assign to the new indices.
+                Either a single weight for all modules or a mapping from module ID
+                to weight. Modules missing from the mapping use their current
+                maximum priority.
         """
         existing_ma_episode = None
         if ma_episode_exists:
@@ -739,7 +751,7 @@ class MultiAgentPrioritizedEpisodeReplayBuffer(
             )
 
     @override(PrioritizedEpisodeReplayBuffer)
-    def _get_free_node_and_assign(self, sample_index, weight: float = 1.0) -> int:
+    def _get_free_node_and_assign(self, sample_index: int, weight: float = 1.0) -> int:
         """Gets the next free node in the segment trees.
 
         In addition the initial priorities for a new transition are added
@@ -769,7 +781,7 @@ class MultiAgentPrioritizedEpisodeReplayBuffer(
         return idx
 
     def _get_free_node_per_module_and_assign(
-        self, module_id: ModuleID, sample_index, weight: float = 1.0
+        self, module_id: ModuleID, sample_index: int, weight: float = 1.0
     ) -> int:
         """Gets the next free node in the segment trees.
 
@@ -778,6 +790,7 @@ class MultiAgentPrioritizedEpisodeReplayBuffer(
         index mapping.
 
         Args:
+            module_id: The module ID whose segment trees to draw the free node from.
             sample_index: The index of the sample in the `self._indices` list.
             weight: The initial priority weight to be used in sampling for
                 the item at index `sample_index`.

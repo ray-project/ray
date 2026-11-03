@@ -203,7 +203,7 @@ scrape_configs:
     refresh_interval: 60s
 ```
 
-- `<DashboardPort>` is `8265` by default. See [Configuring and managing Ray dashboard](https://docs.ray.io/en/latest/cluster/configure-manage-dashboard.html) for more details.
+- `<DashboardPort>` is `8265` by default. See [Configuring and managing Ray dashboard](configure-manage-dashboard.md) for more details.
 - The endpoint returns a JSON list of targets for Prometheus metrics. When no targets are available, it returns `[]`.
 
 ### Manually discovering metrics endpoints
@@ -305,7 +305,7 @@ If this is your first time using Grafana, login with the username: `admin` and p
 
 Homebrew installs Grafana as a service that is automatically launched for you. Therefore, to configure these services, you cannot simply pass in the config files as command line arguments.
 
-Instead, update the `/usr/local/etc/grafana/grafana.ini` file so that it matches the contents of `/tmp/ray/session_latest/metrics/grafana/grafana.ini`.
+Instead, update the `$(brew --prefix)/etc/grafana/grafana.ini` file so that it matches the contents of `/tmp/ray/session_latest/metrics/grafana/grafana.ini`. The Homebrew prefix depends on the platform. It's `/usr/local` on Intel Macs and `/opt/homebrew` on Apple silicon.
 
 You can then start or restart the services with `brew services start grafana` and `brew services start prometheus`.
 

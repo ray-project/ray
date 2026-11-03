@@ -32,6 +32,7 @@ steps:
     array:
       python:
         - "3.10"
+        - "3.12"
 
   - name: coregpu-cu130-build-multipy
     label: "wanda: coregpu-cu130-build-py{{array.python}}"
@@ -158,6 +159,8 @@ steps:
         --install-mask all-ray-libraries
         --privileged
         --test-env=TEST_SANDBOX=1
+        --test-env=TEST_SANDBOX_OVERLAYFS=1
+        --except-tags gpu,multi_gpu
         --python-version 3.10 --build-name corebuild-py3.10
 
   - label: ":ray: core: memory pressure tests"
@@ -207,7 +210,6 @@ steps:
         --python-version 3.10 --build-name corebuild-py3.10
 
   - label: ":ray: core: docs example tests"
-    if: '!(build.pull_request.labels includes "docs-go")'
     tags:
       - core_python
       - core_doc
@@ -576,6 +578,7 @@ steps:
         --platform cpu --canonical-tag ha_integration
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests/... core --only-tags ha_integration
         --python-version 3.10 --build-name corebuild-py3.10
+        --test-env=RAY_TEMPDIR=/artifact-mount --test-env=RAY_HOSTDIR=/tmp/artifacts
     depends_on:
       - manylinux-x86_64
       - forge
@@ -660,3 +663,41 @@ steps:
     depends_on:
       - block-core-gpu-tests
       - coregpu-cu130-build-multipy(python=3.10)
+
+  - label: ":ray: core: sandbox gpu tests"
+    key: core-sandbox-gpu-tests
+    tags:
+      - sandbox_tests
+      - gpu
+    instance_type: gpu
+    commands:
+      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/experimental/sandbox/... core
+        --gpus 1
+        --privileged
+        --test-env=TEST_SANDBOX=1
+        --test-env=TEST_SANDBOX_GPU=1
+        --only-tags gpu
+        --install-mask all-ray-libraries
+        --build-name coregpubuild-py3.12
+        --python-version 3.12
+    depends_on:
+      - coregpubuild-multipy(python=3.12)
+
+  - label: ":ray: core: sandbox multi gpu tests"
+    key: core-sandbox-multi-gpu-tests
+    tags:
+      - sandbox_tests
+      - gpu
+    instance_type: gpu-large-flex
+    commands:
+      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/experimental/sandbox/... core
+        --gpus 4
+        --privileged
+        --test-env=TEST_SANDBOX=1
+        --test-env=TEST_SANDBOX_GPU=1
+        --only-tags multi_gpu
+        --install-mask all-ray-libraries
+        --build-name coregpubuild-py3.12
+        --python-version 3.12
+    depends_on:
+      - coregpubuild-multipy(python=3.12)

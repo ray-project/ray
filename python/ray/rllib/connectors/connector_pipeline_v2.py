@@ -59,6 +59,7 @@ class ConnectorPipelineV2(ConnectorV2):
             connectors: A list of individual ConnectorV2 pieces to be added to this
                 pipeline during construction. Note that you can always add (or remove)
                 more ConnectorV2 pieces later on the fly.
+            **kwargs: Forward API-compatibility kwargs.
         """
         self.connectors = []
 

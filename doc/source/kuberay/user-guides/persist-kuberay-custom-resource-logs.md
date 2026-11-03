@@ -233,7 +233,7 @@ To deploy the configuration described above, deploy the KubeRay Operator if you 
 
 Now, run the following commands to deploy the Fluent Bit ConfigMap and a single-pod RayCluster with a Fluent Bit sidecar.
 ```shell
-kubectl apply -f https://raw.githubusercontent.com/ray-project/kuberay/refs/heads/master/ray-operator/config/samples/ray-cluster.fluentbit.yaml
+kubectl apply -f https://raw.githubusercontent.com/kuberay-project/kuberay/refs/heads/master/ray-operator/config/samples/ray-cluster.fluentbit.yaml
 ```
 
 To access Grafana from your local machine, set up port forwarding by running:

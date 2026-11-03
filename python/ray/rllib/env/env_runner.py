@@ -157,7 +157,7 @@ class EnvRunner(FaultAwareApply, metaclass=abc.ABCMeta):
         pass
 
     @abc.abstractmethod
-    def sample(self, **kwargs) -> Any:
+    def sample(self, **kwargs: Any) -> Any:
         """Returns experiences (of any form) sampled from this EnvRunner.
 
         The exact nature and size of collected data are defined via the EnvRunner's

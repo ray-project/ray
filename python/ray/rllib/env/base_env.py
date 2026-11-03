@@ -107,10 +107,6 @@ class BaseEnv:
         TODO: Support gym3 environments, which are already vectorized.
 
         Args:
-            env: An already existing environment of any supported env type
-                to convert/wrap into a BaseEnv. Supported types are gym.Env,
-                BaseEnv, VectorEnv, MultiAgentEnv, ExternalEnv, and
-                ExternalMultiAgentEnv.
             make_env: A callable taking an int as input (which indicates the
                 number of individual sub-environments within the final
                 vectorized BaseEnv) and returning one individual
@@ -124,7 +120,8 @@ class BaseEnv:
             remote_env_batch_wait_ms: The wait time (in ms) to poll remote
                 sub-environments for, if applicable. Only used if
                 `remote_envs` is True.
-            policy_config: Optional policy config dict.
+            restart_failed_sub_environments: Whether to restart (rather than
+                raise an error on) a failed sub-environment.
 
         Returns:
             The resulting BaseEnv object.

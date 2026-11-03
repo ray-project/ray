@@ -152,6 +152,8 @@ tf.Tensor([6.2 5.9], shape=(2,), dtype=float64) tf.Tensor([2 2], shape=(2,), dty
 
 For more information on working with batches, see {ref}`Transforming batches <transforming_batches>` and {ref}`Inspect batches <inspecting-batches>`.
 
+To learn how Ray Data produces these batches, see {ref}`How does Ray Data iterate over data? <batch_iteration>`.
+
 (iterating-over-batches-with-shuffling)=
 
 ## Iterate over batches with shuffling

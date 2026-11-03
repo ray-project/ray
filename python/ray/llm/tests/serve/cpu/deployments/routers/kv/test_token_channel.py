@@ -1,4 +1,5 @@
 import asyncio
+import errno
 import gc
 import sys
 from types import SimpleNamespace
@@ -27,6 +28,7 @@ from ray.llm._internal.serve.routing_policies.kv_aware.vllm.prompt_token_forward
 )
 from ray.serve._private.constants import (
     RAY_SERVE_INGRESS_REQUEST_ROUTER_OPT_HEADERS_FIELD,
+    SERVE_INGRESS_ROUTER_REQUEST_PATH_HEADER,
 )
 
 
@@ -70,6 +72,17 @@ async def _wait_until_staged(store, keys):
     pytest.fail(f"Timed out waiting for staged prompt tokens: {sorted(remaining)}")
 
 
+def test_sender_exceeds_default_socket_cap():
+    """Opens more sockets than the default context's 1023 cap."""
+    sender = TokenSender(max_sockets=1100)
+    try:
+        for i in range(1100):
+            assert sender._get_socket(f"tcp://127.0.0.1:{20000 + i}") is not None
+        assert len(sender._sockets) == 1100
+    finally:
+        sender.close()
+
+
 def test_bad_endpoint_falls_back():
     """A malformed endpoint must degrade to engine tokenization, not raise."""
     sender = TokenSender()
@@ -83,6 +96,19 @@ def test_bad_endpoint_falls_back():
         assert not sender._sockets
         # Every genuine failure is reported, not just the first.
         assert mock_logger.warning.call_count == 5
+    finally:
+        sender.close()
+
+
+def test_socket_creation_failure_falls_back():
+    """A socket that fails to open (e.g. too many open sockets) must degrade to
+    engine tokenization, not raise."""
+    sender = TokenSender()
+    try:
+        with patch.object(
+            token_channel, "_new_socket", side_effect=zmq.ZMQError(errno.EMFILE)
+        ):
+            assert sender.push("tcp://127.0.0.1:5555", "k", _payload([1, 2])) is False
     finally:
         sender.close()
 
@@ -214,6 +240,16 @@ def test_malformed_payload_falls_back():
     assert request.kv_transfer_params is None
 
 
+def test_empty_payload_falls_back():
+    store = TokenStore()
+    store.put("empty", payload=_payload([]))
+    request = SimpleNamespace(kv_transfer_params=None)
+
+    inject_prompt_token_ids(request, _raw_request("empty"), store)
+
+    assert request.kv_transfer_params is None
+
+
 def test_token_store_skips_chat_tokenization():
     """The token-store handoff reaches vLLM's native reuse interface."""
     store = TokenStore()
@@ -230,6 +266,9 @@ def test_token_store_skips_chat_tokenization():
         async def render_chat_async(self, *args, **kwargs):
             raise AssertionError("vLLM should skip chat rendering and tokenization")
 
+        def validate_token_ids(self, token_ids, *, parameter=None):
+            pass
+
     class ChatParams:
         def with_defaults(self, *args, **kwargs):
             return self
@@ -240,6 +279,7 @@ def test_token_store_skips_chat_tokenization():
     request.build_chat_params = lambda *args: ChatParams()
     renderer = online_renderer.OnlineRenderer.__new__(online_renderer.OnlineRenderer)
     renderer.renderer = Renderer()
+    renderer.trust_request_mm_kwargs = False
     renderer.model_config = SimpleNamespace(
         multimodal_config=None, enable_prompt_embeds=False
     )
@@ -355,7 +395,9 @@ async def test_routes_tokens_to_replica():
 
     request = MagicMock()
     request.body = AsyncMock(return_value=b'{"model": "m", "prompt": "hello"}')
-    request.headers = Headers({})
+    request.headers = Headers(
+        {SERVE_INGRESS_ROUTER_REQUEST_PATH_HEADER: "/v1/completions"}
+    )
 
     try:
         await _push_until(sender, selected_endpoint, "warmup", [0])

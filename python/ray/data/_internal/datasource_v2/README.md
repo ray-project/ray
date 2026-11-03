@@ -3,7 +3,8 @@
 The read path behind `ray.data.read_*` when
 `DataContext.use_datasource_v2 = True`. A datasource says *where* the data is
 and *how* to decode it; the framework does listing, planning, pushdown, task
-grouping and execution. Parquet is the reference implementation.
+grouping and execution. Parquet is the file-based reference implementation.
+Hive uses the metadata-backed path to stream one HiveServer2 query per execution.
 
 ## Layout
 
@@ -151,3 +152,11 @@ A file format then gets parallel listing, extension filtering,
 `DataContext`, file shuffle and checkpoint resume for free.
 
 Every hook's docstring says when to override it and what you gain.
+
+## How does HiveServer2 fit?
+
+`HiveDatasourceV2` extends `DataSourceWithMetadata`. `_HiveIndexer` emits one `hive://read` manifest entry for the complete table or query operation. `get_file_partitioner()` returns `None`, keeping this manifest as one read unit.
+
+`infer_schema(None)` resolves the table schema on the driver through HiveServer2 (HS2) metadata, or returns the explicit Arrow schema for a query. `_HiveScanner.read_schema()` reports that schema. The scanner carries the read specification, including a connection factory that Ray can serialize, and schema to the worker, where it creates a `_HiveReader`. The factory creates separate connections for driver metadata lookup and worker data reads. The reader executes at most one HS2 data query and uses `fetchmany()` to yield Arrow tables incrementally.
+
+Once the data connection is open, `read_hs2_batches()` attempts to cancel the operation and close any cursor and the connection in `finally`. This covers completion, errors, and early generator closure. Cleanup is best effort. Closing a Dataset iterator can force the streaming executor to stop the read worker while it's fetching rows. That forced stop can bypass the reader's `finally`, even when the caller closes the iterator normally. Abrupt worker termination can also prevent `finally` from running, so immediate server cancellation or explicit cursor and connection cleanup isn't guaranteed.

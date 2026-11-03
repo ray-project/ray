@@ -70,8 +70,7 @@ def get_tpu_version_from_type(accelerator_type: str) -> str:
 
 @PublicAPI(stability="alpha")
 def get_current_pod_name() -> Optional[str]:
-    """
-    Return the name of the TPU pod that the worker is a part of.
+    """Return the name of the TPU pod that the worker is a part of.
 
     Returns:
         The name of the TPU pod. Returns None if not part of a TPU pod.
@@ -84,8 +83,7 @@ def get_current_pod_name() -> Optional[str]:
 
 @PublicAPI(stability="alpha")
 def get_current_pod_worker_count() -> Optional[int]:
-    """
-    Count the number of workers associated with the TPU pod that the worker belongs to.
+    """Count the number of workers associated with the TPU pod that the worker belongs to.
 
     Returns:
         The total number of workers in the TPU pod. Returns None if the worker is not
@@ -96,8 +94,7 @@ def get_current_pod_worker_count() -> Optional[int]:
 
 @PublicAPI(stability="alpha")
 def get_num_tpu_chips_on_node() -> int:
-    """
-    Return the number of TPU chips on the node.
+    """Return the number of TPU chips on the node.
     Returns:
         The total number of chips on the TPU node. Returns 0 if none are found.
     """
@@ -112,8 +109,7 @@ def get_tpu_num_slices_for_workers(
     resources_per_worker: Optional[Dict[str, float]] = None,
     tpu_resource_per_chip: Optional[int] = None,
 ) -> int:
-    """
-    Calculates the number of slices needed to accommodate the specified number of workers.
+    """Calculates the number of slices needed to accommodate the specified number of workers.
 
     Args:
         topology: The TPU topology string.
@@ -157,8 +153,7 @@ def get_tpu_worker_resources(
     chips_per_vm: Optional[int] = None,
     tpu_resource_per_chip: Optional[int] = None,
 ) -> Tuple[int, Dict[str, float]]:
-    """
-    Calculates the number of workers and the resources required for each worker
+    """Calculates the number of workers and the resources required for each worker
     to run based on a TPU topology.
 
     Args:
@@ -248,8 +243,7 @@ def get_tpu_coordinator_env_vars(
     slice_id: int,
     coordinator_port: str = DEFAULT_MEGASCALE_PORT,
 ) -> Dict[str, str]:
-    """
-    Returns the environment variables required for TPU multi-slice coordination.
+    """Returns the environment variables required for TPU multi-slice coordination.
 
     Args:
         coordinator_address: The IP address or hostname of the coordinator.
@@ -312,8 +306,7 @@ def _get_intact_tpu_slices(
     accelerator_type: str,
     tpu_resource_per_chip: int = 1,
 ) -> Dict[str, List[Dict[str, Any]]]:
-    """
-    Returns a mapping of slice names to lists of node dictionaries for all
+    """Returns a mapping of slice names to lists of node dictionaries for all
     TPU slices of the specified topology that are physically intact (alive,
     matching total chip count, and having a head worker).
     """
@@ -388,8 +381,7 @@ def get_num_ready_tpu_slices(
     accelerator_type: str,
     tpu_resource_per_chip: Optional[int] = None,
 ) -> int:
-    """
-    Checks the cluster state to determine how many full TPU slices of the
+    """Checks the cluster state to determine how many full TPU slices of the
     specified topology are currently intact and available.
 
     Args:
@@ -445,8 +437,7 @@ def get_num_tpu_slices(
     accelerator_type: str,
     tpu_resource_per_chip: Optional[int] = None,
 ) -> int:
-    """
-    Checks the cluster state to determine how many full TPU slices of the
+    """Checks the cluster state to determine how many full TPU slices of the
     specified topology are physically intact (all hosts alive with the
     expected chip count).
 
@@ -472,8 +463,7 @@ def get_num_tpu_slices(
 
 @PublicAPI(stability="alpha")
 class SlicePlacementGroup:
-    """
-    A handle to a placement group reservation for a TPU slice.
+    """A handle to a placement group reservation for a TPU slice.
 
     The following definitions are added for clarity:
 
@@ -515,30 +505,23 @@ class SlicePlacementGroup:
             This scales the total logical resources reserved by each slice.
 
     Examples:
-
-    .. testcode:: python
-        :skipif: True
-
-        import ray
-        from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
-        from ray.util.tpu import SlicePlacementGroup
-
-        slice_handle = SlicePlacementGroup(topology="4x4", accelerator_version="v6e")
-        slice_pg = slice_handle.slice_placement_group
-        ray.get(slice_pg.ready(), timeout=10)
-
-        @ray.remote(num_cpus=0, resources={'TPU': 4})
-        def spmd_task(world, rank):
-            print(f"Current TPU is rank {rank} of {world}")
-
-        tasks = [
-            spmd_task.options(
-                scheduling_strategy=PlacementGroupSchedulingStrategy(
-                    placement_group=slice_pg,
-                )
-            ).remote(world=4, rank=i)
-            for i in range(slice_handle.num_hosts)
-        ]
+        >>> import ray  # doctest: +SKIP_EXAMPLE
+        >>> from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
+        >>> from ray.util.tpu import SlicePlacementGroup
+        >>> slice_handle = SlicePlacementGroup(topology="4x4", accelerator_version="v6e")
+        >>> slice_pg = slice_handle.slice_placement_group
+        >>> ray.get(slice_pg.ready(), timeout=10)
+        >>> @ray.remote(num_cpus=0, resources={'TPU': 4})
+        ... def spmd_task(world, rank):
+        ...     print(f"Current TPU is rank {rank} of {world}")
+        >>> tasks = [
+        ...     spmd_task.options(
+        ...         scheduling_strategy=PlacementGroupSchedulingStrategy(
+        ...             placement_group=slice_pg,
+        ...         )
+        ...     ).remote(world=4, rank=i)
+        ...     for i in range(slice_handle.num_hosts)
+        ... ]
     """
 
     def __init__(
@@ -1039,31 +1022,23 @@ def run_on_slice(
             avoid leaking resources.
 
     Examples:
-
-    .. testcode:: python
-        :skipif: True
-
-        import ray
-        from ray.util.tpu import run_on_slice, slice_placement_group
-
-        @ray.remote
-        def my_tpu_task():
-            import jax
-            return jax.device_count()
-
-        # One-shot: reserve a v6e 4x4 slice, run on every host, then
-        # release automatically when the driver exits.
-        results = ray.get(
-            run_on_slice(my_tpu_task, topology="4x4", accelerator_version="v6e")
-        )
-
-        # Reuse an existing slice across multiple calls.
-        slice_handle = slice_placement_group(topology="4x4", accelerator_version="v6e")
-        ray.get(slice_handle.slice_placement_group.ready())
-
-        results1 = ray.get(run_on_slice(my_tpu_task, tpu_slice=slice_handle))
-        results2 = ray.get(run_on_slice(my_tpu_task, tpu_slice=slice_handle))
-        slice_handle.shutdown()
+        >>> import ray  # doctest: +SKIP_EXAMPLE
+        >>> from ray.util.tpu import run_on_slice, slice_placement_group
+        >>> @ray.remote
+        ... def my_tpu_task():
+        ...     import jax
+        ...     return jax.device_count()
+        >>> # One-shot: reserve a v6e 4x4 slice, run on every host, then
+        >>> # release automatically when the driver exits.
+        >>> results = ray.get(
+        ...     run_on_slice(my_tpu_task, topology="4x4", accelerator_version="v6e")
+        ... )
+        >>> # Reuse an existing slice across multiple calls.
+        >>> slice_handle = slice_placement_group(topology="4x4", accelerator_version="v6e")
+        >>> ray.get(slice_handle.slice_placement_group.ready())
+        >>> results1 = ray.get(run_on_slice(my_tpu_task, tpu_slice=slice_handle))
+        >>> results2 = ray.get(run_on_slice(my_tpu_task, tpu_slice=slice_handle))
+        >>> slice_handle.shutdown()
     """
 
     if not hasattr(fn, "options"):
@@ -2211,31 +2186,24 @@ def subslice_placement_group(
         RuntimeError: If all slices are occupied, or if libtpu is missing.
 
     Examples:
-
-    .. testcode:: python
-        :skipif: True
-
-        import ray
-        from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
-        from ray.util.tpu import subslice_placement_group
-
-        sg = subslice_placement_group(
-            subslice_topology="2x4",
-            accelerator_version="v6e",
-        )
-
-        @ray.remote(num_cpus=0, resources={"TPU": 4})
-        def train(world, rank):
-            ...
-
-        tasks = [
-            train.options(
-                scheduling_strategy=PlacementGroupSchedulingStrategy(
-                    placement_group=sg.placement_group,
-                )
-            ).remote(world=sg.num_hosts, rank=i)
-            for i in range(sg.num_hosts)
-        ]
+        >>> import ray  # doctest: +SKIP_EXAMPLE
+        >>> from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
+        >>> from ray.util.tpu import subslice_placement_group
+        >>> sg = subslice_placement_group(
+        ...     subslice_topology="2x4",
+        ...     accelerator_version="v6e",
+        ... )
+        >>> @ray.remote(num_cpus=0, resources={"TPU": 4})
+        ... def train(world, rank):
+        ...     ...
+        >>> tasks = [
+        ...     train.options(
+        ...         scheduling_strategy=PlacementGroupSchedulingStrategy(
+        ...             placement_group=sg.placement_group,
+        ...         )
+        ...     ).remote(world=sg.num_hosts, rank=i)
+        ...     for i in range(sg.num_hosts)
+        ... ]
     """
     (
         version,

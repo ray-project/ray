@@ -1,20 +1,20 @@
 ---
 myst:
   html_meta:
-    description: "Terminate Ray actors from a handle or from inside the actor, and how actor cleanup runs when ray.shutdown is called."
+    description: "Terminate Ray actors from a handle or from inside the actor, and clean up actor resources with the __ray_shutdown__ method."
 ---
 
-# Terminating Actors
+# Terminating actors
 
-Actor processes will be terminated automatically when all copies of the actor handle have gone out of scope in Python, or if the original creator process dies. When actors terminate gracefully, Ray calls the actor's `__ray_shutdown__()` method if defined, allowing for cleanup of resources (see {ref}`actor-cleanup` for details).
+Ray terminates an actor process automatically when all copies of the actor handle go out of scope in Python, or when the original creator process dies. When an actor terminates gracefully, Ray calls the actor's `__ray_shutdown__()` method, if you defined one, so the actor can clean up its resources. See {ref}`actor-cleanup`.
 
-Note that automatic termination of actors is not yet supported in Java or C++.
+Java and C++ don't support automatic actor termination yet.
 
 (ray-kill-actors)=
+(manual-termination-via-an-actor-handle)=
+## Manual termination through an actor handle
 
-## Manual termination via an actor handle
-
-In most cases, Ray will automatically terminate actors that have gone out of scope, but you may sometimes need to terminate an actor forcefully. This should be reserved for cases where an actor is unexpectedly hanging or leaking resources, and for {ref}`detached actors <actor-lifetimes>`, which must be manually destroyed.
+In most cases, Ray terminates out-of-scope actors automatically, but you might sometimes need to kill an actor forcefully. Reserve forced termination for an actor that's unexpectedly hanging or leaking resources, and for {ref}`detached actors <actor-lifetimes>`, which you must destroy manually.
 
 ::::{tab-set}
 :::{tab-item} Python
@@ -54,11 +54,11 @@ actor_handle.Kill();
 ::::
 
 
-This will cause the actor to immediately exit its process, causing any current, pending, and future tasks to fail with a `RayActorError`. If you would like Ray to {ref}`automatically restart <fault-tolerance-actors>` the actor, make sure to set a nonzero `max_restarts` in the `@ray.remote` options for the actor, then pass the flag `no_restart=False` to `ray.kill`.
+A forced kill makes the actor exit its process immediately, and any current, pending, and future tasks fail with a `RayActorError`. To have Ray {ref}`automatically restart <fault-tolerance-actors>` the actor, set a nonzero `max_restarts` in the actor's `@ray.remote` options, then pass `no_restart=False` to `ray.kill`.
 
-For {ref}`named and detached actors <actor-lifetimes>`, calling `ray.kill` on an actor handle destroys the actor and allows the name to be reused.
+For {ref}`named and detached actors <actor-lifetimes>`, calling `ray.kill` on an actor handle destroys the actor and frees its name for reuse.
 
-Use `ray list actors --detail` from {ref}`State API <state-api-overview-ref>` to see the death cause of dead actors:
+To see the death cause of a dead actor, run `ray list actors --detail` from the {ref}`State API <state-api-overview-ref>`:
 
 ```bash
 # This API is only available when you download Ray via `pip install "ray[default]"`
@@ -97,7 +97,7 @@ ray list actors --detail
 
 ## Manual termination within the actor
 
-If necessary, you can manually terminate an actor from within one of the actor methods. This will kill the actor process and release resources associated/assigned to the actor.
+You can manually stop an actor from within one of its methods. Doing so kills the actor process and releases the resources associated with or assigned to the actor.
 
 ::::{tab-set}
 :::{tab-item} Python
@@ -111,7 +111,7 @@ actor = Actor.remote()
 actor.exit.remote()
 ```
 
-This approach should generally not be necessary as actors are automatically garbage collected. The `ObjectRef` resulting from the task can be waited on to wait for the actor to exit (calling `ray.get()` on it will raise a `RayActorError`).
+You usually don't need this approach, because Ray garbage-collects actors automatically. To wait for the actor to exit, wait on the object ref that the task returns. Calling `ray.get()` on it raises a `RayActorError`.
 :::
 
 :::{tab-item} Java
@@ -119,7 +119,7 @@ This approach should generally not be necessary as actors are automatically garb
 Ray.exitActor();
 ```
 
-Garbage collection for actors hasn't been implemented yet, so this is currently the only way to terminate an actor gracefully. The `ObjectRef` resulting from the task can be waited on to wait for the actor to exit (calling `ObjectRef::get` on it will throw a `RayActorException`).
+Ray doesn't garbage-collect actors in Java yet, so this is currently the only way to stop an actor gracefully. To wait for the actor to exit, wait on the object ref that the task returns. Calling `ObjectRef::get` on it throws a `RayActorException`.
 :::
 
 :::{tab-item} C++
@@ -127,15 +127,15 @@ Garbage collection for actors hasn't been implemented yet, so this is currently 
 ray::ExitActor();
 ```
 
-Garbage collection for actors hasn't been implemented yet, so this is currently the only way to terminate an actor gracefully. The `ObjectRef` resulting from the task can be waited on to wait for the actor to exit (calling `ObjectRef::Get` on it will throw a `RayActorException`).
+Ray doesn't garbage-collect actors in C++ yet, so this is currently the only way to stop an actor gracefully. To wait for the actor to exit, wait on the object ref that the task returns. Calling `ObjectRef::Get` on it throws a `RayActorException`.
 :::
 ::::
 
-Note that this method of termination waits until any previously submitted tasks finish executing and then exits the process gracefully with sys.exit.
+This method of termination waits for any previously submitted tasks to finish executing, then exits the process gracefully. In Python, the actor exits through `sys.exit`.
 
 
 
-You could see the actor is dead as a result of the user's `exit_actor()` call:
+Run `ray list actors --detail` to confirm that the actor died because of your `exit_actor()` call:
 
 ```bash
 # This API is only available when you download Ray via `pip install "ray[default]"`
@@ -178,7 +178,7 @@ ray list actors --detail
 
 ## Actor cleanup with `__ray_shutdown__`
 
-When an actor terminates gracefully, Ray calls the `__ray_shutdown__()` method if it exists, allowing cleanup of resources like database connections or file handles.
+When an actor terminates gracefully, Ray calls its `__ray_shutdown__()` method, if one exists. Use this method to clean up resources such as database connections or file handles.
 
 ::::{tab-set}
 :::{tab-item} Python
@@ -210,19 +210,19 @@ del actor  # __ray_shutdown__() is called automatically
 :::
 ::::
 
-When `__ray_shutdown__()` is called:
+Ray calls `__ray_shutdown__()` in the following cases:
 
-- **Automatic termination**: When all actor handles go out of scope (`del actor` or natural scope exit)
-- **Manual graceful termination**: When you call `actor.__ray_terminate__.remote()`
+- **Automatic termination**: When all actor handles go out of scope, either through `del actor` or a natural scope exit.
+- **Manual graceful termination**: When you call `actor.__ray_terminate__.remote()`.
 
-When `__ray_shutdown__()` is **NOT** called:
+Ray doesn't call `__ray_shutdown__()` in the following cases:
 
-- **Force kill**: When you use `ray.kill(actor)` - the actor is killed immediately without cleanup.
-- **Unexpected termination**: When the actor process crashes or exits unexpectedly (such as a segfault or being killed by the OOM killer).
+- **Force kill**: When you use `ray.kill(actor)`. Ray kills the actor immediately without cleanup.
+- **Unexpected termination**: When the actor process crashes or exits unexpectedly, such as from a segfault or when the OOM killer kills it.
 
-**Important notes:**
+Keep the following behavior in mind when you implement `__ray_shutdown__()`:
 
 - `__ray_shutdown__()` runs after all actor tasks complete.
-- By default, Ray waits 30 seconds for the graceful shutdown procedure (including `__ray_shutdown__()`) to complete. If the actor doesn't exit within this timeout, it's force killed. Configure this with `ray.init(_system_config={"actor_graceful_shutdown_timeout_ms": 60000})`.
-- Exceptions in `__ray_shutdown__()` are caught and logged but don't prevent actor termination.
-- `__ray_shutdown__()` must be a synchronous method, including for async actors.
+- By default, Ray waits 30 seconds for the graceful shutdown procedure, including `__ray_shutdown__()`, to complete. If the actor doesn't exit within this timeout, Ray force kills it. To change the timeout, set `ray.init(_system_config={"actor_graceful_shutdown_timeout_ms": 60000})`.
+- Ray catches and logs exceptions in `__ray_shutdown__()`, and they don't prevent actor termination.
+- `__ray_shutdown__()` must be a synchronous method, even in async actors.

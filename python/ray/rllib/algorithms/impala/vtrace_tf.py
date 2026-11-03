@@ -29,9 +29,12 @@ tensors.
 """
 
 import collections
+from typing import List, Optional, Type, Union
 
-from ray.rllib.models.tf.tf_action_dist import Categorical
+from ray.rllib.models.modelv2 import ModelV2
+from ray.rllib.models.tf.tf_action_dist import Categorical, TFActionDistribution
 from ray.rllib.utils.framework import try_import_tf
+from ray.rllib.utils.typing import TensorType
 
 tf1, tf, tfv = try_import_tf()
 
@@ -57,7 +60,12 @@ def log_probs_from_logits_and_actions(
     )[0]
 
 
-def multi_log_probs_from_logits_and_actions(policy_logits, actions, dist_class, model):
+def multi_log_probs_from_logits_and_actions(
+    policy_logits: List[TensorType],
+    actions: List[TensorType],
+    dist_class: Type[TFActionDistribution],
+    model: ModelV2,
+) -> List[TensorType]:
     """Computes action log-probs from policy logits and actions.
 
     In the notation used throughout documentation and comments, T refers to the
@@ -74,6 +82,8 @@ def multi_log_probs_from_logits_and_actions(policy_logits, actions, dist_class, 
             [T, B, ...], ..., [T, B, ...]
             with actions.
         dist_class: Python class of the action distribution.
+        model: The backing ModelV2 instance, passed into `dist_class` when
+            constructing the action distributions.
 
     Returns:
         A list with length of ACTION_SPACE of float32 tensors of shapes
@@ -138,20 +148,20 @@ def from_logits(
 
 
 def multi_from_logits(
-    behaviour_policy_logits,
-    target_policy_logits,
-    actions,
-    discounts,
-    rewards,
-    values,
-    bootstrap_value,
-    dist_class,
-    model,
-    behaviour_action_log_probs=None,
-    clip_rho_threshold=1.0,
-    clip_pg_rho_threshold=1.0,
-    name="vtrace_from_logits",
-):
+    behaviour_policy_logits: List[TensorType],
+    target_policy_logits: List[TensorType],
+    actions: List[TensorType],
+    discounts: TensorType,
+    rewards: TensorType,
+    values: TensorType,
+    bootstrap_value: TensorType,
+    dist_class: Type[TFActionDistribution],
+    model: ModelV2,
+    behaviour_action_log_probs: Optional[List[TensorType]] = None,
+    clip_rho_threshold: Optional[Union[float, TensorType]] = 1.0,
+    clip_pg_rho_threshold: Optional[Union[float, TensorType]] = 1.0,
+    name: str = "vtrace_from_logits",
+) -> VTraceFromLogitsReturns:
     r"""V-trace for softmax policies.
 
     Calculates V-trace actor critic targets for softmax polices as described in
@@ -280,15 +290,15 @@ def multi_from_logits(
 
 
 def from_importance_weights(
-    log_rhos,
-    discounts,
-    rewards,
-    values,
-    bootstrap_value,
-    clip_rho_threshold=1.0,
-    clip_pg_rho_threshold=1.0,
-    name="vtrace_from_importance_weights",
-):
+    log_rhos: TensorType,
+    discounts: TensorType,
+    rewards: TensorType,
+    values: TensorType,
+    bootstrap_value: TensorType,
+    clip_rho_threshold: Optional[Union[float, TensorType]] = 1.0,
+    clip_pg_rho_threshold: Optional[Union[float, TensorType]] = 1.0,
+    name: str = "vtrace_from_importance_weights",
+) -> VTraceReturns:
     r"""V-trace from log importance weights.
 
     Calculates V-trace actor critic targets as described in

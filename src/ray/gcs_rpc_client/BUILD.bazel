@@ -10,6 +10,7 @@ ray_cc_library(
         "accessor.h",
         "gcs_client.h",
     ],
+    visibility = ["//visibility:public"],
     deps = [
         ":accessor_factory_interface",
         ":actor_accessor_interface",
@@ -34,6 +35,12 @@ ray_cc_library(
     name = "global_state_accessor_lib",
     srcs = ["global_state_accessor.cc"],
     hdrs = ["global_state_accessor.h"],
+    visibility = [
+        ":__subpackages__",
+        "//:__pkg__",
+        "//cpp:__pkg__",
+        "//src/ray/core_worker/lib/java:__pkg__",
+    ],
     deps = [
         ":gcs_client",
         "//src/ray/util:time",
@@ -45,7 +52,6 @@ ray_cc_library(
     hdrs = [
         "accessor_factory_interface.h",
     ],
-    visibility = ["//visibility:public"],
     deps = [],
 )
 
@@ -54,7 +60,6 @@ ray_cc_library(
     hdrs = [
         "accessors/actor_info_accessor_interface.h",
     ],
-    visibility = ["//visibility:public"],
     deps = [
         "//src/ray/common:id",
         "//src/ray/common:placement_group",
@@ -71,7 +76,7 @@ ray_cc_library(
     hdrs = [
         "accessors/fake_actor_info_accessor.h",
     ],
-    visibility = ["//visibility:public"],
+    visibility = ["//src/ray/core_worker/actor_management/tests:__pkg__"],
     deps = [
         ":actor_accessor_interface",
         "//src/ray/common:id",
@@ -87,7 +92,6 @@ ray_cc_library(
     hdrs = [
         "gcs_client_context.h",
     ],
-    visibility = [":__pkg__"],
     deps = [
         ":rpc_client",
         "//src/ray/pubsub:gcs_subscriber",
@@ -102,7 +106,6 @@ ray_cc_library(
     hdrs = [
         "accessors/actor_info_accessor.h",
     ],
-    visibility = [":__pkg__"],
     deps = [
         ":actor_accessor_interface",
         ":gcs_client_context",
@@ -132,7 +135,6 @@ ray_cc_library(
         "default_accessor_factory.h",
         "default_gcs_client_context.h",
     ],
-    visibility = [":__pkg__"],
     deps = [
         ":accessor_factory_interface",
         ":actor_accessor_implementation",
@@ -146,10 +148,7 @@ ray_cc_library(
     hdrs = [
         "rpc_client.h",
     ],
-    visibility = [
-        ":__pkg__",
-        "//src/ray/pubsub:__pkg__",
-    ],
+    visibility = ["//src/ray/pubsub:__pkg__"],
     deps = [
         "//src/ray/common:ray_config",
         "//src/ray/protobuf:autoscaler_cc_grpc",
@@ -178,6 +177,7 @@ ray_cc_library(
     name = "fake_gcs_client",
     testonly = True,
     hdrs = ["fake_gcs_client.h"],
+    visibility = ["//visibility:public"],
     deps = [
         ":fake_accessor",
         ":fake_actor_info_accessor",

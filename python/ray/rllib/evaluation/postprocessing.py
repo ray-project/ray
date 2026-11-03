@@ -1,4 +1,4 @@
-from typing import Dict, Optional
+from typing import TYPE_CHECKING, Dict, Optional
 
 import numpy as np
 
@@ -7,6 +7,9 @@ from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import DeveloperAPI, OldAPIStack
 from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.typing import AgentID, TensorType
+
+if TYPE_CHECKING:
+    from ray.rllib.evaluation.episode_v2 import EpisodeV2
 
 
 @DeveloperAPI
@@ -155,7 +158,7 @@ def compute_gae_for_sample_batch(
     policy: Policy,
     sample_batch: SampleBatch,
     other_agent_batches: Optional[Dict[AgentID, SampleBatch]] = None,
-    episode=None,
+    episode: Optional["EpisodeV2"] = None,
 ) -> SampleBatch:
     """Adds GAE (generalized advantage estimations) to a trajectory.
 
@@ -304,6 +307,8 @@ def discount_cumsum(x: np.ndarray, gamma: float) -> np.ndarray:
     reversed(y)[t] - discount*reversed(y)[t-1] = reversed(x)[t]
 
     Args:
+        x: The sequence of rewards to compute the discounted cumulative sums
+            for.
         gamma: The discount factor gamma.
 
     Returns:

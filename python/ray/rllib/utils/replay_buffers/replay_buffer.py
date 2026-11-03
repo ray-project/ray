@@ -133,7 +133,7 @@ class ReplayBuffer(ReplayBufferInterface, FaultAwareApply):
                 dropped to make space for new ones.
             storage_unit: If not a StorageUnit, either 'timesteps', 'sequences' or
                 'episodes'. Specifies how experiences are stored.
-            ``**kwargs``: Forward compatibility kwargs.
+            **kwargs: Forward compatibility kwargs.
         """
 
         if storage_unit in ["timesteps", StorageUnit.TIMESTEPS]:
@@ -199,7 +199,7 @@ class ReplayBuffer(ReplayBufferInterface, FaultAwareApply):
 
         Args:
             batch: The batch to add.
-            ``**kwargs``: Forward compatibility kwargs.
+            **kwargs: Forward compatibility kwargs.
         """
         if not batch.count > 0:
             return
@@ -251,7 +251,7 @@ class ReplayBuffer(ReplayBufferInterface, FaultAwareApply):
 
         Args:
             item: The batch to be added.
-            ``**kwargs``: Forward compatibility kwargs.
+            **kwargs: Forward compatibility kwargs.
         """
         self._num_timesteps_added += item.count
         self._num_timesteps_added_wrap += item.count
@@ -305,7 +305,7 @@ class ReplayBuffer(ReplayBufferInterface, FaultAwareApply):
 
         Args:
             num_items: Number of items to sample from this buffer.
-            ``**kwargs``: Forward compatibility kwargs.
+            **kwargs: Forward compatibility kwargs.
 
         Returns:
             Concatenated batch of items.

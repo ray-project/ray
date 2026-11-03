@@ -6,47 +6,47 @@ myst:
 
 (resource-isolation)=
 
-# Resource Isolation With Cgroup v2
+# Resource isolation with cgroup v2
 
-This page describes how to use Ray's native cgroup v2 based resource isolation to significantly improve the reliability of a Ray Cluster.
+This page describes how to use Ray's native resource isolation, which uses cgroup v2, to improve the reliability of a Ray cluster.
 
 :::{note}
-This feature is only available in Ray version 2.51.0 and above on Linux. The complete memory monitoring system that uses cgroup v2 to improve system stability is available in Ray version 2.56.0 and above. See {ref}`Out-Of-Memory Prevention <ray-oom-prevention>` for more details.
+This feature is available only on Linux in Ray 2.51.0 and later. The complete memory monitoring system that uses cgroup v2 to improve system stability is available in Ray 2.56.0 and later. For more details, see {ref}`Out-of-memory prevention <ray-oom-prevention>`.
 :::
 
 :::{note}
-See {ref}`Debugging Out of Memory <troubleshooting-out-of-memory>` for more details on using resource isolation to debug out-of-memory issues.
+To use resource isolation to debug out-of-memory issues, see {ref}`Debugging out of memory <troubleshooting-out-of-memory>`.
 :::
 
 ## Background
 
-A Ray cluster consists of Ray Nodes which run two types of processes:
+A Ray cluster consists of Ray nodes, which run two types of processes:
 
-1. System critical processes internal to Ray which are critical to node health
-2. Worker processes that are executing user code inside of remote tasks and actors
+1. System processes internal to Ray that are critical to node health.
+1. Worker processes that run your code inside remote tasks and actors.
 
-Without resource isolation, user processes can starve system processes of CPU and memory leading to node failure. Node failure can cause instability in your workload and in extreme cases lead to job failure.
+Without resource isolation, user processes can starve system processes of CPU and memory, which leads to node failure. Node failure can make your workload unstable and, in extreme cases, cause the job to fail.
 
-As of v2.51.0, Ray uses [cgroup v2](https://docs.kernel.org/admin-guide/cgroup-v2.html) to reserve CPU and memory resources for Ray's system processes to protect them from out-of-memory (OOM) errors and CPU starvation.
+As of Ray 2.51.0, Ray uses [cgroup v2](https://docs.kernel.org/admin-guide/cgroup-v2.html) to reserve CPU and memory for its system processes, which protects them from out-of-memory (OOM) errors and CPU starvation.
 
 ## Requirements
 
-Configuring and enabling Resource Isolation can be involved depending on how you are deploying and running Ray. Let's cover some basic requirements which apply to all environments:
+Configuring resource isolation can take some work, depending on how you deploy and run Ray. The following requirements apply to all environments:
 
-- Ray version 2.51.0 and above
-- Linux operating system running kernel version 5.8 or above
-- Cgroup v1 is disabled.
-- Cgroup v2 enabled with read and write permissions. For more information, see {ref}`How to Enable Cgroup v2 <enable-cgroupv2>`.
+- Ray 2.51.0 or later.
+- Linux operating system running kernel version 5.8 or later.
+- An environment with cgroup v1 disabled.
+- An environment with cgroup v2 enabled with read and write permissions. For more information, see {ref}`How to enable cgroup v2 <enable-cgroupv2>`.
 
 (resource-isolation-containers)=
 
-### Running Ray in a Container
+### Running Ray in a container
 
-If you are running Ray in a container (e.g. through Kubernetes), the container must have read and write access to the cgroup mount point. We can't cover all possible ways of running Ray in a container so here are a few examples that cover the most common cases:
+If you run Ray in a container, such as on Kubernetes, the container must have read and write access to the cgroup mount point. The following sections cover the most common ways to run Ray in a container.
 
-#### Running in Kubernetes with Privileged Security Context
+#### Running in Kubernetes with privileged security context
 
-To enable privileged pods in Kubernetes, you need to [set the securityContext](https://kubernetes.io/docs/tasks/configure-pod-container/security-context/#set-the-security-context-for-a-container) in your podspec to privileged:
+To run privileged Pods in Kubernetes, [set the `securityContext`](https://kubernetes.io/docs/tasks/configure-pod-container/security-context/#set-the-security-context-for-a-container) in your Pod spec to privileged:
 
 ```{code-block} yaml
 :emphasize-lines: 11-12
@@ -69,26 +69,32 @@ spec:
         memory: "128Gi"
 ```
 
-#### Running in Google Kubernetes Engine (GKE) with Writable Cgroups
+#### Running in Google Kubernetes Engine (GKE) with writable cgroups
 
-Running pods in a privileged security context may not be acceptable for your use case. To avoid this, GKE allows you to use writable cgroups instead. See the {ref}`Resource isolation with writable cgroups on GKE <resource-isolation-with-writable-cgroups>` guide for step-by-step instructions and the [GKE documentation on writable cgroups](https://cloud.google.com/kubernetes-engine/docs/how-to/writable-cgroups) for more details.
+If running Pods in a privileged security context isn't acceptable for your use case, use writable cgroups on GKE instead. For step-by-step instructions, see the {ref}`Resource isolation with writable cgroups on GKE <resource-isolation-with-writable-cgroups>` guide. For more details, see the [GKE documentation on writable cgroups](https://cloud.google.com/kubernetes-engine/docs/how-to/writable-cgroups).
 
-#### Running in a Bare Container
+#### Running in a bare container
 
-If you're running in a bare container (e.g. through Docker), [you can use privileged containers](https://docs.docker.com/engine/containers/run/#runtime-privilege-and-linux-capabilities).
+If you run Ray in a bare container, such as with Docker, [you can use a privileged container](https://docs.docker.com/engine/containers/run/#runtime-privilege-and-linux-capabilities).
 
 (resource-isolation-vm)=
 
-### Running Ray outside of a Container (VM or Baremetal)
+(running-ray-outside-of-a-container-vm-or-baremetal)=
 
-If you're running Ray directly on Linux, the setup is a little more involved. You will need to:
+### Running Ray outside a container on a VM or bare metal
 
-1. Create a cgroup for Ray
-2. Configure the cgroup to allow the user that starts Ray to have read and write permissions
-3. Move the process that will start Ray into the created cgroup.
-4. Start Ray with the cgroup path.
+Running Ray directly on Linux takes more setup. Complete the following steps:
 
-Here's an example script that shows you how to perform these steps. This is to help you run ray on a single node for tests and not the recommended way to run a Ray cluster in production:
+1. Create a cgroup for Ray.
+1. Give the user that starts Ray read and write permissions on the cgroup.
+1. Move the process that starts Ray into the cgroup.
+1. Start Ray with the cgroup path.
+
+:::{note}
+The following example script is for running Ray on a single node for testing. It isn't the recommended way to run a Ray cluster in production.
+:::
+
+The following script performs these steps:
 
 ```bash
 # Create the cgroup that will be managed by Ray.
@@ -110,9 +116,9 @@ ray start --enable-resource-isolation --cgroup-path=/sys/fs/cgroup/ray
 
 ## Usage
 
-Resource isolation can be enabled and configured when starting a Ray cluster using `ray start` or when running Ray locally using `ray.init`.
+You can enable and configure resource isolation when you start a Ray cluster with `ray start` or when you run Ray locally with `ray.init`.
 
-### Enable Resource Isolation on a Ray Cluster
+### Enable resource isolation on a Ray cluster
 
 ```bash
 # Example of enabling resource isolation with default values.
@@ -129,10 +135,10 @@ ray start --enable-resource-isolation \
 ```
 
 
-If you are using the {doc}`Ray Cluster Launcher </cluster/vms/user-guides/launching-clusters/on-premises>`, you must add the resource isolation flags into the `head_start_ray_commands` and `worker_start_ray_commands`.
+If you use the {doc}`Ray Cluster Launcher </cluster/vms/user-guides/launching-clusters/on-premises>`, add the resource isolation flags to `head_start_ray_commands` and `worker_start_ray_commands`.
 
 
-### Enable Resource Isolation with the SDK
+### Enable resource isolation with the SDK
 
 ```python
 import ray
@@ -149,7 +155,7 @@ ray.init(
 )
 ```
 
-### API Reference
+### API reference
 
 ```{list-table}
 :header-rows: 1
@@ -166,26 +172,26 @@ ray.init(
 * - `cgroup-path`
   - string
   - `"/sys/fs/cgroup"`
-  - Controls which cgroup Ray uses as its base cgroup. If set without `enable-resource-isolation`, raises `ValueError`.
+  - The cgroup that Ray uses as its base cgroup. Setting it without `enable-resource-isolation` raises `ValueError`.
 * - `system-reserved-cpu`
   - float
   - See {ref}`defaults <resource-isolation-defaults>`
-  - CPU cores reserved for system processes. If set without `enable-resource-isolation`, raises `ValueError`.
+  - CPU cores reserved for system processes. Setting it without `enable-resource-isolation` raises `ValueError`.
 * - `system-reserved-memory`
   - integer
   - See {ref}`defaults <resource-isolation-defaults>`
-  - Memory bytes reserved for system processes. If set without `enable-resource-isolation`, raises `ValueError`. Does not include `object_store_memory`, but Ray guarantees that system processes have `system-reserved-memory + object-store-memory` for the system cgroup.
+  - Bytes of memory reserved for system processes. Setting it without `enable-resource-isolation` raises `ValueError`. Doesn't include `object_store_memory`. Ray guarantees that system processes have `system-reserved-memory + object-store-memory` for the system cgroup.
 ```
 
 :::{note}
-If any subset of the options is specified, Ray will use default values for the rest. For example, you can specify only `--system-reserved-memory`.
+If you specify only some of the options, Ray uses default values for the rest. For example, you can specify only `--system-reserved-memory`.
 :::
 
 (resource-isolation-defaults)=
 
-## Default Values for CPU and Memory Reservations
+## Default values for CPU and memory reservations
 
-If you enable resource isolation but don't specify `system-reserved-cpu` or `system-reserved-memory`, Ray assigns default values. The algorithm uses the following default parameters:
+If you enable resource isolation but don't specify `system-reserved-cpu` or `system-reserved-memory`, Ray assigns default values. Ray calculates the defaults from the following parameters:
 
 ```python
 # CPU
@@ -195,23 +201,23 @@ RAY_DEFAULT_MAX_SYSTEM_RESERVED_CPU_CORES = 3.0
 
 # Memory
 RAY_DEFAULT_SYSTEM_RESERVED_MEMORY_PROPORTION = 0.10
-RAY_DEFAULT_MIN_SYSTEM_RESERVED_MEMORY_BYTES = 0.5 * 1024**3 #500MiB
+RAY_DEFAULT_MIN_SYSTEM_RESERVED_MEMORY_BYTES = 500 * 1024**2 #500MiB
 RAY_DEFAULT_MAX_SYSTEM_RESERVED_MEMORY_BYTES = 10 * 1024**3 #10GiB
 ```
 
-You can override these default parameters using environment variables.
+You can override these default parameters with environment variables.
 
-### Calculation Logic
+### Calculation logic
 
-Ray uses the following logic to make sure that default reservations make sense for clusters of all sizes:
+To keep default reservations reasonable for clusters of all sizes, Ray calculates each default as follows:
 
-1. Calculate value as a proportion of available resources (e.g., `RAY_DEFAULT_SYSTEM_RESERVED_CPU_PROPORTION * total_cpu_cores`)
-2. If the value is less than the minimum, use the minimum
-3. If the value is greater than the maximum, use the maximum
+1. Calculate the value as a proportion of available resources, such as `RAY_DEFAULT_SYSTEM_RESERVED_CPU_PROPORTION * total_cpu_cores`.
+1. If the value is less than the minimum, use the minimum.
+1. If the value is greater than the maximum, use the maximum.
 
 ### Example
 
-For a worker node with 32 CPU cores and 64 GB of RAM:
+The following example shows the default values for a worker node with 32 CPU cores and 64 GB of RAM:
 
 ```bash
 # Calculated default values:
@@ -226,11 +232,11 @@ ray start --enable-resource-isolation
 
 (enable-cgroupv2)=
 
-## How to Enable Cgroup v2 for Resource Isolation
+## How to enable cgroup v2 for resource isolation
 
-For Ray Resource Isolation, you need to make sure cgroup v2 is enabled and cgroup v1 is disabled. This is the default behavior on most modern Linux distributions.
+Resource isolation requires cgroup v2 enabled and cgroup v1 disabled. Most modern Linux distributions use this configuration by default.
 
-The most reliable way to test this is to look at the mount output. It should look like:
+The most reliable way to check this configuration is to inspect the `mount` output, which should look like the following:
 
 ```console
 $ mount | grep cgroup
@@ -238,16 +244,16 @@ cgroup2 on /sys/fs/cgroup type cgroup2 (rw,nosuid,nodev,noexec,relatime,nsdelega
 ```
 
 :::{important}
-If you don't see cgroup v2 or see both cgroup v1 and cgroup v2, you will need to disable cgroup v1 and enable cgroup v2.
+If you don't see cgroup v2, or you see both cgroup v1 and cgroup v2, disable cgroup v1 and enable cgroup v2.
 :::
 
-If your distribution uses GRUB, add `systemd.unified_cgroup_hierarchy=1` to `GRUB_CMDLINE_LINUX` under `/etc/default/grub`, followed by `sudo update-grub`. However, the recommended approach is to use a distribution that already enables cgroup v2 by default.
+The recommended approach is to use a distribution that enables cgroup v2 by default. Otherwise, if your distribution uses GRUB, add `systemd.unified_cgroup_hierarchy=1` to `GRUB_CMDLINE_LINUX` in `/etc/default/grub`, then run `sudo update-grub`.
 
 ## Troubleshooting
 
-To see if you've enabled resource isolation correctly, you can look at the `raylet.out` log file. If everything works you should see a log line that gives you detailed information about the cgroups that Ray created and the cgroup contraints it enabled.
+To check that you enabled resource isolation correctly, look at the `raylet.out` log file. If the setup works, the log should contain a line with details about the cgroups that Ray created and the cgroup constraints it enabled.
 
-For example:
+The following example shows that log line:
 
 ```json
 {

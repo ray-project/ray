@@ -376,7 +376,7 @@ class MultiAgentEpisode:
                 indicating, whether the environment has been terminated for them.
                 A special `__all__` key indicates that the episode is terminated for
                 all agent IDs.
-            terminateds: A dictionary mapping agent IDs to their `truncated` flags,
+            truncateds: A dictionary mapping agent IDs to their `truncated` flags,
                 indicating, whether the environment has been truncated for them.
                 A special `__all__` key indicates that the episode is `truncated` for
                 all agent IDs.
@@ -1388,11 +1388,6 @@ class MultiAgentEpisode:
                 part of the lookback buffer) will respond to
                 `get_actions(slice(-7, -2), agent_ids=[A], fill=0.0)` with
                 `{A: [0.0, 0.0, 10, 11, 12]}`.
-            one_hot_discrete: If True, will return one-hot vectors (instead of
-                int-values) for those sub-components of a (possibly complex) observation
-                space that are Discrete or MultiDiscrete.  Note that if `fill=0` and the
-                requested `indices` are out of the range of our data, the returned
-                one-hot vectors will actually be zero-hot (all slots zero).
             return_list: Whether to return a list of multi-agent dicts (instead of
                 a single multi-agent dict of lists/structs). False by default. This
                 option can only be used when `env_steps` is True due to the fact the
@@ -2035,7 +2030,7 @@ class MultiAgentEpisode:
     def set_extra_model_outputs(
         self,
         *,
-        key,
+        key: str,
         new_data: MultiAgentDict,
         at_indices: Optional[Union[int, List[int], slice]] = None,
         neg_index_as_lookback: bool = False,
@@ -2682,6 +2677,8 @@ class MultiAgentEpisode:
         Args:
             what: A (str) descriptor of what data to collect. Must be one of
                 "observations", "infos", "actions", "rewards", or "extra_model_outputs".
+            agent_id: The individual agent ID to pull data for. Used to look up the
+                `SingleAgentEpisode` object for this agent in `self`.
             indices_incl_lookback: A list of ints specifying, which indices
                 to pull from the InfiniteLookbackBuffer defined by `agent_id` and `what`
                 (and maybe `extra_model_outputs_key`). Note that these indices
@@ -2690,8 +2687,6 @@ class MultiAgentEpisode:
                 lookback buffer should be returned, not the first value after the
                 lookback buffer (which would be normal behavior for pulling items from
                 an `InfiniteLookbackBuffer` object).
-            agent_id: The individual agent ID to pull data for. Used to look up the
-                `SingleAgentEpisode` object for this agent in `self`.
             fill: An optional float value to use for filling up the returned results at
                 the boundaries. This filling only happens if the requested index range's
                 start/stop boundaries exceed the buffer's boundaries (including the

@@ -59,7 +59,7 @@ class Runner(FaultAwareApply, metaclass=abc.ABCMeta):
         pass
 
     @abc.abstractmethod
-    def run(self, **kwargs) -> Any:
+    def run(self, **kwargs: Any) -> Any:
         """Runs the `Runner`.
 
         The exact logic of this method could have very different forms.

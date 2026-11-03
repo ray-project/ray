@@ -93,8 +93,7 @@ class Autoscaler:
     def _init_cloud_instance_provider(
         self, config: AutoscalingConfig, config_reader: IConfigReader
     ):
-        """
-        Initialize the cloud provider, and its dependencies (the v1 node provider)
+        """Initialize the cloud provider, and its dependencies (the v1 node provider)
 
         Args:
             config: The autoscaling config.
@@ -132,9 +131,7 @@ class Autoscaler:
         gcs_client: GcsClient,
         config: AutoscalingConfig,
     ):
-        """
-        Initialize the instance manager, and its dependencies.
-        """
+        """Initialize the instance manager, and its dependencies."""
 
         instance_storage = InstanceStorage(
             cluster_id=session_name,

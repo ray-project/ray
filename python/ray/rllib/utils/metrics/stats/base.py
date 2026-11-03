@@ -157,6 +157,9 @@ class StatsBase(metaclass=ABCMeta):
 
         Args:
             state: The state to set after instantiation.
+
+        Returns:
+            A new stats object of this class, with `state` already applied to it.
         """
         init_args = cls._get_init_args(state=state)
         stats = cls(**init_args)

@@ -439,7 +439,7 @@ class Checkpointable(abc.ABC):
                 the created instance to.
             filesystem: PyArrow FileSystem to use to access data at the `path`. If not
                 specified, this is inferred from the URI scheme of `path`.
-            kwargs: Forward compatibility kwargs. Note that these kwargs are sent to
+            **kwargs: Forward compatibility kwargs. Note that these kwargs are sent to
                 each subcomponent's `from_checkpoint()` call.
 
         Returns:
@@ -542,7 +542,7 @@ class Checkpointable(abc.ABC):
                 returned state, even if the same string is part of `components`.
                 This is useful to get the complete state of the class, except
                 one or a few components.
-            kwargs: Forward-compatibility kwargs.
+            **kwargs: Forward-compatibility kwargs.
 
         Returns:
             The current state of the implementing class (or only the `components`
@@ -600,13 +600,18 @@ class Checkpointable(abc.ABC):
         """
         return []
 
-    def _check_component(self, name, components, not_components) -> bool:
+    def _check_component(
+        self,
+        name: str,
+        components: Optional[Union[str, Collection[str]]],
+        not_components: Optional[Union[str, Collection[str]]],
+    ) -> bool:
         """Returns True if a component should be checkpointed.
 
         Args:
             name: The checkpoint name.
             components: A list of components that should be checkpointed.
-            non_components: A list of components that should not be checkpointed.
+            not_components: A list of components that should not be checkpointed.
 
         Returns:
             True, if the component should be checkpointed and otherwise False.

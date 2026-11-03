@@ -11,7 +11,7 @@ _, tf, _ = try_import_tf()
 
 
 @DeveloperAPI
-def safe_isnan(value):
+def safe_isnan(value: Any) -> Any:
     """Check if a value is NaN.
 
     Args:

@@ -1,4 +1,5 @@
 import unittest
+from typing import Callable, Dict, Optional, Tuple
 
 import numpy as np
 from scipy.stats import norm
@@ -9,7 +10,15 @@ from ray.rllib.utils.numpy import fc, one_hot
 from ray.rllib.utils.test_utils import check
 
 
-def _get_expected_logp(vars, obs_batch, a, layer_key, logp_func=None):
+def _get_expected_logp(
+    vars: Dict[str, np.ndarray],
+    obs_batch: np.ndarray,
+    a: np.ndarray,
+    layer_key: Tuple[str, Tuple[int, int], Tuple[str, str]],
+    logp_func: Optional[Callable[[np.ndarray, np.ndarray, np.ndarray], np.ndarray]] = (
+        None
+    ),
+):
     """Get the expected logp for the given obs_batch and action.
 
     Args:

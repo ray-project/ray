@@ -1,0 +1,50 @@
+extends: substitution
+message: "Use '%s' instead of '%s'."
+link: 'https://docs.ray.io/en/latest/ray-contribute/writing-style.html#ray-tune-docs-style'
+level: warning
+ignorecase: false
+# Ray Tune generic nouns written in title case. These are the companion to
+# Tune/Terms.yml, split out because a fix here needs judgment, so this rule carries no
+# `action: replace`, and a tool applying swaps from Vale's JSON output skips it.
+#
+# Three kinds of judgment:
+#
+# - Heading and sentence starts. The swaps lowercase the whole phrase, but when the
+#   phrase opens a heading or a sentence, its first word keeps its capital, such as
+#   "## Search algorithms". The swaps are case-sensitive, so a sentence-initial
+#   "Search algorithm" doesn't match.
+# - "Trainable". Write "trainable" in prose for the concept, and put the class in code
+#   style when you mean it, as in `Trainable`. The swaps carry a preceding word because
+#   a bare "Trainable" is often the class, and a human decides each one.
+# - "Bayesian Optimization". Lowercase "optimization" for the technique, but the
+#   `bayesian-optimization` package publishes as "BayesianOptimization", and a mention
+#   of the package takes code style instead.
+#
+# "Scheduler" is deliberately absent. Ray Core and Kubernetes both have schedulers, and
+# this style is scoped to doc/source/tune/, so a rule here can't reach those pages, but
+# "Trial Scheduler" is the only Tune-specific title-cased form worth flagging.
+#
+# `vocab: false` for the same reason as Tune/Terms.yml.
+vocab: false
+swap:
+  'the Trainable': the trainable
+  'a Trainable': a trainable
+  'your Trainable': your trainable
+  'Tune Trainables': Tune trainables
+  'Tune Trainable': Tune trainable
+  'Function Trainable': function trainable
+  'Class Trainable': class trainable
+  'Function API': function API
+  'Class API': class API
+  'Search Algorithms': search algorithms
+  'Search Algorithm': search algorithm
+  'Search Spaces': search spaces
+  'Search Space': search space
+  'Trial Schedulers': trial schedulers
+  'Trial Scheduler': trial scheduler
+  'Tune Trials': Tune trials
+  'Tune Trial': Tune trial
+  'Tune Experiments': Tune experiments
+  'Tune Experiment': Tune experiment
+  'Bayesian Optimization': Bayesian optimization
+  'Median Stopping Rule': median stopping rule

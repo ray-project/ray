@@ -15,7 +15,7 @@ NetworkPolicy support is alpha and disabled by default. Enable the `RayClusterNe
 
 ## Install the KubeRay operator
 
-Install the KubeRay operator, following [these instructions](https://docs.ray.io/en/latest/cluster/kubernetes/getting-started/kuberay-operator-installation.html). The minimum version for this guide is v1.7.0. To use this feature, you must enable the `RayClusterNetworkPolicy` feature gate. To enable the feature gate when installing the KubeRay operator, run the following command:
+Install the KubeRay operator, following [these instructions](../getting-started/operator-installation.md). The minimum version for this guide is v1.7.0. To use this feature, you must enable the `RayClusterNetworkPolicy` feature gate. To enable the feature gate when installing the KubeRay operator, run the following command:
 
 ```sh
 helm repo add kuberay https://ray-project.github.io/kuberay-helm/
@@ -167,7 +167,7 @@ When `enableInTreeAutoscaling: true`, the Ray autoscaler on the head pod must re
 | Calico, Cilium (with `kube-proxy-replacement`) | `ipBlock` with the endpoint IP (after Destination NAT); a ClusterIP rule blocks autoscaling |
 | EKS (Amazon VPC CNI) | `ipBlock` with the `kubernetes` Service ClusterIP; an endpoint IP rule blocks autoscaling |
 
-These results come from testing in [KubeRay #4638](https://github.com/ray-project/kuberay/pull/4638#issuecomment-4660571594). Other CNI configurations may behave differently.
+These results come from testing in [KubeRay #4638](https://github.com/kuberay-project/kuberay/pull/4638#issuecomment-4660571594). Other CNI configurations may behave differently.
 
 Calico and Cilium also require `policyCIDRMatchMode: Node` set on the CNI (see [this issue](https://github.com/hcloud-k8s/terraform-hcloud-kubernetes/issues/285)) for the endpoint-IP `ipBlock` rule below to match. Without it, the rule may not take effect.
 
@@ -188,7 +188,7 @@ For Calico and Cilium (with `kube-proxy-replacement`), add this rule to `head.eg
     protocol: TCP
 ```
 
-For EKS, replace `<endpoint-ip>` with the ClusterIP from `kubectl get svc kubernetes`. As a [suggested alternative for Cilium in KubeRay #4638](https://github.com/ray-project/kuberay/pull/4638#discussion_r3336164401), you can instead use a `CiliumNetworkPolicy` with `toEntities: [kube-apiserver]` to target the API server by identity instead of IP. See Cilium's [Layer 3 policy docs](https://docs.cilium.io/en/stable/security/policy/layer3/) for details.
+For EKS, replace `<endpoint-ip>` with the ClusterIP from `kubectl get svc kubernetes`. As a [suggested alternative for Cilium in KubeRay #4638](https://github.com/kuberay-project/kuberay/pull/4638#discussion_r3336164401), you can instead use a `CiliumNetworkPolicy` with `toEntities: [kube-apiserver]` to target the API server by identity instead of IP. See Cilium's [Layer 3 policy docs](https://docs.cilium.io/en/stable/security/policy/layer3/) for details.
 
 ## RayJob patterns
 
@@ -296,4 +296,4 @@ spec:
 
 ## Full example
 
-See [`ray-cluster.network-policy-deny-all.yaml`](https://raw.githubusercontent.com/ray-project/kuberay/refs/heads/master/ray-operator/config/samples/ray-cluster.network-policy-deny-all.yaml) for a complete annotated example covering `DenyAll` mode, DNS egress, API server egress (commented out with per-CNI notes), Prometheus scraping, and the clusterSelector `RayJob` pattern.
+See [`ray-cluster.network-policy-deny-all.yaml`](https://raw.githubusercontent.com/kuberay-project/kuberay/refs/heads/master/ray-operator/config/samples/ray-cluster.network-policy-deny-all.yaml) for a complete annotated example covering `DenyAll` mode, DNS egress, API server egress (commented out with per-CNI notes), Prometheus scraping, and the clusterSelector `RayJob` pattern.

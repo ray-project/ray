@@ -46,6 +46,10 @@ class HorovodConfig(BackendConfig):
 
     @property
     def start_timeout(self):
+        """A Horovod ``Timeout`` of ``timeout_s`` seconds.
+
+        Horovod reads it when this config serves as its settings object.
+        """
         return timeout.Timeout(
             self.timeout_s,
             message="Timed out waiting for {activity}. Please "

@@ -13,6 +13,7 @@ from typing import TYPE_CHECKING, Any, Dict, List, Optional
 import ray
 from ray._private.ray_constants import (
     NIXL_REMOTE_AGENT_CACHE_MAXSIZE,
+    RDT_FETCH_FAIL_TIMEOUT_SECONDS,
 )
 from ray.experimental.rdt.nixl_memory_pool import (
     MemoryPoolManager,
@@ -108,6 +109,8 @@ class TensorDesc:
     reg_desc: Any
     # tracks the number of NIXL metadata containing the tensor.
     metadata_count: int
+    # size in bytes of the registered storage.
+    size: int
 
 
 @dataclass
@@ -164,6 +167,15 @@ class NixlTensorTransport(TensorTransportManager):
         # LRU cache of remote agent names. When full, the least
         # recently used remote agent is evicted and remove_remote_agent is called.
         self._remote_agents: OrderedDict = OrderedDict()
+        # Guards _remote_agents only, held briefly and never while waiting for an agent lock.
+        self._remote_agent_cache_lock = threading.Lock()
+        # One lock per remote agent. Fetching from an agent, polling its transfers and
+        # removing it all hold it, so an agent is never removed with a transfer in flight.
+        # Locks are never deleted, so an agent always has the same one. It is reentrant
+        # because garbage collection can run _cleanup_transfer on a thread that holds it.
+        self._remote_agent_locks: Dict[str, Any] = {}
+        # Transfers that may still be in flight on each remote agent.
+        self._inflight_xfers: Dict[str, set] = {}
         # Increment the version whenever memory is deregistered.
         self._nixl_agent_meta_version = 0
         self._memory_pool: Optional[MemoryPoolManager] = None
@@ -403,6 +415,14 @@ class NixlTensorTransport(TensorTransportManager):
         tensor_meta = tensor_transport_metadata.tensor_meta
         device = tensor_transport_metadata.tensor_device
 
+        if target_buffers:
+            target_device_types = {t.device.type for t in target_buffers}
+            if len(target_device_types) > 1:
+                raise ValueError(
+                    "All target buffers for an RDT object must have the same "
+                    f"device type, but got {sorted(target_device_types)}."
+                )
+
         with self._aborted_transfer_obj_ids_lock:
             if obj_id in self._aborted_transfer_obj_ids:
                 self._aborted_transfer_obj_ids.remove(obj_id)
@@ -432,7 +452,10 @@ class NixlTensorTransport(TensorTransportManager):
                 tensors = target_buffers
                 # NIXL requires the local and remote lists to agree on descriptor
                 # count and length, so build both together, one per tensor.
-                mem_type = "cuda" if device == "cuda" else "cpu"
+                # Target buffers may live on a different device type than the
+                # source (cross-device fetch), so each list has its own mem type.
+                local_mem_type = "cuda" if tensors[0].is_cuda else "cpu"
+                remote_mem_type = "cuda" if device == "cuda" else "cpu"
                 local_descs = []
                 remote_descs = []
                 for desc_idx, desc_group in enumerate(desc_groups):
@@ -449,10 +472,10 @@ class NixlTensorTransport(TensorTransportManager):
                 added_tensor_descs = True
                 registered_tensors = tensors
                 local_xfer_descs = nixl_agent.get_xfer_descs(
-                    local_descs, mem_type=mem_type
+                    local_descs, mem_type=local_mem_type
                 )
                 remote_xfer_descs = nixl_agent.get_xfer_descs(
-                    remote_descs, mem_type=mem_type
+                    remote_descs, mem_type=remote_mem_type
                 )
             else:
                 # One buffer per remote descriptor; views at recovered offsets.
@@ -482,35 +505,26 @@ class NixlTensorTransport(TensorTransportManager):
                 tensor_transport_metadata.nixl_agent_meta_version
             )
 
-            # Nixl agent reuse is enabled.
             if NIXL_REMOTE_AGENT_CACHE_MAXSIZE > 0:
-                if remote_name in self._remote_agents:
-                    # If the remote agent metadata version is different from the cached one,
-                    # it means there was memory deregistered. We need to remove the remote agent
-                    # before adding it, because `nixlRemoteSection` currently does not support
-                    # updating descriptor list in such a case (there is potential memory overlap).
-                    if remote_agent_meta_version != self._remote_agents[remote_name]:
-                        nixl_agent.remove_remote_agent(remote_name)
-                    self._remote_agents.move_to_end(remote_name)
-                elif len(self._remote_agents) >= NIXL_REMOTE_AGENT_CACHE_MAXSIZE:
-                    evicted_agent_name, _ = self._remote_agents.popitem(last=False)
-                    nixl_agent.remove_remote_agent(evicted_agent_name)
+                self._evict_if_full(remote_name)
 
-                self._remote_agents[remote_name] = remote_agent_meta_version
+            with self._remote_agent_lock(remote_name):
+                self._prepare_remote_agent(
+                    remote_name, remote_agent_meta_version, remote_nixl_agent_meta
+                )
 
-            nixl_agent.add_remote_agent(remote_nixl_agent_meta)
+                xfer_handle = nixl_agent.initialize_xfer(
+                    "READ",
+                    local_xfer_descs,
+                    remote_xfer_descs,
+                    remote_name,
+                    b"UUID",
+                )
 
-            xfer_handle = nixl_agent.initialize_xfer(
-                "READ",
-                local_xfer_descs,
-                remote_xfer_descs,
-                remote_name,
-                b"UUID",
-            )
-
-            state = nixl_agent.transfer(xfer_handle)
-            if state == "ERR":
-                raise RuntimeError("NIXL transfer got to Error state.")
+                state = nixl_agent.transfer(xfer_handle)
+                if state == "ERR":
+                    raise RuntimeError("NIXL transfer got to Error state.")
+                self._inflight_xfers.setdefault(remote_name, set()).add(xfer_handle)
 
             return NixlFetchRequest(
                 tensors=tensors,
@@ -566,9 +580,17 @@ class NixlTensorTransport(TensorTransportManager):
             # Check the state of the transfer continuously.
             deadline = None if timeout < 0 else time.monotonic() + timeout
             while True:
-                state = self.get_nixl_agent().check_xfer_state(
-                    fetch_request.xfer_handle
-                )
+                agent_lock = self._remote_agent_lock(fetch_request.remote_name)
+                # Don't block on a removal in progress, so the timeout and abort checks still run.
+                if agent_lock.acquire(blocking=False):
+                    try:
+                        state = self.get_nixl_agent().check_xfer_state(
+                            fetch_request.xfer_handle
+                        )
+                    finally:
+                        agent_lock.release()
+                else:
+                    state = "PROC"
                 if state == "ERR":
                     raise RuntimeError("NIXL transfer got to Error state.")
                 if state == "PROC":
@@ -615,12 +637,95 @@ class NixlTensorTransport(TensorTransportManager):
         # so doing best effort cleanup.
         with self._aborted_transfer_obj_ids_lock:
             self._aborted_transfer_obj_ids.discard(obj_id)
-        if xfer_handle:
-            nixl_agent.release_xfer_handle(xfer_handle)
-        if NIXL_REMOTE_AGENT_CACHE_MAXSIZE == 0 and remote_name:
-            nixl_agent.remove_remote_agent(remote_name)
+        if remote_name:
+            with self._remote_agent_lock(remote_name):
+                inflight = self._inflight_xfers.get(remote_name, set())
+                if xfer_handle:
+                    inflight.discard(xfer_handle)
+                    nixl_agent.release_xfer_handle(xfer_handle)
+                # Without the cache, the last transfer on the agent removes it.
+                if NIXL_REMOTE_AGENT_CACHE_MAXSIZE == 0 and not inflight:
+                    nixl_agent.remove_remote_agent(remote_name)
         if remove_tensor_descs:
             self._remove_tensor_descs(tensors)
+
+    def _remote_agent_lock(self, remote_name: str) -> Any:
+        return self._remote_agent_locks.setdefault(remote_name, threading.RLock())
+
+    def _finish_transfers(self, remote_name: str) -> None:
+        """Polls the transfers in flight on the agent until they are no longer in progress.
+
+        The caller holds the agent lock and is about to remove the agent.
+        """
+        nixl_agent = self.get_nixl_agent()
+        # On timeout the removal fails the stuck transfer instead of hanging here.
+        deadline = time.monotonic() + RDT_FETCH_FAIL_TIMEOUT_SECONDS
+        inflight = self._inflight_xfers.get(remote_name, set())
+        for xfer_handle in list(inflight):
+            try:
+                # A finalizer on this thread may release the handle meanwhile.
+                while (
+                    xfer_handle in inflight
+                    and nixl_agent.check_xfer_state(xfer_handle) == "PROC"
+                    and time.monotonic() < deadline
+                ):
+                    time.sleep(0.001)
+            except Exception:
+                # The error surfaces from wait_fetch_complete.
+                pass
+        inflight.clear()
+
+    def _prepare_remote_agent(
+        self, remote_name: str, version: int, remote_nixl_agent_meta: bytes
+    ) -> None:
+        """Makes the remote agent ready for a new transfer and updates the cache.
+
+        If its metadata version changed, the transfers in flight on it are polled to
+        completion and the agent is removed first, then the new metadata is added.
+        The caller holds the agent lock.
+        """
+        nixl_agent = self.get_nixl_agent()
+        if NIXL_REMOTE_AGENT_CACHE_MAXSIZE > 0:
+            with self._remote_agent_cache_lock:
+                cached_version = self._remote_agents.get(remote_name)
+            # A different version means memory was deregistered. We need to remove the
+            # remote agent before adding it, because `nixlRemoteSection` currently does
+            # not support updating descriptor list in such a case (there is potential
+            # memory overlap). Removing it fails the transfers still in flight on it.
+            if cached_version is not None and cached_version != version:
+                self._finish_transfers(remote_name)
+                with self._remote_agent_cache_lock:
+                    del self._remote_agents[remote_name]
+                nixl_agent.remove_remote_agent(remote_name)
+        nixl_agent.add_remote_agent(remote_nixl_agent_meta)
+        if NIXL_REMOTE_AGENT_CACHE_MAXSIZE > 0:
+            with self._remote_agent_cache_lock:
+                self._remote_agents[remote_name] = version
+                self._remote_agents.move_to_end(remote_name)
+
+    def _evict_if_full(self, remote_name: str) -> None:
+        """Evicts the least recently used remote agent if adding remote_name needs room.
+
+        Runs before the agent lock of remote_name is taken, so no thread ever holds two
+        agent locks.
+        """
+        while True:
+            with self._remote_agent_cache_lock:
+                if (
+                    remote_name in self._remote_agents
+                    or len(self._remote_agents) < NIXL_REMOTE_AGENT_CACHE_MAXSIZE
+                ):
+                    return
+                victim = next(iter(self._remote_agents))
+            with self._remote_agent_lock(victim):
+                with self._remote_agent_cache_lock:
+                    cached = victim in self._remote_agents
+                # Another thread may have evicted it while we waited for the lock.
+                if cached:
+                    self._finish_transfers(victim)
+                    with self._remote_agent_cache_lock:
+                        self._remote_agents.pop(victim, None)
+                    self.get_nixl_agent().remove_remote_agent(victim)
 
     def recv_multiple_tensors(
         self,
@@ -672,24 +777,19 @@ class NixlTensorTransport(TensorTransportManager):
             return len(self._managed_meta_nixl)
 
     def _get_meta(self, object_id: str) -> Optional[NixlTransportMetadata]:
-        """
-        Get the NIXL transport metadata for the given object ID if it exists
-        """
+        """Get the NIXL transport metadata for the given object ID if it exists"""
         with self._cache_lock:
             if object_id in self._managed_meta_nixl:
                 return self._managed_meta_nixl[object_id]
             return None
 
     def _put_meta(self, object_id: str, meta: NixlTransportMetadata):
-        """
-        Store the NIXL transport metadata for the given object ID
-        """
+        """Store the NIXL transport metadata for the given object ID"""
         with self._cache_lock:
             self._managed_meta_nixl[object_id] = meta
 
     def _remove_tensor_descs(self, tensors: List["torch.Tensor"]):
-        """
-        Decrements the reference count for each tensor. If the count reaches 0,
+        """Decrements the reference count for each tensor. If the count reaches 0,
         the memory is deregistered from NIXL.
         """
         with self._cache_lock:
@@ -705,15 +805,24 @@ class NixlTensorTransport(TensorTransportManager):
                     self._nixl_agent_meta_version += 1
 
     def _add_tensor_descs(self, tensors: List["torch.Tensor"]):
-        """
-        If this is the first time the tensor is being registered, we register the
+        """If this is the first time the tensor is being registered, we register the
         full underlying pytorch storage object with NIXL. Otherwise, we increment the reference count.
         """
         with self._cache_lock:
             for tensor in tensors:
                 key = tensor.untyped_storage().data_ptr()
+                nbytes = tensor.untyped_storage().nbytes()
                 if key in self._tensor_desc_cache:
-                    self._tensor_desc_cache[key].metadata_count += 1
+                    tensor_desc = self._tensor_desc_cache[key]
+                    if nbytes > tensor_desc.size:
+                        raise ValueError(
+                            f"Tensor storage at {key:#x} was found in the NIXL "
+                            f"registration cache, but its size ({nbytes} bytes) is "
+                            f"larger than the registered size ({tensor_desc.size} "
+                            "bytes). Call deregister_nixl_memory on the old tensor "
+                            "first."
+                        )
+                    tensor_desc.metadata_count += 1
                     continue
                 mem_type = "cuda" if tensor.is_cuda else "cpu"
                 # the GPU ID of the device the tensor is on.
@@ -766,7 +875,7 @@ class NixlTensorTransport(TensorTransportManager):
                         f"size={tensor.untyped_storage().nbytes()} bytes, "
                         f"gpu_id={gpu_id}).{vmm_hint} {troubleshooting}"
                     ) from e
-                self._tensor_desc_cache[key] = TensorDesc(reg_desc, 1)
+                self._tensor_desc_cache[key] = TensorDesc(reg_desc, 1, nbytes)
 
     def _tensor_memory_registered(self, t: "torch.Tensor") -> bool:
         """Check if the tensor's memory has been registered with NIXL."""

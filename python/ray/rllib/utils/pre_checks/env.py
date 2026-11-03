@@ -1,6 +1,6 @@
 """Common pre-checks for all RLlib experiments."""
 import logging
-from typing import TYPE_CHECKING, Set
+from typing import TYPE_CHECKING, Any, Set
 
 import gymnasium as gym
 import numpy as np
@@ -240,7 +240,7 @@ def _check_if_element_multi_agent_dict(
         raise ValueError(error)
 
 
-def _find_offending_sub_space(space, value):
+def _find_offending_sub_space(space: gym.Space, value: Any):
     """Returns error, value, and space when offending `space.contains(value)` fails.
 
     Returns only the offending sub-value/sub-space in case `space` is a complex Tuple

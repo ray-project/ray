@@ -1,6 +1,7 @@
 import math
-from typing import List, Optional
+from typing import Iterator, List, Optional
 
+from ray import ObjectRef
 from ray.data import DataIterator
 from ray.rllib.policy.sample_batch import MultiAgentBatch, SampleBatch, concat_samples
 from ray.rllib.utils import unflatten_dict
@@ -29,6 +30,10 @@ class MiniBatchIteratorBase:
                 pass might be further split into n minibatches (if `minibatch_size`
                 provided). The train batch is generated from the given `episodes`
                 through the Learner connector pipeline.
+            shuffle_batch_per_epoch: Whether to shuffle the train batch once per epoch.
+                If the train batch has a time rank (axis=1), shuffling only takes
+                place along the batch axis to not disturb any intact (episode)
+                trajectories.
             minibatch_size: The size of minibatches to use to further split the train
                 batch into per epoch. The train batch is generated from the given
                 `episodes` through the Learner connector pipeline.
@@ -289,16 +294,18 @@ class ShardBatchIterator:
     Args:
         batch: The input multi-agent batch.
         num_shards: The number of shards to split the batch into.
-
-    Yields:
-        A MultiAgentBatch of size len(batch) / num_shards.
     """
 
     def __init__(self, batch: MultiAgentBatch, num_shards: int):
         self._batch = batch
         self._num_shards = num_shards
 
-    def __iter__(self):
+    def __iter__(self) -> Iterator[MultiAgentBatch]:
+        """Runs one iteration through this sharder.
+
+        Yields:
+            MultiAgentBatch: A MultiAgentBatch of size len(batch) / num_shards.
+        """
         for i in range(self._num_shards):
             # TODO (sven): The following way of sharding a multi-agent batch destroys
             #  the relationship of the different agents' timesteps to each other.
@@ -351,13 +358,14 @@ class ShardEpisodesIterator:
             self._target_lengths[s] = len_
             remaining_length -= len_
 
-    def __iter__(self) -> List[EpisodeType]:
+    def __iter__(self) -> Iterator[List[EpisodeType]]:
         """Runs one iteration through this sharder.
 
         Yields:
-            A sub-list of Episodes of size roughly `len(episodes) / num_shards`. The
-            yielded sublists might have slightly different total sums of episode
-            lengths, in order to not have to drop even a single timestep.
+            List[EpisodeType]: A sub-list of Episodes of size roughly
+                `len(episodes) / num_shards`. The yielded sublists might have
+                slightly different total sums of episode lengths, in order to not
+                have to drop even a single timestep.
         """
         sublists = [[] for _ in range(self._num_shards)]
         lengths = [0 for _ in range(self._num_shards)]
@@ -406,16 +414,19 @@ class ShardObjectRefIterator:
     Args:
         object_refs: The input list of ray ObjectRefs.
         num_shards: The number of shards to split the references into.
-
-    Yields:
-        A sub-list of ray ObjectRefs with lengths as equal as possible.
     """
 
-    def __init__(self, object_refs, num_shards: int):
+    def __init__(self, object_refs: List[ObjectRef], num_shards: int):
         self._object_refs = object_refs
         self._num_shards = num_shards
 
-    def __iter__(self):
+    def __iter__(self) -> Iterator[List[ObjectRef]]:
+        """Runs one iteration through this sharder.
+
+        Yields:
+            List[ObjectRef]: A sub-list of ray ObjectRefs with lengths as equal as
+                possible.
+        """
         # Calculate the size of each sublist
         n = len(self._object_refs)
         sublist_size = n // self._num_shards

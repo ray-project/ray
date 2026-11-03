@@ -197,7 +197,11 @@ class DifferentiableLearner(Checkpointable):
         """
 
     @OverrideToImplementCustomLogic
-    def should_module_be_updated(self, module_id, multi_agent_batch=None):
+    def should_module_be_updated(
+        self,
+        module_id: ModuleID,
+        multi_agent_batch: Optional[MultiAgentBatch] = None,
+    ) -> bool:
         """Returns whether a module should be updated or not based on `self.config`.
 
         Args:
@@ -206,6 +210,9 @@ class DifferentiableLearner(Checkpointable):
             multi_agent_batch: An optional MultiAgentBatch to possibly provide further
                 information on the decision on whether the RLModule should be updated
                 or not.
+
+        Returns:
+            True if the module under `module_id` should be updated, False otherwise.
         """
         should_module_be_updated_fn = self.config.policies_to_train
         # If None, return True (by default, all modules should be updated).
@@ -310,6 +317,9 @@ class DifferentiableLearner(Checkpointable):
                 perform a functional update on them.
             training_data: A `TrainingData` instance containing the data or data iterators
                 to be used in updating the given parameters in `param`.
+            _no_metrics_reduce: If True, returns an empty metrics dict instead of
+                calling `self.metrics.reduce()` at the end of the update.
+            **kwargs: Forward compatibility kwargs.
 
         Returns:
             The functionally updated parameters in the (dict) format they were passed in
@@ -546,7 +556,9 @@ class DifferentiableLearner(Checkpointable):
         Args:
             batch: The train batch already converted to a Dict mapping str to (possibly
                 nested) tensors.
-            kwargs: Forward compatibility kwargs.
+            params: A parameter dictionary holding named parameters for each module id
+                to run the functional update on.
+            **kwargs: Forward compatibility kwargs.
 
         Returns:
             A tuple consisting of:
@@ -752,6 +764,10 @@ class DifferentiableLearner(Checkpointable):
 
         Args:
             value: The initial value for the tensor variable variable.
+            dtype: The framework-specific dtype of the tensor variable. If None, the
+                framework's default dtype for the given `value` is used.
+            trainable: Whether the returned tensor variable should be trainable
+                (require gradients).
 
         Returns:
             The framework specific tensor variable of the given initial value,
@@ -841,6 +857,7 @@ class DifferentiableLearner(Checkpointable):
                 named parameter dictionary. For functional calls to work, these
                 parameters need to be cloned.
             batch: A `MultiAgentBatch` instance to be used in the functional call.
+            **kwargs: Forward compatibility kwargs.
 
         Returns:
             A dictionary with the output of the module's forward pass.

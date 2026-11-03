@@ -4,6 +4,11 @@ ray_cc_library(
     name = "scheduling_ids",
     srcs = ["scheduling_ids.cc"],
     hdrs = ["scheduling_ids.h"],
+    visibility = [
+        ":__subpackages__",
+        "//src/ray/common:__pkg__",
+        "//src/ray/raylet_rpc_client:__pkg__",
+    ],
     deps = [
         "//src/ray/common:constants",
         "//src/ray/common:ray_config",
@@ -20,6 +25,13 @@ ray_cc_library(
     name = "label_selector",
     srcs = ["label_selector.cc"],
     hdrs = ["label_selector.h"],
+    visibility = [
+        ":__subpackages__",
+        "//src/ray/common:__pkg__",
+        "//src/ray/gcs:__pkg__",
+        "//src/ray/gcs/actor:__pkg__",
+        "//src/ray/observability:__pkg__",
+    ],
     deps = [
         "//src/ray/common:constants",
         "//src/ray/protobuf:common_cc_proto",
@@ -43,6 +55,11 @@ ray_cc_library(
     name = "placement_group_util",
     srcs = ["placement_group_util.cc"],
     hdrs = ["placement_group_util.h"],
+    visibility = [
+        "//src/ray/common:__pkg__",
+        "//src/ray/raylet/scheduling:__pkg__",
+        "//src/ray/raylet/tests:__pkg__",
+    ],
     deps = [
         ":scheduling_ids",
         "//src/ray/util:logging",
@@ -53,6 +70,10 @@ ray_cc_library(
     name = "resource_set",
     srcs = ["resource_set.cc"],
     hdrs = ["resource_set.h"],
+    visibility = [
+        ":__subpackages__",
+        "//src/ray/common:__pkg__",
+    ],
     deps = [
         ":fixed_point",
         ":scheduling_ids",
@@ -66,6 +87,12 @@ ray_cc_library(
     name = "cluster_resource_data",
     srcs = ["cluster_resource_data.cc"],
     hdrs = ["cluster_resource_data.h"],
+    visibility = [
+        ":__subpackages__",
+        "//src/ray/common:__pkg__",
+        "//src/ray/gcs/actor:__pkg__",
+        "//src/ray/raylet/scheduling:__pkg__",
+    ],
     deps = [
         ":fixed_point",
         ":label_selector",
@@ -83,6 +110,10 @@ ray_cc_library(
     name = "scheduling_class_util",
     srcs = ["scheduling_class_util.cc"],
     hdrs = ["scheduling_class_util.h"],
+    visibility = [
+        "//src/ray/common:__pkg__",
+        "//src/ray/common/tests:__pkg__",
+    ],
     deps = [
         ":fallback_strategy",
         ":label_selector",
@@ -101,6 +132,7 @@ ray_cc_library(
     name = "resource_instance_set",
     srcs = ["resource_instance_set.cc"],
     hdrs = ["resource_instance_set.h"],
+    visibility = [":__subpackages__"],
     deps = [
         ":fixed_point",
         ":placement_group_util",
@@ -117,6 +149,10 @@ ray_cc_library(
     name = "fallback_strategy",
     srcs = ["fallback_strategy.cc"],
     hdrs = ["fallback_strategy.h"],
+    visibility = [
+        ":__subpackages__",
+        "//src/ray/common:__pkg__",
+    ],
     deps = [
         ":label_selector",
         "//src/ray/protobuf:common_cc_proto",

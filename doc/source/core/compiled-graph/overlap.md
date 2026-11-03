@@ -27,4 +27,4 @@ overlap_gpu_communication=False, duration=1.0670117866247892
 overlap_gpu_communication=True, duration=0.9211348341777921
 ```
 
-The actual performance numbers may vary on different hardware, but enabling `_overlap_gpu_communication` improves latency by about 14% for this example.
+Performance numbers might vary on different hardware. For this example, enabling `_overlap_gpu_communication` reduces latency by about 14%.

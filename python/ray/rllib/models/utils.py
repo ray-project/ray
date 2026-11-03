@@ -1,4 +1,4 @@
-from typing import Callable, Optional, Union
+from typing import Callable, Optional, Sequence, Union
 
 from ray.rllib.utils.annotations import DeveloperAPI
 from ray.rllib.utils.framework import try_import_jax, try_import_tf, try_import_torch
@@ -106,9 +106,9 @@ def get_initializer_fn(name: Optional[Union[str, Callable]], framework: str = "t
         for network initialization,
 
     Raises:
-        `ValueError` if the `name` is neither class or function in the specified
-        `framework`. Raises also a `ValueError`, if `name` does not define an
-        in-place initializer for framework `torch`.
+        ValueError: If the `name` is neither class or function in the specified
+            `framework`, or if `name` does not define an in-place initializer
+            for framework `torch`.
     """
     # Already a callable or `None` return as is. If `None` we use the default
     # initializer defined in the framework-specific layers themselves.
@@ -166,11 +166,11 @@ def get_initializer_fn(name: Optional[Union[str, Callable]], framework: str = "t
 
 
 @DeveloperAPI
-def get_filter_config(shape):
+def get_filter_config(shape: Sequence[int]):
     """Returns a default Conv2D filter config (list) for a given image shape.
 
     Args:
-        shape (Tuple[int]): The input (image) shape, e.g. (84,84,3).
+        shape: The input (image) shape, e.g. (84,84,3).
 
     Returns:
         List[list]: The Conv2D filter configuration usable as `conv_filters`
@@ -238,7 +238,10 @@ def get_filter_config(shape):
 
 
 @DeveloperAPI
-def get_initializer(name, framework="tf"):
+def get_initializer(
+    name: Optional[Union[Callable, str]],
+    framework: str = "tf",
+):
     """Returns a framework specific initializer, given a name string.
 
     Args:

@@ -16,5 +16,4 @@ Within a Ray program, you can command the autoscaler to scale the cluster up to 
 
 ```{eval-rst}
 .. autofunction:: ray.autoscaler.sdk.request_resources
-   :noindex:
 ```

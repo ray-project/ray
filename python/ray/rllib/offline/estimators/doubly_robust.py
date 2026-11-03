@@ -154,7 +154,7 @@ class DoublyRobust(OffPolicyEstimator):
         """Trains self.model on the given batch.
 
         Args:
-        batch: A SampleBatch or MultiAgentbatch to train on
+            batch: A SampleBatch or MultiAgentbatch to train on
 
         Returns:
             A dict with key "loss" and value as the mean training loss.

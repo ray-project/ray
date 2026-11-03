@@ -97,8 +97,7 @@ def _read_configs_for_dashboard(
 
 
 def generate_default_grafana_dashboard() -> Tuple[str, str]:
-    """
-    Generates the dashboard output for the default dashboard and returns
+    """Generates the dashboard output for the default dashboard and returns
     both the content and the uid.
 
     Returns:
@@ -108,8 +107,7 @@ def generate_default_grafana_dashboard() -> Tuple[str, str]:
 
 
 def generate_serve_grafana_dashboard() -> Tuple[str, str]:
-    """
-    Generates the dashboard output for the serve dashboard and returns
+    """Generates the dashboard output for the serve dashboard and returns
     both the content and the uid.
 
     Returns:
@@ -119,8 +117,7 @@ def generate_serve_grafana_dashboard() -> Tuple[str, str]:
 
 
 def generate_serve_deployment_grafana_dashboard() -> Tuple[str, str]:
-    """
-    Generates the dashboard output for the serve dashboard and returns
+    """Generates the dashboard output for the serve dashboard and returns
     both the content and the uid.
 
     Returns:
@@ -130,8 +127,7 @@ def generate_serve_deployment_grafana_dashboard() -> Tuple[str, str]:
 
 
 def generate_serve_llm_grafana_dashboard() -> Tuple[str, str]:
-    """
-    Generates the dashboard output for the serve dashboard and returns
+    """Generates the dashboard output for the serve dashboard and returns
     both the content and the uid.
 
     Returns:
@@ -141,8 +137,7 @@ def generate_serve_llm_grafana_dashboard() -> Tuple[str, str]:
 
 
 def generate_serve_llm_sglang_grafana_dashboard() -> Tuple[str, str]:
-    """
-    Generates the SGLang Serve LLM dashboard and returns both the content
+    """Generates the SGLang Serve LLM dashboard and returns both the content
     and the uid.
 
     Returns:
@@ -152,8 +147,7 @@ def generate_serve_llm_sglang_grafana_dashboard() -> Tuple[str, str]:
 
 
 def generate_data_grafana_dashboard() -> Tuple[str, str]:
-    """
-    Generates the dashboard output for the data dashboard and returns
+    """Generates the dashboard output for the data dashboard and returns
     both the content and the uid.
 
     Returns:
@@ -163,8 +157,7 @@ def generate_data_grafana_dashboard() -> Tuple[str, str]:
 
 
 def generate_data_llm_grafana_dashboard() -> Tuple[str, str]:
-    """
-    Generates the dashboard output for the Data LLM dashboard and returns
+    """Generates the dashboard output for the Data LLM dashboard and returns
     both the content and the uid.
 
     This dashboard provides vLLM metrics visibility for Ray Data LLM workloads,
@@ -178,8 +171,7 @@ def generate_data_llm_grafana_dashboard() -> Tuple[str, str]:
 
 
 def generate_train_grafana_dashboard() -> Tuple[str, str]:
-    """
-    Generates the dashboard output for the train dashboard and returns
+    """Generates the dashboard output for the train dashboard and returns
     both the content and the uid.
 
     Returns:
@@ -238,8 +230,7 @@ def _generate_panel_template(
     base_y_position: int,
     log_link_url: str,
 ) -> dict:
-    """
-    Helper method to generate a panel template with common configuration.
+    """Helper method to generate a panel template with common configuration.
 
     Args:
         panel: The panel configuration
@@ -403,8 +394,7 @@ def _generate_panel_template(
 
 
 def _create_row_panel(row: Panel, y_position: int) -> dict:
-    """
-    Creates a Grafana row panel that spans the full dashboard width.
+    """Creates a Grafana row panel that spans the full dashboard width.
     Row panels can be collapsed to hide their contained panels.
 
     Args:
@@ -425,8 +415,7 @@ def _create_row_panel(row: Panel, y_position: int) -> dict:
 
 
 def _calculate_panel_heights(num_panels: int) -> int:
-    """
-    Calculate the total height needed for a set of panels.
+    """Calculate the total height needed for a set of panels.
 
     Args:
         num_panels: Number of panels to position
@@ -441,8 +430,7 @@ def _calculate_panel_heights(num_panels: int) -> int:
 def _generate_grafana_panels(
     config: DashboardConfig, global_filters: List[str], log_link_url: str
 ) -> List[dict]:
-    """
-    Generates Grafana panel configurations for a dashboard.
+    """Generates Grafana panel configurations for a dashboard.
 
     The dashboard layout follows these rules:
     - Panels are arranged in 2 columns (12 units wide each)

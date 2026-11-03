@@ -15,7 +15,7 @@ def is_atari(env: Union[gym.Env, str]) -> bool:
 
     Args:
         env: The gym.Env object or a string descriptor of the env (for example,
-        "ale_py:ALE/Pong-v5").
+            "ale_py:ALE/Pong-v5").
 
     Returns:
         Whether `env` is an Atari environment.
@@ -357,6 +357,8 @@ def wrap_atari_for_new_api_stack(
             actual env timesteps: 0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 -> ...
             frameskip:            ( max ) ( max ) ( max   ) ( max     )
             framestack:           ( stack       ) (stack              )
+        grayscale: Whether to convert the observations to grayscale (single color
+            channel) images.
 
     Returns:
         The wrapped gym.Env.
@@ -387,7 +389,12 @@ def wrap_atari_for_new_api_stack(
 
 
 @PublicAPI
-def wrap_deepmind(env, dim=84, framestack=True, noframeskip=False):
+def wrap_deepmind(
+    env: gym.Env,
+    dim: int = 84,
+    framestack: bool = True,
+    noframeskip: bool = False,
+) -> gym.Env:
     """Configure environment for DeepMind-style Atari.
 
     Note that we assume reward clipping is done outside the wrapper.
@@ -396,6 +403,11 @@ def wrap_deepmind(env, dim=84, framestack=True, noframeskip=False):
         env: The env object to wrap.
         dim: Dimension to resize observations to (dim x dim).
         framestack: Whether to framestack observations.
+        noframeskip: Whether the given env does NOT skip frames by itself, in which
+            case a `MaxAndSkipEnv` wrapper (skip=4) is added on top.
+
+    Returns:
+        The wrapped gym.Env.
     """
     env = MonitorEnv(env)
     env = NoopResetEnv(env, noop_max=30)

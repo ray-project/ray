@@ -94,6 +94,7 @@ class TorchDifferentiableLearner(DifferentiableLearner):
             batch: A dictionary (or `MultiAgentBatch`) containing training data for
                 all modules in the `MultiRLModule` (that should be trained).
             params: A dictionary of named parameters for each module id.
+            **kwargs: Additional keyword arguments (unused by this implementation).
 
         Returns:
             A tuple consisting of:

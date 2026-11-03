@@ -122,8 +122,7 @@ def _is_ndarray_variable_shaped_tensor(arr: np.ndarray) -> bool:
 def _create_possibly_ragged_ndarray(
     values: Union[np.ndarray, "ABCSeries", Sequence[Any]]
 ) -> np.ndarray:
-    """
-    Create a possibly ragged ndarray.
+    """Create a possibly ragged ndarray.
     Using the np.array() constructor will fail to construct a ragged ndarray that has a
     uniform first dimension (e.g. uniform channel dimension in imagery). This function
     catches this failure and tries a create-and-fill method to construct the ragged
@@ -207,6 +206,13 @@ def create_ragged_ndarray(values: Sequence[Any]) -> np.ndarray:
 
         ``create_ragged_ndarray`` avoids the limitations of ``np.array`` by creating an
         empty array and filling it with pointers to the variable-length arrays.
+
+    Args:
+        values: The arrays to store, which can have different shapes.
+
+    Returns:
+        A 1-D NumPy array with ``dtype=object`` whose elements are the input
+        arrays.
     """  # noqa: E501
     # Create an empty object-dtyped 1D array.
     arr = np.empty(len(values), dtype=object)

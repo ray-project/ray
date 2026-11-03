@@ -20,6 +20,7 @@ import pyarrow
 from packaging.version import parse as parse_version
 
 from ray._common.utils import env_integer
+from ray.data._internal.arrow_aggregation import is_boolean_arrow_type
 from ray.data._internal.arrow_ops import transform_polars, transform_pyarrow
 from ray.data._internal.arrow_ops.transform_pyarrow import shuffle
 from ray.data._internal.row import row_repr, row_repr_pretty, row_str
@@ -86,9 +87,7 @@ def get_concat_and_sort_transform(context: DataContext) -> Callable:
 
 
 class ArrowRow(Mapping):
-    """
-    Row of a tabular Dataset backed by a pyarrow RecordBatch or Table and a row index.
-    """
+    """Row of a tabular Dataset backed by a pyarrow RecordBatch or Table and a row index."""
 
     def __init__(
         self, batch: Union["pyarrow.Table", "pyarrow.RecordBatch"], row_idx: int
@@ -201,8 +200,7 @@ class ArrowBlockBuilder(TableBlockBuilder):
 def _get_max_chunk_size(
     table: "pyarrow.Table", max_chunk_size_bytes: int
 ) -> Optional[int]:
-    """
-    Calculate the max chunk size in rows for Arrow to Batches conversion in
+    """Calculate the max chunk size in rows for Arrow to Batches conversion in
     ArrowBlockAccessor.iter_rows().
     Args:
         table: The pyarrow table to calculate the max chunk size for.
@@ -680,9 +678,12 @@ class ArrowBlockColumnAccessor(BlockColumnAccessor):
         if mean is None:
             return None
 
-        res = pac.sum(
-            pac.power(pac.subtract(self._column, mean), 2), skip_nulls=ignore_nulls
-        )
+        column = self._column
+        if is_boolean_arrow_type(column.type):
+            # Treat booleans as 0/1: `subtract` has no boolean kernel.
+            column = pac.cast(column, pyarrow.float64())
+
+        res = pac.sum(pac.power(pac.subtract(column, mean), 2), skip_nulls=ignore_nulls)
         return res.as_py() if as_py else res
 
     def quantile(

@@ -1,7 +1,7 @@
 import logging
 import threading
 from collections import deque
-from typing import Dict, Set
+from typing import Any, Dict, Optional, Set
 
 import ray
 from ray._common.deprecation import deprecation_warning
@@ -30,11 +30,11 @@ class PolicyMap(dict):
         capacity: int = 100,
         policy_states_are_swappable: bool = False,
         # Deprecated args.
-        worker_index=None,
-        num_workers=None,
-        policy_config=None,
-        session_creator=None,
-        seed=None,
+        worker_index: Optional[Any] = None,
+        num_workers: Optional[Any] = None,
+        policy_config: Optional[Any] = None,
+        session_creator: Optional[Any] = None,
+        seed: Optional[Any] = None,
     ):
         """Initializes a PolicyMap instance.
 
@@ -56,6 +56,11 @@ class PolicyMap(dict):
                 the same policies in your map (playing against each other in various
                 combinations), but all of them share the same state structure
                 (are "swappable").
+            worker_index: Deprecated. Do not use.
+            num_workers: Deprecated. Do not use.
+            policy_config: Deprecated. Do not use.
+            session_creator: Deprecated. Do not use.
+            seed: Deprecated. Do not use.
         """
         if policy_config is not None:
             deprecation_warning(

@@ -14,6 +14,7 @@ from ray.data._internal.arrow_ops.transform_pyarrow import (
     _group_indices,
     _has_unhashable_pandas_types,
     _has_unhashable_polars_types,
+    _hash_partition,
     _hash_partition_vectorized,
     concat,
     hash_partition,
@@ -342,6 +343,25 @@ def test_hash_partition_polars_consistent_across_blocks():
     key_to_partition = dict(zip(t1["k"].to_pylist(), h1.tolist()))
     for key, pid in zip(t2["k"].to_pylist(), h2.tolist()):
         assert key_to_partition.setdefault(key, pid) == pid, key
+
+
+@pytest.mark.parametrize(
+    "dtype,values",
+    [
+        (pa.bool_(), [True, False, True]),
+        (pa.int32(), [1, 2, 3]),
+        (pa.int64(), [1, 2**53 + 1, 3]),
+        (pa.uint64(), [1, 2**63 + 1, 3]),
+    ],
+)
+def test_hash_partition_nullable_dtype_consistent_across_blocks(dtype, values):
+    without_null = pa.table({"k": pa.array(values, type=dtype)})
+    with_null = pa.table({"k": pa.array([None] + values, type=dtype)})
+
+    expected = _hash_partition(without_null, num_partitions=2)
+    actual = _hash_partition(with_null, num_partitions=2)[1:]
+
+    np.testing.assert_array_equal(actual, expected)
 
 
 def test_hash_partition_falls_back_when_polars_fails(monkeypatch):
@@ -1792,6 +1812,68 @@ def test_align_struct_fields_nested(nested_struct_blocks, nested_struct_schema):
     ]
 
 
+def test_align_struct_fields_drops_extra_nested_fields():
+    """Extra physical struct fields are dropped when aligning to a schema."""
+    physical_schema = pa.schema(
+        [
+            pa.field(
+                "outer",
+                pa.struct(
+                    [
+                        pa.field(
+                            "inner",
+                            pa.struct(
+                                [
+                                    pa.field("a", pa.int64()),
+                                    pa.field("extra", pa.string()),
+                                ]
+                            ),
+                        ),
+                        pa.field("extra_outer", pa.bool_()),
+                    ]
+                ),
+            )
+        ]
+    )
+    target_schema = pa.schema(
+        [
+            pa.field(
+                "outer",
+                pa.struct(
+                    [
+                        pa.field(
+                            "inner",
+                            pa.struct(
+                                [
+                                    pa.field("a", pa.int64()),
+                                    pa.field("late", pa.string()),
+                                ]
+                            ),
+                        )
+                    ]
+                ),
+            )
+        ]
+    )
+    block = pa.Table.from_pylist(
+        [
+            {"outer": {"inner": {"a": 1, "extra": "discard"}, "extra_outer": True}},
+            {"outer": None},
+            {"outer": {"inner": None, "extra_outer": False}},
+        ],
+        schema=physical_schema,
+    )
+
+    aligned = _align_struct_fields([block], target_schema)[0]
+
+    assert aligned.schema == target_schema
+    assert aligned.to_pylist() == [
+        {"outer": {"inner": {"a": 1, "late": None}}},
+        {"outer": None},
+        {"outer": {"inner": None}},
+    ]
+
+
 def test_align_struct_fields_missing_column(
     missing_column_blocks, missing_column_schema
 ):
@@ -2038,6 +2120,26 @@ def test_concat_nested_non_struct_field():
 
     with pytest.raises(ArrowConversionError, match="Failed to unify schemas"):
         concat([t1, t2])
+
+
+def test_concat_objects_and_tensors_error_lists_columns_and_types():
+    """The error names every conflicting column and its types, untruncated."""
+    objects = ArrowPythonObjectArray.from_objects([[np.zeros(2), np.zeros(3)]])
+    tensors = ArrowTensorArray.from_numpy(np.zeros((1, 2, 2)))
+    t1 = pa.table({"a": objects, "b": objects})
+    t2 = pa.table({"a": tensors, "b": tensors})
+
+    with pytest.raises(ArrowConversionError) as exc_info:
+        concat([t1, t2])
+
+    message = str(exc_info.value)
+    assert "Failed to unify schemas across 2 blocks." in message
+    assert "Found columns with both objects and tensors: a, b" in message
+    for column in ["a", "b"]:
+        assert (
+            f"'{column}': {t1.schema.field(column).type} (1 block), "
+            f"{t2.schema.field(column).type} (1 block)"
+        ) in message
 
 
 def test_concat_nested_all_null_field():

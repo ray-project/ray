@@ -372,6 +372,7 @@ class TorchMetaLearner(TorchLearner):
             batch: The train batch that was used to compute `fwd_out`.
             others_loss_per_module: A list of losses per module id from the contained
                 `DifferentiableLearner` instances in`self.others`.
+            **kwargs: Additional keyword arguments (unused by this implementation).
 
         Returns:
             A dictionary mapping module IDs to individual loss terms.

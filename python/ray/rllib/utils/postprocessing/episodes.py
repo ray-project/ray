@@ -91,7 +91,7 @@ def remove_last_ts_from_data(
     Args:
         episode_lens: A list of current episode lengths. The returned
             data will have the same lengths minus 1 timestep.
-        data: A tuple of data items (np.ndarrays) representing concatenated episodes
+        *data: The data items (np.ndarrays) representing concatenated episodes
             to be shortened by one timestep per episode.
             Note that only arrays with `shape=(n,)` are supported! The
             returned data will have `shape=(n-len(episode_lens),)` (each

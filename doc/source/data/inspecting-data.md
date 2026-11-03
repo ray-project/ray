@@ -163,9 +163,7 @@ To view the statistics for a {class}`Dataset <ray.data.Dataset>`, call {meth}`Da
 
 <!-- This snippet below is skipped because of  https://github.com/ray-project/ray/issues/54101. -->
 
-```{testcode}
-:skipif: True
-
+```python
 import ray
 from huggingface_hub import HfFileSystem
 
@@ -189,9 +187,7 @@ ds = (
 print(ds.stats())
 ```
 
-```{testoutput}
-:options: +MOCK
-
+```text
 Operator 1 ReadParquet->SplitBlocks(32): 1 tasks executed, 32 blocks produced in 2.92s
 * Remote wall time: 103.38us min, 1.34s max, 42.14ms mean, 1.35s total
 * Remote cpu time: 102.0us min, 164.66ms max, 5.37ms mean, 171.72ms total

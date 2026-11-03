@@ -84,6 +84,9 @@ class AgentCollector:
                 () is called. if False, only the content required for the last time
                 step is stored in the buffers. This will save memory during inference.
                 You can change the behavior at runtime by calling is_training(mode).
+            _enable_new_api_stack: If True, the new API stack (RLModule) is used,
+                in which case recurrent states are not flattened and are taken as-is
+                from `intial_states`.
         """
         self.max_seq_len = max_seq_len
         self.disable_action_flattening = disable_action_flattening
@@ -233,7 +236,8 @@ class AgentCollector:
         """Adds the given dictionary (row) of values to the Agent's trajectory.
 
         Args:
-            values: Data dict (interpreted as a single row) to be added to buffer.
+            input_values: Data dict (interpreted as a single row) to be added to
+                buffer.
                 Must contain keys:
                 SampleBatch.ACTIONS, REWARDS, TERMINATEDS, TRUNCATEDS, and NEXT_OBS.
         """
@@ -536,7 +540,7 @@ class AgentCollector:
         """Builds the buffers for sample collection, given an example data row.
 
         Args:
-            single_row (Dict[str, TensorType]): A single row (keys=column
+            single_row: A single row (keys=column
                 names) of data to base the buffers on.
         """
         for col, data in single_row.items():
@@ -638,8 +642,9 @@ class AgentCollector:
                 some reason the view requirement for view column is used instead.
             build_for_inference: Whether this is getting called for inference or not.
 
-        returns:
-            is_state: True if the data_col is an RNN state, False otherwise.
+        Returns:
+            True if `data_col` is an RNN state (its name starts with "state_out"),
+            False otherwise.
         """
         try:
             space = self.view_requirements[data_col].space

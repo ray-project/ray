@@ -36,7 +36,7 @@ RAY_CONFIG(bool, enable_cluster_auth, true)
 /// will be converted to AuthenticationMode enum defined in
 /// rpc/authentication/authentication_mode.h
 /// use GetAuthenticationMode() to get the authentication mode enum value.
-RAY_CONFIG(std::string, AUTH_MODE, "disabled")
+RAY_CONFIG(std::string, AUTH_MODE, "token")
 
 /// Whether to enable Kubernetes token-based authentication for RPC calls.
 RAY_CONFIG(bool, ENABLE_K8S_TOKEN_AUTH, false)
@@ -442,6 +442,12 @@ RAY_CONFIG(int64_t, redis_tcp_keepalive_interval_seconds, 30)
 /// detection window may not apply. Valid values are 1 through 127 when TCP
 /// keepalive is enabled.
 RAY_CONFIG(int64_t, redis_tcp_keepalive_probes, 3)
+
+/// Whether the GCS records gcs_storage_operation_count and
+/// gcs_storage_operation_latency_ms on the Redis backend. Adds two metric
+/// records per storage operation. The in-memory and RocksDB backends always
+/// record them.
+RAY_CONFIG(bool, gcs_redis_storage_metrics_enabled, true)
 
 /// Number of retries for a redis request failure.
 RAY_CONFIG(size_t, num_redis_request_retries, 5)

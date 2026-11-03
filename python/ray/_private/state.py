@@ -136,8 +136,7 @@ class GlobalState:
         self._task_events_head_client = None
 
     def _connect_and_get_accessor(self) -> GlobalStateAccessor:
-        """
-        This lazily initializes clients needed for state accessors and returns a connected global state accessor.
+        """This lazily initializes clients needed for state accessors and returns a connected global state accessor.
 
         Returns:
             GlobalStateAccessor: A connected global state accessor.
@@ -875,7 +874,7 @@ class GlobalState:
             worker_id, num_paused_threads_delta
         )
 
-    def cluster_resources(self):
+    def cluster_resources(self) -> Dict[str, float]:
         """Get the current total cluster resources.
 
         Note that this information can grow stale as nodes are added to or
@@ -935,7 +934,7 @@ class GlobalState:
 
         return total_resources_by_node
 
-    def available_resources(self):
+    def available_resources(self) -> Dict[str, float]:
         """Get the current available cluster resources.
 
         This is different from `cluster_resources` in that this will return
@@ -1216,7 +1215,7 @@ def object_transfer_timeline(filename: Optional[str] = None):
 
 @DeveloperAPI
 @client_mode_hook
-def cluster_resources():
+def cluster_resources() -> Dict[str, float]:
     """Get the current total cluster resources.
 
     Note that this information can grow stale as nodes are added to or removed
@@ -1231,7 +1230,7 @@ def cluster_resources():
 
 @DeveloperAPI
 @client_mode_hook
-def available_resources():
+def available_resources() -> Dict[str, float]:
     """Get the current available cluster resources.
 
     This is different from `cluster_resources` in that this will return idle

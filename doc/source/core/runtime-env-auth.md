@@ -5,17 +5,15 @@ myst:
 ---
 
 (runtime-env-auth)=
-# Authenticating Remote URIs in runtime_env
+# Authenticate remote URIs in `runtime_env`
 
-This section helps you:
+This page describes how to authenticate the remote URIs in your `runtime_env` without leaking credentials. It covers best practices for authentication and how to provide credentials safely in KubeRay.
 
-* Avoid leaking remote URI credentials in your `runtime_env`
-* Provide credentials safely in KubeRay
-* Understand best practices for authenticating your remote URI
+(authenticating-remote-uris)=
 
-## Authenticating Remote URIs
+## Keep credentials out of remote URIs
 
-You can add dependencies to your `runtime_env` with [remote URIs](remote-uris). This is straightforward for files hosted publicly, because you simply paste the public URI into your `runtime_env`:
+You can add dependencies to your `runtime_env` with [remote URIs](remote-uris). For publicly hosted files, paste the public URI into your `runtime_env`:
 
 ```python
 runtime_env = {"working_dir": (
@@ -25,7 +23,7 @@ runtime_env = {"working_dir": (
 }
 ```
 
-However, dependencies hosted privately, in a private GitHub repo for example, require authentication. One common way to authenticate is to insert credentials into the URI itself:
+Privately hosted dependencies, such as files in a private GitHub repository, require authentication. One common way to authenticate is to insert credentials into the URI itself:
 
 ```python
 runtime_env = {"working_dir": (
@@ -35,16 +33,18 @@ runtime_env = {"working_dir": (
 }
 ```
 
-In this example, `personal_access_token` is a secret credential that authenticates this URI. While Ray can successfully access your dependencies using authenticated URIs, **you should not include secret credentials in your URIs** for two reasons:
+In this example, `personal_access_token` is a secret credential that authenticates this URI. Ray can access your dependencies through authenticated URIs, but don't include secret credentials in your URIs, for the following two reasons:
 
-1. Ray may log the URIs used in your `runtime_env`, which means the Ray logs could contain your credentials.
-2. Ray stores your remote dependency package in a local directory, and it uses a parsed version of the remote URI–including your credential–as the directory's name.
+1. Ray might log the URIs in your `runtime_env`, so the Ray logs could contain your credentials.
+1. Ray stores your remote dependency package in a local directory and uses a parsed version of the remote URI, including your credential, as the directory's name.
 
-In short, your remote URI is not treated as a secret, so it should not contain secret info. Instead, use a `netrc` file.
+In short, Ray doesn't treat your remote URI as a secret, so the URI shouldn't contain secret information. Use a `netrc` file instead.
 
-## Running on VMs: The netrc file
+(running-on-vms-the-netrc-file)=
 
-The [netrc file](https://www.gnu.org/software/inetutils/manual/html_node/The-_002enetrc-file.html) contains credentials that Ray uses to automatically log into remote servers. Set your credentials in this file instead of in the remote URI:
+## Use a netrc file on VMs
+
+The [netrc file](https://www.gnu.org/software/inetutils/manual/html_node/The-_002enetrc-file.html) contains credentials that Ray uses to log in to remote servers automatically. Set your credentials in this file instead of in the remote URI:
 
 ```bash
 # "$HOME/.netrc"
@@ -54,23 +54,25 @@ login username
 password personal_access_token
 ```
 
-In this example, the `machine github.com` line specifies that any access to `github.com` should be authenticated using the provided `login` and `password`.
+In this example, the `machine github.com` line specifies the `login` and `password` to use for any access to `github.com`.
 
 :::{note}
-On Unix, name the `netrc` file as `.netrc`. On Windows, name the file as `_netrc`.
+On Unix, name the `netrc` file `.netrc`. On Windows, name the file `_netrc`.
 :::
 
-The `netrc` file requires owner read/write access, so make sure to run the `chmod` command after creating the file:
+The `netrc` file requires owner read and write access, so run the `chmod` command after you create the file:
 
 ```bash
 chmod 600 "$HOME/.netrc"
 ```
 
-Add the `netrc` file to your VM container's home directory, so Ray can access the `runtime_env`'s private remote URIs, even when they don't contain credentials.
+Add the `netrc` file to your VM container's home directory so Ray can access the private remote URIs in your `runtime_env`, even when they don't contain credentials.
 
-## Running on KubeRay: Secrets with netrc
+(running-on-kuberay-secrets-with-netrc)=
 
-[KubeRay](kuberay-index) can also obtain credentials from a `netrc` file for remote URIs. Supply your `netrc` file using a Kubernetes secret and a Kubernetes volume with these steps:
+## Use a netrc secret on KubeRay
+
+[KubeRay](kuberay-index) can also obtain credentials for remote URIs from a `netrc` file. Supply your `netrc` file through a Kubernetes secret and a Kubernetes volume with the following steps:
 
 1\. Launch your Kubernetes cluster.
 
@@ -82,7 +84,7 @@ Add the `netrc` file to your VM container's home directory, so Ray can access th
 kubectl create secret generic netrc-secret --from-file=.netrc="$HOME/.netrc"
 ```
 
-4\. Expose the secret to your KubeRay application using a mounted volume, and update the `NETRC` environment variable to point to the `netrc` file. Include the following YAML in your KubeRay config.
+4\. Expose the secret to your KubeRay application with a mounted volume, and set the `NETRC` environment variable to point to the `netrc` file. Include the following YAML in your KubeRay config:
 
 ```yaml
 headGroupSpec:
@@ -126,27 +128,31 @@ workerGroupSpecs:
 
 Your KubeRay application can use the `netrc` file to access private remote URIs, even when they don't contain credentials.
 
-## Using Bearer Tokens for HTTPS Authentication
+(using-bearer-tokens-for-https-authentication)=
 
-As an alternative to using a `netrc` file, you can authenticate HTTPS remote URIs using bearer tokens. This is particularly useful when working with APIs that require OAuth2 or similar token-based authentication.
+## Use bearer tokens for HTTPS authentication
 
-Set the `RAY_RUNTIME_ENV_BEARER_TOKEN` environment variable with your bearer token:
+As an alternative to a `netrc` file, you can authenticate HTTPS remote URIs with bearer tokens. Bearer tokens are useful for APIs that require OAuth 2.0 or similar token-based authentication.
+
+Set the `RAY_RUNTIME_ENV_BEARER_TOKEN` environment variable to your bearer token:
 
 ```bash
 export RAY_RUNTIME_ENV_BEARER_TOKEN="your_bearer_token_here"
 ```
 
-Ray will automatically include this token in the `Authorization` header when downloading HTTPS URIs in your `runtime_env`:
+Ray automatically includes this token in the `Authorization` header when it downloads HTTPS URIs in your `runtime_env`:
 
 ```python
 runtime_env = {"working_dir": "https://example.com/private/repo.zip"}
 ```
 
-The bearer token will be sent as an `Authorization: Bearer your_bearer_token_here` header with the HTTPS request.
+Ray sends the bearer token as an `Authorization: Bearer your_bearer_token_here` header with the HTTPS request.
 
-### Running on KubeRay: Bearer Tokens with Secrets
+(running-on-kuberay-bearer-tokens-with-secrets)=
 
-For KubeRay deployments, you can securely provide the bearer token using Kubernetes secrets:
+### Use a bearer token secret on KubeRay
+
+For KubeRay deployments, provide the bearer token securely through a Kubernetes secret:
 
 1\. Create a Kubernetes secret containing your bearer token:
 
@@ -155,7 +161,7 @@ kubectl create secret generic bearer-token-secret \
   --from-literal=RAY_RUNTIME_ENV_BEARER_TOKEN="your_bearer_token_here"
 ```
 
-2\. Expose the secret to your KubeRay application using environment variables. Include the following YAML in your KubeRay config:
+2\. Expose the secret to your KubeRay application through environment variables. Include the following YAML in your KubeRay config:
 
 ```yaml
 headGroupSpec:
@@ -187,5 +193,5 @@ workerGroupSpecs:
 
 3\. Apply your KubeRay config.
 
-Your KubeRay application will use the bearer token to authenticate HTTPS requests when downloading remote URIs in the `runtime_env`.
+Your KubeRay application uses the bearer token to authenticate HTTPS requests when it downloads remote URIs in the `runtime_env`.
 
