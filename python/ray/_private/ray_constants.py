@@ -184,7 +184,8 @@ RAY_DASHBOARD_STARTUP_TIMEOUT_S = env_integer("RAY_DASHBOARD_STARTUP_TIMEOUT_S",
 RAY_DASHBOARD_ENABLE_PROFILING = env_bool("RAY_DASHBOARD_ENABLE_PROFILING", False)
 
 # Redact `runtime_env` secrets (e.g. `env_vars` values) in dashboard responses to
-# browser-originated requests. Set to 0 to return the plaintext values instead.
+# browser-originated requests and in events sent to an external HTTP endpoint.
+# Set to 0 to keep the plaintext values instead.
 RAY_DASHBOARD_REDACT_RUNTIME_ENV = env_bool("RAY_DASHBOARD_REDACT_RUNTIME_ENV", True)
 
 # --- Default values for dashboard profiling parameters (py-spy / memray). ---
@@ -723,6 +724,10 @@ RAY_ENABLE_PYTHON_RAY_EVENT_TYPES = frozenset(
         if t.strip()
     }
 )
+
+# Mirrors the `enable_ray_event` ray config; the C++ event recorder drops all
+# events unless this is on.
+RAY_ENABLE_RAY_EVENT = env_bool("RAY_enable_ray_event", False)
 
 
 # If this flag is set and you run the driver with `uv run`, Ray propagates the `uv run`

@@ -51,8 +51,7 @@ class EventAgent(dashboard_utils.DashboardAgentModule):
         logger.info("Event agent cache buffer size: %s", self._cached_events.maxsize)
 
     async def _get_dashboard_http_address(self):
-        """
-        Lazily get the dashboard http address from InternalKV. If it's not set, sleep
+        """Lazily get the dashboard http address from InternalKV. If it's not set, sleep
         and retry forever.
         """
         while True:

@@ -1,5 +1,4 @@
-"""
-DeepMind Control Suite Wrapper directly sourced from:
+"""DeepMind Control Suite Wrapper directly sourced from:
 https://github.com/denisyarats/dmc2gym
 
 MIT License

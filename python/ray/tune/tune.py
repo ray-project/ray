@@ -408,7 +408,7 @@ def run(
             how trial checkpoints are saved and managed.
         verbose: 0, 1, or 2. Verbosity mode.
             0 = silent, 1 = default, 2 = verbose. Defaults to 1.
-            If the ``RAY_AIR_NEW_OUTPUT=1`` environment variable is set,
+            If the ``RAY_AIR_NEW_OUTPUT=0`` environment variable is set,
             uses the old verbosity settings:
             0 = silent, 1 = only status updates, 2 = status and brief
             results, 3 = status and detailed results.

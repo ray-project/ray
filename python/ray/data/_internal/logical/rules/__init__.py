@@ -1,5 +1,6 @@
 """Expose rule classes in ray.data._internal.logical.rules."""
 
+from .bind_generated_id_column import BindGeneratedIdColumn
 from .combine_downloads import CombineDownloads
 from .combine_shuffles import CombineShuffles
 from .common_subexpr_elimination import CommonSubExprElimination
@@ -20,6 +21,7 @@ from .set_read_parallelism import (
 )
 
 __all__ = [
+    "BindGeneratedIdColumn",
     "CombineDownloads",
     "CombineShuffles",
     "CommonSubExprElimination",
