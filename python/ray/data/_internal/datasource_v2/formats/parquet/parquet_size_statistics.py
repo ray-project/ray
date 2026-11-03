@@ -9,33 +9,69 @@ only the fields they need.
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING, Iterator, List, NamedTuple, Optional, Tuple
+from dataclasses import dataclass
+from typing import (
+    TYPE_CHECKING,
+    Iterator,
+    List,
+    NamedTuple,
+    Optional,
+    Tuple,
+    Union,
+)
 
 logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from pyarrow.parquet import FileMetaData
 
-# TCompactProtocol type ids.
-_BOOL_TRUE, _BOOL_FALSE, _BYTE, _I16, _I32, _I64 = 1, 2, 3, 4, 5, 6
-_DOUBLE, _BINARY, _LIST, _SET, _MAP, _STRUCT = 7, 8, 9, 10, 11, 12
+# Thrift's compact protocol, which Parquet footers and page headers are written in:
+# https://github.com/apache/thrift/blob/master/doc/specs/thrift-compact-protocol.md
+
+# Type ids, and what follows a field header of each type.
+_BOOL_TRUE = 1  # a bool field holding true: nothing, the type id is the value
+_BOOL_FALSE = 2  # a bool field holding false: nothing
+_BYTE = 3  # one byte
+_I16 = 4  # a zigzag varint
+_I32 = 5  # a zigzag varint
+_I64 = 6  # a zigzag varint
+_DOUBLE = 7  # an 8-byte float
+_BINARY = 8  # a varint length, then that many bytes
+_LIST = 9  # a list header, then the elements
+_SET = 10  # written like a list
+_MAP = 11  # a varint count, then a byte holding the key and value type ids
+_STRUCT = 12  # fields, then a STOP byte
+_DOUBLE_BYTES = 8  # the width of a double
+_VARINT_TYPES = frozenset((_I16, _I32, _I64))  # types whose payload is one varint
+
+# A field header byte holds the field id's delta from the previous field's in
+# its high 4 bits and the field's type id in its low 4; a list header byte holds
+# the element count and the element type id the same way.
+_NIBBLE_BITS = 4  # shift a header byte right by this for its high 4 bits
+_NIBBLE_MASK = 0x0F  # mask a header byte with this for its low 4 bits
+_LONG_FORM_ID = 0  # an id delta of 0: the field id follows as a zigzag varint
+_LONG_FORM_COUNT = 0x0F  # a list count of 15: the count follows as a varint
+_STOP = 0x00  # the byte ending a struct; never a field header, as types start at 1
+
+# Varints: unsigned integers written 7 bits a byte, low bits first.
+_VARINT_BITS = 7  # value bits in each byte of a varint
+_VARINT_VALUE_MASK = 0x7F  # selects a varint byte's 7 value bits
+_VARINT_CONTINUES = 0x80  # a varint byte's high bit, set on every byte but the last
 
 # Field ids from parquet.thrift:
 # https://github.com/apache/parquet-format/blob/master/src/main/thrift/parquet.thrift
-_FILE_META_ROW_GROUPS = 4
-_ROW_GROUP_COLUMNS = 1
-_COLUMN_CHUNK_META_DATA = 3
-_COLUMN_META_SIZE_STATISTICS = 16
-_SIZE_STATS_UNENCODED_BYTES = 1
-_SIZE_STATS_REPETITION_HISTOGRAM = 2
-_SIZE_STATS_DEFINITION_HISTOGRAM = 3
-# ``struct PageHeader`` and ``struct DictionaryPageHeader``.
-_PAGE_HEADER_TYPE = 1
-_PAGE_HEADER_UNCOMPRESSED_SIZE = 2
-_PAGE_HEADER_DICTIONARY_PAGE_HEADER = 7
-_DICTIONARY_PAGE_HEADER_NUM_VALUES = 1
-# ``enum PageType``.
-_DICTIONARY_PAGE = 2
+_FILE_META_ROW_GROUPS = 4  # FileMetaData.row_groups, list<RowGroup>
+_ROW_GROUP_COLUMNS = 1  # RowGroup.columns, list<ColumnChunk>
+_COLUMN_CHUNK_META_DATA = 3  # ColumnChunk.meta_data, a ColumnMetaData
+_COLUMN_META_SIZE_STATISTICS = 16  # ColumnMetaData.size_statistics
+_SIZE_STATS_UNENCODED_BYTES = 1  # SizeStatistics.unencoded_byte_array_data_bytes
+_SIZE_STATS_REPETITION_HISTOGRAM = 2  # SizeStatistics.repetition_level_histogram
+_SIZE_STATS_DEFINITION_HISTOGRAM = 3  # SizeStatistics.definition_level_histogram
+_PAGE_HEADER_TYPE = 1  # PageHeader.type, a PageType
+_PAGE_HEADER_UNCOMPRESSED_SIZE = 2  # PageHeader.uncompressed_page_size
+_PAGE_HEADER_DICTIONARY_PAGE_HEADER = 7  # PageHeader.dictionary_page_header
+_DICTIONARY_PAGE_HEADER_NUM_VALUES = 1  # DictionaryPageHeader.num_values
+_DICTIONARY_PAGE = 2  # PageType.DICTIONARY_PAGE
 
 
 class LeafSizeStats(NamedTuple):
@@ -53,6 +89,22 @@ class DictionaryPage(NamedTuple):
     uncompressed_page_size: int
 
 
+@dataclass(slots=True)
+class _FieldHeader:
+    """The id and type id a struct field starts with."""
+
+    id: int
+    type: int
+
+
+@dataclass(slots=True)
+class _ListHeader:
+    """The element count and element type id a list or set starts with."""
+
+    count: int
+    element_type: int
+
+
 class _ThriftDesync(Exception):
     """A field's type contradicts parquet.thrift: the reader has lost its place."""
 
@@ -62,7 +114,7 @@ class _CompactReader:
 
     __slots__ = ("_buf", "_pos")
 
-    def __init__(self, buf):
+    def __init__(self, buf: Union[bytes, memoryview]):
         self._buf = buf
         self._pos = 0
 
@@ -80,16 +132,16 @@ class _CompactReader:
         while True:
             byte = buf[pos]
             pos += 1
-            result |= (byte & 0x7F) << shift
-            if not byte & 0x80:  # high bit clear: last byte of the varint
+            result |= (byte & _VARINT_VALUE_MASK) << shift
+            if not byte & _VARINT_CONTINUES:
                 self._pos = pos
                 return result
-            shift += 7
+            shift += _VARINT_BITS
 
     def _skip_varint(self) -> None:
         """Step over a varint without decoding it."""
         buf, pos = self._buf, self._pos
-        while buf[pos] & 0x80:
+        while buf[pos] & _VARINT_CONTINUES:
             pos += 1
         self._pos = pos + 1
 
@@ -98,15 +150,16 @@ class _CompactReader:
         n = self._varint()
         return (n >> 1) ^ -(n & 1)
 
-    def _list_header(self) -> Tuple[int, int]:
-        """A list or set header: ``(count, element type)``. A count of 15 means
-        the real count follows as a varint."""
+    def _list_header(self) -> _ListHeader:
+        """A list or set header."""
         header = self._byte()
-        size, element_type = (header >> 4) & 0x0F, header & 0x0F
-        return (self._varint() if size == 0x0F else size), element_type
+        count = (header >> _NIBBLE_BITS) & _NIBBLE_MASK
+        if count == _LONG_FORM_COUNT:
+            count = self._varint()
+        return _ListHeader(count, header & _NIBBLE_MASK)
 
-    def _fields(self) -> Iterator[Tuple[int, int]]:
-        """``(field id, type)`` of each field of a struct.
+    def _fields(self) -> Iterator[_FieldHeader]:
+        """The header of each field of a struct.
 
         Each id is a delta from the one before, so the caller must consume every
         field's value, by decoding it or :meth:`_skip`, before asking for the
@@ -118,11 +171,11 @@ class _CompactReader:
             pos = self._pos
             header = buf[pos]
             self._pos = pos + 1
-            if header == 0:  # STOP
+            if header == _STOP:
                 return
-            delta, field_type = (header >> 4) & 0x0F, header & 0x0F
-            last_id = self._zigzag() if delta == 0 else last_id + delta
-            yield last_id, field_type
+            delta = (header >> _NIBBLE_BITS) & _NIBBLE_MASK
+            last_id = self._zigzag() if delta == _LONG_FORM_ID else last_id + delta
+            yield _FieldHeader(last_id, header & _NIBBLE_MASK)
 
     def _skip_element(self, element_type: int) -> None:
         """Step over one element of a map."""
@@ -134,7 +187,7 @@ class _CompactReader:
 
     def _skip(self, field_type: int) -> None:
         """Step over one field's value."""
-        if field_type in (_I16, _I32, _I64):
+        if field_type in _VARINT_TYPES:
             self._skip_varint()
         elif field_type == _BINARY:
             # Not ``self._pos += self._varint()``, which reads ``self._pos``
@@ -151,13 +204,14 @@ class _CompactReader:
         elif field_type == _BYTE:
             self._pos += 1
         elif field_type == _DOUBLE:
-            self._pos += 8
+            self._pos += _DOUBLE_BYTES
         elif field_type == _MAP:
-            size = self._varint()
-            if size:
+            count = self._varint()
+            if count:
                 header = self._byte()
-                key_type, value_type = (header >> 4) & 0x0F, header & 0x0F
-                for _ in range(size):
+                key_type = (header >> _NIBBLE_BITS) & _NIBBLE_MASK
+                value_type = header & _NIBBLE_MASK
+                for _ in range(count):
                     self._skip_element(key_type)
                     self._skip_element(value_type)
         else:
@@ -171,17 +225,17 @@ class _CompactReader:
             pos = self._pos
             header = buf[pos]
             pos += 1
-            if header == 0:  # STOP
+            if header == _STOP:
                 self._pos = pos
                 return
-            field_type = header & 0x0F
-            if not (header >> 4) & 0x0F:  # a long-form id
-                while buf[pos] & 0x80:
+            field_type = header & _NIBBLE_MASK
+            if (header >> _NIBBLE_BITS) & _NIBBLE_MASK == _LONG_FORM_ID:
+                while buf[pos] & _VARINT_CONTINUES:
                     pos += 1
                 pos += 1
-            if field_type in (_I16, _I32, _I64):
+            if field_type in _VARINT_TYPES:
                 # Integers, the common case, without a call to _skip.
-                while buf[pos] & 0x80:
+                while buf[pos] & _VARINT_CONTINUES:
                     pos += 1
                 self._pos = pos + 1
             else:
@@ -190,58 +244,59 @@ class _CompactReader:
 
     def _skip_list(self) -> None:
         """Step over a list or set, at once when its elements have a fixed width."""
-        size, element_type = self._list_header()
-        if not size:
+        header = self._list_header()
+        count, element_type = header.count, header.element_type
+        if not count:
             return
-        if element_type in (_I16, _I32, _I64):
-            for _ in range(size):
+        if element_type in _VARINT_TYPES:
+            for _ in range(count):
                 self._skip_varint()
         elif element_type in (_BOOL_TRUE, _BOOL_FALSE, _BYTE):
             # A bool in a container takes a byte.
-            self._pos += size
+            self._pos += count
         elif element_type == _DOUBLE:
-            self._pos += 8 * size
+            self._pos += _DOUBLE_BYTES * count
         else:
-            for _ in range(size):
+            for _ in range(count):
                 self._skip(element_type)
 
     def _i64_list(self, field_id: int) -> Tuple[int, ...]:
-        size, element_type = self._list_header()
+        header = self._list_header()
         # An empty list's element type means nothing.
-        if size and element_type != _I64:
+        if header.count and header.element_type != _I64:
             raise _ThriftDesync(
                 f"SizeStatistics field {field_id} is a list of type "
-                f"{element_type}, expected i64"
+                f"{header.element_type}, expected i64"
             )
-        return tuple(self._zigzag() for _ in range(size))
+        return tuple(self._zigzag() for _ in range(header.count))
 
     def _size_statistics(self) -> LeafSizeStats:
         unencoded: Optional[int] = None
         repetition: Tuple[int, ...] = ()
         definition: Tuple[int, ...] = ()
-        for field_id, field_type in self._fields():
+        for field in self._fields():
             # The type checks catch a reader that drifted onto field 17,
             # geospatial statistics: a struct too, but its field 1 isn't an i64.
-            if field_id == _SIZE_STATS_UNENCODED_BYTES:
-                if field_type != _I64:
+            if field.id == _SIZE_STATS_UNENCODED_BYTES:
+                if field.type != _I64:
                     raise _ThriftDesync(
-                        f"SizeStatistics field 1 has type {field_type}, expected i64"
+                        f"SizeStatistics field 1 has type {field.type}, expected i64"
                     )
                 unencoded = self._zigzag()
-            elif field_id == _SIZE_STATS_REPETITION_HISTOGRAM:
-                if field_type != _LIST:
+            elif field.id == _SIZE_STATS_REPETITION_HISTOGRAM:
+                if field.type != _LIST:
                     raise _ThriftDesync(
-                        f"SizeStatistics field 2 has type {field_type}, expected list"
+                        f"SizeStatistics field 2 has type {field.type}, expected list"
                     )
-                repetition = self._i64_list(field_id)
-            elif field_id == _SIZE_STATS_DEFINITION_HISTOGRAM:
-                if field_type != _LIST:
+                repetition = self._i64_list(field.id)
+            elif field.id == _SIZE_STATS_DEFINITION_HISTOGRAM:
+                if field.type != _LIST:
                     raise _ThriftDesync(
-                        f"SizeStatistics field 3 has type {field_type}, expected list"
+                        f"SizeStatistics field 3 has type {field.type}, expected list"
                     )
-                definition = self._i64_list(field_id)
+                definition = self._i64_list(field.id)
             else:
-                self._skip(field_type)
+                self._skip(field.type)
         return LeafSizeStats(unencoded, repetition, definition)
 
     def _column_metadata(self) -> Optional[LeafSizeStats]:
@@ -257,11 +312,11 @@ class _CompactReader:
             pos = self._pos
             header = buf[pos]
             self._pos = pos + 1
-            if header == 0:  # STOP
+            if header == _STOP:
                 break
-            field_type = header & 0x0F
-            delta = (header >> 4) & 0x0F
-            last_id = last_id + delta if delta else self._zigzag()
+            field_type = header & _NIBBLE_MASK
+            delta = (header >> _NIBBLE_BITS) & _NIBBLE_MASK
+            last_id = self._zigzag() if delta == _LONG_FORM_ID else last_id + delta
 
             if last_id == _COLUMN_META_SIZE_STATISTICS:
                 if field_type != _STRUCT:
@@ -270,7 +325,7 @@ class _CompactReader:
                         "expected struct"
                     )
                 size_stats = self._size_statistics()
-            elif field_type in (_I16, _I32, _I64):
+            elif field_type in _VARINT_TYPES:
                 self._skip_varint()
             else:
                 self._skip(field_type)
@@ -278,31 +333,31 @@ class _CompactReader:
 
     def _column_chunk(self) -> Optional[LeafSizeStats]:
         stats: Optional[LeafSizeStats] = None
-        for field_id, field_type in self._fields():
-            if field_id == _COLUMN_CHUNK_META_DATA and field_type == _STRUCT:
+        for field in self._fields():
+            if field.id == _COLUMN_CHUNK_META_DATA and field.type == _STRUCT:
                 stats = self._column_metadata()
             else:
-                self._skip(field_type)
+                self._skip(field.type)
         return stats
 
     def _row_group(self) -> List[Optional[LeafSizeStats]]:
         columns: List[Optional[LeafSizeStats]] = []
-        for field_id, field_type in self._fields():
-            if field_id == _ROW_GROUP_COLUMNS and field_type == _LIST:
-                size, _ = self._list_header()
-                columns = [self._column_chunk() for _ in range(size)]
+        for field in self._fields():
+            if field.id == _ROW_GROUP_COLUMNS and field.type == _LIST:
+                count = self._list_header().count
+                columns = [self._column_chunk() for _ in range(count)]
             else:
-                self._skip(field_type)
+                self._skip(field.type)
         return columns
 
     def read(self) -> List[List[Optional[LeafSizeStats]]]:
         row_groups: List[List[Optional[LeafSizeStats]]] = []
-        for field_id, field_type in self._fields():
-            if field_id == _FILE_META_ROW_GROUPS and field_type == _LIST:
-                size, _ = self._list_header()
-                row_groups = [self._row_group() for _ in range(size)]
+        for field in self._fields():
+            if field.id == _FILE_META_ROW_GROUPS and field.type == _LIST:
+                count = self._list_header().count
+                row_groups = [self._row_group() for _ in range(count)]
             else:
-                self._skip(field_type)
+                self._skip(field.type)
         return row_groups
 
 
@@ -357,31 +412,31 @@ def read_size_statistics(
 DICTIONARY_PAGE_HEADER_READ_BYTES = 64
 
 
-def read_dictionary_page(buf) -> Optional[DictionaryPage]:
+def read_dictionary_page(buf: Union[bytes, memoryview]) -> Optional[DictionaryPage]:
     """The dictionary page header ``buf`` starts with, or ``None`` if it doesn't
     start with a whole one."""
     reader = _CompactReader(buf)
     page_type = uncompressed = num_values = None
     try:
-        for field_id, field_type in reader._fields():
-            if field_id == _PAGE_HEADER_TYPE and field_type == _I32:
+        for field in reader._fields():
+            if field.id == _PAGE_HEADER_TYPE and field.type == _I32:
                 page_type = reader._zigzag()
-            elif field_id == _PAGE_HEADER_UNCOMPRESSED_SIZE and field_type == _I32:
+            elif field.id == _PAGE_HEADER_UNCOMPRESSED_SIZE and field.type == _I32:
                 uncompressed = reader._zigzag()
             elif (
-                field_id == _PAGE_HEADER_DICTIONARY_PAGE_HEADER
-                and field_type == _STRUCT
+                field.id == _PAGE_HEADER_DICTIONARY_PAGE_HEADER
+                and field.type == _STRUCT
             ):
-                for sub_id, sub_type in reader._fields():
+                for sub in reader._fields():
                     if (
-                        sub_id == _DICTIONARY_PAGE_HEADER_NUM_VALUES
-                        and sub_type == _I32
+                        sub.id == _DICTIONARY_PAGE_HEADER_NUM_VALUES
+                        and sub.type == _I32
                     ):
                         num_values = reader._zigzag()
                     else:
-                        reader._skip(sub_type)
+                        reader._skip(sub.type)
             else:
-                reader._skip(field_type)
+                reader._skip(field.type)
     except (IndexError, _ThriftDesync):
         return None
     if (
