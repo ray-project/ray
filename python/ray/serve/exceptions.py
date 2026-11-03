@@ -9,6 +9,8 @@ from ray.util.annotations import PublicAPI
 
 @PublicAPI(stability="stable")
 class RayServeException(Exception):
+    """Base class for Ray Serve exceptions."""
+
     pass
 
 
@@ -20,6 +22,11 @@ class gRPCStatusError(RayServeException):
     in deployments. When a user sets a status code on the gRPC context before raising
     an exception, this wrapper carries that status code through the error handling
     path so the proxy can return the user's intended status code instead of INTERNAL.
+
+    Args:
+        original_exception: The exception that the deployment raised.
+        code: The gRPC status code that the user set, if any.
+        details: The gRPC status details that the user set, if any.
     """
 
     def __init__(
@@ -56,7 +63,16 @@ class gRPCStatusError(RayServeException):
 
 @PublicAPI(stability="alpha")
 class BackPressureError(RayServeException):
-    """Raised when max_queued_requests is exceeded on a DeploymentHandle."""
+    """Raised when max_queued_requests is exceeded on a DeploymentHandle.
+
+    Args:
+        num_queued_requests: The number of requests queued when this request
+            was dropped.
+        max_queued_requests: The deployment's ``max_queued_requests``.
+        status_code: HTTP status code to return for the dropped request.
+        retry_after_s: Value for the ``Retry-After`` header, in seconds, or
+            None for no header.
+    """
 
     def __init__(
         self,
@@ -84,6 +100,7 @@ class BackPressureError(RayServeException):
 
     @property
     def message(self) -> str:
+        """Message describing why the request was dropped."""
         return self._message
 
     @property
@@ -99,7 +116,11 @@ class BackPressureError(RayServeException):
 
 @PublicAPI(stability="alpha")
 class RequestCancelledError(RayServeException, TaskCancelledError):
-    """Raise when a Serve request is cancelled."""
+    """Raise when a Serve request is cancelled.
+
+    Args:
+        request_id: ID of the cancelled request, if known.
+    """
 
     def __init__(self, request_id: Optional[str] = None):
         self._request_id: Optional[str] = request_id
@@ -116,6 +137,9 @@ class DeploymentUnavailableError(RayServeException):
     """Raised when a Serve deployment is unavailable to receive requests.
 
     Currently this happens because the deployment failed to deploy.
+
+    Args:
+        deployment_id: ID of the unavailable deployment.
     """
 
     def __init__(self, deployment_id: DeploymentID):
@@ -123,16 +147,22 @@ class DeploymentUnavailableError(RayServeException):
 
     @property
     def message(self) -> str:
+        """Message naming the deployment that's unavailable."""
         return f"{self._deployment_id} is unavailable because it failed to deploy."
 
 
 @PublicAPI(stability="alpha")
 class ReplicaUnavailableError(RayServeException):
-    """Raised when the selected replica is no longer available."""
+    """Raised when the selected replica is no longer available.
+
+    Args:
+        replica_id: ID of the unavailable replica.
+    """
 
     def __init__(self, replica_id: str):
         self._replica_id = replica_id
 
     @property
     def message(self) -> str:
+        """Message naming the replica that's no longer available."""
         return f"Replica {self._replica_id} is no longer available."

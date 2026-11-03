@@ -627,8 +627,7 @@ def get_extra_usage_tags_to_report(gcs_client: GcsClient) -> Dict[str, str]:
 
 
 def _get_cluster_status_to_report_v2(gcs_client: GcsClient) -> ClusterStatusToReport:
-    """
-    Get the current status of this cluster. A temporary proxy for the
+    """Get the current status of this cluster. A temporary proxy for the
     autoscaler v2 API.
 
     It is a blocking API.

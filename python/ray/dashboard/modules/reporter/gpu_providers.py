@@ -673,8 +673,7 @@ class GpuMetricProvider:
         return None
 
     def _should_disable_gpu_check(self, nvidia_error: Exception) -> bool:
-        """
-        Check if we should disable GPU usage check based on the error.
+        """Check if we should disable GPU usage check based on the error.
 
         On machines without GPUs, pynvml.nvmlInit() can run subprocesses that
         spew to stderr. Then with log_to_driver=True, we get log spew from every

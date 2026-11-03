@@ -106,8 +106,7 @@ def _rdt_ref_deserializer(
     tensor_transport: str,
     rdt_meta: "ray.experimental.rdt.rdt_manager.RDTMeta",
 ) -> "ray.ObjectRef":
-    """
-    Deserialize an RDT object ref. When the RDT object ref is deserialized,
+    """Deserialize an RDT object ref. When the RDT object ref is deserialized,
     it firstly deserializes the normal object ref, and then adds metadata of
     the RDT object to the RDT manager, which will be used to fetch
     the RDT object later.
@@ -343,9 +342,7 @@ class SerializationContext:
         data: Any,
         out_of_band_tensors: Optional[List[Any]],
     ) -> Any:
-        """
-
-        Args:
+        """Args:
             data: The data to deserialize.
             out_of_band_tensors: Tensors that were sent out-of-band. If this is
                 not None, then the serialized data will contain placeholders
@@ -756,8 +753,7 @@ class SerializationContext:
     def store_rdt_objects(
         self, obj_id: str, tensors: List[Any], tensor_transport: str
     ) -> bytes:
-        """
-        Store RDT objects in the RDT store.
+        """Store RDT objects in the RDT store.
 
         Args:
             obj_id: The object ID of the value. `obj_id` is required, and the RDT data (e.g. tensors) in `value`

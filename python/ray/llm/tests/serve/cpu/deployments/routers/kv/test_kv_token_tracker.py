@@ -397,6 +397,66 @@ async def test_delayed_peer_broadcast_does_not_resurrect_completed_request():
                 await tracker._svc.delete_worker(worker_id)
 
 
+class _SlowResumeSelectionService:
+    """Book on the real service, then hold the result until ``release`` is set,
+    standing in for an ingress event loop too busy to resume the caller."""
+
+    def __init__(self, inner):
+        self._inner = inner
+        self.booked = asyncio.Event()
+        self.release = asyncio.Event()
+
+    def __getattr__(self, name):
+        return getattr(self._inner, name)
+
+    async def select_and_reserve(self, request):
+        selection = await self._inner.select_and_reserve(request)
+        self.booked.set()
+        await self.release.wait()
+        return selection
+
+
+@pytest.mark.asyncio
+async def test_cancelled_selection_frees_its_booking():
+    """A route cancelled after the selection service booked it (HAProxy gave up
+    on a slow router) must not leave untracked load booked."""
+    pytest.importorskip("dynamo.llm")
+    worker_id = get_worker_id("engine-replica-0")
+
+    tracker = _NoLongPollTracker()
+    try:
+        tracker._register_block_size(16, "engine-replica-0")
+        await tracker._upsert_worker(
+            worker_id,
+            "engine-replica-0",
+            {
+                "endpoint": "tcp://127.0.0.1:59998",
+                "block_size": 16,
+                "max_num_batched_tokens": 8192,
+                "dp_rank": 0,
+            },
+        )
+        tracker._svc = _SlowResumeSelectionService(tracker._svc)
+
+        select = asyncio.create_task(
+            tracker.select_worker("req-abandoned", list(range(64)), [worker_id], 32)
+        )
+        await tracker._svc.booked.wait()
+        assert _active_requests(tracker, worker_id) == 1
+        select.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await select
+        tracker._svc.release.set()
+        await async_wait_for_condition(
+            lambda: _active_requests(tracker, worker_id) == 0,
+            timeout=5,
+            retry_interval_ms=10,
+        )
+    finally:
+        if tracker._svc is not None:
+            await tracker._svc.delete_worker(worker_id)
+
+
 # ---- LongPoll replica-membership tracking -----------------------------------
 
 

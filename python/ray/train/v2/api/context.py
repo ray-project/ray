@@ -60,7 +60,11 @@ class TrainContext(ABC):
 
     @abstractmethod
     def get_experiment_name(self) -> str:
-        """Experiment name for the corresponding trial."""
+        """Experiment name for the corresponding trial.
+
+        Returns:
+            The experiment name, which is the ``name`` of the run's ``RunConfig``.
+        """
         pass
 
     @abstractmethod
@@ -83,6 +87,8 @@ class TrainContext(ABC):
             )
             trainer.fit()
 
+        Returns:
+            The total number of workers in this run.
         """
         pass
 
@@ -105,6 +111,8 @@ class TrainContext(ABC):
             )
             trainer.fit()
 
+        Returns:
+            This worker's rank among all workers in this run.
         """
         pass
 
@@ -127,6 +135,8 @@ class TrainContext(ABC):
             )
             trainer.fit()
 
+        Returns:
+            This worker's rank among the workers on its node.
         """
         pass
 
