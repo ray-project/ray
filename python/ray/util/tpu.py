@@ -446,9 +446,10 @@ def get_torchtpu_env_vars(
             ``slicebuilder_addresses`` are omitted, only ``TORCH_TPU_TOPOLOGY``
             (plus ``MASTER_ADDR`` or ``TPU_WORKER_ID`` if explicitly passed) is
             returned for pairing with ambient container environment variables.
-        worker_id: Optional integer ID of the worker host (0-indexed, consumed by
-            ``torchrun``-style launchers as ``--node_rank``). Defaults to 0 for a
-            single host; when omitted on multiple hosts, ``TPU_WORKER_ID`` is not set.
+        worker_id: Optional integer ID of the worker host (0-indexed, for passing
+            to ``torchrun``-style launchers as ``--node_rank`` / ``NODE_RANK``).
+            Defaults to 0 for a single host; when omitted on multiple hosts,
+            ``TPU_WORKER_ID`` is not set.
         slicebuilder_addresses: Optional comma-separated string or list of address:port
             strings. If omitted, derived from ``worker_hostnames`` and
             ``slicebuilder_port``.
@@ -464,7 +465,7 @@ def get_torchtpu_env_vars(
     Raises:
         TypeError: If ``worker_id`` or ``tpu_resource_per_chip`` is not an integer.
         ValueError: If ``topology``, ``worker_hostnames``, ``slicebuilder_addresses``,
-            ``worker_id``, or ``tpu_resource_per_chip`` is invalid.
+            ``master_addr``, ``worker_id``, or ``tpu_resource_per_chip`` is invalid.
     """
     env_vars: Dict[str, str] = {
         TORCH_TPU_TOPOLOGY_ENV_VAR: normalize_torchtpu_topology(
@@ -473,25 +474,26 @@ def get_torchtpu_env_vars(
             accelerator_type=accelerator_type,
         )
     }
-    if master_addr:
-        env_vars["MASTER_ADDR"] = _strip_endpoint_port(master_addr)
+    if master_addr is not None:
+        clean_master = _strip_endpoint_port(master_addr)
+        if not clean_master:
+            raise ValueError(f"Invalid master_addr: {master_addr!r}.")
+        env_vars["MASTER_ADDR"] = clean_master
 
     if slicebuilder_addresses is not None:
-        raw_sb = (
-            slicebuilder_addresses.split(",")
-            if isinstance(slicebuilder_addresses, str)
-            else slicebuilder_addresses
-        )
+        if isinstance(slicebuilder_addresses, str):
+            slicebuilder_addresses = slicebuilder_addresses.split(",")
         norm_sb_list = []
         unique_hosts = {}
-        for a in raw_sb:
-            if a_str := str(a).strip():
+        for a in slicebuilder_addresses:
+            if a_str := a.strip():
                 parsed = parse_address(a_str)
-                host = parsed[0] if parsed else _strip_endpoint_port(a_str)
-                port = (parsed[1] if parsed else None) or slicebuilder_port
-                if host:
-                    norm_sb_list.append(build_address(host, port))
-                    unique_hosts[host] = None
+                if not parsed or not parsed[0] or not parsed[1].isdecimal():
+                    raise ValueError(
+                        f"Invalid slicebuilder address {a!r}; expected 'host:port'."
+                    )
+                norm_sb_list.append(build_address(parsed[0], parsed[1]))
+                unique_hosts[parsed[0]] = None
         if not norm_sb_list:
             raise ValueError(
                 "slicebuilder_addresses must contain at least one address."
@@ -502,14 +504,14 @@ def get_torchtpu_env_vars(
 
     clean_hosts: List[str] = []
     if worker_hostnames is not None:
-        raw_hosts = (
-            worker_hostnames.split(",")
-            if isinstance(worker_hostnames, str)
-            else list(worker_hostnames)
-        )
-        clean_hosts = [
-            host for item in raw_hosts if (host := _strip_endpoint_port(str(item)))
-        ]
+        if isinstance(worker_hostnames, str):
+            worker_hostnames = worker_hostnames.split(",")
+        for item in worker_hostnames:
+            if item_str := item.strip():
+                host = _strip_endpoint_port(item_str)
+                if not host:
+                    raise ValueError(f"Invalid host in worker_hostnames: {item!r}.")
+                clean_hosts.append(host)
         if not clean_hosts:
             raise ValueError("worker_hostnames must contain at least one host.")
         env_vars[TPU_WORKER_HOSTNAMES_ENV_VAR] = ",".join(clean_hosts)

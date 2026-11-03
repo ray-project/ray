@@ -3400,18 +3400,39 @@ def test_normalize_torchtpu_topology():
                 "MASTER_ADDR": "10.0.0.1",
             },
         ),
-        # Portless/whitespace slicebuilder_addresses normalization.
+        # IPv6 worker_hostnames strip ports/brackets for TPU_WORKER_HOSTNAMES and MASTER_ADDR,
+        # and bracket IPv6 endpoints in TORCH_TPU_SLICEBUILDER_ADDRESSES.
+        (
+            {
+                "topology": "2x4",
+                "worker_hostnames": ["2001:db8::1", "[2001:db8::2]:8471"],
+                "worker_id": 1,
+            },
+            {
+                "TORCH_TPU_TOPOLOGY": "2,4,1",
+                "TPU_WORKER_HOSTNAMES": "2001:db8::1,2001:db8::2",
+                "TORCH_TPU_SLICEBUILDER_ADDRESSES": (
+                    "[2001:db8::1]:8471,[2001:db8::1]:8472,[2001:db8::1]:8473,[2001:db8::1]:8474,"
+                    "[2001:db8::2]:8471,[2001:db8::2]:8472,[2001:db8::2]:8473,[2001:db8::2]:8474"
+                ),
+                "MASTER_ADDR": "2001:db8::1",
+                "TPU_WORKER_ID": "1",
+            },
+        ),
+        # Whitespace and IPv6 slicebuilder_addresses normalization.
         (
             {
                 "topology": "2x2",
-                "slicebuilder_addresses": " 10.0.0.1 , 10.0.0.1:8472 , node-2:9000 , node-2 ",
+                "slicebuilder_addresses": (
+                    " 10.0.0.1:8471 , [2001:db8::1]:8472 , node-2:9000 , node-2:9001 "
+                ),
                 "worker_id": 0,
             },
             {
                 "TORCH_TPU_TOPOLOGY": "2,2,1",
-                "TPU_WORKER_HOSTNAMES": "10.0.0.1,node-2",
+                "TPU_WORKER_HOSTNAMES": "10.0.0.1,2001:db8::1,node-2",
                 "TORCH_TPU_SLICEBUILDER_ADDRESSES": (
-                    "10.0.0.1:8471,10.0.0.1:8472,node-2:9000,node-2:8471"
+                    "10.0.0.1:8471,[2001:db8::1]:8472,node-2:9000,node-2:9001"
                 ),
                 "MASTER_ADDR": "10.0.0.1",
                 "TPU_WORKER_ID": "0",
@@ -3447,6 +3468,11 @@ def test_get_torchtpu_env_vars_free_function(kwargs, expected_env):
             "at least one host",
         ),
         (
+            {"topology": "2x4", "worker_hostnames": [":8471"]},
+            ValueError,
+            "Invalid host in worker_hostnames",
+        ),
+        (
             {"topology": "2x4", "slicebuilder_addresses": []},
             ValueError,
             "at least one address",
@@ -3455,6 +3481,21 @@ def test_get_torchtpu_env_vars_free_function(kwargs, expected_env):
             {"topology": "2x4", "slicebuilder_addresses": " , "},
             ValueError,
             "at least one address",
+        ),
+        (
+            {"topology": "2x4", "slicebuilder_addresses": ["10.0.0.1"]},
+            ValueError,
+            "Invalid slicebuilder address",
+        ),
+        (
+            {"topology": "2x4", "slicebuilder_addresses": [":8471"]},
+            ValueError,
+            "Invalid slicebuilder address",
+        ),
+        (
+            {"topology": "2x4", "master_addr": ":8471"},
+            ValueError,
+            "Invalid master_addr",
         ),
         (
             {"topology": "2x4", "worker_id": -1},
@@ -3590,7 +3631,7 @@ def test_placement_group_torchtpu_env_vars(_clean_ray, ray_tpu_cluster, monkeypa
         )
     sg_v6e.shutdown()
 
-    # A 2x2 subslice on an 8-chip v6e host stays 3D (bundle size != devices per chip).
+    # A 2x2 subslice on an 8-chip v6e host stays 3D ("2,2,1").
     sg_8chip = ray.util.tpu._build_subslice_pg(
         worker_ids=["0"],
         subslice_index=0,
@@ -3604,7 +3645,6 @@ def test_placement_group_torchtpu_env_vars(_clean_ray, ray_tpu_cluster, monkeypa
         lifetime=None,
         accelerator_version="v6e",
     )
-    sg_8chip._bundle_resources = {"TPU": 8}
     assert (
         sg_8chip.get_torchtpu_env_vars(worker_hostnames=["10.0.0.1"])[
             "TORCH_TPU_TOPOLOGY"

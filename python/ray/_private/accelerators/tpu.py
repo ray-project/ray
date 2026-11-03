@@ -239,7 +239,9 @@ def normalize_torchtpu_topology(
         raise ValueError(f"Invalid topology string: {topology!r}")
 
     dims = [d.strip() for d in topology.lower().replace("x", ",").split(",")]
-    if len(dims) not in (2, 3, 4) or not all(d.isdigit() and int(d) > 0 for d in dims):
+    if len(dims) not in (2, 3, 4) or not all(
+        d.isdecimal() and int(d) > 0 for d in dims
+    ):
         raise ValueError(f"Invalid topology string: {topology!r}")
     dims = [str(int(d)) for d in dims]
 
