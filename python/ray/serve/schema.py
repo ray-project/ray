@@ -368,6 +368,12 @@ class RayActorOptionsSchema(BaseModel):
 
 @PublicAPI(stability="stable")
 class DeploymentSchema(BaseModel):
+    """Options for one deployment within a Serve application.
+
+    Include one in ``ServeApplicationSchema.deployments`` to override the options
+    that the deployment's code sets.
+    """
+
     model_config = ConfigDict(populate_by_name=True)
     """
     Specifies options for one deployment within a Serve application. For each deployment
@@ -735,6 +741,12 @@ class DeploymentSchema(BaseModel):
         }
 
     def is_autoscaling_configured(self) -> bool:
+        """Whether this schema turns on autoscaling for the deployment.
+
+        Returns:
+            True if ``num_replicas`` is ``"auto"`` or ``autoscaling_config`` is
+            set.
+        """
         return self.num_replicas == "auto" or self.autoscaling_config not in [
             None,
             DEFAULT.VALUE,
@@ -894,6 +906,7 @@ class ServeApplicationSchema(BaseModel):
 
     @property
     def deployment_names(self) -> List[str]:
+        """Names of the deployments that this application schema configures."""
         return [d.name for d in self.deployments]
 
     @field_validator("runtime_env")
@@ -983,6 +996,10 @@ class ServeApplicationSchema(BaseModel):
         """Returns an empty app schema dictionary.
 
         Schema can be used as a representation of an empty Serve application config.
+
+        Returns:
+            A dict with an empty ``import_path``, ``runtime_env``, and
+            ``deployments``.
         """
 
         return {
@@ -1220,6 +1237,9 @@ class ServeDeploySchema(BaseModel):
         """Returns an empty deploy schema dictionary.
 
         Schema can be used as a representation of an empty Serve deploy config.
+
+        Returns:
+            A dict with an empty ``applications`` list.
         """
 
         return {"applications": []}
@@ -1293,6 +1313,9 @@ class ApplicationStatus(str, Enum):
         0 is reserved for UNKNOWN. Values are ordered by severity/state progression:
         0=UNKNOWN, 1=DEPLOY_FAILED, 2=UNHEALTHY, 3=NOT_STARTED,
         4=DELETING, 5=DEPLOYING, 6=RUNNING
+
+        Returns:
+            The numeric value for this status.
         """
         mapping = {
             ApplicationStatus.DEPLOY_FAILED: 1,
@@ -1413,6 +1436,8 @@ class ReplicaDetails(ServeActorDetails):
 
 @PublicAPI(stability="alpha")
 class AutoscalingMetricsHealth(str, Enum):
+    """Health of a deployment's autoscaling metrics collection pipeline."""
+
     HEALTHY = "healthy"
     DELAYED = "delayed"
     UNAVAILABLE = "unavailable"
@@ -1420,6 +1445,8 @@ class AutoscalingMetricsHealth(str, Enum):
 
 @PublicAPI(stability="alpha")
 class AutoscalingStatus(str, Enum):
+    """Current scaling direction of a deployment, or ``STABLE``."""
+
     UPSCALING = "UPSCALING"
     DOWNSCALING = "DOWNSCALING"
     STABLE = "STABLE"
@@ -1676,6 +1703,8 @@ class ProxyDetails(ServeActorDetails):
 
 @PublicAPI(stability="alpha")
 class Target(BaseModel):
+    """One address in a ``TargetGroup``."""
+
     model_config = ConfigDict(frozen=True)
 
     ip: str = Field(description="IP address of the target.")
@@ -1686,6 +1715,8 @@ class Target(BaseModel):
 
 @PublicAPI(stability="alpha")
 class TargetGroup(BaseModel):
+    """The targets that serve one route prefix over one protocol."""
+
     model_config = ConfigDict(frozen=True)
 
     targets: List[Target] = Field(description="List of targets for the given route.")
@@ -1740,7 +1771,15 @@ class DurationStats(BaseModel):
 
     @classmethod
     def from_values(cls, values: List[float]) -> "DurationStats":
-        """Compute statistics from a list of values."""
+        """Compute statistics from a list of values.
+
+        Args:
+            values: The measurements to summarize.
+
+        Returns:
+            The mean, population standard deviation, minimum, and maximum of
+            ``values``, or all zeros if ``values`` is empty.
+        """
         if not values:
             return cls()
 
@@ -1975,6 +2014,10 @@ class ServeInstanceDetails(BaseModel):
         """Empty Serve instance details dictionary.
 
         Represents no Serve instance running on the cluster.
+
+        Returns:
+            A dict with empty ``controller_info``, ``proxies``, and
+            ``applications``, and ``target_capacity`` set to None.
         """
 
         return {
@@ -2109,7 +2152,13 @@ class TaskProcessorAdapter(ABC):
 
     @abstractmethod
     def initialize(self, consumer_concurrency: int = DEFAULT_CONSUMER_CONCURRENCY):
-        """Initialize the task processor."""
+        """Initialize the task processor.
+
+        Args:
+            consumer_concurrency: Number of tasks the consumer processes
+                concurrently. A Serve task consumer passes its deployment's
+                ``max_ongoing_requests``.
+        """
         pass
 
     @abstractmethod
