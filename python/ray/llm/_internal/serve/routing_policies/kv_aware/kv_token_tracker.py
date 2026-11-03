@@ -499,6 +499,8 @@ class KVTokenTracker:
             await reserve
         except Exception:
             return  # The selection failed, so nothing was booked.
+        # Assumes request ids are unique among in-flight requests, so freeing by
+        # id can't release a later request's booking that reused this id.
         try:
             await self._svc.free_reservation(request_id)
         except Exception:
