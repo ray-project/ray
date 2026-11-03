@@ -197,7 +197,7 @@ def test_image_manager_create_oci_spec(tmp_path):
     assert spec["root"]["readonly"] is False
     assert spec["annotations"]["dev.gvisor.spec.rootfs.overlay"] == "self"
     assert spec["process"]["cwd"] == "/workspace"
-    assert spec["process"]["args"] == ["sleep", "infinity"]
+    assert spec["process"]["args"] == ["sh", "-c", "while :; do sleep 2147483647; done"]
 
     # Verify envs override
     env_list = spec["process"]["env"]

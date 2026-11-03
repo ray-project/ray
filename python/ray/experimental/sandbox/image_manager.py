@@ -82,6 +82,13 @@ def _build_gpu_cdi_devices_transform_fn(
     return _transform
 
 
+# A sandbox's PID 1. Processes whose parents exit become its children, and
+# the shell reaps them while it waits for its sleep, as an init system does.
+# A PID 1 that never waits, such as `sleep infinity`, leaves each of them a
+# zombie until the sandbox runs out of process IDs.
+SANDBOX_INIT_ARGS = ("sh", "-c", "while :; do sleep 2147483647; done")
+
+
 class BaseImageManager(ABC):
     """Abstract Base Class defining the contract for Container Image Managers.
 
@@ -492,7 +499,7 @@ class ImageManager(BaseImageManager):
         spec["root"]["readonly"] = readonly
 
         spec.setdefault("process", {})
-        spec["process"]["args"] = ["sleep", "infinity"]
+        spec["process"]["args"] = list(SANDBOX_INIT_ARGS)
         spec["process"]["cwd"] = container_cwd
 
         # Inherit Env from image config by default
