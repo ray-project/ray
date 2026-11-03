@@ -658,6 +658,16 @@ def test_normalize_block_types_picks_majority_type():
         type(b) for b in normalized
     ]
 
+    # A tie (what `zip` always hits with two blocks) goes to the first block's type.
+    normalized = TableBlockAccessor.normalize_block_types(
+        [arrow1, pandas1], target_block_type=None
+    )
+    assert all(isinstance(b, pa.Table) for b in normalized)
+    normalized = TableBlockAccessor.normalize_block_types(
+        [pandas1, arrow1], target_block_type=None
+    )
+    assert all(isinstance(b, pd.DataFrame) for b in normalized)
+
 
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))
