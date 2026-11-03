@@ -2521,6 +2521,10 @@ class AsyncHyperBandSuite(unittest.TestCase):
                 self.assertEqual(len(bracket._rungs), num_rungs - s)
                 self.assertEqual(bracket._rungs[0][0], max_t)
 
+        # The epsilon must not add a rung past max_t when rf is just above 2.
+        bracket = _Bracket(1, 4, 2.0000000001, 0)
+        self.assertEqual([m for m, _ in bracket._rungs], [2.0000000001, 1.0])
+
         scheduler = AsyncHyperBandScheduler(
             metric="metric",
             mode="max",

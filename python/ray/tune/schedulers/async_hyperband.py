@@ -235,6 +235,10 @@ class _Bracket:
         # short when it is an integer in exact arithmetic (e.g. log(243) / log(3)
         # is 4.999999999999999), which would drop the rung at max_t.
         MAX_RUNGS = int(np.log(max_t / min_t) / np.log(self.rf) - s + 1 + 1e-9)
+        # The epsilon can also overshoot when rf is just above a power ratio, so
+        # never keep a rung past max_t.
+        while MAX_RUNGS > 0 and min_t * self.rf ** (MAX_RUNGS - 1 + s) > max_t:
+            MAX_RUNGS -= 1
         self._rungs = [
             (min_t * self.rf ** (k + s), {}) for k in reversed(range(MAX_RUNGS))
         ]
