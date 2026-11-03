@@ -36,9 +36,9 @@ class AddColumnsFromEpisodesToTrainBatch(ConnectorV2):
     .. code-block:: python
 
         from ray.rllib.connectors.learner import AddInfosFromEpisodesToTrainBatch
-        config.training(
+        config.learners(
             learner_connector=lambda obs_sp, act_sp: AddInfosFromEpisodesToTrainBatch()
-        )`
+        )
 
     If provided with `episodes` data, this connector piece makes sure that the final
     train batch going into the RLModule for updating (`forward_train()` call) contains
