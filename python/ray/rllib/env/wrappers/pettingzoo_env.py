@@ -29,18 +29,13 @@ class PettingZooEnv(MultiAgentEnv):
     different spaces and the entire environment's e.g. `self.action_space` is a Dict
     mapping agent IDs to individual agents' spaces. Same for `self.observation_space`.
 
-    .. testcode::
-        :skipif: True
-
-        from pettingzoo.butterfly import prison_v3
-        from ray.rllib.env.wrappers.pettingzoo_env import PettingZooEnv
-        env = PettingZooEnv(prison_v3.env())
-        obs, infos = env.reset()
-        # only returns the observation for the agent which should be stepping
-        print(obs)
-
-    .. testoutput::
-
+    Examples:
+        >>> from pettingzoo.butterfly import prison_v3  # doctest: +SKIP_EXAMPLE
+        >>> from ray.rllib.env.wrappers.pettingzoo_env import PettingZooEnv
+        >>> env = PettingZooEnv(prison_v3.env())
+        >>> obs, infos = env.reset()
+        >>> # only returns the observation for the agent which should be stepping
+        >>> print(obs)
         {
             'prisoner_0': array([[[0, 0, 0],
                 [0, 0, 0],
@@ -51,18 +46,12 @@ class PettingZooEnv(MultiAgentEnv):
                 [0, 0, 0]]], dtype=uint8)
         }
 
-    .. testcode::
-        :skipif: True
-
-        obs, rewards, terminateds, truncateds, infos = env.step({
-            "prisoner_0": 1
-        })
-        # only returns the observation, reward, info, etc, for
-        # the agent who's turn is next.
-        print(obs)
-
-    .. testoutput::
-
+        >>> obs, rewards, terminateds, truncateds, infos = env.step({
+        ...     "prisoner_0": 1
+        ... })
+        >>> # only returns the observation, reward, info, etc, for
+        >>> # the agent who's turn is next.
+        >>> print(obs)
         {
             'prisoner_1': array([[[0, 0, 0],
                 [0, 0, 0],
@@ -73,46 +62,22 @@ class PettingZooEnv(MultiAgentEnv):
                 [0, 0, 0]]], dtype=uint8)
         }
 
-    .. testcode::
-        :skipif: True
-
-        print(rewards)
-
-    .. testoutput::
-
+        >>> print(rewards)
         {
             'prisoner_1': 0
         }
 
-    .. testcode::
-        :skipif: True
-
-        print(terminateds)
-
-    .. testoutput::
-
+        >>> print(terminateds)
         {
             'prisoner_1': False, '__all__': False
         }
 
-    .. testcode::
-        :skipif: True
-
-        print(truncateds)
-
-    .. testoutput::
-
+        >>> print(truncateds)
         {
             'prisoner_1': False, '__all__': False
         }
 
-    .. testcode::
-        :skipif: True
-
-        print(infos)
-
-    .. testoutput::
-
+        >>> print(infos)
         {
             'prisoner_1': {'map_tuple': (1, 0)}
         }
