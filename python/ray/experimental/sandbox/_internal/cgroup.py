@@ -12,8 +12,9 @@ import os
 import re
 import sys
 import time
+from functools import lru_cache
 from pathlib import Path
-from typing import Dict, Iterable, List, Optional, Set
+from typing import Dict, FrozenSet, Iterable, List, Optional, Set
 
 _SANDBOX_ID = re.compile(r"ray-sandbox-[0-9a-f]{12}\Z")
 _PERIOD_US = 100000
@@ -96,6 +97,19 @@ def _remove(cgroup: Path) -> None:
 # drop locking on a single CPU. runsc applies the same floor when it sizes a
 # sandbox from a cgroup quota.
 _MIN_SANDBOX_CPUS = 2
+# How a sandbox's CPUs are counted when it gets an affinity: "thread" (the
+# default) takes single hardware threads, "core" whole physical cores.
+_CPU_PLACEMENT_ENV = "RAY_SANDBOX_CPU_PLACEMENT"
+_CPU_PLACEMENTS = ("thread", "core")
+
+
+def _cpu_placement() -> str:
+    placement = os.environ.get(_CPU_PLACEMENT_ENV, "thread") or "thread"
+    if placement not in _CPU_PLACEMENTS:
+        raise RuntimeError(
+            f"{_CPU_PLACEMENT_ENV}={placement!r} isn't one of {list(_CPU_PLACEMENTS)}"
+        )
+    return placement
 
 
 def _pool_cpus(root: Path) -> Set[int]:
@@ -126,7 +140,40 @@ def _shared_affinity(
         for c in cpus:
             if c in load:
                 load[c] += 1
+    if _cpu_placement() == "core":
+        return _whole_cores(count, pool, load)
     return sorted(sorted(load, key=lambda c: (load[c], c))[:count])
+
+
+@lru_cache(maxsize=None)
+def _siblings(cpu: int) -> FrozenSet[int]:
+    """The CPUs that share ``cpu``'s physical core, ``cpu`` included."""
+    path = Path(f"/sys/devices/system/cpu/cpu{cpu}/topology/thread_siblings_list")
+    try:
+        return frozenset(_cpus(_read(path))) | {cpu}
+    except (OSError, ValueError):
+        # Unknown or unreadable: a core of its own.
+        return frozenset({cpu})
+
+
+def _whole_cores(count: int, pool: Set[int], load: Dict[int, int]) -> List[int]:
+    """At least ``count`` of the pool's CPUs, in whole physical cores, the
+    least used cores first. While the pool has a core that no sandbox uses,
+    no two sandboxes share a core's hardware threads, so a busy neighbor
+    can't slow a sandbox through them."""
+    cores, seen = [], set()
+    for c in sorted(pool):
+        if c not in seen:
+            core = sorted(_siblings(c) & pool)
+            seen.update(core)
+            cores.append(core)
+    cores.sort(key=lambda core: (sum(load[c] for c in core), core[0]))
+    chosen: List[int] = []
+    for core in cores:
+        if len(chosen) >= count:
+            break
+        chosen.extend(core)
+    return sorted(chosen)
 
 
 class SandboxCgroup:
@@ -205,6 +252,7 @@ class SandboxCgroupManager:
             )
         if _read(root / "cgroup.procs"):
             raise RuntimeError(f"Delegated sandbox parent {root} contains processes")
+        _cpu_placement()
 
     def choose_cpus(self, cpu: float, used: Iterable[Iterable[int]]) -> List[int]:
         """Choose the CPUs that a sandbox with a CPU limit runs on.
