@@ -1,17 +1,19 @@
-"""Example 4: SSE output streaming, mid-run steering, reconnection, and idle TTL.
+"""Example 4: SSE streaming, mid-run steering, working_dir workspaces, and idle TTL.
 
 Demonstrates:
-  1. Streaming yielded dicts over SSE (`coordinator.stream_batches(...)`) while sending
-     concurrent mid-run steering calls (`coordinator.scale(3)`).
-  2. Stateful actors (`cluster.actor`), reconnecting (`cluster.get_actor`), and
-     passing JSON state to a driver function (`cluster.run`).
+  1. Streaming yielded dicts over SSE (`coordinator.stream_batches.stream(...)`) while
+     sending concurrent mid-run steering calls (`coordinator.scale(3)` with `max_concurrency=2`).
+  2. Packaging a local `working_dir` workspace once and reusing it across `cluster.run()`
+     and `cluster.submit_job()`, plus inspecting cluster node groups and nodes.
   3. Idle TTL expiration (`ttl_seconds`) reaping an inactive actor once all
      calls and streams have finished.
 """
 
 import sys
+import tempfile
 import threading
 import time
+from pathlib import Path
 from typing import TYPE_CHECKING, Iterator, Optional
 
 from ray_client import RayCluster
@@ -64,108 +66,90 @@ class AdaptivePoolCoordinator:
             time.sleep(0.05)
 
 
-class ShardProcessor:
-    def __init__(self, prefix: str = "shard"):
-        self.prefix = prefix
+def run_workspace_task(values: list) -> dict:
+    from workspace_helpers import summarize_values
 
-    def build_shard(self, count: int, scale: int = 2) -> list:
-        return [{"idx": i, "val": i * scale} for i in range(count)]
-
-    def filter_and_sum(self, shard: list, min_val: int = 0) -> dict:
-        kept = [row["val"] for row in shard if row["val"] >= min_val]
-        return {"prefix": self.prefix, "kept_count": len(kept), "sum": sum(kept)}
-
-
-def inspect_shard_in_driver(shard: list) -> dict:
-    return {"first": shard[0]["val"], "last": shard[-1]["val"], "len": len(shard)}
+    return summarize_values(values)
 
 
 def run_demo(address: Optional[str] = None) -> dict:
-    cluster = RayCluster(address=address)
+    with RayCluster(address=address) as cluster:
+        # 1. Real-time SSE generator streaming + concurrent mid-run worker scaling
+        with cluster.actor(
+            AdaptivePoolCoordinator,
+            1,
+            name="pool_coordinator",
+            resources={"CPU": 1},
+            max_concurrency=2,
+            get_if_exists="recreate",
+        ) as coordinator:
+            emitted_events = []
+            totals = []
+            for event in coordinator.stream_batches.stream([[1, 2, 3], [1, 2, 3]]):
+                emitted_events.append(event)
+                if event.get("event") == "computed":
+                    totals.append(event["batch_total"])
+                    if event["step"] == 0:
+                        scale_ack = coordinator.scale(3)
+                        emitted_events.append(scale_ack)
 
-    # 1. Real-time SSE generator streaming + concurrent mid-run worker scaling
-    coordinator = cluster.actor(
-        AdaptivePoolCoordinator,
-        1,
-        name="pool_coordinator",
-        max_concurrency=2,
-        get_if_exists=False,
-    )
-    emitted_events = []
-    totals = []
-    for event in coordinator.stream_batches([[1, 2, 3], [1, 2, 3]]):
-        emitted_events.append(event)
-        if event.get("event") == "computed":
-            totals.append(event["batch_total"])
-            if event["step"] == 0:
-                scale_ack = coordinator.scale(3)
-                emitted_events.append(scale_ack)
+        driver_summary = {"steps": len(totals), "totals": totals}
 
-    coordinator.kill()
-    driver_summary = {"steps": len(totals), "totals": totals}
+        # 2. Local working_dir packaging shared across cluster.run() and cluster.submit_job()
+        with tempfile.TemporaryDirectory() as tmpdir:
+            helper_path = Path(tmpdir) / "workspace_helpers.py"
+            helper_path.write_text(
+                "def summarize_values(vals):\n"
+                "    return {'count': len(vals), 'sum': sum(vals)}\n",
+                encoding="utf-8",
+            )
+            workspace_run = cluster.run(
+                run_workspace_task, [10, 20, 30], runtime_env={"working_dir": tmpdir}
+            )
+            job = cluster.submit_job(
+                'python3 -c "from workspace_helpers import summarize_values; '
+                'print(summarize_values([1, 2, 3]))"',
+                runtime_env={"working_dir": tmpdir},
+                wait=True,
+            )
+            assert "'sum': 6" in job.logs()
 
-    # 2. Multi-step stateful actors + reconnection
-    proc_a = cluster.actor(
-        ShardProcessor,
-        "alpha",
-        name="processor_a",
-        ttl_seconds=60.0,
-        get_if_exists=False,
-    )
-    proc_b = cluster.actor(
-        ShardProcessor,
-        "beta",
-        name="processor_b",
-        ttl_seconds=60.0,
-        get_if_exists=False,
-    )
+        # 3. Cluster node group & node inspection
+        node_groups = cluster.list_node_groups()
+        nodes = cluster.list_nodes()
+        assert len(node_groups) >= 1
+        assert len(nodes) >= 1
+        first_node = cluster.get_node(nodes[0]["id"])
+        assert first_node["id"] == nodes[0]["id"]
 
-    shard_a = proc_a.build_shard(5, scale=10)
-    summary_a = proc_a.filter_and_sum(shard_a, min_val=20)
-    driver_check = cluster.run(inspect_shard_in_driver, shard_a)
-
-    reconnected = RayCluster(address=address)
-    reattached_proc_a = reconnected.get_actor("processor_a")
-    reattached_summary = reattached_proc_a.filter_and_sum(shard_a, min_val=30)
-
-    shard_b = proc_b.build_shard(3, scale=5)
-    summary_b = proc_b.filter_and_sum(shard_b)
-
-    proc_a.kill()
-    proc_b.kill()
-    reconnected.close()
-
-    # 3. Idle TTL cleanup verification
-    cluster.actor(
-        ShardProcessor,
-        "temp",
-        name="ephemeral_ttl_actor",
-        ttl_seconds=0.6,
-        get_if_exists=False,
-    )
-    active_before = [a["name"] for a in cluster.list_actors()]
-    assert "ephemeral_ttl_actor" in active_before
-    deadline = time.monotonic() + 5.0
-    ttl_cleaned = False
-    while time.monotonic() < deadline:
-        active_after = [a["name"] for a in cluster.list_actors()]
-        if "ephemeral_ttl_actor" not in active_after:
-            ttl_cleaned = True
-            break
-        time.sleep(0.05)
-    cluster.close()
+        # 4. Idle TTL cleanup verification
+        cluster.actor(
+            AdaptivePoolCoordinator,
+            1,
+            name="ephemeral_ttl_actor",
+            ttl_seconds=0.6,
+            get_if_exists="recreate",
+        )
+        active_before = [a["name"] for a in cluster.list_actors()]
+        assert "ephemeral_ttl_actor" in active_before
+        deadline = time.monotonic() + 5.0
+        ttl_cleaned = False
+        while time.monotonic() < deadline:
+            active_after = [a["name"] for a in cluster.list_actors()]
+            if "ephemeral_ttl_actor" not in active_after:
+                ttl_cleaned = True
+                break
+            time.sleep(0.05)
 
     return {
         "emitted_events": emitted_events,
         "driver_summary": driver_summary,
-        "summary_a": summary_a,
-        "driver_check": driver_check,
-        "reattached_summary": reattached_summary,
-        "summary_b": summary_b,
+        "workspace_run": workspace_run,
+        "node_count": len(nodes),
         "ttl_cleaned": ttl_cleaned,
     }
 
 
 if __name__ == "__main__":
     cluster_addr = sys.argv[1] if len(sys.argv) > 1 else None
-    print("Interactive streaming & actor demo output:", run_demo(cluster_addr))
+    print("Interactive streaming & workspace demo output:", run_demo(cluster_addr))

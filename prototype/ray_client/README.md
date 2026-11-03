@@ -103,14 +103,18 @@ The Ray Dashboard runs `run()` and `actor()` workloads in root actors on `/api/a
 | `RAY_RUNTIME_ENV_IGNORE_GITIGNORE` | Set to `1` to skip `.gitignore` rules when packaging local `working_dir` directories. |
 | `RAY_OVERRIDE_RUNTIME_ENV_DEFAULT_EXCLUDES` | Comma-separated list of gitignore patterns replacing the default `working_dir` excludes. |
 
+## Specification
+
+The [`spec/`](spec/README.md) directory is the ground-truth specification for the Cluster REST API ([`spec/api/cluster-rest-api.md`](spec/api/cluster-rest-api.md)), the `ray_client` Python SDK ([`spec/api/python-sdk.md`](spec/api/python-sdk.md)), and the server-side architecture ([`spec/implementation/architecture.md`](spec/implementation/architecture.md)).
+
 ## Examples
 
 The `examples/` directory contains runnable end-to-end scripts:
 
 - `examples/01_sequential_interactive_workflow.py`: Two-step driver function pipeline (`main_1` scoring -> `main_2` filtering) passing JSON between `cluster.run()` calls.
-- `examples/02_vibecoded_stateful_actor_client.py`: Deploying stateful actors, calling methods, reconnecting by name, and inspecting logs.
-- `examples/03_vibecoded_multicluster_sharding_client.py`: Dispatching sharded workloads across multiple `RayCluster` instances concurrently.
-- `examples/04_interactive_streaming_and_workspaces.py`: Real-time SSE generator streaming, mid-run actor steering (`max_concurrency=2`), and idle TTL expiration.
+- `examples/02_stateful_actor_session.py`: Deploying stateful actors (`with cluster.actor(...) as counter:`), inspecting status and logs, and reconnecting by name.
+- `examples/03_multicluster_sharding.py`: Dispatching sharded workloads across multiple `RayCluster` instances concurrently.
+- `examples/04_interactive_streaming_and_workspaces.py`: Real-time SSE generator streaming, mid-run actor steering (`max_concurrency=2`), local `working_dir` packaging across `run()` and `submit_job()`, cluster node inspection, and idle TTL expiration.
 
 ## Running tests
 

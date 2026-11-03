@@ -15,6 +15,12 @@ class MultiClusterSharder:
     def __init__(self, addresses: Sequence[Optional[str]]):
         self.clusters = [RayCluster(address=addr) for addr in addresses]
 
+    def __enter__(self) -> "MultiClusterSharder":
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb) -> None:
+        self.close()
+
     def map_shards(self, task_fn: Callable, shards: List[list]) -> List[dict]:
         with ThreadPoolExecutor(max_workers=max(1, len(shards))) as pool:
             futures = [
@@ -37,24 +43,23 @@ def shard_worker(numbers: list, shard_id: int) -> dict:
     import ray
 
     @ray.remote
-    def square(x: int) -> int:
-        return x * x
+    class Squarer:
+        def square(self, x: int) -> int:
+            return x * x
 
-    squares = ray.get([square.remote(n) for n in numbers])
+    squarer = Squarer.remote()
+    squares = ray.get([squarer.square.remote(n) for n in numbers])
     return {"shard_id": shard_id, "sum_of_squares": sum(squares), "count": len(squares)}
 
 
 def run_demo(addresses: Sequence[Optional[str]]) -> dict:
-    sharder = MultiClusterSharder(addresses)
-    try:
+    with MultiClusterSharder(addresses) as sharder:
         shards = [[1, 2, 3], [4, 5, 6], [7, 8, 9]]
         results = sharder.map_shards(shard_worker, shards)
         return {
             "shards": results,
             "total_sum_of_squares": sum(r["sum_of_squares"] for r in results),
         }
-    finally:
-        sharder.close()
 
 
 if __name__ == "__main__":

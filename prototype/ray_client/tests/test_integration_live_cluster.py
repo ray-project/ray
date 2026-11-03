@@ -1077,8 +1077,8 @@ class TestLiveRayClusterIntegration(unittest.TestCase):
         sys.path.insert(0, str(examples_dir))
         try:
             ex1 = __import__("01_sequential_interactive_workflow")
-            ex2 = __import__("02_vibecoded_stateful_actor_client")
-            ex3 = __import__("03_vibecoded_multicluster_sharding_client")
+            ex2 = __import__("02_stateful_actor_session")
+            ex3 = __import__("03_multicluster_sharding")
             ex4 = __import__("04_interactive_streaming_and_workspaces")
 
             out1 = ex1.run_demo(self.live_address)
@@ -1092,22 +1092,8 @@ class TestLiveRayClusterIntegration(unittest.TestCase):
 
             out4 = ex4.run_demo(self.live_address)
             self.assertEqual(out4["driver_summary"], {"steps": 2, "totals": [6, 36]})
-            self.assertEqual(
-                out4["summary_a"],
-                {"prefix": "alpha", "kept_count": 3, "sum": 90},
-            )
-            self.assertEqual(
-                out4["driver_check"],
-                {"first": 0, "last": 40, "len": 5},
-            )
-            self.assertEqual(
-                out4["reattached_summary"],
-                {"prefix": "alpha", "kept_count": 2, "sum": 70},
-            )
-            self.assertEqual(
-                out4["summary_b"],
-                {"prefix": "beta", "kept_count": 3, "sum": 15},
-            )
+            self.assertEqual(out4["workspace_run"], {"count": 3, "sum": 60})
+            self.assertGreaterEqual(out4["node_count"], 1)
             self.assertTrue(out4["ttl_cleaned"])
         finally:
             sys.path.pop(0)
