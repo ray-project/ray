@@ -1,5 +1,4 @@
-"""
-Multi-agent RLlib Footsies Example (APPO)
+"""Multi-agent RLlib Footsies Example (APPO)
 
 About:
     - Example is based on the Footsies environment (https://github.com/chasemcd/FootsiesGym).

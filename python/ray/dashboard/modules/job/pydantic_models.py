@@ -36,9 +36,7 @@ if PYDANTIC_INSTALLED:
 
     @PublicAPI(stability="beta")
     class JobDetails(BaseModel):
-        """
-        Job data with extra details about its driver and its submission.
-        """
+        """Job data with extra details about its driver and its submission."""
 
         type: JobType = Field(..., description="The type of job.")
         job_id: Optional[str] = Field(
