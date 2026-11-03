@@ -214,7 +214,7 @@ scrape_configs:
 
 With {ref}`token authentication <token-auth>` on, which is the default starting in Ray 2.61, Ray's metrics endpoints reject any scrape that doesn't carry the cluster's token. The Prometheus Targets page then shows the Ray targets as down with `401 Unauthorized` for a missing token, or `403 Forbidden` for a wrong one.
 
-`ray metrics launch-prometheus` needs no change. When `RAY_AUTH_TOKEN` is set, it writes the token into its own config with file mode `0600`. Otherwise, the config reads the token file at `RAY_AUTH_TOKEN_PATH` or `~/.ray/auth_token`. The config is `ray_prometheus.yml` in the Prometheus directory it downloads, such as `./prometheus-<version>.linux-amd64/`.
+`ray metrics launch-prometheus` needs no change when it runs where the token is. It fails if it finds no token. When `RAY_AUTH_TOKEN` is set, it writes the token into its own config with file mode `0600`. Otherwise, the config reads the token file at `RAY_AUTH_TOKEN_PATH` or `~/.ray/auth_token`. The config is `ray_prometheus.yml` in the Prometheus directory it downloads, such as `./prometheus-<version>.linux-amd64/`.
 
 If you run your own Prometheus, including one that uses the config Ray generates at `/tmp/ray/session_latest/metrics/prometheus/prometheus.yml`, copy the token file to the Prometheus host and add an `authorization` block to the `ray` scrape job:
 
