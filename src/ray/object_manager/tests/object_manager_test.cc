@@ -167,6 +167,35 @@ class ObjectManagerTest : public ::testing::Test {
     return object_manager_->unfulfilled_push_requests_.contains(object_id);
   }
 
+  /// Starts a pull of `object_id` from `remote_node_id` and reports the object's
+  /// location so that the pull becomes active and received chunks are accepted.
+  uint64_t StartActivePull(const ObjectID &object_id,
+                           const NodeID &remote_node_id,
+                           size_t object_size) {
+    RegisterRemoteNode(remote_node_id);
+    fake_object_directory_->on_subscribe = [remote_node_id, object_size](
+                                               const UniqueID &,
+                                               const ObjectID &id,
+                                               const rpc::Address &,
+                                               const OnLocationsFound &callback) {
+      callback(id, {remote_node_id}, "", NodeID::Nil(), false, object_size);
+    };
+    rpc::ObjectReference ref;
+    ref.set_object_id(object_id.Binary());
+    const uint64_t request_id =
+        object_manager_->Pull({ref}, BundlePriority::WAIT_REQUEST, {"", false});
+    EXPECT_TRUE(object_manager_->pull_manager_->IsObjectActive(object_id));
+    return request_id;
+  }
+
+  bool ReceiveChunk(const NodeID &remote_node_id,
+                    const ObjectID &object_id,
+                    const rpc::Address &owner_address,
+                    const std::string &data) {
+    return object_manager_->ReceiveObjectChunk(
+        remote_node_id, object_id, owner_address, data.size(), 0, 0, data);
+  }
+
   rpc::FakeObjectManagerClient *GetRemoteClient(const NodeID &node_id) {
     auto it = object_manager_->remote_object_manager_clients_.find(node_id);
     if (it == object_manager_->remote_object_manager_clients_.end()) {
@@ -306,6 +335,62 @@ TEST_F(ObjectManagerTest, MovePullRecordFollowsTheLastPull) {
   EXPECT_TRUE(object_manager_->IsMovePull(object_id));
   object_manager_->CancelPull(second);
   EXPECT_FALSE(object_manager_->IsMovePull(object_id));
+}
+
+/// The sealing chunk of a received move keeps the create reference; it is
+/// released on the main service, behind the store's notification for the seal.
+TEST_F(ObjectManagerTest, ReceivedMoveIsReleasedOnTheMainService) {
+  const ObjectID object_id = ObjectID::FromRandom();
+  const NodeID remote_node_id = NodeID::FromRandom();
+  const std::string data(100, 'x');
+  StartActivePull(object_id, remote_node_id, data.size());
+  object_manager_->MarkMovePull(object_id);
+  rpc::Address owner_address;
+
+  ASSERT_TRUE(ReceiveChunk(remote_node_id, object_id, owner_address, data));
+  EXPECT_EQ(fake_plasma_client_->sealed_objects, std::vector<ObjectID>{object_id});
+  EXPECT_TRUE(fake_plasma_client_->released_objects.empty());
+
+  io_context_.poll();
+  EXPECT_EQ(fake_plasma_client_->released_objects, std::vector<ObjectID>{object_id});
+}
+
+/// The store's notification for the sealed object reaches the main service before
+/// the release does, and cancels the pull. The cancel must not abort the sealed
+/// object.
+TEST_F(ObjectManagerTest, ReceivedMoveSurvivesPullCancelBeforeRelease) {
+  const ObjectID object_id = ObjectID::FromRandom();
+  const NodeID remote_node_id = NodeID::FromRandom();
+  const std::string data(100, 'x');
+  const uint64_t request_id = StartActivePull(object_id, remote_node_id, data.size());
+  object_manager_->MarkMovePull(object_id);
+  rpc::Address owner_address;
+
+  ASSERT_TRUE(ReceiveChunk(remote_node_id, object_id, owner_address, data));
+  object_manager_->CancelPull(request_id);
+  EXPECT_TRUE(fake_plasma_client_->aborted_objects.empty());
+  EXPECT_TRUE(fake_plasma_client_->released_objects.empty());
+
+  io_context_.poll();
+  EXPECT_EQ(fake_plasma_client_->released_objects, std::vector<ObjectID>{object_id});
+  EXPECT_TRUE(fake_plasma_client_->aborted_objects.empty());
+}
+
+/// Without a move record the sealing chunk releases the create reference at
+/// once and nothing is posted to the main service.
+TEST_F(ObjectManagerTest, ReceivedCopyIsReleasedOnSeal) {
+  const ObjectID object_id = ObjectID::FromRandom();
+  const NodeID remote_node_id = NodeID::FromRandom();
+  const std::string data(100, 'x');
+  StartActivePull(object_id, remote_node_id, data.size());
+  rpc::Address owner_address;
+
+  ASSERT_TRUE(ReceiveChunk(remote_node_id, object_id, owner_address, data));
+  EXPECT_EQ(fake_plasma_client_->sealed_objects, std::vector<ObjectID>{object_id});
+  EXPECT_EQ(fake_plasma_client_->released_objects, std::vector<ObjectID>{object_id});
+
+  io_context_.poll();
+  EXPECT_EQ(fake_plasma_client_->released_objects.size(), 1u);
 }
 
 }  // namespace ray
