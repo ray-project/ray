@@ -250,6 +250,7 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         CPlacementGroupID GetCurrentPlacementGroupId() const
         CWorkerID GetWorkerID()
         void SetProducerFreedCallback(c_bool enabled, c_string concurrency_group)
+        void ScheduleOnObjectFreedHook(const CObjectID &object_id)
         c_bool ProducerFreedCallbackEnabled() const
         const c_string &ProducerFreedCallbackConcurrencyGroup() const
         c_bool ShouldCaptureChildTasksInPlacementGroup()
@@ -473,6 +474,7 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
             optional[c_string] tensor_transport
         ) nogil) task_execution_callback
         (void(const CObjectID &) nogil) free_actor_object_callback
+        (void(const CObjectID &) nogil) on_object_freed_callback
         (void(const CObjectID &, const c_string &) nogil) set_direct_transport_metadata
         (function[void()]() nogil) initialize_thread_callback
         (CRayStatus() nogil) check_signals
