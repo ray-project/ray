@@ -57,17 +57,11 @@ def mock_sglang_wrapper():
 def mock_sgl_engine():
     """Mock the SGLang engine and its _generate_async method."""
     with (
+        patch.dict(sys.modules, {"sglang": MagicMock()}),
         patch(
             "ray.llm._internal.batch.stages.sglang_engine_stage.SGLangEngineWrapper._generate_async"
         ) as mock_generate_async,
     ):
-        try:
-            import sglang  # noqa: F401
-        except ImportError:
-            # Mock sglang module if it's not installed in test env.
-            mock_sgl = MagicMock()
-            mock_sgl.Engine = AsyncMock()
-            sys.modules["sglang"] = mock_sgl
         num_running_requests = 0
         request_lock = asyncio.Lock()
 
@@ -104,10 +98,10 @@ def mock_sgl_engine():
         yield mock_generate_async
 
 
-def test_sglang_engine_stage_post_init(gpu_type, model_llama_3_2_216M):
+def test_sglang_engine_stage_post_init():
     stage = SGLangEngineStage(
         fn_constructor_kwargs=dict(
-            model=model_llama_3_2_216M,
+            model="Qwen/Qwen3.5-0.8B",
             engine_kwargs=dict(
                 tp_size=2,
                 dp_size=2,
@@ -119,12 +113,11 @@ def test_sglang_engine_stage_post_init(gpu_type, model_llama_3_2_216M):
             zero_copy_batch=True,
             compute=ActorPoolStrategy(size=1),
             max_concurrency=4,
-            accelerator_type=gpu_type,
         ),
     )
 
     assert stage.fn_constructor_kwargs == {
-        "model": model_llama_3_2_216M,
+        "model": "Qwen/Qwen3.5-0.8B",
         "task_type": SGLangTaskType.GENERATE,
         "max_pending_requests": 10,
         "engine_kwargs": {
@@ -141,18 +134,17 @@ def test_sglang_engine_stage_post_init(gpu_type, model_llama_3_2_216M):
     assert stage.map_batches_kwargs == {
         "zero_copy_batch": True,
         "max_concurrency": 4,
-        "accelerator_type": gpu_type,
         "num_gpus": 4,
     }
 
 
 @pytest.mark.asyncio
-async def test_sglang_engine_udf_basic(mock_sglang_wrapper, model_llama_3_2_216M):
+async def test_sglang_engine_udf_basic(mock_sglang_wrapper):
     # Create UDF instance - it will use the mocked wrapper
     udf = SGLangEngineStageUDF(
         data_column="__data",
         expected_input_keys=["prompt", "sampling_params"],
-        model=model_llama_3_2_216M,
+        model="Qwen/Qwen3.5-0.8B",
         task_type=SGLangTaskType.GENERATE,
         engine_kwargs={
             # Test that this should be overridden by the stage.
@@ -199,9 +191,7 @@ async def test_sglang_engine_udf_basic(mock_sglang_wrapper, model_llama_3_2_216M
 
 @pytest.mark.parametrize("max_pending_requests,batch_size", [(2, 10), (-1, 5)])
 @pytest.mark.asyncio
-async def test_sglang_wrapper(
-    mock_sgl_engine, model_llama_3_2_216M, max_pending_requests, batch_size
-):
+async def test_sglang_wrapper(mock_sgl_engine, max_pending_requests, batch_size):
     """Test the SGLang wrapper with different configurations."""
     mock_generate_async = mock_sgl_engine
 
@@ -210,7 +200,7 @@ async def test_sglang_wrapper(
 
     # Create wrapper with configured max_pending_requests
     wrapper = SGLangEngineWrapper(
-        model=model_llama_3_2_216M,
+        model="Qwen/Qwen3.5-0.8B",
         idx_in_batch_column="__idx_in_batch",
         max_pending_requests=max_pending_requests,
         skip_tokenizer_init=False,
@@ -243,21 +233,21 @@ async def test_sglang_wrapper(
 
 
 @pytest.mark.asyncio
-async def test_sglang_error_handling(model_llama_3_2_216M):
+async def test_sglang_error_handling():
     """Test error handling when SGLang is not available."""
     with patch.dict(sys.modules, {"sglang": None}):
         with pytest.raises(ImportError, match="SGLang is not installed"):
             SGLangEngineWrapper(
-                model=model_llama_3_2_216M,
+                model="Qwen/Qwen3.5-0.8B",
                 idx_in_batch_column="__idx_in_batch",
             )
 
 
 @pytest.mark.asyncio
-async def test_sglang_invalid_task_type(model_llama_3_2_216M, mock_sgl_engine):
+async def test_sglang_invalid_task_type(mock_sgl_engine):
     """Test handling of invalid task types."""
     wrapper = SGLangEngineWrapper(
-        model=model_llama_3_2_216M,
+        model="Qwen/Qwen3.5-0.8B",
         idx_in_batch_column="__idx_in_batch",
         task=SGLangTaskType.GENERATE,
     )
