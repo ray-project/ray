@@ -79,6 +79,8 @@ The `batch_size` parameter controls which rows can mix:
 
 For example, with four input blocks of five rows each and `batch_size=8`, two tasks can each receive two blocks. Each task forms an eight-row batch spanning both blocks, followed by a two-row tail, producing shuffle batches of `[8, 2, 8, 2]` rows. The batch size you choose when iterating controls consumer batches separately.
 
+A downstream {meth}`~ray.data.Dataset.limit` can run before shuffling to reduce the input. This can shorten shuffle batches, and the result can differ from a prefix of the unlimited shuffle.
+
 ```{testcode}
 import ray
 

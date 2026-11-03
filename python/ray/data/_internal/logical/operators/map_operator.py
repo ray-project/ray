@@ -301,8 +301,8 @@ class MapBatches(AbstractUDFMap):
 class ShuffleBatches(AbstractMap, LogicalOperatorPreservesSchema):
     """Shuffle rows within target-sized batches or whole input blocks.
 
-    Although this operation preserves rows and schema, it changes row order.
-    Limit pushdown must stop here, and fusion must not rebundle its batches.
+    Limit pushdown can truncate shuffle batches. Fusion must not rebundle them
+    because task grouping determines the batch-indexed random seeds.
     """
 
     batch_size: Optional[int]

@@ -31,8 +31,10 @@ from ray.data._internal.logical.optimizers import get_execution_plan
 from ray.data._internal.logical.rules.limit_pushdown import LimitPushdownRule
 from ray.data._internal.tensor_extensions import chunked_tensor_take
 from ray.data._internal.tensor_extensions.arrow import ArrowTensorArray
+from ray.data.block import BlockMetadata
 from ray.data.context import DataContext
 from ray.data.dataset import MaterializedDataset
+from ray.data.datasource import Datasource, ReadTask
 from ray.data.expressions import col
 
 _ORIGINAL_SHUFFLE = shuffle_batches_impl._shuffle_batch
@@ -154,6 +156,32 @@ def _gated_windows(batch, gate):
     yield pa.table({"id": np.arange(8)})
     ray.get(gate.wait.remote(), timeout=30)
     yield pa.table({"id": np.arange(8, 16)})
+
+
+def _gated_limit_input(gate):
+    for start in (0, 8):
+        yield pa.table({"id": np.arange(start, start + 8)})
+    ray.get(gate.wait.remote(), timeout=30)
+    yield pa.table({"id": np.arange(16, 1000)})
+
+
+class _GatedDatasource(Datasource):
+    def __init__(self, gate):
+        super().__init__()
+        self.gate = gate
+
+    def estimate_inmemory_data_size(self):
+        return 8000
+
+    def get_read_tasks(self, parallelism, per_task_row_limit=None, data_context=None):
+        return [
+            ReadTask(
+                partial(_gated_limit_input, gate=self.gate),
+                BlockMetadata(1000, 8000, None, None),
+                schema=pa.schema([("id", pa.int64())]),
+                per_task_row_limit=per_task_row_limit,
+            )
+        ]
 
 
 def _shuffle(dataset, batch_size, *, exact=False, **kwargs):
@@ -327,26 +355,67 @@ class ShuffleBatchesTests(unittest.TestCase):
             },
         )
 
-    def test_limit_stays_after_shuffle(self):
-        source = self.source([17, 17, 17])
-        for batch_size, exact in ((8, False), (None, False), (8, True)):
-            with self.subTest(batch_size=batch_size, exact=exact):
-                output = _shuffle(source, batch_size, exact=exact, seed=42)
-                self.assertEqual(self.ids(output.limit(11)), self.ids(output)[:11])
+    def test_limit_applies_before_shuffle(self):
+        source = self.source([5, 5, 5, 5])
+        for batch_size, exact in ((None, False), (8, False), (8, True)):
+            for count in (0, 3, 8, 11, 100):
+                with self.subTest(batch_size=batch_size, exact=exact, count=count):
+                    output = _shuffle(source, batch_size, exact=exact, seed=42).limit(
+                        count
+                    )
+                    self.assertEqual(
+                        sorted(self.ids(output)), list(range(min(count, 20)))
+                    )
 
-    def test_logical_metadata_and_limit_barrier(self):
-        source = self.source([17, 17, 17])
-        output = _shuffle(source, 8, seed=42)
-        op = output._logical_plan.dag
-        self.assertIsInstance(op, ShuffleBatches)
-        self.assertFalse(op.can_modify_num_rows)
-        self.assertEqual(output.schema(), source.schema())
-        self.assertEqual(op.infer_metadata().num_rows, 51)
-        for count in (1, 8, 11, 100):
-            limited = Limit(count, input_dependencies=[op])
-            optimized = LimitPushdownRule()._push_limit_down(limited)
-            self.assertIsInstance(optimized, Limit)
-            self.assertIs(optimized.input_dependencies[0], op)
+    def test_logical_metadata_and_limit_pushdown(self):
+        source = self.source([5, 5, 5, 5])
+        for batch_size in (None, 8):
+            output = source.shuffle_batches(batch_size, seed=42)
+            op = output._logical_plan.dag
+            self.assertIsInstance(op, ShuffleBatches)
+            self.assertFalse(op.can_modify_num_rows)
+            self.assertEqual(output.schema(), source.schema())
+            self.assertEqual(op.infer_metadata().num_rows, 20)
+            for count in (0, 3, 8, 11, 100):
+                with self.subTest(batch_size=batch_size, count=count):
+                    limited = Limit(count, input_dependencies=[op])
+                    optimized = LimitPushdownRule()._push_limit_down(limited)
+                    self.assertIsInstance(optimized, ShuffleBatches)
+                    self.assertEqual(optimized.batch_size, batch_size)
+                    self.assertEqual(optimized.min_rows_per_bundled_input, batch_size)
+                    self.assertEqual(optimized.seed_config, op.seed_config)
+                    pushed_limit = optimized.input_dependencies[0]
+                    self.assertIsInstance(pushed_limit, Limit)
+                    self.assertEqual(pushed_limit.limit, count)
+                    self.assertIs(
+                        pushed_limit.input_dependencies[0], source._logical_plan.dag
+                    )
+            self.assertIs(op.input_dependencies[0], source._logical_plan.dag)
+
+    def test_limit_finishes_before_full_scan(self):
+        for batch_size, exact in (
+            (None, False),
+            (8, False),
+            (1024, False),
+            (1024, True),
+        ):
+            with self.subTest(batch_size=batch_size, exact=exact):
+                gate = ray.remote(_WindowGate).options(num_cpus=0).remote()
+                assert isinstance(gate, ActorHandle)
+                source = ray.data.read_datasource(
+                    _GatedDatasource(gate), override_num_blocks=1
+                )
+                output = _shuffle(source, batch_size, exact=exact, seed=42).limit(11)
+                try:
+                    with ThreadPoolExecutor(max_workers=1) as pool:
+                        pending = pool.submit(self.ids, output)
+                        try:
+                            ids = pending.result(timeout=20)
+                            self.assertEqual(sorted(ids), list(range(11)))
+                        finally:
+                            ray.get(gate.release.remote())
+                finally:
+                    ray.kill(gate)
 
     def test_shuffle_physical_operator_disables_fusion(self):
         source = self.source([103])

@@ -179,17 +179,16 @@ class LimitPushdownRule(Rule):
             isinstance(current_op, AbstractOneToOne)
             and not current_op.can_modify_num_rows
         ):
-            if isinstance(current_op, ShuffleBatches):
-                # Permutation preserves row count, but a limit before it would
-                # select different rows and could truncate a shuffle batch.
-                break
             if isinstance(current_op, Project) and not current_op.is_idempotent():
                 # Do not push the limit past a projection producing a non-idempotent
                 # column (e.g. monotonically_increasing_id): its value depends on row
                 # position / cardinality, which a reordered limit would change.
                 break
 
-            if isinstance(current_op, AbstractMap):
+            # ShuffleBatches accepts smaller inputs without changing its schema.
+            if isinstance(current_op, AbstractMap) and not isinstance(
+                current_op, ShuffleBatches
+            ):
                 min_rows = current_op.min_rows_per_bundled_input
                 if min_rows is not None and min_rows > limit_op.limit:
                     # Avoid pushing the limit past batch-based maps that require more

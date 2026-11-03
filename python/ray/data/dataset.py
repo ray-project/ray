@@ -2475,6 +2475,9 @@ class Dataset:
         of the dataset. Shuffle batches are independent of consumer batch sizes
         and output block sizes.
 
+        A downstream :meth:`limit` can reduce the input before shuffling, so its
+        result can differ from a prefix of the unlimited shuffle.
+
         To construct exact windows, call :meth:`repartition` with
         ``target_num_rows_per_block`` and ``strict=True``, then shuffle each block
         with ``batch_size=None``. Only the final window can be smaller. Window
