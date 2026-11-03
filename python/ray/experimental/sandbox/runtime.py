@@ -477,8 +477,27 @@ class SandboxRuntime:
         if instance_id is not None:
             # It booted with the profile's env and TTL; from here on it has
             # this create's.
-            self._backend.assign_config(instance_id, cfg)
-        else:
+            try:
+                self._backend.assign_config(instance_id, cfg)
+            except Exception as exc:
+                # Say it died since take checked it. Deleting it frees its
+                # slot, and the create boots cold instead.
+                logger.warning(
+                    "Couldn't hand warm-pool sandbox %s to a create, which boots "
+                    "cold: %s",
+                    instance_id,
+                    exc,
+                )
+                try:
+                    self.delete(instance_id)
+                except Exception as delete_exc:
+                    logger.warning(
+                        "Failed to delete warm-pool sandbox %s: %s",
+                        instance_id,
+                        delete_exc,
+                    )
+                instance_id = None
+        if instance_id is None:
             instance_id = self._backend.create_sandbox(cfg)
         if cfg.ttl_seconds is not None and cfg.ttl_seconds > 0:
             timer = threading.Timer(cfg.ttl_seconds, self._expire, args=(instance_id,))

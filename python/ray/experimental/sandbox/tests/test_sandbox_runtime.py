@@ -575,6 +575,28 @@ def test_close_leaves_taken_sandboxes_and_boots_nothing_after():
     assert len(runtime._backend.configs) == 2
 
 
+def test_a_pooled_sandbox_that_cant_be_handed_over_frees_its_slot():
+    """If assign_config fails after take claimed a sandbox (it died in
+    between, say), the create deletes it, which boots a new one in its slot,
+    and boots cold itself instead of failing."""
+    runtime = _pooled_runtime([{"image": "img", "size": 1}])
+    (pooled,) = (
+        slot.sandbox_id for pool in runtime._warm._ready.values() for slot in pool
+    )
+
+    def broken(sandbox_id, config):
+        raise RuntimeError(f"Sandbox ID '{sandbox_id}' not found.")
+
+    runtime._backend.assign_config = broken
+    instance_id = runtime.create(image="img", timeout_seconds=5)
+    assert instance_id != pooled
+    assert pooled in runtime._backend.deleted
+    # The cold boot, then the slot's new sandbox.
+    assert _wait_until(lambda: len(runtime._backend.configs) == 3)
+    assert runtime.wait_for_warm_pool(timeout_seconds=10)
+    runtime.close()
+
+
 def test_a_boot_that_ends_after_close_is_deleted(monkeypatch):
     """A boot still running at close deletes its sandbox when it ends, and a
     failed delete is logged rather than lost in the boot thread."""
