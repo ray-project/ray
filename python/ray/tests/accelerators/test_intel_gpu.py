@@ -6,8 +6,10 @@ import pytest
 
 import ray
 from ray._common.utils import RESOURCE_CONSTRAINT_PREFIX
-from ray._private.accelerators import IntelGPUAcceleratorManager as Accelerator
-from ray._private.accelerators import intel_gpu
+from ray._private.accelerators import (
+    IntelGPUAcceleratorManager as Accelerator,
+    intel_gpu,
+)
 from ray._private.test_utils import mock_accelerator_detection
 from ray.util.accelerators import INTEL_MAX_1100, INTEL_MAX_1550
 

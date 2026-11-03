@@ -13,7 +13,6 @@ from typing import Any, Dict, List
 import pytest
 
 import ray
-
 from ray._private.accelerators.intel_gpu import _get_level_zero_gpu_names
 
 if not _get_level_zero_gpu_names():
