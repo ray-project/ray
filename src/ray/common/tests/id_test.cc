@@ -15,7 +15,13 @@
 #include "ray/common/id.h"
 
 #include <gtest/gtest.h>
+#ifndef _WIN32
+#include <sys/wait.h>
+#include <unistd.h>
+#endif
 
+#include <string>
+#include <thread>
 #include <utility>
 
 #include "absl/container/flat_hash_set.h"
@@ -123,6 +129,86 @@ TEST(ObjectIDTest, TestObjectID) {
     TestRandomObjectId();
   }
 }
+
+#ifndef _WIN32
+TEST(ObjectIDTest, TestFromRandomForkSafety) {
+  // Initialize the thread-local PRNG before fork(). With a pool-backed seeder (default
+  // absl::BitGen() or absl::MakeSeedSeq()), this pre-fork call would also initialize
+  // Abseil's process-global RandenPool, causing sibling fork() children to reseed from
+  // identical cloned pool state.
+  const ObjectID pre_fork_id = ObjectID::FromRandom();
+  ASSERT_FALSE(pre_fork_id.IsNil());
+
+  constexpr int kNumChildren = 4;
+  int pipefds[kNumChildren][2];
+  pid_t child_pids[kNumChildren];
+
+  for (int i = 0; i < kNumChildren; ++i) {
+    ASSERT_EQ(pipe(pipefds[i]), 0);
+    pid_t pid = fork();
+    ASSERT_GE(pid, 0);
+    if (pid == 0) {
+      for (int j = 0; j <= i; ++j) {
+        close(pipefds[j][0]);
+      }
+      // Generate an ObjectID on the forked main thread (reseeds existing thread_local).
+      const std::string main_thread_binary = ObjectID::FromRandom().Binary();
+      // Generate an ObjectID on a newly spawned thread inside the forked child
+      // (initializes a fresh thread_local BitGen post-fork).
+      std::string spawned_thread_binary;
+      std::thread child_thread([&spawned_thread_binary]() {
+        spawned_thread_binary = ObjectID::FromRandom().Binary();
+      });
+      child_thread.join();
+
+      const std::string payload = main_thread_binary + spawned_thread_binary;
+      ssize_t written = write(pipefds[i][1], payload.data(), payload.size());
+      close(pipefds[i][1]);
+      _exit(written == static_cast<ssize_t>(payload.size()) ? 0 : 1);
+    }
+    close(pipefds[i][1]);
+    child_pids[i] = pid;
+  }
+
+  const ObjectID parent_post_fork_id = ObjectID::FromRandom();
+  ASSERT_FALSE(parent_post_fork_id.IsNil());
+
+  absl::flat_hash_set<ObjectID> seen_ids;
+  ASSERT_TRUE(seen_ids.insert(pre_fork_id).second);
+  ASSERT_TRUE(seen_ids.insert(parent_post_fork_id).second);
+
+  for (int i = 0; i < kNumChildren; ++i) {
+    std::string buf(2 * ObjectID::Size(), '\0');
+    size_t total_read = 0;
+    while (total_read < buf.size()) {
+      ssize_t n = read(pipefds[i][0], buf.data() + total_read, buf.size() - total_read);
+      if (n <= 0) {
+        break;
+      }
+      total_read += static_cast<size_t>(n);
+    }
+    close(pipefds[i][0]);
+
+    int status = 0;
+    ASSERT_EQ(waitpid(child_pids[i], &status, 0), child_pids[i]);
+    ASSERT_TRUE(WIFEXITED(status));
+    ASSERT_EQ(WEXITSTATUS(status), 0);
+    ASSERT_EQ(total_read, 2 * ObjectID::Size());
+
+    const ObjectID child_main_id = ObjectID::FromBinary(buf.substr(0, ObjectID::Size()));
+    const ObjectID child_thread_id =
+        ObjectID::FromBinary(buf.substr(ObjectID::Size(), ObjectID::Size()));
+    ASSERT_FALSE(child_main_id.IsNil());
+    ASSERT_FALSE(child_thread_id.IsNil());
+    ASSERT_TRUE(seen_ids.insert(child_main_id).second)
+        << "Collision on child " << i << " main thread ObjectID: " << child_main_id.Hex();
+    ASSERT_TRUE(seen_ids.insert(child_thread_id).second)
+        << "Collision on child " << i
+        << " spawned thread ObjectID: " << child_thread_id.Hex();
+  }
+  ASSERT_EQ(seen_ids.size(), static_cast<size_t>(2 + 2 * kNumChildren));
+}
+#endif
 
 TEST(NilTest, TestIsNil) {
   ASSERT_TRUE(TaskID().IsNil());

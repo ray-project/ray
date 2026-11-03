@@ -444,11 +444,37 @@ class Node:
                     )
 
         if connect_only:
-            # Fetch node info to get labels.
-            node_info = ray._private.services.get_node(
-                self.gcs_address,
-                self._node_id,
-            )
+            # Fetch node info to get labels and agent ports using the existing
+            # GCS client rather than opening new GlobalState / GcsClient connections.
+            if (
+                node_to_connect_info is not None
+                and node_to_connect_info.node_id.hex() == self._node_id
+            ):
+                gcs_node_info = node_to_connect_info
+            else:
+                node_infos = self.get_gcs_client().get_all_node_info(
+                    node_selectors=[
+                        GetAllNodeInfoRequest.NodeSelector(
+                            node_id=ray.NodeID.from_hex(self._node_id).binary()
+                        )
+                    ]
+                )
+                gcs_node_info = next(iter(node_infos.values()), None)
+                if gcs_node_info is None:
+                    raise RuntimeError(
+                        f"Requested a node with node_id {self._node_id}, "
+                        "but no matching node was found in the GCS node table."
+                    )
+            node_info = {
+                "labels": dict(gcs_node_info.labels),
+                "node_manager_port": gcs_node_info.node_manager_port,
+                "runtime_env_agent_port": gcs_node_info.runtime_env_agent_port,
+                "metrics_agent_port": gcs_node_info.metrics_agent_port,
+                "metrics_export_port": gcs_node_info.metrics_export_port,
+                "dashboard_agent_listen_port": (
+                    gcs_node_info.dashboard_agent_listen_port
+                ),
+            }
         # Set node labels from GCS
         self._node_labels = node_info.get("labels", {}) if node_info else {}
 
@@ -621,7 +647,9 @@ class Node:
 
         if not cluster_metadata:
             return
-        node_ip_address = ray._private.services.get_node_ip_address()
+        node_ip_address = (
+            self._node_ip_address or ray._private.services.get_node_ip_address()
+        )
         ray._private.utils.check_version_info(
             cluster_metadata, f"node {node_ip_address}"
         )
@@ -781,7 +809,7 @@ class Node:
             self._session_dir, self._ray_params.runtime_env_dir_name
         )
 
-        if node_to_connect_info is None:
+        if node_to_connect_info is None and not self._default_worker:
             # Only create the temp dir on node creation
             try_to_create_directory(self.temp_dir)
             # Send a warning message if the session exists.

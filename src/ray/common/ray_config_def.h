@@ -1300,3 +1300,7 @@ RAY_CONFIG(bool, experimental_object_manager_enable_multiple_connections, true)
 // Whether to spawn Python worker processes by forking from a pre-imported fork server
 // process managed by RuntimeEnvAgent instead of exec'ing a fresh interpreter per worker.
 RAY_CONFIG(bool, enable_worker_fork_server, false)
+
+// Timeout in milliseconds for a fork server socket request before falling back to
+// starting a fresh worker process.
+RAY_CONFIG(int64_t, worker_fork_server_timeout_ms, 500)

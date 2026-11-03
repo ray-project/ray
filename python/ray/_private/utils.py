@@ -1,4 +1,5 @@
 import contextlib
+import ctypes
 import importlib
 import json
 import logging
@@ -16,6 +17,7 @@ from pathlib import Path
 from subprocess import list2cmdline
 from typing import (
     TYPE_CHECKING,
+    Callable,
     Dict,
     List,
     Mapping,
@@ -232,6 +234,45 @@ def get_visible_accelerator_ids() -> Mapping[str, Optional[List[str]]]:
     }
 
 
+_openblas_set_num_threads_fns: Optional[List[Callable[[int], None]]] = None
+
+
+def set_blas_and_torch_num_threads(num_threads: int) -> None:
+    """Reconfigure in-memory thread pools for pre-imported PyTorch and OpenBLAS."""
+    if num_threads <= 0:
+        return
+    if "torch" in sys.modules:
+        with contextlib.suppress(Exception):
+            sys.modules["torch"].set_num_threads(num_threads)
+    if "numpy" in sys.modules and sys.platform.startswith("linux"):
+        global _openblas_set_num_threads_fns
+        if _openblas_set_num_threads_fns is None:
+            fns: List[Callable[[int], None]] = []
+            with contextlib.suppress(Exception):
+                so_paths = {
+                    line.split()[-1]
+                    for line in Path("/proc/self/maps").read_text().splitlines()
+                    if ".so" in line and "openblas" in line.lower()
+                }
+                for so_path in sorted(so_paths):
+                    lib = ctypes.CDLL(so_path)
+                    for sym in (
+                        "scipy_openblas_set_num_threads64_",
+                        "scipy_openblas_set_num_threads",
+                        "openblas_set_num_threads64_",
+                        "openblas_set_num_threads",
+                    ):
+                        fn = getattr(lib, sym, None)
+                        if fn is not None:
+                            fn.argtypes = [ctypes.c_int]
+                            fns.append(fn)
+                            break
+            _openblas_set_num_threads_fns = fns
+        for fn in _openblas_set_num_threads_fns:
+            with contextlib.suppress(Exception):
+                fn(num_threads)
+
+
 def set_omp_num_threads_if_unset() -> bool:
     """Set the OMP_NUM_THREADS to default to num cpus assigned to the worker
 
@@ -269,8 +310,7 @@ def set_omp_num_threads_if_unset() -> bool:
     # For num_cpus >= 1: Set to the floor of the actual assigned cpus.
     omp_num_threads = max(math.floor(num_assigned_cpus), 1)
     os.environ["OMP_NUM_THREADS"] = str(omp_num_threads)
-    if "torch" in sys.modules:
-        sys.modules["torch"].set_num_threads(omp_num_threads)
+    set_blas_and_torch_num_threads(omp_num_threads)
     return True
 
 

@@ -51,6 +51,7 @@
 #include "ray/util/network_util.h"
 #include "ray/util/process_utils.h"
 #include "ray/util/subreaper.h"
+#include "ray/util/time.h"
 
 namespace ray {
 
@@ -778,12 +779,22 @@ std::unique_ptr<ProcessInterface> WorkerPool::TryStartProcessViaForkServer(
     worker_args.push_back(arg);
   }
 
+  ProcessEnvironment runtime_env_vars;
   std::string fork_server_socket_path;
   if (!serialized_runtime_env_context.empty() && serialized_runtime_env_context != "{}") {
     auto ctx_json = nlohmann::json::parse(serialized_runtime_env_context, nullptr, false);
-    if (ctx_json.is_object() && ctx_json.contains("fork_server_socket_path") &&
-        ctx_json["fork_server_socket_path"].is_string()) {
-      fork_server_socket_path = ctx_json["fork_server_socket_path"].get<std::string>();
+    if (ctx_json.is_object()) {
+      if (ctx_json.contains("fork_server_socket_path") &&
+          ctx_json["fork_server_socket_path"].is_string()) {
+        fork_server_socket_path = ctx_json["fork_server_socket_path"].get<std::string>();
+      }
+      if (ctx_json.contains("env_vars") && ctx_json["env_vars"].is_object()) {
+        for (auto &[key, val] : ctx_json["env_vars"].items()) {
+          if (val.is_string()) {
+            runtime_env_vars[key] = val.get<std::string>();
+          }
+        }
+      }
     }
   } else if (IsRuntimeEnvEmpty(runtime_env_info.serialized_runtime_env()) &&
              !temp_dir.empty() && !session_name.empty()) {
@@ -791,9 +802,19 @@ std::unique_ptr<ProcessInterface> WorkerPool::TryStartProcessViaForkServer(
         temp_dir + "/" + session_name + "/sockets/fork_server_default.sock";
   }
 
-  if (fork_server_socket_path.empty() ||
-      unhealthy_fork_server_sockets_.contains(fork_server_socket_path)) {
+  if (fork_server_socket_path.empty()) {
     return nullptr;
+  }
+
+  constexpr int64_t kUnhealthySocketCooldownMs = 5000;
+  const int64_t now_steady_ms = current_time_ms();
+  auto unhealthy_it =
+      unhealthy_fork_server_sockets_until_ms_.find(fork_server_socket_path);
+  if (unhealthy_it != unhealthy_fork_server_sockets_until_ms_.end()) {
+    if (now_steady_ms < unhealthy_it->second) {
+      return nullptr;
+    }
+    unhealthy_fork_server_sockets_until_ms_.erase(unhealthy_it);
   }
 
   struct sockaddr_un addr = {};
@@ -802,7 +823,8 @@ std::unique_ptr<ProcessInterface> WorkerPool::TryStartProcessViaForkServer(
     RAY_LOG(WARNING).WithField(worker_id)
         << "Fork server socket path exceeds sun_path limit: " << fork_server_socket_path
         << "; falling back to execvpe.";
-    unhealthy_fork_server_sockets_.insert(fork_server_socket_path);
+    unhealthy_fork_server_sockets_until_ms_[fork_server_socket_path] =
+        now_steady_ms + kUnhealthySocketCooldownMs;
     return nullptr;
   }
   std::strncpy(addr.sun_path, fork_server_socket_path.c_str(), sizeof(addr.sun_path) - 1);
@@ -811,13 +833,17 @@ std::unique_ptr<ProcessInterface> WorkerPool::TryStartProcessViaForkServer(
   if (sock_fd < 0) {
     return nullptr;
   }
-  struct timeval tv = {0, 500000};
+  const int64_t timeout_ms =
+      std::max<int64_t>(1, RayConfig::instance().worker_fork_server_timeout_ms());
+  struct timeval tv = {static_cast<time_t>(timeout_ms / 1000),
+                       static_cast<suseconds_t>((timeout_ms % 1000) * 1000)};
   setsockopt(sock_fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
   setsockopt(sock_fd, SOL_SOCKET, SO_SNDTIMEO, &tv, sizeof(tv));
 
   if (connect(sock_fd, reinterpret_cast<struct sockaddr *>(&addr), sizeof(addr)) == -1) {
     if (errno != ENOENT) {
-      unhealthy_fork_server_sockets_.insert(fork_server_socket_path);
+      unhealthy_fork_server_sockets_until_ms_[fork_server_socket_path] =
+          current_time_ms() + kUnhealthySocketCooldownMs;
     }
     RAY_LOG(WARNING).WithField(worker_id)
         << "Failed to connect to fork server at " << fork_server_socket_path << ": "
@@ -826,7 +852,11 @@ std::unique_ptr<ProcessInterface> WorkerPool::TryStartProcessViaForkServer(
     return nullptr;
   }
 
-  nlohmann::json req = {{"args", worker_args}, {"env", env}};
+  const int64_t deadline_ms = current_sys_time_ms() + timeout_ms;
+  nlohmann::json req = {{"args", worker_args},
+                        {"env", env},
+                        {"runtime_env_vars", runtime_env_vars},
+                        {"deadline_ms", deadline_ms}};
   std::string payload = req.dump() + "\n";
 
   size_t total_sent = 0;
@@ -837,7 +867,8 @@ std::unique_ptr<ProcessInterface> WorkerPool::TryStartProcessViaForkServer(
       if (errno == EINTR) {
         continue;
       }
-      unhealthy_fork_server_sockets_.insert(fork_server_socket_path);
+      unhealthy_fork_server_sockets_until_ms_[fork_server_socket_path] =
+          current_time_ms() + kUnhealthySocketCooldownMs;
       close(sock_fd);
       return nullptr;
     }
@@ -867,7 +898,8 @@ std::unique_ptr<ProcessInterface> WorkerPool::TryStartProcessViaForkServer(
     RAY_LOG(WARNING).WithField(worker_id)
         << "Invalid response from fork server at " << fork_server_socket_path << ": "
         << response << "; falling back to execvpe.";
-    unhealthy_fork_server_sockets_.insert(fork_server_socket_path);
+    unhealthy_fork_server_sockets_until_ms_[fork_server_socket_path] =
+        current_time_ms() + kUnhealthySocketCooldownMs;
     return nullptr;
   }
 

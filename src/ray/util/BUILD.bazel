@@ -275,6 +275,7 @@ ray_cc_library(
     hdrs = ["random.h"],
     visibility = ["//src/ray/common:__pkg__"],
     deps = [
+        ":logging",
         "@com_google_absl//absl/random",
     ],
 )

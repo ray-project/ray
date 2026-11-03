@@ -2861,6 +2861,7 @@ TEST_F(WorkerPoolDriverRegisteredTest, StartWorkerProcessViaForkServerAndFallbac
 
   json ctx_json;
   ctx_json["fork_server_socket_path"] = sock_path;
+  ctx_json["env_vars"] = {{"MY_RUNTIME_VAR", "val123"}};
   rpc::RuntimeEnvInfo env_info;
   env_info.set_serialized_runtime_env(R"({"preload_modules":["torch"]})");
 
@@ -2884,6 +2885,9 @@ TEST_F(WorkerPoolDriverRegisteredTest, StartWorkerProcessViaForkServerAndFallbac
   ASSERT_FALSE(req_json.is_discarded());
   ASSERT_TRUE(req_json.contains("args"));
   ASSERT_TRUE(req_json.contains("env"));
+  ASSERT_TRUE(req_json.contains("runtime_env_vars"));
+  ASSERT_TRUE(req_json.contains("deadline_ms"));
+  ASSERT_TRUE(req_json["deadline_ms"].is_number_integer());
   for (const auto &arg : req_json["args"]) {
     const std::string arg_str = arg.get<std::string>();
     // setup_worker.py wrapper flags must be stripped.
@@ -2891,6 +2895,7 @@ TEST_F(WorkerPoolDriverRegisteredTest, StartWorkerProcessViaForkServerAndFallbac
     ASSERT_EQ(arg_str.find("--language="), std::string::npos);
   }
   ASSERT_EQ(req_json["env"]["RAY_JOB_ID"].get<std::string>(), JOB_ID.Hex());
+  ASSERT_EQ(req_json["runtime_env_vars"]["MY_RUNTIME_VAR"].get<std::string>(), "val123");
 
   // 3. When the listening socket accepts the connection in the kernel backlog but the
   // server never replies, StartWorkerProcess must time out after ~500ms (SO_RCVTIMEO),
