@@ -1,6 +1,4 @@
-import os
 import sys
-import threading
 import time
 from pathlib import Path
 from typing import List
@@ -11,10 +9,7 @@ import ray
 import ray.train
 from ray.cluster_utils import Cluster
 from ray.train.tests.util import create_dict_checkpoint, load_dict_checkpoint
-from ray.train.v2._internal.constants import (
-    HEALTH_CHECK_INTERVAL_S_ENV_VAR,
-    WORKER_GROUP_START_TIMEOUT_S_ENV_VAR,
-)
+from ray.train.v2._internal.constants import HEALTH_CHECK_INTERVAL_S_ENV_VAR
 from ray.train.v2.api.data_parallel_trainer import DataParallelTrainer
 
 
@@ -205,92 +200,6 @@ def test_elastic_training(monkeypatch, tmp_path, cluster):
     assert result.metrics["max_world_size"] >= result.metrics["min_world_size"]
     assert result.checkpoint
     assert Path(result.checkpoint.path).name == f"checkpoint-epoch={num_epochs}"
-
-
-def _block_first_unpickle(claim_path: str) -> None:
-    """Called when the training function is deserialized on a worker.
-
-    Workers deserialize the training function inside the ``run_train_fn`` actor
-    task, which the controller ``ray.get``s during worker group startup. The first
-    worker to get here writes its node ID to ``claim_path`` and blocks so the test
-    can remove that node while the launch is still in flight. Later workers return
-    immediately.
-    """
-    try:
-        fd = os.open(claim_path, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
-    except FileExistsError:
-        return None
-    with os.fdopen(fd, "w") as f:
-        f.write(ray.get_runtime_context().get_node_id())
-    time.sleep(600)
-
-
-class _BlockFirstLaunch:
-    """Pickles to a call of ``_block_first_unpickle`` on the worker."""
-
-    def __init__(self, claim_path: str):
-        self._claim_path = claim_path
-
-    def __reduce__(self):
-        return (_block_first_unpickle, (self._claim_path,))
-
-
-def test_node_lost_during_worker_group_launch(monkeypatch, tmp_path, cluster):
-    """A node dying while the train fn is launched on the workers is retried.
-
-    The controller should treat the dead actor as a retryable startup failure,
-    reschedule, and resize to the nodes that are still alive. The node failure
-    must not be charged to ``max_failures``.
-    """
-    # The controller may still try the old size once before the dead node leaves
-    # the resource view. Keep that placement group wait short.
-    monkeypatch.setenv(WORKER_GROUP_START_TIMEOUT_S_ENV_VAR, "5")
-
-    nodes = [cluster.add_node(num_cpus=1) for _ in range(2)]
-    cluster.wait_for_nodes()
-
-    claim_path = str(tmp_path / "blocked_node_id")
-    block_first_launch = _BlockFirstLaunch(claim_path)
-
-    def train_fn():
-        # Referencing the hook makes it part of the train fn's closure, so it's
-        # deserialized on each worker. It deserializes to None.
-        assert block_first_launch is None
-        metrics = {"world_size": ray.train.get_context().get_world_size()}
-        with create_dict_checkpoint(metrics) as checkpoint:
-            ray.train.report(
-                metrics,
-                checkpoint=checkpoint
-                if ray.train.get_context().get_world_rank() == 0
-                else None,
-            )
-
-    trainer = DataParallelTrainer(
-        train_fn,
-        scaling_config=ray.train.ScalingConfig(num_workers=(1, 2)),
-        run_config=ray.train.RunConfig(
-            storage_path=str(tmp_path / "storage"),
-            failure_config=ray.train.FailureConfig(max_failures=0),
-        ),
-    )
-
-    def kill_blocked_node():
-        deadline = time.monotonic() + 60
-        while not os.path.exists(claim_path) or not Path(claim_path).read_text():
-            assert time.monotonic() < deadline, "No worker reached the launch."
-            time.sleep(0.1)
-        blocked_node_id = Path(claim_path).read_text()
-        [node] = [n for n in nodes if n.node_id == blocked_node_id]
-        cluster.remove_node(node)
-
-    killer = threading.Thread(target=kill_blocked_node, daemon=True)
-    killer.start()
-    result = trainer.fit()
-    killer.join(timeout=60)
-
-    assert result.error is None
-    # The retry should resize to the single surviving node.
-    assert result.metrics["world_size"] == 1
 
 
 if __name__ == "__main__":
