@@ -155,25 +155,30 @@ class _Observers:
 
     def __init__(self, runtime: SandboxRuntime, network: str = "none") -> None:
         self.runtime = runtime
+        self.canary: Optional[subprocess.Popen] = None
         self.neighbor = _create(runtime, network)
-        self.neighbor_cgroup = _cgroup(runtime, self.neighbor)
-        runtime.write_file(self.neighbor, "/tmp/keeper.py", _KEEPER)
-        started = runtime.exec(
-            self.neighbor,
-            ["sh", "-c", "nohup python3 /tmp/keeper.py >/dev/null 2>&1 &"],
-            timeout=60,
-        )
-        assert started.exit_code == 0, started.stderr
-        _wait(self._beat, 60, "the neighbor's first heartbeat")
-        self.canary = subprocess.Popen(
-            [
-                sys.executable,
-                "-c",
-                "x = b'c' * (32 << 20)\nimport time\ntime.sleep(3600)",
-            ]
-        )
-        self.parent = Path(os.environ["RAY_SANDBOX_CGROUP_PATH"])
-        self.parent_oom = self._parent_oom()
+        try:
+            self.neighbor_cgroup = _cgroup(runtime, self.neighbor)
+            runtime.write_file(self.neighbor, "/tmp/keeper.py", _KEEPER)
+            started = runtime.exec(
+                self.neighbor,
+                ["sh", "-c", "nohup python3 /tmp/keeper.py >/dev/null 2>&1 &"],
+                timeout=60,
+            )
+            assert started.exit_code == 0, started.stderr
+            _wait(self._beat, 60, "the neighbor's first heartbeat")
+            self.canary = subprocess.Popen(
+                [
+                    sys.executable,
+                    "-c",
+                    "x = b'c' * (32 << 20)\nimport time\ntime.sleep(3600)",
+                ]
+            )
+            self.parent = Path(os.environ["RAY_SANDBOX_CGROUP_PATH"])
+            self.parent_oom = self._parent_oom()
+        except BaseException:
+            self.close()
+            raise
 
     def _beat(self) -> Optional[dict]:
         result = self.runtime.exec(self.neighbor, ["cat", "/tmp/beat.json"], timeout=30)
@@ -200,8 +205,9 @@ class _Observers:
         assert self._parent_oom() == self.parent_oom
 
     def close(self) -> None:
-        self.canary.kill()
-        self.canary.wait()
+        if self.canary is not None:
+            self.canary.kill()
+            self.canary.wait()
         self.runtime.delete(self.neighbor)
 
 
@@ -260,9 +266,11 @@ def test_out_of_memory_kills_the_sandbox_and_nothing_else(network, request):
     observers = _Observers(runtime, network)
     try:
         hog = _create(runtime, network)
-        cgroup = _drive_past_limit(runtime, hog, _ANONYMOUS_HOG)
-        observers.assert_untouched()
-        runtime.delete(hog)
+        try:
+            cgroup = _drive_past_limit(runtime, hog, _ANONYMOUS_HOG)
+            observers.assert_untouched()
+        finally:
+            runtime.delete(hog)
         assert not cgroup.exists()
         # The runtime that owned it still creates and runs sandboxes.
         fresh = _create(runtime)
@@ -281,13 +289,14 @@ def test_tmpfs_files_count_against_the_memory_limit():
     observers = _Observers(runtime)
     try:
         hog = _create(runtime)
-        shm = runtime.exec(hog, ["sh", "-c", "stat -f -c %T /dev/shm"], timeout=30)
-        if shm.exit_code != 0 or shm.stdout.strip() != "tmpfs":
+        try:
+            shm = runtime.exec(hog, ["sh", "-c", "stat -f -c %T /dev/shm"], timeout=30)
+            if shm.exit_code != 0 or shm.stdout.strip() != "tmpfs":
+                pytest.skip("The sandbox has no tmpfs at /dev/shm")
+            cgroup = _drive_past_limit(runtime, hog, _TMPFS_HOG)
+            observers.assert_untouched()
+        finally:
             runtime.delete(hog)
-            pytest.skip("The sandbox has no tmpfs at /dev/shm")
-        cgroup = _drive_past_limit(runtime, hog, _TMPFS_HOG)
-        observers.assert_untouched()
-        runtime.delete(hog)
         assert not cgroup.exists()
     finally:
         observers.close()
@@ -299,9 +308,11 @@ def test_out_of_memory_kills_every_process_in_the_sandbox():
     observers = _Observers(runtime)
     try:
         hog = _create(runtime)
-        cgroup = _drive_past_limit(runtime, hog, _FORKING_HOG)
-        observers.assert_untouched()
-        runtime.delete(hog)
+        try:
+            cgroup = _drive_past_limit(runtime, hog, _FORKING_HOG)
+            observers.assert_untouched()
+        finally:
+            runtime.delete(hog)
         assert not cgroup.exists()
     finally:
         observers.close()
@@ -327,10 +338,19 @@ def test_concurrent_out_of_memory_kills_stay_contained():
             probes.append((time.monotonic() - start, exit_code))
             stop.wait(0.2)
 
+    # Each hog is recorded as it's created, so the cleanup below deletes
+    # every one that exists even if another failed to start.
     ids: List[str] = []
+    ids_lock = threading.Lock()
+
+    def create_hog(_: int) -> None:
+        sandbox_id = _create(runtime)
+        with ids_lock:
+            ids.append(sandbox_id)
+
     try:
         with cf.ThreadPoolExecutor(hogs) as pool:
-            ids = list(pool.map(lambda _: _create(runtime), range(hogs)))
+            list(pool.map(create_hog, range(hogs)))
         prober = threading.Thread(target=probe_neighbor, daemon=True)
         prober.start()
         try:
@@ -347,14 +367,12 @@ def test_concurrent_out_of_memory_kills_stay_contained():
         assert all(code == 0 for _, code in probes), probes
         assert max(latency for latency, _ in probes) < 10, probes
         observers.assert_untouched()
-        for sid, cgroup in zip(ids, cgroups):
-            runtime.delete(sid)
-            assert not cgroup.exists()
-        ids = []
     finally:
         for sid in ids:
             runtime.delete(sid)
         observers.close()
+    for cgroup in cgroups:
+        assert not cgroup.exists()
 
 
 if __name__ == "__main__":
