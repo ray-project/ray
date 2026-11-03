@@ -1,7 +1,7 @@
 ---
 myst:
   html_meta:
-    description: "Configure Ray token authentication, on by default for every cluster from Ray 2.61: create and distribute the token, opt out with RAY_AUTH_MODE=disabled, and scrape metrics."
+    description: "Configure Ray token authentication, which is on by default for every cluster starting in Ray 2.61. Create and distribute the token, opt out with RAY_AUTH_MODE=disabled, and scrape metrics with the token."
 ---
 
 (token-auth)=
@@ -18,11 +18,13 @@ Token authentication is available in Ray 2.52.0 or later. Ray 2.59 turns it on b
 
 Starting in Ray 2.61, token authentication is on for every Ray cluster unless you set `RAY_AUTH_MODE=disabled`. Ray authenticates all external APIs and internal communications with the token as a shared secret. Every node in a cluster and every client that connects to it needs the same token.
 
-Only the following create a token when none exists:
+The following create a token when none exists:
 
 - `ray.init()` without an `address`, when it starts a new local cluster.
 - `ray get-auth-token --generate`.
 - `ray up`, which ships the token to the head node. The head node ships it to every worker node it launches.
+
+Ray's test cluster utilities and C++ and Java drivers that start their own cluster also create one. For the full list, see {ref}`Token authentication internals <token-authentication>`.
 
 `ray start --head` never creates a token. Create one first with `ray get-auth-token --generate`, then copy it to every node and client of the cluster. Worker nodes, drivers that connect to an existing cluster, and other clients never create a token either, because a token made there can't match the cluster's.
 
@@ -47,7 +49,7 @@ When managing multiple tokens, we recommend storing them in local files and usin
 Ray transmits the authentication token as an HTTP header, which is transmitted in plaintext when using insecure `http` connections. We recommend enabling some form of encryption whenever exposing a Ray cluster over the network. Consider the following:
 
 - **Local development**: Traffic doesn't leave your machine, so it needs no encryption. Ray assumes the machine is single-tenant or that you trust every user on it.
-- **SSH tunneling**: Use SSH tunneling/port forwarding via the `ray dashboard` command or `kubectl port-forward`.
+- **SSH tunneling**: Use SSH tunneling or port forwarding through the `ray dashboard` command or `kubectl port-forward`.
 - **TLS termination**: Deploy a TLS proxy in front of your Ray cluster.
 - **VPN/Overlay networks**: Use network-level encryption for all traffic into and within the cluster.
 
@@ -68,7 +70,7 @@ Local development needs no authentication settings. Everything that runs as the 
 
 ### Local development with ray.init()
 
-When you run a script that starts a new local Ray cluster with `ray.init()`, meaning `ray.init()` without an `address`, Ray handles the token automatically:
+When a script calls `ray.init()` without an `address` and starts a new local Ray cluster, Ray handles the token automatically:
 
 - If no token exists at `~/.ray/auth_token`, Ray generates one, saves it there, and logs a message confirming the new token.
 - If a token already exists at `~/.ray/auth_token`, Ray reuses it.
@@ -179,18 +181,23 @@ scp ~/.ray/auth_token user@node3:~/.ray/auth_token
 
 #### Step 3: Start Ray
 
-Start the head node, then start each worker node:
+Start the head node:
 
 ```bash
 ray start --head
+```
+
+Then start each worker node:
+
+```bash
 ray start --address=<head-node-ip>:6379
 ```
 
-A worker node without the token fails at once with an error that says to run `ray get-auth-token` on the head node and copy the token.
+A worker node without the token fails immediately with an error that says to run `ray get-auth-token` on the head node and copy the token.
 
 ### Clients on other machines
 
-Clients on the head node, or on the machine that ran `ray up`, already have the token. Any other machine that runs a client, such as `ray job submit` or `ray.init(address=...)`, needs the token file copied to it:
+Clients on the head node and on the machine that ran `ray up` already have the token. Any other machine that runs a client, such as `ray job submit` or `ray.init(address=...)`, needs a copy of the token file at `~/.ray/auth_token`. After you copy it, run the client as usual:
 
 ```bash
 ray job submit --address http://<head-node-ip>:8265 -- python script.py
@@ -221,7 +228,7 @@ A node or client must use the same mode as the cluster. A mismatch never falls b
 | `RAY_AUTH_MODE=disabled` | Token authentication | Rejected with the same error as a missing token |
 | `RAY_AUTH_MODE=disabled` | `RAY_AUTH_MODE=disabled` | Works |
 
-With `RAY_AUTH_MODE=disabled`, the dashboard head, the dashboard agent, and the runtime environment agent reject any request that carries an `Authorization` header of any scheme, including `Bearer` and `Basic`, or a non-empty `X-Ray-Authorization` header. A reverse proxy in front of the dashboard that adds its own `Authorization` header must strip it before forwarding the request, or the cluster must turn on token authentication.
+With `RAY_AUTH_MODE=disabled`, the dashboard head, the dashboard agent, and the runtime environment agent reject any request that carries an `Authorization` header or a non-empty `X-Ray-Authorization` header. The `Authorization` check covers every scheme, including `Bearer` and `Basic`. A reverse proxy in front of the dashboard that adds its own `Authorization` header must strip it before forwarding the request. Otherwise, turn on token authentication for the cluster.
 
 Kubernetes token authentication, which `ENABLE_K8S_TOKEN_AUTH` turns on, requires `RAY_AUTH_MODE=token`. Ray refuses to start when you set both `RAY_AUTH_MODE=disabled` and `ENABLE_K8S_TOKEN_AUTH`.
 
@@ -237,7 +244,7 @@ You might encounter the following problems with token authentication.
 
 ### Connection fails with AuthenticationError
 
-A node, driver, or client that the cluster rejects raises `ray.exceptions.AuthenticationError` at once, without retrying. Before Ray 2.61, `ray.init(address=...)` raised `ConnectionError` after retrying. `AuthenticationError` subclasses `ConnectionError`, so existing `except ConnectionError` handlers still catch it.
+A node, driver, or client that the cluster rejects raises `ray.exceptions.AuthenticationError` immediately, without retrying. Before Ray 2.61, `ray.init(address=...)` raised `ConnectionError` after retrying. `AuthenticationError` subclasses `ConnectionError`, so existing `except ConnectionError` handlers still catch it.
 
 The error names its fix. Run `ray get-auth-token` on the head node and copy the token to the machine that failed. If the cluster opted out with `RAY_AUTH_MODE=disabled`, set `RAY_AUTH_MODE=disabled` on that machine too.
 

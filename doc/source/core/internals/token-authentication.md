@@ -19,7 +19,7 @@ The `RAY_AUTH_MODE` environment variable controls Ray's authentication behavior.
 - `token`: Static bearer token authentication. The default for local clusters starting in Ray 2.59, and for all clusters starting in Ray 2.61.
 - `disabled`: No authentication. The default for remote and multi-node clusters before Ray 2.61, and the opt-out starting in Ray 2.61.
 
-Set `RAY_AUTH_MODE` through the environment, and set it consistently on every node and client of the Ray cluster. In `token` mode, all supported RPC and HTTP entry points enforce token-based authentication. No code decides the mode from whether a cluster is local, new, or started by a particular entry point.
+Set `RAY_AUTH_MODE` through the environment, and set it consistently on every node and client of the Ray cluster. In `token` mode, all supported RPC and HTTP entry points enforce token-based authentication. Ray never picks the mode based on whether a cluster is local, new, or started by a particular entry point.
 
 A client and a cluster in different modes never fall back to running without authentication. In `disabled` mode, gRPC servers reject requests that carry a token. HTTP servers reject requests that carry an `Authorization` header of any scheme or a non-empty `X-Ray-Authorization` header, and ignore the `ray-authentication-token` cookie. Ray refuses to start with `RAY_AUTH_MODE=disabled` and `ENABLE_K8S_TOKEN_AUTH` together.
 
@@ -36,7 +36,15 @@ When token authentication is enabled, Ray looks for the token in the following o
    - `~/.ray/auth_token` on POSIX systems
    - `%USERPROFILE%\.ray\auth_token` on Windows
 
-Only the following create a token at the default path when no token exists: `ray.init()` without an `address` when it starts a new cluster, `ray.cluster_utils.Cluster()` and `ray.cluster_utils.AutoscalingCluster` unless passed `enable_token_auth=False`, C++ and Java drivers that start their own cluster, `ray get-auth-token --generate`, and `ray up`. Token creation never overwrites a token file that holds a token. `ray start --head`, worker nodes, connecting drivers, and other clients never create a token, because a token made there can't match the cluster's. Without a token, they fail before connecting and raise `AuthenticationError`, which subclasses `ConnectionError`. No connect or reconnect loop retries an authentication rejection.
+Only the following create a token at the default path when no token exists:
+
+- `ray.init()` without an `address`, when it starts a new cluster.
+- `ray.cluster_utils.Cluster()` and `ray.cluster_utils.AutoscalingCluster`, unless passed `enable_token_auth=False`.
+- C++ and Java drivers that start their own cluster.
+- `ray get-auth-token --generate`.
+- `ray up`.
+
+Token creation never overwrites a token file that holds a token. `ray start --head`, worker nodes, connecting drivers, and other clients never create a token, because a token made there can't match the cluster's. Without a token, they fail before connecting and raise `AuthenticationError`, which subclasses `ConnectionError`. No connect or reconnect loop retries an authentication rejection.
 
 :::{note}
 Ray strips whitespace when it reads the token from a file, which avoids issues from trailing newlines.
