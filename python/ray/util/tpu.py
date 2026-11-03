@@ -305,8 +305,6 @@ def _get_pg_bundle_node_ips(
     bundle_indices: Sequence[int],
 ) -> List[Optional[str]]:
     """Returns the node IP of each bundle, or None for bundles not yet placed."""
-    if not ray.is_initialized():
-        return [None] * len(bundle_indices)
     bundles_to_node_id = placement_group_table(pg).get("bundles_to_node_id", {})
     node_id_to_ip = {
         node["NodeID"]: node.get("NodeManagerAddress")
@@ -1583,7 +1581,7 @@ def _discover_and_persist_subslices(
     head_reservation_timeout_s: Optional[float],
     target_slice_name: Optional[str] = None,
 ) -> Tuple[str, Dict[str, int]]:
-    """Reserve a full slice, run libtpu discovery, persist worker physical IDs
+    """Reserve a full slice, run JAX coordinate discovery, persist worker physical IDs
     to internal KV, then release the slice.
 
     The head PG reservation serializes concurrent discovery of the same slice:
@@ -1677,6 +1675,7 @@ def _discover_and_persist_subslices(
             results = ray.get(
                 [
                     discover_remote.options(
+                        resources={"TPU": full_slice.devices_per_host},
                         scheduling_strategy=PlacementGroupSchedulingStrategy(
                             placement_group=full_slice.placement_group,
                             placement_group_bundle_index=i,
@@ -1699,17 +1698,8 @@ def _discover_and_persist_subslices(
             results, ray.nodes(), parent_topology
         )
 
-        # Validate that every expected worker was labeled. If any worker
-        # lacked a tpu-worker-id label or returned no chip coordinates, the
-        # mapping is incomplete. Persisting partial data would later produce
-        # placement groups with the wrong number of hosts, so we fail fast here.
-        #
-        # Use full_slice.num_hosts (= total_chips // chips_per_vm) as the
-        # expected count rather than _get_worker_dims_for_topology, which
-        # assumes chips_per_vm=4 for all 2D topologies and is wrong for
-        # single-host v6e/v5litepod configurations (8 chips/VM, 1 host).
-        # The fan-out itself runs full_slice.num_hosts tasks, so this value is
-        # always the correct expected number of results.
+        # Require a complete 0..num_hosts-1 physical worker permutation before
+        # persisting (num_hosts handles 8-chip single-host 2x4 slices cleanly).
         expected_workers = full_slice.num_hosts
         physical_ids = sorted(worker_physical_ids.values())
         if physical_ids != list(range(expected_workers)):
@@ -1816,6 +1806,8 @@ def _refresh_cache_from_kv(
     # redundant GCS round-trips for the same key.
     seen_slice_names: Set[str] = set()
     for node in nodes:
+        if not node.get("Alive"):
+            continue
         node_labels = node.get("Labels", {})
         slice_name = node_labels.get(ray._raylet.RAY_NODE_TPU_SLICE_NAME_KEY)
         node_topology = node_labels.get(ray._raylet.RAY_NODE_TPU_TOPOLOGY_KEY)
@@ -1870,6 +1862,8 @@ def _collect_known_slices(
     results: List[Tuple[str, Dict[str, int]]] = []
     for slice_name, worker_physical_ids in cache_snapshot.items():
         for node in nodes:
+            if not node.get("Alive"):
+                continue
             node_labels = node.get("Labels", {})
             if (
                 node_labels.get(ray._raylet.RAY_NODE_TPU_SLICE_NAME_KEY) == slice_name
@@ -2094,9 +2088,9 @@ class SubslicePlacementGroup:
             worker_id: Optional integer ID of the worker within the subslice
                 (0-indexed), between 0 and num_hosts - 1. Defaults to 0 on a
                 single-host subslice; when omitted on a multi-host subslice,
-                ``TPU_WORKER_ID`` is not set (note: pass ``worker_id`` when calling
-                no-argument ``jax.distributed.initialize()`` on GKE so
-                ``TPU_WORKER_ID`` overrides the parent slice's preset worker rank).
+                ``TPU_WORKER_ID`` is not set (pass ``worker_id`` per bundle on
+                multi-host subslices so ``TPU_WORKER_ID`` overrides the parent
+                slice's worker rank for ``libtpu`` and ``jax.distributed``).
             worker_hostnames: If omitted, resolved from the placement group
                 bundles in this subslice.
 
