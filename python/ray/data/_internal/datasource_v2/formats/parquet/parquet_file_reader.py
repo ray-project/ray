@@ -382,8 +382,9 @@ class ParquetFileReader(FileReader, SupportsMetadata):
         Paths are deduped by :meth:`FileReader.read` before the dataset is
         built, so the dataset has exactly one fragment per file. The
         per-row chunk metadata drives the fan-out here, not the dataset
-        itself — multiple manifest rows can share a single path with
-        different row-group sets.
+        itself — multiple manifest rows can share a single path, either
+        with different row-group sets (chunking) or repeating the same
+        ones (the user listed the file more than once); each row is read.
         """
         path_to_fragment = {
             fragment.path: fragment for fragment in dataset.get_fragments()

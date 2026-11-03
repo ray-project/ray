@@ -377,7 +377,19 @@ def make_action_immutable(obj: Any) -> Any:
 
 @PublicAPI
 def huber_loss(x: np.ndarray, delta: float = 1.0) -> np.ndarray:
-    """Reference: https://en.wikipedia.org/wiki/Huber_loss."""
+    """Computes the element-wise Huber loss.
+
+    Reference: https://en.wikipedia.org/wiki/Huber_loss.
+
+    Args:
+        x: The input values, such as the differences between predictions and
+            targets.
+        delta: The threshold at which the loss switches from quadratic to linear.
+
+    Returns:
+        `0.5 * x**2` where `abs(x) < delta`, and `delta * (abs(x) - 0.5 * delta)`
+        elsewhere.
+    """
     return np.where(
         np.abs(x) < delta, np.power(x, 2.0) * 0.5, delta * (np.abs(x) - 0.5 * delta)
     )
@@ -529,7 +541,23 @@ def one_hot(
 
 
 @PublicAPI
-def one_hot_multidiscrete(x, depths=List[int]):
+def one_hot_multidiscrete(
+    x: Union[np.ndarray, "torch.Tensor"], depths: List[int]
+) -> np.ndarray:
+    """One-hot encodes the values of a MultiDiscrete space.
+
+    Encodes each sub-action with `one_hot()` and concatenates the results along
+    the last axis.
+
+    Args:
+        x: The values to encode, of shape `(len(depths),)` or
+            `(batch_size, len(depths))`. A torch tensor is converted to numpy.
+        depths: The number of values of each sub-action, such as the `nvec` of a
+            `MultiDiscrete` space.
+
+    Returns:
+        The float32 one-hot encoding, of size `sum(depths)` in the last axis.
+    """
     # Handle torch arrays properly.
     if torch and isinstance(x, torch.Tensor):
         x = x.numpy()

@@ -289,6 +289,17 @@ class FileDataSourceV2(DataSourceV2[FileManifest]):
         ...
 
     @property
+    def source_paths(self) -> List[str]:
+        """The paths as the caller passed them, recorded on ``ListFiles`` for
+        lineage tracking.
+
+        Defaults to :attr:`paths`. Override this when :attr:`paths` holds
+        resolved paths: ``_resolve_paths_and_filesystem`` strips the URI scheme,
+        so ``s3://bucket/a`` becomes ``bucket/a``.
+        """
+        return self.paths
+
+    @property
     def file_extensions(self) -> Optional[List[str]]:
         """File extensions to keep while listing; ``None`` keeps every file.
 

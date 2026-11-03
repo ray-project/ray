@@ -666,7 +666,9 @@ class ReporterAgent(
         )
 
         # Create GPU metric provider instance
-        self._gpu_metric_provider = GpuMetricProvider()
+        self._gpu_metric_provider = GpuMetricProvider(
+            enable_metric_report=dashboard_agent.enable_gpu_metrics
+        )
         self._npu_metric_provider = NpuMetricProvider()
 
         if raylet_client:
@@ -776,8 +778,7 @@ class ReporterAgent(
         self,
         metric: Metric,
     ) -> None:
-        """
-        TODO(can-anyscale): once we launch the new open-telemetry stack, we need to
+        """TODO(can-anyscale): once we launch the new open-telemetry stack, we need to
         document and communicate that the histogram metric is an approximation to users.
         The approximation is good enough for the dashboard to display the histogram
         distribution. Only the sum of all data points will be the approximation. See
@@ -893,8 +894,7 @@ class ReporterAgent(
         request: metrics_service_pb2.ExportMetricsServiceRequest,
         context: ServicerContext,
     ) -> metrics_service_pb2.ExportMetricsServiceResponse:
-        """
-        GRPC method that receives the open telemetry metrics exported from other Ray
+        """GRPC method that receives the open telemetry metrics exported from other Ray
         components running in the same node (e.g., raylet, worker, etc.). This method
         implements an interface of `metrics_service_pb2_grpc.MetricsServiceServicer` (https://github.com/open-telemetry/opentelemetry-proto/blob/main/opentelemetry/proto/collector/metrics/v1/metrics_service.proto#L30),
         which is the default open-telemetry metrics service interface.

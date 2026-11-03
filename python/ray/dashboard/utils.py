@@ -83,8 +83,7 @@ class DashboardAgentModule(abc.ABC):
     @staticmethod
     @abc.abstractclassmethod
     def is_minimal_module():
-        """
-        Return True if the module is minimal, meaning it
+        """Return True if the module is minimal, meaning it
         should work with `pip install ray` that doesn't requires additional
         dependencies.
         """
@@ -195,25 +194,21 @@ class DashboardHeadModule(abc.ABC):
 
     @abc.abstractmethod
     async def run(self):
-        """
-        Run the module in an asyncio loop. A head module can provide
+        """Run the module in an asyncio loop. A head module can provide
         servicers to the server.
         """
 
     @staticmethod
     @abc.abstractclassmethod
     def is_minimal_module():
-        """
-        Return True if the module is minimal, meaning it
+        """Return True if the module is minimal, meaning it
         should work with `pip install ray` that doesn't requires additional
         dependencies.
         """
 
     @classmethod
     def is_enabled(cls) -> bool:
-        """
-        Return True if the module is enabled and should be loaded.
-        """
+        """Return True if the module is enabled and should be loaded."""
         return True
 
 
@@ -313,9 +308,7 @@ def dashboard_module(enable):
 
 
 def get_all_modules(module_type):
-    """
-    Get all importable modules that are subclass of a given module type.
-    """
+    """Get all importable modules that are subclass of a given module type."""
     logger.info(f"Get all modules by type: {module_type.__name__}")
     import ray.dashboard.modules
 

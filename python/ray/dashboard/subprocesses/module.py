@@ -27,8 +27,7 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class SubprocessModuleConfig:
-    """
-    Configuration for a SubprocessModule.
+    """Configuration for a SubprocessModule.
     Pickleable.
     """
 
@@ -53,9 +52,7 @@ class SubprocessModuleConfig:
 
 
 class SubprocessModule(abc.ABC):
-    """
-    A Dashboard Head Module that runs in a subprocess as a standalone aiohttp server.
-    """
+    """A Dashboard Head Module that runs in a subprocess as a standalone aiohttp server."""
 
     def __init__(
         self,
@@ -75,9 +72,7 @@ class SubprocessModule(abc.ABC):
         self._http_session = None
 
     async def _detect_parent_process_death(self):
-        """
-        Detect parent process liveness. Only returns when parent process is dead.
-        """
+        """Detect parent process liveness. Only returns when parent process is dead."""
         while True:
             if not self._parent_process.is_alive():
                 logger.warning(
@@ -88,8 +83,7 @@ class SubprocessModule(abc.ABC):
 
     @staticmethod
     def is_minimal_module():
-        """
-        Currently all SubprocessModule classes should be non-minimal.
+        """Currently all SubprocessModule classes should be non-minimal.
 
         We require this because SubprocessModuleHandle tracks aiohttp requests and
         responses. To ease this, we can define another SubprocessModuleMinimalHandle
@@ -106,8 +100,7 @@ class SubprocessModule(abc.ABC):
         return True
 
     async def run(self):
-        """
-        Start running the module.
+        """Start running the module.
         This method should be called first before the module starts receiving requests.
         """
         app = aiohttp.web.Application(
@@ -171,9 +164,7 @@ class SubprocessModule(abc.ABC):
 
     @property
     def session_name(self):
-        """
-        Return the Ray session name. It's not related to the aiohttp session.
-        """
+        """Return the Ray session name. It's not related to the aiohttp session."""
         return self._config.session_name
 
     @property
@@ -241,9 +232,7 @@ def run_module(
     incarnation: int,
     child_conn: multiprocessing.connection.Connection,
 ):
-    """
-    Entrypoint for a subprocess module.
-    """
+    """Entrypoint for a subprocess module."""
     module_name = cls.__name__
     current_proctitle = ray._raylet.getproctitle()
     ray._raylet.setproctitle(
