@@ -1,9 +1,52 @@
+load("@com_github_grpc_grpc//bazel:cython_library.bzl", "pyx_library")
+load("@rules_pkg//pkg:mappings.bzl", "pkg_attributes", "pkg_files")
 load("@rules_python//python:defs.bzl", "py_library")
+load("//bazel:ray.bzl", "COPTS", "PYX_COPTS", "PYX_SRCS")
 load(":test.bzl", "doctest", "py_test", "py_test_module_list")
 
 # Export pytest plugin so it can be used in the documentation tests.
 exports_files(
     ["tests/doctest_pytest_plugin.py"],
+)
+
+# The Parquet footer walk, compiled. It calls no Ray C++, so unlike //:_raylet it
+# has no deps and exports no Ray symbols.
+pyx_library(
+    name = "_compact_reader",
+    srcs = [
+        # The __init__.py files give Cython the module's package.
+        "//:python/ray/__init__.py",
+        "__init__.py",
+        "_internal/__init__.py",
+        "_internal/datasource_v2/__init__.py",
+        "_internal/datasource_v2/formats/__init__.py",
+        "_internal/datasource_v2/formats/parquet/__init__.py",
+        "_internal/datasource_v2/formats/parquet/_compact_reader.pyx",
+    ],
+    cc_kwargs = dict(
+        srcs = PYX_SRCS,
+        copts = COPTS + PYX_COPTS,
+        features = ["compiler_param_file"],
+        linkopts = select({
+            "@platforms//os:osx": ["-Wl,-undefined,dynamic_lookup"],
+            "//conditions:default": [],
+        }),
+    ),
+)
+
+# //:ray_pkg_zip puts this into the wheel, next to parquet_size_statistics.py.
+pkg_files(
+    name = "compact_reader_so_files",
+    srcs = ["_internal/datasource_v2/formats/parquet/_compact_reader.so"],
+    attributes = pkg_attributes(mode = "755"),
+    prefix = "ray/data/_internal/datasource_v2/formats/parquet/",
+    renames = select({
+        "@platforms//os:windows": {
+            "_internal/datasource_v2/formats/parquet/_compact_reader.so": "_compact_reader.pyd",
+        },
+        "//conditions:default": {},
+    }),
+    visibility = ["//:__pkg__"],
 )
 
 # Run automatic tests against docstrings on all source files.

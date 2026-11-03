@@ -2,7 +2,8 @@
 
 A desynced cursor returns wrong numbers rather than raising, so the walk is
 checked against ``thriftpy2``, against the two desyncs the prototype hit, and on
-hand-built payloads PyArrow never writes.
+hand-built payloads PyArrow never writes. Tests taking ``walk`` run on both the
+Python reader and the compiled one, when it's built.
 """
 
 import numpy as np
@@ -116,6 +117,27 @@ def _reader(*byte_values):
     return _CompactReader(memoryview(bytes(byte_values)).cast("B"))
 
 
+@pytest.fixture(params=["python", "compiled"])
+def walk(request, monkeypatch):
+    """A footer walk, also made the one ``read_size_statistics`` runs."""
+    if request.param == "python":
+        monkeypatch.setattr(pss, "_CompiledCompactReader", None)
+        return lambda buf: _CompactReader(buf).read()
+    compiled = pss._CompiledCompactReader
+    if compiled is None:
+        pytest.skip("_compact_reader.pyx isn't built")
+    return lambda buf: compiled(buf, pss.LeafSizeStats).read()
+
+
+def _one_leaf_footer(column_metadata):
+    """A footer of one row group of one leaf, around ``ColumnMetaData``'s fields."""
+    # row_groups (field 4), a list of one struct; its columns (field 1), a list of
+    # one struct; its meta_data (field 3), a struct.
+    head = [0x49, 0x1C, 0x19, 0x1C, 0x3C]
+    # The ColumnChunk's, RowGroup's and FileMetaData's STOP bytes.
+    return memoryview(bytes(head + column_metadata + [0x00] * 3)).cast("B")
+
+
 # ---------------------------------------------------------------------------
 # Footer bytes, and the walk against the oracle
 # ---------------------------------------------------------------------------
@@ -165,6 +187,7 @@ def _oracle_leaf(column):
     )
 
 
+@pytest.mark.usefixtures("walk")
 @pytest.mark.parametrize("label", list(_table_cases()))
 def test_matches_thriftpy2_oracle(written_files, oracle, label):
     metadata = written_files[label]
@@ -192,6 +215,7 @@ def test_dictionary_page_header_matches_thriftpy2_oracle(tmp_path, oracle):
 
 
 @requires_pyarrow_23
+@pytest.mark.usefixtures("walk")
 @pytest.mark.parametrize(
     "values, arrow_type, expected",
     [
@@ -222,6 +246,7 @@ def test_size_statistics_match_ground_truth(tmp_path, values, arrow_type, expect
 
 
 @requires_pyarrow_23
+@pytest.mark.usefixtures("walk")
 def test_only_byte_array_leaves_record_unencoded_bytes(written_files):
     """Sub-field 1 is BYTE_ARRAY-only, so numeric leaves must not require it."""
     metadata = written_files["mixed"]
@@ -279,10 +304,17 @@ def _list_header(size, element_type):
         "empty-list-type-0",
     ],
 )
-def test_skip_consumes_exactly_the_payload(skip, payload):
+def test_skip_consumes_exactly_the_payload(walk, skip, payload):
     reader = _reader(*payload)
     getattr(reader, skip)()
     assert reader._pos == len(payload)
+
+    # Through each walk: the payload as field 1, then field 16, which a wrong skip
+    # width would garble. Field 16 holds SizeStatistics with field 1 set to 5.
+    field_1 = 0x19 if skip == "_skip_list" else 0x1C
+    size_statistics_5 = [0xFC, 0x16, 0x0A, 0x00, 0x00]
+    footer = _one_leaf_footer([field_1, *payload, *size_statistics_5])
+    assert walk(footer) == [[pss.LeafSizeStats(5, (), ())]]
 
 
 @pytest.mark.parametrize(
@@ -312,12 +344,14 @@ def test_skip_consumes_exactly_the_payload(skip, payload):
         "absent",
     ],
 )
-def test_column_metadata_payloads(payload, expected):
+def test_column_metadata_payloads(walk, payload, expected):
     reader = _reader(*payload)
     result = reader._column_metadata()
+    leaf = None if expected is None else pss.LeafSizeStats(*expected)
 
-    assert result == (None if expected is None else pss.LeafSizeStats(*expected))
+    assert result == leaf
     assert reader._pos == len(payload)
+    assert walk(_one_leaf_footer(payload)) == [[leaf]]
 
 
 def test_geospatial_struct_shape_is_rejected():
@@ -331,6 +365,7 @@ def test_geospatial_struct_shape_is_rejected():
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.usefixtures("walk")
 def test_decoding_is_insensitive_to_view_signedness(written_files, monkeypatch):
     """Masks read a sign-extended byte the same, so ``.cast("B")`` is defensive."""
     metadata = written_files["wide"]
@@ -366,6 +401,8 @@ def _short_varint_skip(self):
 @pytest.mark.parametrize("label", list(_table_cases()))
 def test_a_desync_never_returns_other_numbers(written_files, monkeypatch, bug, label):
     """The prototype's two desyncs give ``None``, caught by type and count checks."""
+    # The bugs are injected into the Python reader.
+    monkeypatch.setattr(pss, "_CompiledCompactReader", None)
     metadata = written_files[label]
     healthy = read_size_statistics(metadata)
     if bug == "binary-skip":
@@ -378,6 +415,7 @@ def test_a_desync_never_returns_other_numbers(written_files, monkeypatch, bug, l
     assert read_size_statistics(metadata) in (None, healthy)
 
 
+@pytest.mark.usefixtures("walk")
 def test_truncated_footer_gives_none(written_files, monkeypatch):
     """An IndexError from running off the end must not reach the caller."""
     monkeypatch.setattr(

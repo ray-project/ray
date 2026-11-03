@@ -7,14 +7,12 @@ leaf's ``SizeStatistics`` from the footer bytes ``FileMetaData`` already holds,
 and :func:`read_dictionary_page` reads a dictionary page's header. Both decode
 Thrift's compact protocol by hand, only the fields they need.
 
-Reading the footer in Python takes about 6 microseconds per row group per leaf:
-0.6 s for 100 row groups of 1,000 leaves (Apple M5, Python 3.12). PyArrow's C++
-parses the same footer about 20 times faster, but doesn't expose these fields.
-py-spy at 1,000 leaves by 1,000 row groups: half the time steps over the leaf
-metadata's other fields, which Thrift can't jump past, a quarter decodes
-``SizeStatistics``, and no line takes over 6%. The result holds about 185 bytes
-per row group per leaf; the footer bytes take up to twice the footer's size in
-PyArrow's memory pool while it runs.
+:func:`read_size_statistics` runs the compiled walk in ``_compact_reader.pyx``:
+0.35 s for 1,000 row groups of 1,000 leaves (Apple M5, Python 3.12), 40% of it
+PyArrow re-serializing the footer. A source tree Bazel hasn't built, such as one
+``setup-dev.py`` links in, runs :class:`_CompactReader`, the same walk in Python,
+in 6 s. The result holds about 185 bytes per row group per leaf; the footer bytes
+take up to twice the footer's size in PyArrow's memory pool while it runs.
 """
 
 from __future__ import annotations
@@ -30,6 +28,14 @@ from typing import (
     Tuple,
     Union,
 )
+
+try:
+    # Absent from a source tree Bazel hasn't built, such as one setup-dev.py links in.
+    from ray.data._internal.datasource_v2.formats.parquet._compact_reader import (
+        CompactReader as _CompiledCompactReader,
+    )
+except ImportError:
+    _CompiledCompactReader = None
 
 logger = logging.getLogger(__name__)
 
@@ -404,7 +410,10 @@ def read_size_statistics(
     if buf is None:
         return None
     try:
-        row_groups = _CompactReader(buf).read()
+        if _CompiledCompactReader is not None:
+            row_groups = _CompiledCompactReader(buf, LeafSizeStats).read()
+        else:
+            row_groups = _CompactReader(buf).read()
     except Exception as exc:
         logger.error(f"Error reading size statistics: {exc}")
         # Sizing has a fallback, so a footer this can't decode must not fail the

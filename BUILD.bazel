@@ -341,6 +341,7 @@ pkg_zip(
         ":gcs_server_files",
         ":raylet_files",
         ":raylet_so_files",
+        "//python/ray/data:compact_reader_so_files",
     ] + select({
         ":jemalloc": [":jemalloc_files"],
         "//conditions:default": [],
