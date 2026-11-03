@@ -18,7 +18,6 @@ from ray.data._internal.datasource_v2.common.pushdown_utils import (
     combine_predicates,
 )
 from ray.data._internal.datasource_v2.formats.orc.orc_file_reader import OrcFileReader
-from ray.data._internal.datasource_v2.interfaces.file_manifest import FileManifest
 from ray.data._internal.datasource_v2.interfaces.file_pruner import FilePruner
 from ray.data._internal.datasource_v2.interfaces.synthesized_columns import (
     SynthesizedColumn,
@@ -34,8 +33,14 @@ from ray.util.annotations import DeveloperAPI
 class _OrcPartitionPredicatePruner(PartitionPredicatePruner):
     """Keep paths whose missing keys require evaluation by the ORC reader."""
 
-    def __init__(self, partitioning: Partitioning, predicate: Expr):
-        super().__init__(partitioning, predicate)
+    def __init__(
+        self,
+        partitioning: Partitioning,
+        predicate: Expr,
+        *,
+        schema: Optional[pa.Schema] = None,
+    ):
+        super().__init__(partitioning, predicate, schema=schema)
         self._predicate_columns = set(get_column_references(predicate))
 
     @override
@@ -71,22 +76,11 @@ class OrcScanner(ArrowFileScanner):
         )
 
     @override
-    def pushed_partition_pruner(self) -> Optional[FilePruner]:
+    def _create_partition_pruner(self) -> Optional[FilePruner]:
         if self.partitioning is None or self.partition_predicate is None:
             return None
-        return _OrcPartitionPredicatePruner(self.partitioning, self.partition_predicate)
-
-    @override
-    def prune_input_split(self, input_split: FileManifest) -> FileManifest:
-        """Use the same conservative path pruning as upstream file listing."""
-        pruner = self.pushed_partition_pruner()
-        if pruner is None:
-            return input_split
-        keep = [pruner.should_include(path) for path in input_split.paths]
-        if all(keep):
-            return input_split
-        return FileManifest(
-            input_split.as_block().filter(pa.array(keep, type=pa.bool_()))
+        return _OrcPartitionPredicatePruner(
+            self.partitioning, self.partition_predicate, schema=self.schema
         )
 
     def read_schema(self) -> pa.Schema:

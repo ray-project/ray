@@ -1025,18 +1025,22 @@ class IntelGpuProvider(GpuProvider):
 class GpuMetricProvider:
     """Provider class for GPU metrics collection."""
 
-    def __init__(self):
+    def __init__(self, enable_metric_report: bool = True):
         self._provider: Optional[GpuProvider] = None
-        self._enable_metric_report = True
-        self._providers = [
-            NvidiaGpuProvider(),
-            AmdGpuProvider(),
-            IntelGpuProvider(),
-        ]
+        self._enable_metric_report = enable_metric_report
+        self._providers = (
+            [NvidiaGpuProvider(), AmdGpuProvider(), IntelGpuProvider()]
+            if enable_metric_report
+            else []
+        )
         self._initialized = False
 
     def initialize(self) -> bool:
         """Initialize the GPU metric provider by detecting available GPU providers."""
+        if not self._enable_metric_report:
+            self._initialized = True
+            return False
+
         if self._initialized:
             return True
 
@@ -1065,8 +1069,7 @@ class GpuMetricProvider:
         return None
 
     def _should_disable_gpu_check(self, nvidia_error: Exception) -> bool:
-        """
-        Check if we should disable GPU usage check based on the error.
+        """Check if we should disable GPU usage check based on the error.
 
         On machines without GPUs, pynvml.nvmlInit() can run subprocesses that
         spew to stderr. Then with log_to_driver=True, we get log spew from every

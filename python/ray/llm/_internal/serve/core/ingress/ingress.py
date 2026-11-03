@@ -175,8 +175,7 @@ def make_fastapi_ingress(
     endpoint_map: Optional[Dict[str, Callable[[FastAPI], Callable]]] = None,
     app: Optional[FastAPI] = None,
 ):
-    """
-    Create a Ray Serve ingress deployment from a class and endpoint mapping.
+    """Create a Ray Serve ingress deployment from a class and endpoint mapping.
 
     Args:
         cls: The class to convert into an ingress deployment

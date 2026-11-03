@@ -234,8 +234,7 @@ def convert_to_torch_tensor(
     use_stream: bool = False,
     stream: Optional[Union["torch.cuda.Stream", "torch.cuda.classes.Stream"]] = None,
 ):
-    """
-    Converts any (possibly nested) structure to torch.Tensors.
+    """Converts any (possibly nested) structure to torch.Tensors.
 
     Args:
         x: The input structure whose leaves will be converted.

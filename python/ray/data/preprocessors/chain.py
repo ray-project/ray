@@ -68,6 +68,14 @@ class Chain(SerializablePreprocessorBase):
     """
 
     def fit_status(self):
+        """Return the combined fit status of the chained preprocessors.
+
+        Returns:
+            ``FitStatus.NOT_FITTABLE`` if none of the preprocessors need fitting,
+            ``FitStatus.FITTED`` if every fittable preprocessor is fitted,
+            ``FitStatus.PARTIALLY_FITTED`` if only some of them are, and
+            ``FitStatus.NOT_FITTED`` if none of them are.
+        """
         fittable_count = 0
         fitted_count = 0
 
