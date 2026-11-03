@@ -422,39 +422,60 @@ def test_tpu_torch_import_error():
 
 
 @pytest.mark.parametrize(
-    "backend, tpu_visible_devices, expected_events",
+    "backend, tpu_visible_devices, local_rank, expected_events",
     [
         pytest.param(
             "tpu_dist",
             "5",
+            "3",
             [("wait_vfio", "5"), ("register", "tpu_dist"), ("init_pg", "tpu_dist")],
             id="single_device_env_precedence",
         ),
         pytest.param(
             "tpu_dist",
             None,
+            "3",
             [("wait_vfio", "3"), ("register", "tpu_dist"), ("init_pg", "tpu_dist")],
             id="local_rank_fallback_when_unset",
         ),
         pytest.param(
             "tpu_dist",
             "0,1",
+            "3",
             [("wait_vfio", "3"), ("register", "tpu_dist"), ("init_pg", "tpu_dist")],
             id="local_rank_fallback_when_multi_device",
         ),
         pytest.param(
+            "tpu_dist",
+            None,
+            None,
+            [("wait_vfio", ""), ("register", "tpu_dist"), ("init_pg", "tpu_dist")],
+            id="empty_fallback_when_local_rank_unset",
+        ),
+        pytest.param(
+            "hccl",
+            "5",
+            "3",
+            [("register", "hccl"), ("init_pg", "hccl")],
+            id="hccl_skips_vfio_wait",
+        ),
+        pytest.param(
             "gloo",
             "5",
+            "3",
             [("init_pg", "gloo")],
             id="non_tpu_skips_vfio_wait",
         ),
     ],
 )
 def test_setup_torch_process_group_waits_for_tpu_vfio_ready(
-    monkeypatch, backend, tpu_visible_devices, expected_events
+    monkeypatch, backend, tpu_visible_devices, local_rank, expected_events
 ):
     """Verifies tpu_dist waits on the worker's target VFIO device before backend/PG init."""
-    monkeypatch.setenv("LOCAL_RANK", "3")
+    if local_rank is None:
+        monkeypatch.delenv("LOCAL_RANK", raising=False)
+    else:
+        monkeypatch.setenv("LOCAL_RANK", local_rank)
     if tpu_visible_devices is None:
         monkeypatch.delenv("TPU_VISIBLE_DEVICES", raising=False)
     else:

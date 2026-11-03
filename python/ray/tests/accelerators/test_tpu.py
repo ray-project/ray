@@ -210,7 +210,7 @@ def vfio_sysfs(monkeypatch):
         patch("os.listdir", side_effect=fake_listdir),
         patch("builtins.open", side_effect=fake_open),
     ):
-        yield listdir_map
+        yield
 
 
 @pytest.mark.parametrize(
@@ -238,7 +238,7 @@ def vfio_sysfs(monkeypatch):
             id="subhost_visible_chips_expands_dual_vf",
         ),
         pytest.param(
-            {"TPU_VISIBLE_CHIPS": "2,3", "TPU_VISIBLE_DEVICES": "2,3"},
+            {"TPU_VISIBLE_CHIPS": "2,3", "TPU_VISIBLE_DEVICES": "0,1"},
             None,
             ["/dev/vfio/6", "/dev/vfio/2", "/dev/vfio/1", "/dev/vfio/7"],
             id="visible_chips_precedence_over_visible_devices",
@@ -256,16 +256,22 @@ def vfio_sysfs(monkeypatch):
             id="explicit_per_device_override_for_torchtpu",
         ),
         pytest.param(
+            {},
+            "",
+            [],
+            id="empty_explicit_index_probes_nothing",
+        ),
+        pytest.param(
             {"TPU_VISIBLE_CHIPS": ""},
             None,
             [],
-            id="cpu_only_empty_visible_chips",
+            id="empty_visible_chips",
         ),
         pytest.param(
             {"TPU_VISIBLE_DEVICES": ""},
             None,
             [],
-            id="cpu_only_empty_visible_devices",
+            id="empty_visible_devices",
         ),
     ],
 )
@@ -281,7 +287,7 @@ def test_get_current_process_tpu_vfio_devices(
     )
 
 
-def test_get_current_process_tpu_vfio_devices_missing_vfio(monkeypatch):
+def test_get_current_process_tpu_vfio_devices_missing_vfio():
     """TPU v4 (/dev/accel*) hosts without /dev/vfio return []."""
     with patch("os.listdir", side_effect=FileNotFoundError("/dev/vfio")):
         assert tpu.get_current_process_tpu_vfio_devices() == []
@@ -323,7 +329,7 @@ def test_wait_for_tpu_vfio_ready_polls_busy_and_closes_fds(vfio_sysfs, monkeypat
     assert len(sleep_calls) == 2
 
 
-def test_wait_for_tpu_vfio_ready_timeout_warns(vfio_sysfs):
+def test_wait_for_tpu_vfio_ready_timeout_warns(vfio_sysfs, propagate_logs, caplog):
     """Logs a warning and returns cleanly when EBUSY persists past timeout_s."""
     clock = [100.0]
 
@@ -335,15 +341,13 @@ def test_wait_for_tpu_vfio_ready_timeout_warns(vfio_sysfs):
             "sleep",
             side_effect=lambda dt: clock.__setitem__(0, clock[0] + dt),
         ),
-        patch.object(tpu.logger, "warning") as mock_warning,
     ):
         tpu.wait_for_tpu_vfio_ready(timeout_s=0.12, visible_devices="5")
 
-    mock_warning.assert_called_once()
-    msg, logged_timeout, logged_pending = mock_warning.call_args[0]
-    assert "Timed out after %.2fs waiting for TPU VFIO devices" in msg
-    assert logged_timeout == pytest.approx(0.12)
-    assert logged_pending == ["/dev/vfio/2"]
+    assert (
+        "Timed out after 0.12s waiting for TPU VFIO devices to be released: ['/dev/vfio/2']."
+        in caplog.text
+    )
 
 
 @pytest.mark.parametrize(

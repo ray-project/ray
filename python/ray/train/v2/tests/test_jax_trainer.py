@@ -991,7 +991,7 @@ def test_single_host_data_iterator_collate_fn(ray_tpu_single_host, tmp_path):
 @pytest.mark.parametrize(
     "use_tpu, jax_platforms, expected_events",
     [
-        (True, None, ["wait_vfio", "jax_init"]),
+        (True, "", ["wait_vfio", "jax_init"]),
         (False, "cpu", ["jax_init"]),
     ],
 )
@@ -1005,10 +1005,7 @@ def test_setup_jax_distributed_waits_for_tpu_vfio_ready(
             initialize=lambda *args, **kwargs: events.append("jax_init")
         )
     )
-    if jax_platforms is None:
-        monkeypatch.delenv("JAX_PLATFORMS", raising=False)
-    else:
-        monkeypatch.setenv("JAX_PLATFORMS", jax_platforms)
+    monkeypatch.setenv("JAX_PLATFORMS", jax_platforms)
     monkeypatch.setitem(sys.modules, "jax", fake_jax)
 
     with patch(

@@ -148,9 +148,9 @@ def _setup_torch_process_group(
     elif backend in ("hccl", "tpu_dist"):
         if backend == "tpu_dist":
             # TorchTPU opens the single device in TPU_VISIBLE_DEVICES, else LOCAL_RANK.
-            device = os.environ.get(TPU_VISIBLE_DEVICES_ENV_VAR, "").strip()
+            device = os.environ.get(TPU_VISIBLE_DEVICES_ENV_VAR, "")
             if not (device.isascii() and device.isdigit()):
-                device = os.environ.get("LOCAL_RANK")
+                device = os.environ.get("LOCAL_RANK", "")
             wait_for_tpu_vfio_ready(visible_devices=device)
         register_custom_torch_dist_backend(backend)
 
