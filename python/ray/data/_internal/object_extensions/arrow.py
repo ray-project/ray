@@ -129,7 +129,7 @@ class ArrowPythonObjectScalar(pa.ExtensionScalar):
         """Unpickle the Python object that this scalar holds.
 
         Args:
-            **kwargs: Unused.
+            **kwargs: Unused. Accepted for compatibility with ``pyarrow.Scalar.as_py``.
 
         Returns:
             The unpickled object, or ``None`` if the scalar is null.

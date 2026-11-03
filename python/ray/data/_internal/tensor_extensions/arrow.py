@@ -818,7 +818,7 @@ class ArrowTensorScalar(pa.ExtensionScalar):
         """Convert this scalar to a NumPy array.
 
         Args:
-            **kwargs: Unused.
+            **kwargs: Unused. Accepted for compatibility with ``pyarrow.Scalar.as_py``.
 
         Returns:
             The tensor as a NumPy array.
