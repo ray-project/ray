@@ -31,13 +31,13 @@ def train_one_step(algorithm, train_batch, policies_to_train=None) -> Dict:
 
         from ray.rllib.execution.rollout_ops import synchronous_parallel_sample
         algo = [...]
-        train_batch = synchronous_parallel_sample(algo.env_runner_group)
+        train_batch = synchronous_parallel_sample(worker_set=algo.env_runner_group)
         # This trains the policy on one batch.
-        print(train_one_step(algo, train_batch)))
+        print(train_one_step(algo, train_batch))
 
     .. code-block:: text
 
-        {"default_policy": ...}
+        {'default_policy': ...}
 
     Updates the NUM_ENV_STEPS_TRAINED and NUM_AGENT_STEPS_TRAINED counters as well as
     the LEARN_ON_BATCH_TIMER timer of the `algorithm` object.
@@ -97,13 +97,13 @@ def multi_gpu_train_one_step(algorithm, train_batch) -> Dict:
 
         from ray.rllib.execution.rollout_ops import synchronous_parallel_sample
         algo = [...]
-        train_batch = synchronous_parallel_sample(algo.env_runner_group)
+        train_batch = synchronous_parallel_sample(worker_set=algo.env_runner_group)
         # This trains the policy on one batch.
-        print(multi_gpu_train_one_step(algo, train_batch)))
+        print(multi_gpu_train_one_step(algo, train_batch))
 
     .. code-block:: text
 
-        {"default_policy": ...}
+        {'default_policy': ...}
 
     Updates the NUM_ENV_STEPS_TRAINED and NUM_AGENT_STEPS_TRAINED counters as well as
     the LOAD_BATCH_TIMER and LEARN_ON_BATCH_TIMER timers of the Algorithm instance.

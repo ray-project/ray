@@ -44,20 +44,19 @@ class InputReader(metaclass=ABCMeta):
             queue_size: Max elements to allow in the TF queue.
 
         Examples:
-            >>> from ray.rllib.models.modelv2 import ModelV2  # doctest: +SKIP_EXAMPLE
+            >>> from ray.rllib.models.modelv2 import ModelV2
             >>> from ray.rllib.offline.json_reader import JsonReader
             >>> imitation_loss = ...
             >>> class MyModel(ModelV2):
             ...     def custom_loss(self, policy_loss, loss_inputs):
             ...         reader = JsonReader(...)
             ...         input_ops = reader.tf_input_ops()
-            ...         logits, _ = self._build_layers_v2(
-            ...             {"obs": input_ops["obs"]},
-            ...             self.num_outputs, self.options)
-            ...         il_loss = imitation_loss(logits, input_ops["action"])
+            ...         logits, _ = self.forward({"obs": input_ops["obs"]}, [], None)
+            ...         il_loss = imitation_loss(logits, input_ops["actions"])
             ...         return policy_loss + il_loss
 
-        You can find a runnable version of this in examples/custom_loss.py.
+        You can find a runnable version of this in
+        examples/_old_api_stack/models/custom_loss_model.py.
 
         Returns:
             Dict of Tensors, one for each column of the read SampleBatch.

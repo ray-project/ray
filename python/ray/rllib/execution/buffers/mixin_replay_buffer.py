@@ -25,25 +25,22 @@ class MixInMultiAgentReplayBuffer:
     in between, all newly added batches are returned (plus some older samples
     according to the "replay ratio").
 
-    .. testcode::
-
-        from ray.rllib.execution.buffers.mixin_replay_buffer import (
-            MixInMultiAgentReplayBuffer)
-        from ray.rllib.policy.sample_batch import SampleBatch
-        # replay ratio 0.66 (2/3 replayed, 1/3 new samples):
-        buffer = MixInMultiAgentReplayBuffer(capacity=100,
-                                             replay_ratio=0.66)
-        A, B, C = (SampleBatch({"obs": [1]}), SampleBatch({"obs": [2]}),
-            SampleBatch({"obs": [3]}))
-        buffer.add(A)
-        buffer.add(B)
-        buffer.add(B)
-        print(buffer.replay()["obs"])
-
-    .. testoutput::
-        :hide:
-
-        ...
+    Examples:
+        >>> from ray.rllib.execution.buffers.mixin_replay_buffer import (
+        ...     MixInMultiAgentReplayBuffer)
+        >>> from ray.rllib.policy.sample_batch import SampleBatch
+        >>> # replay ratio 0.66 (2/3 replayed, 1/3 new samples):
+        >>> buffer = MixInMultiAgentReplayBuffer(capacity=100,
+        ...                                      replay_ratio=0.66)
+        >>> A, B, C = (SampleBatch({"obs": [1]}), SampleBatch({"obs": [2]}),
+        ...     SampleBatch({"obs": [3]}))
+        >>> buffer.add(A)
+        >>> buffer.add(B)
+        >>> buffer.add(B)
+        >>> # The newly added batches come first. Randomly replayed old
+        >>> # samples follow them.
+        >>> print(buffer.replay()["obs"][:3])
+        [1 2 2]
     """
 
     def __init__(
