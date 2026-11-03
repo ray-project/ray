@@ -155,27 +155,8 @@ class LLMRouter:
         # builder binds only for a KV-aware request router.
         if llm_config is not None:
             # Build the tracker before _handle._init() below, which initializes
-            # the KVAwareRouter that looks it up. server.deployment_id is the
-            # tracked LLMServer deployment.
-            from ray.llm._internal.serve.routing_policies.kv_aware.kv_token_tracker import (  # noqa: E501
-                build_kv_token_tracker,
-                get_llm_router_handle,
-            )
-
-            self._kv_token_tracker = build_kv_token_tracker(
-                llm_config, server.deployment_id
-            )
-            self._kv_token_tracker.start_reservation_broadcast(get_llm_router_handle())
-            # Lazy import: pyzmq is not a Ray runtime dependency, so keep it off
-            # the non-KV ingress import path.
-            from ray.llm._internal.serve.routing_policies.kv_aware import (
-                token_channel,
-            )
-
-            # Subscribe before the first await: LongPoll delivers replica updates
-            # on this event loop, so the sender sees every replica as it joins.
-            self._token_sender = token_channel.TokenSender()
-            self._kv_token_tracker.subscribe_token_endpoints(self._token_sender.connect)
+            # the KVAwareRouter that looks it up.
+            self._start_kv_token_tracking(llm_config, server)
             # Lazy import: this module pulls in vLLM's renderer;
             # keep it off the non-KV ingress import path.
             from ray.llm._internal.serve.routing_policies.kv_aware.vllm.tokenizer import (  # noqa: E501
@@ -184,6 +165,31 @@ class LLMRouter:
 
             self._tokenizer = await asyncio.to_thread(Tokenizer, llm_config)
         self._handle._init()
+
+    def _start_kv_token_tracking(
+        self, llm_config: "LLMConfig", server: DeploymentHandle
+    ) -> None:
+        """Build the KV token tracker and subscribe the token sender to it.
+
+        Must stay synchronous and run before ``__init__``'s first ``await``, so
+        no replica update arrives before the subscription.
+        """
+        # server.deployment_id is the tracked LLMServer deployment.
+        from ray.llm._internal.serve.routing_policies.kv_aware.kv_token_tracker import (  # noqa: E501
+            build_kv_token_tracker,
+            get_llm_router_handle,
+        )
+
+        self._kv_token_tracker = build_kv_token_tracker(
+            llm_config, server.deployment_id
+        )
+        self._kv_token_tracker.start_reservation_broadcast(get_llm_router_handle())
+        # Lazy import: pyzmq is not a Ray runtime dependency, so keep it off
+        # the non-KV ingress import path.
+        from ray.llm._internal.serve.routing_policies.kv_aware import token_channel
+
+        self._token_sender = token_channel.TokenSender()
+        self._kv_token_tracker.subscribe_token_endpoints(self._token_sender.connect)
 
     @router_app.post("/internal/route")
     async def route(self, request: Request):
