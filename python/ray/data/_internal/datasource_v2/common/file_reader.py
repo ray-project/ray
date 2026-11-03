@@ -478,7 +478,11 @@ class FileReader(Reader[FileManifest]):
             # Post-filter cursor: rows already yielded from this unit.
             rows_before = 0
             for table in iterate_with_retry(
-                partial(self._iter_fragment_tables, fragment, scanner_kwargs),
+                partial(
+                    self._iter_unit_tables,
+                    fragment_to_read=fragment_to_read,
+                    scanner_kwargs=scanner_kwargs,
+                ),
                 f"read fragment {fragment.path}",
                 match=ctx.retried_io_errors,
             ):
@@ -489,6 +493,28 @@ class FileReader(Reader[FileManifest]):
                         unit_start_row=fragment_to_read.unit_start_row,
                     )
                     rows_before += table.num_rows
+
+    def _iter_unit_tables(
+        self,
+        fragment_to_read: ReadUnitFragment,
+        scanner_kwargs: dict,
+    ) -> Iterator[pa.Table]:
+        """Yield Arrow tables for one read unit.
+
+        The default scans ``fragment_to_read.fragment`` through
+        :meth:`_iter_fragment_tables`.
+
+        Override this when the unit cannot be described as a pyarrow fragment,
+        for example a byte range of a CSV file. It runs inside the retry loop
+        and the scan threads, so IO done here is retried and parallel. Your
+        implementation should:
+
+            1. Read what ``fragment_to_read.unit`` names.
+            2. Yield its tables with ``scanner_kwargs`` applied.
+        """
+        yield from self._iter_fragment_tables(
+            fragment=fragment_to_read.fragment, scanner_kwargs=scanner_kwargs
+        )
 
     def _iter_fragment_tables(
         self,
