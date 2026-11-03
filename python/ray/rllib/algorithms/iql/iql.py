@@ -39,6 +39,7 @@ class IQLConfig(MARWILConfig):
         >>> # Build an Algorithm object from the config and run 1 training iteration.
         >>> algo = config.build()
         >>> _ = algo.train()
+
         >>> from ray.rllib.algorithms.iql import IQLConfig
         >>> from ray import tune
         >>> config = IQLConfig()

@@ -123,7 +123,7 @@ class MARWILConfig(AlgorithmConfig):
         ...     # per training step.
         ...     dataset_num_iters_per_learner=1,
         ... )
-        >>> # Set the config's environment for evalaution.
+        >>> # Set the config's environment for evaluation.
         >>> _ = config.environment(
         ...     observation_space=gym.spaces.Box(
         ...         np.array([-4.8, -np.inf, -0.41887903, -np.inf]),

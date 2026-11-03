@@ -30,6 +30,7 @@ class BCConfig(MARWILConfig):
         >>> # Build an Algorithm object from the config and run 1 training iteration.
         >>> algo = config.build()
         >>> _ = algo.train()
+
         >>> from ray.rllib.algorithms.bc import BCConfig
         >>> from ray import tune
         >>> config = BCConfig()
