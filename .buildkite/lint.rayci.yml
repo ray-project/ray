@@ -36,13 +36,18 @@ steps:
       # target, and the doc_example rule routes it. A prose change can fail it
       # by adding a runnable block to an unlisted page.
       - doc_prose_doctest_targets
+      # Fails on a new notebook or doc_code script under doc/source/ that no
+      # page shows. It's here rather than on a doc step because a prose-only
+      # change can fail it: deleting a page's last literalinclude of a script
+      # orphans that script.
+      - doc_assets
       # Links to files on Ray's master branch. A prose change can fail it,
       # because renaming or deleting a doc file breaks links to it elsewhere.
       - ray_repo_links
 
-  # `doc_readme` runs `setup.py check --restructuredtext --strict --metadata`,
-  # which guards how Ray's PyPI long description renders. Its inputs are the
-  # repo-root README.rst and python/setup.py; nothing under doc/ feeds it, so a
+  # `doc_readme` runs `setup.py check --strict --metadata`, which guards Ray's
+  # PyPI package metadata. Its inputs are the repo-root README.md and
+  # python/setup.py; nothing under doc/ feeds it, so a
   # prose change cannot change its result. The name reads like documentation,
   # which is how it ended up in the prose matrix above, but it belongs to
   # packaging.
@@ -129,8 +134,9 @@ steps:
       - ./ci/lint/lint.sh api_param_coverage --blocking
 
   # Scope guard for the "docstring-only" label: runs only when the label is
-  # present, and fails unless every changed file is a modified .py file whose
-  # code is unchanged once docstrings are removed (an AST comparison, see
+  # present, and fails unless every changed file is a modified Python or
+  # Cython file whose code is unchanged once docstrings are removed (an AST
+  # comparison for .py and .pyi, a token comparison for Cython, see
   # ci/ray_ci/doc/check_docstring_only.py). The label skips library test steps,
   # so this is the check it can't turn off. Tagged `always` so it runs whatever
   # the change routes to.

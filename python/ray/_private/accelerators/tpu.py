@@ -279,8 +279,7 @@ def get_tpu_cores_per_chip(accelerator_type: str) -> int:
 
 
 def get_num_chips_from_topology(topology: str) -> int:
-    """
-    Calculates the total number of chips in a TPU topology.
+    """Calculates the total number of chips in a TPU topology.
     Ex: "2x2x2" -> 8
     """
     total_chips = 1

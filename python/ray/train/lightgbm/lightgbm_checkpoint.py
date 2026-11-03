@@ -73,7 +73,11 @@ class LightGBMCheckpoint(FrameworkCheckpoint):
         return checkpoint
 
     def get_model(self) -> lightgbm.Booster:
-        """Retrieve the LightGBM model stored in this checkpoint."""
+        """Retrieve the LightGBM model stored in this checkpoint.
+
+        Returns:
+            The ``lightgbm.Booster`` loaded from the checkpoint.
+        """
         with self.as_directory() as checkpoint_path:
             return lightgbm.Booster(
                 model_file=Path(checkpoint_path, self.MODEL_FILENAME).as_posix()
