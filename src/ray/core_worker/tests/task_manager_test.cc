@@ -43,6 +43,8 @@
 namespace ray {
 namespace core {
 
+constexpr char kTestActorIdHex[] = "e4ce02420592ca68c1738a0d01000000";
+
 TaskSpecification CreateTaskHelper(uint64_t num_returns,
                                    std::vector<ObjectID> dependencies,
                                    bool dynamic_returns = false,
@@ -81,7 +83,7 @@ TaskSpecification CreateActorStreamingGeneratorTaskHelper(
   RAY_CHECK_GT(actor_generator_backpressure_num_objects, 0);
   TaskSpecification task;
   const JobID job_id = JobID::FromInt(1);
-  const ActorID actor_id = ActorID::FromHex("e4ce02420592ca68c1738a0d01000000");
+  const ActorID actor_id = ActorID::FromHex(kTestActorIdHex);
   const TaskID actor_creation_task_id = TaskID::ForActorCreationTask(actor_id);
   const ObjectID actor_creation_dummy_object_id =
       ObjectID::FromIndex(actor_creation_task_id, /*index=*/1);
@@ -106,7 +108,7 @@ TaskSpecification CreateActorStreamingGeneratorTaskHelper(
 TaskSpecification CreateActorTaskHelper(uint64_t num_returns) {
   TaskSpecification task;
   const JobID job_id = JobID::FromInt(1);
-  const ActorID actor_id = ActorID::FromHex("e4ce02420592ca68c1738a0d01000000");
+  const ActorID actor_id = ActorID::FromHex(kTestActorIdHex);
   const TaskID actor_creation_task_id = TaskID::ForActorCreationTask(actor_id);
   task.GetMutableMessage().set_task_id(
       TaskID::ForActorTask(job_id, TaskID::Nil(), /*parent_counter=*/0, actor_id)
