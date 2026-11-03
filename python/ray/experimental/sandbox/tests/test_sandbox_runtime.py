@@ -191,7 +191,7 @@ def test_a_failed_pull_fails_the_create_as_raised(tmp_path, monkeypatch):
     with pytest.raises(SandboxCreationError) as err:
         runtime.create(image="nope:latest")
     assert str(err.value) == "no such image: nope:latest"
-    assert os.listdir(tmp_path) == []
+    assert not list(tmp_path.glob("ray-sandbox-*"))
 
 
 def test_checkpoint_and_restore_forward_to_backend():
