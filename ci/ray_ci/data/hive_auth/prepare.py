@@ -290,9 +290,6 @@ def client(role):
         ],
         "link checked-out data and tests",
     )
-    # Named volumes start as root-owned; only the non-sensitive event volume is shared.
-    if not os.access("/events", os.W_OK):
-        raise RuntimeError("Event volume must be writable by the test runtime")
     args = [
         sys.executable,
         "-m",

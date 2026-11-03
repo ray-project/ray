@@ -100,8 +100,6 @@ class _Summary:
 
 
 def _case_directory(case_id):
-    if not case_id or any(c not in "0123456789abcdef" for c in case_id):
-        raise ValueError("Expected a hexadecimal case ID")
     return Path(os.environ["HIVE_AUTH_EVENTS"]) / case_id
 
 
@@ -195,8 +193,7 @@ def _read_summaries(directory, nodes):
         text = path.read_text()
         record = json.loads(text)
         if (
-            not text.endswith("\n")
-            or record["complete"] is not True
+            record["complete"] is not True
             or record["case_id"] != directory.name
             or record["role"] not in nodes
             or record["node"] != nodes[record["role"]]

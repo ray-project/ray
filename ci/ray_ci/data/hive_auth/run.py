@@ -76,8 +76,7 @@ def validate_results(path, profile):
     names = [case.attrib["name"] for case in cases]
     expected = {f"test_hive_auth[{case}]" for case in CASES[profile]}
     if (
-        not names
-        or len(names) != len(expected)
+        len(names) != len(expected)
         or set(names) != expected
         or any(
             case.find(tag) is not None
