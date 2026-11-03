@@ -419,9 +419,9 @@ def flatten_inputs_to_1d_tensor(
         ...             [[[8.0], [7.0]], [[5.0], [4.0]]]
         ...         ),
         ...     ),
-        ...         "c": {
-        ...             "cb": np.array([1.0, 2.0]),
-        ...         },
+        ...     "c": {
+        ...         "cb": np.array([1.0, 2.0]),
+        ...     },
         ... }
         >>> struct_torch = tree.map_structure(lambda s: torch.from_numpy(s), struct)
         >>> spaces = dict(

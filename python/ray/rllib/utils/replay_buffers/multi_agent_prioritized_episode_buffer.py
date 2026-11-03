@@ -69,8 +69,7 @@ class MultiAgentPrioritizedEpisodeReplayBuffer(
         >>> # Create the environment.
         >>> env = MultiAgentCartPole({"num_agents": 2})
         >>> # Set up the loop variables
-        >>> agent_ids = env.agents
-        >>> agent_ids.append("__all__")
+        >>> agent_ids = list(env.agents) + ["__all__"]
         >>> terminateds = {aid: False for aid in agent_ids}
         >>> truncateds = {aid: False for aid in agent_ids}
         >>> num_timesteps = 10000
@@ -105,9 +104,8 @@ class MultiAgentPrioritizedEpisodeReplayBuffer(
         ...         terminateds=terminateds,
         ...         truncateds=truncateds
         ...     )
-        >>> # Add the last (truncated) episode to the list of episodes.
-        >>> if not eps.is_done:
-        ...     episodes.append(eps)
+        >>> # Add the last episode, which the loop hasn't added yet.
+        >>> episodes.append(eps)
         >>> # Create the buffer.
         >>> buffer = MultiAgentPrioritizedEpisodeReplayBuffer()
         >>> # Add the list of episodes sampled.
