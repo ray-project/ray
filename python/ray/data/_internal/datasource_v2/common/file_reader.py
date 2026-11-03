@@ -196,11 +196,12 @@ class FileReader(Reader[FileManifest]):
         if len(input_split) == 0:
             return
 
-        # Dedupe paths before handing them to pyarrow. When chunking is on,
-        # a manifest can carry multiple rows per file (each describing a
-        # different row-group slice); pyarrow only needs one fragment per
-        # file, and ``_get_fragments_to_read`` then fans out chunk-level
-        # sub-fragments using the per-row chunk metadata.
+        # Dedupe paths before handing them to pyarrow. A manifest can carry
+        # multiple rows per file — chunking emits one row per row-group
+        # slice, and a user may deliberately list the same file more than
+        # once; pyarrow only needs one fragment per file, and
+        # ``_get_fragments_to_read`` fans out per manifest row from that
+        # fragment, so repeated rows are each still read.
         paths = list(dict.fromkeys(list(input_split.paths)))
         filesystem = self._filesystem or LocalFileSystem()
         # Build a ``pds.Dataset`` over *all* manifest paths so pyarrow's
@@ -365,19 +366,25 @@ class FileReader(Reader[FileManifest]):
         one file position their rows correctly instead of all counting from
         zero.
 
-        Default impl returns one whole-file fragment per file in the
-        dataset, the unit named by its path (paths are deduped in
-        :meth:`read` before the dataset is built). Subclasses that support
-        per-row chunk metadata (e.g. :class:`ParquetFileReader`) override
-        this to fan a single file fragment out into N sub-fragments — one
-        per row-group slice — based on :attr:`FileManifest.file_chunk_metadatas`,
-        each paired with its read unit and the row in the file where it starts.
+        Default impl returns one whole-file fragment per *manifest row*,
+        the unit named by its path. Paths are deduped in :meth:`read`
+        before the dataset is built, so rows that repeat a path (the user
+        listed the same file more than once) share one pyarrow fragment —
+        but each row still yields its own :class:`ReadUnitFragment`, so
+        every listed copy is read. Subclasses that support per-row chunk
+        metadata (e.g. :class:`ParquetFileReader`) override this to fan a
+        single file fragment out into N sub-fragments — one per row-group
+        slice — based on :attr:`FileManifest.file_chunk_metadatas`, each
+        paired with its read unit and the row in the file where it starts.
         """
+        path_to_fragment = {
+            fragment.path: fragment for fragment in dataset.get_fragments()
+        }
         return [
             ReadUnitFragment(
-                fragment, ReadUnit(id=fragment.path, source=fragment.path, count=1)
+                path_to_fragment[path], ReadUnit(id=path, source=path, count=1)
             )
-            for fragment in dataset.get_fragments()
+            for path in manifest.paths
         ]
 
     def _read_fragment_batches(
