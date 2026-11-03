@@ -106,7 +106,10 @@ FILES = {
         "Topic A Intro\n=============\n\n"
         "Body text for the topic A intro page, long enough to add real bytes.\n"
     ),
+    # topic-a has no index page and only this page carries a description, the
+    # shape that once labeled a whole sub-shard after one of its pages.
     "guides/topic-a/deep.rst": (
+        ".. meta::\n   :description: A deep dive into topic A.\n\n"
         "Topic A Deep Dive\n=================\n\n"
         "Body text for the topic A deep dive page with additional length here.\n"
     ),
@@ -130,9 +133,11 @@ FILES = {
         "A build-fetched example page keyed to section B.\n"
     ),
     # In-scope, in no toctree, AND in a directory that maps to no section — the
-    # only kind of page left in the trailing "## Other pages" catch-all.
+    # only kind of page left in the trailing "## Other pages" catch-all. Its
+    # shard holds only this page, so the page's description labels the shard.
     "orphan.rst": (
         ":orphan:\n\n"
+        ".. meta::\n   :description: An orphan page with a curated description.\n\n"
         "Orphan Page\n===========\n\n"
         "An in-scope page not referenced by any toctree.\n"
     ),
@@ -273,6 +278,20 @@ def test_llms_txt():
         _check(
             "pages): Everything in section A." in manifest,
             "manifest entry missing page count + description",
+        )
+        # A sub-shard with no landing or index page takes its directory's name,
+        # not the title of whichever of its pages carries a description.
+        _check(
+            "[Topic A](https://example.com/docs/guides/topic-a/llms-full.txt) "
+            "(2 pages)\n" in manifest
+            and "[Topic A Deep Dive](" not in manifest,
+            "sub-shard labeled after one of its pages",
+        )
+        # A group of one page with a description is labeled after that page.
+        _check(
+            "- [Orphan Page](https://example.com/docs/orphan/llms-full.txt) "
+            "(1 pages): An orphan page with a curated description." in manifest,
+            "single-page shard not labeled after its page",
         )
 
         secA_full = (out / "secA" / "llms-full.txt").read_text(encoding="utf-8")

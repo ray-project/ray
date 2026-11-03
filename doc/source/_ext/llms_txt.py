@@ -446,21 +446,20 @@ def _lead_page(env, prefix, docnames, dir_landing, meta_types, cache):
     """Return ``(lead_docname, confident)`` for a shard group.
 
     The lead is the page that best represents the group: the section's nav
-    landing, then a ``<prefix>/index`` page, then the first page carrying an
-    authored description. ``confident`` is ``False`` when none of those exist and
-    we fall back to an arbitrary first page — so callers can avoid labelling a
-    shard with an unrepresentative page title/description.
+    landing, then a ``<prefix>/index`` page, then, for a group of one page, that
+    page if it carries an authored description. ``confident`` is ``False`` when
+    none of those exist and we fall back to the first page — so callers can
+    avoid labelling a shard with an unrepresentative page title/description. A
+    page with a description doesn't stand for a group of several: a directory of
+    tutorials with no index page would take one tutorial's title.
     """
     landing = dir_landing.get(prefix)
     if landing in docnames:
         return landing, True
     if f"{prefix}/index" in docnames:
         return f"{prefix}/index", True
-    curated = next(
-        (d for d in docnames if _curated_description(env, d, meta_types, cache)), None
-    )
-    if curated:
-        return curated, True
+    if len(docnames) == 1 and _curated_description(env, docnames[0], meta_types, cache):
+        return docnames[0], True
     return docnames[0], False
 
 
@@ -468,9 +467,10 @@ def _shard_identity(env, prefix, docnames, dir_landing, dir_label, meta_types, c
     """Return ``(lead, label, description)`` for a shard group.
 
     A top-level nav section uses its toctree label; an identifiable sub-group
-    (landing/index/curated lead) uses the lead page's title and description; a
-    sub-group with no representative page falls back to a humanized directory
-    name and an empty description rather than an arbitrary page's text.
+    (landing, index, or lone described page) uses the lead page's title and
+    description; a sub-group with no representative page falls back to a
+    humanized directory name and an empty description rather than an arbitrary
+    page's text.
     """
     lead, confident = _lead_page(env, prefix, docnames, dir_landing, meta_types, cache)
     if dir_label.get(prefix):
