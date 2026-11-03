@@ -12,13 +12,13 @@ Idle termination reclaims a RayCluster that has no drivers connected. The Ray au
 
 ## How does the Ray autoscaler detect an idle Ray cluster?
 
-The Ray autoscaler queries the Global Control Service (GCS) job table and checks whether any {term}`driver` is currently connected to the Ray cluster. If no driver is connected for `spec.idleTerminationOptions.timeoutSeconds`, the cluster is considered idle. The autoscaler ignores the following when it looks for drivers:
+The Ray autoscaler queries the Global Control Service (GCS) job table and checks whether any {term}`driver` is currently connected to the Ray cluster. If no driver is connected for `spec.idleTerminationOptions.timeoutSeconds`, the autoscaler considers the Ray cluster idle. The autoscaler ignores the following when it looks for drivers:
 
 - Detached actors. A Ray cluster that runs only detached actors is still idle. See {ref}`actor-lifetimes`.
 - Drivers that Ray starts internally, such as the Ray dashboard's driver.
 - A Ray job whose entrypoint has not yet connected to the Ray cluster, for example while Ray sets up the job's `runtime_env`.
 
-The autoscaler suspends or deletes the RayCluster if no driver is connected for `timeoutSeconds` after the last driver disconnects. If no driver has ever connected, the countdown starts when the RayCluster is created or resumed. A connected driver keeps the RayCluster alive for as long as it remains connected.
+The `timeoutSeconds` countdown starts when the last driver disconnects, or when you create or resume the RayCluster if no driver has connected since then.
 
 If the autoscaler can't query the GCS job table, it treats the Ray cluster as having a connected driver and doesn't terminate it.
 
