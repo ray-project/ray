@@ -80,7 +80,7 @@ class ModelV2:
             initial hidden state of an RNN, if applicable.
 
         Examples:
-            >>> import numpy as np  # doctest: +SKIP_EXAMPLE
+            >>> import numpy as np
             >>> from ray.rllib.models.modelv2 import ModelV2
             >>> class MyModel(ModelV2):
             ...     # ...
@@ -124,7 +124,7 @@ class ModelV2:
             [BATCH, num_outputs] and the list of new RNN state(s) if any.
 
         Examples:
-            >>> import numpy as np  # doctest: +SKIP_EXAMPLE
+            >>> import numpy as np
             >>> from ray.rllib.models.modelv2 import ModelV2
             >>> class MyModel(ModelV2):
             ...     # ...

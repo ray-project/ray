@@ -64,37 +64,24 @@ class RepeatedValues:
         This lets you view the data unbatched in its original form, but is
         not efficient for processing.
 
-        .. code-block:: python
+        Returns:
+            A list with one entry per batch row. Each entry is a list of that
+            row's items, cut to the row's length.
 
-            batch = RepeatedValues(<Tensor shape=(B, N, K)>)
-            items = batch.unbatch_all()
-            print(len(items) == B)
-
-        .. code-block:: text
-
-            True
-
-        .. code-block:: python
-
-            print(max(len(x) for x in items) <= N)
-
-        .. code-block:: text
-
-            True
-
-        .. code-block:: python
-
-            print(items)
-
-        .. code-block:: text
-
-            [[<Tensor_1 shape=(K)>, ..., <Tensor_N, shape=(K)>],
-             ...
-             [<Tensor_1 shape=(K)>, <Tensor_2 shape=(K)>],
-             ...
-             [<Tensor_1 shape=(K)>],
-             ...
-             [<Tensor_1 shape=(K)>, ..., <Tensor_N shape=(K)>]]
+        Examples:
+            >>> import torch
+            >>> from ray.rllib.models.repeated_values import RepeatedValues
+            >>> # A batch of B=2 rows, each holding up to N=3 items of size K=4.
+            >>> batch = RepeatedValues(
+            ...     torch.zeros(2, 3, 4), lengths=torch.tensor([3, 1]), max_len=3
+            ... )
+            >>> items = batch.unbatch_all()
+            >>> print(len(items))
+            2
+            >>> print([len(x) for x in items])
+            [3, 1]
+            >>> print(items[0][0].shape)
+            torch.Size([4])
         """
 
         if self._unbatched_repr is None:
@@ -127,23 +114,22 @@ class RepeatedValues:
         This removes the repeat dimension. The result will be a Python list of
         with length `self.max_len`. Note that the data is still padded.
 
-        .. code-block:: python
+        Returns:
+            The values split along the repeat dimension into `self.max_len`
+            slices. For nested dict or tuple values, each leaf holds such a list.
 
-            batch = RepeatedValues(<Tensor shape=(B, N, K)>)
-            items = batch.unbatch()
-            len(items) == batch.max_len
-
-        .. code-block:: text
-
+        Examples:
+            >>> import torch
+            >>> from ray.rllib.models.repeated_values import RepeatedValues
+            >>> # A batch of B=2 rows, each holding up to N=3 items of size K=4.
+            >>> batch = RepeatedValues(
+            ...     torch.zeros(2, 3, 4), lengths=torch.tensor([3, 1]), max_len=3
+            ... )
+            >>> items = batch.unbatch_repeat_dim()
+            >>> print(len(items) == batch.max_len)
             True
-
-        .. code-block:: python
-
-            print(items)
-
-        .. code-block:: text
-
-            [<Tensor_1 shape=(B, K)>, ..., <Tensor_N shape=(B, K)>]
+            >>> print(items[0].shape)
+            torch.Size([2, 4])
         """
         return _unbatch_helper(self.values, self.max_len)
 
