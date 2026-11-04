@@ -43,6 +43,9 @@ from ray.llm._internal.serve.observability.logging import get_logger
 from ray.llm._internal.serve.observability.usage_telemetry.usage import (
     push_telemetry_report_for_all_models,
 )
+from ray.llm._internal.serve.routing_policies.kv_aware.kv_aware_router import (
+    is_kv_aware,
+)
 from ray.llm._internal.serve.utils.batcher import Batcher
 from ray.llm._internal.serve.utils.lora_serve_utils import (
     LoraModelLoader,
@@ -259,6 +262,12 @@ class LLMServer(LLMServerProtocol):
 
     async def __serve_build_asgi_app__(self):
         app = await self.engine.build_asgi_app()
+        if is_kv_aware(self._llm_config):
+            from ray.llm._internal.serve.routing_policies.kv_aware.vllm.token_tracking import (  # noqa: E501
+                RouterApplicationLifecycleMiddleware,
+            )
+
+            _add_middleware_to_built_app(app, RouterApplicationLifecycleMiddleware)
         # Native vLLM ASGI handlers bypass LLMServer's LoRA-resolving methods.
         _add_middleware_to_built_app(app, _ResolveLoRAMiddleware, server=self)
         _add_openai_models_retrieve_route(app, self._llm_config)

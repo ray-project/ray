@@ -193,6 +193,18 @@ local function json_string_field(json_body, name)
     return nil
 end
 
+local function set_router_response_headers(txn, json_body)
+    local headers = json_body:match('"request_headers"%s*:%s*{(.-)}')
+    if not headers then
+        return
+    end
+    for name, value in headers:gmatch('"%s*([^"]-)%s*"%s*:%s*"([^"]*)"') do
+        if name ~= "" then
+            txn.http:req_set_header(name, value)
+        end
+    end
+end
+
 local function truncated_full_length(txn, body)
     local cl = tonumber(txn.sf:hdr("content-length"))
     if cl and #body < cl then

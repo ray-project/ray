@@ -39,10 +39,9 @@ class KVAwareRouter(MultiplexMixin, RequestRouter):
     """Routes each request to the candidate that best balances expected KV-cache
     overlap against the worker's current prefill/decode load.
 
-    Scoring is delegated to the ``KVTokenTracker`` (which owns the
-    Dynamo selection service and the global KV index) built by the LLMRouter in
-    this same ingress process; this per-handle router stays thin and simply maps
-    candidate replicas to/from Dynamo worker ids.
+    Scoring is delegated to the deployment's process-local ``KVTokenTracker``,
+    which owns the Dynamo selection service and global KV index. This router
+    maps candidate replicas to and from Dynamo worker ids.
 
     Send the same ``x-session-id`` header on each conversation turn to keep
     requests on the same replica. The first turn uses token-load scoring and
@@ -54,16 +53,18 @@ class KVAwareRouter(MultiplexMixin, RequestRouter):
         self,
         session_affinity_ttl_s: float = DEFAULT_SESSION_AFFINITY_TTL_S,
     ):
-        """Bind to the ``KVTokenTracker`` the LLMRouter registered in this
-        process. When absent (e.g. the proxy's fallback router), KV-aware
-        routing degrades to load-balanced selection instead of erroring.
+        """Bind to the tracker registered for this deployment.
+
+        When absent, KV-aware routing degrades to load-balanced selection.
 
         Args:
             session_affinity_ttl_s: How long to keep an idle session on the same
                 replica, in seconds. Defaults to 1800 (30 minutes).
                 ``0`` disables session pinning.
         """
-        self._kv_token_tracker = get_kv_token_tracker()
+        self._kv_token_tracker = get_kv_token_tracker(
+            getattr(self, "_deployment_id", None)
+        )
         if self._kv_token_tracker is None:
             logger.warning(
                 "No KVTokenTracker in this process (%s); KVAwareRouter "
