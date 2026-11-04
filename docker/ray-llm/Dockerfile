@@ -19,6 +19,14 @@ ARG VLLM_SCRIPTS_REF="v0.32.0"
 # version torch pins so the lock satisfies that.
 ARG DEEPEP_COMMIT_HASH="d4f41e4e93"
 
+# Any `uv pip install` that re-resolves torch (the vLLM EP kernel script below
+# runs one unconstrained) would downgrade nvidia-nccl-cu13 to torch's pin, below
+# the >= 2.30.4 that DeepEP V2's GIN backend needs at both build and run time.
+# Keep the override set for the build and in the final image, so later installs
+# (e.g. in derived images or via runtime_env) can't downgrade it either. vLLM's
+# own release image does the same (UV_OVERRIDE in its docker/Dockerfile).
+ENV UV_OVERRIDE=/home/ray/nccl_overrides.txt
+
 RUN <<EOF
 #!/bin/bash
 
@@ -44,6 +52,12 @@ uv pip install --system --no-cache-dir --no-deps \
     --index-strategy unsafe-best-match \
     --no-verify-hashes \
     -r "rayllm_${PYTHON_CODE}_${CUDA_CODE}.lock"
+
+# Install FlashInfer's precompiled kernels (flashinfer-cubin and
+# flashinfer-jit-cache, matching the locked flashinfer-python) for all GPU
+# architectures, as vLLM's own image does. Without them, FlashInfer JIT-compiles
+# kernels on first use, which can stall engine startup for many minutes.
+PIP_NO_CACHE_DIR=1 flashinfer download-kernels
 
 # Include the CUDA device index in vLLM's compile cache paths so a worker never
 # reloads a torch.compile artifact built for a different physical GPU.
@@ -82,20 +96,16 @@ PY
     git apply "${VLLM_DEFER_TRITON_PATCH}"
 )
 
-sudo apt-get update -y && sudo apt-get install -y curl kmod pkg-config librdmacm-dev cmake
+# libnuma-dev and numactl match vLLM's image: fastsafetensors loads libnuma, and
+# vLLM's NUMA binding (numa_bind) launches workers under the numactl CLI.
+sudo apt-get update -y && sudo apt-get install -y curl kmod pkg-config librdmacm-dev cmake \
+    libnuma-dev numactl
 
 # Fetch and run vLLM install scripts at pinned commit
 VLLM_RAW="https://raw.githubusercontent.com/vllm-project/vllm/${VLLM_SCRIPTS_REF}"
 
 # Tell uv to use system Python since the vLLM scripts use uv
 export UV_SYSTEM_PYTHON=1
-
-# Both vLLM scripts below run `uv pip install ... torch ...` unconstrained, which
-# re-resolves torch's transitive nvidia-nccl-cu13 pin and would downgrade the
-# newer NCCL the lock just installed. DeepEP V2's GIN backend needs >= 2.30.4 at
-# both build and run time, so hold the override across the scripts. vLLM's own
-# release image does the same (UV_OVERRIDE in its docker/Dockerfile).
-export UV_OVERRIDE="$(pwd)/nccl_overrides.txt"
 
 # Set CUDA architectures for building EP kernels
 # EP kernels + DeepGEMM require Hopper+ features (matches vLLM Dockerfile)
@@ -120,6 +130,13 @@ if tuple(int(part) for part in installed.split(".")[:3]) < MINIMUM:
     )
 PY
 
+# Install gdrcopy's user-space library (libgdrapi) as vLLM's image does. NVSHMEM
+# (DeepEP) and UCX (NIXL) use it for low-latency GPU memory copies on hosts that
+# load the gdrdrv kernel module. vLLM uses the CUDA 12.8 build on CUDA 13 too.
+GDRCOPY_OS_VERSION="Ubuntu$(. /etc/os-release && echo "${VERSION_ID//./_}")"
+curl -fsSL "${VLLM_RAW}/tools/install_gdrcopy.sh" | \
+    sudo bash -s -- "${GDRCOPY_OS_VERSION}" 12.8 "$(uname -m)"
+
 # uv skips bytecode compilation, so every new container recompiles vLLM and its
 # deps on startup. Precompile all of site-packages here; UV_COMPILE_BYTECODE would
 # miss packages from the base image and the vLLM files patched above.
@@ -132,13 +149,6 @@ sudo rm -rf /var/lib/apt/lists/*
 sudo apt-get clean
 
 EOF
-
-
-# vLLM 0.21.0 selects the FlashInfer top-k/top-p sampler during engine initialization
-# instead of the previous PyTorch-native/Triton sampling path. The FlashInfer sampler
-# introduces longer adds a large one-time engine initialization cost. To avoid performance
-# surprises, we disable the FlashInfer sampler by default.
-ENV VLLM_USE_FLASHINFER_SAMPLER=0
 
 # Precompile packages installed at runtime (e.g. via runtime_env).
 ENV UV_COMPILE_BYTECODE=1
