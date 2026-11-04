@@ -70,45 +70,48 @@ class PlaceholderTest(unittest.TestCase):
         # A chosen option that is not a placeholder must be left as is, even
         # when another option of the same grid search is a ref.
         for chosen in (5, 2.5, "a", (), np.array([1, 2])):
-            config = {"param": tune.grid_search([Dummy("ok"), chosen])}
+            with self.subTest(chosen=chosen):
+                config = {"param": tune.grid_search([Dummy("ok"), chosen])}
 
-            replaced = create_resolvers_map()
-            config = inject_placeholders(config, replaced)
+                replaced = create_resolvers_map()
+                config = inject_placeholders(config, replaced)
 
-            # Pretend we picked the second option from the grid search.
-            config["param"] = chosen
+                # Pretend we picked the second option from the grid search.
+                config["param"] = chosen
 
-            resolve_placeholders(config, replaced)
+                resolve_placeholders(config, replaced)
 
-            np.testing.assert_equal(config["param"], chosen)
+                np.testing.assert_equal(config["param"], chosen)
 
     def testGridSearchContainerChoice(self):
         # The chosen option is a container that does not hold the placeholder
         # the other option has at a deeper path.
         for chosen in ((), (np.array([1, 2]), 3), [1, 2], (1, 2)):
-            config = {"param": tune.grid_search([(Dummy("ok"), 1), chosen])}
+            with self.subTest(chosen=chosen):
+                config = {"param": tune.grid_search([(Dummy("ok"), 1), chosen])}
 
-            replaced = create_resolvers_map()
-            config = inject_placeholders(config, replaced)
+                replaced = create_resolvers_map()
+                config = inject_placeholders(config, replaced)
 
-            config["param"] = chosen
+                config["param"] = chosen
 
-            resolve_placeholders(config, replaced)
+                resolve_placeholders(config, replaced)
 
-            np.testing.assert_equal(config["param"], chosen)
+                np.testing.assert_equal(config["param"], chosen)
 
         # Same, with a dict key as the path to the placeholder.
         for chosen in ([1, 2], (1, 2)):
-            config = {"param": tune.grid_search([{"a": Dummy("ok")}, chosen])}
+            with self.subTest(chosen=chosen):
+                config = {"param": tune.grid_search([{"a": Dummy("ok")}, chosen])}
 
-            replaced = create_resolvers_map()
-            config = inject_placeholders(config, replaced)
+                replaced = create_resolvers_map()
+                config = inject_placeholders(config, replaced)
 
-            config["param"] = chosen
+                config["param"] = chosen
 
-            resolve_placeholders(config, replaced)
+                resolve_placeholders(config, replaced)
 
-            self.assertEqual(config["param"], chosen)
+                self.assertEqual(config["param"], chosen)
 
     def testResolveAfterJsonRoundTrip(self):
         # Trial state is stored as JSON, so after Tuner.restore the placeholder
