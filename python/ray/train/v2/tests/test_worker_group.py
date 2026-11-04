@@ -1427,10 +1427,11 @@ def test_assign_worker_ranks(
 
 
 def test_assign_worker_ranks_tpu():
-    """Verify TPU worker rank assignment sorts by pod name, orders hosts within
-    each slice by integer TPU_WORKER_ID (keeping each host's workers contiguous
-    by node_id when TPU_WORKER_ID is unset), and sorts workers on the same host
-    by their lowest assigned integer TPU ID."""
+    """Verify TPU rank assignment orders workers by slice, host, and TPU ID.
+
+    Hosts without TPU_WORKER_ID sort after labeled hosts and stay contiguous by
+    node ID.
+    """
     worker_cls = ray.remote(num_cpus=0)(RayTrainWorker)
     # (pod_name, tpu_worker_id, node_id, node_ip, tpu_ids)
     # Intentionally scramble:
