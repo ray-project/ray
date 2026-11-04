@@ -45,6 +45,16 @@ http_archive(
     ],
 )
 
+# Bazel 8 autoloads sh_binary/sh_test from rules_shell. Declared here (the
+# version protobuf 29 pins) so its toolchains can be registered below; Bazel's
+# implicit declaration only comes after the end of this file.
+http_archive(
+    name = "rules_shell",
+    sha256 = "410e8ff32e018b9efd2743507e7595c26e2628567c42224411ff533b57d27c28",
+    strip_prefix = "rules_shell-0.2.0",
+    url = "https://github.com/bazelbuild/rules_shell/releases/download/v0.2.0/rules_shell-v0.2.0.tar.gz",
+)
+
 # rules_python arrives transitively at 0.9.0 (from rules_foreign_cc 0.9.0), which
 # predates bzlmod and pins pip 22.0.4. 0.40.0 is deliberate, not the newest: it is
 # the last release that still ships python/pip_install/repositories.bzl (loaded
@@ -91,6 +101,13 @@ rules_java_toolchains()
 load("//bazel:ray_deps_build_all.bzl", "ray_deps_build_all")
 
 ray_deps_build_all()
+
+# sh_binary/sh_test need a registered shell toolchain. Bzlmod registers it
+# automatically; WORKSPACE has to. Without it, every sh_binary fails on
+# Windows ("No suitable shell toolchain found").
+load("@rules_shell//shell:repositories.bzl", "rules_shell_toolchains")
+
+rules_shell_toolchains()
 
 # This needs to be run after grpc_deps() in ray_deps_build_all() to make
 # sure all the packages loaded by grpc_deps() are available. However a
