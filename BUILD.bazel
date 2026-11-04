@@ -259,16 +259,21 @@ py_library(
     visibility = ["__subpackages__"],
 )
 
-# The top-level python/ray/*.py modules belong to this root package, not to a
-# python/ray package, so no per-directory doctest target reaches them. Run their
-# docstring examples here. __init__.py is excluded because pytest on a package's
-# __init__.py collects the whole package; setup-dev.py is a dev script.
+# The top-level python/ray/*.py modules, and python/ray/_common/, belong to this
+# root package rather than to a package of their own, so no per-directory
+# doctest target reaches them. Run their docstring examples here. __init__.py
+# files are excluded because pytest on a package's __init__.py collects the
+# whole package; setup-dev.py is a dev script.
 doctest(
     name = "python_ray_doctest",
     files = glob(
-        ["python/ray/*.py"],
+        [
+            "python/ray/*.py",
+            "python/ray/_common/*.py",
+        ],
         exclude = [
             "python/ray/__init__.py",
+            "python/ray/_common/__init__.py",
             "python/ray/setup-dev.py",
         ],
     ),
