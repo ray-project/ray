@@ -556,8 +556,15 @@ def needs_returns_section(func: _FuncNode) -> bool:
     ret = func.returns
     if ret is None:
         return False
-    if isinstance(ret, ast.Constant) and ret.value in (None, "None"):
-        return False
+    if isinstance(ret, ast.Constant):
+        if ret.value in (None, "None"):
+            return False
+        # A string forward reference such as -> "NoReturn" or -> "typing.Never".
+        if (
+            isinstance(ret.value, str)
+            and ret.value.split(".")[-1] in _NO_RETURN_ANNOTATIONS
+        ):
+            return False
     if isinstance(ret, ast.Name) and ret.id in _NO_RETURN_ANNOTATIONS:
         return False
     if isinstance(ret, ast.Attribute) and ret.attr in _NO_RETURN_ANNOTATIONS:

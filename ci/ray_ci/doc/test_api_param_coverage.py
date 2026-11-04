@@ -617,7 +617,16 @@ def test_return_annotation_without_returns_section_flagged():
 
 
 @pytest.mark.parametrize(
-    "annotation", ["", " -> None", " -> 'None'", " -> NoReturn", " -> typing.NoReturn"]
+    "annotation",
+    [
+        "",
+        " -> None",
+        " -> 'None'",
+        " -> NoReturn",
+        " -> typing.NoReturn",
+        " -> 'NoReturn'",
+        " -> 'typing.Never'",
+    ],
 )
 def test_no_return_value_needs_no_returns_section(annotation):
     head = _src(
