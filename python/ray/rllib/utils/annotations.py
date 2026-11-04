@@ -181,7 +181,7 @@ def OverrideToImplementCustomLogic(obj: F) -> F:
     .. code-block:: python
 
         from ray.rllib.policy.torch_policy import TorchPolicy
-        @overrides(TorchPolicy)
+        @override(TorchPolicy)
         @OverrideToImplementCustomLogic
         def loss(self, ...):
             # implement custom loss function here ...
@@ -211,7 +211,7 @@ def OverrideToImplementCustomLogic_CallToSuperRecommended(obj: F) -> F:
 
     Examples:
         >>> from ray import tune  # doctest: +SKIP_EXAMPLE
-        >>> @overrides(tune.Trainable)
+        >>> @override(tune.Trainable)
         ... @OverrideToImplementCustomLogic_CallToSuperRecommended
         ... def setup(self, config):
         ...     # implement custom setup logic here ...

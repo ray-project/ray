@@ -313,21 +313,21 @@ class MeanStdFilter(Filter):
             **kwargs: Ignored, for compatibility with the `Filter` API.
 
         Examples:
-            >>> a = MeanStdFilter(())  # doctest: +SKIP_EXAMPLE
-            >>> a(1)
-            >>> a(2)
+            >>> a = MeanStdFilter(())
+            >>> _ = a(1)
+            >>> _ = a(2)
             >>> print([a.running_stats.n, a.running_stats.mean, a.buffer.n])
-            [2, 1.5, 2]
+            [2, array(1.5), 2]
 
             >>> b = MeanStdFilter(())
-            >>> b(10)
+            >>> _ = b(10)
             >>> a.apply_changes(b, with_buffer=False)
             >>> print([a.running_stats.n, a.running_stats.mean, a.buffer.n])
-            [3, 4.333333333333333, 2]
+            [3, array(4.33333333), 2]
 
             >>> a.apply_changes(b, with_buffer=True)
             >>> print([a.running_stats.n, a.running_stats.mean, a.buffer.n])
-            [4, 5.75, 1]
+            [4, array(5.75), 1]
         """
         tree.map_structure(
             lambda rs, other_rs: rs.update(other_rs), self.running_stats, other.buffer
@@ -351,20 +351,20 @@ class MeanStdFilter(Filter):
             other: The filter to copy all fields from.
 
         Examples:
-            >>> a = MeanStdFilter(())  # doctest: +SKIP_EXAMPLE
-            >>> a(1)
-            >>> a(2)
+            >>> a = MeanStdFilter(())
+            >>> _ = a(1)
+            >>> _ = a(2)
             >>> print([a.running_stats.n, a.running_stats.mean, a.buffer.n])
             [2, array(1.5), 2]
 
             >>> b = MeanStdFilter(())
-            >>> b(10)
+            >>> _ = b(10)
             >>> print([b.running_stats.n, b.running_stats.mean, b.buffer.n])
-            [1, array(10.0), 1]
+            [1, array(10.), 1]
 
             >>> a.sync(b)
             >>> print([a.running_stats.n, a.running_stats.mean, a.buffer.n])
-            [1, array(10.0), 1]
+            [1, array(10.), 1]
         """
         self.demean = other.demean
         self.destd = other.destd

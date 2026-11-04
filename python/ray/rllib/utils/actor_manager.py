@@ -82,13 +82,25 @@ class RemoteCallResults:
     while skipping errors, etc.
 
     Examples:
-        >>> manager = FaultTolerantActorManager(  # doctest: +SKIP_EXAMPLE
+        >>> import ray
+        >>> from ray.rllib.utils.actor_manager import FaultTolerantActorManager
+        >>> @ray.remote
+        ... class MyActor:
+        ...     def apply(self, func):
+        ...         return func(self)
+        ...     def call(self):
+        ...         return True
+        >>> actors = [MyActor.remote() for _ in range(3)]
+        >>> manager = FaultTolerantActorManager(
         ...     actors, max_remote_requests_in_flight_per_actor=2,
         ... )
         >>> results = manager.foreach_actor(lambda w: w.call())
         >>> # Iterate over all results ignoring errors.
         >>> for result in results.ignore_errors():
         ...     print(result.get())
+        True
+        True
+        True
     """
 
     class _Iterator:
@@ -208,39 +220,36 @@ class FaultAwareApply:
 class FaultTolerantActorManager:
     """A manager that is aware of the healthiness of remote actors.
 
-    .. testcode::
-
-        import time
-        import ray
-        from ray.rllib.utils.actor_manager import FaultTolerantActorManager
-
-        @ray.remote
-        class MyActor:
-            def apply(self, func):
-                return func(self)
-
-            def do_something(self):
-                return True
-
-        actors = [MyActor.remote() for _ in range(3)]
-        manager = FaultTolerantActorManager(
-            actors, max_remote_requests_in_flight_per_actor=2,
-        )
-
-        # Synchronous remote calls.
-        results = manager.foreach_actor(lambda actor: actor.do_something())
-        # Print results ignoring returned errors.
-        print([r.get() for r in results.ignore_errors()])
-
-        # Asynchronous remote calls.
-        manager.foreach_actor_async(lambda actor: actor.do_something())
-        time.sleep(2)  # Wait for the tasks to finish.
-        for r in manager.fetch_ready_async_reqs():
-            # Handle result and errors.
-            if r.ok:
-                print(r.get())
-            else:
-                print("Error: {}".format(r.get()))
+    Examples:
+        >>> import ray
+        >>> from ray.rllib.utils.actor_manager import FaultTolerantActorManager
+        >>> @ray.remote
+        ... class MyActor:
+        ...     def apply(self, func):
+        ...         return func(self)
+        ...     def do_something(self):
+        ...         return True
+        >>> actors = [MyActor.remote() for _ in range(3)]
+        >>> manager = FaultTolerantActorManager(
+        ...     actors, max_remote_requests_in_flight_per_actor=2,
+        ... )
+        >>> # Synchronous remote calls.
+        >>> results = manager.foreach_actor(lambda actor: actor.do_something())
+        >>> # Print results ignoring returned errors.
+        >>> print([r.get() for r in results.ignore_errors()])
+        [True, True, True]
+        >>> # Asynchronous remote calls.
+        >>> _ = manager.foreach_actor_async(lambda actor: actor.do_something())
+        >>> # Wait for all in-flight requests to finish.
+        >>> for r in manager.fetch_ready_async_reqs(timeout_seconds=None):
+        ...     # Handle result and errors.
+        ...     if r.ok:
+        ...         print(r.get())
+        ...     else:
+        ...         print("Error: {}".format(r.get()))
+        True
+        True
+        True
     """
 
     @dataclass

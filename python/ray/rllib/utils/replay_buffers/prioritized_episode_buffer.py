@@ -95,9 +95,8 @@ class PrioritizedEpisodeReplayBuffer(EpisodeReplayBuffer):
         ...         terminated=terminated,
         ...         truncated=truncated
         ...     )
-        >>> # Add the last (truncated) episode to the list of episodes.
-        >>> if not terminated or truncated:
-        ...     episodes.append(eps)
+        >>> # Add the last episode, which the loop hasn't added yet.
+        >>> episodes.append(eps)
         >>> # Create the buffer.
         >>> buffer = PrioritizedEpisodeReplayBuffer()
         >>> # Add the list of episodes sampled.

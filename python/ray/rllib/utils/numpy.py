@@ -241,24 +241,32 @@ def flatten_inputs_to_1d_tensor(
 
     Examples:
         >>> # B=2
-        >>> from ray.rllib.utils.tf_utils import flatten_inputs_to_1d_tensor  # doctest: +SKIP_EXAMPLE
+        >>> import numpy as np
+        >>> from ray.rllib.utils.numpy import flatten_inputs_to_1d_tensor
         >>> from gymnasium.spaces import Discrete, Box
         >>> out = flatten_inputs_to_1d_tensor(
-        ...     {"a": [1, 0], "b": [[[0.0], [0.1]], [1.0], [1.1]]},
-        ...     spaces_struct=dict(a=Discrete(2), b=Box(shape=(2, 1)))
+        ...     {
+        ...         "a": np.array([1, 0]),
+        ...         "b": np.array([[[0.0], [0.1]], [[1.0], [1.1]]]),
+        ...     },
+        ...     spaces_struct=dict(a=Discrete(2), b=Box(-1.0, 1.0, shape=(2, 1)))
         ... )
         >>> print(out)
-        [[0.0, 1.0,  0.0, 0.1], [1.0, 0.0,  1.0, 1.1]]  # B=2 n=4
+        [[0.  1.  0.  0.1]
+         [1.  0.  1.  1.1]]
         >>> # B=2; T=2
         >>> out = flatten_inputs_to_1d_tensor(
-        ...     ([[1, 0], [0, 1]],
-        ...      [[[0.0, 0.1], [1.0, 1.1]], [[2.0, 2.1], [3.0, 3.1]]]),
-        ...     spaces_struct=tuple([Discrete(2), Box(shape=(2, ))]),
+        ...     (np.array([[1, 0], [0, 1]]),
+        ...      np.array([[[0.0, 0.1], [1.0, 1.1]], [[2.0, 2.1], [3.0, 3.1]]])),
+        ...     spaces_struct=tuple([Discrete(2), Box(-1.0, 1.0, shape=(2, ))]),
         ...     time_axis=True
         ... )
         >>> print(out)
-        [[[0.0, 1.0, 0.0, 0.1], [1.0, 0.0, 1.0, 1.1]],
-        [[1.0, 0.0, 2.0, 2.1], [0.0, 1.0, 3.0, 3.1]]]  # B=2 T=2 n=4
+        [[[0.  1.  0.  0.1]
+          [1.  0.  1.  1.1]]
+        <BLANKLINE>
+         [[1.  0.  2.  2.1]
+          [0.  1.  3.  3.1]]]
     """
     # `time_axis` must not be True if `batch_axis` is False.
     assert not (time_axis and not batch_axis)
