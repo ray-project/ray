@@ -74,24 +74,22 @@ logger = logging.getLogger(__name__)
 class DQNConfig(AlgorithmConfig):
     r"""Defines a configuration class from which a DQN Algorithm can be built.
 
-    .. testcode::
-
-        from ray.rllib.algorithms.dqn.dqn import DQNConfig
-
-        config = (
-            DQNConfig()
-            .environment("CartPole-v1")
-            .training(replay_buffer_config={
-                "type": "PrioritizedEpisodeReplayBuffer",
-                "capacity": 60000,
-                "alpha": 0.5,
-                "beta": 0.5,
-            })
-            .env_runners(num_env_runners=1)
-        )
-        algo = config.build()
-        algo.train()
-        algo.stop()
+    Examples:
+        >>> from ray.rllib.algorithms.dqn.dqn import DQNConfig
+        >>> config = (
+        ...     DQNConfig()
+        ...     .environment("CartPole-v1")
+        ...     .training(replay_buffer_config={
+        ...         "type": "PrioritizedEpisodeReplayBuffer",
+        ...         "capacity": 60000,
+        ...         "alpha": 0.5,
+        ...         "beta": 0.5,
+        ...     })
+        ...     .env_runners(num_env_runners=1)
+        ... )
+        >>> algo = config.build()
+        >>> _ = algo.train()
+        >>> algo.stop()
 
     .. testcode::
 

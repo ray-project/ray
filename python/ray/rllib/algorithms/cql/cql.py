@@ -57,20 +57,19 @@ logger = logging.getLogger(__name__)
 class CQLConfig(SACConfig):
     """Defines a configuration class from which a CQL can be built.
 
-    .. testcode::
-        :skipif: True
-
-        from ray.rllib.algorithms.cql import CQLConfig
-        config = CQLConfig().training(gamma=0.9, lr=0.01)
-        config = config.resources(num_gpus=0)
-        config = config.env_runners(num_env_runners=4)
-        print(config.to_dict())
-        # Build a Algorithm object from the config and run 1 training iteration.
-        algo = config.build(env="CartPole-v1")
-        algo.train()
+    Examples:
+        >>> from ray.rllib.algorithms.cql import CQLConfig  # doctest: +SKIP_EXAMPLE
+        >>> config = CQLConfig().training(gamma=0.9, lr=0.01)
+        >>> config = config.resources(num_gpus=0)
+        >>> config = config.env_runners(num_env_runners=4)
+        >>> print(config.to_dict())
+        >>> # Build a Algorithm object from the config and run 1 training iteration.
+        >>> algo = config.build(env="CartPole-v1")
+        >>> algo.train()
     """
 
     def __init__(self, algo_class=None):
+        """Initializes a CQLConfig instance."""
         super().__init__(algo_class=algo_class or CQL)
 
         # fmt: off
