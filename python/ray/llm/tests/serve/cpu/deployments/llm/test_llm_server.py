@@ -10,7 +10,7 @@ import numpy as np
 import pytest
 from fastapi.testclient import TestClient
 from starlette.datastructures import State
-from vllm.entrypoints.launchers.cli_args import make_arg_parser
+from vllm.entrypoints.common.cli_args import make_arg_parser
 from vllm.utils.argparse_utils import FlexibleArgumentParser
 from vllm.v1.engine.exceptions import EngineDeadError
 
@@ -846,7 +846,9 @@ class TestBuildAsgiApp:
 
         app = await engine.build_asgi_app()
         app.state.args = vllm_args
-        app.state.engine_client = SimpleNamespace(errored=True, is_running=False)
+        app.state.engine_client = SimpleNamespace(
+            errored=True, is_running=False, should_keep_api_server_alive=False
+        )
 
         @app.get("/engine_dead")
         async def engine_dead():

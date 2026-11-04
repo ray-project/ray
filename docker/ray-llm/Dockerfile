@@ -5,13 +5,12 @@ FROM "$BASE_IMAGE"
 
 COPY python/deplocks/llm/rayllm_*.lock ./
 COPY python/requirements/llm/patches/vllm-device-aware-compile-cache.patch \
-    python/requirements/llm/patches/vllm-preserve-model-eos-tokens.patch \
-    python/requirements/llm/patches/vllm-defer-triton-validation.patch ./
+    python/requirements/llm/patches/vllm-preserve-model-eos-tokens.patch ./
 COPY python/requirements/llm/nccl_overrides.txt ./
 
 # vLLM version tag to use for EP kernel and DeepGEMM install scripts
 # Keep in sync with vllm version in python/requirements/llm/llm-requirements.txt
-ARG VLLM_SCRIPTS_REF="v0.32.0"
+ARG VLLM_SCRIPTS_REF="v0.33.0"
 
 # Keep in sync with DEEPEP_COMMIT_HASH in vllm's docker/Dockerfile. This is
 # DeepEP V2 ("NCCL Gin"), which needs NCCL >= 2.30.4 at build and run time;
@@ -47,10 +46,9 @@ uv pip install --system --no-cache-dir --no-deps \
 
 # Include the CUDA device index in vLLM's compile cache paths so a worker never
 # reloads a torch.compile artifact built for a different physical GPU.
-# vllm-project/vllm#38962 was reverted by #53304; still needed in vLLM 0.32.0.
+# vllm-project/vllm#38962 was reverted by #53304; still needed in vLLM 0.33.0.
 VLLM_DEVICE_AWARE_COMPILE_CACHE_PATCH="$(pwd)/vllm-device-aware-compile-cache.patch"
 VLLM_PRESERVE_MODEL_EOS_TOKENS_PATCH="$(pwd)/vllm-preserve-model-eos-tokens.patch"
-VLLM_DEFER_TRITON_PATCH="$(pwd)/vllm-defer-triton-validation.patch"
 VLLM_SITE_PACKAGES="$(python - <<'PY'
 import site
 import sysconfig
@@ -76,10 +74,6 @@ PY
     git apply "${VLLM_DEVICE_AWARE_COMPILE_CACHE_PATCH}"
     # TODO (jeffreywang): Remove this patch when https://github.com/vllm-project/vllm/pull/52153 is merged.
     git apply "${VLLM_PRESERVE_MODEL_EOS_TOKENS_PATCH}"
-    # Validate Triton on inference workers so CPU frontends can build configs.
-    # TODO (jeffreywang): Remove this patch once vLLM PR #62576 is included in Ray's pinned version.
-    # https://github.com/vllm-project/vllm/pull/62576
-    git apply "${VLLM_DEFER_TRITON_PATCH}"
 )
 
 sudo apt-get update -y && sudo apt-get install -y curl kmod pkg-config librdmacm-dev cmake

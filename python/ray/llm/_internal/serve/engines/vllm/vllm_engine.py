@@ -20,7 +20,7 @@ from pydantic import BaseModel, TypeAdapter, ValidationError, field_validator
 from starlette.datastructures import State
 from starlette.requests import Request
 from vllm.engine.arg_utils import AsyncEngineArgs
-from vllm.entrypoints.launchers.cli_args import FrontendArgs
+from vllm.entrypoints.common.cli_args import FrontendArgs
 from vllm.entrypoints.serve.engine.protocol import ErrorResponse as VLLMErrorResponse
 from vllm.exceptions import VLLMClientError
 
