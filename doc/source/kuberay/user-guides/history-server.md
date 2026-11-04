@@ -299,6 +299,10 @@ Configure the collector sidecar container with the following environment variabl
   - 
   - No
   - How often the collector uploads new log content while the cluster runs (defaults to `"5m"`). Shorter intervals keep running cluster data fresher but create more objects in storage.
+* - `RAY_COLLECTOR_EVENT_ROTATION_INTERVAL`
+  - `--event-rotation-interval`
+  - No
+  - How often the collector rotates its local event file and uploads it while the cluster runs (defaults to `"5m"`). The collector also rotates the file when it reaches `RAY_COLLECTOR_EVENT_MAX_FILE_SIZE_MB` (defaults to `100`). This interval controls event freshness, and `RAY_COLLECTOR_LOG_UPLOAD_INTERVAL` controls log freshness.
 :::
 
 :::{important}
@@ -367,9 +371,11 @@ gs://${GCS_BUCKET}/
     │           └── <session_name>/
     │               └── <node_id>/
     │                   ├── logs/
-    │                   │   ├── dashboard_agent.log
-    │                   │   ├── raylet.out
-    │                   │   ├── <file>.chunks/<offset>    # Log chunks uploaded while the cluster runs
+    │                   │   ├── dashboard_agent.log.chunks/
+    │                   │   │   └── <offset>              # Log content uploaded in chunks while the cluster runs
+    │                   │   ├── raylet.out.chunks/
+    │                   │   │   └── <offset>
+    │                   │   ├── debug_state.txt           # Uploaded as a whole file on each pass
     │                   │   └── ...
     │                   ├── node_events/
     │                   │   └── <node_id>-<date_hour>     # Node event logs
@@ -394,7 +400,7 @@ gcloud storage ls --recursive gs://${GCS_BUCKET}
 
 ```text
 gs://BUCKET/cluster-metadata/rayjob/NAMESPACE_rayjob-historyserver-gcs_rayjob-historyserver-gcs-lz9xt/session_2026-07-28_17-07-51_736134_1
-gs://BUCKET/cluster-history/rayjob/NAMESPACE/rayjob-historyserver-gcs/rayjob-historyserver-gcs-lz9xt/session_2026-07-28_17-07-51_736134_1/0a46878b6f144cdb0ed62e9871caaeb16083547bf34acb5025832ace/logs/dashboard_agent.log
+gs://BUCKET/cluster-history/rayjob/NAMESPACE/rayjob-historyserver-gcs/rayjob-historyserver-gcs-lz9xt/session_2026-07-28_17-07-51_736134_1/0a46878b6f144cdb0ed62e9871caaeb16083547bf34acb5025832ace/logs/dashboard_agent.log.chunks/00000000000000000000
 gs://BUCKET/cluster-history/rayjob/NAMESPACE/rayjob-historyserver-gcs/rayjob-historyserver-gcs-lz9xt/session_2026-07-28_17-07-51_736134_1/0a46878b6f144cdb0ed62e9871caaeb16083547bf34acb5025832ace/node_events/0a46878b6f144cdb0ed62e9871caaeb16083547bf34acb5025832ace-2026-07-28-17
 gs://BUCKET/cluster-history/rayjob/NAMESPACE/rayjob-historyserver-gcs/rayjob-historyserver-gcs-lz9xt/session_2026-07-28_17-07-51_736134_1/0a46878b6f144cdb0ed62e9871caaeb16083547bf34acb5025832ace/job_events/AQAAAA==/0a46878b6f144cdb0ed62e9871caaeb16083547bf34acb5025832ace-2026-07-28-17
 ```
@@ -538,7 +544,7 @@ After the RayCluster is deleted, the History Server reloads the session automati
 
 Keep the following limitations in mind:
 
-* The collector uploads logs every `RAY_COLLECTOR_LOG_UPLOAD_INTERVAL`, so the latest log lines can take up to that long to appear.
+* The collector uploads logs every `RAY_COLLECTOR_LOG_UPLOAD_INTERVAL` and events every `RAY_COLLECTOR_EVENT_ROTATION_INTERVAL`, so the latest log lines and events can take up to those intervals to appear. See [Environment variables in the example manifest](#environment-variables-in-the-example-manifest) for details.
 * Chunked log uploads don't support Ray log rotation. After Ray rotates a log file, the History Server can show that file with content from before and after the rotation mixed together.
 
 ## Data retention
