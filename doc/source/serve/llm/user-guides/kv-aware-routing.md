@@ -125,6 +125,30 @@ request_router_config = RequestRouterConfig(
 
 Set it to `0` to disable pinning. Requests without `x-session-id` use token-load scoring and KV cache overlap.
 
+### Route on disk-resident prefixes
+
+With native offloading, vLLM's `TieringOffloadingSpec` can add a filesystem tier behind the CPU tier, so a replica can reload a prefix from local disk after it leaves CPU memory. Under `KVAwareRouter`, Ray Serve LLM turns on KV events for filesystem tiers that don't set `enable_kv_events`, so the router knows which replica holds each prefix on disk and credits it with `DYN_ROUTER_DISK_CACHE_HIT_WEIGHT` (see [Tune the scoring weights](#tune-the-scoring-weights)):
+
+```python
+engine_kwargs={
+    "enable_prefix_caching": True,
+    "kv_offloading_backend": "native",
+    "kv_offloading_size": 8,  # GiB of CPU tier per replica
+    "kv_transfer_config": {
+        "kv_connector": "OffloadingConnector",
+        "kv_role": "kv_both",
+        "kv_connector_extra_config": {
+            "spec_name": "TieringOffloadingSpec",
+            "secondary_tiers": [{"type": "fs", "root_dir": "/mnt/local-nvme/kv-cache"}],
+        },
+    },
+}
+```
+
+Replicas on the same node use the same `root_dir`, so each can read blocks the others stored, but the router credits only the replica that stored a block. The router doesn't track tiers that set `"locality": "REMOTE"`, so Ray Serve LLM leaves their events off.
+
+vLLM's filesystem tier doesn't limit its disk usage or publish removal events yet. Watch the space under `root_dir`, and don't delete files under it while the replica runs: the router keeps crediting deleted blocks until that replica restarts.
+
 ### Tuning
 
 Set these in the cluster environment:
@@ -198,28 +222,6 @@ llm_config = LLMConfig(
 | `DYN_ROUTER_DISK_CACHE_HIT_WEIGHT` | 0.25 | Cache credit for each matched block held in a local disk tier, relative to 1.0 for a block in GPU memory. Applies with a local disk tier; see [Route on disk-resident prefixes](#route-on-disk-resident-prefixes). |
 
 For the full set of selection-service settings, see NVIDIA's [standalone selection service](https://docs.nvidia.com/dynamo/knowledge-base/modular-components/router/standalone-selection) documentation.
-
-### Route on disk-resident prefixes
-
-With native offloading, vLLM's `TieringOffloadingSpec` can add a filesystem tier behind the CPU tier, so a replica can reload a prefix from local disk after it leaves CPU memory. Under `KVAwareRouter`, Ray Serve LLM turns on KV events for filesystem tiers that don't set `enable_kv_events`, so the router knows which replica holds each prefix on disk and credits it with `DYN_ROUTER_DISK_CACHE_HIT_WEIGHT`:
-
-```python
-engine_kwargs={
-    "enable_prefix_caching": True,
-    "kv_offloading_backend": "native",
-    "kv_offloading_size": 8,  # GiB of CPU tier per replica
-    "kv_transfer_config": {
-        "kv_connector": "OffloadingConnector",
-        "kv_role": "kv_both",
-        "kv_connector_extra_config": {
-            "spec_name": "TieringOffloadingSpec",
-            "secondary_tiers": [{"type": "fs", "root_dir": "/mnt/local-nvme/kv-cache"}],
-        },
-    },
-}
-```
-
-vLLM's filesystem tier doesn't limit its disk usage or publish removal events yet. Watch the space under `root_dir`, and don't delete files under it while the replica runs: the router keeps crediting deleted blocks until that replica restarts.
 
 ### Tokenization at the ingress
 

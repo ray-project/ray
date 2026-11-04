@@ -75,7 +75,8 @@ def _enable_storage_tier_kv_events(llm_config: LLMConfig) -> None:
     tracks disk-resident prefixes the same way it tracks CPU-offloaded ones. An
     explicit value is kept. Object-store tiers are left alone: their storage is
     usually not local to the replica, and the router indexes a tier's events as
-    local unless the tier sets ``locality="REMOTE"``.
+    local unless the tier sets ``locality="REMOTE"``. A tier that sets
+    ``locality="REMOTE"`` is left alone too, since the router drops its events.
     """
 
     def needs_default(tier: Any) -> bool:
@@ -83,6 +84,7 @@ def _enable_storage_tier_kv_events(llm_config: LLMConfig) -> None:
             isinstance(tier, dict)
             and tier.get("type") == "fs"
             and "enable_kv_events" not in tier
+            and str(tier.get("locality", "")).upper() != "REMOTE"
         )
 
     extra_config = _tiering_extra_config(llm_config.engine_kwargs)

@@ -143,11 +143,14 @@ class TestConfigureKvEvents:
 
     def test_storage_tier_events_default_on_for_fs(self):
         """KV routing turns on STORAGE events for filesystem tiers that don't set
-        enable_kv_events, keeps explicit values, and leaves object-store tiers."""
+        enable_kv_events, keeps explicit values, and leaves object-store tiers
+        and REMOTE filesystem tiers, whose events the router drops."""
         tiers = [
             {"type": "fs", "root_dir": "/a"},
             {"type": "fs", "root_dir": "/b", "enable_kv_events": False},
             {"type": "obj", "bucket": "c"},
+            {"type": "fs", "root_dir": "/d", "locality": "REMOTE"},
+            {"type": "fs", "root_dir": "/e", "locality": "LOCAL"},
         ]
         llm_config = make_kv_aware_llm_config(
             engine_kwargs={
@@ -170,6 +173,13 @@ class TestConfigureKvEvents:
             {"type": "fs", "root_dir": "/a", "enable_kv_events": True},
             {"type": "fs", "root_dir": "/b", "enable_kv_events": False},
             {"type": "obj", "bucket": "c"},
+            {"type": "fs", "root_dir": "/d", "locality": "REMOTE"},
+            {
+                "type": "fs",
+                "root_dir": "/e",
+                "locality": "LOCAL",
+                "enable_kv_events": True,
+            },
         ]
         # The caller's tier dicts are not mutated.
         assert "enable_kv_events" not in tiers[0]
