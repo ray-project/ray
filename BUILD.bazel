@@ -14,6 +14,7 @@ load("@rules_pkg//pkg:mappings.bzl", "pkg_attributes", "pkg_files")
 load("@rules_pkg//pkg:zip.bzl", "pkg_zip")
 load("@rules_proto//proto:defs.bzl", "proto_library")
 load("@rules_python//python:defs.bzl", "py_binary", "py_library")
+load("//bazel:python.bzl", "doctest")
 load("//bazel:ray.bzl", "COPTS", "PYX_COPTS", "PYX_SRCS", "ray_cc_library")
 
 package(
@@ -256,6 +257,22 @@ py_library(
         exclude = ["python/ray/tests/*.py"],
     ),
     visibility = ["__subpackages__"],
+)
+
+# The top-level python/ray/*.py modules belong to this root package, not to a
+# python/ray package, so no per-directory doctest target reaches them. Run their
+# docstring examples here. __init__.py is excluded because pytest on a package's
+# __init__.py collects the whole package; setup-dev.py is a dev script.
+doctest(
+    name = "python_ray_doctest",
+    files = glob(
+        ["python/ray/*.py"],
+        exclude = [
+            "python/ray/__init__.py",
+            "python/ray/setup-dev.py",
+        ],
+    ),
+    tags = ["team:core"],
 )
 
 pkg_files(
