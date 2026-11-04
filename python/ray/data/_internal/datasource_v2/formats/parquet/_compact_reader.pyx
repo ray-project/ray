@@ -92,6 +92,14 @@ cdef class CompactReader:
                 return result
             shift += VARINT_BITS
 
+    cdef Py_ssize_t length(self) except -1:
+        """A varint count or byte length, which can't exceed the bytes left."""
+        cdef uint64_t n = self.varint()
+        # A corrupt one could otherwise cast negative and move pos backwards.
+        if n > <uint64_t>(self.buf.shape[0] - self.pos):
+            raise IndexError("a count runs past the footer")
+        return <Py_ssize_t>n
+
     cdef inline int skip_varint(self) except -1:
         while self.buf[self.pos] & VARINT_CONTINUES:
             self.pos += 1
@@ -106,7 +114,7 @@ cdef class CompactReader:
         cdef int header = self.byte()
         cdef Py_ssize_t c = (header >> NIBBLE_BITS) & NIBBLE_MASK
         if c == LONG_FORM_COUNT:
-            c = <Py_ssize_t>self.varint()
+            c = self.length()
         count[0] = c
         element_type[0] = header & NIBBLE_MASK
         return 0
@@ -138,8 +146,7 @@ cdef class CompactReader:
         if is_varint_type(field_type):
             self.skip_varint()
         elif field_type == BINARY:
-            count = <Py_ssize_t>self.varint()
-            self.pos += count
+            self.pos += self.length()
         elif field_type == STRUCT:
             self.skip_struct()
         elif field_type == LIST or field_type == SET:
@@ -151,7 +158,7 @@ cdef class CompactReader:
         elif field_type == DOUBLE:
             self.pos += DOUBLE_BYTES
         elif field_type == MAP:
-            count = <Py_ssize_t>self.varint()
+            count = self.length()
             if count:
                 header = self.byte()
                 key_type = (header >> NIBBLE_BITS) & NIBBLE_MASK

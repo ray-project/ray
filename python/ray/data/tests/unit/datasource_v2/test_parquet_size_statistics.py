@@ -463,6 +463,15 @@ def test_wrong_field_types_are_rejected(walk, payload):
         walk(_one_leaf_footer(payload))
 
 
+def test_a_length_past_the_footer_raises(walk):
+    """A corrupt length can't move the reader back to re-read a field forever."""
+    # Field 3, a list of one binary whose length is 2**64 - 12: as a signed size,
+    # -12, which is this payload's own length.
+    payload = [0x39, _list_header(1, pss._BINARY), 0xF4] + [0xFF] * 8 + [0x01]
+    with pytest.raises(IndexError):
+        walk(_one_leaf_footer(payload))
+
+
 # ---------------------------------------------------------------------------
 # Fault injection: corruption must become ``None``, never other numbers
 # ---------------------------------------------------------------------------
