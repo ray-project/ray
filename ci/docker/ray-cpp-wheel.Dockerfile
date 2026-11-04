@@ -43,7 +43,7 @@ COPY --from=ray-dashboard /dashboard.tar.gz /tmp/
 
 # Minimal source files needed for cpp wheel build
 COPY --chown=forge ci/build/build-ray-cpp-wheel.sh ci/build/
-COPY --chown=forge README.rst pyproject.toml ./
+COPY --chown=forge README.md pyproject.toml ./
 COPY --chown=forge python/setup.py python/
 COPY --chown=forge python/LICENSE.txt python/
 COPY --chown=forge python/MANIFEST.in python/

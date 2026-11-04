@@ -94,6 +94,7 @@ class SandboxRuntime:
         cidr_allowlist: Optional[List[str]] = None,
         capabilities: Optional[List[str]] = None,
         readonly: bool = True,
+        gpu_ids: Optional[List[Union[int, str]]] = None,
         _oci_spec_transform_fn: Optional[Callable[[Dict], Optional[Dict]]] = None,
         _ignore_cgroups: bool = False,
         disk: Union[str, int, float] = 0,
@@ -136,6 +137,8 @@ class SandboxRuntime:
                 is writable. Writes are isolated within a per-sandbox copy-on-write overlay
                 filesystem, ensuring multiple sandboxes running the same container image do
                 not interfere with each other or modify the base image.
+            gpu_ids: GPU device ids/UUIDs to expose via CDI; see
+                :class:`~ray.experimental.sandbox.config.SandboxConfig`.
             _oci_spec_transform_fn: PRIVATE — development/testing only. Called with the fully-built OCI
                 spec dict before it is written; may mutate in place or return a new dict. Must be
                 cloudpickle-serializable. No stability guarantees. Accepts a transform function.
@@ -163,6 +166,7 @@ class SandboxRuntime:
             cidr_allowlist=cidr_allowlist,
             capabilities=capabilities,
             readonly=readonly,
+            gpu_ids=gpu_ids,
             _oci_spec_transform_fn=_oci_spec_transform_fn,
             _ignore_cgroups=_ignore_cgroups,
             disk=disk,
@@ -342,6 +346,102 @@ class SandboxRuntime:
             cidrs: The new allowlist, in the forms ``cidr_allowlist`` takes.
         """
         self._backend.set_egress_allowlist(instance_id, cidrs)
+
+    def checkpoint(
+        self,
+        instance_id: str,
+        checkpoint_path: Optional[str] = None,
+        leave_running: bool = True,
+        timeout_seconds: float = 30.0,
+        **kwargs,
+    ) -> str:
+        """Create a checkpoint of the running sandbox.
+
+        Args:
+            instance_id: Unique identifier of the sandbox instance.
+            checkpoint_path: Path where the checkpoint directory will be saved.
+                If None, a default directory inside the sandbox storage root is used.
+            leave_running: If True, keep the sandbox running after checkpointing.
+            timeout_seconds: Timeout for the checkpoint operation.
+            **kwargs: Backend-specific arguments.
+
+        Returns:
+            Absolute path to the checkpoint directory.
+        """
+        res = self._backend.checkpoint_sandbox(
+            sandbox_id=instance_id,
+            checkpoint_path=checkpoint_path,
+            leave_running=leave_running,
+            timeout_seconds=timeout_seconds,
+            **kwargs,
+        )
+        if not leave_running:
+            timer = self._ttl_timers.pop(instance_id, None)
+            if timer is not None:
+                timer.cancel()
+
+        if isinstance(res, dict) and "checkpoint_path" in res:
+            return res["checkpoint_path"]
+        return checkpoint_path or ""
+
+    def restore(
+        self,
+        checkpoint_path: str,
+        cpu: Optional[float] = None,
+        memory: Optional[Union[str, int, float]] = None,
+        ttl_seconds: Optional[int] = None,
+        timeout_seconds: float = 30.0,
+        **kwargs,
+    ) -> str:
+        """Restore a sandbox instance from a previously saved checkpoint.
+
+        The restored sandbox preserves the full execution state, network mode,
+        mounts, Linux capabilities, and process environment of the checkpointed
+        sandbox. Cgroup resource allocations (cpu, memory) and lifecycle limits
+        (ttl_seconds, timeout_seconds) can optionally be overridden.
+
+        Args:
+            checkpoint_path: Path to the checkpoint directory.
+            cpu: CPU allocation override.
+            memory: Memory allocation override.
+            ttl_seconds: Optional time-to-live for the restored sandbox.
+            timeout_seconds: Timeout for the restore operation.
+            **kwargs: Backend-specific arguments.
+
+        Returns:
+            A unique string identifier for the restored sandbox.
+        """
+        instance_id = self._backend.restore_sandbox(
+            checkpoint_path=checkpoint_path,
+            cpu=cpu,
+            memory=memory,
+            timeout_seconds=timeout_seconds,
+            **kwargs,
+        )
+        if ttl_seconds is not None and ttl_seconds > 0:
+            timer = threading.Timer(ttl_seconds, self._expire, args=(instance_id,))
+            timer.daemon = True
+            self._ttl_timers[instance_id] = timer
+            timer.start()
+        return instance_id
+
+    def pause(self, instance_id: str, timeout_seconds: float = 10.0) -> None:
+        """Pause a running sandbox instance.
+
+        Args:
+            instance_id: Unique identifier of the sandbox instance.
+            timeout_seconds: Timeout for pause operation.
+        """
+        self._backend.pause_sandbox(instance_id, timeout_seconds=timeout_seconds)
+
+    def resume(self, instance_id: str, timeout_seconds: float = 10.0) -> None:
+        """Resume a paused sandbox instance.
+
+        Args:
+            instance_id: Unique identifier of the sandbox instance.
+            timeout_seconds: Timeout for resume operation.
+        """
+        self._backend.resume_sandbox(instance_id, timeout_seconds=timeout_seconds)
 
     def delete(self, instance_id: str) -> None:
         """Clean up and terminate the sandbox instance.
