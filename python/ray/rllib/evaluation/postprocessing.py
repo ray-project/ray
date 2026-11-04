@@ -316,13 +316,14 @@ def discount_cumsum(x: np.ndarray, gamma: float) -> np.ndarray:
         for each individual reward in `x` till the end of the trajectory.
 
     Examples:
-        >>> x = np.array([0.0, 1.0, 2.0, 3.0])  # doctest: +SKIP_EXAMPLE
+        >>> import numpy as np
+        >>> from ray.rllib.evaluation.postprocessing import discount_cumsum
+        >>> x = np.array([0.0, 1.0, 2.0, 3.0])
         >>> gamma = 0.9
+        >>> # Entry t is x[t] + gamma * x[t+1] + gamma^2 * x[t+2] + ...
+        >>> # For example, entry 2 is 2.0 + 0.9 * 3.0 = 4.7.
         >>> discount_cumsum(x, gamma)
-        array([0.0 + 0.9*1.0 + 0.9^2*2.0 + 0.9^3*3.0,
-               1.0 + 0.9*2.0 + 0.9^2*3.0,
-               2.0 + 0.9*3.0,
-               3.0])
+        array([4.707, 5.23 , 4.7  , 3.   ])
     """
     # Import scipy here to avoid import error when framework is tensorflow.
     import scipy

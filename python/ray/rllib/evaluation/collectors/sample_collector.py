@@ -103,7 +103,7 @@ class SampleCollector(metaclass=ABCMeta):
             ...     init_infos=infos,
             ... )
             >>> obs, r, terminated, truncated, info = env.step(action)
-            >>> collector.add_action_reward_next_obs(12345, 0, "pol0", False, {
+            >>> collector.add_action_reward_next_obs(12345, 0, 0, "pol0", False, {
             ...     "action": action, "obs": obs, "reward": r, "terminated": terminated,
             ...     "truncated": truncated, "info": info
             ... })
@@ -142,10 +142,13 @@ class SampleCollector(metaclass=ABCMeta):
 
         Examples:
             >>> obs, info = env.reset()  # doctest: +SKIP_EXAMPLE
-            >>> collector.add_init_obs(12345, 0, "pol0", obs)
+            >>> collector.add_init_obs(
+            ...     episode=my_episode, agent_id=0, policy_id="pol0", init_obs=obs
+            ... )
             >>> obs, r, terminated, truncated, info = env.step(action)
             >>> collector.add_action_reward_next_obs(
             ...     12345,
+            ...     0,
             ...     0,
             ...     "pol0",
             ...     agent_done=False,
@@ -221,16 +224,15 @@ class SampleCollector(metaclass=ABCMeta):
             Dict[str, TensorType]: The input_dict to be passed into the ModelV2
                 for inference/training.
 
-        .. code-block:: python
-
-            obs, r, terminated, truncated, info = env.step(action)
-            collector.add_action_reward_next_obs(12345, 0, "pol0", False, {
-                "action": action, "obs": obs, "reward": r,
-                "terminated": terminated, "truncated", truncated
-            })
-            input_dict = collector.get_inference_input_dict(policy.model)
-            action = policy.compute_actions_from_input_dict(input_dict)
-            # repeat
+        Examples:
+            >>> obs, r, terminated, truncated, info = env.step(action)  # doctest: +SKIP_EXAMPLE
+            >>> collector.add_action_reward_next_obs(12345, 0, 0, "pol0", False, {
+            ...     "action": action, "obs": obs, "reward": r,
+            ...     "terminated": terminated, "truncated": truncated
+            ... })
+            >>> input_dict = collector.get_inference_input_dict("pol0")
+            >>> action = policy.compute_actions_from_input_dict(input_dict)
+            >>> # repeat
         """
         raise NotImplementedError
 
