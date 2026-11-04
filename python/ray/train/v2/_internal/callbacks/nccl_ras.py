@@ -670,33 +670,94 @@ def fan_out_to_workers(
     return dumps
 
 
+_PY_SPY_NOT_INSTALLED = "py-spy not installed"
+_PASSWORDLESS_SUDO_CHECK_TIMEOUT_S = 5.0
+
+
+_passwordless_sudo: Optional[bool] = None
+
+
+def _can_passwordless_sudo(timeout_s: float) -> bool:
+    """Return whether ``sudo`` runs without a password, checked once per process.
+
+    ``-n`` makes ``sudo`` fail instead of prompting.
+
+    Args:
+        timeout_s: Timeout for the check, capped at 5 s.
+
+    Returns:
+        Whether ``sudo -n true`` succeeded.
+    """
+    global _passwordless_sudo
+    if _passwordless_sudo is None:
+        try:
+            proc = subprocess.run(
+                ["sudo", "-n", "true"],
+                capture_output=True,
+                timeout=min(timeout_s, _PASSWORDLESS_SUDO_CHECK_TIMEOUT_S),
+            )
+            _passwordless_sudo = proc.returncode == 0
+        except Exception:  # noqa: BLE001
+            _passwordless_sudo = False
+    return _passwordless_sudo
+
+
+def _run_py_spy(cmd: List[str], timeout_s: float) -> Tuple[Optional[str], str]:
+    """Run one ``py-spy dump`` command.
+
+    Args:
+        cmd: The full command line, including any ``sudo`` prefix.
+        timeout_s: Timeout for the subprocess.
+
+    Returns:
+        ``(dump, "")`` on success, otherwise ``(None, reason)``.
+    """
+    try:
+        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout_s)
+    except FileNotFoundError:
+        return None, _PY_SPY_NOT_INSTALLED
+    except subprocess.TimeoutExpired:
+        return None, "py-spy timed out"
+    except Exception as e:  # noqa: BLE001
+        return None, f"py-spy error: {e}"
+    if proc.returncode == 0 and proc.stdout.strip():
+        return proc.stdout, ""
+    return None, (proc.stderr or "").strip() or f"py-spy exited {proc.returncode}"
+
+
 def dump_stack_trace(pyspy_timeout_s: float) -> str:
     """Dump native + Python stacks of the current (worker) process.
 
     Args:
-        pyspy_timeout_s: Timeout for the ``py-spy dump`` subprocess.
+        pyspy_timeout_s: Budget for the whole dump, shared by the unprivileged
+            ``py-spy dump``, the sudo check and the sudo retry.
 
     Returns:
         The captured stack trace, or a Python-only traceback (prefixed with the
         reason py-spy was skipped) when py-spy is unavailable.
     """
-    pid = os.getpid()
-    try:
-        proc = subprocess.run(
-            ["py-spy", "dump", "--pid", str(pid), "--native"],
-            capture_output=True,
-            text=True,
-            timeout=pyspy_timeout_s,
-        )
-        if proc.returncode == 0 and proc.stdout.strip():
-            return proc.stdout
-        stderr = (proc.stderr or "").strip() or f"py-spy exited {proc.returncode}"
-    except FileNotFoundError:
-        stderr = "py-spy not installed"
-    except subprocess.TimeoutExpired:
-        stderr = "py-spy timed out"
-    except Exception as e:  # noqa: BLE001
-        stderr = f"py-spy error: {e}"
+    deadline = time.monotonic() + pyspy_timeout_s
+    py_spy_cmd = ["py-spy", "dump", "--pid", str(os.getpid()), "--native"]
+    stdout, stderr = _run_py_spy(py_spy_cmd, pyspy_timeout_s)
+    if stdout is not None:
+        return stdout
+
+    # Restricted ptrace (yama ptrace_scope=1 without CAP_SYS_PTRACE) stops an
+    # unprivileged py-spy from tracing its parent; passwordless sudo lifts that.
+    # The retry only runs with budget left, so the caller's timeout still holds.
+    remaining_s = deadline - time.monotonic()
+    if (
+        stderr != _PY_SPY_NOT_INSTALLED
+        and remaining_s > 0
+        and _can_passwordless_sudo(remaining_s)
+    ):
+        remaining_s = deadline - time.monotonic()
+        if remaining_s > 0:
+            sudo_cmd = ["sudo", "-n", "env", f"PATH={os.environ.get('PATH', '')}"]
+            stdout, sudo_stderr = _run_py_spy(sudo_cmd + py_spy_cmd, remaining_s)
+            if stdout is not None:
+                return stdout
+            stderr = f"{stderr}; with sudo: {sudo_stderr}"
 
     # Python-only fallback: dump every thread's stack (cannot show C/C++ trace).
     import sys
