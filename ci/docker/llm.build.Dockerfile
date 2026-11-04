@@ -27,6 +27,12 @@ if [[ "${RAY_CUDA_CODE}" != "cpu" ]]; then
     # JIT-compiles kernels on first use, which can stall engine startup for
     # many minutes.
     PIP_NO_CACHE_DIR=1 flashinfer download-kernels
+
+    # libnuma-dev and numactl match vLLM's image: fastsafetensors loads libnuma,
+    # and vLLM's NUMA binding (numa_bind) launches workers under the numactl CLI.
+    apt-get update -y
+    apt-get install -y libnuma-dev numactl
+    rm -rf /var/lib/apt/lists/*
 fi
 
 # Include the CUDA device index in vLLM's compile cache paths so a worker never

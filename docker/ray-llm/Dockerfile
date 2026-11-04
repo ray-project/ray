@@ -88,7 +88,10 @@ PY
     git apply "${VLLM_DEFER_TRITON_PATCH}"
 )
 
-sudo apt-get update -y && sudo apt-get install -y curl kmod pkg-config librdmacm-dev cmake
+# libnuma-dev and numactl match vLLM's image: fastsafetensors loads libnuma, and
+# vLLM's NUMA binding (numa_bind) launches workers under the numactl CLI.
+sudo apt-get update -y && sudo apt-get install -y curl kmod pkg-config librdmacm-dev cmake \
+    libnuma-dev numactl
 
 # Fetch and run vLLM install scripts at pinned commit
 VLLM_RAW="https://raw.githubusercontent.com/vllm-project/vllm/${VLLM_SCRIPTS_REF}"
