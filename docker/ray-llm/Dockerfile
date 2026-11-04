@@ -45,6 +45,12 @@ uv pip install --system --no-cache-dir --no-deps \
     --no-verify-hashes \
     -r "rayllm_${PYTHON_CODE}_${CUDA_CODE}.lock"
 
+# Install FlashInfer's precompiled kernels (flashinfer-cubin and
+# flashinfer-jit-cache, matching the locked flashinfer-python) for all GPU
+# architectures, as vLLM's own image does. Without them, FlashInfer JIT-compiles
+# kernels on first use, which can stall engine startup for many minutes.
+PIP_NO_CACHE_DIR=1 flashinfer download-kernels
+
 # Include the CUDA device index in vLLM's compile cache paths so a worker never
 # reloads a torch.compile artifact built for a different physical GPU.
 # vllm-project/vllm#38962 was reverted by #53304; still needed in vLLM 0.32.0.
