@@ -88,9 +88,7 @@ RLlib prepends these {py:class}`~ray.rllib.connectors.connector_v2.ConnectorV2` 
 
 For example, to prepend a custom {py:class}`~ray.rllib.connectors.connector_v2.ConnectorV2` piece to the {py:class}`~ray.rllib.core.learner.learner.Learner` connector pipeline, do this in your config:
 
-```{testcode}
-:skipif: True
-
+```python
 config.learners(
     learner_connector=lambda obs_space, act_space: MyLearnerConnector(..),
 )
@@ -98,9 +96,7 @@ config.learners(
 
 If you want to add multiple custom pieces to the pipeline, return them as a list:
 
-```{testcode}
-:skipif: True
-
+```python
 # Return a list of connector pieces to make RLlib add all of them to your
 # Learner pipeline.
 config.learners(

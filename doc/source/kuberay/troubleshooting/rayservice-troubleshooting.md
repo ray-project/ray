@@ -116,7 +116,7 @@ You have two options to resolve this issue:
 (kuberay-raysvc-issue4)=
 ### Issue 4: Incorrect `import_path`.
 
-You can refer to the {class}`ServeApplicationSchema <ray.serve.schema.ServeApplicationSchema>` documentation for more details about the format of `import_path`. Taking [the MobileNet YAML file](https://github.com/ray-project/kuberay/blob/v1.0.0/ray-operator/config/samples/ray-service.mobilenet.yaml) as an example, the `import_path` is `mobilenet.mobilenet:app`. The first `mobilenet` is the name of the directory in the `working_dir`, the second `mobilenet` is the name of the Python file in the directory `mobilenet/`, and `app` is the name of the variable representing Ray Serve application within the Python file.
+You can refer to the {class}`ServeApplicationSchema <ray.serve.schema.ServeApplicationSchema>` documentation for more details about the format of `import_path`. Taking [the MobileNet YAML file](https://github.com/kuberay-project/kuberay/blob/v1.0.0/ray-operator/config/samples/ray-service.mobilenet.yaml) as an example, the `import_path` is `mobilenet.mobilenet:app`. The first `mobilenet` is the name of the directory in the `working_dir`, the second `mobilenet` is the name of the Python file in the directory `mobilenet/`, and `app` is the name of the variable representing Ray Serve application within the Python file.
 
 ```yaml
   serveConfigV2: |
@@ -271,7 +271,7 @@ the multi-app API endpoint `/api/serve/applications/`.
 
 To resolve this issue, you can replace `serveConfig` with `serveConfigV2` and modify `rayVersion` which has no effect when the Ray version is 2.0.0 or later to 2.100.0. This will trigger a new RayCluster preparation instead of an in-place update.
 
-If, after following the steps above, you still see the error message and GCS fault tolerance is enabled, it may be due to the `ray.io/external-storage-namespace` annotation being the same for both old and new RayClusters. You can remove the annotation and KubeRay will automatically generate a unique key for each RayCluster custom resource. See [kuberay#1297](https://github.com/ray-project/kuberay/issues/1297) for more details.
+If, after following the steps above, you still see the error message and GCS fault tolerance is enabled, it may be due to the `ray.io/external-storage-namespace` annotation being the same for both old and new RayClusters. You can remove the annotation and KubeRay will automatically generate a unique key for each RayCluster custom resource. See [kuberay#1297](https://github.com/kuberay-project/kuberay/issues/1297) for more details.
 
 (kuberay-raysvc-issue10)=
 ### Issue 10: Upgrade RayService with GCS fault tolerance enabled without downtime
@@ -280,7 +280,7 @@ KubeRay assigns the environment variable `RAY_external_storage_namespace` to the
 
 However, specifying the `RAY_external_storage_namespace` value in RayService can potentially lead to downtime during zero-downtime upgrades. Specifically, the new RayCluster accesses the same Redis storage namespace as the old one for cluster metadata. This configuration can lead the KubeRay operator to assume that the Ray Serve applications are operational, as indicated by the existing metadata in Redis. Consequently, the operator might deem it safe to retire the old RayCluster and redirect traffic to the new one, even though the latter may still require time to initialize the Ray Serve applications.
 
-The recommended solution is to remove the `ray.io/external-storage-namespace` annotation from the RayService CRD. If the annotation isn't set, KubeRay automatically uses each RayCluster custom resource's UID as the `RAY_external_storage_namespace` value. Hence, both the old and new RayClusters have different `RAY_external_storage_namespace` values, and the new RayCluster is unable to access the old cluster metadata. Another solution is to set the `RAY_external_storage_namespace` value manually to a unique value for each RayCluster custom resource. See [kuberay#1296](https://github.com/ray-project/kuberay/issues/1296) for more details. See {ref}`GCS fault tolerance and zero-downtime upgrades <kuberay-rayservice-ha-upgrades>` for how the default namespace keeps both working together.
+The recommended solution is to remove the `ray.io/external-storage-namespace` annotation from the RayService CRD. If the annotation isn't set, KubeRay automatically uses each RayCluster custom resource's UID as the `RAY_external_storage_namespace` value. Hence, both the old and new RayClusters have different `RAY_external_storage_namespace` values, and the new RayCluster is unable to access the old cluster metadata. Another solution is to set the `RAY_external_storage_namespace` value manually to a unique value for each RayCluster custom resource. See [kuberay#1296](https://github.com/kuberay-project/kuberay/issues/1296) for more details. See {ref}`GCS fault tolerance and zero-downtime upgrades <kuberay-rayservice-ha-upgrades>` for how the default namespace keeps both working together.
 
 (kuberay-raysvc-issue11)=
 ### Issue 11: RayService stuck in Initializing — use the initializing timeout to fail fast
@@ -307,4 +307,4 @@ metadata:
 
 #### Guidance
 - Pick a timeout that balances expected startup work with failing fast to conserve cluster resources.
-- See the upstream discussion [kuberay#4138](https://github.com/ray-project/kuberay/issues/4138) for more implementation details.
+- See the upstream discussion [kuberay#4138](https://github.com/kuberay-project/kuberay/issues/4138) for more implementation details.

@@ -5,8 +5,10 @@ import pyarrow as pa
 import pytest
 import torch
 
+from ray.data._internal.tensor_extensions.utils import create_ragged_ndarray
 from ray.data.util.torch_utils import (
     concat_tensors_to_device,
+    convert_ndarray_to_torch_tensor,
     convert_table_to_torch_tensor,
     move_tensors_to_device,
 )
@@ -103,6 +105,18 @@ class TestConvertTableToTorch:
             min_memory_increase=100_000,
         )
         assert not suspicious_stats
+
+
+def test_convert_ndarray_with_none_rows_names_the_null_rows():
+    """An object array that holds None cannot become a tensor, and the error says
+    the rows are missing rather than ragged."""
+    with_none = create_ragged_ndarray([np.zeros(2), None])
+    ragged = create_ragged_ndarray([np.zeros(2), np.zeros(3)])
+
+    with pytest.raises(RuntimeError, match="holds None"):
+        convert_ndarray_to_torch_tensor(with_none)
+    with pytest.raises(RuntimeError, match="ragged tensor"):
+        convert_ndarray_to_torch_tensor(ragged)
 
 
 def test_move_tensors_to_device():

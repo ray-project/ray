@@ -234,8 +234,7 @@ def convert_to_torch_tensor(
     use_stream: bool = False,
     stream: Optional[Union["torch.cuda.Stream", "torch.cuda.classes.Stream"]] = None,
 ):
-    """
-    Converts any (possibly nested) structure to torch.Tensors.
+    """Converts any (possibly nested) structure to torch.Tensors.
 
     Args:
         x: The input structure whose leaves will be converted.
@@ -759,6 +758,12 @@ def symlog(x: "torch.Tensor") -> "torch.Tensor":
     [1] Mastering Diverse Domains through World Models - 2023
     D. Hafner, J. Pasukonis, J. Ba, T. Lillicrap
     https://arxiv.org/pdf/2301.04104v1.pdf
+
+    Args:
+        x: The input tensor.
+
+    Returns:
+        `sign(x) * log(abs(x) + 1)`, computed element-wise.
     """
     return torch.sign(x) * torch.log(torch.abs(x) + 1)
 
@@ -770,6 +775,12 @@ def inverse_symlog(y: "torch.Tensor") -> "torch.Tensor":
     [1] Mastering Diverse Domains through World Models - 2023
     D. Hafner, J. Pasukonis, J. Ba, T. Lillicrap
     https://arxiv.org/pdf/2301.04104v1.pdf
+
+    Args:
+        y: The input tensor, in symlog space.
+
+    Returns:
+        The tensor `x` for which `symlog(x)` equals `y`, computed element-wise.
     """
     # To get to symlog inverse, we solve the symlog equation for x:
     #     y = sign(x) * log(|x| + 1)

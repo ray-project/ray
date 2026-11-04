@@ -22,9 +22,7 @@ The Ray Debugger is deprecated. Use the {doc}`Ray Distributed Debugger <../../ra
 
 Take the following example:
 
-```{testcode}
-:skipif: True
-
+```python
 import ray
 
 ray.init(runtime_env={"env_vars": {"RAY_DEBUG": "legacy"}})
@@ -96,9 +94,7 @@ The Ray debugger supports the [same commands as PDB](https://docs.python.org/3/l
 
 You can use the debugger to step between Ray tasks. Let's take the following recursive function as an example:
 
-```{testcode}
-:skipif: True
-
+```python
 import ray
 
 ray.init(runtime_env={"env_vars": {"RAY_DEBUG": "legacy"}})
@@ -199,9 +195,7 @@ Often we do not know in advance where an error happens, so we cannot set a break
 
 Copy the following code into a file called `post_mortem_debugging.py`. The flag `RAY_DEBUG_POST_MORTEM=1` will have the effect that if an exception happens, Ray will drop into the debugger instead of propagating it further.
 
-```{testcode}
-:skipif: True
-
+```python
 import ray
 
 ray.init(runtime_env={"env_vars": {"RAY_DEBUG": "legacy", "RAY_DEBUG_POST_MORTEM": "1"}})

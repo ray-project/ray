@@ -1,6 +1,7 @@
 import asyncio
 import logging
 import os
+import shlex
 import tempfile
 from typing import List, Optional
 
@@ -8,9 +9,11 @@ from ray._private.authentication.authentication_token_setup import (
     _get_default_token_path,
 )
 from ray._private.authentication.authentication_utils import is_token_auth_enabled
-from ray._private.runtime_env.context import RuntimeEnvContext
+from ray._private.runtime_env.context import (
+    RuntimeEnvContext,
+    expand_run_option,
+)
 from ray._private.runtime_env.plugin import RuntimeEnvPlugin
-from ray._private.runtime_env.redaction import REDACTED_PLACEHOLDER
 
 default_logger = logging.getLogger(__name__)
 
@@ -100,63 +103,52 @@ def _modify_context_impl(
         "--userns=keep-id",
     ]
 
-    # Environment variables to set in container
-    env_vars = dict()
+    # Ray-owned values for the container. The job's env_vars and the host's
+    # RAY_* vars are added when the worker is exec'd; see
+    # RuntimeEnvContext._exec_container_worker.
+    ray_container_env = dict()
 
-    # Propagate all host environment variables that have the prefix "RAY_"
-    # This should include RAY_RAYLET_PID
-    for env_var_name, env_var_value in os.environ.items():
-        if env_var_name.startswith("RAY_"):
-            env_vars[env_var_name] = env_var_value
-
-    # Support for runtime_env['env_vars']
-    env_vars.update(context.env_vars)
-
-    # Mount the token file rather than passing the token via --env, which is
-    # logged and visible in `ps`.
-    if is_token_auth_enabled() and "RAY_AUTH_TOKEN" not in env_vars:
+    # A token kept only in a file has no value in podman's environment to pass
+    # by name, so mount the file read-only. A token in RAY_AUTH_TOKEN reaches
+    # the container by name with the other RAY_* vars.
+    if (
+        is_token_auth_enabled()
+        and "RAY_AUTH_TOKEN" not in context.env_vars
+        and "RAY_AUTH_TOKEN" not in os.environ
+    ):
+        # Ignore the job's env_vars: a job-chosen path would mount any
+        # host file the Ray user can read into the container.
         token_path = os.path.abspath(
-            env_vars.get("RAY_AUTH_TOKEN_PATH") or _get_default_token_path()
+            os.environ.get("RAY_AUTH_TOKEN_PATH") or _get_default_token_path()
         )
         if os.path.isfile(token_path):
             container_command.extend(["-v", f"{token_path}:{token_path}:ro"])
-            env_vars["RAY_AUTH_TOKEN_PATH"] = token_path
+            ray_container_env["RAY_AUTH_TOKEN_PATH"] = token_path
 
-    # Set environment variables. Log only `redacted_command`: the values can
-    # hold secrets.
-    redacted_command = list(container_command)
-    for env_var_name, env_var_value in env_vars.items():
-        container_command.append("--env")
-        container_command.append(f"{env_var_name}='{env_var_value}'")
-        redacted_command.append("--env")
-        redacted_command.append(f"{env_var_name}='{REDACTED_PLACEHOLDER}'")
-
-    # The RAY_JOB_ID environment variable is needed for the default worker.
-    # It won't be set at the time setup() is called, but it will be set
-    # when worker command is executed, so we use RAY_JOB_ID=$RAY_JOB_ID
-    # for the container start command
-    num_secret_args = len(container_command)
-    container_command.append("--env")
-    container_command.append("RAY_JOB_ID=$RAY_JOB_ID")
-
-    if run_options:
-        container_command.extend(run_options)
+    run_options = list(run_options or [])
+    # Expanded at exec time, but checked here so a malformed item fails
+    # runtime_env setup instead of every worker start.
+    for run_option in run_options:
+        expand_run_option(run_option, {})
     # TODO(chenk008): add resource limit
-    container_command.append("--entrypoint")
-    container_command.append("python")
-    container_command.append(image_uri)
-    redacted_command.extend(container_command[num_secret_args:])
 
     # Example:
     # podman run -v /tmp/ray:/tmp/ray
     # --cgroup-manager=cgroupfs --network=host --pid=host --ipc=host
-    # --userns=keep-id --env RAY_RAYLET_PID=23478 --env RAY_JOB_ID=$RAY_JOB_ID
-    # --entrypoint python rayproject/ray:nightly-py39
+    # --userns=keep-id rayproject/ray:nightly-py39
     logger.info(
-        "Starting worker in container with prefix %s", " ".join(redacted_command)
+        "Starting worker in container with prefix %s %s",
+        shlex.join(container_command + run_options),
+        image_uri,
     )
 
-    context.py_executable = " ".join(container_command)
+    context.container = {
+        "command": container_command,
+        "run_options": run_options,
+        "image": image_uri,
+        "entrypoint": "python",
+        "env_vars": ray_container_env,
+    }
 
 
 class ImageURIPlugin(RuntimeEnvPlugin):

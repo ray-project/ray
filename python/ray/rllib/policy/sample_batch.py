@@ -278,6 +278,9 @@ class SampleBatch(dict):
         """Returns the same as len(self) (number of steps in this batch).
 
         To make this compatible with `MultiAgentBatch.agent_steps()`.
+
+        Returns:
+            The number of steps in this batch.
         """
         return len(self)
 
@@ -286,6 +289,9 @@ class SampleBatch(dict):
         """Returns the same as len(self) (number of steps in this batch).
 
         To make this compatible with `MultiAgentBatch.env_steps()`.
+
+        Returns:
+            The number of steps in this batch.
         """
         return len(self)
 
@@ -941,8 +947,16 @@ class SampleBatch(dict):
             for v in tree.flatten(self)
         )
 
-    def get(self, key, default=None):
-        """Returns one column (by key) from the data or a default value."""
+    def get(self, key: str, default: Any = None) -> Any:
+        """Returns one column (by key) from the data or a default value.
+
+        Args:
+            key: The column to return.
+            default: The value to return if the column doesn't exist.
+
+        Returns:
+            The column under `key`, or `default` if there's none.
+        """
         try:
             return self.__getitem__(key)
         except KeyError:
@@ -1043,6 +1057,11 @@ class SampleBatch(dict):
 
     @property
     def is_training(self):
+        """Whether this SampleBatch is used for training.
+
+        Set with `set_training()`. If a get interceptor is set and the flag is a
+        bool, returns the intercepted value.
+        """
         if self.get_interceptor is not None and isinstance(self._is_training, bool):
             if "_is_training" not in self.intercepted_values:
                 self.intercepted_values["_is_training"] = self.get_interceptor(
@@ -1052,7 +1071,12 @@ class SampleBatch(dict):
         return self._is_training
 
     def set_training(self, training: Union[bool, "tf1.placeholder"] = True):
-        """Sets the `is_training` flag for this SampleBatch."""
+        """Sets the `is_training` flag for this SampleBatch.
+
+        Args:
+            training: The value to set the flag to, either a bool or a TensorFlow
+                placeholder.
+        """
         self._is_training = training
         self.intercepted_values.pop("_is_training", None)
 
@@ -1429,6 +1453,13 @@ class MultiAgentBatch:
         This method is used to implement "lockstep" replay mode. Note that this
         method does not guarantee each batch contains only data from a single
         unroll. Batches might contain data from multiple different envs.
+
+        Args:
+            k: The number of env timesteps per batch. The last batch can hold
+                fewer.
+
+        Returns:
+            The list of MultiAgentBatches, ordered by episode ID and timestep.
         """
         from ray.rllib.evaluation.sample_batch_builder import SampleBatchBuilder
 
@@ -1541,7 +1572,8 @@ class MultiAgentBatch:
 
     @PublicAPI
     def size_bytes(self) -> int:
-        """
+        """Returns the sum of the byte sizes of all policy batches.
+
         Returns:
             The overall size in bytes of all policy batches (all columns).
         """
