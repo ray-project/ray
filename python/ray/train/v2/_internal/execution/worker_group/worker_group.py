@@ -204,25 +204,32 @@ class WorkerGroup(ExecutionGroup):
     def _start(
         self,
     ):
-        """Internal method to start the worker group."""
+        """Internal method to start the worker group.
+
+        Raises:
+            ValueError: If workers are already started.
+        """
+        # Checked before the try so that a rejected call doesn't clean up the
+        # state of the already-running worker group.
+        self._assert_inactive()
 
         worker_group_state_builder = WorkerGroupStateBuilder()
-        # `_start_impl` rejects an already-started worker group; that state
-        # belongs to the earlier start and must not be torn down here.
-        already_started = self.has_started()
-
         try:
             self._start_impl(
                 worker_group_state_builder,
             )
         except Exception as e:
             # Clean up the partial worker group. The state may already be built if
-            # the failure happened after `build()` (e.g. a worker's node died
-            # while launching the train fn). The caller never receives this
-            # worker group, so nothing else would release its resources.
-            worker_group_state_builder.shutdown()
-            if not already_started:
-                self._clear_state()
+            # the failure happened after `build()`.
+            try:
+                worker_group_state_builder.shutdown()
+            except Exception:
+                # Don't let a cleanup failure mask the original startup error.
+                logger.warning(
+                    "Failed to clean up the partially started worker group.",
+                    exc_info=True,
+                )
+            self._clear_state()
             raise e
 
         assert self.has_started(), "Worker group failed to start."
@@ -265,11 +272,9 @@ class WorkerGroup(ExecutionGroup):
             worker_group_state_builder: Builder for constructing worker group state.
 
         Raises:
-            ValueError: If workers are already started.
             WorkerGroupStartupTimeoutError: If startup times out requesting resources.
             WorkerGroupStartupFailedError: If workers fail during initialization.
         """
-        self._assert_inactive()
         worker_group_context = self._worker_group_context
         start_time = time_monotonic()
 
@@ -385,21 +390,31 @@ class WorkerGroup(ExecutionGroup):
                     f"  Individual callback time breakdown:\n{after_wg_start_cb_breakdown}"
                 )
 
-                # Launch the training function on each worker.
-                # This task should start a worker thread and return immediately.
-                launch_start = time_monotonic()
-                ray.get(
-                    [
-                        worker.actor.run_train_fn.remote(
-                            worker_group_context.train_fn_ref
-                        )
-                        for worker in workers
-                    ]
-                )
-
             except RayActorError as actor_error:
                 error_msg = "At least one of the worker actors failed to initialize."
                 raise WorkerGroupStartupFailedError(error_msg) from actor_error
+
+        # Launch the training function on each worker.
+        # This task should start a worker thread and return immediately.
+        launch_start = time_monotonic()
+        try:
+            ray.get(
+                [
+                    worker.actor.run_train_fn.remote(worker_group_context.train_fn_ref)
+                    for worker in workers
+                ]
+            )
+        except RayActorError:
+            # The worker group is fully started at this point, so a worker dying
+            # here (e.g. its node was lost) is a failure of the running group.
+            # The next poll reports it, and the failure policy decides whether to
+            # retry, charging it to the preemption budget if the node was
+            # preempted.
+            logger.warning(
+                "A worker died while launching the training function. "
+                "The failure will be reported on the next poll.",
+                exc_info=True,
+            )
 
         logger.debug(
             "[Worker Group Initialization] Train function launched on "
