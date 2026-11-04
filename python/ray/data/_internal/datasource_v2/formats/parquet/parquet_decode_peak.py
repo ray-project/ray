@@ -362,7 +362,7 @@ def _zero_copy(physical_type: str, arrow_type: pa.DataType) -> bool:
 
 def _nested_or_view(arrow_type: pa.DataType) -> bool:
     """Whether ``arrow_type`` has a list, map, union or view: casts copy per piece."""
-    if isinstance(arrow_type, pa.ExtensionType):
+    if isinstance(arrow_type, pa.BaseExtensionType):
         # An extension type casts as its storage.
         arrow_type = arrow_type.storage_type
     if pa.types.is_struct(arrow_type):

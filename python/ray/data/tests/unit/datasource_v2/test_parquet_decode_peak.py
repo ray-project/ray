@@ -5,6 +5,7 @@ import pytest
 from packaging.version import parse as parse_version
 
 from ray.data._internal.datasource_v2.formats.parquet.parquet_decode_peak import (
+    _nested_or_view,
     estimate_row_group_peak,
     estimate_row_group_work,
 )
@@ -195,6 +196,11 @@ def test_estimate_bounds_measured_peak(tmp_path, label):
         path=path, columns=columns, **format_kwargs
     )
     assert 0.95 <= ratio <= high, ratio
+
+
+def test_a_canonical_extension_casts_as_its_storage():
+    """A fixed-shape tensor column, a fixed-size list on disk, copies per piece."""
+    assert _nested_or_view(pa.fixed_shape_tensor(pa.float32(), [2, 2]))
 
 
 if __name__ == "__main__":
