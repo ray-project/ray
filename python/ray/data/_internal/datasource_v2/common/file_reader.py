@@ -48,6 +48,16 @@ _ARROW_SCANNER_BATCH_READAHEAD = env_integer(
 )
 
 
+def casts_to_schema(schema: Optional[pa.Schema]) -> bool:
+    """Whether a reader built with ``schema`` casts every batch to it.
+
+    It does unless the schema is ``None`` or has an extension column.
+    """
+    return schema is not None and not any(
+        isinstance(f.type, pa.ExtensionType) for f in schema
+    )
+
+
 class FileFormat(str, Enum):
     PARQUET = "parquet"
     ORC = "orc"
@@ -151,9 +161,7 @@ class FileReader(Reader[FileManifest]):
         match an on-disk column of the same name; stripping it keeps pyarrow
         from attempting that cast.
         """
-        if self._schema is None:
-            return None
-        if any(isinstance(f.type, pa.ExtensionType) for f in self._schema):
+        if self._schema is None or not casts_to_schema(self._schema):
             return None
         partition_keys = (
             set(self._partition_parser._scheme.field_names or [])

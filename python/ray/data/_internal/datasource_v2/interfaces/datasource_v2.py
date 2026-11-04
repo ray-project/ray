@@ -155,12 +155,16 @@ class DataSourceV2(ABC, Generic[InputSplit]):
         ...
 
     @abstractmethod
-    def _get_file_indexer(self) -> FileIndexer:
+    def _get_file_indexer(self, schema: Optional[pa.Schema] = None) -> FileIndexer:
         """Indexer that ``ListFiles`` runs to turn :attr:`paths` into
         ``FileManifest`` blocks.
 
         Abstract rather than defaulted, because a default would commit a new
         format to per-file listing without anyone choosing it.
+
+        Args:
+            schema: The read schema from :meth:`infer_schema`, once known. An
+                indexer that sizes files as they will decode may depend on it.
 
         Returns:
             ``NonSamplingFileIndexer(...)`` for a format without per-piece
