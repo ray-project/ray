@@ -234,6 +234,42 @@ class UnschedulableRequestCache:
         self.shapes.clear()
 
 
+# A run of consecutive occurrences of the same ResourceRequest object, with its
+# count. `ResourceRequestUtil.ungroup_by_count` expands a counted request into the
+# same object repeated, so a large `request_resources()` constraint collapses into
+# a handful of runs.
+RequestRun = Tuple[ResourceRequest, int]
+
+
+def _append_request_run(
+    runs: List[RequestRun], request: ResourceRequest, count: int
+) -> None:
+    if runs and runs[-1][0] is request:
+        runs[-1] = (request, runs[-1][1] + count)
+    else:
+        runs.append((request, count))
+
+
+def _group_identical_requests(requests: List[ResourceRequest]) -> List[RequestRun]:
+    """Group consecutive occurrences of the same request object into runs."""
+    runs: List[RequestRun] = []
+    for r in requests:
+        _append_request_run(runs, r, 1)
+    return runs
+
+
+def _expand_request_runs(runs: List[RequestRun]) -> List[ResourceRequest]:
+    """Expand runs back into the flat list of requests they represent."""
+    requests = []
+    for r, count in runs:
+        requests.extend([r] * count)
+    return requests
+
+
+def _count_requests(runs: List[RequestRun]) -> int:
+    return sum(count for _, count in runs)
+
+
 class SchedulingNodeStatus(Enum):
     """The status of a scheduling node (`SchedulingNode`)"""
 
@@ -270,7 +306,8 @@ class SchedulingNode:
         .... do something with the score ....
 
     NOTE:
-        One could also extend the scheduling behavior by overriding `try_schedule`
+        One could also extend the scheduling behavior by overriding
+        `_try_schedule_runs`, which both `try_schedule` and the scheduler go through.
     """
 
     # Node type name.
@@ -598,38 +635,122 @@ class SchedulingNode:
                 - the utilization score for this node with respect to the current
                 resource requests being scheduled.
         """
+        unschedulable_runs, score = self._try_schedule_runs(
+            _group_identical_requests(requests), resource_request_source, shape_keys
+        )
+        return _expand_request_runs(unschedulable_runs), score
+
+    def _try_schedule_runs(
+        self,
+        runs: List[RequestRun],
+        resource_request_source: ResourceRequestSource,
+        shape_keys: Optional[Dict[int, bytes]] = None,
+    ) -> Tuple[List[RequestRun], UtilizationScore]:
+        """Same as `try_schedule`, but on runs of consecutive identical requests.
+
+        Args:
+            runs: The resource requests to be scheduled, as runs of the same
+                request object repeated `count` times.
+            resource_request_source: The source of the resource request, i.e.
+                pending demands from ray actors/tasks or cluster resource constraints.
+            shape_keys: Precomputed serialization keys for each request. If None,
+                keys are computed on the fly (fallback).
+
+        Returns:
+            A tuple of:
+                - runs of the remaining requests that cannot be scheduled on this
+                node, in order.
+                - the utilization score for this node with respect to the current
+                resource requests being scheduled.
+        """
         # Track the resource requests that cannot be scheduled on this node.
-        unschedulable_requests = []
+        unschedulable_runs: List[RequestRun] = []
 
         # Cache to prevent O(N^2 * M) iteration by returning early for identical requests.
         unfittable_cache = UnschedulableRequestCache()
 
-        # Sort the requests and try schedule them one by one.
-        for r in requests:
+        # Try to schedule the runs in order, all copies of a request together.
+        for r, count in runs:
             sk = shape_keys.get(id(r)) if shape_keys is not None else None
             if sk is None:
                 sk = r.SerializeToString(deterministic=True)
 
             if unfittable_cache.contains(sk):
-                unschedulable_requests.append(r)
+                _append_request_run(unschedulable_runs, r, count)
                 continue
 
             # Record the label count to detect if this node's state mutates.
             # This is to support requests becoming schedulable due to anti-affinity.
             num_labels_before = len(self.labels)
 
-            if not self._try_schedule_one(r, resource_request_source):
+            scheduled = self._try_schedule_run(r, count, resource_request_source)
+
+            # If a scheduled copy added a label to the node, it might have expanded
+            # feasibility so we invalidate the unavailable cache. Copies are tried
+            # in order and the failing ones come last, so this happens before the
+            # failure below is cached, as it would one copy at a time.
+            if len(self.labels) > num_labels_before:
+                unfittable_cache.clear()
+
+            if scheduled < count:
                 unfittable_cache.add(sk)
-                unschedulable_requests.append(r)
-            else:
-                # If the request successfully scheduled and added a label to the node,
-                # it might have expanded feasibility so we invalidate the unavailable cache.
-                if len(self.labels) > num_labels_before:
-                    unfittable_cache.clear()
+                _append_request_run(unschedulable_runs, r, count - scheduled)
 
         score = self._compute_score(resource_request_source)
 
-        return unschedulable_requests, score
+        return unschedulable_runs, score
+
+    def _try_schedule_run(
+        self,
+        request: ResourceRequest,
+        count: int,
+        resource_request_source: ResourceRequestSource,
+    ) -> int:
+        """Schedule up to `count` copies of the same request on this node.
+
+        This has the same effect as calling `_try_schedule_one` on each copy in
+        turn. A copy that does not fit leaves the node unchanged, so no later
+        copy can fit either, and only the copies that fit are processed.
+
+        Args:
+            request: The resource request to be scheduled.
+            count: The number of copies of the request.
+            resource_request_source: The source of the resource request, i.e.
+                pending demands from ray actors/tasks or cluster resource constraints.
+
+        Returns:
+            The number of copies scheduled on this node.
+        """
+        if not self._try_schedule_one(request, resource_request_source):
+            return 0
+        scheduled = 1
+
+        if request.placement_constraints:
+            # Each placement may add an anti-affinity label that rejects the next
+            # copy, so check every copy against the updated node.
+            while scheduled < count and self._try_schedule_one(
+                request, resource_request_source
+            ):
+                scheduled += 1
+            return scheduled
+
+        # Without placement constraints, the node's labels stay the same, so the
+        # label selector check that passed for the first copy passes for all of
+        # them and only the resources need to be checked.
+        resources = dict(request.resources_bundle)
+        if all(v == 0 for v in resources.values()):
+            # `_inplace_subtract` skips zero quantities, so a zero-resource
+            # request leaves the node unchanged and every copy fits.
+            extra = count - scheduled
+        else:
+            available = self.get_available_resources(resource_request_source)
+            extra = 0
+            while scheduled + extra < count and _fits(available, resources):
+                _inplace_subtract(available, resources)
+                extra += 1
+
+        self.sched_requests[resource_request_source].extend([request] * extra)
+        return scheduled + extra
 
     def _compute_score(
         self, resource_request_source: ResourceRequestSource
@@ -1739,6 +1860,10 @@ class ResourceDemandScheduler(IResourceScheduler):
         # feasibility pre-checks (AND within each shape, OR across shapes).
         resource_shapes = _collect_unique_resource_shapes(requests_to_sched)
 
+        # Schedule copies of the same request together: a counted request is the
+        # same object repeated, and the stable sort keeps its copies contiguous.
+        requests_to_sched = _group_identical_requests(requests_to_sched)
+
         existing_nodes = ctx.get_nodes()
         node_type_available = ctx.get_node_type_available()
 
@@ -1916,17 +2041,17 @@ class ResourceDemandScheduler(IResourceScheduler):
             if node_type_available[best_node.node_type] > 0:
                 node_pools.append(_to_launch_node_with_ippr_caps(best_node.node_type))
 
-        return target_nodes, requests_to_sched
+        return target_nodes, _expand_request_runs(requests_to_sched)
 
     @staticmethod
     def _sched_best_node(
-        requests: List[ResourceRequest],
+        requests: List[RequestRun],
         nodes: List[SchedulingNode],
         resource_request_source: ResourceRequestSource,
         cloud_resource_availabilities: Dict[NodeType, float],
         recoverable_resource_availabilities: Dict[NodeType, float],
         shape_keys: Optional[Dict[int, bytes]] = None,
-    ) -> Tuple[SchedulingNode, List[ResourceRequest], List[SchedulingNode]]:
+    ) -> Tuple[SchedulingNode, List[RequestRun], List[SchedulingNode]]:
         """Schedule the requests on the best node.
         A simple greedy algorithm is used to schedule the requests:
             1. Try to schedule the requests on each node.
@@ -1945,7 +2070,8 @@ class ResourceDemandScheduler(IResourceScheduler):
         removed from the node list.
 
         Args:
-            requests: The resource requests to be scheduled.
+            requests: The resource requests to be scheduled, as runs of the same
+                request object repeated `count` times.
             nodes: The node candidates to be scheduled on. The nodes will be updated
                 after the scheduling attempt, i.e. the node that is scheduled will be
                 removed from the list.
@@ -1962,8 +2088,8 @@ class ResourceDemandScheduler(IResourceScheduler):
 
         Returns:
             best_node: The best node to schedule the requests.
-            infeasible: The infeasible requests that cannot be scheduled on the best
-                node.
+            infeasible: Runs of the infeasible requests that cannot be scheduled on
+                the best node.
             nodes: Remaining nodes after the best node is removed.
         """
         results = []
@@ -1974,7 +2100,7 @@ class ResourceDemandScheduler(IResourceScheduler):
             # The node candidate after a scheduling attempt.
             node: SchedulingNode
             # The infeasible resource requests that are not scheduled.
-            infeasible_requests: List[ResourceRequest]
+            infeasible_requests: List[RequestRun]
             # The index of the node in the original node list.
             idx: int
             # the score of the scheduling node to compare with others.
@@ -1984,6 +2110,7 @@ class ResourceDemandScheduler(IResourceScheduler):
         # select one best node to return, we skip the heavy deepcopy/simulation
         # overhead for duplicates
         node_cache = NodeStateCache(resource_request_source)
+        num_requests = _count_requests(requests)
 
         # Iterate through each node and modify the node's available resources
         # if the requests are schedulable.
@@ -1994,11 +2121,11 @@ class ResourceDemandScheduler(IResourceScheduler):
 
             node_copy = copy.deepcopy(node)
 
-            remaining, score = node_copy.try_schedule(
+            remaining, score = node_copy._try_schedule_runs(
                 requests, resource_request_source, shape_keys
             )
 
-            if len(remaining) == len(requests):
+            if _count_requests(remaining) == num_requests:
                 # The node cannot schedule any of the requests.
                 continue
 
@@ -2009,7 +2136,10 @@ class ResourceDemandScheduler(IResourceScheduler):
             if logger.isEnabledFor(logging.DEBUG):
                 logger.debug(
                     "No nodes can schedule the requests: {}, for nodes: {}".format(
-                        ResourceRequestUtil.to_dict_list(requests), nodes
+                        ResourceRequestUtil.to_dict_list(
+                            _expand_request_runs(requests)
+                        ),
+                        nodes,
                     )
                 )
             return None, requests, nodes
@@ -2033,7 +2163,9 @@ class ResourceDemandScheduler(IResourceScheduler):
                 "Best node: {}, score: {}, remaining requests: {}".format(
                     best_result.node,
                     best_result.score,
-                    ResourceRequestUtil.to_dict_list(best_result.infeasible_requests),
+                    ResourceRequestUtil.to_dict_list(
+                        _expand_request_runs(best_result.infeasible_requests)
+                    ),
                 )
             )
         return best_result.node, best_result.infeasible_requests, nodes
