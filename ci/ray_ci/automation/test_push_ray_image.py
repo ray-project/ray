@@ -120,17 +120,20 @@ class TestVariationSuffix:
 
 class TestPythonSuffixes:
     @pytest.mark.parametrize(
-        ("python_version", "expected"),
+        ("python_version", "platform", "expected"),
         [
             (
                 DEFAULT_PYTHON_TAG_VERSION,
+                "cpu",
                 ["-py" + DEFAULT_PYTHON_TAG_VERSION.replace(".", ""), ""],
             ),  # default gets empty suffix too
-            ("3.99", ["-py399"]),  # non-default gets no empty suffix
+            ("3.99", "cpu", ["-py399"]),  # non-default gets no empty suffix
+            ("3.10", "tpu", ["-py310"]),
+            ("3.12", "tpu", ["-py312", ""]),
         ],
     )
-    def test_python_suffixes(self, python_version, expected):
-        ctx = make_ctx(python_version=python_version)
+    def test_python_suffixes(self, python_version, platform, expected):
+        ctx = make_ctx(python_version=python_version, platform=platform)
         assert ctx._python_suffixes() == expected
 
 

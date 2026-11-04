@@ -10,7 +10,10 @@ from ci.ray_ci.automation.crane_lib import (
     call_crane_copy,
     call_crane_manifest,
 )
-from ci.ray_ci.configs import DEFAULT_PYTHON_TAG_VERSION
+from ci.ray_ci.configs import (
+    DEFAULT_PYTHON_TAG_VERSION,
+    DEFAULT_TPU_PYTHON_TAG_VERSION,
+)
 from ci.ray_ci.docker_container import GPU_PLATFORM
 
 logger = logging.getLogger(__name__)
@@ -53,19 +56,25 @@ def format_python_tag(python_version: str) -> str:
     return f"-py{python_version.replace('.', '')}"
 
 
-def get_python_suffixes(python_version: str) -> List[str]:
+def get_python_suffixes(python_version: str, platform: str = "cpu") -> List[str]:
     """
     Get python version suffixes (includes empty for default version).
 
-    For DEFAULT_PYTHON_TAG_VERSION (3.10), returns both the explicit
-    suffix and an empty suffix for backward compatibility.
+    For the default python tag version (3.12 on TPU, 3.10 otherwise),
+    returns both the explicit suffix and an empty suffix.
 
     Examples:
-        3.10 -> ["-py310", ""]
-        3.11 -> ["-py311"]
+        ("3.10", "cpu") -> ["-py310", ""]
+        ("3.11", "cpu") -> ["-py311"]
+        ("3.12", "tpu") -> ["-py312", ""]
     """
+    default_version = (
+        DEFAULT_TPU_PYTHON_TAG_VERSION
+        if platform == "tpu"
+        else DEFAULT_PYTHON_TAG_VERSION
+    )
     suffixes = [format_python_tag(python_version)]
-    if python_version == DEFAULT_PYTHON_TAG_VERSION:
+    if python_version == default_version:
         suffixes.append("")
     return suffixes
 

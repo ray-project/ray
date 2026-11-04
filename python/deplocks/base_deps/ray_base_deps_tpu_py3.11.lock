@@ -1,3 +1,4 @@
+--extra-index-url https://download.pytorch.org/whl/cpu
 --extra-index-url https://storage.googleapis.com/libtpu-releases/index.html
 
 absl-py==2.4.0 \
@@ -1198,7 +1199,7 @@ kombu==5.6.2 \
     --hash=sha256:8060497058066c6f5aed7c26d7cd0d3b574990b09de842a8c5aaed0b92cc5a55 \
     --hash=sha256:efcfc559da324d41d61ca311b0c64965ea35b4c55cc04ee36e55386145dace93
     # via celery
-libtpu==0.0.40 \
+libtpu==0.0.40 ; python_full_version < '3.12' \
     --hash=sha256:35885715028faf6f60f96fedf95f7110c42f7685d20fddd8c31e741d29c1ddca \
     --hash=sha256:90803ebcccffd4206e7a52344583fec246deb83de95fbc7b5e0137e4ae480a35 \
     --hash=sha256:a1d01214bffe5a0910057014eaa17ed838eebc780e1538b4bd118684908ea120 \

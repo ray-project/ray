@@ -49,9 +49,7 @@ else
   RAY_EXTRAS="all"
 fi
 
-# On TPU images, base-deps installs ray_base_deps_tpu_py*.lock (which solves
-# ray[all] jointly with jax[tpu] and xprof), while /home/ray/requirements_compiled.txt
-# holds CPU monorepo pins that would downgrade protobuf, grpcio, and fsspec.
+# Freeze Stage 1 TPU lockfile packages so Stage 2 does not downgrade them to CPU pins.
 if [[ "${PLATFORM}" == "tpu" ]]; then
     $HOME/anaconda3/bin/pip list --format=freeze > /home/ray/requirements_compiled.txt
 fi
@@ -84,6 +82,8 @@ if [[ ("${IMAGE_TYPE}" == "ray" || "${IMAGE_TYPE}" == "ray-torch") && "${PLATFOR
     fi
     $HOME/anaconda3/bin/pip --no-cache-dir uninstall -y cupy-cuda12x
     $HOME/anaconda3/bin/pip --no-cache-dir install "cupy-cuda13x==${CUPY_CUDA13X_VERSION}"
+elif [[ "${PLATFORM}" == "tpu" ]]; then
+    $HOME/anaconda3/bin/pip --no-cache-dir uninstall -y cupy-cuda12x cuda-pathfinder
 fi
 
 $HOME/anaconda3/bin/pip freeze > /home/ray/pip-freeze.txt
