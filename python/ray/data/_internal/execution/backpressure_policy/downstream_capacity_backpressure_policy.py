@@ -188,10 +188,13 @@ class DownstreamCapacityBackpressurePolicy(BackpressurePolicy):
             output_size_bytes = self._resource_manager.get_mem_op_outputs(
                 op, include_ineligible_downstream=True
             )
-            if op.output_dependencies and output_size_bytes > 0:
+            has_downstream = (
+                bool(op.output_dependencies)
+                or self._resource_manager.has_external_consumer
+            )
+            if has_downstream and output_size_bytes > 0:
                 return float("inf")
-            # Nothing queued, or a terminal operator with no external consumer:
-            # there is nothing to pace against.
+            # Nothing queued, or no downstream consumer: nothing to pace against.
             return 0
 
         output_size_bytes = self._resource_manager.get_mem_op_outputs(

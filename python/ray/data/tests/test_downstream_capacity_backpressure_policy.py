@@ -195,6 +195,7 @@ class TestDownstreamCapacityBackpressurePolicy:
         # Bytes in this operator's output queue, used by _get_output_pressure.
         rm.get_mem_op_outputs.return_value = outputs_usage
         rm.get_external_consumer_bytes.return_value = external_bytes
+        rm.has_external_consumer = external_bytes > 0
         return rm
 
     def _set_utilized_budget_fraction(self, rm, fraction):
@@ -226,7 +227,8 @@ class TestDownstreamCapacityBackpressurePolicy:
             )
 
         if downstream_capacity == 0:
-            if op.output_dependencies and output_size > 0:
+            has_downstream = bool(op.output_dependencies) or rm.has_external_consumer
+            if has_downstream and output_size > 0:
                 return float("inf")
             return 0
         return (output_size / downstream_capacity) - 1
@@ -502,6 +504,38 @@ class TestDownstreamCapacityBackpressurePolicy:
         assert policy.max_task_output_bytes_to_read(op) == (
             0 if expected_backpressure else None
         )
+
+    def test_backpressure_zero_downstream_capacity_terminal_op_with_queued_output(
+        self,
+    ):
+        """Backpressure applies to terminal operators with an external consumer.
+
+        A terminal operator has no output dependencies, so its downstream
+        capacity comes from the external consumer. When the consumer has no
+        bytes in flight but the operator already has output queued, the ratio
+        is effectively infinite.
+        """
+        op, op_state = self._mock_task_pool_map_operator()
+        op.output_dependencies = []  # terminal operator
+        topology = {op: op_state}
+        context = self._create_context(backpressure_ratio=2.0)
+        rm = self._mock_resource_manager(external_bytes=0)
+        rm.has_external_consumer = True
+        rm.get_mem_op_outputs.return_value = 500
+
+        threshold = (
+            DownstreamCapacityBackpressurePolicy.OBJECT_STORE_BUDGET_UTIL_THRESHOLD
+        )
+        self._set_utilized_budget_fraction(rm, threshold + 0.05)
+
+        policy = self._create_policy(
+            topology, data_context=context, resource_manager=rm
+        )
+
+        assert policy._get_downstream_capacity_size_bytes(op) == 0
+        assert policy._get_output_pressure(op) == float("inf")
+        assert policy.can_add_input(op) is False
+        assert policy.max_task_output_bytes_to_read(op) == 0
 
     @pytest.mark.parametrize(
         "external_bytes, expected_pressure, expected_can_add_input",
