@@ -58,7 +58,7 @@ depsets:
       - --python-platform=linux
       - --unsafe-package ray
     build_arg_sets:
-      - py310
+      - py311
     pre_hooks:
       - ci/raydepsets/pre_hooks/remove-compiled-headers.sh 3.13
 
