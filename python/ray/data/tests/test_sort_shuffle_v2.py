@@ -10,6 +10,12 @@ from ray.data._internal.execution.operators.base_physical_operator import (
     AllToAllOperator,
 )
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
+from ray.data._internal.execution.operators.shuffle_operators.disk_shuffle_map_operator import (  # noqa: E501
+    DiskHashShuffleMapOp,
+)
+from ray.data._internal.execution.operators.shuffle_operators.disk_shuffle_reduce_operator import (  # noqa: E501
+    DiskHashShuffleReduceOp,
+)
 from ray.data._internal.execution.operators.shuffle_operators.shuffle_map_operator import (  # noqa: E501
     ShuffleMapOp,
 )
@@ -262,17 +268,24 @@ def test_sort_shuffle_map_uses_user_boundaries_without_sampling(
     assert op.has_completed()
 
 
+@pytest.mark.parametrize(
+    "map_cls, reduce_cls",
+    [
+        (ShuffleMapOp, ShuffleReduceOp),
+        (DiskHashShuffleMapOp, DiskHashShuffleReduceOp),
+    ],
+)
 def test_shuffle_reduce_preserves_partition_order(
-    ray_start_regular_shared_2_cpus,
+    ray_start_regular_shared_2_cpus, map_cls, reduce_cls
 ):
     ctx = DataContext.get_current()
-    map_op = ShuffleMapOp(
+    map_op = map_cls(
         InputDataBuffer(ctx, []),
         ctx,
         num_partitions=2,
         partition_fn=lambda table: {},
     )
-    reduce_op = ShuffleReduceOp(
+    reduce_op = reduce_cls(
         map_op,
         ctx,
         num_partitions=2,
