@@ -211,9 +211,10 @@ ray get-auth-token --generate
 
 #### Step 2: Copy the token to every Spark worker machine
 
-On each Spark worker machine, copy the token to `~/.ray/auth_token`, where `~` is the home directory of the user that runs the Spark executors. Don't pass the token on a command line. For example, use `scp` to copy the token file:
+On each Spark worker machine, copy the token to `~/.ray/auth_token`, where `~` is the home directory of the user that runs the Spark executors. Don't pass the token on a command line. For example, create `~/.ray` and use `scp` to copy the token file:
 
 ```bash
+ssh user@spark-worker-1 'mkdir -p -m 700 ~/.ray'
 scp ~/.ray/auth_token user@spark-worker-1:~/.ray/auth_token
 ```
 
