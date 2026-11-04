@@ -241,13 +241,7 @@ def vfio_sysfs(monkeypatch):
             {"TPU_VISIBLE_CHIPS": "2,3", "TPU_VISIBLE_DEVICES": "0,1"},
             None,
             ["/dev/vfio/6", "/dev/vfio/2", "/dev/vfio/1", "/dev/vfio/7"],
-            id="visible_chips_precedence_over_visible_devices",
-        ),
-        pytest.param(
-            {"TPU_VISIBLE_DEVICES": "0,2"},
-            None,
-            ["/dev/vfio/4", "/dev/vfio/5", "/dev/vfio/6", "/dev/vfio/2"],
-            id="visible_devices_fallback_when_chips_unset",
+            id="chip_mask_ignores_visible_devices",
         ),
         pytest.param(
             {"TPU_VISIBLE_CHIPS": "2"},
@@ -266,12 +260,6 @@ def vfio_sysfs(monkeypatch):
             None,
             [],
             id="empty_visible_chips",
-        ),
-        pytest.param(
-            {"TPU_VISIBLE_DEVICES": ""},
-            None,
-            [],
-            id="empty_visible_devices",
         ),
     ],
 )

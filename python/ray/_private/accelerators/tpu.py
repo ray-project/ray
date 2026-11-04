@@ -632,11 +632,11 @@ def _tpu_vfio_bdf(group: int) -> Optional[str]:
 
 
 def _discover_tpu_vfio_devices() -> List[List[str]]:
-    """Discover Google TPU ``/dev/vfio/<group>`` devices grouped by physical chip.
+    """Return Google TPU ``/dev/vfio/<group>`` paths grouped by physical chip.
 
-    Sorts TPU VFIO groups by PCI ``domain:bus:device.function`` and groups
-    dual-VF chips (e.g. ``tpu7x`` ``.0`` and ``.1`` functions sharing
-    ``domain:bus:device``) into one list per physical chip.
+    Chips, and the PCI functions within each chip, are in PCI address order.
+    A chip that exposes several functions, such as a TPU v7x chip, contributes
+    one path per function.
     """
     try:
         entries = os.listdir("/dev/vfio")
@@ -657,46 +657,33 @@ def _discover_tpu_vfio_devices() -> List[List[str]]:
 
 
 def _parse_indices(raw: str) -> List[int]:
-    return [int(t) for t in raw.split(",") if t.strip().isdigit()]
+    return [int(t) for t in raw.split(",") if t.strip().isdecimal()]
 
 
 def get_current_process_tpu_vfio_devices(
     visible_devices: Optional[str] = None,
 ) -> List[str]:
-    """Return the ``/dev/vfio/<group>`` paths owned by the current worker process.
-
-    Scopes VFIO readiness checks strictly to the devices this process will open
-    so multi-worker hosts (sub-host MPMD ``TPU_VISIBLE_CHIPS`` or per-device
-    ``TorchTrainer`` workers) never probe peer workers' active VFIO groups.
+    """Return the TPU ``/dev/vfio/<group>`` paths that this process will open.
 
     Args:
-        visible_devices: Optional comma-separated logical VF indices to select
-            from the BDF-sorted TPU VFIO device list (used by per-device
-            ``TorchTrainer`` workers). When ``None``, resolves physical chips
-            from ``TPU_VISIBLE_CHIPS`` (or ``TPU_VISIBLE_DEVICES``).
+        visible_devices: Comma-separated device indices, counted over all TPU
+            PCI functions on the host in PCI address order. If None, selects
+            every function on the chips listed in ``TPU_VISIBLE_CHIPS``, or on
+            all chips if the variable is unset.
 
     Returns:
-        List of ``/dev/vfio/<group>`` paths assigned to the current worker, or
-        ``[]`` on hosts without Google TPU VFIO groups (e.g. TPU ``v4``
-        ``/dev/accel*`` or non-TPU hosts) or when the visibility mask is empty.
+        The selected paths. Hosts without TPU VFIO groups, such as TPU v4 hosts
+        that expose ``/dev/accel*``, return an empty list.
     """
     chips = _discover_tpu_vfio_devices()
-    if not chips:
-        return []
     all_paths = [path for chip in chips for path in chip]
     if visible_devices is not None:
-        return [
-            all_paths[i] for i in _parse_indices(visible_devices) if i < len(all_paths)
-        ]
-    # Whole-chip libtpu treats TPU_VISIBLE_DEVICES as a chip mask when
-    # TPU_VISIBLE_CHIPS is unset. Per-device TorchTPU callers pass an explicit
-    # index instead because TorchTPU addresses individual VFs.
-    mask = os.environ.get(
-        TPU_VISIBLE_CHIPS_ENV_VAR, os.environ.get(TPU_VISIBLE_DEVICES_ENV_VAR)
-    )
+        indices = _parse_indices(visible_devices)
+        return [all_paths[i] for i in indices if i < len(all_paths)]
+    mask = os.environ.get(TPU_VISIBLE_CHIPS_ENV_VAR)
     if mask is None:
         return all_paths
-    return [p for c in _parse_indices(mask) if c < len(chips) for p in chips[c]]
+    return [path for i in _parse_indices(mask) if i < len(chips) for path in chips[i]]
 
 
 def _vfio_group_busy(path: str) -> bool:
@@ -715,42 +702,34 @@ def wait_for_tpu_vfio_ready(
     timeout_s: float = DEFAULT_TPU_VFIO_READY_TIMEOUT_S,
     visible_devices: Optional[str] = None,
 ) -> None:
-    """Wait until this worker's assigned TPU ``/dev/vfio/<group>`` devices are free.
+    """Wait until the kernel releases the TPU VFIO groups this process will open.
 
-    When a Ray Train worker actor is killed via ``ray.kill()`` (``SIGKILL``), the
-    Raylet releases the TPU placement-group bundle as soon as the worker IPC
-    socket closes, while the Linux kernel tears down the dying process's VFIO
-    devices and IOMMU DMA mappings (``vfio_device_fops_release``,
-    ``vfio_iommu_type1_release``). Because ``libtpu`` and ``TorchTPU`` open
-    ``/dev/vfio/<group>`` without retry, a replacement worker starting during
-    that window can fail with ``EBUSY``.
+    When ``ray.kill`` sends SIGKILL to a TPU worker, the Raylet releases the
+    worker's TPU placement group bundle as soon as the worker's IPC socket
+    closes, while the kernel is still tearing down the worker's VFIO devices
+    and IOMMU DMA mappings. libtpu and TorchTPU open each ``/dev/vfio/<group>``
+    once without retrying, so a replacement worker that starts in that window
+    fails with EBUSY.
 
-    Must be called before the current process opens its TPU devices. Only this
-    worker's assigned Google TPU VFIO groups are probed, preventing peer-worker
-    contention on multi-worker TPU hosts. A probe can block in the kernel until
-    the previous owner's VFIO group release finishes, so ``timeout_s`` bounds
-    the polling between probes, not a blocked open.
+    Call this before the process opens its TPU devices. VFIO group opens are
+    exclusive, so this probes only the groups that this process will open.
 
     Args:
-        timeout_s: Maximum polling duration in seconds before logging a warning
-            and letting TPU initialization proceed.
-        visible_devices: Optional comma-separated logical VF indices passed to
+        timeout_s: Seconds to poll before logging a warning and returning. A
+            probe can block in the kernel until the previous owner's release
+            finishes, and the timeout doesn't interrupt a blocked probe.
+        visible_devices: Forwarded to
             :func:`get_current_process_tpu_vfio_devices`.
     """
-    target_devs = get_current_process_tpu_vfio_devices(visible_devices=visible_devices)
-    if not target_devs:
-        return
-
     start_time = time.monotonic()
-    busy_devs = [dev for dev in target_devs if _vfio_group_busy(dev)]
-    if not busy_devs:
-        return
-
+    busy_devs = [
+        dev
+        for dev in get_current_process_tpu_vfio_devices(visible_devices)
+        if _vfio_group_busy(dev)
+    ]
     pending = busy_devs
-    deadline = start_time + timeout_s
     while pending:
-        now = time.monotonic()
-        if now >= deadline:
+        if time.monotonic() - start_time >= timeout_s:
             logger.warning(
                 "Timed out after %.2fs waiting for TPU VFIO devices to be released: %s. "
                 "Proceeding with TPU initialization; libtpu may fail with EBUSY.",
@@ -758,14 +737,15 @@ def wait_for_tpu_vfio_ready(
                 pending,
             )
             return
-        time.sleep(min(_TPU_VFIO_POLL_INTERVAL_S, deadline - now))
+        time.sleep(_TPU_VFIO_POLL_INTERVAL_S)
         pending = [dev for dev in pending if _vfio_group_busy(dev)]
 
-    logger.info(
-        "TPU VFIO devices %s became ready after %.2fs.",
-        busy_devs,
-        time.monotonic() - start_time,
-    )
+    if busy_devs:
+        logger.info(
+            "TPU VFIO devices %s became ready after %.2fs.",
+            busy_devs,
+            time.monotonic() - start_time,
+        )
 
 
 def normalize_tpu_accelerator_type(accelerator_type: Optional[str]) -> str:
