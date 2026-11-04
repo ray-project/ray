@@ -100,7 +100,7 @@ def build_llm_deployment(
         ...     from ray.serve.llm.openai_api_models import ChatCompletionRequest
         ...
         ...     request = ChatCompletionRequest(
-        ...         model="qwen-0.5b",
+        ...         model="llama-3.1-8b",
         ...         messages=[
         ...             {
         ...                 "role": "user",
