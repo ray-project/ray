@@ -8,6 +8,7 @@ from ray.data._internal.datasource_v2.interfaces.file_manifest import (
     FileChunk,
     FileManifest,
 )
+from ray.data.block import BlockAccessor
 
 
 def _run(
@@ -47,21 +48,39 @@ def _manifest_map(manifest: FileManifest) -> dict[str, Optional[list[int]]]:
     }
 
 
-def _pack(
+def _pack_manifests(
     manifests: list[FileManifest],
     max_bin_bytes: int,
     **kwargs: Any,
-) -> list[dict[str, Optional[list[int]]]]:
+) -> list[FileManifest]:
+    """Every bin the packer seals for ``manifests``, in the order it seals them."""
     packer = OnlineBinPacker(max_bin_bytes, **kwargs)
     bins = []
     for manifest in manifests:
         packer.add_input(manifest)
         while packer.has_partition():
-            bins.append(_manifest_map(packer.next_partition()))
+            bins.append(packer.next_partition())
     packer.finalize()
     while packer.has_partition():
-        bins.append(_manifest_map(packer.next_partition()))
+        bins.append(packer.next_partition())
     return bins
+
+
+def _pack(
+    manifests: list[FileManifest],
+    max_bin_bytes: int,
+    **kwargs: Any,
+) -> list[dict[str, Optional[list[int]]]]:
+    return [
+        _manifest_map(manifest)
+        for manifest in _pack_manifests(manifests, max_bin_bytes, **kwargs)
+    ]
+
+
+def _consumer_memory_bytes(manifest: FileManifest) -> Optional[int]:
+    """What a bin tells its read task to request, read off the block's metadata."""
+    accessor = BlockAccessor.for_block(manifest.as_block())
+    return accessor.get_metadata().consumer_memory_bytes
 
 
 def _pairs(bins: list[dict[str, Optional[list[int]]]]) -> list[tuple[str, int]]:
@@ -242,6 +261,49 @@ def test_interleaved_heavy_files(
     assert _pairs(bins) == [(p, i) for p in ("a", "b") for i in range(4)]
     if not isolate_heavy_files:
         assert all(set(b) == {"a", "b"} for b in bins)
+
+
+@pytest.mark.parametrize("max_bin", [1, 50, 1000])
+@pytest.mark.parametrize("split_coalesced", [False, True])
+def test_bin_of_runs_requests_its_bytes(max_bin: int, split_coalesced: bool) -> None:
+    # Whatever the layout, a bin asks its read task for the bytes it packed: the
+    # 500-byte run over a 50-byte cap gets a bin of its own and asks for all 500,
+    # and a split coalesced run asks for the pieces that landed in each bin.
+    coalesced = _run((0, 1, 2), 90, unit_sizes=(30, 30, 30), unit_rows=(3, 3, 4))
+    files = [
+        _units("a", [30, 30, 30]),
+        _units("b", [500]),
+        _units("c", [10]),
+        _file("d", 90, [coalesced]),
+    ]
+    bins = _pack_manifests(files, max_bin, split_coalesced=split_coalesced)
+
+    assert _pairs([_manifest_map(b) for b in bins]) == [
+        ("a", 0),
+        ("a", 1),
+        ("a", 2),
+        ("b", 0),
+        ("c", 0),
+        ("d", 0),
+        ("d", 1),
+        ("d", 2),
+    ]
+    for manifest in bins:
+        assert _consumer_memory_bytes(manifest) == sum(
+            meta["size_bytes"] for meta in manifest.file_chunk_metadatas
+        )
+
+
+def test_bin_with_whole_file_requests_nothing() -> None:
+    # A whole-file row's bytes are its on-disk size, not a memory estimate, so
+    # the read task keeps its default request.
+    whole = FileManifest.construct_manifest(
+        paths=["w"], sizes=[40], chunk_metadatas=[None]
+    )
+    bins = _pack_manifests([whole], max_bin_bytes=100)
+
+    assert [_manifest_map(b) for b in bins] == [{"w": None}]
+    assert _consumer_memory_bytes(bins[0]) is None
 
 
 if __name__ == "__main__":

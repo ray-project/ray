@@ -1,5 +1,6 @@
 import logging
 import random
+from dataclasses import replace
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -31,11 +32,13 @@ from ray.data._internal.tensor_extensions.arrow import (
 )
 from ray.data._internal.utils.arrow_utils import get_pyarrow_version
 from ray.data.block import (
+    CONSUMER_MEMORY_BYTES_METADATA_KEY,
     Block,
     BlockAccessor,
     BlockColumn,
     BlockColumnAccessor,
     BlockExecStats,
+    BlockMetadata,
     BlockMetadataWithSchema,
     BlockType,
     U,
@@ -47,6 +50,7 @@ if TYPE_CHECKING:
     import pandas
 
     from ray.data._internal.planner.exchange.sort_task_spec import SortKey
+    from ray.data.block import TaskExecWorkerStats
 
 
 T = TypeVar("T")
@@ -366,6 +370,29 @@ class ArrowBlockAccessor(TableBlockAccessor):
 
     def size_bytes(self) -> int:
         return self._table.nbytes
+
+    def get_metadata(
+        self,
+        input_files: Optional[List[str]] = None,
+        block_exec_stats: Optional[BlockExecStats] = None,
+        task_exec_stats: Optional["TaskExecWorkerStats"] = None,
+    ) -> BlockMetadata:
+        metadata = super().get_metadata(
+            input_files=input_files,
+            block_exec_stats=block_exec_stats,
+            task_exec_stats=task_exec_stats,
+        )
+        # A producer such as the Parquet bin packer stamps the table's schema
+        # metadata with the memory the task consuming this block needs.
+        schema_metadata = self._table.schema.metadata
+        if schema_metadata and CONSUMER_MEMORY_BYTES_METADATA_KEY in schema_metadata:
+            metadata = replace(
+                metadata,
+                consumer_memory_bytes=int(
+                    schema_metadata[CONSUMER_MEMORY_BYTES_METADATA_KEY]
+                ),
+            )
+        return metadata
 
     def _zip(self, acc: BlockAccessor) -> "Block":
         r = self.to_arrow()

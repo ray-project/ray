@@ -338,6 +338,11 @@ class BlockStats:
 
 _BLOCK_STATS_FIELD_NAMES = {f.name for f in fields(BlockStats)}
 
+# Arrow schema-metadata key a producer stamps on a table block with the bytes of
+# heap memory the task consuming the block needs. ``ArrowBlockAccessor`` reads
+# it into ``BlockMetadata.consumer_memory_bytes``.
+CONSUMER_MEMORY_BYTES_METADATA_KEY = b"ray.data.consumer_memory_bytes"
+
 
 @DeveloperAPI
 @dataclass(frozen=True)
@@ -349,6 +354,9 @@ class BlockMetadata(BlockStats):
     # the empty list if indeterminate.
     # Stored as a tuple for hash-ability.
     input_files: Optional[Tuple[str, ...]] = field(default=None)
+    # Estimated bytes of heap memory the task consuming this block needs, or
+    # None when its producer made no estimate.
+    consumer_memory_bytes: Optional[int] = field(default=None)
 
     def __post_init__(self):
         super().__post_init__()
@@ -388,6 +396,7 @@ class BlockMetadataWithSchema(BlockMetadata):
             exec_stats=metadata.exec_stats,
             task_exec_stats=metadata.task_exec_stats,
             input_files=metadata.input_files,
+            consumer_memory_bytes=metadata.consumer_memory_bytes,
             schema=schema,
         )
 
@@ -415,6 +424,7 @@ class BlockMetadataWithSchema(BlockMetadata):
             exec_stats=self.exec_stats,
             input_files=self.input_files,
             task_exec_stats=self.task_exec_stats,
+            consumer_memory_bytes=self.consumer_memory_bytes,
         )
 
     def __getstate__(self) -> Dict[str, Any]:
