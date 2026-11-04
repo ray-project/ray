@@ -1,9 +1,16 @@
-# Ray resolves external dependencies through WORKSPACE. Bazel 7 defaults to that
-# already, so --enable_workspace is redundant here today; Bazel 8 flipped the
-# default to false and refuses to fetch anything with both switches off, so
-# stating it keeps a newer Bazel able to evaluate this tree.
+# Ray resolves external dependencies through WORKSPACE. Bazel 8 turned
+# --enable_workspace off by default and refuses to fetch anything with both
+# switches off, so state both.
 common --noenable_bzlmod
 common --enable_workspace
+# Bazel 8 made a glob() that matches nothing an error. Ray's root BUILD.bazel
+# (and likely third-party BUILD files) glob platform-specific paths that are
+# empty on other platforms. Keep Bazel 7's behaviour until they set allow_empty.
+common --noincompatible_disallow_empty_glob
+# Bazel 8 disallows ctx.resolve_tools, which the 2021 rules_proto_grpc pin
+# (Python/Java proto codegen) still calls. Drop once rules_proto_grpc is
+# replaced.
+common --noincompatible_disallow_ctx_resolve_tools
 
 # Must be first. Enables build:windows, build:linux, build:macos, build:freebsd, build:openbsd
 build --enable_platform_specific_config
