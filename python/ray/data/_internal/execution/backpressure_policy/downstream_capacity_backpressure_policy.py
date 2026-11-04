@@ -189,13 +189,6 @@ class DownstreamCapacityBackpressurePolicy(BackpressurePolicy):
                 op, include_ineligible_downstream=True
             )
             if op.output_dependencies and output_size_bytes > 0:
-                # Nothing is in flight downstream, but this operator already has
-                # output queued: the queue/capacity ratio is effectively
-                # infinite. Returning a finite value here would let the queue
-                # grow until it consumes the whole shared object-store budget.
-                # The utilization gate still decides whether to backpressure,
-                # and the queued output is already available to downstream, so
-                # holding the producer back costs no throughput.
                 return float("inf")
             # Nothing queued, or a terminal operator with no external consumer:
             # there is nothing to pace against.
