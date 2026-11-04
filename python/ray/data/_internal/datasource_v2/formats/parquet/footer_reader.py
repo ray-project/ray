@@ -267,6 +267,11 @@ class FooterReader:
             if self.read_order is not None
             else dict.fromkeys([*self.filter_columns, *file_names])
         )
+        if file_schema is not None:
+            # Only the file's columns: a missing ``sepal`` would match the leaf of
+            # a flat ``sepal.length`` too, and size it twice.
+            present = set(file_names)
+            names = [name for name in names if name in present]
         leaves = _column_leaves(columns=columns, names=names)
         if not leaves:
             # The file has none of the columns read: size it whole, the safe side.

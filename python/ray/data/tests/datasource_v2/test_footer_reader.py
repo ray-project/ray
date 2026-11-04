@@ -667,6 +667,16 @@ class TestSizingLeaves:
 
         assert self._paths(sizing, sizing.leaf_indices) == ["outer.a", "outer.b"]
 
+    def test_a_missing_column_is_not_a_dotted_one(self, tmp_path):
+        """A filter on ``sepal``, which this file lacks, isn't its ``sepal.length``."""
+        table = pa.table({"sepal.length": [1.0, 2.0, 3.0, 4.0]})
+        path, size = _write(tmp_path / "dotted.parquet", table, row_group_size=2)
+        reader = _reader(projected_cols=["sepal.length"], filter_expr=col("sepal") > 0)
+
+        sizing = self._sizing(reader, path, size)
+
+        assert sizing.column_leaves == [[0]]
+
 
 class TestReadFootersBatching:
     @pytest.fixture
