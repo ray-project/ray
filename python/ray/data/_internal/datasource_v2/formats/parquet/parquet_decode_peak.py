@@ -7,9 +7,9 @@ pages. PyArrow decodes a row group leaf by leaf into Arrow arrays, whose
 entries, values or nulls, are slots. A leaf's buffers are either kept until the
 row group is read or temporary, freed once that leaf is decoded.
 
-Nothing is decoded here. The inputs are the footer, its raw Thrift bytes for
-page counts, the file's size, and the dictionary page headers the footer reader
-fetches. Modelled on PyArrow 24's reader, a row group's peak is the sum of:
+Nothing is decoded here. The inputs are the footer, the data page counts
+``read_footer_stats`` reads from it, the file's size, and the dictionary page
+headers the footer reader fetches. Modelled on PyArrow 24's reader, a row group's peak is the sum of:
 
 1. I/O: PyArrow's footer read, the gaps its ``pre_buffer`` option reads between
    chunks, and the row group's compressed chunks; for a small file, which the
@@ -25,10 +25,10 @@ The rules are fitted to measured peaks and lean high: an underestimate is what
 runs a node out of memory.
 """
 
-from typing import Any, Callable, List, Mapping, Optional, Sequence, Set, Tuple
+from typing import Mapping, Optional, Sequence, Set, Tuple
 
 import pyarrow as pa
-from pyarrow.parquet import ColumnSchema, FileMetaData, RowGroupMetaData
+from pyarrow.parquet import ColumnSchema, RowGroupMetaData
 
 from ray.data._internal.datasource_v2.formats.parquet.parquet_decoded_size import (
     _LIST,
@@ -42,17 +42,6 @@ from ray.data._internal.datasource_v2.formats.parquet.parquet_decoded_size impor
     estimate_leaf,
     estimate_row_group,
     estimate_string_bytes,
-)
-from ray.data._internal.datasource_v2.formats.parquet.parquet_size_statistics import (
-    _COLUMN_CHUNK_META_DATA,
-    _FILE_META_ROW_GROUPS,
-    _I32,
-    _LIST as _THRIFT_LIST,
-    _ROW_GROUP_COLUMNS,
-    _STRUCT,
-    _CompactReader,
-    _ThriftDesync,
-    footer_bytes,
 )
 
 # PyArrow reads a file's last 64 KiB for its footer, and pre_buffer coalesces
@@ -80,11 +69,6 @@ _PHYSICAL_WIDTH = {
 }
 # Encodings whose decoders unpack a page's value lengths up front.
 _DELTA_ENCODINGS = {"DELTA_BYTE_ARRAY", "DELTA_LENGTH_BYTE_ARRAY"}
-# Field ids and enum values from parquet.thrift.
-_ENCODING_STATS = 13  # ColumnMetaData.encoding_stats, list<PageEncodingStats>
-_STATS_PAGE_TYPE = 1  # PageEncodingStats.page_type
-_STATS_COUNT = 3  # PageEncodingStats.count
-_DATA_PAGES = (0, 3)  # PageType.DATA_PAGE and PageType.DATA_PAGE_V2
 
 
 def estimate_row_group_peak(
@@ -317,75 +301,6 @@ def estimate_cast(
             read=read._replace(added_row_bytes=0, added_row_group_bytes=0),
         )
     return int(_CAST_FACTOR * size)
-
-
-def read_data_pages(metadata: FileMetaData) -> Optional[List[List[Optional[int]]]]:
-    """Each chunk's data page count from ``encoding_stats``, by row group then leaf.
-
-    ``None`` for a chunk without the stats (polars writes none), and for the
-    whole file if the footer doesn't parse.
-    """
-    buf = footer_bytes(metadata)
-    if buf is None:
-        # PyArrow didn't hand over the raw footer.
-        return None
-    reader = _CompactReader(buf)
-    try:
-        row_groups = _list_field(reader, _FILE_META_ROW_GROUPS, _row_group_pages)
-    except (IndexError, _ThriftDesync):
-        # A truncated footer, or a field this reader can't skip.
-        return None
-    if len(row_groups) != metadata.num_row_groups or any(
-        len(chunks) != metadata.num_columns for chunks in row_groups
-    ):
-        # Counts that don't line up with PyArrow's footer can't be matched to
-        # its chunks.
-        return None
-    return row_groups
-
-
-def _row_group_pages(reader: _CompactReader) -> List[Optional[int]]:
-    """One row group's data page counts, by leaf."""
-    return _list_field(reader, _ROW_GROUP_COLUMNS, _chunk_pages)
-
-
-def _chunk_pages(reader: _CompactReader) -> Optional[int]:
-    """One chunk's data page count, or ``None`` without ``encoding_stats``."""
-    pages = None
-    for field in reader._fields():
-        if field.id == _COLUMN_CHUNK_META_DATA and field.type == _STRUCT:
-            # No data pages counted means no stats to go by.
-            pages = sum(_list_field(reader, _ENCODING_STATS, _data_page_count)) or None
-        else:
-            reader._skip(field.type)
-    return pages
-
-
-def _data_page_count(reader: _CompactReader) -> int:
-    """An ``encoding_stats`` entry's page count if they are data pages, else 0."""
-    page_type, count = None, 0
-    # Its page type and count; the encoding isn't needed.
-    for field in reader._fields():
-        if field.id == _STATS_PAGE_TYPE and field.type == _I32:
-            page_type = reader._zigzag()
-        elif field.id == _STATS_COUNT and field.type == _I32:
-            count = reader._zigzag()
-        else:
-            reader._skip(field.type)
-    return count if page_type in _DATA_PAGES else 0
-
-
-def _list_field(
-    reader: _CompactReader, field_id: int, read_item: Callable[[_CompactReader], Any]
-) -> List[Any]:
-    """Each item of a struct's list field ``field_id``, none without it."""
-    items = []
-    for field in reader._fields():
-        if field.id == field_id and field.type == _THRIFT_LIST:
-            items = [read_item(reader) for _ in range(reader._list_header().count)]
-        else:
-            reader._skip(field.type)
-    return items
 
 
 def _dictionary_bytes(leaf: LeafChunk) -> int:
