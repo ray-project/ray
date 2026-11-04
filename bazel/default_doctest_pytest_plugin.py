@@ -37,7 +37,7 @@ def _defines(module, obj):
             member = member.fget
         if inspect.isfunction(member):
             member = inspect.unwrap(member)
-            if member.__globals__ is module.__dict__:
+            if getattr(member, "__globals__", None) is module.__dict__:
                 return True
     return False
 
