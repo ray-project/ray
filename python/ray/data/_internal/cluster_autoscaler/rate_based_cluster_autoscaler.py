@@ -357,7 +357,9 @@ class RateBasedClusterAutoscaler(ClusterAutoscaler):
         # More nodes won't speed up a slow consumer.
         if self._utility_calculator.is_blocked_on_consumer():
             logger.debug("Blocked on a slow consumer -- skipping cluster autoscaling.")
-            self._send_resource_request(None)
+            # Send the current demand, so the requester stays registered without
+            # asking for more capacity.
+            self._send_resource_request(active_requests)
             return self._last_resource_request
 
         # Get the current resources allocated to the cluster. This requires an RPC
@@ -424,7 +426,7 @@ class RateBasedClusterAutoscaler(ClusterAutoscaler):
 
         # 4. Send the resource request to the autoscaling coordinator.
         self._log_resource_request(plan.request)
-        # Only what was added on top of the in-flight demand is held.
+        # Only what was added on top of active_requests is held.
         self._scale_up_keep_alive.record(plan.scale_up, now)
         self._send_resource_request(plan.request)
 

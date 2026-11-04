@@ -2,7 +2,7 @@ import logging
 import time
 from collections import Counter
 from dataclasses import dataclass
-from typing import Callable, List, Optional, Type
+from typing import Any, Callable, Dict, List, Optional, Tuple, Type, TypeVar, cast
 from unittest.mock import MagicMock
 
 import pytest
@@ -16,6 +16,10 @@ from ray.data._internal.cluster_autoscaler import (
 )
 from ray.data._internal.cluster_autoscaler.base_autoscaling_coordinator import (
     STANDARD_RESOURCE_TYPES,
+    LabelSelector,
+    ResourceRequestPriority,
+    ResourceRequestStrategy,
+    ResourceType,
 )
 from ray.data._internal.cluster_autoscaler.default_autoscaling_coordinator import (
     NodeResources,
@@ -886,11 +890,26 @@ class _RecordingCoordinator(FakeAutoscalingCoordinator):
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
-        self.requests: List[ResourceDict] = []
+        self.requests: List[List[ResourceDict]] = []
 
-    def request_resources(self, resources, **kwargs):
+    def request_resources(
+        self,
+        resources: List[ResourceDict],
+        expire_after_s: float,
+        request_remaining: Optional[List[ResourceType]] = None,
+        priority: ResourceRequestPriority = ResourceRequestPriority.MEDIUM,
+        label_selectors: Optional[List[LabelSelector]] = None,
+        strategy: ResourceRequestStrategy = ResourceRequestStrategy.PACK,
+    ) -> None:
         self.requests.append(resources)
-        super().request_resources(resources, **kwargs)
+        super().request_resources(
+            resources,
+            expire_after_s,
+            request_remaining,
+            priority,
+            label_selectors,
+            strategy,
+        )
 
 
 class _ScriptedClusterCoordinator(_RecordingCoordinator):
@@ -908,6 +927,16 @@ class _ScriptedClusterCoordinator(_RecordingCoordinator):
         return {f"node_{i}": dict(r) for i, r in enumerate(self.cluster_resources)}
 
 
+_CoordinatorT = TypeVar("_CoordinatorT", bound=FakeAutoscalingCoordinator)
+
+
+def _last_request(coordinator: FakeAutoscalingCoordinator) -> List[ResourceDict]:
+    """Return the resources of the last request the coordinator recorded."""
+    allocation = coordinator._allocation
+    assert allocation is not None, "The autoscaler did not send a request"
+    return allocation.resources
+
+
 def _make_exact_path_autoscaler(
     requests: List[ResourceDict],
     *,
@@ -915,8 +944,8 @@ def _make_exact_path_autoscaler(
     utilization: ClusterUtil = _HIGH_UTIL,
     get_time: Optional[Callable[[], float]] = None,
     metrics: Optional[StubClusterAutoscalingMetrics] = None,
-    coordinator_cls=FakeAutoscalingCoordinator,
-):
+    coordinator_cls: Optional[Type[_CoordinatorT]] = None,
+) -> Tuple[_CoordinatorT, RateBasedClusterAutoscaler, MagicMock]:
     """Build a rate-based autoscaler with one operator reporting exact requests.
 
     Returns the coordinator, the autoscaler, and the operator. The operator's
@@ -924,13 +953,16 @@ def _make_exact_path_autoscaler(
     the gauge's utilization can be changed to move between the scaling path and
     the low-utilization keep-alive.
     """
-    op_kwargs = {"resource_requests": requests}
+    op_kwargs: Dict[str, Any] = {"resource_requests": requests}
     if metrics is not None:
         op_kwargs["metrics"] = metrics
     operator = _make_fake_op(**op_kwargs)
     # Both fakes default to ``time.time``; pass it through so a test can supply
     # a controllable clock.
     get_time = get_time or time.time
+    coordinator_cls = coordinator_cls or cast(
+        Type[_CoordinatorT], FakeAutoscalingCoordinator
+    )
     coordinator = coordinator_cls(
         initial_cluster_resources=initial_cluster_resources, get_time=get_time
     )
@@ -1026,14 +1058,14 @@ def test_exact_path_preserves_custom_resources():
     autoscaler.try_trigger_scaling()
 
     # The active request plus one scale-up copy, both with the exact shape.
-    assert coordinator._allocation.resources == [
+    assert _last_request(coordinator) == [
         {"GPU": 1, "worker_group_a": 1},
         {"GPU": 1, "worker_group_a": 1},
     ]
 
 
 def test_request_never_drops_below_in_flight_demand():
-    """In-flight demand is retained even when the solver wants fewer bundles.
+    """active_requests are retained even when the solver wants fewer bundles.
 
     An operator with no throughput rate yet only gets one bundle, so without
     this the request would fall below what is already running.
@@ -1047,20 +1079,21 @@ def test_request_never_drops_below_in_flight_demand():
 
     autoscaler.try_trigger_scaling()
 
-    assert coordinator._allocation.resources == [{"CPU": 1}] * 3
+    assert _last_request(coordinator) == [{"CPU": 1}] * 3
 
 
 def test_scale_up_bundles_follow_the_operators_own_shapes():
     """A shortage of one shape must not request another shape."""
+    requests: List[ResourceDict] = [{"CPU": 1.0}] * 3 + [{"GPU": 1.0}]
     coordinator, autoscaler, _ = _make_exact_path_autoscaler(
-        [{"CPU": 1}] * 3 + [{"GPU": 1}],
+        requests,
         initial_cluster_resources=[{"CPU": 4}],
     )
 
     autoscaler.try_trigger_scaling()
 
     bundle_counts = Counter(
-        tuple(sorted(bundle.items())) for bundle in coordinator._allocation.resources
+        tuple(sorted(bundle.items())) for bundle in _last_request(coordinator)
     )
     # 4 in-flight requests (3 CPU + 1 GPU) scaled to 8 bundles: the 4 extra
     # bundles follow the same 3:1 mix.
@@ -1088,7 +1121,7 @@ def test_over_utilized_shape_scales_when_cluster_utilization_is_low():
 
     autoscaler.try_trigger_scaling()
 
-    assert coordinator._allocation.resources == [
+    assert _last_request(coordinator) == [
         {"CPU": 1, "worker_group_a": 1},
         {"CPU": 1, "worker_group_a": 1},
     ]
@@ -1113,8 +1146,8 @@ def test_over_utilized_shape_scales_when_solver_is_silent():
 
     autoscaler.try_trigger_scaling()
 
-    # The in-flight demand plus one copy of the saturated shape.
-    assert coordinator._allocation.resources == [
+    # active_requests plus one copy of the saturated shape.
+    assert _last_request(coordinator) == [
         {"CPU": 1, "worker_group_a": 1},
         {"CPU": 1, "worker_group_a": 1},
     ]
@@ -1133,7 +1166,7 @@ def test_over_utilized_shape_is_not_requested_twice():
 
     # The solver wants a second bundle of the same shape; that copy already
     # covers the over-utilized shape, so no third bundle is added.
-    assert coordinator._allocation.resources == [
+    assert _last_request(coordinator) == [
         {"CPU": 1, "worker_group_a": 1},
         {"CPU": 1, "worker_group_a": 1},
     ]
@@ -1151,7 +1184,7 @@ def test_over_utilized_shape_is_not_requested_twice():
     ],
 )
 def test_exact_path_does_not_scale_up(initial_cluster_resources):
-    """Only the in-flight demand is sent when nothing needs to grow."""
+    """Only active_requests are sent when nothing needs to grow."""
     coordinator, autoscaler, _ = _make_exact_path_autoscaler(
         [{"CPU": 1}],
         initial_cluster_resources=initial_cluster_resources,
@@ -1160,7 +1193,7 @@ def test_exact_path_does_not_scale_up(initial_cluster_resources):
 
     autoscaler.try_trigger_scaling()
 
-    assert coordinator._allocation.resources == [{"CPU": 1}]
+    assert _last_request(coordinator) == [{"CPU": 1}]
 
 
 def test_exact_path_scales_up_when_no_node_can_host_shape():
@@ -1173,7 +1206,7 @@ def test_exact_path_scales_up_when_no_node_can_host_shape():
 
     autoscaler.try_trigger_scaling()
 
-    assert coordinator._allocation.resources == [{"GPU": 1}, {"GPU": 1}]
+    assert _last_request(coordinator) == [{"GPU": 1}, {"GPU": 1}]
 
 
 def test_exact_path_does_not_hold_demand_for_finished_tasks():
@@ -1198,7 +1231,7 @@ def test_exact_path_does_not_hold_demand_for_finished_tasks():
     # Tick 1: an active request below the scale-up threshold.
     current_time["t"] = 10.0
     autoscaler.try_trigger_scaling()
-    assert coordinator._allocation.resources == [{"CPU": 1}]
+    assert _last_request(coordinator) == [{"CPU": 1}]
 
     # Tick 2 (inside the release delay window): the task finished, so nothing may
     # be requested on its behalf anymore.
@@ -1240,7 +1273,9 @@ def test_exact_path_reports_new_shapes_during_release_delay():
     # different shape showed up. The held scale-up copy must be *added* to the
     # current demand, not sent in its place.
     operator.get_resource_requests.return_value = [{"CPU": 2}]
-    autoscaler._utility_calculator.utilization = _LOW_UTIL
+    cast(
+        _MutableUtilizationGauge, autoscaler._utility_calculator
+    ).utilization = _LOW_UTIL
     current_time["t"] = 11.0
     autoscaler.try_trigger_scaling()
     assert coordinator.requests[-1] == [{"CPU": 2}, {"CPU": 1}]
@@ -1262,14 +1297,14 @@ def test_custom_resources_stay_out_of_request_remaining():
     autoscaler.try_trigger_scaling()
 
     # The custom resource still reaches the request...
-    assert coordinator._allocation.resources == [
+    assert _last_request(coordinator) == [
         {"GPU": 1, "worker_group_a": 1},
         {"GPU": 1, "worker_group_a": 1},
     ]
     # ...and the leftover-reservation set is untouched.
-    assert coordinator._allocation.request_remaining == frozenset(
-        STANDARD_RESOURCE_TYPES
-    )
+    allocation = coordinator._allocation
+    assert allocation is not None
+    assert allocation.request_remaining == frozenset(STANDARD_RESOURCE_TYPES)
 
 
 _THRESHOLDS = ClusterUtil(cpu=0.5, gpu=0.5, memory=0.5, object_store_memory=0.5)
@@ -1350,7 +1385,9 @@ def test_keep_alive_keeps_earlier_scale_up_shapes():
     assert coordinator.requests[-1] == [{"CPU": 4}, {"CPU": 4}]
 
     # Tick 3 (inside the window, at low utilization): both scale-ups are held.
-    autoscaler._utility_calculator.utilization = _LOW_UTIL
+    cast(
+        _MutableUtilizationGauge, autoscaler._utility_calculator
+    ).utilization = _LOW_UTIL
     operator.get_resource_requests.return_value = []
     current_time["t"] = 12.0
     autoscaler.try_trigger_scaling()

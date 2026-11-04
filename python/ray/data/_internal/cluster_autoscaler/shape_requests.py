@@ -158,7 +158,7 @@ def _scale_up_bundles(
     count: int,
     active_requests: List[ResourceDict],
 ) -> List[ResourceDict]:
-    """Return the bundles to add on top of ``op``'s in-flight demand."""
+    """Return the bundles to add on top of ``active_requests``."""
     extra = max(0, count - len(active_requests))
     if extra == 0:
         return []
@@ -174,7 +174,7 @@ def _scale_up_bundles(
 
 @dataclass
 class RequestPlan:
-    """A request, and the part of it added on top of the in-flight demand.
+    """A request, and the part of it added on top of ``active_requests``.
 
     ``scale_up`` is the solver delta plus one copy per over-utilized shape; it is
     what the keep-alive window holds while utilization is low.
@@ -192,13 +192,13 @@ def build_request(
 ) -> RequestPlan:
     """Build the request, preserving exact resource shapes.
 
-    In-flight demand goes out unchanged for every operator -- this autoscaler only
+    ``active_requests`` go out unchanged for every operator -- this autoscaler only
     scales up, so the request never falls below what is already running -- and the
     solver's delta is added on top, over each operator's own shapes. An
     over-utilized shape gets one copy unless the solver already asked for one.
     """
     request: List[ResourceDict] = []
-    # In-flight demand goes out by reference: the bundles are owned by the
+    # active_requests go out by reference: the bundles are owned by the
     # operators, and ``_send_resource_request`` copies everything it puts on
     # the wire, so nothing in between may mutate a bundle in place.
     for requests in active_requests_by_op.values():
@@ -220,8 +220,8 @@ def build_request(
 class ScaleUpKeepAlive:
     """Holds a request's scale-up copies alive for a bounded window, per shape.
 
-    In-flight demand needs no window: it is re-sent every tick while its tasks are
-    alive. One instance belongs to one autoscaler (one execution).
+    ``active_requests`` need no window: they are re-sent every tick while their
+    tasks or actors are retained. One instance belongs to one autoscaler (one execution).
     """
 
     def __init__(self, release_delay_s: float):

@@ -28,7 +28,6 @@ from ray.data._internal.execution.util import memory_string
 
 logger = logging.getLogger(__name__)
 
-HEAD_NODE_RESOURCE_LABEL = HEAD_NODE_RESOURCE_NAME
 _RESOURCE_LOG_KEYS = ("CPU", "GPU", "memory", "object_store_memory")
 _RESOURCE_LOG_MEMORY_KEYS = {"memory", "object_store_memory"}
 
@@ -70,7 +69,7 @@ def cluster_node_resources_by_subcluster(
         resources = node["Resources"]
         # Exclude the head node if it doesn't have CPUs and GPUs,
         # because the object store is not usable.
-        if HEAD_NODE_RESOURCE_LABEL in resources and (
+        if HEAD_NODE_RESOURCE_NAME in resources and (
             resources.get("CPU", 0) == 0 and resources.get("GPU", 0) == 0
         ):
             return False
@@ -835,7 +834,7 @@ def get_or_create_autoscaling_coordinator():
     # on the cluster shares this detached actor.
     actor_cls = ray.remote(
         num_cpus=0,
-        resources={HEAD_NODE_RESOURCE_LABEL: 0.001},
+        resources={HEAD_NODE_RESOURCE_NAME: 0.001},
         max_restarts=-1,
         max_task_retries=-1,
     )(_AutoscalingCoordinatorActor).options(
