@@ -123,18 +123,15 @@ MODEL_DEFAULTS: ModelConfigDict = {
 class ModelCatalog:
     """Registry of models, preprocessors, and action distributions for envs.
 
-    .. testcode::
-        :skipif: True
-
-        prep = ModelCatalog.get_preprocessor(env)
-        observation = prep.transform(raw_observation)
-
-        dist_class, dist_dim = ModelCatalog.get_action_dist(
-            env.action_space, {})
-        model = ModelCatalog.get_model_v2(
-            obs_space, action_space, num_outputs, options)
-        dist = dist_class(model.outputs, model)
-        action = dist.sample()
+    Examples:
+        >>> prep = ModelCatalog.get_preprocessor(env)  # doctest: +SKIP_EXAMPLE
+        >>> observation = prep.transform(raw_observation)
+        >>> dist_class, dist_dim = ModelCatalog.get_action_dist(
+        ...     env.action_space, {})
+        >>> model = ModelCatalog.get_model_v2(
+        ...     obs_space, action_space, num_outputs, options)
+        >>> dist = dist_class(model.outputs, model)
+        >>> action = dist.sample()
     """
 
     @staticmethod
