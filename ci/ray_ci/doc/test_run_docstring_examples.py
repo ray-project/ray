@@ -443,6 +443,21 @@ def test_missing_library_from_an_rllib_local_set_to_none(nothing_installed):
     assert missing_library(error) == "torch"
 
 
+def test_missing_library_from_an_rllib_closure_set_to_none(nothing_installed):
+    # torch bound in an enclosing function is a free variable of the inner one,
+    # so it's in the frame's f_locals but not in its co_varnames.
+    code = (
+        "def outer():\n"
+        "    torch = None\n"
+        "    def inner():\n"
+        "        return torch.device('cpu')\n"
+        "    return inner()\n"
+    )
+    namespace = {"__name__": "ray.rllib.utils.framework"}
+    error = _attribute_error(code + "outer()\n", namespace)
+    assert missing_library(error) == "torch"
+
+
 def test_missing_library_from_an_rllib_example_global_set_to_none(nothing_installed):
     # Raised by an example such as `torch.tensor([0.0])` that runs in a copy of
     # an RLlib module's globals, where try_import_torch set torch to None.

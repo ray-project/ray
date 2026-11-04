@@ -168,10 +168,8 @@ def _rllib_stubbed_library(error: AttributeError) -> Optional[str]:
     for name, library in _RLLIB_NONE_NAMES.items():
         if not re.search(rf"\b{name}\.{re.escape(error.name)}\b", line):
             continue
-        if name in code.co_varnames:
-            value = frame.f_locals.get(name, ...)
-        else:
-            value = frame.f_globals.get(name, ...)
+        # f_locals also holds closure variables, which co_varnames doesn't list.
+        value = frame.f_locals.get(name, frame.f_globals.get(name, ...))
         if value is None:
             return library
     return None
