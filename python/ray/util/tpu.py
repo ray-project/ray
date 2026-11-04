@@ -508,14 +508,12 @@ def _get_nodes_with_placed_tpu_bundles() -> Set[str]:
     """Return the set of node IDs that currently host a placed TPU bundle in any
     non-REMOVED placement group.
 
-    Why this is needed: ``available_resources_per_node()`` returns the base
-    ``"TPU"`` resource counter on each node. When a placement group reserves
-    ``{"TPU": N}``, the base ``"TPU"`` resource is converted into placement-group
-    wildcard/indexed resources (``TPU_group_...``), which in Ray's resource view
-    only occurs once a task or actor is scheduled into the bundle in some test/mock
-    environments or can race with ``remove_placement_group()``. Checking placed
-    TPU bundles in ``placement_group_table()`` ensures a node with an active
-    placement group reservation is treated as busy.
+    Why this is needed: GCS commits ``bundles_to_node_id`` synchronously when a
+    placement group becomes ready before remote raylet ``ResourceSyncer``
+    heartbeats update ``available_resources_per_node()`` (and mocked placement
+    groups in unit tests do not mutate raylet resources). Checking placed TPU
+    bundles in ``placement_group_table()`` alongside ``available_resources_per_node()``
+    ensures a node with an active placement group reservation is treated as busy.
     """
     if not ray.is_initialized():
         return set()
@@ -524,18 +522,13 @@ def _get_nodes_with_placed_tpu_bundles() -> Set[str]:
         pg_table = placement_group_table()
     except Exception:
         return used_nodes
-    if not isinstance(pg_table, dict):
-        return used_nodes
     for pg_info in pg_table.values():
-        if not isinstance(pg_info, dict) or pg_info.get("state") == "REMOVED":
+        if pg_info.get("state") == "REMOVED":
             continue
         bundles = pg_info.get("bundles", {})
         bundles_to_node_id = pg_info.get("bundles_to_node_id", {})
         for bundle_idx, node_id in bundles_to_node_id.items():
-            if not node_id:
-                continue
-            bundle_res = bundles.get(bundle_idx) or bundles.get(int(bundle_idx)) or {}
-            if bundle_res.get("TPU", 0) > 0:
+            if node_id and bundles.get(bundle_idx, {}).get("TPU", 0) > 0:
                 used_nodes.add(node_id)
     return used_nodes
 
@@ -711,6 +704,8 @@ class SlicePlacementGroup:
             tpu_resource_per_chip = get_tpu_resource_per_chip()
         self._tpu_resource_per_chip = tpu_resource_per_chip
 
+        self._validate_tpu_config()
+
         # Calculate number of bundles and bundle resources for specified TPU topology.
         self._num_bundles, self._bundle_resources = get_tpu_worker_resources(
             topology=self._topology,
@@ -721,18 +716,11 @@ class SlicePlacementGroup:
             tpu_resource_per_chip=self._tpu_resource_per_chip,
         )
 
-        if chips_per_vm is not None and chips_per_vm <= 0:
-            raise ValueError("chips_per_vm must be positive.")
-
         self._chips_per_host = (
             chips_per_vm
             if chips_per_vm is not None
             else get_chips_per_host(self._topology, self._accelerator_version)
         )
-        if self._chips_per_host <= 0:
-            raise ValueError(
-                f"Resolved chips per host must be positive, got {self._chips_per_host}"
-            )
 
         # Within Ray, a "host" corresponds to a user-visible compute VM.
         # This may differ from the physical hardware host definitions in GCP/GKE docs.
@@ -746,8 +734,6 @@ class SlicePlacementGroup:
         self._hosts_per_slice = max(1, total_chips // self._logical_devices_per_host)
         self._num_hosts = self._hosts_per_slice * self._num_slices
         self._bundles_per_slice = self._num_bundles // self._num_slices
-
-        self._validate_tpu_config()
 
         self._managed_pgs = self._reserve_slice(
             name=name,
@@ -1040,7 +1026,7 @@ class SlicePlacementGroup:
             except Exception:
                 logger.exception(
                     "Failed to remove TPU slice placement group %s.",
-                    getattr(pg, "id", pg),
+                    pg.id,
                 )
 
 

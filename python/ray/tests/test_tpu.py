@@ -1095,7 +1095,6 @@ def test_shutdown_safe_after_construction_failure():
     # If the above didn't crash or leak resources, we are good.
     # We can also manually construct a partial instance and call shutdown.
     partial_pg = SlicePlacementGroup.__new__(SlicePlacementGroup)
-    partial_pg._slice_pgs = []
 
     # Should not raise even though it's missing attributes
     partial_pg.shutdown()
