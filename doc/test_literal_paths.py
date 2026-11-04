@@ -60,7 +60,7 @@ def _build_excludes(root: str) -> Iterator[Tuple[str, int, str]]:
         text=True,
     )
     for build in out.split():
-        with open(os.path.join(root, build)) as f:
+        with open(os.path.join(root, build), encoding="utf-8") as f:
             tree = ast.parse(f.read(), filename=build)
         base = os.path.dirname(build)
         for node in ast.walk(tree):
@@ -77,7 +77,7 @@ def _build_excludes(root: str) -> Iterator[Tuple[str, int, str]]:
 
 def _codeowners(root: str) -> Iterator[Tuple[str, int, str]]:
     name = ".github/CODEOWNERS"
-    with open(os.path.join(root, name)) as f:
+    with open(os.path.join(root, name), encoding="utf-8") as f:
         for lineno, line in enumerate(f, 1):
             fields = line.split("#", 1)[0].split()
             if fields and fields[0].startswith("/doc/") and _is_literal(fields[0]):
@@ -90,7 +90,7 @@ def _rules(root: str) -> Iterator[Tuple[str, int, str]]:
         if not fnmatch.fnmatch(fname, "*.rules.txt"):
             continue
         name = f".buildkite/{fname}"
-        with open(os.path.join(rules_dir, fname)) as f:
+        with open(os.path.join(rules_dir, fname), encoding="utf-8") as f:
             for lineno, line in enumerate(f, 1):
                 entry = line.split("#", 1)[0].strip()
                 if entry.startswith("doc/") and _is_literal(entry):
