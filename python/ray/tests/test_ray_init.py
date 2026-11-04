@@ -386,6 +386,17 @@ def test_ray_init_after_client_connect_failed(shutdown_only):
         ray.init()
 
 
+def test_ray_init_after_client_connect_failed_and_disconnect(shutdown_only):
+    with pytest.raises(ConnectionError):
+        ray.init(f"ray://localhost:{find_free_port()}")
+
+    # Make sure the ray.util.disconnect() hint in the RuntimeError raised in
+    # test_ray_init_after_client_connect_failed actually works.
+    ray.util.disconnect()
+    ray.init()
+    assert ray.is_initialized()
+
+
 def test_shutdown_wait_for_processes(shutdown_only):
     ray.init()
     node = ray._private.worker._global_node

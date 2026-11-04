@@ -1759,7 +1759,12 @@ def init(
         raise RuntimeError(f"Unknown keyword argument(s): {unknown}")
 
     if client_mode_should_convert() and num_connected_contexts() == 0:
-        raise RuntimeError("Ray Client is already initialized in this process.")
+        raise RuntimeError(
+            "Ray Client is already initialized in this process, but no Ray "
+            "Client connection is active, likely because a previous "
+            '`ray.init("ray://...")` failed. Call `ray.util.disconnect()` '
+            "before calling `ray.init()` to start or connect to a local cluster."
+        )
 
     # Try to increase the file descriptor limit, which is too low by
     # default for Ray: https://github.com/ray-project/ray/issues/11239
