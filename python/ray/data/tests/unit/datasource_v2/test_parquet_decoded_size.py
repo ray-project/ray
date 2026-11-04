@@ -8,6 +8,8 @@ import datetime
 import math
 import os
 from decimal import Decimal
+from types import SimpleNamespace
+from typing import Any, cast
 
 import numpy as np
 import pytest
@@ -20,6 +22,7 @@ from ray.data._internal.datasource_v2.formats.parquet.parquet_decoded_size impor
     build_leaf_profiles,
     dictionary_page_read_size,
     estimate_row_group_decoded_size,
+    statistics_text_bytes,
 )
 from ray.data._internal.datasource_v2.formats.parquet.parquet_size_statistics import (
     DICTIONARY_PAGE_HEADER_READ_BYTES,
@@ -710,6 +713,24 @@ def test_ray_read(tmp_path, column, schema_type, format_kwargs, high):
     assert 1 <= estimate / _allocated(path, schema=schema, **format_kwargs) <= high
 
 
+def test_hidden_dictionary_slots_without_size_statistics(tmp_path):
+    """A categorical in an optional struct, pinned to string, from PyArrow 17."""
+    # The leaf's null count reads 0 though a third of the structs are null.
+    path = _write(pa.table({"a": _nulls_hide_a_dictionary()}), tmp_path / "f.parquet")
+    schema = pa.schema([("a", pa.struct([pa.field("d", pa.string(), nullable=False)]))])
+    estimate = _estimate(path, schema=schema, size_statistics=_no_size_statistics)
+
+    assert estimate >= _allocated(path, schema=schema)
+
+
+def test_statistics_without_a_value_give_no_text_length():
+    """A chunk whose statistics claim a min and max but hold ``None``."""
+    statistics = SimpleNamespace(has_min_max=True, min=None, max=7)
+    chunk = cast(Any, SimpleNamespace(statistics=statistics))
+
+    assert statistics_text_bytes(arrow_type=pa.int64(), chunks=[chunk]) is None
+
+
 def test_added_columns_are_bounded(tmp_path):
     """The path, a Hive value cut from it, and a column the pin fills with nulls."""
     path = str(tmp_path / "year=2024" / "f.parquet")
@@ -728,6 +749,20 @@ def test_added_columns_are_bounded(tmp_path):
     estimate = _estimate(path, added=added) - _estimate(path)
     assert estimate == math.ceil(N * added[0]) + added[1]
     assert 1 <= estimate / held <= 1.1
+
+
+@pytest.mark.parametrize(
+    "arrow_type",
+    [
+        pa.list_view(pa.int64()),
+        pa.dense_union([pa.field("x", pa.int64())]),
+        pa.run_end_encoded(pa.int32(), pa.string()),
+    ],
+)
+def test_added_column_without_a_fixed_width(arrow_type):
+    """A dataset column the file lacks, of a type with no bit width."""
+    row, _ = added_bytes(added=[pa.field("notes", arrow_type)], path="f.parquet")
+    assert row > 0
 
 
 if __name__ == "__main__":

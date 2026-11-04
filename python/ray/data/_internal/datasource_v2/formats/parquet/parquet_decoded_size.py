@@ -1229,6 +1229,8 @@ def statistics_text_bytes(
             if statistics is None or not statistics.has_min_max:
                 return None
             for value in (statistics.min, statistics.max):
+                if value is None:
+                    return None
                 if decimal:
                     # "-0.05": the unscaled digits, at least one before the point.
                     scale = arrow_type.scale
@@ -1371,6 +1373,9 @@ def estimate_hidden_dictionary_slots(leaf: LeafChunk) -> int:
 
 def _hidden_slots(leaf: LeafChunk) -> int:
     """The leaf's slots no value fills, or more when the footer can't say."""
+    if not leaf.levels_known():
+        # The null count can read 0 under a null struct: see ``LeafChunk._nulls``.
+        return leaf.slots()
     return leaf.slots() - leaf.fewest_values()
 
 
@@ -1460,7 +1465,11 @@ def _added_array_bytes(
     elif _is_text(arrow_type):
         row += _offset_width(arrow_type) + text_bytes
     else:
-        row += arrow_type.bit_width / 8
+        try:
+            row += arrow_type.bit_width / 8
+        except ValueError:
+            # No fixed width, as a list view or a union: a crude 16 bytes a row.
+            row += 16
     return row, once
 
 
