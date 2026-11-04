@@ -109,6 +109,9 @@ def test_unify_schemas_equivalent_performance(
     # Create list of identical schemas
     schemas = [base_schema] * num_schemas
 
+    # Warm up once so the timed call does not include first-call overhead.
+    unify_schemas(schemas)
+
     # Time the unification
     start_time = time.time()
     unified = unify_schemas(schemas)
