@@ -653,7 +653,9 @@ def fake_docker_hub(monkeypatch):
             elif match and match[1] == "manifests" and match[2] in manifests:
                 self._reply(200, manifests[match[2]])
             elif match and match[1] == "blobs" and match[2] in blobs:
-                self._reply(307, headers=[("Location", f"/storage/{match[2]}")])
+                # Storage is another host, as presigned object storage is.
+                storage = f"http://localhost:{self.server.server_port}/storage"
+                self._reply(307, headers=[("Location", f"{storage}/{match[2]}")])
             else:
                 self._reply(404)
 
@@ -1526,6 +1528,243 @@ def test_extract_tar_layer_reads_a_layer_once(tmp_path):
     extract_tar_layer(reader, str(tmp_path))
     assert (tmp_path / "b").stat().st_size == 1 << 20
     assert reader.bytes_read <= len(blob)
+
+
+@pytest.mark.parametrize(
+    "image,mirror,expected",
+    [
+        ("busybox", None, ("registry-1.docker.io/library/busybox:latest", False)),
+        ("ghcr.io/org/app:1.0", None, ("ghcr.io/org/app:1.0", False)),
+        (
+            "busybox:1.36",
+            "http://127.0.0.1:5000",
+            ("127.0.0.1:5000/library/busybox:1.36", True),
+        ),
+        # mkfs.erofs reads tags only.
+        (f"busybox@sha256:{'0' * 64}", None, None),
+        # A mirror's path prefix becomes part of the repository.
+        (
+            "busybox",
+            "https://mirror.example.com/v2-proxy",
+            ("mirror.example.com/v2-proxy/library/busybox:latest", False),
+        ),
+        # mkfs.erofs wouldn't take this host for a registry.
+        ("localhost/app:1.0", None, None),
+        # Local archives are extracted as before.
+        ("./image.tar", None, None),
+    ],
+)
+def test_oci_reference(monkeypatch, image, mirror, expected):
+    if mirror:
+        monkeypatch.setenv("RAY_SANDBOX_REGISTRY_MIRROR", mirror)
+    else:
+        monkeypatch.delenv("RAY_SANDBOX_REGISTRY_MIRROR", raising=False)
+    assert image_utils._oci_reference(image) == expected
+
+
+@pytest.fixture
+def fake_oci_mkfs(fake_mkfs_erofs, monkeypatch):
+    """The fake mkfs.erofs, advertising --oci too. An --oci build runs
+    ``oci.sh`` next to it with the image path (write one to change what it
+    does); by default it writes a tar holding ``built-by-oci``, so the test
+    can tell the builds apart. Seeding is skipped: the fake's images aren't
+    EROFS."""
+    script = fake_mkfs_erofs / "mkfs.erofs"
+    script.write_text(
+        "#!/bin/sh\n"
+        'dir="$(dirname "$0")"\n'
+        'if [ "$1" = "--help" ]; then\n'
+        '  echo "  --tar=MODE  build from tarball"\n'
+        '  echo "  --oci=[f|i]  build from an OCI registry"; exit 0\n'
+        "fi\n"
+        'case "$1" in --oci=*)\n'
+        '  echo "$@" > "$dir/oci.args"\n'
+        # The image path comes just before the reference, which is last.
+        '  prev=; for arg; do out="$prev"; prev="$arg"; done\n'
+        '  exec sh "$dir/oci.sh" "$out";;\n'
+        "esac\n"
+        'echo "$@" > "$dir/mkfs.args"\n'
+        'cat > "$4"\n'
+    )
+    (fake_mkfs_erofs / "built-by-oci").write_text("oci")
+    (fake_mkfs_erofs / "oci.sh").write_text(
+        f'tar -C "{fake_mkfs_erofs}" -cf "$1" ./built-by-oci\n'
+    )
+    monkeypatch.setattr(image_utils, "_seed_erofs_image", lambda mkfs, path: None)
+    image_utils._mkfs_erofs_supports_oci.cache_clear()
+    yield fake_mkfs_erofs
+    image_utils._mkfs_erofs_supports_oci.cache_clear()
+
+
+def test_pull_builds_with_mkfs_oci(tmp_path, fake_docker_hub, fake_oci_mkfs):
+    """mkfs.erofs pulls the image itself, from the mirror; the config is
+    still cached, and no layer is downloaded."""
+    image_dir = pull_and_extract_container_image(
+        "busybox:latest", images_dir=str(tmp_path / "images")
+    )
+    assert _image_file(image_dir, "built-by-oci") == b"oci"
+    args = (fake_oci_mkfs / "oci.args").read_text().split()
+    port = os.environ["RAY_SANDBOX_REGISTRY_MIRROR"].rsplit(":", 1)[1]
+    assert args[0] == "--oci=f,insecure"
+    assert {"--ovlfs-strip=1", "-E^inline_data", f"-b{mmap.PAGESIZE}"} <= set(args)
+    assert args[-1] == f"127.0.0.1:{port}/library/busybox:latest"
+    with open(os.path.join(image_dir, ".image_config.json")) as f:
+        assert json.load(f)["os"] == "linux"
+    assert not (fake_oci_mkfs / "mkfs.args").exists()
+
+
+def test_pull_falls_back_when_mkfs_oci_fails(
+    tmp_path, fake_docker_hub, fake_oci_mkfs, monkeypatch
+):
+    """A failed --oci build leaves nothing behind: the image is built from
+    the downloaded layers instead."""
+    (fake_oci_mkfs / "oci.sh").write_text(
+        'echo partial > "$1"; echo "curl: (28) timed out" >&2; exit 1\n'
+    )
+    warnings = []
+    monkeypatch.setattr(image_utils.logger, "warning", warnings.append)
+    image_dir = pull_and_extract_container_image(
+        "busybox:latest", images_dir=str(tmp_path / "images")
+    )
+    assert _image_file(image_dir, "bin/busybox") == fake_docker_hub
+    (warning,) = warnings
+    assert "built from the downloaded layers instead" in warning
+    assert "timed out" in warning
+
+
+def test_pull_skips_mkfs_oci_when_disabled(
+    tmp_path, fake_docker_hub, fake_oci_mkfs, monkeypatch
+):
+    monkeypatch.setenv("RAY_SANDBOX_EROFS_OCI", "0")
+    image_dir = pull_and_extract_container_image(
+        "busybox:latest", images_dir=str(tmp_path / "images")
+    )
+    assert _image_file(image_dir, "bin/busybox") == fake_docker_hub
+    assert not (fake_oci_mkfs / "oci.args").exists()
+
+
+def test_pull_with_mkfs_oci_reports_a_missing_image(
+    tmp_path, fake_docker_hub, fake_oci_mkfs
+):
+    """An image the registry doesn't have fails the pull as before, and
+    mkfs.erofs isn't left running."""
+    (fake_oci_mkfs / "oci.sh").write_text("exec sleep 60\n")
+    with pytest.raises(SandboxCreationError, match="HTTP Error 404"):
+        pull_and_extract_container_image(
+            "nonexistent_image_12345_xyz:latest",
+            images_dir=str(tmp_path / "images"),
+            timeout_seconds=5.0,
+        )
+
+
+def _real_mkfs(fake_mkfs_erofs, monkeypatch, needs):
+    """The mkfs.erofs on PATH behind the fake one, made first on PATH, or
+    skip without one whose --help mentions ``needs``."""
+    path = os.pathsep.join(
+        d for d in os.environ["PATH"].split(os.pathsep) if d != str(fake_mkfs_erofs)
+    )
+    mkfs = shutil.which("mkfs.erofs", path=path)
+    if mkfs is None:
+        pytest.skip("mkfs.erofs is not installed")
+    help_text = subprocess.run([mkfs, "--help"], capture_output=True, text=True)
+    if needs not in help_text.stdout + help_text.stderr:
+        pytest.skip(f"{mkfs} has no {needs}")
+    monkeypatch.setenv("PATH", path)
+    image_utils.mkfs_erofs_path.cache_clear()
+    image_utils._mkfs_erofs_supports_oci.cache_clear()
+    return mkfs
+
+
+def _erofs_stat(mkfs, image, path):
+    """(mode, uid, gid) of ``path`` in ``image``, from dump.erofs."""
+    dump = os.path.join(os.path.dirname(mkfs), "dump.erofs")
+    out = subprocess.run(
+        [dump, f"--path={path}", image], capture_output=True, text=True
+    ).stdout
+    m = re.search(r"Uid: (\d+)\s+Gid: (\d+)\s+Access: (\d+)/", out)
+    return int(m[3], 8), int(m[1]), int(m[2])
+
+
+def _erofs_cat(mkfs, image, path):
+    dump = os.path.join(os.path.dirname(mkfs), "dump.erofs")
+    return subprocess.run(
+        [dump, "--cat", f"--path={path}", image], capture_output=True
+    ).stdout
+
+
+def _assert_seeded(mkfs, image):
+    ls = lambda path: image_utils._erofs_listdir(  # noqa: E731
+        os.path.join(os.path.dirname(mkfs), "dump.erofs"), image, path
+    )
+    assert {"dev", "etc", "proc", "run", "sys", "tmp"} <= set(ls("/"))
+    assert {"pts", "shm"} <= set(ls("/dev"))
+    assert {"hosts", "hostname", "resolv.conf"} <= set(ls("/etc"))
+    assert ".ray-sandbox-keep" in ls("/tmp")
+    assert _erofs_stat(mkfs, image, "/") == (0o755, 0, 0)
+    # dump.erofs shows the permission bits; /tmp is 1777 like the tree's.
+    assert _erofs_stat(mkfs, image, "/tmp")[0] == 0o777
+
+
+def test_seed_erofs_image(tmp_path, fake_mkfs_erofs, monkeypatch):
+    """Seeding adds the mount points an image lacks and keeps its files,
+    without touching what the layers shipped."""
+    mkfs = _real_mkfs(fake_mkfs_erofs, monkeypatch, "--incremental")
+    layer = io.BytesIO()
+    with tarfile.open(fileobj=layer, mode="w") as tar:
+        _add_member(tar, "usr/bin/sh", b"sh", mode=0o755)
+        _add_member(tar, "etc", typ=tarfile.DIRTYPE, mode=0o755)
+        _add_member(tar, "etc/hostname", b"image-host\n")
+        _add_member(tar, "home/u/notes", b"hi", uid=1000, gid=1000, mode=0o600)
+    image = str(tmp_path / "rootfs.erofs")
+    subprocess.run(
+        [mkfs, "--tar=f", f"-b{mmap.PAGESIZE}", "-E^inline_data", image],
+        input=layer.getvalue(),
+        check=True,
+        capture_output=True,
+    )
+
+    image_utils._seed_erofs_image(mkfs, image)
+
+    _assert_seeded(mkfs, image)
+    assert _erofs_cat(mkfs, image, "/etc/hostname") == b"image-host\n"
+    assert _erofs_cat(mkfs, image, "/usr/bin/sh") == b"sh"
+    assert _erofs_stat(mkfs, image, "/home/u/notes") == (0o600, 1000, 1000)
+
+
+def test_seed_erofs_image_refuses_a_symlinked_etc(
+    tmp_path, fake_mkfs_erofs, monkeypatch
+):
+    """Seeds can't follow a symlinked /etc, so the pull falls back."""
+    mkfs = _real_mkfs(fake_mkfs_erofs, monkeypatch, "--incremental")
+    layer = io.BytesIO()
+    with tarfile.open(fileobj=layer, mode="w") as tar:
+        _add_member(tar, "real-etc", typ=tarfile.DIRTYPE, mode=0o755)
+        _add_member(tar, "etc", typ=tarfile.SYMTYPE, mode=0o777, linkname="real-etc")
+    image = str(tmp_path / "rootfs.erofs")
+    subprocess.run(
+        [mkfs, "--tar=f", f"-b{mmap.PAGESIZE}", "-E^inline_data", image],
+        input=layer.getvalue(),
+        check=True,
+        capture_output=True,
+    )
+    with pytest.raises(RuntimeError, match="/etc isn't a directory"):
+        image_utils._seed_erofs_image(mkfs, image)
+
+
+def test_pull_with_a_real_mkfs_oci(
+    tmp_path, fake_docker_hub, fake_mkfs_erofs, monkeypatch
+):
+    """With an erofs-utils built with --enable-oci, a pull from the fake
+    registry gives an image with the layer's files and Ray's seeds."""
+    mkfs = _real_mkfs(fake_mkfs_erofs, monkeypatch, "--oci")
+    image_dir = pull_and_extract_container_image(
+        "busybox:latest", images_dir=str(tmp_path / "images")
+    )
+    image = os.path.join(image_dir, ROOTFS_IMAGE)
+    _assert_seeded(mkfs, image)
+    assert _erofs_cat(mkfs, image, "/bin/busybox") == fake_docker_hub
+    assert _erofs_stat(mkfs, image, "/bin/busybox")[0] == 0o755
+    assert os.path.exists(os.path.join(image_dir, ".image_config.json"))
 
 
 if __name__ == "__main__":
