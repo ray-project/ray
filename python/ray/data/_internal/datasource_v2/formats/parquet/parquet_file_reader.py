@@ -185,10 +185,11 @@ def _estimate_batch_size_from_chunk_stats(
 ) -> Optional[int]:
     """Estimate batch size from footer-derived chunk stats, without any I/O.
 
-    ``ListFiles`` already read each file's footer and recorded the
-    projection-scoped decoded Arrow size and row count of the row groups it
-    assigned to this chunk (the ``size_bytes`` and ``num_rows`` of its
-    :class:`FileChunk`). Sizing from those avoids the extra footer read that
+    ``ListFiles`` already read each file's footer and recorded PyArrow's
+    estimated peak memory decoding the row groups it assigned to this chunk,
+    and their row count (the ``size_bytes`` and ``num_rows`` of its
+    :class:`FileChunk`). The peak is above the decoded size, so batches lean
+    small. Sizing from those avoids the extra footer read that
     :func:`_estimate_batch_size_from_metadata` incurs. Works over the whole
     chunk (its row-group average) rather than the first row group; the
     estimate is refined from real data after the first batch.

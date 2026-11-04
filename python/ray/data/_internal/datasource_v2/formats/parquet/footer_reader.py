@@ -13,6 +13,7 @@ from typing import (
     Iterator,
     Mapping,
     NamedTuple,
+    Sequence,
     Tuple,
 )
 
@@ -23,12 +24,19 @@ from pyarrow.parquet import ColumnSchema, FileMetaData, ParquetSchema, RowGroupM
 
 import ray
 from ray.data._internal.datasource_v2.common.file_reader import casts_to_schema
+from ray.data._internal.datasource_v2.formats.parquet.parquet_decode_peak import (
+    estimate_cast,
+    estimate_row_group_peak,
+    estimate_row_group_work,
+)
 from ray.data._internal.datasource_v2.formats.parquet.parquet_decoded_size import (
     LeafProfile,
+    Read,
     added_bytes,
     build_leaf_profiles,
     dictionary_page_read_size,
-    estimate_row_group_decoded_size,
+    estimate_added_columns,
+    leaf_chunks,
 )
 from ray.data._internal.datasource_v2.formats.parquet.parquet_file_chunking_utils import (
     _row_group_unit_id,
@@ -43,7 +51,7 @@ from ray.data._internal.datasource_v2.formats.parquet.parquet_size_statistics im
     DictionaryPage,
     LeafSizeStats,
     read_dictionary_page,
-    read_size_statistics,
+    read_footer_stats,
 )
 from ray.data._internal.datasource_v2.formats.parquet.parquet_utils import (
     _row_group_uncompressed_size,
@@ -90,6 +98,38 @@ def _get_prefix_matches(path: str, names: set[str]) -> set[str]:
 def _leaf_matches(leaf_path: str, names: set[str]) -> bool:
     """Whether a Parquet leaf belongs to any of ``names``."""
     return bool(_get_prefix_matches(leaf_path, names))
+
+
+def _column_leaves(
+    columns: Sequence[ColumnSchema], names: Iterable[str]
+) -> dict[str, list[int]]:
+    """Each of ``names`` the file has, in that order, as its leaf indices."""
+    leaves: dict[str, list[int]] = {name: [] for name in names}
+    wanted = set(leaves)
+    for leaf_idx, column in enumerate(columns):
+        for name in _get_prefix_matches(column.path, wanted):
+            leaves[name].append(leaf_idx)
+    return {name: indices for name, indices in leaves.items() if indices}
+
+
+class _FileSizing(NamedTuple):
+    """What sizing a file's row groups needs, resolved once per file."""
+
+    size: int  # of the file on disk
+    columns: list[ColumnSchema]  # every leaf, by leaf index
+    leaf_indices: list[int]  # the leaves a read task decodes
+    # Each column a read task decodes, in the order PyArrow reads them, as its
+    # leaves.
+    column_leaves: list[list[int]]
+    # The leaves as PyArrow decodes them, or ``None`` for a schema the
+    # estimator doesn't model.
+    profiles: list[LeafProfile] | None
+    # The columns the pin retypes, as their leaves, and the leaves as the pin
+    # casts them; empty and ``None`` when it retypes none.
+    cast_leaves: dict[str, list[int]]
+    cast_profiles: list[LeafProfile] | None
+    file_schema: pa.Schema | None
+    read: Read  # the read's format kwargs and the columns it appends
 
 
 # Half floats are the odd one out: they ride on FIXED_LEN_BYTE_ARRAY, which
@@ -150,9 +190,10 @@ class FooterReader:
             if retried_io_errors is not None
             else list(DEFAULT_RETRIED_IO_ERRORS)
         )
-        # Coalescing target: merge contiguous row groups into chunks of
-        # ~coalesce_bytes decoded before returning them, so the driver packs
-        # fewer items. 0 disables coalescing (one chunk per physical row group).
+        # Coalescing target: merge contiguous row groups into chunks whose
+        # estimated decode peaks sum to ~coalesce_bytes before returning them,
+        # so the driver packs fewer items. 0 disables coalescing (one chunk per
+        # physical row group).
         self.coalesce_bytes = coalesce_bytes
         # Read unit ids a checkpoint already finished (``"<path>#rg<N>"`` for a
         # row group). Those row groups are left out of every ``ChunkedFile``.
@@ -170,23 +211,22 @@ class FooterReader:
         self.filter: "pc.Expression" | None = (
             filter_expr.to_pyarrow() if filter_expr is not None else None
         )
-        # Top-level columns the predicate reads. A row group whose value in any
-        # of them may be a null or a NaN cannot be an exact-survivor count --
-        # see ``_rg_can_fully_match``.
-        self.filter_columns: set[str] = (
-            set(get_column_references(filter_expr))
+        # Top-level columns the predicate reads, in its order. A row group whose
+        # value in any of them may be a null or a NaN cannot be an exact-survivor
+        # count -- see ``_rg_can_fully_match``.
+        self.filter_columns: list[str] = (
+            list(dict.fromkeys(get_column_references(filter_expr)))
             if filter_expr is not None
-            else set()
+            else []
         )
-        # Top-level columns a read task will decode, which row-group byte sizes
-        # are accounted over. The scanner is handed the projection alone, but it
-        # still decodes every predicate column to evaluate the filter, so the
-        # union is what a task fetches. Sizing on the
-        # projection alone lets a large non-projected filter column overfill read
-        # tasks, the failure this path exists to prevent. ``None`` means "all
-        # columns", which already covers both.
-        self.read_columns: set[str] | None = (
-            set(projected_cols) | self.filter_columns
+        # Top-level columns a read task decodes, in the order PyArrow reads
+        # them: the predicate's first, which it decodes to evaluate the filter
+        # even when the projection drops them, then the projection's. Sizing on
+        # the projection alone lets a large non-projected filter column overfill
+        # read tasks, the failure this path exists to prevent. ``None`` means
+        # every column, the predicate's first.
+        self.read_order: list[str] | None = (
+            list(dict.fromkeys([*self.filter_columns, *projected_cols]))
             if projected_cols is not None
             else None
         )
@@ -201,65 +241,173 @@ class FooterReader:
         self.read_schema = read_schema
         self.pinned_schema = read_schema if casts_to_schema(read_schema) else None
 
-    def _read_leaf_indices(self, row_group: RowGroupMetaData) -> list[int] | None:
-        # Map the top-level column names a read task decodes to Parquet
-        # leaf-column indices (a nested field expands to several leaves, e.g.
-        # "a.b.list.element"). Returns None to signal "all columns" so callers
-        # can take the cheap path.
-        if self.read_columns is None:
-            return None
-        indices = [
-            j
-            for j in range(row_group.num_columns)
-            if _leaf_matches(row_group.column(j).path_in_schema, self.read_columns)
-        ]
+    def _file_sizing(
+        self, file: FileInfo, fragment: pds.ParquetFileFragment, metadata: FileMetaData
+    ) -> _FileSizing:
+        """Resolve what sizing ``file``'s row groups needs, once per file."""
+        path = file.path
+        size = file.size
+        if size is None:
+            # Ray's listing sizes every file; a row built without one looks it up.
+            size = call_with_retry(
+                lambda: self.filesystem.get_file_info(path).size,
+                description=f"size {path}",
+                match=self.retried_io_errors,
+            )
+        try:
+            # Cached on the fragment by the footer read.
+            file_schema: pa.Schema | None = fragment.physical_schema
+        except Exception:
+            file_schema = None
+        schema = metadata.schema
+        columns = [schema.column(j) for j in range(len(schema))]
+        file_names = [] if file_schema is None else list(file_schema.names)
+        names = (
+            self.read_order
+            if self.read_order is not None
+            else dict.fromkeys([*self.filter_columns, *file_names])
+        )
+        leaves = _column_leaves(columns=columns, names=names)
+        if not leaves:
+            # The file has none of the columns read: size it whole, the safe side.
+            leaves = _column_leaves(columns=columns, names=file_names)
+        column_leaves = list(leaves.values())
+        leaf_indices = sorted(j for indices in column_leaves for j in indices)
+        if not leaf_indices:
+            leaf_indices = list(range(len(columns)))
 
-        return indices or None
+        profiles = cast_profiles = None
+        cast_leaves: dict[str, list[int]] = {}
+        if file_schema is not None:
+            # The leaves as PyArrow decodes them. With a pin the reader drops
+            # the type options from ``format_kwargs``, so these are the file's
+            # own types, which the cast below retypes.
+            profiles = build_leaf_profiles(
+                parquet_schema=schema,
+                format_kwargs=self.format_kwargs,
+                file_metadata=metadata,
+            )
+        if profiles is not None and self.pinned_schema is not None:
+            assert file_schema is not None
+            pinned = self.pinned_schema
+            cast_leaves = {
+                name: indices
+                for name, indices in leaves.items()
+                if file_schema.get_field_index(name) >= 0
+                and pinned.get_field_index(name) >= 0
+                and file_schema.field(name).type != pinned.field(name).type
+            }
+            if cast_leaves:
+                cast_profiles = build_leaf_profiles(
+                    parquet_schema=schema,
+                    pinned_schema=pinned,
+                    format_kwargs=self.format_kwargs,
+                    file_metadata=metadata,
+                )
+                if cast_profiles is None:
+                    # A cast the estimator doesn't model: the whole file falls back.
+                    profiles = None
+        added_row_bytes, added_row_group_bytes = self._added_bytes(
+            file_schema=file_schema, path=path
+        )
+        return _FileSizing(
+            size=size,
+            columns=columns,
+            leaf_indices=leaf_indices,
+            column_leaves=column_leaves,
+            profiles=profiles,
+            cast_leaves=cast_leaves,
+            cast_profiles=cast_profiles,
+            file_schema=file_schema,
+            read=Read(
+                format_kwargs=self.format_kwargs,
+                added_row_bytes=added_row_bytes,
+                added_row_group_bytes=added_row_group_bytes,
+            ),
+        )
 
-    def _row_group_run(
+    def _row_group_peak(
         self,
         row_group: RowGroupMetaData,
-        rg_idx: int,
-        leaf_indices: list[int] | None,
-        leaf_profiles: list[LeafProfile] | None,
+        sizing: _FileSizing,
         size_stats: list[LeafSizeStats | None] | None,
-        fully_matched: bool = False,
-        dictionary_pages: dict[int, DictionaryPage] | None = None,
-        added: tuple[float, int] = (0, 0),
-    ) -> FileChunk:
-        # The run's size is the Arrow bytes a read task decodes it to, which is
-        # what the bin budget bounds. With a projection, only the leaves the
-        # reader decodes count.
-        decoded = estimate_row_group_decoded_size(
-            row_group=row_group,
-            leaf_profiles=leaf_profiles,
-            leaf_indices=leaf_indices,
-            size_stats=size_stats,
-            dictionary_pages=dictionary_pages,
-            format_kwargs=self.format_kwargs,
-            added=added,
-        )
-        if decoded is None:
+        data_pages: list[int | None] | None,
+        dictionary_pages: dict[int, DictionaryPage] | None,
+    ) -> int:
+        """PyArrow's estimated peak bytes decoding ``row_group`` as a read task does.
+
+        What the bin budget bounds: the estimate leans high, since a read task
+        that outgrows its budget is what runs a node out of memory.
+        """
+        if sizing.profiles is None:
             # A schema the estimator does not model: the uncompressed size times
-            # the fixed encoding ratio. Summed per column rather than read off
-            # ``row_group.total_byte_size``, which can report the *compressed*
-            # size for some files (apache/arrow#48138); undersizing bins
-            # overfills read tasks. Shares the V1 helper so the three call
-            # sites cannot drift.
-            uncompressed = _row_group_uncompressed_size(
-                rg_meta=row_group, column_indices=leaf_indices
+            # the fixed encoding ratio stands in for the decode's buffers.
+            # Summed per column rather than read off ``row_group.total_byte_size``,
+            # which can report the *compressed* size for some files
+            # (apache/arrow#48138); undersizing bins overfills read tasks.
+            # Shares the V1 helper so the call sites cannot drift.
+            work = _row_group_uncompressed_size(
+                rg_meta=row_group, column_indices=sizing.leaf_indices
             )
-            decoded = uncompressed * PARQUET_ENCODING_RATIO_ESTIMATE_DEFAULT
-        return FileChunk(
-            unit_ids=(rg_idx,),
-            num_rows=row_group.num_rows,
-            size_bytes=decoded,
-            fully_matched=fully_matched,
+            work *= PARQUET_ENCODING_RATIO_ESTIMATE_DEFAULT
+        else:
+            leaves = {
+                leaf.index: leaf
+                for leaf in leaf_chunks(
+                    row_group=row_group,
+                    leaf_profiles=sizing.profiles,
+                    leaf_indices=sizing.leaf_indices,
+                    size_stats=size_stats,
+                    dictionary_pages=dictionary_pages,
+                )
+            }
+            work = estimate_row_group_work(
+                row_group=row_group,
+                columns=sizing.columns,
+                column_leaves=sizing.column_leaves,
+                read=sizing.read,
+                leaves=leaves,
+                counted=set(),
+                data_pages=data_pages,
+            )
+            if self.pinned_schema is None:
+                work += estimate_added_columns(row_group=row_group, read=sizing.read)
+            else:
+                assert sizing.file_schema is not None
+                cast_leaves = (
+                    {}
+                    if sizing.cast_profiles is None
+                    else {
+                        name: leaf_chunks(
+                            row_group=row_group,
+                            leaf_profiles=sizing.cast_profiles,
+                            leaf_indices=indices,
+                            size_stats=size_stats,
+                            dictionary_pages=dictionary_pages,
+                        )
+                        for name, indices in sizing.cast_leaves.items()
+                    }
+                )
+                # One piece, as the estimate was fitted: a read task's batch
+                # size isn't known at listing time.
+                work += estimate_cast(
+                    row_group=row_group,
+                    column_leaves=cast_leaves,
+                    file_schema=sizing.file_schema,
+                    pinned_schema=self.pinned_schema,
+                    pieces=1,
+                    read=sizing.read,
+                )
+        return estimate_row_group_peak(
+            row_group=row_group,
+            leaf_indices=sizing.leaf_indices,
+            row_group_work=work,
+            file_size=sizing.size,
         )
 
     def _locate_filter_columns(self, schema: ParquetSchema) -> _FilterLeaves:
         # Resolve the predicate's column names to Parquet leaf-column indices,
-        # the same mapping ``_read_leaf_indices`` does for the read columns.
+        # the same mapping ``_column_leaves`` does for the read columns.
         # Called once per file so the per-row-group null check below is an
         # index lookup instead of another scan over every leaf. Leaf order is
         # the schema's, so these index a row group's columns just as well.
@@ -268,17 +416,18 @@ class FooterReader:
         # -- which a file need not carry.
         if not self.filter_columns:
             return _FilterLeaves([], True)
+        wanted = set(self.filter_columns)
         indices: list[int] = []
         matched: set[str] = set()
         has_float_leaf = False
         for j in range(len(schema)):
             column = schema.column(j)
-            hits = _get_prefix_matches(column.path, self.filter_columns)
+            hits = _get_prefix_matches(column.path, wanted)
             if hits:
                 matched.update(hits)
                 indices.append(j)
                 has_float_leaf = has_float_leaf or _is_float_leaf(column)
-        return _FilterLeaves(indices, matched == self.filter_columns, has_float_leaf)
+        return _FilterLeaves(indices, matched == wanted, has_float_leaf)
 
     def _has_filter_nulls(
         self, row_group: RowGroupMetaData, indices: list[int]
@@ -346,7 +495,7 @@ class FooterReader:
         path: str,
         metadata: FileMetaData,
         rg_indices: Iterable[int],
-        leaf_indices: list[int] | None,
+        leaf_indices: list[int],
         leaf_profiles: list[LeafProfile],
         size_stats: list[list[LeafSizeStats | None]] | None,
     ) -> _DictionaryPages:
@@ -354,11 +503,10 @@ class FooterReader:
 
         A failed read keeps the pages read so far: a missing one only loosens a bound.
         """
-        leaves = range(len(leaf_profiles)) if leaf_indices is None else leaf_indices
         wanted = []
         for rg_idx in rg_indices:
             row_group = metadata.row_group(rg_idx)
-            for leaf_idx in leaves:
+            for leaf_idx in leaf_indices:
                 chunk = row_group.column(leaf_idx)
                 profile = leaf_profiles[leaf_idx]
                 stats = None if size_stats is None else size_stats[rg_idx][leaf_idx]
@@ -397,19 +545,14 @@ class FooterReader:
         return pages
 
     def _added_bytes(
-        self, fragment: pds.ParquetFileFragment, path: str
+        self, file_schema: pa.Schema | None, path: str
     ) -> tuple[float, int]:
         """:func:`added_bytes` of the columns a read task appends to this file.
 
         The dataset schema's columns the file lacks or holds as nulls, less those the
         projection drops; it never drops the checkpoint ID.
         """
-        if self.read_schema is None:
-            return 0, 0
-        try:
-            # Cached on the fragment by the footer read.
-            file_schema = fragment.physical_schema
-        except Exception:
+        if self.read_schema is None or file_schema is None:
             return 0, 0
         added = []
         for field in self.read_schema:
@@ -419,8 +562,8 @@ class FooterReader:
             ):
                 continue
             if (
-                self.read_columns is None
-                or field.name in self.read_columns
+                self.read_order is None
+                or field.name in self.read_order
                 or field.type == GENERATED_ID_COLUMN_TYPE
             ):
                 added.append(field)
@@ -439,19 +582,12 @@ class FooterReader:
             description=f"read Parquet footer for {path}",
             match=self.retried_io_errors,
         )
-        # Both column look-ups are schema-derived, and a Parquet file has a
+        # The predicate's leaves are schema-derived, and a Parquet file has a
         # single schema, so resolve them once rather than rescanning every leaf
         # for each group. (``metadata.schema`` builds a fresh wrapper per access,
-        # hence the local.) The read-column lookup reads leaf paths off row group
-        # 0, which a file with no row groups has none of; it sizes nothing either
-        # way.
+        # hence the local.)
         schema = metadata.schema
         filter_leaves = self._locate_filter_columns(schema)
-        leaf_indices = (
-            self._read_leaf_indices(metadata.row_group(0))
-            if metadata.num_row_groups
-            else None
-        )
         unprocessed_rg_ids = [
             i
             for i in range(metadata.num_row_groups)
@@ -512,51 +648,47 @@ class FooterReader:
             # falls through to its fully-matched default for every group.
             fully_by_idx = {}
 
-        # One Thrift walk per file over the footer bytes ``metadata`` already
-        # holds -- no extra IO, though ``__reduce__`` re-serializes the footer,
-        # so skip it when every row group was pruned. The leaf profiles hoist
-        # the schema-derived facts, the Arrow schema conversion among them, out
-        # of the per-row-group loop.
-        size_stats = read_size_statistics(metadata) if rg_indices else None
-        leaf_profiles = (
-            build_leaf_profiles(
-                parquet_schema=schema,
-                pinned_schema=self.pinned_schema,
-                format_kwargs=self.format_kwargs,
-                file_metadata=metadata,
-            )
-            if rg_indices
-            else None
-        )
-        added = (
-            self._added_bytes(fragment=fragment, path=path) if rg_indices else (0, 0)
-        )
-        dictionary_pages = (
-            self._read_dictionary_pages(
-                path=path,
-                metadata=metadata,
-                rg_indices=rg_indices,
-                leaf_indices=leaf_indices,
-                leaf_profiles=leaf_profiles,
-                size_stats=size_stats,
-            )
-            if leaf_profiles is not None
-            else {}
-        )
-
-        per_rg = [
-            self._row_group_run(
-                row_group=metadata.row_group(rg_idx),
-                rg_idx=rg_idx,
-                leaf_indices=leaf_indices,
-                leaf_profiles=leaf_profiles,
-                size_stats=size_stats[rg_idx] if size_stats is not None else None,
-                fully_matched=fully_by_idx.get(rg_idx, True),
-                dictionary_pages=dictionary_pages.get(rg_idx),
-                added=added,
-            )
-            for rg_idx in rg_indices
-        ]
+        per_rg: list[FileChunk] = []
+        if rg_indices:
+            # One Thrift walk per file over the footer bytes ``metadata`` already
+            # holds -- no extra IO, though ``__reduce__`` re-serializes the
+            # footer, so skip it when every row group was pruned. The sizing
+            # hoists the schema-derived facts, the Arrow schema conversion among
+            # them, out of the per-row-group loop.
+            footer = read_footer_stats(metadata)
+            size_stats = None if footer is None else footer.size_statistics
+            data_pages = None if footer is None else footer.data_pages
+            sizing = self._file_sizing(file=file, fragment=fragment, metadata=metadata)
+            dictionary_pages: _DictionaryPages = {}
+            if sizing.profiles is not None:
+                dictionary_pages = self._read_dictionary_pages(
+                    path=path,
+                    metadata=metadata,
+                    rg_indices=rg_indices,
+                    leaf_indices=sizing.leaf_indices,
+                    leaf_profiles=sizing.profiles,
+                    size_stats=size_stats,
+                )
+            for rg_idx in rg_indices:
+                row_group = metadata.row_group(rg_idx)
+                per_rg.append(
+                    FileChunk(
+                        unit_ids=(rg_idx,),
+                        num_rows=row_group.num_rows,
+                        size_bytes=self._row_group_peak(
+                            row_group=row_group,
+                            sizing=sizing,
+                            size_stats=None
+                            if size_stats is None
+                            else size_stats[rg_idx],
+                            data_pages=None
+                            if data_pages is None
+                            else data_pages[rg_idx],
+                            dictionary_pages=dictionary_pages.get(rg_idx),
+                        ),
+                        fully_matched=fully_by_idx.get(rg_idx, True),
+                    )
+                )
         # Coalesce contiguous row groups into ~coalesce_bytes chunks (no-op when
         # coalesce_bytes == 0) so only a handful of descriptors per file reach the
         # driver's bin-packer instead of one per physical row group.
