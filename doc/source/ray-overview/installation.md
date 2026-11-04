@@ -372,16 +372,16 @@ python -m pytest -v python/ray/tests/test_mini.py
 
 Our docker images are shipped with pre-installed Python dependencies required for Ray and its libraries.
 
-We publish the dependencies that are installed in our `ray` Docker images for Python 3.10.
+We publish the dependencies that are installed in our `ray` Docker images for Python 3.11.
 
 ::::{tab-set}
 
-:::{tab-item} ray (Python 3.10)
-:sync: ray (Python 3.10)
+:::{tab-item} ray (Python 3.11)
+:sync: ray (Python 3.11)
 
-Ray version: nightly ([4f4ed2d](https://github.com/ray-project/ray/commit/4f4ed2d82512d2409cb994587e8a97abb5e00256))
+Ray version: nightly ([6fe11a7](https://github.com/ray-project/ray/commit/6fe11a7b4cc762dc3615ec1eaf216220e37c42b9))
 
-```{literalinclude} ./pip_freeze_ray-py310-cpu.txt
+```{literalinclude} ./pip_freeze_ray-py311-cpu.txt
 ```
 :::
 
