@@ -117,6 +117,17 @@ steps:
       - oss
       - doc
 
+  - label: ":book: doc: test MyST eval-rst doctree extension"
+    key: doc_test_myst_eval_rst_doctree
+    instance_type: small
+    commands:
+      - python doc/source/_ext/test_myst_eval_rst_doctree.py
+    depends_on: docbuild
+    job_env: docbuild-py3.11
+    tags:
+      - oss
+      - doc
+
   - label: ":book: doc: linkcheck"
     key: doc_linkcheck
     instance_type: medium
