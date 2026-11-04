@@ -15,40 +15,35 @@ class DefaultModelConfig:
     `RLModuleSpec` used to define the custom RLModule.
     For example:
 
-    .. testcode::
+    Examples:
+        >>> import gymnasium as gym
+        >>> import numpy as np
+        >>> from ray.rllib.core.rl_module.rl_module import RLModuleSpec
+        >>> from ray.rllib.examples.rl_modules.classes.tiny_atari_cnn_rlm import (
+        ...     TinyAtariCNN
+        ... )
+        >>> my_rl_module = RLModuleSpec(
+        ...     module_class=TinyAtariCNN,
+        ...     observation_space=gym.spaces.Box(-1.0, 1.0, (64, 64, 4), np.float32),
+        ...     action_space=gym.spaces.Discrete(7),
+        ...     # DreamerV3-style stack working on a 64x64, color or 4x-grayscale-stacked,
+        ...     # normalized image.
+        ...     model_config={
+        ...         "conv_filters": [[16, 4, 2], [32, 4, 2], [64, 4, 2], [128, 4, 2]],
+        ...     },
+        ... ).build()
 
-        import gymnasium as gym
-        import numpy as np
-        from ray.rllib.core.rl_module.rl_module import RLModuleSpec
-        from ray.rllib.examples.rl_modules.classes.tiny_atari_cnn_rlm import (
-            TinyAtariCNN
-        )
+        Only RLlib's default RLModules (defined by the various algorithms) should use
+        this dataclass. Pass an instance of it into your algorithm config like so:
 
-        my_rl_module = RLModuleSpec(
-            module_class=TinyAtariCNN,
-            observation_space=gym.spaces.Box(-1.0, 1.0, (64, 64, 4), np.float32),
-            action_space=gym.spaces.Discrete(7),
-            # DreamerV3-style stack working on a 64x64, color or 4x-grayscale-stacked,
-            # normalized image.
-            model_config={
-                "conv_filters": [[16, 4, 2], [32, 4, 2], [64, 4, 2], [128, 4, 2]],
-            },
-        ).build()
-
-    Only RLlib's default RLModules (defined by the various algorithms) should use
-    this dataclass. Pass an instance of it into your algorithm config like so:
-
-    .. testcode::
-
-        from ray.rllib.algorithms.ppo import PPOConfig
-        from ray.rllib.core.rl_module.default_model_config import DefaultModelConfig
-
-        config = (
-            PPOConfig()
-            .rl_module(
-                model_config=DefaultModelConfig(fcnet_hiddens=[32, 32]),
-            )
-        )
+        >>> from ray.rllib.algorithms.ppo import PPOConfig
+        >>> from ray.rllib.core.rl_module.default_model_config import DefaultModelConfig
+        >>> config = (
+        ...     PPOConfig()
+        ...     .rl_module(
+        ...         model_config=DefaultModelConfig(fcnet_hiddens=[32, 32]),
+        ...     )
+        ... )
     """
 
     # ====================================================

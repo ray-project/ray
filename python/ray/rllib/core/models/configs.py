@@ -241,56 +241,47 @@ class MLPHeadConfig(_MLPConfig):
 
     See _MLPConfig for usage details.
 
-    Example:
+    Examples:
+        >>> # Configuration:
+        >>> config = MLPHeadConfig(
+        ...     input_dims=[4],  # must be 1D tensor
+        ...     hidden_layer_dims=[8, 8],
+        ...     hidden_layer_activation="relu",
+        ...     hidden_layer_use_layernorm=False,
+        ...     # final output layer with no activation (linear)
+        ...     output_layer_dim=2,
+        ...     output_layer_activation="linear",
+        ... )
+        >>> model = config.build(framework="tf2")
+        >>> # Resulting stack in pseudocode:
+        >>> # Linear(4, 8, bias=True)
+        >>> # ReLU()
+        >>> # Linear(8, 8, bias=True)
+        >>> # ReLU()
+        >>> # Linear(8, 2, bias=True)
 
-    .. testcode::
-
-        # Configuration:
-        config = MLPHeadConfig(
-            input_dims=[4],  # must be 1D tensor
-            hidden_layer_dims=[8, 8],
-            hidden_layer_activation="relu",
-            hidden_layer_use_layernorm=False,
-            # final output layer with no activation (linear)
-            output_layer_dim=2,
-            output_layer_activation="linear",
-        )
-        model = config.build(framework="tf2")
-
-        # Resulting stack in pseudocode:
-        # Linear(4, 8, bias=True)
-        # ReLU()
-        # Linear(8, 8, bias=True)
-        # ReLU()
-        # Linear(8, 2, bias=True)
-
-    Example:
-
-    .. testcode::
-
-        # Configuration:
-        config = MLPHeadConfig(
-            input_dims=[2],
-            hidden_layer_dims=[10, 4],
-            hidden_layer_activation="silu",
-            hidden_layer_use_layernorm=True,
-            hidden_layer_use_bias=False,
-            # Initializer for `framework="torch"`.
-            hidden_layer_weights_initializer="xavier_normal_",
-            hidden_layer_weights_initializer_config={"gain": 0.8},
-            # No final output layer (use last dim in `hidden_layer_dims`
-            # as the size of the last layer in the stack).
-            output_layer_dim=None,
-        )
-        model = config.build(framework="torch")
-
-        # Resulting stack in pseudocode:
-        # Linear(2, 10, bias=False)
-        # LayerNorm((10,))  # layer norm always before activation
-        # SiLU()
-        # Linear(10, 4, bias=False)
-        # LayerNorm((4,))  # layer norm always before activation
-        # SiLU()
+        >>> # Configuration:
+        >>> config = MLPHeadConfig(
+        ...     input_dims=[2],
+        ...     hidden_layer_dims=[10, 4],
+        ...     hidden_layer_activation="silu",
+        ...     hidden_layer_use_layernorm=True,
+        ...     hidden_layer_use_bias=False,
+        ...     # Initializer for `framework="torch"`.
+        ...     hidden_layer_weights_initializer="xavier_normal_",
+        ...     hidden_layer_weights_initializer_config={"gain": 0.8},
+        ...     # No final output layer (use last dim in `hidden_layer_dims`
+        ...     # as the size of the last layer in the stack).
+        ...     output_layer_dim=None,
+        ... )
+        >>> model = config.build(framework="torch")
+        >>> # Resulting stack in pseudocode:
+        >>> # Linear(2, 10, bias=False)
+        >>> # LayerNorm((10,))  # layer norm always before activation
+        >>> # SiLU()
+        >>> # Linear(10, 4, bias=False)
+        >>> # LayerNorm((4,))  # layer norm always before activation
+        >>> # SiLU()
     """
 
     @_framework_implemented()
@@ -322,50 +313,41 @@ class FreeLogStdMLPHeadConfig(_MLPConfig):
     divided by two to gain the output dimensions of each the mean-net and the
     free std-variable.
 
-    Example:
-    .. testcode::
-        :skipif: True
+    Examples:
+        >>> # Configuration:
+        >>> config = FreeLogStdMLPHeadConfig(  # doctest: +SKIP_EXAMPLE
+        ...     input_dims=[2],
+        ...     hidden_layer_dims=[16],
+        ...     hidden_layer_activation=None,
+        ...     hidden_layer_use_layernorm=False,
+        ...     hidden_layer_use_bias=True,
+        ...     output_layer_dim=8,  # <- this must be an even size
+        ...     output_layer_use_bias=True,
+        ... )
+        >>> model = config.build(framework="tf2")
+        >>> # Resulting stack in pseudocode:
+        >>> # Linear(2, 16, bias=True)
+        >>> # Linear(8, 8, bias=True)  # 16 / 2 = 8 -> 8 nodes for the mean
+        >>> # Extra variable:
+        >>> # Tensor((8,), float32)  # for the free (observation independent) std outputs
 
-        # Configuration:
-        config = FreeLogStdMLPHeadConfig(
-            input_dims=[2],
-            hidden_layer_dims=[16],
-            hidden_layer_activation=None,
-            hidden_layer_use_layernorm=False,
-            hidden_layer_use_bias=True,
-            output_layer_dim=8,  # <- this must be an even size
-            output_layer_use_bias=True,
-        )
-        model = config.build(framework="tf2")
-
-        # Resulting stack in pseudocode:
-        # Linear(2, 16, bias=True)
-        # Linear(8, 8, bias=True)  # 16 / 2 = 8 -> 8 nodes for the mean
-        # Extra variable:
-        # Tensor((8,), float32)  # for the free (observation independent) std outputs
-
-    Example:
-    .. testcode::
-        :skipif: True
-
-        # Configuration:
-        config = FreeLogStdMLPHeadConfig(
-            input_dims=[2],
-            hidden_layer_dims=[31, 100],   # <- last idx must be an even size
-            hidden_layer_activation="relu",
-            hidden_layer_use_layernorm=False,
-            hidden_layer_use_bias=False,
-            output_layer_dim=None,  # use the last hidden layer as output layer
-        )
-        model = config.build(framework="torch")
-
-        # Resulting stack in pseudocode:
-        # Linear(2, 31, bias=False)
-        # ReLu()
-        # Linear(31, 50, bias=False)  # 100 / 2 = 50 -> 50 nodes for the mean
-        # ReLu()
-        # Extra variable:
-        # Tensor((50,), float32)  # for the free (observation independent) std outputs
+        >>> # Configuration:
+        >>> config = FreeLogStdMLPHeadConfig(
+        ...     input_dims=[2],
+        ...     hidden_layer_dims=[31, 100],   # <- last idx must be an even size
+        ...     hidden_layer_activation="relu",
+        ...     hidden_layer_use_layernorm=False,
+        ...     hidden_layer_use_bias=False,
+        ...     output_layer_dim=None,  # use the last hidden layer as output layer
+        ... )
+        >>> model = config.build(framework="torch")
+        >>> # Resulting stack in pseudocode:
+        >>> # Linear(2, 31, bias=False)
+        >>> # ReLu()
+        >>> # Linear(31, 50, bias=False)  # 100 / 2 = 50 -> 50 nodes for the mean
+        >>> # ReLu()
+        >>> # Extra variable:
+        >>> # Tensor((50,), float32)  # for the free (observation independent) std outputs
     """
 
     def _validate(self, framework: str = "torch"):
@@ -495,79 +477,76 @@ class CNNTransposeHeadConfig(ModelConfig):
         cnn_transpose_bias_initializer_config: Configuration to pass into the
             initializer defined in `cnn_transpose_bias_initializer`.
 
-    Example:
-    .. testcode::
-        :skipif: True
+    Examples:
+        .. code-block:: python
 
-        # Configuration:
-        config = CNNTransposeHeadConfig(
-            input_dims=[10],  # 1D input vector (possibly coming from another NN)
-            initial_image_dims=[4, 4, 96],  # first image input to deconv stack
-            # Initializer for TensorFlow.
-            initial_dense_weights_initializer="HeNormal",
-            initial_dense_weights_initializer={"seed": 334},
-            cnn_transpose_filter_specifiers=[
-                [48, [4, 4], 2],
-                [24, [4, 4], 2],
-                [3, [4, 4], 2],
-            ],
-            cnn_transpose_activation="silu",  # or "swish", which is the same
-            cnn_transpose_use_layernorm=False,
-            cnn_use_bias=True,
-        )
-        model = config.build(framework="torch)
+            # Configuration:
+            config = CNNTransposeHeadConfig(
+                input_dims=[10],  # 1D input vector (possibly coming from another NN)
+                initial_image_dims=[4, 4, 96],  # first image input to deconv stack
+                # Initializer for TensorFlow.
+                initial_dense_weights_initializer="HeNormal",
+                initial_dense_weights_initializer={"seed": 334},
+                cnn_transpose_filter_specifiers=[
+                    [48, [4, 4], 2],
+                    [24, [4, 4], 2],
+                    [3, [4, 4], 2],
+                ],
+                cnn_transpose_activation="silu",  # or "swish", which is the same
+                cnn_transpose_use_layernorm=False,
+                cnn_use_bias=True,
+            )
+            model = config.build(framework="torch)
 
-        # Resulting stack in pseudocode:
-        # Linear(10, 4*4*24)
-        # Conv2DTranspose(
-        #   in_channels=96, out_channels=48,
-        #   kernel_size=[4, 4], stride=2, bias=True,
-        # )
-        # Swish()
-        # Conv2DTranspose(
-        #   in_channels=48, out_channels=24,
-        #   kernel_size=[4, 4], stride=2, bias=True,
-        # )
-        # Swish()
-        # Conv2DTranspose(
-        #   in_channels=24, out_channels=3,
-        #   kernel_size=[4, 4], stride=2, bias=True,
-        # )
+            # Resulting stack in pseudocode:
+            # Linear(10, 4*4*24)
+            # Conv2DTranspose(
+            #   in_channels=96, out_channels=48,
+            #   kernel_size=[4, 4], stride=2, bias=True,
+            # )
+            # Swish()
+            # Conv2DTranspose(
+            #   in_channels=48, out_channels=24,
+            #   kernel_size=[4, 4], stride=2, bias=True,
+            # )
+            # Swish()
+            # Conv2DTranspose(
+            #   in_channels=24, out_channels=3,
+            #   kernel_size=[4, 4], stride=2, bias=True,
+            # )
 
-    Example:
-    .. testcode::
-        :skipif: True
+        .. code-block:: python
 
-        # Configuration:
-        config = CNNTransposeHeadConfig(
-            input_dims=[128],  # 1D input vector (possibly coming from another NN)
-            initial_image_dims=[4, 4, 32],  # first image input to deconv stack
-            cnn_transpose_filter_specifiers=[
-                [16, 4, 2],
-                [3, 4, 2],
-            ],
-            cnn_transpose_activation="relu",
-            cnn_transpose_use_layernorm=True,
-            cnn_use_bias=False,
-            # Initializer for `framework="tf2"`.
-            # Note, for Torch only in-place initializers are allowed.
-            cnn_transpose_kernel_initializer="xavier_normal_",
-            cnn_transpose_kernel_initializer_config={"gain": 0.8},
-        )
-        model = config.build(framework="torch)
+            # Configuration:
+            config = CNNTransposeHeadConfig(
+                input_dims=[128],  # 1D input vector (possibly coming from another NN)
+                initial_image_dims=[4, 4, 32],  # first image input to deconv stack
+                cnn_transpose_filter_specifiers=[
+                    [16, 4, 2],
+                    [3, 4, 2],
+                ],
+                cnn_transpose_activation="relu",
+                cnn_transpose_use_layernorm=True,
+                cnn_use_bias=False,
+                # Initializer for `framework="tf2"`.
+                # Note, for Torch only in-place initializers are allowed.
+                cnn_transpose_kernel_initializer="xavier_normal_",
+                cnn_transpose_kernel_initializer_config={"gain": 0.8},
+            )
+            model = config.build(framework="torch)
 
-        # Resulting stack in pseudocode:
-        # Linear(128, 4*4*32, bias=True)  # bias always True for initial dense layer
-        # Conv2DTranspose(
-        #   in_channels=32, out_channels=16,
-        #   kernel_size=[4, 4], stride=2, bias=False,
-        # )
-        # LayerNorm((-3, -2, -1))  # layer normalize over last 3 axes
-        # ReLU()
-        # Conv2DTranspose(
-        #   in_channels=16, out_channels=3,
-        #   kernel_size=[4, 4], stride=2, bias=False,
-        # )
+            # Resulting stack in pseudocode:
+            # Linear(128, 4*4*32, bias=True)  # bias always True for initial dense layer
+            # Conv2DTranspose(
+            #   in_channels=32, out_channels=16,
+            #   kernel_size=[4, 4], stride=2, bias=False,
+            # )
+            # LayerNorm((-3, -2, -1))  # layer normalize over last 3 axes
+            # ReLU()
+            # Conv2DTranspose(
+            #   in_channels=16, out_channels=3,
+            #   kernel_size=[4, 4], stride=2, bias=False,
+            # )
     """
 
     input_dims: Union[List[int], Tuple[int, ...]] = None
@@ -654,39 +633,35 @@ class CNNEncoderConfig(ModelConfig):
 
     See ModelConfig for usage details.
 
-    Example:
-
-    .. testcode::
-
-        # Configuration:
-        config = CNNEncoderConfig(
-            input_dims=[84, 84, 3],  # must be 3D tensor (image: w x h x C)
-            cnn_filter_specifiers=[
-                [16, [8, 8], 4],
-                [32, [4, 4], 2],
-            ],
-            cnn_activation="relu",
-            cnn_use_layernorm=False,
-            cnn_use_bias=True,
-        )
-        model = config.build(framework="torch")
-
-        # Resulting stack in pseudocode:
-        # Conv2D(
-        #   in_channels=3, out_channels=16,
-        #   kernel_size=[8, 8], stride=[4, 4], bias=True,
-        # )
-        # ReLU()
-        # Conv2D(
-        #   in_channels=16, out_channels=32,
-        #   kernel_size=[4, 4], stride=[2, 2], bias=True,
-        # )
-        # ReLU()
-        # Conv2D(
-        #   in_channels=32, out_channels=1,
-        #   kernel_size=[1, 1], stride=[1, 1], bias=True,
-        # )
-        # Flatten()
+    Examples:
+        >>> # Configuration:
+        >>> config = CNNEncoderConfig(
+        ...     input_dims=[84, 84, 3],  # must be 3D tensor (image: w x h x C)
+        ...     cnn_filter_specifiers=[
+        ...         [16, [8, 8], 4],
+        ...         [32, [4, 4], 2],
+        ...     ],
+        ...     cnn_activation="relu",
+        ...     cnn_use_layernorm=False,
+        ...     cnn_use_bias=True,
+        ... )
+        >>> model = config.build(framework="torch")
+        >>> # Resulting stack in pseudocode:
+        >>> # Conv2D(
+        >>> #   in_channels=3, out_channels=16,
+        >>> #   kernel_size=[8, 8], stride=[4, 4], bias=True,
+        >>> # )
+        >>> # ReLU()
+        >>> # Conv2D(
+        >>> #   in_channels=16, out_channels=32,
+        >>> #   kernel_size=[4, 4], stride=[2, 2], bias=True,
+        >>> # )
+        >>> # ReLU()
+        >>> # Conv2D(
+        >>> #   in_channels=32, out_channels=1,
+        >>> #   kernel_size=[1, 1], stride=[1, 1], bias=True,
+        >>> # )
+        >>> # Flatten()
 
     Attributes:
         input_dims: The input dimension of the network. These must be given in the
@@ -821,48 +796,41 @@ class MLPEncoderConfig(_MLPConfig):
 
     See _MLPConfig for usage details.
 
-    Example:
-    .. testcode::
+    Examples:
+        >>> # Configuration:
+        >>> config = MLPEncoderConfig(
+        ...     input_dims=[4],  # must be 1D tensor
+        ...     hidden_layer_dims=[16],
+        ...     hidden_layer_activation="relu",
+        ...     hidden_layer_use_layernorm=False,
+        ...     output_layer_dim=None,  # maybe None or an int
+        ... )
+        >>> model = config.build(framework="torch")
+        >>> # Resulting stack in pseudocode:
+        >>> # Linear(4, 16, bias=True)
+        >>> # ReLU()
 
-        # Configuration:
-        config = MLPEncoderConfig(
-            input_dims=[4],  # must be 1D tensor
-            hidden_layer_dims=[16],
-            hidden_layer_activation="relu",
-            hidden_layer_use_layernorm=False,
-            output_layer_dim=None,  # maybe None or an int
-        )
-        model = config.build(framework="torch")
-
-        # Resulting stack in pseudocode:
-        # Linear(4, 16, bias=True)
-        # ReLU()
-
-    Example:
-    .. testcode::
-
-        # Configuration:
-        config = MLPEncoderConfig(
-            input_dims=[2],
-            hidden_layer_dims=[8, 8],
-            hidden_layer_activation="silu",
-            hidden_layer_use_layernorm=True,
-            hidden_layer_use_bias=False,
-            output_layer_dim=4,
-            output_layer_activation="tanh",
-            output_layer_use_bias=False,
-        )
-        model = config.build(framework="tf2")
-
-        # Resulting stack in pseudocode:
-        # Linear(2, 8, bias=False)
-        # LayerNorm((8,))  # layernorm always before activation
-        # SiLU()
-        # Linear(8, 8, bias=False)
-        # LayerNorm((8,))  # layernorm always before activation
-        # SiLU()
-        # Linear(8, 4, bias=False)
-        # Tanh()
+        >>> # Configuration:
+        >>> config = MLPEncoderConfig(
+        ...     input_dims=[2],
+        ...     hidden_layer_dims=[8, 8],
+        ...     hidden_layer_activation="silu",
+        ...     hidden_layer_use_layernorm=True,
+        ...     hidden_layer_use_bias=False,
+        ...     output_layer_dim=4,
+        ...     output_layer_activation="tanh",
+        ...     output_layer_use_bias=False,
+        ... )
+        >>> model = config.build(framework="tf2")
+        >>> # Resulting stack in pseudocode:
+        >>> # Linear(2, 8, bias=False)
+        >>> # LayerNorm((8,))  # layernorm always before activation
+        >>> # SiLU()
+        >>> # Linear(8, 8, bias=False)
+        >>> # LayerNorm((8,))  # layernorm always before activation
+        >>> # SiLU()
+        >>> # Linear(8, 4, bias=False)
+        >>> # Tanh()
     """
 
     @_framework_implemented()
@@ -908,44 +876,35 @@ class RecurrentEncoderConfig(ModelConfig):
     `output_dims` is reached by the last recurrent layer's dimension, which is always
     the `hidden_dims` value.
 
-    Example:
-    .. testcode::
+    Examples:
+        >>> # Configuration:
+        >>> config = RecurrentEncoderConfig(
+        ...     recurrent_layer_type="lstm",
+        ...     input_dims=[16],  # must be 1D tensor
+        ...     hidden_dim=128,
+        ...     num_layers=2,
+        ...     use_bias=True,
+        ... )
+        >>> model = config.build(framework="torch")
+        >>> # Resulting stack in pseudocode:
+        >>> # LSTM(16, 128, bias=True)
+        >>> # LSTM(128, 128, bias=True)
+        >>> # Resulting shape of the internal states (c- and h-states):
+        >>> # (2, B, 128) for each c- and h-states.
 
-        # Configuration:
-        config = RecurrentEncoderConfig(
-            recurrent_layer_type="lstm",
-            input_dims=[16],  # must be 1D tensor
-            hidden_dim=128,
-            num_layers=2,
-            use_bias=True,
-        )
-        model = config.build(framework="torch")
-
-        # Resulting stack in pseudocode:
-        # LSTM(16, 128, bias=True)
-        # LSTM(128, 128, bias=True)
-
-        # Resulting shape of the internal states (c- and h-states):
-        # (2, B, 128) for each c- and h-states.
-
-    Example:
-    .. testcode::
-
-        # Configuration:
-        config = RecurrentEncoderConfig(
-            recurrent_layer_type="gru",
-            input_dims=[32],  # must be 1D tensor
-            hidden_dim=64,
-            num_layers=1,
-            use_bias=False,
-        )
-        model = config.build(framework="torch")
-
-        # Resulting stack in pseudocode:
-        # GRU(32, 64, bias=False)
-
-        # Resulting shape of the internal state:
-        # (1, B, 64)
+        >>> # Configuration:
+        >>> config = RecurrentEncoderConfig(
+        ...     recurrent_layer_type="gru",
+        ...     input_dims=[32],  # must be 1D tensor
+        ...     hidden_dim=64,
+        ...     num_layers=1,
+        ...     use_bias=False,
+        ... )
+        >>> model = config.build(framework="torch")
+        >>> # Resulting stack in pseudocode:
+        >>> # GRU(32, 64, bias=False)
+        >>> # Resulting shape of the internal state:
+        >>> # (1, B, 64)
 
     Attributes:
         input_dims: The input dimensions. Must be 1D. This is the 1D shape of the tensor

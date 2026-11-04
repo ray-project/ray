@@ -38,8 +38,7 @@ class InferenceOnlyAPI(abc.ABC):
 
         If an RLModule has the following setup() implementation:
 
-        .. testcode::
-            :skipif: True
+        .. code-block:: python
 
             class MyRLModule(RLModule):
 
