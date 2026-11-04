@@ -5,10 +5,11 @@ import urllib
 import warnings
 from numbers import Number
 from types import ModuleType
-from typing import Any, Dict, List, Optional, Sequence, Tuple
+from typing import Any, Dict, List, Optional, Sequence, Tuple, Union
 
 import numpy as np
 import pyarrow.fs
+from packaging.version import InvalidVersion, Version
 
 import ray
 from ray import logger
@@ -56,6 +57,26 @@ WANDB_POPULATE_RUN_LOCATION_HOOK = "WANDB_POPULATE_RUN_LOCATION_HOOK"
 # It takes in a W&B run object and doesn't return anything.
 # Example: "your.module.wandb_process_run_info_hook".
 WANDB_PROCESS_RUN_INFO_HOOK = "WANDB_PROCESS_RUN_INFO_HOOK"
+
+# First wandb version whose `reinit` accepts strings. Boolean values are deprecated
+# there, and earlier versions reject the string values.
+_WANDB_REINIT_STRING_MIN_VERSION = Version("0.19.9")
+
+
+def _get_wandb_reinit(_wandb: Optional[ModuleType] = None) -> Union[bool, str]:
+    """Return the ``reinit`` value that finishes any active run before a new one.
+
+    ``reinit=True`` is the same as ``"finish_previous"``, but newer wandb versions
+    warn about the boolean. Versions without string support still need ``True``.
+    """
+    version = getattr(_wandb or wandb, "__version__", None)
+    try:
+        if Version(version) >= _WANDB_REINIT_STRING_MIN_VERSION:
+            return "finish_previous"
+    except (InvalidVersion, TypeError):
+        # Unknown wandb version, such as a mock. Use the value every version accepts.
+        pass
+    return True
 
 
 @PublicAPI(stability="alpha")
@@ -180,7 +201,7 @@ def _setup_wandb(
         id=trial_id,
         name=trial_name,
         resume=True,
-        reinit=True,
+        reinit=_get_wandb_reinit(_wandb),
         allow_val_change=True,
         config=_config,
         project=project,
@@ -687,7 +708,7 @@ class WandbLoggerCallback(LoggerCallback):
             id=trial_id,
             name=trial_name,
             resume=False,
-            reinit=True,
+            reinit=_get_wandb_reinit(),
             allow_val_change=True,
             group=wandb_group,
             project=wandb_project,

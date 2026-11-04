@@ -38,6 +38,7 @@ import os
 import tempfile
 import time
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
 import numpy as np
@@ -51,6 +52,7 @@ from ray.air.integrations.wandb import (
     WANDB_PROJECT_ENV_VAR,
     WANDB_SETUP_API_KEY_HOOK,
     WandbLoggerCallback,
+    _get_wandb_reinit,
     _QueueItem,
     _WandbLoggingActor,
     setup_wandb,
@@ -245,6 +247,7 @@ class TestWandbLogger:
         assert logger_state.kwargs["id"] == trial.trial_id
         assert logger_state.kwargs["name"] == trial.trial_name
         assert logger_state.kwargs["group"] == trial.experiment_dir_name
+        assert logger_state.kwargs["reinit"] == _get_wandb_reinit()
         assert "config" in logger_state.exclude
 
         del logger
@@ -584,6 +587,44 @@ def test_wandb_logger_rank_zero_only(trial, monkeypatch):
         mock_wandb = Mock()
         setup_wandb(project="test_project", rank_zero_only=True, _wandb=mock_wandb)
         assert mock_wandb.init.call_args.kwargs.get("mode") != "disabled"
+
+
+# wandb only accepts the string `reinit` values from 0.19.9, and warns about the
+# boolean from then on.
+REINIT_VERSION_CASES = [
+    ("0.19.8", True),
+    ("0.19.9", "finish_previous"),
+    ("0.19.10", "finish_previous"),
+    ("0.24.2", "finish_previous"),
+    ("not-a-version", True),
+    (None, True),
+]
+
+
+@pytest.mark.parametrize("version,expected", REINIT_VERSION_CASES)
+def test_get_wandb_reinit(version, expected):
+    fake_wandb = (
+        SimpleNamespace() if version is None else SimpleNamespace(__version__=version)
+    )
+    assert _get_wandb_reinit(fake_wandb) == expected
+
+
+def test_get_wandb_reinit_without_wandb():
+    with patch.object(ray.air.integrations.wandb, "wandb", None):
+        assert _get_wandb_reinit() is True
+
+
+@pytest.mark.parametrize("version,expected", REINIT_VERSION_CASES)
+def test_setup_wandb_reinit(version, expected, monkeypatch):
+    monkeypatch.setenv(WANDB_ENV_VAR, "abcde")
+    fake_wandb = SimpleNamespace(init=Mock())
+    if version is not None:
+        fake_wandb.__version__ = version
+
+    with patch("ray.air.integrations.wandb.get_session", return_value=None):
+        setup_wandb(project="test_project", _wandb=fake_wandb)
+
+    assert fake_wandb.init.call_args.kwargs["reinit"] == expected
 
 
 if __name__ == "__main__":
