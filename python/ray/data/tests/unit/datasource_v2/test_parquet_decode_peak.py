@@ -7,7 +7,6 @@ from packaging.version import parse as parse_version
 from ray.data._internal.datasource_v2.formats.parquet.parquet_decode_peak import (
     estimate_row_group_peak,
     estimate_row_group_work,
-    read_data_pages,
 )
 from ray.data._internal.datasource_v2.formats.parquet.parquet_decoded_size import (
     Read,
@@ -17,7 +16,7 @@ from ray.data._internal.datasource_v2.formats.parquet.parquet_decoded_size impor
 )
 from ray.data._internal.datasource_v2.formats.parquet.parquet_size_statistics import (
     read_dictionary_page,
-    read_size_statistics,
+    read_footer_stats,
 )
 
 pa = pytest.importorskip("pyarrow")
@@ -69,8 +68,8 @@ def _estimate(path, columns=None, **format_kwargs):
     )
     assert profiles is not None
     row_group = metadata.row_group(0)
-    stats = read_size_statistics(metadata)
-    rg_stats = None if stats is None else stats[0]
+    footer = read_footer_stats(metadata)
+    rg_stats = None if footer is None else footer.size_statistics[0]
     pages = {}
     with open(path, "rb") as f:
         for leaf_idx in range(row_group.num_columns):
@@ -103,7 +102,6 @@ def _estimate(path, columns=None, **format_kwargs):
         ]
         for name in columns or metadata.schema.to_arrow_schema().names
     ]
-    data_pages = read_data_pages(metadata)
     work = estimate_row_group_work(
         row_group=row_group,
         columns=schema_columns,
@@ -111,7 +109,7 @@ def _estimate(path, columns=None, **format_kwargs):
         read=Read(format_kwargs=format_kwargs),
         leaves=leaves,
         counted=set(),
-        data_pages=None if data_pages is None else data_pages[0],
+        data_pages=None if footer is None else footer.data_pages[0],
     )
     return estimate_row_group_peak(
         row_group=row_group,
@@ -197,26 +195,6 @@ def test_estimate_bounds_measured_peak(tmp_path, label):
         path=path, columns=columns, **format_kwargs
     )
     assert 0.95 <= ratio <= high, ratio
-
-
-@pytest.mark.parametrize("use_dictionary", [False, True])
-@pytest.mark.parametrize("data_page_version", ["1.0", "2.0"])
-def test_read_data_pages(tmp_path, use_dictionary, data_page_version):
-    # A page per 1,000-row write batch; a dictionary page is not a data page.
-    path = tmp_path / "pages.parquet"
-    table = pa.table(
-        {"a": pa.array(np.arange(10_000) % 10), "b": _strings(10)[:10_000]}
-    )
-    pq.write_table(
-        table,
-        path,
-        row_group_size=5_000,
-        data_page_size=1,
-        write_batch_size=1_000,
-        use_dictionary=use_dictionary,
-        data_page_version=data_page_version,
-    )
-    assert read_data_pages(pq.read_metadata(path)) == [[5, 5], [5, 5]]
 
 
 if __name__ == "__main__":
