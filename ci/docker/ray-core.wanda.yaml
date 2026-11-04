@@ -15,6 +15,14 @@ srcs:
   - python/ray/_raylet.pyi
   - python/ray/_raylet.pyx
   - python/ray/includes/
+  - python/ray/data/BUILD.bazel
+  - python/ray/data/test.bzl
+  - python/ray/data/__init__.py
+  - python/ray/data/_internal/__init__.py
+  - python/ray/data/_internal/datasource_v2/__init__.py
+  - python/ray/data/_internal/datasource_v2/formats/__init__.py
+  - python/ray/data/_internal/datasource_v2/formats/parquet/__init__.py
+  - python/ray/data/_internal/datasource_v2/formats/parquet/_compact_reader.pyx
   - java/BUILD.bazel
   - java/dependencies.bzl
   - release/BUILD.bazel
