@@ -24,45 +24,39 @@ class Model(abc.ABC):
     output-specification, a forward method, and a get_initial_state method. Models
     are composed in RLModules.
 
-    Usage Example together with ModelConfig:
+    Args:
+        config: The model config. The model stores it as `self.config`.
 
-    .. testcode::
+    Examples:
+        Usage Example together with ModelConfig:
 
-        from ray.rllib.core.models.base import Model
-        from ray.rllib.core.models.configs import ModelConfig
-        from ray.rllib.core.models.configs import ModelConfig
-        from dataclasses import dataclass
-
-        class MyModel(Model):
-            def __init__(self, config):
-                super().__init__(config)
-                self.my_param = config.my_param * 2
-
-            def _forward(self, input_dict):
-                return input_dict["obs"] * self.my_param
-
-            def get_num_parameters(self):
-                return (0, 0)
-
-            def _set_to_dummy_weights(self, value_sequence=(-0.02, -0.01, 0.01, 0.02)):
-                pass
-
-
-        @dataclass
-        class MyModelConfig(ModelConfig):
-            my_param: int = 42
-
-            def build(self, framework: str):
-                if framework == "bork":
-                    return MyModel(self)
-
-
-        config = MyModelConfig(my_param=3)
-        model = config.build(framework="bork")
-        print(model._forward({"obs": 1}))
-
-    .. testoutput::
-
+        >>> from ray.rllib.core.models.base import Model
+        >>> from ray.rllib.core.models.configs import ModelConfig
+        >>> from ray.rllib.core.models.configs import ModelConfig
+        >>> from dataclasses import dataclass
+        >>> class MyModel(Model):
+        ...     def __init__(self, config):
+        ...         super().__init__(config)
+        ...         self.my_param = config.my_param * 2
+        ...
+        ...     def _forward(self, input_dict):
+        ...         return input_dict["obs"] * self.my_param
+        ...
+        ...     def get_num_parameters(self):
+        ...         return (0, 0)
+        ...
+        ...     def _set_to_dummy_weights(self, value_sequence=(-0.02, -0.01, 0.01, 0.02)):
+        ...         pass
+        >>> @dataclass
+        ... class MyModelConfig(ModelConfig):
+        ...     my_param: int = 42
+        ...
+        ...     def build(self, framework: str):
+        ...         if framework == "bork":
+        ...             return MyModel(self)
+        >>> config = MyModelConfig(my_param=3)
+        >>> model = config.build(framework="bork")
+        >>> print(model._forward({"obs": 1}))
         6
 
     """
@@ -221,56 +215,48 @@ class Encoder(Model, abc.ABC):
     That is, for time-series data, we encode into the latent space for each time step.
     This should be reflected in the `output_specs`.
 
-    Usage example together with a ModelConfig:
+    Examples:
+        Usage example together with a ModelConfig:
 
-    .. testcode::
-
-        from dataclasses import dataclass
-        import numpy as np
-
-        from ray.rllib.core.columns import Columns
-        from ray.rllib.core.models.base import Encoder, ENCODER_OUT
-        from ray.rllib.core.models.configs import ModelConfig
-        from ray.rllib.policy.sample_batch import SampleBatch
-
-        class NumpyEncoder(Encoder):
-            def __init__(self, config):
-                super().__init__(config)
-                self.factor = config.factor
-
-            def __call__(self, *args, **kwargs):
-                # This is a dummy method to do checked forward passes.
-                return self._forward(*args, **kwargs)
-
-            def _forward(self, input_dict, **kwargs):
-                obs = input_dict[Columns.OBS]
-                return {
-                    ENCODER_OUT: int(np.array(obs) * self.factor),
-                    Columns.STATE_OUT: int(
-                        np.array(input_dict[Columns.STATE_IN])
-                        * self.factor
-                    ),
-                }
-
-            def get_num_parameters(self):
-                return (0, 0)
-
-            def _set_to_dummy_weights(self, value_sequence=(-0.02, -0.01, 0.01, 0.02)):
-                pass
-
-        @dataclass
-        class NumpyEncoderConfig(ModelConfig):
-            factor: int = None
-
-            def build(self, framework: str):
-                return NumpyEncoder(self)
-
-        config = NumpyEncoderConfig(factor=2)
-        encoder = NumpyEncoder(config)
-        print(encoder({Columns.OBS: 1, Columns.STATE_IN: 2}))
-
-    .. testoutput::
-
+        >>> from dataclasses import dataclass
+        >>> import numpy as np
+        >>> from ray.rllib.core.columns import Columns
+        >>> from ray.rllib.core.models.base import Encoder, ENCODER_OUT
+        >>> from ray.rllib.core.models.configs import ModelConfig
+        >>> from ray.rllib.policy.sample_batch import SampleBatch
+        >>> class NumpyEncoder(Encoder):
+        ...     def __init__(self, config):
+        ...         super().__init__(config)
+        ...         self.factor = config.factor
+        ...
+        ...     def __call__(self, *args, **kwargs):
+        ...         # This is a dummy method to do checked forward passes.
+        ...         return self._forward(*args, **kwargs)
+        ...
+        ...     def _forward(self, input_dict, **kwargs):
+        ...         obs = input_dict[Columns.OBS]
+        ...         return {
+        ...             ENCODER_OUT: int(np.array(obs) * self.factor),
+        ...             Columns.STATE_OUT: int(
+        ...                 np.array(input_dict[Columns.STATE_IN])
+        ...                 * self.factor
+        ...             ),
+        ...         }
+        ...
+        ...     def get_num_parameters(self):
+        ...         return (0, 0)
+        ...
+        ...     def _set_to_dummy_weights(self, value_sequence=(-0.02, -0.01, 0.01, 0.02)):
+        ...         pass
+        >>> @dataclass
+        ... class NumpyEncoderConfig(ModelConfig):
+        ...     factor: int = None
+        ...
+        ...     def build(self, framework: str):
+        ...         return NumpyEncoder(self)
+        >>> config = NumpyEncoderConfig(factor=2)
+        >>> encoder = NumpyEncoder(config)
+        >>> print(encoder({Columns.OBS: 1, Columns.STATE_IN: 2}))
         {'encoder_out': 2, 'state_out': 4}
 
     """
