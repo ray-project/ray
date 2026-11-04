@@ -30,7 +30,7 @@ class LLMServer(InternalLLMServer):
         >>> # Configure the model
         >>> llm_config = LLMConfig(
         ...     model_loading_config=dict(
-        ...         served_model_name="llama-3.1-8b",
+        ...         model_id="llama-3.1-8b",
         ...         model_source="meta-llama/Llama-3.1-8b-instruct",
         ...     ),
         ...     deployment_config=dict(
@@ -46,18 +46,22 @@ class LLMServer(InternalLLMServer):
         ...     **serve_options).bind(llm_config)
         >>> model_handle = serve.run(llm_app)
         >>> # Query the model via `chat` api
+        >>> import asyncio
         >>> from ray.serve.llm.openai_api_models import ChatCompletionRequest
-        >>> request = ChatCompletionRequest(
-        ...     model="llama-3.1-8b",
-        ...     messages=[
-        ...         {
-        ...             "role": "user",
-        ...             "content": "Hello, world!"
-        ...         }
-        ...     ]
-        ... )
-        >>> response = ray.get(model_handle.chat(request))
-        >>> print(response)
+        >>> model_handle = model_handle.options(stream=True)
+        >>> async def query_model(model_handle):
+        ...     request = ChatCompletionRequest(
+        ...         model="llama-3.1-8b",
+        ...         messages=[
+        ...             {
+        ...                 "role": "user",
+        ...                 "content": "Hello, world!"
+        ...             }
+        ...         ]
+        ...     )
+        ...     async for response in model_handle.chat.remote(request):
+        ...         print(response)
+        >>> asyncio.run(query_model(model_handle))
     """
 
     pass
