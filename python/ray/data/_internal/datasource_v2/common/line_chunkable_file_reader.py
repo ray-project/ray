@@ -52,8 +52,9 @@ Design decisions:
 - ``row_hash`` needs each chunk's first row number, but line numbers are
   unknown. A chunk numbers its rows from its starting byte instead, which is
   unique because a chunk has fewer rows than bytes.
-- Format specifics live in two hooks, ``_make_chunk_format`` and
-  ``_check_file_start``, implemented once per format in a subclass.
+- Format specifics live in one hook, ``_make_chunk_fragment``, implemented
+  once per format in a subclass. CSV's header handling stays inside its
+  override, so JSONL carries nothing for it.
 """
 
 from typing import Any, Iterator, List
@@ -65,20 +66,21 @@ from typing_extensions import override
 from ray.data._internal.datasource_v2.common.file_reader import FileFormat, FileReader
 from ray.data._internal.datasource_v2.interfaces.file_manifest import FileManifest
 from ray.data._internal.datasource_v2.interfaces.read_units import ReadUnitFragment
+from ray.data._internal.util import NumBytes
 
 
-class LineChunkFileReader(FileReader):
+class LineChunkableFileReader(FileReader):
     """Reads newline-delimited files (CSV, JSONL) one byte-range chunk at a time.
 
-    Subclass it once per format and implement :meth:`_make_chunk_format` and
-    :meth:`_check_file_start`. The chunk-reading steps below are shared.
+    Subclass it once per format and implement :meth:`_make_chunk_fragment`.
+    The chunk-reading steps below are shared.
     """
 
     def __init__(
         self,
         format: FileFormat,
         *,
-        chunk_size: int,
+        chunk_size: NumBytes,
         **file_reader_kwargs: Any,
     ):
         """Initialize the reader.
@@ -90,6 +92,8 @@ class LineChunkFileReader(FileReader):
             **file_reader_kwargs: Passed to ``FileReader``.
         """
         super().__init__(format=format, **file_reader_kwargs)
+        # TODO: Carry each chunk's byte range in the manifest instead, once
+        # bin sizes can vary per file.
         self._chunk_size = chunk_size
 
     @override
@@ -144,12 +148,10 @@ class LineChunkFileReader(FileReader):
                file_size=file.size())``.
             3. Fetch the chunk's lines with ``read_line_aligned``. Return
                without yielding when they are empty.
-            4. Build ``chunk_fragment`` with ``self._make_chunk_format(
-               starts_at_file_start=start == 0).make_fragment(
-               pa.py_buffer(lines))``.
-            5. When ``start == 0``, call ``self._check_file_start(
-               chunk_fragment=chunk_fragment, path=unit.source)``.
-            6. Yield from ``self._iter_fragment_tables(
+            4. Build ``chunk_fragment`` with ``self._make_chunk_fragment(
+               lines=lines, starts_at_file_start=start == 0,
+               path=unit.source)``.
+            5. Yield from ``self._iter_fragment_tables(
                fragment=chunk_fragment, scanner_kwargs=scanner_kwargs)``: the
                scan whole files get, so the pinned schema gives every chunk of
                a file the same column types.
@@ -163,42 +165,32 @@ class LineChunkFileReader(FileReader):
         """
         raise NotImplementedError
 
-    def _make_chunk_format(self, *, starts_at_file_start: bool) -> pds.FileFormat:
-        """Return the pyarrow format that parses one chunk's bytes.
+    def _make_chunk_fragment(
+        self, lines: memoryview, *, starts_at_file_start: bool, path: str
+    ) -> pds.Fragment:
+        """Return a pyarrow fragment that parses one chunk's lines.
 
-        Not implemented yet. Each format's subclass returns:
-
-            1. JSONL: ``pds.JsonFileFormat()`` for every chunk.
-            2. CSV, chunk at byte 0: a ``pds.CsvFileFormat`` that reads the
-               file's header.
-            3. CSV, any other chunk: a ``pds.CsvFileFormat`` with
-               ``ReadOptions(column_names=...)`` set to the file columns of the
-               plan-time schema, because these bytes have no header.
-
-        Args:
-            starts_at_file_start: Whether the chunk starts at byte 0.
-
-        Returns:
-            The format to build the chunk's fragment with.
-        """
-        raise NotImplementedError
-
-    def _check_file_start(self, chunk_fragment: pds.Fragment, path: str) -> None:
-        """Check the first chunk of a chunked file before its rows are read.
-
-        Later chunks of a CSV file are parsed with the schema's column names by
-        position, so the file's header must list the same columns in the same
-        order. Whole-file reads match columns by name and need no check.
+        TODO: Move this to an ``ArrowFileReader`` when one exists, so this
+        class doesn't assume pyarrow formats.
 
         Not implemented yet. Each format's subclass does:
 
-            1. JSONL: nothing.
-            2. CSV: raise ``ValueError`` naming ``path`` and both column orders
-               when ``chunk_fragment.physical_schema.names`` differ from the
-               file columns of the plan-time schema.
+            1. JSONL: return ``self._make_format().make_fragment(
+               pa.py_buffer(lines))``, the format whole files use.
+            2. CSV at byte 0: build the fragment the same way, then raise
+               ``ValueError`` naming ``path`` and both column orders when its
+               ``physical_schema.names`` differ from the file columns of the
+               plan-time schema.
+            3. CSV, any other chunk: use that format with
+               ``ReadOptions(column_names=...)`` set to the plan-time schema's
+               file columns, because these bytes have no header.
 
         Args:
-            chunk_fragment: Fragment over the bytes of the file's first chunk.
-            path: The file's path, for the error message.
+            lines: The chunk's whole lines, from ``read_line_aligned``.
+            starts_at_file_start: Whether the chunk starts at byte 0.
+            path: The file's path, for error messages.
+
+        Returns:
+            A fragment over ``lines``.
         """
         raise NotImplementedError

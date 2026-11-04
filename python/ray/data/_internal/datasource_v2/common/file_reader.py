@@ -504,10 +504,10 @@ class FileReader(Reader[FileManifest]):
         The default scans ``fragment_to_read.fragment`` through
         :meth:`_iter_fragment_tables`.
 
-        Override this when the unit cannot be described as a pyarrow fragment,
-        for example a byte range of a CSV file. It runs inside the retry loop
-        and the scan threads, so IO done here is retried and parallel. Your
-        implementation should:
+        Override this when building the unit's fragment needs IO, such as
+        downloading a CSV byte range. It runs inside the retry loop and the
+        scan threads, so that IO is retried and parallel. Your implementation
+        should:
 
             1. Read what ``fragment_to_read.unit`` names.
             2. Yield its tables with ``scanner_kwargs`` applied.

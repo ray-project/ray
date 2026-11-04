@@ -5,12 +5,13 @@ groups into read tasks, so a file bigger than one task's budget is spread
 over several tasks instead of read by one.
 
 How it works: :class:`LineChunkFileIndexer` reuses ``NonSamplingFileIndexer``
-for path expansion, extension filtering and file sizes, and replaces only
-the step that turns file infos into manifest rows. A file becomes either one
-row with no chunk metadata, meaning the whole file, or one row per
-``chunk_size`` bytes from ``split_into_line_chunks``. Each chunk row repeats
-the path and file size and carries a ``FileChunk`` whose single unit id is
-the chunk's index; the reader recomputes the byte range from that index.
+for path expansion, extension filtering, file sizes and grouping rows into
+manifests, and overrides only ``_chunk_metadatas_of_file``, which says how
+many rows a file gets. A file becomes either one row with no chunk
+metadata, meaning the whole file, or one row per ``chunk_size`` bytes from
+``split_into_line_chunks``. Each chunk row repeats the path and file size
+and carries a ``FileChunk`` whose single unit id is the chunk's index; the
+reader recomputes the byte range from that index.
 
 Design decisions:
 
@@ -37,11 +38,8 @@ from ray.data._internal.datasource_v2.common.non_sampling_file_indexer import (
     NonSamplingFileIndexer,
 )
 from ray.data._internal.datasource_v2.interfaces.file_indexer import FileInfo
-from ray.data._internal.datasource_v2.interfaces.file_manifest import (
-    ChunkMetadata,
-    FileManifest,
-)
-from ray.data._internal.util import infer_compression
+from ray.data._internal.datasource_v2.interfaces.file_manifest import ChunkMetadata
+from ray.data._internal.util import NumBytes, infer_compression
 
 
 class LineChunkFileIndexer(NonSamplingFileIndexer):
@@ -56,7 +54,7 @@ class LineChunkFileIndexer(NonSamplingFileIndexer):
     def __init__(
         self,
         *,
-        chunk_size: int,
+        chunk_size: NumBytes,
         ignore_missing_paths: bool,
         skip_paths: Optional[Iterable[str]] = None,
         num_workers: Optional[int] = None,
@@ -82,40 +80,18 @@ class LineChunkFileIndexer(NonSamplingFileIndexer):
         self._chunk_size = chunk_size
 
     @override
-    def _process_file_infos_to_manifests(
-        self,
-        file_infos: Iterable[FileInfo],
-    ) -> Iterable[FileManifest]:
-        paths: List[str] = []
-        sizes: List[int] = []
-        chunk_metadatas: List[Optional[ChunkMetadata]] = []
-
-        for file_info in file_infos:
-            # ``list_file_infos`` already dropped zero/None-size files.
-            assert file_info.size is not None
-            if (
-                file_info.size <= self._chunk_size
-                or infer_compression(file_info.path) is not None
-            ):
-                chunk_metadatas_of_file = [None]
-            else:
-                chunk_metadatas_of_file = [
-                    chunk.to_metadata()
-                    for chunk in split_into_line_chunks(
-                        file_size=file_info.size, chunk_size=self._chunk_size
-                    )
-                ]
-            for chunk_metadata in chunk_metadatas_of_file:
-                paths.append(file_info.path)
-                sizes.append(file_info.size)
-                chunk_metadatas.append(chunk_metadata)
-                if len(paths) >= self._max_paths_per_output:
-                    yield FileManifest.construct_manifest(
-                        paths=paths, sizes=sizes, chunk_metadatas=chunk_metadatas
-                    )
-                    paths, sizes, chunk_metadatas = [], [], []
-
-        if paths:
-            yield FileManifest.construct_manifest(
-                paths=paths, sizes=sizes, chunk_metadatas=chunk_metadatas
+    def _chunk_metadatas_of_file(
+        self, file_info: FileInfo
+    ) -> List[Optional[ChunkMetadata]]:
+        assert file_info.size is not None
+        if (
+            file_info.size <= self._chunk_size
+            or infer_compression(file_info.path) is not None
+        ):
+            return [None]
+        return [
+            chunk.to_metadata()
+            for chunk in split_into_line_chunks(
+                file_size=file_info.size, chunk_size=self._chunk_size
             )
+        ]

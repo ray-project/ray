@@ -36,9 +36,11 @@ Design decisions:
 """
 
 import logging
+import math
 from typing import TYPE_CHECKING, List, Tuple
 
 from ray.data._internal.datasource_v2.interfaces.file_manifest import FileChunk
+from ray.data._internal.util import KiB, NumBytes
 
 if TYPE_CHECKING:
     import pyarrow
@@ -47,11 +49,11 @@ logger = logging.getLogger(__name__)
 
 # Bytes read past a chunk's end in the same request, so the line that crosses
 # the end is usually finished without a second request.
-_LINE_PROBE_BYTES = 64 * 1024
+_LINE_PROBE_BYTES = 64 * KiB
 
 
 def line_chunk_byte_range(
-    index: int, *, chunk_size: int, file_size: int
+    index: int, *, chunk_size: NumBytes, file_size: NumBytes
 ) -> Tuple[int, int]:
     """Return the ``[start, end)`` byte range of chunk ``index``, before line alignment.
 
@@ -70,7 +72,9 @@ def line_chunk_byte_range(
     return start, min(start + chunk_size, file_size)
 
 
-def split_into_line_chunks(file_size: int, *, chunk_size: int) -> List[FileChunk]:
+def split_into_line_chunks(
+    file_size: NumBytes, *, chunk_size: NumBytes
+) -> List[FileChunk]:
     """Cut a file into one ``FileChunk`` per ``chunk_size`` bytes, in file order.
 
     No bytes are read; :func:`read_line_aligned` finds the lines at read time.
@@ -85,7 +89,7 @@ def split_into_line_chunks(file_size: int, *, chunk_size: int) -> List[FileChunk
         The file's chunks, each holding one unit id: the chunk's index.
     """
     assert chunk_size > 0, f"chunk_size must be positive, got {chunk_size}"
-    num_chunks = -(-file_size // chunk_size)  # ceiling division
+    num_chunks = math.ceil(file_size / chunk_size)
     chunks = []
     for index in range(num_chunks):
         start, end = line_chunk_byte_range(
@@ -103,7 +107,7 @@ def split_into_line_chunks(file_size: int, *, chunk_size: int) -> List[FileChunk
 
 
 def read_line_aligned(
-    file: "pyarrow.NativeFile", *, start: int, end: int, file_size: int
+    file: "pyarrow.NativeFile", *, start: int, end: int, file_size: NumBytes
 ) -> memoryview:
     """Read the whole lines that begin in ``[start, end)``.
 
@@ -149,7 +153,7 @@ def read_line_aligned(
         lines = memoryview(data)[first_line_start:]
     else:
         tail = _read_through_newline(file=file, offset=fetch_end, file_size=file_size)
-        lines = memoryview(data[first_line_start:] + tail)
+        lines = memoryview(b"".join((memoryview(data)[first_line_start:], tail)))
     aligned_start = fetch_start + first_line_start
     logger.debug(
         "Line chunk [%d, %d) aligned to [%d, %d)",
@@ -162,9 +166,13 @@ def read_line_aligned(
 
 
 def _read_through_newline(
-    file: "pyarrow.NativeFile", *, offset: int, file_size: int
+    file: "pyarrow.NativeFile", *, offset: int, file_size: NumBytes
 ) -> bytes:
-    """Read from ``offset`` through the next ``\\n``, or to the end of the file."""
+    """Read from ``offset`` through the next ``\\n``, or to the end of the file.
+
+    The ``\\n`` is kept, as in :func:`read_line_aligned`, so each chunk ends
+    where the next one starts.
+    """
     pieces = []
     while offset < file_size:
         piece = file.read_at(
