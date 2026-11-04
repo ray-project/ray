@@ -735,62 +735,53 @@ class MultiAgentEpisode:
         the `self.add_env_step()` method.
 
         Examples:
-
-        .. testcode::
-
-            import numpy as np
-
-            from ray.rllib.env.multi_agent_episode import MultiAgentEpisode
-            from ray.rllib.env.tests.test_multi_agent_episode import (
-                TestMultiAgentEpisode
-            )
-
-            # Create some multi-agent episode data.
-            (
-                observations,
-                actions,
-                rewards,
-                terminateds,
-                truncateds,
-                infos,
-            ) = TestMultiAgentEpisode._mock_multi_agent_records()
-            # Define the agent ids.
-            agent_ids = ["agent_1", "agent_2", "agent_3", "agent_4", "agent_5"]
-
-            episode = MultiAgentEpisode(
-                observations=observations,
-                infos=infos,
-                actions=actions,
-                rewards=rewards,
-                # Note: terminated/truncated have nothing to do with an episode
-                # being converted `to_numpy` or not (via the `self.to_numpy()` method)!
-                terminateds=terminateds,
-                truncateds=truncateds,
-                len_lookback_buffer=0,  # no lookback; all data is actually "in" episode
-            )
-
-            # Episode has not been numpy'ized yet.
-            assert not episode.is_numpy
-            # We are still operating on lists.
-            assert (
-                episode.get_observations(
-                    indices=[1],
-                    agent_ids="agent_1",
-                ) == {"agent_1": [1]}
-            )
-
-            # Numpy'ized the episode.
-            episode.to_numpy()
-            assert episode.is_numpy
-
-            # Everything is now numpy arrays (with 0-axis of size
-            # B=[len of requested slice]).
-            assert (
-                isinstance(episode.get_observations(
-                    indices=[1],
-                    agent_ids="agent_1",
-                )["agent_1"], np.ndarray)
-            )
+            >>> import numpy as np
+            >>> from ray.rllib.env.multi_agent_episode import MultiAgentEpisode
+            >>> from ray.rllib.env.tests.test_multi_agent_episode import (
+            ...     TestMultiAgentEpisode
+            ... )
+            >>> # Create some multi-agent episode data.
+            >>> (
+            ...     observations,
+            ...     actions,
+            ...     rewards,
+            ...     terminateds,
+            ...     truncateds,
+            ...     infos,
+            ... ) = TestMultiAgentEpisode._mock_multi_agent_records()
+            >>> # Define the agent ids.
+            >>> agent_ids = ["agent_1", "agent_2", "agent_3", "agent_4", "agent_5"]
+            >>> episode = MultiAgentEpisode(
+            ...     observations=observations,
+            ...     infos=infos,
+            ...     actions=actions,
+            ...     rewards=rewards,
+            ...     # Note: terminated/truncated have nothing to do with an episode
+            ...     # being converted `to_numpy` or not (via the `self.to_numpy()` method)!
+            ...     terminateds=terminateds,
+            ...     truncateds=truncateds,
+            ...     len_lookback_buffer=0,  # no lookback; all data is actually "in" episode
+            ... )
+            >>> # Episode has not been numpy'ized yet.
+            >>> assert not episode.is_numpy
+            >>> # We are still operating on lists.
+            >>> assert (
+            ...     episode.get_observations(
+            ...         indices=[1],
+            ...         agent_ids="agent_1",
+            ...     ) == {"agent_1": [1]}
+            ... )
+            >>> # Numpy'ized the episode.
+            >>> _ = episode.to_numpy()
+            >>> assert episode.is_numpy
+            >>> # Everything is now numpy arrays (with 0-axis of size
+            >>> # B=[len of requested slice]).
+            >>> assert (
+            ...     isinstance(episode.get_observations(
+            ...         indices=[1],
+            ...         agent_ids="agent_1",
+            ...     )["agent_1"], np.ndarray)
+            ... )
 
         Returns:
              This `MultiAgentEpisode` object with the converted numpy data.
@@ -1469,52 +1460,48 @@ class MultiAgentEpisode:
         be stored in the agent's hanging values caches for the returned
         MultiAgentEpisode slice.
 
-        .. testcode::
-
-            from ray.rllib.env.multi_agent_episode import MultiAgentEpisode
-            from ray.rllib.utils.test_utils import check
-
-            # Generate a simple multi-agent episode.
-            observations = [
-                {"a0": 0, "a1": 0},  # 0
-                {         "a1": 1},  # 1
-                {         "a1": 2},  # 2
-                {"a0": 3, "a1": 3},  # 3
-                {"a0": 4},           # 4
-            ]
-            # Actions are the same as observations (except for last obs, which doesn't
-            # have an action).
-            actions = observations[:-1]
-            # Make up a reward for each action.
-            rewards = [
-                {aid: r / 10 + 0.1 for aid, r in o.items()}
-                for o in observations
-            ]
-            episode = MultiAgentEpisode(
-                observations=observations,
-                actions=actions,
-                rewards=rewards,
-                len_lookback_buffer=0,
-            )
-
-            # Slice the episode and check results.
-            slice = episode[1:3]
-            a0 = slice.agent_episodes["a0"]
-            a1 = slice.agent_episodes["a1"]
-            check((a0.observations, a1.observations), ([3], [1, 2, 3]))
-            check((a0.actions, a1.actions), ([], [1, 2]))
-            check((a0.rewards, a1.rewards), ([], [0.2, 0.3]))
-            check((a0.is_done, a1.is_done), (False, False))
-
-            # If a slice ends in a "gap" for an agent, expect actions and rewards to be
-            # cached for this agent.
-            slice = episode[:2]
-            a0 = slice.agent_episodes["a0"]
-            check(a0.observations, [0])
-            check(a0.actions, [])
-            check(a0.rewards, [])
-            check(slice._hanging_actions_end["a0"], 0)
-            check(slice._hanging_rewards_end["a0"], 0.1)
+        Examples:
+            >>> from ray.rllib.env.multi_agent_episode import MultiAgentEpisode
+            >>> from ray.rllib.utils.test_utils import check
+            >>> # Generate a simple multi-agent episode.
+            >>> observations = [
+            ...     {"a0": 0, "a1": 0},  # 0
+            ...     {         "a1": 1},  # 1
+            ...     {         "a1": 2},  # 2
+            ...     {"a0": 3, "a1": 3},  # 3
+            ...     {"a0": 4},           # 4
+            ... ]
+            >>> # Actions are the same as observations (except for last obs, which doesn't
+            >>> # have an action).
+            >>> actions = observations[:-1]
+            >>> # Make up a reward for each action.
+            >>> rewards = [
+            ...     {aid: r / 10 + 0.1 for aid, r in o.items()}
+            ...     for o in observations
+            ... ]
+            >>> episode = MultiAgentEpisode(
+            ...     observations=observations,
+            ...     actions=actions,
+            ...     rewards=rewards,
+            ...     len_lookback_buffer=0,
+            ... )
+            >>> # Slice the episode and check results.
+            >>> slice = episode[1:3]
+            >>> a0 = slice.agent_episodes["a0"]
+            >>> a1 = slice.agent_episodes["a1"]
+            >>> check((a0.observations, a1.observations), ([3], [1, 2, 3]))
+            >>> check((a0.actions, a1.actions), ([], [1, 2]))
+            >>> check((a0.rewards, a1.rewards), ([], [0.2, 0.3]))
+            >>> check((a0.is_done, a1.is_done), (False, False))
+            >>> # If a slice ends in a "gap" for an agent, expect actions and rewards to be
+            >>> # cached for this agent.
+            >>> slice = episode[:2]
+            >>> a0 = slice.agent_episodes["a0"]
+            >>> check(a0.observations, [0])
+            >>> check(a0.actions, [])
+            >>> check(a0.rewards, [])
+            >>> check(slice._hanging_actions_end["a0"], 0)
+            >>> check(slice._hanging_rewards_end["a0"], 0.1)
 
         Args:
             slice_: The slice object to use for slicing. This should exclude the
