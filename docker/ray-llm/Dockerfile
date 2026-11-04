@@ -129,6 +129,13 @@ if tuple(int(part) for part in installed.split(".")[:3]) < MINIMUM:
     )
 PY
 
+# Install gdrcopy's user-space library (libgdrapi) as vLLM's image does. NVSHMEM
+# (DeepEP) and UCX (NIXL) use it for low-latency GPU memory copies on hosts that
+# load the gdrdrv kernel module. vLLM uses the CUDA 12.8 build on CUDA 13 too.
+GDRCOPY_OS_VERSION="Ubuntu$(. /etc/os-release && echo "${VERSION_ID//./_}")"
+curl -fsSL "${VLLM_RAW}/tools/install_gdrcopy.sh" | \
+    sudo bash -s -- "${GDRCOPY_OS_VERSION}" 12.8 "$(uname -m)"
+
 # uv skips bytecode compilation, so every new container recompiles vLLM and its
 # deps on startup. Precompile all of site-packages here; UV_COMPILE_BYTECODE would
 # miss packages from the base image and the vLLM files patched above.

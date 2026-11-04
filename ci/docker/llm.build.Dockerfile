@@ -6,6 +6,10 @@ FROM $DOCKER_IMAGE_BASE_BUILD
 ARG RAY_CI_JAVA_BUILD=
 ARG RAY_CUDA_CODE=cpu
 
+# vLLM version tag to fetch install scripts from.
+# Keep in sync with vllm version in python/requirements/llm/llm-requirements.txt
+ARG VLLM_SCRIPTS_REF="v0.32.0"
+
 SHELL ["/bin/bash", "-ice"]
 
 COPY . .
@@ -33,6 +37,14 @@ if [[ "${RAY_CUDA_CODE}" != "cpu" ]]; then
     apt-get update -y
     apt-get install -y libnuma-dev numactl
     rm -rf /var/lib/apt/lists/*
+
+    # Install gdrcopy's user-space library (libgdrapi) as vLLM's image does.
+    # NVSHMEM (DeepEP) and UCX (NIXL) use it for low-latency GPU memory copies on
+    # hosts that load the gdrdrv kernel module. vLLM uses the CUDA 12.8 build on
+    # CUDA 13 too.
+    GDRCOPY_OS_VERSION="Ubuntu$(. /etc/os-release && echo "${VERSION_ID//./_}")"
+    curl -fsSL "https://raw.githubusercontent.com/vllm-project/vllm/${VLLM_SCRIPTS_REF}/tools/install_gdrcopy.sh" | \
+        bash -s -- "${GDRCOPY_OS_VERSION}" 12.8 "$(uname -m)"
 fi
 
 # Include the CUDA device index in vLLM's compile cache paths so a worker never
