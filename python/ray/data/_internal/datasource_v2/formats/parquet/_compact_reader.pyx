@@ -1,5 +1,5 @@
 # cython: language_level=3, boundscheck=True, wraparound=False, initializedcheck=False
-"""Compiled footer walk for :func:`parquet_size_statistics.read_size_statistics`.
+"""Compiled footer walk for :func:`parquet_size_statistics.read_footer_stats`.
 
 The same walk as ``parquet_size_statistics._CompactReader.read``, about 30 times
 faster. Bazel builds it into Ray's wheels; see python/ray/data/BUILD.bazel.
@@ -34,7 +34,12 @@ cdef enum:
     FILE_META_ROW_GROUPS = 4
     ROW_GROUP_COLUMNS = 1
     COLUMN_CHUNK_META_DATA = 3
+    COLUMN_META_ENCODING_STATS = 13
     COLUMN_META_SIZE_STATISTICS = 16
+    ENCODING_STATS_PAGE_TYPE = 1
+    ENCODING_STATS_COUNT = 3
+    DATA_PAGE = 0
+    DATA_PAGE_V2 = 3
     SIZE_STATS_UNENCODED_BYTES = 1
     SIZE_STATS_REPETITION_HISTOGRAM = 2
     SIZE_STATS_DEFINITION_HISTOGRAM = 3
@@ -49,7 +54,8 @@ cdef inline bint is_varint_type(int t):
 
 
 cdef class CompactReader:
-    """Reads a footer's ``SizeStatistics`` into ``leaf_stats`` tuples.
+    """Reads a footer's ``SizeStatistics``, into ``leaf_stats`` tuples, and data
+    page counts.
 
     Past the end raises IndexError, as the Python reader does.
     """
@@ -239,7 +245,34 @@ cdef class CompactReader:
                 self.skip(field_type)
         return self.tuple_new(self.leaf_stats, (unencoded, repetition, definition))
 
-    cdef object column_metadata(self):
+    cdef int64_t data_pages(self) except? -1:
+        cdef Py_ssize_t count, i
+        cdef int element_type, field_type
+        cdef int64_t last_id, page_type, entry_pages
+        cdef int64_t pages = 0
+        self.list_header(&count, &element_type)
+        if count and element_type != STRUCT:
+            raise ThriftDesync(
+                f"ColumnMetaData field 13 is a list of type {element_type}, "
+                "expected struct"
+            )
+        for i in range(count):
+            # Each entry counts the pages of one type and encoding; -1 is no type.
+            last_id = 0
+            page_type = -1
+            entry_pages = 0
+            while self.next_field(&last_id, &field_type):
+                if last_id == ENCODING_STATS_PAGE_TYPE and field_type == I32:
+                    page_type = self.zigzag()
+                elif last_id == ENCODING_STATS_COUNT and field_type == I32:
+                    entry_pages = self.zigzag()
+                else:
+                    self.skip(field_type)
+            if page_type == DATA_PAGE or page_type == DATA_PAGE_V2:
+                pages += entry_pages
+        return pages
+
+    cdef object column_metadata(self, int64_t* pages):
         cdef int64_t last_id = 0
         cdef int field_type
         size_stats = None
@@ -250,46 +283,64 @@ cdef class CompactReader:
                         f"ColumnMetaData field 16 has type {field_type}, expected struct"
                     )
                 size_stats = self.size_statistics()
+            elif last_id == COLUMN_META_ENCODING_STATS:
+                if field_type != LIST:
+                    raise ThriftDesync(
+                        f"ColumnMetaData field 13 has type {field_type}, expected list"
+                    )
+                pages[0] = self.data_pages()
             elif is_varint_type(field_type):
                 self.skip_varint()
             else:
                 self.skip(field_type)
         return size_stats
 
-    cdef object column_chunk(self):
+    cdef object column_chunk(self, int64_t* pages):
         cdef int64_t last_id = 0
         cdef int field_type
         stats = None
         while self.next_field(&last_id, &field_type):
             if last_id == COLUMN_CHUNK_META_DATA and field_type == STRUCT:
-                stats = self.column_metadata()
+                stats = self.column_metadata(pages)
             else:
                 self.skip(field_type)
         return stats
 
-    cdef list row_group(self):
+    cdef tuple row_group(self):
         cdef int64_t last_id = 0
         cdef int field_type, element_type
         cdef Py_ssize_t count, i
-        cdef list columns = []
+        cdef int64_t pages
+        cdef list stats = []
+        cdef list data_pages = []
         while self.next_field(&last_id, &field_type):
             if last_id == ROW_GROUP_COLUMNS and field_type == LIST:
                 self.list_header(&count, &element_type)
-                columns = [self.column_chunk() for i in range(count)]
+                for i in range(count):
+                    pages = 0
+                    stats.append(self.column_chunk(&pages))
+                    # No data pages counted means no count to go by.
+                    data_pages.append(pages if pages > 0 else None)
             else:
                 self.skip(field_type)
-        return columns
+        return stats, data_pages
 
     def read(self):
-        """``leaf_stats`` by ``[row_group][leaf]``, ``None`` where a leaf has none."""
+        """``leaf_stats`` and data page counts, each by ``[row_group][leaf]`` and
+        ``None`` where a leaf has none."""
         cdef int64_t last_id = 0
         cdef int field_type, element_type
         cdef Py_ssize_t count, i
-        cdef list row_groups = []
+        cdef list stats = []
+        cdef list data_pages = []
+        cdef tuple row_group
         while self.next_field(&last_id, &field_type):
             if last_id == FILE_META_ROW_GROUPS and field_type == LIST:
                 self.list_header(&count, &element_type)
-                row_groups = [self.row_group() for i in range(count)]
+                for i in range(count):
+                    row_group = self.row_group()
+                    stats.append(row_group[0])
+                    data_pages.append(row_group[1])
             else:
                 self.skip(field_type)
-        return row_groups
+        return stats, data_pages
