@@ -1473,9 +1473,10 @@ NATIVE_STACK = "native stack"
 @pytest.fixture(autouse=True)
 def unanswered_sudo_check():
     """Every test starts with the passwordless-sudo check not yet run."""
-    nccl_ras._can_passwordless_sudo.cache_clear()
+    monkeypatch_sudo = nccl_ras._passwordless_sudo
+    nccl_ras._passwordless_sudo = None
     yield
-    nccl_ras._can_passwordless_sudo.cache_clear()
+    nccl_ras._passwordless_sudo = monkeypatch_sudo
 
 
 def fake_py_spy_runs(monkeypatch, unprivileged, sudo_check=None, sudo_retry=None):
@@ -1565,6 +1566,55 @@ def test_dump_stack_trace_checks_sudo_once_per_process(monkeypatch):
     dump_stack_trace(25.0)
 
     assert calls.count(SUDO_CHECK_CMD) == 1
+
+
+def test_dump_stack_trace_keeps_the_sudo_retry_inside_the_budget(monkeypatch):
+    """The unprivileged py-spy eats most of the budget before it is denied, so
+    the sudo check and retry get only what is left and the dump still returns
+    inside the caller's timeout."""
+    BUDGET_S = 20.0
+    FIRST_ATTEMPT_S = 16.0
+    clock = [0.0]
+    timeouts = []
+
+    def fake_run(cmd, **kwargs):
+        timeouts.append(kwargs["timeout"])
+        if cmd[0] == "py-spy":
+            clock[0] += FIRST_ATTEMPT_S
+            return subprocess.CompletedProcess(cmd, 1, "", PY_SPY_PERMISSION_DENIED)
+        return subprocess.CompletedProcess(cmd, 0, NATIVE_STACK, "")
+
+    monkeypatch.setattr(nccl_ras.subprocess, "run", fake_run)
+    monkeypatch.setattr(nccl_ras.time, "monotonic", lambda: clock[0])
+
+    trace = dump_stack_trace(BUDGET_S)
+
+    assert trace == NATIVE_STACK
+    first_timeout, sudo_check_timeout, sudo_retry_timeout = timeouts
+    assert first_timeout == BUDGET_S
+    assert sudo_check_timeout == BUDGET_S - FIRST_ATTEMPT_S
+    assert sudo_retry_timeout == BUDGET_S - FIRST_ATTEMPT_S
+
+
+def test_dump_stack_trace_skips_sudo_when_the_budget_is_spent(monkeypatch):
+    """The unprivileged py-spy times out, which uses the whole budget, so sudo
+    is never consulted and the Python-only dump comes back right away."""
+    BUDGET_S = 20.0
+    clock = [0.0]
+    calls = []
+
+    def fake_run(cmd, **kwargs):
+        calls.append(cmd)
+        clock[0] += BUDGET_S
+        raise subprocess.TimeoutExpired(cmd, kwargs["timeout"])
+
+    monkeypatch.setattr(nccl_ras.subprocess, "run", fake_run)
+    monkeypatch.setattr(nccl_ras.time, "monotonic", lambda: clock[0])
+
+    trace = dump_stack_trace(BUDGET_S)
+
+    assert "py-spy unavailable: py-spy timed out; Python-only" in trace
+    assert len(calls) == 1
 
 
 def test_nvidia_smi_returns_the_report(monkeypatch):

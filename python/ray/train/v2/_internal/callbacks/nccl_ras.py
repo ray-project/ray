@@ -18,7 +18,6 @@ reports only ranks 0-1 and their communicators, and a hang in the other subset
 is invisible to this callback. In practice every parallelism strategy creates
 a world process group, so real workloads are unlikely to hit this.
 """
-import functools
 import json
 import logging
 import math
@@ -675,21 +674,32 @@ _PY_SPY_NOT_INSTALLED = "py-spy not installed"
 _PASSWORDLESS_SUDO_CHECK_TIMEOUT_S = 5.0
 
 
-@functools.lru_cache(maxsize=None)
-def _can_passwordless_sudo() -> bool:
+_passwordless_sudo: Optional[bool] = None
+
+
+def _can_passwordless_sudo(timeout_s: float) -> bool:
     """Return whether ``sudo`` runs without a password, checked once per process.
 
     ``-n`` makes ``sudo`` fail instead of prompting.
+
+    Args:
+        timeout_s: Timeout for the check, capped at 5 s.
+
+    Returns:
+        Whether ``sudo -n true`` succeeded.
     """
-    try:
-        proc = subprocess.run(
-            ["sudo", "-n", "true"],
-            capture_output=True,
-            timeout=_PASSWORDLESS_SUDO_CHECK_TIMEOUT_S,
-        )
-    except Exception:  # noqa: BLE001
-        return False
-    return proc.returncode == 0
+    global _passwordless_sudo
+    if _passwordless_sudo is None:
+        try:
+            proc = subprocess.run(
+                ["sudo", "-n", "true"],
+                capture_output=True,
+                timeout=min(timeout_s, _PASSWORDLESS_SUDO_CHECK_TIMEOUT_S),
+            )
+            _passwordless_sudo = proc.returncode == 0
+        except Exception:  # noqa: BLE001
+            _passwordless_sudo = False
+    return _passwordless_sudo
 
 
 def _run_py_spy(cmd: List[str], timeout_s: float) -> Tuple[Optional[str], str]:
@@ -719,12 +729,14 @@ def dump_stack_trace(pyspy_timeout_s: float) -> str:
     """Dump native + Python stacks of the current (worker) process.
 
     Args:
-        pyspy_timeout_s: Timeout for each ``py-spy dump`` subprocess.
+        pyspy_timeout_s: Budget for the whole dump, shared by the unprivileged
+            ``py-spy dump``, the sudo check and the sudo retry.
 
     Returns:
         The captured stack trace, or a Python-only traceback (prefixed with the
         reason py-spy was skipped) when py-spy is unavailable.
     """
+    deadline = time.monotonic() + pyspy_timeout_s
     py_spy_cmd = ["py-spy", "dump", "--pid", str(os.getpid()), "--native"]
     stdout, stderr = _run_py_spy(py_spy_cmd, pyspy_timeout_s)
     if stdout is not None:
@@ -732,12 +744,20 @@ def dump_stack_trace(pyspy_timeout_s: float) -> str:
 
     # Restricted ptrace (yama ptrace_scope=1 without CAP_SYS_PTRACE) stops an
     # unprivileged py-spy from tracing its parent; passwordless sudo lifts that.
-    if stderr != _PY_SPY_NOT_INSTALLED and _can_passwordless_sudo():
-        sudo_cmd = ["sudo", "-n", "env", f"PATH={os.environ.get('PATH', '')}"]
-        stdout, sudo_stderr = _run_py_spy(sudo_cmd + py_spy_cmd, pyspy_timeout_s)
-        if stdout is not None:
-            return stdout
-        stderr = f"{stderr}; with sudo: {sudo_stderr}"
+    # The retry only runs with budget left, so the caller's timeout still holds.
+    remaining_s = deadline - time.monotonic()
+    if (
+        stderr != _PY_SPY_NOT_INSTALLED
+        and remaining_s > 0
+        and _can_passwordless_sudo(remaining_s)
+    ):
+        remaining_s = deadline - time.monotonic()
+        if remaining_s > 0:
+            sudo_cmd = ["sudo", "-n", "env", f"PATH={os.environ.get('PATH', '')}"]
+            stdout, sudo_stderr = _run_py_spy(sudo_cmd + py_spy_cmd, remaining_s)
+            if stdout is not None:
+                return stdout
+            stderr = f"{stderr}; with sudo: {sudo_stderr}"
 
     # Python-only fallback: dump every thread's stack (cannot show C/C++ trace).
     import sys
