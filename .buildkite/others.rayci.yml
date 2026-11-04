@@ -5,9 +5,9 @@ steps:
   # docs
   - name: doctestbuild
     wanda: ci/docker/doctest.build.wanda.yaml
-    depends_on: oss-ci-base_build-multipy(python=3.10)
+    depends_on: oss-ci-base_build-multipy(python=3.11)
     env:
-      PYTHON: "3.10"
+      PYTHON: "3.11"
     tags: cibase
 
   # The "docstring-only" label's examples environment, without torch or
@@ -85,10 +85,10 @@ steps:
         --only-tags doctest
         --except-tags gpu
         --parallelism-per-worker 3
-        --python-version 3.10
+        --python-version 3.11
     depends_on:
       - doctestbuild
-      - ray-core-build(python=3.10)
+      - ray-core-build(python=3.11)
       - ray-dashboard-build
 
   # Opt-in docs example tests, for the "docs-example-test" label. Runs only the
@@ -111,12 +111,12 @@ steps:
     commands:
       - ./ci/ray_ci/doc/run_doc_example_tests.sh
         --build-name doctestbuild
-        --python-version 3.10
+        --python-version 3.11
         --except-tags gpu,post_wheel_build,highly_parallel,timeseries_libs
         --parallelism-per-worker 3
     depends_on:
       - doctestbuild
-      - ray-core-build(python=3.10)
+      - ray-core-build(python=3.11)
       - ray-dashboard-build
 
   # java

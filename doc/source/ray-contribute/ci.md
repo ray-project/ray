@@ -110,7 +110,7 @@ Don't add lines to either allowlist to get a new file past the check. To run the
 
 Add the `docs-example-test` label to run the tests that your changed doc files feed, and nothing else. Like the `go` label, it requires write access, so an external contributor asks a reviewer to add it.
 
-With the label, the `doc: docs example tests (opt-in)` step runs only the Bazel test targets that name one of your changed files directly. It runs them once, for every library, in a single Python 3.10 environment built from the docs test dependency set. It doesn't use each library's own images, so a test that depends on a library-specific environment can behave differently here than in post-merge:
+With the label, the `doc: docs example tests (opt-in)` step runs only the Bazel test targets that name one of your changed files directly. It runs them once, for every library, in a single Python 3.11 environment built from the docs test dependency set. It doesn't use each library's own images, so a test that depends on a library-specific environment can behave differently here than in post-merge:
 
 | File you change | Test that runs |
 | --- | --- |
