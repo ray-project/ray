@@ -1036,30 +1036,27 @@ To read from Snowflake, install the [Snowflake Connector for Python](https://doc
 pip install snowflake-connector-python
 ```
 
-Then, define your connection logic and query the database.
+Then, call {func}`~ray.data.read_snowflake` with your query and the arguments for `snowflake.connector.connect`. Ray runs the query once and downloads the result in parallel.
 
 ```python
-import snowflake.connector
-
 import ray
 
-def create_connection():
-    return snowflake.connector.connect(
-        user=...,
-        password=...,
-        account="ZZKXUVH-IPB52023",
-        database="example",
-    )
+connection_parameters = dict(
+    user=...,
+    password=...,
+    account="ZZKXUVH-IPB52023",
+    database="example",
+)
 
 # Get all movies
-dataset = ray.data.read_sql("SELECT * FROM movie", create_connection)
+dataset = ray.data.read_snowflake("SELECT * FROM movie", connection_parameters)
 # Get movies after the year 1980
-dataset = ray.data.read_sql(
-    "SELECT title, score FROM movie WHERE year >= 1980", create_connection
+dataset = ray.data.read_snowflake(
+    "SELECT title, score FROM movie WHERE year >= 1980", connection_parameters
 )
 # Get the number of movies per year
-dataset = ray.data.read_sql(
-    "SELECT year, COUNT(*) FROM movie GROUP BY year", create_connection
+dataset = ray.data.read_snowflake(
+    "SELECT year, COUNT(*) FROM movie GROUP BY year", connection_parameters
 )
 ```
 

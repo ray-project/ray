@@ -2,6 +2,7 @@ import base64
 import os
 import random
 import string
+from decimal import Decimal
 from typing import Any, Dict, List, Tuple
 
 import pytest
@@ -86,6 +87,29 @@ def test_write(ray_start_regular_shared, temp_table, connection_parameters):
 
 
 @pytest.mark.needs_credentials
+def test_write_creates_table(
+    ray_start_regular_shared, temp_table, connection_parameters
+):
+    expected_column_names = ["title", "year", "score"]
+    expected_rows = [
+        ("Monty Python and the Holy Grail", 1975, 8.2),
+        ("And Now for Something Completely Different", 1971, 7.5),
+    ]
+    items = [dict(zip(expected_column_names, row)) for row in expected_rows]
+    dataset = ray.data.from_items(items)
+
+    # Snowflake resolves unquoted names without regard to case, so writing to the
+    # lowercase name creates the uppercase `temp_table`.
+    dataset.write_snowflake(temp_table.lower(), connection_parameters)
+    actual_column_names, actual_rows = execute(
+        f"SELECT * FROM {temp_table}", connection_parameters
+    )
+
+    assert actual_column_names == expected_column_names
+    assert sorted(actual_rows) == sorted(expected_rows)
+
+
+@pytest.mark.needs_credentials
 def execute(
     query: str, connection_parameters: Dict[str, str]
 ) -> Tuple[List[str], List[Tuple[Any]]]:
@@ -103,13 +127,12 @@ def execute(
         column_names = [column_metadata.name for column_metadata in cursor.description]
         rows = cursor.fetchall()
 
-    # TODO(mowen): Figure out how to actually handle the Decimal objects, we don't
-    # want a divergenece in behavior here.
-    # The Snowflake Python Connector represents numbers as `Decimal` objects.
-    # rows = [
-    #     tuple(float(value) if isinstance(value, Decimal) else value for value in row)
-    #     for row in rows
-    # ]
+    # `fetchall` returns `NUMBER` columns with a nonzero scale as `Decimal` objects,
+    # but `read_snowflake` reads them as `float64`.
+    rows = [
+        tuple(float(value) if isinstance(value, Decimal) else value for value in row)
+        for row in rows
+    ]
 
     return column_names, rows
 

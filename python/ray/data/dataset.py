@@ -53,6 +53,7 @@ from ray.data._internal.datasource.mongo_datasink import MongoDatasink
 from ray.data._internal.datasource.numpy_datasink import NumpyDatasink
 from ray.data._internal.datasource.orc_datasink import ORCDatasink
 from ray.data._internal.datasource.parquet_datasink import ParquetDatasink
+from ray.data._internal.datasource.snowflake_datasink import SnowflakeDatasink
 from ray.data._internal.datasource.sql_datasink import SQLDatasink
 from ray.data._internal.datasource.tfrecords_datasink import TFRecordDatasink
 from ray.data._internal.datasource.turbopuffer_datasink import TurbopufferDatasink
@@ -6183,12 +6184,17 @@ class Dataset:
     def write_snowflake(
         self,
         table: str,
-        connection_parameters: str,
+        connection_parameters: Dict[str, Any],
         *,
         ray_remote_args: Dict[str, Any] = None,
         concurrency: Optional[int] = None,
     ):
         """Write this ``Dataset`` to a Snowflake table.
+
+        Each write task loads its rows with ``write_pandas``, which stages them as
+        Parquet files and runs ``COPY INTO``. If the table doesn't exist, Snowflake
+        creates it with column types inferred from the data. Otherwise, the rows are
+        appended to it.
 
         Examples:
 
@@ -6204,7 +6210,10 @@ class Dataset:
             >>> ds.write_snowflake("MY_DATABASE.MY_SCHEMA.IRIS", connection_parameters)
 
         Args:
-            table: The name of the table to write to.
+            table: The name of the table to write to, optionally qualified as
+                ``schema.table`` or ``database.schema.table``. Unquoted names aren't
+                case-sensitive, and double-quoted names are, as in Snowflake SQL.
+                Column names are case-sensitive.
             connection_parameters: Keyword arguments to pass to
                 ``snowflake.connector.connect``. To view supported parameters, read
                 https://docs.snowflake.com/developer-guide/python-connector/python-connector-api#functions.
@@ -6215,21 +6224,8 @@ class Dataset:
                 total number of tasks run. By default, concurrency is dynamically
                 decided based on the available resources.
         """  # noqa: E501
-        import snowflake.connector
-
-        def snowflake_connection_factory():
-            return snowflake.connector.connect(**connection_parameters)
-
-        # Get column names from the dataset schema
-        column_names = self.schema().names
-
-        # Generate the SQL insert statement
-        columns_str = ", ".join(f'"{col}"' for col in column_names)
-        placeholders = ", ".join(["%s"] * len(column_names))
-        sql = f"INSERT INTO {table} ({columns_str}) VALUES ({placeholders})"
-        self.write_sql(
-            sql,
-            connection_factory=snowflake_connection_factory,
+        self.write_datasink(
+            SnowflakeDatasink(table, connection_parameters),
             ray_remote_args=ray_remote_args,
             concurrency=concurrency,
         )
