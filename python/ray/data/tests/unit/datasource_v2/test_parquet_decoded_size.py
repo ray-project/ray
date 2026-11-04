@@ -23,7 +23,7 @@ from ray.data._internal.datasource_v2.formats.parquet.parquet_size_statistics im
     DICTIONARY_PAGE_HEADER_READ_BYTES,
     LeafSizeStats,
     read_dictionary_page,
-    read_size_statistics,
+    read_footer_stats,
 )
 
 pa = pytest.importorskip("pyarrow")
@@ -222,15 +222,21 @@ def _allocated(path, columns=None):
     return scanner.to_table().get_total_buffer_size()
 
 
+def _read_size_statistics(metadata):
+    """Each leaf's ``SizeStatistics``, as the footer reader reads them."""
+    stats = read_footer_stats(metadata)
+    return None if stats is None else stats.size_statistics
+
+
 def _no_size_statistics(metadata):
-    """``read_size_statistics`` for a writer that records none, as PyArrow 17."""
+    """``_read_size_statistics`` for a writer that records none, as PyArrow 17."""
     return None
 
 
 def _estimate(
     path,
     leaf_indices=None,
-    size_statistics=read_size_statistics,
+    size_statistics=_read_size_statistics,
     read_pages=True,
 ):
     """The estimate over ``path``'s row groups, read as the footer reader does."""
@@ -336,10 +342,10 @@ def test_null_free_bitmap_follows_pyarrow(
 
 
 def _with(stats_for_leaf_0):
-    """``read_size_statistics`` replaced by ``stats_for_leaf_0(stats)``."""
+    """``_read_size_statistics`` replaced by ``stats_for_leaf_0(stats)``."""
 
     def size_statistics(metadata):
-        all_stats = read_size_statistics(metadata)
+        all_stats = _read_size_statistics(metadata)
         assert all_stats is not None
         (stats,) = all_stats[0]
         return [[stats_for_leaf_0(stats)]]
@@ -526,7 +532,7 @@ def test_dictionary_page_read_size(tmp_path, column, expected):
     path = _write(pa.table({"a": column}), tmp_path / "f.parquet")
     metadata = pq.read_metadata(str(path))
     profiles = build_leaf_profiles(parquet_schema=metadata.schema)
-    size_stats = read_size_statistics(metadata)
+    size_stats = _read_size_statistics(metadata)
     assert profiles is not None and size_stats is not None
     (profile,) = profiles
     (stats,) = size_stats[0]
