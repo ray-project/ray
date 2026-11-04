@@ -8,6 +8,12 @@ myst:
 
 # Loading data
 
+```{toctree}
+:hidden:
+
+redis-adbc
+```
+
 Ray Data loads data from various sources. This guide shows you how to [read files](#reading-files) such as images, [load in-memory data](#loading-data-from-other-libraries) such as pandas DataFrames, and [read databases](#reading-databases) such as MySQL.
 
 (reading-files)=
