@@ -8,6 +8,7 @@ from ray.train.v2._internal.execution.callback import (
 )
 from ray.train.v2._internal.execution.worker_group import (
     ExecutionGroup,
+    WorkerGroup,
 )
 
 logger = logging.getLogger(__name__)
@@ -21,6 +22,16 @@ class BackendSetupCallback(ReplicaGroupCallback, WorkerGroupCallback):
     def after_execution_group_start(self, execution_group: ExecutionGroup):
         self._backend.on_start(execution_group, self._backend_config)
         self._backend.on_training_start(execution_group, self._backend_config)
+
+    def before_worker_group_shutdown(self, worker_group: WorkerGroup):
+        poll_status = worker_group.get_latest_poll_status()
+        if poll_status and poll_status.errors:
+            logger.debug(
+                "Skipping graceful backend shutdown because the worker group "
+                "reported worker errors."
+            )
+            return
+        self.before_execution_group_shutdown(worker_group)
 
     def before_execution_group_shutdown(self, execution_group: ExecutionGroup):
         try:
