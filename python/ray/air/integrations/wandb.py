@@ -500,40 +500,27 @@ class WandbLoggerCallback(LoggerCallback):
     ``LoggerCallback`` sends metrics to Wandb for automatic tracking and
     visualization.
 
-    Example:
-
-        .. testcode::
-
-            import random
-
-            from ray import tune
-            from ray.air.integrations.wandb import WandbLoggerCallback
-
-
-            def train_func(config):
-                offset = random.random() / 5
-                for epoch in range(2, config["epochs"]):
-                    acc = 1 - (2 + config["lr"]) ** -epoch - random.random() / epoch - offset
-                    loss = (2 + config["lr"]) ** -epoch + random.random() / epoch + offset
-                    train.report({"acc": acc, "loss": loss})
-
-
-            tuner = tune.Tuner(
-                train_func,
-                param_space={
-                    "lr": tune.grid_search([0.001, 0.01, 0.1, 1.0]),
-                    "epochs": 10,
-                },
-                run_config=tune.RunConfig(
-                    callbacks=[WandbLoggerCallback(project="Optimization_Project")]
-                ),
-            )
-            results = tuner.fit()
-
-        .. testoutput::
-            :hide:
-
-            ...
+    Examples:
+        >>> import random  # doctest: +SKIP_EXAMPLE
+        >>> from ray import tune
+        >>> from ray.air.integrations.wandb import WandbLoggerCallback
+        >>> def train_func(config):
+        ...     offset = random.random() / 5
+        ...     for epoch in range(2, config["epochs"]):
+        ...         acc = 1 - (2 + config["lr"]) ** -epoch - random.random() / epoch - offset
+        ...         loss = (2 + config["lr"]) ** -epoch + random.random() / epoch + offset
+        ...         tune.report({"acc": acc, "loss": loss})
+        >>> tuner = tune.Tuner(
+        ...     train_func,
+        ...     param_space={
+        ...         "lr": tune.grid_search([0.001, 0.01, 0.1, 1.0]),
+        ...         "epochs": 10,
+        ...     },
+        ...     run_config=tune.RunConfig(
+        ...         callbacks=[WandbLoggerCallback(project="Optimization_Project")]
+        ...     ),
+        ... )
+        >>> results = tuner.fit()
 
     Args:
         project: Name of the Wandb project. Mandatory.
