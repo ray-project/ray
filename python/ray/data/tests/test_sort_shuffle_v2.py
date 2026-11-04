@@ -27,6 +27,7 @@ from ray.data._internal.execution.operators.shuffle_operators.sort_sampling_oper
     SortSamplingOp,
 )
 from ray.data._internal.execution.operators.shuffle_operators.sort_shuffle_map_operator import (  # noqa: E501
+    DiskSortShuffleMapOp,
     SortShuffleMapOp,
 )
 from ray.data._internal.execution.operators.sort_shuffle import make_sort_reduce_fn
@@ -240,15 +241,17 @@ def test_sort_sampling_handles_all_empty_blocks(
     assert op.has_completed()
 
 
+@pytest.mark.parametrize("map_cls", [SortShuffleMapOp, DiskSortShuffleMapOp])
 def test_sort_shuffle_map_uses_user_boundaries_without_sampling(
     ray_start_regular_shared_2_cpus,
     restore_data_context,
+    map_cls,
 ):
     ctx = DataContext.get_current()
     # One map task per input bundle so the task is visible right after add_input.
     ctx.shuffle_input_batch_bytes = 0
     bundle = make_ref_bundles([[3, 1, 2]])[0]
-    op = SortShuffleMapOp(
+    op = map_cls(
         InputDataBuffer(ctx, []),
         ctx,
         num_partitions=2,
