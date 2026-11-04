@@ -19,6 +19,14 @@ ARG VLLM_SCRIPTS_REF="v0.32.0"
 # version torch pins so the lock satisfies that.
 ARG DEEPEP_COMMIT_HASH="d4f41e4e93"
 
+# Any `uv pip install` that re-resolves torch (the vLLM EP kernel script below
+# runs one unconstrained) would downgrade nvidia-nccl-cu13 to torch's pin, below
+# the >= 2.30.4 that DeepEP V2's GIN backend needs at both build and run time.
+# Keep the override set for the build and in the final image, so later installs
+# (e.g. in derived images or via runtime_env) can't downgrade it either. vLLM's
+# own release image does the same (UV_OVERRIDE in its docker/Dockerfile).
+ENV UV_OVERRIDE=/home/ray/nccl_overrides.txt
+
 RUN <<EOF
 #!/bin/bash
 
@@ -98,13 +106,6 @@ VLLM_RAW="https://raw.githubusercontent.com/vllm-project/vllm/${VLLM_SCRIPTS_REF
 
 # Tell uv to use system Python since the vLLM scripts use uv
 export UV_SYSTEM_PYTHON=1
-
-# Both vLLM scripts below run `uv pip install ... torch ...` unconstrained, which
-# re-resolves torch's transitive nvidia-nccl-cu13 pin and would downgrade the
-# newer NCCL the lock just installed. DeepEP V2's GIN backend needs >= 2.30.4 at
-# both build and run time, so hold the override across the scripts. vLLM's own
-# release image does the same (UV_OVERRIDE in its docker/Dockerfile).
-export UV_OVERRIDE="$(pwd)/nccl_overrides.txt"
 
 # Set CUDA architectures for building EP kernels
 # EP kernels + DeepGEMM require Hopper+ features (matches vLLM Dockerfile)

@@ -7,7 +7,8 @@
 #
 # Used twice: as `--override` when compiling the locks (see
 # ci/raydepsets/configs/rayllm.depsets.yaml) and as UV_OVERRIDE in
-# docker/ray-llm/Dockerfile, where the vLLM EP-kernel and DeepGEMM scripts run
-# their own unconstrained `uv pip install torch` and would otherwise downgrade
-# it back to torch's pin.
+# docker/ray-llm/Dockerfile, where the vLLM EP-kernel scripts run their own
+# unconstrained `uv pip install torch` and would otherwise downgrade it back to
+# torch's pin. UV_OVERRIDE stays set in the image, so later `uv pip install`s
+# can't downgrade it either.
 nvidia-nccl-cu13==2.30.7; platform_system == "Linux"
