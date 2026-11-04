@@ -14,7 +14,7 @@ Learn how to do the following:
 
 1. Configure a model to run distributed and on the correct CPU or GPU device.
 1. Configure a data loader to shard data across the {ref}`workers <train-overview-worker>` and place data on the correct CPU or GPU device.
-1. Configure a {ref}`training function <train-overview-training-function>` to report metrics and save checkpoints.
+1. Configure a {ref}`training function <train-overview-training-function>` to save checkpoints so that training can recover from failures.
 1. Configure {ref}`scaling <train-overview-scaling-config>` and CPU or GPU resource requirements for a training job.
 1. Launch a distributed training job with {class}`~ray.train.torch.TorchTrainer`.
 
@@ -22,9 +22,7 @@ Learn how to do the following:
 
 For reference, the final code looks similar to the following:
 
-```{testcode}
-:skipif: True
-
+```python
 from ray.train.torch import TorchTrainer
 from ray.train import ScalingConfig
 
@@ -95,7 +93,7 @@ def train_func():
             loss.backward()
             optimizer.step()
 
-        # [3] Report metrics and checkpoint.
+        # [3] Report a checkpoint so that training can resume after a failure.
         metrics = {"loss": loss.item(), "epoch": epoch}
         with tempfile.TemporaryDirectory() as temp_checkpoint_dir:
             torch.save(
@@ -137,9 +135,7 @@ with result.checkpoint.as_directory() as checkpoint_dir:
 :::{tab-item} PyTorch
 <!-- This snippet isn't tested because it doesn't use any Ray code. -->
 
-```{testcode}
-:skipif: True
-
+```python
 import os
 import tempfile
 
@@ -255,9 +251,7 @@ You don't need this step if you pass a Ray Data dataset to your trainer. See {re
 :::{tip}
 The `batch_size` that `DataLoader` takes is the batch size for each worker. To convert between the worker batch size and the global batch size, use the following equation:
 
-```{testcode}
-:skipif: True
-
+```python
 global_batch_size = worker_batch_size * ray.train.get_context().get_world_size()
 ```
 :::
@@ -272,9 +266,11 @@ If you already set up your `DataLoader` with a `DistributedSampler`, {meth}`~ray
 For details, see {ref}`data-ingest-torch`.
 :::
 
-### Report checkpoints and metrics
+### Save checkpoints for fault tolerance
 
-To monitor progress, report intermediate metrics and checkpoints with the {func}`ray.train.report` utility function.
+To recover from worker and node failures without losing progress, save checkpoints with the {func}`ray.train.report` utility function. Ray Train uploads each checkpoint to persistent storage. When you {ref}`enable worker fault tolerance <train-worker-fault-tolerance>`, Ray Train restarts failed workers, and your training function can resume from the latest checkpoint with {func}`ray.train.get_checkpoint`.
+
+Ray Train attaches the metrics that you pass to `ray.train.report` to the checkpoint and uses them to decide which checkpoints to keep. To track metrics over the course of training, log them to an experiment tracking tool. See {ref}`train-experiment-tracking-native`.
 
 ```diff
 +import os
@@ -291,7 +287,7 @@ To monitor progress, report intermediate metrics and checkpoints with the {func}
             model.state_dict(), os.path.join(temp_checkpoint_dir, "model.pt")
         )
 
-+       metrics = {"loss": loss.item()}  # Training/validation metrics.
++       metrics = {"loss": loss.item()}  # Metrics to attach to the checkpoint.
 
         # Build a Ray Train checkpoint from a directory
 +       checkpoint = ray.train.Checkpoint.from_directory(temp_checkpoint_dir)
@@ -303,7 +299,7 @@ To monitor progress, report intermediate metrics and checkpoints with the {func}
      ...
 ```
 
-For details, see {ref}`train-monitoring-and-logging` and {ref}`train-checkpointing`.
+For details, see {ref}`train-checkpointing` and {ref}`train-fault-tolerance`.
 
 
 ```{include} common/torch-configure-run.md

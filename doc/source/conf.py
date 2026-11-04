@@ -127,7 +127,6 @@ llms_txt_exclude = [
     # nav pages; keep them out of the per-section llms-full shards.
     "_includes/*",
     "_templates/*",
-    "templates/*",
     "core/api/doc/*",
     "data/api/doc/*",
     "train/api/doc/*",
@@ -417,7 +416,6 @@ autogen_files = AUTOGEN_FILES
 exclude_patterns = [
     # Committed intersphinx inventory snapshots + refresh tooling, not docs.
     "_intersphinx/**",
-    "templates/*",
     "cluster/running-applications/doc/ray.*",
     "data/api/ray.data.*.rst",
     # Hide README.md used for display on the console (anyscale templates)
@@ -429,9 +427,6 @@ exclude_patterns = [
     "tune/examples/**/content/**README.md",
     # Other misc files (overviews, console-only examples, etc)
     "serve/tutorials/video-analysis/*.ipynb",
-    # Unpublished until the example is rebuilt on current diffusers. A
-    # temporary redirect in doc/redirects/current.yaml covers the old URL.
-    "train/examples/pytorch/dreambooth-finetuning.md",
     # Legacy/backward compatibility
     "ray-overview/examples/**/README.md",
     "train/examples/**/README.md",
@@ -541,7 +536,7 @@ html_theme_options = {
     # Each banner carries its own `data-banner-key`, which js/dismissable-banner.js
     # uses as the localStorage key so the two dismiss independently. Changing a key
     # re-shows that banner for everyone who already dismissed it.
-    "announcement": """<div class="ray-banner" data-banner-key="ray-docs-banner-dismissed">Try Ray with $100 credit — <a target="_blank" href="https://console.anyscale.com/register/ha?render_flow=ray&utm_source=ray_docs&utm_medium=docs&utm_campaign=banner">Start now</a><button type="button" class="ray-banner__close" aria-label="Close the Anyscale credit banner">&times;</button></div><div class="ray-banner ray-banner--notice" data-banner-key="ray-docs-token-auth-banner-dismissed">Ray 2.59 enables token authentication by default for local clusters, and Ray 2.61 extends it to all clusters. <a href="https://docs.ray.io/en/latest/ray-security/token-auth.html">Read the rollout details</a><button type="button" class="ray-banner__close" aria-label="Close the token authentication banner">&times;</button></div>""",
+    "announcement": """<div class="ray-banner" data-banner-key="ray-docs-banner-dismissed">Try Ray with $100 credit — <a target="_blank" href="https://console.anyscale.com/register/ha?render_flow=ray&utm_source=ray_docs&utm_medium=docs&utm_campaign=banner">Start now</a><button type="button" class="ray-banner__close" aria-label="Close the Anyscale credit banner">&times;</button></div>""",
     "logo": {
         "svg": render_svg_logo("_static/img/ray_logo.svg"),
     },

@@ -18,10 +18,13 @@ class ProbeResult:
             the probe. Each value is the reading at the time of the poll.
         timestamp_s: When the reading was taken, in seconds since the epoch.
             Leave it unset to use the time ``poll()`` returned.
+        error: The exception that kept the probe from taking the reading, if
+            any.
     """
 
     metrics: Dict[str, float] = field(default_factory=dict)
     timestamp_s: Optional[float] = None
+    error: Optional[Exception] = None
 
 
 @PublicAPI(stability="alpha")
@@ -38,6 +41,11 @@ class Probe(abc.ABC):
 
     @classmethod
     def probe_name(cls) -> str:
+        """Return the name that identifies this probe's readings.
+
+        Returns:
+            The ``name`` class attribute, or the class name if ``name`` isn't set.
+        """
         return cls.name or cls.__name__
 
 

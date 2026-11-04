@@ -92,6 +92,14 @@ class FileShuffleConfig:
             If False, the random seed is constantly ``seed``, resulting in the same
             shuffling order across executions. Only takes effect when ``seed`` is not None.
             Defaults to True.
+        small_chunks_shuffle: If True, shuffle runs of Parquet row groups instead of
+            whole files, so each read task mixes rows from many files. Contiguous
+            row groups are coalesced into runs of about
+            ``DataContext.small_shuffle_chunk_size`` uncompressed bytes before the
+            shuffle. Row groups are never split, so the effective shuffle unit is
+            ``max(row_group_size, small_shuffle_chunk_size)``. Only supported by
+            ``read_parquet`` with ``DataContext.use_datasource_v2`` enabled;
+            other readers ignore it and shuffle whole files. Defaults to False.
 
     Example:
         >>> import ray
@@ -107,6 +115,7 @@ class FileShuffleConfig:
 
     seed: Optional[int] = None
     reseed_after_execution: bool = True
+    small_chunks_shuffle: bool = False
 
     def __post_init__(self):
         """Ensure that the seed is either None or an integer."""

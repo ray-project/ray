@@ -51,7 +51,11 @@ def report(metrics: Dict, *, checkpoint: Optional[Checkpoint] = None) -> None:
 @PublicAPI(stability="stable")
 @_warn_session_misuse()
 def get_checkpoint() -> Optional[Checkpoint]:
-    """Access the latest reported checkpoint to resume from if one exists."""
+    """Access the latest reported checkpoint to resume from if one exists.
+
+    Returns:
+        The checkpoint to resume from, or ``None`` if there's none.
+    """
 
     return get_session().loaded_checkpoint
 

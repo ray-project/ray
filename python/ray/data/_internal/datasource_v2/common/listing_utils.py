@@ -100,13 +100,17 @@ def list_files_for_each_block(
     set.
 
     ``ctx.kwargs[EXCLUDED_READ_UNIT_IDS_KWARG_NAME]``, when a resumed job sets
-    it on the ``ListFiles`` operator, is the set of read unit ids already
-    finished; the indexer leaves them out, so the partitioner packs only the
-    remaining work.
+    it on the ``ListFiles`` operator, is the read unit ids already finished
+    (any collection of strings, or an Arrow string array); the indexer
+    leaves them out, so the partitioner packs only the remaining work.
     """
     # The excluded ids arrive through TaskContext only at execution time.
     # Both root-path listing and the prelisted route must honor them.
     excluded_ids = ctx.kwargs.get(EXCLUDED_READ_UNIT_IDS_KWARG_NAME)
+    if isinstance(excluded_ids, (pa.Array, pa.ChunkedArray)):
+        # A set built straight from an Arrow array holds Arrow scalars, which
+        # never equal the ``str`` ids looked up below.
+        excluded_ids = excluded_ids.to_pylist()
     excluded_read_unit_ids = frozenset(excluded_ids) if excluded_ids else None
     if prelisted_file_infos:
         # Initial path filters already ran during schema inference. Reapplying a

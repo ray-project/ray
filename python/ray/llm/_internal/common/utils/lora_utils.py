@@ -1,5 +1,4 @@
-"""
-Generic LoRA utilities and abstractions.
+"""Generic LoRA utilities and abstractions.
 
 This module provides canonical LoRA utility functions for both serve and batch components.
 It serves as the single source of truth for LoRA operations and builds on the generic

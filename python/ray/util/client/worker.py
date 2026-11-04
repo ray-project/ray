@@ -33,7 +33,7 @@ from ray._private.runtime_env.working_dir import upload_working_dir_if_needed
 
 # Use cloudpickle's version of pickle for UnpicklingError
 from ray.cloudpickle.compat import pickle
-from ray.exceptions import GetTimeoutError
+from ray.exceptions import AuthenticationError, GetTimeoutError
 from ray.job_config import JobConfig
 from ray.util.client.client_pickler import dumps_from_client, loads_from_server
 from ray.util.client.common import (
@@ -207,9 +207,16 @@ class Worker:
         # Set to True when the connection cannot be recovered and reconnect
         # attempts should be stopped
         self._in_shutdown = False
+        # Set when the server rejects the token; re-raised by every later call.
+        self._rejection: Optional[AuthenticationError] = None
         # Set to True after initial connection succeeds
         self._has_connected = False
 
+        from ray._private.authentication.authentication_token_setup import (
+            ensure_token_if_auth_enabled,
+        )
+
+        ensure_token_if_auth_enabled(create_token_if_missing=False)
         self._connect_channel()
         self._has_connected = True
 
@@ -241,8 +248,7 @@ class Worker:
         self._release_thread.start()
 
     def _connect_channel(self, reconnecting=False) -> None:
-        """
-        Attempts to connect to the server specified by conn_str. If
+        """Attempts to connect to the server specified by conn_str. If
         reconnecting after an RPC error, cleans up the old channel and
         continues to attempt to connect until the grace period is over.
         """
@@ -342,8 +348,7 @@ class Worker:
             raise ConnectionError("ray client connection timeout")
 
     def _can_reconnect(self, e: grpc.RpcError) -> bool:
-        """
-        Returns True if the RPC error can be recovered from and a retry is
+        """Returns True if the RPC error can be recovered from and a retry is
         appropriate, false otherwise.
         """
         if not self._reconnect_enabled:
@@ -354,6 +359,9 @@ class Worker:
         if e.code() in GRPC_UNRECOVERABLE_ERRORS:
             # Unrecoverable error -- These errors are specifically raised
             # by the server's application logic
+            return False
+        if e.code() == grpc.StatusCode.UNAUTHENTICATED:
+            # A rejected token stays rejected; retrying can't fix it.
             return False
         if e.code() == grpc.StatusCode.INTERNAL:
             details = e.details()
@@ -366,8 +374,7 @@ class Worker:
         return True
 
     def _call_stub(self, stub_name: str, *args, **kwargs) -> Any:
-        """
-        Calls the stub specified by stub_name (Schedule, WaitObject, etc...).
+        """Calls the stub specified by stub_name (Schedule, WaitObject, etc...).
         If a recoverable error occurrs while calling the stub, attempts to
         retry the RPC.
         """
@@ -375,9 +382,15 @@ class Worker:
             try:
                 return getattr(self.server, stub_name)(*args, **kwargs)
             except grpc.RpcError as e:
-                if self._can_reconnect(e):
+                # A recorded rejection ends the retry even when this call's
+                # error looks recoverable, such as UNAVAILABLE.
+                if self._rejection is None and self._can_reconnect(e):
                     time.sleep(0.5)
                     continue
+                if e.code() == grpc.StatusCode.UNAUTHENTICATED:
+                    raise self._reject(e) from e
+                if self._rejection is not None:
+                    raise self._rejection from e
                 raise
             except ValueError:
                 # Trying to use the stub on a cancelled channel will raise
@@ -386,13 +399,12 @@ class Worker:
                 # again.
                 time.sleep(0.5)
                 continue
-        raise ConnectionError("Client is shutting down.")
+        raise self._rejection or ConnectionError("Client is shutting down.")
 
     def _get_object_iterator(
         self, req: ray_client_pb2.GetRequest, *args, **kwargs
     ) -> Any:
-        """
-        Calls the stub for GetObject on the underlying server stub. If a
+        """Calls the stub for GetObject on the underlying server stub. If a
         recoverable error occurs while streaming the response, attempts
         to retry the get starting from the first chunk that hasn't been
         received.
@@ -423,9 +435,15 @@ class Worker:
                         return
                 return
             except grpc.RpcError as e:
-                if self._can_reconnect(e):
+                # A recorded rejection ends the retry even when this call's
+                # error looks recoverable, such as UNAVAILABLE.
+                if self._rejection is None and self._can_reconnect(e):
                     time.sleep(0.5)
                     continue
+                if e.code() == grpc.StatusCode.UNAUTHENTICATED:
+                    raise self._reject(e) from e
+                if self._rejection is not None:
+                    raise self._rejection from e
                 raise
             except ValueError:
                 # Trying to use the stub on a cancelled channel will raise
@@ -434,11 +452,19 @@ class Worker:
                 # again.
                 time.sleep(0.5)
                 continue
-        raise ConnectionError("Client is shutting down.")
+        raise self._rejection or ConnectionError("Client is shutting down.")
+
+    def _reject(self, e: grpc.RpcError) -> AuthenticationError:
+        """Record a token rejection, which no retry can fix.
+
+        Safe to call from the data thread: it doesn't set ``_in_shutdown``,
+        which would make the main thread's calls fail with a generic error.
+        """
+        self._rejection = AuthenticationError(e.details())
+        return self._rejection
 
     def _add_ids_to_metadata(self, metadata: Any):
-        """
-        Adds a unique req_id and the current thread's identifier to the
+        """Adds a unique req_id and the current thread's identifier to the
         metadata. These values are useful for preventing mutating operations
         from being replayed on the server side in the event that the client
         must retry a requsest.
@@ -834,7 +860,14 @@ class Worker:
     ):
         req = ray_client_pb2.ClusterInfoRequest()
         req.type = req_type
-        resp = self.server.ClusterInfo(req, timeout=timeout, metadata=self.metadata)
+        try:
+            resp = self.server.ClusterInfo(req, timeout=timeout, metadata=self.metadata)
+        except grpc.RpcError as e:
+            # Only a rejection is converted: _connect_channel retries other
+            # RpcErrors from ping_server.
+            if e.code() == grpc.StatusCode.UNAUTHENTICATED:
+                raise self._reject(e) from e
+            raise
         if resp.WhichOneof("response_type") == "resource_table":
             # translate from a proto map to a python dict
             output_dict = dict(resp.resource_table.table)
@@ -994,6 +1027,8 @@ def make_client_id() -> str:
 
 
 def decode_exception(e: grpc.RpcError) -> Exception:
+    if e.code() == grpc.StatusCode.UNAUTHENTICATED:
+        return AuthenticationError(e.details())
     if e.code() != grpc.StatusCode.ABORTED:
         # The ABORTED status code is used by the server when an application
         # error is serialized into the exception details. If the code

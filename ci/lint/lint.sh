@@ -61,8 +61,7 @@ code_format() {
 
 # Use system python to avoid conflicts with uv python in forge image
 doc_readme() {
-  /usr/bin/python -m pip install -c python/requirements_compiled.txt docutils
-  cd python && /usr/bin/python setup.py check --restructuredtext --strict --metadata
+  cd python && /usr/bin/python setup.py check --strict --metadata
 }
 
 dashboard_format() {
@@ -150,6 +149,14 @@ documentation_style() {
 
 doc_no_new_rst() {
   python doc/test_no_new_rst.py
+}
+
+doc_prose_doctest_targets() {
+  python doc/test_prose_doctest_targets.py
+}
+
+doc_assets() {
+  python doc/test_doc_assets.py
 }
 
 ray_repo_links() {

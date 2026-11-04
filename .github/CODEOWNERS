@@ -12,7 +12,7 @@
 # (notifications disabled) so docs leads can unblock docs-required reviews.
 #
 # This catch-all covers cross-project meta content (ray-overview, ray-references,
-# ray-governance, ray-security, ray-contribute, apis, templates) and the doc
+# ray-governance, ray-security, ray-contribute, apis) and the doc
 # build infrastructure (_ext, _static, _templates, _includes, _intersphinx,
 # images). Content that belongs to a library maps to that library's team in the
 # sections below, so a library maintainer's approval unblocks their own docs

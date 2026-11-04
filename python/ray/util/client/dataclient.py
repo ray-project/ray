@@ -13,6 +13,7 @@ import grpc
 
 import ray.core.generated.ray_client_pb2 as ray_client_pb2
 import ray.core.generated.ray_client_pb2_grpc as ray_client_pb2_grpc
+from ray.exceptions import AuthenticationError
 from ray.util.client.common import (
     INT32_MAX,
     OBJECT_TRANSFER_CHUNK_SIZE,
@@ -32,8 +33,7 @@ ACKNOWLEDGE_BATCH_SIZE = 32
 
 
 def chunk_put(req: ray_client_pb2.DataRequest):
-    """
-    Chunks a put request. Doing this lazily is important for large objects,
+    """Chunks a put request. Doing this lazily is important for large objects,
     since taking slices of bytes objects does a copy. This means if we
     immediately materialized every chunk of a large object and inserted them
     into the result_queue, we would effectively double the memory needed
@@ -73,8 +73,7 @@ def chunk_put(req: ray_client_pb2.DataRequest):
 
 
 def chunk_task(req: ray_client_pb2.DataRequest):
-    """
-    Chunks a client task. Doing this lazily is important with large arguments,
+    """Chunks a client task. Doing this lazily is important with large arguments,
     since taking slices of bytes objects does a copy. This means if we
     immediately materialized every chunk of a large argument and inserted them
     into the result_queue, we would effectively double the memory needed
@@ -106,8 +105,7 @@ def chunk_task(req: ray_client_pb2.DataRequest):
 
 
 class ChunkCollector:
-    """
-    This object collects chunks from async get requests via __call__, and
+    """This object collects chunks from async get requests via __call__, and
     calls the underlying callback when the object is fully received, or if an
     exception while retrieving the object occurs.
 
@@ -275,7 +273,10 @@ class DataClient:
                 except grpc.RpcError as e:
                     reconnecting = self._can_reconnect(e)
                     if not reconnecting:
-                        self._last_exception = e
+                        if e.code() == grpc.StatusCode.UNAUTHENTICATED:
+                            self._last_exception = self.client_worker._reject(e)
+                        else:
+                            self._last_exception = e
                         return
                     self._reconnect_channel()
         except Exception as e:
@@ -285,9 +286,7 @@ class DataClient:
             self._shutdown()
 
     def _process_response(self, response: Any) -> None:
-        """
-        Process responses from the data servicer.
-        """
+        """Process responses from the data servicer."""
         if response.req_id == 0:
             # This is not being waited for.
             logger.debug(f"Got unawaited response {response}")
@@ -321,8 +320,7 @@ class DataClient:
                 self.cv.notify_all()
 
     def _can_reconnect(self, e: grpc.RpcError) -> bool:
-        """
-        Processes RPC errors that occur while reading from data stream.
+        """Processes RPC errors that occur while reading from data stream.
         Returns True if the error can be recovered from, False otherwise.
         """
         if not self.client_worker._can_reconnect(e):
@@ -334,9 +332,7 @@ class DataClient:
         return True
 
     def _shutdown(self) -> None:
-        """
-        Shutdown the data channel
-        """
+        """Shutdown the data channel"""
         with self.lock:
             self._in_shutdown = True
             self.cv.notify_all()
@@ -344,7 +340,9 @@ class DataClient:
             callbacks = self.asyncio_waiting_data.values()
             self.asyncio_waiting_data = {}
 
-        if self._last_exception:
+        if isinstance(self._last_exception, AuthenticationError):
+            err = self._last_exception
+        elif self._last_exception:
             # Abort async requests with the error.
             err = ConnectionError(
                 "Failed during this or a previous request. Exception that "
@@ -362,8 +360,7 @@ class DataClient:
         # will be added to self.asyncio_waiting_data
 
     def _acknowledge(self, req_id: int) -> None:
-        """
-        Puts an acknowledge request on the request queue periodically.
+        """Puts an acknowledge request on the request queue periodically.
         Lock should be held before calling this. Used when an async or
         blocking response is received.
         """
@@ -380,8 +377,7 @@ class DataClient:
             )
 
     def _reconnect_channel(self) -> None:
-        """
-        Attempts to reconnect the gRPC channel and resend outstanding
+        """Attempts to reconnect the gRPC channel and resend outstanding
         requests. First, the server is pinged to see if the current channel
         still works. If the ping fails, then the current channel is closed
         and replaced with a new one.
@@ -495,6 +491,8 @@ class DataClient:
 
         self.lock.acquire()
 
+        if isinstance(self._last_exception, AuthenticationError):
+            raise self._last_exception
         if self._last_exception is not None:
             msg = (
                 "Request can't be sent because the Ray client has already "

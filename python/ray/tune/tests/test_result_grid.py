@@ -189,6 +189,28 @@ def test_result_grid_df(ray_start_2_cpus):
     assert sorted(df["config/nested/param"]) == [1, 2]
 
 
+def test_result_grid_df_all_nan_metric(ray_start_2_cpus):
+    def f(config):
+        # A diverged trial reports NaN at every step.
+        for step in [3, 1, 2]:
+            tune.report(dict(metric=float("nan") if config["diverged"] else step))
+
+    analysis = tune.run(f, config={"diverged": tune.grid_search([False, True])})
+    result_grid = ResultGrid(analysis)
+
+    # The diverged trial has no best result, so it is left out.
+    df = result_grid.get_dataframe(filter_metric="metric", filter_mode="max")
+    assert df["config/diverged"].to_list() == [False]
+    assert df["metric"].to_list() == [3]
+    df = result_grid.get_dataframe(filter_metric="metric", filter_mode="min")
+    assert df["config/diverged"].to_list() == [False]
+    assert df["metric"].to_list() == [1]
+
+    # Without a mode, the last result of every trial is still returned.
+    df = result_grid.get_dataframe(filter_metric="metric")
+    assert sorted(df["config/diverged"]) == [False, True]
+
+
 def test_num_errors_terminated(ray_start_2_cpus, tmp_path):
     def train_fn(config):
         if config["id"] == 1:

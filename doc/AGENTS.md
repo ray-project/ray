@@ -16,7 +16,9 @@ Author new files under `doc/source/` as MyST Markdown (`.md`). A lint check reje
 
 ## Moving or renaming pages and APIs
 
-When you move or rename a page under `doc/source/`, add a redirect from each old path to its new path in `doc/redirects/current.yaml` in the same PR. `doc/redirects/README.md` covers the rule format, directory moves, and how one rule behaves across docs versions.
+When you move or rename a page under `doc/source/`, add a redirect from each old path to its new path in `doc/redirects/current.yaml` in the same PR. `doc/redirects/README.md` covers which rule to choose, directory moves, and how one rule behaves across docs versions.
+
+Before you push a redirect change, run `rtd-redirects validate doc/redirects/current.yaml` and fix every error. Install the version that `.buildkite/doc.rayci.yml` pins. `validate`, `diff-file`, and `simulate` need no credentials. Don't run `plan`, `apply`, or other commands that call the Read the Docs API: they need an admin token that contributors don't have, and CI applies merged redirects itself.
 
 Generated API reference pages follow the same rules. Keep the following in mind:
 
@@ -32,7 +34,7 @@ Redirects don't go live at merge. CI applies them on a later scheduled postmerge
 
 - **`doc`** is build and validation infrastructure, not content: `.readthedocs.yaml`, `doc/requirements-doc.txt`, `.buildkite/doc.rayci.yml`, `.vale.ini`/`.vale/`, and the build scripts under `doc/`. Docs-only deplock changes (`python/deplocks/docs/*.lock`, `ci/raydepsets/configs/docs.depsets.yaml`) tag `doc doc_api python_dependencies` to skip the full python-deps test set.
 - **`<lib>_doc`** (`core_doc`, `data_doc`, `ml_doc`, `rllib_doc`, `serve_doc`) selects that library's `<library>: docs example tests` step. Only `doc/BUILD.bazel` and the example `BUILD.bazel` files emit it, because they define test targets. Library code tags select the same steps.
-- **`doc_example`** is what doc assets emit: `.py`, `.ipynb`, `.yaml`, and Ray Data prose. Only the label-gated `doc: docs example tests (opt-in)` step listens for it, so a doc asset edit runs no tests by default. That step runs every library's selected tests once, in the single `doctestbuild` environment. `doc/source/llm/` emits nothing, because every LLM doc example test is a GPU test.
+- **`doc_example`** is what doc assets emit: `.py`, `.ipynb`, `.yaml`, and prose pages under `doc/source/`. Which prose pages have their own doctest target is decided in `doc/BUILD.bazel`, so adding, renaming, or moving a page needs no `test.rules.txt` edit. Only the label-gated `doc: docs example tests (opt-in)` step listens for it, so a doc asset edit runs no tests by default. That step runs every library's selected tests once, in the single `doctestbuild` environment. `doc/source/llm/` emits nothing, because every LLM doc example test is a GPU test.
 - **`doc_api`** covers the API reference pages and autodoc machinery. It's the entire trigger for the two API-consistency checks, which carry no `if:` guard, so a surface that stops emitting `doc_api` stops being checked silently.
 
 Prose and images trigger nothing by default: a change to only `.md`, `.rst`, or image files under `doc/` runs no library test steps. Contributor-facing detail: `doc/source/ray-contribute/ci.md`.

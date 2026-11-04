@@ -1,12 +1,11 @@
-"""
-Proximal Policy Optimization (PPO)
+"""Proximal Policy Optimization (PPO)
 ==================================
 
 This file defines the distributed Algorithm class for proximal policy
 optimization.
 See `ppo_[tf|torch]_policy.py` for the definition of the policy loss.
 
-Detailed documentation: https://docs.ray.io/en/master/rllib-algorithms.html#ppo
+Detailed documentation: https://docs.ray.io/en/latest/rllib/algorithms.html#ppo
 """
 
 import logging
@@ -63,20 +62,17 @@ LEARNER_RESULTS_CURR_ENTROPY_COEFF_KEY = "curr_entropy_coeff"
 class PPOConfig(AlgorithmConfig):
     """Defines a configuration class from which a PPO Algorithm can be built.
 
-    .. testcode::
-
-        from ray.rllib.algorithms.ppo import PPOConfig
-
-        config = PPOConfig()
-        config.environment("CartPole-v1")
-        config.env_runners(num_env_runners=1)
-        config.training(
-            gamma=0.9, lr=0.01, kl_coeff=0.3, train_batch_size_per_learner=256
-        )
-
-        # Build a Algorithm object from the config and run 1 training iteration.
-        algo = config.build()
-        algo.train()
+    Examples:
+        >>> from ray.rllib.algorithms.ppo import PPOConfig
+        >>> config = PPOConfig()
+        >>> _ = config.environment("CartPole-v1")
+        >>> _ = config.env_runners(num_env_runners=1)
+        >>> _ = config.training(
+        ...     gamma=0.9, lr=0.01, kl_coeff=0.3, train_batch_size_per_learner=256
+        ... )
+        >>> # Build a Algorithm object from the config and run 1 training iteration.
+        >>> algo = config.build()
+        >>> _ = algo.train()
 
     .. testcode::
 

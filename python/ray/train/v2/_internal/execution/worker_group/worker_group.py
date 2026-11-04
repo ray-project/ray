@@ -84,10 +84,6 @@ from ray.util.tpu import (
 
 logger = logging.getLogger(__name__)
 
-# Interval in seconds between checks that the nodes a worker group is pinned
-# to are still alive, while waiting for its placement group.
-PINNED_NODE_CHECK_INTERVAL_S = 1.0
-
 
 _SERIALIZATION_FAILURE_MARKERS = (
     "cannot pickle",
@@ -208,18 +204,32 @@ class WorkerGroup(ExecutionGroup):
     def _start(
         self,
     ):
-        """Internal method to start the worker group."""
+        """Internal method to start the worker group.
+
+        Raises:
+            ValueError: If workers are already started.
+        """
+        # Checked before the try so that a rejected call doesn't clean up the
+        # state of the already-running worker group.
+        self._assert_inactive()
 
         worker_group_state_builder = WorkerGroupStateBuilder()
-
         try:
             self._start_impl(
                 worker_group_state_builder,
             )
         except Exception as e:
-            if not self.has_started():
-                # Clean up partial worker group state.
+            # Clean up the partial worker group. The state may already be built if
+            # the failure happened after `build()`.
+            try:
                 worker_group_state_builder.shutdown()
+            except Exception:
+                # Don't let a cleanup failure mask the original startup error.
+                logger.warning(
+                    "Failed to clean up the partially started worker group.",
+                    exc_info=True,
+                )
+            self._clear_state()
             raise e
 
         assert self.has_started(), "Worker group failed to start."
@@ -252,57 +262,6 @@ class WorkerGroup(ExecutionGroup):
                 )
                 raise InsufficientClusterResourcesError(error_msg)
 
-    def _wait_for_placement_group(
-        self,
-        pg_handle: PlacementGroupHandle,
-        label_selector: Optional[List[Dict[str, str]]],
-    ) -> bool:
-        """Wait for the placement group, giving up early if a pinned node dies.
-
-        A bundle pinned to a dead node can never be placed, so waiting out the
-        full start timeout would only stall the retry. This happens when the
-        pins were built from a view of the cluster that still listed the node
-        as alive.
-
-        Args:
-            pg_handle: The placement group to wait for.
-            label_selector: Per-worker label selectors the placement group was
-                created with. Node-id pins among them are checked for liveness.
-
-        Returns:
-            Whether the placement group became ready.
-        """
-        pinned_node_ids = {
-            selector[ray._raylet.RAY_NODE_ID_KEY]
-            for selector in label_selector or []
-            if ray._raylet.RAY_NODE_ID_KEY in selector
-        }
-        if not pinned_node_ids:
-            return pg_handle.wait(self._worker_group_start_timeout_s)
-
-        deadline = time_monotonic() + self._worker_group_start_timeout_s
-        while True:
-            remaining_s = max(deadline - time_monotonic(), 0)
-            if pg_handle.wait(min(PINNED_NODE_CHECK_INTERVAL_S, remaining_s)):
-                return True
-            if time_monotonic() >= deadline:
-                return False
-            try:
-                nodes = ray.nodes()
-            except Exception:
-                # A failed liveness check must not abort the wait
-                logger.debug("Failed to check liveness of pinned nodes.", exc_info=True)
-                continue
-
-            alive_node_ids = {node["NodeID"] for node in nodes if node["Alive"]}
-            dead_node_ids = pinned_node_ids - alive_node_ids
-            if dead_node_ids:
-                logger.info(
-                    "Giving up on the placement group early: the worker group is "
-                    f"pinned to nodes that are no longer alive: {sorted(dead_node_ids)}."
-                )
-                return False
-
     def _start_impl(
         self,
         worker_group_state_builder: WorkerGroupStateBuilder,
@@ -313,11 +272,9 @@ class WorkerGroup(ExecutionGroup):
             worker_group_state_builder: Builder for constructing worker group state.
 
         Raises:
-            ValueError: If workers are already started.
             WorkerGroupStartupTimeoutError: If startup times out requesting resources.
             WorkerGroupStartupFailedError: If workers fail during initialization.
         """
-        self._assert_inactive()
         worker_group_context = self._worker_group_context
         start_time = time_monotonic()
 
@@ -353,9 +310,7 @@ class WorkerGroup(ExecutionGroup):
             # For example, the controller may try to set a worker group size
             # based on stale information about cluster resources.
             pg_wait_start = time_monotonic()
-            if not self._wait_for_placement_group(
-                pg_handle, worker_group_context.label_selector
-            ):
+            if not pg_handle.wait(self._worker_group_start_timeout_s):
                 pg_handle.shutdown()
                 raise WorkerGroupStartupTimeoutError(
                     num_workers=worker_group_context.num_workers
@@ -442,12 +397,25 @@ class WorkerGroup(ExecutionGroup):
         # Launch the training function on each worker.
         # This task should start a worker thread and return immediately.
         launch_start = time_monotonic()
-        ray.get(
-            [
-                worker.actor.run_train_fn.remote(worker_group_context.train_fn_ref)
-                for worker in workers
-            ]
-        )
+        try:
+            ray.get(
+                [
+                    worker.actor.run_train_fn.remote(worker_group_context.train_fn_ref)
+                    for worker in workers
+                ]
+            )
+        except RayActorError:
+            # The worker group is fully started at this point, so a worker dying
+            # here (e.g. its node was lost) is a failure of the running group.
+            # The next poll reports it, and the failure policy decides whether to
+            # retry, charging it to the preemption budget if the node was
+            # preempted.
+            logger.warning(
+                "A worker died while launching the training function. "
+                "The failure will be reported on the next poll.",
+                exc_info=True,
+            )
+
         logger.debug(
             "[Worker Group Initialization] Train function launched on "
             f"workers in {time_monotonic() - launch_start:.2f}s."
@@ -1077,8 +1045,7 @@ class WorkerGroup(ExecutionGroup):
 
     @staticmethod
     def _sort_workers_by_tpu_pod_name(workers: List[Worker]) -> List[Worker]:
-        """
-        Sort workers by their TPU Pod name to ensure deterministic
+        """Sort workers by their TPU Pod name to ensure deterministic
         topology mapping for TPU multi-slice. The TPU Pod name is based on
         TPU_NAME env var, which is unique and indexed within the Ray worker group
         requesting TPUs.
