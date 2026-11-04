@@ -120,7 +120,7 @@ class AddTimeDimToBatchAndZeroPad(ConnectorV2):
         ...     # Expect the episode's last OBS.
         ...     output_batch[Columns.OBS], [[4]],
         ... )
-        >>> # Create a new connector as a learner connector with a RNN seq len of 4 (for
+        >>> # Create a new connector as a learner connector with a RNN seq len of 3 (for
         >>> # testing purposes only). Passing the same data through this learner connector,
         >>> # we expect the data to also be zero-padded.
         >>> connector = AddTimeDimToBatchAndZeroPad(as_learner_connector=True)

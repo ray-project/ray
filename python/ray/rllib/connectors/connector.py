@@ -184,13 +184,14 @@ class AgentConnector(Connector):
         ... )
         >>> # More complicated agent connectors can be implemented by extending this
         >>> # AgentConnector class:
+        >>> from collections import defaultdict
         >>> class FrameSkippingAgentConnector(AgentConnector):
         ...     def __init__(self, n):
         ...         self._n = n
-        ...         self._frame_count = default_dict(str, default_dict(str, int))
+        ...         self._frame_count = defaultdict(lambda: defaultdict(int))
         ...
         ...     def reset(self, env_id: str):
-        ...         del self._frame_count[env_id]
+        ...         self._frame_count.pop(env_id, None)
         ...
         ...     def __call__(
         ...         self, ac_data: List[AgentConnectorDataType]
@@ -199,8 +200,8 @@ class AgentConnector(Connector):
         ...         for d in ac_data:
         ...             assert d.env_id and d.agent_id, "Skipping works per agent!"
         ...
-        ...             count = self._frame_count[ac_data.env_id][ac_data.agent_id]
-        ...             self._frame_count[ac_data.env_id][ac_data.agent_id] = (
+        ...             count = self._frame_count[d.env_id][d.agent_id]
+        ...             self._frame_count[d.env_id][d.agent_id] = (
         ...                 count + 1
         ...             )
         ...
@@ -209,7 +210,7 @@ class AgentConnector(Connector):
         ...         return ret
 
     As shown, an agent connector may choose to emit an empty list to stop input
-    observations from being further prosessed.
+    observations from being further processed.
     """
 
     def reset(self, env_id: str):
@@ -283,6 +284,7 @@ class ActionConnector(Connector):
     into an ActionConnector by using register_lambda_action_connector.
 
     Examples:
+        >>> import numpy as np
         >>> from ray.rllib.connectors.action.lambdas import (
         ...     register_lambda_action_connector
         ... )
