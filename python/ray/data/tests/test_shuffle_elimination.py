@@ -1,11 +1,15 @@
 from typing import Callable, Optional, Tuple
 
 import numpy as np
+import pandas as pd
 import pyarrow as pa
 import pytest
 
 import ray
-from ray.data._internal.execution.interfaces import PhysicalOperator
+from ray.data._internal.execution.interfaces import PhysicalOperator, TaskContext
+from ray.data._internal.execution.operators.hash_aggregate_v2 import (
+    _make_complete_aggregating_block_fn,
+)
 from ray.data._internal.logical.interfaces import (
     ClusteredDistribution,
     HashPartitioning,
@@ -13,7 +17,16 @@ from ray.data._internal.logical.interfaces import (
 from ray.data._internal.logical.operators import Project
 from ray.data._internal.logical.optimizers import LogicalOptimizer
 from ray.data._internal.planner import create_planner
-from ray.data.aggregate import Sum
+from ray.data.aggregate import (
+    AbsMax,
+    AggregateFn,
+    Count,
+    CountDistinct,
+    Max,
+    Mean,
+    Sum,
+    Unique,
+)
 from ray.data.context import DataContext, ShuffleStrategy
 from ray.data.dataset import Dataset
 from ray.data.expressions import col
@@ -214,6 +227,61 @@ def test_project_preserves_columns_without_schema(
     project = opaque.rename_columns({"id": "key"})._logical_plan.dag
     assert not project.preserves_columns(["id"])
     assert project.preserves_columns(["grp"])
+
+
+# ---------------------------------------------------------------------------
+# Aggregate shuffle elimination
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "key_columns,aggs,expected",
+    [
+        (("k",), (Sum(on="v"), Count(), Mean(on="v"), Max(on="v")), True),
+        # Collection aggregations.
+        (("k",), (CountDistinct(on="v"),), False),
+        (("k",), (Unique(on="v"),), False),
+        (("k",), (Sum(on="v"), CountDistinct(on="v")), False),
+        # Python engine.
+        (("k",), (AbsMax(on="v"),), False),
+    ],
+)
+def test_complete_aggregation_support(
+    key_columns: Tuple[str, ...], aggs: Tuple[AggregateFn, ...], expected: bool
+):
+    """Only Arrow-vectorized reductions aggregate in one phase."""
+    supported = _make_complete_aggregating_block_fn(key_columns, aggs) is not None
+    assert supported == expected
+
+
+def test_complete_aggregating_block_fn():
+    """Aggregates every block it's given into one row per group."""
+    aggregate = _make_complete_aggregating_block_fn(
+        ("k",),
+        (Sum(on="v", alias_name="s"), Count(alias_name="c"), Sum(on="v")),
+    )
+    blocks = [
+        pa.table({"k": [1, 2], "v": [1, 2], "unused": ["a", "b"]}),
+        pa.table(
+            {
+                "k": pa.array([], pa.int64()),
+                "v": pa.array([], pa.int64()),
+                "unused": pa.array([], pa.string()),
+            }
+        ),
+        pd.DataFrame({"k": [2, 3], "v": [10, 20], "unused": ["c", "d"]}),
+        pa.table({"k": [1], "v": [100], "unused": ["e"]}),
+    ]
+    ctx = TaskContext(task_idx=0, op_name="test")
+    out = pa.concat_tables(aggregate(iter(blocks), ctx))
+    assert out.sort_by("k").to_pydict() == {
+        "k": [1, 2, 3],
+        "s": [101, 12, 20],
+        "c": [2, 2, 1],
+        "sum(v)": [101, 12, 20],
+    }
+    # No rows means no groups and no block.
+    assert list(aggregate(iter(blocks[1:2]), ctx)) == []
 
 
 if __name__ == "__main__":

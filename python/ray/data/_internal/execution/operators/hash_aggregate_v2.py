@@ -4,13 +4,19 @@ import pyarrow as pa
 import pyarrow.types as pa_types
 
 from ray.data._internal.arrow_aggregation import ArrowAggSpec, arrow_agg_options
+from ray.data._internal.arrow_ops.transform_pyarrow import concat
 from ray.data._internal.execution.operators.shuffle_operators.shuffle_tasks import (
     BlockTransformer,
     ReduceFn,
 )
-from ray.data.block import Block, BlockAccessor
+from ray.data._internal.table_block import TableBlockAccessor
+from ray.data.block import Block, BlockAccessor, BlockType
 
 if TYPE_CHECKING:
+    from ray.data._internal.execution.interfaces import TaskContext
+    from ray.data._internal.execution.operators.map_transformer import (
+        MapTransformCallable,
+    )
     from ray.data.aggregate import AggregateFn, AggregateFnV2
 
 
@@ -49,6 +55,105 @@ def _is_vectorizable(keys: List[str], specs: List[ArrowAggSpec]) -> bool:
         # (the Python path's intra-group aggregation is already vectorized).
         return False
     return True
+
+
+def _aggregate_raw_rows(
+    table: pa.Table,
+    keys: List[str],
+    aggs: Tuple["AggregateFnV2", ...],
+    specs: List[ArrowAggSpec],
+) -> Tuple[pa.Table, List[Tuple[str, ...]]]:
+    """Group ``table``'s raw rows by ``keys`` into each agg's ``__agg{i}_*``
+    component columns. Returns the grouped table and each agg's component
+    column names."""
+    agg_specs: List[tuple] = []
+    comps: List[Tuple[str, ...]] = []
+    for i, (agg, spec) in enumerate(zip(aggs, specs)):
+        col = agg.get_target_column()
+        opts = arrow_agg_options(agg._ignore_nulls)
+        if spec.prep is not None:
+            table = spec.prep(i, col, table)
+        comps.append(tuple(f"__agg{i}_{c}" for c in spec.components))
+        agg_specs += spec.raw_agg_specs(i, col, opts)
+
+    out = table.group_by(keys, use_threads=False).aggregate(agg_specs)
+    return out.rename_columns(keys + [c for cols in comps for c in cols]), comps
+
+
+def _finalize_aggregates(
+    merged: pa.Table,
+    keys: List[str],
+    aggs: Tuple["AggregateFnV2", ...],
+    specs: List[ArrowAggSpec],
+    comps: List[Tuple[str, ...]],
+) -> pa.Table:
+    """Finalize each agg's component columns into its output column."""
+    # Duplicate output names are munged to name, name_2, name_3, ... (counting
+    # against the original name).
+    cols = {k: merged[k] for k in keys}
+    seen: dict = {}
+    for i, (agg, spec) in enumerate(zip(aggs, specs)):
+        name = agg.name
+        n = seen.get(name, 0)
+        seen[name] = n + 1
+        if n > 0:
+            name = f"{name}_{n + 1}"
+        cols[name] = spec.finalize(merged, comps[i])
+    return pa.table(cols)
+
+
+def _make_complete_aggregating_block_fn(
+    key_columns: Tuple[str, ...],
+    aggregation_fns: Tuple["AggregateFn", ...],
+) -> Optional["MapTransformCallable[Block, Block]"]:
+    """One-phase ("complete") aggregation of a task's whole input, or None if
+    the query isn't supported.
+
+    Only correct if the input holds every row of each of its groups, e.g. whole
+    partitions of a hash partitioning on a subset of ``key_columns``. Each group
+    is then aggregated once from its raw rows, with no partials to merge.
+
+    Only the Arrow-vectorized reductions are supported. The Python engine sorts,
+    and so copies, its whole input, and collection aggregations (``Unique``,
+    ``CountDistinct``) keep every raw row until they finalize.
+    """
+    unpacked = _agg_specs(aggregation_fns)
+    if unpacked is None:
+        return None
+    aggs, specs = unpacked
+    keys = list(key_columns)
+    if not _is_vectorizable(keys, specs) or any(spec.collection for spec in specs):
+        return None
+    # Only the keys and the aggregated columns are buffered.
+    columns = list(
+        dict.fromkeys(
+            keys
+            + [a.get_target_column() for a in aggs if a.get_target_column() is not None]
+        )
+    )
+
+    def _aggregate(blocks: Iterable[Block], ctx: "TaskContext") -> Iterable[Block]:
+        tables: List[pa.Table] = []
+        for block in blocks:
+            table = TableBlockAccessor.try_convert_block_type(
+                block, block_type=BlockType.ARROW
+            )
+            block_schema = BlockAccessor.for_block(table).schema()
+            for agg in aggs:
+                agg._validate(block_schema)
+            if table.num_rows > 0:
+                tables.append(table.select(columns))
+        if not tables:
+            # Like the shuffle's reduce, no rows means no groups and no block.
+            return
+        # Concatenating doesn't copy the blocks' buffers unless their types
+        # must be promoted, so the input blocks are aggregated in place.
+        aggregated, comps = _aggregate_raw_rows(
+            concat(tables, promote_types=True), keys, aggs, specs
+        )
+        yield _finalize_aggregates(aggregated, keys, aggs, specs, comps)
+
+    return _aggregate
 
 
 def _make_aggregating_transformer(
@@ -117,18 +222,7 @@ def _make_vectorized_aggregating_transformer(
         if block.num_rows == 0:
             return block
 
-        agg_specs: List[tuple] = []
-        names: List[str] = []
-        for i, (agg, spec) in enumerate(zip(aggs, specs)):
-            col = agg.get_target_column()
-            opts = arrow_agg_options(agg._ignore_nulls)
-            if spec.prep is not None:
-                block = spec.prep(i, col, block)
-            names.extend(f"__agg{i}_{c}" for c in spec.components)
-            agg_specs += spec.raw_agg_specs(i, col, opts)
-
-        out = block.group_by(keys, use_threads=False).aggregate(agg_specs)
-        return out.rename_columns(keys + names)
+        return _aggregate_raw_rows(block, keys, aggs, specs)[0]
 
     return _arrow_transform
 
@@ -168,41 +262,25 @@ def _make_vectorized_aggregating_reduce_fn(
             yield from _fallback_reduce(partition_id, [[_fallback_map(combined)]])
             return
 
-        # Collection query: aggregate the raw rows via raw_agg_specs (a
-        # group's rows are all co-located here, so this yields the final
-        # value).  Reduction: merge the map's partials via merge_specs.
-        agg_specs: List[tuple] = []
-        names: List[str] = []
-        comps: List[Tuple[str, ...]] = []
-        for i, (agg, spec) in enumerate(zip(aggs, specs)):
-            opts = arrow_agg_options(agg._ignore_nulls)
-            out_cols = tuple(f"__agg{i}_{c}" for c in spec.components)
-            comps.append(out_cols)
-            names += out_cols
-            if has_collection:
-                col = agg.get_target_column()
-                if spec.prep is not None:
-                    combined = spec.prep(i, col, combined)
-                agg_specs += spec.raw_agg_specs(i, col, opts)
-            else:
+        if has_collection:
+            # Collection query: aggregate the raw rows (a group's rows are all
+            # co-located here, so this yields the final value).
+            merged, comps = _aggregate_raw_rows(combined, keys, aggs, specs)
+        else:
+            # Reduction: merge the map's partials via merge_specs.
+            agg_specs: List[tuple] = []
+            comps = []
+            for i, (agg, spec) in enumerate(zip(aggs, specs)):
+                out_cols = tuple(f"__agg{i}_{c}" for c in spec.components)
+                comps.append(out_cols)
                 assert spec.merge_specs is not None  # reduction specs define it
-                agg_specs += spec.merge_specs(out_cols, opts)
+                agg_specs += spec.merge_specs(
+                    out_cols, arrow_agg_options(agg._ignore_nulls)
+                )
+            merged = combined.group_by(keys, use_threads=False).aggregate(agg_specs)
+            merged = merged.rename_columns(keys + [c for cols in comps for c in cols])
 
-        merged = combined.group_by(keys, use_threads=False).aggregate(agg_specs)
-        merged = merged.rename_columns(keys + names)
-
-        # Finalize into output columns.  Duplicate output names are munged to
-        # name, name_2, name_3, ... (counting against the original name).
-        cols = {k: merged[k] for k in keys}
-        seen: dict = {}
-        for i, (agg, spec) in enumerate(zip(aggs, specs)):
-            name = agg.name
-            n = seen.get(name, 0)
-            seen[name] = n + 1
-            if n > 0:
-                name = f"{name}_{n + 1}"
-            cols[name] = spec.finalize(merged, comps[i])
-        yield pa.table(cols)
+        yield _finalize_aggregates(merged, keys, aggs, specs, comps)
 
     return _arrow_reduce
 
