@@ -383,6 +383,7 @@ class MapOperator(LineageReconstructionMixin, PhysicalOperator, ABC):
         per_block_limit: Optional[int] = None,
         on_start: Optional[Callable[[Optional["pa.Schema"]], None]] = None,
         isolate_workers: bool = False,
+        memory_from_input_estimate: bool = False,
     ) -> "MapOperator":
         """Create a MapOperator.
 
@@ -423,6 +424,10 @@ class MapOperator(LineageReconstructionMixin, PhysicalOperator, ABC):
                 scheduled on the same worker processes as this operator's. This flag
                 is useful to prevent side-effects from affecting other operators, like
                 large PyArrow memory allocations.
+            memory_from_input_estimate: If ``True``, each task requests as its
+                logical ``memory`` the estimate its input blocks carry in
+                ``BlockMetadata.consumer_memory_bytes``. Task pools only, since an
+                actor's memory is fixed when it is created.
 
         Returns:
             A ``MapOperator`` instance whose concrete subclass depends on the
@@ -465,6 +470,7 @@ class MapOperator(LineageReconstructionMixin, PhysicalOperator, ABC):
                 on_start=on_start,
                 isolate_workers=isolate_workers,
                 default_logical_memory_enabled=data_context.default_map_logical_memory_enabled,
+                memory_from_input_estimate=memory_from_input_estimate,
             )
         elif isinstance(compute_strategy, ActorPoolStrategy):
             from ray.data._internal.execution.operators import (
@@ -475,6 +481,12 @@ class MapOperator(LineageReconstructionMixin, PhysicalOperator, ABC):
                 logger.debug(
                     "`isolate_workers` is set but has no effect with "
                     "`ActorPoolStrategy` because actors are already isolated."
+                )
+            if memory_from_input_estimate:
+                logger.debug(
+                    "`memory_from_input_estimate` is set but has no effect with "
+                    "`ActorPoolStrategy` because an actor's memory is fixed when "
+                    "it is created."
                 )
 
             ActorPoolMapOperator = get_actor_pool_map_operator_cls()
