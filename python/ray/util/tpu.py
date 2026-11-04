@@ -457,10 +457,20 @@ def get_torchtpu_env_vars(
         A dictionary mapping PyTorch/TPU environment variables to their values.
 
     Raises:
-        TypeError: If ``worker_id`` or ``tpu_resource_per_chip`` is not an integer.
+        TypeError: If ``worker_id``, ``slicebuilder_port``, or
+            ``tpu_resource_per_chip`` is not an integer.
         ValueError: If ``topology``, ``worker_hostnames``, ``slicebuilder_addresses``,
-            ``master_addr``, ``worker_id``, or ``tpu_resource_per_chip`` is invalid.
+            ``slicebuilder_port``, ``master_addr``, ``worker_id``, or
+            ``tpu_resource_per_chip`` is invalid.
     """
+    if type(slicebuilder_port) is not int:
+        raise TypeError(
+            f"slicebuilder_port must be an integer, got {type(slicebuilder_port)}."
+        )
+    if not (1 <= slicebuilder_port <= 65535):
+        raise ValueError(
+            f"slicebuilder_port must be in [1, 65535], got {slicebuilder_port}."
+        )
     env_vars: Dict[str, str] = {
         TORCH_TPU_TOPOLOGY_ENV_VAR: normalize_torchtpu_topology(
             topology,
@@ -482,11 +492,17 @@ def get_torchtpu_env_vars(
         for a in slicebuilder_addresses:
             if a_str := a.strip():
                 parsed = parse_address(a_str)
-                if not parsed or not parsed[0] or not parsed[1].isdecimal():
+                if (
+                    not parsed
+                    or not parsed[0]
+                    or not parsed[1].isdecimal()
+                    or not (1 <= int(parsed[1]) <= 65535)
+                ):
                     raise ValueError(
-                        f"Invalid slicebuilder address {a!r}; expected 'host:port'."
+                        f"Invalid slicebuilder address {a!r}; expected 'host:port' "
+                        "with port in [1, 65535]."
                     )
-                norm_sb_list.append(build_address(parsed[0], parsed[1]))
+                norm_sb_list.append(build_address(parsed[0], int(parsed[1])))
                 unique_hosts[parsed[0]] = None
         if not norm_sb_list:
             raise ValueError(
@@ -519,6 +535,11 @@ def get_torchtpu_env_vars(
                     f"must be divisible by the number of hosts ({len(clean_hosts)})."
                 )
             devices_per_host = total_devices // len(clean_hosts)
+            if slicebuilder_port + devices_per_host - 1 > 65535:
+                raise ValueError(
+                    f"slicebuilder_port {slicebuilder_port} with {devices_per_host} "
+                    "ports per host exceeds the maximum TCP port 65535."
+                )
             env_vars[TORCH_TPU_SLICEBUILDER_ADDRESSES_ENV_VAR] = ",".join(
                 build_address(h, slicebuilder_port + i)
                 for h in clean_hosts
@@ -1066,6 +1087,18 @@ class SlicePlacementGroup:
             [start + h * bundles_per_host for h in range(self.hosts_per_slice)],
         )
 
+    def _resolve_placed_worker_addrs(self, slice_index: int) -> List[str]:
+        """Returns get_worker_addrs(slice_index), raising if any bundle is unplaced."""
+        worker_addrs = self.get_worker_addrs(slice_index)
+        if None in worker_addrs:
+            raise RuntimeError(
+                f"Could not resolve {TPU_WORKER_HOSTNAMES_ENV_VAR} for slice "
+                f"{slice_index} because its placement group bundles are not yet "
+                "placed. Wait for the placement group to be ready, or pass "
+                "`worker_hostnames` explicitly."
+            )
+        return worker_addrs
+
     @property
     def chips_per_host(self) -> int:
         """The number of physical chips per host for this TPU slice.
@@ -1117,14 +1150,7 @@ class SlicePlacementGroup:
             )
 
         if worker_hostnames is None:
-            worker_hostnames = self.get_worker_addrs(slice_index)
-            if None in worker_hostnames:
-                raise RuntimeError(
-                    f"Could not resolve {TPU_WORKER_HOSTNAMES_ENV_VAR} for slice "
-                    f"{slice_index} because its placement group bundles are not yet "
-                    "placed. Wait for the placement group to be ready, or pass "
-                    "`worker_hostnames` explicitly."
-                )
+            worker_hostnames = self._resolve_placed_worker_addrs(slice_index)
 
         return get_jax_env_vars(worker_hostnames=worker_hostnames, worker_id=worker_id)
 
@@ -1153,16 +1179,16 @@ class SlicePlacementGroup:
                 group bundles in this slice.
             slicebuilder_addresses: Optional explicit comma-separated string or list
                 of address:port strings for this slice.
-            slicebuilder_port: Port number for slicebuilder addresses (defaults to 8471).
+            slicebuilder_port: Base port number for slicebuilder addresses (defaults to 8471).
             master_addr: Optional IP address or hostname of the rank-0 master node.
 
         Returns:
             A dictionary mapping PyTorch/TPU environment variables to their values.
 
         Raises:
-            TypeError: If worker_id is not an integer.
-            ValueError: If slice_index is out of range or if worker_id is out of
-                bounds.
+            TypeError: If worker_id or slicebuilder_port is not an integer.
+            ValueError: If slice_index, worker_id, or any address or port
+                argument is invalid.
             RuntimeError: If worker hostnames cannot be resolved.
         """
         if not (0 <= slice_index < self.num_slices):
@@ -1171,14 +1197,7 @@ class SlicePlacementGroup:
             )
 
         if worker_hostnames is None and slicebuilder_addresses is None:
-            worker_hostnames = self.get_worker_addrs(slice_index)
-            if None in worker_hostnames:
-                raise RuntimeError(
-                    f"Could not resolve {TPU_WORKER_HOSTNAMES_ENV_VAR} for slice "
-                    f"{slice_index} because its placement group bundles are not yet "
-                    "placed. Wait for the placement group to be ready, or pass "
-                    "`worker_hostnames` explicitly."
-                )
+            worker_hostnames = self._resolve_placed_worker_addrs(slice_index)
 
         return get_torchtpu_env_vars(
             topology=self._topology,
@@ -2254,6 +2273,18 @@ class SubslicePlacementGroup:
             pg, [h * bundles_per_host for h in range(self._num_hosts)]
         )
 
+    def _resolve_placed_worker_addrs(self) -> List[str]:
+        """Returns get_worker_addrs(), raising if any bundle is unplaced."""
+        worker_addrs = self.get_worker_addrs()
+        if None in worker_addrs:
+            raise RuntimeError(
+                f"Could not resolve {TPU_WORKER_HOSTNAMES_ENV_VAR} for subslice "
+                f"{self._subslice_index} of '{self._slice_name}' because its "
+                "placement group bundles are not yet placed. Wait for the "
+                "placement group to be ready, or pass `worker_hostnames` explicitly."
+            )
+        return worker_addrs
+
     @property
     def chips_per_host(self) -> int:
         """TPU chips this subslice uses on each host."""
@@ -2304,14 +2335,7 @@ class SubslicePlacementGroup:
         """
         if worker_hostnames is None:
             # Use the placed subslice bundles, not the parent slice's env vars.
-            worker_hostnames = self.get_worker_addrs()
-            if None in worker_hostnames:
-                raise RuntimeError(
-                    f"Could not resolve {TPU_WORKER_HOSTNAMES_ENV_VAR} for subslice "
-                    f"{self._subslice_index} of '{self._slice_name}' because its "
-                    "placement group bundles are not yet placed. Wait for the "
-                    "placement group to be ready, or pass `worker_hostnames` explicitly."
-                )
+            worker_hostnames = self._resolve_placed_worker_addrs()
 
         w_dims = _get_worker_dims_for_topology(self._subslice_topology)
         bounds_3d = w_dims if len(w_dims) == 3 else (*w_dims, 1)
@@ -2343,7 +2367,9 @@ class SubslicePlacementGroup:
             worker_id: Optional integer ID of the worker within the subslice
                 (0-indexed), between 0 and num_hosts - 1. Defaults to 0 on a
                 single-host subslice; when omitted on a multi-host subslice,
-                ``TPU_WORKER_ID`` is not set.
+                ``TPU_WORKER_ID`` is not set (pass ``worker_id`` per bundle on
+                multi-host subslices so ``TPU_WORKER_ID`` overrides the parent
+                slice's worker rank).
             worker_hostnames: Optional comma-separated string or list of host IP
                 addresses or DNS hostnames. If omitted, resolved from placement
                 group bundles in this subslice.
@@ -2356,19 +2382,12 @@ class SubslicePlacementGroup:
             A dictionary mapping PyTorch/TPU environment variables to their values.
 
         Raises:
-            TypeError: If worker_id is not an integer.
-            ValueError: If worker_id is out of bounds.
+            TypeError: If worker_id or slicebuilder_port is not an integer.
+            ValueError: If worker_id or any address or port argument is invalid.
             RuntimeError: If worker hostnames cannot be resolved.
         """
         if worker_hostnames is None and slicebuilder_addresses is None:
-            worker_hostnames = self.get_worker_addrs()
-            if None in worker_hostnames:
-                raise RuntimeError(
-                    f"Could not resolve {TPU_WORKER_HOSTNAMES_ENV_VAR} for subslice "
-                    f"{self._subslice_index} of '{self._slice_name}' because its "
-                    "placement group bundles are not yet placed. Wait for the "
-                    "placement group to be ready, or pass `worker_hostnames` explicitly."
-                )
+            worker_hostnames = self._resolve_placed_worker_addrs()
 
         env_vars = get_torchtpu_env_vars(
             topology=self._subslice_topology,

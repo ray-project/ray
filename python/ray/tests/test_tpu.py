@@ -3362,19 +3362,20 @@ def test_normalize_torchtpu_topology():
                 "TPU_WORKER_ID": "1",
             },
         ),
-        # Single-host defaults worker_id=0; explicit master_addr strips port and overrides host[0].
+        # Single-host defaults worker_id=0; explicit master_addr strips port and overrides host[0];
+        # the last derived port may be exactly 65535.
         (
             {
                 "topology": "2x2",
                 "worker_hostnames": "10.0.0.1",
                 "master_addr": "10.0.0.99:8471",
-                "slicebuilder_port": 9000,
+                "slicebuilder_port": 65532,
             },
             {
                 "TORCH_TPU_TOPOLOGY": "2,2,1",
                 "TPU_WORKER_HOSTNAMES": "10.0.0.1",
                 "TORCH_TPU_SLICEBUILDER_ADDRESSES": (
-                    "10.0.0.1:9000,10.0.0.1:9001,10.0.0.1:9002,10.0.0.1:9003"
+                    "10.0.0.1:65532,10.0.0.1:65533,10.0.0.1:65534,10.0.0.1:65535"
                 ),
                 "MASTER_ADDR": "10.0.0.99",
                 "TPU_WORKER_ID": "0",
@@ -3419,12 +3420,12 @@ def test_normalize_torchtpu_topology():
                 "TPU_WORKER_ID": "1",
             },
         ),
-        # Whitespace and IPv6 slicebuilder_addresses normalization.
+        # Whitespace, IPv6, and leading-zero port slicebuilder_addresses normalization.
         (
             {
                 "topology": "2x2",
                 "slicebuilder_addresses": (
-                    " 10.0.0.1:8471 , [2001:db8::1]:8472 , node-2:9000 , node-2:9001 "
+                    " 10.0.0.1:8471 , [2001:db8::1]:8472 , node-2:9000 , node-2:09001 "
                 ),
                 "worker_id": 0,
             },
@@ -3491,6 +3492,40 @@ def test_get_torchtpu_env_vars_free_function(kwargs, expected_env):
             {"topology": "2x4", "slicebuilder_addresses": [":8471"]},
             ValueError,
             "Invalid slicebuilder address",
+        ),
+        (
+            {"topology": "2x4", "slicebuilder_addresses": ["10.0.0.1:0"]},
+            ValueError,
+            "Invalid slicebuilder address",
+        ),
+        (
+            {"topology": "2x4", "slicebuilder_addresses": ["10.0.0.1:65536"]},
+            ValueError,
+            "Invalid slicebuilder address",
+        ),
+        (
+            {"topology": "2x4", "slicebuilder_port": True},
+            TypeError,
+            "slicebuilder_port must be an integer",
+        ),
+        (
+            {"topology": "2x4", "slicebuilder_port": 0},
+            ValueError,
+            "slicebuilder_port must be in",
+        ),
+        (
+            {"topology": "2x4", "slicebuilder_port": 65536},
+            ValueError,
+            "slicebuilder_port must be in",
+        ),
+        (
+            {
+                "topology": "2x2",
+                "worker_hostnames": "10.0.0.1",
+                "slicebuilder_port": 65533,
+            },
+            ValueError,
+            "exceeds the maximum TCP port",
         ),
         (
             {"topology": "2x4", "master_addr": ":8471"},
@@ -3608,6 +3643,8 @@ def test_placement_group_torchtpu_env_vars(_clean_ray, ray_tpu_cluster, monkeypa
     )
     with pytest.raises(RuntimeError, match="Could not resolve TPU_WORKER_HOSTNAMES"):
         sg_v6e.get_torchtpu_env_vars(worker_id=0)
+    with pytest.raises(RuntimeError, match="Could not resolve TPU_WORKER_HOSTNAMES"):
+        sg_v6e.get_jax_env_vars(worker_id=0)
 
     assert sg_v6e.get_torchtpu_env_vars(
         worker_id=1, worker_hostnames=["10.0.0.10", "10.0.0.11"]
