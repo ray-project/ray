@@ -850,14 +850,15 @@ def test_train_test_split_stratified_imbalanced(ray_start_regular_shared_2_cpus)
     train_label_counts = {label: train_labels.count(label) for label in ["A", "B", "C"]}
     test_label_counts = {label: test_labels.count(label) for label in ["A", "B", "C"]}
 
-    # Check proportions are maintained as closely as possible
-    # Class A: 6 samples -> test_count = int(6 * 0.3) = 1 -> train: 5, test: 1
-    # Class B: 2 samples -> test_count = int(2 * 0.3) = 0 -> train: 2, test: 0
-    # Class C: 1 sample -> test_count = int(1 * 0.3) = 0 -> train: 1, test: 0
-    assert train_label_counts["A"] == 5
-    assert test_label_counts["A"] == 1
-    assert train_label_counts["B"] == 2
-    assert test_label_counts["B"] == 0
+    # Check proportions are maintained as closely as possible via largest remainder:
+    # Target test rows: ceil(9 * 0.3) = 3
+    # Class A: 6 samples -> base: int(6 * 0.3) = 1, rem: 0.8 -> extra +1 -> test: 2, train: 4
+    # Class B: 2 samples -> base: int(2 * 0.3) = 0, rem: 0.6 -> extra +1 -> test: 1, train: 1
+    # Class C: 1 sample  -> base: int(1 * 0.3) = 0, rem: 0.3 -> extra +0 -> test: 0, train: 1
+    assert train_label_counts["A"] == 4
+    assert test_label_counts["A"] == 2
+    assert train_label_counts["B"] == 1
+    assert test_label_counts["B"] == 1
     assert train_label_counts["C"] == 1
     assert test_label_counts["C"] == 0
 
