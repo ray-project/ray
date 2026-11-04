@@ -1462,6 +1462,111 @@ def test_dump_stack_trace_falls_back_to_python(
     assert "test_dump_stack_trace_falls_back_to_python" in trace
 
 
+PY_SPY_PERMISSION_DENIED = (
+    "Permission Denied: Try running again with elevated permissions by going "
+    "'sudo env \"PATH=$PATH\" !!'"
+)
+SUDO_CHECK_CMD = ["sudo", "-n", "true"]
+NATIVE_STACK = "native stack"
+
+
+@pytest.fixture(autouse=True)
+def unanswered_sudo_check():
+    """Every test starts with the passwordless-sudo check not yet run."""
+    nccl_ras._can_passwordless_sudo.cache_clear()
+    yield
+    nccl_ras._can_passwordless_sudo.cache_clear()
+
+
+def fake_py_spy_runs(monkeypatch, unprivileged, sudo_check=None, sudo_retry=None):
+    """Script ``subprocess.run`` for the three commands of a stack dump.
+
+    ``sudo -n true`` gets ``sudo_check``, any other ``sudo`` command gets
+    ``sudo_retry`` and the plain py-spy call gets ``unprivileged``; each is a
+    ``(returncode, stdout, stderr)`` triple. Returns the recorded commands.
+    """
+    calls = []
+
+    def fake_run(cmd, **kwargs):
+        calls.append(cmd)
+        if cmd == SUDO_CHECK_CMD:
+            result = sudo_check
+        elif cmd[0] == "sudo":
+            result = sudo_retry
+        else:
+            result = unprivileged
+        returncode, stdout, stderr = result
+        return subprocess.CompletedProcess(cmd, returncode, stdout, stderr)
+
+    monkeypatch.setattr(nccl_ras.subprocess, "run", fake_run)
+    return calls
+
+
+def test_dump_stack_trace_does_not_consult_sudo_when_py_spy_succeeds(monkeypatch):
+    """The unprivileged dump works, so the sudo check never runs and the dump is
+    returned as is."""
+    calls = fake_py_spy_runs(monkeypatch, unprivileged=(0, NATIVE_STACK, ""))
+
+    trace = dump_stack_trace(25.0)
+
+    assert trace == NATIVE_STACK
+    assert len(calls) == 1
+    assert SUDO_CHECK_CMD not in calls
+
+
+def test_dump_stack_trace_retries_with_sudo_when_ptrace_is_denied(monkeypatch):
+    """py-spy is denied ptrace but passwordless sudo works, so the dump is
+    retried as ``sudo -n env PATH=... py-spy ...`` and that dump is returned."""
+    monkeypatch.setenv("PATH", "/opt/bin")
+    calls = fake_py_spy_runs(
+        monkeypatch,
+        unprivileged=(1, "", PY_SPY_PERMISSION_DENIED),
+        sudo_check=(0, "", ""),
+        sudo_retry=(0, NATIVE_STACK, ""),
+    )
+
+    trace = dump_stack_trace(25.0)
+
+    assert trace == NATIVE_STACK
+    py_spy_cmd, sudo_check_cmd, sudo_retry_cmd = calls
+    assert sudo_check_cmd == SUDO_CHECK_CMD
+    assert sudo_retry_cmd == ["sudo", "-n", "env", "PATH=/opt/bin"] + py_spy_cmd
+
+
+def test_dump_stack_trace_falls_back_to_python_without_passwordless_sudo(
+    monkeypatch,
+):
+    """py-spy is denied ptrace and sudo needs a password, so the Python-only
+    dump is returned with py-spy's own error message."""
+    calls = fake_py_spy_runs(
+        monkeypatch,
+        unprivileged=(1, "", PY_SPY_PERMISSION_DENIED),
+        sudo_check=(1, "", "sudo: a password is required"),
+    )
+
+    trace = dump_stack_trace(25.0)
+
+    assert f"py-spy unavailable: {PY_SPY_PERMISSION_DENIED}; Python-only" in trace
+    assert "test_dump_stack_trace_falls_back_to_python_without" in trace
+    assert calls[1:] == [SUDO_CHECK_CMD]
+
+
+def test_dump_stack_trace_checks_sudo_once_per_process(monkeypatch):
+    """A hung worker may dump more than once, so the second dump reuses the
+    answer of the first sudo check instead of running it again."""
+    calls = fake_py_spy_runs(
+        monkeypatch,
+        unprivileged=(1, "", PY_SPY_PERMISSION_DENIED),
+        sudo_check=(0, "", ""),
+        sudo_retry=(0, NATIVE_STACK, ""),
+    )
+
+    dump_stack_trace(25.0)
+    dump_stack_trace(25.0)
+
+    assert calls.count(SUDO_CHECK_CMD) == 1
+
+
 def test_nvidia_smi_returns_the_report(monkeypatch):
     calls = fake_subprocess_run(monkeypatch, stdout="GPU 00000000:00:04.0\n")
 

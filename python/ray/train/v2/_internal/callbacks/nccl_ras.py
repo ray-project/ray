@@ -18,6 +18,7 @@ reports only ranks 0-1 and their communicators, and a hang in the other subset
 is invisible to this callback. In practice every parallelism strategy creates
 a world process group, so real workloads are unlikely to hit this.
 """
+import functools
 import json
 import logging
 import math
@@ -670,33 +671,73 @@ def fan_out_to_workers(
     return dumps
 
 
+_PY_SPY_NOT_INSTALLED = "py-spy not installed"
+_PASSWORDLESS_SUDO_CHECK_TIMEOUT_S = 5.0
+
+
+@functools.lru_cache(maxsize=None)
+def _can_passwordless_sudo() -> bool:
+    """Return whether ``sudo`` runs without a password, checked once per process.
+
+    ``-n`` makes ``sudo`` fail instead of prompting.
+    """
+    try:
+        proc = subprocess.run(
+            ["sudo", "-n", "true"],
+            capture_output=True,
+            timeout=_PASSWORDLESS_SUDO_CHECK_TIMEOUT_S,
+        )
+    except Exception:  # noqa: BLE001
+        return False
+    return proc.returncode == 0
+
+
+def _run_py_spy(cmd: List[str], timeout_s: float) -> Tuple[Optional[str], str]:
+    """Run one ``py-spy dump`` command.
+
+    Args:
+        cmd: The full command line, including any ``sudo`` prefix.
+        timeout_s: Timeout for the subprocess.
+
+    Returns:
+        ``(dump, "")`` on success, otherwise ``(None, reason)``.
+    """
+    try:
+        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout_s)
+    except FileNotFoundError:
+        return None, _PY_SPY_NOT_INSTALLED
+    except subprocess.TimeoutExpired:
+        return None, "py-spy timed out"
+    except Exception as e:  # noqa: BLE001
+        return None, f"py-spy error: {e}"
+    if proc.returncode == 0 and proc.stdout.strip():
+        return proc.stdout, ""
+    return None, (proc.stderr or "").strip() or f"py-spy exited {proc.returncode}"
+
+
 def dump_stack_trace(pyspy_timeout_s: float) -> str:
     """Dump native + Python stacks of the current (worker) process.
 
     Args:
-        pyspy_timeout_s: Timeout for the ``py-spy dump`` subprocess.
+        pyspy_timeout_s: Timeout for each ``py-spy dump`` subprocess.
 
     Returns:
         The captured stack trace, or a Python-only traceback (prefixed with the
         reason py-spy was skipped) when py-spy is unavailable.
     """
-    pid = os.getpid()
-    try:
-        proc = subprocess.run(
-            ["py-spy", "dump", "--pid", str(pid), "--native"],
-            capture_output=True,
-            text=True,
-            timeout=pyspy_timeout_s,
-        )
-        if proc.returncode == 0 and proc.stdout.strip():
-            return proc.stdout
-        stderr = (proc.stderr or "").strip() or f"py-spy exited {proc.returncode}"
-    except FileNotFoundError:
-        stderr = "py-spy not installed"
-    except subprocess.TimeoutExpired:
-        stderr = "py-spy timed out"
-    except Exception as e:  # noqa: BLE001
-        stderr = f"py-spy error: {e}"
+    py_spy_cmd = ["py-spy", "dump", "--pid", str(os.getpid()), "--native"]
+    stdout, stderr = _run_py_spy(py_spy_cmd, pyspy_timeout_s)
+    if stdout is not None:
+        return stdout
+
+    # Restricted ptrace (yama ptrace_scope=1 without CAP_SYS_PTRACE) stops an
+    # unprivileged py-spy from tracing its parent; passwordless sudo lifts that.
+    if stderr != _PY_SPY_NOT_INSTALLED and _can_passwordless_sudo():
+        sudo_cmd = ["sudo", "-n", "env", f"PATH={os.environ.get('PATH', '')}"]
+        stdout, sudo_stderr = _run_py_spy(sudo_cmd + py_spy_cmd, pyspy_timeout_s)
+        if stdout is not None:
+            return stdout
+        stderr = f"{stderr}; with sudo: {sudo_stderr}"
 
     # Python-only fallback: dump every thread's stack (cannot show C/C++ trace).
     import sys
