@@ -1522,7 +1522,7 @@ def test_redirected_print_file_fallback_preserves_print_semantics():
     builtins.print = redirected_print
     try:
         try:
-            1 / 0
+            raise ZeroDivisionError("division by zero")
         except ZeroDivisionError as exc:
             text = logging.Formatter().formatException(
                 (type(exc), exc, exc.__traceback__)
@@ -1530,7 +1530,9 @@ def test_redirected_print_file_fallback_preserves_print_semantics():
     finally:
         builtins.print = original_print
 
-    assert "Traceback (most recent call last):" in text
+    # startswith, not `in`: when the fallback garbles the traceback into a
+    # tuple repr, both strings still appear somewhere in the text.
+    assert text.startswith("Traceback (most recent call last):")
     assert "ZeroDivisionError: division by zero" in text
 
 
