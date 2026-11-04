@@ -219,10 +219,12 @@ class ParquetDatasourceV2(FileDataSourceV2):
             OnlineBinPacker,
         )
 
-        # Bins are budgeted in decoded Arrow bytes, which is what
-        # ``target_max_block_size`` bounds, so the cap defaults to it. Without a
-        # block target ``read_api`` passes ``sys.maxsize``, which would pack every
-        # file into one bin, so that falls back to the default block size.
+        # A bin is budgeted on the footer reader's estimate of PyArrow's peak
+        # memory decoding its row groups, so a read task's decode stays near
+        # ``target_max_block_size``, the default cap; a single row group
+        # estimated over it gets a bin of its own. Without a block target
+        # ``read_api`` passes ``sys.maxsize``, which would pack every file into
+        # one bin, so that falls back to the default block size.
         hints = kwargs.get("hints")
         max_bucket_size = hints.max_bucket_size if hints is not None else None
         default_bin_bytes = (

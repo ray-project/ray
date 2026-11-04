@@ -324,7 +324,7 @@ class TestNullsAreNeverExactSurvivors:
             row_group_size=4,
         )
         reader = _reader(filter_expr=col("id") >= 30)
-        reader.filter_columns = {"id", "not_in_this_file"}
+        reader.filter_columns = ["id", "not_in_this_file"]
         metadata = pq.ParquetFile(path).metadata
 
         assert not _has_filter_nulls(reader, metadata)
@@ -581,47 +581,62 @@ class TestMissingFilterColumnsSkipPruning:
         assert not any(rg.fully_matched for rg in chunks.row_groups)
 
 
-class TestReadLeafIndices:
-    def test_none_when_no_projection(self, four_row_groups):
-        path, _ = four_row_groups
-        row_group = pq.ParquetFile(path).metadata.row_group(0)
+class TestSizingLeaves:
+    """Which leaves a read task decodes, as ``_file_sizing`` resolves them per file."""
 
-        # ``None`` signals "all columns" so callers can take the cheap path.
-        assert _reader()._read_leaf_indices(row_group) is None
+    @staticmethod
+    def _sizing(reader, path, size):
+        fragment = reader.file_format.make_fragment(path, filesystem=reader.filesystem)
+        return reader._file_sizing(
+            file=FileInfo(path, size),
+            fragment=fragment,
+            metadata=pq.ParquetFile(path).metadata,
+        )
+
+    @staticmethod
+    def _paths(sizing, indices):
+        return [sizing.columns[j].path for j in indices]
+
+    def test_every_leaf_when_no_projection(self, four_row_groups):
+        path, size = four_row_groups
+
+        sizing = self._sizing(_reader(), path, size)
+
+        assert sizing.leaf_indices == list(range(len(sizing.columns)))
 
     def test_selects_only_projected_leaves(self, four_row_groups):
-        path, _ = four_row_groups
-        row_group = pq.ParquetFile(path).metadata.row_group(0)
+        path, size = four_row_groups
 
-        indices = _reader(projected_cols=["id"])._read_leaf_indices(row_group)
+        sizing = self._sizing(_reader(projected_cols=["id"]), path, size)
 
-        assert indices is not None
-        paths = [row_group.column(j).path_in_schema for j in indices]
-        assert paths == ["id"]
+        assert self._paths(sizing, sizing.leaf_indices) == ["id"]
 
-    def test_includes_filter_leaves_outside_the_projection(self, four_row_groups):
+    def test_filter_leaves_outside_the_projection_are_read_first(self, four_row_groups):
         # The scanner is handed the projection alone but still decodes ``pad`` to
-        # evaluate the filter, so ``pad``'s bytes belong in the row group's size.
-        path, _ = four_row_groups
-        row_group = pq.ParquetFile(path).metadata.row_group(0)
+        # evaluate the filter, before the projection's columns, so ``pad``'s
+        # bytes belong in the row group's size and ``pad`` is read first.
+        path, size = four_row_groups
 
-        indices = _reader(
-            projected_cols=["id"], filter_expr=col("pad") != "y"
-        )._read_leaf_indices(row_group)
+        sizing = self._sizing(
+            _reader(projected_cols=["id"], filter_expr=col("pad") != "y"), path, size
+        )
 
-        assert indices is not None
-        paths = [row_group.column(j).path_in_schema for j in indices]
-        assert sorted(paths) == ["id", "pad"]
+        assert sorted(self._paths(sizing, sizing.leaf_indices)) == ["id", "pad"]
+        assert [self._paths(sizing, leaves) for leaves in sizing.column_leaves] == [
+            ["pad"],
+            ["id"],
+        ]
 
-    def test_none_when_projection_matches_no_leaf(self, four_row_groups):
+    def test_projection_matching_no_leaf_reads_every_leaf(self, four_row_groups):
         # Reachable under schema evolution: the projection names a column this
-        # file predates. Empty indices would size the row group at zero bytes and
-        # let the packer fill a bin without bound, so it falls back to "all
-        # columns" -- an over-count, which only makes read tasks smaller.
-        path, _ = four_row_groups
-        row_group = pq.ParquetFile(path).metadata.row_group(0)
+        # file predates. No leaves would size the row group at zero bytes and
+        # let the packer fill a bin without bound, so it falls back to every
+        # column -- an over-count, which only makes read tasks smaller.
+        path, size = four_row_groups
 
-        assert _reader(projected_cols=["absent"])._read_leaf_indices(row_group) is None
+        sizing = self._sizing(_reader(projected_cols=["absent"]), path, size)
+
+        assert sizing.leaf_indices == list(range(len(sizing.columns)))
 
     def test_projection_matching_no_leaf_sizes_all_columns(self, four_row_groups):
         path, size = four_row_groups
@@ -643,14 +658,11 @@ class TestReadLeafIndices:
                 "other": [9] * 4,
             }
         )
-        path, _ = _write(tmp_path / "nested.parquet", table, row_group_size=2)
-        row_group = pq.ParquetFile(path).metadata.row_group(0)
+        path, size = _write(tmp_path / "nested.parquet", table, row_group_size=2)
 
-        indices = _reader(projected_cols=["outer"])._read_leaf_indices(row_group)
+        sizing = self._sizing(_reader(projected_cols=["outer"]), path, size)
 
-        assert indices is not None
-        paths = [row_group.column(j).path_in_schema for j in indices]
-        assert paths == ["outer.a", "outer.b"]
+        assert self._paths(sizing, sizing.leaf_indices) == ["outer.a", "outer.b"]
 
 
 class TestReadFootersBatching:

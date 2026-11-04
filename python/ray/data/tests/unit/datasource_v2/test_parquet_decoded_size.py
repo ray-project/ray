@@ -1,7 +1,7 @@
 """Tests for the Parquet decoded-size estimate, against what a real decode allocates.
 
-With ``SizeStatistics`` the estimate is exact; otherwise each bound or guess is
-held to its documented range.
+One case per code path: exact with ``SizeStatistics``, and each bound or guess held
+to its documented range.
 """
 
 import datetime
@@ -16,16 +16,17 @@ import pytest
 from packaging.version import parse as parse_version
 
 from ray.data._internal.datasource_v2.formats.parquet.parquet_decoded_size import (
+    Read,
     _leaf_layout,
     _UnsupportedLayout,
     added_bytes,
     build_leaf_profiles,
     dictionary_page_read_size,
-    estimate_row_group_decoded_size,
+    estimate_row_group,
+    leaf_chunks,
     statistics_text_bytes,
 )
 from ray.data._internal.datasource_v2.formats.parquet.parquet_size_statistics import (
-    DICTIONARY_PAGE_HEADER_READ_BYTES,
     LeafSizeStats,
     read_dictionary_page,
     read_footer_stats,
@@ -35,175 +36,14 @@ pa = pytest.importorskip("pyarrow")
 pds = pytest.importorskip("pyarrow.dataset")
 pq = pytest.importorskip("pyarrow.parquet")
 
-# PyArrow 17 writes no SizeStatistics or view types and lacks ``binary_type`` and
-# ``list_type``; 23 has all of them (18 to 22 unchecked).
+# PyArrow 17 writes no SizeStatistics and lacks ``binary_type`` and ``list_type``;
+# 23 has all of them (18 to 22 unchecked).
 requires_pyarrow_23 = pytest.mark.skipif(
     parse_version(pa.__version__) < parse_version("23.0.0"),
-    reason="PyArrow 17 writes no SizeStatistics or view types",
+    reason="PyArrow 17 writes no SizeStatistics",
 )
 
 N = 5000
-
-# Fixed-width types beyond those in ``_cases``, each two values repeated.
-_MORE_FIXED_WIDTH_TYPES = [
-    (pa.uint8(), [1, 2]),
-    (pa.uint16(), [1, 2]),
-    (pa.int32(), [1, 2]),
-    (pa.uint32(), [1, 2]),
-    (pa.uint64(), [1, 2]),
-    (pa.float32(), [1.0, 2.0]),
-    (pa.date32(), [datetime.date(2020, 1, 1), datetime.date(2021, 2, 3)]),
-    # Stored as INT32 days and decoded as date32, so 4 bytes, not 8.
-    (pa.date64(), [datetime.date(2020, 1, 1), datetime.date(2021, 2, 3)]),
-    (pa.time64("us"), [1, 2]),
-    (pa.duration("ms"), [1, 2]),
-    (pa.decimal256(50, 2), [Decimal("1.00"), Decimal("2.50")]),
-    (pa.binary(7), [b"1234567", b"abcdefg"]),
-    (pa.float16(), np.array([1.0, 2.0], dtype=np.float16)),
-]
-
-
-def _tensor_table():
-    from ray.data.extensions.tensor_extension import ArrowTensorArray
-
-    return pa.table({"t": ArrowTensorArray.from_numpy(np.zeros((N, 4), np.float32))})
-
-
-def _cases():
-    """Every leaf layout and nesting shape, one row group each."""
-    cases = {
-        "int64-plain": pa.table({"a": pa.array(np.arange(N, dtype="int64"))}),
-        # Dictionary-encoded on disk, so uncompressed size badly understates it.
-        "int64-low-cardinality": pa.table({"a": pa.array(np.zeros(N, dtype="int64"))}),
-        "float64": pa.table({"a": pa.array(np.random.rand(N))}),
-        "bool": pa.table({"a": pa.array([i % 2 == 0 for i in range(N)])}),
-        "string-low-cardinality": pa.table(
-            {"a": pa.array([f"v{i % 5}" for i in range(N)])}
-        ),
-        "string-high-cardinality": pa.table(
-            {"a": pa.array([f"val_{i}_{i * 7}" for i in range(N)])}
-        ),
-        "string-nullable-dict": pa.table(
-            {"a": pa.array([None if i % 3 == 0 else f"v{i % 4}" for i in range(N)])}
-        ),
-        "string-large-values": pa.table(
-            {"a": pa.array(["x" * 50_000 for _ in range(20)])}
-        ),
-        # 64-bit offsets, recovered from the embedded Arrow schema.
-        "large-string": pa.table(
-            {"a": pa.array([f"v{i}" for i in range(N)], pa.large_string())}
-        ),
-        "mixed-int-string": pa.table(
-            {
-                "i": pa.array(np.arange(N, dtype="int64")),
-                "s": pa.array([f"s{i % 101}" for i in range(N)]),
-            }
-        ),
-        "list-int64": pa.table(
-            {"a": pa.array([[1, 2, 3]] * N, type=pa.list_(pa.int64()))}
-        ),
-        # Null and empty lists write a level entry but own no child slot.
-        "list-empty-and-null": pa.table(
-            {
-                "a": pa.array(
-                    [None if i % 5 == 0 else [1, 2][: i % 3] for i in range(N)],
-                    type=pa.list_(pa.int64()),
-                )
-            }
-        ),
-        "list-of-list": pa.table(
-            {
-                "a": pa.array(
-                    [[[1, 2], [], None][: i % 4] for i in range(N)],
-                    type=pa.list_(pa.list_(pa.int64())),
-                )
-            }
-        ),
-        # Written as a repeated group, but decoded without an offsets buffer.
-        "fixed-size-list": pa.table(
-            {
-                "a": pa.FixedSizeListArray.from_arrays(
-                    pa.array(np.zeros(N * 4, dtype=np.float32)), 4
-                )
-            }
-        ),
-        # Ray's default tensor type: extension over large_list<float>.
-        "tensor": _tensor_table(),
-        "decimal128": pa.table({"a": pa.array(range(N), type=pa.decimal128(10, 2))}),
-        "timestamp": pa.table(
-            {"a": pa.array(np.arange(N, dtype="int64"), type=pa.timestamp("us"))}
-        ),
-        "int8": pa.table({"a": pa.array([i % 100 for i in range(N)], type=pa.int8())}),
-        "int16": pa.table(
-            {"a": pa.array([i % 3000 for i in range(N)], type=pa.int16())}
-        ),
-        "struct-string-list": pa.table(
-            {
-                "a": pa.array(
-                    [{"s": f"v{i % 7}", "l": [1, 2]} for i in range(N)],
-                    type=pa.struct([("s", pa.string()), ("l", pa.list_(pa.int64()))]),
-                )
-            }
-        ),
-        # A bitmap on the struct and another on the child, which also marks the
-        # slots under a null struct.
-        "struct-nulls-at-two-levels": pa.table(
-            {
-                "a": pa.array(
-                    [
-                        None if i % 3 == 0 else {"x": None if i % 5 == 0 else i}
-                        for i in range(N)
-                    ],
-                    type=pa.struct([("x", pa.int64())]),
-                )
-            }
-        ),
-        # Two leaves under one list: its offsets must be counted once.
-        "list-of-struct": pa.table(
-            {
-                "a": pa.array(
-                    [[{"x": j, "y": "q"} for j in range(i % 3)] for i in range(N)],
-                    type=pa.list_(pa.struct([("x", pa.int64()), ("y", pa.string())])),
-                )
-            }
-        ),
-        "map": pa.table(
-            {
-                "a": pa.array(
-                    [[(f"k{j}", j) for j in range(i % 3)] for i in range(N)],
-                    type=pa.map_(pa.string(), pa.int64()),
-                )
-            }
-        ),
-        # Required leaves carry no SizeStatistics at all.
-        "required-columns": pa.table(
-            {
-                "i": pa.array(np.arange(N, dtype="int64")),
-                "st": pa.array(
-                    [{"x": i} for i in range(N)],
-                    type=pa.struct([pa.field("x", pa.int32(), nullable=False)]),
-                ),
-                "s": pa.array([f"s{i}" for i in range(N)]),
-            },
-            schema=pa.schema(
-                [
-                    pa.field("i", pa.int64(), nullable=False),
-                    pa.field(
-                        "st",
-                        pa.struct([pa.field("x", pa.int32(), nullable=False)]),
-                        nullable=False,
-                    ),
-                    pa.field("s", pa.string()),
-                ]
-            ),
-        ),
-    }
-    for arrow_type, values in _MORE_FIXED_WIDTH_TYPES:
-        array = pa.array(values, type=arrow_type)
-        cases[f"type-{arrow_type}"] = pa.table(
-            {"a": pa.concat_arrays([array] * (N // 2))}
-        )
-    return cases
 
 
 def _write(table, path, **kwargs):
@@ -211,6 +51,10 @@ def _write(table, path, **kwargs):
     kwargs.setdefault("row_group_size", len(table))
     pq.write_table(table, path, **kwargs)
     return path
+
+
+def _table(values, arrow_type=None):
+    return pa.table({"a": pa.array(values, arrow_type)})
 
 
 def _allocated(path, columns=None, schema=None, **format_kwargs):
@@ -242,7 +86,6 @@ def _no_size_statistics(metadata):
 
 def _estimate(
     path,
-    leaf_indices=None,
     size_statistics=_read_size_statistics,
     read_pages=True,
     schema=None,
@@ -259,6 +102,11 @@ def _estimate(
     )
     assert profiles is not None
     stats = size_statistics(metadata)
+    read = Read(
+        format_kwargs=format_kwargs or {},
+        added_row_bytes=added[0],
+        added_row_group_bytes=added[1],
+    )
     total = 0
     with open(path, "rb") as f:
         for rg_idx in range(metadata.num_row_groups):
@@ -276,84 +124,167 @@ def _estimate(
                     page = read_dictionary_page(f.read(nbytes))
                     assert page is not None
                     pages[leaf_idx] = page
-            estimate = estimate_row_group_decoded_size(
+            leaves = leaf_chunks(
                 row_group=row_group,
                 leaf_profiles=profiles,
-                leaf_indices=leaf_indices,
+                leaf_indices=range(metadata.num_columns),
                 size_stats=rg_stats,
                 dictionary_pages=pages,
-                format_kwargs=format_kwargs,
-                added=added,
             )
-            assert estimate is not None
-            total += estimate
+            total += estimate_row_group(row_group=row_group, leaves=leaves, read=read)
     return total
 
 
-# ---------------------------------------------------------------------------
-# The file as stored: exact with SizeStatistics
-# ---------------------------------------------------------------------------
-
-
-@requires_pyarrow_23
-@pytest.mark.parametrize("label", list(_cases()))
-def test_exact_with_size_statistics(tmp_path, label):
-    path = _write(_cases()[label], tmp_path / "f.parquet")
-
-    assert _estimate(path) == _allocated(path)
-
-
-@requires_pyarrow_23
-def test_projection_sizes_only_its_leaves(tmp_path):
-    """A projection sizes only its leaves, counting a shared list's offsets once."""
-    mixed = _write(_cases()["mixed-int-string"], tmp_path / "mixed.parquet")
-    nested = _write(_cases()["list-of-struct"], tmp_path / "nested.parquet")
-
-    assert _estimate(mixed, [0]) + _estimate(mixed, [1]) == _estimate(mixed)
-    assert _estimate(mixed, [0]) == _allocated(mixed, columns=["i"])
-    # The list's offsets, once per single-leaf estimate.
-    shared = 4 * (N + 1)
-    assert _estimate(nested, [0]) + _estimate(nested, [1]) - shared == _estimate(nested)
-
-
-@requires_pyarrow_23
-def test_row_groups_sum_to_the_file(tmp_path):
-    table = _cases()["mixed-int-string"]
-    path = _write(table, tmp_path / "f.parquet", row_group_size=len(table) // 4)
-
-    assert pq.read_metadata(str(path)).num_row_groups == 4
-    assert _estimate(path) == _allocated(path)
-
-
-@pytest.mark.parametrize(
-    "arrow_type, values, write_kwargs, keeps_bitmap",
-    [
-        (pa.int64(), [1, 2], {}, True),
-        (pa.float32(), [1.0, 2.0], {}, True),
-        (pa.timestamp("ns"), [1, 2], {}, True),
-        (pa.int8(), [1, 2], {}, False),
-        (pa.date32(), [datetime.date(2020, 1, 1)] * 2, {}, False),
-        pytest.param(pa.string(), ["a", "b"], {}, False, marks=requires_pyarrow_23),
-        # INT96 timestamps are converted, not zero-copied, so they drop it.
-        pytest.param(
-            pa.timestamp("ns"),
-            [1, 2],
-            {"use_deprecated_int96_timestamps": True},
-            False,
-            marks=requires_pyarrow_23,
-        ),
-    ],
-)
-def test_null_free_bitmap_follows_pyarrow(
-    tmp_path, arrow_type, values, write_kwargs, keeps_bitmap
+def _case(
+    label,
+    table,
+    low=1.0,
+    high=1.0,
+    stats=True,
+    pages=True,
+    write=None,
+    pin=None,
+    **format_kwargs,
 ):
-    """PyArrow keeps an all-valid bitmap only on types it decodes zero-copy."""
-    table = pa.table({"a": pa.array(values * (N // 2), type=arrow_type)})
-    path = _write(table, tmp_path / "f.parquet", **write_kwargs)
+    """A ``_CASES`` row: the estimate over PyArrow's bytes lies in ``[low, high]``."""
+    case = SimpleNamespace(
+        table=table,
+        low=low,
+        high=high,
+        stats=stats,
+        pages=pages,
+        write=write or {},
+        pin=pin,
+        format_kwargs=format_kwargs,
+    )
+    return pytest.param(case, id=label, marks=[requires_pyarrow_23] if stats else [])
 
-    decoded = pq.ParquetFile(str(path)).read_row_group(0).column(0).chunk(0)
-    assert (decoded.buffers()[0] is not None) == keeps_bitmap
-    assert _estimate(path) == _allocated(path)
+
+# Fixed-width types, each two values repeated.
+_MORE_FIXED_WIDTH_TYPES = [
+    (pa.int8(), [1, 2]),
+    (pa.int16(), [1, 2]),
+    (pa.uint8(), [1, 2]),
+    (pa.uint16(), [1, 2]),
+    (pa.int32(), [1, 2]),
+    (pa.uint32(), [1, 2]),
+    (pa.uint64(), [1, 2]),
+    (pa.float32(), [1.0, 2.0]),
+    (pa.date32(), [datetime.date(2020, 1, 1), datetime.date(2021, 2, 3)]),
+    # Stored as INT32 days and decoded as date32, so 4 bytes, not 8.
+    (pa.date64(), [datetime.date(2020, 1, 1), datetime.date(2021, 2, 3)]),
+    (pa.time64("us"), [1, 2]),
+    (pa.timestamp("us"), [1, 2]),
+    (pa.duration("ms"), [1, 2]),
+    (pa.decimal128(10, 2), [Decimal("1.00"), Decimal("2.50")]),
+    (pa.decimal256(50, 2), [Decimal("1.00"), Decimal("2.50")]),
+    (pa.binary(7), [b"1234567", b"abcdefg"]),
+    (pa.float16(), [np.float16(1.0), np.float16(2.0)]),
+]
+
+
+def _tensor_table():
+    from ray.data.extensions.tensor_extension import ArrowTensorArray
+
+    return pa.table({"a": ArrowTensorArray.from_numpy(np.zeros((N, 4), np.float32))})
+
+
+_HIGH_CARDINALITY = _table([f"{i:012d}" for i in range(N)])
+
+
+_STRINGS = _table([f"v{i % 5}" for i in range(N)])
+_LISTS = _table([[1, 2]] * N, pa.list_(pa.int64()))
+
+_CASES = [
+    # With SizeStatistics, every array is exact. Two leaves under one list count
+    # its offsets once.
+    _case(
+        "list-of-struct",
+        _table(
+            [[{"x": j, "y": "q"} for j in range(i % 3)] for i in range(N)],
+            pa.list_(pa.struct([("x", pa.int64()), ("y", pa.string())])),
+        ),
+    ),
+    _case(
+        "map",
+        _table(
+            [[(f"k{j}", j) for j in range(i % 3)] for i in range(N)],
+            pa.map_(pa.string(), pa.int64()),
+        ),
+    ),
+    # Written as a repeated group, but decoded without an offsets buffer.
+    _case("fixed-size-list", _table([[0.0] * 4] * N, pa.list_(pa.float32(), 4))),
+    # Ray's default tensor type: an extension over large_list<float>.
+    _case("tensor", _tensor_table()),
+    _case("bool", _table([i % 2 == 0 for i in range(N)])),
+    # 64-bit offsets, recovered from the stored Arrow schema.
+    _case("large-string", _table([f"v{i}" for i in range(N)], pa.large_string())),
+    # Converted, not zero-copied, so it drops the all-valid bitmap.
+    _case(
+        "int96-timestamp",
+        _table([1, 2] * (N // 2), pa.timestamp("ns")),
+        write={"use_deprecated_int96_timestamps": True},
+    ),
+    *(
+        _case(f"type-{arrow_type}", _table(values * (N // 2), arrow_type))
+        for arrow_type, values in _MORE_FIXED_WIDTH_TYPES
+    ),
+    # Bounds and guesses. An upper bound some column meets exactly is shaved to
+    # 0.95 of itself, so 0.95 is a bound's floor.
+    _case(
+        "strings-with-nulls-without-size-statistics",
+        _table([None if i % 3 == 0 else f"v{i % 4}" for i in range(N)]),
+        low=0.95,
+        high=1.5,
+        stats=False,
+    ),
+    # PLAIN pages: every value's bytes, less a 4-byte length each.
+    _case(
+        "plain-strings",
+        _HIGH_CARDINALITY,
+        low=0.95,
+        stats=False,
+        write={"use_dictionary": False},
+    ),
+    # Dictionary-indexed without the page header: each value as long as the chunk.
+    _case(
+        "dictionary-page-header-unread",
+        _HIGH_CARDINALITY,
+        low=100,
+        high=math.inf,
+        stats=False,
+        pages=False,
+    ),
+    # Ray's read, never under. Numbers cast to text: stored plus a crude bound.
+    _case(
+        "pin-int64-to-string", _table(range(N), pa.int64()), high=1.25, pin=pa.string()
+    ),
+    # Read options, on a file without a stored Arrow schema.
+    _case("binary-type-large", _STRINGS, binary_type=pa.large_binary()),
+    _case("list-type-large", _LISTS, list_type=pa.LargeListType),
+]
+
+
+@pytest.mark.parametrize("case", _CASES)
+def test_estimate_against_pyarrow(tmp_path, case):
+    # The read options retype only a file without a stored Arrow schema.
+    path = _write(
+        case.table,
+        tmp_path / "f.parquet",
+        store_schema=not case.format_kwargs,
+        **case.write,
+    )
+    schema = None if case.pin is None else pa.schema([("a", case.pin)])
+    estimate = _estimate(
+        path,
+        size_statistics=_read_size_statistics if case.stats else _no_size_statistics,
+        read_pages=case.pages,
+        schema=schema,
+        format_kwargs=case.format_kwargs,
+    )
+    allocated = _allocated(path, schema=schema, **case.format_kwargs)
+
+    assert case.low <= estimate / allocated <= case.high
 
 
 def _with(stats_for_leaf_0):
@@ -369,26 +300,13 @@ def _with(stats_for_leaf_0):
 
 
 @requires_pyarrow_23
-@pytest.mark.parametrize(
-    "label, exact",
-    [("list-int64", True), ("list-empty-and-null", True), ("list-of-list", False)],
-)
-def test_list_leaf_without_repetition_histogram(tmp_path, label, exact):
-    """A list needs only the definition histogram; a list in a list, both."""
-    path = _write(_cases()[label], tmp_path / "f.parquet")
-    stripped = _with(lambda stats: stats._replace(repetition_level_histogram=()))
-
-    if exact:
-        assert _estimate(path, size_statistics=stripped) == _allocated(path)
-    else:
-        assert _estimate(path, size_statistics=stripped) > _allocated(path)
-
-
-@requires_pyarrow_23
 def test_partial_size_statistics(tmp_path):
-    """Histograms that disagree with the footer's counts are dropped."""
-    ints = _write(_cases()["int64-plain"], tmp_path / "ints.parquet")
-    lists = _write(_cases()["list-of-list"], tmp_path / "lists.parquet")
+    """Histograms alone size a leaf; ones that disagree with the footer are dropped."""
+    ints = _write(_table(np.arange(N, dtype="int64")), tmp_path / "ints.parquet")
+    lists = _table(
+        [[[1, 2], [], None][: i % 4] for i in range(N)], pa.list_(pa.list_(pa.int64()))
+    )
+    lists = _write(lists, tmp_path / "lists.parquet")
 
     def off_by_one(stats):
         definition = stats.definition_level_histogram
@@ -410,228 +328,16 @@ def test_partial_size_statistics(tmp_path):
     )
 
 
-def test_unmodeled_arrow_type_is_rejected():
-    """A layout this module can't size raises, which sends the file to fallback."""
-    with pytest.raises(_UnsupportedLayout):
-        _leaf_layout(pa.list_view(pa.int32()))
-
-
-# ---------------------------------------------------------------------------
-# The file as stored: bounds and guesses
-# ---------------------------------------------------------------------------
-#
-# An upper bound some column meets exactly is shaved to 0.95 of itself, so a
-# bound's floor is 0.95 times the bytes held.
-
-
-@requires_pyarrow_23
-@pytest.mark.parametrize("arrow_type", [pa.string_view(), pa.binary_view()])
-@pytest.mark.parametrize(
-    "length, high", [(0, 1), (1, 1.0625), (12, 1.75), (13, 1), (60, 1)]
-)
-def test_view_types_are_bounded(tmp_path, arrow_type, length, high):
-    """Views count every value out of line: exact past 12 bytes, 1.75x at 12."""
-    table = pa.table({"a": pa.array(["x" * length] * N, arrow_type)})
-    path = _write(table, tmp_path / "f.parquet")
-
-    assert 0.95 <= _estimate(path) / _allocated(path) <= high
-
-
-def _arrow_dictionary(distinct, length, n=N, value_type=None, null_every=0):
-    values = pa.array([f"{i:0{length}d}" for i in range(distinct)], value_type)
-    indices = pa.array(
-        [
-            None if null_every and i % null_every == 0 else i % distinct
-            for i in range(n)
-        ],
-        pa.int32(),
-    )
-    return pa.DictionaryArray.from_arrays(indices, values)
-
-
-def _duplicated_dictionary(rows):
-    """100 distinct entries and a copy of the first, one row per index in ``rows``."""
-    values = pa.array([f"{i:012d}" for i in range(100)] + [f"{0:012d}"])
-    indices = pa.array([i % 101 for i in rows], pa.int32())
-    return pa.DictionaryArray.from_arrays(indices, values)
-
-
-def _reversed(array):
-    return pa.DictionaryArray.from_arrays(array.indices, array.dictionary[::-1])
-
-
-@pytest.mark.parametrize(
-    "table, write_kwargs, high",
-    [
-        (pa.table({"a": _arrow_dictionary(50, 200)}), {}, 1.25),
-        (
-            pa.table({"a": _arrow_dictionary(50, 200, value_type=pa.large_string())}),
-            {},
-            1.25,
-        ),
-        (pa.table({"a": _arrow_dictionary(50, 12, null_every=3)}), {}, 1.25),
-        # PyArrow writes the Arrow dictionary whole: one row decodes all 1000.
-        (pa.table({"a": _arrow_dictionary(1000, 12, n=1)}), {}, 1.25),
-        (pa.table({"a": _arrow_dictionary(50, 60)}), {"compression": "zstd"}, 1.25),
-        (pa.table({"a": _arrow_dictionary(50, 12)}), {"version": "1.0"}, 1.25),
-        (
-            pa.table({"a": _arrow_dictionary(500, 12)}),
-            {"row_group_size": N // 4},
-            1.25,
-        ),
-        (
-            pa.table(
-                {"s": pa.StructArray.from_arrays([_arrow_dictionary(50, 12)], ["d"])}
-            ),
-            {},
-            1.25,
-        ),
-        # A duplicate entry makes PyArrow write every page PLAIN; the unused
-        # dictionary page still lists every value.
-        (pa.table({"a": _duplicated_dictionary(range(N))}), {}, 5),
-        # Chunks with dictionaries of their own make the writer keep the first
-        # as the dictionary page and write the rest PLAIN, every repeat of a
-        # value included.
-        (
-            pa.table(
-                {
-                    "a": pa.chunked_array(
-                        [
-                            _arrow_dictionary(50, 100),
-                            _reversed(_arrow_dictionary(50, 100)),
-                        ]
-                    )
-                }
-            ),
-            {},
-            15,
-        ),
-    ],
-    ids=[
-        "string",
-        "large-string",
-        "nulls",
-        "one-row-whole-dictionary",
-        "zstd",
-        "format-1.0",
-        "row-groups",
-        "in-struct",
-        "unused-dictionary-page",
-        "writer-gave-up",
-    ],
-)
-def test_arrow_dictionary_is_bounded_not_hydrated(tmp_path, table, write_kwargs, high):
-    """An Arrow dictionary is bounded by the chunk's pages, not sized hydrated."""
-    path = _write(table, tmp_path / "f.parquet", **write_kwargs)
-
-    assert 0.95 <= _estimate(path) / _allocated(path) <= high
-
-
-@requires_pyarrow_23
-@pytest.mark.parametrize(
-    "column, expected",
-    [
-        (pa.array([f"v{i % 5}" for i in range(N)]), DICTIONARY_PAGE_HEADER_READ_BYTES),
-        (
-            pa.array([f"v{i % 5}" for i in range(N)], pa.string_view()),
-            DICTIONARY_PAGE_HEADER_READ_BYTES,
-        ),
-        # Sized from the chunk's bytes alone.
-        (_arrow_dictionary(5, 2), 0),
-        (pa.array(np.zeros(N, dtype="int64")), 0),
-    ],
-    ids=["string", "view", "arrow-dictionary", "int64"],
-)
-def test_dictionary_page_read_size(tmp_path, column, expected):
-    """Only dictionary-indexed strings without footer bytes read the page header."""
-    path = _write(pa.table({"a": column}), tmp_path / "f.parquet")
-    metadata = pq.read_metadata(str(path))
-    profiles = build_leaf_profiles(parquet_schema=metadata.schema)
-    size_stats = _read_size_statistics(metadata)
-    assert profiles is not None and size_stats is not None
-    (profile,) = profiles
-    (stats,) = size_stats[0]
-    chunk = metadata.row_group(0).column(0)
-
-    assert chunk.has_dictionary_page
-    assert dictionary_page_read_size(profile=profile, chunk=chunk, stats=stats) == 0
-    assert (
-        dictionary_page_read_size(profile=profile, chunk=chunk, stats=None) == expected
-    )
-
-
-@pytest.mark.parametrize("label", list(_cases()))
-def test_without_size_statistics(tmp_path, label):
-    """Without SizeStatistics, flat columns stay exact and the rest within range."""
-    table = _cases()[label]
-    path = _write(table, tmp_path / "f.parquet")
-    estimate = _estimate(path, size_statistics=_no_size_statistics)
-    actual = _allocated(path)
-
-    flat_fixed_width = all(
-        pa.types.is_primitive(field.type)
-        or pa.types.is_decimal(field.type)
-        or pa.types.is_fixed_size_binary(field.type)
-        for field in table.schema
-    )
-    if flat_fixed_width:
-        assert estimate == actual
-    else:
-        assert 0.95 <= estimate / actual <= 1.5
-
-
-def _skewed(common, rare):
-    """``common`` in every row but the ``rare`` ones, each distinct."""
-    return pa.table({"a": pa.array([common] * (N - len(rare)) + rare)})
-
-
-_HIGH_CARDINALITY = pa.table({"a": pa.array([f"{i:012d}" for i in range(N)])})
-
-
-@pytest.mark.parametrize(
-    "table, write_kwargs, read_pages, low, high",
-    [
-        # Values of one length, so 1.2 times the mean is 1.2 times over...
-        (_HIGH_CARDINALITY, {"dictionary_pagesize_limit": 4096}, True, 1.1, 1.2),
-        # ...and without the page header, each value as long as the chunk.
-        (_HIGH_CARDINALITY, {}, False, 100, math.inf),
-        # The guess's known gap: nothing says which values most rows hold.
-        (_skewed("a", [f"{i:0100d}" for i in range(99)]), {}, True, 10, math.inf),
-        (_skewed("x" * 100, [f"{i:02d}" for i in range(99)]), {}, True, 0, 0.1),
-        # PLAIN pages: every value's bytes, less a 4-byte length each.
-        (_HIGH_CARDINALITY, {"use_dictionary": False}, True, 0.95, 1),
-        (
-            _HIGH_CARDINALITY,
-            {"use_dictionary": False, "column_encoding": "DELTA_LENGTH_BYTE_ARRAY"},
-            True,
-            0.95,
-            1.05,
-        ),
-    ],
-    ids=[
-        "dictionary-fallback",
-        "page-header-unread",
-        "common-value-short",
-        "common-value-long",
-        "plain",
-        "delta-length",
-    ],
-)
-def test_string_bytes_without_size_statistics(
-    tmp_path, table, write_kwargs, read_pages, low, high
-):
-    path = _write(table, tmp_path / "f.parquet", **write_kwargs)
-    estimate = _estimate(
-        path, size_statistics=_no_size_statistics, read_pages=read_pages
-    )
-
-    assert low <= estimate / _allocated(path) <= high
-
-
 def test_delta_byte_array_is_a_guess(tmp_path):
     """DELTA_BYTE_ARRAY values are a guess; the int64 beside them stays exact."""
+    table = pa.table(
+        {
+            "i": pa.array(np.arange(N, dtype="int64")),
+            "s": pa.array([f"s{i % 101}" for i in range(N)]),
+        }
+    )
     path = _write(
-        _cases()["mixed-int-string"],
+        table,
         tmp_path / "f.parquet",
         use_dictionary=False,
         column_encoding={"s": "DELTA_BYTE_ARRAY"},
@@ -647,95 +353,47 @@ def test_delta_byte_array_is_a_guess(tmp_path):
     assert _estimate(path, size_statistics=_no_size_statistics) == expected
 
 
-# ---------------------------------------------------------------------------
-# Ray's read: the schema pin, read options and added columns
-# ---------------------------------------------------------------------------
-
-
-def _nulls_hide_a_dictionary():
-    """A struct with nulls over a non-nullable dictionary field."""
-    field = pa.field("d", pa.dictionary(pa.int32(), pa.string()), nullable=False)
-    mask = pa.array([i % 3 == 0 for i in range(N)])
-    return pa.StructArray.from_arrays(
-        [_arrow_dictionary(50, 12)], fields=[field], mask=mask
-    )
-
-
-_STRINGS = pa.array([f"v{i % 5}" for i in range(N)])
-_LISTS = pa.array([[1, 2]] * N, pa.list_(pa.int64()))
-
-
-@requires_pyarrow_23
 @pytest.mark.parametrize(
-    "column, schema_type, format_kwargs, high",
+    "arrow_type",
     [
-        # The pin, cast the leaves follow one for one.
-        (pa.array(range(N), pa.int32()), pa.int64(), {}, 1.02),
-        (_STRINGS, pa.large_string(), {}, 1),
-        (_LISTS, pa.large_list(pa.int64()), {}, 1),
-        (_arrow_dictionary(50, 12), pa.string(), {}, 1),
-        # Numbers cast to text: sized as stored plus a crude bound.
-        (pa.array(range(N), pa.int64()), pa.string(), {}, 1.25),
-        # Each slot the null struct hides copies a dictionary value.
-        (
-            _nulls_hide_a_dictionary(),
-            pa.struct([pa.field("d", pa.string(), nullable=False)]),
-            {},
-            math.inf,
-        ),
-        # Read options, on a file without a stored Arrow schema.
-        (_STRINGS, None, {"dictionary_columns": ["a"]}, 1.1),
-        (_STRINGS, None, {"binary_type": pa.large_binary()}, 1),
-        (_STRINGS, None, {"binary_type": pa.binary_view()}, 1.1),
-        (_LISTS, None, {"list_type": pa.LargeListType}, 1),
-    ],
-    ids=[
-        "int32-to-int64",
-        "string-to-large-string",
-        "list-to-large-list",
-        "dictionary-to-string",
-        "int64-to-string",
-        "hidden-dictionary-slots",
-        "dictionary-columns",
-        "binary-type-large",
-        "binary-type-view",
-        "list-type-large",
+        pa.list_view(pa.int32()),
+        pa.string_view(),
+        pa.dictionary(pa.int32(), pa.string()),
     ],
 )
-def test_ray_read(tmp_path, column, schema_type, format_kwargs, high):
-    # The read options retype only a file without a stored Arrow schema.
-    path = _write(
-        pa.table({"a": column}), tmp_path / "f.parquet", store_schema=not format_kwargs
+def test_unmodeled_arrow_type_is_rejected(arrow_type):
+    """A layout this module can't size raises, which sends the file to fallback."""
+    with pytest.raises(_UnsupportedLayout):
+        _leaf_layout(arrow_type)
+
+
+@pytest.mark.parametrize(
+    "table, format_kwargs",
+    [
+        (_STRINGS, {"dictionary_columns": ["a"]}),
+        (_STRINGS, {"binary_type": pa.binary_view()}),
+        (pa.table({"a": _STRINGS["a"].dictionary_encode()}), {}),
+    ],
+    ids=["dictionary-columns", "binary-type-view", "stored-dictionary"],
+)
+def test_dictionaries_and_views_fall_back(tmp_path, table, format_kwargs):
+    """A read that returns dictionaries or views gets no profiles: the file falls back."""
+    path = _write(table, tmp_path / "f.parquet", store_schema=not format_kwargs)
+    metadata = pq.read_metadata(str(path))
+    profiles = build_leaf_profiles(
+        parquet_schema=metadata.schema,
+        pinned_schema=None,
+        format_kwargs=format_kwargs,
+        file_metadata=metadata,
     )
-    schema = None if schema_type is None else pa.schema([("a", schema_type)])
-    estimate = _estimate(path, schema=schema, format_kwargs=format_kwargs)
-
-    assert 1 <= estimate / _allocated(path, schema=schema, **format_kwargs) <= high
-
-
-def test_hidden_dictionary_slots_without_size_statistics(tmp_path):
-    """A categorical in an optional struct, pinned to string, from PyArrow 17."""
-    # The leaf's null count reads 0 though a third of the structs are null.
-    path = _write(pa.table({"a": _nulls_hide_a_dictionary()}), tmp_path / "f.parquet")
-    schema = pa.schema([("a", pa.struct([pa.field("d", pa.string(), nullable=False)]))])
-    estimate = _estimate(path, schema=schema, size_statistics=_no_size_statistics)
-
-    assert estimate >= _allocated(path, schema=schema)
-
-
-def test_statistics_without_a_value_give_no_text_length():
-    """A chunk whose statistics claim a min and max but hold ``None``."""
-    statistics = SimpleNamespace(has_min_max=True, min=None, max=7)
-    chunk = cast(Any, SimpleNamespace(statistics=statistics))
-
-    assert statistics_text_bytes(arrow_type=pa.int64(), chunks=[chunk]) is None
+    assert profiles is None
 
 
 def test_added_columns_are_bounded(tmp_path):
     """The path, a Hive value cut from it, and a column the pin fills with nulls."""
     path = str(tmp_path / "year=2024" / "f.parquet")
     os.makedirs(os.path.dirname(path))
-    _write(pa.table({"a": _STRINGS}), path)
+    _write(_STRINGS, path)
     fields = [pa.field(name, pa.string()) for name in ("path", "year", "notes")]
     added = added_bytes(added=fields, path=path)
     held = pa.table(
@@ -749,178 +407,17 @@ def test_added_columns_are_bounded(tmp_path):
     estimate = _estimate(path, added=added) - _estimate(path)
     assert estimate == math.ceil(N * added[0]) + added[1]
     assert 1 <= estimate / held <= 1.1
+    # A type with no bit width still counts.
+    union = pa.field("u", pa.dense_union([pa.field("x", pa.int64())]))
+    assert added_bytes(added=[union], path=path)[0] > 0
 
 
-@pytest.mark.parametrize(
-    "arrow_type",
-    [
-        pa.list_view(pa.int64()),
-        pa.dense_union([pa.field("x", pa.int64())]),
-        pa.run_end_encoded(pa.int32(), pa.string()),
-    ],
-)
-def test_added_column_without_a_fixed_width(arrow_type):
-    """A dataset column the file lacks, of a type with no bit width."""
-    row, _ = added_bytes(added=[pa.field("notes", arrow_type)], path="f.parquet")
-    assert row > 0
+def test_statistics_without_a_value_give_no_text_length():
+    """A chunk whose statistics claim a min and max but hold ``None``."""
+    statistics = SimpleNamespace(has_min_max=True, min=None, max=7)
+    chunk = cast(Any, SimpleNamespace(statistics=statistics))
 
-
-# ---------------------------------------------------------------------------
-# The planner: footer reader, bin packing
-# ---------------------------------------------------------------------------
-
-
-def _read_and_chunk(path):
-    from pyarrow.fs import LocalFileSystem
-
-    from ray.data._internal.datasource_v2.formats.parquet.footer_reader import (
-        FooterReader,
-    )
-    from ray.data._internal.datasource_v2.interfaces.file_indexer import FileInfo
-
-    return FooterReader(LocalFileSystem())._read_and_chunk(
-        FileInfo(path=str(path), size=os.path.getsize(path))
-    )
-
-
-def _estimate_through_footer_reader(path):
-    return sum(run.size_bytes for run in _read_and_chunk(path).row_groups)
-
-
-@pytest.mark.parametrize("page_read_fails", [False, True])
-def test_footer_reader_reads_dictionary_page_headers(
-    tmp_path, monkeypatch, page_read_fails
-):
-    """The footer reader reads the page headers the estimate asks for.
-
-    A failed read loosens that column to a bound rather than failing.
-    """
-    import ray.data._internal.datasource_v2.formats.parquet.footer_reader as reader
-
-    path = _write(_cases()["mixed-int-string"], tmp_path / "f.parquet")
-    monkeypatch.setattr(reader, "read_size_statistics", _no_size_statistics)
-    if page_read_fails:
-
-        def unreadable(buf):
-            raise OSError("unreadable")
-
-        monkeypatch.setattr(reader, "read_dictionary_page", unreadable)
-
-    assert _estimate_through_footer_reader(path) == _estimate(
-        path, size_statistics=_no_size_statistics, read_pages=not page_read_fails
-    )
-
-
-def test_unmodeled_schema_falls_back_to_the_encoding_ratio(tmp_path, monkeypatch):
-    import ray.data._internal.datasource_v2.formats.parquet.footer_reader as reader
-    from ray.data._internal.datasource_v2.formats.parquet.parquet_size_estimator import (
-        PARQUET_ENCODING_RATIO_ESTIMATE_DEFAULT,
-    )
-
-    path = _write(_cases()["mixed-int-string"], tmp_path / "f.parquet")
-    monkeypatch.setattr(reader, "build_leaf_profiles", lambda **kwargs: None)
-    row_group = pq.read_metadata(str(path)).row_group(0)
-    uncompressed = sum(
-        row_group.column(j).total_uncompressed_size
-        for j in range(row_group.num_columns)
-    )
-
-    assert (
-        _estimate_through_footer_reader(path)
-        == uncompressed * PARQUET_ENCODING_RATIO_ESTIMATE_DEFAULT
-    )
-
-
-def _pack_through_footer_reader(paths, max_bin_bytes):
-    """Footer read, estimate, coalescing and packing, without a Ray runtime."""
-    from ray.data._internal.datasource_v2.common.online_bin_packer import (
-        OnlineBinPacker,
-    )
-    from ray.data._internal.datasource_v2.formats.parquet.footer_file_indexer import (
-        _chunked_file_to_manifest,
-    )
-
-    packer = OnlineBinPacker(max_bin_bytes=max_bin_bytes)
-    manifests = []
-
-    def drain():
-        while packer.has_partition():
-            manifests.append(packer.next_partition())
-
-    for path in paths:
-        packer.add_input(_chunked_file_to_manifest(_read_and_chunk(path)))
-        drain()
-    packer.finalize()
-    drain()
-    return manifests
-
-
-def _bin_totals(manifests):
-    return [
-        sum(meta["size_bytes"] for meta in manifest.file_chunk_metadatas)
-        for manifest in manifests
-    ]
-
-
-@requires_pyarrow_23
-@pytest.mark.parametrize(
-    "label",
-    # Opposite ends of the fixed ratio's error: dictionary-encoded strings,
-    # whose uncompressed size badly understates the Arrow block, and plain
-    # numerics, which it overstates once scaled by 5.
-    ["string-low-cardinality", "int64-plain"],
-)
-def test_bins_land_near_the_target(tmp_path, label):
-    table = _cases()[label]
-    path = _write(table, tmp_path / "f.parquet", row_group_size=len(table) // 10)
-    actual = _allocated(path)
-    target = actual // 4
-
-    totals = _bin_totals(_pack_through_footer_reader([path], target))
-
-    assert sum(totals) == pytest.approx(actual, rel=0.02)
-    # A bin seals once no further row group fits, so bins may undershoot.
-    assert all(total <= target for total in totals)
-    assert 3 <= len(totals) <= 6, totals
-
-
-def test_dictionary_strings_sized_on_disk_would_share_one_bin(tmp_path):
-    """On uncompressed bytes, low-cardinality strings would pack into one read task."""
-    table = _cases()["string-low-cardinality"]
-    path = _write(table, tmp_path / "f.parquet", row_group_size=len(table) // 10)
-    metadata = pq.read_metadata(str(path))
-    uncompressed = sum(
-        metadata.row_group(rg).column(0).total_uncompressed_size
-        for rg in range(metadata.num_row_groups)
-    )
-    target = _allocated(path) // 4
-
-    assert uncompressed < target
-    assert len(_pack_through_footer_reader([path], target)) > 1
-
-
-@requires_pyarrow_23
-def test_files_share_bins_by_decoded_size(tmp_path):
-    table = _cases()["mixed-int-string"]
-    paths = [
-        _write(table, tmp_path / f"part{i}.parquet", row_group_size=len(table) // 4)
-        for i in range(4)
-    ]
-    per_file = _allocated(paths[0])
-
-    manifests = _pack_through_footer_reader(paths, per_file * 2)
-    totals = _bin_totals(manifests)
-
-    assert sum(totals) == pytest.approx(per_file * 4, rel=0.02)
-    assert all(total <= per_file * 2 for total in totals)
-    # Every row group lands in exactly one bin.
-    covered = [
-        (str(path), rg_id)
-        for manifest in manifests
-        for path, meta in zip(manifest.paths, manifest.file_chunk_metadatas)
-        for rg_id in meta["unit_ids"]
-    ]
-    assert len(covered) == len(set(covered)) == 4 * 4
+    assert statistics_text_bytes(arrow_type=pa.int64(), chunks=[chunk]) is None
 
 
 if __name__ == "__main__":

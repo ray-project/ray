@@ -75,8 +75,8 @@ def _chunked_file_to_manifest(chunked_file: ChunkedFile) -> FileManifest:
     """One listing row per row-group run of a file.
 
     The row is the run's ``FileChunk`` with its footer stats (``size_bytes`` is
-    the projection-scoped decoded size the footer reader estimates), so a
-    downstream partitioner
+    PyArrow's peak memory decoding the run, as the footer reader estimates
+    it), so a downstream partitioner
     can group runs into read tasks -- and split them at row-group boundaries --
     without re-reading the footer. Grouping is deliberately *not* done here:
     listing discovers, the partitioner groups.
