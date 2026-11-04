@@ -61,30 +61,27 @@ def split_and_zero_pad(
     items), these will be split accordingly along their axis=0 to yield the returned
     structure described above.
 
-    .. testcode::
-
-        from ray.rllib.utils.postprocessing.zero_padding import (
-            BatchedNdArray,
-            split_and_zero_pad,
-        )
-        from ray.rllib.utils.test_utils import check
-
-        # Simple case: `item_list` contains individual floats.
-        check(
-            split_and_zero_pad([0, 1, 2, 3, 4, 5, 6, 7], 5),
-            [[0, 1, 2, 3, 4], [5, 6, 7, 0, 0]],
-        )
-
-        # `item_list` contains BatchedNdArray (ndarrays that explicitly declare they
-        # have a batch axis=0).
-        check(
-            split_and_zero_pad([
-                BatchedNdArray([0, 1]),
-                BatchedNdArray([2, 3, 4, 5]),
-                BatchedNdArray([6, 7, 8]),
-            ], 5),
-            [[0, 1, 2, 3, 4], [5, 6, 7, 8, 0]],
-        )
+    Examples:
+        >>> from ray.rllib.utils.postprocessing.zero_padding import (
+        ...     BatchedNdArray,
+        ...     split_and_zero_pad,
+        ... )
+        >>> from ray.rllib.utils.test_utils import check
+        >>> # Simple case: `item_list` contains individual floats.
+        >>> check(
+        ...     split_and_zero_pad([0, 1, 2, 3, 4, 5, 6, 7], 5),
+        ...     [[0, 1, 2, 3, 4], [5, 6, 7, 0, 0]],
+        ... )
+        >>> # `item_list` contains BatchedNdArray (ndarrays that explicitly declare they
+        >>> # have a batch axis=0).
+        >>> check(
+        ...     split_and_zero_pad([
+        ...         BatchedNdArray([0, 1]),
+        ...         BatchedNdArray([2, 3, 4, 5]),
+        ...         BatchedNdArray([6, 7, 8]),
+        ...     ], 5),
+        ...     [[0, 1, 2, 3, 4], [5, 6, 7, 8, 0]],
+        ... )
 
     Args:
         item_list: A list of individual items or BatchedNdArrays to be split into

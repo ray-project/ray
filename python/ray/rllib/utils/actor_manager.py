@@ -81,17 +81,14 @@ class RemoteCallResults:
     CallResults provides convenient APIs to iterate over the results
     while skipping errors, etc.
 
-    .. testcode::
-        :skipif: True
-
-        manager = FaultTolerantActorManager(
-            actors, max_remote_requests_in_flight_per_actor=2,
-        )
-        results = manager.foreach_actor(lambda w: w.call())
-
-        # Iterate over all results ignoring errors.
-        for result in results.ignore_errors():
-            print(result.get())
+    Examples:
+        >>> manager = FaultTolerantActorManager(  # doctest: +SKIP_EXAMPLE
+        ...     actors, max_remote_requests_in_flight_per_actor=2,
+        ... )
+        >>> results = manager.foreach_actor(lambda w: w.call())
+        >>> # Iterate over all results ignoring errors.
+        >>> for result in results.ignore_errors():
+        ...     print(result.get())
     """
 
     class _Iterator:

@@ -312,38 +312,21 @@ class MeanStdFilter(Filter):
             *args: Ignored, for compatibility with the `Filter` API.
             **kwargs: Ignored, for compatibility with the `Filter` API.
 
-        .. testcode::
-            :skipif: True
-
-            a = MeanStdFilter(())
-            a(1)
-            a(2)
-            print([a.running_stats.n, a.running_stats.mean, a.buffer.n])
-
-        .. testoutput::
-
+        Examples:
+            >>> a = MeanStdFilter(())  # doctest: +SKIP_EXAMPLE
+            >>> a(1)
+            >>> a(2)
+            >>> print([a.running_stats.n, a.running_stats.mean, a.buffer.n])
             [2, 1.5, 2]
 
-        .. testcode::
-            :skipif: True
-
-            b = MeanStdFilter(())
-            b(10)
-            a.apply_changes(b, with_buffer=False)
-            print([a.running_stats.n, a.running_stats.mean, a.buffer.n])
-
-        .. testoutput::
-
+            >>> b = MeanStdFilter(())
+            >>> b(10)
+            >>> a.apply_changes(b, with_buffer=False)
+            >>> print([a.running_stats.n, a.running_stats.mean, a.buffer.n])
             [3, 4.333333333333333, 2]
 
-        .. testcode::
-            :skipif: True
-
-            a.apply_changes(b, with_buffer=True)
-            print([a.running_stats.n, a.running_stats.mean, a.buffer.n])
-
-        .. testoutput::
-
+            >>> a.apply_changes(b, with_buffer=True)
+            >>> print([a.running_stats.n, a.running_stats.mean, a.buffer.n])
             [4, 5.75, 1]
         """
         tree.map_structure(
@@ -364,37 +347,23 @@ class MeanStdFilter(Filter):
     def sync(self, other: "MeanStdFilter") -> None:
         """Syncs all fields together from other filter.
 
-        .. testcode::
-            :skipif: True
+        Args:
+            other: The filter to copy all fields from.
 
-            a = MeanStdFilter(())
-            a(1)
-            a(2)
-            print([a.running_stats.n, a.running_stats.mean, a.buffer.n])
-
-        .. testoutput::
-
+        Examples:
+            >>> a = MeanStdFilter(())  # doctest: +SKIP_EXAMPLE
+            >>> a(1)
+            >>> a(2)
+            >>> print([a.running_stats.n, a.running_stats.mean, a.buffer.n])
             [2, array(1.5), 2]
 
-        .. testcode::
-            :skipif: True
-
-            b = MeanStdFilter(())
-            b(10)
-            print([b.running_stats.n, b.running_stats.mean, b.buffer.n])
-
-        .. testoutput::
-
+            >>> b = MeanStdFilter(())
+            >>> b(10)
+            >>> print([b.running_stats.n, b.running_stats.mean, b.buffer.n])
             [1, array(10.0), 1]
 
-        .. testcode::
-            :skipif: True
-
-            a.sync(b)
-            print([a.running_stats.n, a.running_stats.mean, a.buffer.n])
-
-        .. testoutput::
-
+            >>> a.sync(b)
+            >>> print([a.running_stats.n, a.running_stats.mean, a.buffer.n])
             [1, array(10.0), 1]
         """
         self.demean = other.demean
