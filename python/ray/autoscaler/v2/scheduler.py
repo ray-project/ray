@@ -241,20 +241,14 @@ class UnschedulableRequestCache:
 RequestRun = Tuple[ResourceRequest, int]
 
 
-def _append_request_run(
-    runs: List[RequestRun], request: ResourceRequest, count: int
-) -> None:
-    if runs and runs[-1][0] is request:
-        runs[-1] = (request, runs[-1][1] + count)
-    else:
-        runs.append((request, count))
-
-
 def _group_identical_requests(requests: List[ResourceRequest]) -> List[RequestRun]:
     """Group consecutive occurrences of the same request object into runs."""
     runs: List[RequestRun] = []
     for r in requests:
-        _append_request_run(runs, r, 1)
+        if runs and runs[-1][0] is r:
+            runs[-1] = (r, runs[-1][1] + 1)
+        else:
+            runs.append((r, 1))
     return runs
 
 
@@ -264,10 +258,6 @@ def _expand_request_runs(runs: List[RequestRun]) -> List[ResourceRequest]:
     for r, count in runs:
         requests.extend([r] * count)
     return requests
-
-
-def _count_requests(runs: List[RequestRun]) -> int:
-    return sum(count for _, count in runs)
 
 
 class SchedulingNodeStatus(Enum):
@@ -676,14 +666,17 @@ class SchedulingNode:
                 sk = r.SerializeToString(deterministic=True)
 
             if unfittable_cache.contains(sk):
-                _append_request_run(unschedulable_runs, r, count)
+                unschedulable_runs.append((r, count))
                 continue
 
             # Record the label count to detect if this node's state mutates.
             # This is to support requests becoming schedulable due to anti-affinity.
             num_labels_before = len(self.labels)
 
-            scheduled = self._try_schedule_run(r, count, resource_request_source)
+            if count == 1:
+                scheduled = int(self._try_schedule_one(r, resource_request_source))
+            else:
+                scheduled = self._try_schedule_run(r, count, resource_request_source)
 
             # If a scheduled copy added a label to the node, it might have expanded
             # feasibility so we invalidate the unavailable cache. Copies are tried
@@ -694,7 +687,7 @@ class SchedulingNode:
 
             if scheduled < count:
                 unfittable_cache.add(sk)
-                _append_request_run(unschedulable_runs, r, count - scheduled)
+                unschedulable_runs.append((r, count - scheduled))
 
         score = self._compute_score(resource_request_source)
 
@@ -749,7 +742,7 @@ class SchedulingNode:
                 _inplace_subtract(available, resources)
                 extra += 1
 
-        self.sched_requests[resource_request_source].extend([request] * extra)
+        self.get_sched_requests(resource_request_source).extend([request] * extra)
         return scheduled + extra
 
     def _compute_score(
@@ -2110,7 +2103,6 @@ class ResourceDemandScheduler(IResourceScheduler):
         # select one best node to return, we skip the heavy deepcopy/simulation
         # overhead for duplicates
         node_cache = NodeStateCache(resource_request_source)
-        num_requests = _count_requests(requests)
 
         # Iterate through each node and modify the node's available resources
         # if the requests are schedulable.
@@ -2125,7 +2117,10 @@ class ResourceDemandScheduler(IResourceScheduler):
                 requests, resource_request_source, shape_keys
             )
 
-            if _count_requests(remaining) == num_requests:
+            # Every scheduled copy is added to the node's scheduled requests.
+            if len(node_copy.get_sched_requests(resource_request_source)) == len(
+                node.get_sched_requests(resource_request_source)
+            ):
                 # The node cannot schedule any of the requests.
                 continue
 
