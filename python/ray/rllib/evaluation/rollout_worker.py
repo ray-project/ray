@@ -159,52 +159,46 @@ class RolloutWorker(ParallelIteratorWorker, EnvRunner):
     This class supports vectorized and multi-agent policy evaluation (e.g.,
     VectorEnv, MultiAgentEnv, etc.)
 
-    .. testcode::
-        :skipif: True
-
-        # Create a rollout worker and using it to collect experiences.
-        import gymnasium as gym
-        from ray.rllib.evaluation.rollout_worker import RolloutWorker
-        from ray.rllib.algorithms.ppo.ppo_tf_policy import PPOTF1Policy
-        worker = RolloutWorker(
-          env_creator=lambda _: gym.make("CartPole-v1"),
-          default_policy_class=PPOTF1Policy)
-        print(worker.sample())
-
-        # Creating a multi-agent rollout worker
-        from gymnasium.spaces import Discrete, Box
-        import random
-        MultiAgentTrafficGrid = ...
-        worker = RolloutWorker(
-          env_creator=lambda _: MultiAgentTrafficGrid(num_cars=25),
-          config=AlgorithmConfig().multi_agent(
-            policies={
-              # Use an ensemble of two policies for car agents
-              "car_policy1":
-                (PGTFPolicy, Box(...), Discrete(...),
-                 AlgorithmConfig.overrides(gamma=0.99)),
-              "car_policy2":
-                (PGTFPolicy, Box(...), Discrete(...),
-                 AlgorithmConfig.overrides(gamma=0.95)),
-              # Use a single shared policy for all traffic lights
-              "traffic_light_policy":
-                (PGTFPolicy, Box(...), Discrete(...), {}),
-            },
-            policy_mapping_fn=(
-              lambda agent_id, episode, **kwargs:
-              random.choice(["car_policy1", "car_policy2"])
-              if agent_id.startswith("car_") else "traffic_light_policy"),
-            ),
-        )
-        print(worker.sample())
-
-    .. testoutput::
-
+    Examples:
+        >>> # Create a rollout worker and using it to collect experiences.
+        >>> import gymnasium as gym  # doctest: +SKIP_EXAMPLE
+        >>> from ray.rllib.evaluation.rollout_worker import RolloutWorker
+        >>> from ray.rllib.algorithms.ppo.ppo_tf_policy import PPOTF1Policy
+        >>> worker = RolloutWorker(
+        ...   env_creator=lambda _: gym.make("CartPole-v1"),
+        ...   default_policy_class=PPOTF1Policy)
+        >>> print(worker.sample())
         SampleBatch({
             "obs": [[...]], "actions": [[...]], "rewards": [[...]],
             "terminateds": [[...]], "truncateds": [[...]], "new_obs": [[...]]}
         )
 
+        >>> # Creating a multi-agent rollout worker
+        >>> from gymnasium.spaces import Discrete, Box
+        >>> import random
+        >>> MultiAgentTrafficGrid = ...
+        >>> worker = RolloutWorker(
+        ...   env_creator=lambda _: MultiAgentTrafficGrid(num_cars=25),
+        ...   config=AlgorithmConfig().multi_agent(
+        ...     policies={
+        ...       # Use an ensemble of two policies for car agents
+        ...       "car_policy1":
+        ...         (PGTFPolicy, Box(...), Discrete(...),
+        ...          AlgorithmConfig.overrides(gamma=0.99)),
+        ...       "car_policy2":
+        ...         (PGTFPolicy, Box(...), Discrete(...),
+        ...          AlgorithmConfig.overrides(gamma=0.95)),
+        ...       # Use a single shared policy for all traffic lights
+        ...       "traffic_light_policy":
+        ...         (PGTFPolicy, Box(...), Discrete(...), {}),
+        ...     },
+        ...     policy_mapping_fn=(
+        ...       lambda agent_id, episode, **kwargs:
+        ...       random.choice(["car_policy1", "car_policy2"])
+        ...       if agent_id.startswith("car_") else "traffic_light_policy"),
+        ...     ),
+        ... )
+        >>> print(worker.sample())
         MultiAgentBatch({
             "car_policy1": SampleBatch(...),
             "car_policy2": SampleBatch(...),
@@ -633,21 +627,16 @@ class RolloutWorker(ParallelIteratorWorker, EnvRunner):
         Returns:
             A columnar batch of experiences (e.g., tensors) or a MultiAgentBatch.
 
-        .. testcode::
-            :skipif: True
-
-            import gymnasium as gym
-            from ray.rllib.evaluation.rollout_worker import RolloutWorker
-            from ray.rllib.algorithms.ppo.ppo_tf_policy import PPOTF1Policy
-            worker = RolloutWorker(
-              env_creator=lambda _: gym.make("CartPole-v1"),
-              default_policy_class=PPOTF1Policy,
-              config=AlgorithmConfig(),
-            )
-            print(worker.sample())
-
-        .. testoutput::
-
+        Examples:
+            >>> import gymnasium as gym  # doctest: +SKIP_EXAMPLE
+            >>> from ray.rllib.evaluation.rollout_worker import RolloutWorker
+            >>> from ray.rllib.algorithms.ppo.ppo_tf_policy import PPOTF1Policy
+            >>> worker = RolloutWorker(
+            ...   env_creator=lambda _: gym.make("CartPole-v1"),
+            ...   default_policy_class=PPOTF1Policy,
+            ...   config=AlgorithmConfig(),
+            ... )
+            >>> print(worker.sample())
             SampleBatch({"obs": [...], "action": [...], ...})
         """
         if self.config.fake_sampler and self.last_batch is not None:
@@ -736,19 +725,14 @@ class RolloutWorker(ParallelIteratorWorker, EnvRunner):
             A columnar batch of experiences (e.g., tensors) and the
                 size of the collected batch.
 
-        .. testcode::
-            :skipif: True
-
-            import gymnasium as gym
-            from ray.rllib.evaluation.rollout_worker import RolloutWorker
-            from ray.rllib.algorithms.ppo.ppo_tf_policy import PPOTF1Policy
-            worker = RolloutWorker(
-              env_creator=lambda _: gym.make("CartPole-v1"),
-              default_policy_class=PPOTFPolicy)
-            print(worker.sample_with_count())
-
-        .. testoutput::
-
+        Examples:
+            >>> import gymnasium as gym  # doctest: +SKIP_EXAMPLE
+            >>> from ray.rllib.evaluation.rollout_worker import RolloutWorker
+            >>> from ray.rllib.algorithms.ppo.ppo_tf_policy import PPOTF1Policy
+            >>> worker = RolloutWorker(
+            ...   env_creator=lambda _: gym.make("CartPole-v1"),
+            ...   default_policy_class=PPOTFPolicy)
+            >>> print(worker.sample_with_count())
             (SampleBatch({"obs": [...], "action": [...], ...}), 3)
         """
         batch = self.sample()
@@ -766,17 +750,15 @@ class RolloutWorker(ParallelIteratorWorker, EnvRunner):
         Returns:
             Dictionary of extra metadata from compute_gradients().
 
-        .. testcode::
-            :skipif: True
-
-            import gymnasium as gym
-            from ray.rllib.evaluation.rollout_worker import RolloutWorker
-            from ray.rllib.algorithms.ppo.ppo_tf_policy import PPOTF1Policy
-            worker = RolloutWorker(
-              env_creator=lambda _: gym.make("CartPole-v1"),
-              default_policy_class=PPOTF1Policy)
-            batch = worker.sample()
-            info = worker.learn_on_batch(samples)
+        Examples:
+            >>> import gymnasium as gym  # doctest: +SKIP_EXAMPLE
+            >>> from ray.rllib.evaluation.rollout_worker import RolloutWorker
+            >>> from ray.rllib.algorithms.ppo.ppo_tf_policy import PPOTF1Policy
+            >>> worker = RolloutWorker(
+            ...   env_creator=lambda _: gym.make("CartPole-v1"),
+            ...   default_policy_class=PPOTF1Policy)
+            >>> batch = worker.sample()
+            >>> info = worker.learn_on_batch(samples)
         """
         if log_once("learn_on_batch"):
             logger.info(
@@ -893,17 +875,15 @@ class RolloutWorker(ParallelIteratorWorker, EnvRunner):
             Note that the first return value (grads) can be applied as is to a
             compatible worker using the worker's `apply_gradients()` method.
 
-        .. testcode::
-            :skipif: True
-
-            import gymnasium as gym
-            from ray.rllib.evaluation.rollout_worker import RolloutWorker
-            from ray.rllib.algorithms.ppo.ppo_tf_policy import PPOTF1Policy
-            worker = RolloutWorker(
-              env_creator=lambda _: gym.make("CartPole-v1"),
-              default_policy_class=PPOTF1Policy)
-            batch = worker.sample()
-            grads, info = worker.compute_gradients(samples)
+        Examples:
+            >>> import gymnasium as gym  # doctest: +SKIP_EXAMPLE
+            >>> from ray.rllib.evaluation.rollout_worker import RolloutWorker
+            >>> from ray.rllib.algorithms.ppo.ppo_tf_policy import PPOTF1Policy
+            >>> worker = RolloutWorker(
+            ...   env_creator=lambda _: gym.make("CartPole-v1"),
+            ...   default_policy_class=PPOTF1Policy)
+            >>> batch = worker.sample()
+            >>> grads, info = worker.compute_gradients(samples)
         """
         if log_once("compute_gradients"):
             logger.info("Compute gradients on:\n\n{}\n".format(summarize(samples)))
@@ -964,18 +944,16 @@ class RolloutWorker(ParallelIteratorWorker, EnvRunner):
                 mapping PolicyIDs to the respective model gradients
                 structs.
 
-        .. testcode::
-            :skipif: True
-
-            import gymnasium as gym
-            from ray.rllib.evaluation.rollout_worker import RolloutWorker
-            from ray.rllib.algorithms.ppo.ppo_tf_policy import PPOTF1Policy
-            worker = RolloutWorker(
-              env_creator=lambda _: gym.make("CartPole-v1"),
-              default_policy_class=PPOTF1Policy)
-            samples = worker.sample()
-            grads, info = worker.compute_gradients(samples)
-            worker.apply_gradients(grads)
+        Examples:
+            >>> import gymnasium as gym  # doctest: +SKIP_EXAMPLE
+            >>> from ray.rllib.evaluation.rollout_worker import RolloutWorker
+            >>> from ray.rllib.algorithms.ppo.ppo_tf_policy import PPOTF1Policy
+            >>> worker = RolloutWorker(
+            ...   env_creator=lambda _: gym.make("CartPole-v1"),
+            ...   default_policy_class=PPOTF1Policy)
+            >>> samples = worker.sample()
+            >>> grads, info = worker.compute_gradients(samples)
+            >>> worker.apply_gradients(grads)
         """
         if log_once("apply_gradients"):
             logger.info("Apply gradients:\n\n{}\n".format(summarize(grads)))
@@ -1466,17 +1444,12 @@ class RolloutWorker(ParallelIteratorWorker, EnvRunner):
         Returns:
             Dict mapping PolicyIDs to ModelWeights.
 
-        .. testcode::
-            :skipif: True
-
-            from ray.rllib.evaluation.rollout_worker import RolloutWorker
-            # Create a RolloutWorker.
-            worker = ...
-            weights = worker.get_weights()
-            print(weights)
-
-        .. testoutput::
-
+        Examples:
+            >>> from ray.rllib.evaluation.rollout_worker import RolloutWorker  # doctest: +SKIP_EXAMPLE
+            >>> # Create a RolloutWorker.
+            >>> worker = ...
+            >>> weights = worker.get_weights()
+            >>> print(weights)
             {"default_policy": {"layer1": array(...), "layer2": ...}}
         """
         if policies is None:
@@ -1512,15 +1485,13 @@ class RolloutWorker(ParallelIteratorWorker, EnvRunner):
                 (in self.weights_seq_no) and in future calls - if the seq no did not
                 change wrt. the last call - will ignore the call to save on performance.
 
-        .. testcode::
-            :skipif: True
-
-            from ray.rllib.evaluation.rollout_worker import RolloutWorker
-            # Create a RolloutWorker.
-            worker = ...
-            weights = worker.get_weights()
-            # Set `global_vars` (timestep) as well.
-            worker.set_weights(weights, {"timestep": 42})
+        Examples:
+            >>> from ray.rllib.evaluation.rollout_worker import RolloutWorker  # doctest: +SKIP_EXAMPLE
+            >>> # Create a RolloutWorker.
+            >>> worker = ...
+            >>> weights = worker.get_weights()
+            >>> # Set `global_vars` (timestep) as well.
+            >>> worker.set_weights(weights, {"timestep": 42})
         """
         # Only update our weights, if no seq no given OR given seq no is different
         # from ours.
@@ -1553,17 +1524,12 @@ class RolloutWorker(ParallelIteratorWorker, EnvRunner):
         Returns:
             The current `self.global_vars` dict of this RolloutWorker.
 
-        .. testcode::
-            :skipif: True
-
-            from ray.rllib.evaluation.rollout_worker import RolloutWorker
-            # Create a RolloutWorker.
-            worker = ...
-            global_vars = worker.get_global_vars()
-            print(global_vars)
-
-        .. testoutput::
-
+        Examples:
+            >>> from ray.rllib.evaluation.rollout_worker import RolloutWorker  # doctest: +SKIP_EXAMPLE
+            >>> # Create a RolloutWorker.
+            >>> worker = ...
+            >>> global_vars = worker.get_global_vars()
+            >>> print(global_vars)
             {"timestep": 424242}
         """
         return self.global_vars
@@ -1583,8 +1549,7 @@ class RolloutWorker(ParallelIteratorWorker, EnvRunner):
             policy_ids: Optional list of Policy IDs to update. If None, will update all
                 policies on the to-be-updated workers.
 
-        .. testcode::
-            :skipif: True
+        .. code-block:: python
 
             worker = ...
             global_vars = worker.set_global_vars(
