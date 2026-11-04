@@ -105,11 +105,11 @@ class EnvContext(dict):
                 keys in `defaults` that don't exist yet in self.
 
         Examples:
-            >>> from ray.rllib.env.env_context import EnvContext  # doctest: +SKIP_EXAMPLE
+            >>> from ray.rllib.env.env_context import EnvContext
             >>> env_ctx = EnvContext({"a": 1, "b": 2}, worker_index=0)
             >>> env_ctx.set_defaults({"a": -42, "c": 3})
-            >>> print(env_ctx)
-            {"a": 1, "b": 2, "c": 3}
+            >>> print(dict(env_ctx))
+            {'a': 1, 'b': 2, 'c': 3}
         """
         for key, value in defaults.items():
             if key not in self:

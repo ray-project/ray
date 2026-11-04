@@ -30,57 +30,28 @@ class PettingZooEnv(MultiAgentEnv):
     mapping agent IDs to individual agents' spaces. Same for `self.observation_space`.
 
     Examples:
-        >>> from pettingzoo.butterfly import prison_v3  # doctest: +SKIP_EXAMPLE
+        >>> from pettingzoo.butterfly import pistonball_v6  # doctest: +SKIP_EXAMPLE
         >>> from ray.rllib.env.wrappers.pettingzoo_env import PettingZooEnv
-        >>> env = PettingZooEnv(prison_v3.env())
+        >>> env = PettingZooEnv(pistonball_v6.env())
         >>> obs, infos = env.reset()
         >>> # only returns the observation for the agent which should be stepping
         >>> print(obs)
-        {
-            'prisoner_0': array([[[0, 0, 0],
-                [0, 0, 0],
-                [0, 0, 0],
-                ...,
-                [0, 0, 0],
-                [0, 0, 0],
-                [0, 0, 0]]], dtype=uint8)
-        }
-
+        {'piston_0': array([[[...]]], shape=(457, 120, 3), dtype=uint8)}
         >>> obs, rewards, terminateds, truncateds, infos = env.step({
-        ...     "prisoner_0": 1
+        ...     "piston_0": env.action_space["piston_0"].sample()
         ... })
         >>> # only returns the observation, reward, info, etc, for
         >>> # the agent who's turn is next.
         >>> print(obs)
-        {
-            'prisoner_1': array([[[0, 0, 0],
-                [0, 0, 0],
-                [0, 0, 0],
-                ...,
-                [0, 0, 0],
-                [0, 0, 0],
-                [0, 0, 0]]], dtype=uint8)
-        }
-
+        {'piston_1': array([[[...]]], shape=(457, 120, 3), dtype=uint8)}
         >>> print(rewards)
-        {
-            'prisoner_1': 0
-        }
-
+        {'piston_1': 0}
         >>> print(terminateds)
-        {
-            'prisoner_1': False, '__all__': False
-        }
-
+        {'piston_1': False, '__all__': False}
         >>> print(truncateds)
-        {
-            'prisoner_1': False, '__all__': False
-        }
-
+        {'piston_1': False, '__all__': False}
         >>> print(infos)
-        {
-            'prisoner_1': {'map_tuple': (1, 0)}
-        }
+        {'piston_1': {}}
 
     Args:
         env: The PettingZoo AEC env to wrap.

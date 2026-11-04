@@ -86,7 +86,8 @@ class SingleAgentEpisode:
         >>> # in case we go over the beginning (ts=0). So we would expect
         >>> # [0.0, 0.0, 0.0, r0] to be returned here, where r0 is the very first received
         >>> # reward in the episode:
-        >>> _ = episode.get_rewards(slice(-4, 0), neg_index_as_lookback=True, fill=0.0)
+        >>> episode.get_rewards(slice(-3, 1), neg_index_as_lookback=True, fill=0.0)
+        [array(0., dtype=float32), array(0., dtype=float32), array(0., dtype=float32), 1.0]
         >>> # Note the use of fill=0.0 here (fill everything that's out of range with this
         >>> # value) AND the argument `neg_index_as_lookback=True`, which interprets
         >>> # negative indices as being left of ts=0 (e.g. -1 being the timestep before
@@ -866,12 +867,18 @@ class SingleAgentEpisode:
             ...     len_lookback_buffer=0,  # no lookback; all data is actually "in" episode
             ... )
             >>> # Plain usage (`indices` arg only).
-            >>> _ = episode.get_infos(-1)  # {"d":3}
-            >>> _ = episode.get_infos(0)  # {"a":0}
-            >>> _ = episode.get_infos([0, 2])  # [{"a":0},{"c":2}]
-            >>> _ = episode.get_infos([-1, 0])  # [{"d":3},{"a":0}]
-            >>> _ = episode.get_infos(slice(None, 2))  # [{"a":0},{"b":1}]
-            >>> _ = episode.get_infos(slice(-2, None))  # [{"c":2},{"d":3}]
+            >>> episode.get_infos(-1)
+            {'d': 3}
+            >>> episode.get_infos(0)
+            {'a': 0}
+            >>> episode.get_infos([0, 2])
+            [{'a': 0}, {'c': 2}]
+            >>> episode.get_infos([-1, 0])
+            [{'d': 3}, {'a': 0}]
+            >>> episode.get_infos(slice(None, 2))
+            [{'a': 0}, {'b': 1}]
+            >>> episode.get_infos(slice(-2, None))
+            [{'c': 2}, {'d': 3}]
             >>> # Using `fill=...` (requesting slices beyond the boundaries).
             >>> # TODO (sven): This would require a space being provided. Maybe we can
             >>> #  skip this check for infos, which don't have a space anyways.
@@ -944,29 +951,42 @@ class SingleAgentEpisode:
             ...     len_lookback_buffer=0,  # no lookback; all data is actually "in" episode
             ... )
             >>> # Plain usage (`indices` arg only).
-            >>> _ = episode.get_actions(-1)  # 3
-            >>> _ = episode.get_actions(0)  # 1
-            >>> _ = episode.get_actions([0, 2])  # [1, 3]
-            >>> _ = episode.get_actions([-1, 0])  # [3, 1]
-            >>> _ = episode.get_actions(slice(None, 2))  # [1, 2]
-            >>> _ = episode.get_actions(slice(-2, None))  # [2, 3]
+            >>> episode.get_actions(-1)
+            3
+            >>> episode.get_actions(0)
+            1
+            >>> episode.get_actions([0, 2])
+            [1, 3]
+            >>> episode.get_actions([-1, 0])
+            [3, 1]
+            >>> episode.get_actions(slice(None, 2))
+            [1, 2]
+            >>> episode.get_actions(slice(-2, None))
+            [2, 3]
             >>> # Using `fill=...` (requesting slices beyond the boundaries).
-            >>> _ = episode.get_actions(slice(-5, -2), fill=-9)  # [-9, -9, 1, 2]
-            >>> _ = episode.get_actions(slice(1, 5), fill=-7)  # [2, 3, -7, -7]
+            >>> episode.get_actions(slice(-5, -2), fill=-9)
+            [array(-9), array(-9), 1]
+            >>> episode.get_actions(slice(1, 5), fill=-7)
+            [2, 3, array(-7), array(-7)]
             >>> # Using `one_hot_discrete=True`.
-            >>> _ = episode.get_actions(1, one_hot_discrete=True)  # [0 0 1 0] (action=2)
-            >>> _ = episode.get_actions(2, one_hot_discrete=True)  # [0 0 0 1] (action=3)
-            >>> _ = episode.get_actions(
+            >>> episode.get_actions(1, one_hot_discrete=True)
+            array([0., 0., 1., 0.], dtype=float32)
+            >>> episode.get_actions(2, one_hot_discrete=True)
+            array([0., 0., 0., 1.], dtype=float32)
+            >>> episode.get_actions(
             ...     slice(0, 2),
             ...     one_hot_discrete=True,
-            ... )   # [[0 1 0 0], [0 0 0 1]] (actions=1 and 3)
+            ... )
+            [array([0., 1., 0., 0.], dtype=float32), array([0., 0., 1., 0.], dtype=float32)]
             >>> # Special case: Using `fill=0.0` AND `one_hot_discrete=True`.
-            >>> _ = episode.get_actions(
+            >>> # All-0s one-hot tensor (note the difference to [1 0 0 0]!).
+            >>> episode.get_actions(
             ...     -1,
             ...     neg_index_as_lookback=True,  # -1 means one left of ts=0
             ...     fill=0.0,
             ...     one_hot_discrete=True,
-            ... )  # [0 0 0 0]  <- all 0s one-hot tensor (note difference to [1 0 0 0]!)
+            ... )
+            array([0., 0., 0., 0.], dtype=float32)
 
         Returns:
             The collected actions.
@@ -1026,15 +1046,23 @@ class SingleAgentEpisode:
             ...     len_lookback_buffer=0,  # no lookback; all data is actually "in" episode
             ... )
             >>> # Plain usage (`indices` arg only).
-            >>> _ = episode.get_rewards(-1)  # 3.0
-            >>> _ = episode.get_rewards(0)  # 1.0
-            >>> _ = episode.get_rewards([0, 2])  # [1.0, 3.0]
-            >>> _ = episode.get_rewards([-1, 0])  # [3.0, 1.0]
-            >>> _ = episode.get_rewards(slice(None, 2))  # [1.0, 2.0]
-            >>> _ = episode.get_rewards(slice(-2, None))  # [2.0, 3.0]
+            >>> episode.get_rewards(-1)
+            3.0
+            >>> episode.get_rewards(0)
+            1.0
+            >>> episode.get_rewards([0, 2])
+            [1.0, 3.0]
+            >>> episode.get_rewards([-1, 0])
+            [3.0, 1.0]
+            >>> episode.get_rewards(slice(None, 2))
+            [1.0, 2.0]
+            >>> episode.get_rewards(slice(-2, None))
+            [2.0, 3.0]
             >>> # Using `fill=...` (requesting slices beyond the boundaries).
-            >>> _ = episode.get_rewards(slice(-5, -2), fill=0.0)  # [0.0, 0.0, 1.0, 2.0]
-            >>> _ = episode.get_rewards(slice(1, 5), fill=0.0)  # [2.0, 3.0, 0.0, 0.0]
+            >>> episode.get_rewards(slice(-5, -2), fill=0.0)
+            [array(0., dtype=float32), array(0., dtype=float32), 1.0]
+            >>> episode.get_rewards(slice(1, 5), fill=0.0)
+            [2.0, 3.0, array(0., dtype=float32), array(0., dtype=float32)]
 
         Returns:
             The collected rewards.
@@ -1101,12 +1129,18 @@ class SingleAgentEpisode:
             ...     observations=[0, 1, 2, 3], actions=[1, 2, 3], rewards=[1, 2, 3],
             ... )
             >>> # Plain usage (`indices` arg only).
-            >>> _ = episode.get_extra_model_outputs("mo", -1)  # 3
-            >>> _ = episode.get_extra_model_outputs("mo", 1)  # 0
-            >>> _ = episode.get_extra_model_outputs("mo", [0, 2])  # [1, 3]
-            >>> _ = episode.get_extra_model_outputs("mo", [-1, 0])  # [3, 1]
-            >>> _ = episode.get_extra_model_outputs("mo", slice(None, 2))  # [1, 2]
-            >>> _ = episode.get_extra_model_outputs("mo", slice(-2, None))  # [2, 3]
+            >>> episode.get_extra_model_outputs("mo", -1)
+            3
+            >>> episode.get_extra_model_outputs("mo", 1)
+            2
+            >>> episode.get_extra_model_outputs("mo", [0, 2])
+            [1, 3]
+            >>> episode.get_extra_model_outputs("mo", [-1, 0])
+            [3, 1]
+            >>> episode.get_extra_model_outputs("mo", slice(None, 2))
+            [1, 2]
+            >>> episode.get_extra_model_outputs("mo", slice(-2, None))
+            [2, 3]
             >>> # Using `fill=...` (requesting slices beyond the boundaries).
             >>> # TODO (sven): This would require a space being provided. Maybe we can
             >>> #  automatically infer the space from existing data?
