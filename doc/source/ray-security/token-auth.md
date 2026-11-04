@@ -108,7 +108,7 @@ Error: Token authentication is enabled but no authentication token was found. Ru
 
 ## Configure token authentication for remote clusters
 
-When working with remote clusters, all nodes in the cluster need the same token. Any clients that interact with the remote cluster, including your local machine, must also have the token configured. The following sections cover the Ray cluster launcher, self-managed clusters, and clients on other machines.
+When working with remote clusters, all nodes in the cluster need the same token. Any clients that interact with the remote cluster, including your local machine, must also have the token configured. The following sections cover the Ray cluster launcher, self-managed clusters, Ray on Spark, and clients on other machines.
 
 For instructions on configuring token authentication with KubeRay, see {ref}`Token authentication with KubeRay <kuberay-auth>`.
 
@@ -211,19 +211,19 @@ ray get-auth-token --generate
 
 #### Step 2: Copy the token to every Spark worker machine
 
-Copy `~/.ray/auth_token` to the home directory of the user that runs the Spark executors on each Spark worker machine. Don't pass the token on a command line. For example, use `scp` to copy the token file:
+On each Spark worker machine, copy the token to `~/.ray/auth_token`, where `~` is the home directory of the user that runs the Spark executors. Don't pass the token on a command line. For example, use `scp` to copy the token file:
 
 ```bash
 scp ~/.ray/auth_token user@spark-worker-1:~/.ray/auth_token
 ```
 
-If the token file is somewhere other than `~/.ray/auth_token`, such as shared storage that every machine mounts, set `RAY_AUTH_TOKEN_PATH` on the driver. Then pass it to the executors with the Spark config `spark.executorEnv.RAY_AUTH_TOKEN_PATH`.
+If the token file is somewhere other than `~/.ray/auth_token`, such as shared storage that every machine mounts, set `RAY_AUTH_TOKEN_PATH` in the driver's environment. Then pass it to the executors with the Spark property `spark.executorEnv.RAY_AUTH_TOKEN_PATH`.
 
 #### Step 3: Start the Ray cluster
 
-Call `setup_ray_cluster` as usual. Without a token on the driver machine, it fails with the same error as `ray start --head`. If Ray worker nodes lack the token, `setup_ray_cluster` fails after about two minutes, and the error names the fix: copy the token from the head node.
+Call `setup_ray_cluster` as usual. Without a token on the driver machine, it fails with the same error as `ray start --head`. If Ray worker nodes lack the token, `setup_ray_cluster` fails after about two minutes with an error that says to copy the token from the head node.
 
-To opt out of token authentication on Ray on Spark, set `RAY_AUTH_MODE=disabled` in the driver's environment. Then pass it to the executors with `spark.executorEnv.RAY_AUTH_MODE=disabled`.
+To opt out of token authentication for Ray on Spark, set `RAY_AUTH_MODE=disabled` in the driver's environment. Then pass it to the executors with `spark.executorEnv.RAY_AUTH_MODE=disabled`.
 
 ### Clients on other machines
 
