@@ -126,6 +126,55 @@ def test_packer_covers_every_unit_exactly_once(split_coalesced: bool) -> None:
     assert len(pairs) == len(set(pairs))  # no duplicates
 
 
+def _rows(manifest: FileManifest) -> list[tuple[str, Optional[list[int]]]]:
+    """A manifest's rows as ``(path, sorted unit ids)``; ``None`` = whole file."""
+    return [
+        (str(path), None if meta is None else sorted(meta["unit_ids"]))
+        for path, meta in zip(manifest.paths, manifest.file_chunk_metadatas)
+    ]
+
+
+def test_duplicated_file_keeps_one_row_per_copy() -> None:
+    # The same path listed twice (``read_parquet([p, p])``): both copies land
+    # in one bin, but their runs overlap, so the bin keeps one row per copy
+    # instead of unioning them into one — the reader scans each row, so no
+    # copy is silently dropped.
+    packer = OnlineBinPacker(max_bin_bytes=1000)
+    packer.add_input(_units("a", [10, 10]))
+    packer.add_input(_units("a", [10, 10]))
+    packer.finalize()
+
+    manifest = packer.next_partition()
+    assert not packer.has_partition()
+    assert _rows(manifest) == [("a", [0, 1]), ("a", [0, 1])]
+
+
+@pytest.mark.parametrize("split_coalesced", [False, True])
+def test_packer_preserves_unit_multiplicity_of_duplicated_files(
+    split_coalesced: bool,
+) -> None:
+    # A file listed k times must have every unit id covered exactly k times
+    # across all manifest rows, with no id repeated inside a row: the reader
+    # scans a row's unit ids once, so an id duplicated within a row is a
+    # silently dropped copy. The copies are small enough that several land in
+    # the same bin, where unioning a file's runs into one row would do
+    # exactly that.
+    packer = OnlineBinPacker(max_bin_bytes=100, split_coalesced=split_coalesced)
+    for manifest in [_units("a", [10, 10])] * 3 + [_units("b", [10, 10, 10])] * 2:
+        packer.add_input(manifest)
+    packer.finalize()
+
+    pairs = []
+    while packer.has_partition():
+        for path, ids in _rows(packer.next_partition()):
+            assert ids is None or len(ids) == len(set(ids)), (path, ids)
+            pairs.extend((path, i) for i in ids or ())
+    expected = sorted(
+        [("a", i) for i in range(2)] * 3 + [("b", i) for i in range(3)] * 2
+    )
+    assert sorted(pairs) == expected
+
+
 def test_split_coalesced_is_noop_without_coalescing() -> None:
     # With every run a single unit, the split flag must not change the packing.
     files = [_units("a", [40] * 3), _units("b", [40] * 2)]
@@ -215,6 +264,33 @@ def test_packed_run_rows_keep_on_disk_file_size() -> None:
 
     assert list(manifest.file_sizes) == [1000]
     assert manifest.file_chunk_metadatas[0]["size_bytes"] == 90
+
+
+@pytest.mark.parametrize(
+    "isolate_heavy_files, expected_num_bins",
+    [
+        # Once each file turns heavy, the heavy pool seals its bin on every file
+        # switch, so the interleaved tail becomes half-full single-file bins.
+        pytest.param(True, 6, id="isolated-heavy-files-shred-interleaved-input"),
+        # Row-group shuffle mode: everything packs into full, mixed-file bins.
+        pytest.param(False, 4, id="shared-pool-keeps-interleaved-input-mixed"),
+    ],
+)
+def test_interleaved_heavy_files(
+    isolate_heavy_files: bool, expected_num_bins: int
+) -> None:
+    # Row-group runs of two heavy files arriving interleaved, as a row-group
+    # shuffle emits them: a0, b0, a1, b1, ...
+    manifests = [
+        _file(path, 200, [_run((i,), 50)]) for i in range(4) for path in ("a", "b")
+    ]
+
+    bins = _pack(manifests, max_bin_bytes=100, isolate_heavy_files=isolate_heavy_files)
+
+    assert len(bins) == expected_num_bins
+    assert _pairs(bins) == [(p, i) for p in ("a", "b") for i in range(4)]
+    if not isolate_heavy_files:
+        assert all(set(b) == {"a", "b"} for b in bins)
 
 
 if __name__ == "__main__":

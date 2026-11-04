@@ -72,21 +72,19 @@ LEARNER_RESULTS_CURR_ENTROPY_COEFF_KEY = "curr_entropy_coeff"
 class IMPALAConfig(AlgorithmConfig):
     """Defines a configuration class from which an Impala can be built.
 
-    .. testcode::
-
-        from ray.rllib.algorithms.impala import IMPALAConfig
-
-        config = (
-            IMPALAConfig()
-            .environment("CartPole-v1")
-            .env_runners(num_env_runners=1)
-            .training(lr=0.0003, train_batch_size_per_learner=512)
-            .learners(num_learners=1)
-        )
-        # Build a Algorithm object from the config and run 1 training iteration.
-        algo = config.build()
-        algo.train()
-        del algo
+    Examples:
+        >>> from ray.rllib.algorithms.impala import IMPALAConfig
+        >>> config = (
+        ...     IMPALAConfig()
+        ...     .environment("CartPole-v1")
+        ...     .env_runners(num_env_runners=1)
+        ...     .training(lr=0.0003, train_batch_size_per_learner=512)
+        ...     .learners(num_learners=1)
+        ... )
+        >>> # Build a Algorithm object from the config and run 1 training iteration.
+        >>> algo = config.build()
+        >>> _ = algo.train()
+        >>> del algo
 
     .. testcode::
 

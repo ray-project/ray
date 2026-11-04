@@ -8,47 +8,41 @@ from ray.rllib.utils.typing import RLModuleSpecType
 class BCConfig(MARWILConfig):
     """Defines a configuration class from which a new BC Algorithm can be built
 
-    .. testcode::
-        :skipif: True
-
-        from ray.rllib.algorithms.bc import BCConfig
-        # Run this from the ray directory root.
-        config = BCConfig().training(lr=0.00001, gamma=0.99)
-        config = config.offline_data(
-            input_="./rllib/offline/tests/data/cartpole/large.json")
-
-        # Build an Algorithm object from the config and run 1 training iteration.
-        algo = config.build()
-        algo.train()
-
-    .. testcode::
-        :skipif: True
-
-        from ray.rllib.algorithms.bc import BCConfig
-        from ray import tune
-        config = BCConfig()
-        # Print out some default values.
-        print(config.beta)
-        # Update the config object.
-        config.training(
-            lr=tune.grid_search([0.001, 0.0001]), beta=0.75
-        )
-        # Set the config object's data path.
-        # Run this from the ray directory root.
-        config.offline_data(
-            input_="./rllib/offline/tests/data/cartpole/large.json"
-        )
-        # Set the config object's env, used for evaluation.
-        config.environment(env="CartPole-v1")
-        # Use to_dict() to get the old-style python config dict
-        # when running with tune.
-        tune.Tuner(
-            "BC",
-            param_space=config.to_dict(),
-        ).fit()
+    Examples:
+        >>> from ray.rllib.algorithms.bc import BCConfig  # doctest: +SKIP_EXAMPLE
+        >>> # Run this from the ray directory root.
+        >>> config = BCConfig().training(lr=0.00001, gamma=0.99)
+        >>> config = config.offline_data(
+        ...     input_="./rllib/offline/tests/data/cartpole/large.json")
+        >>> # Build an Algorithm object from the config and run 1 training iteration.
+        >>> algo = config.build()
+        >>> algo.train()
+        >>> from ray.rllib.algorithms.bc import BCConfig
+        >>> from ray import tune
+        >>> config = BCConfig()
+        >>> # Print out some default values.
+        >>> print(config.beta)
+        >>> # Update the config object.
+        >>> config.training(
+        ...     lr=tune.grid_search([0.001, 0.0001]), beta=0.75
+        ... )
+        >>> # Set the config object's data path.
+        >>> # Run this from the ray directory root.
+        >>> config.offline_data(
+        ...     input_="./rllib/offline/tests/data/cartpole/large.json"
+        ... )
+        >>> # Set the config object's env, used for evaluation.
+        >>> config.environment(env="CartPole-v1")
+        >>> # Use to_dict() to get the old-style python config dict
+        >>> # when running with tune.
+        >>> tune.Tuner(
+        ...     "BC",
+        ...     param_space=config.to_dict(),
+        ... ).fit()
     """
 
     def __init__(self, algo_class=None):
+        """Initializes a BCConfig instance."""
         super().__init__(algo_class=algo_class or BC)
 
         # fmt: off

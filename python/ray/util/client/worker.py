@@ -248,8 +248,7 @@ class Worker:
         self._release_thread.start()
 
     def _connect_channel(self, reconnecting=False) -> None:
-        """
-        Attempts to connect to the server specified by conn_str. If
+        """Attempts to connect to the server specified by conn_str. If
         reconnecting after an RPC error, cleans up the old channel and
         continues to attempt to connect until the grace period is over.
         """
@@ -349,8 +348,7 @@ class Worker:
             raise ConnectionError("ray client connection timeout")
 
     def _can_reconnect(self, e: grpc.RpcError) -> bool:
-        """
-        Returns True if the RPC error can be recovered from and a retry is
+        """Returns True if the RPC error can be recovered from and a retry is
         appropriate, false otherwise.
         """
         if not self._reconnect_enabled:
@@ -376,8 +374,7 @@ class Worker:
         return True
 
     def _call_stub(self, stub_name: str, *args, **kwargs) -> Any:
-        """
-        Calls the stub specified by stub_name (Schedule, WaitObject, etc...).
+        """Calls the stub specified by stub_name (Schedule, WaitObject, etc...).
         If a recoverable error occurrs while calling the stub, attempts to
         retry the RPC.
         """
@@ -407,8 +404,7 @@ class Worker:
     def _get_object_iterator(
         self, req: ray_client_pb2.GetRequest, *args, **kwargs
     ) -> Any:
-        """
-        Calls the stub for GetObject on the underlying server stub. If a
+        """Calls the stub for GetObject on the underlying server stub. If a
         recoverable error occurs while streaming the response, attempts
         to retry the get starting from the first chunk that hasn't been
         received.
@@ -468,8 +464,7 @@ class Worker:
         return self._rejection
 
     def _add_ids_to_metadata(self, metadata: Any):
-        """
-        Adds a unique req_id and the current thread's identifier to the
+        """Adds a unique req_id and the current thread's identifier to the
         metadata. These values are useful for preventing mutating operations
         from being replayed on the server side in the event that the client
         must retry a requsest.

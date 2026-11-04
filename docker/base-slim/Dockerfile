@@ -43,7 +43,7 @@ usermod -aG sudo ray
 echo 'ray ALL=NOPASSWD: ALL' >> /etc/sudoers
 
 # Install uv
-curl -sSL -o- https://astral.sh/uv/0.11.33/install.sh | env UV_UNMANAGED_INSTALL="/usr/local/bin" sh
+curl -sSL -o- https://astral.sh/uv/0.13.4/install.sh | env UV_UNMANAGED_INSTALL="/usr/local/bin" sh
 
 # Determine the architecture of the host
 if [[ "${HOSTTYPE}" =~ ^x86_64 ]]; then
@@ -120,8 +120,25 @@ rm /tmp/miniforge.sh
 /home/ray/anaconda3/bin/conda init bash
 
 eval "$(/home/ray/anaconda3/bin/conda shell.bash activate)"
-/home/ray/anaconda3/bin/conda install -y "python=${PYTHON_VERSION}"
+# Pin certifi and pip to their eMudhra CA fix releases. certifi matches the pin
+# in the lock files, so the lock install below leaves conda's copy in place.
+# conda-forge certifi 2026.10.19 allows python 3.10 only through a repodata
+# patch (conda-forge/conda-forge-repodata-patches-feedstock@d7dcb640); its other
+# 2026 builds require python>=3.11, and without a 3.10 build the solver drops
+# certifi, requests and conda itself and fails with RemoveError.
+# TODO(elliot-barn): remove this conditional once Python 3.10 is deprecated.
+CONDA_PIP_SPEC=("pip=26.2.2")
+if [[ "${PYTHON_VERSION}" == "3.10" ]]; then
+    # conda-forge pip 26.2.2 requires python>=3.11; 3.10 installs it from PyPI below.
+    CONDA_PIP_SPEC=()
+fi
+/home/ray/anaconda3/bin/conda install -y "python=${PYTHON_VERSION}" "certifi=2026.10.19" "${CONDA_PIP_SPEC[@]}"
 /home/ray/anaconda3/bin/conda clean -a
+
+# conda-forge pip 26.2.2 requires python>=3.11; PyPI's supports 3.10.
+if [[ "${PYTHON_VERSION}" == "3.10" ]]; then
+    uv pip install --system --no-cache-dir pip==26.2.2
+fi
 
 uv pip install --system --no-cache-dir --no-deps --index-strategy unsafe-best-match \
     -r $HOME/python_depset.lock

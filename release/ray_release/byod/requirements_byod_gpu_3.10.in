@@ -37,6 +37,4 @@ trueskill
 tqdm
 typer
 typing-extensions
-xarray
 xgboost
-zarr

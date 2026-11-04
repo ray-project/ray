@@ -68,7 +68,6 @@ def llm_config(model_pixtral_12b, disable_placement_bundles):
         model_loading_config=ModelLoadingConfig(
             model_id=model_pixtral_12b,
         ),
-        accelerator_type="L4",
         runtime_env={},
         log_engine_metrics=False,
     )
