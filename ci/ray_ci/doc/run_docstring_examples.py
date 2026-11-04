@@ -67,6 +67,7 @@ import doctest
 import importlib
 import importlib.util
 import io
+import linecache
 import os
 import re
 import subprocess
@@ -121,6 +122,61 @@ OMITTED_LIBRARIES = {
 }
 
 
+# RLlib's try_import_torch and try_import_tf don't raise when the library is
+# missing. They return None for the module and stand-in objects from
+# ray/rllib/utils/framework.py for its submodules, so an example fails later
+# with an AttributeError instead of an ImportError. These are the stand-ins'
+# class names, mapped to the library each one replaces.
+_RLLIB_STUBS = {
+    "_TFStub": "tensorflow",
+    "_KerasStub": "tensorflow",
+    "_FakeTfClassStub": "tensorflow",
+    "_NNStub": "torch",
+    "_ParallelStub": "torch",
+    "_FakeTorchClassStub": "torch",
+}
+_RLLIB_FRAMEWORK = "ray.rllib.utils.framework"
+# The names RLlib's examples and modules bind the missing library's module to,
+# which try_import_torch and try_import_tf set to None.
+_RLLIB_NONE_NAMES = {"torch": "torch", "tf": "tensorflow", "tf1": "tensorflow"}
+
+
+def _rllib_stubbed_library(error: AttributeError) -> Optional[str]:
+    """Return the library an RLlib stand-in replaced, if it raised this error.
+
+    Matches an attribute lookup on one of the stand-ins in _RLLIB_STUBS, or,
+    in RLlib code or an RLlib docstring example, an attribute lookup on a
+    variable such as `torch` that RLlib set to None, in the line that raised.
+    AttributeError.obj and .name need Python 3.10 or later.
+    """
+    obj = getattr(error, "obj", None)
+    if obj is not None:
+        cls = obj if isinstance(obj, type) else type(obj)
+        if cls.__module__ == _RLLIB_FRAMEWORK:
+            return _RLLIB_STUBS.get(cls.__name__)
+        return None
+    tb = error.__traceback__
+    if tb is None or not getattr(error, "name", None):
+        return None
+    while tb.tb_next is not None:
+        tb = tb.tb_next
+    frame = tb.tb_frame
+    if not frame.f_globals.get("__name__", "").startswith("ray.rllib"):
+        return None
+    code = frame.f_code
+    line = linecache.getline(code.co_filename, tb.tb_lineno)
+    for name, library in _RLLIB_NONE_NAMES.items():
+        if not re.search(rf"\b{name}\.{re.escape(error.name)}\b", line):
+            continue
+        if name in code.co_varnames:
+            value = frame.f_locals.get(name, ...)
+        else:
+            value = frame.f_globals.get(name, ...)
+        if value is None:
+            return library
+    return None
+
+
 class MissingLibrary(Exception):
     """An example needs a library in OMITTED_LIBRARIES that isn't installed."""
 
@@ -140,8 +196,9 @@ def missing_library(error: BaseException) -> Optional[str]:
     """Return the omitted, uninstalled library an import error reports, if any.
 
     Follows the exception chain for a ModuleNotFoundError's module name, since
-    Ray Data re-raises it as an ImportError with install advice. Falls back to
-    the message for a bare ImportError. Either way, a library that's installed
+    Ray Data re-raises it as an ImportError with install advice, or for an
+    AttributeError that one of RLlib's stand-ins for torch or TensorFlow
+    raised. Falls back to the message for a bare ImportError. Either way, a library that's installed
     never matches, so a full image can't skip anything.
 
     The chain stops at `raise ... from None`. An implicit context can't be
@@ -157,6 +214,10 @@ def missing_library(error: BaseException) -> Optional[str]:
             top = current.name.split(".")[0]
             if top in OMITTED_LIBRARIES and not _installed(top):
                 return top
+        if isinstance(current, AttributeError):
+            library = _rllib_stubbed_library(current)
+            if library is not None and not _installed(library):
+                return library
         if current.__cause__ is not None:
             current = current.__cause__
         elif current.__suppress_context__:
@@ -284,6 +345,14 @@ def run_docstring(
         try:
             # "single" mode echoes an expression's value, as the interactive
             # prompt the example imitates does.
+            # Register the source so tracebacks, and _rllib_stubbed_library,
+            # can read the example's lines.
+            linecache.cache[location] = (
+                len(example.source),
+                None,
+                example.source.splitlines(True),
+                location,
+            )
             code = compile(example.source, location, "single")
             with contextlib.redirect_stdout(stdout):
                 exec(code, namespace)
