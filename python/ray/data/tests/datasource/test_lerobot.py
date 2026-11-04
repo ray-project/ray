@@ -429,6 +429,38 @@ def test_decode_image_frames_requires_bytes_or_path(tmp_path):
         _decode_image_frames(root, table)
 
 
+def test_decode_image_frames_rejects_disallowed_image_format(tmp_path):
+    """An image-camera cell holding EPS bytes is rejected rather than decoded.
+    PIL picks a plugin by file signature, and the EPS plugin shells out to
+    Ghostscript, so untrusted cells must not reach it."""
+    from PIL import UnidentifiedImageError
+
+    from ray.data._internal.datasource.lerobot_datasource import _decode_image_frames
+    from ray.data.datasource import LeRobotDatasource
+
+    ds = create_lerobot_dataset(
+        str(tmp_path / "img_eps"),
+        num_episodes=1,
+        frames_per_episode=1,
+        has_video=False,
+        image_camera=True,
+    )
+    root = LeRobotDatasource(ds).distilled_metas[0]
+    eps_bytes = (
+        b"%!PS-Adobe-3.0 EPSF-3.0\n" b"%%BoundingBox: 0 0 100 100\n" b"showpage\n"
+    )
+    table = pa.table(
+        {
+            "observation.image": pa.array(
+                [{"bytes": eps_bytes, "path": None}],
+                type=pa.struct([("bytes", pa.binary()), ("path", pa.string())]),
+            )
+        }
+    )
+    with pytest.raises(UnidentifiedImageError):
+        _decode_image_frames(root, table)
+
+
 def test_read_lerobot_video_pixel_values(ray_start_regular_shared, lerobot_dataset):
     """Video-camera frames decode (within mpeg4 tolerance) to the solid fill the
     fixture wrote: within each episode, local frame ``fr`` was filled
