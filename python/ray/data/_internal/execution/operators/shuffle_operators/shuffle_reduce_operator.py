@@ -1,6 +1,7 @@
 import functools
 import logging
 import typing
+from collections import defaultdict
 from typing import Any, Dict, List, Optional, Union
 
 import pyarrow as pa
@@ -170,9 +171,19 @@ class ShuffleReduceOp(PhysicalOperator):
             if self._preserve_partition_order
             else FIFOBundleQueue()
         )
+        # See set_emit_whole_partitions.
+        self._emit_whole_partitions: bool = False
+        # partition_id -> outputs held until its reduce task finishes.
+        self._held_partition_outputs: Dict[int, List[RefBundle]] = defaultdict(list)
 
         # -- Stats -----------------------------------------------------------
         self._output_blocks_stats: List[BlockStats] = []
+
+    def set_emit_whole_partitions(self) -> None:
+        """Emit each partition's output as one bundle when its reduce task
+        finishes, so a downstream task-pool map, whose input bundler never
+        splits bundles, gets whole partitions."""
+        self._emit_whole_partitions = True
 
     def _reduce_task_remote_args(self, memory_estimate: int) -> Dict[str, Any]:
         remote_args: Dict[str, Any] = {
@@ -384,7 +395,12 @@ class ShuffleReduceOp(PhysicalOperator):
         return list(self._shuffle_reduce_tasks.values())
 
     def _handle_reduce_output_ready(self, partition_id: int, bundle: RefBundle) -> None:
-        self._record_partition_output(partition_id, bundle)
+        if self._emit_whole_partitions:
+            # Counted as queued so its object store memory is accounted for.
+            self._held_partition_outputs[partition_id].append(bundle)
+            self._metrics.on_output_queued(bundle)
+        else:
+            self._record_partition_output(partition_id, bundle)
         self._metrics.on_task_output_generated(task_index=partition_id, output=bundle)
         _, num_outputs, num_rows = estimate_total_num_of_blocks(
             self._num_reduce_tasks_submitted,
@@ -410,6 +426,15 @@ class ShuffleReduceOp(PhysicalOperator):
         if partition_id not in self._shuffle_reduce_tasks:
             return
         self._shuffle_reduce_tasks.pop(partition_id)
+        if self._emit_whole_partitions:
+            # Queue the finished partition as one bundle, or drop it on failure.
+            held = self._held_partition_outputs.pop(partition_id, [])
+            for bundle in held:
+                self._metrics.on_output_dequeued(bundle)
+            if held and exc is None:
+                self._record_partition_output(
+                    partition_id, RefBundle.merge_ref_bundles(held)
+                )
         if self._preserve_partition_order:
             self._output_queue.finalize(key=partition_id)
         self._metrics.on_task_finished(
@@ -456,6 +481,7 @@ class ShuffleReduceOp(PhysicalOperator):
         super()._do_shutdown(force)
         self._shuffle_reduce_tasks.clear()
         self._output_queue.clear()
+        self._held_partition_outputs.clear()
         for pending in self._pending_inputs.values():
             for bundle in pending.values():
                 bundle.destroy_if_owned()
