@@ -211,9 +211,9 @@ class GlobalState:
                 which can be one of the following: "DEPENDENCIES_UNREADY",
                 "PENDING_CREATION", "ALIVE", "RESTARTING", or "DEAD".
         Returns:
-            Information from the actor table. With no `actor_id`, a dict keyed
-            by actor ID as a hex string. "ActorID", "JobID" and "NodeID"
-            values are hex strings.
+            Information from the actor table. With no actor_id, a dict keyed
+            by actor ID as a hex string. "ActorID" and "JobID" values are hex
+            strings, as are the "NodeID" values inside "Address" and "OwnerAddress".
         """
         accessor = self._connect_and_get_accessor()
 
