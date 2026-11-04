@@ -130,6 +130,7 @@ steps:
       - raytpubase($)
 
   - label: ":tapioca: smoke test: ray-py{{array.python}}-tpu"
+    key: ray_tpu_image_smoke_test
     instance_type: small
     tags:
       - python_dependencies
