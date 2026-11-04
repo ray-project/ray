@@ -21,6 +21,7 @@ from ray.data._internal.execution.interfaces import (
 from ray.data._internal.execution.operators.map_operator import (
     MapOperator,
     _map_task,
+    get_safe_default_logical_memory,
 )
 from ray.data._internal.execution.operators.map_transformer import MapTransformer
 from ray.data._internal.remote_fn import cached_remote_fn
@@ -50,6 +51,7 @@ class TaskPoolMapOperator(MapOperator, ReportsExtraResourceUsage):
         on_start: Optional[Callable[[Optional["pa.Schema"]], None]] = None,
         isolate_workers: bool = False,
         default_logical_memory_enabled: bool = False,
+        memory_from_input_estimate: bool = False,
     ):
         """Create an TaskPoolMapOperator instance.
 
@@ -86,6 +88,10 @@ class TaskPoolMapOperator(MapOperator, ReportsExtraResourceUsage):
             default_logical_memory_enabled: If ``True``, the operator launches tasks
                 with a default logical ``memory``. The method for choosing the
                 default is an implementation detail.
+            memory_from_input_estimate: If ``True``, each task requests as its
+                logical ``memory`` the estimate its input blocks carry in
+                ``BlockMetadata.consumer_memory_bytes``, capped at the safe
+                default. A ``memory`` in ``ray_remote_args`` wins over the estimate.
         """
         super().__init__(
             map_transformer,
@@ -104,6 +110,10 @@ class TaskPoolMapOperator(MapOperator, ReportsExtraResourceUsage):
         )
 
         self._isolate_workers = isolate_workers
+        # The estimate only replaces a default: a memory the caller set wins.
+        self._memory_from_input_estimate = (
+            memory_from_input_estimate and "memory" not in (ray_remote_args or {})
+        )
 
         if max_concurrency is not None and max_concurrency <= 0:
             raise ValueError(f"max_concurrency have to be > 0 (got {max_concurrency})")
@@ -171,6 +181,10 @@ class TaskPoolMapOperator(MapOperator, ReportsExtraResourceUsage):
         self, input_bundle: Optional[RefBundle] = None
     ) -> Dict[str, Any]:
         ray_remote_args = super()._get_dynamic_ray_remote_args(input_bundle)
+        if self._memory_from_input_estimate and input_bundle is not None:
+            memory = self._input_memory_estimate(input_bundle)
+            if memory is not None:
+                ray_remote_args["memory"] = memory
         # `.options()` replaces `_labels` wholesale, so user labels would erase the
         # operator id that lineage reconstruction accounting keys on. Merge instead.
         ray_remote_args["_labels"] = {
@@ -178,6 +192,20 @@ class TaskPoolMapOperator(MapOperator, ReportsExtraResourceUsage):
             self._OPERATOR_ID_LABEL_KEY: self.id,
         }
         return ray_remote_args
+
+    def _input_memory_estimate(self, bundle: RefBundle) -> Optional[int]:
+        """The memory to request for the task consuming ``bundle``: its blocks'
+        estimates summed, capped at the safe default. ``None`` when a block carries
+        no estimate.
+        """
+        if not bundle.metadata:
+            return None
+        total = 0
+        for metadata in bundle.metadata:
+            if metadata.consumer_memory_bytes is None:
+                return None
+            total += metadata.consumer_memory_bytes
+        return min(total, get_safe_default_logical_memory(self._ray_remote_args))
 
     def _try_schedule_task(self, bundle: RefBundle, strict: bool):
         # Notify first input for deferred initialization (e.g., Iceberg schema evolution).

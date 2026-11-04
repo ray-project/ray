@@ -7,7 +7,12 @@ import pyarrow as pa
 import pyarrow.compute as pc
 
 from ray.data._internal.table_block import TableBlockAccessor
-from ray.data.block import Block, BlockAccessor, BlockColumnAccessor
+from ray.data.block import (
+    CONSUMER_MEMORY_BYTES_METADATA_KEY,
+    Block,
+    BlockAccessor,
+    BlockColumnAccessor,
+)
 
 # The per-row chunk metadata a ``FileManifest`` carries: ``None`` for a whole
 # file, else the dict form of a ``FileChunk`` (see ``FileChunk.to_metadata``).
@@ -192,7 +197,16 @@ class FileManifest:
         paths: List[str],
         sizes: List[int],
         chunk_metadatas: List[Optional[ChunkMetadata]],
+        consumer_memory_bytes: Optional[int] = None,
     ) -> "FileManifest":
+        """Build a manifest from parallel per-row lists.
+
+        ``consumer_memory_bytes`` is the estimated heap memory the task reading
+        this whole manifest needs. It is stored in the block's schema metadata,
+        which ``ArrowBlockAccessor.get_metadata`` reads back into
+        ``BlockMetadata.consumer_memory_bytes`` so the read task can request it
+        as its logical ``memory``.
+        """
         assert len(paths) == len(sizes) == len(chunk_metadatas)
 
         block = pa.table(
@@ -202,4 +216,12 @@ class FileManifest:
                 FILE_CHUNK_METADATA_COLUMN_NAME: chunk_metadatas,
             }
         )
+        if consumer_memory_bytes is not None:
+            block = block.replace_schema_metadata(
+                {
+                    CONSUMER_MEMORY_BYTES_METADATA_KEY: str(
+                        consumer_memory_bytes
+                    ).encode()
+                }
+            )
         return cls(block)

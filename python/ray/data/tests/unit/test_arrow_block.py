@@ -1,3 +1,4 @@
+import pickle
 import sys
 from typing import Union
 
@@ -15,6 +16,7 @@ from ray.data._internal.arrow_ops.transform_pyarrow import combine_chunked_array
 from ray.data._internal.tensor_extensions.arrow import (
     ArrowTensorArray,
 )
+from ray.data.block import CONSUMER_MEMORY_BYTES_METADATA_KEY, BlockMetadataWithSchema
 
 
 def simple_array():
@@ -270,6 +272,23 @@ def test_arrow_block_concat():
         }
     )
     assert concatenated.select(["a", "s", "b"]) == expected
+
+
+def test_get_metadata_reads_consumer_memory_bytes():
+    table = pa.table({"a": [1, 2, 3]})
+    assert ArrowBlockAccessor(table).get_metadata().consumer_memory_bytes is None
+
+    stamped = table.replace_schema_metadata(
+        {CONSUMER_MEMORY_BYTES_METADATA_KEY: b"1234"}
+    )
+    metadata = ArrowBlockAccessor(stamped).get_metadata()
+    assert metadata.consumer_memory_bytes == 1234
+
+    # The estimate survives the trip a task's output metadata takes to the driver.
+    with_schema = BlockMetadataWithSchema.from_metadata(metadata, schema=stamped.schema)
+    restored = pickle.loads(pickle.dumps(with_schema))
+    assert restored.consumer_memory_bytes == 1234
+    assert restored.metadata.consumer_memory_bytes == 1234
 
 
 if __name__ == "__main__":
