@@ -85,6 +85,23 @@ def test_compact_ignores_row_ids_outside_the_row_group():
     ]
 
 
+def test_compact_handles_unsorted_and_interleaved_row_groups():
+    """Row groups committed out of order or across interleaved chunks must
+    still be compacted in sorted row-group order inside done and partial sets."""
+    compacted = _compact_file_ids(
+        _ids(
+            PATH,
+            [(2, [1]), (0, [2, 3]), (1, [0, 1]), (2, [3]), (0, [0, 1])],
+        )
+    )
+
+    assert compacted.to_pylist() == [
+        {"unit_id": f"{PATH}#rg0", "partial_mask": None},
+        {"unit_id": f"{PATH}#rg1", "partial_mask": [True, True, False, False]},
+        {"unit_id": f"{PATH}#rg2", "partial_mask": [False, True, False, True]},
+    ]
+
+
 def test_checkpoint_names_whole_file_when_all_row_groups_done():
     every_row = list(range(ROW_GROUP_SIZE))
     compacted = _compact(_ids(PATH, [(g, every_row) for g in range(NUM_ROW_GROUPS)]))
