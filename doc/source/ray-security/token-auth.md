@@ -195,6 +195,36 @@ ray start --address=<head-node-ip>:6379
 
 A worker node without the token fails immediately with an error that says to run `ray get-auth-token` on the head node and copy the token.
 
+(ray-on-spark-token-auth)=
+
+### Ray on Spark
+
+`setup_ray_cluster` and `setup_global_ray_cluster` don't create or copy a token. The Ray head node runs on the Spark driver machine, and each Ray worker node runs in a Spark task on a Spark worker machine. Put the same token on all of those machines before you call either function.
+
+#### Step 1: Generate a token
+
+On the Spark driver machine, run the following command as the user that runs the Spark application:
+
+```bash
+ray get-auth-token --generate
+```
+
+#### Step 2: Copy the token to every Spark worker machine
+
+Copy `~/.ray/auth_token` to the home directory of the user that runs the Spark executors on each Spark worker machine. Don't pass the token on a command line. For example, use `scp` to copy the token file:
+
+```bash
+scp ~/.ray/auth_token user@spark-worker-1:~/.ray/auth_token
+```
+
+If the token file is somewhere other than `~/.ray/auth_token`, such as shared storage that every machine mounts, set `RAY_AUTH_TOKEN_PATH` on the driver. Then pass it to the executors with the Spark config `spark.executorEnv.RAY_AUTH_TOKEN_PATH`.
+
+#### Step 3: Start the Ray cluster
+
+Call `setup_ray_cluster` as usual. Without a token on the driver machine, it fails with the same error as `ray start --head`. If Ray worker nodes lack the token, `setup_ray_cluster` fails after about two minutes, and the error names the fix: copy the token from the head node.
+
+To opt out of token authentication on Ray on Spark, set `RAY_AUTH_MODE=disabled` in the driver's environment. Then pass it to the executors with `spark.executorEnv.RAY_AUTH_MODE=disabled`.
+
 ### Clients on other machines
 
 Clients on the head node and on the machine that ran `ray up` already have the token. Any other machine that runs a client, such as `ray job submit` or `ray.init(address=...)`, needs a copy of the token file at `~/.ray/auth_token`. After you copy it, run the client as usual:
