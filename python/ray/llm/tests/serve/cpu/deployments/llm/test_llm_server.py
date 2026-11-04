@@ -857,7 +857,7 @@ class TestBuildAsgiApp:
         response = TestClient(app, raise_server_exceptions=False).get("/engine_dead")
 
         assert response.status_code == 500
-        assert "EngineCore encountered an issue" in response.json()["error"]["message"]
+        assert response.json()["error"]["message"] == EngineDeadError.CLIENT_MESSAGE
 
 
 if __name__ == "__main__":
