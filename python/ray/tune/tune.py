@@ -815,6 +815,16 @@ def run(
                 search_alg = ConcurrencyLimiter(
                     search_alg, max_concurrent=max_concurrent_trials
                 )
+            elif isinstance(search_alg, BasicVariantGenerator):
+                if search_alg.max_concurrent not in (0, max_concurrent_trials):
+                    raise ValueError(
+                        "You have specified `max_concurrent_trials="
+                        f"{max_concurrent_trials}`, but the `search_alg` is "
+                        "already a `BasicVariantGenerator` with `max_concurrent="
+                        f"{search_alg.max_concurrent}`. FIX THIS by setting "
+                        "`max_concurrent_trials=None`."
+                    )
+                search_alg.max_concurrent = max_concurrent_trials
             else:
                 logger.warning(
                     "You have passed a `SearchGenerator` instance as the "

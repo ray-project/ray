@@ -1753,6 +1753,32 @@ class MaxConcurrentTrialsTest(unittest.TestCase):
             self.assertIsInstance(capture["search_alg"], BasicVariantGenerator)
             self.assertEqual(capture["search_alg"].max_concurrent, 2)
 
+            # max_concurrent_trials should apply to a user-provided
+            # BasicVariantGenerator
+            tune.run(
+                train_fn,
+                search_alg=BasicVariantGenerator(points_to_evaluate=[{"a": 1}]),
+                max_concurrent_trials=2,
+                config={"a": tune.randint(0, 2)},
+                metric="metric",
+                mode="max",
+                stop={TRAINING_ITERATION: 1},
+            )
+
+            self.assertEqual(capture["search_alg"].max_concurrent, 2)
+
+            # ... and should not override a different explicit max_concurrent
+            with self.assertRaisesRegex(ValueError, "max_concurrent_trials"):
+                tune.run(
+                    train_fn,
+                    search_alg=BasicVariantGenerator(max_concurrent=3),
+                    max_concurrent_trials=2,
+                    config={"a": tune.randint(0, 2)},
+                    metric="metric",
+                    mode="max",
+                    stop={TRAINING_ITERATION: 1},
+                )
+
             tune.run(
                 train_fn,
                 search_alg=HyperOptSearch(),
