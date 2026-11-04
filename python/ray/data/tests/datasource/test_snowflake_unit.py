@@ -1,6 +1,7 @@
 """Tests for the Snowflake datasource and datasink that don't need a Snowflake
 account. `test_snowflake.py` has the tests that run against Snowflake."""
 
+import os
 from typing import Iterator, List, Optional
 from unittest import mock
 
@@ -14,6 +15,7 @@ from ray.data._internal.datasource.snowflake_datasink import (
     _parse_object_name,
 )
 from ray.data._internal.datasource.snowflake_datasource import SnowflakeDatasource
+from ray.data._internal.object_extensions.arrow import ArrowPythonObjectArray
 from ray.tests.conftest import *  # noqa
 
 CONNECTION_PARAMETERS = {"user": "user", "account": "account"}
@@ -125,6 +127,33 @@ def test_read_retries_failed_download(mock_cursor):
         blocks = list(read_task())
 
     assert blocks == [table]
+
+
+# The driver downloads the first batch to plan the read, and read tasks download
+# the rest, so test a planted payload in each.
+@pytest.mark.parametrize("poisoned_index", [0, 1])
+def test_read_rejects_pickle_object_columns(mock_cursor, tmp_path, poisoned_index):
+    """A result batch carrying a pickled-object column must be rejected before
+    anything is unpickled."""
+    marker = tmp_path / "exploit_marker"
+
+    class Exploit:
+        def __reduce__(self):
+            return (os.system, (f"touch {marker}",))
+
+    poisoned = pa.table(
+        {"id": [1, 2], "evil": ArrowPythonObjectArray.from_objects([Exploit()] * 2)}
+    )
+    batches = make_result_batches([2, 2])
+    batches[poisoned_index] = FakeResultBatch(poisoned)
+    mock_cursor.get_result_batches.return_value = batches
+    datasource = SnowflakeDatasource("SELECT * FROM T", CONNECTION_PARAMETERS)
+
+    with pytest.raises(ValueError, match="arrow_pickled_object"):
+        for read_task in datasource.get_read_tasks(2):
+            list(read_task())
+
+    assert not marker.exists(), "pickle.load executed attacker code"
 
 
 def test_read_snowflake(ray_start_regular_shared, mock_cursor):

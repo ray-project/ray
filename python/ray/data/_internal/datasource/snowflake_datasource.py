@@ -5,6 +5,7 @@ import numpy as np
 import pyarrow as pa
 
 from ray._common.retry import call_with_retry
+from ray.data._internal.object_extensions.arrow import raise_on_pickle_object_columns
 from ray.data._internal.util import _check_import
 from ray.data.block import Block, BlockMetadata
 from ray.data.datasource.datasource import Datasource, ReadTask
@@ -125,6 +126,11 @@ def _create_read_fn(
 
 
 def _download(result_batch: "ResultBatch") -> pa.Table:
-    return call_with_retry(
+    table = call_with_retry(
         result_batch.to_arrow, description="download a Snowflake result batch"
     )
+    # The table comes from outside this process. Unpickling a pickled-object column
+    # can run arbitrary code, so reject the table before anything uses it. This
+    # check is outside the retry so a rejected batch isn't downloaded again.
+    raise_on_pickle_object_columns(table)
+    return table
