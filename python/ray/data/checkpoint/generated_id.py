@@ -204,6 +204,8 @@ def _compact_file_ids(ids: Union[pa.Array, pa.ChunkedArray]) -> pa.Table:
         A table with ``_COMPACTED_CHECKPOINT_SCHEMA``: one row per done or
         partly done read unit.
     """
+    if len(ids) == 0:
+        return _COMPACTED_CHECKPOINT_SCHEMA.empty_table()
     first_id = ids.slice(0, 1)
     path_prefix = _id_field(first_id, PATH_PREFIX_FIELD, pa.string())[0]
     file_name = _id_field(first_id, FILE_NAME_FIELD, pa.string())[0]
