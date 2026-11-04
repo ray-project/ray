@@ -16,6 +16,9 @@ import pytest
 import requests
 
 import ray
+from ray._private.authentication.http_token_authentication import (
+    get_auth_headers_if_auth_enabled,
+)
 from ray.llm._internal.batch.benchmark.dataset import ShareGPTDataset
 from ray.llm._internal.batch.benchmark.benchmark_processor import (
     Mode,
@@ -26,7 +29,7 @@ from ray.llm._internal.batch.benchmark.benchmark_processor import (
 
 # Benchmark constants
 NUM_REQUESTS = 1000
-MODEL_ID = "facebook/opt-1.3b"
+MODEL_ID = "Qwen/Qwen3.5-0.8B"
 DATASET_ID = "Crystalcareai/Code-feedback-sharegpt-renamed"
 BATCH_SIZE = 64
 CONCURRENCY = 1
@@ -96,7 +99,9 @@ def _get_prometheus_metric_snapshot(
         for addr in _metrics_scrape_addresses(node_addr):
             try:
                 candidate = requests.get(
-                    f"http://{addr}:{metrics_port}/metrics", timeout=5
+                    f"http://{addr}:{metrics_port}/metrics",
+                    headers=get_auth_headers_if_auth_enabled({}),
+                    timeout=5,
                 )
                 candidate.raise_for_status()
                 response = candidate
@@ -450,7 +455,7 @@ def _build_perf_metrics(result, engine_metrics: dict[str, float | None]) -> list
 
 def test_single_node_baseline_benchmark():
     """
-    Single-node baseline benchmark: facebook/opt-1.3b, TP=1, PP=1, 1000 prompts.
+    Single-node baseline benchmark: Qwen/Qwen3.5-0.8B, TP=1, PP=1, 1000 prompts.
 
     Logs BENCHMARK_* metrics and optionally asserts perf thresholds from env:
     - RAY_DATA_LLM_BENCHMARK_MIN_THROUGHPUT (req/s)

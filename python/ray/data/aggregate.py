@@ -174,6 +174,13 @@ class AggregateFn:
         the post-aggregation schema without executing the plan. When
         any aggregator returns ``None``, the entire ``Aggregate.infer_schema``
         returns ``None`` (callers fall back to a ``limit(1)`` execution).
+
+        Args:
+            input_schema: The schema of the aggregator's input blocks.
+
+        Returns:
+            The output ``pa.Field``, or ``None`` if this aggregator can't infer its
+            output type.
         """
         return None
 
@@ -277,6 +284,12 @@ class AggregateFnV2(AggregateFn, abc.ABC, Generic[AccumulatorType, AggOutputType
         )
 
     def get_target_column(self) -> Optional[str]:
+        """Return the name of the column this aggregation reads.
+
+        Returns:
+            The target column name, or ``None`` for an aggregation that doesn't read
+            a column, such as ``Count()`` over rows.
+        """
         return self._target_col_name
 
     def get_agg_name(self) -> str:
@@ -284,6 +297,9 @@ class AggregateFnV2(AggregateFn, abc.ABC, Generic[AccumulatorType, AggOutputType
 
         Returns the aggregation type extracted from the name during initialization.
         For example, returns 'sum' for an aggregator named 'sum(col)'.
+
+        Returns:
+            The aggregation type.
         """
         return self._agg_name
 
@@ -1129,6 +1145,20 @@ class Quantile(VectorizedAggregateFnV2[List[Any], List[Any]]):
         return BlockColumnAccessor.for_column(accumulator_col).flatten()
 
 
+def _to_hashable(value: Any) -> Any:
+    """Make a list-like value usable as a set member or dict key.
+
+    Lists, tuples and arrays become tuples; anything else is returned as is.
+    """
+    return tuple(value) if isinstance(value, (list, tuple, np.ndarray)) else value
+
+
+# Errors that mean the vectorized path is unavailable for a column's type:
+# Arrow has no kernel for it (e.g. extension types such as tensors), or it
+# needs the optional `polars` package (uniqueness of list-typed columns).
+_PYTHON_FALLBACK_ERRORS = (pa.ArrowNotImplementedError, ImportError)
+
+
 @PublicAPI
 class Unique(VectorizedAggregateFnV2[Set[Any], List[Any]]):
     """Defines unique aggregation.
@@ -1155,6 +1185,11 @@ class Unique(VectorizedAggregateFnV2[Set[Any], List[Any]]):
             whole lists (i.e., the entire list is considered as a single object).
             `False` by default. Note that this is a top-level flatten (not a recursive
             flatten) operation.
+
+    Values that the vectorized path can't handle (column types without an
+    Arrow ``unique`` kernel, such as tensors, or list-typed columns when the
+    optional ``polars`` package isn't installed) are collected in Python
+    instead; lists and arrays become tuples.
     """
 
     class ListEncodingMode(str, enum.Enum):
@@ -1229,7 +1264,12 @@ class Unique(VectorizedAggregateFnV2[Set[Any], List[Any]]):
         return column_accessor.unique()
 
     def aggregate_block(self, block: Block) -> AggType:
-        column = self._compute_unique(block)
+        try:
+            column = self._compute_unique(block)
+        except _PYTHON_FALLBACK_ERRORS:
+            if self._list_encoding_mode == Unique.ListEncodingMode.HASH:
+                raise
+            return self._unique_in_python(block)
 
         # Return column of unique values as is
         #
@@ -1237,6 +1277,22 @@ class Unique(VectorizedAggregateFnV2[Set[Any], List[Any]]):
         #       Arrow-compatible format (either ``pyarrow.Array`` or Python's ``list``)
         #       to make sure it's not converted into a tensor downstream
         return BlockColumnAccessor.for_column(column)._to_arrow_compatible_container()
+
+    def _unique_in_python(self, block: Block) -> List[Any]:
+        """Collect the unique values of a block when the vectorized path can't
+        handle the column's type. Lists and arrays become tuples."""
+        values = set()
+        column = BlockColumnAccessor.for_column(block[self._target_col_name])
+        for value in column.to_pylist():
+            if self._list_encoding_mode == Unique.ListEncodingMode.FLATTEN and (
+                isinstance(value, (list, np.ndarray))
+            ):
+                values.update(_to_hashable(element) for element in value)
+            else:
+                values.add(_to_hashable(value))
+        if self._ignore_nulls:
+            values = {value for value in values if not is_null(value)}
+        return list(self._normalize_nans(values))
 
     @staticmethod
     def _to_set(x):
@@ -1264,9 +1320,16 @@ class Unique(VectorizedAggregateFnV2[Set[Any], List[Any]]):
     def _combine_column(self, accumulator_col: BlockColumn) -> AggType:
         column_accessor = BlockColumnAccessor.for_column(accumulator_col)
 
-        # Combine all the lists in a column into a single value (ie flatten it)
-        flattened = column_accessor.flatten()
-        return BlockColumnAccessor.for_column(flattened).unique()
+        try:
+            # Combine all the lists in a column into a single value (ie flatten it)
+            flattened = column_accessor.flatten()
+            return BlockColumnAccessor.for_column(flattened).unique()
+        except _PYTHON_FALLBACK_ERRORS:
+            merged = set()
+            for partial in column_accessor.to_pylist():
+                if partial is not None:
+                    merged.update(_to_hashable(value) for value in partial)
+            return list(self._normalize_nans(merged))
 
 
 @PublicAPI
@@ -1317,7 +1380,14 @@ class CountDistinct(Unique):
         )
 
     def finalize(self, accumulator: Set[Any]) -> int:
-        """Return the count of distinct values."""
+        """Return the count of distinct values.
+
+        Args:
+            accumulator: The set of distinct values collected across blocks.
+
+        Returns:
+            The number of distinct values.
+        """
         return len(accumulator)
 
     def _arrow_agg_spec(self) -> Optional[ArrowAggSpec]:
@@ -1401,7 +1471,19 @@ class ValueCounter(AggregateFnV2):
         current_accumulator: Dict[str, List],
         new_accumulator: Dict[str, List],
     ) -> Dict[str, List]:
+        """Merge the value counts of two accumulators.
 
+        Counts for values in both accumulators are summed. Values only in
+        ``new_accumulator`` are appended with their counts.
+
+        Args:
+            current_accumulator: The accumulated ``values`` and ``counts`` lists.
+                This accumulator is updated in place.
+            new_accumulator: The ``values`` and ``counts`` lists to merge in.
+
+        Returns:
+            ``current_accumulator``, updated with the counts from ``new_accumulator``.
+        """
         values = current_accumulator["values"]
         counts = current_accumulator["counts"]
 
@@ -1726,6 +1808,46 @@ class ZeroPercentage(AggregateFnV2[List[int], float]):
 
 @PublicAPI(stability="alpha")
 class ApproximateQuantile(AggregateFnV2):
+    """Computes the approximate quantiles of a column by using a datasketches kll_floats_sketch.
+    https://datasketches.apache.org/docs/KLL/KLLSketch.html
+
+    The accuracy of the KLL quantile sketch is a function of the configured quantile precision, which also affects
+    the overall size of the sketch.
+    The KLL Sketch has absolute error. For example, a specified rank accuracy of 1% at the
+    median (rank = 0.50) means that the true quantile (if you could extract it from the set)
+    should be between getQuantile(0.49) and getQuantile(0.51). This same 1% error applied at a
+    rank of 0.95 means that the true quantile should be between getQuantile(0.94) and getQuantile(0.96).
+    In other words, the error is a fixed +/- epsilon for the entire range of ranks.
+
+    Typical single-sided rank error by quantile_precision (use for getQuantile/getRank):
+        - quantile_precision=100 → ~2.61%
+        - quantile_precision=200 → ~1.33%
+        - quantile_precision=400 → ~0.68%
+        - quantile_precision=800 → ~0.35%
+
+    See https://datasketches.apache.org/docs/KLL/KLLAccuracyAndSize.html for details on accuracy and size.
+
+    Null values in the target column are ignored when constructing the sketch.
+
+    Examples:
+        >>> import ray
+        >>> from ray.data.aggregate import ApproximateQuantile
+        >>> # Create a dataset with some values
+        >>> ds = ray.data.from_items(
+        ...     [{"value": 20.0}, {"value": 40.0}, {"value": 60.0},
+        ...     {"value": 80.0}, {"value": 100.0}]
+        ... )
+        >>> result = ds.aggregate(ApproximateQuantile(on="value", quantiles=[0.1, 0.5, 0.9]))
+        >>> # Result: {'approx_quantile(value)': [20.0, 60.0, 100.0]}
+
+
+    Args:
+        on: The name of the column to calculate the quantile on. Must be a numeric column.
+        quantiles: The list of quantiles to compute. Must be between 0 and 1 inclusive. For example, quantiles=[0.5] computes the median. Null entries in the source column are skipped.
+        quantile_precision: Controls the accuracy and memory footprint of the sketch (K in KLL); higher values yield lower error but use more memory. Defaults to 800. See https://datasketches.apache.org/docs/KLL/KLLAccuracyAndSize.html for details on accuracy and size.
+        alias_name: Optional name for the resulting column. If not provided, defaults to "approx_quantile({column_name})".
+    """
+
     def _require_datasketches(self):
         try:
             from datasketches import kll_floats_sketch  # type: ignore[import]
@@ -1743,46 +1865,6 @@ class ApproximateQuantile(AggregateFnV2):
         quantile_precision: int = 800,
         alias_name: Optional[str] = None,
     ):
-        """
-        Computes the approximate quantiles of a column by using a datasketches kll_floats_sketch.
-        https://datasketches.apache.org/docs/KLL/KLLSketch.html
-
-        The accuracy of the KLL quantile sketch is a function of the configured quantile precision, which also affects
-        the overall size of the sketch.
-        The KLL Sketch has absolute error. For example, a specified rank accuracy of 1% at the
-        median (rank = 0.50) means that the true quantile (if you could extract it from the set)
-        should be between getQuantile(0.49) and getQuantile(0.51). This same 1% error applied at a
-        rank of 0.95 means that the true quantile should be between getQuantile(0.94) and getQuantile(0.96).
-        In other words, the error is a fixed +/- epsilon for the entire range of ranks.
-
-        Typical single-sided rank error by quantile_precision (use for getQuantile/getRank):
-            - quantile_precision=100 → ~2.61%
-            - quantile_precision=200 → ~1.33%
-            - quantile_precision=400 → ~0.68%
-            - quantile_precision=800 → ~0.35%
-
-        See https://datasketches.apache.org/docs/KLL/KLLAccuracyAndSize.html for details on accuracy and size.
-
-        Null values in the target column are ignored when constructing the sketch.
-
-        Examples:
-            >>> import ray
-            >>> from ray.data.aggregate import ApproximateQuantile
-            >>> # Create a dataset with some values
-            >>> ds = ray.data.from_items(
-            ...     [{"value": 20.0}, {"value": 40.0}, {"value": 60.0},
-            ...     {"value": 80.0}, {"value": 100.0}]
-            ... )
-            >>> result = ds.aggregate(ApproximateQuantile(on="value", quantiles=[0.1, 0.5, 0.9]))
-            >>> # Result: {'approx_quantile(value)': [20.0, 60.0, 100.0]}
-
-
-        Args:
-            on: The name of the column to calculate the quantile on. Must be a numeric column.
-            quantiles: The list of quantiles to compute. Must be between 0 and 1 inclusive. For example, quantiles=[0.5] computes the median. Null entries in the source column are skipped.
-            quantile_precision: Controls the accuracy and memory footprint of the sketch (K in KLL); higher values yield lower error but use more memory. Defaults to 800. See https://datasketches.apache.org/docs/KLL/KLLAccuracyAndSize.html for details on accuracy and size.
-            alias_name: Optional name for the resulting column. If not provided, defaults to "approx_quantile({column_name})".
-        """
         self._sketch_cls = self._require_datasketches()
         self._quantiles = quantiles
         self._quantile_precision = quantile_precision
@@ -1794,6 +1876,15 @@ class ApproximateQuantile(AggregateFnV2):
         )
 
     def zero(self, quantile_precision: int):
+        """Create an empty KLL sketch.
+
+        Args:
+            quantile_precision: The ``k`` parameter of the sketch, which sets its
+                accuracy and size.
+
+        Returns:
+            An empty ``kll_floats_sketch``.
+        """
         return self._sketch_cls(k=quantile_precision)
 
     def aggregate_block(self, block: Block) -> bytes:
@@ -1819,6 +1910,44 @@ class ApproximateQuantile(AggregateFnV2):
 
 @PublicAPI(stability="alpha")
 class ApproximateTopK(AggregateFnV2):
+    """Computes the approximate top k items in a column by using a datasketches frequent_strings_sketch.
+    https://datasketches.apache.org/docs/Frequency/FrequentItemsOverview.html
+
+    For an exact variant that returns a plain list of values (at the cost of
+    keeping all distinct values in the accumulator), see :class:`TopKUnique`.
+
+    Guarantees:
+        - Any item with true frequency > N / (2^log_capacity) is guaranteed to appear in the results
+        - Reported counts may have an error of at most ± N / (2^log_capacity).
+
+
+    If log_capacity is too small for your data:
+        - Low-frequency items may be evicted from the sketch, potentially causing the top-k
+          results to miss items that should appear in the output.
+        - The error bounds increase, reducing the accuracy of the reported counts.
+
+    Examples:
+        >>> import ray
+        >>> from ray.data.aggregate import ApproximateTopK
+        >>> ds = ray.data.from_items([
+        ...     {"word": "apple"}, {"word": "banana"}, {"word": "apple"},
+        ...     {"word": "cherry"}, {"word": "apple"}
+        ... ])
+        >>> result = ds.aggregate(ApproximateTopK(on="word", k=2))
+        >>> # Result: {'approx_topk(word)': [{'word': 'apple', 'count': 3}, {'word': 'banana', 'count': 1}]}
+
+    Args:
+        on: The name of the column to aggregate.
+        k: The number of top items to return.
+        log_capacity: Base 2 logarithm of the maximum size of the internal hash map.
+            Higher values increase accuracy but use more memory. Defaults to 15.
+        alias_name: The name of the aggregate. Defaults to None.
+        encode_lists: If `True`, encode list elements.  If `False`, encode
+            whole lists (i.e., the entire list is considered as a single object).
+            `False` by default. Note that this is a top-level flatten (not a recursive
+            flatten) operation.
+    """
+
     def _require_datasketches(self):
         try:
             from datasketches import frequent_strings_sketch
@@ -1837,44 +1966,6 @@ class ApproximateTopK(AggregateFnV2):
         alias_name: Optional[str] = None,
         encode_lists: bool = False,
     ):
-        """
-        Computes the approximate top k items in a column by using a datasketches frequent_strings_sketch.
-        https://datasketches.apache.org/docs/Frequency/FrequentItemsOverview.html
-
-        For an exact variant that returns a plain list of values (at the cost of
-        keeping all distinct values in the accumulator), see :class:`TopKUnique`.
-
-        Guarantees:
-            - Any item with true frequency > N / (2^log_capacity) is guaranteed to appear in the results
-            - Reported counts may have an error of at most ± N / (2^log_capacity).
-
-
-        If log_capacity is too small for your data:
-            - Low-frequency items may be evicted from the sketch, potentially causing the top-k
-              results to miss items that should appear in the output.
-            - The error bounds increase, reducing the accuracy of the reported counts.
-
-        Examples:
-            >>> import ray
-            >>> from ray.data.aggregate import ApproximateTopK
-            >>> ds = ray.data.from_items([
-            ...     {"word": "apple"}, {"word": "banana"}, {"word": "apple"},
-            ...     {"word": "cherry"}, {"word": "apple"}
-            ... ])
-            >>> result = ds.aggregate(ApproximateTopK(on="word", k=2))
-            >>> # Result: {'approx_topk(word)': [{'word': 'apple', 'count': 3}, {'word': 'banana', 'count': 1}]}
-
-        Args:
-            on: The name of the column to aggregate.
-            k: The number of top items to return.
-            log_capacity: Base 2 logarithm of the maximum size of the internal hash map.
-                Higher values increase accuracy but use more memory. Defaults to 15.
-            alias_name: The name of the aggregate. Defaults to None.
-            encode_lists: If `True`, encode list elements.  If `False`, encode
-                whole lists (i.e., the entire list is considered as a single object).
-                `False` by default. Note that this is a top-level flatten (not a recursive
-                flatten) operation.
-        """
 
         self.k = k
         self._log_capacity = log_capacity
@@ -1889,6 +1980,15 @@ class ApproximateTopK(AggregateFnV2):
         )
 
     def zero(self, log_capacity: int):
+        """Create an empty frequent-items sketch.
+
+        Args:
+            log_capacity: The base-2 logarithm of the sketch's capacity, passed to the
+                sketch as ``lg_max_k``.
+
+        Returns:
+            An empty ``frequent_strings_sketch``.
+        """
         return self._frequent_strings_sketch(lg_max_k=log_capacity)
 
     def aggregate_block(self, block: Block) -> bytes:
@@ -1947,7 +2047,8 @@ class TopKUnique(VectorizedAggregateFnV2[Dict[str, List], List[Any]]):
     dependency is required, and the output is a plain list of values (like
     :class:`Unique`) rather than value/count records. The price is that the
     accumulator holds every distinct value with its count until the final
-    ranking, so memory grows with the number of distinct values.
+    ranking, so memory grows with the number of distinct values. Values that
+    Arrow can't count natively (for example tensors) are counted in Python.
 
     Ties are broken deterministically: values with equal counts are ordered by
     value (ascending), with nulls last.
@@ -2013,7 +2114,9 @@ class TopKUnique(VectorizedAggregateFnV2[Dict[str, List], List[Any]]):
             #       missing rows can be None, NaN or pd.NA depending on the block
             #       type - none of which is iterable.
             counter = collections.Counter(
-                tuple(value) if isinstance(value, (list, tuple, np.ndarray)) else None
+                _to_hashable(value)
+                if isinstance(value, (list, tuple, np.ndarray))
+                else None
                 for value in accessor.to_pylist()
             )
             value_counts = {
@@ -2021,7 +2124,18 @@ class TopKUnique(VectorizedAggregateFnV2[Dict[str, List], List[Any]]):
                 "counts": list(counter.values()),
             }
         else:
-            value_counts = accessor.value_counts() or {"values": [], "counts": []}
+            try:
+                value_counts = accessor.value_counts() or {"values": [], "counts": []}
+            except pa.ArrowNotImplementedError:
+                # Arrow has no `value_counts` kernel for this type (e.g. extension
+                # types such as tensors), so count in Python over hashable values.
+                counter = collections.Counter(
+                    _to_hashable(value) for value in accessor.to_pylist()
+                )
+                value_counts = {
+                    "values": list(counter.keys()),
+                    "counts": list(counter.values()),
+                }
 
         values: List[Any] = []
         counts: List[int] = []

@@ -75,8 +75,10 @@ _PARQUET_FRAGMENT_BUFFER_SIZE = env_integer(
 # Arrow process-wide IO / CPU thread pools for the read task. Arrow's default
 # (~num cores, 8 IO threads) throttles the concurrent column/range fetches a
 # Parquet scan issues against S3, especially for row-group-scoped fragments.
-_READER_IO_THREAD_COUNT = env_integer("RAY_DATA_PARQUET_READER_IO_THREAD_COUNT", 128)
-_READER_CPU_COUNT = env_integer("RAY_DATA_PARQUET_READER_CPU_COUNT", 32)
+# The CPU pool is capped at 1 because each read task holds one Ray CPU; a
+# larger pool oversubscribes the node when many read tasks run concurrently.
+_READER_IO_THREAD_COUNT = env_integer("RAY_DATA_PARQUET_READER_IO_THREAD_COUNT", 16)
+_READER_CPU_COUNT = env_integer("RAY_DATA_PARQUET_READER_CPU_COUNT", 1)
 
 
 def _estimate_batch_size_from_metadata(
@@ -380,8 +382,9 @@ class ParquetFileReader(FileReader, SupportsMetadata):
         Paths are deduped by :meth:`FileReader.read` before the dataset is
         built, so the dataset has exactly one fragment per file. The
         per-row chunk metadata drives the fan-out here, not the dataset
-        itself — multiple manifest rows can share a single path with
-        different row-group sets.
+        itself — multiple manifest rows can share a single path, either
+        with different row-group sets (chunking) or repeating the same
+        ones (the user listed the file more than once); each row is read.
         """
         path_to_fragment = {
             fragment.path: fragment for fragment in dataset.get_fragments()

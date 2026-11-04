@@ -36,8 +36,7 @@ def get_databricks_display_html_function():
 
 
 def get_db_entry_point():
-    """
-    Return databricks entry_point instance, it is for calling some
+    """Return databricks entry_point instance, it is for calling some
     internal API in databricks runtime
     """
     from dbruntime import UserNamespaceInitializer
@@ -47,8 +46,7 @@ def get_db_entry_point():
 
 
 def display_databricks_driver_proxy_url(spark_context, port, title):
-    """
-    This helper function create a proxy URL for databricks driver webapp forwarding.
+    """This helper function create a proxy URL for databricks driver webapp forwarding.
     In databricks runtime, user does not have permission to directly access web
     service binding on driver machine port, but user can visit it by a proxy URL with
     following format: "/driver-proxy/o/{orgId}/{clusterId}/{port}/".

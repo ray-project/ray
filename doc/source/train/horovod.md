@@ -32,13 +32,7 @@ If you're new to Horovod, see the [Horovod guide](https://horovod.readthedocs.io
 
 A trainer is the primary Ray Train class for managing state and running training. For Horovod, set up a {class}`~ray.train.horovod.HorovodTrainer` as in the following example:
 
-```{testcode}
-:hide:
-
-train_func = lambda: None
-```
-
-```{testcode}
+```python
 from ray.train import ScalingConfig
 from ray.train.horovod import HorovodTrainer
 # For GPU Training, set `use_gpu` to True.
@@ -53,9 +47,7 @@ Always use a `HorovodTrainer` when you train with Horovod, regardless of the tra
 
 To customize the backend setup, pass a {class}`~ray.train.horovod.HorovodConfig`:
 
-```{testcode}
-:skipif: True
-
+```python
 from ray.train import ScalingConfig
 from ray.train.horovod import HorovodTrainer, HorovodConfig
 
@@ -72,9 +64,7 @@ For more configuration options, see the {py:class}`~ray.train.data_parallel_trai
 
 After you have a distributed training function and a trainer, call `trainer.fit()` to start training:
 
-```{testcode}
-:skipif: True
-
+```python
 trainer.fit()
 ```
 

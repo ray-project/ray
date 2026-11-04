@@ -13,7 +13,7 @@ This tutorial shows how to convert an existing PyTorch Lightning script to use R
 You learn how to do the following:
 
 1. Configure the Lightning `Trainer` to run distributed with Ray on the correct CPU or GPU device.
-1. Configure the {ref}`training function <train-overview-training-function>` to report metrics and save checkpoints.
+1. Configure the {ref}`training function <train-overview-training-function>` to save checkpoints so that training can recover from failures.
 1. Configure {ref}`scaling <train-overview-scaling-config>` and CPU or GPU resource requirements for a training job.
 1. Launch a distributed training job with a {class}`~ray.train.torch.TorchTrainer`.
 
@@ -21,9 +21,7 @@ You learn how to do the following:
 
 Here's the final code for reference:
 
-```{testcode}
-:skipif: True
-
+```python
 from ray.train.torch import TorchTrainer
 from ray.train import ScalingConfig
 
@@ -137,9 +135,7 @@ with result.checkpoint.as_directory() as checkpoint_dir:
 :::{tab-item} PyTorch Lightning
 <!-- This snippet isn't tested because it doesn't use any Ray code. -->
 
-```{testcode}
-:skipif: True
-
+```python
 import torch
 from torchvision.models import resnet18
 from torchvision.datasets import FashionMNIST
@@ -218,6 +214,8 @@ Ray Train sets up your distributed process group on each worker. You only need t
 
 The following sections discuss each change.
 
+The `datamodule` in this example is a standard Lightning `LightningDataModule`, which works with Ray Train unchanged. To compare it with Ray Data for loading and preprocessing, see {ref}`train-datasets-pytorch`.
+
 ### Configure the distributed strategy
 
 Ray Train offers several distributed strategies for Lightning, each a subclass of a Lightning base strategy. They accept the same arguments as their base strategy classes, and internally they configure the root device and the distributed sampler arguments. {class}`~ray.train.lightning.RayDDPStrategy` disables `process_group_backend`, `timeout`, and `start_method`. Set them in {class}`~ray.train.torch.TorchConfig` instead. Choose from the following strategies:
@@ -287,9 +285,9 @@ Ray Train also provides a {class}`~ray.train.lightning.RayLightningEnvironment` 
 
 
 
-### Report checkpoints and metrics
+### Save checkpoints for fault tolerance
 
-To persist your checkpoints and monitor training progress, add a {class}`ray.train.lightning.RayTrainReportCallback` utility callback to your Lightning `Trainer`.
+To persist checkpoints so that training can recover from failures, add a {class}`ray.train.lightning.RayTrainReportCallback` utility callback to your Lightning `Trainer`.
 
 
 ```diff
@@ -393,9 +391,7 @@ Ray 2.7 introduced the unified {class}`~ray.train.torch.TorchTrainer` API, which
 :::{tab-item} Deprecated `LightningTrainer`
 <!-- This snippet isn't tested because it raises a hard deprecation warning. -->
 
-```{testcode}
-:skipif: True
-
+```python
 from ray.train.lightning import LightningConfigBuilder, LightningTrainer
 
 config_builder = LightningConfigBuilder()
@@ -441,9 +437,7 @@ model = lightning_checkpoint.get_model(MyLightningModule)
 :::{tab-item} `TorchTrainer`
 <!-- This snippet isn't tested because it runs with 4 GPUs, and CI is only run with 1. -->
 
-```{testcode}
-:skipif: True
-
+```python
 import os
 
 import lightning.pytorch as pl

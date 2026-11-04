@@ -21,6 +21,10 @@ from prometheus_client.core import (
     UnknownMetricFamily,
 )
 
+from ray._private.authentication.http_token_authentication import (
+    get_token_auth_wsgi_app,
+)
+
 logger = logging.getLogger(__name__)
 
 
@@ -326,7 +330,9 @@ class PrometheusStatsExporter(base_exporter.StatsExporter):
     def serve_http(self):
         """serve_http serves the Prometheus endpoint."""
         address = self.options.address or ""
-        httpd = make_server(address, self.options.port, make_wsgi_app())
+        httpd = make_server(
+            address, self.options.port, get_token_auth_wsgi_app(make_wsgi_app())
+        )
         t = threading.Thread(target=httpd.serve_forever)
         t.daemon = True
         t.start()

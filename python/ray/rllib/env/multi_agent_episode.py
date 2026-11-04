@@ -659,6 +659,13 @@ class MultiAgentEpisode:
 
     @property
     def custom_data(self):
+        """A dict for storing your own data on this episode.
+
+        For example, a callback can collect values here over the episode's steps
+        and log them as custom metrics when the episode ends. RLlib doesn't read
+        this data. `cut()` deep-copies it into the successor chunk, and
+        `get_state()` includes it.
+        """
         return self._custom_data
 
     @property
@@ -1414,7 +1421,13 @@ class MultiAgentEpisode:
         )
 
     def get_terminateds(self) -> MultiAgentDict:
-        """Gets the terminateds at given indices."""
+        """Returns the terminated flags of this episode's agents.
+
+        Returns:
+            A dict mapping each agent ID in this episode to whether that agent's
+            `SingleAgentEpisode` is terminated, plus an `"__all__"` key for whether
+            the episode as a whole is terminated.
+        """
         terminateds = {
             agent_id: self.agent_episodes[agent_id].is_terminated
             for agent_id in self.agent_ids
@@ -1699,8 +1712,8 @@ class MultiAgentEpisode:
         Note that from an episode's state the episode itself can
         be recreated.
 
-        Returns: A dicitonary containing pickable data for a
-            `MultiAgentEpisode`.
+        Returns:
+            A dictionary containing picklable data for a `MultiAgentEpisode`.
         """
         return {
             "id_": self.id_,
@@ -1860,7 +1873,13 @@ class MultiAgentEpisode:
         return set(self.get_observations(-1).keys())
 
     def get_duration_s(self) -> float:
-        """Returns the duration of this Episode (chunk) in seconds."""
+        """Returns the duration of this Episode (chunk) in seconds.
+
+        Returns:
+            The seconds between the start of this episode chunk and its most
+            recently added env step, measured with `time.perf_counter()`. 0.0 if
+            no env step has been added yet.
+        """
         if self._last_step_time is None:
             return 0.0
         return self._last_step_time - self._start_time

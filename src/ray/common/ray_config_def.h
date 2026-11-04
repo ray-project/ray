@@ -36,7 +36,7 @@ RAY_CONFIG(bool, enable_cluster_auth, true)
 /// will be converted to AuthenticationMode enum defined in
 /// rpc/authentication/authentication_mode.h
 /// use GetAuthenticationMode() to get the authentication mode enum value.
-RAY_CONFIG(std::string, AUTH_MODE, "disabled")
+RAY_CONFIG(std::string, AUTH_MODE, "token")
 
 /// Whether to enable Kubernetes token-based authentication for RPC calls.
 RAY_CONFIG(bool, ENABLE_K8S_TOKEN_AUTH, false)
@@ -443,6 +443,12 @@ RAY_CONFIG(int64_t, redis_tcp_keepalive_interval_seconds, 30)
 /// keepalive is enabled.
 RAY_CONFIG(int64_t, redis_tcp_keepalive_probes, 3)
 
+/// Whether the GCS records gcs_storage_operation_count and
+/// gcs_storage_operation_latency_ms on the Redis backend. Adds two metric
+/// records per storage operation. The in-memory and RocksDB backends always
+/// record them.
+RAY_CONFIG(bool, gcs_redis_storage_metrics_enabled, true)
+
 /// Number of retries for a redis request failure.
 RAY_CONFIG(size_t, num_redis_request_retries, 5)
 
@@ -712,6 +718,10 @@ RAY_CONFIG(uint64_t, gcs_mark_task_failed_on_worker_dead_delay_ms, /*  1 secs */
 
 /// Whether or not we enable metrics collection.
 RAY_CONFIG(bool, enable_metrics_collection, true)
+
+/// Whether the dashboard agent collects GPU metrics. Disabling this avoids
+/// polling GPU management libraries such as NVML.
+RAY_CONFIG(bool, enable_gpu_metrics_collection, true)
 
 /// Determine if the high cardinality labels such as WorkerId, task and actor Name
 /// should be used in the metrics. For the complete definition, see

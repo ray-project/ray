@@ -2,7 +2,7 @@ import gc
 import os
 import platform
 import tracemalloc
-from typing import TYPE_CHECKING, Dict, List, Optional, Tuple, Union
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple, Union
 
 import gymnasium as gym
 
@@ -692,12 +692,24 @@ class RLlibCallback(metaclass=_CallbackMeta):
     def on_workers_recreated(
         self,
         *,
-        algorithm,
-        worker_set,
-        worker_ids,
-        is_evaluation,
-        **kwargs,
+        algorithm: "Algorithm",
+        worker_set: "EnvRunnerGroup",
+        worker_ids: List[int],
+        is_evaluation: bool,
+        **kwargs: Any,
     ) -> None:
+        """Deprecated. Use `on_env_runners_recreated()` instead.
+
+        RLlib still calls this callback right after `on_env_runners_recreated()`,
+        with the same values under the old argument names.
+
+        Args:
+            algorithm: The Algorithm to which the EnvRunnerGroup belongs.
+            worker_set: The EnvRunnerGroup whose EnvRunners were recreated.
+            worker_ids: The indices of the recreated EnvRunners.
+            is_evaluation: Whether `worker_set` is the evaluation EnvRunnerGroup.
+            **kwargs: Forward compatibility placeholder.
+        """
         pass
 
 

@@ -56,8 +56,9 @@ def test_probe_name_defaults_to_the_class_name():
     assert Named.probe_name() == "custom"
 
 
-def test_probe_result_defaults_to_no_timestamp():
+def test_probe_result_defaults_to_no_timestamp_and_no_error():
     assert ProbeResult().timestamp_s is None
+    assert ProbeResult().error is None
 
 
 def test_a_probe_must_implement_poll():
