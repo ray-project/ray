@@ -70,6 +70,8 @@ def _get_wandb_reinit(_wandb: Optional[ModuleType] = None) -> Union[bool, str]:
     warn about the boolean. Versions without string support still need ``True``.
     """
     version = getattr(_wandb or wandb, "__version__", None)
+    if not version:
+        return True
     try:
         if Version(version) >= _WANDB_REINIT_STRING_MIN_VERSION:
             return "finish_previous"
@@ -454,7 +456,10 @@ class _WandbLoggingActor:
     def run(self):
         # Since we're running in a separate process already, use threads.
         os.environ["WANDB_START_METHOD"] = "thread"
-        run = self._wandb.init(*self.args, **self.kwargs)
+        # Pick `reinit` here, because this process, not the driver, imports wandb and
+        # its version can differ. A `reinit` passed by the user takes precedence.
+        init_kwargs = {"reinit": _get_wandb_reinit(self._wandb), **self.kwargs}
+        run = self._wandb.init(*self.args, **init_kwargs)
         run.config.trial_log_path = self._logdir
 
         _run_wandb_process_run_info_hook(run)
@@ -708,7 +713,6 @@ class WandbLoggerCallback(LoggerCallback):
             id=trial_id,
             name=trial_name,
             resume=False,
-            reinit=_get_wandb_reinit(),
             allow_val_change=True,
             group=wandb_group,
             project=wandb_project,

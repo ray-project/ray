@@ -247,7 +247,8 @@ class TestWandbLogger:
         assert logger_state.kwargs["id"] == trial.trial_id
         assert logger_state.kwargs["name"] == trial.trial_name
         assert logger_state.kwargs["group"] == trial.experiment_dir_name
-        assert logger_state.kwargs["reinit"] == _get_wandb_reinit()
+        # The driver leaves `reinit` to the logging actor, which imports wandb.
+        assert "reinit" not in logger_state.kwargs
         assert "config" in logger_state.exclude
 
         del logger
@@ -625,6 +626,30 @@ def test_setup_wandb_reinit(version, expected, monkeypatch):
         setup_wandb(project="test_project", _wandb=fake_wandb)
 
     assert fake_wandb.init.call_args.kwargs["reinit"] == expected
+
+
+@pytest.mark.parametrize(
+    "version,user_kwargs,expected",
+    [
+        ("0.19.8", {}, True),
+        ("0.19.9", {}, "finish_previous"),
+        ("0.24.2", {}, "finish_previous"),
+        # A `reinit` passed by the user takes precedence over the default.
+        ("0.24.2", {"reinit": "return_previous"}, "return_previous"),
+        ("0.19.8", {"reinit": False}, False),
+    ],
+)
+def test_wandb_logging_actor_reinit(version, user_kwargs, expected):
+    """The logging actor picks `reinit` using the wandb it imports, not the driver's."""
+    mock_queue = Mock(get=Mock(return_value=(_QueueItem.END, None)))
+
+    logging_process = _WandbLoggingActor(
+        logdir="/tmp", queue=mock_queue, exclude=[], to_config=[], **user_kwargs
+    )
+    logging_process._wandb = Mock(__version__=version)
+    logging_process.run()
+
+    assert logging_process._wandb.init.call_args.kwargs["reinit"] == expected
 
 
 if __name__ == "__main__":
