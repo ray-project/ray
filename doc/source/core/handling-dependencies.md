@@ -432,6 +432,8 @@ The `runtime_env` is a Python dictionary or a {class}`ray.runtime_env.RuntimeEnv
   1. A URI to a remotely stored archive in `.zip`, `.tar.gz`, `.tgz`, or `.tar.xz` format that contains the working directory for your job. Ray enforces no file size limit for this case. For details, see {ref}`remote-uris`.
   1. A `local://` URI naming a directory that already exists on every node, such as one baked into your container image.
 
+  The size limits in cases 1 and 2 apply when a driver calls `ray.init(runtime_env=...)`. When you submit a job with `ray job submit` or the Ray Jobs SDK, the dashboard receives the upload and accepts at most 100 MiB. A larger upload fails with `Request failed with status code 413`. To submit a larger working directory, use case 3 or case 4.
+
   In cases 1 through 3, Ray downloads the specified directory to each node on the cluster, and Ray workers start in their node's copy of this directory. In case 4, Ray uploads and downloads nothing, and the workers start directly in that directory. See {ref}`in-image-working-dir`.
 
   - Examples:
