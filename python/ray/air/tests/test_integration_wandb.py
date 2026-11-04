@@ -38,7 +38,6 @@ import os
 import tempfile
 import time
 from pathlib import Path
-from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
 import numpy as np
@@ -52,7 +51,6 @@ from ray.air.integrations.wandb import (
     WANDB_PROJECT_ENV_VAR,
     WANDB_SETUP_API_KEY_HOOK,
     WandbLoggerCallback,
-    _get_wandb_reinit,
     _QueueItem,
     _WandbLoggingActor,
     setup_wandb,
@@ -247,8 +245,7 @@ class TestWandbLogger:
         assert logger_state.kwargs["id"] == trial.trial_id
         assert logger_state.kwargs["name"] == trial.trial_name
         assert logger_state.kwargs["group"] == trial.experiment_dir_name
-        # The driver leaves `reinit` to the logging actor, which imports wandb.
-        assert "reinit" not in logger_state.kwargs
+        assert logger_state.kwargs["reinit"] == "finish_previous"
         assert "config" in logger_state.exclude
 
         del logger
@@ -590,66 +587,15 @@ def test_wandb_logger_rank_zero_only(trial, monkeypatch):
         assert mock_wandb.init.call_args.kwargs.get("mode") != "disabled"
 
 
-# wandb only accepts the string `reinit` values from 0.19.9, and warns about the
-# boolean from then on.
-REINIT_VERSION_CASES = [
-    ("0.19.8", True),
-    ("0.19.9", "finish_previous"),
-    ("0.19.10", "finish_previous"),
-    ("0.24.2", "finish_previous"),
-    ("not-a-version", True),
-    (None, True),
-]
-
-
-@pytest.mark.parametrize("version,expected", REINIT_VERSION_CASES)
-def test_get_wandb_reinit(version, expected):
-    fake_wandb = (
-        SimpleNamespace() if version is None else SimpleNamespace(__version__=version)
-    )
-    assert _get_wandb_reinit(fake_wandb) == expected
-
-
-def test_get_wandb_reinit_without_wandb():
-    with patch.object(ray.air.integrations.wandb, "wandb", None):
-        assert _get_wandb_reinit() is True
-
-
-@pytest.mark.parametrize("version,expected", REINIT_VERSION_CASES)
-def test_setup_wandb_reinit(version, expected, monkeypatch):
+def test_setup_wandb_reinit(monkeypatch):
+    """wandb deprecated boolean values for `reinit`."""
     monkeypatch.setenv(WANDB_ENV_VAR, "abcde")
-    fake_wandb = SimpleNamespace(init=Mock())
-    if version is not None:
-        fake_wandb.__version__ = version
+    mock_wandb = Mock()
 
     with patch("ray.air.integrations.wandb.get_session", return_value=None):
-        setup_wandb(project="test_project", _wandb=fake_wandb)
+        setup_wandb(project="test_project", _wandb=mock_wandb)
 
-    assert fake_wandb.init.call_args.kwargs["reinit"] == expected
-
-
-@pytest.mark.parametrize(
-    "version,user_kwargs,expected",
-    [
-        ("0.19.8", {}, True),
-        ("0.19.9", {}, "finish_previous"),
-        ("0.24.2", {}, "finish_previous"),
-        # A `reinit` passed by the user takes precedence over the default.
-        ("0.24.2", {"reinit": "return_previous"}, "return_previous"),
-        ("0.19.8", {"reinit": False}, False),
-    ],
-)
-def test_wandb_logging_actor_reinit(version, user_kwargs, expected):
-    """The logging actor picks `reinit` using the wandb it imports, not the driver's."""
-    mock_queue = Mock(get=Mock(return_value=(_QueueItem.END, None)))
-
-    logging_process = _WandbLoggingActor(
-        logdir="/tmp", queue=mock_queue, exclude=[], to_config=[], **user_kwargs
-    )
-    logging_process._wandb = Mock(__version__=version)
-    logging_process.run()
-
-    assert logging_process._wandb.init.call_args.kwargs["reinit"] == expected
+    assert mock_wandb.init.call_args.kwargs["reinit"] == "finish_previous"
 
 
 if __name__ == "__main__":
