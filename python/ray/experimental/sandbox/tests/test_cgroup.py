@@ -212,6 +212,25 @@ def test_a_node_pids_limit_caps_every_sandbox(manager, shared, monkeypatch):
     assert "--ignore-cgroups" not in backend._runsc_base_args(unlimited)
 
 
+def test_resource_preflight_checks_a_node_pids_limit(shared, monkeypatch):
+    """With RAY_SANDBOX_PIDS_MAX set, the preflight that runs before an image
+    pull checks the cgroup subtree for every sandbox, as create does."""
+    from ray.experimental.sandbox import runtime as runtime_mod
+
+    monkeypatch.setattr(runtime_mod, "ImageManager", Mock)
+    monkeypatch.setattr(runtime_mod, "GVisorSandboxBackend", Mock)
+    runtime = runtime_mod.SandboxRuntime()
+    runtime.check_resources()
+    monkeypatch.setenv("RAY_SANDBOX_PIDS_MAX", "4096")
+    with pytest.raises(SandboxCreationError, match="pids"):
+        runtime.check_resources()
+    (shared / "cgroup.subtree_control").write_text("cpu memory pids")
+    runtime.check_resources()
+    monkeypatch.setenv("RAY_SANDBOX_PIDS_MAX", "lots")
+    with pytest.raises(SandboxCreationError, match="RAY_SANDBOX_PIDS_MAX"):
+        runtime.check_resources()
+
+
 def test_only_live_owners_cpus_count(shared, bundles):
     """A sandbox's CPUs count while its owner holds the owner file's lock,
     and entries that aren't CPU numbers are ignored."""

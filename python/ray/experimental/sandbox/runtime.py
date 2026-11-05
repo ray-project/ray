@@ -3,7 +3,10 @@ import os
 import threading
 from typing import Callable, Dict, List, Optional, Union
 
-from ray.experimental.sandbox._internal.cgroup import SandboxCgroupManager
+from ray.experimental.sandbox._internal.cgroup import (
+    SandboxCgroupManager,
+    pids_limit,
+)
 from ray.experimental.sandbox.backend.base import (
     ExecResult,
     SandboxStatus,
@@ -60,7 +63,9 @@ class SandboxRuntime:
         try:
             config = SandboxConfig(image="resource-preflight", cpu=cpu, memory=memory)
             memory_bytes = parse_memory_bytes(config.memory) or 0
-            if config.cpu > 0 or memory_bytes > 0:
+            # A node that sets RAY_SANDBOX_PIDS_MAX puts every sandbox in a
+            # cgroup, as create does.
+            if config.cpu > 0 or memory_bytes > 0 or pids_limit() > 0:
                 SandboxCgroupManager().check(config.cpu, memory_bytes)
         except Exception as err:
             raise SandboxCreationError(
