@@ -1,6 +1,6 @@
 --extra-index-url https://download.pytorch.org/whl/cpu
 
-absl-py==2.4.0 \
+absl-py==2.4.0 ; python_full_version < '3.15' \
     --hash=sha256:88476fd881ca8aab94ffa78b7b6c632a782ab3ba1cd19c9bd423abc4fb4cd28d \
     --hash=sha256:8c6af82722b35cf71e0f4d1d47dcaebfff286e27110a99fc359349b247dfb5d4
     # via
@@ -1048,7 +1048,7 @@ cuda-tile==1.5.0 \
     --hash=sha256:d808355e4cb6a850c7e3e82a5cd656c0062c33225fce69a8fd40290bc5b0bcaa \
     --hash=sha256:e7cb56186b0cc98166b72c7e5a3764c236151aa8d53e0b37a153766b79ea005a
     # via flashinfer-python
-cupy-cuda12x==13.6.0 ; sys_platform != 'darwin' \
+cupy-cuda12x==13.6.0 ; python_full_version < '3.15' and sys_platform != 'darwin' \
     --hash=sha256:297b4268f839de67ef7865c2202d3f5a0fb8d20bd43360bc51b6e60cb4406447 \
     --hash=sha256:4d2dfd9bb4705d446f542739a3616b4c9eea98d674fce247402cc9bcec89a1e4 \
     --hash=sha256:52d9e7f83d920da7d81ec2e791c2c2c747fdaa1d7b811971b34865ce6371e98a \
@@ -1140,7 +1140,7 @@ distro==1.9.0 \
     # via
     #   anthropic
     #   openai
-dm-tree==0.1.10 \
+dm-tree==0.1.10 ; python_full_version < '3.15' \
     --hash=sha256:012c2b376e88d3685c73a4b5c23be41fe933e14e380dcd90172971690b0e02d2 \
     --hash=sha256:033f9a063e1e19b6c65fb5c76079bd923044f5a6095357ad2637845513d47938 \
     --hash=sha256:0e8f8f1354f178112732b30d2293bc53d212ea64a9556db80a926af3d4647a6b \
@@ -1367,7 +1367,7 @@ fastjsonschema==2.21.2 \
     # via
     #   -c python/deplocks/llm/ray_test_py312_cpu.lock
     #   nbformat
-fastrlock==0.8.3 ; sys_platform != 'darwin' \
+fastrlock==0.8.3 ; python_full_version < '3.15' and sys_platform != 'darwin' \
     --hash=sha256:001fd86bcac78c79658bac496e8a17472d64d558cd2227fdc768aa77f877fe40 \
     --hash=sha256:04bb5eef8f460d13b8c0084ea5a9d3aab2c0573991c880c0a34a56bb14951d30 \
     --hash=sha256:05029d7080c0c61a81d5fee78e842c9a1bf22552cd56129451a252655290dcef \
@@ -1784,7 +1784,7 @@ grpcio-reflection==1.75.0 \
     # via
     #   -c python/deplocks/llm/ray_test_py312_cpu.lock
     #   -r python/requirements.txt
-grpcio-tools==1.75.0 \
+grpcio-tools==1.75.0 ; python_full_version < '3.15' \
     --hash=sha256:05087b1879b3f32a2182f1365e34233236c22e1a1e8cc448b5d29ea58d661846 \
     --hash=sha256:08cc1b8a1364a5b8f975e6a7273684d13630caab76c209a201464ad05f826eb9 \
     --hash=sha256:0a0c899175dd23e96f61b3ab8153642e0ae0182b9c9a582cd0cc4702a056d845 \
@@ -2513,7 +2513,7 @@ loguru==0.7.3 \
     --hash=sha256:19480589e77d47b8d85b2c827ad95d49bf31b0dcde16593892eb51dd18706eb6 \
     --hash=sha256:31a33c10c8e1e10422bfd431aeb5d351c7cf7fa671e3c4df004162264b28220c
     # via compressed-tensors
-lz4==4.4.5 \
+lz4==4.4.5 ; python_full_version < '3.15' \
     --hash=sha256:0846e6e78f374156ccf21c631de80967e03cc3c01c373c665789dc0c5431e7fc \
     --hash=sha256:0bba042ec5a61fa77c7e380351a61cb768277801240249841defd2ff0a10742f \
     --hash=sha256:12233624f1bc2cebc414f9efb3113a03e89acce3ab6f72035577bc61b270d24d \

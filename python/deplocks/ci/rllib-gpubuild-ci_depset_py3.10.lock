@@ -2453,7 +2453,7 @@ mmh3==5.2.1 \
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   ray
-moviepy==2.2.1 \
+moviepy==2.2.1 ; python_full_version < '3.15' \
     --hash=sha256:6b56803fec2ac54b557404126ac1160e65448e03798fa282bd23e8fab3795060 \
     --hash=sha256:c80cb56815ece94e5e3e2d361aa40070eeb30a09d23a24c4e684d03e16deacb1
     # via
@@ -2757,7 +2757,7 @@ nixl==0.4.0 ; sys_platform != 'darwin' \
     --hash=sha256:9a6c831bd8863ab2e2bb242f3cc916f330801836e7461820db9d01d7c6735ef0 \
     --hash=sha256:ef19355b74e2bd5460fca897b8a6559725784694fdd20b0f254b1172d63c2460
     # via -r python/requirements/ml/dl-gpu-requirements.txt
-numexpr==2.14.1 \
+numexpr==2.14.1 ; python_full_version < '3.15' \
     --hash=sha256:03130afa04edf83a7b590d207444f05a00363c9b9ea5d81c0f53b1ea13fad55a \
     --hash=sha256:05f9366d23a2e991fd5a8b5e61a17558f028ba86158a4552f8f239b005cdf83c \
     --hash=sha256:06855053de7a3a8425429bd996e8ae3c50b57637ad3e757e0fa0602a7874be30 \
@@ -3545,7 +3545,7 @@ prettytable==3.17.0 \
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   skops
-proglog==0.1.12 \
+proglog==0.1.12 ; python_full_version < '3.15' \
     --hash=sha256:361ee074721c277b89b75c061336cb8c5f287c92b043efa562ccf7866cda931c \
     --hash=sha256:ccaafce51e80a81c65dc907a460c07ccb8ec1f78dc660cfd8f9ec3a22f01b84c
     # via

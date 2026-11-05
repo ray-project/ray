@@ -1,6 +1,6 @@
 --extra-index-url https://download.pytorch.org/whl/cu130
 
-absl-py==2.4.0 \
+absl-py==2.4.0 ; python_full_version < '3.15' \
     --hash=sha256:88476fd881ca8aab94ffa78b7b6c632a782ab3ba1cd19c9bd423abc4fb4cd28d \
     --hash=sha256:8c6af82722b35cf71e0f4d1d47dcaebfff286e27110a99fc359349b247dfb5d4
     # via
@@ -908,7 +908,7 @@ cuda-toolkit==13.0.3.0 ; sys_platform == 'linux' \
     # via
     #   -c python/deplocks/llm/rayllm_test_py312_cu130.lock
     #   torch
-cupy-cuda12x==13.6.0 ; sys_platform != 'darwin' \
+cupy-cuda12x==13.6.0 ; python_full_version < '3.15' and sys_platform != 'darwin' \
     --hash=sha256:297b4268f839de67ef7865c2202d3f5a0fb8d20bd43360bc51b6e60cb4406447 \
     --hash=sha256:4d2dfd9bb4705d446f542739a3616b4c9eea98d674fce247402cc9bcec89a1e4 \
     --hash=sha256:52d9e7f83d920da7d81ec2e791c2c2c747fdaa1d7b811971b34865ce6371e98a \
@@ -952,7 +952,7 @@ distro==1.9.0 \
     #   -c python/deplocks/llm/rayllm_test_py312_cu130.lock
     #   anthropic
     #   openai
-dm-tree==0.1.10 \
+dm-tree==0.1.10 ; python_full_version < '3.15' \
     --hash=sha256:012c2b376e88d3685c73a4b5c23be41fe933e14e380dcd90172971690b0e02d2 \
     --hash=sha256:033f9a063e1e19b6c65fb5c76079bd923044f5a6095357ad2637845513d47938 \
     --hash=sha256:0e8f8f1354f178112732b30d2293bc53d212ea64a9556db80a926af3d4647a6b \
@@ -1179,7 +1179,7 @@ fastar==0.11.0 \
     # via
     #   -c python/deplocks/llm/rayllm_test_py312_cu130.lock
     #   fastapi-cloud-cli
-fastrlock==0.8.3 ; sys_platform != 'darwin' \
+fastrlock==0.8.3 ; python_full_version < '3.15' and sys_platform != 'darwin' \
     --hash=sha256:001fd86bcac78c79658bac496e8a17472d64d558cd2227fdc768aa77f877fe40 \
     --hash=sha256:04bb5eef8f460d13b8c0084ea5a9d3aab2c0573991c880c0a34a56bb14951d30 \
     --hash=sha256:05029d7080c0c61a81d5fee78e842c9a1bf22552cd56129451a252655290dcef \
@@ -2044,7 +2044,7 @@ loguru==0.7.3 \
     # via
     #   -c python/deplocks/llm/rayllm_test_py312_cu130.lock
     #   compressed-tensors
-lz4==4.4.5 \
+lz4==4.4.5 ; python_full_version < '3.15' \
     --hash=sha256:0846e6e78f374156ccf21c631de80967e03cc3c01c373c665789dc0c5431e7fc \
     --hash=sha256:0bba042ec5a61fa77c7e380351a61cb768277801240249841defd2ff0a10742f \
     --hash=sha256:12233624f1bc2cebc414f9efb3113a03e89acce3ab6f72035577bc61b270d24d \
@@ -5899,7 +5899,7 @@ websockets==16.0 \
     # via
     #   -c python/deplocks/llm/rayllm_test_py312_cu130.lock
     #   uvicorn
-wrapt==1.17.3 \
+wrapt==1.17.3 ; python_full_version < '3.15' \
     --hash=sha256:02b551d101f31694fc785e58e0720ef7d9a10c4e62c1c9358ce6f63f23e30a56 \
     --hash=sha256:042ec3bb8f319c147b1301f2393bc19dba6e176b7da446853406d041c36c7828 \
     --hash=sha256:0610b46293c59a3adbae3dee552b648b984176f8562ee0dba099a56cfbe4df1f \

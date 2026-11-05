@@ -575,10 +575,10 @@ cryptography==46.0.5 \
     #   msal
     #   pyjwt
     #   pyopenssl
-cuda-pathfinder==1.3.4 ; sys_platform != 'darwin' \
+cuda-pathfinder==1.3.4 ; python_full_version < '3.15' and sys_platform != 'darwin' \
     --hash=sha256:fb983f6e0d43af27ef486e14d5989b5f904ef45cedf40538bfdcbffa6bb01fb2
     # via cupy-cuda12x
-cupy-cuda12x==14.0.0 ; sys_platform != 'darwin' \
+cupy-cuda12x==14.0.0 ; python_full_version < '3.15' and sys_platform != 'darwin' \
     --hash=sha256:301de9e45cf06bf571ecb233790aa5153da12a44dd7760776287a626d9780e94 \
     --hash=sha256:321953e346995fc5fb970b7eec05be7463b33628fd0673a54f7f206270786c68 \
     --hash=sha256:5a23a07a51391e4d46dc02b0cf05aa7eb1cb405e3fa8abcec65d8b07259c0ce7 \

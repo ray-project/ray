@@ -239,7 +239,7 @@ if setup_spec.type == SetupType.RAY:
 
     setup_spec.extras = {
         "cgraph": [
-            "cupy-cuda12x; sys_platform != 'darwin'",
+            "cupy-cuda12x; sys_platform != 'darwin' and python_version < '3.15'",
         ],
         "client": [
             # The Ray client needs a specific range of gRPC to work:

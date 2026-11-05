@@ -1,5 +1,6 @@
 anyio
-gradio
+gradio; platform_system != "Windows" and python_version < '3.15'
+gradio; platform_system == "Windows"
 httpx
 pymysql
 pytest
@@ -11,12 +12,12 @@ typing_extensions
 # vllm
 websockets
 tensorflow; python_version < '3.14'
-tensorflow-probability
+tensorflow-probability; python_version < '3.15'
 torch
 torchvision
 transformers
 aioboto3
 tf_keras; python_version < '3.14'
-numexpr
+numexpr; python_version < '3.15'
 taskiq-redis
 ray-haproxy>=2.8.25,<2.9.0

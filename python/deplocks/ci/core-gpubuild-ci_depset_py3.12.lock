@@ -448,7 +448,7 @@ botocore==1.32.7 \
     #   boto3
     #   moto
     #   s3transfer
-brotli==1.2.1 ; sys_platform != 'win32' \
+brotli==1.2.1 ; python_full_version < '3.15' and sys_platform != 'win32' \
     --hash=sha256:0023348c448140a6ea71615eba331835c971d38ae8acf8a89b4e963b1f38f131 \
     --hash=sha256:00a50d063aae2e69c2eb28818ccf6dc3e51f2ea5b74e3c2082a47943ee23f399 \
     --hash=sha256:00c9a4262dd81cdc32968f8bc2482c735ad238010d95b49698f1b788c359c7a4 \
@@ -1758,13 +1758,13 @@ googleapis-common-protos==1.74.0 \
     #   google-api-core
     #   grpcio-status
     #   opentelemetry-exporter-otlp-proto-grpc
-gradio==6.15.2 ; sys_platform != 'win32' \
+gradio==6.15.2 ; python_full_version < '3.15' and sys_platform != 'win32' \
     --hash=sha256:3492eee59cbe4afd21e8f458fc229f0d92c17bdaacaefaf9580dd63a6406c82d \
     --hash=sha256:67433b1889dc8526658196277ca9e34109f73aa65656635c0dc6afb542571f55
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   -r python/requirements/test-requirements.txt
-gradio-client==2.5.0 ; sys_platform != 'win32' \
+gradio-client==2.5.0 ; python_full_version < '3.15' and sys_platform != 'win32' \
     --hash=sha256:4cde99bad62149595c30c90876ca2e405e3a13687ecf895474f3412cb476673d \
     --hash=sha256:d43e2179c29076292a76485ad7ed2e6eaa19d14ac58283bd7f5beabfe4ca958c
     # via
@@ -1860,7 +1860,7 @@ greenlet==3.4.0 ; platform_machine == 'AMD64' or platform_machine == 'WIN32' or 
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   sqlalchemy
-groovy==0.1.2 ; sys_platform != 'win32' \
+groovy==0.1.2 ; python_full_version < '3.15' and sys_platform != 'win32' \
     --hash=sha256:25c1dc09b3f9d7e292458aa762c6beb96ea037071bf5e917fc81fb78d2231083 \
     --hash=sha256:7f7975bab18c729a257a8b1ae9dcd70b7cafb1720481beae47719af57c35fa64
     # via
@@ -2042,7 +2042,7 @@ h5py==3.12.1 \
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   keras
     #   tensorflow
-hf-gradio==0.4.1 ; sys_platform != 'win32' \
+hf-gradio==0.4.1 ; python_full_version < '3.15' and sys_platform != 'win32' \
     --hash=sha256:76b8cb8be6abe62d74c1ad2d35b42f0629db89aa9e1a8d033cecfe7c856eeab3 \
     --hash=sha256:a017d942618f0d495a58ee4563047fa04bef614c00e0cb789a9a6d0633cffa7b
     # via
@@ -3576,7 +3576,7 @@ numba-cuda==0.28.2 ; sys_platform != 'darwin' \
     --hash=sha256:fab7c67fb263c461bcd7ec9be61bdb6b4142a6c376e85ab5e40e63e35b87aaf6 \
     --hash=sha256:ff94d4e8ee2576b900f3422895aed93e55b090939f9da2696d858cc85ea446b5
     # via cudf-cu12
-numexpr==2.14.1 \
+numexpr==2.14.1 ; python_full_version < '3.15' \
     --hash=sha256:03130afa04edf83a7b590d207444f05a00363c9b9ea5d81c0f53b1ea13fad55a \
     --hash=sha256:05f9366d23a2e991fd5a8b5e61a17558f028ba86158a4552f8f239b005cdf83c \
     --hash=sha256:06855053de7a3a8425429bd996e8ae3c50b57637ad3e757e0fa0602a7874be30 \
@@ -4101,7 +4101,7 @@ optree==0.19.0 \
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   keras
-orjson==3.11.8 ; python_full_version < '3.13' or sys_platform != 'win32' \
+orjson==3.11.8 ; (python_full_version < '3.15' and sys_platform != 'win32') or (python_full_version < '3.13' and sys_platform == 'win32') \
     --hash=sha256:0022bb50f90da04b009ce32c512dc1885910daa7cb10b7b0cba4505b16db82a8 \
     --hash=sha256:003646067cc48b7fcab2ae0c562491c9b5d2cbd43f1e5f16d98fd118c5522d34 \
     --hash=sha256:01928d0476b216ad2201823b0a74000440360cef4fed1912d297b8d84718f277 \
@@ -4994,7 +4994,7 @@ pydot==1.4.2 \
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   -r python/requirements/test-requirements.txt
-pydub==0.25.1 ; sys_platform != 'win32' \
+pydub==0.25.1 ; python_full_version < '3.15' and sys_platform != 'win32' \
     --hash=sha256:65617e33033874b59d87db603aa1ed450633288aefead953b30bded59cb599a6 \
     --hash=sha256:980a33ce9949cab2a569606b65674d748ecbca4f0796887fd6f46173a7b0d30f
     # via
@@ -5326,7 +5326,7 @@ python-dotenv==1.2.2 \
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   mlflow-skinny
     #   uvicorn
-python-multipart==0.0.26 ; sys_platform != 'win32' \
+python-multipart==0.0.26 ; python_full_version < '3.15' and sys_platform != 'win32' \
     --hash=sha256:08fadc45918cd615e26846437f50c5d6d23304da32c341f289a617127b081f17 \
     --hash=sha256:c0b169f8c4484c13b0dcf2ef0ec3a4adb255c4b7d18d8e420477d2b1dd03f185
     # via
@@ -5882,7 +5882,7 @@ s3transfer==0.8.0 \
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   boto3
-safehttpx==0.1.7 ; sys_platform != 'win32' \
+safehttpx==0.1.7 ; python_full_version < '3.15' and sys_platform != 'win32' \
     --hash=sha256:c4f4a162db6993464d7ca3d7cc4af0ffc6515a606dfd220b9f82c6945d869cde \
     --hash=sha256:db201c0978c41eddb8bb480f3eee59dd67304fdd91646035e9d9a720049a9d23
     # via

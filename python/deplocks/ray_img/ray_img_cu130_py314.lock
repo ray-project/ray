@@ -563,7 +563,7 @@ cryptography==47.0.0 \
 # via
 #   -c /tmp/ray-deps/requirements_compiled_py3.14.txt
 #   pyopenssl
-cuda-pathfinder==1.8.3; sys_platform != "darwin" \
+cuda-pathfinder==1.8.3; python_full_version < "3.15" and sys_platform != "darwin" \
     --hash=sha256:e29e59829c297a7a5233bd9cc71094fc5bddbd076951482670178f9eade39b1f
 # via
 #   -c /tmp/ray-deps/requirements_compiled_py3.14.txt
