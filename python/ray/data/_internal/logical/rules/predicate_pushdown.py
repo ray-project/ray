@@ -249,11 +249,17 @@ class PredicatePushdown(Rule):
         Anything that isn't an ``AND`` (including ``OR`` and ``NOT``) is a single
         conjunct and is never looked into.
         """
-        if isinstance(predicate, BinaryExpr) and predicate.op == Operation.AND:
-            return cls._split_and_conjuncts(predicate.left) + cls._split_and_conjuncts(
-                predicate.right
-            )
-        return [predicate]
+        conjuncts = []
+        stack = [predicate]
+        while stack:
+            expr = stack.pop()
+            if isinstance(expr, BinaryExpr) and expr.op == Operation.AND:
+                # Push the right side first so the left side is popped first.
+                stack.append(expr.right)
+                stack.append(expr.left)
+            else:
+                conjuncts.append(expr)
+        return conjuncts
 
     @classmethod
     def _split_by_projection_pushability(
