@@ -338,11 +338,26 @@ def test_kbins_discretizer_transform_pandas_preserves_unselected_columns():
         bins={"A": [0.0, 1.0, 2.0, 3.0], "B": [0.0, 15.0, 35.0]},
         output_columns=["A_binned", "B_binned"],
     )
-    out = discretizer._transform_pandas(df.copy())
+    out = discretizer._transform_pandas(df)
+    assert "A_binned" not in df.columns
+    assert "B_binned" not in df.columns
     assert list(out["A_binned"]) == [0, 1, 2]
     assert list(out["B_binned"]) == [0, 1, 1]
     assert list(out["passthrough_str"]) == ["x", "y", "z"]
     assert list(out["passthrough_obj"]) == [{"k": 1}, {"k": 2}, {"k": 3}]
+
+    # Overlapping output_columns and columns (output_columns[0] == columns[1])
+    # should still bin the original input column B rather than the overwritten output.
+    overlapping = CustomKBinsDiscretizer(
+        columns=["A", "B"],
+        bins={"A": [0.0, 1.0, 2.0, 3.0], "B": [0.0, 15.0, 35.0]},
+        output_columns=["B", "C"],
+    )
+    overlap_out = overlapping._transform_pandas(df)
+    assert list(df["B"]) == [10.0, 20.0, 30.0]
+    assert "C" not in df.columns
+    assert list(overlap_out["B"]) == [0, 1, 2]
+    assert list(overlap_out["C"]) == [0, 1, 1]
 
 
 if __name__ == "__main__":

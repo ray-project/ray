@@ -27,9 +27,15 @@ class _AbstractKBinsDiscretizer(SerializablePreprocessorBase):
     """
 
     def _transform_pandas(self, df: pd.DataFrame):
+        df = df.copy(deep=False)
         bins = self.stats_ if self._is_fittable else self.bins
         is_bins_dict = isinstance(bins, dict)
-        for col, out_col in zip(self.columns, self.output_columns):
+        # Read all input columns first to avoid reading modified data when
+        # output_columns[i] == columns[j] for i < j.
+        input_columns = [df[col] for col in self.columns]
+        for col, out_col, series in zip(
+            self.columns, self.output_columns, input_columns
+        ):
             labels = self.dtypes.get(col) if self.dtypes else False
             ordered = True
             if labels:
@@ -40,7 +46,7 @@ class _AbstractKBinsDiscretizer(SerializablePreprocessorBase):
                     labels = False
 
             df[out_col] = pd.cut(
-                df[col],
+                series,
                 bins[col] if is_bins_dict else bins,
                 right=self.right,
                 labels=labels,
