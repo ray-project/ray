@@ -42,8 +42,7 @@ def cluster():
     try:
         ray.init(address=cluster.address)
     except Exception:
-        # Tear the cluster down so a setup failure doesn't leak the head
-        # node (and its dashboard port) into the following tests.
+        # Prevent the cluster leaking into another test
         cluster.shutdown()
         raise
 
@@ -117,11 +116,6 @@ def _train(cluster, algo, config, iters, preempt_freq):
                 not saw_recovery
             ), "Workers recovered despite restart_failed_env_runners=False."
     finally:
-        # Stop the algo so background threads (e.g. APPO/IMPALA's local
-        # `_LearnerThread`, which calls `ray.put`) are joined before the
-        # fixture calls `ray.shutdown()`. Otherwise such a thread can
-        # auto-init Ray after shutdown and connect to the next test's
-        # cluster, making its `ray.init()` fail.
         algo.stop()
 
 
