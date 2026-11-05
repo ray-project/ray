@@ -307,6 +307,33 @@ def test_a_failed_monitor_gives_each_of_its_probes_its_error():
     assert state.probe_errors == {"Comms": error}
 
 
+def test_a_controller_monitor_that_answers_again_has_no_error():
+    comms = {"comm0": ProbeResult()}
+    statuses = iter(
+        [
+            NodeMonitorStatus(probe_results={"Comms": comms}),
+            NodeMonitorStatus(monitor_error=TimeoutError("poll hangs")),
+            NodeMonitorStatus(probe_results={"Comms": comms}),
+        ]
+    )
+    evaluator = Always(Noop())
+    manager = HealthManager([_check(probes=[Comms()], evaluators=[evaluator])])
+    manager._node_monitor_group = mock.Mock(
+        poll_status=lambda timeout: NodeMonitorGroupPollStatus(
+            node_monitor_statuses={},
+            controller_node_monitor_status=next(statuses),
+        )
+    )
+    for _ in range(3):
+        manager.evaluate_inflight_checks(timeout=0)
+
+    answered, failed, answered_again = evaluator.seen
+    assert answered.probe_results == {"Comms": comms}
+    assert isinstance(failed.probe_errors["Comms"], TimeoutError)
+    assert answered_again.probe_results == {"Comms": comms}
+    assert answered_again.probe_errors == {}
+
+
 def test_node_probes_are_sampled_on_the_nodes_of_each_attempt(ray_start_4_cpus):
     node_id = ray.get_runtime_context().get_node_id()
     evaluator = Always(Noop())
