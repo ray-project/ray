@@ -791,7 +791,7 @@ def report(
         ...             checkpoint = Checkpoint.from_directory(temp_checkpoint_dir)
         ...
         ...             # Example: Only the rank 0 worker uploads the checkpoint.
-        ...             if ray.train.get_context().get_world_rank() == 0:
+        ...             if train.get_context().get_world_rank() == 0:
         ...                 train.report(metrics, checkpoint=checkpoint)
         ...             else:
         ...                 train.report(metrics, checkpoint=None)
@@ -986,30 +986,22 @@ def get_trial_dir() -> str:
 def get_world_size() -> int:
     """Get the current world size (i.e. total number of workers) for this run.
 
-    .. testcode::
-
-        import ray
-        from ray import train
-        from ray.train import ScalingConfig
-        from ray.train.tensorflow import TensorflowTrainer
-
-        NUM_WORKERS = 2
-
-        def train_loop_per_worker(config):
-            assert train.get_context().get_world_size() == NUM_WORKERS
-
-        train_dataset = ray.data.read_csv("s3://anonymous@ray-example-data/iris.csv")
-        trainer = TensorflowTrainer(
-            train_loop_per_worker,
-            scaling_config=ScalingConfig(num_workers=NUM_WORKERS),
-            datasets={"train": train_dataset}
-        )
-        trainer.fit()
-
-    .. testoutput::
-        :hide:
-
-        ...
+    Examples:
+        >>> import ray
+        >>> from ray import train
+        >>> from ray.train import ScalingConfig
+        >>> from ray.train.tensorflow import TensorflowTrainer
+        >>> NUM_WORKERS = 2
+        >>> def train_loop_per_worker(config):
+        ...     assert train.get_context().get_world_size() == NUM_WORKERS
+        >>> train_dataset = ray.data.read_csv("s3://anonymous@ray-example-data/iris.csv")
+        >>> trainer = TensorflowTrainer(
+        ...     train_loop_per_worker,
+        ...     scaling_config=ScalingConfig(num_workers=NUM_WORKERS),
+        ...     datasets={"train": train_dataset}
+        ... )
+        >>> print("[ignore]"); trainer.fit()  # doctest: +ELLIPSIS
+        [ignore]...
 
     Returns:
         The total number of workers, or ``1`` if called outside a Ray Train or
@@ -1030,29 +1022,22 @@ def get_world_size() -> int:
 def get_world_rank() -> int:
     """Get the world rank of this worker.
 
-    .. testcode::
-
-        import ray
-        from ray import train
-        from ray.train import ScalingConfig
-        from ray.train.tensorflow import TensorflowTrainer
-
-        def train_loop_per_worker(config):
-            if train.get_context().get_world_rank() == 0:
-                print("Worker 0")
-
-        train_dataset = ray.data.read_csv("s3://anonymous@ray-example-data/iris.csv")
-        trainer = TensorflowTrainer(
-            train_loop_per_worker,
-            scaling_config=ScalingConfig(num_workers=2),
-            datasets={"train": train_dataset}
-        )
-        trainer.fit()
-
-    .. testoutput::
-        :hide:
-
-        ...
+    Examples:
+        >>> import ray
+        >>> from ray import train
+        >>> from ray.train import ScalingConfig
+        >>> from ray.train.tensorflow import TensorflowTrainer
+        >>> def train_loop_per_worker(config):
+        ...     if train.get_context().get_world_rank() == 0:
+        ...         print("Worker 0")
+        >>> train_dataset = ray.data.read_csv("s3://anonymous@ray-example-data/iris.csv")
+        >>> trainer = TensorflowTrainer(
+        ...     train_loop_per_worker,
+        ...     scaling_config=ScalingConfig(num_workers=2),
+        ...     datasets={"train": train_dataset}
+        ... )
+        >>> print("[ignore]"); trainer.fit()  # doctest: +ELLIPSIS
+        [ignore]...
 
     Returns:
         This worker's rank among all workers, or ``0`` if called outside a Ray
@@ -1073,32 +1058,24 @@ def get_world_rank() -> int:
 def get_local_rank() -> int:
     """Get the local rank of this worker (rank of the worker on its node).
 
-    .. testcode::
-
-        import torch
-
-        import ray
-        from ray import train
-        from ray.train import ScalingConfig
-        from ray.train.torch import TorchTrainer
-
-        def train_loop_per_worker(config):
-            if torch.cuda.is_available():
-                torch.cuda.set_device(train.get_context().get_local_rank())
-            ...
-
-        train_dataset = ray.data.read_csv("s3://anonymous@ray-example-data/iris.csv")
-        trainer = TorchTrainer(
-            train_loop_per_worker,
-            scaling_config=ScalingConfig(num_workers=2, use_gpu=True),
-            datasets={"train": train_dataset}
-        )
-        trainer.fit()
-
-    .. testoutput::
-        :hide:
-
-        ...
+    Examples:
+        >>> import torch  # doctest: +SKIP_EXAMPLE
+        >>> import ray
+        >>> from ray import train
+        >>> from ray.train import ScalingConfig
+        >>> from ray.train.torch import TorchTrainer
+        >>> def train_loop_per_worker(config):
+        ...     if torch.cuda.is_available():
+        ...         torch.cuda.set_device(train.get_context().get_local_rank())
+        ...     ...
+        >>> train_dataset = ray.data.read_csv("s3://anonymous@ray-example-data/iris.csv")
+        >>> trainer = TorchTrainer(
+        ...     train_loop_per_worker,
+        ...     scaling_config=ScalingConfig(num_workers=2, use_gpu=True),
+        ...     datasets={"train": train_dataset}
+        ... )
+        >>> print("[ignore]"); trainer.fit()  # doctest: +ELLIPSIS
+        [ignore]...
 
     Returns:
         This worker's rank among the workers on its node, or ``0`` if called
@@ -1119,29 +1096,20 @@ def get_local_rank() -> int:
 def get_local_world_size() -> int:
     """Get the local world size of this node (i.e. number of workers on this node).
 
-    Example:
-
-        .. testcode::
-
-            import ray
-            from ray import train
-            from ray.train import ScalingConfig
-            from ray.train.torch import TorchTrainer
-
-            def train_loop_per_worker():
-                print(train.get_context().get_local_world_size())
-
-            train_dataset = ray.data.from_items(
-                [{"x": x, "y": x + 1} for x in range(32)])
-            trainer = TorchTrainer(train_loop_per_worker,
-                scaling_config=ScalingConfig(num_workers=1),
-                datasets={"train": train_dataset})
-            trainer.fit()
-
-        .. testoutput::
-            :hide:
-
-            ...
+    Examples:
+        >>> import ray
+        >>> from ray import train
+        >>> from ray.train import ScalingConfig
+        >>> from ray.train.torch import TorchTrainer
+        >>> def train_loop_per_worker():
+        ...     print(train.get_context().get_local_world_size())
+        >>> train_dataset = ray.data.from_items(
+        ...     [{"x": x, "y": x + 1} for x in range(32)])
+        >>> trainer = TorchTrainer(train_loop_per_worker,
+        ...     scaling_config=ScalingConfig(num_workers=1),
+        ...     datasets={"train": train_dataset})
+        >>> print("[ignore]"); trainer.fit()  # doctest: +ELLIPSIS
+        [ignore]...
 
     Returns:
         The number of workers running on this node.
@@ -1161,29 +1129,20 @@ def get_local_world_size() -> int:
 def get_node_rank() -> int:
     """Get the rank of this node.
 
-    Example:
-
-        .. testcode::
-
-            import ray
-            from ray import train
-            from ray.train import ScalingConfig
-            from ray.train.torch import TorchTrainer
-
-            def train_loop_per_worker():
-                print(train.get_context().get_node_rank())
-
-            train_dataset = ray.data.from_items(
-                [{"x": x, "y": x + 1} for x in range(32)])
-            trainer = TorchTrainer(train_loop_per_worker,
-                scaling_config=ScalingConfig(num_workers=1),
-                datasets={"train": train_dataset})
-            trainer.fit()
-
-        .. testoutput::
-            :hide:
-
-            ...
+    Examples:
+        >>> import ray
+        >>> from ray import train
+        >>> from ray.train import ScalingConfig
+        >>> from ray.train.torch import TorchTrainer
+        >>> def train_loop_per_worker():
+        ...     print(train.get_context().get_node_rank())
+        >>> train_dataset = ray.data.from_items(
+        ...     [{"x": x, "y": x + 1} for x in range(32)])
+        >>> trainer = TorchTrainer(train_loop_per_worker,
+        ...     scaling_config=ScalingConfig(num_workers=1),
+        ...     datasets={"train": train_dataset})
+        >>> print("[ignore]"); trainer.fit()  # doctest: +ELLIPSIS
+        [ignore]...
 
     Returns:
         The rank of this node within the cluster.
@@ -1209,33 +1168,26 @@ def get_dataset_shard(
     :meth:`~ray.data.DataIterator.to_tf` on this shard to convert it to the
     appropriate framework-specific data type.
 
-    .. testcode::
-
-        import ray
-        from ray import train
-        from ray.train import ScalingConfig
-        from ray.train.torch import TorchTrainer
-
-        def train_loop_per_worker(config):
-            ...
-            for epoch in range(2):
-                # Trainer will automatically handle sharding.
-                data_shard = train.get_dataset_shard("train")
-                for batch in data_shard.iter_torch_batches():
-                    ...
-
-        train_dataset = ray.data.read_csv("s3://anonymous@ray-example-data/iris.csv")
-        trainer = TorchTrainer(
-            train_loop_per_worker,
-            scaling_config=ScalingConfig(num_workers=2),
-            datasets={"train": train_dataset}
-        )
-        trainer.fit()
-
-    .. testoutput::
-        :hide:
-
-        ...
+    Examples:
+        >>> import ray
+        >>> from ray import train
+        >>> from ray.train import ScalingConfig
+        >>> from ray.train.torch import TorchTrainer
+        >>> def train_loop_per_worker(config):
+        ...     ...
+        ...     for epoch in range(2):
+        ...         # Trainer will automatically handle sharding.
+        ...         data_shard = train.get_dataset_shard("train")
+        ...         for batch in data_shard.iter_torch_batches():
+        ...             ...
+        >>> train_dataset = ray.data.read_csv("s3://anonymous@ray-example-data/iris.csv")
+        >>> trainer = TorchTrainer(
+        ...     train_loop_per_worker,
+        ...     scaling_config=ScalingConfig(num_workers=2),
+        ...     datasets={"train": train_dataset}
+        ... )
+        >>> print("[ignore]"); trainer.fit()  # doctest: +ELLIPSIS
+        [ignore]...
 
     Args:
         dataset_name: If a Dictionary of Datasets was passed to ``Trainer``, then
