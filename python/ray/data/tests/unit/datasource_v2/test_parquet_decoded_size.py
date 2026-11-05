@@ -31,11 +31,11 @@ pa = pytest.importorskip("pyarrow")
 pds = pytest.importorskip("pyarrow.dataset")
 pq = pytest.importorskip("pyarrow.parquet")
 
-# PyArrow 17 writes no SizeStatistics or view types and lacks ``binary_type`` and
-# ``list_type``; 23 has all of them (18 to 22 unchecked).
+# PyArrow 17 writes no SizeStatistics and lacks ``binary_type`` and ``list_type``;
+# 23 has all of them (18 to 22 unchecked).
 requires_pyarrow_23 = pytest.mark.skipif(
     parse_version(pa.__version__) < parse_version("23.0.0"),
-    reason="PyArrow 17 writes no SizeStatistics or view types",
+    reason="PyArrow 17 writes no SizeStatistics",
 )
 
 N = 5000
@@ -167,12 +167,6 @@ def _tensor_table():
     return pa.table({"a": ArrowTensorArray.from_numpy(np.zeros((N, 4), np.float32))})
 
 
-def _arrow_dictionary(distinct, length):
-    values = pa.array([f"{i:0{length}d}" for i in range(distinct)])
-    indices = pa.array(np.arange(N) % distinct, pa.int32())
-    return pa.DictionaryArray.from_arrays(indices, values)
-
-
 _HIGH_CARDINALITY = _table([f"{i:012d}" for i in range(N)])
 
 
@@ -219,16 +213,6 @@ _CASES = [
         high=1.5,
         stats=False,
     ),
-    # Bounded by the chunk's pages, not sized hydrated.
-    _case(
-        "arrow-dictionary",
-        pa.table({"a": _arrow_dictionary(50, 200)}),
-        low=0.95,
-        high=1.25,
-        stats=False,
-    ),
-    # Views count every value out of line: exact past 12 bytes, 1.75x at 12.
-    _case("string-view", _table([""] * N, pa.string_view()), low=0.95),
     # PLAIN pages: every value's bytes, less a 4-byte length each.
     _case(
         "plain-strings",
@@ -328,10 +312,18 @@ def test_delta_byte_array_is_a_guess(tmp_path):
     assert _estimate(path, size_statistics=_no_size_statistics) == expected
 
 
-def test_unmodeled_arrow_type_is_rejected():
+@pytest.mark.parametrize(
+    "arrow_type",
+    [
+        pa.list_view(pa.int32()),
+        pa.string_view(),
+        pa.dictionary(pa.int32(), pa.string()),
+    ],
+)
+def test_unmodeled_arrow_type_is_rejected(arrow_type):
     """A layout this module can't size raises, which sends the file to fallback."""
     with pytest.raises(_UnsupportedLayout):
-        _leaf_layout(pa.list_view(pa.int32()))
+        _leaf_layout(arrow_type)
 
 
 if __name__ == "__main__":

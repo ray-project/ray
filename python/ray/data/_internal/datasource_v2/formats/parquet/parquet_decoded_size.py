@@ -3,7 +3,7 @@
 The Arrow schema is walked into one chain of arrays per Parquet leaf: its structs
 and lists, then the leaf. Each array is sized from the footer's counts as validity
 bitmap plus offsets plus values: exact with SizeStatistics, a bound without.
-Unsupported schemas give ``None``.
+Schemas it doesn't model, views and dictionaries among them, give ``None``.
 """
 
 from __future__ import annotations
@@ -34,11 +34,8 @@ _FIXED_SIZE_LIST = "fixed_size_list"
 _FIXED_WIDTH = "fixed_width"
 _BOOLEAN = "boolean"
 _NULL = "null"  # Arrow's null type allocates no buffers.
-# The leaf kinds only BYTE_ARRAY values decode to.
+# String and binary leaves, which only BYTE_ARRAY values decode to.
 _BINARY = "binary"
-_DICTIONARY = "dictionary"
-_VIEW = "view"
-_TEXT_KINDS = (_BINARY, _DICTIONARY, _VIEW)
 
 # PyArrow 24 hands these to Arrow zero-copy, keeping an optional leaf's all-valid
 # bitmap; other types drop it. INT96 timestamps are converted, not zero-copied.
@@ -65,7 +62,7 @@ class _ArrowNode(NamedTuple):
     slot_depth: int
     slot_def: int
     scale: int
-    # Bytes per slot: a list's offset, a fixed-width leaf's value; else 0.
+    # Bytes per slot: a list's or string's offset, a fixed-width leaf's value.
     width: int = 0
     # A bitmap even when null-free: a zero-copy read keeps the one it decoded.
     keeps_bitmap: bool = False
@@ -107,17 +104,14 @@ def _leaf_layout(arrow_type: pa.DataType) -> tuple[str, int]:
     if pa.types.is_boolean(arrow_type):
         return _BOOLEAN, 0
     if detect_string_type(arrow_type):
-        return _BINARY, 0
-    if detect_view_type(arrow_type):
-        return _VIEW, 0
-    if detect_dictionary_type(arrow_type):
-        # PyArrow restores a dictionary over string or binary values only.
-        if not detect_string_type(arrow_type.value_type):
-            raise _UnsupportedLayout(arrow_type)
-        return _DICTIONARY, 0
+        return _BINARY, _offset_width(arrow_type)
+    if pa.types.is_dictionary(arrow_type):
+        # Dictionaries, like views, fall back rather than be sized.
+        raise _UnsupportedLayout(arrow_type)
     try:
         bit_width = arrow_type.bit_width
     except ValueError:
+        # No fixed width: a view, a union, a list view.
         raise _UnsupportedLayout(arrow_type) from None
     if bit_width % 8:
         raise _UnsupportedLayout(arrow_type)
@@ -269,7 +263,7 @@ def _matches(leaf: _ArrowNode, rep: int, column: ColumnSchema) -> bool:
     return (
         leaf.def_level == column.max_definition_level
         and rep == column.max_repetition_level
-        and (leaf.kind not in _TEXT_KINDS or column.physical_type == "BYTE_ARRAY")
+        and (leaf.kind != _BINARY or column.physical_type == "BYTE_ARRAY")
     )
 
 
@@ -322,7 +316,7 @@ def dictionary_page_read_size(
 ) -> int:
     """Bytes of this chunk's dictionary page header to read, or 0 if not needed."""
     if (
-        profile.nodes[-1].kind in (_BINARY, _VIEW)
+        profile.nodes[-1].kind == _BINARY
         and detect_dictionary_indexed(chunk)
         and not detect_delta_byte_array(chunk)
         and (stats is None or stats.unencoded_byte_array_data_bytes is None)
@@ -512,12 +506,7 @@ def estimate_row_group(leaves: Sequence[LeafChunk]) -> int:
 
 def estimate_leaf(leaf: LeafChunk) -> int:
     """Decoded bytes of one chunk's leaf array, shaved where they are a bound."""
-    arrow_type, bound = leaf.type, True
-    if detect_dictionary_type(arrow_type):
-        size = estimate_dictionary(leaf=leaf, arrow_type=arrow_type)
-    elif detect_view_type(arrow_type):
-        size = estimate_view_type(leaf)
-    elif detect_string_type(arrow_type):
+    if leaf.profile.nodes[-1].kind == _BINARY:
         string_bytes, bound = _string_bytes(leaf)
         size = estimate_string_type(leaf=leaf, string_bytes=string_bytes)
     else:
@@ -557,33 +546,6 @@ def _array_bytes(node: _ArrowNode, leaf: LeafChunk) -> int:
     return size
 
 
-# A dictionary type in the file's type hints, e.g. a pandas categorical.
-def detect_dictionary_type(arrow_type: pa.DataType) -> bool:
-    return pa.types.is_dictionary(arrow_type)
-
-
-def estimate_dictionary(leaf: LeafChunk, arrow_type: pa.DictionaryType) -> int:
-    """An upper bound: the pages hold every distinct value behind a 4-byte length."""
-    offset_width = _offset_width(arrow_type.value_type)
-    return (
-        leaf.bitmap()
-        + arrow_type.index_type.bit_width // 8 * leaf.slots()
-        + offset_width * leaf.chunk.total_uncompressed_size // 4
-        + 4 * offset_width
-    )
-
-
-# A view type in the type hints: ``string_view`` or ``binary_view``.
-def detect_view_type(arrow_type: pa.DataType) -> bool:
-    return pa.types.is_string_view(arrow_type) or pa.types.is_binary_view(arrow_type)
-
-
-def estimate_view_type(leaf: LeafChunk) -> int:
-    """An upper bound: a 16-byte view per slot and every value's bytes. Exact past
-    the 12 bytes a view holds inline; 1.75x when every value is 12."""
-    return leaf.bitmap() + 16 * leaf.slots() + estimate_string_bytes(leaf)
-
-
 # Plain string and binary leaves.
 def detect_string_type(arrow_type: pa.DataType) -> bool:
     return (
@@ -596,7 +558,8 @@ def detect_string_type(arrow_type: pa.DataType) -> bool:
 
 def estimate_string_type(leaf: LeafChunk, string_bytes: int) -> int:
     """An offset per slot, plus one, and the values' bytes: exact once they are."""
-    return leaf.bitmap() + _offset_width(leaf.type) * (leaf.slots() + 1) + string_bytes
+    offsets = leaf.profile.nodes[-1].width * (leaf.slots() + 1)
+    return leaf.bitmap() + offsets + string_bytes
 
 
 def _offset_width(arrow_type: pa.DataType) -> int:
