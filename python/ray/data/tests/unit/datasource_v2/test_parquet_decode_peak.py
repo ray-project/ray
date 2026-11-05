@@ -84,25 +84,18 @@ def _estimate(path, columns=None, **format_kwargs):
                 page = read_dictionary_page(f.read(nbytes))
                 assert page is not None
                 pages[leaf_idx] = page
-    leaves = {
-        leaf.index: leaf
-        for leaf in leaf_chunks(
-            row_group=row_group,
-            leaf_profiles=profiles,
-            leaf_indices=range(row_group.num_columns),
-            size_stats=rg_stats,
-            dictionary_pages=pages,
-        )
-    }
+    chunks = leaf_chunks(
+        row_group=row_group,
+        leaf_profiles=profiles,
+        leaf_indices=range(row_group.num_columns),
+        size_stats=rg_stats,
+        dictionary_pages=pages,
+    )
+    leaves = {leaf.index: leaf for leaf in chunks}
     schema_columns = [metadata.schema.column(j) for j in range(metadata.num_columns)]
-    column_leaves = [
-        [
-            j
-            for j, column in enumerate(schema_columns)
-            if column.path.split(".")[0] == name
-        ]
-        for name in columns or metadata.schema.to_arrow_schema().names
-    ]
+    tops = [column.path.split(".")[0] for column in schema_columns]
+    names = columns or metadata.schema.to_arrow_schema().names
+    column_leaves = [[j for j, top in enumerate(tops) if top == name] for name in names]
     work = estimate_row_group_work(
         row_group=row_group,
         columns=schema_columns,

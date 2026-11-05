@@ -39,14 +39,7 @@ _DICTIONARY_BYTES = 2 << 20
 # 3 covered more but raised the worst overestimate by a fifth to a third.
 _CAST_FACTOR = 1.5
 # Bytes per value as PyArrow decodes each fixed-width physical type.
-_PHYSICAL_WIDTH = {
-    "BOOLEAN": 1,
-    "INT32": 4,
-    "INT64": 8,
-    "INT96": 12,
-    "FLOAT": 4,
-    "DOUBLE": 8,
-}
+_PHYSICAL_WIDTH = dict(BOOLEAN=1, INT32=4, INT64=8, INT96=12, FLOAT=4, DOUBLE=8)
 # Encodings whose decoders unpack a page's value lengths up front.
 _DELTA_ENCODINGS = {"DELTA_BYTE_ARRAY", "DELTA_LENGTH_BYTE_ARRAY"}
 
@@ -77,11 +70,9 @@ def estimate_row_group_work(
     counted: Set[int],
     data_pages: Optional[Sequence[Optional[int]]] = None,
 ) -> int:
-    """What one row group's leaves keep, plus two columns' decode-time buffers.
-
+    """What one row group's leaves keep, plus two columns' decode-time buffers:
     ``column_leaves`` holds each column read, in ``columns=`` order, as its leaf
-    indices; ``leaves`` the unpinned leaves; ``counted`` the ancestors sized.
-    """
+    indices; ``leaves`` the unpinned leaves; ``counted`` the ancestors sized."""
     # Two zeros, so there is always a largest column and a next.
     kept, temporaries = 0, [0, 0]
     for position, leaf_indices in enumerate(column_leaves):
@@ -234,10 +225,8 @@ def estimate_cast(
     read: Read,
 ) -> int:
     """What a pin's cast allocates for one row group, times 1.5: a crude bound.
-
     ``column_leaves`` holds each column read as its leaves, profiled as pinned. A
-    nested or view cast copies once per one of the ``pieces`` the scanner yields.
-    """
+    nested or view cast copies once per one of the ``pieces`` the scanner yields."""
     size = estimate_added_columns(row_group=row_group, read=read)
     for name, leaves in column_leaves.items():
         before, after = file_schema.field(name).type, pinned_schema.field(name).type
@@ -271,10 +260,8 @@ def _dictionary_bytes(leaf: LeafChunk) -> int:
 
 def _list_offset_width(leaf: LeafChunk) -> int:
     """Bytes per offset of the widest list above ``leaf``, 4 if none."""
-    return max(
-        (node.width for node in leaf.profile.nodes[:-1] if node.kind == _LIST),
-        default=4,
-    )
+    widths = [node.width for node in leaf.profile.nodes[:-1] if node.kind == _LIST]
+    return max(widths, default=4)
 
 
 def _hash_table_bytes(distinct: int) -> int:
@@ -292,10 +279,8 @@ def _zero_copy(physical_type: str, arrow_type: pa.DataType) -> bool:
         return arrow_type in (pa.int32(), pa.int64()) or (
             physical_type == "INT64" and pa.types.is_timestamp(arrow_type)
         )
-    return (physical_type, arrow_type) in (
-        ("FLOAT", pa.float32()),
-        ("DOUBLE", pa.float64()),
-    )
+    floats = (("FLOAT", pa.float32()), ("DOUBLE", pa.float64()))
+    return (physical_type, arrow_type) in floats
 
 
 def _nested_or_view(arrow_type: pa.DataType) -> bool:
