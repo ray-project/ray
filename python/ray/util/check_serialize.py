@@ -198,13 +198,14 @@ def inspect_serializability(
 
     """
     printer = _Printer(print_file)
-    return _inspect_serializability(base_obj, name, depth, None, None, printer)
+    # Wrap the streams once for the whole traversal and restore them afterwards.
+    with colorama.colorama_text():
+        return _inspect_serializability(base_obj, name, depth, None, None, printer)
 
 
 def _inspect_serializability(
     base_obj, name, depth, parent, failure_set, printer, path=()
 ) -> Tuple[bool, Set[FailureTuple]]:
-    colorama.init()
     top_level = False
     declaration = ""
     found = False
