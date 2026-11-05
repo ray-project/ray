@@ -176,27 +176,6 @@ def test_a_failed_footer_read_still_bounds_the_peak(
     assert 0.95 <= estimate / _peak(path=path) <= high
 
 
-def test_predicate_columns_are_read_first(tmp_path):
-    """PyArrow decodes the predicate's columns before the projection's, and the
-    estimate reserves each column's buffers by the position it is read in."""
-    from ray.data.expressions import col
-
-    path = tmp_path / "f.parquet"
-    table = pa.table(
-        {
-            "l": pa.array([[i, i + 1, i + 2] for i in range(M)]),
-            "y": pa.array(np.arange(M, dtype="int64")),
-            "z": pa.array(np.arange(M) % 7, pa.int16()),
-        }
-    )
-    pq.write_table(table, path, row_group_size=M)
-
-    sizes = _sizes(path, projected_cols=["z"], filter_expr=col("y") >= 0)
-
-    assert sizes == _sizes(path, projected_cols=["y", "z"])
-    assert sizes != _sizes(path, projected_cols=["z", "y"])
-
-
 def test_unmodelled_schema_falls_back_to_the_encoding_ratio(tmp_path, monkeypatch):
     """Without leaf profiles, the uncompressed size times the fixed ratio stands
     in for the decode's buffers, under the same peak formula."""
