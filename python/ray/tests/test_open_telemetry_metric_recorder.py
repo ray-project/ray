@@ -2,14 +2,28 @@ import os
 import sys
 import threading
 import time
+from contextlib import contextmanager
+from math import inf
 from unittest.mock import MagicMock, patch
 
 import pytest
 from opentelemetry.metrics import NoOpHistogram
 from opentelemetry.sdk.metrics import MeterProvider
-from opentelemetry.sdk.metrics.export import InMemoryMetricReader
+from opentelemetry.sdk.metrics.export import (
+    AggregationTemporality,
+    Histogram,
+    HistogramDataPoint,
+    InMemoryMetricReader,
+    Metric,
+    ScopeMetrics,
+)
+from opentelemetry.sdk.resources import Resource
+from opentelemetry.sdk.util.instrumentation import InstrumentationScope
+from prometheus_client.core import REGISTRY
 
 from ray._private.metrics_agent import Gauge, Record
+from ray._private.telemetry import open_telemetry_metric_recorder
+from ray._private.telemetry.aggregated_histogram import _PrometheusMetricReader
 from ray._private.telemetry.metric_types import MetricType
 from ray._private.telemetry.open_telemetry_metric_recorder import (
     OpenTelemetryMetricRecorder,
@@ -220,16 +234,6 @@ def test_register_histogram_metric(
     )
     mock_logger_warning.assert_not_called()
 
-    mock_meter.create_histogram.return_value = NoOpHistogram(name="neg_histogram")
-    recorder.register_histogram_metric(
-        name="neg_histogram",
-        description="Histogram with negative first boundary",
-        buckets=[-5.0, 0.0, 10.0],
-    )
-
-    mids = recorder.get_histogram_bucket_midpoints("neg_histogram")
-    assert mids == pytest.approx([-7.5, -2.5, 5.0, 20.0])
-
 
 @patch("opentelemetry.metrics.set_meter_provider")
 @patch("opentelemetry.metrics.get_meter")
@@ -315,98 +319,279 @@ def test_record_and_export(mock_get_meter, mock_set_meter_provider):
     }
 
 
+@contextmanager
+def _serving_reader(*producers):
+    """Yields a Prometheus reader that serves the producers' metrics, registered on
+    a MeterProvider of its own, so tests don't leak producers into the process's
+    reader. The reader serves on the global REGISTRY (the exporter versions Ray
+    supports don't take another registry), and is unregistered on exit."""
+    reader = _PrometheusMetricReader(Resource.create({}))
+    provider = MeterProvider(metric_readers=[reader], shutdown_on_exit=False)
+    for producer in producers:
+        reader.add_metric_producer(producer)
+    try:
+        yield reader, provider
+    finally:
+        provider.shutdown()
+
+
+@contextmanager
+def _served_recorder():
+    """Yields a recorder whose aggregated histograms are served on REGISTRY."""
+    recorder = OpenTelemetryMetricRecorder()
+    with _serving_reader(recorder.aggregated_histogram_producer):
+        yield recorder
+
+
+def _families(name):
+    return [m for m in REGISTRY.collect() if m.name == name]
+
+
+def _histogram_dp(tags, bucket_counts, total, bounds=(1.0, 10.0, 100.0)):
+    return {
+        "tags": tags,
+        "explicit_bounds": list(bounds),
+        "bucket_counts": bucket_counts,
+        "sum": total,
+    }
+
+
 @patch("ray._private.telemetry.open_telemetry_metric_recorder.logger.warning")
 @patch("opentelemetry.metrics.set_meter_provider")
 @patch("opentelemetry.metrics.get_meter")
 def test_record_histogram_aggregated_batch(
     mock_get_meter, mock_set_meter_provider, mock_logger_warning
 ):
-    """
-    Test the record_histogram_aggregated_batch method of OpenTelemetryMetricRecorder.
-    - Test that it records histogram data for multiple data points in a single batch.
-    - Test that it calls instrument.record() for each observation.
-    - Test that it warns if the histogram is not registered.
-    """
-    mock_meter = MagicMock()
-    real_histogram = NoOpHistogram(name="test_histogram")
-    mock_histogram = MagicMock(wraps=real_histogram, spec=real_histogram)
-    mock_meter.create_histogram.return_value = mock_histogram
-    mock_get_meter.return_value = mock_meter
+    """Pre-aggregated bucket counts and sums are added exactly to cumulative
+    Prometheus series, one per label set."""
+    with _served_recorder() as recorder:
+        recorder.record_histogram_aggregated_batch(
+            "test_histogram",
+            "Test Histogram",
+            [
+                _histogram_dp({"endpoint": "/api/v1"}, [2, 3, 0, 1], 250.5),
+                _histogram_dp({"endpoint": "/api/v2"}, [1, 0, 1, 0], 20.0),
+            ],
+        )
+        # A second export carries only the delta since the previous one.
+        recorder.record_histogram_aggregated_batch(
+            "test_histogram",
+            "Test Histogram",
+            [_histogram_dp({"endpoint": "/api/v1"}, [0, 1, 0, 0], 4.0)],
+        )
 
-    recorder = OpenTelemetryMetricRecorder()
+        def sample(suffix, endpoint, le=None):
+            labels = {"endpoint": endpoint}
+            if le is not None:
+                labels["le"] = le
+            return REGISTRY.get_sample_value(f"ray_test_histogram_{suffix}", labels)
 
-    # Test warning when histogram not registered
-    recorder.record_histogram_aggregated_batch(
-        name="unregistered_histogram",
-        data_points=[{"tags": {"key": "value"}, "bucket_counts": [1, 2, 3]}],
-    )
-    mock_logger_warning.assert_called_once_with(
-        "Metric unregistered_histogram is not a registered histogram, skipping recording."
-    )
-    mock_logger_warning.reset_mock()
-
-    # Register histogram
-    recorder.register_histogram_metric(
-        name="test_histogram",
-        description="Test Histogram",
-        buckets=[1.0, 10.0, 100.0],
-    )
-
-    # Record batch data - 2 data points with different tags
-    # bucket_counts: [2, 3, 0, 1] means:
-    #   2 observations in bucket 0-1 (midpoint 0.5)
-    #   3 observations in bucket 1-10 (midpoint 5.5)
-    #   0 observations in bucket 10-100 (midpoint 55.0)
-    #   1 observation in bucket 100-Inf+ (midpoint 200.0)
-    recorder.record_histogram_aggregated_batch(
-        name="test_histogram",
-        data_points=[
-            {"tags": {"endpoint": "/api/v1"}, "bucket_counts": [2, 3, 0, 1]},
-            {"tags": {"endpoint": "/api/v2"}, "bucket_counts": [1, 0, 1, 0]},
-        ],
-    )
-
-    # Verify record() was called the correct number of times
-    # First data point: 2 + 3 + 0 + 1 = 6 calls
-    # Second data point: 1 + 0 + 1 + 0 = 2 calls
-    # Total: 8 calls
-    assert mock_histogram.record.call_count == 8
-
-    # No warnings should be logged for registered histogram
+        # Bucket samples are cumulative across buckets, as Prometheus expects.
+        buckets = [
+            sample("bucket", "/api/v1", le) for le in ["1.0", "10.0", "100.0", "+Inf"]
+        ]
+        assert buckets == [2, 6, 6, 7]
+        assert sample("count", "/api/v1") == 7
+        assert sample("sum", "/api/v1") == 254.5
+        assert sample("count", "/api/v2") == 2
+        assert sample("sum", "/api/v2") == 20.0
     mock_logger_warning.assert_not_called()
+
+
+@patch("opentelemetry.metrics.set_meter_provider")
+@patch("opentelemetry.metrics.get_meter")
+def test_record_histogram_aggregated_batch_mixed_label_sets(
+    mock_get_meter, mock_set_meter_provider
+):
+    """Data points with different label keys are served under one label schema, and
+    a missing label merges with an empty one."""
+    with _served_recorder() as recorder:
+        recorder.record_histogram_aggregated_batch(
+            "test_histogram",
+            "Test Histogram",
+            [
+                _histogram_dp(
+                    {"Component": "a", "SessionName": "s"}, [1, 0, 0, 0], 0.5
+                ),
+                _histogram_dp({"Component": "b"}, [1, 0, 0, 0], 0.5),
+                _histogram_dp({"Component": "b", "SessionName": ""}, [1, 0, 0, 0], 0.5),
+            ],
+        )
+
+        (family,) = _families("ray_test_histogram")
+        count_labels = [s.labels for s in family.samples if s.name.endswith("_count")]
+        assert count_labels == [
+            {"Component": "a", "SessionName": "s"},
+            {"Component": "b", "SessionName": ""},
+        ]
+        assert (
+            REGISTRY.get_sample_value(
+                "ray_test_histogram_count", {"Component": "b", "SessionName": ""}
+            )
+            == 2
+        )
 
 
 @patch("ray._private.telemetry.open_telemetry_metric_recorder.logger.warning")
 @patch("opentelemetry.metrics.set_meter_provider")
 @patch("opentelemetry.metrics.get_meter")
-def test_record_histogram_aggregated_batch_bucket_count_mismatch(
+def test_record_histogram_aggregated_batch_bounds_mismatch(
     mock_get_meter, mock_set_meter_provider, mock_logger_warning
 ):
-    """A data point that omits its bounds and disagrees with the registered ones is
-    skipped with a warning instead of raising."""
-    mock_meter = MagicMock()
-    real_histogram = NoOpHistogram(name="test_histogram")
-    mock_histogram = MagicMock(wraps=real_histogram, spec=real_histogram)
-    mock_meter.create_histogram.return_value = mock_histogram
-    mock_get_meter.return_value = mock_meter
+    """A data point whose bounds disagree with the ones the metric was first reported
+    with is skipped with a warning instead of raising."""
+    with _served_recorder() as recorder:
+        recorder.record_histogram_aggregated_batch(
+            "test_histogram",
+            "Test Histogram",
+            [
+                _histogram_dp({"model_name": "a"}, [1, 0, 0, 0], 0.5),
+                _histogram_dp({"model_name": "b"}, [1, 0, 0], 0.5, bounds=(1.0, 10.0)),
+                _histogram_dp({"model_name": "c"}, [1, 0, 0, 0], 0.5, bounds=(1, 2, 3)),
+            ],
+        )
 
+        def count(model_name):
+            return REGISTRY.get_sample_value(
+                "ray_test_histogram_count", {"model_name": model_name}
+            )
+
+        assert count("a") == 1
+        assert count("b") is None
+        assert count("c") is None
+    mock_logger_warning.assert_called_once()
+
+
+@patch("opentelemetry.metrics.set_meter_provider")
+@patch("opentelemetry.metrics.get_meter")
+def test_aggregated_histogram_producer_output(mock_get_meter, mock_set_meter_provider):
+    """The producer emits each histogram as a cumulative OpenTelemetry histogram in
+    the recorder's scope, whose series keep their start time across collections."""
     recorder = OpenTelemetryMetricRecorder()
-    recorder.register_histogram_metric(
-        name="test_histogram",
-        description="Test Histogram",
-        buckets=[1.0, 10.0, 100.0],
-    )
+    assert recorder.aggregated_histogram_producer.produce() == []
 
     recorder.record_histogram_aggregated_batch(
-        name="test_histogram",
-        data_points=[
-            {"tags": {"model_name": "a"}, "bucket_counts": [1, 2]},
-            {"tags": {"model_name": "b"}, "bucket_counts": [1, 0, 0, 0]},
-        ],
+        "test_histogram",
+        "Test Histogram",
+        [_histogram_dp({"endpoint": "/api"}, [2, 1, 0, 1], 150.0)],
+    )
+    (first,) = recorder.aggregated_histogram_producer.produce()
+    (second,) = recorder.aggregated_histogram_producer.produce()
+
+    assert first.scope.name == open_telemetry_metric_recorder.__name__
+    (metric,) = first.metrics
+    assert metric.name == "ray_test_histogram"
+    assert metric.description == "Test Histogram"
+    assert metric.data.aggregation_temporality == AggregationTemporality.CUMULATIVE
+    (dp,) = metric.data.data_points
+    assert dict(dp.attributes) == {"endpoint": "/api"}
+    assert list(dp.explicit_bounds) == [1.0, 10.0, 100.0]
+    assert list(dp.bucket_counts) == [2, 1, 0, 1]
+    assert dp.count == 4
+    assert dp.sum == 150.0
+
+    (second_dp,) = second.metrics[0].data.data_points
+    assert second_dp.start_time_unix_nano == dp.start_time_unix_nano
+    assert second_dp.time_unix_nano >= dp.time_unix_nano
+
+
+@patch("opentelemetry.metrics.set_meter_provider")
+@patch("opentelemetry.metrics.get_meter")
+def test_serve_aggregated_histograms(mock_get_meter, mock_set_meter_provider):
+    """A process creates several recorders, so constructing one must not attach its
+    producer to the process's reader, which would keep the recorder alive. Its
+    aggregated histograms are served once serve_aggregated_histograms is called."""
+    recorder = OpenTelemetryMetricRecorder()
+    recorder.record_histogram_aggregated_batch(
+        "test_histogram",
+        "Test Histogram",
+        [_histogram_dp({"endpoint": "/api"}, [1, 0, 0, 0], 0.5)],
     )
 
-    assert mock_histogram.record.call_count == 1
-    mock_logger_warning.assert_called_once()
+    def count():
+        return REGISTRY.get_sample_value(
+            "ray_test_histogram_count", {"endpoint": "/api"}
+        )
+
+    # Stand in for the process's reader, so the producer doesn't outlive the test.
+    with _serving_reader() as (reader, _), patch.object(
+        OpenTelemetryMetricRecorder, "_prometheus_reader", reader
+    ):
+        assert count() is None
+
+        recorder.serve_aggregated_histograms()
+        recorder.serve_aggregated_histograms()
+        assert count() == 1
+        assert len(_families("ray_test_histogram")) == 1
+
+
+@patch("opentelemetry.metrics.set_meter_provider")
+@patch("opentelemetry.metrics.get_meter")
+def test_serve_aggregated_histograms_without_reader(
+    mock_get_meter, mock_set_meter_provider
+):
+    """Without a process reader, serving fails with an error that says why."""
+    recorder = OpenTelemetryMetricRecorder()
+    with patch.object(OpenTelemetryMetricRecorder, "_prometheus_reader", None):
+        with pytest.raises(RuntimeError, match="has no Prometheus reader"):
+            recorder.serve_aggregated_histograms()
+
+
+@pytest.mark.parametrize("with_sdk_metrics", [True, False])
+def test_prometheus_reader_serves_producers_with_sdk_metrics(with_sdk_metrics):
+    """The reader serves the producers' metrics in the same collection as the SDK's,
+    without duplicating either, and also when the SDK has no metrics of its own."""
+    producer = MagicMock()
+    producer.produce.return_value = [
+        ScopeMetrics(
+            scope=InstrumentationScope(name="test_producer"),
+            metrics=[
+                Metric(
+                    name="test_produced_histogram",
+                    description="",
+                    unit="1",
+                    data=Histogram(
+                        data_points=[
+                            HistogramDataPoint(
+                                attributes={},
+                                start_time_unix_nano=0,
+                                time_unix_nano=1,
+                                count=1,
+                                sum=0.5,
+                                bucket_counts=[1, 0],
+                                explicit_bounds=[1.0],
+                                min=inf,
+                                max=-inf,
+                            )
+                        ],
+                        aggregation_temporality=AggregationTemporality.CUMULATIVE,
+                    ),
+                )
+            ],
+            schema_url="",
+        )
+    ]
+    with _serving_reader(producer) as (_, provider):
+        if with_sdk_metrics:
+            provider.get_meter("test").create_counter("test_sdk_counter").add(3)
+
+        assert REGISTRY.get_sample_value("test_produced_histogram_count") == 1
+        assert len(_families("test_produced_histogram")) == 1
+        if with_sdk_metrics:
+            assert REGISTRY.get_sample_value("test_sdk_counter_total") == 3
+            assert len(_families("test_sdk_counter")) == 1
+
+
+@patch("ray._private.telemetry.aggregated_histogram.logger.exception")
+def test_prometheus_reader_isolates_failing_producer(mock_logger_exception):
+    """A producer that raises is skipped, and the SDK's metrics are still served."""
+    producer = MagicMock()
+    producer.produce.side_effect = RuntimeError("boom")
+    with _serving_reader(producer) as (_, provider):
+        provider.get_meter("test").create_counter("test_sdk_counter").add(3)
+
+        assert REGISTRY.get_sample_value("test_sdk_counter_total") == 3
+    mock_logger_exception.assert_called()
 
 
 @patch("opentelemetry.metrics.set_meter_provider")
@@ -469,8 +654,10 @@ def test_observable_callback_normalizes_mixed_attribute_sets(
     assert obs_a.attributes["SessionName"] == "s1"
 
 
+# _init_metrics stores the (mocked) reader on the class; restore it afterwards.
+@patch.object(OpenTelemetryMetricRecorder, "_prometheus_reader", None)
 @patch("ray._private.telemetry.open_telemetry_metric_recorder.MeterProvider")
-@patch("ray._private.telemetry.open_telemetry_metric_recorder.PrometheusMetricReader")
+@patch("ray._private.telemetry.open_telemetry_metric_recorder._PrometheusMetricReader")
 @patch("opentelemetry.metrics.set_meter_provider")
 @patch("opentelemetry.metrics.get_meter")
 def test_init_metrics_runs_only_once_per_class(
@@ -503,9 +690,11 @@ def test_init_metrics_runs_only_once_per_class(
         OpenTelemetryMetricRecorder._metrics_initialized = original_flag
 
 
+# _init_metrics stores the (mocked) reader on the class; restore it afterwards.
+@patch.object(OpenTelemetryMetricRecorder, "_prometheus_reader", None)
 @patch("opentelemetry.sdk.resources.Resource.create")
 @patch("ray._private.telemetry.open_telemetry_metric_recorder.MeterProvider")
-@patch("ray._private.telemetry.open_telemetry_metric_recorder.PrometheusMetricReader")
+@patch("ray._private.telemetry.open_telemetry_metric_recorder._PrometheusMetricReader")
 @patch("opentelemetry.metrics.set_meter_provider")
 @patch("opentelemetry.metrics.get_meter")
 def test_init_metrics_sets_service_name_resource(
@@ -536,6 +725,9 @@ def test_init_metrics_sets_service_name_resource(
         mock_resource_create.assert_called_once_with(
             {"service.name": "ray-dashboard-agent"}
         )
+        # The reader gets the provider's resource, for when the SDK has no metrics
+        # to take it from.
+        mock_prometheus_reader.assert_called_once_with(mock_resource)
         mock_meter_provider.assert_called_once_with(
             resource=mock_resource,
             metric_readers=[mock_prometheus_reader.return_value],
