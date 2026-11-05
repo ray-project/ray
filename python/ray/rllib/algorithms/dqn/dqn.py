@@ -91,30 +91,23 @@ class DQNConfig(AlgorithmConfig):
         >>> _ = algo.train()
         >>> algo.stop()
 
-    .. testcode::
-
-        from ray.rllib.algorithms.dqn.dqn import DQNConfig
-        from ray import tune
-
-        config = (
-            DQNConfig()
-            .environment("CartPole-v1")
-            .training(
-                num_atoms=tune.grid_search([1,])
-            )
-        )
-        tune.Tuner(
-            "DQN",
-            run_config=tune.RunConfig(stop={"training_iteration":1}),
-            param_space=config,
-        ).fit()
-
-    .. testoutput::
-        :hide:
-
-        ...
-
-
+        >>> from ray.rllib.algorithms.dqn.dqn import DQNConfig
+        >>> from ray import tune
+        >>> config = (
+        ...     DQNConfig()
+        ...     .environment("CartPole-v1")
+        ...     .training(
+        ...         num_atoms=tune.grid_search([1,])
+        ...     )
+        ... )
+        >>> print("[ignore]"); results = tune.Tuner(
+        ...     "DQN",
+        ...     run_config=tune.RunConfig(stop={"training_iteration":1}),
+        ...     param_space=config,
+        ... ).fit()  # doctest: +ELLIPSIS
+        [ignore]...
+        >>> results.num_errors
+        0
     """
 
     def __init__(self, algo_class=None):

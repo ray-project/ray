@@ -58,31 +58,25 @@ class APPOConfig(IMPALAConfig):
         >>> _ = algo.train()
         >>> del algo
 
-    .. testcode::
-
-        from ray.rllib.algorithms.appo import APPOConfig
-        from ray import tune
-
-        config = APPOConfig()
-        # Update the config object.
-        config = config.training(lr=tune.grid_search([0.001,]))
-        # Set the config object's env.
-        config = config.environment(env="CartPole-v1")
-        # Use to_dict() to get the old-style python config dict when running with tune.
-        tune.Tuner(
-            "APPO",
-            run_config=tune.RunConfig(
-                stop={"training_iteration": 1},
-                verbose=0,
-            ),
-            param_space=config.to_dict(),
-
-        ).fit()
-
-    .. testoutput::
-        :hide:
-
-        ...
+        >>> from ray.rllib.algorithms.appo import APPOConfig
+        >>> from ray import tune
+        >>> config = APPOConfig()
+        >>> # Update the config object.
+        >>> config = config.training(lr=tune.grid_search([0.001,]))
+        >>> # Set the config object's env.
+        >>> config = config.environment(env="CartPole-v1")
+        >>> # Use to_dict() to get the old-style python config dict when running with tune.
+        >>> print("[ignore]"); results = tune.Tuner(
+        ...     "APPO",
+        ...     run_config=tune.RunConfig(
+        ...         stop={"training_iteration": 1},
+        ...         verbose=0,
+        ...     ),
+        ...     param_space=config.to_dict(),
+        ... ).fit()  # doctest: +ELLIPSIS
+        [ignore]...
+        >>> results.num_errors
+        0
     """
 
     def __init__(self, algo_class=None):
