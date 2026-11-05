@@ -1,0 +1,27 @@
+--- a/foreign_cc/built_tools/ninja_build.bzl	2026-10-20 23:11:23.070858031 +0000
++++ b/foreign_cc/built_tools/ninja_build.bzl	2026-10-20 23:11:23.114859643 +0000
+@@ -13,12 +13,18 @@
+ def _ninja_tool_impl(ctx):
+     py_toolchain = ctx.toolchains["@rules_python//python:toolchain_type"]
+ 
+-    additional_tools = depset(
+-        [py_toolchain.py3_runtime.interpreter],
+-        transitive = [py_toolchain.py3_runtime.files],
+-    )
+-
+-    absolute_py_interpreter_path = absolutize(ctx.workspace_name, py_toolchain.py3_runtime.interpreter.path, True)
++    py3_runtime = py_toolchain.py3_runtime
++    if py3_runtime.interpreter:
++        additional_tools = depset(
++            [py3_runtime.interpreter],
++            transitive = [py3_runtime.files],
++        )
++        absolute_py_interpreter_path = absolutize(ctx.workspace_name, py3_runtime.interpreter.path, True)
++    else:
++        # Platform runtime (e.g. rules_python's local_runtime_repo): the
++        # interpreter lives outside the build, so there are no files to stage.
++        additional_tools = depset()
++        absolute_py_interpreter_path = py3_runtime.interpreter_path
+ 
+     script = [
+         "{} ./configure.py --bootstrap".format(absolute_py_interpreter_path),
