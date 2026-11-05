@@ -202,6 +202,7 @@ def create_manifest(
             "dns": config.dns,
             "cidr_allowlist": cidr_allowlist,
             "disk": config.disk,
+            "mounts": config.mounts,
             "_ignore_cgroups": getattr(config, "_ignore_cgroups", False),
         },
         "state_dir": "state",
@@ -252,6 +253,7 @@ _RESTORE_IMMUTABLE_FIELDS = (
     "rootless",
     "capabilities",
     "disk",
+    "mounts",
 )
 
 

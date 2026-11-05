@@ -122,6 +122,7 @@ async def registered_endpoints(handle, router):
     }
 
 
+@pytest.mark.requires_2GPU
 class TestLoraKvRouting:
     @pytest.fixture(scope="class")
     def deployed_handle(self):

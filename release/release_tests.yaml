@@ -431,7 +431,7 @@
 
 # Ray Train distributed Tensorflow benchmarks
 - name: air_benchmark_tensorflow_mnist_gpu_4x4
-  python: "3.10"
+  python: "3.11"
   group: AIR tests
   working_dir: air_tests/air_benchmarks
 
@@ -442,7 +442,8 @@
   cluster:
     anyscale_sdk_2026: true
     byod:
-      type: gpu
+      type: torch-cu128
+      python_depset: torch_cu128_data_tensorflow_py3.11.lock
     cluster_compute: compute_gpu_4x4_aws.yaml
 
   run:
@@ -1865,6 +1866,14 @@
         timeout: 2000
         script: RAY_TRAIN_V2_ENABLED=1 python train_benchmark.py --task=image_classification --dataloader_type=ray_data --num_workers=16 --image_classification_data_format=parquet --preserve_order=True
 
+    # Pull-vs-push streaming split comparison: runs the pull benchmark, then
+    # the push-based one, and fails if push global throughput drops below
+    # 90% of pull's.
+    - __suffix__: full_training.parquet.pull_vs_push
+      run:
+        timeout: 4200
+        script: RAY_TRAIN_V2_ENABLED=1 python compare_pull_push_benchmark.py --task=image_classification --dataloader_type=ray_data --num_workers=16 --image_classification_data_format=parquet
+
     - __suffix__: full_training.parquet.torch_dataloader
       frequency: manual
       run:
@@ -1881,6 +1890,14 @@
       run:
         timeout: 1200
         script: RAY_TRAIN_V2_ENABLED=1 python train_benchmark.py --task=image_classification --dataloader_type=ray_data --num_workers=16 --skip_train_step=True --skip_validation_at_epoch_end=True --image_classification_data_format=parquet --preserve_order=True
+
+    # Pull-vs-push streaming split comparison: runs the pull benchmark, then
+    # the push-based one, and fails if push global throughput drops below
+    # 90% of pull's.
+    - __suffix__: skip_training.parquet.pull_vs_push
+      run:
+        timeout: 2600
+        script: RAY_TRAIN_V2_ENABLED=1 python compare_pull_push_benchmark.py --task=image_classification --dataloader_type=ray_data --num_workers=16 --skip_train_step=True --skip_validation_at_epoch_end=True --image_classification_data_format=parquet
 
     - __suffix__: skip_training.parquet.torch_dataloader
       frequency: manual
@@ -2067,7 +2084,7 @@
         script: RAY_TRAIN_V2_ENABLED=1 python train_benchmark.py --task=image_classification --dataloader_type=ray_data --num_workers=16 --skip_train_step True --skip_validation_at_epoch_end True --image_classification_data_format=s3_url
 
 - name: training_ingest_benchmark-task=recsys
-  python: "3.10"
+  python: "3.11"
   group: Train tests
   working_dir: train_tests/benchmark
 
@@ -2081,8 +2098,8 @@
         # Fail the test if Ray OOM-kills a worker, or a worker dies unexpectedly
         RAYTEST_FAIL_ON_RAY_OOM_KILL: "1"
         RAYTEST_FAIL_ON_UNEXPECTED_WORKER_FAILURE: "1"
-      type: gpu
-      post_build_script: byod_install_torchrec.sh
+      type: torch-cu128
+      python_depset: torch_cu128_train_recsys_py3.11.lock
     anyscale_sdk_2026: true
     cluster_compute: compute_configs/compute_gpu_8xA100_aws.yaml
 
@@ -2242,6 +2259,27 @@
       num_nodes: 9
   alert: default
 
+- name: "mid_epoch_resume_benchmark_{{scale}}"
+  python: "3.11"
+  group: Train tests
+  working_dir: train_tests/mid_epoch_resume_benchmark
+
+  matrix:
+    setup:
+      scale: [10M, 3B]
+
+  frequency: nightly
+  team: data
+  cluster:
+    anyscale_sdk_2026: true
+    byod:
+      type: torch-cu128
+    cluster_compute: "compute_configs/{{scale}}.yaml"
+
+  run:
+    timeout: 2700
+    script: RAY_TRAIN_V2_ENABLED=1 python microbenchmark.py --num_rows={{scale}} --generate_id_column --error_at=0.9 --num_epochs=1
+
 - name: train_colocate_trainer
   python: "3.10"
   group: Train tests
@@ -2331,7 +2369,7 @@
     script: python torchft_hello_world.py
 
 - name: torch_lightning
-  python: "3.10"
+  python: "3.11"
   group: Train tests
   working_dir: train_tests/pytorch_lightning
 
@@ -2341,8 +2379,8 @@
   cluster:
     anyscale_sdk_2026: true
     byod:
-      type: gpu
-      post_build_script: byod_pytorch_lightning_test.sh
+      type: torch-cu128
+      python_depset: torch_cu128_train_lightning_py3.11.lock
     cluster_compute: compute_aws.yaml
 
   run:
@@ -2350,7 +2388,7 @@
     script: RAY_TRAIN_V2_ENABLED=1 python test_lightning.py
 
 - name: huggingface_transformers
-  python: "3.10"
+  python: "3.11"
   group: Train tests
   working_dir: train_tests/huggingface_transformers
 
@@ -2360,7 +2398,8 @@
   cluster:
     anyscale_sdk_2026: true
     byod:
-      type: gpu
+      type: torch-cu128
+      python_depset: torch_cu128_train_huggingface_py3.11.lock
     cluster_compute: compute_aws.yaml
 
   run:
@@ -2368,7 +2407,7 @@
     script: RAY_TRAIN_V2_ENABLED=1 python test_huggingface_transformers.py
 
 - name: huggingface_accelerate
-  python: "3.10"
+  python: "3.11"
   group: Train tests
   working_dir: train_tests/huggingface_accelerate
 
@@ -2378,7 +2417,8 @@
   cluster:
     anyscale_sdk_2026: true
     byod:
-      type: gpu
+      type: torch-cu128
+      python_depset: torch_cu128_train_huggingface_py3.11.lock
     cluster_compute: compute_aws.yaml
 
   run:
@@ -2476,7 +2516,7 @@
 # RLlib - APPO test
 # -----------------
 - name: rllib_learning_tests_pong_appo_torch
-  python: "3.10"
+  python: "3.11"
   group: RLlib tests
   working_dir: rllib_tests
 
@@ -2486,8 +2526,8 @@
   cluster:
     anyscale_sdk_2026: true
     byod:
-      type: gpu
-      post_build_script: byod_rllib.sh
+      type: torch-cu128
+      python_depset: torch_cu128_rllib_py3.11.lock
     cluster_compute: 1gpu_16cpus.yaml
 
   run:
@@ -2498,7 +2538,7 @@
 # RLlib - Nightly learning tests (fast, single-GPU)
 # --------------------------------------------------------------------------
 - name: rllib_learning_tests_cartpole_ppo_torch
-  python: "3.10"
+  python: "3.11"
   group: RLlib tests
   working_dir: rllib_tests
 
@@ -2508,8 +2548,8 @@
   cluster:
     anyscale_sdk_2026: true
     byod:
-      type: gpu
-      post_build_script: byod_rllib.sh
+      type: torch-cu128
+      python_depset: torch_cu128_rllib_py3.11.lock
     cluster_compute: 1gpu_16cpus.yaml
 
   run:
@@ -2517,7 +2557,7 @@
     script: python example_algorithms/ppo/cartpole_ppo.py --num-learners=1 --num-env-runners=4 --as-release-test
 
 - name: rllib_learning_tests_pendulum_ppo_torch
-  python: "3.10"
+  python: "3.11"
   group: RLlib tests
   working_dir: rllib_tests
 
@@ -2527,8 +2567,8 @@
   cluster:
     anyscale_sdk_2026: true
     byod:
-      type: gpu
-      post_build_script: byod_rllib.sh
+      type: torch-cu128
+      python_depset: torch_cu128_rllib_py3.11.lock
     cluster_compute: 1gpu_16cpus.yaml
 
   run:
@@ -2536,7 +2576,7 @@
     script: python example_algorithms/ppo/pendulum_ppo.py --num-learners=1 --num-env-runners=4 --as-release-test
 
 - name: rllib_learning_tests_cartpole_appo_torch
-  python: "3.10"
+  python: "3.11"
   group: RLlib tests
   working_dir: rllib_tests
 
@@ -2546,8 +2586,8 @@
   cluster:
     anyscale_sdk_2026: true
     byod:
-      type: gpu
-      post_build_script: byod_rllib.sh
+      type: torch-cu128
+      python_depset: torch_cu128_rllib_py3.11.lock
     cluster_compute: 1gpu_16cpus.yaml
 
   run:
@@ -2555,7 +2595,7 @@
     script: python example_algorithms/appo/cartpole_appo.py --num-learners=1 --num-env-runners=4 --as-release-test
 
 - name: rllib_learning_tests_pendulum_appo_torch
-  python: "3.10"
+  python: "3.11"
   group: RLlib tests
   working_dir: rllib_tests
 
@@ -2565,8 +2605,8 @@
   cluster:
     anyscale_sdk_2026: true
     byod:
-      type: gpu
-      post_build_script: byod_rllib.sh
+      type: torch-cu128
+      python_depset: torch_cu128_rllib_py3.11.lock
     cluster_compute: 1gpu_16cpus.yaml
 
   run:
@@ -2574,7 +2614,7 @@
     script: python example_algorithms/appo/pendulum_appo.py --num-learners=1 --num-env-runners=4 --as-release-test
 
 - name: rllib_learning_tests_cartpole_impala_torch
-  python: "3.10"
+  python: "3.11"
   group: RLlib tests
   working_dir: rllib_tests
 
@@ -2584,8 +2624,8 @@
   cluster:
     anyscale_sdk_2026: true
     byod:
-      type: gpu
-      post_build_script: byod_rllib.sh
+      type: torch-cu128
+      python_depset: torch_cu128_rllib_py3.11.lock
     cluster_compute: 1gpu_16cpus.yaml
 
   run:
@@ -2593,7 +2633,7 @@
     script: python example_algorithms/impala/cartpole_impala.py --num-learners=1 --num-env-runners=4 --as-release-test
 
 - name: rllib_learning_tests_cartpole_dqn_torch
-  python: "3.10"
+  python: "3.11"
   group: RLlib tests
   working_dir: rllib_tests
 
@@ -2603,8 +2643,8 @@
   cluster:
     anyscale_sdk_2026: true
     byod:
-      type: gpu
-      post_build_script: byod_rllib.sh
+      type: torch-cu128
+      python_depset: torch_cu128_rllib_py3.11.lock
     cluster_compute: 1gpu_16cpus.yaml
 
   run:
@@ -2612,7 +2652,7 @@
     script: python example_algorithms/dqn/cartpole_dqn.py --num-learners=1 --as-release-test
 
 - name: rllib_learning_tests_pendulum_sac_torch
-  python: "3.10"
+  python: "3.11"
   group: RLlib tests
   working_dir: rllib_tests
 
@@ -2622,8 +2662,8 @@
   cluster:
     anyscale_sdk_2026: true
     byod:
-      type: gpu
-      post_build_script: byod_rllib.sh
+      type: torch-cu128
+      python_depset: torch_cu128_rllib_py3.11.lock
     cluster_compute: 1gpu_16cpus.yaml
 
   run:
@@ -2631,7 +2671,7 @@
     script: python example_algorithms/sac/pendulum_sac.py --num-learners=1 --as-release-test
 
 - name: rllib_learning_tests_pendulum_dreamerv3_torch
-  python: "3.10"
+  python: "3.11"
   group: RLlib tests
   working_dir: rllib_tests
 
@@ -2641,8 +2681,8 @@
   cluster:
     anyscale_sdk_2026: true
     byod:
-      type: gpu
-      post_build_script: byod_rllib.sh
+      type: torch-cu128
+      python_depset: torch_cu128_rllib_py3.11.lock
     cluster_compute: 1gpu_16cpus.yaml
 
   run:
@@ -2653,7 +2693,7 @@
 # RLlib - Weekly learning benchmarks
 # --------------------------------------------------------------------------
 - name: rllib_learning_tests_pong_ppo_torch
-  python: "3.10"
+  python: "3.11"
   group: RLlib tests
   working_dir: rllib_tests
 
@@ -2663,8 +2703,8 @@
   cluster:
     anyscale_sdk_2026: true
     byod:
-      type: gpu
-      post_build_script: byod_rllib.sh
+      type: torch-cu128
+      python_depset: torch_cu128_rllib_py3.11.lock
     cluster_compute: 4gpus_48cpus.yaml
 
   run:
@@ -2672,7 +2712,7 @@
     script: python example_algorithms/ppo/atari_ppo.py --env=ale_py:ALE/Pong-v5 --num-learners=4 --num-env-runners=40 --stop-reward=20.0 --as-release-test
 
 - name: rllib_learning_tests_pong_impala_torch
-  python: "3.10"
+  python: "3.11"
   group: RLlib tests
   working_dir: rllib_tests
 
@@ -2682,8 +2722,8 @@
   cluster:
     anyscale_sdk_2026: true
     byod:
-      type: gpu
-      post_build_script: byod_rllib.sh
+      type: torch-cu128
+      python_depset: torch_cu128_rllib_py3.11.lock
     cluster_compute: 4gpus_48cpus.yaml
 
   run:
@@ -2691,7 +2731,7 @@
     script: python example_algorithms/impala/pong_impala.py --num-learners=1 --num-env-runners=40 --stop-reward=19.0 --as-release-test
 
 - name: rllib_learning_tests_halfcheetah_sac_torch
-  python: "3.10"
+  python: "3.11"
   group: RLlib tests
   working_dir: rllib_tests
 
@@ -2701,8 +2741,8 @@
   cluster:
     anyscale_sdk_2026: true
     byod:
-      type: gpu
-      post_build_script: byod_rllib.sh
+      type: torch-cu128
+      python_depset: torch_cu128_rllib_py3.11.lock
     cluster_compute: 4gpus_48cpus.yaml
 
   run:
@@ -2984,31 +3024,6 @@
       cluster:
         anyscale_sdk_2026: true
         cluster_compute: only_head_node_1gpu_64cpu_gce.yaml
-
-- name: dask_on_ray_100gb_sort
-  group: core-daily-test
-  working_dir: nightly_tests
-
-  frequency: manual # was nightly
-  team: core
-
-  cluster:
-    anyscale_sdk_2026: true
-    cluster_compute: dask_on_ray/dask_on_ray_sort_compute_template.yaml
-
-  run:
-    timeout: 7200
-    script: python dask_on_ray/dask_on_ray_sort.py --nbytes 100_000_000_000 --npartitions
-      200 --num-nodes 1 --ray --data-dir /tmp/ray --file-path /tmp/ray
-
-  variations:
-    - __suffix__: aws
-    - __suffix__: gce
-      env: gce
-      frequency: manual
-      cluster:
-        cluster_compute: dask_on_ray/dask_on_ray_sort_compute_template_gce.yaml
-
 
 - name: stress_test_state_api_scale
   python: "3.10"
@@ -3306,26 +3321,6 @@
       cluster:
         anyscale_sdk_2026: true
         cluster_compute: stress_tests/stress_tests_single_node_oom_compute_gce.yaml
-
-
-- name: dask_on_ray_1tb_sort
-  group: core-daily-test
-  working_dir: nightly_tests
-
-  frequency: manual # was nightly-3x
-  team: core
-
-  cluster:
-    anyscale_sdk_2026: true
-    cluster_compute: dask_on_ray/1tb_sort_compute.yaml
-
-  run:
-    timeout: 7200
-    script: python dask_on_ray/dask_on_ray_sort.py --nbytes 1_000_000_000_000 --npartitions
-      1000 --num-nodes 31 --ray --data-dir /tmp/ray --s3-bucket core-nightly-test
-
-    wait_for_nodes:
-      num_nodes: 32
 
 
 - name: many_nodes_actor_test_on_v2
@@ -4581,15 +4576,14 @@
     byod:
       type: llm-cu130
     anyscale_sdk_2026: true
-    cluster_compute: llm_auto_select_worker.yaml
-    # NOTE: Important for getting the correct secrets
-    cloud_id: cld_wy5a6nhazplvu32526ams61d98
-    project_id: prj_lhlrf1u5yv8qz9qg3xzw8fkiiq
+    cloud_id: cld_82np1njz31y9lwk56mc2xcc23x
+    project_id: prj_69fd51u496ygpnaza62xsmis64
+    cluster_compute: ../cluster_compute/service_1xh100.yaml
 
   run:
     timeout: 3600
     long_running: false
-    script: python run_llm_serve_test_and_bms.py --serve-config-file configs/serve_qwen3dot5_9b_quantized_tp1.yaml --run-vllm-profiler --run-serve-llm-profiler
+    script: python run_llm_serve_test_and_bms.py --serve-config-file configs/serve_qwen3dot5_9b_quantized_tp1.yaml --skip-hf-token true --run-vllm-profiler --run-serve-llm-profiler
 
 - name: llm_serve_qwen3dot5_9B_quantized_tp_1_direct_streaming
   frequency: nightly
@@ -4606,15 +4600,14 @@
         RAY_SERVE_ENABLE_HA_PROXY: "1"
         RAY_SERVE_DEFAULT_HTTP_HOST: "0.0.0.0"
     anyscale_sdk_2026: true
-    cluster_compute: llm_auto_select_worker.yaml
-    # NOTE: Important for getting the correct secrets
-    cloud_id: cld_wy5a6nhazplvu32526ams61d98
-    project_id: prj_lhlrf1u5yv8qz9qg3xzw8fkiiq
+    cloud_id: cld_82np1njz31y9lwk56mc2xcc23x
+    project_id: prj_69fd51u496ygpnaza62xsmis64
+    cluster_compute: ../cluster_compute/service_1xh100.yaml
 
   run:
     timeout: 3600
     long_running: false
-    script: python run_llm_serve_test_and_bms.py --serve-config-file configs/serve_qwen3dot5_9b_quantized_tp1.yaml --run-vllm-profiler --run-serve-llm-profiler
+    script: python run_llm_serve_test_and_bms.py --serve-config-file configs/serve_qwen3dot5_9b_quantized_tp1.yaml --skip-hf-token true --run-vllm-profiler --run-serve-llm-profiler
 
 # Direct streaming with the prefix-cache-aware request router. Guards #64326,
 # where a body-aware router got no routing key on the direct-streaming path.
@@ -4633,15 +4626,14 @@
         RAY_SERVE_ENABLE_HA_PROXY: "1"
         RAY_SERVE_DEFAULT_HTTP_HOST: "0.0.0.0"
     anyscale_sdk_2026: true
-    cluster_compute: llm_auto_select_worker.yaml
-    # NOTE: Important for getting the correct secrets
-    cloud_id: cld_wy5a6nhazplvu32526ams61d98
-    project_id: prj_lhlrf1u5yv8qz9qg3xzw8fkiiq
+    cloud_id: cld_82np1njz31y9lwk56mc2xcc23x
+    project_id: prj_69fd51u496ygpnaza62xsmis64
+    cluster_compute: ../cluster_compute/service_2xh100.yaml
 
   run:
     timeout: 3600
     long_running: false
-    script: python run_llm_serve_test_and_bms.py --serve-config-file configs/serve_qwen3dot5_9b_quantized_tp1_prefix_cache.yaml
+    script: python run_llm_serve_test_and_bms.py --serve-config-file configs/serve_qwen3dot5_9b_quantized_tp1_prefix_cache.yaml --skip-hf-token true
 
 # Routing cost of PrefixCacheAffinityRouter with replicas that reply immediately,
 # on a CPU node: throughput, latency and router event loop stalls.
@@ -4665,7 +4657,7 @@
     script: python prefix_router_overhead_benchmark.py
 
 # Runs performance benchmark tests against vLLM service
-- name: llm_serve_llama_3dot1_8B_tp_2
+- name: llm_serve_qwen3dot5_0dot8B_tp_2
   frequency: nightly
   python: "3.12"
   group: llm-serve
@@ -4676,17 +4668,16 @@
     byod:
       type: llm-cu130
     anyscale_sdk_2026: true
-    cluster_compute: llm_auto_select_worker.yaml
-    # NOTE: Important for getting the correct secrets
-    cloud_id: cld_wy5a6nhazplvu32526ams61d98
-    project_id: prj_lhlrf1u5yv8qz9qg3xzw8fkiiq
+    cloud_id: cld_82np1njz31y9lwk56mc2xcc23x
+    project_id: prj_69fd51u496ygpnaza62xsmis64
+    cluster_compute: ../cluster_compute/service_2xh100.yaml
 
   run:
     timeout: 3600
     long_running: false
-    script: python run_llm_serve_test_and_bms.py --serve-config-file configs/serve_llama_3dot1_8b_tp2.yaml --run-vllm-profiler --run-serve-llm-profiler
+    script: python run_llm_serve_test_and_bms.py --serve-config-file configs/serve_qwen3dot5_0dot8b_tp2.yaml --skip-hf-token true --run-vllm-profiler --run-serve-llm-profiler
 
-- name: llm_serve_llama_3dot1_8B_tp_2_direct_streaming
+- name: llm_serve_qwen3dot5_0dot8B_tp_2_direct_streaming
   frequency: nightly
   python: "3.12"
   group: llm-serve
@@ -4701,15 +4692,14 @@
         RAY_SERVE_ENABLE_HA_PROXY: "1"
         RAY_SERVE_DEFAULT_HTTP_HOST: "0.0.0.0"
     anyscale_sdk_2026: true
-    cluster_compute: llm_auto_select_worker.yaml
-    # NOTE: Important for getting the correct secrets
-    cloud_id: cld_wy5a6nhazplvu32526ams61d98
-    project_id: prj_lhlrf1u5yv8qz9qg3xzw8fkiiq
+    cloud_id: cld_82np1njz31y9lwk56mc2xcc23x
+    project_id: prj_69fd51u496ygpnaza62xsmis64
+    cluster_compute: ../cluster_compute/service_2xh100.yaml
 
   run:
     timeout: 3600
     long_running: false
-    script: python run_llm_serve_test_and_bms.py --serve-config-file configs/serve_llama_3dot1_8b_tp2.yaml --run-vllm-profiler --run-serve-llm-profiler
+    script: python run_llm_serve_test_and_bms.py --serve-config-file configs/serve_qwen3dot5_0dot8b_tp2.yaml --skip-hf-token true --run-vllm-profiler --run-serve-llm-profiler
 
 - name: llm_serve_multi_node
   frequency: nightly
@@ -4725,14 +4715,24 @@
         # For test_llm_serve_prefill_decode_with_data_parallelism
         RAY_SERVE_USE_COMPACT_SCHEDULING_STRATEGY: "1"
     anyscale_sdk_2026: true
-    cluster_compute: llm_2x_2xh100.yaml
     cloud_id: cld_82np1njz31y9lwk56mc2xcc23x
     project_id: prj_69fd51u496ygpnaza62xsmis64
+    cluster_compute: ../cluster_compute/2x2xh100.yaml
 
   run:
     timeout: 3600
     script: >
       pytest -sv test_llm_serve_multi_node_integration.py
+
+  variations:
+    - __suffix__: 2gpu
+      cluster:
+        cluster_compute: ../cluster_compute/2xh100.yaml
+      run:
+        script: pytest -sv test_llm_serve_multi_node_integration.py -m requires_2GPU
+    - __suffix__: 2x2gpu
+      run:
+        script: pytest -sv test_llm_serve_multi_node_integration.py -m requires_2x_2GPU
 
 - name: llm_serve_multi_node_direct_streaming
   frequency: nightly
@@ -4751,14 +4751,44 @@
         RAY_SERVE_ENABLE_HA_PROXY: "1"
         RAY_SERVE_DEFAULT_HTTP_HOST: "0.0.0.0"
     anyscale_sdk_2026: true
-    cluster_compute: llm_2x_2xh100.yaml
+    cloud_id: cld_82np1njz31y9lwk56mc2xcc23x
+    project_id: prj_69fd51u496ygpnaza62xsmis64
+    cluster_compute: ../cluster_compute/2x2xh100.yaml
+
+  run:
+    timeout: 3600
+    script: >
+      pytest -sv test_llm_serve_multi_node_integration.py
+
+  variations:
+    - __suffix__: 2gpu
+      cluster:
+        cluster_compute: ../cluster_compute/2xh100.yaml
+      run:
+        script: pytest -sv test_llm_serve_multi_node_integration.py -m requires_2GPU
+    - __suffix__: 2x2gpu
+      run:
+        script: pytest -sv test_llm_serve_multi_node_integration.py -m requires_2x_2GPU
+
+- name: llm_serve_model_express_scaleout
+  frequency: nightly
+  python: "3.12"
+  group: llm-serve
+  team: llm
+  working_dir: llm_tests/serve
+
+  cluster:
+    byod:
+      type: llm-cu130
+    anyscale_sdk_2026: true
+    cluster_compute: ../cluster_compute/2x2xh100.yaml
     cloud_id: cld_82np1njz31y9lwk56mc2xcc23x
     project_id: prj_69fd51u496ygpnaza62xsmis64
 
   run:
     timeout: 3600
     script: >
-      pytest -sv test_llm_serve_multi_node_integration.py
+      pytest -sv test_llm_serve_model_express.py
 
 - name: llm_serve_dp_engine_fault
   frequency: nightly
@@ -4771,9 +4801,9 @@
     byod:
       type: llm-cu130
     anyscale_sdk_2026: true
-    cluster_compute: llm_2x_2xh100.yaml
     cloud_id: cld_82np1njz31y9lwk56mc2xcc23x
     project_id: prj_69fd51u496ygpnaza62xsmis64
+    cluster_compute: ../cluster_compute/2x2xh100.yaml
 
   run:
     timeout: 3600
@@ -4791,16 +4821,16 @@
     byod:
       type: llm-cu130
     anyscale_sdk_2026: true
-    cluster_compute: llm_1x_4xh100.yaml
     cloud_id: cld_82np1njz31y9lwk56mc2xcc23x
     project_id: prj_69fd51u496ygpnaza62xsmis64
+    cluster_compute: ../cluster_compute/4xh100.yaml
 
   run:
     timeout: 3600
     script: >
       pytest -sv test_llm_serve_dp_single_node.py
 
-- name: llm_serve_llama_3dot2_1B_no_accelerator
+- name: llm_serve_qwen3dot5_0dot8B_no_accelerator
   frequency: nightly
   python: "3.12"
   group: llm-serve
@@ -4811,18 +4841,17 @@
     byod:
       type: llm-cu130
     anyscale_sdk_2026: true
-    cluster_compute: llm_g5-4xlarge.yaml
-    # NOTE: Important for getting the correct secrets
-    cloud: serve_release_tests_cloud
-    project_id: prj_lhlrf1u5yv8qz9qg3xzw8fkiiq
+    cloud_id: cld_82np1njz31y9lwk56mc2xcc23x
+    project_id: prj_69fd51u496ygpnaza62xsmis64
+    cluster_compute: ../cluster_compute/service_1xh100.yaml
 
   run:
     timeout: 3600
     long_running: false
-    script: python run_llm_serve_test_and_bms.py --serve-config-file configs/serve_llama_3dot2_1b_no_accelerator.yaml --run-serve-llm-profiler
+    script: python run_llm_serve_test_and_bms.py --serve-config-file configs/serve_qwen3dot5_0dot8b_no_accelerator.yaml --skip-hf-token true --run-serve-llm-profiler
 
 
-- name: llm_serve_llama_3dot1_8B_lora
+- name: llm_serve_qwen3dot5_0dot8B_lora
   frequency: nightly
   python: "3.12"
   group: llm-serve
@@ -4833,15 +4862,14 @@
     byod:
       type: llm-cu130
     anyscale_sdk_2026: true
-    cluster_compute: llm_auto_select_worker.yaml
-    # NOTE: Important for getting the correct secrets
-    cloud_id: cld_wy5a6nhazplvu32526ams61d98
-    project_id: prj_lhlrf1u5yv8qz9qg3xzw8fkiiq
+    cloud_id: cld_82np1njz31y9lwk56mc2xcc23x
+    project_id: prj_69fd51u496ygpnaza62xsmis64
+    cluster_compute: ../cluster_compute/service_1xh100.yaml
 
   run:
     timeout: 3600
     long_running: false
-    script: python run_llm_serve_test_and_bms.py --serve-config-file configs/serve_llama_3dot1_8b_lora.yaml --timeout 900
+    script: python run_llm_serve_test_and_bms.py --serve-config-file configs/serve_qwen3dot5_0dot8b_lora.yaml --skip-hf-token true --timeout 900
 
 - name: llm_serve_llama_3dot2_1B_s3
   frequency: nightly
@@ -4854,10 +4882,9 @@
     byod:
       type: llm-cu130
     anyscale_sdk_2026: true
-    cluster_compute: llm_auto_select_worker.yaml
-    # NOTE: Important for getting the correct secrets
-    cloud_id: cld_wy5a6nhazplvu32526ams61d98
-    project_id: prj_lhlrf1u5yv8qz9qg3xzw8fkiiq
+    cloud_id: cld_82np1njz31y9lwk56mc2xcc23x
+    project_id: prj_69fd51u496ygpnaza62xsmis64
+    cluster_compute: ../cluster_compute/service_1xh100.yaml
 
   run:
     timeout: 3600
@@ -4876,10 +4903,9 @@
       type: llm-cu130
       post_build_script: byod_llm_runai_streamer.sh
     anyscale_sdk_2026: true
-    cluster_compute: llm_auto_select_worker.yaml
-    # NOTE: Important for getting the correct secrets
-    cloud_id: cld_wy5a6nhazplvu32526ams61d98
-    project_id: prj_lhlrf1u5yv8qz9qg3xzw8fkiiq
+    cloud_id: cld_82np1njz31y9lwk56mc2xcc23x
+    project_id: prj_69fd51u496ygpnaza62xsmis64
+    cluster_compute: ../cluster_compute/service_1xh100.yaml
 
   run:
     timeout: 3600
@@ -4897,14 +4923,30 @@
     byod:
       type: llm-cu130
     anyscale_sdk_2026: true
-    cluster_compute: llm_four_L4_gpu_head_node.yaml
-    # NOTE: Important for getting the correct secrets
-    cloud: serve_release_tests_cloud
-    project_id: prj_lhlrf1u5yv8qz9qg3xzw8fkiiq
+    cloud_id: cld_82np1njz31y9lwk56mc2xcc23x
+    project_id: prj_69fd51u496ygpnaza62xsmis64
+    cluster_compute: ../cluster_compute/1xh100.yaml
   run:
     timeout: 3600
     long_running: false
     script: pytest -vs test_llm_serve_correctness.py
+
+  variations:
+    - __suffix__: 1gpu
+      cluster:
+        cluster_compute: ../cluster_compute/1xh100.yaml
+      run:
+        script: pytest -vs test_llm_serve_correctness.py -m "not requires_2GPU and not requires_4GPU"
+    - __suffix__: 2gpu
+      cluster:
+        cluster_compute: ../cluster_compute/2xh100.yaml
+      run:
+        script: pytest -vs test_llm_serve_correctness.py -m "requires_2GPU"
+    - __suffix__: 4gpu
+      cluster:
+        cluster_compute: ../cluster_compute/4xh100.yaml
+      run:
+        script: pytest -vs test_llm_serve_correctness.py -m "requires_4GPU"
 
 - name: llm_serve_vllm_integration_tests
   frequency: nightly
@@ -4917,14 +4959,30 @@
     byod:
       type: llm-cu130
     anyscale_sdk_2026: true
-    cluster_compute: llm_four_L4_gpu_head_node.yaml
-    # NOTE: Important for getting the correct secrets
-    cloud: serve_release_tests_cloud
-    project_id: prj_lhlrf1u5yv8qz9qg3xzw8fkiiq
+    cloud_id: cld_82np1njz31y9lwk56mc2xcc23x
+    project_id: prj_69fd51u496ygpnaza62xsmis64
+    cluster_compute: ../cluster_compute/1xh100.yaml
   run:
     timeout: 3600
     long_running: false
     script: pytest -vs test_llm_serve_integration.py test_llm_serve_fault_tolerance.py
+
+  variations:
+    - __suffix__: 1gpu
+      cluster:
+        cluster_compute: ../cluster_compute/1xh100.yaml
+      run:
+        script: pytest -vs test_llm_serve_integration.py test_llm_serve_fault_tolerance.py -m "not requires_2GPU and not requires_4GPU"
+    - __suffix__: 2gpu
+      cluster:
+        cluster_compute: ../cluster_compute/2xh100.yaml
+      run:
+        script: pytest -vs test_llm_serve_integration.py test_llm_serve_fault_tolerance.py -m "requires_2GPU"
+    - __suffix__: 4gpu
+      cluster:
+        cluster_compute: ../cluster_compute/4xh100.yaml
+      run:
+        script: pytest -vs test_llm_serve_integration.py test_llm_serve_fault_tolerance.py -m "requires_4GPU"
 
 - name: llm_serve_vllm_integration_tests_direct_streaming
   frequency: nightly
@@ -4941,14 +4999,30 @@
         RAY_SERVE_ENABLE_HA_PROXY: "1"
         RAY_SERVE_INGRESS_REQUEST_ROUTER_FORWARD_BODY: "1"
     anyscale_sdk_2026: true
-    cluster_compute: llm_four_L4_gpu_head_node.yaml
-    # NOTE: Important for getting the correct secrets
-    cloud: serve_release_tests_cloud
-    project_id: prj_lhlrf1u5yv8qz9qg3xzw8fkiiq
+    cloud_id: cld_82np1njz31y9lwk56mc2xcc23x
+    project_id: prj_69fd51u496ygpnaza62xsmis64
+    cluster_compute: ../cluster_compute/1xh100.yaml
   run:
     timeout: 3600
     long_running: false
     script: pytest -vs test_llm_serve_integration.py test_llm_serve_fault_tolerance.py
+
+  variations:
+    - __suffix__: 1gpu
+      cluster:
+        cluster_compute: ../cluster_compute/1xh100.yaml
+      run:
+        script: pytest -vs test_llm_serve_integration.py test_llm_serve_fault_tolerance.py -m "not requires_2GPU and not requires_4GPU"
+    - __suffix__: 2gpu
+      cluster:
+        cluster_compute: ../cluster_compute/2xh100.yaml
+      run:
+        script: pytest -vs test_llm_serve_integration.py test_llm_serve_fault_tolerance.py -m "requires_2GPU"
+    - __suffix__: 4gpu
+      cluster:
+        cluster_compute: ../cluster_compute/4xh100.yaml
+      run:
+        script: pytest -vs test_llm_serve_integration.py test_llm_serve_fault_tolerance.py -m "requires_4GPU"
 
 - name: llm_serve_sleep_wakeup
   frequency: nightly
@@ -4961,10 +5035,9 @@
     byod:
       type: llm-cu130
     anyscale_sdk_2026: true
-    cluster_compute: llm_four_L4_gpu_head_node.yaml
-    # NOTE: Important for getting the correct secrets
-    cloud: serve_release_tests_cloud
-    project_id: prj_lhlrf1u5yv8qz9qg3xzw8fkiiq
+    cloud_id: cld_82np1njz31y9lwk56mc2xcc23x
+    project_id: prj_69fd51u496ygpnaza62xsmis64
+    cluster_compute: ../cluster_compute/4xh100.yaml
 
   run:
     timeout: 3600
@@ -4982,10 +5055,9 @@
     byod:
       type: llm-cu130
     anyscale_sdk_2026: true
-    cluster_compute: llm_four_L4_gpu_head_node.yaml
-    # NOTE: Important for getting the correct secrets
-    cloud: serve_release_tests_cloud
-    project_id: prj_lhlrf1u5yv8qz9qg3xzw8fkiiq
+    cloud_id: cld_82np1njz31y9lwk56mc2xcc23x
+    project_id: prj_69fd51u496ygpnaza62xsmis64
+    cluster_compute: ../cluster_compute/4xh100.yaml
 
   run:
     timeout: 3600
@@ -5003,10 +5075,9 @@
     byod:
       type: llm-cu130
     anyscale_sdk_2026: true
-    cluster_compute: llm_four_L4_gpu_head_node.yaml
-    # NOTE: Important for getting the correct secrets
-    cloud: serve_release_tests_cloud
-    project_id: prj_lhlrf1u5yv8qz9qg3xzw8fkiiq
+    cloud_id: cld_82np1njz31y9lwk56mc2xcc23x
+    project_id: prj_69fd51u496ygpnaza62xsmis64
+    cluster_compute: ../cluster_compute/4xh100.yaml
 
   run:
     timeout: 3600
@@ -5024,10 +5095,9 @@
     byod:
       type: llm-cu130
     anyscale_sdk_2026: true
-    cluster_compute: llm_auto_select_worker.yaml
-    # NOTE: Important for getting the correct secrets
-    cloud_id: cld_wy5a6nhazplvu32526ams61d98
-    project_id: prj_lhlrf1u5yv8qz9qg3xzw8fkiiq
+    cloud_id: cld_82np1njz31y9lwk56mc2xcc23x
+    project_id: prj_69fd51u496ygpnaza62xsmis64
+    cluster_compute: ../cluster_compute/service_2xh100.yaml
 
   run:
     timeout: 3600
@@ -5049,10 +5119,9 @@
         RAY_SERVE_ENABLE_HA_PROXY: "1"
         RAY_SERVE_DEFAULT_HTTP_HOST: "0.0.0.0"
     anyscale_sdk_2026: true
-    cluster_compute: llm_auto_select_worker.yaml
-    # NOTE: Important for getting the correct secrets
-    cloud_id: cld_wy5a6nhazplvu32526ams61d98
-    project_id: prj_lhlrf1u5yv8qz9qg3xzw8fkiiq
+    cloud_id: cld_82np1njz31y9lwk56mc2xcc23x
+    project_id: prj_69fd51u496ygpnaza62xsmis64
+    cluster_compute: ../cluster_compute/service_2xh100.yaml
 
   run:
     timeout: 3600
@@ -5070,10 +5139,9 @@
     byod:
       type: llm-cu130
     anyscale_sdk_2026: true
-    cluster_compute: llm_auto_select_worker.yaml
-    # NOTE: Important for getting the correct secrets
-    cloud_id: cld_wy5a6nhazplvu32526ams61d98
-    project_id: prj_lhlrf1u5yv8qz9qg3xzw8fkiiq
+    cloud_id: cld_82np1njz31y9lwk56mc2xcc23x
+    project_id: prj_69fd51u496ygpnaza62xsmis64
+    cluster_compute: ../cluster_compute/service_8xh100.yaml
 
   run:
     timeout: 3600
@@ -5095,17 +5163,16 @@
         RAY_SERVE_ENABLE_HA_PROXY: "1"
         RAY_SERVE_DEFAULT_HTTP_HOST: "0.0.0.0"
     anyscale_sdk_2026: true
-    cluster_compute: llm_auto_select_worker.yaml
-    # NOTE: Important for getting the correct secrets
-    cloud_id: cld_wy5a6nhazplvu32526ams61d98
-    project_id: prj_lhlrf1u5yv8qz9qg3xzw8fkiiq
+    cloud_id: cld_82np1njz31y9lwk56mc2xcc23x
+    project_id: prj_69fd51u496ygpnaza62xsmis64
+    cluster_compute: ../cluster_compute/service_8xh100.yaml
 
   run:
     timeout: 3600
     long_running: false
     script: python run_llm_serve_test_and_bms.py --serve-config-file configs/serve_qwen3dot5_9b_quantized_tp1_2p6d.yaml --skip-hf-token true
 
-- name: llm_serve_llama_3dot1_8B_quantized_tp1_2p6d_lmcache
+- name: llm_serve_qwen3dot5_9B_quantized_tp1_2p6d_lmcache
   frequency: manual # todo(ray-llm): fix this test with new/old lmcache version and new vllm version and re-enable it.
   python: "3.12"
   group: llm-serve
@@ -5117,15 +5184,14 @@
       type: llm-cu130
       post_build_script: byod_llm_lmcache_test.sh
     anyscale_sdk_2026: true
-    cluster_compute: llm_auto_select_worker.yaml
-    # NOTE: Important for getting the correct secrets
-    cloud_id: cld_wy5a6nhazplvu32526ams61d98
-    project_id: prj_lhlrf1u5yv8qz9qg3xzw8fkiiq
+    cloud_id: cld_82np1njz31y9lwk56mc2xcc23x
+    project_id: prj_69fd51u496ygpnaza62xsmis64
+    cluster_compute: ../cluster_compute/service_8xh100.yaml
 
   run:
     timeout: 3600
     long_running: false
-    script: python run_llm_serve_test_and_bms.py --serve-config-file configs/serve_llama_3dot1_8b_quantized_tp1_2p6d_lmcache.yaml --skip-hf-token true
+    script: python run_llm_serve_test_and_bms.py --serve-config-file configs/serve_qwen3dot5_9b_quantized_tp1_2p6d_lmcache.yaml --skip-hf-token true
 
 - name: llm_serve_sglang_e2e
   frequency: manual
@@ -5141,7 +5207,9 @@
         RAY_EXPERIMENTAL_NOSET_CUDA_VISIBLE_DEVICES: "1"
       post_build_script: byod_llm_sglang_test.sh
     anyscale_sdk_2026: true
-    cluster_compute: llm_four_L4_gpu_head_node.yaml
+    cloud_id: cld_82np1njz31y9lwk56mc2xcc23x
+    project_id: prj_69fd51u496ygpnaza62xsmis64
+    cluster_compute: ../cluster_compute/1xh100.yaml
 
   run:
     timeout: 3600
@@ -5149,6 +5217,24 @@
 
 # Same SGLang e2e suite, but with direct streaming enabled so requests are
 # served by SGLangServer.__serve_build_asgi_app__ behind HAProxy (PR #64611).
+
+  variations:
+    - __suffix__: 1gpu
+      cluster:
+        cluster_compute: ../cluster_compute/1xh100.yaml
+      run:
+        script: pytest -vs test_llm_serve_sglang.py -m "not requires_2GPU and not requires_4GPU"
+    - __suffix__: 2gpu
+      cluster:
+        cluster_compute: ../cluster_compute/2xh100.yaml
+      run:
+        script: pytest -vs test_llm_serve_sglang.py -m "requires_2GPU"
+    - __suffix__: 4gpu
+      cluster:
+        cluster_compute: ../cluster_compute/4xh100.yaml
+      run:
+        script: pytest -vs test_llm_serve_sglang.py -m "requires_4GPU"
+
 - name: llm_serve_sglang_e2e_direct_streaming
   frequency: manual
   python: "3.12"
@@ -5166,11 +5252,30 @@
         RAY_SERVE_DEFAULT_HTTP_HOST: "0.0.0.0"
       post_build_script: byod_llm_sglang_test.sh
     anyscale_sdk_2026: true
-    cluster_compute: llm_four_L4_gpu_head_node.yaml
+    cloud_id: cld_82np1njz31y9lwk56mc2xcc23x
+    project_id: prj_69fd51u496ygpnaza62xsmis64
+    cluster_compute: ../cluster_compute/1xh100.yaml
 
   run:
     timeout: 3600
     script: pytest -vs test_llm_serve_sglang.py
+
+  variations:
+    - __suffix__: 1gpu
+      cluster:
+        cluster_compute: ../cluster_compute/1xh100.yaml
+      run:
+        script: pytest -vs test_llm_serve_sglang.py -m "not requires_2GPU and not requires_4GPU"
+    - __suffix__: 2gpu
+      cluster:
+        cluster_compute: ../cluster_compute/2xh100.yaml
+      run:
+        script: pytest -vs test_llm_serve_sglang.py -m "requires_2GPU"
+    - __suffix__: 4gpu
+      cluster:
+        cluster_compute: ../cluster_compute/4xh100.yaml
+      run:
+        script: pytest -vs test_llm_serve_sglang.py -m "requires_4GPU"
 
 - name: llm_serve_kv_router
   frequency: manual
@@ -5189,13 +5294,27 @@
         RAY_SERVE_DEFAULT_HTTP_HOST: "0.0.0.0"
       post_build_script: byod_llm_kv_router_test.sh
     anyscale_sdk_2026: true
+    cloud_id: cld_82np1njz31y9lwk56mc2xcc23x
+    project_id: prj_69fd51u496ygpnaza62xsmis64
     # Kept in this working_dir rather than referenced across dirs
     # so it ships in the test's runfiles.
-    cluster_compute: llm_4xl4.yaml
+    cluster_compute: ../cluster_compute/1xh100.yaml
 
   run:
     timeout: 3600
     script: pytest -vs . --ignore=test_token_channel_cross_node.py --ignore=test_frontend_config.py
+
+  variations:
+    - __suffix__: 1gpu
+      cluster:
+        cluster_compute: ../cluster_compute/1xh100.yaml
+      run:
+        script: pytest -vs . --ignore=test_token_channel_cross_node.py --ignore=test_frontend_config.py -m "not requires_2GPU and not requires_4GPU"
+    - __suffix__: 2gpu
+      cluster:
+        cluster_compute: ../cluster_compute/2xh100.yaml
+      run:
+        script: pytest -vs . --ignore=test_token_channel_cross_node.py --ignore=test_frontend_config.py -m "requires_2GPU"
 
 - name: llm_serve_kv_router_frontend_config
   frequency: manual
@@ -5214,7 +5333,9 @@
         RAY_SERVE_DEFAULT_HTTP_HOST: "0.0.0.0"
       post_build_script: byod_llm_kv_router_test.sh
     anyscale_sdk_2026: true
-    cluster_compute: llm_4xl4.yaml
+    cloud_id: cld_82np1njz31y9lwk56mc2xcc23x
+    project_id: prj_69fd51u496ygpnaza62xsmis64
+    cluster_compute: ../cluster_compute/service_1xh100.yaml
 
   run:
     timeout: 3600
@@ -5236,7 +5357,9 @@
         RAY_SERVE_INGRESS_REQUEST_ROUTER_FORWARD_BODY: "1"
       post_build_script: byod_llm_kv_router_test.sh
     anyscale_sdk_2026: true
-    cluster_compute: llm_2x_1xl4.yaml
+    cloud_id: cld_82np1njz31y9lwk56mc2xcc23x
+    project_id: prj_69fd51u496ygpnaza62xsmis64
+    cluster_compute: ../cluster_compute/2x1xh100.yaml
 
   run:
     timeout: 3600
@@ -5259,10 +5382,9 @@
         RAY_SERVE_INGRESS_ROUTER_REPLICAS_PER_NODE: "2"
       post_build_script: byod_llm_kv_router_test.sh
     anyscale_sdk_2026: true
-    cluster_compute: llm_auto_select_worker.yaml
-    # NOTE: Important for getting the correct secrets
-    cloud_id: cld_wy5a6nhazplvu32526ams61d98
-    project_id: prj_lhlrf1u5yv8qz9qg3xzw8fkiiq
+    cloud_id: cld_82np1njz31y9lwk56mc2xcc23x
+    project_id: prj_69fd51u496ygpnaza62xsmis64
+    cluster_compute: ../cluster_compute/service_1xh100.yaml
 
   run:
     timeout: 3600
@@ -5290,6 +5412,89 @@
     long_running: false
     script: python prefix_router_lora_benchmark.py
 
+- name: llm_serve_engine_tests
+  frequency: nightly
+  python: "3.12"
+  group: llm-serve
+  team: llm
+  working_dir: llm_tests/serve
+
+  cluster:
+    byod:
+      type: llm-cu130
+    anyscale_sdk_2026: true
+    cloud_id: cld_82np1njz31y9lwk56mc2xcc23x
+    project_id: prj_69fd51u496ygpnaza62xsmis64
+    cluster_compute: ../cluster_compute/1xh100.yaml
+
+  run:
+    timeout: 1800
+    script: pytest -vs --asyncio-mode=auto test_llm_serve_config_congruence.py test_llm_serve_resource_bundles.py
+
+##############
+# LLM doc tests
+##############
+
+- name: llm_doc_tests
+  frequency: nightly
+  python: "3.12"
+  group: llm-doc
+  team: llm
+  working_dir: "//doc"
+
+  cluster:
+    byod:
+      type: llm-cu130
+      post_build_script: byod_llm_doc_tests.sh
+    anyscale_sdk_2026: true
+    cloud_id: cld_82np1njz31y9lwk56mc2xcc23x
+    project_id: prj_69fd51u496ygpnaza62xsmis64
+    cluster_compute: ../release/llm_tests/cluster_compute/1xh100.yaml
+
+  run:
+    timeout: 7200
+    prepare: pip install --no-deps source/llm/doc_code/serve/custom_vllm
+    prepare_timeout: 300
+    script: pytest -vs test_llm_examples.py -m "not requires_2GPU and not requires_4GPU"
+
+- name: llm_doc_2GPU_tests
+  frequency: nightly
+  python: "3.12"
+  group: llm-doc
+  team: llm
+  working_dir: "//doc"
+
+  cluster:
+    byod:
+      type: llm-cu130
+    anyscale_sdk_2026: true
+    cloud_id: cld_82np1njz31y9lwk56mc2xcc23x
+    project_id: prj_69fd51u496ygpnaza62xsmis64
+    cluster_compute: ../release/llm_tests/cluster_compute/2xh100.yaml
+
+  run:
+    timeout: 3600
+    script: pytest -vs test_llm_examples.py -m "requires_2GPU"
+
+- name: llm_doc_4GPU_tests
+  frequency: nightly
+  python: "3.12"
+  group: llm-doc
+  team: llm
+  working_dir: "//doc"
+
+  cluster:
+    byod:
+      type: llm-cu130
+    anyscale_sdk_2026: true
+    cloud_id: cld_82np1njz31y9lwk56mc2xcc23x
+    project_id: prj_69fd51u496ygpnaza62xsmis64
+    cluster_compute: ../release/llm_tests/cluster_compute/4xh100.yaml
+
+  run:
+    timeout: 3600
+    script: pytest -vs test_llm_examples.py -m "requires_4GPU"
+
 ##############
 # LLM Batch
 ##############
@@ -5305,17 +5510,32 @@
     byod:
       type: llm-cu130
     anyscale_sdk_2026: true
-    cluster_compute: llm_4xl4.yaml
-    # NOTE: Important for getting the correct secrets
-    cloud: serve_release_tests_cloud
-    project_id: prj_lhlrf1u5yv8qz9qg3xzw8fkiiq
+    cloud_id: cld_82np1njz31y9lwk56mc2xcc23x
+    project_id: prj_69fd51u496ygpnaza62xsmis64
+    cluster_compute: ../cluster_compute/1xh100.yaml
 
   run:
     timeout: 3600
-    script: >
-      pytest -sv test_batch_vllm.py
+    script: pytest -sv --asyncio-mode=auto test_batch_vllm.py test_batch_vllm_engine.py test_batch_serve_deployment.py
 
-- name: llm_batch_sglang_llama
+  variations:
+    - __suffix__: 1GPU
+      cluster:
+        cluster_compute: ../cluster_compute/1xh100.yaml
+      run:
+        script: pytest -sv --asyncio-mode=auto test_batch_vllm.py test_batch_vllm_engine.py test_batch_serve_deployment.py -m "not requires_2GPU and not requires_4GPU"
+    - __suffix__: 2GPU
+      cluster:
+        cluster_compute: ../cluster_compute/2xh100.yaml
+      run:
+        script: pytest -sv test_batch_vllm.py -m "requires_2GPU"
+    - __suffix__: 4GPU
+      cluster:
+        cluster_compute: ../cluster_compute/4xh100.yaml
+      run:
+        script: pytest -sv test_batch_vllm.py -m "requires_4GPU"
+
+- name: llm_batch_sglang
   frequency: nightly
   python: "3.12"
   group: llm-batch
@@ -5327,12 +5547,25 @@
       type: llm-cu130
       post_build_script: byod_llm_sglang_test.sh
     anyscale_sdk_2026: true
-    cluster_compute: llm_4xl4.yaml
+    cloud_id: cld_82np1njz31y9lwk56mc2xcc23x
+    project_id: prj_69fd51u496ygpnaza62xsmis64
+    cluster_compute: ../cluster_compute/1xh100.yaml
 
   run:
     timeout: 3600
-    script: >
-      pytest -sv test_batch_sglang.py
+    script: pytest -sv test_batch_sglang.py
+
+  variations:
+    - __suffix__: 1GPU
+      cluster:
+        cluster_compute: ../cluster_compute/1xh100.yaml
+      run:
+        script: pytest -sv test_batch_sglang.py -m "not requires_2GPU and not requires_4GPU"
+    - __suffix__: 4GPU
+      cluster:
+        cluster_compute: ../cluster_compute/4xh100.yaml
+      run:
+        script: pytest -sv test_batch_sglang.py -m "requires_4GPU"
 
 - name: llm_batch_vllm_multi_node
   frequency: nightly
@@ -5345,9 +5578,9 @@
     byod:
       type: llm-cu130
     anyscale_sdk_2026: true
-    cluster_compute: llm_2x_2xh100.yaml
     cloud_id: cld_82np1njz31y9lwk56mc2xcc23x
     project_id: prj_69fd51u496ygpnaza62xsmis64
+    cluster_compute: ../cluster_compute/2x2xh100.yaml
 
   run:
     timeout: 3600
@@ -5373,7 +5606,9 @@
       post_build_script: byod_llm_single_node_baseline_benchmark.sh
       python_depset: llm_batch/llm_batch_single_node_benchmark_py312_cu130.lock
     anyscale_sdk_2026: true
-    cluster_compute: llm_single_node_benchmark_l4.yaml
+    cloud_id: cld_82np1njz31y9lwk56mc2xcc23x
+    project_id: prj_69fd51u496ygpnaza62xsmis64
+    cluster_compute: ../cluster_compute/1xh100.yaml
 
   run:
     timeout: 3600
@@ -5412,7 +5647,7 @@
         cluster_compute: ci/gce.yaml  # relative to working_dir
 
 - name: transformers_reinforcement_learning  # do not use dashes (regex sensitive)
-  python: "3.10"
+  python: "3.11"
   frequency: weekly
   group: ray-examples
   team: ml
@@ -5420,7 +5655,7 @@
 
   cluster:
     byod:
-      type: gpu
+      type: torch-cu128
       post_build_script: byod_huggingface_trl.sh  # release/ray_release/byod/
     cluster_compute: ci/aws.yaml  # relative to working_dir
 

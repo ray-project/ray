@@ -75,10 +75,6 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
       Preconditions.checkNotNull(rayConfig.getBootstrapAddress());
 
       if (rayConfig.workerMode == WorkerType.DRIVER) {
-        if (startRayHead) {
-          nativeMaybeEnableTokenAuthIfTokenAvailable();
-        }
-
         GcsNodeInfo nodeInfo = getGcsClient().getNodeToConnectForDriver(rayConfig.nodeIp);
 
         // Update session dir.
@@ -266,8 +262,6 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
       byte[] serializedJobConfig,
       byte[] workerId,
       int runtimeEnvHash);
-
-  private static native void nativeMaybeEnableTokenAuthIfTokenAvailable();
 
   private static native void nativeCreateTokenIfMissingForOwnCluster();
 

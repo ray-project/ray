@@ -183,6 +183,10 @@ class RemoteFunction:
         self.remote = _remote_proxy
 
     def __call__(self, *args, **kwargs):
+        """Raise a TypeError, because remote functions can't be called directly.
+
+        Call ``.remote()`` on the function instead.
+        """
         raise TypeError(
             "Remote functions cannot be called directly. Instead "
             f"of running '{self._function_name}()', "
@@ -343,8 +347,7 @@ class RemoteFunction:
 
             @DeveloperAPI
             def bind(self, *args, **kwargs):
-                """
-                For Ray DAG building that creates static graph from decorated
+                """For Ray DAG building that creates static graph from decorated
                 class or functions.
                 """
                 from ray.dag.function_node import FunctionNode
@@ -575,8 +578,7 @@ class RemoteFunction:
 
     @DeveloperAPI
     def bind(self, *args, **kwargs):
-        """
-        For Ray DAG building that creates static graph from decorated
+        """For Ray DAG building that creates static graph from decorated
         class or functions.
         """
 

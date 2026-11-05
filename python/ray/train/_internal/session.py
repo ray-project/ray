@@ -766,45 +766,38 @@ def report(
         If you need to synchronize workers, you can use a framework-native barrier
         such as `torch.distributed.barrier()`.
 
-    Example:
-
-        .. testcode::
-
-            import tempfile
-
-            from ray import train
-            from ray.train import Checkpoint
-            from ray.train.torch import TorchTrainer
-
-
-            def train_func(config):
-                start_epoch = 0
-                checkpoint = train.get_checkpoint()
-                if checkpoint:
-                    with checkpoint.as_directory() as checkpoint_dir:
-                        # Load back training state
-                        ...
-
-                for epoch in range(start_epoch, config.get("num_epochs", 10)):
-                    # Do training...
-
-                    metrics = {"loss": ...}
-
-                    with tempfile.TemporaryDirectory() as temp_checkpoint_dir:
-                       # Save the checkpoint...
-                       # torch.save(...)
-
-                        checkpoint = Checkpoint.from_directory(temp_checkpoint_dir)
-
-                        # Example: Only the rank 0 worker uploads the checkpoint.
-                        if ray.train.get_context().get_world_rank() == 0:
-                            train.report(metrics, checkpoint=checkpoint)
-                        else:
-                            train.report(metrics, checkpoint=None)
-
-            trainer = TorchTrainer(
-                train_func, scaling_config=train.ScalingConfig(num_workers=2)
-            )
+    Examples:
+        >>> import tempfile
+        >>> from ray import train
+        >>> from ray.train import Checkpoint
+        >>> from ray.train.torch import TorchTrainer
+        >>> def train_func(config):
+        ...     start_epoch = 0
+        ...     checkpoint = train.get_checkpoint()
+        ...     if checkpoint:
+        ...         with checkpoint.as_directory() as checkpoint_dir:
+        ...             # Load back training state
+        ...             ...
+        ...
+        ...     for epoch in range(start_epoch, config.get("num_epochs", 10)):
+        ...         # Do training...
+        ...
+        ...         metrics = {"loss": ...}
+        ...
+        ...         with tempfile.TemporaryDirectory() as temp_checkpoint_dir:
+        ...            # Save the checkpoint...
+        ...            # torch.save(...)
+        ...
+        ...             checkpoint = Checkpoint.from_directory(temp_checkpoint_dir)
+        ...
+        ...             # Example: Only the rank 0 worker uploads the checkpoint.
+        ...             if ray.train.get_context().get_world_rank() == 0:
+        ...                 train.report(metrics, checkpoint=checkpoint)
+        ...             else:
+        ...                 train.report(metrics, checkpoint=None)
+        >>> trainer = TorchTrainer(
+        ...     train_func, scaling_config=train.ScalingConfig(num_workers=2)
+        ... )
 
     Args:
         metrics: The metrics you want to report.
@@ -844,39 +837,32 @@ def report(
 def get_checkpoint() -> Optional[Checkpoint]:
     """Access the latest reported checkpoint to resume from if one exists.
 
-    Example:
-
-        .. testcode::
-
-            import tempfile
-
-            from ray import train
-            from ray.train import Checkpoint
-            from ray.train.torch import TorchTrainer
-
-
-            def train_func(config):
-                start_epoch = 0
-                checkpoint = train.get_checkpoint()
-                if checkpoint:
-                    with checkpoint.as_directory() as checkpoint_dir:
-                        # Load back training state
-                        ...
-
-                for epoch in range(start_epoch, config.get("num_epochs", 10)):
-                    # Do training...
-
-                    metrics = {"loss": ...}
-
-                    with tempfile.TemporaryDirectory() as temp_checkpoint_dir:
-                       # Save the checkpoint...
-
-                        checkpoint = Checkpoint.from_directory(temp_checkpoint_dir)
-                        train.report(metrics, checkpoint=checkpoint)
-
-            trainer = TorchTrainer(
-                train_func, scaling_config=train.ScalingConfig(num_workers=2)
-            )
+    Examples:
+        >>> import tempfile
+        >>> from ray import train
+        >>> from ray.train import Checkpoint
+        >>> from ray.train.torch import TorchTrainer
+        >>> def train_func(config):
+        ...     start_epoch = 0
+        ...     checkpoint = train.get_checkpoint()
+        ...     if checkpoint:
+        ...         with checkpoint.as_directory() as checkpoint_dir:
+        ...             # Load back training state
+        ...             ...
+        ...
+        ...     for epoch in range(start_epoch, config.get("num_epochs", 10)):
+        ...         # Do training...
+        ...
+        ...         metrics = {"loss": ...}
+        ...
+        ...         with tempfile.TemporaryDirectory() as temp_checkpoint_dir:
+        ...            # Save the checkpoint...
+        ...
+        ...             checkpoint = Checkpoint.from_directory(temp_checkpoint_dir)
+        ...             train.report(metrics, checkpoint=checkpoint)
+        >>> trainer = TorchTrainer(
+        ...     train_func, scaling_config=train.ScalingConfig(num_workers=2)
+        ... )
 
     Returns:
         Checkpoint object if the session is currently being resumed.
@@ -904,42 +890,72 @@ def get_checkpoint() -> Optional[Checkpoint]:
 @PublicAPI(stability="beta")
 @_warn_session_misuse()
 def get_metadata() -> Dict[str, Any]:
-    """User metadata dict passed to the Trainer constructor."""
+    """User metadata dict passed to the Trainer constructor.
+
+    Returns:
+        The ``metadata`` dict passed to the Trainer, or ``None`` if called
+        outside a Ray Train or Ray Tune function.
+    """
     return get_session().metadata
 
 
 @PublicAPI(stability="beta")
 @_warn_session_misuse()
 def get_experiment_name() -> str:
-    """Experiment name for the corresponding trial."""
+    """Experiment name for the corresponding trial.
+
+    Returns:
+        The experiment name, or ``None`` if called outside a Ray Train or Ray
+        Tune function.
+    """
     return get_session().experiment_name
 
 
 @PublicAPI(stability="beta")
 @_warn_session_misuse()
 def get_trial_name() -> str:
-    """Trial name for the corresponding trial."""
+    """Trial name for the corresponding trial.
+
+    Returns:
+        The trial name, or ``None`` if called outside a Ray Train or Ray Tune
+        function.
+    """
     return get_session().trial_name
 
 
 @PublicAPI(stability="beta")
 @_warn_session_misuse()
 def get_trial_id() -> str:
-    """Trial id for the corresponding trial."""
+    """Trial id for the corresponding trial.
+
+    Returns:
+        The trial ID, or ``None`` if called outside a Ray Train or Ray Tune
+        function.
+    """
     return get_session().trial_id
 
 
 @PublicAPI(stability="alpha")
 @_warn_session_misuse()
 def get_run_id() -> str:
-    """Unique Train Run id for the corresponding trial."""
+    """Unique Train Run id for the corresponding trial.
+
+    Returns:
+        The run ID, or ``None`` if called outside a Ray Train or Ray Tune
+        function.
+    """
     return get_session().run_id
 
 
 @PublicAPI(stability="beta")
 @_warn_session_misuse()
 def get_trial_resources() -> "PlacementGroupFactory":
-    """Trial resources for the corresponding trial."""
+    """Trial resources for the corresponding trial.
+
+    Returns:
+        The trial's ``PlacementGroupFactory``, or ``None`` if called outside a
+        Ray Train or Ray Tune function.
+    """
     return get_session().trial_resources
 
 
@@ -950,20 +966,17 @@ def get_trial_dir() -> str:
     If calling from a Train session, this will give the trial directory of its parent
     Tune session.
 
-    .. testcode::
-
-        import ray.tune
-
-        def train_func(config):
-            print(ray.tune.get_context().get_trial_dir())
-
-        tuner = ray.tune.Tuner(train_func)
-        tuner.fit()
-
-    .. testoutput::
-        :options: +MOCK
-
+    Examples:
+        >>> import ray.tune  # doctest: +SKIP_EXAMPLE
+        >>> def train_func(config):
+        ...     print(ray.tune.get_context().get_trial_dir())
+        >>> tuner = ray.tune.Tuner(train_func)
+        >>> tuner.fit()
         /Users/root/ray_results/train_func_2023-07-19_15-01-37/train_func_d620c_00000_0_2023-07-19_15-01-40
+
+    Returns:
+        The trial directory path, or ``None`` if called outside a Ray Train or
+        Ray Tune function.
     """
     return get_session().trial_dir
 
@@ -997,6 +1010,10 @@ def get_world_size() -> int:
         :hide:
 
         ...
+
+    Returns:
+        The total number of workers, or ``1`` if called outside a Ray Train or
+        Ray Tune function.
     """
     session = get_session()
     if not hasattr(session, "world_size"):
@@ -1036,6 +1053,10 @@ def get_world_rank() -> int:
         :hide:
 
         ...
+
+    Returns:
+        This worker's rank among all workers, or ``0`` if called outside a Ray
+        Train or Ray Tune function.
     """
     session = get_session()
     if not hasattr(session, "world_rank"):
@@ -1078,6 +1099,10 @@ def get_local_rank() -> int:
         :hide:
 
         ...
+
+    Returns:
+        This worker's rank among the workers on its node, or ``0`` if called
+        outside a Ray Train or Ray Tune function.
     """
     session = get_session()
     if not hasattr(session, "local_rank"):
