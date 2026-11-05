@@ -141,6 +141,8 @@ Ray reports the head node's own dashboard address by default, which users behind
 The Ray dashboard provides read **and write** access to the Ray Cluster. The reverse proxy must provide authentication or network ingress controls to prevent unauthorized access to the Cluster.
 ```
 
+If the cluster runs with `RAY_AUTH_MODE=disabled` and the reverse proxy adds its own `Authorization` header, such as for Basic authentication, strip that header before forwarding the request. With authentication disabled, the dashboard rejects any request that carries an `Authorization` header or a non-empty `X-Ray-Authorization` header. See {ref}`token-auth`.
+
 ## Disabling the dashboard
 
 The dashboard is included if you use `ray[default]` or {ref}`other installation commands <installation>` and automatically started.

@@ -130,8 +130,7 @@ class NodeProviderAvailabilityTracker:
         timestamp: int,
         node_launch_exception: Optional[NodeLaunchException],
     ) -> None:
-        """
-        Update the availability and details of a single ndoe type.
+        """Update the availability and details of a single ndoe type.
 
         Args:
           node_type: The node type.
@@ -144,8 +143,7 @@ class NodeProviderAvailabilityTracker:
             )
 
     def summary(self) -> NodeAvailabilitySummary:
-        """
-        Returns a summary of node availabilities and their staleness.
+        """Returns a summary of node availabilities and their staleness.
 
         Returns
             A summary of node availabilities and their staleness.
