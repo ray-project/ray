@@ -325,3 +325,9 @@ def test_integer_partition_range_preserves_reader_error(
             ds.take_all()
     finally:
         ray.shutdown()
+
+
+if __name__ == "__main__":
+    import sys
+
+    sys.exit(pytest.main(["-v", __file__]))

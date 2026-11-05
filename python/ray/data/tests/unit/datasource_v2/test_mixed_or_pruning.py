@@ -862,3 +862,9 @@ def test_integer_partition_ranges_other_gates(fixture, kind):
     )
     list(reader.read(manifest))
     assert not reader._mixed_subset_enabled
+
+
+if __name__ == "__main__":
+    import sys
+
+    sys.exit(pytest.main(["-v", __file__]))
