@@ -11,7 +11,9 @@ import ray
 import ray._private.ray_constants as ray_constants
 from ray._private.ray_constants import RAY_DEFAULT_LABEL_KEYS_PREFIX
 from ray.exceptions import AsyncioActorExit
-from ray.train.health import Evict, HealthDecision, Noop, Reattempt
+from ray.train.health import Diagnose, Evict, HealthDecision, Noop, Reattempt
+from ray.train.health._internal.constants import DEFAULT_DIAGNOSE_TIMEOUT_S
+from ray.train.health._internal.manager import merge_decisions
 from ray.train.v2._internal.constants import (
     DEFAULT_ENABLE_CONTROLLER_LOGGING,
     DEFAULT_ENABLE_PREEMPTION_WATCHER,
@@ -724,7 +726,7 @@ class TrainController:
                 )
 
             if self._health_manager is not None:
-                health_decision = self._health_manager.evaluate_inflight_checks()
+                health_decision = self._evaluate_health_checks()
                 if not isinstance(health_decision, Noop):
                     health_result = self._execute_health_decision(health_decision)
                     if health_result:
@@ -766,6 +768,23 @@ class TrainController:
         else:
             raise ValueError(f"Unexpected controller state: {controller_state}")
 
+    def _evaluate_health_checks(self) -> HealthDecision:
+        """Evaluate the in-flight checks, and the checks of a running
+        ``Diagnose`` once they are back. While those run, a new ``Diagnose`` is
+        dropped.
+
+        Returns:
+            The health decision to carry out. ``Noop()`` if there is nothing to
+            do.
+        """
+        inflight_decision = self._health_manager.evaluate_inflight_checks()
+        diagnosis_decision = self._health_manager.evaluate_on_demand_checks()
+        if diagnosis_decision is None:
+            if isinstance(inflight_decision, Diagnose):
+                return Noop()
+            return inflight_decision
+        return merge_decisions([inflight_decision, diagnosis_decision])
+
     def _execute_health_decision(
         self, decision: HealthDecision
     ) -> Optional[TrainControllerLoopIterationResult]:
@@ -773,7 +792,8 @@ class TrainController:
 
         A ``Reattempt`` restarts the worker group through the failure policy,
         like a worker error. An ``Evict`` restarts it without the evicted nodes.
-        A ``Diagnose`` is not acted on yet.
+        A ``Diagnose`` starts its checks while training continues, and a later
+        ``_evaluate_health_checks()`` decides on their results.
 
         Args:
             decision: The health decision, other than a ``Noop``.
@@ -781,13 +801,20 @@ class TrainController:
         Returns:
             The result of the iteration, or ``None`` to keep running.
         """
-        logger.warning("Health decision: %r", decision)
         failure_result = self._run_controller_hook("after_health_decision", decision)
         if failure_result:
             return failure_result
 
+        if isinstance(decision, Diagnose):
+            logger.info("Diagnosing while training continues: %s", decision.reason)
+            self._health_manager.start_on_demand_checks(
+                decision.checks, timeout=DEFAULT_DIAGNOSE_TIMEOUT_S
+            )
+            return None
+
         error = HealthCheckError(decision)
         if isinstance(decision, Reattempt):
+            logger.warning("Reattempting: %s", decision.reason)
             failure_decision = self._failure_policy.make_decision(
                 training_failed_error=error
             )
@@ -795,6 +822,11 @@ class TrainController:
                 failure_decision, training_failed_error=error
             )
         if isinstance(decision, Evict):
+            logger.warning(
+                "Evicting nodes %s and restarting without them: %s",
+                decision.target_nodes,
+                decision.reason,
+            )
             return TrainControllerLoopIterationResult(
                 run_attempt_id=self._get_run_attempt_id(),
                 previous_state=self.get_state(),

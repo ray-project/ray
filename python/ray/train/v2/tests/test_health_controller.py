@@ -8,6 +8,7 @@ import ray
 from ray.train.health import (
     Diagnose,
     Evict,
+    HealthCheck,
     HealthConfig,
     Noop,
     Reattempt,
@@ -40,14 +41,26 @@ pytestmark = pytest.mark.usefixtures("mock_runtime_context")
 
 
 class FakeHealthManager:
-    """Returns the queued decisions, and records the evicted nodes."""
+    """Returns the queued in-flight and diagnosis decisions, and records the
+    started diagnoses and the evicted nodes."""
 
     def __init__(self, inflight_checks):
         self.decisions = []
+        self.diagnosis_decisions = []
+        self.diagnoses = []
         self.evicted_nodes = []
 
     def evaluate_inflight_checks(self):
-        decision = self.decisions.pop(0) if self.decisions else Noop()
+        return self._next(self.decisions)
+
+    def start_on_demand_checks(self, checks, timeout):
+        self.diagnoses.append(checks)
+
+    def evaluate_on_demand_checks(self):
+        return self._next(self.diagnosis_decisions)
+
+    def _next(self, decisions):
+        decision = decisions.pop(0) if decisions else Noop()
         if isinstance(decision, Evict):
             self.evicted_nodes = sorted({*self.evicted_nodes, *decision.target_nodes})
         return decision
@@ -109,16 +122,38 @@ def _running_controller(failure_policy, scaling_config=None):
     return controller, callback
 
 
-def test_noop_and_diagnose_keep_running():
+def test_diagnose_runs_its_checks_while_training_continues():
     controller, callback = _running_controller(MockFailurePolicy(None))
     health_manager = controller._health_manager
-    health_manager.decisions = [Noop(), Diagnose(reason="slow", checks=[])]
+    check = HealthCheck()
+    health_manager.decisions = [
+        Diagnose(reason="slow", checks=[check]),
+        Diagnose(reason="slower", checks=[]),
+    ]
+    # Not started, then running, then back with nothing to act on.
+    health_manager.diagnosis_decisions = [Noop(), None, Noop()]
+
+    for _ in range(3):
+        _step(controller)
+        assert isinstance(controller.get_state(), RunningState)
+    assert health_manager.diagnoses == [[check]]
+    assert [d.reason for d in callback.decisions] == ["slow"]
+
+
+def test_a_diagnosis_can_evict():
+    controller, callback = _running_controller(MockFailurePolicy(None))
+    health_manager = controller._health_manager
+    health_manager.decisions = [Diagnose(reason="slow", checks=[])]
+    health_manager.diagnosis_decisions = [
+        Noop(),
+        Evict(reason="bad NIC", target_nodes=["n1"]),
+    ]
 
     _step(controller)
     assert isinstance(controller.get_state(), RunningState)
     _step(controller)
-    assert isinstance(controller.get_state(), RunningState)
-    assert [type(d) for d in callback.decisions] == [Diagnose]
+    assert isinstance(controller.get_state(), RestartingState)
+    assert [type(d) for d in callback.decisions] == [Diagnose, Evict]
 
 
 def test_reattempt_goes_through_the_failure_policy():

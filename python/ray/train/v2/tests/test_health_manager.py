@@ -295,6 +295,20 @@ def test_on_demand_checks_decide_noop_before_any_start():
     assert HealthManager([]).evaluate_on_demand_checks() == Noop()
 
 
+def test_on_demand_checks_decide_once(caplog, propagate_logs):
+    manager = HealthManager([])
+    _fake_temps(manager, [])
+    manager.start_on_demand_checks(
+        [HealthCheck(evaluator_creator=lambda: [Always(Noop())])], timeout=10
+    )
+    assert manager.evaluate_on_demand_checks() == Noop()
+    assert "found nothing to act on" in caplog.text
+
+    manager._node_monitor_group.poll_probe_results = mock.Mock()
+    assert manager.evaluate_on_demand_checks() == Noop()
+    manager._node_monitor_group.poll_probe_results.assert_not_called()
+
+
 def test_a_failed_monitor_gives_each_of_its_probes_its_error():
     error = RuntimeError("monitor gone")
     status = NodeMonitorGroupPollStatus(
