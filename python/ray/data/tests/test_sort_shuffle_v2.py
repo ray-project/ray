@@ -5,7 +5,11 @@ import pyarrow as pa
 import pytest
 
 import ray
-from ray.data._internal.execution.interfaces import ExecutionOptions
+from ray.data._internal.execution.interfaces import (
+    BlockEntry,
+    ExecutionOptions,
+    RefBundle,
+)
 from ray.data._internal.execution.operators.base_physical_operator import (
     AllToAllOperator,
 )
@@ -18,6 +22,7 @@ from ray.data._internal.execution.operators.shuffle_operators.disk_shuffle_reduc
 )
 from ray.data._internal.execution.operators.shuffle_operators.shuffle_map_operator import (  # noqa: E501
     ShuffleMapOp,
+    make_partition_sentinel,
 )
 from ray.data._internal.execution.operators.shuffle_operators.shuffle_reduce_operator import (  # noqa: E501
     ShuffleReduceOp,
@@ -34,7 +39,7 @@ from ray.data._internal.execution.operators.sort_shuffle import make_sort_reduce
 from ray.data._internal.execution.util import make_ref_bundles
 from ray.data._internal.logical.optimizers import get_execution_plan
 from ray.data._internal.planner.exchange.sort_task_spec import SortKey, SortTaskSpec
-from ray.data.block import BlockAccessor
+from ray.data.block import BlockAccessor, BlockMetadata
 from ray.data.context import DataContext, ShuffleStrategy
 from ray.data.tests.conftest import *  # noqa: F401, F403
 from ray.data.tests.conftest import noop_counter
@@ -305,10 +310,62 @@ def test_shuffle_reduce_preserves_partition_order(
     first_ids = []
     for bundle in outputs:
         block = ray.get(bundle.block_refs[0])  # pyrefly: ignore[no-matching-overload]
-        first_ids.append(block["id"].iloc[0])
+        first_ids.append(block["id"].iloc[0])  # pyrefly: ignore[bad-index]
     assert first_ids == [0, 1]
     for bundle in outputs:
         bundle.destroy_if_owned()
+
+
+def _empty_partition_bundle(partition_id: int) -> RefBundle:
+    """A zero-row map-output wrapper stamped with ``partition_id``."""
+    empty = pa.table({"id": pa.array([], pa.int64())})
+    metadata = BlockMetadata(
+        num_rows=0,
+        size_bytes=0,
+        input_files=make_partition_sentinel(partition_id),
+        exec_stats=None,
+    )
+    return RefBundle(
+        (BlockEntry(ray.put(empty), metadata),),  # pyrefly: ignore[bad-argument-type]
+        owns_blocks=True,
+        schema=empty.schema,
+    )
+
+
+@pytest.mark.parametrize(
+    "map_cls, reduce_cls",
+    [
+        (ShuffleMapOp, ShuffleReduceOp),
+        (DiskHashShuffleMapOp, DiskHashShuffleReduceOp),
+    ],
+)
+def test_shuffle_reduce_ordered_skips_discarded_empty_partition(
+    ray_start_regular_shared_2_cpus, map_cls, reduce_cls
+):
+    """A discarded empty partition must not block later partitions' output."""
+    ctx = DataContext.get_current()
+    map_op = map_cls(
+        InputDataBuffer(ctx, []),
+        ctx,
+        num_partitions=2,
+        partition_fn=lambda table: {},
+    )
+    reduce_op = reduce_cls(
+        map_op,
+        ctx,
+        num_partitions=2,
+        reduce_fn=lambda partition_id, tables: [],
+        preserve_partition_order=True,
+        should_emit_empty_partitions=False,
+    )
+    (partition_one,) = make_ref_bundles([[1]])
+
+    reduce_op._add_input_inner(_empty_partition_bundle(partition_id=0), 0)
+    reduce_op._record_partition_output(1, partition_one, partition_complete=True)
+
+    assert reduce_op.has_next()
+    reduce_op.get_next().destroy_if_owned()
+    assert not reduce_op.has_next()
 
 
 _USE_DISK = [
