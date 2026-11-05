@@ -310,8 +310,11 @@ TEST_F(GcsClientReconnectionTest, ReconnectionBackoff) {
         ASSERT_TRUE(status.ok()) << status.ToString();
         p2.set_value();
       }));
-  ASSERT_EQ(std::future_status::timeout, f2.wait_for(1s));
 
+  // Time the no-reconnect window from when the channel enters TRANSIENT_FAILURE.
+  // The 2s backoff gets up to 20% jitter, so the first retry can come 1.6s after
+  // that; waiting a full second before looking (as this test used to) left the
+  // window overlapping it.
   ASSERT_TRUE(WaitUntil(
       [channel]() {
         auto status = channel->GetState(false);
@@ -320,6 +323,7 @@ TEST_F(GcsClientReconnectionTest, ReconnectionBackoff) {
       1s));
 
   auto now = std::chrono::steady_clock::now();
+  ASSERT_EQ(std::future_status::timeout, f2.wait_for(100ms));
   StartGCS();
 
   // For 2s, there is no reconnection
