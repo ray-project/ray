@@ -1181,6 +1181,10 @@ class SlicePlacementGroup:
                 of address:port strings for this slice.
             slicebuilder_port: Base port number for slicebuilder addresses (defaults to 8471).
             master_addr: Optional IP address or hostname of the rank-0 master node.
+                If omitted, slice 0 uses its first worker hostname and other slices
+                resolve the placed IP of slice 0's host 0 (pass
+                ``spg.get_worker_addrs(slice_index)[0]`` when running independent
+                single-slice worlds).
 
         Returns:
             A dictionary mapping PyTorch/TPU environment variables to their values.
@@ -1189,7 +1193,8 @@ class SlicePlacementGroup:
             TypeError: If worker_id or slicebuilder_port is not an integer.
             ValueError: If slice_index, worker_id, or any address or port
                 argument is invalid.
-            RuntimeError: If worker hostnames cannot be resolved.
+            RuntimeError: If worker hostnames or slice 0's master address cannot
+                be resolved.
         """
         if not (0 <= slice_index < self.num_slices):
             raise ValueError(
@@ -1198,6 +1203,15 @@ class SlicePlacementGroup:
 
         if worker_hostnames is None and slicebuilder_addresses is None:
             worker_hostnames = self._resolve_placed_worker_addrs(slice_index)
+
+        if master_addr is None and slice_index > 0:
+            master_addr = self.get_worker_addrs(0)[0]
+            if master_addr is None:
+                raise RuntimeError(
+                    "Could not resolve MASTER_ADDR from slice 0 because its "
+                    "placement group bundles are not yet placed. Wait for "
+                    "slice 0 to be ready, or pass `master_addr` explicitly."
+                )
 
         return get_torchtpu_env_vars(
             topology=self._topology,
