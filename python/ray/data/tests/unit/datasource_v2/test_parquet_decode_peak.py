@@ -5,12 +5,11 @@ import pytest
 from packaging.version import parse as parse_version
 
 from ray.data._internal.datasource_v2.formats.parquet.parquet_decode_peak import (
-    _nested_or_view,
+    _nested,
     estimate_row_group_peak,
     estimate_row_group_work,
 )
 from ray.data._internal.datasource_v2.formats.parquet.parquet_decoded_size import (
-    Read,
     build_leaf_profiles,
     dictionary_page_read_size,
     leaf_chunks,
@@ -100,7 +99,6 @@ def _estimate(path, columns=None, **format_kwargs):
         row_group=row_group,
         columns=schema_columns,
         column_leaves=column_leaves,
-        read=Read(format_kwargs=format_kwargs),
         leaves=leaves,
         counted=set(),
         data_pages=None if footer is None else footer.data_pages[0],
@@ -136,9 +134,7 @@ _CASES = {
             {"a": pa.array(np.arange(N) % 100, pa.int16(), mask=np.arange(N) % 7 == 0)}
         )
     ),
-    "strings-read-as-dictionary": _case(
-        pa.table({"a": _strings(N // 4)}), format_kwargs={"dictionary_columns": ["a"]}
-    ),
+    "strings": _case(pa.table({"a": _strings(N // 4)})),
     # PyArrow miscounts DELTA_BYTE_ARRAY SizeStatistics, so the decoded size is
     # a crude bound here, and the peak inherits it.
     "delta-byte-array": _case(
@@ -176,7 +172,7 @@ def test_estimate_bounds_measured_peak(tmp_path, label):
 
 def test_a_canonical_extension_casts_as_its_storage():
     """A fixed-shape tensor column, a fixed-size list on disk, copies per piece."""
-    assert _nested_or_view(pa.fixed_shape_tensor(pa.float32(), [2, 2]))
+    assert _nested(pa.fixed_shape_tensor(pa.float32(), [2, 2]))
 
 
 if __name__ == "__main__":

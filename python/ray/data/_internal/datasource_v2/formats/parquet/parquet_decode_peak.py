@@ -12,12 +12,11 @@ import pyarrow as pa
 from pyarrow.parquet import ColumnSchema, RowGroupMetaData
 
 from ray.data._internal.datasource_v2.formats.parquet.parquet_decoded_size import (
+    _BINARY,
     _LIST,
     LeafChunk,
     Read,
     detect_delta_byte_array,
-    detect_dictionary_columns,
-    detect_dictionary_type,
     estimate_added_columns,
     estimate_ancestors,
     estimate_leaf,
@@ -30,8 +29,6 @@ from ray.data._internal.datasource_v2.formats.parquet.parquet_decoded_size impor
 _FOOTER_BYTES = 80 << 10
 # Below this the footer read took the whole file; 64 KiB put one row group under.
 _SMALL_FILE_BYTES = 48 << 10
-# Arrow's string and binary view builders allocate value bytes in 32 KiB blocks.
-_VIEW_BLOCK_BYTES = 32 << 10
 # Twice the 1 MiB dictionary page limit parquet-cpp and arrow-rs default to,
 # for a page the footer can't size.
 _DICTIONARY_BYTES = 2 << 20
@@ -65,7 +62,6 @@ def estimate_row_group_work(
     row_group: RowGroupMetaData,
     columns: Sequence[ColumnSchema],
     column_leaves: Sequence[Sequence[int]],
-    read: Read,
     leaves: Mapping[int, LeafChunk],
     counted: Set[int],
     data_pages: Optional[Sequence[Optional[int]]] = None,
@@ -90,7 +86,6 @@ def estimate_row_group_work(
                 column=columns[leaf_idx],
                 reserved=reserved,
                 rows=row_group.num_rows,
-                read=read,
                 ancestors=ancestors,
                 pages=data_pages[leaf_idx] if data_pages else None,
             )
@@ -110,7 +105,6 @@ def estimate_leaf_work(
     column: ColumnSchema,
     reserved: int,
     rows: int,
-    read: Read,
     ancestors: int = 0,
     pages: Optional[int] = None,
 ) -> Tuple[int, int]:
@@ -123,7 +117,7 @@ def estimate_leaf_work(
     nullable = column.max_definition_level > 0
     # A repeated leaf's buffers measured up to one doubling past ``capacity``.
     grows = 2 if repeated else 1
-    decoded = estimate_leaf(leaf=leaf, read=read)
+    decoded = estimate_leaf(leaf=leaf)
     dictionary = _dictionary_bytes(leaf)
     # A DELTA_BYTE_ARRAY guess (128 times its pages) covers the decoder's buffers.
     guessed = chunk.physical_type == "BYTE_ARRAY" and leaf.size_statistics_bytes is None
@@ -158,37 +152,16 @@ def estimate_leaf_work(
         # Without a header, each dictionary entry is at least its 4-byte length.
         header = leaf.dictionary_page
         entries = dictionary // 4 if header is None else header.num_values
-        view = leaf.type in (pa.string_view(), pa.binary_view())
-        large = leaf.type in (pa.large_string(), pa.large_binary())
-        width = 16 if view else 8 if large else 4
-        # The dictionary, parquet-cpp's 16-byte length and pointer per entry,
-        # and a view builder's first block.
-        kept += dictionary + 16 * entries + view * _VIEW_BLOCK_BYTES
-        slots = leaf.slots()
-        # Offsets reserved past the slots used; views double as lists grow.
-        temporary += width * max((grows if view else 1) * capacity - slots, 0)
-        # The 128-times guess already covers the value bytes.
-        chars = 0 if guessed else estimate_string_bytes(leaf=leaf)
-        as_dictionary = detect_dictionary_columns(
-            chunk=chunk, format_kwargs=read.format_kwargs
-        ) or detect_dictionary_type(arrow_type=leaf.type)
-        if as_dictionary:
-            # A hash table of the distinct values, the values twice (builders
-            # double) and int32 indices. Distinct values are at most one per slot
-            # of at least 4 bytes, and no fewer than the page's entries.
-            distinct = max(min(slots, max(decoded - slots, 0) // 4 + 1), entries)
-            # A flat leaf's are the page's entries, unless its data pages are over
-            # twice what their indices need: a PLAIN fallback (up to 10 times
-            # measured the same, 20 let one through). Lists measured above it.
-            indices = levels * max(entries - 1, 1).bit_length() // 8
-            data = chunk.total_uncompressed_size - dictionary
-            if chunk.has_dictionary_page and not repeated and data <= 2 * indices:
-                distinct = entries
-            builder_values = 2 * min(chars, decoded)
-            temporary += _hash_table_bytes(distinct) + builder_values + 4 * slots
-        elif not view:
-            # The builder's copy of the values; a view builder appends blocks.
-            temporary += chars
+        # The dictionary, and parquet-cpp's 16-byte length and pointer per entry.
+        kept += dictionary + 16 * entries
+        # Offsets reserved past the slots used: 4 bytes, 8 for a large string, 4
+        # for a decimal, which BYTE_ARRAY also carries.
+        node = leaf.profile.nodes[-1]
+        width = node.width if node.kind == _BINARY else 4
+        temporary += width * max(capacity - leaf.slots(), 0)
+        # The builder's copy of the values, which the 128-times guess covers.
+        if not guessed:
+            temporary += estimate_string_bytes(leaf=leaf)
         # A string list's offsets are held alongside the builder: both count.
         return kept, temporary + list_offsets
     # Fixed width: the dictionary, then values and validity at capacity.
@@ -226,13 +199,13 @@ def estimate_cast(
 ) -> int:
     """What a pin's cast allocates for one row group, times 1.5: a crude bound.
     ``column_leaves`` holds each column read as its leaves, profiled as pinned. A
-    nested or view cast copies once per one of the ``pieces`` the scanner yields."""
+    nested cast copies once per one of the ``pieces`` the scanner yields."""
     size = estimate_added_columns(row_group=row_group, read=read)
     for name, leaves in column_leaves.items():
         before, after = file_schema.field(name).type, pinned_schema.field(name).type
         if before == after:
             continue
-        copies = pieces if _nested_or_view(before) or _nested_or_view(after) else 1
+        copies = pieces if _nested(before) or _nested(after) else 1
         size += copies * estimate_row_group(
             row_group=row_group,
             leaves=leaves,
@@ -264,14 +237,6 @@ def _list_offset_width(leaf: LeafChunk) -> int:
     return max(widths, default=4)
 
 
-def _hash_table_bytes(distinct: int) -> int:
-    """Arrow's memo table: 16-byte slots, from 32, quadrupling while half full."""
-    slots = 32
-    while slots <= 2 * distinct:
-        slots *= 4
-    return 16 * slots
-
-
 def _zero_copy(physical_type: str, arrow_type: pa.DataType) -> bool:
     """Whether PyArrow hands the decoded values to Arrow without a copy."""
     # Only these: it copies into every other type, even date32.
@@ -283,14 +248,10 @@ def _zero_copy(physical_type: str, arrow_type: pa.DataType) -> bool:
     return (physical_type, arrow_type) in floats
 
 
-def _nested_or_view(arrow_type: pa.DataType) -> bool:
-    """Whether ``arrow_type`` has a list, map, union or view: casts copy per piece."""
+def _nested(arrow_type: pa.DataType) -> bool:
+    """Whether ``arrow_type`` has a list, map or union: casts copy per piece."""
     if isinstance(arrow_type, pa.BaseExtensionType):
         arrow_type = arrow_type.storage_type
     if pa.types.is_struct(arrow_type):
-        return any(_nested_or_view(field.type) for field in arrow_type)
-    return (
-        pa.types.is_nested(arrow_type)
-        or pa.types.is_string_view(arrow_type)
-        or pa.types.is_binary_view(arrow_type)
-    )
+        return any(_nested(field.type) for field in arrow_type)
+    return pa.types.is_nested(arrow_type)
