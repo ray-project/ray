@@ -3,6 +3,7 @@ import random
 import sys
 import threading
 import time
+import weakref
 from collections import Counter
 from os import urandom
 from typing import Callable, Iterator
@@ -13,6 +14,7 @@ import pyarrow as pa
 import pytest
 
 import ray
+from ray.data._internal.block_batching import util as block_batching_util
 from ray.data._internal.block_batching.interfaces import (
     Batch,
     BatchMetadata,
@@ -628,6 +630,80 @@ class TestIterThreaded:
                 f"iter_threaded workers did not exit within 5s: "
                 f"{[t.name for t in threading.enumerate() if t.name == 'iter_threaded']}"
             )
+
+    @pytest.mark.parametrize("num_workers", [1, 4])
+    def test_close_waits_for_workers_to_release_fn_state(self, num_workers: int):
+        """When ``close()`` returns, the workers have exited and dropped what
+        ``fn`` held (for example object refs), rather than doing so up to a
+        poll interval later. A caller that stops iterating and then calls
+        ``ray.shutdown()`` relies on this: a worker dropping an object ref
+        while the core worker is being torn down exits the process."""
+
+        class _State:
+            pass
+
+        state_refs = []
+
+        def _passthrough(it: Iterator[int], state: _State) -> Iterator[int]:
+            for item in it:
+                yield item
+
+        def fn(it: Iterator[int]) -> Iterator[int]:
+            # Not a generator function, so every worker builds its state as
+            # soon as it starts, not only once it gets an output slot.
+            state = _State()
+            state_refs.append(weakref.ref(state))
+            return _passthrough(it, state)
+
+        threads_before = set(threading.enumerate())
+        it = iter_threaded(iter(range(10_000)), fn, num_workers=num_workers)
+        next(it)
+        # Wait until every worker has built its `fn` state, then leave them
+        # parked waiting for an output slot.
+        deadline = time.time() + 5.0
+        while len(state_refs) < num_workers and time.time() < deadline:
+            time.sleep(0.01)
+        assert len(state_refs) == num_workers
+        workers = [
+            t
+            for t in threading.enumerate()
+            if t.name == "iter_threaded" and t not in threads_before
+        ]
+        assert len(workers) == num_workers
+
+        it.close()
+
+        # No polling: this must already hold when `close()` returns.
+        assert [t for t in workers if t.is_alive()] == []
+        assert all(ref() is None for ref in state_refs)
+
+    def test_close_is_bounded_when_fn_blocks(self, monkeypatch):
+        """A worker blocked inside ``fn`` can't be interrupted, so ``close()``
+        waits for it only up to ``_WORKER_JOIN_TIMEOUT_S``."""
+        monkeypatch.setattr(block_batching_util, "_WORKER_JOIN_TIMEOUT_S", 0.2)
+        release = threading.Event()
+
+        def blocking_fn(it: Iterator[int]) -> Iterator[int]:
+            for i, item in enumerate(it):
+                if i >= 1:
+                    release.wait()
+                yield item
+
+        threads_before = set(threading.enumerate())
+        it = iter_threaded(iter(range(100)), blocking_fn)
+        next(it)
+        # Let the worker take the freed slot and block in `fn`.
+        time.sleep(0.2)
+        try:
+            start = time.monotonic()
+            it.close()
+            elapsed = time.monotonic() - start
+            assert 0.15 <= elapsed < 2.0
+        finally:
+            release.set()
+            for t in set(threading.enumerate()) - threads_before:
+                if t.name == "iter_threaded":
+                    t.join(timeout=5.0)
 
     def test_num_workers_validation(self):
         with pytest.raises(ValueError, match="num_workers must be at least 1"):

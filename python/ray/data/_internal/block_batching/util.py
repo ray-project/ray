@@ -43,6 +43,11 @@ O = TypeVar("O")
 
 _SENTINEL = object()
 
+# How long `iter_threaded` waits for its workers to exit after the consumer
+# stops. Idle workers notice within one 0.1s poll, so this only bounds the wait
+# on a worker that is blocked inside `fn`.
+_WORKER_JOIN_TIMEOUT_S = 1.0
+
 
 def iter_threaded(
     base_iterator: Iterator[T],
@@ -64,10 +69,12 @@ def iter_threaded(
     they don't run ``fn`` (and hold the result) while waiting for queue space.
 
     When the consumer stops early (``break``, ``.close()``, or GC), workers
-    are signaled via a stop event so they don't leak. Note: a hanging
-    ``fn`` cannot be interrupted, so ``fn`` must terminate or raise within
-    bounded time per element. For example, the user function should have
-    timeouts if doing blocking I/O.
+    are signaled via a stop event so they don't leak, and the generator waits
+    up to ``_WORKER_JOIN_TIMEOUT_S`` for them to exit, so what ``fn`` holds is
+    released before the consumer continues. Note: a hanging ``fn`` cannot be
+    interrupted, so ``fn`` must terminate or raise within bounded time per
+    element. For example, the user function should have timeouts if doing
+    blocking I/O.
 
     Args:
         base_iterator: Iterator consumed (under a lock) by the workers.
@@ -158,6 +165,25 @@ def iter_threaded(
             yield item
     finally:
         stopped.set()
+        # Wait for the workers to exit, so that `fn`'s state (for example the
+        # object refs a block-fetching pipeline holds) is released before the
+        # consumer moves on, rather than up to a poll interval later. A caller
+        # that stops iterating and immediately calls `ray.shutdown()` would
+        # otherwise have the workers drop those refs while the core worker is
+        # being torn down, which exits the process. The wait is bounded since
+        # a worker blocked inside `fn` can't be interrupted. Skip the current
+        # thread, in case the generator is closed from one of its own workers.
+        current_thread = threading.current_thread()
+        deadline = time.monotonic() + _WORKER_JOIN_TIMEOUT_S
+        for t in worker_threads:
+            if t is not current_thread:
+                t.join(timeout=max(0.0, deadline - time.monotonic()))
+        if any(t.is_alive() for t in worker_threads if t is not current_thread):
+            logger.debug(
+                "iter_threaded workers did not exit within %.1fs of the consumer "
+                "stopping; they will exit once `fn` returns.",
+                _WORKER_JOIN_TIMEOUT_S,
+            )
 
 
 class _MappingIterator(Iterator[O], Generic[I, O]):
