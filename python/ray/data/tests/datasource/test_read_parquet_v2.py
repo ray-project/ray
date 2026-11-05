@@ -438,6 +438,22 @@ def test_read_parquet_v1_empty_skip_paths_is_noop(tmp_path, restore_ctx):
     assert _rows(ds) == [1, 2]
 
 
+def test_read_parquet_v2_reads_duplicated_paths(tmp_path, restore_ctx):
+    # ``read_parquet([path] * k)`` deliberately multiplies the data; every
+    # copy must be read (DATA-3723 regression: the bin packer unioned the
+    # copies' row-group runs into one, silently dropping the repeats).
+    # Several row groups so the footer indexer emits chunked runs, and a
+    # small file so all copies pack into the same bin.
+    table = pa.table({"x": list(range(1000))})
+    path = tmp_path / "data.parquet"
+    pq.write_table(table, path, row_group_size=100)
+
+    restore_ctx.use_datasource_v2 = True
+    ds = ray.data.read_parquet([str(path)] * 3)
+    assert sorted(r["x"] for r in ds.take_all()) == sorted(list(range(1000)) * 3)
+    assert ds.count() == 3 * 1000
+
+
 def test_read_parquet_v2_uses_footer_indexer_with_bin_packer(tmp_path, restore_ctx):
     """With the footer indexer on, ``ListFiles`` pairs it with the bin packer.
 

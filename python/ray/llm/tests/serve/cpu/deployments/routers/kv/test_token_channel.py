@@ -1,4 +1,5 @@
 import asyncio
+import errno
 import gc
 import sys
 from types import SimpleNamespace
@@ -71,6 +72,17 @@ async def _wait_until_staged(store, keys):
     pytest.fail(f"Timed out waiting for staged prompt tokens: {sorted(remaining)}")
 
 
+def test_sender_exceeds_default_socket_cap():
+    """Opens more sockets than the default context's 1023 cap."""
+    sender = TokenSender(max_sockets=1100)
+    try:
+        for i in range(1100):
+            assert sender._get_socket(f"tcp://127.0.0.1:{20000 + i}") is not None
+        assert len(sender._sockets) == 1100
+    finally:
+        sender.close()
+
+
 def test_bad_endpoint_falls_back():
     """A malformed endpoint must degrade to engine tokenization, not raise."""
     sender = TokenSender()
@@ -84,6 +96,19 @@ def test_bad_endpoint_falls_back():
         assert not sender._sockets
         # Every genuine failure is reported, not just the first.
         assert mock_logger.warning.call_count == 5
+    finally:
+        sender.close()
+
+
+def test_socket_creation_failure_falls_back():
+    """A socket that fails to open (e.g. too many open sockets) must degrade to
+    engine tokenization, not raise."""
+    sender = TokenSender()
+    try:
+        with patch.object(
+            token_channel, "_new_socket", side_effect=zmq.ZMQError(errno.EMFILE)
+        ):
+            assert sender.push("tcp://127.0.0.1:5555", "k", _payload([1, 2])) is False
     finally:
         sender.close()
 
@@ -273,6 +298,24 @@ def test_token_store_skips_chat_tokenization():
     assert conversation == []
     assert engine_inputs[0]["prompt_token_ids"] == [1, 2, 3]
     assert request.kv_transfer_params == {"remote_engine_id": "replica-1"}
+
+
+@pytest.mark.asyncio
+async def test_connect_ahead_lets_first_push_land():
+    """The first push after connect() is delivered."""
+    endpoint = f"tcp://127.0.0.1:{find_free_port()}"
+    store = TokenStore()
+    receiver = TokenReceiver(bind_endpoint=endpoint, store=store)
+    assert await receiver.start()
+    sender = TokenSender()
+    try:
+        sender.connect([endpoint])
+        await asyncio.sleep(0.5)
+        assert sender.push(endpoint, "k-first", _payload([1, 2, 3]))
+        await _wait_until_staged(store, {"k-first": [1, 2, 3]})
+    finally:
+        sender.close()
+        await receiver.close()
 
 
 @pytest.mark.asyncio

@@ -214,8 +214,7 @@ def add_patch(path: str, value: Any) -> Dict[str, Any]:
 
 
 def load_k8s_secrets() -> Tuple[Dict[str, str], str, Optional[Tuple[str, str]]]:
-    """
-    Loads secrets needed to access K8s resources.
+    """Loads secrets needed to access K8s resources.
 
     By default the in-cluster ServiceAccount credentials are used. Setting
     $RAY_KUBERAY_CLIENT_CERT_PATH and $RAY_KUBERAY_CLIENT_KEY_PATH instead
@@ -322,8 +321,7 @@ def _worker_group_num_of_hosts(raycluster: Dict[str, Any], group_index: int):
 
 
 class IKubernetesHttpApiClient(ABC):
-    """
-    An interface for a Kubernetes HTTP API client.
+    """An interface for a Kubernetes HTTP API client.
 
     This interface could be used to mock the Kubernetes API client in tests.
     """
@@ -599,8 +597,7 @@ class KubeRayNodeProvider(BatchingNodeProvider):  # type: ignore
         return True
 
     def _get_pods_resource_version(self) -> str:
-        """
-        Extract a recent pods resource version by reading the head pod's
+        """Extract a recent pods resource version by reading the head pod's
         metadata.resourceVersion of the response.
         """
         if not RAY_HEAD_POD_NAME:

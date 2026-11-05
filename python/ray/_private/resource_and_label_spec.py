@@ -41,8 +41,7 @@ class ResourceAndLabelSpec:
         resources: Optional[Dict[str, float]] = None,
         labels: Optional[Dict[str, str]] = None,
     ):
-        """
-        Initialize a ResourceAndLabelSpec
+        """Initialize a ResourceAndLabelSpec
 
         Args:
             num_cpus: The CPUs allocated for this raylet.
@@ -389,8 +388,7 @@ class ResourceAndLabelSpec:
         self,
         resource_isolation_config: Optional[ResourceIsolationConfig] = None,
     ):
-        """
-        Resolves logical and object store memory resources if not
+        """Resolves logical and object store memory resources if not
         explicitly set.
 
         Args:
@@ -446,8 +444,7 @@ class ResourceAndLabelSpec:
     def _get_current_node_accelerator(
         num_gpus: Optional[int], resources: Dict[str, float]
     ) -> Tuple[AcceleratorManager, int]:
-        """
-        Returns the AcceleratorManager and accelerator count for the accelerator
+        """Returns the AcceleratorManager and accelerator count for the accelerator
         associated with this node. This assumes each node has at most one accelerator type.
         If no accelerators are present, returns None.
 
