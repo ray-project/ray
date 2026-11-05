@@ -29,11 +29,10 @@ def test_chat_template():
     """
 
     processor_config = SGLangEngineProcessorConfig(
-        model_source="unsloth/Llama-3.2-1B-Instruct",
+        model_source="Qwen/Qwen3.5-0.8B",
         engine_kwargs=dict(
             context_length=2048,
             disable_cuda_graph=True,
-            dtype="half",
         ),
         batch_size=16,
         concurrency=1,
@@ -75,17 +74,17 @@ def test_chat_template():
         (2, 2, 1),
     ],
 )
-def test_sglang_llama_parallel(tp_size, dp_size, concurrency):
-    """Test SGLang with Llama model using different parallelism configurations."""
+@pytest.mark.requires_4GPU
+def test_sglang_qwen_parallel(tp_size, dp_size, concurrency):
+    """Test SGLang with Qwen model using different parallelism configurations."""
     runtime_env = {}
 
     processor_config = SGLangEngineProcessorConfig(
-        model_source="unsloth/Llama-3.2-1B-Instruct",
+        model_source="Qwen/Qwen3.5-0.8B",
         engine_kwargs=dict(
             context_length=2048,
             tp_size=tp_size,
             dp_size=dp_size,
-            dtype="half",
         ),
         runtime_env=runtime_env,
         tokenize_stage=True,

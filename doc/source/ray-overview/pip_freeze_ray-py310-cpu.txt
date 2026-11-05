@@ -1,7 +1,7 @@
 absl-py==2.4.0
 adlfs==2026.4.0
 aiohappyeyeballs==2.6.1
-aiohttp==3.14.3
+aiohttp==3.14.4
 aiohttp-cors==0.8.1
 aiosignal==1.4.0
 amqp==5.3.1
@@ -26,7 +26,7 @@ build @ file:///home/conda/feedstock_root/build_artifacts/bld/rattler-build_pyth
 cached-property @ file:///home/conda/feedstock_root/build_artifacts/bld/rattler-build_cached_property_1787678456/work
 cachetools==5.5.2
 celery==5.6.3
-certifi==2026.4.22
+certifi @ file:///home/conda/feedstock_root/build_artifacts/certifi_1792487983344/work/certifi
 cffi==1.17.1
 charset-normalizer==3.4.7
 click==8.5.0
@@ -48,7 +48,7 @@ conda_package_streaming @ file:///home/conda/feedstock_root/build_artifacts/cond
 cryptography==44.0.3
 cupy-cuda12x==13.6.0
 Cython==0.29.37
-distlib==0.4.0
+distlib==0.4.3
 distro @ file:///home/conda/feedstock_root/build_artifacts/distro_1734729835256/work
 dm-tree==0.1.10
 exceptiongroup @ file:///home/conda/feedstock_root/build_artifacts/exceptiongroup_1763918002538/work
@@ -78,7 +78,7 @@ h2 @ file:///home/conda/feedstock_root/build_artifacts/h2_1733298745555/work
 hpack @ file:///home/conda/feedstock_root/build_artifacts/hpack_1733299205993/work
 httpcore @ file:///home/conda/feedstock_root/build_artifacts/bld/rattler-build_httpcore_1745602916/work
 httplib2==0.20.4
-httptools==0.8.0
+httptools==0.9.0
 httpx @ file:///home/conda/feedstock_root/build_artifacts/httpx_1733663348460/work
 hyperframe @ file:///home/conda/feedstock_root/build_artifacts/hyperframe_1733298771451/work
 idna==3.18
@@ -115,7 +115,7 @@ opentelemetry-proto==1.39.0
 opentelemetry-sdk==1.39.0
 opentelemetry-semantic-conventions==0.60b0
 ormsgpack==1.12.2
-packaging==25.0
+packaging==26.3
 pandas==2.3.3
 platformdirs==4.9.6
 pluggy @ file:///home/conda/feedstock_root/build_artifacts/bld/rattler-build_pluggy_1764896838/work
@@ -143,11 +143,11 @@ pyparsing==3.3.2
 pyproject_hooks @ file:///home/conda/feedstock_root/build_artifacts/pyproject_hooks_1733710025763/work
 PySocks @ file:///home/conda/feedstock_root/build_artifacts/pysocks_1733217236728/work
 python-dateutil==2.9.0.post0
-python-discovery==1.2.2
+python-discovery==1.6.1
 python-dotenv==1.2.2
 pytz==2022.7.1
 PyYAML==6.0.3
-ray @ file:///home/ray/ray-3.0.0.dev0-cp310-cp310-manylinux2014_x86_64.whl#sha256=c2627d5988cca303e10ef1350650a19b1447e8b6ba4fecf7e89d5f5eb6cde84d
+ray @ file:///home/ray/ray-3.0.0.dev0-cp310-cp310-manylinux2014_x86_64.whl#sha256=07acd0f5d49c64ed3c90f86cf569be51fbab3a185028609f825f3eb674bc9fc3
 ray-haproxy==2.8.25
 referencing==0.36.2
 requests==2.33.1
@@ -171,7 +171,7 @@ tomli_w @ file:///home/conda/feedstock_root/build_artifacts/tomli-w_173696222706
 tqdm @ file:///home/conda/feedstock_root/build_artifacts/tqdm_1735661334605/work
 truststore @ file:///home/conda/feedstock_root/build_artifacts/truststore_1729762363021/work
 typing-inspection==0.4.2
-typing_extensions==4.15.0
+typing_extensions @ file:///home/conda/feedstock_root/build_artifacts/bld/rattler-build_typing_extensions_1783002732/work
 tzdata==2026.1
 tzlocal==5.3.1
 uc-micro-py==2.0.0
@@ -181,11 +181,11 @@ urllib3==1.26.20
 uvicorn==0.53.0
 uvloop==0.22.1
 vine==5.1.0
-virtualenv==21.2.4
+virtualenv==21.14.12
 watchfiles==1.3.0
 wcwidth==0.6.0
 websockets==15.0.1
 wrapt==1.17.3
-yarl==1.23.0
+yarl==1.25.1
 zipp==3.23.1
 zstandard==0.25.0

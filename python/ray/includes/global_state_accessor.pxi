@@ -106,6 +106,8 @@ cdef class GlobalStateAccessor:
         return results
 
     def get_draining_nodes(self):
+        """Return a dict mapping draining node IDs (hex strings) to their
+        draining deadline timestamps in ms."""
         cdef:
             unordered_map[CNodeID, int64_t] draining_nodes
             unordered_map[CNodeID, int64_t].iterator draining_nodes_it
@@ -266,6 +268,10 @@ cdef class GlobalStateAccessor:
         return self.inner.get().GetSystemConfig()
 
     def get_node(self, node_id):
+        """Get info for the node whose ID is given as a hex string.
+
+        The returned dict's "node_id" is also a hex string.
+        """
         cdef CRayStatus status
         cdef c_string cnode_id = node_id
         cdef c_string cnode_info_str
