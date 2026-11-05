@@ -51,7 +51,7 @@ TPU support in Ray Serve LLM is topology-aware when you set `accelerator_config=
 
 ## `SlicePlacementGroup`
 
-For topology-aware TPU configs, Ray Serve LLM creates a {class}`~ray.util.tpu.SlicePlacementGroup` instead of a plain placement group. `SlicePlacementGroup` reserves a matching TPU slice, reads its `ray.io/tpu-slice-name` label, and creates the worker placement group with a per-bundle label selector that pins all bundles to that same physical slice.
+For topology-aware TPU configs, Ray Serve LLM creates a {class}`~ray.util.tpu.SlicePlacementGroup` instead of a plain placement group. `SlicePlacementGroup` creates a placement group with a `ray.io/tpu-slice-name` `STRICT_PACK` `topology_strategy` and per-bundle TPU label selectors so all bundles are gang-scheduled onto a single physical TPU slice.
 
 This makes the TPU slice an atomic scheduling unit. A replica reserves the complete slice it needs, and the placement group doesn't span unrelated slices.
 

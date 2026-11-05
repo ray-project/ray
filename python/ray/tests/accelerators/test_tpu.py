@@ -801,6 +801,149 @@ def test_get_num_tpu_visible_chips_per_host():
     assert tpu.get_num_tpu_visible_chips_per_host("v5p-8") == 4
 
 
+@pytest.mark.parametrize(
+    "node_selector, expected_labels",
+    [
+        pytest.param(
+            {
+                "cloud.google.com/gke-tpu-accelerator": "tpu-v6e-slice",
+                "cloud.google.com/gke-tpu-topology": "4x4",
+            },
+            {
+                "ray.io/accelerator-type": "TPU-V6E",
+                "ray.io/tpu-topology": "4x4",
+                "ray.io/tpu-pod-type": "v6e-16",
+            },
+            id="v6e",
+        ),
+        pytest.param(
+            {
+                "cloud.google.com/gke-tpu-accelerator": "tpu7x",
+                "cloud.google.com/gke-tpu-topology": "2x2x2",
+            },
+            {
+                "ray.io/accelerator-type": "TPU-V7X",
+                "ray.io/tpu-topology": "2x2x2",
+                "ray.io/tpu-pod-type": "v7x-16",
+            },
+            id="tpu7x",
+        ),
+        pytest.param(
+            {
+                "cloud.google.com/gke-tpu-accelerator": "tpu-v5p-slice",
+                "cloud.google.com/gke-tpu-topology": " 2X2X4 ",
+            },
+            {
+                "ray.io/accelerator-type": "TPU-V5P",
+                "ray.io/tpu-topology": "2x2x4",
+                "ray.io/tpu-pod-type": "v5p-32",
+            },
+            id="v5p-normalized",
+        ),
+        pytest.param(
+            {
+                "cloud.google.com/gke-tpu-accelerator": "tpu-v6e-slice",
+                "cloud.google.com/gke-tpu-topology": "2x2x2",
+            },
+            None,
+            id="invalid-topology-for-generation",
+        ),
+        pytest.param(
+            {
+                "cloud.google.com/gke-tpu-accelerator": "tpu-v6e-slice",
+                "cloud.google.com/gke-tpu-topology": "4x",
+            },
+            None,
+            id="malformed-topology",
+        ),
+        pytest.param(
+            {"cloud.google.com/gke-tpu-accelerator": "tpu-v6e-slice"},
+            None,
+            id="missing-topology",
+        ),
+        pytest.param(
+            {"cloud.google.com/gke-accelerator": "nvidia-h100-80gb"},
+            None,
+            id="non-tpu",
+        ),
+    ],
+)
+def test_get_node_group_accelerator_labels(node_selector, expected_labels):
+    assert (
+        TPUAcceleratorManager.get_node_group_accelerator_labels(node_selector)
+        == expected_labels
+    )
+
+
+@pytest.mark.parametrize(
+    "labels, resources, expected_num_hosts",
+    [
+        pytest.param(
+            {"ray.io/accelerator-type": "TPU-V6E", "ray.io/tpu-topology": "4x4"},
+            {"TPU": 4},
+            4,
+            id="v6e-4x4-multihost",
+        ),
+        pytest.param(
+            {"ray.io/tpu-pod-type": "v6e-16", "ray.io/tpu-topology": "4x4"},
+            {"TPU": 4},
+            4,
+            id="pod-type-fallback",
+        ),
+        pytest.param(
+            {"ray.io/accelerator-type": "TPU-V6E", "ray.io/tpu-topology": "2x4"},
+            {"TPU": 8},
+            1,
+            id="v6e-2x4-singlehost-8t",
+        ),
+        pytest.param(
+            {"ray.io/accelerator-type": "TPU-V6E", "ray.io/tpu-topology": "2x4"},
+            {"TPU": 4},
+            2,
+            id="v6e-2x4-multihost-4t",
+        ),
+        pytest.param(
+            {"ray.io/accelerator-type": "TPU-V7X", "ray.io/tpu-topology": "2x2x2"},
+            {"TPU": 8},
+            2,
+            id="v7x-2x2x2-two-devices-per-chip",
+        ),
+        pytest.param(
+            {"ray.io/accelerator-type": "TPU-V6E", "ray.io/tpu-topology": "2x2x2"},
+            {"TPU": 4},
+            None,
+            id="invalid-topology",
+        ),
+        pytest.param(
+            {"ray.io/accelerator-type": "TPU-V6E"},
+            {"TPU": 4},
+            None,
+            id="missing-topology",
+        ),
+        pytest.param(
+            {"ray.io/accelerator-type": "H100"},
+            {"GPU": 8},
+            None,
+            id="non-tpu",
+        ),
+    ],
+)
+def test_get_node_group_num_hosts(labels, resources, expected_num_hosts):
+    assert (
+        TPUAcceleratorManager.get_node_group_num_hosts(labels, resources)
+        == expected_num_hosts
+    )
+
+
+def test_get_node_group_num_hosts_resource_per_chip(monkeypatch):
+    labels_4x4 = {"ray.io/accelerator-type": "TPU-V6E", "ray.io/tpu-topology": "4x4"}
+    assert TPUAcceleratorManager.get_node_group_num_hosts(labels_4x4, {"TPU": 8}) == 4
+    monkeypatch.setenv("RAY_TPU_RESOURCE_PER_CHIP", "2")
+    labels = {"ray.io/accelerator-type": "TPU-V6E", "ray.io/tpu-topology": "2x4"}
+    assert TPUAcceleratorManager.get_node_group_num_hosts(labels, {"TPU": 8}) == 2
+    assert TPUAcceleratorManager.get_node_group_num_hosts(labels, {"TPU": 16}) == 1
+
+
 # Subslice topology test helpers
 
 

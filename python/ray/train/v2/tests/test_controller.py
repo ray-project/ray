@@ -1106,6 +1106,83 @@ async def test_abort_while_step_raises(monkeypatch):
     assert not callback.failure_decision_called
 
 
+def test_callback_label_selector_with_tpu(monkeypatch):
+    """Verify TPU label_selector synthesis and callback merging in _start_worker_group.
+
+    When use_tpu=True with topology and accelerator_type (SlicePlacementGroup path),
+    worker_group_context.label_selector only carries user/callback labels (since
+    SlicePlacementGroup synthesizes the single-host or multi-host TPU labels).
+    When topology is omitted (standard placement_group path), callback labels
+    merge onto the synthesized TPU accelerator label without a false override warning.
+    """
+    contexts = []
+
+    class _CapturingWorkerGroup(DummyWorkerGroup):
+        def __init__(self, train_run_context, worker_group_context, callbacks=None):
+            contexts.append(worker_group_context)
+            super().__init__(train_run_context, worker_group_context, callbacks)
+
+    monkeypatch.setattr(TrainController, "worker_group_cls", _CapturingWorkerGroup)
+
+    def _make_controller(callbacks=None, **scaling_kwargs):
+        scaling_config = ScalingConfig(**scaling_kwargs)
+        return TrainController(
+            train_fn_ref=DummyObjectRefWrapper(lambda: None),
+            train_run_context=create_dummy_run_context(scaling_config=scaling_config),
+            scaling_policy=MockScalingPolicy(scaling_config=scaling_config),
+            failure_policy=MockFailurePolicy(failure_config=None),
+            callbacks=callbacks,
+        )
+
+    class _SelectorCallback(ControllerCallback):
+        def on_controller_start_worker_group(self, *, scaling_config, num_workers):
+            return {"subcluster": "mine"}
+
+    # SlicePlacementGroup path (use_tpu + topology + accelerator_type):
+    # no callback -> label_selector is None; with callback -> only callback labels.
+    controller_no_cb = _make_controller(
+        num_workers=2,
+        use_tpu=True,
+        topology="2x2x2",
+        accelerator_type="TPU-V4",
+    )
+    controller_no_cb._start_worker_group(
+        num_workers=2,
+        resources_per_worker={"CPU": 1, "TPU": 4},
+    )
+    assert contexts[-1].label_selector is None
+
+    controller_with_cb = _make_controller(
+        callbacks=[_SelectorCallback()],
+        num_workers=2,
+        use_tpu=True,
+        topology="2x2x2",
+        accelerator_type="TPU-V4",
+    )
+    controller_with_cb._start_worker_group(
+        num_workers=2,
+        resources_per_worker={"CPU": 1, "TPU": 4},
+    )
+    assert contexts[-1].label_selector == [{"subcluster": "mine"}] * 2
+
+    # Non-SlicePlacementGroup TPU path (use_tpu + accelerator_type, no topology):
+    # callback merges with synthesized ray.io/accelerator-type label.
+    controller_non_spg = _make_controller(
+        callbacks=[_SelectorCallback()],
+        num_workers=1,
+        use_tpu=True,
+        accelerator_type="TPU-V6E",
+        resources_per_worker={"TPU": 1},
+    )
+    controller_non_spg._start_worker_group(
+        num_workers=1,
+        resources_per_worker={"CPU": 1, "TPU": 1},
+    )
+    assert contexts[-1].label_selector == [
+        {"ray.io/accelerator-type": "TPU-V6E", "subcluster": "mine"}
+    ]
+
+
 if __name__ == "__main__":
     import sys
 

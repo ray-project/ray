@@ -43,6 +43,7 @@ async def initialize_node(llm_config: LLMConfig):
     # Get callback instance (if configured) with context information
     callback = llm_config.get_or_create_callback()
     ctx = callback.ctx
+    await ctx.placement_group.ready()
     pg_table = ray.util.placement_group_table(ctx.placement_group)
 
     node_set = set(pg_table["bundles_to_node_id"].values())
