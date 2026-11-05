@@ -13,6 +13,7 @@ from ray.data._internal.datasource_v2.formats.parquet.parquet_utils import (
 from ray.data._internal.datasource_v2.interfaces.synthesized_columns import (
     SynthesizedColumn,
 )
+from ray.data.expressions import Expr
 from ray.util.annotations import DeveloperAPI
 
 
@@ -28,6 +29,8 @@ class ParquetScanner(ArrowFileScanner):
     """
 
     target_block_size: Optional[int] = None
+    # Additive row-group hint only; the full logical Filter remains required.
+    mixed_pruning_predicate: Optional[Expr] = field(default=None, kw_only=True)
     # Columns the reader appends to every batch instead of reading them
     # (``PathColumn`` for ``include_paths``, ``RowHashColumn`` for
     # ``include_row_hash``).
@@ -37,6 +40,12 @@ class ParquetScanner(ArrowFileScanner):
     # ``pre_buffer``, ``dictionary_columns``). Carries the deprecated
     # ``dataset_kwargs`` payload from ``read_parquet`` to the worker.
     parquet_format_kwargs: Dict[str, Any] = field(default_factory=dict)
+
+    def metadata_row_count_is_exact(self) -> bool:
+        return (
+            self.mixed_pruning_predicate is None
+            and super().metadata_row_count_is_exact()
+        )
 
     def read_schema(self) -> pa.Schema:
         """Return schema after column pruning and tensor check.
@@ -69,6 +78,11 @@ class ParquetScanner(ArrowFileScanner):
             batch_size=self.batch_size,
             columns=list(self.columns) if self.columns is not None else None,
             predicate=self.predicate,
+            # Subclasses may derive partition values from transaction logs rather
+            # than Hive paths. They must not inherit this path-based hint.
+            mixed_pruning_predicate=(
+                self.mixed_pruning_predicate if type(self) is ParquetScanner else None
+            ),
             limit=self.limit,
             filesystem=self.filesystem,
             partitioning=self.partitioning,
