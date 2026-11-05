@@ -45,9 +45,9 @@ class JobLogStorageClient:
         )
 
     def get_log_file_path(self, job_id: str) -> Tuple[str, str]:
-        """
-        Get the file path to the logs of a given job. Example:
-            /tmp/ray/session_date/logs/job-driver-{job_id}.log
+        """Get the file path to the logs of a given job.
+
+        For example, ``/tmp/ray/session_date/logs/job-driver-{job_id}.log``.
         """
         return os.path.join(
             ray._private.worker._global_node.get_logs_dir_path(),

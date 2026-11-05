@@ -68,82 +68,70 @@ class AddTimeDimToBatchAndZeroPad(ConnectorV2):
     - Does NOT alter any data in the given episodes.
     - Can be used in EnvToModule and Learner connector pipelines.
 
-    .. testcode::
-
-        from ray.rllib.connectors.common import AddTimeDimToBatchAndZeroPad
-        from ray.rllib.core.columns import Columns
-        from ray.rllib.env.single_agent_episode import SingleAgentEpisode
-        from ray.rllib.utils.test_utils import check
-
-
-        # Create a simple dummy class, pretending to be an RLModule with
-        # `get_initial_state`, `is_stateful` and `model_config` property defined:
-        class MyStateModule:
-            # dummy config
-            model_config = {"max_seq_len": 3}
-
-            def is_stateful(self):
-                return True
-
-            def get_initial_state(self):
-                return 0.0
-
-
-        # Create an already reset episode. Expect the connector to add a time-dim to the
-        # reset observation.
-        episode = SingleAgentEpisode(observations=[0])
-
-        rl_module = MyStateModule()
-
-        # Create an instance of this class (as an env-to-module connector).
-        connector = AddTimeDimToBatchAndZeroPad(as_learner_connector=False)
-
-        # Call the connector.
-        output_batch = connector(
-            rl_module=rl_module,
-            batch={Columns.OBS: [0]},
-            episodes=[episode],
-            shared_data={},
-        )
-        # The output data's OBS key should now be reshaped to (B, T)
-        check(output_batch[Columns.OBS], [[0]])
-
-        # Create a SingleAgentEpisodes containing 5 observations,
-        # 4 actions and 4 rewards.
-        episode = SingleAgentEpisode(
-            observations=[0, 1, 2, 3, 4],
-            actions=[1, 2, 3, 4],
-            rewards=[1.0, 2.0, 3.0, 4.0],
-            len_lookback_buffer=0,
-        )
-
-        # Call the connector.
-        output_batch = connector(
-            rl_module=rl_module,
-            batch={Columns.OBS: [4]},
-            episodes=[episode],
-            shared_data={},
-        )
-        # The output data's OBS, ACTIONS, and REWARDS keys should now all have a time
-        # rank.
-        check(
-            # Expect the episode's last OBS.
-            output_batch[Columns.OBS], [[4]],
-        )
-
-        # Create a new connector as a learner connector with a RNN seq len of 4 (for
-        # testing purposes only). Passing the same data through this learner connector,
-        # we expect the data to also be zero-padded.
-        connector = AddTimeDimToBatchAndZeroPad(as_learner_connector=True)
-
-        # Call the connector.
-        output_batch = connector(
-            rl_module=rl_module,
-            batch={Columns.OBS: {(episode.id_,): [0, 1, 2, 3]}},
-            episodes=[episode],
-            shared_data={},
-        )
-        check(output_batch[Columns.OBS], {(episode.id_,): [[0, 1, 2], [3, 0, 0]]})
+    Examples:
+        >>> from ray.rllib.connectors.common import AddTimeDimToBatchAndZeroPad
+        >>> from ray.rllib.core.columns import Columns
+        >>> from ray.rllib.env.single_agent_episode import SingleAgentEpisode
+        >>> from ray.rllib.utils.test_utils import check
+        >>> # Create a simple dummy class, pretending to be an RLModule with
+        >>> # `get_initial_state`, `is_stateful` and `model_config` property defined:
+        >>> class MyStateModule:
+        ...     # dummy config
+        ...     model_config = {"max_seq_len": 3}
+        ...
+        ...     def is_stateful(self):
+        ...         return True
+        ...
+        ...     def get_initial_state(self):
+        ...         return 0.0
+        >>> # Create an already reset episode. Expect the connector to add a time-dim to the
+        >>> # reset observation.
+        >>> episode = SingleAgentEpisode(observations=[0])
+        >>> rl_module = MyStateModule()
+        >>> # Create an instance of this class (as an env-to-module connector).
+        >>> connector = AddTimeDimToBatchAndZeroPad(as_learner_connector=False)
+        >>> # Call the connector.
+        >>> output_batch = connector(
+        ...     rl_module=rl_module,
+        ...     batch={Columns.OBS: [0]},
+        ...     episodes=[episode],
+        ...     shared_data={},
+        ... )
+        >>> # The output data's OBS key should now be reshaped to (B, T)
+        >>> check(output_batch[Columns.OBS], [[0]])
+        >>> # Create a SingleAgentEpisodes containing 5 observations,
+        >>> # 4 actions and 4 rewards.
+        >>> episode = SingleAgentEpisode(
+        ...     observations=[0, 1, 2, 3, 4],
+        ...     actions=[1, 2, 3, 4],
+        ...     rewards=[1.0, 2.0, 3.0, 4.0],
+        ...     len_lookback_buffer=0,
+        ... )
+        >>> # Call the connector.
+        >>> output_batch = connector(
+        ...     rl_module=rl_module,
+        ...     batch={Columns.OBS: [4]},
+        ...     episodes=[episode],
+        ...     shared_data={},
+        ... )
+        >>> # The output data's OBS, ACTIONS, and REWARDS keys should now all have a time
+        >>> # rank.
+        >>> check(
+        ...     # Expect the episode's last OBS.
+        ...     output_batch[Columns.OBS], [[4]],
+        ... )
+        >>> # Create a new connector as a learner connector with a RNN seq len of 3 (for
+        >>> # testing purposes only). Passing the same data through this learner connector,
+        >>> # we expect the data to also be zero-padded.
+        >>> connector = AddTimeDimToBatchAndZeroPad(as_learner_connector=True)
+        >>> # Call the connector.
+        >>> output_batch = connector(
+        ...     rl_module=rl_module,
+        ...     batch={Columns.OBS: {(episode.id_,): [0, 1, 2, 3]}},
+        ...     episodes=[episode],
+        ...     shared_data={},
+        ... )
+        >>> check(output_batch[Columns.OBS], {(episode.id_,): [[0, 1, 2], [3, 0, 0]]})
     """
 
     def __init__(

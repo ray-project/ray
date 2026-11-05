@@ -162,9 +162,17 @@ config = (
         create_env_on_local_worker=False,
     )
     .training(
-        train_batch_size_per_learner=4096 * (args.num_env_runners or 1),
-        lr=1e-4,
+        # The game server answers one env step per frame of its 60 FPS loop, so each
+        # EnvRunner samples at most ~60 steps/s. Make many small SGD steps instead of
+        # a few large ones.
+        train_batch_size_per_learner=2048,
+        minibatch_size=256,
+        lr=5e-4,
         entropy_coeff=0.01,
+        # Refresh the target network (the reference policy of APPO's clipped
+        # objective and V-trace) often, so the policy can move away from its
+        # random initialization.
+        target_network_update_freq=0.5,
     )
     .multi_agent(
         policies={
