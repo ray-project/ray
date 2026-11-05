@@ -148,8 +148,7 @@ class TestReadAndChunk:
         def total(c):
             return sum(rg.size_bytes for rg in c.row_groups)
 
-        # Each projection sizes only its own column, so it's below the full read;
-        # the two add up to more than it, since each carries the file's I/O.
+        # Each projection sizes only its own column, but carries the file's I/O.
         assert 0 < total(ids) < total(full)
         assert 0 < total(pads) < total(full)
         assert total(full) < total(ids) + total(pads)
@@ -590,20 +589,23 @@ class TestSizingLeaves:
     @staticmethod
     def _sizing(reader, path, size):
         fragment = reader.file_format.make_fragment(path, filesystem=reader.filesystem)
+        metadata = pq.ParquetFile(path).metadata
         return reader._file_sizing(
-            file=FileInfo(path, size),
-            fragment=fragment,
-            metadata=pq.ParquetFile(path).metadata,
+            file=FileInfo(path, size), fragment=fragment, metadata=metadata
         )
 
     @staticmethod
     def _paths(sizing, indices):
         return [sizing.columns[j].path for j in indices]
 
-    def test_every_leaf_when_no_projection(self, four_row_groups):
+    # A projection naming a column this file predates, under schema evolution,
+    # would size the row group at zero bytes and let the packer fill a bin
+    # without bound, so it falls back to every column -- an over-count.
+    @pytest.mark.parametrize("projection", [None, ["absent"]])
+    def test_every_leaf_without_a_projection_match(self, four_row_groups, projection):
         path, size = four_row_groups
 
-        sizing = self._sizing(_reader(), path, size)
+        sizing = self._sizing(_reader(projected_cols=projection), path, size)
 
         assert sizing.leaf_indices == list(range(len(sizing.columns)))
 
@@ -624,22 +626,8 @@ class TestSizingLeaves:
             _reader(projected_cols=["id"], filter_expr=col("pad") != "y"), path, size
         )
 
-        assert sorted(self._paths(sizing, sizing.leaf_indices)) == ["id", "pad"]
-        assert [self._paths(sizing, leaves) for leaves in sizing.column_leaves] == [
-            ["pad"],
-            ["id"],
-        ]
-
-    def test_projection_matching_no_leaf_reads_every_leaf(self, four_row_groups):
-        # Reachable under schema evolution: the projection names a column this
-        # file predates. No leaves would size the row group at zero bytes and
-        # let the packer fill a bin without bound, so it falls back to every
-        # column -- an over-count, which only makes read tasks smaller.
-        path, size = four_row_groups
-
-        sizing = self._sizing(_reader(projected_cols=["absent"]), path, size)
-
-        assert sizing.leaf_indices == list(range(len(sizing.columns)))
+        paths = [self._paths(sizing, leaves) for leaves in sizing.column_leaves]
+        assert paths == [["pad"], ["id"]]
 
     def test_projection_matching_no_leaf_sizes_all_columns(self, four_row_groups):
         path, size = four_row_groups

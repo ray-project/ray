@@ -220,14 +220,12 @@ def test_create_scanner_returns_parquet_scanner(tmp_path):
 
 
 @pytest.mark.parametrize(
-    "max_bucket_size, cap", [(2, 2), (sys.maxsize, DEFAULT_TARGET_MAX_BLOCK_SIZE)]
+    "bucket, cap", [(2, 2), (sys.maxsize, DEFAULT_TARGET_MAX_BLOCK_SIZE)]
 )
-def test_get_file_partitioner_returns_bin_packer(tmp_path, max_bucket_size, cap):
+def test_get_file_partitioner_returns_bin_packer(tmp_path, bucket, cap):
     """Bins cap at the block target, or the default one when block sizing is off."""
     datasource = ParquetDatasourceV2([str(tmp_path)])
-    hints = PartitionHints(
-        min_bucket_size=1, max_bucket_size=max_bucket_size, num_buckets=7
-    )
+    hints = PartitionHints(min_bucket_size=1, max_bucket_size=bucket, num_buckets=7)
     partitioner = datasource.get_file_partitioner(hints=hints)
     assert isinstance(partitioner, OnlineBinPacker)
     assert partitioner._cap == cap

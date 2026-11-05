@@ -4,18 +4,7 @@ import functools
 import logging
 from concurrent.futures import Future, ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
-from typing import (
-    TYPE_CHECKING,
-    AbstractSet,
-    Any,
-    Dict,
-    Iterable,
-    Iterator,
-    Mapping,
-    NamedTuple,
-    Sequence,
-    Tuple,
-)
+from typing import TYPE_CHECKING, AbstractSet, Iterable, Iterator, NamedTuple, Tuple
 
 import pyarrow as pa
 import pyarrow.dataset as pds
@@ -72,7 +61,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 # Dictionary pages by row group index, then by leaf index.
-_DictionaryPages = Dict[int, Dict[int, DictionaryPage]]
+_DictionaryPages = dict[int, dict[int, DictionaryPage]]
 
 
 @dataclass(frozen=True)
@@ -101,7 +90,7 @@ def _leaf_matches(leaf_path: str, names: set[str]) -> bool:
 
 
 def _column_leaves(
-    columns: Sequence[ColumnSchema], names: Iterable[str]
+    columns: list[ColumnSchema], names: Iterable[str]
 ) -> dict[str, list[int]]:
     """Each of ``names`` the file has, in that order, as its leaf indices."""
     leaves: dict[str, list[int]] = {name: [] for name in names}
@@ -118,12 +107,8 @@ class _FileSizing(NamedTuple):
     size: int  # of the file on disk
     columns: list[ColumnSchema]  # every leaf, by leaf index
     leaf_indices: list[int]  # the leaves a read task decodes
-    # Each column a read task decodes, in the order PyArrow reads them, as its
-    # leaves.
-    column_leaves: list[list[int]]
-    # The leaves as PyArrow decodes them, or ``None`` for a schema the
-    # estimator doesn't model.
-    profiles: list[LeafProfile] | None
+    column_leaves: list[list[int]]  # each column read, in PyArrow's order, as leaves
+    profiles: list[LeafProfile] | None  # as PyArrow decodes them; None if unmodelled
     # The columns the pin retypes, as their leaves, and the leaves as the pin
     # casts them; empty and ``None`` when it retypes none.
     cast_leaves: dict[str, list[int]]
@@ -180,7 +165,7 @@ class FooterReader:
         coalesce_bytes: int = 0,
         retried_io_errors: list[str] | None = None,
         excluded_read_unit_ids: AbstractSet[str] | None = None,
-        format_kwargs: Mapping[str, Any] | None = None,
+        format_kwargs: dict | None = None,
         read_schema: pa.Schema | None = None,
     ):
         from ray.data.context import DEFAULT_RETRIED_IO_ERRORS
@@ -190,10 +175,9 @@ class FooterReader:
             if retried_io_errors is not None
             else list(DEFAULT_RETRIED_IO_ERRORS)
         )
-        # Coalescing target: merge contiguous row groups into chunks whose
-        # estimated decode peaks sum to ~coalesce_bytes before returning them,
-        # so the driver packs fewer items. 0 disables coalescing (one chunk per
-        # physical row group).
+        # Coalescing target: merge contiguous row groups into chunks of
+        # ~coalesce_bytes of decode peak before returning them, so the driver packs
+        # fewer items. 0 disables coalescing (one chunk per physical row group).
         self.coalesce_bytes = coalesce_bytes
         # Read unit ids a checkpoint already finished (``"<path>#rg<N>"`` for a
         # row group). Those row groups are left out of every ``ChunkedFile``.
@@ -211,20 +195,18 @@ class FooterReader:
         self.filter: "pc.Expression" | None = (
             filter_expr.to_pyarrow() if filter_expr is not None else None
         )
-        # Top-level columns the predicate reads, in its order. A row group whose
-        # value in any of them may be a null or a NaN cannot be an exact-survivor
-        # count -- see ``_rg_can_fully_match``.
+        # Top-level columns the predicate reads. A row group whose value in any
+        # of them may be a null or a NaN cannot be an exact-survivor count --
+        # see ``_rg_can_fully_match``.
         self.filter_columns: list[str] = (
             list(dict.fromkeys(get_column_references(filter_expr)))
             if filter_expr is not None
             else []
         )
-        # Top-level columns a read task decodes, in the order PyArrow reads
-        # them: the predicate's first, which it decodes to evaluate the filter
-        # even when the projection drops them, then the projection's. Sizing on
-        # the projection alone lets a large non-projected filter column overfill
-        # read tasks, the failure this path exists to prevent. ``None`` means
-        # every column, the predicate's first.
+        # Top-level columns a read task decodes, in PyArrow's order: the
+        # predicate's, decoded to filter even when projected out, then the
+        # projection's. Sizing on the projection alone lets a large filter column
+        # overfill read tasks. ``None`` means every column, the predicate's first.
         self.read_order: list[str] | None = (
             list(dict.fromkeys([*self.filter_columns, *projected_cols]))
             if projected_cols is not None
@@ -262,11 +244,9 @@ class FooterReader:
         schema = metadata.schema
         columns = [schema.column(j) for j in range(len(schema))]
         file_names = [] if file_schema is None else list(file_schema.names)
-        names = (
-            self.read_order
-            if self.read_order is not None
-            else dict.fromkeys([*self.filter_columns, *file_names])
-        )
+        names: Iterable[str] | None = self.read_order
+        if names is None:
+            names = dict.fromkeys([*self.filter_columns, *file_names])
         if file_schema is not None:
             # Only the file's columns: a missing ``sepal`` would match the leaf of
             # a flat ``sepal.length`` too, and size it twice.
@@ -284,9 +264,8 @@ class FooterReader:
         profiles = cast_profiles = None
         cast_leaves: dict[str, list[int]] = {}
         if file_schema is not None:
-            # The leaves as PyArrow decodes them. With a pin the reader drops
-            # the type options from ``format_kwargs``, so these are the file's
-            # own types, which the cast below retypes.
+            # With a pin the reader drops ``format_kwargs``' type options, so
+            # these are the file's own types, which the cast below retypes.
             profiles = build_leaf_profiles(
                 parquet_schema=schema,
                 format_kwargs=self.format_kwargs,
@@ -339,33 +318,25 @@ class FooterReader:
         data_pages: list[int | None] | None,
         dictionary_pages: dict[int, DictionaryPage] | None,
     ) -> int:
-        """PyArrow's estimated peak bytes decoding ``row_group`` as a read task does.
-
-        What the bin budget bounds: the estimate leans high, since a read task
-        that outgrows its budget is what runs a node out of memory.
-        """
+        """PyArrow's estimated peak bytes decoding ``row_group`` as a read task does,
+        leaning high: a read task over its budget is what runs a node out of memory."""
         if sizing.profiles is None:
-            # A schema the estimator does not model: the uncompressed size times
-            # the fixed encoding ratio stands in for the decode's buffers.
-            # Summed per column rather than read off ``row_group.total_byte_size``,
-            # which can report the *compressed* size for some files
-            # (apache/arrow#48138); undersizing bins overfills read tasks.
-            # Shares the V1 helper so the call sites cannot drift.
+            # A schema the estimator doesn't model: the uncompressed size times the
+            # encoding ratio. Summed per column, as ``total_byte_size`` can be the
+            # compressed size (apache/arrow#48138).
             work = _row_group_uncompressed_size(
                 rg_meta=row_group, column_indices=sizing.leaf_indices
             )
             work *= PARQUET_ENCODING_RATIO_ESTIMATE_DEFAULT
         else:
-            leaves = {
-                leaf.index: leaf
-                for leaf in leaf_chunks(
-                    row_group=row_group,
-                    leaf_profiles=sizing.profiles,
-                    leaf_indices=sizing.leaf_indices,
-                    size_stats=size_stats,
-                    dictionary_pages=dictionary_pages,
-                )
-            }
+            chunks = leaf_chunks(
+                row_group=row_group,
+                leaf_profiles=sizing.profiles,
+                leaf_indices=sizing.leaf_indices,
+                size_stats=size_stats,
+                dictionary_pages=dictionary_pages,
+            )
+            leaves = {leaf.index: leaf for leaf in chunks}
             work = estimate_row_group_work(
                 row_group=row_group,
                 columns=sizing.columns,
@@ -379,20 +350,17 @@ class FooterReader:
                 work += estimate_added_columns(row_group=row_group, read=sizing.read)
             else:
                 assert sizing.file_schema is not None
-                cast_leaves = (
-                    {}
-                    if sizing.cast_profiles is None
-                    else {
-                        name: leaf_chunks(
-                            row_group=row_group,
-                            leaf_profiles=sizing.cast_profiles,
-                            leaf_indices=indices,
-                            size_stats=size_stats,
-                            dictionary_pages=dictionary_pages,
-                        )
-                        for name, indices in sizing.cast_leaves.items()
-                    }
-                )
+                # Here ``cast_leaves`` is empty unless ``cast_profiles`` was built.
+                cast_leaves = {
+                    name: leaf_chunks(
+                        row_group=row_group,
+                        leaf_profiles=sizing.cast_profiles or [],
+                        leaf_indices=indices,
+                        size_stats=size_stats,
+                        dictionary_pages=dictionary_pages,
+                    )
+                    for name, indices in sizing.cast_leaves.items()
+                }
                 # One piece, as the estimate was fitted: a read task's batch
                 # size isn't known at listing time.
                 work += estimate_cast(
@@ -504,19 +472,16 @@ class FooterReader:
         leaf_profiles: list[LeafProfile],
         size_stats: list[list[LeafSizeStats | None]] | None,
     ) -> _DictionaryPages:
-        """The dictionary page headers the estimator asks for, one read each.
-
-        A failed read keeps the pages read so far: a missing one only loosens a bound.
-        """
+        """The dictionary page headers the estimator asks for, one read each. A failed
+        read keeps the pages read so far: a missing one only loosens a bound."""
         wanted = []
         for rg_idx in rg_indices:
             row_group = metadata.row_group(rg_idx)
             for leaf_idx in leaf_indices:
                 chunk = row_group.column(leaf_idx)
-                profile = leaf_profiles[leaf_idx]
                 stats = None if size_stats is None else size_stats[rg_idx][leaf_idx]
                 nbytes = dictionary_page_read_size(
-                    profile=profile, chunk=chunk, stats=stats
+                    profile=leaf_profiles[leaf_idx], chunk=chunk, stats=stats
                 )
                 if nbytes:
                     wanted.append(
@@ -542,21 +507,15 @@ class FooterReader:
                         pages.setdefault(rg_idx, {})[leaf_idx] = page
         except Exception as e:
             logger.debug(
-                "Error reading dictionary pages: %s for file %s",
-                e,
-                path,
-                exc_info=True,
+                "Error reading dictionary pages: %s for file %s", e, path, exc_info=True
             )
         return pages
 
     def _added_bytes(
         self, file_schema: pa.Schema | None, path: str
     ) -> tuple[float, int]:
-        """:func:`added_bytes` of the columns a read task appends to this file.
-
-        The dataset schema's columns the file lacks or holds as nulls, less those the
-        projection drops; it never drops the checkpoint ID.
-        """
+        """:func:`added_bytes` of the dataset schema's columns the file lacks or holds
+        as nulls, less those the projection drops; it never drops the checkpoint ID."""
         if self.read_schema is None or file_schema is None:
             return 0, 0
         added = []
@@ -566,11 +525,8 @@ class FooterReader:
                 idx >= 0 and not pa.types.is_null(file_schema.field(idx).type)
             ):
                 continue
-            if (
-                self.read_order is None
-                or field.name in self.read_order
-                or field.type == GENERATED_ID_COLUMN_TYPE
-            ):
+            projected = self.read_order is None or field.name in self.read_order
+            if projected or field.type == GENERATED_ID_COLUMN_TYPE:
                 added.append(field)
         return added_bytes(added=added, path=path)
 
@@ -589,10 +545,8 @@ class FooterReader:
         )
         # The predicate's leaves are schema-derived, and a Parquet file has a
         # single schema, so resolve them once rather than rescanning every leaf
-        # for each group. (``metadata.schema`` builds a fresh wrapper per access,
-        # hence the local.)
-        schema = metadata.schema
-        filter_leaves = self._locate_filter_columns(schema)
+        # for each group.
+        filter_leaves = self._locate_filter_columns(metadata.schema)
         unprocessed_rg_ids = [
             i
             for i in range(metadata.num_row_groups)
@@ -657,9 +611,7 @@ class FooterReader:
         if rg_indices:
             # One Thrift walk per file over the footer bytes ``metadata`` already
             # holds -- no extra IO, though ``__reduce__`` re-serializes the
-            # footer, so skip it when every row group was pruned. The sizing
-            # hoists the schema-derived facts, the Arrow schema conversion among
-            # them, out of the per-row-group loop.
+            # footer, so skip it when every row group was pruned.
             footer = read_footer_stats(metadata)
             size_stats = None if footer is None else footer.size_statistics
             data_pages = None if footer is None else footer.data_pages
@@ -676,21 +628,18 @@ class FooterReader:
                 )
             for rg_idx in rg_indices:
                 row_group = metadata.row_group(rg_idx)
+                peak = self._row_group_peak(
+                    row_group=row_group,
+                    sizing=sizing,
+                    size_stats=None if size_stats is None else size_stats[rg_idx],
+                    data_pages=None if data_pages is None else data_pages[rg_idx],
+                    dictionary_pages=dictionary_pages.get(rg_idx),
+                )
                 per_rg.append(
                     FileChunk(
                         unit_ids=(rg_idx,),
                         num_rows=row_group.num_rows,
-                        size_bytes=self._row_group_peak(
-                            row_group=row_group,
-                            sizing=sizing,
-                            size_stats=None
-                            if size_stats is None
-                            else size_stats[rg_idx],
-                            data_pages=None
-                            if data_pages is None
-                            else data_pages[rg_idx],
-                            dictionary_pages=dictionary_pages.get(rg_idx),
-                        ),
+                        size_bytes=peak,
                         fully_matched=fully_by_idx.get(rg_idx, True),
                     )
                 )

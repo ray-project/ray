@@ -85,10 +85,8 @@ _TYPE_OPTIONS = ("dictionary_columns", "binary_type", "list_type")
 
 
 def read_format_kwargs(kwargs: Dict[str, Any], casts: bool) -> Dict[str, Any]:
-    """The ``ParquetFileFormat`` kwargs a read task passes.
-
-    A read that casts to the schema drops the type options, which the cast undoes.
-    """
+    """The ``ParquetFileFormat`` kwargs a read task passes. A read that casts to the
+    schema drops the type options, which the cast undoes."""
     if not casts:
         return dict(kwargs)
     return {k: v for k, v in kwargs.items() if k not in _TYPE_OPTIONS}
@@ -185,14 +183,12 @@ def _estimate_batch_size_from_chunk_stats(
 ) -> Optional[int]:
     """Estimate batch size from footer-derived chunk stats, without any I/O.
 
-    ``ListFiles`` already read each file's footer and recorded PyArrow's
-    estimated peak memory decoding the row groups it assigned to this chunk,
-    and their row count (the ``size_bytes`` and ``num_rows`` of its
-    :class:`FileChunk`). The peak is above the decoded size, so batches lean
-    small. Sizing from those avoids the extra footer read that
-    :func:`_estimate_batch_size_from_metadata` incurs. Works over the whole
-    chunk (its row-group average) rather than the first row group; the
-    estimate is refined from real data after the first batch.
+    ``ListFiles`` already read each file's footer and recorded PyArrow's estimated
+    decode peak and the row count of the row groups it assigned to this chunk (the
+    ``size_bytes`` and ``num_rows`` of its :class:`FileChunk`); the peak is above
+    the decoded size, so batches lean small. That avoids the footer read
+    :func:`_estimate_batch_size_from_metadata` incurs. Works over the whole chunk
+    (its row-group average); the estimate is refined after the first batch.
     """
     if num_rows <= 0 or size_bytes <= 0:
         return None
@@ -291,12 +287,9 @@ class ParquetFileReader(FileReader, SupportsMetadata):
 
     @override
     def _make_format(self) -> pds.ParquetFileFormat:
-        return pds.ParquetFileFormat(
-            **read_format_kwargs(
-                kwargs=self._parquet_format_kwargs,
-                casts=self._file_dataset_schema is not None,
-            )
-        )
+        casts = self._file_dataset_schema is not None
+        kwargs = read_format_kwargs(kwargs=self._parquet_format_kwargs, casts=casts)
+        return pds.ParquetFileFormat(**kwargs)
 
     @override
     def _resolve_batch_size(self, dataset: pds.Dataset, manifest: FileManifest) -> int:

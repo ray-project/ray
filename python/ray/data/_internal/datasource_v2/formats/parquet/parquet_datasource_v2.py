@@ -197,8 +197,6 @@ class ParquetDatasourceV2(FileDataSourceV2):
             read_format_kwargs,
         )
 
-        # The footer readers size row groups as the read tasks return them, so
-        # they get the kwargs those pass and the schema they cast to.
         return FooterFileIndexer(
             ignore_missing_paths=self._ignore_missing_paths,
             skip_paths=self._skip_paths,
@@ -219,22 +217,14 @@ class ParquetDatasourceV2(FileDataSourceV2):
             OnlineBinPacker,
         )
 
-        # A bin is budgeted on the footer reader's estimate of PyArrow's peak
-        # memory decoding its row groups, so a read task's decode stays near
-        # ``target_max_block_size``, the default cap; a single row group
-        # estimated over it gets a bin of its own. Without a block target
-        # ``read_api`` passes ``sys.maxsize``, which would pack every file into
-        # one bin, so that falls back to the default block size.
+        # Bins are budgeted on the estimated decode peak, so a read task's decode
+        # stays near ``target_max_block_size``. Without a block target ``read_api``
+        # passes ``sys.maxsize``, one bin for every file, so that takes the default.
         hints = kwargs.get("hints")
-        max_bucket_size = hints.max_bucket_size if hints is not None else None
-        default_bin_bytes = (
-            max_bucket_size
-            if max_bucket_size and max_bucket_size < sys.maxsize
-            else DEFAULT_TARGET_MAX_BLOCK_SIZE
-        )
-        max_bin_bytes = env_integer(
-            "RAY_DATA_PARQUET_BIN_PACKING_BYTES", default_bin_bytes
-        )
+        budget = hints.max_bucket_size if hints is not None else None
+        if not budget or budget >= sys.maxsize:
+            budget = DEFAULT_TARGET_MAX_BLOCK_SIZE
+        max_bin_bytes = env_integer("RAY_DATA_PARQUET_BIN_PACKING_BYTES", budget)
         max_shared_open_bins = env_integer(
             "RAY_DATA_PARQUET_BIN_PACKING_MAX_SHARED_OPEN_BINS", 16
         )

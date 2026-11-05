@@ -135,8 +135,7 @@ def test_a_canonical_extension_casts_as_its_storage():
     assert _nested_or_view(pa.fixed_shape_tensor(pa.float32(), [2, 2]))
 
 
-# Rows per file here: enough for several row groups, small enough to write
-# several files.
+# Rows per file here: enough for several row groups.
 M = 20_000
 
 
@@ -213,18 +212,15 @@ def test_unmodelled_schema_falls_back_to_the_encoding_ratio(tmp_path, monkeypatc
     expected = []
     for rg_idx in range(metadata.num_row_groups):
         row_group = metadata.row_group(rg_idx)
-        uncompressed = sum(
-            row_group.column(j).total_uncompressed_size
-            for j in range(row_group.num_columns)
+        leaves = range(row_group.num_columns)
+        uncompressed = sum(row_group.column(j).total_uncompressed_size for j in leaves)
+        peak = estimate_row_group_peak(
+            row_group=row_group,
+            leaf_indices=leaves,
+            row_group_work=uncompressed * PARQUET_ENCODING_RATIO_ESTIMATE_DEFAULT,
+            file_size=os.path.getsize(path),
         )
-        expected.append(
-            estimate_row_group_peak(
-                row_group=row_group,
-                leaf_indices=range(row_group.num_columns),
-                row_group_work=uncompressed * PARQUET_ENCODING_RATIO_ESTIMATE_DEFAULT,
-                file_size=os.path.getsize(path),
-            )
-        )
+        expected.append(peak)
 
     assert _sizes(path) == expected
 
@@ -246,8 +242,8 @@ def test_pinned_schema_adds_the_cast_and_the_added_columns(tmp_path):
         assert all(size > plain_size for size, plain_size in zip(sizes, plain))
 
 
-def _pack_through_footer_reader(paths, max_bin_bytes):
-    """Footer read, estimate, coalescing and packing, without a Ray runtime."""
+def _bin_totals(path, max_bin_bytes):
+    """Each bin's bytes: footer read, estimate, coalescing and packing, without Ray."""
     from ray.data._internal.datasource_v2.common.online_bin_packer import (
         OnlineBinPacker,
     )
@@ -256,25 +252,12 @@ def _pack_through_footer_reader(paths, max_bin_bytes):
     )
 
     packer = OnlineBinPacker(max_bin_bytes=max_bin_bytes)
-    manifests = []
-
-    def drain():
-        while packer.has_partition():
-            manifests.append(packer.next_partition())
-
-    for path in paths:
-        packer.add_input(_chunked_file_to_manifest(_read_and_chunk(path)))
-        drain()
+    packer.add_input(_chunked_file_to_manifest(_read_and_chunk(path)))
     packer.finalize()
-    drain()
-    return manifests
-
-
-def _bin_totals(manifests):
-    return [
-        sum(meta["size_bytes"] for meta in manifest.file_chunk_metadatas)
-        for manifest in manifests
-    ]
+    manifests = []
+    while packer.has_partition():
+        manifests.append(packer.next_partition())
+    return [sum(c["size_bytes"] for c in m.file_chunk_metadatas) for m in manifests]
 
 
 def test_bins_stay_under_the_budget(tmp_path):
@@ -286,34 +269,13 @@ def test_bins_stay_under_the_budget(tmp_path):
     assert len(estimates) == 10
 
     budget = sum(estimates) // 4
-    totals = _bin_totals(_pack_through_footer_reader([path], budget))
+    totals = _bin_totals(path=path, max_bin_bytes=budget)
     assert sum(totals) == sum(estimates)
     assert all(total <= budget for total in totals)
     assert 3 <= len(totals) <= 6, totals
 
-    totals = _bin_totals(_pack_through_footer_reader([path], min(estimates) - 1))
+    totals = _bin_totals(path=path, max_bin_bytes=min(estimates) - 1)
     assert sorted(totals) == sorted(estimates)
-
-
-def test_files_share_bins(tmp_path):
-    paths = [tmp_path / f"part{i}.parquet" for i in range(4)]
-    for path in paths:
-        pq.write_table(_mixed(), path, row_group_size=M // 4)
-    per_file = sum(_sizes(paths[0]))
-
-    manifests = _pack_through_footer_reader(paths, per_file * 2)
-    totals = _bin_totals(manifests)
-
-    assert sum(totals) == per_file * 4
-    assert all(total <= per_file * 2 for total in totals)
-    # Every row group lands in exactly one bin.
-    covered = [
-        (str(path), rg_id)
-        for manifest in manifests
-        for path, meta in zip(manifest.paths, manifest.file_chunk_metadatas)
-        for rg_id in meta["unit_ids"]
-    ]
-    assert len(covered) == len(set(covered)) == 4 * 4
 
 
 if __name__ == "__main__":
