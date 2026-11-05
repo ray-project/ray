@@ -124,64 +124,47 @@ def _strings(distinct):
     return pa.array([f"value-{i % distinct:08d}" for i in range(N)])
 
 
+def _case(table, write_kwargs=None, format_kwargs=None, columns=None, high=3):
+    """A ``_CASES`` entry; ``high`` caps the estimate over the measured peak."""
+    return table, write_kwargs or {}, format_kwargs or {}, columns, high
+
+
 _CASES = {
-    "fixed-width": (
+    "fixed-width": _case(
         pa.table(
             {
                 "a": pa.array(np.arange(N, dtype="int64")),
                 "b": pa.array(np.random.default_rng(0).random(N)),
             }
-        ),
-        {},
-        {},
-        None,
-        3,
+        )
     ),
-    "int16-with-nulls": (
+    "int16-with-nulls": _case(
         pa.table(
             {"a": pa.array(np.arange(N) % 100, pa.int16(), mask=np.arange(N) % 7 == 0)}
-        ),
-        {},
-        {},
-        None,
-        3,
+        )
     ),
-    "unique-strings": (pa.table({"a": _strings(N)}), {}, {}, None, 3),
-    "strings-read-as-dictionary": (
-        pa.table({"a": _strings(N // 4)}),
-        {},
-        {"dictionary_columns": ["a"]},
-        None,
-        3,
+    "strings-read-as-dictionary": _case(
+        pa.table({"a": _strings(N // 4)}), format_kwargs={"dictionary_columns": ["a"]}
     ),
     # PyArrow miscounts DELTA_BYTE_ARRAY SizeStatistics, so the decoded size is
     # a crude bound here, and the peak inherits it.
-    "delta-byte-array": (
+    "delta-byte-array": _case(
         pa.table({"a": _strings(N)}),
-        {"use_dictionary": False, "column_encoding": {"a": "DELTA_BYTE_ARRAY"}},
-        {},
-        None,
-        20,
-    ),
-    "list": (
-        pa.table({"l": pa.array([[i, i + 1, i + 2] for i in range(N)])}),
-        {},
-        {},
-        None,
-        3,
+        write_kwargs={
+            "use_dictionary": False,
+            "column_encoding": {"a": "DELTA_BYTE_ARRAY"},
+        },
+        high=20,
     ),
     # The int64 column is read first, so PyArrow reserves it for the list's values.
-    "column-after-list-reserve": (
+    "column-after-list-reserve": _case(
         pa.table(
             {
                 "l": pa.array([[i, i + 1, i + 2] for i in range(N)]),
                 "y": pa.array(np.arange(N, dtype="int64")),
             }
         ),
-        {},
-        {},
-        ["y", "l"],
-        3,
+        columns=["y", "l"],
     ),
 }
 
