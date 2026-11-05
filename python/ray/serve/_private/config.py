@@ -711,6 +711,48 @@ def validate_gang_scheduling_bounds(
             )
 
 
+def validate_gang_scheduling_autoscaling_config(
+    gang_scheduling_config: Union[Dict, GangSchedulingConfig],
+    autoscaling_config: Union[Dict, AutoscalingConfig],
+) -> None:
+    """Validate autoscaling bounds against an explicit gang configuration."""
+    if isinstance(gang_scheduling_config, dict):
+        gang_size = gang_scheduling_config.get("gang_size")
+    else:
+        gang_size = gang_scheduling_config.gang_size
+    if gang_size is not None:
+        validate_gang_scheduling_bounds(gang_size, autoscaling_config)
+
+
+def validate_gang_scheduling_options(
+    gang_scheduling_config: Any,
+    autoscaling_config: Any,
+    current_gang_scheduling_config: Optional[GangSchedulingConfig],
+    current_autoscaling_config: Optional[AutoscalingConfig],
+) -> None:
+    """Validate an options update against the deployment's resulting config.
+
+    Options left at ``DEFAULT.VALUE`` fall back to the deployment's current
+    configuration, so adding or changing either gang scheduling or autoscaling
+    is validated against the other.
+
+    This lives at module scope so ``Deployment.options()`` does not create
+    helper locals before it captures user-configured option names from
+    ``locals()``.
+    """
+    if gang_scheduling_config is DEFAULT.VALUE:
+        gang_scheduling_config = current_gang_scheduling_config
+    if autoscaling_config is DEFAULT.VALUE:
+        autoscaling_config = current_autoscaling_config
+
+    if gang_scheduling_config is None or autoscaling_config is None:
+        return
+
+    validate_gang_scheduling_autoscaling_config(
+        gang_scheduling_config, autoscaling_config
+    )
+
+
 class ReplicaConfig:
     """Internal datastructure wrapping config options for a deployment's replicas.
 

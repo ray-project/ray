@@ -17,7 +17,7 @@ from ray.serve._private.config import (
     DeploymentConfig,
     ReplicaConfig,
     handle_num_replicas_auto,
-    validate_gang_scheduling_bounds,
+    validate_gang_scheduling_autoscaling_config,
 )
 from ray.serve._private.constants import (
     RAY_SERVE_FORCE_LOCAL_TESTING_MODE,
@@ -754,12 +754,9 @@ def deployment(
         DEFAULT.VALUE,
         None,
     ] and autoscaling_config not in [DEFAULT.VALUE, None]:
-        if isinstance(gang_scheduling_config, dict):
-            gang_size = gang_scheduling_config.get("gang_size")
-        else:
-            gang_size = gang_scheduling_config.gang_size
-        if gang_size is not None:
-            validate_gang_scheduling_bounds(gang_size, autoscaling_config)
+        validate_gang_scheduling_autoscaling_config(
+            gang_scheduling_config, autoscaling_config
+        )
 
     if num_replicas == "auto":
         num_replicas = None
