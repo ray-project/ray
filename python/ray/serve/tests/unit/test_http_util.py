@@ -441,7 +441,7 @@ async def test_asgi_app_wrapper_copies_lifespan_state_into_request(scope_type):
 
     @asynccontextmanager
     async def lifespan(app):
-        yield {"resource": resource}
+        yield {"resource": resource, "overridden": "lifespan"}
 
     wrapper = ASGIAppReplicaWrapper(FastAPI(lifespan=lifespan))
     await wrapper._run_asgi_lifespan_startup()
@@ -453,16 +453,19 @@ async def test_asgi_app_wrapper_copies_lifespan_state_into_request(scope_type):
 
     wrapper._asgi_app = record_scope
     await wrapper(
-        {"type": scope_type, "state": {"kept": 1, "resource": "incoming"}}, None, None
+        {"type": scope_type, "state": {"kept": 1, "overridden": "request"}}, None, None
     )
     request_state = seen[0]
 
-    # The lifespan value wins over the request's, and other entries are kept.
-    assert request_state == {"kept": 1, "resource": resource}
+    # The request has the lifespan's entries and its own, and its value wins.
+    assert request_state == {"resource": resource, "kept": 1, "overridden": "request"}
     # The request gets a copy, so changing it doesn't change the lifespan state.
     assert request_state is not wrapper._serve_asgi_lifespan.state
     request_state["added"] = True
-    assert wrapper._serve_asgi_lifespan.state == {"resource": resource}
+    assert wrapper._serve_asgi_lifespan.state == {
+        "resource": resource,
+        "overridden": "lifespan",
+    }
 
     await wrapper._serve_asgi_lifespan.shutdown()
 

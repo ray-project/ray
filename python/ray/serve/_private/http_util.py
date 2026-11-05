@@ -671,8 +671,8 @@ class ASGIAppReplicaWrapper:
             # Each request gets a shallow copy of the lifespan state. The proxy
             # doesn't send it, because this replica ran the lifespan.
             scope["state"] = {
-                **scope.get("state", {}),
                 **self._serve_asgi_lifespan.state,
+                **scope.get("state", {}),
             }
         await self._asgi_app(
             scope,
