@@ -102,11 +102,11 @@ class NodeMonitor:
         """
         try:
             result = probe.poll()
+            if isinstance(result, ProbeResult):
+                return _stamp(result)
+            return {key: _stamp(r) for key, r in result.items()}
         except Exception as e:
             return ProbeResult(timestamp_s=time.time(), error=e)
-        if isinstance(result, ProbeResult):
-            return _stamp(result)
-        return {key: _stamp(r) for key, r in result.items()}
 
 
 def _stamp(result: ProbeResult) -> ProbeResult:

@@ -301,9 +301,9 @@ def _to_health_state(
     status: NodeMonitorGroupPollStatus, probes: Sequence[Probe]
 ) -> HealthState:
     """Build the ``HealthState`` of some probes from the statuses of their
-    ``NodeMonitor``\\ s. A monitor that failed gives each of its probes a
-    result with its error, and a ``ControllerProbe`` whose poll failed has its
-    error in ``controller_probe_errors``.
+    monitors. A monitor that failed gives each of its probes a result with its
+    error, and a ``ControllerProbe`` whose poll failed has its error in
+    ``probe_errors``.
 
     Args:
         status: The statuses of the monitors.
@@ -323,20 +323,18 @@ def _to_health_state(
     controller_probe_names = [
         p.probe_name() for p in probes if isinstance(p, ControllerProbe)
     ]
-    controller_probe_results: Dict[str, Dict[Any, ProbeResult]] = {}
-    controller_probe_errors: Dict[str, Exception] = {}
+    probe_errors: Dict[str, Exception] = {}
     controller_results = _probe_results(
         status.controller_node_monitor_status, controller_probe_names
     )
     for name, result in controller_results.items():
         if isinstance(result, ProbeResult):
-            controller_probe_errors[name] = result.error
+            probe_errors[name] = result.error
         else:
-            controller_probe_results[name] = dict(result)
+            probe_results[name] = dict(result)
     return HealthState(
         probe_results=probe_results,
-        controller_probe_results=controller_probe_results,
-        controller_probe_errors=controller_probe_errors,
+        probe_errors=probe_errors,
     )
 
 
