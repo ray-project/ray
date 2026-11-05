@@ -22,6 +22,9 @@ from ray.data._internal.execution.interfaces.physical_operator import (
 from ray.data._internal.execution.operators.base_physical_operator import (
     InternalQueueOperatorMixin,
 )
+from ray.data._internal.execution.operators.hash_shuffle_v2 import (
+    _validate_repartition_schema,
+)
 from ray.data._internal.execution.operators.shuffle_operators.shuffle_tasks import (
     SHUFFLE_PEAK_MEMORY_MULTIPLIER,
     BlockTransformer,
@@ -68,6 +71,7 @@ class ShuffleMapOp(InternalQueueOperatorMixin, PhysicalOperator):
         data_context: Runtime configuration.
         num_partitions: Total number of output partitions.
         partition_fn: Function mapping a pa.Table to Dict[int, pa.Table].
+        key_columns: Keys for validating repartition input schemas.
         block_transformer: Optional transform applied to each non-empty input
             block before partitioning (e.g. map-side partial aggregation).
             May change the block schema.
@@ -88,6 +92,7 @@ class ShuffleMapOp(InternalQueueOperatorMixin, PhysicalOperator):
         *,
         num_partitions: int,
         partition_fn: PartitionFn,
+        key_columns: Optional[List[str]] = None,
         block_transformer: Optional[BlockTransformer] = None,
         map_runtime_env: Optional[Dict[str, Any]] = None,
         map_cpus: float = _DEFAULT_SHUFFLE_MAP_TASK_NUM_CPUS,
@@ -102,6 +107,8 @@ class ShuffleMapOp(InternalQueueOperatorMixin, PhysicalOperator):
 
         self._num_partitions: int = num_partitions
         self._partition_fn: PartitionFn = partition_fn
+        self._key_columns = key_columns
+        self._input_schema = None
         self._block_transformer: Optional[BlockTransformer] = block_transformer
 
         # -- Map task config -------------------------------------------------
@@ -272,6 +279,10 @@ class ShuffleMapOp(InternalQueueOperatorMixin, PhysicalOperator):
         # `task_done_callback` fires only after the metadata ref is ready,
         # so this is just local deserialization.
         input_meta, shard_sizes, output_schema = ray.get(task.get_waitable())
+        if self._key_columns is not None and input_meta.num_rows:
+            self._input_schema = _validate_repartition_schema(
+                output_schema, self._key_columns, self._input_schema
+            )
 
         for partition_id, ref in enumerate(partition_refs):
             rows, nbytes = shard_sizes.get(partition_id, (0, 0))

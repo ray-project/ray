@@ -286,7 +286,7 @@ class _PartitionWriter:
         shards = self._staging.get(partition_id)
         if not shards:
             return
-        tbl = pa.concat_tables(shards) if len(shards) > 1 else shards[0]
+        tbl = transform_pyarrow.concat(shards, preserve_order=True)
         if self._combine_native_ok is None:
             # Once per map: concat above guarantees a uniform schema, so native
             # combine is safe iff no column is an extension type. Avoids the
@@ -729,10 +729,11 @@ def _handles_to_sources(
     out of each handle's dense range index, then frees the batch — so in-flight
     handle memory stays constant, not O(maps × partitions). Skips handles with
     ``index_ranges[p].length == 0`` (no on-disk frame); picks the first
-    non-None schema.
+    schema from a non-empty mapper, falling back to an empty mapper schema.
     """
     sources: List[_SourceRef] = []
     output_schema: Optional[pa.Schema] = None
+    has_nonempty_schema = False
     if not handles:
         return sources, output_schema
 
@@ -746,8 +747,11 @@ def _handles_to_sources(
             handle if isinstance(handle, dict) else next(vals) for handle in batch
         ]
         for handle in resolved:
-            if output_schema is None:
+            rows = handle.get("num_rows")
+            has_rows = rows is not None and rows.any()
+            if output_schema is None or (has_rows and not has_nonempty_schema):
                 output_schema = handle.get("schema")
+                has_nonempty_schema = bool(has_rows and output_schema is not None)
             # Dense index: partition_id is the row; only this row materializes
             # as a Python range, the rest stay as (zero-copy) numpy buffers.
             off, length = handle["index_ranges"][partition_id]
