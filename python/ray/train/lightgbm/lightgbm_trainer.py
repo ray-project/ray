@@ -165,7 +165,7 @@ class LightGBMTrainer(SimpleLightGBMTrainer):
             ``train_loop_per_worker``.
             This is typically used for specifying hyperparameters.
         lightgbm_config: The configuration for setting up the distributed lightgbm
-            backend. Defaults to using the "rabit" backend.
+            backend. Defaults to ``LightGBMConfig()``.
             See :class:`~ray.train.lightgbm.LightGBMConfig` for more info.
         scaling_config: The configuration for how to scale data parallel training.
             ``num_workers`` determines how many Python processes are used for training,

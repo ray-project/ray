@@ -410,10 +410,22 @@ class MultiAgentEpisode:
             + [aid for aid in terminateds if terminateds[aid]]
             + [aid for aid in truncateds if truncateds[aid]]
         )
-        # Case 2: Some agents are truncated and the others are terminated -> Declare
-        # this episode as terminated.
-        if all(aid in set(agents_done) for aid in self.agent_ids):
-            self.is_terminated = True
+        # Case 2: All agents are done (now or at prior timesteps), but the episode is
+        # not yet terminated. If at least one agent terminated, declare the episode
+        # terminated. If all agents were only truncated, declare it truncated, so the
+        # last observations are still bootstrapped and not treated as terminal.
+        if not self.is_terminated and all(aid in agents_done for aid in self.agent_ids):
+            if any(
+                terminateds.get(aid, False)
+                or (
+                    aid in self.agent_episodes
+                    and self.agent_episodes[aid].is_terminated
+                )
+                for aid in agents_done
+            ):
+                self.is_terminated = True
+            else:
+                self.is_truncated = True
 
         # For all agents that are not stepping in this env step, but that are not done
         # yet -> Add a skip tag to their env- to agent-step mappings.
