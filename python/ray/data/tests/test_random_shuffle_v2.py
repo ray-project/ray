@@ -179,6 +179,29 @@ def test_random_shuffle_v2_end_to_end(
 
 
 @pytest.mark.parametrize("use_disk", _USE_DISK)
+def test_random_shuffle_v2_promotes_compatible_block_schemas(
+    ray_start_regular_shared_2_cpus, restore_data_context, use_disk
+):
+    ctx = DataContext.get_current()
+    ctx.shuffle_strategy = ShuffleStrategy.SHUFFLE_V2
+    ctx.use_disk_based_hash_shuffle = use_disk
+
+    # Default batching sends both blocks to one map task, so a partition's shards
+    # carry a null and an int64 version of the same column.
+    null_block = pa.table({"v": pa.array([None, None], type=pa.null())})
+    int_block = pa.table({"v": pa.array([1, 2], type=pa.int64())})
+    rows = (
+        ray.data.from_arrow([null_block, int_block]).random_shuffle(seed=0).take_all()
+    )
+    assert sorted((r["v"] for r in rows), key=lambda v: (v is None, v)) == [
+        1,
+        2,
+        None,
+        None,
+    ]
+
+
+@pytest.mark.parametrize("use_disk", _USE_DISK)
 def test_random_shuffle_v2_fused_downstream_map(
     ray_start_regular_shared_2_cpus, restore_data_context, use_disk
 ):
