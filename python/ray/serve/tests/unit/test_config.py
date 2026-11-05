@@ -1240,6 +1240,32 @@ class TestGangSchedulingConfig:
         d = f.options(gang_scheduling_config=GangSchedulingConfig(gang_size=2))
         assert d._deployment_config.gang_scheduling_config.gang_size == 2
 
+    def test_gang_scheduling_config_options_allow_merged_default_bounds(self):
+        """Merged autoscaling defaults are not treated as user-set bounds."""
+
+        @serve.deployment(
+            num_replicas="auto",
+            gang_scheduling_config=GangSchedulingConfig(gang_size=4),
+        )
+        def f():
+            return "test"
+
+        # handle_num_replicas_auto marks min_replicas=1 and max_replicas=100 as
+        # set even though they are defaults, so unrelated options must not
+        # validate them against the gang size.
+        d = f.options()
+        assert d._deployment_config.autoscaling_config.min_replicas == 1
+        assert d._deployment_config.autoscaling_config.max_replicas == 100
+
+        d = f.options(gang_scheduling_config=GangSchedulingConfig(gang_size=2))
+        assert d._deployment_config.gang_scheduling_config.gang_size == 2
+
+        # Bounds provided in the current call are still checked.
+        with pytest.raises(
+            ValueError, match="autoscaling_config.*must be a multiple of gang_size"
+        ):
+            f.options(autoscaling_config={"min_replicas": 1})
+
     def test_gang_scheduling_config_options_do_not_pollute_option_names(self):
         @serve.deployment(
             num_replicas=4,
