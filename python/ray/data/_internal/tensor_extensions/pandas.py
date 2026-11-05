@@ -45,7 +45,9 @@ from pandas.core.indexers import check_array_indexer, validate_indices
 
 from ray.data._internal.tensor_extensions.utils import (
     _create_possibly_ragged_ndarray,
+    _first_non_null,
     _is_ndarray_variable_shaped_tensor,
+    create_ragged_ndarray,
 )
 from ray.util.annotations import PublicAPI
 
@@ -432,12 +434,17 @@ class TensorDtype(pd.api.extensions.ExtensionDtype):
                 # is needed (e.g. nulls). pa.ChunkedArray.to_numpy() defaults to
                 # False because non-contiguous chunks always require a copy.
                 # https://arrow.apache.org/docs/python/generated/pyarrow.Array.html#pyarrow.Array.to_numpy
-                values = np.concatenate(
-                    [
-                        chunk.to_numpy(zero_copy_only=False)
-                        for chunk in array.iterchunks()
-                    ]
-                )
+                chunks = [
+                    chunk.to_numpy(zero_copy_only=False) for chunk in array.iterchunks()
+                ]
+                if array.null_count > 0:
+                    # A chunk with a null row is one ndarray per row, and a
+                    # chunk without is dense, so join them row by row.
+                    values = create_ragged_ndarray(
+                        [row for chunk in chunks for row in chunk]
+                    )
+                else:
+                    values = np.concatenate(chunks)
             else:
                 # chunk(0) returns pa.Array with zero_copy_only=True by default
                 values = tensor_array_to_numpy(array.chunk(0))
@@ -458,10 +465,20 @@ class TensorDtype(pd.api.extensions.ExtensionDtype):
                 # np.stack requires at least one array and reshape is a no-op
                 # here, so build the correctly typed empty buffer directly.
                 values = np.empty((0,) + self.element_shape, dtype=self._dtype)
-            else:
+            elif values.dtype != object or array.null_count == 0:
                 if values.dtype == object:
                     values = np.stack(values)
                 values = values.reshape((num_rows,) + self.element_shape)
+            else:
+                # A column with a null row keeps one ndarray per row and None
+                # for the null row, since a dense array cannot mark a row
+                # missing. Each row still gets the tensor shape.
+                values = create_ragged_ndarray(
+                    [
+                        None if row is None else row.reshape(self.element_shape)
+                        for row in values
+                    ]
+                )
 
         return TensorArray(values)
 
@@ -751,11 +768,13 @@ class TensorArray(
                     # Tensor is empty, pass through to create empty TensorArray.
                     pass
                 elif all(
-                    isinstance(v, (np.ndarray, TensorArrayElement, Sequence))
+                    v is None
+                    or isinstance(v, (np.ndarray, TensorArrayElement, Sequence))
                     and not isinstance(v, str)
                     for v in values
                 ):
-                    values = [np.asarray(v) for v in values]
+                    # A None element is a null row and stays None.
+                    values = [v if v is None else np.asarray(v) for v in values]
                     # Try to convert ndarrays of ndarrays/TensorArrayElements with an
                     # opaque object type to a properly typed ndarray of ndarrays.
                     values = _create_possibly_ragged_ndarray(values)
@@ -764,7 +783,8 @@ class TensorArray(
                     offending = next(
                         v
                         for v in values
-                        if not (
+                        if v is not None
+                        and not (
                             isinstance(v, (np.ndarray, TensorArrayElement, Sequence))
                             and not isinstance(v, str)
                         )
@@ -880,11 +900,15 @@ class TensorArray(
     @property
     def dtype(self) -> pd.api.extensions.ExtensionDtype:
         """An instance of 'ExtensionDtype'."""
+        first = _first_non_null(self._tensor)
         if self.is_variable_shaped:
-            # A tensor is only considered variable-shaped if it's non-empty, so no
-            # non-empty check is needed here.
-            dtype = self._tensor[0].dtype
-            shape = (None,) * self._tensor[0].ndim
+            # A variable-shaped array has at least one tensor.
+            dtype = first.dtype
+            shape = (None,) * first.ndim
+        elif self._tensor.dtype.type is np.object_ and first is not None:
+            # Fixed-shape tensors stored one per element, next to null rows.
+            dtype = first.dtype
+            shape = first.shape
         else:
             dtype = self.numpy_dtype
             shape = self.numpy_shape[1:]
