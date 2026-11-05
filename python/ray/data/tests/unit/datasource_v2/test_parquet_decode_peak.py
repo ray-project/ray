@@ -9,7 +9,7 @@ import pytest
 from packaging.version import parse as parse_version
 
 from ray.data._internal.datasource_v2.formats.parquet.parquet_decode_peak import (
-    _nested_or_view,
+    _nested,
     estimate_row_group_peak,
 )
 
@@ -93,9 +93,7 @@ _CASES = {
             {"a": pa.array(np.arange(N) % 100, pa.int16(), mask=np.arange(N) % 7 == 0)}
         )
     ),
-    "strings-read-as-dictionary": _case(
-        pa.table({"a": _strings(N // 4)}), format_kwargs={"dictionary_columns": ["a"]}
-    ),
+    "strings": _case(pa.table({"a": _strings(N // 4)})),
     # PyArrow miscounts DELTA_BYTE_ARRAY SizeStatistics, so the decoded size is
     # a crude bound here, and the peak inherits it.
     "delta-byte-array": _case(
@@ -132,7 +130,7 @@ def test_estimate_bounds_measured_peak(tmp_path, label):
 
 def test_a_canonical_extension_casts_as_its_storage():
     """A fixed-shape tensor column, a fixed-size list on disk, copies per piece."""
-    assert _nested_or_view(pa.fixed_shape_tensor(pa.float32(), [2, 2]))
+    assert _nested(pa.fixed_shape_tensor(pa.float32(), [2, 2]))
 
 
 # Rows per file here: enough for several row groups.
@@ -176,13 +174,10 @@ def test_a_failed_footer_read_still_bounds_the_peak(
     assert 0.95 <= estimate / _peak(path=path) <= high
 
 
-def test_unmodelled_schema_falls_back_to_the_encoding_ratio(tmp_path, monkeypatch):
-    """Without leaf profiles, the uncompressed size times the fixed ratio stands
-    in for the decode's buffers, under the same peak formula."""
+def test_unmodelled_schema_falls_back_to_ten_times_uncompressed(tmp_path, monkeypatch):
+    """Without leaf profiles, 10 times the uncompressed size stands in for the
+    decode's buffers, under the same peak formula."""
     import ray.data._internal.datasource_v2.formats.parquet.footer_reader as reader
-    from ray.data._internal.datasource_v2.formats.parquet.parquet_size_estimator import (
-        PARQUET_ENCODING_RATIO_ESTIMATE_DEFAULT,
-    )
 
     path = tmp_path / "f.parquet"
     pq.write_table(_mixed(), path, row_group_size=M // 4)
@@ -196,7 +191,7 @@ def test_unmodelled_schema_falls_back_to_the_encoding_ratio(tmp_path, monkeypatc
         peak = estimate_row_group_peak(
             row_group=row_group,
             leaf_indices=leaves,
-            row_group_work=uncompressed * PARQUET_ENCODING_RATIO_ESTIMATE_DEFAULT,
+            row_group_work=10 * uncompressed,
             file_size=os.path.getsize(path),
         )
         expected.append(peak)
