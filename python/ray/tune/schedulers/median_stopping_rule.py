@@ -197,15 +197,14 @@ class MedianStoppingRule(FIFOScheduler):
         )
 
     def _record_result(self, trial: Trial, result: Dict):
+        # A trial that returned without reporting has neither key in its last result,
+        # and every reader of `_results` indexes both.
+        if self._time_attr not in result or self._metric not in result:
+            return
         results = self._results[trial]
-        # The controller passes a finished trial's last result again, as a duplicate
-        # "done" result and in `on_trial_complete`. Keep one entry per time so it
-        # is not averaged in more than once.
-        if (
-            results
-            and self._time_attr in result
-            and results[-1].get(self._time_attr) == result[self._time_attr]
-        ):
+        # `on_trial_complete` can repeat the last result `on_trial_result` already
+        # recorded. Keep one entry per time so it is not averaged in twice.
+        if results and results[-1][self._time_attr] == result[self._time_attr]:
             results[-1] = result
         else:
             results.append(result)
