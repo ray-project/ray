@@ -710,6 +710,14 @@ class Algorithm(Checkpointable, Trainable):
     @OverrideToImplementCustomLogic
     @classmethod
     def get_default_config(cls) -> AlgorithmConfig:
+        """Returns the default config for this Algorithm class.
+
+        Algorithm subclasses override this to return their own config class, for
+        example `PPO.get_default_config()` returns a `PPOConfig`.
+
+        Returns:
+            A new instance of this Algorithm's default config class.
+        """
         return AlgorithmConfig()
 
     @OverrideToImplementCustomLogic
@@ -1178,6 +1186,13 @@ class Algorithm(Checkpointable, Trainable):
         multi-agent PolicySpec.
 
         Note: This method is ignored when the RLModule API is enabled.
+
+        Args:
+            config: The AlgorithmConfig to pick the Policy class for.
+
+        Returns:
+            The default Policy class, or None if this Algorithm has none. The base
+            implementation returns None.
         """
         return None
 
@@ -2387,6 +2402,20 @@ class Algorithm(Checkpointable, Trainable):
 
     @OverrideToImplementCustomLogic
     def restore_offline_eval_runners(self, runner_group: RunnerGroup) -> List[int]:
+        """Try bringing back unhealthy offline evaluation runners and sync them.
+
+        The offline evaluation counterpart of `restore_env_runners()`. Syncs each
+        restored runner with the state of the first healthy runner and gives it
+        back its data iterator. Algorithms may override this method to create
+        custom restoration logic.
+
+        Args:
+            runner_group: The RunnerGroup of offline evaluation runners to restore.
+
+        Returns:
+            A list of the IDs of the runners restored during this call. Empty if
+            `runner_group` is None or has no local runner.
+        """
         if not runner_group or not runner_group.local_runner:
             return []
 
@@ -3196,6 +3225,14 @@ class Algorithm(Checkpointable, Trainable):
 
     @override(Trainable)
     def load_checkpoint(self, checkpoint_dir: str) -> None:
+        """Restores this Algorithm's state from a checkpoint directory.
+
+        On the new API stack, this delegates to `restore_from_path()`. Afterwards,
+        it calls the `on_checkpoint_loaded` callback.
+
+        Args:
+            checkpoint_dir: The local directory that holds the checkpoint.
+        """
         with TimerAndPrometheusLogger(self._metrics_load_checkpoint_time):
             # New API stack: Delegate to the `Checkpointable` implementation of
             # `restore_from_path()`.

@@ -266,28 +266,12 @@ class Checkpoint(metaclass=_CheckpointMetaClass):
         Users should treat the returned checkpoint directory as read-only and avoid
         changing any data within it, as it may be deleted when exiting the context.
 
-        Example:
-
-        .. testcode::
-            :hide:
-
-            from pathlib import Path
-            import tempfile
-
-            from ray.train import Checkpoint
-
-            temp_dir = tempfile.mkdtemp()
-            (Path(temp_dir) / "example.txt").write_text("example checkpoint data")
-            checkpoint = Checkpoint.from_directory(temp_dir)
-
-        .. testcode::
-
-            with checkpoint.as_directory() as checkpoint_dir:
-                # Do some read-only processing of files within checkpoint_dir
-                pass
-
-            # At this point, if a temporary directory was created, it will have
-            # been deleted.
+        Examples:
+            >>> with checkpoint.as_directory() as checkpoint_dir:  # doctest: +SKIP_EXAMPLE
+            ...     # Do some read-only processing of files within checkpoint_dir
+            ...     pass
+            >>> # At this point, if a temporary directory was created, it will have
+            >>> # been deleted.
 
         Yields:
             str: The local path to the checkpoint directory.

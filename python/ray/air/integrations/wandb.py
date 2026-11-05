@@ -180,7 +180,7 @@ def _setup_wandb(
         id=trial_id,
         name=trial_name,
         resume=True,
-        reinit=True,
+        reinit="finish_previous",
         allow_val_change=True,
         config=_config,
         project=project,
@@ -687,7 +687,7 @@ class WandbLoggerCallback(LoggerCallback):
             id=trial_id,
             name=trial_name,
             resume=False,
-            reinit=True,
+            reinit="finish_previous",
             allow_val_change=True,
             group=wandb_group,
             project=wandb_project,
@@ -792,9 +792,15 @@ class WandbLoggerCallback(LoggerCallback):
                 trial = self._logging_future_to_trial.pop(remaining_future)
                 self._cleanup_logging_actor(trial)
 
-    def on_experiment_end(self, trials: List["Trial"], **info):
+    def on_experiment_end(self, trials: List["Trial"], **info: Any):
         """Wait for the actors to finish their call to `wandb.finish`.
-        This includes uploading all logs + artifacts to wandb."""
+
+        This includes uploading all logs + artifacts to wandb.
+
+        Args:
+            trials: The experiment's trials. Unused.
+            **info: Kwargs dict for forward compatibility. Unused.
+        """
         self._cleanup_logging_actors(timeout=self._upload_timeout, kill_on_timeout=True)
 
     def __del__(self):

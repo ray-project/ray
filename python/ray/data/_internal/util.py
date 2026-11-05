@@ -74,6 +74,9 @@ KiB = 1024  # bytes
 MiB = 1024 * KiB
 GiB = 1024 * MiB
 
+# A size in bytes, so a signature shows the unit of an ``int``.
+NumBytes = int
+
 
 SENTINEL = object()
 
