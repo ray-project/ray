@@ -6,6 +6,7 @@ import sys
 
 import ray
 import ray._private.ray_constants as ray_constants
+from ray._common.network_utils import build_address
 from ray._common.utils import (
     get_or_create_event_loop,
 )
@@ -32,6 +33,45 @@ import aiohttp  # noqa: E402
 import runtime_env_consts  # noqa: E402
 from aiohttp import web  # noqa: E402
 from runtime_env_agent import RuntimeEnvAgent  # noqa: E402
+
+
+def container_cleanup_context(agent, args):
+    async def lifecycle(app):
+        manager = agent._worker_container_manager
+        if manager is None:
+            yield
+            return
+        runner = web.AppRunner(
+            web.Application(middlewares=[get_token_auth_middleware(aiohttp)])
+        )
+        agent.add_container_routes(runner.app)
+        container_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        container_sock.bind(("127.0.0.1", 0))
+        container_port = container_sock.getsockname()[1]
+        try:
+            await manager.start(
+                agent._container_session, int(os.environ["RAY_RAYLET_PID"])
+            )
+            await runner.setup()
+            await web.SockSite(runner, container_sock).start()
+            for plugin in (agent._container_plugin, agent._image_uri_plugin):
+                plugin.container_manager_address = build_address(
+                    "127.0.0.1", container_port
+                )
+            persist_port(
+                args.session_dir,
+                args.node_id,
+                ray_constants.WORKER_CONTAINER_AGENT_PORT_NAME,
+                container_port,
+            )
+            yield
+        finally:
+            await runner.cleanup()
+            container_sock.close()
+            await manager.close()
+
+    return lifecycle
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Runtime env agent.")
@@ -175,6 +215,7 @@ if __name__ == "__main__":
         temp_dir=args.temp_dir,
         address=args.node_ip_address,
         runtime_env_agent_port=args.runtime_env_agent_port,
+        node_id=args.node_id,
     )
 
     ray._raylet.setproctitle(ray_constants.AGENT_PROCESS_TYPE_RUNTIME_ENV_AGENT)
@@ -216,6 +257,8 @@ if __name__ == "__main__":
         )
 
     app = web.Application(middlewares=[get_token_auth_middleware(aiohttp)])
+
+    app.cleanup_ctx.append(container_cleanup_context(agent, args))
 
     app.router.add_post("/get_or_create_runtime_env", get_or_create_runtime_env)
     app.router.add_post(

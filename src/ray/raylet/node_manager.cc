@@ -325,6 +325,13 @@ NodeManager::NodeManager(
       WaitForDashboardAgentPorts(self_node_id, config);
   runtime_env_agent_port_ = WaitForRuntimeEnvAgentPort(self_node_id, config);
 
+  int container_port = 0;
+#ifdef __linux__
+  RAY_ASSIGN_OR_CHECK_SET(
+      container_port,
+      WaitForPersistedPort(
+          config.session_dir, self_node_id, kWorkerContainerAgentPortName));
+#endif
   auto runtime_env_agent_client = RuntimeEnvAgentClient::Create(
       io_service_,
       config.node_manager_address,
@@ -333,7 +340,10 @@ NodeManager::NodeManager(
         return execute_after(
             io_service_, std::move(task), std::chrono::milliseconds(delay_ms));
       },
-      clock_);
+      clock_,
+      RayConfig::instance().agent_register_timeout_ms(),
+      RayConfig::instance().agent_manager_retry_interval_ms(),
+      container_port);
 
   worker_pool_.SetRuntimeEnvAgentClient(std::move(runtime_env_agent_client));
   worker_pool_.Start();
@@ -1356,7 +1366,7 @@ void NodeManager::ProcessAnnounceWorkerPortMessageImpl(
   worker->Connect(port);
   if (is_worker) {
     worker_pool_.OnWorkerStarted(worker);
-    HandleWorkerAvailable(worker);
+    if (!worker->IsDead()) HandleWorkerAvailable(worker);
   } else {
     // Driver is ready. Add the job to GCS.
     JobID job_id = worker->GetAssignedJobId();

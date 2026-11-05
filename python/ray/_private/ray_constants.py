@@ -581,6 +581,7 @@ SETUP_WORKER_FILENAME = "setup_worker.py"
 
 # Directory name where runtime_env resources will be created & cached.
 DEFAULT_RUNTIME_ENV_DIR_NAME = "runtime_resources"
+WORKER_CONTAINER_AGENT_PORT_NAME = "worker_container_agent_port"
 
 # The timeout seconds for the creation of runtime env,
 # dafault timeout is 10 minutes

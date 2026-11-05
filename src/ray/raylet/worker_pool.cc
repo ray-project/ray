@@ -30,6 +30,7 @@
 #include "absl/random/random.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_split.h"
+#include "nlohmann/json.hpp"
 #include "ray/common/constants.h"
 #include "ray/common/lease/lease_spec.h"
 #include "ray/common/protobuf_utils.h"
@@ -61,6 +62,10 @@ std::optional<std::string> GetWorkerGrpcThreadsWarning(int64_t detected_cpus,
 }
 
 namespace {
+
+constexpr char kContainerLaunchError[] =
+    "Worker containers are disabled on this node after a cleanup control failure; "
+    "see raylet and runtime env agent logs";
 
 std::shared_ptr<ray::raylet::WorkerInterface> GetWorker(
     const std::unordered_set<std::shared_ptr<ray::raylet::WorkerInterface>> &worker_pool,
@@ -295,6 +300,54 @@ void WorkerPool::RemoveWorkerProcess(State &state, const WorkerID &worker_id) {
   state.worker_processes.erase(worker_id);
 }
 
+void WorkerPool::StopWorkerContainer(const Language &language,
+                                     const WorkerID &worker_id) {
+  auto &state = GetStateForLanguage(language);
+  auto it = state.worker_processes.find(worker_id);
+  if (it == state.worker_processes.end() || it->second.cleanup_requested) return;
+  auto &info = it->second;
+  info.cleanup_requested = true;
+  const bool was_starting = info.is_pending_registration;
+  const auto worker_type = info.worker_type;
+  info.is_pending_registration = false;
+  if (auto worker = GetWorker(state.registered_workers, worker_id)) {
+    worker->MarkDead();
+  }
+  runtime_env_agent_client_->StopWorkerContainer(
+      worker_id,
+      node_id_,
+      info.job_id,
+      info.container_deadline_ms,
+      [this, language, worker_id](bool accepted) {
+        io_service_->post(
+            [this, language, worker_id, accepted]() {
+              auto &state = GetStateForLanguage(language);
+              auto it = state.worker_processes.find(worker_id);
+              if (it == state.worker_processes.end()) return;
+              if (!accepted) {
+                container_cleanup_failed_ = true;
+                RAY_LOG(ERROR)
+                    << "Container cancellation could not be delivered; disabling "
+                       "new container workers on this node. Ordinary workers "
+                       "are unaffected. Worker ID: "
+                    << worker_id;
+              }
+              DeleteRuntimeEnvIfPossible(
+                  it->second.runtime_env_info.serialized_runtime_env());
+              RemoveWorkerProcess(state, worker_id);
+            },
+            "WorkerPool.ContainerCancellationAccepted");
+      });
+  // Cleanup is not worker startup. Release this language/type's quota now,
+  // irrespective of engine progress or control-plane transport failure.
+  if (was_starting && IsIOWorkerType(worker_type)) {
+    GetIOWorkerStateFromWorkerType(worker_type, state).num_starting_io_workers--;
+  }
+  TryStartIOWorkers(language);
+  if (worker_type == rpc::WorkerType::WORKER) TryPendingStartRequests(language);
+  starting_worker_timeout_callback_();
+}
+
 std::pair<std::vector<std::string>, ProcessEnvironment>
 WorkerPool::BuildProcessCommandArgs(const Language &language,
                                     rpc::JobConfig *job_config,
@@ -502,6 +555,17 @@ std::tuple<const ProcessInterface &, WorkerID> WorkerPool::StartWorkerProcess(
     const std::string &serialized_runtime_env_context,
     const rpc::RuntimeEnvInfo &runtime_env_info,
     std::optional<absl::Duration> worker_startup_keep_alive_duration) {
+  const auto context = nlohmann::json::parse(
+      serialized_runtime_env_context, nullptr, /*allow_exceptions=*/false);
+  const bool has_container = language == Language::PYTHON && context.is_object() &&
+                             context.contains("container") &&
+                             context["container"].is_object() &&
+                             !context["container"].empty();
+  if (has_container && container_cleanup_failed_) {
+    *status = PopWorkerStatus::RuntimeEnvCreationFailed;
+    return {kNullProcess, WorkerID::Nil()};
+  }
+
   rpc::JobConfig *job_config = nullptr;
   if (!job_id.IsNil()) {
     auto it = all_jobs_.find(job_id);
@@ -556,6 +620,37 @@ std::tuple<const ProcessInterface &, WorkerID> WorkerPool::StartWorkerProcess(
                               serialized_runtime_env_context,
                               state);
 
+  if (has_container) {
+    env["RAY_WORKER_CONTAINER_LAUNCH_ID"] = worker_id.Hex();
+    env["RAY_WORKER_CONTAINER_SESSION_ID"] = node_id_.Hex();
+    env["RAY_WORKER_CONTAINER_JOB_ID"] = job_id.Hex();
+    env["RAY_WORKER_CONTAINER_DEADLINE_MS"] =
+        std::to_string(clock_.NowUnixMillis() +
+                       1000 * RayConfig::instance().worker_register_timeout_seconds());
+    // Registration and creation are idempotent. The agent suspends an early
+    // create request until this raylet-owned grant arrives.
+    runtime_env_agent_client_->RegisterWorkerContainer(
+        worker_id,
+        node_id_,
+        job_id,
+        std::stoll(env["RAY_WORKER_CONTAINER_DEADLINE_MS"]),
+        [this, language, worker_id](bool registered) {
+          if (!registered) {
+            io_service_->post(
+                [this, language, worker_id]() {
+                  auto &state = GetStateForLanguage(language);
+                  auto it = state.worker_processes.find(worker_id);
+                  if (it != state.worker_processes.end() &&
+                      it->second.is_pending_registration) {
+                    if (it->second.proc->IsAlive()) it->second.proc->Kill();
+                    StopWorkerContainer(language, worker_id);
+                  }
+                },
+                "WorkerPool.ContainerRegistrationFailed");
+          }
+        });
+  }
+
   SteadyTimePoint start = clock_.SteadyNow();
   // Start a process and measure the startup time.
   std::unique_ptr<ProcessInterface> proc =
@@ -576,6 +671,11 @@ std::tuple<const ProcessInterface &, WorkerID> WorkerPool::StartWorkerProcess(
                        runtime_env_info,
                        dynamic_options,
                        worker_startup_keep_alive_duration);
+  state.worker_processes.at(worker_id).has_container = has_container;
+  state.worker_processes.at(worker_id).job_id = job_id;
+  if (has_container)
+    state.worker_processes.at(worker_id).container_deadline_ms =
+        std::stoll(env["RAY_WORKER_CONTAINER_DEADLINE_MS"]);
   if (IsIOWorkerType(worker_type)) {
     auto &io_worker_state = GetIOWorkerStateFromWorkerType(worker_type, state);
     io_worker_state.num_starting_io_workers++;
@@ -656,7 +756,8 @@ void WorkerPool::MonitorStartingWorkerProcess(const WorkerID &worker_id,
     // Since this process times out to start, remove it from worker_processes
     // to avoid the zombie worker.
     auto it = state.worker_processes.find(worker_id);
-    if (it != state.worker_processes.end() && it->second.is_pending_registration) {
+    if (it != state.worker_processes.end() && it->second.is_pending_registration &&
+        !it->second.cleanup_requested) {
       RAY_LOG(ERROR)
           << "Some workers of the worker process(" << it->second.proc->GetId()
           << ") have not registered within the timeout. "
@@ -669,6 +770,10 @@ void WorkerPool::MonitorStartingWorkerProcess(const WorkerID &worker_id,
       }
 
       process_failed_pending_registration_++;
+      if (it->second.has_container) {
+        StopWorkerContainer(language, worker_id);
+        return;
+      }
       DeleteRuntimeEnvIfPossible(it->second.runtime_env_info.serialized_runtime_env());
       RemoveWorkerProcess(state, worker_id);
       if (IsIOWorkerType(worker_type)) {
@@ -867,7 +972,7 @@ Status WorkerPool::RegisterWorker(const std::shared_ptr<WorkerInterface> &worker
   auto &state = GetStateForLanguage(worker->GetLanguage());
   const WorkerID &worker_id = worker->WorkerId();
   auto it = state.worker_processes.find(worker_id);
-  if (it == state.worker_processes.end()) {
+  if (it == state.worker_processes.end() || it->second.cleanup_requested) {
     RAY_LOG(WARNING).WithField(worker_id)
         << "Received a register request from an unknown worker";
     Status status = Status::Invalid("Unknown worker");
@@ -928,6 +1033,10 @@ void WorkerPool::OnWorkerStarted(const std::shared_ptr<WorkerInterface> &worker)
   const auto &worker_type = worker->GetWorkerType();
 
   auto it = state.worker_processes.find(worker_id);
+  if (it != state.worker_processes.end() && it->second.cleanup_requested) {
+    worker->MarkDead();
+    return;
+  }
   if (it != state.worker_processes.end()) {
     it->second.is_pending_registration = false;
     // We may have slots to start more workers now.
@@ -1432,6 +1541,10 @@ void WorkerPool::StartNewWorker(
       // but reuse it the next time we retry the request.
       DeleteRuntimeEnvIfPossible(serialized_runtime_env);
       state.pending_start_requests.emplace_back(std::move(request));
+    } else if (status == PopWorkerStatus::RuntimeEnvCreationFailed) {
+      DeleteRuntimeEnvIfPossible(serialized_runtime_env);
+      process_failed_runtime_env_setup_failed_++;
+      request->callback_(nullptr, status, kContainerLaunchError);
     } else {
       DeleteRuntimeEnvIfPossible(serialized_runtime_env);
       PopWorkerCallbackAsync(std::move(request->callback_), nullptr, status);
@@ -1643,7 +1756,12 @@ void WorkerPool::DisconnectWorker(const std::shared_ptr<WorkerInterface> &worker
   MarkPortAsFree(worker->AssignedPort());
   auto &state = GetStateForLanguage(worker->GetLanguage());
   auto it = state.worker_processes.find(worker->WorkerId());
-  if (it != state.worker_processes.end()) {
+  const bool container_cleanup_pending = it != state.worker_processes.end() &&
+                                         it->second.has_container &&
+                                         it->second.is_pending_registration;
+  if (container_cleanup_pending) {
+    StopWorkerContainer(worker->GetLanguage(), worker->WorkerId());
+  } else if (it != state.worker_processes.end() && !it->second.cleanup_requested) {
     const auto serialized_runtime_env =
         it->second.runtime_env_info.serialized_runtime_env();
     if (it->second.is_pending_registration) {
@@ -1666,7 +1784,8 @@ void WorkerPool::DisconnectWorker(const std::shared_ptr<WorkerInterface> &worker
   if (IsIOWorkerType(worker->GetWorkerType())) {
     auto &io_worker_state =
         GetIOWorkerStateFromWorkerType(worker->GetWorkerType(), state);
-    if (!RemoveWorker(io_worker_state.started_io_workers, worker)) {
+    if (!RemoveWorker(io_worker_state.started_io_workers, worker) &&
+        !container_cleanup_pending) {
       // IO worker is either starting or started,
       // if it's not started, we should remove it from starting.
       io_worker_state.num_starting_io_workers--;

@@ -81,7 +81,8 @@ class RuntimeEnvContext:
 
     def exec_worker(self, passthrough_args: List[str], language: Language):
         launcher_env = os.environ.copy()
-        update_envs(self.env_vars)
+        if not (self.container and language == Language.PYTHON):
+            update_envs(self.env_vars)
 
         if language == Language.PYTHON and sys.platform == "win32":
             executable = [self.py_executable]
@@ -154,6 +155,8 @@ class RuntimeEnvContext:
     def _exec_container_worker(
         self, launcher_env: Dict[str, str], passthrough_args: List[str]
     ) -> NoReturn:
+        from ray._private.runtime_env.container_launch import run_worker_container
+
         # The job's env_vars go to the container only: podman runs with the
         # raylet's environment, so job values such as LD_PRELOAD can't affect
         # the host launcher. RAY_* vars are passed by name, so podman reads
@@ -167,7 +170,7 @@ class RuntimeEnvContext:
         container_env.update(self.env_vars)
         container_env.update(self.container["env_vars"])
 
-        cmd = list(self.container["command"])
+        cmd = list(self.container["options"])
         for name, value in container_env.items():
             cmd.extend(["--env", name if value is None else f"{name}={value}"])
         # After the --env flags, so a user's `--env NAME=VALUE` wins, as podman
@@ -179,11 +182,17 @@ class RuntimeEnvContext:
             cmd.append(expand_run_option(run_option, run_option_env))
         cmd.extend(
             [
+                # The node agent owns deletion and must not restart a cancelled
+                # launch independently of raylet's state machine.
+                "--restart=no",
                 "--entrypoint",
                 self.container["entrypoint"],
-                self.container["image"],
-                *passthrough_args,
             ]
         )
         logger.debug(f"Exec'ing worker in container image {self.container['image']}.")
-        os.execvpe(cmd[0], cmd, launcher_env)
+        run_worker_container(
+            self.container["manager_address"],
+            cmd,
+            [self.container["image"], *passthrough_args],
+            launcher_env,
+        )
