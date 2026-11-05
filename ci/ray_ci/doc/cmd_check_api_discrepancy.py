@@ -203,6 +203,7 @@ TEAM_API_CONFIGS = {
             "ray.train.health.decision.Noop",
             "ray.train.health.decision.Reattempt",
             "ray.train.health.evaluator.Evaluator",
+            "ray.train.health.report",
             "ray.train.health.probe.ControllerProbe",
             "ray.train.health.probe.NodeProbe",
             "ray.train.health.probe.Probe",
