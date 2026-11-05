@@ -28,7 +28,7 @@ from ray._common.test_utils import wait_for_condition
 from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME
 from ray.serve.schema import ApplicationStatus
 
-MODEL_ID = "Qwen/Qwen2-0.5B-Instruct"
+MODEL_ID = "Qwen/Qwen3.5-0.8B"
 BASE_URL = "http://localhost:8000"
 
 
@@ -83,6 +83,7 @@ def wait_for_server_ready(timeout: int = 240) -> None:
     )
 
 
+@pytest.mark.requires_4GPU
 def test_pause_resume_lifecycle():
     """Test the complete pause/resume lifecycle."""
     # Start Ray Serve with DevIngress

@@ -29,7 +29,7 @@ class ExperimentPlateauStopper(Stopper):
         ValueError: If the standard deviation parameter is not
             a strictly positive float.
         ValueError: If the patience parameter is not
-            a strictly positive integer.
+            a non-negative integer.
     """
 
     def __init__(
@@ -48,7 +48,7 @@ class ExperimentPlateauStopper(Stopper):
                 " a positive integer greater than one."
             )
         if not isinstance(patience, int) or patience < 0:
-            raise ValueError("Patience must be a strictly positive integer.")
+            raise ValueError("Patience must be a non-negative integer.")
         if not isinstance(std, float) or std <= 0:
             raise ValueError(
                 "The standard deviation must be a strictly positive float number."
@@ -82,6 +82,12 @@ class ExperimentPlateauStopper(Stopper):
         return self.stop_all()
 
     def has_plateaued(self):
+        """Whether the best ``top`` metric values have plateaued.
+
+        Returns:
+            True if ``top`` values have been recorded and their standard
+            deviation is at most ``std``, False otherwise.
+        """
         return (
             len(self._top_values) == self._top and np.std(self._top_values) <= self._std
         )

@@ -35,8 +35,7 @@ def get_deploy_args(
     uses_multiplexing: bool = False,
     router_application: bool = False,
 ) -> Dict:
-    """
-    Takes a deployment's configuration, and returns the arguments needed
+    """Takes a deployment's configuration, and returns the arguments needed
     for the controller to deploy it.
     """
     if deployment_config is None:

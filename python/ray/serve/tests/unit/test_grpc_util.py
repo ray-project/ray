@@ -1,4 +1,5 @@
 import pickle
+import subprocess
 import sys
 from typing import Callable
 from unittest.mock import Mock
@@ -264,6 +265,30 @@ def test_enable_server_reflection():
     ]
     assert user_method.response_serializer is None
     assert user_method.unary_unary != dummy_servicer.Predict
+
+
+def test_serve_imports_without_grpc_reflection():
+    """Reflection is opt-in, so importing Serve doesn't need grpcio-reflection."""
+    script = (
+        "import sys\n"
+        # A None entry makes every import of the package fail.
+        "sys.modules['grpc_reflection'] = None\n"
+        "import ray.serve\n"
+        "import ray.serve._private.grpc_util\n"
+    )
+    proc = subprocess.run(
+        [sys.executable, "-c", script], capture_output=True, text=True
+    )
+    assert proc.returncode == 0, proc.stderr
+
+
+def test_enable_server_reflection_without_grpc_reflection(monkeypatch):
+    """Turning reflection on without grpcio-reflection says how to install it."""
+    monkeypatch.setitem(sys.modules, "grpc_reflection.v1alpha", None)
+    grpc_server = gRPCGenericServer(fake_service_handler_factory)
+
+    with pytest.raises(ModuleNotFoundError, match="grpcio-reflection"):
+        enable_server_reflection(grpc_server)
 
 
 def test_ray_serve_grpc_context_serializable():
