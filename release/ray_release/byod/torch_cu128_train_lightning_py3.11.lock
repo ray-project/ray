@@ -563,6 +563,7 @@ brotli==1.2.1 \
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.11.txt
     #   -c python/deplocks/ray-torch/ray-torch-cu128_base_py3.11.lock
+    #   -r docker/base-deps/requirements.in
     #   geventhttpclient
 cachetools==5.5.2 \
     --hash=sha256:1a661caa9175d26759571b2e19580f9d6393969e5dfca11fdb1f947a23e640d4 \

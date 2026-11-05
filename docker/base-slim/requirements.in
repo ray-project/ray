@@ -8,3 +8,7 @@
     ipywidgets
     supervisor
     smart_open[s3,gcs,azure,http]
+    # Brotli: miniforge's base env carries conda-forge's brotli-python (a urllib3
+    # dependency) and conda-forge has no python 3.10 build of the CVE-2026-111497
+    # fix (1.2.1); listing it here makes the lock install replace the conda copy.
+    brotli>=1.2.1
