@@ -71,21 +71,17 @@ class TrainContext(ABC):
     def get_world_size(self) -> int:
         """Get the current world size (i.e. total number of workers) for this run.
 
-        .. testcode::
-
-            import ray.train
-            from ray.train.torch import TorchTrainer
-
-            NUM_WORKERS = 2
-
-            def train_fn_per_worker(config):
-                assert ray.train.get_context().get_world_size() == NUM_WORKERS
-
-            trainer = TorchTrainer(
-                train_fn_per_worker,
-                scaling_config=ray.train.ScalingConfig(num_workers=NUM_WORKERS),
-            )
-            trainer.fit()
+        Examples:
+            >>> import ray.train
+            >>> from ray.train.torch import TorchTrainer
+            >>> NUM_WORKERS = 2
+            >>> def train_fn_per_worker(config):
+            ...     assert ray.train.get_context().get_world_size() == NUM_WORKERS
+            >>> trainer = TorchTrainer(
+            ...     train_fn_per_worker,
+            ...     scaling_config=ray.train.ScalingConfig(num_workers=NUM_WORKERS),
+            ... )
+            >>> trainer.fit()
 
         Returns:
             The total number of workers in this run.
@@ -96,20 +92,17 @@ class TrainContext(ABC):
     def get_world_rank(self) -> int:
         """Get the world rank of this worker.
 
-        .. testcode::
-
-            import ray.train
-            from ray.train.torch import TorchTrainer
-
-            def train_fn_per_worker(config):
-                if ray.train.get_context().get_world_rank() == 0:
-                    print("Worker 0")
-
-            trainer = TorchTrainer(
-                train_fn_per_worker,
-                scaling_config=ray.train.ScalingConfig(num_workers=2),
-            )
-            trainer.fit()
+        Examples:
+            >>> import ray.train
+            >>> from ray.train.torch import TorchTrainer
+            >>> def train_fn_per_worker(config):
+            ...     if ray.train.get_context().get_world_rank() == 0:
+            ...         print("Worker 0")
+            >>> trainer = TorchTrainer(
+            ...     train_fn_per_worker,
+            ...     scaling_config=ray.train.ScalingConfig(num_workers=2),
+            ... )
+            >>> trainer.fit()
 
         Returns:
             This worker's rank among all workers in this run.
@@ -120,20 +113,17 @@ class TrainContext(ABC):
     def get_local_rank(self) -> int:
         """Get the local rank of this worker (rank of the worker on its node).
 
-        .. testcode::
-
-            import ray.train
-            from ray.train.torch import TorchTrainer
-
-            def train_fn_per_worker(config):
-                if ray.train.get_context().get_local_rank() == 0:
-                    print("Local rank 0 worker")
-
-            trainer = TorchTrainer(
-                train_fn_per_worker,
-                scaling_config=ray.train.ScalingConfig(num_workers=2),
-            )
-            trainer.fit()
+        Examples:
+            >>> import ray.train
+            >>> from ray.train.torch import TorchTrainer
+            >>> def train_fn_per_worker(config):
+            ...     if ray.train.get_context().get_local_rank() == 0:
+            ...         print("Local rank 0 worker")
+            >>> trainer = TorchTrainer(
+            ...     train_fn_per_worker,
+            ...     scaling_config=ray.train.ScalingConfig(num_workers=2),
+            ... )
+            >>> trainer.fit()
 
         Returns:
             This worker's rank among the workers on its node.
@@ -144,21 +134,16 @@ class TrainContext(ABC):
     def get_local_world_size(self) -> int:
         """Get the local world size of this node (i.e. number of workers on this node).
 
-        Example:
-
-            .. testcode::
-
-                import ray.train
-                from ray.train.torch import TorchTrainer
-
-                def train_fn_per_worker():
-                    print(ray.train.get_context().get_local_world_size())
-
-                trainer = TorchTrainer(
-                    train_fn_per_worker,
-                    scaling_config=ray.train.ScalingConfig(num_workers=2),
-                )
-                trainer.fit()
+        Examples:
+            >>> import ray.train
+            >>> from ray.train.torch import TorchTrainer
+            >>> def train_fn_per_worker():
+            ...     print(ray.train.get_context().get_local_world_size())
+            >>> trainer = TorchTrainer(
+            ...     train_fn_per_worker,
+            ...     scaling_config=ray.train.ScalingConfig(num_workers=2),
+            ... )
+            >>> trainer.fit()
 
         Returns:
             The number of workers running on this node.
@@ -169,21 +154,16 @@ class TrainContext(ABC):
     def get_node_rank(self) -> int:
         """Get the rank of this node.
 
-        Example:
-
-            .. testcode::
-
-                import ray.train
-                from ray.train.torch import TorchTrainer
-
-                def train_fn_per_worker():
-                    print(ray.train.get_context().get_node_rank())
-
-                trainer = TorchTrainer(
-                    train_fn_per_worker,
-                    scaling_config=ray.train.ScalingConfig(num_workers=1),
-                )
-                trainer.fit()
+        Examples:
+            >>> import ray.train
+            >>> from ray.train.torch import TorchTrainer
+            >>> def train_fn_per_worker():
+            ...     print(ray.train.get_context().get_node_rank())
+            >>> trainer = TorchTrainer(
+            ...     train_fn_per_worker,
+            ...     scaling_config=ray.train.ScalingConfig(num_workers=1),
+            ... )
+            >>> trainer.fit()
 
         Returns:
             The rank of this node among the nodes participating in training.

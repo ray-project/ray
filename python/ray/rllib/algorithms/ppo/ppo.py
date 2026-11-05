@@ -74,31 +74,25 @@ class PPOConfig(AlgorithmConfig):
         >>> algo = config.build()
         >>> _ = algo.train()
 
-    .. testcode::
-
-        from ray.rllib.algorithms.ppo import PPOConfig
-        from ray import tune
-
-        config = (
-            PPOConfig()
-            # Set the config object's env.
-            .environment(env="CartPole-v1")
-            # Update the config object's training parameters.
-            .training(
-                lr=0.001, clip_param=0.2
-            )
-        )
-
-        tune.Tuner(
-            "PPO",
-            run_config=tune.RunConfig(stop={"training_iteration": 1}),
-            param_space=config,
-        ).fit()
-
-    .. testoutput::
-        :hide:
-
-        ...
+        >>> from ray.rllib.algorithms.ppo import PPOConfig
+        >>> from ray import tune
+        >>> config = (
+        ...     PPOConfig()
+        ...     # Set the config object's env.
+        ...     .environment(env="CartPole-v1")
+        ...     # Update the config object's training parameters.
+        ...     .training(
+        ...         lr=0.001, clip_param=0.2
+        ...     )
+        ... )
+        >>> print("[ignore]"); results = tune.Tuner(
+        ...     "PPO",
+        ...     run_config=tune.RunConfig(stop={"training_iteration": 1}),
+        ...     param_space=config,
+        ... ).fit()  # doctest: +ELLIPSIS
+        [ignore]...
+        >>> results.num_errors
+        0
     """
 
     def __init__(self, algo_class=None):
