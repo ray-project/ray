@@ -48,6 +48,10 @@ def _write(table, path, **kwargs):
     return path
 
 
+def _table(values, arrow_type=None):
+    return pa.table({"a": pa.array(values, arrow_type)})
+
+
 def _allocated(path, columns=None):
     """Bytes PyArrow allocates scanning ``path`` as a Ray read task does.
 
@@ -153,7 +157,7 @@ _MORE_FIXED_WIDTH_TYPES = [
     (pa.decimal128(10, 2), [Decimal("1.00"), Decimal("2.50")]),
     (pa.decimal256(50, 2), [Decimal("1.00"), Decimal("2.50")]),
     (pa.binary(7), [b"1234567", b"abcdefg"]),
-    (pa.float16(), np.array([1.0, 2.0], dtype=np.float16)),
+    (pa.float16(), [np.float16(1.0), np.float16(2.0)]),
 ]
 
 
@@ -169,7 +173,7 @@ def _arrow_dictionary(distinct, length):
     return pa.DictionaryArray.from_arrays(indices, values)
 
 
-_HIGH_CARDINALITY = pa.table({"a": pa.array([f"{i:012d}" for i in range(N)])})
+_HIGH_CARDINALITY = _table([f"{i:012d}" for i in range(N)])
 
 
 _CASES = [
@@ -177,67 +181,40 @@ _CASES = [
     # its offsets once.
     _case(
         "list-of-struct",
-        pa.table(
-            {
-                "a": pa.array(
-                    [[{"x": j, "y": "q"} for j in range(i % 3)] for i in range(N)],
-                    pa.list_(pa.struct([("x", pa.int64()), ("y", pa.string())])),
-                )
-            }
+        _table(
+            [[{"x": j, "y": "q"} for j in range(i % 3)] for i in range(N)],
+            pa.list_(pa.struct([("x", pa.int64()), ("y", pa.string())])),
         ),
     ),
     _case(
         "map",
-        pa.table(
-            {
-                "a": pa.array(
-                    [[(f"k{j}", j) for j in range(i % 3)] for i in range(N)],
-                    pa.map_(pa.string(), pa.int64()),
-                )
-            }
+        _table(
+            [[(f"k{j}", j) for j in range(i % 3)] for i in range(N)],
+            pa.map_(pa.string(), pa.int64()),
         ),
     ),
     # Written as a repeated group, but decoded without an offsets buffer.
-    _case(
-        "fixed-size-list",
-        pa.table(
-            {
-                "a": pa.FixedSizeListArray.from_arrays(
-                    pa.array(np.zeros(N * 4, dtype=np.float32)), 4
-                )
-            }
-        ),
-    ),
+    _case("fixed-size-list", _table([[0.0] * 4] * N, pa.list_(pa.float32(), 4))),
     # Ray's default tensor type: an extension over large_list<float>.
     _case("tensor", _tensor_table()),
-    _case("bool", pa.table({"a": pa.array([i % 2 == 0 for i in range(N)])})),
+    _case("bool", _table([i % 2 == 0 for i in range(N)])),
     # 64-bit offsets, recovered from the stored Arrow schema.
-    _case(
-        "large-string",
-        pa.table({"a": pa.array([f"v{i}" for i in range(N)], pa.large_string())}),
-    ),
+    _case("large-string", _table([f"v{i}" for i in range(N)], pa.large_string())),
     # Converted, not zero-copied, so it drops the all-valid bitmap.
     _case(
         "int96-timestamp",
-        pa.table({"a": pa.array([1, 2] * (N // 2), pa.timestamp("ns"))}),
+        _table([1, 2] * (N // 2), pa.timestamp("ns")),
         write={"use_deprecated_int96_timestamps": True},
     ),
     *(
-        _case(
-            f"type-{arrow_type}",
-            pa.table(
-                {"a": pa.concat_arrays([pa.array(values, type=arrow_type)] * (N // 2))}
-            ),
-        )
+        _case(f"type-{arrow_type}", _table(values * (N // 2), arrow_type))
         for arrow_type, values in _MORE_FIXED_WIDTH_TYPES
     ),
     # Bounds and guesses. An upper bound some column meets exactly is shaved to
     # 0.95 of itself, so 0.95 is a bound's floor.
     _case(
         "strings-with-nulls-without-size-statistics",
-        pa.table(
-            {"a": pa.array([None if i % 3 == 0 else f"v{i % 4}" for i in range(N)])}
-        ),
+        _table([None if i % 3 == 0 else f"v{i % 4}" for i in range(N)]),
         low=0.95,
         high=1.5,
         stats=False,
@@ -251,11 +228,7 @@ _CASES = [
         stats=False,
     ),
     # Views count every value out of line: exact past 12 bytes, 1.75x at 12.
-    _case(
-        "string-view",
-        pa.table({"a": pa.array([""] * N, pa.string_view())}),
-        low=0.95,
-    ),
+    _case("string-view", _table([""] * N, pa.string_view()), low=0.95),
     # PLAIN pages: every value's bytes, less a 4-byte length each.
     _case(
         "plain-strings",
@@ -304,15 +277,9 @@ def _with(stats_for_leaf_0):
 @requires_pyarrow_23
 def test_partial_size_statistics(tmp_path):
     """Histograms alone size a leaf; ones that disagree with the footer are dropped."""
-    ints = pa.table({"a": pa.array(np.arange(N, dtype="int64"))})
-    ints = _write(ints, tmp_path / "ints.parquet")
-    lists = pa.table(
-        {
-            "a": pa.array(
-                [[[1, 2], [], None][: i % 4] for i in range(N)],
-                pa.list_(pa.list_(pa.int64())),
-            )
-        }
+    ints = _write(_table(np.arange(N, dtype="int64")), tmp_path / "ints.parquet")
+    lists = _table(
+        [[[1, 2], [], None][: i % 4] for i in range(N)], pa.list_(pa.list_(pa.int64()))
     )
     lists = _write(lists, tmp_path / "lists.parquet")
 
