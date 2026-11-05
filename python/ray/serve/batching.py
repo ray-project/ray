@@ -513,22 +513,22 @@ class _BatchQueue:
             await self.semaphore.acquire()
             try:
                 batch, _ = await self.wait_for_batch()
+
+                # Split batch by multiplexed_model_id to ensure requests for different
+                # models are processed in separate batches. This is necessary when using
+                # model multiplexing with batching, as a single batch containing requests
+                # for different models would not work correctly.
+                sub_batches = self._split_batch_by_model_id(batch)
+
+                # Process all sub-batches together under the permit taken above.
+                # This ensures sub-batches from the same original batch run concurrently
+                # rather than being serialized by the semaphore. The permit is released
+                # in _handle_completed_task.
+                promise = self._process_sub_batches(func, sub_batches)
+                task = asyncio.create_task(promise)
             except BaseException:
                 self.semaphore.release()
                 raise
-
-            # Split batch by multiplexed_model_id to ensure requests for different
-            # models are processed in separate batches. This is necessary when using
-            # model multiplexing with batching, as a single batch containing requests
-            # for different models would not work correctly.
-            sub_batches = self._split_batch_by_model_id(batch)
-
-            # Process all sub-batches together under the permit taken above.
-            # This ensures sub-batches from the same original batch run concurrently
-            # rather than being serialized by the semaphore. The permit is released
-            # in _handle_completed_task.
-            promise = self._process_sub_batches(func, sub_batches)
-            task = asyncio.create_task(promise)
             self.tasks.add(task)
             self.curr_iteration_start_times[task] = time.time()
             task.add_done_callback(self._handle_completed_task)
