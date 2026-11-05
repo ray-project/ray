@@ -13,6 +13,7 @@ import ray
 from ray._common.retry import retry
 from ray._common.utils import env_float
 from ray.actor import ActorHandle
+from ray.train.health.probe import ProbeResult
 from ray.train.v2._internal.constants import (
     AWS_RETRYABLE_TOKENS,
     CHECKPOINT_UPLOAD_WARN_INTERVAL_S_ENV_VAR,
@@ -138,10 +139,16 @@ class TrainContext:
     report_call_index: int = 0
     # Identifies which collective a call to the `SynchronizationActor` belongs to.
     collective_seq: int = 0
+    # The thread launcher that runs the latest on-demand probes.
+    on_demand_probe_runner: Optional["ThreadRunner"] = None
     report_order_condition: threading.Condition = threading.Condition()
     checkpoint_upload_threadpool: ThreadPoolExecutor = ThreadPoolExecutor(
         max_workers=MAX_CHECKPOINT_UPLOAD_THREADS
     )
+    # The worker health sent on each status poll: the latest reading of each
+    # sampled WorkerProbe.
+    health_lock: threading.Lock = field(default_factory=threading.Lock)
+    probe_results: Dict[str, ProbeResult] = field(default_factory=dict)
 
     def __post_init__(self):
         # Ray train initializes worker with current report index

@@ -2,6 +2,7 @@ import collections
 import copy
 import logging
 import os
+import time
 import traceback
 from typing import Any, Collection, Dict, List, Optional, Union
 
@@ -11,6 +12,7 @@ from ray._private.state import state as ray_state
 from ray.actor import ActorHandle
 from ray.exceptions import RayActorError
 from ray.runtime_env import RuntimeEnv
+from ray.train.health.probe import ProbeResult, WorkerProbe
 from ray.train.v2._internal.constants import (
     COLLECTIVE_TIMEOUT_S_ENV_VAR,
     COLLECTIVE_WARN_INTERVAL_S_ENV_VAR,
@@ -63,6 +65,8 @@ from ray.train.v2._internal.execution.worker_group.worker import (
     RayTrainWorker,
     Worker,
     WorkerStatus,
+    get_on_demand_probe_results,
+    start_on_demand_probes,
 )
 from ray.train.v2._internal.logging.logging import get_train_application_worker_log_path
 from ray.train.v2._internal.util import (
@@ -168,6 +172,13 @@ class WorkerGroup(ExecutionGroup):
         # Tracks ongoing poll tasks by world rank.
         self._world_rank_to_ongoing_poll: Dict[int, PollTask] = {}
         self._latest_poll_status: Optional[WorkerGroupPollStatus] = None
+        # The on-demand probes that poll_probes_async() polls: their names, the
+        # time their results are due, whether the workers were asked once more
+        # after it, and {world rank: ObjectRef of the rank's latest call}.
+        self._on_demand_probe_names: List[str] = []
+        self._on_demand_deadline = 0.0
+        self._on_demand_asked_once_more = False
+        self._world_rank_to_on_demand_poll: Dict[int, ObjectRef] = {}
 
         # Environment variables
         self._worker_group_start_timeout_s = float(
@@ -690,6 +701,7 @@ class WorkerGroup(ExecutionGroup):
         self._replica_groups = None
         self._worker_rank_to_replica_group_rank = None
         self._world_rank_to_ongoing_poll.clear()
+        self._world_rank_to_on_demand_poll.clear()
 
     def abort(self):
         """Abort the worker group."""
@@ -886,6 +898,110 @@ class WorkerGroup(ExecutionGroup):
             else:
                 poll_tasks.append(worker.actor.poll_status.remote())
         return poll_tasks
+
+    def poll_probes_async(
+        self,
+        probes: List[WorkerProbe],
+        timeout_s: float,
+        ranks: Optional[List[int]] = None,
+    ) -> None:
+        """Start polling some probes once on some workers. Get their results with
+        ``poll_probe_results()``.
+
+        Args:
+            probes: The probes to poll.
+            timeout_s: Timeout in seconds for the workers to answer.
+            ranks: The world ranks of the workers to poll them on. ``None`` means
+                every worker.
+
+        Raises:
+            RuntimeError: If the previous on-demand probes are still running.
+            ValueError: If a rank has no worker.
+        """
+        if self._world_rank_to_on_demand_poll:
+            raise RuntimeError("The previous on-demand probes are still running.")
+        world_rank_to_worker = dict(enumerate(self.get_workers()))
+        ranks = list(world_rank_to_worker) if ranks is None else ranks
+        missing = [rank for rank in ranks if rank not in world_rank_to_worker]
+        if missing:
+            raise ValueError(f"No workers with ranks {missing}.")
+        self._on_demand_probe_names = [probe.probe_name() for probe in probes]
+        self._on_demand_deadline = time_monotonic() + timeout_s
+        self._on_demand_asked_once_more = False
+        self._world_rank_to_on_demand_poll = {
+            rank: world_rank_to_worker[rank].execute_async(
+                start_on_demand_probes, probes
+            )
+            for rank in ranks
+        }
+
+    def poll_probe_results(self) -> Optional[Dict[str, Dict[int, ProbeResult]]]:
+        """Get the results of the probes that ``poll_probes_async()`` polls, once
+        every worker answered or timed out. A worker that timed out, or whose
+        actor failed, gets a result with the error for each probe.
+
+        Each call asks again the workers whose probes were still running. After
+        the timeout, they are asked once more before they time out.
+
+        Returns:
+            ``{probe name: {world rank: ProbeResult}}``, or ``None`` while a
+            worker has yet to answer or time out.
+        """
+        workers = self.get_workers()
+        poll_to_world_rank = {
+            poll: rank for rank, poll in self._world_rank_to_on_demand_poll.items()
+        }
+        done_polls, hanging_polls = ray.wait(
+            list(poll_to_world_rank), num_returns=len(poll_to_world_rank), timeout=0
+        )
+
+        rank_to_results: Dict[int, Dict[str, ProbeResult]] = {}
+        running_ranks: List[int] = []
+        for done_poll in done_polls:
+            done_rank = poll_to_world_rank[done_poll]
+            try:
+                rank_results = ray.get(done_poll)
+            except Exception as e:
+                rank_results = self._error_results(e)
+            if rank_results is None:
+                running_ranks.append(done_rank)
+            else:
+                rank_to_results[done_rank] = rank_results
+
+        if (running_ranks or hanging_polls) and not self._on_demand_asked_once_more:
+            self._on_demand_asked_once_more = (
+                time_monotonic() >= self._on_demand_deadline
+            )
+            for rank in running_ranks:
+                self._world_rank_to_on_demand_poll[rank] = workers[rank].execute_async(
+                    get_on_demand_probe_results
+                )
+            return None
+
+        # {world rank: {probe name: result}} -> {probe name: {world rank: result}}
+        results: Dict[str, Dict[int, ProbeResult]] = {}
+        for rank in self._world_rank_to_on_demand_poll:
+            rank_results = rank_to_results.get(rank) or self._error_results(
+                TimeoutError(f"The worker with rank {rank} did not finish in time.")
+            )
+            for name, result in rank_results.items():
+                results.setdefault(name, {})[rank] = result
+        self._world_rank_to_on_demand_poll = {}
+        return results
+
+    def _error_results(self, error: Exception) -> Dict[str, ProbeResult]:
+        """Return a result with the error for each on-demand probe.
+
+        Args:
+            error: The error.
+
+        Returns:
+            ``{probe name: ProbeResult}`` with the error.
+        """
+        return {
+            name: ProbeResult(timestamp_s=time.time(), error=error)
+            for name in self._on_demand_probe_names
+        }
 
     #####################################################################################
     # Replica Group Replacement
