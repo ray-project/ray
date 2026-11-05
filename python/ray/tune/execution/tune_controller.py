@@ -923,6 +923,14 @@ class TuneController:
                     continue
 
                 start_trial = self._resources_to_pending_trials[resource].pop()
+                # A cached actor must not start a trial beyond the limit.
+                if (
+                    start_trial not in self._trial_to_actor
+                    and self._at_max_concurrent_trials()
+                ):
+                    self._resources_to_pending_trials[resource].add(start_trial)
+                    continue
+
                 logger.debug(
                     f"Trying to re-use actor for enqueued trial: {start_trial}"
                 )

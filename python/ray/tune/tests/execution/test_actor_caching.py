@@ -4,6 +4,7 @@ import pytest
 
 import ray
 from ray.tune import PlacementGroupFactory
+from ray.tune.search import BasicVariantGenerator
 from ray.tune.tests.execution.utils import TestingTrial, create_execution_test_objects
 
 
@@ -125,6 +126,85 @@ def test_actor_reuse_unstaged(tmpdir, ray_start_2_cpus):
     # self._actor_cache.increase_max(start_trial.placement_group_factory)
     tune_controller._actor_stopped(tracked_actorA1)
     tune_controller.step()
+
+
+def _trial(trial_id, num_cpus=1):
+    return TestingTrial(
+        "trainable1",
+        stub=True,
+        trial_id=trial_id,
+        placement_group_factory=PlacementGroupFactory([{"CPU": num_cpus}]),
+    )
+
+
+def test_max_concurrent_trials_added_trials(ray_start_2_cpus):
+    """Trials that are added without the searcher respect `max_concurrent_trials`.
+
+    This is how `Tuner.restore` adds its trials.
+    """
+    tune_controller, actor_manger, _ = create_execution_test_objects(
+        search_alg=BasicVariantGenerator(max_concurrent=1), reuse_actors=False
+    )
+    trial1, trial2, trial3 = _trial("trial1"), _trial("trial2"), _trial("trial3")
+    for trial in (trial1, trial2, trial3):
+        tune_controller.add_trial(trial)
+
+    # Only the first trial gets an actor.
+    tune_controller._maybe_add_actors()
+    assert set(tune_controller._trial_to_actor) == {trial1}
+
+    # The next trial waits while the first one runs.
+    tune_controller._actor_started(actor_manger.added_actors[0][0])
+    tune_controller._maybe_add_actors()
+    assert set(tune_controller._trial_to_actor) == {trial1}
+
+    # Once the first trial is done, the next one starts.
+    tune_controller._on_training_result(trial1, {"done": True})
+    tune_controller._maybe_add_actors()
+    assert set(tune_controller._trial_to_actor) == {trial2}
+
+
+def test_actor_reuse_max_concurrent_trials(ray_start_2_cpus):
+    """A cached actor must not start a trial beyond `max_concurrent_trials`."""
+    tune_controller, actor_manger, _ = create_execution_test_objects(
+        search_alg=BasicVariantGenerator(max_concurrent=2)
+    )
+
+    # Trials A1 and A2 fill the limit. B1 and A3 wait, like the trials that
+    # `Tuner.restore` adds without asking the searcher.
+    trialA1, trialA2, trialB1, trialA3 = (
+        _trial("trialA1", 1),
+        _trial("trialA2", 1),
+        _trial("trialB1", 5),
+        _trial("trialA3", 1),
+    )
+    for trial in (trialA1, trialA2, trialB1, trialA3):
+        tune_controller.add_trial(trial)
+
+    # Call `_maybe_add_actors` directly: `step` would exhaust the searcher, and
+    # then the actor of A1 would not be cached.
+    tune_controller._maybe_add_actors()
+    assert set(tune_controller._trial_to_actor) == {trialA1, trialA2}
+
+    tracked_actorA1, tracked_actorA2 = [a for a, _, _ in actor_manger.added_actors]
+    tune_controller._actor_started(tracked_actorA1)
+    tune_controller._actor_started(tracked_actorA2)
+
+    # A1 is done. Its actor is cached, which frees a slot.
+    tune_controller._on_training_result(trialA1, {"done": True})
+    assert tune_controller._actor_cache.num_cached_objects == 1
+
+    # B1 takes the slot with a new actor. A3 could reuse the cached actor of A1,
+    # but that would run three trials at once.
+    tune_controller._maybe_add_actors()
+    assert set(tune_controller._trial_to_actor) == {trialA2, trialB1}
+
+    # Once A2 is done, A3 gets the cached actor.
+    tracked_actorB1 = actor_manger.added_actors[-1][0]
+    tune_controller._actor_started(tracked_actorB1)
+    tune_controller._on_training_result(trialA2, {"done": True})
+    tune_controller._maybe_add_actors()
+    assert tune_controller._trial_to_actor[trialA3] is tracked_actorA1
 
 
 if __name__ == "__main__":
