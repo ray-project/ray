@@ -44,6 +44,8 @@ message GetOrCreateRuntimeEnvReply {
   /// Json serialized [RuntimeEnvContext].
   /// For details, checkeout "//python/ray/_private/runtime_env/context.py".
   string serialized_runtime_env_context = 3;
+  // Nonzero only for Podman workers, after the loopback listener is ready.
+  uint32 worker_container_port = 4;
 }
 
 message DeleteRuntimeEnvIfPossibleRequest {
@@ -67,4 +69,59 @@ message GetRuntimeEnvsInfoReply {
   repeated RuntimeEnvState runtime_env_states = 1;
   // Length of the corresponding resource without truncation.
   int64 total = 2;
+}
+
+// A launch is allocated by raylet before starting the shim. Retrying any of the
+// container operations with the same launch must not create another container.
+message WorkerContainerLaunch {
+  string launch_id = 1;
+  string session_id = 2;
+  string job_id = 3;
+  // CLOCK_MONOTONIC deadline in milliseconds, issued by raylet. Expired grants/creates are rejected,
+  // allowing cancellation fences to be reclaimed without resurrecting a launch.
+  int64 deadline_ms = 4;
+}
+
+message RegisterWorkerContainerRequest {
+  // Idempotency key and authoritative owner. Duplicate registration must never
+  // reset cancellation, including when the original response was lost.
+  WorkerContainerLaunch launch = 1;
+}
+
+message RegisterWorkerContainerReply {
+  AgentRpcStatus status = 1;
+  string error_message = 2;
+}
+
+message CreateWorkerContainerRequest {
+  // Retries join the creator or return its CID until the launch deadline.
+  WorkerContainerLaunch launch = 1;
+  repeated string options = 2;
+  repeated string entrypoint = 3;
+  // Pristine launcher environment; never persisted or logged. This API is
+  // served only by the node-local loopback listener.
+  map<string, string> environment = 4;
+  string working_directory = 5;
+}
+
+message CreateWorkerContainerReply {
+  AgentRpcStatus status = 1;
+  string container_id = 2;
+  string error_message = 3;
+  repeated string start_options = 4;
+  bool discard_stdout = 5;
+  bool discard_stderr = 6;
+}
+
+message StopWorkerContainerRequest {
+  // Idempotent even before registration/creation or after a lost response.
+  // Cancellation is accepted immediately; the agent owns bounded cleanup retries.
+  WorkerContainerLaunch launch = 1;
+}
+
+message StopWorkerContainerReply {
+  AgentRpcStatus status = 1;
+  // The agent owns cancellation/cleanup. This does not assert physical removal.
+  bool accepted = 2;
+  string error_message = 3;
 }

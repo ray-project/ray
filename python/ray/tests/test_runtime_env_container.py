@@ -18,6 +18,15 @@ pytestmark = pytest.mark.timeout(900)
 
 
 @pytest.mark.skipif(sys.platform != "linux", reason="Only works on Linux.")
+def test_worker_cleanup(podman_docker_cluster):
+    """A killed startup client must not leave a container or its children."""
+    run_in_container(
+        [["python", "tests/test_worker_cleanup.py", "--image", NESTED_IMAGE_NAME]],
+        podman_docker_cluster,
+    )
+
+
+@pytest.mark.skipif(sys.platform != "linux", reason="Only works on Linux.")
 @pytest.mark.parametrize("use_image_uri_api", [True, False])
 def test_put_get(podman_docker_cluster, use_image_uri_api):
     """Test ray.put and ray.get."""

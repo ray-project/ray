@@ -33,6 +33,15 @@ import runtime_env_consts  # noqa: E402
 from aiohttp import web  # noqa: E402
 from runtime_env_agent import RuntimeEnvAgent  # noqa: E402
 
+
+def container_cleanup_context(agent):
+    async def lifecycle(app):
+        yield
+        await agent.close_container_service()
+
+    return lifecycle
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Runtime env agent.")
     parser.add_argument(
@@ -175,6 +184,7 @@ if __name__ == "__main__":
         temp_dir=args.temp_dir,
         address=args.node_ip_address,
         runtime_env_agent_port=args.runtime_env_agent_port,
+        node_id=args.node_id,
     )
 
     ray._raylet.setproctitle(ray_constants.AGENT_PROCESS_TYPE_RUNTIME_ENV_AGENT)
@@ -216,6 +226,8 @@ if __name__ == "__main__":
         )
 
     app = web.Application(middlewares=[get_token_auth_middleware(aiohttp)])
+
+    app.cleanup_ctx.append(container_cleanup_context(agent))
 
     app.router.add_post("/get_or_create_runtime_env", get_or_create_runtime_env)
     app.router.add_post(

@@ -592,6 +592,13 @@ The `runtime_env` is a Python dictionary or a {class}`ray.runtime_env.RuntimeEnv
   - Configure rootful Podman. Ray requires this mode because it uses the host network, PID, and IPC namespaces for worker containers.
   - If Ray runs as a non-root user, configure a `podman` wrapper that invokes rootful Podman with narrowly scoped `sudo` permission and removes the rootless-only `--userns=keep-id` argument. The wrapper must preserve all other arguments exactly.
   - Allow outbound network access from the worker so Podman can pull the requested image.
+  - Give each worker container its own cgroup and ensure that Podman can terminate all processes in it. Worker containers share the host PID namespace, so killing the main process alone doesn't guarantee cleanup of child processes. Configurations without a container cgroup aren't supported.
+
+  Podman worker containers require Linux Ray nodes. Drivers can run on other supported platforms. The first container runtime environment starts a separate loopback listener for container control; ordinary workers don't need it.
+
+  A worker registration timeout releases its startup slot and cancels its container launch. The runtime environment agent handles cleanup in the background. While cleanup is pending, the node rejects new container launches; ordinary workers can still start. If cleanup exhausts its retries, a later container launch requests another cleanup attempt after a cooldown. Admission recovers when cleanup succeeds. This covers registration timeouts while the raylet is alive, not containers left behind when the node itself dies.
+
+  To change cleanup limits, set `RAY_WORKER_CONTAINER_OPERATION_TIMEOUT_S`, `RAY_WORKER_CONTAINER_CLEANUP_ATTEMPTS`, `RAY_WORKER_CONTAINER_MAX_PENDING`, or `RAY_WORKER_CONTAINER_MAX_CONCURRENT_OPERATIONS` on each node before starting Ray. The defaults are 30 seconds per operation, three cleanup attempts per round, 4096 pending launches, and 10 concurrent engine commands. Waiting for an engine command slot consumes the operation's timeout budget. Cancellation doesn't consume launch capacity. In-memory launch fences expire at the registration deadline, measured with the host's monotonic clock. Unfinished creation and cleanup keep their records until they settle. A wrapper that changes credentials must allow Podman to finish or be terminated; Ray retains cleanup ownership when it can't signal the creator.
 
 - `config` (dict | {class}`ray.runtime_env.RuntimeEnvConfig <ray.runtime_env.RuntimeEnvConfig>`): Configuration for the runtime environment, as either a dict or a `RuntimeEnvConfig`. It supports the following fields:
 

@@ -333,7 +333,9 @@ NodeManager::NodeManager(
         return execute_after(
             io_service_, std::move(task), std::chrono::milliseconds(delay_ms));
       },
-      clock_);
+      clock_,
+      RayConfig::instance().agent_register_timeout_ms(),
+      RayConfig::instance().agent_manager_retry_interval_ms());
 
   worker_pool_.SetRuntimeEnvAgentClient(std::move(runtime_env_agent_client));
   worker_pool_.Start();
@@ -1356,7 +1358,7 @@ void NodeManager::ProcessAnnounceWorkerPortMessageImpl(
   worker->Connect(port);
   if (is_worker) {
     worker_pool_.OnWorkerStarted(worker);
-    HandleWorkerAvailable(worker);
+    if (!worker->IsDead()) HandleWorkerAvailable(worker);
   } else {
     // Driver is ready. Add the job to GCS.
     JobID job_id = worker->GetAssignedJobId();

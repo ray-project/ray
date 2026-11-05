@@ -429,6 +429,7 @@ class WorkerPool : public WorkerPoolInterface {
   /// \param worker_startup_keep_alive_duration If set, the worker will be kept alive for
   ///   this duration even if it's idle. This is only applicable before a lease is
   ///   assigned to the worker.
+  /// \param has_worker_container Typed container metadata returned by the agent.
   /// \return The process that we started and the worker ID assigned to it. If the worker
   /// ID is nil, we didn't start a process.
   std::tuple<const ProcessInterface &, WorkerID> StartWorkerProcess(
@@ -440,7 +441,8 @@ class WorkerPool : public WorkerPoolInterface {
       int runtime_env_hash = 0,
       const std::string &serialized_runtime_env_context = "{}",
       const rpc::RuntimeEnvInfo &runtime_env_info = rpc::RuntimeEnvInfo(),
-      std::optional<absl::Duration> worker_startup_keep_alive_duration = std::nullopt);
+      std::optional<absl::Duration> worker_startup_keep_alive_duration = std::nullopt,
+      bool has_worker_container = false);
 
   /// The implementation of how to start a new worker process with command arguments.
   /// The lifetime of the process is tied to that of the returned object,
@@ -497,6 +499,12 @@ class WorkerPool : public WorkerPoolInterface {
     std::vector<std::string> dynamic_options;
     /// The duration to keep the newly created worker alive before it's assigned a lease.
     std::optional<absl::Duration> worker_startup_keep_alive_duration;
+    /// Cancelled launches retain their fence, but do not count toward startup quota.
+    bool has_container = false;
+    bool cleanup_requested = false;
+    std::shared_ptr<boost::asio::deadline_timer> cleanup_retry_timer;
+    int64_t container_deadline_ms = 0;
+    JobID job_id = JobID::Nil();
   };
 
   /// An internal data structure that maintains the pool state per language.
@@ -680,6 +688,13 @@ class WorkerPool : public WorkerPoolInterface {
       std::optional<absl::Duration> worker_startup_keep_alive_duration);
 
   void RemoveWorkerProcess(State &state, const WorkerID &worker_id);
+
+  /// @brief Fence a cancelled launch, release startup quota, and transfer cleanup.
+  /// @param language Worker pool containing the launch.
+  /// @param worker_id Stable launch identity, including before registration.
+  void StopWorkerContainer(const Language &language, const WorkerID &worker_id);
+  void SendStopWorkerContainer(const Language &language, const WorkerID &worker_id);
+  absl::flat_hash_set<WorkerID> pending_container_cancellations_;
 
   /// Increase worker OOM scores to avoid raylet crashes from heap memory
   /// pressure.
