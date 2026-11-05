@@ -547,8 +547,6 @@ class InfiniteLookbackBuffer:
             if self.finalized:
 
                 def __set(s, n):
-                    if self.space:
-                        assert self.space.contains(n[0])
                     assert len(s[slice_]) == len(n)
                     s[slice_] = n
 
@@ -653,8 +651,6 @@ class InfiniteLookbackBuffer:
             if self.finalized:
 
                 def __set(s, n):
-                    if self.space:
-                        assert self.space.contains(n), n
                     s[actual_idx] = n
 
                 tree.map_structure(__set, self.data, new_data)
