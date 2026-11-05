@@ -721,6 +721,7 @@ py_test(
         "custom_setup",
         "exclusive",
         "ha_integration",
+        "no_windows",
         "team:core",
     ],
     deps = [

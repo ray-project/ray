@@ -217,7 +217,38 @@ def test_actor_start_failure():
     # TODO: this and other tests should verify that we shut down the worker group.
 
 
-def test_callback_start_failure():
+def test_actor_death_during_train_fn_launch():
+    """A worker dying while the train fn is launched (e.g. its node is lost)
+    doesn't fail startup. The worker group has fully started, so the death is
+    reported by the next poll like any other worker failure."""
+
+    class DyingWorker(RayTrainWorker):
+        def run_train_fn(self, train_fn_ref):
+            os._exit(1)
+
+    wg = _default_inactive_worker_group()
+    wg._worker_cls = DyingWorker
+    wg._start()
+    assert wg.has_started()
+
+    deadline = time.monotonic() + 30
+    status = wg.poll_status()
+    while len(status.errors) < len(wg):
+        assert time.monotonic() < deadline, f"Dead workers not reported: {status}"
+        time.sleep(0.1)
+        status = wg.poll_status()
+
+    assert all(
+        isinstance(error, WorkerHealthCheckFailedError)
+        and isinstance(error.health_check_failure, RayActorError)
+        for error in status.errors.values()
+    )
+    wg.shutdown()
+
+
+def test_callback_start_failure(monkeypatch):
+    monkeypatch.setenv(WORKER_GROUP_START_TIMEOUT_S_ENV_VAR, "5")
+
     class FailingCallback(WorkerGroupCallback):
         def after_worker_group_start(self, worker_group):
             raise RuntimeError("Worker failed to start.")
@@ -227,6 +258,14 @@ def test_callback_start_failure():
     with pytest.raises(RuntimeError):
         wg._start()
 
+    # A failed start cleans up after itself; `WorkerGroup.create()` callers
+    # never receive the worker group, so they can't shut it down.
+    assert not wg.has_started()
+
+    # The failed group released its placement group and workers, so a full-size
+    # group fits on the 4-CPU cluster again.
+    wg = _default_inactive_worker_group()
+    wg._start()
     wg.shutdown()
 
 

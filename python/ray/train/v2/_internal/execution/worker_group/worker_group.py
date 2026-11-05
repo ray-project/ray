@@ -204,18 +204,32 @@ class WorkerGroup(ExecutionGroup):
     def _start(
         self,
     ):
-        """Internal method to start the worker group."""
+        """Internal method to start the worker group.
+
+        Raises:
+            ValueError: If workers are already started.
+        """
+        # Checked before the try so that a rejected call doesn't clean up the
+        # state of the already-running worker group.
+        self._assert_inactive()
 
         worker_group_state_builder = WorkerGroupStateBuilder()
-
         try:
             self._start_impl(
                 worker_group_state_builder,
             )
         except Exception as e:
-            if not self.has_started():
-                # Clean up partial worker group state.
+            # Clean up the partial worker group. The state may already be built if
+            # the failure happened after `build()`.
+            try:
                 worker_group_state_builder.shutdown()
+            except Exception:
+                # Don't let a cleanup failure mask the original startup error.
+                logger.warning(
+                    "Failed to clean up the partially started worker group.",
+                    exc_info=True,
+                )
+            self._clear_state()
             raise e
 
         assert self.has_started(), "Worker group failed to start."
@@ -258,11 +272,9 @@ class WorkerGroup(ExecutionGroup):
             worker_group_state_builder: Builder for constructing worker group state.
 
         Raises:
-            ValueError: If workers are already started.
             WorkerGroupStartupTimeoutError: If startup times out requesting resources.
             WorkerGroupStartupFailedError: If workers fail during initialization.
         """
-        self._assert_inactive()
         worker_group_context = self._worker_group_context
         start_time = time_monotonic()
 
@@ -385,12 +397,25 @@ class WorkerGroup(ExecutionGroup):
         # Launch the training function on each worker.
         # This task should start a worker thread and return immediately.
         launch_start = time_monotonic()
-        ray.get(
-            [
-                worker.actor.run_train_fn.remote(worker_group_context.train_fn_ref)
-                for worker in workers
-            ]
-        )
+        try:
+            ray.get(
+                [
+                    worker.actor.run_train_fn.remote(worker_group_context.train_fn_ref)
+                    for worker in workers
+                ]
+            )
+        except RayActorError:
+            # The worker group is fully started at this point, so a worker dying
+            # here (e.g. its node was lost) is a failure of the running group.
+            # The next poll reports it, and the failure policy decides whether to
+            # retry, charging it to the preemption budget if the node was
+            # preempted.
+            logger.warning(
+                "A worker died while launching the training function. "
+                "The failure will be reported on the next poll.",
+                exc_info=True,
+            )
+
         logger.debug(
             "[Worker Group Initialization] Train function launched on "
             f"workers in {time_monotonic() - launch_start:.2f}s."
