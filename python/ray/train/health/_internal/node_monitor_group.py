@@ -75,8 +75,8 @@ class NodeMonitorGroup:
         return sorted(self._worker_node_monitors)
 
     def start_worker_node_monitors(self, node_ids: List[NodeIdStr]) -> None:
-        """Start a ``NodeMonitor`` of the ``NodeProbe``\\ s on each of these
-        nodes that does not have one.
+        """Start a ``NodeMonitor`` of the NodeProbes on each of these nodes
+        that does not have one.
 
         Args:
             node_ids: The nodes to monitor.
@@ -88,13 +88,12 @@ class NodeMonitorGroup:
                 )
 
     def start_controller_node_monitor(self, node_id: NodeIdStr) -> None:
-        """Start the ``NodeMonitor`` of the ``ControllerProbe``\\ s on the
-        controller's node, in place of any earlier one.
+        """Start the ``NodeMonitor`` of the ControllerProbes on the controller's
+        node.
 
         Args:
             node_id: The controller's node.
         """
-        self._kill_monitor(self._controller_node_monitor)
         self._controller_node_monitor = self._start_monitor(
             node_id, self._controller_probes
         )
@@ -202,15 +201,15 @@ class NodeMonitorGroup:
         timeout_s: float,
         node_ids: Optional[List[NodeIdStr]] = None,
     ) -> None:
-        """Start polling some probes once: the ``NodeProbe``\\ s on some worker
-        nodes, and the ``ControllerProbe``\\ s on the controller's node. Get
-        their results with ``poll_probe_results()``.
+        """Start polling some probes once: the NodeProbes on some worker nodes,
+        and the ControllerProbes on the controller's node. Get their results
+        with ``poll_probe_results()``.
 
         Args:
             probes: The probes to poll.
             timeout_s: Timeout in seconds for the nodes to answer.
-            node_ids: The worker nodes to poll the ``NodeProbe``\\ s on. ``None``
-                means every worker node with a monitor.
+            node_ids: The worker nodes to poll the NodeProbes on. ``None`` means
+                every worker node with a monitor.
 
         Raises:
             ValueError: If a node has no monitor.
@@ -237,9 +236,13 @@ class NodeMonitorGroup:
 
         Returns:
             A ``NodeMonitorGroupPollStatus`` with the status of each polled
-            monitor, or ``None`` while a node has yet to answer and the timeout
-            has not passed.
+            monitor, empty before the first ``poll_probes_async()``, or ``None``
+            while a node has yet to answer and the timeout has not passed.
         """
+        # None only before the first poll_probes_async(), which polls the
+        # controller's node even with no ControllerProbes.
+        if self._on_demand_controller_poll is None:
+            return NodeMonitorGroupPollStatus(node_monitor_statuses={})
         polls = [*self._on_demand_polls.values(), self._on_demand_controller_poll]
         done_polls, hanging_polls = ray.wait(polls, num_returns=len(polls), timeout=0)
         if hanging_polls and time.monotonic() < self._on_demand_deadline:

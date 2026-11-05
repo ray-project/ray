@@ -26,6 +26,11 @@ class Broken(NodeProbe):
         raise RuntimeError("sensor gone")
 
 
+class NoReading(NodeProbe):
+    def poll(self):
+        return None
+
+
 class Slow(NodeProbe):
     def poll(self):
         time.sleep(5)
@@ -85,12 +90,15 @@ def test_each_probe_is_sampled_on_its_own_interval():
 
 
 def test_a_failing_probe_is_reported_and_the_others_keep_sampling():
-    monitor = NodeMonitor([ScheduledProbe(Broken(), poll_interval_s=10.0), _temp()])
+    broken = ScheduledProbe(Broken(), poll_interval_s=10.0)
+    no_reading = ScheduledProbe(NoReading(), poll_interval_s=10.0)
+    monitor = NodeMonitor([broken, no_reading, _temp()])
     results = _wait_for(
-        lambda: len(monitor.poll_status().probe_results) == 2
+        lambda: len(monitor.poll_status().probe_results) == 3
         and monitor.poll_status().probe_results
     )
     assert isinstance(results["Broken"].error, RuntimeError)
+    assert results["NoReading"].error is not None
     assert results["Broken"].timestamp_s is not None
     assert results["Temp"].metrics == {"temp_c": 60.0}
     assert results["Temp"].error is None

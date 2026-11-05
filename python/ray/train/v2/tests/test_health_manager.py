@@ -291,6 +291,10 @@ def test_on_demand_checks_run_apart_from_the_inflight_checks():
     )
 
 
+def test_on_demand_checks_decide_noop_before_any_start():
+    assert HealthManager([]).evaluate_on_demand_checks() == Noop()
+
+
 def test_a_failed_monitor_gives_each_of_its_probes_its_error():
     error = RuntimeError("monitor gone")
     status = NodeMonitorGroupPollStatus(
@@ -300,8 +304,7 @@ def test_a_failed_monitor_gives_each_of_its_probes_its_error():
     state = _to_health_state(status, [Temp(), Comms()])
     assert list(state.probe_results) == ["Temp"]
     assert state.probe_results["Temp"]["n1"].error is error
-    assert state.controller_probe_results == {}
-    assert state.controller_probe_errors == {"Comms": error}
+    assert state.probe_errors == {"Comms": error}
 
 
 def test_node_probes_are_sampled_on_the_nodes_of_each_attempt(ray_start_4_cpus):
@@ -338,14 +341,14 @@ def test_controller_probes_are_sampled_on_the_controller_node(ray_start_4_cpus):
         return evaluator.seen[-1]
 
     try:
-        results = _wait_for(lambda: latest().controller_probe_results)
+        results = _wait_for(lambda: latest().probe_results)
         assert list(results["Comms"]) == ["comm0"]
 
         # While the monitor is down, each ControllerProbe has its error.
         ray.kill(manager._node_monitor_group._controller_node_monitor)
-        errors = _wait_for(lambda: latest().controller_probe_errors)
+        errors = _wait_for(lambda: latest().probe_errors)
         assert isinstance(errors["Comms"], ray.exceptions.RayActorError)
-        assert evaluator.seen[-1].controller_probe_results == {}
+        assert evaluator.seen[-1].probe_results == {}
     finally:
         manager.shutdown()
 
@@ -366,8 +369,8 @@ def test_on_demand_checks_poll_their_probes_once_on_each_node(ray_start_4_cpus):
         )
         (state,) = evaluator.seen
         assert state.probe_results["Pid"][node_id].metrics["pid"] != os.getpid()
-        assert list(state.controller_probe_results["Comms"]) == ["comm0"]
-        assert isinstance(state.controller_probe_errors["Broken"], RuntimeError)
+        assert list(state.probe_results["Comms"]) == ["comm0"]
+        assert isinstance(state.probe_errors["Broken"], RuntimeError)
     finally:
         manager.shutdown()
 
