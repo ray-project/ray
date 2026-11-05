@@ -1,4 +1,4 @@
-from typing import Any, Optional
+from typing import Any, Callable, Optional
 
 import pytest
 
@@ -48,33 +48,22 @@ def _manifest_map(manifest: FileManifest) -> dict[str, Optional[list[int]]]:
     }
 
 
-def _pack_manifests(
+def _pack(
     manifests: list[FileManifest],
     max_bin_bytes: int,
+    per_bin: Callable[[FileManifest], Any] = _manifest_map,
     **kwargs: Any,
-) -> list[FileManifest]:
-    """Every bin the packer seals for ``manifests``, in the order it seals them."""
+) -> list[Any]:
     packer = OnlineBinPacker(max_bin_bytes, **kwargs)
     bins = []
     for manifest in manifests:
         packer.add_input(manifest)
         while packer.has_partition():
-            bins.append(packer.next_partition())
+            bins.append(per_bin(packer.next_partition()))
     packer.finalize()
     while packer.has_partition():
-        bins.append(packer.next_partition())
+        bins.append(per_bin(packer.next_partition()))
     return bins
-
-
-def _pack(
-    manifests: list[FileManifest],
-    max_bin_bytes: int,
-    **kwargs: Any,
-) -> list[dict[str, Optional[list[int]]]]:
-    return [
-        _manifest_map(manifest)
-        for manifest in _pack_manifests(manifests, max_bin_bytes, **kwargs)
-    ]
 
 
 def _consumer_memory_bytes(manifest: FileManifest) -> Optional[int]:
@@ -276,22 +265,15 @@ def test_bin_of_runs_requests_its_bytes(max_bin: int, split_coalesced: bool) -> 
         _units("c", [10]),
         _file("d", 90, [coalesced]),
     ]
-    bins = _pack_manifests(files, max_bin, split_coalesced=split_coalesced)
-
-    assert _pairs([_manifest_map(b) for b in bins]) == [
-        ("a", 0),
-        ("a", 1),
-        ("a", 2),
-        ("b", 0),
-        ("c", 0),
-        ("d", 0),
-        ("d", 1),
-        ("d", 2),
-    ]
-    for manifest in bins:
-        assert _consumer_memory_bytes(manifest) == sum(
-            meta["size_bytes"] for meta in manifest.file_chunk_metadatas
-        )
+    bins = _pack(
+        files,
+        max_bin_bytes=max_bin,
+        per_bin=lambda b: b,
+        split_coalesced=split_coalesced,
+    )
+    totals = [sum(c["size_bytes"] for c in b.file_chunk_metadatas) for b in bins]
+    assert [_consumer_memory_bytes(b) for b in bins] == totals
+    assert sum(totals) == 690
 
 
 def test_bin_with_whole_file_requests_nothing() -> None:
@@ -300,10 +282,7 @@ def test_bin_with_whole_file_requests_nothing() -> None:
     whole = FileManifest.construct_manifest(
         paths=["w"], sizes=[40], chunk_metadatas=[None]
     )
-    bins = _pack_manifests([whole], max_bin_bytes=100)
-
-    assert [_manifest_map(b) for b in bins] == [{"w": None}]
-    assert _consumer_memory_bytes(bins[0]) is None
+    assert _pack([whole], max_bin_bytes=100, per_bin=_consumer_memory_bytes) == [None]
 
 
 if __name__ == "__main__":

@@ -338,9 +338,8 @@ class BlockStats:
 
 _BLOCK_STATS_FIELD_NAMES = {f.name for f in fields(BlockStats)}
 
-# Arrow schema-metadata key a producer stamps on a table block with the bytes of
-# heap memory the task consuming the block needs. ``ArrowBlockAccessor`` reads
-# it into ``BlockMetadata.consumer_memory_bytes``.
+# The Arrow schema-metadata key a producer stamps a table block with: the memory
+# its consumer needs, read into ``BlockMetadata.consumer_memory_bytes``.
 CONSUMER_MEMORY_BYTES_METADATA_KEY = b"ray.data.consumer_memory_bytes"
 
 

@@ -386,12 +386,8 @@ class ArrowBlockAccessor(TableBlockAccessor):
         # metadata with the memory the task consuming this block needs.
         schema_metadata = self._table.schema.metadata
         if schema_metadata and CONSUMER_MEMORY_BYTES_METADATA_KEY in schema_metadata:
-            metadata = replace(
-                metadata,
-                consumer_memory_bytes=int(
-                    schema_metadata[CONSUMER_MEMORY_BYTES_METADATA_KEY]
-                ),
-            )
+            memory = int(schema_metadata[CONSUMER_MEMORY_BYTES_METADATA_KEY])
+            metadata = replace(metadata, consumer_memory_bytes=memory)
         return metadata
 
     def _zip(self, acc: BlockAccessor) -> "Block":

@@ -646,13 +646,8 @@ def _write_row_groups(path, *, num_files, rows_per_file, row_group_size):
 
 
 def test_read_task_requests_its_bin_estimate(tmp_path, restore_ctx, monkeypatch):
-    """Each read task asks Ray for the memory its bin was estimated to need.
-
-    The bin packer stamps every bin with the sum of its runs' estimates, and the
-    read operator passes that stamp to ``ray.remote`` as the task's ``memory``.
-    With a one-byte cap every row group is its own bin, so each task's request
-    is one row group's estimate.
-    """
+    """Each read task asks Ray for the memory its bin was estimated to need; with a
+    one-byte cap every row group is its own bin."""
     import copy
 
     from pyarrow.fs import LocalFileSystem
@@ -680,20 +675,14 @@ def test_read_task_requests_its_bin_estimate(tmp_path, restore_ctx, monkeypatch)
     assert isinstance(list_files_op, ListFiles)
     packer = copy.deepcopy(list_files_op.file_partitioner)
     assert packer is not None
-    bins = []
     for manifest in list_files_op.file_indexer.list_files(
         pa.array([str(tmp_path)]), filesystem=LocalFileSystem(), preserve_order=True
     ):
         packer.add_input(manifest)
-        while packer.has_partition():
-            bins.append(packer.next_partition())
     packer.finalize()
-    while packer.has_partition():
-        bins.append(packer.next_partition())
-    assert len(bins) == 8
-
     expected = {}
-    for manifest in bins:
+    while packer.has_partition():
+        manifest = packer.next_partition()
         accessor = BlockAccessor.for_block(manifest.as_block())
         stamp = accessor.get_metadata().consumer_memory_bytes
         assert stamp is not None
@@ -703,10 +692,8 @@ def test_read_task_requests_its_bin_estimate(tmp_path, restore_ctx, monkeypatch)
     assert len(expected) == 8
 
     for row in rows:
-        row_group = row["a"] // 100
-        assert (
-            int(row["memory"]) == expected[(os.path.basename(row["path"]), row_group)]
-        )
+        key = (os.path.basename(row["path"]), row["a"] // 100)
+        assert int(row["memory"]) == expected[key]
     # Every request is far below the safe default a read task asked for before.
     assert max(expected.values()) < get_safe_default_logical_memory({"num_cpus": 1})
 

@@ -199,14 +199,8 @@ class FileManifest:
         chunk_metadatas: List[Optional[ChunkMetadata]],
         consumer_memory_bytes: Optional[int] = None,
     ) -> "FileManifest":
-        """Build a manifest from parallel per-row lists.
-
-        ``consumer_memory_bytes`` is the estimated heap memory the task reading
-        this whole manifest needs. It is stored in the block's schema metadata,
-        which ``ArrowBlockAccessor.get_metadata`` reads back into
-        ``BlockMetadata.consumer_memory_bytes`` so the read task can request it
-        as its logical ``memory``.
-        """
+        """Build a manifest from parallel per-row lists. ``consumer_memory_bytes``,
+        the reading task's estimated memory, goes in the block's schema metadata."""
         assert len(paths) == len(sizes) == len(chunk_metadatas)
 
         block = pa.table(
@@ -217,11 +211,8 @@ class FileManifest:
             }
         )
         if consumer_memory_bytes is not None:
+            value = str(consumer_memory_bytes).encode()
             block = block.replace_schema_metadata(
-                {
-                    CONSUMER_MEMORY_BYTES_METADATA_KEY: str(
-                        consumer_memory_bytes
-                    ).encode()
-                }
+                {CONSUMER_MEMORY_BYTES_METADATA_KEY: value}
             )
         return cls(block)

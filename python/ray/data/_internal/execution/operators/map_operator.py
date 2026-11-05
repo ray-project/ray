@@ -482,12 +482,6 @@ class MapOperator(LineageReconstructionMixin, PhysicalOperator, ABC):
                     "`isolate_workers` is set but has no effect with "
                     "`ActorPoolStrategy` because actors are already isolated."
                 )
-            if memory_from_input_estimate:
-                logger.debug(
-                    "`memory_from_input_estimate` is set but has no effect with "
-                    "`ActorPoolStrategy` because an actor's memory is fixed when "
-                    "it is created."
-                )
 
             ActorPoolMapOperator = get_actor_pool_map_operator_cls()
             return ActorPoolMapOperator(

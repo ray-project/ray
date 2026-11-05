@@ -438,10 +438,8 @@ class OnlineBinPacker(FilePartitioner):
         for file in files:
             assert file.size is not None
             sizes.append(file.size)
-        # A run's bytes are the indexer's estimate of the memory reading it takes
-        # (Parquet records PyArrow's decode peak), so a bin of runs tells the
-        # read task how much memory to request. A whole-file item's bytes are its
-        # on-disk size, not an estimate, so a bin holding one makes no request.
+        # A run's bytes estimate the memory reading it takes, so a bin of runs is
+        # what its read task requests; a whole file's are its on-disk size.
         consumer_memory_bytes = (
             None if any(item.run is None for item in bin_.items) else bin_.total_bytes
         )
