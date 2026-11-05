@@ -2,6 +2,7 @@ import asyncio
 import importlib
 import os
 import socket
+import subprocess
 import sys
 import threading
 import urllib.error
@@ -326,6 +327,80 @@ def test_compile_cache_compat_on_torch_with_compile_on_one_rank(
             compile_cache_compat.apply()
         assert os.environ.get("VLLM_COMPILE_ON_ONE_RANK") == expected_env
         assert compiler_config.compile_on_one_rank is expected_torch_flag
+
+
+def _run_python(code: str, pythonpath: str = "") -> None:
+    env = dict(os.environ)
+    if pythonpath:
+        env["PYTHONPATH"] = os.pathsep.join(
+            filter(None, [pythonpath, env.get("PYTHONPATH")])
+        )
+    result = subprocess.run(
+        [sys.executable, "-c", code], env=env, capture_output=True, text=True
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+
+
+def test_worker_process_setup_hook_imports_neither_torch_nor_vllm():
+    # The hook runs before Ray sets OMP_NUM_THREADS for the actor; torch sizes its
+    # thread pool when it is first imported.
+    _run_python(
+        "import sys\n"
+        "from ray.llm._internal.serve import _worker_process_setup_hook\n"
+        "_worker_process_setup_hook()\n"
+        "assert 'torch' not in sys.modules, 'hook imported torch'\n"
+        "assert 'vllm' not in sys.modules, 'hook imported vllm'\n"
+    )
+
+
+def test_compile_cache_compat_install_applies_after_vllm_import(tmp_path):
+    # A stand-in vllm package: apply must run once, after it has executed.
+    (tmp_path / "vllm").mkdir()
+    (tmp_path / "vllm" / "__init__.py").write_text("EXECUTED = True\n")
+    _run_python(
+        "import sys\n"
+        "from ray.llm._internal.serve.engines.vllm.patches import compile_cache_compat\n"
+        "calls = []\n"
+        "compile_cache_compat.apply = lambda: calls.append(sys.modules['vllm'].EXECUTED)\n"
+        "compile_cache_compat.install()\n"
+        "assert calls == []\n"
+        "import vllm\n"
+        "import vllm\n"
+        "assert calls == [True], calls\n",
+        pythonpath=str(tmp_path),
+    )
+
+
+@pytest.mark.skipif(
+    os.cpu_count() <= 2, reason="needs more host cores than the actor gets"
+)
+def test_worker_process_setup_hook_keeps_ray_thread_limit():
+    """An actor started with Serve LLM's setup hook gets torch threads = num_cpus."""
+    import ray
+
+    @ray.remote(
+        num_cpus=2,
+        runtime_env={
+            "worker_process_setup_hook": (
+                "ray.llm._internal.serve._worker_process_setup_hook"
+            )
+        },
+    )
+    class Worker:
+        def num_threads(self):
+            try:
+                import vllm  # noqa: F401
+            except ImportError:
+                pass
+            import torch
+
+            return torch.get_num_threads()
+
+    ray.init(num_cpus=4)
+    try:
+        assert ray.get(Worker.remote().num_threads.remote()) == 2
+    finally:
+        ray.shutdown()
 
 
 if __name__ == "__main__":
