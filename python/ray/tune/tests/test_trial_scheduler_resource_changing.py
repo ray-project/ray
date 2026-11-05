@@ -1,6 +1,7 @@
 import shutil
 import tempfile
 import unittest
+from types import SimpleNamespace
 
 from ray.train.tests.util import mock_storage_context
 from ray.tune import PlacementGroupFactory
@@ -609,6 +610,28 @@ class TestTopJobResourceAllocationAddBundles(TestTopJobResourceAllocation):
         self._allocateAndAssertNewResources(
             trial1, scheduler, PlacementGroupFactory([{"CPU": 1}, {"GPU": 2}])
         )
+
+
+class TestFractionalIncrease(unittest.TestCase):
+    def testMultiplierIgnoresFloatError(self):
+        # 0.9 // 0.1 is 8.0 in float arithmetic, but 0.9 holds nine steps of 0.1.
+        dist = DistributeResources(add_bundles=False, increase_by={"GPU": 0.1})
+        self.assertEqual(dist._get_multiplier({"GPU": 0.1}, gpus=0.9), 9)
+        self.assertEqual(dist._get_multiplier({"CPU": 0.1}, cpus=0.3), 3)
+        self.assertEqual(
+            dist._get_multiplier({"CPU": 0.1, "GPU": 0.1}, cpus=0.9, gpus=0.7), 7
+        )
+
+    def testTrialGrowsToTheWholeGpu(self):
+        dist = DistributeResources(add_bundles=False, increase_by={"GPU": 0.1})
+        base = [{"CPU": 1, "GPU": 0.1}]
+        trial = SimpleNamespace(placement_group_factory=PlacementGroupFactory(base))
+        # One GPU in total, 0.1 of it used, so 0.9 is free.
+        added = dist._get_new_added_bundles(
+            trial, [trial], base, {"GPU": 0.1}, 8, 1.0, 1, 0.1
+        )
+        grown = dist._add_two_bundles(base, added, {"GPU": 0.1}, False)
+        self.assertAlmostEqual(grown[0]["GPU"], 1.0)
 
 
 if __name__ == "__main__":
