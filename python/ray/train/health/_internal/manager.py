@@ -290,7 +290,8 @@ class HealthManager:
 def _merge(latest: NodeMonitorStatus, status: NodeMonitorStatus) -> NodeMonitorStatus:
     """Merge a monitor's new status into its latest one, which keeps the
     results of the probes the new one has none for, such as while a poll
-    hangs."""
+    hangs. The error is the new status's: a monitor that fails reports its
+    error on every poll, and one that answers again has none."""
     return NodeMonitorStatus(
         probe_results={**latest.probe_results, **status.probe_results},
         monitor_error=status.monitor_error,
