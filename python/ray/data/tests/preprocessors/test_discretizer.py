@@ -324,6 +324,27 @@ def test_uniform_kbins_discretizer_defers_non_integer_bins_to_fit(bins):
         discretizer.fit(ds)
 
 
+def test_kbins_discretizer_transform_pandas_preserves_unselected_columns():
+    df = pd.DataFrame(
+        {
+            "A": [0.5, 1.5, 2.5],
+            "B": [10.0, 20.0, 30.0],
+            "passthrough_str": ["x", "y", "z"],
+            "passthrough_obj": [{"k": 1}, {"k": 2}, {"k": 3}],
+        }
+    )
+    discretizer = CustomKBinsDiscretizer(
+        columns=["A", "B"],
+        bins={"A": [0.0, 1.0, 2.0, 3.0], "B": [0.0, 15.0, 35.0]},
+        output_columns=["A_binned", "B_binned"],
+    )
+    out = discretizer._transform_pandas(df.copy())
+    assert list(out["A_binned"]) == [0, 1, 2]
+    assert list(out["B_binned"]) == [0, 1, 1]
+    assert list(out["passthrough_str"]) == ["x", "y", "z"]
+    assert list(out["passthrough_obj"]) == [{"k": 1}, {"k": 2}, {"k": 3}]
+
+
 if __name__ == "__main__":
     import sys
 

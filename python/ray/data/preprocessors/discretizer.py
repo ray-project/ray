@@ -27,10 +27,10 @@ class _AbstractKBinsDiscretizer(SerializablePreprocessorBase):
     """
 
     def _transform_pandas(self, df: pd.DataFrame):
-        def bin_values(s: pd.Series) -> pd.Series:
-            if s.name not in self.columns:
-                return s
-            labels = self.dtypes.get(s.name) if self.dtypes else False
+        bins = self.stats_ if self._is_fittable else self.bins
+        is_bins_dict = isinstance(bins, dict)
+        for col, out_col in zip(self.columns, self.output_columns):
+            labels = self.dtypes.get(col) if self.dtypes else False
             ordered = True
             if labels:
                 if isinstance(labels, pd.CategoricalDtype):
@@ -39,10 +39,9 @@ class _AbstractKBinsDiscretizer(SerializablePreprocessorBase):
                 else:
                     labels = False
 
-            bins = self.stats_ if self._is_fittable else self.bins
-            return pd.cut(
-                s,
-                bins[s.name] if isinstance(bins, dict) else bins,
+            df[out_col] = pd.cut(
+                df[col],
+                bins[col] if is_bins_dict else bins,
                 right=self.right,
                 labels=labels,
                 ordered=ordered,
@@ -50,9 +49,6 @@ class _AbstractKBinsDiscretizer(SerializablePreprocessorBase):
                 include_lowest=self.include_lowest,
                 duplicates=self.duplicates,
             )
-
-        binned_df = df.apply(bin_values, axis=0)
-        df[self.output_columns] = binned_df[self.columns]
         return df
 
     def _validate_bins_columns(self):
