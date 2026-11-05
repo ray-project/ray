@@ -28,6 +28,9 @@ python/ray/dashboard/dashboard.py: dashboard linux_wheels core_python
 python/ray/util/dask/dask.py: core_python dask
 python/ray/dag/dag.py: core_python cgraphs_direct_transport
 python/ray/experimental/rdt/rdt_manager.py: core_python cgraphs_direct_transport
+python/ray/experimental/sandbox/config.py: core_python sandbox_tests
+python/ray/experimental/sandbox/_internal/cdi_lib.py: core_python sandbox_tests
+python/ray/_private/accelerators/nvidia_gpu.py: ml tune train data serve core_python dashboard linux_wheels macos_wheels java sandbox_tests
 
 # === RLlib ===
 
@@ -238,6 +241,10 @@ doc/update_cache_env.py: doc
 doc/rtd_doctor.py: doc
 doc/test_no_new_rst.py: doc
 doc/test_prose_doctest_targets.py: doc
+doc/test_doc_assets.py: doc
+# The doc asset allowlists are read only by the lint step, which runs on every
+# PR, so they route to nothing here.
+doc/asset_allowlists/notebooks.txt:
 # Pre-routed ahead of the files landing with ray-project/ray#64458. The
 # llms.txt test is a hermetic Sphinx test that imports no Ray code, so it
 # belongs on the doc build side, not on a library example step.
