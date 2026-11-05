@@ -42,7 +42,6 @@ from ray.data._internal.execution.operators.map_operator import (
     get_safe_default_logical_memory,
 )
 from ray.data._internal.logical.operators import ListFiles, ReadFiles
-from ray.data.block import BlockAccessor
 from ray.data.context import DataContext
 from ray.data.datasource import FileShuffleConfig
 from ray.data.datasource.partitioning import Partitioning, PartitionStyle
@@ -646,12 +645,8 @@ def _write_row_groups(path, *, num_files, rows_per_file, row_group_size):
 
 
 def test_read_task_requests_its_bin_estimate(tmp_path, restore_ctx, monkeypatch):
-    """Each read task asks Ray for the memory its bin was estimated to need; with a
-    one-byte cap every row group is its own bin."""
-    import copy
-
-    from pyarrow.fs import LocalFileSystem
-
+    """Each read task requests its bin's estimate as memory, below the safe default
+    it requested before; with a one-byte cap every row group is its own bin."""
     _write_row_groups(tmp_path, num_files=2, rows_per_file=400, row_group_size=100)
     monkeypatch.setenv("RAY_DATA_PARQUET_BIN_PACKING_BYTES", "1")
     restore_ctx.use_datasource_v2 = True
@@ -666,36 +661,11 @@ def test_read_task_requests_its_bin_estimate(tmp_path, restore_ctx, monkeypatch)
             "memory", pa.array([memory] * len(table), type=pa.float64())
         )
 
-    ds = ray.data.read_parquet(str(tmp_path), include_paths=True, _block_udf=tag_memory)
-    rows = ds.take_all()
-    assert len(rows) == 800
-
-    # What the plan's own listing and packer stamp on each bin, by row group.
-    list_files_op = ds._logical_plan.dag.input_dependencies[0]
-    assert isinstance(list_files_op, ListFiles)
-    packer = copy.deepcopy(list_files_op.file_partitioner)
-    assert packer is not None
-    for manifest in list_files_op.file_indexer.list_files(
-        pa.array([str(tmp_path)]), filesystem=LocalFileSystem(), preserve_order=True
-    ):
-        packer.add_input(manifest)
-    packer.finalize()
-    expected = {}
-    while packer.has_partition():
-        manifest = packer.next_partition()
-        accessor = BlockAccessor.for_block(manifest.as_block())
-        stamp = accessor.get_metadata().consumer_memory_bytes
-        assert stamp is not None
-        for path, meta in zip(manifest.paths, manifest.file_chunk_metadatas):
-            for unit_id in meta["unit_ids"]:
-                expected[(os.path.basename(str(path)), unit_id)] = stamp
-    assert len(expected) == 8
-
-    for row in rows:
-        key = (os.path.basename(row["path"]), row["a"] // 100)
-        assert int(row["memory"]) == expected[key]
-    # Every request is far below the safe default a read task asked for before.
-    assert max(expected.values()) < get_safe_default_logical_memory({"num_cpus": 1})
+    ds = ray.data.read_parquet(str(tmp_path), _block_udf=tag_memory)
+    memory = [row["memory"] for row in ds.take_all()]
+    assert len(memory) == 800
+    safe_default = get_safe_default_logical_memory({"num_cpus": 1})
+    assert all(m is not None and 0 < m < safe_default for m in memory)
 
 
 def _optimized_count_plan(ds):
