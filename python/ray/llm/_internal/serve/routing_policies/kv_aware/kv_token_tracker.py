@@ -354,6 +354,23 @@ class KVTokenTracker:
         self._lifecycle_receiver = receiver
         self._lifecycle_endpoint = f"tcp://{ray.util.get_node_ip_address()}:{port}"
 
+    async def shutdown(self) -> None:
+        """Stop membership updates and release lifecycle and mesh sockets."""
+        if self._long_poll_client is not None:
+            self._long_poll_client.stop()
+            self._long_poll_client = None
+        tasks = list(self._pending_tasks)
+        for task in tasks:
+            task.cancel()
+        await asyncio.gather(*tasks, return_exceptions=True)
+        if self._lifecycle_receiver is not None:
+            await self._lifecycle_receiver.close()
+            self._lifecycle_receiver = None
+            self._lifecycle_endpoint = None
+        if self._svc is not None:
+            await self._svc.shutdown_async()
+            self._svc = None
+
     def replica_sync_routing_stats(self) -> Dict[str, Any]:
         """Routing stats advertising this router's replica-mesh endpoint."""
         if self._svc is None:

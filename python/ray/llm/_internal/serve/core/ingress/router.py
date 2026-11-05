@@ -303,11 +303,14 @@ class LLMRouter:
     async def health(self):
         return {"status": "ok"}
 
-    def __del__(self) -> None:
-        """Close the token channel ZMQ sockets upon cleanup."""
+    async def __del__(self) -> None:
+        """Close token, lifecycle and replica-mesh sockets upon cleanup."""
         token_sender = getattr(self, "_token_sender", None)
         if token_sender is not None:
             token_sender.close()
+        tracker = getattr(self, "_kv_token_tracker", None)
+        if tracker is not None:
+            await tracker.shutdown()
 
     async def record_routing_stats(self) -> Dict[str, Any]:
         """Advertise this router's replica-mesh endpoint to its peers."""

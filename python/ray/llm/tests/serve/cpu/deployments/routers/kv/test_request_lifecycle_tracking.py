@@ -1,8 +1,11 @@
 import asyncio
 import random
+import socket
 import sys
+import time
 from collections import OrderedDict
 from dataclasses import asdict
+from unittest.mock import MagicMock
 
 import pytest
 from vllm.outputs import CompletionOutput, RequestOutput
@@ -12,6 +15,7 @@ import ray
 import ray.cloudpickle
 from ray import serve
 from ray.llm._internal.serve.core.configs.llm_config import LLMConfig
+from ray.llm._internal.serve.routing_policies.kv_aware import lifecycle
 from ray.llm._internal.serve.routing_policies.kv_aware.constants import (
     REQUEST_TRACKING_TTL_S,
 )
@@ -21,6 +25,9 @@ from ray.llm._internal.serve.routing_policies.kv_aware.kv_aware_router import (
 from ray.llm._internal.serve.routing_policies.kv_aware.kv_token_tracker import (
     KVTokenTracker,
     get_worker_id,
+)
+from ray.llm._internal.serve.routing_policies.kv_aware.lifecycle import (
+    LifecycleEventForwarder,
 )
 from ray.llm._internal.serve.routing_policies.kv_aware.vllm import token_tracking
 from ray.llm._internal.serve.routing_policies.kv_aware.vllm.token_tracking import (
@@ -864,6 +871,58 @@ async def test_expected_output_tokens_sets_decay_fraction(
 
     block_calls = [c for c in actor._svc.calls if c[0] == "add_output_block"]
     assert block_calls == [("add_output_block", "r", expected_decay)]
+
+
+@pytest.mark.asyncio
+@pytest.mark.timeout(60)
+async def test_unreachable_owner(monkeypatch):
+    """A dead owner cannot stall reporting, streaming, or engine shutdown."""
+    counter = MagicMock()
+    monkeypatch.setattr(lifecycle, "_lifecycle_events_counter", counter)
+    forwarder = LifecycleEventForwarder(send_queue_limit=4)
+    engine = enable_token_tracking(MockAsyncLLM)(delta_steps(20))
+    engine._lifecycle_forwarder = forwarder
+    # Reserve a port without listening, so no reader can consume queued events.
+    with socket.socket() as unreachable:
+        unreachable.bind(("127.0.0.1", 0))
+        endpoint = f"tcp://127.0.0.1:{unreachable.getsockname()[1]}"
+        monkeypatch.setattr(
+            token_tracking, "get_request_lifecycle_owner", lambda: endpoint
+        )
+        try:
+            start = time.monotonic()
+            for i in range(1000):
+                forwarder.report(endpoint, "on_request_completed", str(i))
+            assert time.monotonic() - start < 1
+            outcomes = [
+                call.kwargs["tags"]["outcome"] for call in counter.inc.call_args_list
+            ]
+            assert outcomes == ["pushed"] * 4 + ["dropped"] * 996
+
+            outputs = await asyncio.wait_for(
+                consume(
+                    engine.generate(
+                        PROMPT,
+                        SamplingParams(output_kind=RequestOutputKind.DELTA),
+                        "stream",
+                    )
+                ),
+                timeout=1,
+            )
+            assert outputs == engine.script
+            assert counter.inc.call_count == 1002
+            assert all(
+                call.kwargs["tags"]["outcome"] == "dropped"
+                for call in counter.inc.call_args_list[-2:]
+            )
+        finally:
+            sockets = list(forwarder._sockets.values())
+            context = forwarder._context
+            start = time.monotonic()
+            engine.shutdown()
+            assert time.monotonic() - start < 1
+            assert sockets and all(socket.closed for socket in sockets)
+            assert context.closed
 
 
 if __name__ == "__main__":
