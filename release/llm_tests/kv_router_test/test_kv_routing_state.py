@@ -1,13 +1,10 @@
 """Tests for KV routing state across LLMRouter ingress replicas.
 
-Each ingress owns a local KV selector. The routing ingress atomically selects
-and reserves a worker, then asynchronously broadcasts that already-selected
-reservation so peer ingresses can mirror the same load state. Engine lifecycle
-events are broadcast separately and advance or free reservations admitted
-locally. Cached KV blocks are tracked per replica: every ingress independently
-subscribes to each engine worker's KV-event stream. Session bindings stream
-from the routing ingress's selection service and are broadcast the same way,
-so a session stays on its worker whichever ingress routes its next turn.
+Each ingress owns a local KV selector. The selecting ingress reserves a worker
+and receives that request's engine lifecycle events over ZMQ. Dynamo's replica
+mesh replicates reservations, prefill completion, frees, and session bindings
+to peer ingresses. Every ingress independently subscribes to each engine
+worker's KV-event stream to track cached blocks.
 """
 
 import asyncio

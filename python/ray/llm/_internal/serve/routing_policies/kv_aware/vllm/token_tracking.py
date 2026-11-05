@@ -95,6 +95,8 @@ def enable_token_tracking(
                 return
 
             if self._lifecycle_forwarder is None:
+                # Unowned requests need no sender. Its ZMQ context and sockets
+                # are also lazy, opened by the first report to each owner.
                 self._lifecycle_forwarder = LifecycleEventForwarder()
             lifecycle_request_id = get_serve_request_id() or request_id
             tracker = RequestTokenTracker(

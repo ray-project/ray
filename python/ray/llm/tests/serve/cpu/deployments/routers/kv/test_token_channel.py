@@ -278,6 +278,8 @@ async def test_lifecycle_owner_survives_vllm_cancellation_task(monkeypatch, stre
         model_config = SimpleNamespace()
 
         async def generate(self, *args, **kwargs):
+            # Let concurrent requests overlap while their owners are bound.
+            await asyncio.sleep(0)
             yield SimpleNamespace(outputs=[SimpleNamespace(token_ids=[1])])
 
     engine_client = enable_token_tracking(BaseEngine)()
@@ -341,6 +343,33 @@ async def test_lifecycle_owner_survives_vllm_cancellation_task(monkeypatch, stre
                 else []
             )
             assert get_request_lifecycle_owner() is None
+
+        # The same middleware instance also isolates simultaneous requests,
+        # across vLLM's handler task and the later response stream.
+        forwarder.reset_mock()
+        owners = ["tcp://10.0.0.1:9757", "tcp://10.0.0.2:9757"]
+        responses = await asyncio.gather(
+            *(
+                client.post(
+                    "/v1/completions",
+                    json={"stream": stream},
+                    headers={KV_LIFECYCLE_OWNER_HEADER: owner} if owner else {},
+                )
+                for owner in owners + [None]
+            )
+        )
+        assert all(response.content == b"token" for response in responses)
+        assert forwarder.report.call_count == 4
+        for owner in owners:
+            assert [
+                event.args
+                for event in forwarder.report.call_args_list
+                if event.args[0] == owner
+            ] == [
+                (owner, "on_prefill_complete", "request-id"),
+                (owner, "on_request_completed", "request-id"),
+            ]
+        assert get_request_lifecycle_owner() is None
 
 
 def test_token_store_skips_chat_tokenization():

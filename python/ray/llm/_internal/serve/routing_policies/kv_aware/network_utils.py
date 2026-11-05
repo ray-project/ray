@@ -46,6 +46,8 @@ class ZmqPushSender:
         max_sockets: int = KV_TOKEN_ZMQ_MAX_SOCKETS,
     ):
         self._send_queue_limit = send_queue_limit
+        # Bound sockets/queues retained across replica churn; evict the least
+        # recently used endpoint when this limit is exceeded.
         self._max_sockets = max_sockets
         self._context = None
         self._sockets: OrderedDict[str, zmq.Socket] = OrderedDict()

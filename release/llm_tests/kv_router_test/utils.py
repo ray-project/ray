@@ -278,6 +278,10 @@ class LLMRouter(_LLMRouter):
         per-replica results of a broadcast apart."""
         return serve.get_replica_context().replica_id.to_full_id_str()
 
+    def get_replica_mesh_peers(self):
+        """(Test only) Mesh endpoints registered with this router's selector."""
+        return self._kv_token_tracker._svc.list_replica_peers()
+
     async def get_request_lifecycle(self, request_id):
         """(Test only) Snapshot of a request's local lifecycle state, or ``None``."""
         state = self._kv_token_tracker._requests.get(request_id)

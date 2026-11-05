@@ -182,7 +182,12 @@ class _LocalKVTokenTracker(KVTokenTracker):
 
 class TestOnDeploymentTargets:
     async def test_reconciles_added_and_removed_workers(self):
-        tracker = _LocalKVTokenTracker()
+        with mock.patch("ray.serve.get_replica_context") as get_context:
+            get_context.return_value.replica_id = ReplicaID(
+                unique_id="router",
+                deployment_id=DeploymentID(name="LLMRouter", app_name="app"),
+            )
+            tracker = _LocalKVTokenTracker()
         tracker._on_deployment_targets(make_target_info(["a", "b"]))
         assert set(await tracker.get_candidate_worker_ids()) == {
             get_worker_id("a"),

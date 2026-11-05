@@ -21,14 +21,13 @@ from ray.llm._internal.serve.routing_policies.kv_aware.constants import (
 from ray.llm._internal.serve.routing_policies.kv_aware.lifecycle import (
     LifecycleReceiver,
 )
-from ray.serve._private.common import DeploymentTargetInfo, ReplicaID
+from ray.serve._private.common import DeploymentTargetInfo
 from ray.serve._private.constants import (
     SERVE_CONTROLLER_NAME,
     SERVE_LOGGER_NAME,
     SERVE_NAMESPACE,
 )
 from ray.serve._private.long_poll import LongPollClient, LongPollNamespace
-from ray.serve.exceptions import RayServeException
 
 if TYPE_CHECKING:
     from ray.llm._internal.serve.core.configs.llm_config import LLMConfig
@@ -125,26 +124,19 @@ class KVTokenTracker:
         self,
         indexer_threads: int = DEFAULT_KV_INDEXER_THREADS,
         serve_deployment_id: Optional[Any] = None,
-        replica_sync_port: Optional[int] = None,
         session_affinity_ttl_s: float = DEFAULT_SESSION_AFFINITY_TTL_S,
     ):
         # The tracked LLMServer deployment id, passed in by the LLMRouter
         # that builds the tracker.
         self._serve_deployment_id = serve_deployment_id
-        # Replica mesh port. None disables the mesh and 0 picks a free port.
-        self._replica_sync_port = replica_sync_port
         # Peer routers' replica-mesh endpoints, from the latest LongPoll update.
         self._replica_sync_peers: Set[str] = set()
         self._replica_sync_lock = asyncio.Lock()
         # This LLMRouter replica. The other replicas of its deployment are its
         # mesh peers.
-        self._router_replica_id: Optional[ReplicaID] = None
+        self._router_replica_id = serve.get_replica_context().replica_id
         self._lifecycle_receiver = None
         self._lifecycle_endpoint: Optional[str] = None
-        try:
-            self._router_replica_id = serve.get_replica_context().replica_id
-        except RayServeException:
-            logger.debug("Not in a Serve replica; replica mesh peers are not synced.")
         # KV-cache block size, learned once from the first replica's reported
         # engine config and passed to the selection service, which uses it to
         # track the worker's active load and index its KV blocks for overlap.
@@ -189,12 +181,10 @@ class KVTokenTracker:
             )
             return
 
-        # Port 0 picks a free port. Dynamo binds the port itself and rejects 0,
-        # so probe one and retry if another process takes it first.
-        pick_port = self._replica_sync_port == 0
+        # Dynamo rejects port 0. Until it supports binding 0 and returning the
+        # assigned port, probing and binding race; retry on a fresh port.
         for attempt in range(1, _REPLICA_SYNC_BIND_ATTEMPTS + 1):
-            if pick_port:
-                self._replica_sync_port = find_free_port()
+            self._replica_sync_port = find_free_port()
             try:
                 # Session bindings replicate over the replica mesh with the load.
                 self._svc = SelectionService(
@@ -205,7 +195,7 @@ class KVTokenTracker:
                 )
                 break
             except Exception as e:
-                if not pick_port or attempt == _REPLICA_SYNC_BIND_ATTEMPTS:
+                if attempt == _REPLICA_SYNC_BIND_ATTEMPTS:
                     raise
                 logger.warning(
                     "Failed to create the selection service on replica mesh "
@@ -225,18 +215,19 @@ class KVTokenTracker:
         deployment_id = self._serve_deployment_id
         controller = ray.get_actor(SERVE_CONTROLLER_NAME, namespace=SERVE_NAMESPACE)
         key_listeners = {
+            # LLMServer replicas: discover KV-event endpoints and add/remove
+            # the workers that can be selected for requests.
             (
                 LongPollNamespace.DEPLOYMENT_TARGETS,
                 deployment_id,
             ): self._on_deployment_targets,
+            # LLMRouter replicas: discover mesh endpoints so selectors share
+            # load reservations and session bindings.
+            (
+                LongPollNamespace.DEPLOYMENT_TARGETS,
+                self._router_replica_id.deployment_id,
+            ): self._on_router_targets,
         }
-        if self._router_replica_id is not None:
-            key_listeners[
-                (
-                    LongPollNamespace.DEPLOYMENT_TARGETS,
-                    self._router_replica_id.deployment_id,
-                )
-            ] = self._on_router_targets
         self._long_poll_client = LongPollClient(
             controller,
             key_listeners,
@@ -337,7 +328,7 @@ class KVTokenTracker:
 
     def replica_sync_routing_stats(self) -> Dict[str, Any]:
         """Routing stats advertising this router's replica-mesh endpoint."""
-        if self._replica_sync_port is None:
+        if self._svc is None:
             return {}
         endpoint = f"tcp://{ray.util.get_node_ip_address()}:{self._replica_sync_port}"
         return {KV_REPLICA_SYNC_METADATA_KEY: {"endpoint": endpoint}}
@@ -361,6 +352,9 @@ class KVTokenTracker:
 
     async def _sync_replica_peers(self) -> None:
         """Reconcile the selection service's peers with ``_replica_sync_peers``.
+
+        Scheduled only when LongPoll changes the peer endpoint set, never by
+        request selection. Only membership reconciliation takes this lock.
 
         Idempotent: each pass diffs the desired peers against the service's
         actual peers, so a repeated or stale update converges. The lock
@@ -690,7 +684,6 @@ def build_kv_token_tracker(
             KV_INDEXER_THREADS_KEY, DEFAULT_KV_INDEXER_THREADS
         ),
         serve_deployment_id=serve_deployment_id,
-        replica_sync_port=0,
     )
     set_kv_token_tracker(tracker)
     return tracker

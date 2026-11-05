@@ -1,14 +1,8 @@
-"""Request lifecycle events from an LLMServer to the LLMRouter that selected
-the request (its owner).
-
-- The selecting LLMRouter names its lifecycle endpoint in a request header. The
-  LLMServer's ASGI middleware binds it for the request and its response stream.
-- ``LifecycleEventForwarder`` pushes each event from the LLMServer to the owning
-  LLMRouter over ZMQ.
-- ``LifecycleReceiver`` is the owning LLMRouter's ZMQ PULL endpoint.
-- ``LifecycleCodec`` is the wire format both ends share.
-
-Free of engine imports, so any engine integration can use it.
+"""LifecycleEventForwarder: Push events to the selecting router over ZMQ.
+LifecycleReceiver: Receive and apply events on the selecting router.
+LifecycleCodec: Encode and decode the shared msgpack wire format.
+RequestLifecycleOwnerMiddleware: Bind the router's endpoint from the request
+    header throughout the handler and response stream.
 """
 
 import asyncio
@@ -53,11 +47,6 @@ _lifecycle_events_counter = metrics.Counter(
 _request_lifecycle_owner: contextvars.ContextVar[
     Optional[str]
 ] = contextvars.ContextVar("kv_request_lifecycle_owner", default=None)
-
-
-def set_request_lifecycle_owner(owner: Optional[str]) -> None:
-    """Bind the request's owner in the current async context."""
-    _request_lifecycle_owner.set(owner)
 
 
 def get_request_lifecycle_owner() -> Optional[str]:

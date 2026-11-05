@@ -8,6 +8,7 @@ import asyncio
 import socket
 import sys
 from typing import List
+from unittest.mock import patch
 
 import pytest
 
@@ -56,16 +57,23 @@ class _SpyTracker:
         *,
         indexer_threads,
         serve_deployment_id,
-        replica_sync_port,
         session_affinity_ttl_s,
     ):
         self.indexer_threads = indexer_threads
         self.serve_deployment_id = serve_deployment_id
-        self.replica_sync_port = replica_sync_port
         self.session_affinity_ttl_s = session_affinity_ttl_s
 
 
-class _NoLongPollTracker(KVTokenTracker):
+class _StandaloneTracker(KVTokenTracker):
+    """Supply the Serve context normally provided by the LLMRouter replica."""
+
+    def __init__(self, *args, **kwargs):
+        with patch.object(serve, "get_replica_context") as get_context:
+            get_context.return_value.replica_id = _router_replica_id("standalone")
+            super().__init__(*args, **kwargs)
+
+
+class _NoLongPollTracker(_StandaloneTracker):
     """Real selection service without a controller membership subscription."""
 
     def _start_replica_tracking(self):
@@ -99,13 +107,6 @@ def test_indexer_threads_from_config(monkeypatch):
     assert tracker.indexer_threads == 8
 
 
-def test_build_binds_replica_mesh_on_free_port(monkeypatch):
-    """Every router binds its replica-mesh port on a free port."""
-    monkeypatch.setattr(kv_token_tracker, "KVTokenTracker", _SpyTracker)
-    tracker = build_kv_token_tracker(_llm_config(), "dep-id")
-    assert tracker.replica_sync_port == 0
-
-
 def test_replica_mesh_retries_a_taken_port(monkeypatch):
     """If another process takes the probed port first, the router binds the
     replica mesh on another free port."""
@@ -118,11 +119,30 @@ def test_replica_mesh_retries_a_taken_port(monkeypatch):
     ports = iter([taken.getsockname()[1], find_free_port()])
     monkeypatch.setattr(kv_token_tracker, "find_free_port", lambda: next(ports))
     try:
-        tracker = _NoLongPollTracker(replica_sync_port=0)
+        tracker = _NoLongPollTracker()
         assert tracker._replica_sync_port not in (0, taken.getsockname()[1])
         tracker._svc.shutdown()
     finally:
         taken.close()
+
+
+def test_replica_mesh_fails_after_bind_attempts_exhausted(monkeypatch):
+    """A persistently occupied port fails startup instead of disabling sync."""
+    pytest.importorskip("dynamo.llm")
+    probes = []
+    with socket.socket() as taken:
+        taken.bind(("", 0))
+        taken.listen()
+        port = taken.getsockname()[1]
+
+        def occupied_port():
+            probes.append(port)
+            return port
+
+        monkeypatch.setattr(kv_token_tracker, "find_free_port", occupied_port)
+        with pytest.raises(Exception, match="failed to bind replica publisher"):
+            _NoLongPollTracker()
+    assert len(probes) == kv_token_tracker._REPLICA_SYNC_BIND_ATTEMPTS
 
 
 @pytest.mark.parametrize("ttl_s,as_object", [(60.0, False), (0, True)])
@@ -330,12 +350,10 @@ async def test_replica_mesh_replicates_owner_load_to_peer():
     """With replica-mesh replication the peer sees the owner's booking and its
     release without any reservation broadcast or lifecycle event of its own."""
     pytest.importorskip("dynamo.llm")
-    from ray._common.network_utils import find_free_port
-
     worker_id = get_worker_id("engine-replica-0")
-    ports = [find_free_port(), find_free_port()]
-    owner = _NoLongPollTracker(replica_sync_port=ports[0])
-    peer = _NoLongPollTracker(replica_sync_port=ports[1])
+    owner = _NoLongPollTracker()
+    peer = _NoLongPollTracker()
+    ports = [owner._replica_sync_port, peer._replica_sync_port]
     trackers = (owner, peer)
     try:
         for tracker in trackers:
@@ -376,13 +394,11 @@ async def test_router_restarted_on_its_endpoint_stays_a_peer():
     """A peer stays subscribed to a router's endpoint across a restart and
     replicates the restarted router's bookings."""
     pytest.importorskip("dynamo.llm")
-    from ray._common.network_utils import find_free_port
-
     worker_id = get_worker_id("engine-replica-0")
-    port = find_free_port()
+    owner = _NoLongPollTracker()
+    port = owner._replica_sync_port
     endpoint = f"tcp://127.0.0.1:{port}"
-    owner = _NoLongPollTracker(replica_sync_port=port)
-    peer = _NoLongPollTracker(replica_sync_port=find_free_port())
+    peer = _NoLongPollTracker()
     trackers = [owner, peer]
     try:
         for tracker in trackers:
@@ -396,7 +412,8 @@ async def test_router_restarted_on_its_endpoint_stays_a_peer():
         )
 
         await owner._svc.shutdown_async()
-        restarted = trackers[0] = _NoLongPollTracker(replica_sync_port=port)
+        with patch.object(kv_token_tracker, "find_free_port", return_value=port):
+            restarted = trackers[0] = _NoLongPollTracker()
         await _register_engine_worker(restarted, worker_id)
 
         # The peer redials the restarted router in the background, so book until
@@ -477,6 +494,86 @@ async def _pinned_worker(tracker, session_id, worker_ids) -> int:
     return selection["worker_id"]
 
 
+@pytest.mark.asyncio
+@pytest.mark.parametrize("late_peer", [True, False], ids=["late-peer", "late-worker"])
+async def test_replica_mesh_recovers_missed_load_and_sessions(late_peer):
+    """Joining peers and lagging worker discovery recover existing bookings
+    and idle bindings without delaying the owner's requests."""
+    pytest.importorskip("dynamo.llm")
+    owner = _NoLongPollTracker()
+    peer = _NoLongPollTracker()
+    replica_ids = ["recovery-worker-0", "recovery-worker-1"]
+    worker_ids = await _register_workers(owner, replica_ids)
+    bound, other = worker_ids
+
+    async def connect():
+        owner._replica_sync_peers = {f"tcp://127.0.0.1:{peer._replica_sync_port}"}
+        peer._replica_sync_peers = {f"tcp://127.0.0.1:{owner._replica_sync_port}"}
+        await asyncio.gather(owner._sync_replica_peers(), peer._sync_replica_peers())
+
+    try:
+        await _register_workers(peer, replica_ids if late_peer else replica_ids[1:])
+        if not late_peer:
+            await connect()
+
+        # Neither missing subscriptions nor missing peer workers may delay
+        # selection. Both an active and an already completed session matter.
+        async def first_turns():
+            for request_id in ("active", "finished"):
+                await owner.select_worker(
+                    request_id, _turn(1), [bound], 32, session_id=request_id
+                )
+                await owner.on_prefill_complete(request_id)
+            await owner.on_request_completed("finished")
+
+        await asyncio.wait_for(first_turns(), timeout=1)
+
+        if late_peer:
+            await connect()
+        else:
+            # A subsequent booking for a known worker proves the earlier load
+            # events crossed the mesh while the first worker was still absent.
+            await owner.select_worker("marker", _turn(2), [other], 32)
+            await async_wait_for_condition(
+                lambda: _active_requests(peer, other) == 1,
+                timeout=5,
+                retry_interval_ms=10,
+            )
+            await _register_workers(peer, replica_ids[:1])
+
+        await async_wait_for_condition(
+            lambda: _active_requests(peer, bound) == 1,
+            timeout=5,
+            retry_interval_ms=10,
+        )
+        assert _worker_load(peer, bound, "potential_prefill_tokens") == 0
+        assert "active" not in peer._requests
+
+        await _load_worker(peer, bound, 3)
+        assert await _pinned_worker(peer, "unbound", worker_ids) == other
+
+        async def bindings_recovered():
+            return all(
+                [
+                    await _pinned_worker(peer, session, worker_ids) == bound
+                    for session in ("active", "finished")
+                ]
+            )
+
+        await async_wait_for_condition(
+            bindings_recovered, timeout=5, retry_interval_ms=10
+        )
+        await owner.on_request_completed("active")
+        await async_wait_for_condition(
+            lambda: _active_requests(peer, bound) == 3,
+            timeout=5,
+            retry_interval_ms=10,
+        )
+    finally:
+        for tracker in (owner, peer):
+            await tracker._svc.shutdown_async()
+
+
 def _other(worker_ids, worker_id) -> int:
     return next(w for w in worker_ids if w != worker_id)
 
@@ -506,11 +603,9 @@ async def test_replica_mesh_replicates_bursts_without_drops():
     """Every booking and session binding reaches the peer under selection
     bursts. Dynamo drops bindings once its 4,096-slot mesh channel is full."""
     pytest.importorskip("dynamo.llm")
-    from ray._common.network_utils import find_free_port
-
-    ports = [find_free_port(), find_free_port()]
-    owner = _NoLongPollTracker(replica_sync_port=ports[0])
-    peer = _NoLongPollTracker(replica_sync_port=ports[1])
+    owner = _NoLongPollTracker()
+    peer = _NoLongPollTracker()
+    ports = [owner._replica_sync_port, peer._replica_sync_port]
     trackers = (owner, peer)
     worker_ids = []
     bursts, per_burst = 8, 1000
@@ -559,11 +654,9 @@ async def test_session_binding_replicates_over_replica_mesh():
     """A session bound on one router pins its next turn on a peer router, even
     when the peer's load favors another worker."""
     pytest.importorskip("dynamo.llm")
-    from ray._common.network_utils import find_free_port
-
-    ports = [find_free_port(), find_free_port()]
-    owner = _NoLongPollTracker(replica_sync_port=ports[0])
-    peer = _NoLongPollTracker(replica_sync_port=ports[1])
+    owner = _NoLongPollTracker()
+    peer = _NoLongPollTracker()
+    ports = [owner._replica_sync_port, peer._replica_sync_port]
     trackers = (owner, peer)
     replica_ids = ["sess-r0", "sess-r1"]
     worker_ids = []
@@ -701,9 +794,7 @@ class ReplicaMeshDeployment:
     lifecycle events received on the selecting replica's ZMQ endpoint."""
 
     async def __init__(self):
-        from ray._common.network_utils import find_free_port
-
-        self._tracker = _RouterMeshTracker(replica_sync_port=find_free_port())
+        self._tracker = _RouterMeshTracker()
         await self._tracker.start_lifecycle_receiver()
         self._tracker._register_block_size(16, "replicated-engine-worker")
         await self._tracker._upsert_worker(
@@ -827,7 +918,7 @@ class ReplicaTrackingDeployment:
         }
 
 
-class _MembershipTracker(KVTokenTracker):
+class _MembershipTracker(_StandaloneTracker):
     """Real LongPoll replica tracking with the selection service disabled, so the
     DEPLOYMENT_TARGETS subscription and reconciliation are exercised without
     dynamo."""
