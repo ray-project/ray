@@ -36,11 +36,11 @@ pa = pytest.importorskip("pyarrow")
 pds = pytest.importorskip("pyarrow.dataset")
 pq = pytest.importorskip("pyarrow.parquet")
 
-# PyArrow 17 writes no SizeStatistics or view types and lacks ``binary_type`` and
-# ``list_type``; 23 has all of them (18 to 22 unchecked).
+# PyArrow 17 writes no SizeStatistics and lacks ``binary_type`` and ``list_type``;
+# 23 has all of them (18 to 22 unchecked).
 requires_pyarrow_23 = pytest.mark.skipif(
     parse_version(pa.__version__) < parse_version("23.0.0"),
-    reason="PyArrow 17 writes no SizeStatistics or view types",
+    reason="PyArrow 17 writes no SizeStatistics",
 )
 
 N = 5000
@@ -189,26 +189,9 @@ def _tensor_table():
     return pa.table({"a": ArrowTensorArray.from_numpy(np.zeros((N, 4), np.float32))})
 
 
-def _arrow_dictionary(distinct, length):
-    values = pa.array([f"{i:0{length}d}" for i in range(distinct)])
-    indices = pa.array(np.arange(N) % distinct, pa.int32())
-    return pa.DictionaryArray.from_arrays(indices, values)
-
-
 _HIGH_CARDINALITY = _table([f"{i:012d}" for i in range(N)])
 
 
-def _nulls_hide_a_dictionary():
-    """A struct with nulls over a non-nullable dictionary field."""
-    field = pa.field("d", pa.dictionary(pa.int32(), pa.string()), nullable=False)
-    mask = pa.array([i % 3 == 0 for i in range(N)])
-    struct = pa.StructArray.from_arrays(
-        [_arrow_dictionary(50, 12)], fields=[field], mask=mask
-    )
-    return pa.table({"a": struct})
-
-
-_HIDDEN_PIN = pa.struct([pa.field("d", pa.string(), nullable=False)])
 _STRINGS = _table([f"v{i % 5}" for i in range(N)])
 _LISTS = _table([[1, 2]] * N, pa.list_(pa.int64()))
 
@@ -255,16 +238,6 @@ _CASES = [
         high=1.5,
         stats=False,
     ),
-    # Bounded by the chunk's pages, not sized hydrated.
-    _case(
-        "arrow-dictionary",
-        pa.table({"a": _arrow_dictionary(50, 200)}),
-        low=0.95,
-        high=1.25,
-        stats=False,
-    ),
-    # Views count every value out of line: exact past 12 bytes, 1.75x at 12.
-    _case("string-view", _table([""] * N, pa.string_view()), low=0.95),
     # PLAIN pages: every value's bytes, less a 4-byte length each.
     _case(
         "plain-strings",
@@ -286,25 +259,8 @@ _CASES = [
     _case(
         "pin-int64-to-string", _table(range(N), pa.int64()), high=1.25, pin=pa.string()
     ),
-    # Each slot the null struct hides copies a dictionary value. Without
-    # SizeStatistics the leaf's null count reads 0 though a third of them are null.
-    _case(
-        "pin-hidden-dictionary-slots",
-        _nulls_hide_a_dictionary(),
-        high=math.inf,
-        pin=_HIDDEN_PIN,
-    ),
-    _case(
-        "pin-hidden-dictionary-slots-without-size-statistics",
-        _nulls_hide_a_dictionary(),
-        high=math.inf,
-        stats=False,
-        pin=_HIDDEN_PIN,
-    ),
     # Read options, on a file without a stored Arrow schema.
-    _case("dictionary-columns", _STRINGS, high=1.1, dictionary_columns=["a"]),
     _case("binary-type-large", _STRINGS, binary_type=pa.large_binary()),
-    _case("binary-type-view", _STRINGS, high=1.1, binary_type=pa.binary_view()),
     _case("list-type-large", _LISTS, list_type=pa.LargeListType),
 ]
 
@@ -397,10 +353,40 @@ def test_delta_byte_array_is_a_guess(tmp_path):
     assert _estimate(path, size_statistics=_no_size_statistics) == expected
 
 
-def test_unmodeled_arrow_type_is_rejected():
+@pytest.mark.parametrize(
+    "arrow_type",
+    [
+        pa.list_view(pa.int32()),
+        pa.string_view(),
+        pa.dictionary(pa.int32(), pa.string()),
+    ],
+)
+def test_unmodeled_arrow_type_is_rejected(arrow_type):
     """A layout this module can't size raises, which sends the file to fallback."""
     with pytest.raises(_UnsupportedLayout):
-        _leaf_layout(pa.list_view(pa.int32()))
+        _leaf_layout(arrow_type)
+
+
+@pytest.mark.parametrize(
+    "table, format_kwargs",
+    [
+        (_STRINGS, {"dictionary_columns": ["a"]}),
+        (_STRINGS, {"binary_type": pa.binary_view()}),
+        (pa.table({"a": _STRINGS["a"].dictionary_encode()}), {}),
+    ],
+    ids=["dictionary-columns", "binary-type-view", "stored-dictionary"],
+)
+def test_dictionaries_and_views_fall_back(tmp_path, table, format_kwargs):
+    """A read that returns dictionaries or views gets no profiles: the file falls back."""
+    path = _write(table, tmp_path / "f.parquet", store_schema=not format_kwargs)
+    metadata = pq.read_metadata(str(path))
+    profiles = build_leaf_profiles(
+        parquet_schema=metadata.schema,
+        pinned_schema=None,
+        format_kwargs=format_kwargs,
+        file_metadata=metadata,
+    )
+    assert profiles is None
 
 
 def test_added_columns_are_bounded(tmp_path):
