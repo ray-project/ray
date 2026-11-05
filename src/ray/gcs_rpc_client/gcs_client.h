@@ -87,6 +87,8 @@ class GcsClientOptions {
   int gcs_port_ = 0;
   ClusterID cluster_id_;
   bool should_fetch_cluster_id_ = false;
+  // Whether to record the network latency of RPCs to a GCS on another node.
+  bool record_network_latency_ = false;
 };
 
 /// \class GcsClient

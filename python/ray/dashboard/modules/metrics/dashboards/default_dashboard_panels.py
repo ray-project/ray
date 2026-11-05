@@ -806,6 +806,26 @@ NODE_HARDWARE_UTILIZATION_PANELS = [
             ),
         ],
     ),
+    Panel(
+        id=73,
+        title="Node RPC Network Latency",
+        description="P50 and P99 network latency of Ray's gRPC calls from each node to servers on other nodes, over a 5 minute window. "
+        "Network latency is the client's round trip time minus the time the server reports spending on the request, "
+        "so it covers the network and gRPC transport but not Ray's request handling.",
+        unit="ms",
+        targets=[
+            Target(
+                expr='histogram_quantile(0.5, sum(rate(ray_grpc_client_network_latency_ms_bucket{{instance=~"$Instance", {global_filters}}}[5m])) by (instance, le))',
+                legend="P50: {{instance}}",
+            ),
+            Target(
+                expr='histogram_quantile(0.99, sum(rate(ray_grpc_client_network_latency_ms_bucket{{instance=~"$Instance", {global_filters}}}[5m])) by (instance, le))',
+                legend="P99: {{instance}}",
+            ),
+        ],
+        fill=0,
+        stack=False,
+    ),
 ]
 
 NODE_TPU_UTILIZATION_PANELS = [

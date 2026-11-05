@@ -300,8 +300,10 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
       << "Initializing worker at address: "
       << BuildAddress(rpc_address.ip_address(), rpc_address.port());
 
+  gcs::GcsClientOptions gcs_options = options.gcs_options;
+  gcs_options.record_network_latency_ = true;
   auto gcs_client = std::make_shared<gcs::GcsClient>(
-      options.gcs_options, options.node_ip_address, worker_context->GetWorkerID());
+      gcs_options, options.node_ip_address, worker_context->GetWorkerID());
   RAY_CHECK_OK(gcs_client->Connect(io_service_));
 
   if (RayConfig::instance().task_events_report_interval_ms() > 0) {
@@ -796,8 +798,14 @@ CoreWorkerProcessImpl::CoreWorkerProcessImpl(const CoreWorkerOptions &options)
                      : options_.worker_id),
       io_work_(io_service_.get_executor()),
       object_freed_callback_service_work_(object_freed_callback_service_.get_executor()),
-      client_call_manager_(std::make_unique<rpc::ClientCallManager>(
-          io_service_, /*record_stats=*/false, options.node_ip_address)),
+      client_call_manager_(
+          std::make_unique<rpc::ClientCallManager>(io_service_,
+                                                   /*record_stats=*/false,
+                                                   options.node_ip_address,
+                                                   ClusterID::Nil(),
+                                                   /*num_threads=*/1,
+                                                   /*call_timeout_ms=*/-1,
+                                                   /*record_network_latency=*/true)),
       task_execution_service_work_(task_execution_service_.get_executor()),
       service_handler_(std::make_unique<CoreWorkerServiceHandlerProxy>()) {
   if (options_.enable_logging) {

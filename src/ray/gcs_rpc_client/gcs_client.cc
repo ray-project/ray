@@ -123,10 +123,14 @@ Status GcsClient::Connect(instrumented_io_context &io_service, int64_t timeout_m
     timeout_ms = RayConfig::instance().gcs_rpc_server_connect_timeout_s() * 1000;
   }
   // Connect to gcs service.
-  client_call_manager_ = std::make_unique<rpc::ClientCallManager>(io_service,
-                                                                  /*record_stats=*/false,
-                                                                  local_address_,
-                                                                  options_.cluster_id_);
+  client_call_manager_ = std::make_unique<rpc::ClientCallManager>(
+      io_service,
+      /*record_stats=*/false,
+      local_address_,
+      options_.cluster_id_,
+      /*num_threads=*/1,
+      /*call_timeout_ms=*/-1,
+      /*record_network_latency=*/options_.record_network_latency_);
 
   // Only initialize the RPC client and subscriber if needed
   if (!client_context_->IsInitialized()) {

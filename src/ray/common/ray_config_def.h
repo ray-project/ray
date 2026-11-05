@@ -750,6 +750,13 @@ RAY_CONFIG(uint64_t, ray_event_recorder_max_queued_events, 10000)
 /// available *after* a grpc call.
 RAY_CONFIG(std::string, enable_grpc_metrics_collection_for, "")
 
+/// Whether to record the network latency of RPCs between nodes: the client's round trip
+/// time minus the processing time the server reports in the reply's trailing metadata.
+/// When false, servers stop reporting processing time and clients stop recording.
+/// Prefer setting it through the RAY_enable_rpc_network_latency_recording env var:
+/// raylets and core workers only receive the system config after their first RPCs.
+RAY_CONFIG(bool, enable_rpc_network_latency_recording, true)
+
 /// Only effective if `enable_metrics_collection` is also true.
 ///
 /// If > 0, we monitor each instrumented_io_context every

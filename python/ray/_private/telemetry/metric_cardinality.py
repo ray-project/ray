@@ -8,6 +8,15 @@ from ray._private.telemetry.metric_types import MetricType
 WORKER_ID_TAG_KEY = "WorkerId"
 # Keep in sync with the NameKey in src/ray/stats/tag_defs.cc
 TASK_OR_ACTOR_NAME_TAG_KEY = "Name"
+# Keep in sync with the ComponentKey in src/ray/stats/tag_defs.cc
+COMPONENT_TAG_KEY = "Component"
+# Metrics aggregated across all processes on a node. Their per-process labels are
+# always dropped, regardless of the cardinality level.
+NODE_LEVEL_AGGREGATED_METRICS: List[str] = [
+    # Keep in sync with GetGrpcClientNetworkLatencyMsHistogramMetric in
+    # src/ray/rpc/metrics.h.
+    "grpc_client_network_latency_ms",
+]
 # Aggregation functions for high-cardinality gauge metrics when labels are dropped.
 # Counter and Sum metrics always use sum() aggregation.
 HIGH_CARDINALITY_GAUGE_AGGREGATION: Dict[str, Callable[[List[float]], float]] = {
@@ -91,6 +100,13 @@ class MetricCardinality(str, Enum):
         Get the high cardinality labels of the metric.
         """
         if metric_name in _HIGH_CARDINALITY_LABELS:
+            return _HIGH_CARDINALITY_LABELS[metric_name]
+
+        if metric_name in NODE_LEVEL_AGGREGATED_METRICS:
+            _HIGH_CARDINALITY_LABELS[metric_name] = [
+                WORKER_ID_TAG_KEY,
+                COMPONENT_TAG_KEY,
+            ]
             return _HIGH_CARDINALITY_LABELS[metric_name]
 
         cardinality_level = MetricCardinality.get_cardinality_level()

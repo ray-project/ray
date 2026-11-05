@@ -18,7 +18,10 @@ ray_cc_library(
         "//src/ray/asio:instrumented_io_context",
         "//src/ray/common:grpc_util",
         "//src/ray/common:id",
+        "//src/ray/common:ray_config",
         "//src/ray/common:status",
+        "//src/ray/util:time",
+        "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",
     ],
 )
@@ -133,6 +136,7 @@ ray_cc_library(
         "//src/ray/rpc/authentication:authentication_token_loader",
         "//src/ray/rpc/authentication:authentication_token_validator",
         "//src/ray/stats:stats_metric",
+        "//src/ray/util:time",
         "@com_github_grpc_grpc//:grpc++",
     ],
 )
@@ -214,6 +218,7 @@ ray_cc_library(
     name = "metrics",
     hdrs = ["metrics.h"],
     deps = [
+        "//src/ray/stats:bucket_histogram_metric",
         "//src/ray/stats:stats_metric",
     ],
 )
