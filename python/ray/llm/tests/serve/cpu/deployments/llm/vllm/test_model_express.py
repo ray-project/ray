@@ -354,9 +354,7 @@ def test_worker_process_setup_hook_imports_neither_torch_nor_vllm():
 
 
 @pytest.mark.parametrize("probe_first", [False, True])
-def test_compile_cache_compat_install_applies_after_vllm_import(
-    tmp_path, probe_first
-):
+def test_compile_cache_compat_install_applies_after_vllm_import(tmp_path, probe_first):
     # A stand-in vllm package: apply must run once, after it has executed. A
     # find_spec probe before the import must not use up the hook.
     (tmp_path / "vllm").mkdir()
@@ -369,9 +367,7 @@ def test_compile_cache_compat_install_applies_after_vllm_import(
         "from ray.llm._internal.serve.engines.vllm.patches import compile_cache_compat\n"
         "calls = []\n"
         "compile_cache_compat.apply = lambda: calls.append(sys.modules['vllm'].EXECUTED)\n"
-        "compile_cache_compat.install()\n"
-        + probe
-        + "assert calls == []\n"
+        "compile_cache_compat.install()\n" + probe + "assert calls == []\n"
         "import vllm\n"
         "import vllm\n"
         "assert calls == [True], calls\n",
