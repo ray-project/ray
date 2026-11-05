@@ -26,8 +26,6 @@ from ray.data._internal.datasource_v2.formats.parquet.parquet_size_statistics im
     LeafSizeStats,
 )
 
-# The schema walk: one chain of Arrow arrays per Parquet leaf.
-
 # Array kinds. ``_LIST`` has one offsets buffer: a list, large_list or map. A
 # fixed_size_list has none; its children hold ``list_size`` slots per slot.
 _STRUCT = "struct"
@@ -362,9 +360,7 @@ def build_leaf_profiles(
 
 
 def dictionary_page_read_size(
-    profile: LeafProfile,
-    chunk: ColumnChunkMetaData,
-    stats: LeafSizeStats | None,
+    profile: LeafProfile, chunk: ColumnChunkMetaData, stats: LeafSizeStats | None
 ) -> int:
     """Bytes of this chunk's dictionary page header to read, or 0 if not needed."""
     if (
@@ -378,8 +374,6 @@ def dictionary_page_read_size(
 
 
 # One chunk's counts.
-
-
 class LeafChunk:
     """One leaf's chunk in a row group: exact counts from SizeStatistics, else bounds."""
 
@@ -410,13 +404,7 @@ class LeafChunk:
             self.size_statistics_bytes = None
         # Histograms that disagree with the footer mean the walk drifted or the
         # writer miscounted (PyArrow 24 with a write_batch_size above the rows).
-        if stats is not None and not _histograms_agree(
-            stats=stats,
-            chunk=chunk,
-            num_rows=num_rows,
-            max_def=self._max_def,
-            max_rep=self._max_rep,
-        ):
+        if stats is not None and not self._histograms_agree(stats=stats):
             stats = None
         self._repetition = () if stats is None else stats.repetition_level_histogram
         self._definition = () if stats is None else stats.definition_level_histogram
@@ -477,6 +465,21 @@ class LeafChunk:
         below = self._below(self._max_def)
         return 0 if below is None else self.chunk.num_values - below
 
+    def _histograms_agree(self, stats: LeafSizeStats) -> bool:
+        """Whether the writer's histograms fit the footer's own counts."""
+        repetition = stats.repetition_level_histogram
+        definition = stats.definition_level_histogram
+        if repetition and (
+            len(repetition) != self._max_rep + 1
+            or repetition[0] != self.num_rows
+            or sum(repetition) != self.chunk.num_values
+        ):
+            return False
+        return not definition or (
+            len(definition) == self._max_def + 1
+            and sum(definition) == self.chunk.num_values
+        )
+
     def _opened(self, depth: int) -> int:
         """Entries at repetition level ``depth`` or less, or every entry."""
         if self._repetition:
@@ -510,27 +513,6 @@ class LeafChunk:
         return below - above
 
 
-def _histograms_agree(
-    stats: LeafSizeStats,
-    chunk: ColumnChunkMetaData,
-    num_rows: int,
-    max_def: int,
-    max_rep: int,
-) -> bool:
-    """Whether the writer's histograms fit the footer's own counts."""
-    repetition = stats.repetition_level_histogram
-    definition = stats.definition_level_histogram
-    if repetition and (
-        len(repetition) != max_rep + 1
-        or repetition[0] != num_rows
-        or sum(repetition) != chunk.num_values
-    ):
-        return False
-    return not definition or (
-        len(definition) == max_def + 1 and sum(definition) == chunk.num_values
-    )
-
-
 def _bitmap_size(length: int) -> int:
     return (length + 7) // 8
 
@@ -543,15 +525,13 @@ def leaf_chunks(
     dictionary_pages: Mapping[int, DictionaryPage] | None = None,
 ) -> list[LeafChunk]:
     """A :class:`LeafChunk` for each of ``leaf_indices`` in ``row_group``."""
-    pages = dictionary_pages or {}
+    pages, stats = dictionary_pages or {}, size_stats or ()
     return [
         LeafChunk(
             index=leaf_idx,
             profile=leaf_profiles[leaf_idx],
             chunk=row_group.column(leaf_idx),
-            stats=size_stats[leaf_idx]
-            if size_stats is not None and leaf_idx < len(size_stats)
-            else None,
+            stats=stats[leaf_idx] if leaf_idx < len(stats) else None,
             num_rows=row_group.num_rows,
             dictionary_page=pages.get(leaf_idx),
         )
@@ -560,8 +540,6 @@ def leaf_chunks(
 
 
 # The estimate.
-
-
 class Read(NamedTuple):
     """What a read task does besides decoding the file's columns."""
 
@@ -614,8 +592,6 @@ def estimate_leaf(leaf: LeafChunk, read: Read) -> int:
 
 # Fixed-width, boolean and null leaves, and the arrays above every leaf: exact
 # once the counts are.
-
-
 def estimate_fixed_width(leaf: LeafChunk) -> int:
     """Decoded bytes of a fixed-width, boolean or null leaf."""
     return _array_bytes(node=leaf.profile.nodes[-1], leaf=leaf)
@@ -646,14 +622,13 @@ def _array_bytes(node: _ArrowNode, leaf: LeafChunk) -> int:
     return size
 
 
-# The ``dictionary_columns`` read option: BYTE_ARRAY leaves, named by dotted path
-# ("tags.list.element"), that PyArrow reads as dictionaries unless ``binary_type``
-# is set.
-
-# What PyArrow returns for them, whatever the file's type hints say.
+# What PyArrow returns for ``dictionary_columns``, whatever the type hints say.
 _DICTIONARY_COLUMNS_TYPE = pa.dictionary(pa.int32(), pa.binary())
 
 
+# The ``dictionary_columns`` read option: BYTE_ARRAY leaves, named by dotted path
+# ("tags.list.element"), that PyArrow reads as dictionaries unless ``binary_type``
+# is set.
 def detect_dictionary_columns(
     chunk: ColumnChunkMetaData, format_kwargs: Mapping[str, Any]
 ) -> bool:
@@ -677,13 +652,9 @@ def estimate_dictionary_columns(leaf: LeafChunk) -> int:
 
 # The ``binary_type`` / ``list_type`` read options: wider string, binary or list
 # arrays, which the leaf profiles walk (:func:`type_option_schema`).
-
-
 def detect_binary_or_list_type(format_kwargs: Mapping[str, Any]) -> bool:
-    return _sets_binary_type(format_kwargs) or format_kwargs.get("list_type") not in (
-        None,
-        pa.ListType,
-    )
+    large_list = format_kwargs.get("list_type") not in (None, pa.ListType)
+    return _sets_binary_type(format_kwargs) or large_list
 
 
 def _sets_binary_type(format_kwargs: Mapping[str, Any]) -> bool:
@@ -691,15 +662,11 @@ def _sets_binary_type(format_kwargs: Mapping[str, Any]) -> bool:
 
 
 def type_option_schema(
-    arrow_schema: pa.Schema,
-    format_kwargs: Mapping[str, Any],
-    stores_arrow_schema: bool,
+    arrow_schema: pa.Schema, format_kwargs: Mapping[str, Any], stores_arrow_schema: bool
 ) -> pa.Schema:
-    """The schema a read with ``binary_type`` or ``list_type`` returns.
-
-    With a stored Arrow schema only dictionary text changes; without one, as Spark
-    writes, every string, binary and list does.
-    """
+    """The schema a read with ``binary_type`` or ``list_type`` returns: with a
+    stored Arrow schema only dictionary text changes; without one, as Spark writes,
+    every string, binary and list does."""
     binary_type = format_kwargs.get("binary_type") or pa.binary()
     large_list = format_kwargs.get("list_type") not in (None, pa.ListType)
 
@@ -740,8 +707,6 @@ def type_option_schema(
 
 
 # A dictionary type in the file's type hints, e.g. a pandas categorical.
-
-
 def detect_dictionary_type(arrow_type: pa.DataType) -> bool:
     return pa.types.is_dictionary(arrow_type)
 
@@ -758,23 +723,17 @@ def estimate_dictionary(leaf: LeafChunk, arrow_type: pa.DictionaryType) -> int:
 
 
 # A view type in the type hints: ``string_view`` or ``binary_view``.
-
-
 def detect_view_type(arrow_type: pa.DataType) -> bool:
     return pa.types.is_string_view(arrow_type) or pa.types.is_binary_view(arrow_type)
 
 
 def estimate_view_type(leaf: LeafChunk) -> int:
-    """An upper bound: a 16-byte view per slot and every value's bytes.
-
-    Exact past the 12 bytes a view holds inline; 1.75x when every value is 12.
-    """
+    """An upper bound: a 16-byte view per slot and every value's bytes. Exact past
+    the 12 bytes a view holds inline; 1.75x when every value is 12."""
     return leaf.bitmap() + 16 * leaf.slots() + estimate_string_bytes(leaf)
 
 
 # Plain string and binary leaves.
-
-
 def detect_string_type(arrow_type: pa.DataType) -> bool:
     return (
         pa.types.is_string(arrow_type)
@@ -798,11 +757,10 @@ def _offset_width(arrow_type: pa.DataType) -> int:
     return 16
 
 
-# Where a string leaf's bytes come from.
-
 _DICTIONARY_ENCODINGS = frozenset({"RLE_DICTIONARY", "PLAIN_DICTIONARY"})
 
 
+# Where a string leaf's bytes come from.
 def estimate_string_bytes(leaf: LeafChunk) -> int:
     """A BYTE_ARRAY chunk's value bytes, without their length prefixes."""
     return _string_bytes(leaf)[0]
@@ -822,8 +780,6 @@ def _string_bytes(leaf: LeafChunk) -> tuple[int, bool]:
 
 # Any DELTA_BYTE_ARRAY page without SizeStatistics bytes to trust: none written,
 # as by Spark 3.5, or PyArrow's.
-
-
 def detect_delta_byte_array(chunk: ColumnChunkMetaData) -> bool:
     return "DELTA_BYTE_ARRAY" in chunk.encodings
 
@@ -834,22 +790,14 @@ _DELTA_BYTE_ARRAY_EXPANSION = 128
 
 
 def estimate_delta_byte_array(chunk: ColumnChunkMetaData) -> int:
-    """A guess: the values at 128 times the chunk's uncompressed bytes.
-
-    Under for long sorted runs: a million rows of 2 KB URLs, each repeated 1,000
-    times.
-    """
-    return (
-        min(chunk.num_values, _DELTA_BYTE_ARRAY_EXPANSION)
-        * chunk.total_uncompressed_size
-    )
+    """A guess: the values at 128 times the chunk's uncompressed bytes. Under for
+    long sorted runs: a million rows of 2 KB URLs, each repeated 1,000 times."""
+    expansion = min(chunk.num_values, _DELTA_BYTE_ARRAY_EXPANSION)
+    return expansion * chunk.total_uncompressed_size
 
 
 # Data pages that index a dictionary page, without SizeStatistics bytes.
-
-
 def detect_dictionary_indexed(chunk: ColumnChunkMetaData) -> bool:
-    """Whether the chunk's data pages index a dictionary page."""
     # A format 1.0 file names its dictionary page PLAIN_DICTIONARY too, so a
     # page no data page uses lands here as well.
     return chunk.has_dictionary_page and not _DICTIONARY_ENCODINGS.isdisjoint(
@@ -863,11 +811,9 @@ _DICTIONARY_MEAN_FACTOR = 1.2
 
 
 def estimate_dictionary_indexed(leaf: LeafChunk) -> int:
-    """A guess: every value at 1.2 times the dictionary's mean length.
-
-    Under when the common values are longer: "COMPLETED_SUCCESSFULLY" in 97% of
-    rows beside "OK" comes out at half. Without the header, a crude bound.
-    """
+    """A guess: every value at 1.2 times the dictionary's mean length. Under when
+    the common values are longer: "COMPLETED_SUCCESSFULLY" in 97% of rows beside
+    "OK" comes out at half. Without the header, a crude bound."""
     page = leaf.dictionary_page
     if page is None:
         # No mean: every value as long as the chunk.
@@ -900,8 +846,6 @@ def _indexed_values(leaf: LeafChunk, page: DictionaryPage) -> int:
 
 
 # Every value in PLAIN or DELTA_LENGTH_BYTE_ARRAY pages.
-
-
 def estimate_plain_bytes(chunk: ColumnChunkMetaData, fewest_values: int) -> int:
     """An upper bound: those pages hold every value's bytes, uncompressed."""
     prefix = 0 if "DELTA_LENGTH_BYTE_ARRAY" in chunk.encodings else 4
@@ -910,8 +854,6 @@ def estimate_plain_bytes(chunk: ColumnChunkMetaData, fewest_values: int) -> int:
 
 # Ray's schema pin: every batch is cast to the dataset schema, unless that holds
 # an extension type (``readers.file_reader.casts_to_schema``).
-
-
 def pinned_type(field: pa.Field, pinned_schema: pa.Schema | None) -> pa.DataType | None:
     """The type the pin casts a file column to, or ``None`` if it keeps its own."""
     if pinned_schema is None:
@@ -991,8 +933,6 @@ def _cast_maps(
 # A pinned column whose leaves the cast doesn't keep one for one: a struct that
 # gained a field, a nested field made nullable, numbers cast to text, plain
 # strings cast to a dictionary.
-
-
 def detect_unmapped_casts(leaves: Sequence[LeafChunk]) -> bool:
     return any(leaf.profile.unmapped_cast for leaf in leaves)
 
@@ -1017,11 +957,9 @@ def cast_slot_bytes(
     leaves: Sequence[int | None] = (),
     file_metadata: FileMetaData | None = None,
 ) -> int:
-    """Bytes per element of every array of ``pinned_type``, summed.
-
-    Text the cast writes counts at its longest: from the leaf's min and max
-    (:func:`statistics_text_bytes`), else the type's (:func:`_text_bytes`).
-    """
+    """Bytes per element of every array of ``pinned_type``, summed. Text the cast
+    writes counts at its longest: from the leaf's min and max
+    (:func:`statistics_text_bytes`), else the type's (:func:`_text_bytes`)."""
     texts = text_cast_leaves(file_type=file_type, pinned_type=pinned_type)
     if len(leaves) != len(texts) or file_metadata is None:
         leaves = (None,) * len(texts)
@@ -1042,10 +980,8 @@ def cast_slot_bytes(
 def statistics_text_bytes(
     arrow_type: pa.DataType, chunks: Sequence[ColumnChunkMetaData]
 ) -> int | None:
-    """The longest text an integer or decimal leaf casts to, from its min and max.
-
-    Ids 0 to 49,999 write 5 bytes, not 20. ``None`` when a chunk lacks them.
-    """
+    """The longest text an integer or decimal leaf casts to, from its min and max:
+    ids 0 to 49,999 write 5 bytes, not 20. ``None`` when a chunk lacks them."""
     decimal = pa.types.is_decimal(arrow_type) and arrow_type.scale >= 0
     if not (pa.types.is_integer(arrow_type) or decimal) or not chunks:
         return None
@@ -1177,8 +1113,6 @@ def _row_bytes(arrow_type: pa.DataType, text_bytes: int) -> int:
 # A dictionary the pin casts to plain text, in a non-nullable field of a nullable
 # struct, e.g. a pandas categorical in an optional struct pinned to string. Each
 # slot a null struct hides holds index 0, and the cast copies that value into it.
-
-
 def detect_hidden_dictionary_slots(leaf: LeafChunk) -> bool:
     return leaf.profile.hides_dictionary_slots and _hidden_slots(leaf) > 0
 
@@ -1202,17 +1136,14 @@ def _hidden_slots(leaf: LeafChunk) -> int:
 # Columns Ray adds after decoding: the file's path, Hive partition values, a row
 # hash, a checkpoint ID, and every dataset column the file lacks, filled with
 # nulls by the pin.
-
-
 def detect_added_columns(read: Read) -> bool:
     return read.added_row_bytes > 0 or read.added_row_group_bytes > 0
 
 
 def estimate_added_columns(row_group: RowGroupMetaData, read: Read) -> int:
     """Bytes of the columns Ray appends to one row group."""
-    return math.ceil(row_group.num_rows * read.added_row_bytes) + (
-        read.added_row_group_bytes
-    )
+    per_row = math.ceil(row_group.num_rows * read.added_row_bytes)
+    return per_row + read.added_row_group_bytes
 
 
 # Bytes an added array takes once per row group: its bitmap's last byte and the
@@ -1221,11 +1152,9 @@ _ADDED_ROW_GROUP_BYTES = 9
 
 
 def added_bytes(added: Sequence[pa.Field], path: str) -> tuple[float, int]:
-    """Bytes per row of the ``added`` columns, and bytes once per row group.
-
-    Only the path and the Hive values cut from it hold text: ``year=2024/`` gives
-    ``year`` 4 bytes a row.
-    """
+    """Bytes per row of the ``added`` columns, and bytes once per row group. Only
+    the path and the Hive values cut from it hold text: ``year=2024/`` gives
+    ``year`` 4 bytes a row."""
     path_bytes = len(path.encode())
     partitions = dict(part.split("=", 1) for part in path.split("/") if "=" in part)
     per_row, per_row_group = 0.0, 0
