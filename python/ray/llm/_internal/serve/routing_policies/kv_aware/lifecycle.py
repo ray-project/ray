@@ -2,8 +2,7 @@
 the request (its owner).
 
 - The selecting LLMRouter names its lifecycle endpoint in a request header. The
-  LLMServer's serving wrapper binds it as the request's owner
-  (``set_request_lifecycle_owner``).
+  LLMServer's ASGI middleware binds it for the request and its response stream.
 - ``LifecycleEventForwarder`` pushes each event from the LLMServer to the owning
   LLMRouter over ZMQ.
 - ``LifecycleReceiver`` is the owning LLMRouter's ZMQ PULL endpoint.
@@ -21,9 +20,12 @@ from typing import Awaitable, Callable, List, Optional
 import msgpack
 import zmq
 import zmq.asyncio as zmq_asyncio
+from starlette.datastructures import Headers
+from starlette.types import ASGIApp, Receive, Scope, Send
 
 from ray.llm._internal.serve.observability.logging import get_logger
 from ray.llm._internal.serve.routing_policies.kv_aware.constants import (
+    KV_LIFECYCLE_OWNER_HEADER,
     KV_TOKEN_ZMQ_RECEIVE_QUEUE_LIMIT,
 )
 from ray.llm._internal.serve.routing_policies.kv_aware.network_utils import (
@@ -54,13 +56,35 @@ _request_lifecycle_owner: contextvars.ContextVar[
 
 
 def set_request_lifecycle_owner(owner: Optional[str]) -> None:
-    """Bind the request's owner. Not reset: streaming runs ``generate()`` later."""
+    """Bind the request's owner in the current async context."""
     _request_lifecycle_owner.set(owner)
 
 
 def get_request_lifecycle_owner() -> Optional[str]:
     """Lifecycle endpoint of the router that selected the current request."""
     return _request_lifecycle_owner.get()
+
+
+class RequestLifecycleOwnerMiddleware:
+    """Bind the owner before vLLM spawns its handler task, through streaming."""
+
+    def __init__(self, app: ASGIApp):
+        self.app = app
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+
+        # vLLM prepares the response in a child task but consumes the stream
+        # outside it. Bind here so both inherit the request's owner.
+        token = _request_lifecycle_owner.set(
+            Headers(scope=scope).get(KV_LIFECYCLE_OWNER_HEADER)
+        )
+        try:
+            await self.app(scope, receive, send)
+        finally:
+            _request_lifecycle_owner.reset(token)
 
 
 class LifecycleCodec:

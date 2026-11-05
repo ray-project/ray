@@ -62,6 +62,9 @@ from ray.llm._internal.serve.routing_policies.kv_aware import (
 from ray.llm._internal.serve.routing_policies.kv_aware.kv_aware_router import (
     is_kv_aware,
 )
+from ray.llm._internal.serve.routing_policies.kv_aware.lifecycle import (
+    RequestLifecycleOwnerMiddleware,
+)
 from ray.llm._internal.serve.routing_policies.kv_aware.vllm.kv_events import (
     assign_replica_kv_events_endpoint,
     enable_native_kv_offload_events,
@@ -381,6 +384,9 @@ class VLLMEngine(LLMEngine):
         # replaces the engine error in the response.
         app.state.server = types.SimpleNamespace()
         if self._token_receiver is not None:
+            # vLLM eagerly builds the stack; rebuild it with the owner middleware.
+            app.middleware_stack = None
+            app.add_middleware(RequestLifecycleOwnerMiddleware)
             install_prompt_token_forwarding(
                 app.state,
                 self._prompt_token_store,
