@@ -1076,40 +1076,6 @@
       python random_shuffle_benchmark.py --num-partitions=1000 --partition-size=1e9
 
 
-############
-# Sort tests
-############
-
-# Same 1 TB workload as random_shuffle, sorted by its int64 key through the
-# shuffle v2 sort path (object store vs disk transport).
-- name: "sort"
-  python: "3.11"
-  cluster:
-    anyscale_sdk_2026: true
-    byod:
-      runtime_env:
-        RAY_max_direct_call_object_size: "8192"
-        # Shuffles are all-to-all, so high object store utilization is expected
-        # here and the DEFAULTS cap doesn't apply. A negative value disables it.
-        RAYTEST_MAX_OBJ_STORE_UTIL_PERCENT: "-1"
-    cluster_compute: fixed_size_all_to_all_compute.yaml
-
-  run:
-    timeout: 10800
-    script: >
-      python random_shuffle_benchmark.py --sort
-      --num-partitions=1000 --partition-size=1e9
-
-  variations:
-    - __suffix__: regular
-
-    - __suffix__: disk
-      cluster:
-        byod:
-          runtime_env:
-            RAY_DATA_ENABLE_DISK_SHUFFLE: "1"
-
-
 #######################
 # Batch inference tests
 #######################

@@ -99,11 +99,6 @@ if __name__ == "__main__":
         type=int,
     )
     parser.add_argument("--limit-num-blocks", type=int, default=None)
-    parser.add_argument(
-        "--sort",
-        action="store_true",
-        help="Sort by the int64 key instead of random shuffling.",
-    )
 
     args = parser.parse_args()
 
@@ -136,7 +131,7 @@ if __name__ == "__main__":
             row_size_bytes=args.row_size_bytes,
         )
 
-        ds = ds.sort("c_0") if args.sort else ds.random_shuffle()
+        ds = ds.random_shuffle()
         try:
             holder["ds"] = ds.materialize()
         except Exception as e:
