@@ -1,9 +1,8 @@
-"""Tests for the hand-written footer and dictionary page header reader.
+"""Tests for the compiled footer and dictionary page header reader.
 
 A desynced cursor returns wrong numbers rather than raising, so the walk is
-checked against ``thriftpy2``, against the two desyncs the prototype hit, and on
-hand-built payloads PyArrow never writes. Tests taking ``walk`` run on both the
-Python reader and the compiled one, when it's built.
+checked against ``thriftpy2`` and on hand-built payloads PyArrow never writes.
+They need ``_compact_reader.pyx`` built.
 """
 
 import numpy as np
@@ -12,13 +11,16 @@ from packaging.version import parse as parse_version
 
 import ray.data._internal.datasource_v2.formats.parquet.parquet_size_statistics as pss
 from ray.data._internal.datasource_v2.formats.parquet.parquet_size_statistics import (
-    _CompactReader,
     footer_bytes,
     read_footer_stats,
 )
 
 pa = pytest.importorskip("pyarrow")
 pq = pytest.importorskip("pyarrow.parquet")
+_compact_reader = pytest.importorskip(
+    "ray.data._internal.datasource_v2.formats.parquet._compact_reader",
+    reason="_compact_reader.pyx isn't built",
+)
 
 # PyArrow 17 writes no SizeStatistics; 23 does (18 to 22 unchecked).
 requires_pyarrow_23 = pytest.mark.skipif(
@@ -119,20 +121,8 @@ def written_files(tmp_path_factory):
     return out
 
 
-def _reader(*byte_values):
-    return _CompactReader(memoryview(bytes(byte_values)).cast("B"))
-
-
-@pytest.fixture(params=["python", "compiled"])
-def walk(request, monkeypatch):
-    """A footer walk, also made the one ``read_footer_stats`` runs."""
-    if request.param == "python":
-        monkeypatch.setattr(pss, "_CompiledCompactReader", None)
-        return lambda buf: _CompactReader(buf).read()
-    compiled = pss._CompiledCompactReader
-    if compiled is None:
-        pytest.skip("_compact_reader.pyx isn't built")
-    return lambda buf: compiled(buf, pss.LeafSizeStats).read()
+def _walk(buf):
+    return _compact_reader.CompactReader(buf, pss.LeafSizeStats).read()
 
 
 def _one_leaf_footer(column_metadata):
@@ -200,7 +190,6 @@ def _oracle_pages(column):
     return pages or None
 
 
-@pytest.mark.usefixtures("walk")
 @pytest.mark.parametrize("label", list(_table_cases()))
 def test_matches_thriftpy2_oracle(written_files, oracle, label):
     metadata = written_files[label]
@@ -234,7 +223,6 @@ def test_dictionary_page_header_matches_thriftpy2_oracle(tmp_path, oracle):
 
 
 @requires_pyarrow_23
-@pytest.mark.usefixtures("walk")
 @pytest.mark.parametrize(
     "values, arrow_type, expected",
     [
@@ -264,7 +252,6 @@ def test_size_statistics_match_ground_truth(tmp_path, values, arrow_type, expect
     assert stats.size_statistics[0] == [pss.LeafSizeStats(*expected)]
 
 
-@pytest.mark.usefixtures("walk")
 @pytest.mark.parametrize("use_dictionary", [False, True])
 @pytest.mark.parametrize("data_page_version", ["1.0", "2.0"])
 def test_data_pages_match_ground_truth(tmp_path, use_dictionary, data_page_version):
@@ -292,7 +279,6 @@ def test_data_pages_match_ground_truth(tmp_path, use_dictionary, data_page_versi
 
 
 @requires_pyarrow_23
-@pytest.mark.usefixtures("walk")
 def test_only_byte_array_leaves_record_unencoded_bytes(written_files):
     """Sub-field 1 is BYTE_ARRAY-only, so numeric leaves must not require it."""
     metadata = written_files["mixed"]
@@ -316,28 +302,42 @@ def test_only_byte_array_leaves_record_unencoded_bytes(written_files):
 # wrong width for those; each is pinned here to the byte.
 
 
+# Thrift compact type ids.
+_BOOL_TRUE, _BYTE, _I32, _I64, _DOUBLE, _BINARY, _LIST, _STRUCT = (
+    1,
+    3,
+    5,
+    6,
+    7,
+    8,
+    9,
+    12,
+)
+
+
 def _list_header(size, element_type):
-    return (size << pss._NIBBLE_BITS) | element_type
+    # The count in the high 4 bits, the element type id in the low 4.
+    return (size << 4) | element_type
 
 
 @pytest.mark.parametrize(
-    "skip, payload",
+    "field_type, payload",
     [
-        ("_skip_list", [_list_header(3, pss._DOUBLE)] + [0xFF] * 24),
-        ("_skip_list", [_list_header(3, pss._BYTE), 0x01, 0x02, 0x03]),
+        (_LIST, [_list_header(3, _DOUBLE)] + [0xFF] * 24),
+        (_LIST, [_list_header(3, _BYTE), 0x01, 0x02, 0x03]),
         # A bool takes a byte in a container, not its type nibble.
-        ("_skip_list", [_list_header(3, pss._BOOL_TRUE), 0x01, 0x02, 0x01]),
+        (_LIST, [_list_header(3, _BOOL_TRUE), 0x01, 0x02, 0x01]),
         # Varints are the one element whose width is in the data.
-        ("_skip_list", [_list_header(3, pss._I64), 0xAC, 0x02, 0x02, 0x80, 0x01]),
+        (_LIST, [_list_header(3, _I64), 0xAC, 0x02, 0x02, 0x80, 0x01]),
         # Binary elements carry their own lengths: 3 bytes, then 1.
-        ("_skip_list", [_list_header(2, pss._BINARY), 3, 0xA, 0xB, 0xC, 1, 0xD]),
+        (_LIST, [_list_header(2, _BINARY), 3, 0xA, 0xB, 0xC, 1, 0xD]),
         # Delta 0, I64: the field id follows as a varint (zigzag 32 == 16).
-        ("_skip_struct", [0x06, 0x20, 0x0A, 0x00]),
+        (_STRUCT, [0x06, 0x20, 0x0A, 0x00]),
         # A struct field holding a struct with one I64.
-        ("_skip_struct", [0x1C, 0x16, 0x02, 0x00, 0x00]),
+        (_STRUCT, [0x1C, 0x16, 0x02, 0x00, 0x00]),
         # An empty list may declare element type 0, not a valid type id:
         # arrow-rs #8826 rejected such footers by checking the type first.
-        ("_skip_struct", [0x19, 0x00, 0x00]),
+        (_STRUCT, [0x19, 0x00, 0x00]),
     ],
     ids=[
         "doubles",
@@ -350,17 +350,12 @@ def _list_header(size, element_type):
         "empty-list-type-0",
     ],
 )
-def test_skip_consumes_exactly_the_payload(walk, skip, payload):
-    reader = _reader(*payload)
-    getattr(reader, skip)()
-    assert reader._pos == len(payload)
-
-    # Through each walk: the payload as field 1, then field 16, which a wrong skip
-    # width would garble. Field 16 holds SizeStatistics with field 1 set to 5.
-    field_1 = 0x19 if skip == "_skip_list" else 0x1C
+def test_skip_consumes_exactly_the_payload(field_type, payload):
+    # The payload as field 1, then field 16, which a wrong skip width would
+    # garble. Field 16 holds SizeStatistics with field 1 set to 5.
     size_statistics_5 = [0xFC, 0x16, 0x0A, 0x00, 0x00]
-    footer = _one_leaf_footer([field_1, *payload, *size_statistics_5])
-    assert walk(footer) == ([[pss.LeafSizeStats(5, (), ())]], [[None]])
+    footer = _one_leaf_footer([0x10 | field_type, *payload, *size_statistics_5])
+    assert _walk(footer) == ([[pss.LeafSizeStats(5, (), ())]], [[None]])
 
 
 @pytest.mark.parametrize(
@@ -390,14 +385,9 @@ def test_skip_consumes_exactly_the_payload(walk, skip, payload):
         "absent",
     ],
 )
-def test_column_metadata_payloads(walk, payload, expected):
-    reader = _reader(*payload)
-    result = reader._column_metadata()
+def test_column_metadata_payloads(payload, expected):
     leaf = None if expected is None else pss.LeafSizeStats(*expected)
-
-    assert result == (leaf, None)
-    assert reader._pos == len(payload)
-    assert walk(_one_leaf_footer(payload)) == ([[leaf]], [[None]])
+    assert _walk(_one_leaf_footer(payload)) == ([[leaf]], [[None]])
 
 
 def _page_stats(page_type, count):
@@ -411,21 +401,21 @@ def _page_stats(page_type, count):
     [
         # encoding_stats (field 13) with a dictionary page and 4 data pages.
         (
-            [0xD9, _list_header(2, pss._STRUCT)]
+            [0xD9, _list_header(2, _STRUCT)]
             + _page_stats(2, 1)
             + _page_stats(0, 4)
             + [0x00],
             (None, 4),
         ),
         # Version 2 data pages count too.
-        ([0xD9, _list_header(1, pss._STRUCT)] + _page_stats(3, 3) + [0x00], (None, 3)),
+        ([0xD9, _list_header(1, _STRUCT)] + _page_stats(3, 3) + [0x00], (None, 3)),
         # A dictionary page alone counts no data pages.
-        ([0xD9, _list_header(1, pss._STRUCT)] + _page_stats(2, 1) + [0x00], None),
+        ([0xD9, _list_header(1, _STRUCT)] + _page_stats(2, 1) + [0x00], None),
         # An empty list of element type 0.
         ([0xD9, 0x00, 0x00], None),
         # Field 13, then SizeStatistics as field 16, three ids on.
         (
-            [0xD9, _list_header(1, pss._STRUCT)]
+            [0xD9, _list_header(1, _STRUCT)]
             + _page_stats(0, 4)
             + [0x3C, 0x16, 0x0A, 0x00, 0x00],
             (pss.LeafSizeStats(5, (), ()), 4),
@@ -433,13 +423,9 @@ def _page_stats(page_type, count):
     ],
     ids=["dictionary-and-data", "data-page-v2", "dictionary-only", "empty", "both"],
 )
-def test_encoding_stats_payloads(walk, payload, expected):
+def test_encoding_stats_payloads(payload, expected):
     leaf, pages = (None, None) if expected is None else expected
-    reader = _reader(*payload)
-
-    assert reader._column_metadata() == (leaf, pages)
-    assert reader._pos == len(payload)
-    assert walk(_one_leaf_footer(payload)) == ([[leaf]], [[pages]])
+    assert _walk(_one_leaf_footer(payload)) == ([[leaf]], [[pages]])
 
 
 @pytest.mark.parametrize(
@@ -451,25 +437,23 @@ def test_encoding_stats_payloads(walk, payload, expected):
         # Field 13 as an i64 rather than a list.
         [0xD6, 0x02, 0x00],
         # Field 13 as a list of i32s rather than structs.
-        [0xD9, _list_header(1, pss._I32), 0x02, 0x00],
+        [0xD9, _list_header(1, _I32), 0x02, 0x00],
     ],
     ids=["geospatial", "encoding-stats-not-a-list", "encoding-stats-of-i32s"],
 )
-def test_wrong_field_types_are_rejected(walk, payload):
+def test_wrong_field_types_are_rejected(payload):
     """A field whose type contradicts parquet.thrift means the cursor desynced."""
-    with pytest.raises(pss._ThriftDesync):
-        _reader(*payload)._column_metadata()
-    with pytest.raises(Exception, match="expected"):
-        walk(_one_leaf_footer(payload))
+    with pytest.raises(_compact_reader.ThriftDesync, match="expected"):
+        _walk(_one_leaf_footer(payload))
 
 
-def test_a_length_past_the_footer_raises(walk):
+def test_a_length_past_the_footer_raises():
     """A corrupt length can't move the reader back to re-read a field forever."""
     # Field 3, a list of one binary whose length is 2**64 - 12: as a signed size,
     # -12, which is this payload's own length.
-    payload = [0x39, _list_header(1, pss._BINARY), 0xF4] + [0xFF] * 8 + [0x01]
+    payload = [0x39, _list_header(1, _BINARY), 0xF4] + [0xFF] * 8 + [0x01]
     with pytest.raises(IndexError):
-        walk(_one_leaf_footer(payload))
+        _walk(_one_leaf_footer(payload))
 
 
 # ---------------------------------------------------------------------------
@@ -477,7 +461,6 @@ def test_a_length_past_the_footer_raises(walk):
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.usefixtures("walk")
 def test_decoding_is_insensitive_to_view_signedness(written_files, monkeypatch):
     """Masks read a sign-extended byte the same, so ``.cast("B")`` is defensive."""
     metadata = written_files["wide"]
@@ -489,45 +472,6 @@ def test_decoding_is_insensitive_to_view_signedness(written_files, monkeypatch):
     assert read_footer_stats(metadata) == unsigned
 
 
-def _buggy_binary_skip(original):
-    """``self._pos += self._varint()``: every binary field consumes one byte too few."""
-
-    def skip(self, field_type):
-        if field_type == pss._BINARY:
-            self._pos += self._varint()  # noqa: B909 - the bug, on purpose
-            return
-        return original(self, field_type)
-
-    return skip
-
-
-def _short_varint_skip(self):
-    """A skip that stops one byte before the varint terminator."""
-    buf, pos = self._buf, self._pos
-    while buf[pos] & pss._VARINT_CONTINUES:
-        pos += 1
-    self._pos = pos
-
-
-@pytest.mark.parametrize("bug", ["binary-skip", "short-varint"])
-@pytest.mark.parametrize("label", list(_table_cases()))
-def test_a_desync_never_returns_other_numbers(written_files, monkeypatch, bug, label):
-    """The prototype's two desyncs give ``None``, caught by type and count checks."""
-    # The bugs are injected into the Python reader.
-    monkeypatch.setattr(pss, "_CompiledCompactReader", None)
-    metadata = written_files[label]
-    healthy = read_footer_stats(metadata)
-    if bug == "binary-skip":
-        monkeypatch.setattr(
-            _CompactReader, "_skip", _buggy_binary_skip(_CompactReader._skip)
-        )
-    else:
-        monkeypatch.setattr(_CompactReader, "_skip_varint", _short_varint_skip)
-
-    assert read_footer_stats(metadata) in (None, healthy)
-
-
-@pytest.mark.usefixtures("walk")
 def test_truncated_footer_gives_none(written_files, monkeypatch):
     """An IndexError from running off the end must not reach the caller."""
     monkeypatch.setattr(

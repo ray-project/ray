@@ -1,48 +1,65 @@
 # cython: language_level=3, boundscheck=True, wraparound=False, initializedcheck=False
-"""Compiled footer walk for :func:`parquet_size_statistics.read_footer_stats`.
+"""Thrift compact-protocol reader for :mod:`parquet_size_statistics`.
 
-The same walk as ``parquet_size_statistics._CompactReader.read``, about 30 times
-faster. Bazel builds it into Ray's wheels; see python/ray/data/BUILD.bazel.
+Reads a Parquet footer's ``SizeStatistics`` and data page counts, and a dictionary
+page's header, decoding only those fields. Bazel builds it into Ray's wheels; see
+python/ray/data/BUILD.bazel.
 """
 from cpython.ref cimport Py_INCREF
 from cpython.tuple cimport PyTuple_New, PyTuple_SET_ITEM
 from libc.stdint cimport int64_t, uint64_t
 
-# The constants in parquet_size_statistics.py, which say what each one means.
+# Thrift's compact protocol, which Parquet footers and page headers are written in:
+# https://github.com/apache/thrift/blob/master/doc/specs/thrift-compact-protocol.md
 cdef enum:
-    BOOL_TRUE = 1
-    BOOL_FALSE = 2
-    BYTE = 3
-    I16 = 4
-    I32 = 5
-    I64 = 6
-    DOUBLE = 7
-    BINARY = 8
-    LIST = 9
-    SET = 10
-    MAP = 11
-    STRUCT = 12
-    DOUBLE_BYTES = 8
+    # Type ids, and what follows a field header of each type.
+    BOOL_TRUE = 1  # a bool field holding true: nothing, the type id is the value
+    BOOL_FALSE = 2  # a bool field holding false: nothing
+    BYTE = 3  # one byte
+    I16 = 4  # a zigzag varint
+    I32 = 5  # a zigzag varint
+    I64 = 6  # a zigzag varint
+    DOUBLE = 7  # an 8-byte float
+    BINARY = 8  # a varint length, then that many bytes
+    LIST = 9  # a list header, then the elements
+    SET = 10  # written like a list
+    MAP = 11  # a varint count, then a byte holding the key and value type ids
+    STRUCT = 12  # fields, then a STOP byte
+    DOUBLE_BYTES = 8  # the width of a double
+
+    # A field header byte holds the field id's delta from the previous field's in
+    # its high 4 bits and the field's type id in its low 4; a list header byte
+    # holds the element count and the element type id the same way.
     NIBBLE_BITS = 4
     NIBBLE_MASK = 0x0F
-    LONG_FORM_ID = 0
-    LONG_FORM_COUNT = 0x0F
-    STOP = 0x00
+    LONG_FORM_ID = 0  # an id delta of 0: the field id follows as a zigzag varint
+    LONG_FORM_COUNT = 0x0F  # a list count of 15: the count follows as a varint
+    STOP = 0x00  # the byte ending a struct; never a field header, as types start at 1
+
+    # Varints: unsigned integers written 7 bits a byte, low bits first.
     VARINT_BITS = 7
     VARINT_VALUE_MASK = 0x7F
-    VARINT_CONTINUES = 0x80
-    FILE_META_ROW_GROUPS = 4
-    ROW_GROUP_COLUMNS = 1
-    COLUMN_CHUNK_META_DATA = 3
-    COLUMN_META_ENCODING_STATS = 13
-    COLUMN_META_SIZE_STATISTICS = 16
-    ENCODING_STATS_PAGE_TYPE = 1
-    ENCODING_STATS_COUNT = 3
-    DATA_PAGE = 0
-    DATA_PAGE_V2 = 3
-    SIZE_STATS_UNENCODED_BYTES = 1
-    SIZE_STATS_REPETITION_HISTOGRAM = 2
-    SIZE_STATS_DEFINITION_HISTOGRAM = 3
+    VARINT_CONTINUES = 0x80  # set on every byte of a varint but the last
+
+    # Field ids from parquet.thrift:
+    # https://github.com/apache/parquet-format/blob/master/src/main/thrift/parquet.thrift
+    FILE_META_ROW_GROUPS = 4  # FileMetaData.row_groups, list<RowGroup>
+    ROW_GROUP_COLUMNS = 1  # RowGroup.columns, list<ColumnChunk>
+    COLUMN_CHUNK_META_DATA = 3  # ColumnChunk.meta_data, a ColumnMetaData
+    COLUMN_META_ENCODING_STATS = 13  # ColumnMetaData.encoding_stats, a list
+    COLUMN_META_SIZE_STATISTICS = 16  # ColumnMetaData.size_statistics
+    ENCODING_STATS_PAGE_TYPE = 1  # PageEncodingStats.page_type, a PageType
+    ENCODING_STATS_COUNT = 3  # PageEncodingStats.count
+    SIZE_STATS_UNENCODED_BYTES = 1  # SizeStatistics.unencoded_byte_array_data_bytes
+    SIZE_STATS_REPETITION_HISTOGRAM = 2  # SizeStatistics.repetition_level_histogram
+    SIZE_STATS_DEFINITION_HISTOGRAM = 3  # SizeStatistics.definition_level_histogram
+    PAGE_HEADER_TYPE = 1  # PageHeader.type, a PageType
+    PAGE_HEADER_UNCOMPRESSED_SIZE = 2  # PageHeader.uncompressed_page_size
+    PAGE_HEADER_DICTIONARY_PAGE_HEADER = 7  # PageHeader.dictionary_page_header
+    DICTIONARY_PAGE_HEADER_NUM_VALUES = 1  # DictionaryPageHeader.num_values
+    DATA_PAGE = 0  # PageType.DATA_PAGE
+    DICTIONARY_PAGE = 2  # PageType.DICTIONARY_PAGE
+    DATA_PAGE_V2 = 3  # PageType.DATA_PAGE_V2
 
 
 class ThriftDesync(Exception):
@@ -55,9 +72,9 @@ cdef inline bint is_varint_type(int t):
 
 cdef class CompactReader:
     """Reads a footer's ``SizeStatistics``, into ``leaf_stats`` tuples, and data
-    page counts.
+    page counts, or a dictionary page's header.
 
-    Past the end raises IndexError, as the Python reader does.
+    Past the end raises IndexError.
     """
 
     cdef const unsigned char[::1] buf
@@ -65,7 +82,7 @@ cdef class CompactReader:
     cdef object leaf_stats
     cdef object tuple_new
 
-    def __cinit__(self, buf, leaf_stats):
+    def __cinit__(self, buf, leaf_stats=None):
         # Unsigned whatever the view's format: memoryview(pyarrow.Buffer) is signed.
         self.buf = memoryview(buf).cast("B")
         self.pos = 0
@@ -134,6 +151,7 @@ cdef class CompactReader:
         return 1
 
     cdef int skip_element(self, int element_type) except -1:
+        # A bool takes a byte in a container, none in a struct.
         if element_type == BOOL_TRUE or element_type == BOOL_FALSE:
             self.pos += 1
         else:
@@ -208,6 +226,7 @@ cdef class CompactReader:
         cdef object value
         cdef tuple values
         self.list_header(&count, &element_type)
+        # An empty list's element type means nothing.
         if count and element_type != I64:
             raise ThriftDesync(
                 f"SizeStatistics field {field_id} is a list of type {element_type}, "
@@ -230,6 +249,8 @@ cdef class CompactReader:
         repetition = ()
         definition = ()
         while self.next_field(&last_id, &field_type):
+            # The type checks catch a reader that drifted onto field 17,
+            # geospatial statistics: a struct too, but its field 1 isn't an i64.
             if last_id == SIZE_STATS_UNENCODED_BYTES:
                 if field_type != I64:
                     raise ThriftDesync(
@@ -351,3 +372,34 @@ cdef class CompactReader:
             else:
                 self.skip(field_type)
         return stats, data_pages
+
+    def dictionary_page(self):
+        """A dictionary page header's ``(num_values, uncompressed_page_size)``, or
+        ``None`` for another page's."""
+        cdef int64_t last_id = 0
+        cdef int64_t sub_id
+        cdef int field_type, sub_type
+        page_type = uncompressed = num_values = None
+        while self.next_field(&last_id, &field_type):
+            if last_id == PAGE_HEADER_TYPE and field_type == I32:
+                page_type = self.zigzag()
+            elif last_id == PAGE_HEADER_UNCOMPRESSED_SIZE and field_type == I32:
+                uncompressed = self.zigzag()
+            elif last_id == PAGE_HEADER_DICTIONARY_PAGE_HEADER and field_type == STRUCT:
+                sub_id = 0
+                while self.next_field(&sub_id, &sub_type):
+                    if sub_id == DICTIONARY_PAGE_HEADER_NUM_VALUES and sub_type == I32:
+                        num_values = self.zigzag()
+                    else:
+                        self.skip(sub_type)
+            else:
+                self.skip(field_type)
+        if (
+            page_type != DICTIONARY_PAGE
+            or uncompressed is None
+            or num_values is None
+            or num_values < 0
+            or uncompressed < 0
+        ):
+            return None
+        return num_values, uncompressed
