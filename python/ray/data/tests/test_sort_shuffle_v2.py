@@ -356,11 +356,45 @@ def test_sort_planner_routes_to_shuffle_v2(restore_data_context):
     assert isinstance(map_op, SortShuffleMapOp)
     assert not isinstance(map_op.input_dependencies[0], SortSamplingOp)
 
+    # Disk flag: same shape, disk transport classes and prefixed names.
+    ctx.use_disk_based_hash_shuffle = True
+    ds_disk = ray.data.range(10, override_num_blocks=2).sort("id")
+    dag = get_execution_plan(ds_disk._logical_plan)[0].dag
+    assert isinstance(dag, DiskHashShuffleReduceOp)
+    assert dag._preserve_partition_order
+    assert dag.name.startswith("DiskSortShuffleReduce")
+    disk_map_op = dag.input_dependencies[0]
+    assert isinstance(disk_map_op, DiskSortShuffleMapOp)
+    assert disk_map_op.name.startswith("DiskSortShuffleMap")
+
     # Legacy sort: build a fresh dataset so it captures the new strategy.
     ctx.shuffle_strategy = ShuffleStrategy.SORT_SHUFFLE_PULL_BASED
     ds_legacy = ray.data.range(10, override_num_blocks=2).sort("id")
     dag = get_execution_plan(ds_legacy._logical_plan)[0].dag
     assert isinstance(dag, AllToAllOperator)
+
+
+def test_disk_sort_fused_map_keeps_partition_order(
+    ray_start_regular_shared_2_cpus,
+    restore_data_context,
+):
+    """Fusing a map into the disk sort reduce must keep ``preserve_partition_order``."""
+    ctx = DataContext.get_current()
+    ctx.shuffle_strategy = ShuffleStrategy.SHUFFLE_V2
+    ctx.use_disk_based_hash_shuffle = True
+
+    ds = (
+        ray.data.range(50, override_num_blocks=5)
+        .sort("id", descending=True)
+        .map_batches(lambda batch: batch)
+    )
+    dag = get_execution_plan(ds._logical_plan)[0].dag
+    assert isinstance(dag, DiskHashShuffleReduceOp)
+    assert "->" in dag.name
+    assert dag._preserve_partition_order
+
+    ids = [row["id"] for row in ds.take_all()]
+    assert ids == list(range(49, -1, -1))
 
 
 def test_sort_shuffle_v2_end_to_end(
