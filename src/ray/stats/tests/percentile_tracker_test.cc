@@ -20,7 +20,13 @@
 
 #include <gtest/gtest.h>
 
+#include <cmath>
+#include <limits>
 #include <random>
+#include <utility>
+#include <vector>
+
+#include "ray/stats/quadratic_bucket_scheme.h"
 
 namespace ray {
 namespace stats {
@@ -145,8 +151,9 @@ TEST(QuadraticBucketSchemeTest, BucketMapping) {
   EXPECT_GE(scheme.ToBucket(500.0), 0);
   EXPECT_LT(scheme.ToBucket(500.0), 100);
 
-  // Values at or beyond max go to last bucket
-  EXPECT_EQ(scheme.ToBucket(1000.0), 99);
+  // max_value closes the last finite bucket; only values beyond it overflow.
+  EXPECT_EQ(scheme.ToBucket(1000.0), 98);
+  EXPECT_EQ(scheme.ToBucket(std::nextafter(1000.0, 2000.0)), 99);
   EXPECT_EQ(scheme.ToBucket(5000.0), 99);
 
   // Bucket boundaries should increase monotonically up to and including the last bucket
@@ -157,6 +164,32 @@ TEST(QuadraticBucketSchemeTest, BucketMapping) {
   // Last bucket returns max_value, not infinity
   EXPECT_EQ(scheme.FromBucket(99), 1000.0);
   EXPECT_FALSE(std::isinf(scheme.FromBucket(99)));
+}
+
+// Buckets are (lower, upper], like Prometheus `le` buckets: a value exactly on a
+// boundary belongs to the bucket that boundary closes, and the next representable
+// value above it belongs to the following bucket.
+TEST(QuadraticBucketSchemeTest, BucketsIncludeTheirUpperBound) {
+  const std::vector<std::pair<int, double>> configs = {
+      {2, 1.0}, {3, 7.0}, {16, 500.0}, {100, 1000.0}, {256, 60000.0}, {1024, 0.3}};
+  for (const auto &[num_buckets, max_value] : configs) {
+    SCOPED_TRACE(testing::Message()
+                 << "num_buckets=" << num_buckets << " max_value=" << max_value);
+    QuadraticBucketScheme scheme(num_buckets, max_value);
+    const double inf = std::numeric_limits<double>::infinity();
+
+    EXPECT_EQ(scheme.ToBucket(-1.0), 0);
+    EXPECT_EQ(scheme.ToBucket(0.0), 0);
+    EXPECT_EQ(scheme.UpperBound(num_buckets - 2), max_value);
+    EXPECT_TRUE(std::isinf(scheme.UpperBound(num_buckets - 1)));
+
+    for (int b = 0; b < num_buckets - 1; b++) {
+      const double upper = scheme.UpperBound(b);
+      ASSERT_EQ(scheme.ToBucket(upper), b) << "at upper bound " << upper;
+      ASSERT_EQ(scheme.ToBucket(std::nextafter(upper, inf)), b + 1)
+          << "just above upper bound " << upper;
+    }
+  }
 }
 
 TEST(PercentileTrackerTest, OverflowValuesDoNotProduceInfinity) {
