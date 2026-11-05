@@ -1703,12 +1703,14 @@ class ResourceDemandScheduler(IResourceScheduler):
         """
 
         def _sort_gang_resource_requests(req: GangResourceRequest) -> Tuple:
-            """Key function for sorting the gang resource request by:
-            1. the number of label constraints narrowing the locality domain
-               (set when a rescheduling gang is pinned to its domain).
-            2. the number of placement and locality constraints in the gang
-               request, counting a locality requirement once per bundle.
-            3. the number of resource requests in the gang request.
+            """Return the sort key for a gang resource request.
+
+            The key sorts the gang resource request by:
+                1. the number of label constraints narrowing the locality domain
+                   (set when a rescheduling gang is pinned to its domain).
+                2. the number of placement and locality constraints in the gang
+                   request, counting a locality requirement once per bundle.
+                3. the number of resource requests in the gang request.
             """
             requests = (
                 req.bundle_selectors[0].resource_requests

@@ -33,68 +33,63 @@ class JaxTrainer(DataParallelTrainer):
 
     * :ref:`Jax Guide <train-jax>`
 
-    .. testcode::
-        :skipif: True
-
-        import os
-        from absl import app
-        import logging
-        from typing import Sequence
-
-        import ray
-        from ray.train import ScalingConfig, RunConfig
-        from ray.train.v2.jax import JaxTrainer
-        from MaxText.train import main as maxtext_main
-
-        def train_loop_per_worker(config):
-            argv = config["argv"]
-            maxtext_main(argv)
-
-        def main(argv: Sequence[str]):
-            ray.init()
-
-            # If you want to use TPUs, specify the TPU topology and accelerator type.
-            tpu_scaling_config = ScalingConfig(
-                use_tpu=True,
-                num_workers=4,
-                topology="4x4",
-                accelerator_type="TPU-V6E",
-                placement_strategy="SPREAD",
-                resources_per_worker={"TPU": 4},
-            )
-
-            # If you want to use GPUs, specify the GPU scaling config like below.
-            # gpu_scaling_config = ScalingConfig(
-            #     use_gpu=True,
-            #     num_workers=4,
-            #     resources_per_worker={"GPU": 1},
-            # )
-
-
-            trainer = JaxTrainer(
-                train_loop_per_worker=train_loop_per_worker,
-                train_loop_config={"argv": absolute_argv},
-                scaling_config=tpu_scaling_config,
-                run_config=RunConfig(
-                    name="maxtext_jaxtrainer",
-                    worker_runtime_env={
-                        "env_vars": {
-                            "JAX_PLATFORMS": "tpu",
-                            # If you want to use GPUs, set the JAX_PLATFORMS to "cuda".
-                            # "JAX_PLATFORMS": "cuda",
-                        }
-                    },
-                ),
-            )
-
-            result = trainer.fit()
-
     If the ``datasets`` dict contains datasets (e.g. "train" and "val"), then it will be split into multiple dataset
     shards that can then be accessed by ``ray.train.get_dataset_shard("train")`` and ``ray.train.get_dataset_shard("val")``.
 
     Note:
         * If you are using TPUs, importing `jax` should occur within `train_loop_per_worker` to
           avoid driver-side TPU lock issues.
+
+    Examples:
+        >>> import os  # doctest: +SKIP_EXAMPLE
+        >>> from absl import app
+        >>> import logging
+        >>> from typing import Sequence
+        >>> import ray
+        >>> from ray.train import ScalingConfig, RunConfig
+        >>> from ray.train.v2.jax import JaxTrainer
+        >>> from MaxText.train import main as maxtext_main
+        >>> def train_loop_per_worker(config):
+        ...     argv = config["argv"]
+        ...     maxtext_main(argv)
+        >>> def main(argv: Sequence[str]):
+        ...     ray.init()
+        ...
+        ...     # If you want to use TPUs, specify the TPU topology and accelerator type.
+        ...     tpu_scaling_config = ScalingConfig(
+        ...         use_tpu=True,
+        ...         num_workers=4,
+        ...         topology="4x4",
+        ...         accelerator_type="TPU-V6E",
+        ...         placement_strategy="SPREAD",
+        ...         resources_per_worker={"TPU": 4},
+        ...     )
+        ...
+        ...     # If you want to use GPUs, specify the GPU scaling config like below.
+        ...     # gpu_scaling_config = ScalingConfig(
+        ...     #     use_gpu=True,
+        ...     #     num_workers=4,
+        ...     #     resources_per_worker={"GPU": 1},
+        ...     # )
+        ...
+        ...
+        ...     trainer = JaxTrainer(
+        ...         train_loop_per_worker=train_loop_per_worker,
+        ...         train_loop_config={"argv": absolute_argv},
+        ...         scaling_config=tpu_scaling_config,
+        ...         run_config=RunConfig(
+        ...             name="maxtext_jaxtrainer",
+        ...             worker_runtime_env={
+        ...                 "env_vars": {
+        ...                     "JAX_PLATFORMS": "tpu",
+        ...                     # If you want to use GPUs, set the JAX_PLATFORMS to "cuda".
+        ...                     # "JAX_PLATFORMS": "cuda",
+        ...                 }
+        ...             },
+        ...         ),
+        ...     )
+        ...
+        ...     result = trainer.fit()
 
     Args:
         train_loop_per_worker: The training function to execute on each worker.
