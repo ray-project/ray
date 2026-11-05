@@ -1,7 +1,7 @@
 load("@com_github_grpc_grpc//bazel:cython_library.bzl", "pyx_library")
 load("@rules_pkg//pkg:mappings.bzl", "pkg_attributes", "pkg_files")
 load("@rules_python//python:defs.bzl", "py_library")
-load("//bazel:ray.bzl", "COPTS", "PYX_COPTS", "PYX_SRCS")
+load("//bazel:ray.bzl", "COPTS", "PYX_COPTS")
 load(":test.bzl", "doctest", "py_test", "py_test_module_list")
 
 # Export pytest plugin so it can be used in the documentation tests.
@@ -24,7 +24,11 @@ pyx_library(
         "_internal/datasource_v2/formats/parquet/_compact_reader.pyx",
     ],
     cc_kwargs = dict(
-        srcs = PYX_SRCS,
+        # PYX_SRCS's relative path would point inside this package.
+        srcs = select({
+            "@platforms//os:windows": ["//:src/shims/windows/python-nondebug.h"],
+            "//conditions:default": [],
+        }),
         copts = COPTS + PYX_COPTS,
         features = ["compiler_param_file"],
         linkopts = select({
