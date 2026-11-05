@@ -690,6 +690,7 @@ class WorkerGroup(ExecutionGroup):
         self._replica_groups = None
         self._worker_rank_to_replica_group_rank = None
         self._world_rank_to_ongoing_poll.clear()
+        self._latest_poll_status = None
 
     def abort(self):
         """Abort the worker group."""

@@ -10,6 +10,7 @@ import ray
 from ray._private.state import state as ray_state
 from ray.exceptions import RayActorError, RayTaskError
 from ray.runtime_env import RuntimeEnv
+from ray.train.backend import Backend, BackendConfig
 from ray.train.v2._internal.callbacks import backend_setup
 from ray.train.v2._internal.callbacks.backend_setup import BackendSetupCallback
 from ray.train.v2._internal.constants import (
@@ -26,6 +27,7 @@ from ray.train.v2._internal.exceptions import (
 )
 from ray.train.v2._internal.execution.callback import (
     ReplicaGroupCallback,
+    WorkerCallback,
     WorkerGroupCallback,
 )
 from ray.train.v2._internal.execution.context import (
@@ -903,6 +905,88 @@ def test_backend_setup_callback_propagates_unexpected_shutdown_error():
     )
     with pytest.raises(ValueError, match="unexpected backend bug"):
         cb.before_execution_group_shutdown(MagicMock())
+
+
+@pytest.mark.parametrize(
+    "actor_failure", [True, False], ids=["actor_exit", "task_error"]
+)
+def test_backend_setup_callback_skips_shutdown_on_worker_errors(
+    tmp_path, actor_failure
+):
+    """Verify `BackendSetupCallback` skips collective `on_shutdown` when
+    `poll_status` already recorded worker errors, preventing surviving workers'
+    main actor threads from hanging in collective teardown (`jax.distributed.shutdown`)
+    and stalling `_shutdown_workers` for `patience_s` (5s).
+    """
+    trigger_file = tmp_path / "trigger_failure.txt"
+    worker_shutdown_dir = tmp_path / "worker_shutdown"
+    worker_shutdown_dir.mkdir()
+    on_shutdown_calls = []
+
+    class HangingCollectiveBackend(Backend):
+        def on_shutdown(self, worker_group, backend_config):
+            on_shutdown_calls.append(True)
+            # Simulate `_JaxBackend.on_shutdown`: dispatches a blocking collective
+            # teardown task onto all workers' single-threaded main actor loops
+            # before calling `ray.get`.
+            futures = worker_group.execute_async(lambda: time.sleep(30))
+            try:
+                ray.get(futures, timeout=30)
+            except Exception:
+                pass
+
+    class HangingBackendConfig(BackendConfig):
+        @property
+        def backend_cls(self):
+            return HangingCollectiveBackend
+
+    class RecordWorkerShutdownCallback(WorkerCallback):
+        def before_worker_shutdown(self):
+            rank = get_train_context().get_world_rank()
+            (worker_shutdown_dir / f"rank_{rank}").touch()
+
+    def train_fn():
+        while not trigger_file.exists():
+            time.sleep(0.01)
+        if get_train_context().get_world_rank() == 0:
+            if actor_failure:
+                os._exit(1)
+            raise RuntimeError("Rank 0 training failure")
+        time.sleep(30)
+
+    wg = _default_inactive_worker_group(
+        worker_group_context=_default_worker_group_context(
+            train_fn_ref=DummyObjectRefWrapper(train_fn),
+        ),
+        callbacks=[
+            BackendSetupCallback(HangingBackendConfig()),
+            RecordWorkerShutdownCallback(),
+        ],
+    )
+    wg._start()
+
+    trigger_file.touch()
+    deadline = time.monotonic() + 5
+    while True:
+        status = wg.poll_status()
+        if status.errors:
+            break
+        assert time.monotonic() < deadline
+        time.sleep(0.01)
+
+    assert 0 in status.errors
+
+    shutdown_start = time.monotonic()
+    wg.shutdown()
+    shutdown_elapsed = time.monotonic() - shutdown_start
+
+    assert not on_shutdown_calls
+    # Surviving workers must not be wedged in `on_shutdown` and must complete
+    # `before_worker_shutdown` well under `_shutdown_workers`'s 5s patience timeout.
+    assert shutdown_elapsed < 1.5
+    surviving_ranks = {1, 2, 3} if actor_failure else {0, 1, 2, 3}
+    for rank in surviving_ranks:
+        assert (worker_shutdown_dir / f"rank_{rank}").exists()
 
 
 @pytest.mark.parametrize("replace_rg", [False, True], ids=["start", "replace_rg"])
