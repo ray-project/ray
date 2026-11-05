@@ -2,6 +2,7 @@ import ctypes
 import ctypes.util
 import logging
 import os
+import sys
 from typing import List, Optional, Tuple
 
 from ray._private.accelerators.accelerator import AcceleratorManager
@@ -53,7 +54,8 @@ class _ZeDeviceProperties(ctypes.Structure):
 
 
 def _load_level_zero_loader() -> Optional[ctypes.CDLL]:
-    for name in ("libze_loader.so.1", ctypes.util.find_library("ze_loader")):
+    default = "ze_loader.dll" if sys.platform == "win32" else "libze_loader.so.1"
+    for name in (default, ctypes.util.find_library("ze_loader")):
         if not name:
             continue
         try:
@@ -66,11 +68,11 @@ def _load_level_zero_loader() -> Optional[ctypes.CDLL]:
 def _get_level_zero_gpu_names() -> List[str]:
     """Return the names of the Level Zero GPU devices visible to this process.
 
-    Queries the Level Zero loader directly instead of going through dpctl, so
-    Ray needs no Python dependency to detect Intel GPUs. Only devices are
-    enumerated: no context or queue is created, so no device memory is held.
-    ``ZE_AFFINITY_MASK`` is honored by the driver. Returns an empty list when
-    the loader or a driver is unavailable.
+    Queries the Level Zero loader directly, so no Python dependency is needed
+    to detect Intel GPUs. Only devices are enumerated: no context or queue is
+    created, so no device memory is held. ``ZE_AFFINITY_MASK`` is honored by
+    the driver. Returns an empty list when the loader or a driver is
+    unavailable.
     """
     lib = _load_level_zero_loader()
     if lib is None or lib.zeInit(0) != 0:
@@ -110,6 +112,38 @@ def _get_level_zero_gpu_names() -> List[str]:
     return names
 
 
+def _get_dpctl_gpu_names() -> List[str]:
+    """Return the Level Zero GPU names reported by dpctl, if it is installed."""
+    try:
+        import dpctl
+    except ImportError:
+        return []
+    return [
+        device.name
+        for device in dpctl.get_devices(
+            backend=ONEAPI_DEVICE_BACKEND_TYPE, device_type="gpu"
+        )
+    ]
+
+
+def _get_gpu_names() -> List[str]:
+    """Detect GPUs through Level Zero, falling back to dpctl when it finds none.
+
+    The fallback keeps platforms where the Level Zero loader cannot be found by
+    ``ctypes`` working for users who have dpctl installed.
+    """
+    try:
+        names = _get_level_zero_gpu_names()
+    except Exception:
+        names = []
+    if names:
+        return names
+    try:
+        return _get_dpctl_gpu_names()
+    except Exception:
+        return []
+
+
 class IntelGPUAcceleratorManager(AcceleratorManager):
     """Intel GPU accelerators."""
 
@@ -145,10 +179,7 @@ class IntelGPUAcceleratorManager(AcceleratorManager):
 
     @staticmethod
     def get_current_node_num_accelerators() -> int:
-        try:
-            return len(_get_level_zero_gpu_names())
-        except Exception:
-            return 0
+        return len(_get_gpu_names())
 
     @staticmethod
     def get_current_node_accelerator_type() -> Optional[str]:
@@ -159,10 +190,7 @@ class IntelGPUAcceleratorManager(AcceleratorManager):
         Returns:
             A string representing the name of Intel GPU type.
         """
-        try:
-            names = _get_level_zero_gpu_names()
-        except Exception:
-            return None
+        names = _get_gpu_names()
         if not names:
             return None
         return "Intel-GPU-" + "-".join(names[0].split(" ")[-2:])
