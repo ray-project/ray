@@ -70,17 +70,85 @@ def test_get_current_node_num_accelerators():
 
 
 def test_get_current_node_num_accelerators_no_gpu():
-    with patch(
-        "ray._private.accelerators.intel_gpu._get_level_zero_gpu_names",
-        return_value=[],
+    with (
+        patch(
+            "ray._private.accelerators.intel_gpu._get_level_zero_gpu_names",
+            return_value=[],
+        ),
+        patch(
+            "ray._private.accelerators.intel_gpu._get_dpctl_gpu_names",
+            return_value=[],
+        ),
     ):
         assert Accelerator.get_current_node_num_accelerators() == 0
 
-    with patch(
-        "ray._private.accelerators.intel_gpu._get_level_zero_gpu_names",
-        side_effect=OSError,
+    with (
+        patch(
+            "ray._private.accelerators.intel_gpu._get_level_zero_gpu_names",
+            side_effect=OSError,
+        ),
+        patch(
+            "ray._private.accelerators.intel_gpu._get_dpctl_gpu_names",
+            side_effect=RuntimeError,
+        ),
     ):
         assert Accelerator.get_current_node_num_accelerators() == 0
+
+
+def test_dpctl_fallback_when_level_zero_finds_no_gpu():
+    name = "Intel(R) Data Center GPU Max 1550"
+    for level_zero in (
+        patch(
+            "ray._private.accelerators.intel_gpu._get_level_zero_gpu_names",
+            return_value=[],
+        ),
+        patch(
+            "ray._private.accelerators.intel_gpu._get_level_zero_gpu_names",
+            side_effect=OSError,
+        ),
+    ):
+        with (
+            level_zero,
+            patch(
+                "ray._private.accelerators.intel_gpu._get_dpctl_gpu_names",
+                return_value=[name] * 2,
+            ),
+        ):
+            assert Accelerator.get_current_node_num_accelerators() == 2
+            assert Accelerator.get_current_node_accelerator_type() == INTEL_MAX_1550
+
+
+def test_level_zero_preferred_over_dpctl():
+    with (
+        patch(
+            "ray._private.accelerators.intel_gpu._get_level_zero_gpu_names",
+            return_value=["Intel(R) Data Center GPU Max 1550"] * 4,
+        ),
+        patch(
+            "ray._private.accelerators.intel_gpu._get_dpctl_gpu_names"
+        ) as dpctl_names,
+    ):
+        assert Accelerator.get_current_node_num_accelerators() == 4
+        dpctl_names.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    "platform,expected", [("win32", "ze_loader.dll"), ("linux", "libze_loader.so.1")]
+)
+def test_level_zero_loader_default_name(platform, expected):
+    tried = []
+
+    def fake_cdll(name):
+        tried.append(name)
+        raise OSError
+
+    with (
+        patch.object(intel_gpu.sys, "platform", platform),
+        patch.object(intel_gpu.ctypes, "CDLL", fake_cdll),
+        patch.object(intel_gpu.ctypes.util, "find_library", return_value=None),
+    ):
+        assert intel_gpu._load_level_zero_loader() is None
+    assert tried == [expected]
 
 
 def test_get_current_node_accelerator_type():
@@ -96,9 +164,15 @@ def test_get_current_node_accelerator_type():
     ):
         assert Accelerator.get_current_node_accelerator_type() == INTEL_MAX_1100
 
-    with patch(
-        "ray._private.accelerators.intel_gpu._get_level_zero_gpu_names",
-        return_value=[],
+    with (
+        patch(
+            "ray._private.accelerators.intel_gpu._get_level_zero_gpu_names",
+            return_value=[],
+        ),
+        patch(
+            "ray._private.accelerators.intel_gpu._get_dpctl_gpu_names",
+            return_value=[],
+        ),
     ):
         assert Accelerator.get_current_node_accelerator_type() is None
 
