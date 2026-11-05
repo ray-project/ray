@@ -122,7 +122,7 @@ With the label, the `doc: docs example tests (opt-in)` step runs only the Bazel 
 The step never falls back to the library's whole docs example suite. Instead, its log lists each changed file that ran nothing, and why:
 
 * **The test carries a tag the step excludes.** The step skips tests tagged `post_wheel_build`, `highly_parallel`, or `timeseries_libs`, and its log names the tag.
-* **The test needs a GPU.** Docs examples never run GPU tests in premerge or microcheck. Every Ray LLM docs example needs a GPU, so changes under `doc/source/llm/` don't start the opt-in step. The scheduled post-merge builds run the GPU examples.
+* **The test needs a GPU.** Docs examples never run GPU tests in premerge or microcheck. Every Ray LLM docs example needs a GPU, so changes in an `llm/` directory under a library's docs, such as `doc/source/serve/llm/`, don't start the opt-in step. The scheduled post-merge builds run the other libraries' GPU examples. The LLM examples run in the nightly `llm_doc_tests` release test on H100 GPUs, through `doc/test_llm_examples.py`.
 * **No test names the file directly.** A file a test reaches only through a filegroup doesn't count.
 
 To see what the label would run before you push, run the selector locally:
@@ -169,7 +169,7 @@ The label doesn't build the docs. Add an `@rtd-build` line to a commit message a
 
 ### Skipping GPU tests
 
-Some docs and CI infrastructure files select GPU test steps even though a change to them can't affect GPU behavior. For example, `doc/BUILD.bazel` defines the docs example tests for every library, so a change to it selects every library's docs example steps, including the Ray Data, Ray Serve, and Ray LLM GPU steps. The `skip-gpu-tests` label skips every step tagged `gpu`, in every library, along with the images that only those steps need. All other selected steps still run. Like the `go` label, it requires write access.
+Some docs and CI infrastructure files select GPU test steps even though a change to them can't affect GPU behavior. For example, `doc/BUILD.bazel` defines the docs example tests for every library, so a change to it selects every library's docs example steps, including the Ray Data and Ray Serve GPU steps. The `skip-gpu-tests` label skips every step tagged `gpu`, in every library, along with the images that only those steps need. All other selected steps still run. Like the `go` label, it requires write access.
 
 Use the label only when your change can't affect what a GPU step tests. Don't use it for a change to library code, a GPU test, or a GPU test's image or launcher. The scheduled post-merge builds still run the GPU steps, so a GPU failure the label hides surfaces there, after your PR merges. A change to the label takes effect on the next commit you push, as with the other labels.
 

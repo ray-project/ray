@@ -36,7 +36,7 @@ from typing import Dict, FrozenSet, Iterable, List, Optional, Set
 # them. Both keep their default test routing in .buildkite/test.rules.txt.
 DOC_EXAMPLE_PREFIXES = ("doc/source/",)
 
-GPU_TAGS = frozenset({"gpu", "multi_gpu", "multi_gpu_4", "custom_vllm_plugin"})
+GPU_TAGS = frozenset({"gpu", "multi_gpu", "multi_gpu_4"})
 
 _PROSE_SUFFIXES = (".md", ".rst")
 

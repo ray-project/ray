@@ -100,7 +100,7 @@ COPY serve_tpu_multihost.py /home/ray/serve_tpu_multihost.py
 
 :::{tab-item} Python (vLLM-TPU)
 
-```{literalinclude} ../../../llm/doc_code/serve/tpu/serve_tpu_multihost.py
+```{literalinclude} ../doc_code/tpu/serve_tpu_multihost.py
 :language: python
 :start-after: __serve_tpu_multihost_start__
 :end-before: __serve_tpu_multihost_end__
@@ -121,7 +121,7 @@ COPY serve_tpu_multihost.py /home/ray/serve_tpu_multihost.py
 
 :::{tab-item} Python (vLLM-TorchTPU)
 
-```{literalinclude} ../../../llm/doc_code/serve/tpu/serve_tpu_multihost.py
+```{literalinclude} ../doc_code/tpu/serve_tpu_multihost.py
 :language: python
 :start-after: __serve_torchtpu_multihost_start__
 :end-before: __serve_torchtpu_multihost_end__

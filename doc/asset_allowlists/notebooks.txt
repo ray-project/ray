@@ -17,8 +17,8 @@ doc/source/core/examples/web_crawler.ipynb
 doc/source/data/examples/batch_inference_object_detection.ipynb
 doc/source/data/examples/huggingface_vit_batch_prediction.ipynb
 doc/source/data/examples/pytorch_resnet_batch_prediction.ipynb
-doc/source/llm/examples/batch/vllm-with-lora.ipynb
-doc/source/llm/examples/batch/vllm-with-structural-output.ipynb
+doc/source/data/examples/llm/vllm-with-lora.ipynb
+doc/source/data/examples/llm/vllm-with-structural-output.ipynb
 doc/source/serve/tutorials/video-analysis/README.ipynb
 doc/source/serve/tutorials/video-analysis/analyze_load_tests.ipynb
 doc/source/serve/tutorials/video-analysis/chunk_video_benchmark.ipynb
