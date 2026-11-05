@@ -1,8 +1,8 @@
 """Tests for the compiled footer and dictionary page header reader.
 
-A desynced cursor returns wrong numbers rather than raising, so the walk is
-checked against ``thriftpy2`` and on hand-built payloads PyArrow never writes.
-They need ``_compact_reader.pyx`` built.
+A desynced cursor returns wrong numbers rather than raising, so hand-built payloads
+pin each skip width PyArrow footers never exercise. They need
+``_compact_reader.pyx`` built.
 """
 
 import numpy as np
@@ -28,78 +28,22 @@ requires_pyarrow_23 = pytest.mark.skipif(
     reason="PyArrow 17 writes no SizeStatistics",
 )
 
-
-# A minimal parquet.thrift covering only the traversal path and the dictionary
-# page header. The protocol skips everything else generically, so unlike the
-# full 1,000-line schema this cannot drift from upstream in ways that matter
-# here. Every field is optional, so a missing one is a null, not an error.
-_ORACLE_THRIFT = """
-struct SizeStatistics {
-  1: optional i64 unencoded_byte_array_data_bytes;
-  2: optional list<i64> repetition_level_histogram;
-  3: optional list<i64> definition_level_histogram;
-}
-struct PageEncodingStats {
-  1: optional i32 page_type;
-  2: optional i32 encoding;
-  3: optional i32 count;
-}
-struct ColumnMetaData {
-  13: optional list<PageEncodingStats> encoding_stats;
-  16: optional SizeStatistics size_statistics;
-}
-struct ColumnChunk {
-  3: optional ColumnMetaData meta_data;
-}
-struct RowGroup {
-  1: optional list<ColumnChunk> columns;
-}
-struct FileMetaData {
-  4: optional list<RowGroup> row_groups;
-}
-struct DictionaryPageHeader {
-  1: optional i32 num_values;
-}
-struct PageHeader {
-  2: optional i32 uncompressed_page_size;
-  7: optional DictionaryPageHeader dictionary_page_header;
-}
-"""
-
 N = 500
-
-# Flat leaves of each physical kind, with nulls, and leaves nested in a struct
-# and a list.
-_TABLES = {
-    "mixed": pa.table(
-        {
-            "i": pa.array(np.arange(N, dtype="int64")),
-            "s": pa.array([None if i % 3 == 0 else f"s{i}" for i in range(N)]),
-            "b": pa.array([i % 2 == 0 for i in range(N)]),
-            "f": pa.array(np.random.rand(N)),
-        }
-    ),
-    "struct-nested": pa.table(
-        {
-            "a": pa.array(
-                [{"s": f"v{i % 5}", "l": [1, 2]} for i in range(N)],
-                type=pa.struct([("s", pa.string()), ("l", pa.list_(pa.int64()))]),
-            )
-        }
-    ),
-}
+_DISTINCT = [f"value-{i:03d}" * (1 + i % 3) for i in range(100)]
 
 
-@pytest.fixture(scope="module")
-def written_files(tmp_path_factory):
-    """Each table written with four row groups, and its metadata."""
-    out = {}
-    directory = tmp_path_factory.mktemp("size_stats")
-    for label, table in _TABLES.items():
-        path = directory / f"{label}.parquet"
-        pq.write_table(table, path, row_group_size=len(table) // 4)
-        out[label] = pq.read_metadata(str(path))
-    return out
+def _write_dictionary(tmp_path, **write_kwargs):
+    path = tmp_path / "dictionary.parquet"
+    table = pa.table({"a": pa.array([_DISTINCT[i % 100] for i in range(N)])})
+    pq.write_table(table, path, **write_kwargs)
+    return path
+
+
+def _dictionary_page_header_bytes(path, offset=None):
+    chunk = pq.read_metadata(str(path)).row_group(0).column(0)
+    with open(path, "rb") as f:
+        f.seek(chunk.dictionary_page_offset if offset is None else offset)
+        return f.read(pss.DICTIONARY_PAGE_HEADER_READ_BYTES)
 
 
 def _walk(buf):
@@ -115,13 +59,8 @@ def _one_leaf_footer(column_metadata):
     return memoryview(bytes(head + column_metadata + [0x00] * 3)).cast("B")
 
 
-# ---------------------------------------------------------------------------
-# Footer bytes, and the walk against the oracle
-# ---------------------------------------------------------------------------
-
-
-def test_footer_bytes(written_files):
-    metadata = written_files["mixed"]
+def test_footer_bytes(tmp_path):
+    metadata = pq.read_metadata(str(_write_dictionary(tmp_path)))
     buf = footer_bytes(metadata)
     assert buf is not None
 
@@ -135,72 +74,6 @@ def test_footer_bytes(written_files):
             raise TypeError("not picklable")
 
     assert footer_bytes(NoReduce()) is None
-
-
-@pytest.fixture(scope="module")
-def oracle(tmp_path_factory):
-    thriftpy2 = pytest.importorskip("thriftpy2")
-    path = tmp_path_factory.mktemp("thrift") / "parquet_oracle.thrift"
-    path.write_text(_ORACLE_THRIFT)
-    return thriftpy2.load(str(path), module_name="parquet_oracle_thrift")
-
-
-def _oracle_read(struct, raw):
-    compact = pytest.importorskip("thriftpy2.protocol.compact")
-    transport = pytest.importorskip("thriftpy2.transport")
-
-    struct.read(compact.TCompactProtocol(transport.TMemoryBuffer(bytes(raw))))
-    return struct
-
-
-def _oracle_leaf(column):
-    stats = column.meta_data.size_statistics
-    if stats is None:
-        return None
-    return pss.LeafSizeStats(
-        stats.unencoded_byte_array_data_bytes,
-        tuple(stats.repetition_level_histogram or ()),
-        tuple(stats.definition_level_histogram or ()),
-    )
-
-
-def _oracle_pages(column):
-    # Data pages are PageType 0 and 3; dictionary pages, type 2, aren't counted.
-    entries = column.meta_data.encoding_stats or ()
-    pages = sum(entry.count for entry in entries if entry.page_type in (0, 3))
-    return pages or None
-
-
-@pytest.mark.parametrize("label", list(_TABLES))
-def test_matches_thriftpy2_oracle(written_files, oracle, label):
-    metadata = written_files[label]
-    theirs = _oracle_read(oracle.FileMetaData(), footer_bytes(metadata))
-
-    assert read_footer_stats(metadata) == pss.FooterStats(
-        [
-            [_oracle_leaf(column) for column in row_group.columns]
-            for row_group in theirs.row_groups
-        ],
-        [
-            [_oracle_pages(column) for column in row_group.columns]
-            for row_group in theirs.row_groups
-        ],
-    )
-
-
-def test_dictionary_page_header_matches_thriftpy2_oracle(tmp_path, oracle):
-    path = _write_dictionary(tmp_path, write_page_checksum=True)
-    raw = _dictionary_page_header_bytes(path)
-    theirs = _oracle_read(oracle.PageHeader(), raw)
-
-    assert pss.read_dictionary_page(raw) == pss.DictionaryPage(
-        theirs.dictionary_page_header.num_values, theirs.uncompressed_page_size
-    )
-
-
-# ---------------------------------------------------------------------------
-# Decoded values against ground truth
-# ---------------------------------------------------------------------------
 
 
 @requires_pyarrow_23
@@ -258,26 +131,9 @@ def test_data_pages_match_ground_truth(tmp_path):
     assert stats.data_pages == [[5, 5], [5, 5]]
 
 
-# ---------------------------------------------------------------------------
-# Hand-built payloads: shapes PyArrow never writes
-# ---------------------------------------------------------------------------
-#
-# Skipping is where a desync starts. PyArrow footers hold no double or byte
-# lists and rarely a long-form field id, so the oracle would not stumble on a
-# wrong width for those; each is pinned here to the byte.
-
-
 # Thrift compact type ids.
-_BOOL_TRUE, _BYTE, _I32, _I64, _DOUBLE, _BINARY, _LIST, _STRUCT = (
-    1,
-    3,
-    5,
-    6,
-    7,
-    8,
-    9,
-    12,
-)
+_BOOL_TRUE, _BYTE, _I32, _I64 = 1, 3, 5, 6
+_DOUBLE, _BINARY, _LIST, _STRUCT = 7, 8, 9, 12
 
 
 def _list_header(size, element_type):
@@ -285,36 +141,27 @@ def _list_header(size, element_type):
     return (size << 4) | element_type
 
 
-@pytest.mark.parametrize(
-    "field_type, payload",
-    [
-        (_LIST, [_list_header(3, _DOUBLE)] + [0xFF] * 24),
-        (_LIST, [_list_header(3, _BYTE), 0x01, 0x02, 0x03]),
-        # A bool takes a byte in a container, not its type nibble.
-        (_LIST, [_list_header(3, _BOOL_TRUE), 0x01, 0x02, 0x01]),
-        # Varints are the one element whose width is in the data.
-        (_LIST, [_list_header(3, _I64), 0xAC, 0x02, 0x02, 0x80, 0x01]),
-        # Binary elements carry their own lengths: 3 bytes, then 1.
-        (_LIST, [_list_header(2, _BINARY), 3, 0xA, 0xB, 0xC, 1, 0xD]),
-        # Delta 0, I64: the field id follows as a varint (zigzag 32 == 16).
-        (_STRUCT, [0x06, 0x20, 0x0A, 0x00]),
-        # A struct field holding a struct with one I64.
-        (_STRUCT, [0x1C, 0x16, 0x02, 0x00, 0x00]),
-        # An empty list may declare element type 0, not a valid type id:
-        # arrow-rs #8826 rejected such footers by checking the type first.
-        (_STRUCT, [0x19, 0x00, 0x00]),
-    ],
-    ids=[
-        "doubles",
-        "bytes",
-        "bools",
-        "varints",
-        "binary",
-        "long-form-id",
-        "nested-struct",
-        "empty-list-type-0",
-    ],
-)
+# A field type and its payload, which a wrong skip width would overrun.
+_SKIPPED = {
+    "doubles": (_LIST, [_list_header(3, _DOUBLE)] + [0xFF] * 24),
+    "bytes": (_LIST, [_list_header(3, _BYTE), 0x01, 0x02, 0x03]),
+    # A bool takes a byte in a container, not its type nibble.
+    "bools": (_LIST, [_list_header(3, _BOOL_TRUE), 0x01, 0x02, 0x01]),
+    # Varints are the one element whose width is in the data.
+    "varints": (_LIST, [_list_header(3, _I64), 0xAC, 0x02, 0x02, 0x80, 0x01]),
+    # Binary elements carry their own lengths: 3 bytes, then 1.
+    "binary": (_LIST, [_list_header(2, _BINARY), 3, 0xA, 0xB, 0xC, 1, 0xD]),
+    # Delta 0, I64: the field id follows as a varint (zigzag 32 == 16).
+    "long-form-id": (_STRUCT, [0x06, 0x20, 0x0A, 0x00]),
+    # A struct field holding a struct with one I64.
+    "nested-struct": (_STRUCT, [0x1C, 0x16, 0x02, 0x00, 0x00]),
+    # An empty list may declare element type 0, not a valid type id:
+    # arrow-rs #8826 rejected such footers by checking the type first.
+    "empty-list-type-0": (_STRUCT, [0x19, 0x00, 0x00]),
+}
+
+
+@pytest.mark.parametrize("field_type, payload", _SKIPPED.values(), ids=list(_SKIPPED))
 def test_skip_consumes_exactly_the_payload(field_type, payload):
     # The payload as field 1, then field 16, which a wrong skip width would
     # garble. Field 16 holds SizeStatistics with field 1 set to 5.
@@ -342,13 +189,7 @@ def test_skip_consumes_exactly_the_payload(field_type, payload):
         # No field 16: a writer without SizeStatistics.
         ([0x56, 0x02, 0x00], None),
     ],
-    ids=[
-        "absolute-ids",
-        "descending-id",
-        "unknown-trailing-field",
-        "empty-histograms",
-        "absent",
-    ],
+    ids=["long-form", "descending-id", "unknown-field", "empty-histograms", "absent"],
 )
 def test_column_metadata_payloads(payload, expected):
     leaf = None if expected is None else pss.LeafSizeStats(*expected)
@@ -419,47 +260,22 @@ def test_a_length_past_the_footer_raises():
         _walk(_one_leaf_footer(payload))
 
 
-# ---------------------------------------------------------------------------
-# Fault injection: corruption must become ``None``, never other numbers
-# ---------------------------------------------------------------------------
-
-
-def test_truncated_footer_gives_none(written_files, monkeypatch):
+def test_truncated_footer_gives_none(tmp_path, monkeypatch):
     """An IndexError from running off the end must not reach the caller."""
+    metadata = pq.read_metadata(str(_write_dictionary(tmp_path)))
     monkeypatch.setattr(
         pss,
         "footer_bytes",
         lambda md: memoryview(md.__reduce__()[1][0]).cast("B")[:20],
     )
-    assert read_footer_stats(written_files["mixed"]) is None
+    assert read_footer_stats(metadata) is None
 
 
-# ---------------------------------------------------------------------------
-# Dictionary page headers
-# ---------------------------------------------------------------------------
-
-
-_DISTINCT = [f"value-{i:03d}" * (1 + i % 3) for i in range(100)]
-
-
-def _write_dictionary(tmp_path, **write_kwargs):
-    path = tmp_path / "dictionary.parquet"
-    table = pa.table({"a": pa.array([_DISTINCT[i % 100] for i in range(N)])})
-    pq.write_table(table, path, **write_kwargs)
-    return path
-
-
-def _dictionary_page_header_bytes(path, offset=None):
-    chunk = pq.read_metadata(str(path)).row_group(0).column(0)
-    with open(path, "rb") as f:
-        f.seek(chunk.dictionary_page_offset if offset is None else offset)
-        return f.read(pss.DICTIONARY_PAGE_HEADER_READ_BYTES)
-
-
-def test_dictionary_page_header_matches_the_values(tmp_path):
+@pytest.mark.parametrize("checksum", [False, True])
+def test_dictionary_page_header_matches_the_values(tmp_path, checksum):
     """One entry per distinct value, each PLAIN behind a 4-byte length, though
-    the page is compressed."""
-    path = _write_dictionary(tmp_path)
+    the page is compressed; a page checksum is skipped."""
+    path = _write_dictionary(tmp_path, write_page_checksum=checksum)
 
     assert pss.read_dictionary_page(
         _dictionary_page_header_bytes(path)

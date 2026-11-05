@@ -1,19 +1,11 @@
 """Read the Parquet fields that PyArrow's Python bindings don't expose.
 
-A Parquet file has one footer, at its end, with metadata for every leaf of every
-row group. A leaf is a column of primitive values: a flat column is one leaf, and
-a struct column of two fields is two. :func:`read_footer_stats` reads each
-leaf's ``SizeStatistics`` and data page count from the footer bytes
-``FileMetaData`` already holds, and :func:`read_dictionary_page` reads a
-dictionary page's header. Both run the compiled reader in ``_compact_reader.pyx``,
-which decodes Thrift's compact protocol by hand, only the fields they need.
-
-:func:`read_footer_stats` takes 0.35 s for 1,000 row groups of 1,000 leaves (Apple
-M5, Python 3.12), 40% of it PyArrow re-serializing the footer. The result holds
-about 185 bytes per row group per leaf; the footer bytes take up to twice the
-footer's size in PyArrow's memory pool while it runs. A source tree Bazel hasn't
-built, such as one ``setup-dev.py`` links in, lacks the reader, so both return
-``None`` and sizing falls back.
+:func:`read_footer_stats` reads each leaf's ``SizeStatistics`` and data page count
+from the footer bytes ``FileMetaData`` already holds, and :func:`read_dictionary_page`
+a dictionary page's header, with the Thrift compact-protocol reader compiled from
+``_compact_reader.pyx``. A leaf is a column of primitive values: a struct column of
+two fields is two. 1,000 row groups of 1,000 leaves take 0.35 s (Apple M5), 40% of
+it PyArrow re-serializing the footer, and hold about 185 bytes per leaf.
 """
 
 from __future__ import annotations
@@ -22,7 +14,8 @@ import logging
 from typing import TYPE_CHECKING, List, NamedTuple, Optional, Tuple, Union
 
 try:
-    # Absent from a source tree Bazel hasn't built, such as one setup-dev.py links in.
+    # Absent from a source tree Bazel hasn't built, such as one setup-dev.py links
+    # in; both readers then return ``None`` and sizing falls back.
     from ray.data._internal.datasource_v2.formats.parquet import _compact_reader
 except ImportError:
     _compact_reader = None
@@ -57,11 +50,8 @@ class DictionaryPage(NamedTuple):
 
 
 def footer_bytes(metadata: "FileMetaData") -> Optional[memoryview]:
-    """The raw Thrift footer behind a ``FileMetaData``, or ``None``.
-
-    From ``__reduce__``, which PyArrow pickles it with: no I/O, but not public
-    API either.
-    """
+    """The raw Thrift footer behind a ``FileMetaData``, or ``None``: from
+    ``__reduce__``, which PyArrow pickles it with, so no I/O but not public API."""
     try:
         payload = metadata.__reduce__()[1][0]
     except Exception as exc:
@@ -78,11 +68,7 @@ def footer_bytes(metadata: "FileMetaData") -> Optional[memoryview]:
 def read_footer_stats(metadata: "FileMetaData") -> Optional[FooterStats]:
     """Each leaf's ``SizeStatistics`` and data page count, or ``None`` when the
     reader isn't built, the footer can't be read, or its row-group or leaf counts
-    come out wrong.
-
-    A reader that lost its place but kept the counts would return wrong numbers
-    instead; the test against ``thriftpy2`` checks for that.
-    """
+    come out wrong."""
     if _compact_reader is None:
         return None
     buf = footer_bytes(metadata)
@@ -92,8 +78,7 @@ def read_footer_stats(metadata: "FileMetaData") -> Optional[FooterStats]:
         row_groups, pages = _compact_reader.CompactReader(buf, LeafSizeStats).read()
     except Exception as exc:
         logger.error(f"Error reading footer stats: {exc}")
-        # Sizing has a fallback, so a footer this can't decode must not fail the
-        # read.
+        # Sizing falls back, so a footer this can't decode must not fail the read.
         return None
 
     if len(row_groups) != metadata.num_row_groups:
