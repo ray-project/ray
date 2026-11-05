@@ -105,6 +105,14 @@ class TokenSender:
             return False
         return True
 
+    def connect(self, endpoints: List[str]) -> None:
+        """Open sockets to ``endpoints`` before the first push.
+
+        With ``ZMQ_IMMEDIATE``, a push to a socket still connecting fails.
+        """
+        for endpoint in endpoints:
+            self._get_socket(endpoint)
+
     def close(self) -> None:
         for socket in self._sockets.values():
             _close_socket(socket)

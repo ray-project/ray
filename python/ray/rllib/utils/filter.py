@@ -312,39 +312,22 @@ class MeanStdFilter(Filter):
             *args: Ignored, for compatibility with the `Filter` API.
             **kwargs: Ignored, for compatibility with the `Filter` API.
 
-        .. testcode::
-            :skipif: True
+        Examples:
+            >>> a = MeanStdFilter(())
+            >>> _ = a(1)
+            >>> _ = a(2)
+            >>> print([a.running_stats.n, a.running_stats.mean, a.buffer.n])
+            [2, array(1.5), 2]
 
-            a = MeanStdFilter(())
-            a(1)
-            a(2)
-            print([a.running_stats.n, a.running_stats.mean, a.buffer.n])
+            >>> b = MeanStdFilter(())
+            >>> _ = b(10)
+            >>> a.apply_changes(b, with_buffer=False)
+            >>> print([a.running_stats.n, a.running_stats.mean, a.buffer.n])
+            [3, array(4.33333333), 2]
 
-        .. testoutput::
-
-            [2, 1.5, 2]
-
-        .. testcode::
-            :skipif: True
-
-            b = MeanStdFilter(())
-            b(10)
-            a.apply_changes(b, with_buffer=False)
-            print([a.running_stats.n, a.running_stats.mean, a.buffer.n])
-
-        .. testoutput::
-
-            [3, 4.333333333333333, 2]
-
-        .. testcode::
-            :skipif: True
-
-            a.apply_changes(b, with_buffer=True)
-            print([a.running_stats.n, a.running_stats.mean, a.buffer.n])
-
-        .. testoutput::
-
-            [4, 5.75, 1]
+            >>> a.apply_changes(b, with_buffer=True)
+            >>> print([a.running_stats.n, a.running_stats.mean, a.buffer.n])
+            [4, array(5.75), 1]
         """
         tree.map_structure(
             lambda rs, other_rs: rs.update(other_rs), self.running_stats, other.buffer
@@ -364,38 +347,24 @@ class MeanStdFilter(Filter):
     def sync(self, other: "MeanStdFilter") -> None:
         """Syncs all fields together from other filter.
 
-        .. testcode::
-            :skipif: True
+        Args:
+            other: The filter to copy all fields from.
 
-            a = MeanStdFilter(())
-            a(1)
-            a(2)
-            print([a.running_stats.n, a.running_stats.mean, a.buffer.n])
-
-        .. testoutput::
-
+        Examples:
+            >>> a = MeanStdFilter(())
+            >>> _ = a(1)
+            >>> _ = a(2)
+            >>> print([a.running_stats.n, a.running_stats.mean, a.buffer.n])
             [2, array(1.5), 2]
 
-        .. testcode::
-            :skipif: True
+            >>> b = MeanStdFilter(())
+            >>> _ = b(10)
+            >>> print([b.running_stats.n, b.running_stats.mean, b.buffer.n])
+            [1, array(10.), 1]
 
-            b = MeanStdFilter(())
-            b(10)
-            print([b.running_stats.n, b.running_stats.mean, b.buffer.n])
-
-        .. testoutput::
-
-            [1, array(10.0), 1]
-
-        .. testcode::
-            :skipif: True
-
-            a.sync(b)
-            print([a.running_stats.n, a.running_stats.mean, a.buffer.n])
-
-        .. testoutput::
-
-            [1, array(10.0), 1]
+            >>> a.sync(b)
+            >>> print([a.running_stats.n, a.running_stats.mean, a.buffer.n])
+            [1, array(10.), 1]
         """
         self.demean = other.demean
         self.destd = other.destd
