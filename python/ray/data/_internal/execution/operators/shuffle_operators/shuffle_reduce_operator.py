@@ -222,6 +222,10 @@ class ShuffleReduceOp(PhysicalOperator):
                 self._emit_empty_partition(partition_id, refs, schema)
             else:
                 refs.destroy_if_owned()
+                # The key must still be finalized or the ordered queue would
+                # never advance past this partition.
+                if self._preserve_partition_order:
+                    self._output_queue.finalize(key=partition_id)
             return
 
         pending = self._pending_inputs.setdefault(partition_id, {})
