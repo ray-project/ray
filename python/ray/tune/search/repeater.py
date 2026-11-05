@@ -175,7 +175,7 @@ class Repeater(Searcher):
 
         if trial_group.finished_reporting():
             scores = trial_group.scores()
-            mean_score = np.nanmean(scores)
+            mean_score = np.nan if np.isnan(scores).all() else np.nanmean(scores)
             # ``error`` describes only the repeat that finished last. Keep it
             # only if no repeat produced a score, so the mean of the repeats
             # that succeeded is not discarded by the wrapped searcher.

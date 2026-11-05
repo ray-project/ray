@@ -1,3 +1,5 @@
+import warnings
+
 import numpy as np
 import pytest
 
@@ -155,11 +157,14 @@ def test_repeater_error_flag(errored, tmp_path):
         }
     )
     trials = [alg.next_trial() for _ in range(repeat)]
-    for index, trial in enumerate(trials):
-        if index in errored:
-            alg.on_trial_complete(trial.trial_id, error=True)
-        else:
-            alg.on_trial_complete(trial.trial_id, {"result": index})
+    with warnings.catch_warnings():
+        # All repeats failing leaves an all-NaN slice, which must not warn.
+        warnings.simplefilter("error", RuntimeWarning)
+        for index, trial in enumerate(trials):
+            if index in errored:
+                alg.on_trial_complete(trial.trial_id, error=True)
+            else:
+                alg.on_trial_complete(trial.trial_id, {"result": index})
 
     assert len(calls) == 1
     result, error = calls[0]
