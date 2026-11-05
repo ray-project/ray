@@ -168,10 +168,9 @@ class ListApiOptions:
     def has_conflicting_filters(self) -> bool:
         # Check the filters in the ListApiOptions conflicts. Specifically for:
         # - multiple '=' filters with the same key but different values.
-        # TODO(myan): More conflicts situation can be added for further optimization.
-        # For example, 2 filters with same key and same value but one with '=' predicate
-        # and ther other with '!=' predicate
+        # - '=' and '!=' filters with the same key and the same value.
         equal_filters = {}
+        not_equal_filters: Dict[str, Set[SupportedFilterType]] = {}
         for filter in self.filters:
             filter_key, filter_predicate, filter_value = filter
             if filter_predicate == "=":
@@ -187,8 +186,29 @@ class ListApiOptions:
                         UserWarning,
                     )
                     return True
-                elif filter_key not in equal_filters:
+                if filter_value in not_equal_filters.get(filter_key, set()):
+                    warnings.warn(
+                        "There are conflicting '=' and '!=' filters with the same "
+                        f"key '{filter_key}' and value '{filter_value}'. "
+                        "Empty result set will be returned",
+                        UserWarning,
+                    )
+                    return True
+                if filter_key not in equal_filters:
                     equal_filters[filter_key] = filter_value
+            elif filter_predicate == "!=":
+                if (
+                    filter_key in equal_filters
+                    and equal_filters[filter_key] == filter_value
+                ):
+                    warnings.warn(
+                        "There are conflicting '=' and '!=' filters with the same "
+                        f"key '{filter_key}' and value '{filter_value}'. "
+                        "Empty result set will be returned",
+                        UserWarning,
+                    )
+                    return True
+                not_equal_filters.setdefault(filter_key, set()).add(filter_value)
 
         return False
 
