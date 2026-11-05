@@ -171,6 +171,15 @@ class ListApiOptions:
         # - '=' and '!=' filters with the same key and the same value.
         equal_filters = {}
         not_equal_filters: Dict[str, Set[SupportedFilterType]] = {}
+
+        def warn_conflict(key: str, val: SupportedFilterType) -> None:
+            warnings.warn(
+                "There are conflicting '=' and '!=' filters with the same "
+                f"key '{key}' and value '{val}'. "
+                "Empty result set will be returned",
+                UserWarning,
+            )
+
         for filter in self.filters:
             filter_key, filter_predicate, filter_value = filter
             if filter_predicate == "=":
@@ -187,12 +196,7 @@ class ListApiOptions:
                     )
                     return True
                 if filter_value in not_equal_filters.get(filter_key, set()):
-                    warnings.warn(
-                        "There are conflicting '=' and '!=' filters with the same "
-                        f"key '{filter_key}' and value '{filter_value}'. "
-                        "Empty result set will be returned",
-                        UserWarning,
-                    )
+                    warn_conflict(filter_key, filter_value)
                     return True
                 if filter_key not in equal_filters:
                     equal_filters[filter_key] = filter_value
@@ -201,12 +205,7 @@ class ListApiOptions:
                     filter_key in equal_filters
                     and equal_filters[filter_key] == filter_value
                 ):
-                    warnings.warn(
-                        "There are conflicting '=' and '!=' filters with the same "
-                        f"key '{filter_key}' and value '{filter_value}'. "
-                        "Empty result set will be returned",
-                        UserWarning,
-                    )
+                    warn_conflict(filter_key, filter_value)
                     return True
                 not_equal_filters.setdefault(filter_key, set()).add(filter_value)
 
