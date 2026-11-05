@@ -16,7 +16,7 @@ from ray.data._internal.datasource_v2.common.online_bin_packer import (
 )
 from ray.data._internal.datasource_v2.formats.delta.delta_datasource_v2 import (
     DeltaDatasourceV2,
-    datasource_v2_unsupported_reason,
+    delta_datasource_v2_unsupported_reason,
 )
 from ray.data._internal.datasource_v2.formats.delta.delta_file_indexer import (
     DeltaFileIndexer,
@@ -200,9 +200,9 @@ def test_rejects_the_literal_null_partition_string(tmp_path):
     )
     indexer = _datasource(path)._get_file_indexer()
 
-    with pytest.raises(ValueError, match="can't tell the two apart"):
+    with pytest.raises(ValueError, match="can't tell the string from null"):
         _listed_paths(indexer)
-    with pytest.raises(ValueError, match="can't tell the two apart"):
+    with pytest.raises(ValueError, match="can't tell the string from null"):
         _listed_paths(indexer.as_whole_file_indexer())
 
 
@@ -382,10 +382,13 @@ def _stub_table(
         (_stub_table(reader_version=3, reader_features=["timestampNtz"]), {}, None),
         (_stub_table(), {"arrow_parquet_args": {"batch_size": 10}}, "PyArrow"),
         (_stub_table(reader_version=2), {}, "reader version 2"),
+        # Only the unsupported features are named.
         (
-            _stub_table(reader_version=3, reader_features=["deletionVectors"]),
+            _stub_table(
+                reader_version=3, reader_features=["timestampNtz", "deletionVectors"]
+            ),
             {},
-            "deletionVectors",
+            "reader features ['deletionVectors']",
         ),
         (
             _stub_table(configuration={"delta.columnMapping.mode": "name"}),
@@ -393,12 +396,17 @@ def _stub_table(
             "column mapping",
         ),
         (
+            _stub_table(configuration={"delta.columnMapping.mode": "none"}),
+            {},
+            None,
+        ),
+        (
             _stub_table(
                 configuration={"delta.randomizeFilePrefixes": "true"},
                 partition_columns=["p"],
             ),
             {},
-            "partition directories",
+            "random prefixes",
         ),
         # Random prefixes don't matter without partition columns.
         (
@@ -431,8 +439,8 @@ def _stub_table(
         (SimpleNamespace(), {}, "couldn't be inspected"),
     ],
 )
-def test_datasource_v2_unsupported_reason(table, kwargs, expected):
-    reason = datasource_v2_unsupported_reason(
+def test_delta_datasource_v2_unsupported_reason(table, kwargs, expected):
+    reason = delta_datasource_v2_unsupported_reason(
         table,
         include_paths=kwargs.get("include_paths", False),
         arrow_parquet_args=kwargs.get("arrow_parquet_args", {}),

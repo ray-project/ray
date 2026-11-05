@@ -57,16 +57,14 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-# Reader protocol that ``DeltaTable.to_pyarrow_dataset`` accepts, and so the V1
-# reader: reader version 1, or 3 with only these reader features. Tables
-# needing more (deletion vectors, column mapping, ...) stay on the V1 reader,
-# which fails for them exactly as it does today.
+# Reader features the V2 reader handles. Tables that need others (deletion
+# vectors, column mapping, ...) are read with the V1 reader.
 _SUPPORTED_READER_FEATURES = frozenset({"timestampNtz"})
 
 _INT32_MAX = 2**31 - 1
 
 
-def datasource_v2_unsupported_reason(
+def delta_datasource_v2_unsupported_reason(
     table: "DeltaTable",
     *,
     include_paths: bool,
@@ -86,14 +84,13 @@ def datasource_v2_unsupported_reason(
         return f"PyArrow scan options were passed: {sorted(arrow_parquet_args)}"
     try:
         protocol = table.protocol()
-        reader_features = set(protocol.reader_features or [])
-        if protocol.min_reader_version not in (1, 3) or not (
-            reader_features <= _SUPPORTED_READER_FEATURES
-        ):
-            return (
-                f"the table needs reader version {protocol.min_reader_version} "
-                f"with features {sorted(reader_features)}"
-            )
+        if protocol.min_reader_version not in (1, 3):
+            return f"the table needs reader version {protocol.min_reader_version}"
+        unsupported_features = (
+            set(protocol.reader_features or []) - _SUPPORTED_READER_FEATURES
+        )
+        if unsupported_features:
+            return f"the table needs the reader features {sorted(unsupported_features)}"
         metadata = table.metadata()
         configuration = metadata.configuration or {}
         if configuration.get("delta.columnMapping.mode", "none") != "none":
@@ -103,7 +100,10 @@ def datasource_v2_unsupported_reason(
             and configuration.get("delta.randomizeFilePrefixes", "false").lower()
             == "true"
         ):
-            return "the table's data files aren't under partition directories"
+            return (
+                "the table writes data files under random prefixes, not "
+                "Hive-style partition directories"
+            )
         schema = pa.schema(table.schema().to_arrow())
         # Delta writes a timestamp partition value in UTC without an offset,
         # which doesn't cast to a timestamp type with a time zone.
@@ -161,9 +161,8 @@ class DeltaDatasourceV2(DataSourceWithMetadata[FileManifest]):
                 isn't needed: open it with ``without_files=True``.
             storage_options: The ``deltalake`` storage options the table was
                 opened with.
-            filesystem: A filesystem rooted at the table directory, as for
-                ``DeltaTable.to_pyarrow_dataset``. ``None`` uses the one
-                ``deltalake`` builds from ``storage_options``.
+            filesystem: A filesystem rooted at the table directory. ``None``
+                uses the one ``deltalake`` builds from ``storage_options``.
             columns: Columns to read, in this order. ``None`` reads every
                 column, in the table's order.
             include_paths: Whether to add a ``path`` column with each row's
@@ -172,11 +171,10 @@ class DeltaDatasourceV2(DataSourceWithMetadata[FileManifest]):
                 table's data files before reading them.
         """
         super().__init__(name="DeltaV2", category=DatasourceCategory.DATA_LAKE)
-        self._table_uri: str = table.table_uri
         # Pinned here so every listing task, retry and re-execution reads the
         # same version, even if the table changes in the meantime.
         self._snapshot = DeltaTableSnapshot(
-            table_uri=self._table_uri,
+            table_uri=table.table_uri,
             version=table.version(),
             storage_options=storage_options,
         )
@@ -184,7 +182,7 @@ class DeltaDatasourceV2(DataSourceWithMetadata[FileManifest]):
         self._partition_columns: List[str] = list(table.metadata().partition_columns)
         self._partitioning = make_partitioning(self._partition_columns)
         if filesystem is None:
-            filesystem = _make_table_filesystem(self._table_uri, storage_options)
+            filesystem = _make_table_filesystem(table.table_uri, storage_options)
         self._filesystem = RetryingPyFileSystem.wrap(
             filesystem,
             retryable_errors=DataContext.get_current().retried_io_errors,
@@ -199,7 +197,7 @@ class DeltaDatasourceV2(DataSourceWithMetadata[FileManifest]):
             if unknown:
                 raise ValueError(
                     f"Columns {unknown} don't exist in the Delta table "
-                    f"{self._table_uri!r}, whose columns are "
+                    f"{table.table_uri!r}, whose columns are "
                     f"{self._table_schema.names}."
                 )
         # Pinned on the scanner so the output keeps the table's (or the
@@ -224,8 +222,9 @@ class DeltaDatasourceV2(DataSourceWithMetadata[FileManifest]):
 
     @property
     def paths(self) -> List[str]:
-        # One label; ``DeltaFileIndexer`` knows the table and doesn't read it.
-        return [self._table_uri]
+        # DSv2 needs ``paths``, but the indexer lists files from the log, so
+        # this is only a label for the table.
+        return [self._snapshot.table_uri]
 
     @property
     def version(self) -> int:

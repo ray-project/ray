@@ -233,6 +233,7 @@ class ParquetDatasourceV2(FileDataSourceV2):
         mutating ``self`` so schema inference stays side-effect-free.
         """
         import copy
+        import dataclasses
 
         # The base signature allows ``None`` for sources whose schema comes
         # from a catalog; Parquet answers ``schema_needs_file_sample`` True,
@@ -249,12 +250,9 @@ class ParquetDatasourceV2(FileDataSourceV2):
         partition_kv = parser(first_path)
         if not partition_kv:
             return copy.deepcopy(self._partitioning)
-        return Partitioning(
-            style=self._partitioning.style,
-            base_dir=self._partitioning.base_dir,
-            field_names=list(partition_kv.keys()),
-            field_types=self._partitioning.field_types,
-            filesystem=self._partitioning.filesystem,
+        # ``replace`` copies every other field, such as ``null_fallback``.
+        return dataclasses.replace(
+            self._partitioning, field_names=list(partition_kv.keys())
         )
 
     @property

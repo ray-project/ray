@@ -91,8 +91,8 @@ class DeltaTableSnapshot:
 
     def add_actions(self) -> pa.Table:
         """The ``add`` actions of the pinned version, one row per data file."""
-        # ``deltalake`` returns an arro3 table; ``pa.table`` converts it through
-        # the Arrow C stream interface.
+        # ``deltalake`` returns an arro3-core table, not a PyArrow one;
+        # ``pa.table`` converts it through the Arrow C stream interface.
         return pa.table(self.open().get_add_actions(flatten=True))
 
 
@@ -180,10 +180,11 @@ def _check_no_literal_null_partition_values(
 ) -> None:
     """Fail if a partition value is the string Delta writes for a null value.
 
-    Delta writes a file whose partition value is the string
-    ``__HIVE_DEFAULT_PARTITION__`` to the same directory as a file whose value
-    is null; only the log tells them apart. The reader takes partition values
-    from the directories, so it would read that string back as null.
+    Delta stores a null partition value in a directory named
+    ``__HIVE_DEFAULT_PARTITION__``. A file whose value is that exact string goes
+    into the same directory, so only the log tells the two apart. The reader
+    takes partition values from the directories, so it would read that string
+    back as null.
     """
     for column in partition_columns:
         name = ADD_ACTION_PARTITION_PREFIX + column
@@ -197,10 +198,10 @@ def _check_no_literal_null_partition_values(
         if values.index(HIVE_DEFAULT_PARTITION).as_py() != -1:
             raise ValueError(
                 f"The Delta table's partition column {column!r} holds the string "
-                f"{HIVE_DEFAULT_PARTITION!r}, which Delta writes to the same "
-                "directory as null values. The DataSourceV2 reader for "
-                "`read_delta` reads partition values from those directories and "
-                "can't tell the two apart. Set "
+                f"{HIVE_DEFAULT_PARTITION!r}. Delta stores null partition values "
+                "in a directory with that name, so the DataSourceV2 reader for "
+                "`read_delta`, which reads partition values from the directory "
+                "names, can't tell the string from null. Set "
                 "`DataContext.use_delta_datasource_v2 = False` to read this table "
                 "with the V1 reader."
             )

@@ -6474,7 +6474,7 @@ def read_delta(
     if ctx.use_datasource_v2 and ctx.use_delta_datasource_v2:
         from ray.data._internal.datasource_v2.formats.delta.delta_datasource_v2 import (
             DeltaDatasourceV2,
-            datasource_v2_unsupported_reason,
+            delta_datasource_v2_unsupported_reason,
         )
 
         # The V2 reader lists the data files in its listing tasks, so the driver
@@ -6485,7 +6485,7 @@ def read_delta(
             storage_options=storage_options,
             without_files=True,
         )
-        unsupported_reason = datasource_v2_unsupported_reason(
+        unsupported_reason = delta_datasource_v2_unsupported_reason(
             log_only_table,
             include_paths=include_paths,
             arrow_parquet_args=arrow_parquet_args,

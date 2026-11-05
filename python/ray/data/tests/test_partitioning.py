@@ -728,6 +728,33 @@ def test_hive_partitioning_null_fallback_to_pyarrow():
     assert "is_null" in str(expression)
 
 
+@pytest.mark.parametrize("file_format", ["parquet", "orc"])
+@pytest.mark.parametrize("field_names", [None, ["grp"]])
+def test_read_hive_null_fallback(
+    file_format, field_names, tmp_path, ray_start_regular_shared
+):
+    """``null_fallback`` applies whether or not ``field_names`` is given."""
+    import pyarrow.orc
+    import pyarrow.parquet
+
+    write = {"parquet": pyarrow.parquet.write_table, "orc": pyarrow.orc.write_table}
+    read = {"parquet": ray.data.read_parquet, "orc": ray.data.read_orc}
+    for value in ["a", HIVE_DEFAULT_PARTITION]:
+        (tmp_path / f"grp={value}").mkdir()
+        write[file_format](
+            pa.table({"id": [1]}), str(tmp_path / f"grp={value}" / f"0.{file_format}")
+        )
+    partitioning = Partitioning(
+        PartitionStyle.HIVE,
+        field_names=field_names,
+        null_fallback=HIVE_DEFAULT_PARTITION,
+    )
+
+    ds = read[file_format](str(tmp_path), partitioning=partitioning)
+
+    assert sorted(row["grp"] or "" for row in ds.take_all()) == ["", "a"]
+
+
 @pytest.mark.parametrize(
     "fs,base_dir",
     [
