@@ -137,6 +137,12 @@ def _get_node_resource_spec_and_count(
     head_node_spec = None
     worker_node_resources = []
     for node in ray.nodes():
+        # Draining nodes report as alive, so they're counted here. Unlike the
+        # AutoscalingCoordinator, which excludes them from reservations because
+        # the raylet rejects new work on them. This difference is intentional:
+        # this count is the cluster shape to keep, so counting a draining node
+        # asks the autoscaler to keep its shape, which a replacement node can
+        # satisfy.
         if not node["Alive"]:
             continue
         if "node:__internal_head__" in node["Resources"]:
