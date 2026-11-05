@@ -5,7 +5,7 @@ import math
 import time
 from collections import OrderedDict
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Set, TypedDict
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Set, TypedDict
 
 import ray
 from ray import serve
@@ -15,11 +15,9 @@ from ray.llm._internal.serve.routing_policies.kv_aware.constants import (
     DEFAULT_SESSION_AFFINITY_TTL_S,
     KV_INDEXER_THREADS_KEY,
     KV_REPLICA_SYNC_METADATA_KEY,
+    KV_TOKEN_METADATA_KEY,
     REQUEST_TRACKING_TTL_S,
     SESSION_AFFINITY_MODE,
-)
-from ray.llm._internal.serve.routing_policies.kv_aware.lifecycle import (
-    LifecycleReceiver,
 )
 from ray.serve._private.common import DeploymentTargetInfo
 from ray.serve._private.constants import (
@@ -59,6 +57,14 @@ def get_worker_id(replica_unique_id: str) -> int:
     return int.from_bytes(
         hashlib.blake2b(replica_unique_id.encode(), digest_size=8).digest(), "big"
     )
+
+
+def get_token_endpoint(routing_stats: Dict[str, Any]) -> Optional[str]:
+    """Return the prompt-token endpoint a replica advertises in its routing stats."""
+    token_metadata = routing_stats.get(KV_TOKEN_METADATA_KEY)
+    if isinstance(token_metadata, dict):
+        return token_metadata.get("endpoint") or None
+    return None
 
 
 @dataclass
@@ -148,6 +154,8 @@ class KVTokenTracker:
         # NOTE (jeffreywang): _replica_id_by_worker is later used by select_worker
         # to get candidate workers to route among.
         self._replica_id_by_worker: Dict[int, str] = {}
+        # Connects to the token endpoints of newly joined workers.
+        self._on_token_endpoints: Optional[Callable[[List[str]], None]] = None
         # Per-request state that the lifecycle hooks need, keyed by request id, serves
         # the following purposes:
         #   1. Block cursor: Turn cumulative decode tokens into add_output_block deltas.
@@ -166,6 +174,13 @@ class KVTokenTracker:
     def get_block_size(self) -> int:
         """Return the KV-cache block size used for decode-block accounting."""
         return self._block_size
+
+    def subscribe_token_endpoints(self, callback: Callable[[List[str]], None]) -> None:
+        """Call ``callback`` with the token endpoints of workers as they join.
+
+        Must be called before the event loop runs the first replica update.
+        """
+        self._on_token_endpoints = callback
 
     def _create_selection_service(self) -> None:
         """Create the router-local Dynamo selection service for this deployment."""
@@ -281,6 +296,7 @@ class KVTokenTracker:
         are registered with the selection service and departed ones evicted.
         """
         members: Dict[int, tuple] = {}
+        token_endpoints: Dict[int, str] = {}
         for replica in target_info.running_replicas:
             worker_id = get_worker_id(replica.replica_id.unique_id)
             kv_event_metadata = replica.routing_stats.get("kv_event_metadata")
@@ -289,6 +305,9 @@ class KVTokenTracker:
                     replica.replica_id.to_full_id_str(),
                     kv_event_metadata,
                 )
+                token_endpoint = get_token_endpoint(replica.routing_stats)
+                if token_endpoint:
+                    token_endpoints[worker_id] = token_endpoint
 
         registered = set(self._replica_id_by_worker)
         added = members.keys() - registered
@@ -297,13 +316,18 @@ class KVTokenTracker:
         for worker_id in removed:
             self.remove_worker(worker_id)
             self._replica_id_by_worker.pop(worker_id, None)
+        new_token_endpoints = []
         for worker_id in added:
             replica_id, kv_event_metadata = members[worker_id]
             self._register_block_size(kv_event_metadata["block_size"], replica_id)
             self._replica_id_by_worker[worker_id] = replica_id
+            if worker_id in token_endpoints:
+                new_token_endpoints.append(token_endpoints[worker_id])
             self._schedule(
                 self._upsert_worker(worker_id, replica_id, kv_event_metadata)
             )
+        if new_token_endpoints and self._on_token_endpoints is not None:
+            self._on_token_endpoints(new_token_endpoints)
 
         if added or removed:
             logger.info(
@@ -321,6 +345,10 @@ class KVTokenTracker:
 
     async def start_lifecycle_receiver(self) -> None:
         """Receive the lifecycle events of requests this router selected."""
+        from ray.llm._internal.serve.routing_policies.kv_aware.lifecycle import (
+            LifecycleReceiver,
+        )
+
         receiver = LifecycleReceiver(handler=self.on_lifecycle_events)
         port = await receiver.start()
         self._lifecycle_receiver = receiver

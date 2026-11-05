@@ -23,12 +23,16 @@ from ray._common.ray_constants import (
     LOGGING_ROTATE_BACKUP_COUNT,
     LOGGING_ROTATE_BYTES,
 )
-from ray._common.usage.usage_lib import record_extra_usage_tag
+from ray._common.usage.usage_lib import (
+    put_recorded_extra_usage_tags,
+    record_extra_usage_tag,
+)
 from ray._private import logging_utils
 from ray._private.authentication.http_token_authentication import (
     start_metrics_http_server,
 )
 from ray._private.event.event_logger import get_event_logger
+from ray._private.gcs_passive_utils import PassiveLatch, put_kv_passive_safe
 from ray._private.ray_logging import setup_component_logger
 from ray._private.worker import SCRIPT_MODE
 from ray._raylet import GcsClient
@@ -88,11 +92,19 @@ class AutoscalerMonitor:
         # TODO: eventually plumb ClusterID through to here
         self.gcs_client = GcsClient(address=self.gcs_address)
 
-        if monitor_ip:
-            monitor_addr = build_address(monitor_ip, AUTOSCALER_METRIC_PORT)
-            self.gcs_client.internal_kv_put(
-                b"AutoscalerMetricsAddress", monitor_addr.encode(), True, None
-            )
+        self._autoscaler_passive_latch = PassiveLatch(
+            "Autoscaling",
+            logger,
+            action_desc_passive=(
+                "GCS is in passive mode. Autoscaling stays paused until this head is "
+                "promoted."
+            ),
+            action_desc_promoted="GCS was promoted to leader. Resuming autoscaling.",
+        )
+        self._metrics_address = (
+            build_address(monitor_ip, AUTOSCALER_METRIC_PORT) if monitor_ip else None
+        )
+        self._publish_metrics_address()
         self._session_name = self._get_session_name(self.gcs_client)
         logger.info(f"session_name: {self._session_name}")
         worker.set_mode(SCRIPT_MODE)
@@ -152,6 +164,34 @@ class AutoscalerMonitor:
             metrics_reporter=self.metric_reporter,
         )
 
+    def _publish_metrics_address(self) -> bool:
+        if self._metrics_address is None:
+            return True
+        return put_kv_passive_safe(
+            self.gcs_client,
+            b"AutoscalerMetricsAddress",
+            self._metrics_address,
+            overwrite=True,
+            latch=self._autoscaler_passive_latch,
+        )
+
+    def _resume_after_promotion(self) -> bool:
+        """Take over the key this head could not write while it was passive.
+
+        The metrics address names the current leader's endpoint, so every promotion
+        rewrites it. Returns True if already active or takeover succeeded, False if
+        a demotion raced the takeover write.
+        """
+        if not self._autoscaler_passive_latch.waiting_for_promotion:
+            return True
+        if self._publish_metrics_address():
+            self._autoscaler_passive_latch.promoted()
+            # __init__ recorded the autoscaler version before the cluster had a
+            # leader, so its write was dropped.
+            put_recorded_extra_usage_tags(self.gcs_client)
+            return True
+        return False
+
     @staticmethod
     def _get_session_name(gcs_client: GcsClient) -> Optional[str]:
         """Obtain the session name from the GCS.
@@ -185,12 +225,18 @@ class AutoscalerMonitor:
         """Run the monitor loop."""
 
         while True:
-            autoscaling_state = self.autoscaler.update_autoscaling_state()
-            if autoscaling_state:
-                # report autoscaling state
-                self._report_autoscaling_state(self.gcs_client, autoscaling_state)
-            else:
-                logger.warning("No autoscaling state to report.")
+            if (
+                ray_constants.RAY_ENABLE_GCS_LEADER_ELECTION
+                and not self.gcs_client.is_gcs_leader()
+            ):
+                self._autoscaler_passive_latch.note_passive()
+            elif self._resume_after_promotion():
+                autoscaling_state = self.autoscaler.update_autoscaling_state()
+                if autoscaling_state:
+                    # report autoscaling state
+                    self._report_autoscaling_state(self.gcs_client, autoscaling_state)
+                else:
+                    logger.warning("No autoscaling state to report.")
 
             # Wait for a autoscaler update interval before processing the next
             # round of messages.

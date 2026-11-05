@@ -54,6 +54,14 @@ class TokenSender(ZmqPushSender):
     def push(self, endpoint: str, key: str, payload: bytes) -> bool:
         return self._push(endpoint, [key.encode("ascii"), payload])
 
+    def connect(self, endpoints: List[str]) -> None:
+        """Open sockets to ``endpoints`` before the first push.
+
+        With ``ZMQ_IMMEDIATE``, a push to a socket still connecting fails.
+        """
+        for endpoint in endpoints:
+            self._get_socket(endpoint)
+
 
 @dataclasses.dataclass
 class _StagedTokens:

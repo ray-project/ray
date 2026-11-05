@@ -131,7 +131,7 @@ def test_string_router_enables_kv_routing():
     assert llm_config.engine_kwargs.get("kv_events_config") is not None
 
 
-def make_target_info(unique_ids):
+def make_target_info(unique_ids, token_endpoints=None):
     """A DeploymentTargetInfo whose replicas advertise a KV-events endpoint via
     routing_stats, exactly as the controller broadcasts it over LongPoll."""
     deployment_id = DeploymentID(name="d", app_name="app")
@@ -149,7 +149,12 @@ def make_target_info(unique_ids):
                     "block_size": 16,
                     "max_num_batched_tokens": 8192,
                     "dp_rank": 0,
-                }
+                },
+                **(
+                    {"kv_token_metadata": {"endpoint": token_endpoints[uid]}}
+                    if token_endpoints
+                    else {}
+                ),
             },
         )
         for uid in unique_ids
@@ -161,6 +166,14 @@ class _LocalKVTokenTracker(KVTokenTracker):
     """Router-local KVTokenTracker with the selection service and LongPoll disabled,
     to drive ``_on_deployment_targets`` directly with synthetic snapshots.
     """
+
+    def __init__(self):
+        with mock.patch("ray.serve.get_replica_context") as get_context:
+            get_context.return_value.replica_id = ReplicaID(
+                unique_id="router",
+                deployment_id=DeploymentID(name="LLMRouter", app_name="app"),
+            )
+            super().__init__()
 
     async def get_candidate_worker_ids(self) -> List[int]:
         """The workers currently tracked from running replicas.
@@ -182,12 +195,7 @@ class _LocalKVTokenTracker(KVTokenTracker):
 
 class TestOnDeploymentTargets:
     async def test_reconciles_added_and_removed_workers(self):
-        with mock.patch("ray.serve.get_replica_context") as get_context:
-            get_context.return_value.replica_id = ReplicaID(
-                unique_id="router",
-                deployment_id=DeploymentID(name="LLMRouter", app_name="app"),
-            )
-            tracker = _LocalKVTokenTracker()
+        tracker = _LocalKVTokenTracker()
         tracker._on_deployment_targets(make_target_info(["a", "b"]))
         assert set(await tracker.get_candidate_worker_ids()) == {
             get_worker_id("a"),
@@ -199,6 +207,17 @@ class TestOnDeploymentTargets:
             get_worker_id("b"),
             get_worker_id("c"),
         }
+
+    async def test_subscribe_token_endpoints(self):
+        endpoints = {u: f"tcp://10.0.0.1:{27000 + i}" for i, u in enumerate("abc")}
+        tracker = _LocalKVTokenTracker()
+        calls = []
+        tracker.subscribe_token_endpoints(calls.append)
+        tracker._on_deployment_targets(make_target_info(["a"], endpoints))
+        assert calls == [[endpoints["a"]]]
+        # Only workers that just joined are connected.
+        tracker._on_deployment_targets(make_target_info(["a", "b", "c"], endpoints))
+        assert sorted(calls[1]) == [endpoints["b"], endpoints["c"]]
 
 
 class _StubReplica:
