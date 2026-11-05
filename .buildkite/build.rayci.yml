@@ -11,6 +11,9 @@ steps:
       - ./ci/build/copy_build_artifacts.sh wheel
     array:
       python:
+        # py3.10 wheels still go to S3 for downstream image builds (the Anyscale
+        # runtime images install them). They are no longer released to PyPI.
+        - "3.10"
         - "3.11"
         - "3.12"
         - "3.13"
