@@ -19,6 +19,7 @@ from ray.train.health import (
     PeriodicHealthCheck,
     ProbeResult,
     Reattempt,
+    WorkerProbe,
 )
 from ray.train.health._internal.manager import (
     HealthManager,
@@ -28,6 +29,7 @@ from ray.train.health._internal.manager import (
 from ray.train.health._internal.node_monitor import NodeMonitorStatus
 from ray.train.health._internal.node_monitor_group import NodeMonitorGroupPollStatus
 from ray.train.health._internal.probe_utils import ScheduledProbe, merge_probes
+from ray.train.v2._internal.execution.worker_group import WorkerStatus
 
 
 class Temp(NodeProbe):
@@ -43,6 +45,11 @@ class Pid(NodeProbe):
 class Comms(ControllerProbe):
     def poll(self):
         return {"comm0": ProbeResult()}
+
+
+class StepTime(WorkerProbe):
+    def poll(self):
+        return ProbeResult(metrics={"step_time_s": 1.0})
 
 
 class Broken(ControllerProbe):
@@ -206,6 +213,41 @@ def test_every_inflight_evaluator_decides_on_every_evaluation():
     for evaluator in (fast, slow):
         timestamps = [s.probe_results["Temp"]["n1"].timestamp_s for s in evaluator.seen]
         assert timestamps == [1.0, 2.0]
+
+
+def test_worker_probes_are_the_inflight_worker_probes():
+    step_time = StepTime()
+    manager = HealthManager([_check(2.0, probes=[step_time, Temp(), Comms()])])
+    assert manager.worker_probes == [ScheduledProbe(step_time, 2.0)]
+
+
+def test_worker_results_and_health_reports_reach_the_evaluators():
+    evaluator = Always(Noop())
+    manager = HealthManager(
+        [_check(probes=[StepTime(), Temp()], evaluators=[evaluator])]
+    )
+    temp = ProbeResult(timestamp_s=1.0)
+    _fake_temps(manager, [temp])
+    step_times = [ProbeResult(timestamp_s=2.0), ProbeResult(timestamp_s=3.0)]
+    report = ProbeResult(step=3)
+
+    manager.evaluate_inflight_checks(
+        {
+            0: WorkerStatus(
+                running=True,
+                probe_results={"StepTime": step_times[0]},
+                health_report=report,
+            ),
+            1: WorkerStatus(running=True, probe_results={"StepTime": step_times[1]}),
+        },
+        timeout=0,
+    )
+    (state,) = evaluator.seen
+    assert state.probe_results == {
+        "Temp": {"n1": temp},
+        "StepTime": {0: step_times[0], 1: step_times[1]},
+    }
+    assert state.health_reports == {0: report}
 
 
 def test_an_evaluator_decides_on_the_history_it_keeps(fake_node_id):

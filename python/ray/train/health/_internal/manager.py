@@ -1,7 +1,17 @@
 import logging
 import time
 from dataclasses import replace
-from typing import Any, Dict, List, Optional, Sequence, Set, Union
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Dict,
+    List,
+    Mapping,
+    Optional,
+    Sequence,
+    Set,
+    Union,
+)
 
 import ray
 from ray.train.health._internal.constants import (
@@ -14,7 +24,7 @@ from ray.train.health._internal.node_monitor_group import (
     NodeMonitorGroup,
     NodeMonitorGroupPollStatus,
 )
-from ray.train.health._internal.probe_utils import merge_probes
+from ray.train.health._internal.probe_utils import ScheduledProbe, merge_probes
 from ray.train.health.check import HealthCheck, PeriodicHealthCheck
 from ray.train.health.decision import Diagnose, Evict, HealthDecision, Noop, Reattempt
 from ray.train.health.evaluator import Evaluator
@@ -24,8 +34,12 @@ from ray.train.health.probe import (
     NodeProbe,
     Probe,
     ProbeResult,
+    WorkerProbe,
 )
 from ray.train.health.state import HealthState
+
+if TYPE_CHECKING:
+    from ray.train.v2._internal.execution.worker_group import WorkerStatus
 
 logger = logging.getLogger(__name__)
 
@@ -105,6 +119,9 @@ class HealthManager:
             for evaluator in check.evaluator_creator()
         ]
         self._inflight_probes = [p.probe for p in inflight_probes]
+        self._worker_probes = [
+            p for p in inflight_probes if isinstance(p.probe, WorkerProbe)
+        ]
         self._node_monitor_group = NodeMonitorGroup(inflight_probes)
         # The last status of each NodeMonitor of the in-flight probes, merged
         # over the polls.
@@ -122,6 +139,11 @@ class HealthManager:
     @property
     def evicted_nodes(self) -> List[NodeIdStr]:
         return sorted(self._evicted)
+
+    @property
+    def worker_probes(self) -> List[ScheduledProbe]:
+        """The in-flight checks' ``WorkerProbe``\\ s, for each worker to sample."""
+        return list(self._worker_probes)
 
     def reset(self, node_ids: List[NodeIdStr]) -> None:
         """Start monitoring a new attempt of the training run, and stop
@@ -181,11 +203,16 @@ class HealthManager:
         return merge_decisions([on_demand_decision, inflight_decision])
 
     def evaluate_inflight_checks(
-        self, timeout: float = DEFAULT_NODE_MONITOR_POLL_TIMEOUT_S
+        self,
+        worker_statuses: Optional[Mapping[int, "WorkerStatus"]] = None,
+        timeout: float = DEFAULT_NODE_MONITOR_POLL_TIMEOUT_S,
     ) -> HealthDecision:
         """Evaluate the in-flight checks' latest results.
 
         Args:
+            worker_statuses: ``{world rank: WorkerStatus}`` from the worker
+                group's latest poll, with each worker's ``WorkerProbe`` results
+                and health report.
             timeout: Timeout in seconds to wait for the latest results.
 
         Returns:
@@ -194,7 +221,9 @@ class HealthManager:
         """
         self._poll_node_monitor_group_status(timeout)
         state = _to_health_state(
-            self._last_node_monitor_group_status, self._inflight_probes
+            self._last_node_monitor_group_status,
+            self._inflight_probes,
+            worker_statuses,
         )
         return self._decide(self._inflight_evaluators, state)
 
@@ -371,16 +400,20 @@ def _merge(last: NodeMonitorStatus, new: NodeMonitorStatus) -> NodeMonitorStatus
 
 
 def _to_health_state(
-    status: NodeMonitorGroupPollStatus, probes: Sequence[Probe]
+    status: NodeMonitorGroupPollStatus,
+    probes: Sequence[Probe],
+    worker_statuses: Optional[Mapping[int, "WorkerStatus"]] = None,
 ) -> HealthState:
     """Build the ``HealthState`` of some probes from the statuses of their
-    monitors. A monitor that failed gives each of its probes a result with its
-    error, and a ``ControllerProbe`` whose poll failed has its error in
-    ``probe_errors``.
+    monitors and workers. A monitor that failed gives each of its probes a
+    result with its error, and a ``ControllerProbe`` whose poll failed has its
+    error in ``probe_errors``.
 
     Args:
         status: The statuses of the monitors.
         probes: The probes the monitors poll.
+        worker_statuses: ``{world rank: WorkerStatus}``, with each worker's
+            ``WorkerProbe`` results and health report.
 
     Returns:
         The ``HealthState``.
@@ -405,9 +438,17 @@ def _to_health_state(
             probe_errors[name] = result.error
         else:
             probe_results[name] = dict(result)
+
+    health_reports: Dict[int, ProbeResult] = {}
+    for rank, worker_status in (worker_statuses or {}).items():
+        for name, result in worker_status.probe_results.items():
+            probe_results.setdefault(name, {})[rank] = result
+        if worker_status.health_report is not None:
+            health_reports[rank] = worker_status.health_report
     return HealthState(
         probe_results=probe_results,
         probe_errors=probe_errors,
+        health_reports=health_reports,
     )
 
 
