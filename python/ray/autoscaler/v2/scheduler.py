@@ -1,4 +1,5 @@
 import copy
+import itertools
 import logging
 import time
 import uuid
@@ -6,7 +7,7 @@ from abc import ABC, abstractmethod
 from collections import Counter, defaultdict
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, Iterable, List, Optional, Tuple
 
 from ray._private.protobuf_compat import message_to_dict
 from ray._raylet import IMPLICIT_RESOURCE_PREFIX
@@ -2059,9 +2060,10 @@ class ResourceDemandScheduler(IResourceScheduler):
                 keys are computed on the fly (fallback for tests and external callers).
             attempts: Scheduling attempts by node id, shared across calls that
                 schedule the remaining requests on the same candidate nodes. An
-                attempt is reused while the requests it depends on remain, so each
-                call only simulates the nodes affected by the previous selection,
-                e.g. one host per call when placing the bundles of a TPU slice.
+                attempt is reused while the node's label tiers and accepted
+                request prefixes in its top and unlabeled tiers stay unchanged,
+                so each call only simulates nodes affected by the previous
+                selection (e.g. one host per call when placing TPU slice bundles).
                 Requires that no label selector reads a label that anti-affinity
                 adds. If None, every node is simulated with every request.
 
@@ -2076,8 +2078,23 @@ class ResourceDemandScheduler(IResourceScheduler):
             sk = shape_keys.get(id(r)) if shape_keys is not None else None
             return sk if sk is not None else r.SerializeToString(deterministic=True)
 
+        def has_prefix(tier_keys: Iterable[bytes], prefix: Tuple[bytes, ...]) -> bool:
+            return tuple(itertools.islice(tier_keys, len(prefix))) == prefix
+
+        def accepted_prefix(
+            tier_keys: Iterable[bytes], remaining_counts: Dict[bytes, int]
+        ) -> Tuple[bytes, ...]:
+            prefix = []
+            last = 0
+            for k in tier_keys:
+                prefix.append(k)
+                n = remaining_counts.get(k, 0)
+                if n > 0:
+                    remaining_counts[k] = n - 1
+                    last = len(prefix)
+            return tuple(prefix[:last])
+
         keys = [shape_key(r) for r in requests]
-        counts = Counter(keys)
         requests_by_key = dict(zip(keys, requests))
         results = []
 
@@ -2088,17 +2105,15 @@ class ResourceDemandScheduler(IResourceScheduler):
             label_scores: Dict[bytes, float] = field(default_factory=dict)
             # Best label selector scores when this result was simulated.
             best_label_scores: Optional[Dict[bytes, float]] = None
-            # Request counts by shape key that the result stays valid for: at least
-            # these counts, or exactly these counts if `exact`. None if not simulated.
-            depends_on: Optional[Dict[bytes, int]] = None
-            exact: bool = False
+            # Prefix through the last accepted shape in this node's top label tier
+            # (None before simulation), and in tier 0 when co-packed below top > 0.
+            top_prefix: Optional[Tuple[bytes, ...]] = None
+            zero_prefix: Tuple[bytes, ...] = ()
             # The node candidate after a scheduling attempt, or None if it could
             # not schedule any of the requests.
             node: Optional[SchedulingNode] = None
             # The resource requests scheduled on the node.
             scheduled_requests: List[ResourceRequest] = field(default_factory=list)
-            # The index of the node in the original node list.
-            idx: int = 0
             # the score of the scheduling node to compare with others.
             score: Optional[UtilizationScore] = None
 
@@ -2119,6 +2134,17 @@ class ResourceDemandScheduler(IResourceScheduler):
             for k, r in requests_by_key.items()
             if len(r.label_selectors) > 1
         }
+        # Any node whose best schedulable tier is below `pass_top` loses to a
+        # `pass_top` candidate on `score[0]`, so skip simulating it until needed.
+        pass_top = max(
+            (
+                1.0 if score > 0 else 0.0
+                for n in nodes
+                for k, score in cache[id(n)].label_scores.items()
+                if k in requests_by_key
+            ),
+            default=1.0,
+        )
 
         # Track node states we've already simulated in this pass. Since we only
         # select one best node to return, we skip the heavy deepcopy/simulation
@@ -2138,12 +2164,44 @@ class ResourceDemandScheduler(IResourceScheduler):
                 for k in result.label_scores
                 if k in best_label_scores
             }
-            if (
-                result.depends_on is None
-                or result.best_label_scores != node_best_scores
-                or not all(
-                    counts[k] == n if result.exact else counts[k] >= n
-                    for k, n in result.depends_on.items()
+
+            def node_tier(k: bytes) -> float:
+                score = result.label_scores[k]
+                best = node_best_scores.get(k)
+                return min(score / best, 1.0) if best else score
+
+            top = -1.0
+            if attempts is not None:
+                top = max(
+                    (node_tier(k) for k in result.label_scores if k in requests_by_key),
+                    default=-1.0,
+                )
+                if top < pass_top:
+                    continue
+
+            # `try_schedule` runs this node's top tier, then tier 0 unless a fitting
+            # fallback tier blocks it (any such blocker has >1 selectors, so
+            # `node_best_scores` invalidates when it leaves or promotes). Since calls
+            # only drop requests, matching accepted prefixes leave only rejected tail
+            # shapes and keep the cached schedule and score exact.
+            if not (
+                attempts is not None
+                and result.top_prefix
+                and result.best_label_scores == node_best_scores
+                and has_prefix(
+                    (
+                        k
+                        for k in keys
+                        if k in result.label_scores and node_tier(k) == top
+                    ),
+                    result.top_prefix,
+                )
+                and (
+                    not result.zero_prefix
+                    or has_prefix(
+                        (k for k in keys if result.label_scores.get(k) == 0),
+                        result.zero_prefix,
+                    )
                 )
             ):
                 # With an attempt cache, only simulate the requests that this node
@@ -2153,11 +2211,8 @@ class ResourceDemandScheduler(IResourceScheduler):
                     if attempts is not None
                     else requests
                 )
-
-                # A node that cannot schedule any of the requests cannot schedule a
-                # subset of them either, so its result depends on no request.
                 result = ScheduleResult(
-                    result.label_scores, node_best_scores, depends_on={}
+                    result.label_scores, node_best_scores, top_prefix=()
                 )
                 if node_requests:
                     node_copy = copy.deepcopy(node)
@@ -2170,33 +2225,41 @@ class ResourceDemandScheduler(IResourceScheduler):
                         shape_keys,
                         node_best_scores,
                     )
-                    scheduled = node_copy.get_sched_requests(resource_request_source)
-                    if len(scheduled) > num_sched:
-                        # Requests are sorted, so requests between two equal ones
-                        # have the same resources. Without anti-affinity, dropping
-                        # requests the node rejected, or extra copies of the ones it
-                        # scheduled, leaves the greedy pass unchanged. Anti-affinity
-                        # couples requests, so the pass then depends on all of them.
-                        exact = any(r.placement_constraints for r in node_requests)
+                    new_sched = node_copy.get_sched_requests(resource_request_source)[
+                        num_sched:
+                    ]
+                    if new_sched:
+                        top_prefix: Tuple[bytes, ...] = ()
+                        zero_prefix: Tuple[bytes, ...] = ()
+                        if attempts is not None:
+                            sched_counts = Counter(map(shape_key, new_sched))
+                            node_keys = [k for k in keys if k in result.label_scores]
+                            top_prefix = accepted_prefix(
+                                (k for k in node_keys if node_tier(k) == top),
+                                sched_counts,
+                            )
+                            if any(sched_counts.values()):
+                                zero_prefix = accepted_prefix(
+                                    (
+                                        k
+                                        for k in node_keys
+                                        if result.label_scores[k] == 0
+                                    ),
+                                    sched_counts,
+                                )
                         result = ScheduleResult(
                             result.label_scores,
                             node_best_scores,
-                            Counter(
-                                map(
-                                    shape_key,
-                                    node_requests if exact else scheduled[num_sched:],
-                                )
-                            ),
-                            exact,
+                            top_prefix,
+                            zero_prefix,
                             node_copy,
-                            scheduled[num_sched:],
+                            new_sched,
                             score=score,
                         )
                 cache[id(node)] = result
 
             if result.node is not None:
-                result.idx = idx
-                results.append(result)
+                results.append((idx, result))
 
         # No nodes can schedule any of the requests.
         if len(results) == 0:
@@ -2210,17 +2273,17 @@ class ResourceDemandScheduler(IResourceScheduler):
 
         # Pick the result with the best score. Like a stable sort, max keeps the
         # first of equally scored results.
-        best_result = max(
+        best_idx, best_result = max(
             results,
-            key=lambda r: (
-                r.score,
-                recoverable_resource_availabilities.get(r.node.node_type, 1.0),
-                r.node.priority,
-                cloud_resource_availabilities.get(r.node.node_type, 1.0),
+            key=lambda item: (
+                item[1].score,
+                recoverable_resource_availabilities.get(item[1].node.node_type, 1.0),
+                item[1].node.priority,
+                cloud_resource_availabilities.get(item[1].node.node_type, 1.0),
             ),
         )
         # Remove the best node from the nodes.
-        cache.pop(id(nodes.pop(best_result.idx)))
+        cache.pop(id(nodes.pop(best_idx)))
 
         # Keep the requests that the best node did not schedule, in order.
         to_drop = Counter(map(shape_key, best_result.scheduled_requests))
