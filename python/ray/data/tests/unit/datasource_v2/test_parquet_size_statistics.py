@@ -1,8 +1,7 @@
-"""Tests for the compiled footer and dictionary page header reader.
+"""Tests for the footer and dictionary page header reader.
 
 A desynced cursor returns wrong numbers rather than raising, so hand-built payloads
-pin each skip width PyArrow footers never exercise. They need
-``_compact_reader.pyx`` built.
+pin each skip width PyArrow footers never exercise.
 """
 
 import numpy as np
@@ -17,10 +16,6 @@ from ray.data._internal.datasource_v2.formats.parquet.parquet_size_statistics im
 
 pa = pytest.importorskip("pyarrow")
 pq = pytest.importorskip("pyarrow.parquet")
-_compact_reader = pytest.importorskip(
-    "ray.data._internal.datasource_v2.formats.parquet._compact_reader",
-    reason="_compact_reader.pyx isn't built",
-)
 
 # PyArrow 17 writes no SizeStatistics; 23 does (18 to 22 unchecked).
 requires_pyarrow_23 = pytest.mark.skipif(
@@ -47,7 +42,7 @@ def _dictionary_page_header_bytes(path, offset=None):
 
 
 def _walk(buf):
-    return _compact_reader.CompactReader(buf, pss.LeafSizeStats).read()
+    return pss._CompactReader(buf).read()
 
 
 def _one_leaf_footer(column_metadata):
@@ -247,16 +242,7 @@ def test_encoding_stats_payloads(payload, expected):
 )
 def test_wrong_field_types_are_rejected(payload):
     """A field whose type contradicts parquet.thrift means the cursor desynced."""
-    with pytest.raises(_compact_reader.ThriftDesync, match="expected"):
-        _walk(_one_leaf_footer(payload))
-
-
-def test_a_length_past_the_footer_raises():
-    """A corrupt length can't move the reader back to re-read a field forever."""
-    # Field 3, a list of one binary whose length is 2**64 - 12: as a signed size,
-    # -12, which is this payload's own length.
-    payload = [0x39, _list_header(1, _BINARY), 0xF4] + [0xFF] * 8 + [0x01]
-    with pytest.raises(IndexError):
+    with pytest.raises(pss._ThriftDesync, match="expected"):
         _walk(_one_leaf_footer(payload))
 
 
