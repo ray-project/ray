@@ -206,6 +206,9 @@ def _compact_file_ids(ids: Union[pa.Array, pa.ChunkedArray]) -> pa.Table:
     """
     if len(ids) == 0:
         return _COMPACTED_CHECKPOINT_SCHEMA.empty_table()
+    # All IDs passed to _compact_file_ids belong to the same file, so slicing
+    # the first element is sufficient to extract the shared path_prefix,
+    # file_name, and num_row_groups metadata.
     first_id = ids.slice(0, 1)
     path_prefix = _id_field(first_id, PATH_PREFIX_FIELD, pa.string())[0]
     file_name = _id_field(first_id, FILE_NAME_FIELD, pa.string())[0]
