@@ -144,7 +144,7 @@ class BaseTrainer(abc.ABC):
     - ``trainer.setup()``: Any heavyweight Trainer setup should be
       specified here.
     - ``trainer.training_loop()``: Executes the main training logic.
-    - Calling ``trainer.fit()`` will return a ``ray.result.Result``
+    - Calling ``trainer.fit()`` will return a ``ray.train.Result``
       object where you can access metrics from your training run, as well
       as any checkpoints that may have been saved.
 
