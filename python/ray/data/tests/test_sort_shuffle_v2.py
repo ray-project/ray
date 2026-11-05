@@ -311,18 +311,37 @@ def test_shuffle_reduce_preserves_partition_order(
         bundle.destroy_if_owned()
 
 
-def test_sort_planner_routes_to_shuffle_v2(restore_data_context):
+_USE_DISK = [
+    pytest.param(False, id="object_store"),
+    pytest.param(True, id="disk"),
+]
+
+_SORT_TRANSPORTS = [
+    pytest.param(False, SortShuffleMapOp, ShuffleReduceOp, "", id="object_store"),
+    pytest.param(
+        True, DiskSortShuffleMapOp, DiskHashShuffleReduceOp, "Disk", id="disk"
+    ),
+]
+
+
+@pytest.mark.parametrize("use_disk, map_cls, reduce_cls, prefix", _SORT_TRANSPORTS)
+def test_sort_planner_routes_to_shuffle_v2(
+    restore_data_context, use_disk, map_cls, reduce_cls, prefix
+):
     ctx = DataContext.get_current()
     # The dataset captures the context, so configure it first.
     ctx.shuffle_strategy = ShuffleStrategy.SHUFFLE_V2
+    ctx.use_disk_based_hash_shuffle = use_disk
     ctx.default_hash_shuffle_parallelism = 4
     ds = ray.data.range(10, override_num_blocks=2).sort("id")
 
     dag = get_execution_plan(ds._logical_plan)[0].dag
-    assert isinstance(dag, ShuffleReduceOp)
+    assert isinstance(dag, reduce_cls)
     assert dag._preserve_partition_order
+    assert dag.name.startswith(f"{prefix}SortShuffleReduce")
     map_op = dag.input_dependencies[0]
-    assert isinstance(map_op, SortShuffleMapOp)
+    assert isinstance(map_op, map_cls)
+    assert map_op.name.startswith(f"{prefix}SortShuffleMap")
     sampling_op = map_op.input_dependencies[0]
     assert isinstance(sampling_op, SortSamplingOp)
     assert not sampling_op.supports_fusion()
@@ -336,14 +355,14 @@ def test_sort_planner_routes_to_shuffle_v2(restore_data_context):
     with mock.patch.object(read_op_cls, "estimated_num_outputs", return_value=None):
         dag = get_execution_plan(ds._logical_plan)[0].dag
     fallback_map_op = dag.input_dependencies[0]
-    assert isinstance(fallback_map_op, SortShuffleMapOp)
+    assert isinstance(fallback_map_op, map_cls)
     assert fallback_map_op._num_partitions == ctx.default_hash_shuffle_parallelism
 
     # A single partition needs no boundaries, so the sampling op is skipped.
     ds_single = ray.data.range(10, override_num_blocks=1).sort("id")
     dag = get_execution_plan(ds_single._logical_plan)[0].dag
     single_map_op = dag.input_dependencies[0]
-    assert isinstance(single_map_op, SortShuffleMapOp)
+    assert isinstance(single_map_op, map_cls)
     assert single_map_op._num_partitions == 1
     assert single_map_op.boundaries == []
     assert not isinstance(single_map_op.input_dependencies[0], SortSamplingOp)
@@ -353,35 +372,31 @@ def test_sort_planner_routes_to_shuffle_v2(restore_data_context):
     )
     dag = get_execution_plan(ds_with_boundaries._logical_plan)[0].dag
     map_op = dag.input_dependencies[0]
-    assert isinstance(map_op, SortShuffleMapOp)
+    assert isinstance(map_op, map_cls)
     assert not isinstance(map_op.input_dependencies[0], SortSamplingOp)
 
-    # Disk flag: same shape, disk transport classes and prefixed names.
-    ctx.use_disk_based_hash_shuffle = True
-    ds_disk = ray.data.range(10, override_num_blocks=2).sort("id")
-    dag = get_execution_plan(ds_disk._logical_plan)[0].dag
-    assert isinstance(dag, DiskHashShuffleReduceOp)
-    assert dag._preserve_partition_order
-    assert dag.name.startswith("DiskSortShuffleReduce")
-    disk_map_op = dag.input_dependencies[0]
-    assert isinstance(disk_map_op, DiskSortShuffleMapOp)
-    assert disk_map_op.name.startswith("DiskSortShuffleMap")
 
-    # Legacy sort: build a fresh dataset so it captures the new strategy.
+def test_sort_planner_legacy_strategy(restore_data_context):
+    ctx = DataContext.get_current()
     ctx.shuffle_strategy = ShuffleStrategy.SORT_SHUFFLE_PULL_BASED
     ds_legacy = ray.data.range(10, override_num_blocks=2).sort("id")
     dag = get_execution_plan(ds_legacy._logical_plan)[0].dag
     assert isinstance(dag, AllToAllOperator)
 
 
-def test_disk_sort_fused_map_keeps_partition_order(
+@pytest.mark.parametrize("use_disk, map_cls, reduce_cls, prefix", _SORT_TRANSPORTS)
+def test_sort_fused_map_keeps_partition_order(
     ray_start_regular_shared_2_cpus,
     restore_data_context,
+    use_disk,
+    map_cls,
+    reduce_cls,
+    prefix,
 ):
-    """Fusing a map into the disk sort reduce must keep ``preserve_partition_order``."""
+    """Fusing a map into the sort reduce must keep ``preserve_partition_order``."""
     ctx = DataContext.get_current()
     ctx.shuffle_strategy = ShuffleStrategy.SHUFFLE_V2
-    ctx.use_disk_based_hash_shuffle = True
+    ctx.use_disk_based_hash_shuffle = use_disk
 
     ds = (
         ray.data.range(50, override_num_blocks=5)
@@ -389,7 +404,7 @@ def test_disk_sort_fused_map_keeps_partition_order(
         .map_batches(lambda batch: batch)
     )
     dag = get_execution_plan(ds._logical_plan)[0].dag
-    assert isinstance(dag, DiskHashShuffleReduceOp)
+    assert isinstance(dag, reduce_cls)
     assert "->" in dag.name
     assert dag._preserve_partition_order
 
@@ -397,12 +412,15 @@ def test_disk_sort_fused_map_keeps_partition_order(
     assert ids == list(range(49, -1, -1))
 
 
+@pytest.mark.parametrize("use_disk", _USE_DISK)
 def test_sort_shuffle_v2_end_to_end(
     ray_start_regular_shared_2_cpus,
     restore_data_context,
+    use_disk,
 ):
     ctx = DataContext.get_current()
     ctx.shuffle_strategy = ShuffleStrategy.SHUFFLE_V2
+    ctx.use_disk_based_hash_shuffle = use_disk
 
     rows = [{"a": i % 4, "b": i} for i in range(40)]
     random.Random(0).shuffle(rows)
@@ -427,12 +445,15 @@ def test_sort_reduce_fn_keeps_schema_for_empty_partition():
     assert outputs[0].schema == schema
 
 
+@pytest.mark.parametrize("use_disk", _USE_DISK)
 def test_sort_shuffle_v2_validates_sort_key(
     ray_start_regular_shared_2_cpus,
     restore_data_context,
+    use_disk,
 ):
     ctx = DataContext.get_current()
     ctx.shuffle_strategy = ShuffleStrategy.SHUFFLE_V2
+    ctx.use_disk_based_hash_shuffle = use_disk
 
     with pytest.raises(
         ValueError,
@@ -441,12 +462,15 @@ def test_sort_shuffle_v2_validates_sort_key(
         ray.data.range(10, override_num_blocks=2).sort("missing").take_all()
 
 
+@pytest.mark.parametrize("use_disk", _USE_DISK)
 def test_sort_shuffle_v2_promotes_compatible_block_schemas(
     ray_start_regular_shared_2_cpus,
     restore_data_context,
+    use_disk,
 ):
     ctx = DataContext.get_current()
     ctx.shuffle_strategy = ShuffleStrategy.SHUFFLE_V2
+    ctx.use_disk_based_hash_shuffle = use_disk
 
     # Aggregations can produce a null-typed block for an all-null group and an
     # int64-typed block for non-null groups. Sort shuffle may merge these blocks
@@ -479,12 +503,15 @@ def test_sort_shuffle_v2_promotes_compatible_block_schemas(
     ]
 
 
+@pytest.mark.parametrize("use_disk", _USE_DISK)
 def test_sort_shuffle_v2_samples_all_blocks_to_avoid_skew(
     ray_start_regular_shared_2_cpus,
     restore_data_context,
+    use_disk,
 ):
     ctx = DataContext.get_current()
     ctx.shuffle_strategy = ShuffleStrategy.SHUFFLE_V2
+    ctx.use_disk_based_hash_shuffle = use_disk
 
     num_input_blocks = 32
     num_output_partitions = 32
@@ -508,12 +535,15 @@ def test_sort_shuffle_v2_samples_all_blocks_to_avoid_skew(
     assert max(block_num_rows) - min(block_num_rows) <= 2
 
 
+@pytest.mark.parametrize("use_disk", _USE_DISK)
 def test_sort_shuffle_v2_splits_output_to_target_block_size(
     ray_start_regular_shared_2_cpus,
     restore_data_context,
+    use_disk,
 ):
     ctx = DataContext.get_current()
     ctx.shuffle_strategy = ShuffleStrategy.SHUFFLE_V2
+    ctx.use_disk_based_hash_shuffle = use_disk
     # ~80 KB of int64 rows over 2 partitions; force ~8 KB output blocks.
     ctx.target_max_block_size = 8 * 1024
 
@@ -524,12 +554,15 @@ def test_sort_shuffle_v2_splits_output_to_target_block_size(
     assert max(result._block_num_rows()) <= 2 * ctx.target_max_block_size // 8
 
 
+@pytest.mark.parametrize("use_disk", _USE_DISK)
 def test_sort_shuffle_v2_with_user_boundaries(
     ray_start_regular_shared_2_cpus,
     restore_data_context,
+    use_disk,
 ):
     ctx = DataContext.get_current()
     ctx.shuffle_strategy = ShuffleStrategy.SHUFFLE_V2
+    ctx.use_disk_based_hash_shuffle = use_disk
 
     result = (
         ray.data.range(20, override_num_blocks=4)
