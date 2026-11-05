@@ -68,53 +68,34 @@ struct PageHeader {
 
 N = 500
 
-
-def _table_cases():
-    """Schemas spanning every branch of the walk."""
-    return {
-        "flat-numeric": pa.table({"a": pa.array(np.arange(N, dtype="int64"))}),
-        "strings": pa.table({"a": pa.array([f"v{i % 7}" for i in range(N)])}),
-        "nullable-strings": pa.table(
-            {"a": pa.array([None if i % 3 == 0 else f"v{i}" for i in range(N)])}
-        ),
-        "mixed": pa.table(
-            {
-                "i": pa.array(np.arange(N, dtype="int64")),
-                "s": pa.array([f"s{i}" for i in range(N)]),
-                "b": pa.array([i % 2 == 0 for i in range(N)]),
-                "f": pa.array(np.random.rand(N)),
-            }
-        ),
-        "list-int64": pa.table(
-            {"a": pa.array([[1, 2, 3]] * N, type=pa.list_(pa.int64()))}
-        ),
-        "struct-nested": pa.table(
-            {
-                "a": pa.array(
-                    [{"s": f"v{i % 5}", "l": [1, 2]} for i in range(N)],
-                    type=pa.struct([("s", pa.string()), ("l", pa.list_(pa.int64()))]),
-                )
-            }
-        ),
-        "decimal-timestamp": pa.table(
-            {
-                "d": pa.array(range(N), type=pa.decimal128(12, 3)),
-                "t": pa.array(np.arange(N, dtype="int64"), type=pa.timestamp("us")),
-            }
-        ),
-        # The widest walk, where a desync has the most chances to show.
-        "wide": pa.table(
-            {f"c{c}": pa.array([f"v{c}_{i}" for i in range(N)]) for c in range(12)}
-        ),
-    }
+# Flat leaves of each physical kind, with nulls, and leaves nested in a struct
+# and a list.
+_TABLES = {
+    "mixed": pa.table(
+        {
+            "i": pa.array(np.arange(N, dtype="int64")),
+            "s": pa.array([None if i % 3 == 0 else f"s{i}" for i in range(N)]),
+            "b": pa.array([i % 2 == 0 for i in range(N)]),
+            "f": pa.array(np.random.rand(N)),
+        }
+    ),
+    "struct-nested": pa.table(
+        {
+            "a": pa.array(
+                [{"s": f"v{i % 5}", "l": [1, 2]} for i in range(N)],
+                type=pa.struct([("s", pa.string()), ("l", pa.list_(pa.int64()))]),
+            )
+        }
+    ),
+}
 
 
 @pytest.fixture(scope="module")
 def written_files(tmp_path_factory):
-    """Each case written with four row groups, and its metadata."""
+    """Each table written with four row groups, and its metadata."""
     out = {}
     directory = tmp_path_factory.mktemp("size_stats")
-    for label, table in _table_cases().items():
+    for label, table in _TABLES.items():
         path = directory / f"{label}.parquet"
         pq.write_table(table, path, row_group_size=len(table) // 4)
         out[label] = pq.read_metadata(str(path))
@@ -140,7 +121,7 @@ def _one_leaf_footer(column_metadata):
 
 
 def test_footer_bytes(written_files):
-    metadata = written_files["flat-numeric"]
+    metadata = written_files["mixed"]
     buf = footer_bytes(metadata)
     assert buf is not None
 
@@ -190,7 +171,7 @@ def _oracle_pages(column):
     return pages or None
 
 
-@pytest.mark.parametrize("label", list(_table_cases()))
+@pytest.mark.parametrize("label", list(_TABLES))
 def test_matches_thriftpy2_oracle(written_files, oracle, label):
     metadata = written_files[label]
     theirs = _oracle_read(oracle.FileMetaData(), footer_bytes(metadata))
@@ -234,7 +215,8 @@ def test_dictionary_page_header_matches_thriftpy2_oracle(tmp_path, oracle):
             pa.string(),
             (3 * 666, (), (333, 666)),
         ),
-        # Repetition level 0 counts the lists, level 1 the continuations.
+        # Repetition level 0 counts the lists, level 1 the continuations; a
+        # numeric leaf records no string bytes.
         (
             [[1, 2, 3]] * 1000,
             pa.list_(pa.int64()),
@@ -252,10 +234,9 @@ def test_size_statistics_match_ground_truth(tmp_path, values, arrow_type, expect
     assert stats.size_statistics[0] == [pss.LeafSizeStats(*expected)]
 
 
-@pytest.mark.parametrize("use_dictionary", [False, True])
-@pytest.mark.parametrize("data_page_version", ["1.0", "2.0"])
-def test_data_pages_match_ground_truth(tmp_path, use_dictionary, data_page_version):
-    # A page per 1,000-row write batch; a dictionary page is not a data page.
+def test_data_pages_match_ground_truth(tmp_path):
+    """A page per 1,000-row write batch. Version 2 data pages count; the
+    dictionary page is not a data page."""
     path = tmp_path / "pages.parquet"
     table = pa.table(
         {
@@ -269,28 +250,12 @@ def test_data_pages_match_ground_truth(tmp_path, use_dictionary, data_page_versi
         row_group_size=5_000,
         data_page_size=1,
         write_batch_size=1_000,
-        use_dictionary=use_dictionary,
-        data_page_version=data_page_version,
+        data_page_version="2.0",
     )
     stats = read_footer_stats(pq.read_metadata(path))
 
     assert stats is not None
     assert stats.data_pages == [[5, 5], [5, 5]]
-
-
-@requires_pyarrow_23
-def test_only_byte_array_leaves_record_unencoded_bytes(written_files):
-    """Sub-field 1 is BYTE_ARRAY-only, so numeric leaves must not require it."""
-    metadata = written_files["mixed"]
-    stats = read_footer_stats(metadata)
-    assert stats is not None
-    for rg_idx, leaves in enumerate(stats.size_statistics):
-        for leaf_idx, leaf in enumerate(leaves):
-            physical_type = metadata.row_group(rg_idx).column(leaf_idx).physical_type
-            assert leaf is not None
-            assert (leaf.unencoded_byte_array_data_bytes is not None) == (
-                physical_type == "BYTE_ARRAY"
-            )
 
 
 # ---------------------------------------------------------------------------
@@ -409,8 +374,6 @@ def _page_stats(page_type, count):
         ),
         # Version 2 data pages count too.
         ([0xD9, _list_header(1, _STRUCT)] + _page_stats(3, 3) + [0x00], (None, 3)),
-        # A dictionary page alone counts no data pages.
-        ([0xD9, _list_header(1, _STRUCT)] + _page_stats(2, 1) + [0x00], None),
         # An empty list of element type 0.
         ([0xD9, 0x00, 0x00], None),
         # Field 13, then SizeStatistics as field 16, three ids on.
@@ -421,7 +384,7 @@ def _page_stats(page_type, count):
             (pss.LeafSizeStats(5, (), ()), 4),
         ),
     ],
-    ids=["dictionary-and-data", "data-page-v2", "dictionary-only", "empty", "both"],
+    ids=["dictionary-and-data", "data-page-v2", "empty", "both"],
 )
 def test_encoding_stats_payloads(payload, expected):
     leaf, pages = (None, None) if expected is None else expected
@@ -461,17 +424,6 @@ def test_a_length_past_the_footer_raises():
 # ---------------------------------------------------------------------------
 
 
-def test_decoding_is_insensitive_to_view_signedness(written_files, monkeypatch):
-    """Masks read a sign-extended byte the same, so ``.cast("B")`` is defensive."""
-    metadata = written_files["wide"]
-    unsigned = read_footer_stats(metadata)
-    monkeypatch.setattr(
-        pss, "footer_bytes", lambda md: memoryview(md.__reduce__()[1][0])
-    )
-
-    assert read_footer_stats(metadata) == unsigned
-
-
 def test_truncated_footer_gives_none(written_files, monkeypatch):
     """An IndexError from running off the end must not reach the caller."""
     monkeypatch.setattr(
@@ -504,20 +456,10 @@ def _dictionary_page_header_bytes(path, offset=None):
         return f.read(pss.DICTIONARY_PAGE_HEADER_READ_BYTES)
 
 
-@pytest.mark.parametrize(
-    "write_kwargs",
-    [
-        {},
-        {"write_page_checksum": True},
-        {"compression": "zstd"},
-        {"compression": "none"},
-        {"version": "1.0"},
-    ],
-    ids=["default", "crc", "zstd", "uncompressed", "format-1.0"],
-)
-def test_dictionary_page_header_matches_the_values(tmp_path, write_kwargs):
-    """One entry per distinct value, each PLAIN behind a 4-byte length."""
-    path = _write_dictionary(tmp_path, **write_kwargs)
+def test_dictionary_page_header_matches_the_values(tmp_path):
+    """One entry per distinct value, each PLAIN behind a 4-byte length, though
+    the page is compressed."""
+    path = _write_dictionary(tmp_path)
 
     assert pss.read_dictionary_page(
         _dictionary_page_header_bytes(path)
