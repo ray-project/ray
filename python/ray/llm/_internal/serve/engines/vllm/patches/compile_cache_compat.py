@@ -17,7 +17,6 @@ Serve LLM's worker_process_setup_hook calls `install`, which runs `apply` once
 vllm is imported in the worker process, never before: see `install`.
 """
 
-import importlib.util
 import logging
 import os
 import re
@@ -37,9 +36,8 @@ def install() -> None:
 
     This runs from Serve LLM's worker_process_setup_hook, when the worker process
     starts and before Ray sets OMP_NUM_THREADS to the actor's CPUs. Torch sizes its
-    thread pool when it is first imported, so importing it here gave every vLLM
-    worker a pool as wide as the host: with four TP workers on a 92-CPU pod,
-    CPU-bound weight loading ran ~60x slower. vllm is first imported inside the
+    thread pool when it is first imported, so importing it here would size it to
+    the host's cores instead of the actor's CPUs. vllm is first imported inside the
     actor's tasks, after Ray has set OMP_NUM_THREADS.
     """
     if "vllm" in sys.modules:
@@ -49,20 +47,36 @@ def install() -> None:
 
 
 class _ApplyAfterVllmImport:
-    """Import hook that runs `apply` once the vllm package has executed."""
+    """Import hook that runs `apply` once the vllm package has executed.
+
+    It stays on sys.meta_path until then: a lookup that does not import, such as
+    `importlib.util.find_spec("vllm")`, must not use it up.
+    """
 
     def find_spec(self, fullname, path=None, target=None):
         if fullname != "vllm":
             return None
-        # One-shot: leave the import machinery before resolving the real spec.
-        sys.meta_path.remove(self)
-        spec = importlib.util.find_spec(fullname)
+        spec = None
+        for finder in sys.meta_path:
+            if finder is self or not hasattr(finder, "find_spec"):
+                continue
+            spec = finder.find_spec(fullname, path, target)
+            if spec is not None:
+                break
         if spec is None or spec.loader is None:
             return spec
-        exec_module = spec.loader.exec_module
+        exec_module = getattr(spec.loader, "exec_module", None)
+        if exec_module is None:
+            logger.warning(
+                "Device-neutral compile cache backport not applied: vllm's loader "
+                "%r has no exec_module.",
+                spec.loader,
+            )
+            return spec
 
         def exec_module_then_apply(module):
             exec_module(module)
+            self._uninstall()
             _apply_or_warn()
 
         try:
@@ -74,6 +88,12 @@ class _ApplyAfterVllmImport:
                 spec.loader,
             )
         return spec
+
+    def _uninstall(self) -> None:
+        try:
+            sys.meta_path.remove(self)
+        except ValueError:
+            pass
 
 
 def _apply_or_warn() -> None:

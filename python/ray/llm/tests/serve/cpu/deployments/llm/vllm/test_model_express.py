@@ -353,17 +353,25 @@ def test_worker_process_setup_hook_imports_neither_torch_nor_vllm():
     )
 
 
-def test_compile_cache_compat_install_applies_after_vllm_import(tmp_path):
-    # A stand-in vllm package: apply must run once, after it has executed.
+@pytest.mark.parametrize("probe_first", [False, True])
+def test_compile_cache_compat_install_applies_after_vllm_import(
+    tmp_path, probe_first
+):
+    # A stand-in vllm package: apply must run once, after it has executed. A
+    # find_spec probe before the import must not use up the hook.
     (tmp_path / "vllm").mkdir()
     (tmp_path / "vllm" / "__init__.py").write_text("EXECUTED = True\n")
+    probe = (
+        "assert importlib.util.find_spec('vllm') is not None\n" if probe_first else ""
+    )
     _run_python(
-        "import sys\n"
+        "import importlib.util, sys\n"
         "from ray.llm._internal.serve.engines.vllm.patches import compile_cache_compat\n"
         "calls = []\n"
         "compile_cache_compat.apply = lambda: calls.append(sys.modules['vllm'].EXECUTED)\n"
         "compile_cache_compat.install()\n"
-        "assert calls == []\n"
+        + probe
+        + "assert calls == []\n"
         "import vllm\n"
         "import vllm\n"
         "assert calls == [True], calls\n",
@@ -371,21 +379,11 @@ def test_compile_cache_compat_install_applies_after_vllm_import(tmp_path):
     )
 
 
-@pytest.mark.skipif(
-    os.cpu_count() <= 2, reason="needs more host cores than the actor gets"
-)
 def test_worker_process_setup_hook_keeps_ray_thread_limit():
-    """An actor started with Serve LLM's setup hook gets torch threads = num_cpus."""
+    """A worker running Serve LLM's setup hook gets torch threads = num_cpus."""
     import ray
 
-    @ray.remote(
-        num_cpus=2,
-        runtime_env={
-            "worker_process_setup_hook": (
-                "ray.llm._internal.serve._worker_process_setup_hook"
-            )
-        },
-    )
+    @ray.remote(num_cpus=2)
     class Worker:
         def num_threads(self):
             try:
@@ -396,7 +394,15 @@ def test_worker_process_setup_hook_keeps_ray_thread_limit():
 
             return torch.get_num_threads()
 
-    ray.init(num_cpus=4)
+    # Ray runs worker_process_setup_hook only from the job's runtime_env.
+    ray.init(
+        num_cpus=4,
+        runtime_env={
+            "worker_process_setup_hook": (
+                "ray.llm._internal.serve._worker_process_setup_hook"
+            )
+        },
+    )
     try:
         assert ray.get(Worker.remote().num_threads.remote()) == 2
     finally:
