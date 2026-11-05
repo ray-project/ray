@@ -9,16 +9,16 @@ myst:
 # Gang scheduling
 
 :::{note}
-Gang scheduling is an **alpha** feature. The API may change in future releases.
+Gang scheduling is an alpha feature. The API might change in future releases.
 :::
 
-Gang scheduling enables you to co-schedule groups of deployment replicas atomically. A **gang** is a set of replicas that are reserved and started together using a single [Ray placement group](ray-placement-group-doc-ref). If the cluster doesn't have enough resources for the entire gang, none of the replicas in that gang are started.
+Gang scheduling co-schedules groups of deployment replicas atomically. A *gang* is a set of replicas that Serve reserves and starts together using a single [Ray placement group](ray-placement-group-doc-ref). If the cluster doesn't have enough resources for the entire gang, Serve starts none of the replicas in that gang.
 
-This is useful for workloads where a partial set of replicas is useless, such as:
-- **Data parallel attention deployment**: In WideEP deployments, data parallel attention - expert parallelism ranks are required coordinate with each other to perform dispatch-combine collective communication. Any rank failure leads to dispatch-combine collective hangs, and the entire data parallel attention - expert parallelism group needs to go through failover mechanism to re-establish collectives.
-- **Any workload requiring coordinated startup**, where replicas need to discover each other's identities and establish communication before serving traffic.
+Gang scheduling helps with workloads where a partial set of replicas is useless, such as the following:
+- **Data parallel attention deployment**: In WideEP deployments, the ranks of a data parallel attention and expert parallelism group must coordinate with each other to perform dispatch-combine collective communication. Any rank failure hangs the dispatch-combine collectives, and the entire group needs to fail over to re-establish them.
+- **Coordinated startup**: Any workload where replicas need to discover each other's identities and establish communication before serving traffic.
 
-## Getting started
+## Configure gang scheduling
 
 Configure gang scheduling by passing a `GangSchedulingConfig` to the `@serve.deployment` decorator:
 
@@ -28,15 +28,16 @@ Configure gang scheduling by passing a `GangSchedulingConfig` to the `@serve.dep
 :language: python
 ```
 
-This creates 2 gangs of 4 replicas each resulting in a total of 8 replicas. Partial gang isn't allowed, and therefore `num_replicas` must be a multiple of `gang_size`.
+This example creates two gangs of four replicas each, for a total of eight replicas. Serve doesn't allow partial gangs, so `num_replicas` must be a multiple of `gang_size`.
 
-### How resources are reserved within a gang
+(how-resources-are-reserved-within-a-gang)=
+### How does Serve reserve resources within a gang?
 
-The `ray_actor_options` field defines the resource requirements for each replica actor (for example, CPU, GPU, memory). When gang scheduling is enabled **without** `placement_group_bundles`, Ray uses the resources from `ray_actor_options` as the bundle template for each replica's slot in the gang placement group. For example, with `ray_actor_options={"num_cpus": 0.25}` and `gang_size=4`, the gang placement group contains 4 bundles of `{"CPU": 0.25}` each.
+The `ray_actor_options` field defines the resource requirements for each replica actor, such as CPU, GPU, and memory. When you enable gang scheduling without setting `placement_group_bundles`, Ray uses the resources from `ray_actor_options` as the bundle template for each replica's slot in the gang placement group. For example, with `ray_actor_options={"num_cpus": 0.25}` and `gang_size=4`, the gang placement group contains four bundles of `{"CPU": 0.25}` each.
 
-When `placement_group_bundles` is also set, each replica occupies multiple consecutive bundles in the gang placement group instead of a single flat bundle. The replica actor runs in the **first** bundle, so the resources in `ray_actor_options` must fit within that first bundle. The remaining bundles are available for child actors or tasks spawned by the replica. See [Combining with placement group bundles](#combining-with-placement-group-bundles) for details.
+When you also set `placement_group_bundles`, each replica occupies multiple consecutive bundles in the gang placement group instead of a single flat bundle. The replica actor runs in the first bundle, so the resources in `ray_actor_options` must fit within that first bundle. The remaining bundles are available for child actors or tasks that the replica spawns. For details, see [Combine gang scheduling with placement group bundles](#combine-gang-scheduling-with-placement-group-bundles).
 
-You can also configure gang scheduling via `.options()`:
+You can also configure gang scheduling through `.options()`:
 
 ```{literalinclude} ../doc_code/gang_scheduling.py
 :start-after: __options_start__
@@ -44,7 +45,7 @@ You can also configure gang scheduling via `.options()`:
 :language: python
 ```
 
-In production deployments, declarative YAML config files are often used:
+In production, you often configure gang scheduling in a declarative Serve config file:
 
 ```yaml
 applications:
@@ -60,9 +61,10 @@ applications:
       gang_size: 4
 ```
 
-### Accessing gang context
+(accessing-gang-context)=
+### Access the gang context
 
-Each replica in a gang has access to a `GangContext` through the replica context. This provides the information replicas need to discover each other and coordinate:
+Each replica in a gang can access a `GangContext` through the replica context. The `GangContext` holds the information that replicas need to discover each other and coordinate:
 
 ```{literalinclude} ../doc_code/gang_scheduling.py
 :start-after: __gang_context_start__
@@ -72,17 +74,18 @@ Each replica in a gang has access to a `GangContext` through the replica context
 
 For the full interface, see {py:class}`~ray.serve.context.GangContext`.
 
-Replicas can use `rank` and `world_size` to set up distributed communication, e.g. initializing NCCL process groups, and `member_replica_ids` to discover and connect to their peers.
+Replicas can use `rank` and `world_size` to set up distributed communication, such as initializing NCCL process groups. They can use `member_replica_ids` to discover and connect to their peers.
 
 ## Placement group strategies
 
-Gang scheduling supports two placement group strategies that control how replicas within a gang are distributed across nodes:
+Gang scheduling supports two placement group strategies, which control how Serve distributes the replicas in a gang across nodes.
 
-### PACK (default)
+(pack-default)=
+### PACK
 
-Packs all replicas in a gang onto as few nodes as possible. This is best for workloads that benefit from locality, such as data parallel ranks within data parallel attention - expert parallelism deployment for MoE LLMs.
+PACK is the default strategy. It places all replicas in a gang on as few nodes as possible. It works best for workloads that benefit from locality, such as the data parallel ranks of a data parallel attention and expert parallelism deployment for mixture-of-experts (MoE) LLMs.
 
-Although PACK colocates as many replicas per node as possible, it does not guarantee that ranks are contiguous within a node. For example, a gang of 8 replicas split across 2 nodes may be assigned ranks `{0, 3, 5, 7}` on one node and `{1, 2, 4, 6}` on the other, rather than `{0, 1, 2, 3}` and `{4, 5, 6, 7}`. Applications should not assume that consecutive ranks share a node. This is particularly important when a single replica owns multiple bundles, such as a tensor-parallel group. In that case, the bundles belonging to one replica may land on different nodes, splitting collective communication across the network. To ensure that the bundles for a single replica land on the same node, sort the gang placement group's bundle indices by node IP and assign each replica a contiguous slice of the sorted order.
+Although PACK colocates as many replicas per node as possible, it doesn't guarantee that ranks are contiguous within a node. For example, a gang of eight replicas split across two nodes might get ranks `{0, 3, 5, 7}` on one node and `{1, 2, 4, 6}` on the other, rather than `{0, 1, 2, 3}` and `{4, 5, 6, 7}`. Don't write application code that assumes consecutive ranks share a node. This matters most when a single replica owns multiple bundles, such as a tensor-parallel group. The bundles that belong to one replica might land on different nodes, which splits collective communication across the network. To ensure that the bundles for a single replica land on the same node, sort the gang placement group's bundle indices by node IP and assign each replica a contiguous slice of the sorted order.
 
 ```{literalinclude} ../doc_code/gang_scheduling.py
 :start-after: __pack_strategy_start__
@@ -92,7 +95,7 @@ Although PACK colocates as many replicas per node as possible, it does not guara
 
 ### SPREAD
 
-Spreads replicas in a gang across as many distinct nodes as possible. This is useful for fault isolation, where you want to minimize the impact of a single node failure.
+SPREAD places the replicas in a gang across as many distinct nodes as possible. It helps with fault isolation, when you want to minimize the impact of a single node failure.
 
 ```{literalinclude} ../doc_code/gang_scheduling.py
 :start-after: __spread_strategy_start__
@@ -100,11 +103,12 @@ Spreads replicas in a gang across as many distinct nodes as possible. This is us
 :language: python
 ```
 
-Both strategies are **best effort**. PACK tries to colocate but may spread across nodes if a single node lacks capacity. SPREAD tries to distribute but may colocate if there aren't enough nodes.
+Both strategies are best effort. PACK tries to colocate replicas but might spread them across nodes if a single node lacks capacity. SPREAD tries to distribute replicas but might colocate them if there aren't enough nodes.
 
-### Combining with placement group bundles
+(combining-with-placement-group-bundles)=
+### Combine gang scheduling with placement group bundles
 
-You can combine gang scheduling with `placement_group_bundles` to reserve additional resources per replica within the gang. When both are set, the gang placement group contains the flattened bundles for all replicas in the gang. Each replica occupies `len(placement_group_bundles)` consecutive bundles, with the replica actor running in the first bundle.
+You can combine gang scheduling with `placement_group_bundles` to reserve additional resources per replica within the gang. When you set both, the gang placement group contains the flattened bundles for all replicas in the gang. Each replica occupies `len(placement_group_bundles)` consecutive bundles, and the replica actor runs in the first bundle.
 
 ```{literalinclude} ../doc_code/gang_scheduling.py
 :start-after: __placement_group_bundles_start__
@@ -117,9 +121,9 @@ You can combine gang scheduling with `placement_group_bundles` to reserve additi
 :width: 600px
 ```
 
-In this example, each gang of 2 replicas creates a single gang placement group with 2 bundles (one `{"CPU": 1, "GPU": 1}` bundle per replica) upon scheduling. Note that `ray_actor_options={"num_cpus": 0}` is set so the replica actor doesn't request resources outside the placement group — all resource reservation is handled through the bundles.
+In this example, scheduling each gang of two replicas creates a single gang placement group with two bundles, one `{"CPU": 1, "GPU": 1}` bundle per replica. The example sets `ray_actor_options={"num_cpus": 0}` so the replica actor doesn't request resources outside the placement group. All resource reservation goes through the bundles.
 
-If each replica needed multiple bundles, for example, one for the replica actor and one for a worker, the gang PG would contain `gang_size * len(placement_group_bundles)` total bundles. Replica 0 would occupy bundle indices 0 and 1, while replica 1 would occupy indices 2 and 3.
+If each replica needs multiple bundles, such as one for the replica actor and one for a worker, the gang placement group contains `gang_size * len(placement_group_bundles)` bundles in total. With two bundles per replica, replica 0 occupies bundle indices 0 and 1, and replica 1 occupies indices 2 and 3.
 
 ```{literalinclude} ../doc_code/gang_scheduling.py
 :start-after: __multi_placement_group_bundles_start__
@@ -132,7 +136,7 @@ If each replica needed multiple bundles, for example, one for the replica actor 
 :width: 600px
 ```
 
-You can also use `placement_group_bundle_label_selector` to control which nodes the gang's bundles are placed on. The per-replica label selector is replicated across all replicas in the gang, so every replica is steered to nodes matching the selector. For example, to schedule all gang members on nodes with A100 GPUs:
+You can also use `placement_group_bundle_label_selector` to control which nodes host the gang's bundles. Serve applies the per-replica label selector to every replica in the gang, so every replica goes to nodes that match the selector. The following example schedules all gang members on nodes with A100 GPUs:
 
 ```{literalinclude} ../doc_code/gang_scheduling.py
 :start-after: __label_selector_start__
@@ -142,7 +146,7 @@ You can also use `placement_group_bundle_label_selector` to control which nodes 
 
 ## Autoscaling
 
-Gang scheduling works with Ray Serve autoscaling (`num_replicas="auto"`). When autoscaling is enabled, the replica count recommended by the base autoscaling policy is always rounded **up** to the next multiple of `gang_size`, so the deployment never operates below the capacity the base policy requested.
+Gang scheduling works with Ray Serve autoscaling, such as a deployment with `num_replicas="auto"`. With autoscaling enabled, the Serve autoscaler always rounds the replica count that the base autoscaling policy recommends up to the next multiple of `gang_size`, so the deployment never runs below the capacity that the base policy requested.
 
 ```{literalinclude} ../doc_code/gang_scheduling.py
 :start-after: __autoscaling_start__
@@ -152,13 +156,15 @@ Gang scheduling works with Ray Serve autoscaling (`num_replicas="auto"`). When a
 
 When using autoscaling with gang scheduling, `min_replicas`, `max_replicas`, and `initial_replicas` must all be multiples of `gang_size`.
 
-Scale-to-zero is supported: set `min_replicas=0`. The deployment scales up and down in complete gangs.
+To scale to zero, set `min_replicas=0`. The deployment scales up and down in complete gangs.
 
-In Ray Serve autoscaler, gang quantization is handled automatically by a `GangSchedulingAutoscalingPolicy` wrapper that is injected around the base autoscaling policy.
+The Serve autoscaler handles gang quantization automatically by wrapping the base autoscaling policy in a `GangSchedulingAutoscalingPolicy`.
 
-**Example**: With `gang_size=4`, if the base autoscaling policy recommends 5 replicas, the `GangSchedulingAutoscalingPolicy` rounds up to 8. If the policy recommends 10 replicas, the gang-aware policy rounds up to 12. Always rounding up makes the output deterministic: the same desired count produces the same replica target regardless of the current replica count, which prevents oscillation between two gang-aligned values.
+For example, with `gang_size=4`, if the base autoscaling policy recommends five replicas, the `GangSchedulingAutoscalingPolicy` rounds up to eight. If the policy recommends 10 replicas, the gang-aware policy rounds up to 12. Always rounding up makes the output deterministic. The same desired count produces the same replica target regardless of the current replica count, which prevents oscillation between two gang-aligned values.
 
 ## Fault tolerance
+
+This section describes how Serve handles replica failures and controller restarts in a gang.
 
 ### RESTART_GANG policy
 
@@ -170,47 +176,47 @@ The `runtime_failure_policy` controls what happens when a replica in a running g
 :language: python
 ```
 
-When any replica in a gang fails its health check, **all replicas in that gang** are torn down and a fresh gang is created. This ensures gang members always start together and can re-establish coordinated state (for example, NCCL communicators).
+When any replica in a gang fails its health check, Serve tears down all replicas in that gang and creates a fresh gang. This ensures that gang members always start together and can re-establish coordinated state, such as NCCL communicators.
 
 :::{note}
-`RESTART_REPLICA` (restarting only the failed replica while keeping healthy gang members running) is not yet supported. If you need this behavior, file a [GitHub issue](https://github.com/ray-project/ray/issues).
+`RESTART_REPLICA`, which restarts only the failed replica and keeps healthy gang members running, isn't supported yet. If you need this behavior, file a [GitHub issue](https://github.com/ray-project/ray/issues).
 :::
 
 ### Incomplete gang detection
 
-If a gang member dies while the Serve controller is down, the controller detects the incomplete gang on recovery. It checks each running replica's `gang_context.member_replica_ids` against the set of tracked replicas. If any member is missing, the entire gang is restarted.
+If a gang member dies while the Serve controller is down, the controller detects the incomplete gang on recovery. It checks each running replica's `gang_context.member_replica_ids` against the set of tracked replicas. If any member is missing, the controller restarts the entire gang.
 
 ### Controller recovery
 
-Gang scheduling state survives controller restarts: `GangContext` is persisted in replica metadata and restored when the controller reconnects to existing replicas.
+Gang scheduling state survives controller restarts. The `GangContext` is persisted in replica metadata and restored when the controller reconnects to existing replicas.
 
+(how-gang-scheduling-works)=
+## How does gang scheduling work?
 
-## How gang scheduling works
-
-This section describes the internal mechanics for users who want to understand the system in depth.
+This section describes how gang scheduling works internally, if you want to understand the system in depth.
 
 ### Placement group lifecycle
 
-1. **Reservation**: During each reconciliation loop, the Serve controller's deployment scheduler creates named placement groups for each gang. The bundles in the placement group are constructed by repeating the per-replica resource requirements `gang_size` times, or flattening `placement_group_bundles` across all replicas in the gang.
+1. **Reservation**: During each reconciliation loop, the Serve controller's deployment scheduler creates named placement groups for each gang. It builds the bundles in each placement group by repeating the per-replica resource requirements `gang_size` times, or by flattening `placement_group_bundles` across all replicas in the gang.
 
-2. **Atomic startup**: Once a gang placement group is ready, all replicas in the gang are scheduled together. Each replica is assigned a `rank` (0 to `gang_size - 1`) and receives a `GangContext`. Replicas are scheduled into specific bundle indices within the gang placement group.
+1. **Atomic startup**: When a gang placement group is ready, the controller schedules all replicas in the gang together. Each replica receives a `rank`, from 0 to `gang_size - 1`, and a `GangContext`. The controller schedules each replica into a specific bundle index within the gang placement group.
 
-3. **Cleanup**: When a deployment is deleted or a gang is replaced, its placement group is removed. The controller also runs periodic leak detection to clean up orphaned gang placement groups.
+1. **Cleanup**: When a deployment is deleted or a gang is replaced, the controller removes the gang's placement group. The controller also runs periodic leak detection to clean up orphaned gang placement groups.
 
 ### Scaling
 
-**Upscaling**: The controller reserves gang placement groups, then starts all replicas in each gang together once the placement group is ready. Gangs that can't be scheduled due to insufficient resources are retried on subsequent reconciliation loops while successfully scheduled gangs proceed. If any replica fails during startup, the entire gang is stopped and retried.
+To scale up, the controller reserves gang placement groups, then starts all replicas in each gang together when the placement group is ready. If a gang can't be scheduled because of insufficient resources, the controller retries it on later reconciliation loops, while gangs that scheduled successfully proceed. If any replica fails during startup, the controller stops and retries the entire gang.
 
-**Downscaling**: The controller selects **complete gangs** for removal rather than individual replicas, ensuring no gang is left partially running.
+To scale down, the controller selects complete gangs to remove rather than individual replicas, so no gang keeps running with only some of its replicas.
 
 ### Rolling updates
 
-When a deployment config or code changes, the rolling update process replaces **complete gangs** atomically. The rollout size is aligned to `gang_size` multiples, so each update wave stops and starts whole gangs.
+When a deployment's config or code changes, the rolling update replaces complete gangs atomically. Serve aligns the rollout size to multiples of `gang_size`, so each update wave stops and starts whole gangs.
 
 ### Migration
 
-When replicas need to migrate due to node draining, entire gangs are migrated atomically rather than individual replicas, preserving the atomic scheduling guarantees.
+When replicas need to migrate because a node is draining, Serve migrates entire gangs atomically rather than individual replicas, which preserves the atomic scheduling guarantees.
 
 ## Constraints and limitations
 
-- `max_replicas_per_node` cannot be used together with gang scheduling since gang scheduling uses placement groups.
+- You can't use `max_replicas_per_node` together with gang scheduling, because gang scheduling uses placement groups.

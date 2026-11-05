@@ -8,23 +8,23 @@ myst:
 # Use deployment-scoped actors
 
 :::{warning}
-Deployment-scoped actors are experimental and may change between Ray minor versions.
+Deployment-scoped actors are experimental and might change between Ray minor versions.
 :::
 
 A deployment-scoped actor is a Ray actor that the Serve controller starts and manages for one deployment. All replicas in that deployment share the actor. The actor outlives individual replica restarts, and Ray Serve cleans it up when you delete the application or call `serve.shutdown()`.
 
-Ray Serve already uses this pattern in the [custom request router guide](custom-request-router). The experimental centralized capacity queue router uses a deployment-scoped actor to keep shared routing state in one place while the controller manages its lifecycle.
+The experimental centralized capacity queue router in the [custom request router guide](custom-request-router) uses this pattern. It keeps shared routing state in one deployment-scoped actor while the controller manages the actor's lifecycle.
 
 ## Decide whether to use deployment-scoped actors
 
-Deployment-scoped actors work best when you need controller-managed shared state or coordination for one deployment, such as:
+Deployment-scoped actors work best when you need controller-managed shared state or coordination for one deployment. Common cases include the following:
 
 - A shared counter, cache, prefix tree, or rate limiter that every replica should see.
 - A coordinator that should survive replica restarts and rolling updates.
-- A helper actor that should inherit the deployment's environment and be cleaned up with the deployment.
+- A helper actor that should inherit the deployment's environment and that Ray Serve should clean up along with the deployment.
 - Centralized control-plane logic, such as a queue or router helper, where one actor prevents each replica from keeping a conflicting local view.
 
-Deployment-scoped actors aren't a good fit when:
+Deployment-scoped actors aren't a good fit in the following cases:
 
 - The state belongs to one replica. Keep it inside the replica instead.
 - The state must stay durable across cluster loss. Use an external database or cache instead.
@@ -45,7 +45,7 @@ Every replica of `SharedCounterDeployment` reads and updates the same `SharedCou
 
 ## Run the example
 
-The example file is runnable as written:
+The example file runs as written:
 
 ```{literalinclude} ../doc_code/deployment_scoped_actors.py
 :start-after: __begin_run_deployment_scoped_actor_example__
@@ -57,7 +57,7 @@ When you run the script, the two requests return increasing values because they 
 
 ## Handle actor recreation
 
-Ray Serve health-checks deployment-scoped actors and may recreate them after failures. A handle cached before recreation can become stale. The safest pattern is to call `serve.get_deployment_actor()` when you need the actor. If you want to cache the handle, refresh it on `RayActorError` and retry the lookup until the new actor is registered:
+Ray Serve health-checks deployment-scoped actors and might recreate them after failures. A handle cached before recreation can become stale. The safest pattern is to call `serve.get_deployment_actor()` when you need the actor. To cache the handle, refresh it on `RayActorError` and retry the lookup until the new actor is registered:
 
 ```{literalinclude} ../doc_code/deployment_scoped_actors.py
 :start-after: __begin_cached_handle_refresh__
@@ -65,44 +65,49 @@ Ray Serve health-checks deployment-scoped actors and may recreate them after fai
 :language: python
 ```
 
-This pattern comes from the existing Serve recovery tests. It matters most when the actor manages long-lived coordination state and you want to avoid a lookup on every request.
+This pattern comes from the Serve recovery tests. It matters most when the actor manages long-lived coordination state and you want to avoid a lookup on every request.
 
-## Understand rollout behavior
+(understand-rollout-behavior)=
+## How do rollouts affect deployment-scoped actors?
 
 Changes to `deployment_actors` are heavyweight deployment changes. If you change actor configuration, such as the actor class, actor name, `init_args`, `init_kwargs`, or actor options, Ray Serve rolls out a new deployment version and restarts replicas in that deployment.
 
-That rollout has a few important properties:
+The rollout has the following properties:
 
 - If you redeploy with the same deployment-actor config, Ray Serve keeps the existing actor.
-- If you change the deployment-actor config, Ray Serve creates a new actor for the new version and the old actor state doesn't carry over.
+- If you change the deployment-actor config, Ray Serve creates a new actor for the new version, and the old actor's state doesn't carry over.
 - During an incremental rollout, Ray Serve can keep both old and new deployment-scoped actors alive at the same time.
 - Ray Serve starts the new version's deployment-scoped actors before it starts any replicas for the new version.
 - Ray Serve doesn't stop the old version's deployment-scoped actors until every old-version replica has drained and stopped.
 
-This ordering matters because `serve.get_deployment_actor()` resolves the actor for the replica's own code version. In other words, old replicas keep talking to old actors while new replicas talk to new actors during the rollout window.
+This ordering matters because `serve.get_deployment_actor()` resolves the actor for the replica's own code version. During the rollout window, old replicas keep talking to old actors while new replicas talk to new actors.
 
-## Understand health and status behavior
+(understand-health-and-status-behavior)=
+## How do deployment-scoped actors affect deployment health?
 
-Ray Serve health-checks deployment-scoped actors, and deployment health depends on them.
+Ray Serve health-checks deployment-scoped actors, and deployment health depends on them in the following ways:
 
 - If a deployment-scoped actor can't start after retries, the deployment moves to `DEPLOY_FAILED`.
 - If one actor fails to start in a deployment with multiple deployment-scoped actors, Ray Serve doesn't partially succeed. The deployment still fails.
-- If a deployment actor dies and Ray Serve is still managing it, the controller recreates it and the deployment can recover to healthy.
+- If a deployment-scoped actor dies and Ray Serve is still managing it, the controller recreates it and the deployment can recover to healthy.
 - If the replacement actor is blocked in its constructor or otherwise can't become ready, the deployment stays `UNHEALTHY` until the actor becomes healthy again.
 - A replica health check can also depend on a deployment-scoped actor. If the replica's `check_health` method calls the actor and that call fails repeatedly, Ray Serve can restart the replica even if the actor itself still exists.
 
-## Understand lifecycle and limits
+(understand-lifecycle-and-limits)=
+## What are the lifecycle and limits of deployment-scoped actors?
 
-- The actor is scoped to one deployment in one application. Different apps can reuse the same logical actor name without colliding.
+Deployment-scoped actors have the following lifecycle properties and limits:
+
+- Ray Serve scopes the actor to one deployment in one application. Different applications can reuse the same logical actor name without colliding.
 - Ray Serve shares the actor across all replicas of that deployment, including autoscaled replicas.
 - Ray Serve cleans up the actor when you delete the application or shut Serve down.
 - When you delete an application, Ray Serve keeps deployment-scoped actors alive until in-flight requests finish and the old replicas stop draining.
 - The actor can survive a Serve controller restart because the controller rediscovers it.
 - If the actor constructor keeps failing, the deployment fails to deploy.
-- `actor_options` on the deployment actor let you reserve different resources or override parts of the deployment `runtime_env`.
+- You can set `actor_options` on the deployment-scoped actor to reserve different resources or override parts of the deployment's `runtime_env`.
 
 :::{note}
 Deployment-scoped actors follow Ray actor concurrency semantics. If the actor uses threaded execution, Ray defaults `max_concurrency` to `1`. If the actor is an async actor, Ray defaults `max_concurrency` to `1000`. If those defaults don't fit your workload, set `max_concurrency` explicitly in `actor_options`.
 :::
 
-Even though the actor can survive replica restarts and controller restarts, it isn't a substitute for durable external storage.
+Although the actor can survive replica and controller restarts, it doesn't replace durable external storage.

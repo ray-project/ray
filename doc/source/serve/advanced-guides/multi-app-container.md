@@ -5,18 +5,20 @@ myst:
 ---
 
 (serve-container-runtime-env-guide)=
-# Run Multiple Applications in Different Containers
+# Run multiple applications in different containers
 
-This section explains how to run multiple Serve applications on the same cluster in separate containers with different images.
+This page describes how to run multiple Serve applications on the same cluster in separate containers with different images.
 
-This feature is experimental and the API is subject to change. If you have additional feature requests or run into issues, please submit them on [Github](https://github.com/ray-project/ray/issues).
+:::{note}
+This feature is experimental, and the API might change. If you have feature requests or run into issues, submit them on [GitHub](https://github.com/ray-project/ray/issues).
+:::
 
 ## Install Podman
 
-The `image_uri` runtime environment feature uses [Podman](https://podman.io/) to start and run containers. Follow the [Podman Installation Instructions](https://podman.io/docs/installation) to install Podman in the environment for all head and worker nodes.
+The `image_uri` runtime environment feature uses [Podman](https://podman.io/) to start and run containers. Follow the [Podman installation instructions](https://podman.io/docs/installation) to install Podman in the environment of every head and worker node.
 
 :::{note}
-For Ubuntu, the Podman package is available in the official repositories for Ubuntu 20.10 and newer.
+On Ubuntu 20.10 and later, the Podman package is available in the official Ubuntu repositories.
 
 ```bash
 sudo apt-get update
@@ -26,12 +28,12 @@ sudo apt-get install podman -y
 
 ## Run a Serve application in a container
 
-This example deploys two applications in separate containers: a Whisper model and a Resnet50 image classification model.
+This example deploys a Whisper model and a ResNet50 image classification model as two applications, each in its own container.
 
 First, install the required dependencies in the images.
 
 :::{warning}
-The Ray version and Python version in the container *must* match those of the host environment exactly. Note that for Python, the versions must match down to the patch number.
+The Ray and Python versions in the container must exactly match those of the host environment. Python versions must match down to the patch number.
 :::
 
 Save the following to files named `whisper.Dockerfile` and `resnet.Dockerfile`.
@@ -90,7 +92,7 @@ Each Dockerfile downloads the source code for its application. The Whisper appli
 :::
 ::::
 
-Then, build the corresponding images and push it to your choice of container registry. This tutorial uses `alice/whisper_image:latest` and `alice/resnet_image:latest` as placeholder names for the images, but make sure to swap out `alice` for a repo name of your choice.
+Then build the images and push them to a container registry of your choice. This tutorial uses `alice/whisper_image:latest` and `alice/resnet_image:latest` as placeholder image names. Replace `alice` with a repository name of your choice.
 
 ::::{tab-set}
 :::{tab-item} Whisper
@@ -102,7 +104,7 @@ podman build -t $IMG1 -f whisper.Dockerfile .
 podman push $IMG1
 ```
 :::
-:::{tab-item} Resnet
+:::{tab-item} ResNet
 ```bash
 # Build the image from the Dockerfile using Podman
 export IMG2=alice/resnet_image:latest
@@ -113,13 +115,13 @@ podman push $IMG2
 :::
 ::::
 
-Finally, you can specify the container image within which you want to run each application in the `image_uri` field of an application's runtime environment specification.
+Finally, specify the container image that each application runs in with the `image_uri` field of that application's runtime environment.
 
 :::{note}
-Previously you could access the feature through the `container` field of the runtime environment. That API is now deprecated in favor of `image_uri`.
+Earlier versions exposed this feature through the `container` field of the runtime environment. That field is deprecated in favor of `image_uri`.
 :::
 
-The following Serve config runs the `whisper` app with the image `IMG1`, and the `resnet` app with the image `IMG2`. `podman images` command can be used to list the names of the images. Concretely, all deployment replicas in the applications start and run in containers with the respective images.
+The following Serve config file runs the `whisper` application with the image `IMG1` and the `resnet` application with the image `IMG2`. Every replica in each application starts and runs in a container with that application's image. To list the names of your images, run `podman images`.
 
 ```yaml
 applications:
@@ -137,7 +139,7 @@ applications:
 
 ### Send queries
 
-Query each application through its route prefix:
+Send a request to each application at its route prefix:
 
 ```python
 import json
@@ -178,27 +180,31 @@ ox
 
 ## Advanced
 
+The following sections cover how `image_uri` works with other runtime environment fields, which environment variables the container receives, how to run the Ray cluster itself in a container, and how to troubleshoot common errors.
+
 ### Compatibility with other runtime environment fields
 
-Currently, use of the `image_uri` field is only supported with `config` and `env_vars`. If you have a use case for pairing `image_uri` with another runtime environment feature, submit a feature request on [Github](https://github.com/ray-project/ray/issues).
+Currently, Ray supports the `image_uri` field only together with the `config` and `env_vars` fields. If you have a use case for pairing `image_uri` with another runtime environment feature, submit a feature request on [GitHub](https://github.com/ray-project/ray/issues).
 
 ### Environment variables
 
-The following environment variables will be set for the process in your container, in order of highest to lowest priority:
+The process in your container receives the following environment variables, in order from highest to lowest priority:
+
 1. Environment variables specified in `runtime_env["env_vars"]`.
-2. All environment variables that start with the prefix `RAY_` (including the two special variables `RAY_RAYLET_PID` and `RAY_JOB_ID`) are inherited by the container at runtime.
-3. Any environment variables set in the docker image.
+1. All environment variables that start with the prefix `RAY_`, which the container inherits at runtime. These include the two special variables `RAY_RAYLET_PID` and `RAY_JOB_ID`.
+1. Any environment variables set in the Docker image.
 
-### Running the Ray cluster in a Docker container
+(running-the-ray-cluster-in-a-docker-container)=
+### Run the Ray cluster in a Docker container
 
-If raylet is running inside a container, then that container needs the necessary permissions to start a new container. To setup correct permissions, you need to start the container that runs the raylet with the flag `--privileged`.
+If the raylet runs inside a container, that container needs permission to start new containers. To grant it, start the container that runs the raylet with the `--privileged` flag.
 
 ### Troubleshooting
-* **Permission denied: '/tmp/ray/session_2023-11-28_15-27-22_167972_6026/ports_by_node.json.lock'**
-  * This error likely occurs because the user running inside the Podman container is different from the host user that started the Ray cluster. The folder `/tmp/ray`, which is volume mounted into the podman container, is owned by the host user that started Ray. The container, on the other hand, is started with the flag `--userns=keep-id`, meaning the host user is mapped into the container as itself. Therefore, permissions issues should only occur if the user inside the container is different from the host user. For instance, if the user on host is `root`, and you're using a container whose base image is a standard Ray image, then by default the container starts with user `ray(1000)`, who won't be able to access the mounted `/tmp/ray` volume.
-* **ERRO[0000] 'overlay' is not supported over overlayfs: backing file system is unsupported for this graph driver**
-  * This error should only occur when you're running the Ray cluster inside a container. If you see this error when starting the replica actor, try volume mounting `/var/lib/containers` in the container that runs raylet. That is, add `-v /var/lib/containers:/var/lib/containers` to the command that starts the Docker container.
-* **cannot clone: Operation not permitted; Error: cannot re-exec process**
-  * This error should only occur when you're running the Ray cluster inside a container. This error implies that you don't have the permissions to use Podman to start a container. You need to start the container that runs raylet, with privileged permissions by adding `--privileged`.
-* **Very slow or hanging container startup**
-  * This is typically caused by using the default podman storage driver (`vfs`) with large container images. Podman runs in rootless mode, so its startup sequence involves modifying permissions of files in the container. The default storage driver is very slow to do this. Try configuring podman to use the `overlay` storage driver instead. You may need to also configure the `mount_program` to point to `/usr/bin/fuse-overlayfs` (or your appropriate local path).
+* `Permission denied: '/tmp/ray/session_2023-11-28_15-27-22_167972_6026/ports_by_node.json.lock'`
+  * This error likely occurs because the user inside the Podman container differs from the host user that started the Ray cluster. The host user that started Ray owns the `/tmp/ray` folder, which is volume-mounted into the Podman container. The container starts with the `--userns=keep-id` flag, which maps the host user into the container as itself. So permission issues should only occur if the user inside the container differs from the host user. For example, if the host user is `root` and the container's base image is a standard Ray image, the container starts as the user `ray(1000)` by default, and that user can't access the mounted `/tmp/ray` volume.
+* `ERRO[0000] 'overlay' is not supported over overlayfs: backing file system is unsupported for this graph driver`
+  * This error should only occur when you run the Ray cluster inside a container. If you see it when the replica actor starts, try volume-mounting `/var/lib/containers` in the container that runs the raylet. To do so, add `-v /var/lib/containers:/var/lib/containers` to the command that starts that Docker container.
+* `cannot clone: Operation not permitted; Error: cannot re-exec process`
+  * This error should only occur when you run the Ray cluster inside a container. It means you don't have permission to start a container with Podman. Start the container that runs the raylet with the `--privileged` flag.
+* Slow or hanging container startup
+  * The typical cause is the default Podman storage driver, `vfs`, combined with large container images. Podman runs in rootless mode, so its startup sequence modifies the permissions of files in the container, and the `vfs` driver does this slowly. Try configuring Podman to use the `overlay` storage driver instead. You might also need to set `mount_program` to `/usr/bin/fuse-overlayfs` or the equivalent path on your system.
