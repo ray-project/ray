@@ -18,7 +18,10 @@ import requests
 from google.protobuf import text_format
 from opentelemetry.proto.collector.metrics.v1 import metrics_service_pb2
 from opentelemetry.proto.common.v1.common_pb2 import AnyValue, KeyValue
-from opentelemetry.proto.metrics.v1.metrics_pb2 import Metric as OTelMetric
+from opentelemetry.proto.metrics.v1.metrics_pb2 import (
+    AggregationTemporality,
+    Metric as OTelMetric,
+)
 
 import ray
 import ray._common.usage.usage_lib as ray_usage_lib
@@ -216,11 +219,23 @@ def test_fix_grpc_metrics():
     assert metric == expected_fixed_metric
 
 
-def test_export_histogram_data_normalizes_mixed_attribute_sets():
+@pytest.mark.parametrize(
+    "temporality",
+    [
+        # What Ray's C++ emitters send.
+        AggregationTemporality.AGGREGATION_TEMPORALITY_DELTA,
+        # Senders that don't set temporality are still treated as delta.
+        AggregationTemporality.AGGREGATION_TEMPORALITY_UNSPECIFIED,
+    ],
+    ids=["delta", "unspecified"],
+)
+def test_export_histogram_data_forwards_data_points(temporality):
     metric = OTelMetric(name="test_histogram", description="Test Histogram")
+    metric.histogram.aggregation_temporality = temporality
 
     data_point = metric.histogram.data_points.add()
     data_point.count = 1
+    data_point.sum = 1.5
     data_point.explicit_bounds.extend([1.0, 2.0])
     data_point.bucket_counts.extend([0, 1, 0])
     data_point.attributes.append(
@@ -230,40 +245,49 @@ def test_export_histogram_data_normalizes_mixed_attribute_sets():
         KeyValue(key="SessionName", value=AnyValue(string_value="session_1"))
     )
 
+    # Data points without observations are not forwarded.
     data_point = metric.histogram.data_points.add()
-    data_point.count = 1
     data_point.explicit_bounds.extend([1.0, 2.0])
-    data_point.bucket_counts.extend([1, 0, 0])
-    data_point.attributes.append(
-        KeyValue(key="Component", value=AnyValue(string_value="worker_b"))
-    )
+    data_point.bucket_counts.extend([0, 0, 0])
 
     agent = object.__new__(ReporterAgent)
     agent._open_telemetry_metric_recorder = MagicMock()
 
     ReporterAgent._export_histogram_data(agent, metric)
 
-    agent._open_telemetry_metric_recorder.register_histogram_metric.assert_called_once_with(
-        "test_histogram", "Test Histogram", [1.0, 2.0]
-    )
-    agent._open_telemetry_metric_recorder.record_histogram_aggregated_batch.assert_called_once()
-    (
-        _,
-        batch_data_points,
-    ) = (
-        agent._open_telemetry_metric_recorder.record_histogram_aggregated_batch.call_args.args
+    agent._open_telemetry_metric_recorder.record_histogram_aggregated_batch.assert_called_once_with(
+        "test_histogram",
+        "Test Histogram",
+        [
+            {
+                "tags": {"Component": "worker_a", "SessionName": "session_1"},
+                "explicit_bounds": [1.0, 2.0],
+                "bucket_counts": [0, 1, 0],
+                "sum": 1.5,
+            },
+        ],
     )
 
-    assert batch_data_points == [
-        {
-            "tags": {"Component": "worker_a", "SessionName": "session_1"},
-            "bucket_counts": [0, 1, 0],
-        },
-        {
-            "tags": {"Component": "worker_b", "SessionName": ""},
-            "bucket_counts": [1, 0, 0],
-        },
-    ]
+
+@patch("ray.dashboard.modules.reporter.reporter_agent.logger")
+def test_export_histogram_data_skips_cumulative(mock_logger):
+    """Adding a cumulative histogram's running total on every export would inflate
+    the series, so it is skipped, with a single warning per name."""
+    metric = _histogram_metric("test_histogram", [1.0, 2.0], [0, 1, 0], "model")
+    metric.histogram.aggregation_temporality = (
+        AggregationTemporality.AGGREGATION_TEMPORALITY_CUMULATIVE
+    )
+
+    agent = object.__new__(ReporterAgent)
+    agent._open_telemetry_metric_recorder = MagicMock()
+    agent._cumulative_histogram_warned = set()
+
+    ReporterAgent._export_histogram_data(agent, metric)
+    ReporterAgent._export_histogram_data(agent, metric)
+
+    agent._open_telemetry_metric_recorder.record_histogram_aggregated_batch.assert_not_called()
+    mock_logger.warning.assert_called_once()
+    assert "test_histogram" in mock_logger.warning.call_args.args
 
 
 def _histogram_metric(name, bounds, bucket_counts, model_name):
@@ -284,26 +308,17 @@ def test_export_histogram_data_skips_emitter_with_different_bounds(
     mock_get_meter, mock_set_meter_provider
 ):
     """Two co-located emitters (e.g. vLLM engines with different max_model_len) send
-    the same metric name with different bucket bounds. A metric name is only
-    registered once per node, so the second emitter's data point cannot be
-    reconstructed. It must be skipped without raising, leaving the first emitter's
-    data intact."""
-    from opentelemetry.metrics import NoOpHistogram
-
+    the same metric name with different bucket bounds, whose counts cannot be added
+    together. The second emitter's data point must be skipped without raising,
+    leaving the first emitter's data intact."""
     from ray._private.telemetry.open_telemetry_metric_recorder import (
         OpenTelemetryMetricRecorder,
     )
 
-    real_histogram = NoOpHistogram(name="vllm_request_prompt_tokens")
-    mock_histogram = MagicMock(wraps=real_histogram, spec=real_histogram)
-    mock_meter = MagicMock()
-    mock_meter.create_histogram.return_value = mock_histogram
-    mock_get_meter.return_value = mock_meter
-
     agent = object.__new__(ReporterAgent)
     agent._open_telemetry_metric_recorder = OpenTelemetryMetricRecorder()
 
-    # First emitter registers the metric with max_model_len=8192 derived bounds.
+    # First emitter reports the metric with max_model_len=8192 derived bounds.
     ReporterAgent._export_histogram_data(
         agent,
         _histogram_metric(
@@ -322,11 +337,12 @@ def test_export_histogram_data_skips_emitter_with_different_bounds(
         ),
     )
 
-    recorded_models = [
-        call.kwargs["attributes"]["model_name"]
-        for call in mock_histogram.record.call_args_list
-    ]
-    assert recorded_models == ["len8k-qwen"]
+    producer = agent._open_telemetry_metric_recorder.aggregated_histogram_producer
+    (scope_metrics,) = producer.produce()
+    (metric,) = scope_metrics.metrics
+    assert metric.name == "ray_vllm_request_prompt_tokens"
+    counts = {dp.attributes["model_name"]: dp.count for dp in metric.data.data_points}
+    assert counts == {"len8k-qwen": 1}
 
 
 def test_ingest_keeps_remaining_metrics_after_a_mismatching_histogram():
