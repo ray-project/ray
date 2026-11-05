@@ -147,15 +147,16 @@ void GcsResourceManager::UpdateFromResourceView(
   UpdateNodeResourceUsage(node_id, resource_view_sync_message);
 }
 
-void GcsResourceManager::UpdateResourceLoads(const rpc::ResourcesData &data) {
+bool GcsResourceManager::UpdateResourceLoads(const rpc::ResourcesData &data) {
   NodeID node_id = NodeID::FromBinary(data.node_id());
   auto iter = node_resource_usages_.find(node_id);
   if (iter == node_resource_usages_.end()) {
     // It will happen when the node has been deleted or hasn't been added.
-    return;
+    return false;
   }
   (*iter->second.mutable_resource_load()) = data.resource_load();
   (*iter->second.mutable_resource_load_by_shape()) = data.resource_load_by_shape();
+  return true;
 }
 
 void GcsResourceManager::HandleGetAllResourceUsage(

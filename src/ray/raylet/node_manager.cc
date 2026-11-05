@@ -32,6 +32,7 @@
 
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_replace.h"
+#include "google/protobuf/util/message_differencer.h"
 #include "ray/asio/asio_util.h"
 #include "ray/asio/instrumented_io_context.h"
 #include "ray/common/buffer.h"
@@ -1829,10 +1830,32 @@ void NodeManager::ProcessPushErrorRequestMessage(const uint8_t *message_data) {
 void NodeManager::HandleGetResourceLoad(rpc::GetResourceLoadRequest request,
                                         rpc::GetResourceLoadReply *reply,
                                         rpc::SendReplyCallback send_reply_callback) {
-  auto resources_data = reply->mutable_resources();
-  resources_data->set_node_id(self_node_id_.Binary());
-  resources_data->set_node_manager_address(initial_config_.node_manager_address);
-  cluster_lease_manager_.FillResourceUsage(*resources_data);
+  rpc::ResourcesData resources_data;
+  resources_data.set_node_id(self_node_id_.Binary());
+  resources_data.set_node_manager_address(initial_config_.node_manager_address);
+  cluster_lease_manager_.FillResourceUsage(resources_data);
+
+  // The GCS extrapolates the idle duration from the last report it applied, so
+  // compare the idle start time rather than the ever-growing duration.
+  const int64_t idle_duration_ms = resources_data.idle_duration_ms();
+  resources_data.clear_idle_duration_ms();
+  const auto idle_time =
+      cluster_resource_scheduler_.GetLocalResourceManager().GetResourceIdleTime();
+  if (resource_load_version_ == 0 || idle_time != last_resource_load_idle_time_ ||
+      !google::protobuf::util::MessageDifferencer::Equals(resources_data,
+                                                          last_resource_load_report_)) {
+    ++resource_load_version_;
+    last_resource_load_report_ = resources_data;
+    last_resource_load_idle_time_ = idle_time;
+  }
+
+  reply->set_version(resource_load_version_);
+  if (request.last_seen_version() == resource_load_version_) {
+    reply->set_unchanged(true);
+  } else {
+    resources_data.set_idle_duration_ms(idle_duration_ms);
+    *reply->mutable_resources() = std::move(resources_data);
+  }
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 

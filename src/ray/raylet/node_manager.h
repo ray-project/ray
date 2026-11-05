@@ -963,6 +963,16 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   LocalLeaseManagerInterface &local_lease_manager_;
   ClusterLeaseManagerInterface &cluster_lease_manager_;
 
+  /// Version of the load report served by `GetResourceLoad`, bumped whenever the
+  /// report differs from `last_resource_load_report_`. Starts at 0 so that a
+  /// caller without a version (0) always gets the full report.
+  int64_t resource_load_version_ = 0;
+  /// The last served load report, without `idle_duration_ms`, which grows on
+  /// every call while the node stays idle. `last_resource_load_idle_time_`
+  /// stands in for it, so an idle -> busy -> idle blip still counts as a change.
+  rpc::ResourcesData last_resource_load_report_;
+  std::optional<absl::Time> last_resource_load_idle_time_;
+
   absl::flat_hash_map<ObjectID, std::unique_ptr<RayObject>> pinned_objects_;
 
   // TODO(swang): Evict entries from these caches.

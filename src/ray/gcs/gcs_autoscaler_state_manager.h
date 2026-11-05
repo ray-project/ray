@@ -85,7 +85,8 @@ class GcsAutoscalerStateManager : public rpc::autoscaler::AutoscalerStateService
                                  rpc::autoscaler::ReportClusterConfigReply *reply,
                                  rpc::SendReplyCallback send_reply_callback) override;
 
-  void UpdateResourceLoadAndUsage(rpc::ResourcesData data);
+  /// \return Whether the node is alive and the data was applied.
+  bool UpdateResourceLoadAndUsage(rpc::ResourcesData data);
 
   void RecordMetrics() const { throw std::runtime_error("Unimplemented"); }
 
