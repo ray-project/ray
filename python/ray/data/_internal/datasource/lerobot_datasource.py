@@ -956,9 +956,13 @@ def _prepare_delta_segment(
     global_idx = full.column("index").to_numpy(zero_copy_only=False)
     episode_index_arrow = full.column("episode_index")
     episode_index_col = episode_index_arrow.to_numpy(zero_copy_only=False)
-    ep_pos = pc.index_in(
-        episode_index_arrow, value_set=ep_slice.column("episode_index")
-    )
+    ep_slice_idx = ep_slice.column("episode_index")
+    if len(pc.unique(ep_slice_idx)) != len(ep_slice_idx):
+        raise ValueError(
+            "ep_slice contains duplicate episode_index values; "
+            "the dataset's episodes metadata (meta/episodes) is inconsistent."
+        )
+    ep_pos = pc.index_in(episode_index_arrow, value_set=ep_slice_idx)
     if ep_pos.null_count > 0:
         missing_mask = ep_pos.is_null().to_numpy(zero_copy_only=False)
         raise KeyError(int(episode_index_col[missing_mask][0]))

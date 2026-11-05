@@ -247,6 +247,27 @@ def test_prepare_delta_segment_rejects_interior_index_gap(tmp_path):
         _prepare_delta_segment(root, full, ep_slice)
 
 
+def test_prepare_delta_segment_rejects_duplicate_episode_index(tmp_path):
+    """Duplicate episode_index rows in ep_slice must raise ValueError."""
+    root = _make_root(tmp_path)._replace(delta_steps={"state": [-1, 0, 1]})
+    full = pa.table(
+        {
+            "index": pa.array([0, 1, 2, 3], pa.int64()),
+            "episode_index": pa.array([0, 0, 1, 1], pa.int64()),
+            "state": pa.array([1.0, 2.0, 3.0, 4.0], pa.float32()),
+        }
+    )
+    ep_slice = pa.table(
+        {
+            "episode_index": pa.array([0, 1, 1], pa.int64()),
+            "_global_from_index": pa.array([0, 2, 99], pa.int64()),
+            "_global_to_index": pa.array([2, 4, 101], pa.int64()),
+        }
+    )
+    with pytest.raises(ValueError, match="duplicate episode_index"):
+        _prepare_delta_segment(root, full, ep_slice)
+
+
 def test_decode_video_delta_vectorized(tmp_path, monkeypatch):
     """Verify _decode_video_delta resolves clamped timestamps and pads across anchors."""
     import numpy as np
