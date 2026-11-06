@@ -19,6 +19,7 @@
 #include <vector>
 
 #include "absl/container/btree_map.h"
+#include "absl/container/btree_set.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/types/optional.h"
 #include "ray/common/id.h"
@@ -63,9 +64,15 @@ class OutofOrderActorSubmitQueue : public ActorSubmitQueueInterface {
   ///   - a pair of task and bool represents the task to be send and if the receiver
   ///     should SKIP THE SCHEDULING QUEUE while executing it.
   std::optional<std::pair<TaskSpecification, bool>> PopNextTaskToSend() override;
+  std::vector<TaskSpecification> PopTasksToFailOnActorRestart() override;
   bool Empty() const override;
 
  private:
+  friend class OutofOrderActorSubmitQueueTestPeer;
+
+  void EraseRestartFailureCandidate(const std::string &concurrency_group,
+                                    uint64_t position);
+
   /// Per-concurrency-group pending queues (dependency not yet resolved).
   absl::flat_hash_map<std::string,
                       absl::btree_map<uint64_t, std::pair<TaskSpecification, bool>>>
@@ -74,6 +81,9 @@ class OutofOrderActorSubmitQueue : public ActorSubmitQueueInterface {
   absl::flat_hash_map<std::string,
                       absl::btree_map<uint64_t, std::pair<TaskSpecification, bool>>>
       sending_queue_per_group_;
+  /// Per-concurrency-group positions of dependency-ready initial tasks with no retries.
+  absl::flat_hash_map<std::string, absl::btree_set<uint64_t>>
+      restart_failure_candidates_per_group_;
 };
 }  // namespace core
 }  // namespace ray

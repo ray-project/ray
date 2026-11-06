@@ -187,5 +187,32 @@ SequentialActorSubmitQueue::PopNextTaskToSend() {
   return std::nullopt;
 }
 
+std::vector<TaskSpecification>
+SequentialActorSubmitQueue::PopTasksToFailOnActorRestart() {
+  std::vector<TaskSpecification> tasks_to_fail;
+  // Retry attempts remain buffered. For initial attempts, removing only a
+  // dependency-ready zero-retry head preserves the contiguous sequence prefix.
+  for (auto group_it = requests_per_group_.begin();
+       group_it != requests_per_group_.end();) {
+    auto &requests = group_it->second;
+    while (!requests.empty()) {
+      auto task_it = requests.begin();
+      if (!task_it->second.second || task_it->second.first.MaxRetries() != 0) {
+        break;
+      }
+
+      tasks_to_fail.push_back(std::move(task_it->second.first));
+      requests.erase(task_it);
+    }
+
+    if (requests.empty()) {
+      requests_per_group_.erase(group_it++);
+    } else {
+      ++group_it;
+    }
+  }
+  return tasks_to_fail;
+}
+
 }  // namespace core
 }  // namespace ray
