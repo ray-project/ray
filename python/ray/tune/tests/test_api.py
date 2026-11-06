@@ -1767,8 +1767,21 @@ class MaxConcurrentTrialsTest(unittest.TestCase):
 
             self.assertEqual(capture["search_alg"].max_concurrent, 2)
 
-            # ... and should not override a different explicit max_concurrent
-            with self.assertRaisesRegex(ValueError, "max_concurrent_trials"):
+            # ... a lower explicit max_concurrent already respects it and is kept
+            tune.run(
+                train_fn,
+                search_alg=BasicVariantGenerator(max_concurrent=1),
+                max_concurrent_trials=2,
+                config={"a": tune.randint(0, 2)},
+                metric="metric",
+                mode="max",
+                stop={TRAINING_ITERATION: 1},
+            )
+
+            self.assertEqual(capture["search_alg"].max_concurrent, 1)
+
+            # ... and a greater one is an error
+            with self.assertRaisesRegex(ValueError, "greater `max_concurrent=3`"):
                 tune.run(
                     train_fn,
                     search_alg=BasicVariantGenerator(max_concurrent=3),
