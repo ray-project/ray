@@ -2632,8 +2632,22 @@ py_test(
 
 py_test(
     name = "test_delta",
-    size = "small",
+    size = "medium",
     srcs = ["tests/datasource/test_delta.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
+    name = "test_delta_v2",
+    size = "medium",
+    srcs = ["tests/datasource/test_delta_v2.py"],
     tags = [
         "exclusive",
         "team:data",
