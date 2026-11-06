@@ -308,6 +308,59 @@ async def test_batch_size_multiple_long_timeout(use_class):
 
 
 @pytest.mark.asyncio
+async def test_requests_arriving_while_batches_run_form_one_batch():
+    # While every max_concurrent_batches permit is in use, requests that arrive
+    # must wait in the queue and then go out as one batch, not as one batch
+    # each that waits for a permit.
+    batch_sizes = []
+    release = asyncio.Event()
+
+    @serve.batch(max_batch_size=10, batch_wait_timeout_s=0.01, max_concurrent_batches=1)
+    async def func(requests):
+        batch_sizes.append(len(requests))
+        await release.wait()
+        return requests
+
+    first = get_or_create_event_loop().create_task(func(0))
+    while not batch_sizes:
+        await asyncio.sleep(0.01)
+    rest = []
+    for i in range(1, 6):
+        rest.append(get_or_create_event_loop().create_task(func(i)))
+        # Longer than batch_wait_timeout_s, so each request could close a batch.
+        await asyncio.sleep(0.05)
+
+    release.set()
+    assert await asyncio.gather(first, *rest) == [0, 1, 2, 3, 4, 5]
+    assert batch_sizes == [1, 5]
+
+
+@pytest.mark.asyncio
+async def test_batch_timeout_counts_time_waiting_for_a_permit():
+    # A request that already waited longer than batch_wait_timeout_s for a
+    # permit goes out as soon as the permit is free, without a second wait.
+    batch_start_times = []
+    release = asyncio.Event()
+
+    @serve.batch(max_batch_size=10, batch_wait_timeout_s=1.0, max_concurrent_batches=1)
+    async def func(requests):
+        batch_start_times.append(time.time())
+        await release.wait()
+        return requests
+
+    first = get_or_create_event_loop().create_task(func(0))
+    while not batch_start_times:
+        await asyncio.sleep(0.01)
+    second = get_or_create_event_loop().create_task(func(1))
+    await asyncio.sleep(1.2)
+
+    release_time = time.time()
+    release.set()
+    assert await asyncio.gather(first, second) == [0, 1]
+    assert batch_start_times[1] - release_time < 0.5
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize("mode", ["args", "kwargs", "mixed", "out-of-order"])
 @pytest.mark.parametrize("use_class", [True, False])
 async def test_batch_args_kwargs(mode, use_class):
