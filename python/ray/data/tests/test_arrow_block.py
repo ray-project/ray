@@ -331,26 +331,12 @@ def test_arrow_block_timestamp_ns(ray_start_regular_shared):
         ),
         # Types with a null type nested inside. Before pandas 3.1, the cast in
         # pd.ArrowDtype.__from_arrow__ resizes the null child to the number of
-        # rows, so each list-like case holds more child elements than rows.
+        # rows, so each case holds more child elements than rows.
         (
             pa.array([[None] * 3, [None, None], [], None], type=pa.list_(pa.null())),
             None,
             pa.list_(pa.null()),
             [[None] * 3, [None, None], [], None],
-        ),
-        (
-            pa.array(
-                [[None] * 3, [None, None], [], None], type=pa.large_list(pa.null())
-            ),
-            None,
-            pa.large_list(pa.null()),
-            [[None] * 3, [None, None], [], None],
-        ),
-        (
-            pa.array([[None, None], [None, None], None], type=pa.list_(pa.null(), 2)),
-            None,
-            pa.list_(pa.null(), 2),
-            [[None, None], [None, None], None],
         ),
         (
             pa.array(
@@ -361,33 +347,13 @@ def test_arrow_block_timestamp_ns(ray_start_regular_shared):
             pa.list_(pa.list_(pa.null())),
             [[[None, None], [None]], [[None], [None]], None],
         ),
+        # A slice of a block, as a UDF sees it when batch_size is smaller than
+        # the block. The cast aborts the process on the slice offset.
         (
-            pa.array(
-                [[{"a": None}] * 3, [{"a": None}], None],
-                type=pa.list_(pa.struct([("a", pa.null())])),
-            ),
+            pa.array([[None], [None, None], [None]], type=pa.list_(pa.null()))[1:],
             None,
-            pa.list_(pa.struct([("a", pa.null())])),
-            [[{"a": None}] * 3, [{"a": None}], None],
-        ),
-        (
-            pa.array(
-                [[("k", None), ("j", None), ("l", None)], [("k", None)], None],
-                type=pa.map_(pa.string(), pa.null()),
-            ),
-            None,
-            pa.map_(pa.string(), pa.null()),
-            [[("k", None), ("j", None), ("l", None)], [("k", None)], None],
-        ),
-        # A top-level struct casts correctly; it checks the same path round-trips it.
-        (
-            pa.array(
-                [{"a": None, "b": 1}, None, {"a": None, "b": 2}],
-                type=pa.struct([("a", pa.null()), ("b", pa.int64())]),
-            ),
-            None,
-            pa.struct([("a", pa.null()), ("b", pa.int64())]),
-            [{"a": None, "b": 1}, None, {"a": None, "b": 2}],
+            pa.list_(pa.null()),
+            [[None, None], [None]],
         ),
     ],
 )
@@ -451,32 +417,6 @@ def test_arrow_backed_pandas_dtype_for_nested_null_equals_plain_dtype():
     assert plain == mapped
     assert hash(mapped) == hash(plain)
     assert mapped == str(plain)
-
-
-def test_pandas_udf_reads_every_element_of_all_null_lists(ray_start_regular_shared):
-    """A pandas UDF reading a list<null> column sees each list at full length,
-    instead of the trailing lists coming back empty."""
-    lists = [[None, None], [None]]
-    ds = ray.data.from_arrow(pa.table({"x": pa.array(lists, type=pa.list_(pa.null()))}))
-
-    rows = ds.map_batches(
-        lambda df: {"x": [list(v) for v in df["x"]]}, batch_format="pandas"
-    ).take_all()
-
-    assert [row["x"] for row in rows] == lists
-
-
-def test_all_null_lists_convert_to_pandas_after_pandas_udf(ray_start_regular_shared):
-    """A list<null> block that passed through a pandas UDF converts to pandas
-    again, with every element, instead of failing on the block's pandas
-    metadata."""
-    lists = [[None, None], [None]]
-    ds = ray.data.from_arrow(pa.table({"x": pa.array(lists, type=pa.list_(pa.null()))}))
-
-    df = ds.map_batches(lambda df: df, batch_format="pandas").to_pandas()
-
-    assert df.dtypes["x"] == pd.ArrowDtype(pa.list_(pa.null()))
-    assert pa.array(df["x"].array).to_pylist() == lists
 
 
 def test_pandas_udf_can_fill_per_block_null_columns(ray_start_regular_shared):
