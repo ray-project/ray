@@ -16,6 +16,7 @@ from ray._common.test_utils import run_string_as_driver
 from ray.data._internal.arrow_block import (
     ArrowBlockAccessor,
     ArrowBlockBuilder,
+    _arrow_backed_pandas_dtype,
 )
 from ray.data._internal.arrow_ops.transform_pyarrow import combine_chunked_array
 from ray.data._internal.util import GiB, MiB
@@ -327,24 +328,59 @@ def test_arrow_block_timestamp_ns(ray_start_regular_shared):
             pa.list_(pa.string()),
             [["a", "b"], None],
         ),
+        # Types with a null type nested inside. Before pandas 3.1, the cast in
+        # pd.ArrowDtype.__from_arrow__ resizes the null child to the number of
+        # rows, so each case holds more child elements than rows.
+        (
+            pa.array([[None] * 3, [None, None], [], None], type=pa.list_(pa.null())),
+            None,
+            pa.list_(pa.null()),
+            [[None] * 3, [None, None], [], None],
+        ),
+        (
+            pa.array(
+                [[[None, None], [None]], [[None], [None]], None],
+                type=pa.list_(pa.list_(pa.null())),
+            ),
+            None,
+            pa.list_(pa.list_(pa.null())),
+            [[[None, None], [None]], [[None], [None]], None],
+        ),
+        # A slice of a block, as a UDF sees it when batch_size is smaller than
+        # the block. The cast aborts the process on the slice offset.
+        (
+            pa.array([[None], [None, None], [None]], type=pa.list_(pa.null()))[1:],
+            None,
+            pa.list_(pa.null()),
+            [[None, None], [None]],
+        ),
     ],
 )
 def test_arrow_block_to_pandas_preserves_arrow_types_through_roundtrip(
     input_array, transform, expected_type, expected_values
 ):
+    """A column converts to a plain Arrow-backed pandas column, round-trips to the
+    same Arrow type and values, and converts to pandas again from the
+    round-tripped block."""
     table = pa.table({"x": input_array})
 
     df = ArrowBlockAccessor(table).to_pandas()
-    assert isinstance(df.dtypes["x"], pd.ArrowDtype)
-    assert df.dtypes["x"].pyarrow_dtype == expected_type
+    assert type(df.dtypes["x"]) is pd.ArrowDtype
+    assert df.dtypes["x"] == pd.ArrowDtype(expected_type)
+    assert pd.ArrowDtype(expected_type) == df.dtypes["x"]
 
     if transform is not None:
         df = transform(df)
 
     roundtripped = BlockAccessor.for_block(df).to_arrow()
+    # The round-tripped block carries pandas metadata naming the Arrow-backed
+    # dtype, which pandas cannot parse back from its string form.
+    df_again = ArrowBlockAccessor(roundtripped).to_pandas()
 
     assert roundtripped.schema.field("x").type == expected_type
     assert roundtripped.to_pydict() == {"x": expected_values}
+    assert df_again.dtypes["x"] == pd.ArrowDtype(expected_type)
+    assert pa.array(df_again["x"].array).to_pylist() == expected_values
 
 
 def test_arrow_block_to_pandas_null_type_is_not_arrow_backed():
@@ -366,6 +402,20 @@ def test_arrow_block_to_pandas_null_type_is_not_arrow_backed():
     # Filling the nulls now works and yields the fill value's type.
     filled = BlockAccessor.for_block(df.fillna({"x": 3.0})).to_arrow()
     assert filled.to_pydict() == {"x": [3.0, 3.0]}
+
+
+def test_arrow_backed_pandas_dtype_for_nested_null_equals_plain_dtype():
+    """The dtype the types mapper returns for a nested-null type compares equal
+    to, and hashes like, the plain ``pd.ArrowDtype`` of that type."""
+    nested_null = pa.list_(pa.null())
+
+    mapped = _arrow_backed_pandas_dtype(nested_null)
+    plain = pd.ArrowDtype(nested_null)
+
+    assert mapped == plain
+    assert plain == mapped
+    assert hash(mapped) == hash(plain)
+    assert mapped == str(plain)
 
 
 def test_pandas_udf_can_fill_per_block_null_columns(ray_start_regular_shared):
