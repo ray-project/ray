@@ -40,6 +40,7 @@ class Batcher(Generic[T]):
             return
 
         self.done_event: asyncio.Event = asyncio.Event()
+        self.first_item_event: asyncio.Event = asyncio.Event()
 
         # We are okay with this task getting cancelled (to propagate cancellations)
         self.read_task = asyncio.create_task(self.read())
@@ -57,18 +58,30 @@ class Batcher(Generic[T]):
             return
 
         try:
+            # For the very first flush we wait only until the first result is
+            # available instead of waiting out the full interval: time-to-first-
+            # token is latency-critical, while batching only exists to amortize
+            # per-chunk overhead for the rest of the stream. Otherwise the
+            # interval would be added to the TTFT of every request
+            # (https://github.com/ray-project/ray/issues/59681).
+            first_flush_pending = self.interval_s is not None
+
             while True:
-                # Wait for the interval or until we finish, whichever is faster.
-                # We use an event to avoid asyncio.wait_for cancelling the real task on timeout.
-                try:
-                    if self.interval_s is None:
-                        await self.done_event.wait()
-                    else:
-                        await asyncio.wait_for(
-                            self.done_event.wait(), timeout=self.interval_s
-                        )
-                except asyncio.TimeoutError:
-                    pass
+                if first_flush_pending:
+                    await self.first_item_event.wait()
+                    first_flush_pending = False
+                else:
+                    # Wait for the interval or until we finish, whichever is faster.
+                    # We use an event to avoid asyncio.wait_for cancelling the real task on timeout.
+                    try:
+                        if self.interval_s is None:
+                            await self.done_event.wait()
+                        else:
+                            await asyncio.wait_for(
+                                self.done_event.wait(), timeout=self.interval_s
+                            )
+                    except asyncio.TimeoutError:
+                        pass
 
                 # Get all elements from the queue
                 results, is_done = self.check_done_and_drain()
@@ -97,8 +110,13 @@ class Batcher(Generic[T]):
         try:
             async for x in self.generator:
                 self.queue.put_nowait(x)
+                if not self.first_item_event.is_set():
+                    self.first_item_event.set()
         finally:
             self.done_event.set()
+            # Unblock stream() if the generator finished (or raised) before
+            # producing any items.
+            self.first_item_event.set()
 
     def drain_queue(self):
         """Drain all results currently in the queue"""
