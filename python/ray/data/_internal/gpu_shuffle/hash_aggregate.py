@@ -29,7 +29,17 @@ from ray.data._internal.gpu_shuffle.hash_shuffle import (
     _derive_num_gpu_ranks,
 )
 from ray.data._internal.table_block import _resolve_aggregated_column_names
-from ray.data.aggregate import AggregateFn, AggregateFnV2, Count, Max, Mean, Min, Sum
+from ray.data.aggregate import (
+    AbsMax,
+    AggregateFn,
+    AggregateFnV2,
+    Count,
+    Max,
+    Mean,
+    Min,
+    Std,
+    Sum,
+)
 from ray.data.block import (
     Block,
     BlockAccessor,
@@ -1004,6 +1014,209 @@ class GPUMean(GPUAggregateFn):
         return {output_name: pa.null()}
 
 
+class GPUAbsMax(GPUMax):
+    """GPU implementation for :class:`ray.data.aggregate.AbsMax`.
+
+    The partial aggregate takes ``max(abs(x))`` per group. Partial results are
+    already non-negative, so the final aggregate is the same ``max`` as ``GPUMax``.
+    """
+
+    def __init__(self, agg: AbsMax, *, source_dtype: Optional[DataType] = None) -> None:
+        super().__init__(agg, source_dtype=source_dtype)  # type: ignore[arg-type]
+
+    def partial_aggregate(
+        self,
+        df: cudf.DataFrame,
+        key_columns: Tuple[str, ...],
+        accumulator_columns: Tuple[str, ...],
+        *,
+        input_schema: Optional[Schema] = None,
+    ) -> cudf.DataFrame:
+        assert self.target_column is not None
+        abs_df = df[list(key_columns) + [self.target_column]].copy()
+        abs_df[self.target_column] = abs_df[self.target_column].abs()
+        return super().partial_aggregate(
+            abs_df, key_columns, accumulator_columns, input_schema=input_schema
+        )
+
+
+class GPUStd(GPUAggregateFn):
+    """GPU implementation for :class:`ray.data.aggregate.Std`.
+
+    Each partial aggregate holds, per group, the ``(M2, mean, count)`` triple used by
+    the CPU implementation (M2 is the sum of squared differences from the mean).
+    Triples are merged with the parallel algorithm from
+    https://en.wikipedia.org/wiki/Algorithms_for_calculating_variance.
+    """
+
+    def __init__(self, agg: Std, *, source_dtype: Optional[DataType] = None) -> None:
+        self.source_dtype = source_dtype
+        self._ddof = agg._ddof
+        super().__init__(
+            agg.name,
+            on=agg.get_target_column(),
+            ignore_nulls=agg._ignore_nulls,
+            accumulators=("m2", "mean", "count", "null_count"),
+        )
+
+    def partial_aggregate(
+        self,
+        df: cudf.DataFrame,
+        key_columns: Tuple[str, ...],
+        accumulator_columns: Tuple[str, ...],
+        *,
+        input_schema: Optional[Schema] = None,
+    ) -> cudf.DataFrame:
+        assert self.target_column is not None
+
+        m2_col, mean_col, count_col, null_count_col = accumulator_columns
+        size_col = f"{count_col}_size"
+        keys = list(key_columns)
+        values = df[keys + [self.target_column]].copy()
+        values[self.target_column] = values[self.target_column].astype("float64")
+        grouped = values.groupby(keys, dropna=False)
+
+        sizes = grouped.size().reset_index()
+        sizes = sizes.rename(columns={sizes.columns[-1]: size_col})
+        count_dtype = _cudf_column_dtype(sizes, size_col)
+
+        counts = grouped[self.target_column].count().reset_index()
+        counts = counts.rename(columns={counts.columns[-1]: count_col})
+
+        result = sizes.merge(counts, on=keys, how="left")
+        _fill_missing_count(result, count_col, count_dtype)
+
+        float_dtype = DataType.from_numpy("float64")
+        if len(result) > 0 and bool(cast("cudf.Series", result[count_col] == 0).all()):
+            result[mean_col] = None
+            result[m2_col] = None
+        else:
+            means = grouped[self.target_column].mean().reset_index()
+            means = means.rename(columns={means.columns[-1]: mean_col})
+            variances = grouped[self.target_column].var(ddof=0).reset_index()
+            variances = variances.rename(columns={variances.columns[-1]: m2_col})
+            result = result.merge(means, on=keys, how="left")
+            result = result.merge(variances, on=keys, how="left")
+            # var(ddof=0) * count == M2 (sum of squared differences from the mean).
+            result[m2_col] = result[m2_col] * result[count_col]
+        _fill_missing_reduction(result, mean_col, float_dtype)
+        _fill_missing_reduction(result, m2_col, float_dtype)
+        _cast_cudf_column_dtype(result, mean_col, float_dtype)
+        _cast_cudf_column_dtype(result, m2_col, float_dtype)
+
+        null_mask = result[count_col] == 0
+        result.loc[null_mask, mean_col] = None
+        result.loc[null_mask, m2_col] = None
+
+        result[null_count_col] = result[size_col] - result[count_col]
+        _cast_cudf_column_dtype(result, null_count_col, count_dtype)
+
+        return result[keys + list(accumulator_columns)]
+
+    def final_aggregate(
+        self,
+        df: cudf.DataFrame,
+        key_columns: Tuple[str, ...],
+        accumulator_columns: Tuple[str, ...],
+        output_name: str,
+    ) -> cudf.DataFrame:
+        m2_col, mean_col, count_col, null_count_col = accumulator_columns
+        keys = list(key_columns)
+        total_count_col = f"{count_col}_final_count"
+        total_null_count_col = f"{null_count_col}_final_null_count"
+        total_m2_col = f"{m2_col}_final_m2"
+        weighted_col = f"{mean_col}_weighted"
+        total_mean_col = f"{mean_col}_final_mean"
+        shift_col = f"{m2_col}_shift"
+
+        # Partials from empty/all-null groups carry null mean/M2 and count == 0;
+        # zero them so they contribute nothing to the merge.
+        work = df[keys + list(accumulator_columns)].copy()
+        work[mean_col] = work[mean_col].astype("float64").fillna(0.0)
+        work[m2_col] = work[m2_col].astype("float64").fillna(0.0)
+        work[weighted_col] = work[mean_col] * work[count_col]
+
+        totals = (
+            work.groupby(keys, dropna=False)[
+                [count_col, null_count_col, m2_col, weighted_col]
+            ]
+            .sum()
+            .reset_index()
+        )
+        totals = totals.rename(
+            columns={
+                count_col: total_count_col,
+                null_count_col: total_null_count_col,
+                m2_col: total_m2_col,
+            }
+        )
+        totals[total_mean_col] = totals[weighted_col] / totals[total_count_col]
+        totals[total_mean_col] = totals[total_mean_col].fillna(0.0)
+
+        work = work.merge(totals[keys + [total_mean_col]], on=keys, how="left")
+        work[shift_col] = work[count_col] * (work[mean_col] - work[total_mean_col]) ** 2
+        shifts = work.groupby(keys, dropna=False)[shift_col].sum().reset_index()
+
+        result = totals.merge(shifts, on=keys, how="left")
+        denominator = result[total_count_col] - self._ddof
+        variance = (result[total_m2_col] + result[shift_col]) / denominator
+        result[output_name] = variance.where(denominator > 0, float("nan")) ** 0.5
+        _cast_cudf_column_dtype(result, output_name, DataType.from_numpy("float64"))
+
+        null_mask = result[total_count_col] == 0
+        if not self.ignore_nulls:
+            null_mask = null_mask | (result[total_null_count_col] > 0)
+        result.loc[null_mask, output_name] = None
+
+        return result[keys + [output_name]]
+
+    def _empty_global_partial_values(self, accumulator_prefix: str) -> Dict[str, Any]:
+        m2_col, mean_col, count_col, null_count_col = self._accumulator_columns(
+            accumulator_prefix
+        )
+        return {m2_col: None, mean_col: None, count_col: 0, null_count_col: 0}
+
+    def _partial_accumulator_dtypes(
+        self,
+        df: cudf.DataFrame,
+        accumulator_prefix: str,
+        *,
+        input_schema: Optional[Schema] = None,
+    ) -> Dict[str, Optional[DataType]]:
+        m2_col, mean_col, count_col, null_count_col = self._accumulator_columns(
+            accumulator_prefix
+        )
+        return {
+            m2_col: DataType.from_numpy("float64"),
+            mean_col: DataType.from_numpy("float64"),
+            count_col: DataType.from_numpy("int64"),
+            null_count_col: DataType.from_numpy("int64"),
+        }
+
+    def _final_cudf_dtypes(
+        self,
+        df: cudf.DataFrame,
+        output_name: str,
+        accumulator_prefix: str,
+        *,
+        input_schema: Optional[Schema] = None,
+    ) -> Dict[str, Optional[DataType]]:
+        return {output_name: DataType.from_numpy("float64")}
+
+    def _final_arrow_types(
+        self,
+        output_name: str,
+        *,
+        input_schema: Optional[Schema] = None,
+    ) -> Dict[str, pa.DataType]:
+        dtype = self.source_dtype
+        if dtype is None or dtype.is_null_type():
+            dtype = _schema_column_dtype(input_schema, self.target_column)
+        if dtype is None or not dtype.is_null_type():
+            return {}
+        return {output_name: pa.null()}
+
+
 def _empty_dataframe(
     cudf_module: types.ModuleType,
     columns: Sequence[str],
@@ -1458,6 +1671,17 @@ def build_gpu_aggregation_plan(
                 gpu_aggregate = GPUMax(agg, source_dtype=source_dtype)
             elif isinstance(agg, Mean):
                 gpu_aggregate = GPUMean(agg, source_dtype=source_dtype)
+            elif isinstance(agg, Std):
+                gpu_aggregate = GPUStd(agg, source_dtype=source_dtype)
+            elif isinstance(agg, AbsMax):
+                if source_dtype is not None and not (
+                    source_dtype.is_integer_type() or source_dtype.is_floating_type()
+                ):
+                    return (
+                        f"AbsMax is not supported by GPU aggregation for "
+                        f"non-numeric column '{target_column}'."
+                    )
+                gpu_aggregate = GPUAbsMax(agg, source_dtype=source_dtype)
             else:
                 # Any unsupported built-in aggregation in the list falls back
                 # the entire list to CPU.

@@ -26,7 +26,17 @@ from ray.data._internal.gpu_shuffle.hash_aggregate import (
 from ray.data._internal.logical.interfaces import LogicalOperator
 from ray.data._internal.logical.operators import Aggregate
 from ray.data._internal.planner.plan_all_to_all_op import plan_all_to_all_op
-from ray.data.aggregate import AggregateFnV2, AsList, Count, Max, Mean, Min, Sum
+from ray.data.aggregate import (
+    AbsMax,
+    AggregateFnV2,
+    AsList,
+    Count,
+    Max,
+    Mean,
+    Min,
+    Std,
+    Sum,
+)
 from ray.data.block import BlockMetadata
 from ray.data.context import DataContext, ShuffleStrategy
 
@@ -117,6 +127,30 @@ class TestGPUHashAggregatePlanning:
             assert not hasattr(gpu_agg, "finalize")
         assert "user_id" in plan.required_columns
         assert "value" in plan.required_columns
+
+    def test_std_and_abs_max_plan_supported(self):
+        schema = pa.schema([("user_id", pa.int64()), ("value", pa.float64())])
+        plan = build_gpu_aggregation_plan(
+            ("user_id",),
+            (Std("value", ddof=0), AbsMax("value")),
+            input_schema=schema,
+        )
+        assert isinstance(plan, GPUAggregationPlan), plan
+        assert plan.output_names == ("std(value)", "abs_max(value)")
+        assert tuple(type(agg).__name__ for agg in plan._gpu_aggregates) == (
+            "GPUStd",
+            "GPUAbsMax",
+        )
+
+    def test_abs_max_on_non_numeric_column_rejected(self):
+        schema = pa.schema([("user_id", pa.int64()), ("value", pa.string())])
+        result = build_gpu_aggregation_plan(
+            ("user_id",), (AbsMax("value"),), input_schema=schema
+        )
+        assert result == (
+            "AbsMax is not supported by GPU aggregation for non-numeric column "
+            "'value'."
+        )
 
     def test_unsupported_aggregation_plan_rejected(self):
         schema = pa.schema([("user_id", pa.int64())])
@@ -1004,6 +1038,81 @@ class TestGPUHashAggregateActorReal:
         assert row["count(value)"] == 3
         assert row["sum(value)"] == 8
         assert row["mean(value)"] == pytest.approx(8 / 3)
+
+    @pytest.mark.parametrize("ignore_nulls", [True, False])
+    @pytest.mark.parametrize("ddof", [0, 1])
+    def test_std_and_abs_max_match_pandas_across_partials(
+        self, ray_with_gpu, ignore_nulls, ddof
+    ):
+        import cudf
+
+        rng = np.random.default_rng(0)
+        n = 600
+        pdf = pd.DataFrame(
+            {
+                "k": rng.integers(0, 5, n),
+                "v": rng.normal(1, 3, n),
+                "i": rng.integers(-50, 50, n),
+            }
+        )
+        pdf.loc[rng.random(n) < 0.1, "v"] = np.nan
+        # An all-null group and a single-row group.
+        pdf = pd.concat(
+            [
+                pdf,
+                pd.DataFrame({"k": [98, 98, 99], "v": [np.nan, np.nan, 1.0], "i": 1}),
+            ],
+            ignore_index=True,
+        )
+        schema = pa.Table.from_pandas(pdf).schema
+        plan = build_gpu_aggregation_plan(
+            ("k",),
+            (
+                Std("v", ddof=ddof, ignore_nulls=ignore_nulls, alias_name="std_v"),
+                Std("i", ddof=ddof, alias_name="std_i"),
+                AbsMax("v", ignore_nulls=ignore_nulls, alias_name="abs_v"),
+                AbsMax("i", alias_name="abs_i"),
+            ),
+            input_schema=schema,
+        )
+        assert isinstance(plan, GPUAggregationPlan), plan
+
+        # Aggregate in several partials, then merge, as the shuffle does.
+        partials = [
+            plan.partial_aggregate(cudf.from_pandas(chunk), input_schema=schema)
+            for chunk in np.array_split(pdf, 3)
+        ]
+        result = (
+            plan.final_aggregate(
+                cudf.concat(partials, ignore_index=True), input_schema=schema
+            )
+            .to_pandas()
+            .sort_values("k")
+            .set_index("k")
+        )
+
+        def _clean(series, fn):
+            if not ignore_nulls and series.isna().any():
+                return np.nan
+            return fn(series)
+
+        grouped = pdf.groupby("k")
+        expected = {
+            "std_v": grouped["v"].apply(
+                lambda x: _clean(x, lambda s: s.std(ddof=ddof))
+            ),
+            "std_i": grouped["i"].std(ddof=ddof),
+            "abs_v": grouped["v"].apply(lambda x: _clean(x, lambda s: s.abs().max())),
+            "abs_i": grouped["i"].apply(lambda x: x.abs().max()),
+        }
+        for column, exp in expected.items():
+            np.testing.assert_allclose(
+                result[column].astype(float).values,
+                exp.sort_index().values,
+                rtol=1e-9,
+                equal_nan=True,
+                err_msg=column,
+            )
 
 
 if __name__ == "__main__":
