@@ -108,6 +108,7 @@ def test_create_forwards_config_fields_to_backend():
         rootless=True,
         readonly=False,
         shell="/bin/bash",
+        oom_score_adj=0,
     )
     (config,) = runtime._backend.configs
     assert config.image == "fake:latest"
@@ -120,6 +121,7 @@ def test_create_forwards_config_fields_to_backend():
     assert config.rootless is True
     assert config.readonly is False
     assert config.shell == "/bin/bash"
+    assert config.oom_score_adj == 0
 
 
 def test_ttl_is_enforced_by_the_runtime():
@@ -365,6 +367,7 @@ def test_boot_key_covers_every_boot_time_field():
         "_ignore_cgroups": True,
         "gpu_ids": ["0"],
         "mounts": {"/data": "/srv/data"},
+        "oom_score_adj": 0,
     }
     per_create = {"env": {"A": "1"}, "ttl_seconds": 5, "timeout_seconds": 1.0}
     fields = {f.name for f in dataclasses.fields(SandboxConfig)}
@@ -585,6 +588,46 @@ def test_a_checkpoint_that_stops_a_pooled_sandbox_frees_its_slot():
     instance_id = runtime.create(image="img", timeout_seconds=5)
     runtime.checkpoint(instance_id, checkpoint_path="/tmp/ckpt", leave_running=False)
     assert _wait_until(lambda: len(runtime._backend.configs) == 2)
+    runtime.close()
+
+
+class _StopCheckpointFails(_CountingBackend):
+    """Fails every checkpoint, after deleting the sandbox or with it running."""
+
+    def __init__(self, deletes_first):
+        super().__init__()
+        self.deletes_first = deletes_first
+
+    def get_status(self, sandbox_id):
+        if sandbox_id in self.deleted:
+            return SandboxStatus.TERMINATED
+        return SandboxStatus.RUNNING
+
+    def checkpoint_sandbox(self, sandbox_id, **kwargs):
+        if self.deletes_first:
+            self.delete_sandbox(sandbox_id)
+        raise RuntimeError("checkpoint failed")
+
+
+@pytest.mark.parametrize("deletes_first", [True, False])
+def test_a_failed_stop_checkpoint_frees_the_slot_of_a_sandbox_it_ended(deletes_first):
+    """A stop-checkpoint that fails after the backend deleted the sandbox
+    frees its slot. One that fails with the sandbox still running leaves the
+    slot to the sandbox until it's deleted."""
+    runtime = _pooled_runtime(
+        [{"image": "img", "size": 1}], backend=_StopCheckpointFails(deletes_first)
+    )
+    instance_id = runtime.create(image="img", timeout_seconds=5)
+    with pytest.raises(RuntimeError, match="checkpoint failed"):
+        runtime.checkpoint(
+            instance_id, checkpoint_path="/tmp/ckpt", leave_running=False
+        )
+    if not deletes_first:
+        time.sleep(0.1)
+        assert len(runtime._backend.configs) == 1
+        runtime.delete(instance_id)
+    assert _wait_until(lambda: len(runtime._backend.configs) == 2)
+    assert runtime.wait_for_warm_pool(timeout_seconds=10)
     runtime.close()
 
 

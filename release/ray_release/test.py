@@ -40,7 +40,6 @@ DEFAULT_PYTHON_VERSION = tuple(
     int(v) for v in os.environ.get("RELEASE_PY", "3.10").split(".")
 )
 DATAPLANE_ECR_REPO = "anyscale/ray"
-DATAPLANE_ECR_ML_REPO = "anyscale/ray-ml"
 DATAPLANE_ECR_LLM_REPO = "anyscale/ray-llm"
 DATAPLANE_ECR_TORCH_REPO = "anyscale/ray-torch"
 
@@ -587,10 +586,6 @@ class Test(dict):
             tag = f"{tag}-{ray_version}"
         return tag
 
-    def use_byod_ml_image(self) -> bool:
-        """Returns whether to use the ML image for this test."""
-        return self.get_byod_type() == "gpu"
-
     def use_byod_llm_image(self) -> bool:
         return self.get_byod_type().startswith("llm-")
 
@@ -599,8 +594,6 @@ class Test(dict):
 
     def get_byod_repo(self) -> str:
         """Returns the byod repo to use for this test."""
-        if self.use_byod_ml_image():
-            return DATAPLANE_ECR_ML_REPO
         if self.use_byod_llm_image():
             return DATAPLANE_ECR_LLM_REPO
         if self.use_byod_torch_image():
@@ -625,8 +618,6 @@ class Test(dict):
         if ray_version:
             python_version = "py" + self.get_python_version().replace(".", "")
             tag_suffix = self.get_tag_suffix()
-            if tag_suffix == "gpu":
-                tag_suffix = "cu121"
             return f"{ANYSCALE_RAY_IMAGE_PREFIX}:{ray_version}-{python_version}-{tag_suffix}"
         global_config = get_global_config()
         base_ecr = global_config["byod_ecr"]
@@ -659,9 +650,7 @@ class Test(dict):
             )
 
         python_version = "py" + self.get_python_version().replace(".", "")
-        tag_suffix = (
-            "cu121" if self.get_tag_suffix() == "gpu" else self.get_tag_suffix()
-        )
+        tag_suffix = self.get_tag_suffix()
         tag = f"{ray_version}-{python_version}-{tag_suffix}"
         return f"{ANYSCALE_RAY_IMAGE_PREFIX}:{tag}"
 

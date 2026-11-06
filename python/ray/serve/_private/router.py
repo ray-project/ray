@@ -955,12 +955,12 @@ class AsyncioRouter:
         if isinstance(result, ActorDiedError):
             return result
 
-        if isinstance(result, RayTaskError) and isinstance(
-            getattr(result, "cause", None), ActorDiedError
-        ):
-            # RayTaskError wrapping ActorDiedError (e.g., from failed object ref
-            # resolution in chained deployment calls).
-            return result.cause
+        if isinstance(result, RayTaskError):
+            cause = getattr(result, "cause", None)
+            if isinstance(cause, ActorDiedError):
+                # RayTaskError wrapping ActorDiedError (e.g., from failed object ref
+                # resolution in chained deployment calls).
+                return cause
 
         return None
 

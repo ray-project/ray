@@ -559,6 +559,16 @@ async def test_reserve_slot_propagates_actor_died_error(ray_instance):
 
     ray.kill(actor)
 
+    # ray.kill returns before the actor exits, and a call that still reaches it
+    # is rejected on the held slot rather than failing. Wait until it is dead.
+    async def actor_died():
+        try:
+            await actor.get_num_ongoing_requests.remote()
+        except ActorDiedError:
+            return True
+        return False
+
+    await async_wait_for_condition(actor_died)
     with pytest.raises((ActorDiedError, ActorUnavailableError)):
         await replica.reserve_slot(_dummy_request_metadata())
 

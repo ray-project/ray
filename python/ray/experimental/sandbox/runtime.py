@@ -70,6 +70,7 @@ def _boot_key(cfg: SandboxConfig) -> Optional[tuple]:
         bool(cfg._ignore_cgroups),
         tuple(cfg.gpu_ids or ()),
         tuple(sorted((cfg.mounts or {}).items())),
+        cfg.oom_score_adj,
     )
 
 
@@ -918,13 +919,18 @@ class SandboxRuntime:
         Returns:
             Absolute path to the checkpoint directory.
         """
-        res = self._backend.checkpoint_sandbox(
-            sandbox_id=instance_id,
-            checkpoint_path=checkpoint_path,
-            leave_running=leave_running,
-            timeout_seconds=timeout_seconds,
-            **kwargs,
-        )
+        try:
+            res = self._backend.checkpoint_sandbox(
+                sandbox_id=instance_id,
+                checkpoint_path=checkpoint_path,
+                leave_running=leave_running,
+                timeout_seconds=timeout_seconds,
+                **kwargs,
+            )
+        except BaseException:
+            if not leave_running:
+                self._release_if_stopped(instance_id)
+            raise
         if not leave_running:
             timer = self._ttl_timers.pop(instance_id, None)
             if timer is not None:
@@ -936,6 +942,23 @@ class SandboxRuntime:
         if isinstance(res, dict) and "checkpoint_path" in res:
             return res["checkpoint_path"]
         return checkpoint_path or ""
+
+    def _release_if_stopped(self, instance_id: str) -> None:
+        """Free the warm-pool slot of a sandbox that a failed stop-checkpoint
+        ended anyway.
+
+        The checkpoint can fail after the backend deleted the sandbox, or
+        after it stopped the sandbox and couldn't restore it. A sandbox that
+        still runs keeps its slot until it's deleted.
+        """
+        if self._warm is None:
+            return
+        try:
+            stopped = self._backend.get_status(instance_id) == SandboxStatus.TERMINATED
+        except Exception:
+            return
+        if stopped:
+            self._warm.release(instance_id)
 
     def restore(
         self,
