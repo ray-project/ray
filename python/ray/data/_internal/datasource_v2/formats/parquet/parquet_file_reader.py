@@ -71,8 +71,6 @@ from ray.util.debug import log_once
 
 logger = logging.getLogger(__name__)
 
-_UNSET = object()
-
 # Per-stream read-ahead buffer for ``use_buffered_stream=True``. PyArrow's
 # default (~8 KiB) produces many tiny range requests on S3; 8 MiB
 # amortizes per-request latency across meaningful payload sizes.
@@ -286,9 +284,10 @@ class ParquetFileReader(FileReader, SupportsMetadata):
         self._partition_parser = None
         self._target_block_size = target_block_size
         self._parquet_format_kwargs: Dict[str, Any] = parquet_format_kwargs or {}
-        self._sampled_batch_size: int | object = (
-            _UNSET  # pyrefly: ignore[bad-assignment]
-        )
+        # ``None`` until the first read sizes batches. Not an ``object()``
+        # sentinel: a reader pickled before its first read would get a copy
+        # that no longer compares identical to it.
+        self._sampled_batch_size: Optional[int] = None
         # Size Arrow's process-wide IO/CPU pools for the read task so a Parquet
         # scan can issue many concurrent column/range fetches against S3 instead
         # of being capped at Arrow's small default.
@@ -307,7 +306,7 @@ class ParquetFileReader(FileReader, SupportsMetadata):
 
         Priority: explicit batch_size > sampled estimate > metadata estimate > default.
 
-        On the first call ``_sampled_batch_size`` is ``_UNSET``, so we fall
+        On the first call ``_sampled_batch_size`` is ``None``, so we fall
         through to the metadata estimate and seed ``_sampled_batch_size`` with
         the result.  ``_on_batch_read`` later refines it from actual data, and
         subsequent ``read()`` calls on the same instance use the refined value.
@@ -321,8 +320,8 @@ class ParquetFileReader(FileReader, SupportsMetadata):
         if self._explicit_batch_size is not None:
             return self._explicit_batch_size
 
-        if self._sampled_batch_size is not _UNSET:
-            return self._sampled_batch_size  # pyrefly: ignore[bad-return]
+        if self._sampled_batch_size is not None:
+            return self._sampled_batch_size
 
         batch_size = _ARROW_DEFAULT_BATCH_SIZE
         if self._target_block_size is not None:

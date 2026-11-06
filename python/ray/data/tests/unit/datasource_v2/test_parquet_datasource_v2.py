@@ -853,6 +853,27 @@ def test_parquet_file_reader_row_group_row_hashes_are_unique(tmp_path):
     assert len(set(hashes)) == expected_rows
 
 
+@pytest.mark.parametrize("target_block_size", [None, 1024])
+def test_parquet_file_reader_reads_after_pickling(tmp_path, target_block_size):
+    """A reader pickled before its first read still sizes its batches.
+
+    Regression: an unset sampled batch size was an ``object()`` sentinel that
+    unpickled as a different object, so the reader passed it to pyarrow as the
+    batch size.
+    """
+    import ray.cloudpickle as cloudpickle
+
+    file_path = str(tmp_path / "data.parquet")
+    _write_multi_row_group_parquet(file_path, num_rows=40, row_group_size=20)
+    manifest = _row_group_manifest(file_path, row_group_ids=[0, 1], num_rows=40)
+    reader = ParquetFileReader(target_block_size=target_block_size)
+
+    reader = cloudpickle.loads(cloudpickle.dumps(reader))
+
+    tables = list(reader.read(manifest))
+    assert sorted(pa.concat_tables(tables).column("id").to_pylist()) == list(range(40))
+
+
 if __name__ == "__main__":
     import sys
 
