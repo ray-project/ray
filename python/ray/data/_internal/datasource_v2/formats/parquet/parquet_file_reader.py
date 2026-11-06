@@ -226,6 +226,7 @@ class ParquetFileReader(FileReader, SupportsMetadata):
         synthesized_columns: Sequence[SynthesizedColumn] = (),
         schema: Optional[pa.Schema] = None,
         parquet_format_kwargs: Optional[Dict[str, Any]] = None,
+        mixed_pruning_predicate: Optional[Expr] = None,
     ):
         """Initialize the Parquet reader.
 
@@ -253,6 +254,8 @@ class ParquetFileReader(FileReader, SupportsMetadata):
                 ``coerce_int96_timestamp_unit``, ``pre_buffer``,
                 ``dictionary_columns``). Used to forward the deprecated
                 ``dataset_kwargs`` arg on the V2 path.
+            mixed_pruning_predicate: Optional mixed OR hint for row-group pruning.
+                The complete predicate must still be enforced by a logical Filter.
         """
         super().__init__(
             format=FileFormat.PARQUET,
@@ -267,6 +270,8 @@ class ParquetFileReader(FileReader, SupportsMetadata):
             schema=schema,
         )
         self._explicit_batch_size = batch_size
+        self._mixed_pruning_predicate = mixed_pruning_predicate
+        self._mixed_subset_enabled = False
         self._target_block_size = target_block_size
         self._parquet_format_kwargs: Dict[str, Any] = parquet_format_kwargs or {}
         self._sampled_batch_size: int | object = (
@@ -421,6 +426,29 @@ class ParquetFileReader(FileReader, SupportsMetadata):
                         per_row_group_offsets=per_row_group_offsets,
                     )
                 )
+        self._mixed_subset_enabled = False
+        if (
+            self._mixed_pruning_predicate is not None
+            # A separately pushed predicate may raise during evaluation. Do not
+            # let this additional hint skip that evaluation, in either order.
+            and self._predicate is None
+            and not self._synthesized_columns
+            and self._limit is None
+        ):
+            from ray.data._internal.datasource_v2.formats.parquet.mixed_or_pruning import (
+                specialize_fragment,
+            )
+
+            self._mixed_subset_enabled = bool(fragments) and all(
+                specialize_fragment(
+                    self._mixed_pruning_predicate,
+                    self._partition_parser,
+                    self._schema,
+                    item.fragment,
+                    self._columns,
+                )[0]
+                for item in fragments
+            )
         return fragments
 
     @override
@@ -429,6 +457,23 @@ class ParquetFileReader(FileReader, SupportsMetadata):
         fragment: pds.Fragment,
         scanner_kwargs: dict,
     ) -> "Iterator[pa.Table]":
+        if self._mixed_subset_enabled and self._mixed_pruning_predicate is not None:
+            from ray.data._internal.datasource_v2.formats.parquet.mixed_or_pruning import (
+                specialize_fragment,
+            )
+
+            safe, hint = specialize_fragment(
+                self._mixed_pruning_predicate,
+                self._partition_parser,
+                self._schema,
+                fragment,
+                self._columns,
+            )
+            if safe and hint is not None:
+                try:
+                    fragment = fragment.subset(filter=hint)
+                except (pa.ArrowException, OSError, ValueError, TypeError):
+                    pass
         for table in self._iter_fragment_tables_without_pickle_check(
             fragment, scanner_kwargs
         ):

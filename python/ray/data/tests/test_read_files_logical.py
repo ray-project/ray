@@ -184,11 +184,35 @@ def test_apply_predicate_splits_data_and_partition(
 def test_apply_predicate_mixed_or_keeps_filter_above(tmp_path):
     op = _mk_partitioned_read_files(tmp_path)
 
-    # Mixed-column ``OR`` can't be safely split — neither bucket is
-    # populated, so ``apply_predicate`` returns ``self`` and the rule
-    # leaves the ``Filter`` above ``ReadFiles`` untouched.
-    result = op.apply_predicate((col("a") > 0) | (col("country") == "US"))
-    assert result is op
+    expr = (col("a") > 0) | (col("country") == "US")
+    result = op.apply_predicate(expr)
+    assert isinstance(result, Filter)
+    assert result.predicate_expr is expr
+    hinted = result.input_dependencies[0]
+    assert isinstance(hinted, ReadFiles)
+    assert isinstance(hinted.scanner, ParquetScanner)
+    assert isinstance(op.scanner, ParquetScanner)
+    assert hinted.scanner.mixed_pruning_predicate is expr
+    assert hinted.scanner.predicate is None
+    assert hinted.scanner.partition_predicate is None
+    assert not hinted.scanner.metadata_row_count_is_exact()
+    assert op.scanner.mixed_pruning_predicate is None
+    # Repeated optimizer passes must not keep cloning the same hint.
+    assert hinted.apply_predicate(expr) is hinted
+
+
+def test_mixed_or_does_not_opt_in_parquet_subclasses(tmp_path):
+    class LogPartitionScanner(ParquetScanner):
+        pass
+
+    op = _mk_partitioned_read_files(tmp_path)
+    scanner = LogPartitionScanner(**vars(op.scanner))
+    op = replace(op, scanner=scanner)
+    expr = (col("a") > 0) | (col("country") == "US")
+    assert op.apply_predicate(expr) is op
+    # Defensive guard also covers manually configured inherited hints.
+    reader = replace(scanner, mixed_pruning_predicate=expr).create_reader()
+    assert reader._mixed_pruning_predicate is None
 
 
 def test_apply_predicate_mixed_and_with_unsplittable_residual(tmp_path):
@@ -297,3 +321,19 @@ if __name__ == "__main__":
     import sys
 
     sys.exit(pytest.main(["-v", __file__]))
+
+
+def test_mixed_or_keeps_known_block_udf_boundary(tmp_path):
+    op = replace(
+        _mk_partitioned_read_files(tmp_path),
+        block_udf=lambda table: table,
+        block_udf_modified_columns=set(),
+    )
+    assert op.apply_predicate((col("country") == "US") | (col("a") < 0)) is op
+
+
+def test_mixed_or_keeps_existing_scanner_limit_boundary(tmp_path):
+    op = _mk_partitioned_read_files(tmp_path)
+    assert isinstance(op.scanner, ParquetScanner)
+    op = replace(op, scanner=replace(op.scanner, limit=1))
+    assert op.apply_predicate((col("country") == "US") | (col("a") < 0)) is op
