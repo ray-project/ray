@@ -15,6 +15,28 @@ _RECONSTRUCTION_OVERRIDE_ERROR = (
 )
 
 
+@pytest.mark.parametrize(
+    "suffix,default,override",
+    [
+        ("min_files", 2048, 7),
+        ("max_tasks", 16, 2),
+        ("num_cpus", 0.5, 1.25),
+        ("batch_size", 256, 3),
+        ("io_concurrency", 4, 5),
+    ],
+)
+def test_full_schema_inference_config_defaults_and_env(
+    monkeypatch, suffix, default, override
+):
+    name = f"full_schema_inference_{suffix}"
+    env_name = f"RAY_DATA_FULL_SCHEMA_INFERENCE_{suffix.upper()}"
+    monkeypatch.delenv(env_name, raising=False)
+    assert getattr(ray.data.DataContext(), name) == default
+    monkeypatch.setenv(env_name, str(override))
+    assert getattr(ray.data.DataContext(), name) == override
+    assert getattr(ray.data.DataContext(**{name: default}), name) == default
+
+
 def test_write_file_retry_on_errors_emits_deprecation_warning(caplog):
     ctx = ray.data.DataContext.get_current()
     with pytest.warns(DeprecationWarning):

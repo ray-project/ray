@@ -11,13 +11,14 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, List, Literal, Optional, Union
+from typing import TYPE_CHECKING, Any, Dict, List, Literal, Optional, Union
 
 import pyarrow as pa
 from typing_extensions import override
 
 from ray._common.utils import env_bool, env_integer
 from ray.data._internal.datasource_v2.common.schema_inference import (
+    infer_full_schema_from_files,
     infer_schema_from_files,
 )
 from ray.data._internal.datasource_v2.common.synthesized_columns import (
@@ -351,6 +352,27 @@ class ParquetDatasourceV2(FileDataSourceV2):
                 sample_paths, _read_schema, format_name="Parquet"
             )
 
+        return self._augment_schema(schema, sample)
+
+    @override
+    def infer_full_schema(
+        self, sample: FileManifest, *, ray_remote_args: Dict[str, Any]
+    ) -> pa.Schema:
+        if self._user_schema is not None or not len(sample):
+            return self.infer_schema(sample)
+        schema = infer_full_schema_from_files(
+            sample,
+            self._filesystem,
+            format_name="Parquet",
+            ray_remote_args=ray_remote_args,
+            supports_distributed_reads=self.supports_distributed_reads,
+        )
+        if schema is None:
+            return self.infer_schema(sample)
+        return self._augment_schema(schema, sample)
+
+    def _augment_schema(self, schema: pa.Schema, sample: FileManifest) -> pa.Schema:
+        sample_paths = sample.paths.tolist()
         resolved_partitioning = self.resolve_partitioning(sample)
         if resolved_partitioning is not None:
             first_path = sample_paths[0]

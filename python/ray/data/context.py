@@ -698,6 +698,18 @@ class DataContext:
             ``read_op_min_num_blocks``.
         streaming_read_buffer_size: Buffer size when doing streaming reads from local or
             remote storage.
+        full_schema_inference_min_files: Distribute Parquet/ORC full-schema reads
+            above this file count. Defaults to 2048, or
+            ``RAY_DATA_FULL_SCHEMA_INFERENCE_MIN_FILES``.
+        full_schema_inference_max_tasks: Maximum unfinished full-schema tasks.
+            Defaults to 16, or ``RAY_DATA_FULL_SCHEMA_INFERENCE_MAX_TASKS``.
+        full_schema_inference_num_cpus: Logical CPUs per full-schema task.
+            Defaults to 0.5, or ``RAY_DATA_FULL_SCHEMA_INFERENCE_NUM_CPUS``.
+        full_schema_inference_batch_size: Files per full-schema batch. Defaults
+            to 256, or ``RAY_DATA_FULL_SCHEMA_INFERENCE_BATCH_SIZE``.
+        full_schema_inference_io_concurrency: File-reading threads per full-schema
+            worker task. Defaults to 4, or
+            ``RAY_DATA_FULL_SCHEMA_INFERENCE_IO_CONCURRENCY``.
         enable_pandas_block: Whether pandas block format is enabled.
         actor_prefetcher_enabled: Whether to use actor based block prefetcher.
         autoscaling_config: Autoscaling configuration.
@@ -1009,6 +1021,31 @@ class DataContext:
     target_max_block_size: Optional[int] = DEFAULT_TARGET_MAX_BLOCK_SIZE
     target_min_block_size: int = DEFAULT_TARGET_MIN_BLOCK_SIZE
     streaming_read_buffer_size: int = DEFAULT_STREAMING_READ_BUFFER_SIZE
+    full_schema_inference_min_files: int = field(
+        default_factory=lambda: env_integer(
+            "RAY_DATA_FULL_SCHEMA_INFERENCE_MIN_FILES", 2048
+        )
+    )
+    full_schema_inference_max_tasks: int = field(
+        default_factory=lambda: env_integer(
+            "RAY_DATA_FULL_SCHEMA_INFERENCE_MAX_TASKS", 16
+        )
+    )
+    full_schema_inference_num_cpus: float = field(
+        default_factory=lambda: env_float(
+            "RAY_DATA_FULL_SCHEMA_INFERENCE_NUM_CPUS", 0.5
+        )
+    )
+    full_schema_inference_batch_size: int = field(
+        default_factory=lambda: env_integer(
+            "RAY_DATA_FULL_SCHEMA_INFERENCE_BATCH_SIZE", 256
+        )
+    )
+    full_schema_inference_io_concurrency: int = field(
+        default_factory=lambda: env_integer(
+            "RAY_DATA_FULL_SCHEMA_INFERENCE_IO_CONCURRENCY", 4
+        )
+    )
     enable_pandas_block: bool = DEFAULT_ENABLE_PANDAS_BLOCK
     actor_prefetcher_enabled: bool = DEFAULT_ACTOR_PREFETCHER_ENABLED
 
