@@ -229,6 +229,32 @@ During the training loop, the following happens to your checkpoints and metrics:
 How Ray Train populates checkpoint metrics during training and how you access them after training.
 ```
 
+(train-rank-checkpoints-by-validation-metric)=
+
+### Rank checkpoints by a validation metric
+
+To keep the best checkpoints by a metric that your `validation_fn` returns, set `checkpoint_score_attribute` in {class}`~ray.train.CheckpointConfig` to that metric's name:
+
+```python
+from ray.train import CheckpointConfig, RunConfig
+
+run_config = RunConfig(
+    checkpoint_config=CheckpointConfig(
+        num_to_keep=2,
+        # `val_loss` is a key in the dictionary that `validation_fn` returns.
+        checkpoint_score_attribute="val_loss",
+        checkpoint_score_order="min",
+    ),
+)
+```
+
+A checkpoint doesn't have the metric until its validation finishes. Ray Train handles checkpoints without the metric as follows:
+
+* **Validation in progress**: The checkpoint ranks below every checkpoint that has the metric, but Ray Train doesn't delete it. When the validation finishes, Ray Train ranks the checkpoint by the returned metric and deletes it if it isn't among the best `num_to_keep` or the latest checkpoint.
+* **Validation failed or timed out**: The checkpoint never gets the metric, so it keeps the lowest rank. Ray Train deletes it once it's no longer the latest checkpoint.
+
+While validations are in progress, the number of checkpoints on disk can exceed `num_to_keep`. It includes the best `num_to_keep` checkpoints, the latest checkpoint, and every checkpoint that's waiting for validation. If training reports checkpoints faster than validation completes, checkpoints that wait for validation accumulate on disk.
+
 ## Experiment tracking
 
 In standard {ref}`experiment tracking with Ray Train <train-experiment-tracking-native>`, you create, log to, and finish the experiment tracking run from the rank 0 training worker. Asynchronous validation complicates this because a separate Ray task computes the validation metrics outside the training worker.

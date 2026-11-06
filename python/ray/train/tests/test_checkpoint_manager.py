@@ -1,3 +1,4 @@
+import logging
 import random
 from pathlib import Path
 from typing import List
@@ -191,6 +192,34 @@ def test_checkpoint_without_score_ranks_worst(order, checkpoint_paths):
     assert not Path(checkpoint_paths[1]).exists()
     assert Path(checkpoint_paths[2]).exists()
     assert Path(checkpoint_paths[4]).exists()
+
+
+def test_missing_score_attribute_logged_once_per_checkpoint(
+    checkpoint_paths, caplog, propagate_logs
+):
+    """The score is computed on every comparison during a sorted insert, so a
+    checkpoint without the score attribute must not be logged on each one."""
+    manager = _CheckpointManager(
+        checkpoint_config=CheckpointConfig(checkpoint_score_attribute="score")
+    )
+    scores = [None, 1, None, 2, 3, 4]
+    with caplog.at_level(
+        logging.ERROR, logger="ray.train._internal.checkpoint_manager"
+    ):
+        for i, score in enumerate(scores):
+            metrics = {} if score is None else {"score": score}
+            manager.register_checkpoint(
+                _TrainingResult(
+                    checkpoint=Checkpoint.from_directory(checkpoint_paths[i]),
+                    metrics=metrics,
+                )
+            )
+    missing_score_errors = [
+        r
+        for r in caplog.records
+        if "missing the checkpoint_score_attribute key (score)" in r.message
+    ]
+    assert len(missing_score_errors) == scores.count(None)
 
 
 @pytest.mark.parametrize(
