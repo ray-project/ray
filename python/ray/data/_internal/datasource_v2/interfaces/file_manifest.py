@@ -71,6 +71,7 @@ class FileChunk:
 PATH_COLUMN_NAME = "__path"
 FILE_SIZE_COLUMN_NAME = "__file_size"
 FILE_CHUNK_METADATA_COLUMN_NAME = "__file_chunk_metadata"
+_OUTPUT_SPLIT_FACTOR_KEY = b"ray.data.output_split_factor"
 
 
 class FileManifest:
@@ -137,6 +138,20 @@ class FileManifest:
         This doesn't make a copy of the underlying data.
         """
         return self._block
+
+    @property
+    def output_split_factor(self) -> int:
+        """Additional output splitting requested for this read partition."""
+        block = BlockAccessor.for_block(self._block).to_arrow()
+        return int((block.schema.metadata or {}).get(_OUTPUT_SPLIT_FACTOR_KEY, b"1"))
+
+    def with_output_split_factor(self, factor: int) -> "FileManifest":
+        if factor < 1:
+            raise ValueError("output split factor must be at least 1")
+        block = BlockAccessor.for_block(self._block).to_arrow()
+        metadata = dict(block.schema.metadata or {})
+        metadata[_OUTPUT_SPLIT_FACTOR_KEY] = str(factor).encode("ascii")
+        return FileManifest(block.replace_schema_metadata(metadata))
 
     @classmethod
     def concat(cls, manifests: List["FileManifest"]) -> "FileManifest":

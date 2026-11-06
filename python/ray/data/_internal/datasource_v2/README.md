@@ -131,6 +131,12 @@ Parquet sits at the bottom of every ladder: `ParquetDatasourceV2`,
 `FooterFileIndexer(NonSamplingFileIndexer)`, `OnlineBinPacker`,
 `ParquetScanner(ArrowFileScanner)`, `ParquetFileReader(FileReader)`.
 
+CSV shows the non-Arrow-dataset shape: `CSVDatasourceV2`,
+`RecordAlignedCSVFileIndexer(NonSamplingFileIndexer)` (splits large
+uncompressed files at record boundaries), `RoundRobinPartitioner`,
+`CSVScanner(FileScanner)` and `CSVFileReader(Reader)`, which streams through
+`pyarrow.csv` and so promises no pushdown mixin.
+
 ## Adding a format
 
 Extend `FileDataSourceV2` when the framework finds the files by walking a

@@ -18,11 +18,20 @@ class PartitionHints:
             ``DataContext.target_max_block_size`` (``sys.maxsize`` when unset).
         num_buckets: Target read-unit count: ``override_num_blocks`` when the
             user set it, else ``DataContext.read_op_min_num_blocks``.
+        preserve_order: ``ExecutionOptions.preserve_order`` of the read. A
+            partitioner that otherwise deals rows out of input order can keep
+            contiguous, size-bounded partitions instead.
+        num_buckets_is_explicit: Whether ``num_buckets`` is an
+            ``override_num_blocks`` the caller asked for rather than the
+            ``DataContext`` default. A partitioner may then target that exact
+            count, as the V1 read path does.
     """
 
     min_bucket_size: int
     max_bucket_size: int
     num_buckets: int
+    preserve_order: bool = False
+    num_buckets_is_explicit: bool = False
 
 
 class FilePartitioner(ABC):

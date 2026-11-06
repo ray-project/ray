@@ -39,11 +39,15 @@ class WeightedRoundRobinPartitioner(Generic[T]):
         max_bucket_size: int,
         num_buckets: int,
         emit_before_overflow: bool = False,
+        max_items_per_bucket: Optional[int] = None,
     ):
+        if max_items_per_bucket is not None and max_items_per_bucket < 1:
+            raise ValueError("max_items_per_bucket must be at least 1")
         self._num_buckets = max(1, num_buckets)
         self._min_bucket_size = min_bucket_size
         self._max_bucket_size = max_bucket_size
         self._emit_before_overflow = emit_before_overflow
+        self._max_items_per_bucket = max_items_per_bucket
 
         self._buckets = [_WeightedBucket[T]() for _ in range(self._num_buckets)]
         self._current_bucket_index = 0
@@ -57,7 +61,10 @@ class WeightedRoundRobinPartitioner(Generic[T]):
         # buckets without pretending to know their size.
         if weight is None:
             current_bucket.add(item, 0)
-            self._advance_bucket()
+            if self._bucket_at_item_limit():
+                self._emit_current_bucket()
+            else:
+                self._advance_bucket()
             return
 
         # Do not truncate to int: in-memory size estimates are floating-point
@@ -74,13 +81,22 @@ class WeightedRoundRobinPartitioner(Generic[T]):
             current_bucket = self._current_bucket
 
         current_bucket.add(item, weight)
-        if current_bucket.weight >= self._max_bucket_size:
+        if (
+            current_bucket.weight >= self._max_bucket_size
+            or self._bucket_at_item_limit()
+        ):
             self._emit_current_bucket()
         elif current_bucket.weight >= self._min_bucket_size:
             self._advance_bucket()
 
     def has_partition(self) -> bool:
         return len(self._output_queue) > 0
+
+    def _bucket_at_item_limit(self) -> bool:
+        return (
+            self._max_items_per_bucket is not None
+            and len(self._current_bucket.items) >= self._max_items_per_bucket
+        )
 
     def next_partition(self) -> List[T]:
         return self._output_queue.popleft()

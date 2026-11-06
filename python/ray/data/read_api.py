@@ -545,6 +545,7 @@ def _read_datasource_v2(
     from ray.data._internal.datasource_v2.common.listing_utils import (
         DEFAULT_SCHEMA_FILE_INFO_BLOCK_SIZE,
         _build_pruners,
+        _CachedPathPartitionFilter,
         sample_files,
     )
     from ray.data._internal.datasource_v2.interfaces.datasource_v2 import (
@@ -607,6 +608,27 @@ def _read_datasource_v2(
             "or DataSourceWithMetadata when the source finds its own data."
         )
 
+    # Listing normally only reads filesystem metadata, but some V2 indexers
+    # also inspect headers or footers. Carry the settings needed to reach the
+    # same storage environment without assigning listing tasks the reader's
+    # compute-specific CPU/GPU/memory/custom-resource requirements.
+    list_files_ray_remote_args = {
+        key: ray_remote_args[key]
+        for key in (
+            "scheduling_strategy",
+            "label_selector",
+            "fallback_strategy",
+            "runtime_env",
+        )
+        if key in ray_remote_args
+    }
+
+    if partition_filter is not None:
+        # Schema sampling and execution list the same initial paths. Share the
+        # bounded decisions already made on the driver. Filters must tolerate
+        # repeated calls for uncached paths and task retries.
+        partition_filter = _CachedPathPartitionFilter(partition_filter)
+
     pruners = _build_pruners(file_extensions, partition_filter)
 
     indexer = datasource._get_file_indexer()
@@ -642,6 +664,8 @@ def _read_datasource_v2(
                 len(sample),
                 _FULL_SCHEMA_INFERENCE_WARNING_FILE_COUNT,
             )
+    if partition_filter is not None:
+        partition_filter.freeze()
 
     listing_elapsed = (
         time.perf_counter() - listing_started if listing_started is not None else None
@@ -698,6 +722,9 @@ def _read_datasource_v2(
     # Sizing hints for the datasource's partitioner. ``num_buckets`` is a
     # hint; ``RoundRobinPartitioner`` honors the ``[min, max]`` block-size
     # limits first, so the actual bucket count scales with total data size.
+    # A datasource can also ask for global target-count partitioning for
+    # V1-compatible file grouping; byte and manifest-row safety limits still
+    # take precedence over the requested count.
     # ``target_*_block_size`` can be ``None`` (block sizing disabled); fall
     # back to sentinel bounds so the partitioner just rolls every file
     # into a single bucket.
@@ -720,6 +747,11 @@ def _read_datasource_v2(
             min_bucket_size=min_bucket_size,
             max_bucket_size=max_bucket_size,
             num_buckets=num_buckets,
+            preserve_order=ctx.execution_options.preserve_order,
+            # Exact global grouping is only needed for an explicit public
+            # override. The default path must remain streaming and allow
+            # parallel listing.
+            num_buckets_is_explicit=parallelism != -1,
         )
     )
 
@@ -738,6 +770,7 @@ def _read_datasource_v2(
         filesystem=filesystem,
         source_paths=list(source_paths),
         prelisted_file_infos=prelisted_file_infos,
+        ray_remote_args=list_files_ray_remote_args,
         file_partitioner=partitioner,
         file_extensions=file_extensions,
         partition_filter=partition_filter,
@@ -2495,7 +2528,7 @@ def read_csv(
     memory: Optional[float] = None,
     arrow_open_stream_args: Optional[Dict[str, Any]] = None,
     partition_filter: Optional[PathPartitionFilter] = None,
-    partitioning: Partitioning = Partitioning("hive"),
+    partitioning: Optional[Partitioning] = Partitioning("hive"),
     include_paths: bool = False,
     ignore_missing_paths: bool = False,
     shuffle: Optional[Union[Literal["files"], FileShuffleConfig]] = None,
@@ -2645,6 +2678,60 @@ def read_csv(
     Returns:
         :class:`~ray.data.Dataset` producing records read from the specified paths.
     """
+
+    _validate_shuffle_arg(shuffle)
+
+    parse_options = arrow_csv_args.get("parse_options")
+    has_invalid_row_handler = (
+        parse_options is not None
+        and getattr(parse_options, "invalid_row_handler", None) is not None
+    )
+    use_csv_datasource_v2 = (
+        DataContext.get_current().use_datasource_v2 and not has_invalid_row_handler
+    )
+    if has_invalid_row_handler and DataContext.get_current().use_datasource_v2:
+        # V2 performs bounded schema discovery before execution. Running a user
+        # callback during that discovery and again while reading would duplicate
+        # observable side effects, so retain V1 semantics until schema discovery
+        # can reuse the parsed prefix itself.
+        logger.info(
+            "read_csv is using the DataSourceV1 path because "
+            "`parse_options.invalid_row_handler` is set; large files won't be "
+            "split into parallel chunks."
+        )
+
+    if use_csv_datasource_v2:
+        from ray.data._internal.datasource_v2.formats.csv.csv_datasource_v2 import (
+            CSVDatasourceV2,
+        )
+
+        datasource_v2 = CSVDatasourceV2(
+            paths=paths if isinstance(paths, list) else [paths],
+            filesystem=filesystem,
+            partitioning=partitioning,
+            file_extensions=file_extensions,
+            ignore_missing_paths=ignore_missing_paths,
+            include_paths=include_paths,
+            shuffle=shuffle,
+            arrow_csv_args=arrow_csv_args,
+            open_stream_args=arrow_open_stream_args,
+        )
+        return _read_datasource_v2(
+            datasource_v2,
+            parallelism=_get_num_output_blocks(parallelism, override_num_blocks),
+            num_cpus=num_cpus,
+            num_gpus=num_gpus,
+            memory=memory,
+            ray_remote_args=ray_remote_args,
+            label_selector=label_selector,
+            fallback_strategy=fallback_strategy,
+            max_calls=max_calls,
+            resources=resources,
+            accelerator_type=accelerator_type,
+            runtime_env=runtime_env,
+            concurrency=concurrency,
+            partition_filter=partition_filter,
+        )
 
     datasource = CSVDatasource(
         paths,
