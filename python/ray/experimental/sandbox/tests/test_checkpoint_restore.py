@@ -296,6 +296,32 @@ class TestCheckpointRestore(unittest.TestCase):
             == run_public[2]
         )
 
+    def test_lifecycle_commands_run_runsc_with_gomaxprocs(self):
+        """runsc pause, resume and checkpoint, and the restore that follows a
+        checkpoint, run with runsc_env()'s GOMAXPROCS like every runsc call."""
+        sandbox_id, _ = self._create_mock_sandbox(rootless=False)
+        stack, mock_run, mock_popen = self._fake_runsc()
+        with stack, patch.dict(os.environ):
+            os.environ.pop("GOMAXPROCS", None)
+            self.backend.pause_sandbox(sandbox_id)
+            self.backend.resume_sandbox(sandbox_id)
+            self.backend.checkpoint_sandbox(
+                sandbox_id, checkpoint_path=os.path.join(self.temp_dir, "ckpt")
+            )
+
+        calls = {
+            subcommand: [
+                call
+                for call in mock_run.call_args_list
+                if call[0] and subcommand in call[0][0]
+            ]
+            for subcommand in ("pause", "resume", "checkpoint")
+        }
+        (restore,) = mock_popen.call_args_list
+        for call in [*calls["pause"], *calls["resume"], *calls["checkpoint"], restore]:
+            assert call.kwargs["env"]["GOMAXPROCS"] == "2"
+        assert all(calls.values())
+
     def test_checkpoint_already_paused_sandbox_remains_paused(self):
         sandbox_id, root_dir = self._create_mock_sandbox(rootless=False)
         self.backend._sandbox_metadata[sandbox_id]["status"] = SandboxStatus.PAUSED
