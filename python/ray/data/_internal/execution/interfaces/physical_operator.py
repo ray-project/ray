@@ -42,7 +42,6 @@ from ray.data.block import (
     TaskExecWorkerStats,
 )
 from ray.data.context import DataContext
-from ray.exceptions import ObjectLostError
 
 if TYPE_CHECKING:
     from ray.data._internal.execution.lineage_tracker import LineageTracker
@@ -368,12 +367,20 @@ class DataOpTask(OpTask):
                         ray.get(self._pending_block_ref)
                         assert False, "Above ray.get should raise an exception."
                     except Exception as ex:
+                        # Avoids a circular import.
+                        from ray.data._internal.execution.operators.lineage_reconstruction_mixin import (
+                            is_data_lineage_recoverable_error,
+                        )
+
                         # Propagate a tracked task's loss so the executor can
                         # attempt lineage reconstruction, which needs the task
                         # still live to abort it deliberately. Any other error,
                         # including an untracked task's loss, drains the task so
                         # its outputs already in flight still land.
-                        if isinstance(ex, ObjectLostError) and self.is_lineage_tracked:
+                        if (
+                            self.is_lineage_tracked
+                            and is_data_lineage_recoverable_error(ex)
+                        ):
                             raise
                         self._task_error = ex
                         self._state = TaskGeneratorState.DRAINED

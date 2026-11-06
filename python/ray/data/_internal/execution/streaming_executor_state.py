@@ -36,6 +36,7 @@ from ray.data._internal.execution.operators.base_physical_operator import (
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
 from ray.data._internal.execution.operators.lineage_reconstruction_mixin import (
     LineageReconstructionMixin,
+    is_data_lineage_recoverable_error,
 )
 from ray.data._internal.execution.ranker import Ranker
 from ray.data._internal.execution.resource_manager import (
@@ -47,7 +48,7 @@ from ray.data._internal.util import (
     unify_schemas_with_validation,
 )
 from ray.data.exceptions import LineageReconstructionError
-from ray.exceptions import ObjectLostError, UserCodeException
+from ray.exceptions import ObjectLostError, RayActorError, UserCodeException
 
 if TYPE_CHECKING:
     from ray.data._internal.execution.lineage_tracker import LineageTracker
@@ -681,7 +682,7 @@ def _reconstruct_lost_object(
     lineage_tracker: "LineageTracker",
     state: "OpState",
     task: OpTask,
-    lost_error: ObjectLostError,
+    lost_error: Exception,
 ) -> None:
     """Plan and trigger a reconstruction for a lost task output.
 
@@ -981,17 +982,20 @@ def process_completed_tasks(
                                 remaining_output_budget[state] = max(
                                     remaining_output_budget[state] - bytes_read, 0
                                 )
-                        except ObjectLostError as e:
+                        except (ObjectLostError, RayActorError) as e:
                             # Experimental lineage reconstruction: if we can trace
                             # the lost output back to a tracked seed input,
                             # resubmit that seed input's chain instead of
                             # counting an error.
-                            if lineage_tracker is None:
+                            if (
+                                lineage_tracker is None
+                                or not is_data_lineage_recoverable_error(e)
+                            ):
                                 _record_errored_block(e, state.op.name)
                                 continue
                             logger.info(
-                                "[lineage-reconstruction] Detected lost object while "
-                                f"reading output of task {task.task_index()} on "
+                                f"[lineage-reconstruction] Detected {type(e).__name__} "
+                                f"while reading output of task {task.task_index()} on "
                                 f'operator "{state.op.name}"; attempting lineage '
                                 "reconstruction."
                             )

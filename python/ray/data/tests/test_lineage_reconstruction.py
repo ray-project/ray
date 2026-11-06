@@ -15,9 +15,13 @@ from unittest.mock import MagicMock
 import pytest
 
 import ray
+import ray.cloudpickle
 from ray.data._internal.execution.interfaces.physical_operator import DataOpTask
 from ray.data._internal.execution.interfaces.ref_bundle import ReconstructionStamp
 from ray.data._internal.execution.lineage_tracker import LineageTracker
+from ray.data._internal.execution.operators.lineage_reconstruction_mixin import (
+    is_data_lineage_recoverable_error,
+)
 from ray.data._internal.execution.operators.map_operator import MapOperator
 from ray.data._internal.execution.streaming_executor_state import (
     _reconstruct_lost_object,
@@ -26,7 +30,12 @@ from ray.data.context import DataContext
 from ray.data.exceptions import LineageReconstructionError
 from ray.data.tests.conftest import *  # noqa: F401, F403
 from ray.data.tests.util import create_map_transformer_from_block_fn
-from ray.exceptions import ObjectLostError
+from ray.exceptions import (
+    ActorDiedError,
+    ActorUnavailableError,
+    ObjectLostError,
+    RayTaskError,
+)
 from ray.job_config import JobConfig
 from ray.tests.conftest import *  # noqa: F401, F403
 
@@ -973,6 +982,72 @@ def test_object_lost_in_task_output_raises_only_when_lineage_tracked(
     assert calls == []
 
 
+def _task_error(cause: Exception) -> RayTaskError:
+    """The error a task raises when its body fails with ``cause``."""
+    return RayTaskError("test_task", "traceback", cause).as_instanceof_cause()
+
+
+@pytest.mark.parametrize(
+    "error, recoverable",
+    [
+        (ObjectLostError(ray.ObjectRef.nil().hex(), None, "injected by test"), True),
+        (_task_error(ActorDiedError()), True),
+        (_task_error(ActorUnavailableError("node died", None)), True),
+        # The actor running the task died. Ray Core restarts it and retries.
+        (ActorDiedError(), False),
+        (_task_error(ValueError("boom")), False),
+    ],
+    ids=[
+        "object_lost",
+        "task_error_actor_died",
+        "task_error_actor_unavailable",
+        "bare_actor_died",
+        "task_error_value_error",
+    ],
+)
+def test_is_data_lineage_recoverable_error(error, recoverable):
+    assert is_data_lineage_recoverable_error(error) is recoverable
+
+
+@pytest.mark.parametrize(
+    "lineage_task_id", [None, "seed:0"], ids=["untracked", "tracked"]
+)
+def test_actor_died_in_task_raises_only_when_lineage_tracked(
+    monkeypatch, lineage_task_id
+):
+    """A task that fails because an actor it called died is raised for
+    reconstruction when it is lineage tracked, and drained otherwise."""
+    error = _task_error(ActorDiedError())
+    block_ref = MagicMock()
+    block_ref.is_nil.return_value = False
+    streaming_gen = MagicMock()
+    # The block ref arrives, then the stream stops where its metadata should be.
+    streaming_gen._next_sync.side_effect = [block_ref, StopIteration()]
+
+    def raise_error(ref):
+        raise error
+
+    monkeypatch.setattr(ray, "get", raise_error)
+    task = DataOpTask(
+        0,
+        streaming_gen,
+        MagicMock(),  # block_ref_counter
+        "test_op",
+        task_done_callback=lambda *args: None,
+        lineage_task_id=lineage_task_id,
+    )
+    metadata_fetcher = MagicMock()
+
+    if task.is_lineage_tracked:
+        with pytest.raises(ActorDiedError):
+            task.on_data_ready(None, metadata_fetcher)
+        metadata_fetcher.in_data_ready_done.assert_not_called()
+    else:
+        task.on_data_ready(None, metadata_fetcher)
+        assert task.task_error is error
+        assert task.is_drained()
+
+
 @reconstruction_enabled
 def test_failed_reconstruction_aborts_the_lost_task_once(
     ray_start_regular_shared, restore_data_context, monkeypatch  # noqa: F405
@@ -1068,6 +1143,22 @@ def test_reconstruction_error_wraps_object_lost_error():
 
     unpickled_error = pickle.loads(pickle.dumps(reconstruction_error))
     assert type(unpickled_error.lost_error) is type(object_lost_error)
+    assert str(unpickled_error) == str(reconstruction_error)
+
+
+def test_reconstruction_error_wraps_actor_error():
+    """A failed reconstruction for a task an actor died under keeps the actor
+    error, leaves the object fields empty, and still pickles."""
+    actor_error = _task_error(ActorDiedError())
+    reconstruction_error = LineageReconstructionError(actor_error, "failed by test")
+
+    assert reconstruction_error.lost_error is actor_error
+    assert reconstruction_error.object_ref_hex == ""
+    assert reconstruction_error.owner_address is None
+    assert str(actor_error) in str(reconstruction_error)
+
+    # Stdlib pickle can't serialize the dynamic RayTaskError subclass.
+    unpickled_error = ray.cloudpickle.loads(ray.cloudpickle.dumps(reconstruction_error))
     assert str(unpickled_error) == str(reconstruction_error)
 
 
