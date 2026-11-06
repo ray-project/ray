@@ -444,6 +444,37 @@ Look up the form here rather than deriving it. The `Tune.Terms` and `Tune.Capita
 | Hyperband, ASHA, BOHB, Population Based Training, PB2 | HyperBand | Algorithm names follow the papers that introduced them. Class names such as `HyperBandScheduler` keep code style. |
 | Hyperopt, Optuna, Nevergrad, Ax, HEBO, ZOOpt | HyperOpt, hyperopt, AX | Library names take each project's own casing. Write the package name in code style, such as `hyperopt`. |
 
+(ray-serve-docs-style)=
+
+## Writing Ray Serve docs
+
+Ray Serve pages live under `doc/source/serve/`. The {ref}`Ray Serve key concepts <serve-key-concepts>` page defines the deployment, the replica, the application, the ingress deployment, and the `DeploymentHandle`. Use those names for them everywhere else in Serve docs.
+
+"Deployment" names a Serve object and is also the ordinary word for deploying something. Write it lowercase in both senses. When a sentence could mean either, make the act a verb, such as "when you deploy the application," or name the object, such as "the `Translator` deployment."
+
+The controller, the proxies, and the replicas are actors that Serve runs. Name them by role, in lowercase, and keep the classes in code style, such as `ServeController`.
+
+### Ray Serve terms
+
+Look up the form here rather than deriving it. The `Serve.Terms`, `Serve.Capitalization`, and `Serve.Usage` Vale rules flag most of the "Not" column. To check a page by hand, run `vale doc/source/serve/`.
+
+| Use | Not | Note |
+|---|---|---|
+| Ray Serve | Ray serve, RayServe | `RayService` is the KubeRay custom resource, a different thing. |
+| deployment, application, replica | Deployment, Application, Replica | Generic nouns stay lowercase past the first word of a heading. Put the classes in code style, such as `Deployment` and `Application`. |
+| Serve application | Serve app, Serve Application | |
+| ingress deployment | Ingress deployment, Ingress Deployment | The deployment you pass to `serve.run`. The `@serve.ingress` decorator keeps code style. |
+| `DeploymentHandle`, deployment handle | Deployment Handle, ServeHandle | Use the class name in code style for the API. "Deployment handle" is fine in prose for the concept. |
+| application | deployment graph | `.bind()` returns an `Application`. "Deployment graph" names the older composition API. |
+| Serve controller, HTTP proxy, Serve autoscaler | Serve Controller, HTTP Proxy, Serve Autoscaler | Same treatment as "Ray autoscaler" in the Kubernetes terms. |
+| Serve config file | Serve Config File, serve config | The YAML file you pass to `serve deploy`. Write the `serve config` CLI command in code style. |
+| model multiplexing, dynamic request batching | Model Multiplexing, Dynamic Request Batching | |
+| Ray Serve LLM | Serve llm | Write the module as `ray.serve.llm`, in code style. |
+| KV cache | kv cache, KV Cache, KV-cache | Hyphenate it only as a modifier before a noun, as in "KV-cache-limited workloads." |
+| prefill-decode disaggregation | prefill/decode disaggregation, P/D disaggregation | Matches the serving pattern's page and path names. |
+| thread pool, time series | threadpool, timeseries | `ThreadPoolExecutor` and environment variables such as `RAY_SERVE_RUN_SYNC_IN_THREADPOOL` keep code style. |
+| FastAPI, Starlette, Uvicorn, Pydantic, gRPC, vLLM, SGLang, LMCache, Gradio, Docker Hub | fastapi, starlette, uvicorn, pydantic, GRPC, VLLM, sglang, Lmcache, gradio, Dockerhub | Third-party names take each project's own casing. Write the package name in code style, such as `fastapi`. |
+
 (kubernetes-docs-style)=
 
 ## Writing Ray on Kubernetes and KubeRay docs
