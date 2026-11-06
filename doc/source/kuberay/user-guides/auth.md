@@ -10,6 +10,12 @@ myst:
 
 This guide demonstrates how to enable Ray token authentication with KubeRay.
 
+:::{note}
+Ray 2.61 turns token authentication on by default. KubeRay v1.8.0 or newer sets `RAY_AUTH_MODE=disabled` on every Ray container unless `authOptions.mode` is `token`, so existing RayClusters keep working. With an older KubeRay, a RayCluster without `authOptions` fails to start on Ray 2.61. Either upgrade KubeRay, set `authOptions.mode: token`, or set `RAY_AUTH_MODE=disabled` in every Ray container's env.
+
+Clients connecting to a cluster with authentication disabled must also set `RAY_AUTH_MODE=disabled`. Ray’s metrics endpoints require the token too. See [Using Prometheus and Grafana](kuberay-prometheus-grafana) for the Prometheus configuration.
+:::
+
 :::{warning}
 It is highly recommended to run Ray in secure networks or use TLS when enabling token authentication to prevent leaking Ray tokens. Token authentication does not encrypt traffic, so tokens can be intercepted if transmitted over insecure networks.
 :::
@@ -46,7 +52,7 @@ When enabled, the KubeRay operator will:
 * Create a Kubernetes Secret containing a randomly generated token.
 * Automatically set the `RAY_AUTH_TOKEN` and `RAY_AUTH_MODE` environment variables on all Ray containers.
 
-If you are using a KubeRay version older than v1.7.0, you can enable token authentication by creating a Kubernetes Secret containing your token and configuring the `RAY_AUTH_MODE` and `RAY_AUTH_TOKEN` environment variables.
+If you are using a KubeRay version older than v1.6.0, you can enable token authentication by creating a Kubernetes Secret containing your token and configuring the `RAY_AUTH_MODE` and `RAY_AUTH_TOKEN` environment variables.
 
 ```bash
 kubectl create secret generic ray-cluster-with-auth --from-literal=auth_token=$(openssl rand -base64 32)
@@ -80,7 +86,7 @@ This error confirms that the Ray cluster requires authentication.
 ## Accessing your Ray cluster with the Ray CLI
 
 To access your Ray cluster using the Ray CLI, you need to configure the following environment variables:
-* `RAY_AUTH_MODE`: this configures the Ray CLI to set the necessary authorization headers for token authentication
+* `RAY_AUTH_MODE`: this configures the Ray CLI to set the necessary authorization headers for token authentication. It is already `token` by default from Ray 2.61, so you only need to set it with an older Ray CLI.
 * `RAY_AUTH_TOKEN`: this contains the token that will be used for authentication. 
 * `RAY_AUTH_TOKEN_PATH`: if `RAY_AUTH_TOKEN` is not set, the Ray CLI will instead read the token from this path (defaults to `~/.ray/auth_token`).
 
