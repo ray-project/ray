@@ -106,7 +106,7 @@ class Metric:
             if not isinstance(val, str):
                 raise TypeError(f"Tag values must be str, got {type(val)}.")
 
-        self._default_tags = default_tags
+        self._default_tags = default_tags.copy()
         return self
 
     def _record(
@@ -167,8 +167,15 @@ class Metric:
             "name": self._name,
             "description": self._description,
             "tag_keys": self._tag_keys,
-            "default_tags": self._default_tags,
+            "default_tags": self._default_tags.copy(),
         }
+
+    def __getstate__(self) -> Dict[str, Any]:
+        return {"default_tags": self._default_tags.copy()}
+
+    def __setstate__(self, state: Dict[str, Any]) -> None:
+        if isinstance(state, dict) and "default_tags" in state:
+            self.set_default_tags(state["default_tags"])
 
 
 @DeveloperAPI
@@ -219,6 +226,8 @@ class Counter(Metric):
     def __reduce__(self):
         deserializer = self.__class__
         serialized_data = (self._name, self._description, self._tag_keys)
+        if self._default_tags:
+            return deserializer, serialized_data, self.__getstate__()
         return deserializer, serialized_data
 
     def inc(self, value: Union[int, float] = 1.0, tags: Dict[str, str] = None):
@@ -299,13 +308,15 @@ class Histogram(Metric):
         self._record(value, tags)
 
     def __reduce__(self):
-        deserializer = Histogram
+        deserializer = self.__class__
         serialized_data = (
             self._name,
             self._description,
             self.boundaries,
             self._tag_keys,
         )
+        if self._default_tags:
+            return deserializer, serialized_data, self.__getstate__()
         return deserializer, serialized_data
 
     @property
@@ -365,8 +376,10 @@ class Gauge(Metric):
         self._record(value, tags)
 
     def __reduce__(self):
-        deserializer = Gauge
+        deserializer = self.__class__
         serialized_data = (self._name, self._description, self._tag_keys)
+        if self._default_tags:
+            return deserializer, serialized_data, self.__getstate__()
         return deserializer, serialized_data
 
 
