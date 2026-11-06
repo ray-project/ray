@@ -1,5 +1,6 @@
 import sys
 from typing import Dict, List, Optional
+from unittest.mock import patch
 
 import pytest
 from vllm.distributed.kv_events import (
@@ -9,6 +10,7 @@ from vllm.distributed.kv_events import (
     ZmqEventPublisher,
 )
 
+from ray import serve
 from ray._common.test_utils import async_wait_for_condition
 from ray.llm._internal.serve.routing_policies.kv_aware.constants import (
     REQUEST_TOKEN_IDS_KWARG,
@@ -118,6 +120,14 @@ class _LocalKVTokenTracker(_TestKVTokenTracker):
     """The real KVTokenTracker with Serve LongPoll tracking disabled as there is
     no Serve controller in these tests; tests drive _on_deployment_targets
     directly with synthetic replica snapshots."""
+
+    def __init__(self):
+        with patch.object(serve, "get_replica_context") as get_context:
+            get_context.return_value.replica_id = ReplicaID(
+                unique_id="local-router",
+                deployment_id=DeploymentID(name="LLMRouter", app_name="app"),
+            )
+            super().__init__()
 
     def _start_replica_tracking(self) -> None:
         pass

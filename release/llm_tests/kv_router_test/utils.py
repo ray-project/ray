@@ -116,10 +116,9 @@ class LLMRouter(_LLMRouter):
     """(Test only) LLMRouter that exposes its embedded KVTokenTracker over the
     deployment handle for the KV-router release tests.
 
-    Named ``LLMRouter`` so the deployment name stays ``LLMRouter`` (the engine
-    resolves lifecycle events by that name). It records every lifecycle event
-    booked through ``on_lifecycle_events`` and any error raised while applying
-    it, and forwards read-only queries to the tracker and its selection service.
+    It records every lifecycle event engines push to this router, and any error
+    raised while applying it, and forwards read-only queries to the tracker and
+    its selection service.
     """
 
     async def __init__(self, *args, **kwargs):
@@ -151,6 +150,8 @@ class LLMRouter(_LLMRouter):
             return selection
 
         tracker.select_worker = recorded_select_worker
+        # Record the lifecycle events engines push to this router.
+        self._kv_token_tracker._lifecycle_receiver._handler = self.on_lifecycle_events
 
     def _push_prompt_tokens(self, *, token_endpoint, replica_id, request_token_ids):
         key = super()._push_prompt_tokens(
@@ -277,6 +278,10 @@ class LLMRouter(_LLMRouter):
         per-replica results of a broadcast apart."""
         return serve.get_replica_context().replica_id.to_full_id_str()
 
+    def get_replica_mesh_peers(self):
+        """(Test only) Mesh endpoints registered with this router's selector."""
+        return self._kv_token_tracker._svc.list_replica_peers()
+
     async def get_request_lifecycle(self, request_id):
         """(Test only) Snapshot of a request's local lifecycle state, or ``None``."""
         state = self._kv_token_tracker._requests.get(request_id)
@@ -287,10 +292,11 @@ class LLMRouter(_LLMRouter):
         return snapshot
 
     async def get_lifecycle_snapshot(self, request_id, worker_id):
-        """(Test only) This replica's id, its view of a request's lifecycle and
-        the load it books on ``worker_id``."""
+        """(Test only) This replica's id and lifecycle endpoint, its view of a
+        request's lifecycle and the load it books on ``worker_id``."""
         return {
             "replica_id": self.get_replica_id(),
+            "lifecycle_endpoint": self._kv_token_tracker.lifecycle_endpoint,
             "lifecycle": await self.get_request_lifecycle(request_id),
             "active_requests": await self.get_worker_active_requests(worker_id),
         }

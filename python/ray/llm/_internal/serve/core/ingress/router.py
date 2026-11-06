@@ -10,6 +10,7 @@ from ray import serve
 from ray.llm._internal.common.utils.lora_utils import get_base_model_id
 from ray.llm._internal.serve.observability.logging import get_logger
 from ray.llm._internal.serve.routing_policies.kv_aware.constants import (
+    KV_LIFECYCLE_OWNER_HEADER,
     KV_TOKEN_KEY_HEADER,
     REQUEST_TOKEN_IDS_KWARG,
 )
@@ -137,6 +138,7 @@ class LLMRouter:
     _warned_no_routing_key: bool = False
     _warned_no_token_endpoint: bool = False
     _base_model_id: Optional[str] = None
+    _kv_token_tracker = None
 
     async def __init__(
         self,
@@ -148,8 +150,7 @@ class LLMRouter:
         self._base_model_id = base_model_id
         self._tokenizer = None
         self._token_sender = None
-        # Holds the KVTokenTracker (KV-aware deployments only) so the
-        # engine-facing on_lifecycle_events method can book load into it.
+        # The KVTokenTracker (KV-aware deployments only).
         self._kv_token_tracker = None
         # A non-None llm_config signals pre-routing tokenization, which the
         # builder binds only for a KV-aware request router.
@@ -157,6 +158,7 @@ class LLMRouter:
             # Build the tracker before _handle._init() below, which initializes
             # the KVAwareRouter that looks it up.
             self._start_kv_token_tracking(llm_config, server)
+            await self._kv_token_tracker.start_lifecycle_receiver()
             # Lazy import: this module pulls in vLLM's renderer;
             # keep it off the non-KV ingress import path.
             from ray.llm._internal.serve.routing_policies.kv_aware.vllm.tokenizer import (  # noqa: E501
@@ -177,13 +179,11 @@ class LLMRouter:
         # server.deployment_id is the tracked LLMServer deployment.
         from ray.llm._internal.serve.routing_policies.kv_aware.kv_token_tracker import (  # noqa: E501
             build_kv_token_tracker,
-            get_llm_router_handle,
         )
 
         self._kv_token_tracker = build_kv_token_tracker(
             llm_config, server.deployment_id
         )
-        self._kv_token_tracker.start_replica_broadcast(get_llm_router_handle())
         # Lazy import: pyzmq is not a Ray runtime dependency, so keep it off
         # the non-KV ingress import path.
         from ray.llm._internal.serve.routing_policies.kv_aware import token_channel
@@ -265,6 +265,13 @@ class LLMRouter:
             )
             if token_key:
                 request_headers[KV_TOKEN_KEY_HEADER] = token_key
+        lifecycle_endpoint = (
+            self._kv_token_tracker.lifecycle_endpoint
+            if self._kv_token_tracker is not None
+            else None
+        )
+        if lifecycle_endpoint:
+            request_headers[KV_LIFECYCLE_OWNER_HEADER] = lifecycle_endpoint
         if request_headers:
             response[
                 RAY_SERVE_INGRESS_REQUEST_ROUTER_OPT_HEADERS_FIELD
@@ -296,24 +303,20 @@ class LLMRouter:
     async def health(self):
         return {"status": "ok"}
 
-    def __del__(self) -> None:
-        """Close the token channel ZMQ sockets upon cleanup."""
+    async def __del__(self) -> None:
+        """Close token, lifecycle and replica-mesh sockets upon cleanup."""
         token_sender = getattr(self, "_token_sender", None)
         if token_sender is not None:
             token_sender.close()
+        tracker = getattr(self, "_kv_token_tracker", None)
+        if tracker is not None:
+            await tracker.shutdown()
 
-    async def on_lifecycle_events(self, batch):
-        """Engine-facing intake for request lifecycle events.
-
-        Engine replicas broadcast each batch to every LLMRouter replica to
-        book request load; this applies it to the KVTokenTracker on this
-        ingress replica's event loop.
-        """
-        return await self._kv_token_tracker.on_lifecycle_events(batch)
-
-    async def on_replica_updates(self, source_writer_id, batch):
-        """Accept load and affinity updates from peer ingress replicas."""
-        return await self._kv_token_tracker.on_replica_updates(source_writer_id, batch)
+    async def record_routing_stats(self) -> Dict[str, Any]:
+        """Advertise this router's replica-mesh endpoint to its peers."""
+        if self._kv_token_tracker is None:
+            return {}
+        return self._kv_token_tracker.replica_sync_routing_stats()
 
     def _push_prompt_tokens(
         self,

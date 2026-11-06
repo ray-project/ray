@@ -3,18 +3,31 @@ import errno
 import gc
 import sys
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, call, patch
 
+import httpx
 import pytest
 import zmq
+from fastapi import FastAPI, Request
 from starlette.datastructures import Headers
+from starlette.responses import Response, StreamingResponse
+from vllm.entrypoints.serve.utils.api_utils import with_cancellation
+from vllm.sampling_params import RequestOutputKind, SamplingParams
 
 from ray._common.network_utils import find_free_port
 from ray.llm._internal.serve.core.ingress.router import LLMRouter
 from ray.llm._internal.serve.core.server.llm_server import LLMServer
-from ray.llm._internal.serve.routing_policies.kv_aware import token_channel
+from ray.llm._internal.serve.engines.vllm.vllm_engine import VLLMEngine
+from ray.llm._internal.serve.routing_policies.kv_aware import (
+    network_utils,
+    token_channel,
+)
 from ray.llm._internal.serve.routing_policies.kv_aware.constants import (
+    KV_LIFECYCLE_OWNER_HEADER,
     KV_TOKEN_KEY_HEADER,
+)
+from ray.llm._internal.serve.routing_policies.kv_aware.lifecycle import (
+    get_request_lifecycle_owner,
 )
 from ray.llm._internal.serve.routing_policies.kv_aware.token_channel import (
     TokenReceiver,
@@ -25,6 +38,9 @@ from ray.llm._internal.serve.routing_policies.kv_aware.token_channel import (
 from ray.llm._internal.serve.routing_policies.kv_aware.vllm.prompt_token_forwarding import (
     inject_prompt_token_ids,
     install_prompt_token_forwarding,
+)
+from ray.llm._internal.serve.routing_policies.kv_aware.vllm.token_tracking import (
+    enable_token_tracking,
 )
 from ray.serve._private.constants import (
     RAY_SERVE_INGRESS_REQUEST_ROUTER_OPT_HEADERS_FIELD,
@@ -87,7 +103,7 @@ def test_bad_endpoint_falls_back():
     """A malformed endpoint must degrade to engine tokenization, not raise."""
     sender = TokenSender()
     try:
-        with patch.object(token_channel, "logger") as mock_logger:
+        with patch.object(network_utils, "logger") as mock_logger:
             for _ in range(5):
                 assert (
                     sender.push("not-a-valid-endpoint", "k", _payload([1, 2])) is False
@@ -106,7 +122,7 @@ def test_socket_creation_failure_falls_back():
     sender = TokenSender()
     try:
         with patch.object(
-            token_channel, "_new_socket", side_effect=zmq.ZMQError(errno.EMFILE)
+            network_utils, "new_socket", side_effect=zmq.ZMQError(errno.EMFILE)
         ):
             assert sender.push("tcp://127.0.0.1:5555", "k", _payload([1, 2])) is False
     finally:
@@ -147,7 +163,7 @@ def test_full_queue_keeps_socket():
         # Nothing reads from receiver_socket, so the queue fills and push()
         # reports False via zmq.Again rather than raising.
         refused = 0
-        with patch.object(token_channel, "logger") as mock_logger:
+        with patch.object(network_utils, "logger") as mock_logger:
             for i in range(500):
                 if not sender.push(endpoint, f"k{i}", _payload([i] * 512)):
                     refused += 1
@@ -248,6 +264,112 @@ def test_empty_payload_falls_back():
     inject_prompt_token_ids(request, _raw_request("empty"), store)
 
     assert request.kv_transfer_params is None
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("stream", [False, True])
+async def test_lifecycle_owner_survives_vllm_cancellation_task(monkeypatch, stream):
+    """vLLM prepares responses in a child task, then streams outside that task.
+    Both paths must report to the request's owner without leaking it to the next
+    request, including a request that has no owner.
+    """
+
+    class BaseEngine:
+        model_config = SimpleNamespace()
+
+        async def generate(self, *args, **kwargs):
+            # Let concurrent requests overlap while their owners are bound.
+            await asyncio.sleep(0)
+            yield SimpleNamespace(outputs=[SimpleNamespace(token_ids=[1])])
+
+    engine_client = enable_token_tracking(BaseEngine)()
+    forwarder = engine_client._lifecycle_forwarder = MagicMock()
+
+    class Serving:
+        async def create_completion(self, request, raw_request=None):
+            async def content():
+                params = SamplingParams(output_kind=RequestOutputKind.DELTA)
+                async for _ in engine_client.generate({}, params, "request-id"):
+                    yield b"token"
+
+            if request["stream"]:
+                return content()
+            return b"".join([chunk async for chunk in content()])
+
+    app = FastAPI()
+    app.state.openai_serving_completion = Serving()
+
+    @app.post("/v1/completions")
+    @with_cancellation
+    async def endpoint(request: dict, raw_request: Request):
+        result = (
+            await raw_request.app.state.openai_serving_completion.create_completion(
+                request, raw_request
+            )
+        )
+        return StreamingResponse(result) if request["stream"] else Response(result)
+
+    engine = VLLMEngine.__new__(VLLMEngine)
+    engine._engine_client = engine_client
+    engine._vllm_args = SimpleNamespace()
+    engine._app_state = app.state
+    engine._token_receiver = object()
+    engine._prompt_token_store = TokenStore()
+    monkeypatch.setattr(
+        "vllm.entrypoints.openai.api_server.build_app", lambda *args, **kwargs: app
+    )
+    # vLLM's build_app eagerly builds its middleware stack.
+    app.middleware_stack = app.build_middleware_stack()
+    app = await engine.build_asgi_app()
+
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app), base_url="http://test"
+    ) as client:
+        for owner in ("tcp://10.0.0.1:9757", None, "tcp://10.0.0.2:9757"):
+            forwarder.reset_mock()
+            response = await client.post(
+                "/v1/completions",
+                json={"stream": stream},
+                headers={KV_LIFECYCLE_OWNER_HEADER: owner} if owner else {},
+            )
+            assert response.status_code == 200
+            assert response.content == b"token"
+            assert forwarder.report.call_args_list == (
+                [
+                    call(owner, "on_prefill_complete", "request-id"),
+                    call(owner, "on_request_completed", "request-id"),
+                ]
+                if owner
+                else []
+            )
+            assert get_request_lifecycle_owner() is None
+
+        # The same middleware instance also isolates simultaneous requests,
+        # across vLLM's handler task and the later response stream.
+        forwarder.reset_mock()
+        owners = ["tcp://10.0.0.1:9757", "tcp://10.0.0.2:9757"]
+        responses = await asyncio.gather(
+            *(
+                client.post(
+                    "/v1/completions",
+                    json={"stream": stream},
+                    headers={KV_LIFECYCLE_OWNER_HEADER: owner} if owner else {},
+                )
+                for owner in owners + [None]
+            )
+        )
+        assert all(response.content == b"token" for response in responses)
+        assert forwarder.report.call_count == 4
+        for owner in owners:
+            assert [
+                event.args
+                for event in forwarder.report.call_args_list
+                if event.args[0] == owner
+            ] == [
+                (owner, "on_prefill_complete", "request-id"),
+                (owner, "on_request_completed", "request-id"),
+            ]
+        assert get_request_lifecycle_owner() is None
 
 
 def test_token_store_skips_chat_tokenization():

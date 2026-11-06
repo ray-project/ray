@@ -11,6 +11,9 @@ from dynamo.llm import compute_block_hash_for_seq
 import ray
 from ray import serve
 from ray._common.test_utils import async_wait_for_condition
+from ray.llm._internal.serve.routing_policies.kv_aware.constants import (
+    KV_LIFECYCLE_OWNER_HEADER,
+)
 
 from utils import (
     MODEL_ID,
@@ -58,10 +61,10 @@ def tokenize_chat(endpoint):
 
 
 class TestLifecycleTracking:
-    """The KVTokenTracker books request lifecycle events through the LLMRouter's
-    ``on_lifecycle_events`` handle method; the test ``LLMRouter`` subclass
-    records those events and exposes the tracker's state over the deployment
-    handle so the test can assert exact accounting."""
+    """The engine pushes request lifecycle events to the LLMRouter replica that
+    selected the request. The test ``LLMRouter`` subclass records those events
+    and exposes the tracker's state over the deployment handle so the test can
+    assert exact accounting."""
 
     @pytest.fixture(scope="class")
     def deployed_handle(self):
@@ -132,14 +135,27 @@ class TestLifecycleTracking:
             MAX_TOKENS,
         )
 
+        owner = owner_endpoint = None
+
         async def reservation_converged():
+            nonlocal owner, owner_endpoint
             per_replica = await router.broadcast(
                 "get_lifecycle_snapshot", LIFECYCLE_REQUEST_ID, worker_id
             ).results_async()
-            return len(per_replica) == len(replica_ids) and all(
-                reading["lifecycle"] is not None and reading["active_requests"] == 1
-                for reading in per_replica
-            )
+            owners = [
+                reading for reading in per_replica if reading["lifecycle"] is not None
+            ]
+            # Only the selecting ingress tracks the request, but every ingress
+            # books its load through the replica mesh.
+            if not (
+                len(per_replica) == len(replica_ids)
+                and len(owners) == 1
+                and all(reading["active_requests"] == 1 for reading in per_replica)
+            ):
+                return False
+            owner = owners[0]["replica_id"]
+            owner_endpoint = owners[0]["lifecycle_endpoint"]
+            return True
 
         await async_wait_for_condition(
             reservation_converged, timeout=30, retry_interval_ms=100
@@ -156,7 +172,13 @@ class TestLifecycleTracking:
             "max_tokens": MAX_TOKENS,
             "temperature": 0.0,
         }
-        headers = {"X-Request-Id": REQUEST_ID}
+        # The selecting ingress names its lifecycle endpoint, as its route
+        # response does through HAProxy, so the engine reports the request's
+        # events there.
+        headers = {
+            "X-Request-Id": REQUEST_ID,
+            KV_LIFECYCLE_OWNER_HEADER: owner_endpoint,
+        }
 
         # Snapshot every tracker's view and the worker's tracked load after
         # each streamed chunk: completion evicts the request, so its in-flight
@@ -189,10 +211,10 @@ class TestLifecycleTracking:
                     live_active_requests[replica_id].append(reading["active_requests"])
 
         assert usage is not None, "expected a final usage chunk"
-        # The broadcast reached every tracker, not just the routing one.
-        assert set(snapshots) == set(
-            replica_ids
-        ), "request was never observed in flight on every ingress tracker"
+        # Only the owner tracks the request itself.
+        assert set(snapshots) == {
+            owner
+        }, "request was not observed in flight on its owner's tracker alone"
 
         # Every in-flight snapshot upholds exact token and block accounting,
         # per replica: trackers apply a batch concurrently, so a peer can lag.
@@ -251,7 +273,7 @@ class TestLifecycleTracking:
             worker_load_cleared, timeout=15, retry_interval_ms=200
         )
 
-        # Every replica received the request's whole ordered event stream.
+        # The owner alone received the request's whole ordered event stream.
         per_replica_events = [
             [
                 (name, args)
@@ -260,7 +282,9 @@ class TestLifecycleTracking:
             ]
             for event_log in await router.broadcast("get_event_log").results_async()
         ]
-        for events in per_replica_events:
+        streams = [events for events in per_replica_events if events]
+        assert len(streams) == 1, "events reached more than the owner"
+        for events in streams:
             names = [name for name, _ in events]
             assert names[0] == "on_prefill_complete"
             assert names[-1] == "on_request_completed"

@@ -63,6 +63,7 @@ DEFAULT_SESSION_AFFINITY_TTL_S = 1800.0
 # request's candidates; hard affinity would reject the request instead.
 SESSION_AFFINITY_MODE = "soft"
 
-# Bound best-effort lifecycle broadcast delivery so one slow ingress replica
-# cannot stall an engine replica's whole lifecycle-event queue indefinitely.
-LIFECYCLE_EVENT_BROADCAST_TIMEOUT_S = 3
+# routing_stats key under which an LLMRouter advertises its replica-mesh endpoint.
+KV_REPLICA_SYNC_METADATA_KEY = "kv_replica_sync_metadata"
+# Header carrying the selecting LLMRouter's lifecycle endpoint to the LLMServer.
+KV_LIFECYCLE_OWNER_HEADER = SERVE_INGRESS_ROUTER_HEADER_PREFIX + "kv-lifecycle-owner"
