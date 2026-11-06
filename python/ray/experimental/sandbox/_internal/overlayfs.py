@@ -733,6 +733,11 @@ def _extract_image_rootfs(image: str, timeout_seconds: float = 600) -> str:
                 "Install fsck.erofs to use the extracted-rootfs fallback "
                 "when kernel EROFS and FUSE mounts are unavailable."
             )
+        # The cached image is uncompressed, so its size approximates the tree's.
+        # Mount probes extract a scratch image outside the cache.
+        image_dir = os.path.dirname(image)
+        if os.path.exists(os.path.join(image_dir, ".extracted")):
+            image_utils.reserve_image_cache_space(image_dir, os.path.getsize(image))
         with tempfile.TemporaryDirectory(
             prefix=".erofs-extract-", dir=os.path.dirname(image)
         ) as temporary:

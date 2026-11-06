@@ -921,5 +921,57 @@ def test_probe_that_hangs_raises_and_probes_again(monkeypatch, probe):
         overlayfs._probe_mount.cache_clear()
 
 
+@pytest.mark.parametrize(
+    "cached, evictable", [(True, True), (True, False), (False, False)]
+)
+def test_rootfs_extraction_keeps_the_cache_free_space_floor(
+    tmp_path, monkeypatch, cached: bool, evictable: bool
+) -> None:
+    """A cached image's extraction first evicts other images to stay above the
+    free-space floor, or fails before writing. A probe's scratch image isn't
+    in the cache, so it extracts without touching it."""
+    images_dir = tmp_path / "images"
+    image_dir = images_dir / "app"
+    image_dir.mkdir(parents=True)
+    image = image_dir / "rootfs.erofs"
+    image.write_bytes(b"x" * 100)
+    if cached:
+        (image_dir / ".extracted").touch()
+    other = images_dir / "other"
+    other.mkdir()
+    (other / ".extracted").touch()
+    (other / "rootfs.erofs").write_bytes(b"x" * 100)
+    if not evictable:
+        overlayfs.image_utils._mark_image_in_use(str(other), "running")
+
+    # 150 bytes free, plus whatever evicting "other" releases.
+    monkeypatch.setattr(
+        overlayfs.image_utils,
+        "_free_bytes",
+        lambda path: 150 + (0 if other.exists() else 100),
+    )
+    monkeypatch.setenv("RAY_SANDBOX_IMAGE_CACHE_MAX_BYTES", "0")
+    monkeypatch.setenv("RAY_SANDBOX_IMAGE_CACHE_MIN_FREE_BYTES", "100")
+    monkeypatch.setattr(overlayfs.shutil, "which", lambda name: f"/bin/{name}")
+    calls = []
+
+    def fsck(args, **kwargs):
+        calls.append(args)
+        os.makedirs(args[2].split("=", 1)[1])
+        return subprocess.CompletedProcess(args, 0, "", "")
+
+    monkeypatch.setattr(overlayfs.subprocess, "run", fsck)
+
+    if cached and not evictable:
+        with pytest.raises(SandboxCreationError, match="Not enough disk space"):
+            overlayfs._extract_image_rootfs(str(image))
+        assert calls == []
+        return
+    assert os.path.isdir(overlayfs._extract_image_rootfs(str(image)))
+    assert len(calls) == 1
+    # Only a cached image's extraction evicts other images.
+    assert other.exists() is not cached
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))
