@@ -11,6 +11,7 @@ Master's existing ``test_delta.py`` covers ``ray.data.read_delta`` and is not
 modified here.
 """
 
+import json
 import os
 from typing import Any, Callable, Dict, List, Optional
 from unittest import mock
@@ -1962,6 +1963,143 @@ def test_catalog_without_table_identifier_rejected(temp_delta_path):
 
     # Without a catalog it's simply unused, so omitting it is fine.
     assert DeltaDatasink(temp_delta_path)._table_identifier is None
+
+
+# ----------------------------------------------------------------------
+# Column mapping.
+# ----------------------------------------------------------------------
+
+
+def _write_column_mapped_table(
+    path: str, mode: str, reader_version: int, writer_version: int
+) -> None:
+    """Write a one-file Delta table with the given column mapping mode.
+
+    deltalake can't write a column-mapped table: it stores the property but
+    keeps the column names in the data files and a reader 1 protocol. So the
+    log is written by hand, and with a mode other than ``none`` the data file
+    stores column ``id`` under the physical name ``col-a1``, as Spark and
+    Databricks write it.
+    """
+    import pyarrow as pa
+    import pyarrow.parquet as pq
+
+    mapped = mode != "none"
+    physical_name = "col-a1" if mapped else "id"
+    os.makedirs(os.path.join(path, "_delta_log"))
+    data_file = os.path.join(path, "part-0.parquet")
+    pq.write_table(pa.table({physical_name: pa.array([1, 2], pa.int64())}), data_file)
+
+    field = {"name": "id", "type": "long", "nullable": True, "metadata": {}}
+    configuration = {"delta.columnMapping.mode": mode}
+    if mapped:
+        field["metadata"] = {
+            "delta.columnMapping.id": 1,
+            "delta.columnMapping.physicalName": physical_name,
+        }
+        configuration["delta.columnMapping.maxColumnId"] = "1"
+    protocol: Dict[str, Any] = {
+        "minReaderVersion": reader_version,
+        "minWriterVersion": writer_version,
+    }
+    if reader_version == 3:
+        protocol["readerFeatures"] = ["columnMapping"]
+        protocol["writerFeatures"] = ["columnMapping"]
+    actions = [
+        {"protocol": protocol},
+        {
+            "metaData": {
+                "id": "3c3a3d8e-0000-4000-8000-000000000000",
+                "format": {"provider": "parquet", "options": {}},
+                "schemaString": json.dumps({"type": "struct", "fields": [field]}),
+                "partitionColumns": [],
+                "configuration": configuration,
+                "createdTime": 0,
+            }
+        },
+        {
+            "add": {
+                "path": "part-0.parquet",
+                "partitionValues": {},
+                "size": os.path.getsize(data_file),
+                "modificationTime": 0,
+                "dataChange": True,
+            }
+        },
+    ]
+    with open(os.path.join(path, "_delta_log", f"{0:020d}.json"), "w") as f:
+        f.write("\n".join(json.dumps(action) for action in actions) + "\n")
+
+
+def _data_files(path: str) -> List[str]:
+    return sorted(
+        os.path.relpath(os.path.join(root, name), path)
+        for root, _, names in os.walk(path)
+        if "_delta_log" not in root
+        for name in names
+        if name.endswith(".parquet")
+    )
+
+
+@pytest.mark.parametrize("mode", [SaveMode.APPEND, SaveMode.OVERWRITE])
+@pytest.mark.parametrize(
+    "mapping_mode, reader_version, writer_version",
+    [
+        # deltalake 1.6.6 commits to both, so the files it gets are unreadable
+        # by engines that apply the mapping.
+        ("name", 2, 5),
+        ("id", 2, 5),
+        ("name", 3, 7),
+    ],
+)
+def test_write_rejects_column_mapping(
+    temp_delta_path, mode, mapping_mode, reader_version, writer_version
+):
+    """Rejected before any data file is written, and nothing is committed."""
+    _write_column_mapped_table(
+        temp_delta_path, mapping_mode, reader_version, writer_version
+    )
+    files_before = _data_files(temp_delta_path)
+
+    with pytest.raises(NotImplementedError) as excinfo:
+        _write_append([{"id": 3}], temp_delta_path, mode=mode)
+
+    message = str(excinfo.value)
+    assert f"`delta.columnMapping.mode` is {mapping_mode!r}" in message
+    assert "https://github.com/ray-project/ray/issues/64854" in message
+    assert _delta_log_json_count(temp_delta_path) == 1
+    assert _data_files(temp_delta_path) == files_before
+
+
+def test_empty_overwrite_rejects_column_mapping(temp_delta_path):
+    """An empty dataset skips ``on_write_start``, so the commit checks too."""
+    _write_column_mapped_table(temp_delta_path, "name", 2, 5)
+
+    with pytest.raises(NotImplementedError, match="column mapping"):
+        ray.data.from_items([]).write_delta(temp_delta_path, mode=SaveMode.OVERWRITE)
+
+    assert _delta_log_json_count(temp_delta_path) == 1
+
+
+def test_write_column_mapping_mode_none(temp_delta_path):
+    """An explicit ``none`` mode is no column mapping, so the write goes ahead."""
+    _write_column_mapped_table(temp_delta_path, "none", 1, 2)
+
+    _write_append([{"id": 3}], temp_delta_path)
+
+    assert sorted(row["id"] for row in _read_all(temp_delta_path)) == [1, 2, 3]
+
+
+def test_catalog_write_rejects_column_mapping(temp_delta_path):
+    from ray.data.catalog import ResolvedSource
+
+    _write_column_mapped_table(temp_delta_path, "name", 2, 5)
+    catalog = _FakeCatalog(ResolvedSource(path=temp_delta_path))
+
+    with pytest.raises(NotImplementedError, match="column mapping"):
+        ray.data.from_items([{"id": 3}]).write_delta("main.db.tbl", catalog=catalog)
+
+    assert _delta_log_json_count(temp_delta_path) == 1
 
 
 if __name__ == "__main__":
