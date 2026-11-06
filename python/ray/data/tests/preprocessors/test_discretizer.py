@@ -324,6 +324,64 @@ def test_uniform_kbins_discretizer_defers_non_integer_bins_to_fit(bins):
         discretizer.fit(ds)
 
 
+def test_kbins_discretizer_transform_pandas_preserves_unselected_columns():
+    df = pd.DataFrame(
+        {
+            "A": [0.5, 1.5, 2.5],
+            "B": [10.0, 20.0, 30.0],
+            "passthrough_str": ["x", "y", "z"],
+            "passthrough_obj": [{"k": 1}, {"k": 2}, {"k": 3}],
+        }
+    )
+    discretizer = CustomKBinsDiscretizer(
+        columns=["A", "B"],
+        bins={"A": [0.0, 1.0, 2.0, 3.0], "B": [0.0, 15.0, 35.0]},
+        output_columns=["A_binned", "B_binned"],
+    )
+    out = discretizer._transform_pandas(df)
+    assert "A_binned" not in df.columns
+    assert "B_binned" not in df.columns
+    assert list(out["A_binned"]) == [0, 1, 2]
+    assert list(out["B_binned"]) == [0, 1, 1]
+    assert list(out["passthrough_str"]) == ["x", "y", "z"]
+    assert list(out["passthrough_obj"]) == [{"k": 1}, {"k": 2}, {"k": 3}]
+
+
+def test_kbins_discretizer_transform_pandas_overlapping_output_columns():
+    # Overlapping output_columns and columns (output_columns[0] == columns[1])
+    # should still bin the original input column B rather than the overwritten output.
+    df = pd.DataFrame(
+        {
+            "A": [0.5, 1.5, 2.5],
+            "B": [10.0, 20.0, 30.0],
+        }
+    )
+    overlapping = CustomKBinsDiscretizer(
+        columns=["A", "B"],
+        bins={"A": [0.0, 1.0, 2.0, 3.0], "B": [0.0, 15.0, 35.0]},
+        output_columns=["B", "C"],
+    )
+    overlap_out = overlapping._transform_pandas(df)
+    assert list(df["B"]) == [10.0, 20.0, 30.0]
+    assert "C" not in df.columns
+    assert list(overlap_out["B"]) == [0, 1, 2]
+    assert list(overlap_out["C"]) == [0, 1, 1]
+
+
+def test_kbins_discretizer_transform_pandas_duplicate_column_labels():
+    df = pd.DataFrame(
+        [[0.5, 1.5], [2.5, 0.5]],
+        columns=["A", "A"],
+    )
+    discretizer = CustomKBinsDiscretizer(
+        columns=["A"],
+        bins={"A": [0, 1, 2, 3]},
+    )
+    out = discretizer.transform_batch(df)
+    assert out.values.tolist() == [[0, 1], [2, 0]]
+    assert df.values.tolist() == [[0.5, 1.5], [2.5, 0.5]]
+
+
 if __name__ == "__main__":
     import sys
 

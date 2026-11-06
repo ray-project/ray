@@ -27,10 +27,16 @@ class _AbstractKBinsDiscretizer(SerializablePreprocessorBase):
     """
 
     def _transform_pandas(self, df: pd.DataFrame):
-        def bin_values(s: pd.Series) -> pd.Series:
-            if s.name not in self.columns:
-                return s
-            labels = self.dtypes.get(s.name) if self.dtypes else False
+        df = df.copy(deep=False)
+        bins = self.stats_ if self._is_fittable else self.bins
+        is_bins_dict = isinstance(bins, dict)
+        # Read all input columns first to avoid reading modified data when
+        # output_columns[i] == columns[j] for i < j.
+        input_columns = [df[col] for col in self.columns]
+        for col, out_col, series in zip(
+            self.columns, self.output_columns, input_columns
+        ):
+            labels = self.dtypes.get(col) if self.dtypes else False
             ordered = True
             if labels:
                 if isinstance(labels, pd.CategoricalDtype):
@@ -39,20 +45,19 @@ class _AbstractKBinsDiscretizer(SerializablePreprocessorBase):
                 else:
                     labels = False
 
-            bins = self.stats_ if self._is_fittable else self.bins
-            return pd.cut(
-                s,
-                bins[s.name] if isinstance(bins, dict) else bins,
-                right=self.right,
-                labels=labels,
-                ordered=ordered,
-                retbins=False,
-                include_lowest=self.include_lowest,
-                duplicates=self.duplicates,
-            )
-
-        binned_df = df.apply(bin_values, axis=0)
-        df[self.output_columns] = binned_df[self.columns]
+            col_bins = bins[col] if is_bins_dict else bins
+            cut_kwargs = {
+                "right": self.right,
+                "labels": labels,
+                "ordered": ordered,
+                "retbins": False,
+                "include_lowest": self.include_lowest,
+                "duplicates": self.duplicates,
+            }
+            if isinstance(series, pd.DataFrame):
+                df[out_col] = series.apply(pd.cut, axis=0, bins=col_bins, **cut_kwargs)
+            else:
+                df[out_col] = pd.cut(series, col_bins, **cut_kwargs)
         return df
 
     def _validate_bins_columns(self):
