@@ -1,7 +1,6 @@
 """Read the Parquet fields that PyArrow's Python bindings don't expose.
 
-:func:`read_footer_stats` reads each leaf's ``SizeStatistics`` and data page count
-from the footer bytes ``FileMetaData`` already holds, and :func:`read_dictionary_page`
+:func:`read_footer_stats` reads each leaf's ``SizeStatistics`` from the footer bytes ``FileMetaData`` already holds, and :func:`read_dictionary_page`
 a dictionary page's header, decoding Thrift's compact protocol by hand. A leaf is a
 column of primitive values: a struct column of two fields is two. The footer walk
 takes about 6 microseconds per row group per leaf (Apple M5) and its result holds
@@ -57,10 +56,7 @@ _VARINT_CONTINUES = 0x80  # a varint byte's high bit, set on every byte but the 
 _FILE_META_ROW_GROUPS = 4  # FileMetaData.row_groups, list<RowGroup>
 _ROW_GROUP_COLUMNS = 1  # RowGroup.columns, list<ColumnChunk>
 _COLUMN_CHUNK_META_DATA = 3  # ColumnChunk.meta_data, a ColumnMetaData
-_COLUMN_META_ENCODING_STATS = 13  # ColumnMetaData.encoding_stats, a list
 _COLUMN_META_SIZE_STATISTICS = 16  # ColumnMetaData.size_statistics
-_ENCODING_STATS_PAGE_TYPE = 1  # PageEncodingStats.page_type, a PageType
-_ENCODING_STATS_COUNT = 3  # PageEncodingStats.count
 _SIZE_STATS_UNENCODED_BYTES = 1  # SizeStatistics.unencoded_byte_array_data_bytes
 _SIZE_STATS_REPETITION_HISTOGRAM = 2  # SizeStatistics.repetition_level_histogram
 _SIZE_STATS_DEFINITION_HISTOGRAM = 3  # SizeStatistics.definition_level_histogram
@@ -68,9 +64,7 @@ _PAGE_HEADER_TYPE = 1  # PageHeader.type, a PageType
 _PAGE_HEADER_UNCOMPRESSED_SIZE = 2  # PageHeader.uncompressed_page_size
 _PAGE_HEADER_DICTIONARY_PAGE_HEADER = 7  # PageHeader.dictionary_page_header
 _DICTIONARY_PAGE_HEADER_NUM_VALUES = 1  # DictionaryPageHeader.num_values
-_DATA_PAGE = 0  # PageType.DATA_PAGE
 _DICTIONARY_PAGE = 2  # PageType.DICTIONARY_PAGE
-_DATA_PAGE_V2 = 3  # PageType.DATA_PAGE_V2
 
 
 class LeafSizeStats(NamedTuple):
@@ -79,14 +73,6 @@ class LeafSizeStats(NamedTuple):
     unencoded_byte_array_data_bytes: Optional[int]
     repetition_level_histogram: Tuple[int, ...]
     definition_level_histogram: Tuple[int, ...]
-
-
-class FooterStats(NamedTuple):
-    """What :func:`read_footer_stats` reads, each by ``[row_group][leaf]``."""
-
-    size_statistics: List[List[Optional[LeafSizeStats]]]
-    # From ``encoding_stats``; ``None`` where it counts no data pages.
-    data_pages: List[List[Optional[int]]]
 
 
 class DictionaryPage(NamedTuple):
@@ -299,34 +285,10 @@ class _CompactReader:
                 self._skip(field.type)
         return LeafSizeStats(unencoded, repetition, definition)
 
-    def _data_pages(self) -> int:
-        """The data pages an ``encoding_stats`` list counts."""
-        header = self._list_header()
-        if header.count and header.element_type != _STRUCT:
-            raise _ThriftDesync(
-                f"ColumnMetaData field 13 is a list of type {header.element_type}, "
-                "expected struct"
-            )
-        pages = 0
-        for _ in range(header.count):
-            # Each entry counts the pages of one type and encoding.
-            page_type, count = None, 0
-            for field in self._fields():
-                if field.id == _ENCODING_STATS_PAGE_TYPE and field.type == _I32:
-                    page_type = self._zigzag()
-                elif field.id == _ENCODING_STATS_COUNT and field.type == _I32:
-                    count = self._zigzag()
-                else:
-                    self._skip(field.type)
-            if page_type in (_DATA_PAGE, _DATA_PAGE_V2):
-                pages += count
-        return pages
-
-    def _column_metadata(self) -> Tuple[Optional[LeafSizeStats], Optional[int]]:
-        """A ``ColumnMetaData``'s ``SizeStatistics`` and data pages, ``None`` if absent."""
+    def _column_metadata(self) -> Optional[LeafSizeStats]:
+        """A ``ColumnMetaData``'s ``SizeStatistics``, ``None`` if absent."""
         # Inlined rather than built on _fields: it runs once per leaf per row group.
         size_stats: Optional[LeafSizeStats] = None
-        pages = 0
         buf = self._buf
         last_id = 0
         while True:
@@ -346,21 +308,14 @@ class _CompactReader:
                         "expected struct"
                     )
                 size_stats = self._size_statistics()
-            elif last_id == _COLUMN_META_ENCODING_STATS:
-                if field_type != _LIST:
-                    raise _ThriftDesync(
-                        f"ColumnMetaData field 13 has type {field_type}, expected list"
-                    )
-                pages = self._data_pages()
             elif field_type in _VARINT_TYPES:
                 self._skip_varint()
             else:
                 self._skip(field_type)
-        # No data pages counted means no count to go by.
-        return size_stats, pages if pages > 0 else None
+        return size_stats
 
-    def _column_chunk(self) -> Tuple[Optional[LeafSizeStats], Optional[int]]:
-        leaf: Tuple[Optional[LeafSizeStats], Optional[int]] = (None, None)
+    def _column_chunk(self) -> Optional[LeafSizeStats]:
+        leaf = None
         for field in self._fields():
             if field.id == _COLUMN_CHUNK_META_DATA and field.type == _STRUCT:
                 leaf = self._column_metadata()
@@ -368,34 +323,26 @@ class _CompactReader:
                 self._skip(field.type)
         return leaf
 
-    def _row_group(self) -> Tuple[List[Optional[LeafSizeStats]], List[Optional[int]]]:
+    def _row_group(self) -> List[Optional[LeafSizeStats]]:
         stats: List[Optional[LeafSizeStats]] = []
-        pages: List[Optional[int]] = []
         for field in self._fields():
             if field.id == _ROW_GROUP_COLUMNS and field.type == _LIST:
                 for _ in range(self._list_header().count):
-                    leaf_stats, leaf_pages = self._column_chunk()
-                    stats.append(leaf_stats)
-                    pages.append(leaf_pages)
+                    stats.append(self._column_chunk())
             else:
                 self._skip(field.type)
-        return stats, pages
+        return stats
 
-    def read(
-        self,
-    ) -> Tuple[List[List[Optional[LeafSizeStats]]], List[List[Optional[int]]]]:
-        """``SizeStatistics`` and data page counts, each by ``[row_group][leaf]``."""
+    def read(self) -> List[List[Optional[LeafSizeStats]]]:
+        """``SizeStatistics`` by ``[row_group][leaf]``."""
         stats: List[List[Optional[LeafSizeStats]]] = []
-        pages: List[List[Optional[int]]] = []
         for field in self._fields():
             if field.id == _FILE_META_ROW_GROUPS and field.type == _LIST:
                 for _ in range(self._list_header().count):
-                    row_group_stats, row_group_pages = self._row_group()
-                    stats.append(row_group_stats)
-                    pages.append(row_group_pages)
+                    stats.append(self._row_group())
             else:
                 self._skip(field.type)
-        return stats, pages
+        return stats
 
 
 def footer_bytes(metadata: "FileMetaData") -> Optional[memoryview]:
@@ -414,14 +361,16 @@ def footer_bytes(metadata: "FileMetaData") -> Optional[memoryview]:
         return None
 
 
-def read_footer_stats(metadata: "FileMetaData") -> Optional[FooterStats]:
-    """Each leaf's ``SizeStatistics`` and data page count, or ``None`` when the
+def read_footer_stats(
+    metadata: "FileMetaData",
+) -> Optional[List[List[Optional[LeafSizeStats]]]]:
+    """Each leaf's ``SizeStatistics`` by ``[row_group][leaf]``, or ``None`` when the
     footer can't be read or its row-group or leaf counts come out wrong."""
     buf = footer_bytes(metadata)
     if buf is None:
         return None
     try:
-        row_groups, pages = _CompactReader(buf).read()
+        row_groups = _CompactReader(buf).read()
     except Exception as exc:
         logger.error(f"Error reading footer stats: {exc}")
         # Sizing falls back, so a footer this can't decode must not fail the read.
@@ -432,8 +381,7 @@ def read_footer_stats(metadata: "FileMetaData") -> Optional[FooterStats]:
     num_columns = metadata.num_columns
     if any(len(columns) != num_columns for columns in row_groups):
         return None
-    # The walk fills ``pages`` alongside, so its counts match.
-    return FooterStats(row_groups, pages)
+    return row_groups
 
 
 # Enough for a dictionary page's header, which takes about 35 bytes.
