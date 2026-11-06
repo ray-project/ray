@@ -8,6 +8,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import (
     Any,
     Generator,
+    Iterable,
     List,
     Optional,
     Union,
@@ -212,6 +213,142 @@ def _disk_shuffle_map_task(
     }
 
 
+def _split_output_blocks(
+    blocks: Iterable[Block], target_max_block_size: Optional[int]
+) -> Generator[Block, None, None]:
+    """Re-chunk ``blocks`` to ``target_max_block_size``; ``None`` emits as-is."""
+    if target_max_block_size is None:
+        yield from blocks
+        return
+    output_buffer = BlockOutputBuffer(
+        OutputBlockSizeOption.of(target_max_block_size=target_max_block_size)
+    )
+    for block in blocks:
+        output_buffer.add_block(block)
+        while output_buffer.has_next():
+            yield output_buffer.next()
+    output_buffer.finalize()
+    yield from output_buffer.iter_ready_blocks()
+
+
+def _emit_output_blocks(
+    blocks: Iterable[Block],
+    *,
+    task_idx: int,
+    start_time_s: float,
+    map_transformer: Optional[Any],
+    map_task_context: Optional["TaskContext"],
+    data_context: Optional["DataContext"],
+) -> Generator[Union[Block, bytes], None, None]:
+    """Apply the fused downstream map (if any) over ``blocks`` and yield each
+    result as ``(block, pickled metadata)`` pairs.
+
+    Shared tail of ``_disk_shuffle_reduce_task`` and ``_broadcast_join_task``.
+    The two-yield protocol lets the executor slot ``StreamingGeneratorStats``
+    in between for accurate ``block_ser_time_s``.
+    """
+    exec_stats_builder = BlockExecStats.builder()
+
+    def _yield_with_stats(block: Block):
+        nonlocal exec_stats_builder
+        exec_stats_builder.finish()
+        gen_stats: StreamingGeneratorStats = yield block
+        exec_stats = exec_stats_builder.build(
+            block_ser_time_s=(gen_stats.object_creation_dur_s if gen_stats else None),
+            task_idx=task_idx,
+        )
+        exec_stats_builder = BlockExecStats.builder()
+        yield pickle.dumps(
+            BlockMetadataWithSchema.from_block(
+                block,
+                block_exec_stats=exec_stats,
+                task_exec_stats=TaskExecWorkerStats(
+                    task_wall_time_s=time.perf_counter() - start_time_s,
+                ),
+            )
+        )
+
+    if map_transformer is None:
+        for block in blocks:
+            yield from _yield_with_stats(block)
+        return
+    assert map_task_context is not None and data_context is not None
+    with DataContext.current(data_context), TaskContext.current(map_task_context):
+        from ray.data._internal.execution.operators.map_transformer import (
+            TransformClock,
+        )
+
+        map_transformer.override_target_max_block_size(
+            map_task_context.target_max_block_size_override
+        )
+        for out_block in map_transformer.apply_transform(
+            blocks, map_task_context, clock=TransformClock()
+        ):
+            yield from _yield_with_stats(out_block)
+
+
+@ray.remote  # pyrefly: ignore[no-matching-overload]
+def _broadcast_join_task(
+    *blocks: Block,
+    num_stream_blocks: int,
+    build_side: int,
+    join_fn: ReduceFn,
+    task_idx: int,
+    target_max_block_size: Optional[int],
+    map_transformer: Optional[Any],
+    map_task_context: Optional["TaskContext"],
+    data_context: Optional["DataContext"],
+) -> Generator[Union[Block, bytes], None, None]:
+    """Broadcast-join stage: join one stream-side bundle against the whole
+    build side, run ``join_fn`` on the pair, and yield ``(block, pickled
+    metadata)`` pairs.
+
+    The build side's blocks are placed at input index ``build_side`` of
+    ``tables_by_input`` and the stream-side blocks at the other index. ``join_fn`` reads left/right from those positions, so
+    output rows, column order, and suffixes match the shuffle join.
+
+    Args:
+        *blocks: ``num_stream_blocks`` blocks of the stream-side bundle,
+            followed by every block of the build side. Passed flat so Ray
+            resolves each ref before the task starts.
+        num_stream_blocks: Number of leading entries in ``blocks`` that belong
+            to the stream side.
+        build_side: Input index (0 = left, 1 = right) of the build side.
+        join_fn: Join reduce callable ``(task_idx, tables_by_input) -> blocks``.
+        task_idx: Partition id of the stream-side bundle; used for stats.
+        target_max_block_size: Output block size cap. None emits as-is.
+        map_transformer: Fused downstream map applied to the full join output
+            stream (or None).
+        map_task_context: TaskContext for the fused map, or None.
+        data_context: DataContext to install for the fused map, or None.
+
+    Yields:
+        Union[Block, bytes]: Each output block, then its pickled
+            ``BlockMetadataWithSchema``.
+    """
+    start_time_s = time.perf_counter()
+
+    # Upstream blocks may be pandas; join_fn builds Arrow tables from them.
+    def _to_arrow(block: Block) -> pa.Table:
+        return TableBlockAccessor.try_convert_block_type(
+            block, block_type=BlockType.ARROW
+        )
+
+    tables_by_input: List[List[pa.Table]] = [[], []]
+    tables_by_input[1 - build_side] = [_to_arrow(b) for b in blocks[:num_stream_blocks]]
+    tables_by_input[build_side] = [_to_arrow(b) for b in blocks[num_stream_blocks:]]
+
+    joined = join_fn(task_idx, tables_by_input)
+    yield from _emit_output_blocks(
+        _split_output_blocks(joined, target_max_block_size),
+        task_idx=task_idx,
+        start_time_s=start_time_s,
+        map_transformer=map_transformer,
+        map_task_context=map_task_context,
+        data_context=data_context,
+    )
+
+
 @ray.remote  # pyrefly: ignore[no-matching-overload]
 def _disk_shuffle_reduce_task(
     *handles_by_input: List[ShuffleHandle],
@@ -280,49 +417,16 @@ def _disk_shuffle_reduce_task(
             out.append(tables)
         return out
 
-    exec_stats_builder = BlockExecStats.builder()
-
-    def _yield_with_stats(block: Block):
-        """Yield ``block`` then its pickled metadata. The two-yield protocol
-        lets the executor slot ``StreamingGeneratorStats`` in between for
-        accurate ``block_ser_time_s``."""
-        nonlocal exec_stats_builder
-        exec_stats_builder.finish()
-        gen_stats: StreamingGeneratorStats = yield block
-        exec_stats = exec_stats_builder.build(
-            block_ser_time_s=(gen_stats.object_creation_dur_s if gen_stats else None),
-            task_idx=partition_id,
-        )
-        exec_stats_builder = BlockExecStats.builder()
-        yield pickle.dumps(
-            BlockMetadataWithSchema.from_block(
-                block,
-                block_exec_stats=exec_stats,
-                task_exec_stats=TaskExecWorkerStats(
-                    task_wall_time_s=time.perf_counter() - start_time_s,
-                ),
-            )
-        )
-
     def _emit_blocks(blocks):
         """Apply fused map (if any) over the full reduce stream, then yield."""
-        if map_transformer is None:
-            for block in blocks:
-                yield from _yield_with_stats(block)
-            return
-        assert map_task_context is not None and data_context is not None
-        with DataContext.current(data_context), TaskContext.current(map_task_context):
-            from ray.data._internal.execution.operators.map_transformer import (
-                TransformClock,
-            )
-
-            map_transformer.override_target_max_block_size(
-                map_task_context.target_max_block_size_override
-            )
-            for out_block in map_transformer.apply_transform(
-                blocks, map_task_context, clock=TransformClock()
-            ):
-                yield from _yield_with_stats(out_block)
+        yield from _emit_output_blocks(
+            blocks,
+            task_idx=partition_id,
+            start_time_s=start_time_s,
+            map_transformer=map_transformer,
+            map_task_context=map_task_context,
+            data_context=data_context,
+        )
 
     if not any(sources_by_input):
         if num_inputs == 1:
@@ -367,7 +471,6 @@ def _disk_shuffle_reduce_task(
             accum_tables_by_input: List[List[pa.Table]] = [
                 [] for _ in range(num_inputs)
             ]
-            output_buffer: Optional[BlockOutputBuffer] = None
             # Codec from data_context.shuffle_compression (same field the map used).
             _compression = (
                 data_context if data_context is not None else DataContext.get_current()
@@ -378,22 +481,10 @@ def _disk_shuffle_reduce_task(
 
                 Fused map / stats are applied downstream of ``_reduce_output_blocks``.
                 """
-                nonlocal output_buffer
-                if output_buffer is None and target_max_block_size is not None:
-                    output_buffer = BlockOutputBuffer(
-                        OutputBlockSizeOption.of(
-                            target_max_block_size=target_max_block_size,
-                        )
-                    )
                 tables_by_input = _with_typed_empty_inputs(tables_by_input)
-                for block in reduce_fn(partition_id, tables_by_input):
-                    if output_buffer is None:
-                        # target_max_block_size=None: emit blocks as-is.
-                        yield block
-                    else:
-                        output_buffer.add_block(block)
-                        while output_buffer.has_next():
-                            yield output_buffer.next()
+                yield from _split_output_blocks(
+                    reduce_fn(partition_id, tables_by_input), target_max_block_size
+                )
 
             def _reduce_output_blocks():
                 # O_RDWR: same fd serves ``os.pwrite`` from fetch threads AND
@@ -460,9 +551,6 @@ def _disk_shuffle_reduce_task(
                     # Drain the accumulator tail.
                     if any(accum_tables_by_input):
                         yield from _flush(accum_tables_by_input)
-                    if output_buffer is not None:
-                        output_buffer.finalize()
-                        yield from output_buffer.iter_ready_blocks()
                 finally:
                     os.close(fd)
 

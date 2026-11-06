@@ -949,6 +949,20 @@ py_test(
 )
 
 py_test(
+    name = "test_broadcast_join_task",
+    size = "medium",
+    srcs = ["tests/test_broadcast_join_task.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
     name = "test_hash_shuffle_disk_smoke",
     size = "medium",
     srcs = ["tests/test_hash_shuffle_disk_smoke.py"],
