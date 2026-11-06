@@ -53,6 +53,7 @@ def _boot_key(cfg: SandboxConfig) -> Optional[tuple]:
         bool(cfg._ignore_cgroups),
         tuple(cfg.gpu_ids or ()),
         tuple(sorted((cfg.mounts or {}).items())),
+        cfg.oom_score_adj,
     )
 
 
