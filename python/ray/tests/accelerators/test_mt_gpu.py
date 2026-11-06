@@ -115,4 +115,4 @@ def test_validate_resource_request_quantity():
 
 if __name__ == "__main__":
     with patch.dict(os.environ, {}, clear=False):
-        pytest.main(["-sv", __file__])
+        sys.exit(pytest.main(["-sv", __file__]))
