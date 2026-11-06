@@ -23,6 +23,9 @@ $ ls
 text_ml.py
 serve_config.yaml
 
+$ ray get-auth-token --generate
+...
+
 $ ray start --head
 ...
 
@@ -33,7 +36,7 @@ Sent deploy request successfully!
  * Use `serve config` to see the running app's config.
 ```
 
-`ray start --head` starts a long-lived Ray cluster locally. `serve deploy serve_config.yaml` deploys the `serve_config.yaml` file to this local cluster. To stop Ray cluster, run the CLI command `ray stop`.
+`ray get-auth-token --generate` creates the {ref}`auth token <token-auth>` that `ray start --head` needs. `ray start --head` starts a long-lived Ray cluster locally. `serve deploy serve_config.yaml` deploys the `serve_config.yaml` file to this local cluster. To stop the Ray cluster, run the CLI command `ray stop`.
 
 The message `Sent deploy request successfully!` means:
 * The Ray cluster has received your config file successfully.

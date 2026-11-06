@@ -29,7 +29,7 @@ from ray.llm._internal.batch.benchmark.benchmark_processor import (
 
 # Benchmark constants
 NUM_REQUESTS = 1000
-MODEL_ID = "facebook/opt-1.3b"
+MODEL_ID = "Qwen/Qwen3.5-0.8B"
 DATASET_ID = "Crystalcareai/Code-feedback-sharegpt-renamed"
 BATCH_SIZE = 64
 CONCURRENCY = 1
@@ -455,7 +455,7 @@ def _build_perf_metrics(result, engine_metrics: dict[str, float | None]) -> list
 
 def test_single_node_baseline_benchmark():
     """
-    Single-node baseline benchmark: facebook/opt-1.3b, TP=1, PP=1, 1000 prompts.
+    Single-node baseline benchmark: Qwen/Qwen3.5-0.8B, TP=1, PP=1, 1000 prompts.
 
     Logs BENCHMARK_* metrics and optionally asserts perf thresholds from env:
     - RAY_DATA_LLM_BENCHMARK_MIN_THROUGHPUT (req/s)

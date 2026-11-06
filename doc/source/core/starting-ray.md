@@ -187,6 +187,14 @@ For the ways to configure Ray, see the {doc}`Configuration <configure>` document
 
 Run `ray start` from the CLI to start a single-node Ray runtime on a machine. This machine becomes the head node.
 
+Starting in Ray 2.61, {ref}`token authentication <token-auth>` is on by default, and `ray start --head` fails if no token exists. Create a token once before you start the head node:
+
+```bash
+ray get-auth-token --generate
+```
+
+Then start the head node:
+
 ```bash
 $ ray start --head --port=6379
 
