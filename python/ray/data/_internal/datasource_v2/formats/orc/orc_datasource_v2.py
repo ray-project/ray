@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import copy
+import dataclasses
 from typing import TYPE_CHECKING, List, Literal, Optional, Union
 
 import pyarrow as pa
@@ -182,12 +183,9 @@ class OrcDatasourceV2(FileDataSourceV2):
         partition_kv = parser(sample.paths.tolist()[0])
         if not partition_kv:
             return copy.deepcopy(self._partitioning)
-        return Partitioning(
-            style=self._partitioning.style,
-            base_dir=self._partitioning.base_dir,
-            field_names=list(partition_kv.keys()),
-            field_types=self._partitioning.field_types,
-            filesystem=self._partitioning.filesystem,
+        # ``replace`` copies every other field, such as ``null_fallback``.
+        return dataclasses.replace(
+            self._partitioning, field_names=list(partition_kv.keys())
         )
 
     @override
