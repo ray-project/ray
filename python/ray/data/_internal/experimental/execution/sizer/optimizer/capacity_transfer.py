@@ -28,7 +28,9 @@ from ray.data._internal.execution.execution_flags import (
 from ray.data._internal.execution.interfaces import ExecutionResources
 from ray.data._internal.execution.interfaces.common import LogicalActorId, NodeIdStr
 from ray.data._internal.experimental.execution.operators.actor_pool_models import (
-    ExperimentalActorPoolScalingRequest,
+    PlacedScalingRequest,
+    ScaleDownRequest,
+    ScaleUpRequest,
 )
 from ray.data._internal.experimental.execution.operators.placement_constraints import (
     is_constrained,
@@ -570,12 +572,21 @@ class CapacityTransfer(OptimizationRule[TransferState]):
                 )
                 continue
             if ctx.now - transfer.started_t > SIZER_TRANSFER_TIMEOUT_S:
+                # Cancel the claim node by node. The pool cancels pendings
+                # first, and every pending on a guarded recipient is ours
+                # (see ``TransferInFlight.claimed_ids``), so a per-node count
+                # is exact.
+                claimed = set(still_pending)
                 pool.scale(
-                    ExperimentalActorPoolScalingRequest(
-                        delta=-len(still_pending),
+                    ScaleDownRequest.on_nodes(
+                        [
+                            node
+                            for node, ids in pool.pending_ids_by_target_node().items()
+                            for actor_id in ids
+                            if actor_id in claimed
+                        ],
                         force=True,
                         reason="optimizer: transfer timed out",
-                        actor_ids_to_downscale=tuple(still_pending),
                     )
                 )
                 logger.warning(
@@ -765,22 +776,17 @@ class CapacityTransfer(OptimizationRule[TransferState]):
             ctx.claim_free(
                 node_plan.node, recipient_per_actor, node_plan.num_recipient_actors
             )
-            req: Dict[
-                "ExperimentalActorPoolMapOperator", ExperimentalActorPoolScalingRequest
-            ] = {
-                recipient: ExperimentalActorPoolScalingRequest(
-                    delta=node_plan.num_recipient_actors,
+            req: Dict["ExperimentalActorPoolMapOperator", PlacedScalingRequest] = {
+                recipient: ScaleUpRequest.on_nodes(
+                    (node_plan.node,) * node_plan.num_recipient_actors,
                     reason="optimizer: capacity transfer in",
-                    target_nodes_to_scale_actors_on=(node_plan.node,)
-                    * node_plan.num_recipient_actors,
                 )
             }
             for donor, count in node_plan.victims_by_donor().items():
-                req[donor] = ExperimentalActorPoolScalingRequest(
-                    delta=-count,
+                req[donor] = ScaleDownRequest.on_nodes(
+                    (node_plan.node,) * count,
                     force=True,
                     reason=f"optimizer: donate to {recipient.name}",
-                    victim_node=node_plan.node,
                 )
                 self._metrics.record_capacity_transfer(
                     donor.name, recipient.name, count
