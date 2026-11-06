@@ -666,6 +666,33 @@ def test_exec_timeout_kills_a_setsid_child_of_the_command():
         runtime.delete(instance_id)
 
 
+@pytest.mark.parametrize("image", ["busybox:latest", "python:3.10-slim"])
+def test_orphaned_processes_are_reaped(image):
+    """Processes whose parents exit become children of the sandbox's PID 1,
+    which reaps them, so commands that leave background processes behind
+    don't fill the sandbox with zombies. Commands still get their own exit
+    codes."""
+    runtime = SandboxRuntime()
+    instance_id = runtime.create(image=image, shell="/bin/sh")
+    try:
+        for _ in range(20):
+            runtime.exec(instance_id, "sleep 0.01 &")
+        time.sleep(1)
+        # The images have no common ps; a zombie's state in /proc is Z. The
+        # state follows the command name, which ends at the last ")".
+        states = runtime.exec(
+            instance_id,
+            "for f in /proc/[0-9]*/stat; do sed 's/.*) //' $f | cut -d' ' -f1; done",
+        )
+        assert states.exit_code == 0
+        assert "Z" not in states.stdout.split(), states.stdout
+        assert runtime.exec(instance_id, "exit 7").exit_code == 7
+        assert runtime.exec(instance_id, "sleep 0.5 & exit 3").exit_code == 3
+        assert runtime.exec(instance_id, "kill -9 $$").exit_code == 137
+    finally:
+        runtime.delete(instance_id)
+
+
 def test_exec_timeout_kills_processes_started_during_the_kill():
     """A child that keeps starting processes starts more between the listing
     of the command's processes and its own kill. Those are killed too."""
