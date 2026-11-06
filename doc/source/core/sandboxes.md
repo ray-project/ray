@@ -341,7 +341,9 @@ The cache is bounded so that a node that runs many distinct images doesn't fill 
 
 ### Place sandboxes on the node that caches their image
 
-A cold pull of a large image takes a minute or more, and every node that runs an image caches its own copy. So that sandboxes of one image share a node's cache, {func}`~ray.experimental.sandbox.create` and the HTTP and gRPC APIs prefer, for each image, one node among the nodes that could host the sandbox. The choice is a hash of the image and the node IDs, so every process picks the same node without coordination, even for a burst of sandboxes that start before any pull finishes, and a node that joins or leaves the cluster moves only a share of the images. The preference is soft: when that node lacks the resources for another sandbox, Ray schedules it as usual.
+A cold pull of a large image takes a minute or more, and every node that runs an image caches its own copy. So that sandboxes of one image share a node's cache, {func}`~ray.experimental.sandbox.create` and the HTTP and gRPC APIs prefer one node for each image, chosen among the nodes that could host the sandbox. The choice is a hash of the image and the node IDs, so every process picks the same node without coordination. That holds even for a burst of sandboxes that start before any pull finishes. A node that joins or leaves the cluster moves only a share of the images. The preference is soft. When that node lacks the resources for another sandbox, Ray schedules it as usual.
+
+Ray doesn't apply the preference to an image in a local tar archive, because the archive is on one node only. It also doesn't apply it when the caller runs in a placement group.
 
 An actor that creates sandboxes with `SandboxRuntime` gets the same preference from {func}`~ray.experimental.sandbox.image_scheduling_strategy`. Pass it the actor's resource requests, so that only nodes that can host the actor count:
 
