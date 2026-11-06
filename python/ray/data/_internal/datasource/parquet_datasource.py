@@ -69,6 +69,7 @@ from ray.data.datasource.partitioning import (
     Partitioning,
     PathPartitionFilter,
     PathPartitionParser,
+    _partition_field_types_to_pa_schema,
 )
 from ray.data.datasource.path_util import _resolve_paths_and_filesystem
 from ray.data.expressions import Expr
@@ -1310,6 +1311,21 @@ def _parse_partition_column_values(
             field_name: value
             for field_name, value in partitions.items()
             if field_name in partition_columns
+        }
+
+    if None in partitions.values():
+        import pyarrow as pa
+
+        # Type a null partition value so `fill_column` doesn't create a
+        # null-typed column.
+        schema = _partition_field_types_to_pa_schema(
+            list(partitions), partitioning.field_types
+        )
+        partitions = {
+            field: pa.scalar(None, type=schema.field(field).type)
+            if value is None
+            else value
+            for field, value in partitions.items()
         }
 
     return partitions

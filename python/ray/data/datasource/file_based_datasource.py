@@ -40,6 +40,7 @@ from ray.data.datasource.partitioning import (
     Partitioning,
     PathPartitionFilter,
     PathPartitionParser,
+    _partition_field_types_to_pa_schema,
 )
 from ray.data.datasource.path_util import (
     _has_file_extension,
@@ -300,10 +301,14 @@ class FileBasedDatasource(Datasource):
             fs = _unwrap_s3_serialization_workaround(filesystem)
 
             for read_path in read_paths:
-                partitions: Dict[str, str] = {}
+                partitions: Dict[str, Any] = {}
+                partition_schema = None
                 if partitioning is not None:
                     parse = PathPartitionParser(partitioning)
                     partitions = parse(read_path)
+                    partition_schema = _partition_field_types_to_pa_schema(
+                        list(partitions), partitioning.field_types
+                    )
 
                 # `iterate_with_retry` skips the blocks that a failed attempt
                 # already yielded, so every attempt has to replay the same blocks
@@ -326,7 +331,7 @@ class FileBasedDatasource(Datasource):
                     match=self._data_context.retried_io_errors,
                 ):
                     if partitions:
-                        block = _add_partitions(block, partitions)
+                        block = _add_partitions(block, partitions, partition_schema)
                     if self._include_paths:
                         block_accessor = BlockAccessor.for_block(block)
                         block = block_accessor.fill_column("path", read_path)
@@ -484,20 +489,24 @@ class FileBasedDatasource(Datasource):
 
 
 def _add_partitions(
-    data: Union["pyarrow.Table", "pd.DataFrame"], partitions: Dict[str, Any]
+    data: Union["pyarrow.Table", "pd.DataFrame"],
+    partitions: Dict[str, Any],
+    partition_schema: Optional["pyarrow.Schema"] = None,
 ) -> Union["pyarrow.Table", "pd.DataFrame"]:
     import pandas as pd
     import pyarrow as pa
 
     assert isinstance(data, (pa.Table, pd.DataFrame))
     if isinstance(data, pa.Table):
-        return _add_partitions_to_table(data, partitions)
+        return _add_partitions_to_table(data, partitions, partition_schema)
     if isinstance(data, pd.DataFrame):
         return _add_partitions_to_dataframe(data, partitions)
 
 
 def _add_partitions_to_table(
-    table: "pyarrow.Table", partitions: Dict[str, Any]
+    table: "pyarrow.Table",
+    partitions: Dict[str, Any],
+    partition_schema: Optional["pyarrow.Schema"] = None,
 ) -> "pyarrow.Table":
     import pyarrow as pa
     import pyarrow.compute as pc
@@ -505,8 +514,15 @@ def _add_partitions_to_table(
     column_names = set(table.column_names)
     for field, value in partitions.items():
         column = pa.array([value] * len(table))
+        if value is None and partition_schema is not None:
+            # Type a null partition value so its column isn't null-typed.
+            column = column.cast(partition_schema.field(field).type)
         if field in column_names:
             column_type = table.schema.field(field).type
+            if value is None and pa.types.is_null(column_type):
+                # CSV and JSON read an all-null column as null-typed. Keep the
+                # partition column's type.
+                column_type = column.type
             try:
                 column = column.cast(column_type)
             except (pa.ArrowInvalid, pa.ArrowNotImplementedError) as e:
@@ -515,8 +531,13 @@ def _add_partitions_to_table(
                     f"to target type {column_type}."
                 ) from e
 
-            values_are_equal = pc.all(pc.equal(column, table[field]))
-            values_are_equal = values_are_equal.as_py()
+            if value is None:
+                # `pc.equal` returns null for null inputs, so check that the file's
+                # values are all null.
+                values_are_equal = table[field].null_count == len(table)
+            else:
+                values_are_equal = pc.all(pc.equal(column, table[field]))
+                values_are_equal = values_are_equal.as_py()
 
             if not values_are_equal:
                 raise ValueError(
@@ -542,9 +563,16 @@ def _add_partitions_to_dataframe(
         column = pd.Series(data=[value] * len(df), name=field)
 
         if field in df:
-            column = column.astype(df[field].dtype)
-            mask = df[field].notna()
-            if not df[field][mask].equals(column[mask]):
+            if value is None:
+                # Casting None to the file's dtype (bool -> False) would hide a
+                # conflict, so a null partition only matches an all-null column.
+                conflict = df[field].notna().any()
+                column = df[field]
+            else:
+                column = column.astype(df[field].dtype)
+                mask = df[field].notna()
+                conflict = not df[field][mask].equals(column[mask])
+            if conflict:
                 raise ValueError(
                     f"Partition column {field} exists in table data, but partition "
                     f"value '{value}' is different from in-data values: "

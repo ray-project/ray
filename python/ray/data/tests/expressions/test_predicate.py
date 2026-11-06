@@ -214,6 +214,18 @@ class TestPredicateIntegration:
                 "membership_filter",
             ),
             pytest.param(
+                col("category").is_in(["A", "B"]),
+                [{"category": None}, {"category": None}],
+                [False, False],
+                "membership_filter_all_null",
+            ),
+            pytest.param(
+                col("category").is_in([1, 2]),
+                [{"category": None}, {"category": None}],
+                [False, False],
+                "membership_filter_all_null_ints",
+            ),
+            pytest.param(
                 (col("score") >= 50) & (col("grade") != "F"),
                 [
                     {"score": 45, "grade": "F"},
