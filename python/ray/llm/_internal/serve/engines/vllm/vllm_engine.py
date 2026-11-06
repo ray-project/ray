@@ -2,13 +2,16 @@ import argparse
 import dataclasses
 import inspect
 import json
+import os
 import types
 import typing
+from contextlib import contextmanager
 from typing import (
     TYPE_CHECKING,
     Any,
     AsyncGenerator,
     Dict,
+    Iterator,
     List,
     Literal,
     Optional,
@@ -198,11 +201,41 @@ def _resolve_hf_model_id_from_mirror(engine_config: "VLLMEngineConfig") -> None:
         )
 
 
+@contextmanager
+def _env_override(**overrides: Optional[str]) -> Iterator[None]:
+    """Set (or, with ``None``, unset) environment variables for the block."""
+    saved = {name: os.environ.get(name) for name in overrides}
+    try:
+        for name, value in overrides.items():
+            if value is None:
+                os.environ.pop(name, None)
+            else:
+                os.environ[name] = value
+        yield
+    finally:
+        for name, value in saved.items():
+            if value is None:
+                os.environ.pop(name, None)
+            else:
+                os.environ[name] = value
+
+
 def _get_vllm_engine_config(
     llm_config: LLMConfig,
     *,
     device_type: Optional[str] = None,
+    model_config_only: bool = False,
 ) -> Tuple["AsyncEngineArgs", "VllmConfig"]:
+    """Build the deployment's vLLM config.
+
+    With ``model_config_only``, every section except the model config is left at
+    its default, for callers that only tokenize, such as the KV-aware router's
+    ``Tokenizer``. That replica can run on a CPU-only node (every Serve head runs
+    one), where engine settings fail validation: DSpark speculative decoding
+    needs Model Runner V2, which needs a GPU Triton driver.
+    ``VLLM_USE_V2_MODEL_RUNNER``, which the replica inherits from the
+    deployment's runtime_env, is unset for the same reason.
+    """
     engine_config = llm_config.get_engine_config()
     _resolve_hf_model_id_from_mirror(engine_config)
 
@@ -218,9 +251,17 @@ def _get_vllm_engine_config(
             engine_config.get_initialization_kwargs()
         )
         async_engine_args = vllm.engine.arg_utils.AsyncEngineArgs(**engine_kwargs)
-        vllm_engine_config = async_engine_args.create_engine_config(
-            usage_context=UsageContext.OPENAI_API_SERVER
-        )
+        if model_config_only:
+            from vllm.config import VllmConfig
+
+            with _env_override(VLLM_USE_V2_MODEL_RUNNER=None):
+                vllm_engine_config = VllmConfig(
+                    model_config=async_engine_args.create_model_config()
+                )
+        else:
+            vllm_engine_config = async_engine_args.create_engine_config(
+                usage_context=UsageContext.OPENAI_API_SERVER
+            )
     except Exception as e:
         # vLLM's ModelConfig is a pydantic dataclass; its ValidationError holds an
         # unpicklable ArgsKwargs and cannot cross the Ray task boundary. Re-raise as

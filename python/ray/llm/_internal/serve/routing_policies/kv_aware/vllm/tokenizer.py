@@ -1,5 +1,4 @@
-import os
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union, get_args
+from typing import Any, Dict, List, Optional, Union, get_args
 
 import jinja2
 from pydantic import ValidationError
@@ -20,15 +19,9 @@ from vllm.renderers.online_renderer import OnlineRenderer
 
 from ray.llm._internal.serve.core.configs.llm_config import LLMConfig
 from ray.llm._internal.serve.engines.vllm.vllm_engine import (
-    _normalize_vllm_engine_kwargs,
-    _resolve_hf_model_id_from_mirror,
+    _get_vllm_engine_config,
 )
 from ray.llm._internal.serve.observability.logging import get_logger
-
-if TYPE_CHECKING:
-    from vllm.config import VllmConfig
-
-    from ray.llm._internal.serve.engines.vllm.vllm_models import VLLMEngineConfig
 
 logger = get_logger(__name__)
 
@@ -88,46 +81,6 @@ def build_tokenize_request(
         return None
 
 
-def _build_tokenizer_vllm_config(engine_config: "VLLMEngineConfig") -> "VllmConfig":
-    """Build the vLLM config the router's renderer needs: the deployment's model
-    config, with every other section at its default.
-
-    Tokenizing and chat rendering read only the model config. The engine
-    settings (speculative decoding, compilation, KV transfer and offload) are
-    validated against the engine's hardware, which the router doesn't have: on a
-    CPU-only node, DSpark speculative decoding needs Model Runner V2, which
-    needs a GPU Triton driver, so the full engine config can't be built there.
-
-    ``VLLM_USE_V2_MODEL_RUNNER`` is cleared while building, because the router
-    replica inherits the deployment's runtime_env and a forced V2 would fail the
-    same check. The router never runs a model, so vLLM's choice doesn't matter.
-    """
-    from vllm.config import VllmConfig
-    from vllm.engine.arg_utils import AsyncEngineArgs
-    from vllm.platforms import current_platform
-
-    _resolve_hf_model_id_from_mirror(engine_config)
-    # The router tokenizes on CPU wherever it runs, as it did when it built
-    # the full engine config with device_type="cpu".
-    current_platform.device_type = "cpu"
-
-    saved = os.environ.pop("VLLM_USE_V2_MODEL_RUNNER", None)
-    try:
-        engine_args = AsyncEngineArgs(
-            **_normalize_vllm_engine_kwargs(engine_config.get_initialization_kwargs())
-        )
-        return VllmConfig(model_config=engine_args.create_model_config())
-    except Exception as e:
-        # As in _get_vllm_engine_config: vLLM's pydantic ValidationError can't
-        # be pickled, so re-raise the message as a plain error.
-        raise RuntimeError(
-            f"Failed to create vLLM config for tokenizing: {e}"
-        ) from None
-    finally:
-        if saved is not None:
-            os.environ["VLLM_USE_V2_MODEL_RUNNER"] = saved
-
-
 class Tokenizer:
     """Tokenizes requests with vLLM's ``OnlineRenderer``.
 
@@ -140,7 +93,9 @@ class Tokenizer:
 
     def __init__(self, llm_config: LLMConfig):
         engine_config = llm_config.get_engine_config()
-        vllm_config = _build_tokenizer_vllm_config(engine_config)
+        _, vllm_config = _get_vllm_engine_config(
+            llm_config, device_type="cpu", model_config_only=True
+        )
         self._model_config = vllm_config.model_config
 
         frontend_args = FrontendArgs(**engine_config.frontend_kwargs)
