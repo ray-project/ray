@@ -400,6 +400,12 @@ class OpState:
         # _waiting_consumers_lock since += is not atomic.
         self._num_waiting_consumers: int = 0
         self._waiting_consumers_lock = threading.Lock()
+        # Set when a consumer takes output, starts waiting for it, or reports
+        # fewer buffered bytes than before. The scheduling loop clears it before
+        # reading budgets and waits on it while every active task is
+        # output-backpressured, or while it has nothing to wait on, pull or
+        # dispatch.
+        self.consumer_activity = threading.Event()
 
     @property
     def num_waiting_consumers(self) -> int:
@@ -563,11 +569,13 @@ class OpState:
                     # TODO: Abstract queue-releated metrics to queue.
                     self.op.metrics.num_external_outqueue_blocks -= len(ref.blocks)
                     self.op.metrics.num_external_outqueue_bytes -= ref.size_bytes()
+                    self.consumer_activity.set()
                     return ref
                 if not starving:
                     # Queue is empty — mark this consumer as starving.
                     with self._waiting_consumers_lock:
                         self._num_waiting_consumers += 1
+                    self.consumer_activity.set()
                     starving = True
                 time.sleep(0.01)
         finally:
@@ -929,12 +937,35 @@ def process_completed_tasks(
             raise e from None
 
     if active_tasks:
-        ready, _ = ray.wait(
-            list(active_tasks.keys()),
-            num_returns=len(active_tasks),
-            fetch_local=False,
-            timeout=WAIT_FOR_TASK_COMPLETION_TIMEOUT_S,
-        )
+        # A task whose operator may read 0 bytes this iteration can't make
+        # progress, yet its streaming generator usually has its next output
+        # ready, so waiting on it would return immediately and busy-spin the
+        # scheduling loop. Wait only on the other tasks. If there are none, the
+        # consumer is the usual source of new capacity, so wait for its activity
+        # instead. Other changes (the liveness guard's release interval, cluster
+        # resources) are picked up when the timeout expires. Still process the
+        # output-backpressured tasks below so `on_data_ready(0)` keeps tracking
+        # their backpressure time and drained tasks still reach the fetcher.
+        waitables: List[Waitable] = []
+        output_backpressured: List[Waitable] = []
+        for waitable, (state, task) in active_tasks.items():
+            if isinstance(task, DataOpTask) and remaining_output_budget.get(state) == 0:
+                output_backpressured.append(waitable)
+            else:
+                waitables.append(waitable)
+
+        if waitables:
+            ready, _ = ray.wait(
+                waitables,
+                num_returns=len(waitables),
+                fetch_local=False,
+                timeout=WAIT_FOR_TASK_COMPLETION_TIMEOUT_S,
+            )
+        else:
+            output_state = topology[terminal_operator_from_topology(topology)]
+            output_state.consumer_activity.wait(WAIT_FOR_TASK_COMPLETION_TIMEOUT_S)
+            ready = []
+        ready += output_backpressured
 
         # Organize tasks by the operator they belong to, and sort them by task index.
         # So that we'll process them in a deterministic order.
