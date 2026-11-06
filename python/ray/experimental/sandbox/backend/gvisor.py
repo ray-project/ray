@@ -34,6 +34,7 @@ from ray.experimental.sandbox._internal import cdi, egress_guard, overlayfs
 from ray.experimental.sandbox._internal.cgroup import (
     SandboxCgroup,
     SandboxCgroupManager,
+    pids_limit,
     wrap_command,
 )
 from ray.experimental.sandbox._internal.image_utils import (
@@ -208,6 +209,18 @@ class _RestoreImage(NamedTuple):
     background: bool = False
     # Read the image with O_DIRECT.
     direct: bool = False
+
+
+def _node_caps_tasks() -> bool:
+    """Whether RAY_SANDBOX_PIDS_MAX puts every sandbox in a cgroup.
+
+    A malformed value counts as no cap here: sandbox creation already refuses
+    it, and commands for existing sandboxes shouldn't fail over it.
+    """
+    try:
+        return pids_limit() > 0
+    except RuntimeError:
+        return False
 
 
 def _runsc_args(rootless: bool, ignore_cgroups: bool) -> List[str]:
@@ -590,9 +603,18 @@ class GVisorSandboxBackend(BaseSandboxBackend):
     def _cgroup_manager_for(
         self, config: SandboxConfig
     ) -> Optional[SandboxCgroupManager]:
-        """Return the cgroup manager for a sandbox with limits, or None."""
+        """Return the cgroup manager for a sandbox with limits, or None.
+
+        A node that sets RAY_SANDBOX_PIDS_MAX limits every sandbox.
+        """
         memory = parse_memory_bytes(config.memory) or 0
-        if config.cpu <= 0 and memory <= 0:
+        try:
+            pids = pids_limit()
+        except RuntimeError as err:
+            raise SandboxCreationError(
+                f"Cannot enforce sandbox resources: {err}"
+            ) from err
+        if config.cpu <= 0 and memory <= 0 and pids <= 0:
             return None
         cgroups = SandboxCgroupManager()
         try:
@@ -2077,11 +2099,13 @@ class GVisorSandboxBackend(BaseSandboxBackend):
         """Build the runsc global flags shared by run/exec/kill/delete."""
         return _runsc_args(
             rootless=config.rootless,
-            # Ray puts a sandbox with limits in a cgroup of its own, so runsc
-            # must leave cgroups alone.
+            # Ray puts a sandbox with limits, and every sandbox on a node that
+            # caps tasks, in a cgroup of its own, so runsc must leave cgroups
+            # alone.
             ignore_cgroups=(
                 config.cpu > 0
                 or (parse_memory_bytes(config.memory) or 0) > 0
+                or _node_caps_tasks()
                 or getattr(config, "_ignore_cgroups", False)
                 or os.environ.get("RAY_SANDBOX_IGNORE_CGROUPS") == "1"
             ),

@@ -45,6 +45,7 @@ def shared(tmp_path, monkeypatch):
                 "memory.max",
                 "memory.swap.max",
                 "memory.oom.group",
+                "pids.max",
                 "cgroup.kill",
                 "cgroup.procs",
                 "cgroup.events",
@@ -183,6 +184,51 @@ def test_launcher_joins_the_cgroup_and_restricts_cpus(tmp_path):
     assert affinity == str([cpu])
     # The launcher wrote its own PID, which exec kept for the command.
     assert (tmp_path / "cgroup.procs").read_text() == pid.strip()
+
+
+def test_a_node_pids_limit_caps_every_sandbox(manager, shared, monkeypatch):
+    """RAY_SANDBOX_PIDS_MAX puts every sandbox in a cgroup with that
+    pids.max, limits or none, once the subtree has the pids controller."""
+    monkeypatch.delenv("RAY_SANDBOX_IGNORE_CGROUPS", raising=False)
+    backend = GVisorSandboxBackend(image_manager=Mock())
+    unlimited = SandboxConfig("busybox")
+    assert backend._cgroup_manager_for(unlimited) is None
+    assert "--ignore-cgroups" not in backend._runsc_base_args(unlimited)
+    monkeypatch.setenv("RAY_SANDBOX_PIDS_MAX", "4096")
+    with pytest.raises(SandboxCreationError, match="pids"):
+        backend._cgroup_manager_for(unlimited)
+    (shared / "cgroup.subtree_control").write_text("cpu memory pids")
+    assert backend._cgroup_manager_for(unlimited) is not None
+    # runsc leaves the sandbox in the cgroup Ray puts it in.
+    assert "--ignore-cgroups" in backend._runsc_base_args(unlimited)
+    sandbox = manager.allocate("ray-sandbox-000000000001", 0, 0, [])
+    assert (sandbox.path / "pids.max").read_text() == "4096"
+    (sandbox.path / "cgroup.procs").write_text("321\n")
+    sandbox.verify(321)
+    monkeypatch.setenv("RAY_SANDBOX_PIDS_MAX", "lots")
+    with pytest.raises(SandboxCreationError, match="RAY_SANDBOX_PIDS_MAX"):
+        backend._cgroup_manager_for(unlimited)
+    # Commands for existing sandboxes still build their arguments.
+    assert "--ignore-cgroups" not in backend._runsc_base_args(unlimited)
+
+
+def test_resource_preflight_checks_a_node_pids_limit(shared, monkeypatch):
+    """With RAY_SANDBOX_PIDS_MAX set, the preflight that runs before an image
+    pull checks the cgroup subtree for every sandbox, as create does."""
+    from ray.experimental.sandbox import runtime as runtime_mod
+
+    monkeypatch.setattr(runtime_mod, "ImageManager", Mock)
+    monkeypatch.setattr(runtime_mod, "GVisorSandboxBackend", Mock)
+    runtime = runtime_mod.SandboxRuntime()
+    runtime.check_resources()
+    monkeypatch.setenv("RAY_SANDBOX_PIDS_MAX", "4096")
+    with pytest.raises(SandboxCreationError, match="pids"):
+        runtime.check_resources()
+    (shared / "cgroup.subtree_control").write_text("cpu memory pids")
+    runtime.check_resources()
+    monkeypatch.setenv("RAY_SANDBOX_PIDS_MAX", "lots")
+    with pytest.raises(SandboxCreationError, match="RAY_SANDBOX_PIDS_MAX"):
+        runtime.check_resources()
 
 
 @pytest.mark.parametrize("limited", [False, True])
