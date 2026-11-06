@@ -23,6 +23,7 @@ storage
 config
 scheduling
 configuring-autoscaling
+idle-termination
 configuring-ippr
 label-based-scheduling
 gcs-ft
@@ -69,6 +70,7 @@ To learn the basics of Ray on Kubernetes, we recommend taking a look at the {ref
 * {ref}`kuberay-config`
 * {ref}`kuberay-scheduling`
 * {ref}`kuberay-autoscaling`
+* {ref}`kuberay-idle-termination`
 * {ref}`kuberay-gpu`
 * {ref}`kuberay-tpu`
 * {ref}`kuberay-gcs-ft`
