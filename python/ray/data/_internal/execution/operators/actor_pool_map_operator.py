@@ -86,6 +86,31 @@ _ACTOR_STATE_DEAD = gcs_pb2.ActorTableData.ActorState.DEAD
 _ACTOR_STATE_ALIVE = gcs_pb2.ActorTableData.ActorState.ALIVE
 _ACTOR_STATE_RESTARTING = gcs_pb2.ActorTableData.ActorState.RESTARTING
 
+# Ray Core options that apply to each map *task*, not actor creation.
+# `ray.remote(**actor_args)` rejects these;
+_ACTOR_TASK_REMOTE_ARG_KEYS: Tuple[str, ...] = (
+    "_generator_backpressure_num_objects",
+    "_num_objects_per_yield",
+    "retry_exceptions",
+    "max_retries",
+    "num_returns",
+    "max_calls",
+)
+
+
+def _pop_actor_task_remote_args(
+    ray_remote_args: Dict[str, Any],
+) -> Dict[str, Any]:
+    """Move per-task remote args out of ``ray_remote_args``.
+
+    Mutates ``ray_remote_args`` in place and returns the popped task args.
+    """
+    return {
+        key: ray_remote_args.pop(key)
+        for key in _ACTOR_TASK_REMOTE_ARG_KEYS
+        if key in ray_remote_args
+    }
+
 
 def get_map_worker_cls_name(op_name: str) -> str:
     """Return the dynamic class name used for actor pool map workers."""
@@ -121,7 +146,6 @@ class ActorPoolMapOperator(MapOperator, ReportsExtraResourceUsage):
         map_task_kwargs: Optional[Dict[str, Any]] = None,
         ray_remote_args_fn: Optional[Callable[[], Dict[str, Any]]] = None,
         ray_remote_args: Optional[Dict[str, Any]] = None,
-        ray_actor_task_remote_args: Optional[Dict[str, Any]] = None,
         target_max_block_size_override: Optional[int] = None,
         on_start: Optional[Callable[[Optional["pa.Schema"]], None]] = None,
         default_logical_memory_enabled: bool = False,
@@ -149,9 +173,9 @@ class ActorPoolMapOperator(MapOperator, ReportsExtraResourceUsage):
                 prior to initializing the worker. Args returned from this dict will
                 always override the args in ``ray_remote_args``. Note: this is an
                 advanced, experimental feature.
-            ray_remote_args: Customize the ray remote args for this op's tasks.
-                See :func:`ray.remote` for details.
-            ray_actor_task_remote_args: Ray Core options passed to map actor tasks.
+            ray_remote_args: Customize the ray remote args for this op. Per-task
+                options (see ``_ACTOR_TASK_REMOTE_ARG_KEYS``) are routed onto
+                actor tasks; the rest are actor-creation options.
             target_max_block_size_override: The target maximum number of bytes to
                 include in an output block.
             on_start: Optional callback invoked with the schema from the first input
@@ -160,6 +184,9 @@ class ActorPoolMapOperator(MapOperator, ReportsExtraResourceUsage):
                 with a default logical ``memory``. The method for choosing the
                 default is an implementation detail.
         """
+        ray_remote_args = dict(ray_remote_args or {})
+        actor_task_remote_args = _pop_actor_task_remote_args(ray_remote_args)
+
         super().__init__(
             map_transformer,
             input_op,
@@ -191,7 +218,7 @@ class ActorPoolMapOperator(MapOperator, ReportsExtraResourceUsage):
                 )
             self._ray_remote_args["max_concurrency"] = max_concurrency
         self._ray_actor_task_remote_args = self._apply_default_actor_task_remote_args(
-            ray_actor_task_remote_args, self.data_context
+            actor_task_remote_args, self.data_context
         )
         map_worker_cls_name = get_map_worker_cls_name(self.name)
         # We set the actor class name to include operator name to disambiguate
@@ -535,6 +562,11 @@ class ActorPoolMapOperator(MapOperator, ReportsExtraResourceUsage):
         remote_args = self._ray_remote_args.copy()
         if self._ray_remote_args_fn:
             remote_args.update(self._ray_remote_args_fn())
+        # ``ray_remote_args_fn`` can reintroduce per-task keys; route them
+        # onto actor tasks so actor creation / ``.options()`` stays valid.
+        extra_task_args = _pop_actor_task_remote_args(remote_args)
+        if extra_task_args:
+            self._ray_actor_task_remote_args.update(extra_task_args)
         remote_args = merge_label_selector(
             remote_args, self.data_context.execution_options.label_selector
         )

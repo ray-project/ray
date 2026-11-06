@@ -43,6 +43,7 @@ from ray.data._internal.compute import (
     ActorPoolStrategy,
     ComputeStrategy,
     TaskPoolStrategy,
+    maybe_promote_compute_strategy,
 )
 from ray.data._internal.execution.bundle_queue import (
     BaseBundleQueue,
@@ -438,6 +439,11 @@ class MapOperator(LineageReconstructionMixin, PhysicalOperator, ABC):
 
         if compute_strategy is None:
             compute_strategy = TaskPoolStrategy()
+
+        # The actor-only backend transparently promotes ``TaskPoolStrategy`` to
+        # ``ActorPoolStrategy`` here; this is a no-op otherwise. The decision is
+        # self-gated inside the helper so this factory stays backend-agnostic.
+        compute_strategy = maybe_promote_compute_strategy(compute_strategy)
 
         # Apply per-block limit to the map transformer if set
         if per_block_limit is not None:
