@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import functools
 import logging
 import time
 import uuid
@@ -73,9 +74,12 @@ from ray.data._internal.utils.heapdict import heapdict
 from ray.data.block import Block, BlockMetadata
 from ray.data.context import (
     DEFAULT_ACTOR_MAX_TASKS_IN_FLIGHT_TO_MAX_CONCURRENCY_FACTOR,
+    DEFAULT_PLACEMENT_GROUP_STRATEGY,
     DataContext,
 )
 from ray.types import ObjectRef
+from ray.util.placement_group import PlacementGroup
+from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 
 logger = logging.getLogger(__name__)
 
@@ -125,6 +129,8 @@ class ActorPoolMapOperator(MapOperator, ReportsExtraResourceUsage):
         target_max_block_size_override: Optional[int] = None,
         on_start: Optional[Callable[[Optional["pa.Schema"]], None]] = None,
         default_logical_memory_enabled: bool = False,
+        placement_group_bundles: Optional[List[Dict[str, float]]] = None,
+        placement_group_strategy: Optional[str] = None,
     ):
         """Create an ActorPoolMapOperator instance.
 
@@ -159,6 +165,13 @@ class ActorPoolMapOperator(MapOperator, ReportsExtraResourceUsage):
             default_logical_memory_enabled: If ``True``, the operator launches actors
                 with a default logical ``memory``. The method for choosing the
                 default is an implementation detail.
+            placement_group_bundles: If specified, the actor pool creates one
+                placement group per actor from these bundles and schedules the
+                actor into the first bundle, capturing child tasks and actors.
+                The pool owns the placement group lifecycle: it's removed when
+                the actor is released from the pool.
+            placement_group_strategy: The strategy of the placement groups
+                created from ``placement_group_bundles``. Defaults to ``PACK``.
         """
         super().__init__(
             map_transformer,
@@ -202,6 +215,8 @@ class ActorPoolMapOperator(MapOperator, ReportsExtraResourceUsage):
         # class per operator with a unique name.
         self._map_worker_cls = type(map_worker_cls_name, (_MapWorker,), {})
 
+        self._placement_group_bundles = placement_group_bundles
+        self._placement_group_strategy = placement_group_strategy
         self._actor_pool = self._create_actor_pool(compute_strategy)
         # A queue of bundles awaiting dispatch to actors.
         self._bundle_queue = create_bundle_queue()
@@ -228,6 +243,16 @@ class ActorPoolMapOperator(MapOperator, ReportsExtraResourceUsage):
     def _output_queues(self) -> List["BaseBundleQueue"]:
         return [self._output_queue]
 
+    @property
+    def placement_group_bundles(self) -> Optional[List[Dict[str, float]]]:
+        """Bundles reserved by each actor's placement group, if configured."""
+        return self._placement_group_bundles
+
+    @property
+    def placement_group_strategy(self) -> Optional[str]:
+        """Configured placement strategy for each actor's placement group."""
+        return self._placement_group_strategy
+
     def _create_actor_pool(
         self, compute_strategy: ActorPoolStrategy
     ) -> "AutoscalingActorPool":
@@ -236,16 +261,37 @@ class ActorPoolMapOperator(MapOperator, ReportsExtraResourceUsage):
             create_actor_fn=self._start_actor,
             config=config,
             map_worker_cls_name=self._map_worker_cls_name,
+            placement_group_bundles=self._placement_group_bundles,
+            placement_group_strategy=self._placement_group_strategy,
         )
+
+    @functools.cached_property
+    def _placement_group_resource_usage(self) -> Optional[ExecutionResources]:
+        """Resources reserved by a single actor's placement group, or ``None``.
+
+        When a per-actor placement group is provisioned, the cluster reserves
+        the sum of all bundles for that actor's lifetime. Attributing the full
+        bundle sum to the actor keeps resource-manager budgeting and autoscaling
+        accurate.
+        """
+        if self._placement_group_bundles is None:
+            return None
+        return ExecutionResources.combine_sum(
+            ExecutionResources.from_resource_dict(bundle)
+            for bundle in self._placement_group_bundles
+        )
+
+    def _per_actor_resource_usage(
+        self, ray_remote_args: Dict[str, Any]
+    ) -> ExecutionResources:
+        if self._placement_group_resource_usage is not None:
+            return self._placement_group_resource_usage
+        return ExecutionResources.from_resource_dict(ray_remote_args)
 
     def _create_actor_pool_config(
         self, compute_strategy: ActorPoolStrategy
     ) -> "AutoscalingActorConfig":
-        per_actor_resource_usage = ExecutionResources(
-            cpu=self._ray_remote_args.get("num_cpus"),
-            gpu=self._ray_remote_args.get("num_gpus"),
-            memory=self._ray_remote_args.get("memory"),
-        )
+        per_actor_resource_usage = self._per_actor_resource_usage(self._ray_remote_args)
         max_actor_concurrency = self._ray_remote_args.get("max_concurrency", 1)
         config = AutoscalingActorConfig(
             min_size=compute_strategy.min_size,
@@ -340,13 +386,19 @@ class ActorPoolMapOperator(MapOperator, ReportsExtraResourceUsage):
         return self._actor_pool.can_schedule_task()
 
     def _start_actor(
-        self, labels: Dict[str, str], logical_actor_id: LogicalActorId
+        self,
+        labels: Dict[str, str],
+        logical_actor_id: LogicalActorId,
+        placement_group: Optional[PlacementGroup] = None,
     ) -> Tuple[ActorHandle, ObjectRef, ExecutionResources]:
         """Start a new actor and add it to the actor pool as a pending actor.
 
         Args:
             labels: The key-value labels to launch the actor with.
             logical_actor_id: The logical id of the actor.
+            placement_group: If specified, the actor's own placement group. The
+                actor is scheduled into the first bundle, and child tasks and
+                actors it spawns are captured into the same placement group.
 
         Returns:
             A tuple of the actor handle, the object ref to the actor's location,
@@ -354,12 +406,19 @@ class ActorPoolMapOperator(MapOperator, ReportsExtraResourceUsage):
         """
         assert self._actor_cls is not None
         actual_remote_args = dict(self._merge_ray_remote_args())
+        if placement_group is not None:
+            # NOTE: This intentionally overrides any `scheduling_strategy` produced
+            # by `ray_remote_args_fn`, so that the actor always lands in its own
+            # placement group.
+            actual_remote_args[
+                "scheduling_strategy"
+            ] = PlacementGroupSchedulingStrategy(
+                placement_group=placement_group,
+                placement_group_bundle_index=0,
+                placement_group_capture_child_tasks=True,
+            )
         extra_labels = actual_remote_args.pop("_labels", {})
-        actor_resource_usage = ExecutionResources(
-            cpu=actual_remote_args.get("num_cpus", 0),
-            gpu=actual_remote_args.get("num_gpus", 0),
-            memory=actual_remote_args.get("memory", 0),
-        )
+        actor_resource_usage = self._per_actor_resource_usage(actual_remote_args)
         actor = self._actor_cls.options(
             _labels={self._OPERATOR_ID_LABEL_KEY: self.id, **labels, **extra_labels},
             **actual_remote_args,
@@ -581,9 +640,10 @@ class ActorPoolMapOperator(MapOperator, ReportsExtraResourceUsage):
         max_actors = self._actor_pool.max_size()
         assert min_actors is not None, min_actors
 
-        num_cpus_per_actor = self._ray_remote_args.get("num_cpus", 0)
-        num_gpus_per_actor = self._ray_remote_args.get("num_gpus", 0)
-        memory_per_actor = self._ray_remote_args.get("memory", 0)
+        per_actor_resource_usage = self._per_actor_resource_usage(self._ray_remote_args)
+        num_cpus_per_actor = per_actor_resource_usage.cpu
+        num_gpus_per_actor = per_actor_resource_usage.gpu
+        memory_per_actor = per_actor_resource_usage.memory
 
         min_resource_usage = ExecutionResources(
             cpu=num_cpus_per_actor * min_actors,
@@ -843,29 +903,49 @@ class _ActorPool(AutoscalingActorPool):
 
     def __init__(
         self,
-        create_actor_fn: "Callable[[Dict[str, str]], Tuple[ActorHandle, ObjectRef[Any], ExecutionResources]]",
+        create_actor_fn: "Callable[[Dict[str, str], LogicalActorId, Optional[PlacementGroup]], Tuple[ActorHandle, ObjectRef[Any], ExecutionResources]]",
         config: AutoscalingActorConfig,
         map_worker_cls_name: str = "MapWorker",
         debounce_period_s: int = _ACTOR_POOL_SCALE_DOWN_DEBOUNCE_PERIOD_S,
+        placement_group_bundles: Optional[List[Dict[str, float]]] = None,
+        placement_group_strategy: Optional[str] = None,
+        get_actor_state_fn: Optional[Callable[[ActorHandle], Optional[int]]] = None,
     ):
         """Initialize the actor pool.
 
         Args:
-            create_actor_fn: Callable that takes key-value labels as input and
-                creates an actor with those labels. Returns the actor handle, a
-                reference to the actor's node ID, and the actor's resource usage.
+            create_actor_fn: Callable that takes key-value labels, the logical
+                actor id, and an optional per-actor placement group as input
+                and creates an actor with those labels. Returns the actor
+                handle, a reference to the actor's node ID, and the actor's
+                resource usage.
             config: Configuration for the autoscaling actor pool, including
                 min/max/initial pool sizes, concurrency, and resource usage.
             map_worker_cls_name: Name of the map worker class for logging
                 purposes.
             debounce_period_s: Debounce period for scaling down after scaling
                 up.
+            placement_group_bundles: If specified, the pool creates one
+                placement group per actor from these bundles and passes it to
+                ``create_actor_fn``. The placement group is removed when the actor
+                is released from the pool, so reserved resources don't outlive
+                the actor.
+            placement_group_strategy: The strategy of the placement groups
+                created from ``placement_group_bundles``. Defaults to ``PACK``.
+            get_actor_state_fn: Test seam for injecting an actor-state reader.
+                Defaults to the actor handle's locally cached state.
         """
         super().__init__(config=config)
 
         self._create_actor_fn = create_actor_fn
+        self._get_actor_state_fn = get_actor_state_fn or (
+            lambda actor: actor._get_local_state()
+        )
         self._map_worker_cls_name = map_worker_cls_name
         self._debounce_period_s = debounce_period_s
+        self._placement_group_bundles = placement_group_bundles
+        self._placement_group_strategy = placement_group_strategy
+        self._actor_to_placement_group: Dict[ActorHandle, PlacementGroup] = {}
         # Timestamp of the last scale up action
         self._last_upscaled_at: Optional[float] = None
         self._last_downscaling_debounce_warning_ts: Optional[float] = None
@@ -1051,6 +1131,7 @@ class _ActorPool(AutoscalingActorPool):
                 self._pending_or_restarting_usage.subtract(usage)
             )
             self._actor_to_logical_id.pop(actor, None)
+            self._remove_actor_placement_group(actor)
             raise
         self._running_actors[actor] = _ActorState(
             num_tasks_in_flight=0,
@@ -1180,11 +1261,50 @@ class _ActorPool(AutoscalingActorPool):
     ) -> Tuple[ActorHandle, ObjectRef, ExecutionResources]:
         logical_actor_id = str(uuid.uuid4())
         labels = {self.get_logical_id_label_key(): logical_actor_id}
-        actor, ready_ref, resource_usage = self._create_actor_fn(
-            labels, logical_actor_id
-        )
+        placement_group = self._maybe_create_placement_group()
+        try:
+            actor, ready_ref, resource_usage = self._create_actor_fn(
+                labels, logical_actor_id, placement_group
+            )
+        except Exception:
+            # Clean up the placement group so it doesn't leak, but never let a
+            # cleanup failure mask the original actor-creation error.
+            if placement_group is not None:
+                try:
+                    ray.util.remove_placement_group(placement_group)
+                except Exception:
+                    logger.exception(
+                        "Failed to remove placement group after actor creation failed."
+                    )
+            raise
         self._actor_to_logical_id[actor] = logical_actor_id
+        if placement_group is not None:
+            self._actor_to_placement_group[actor] = placement_group
         return actor, ready_ref, resource_usage
+
+    def _maybe_create_placement_group(self) -> Optional[PlacementGroup]:
+        """Create the placement group for a single new actor, if configured."""
+        if self._placement_group_bundles is None:
+            return None
+        return ray.util.placement_group(
+            self._placement_group_bundles,
+            strategy=self._placement_group_strategy or DEFAULT_PLACEMENT_GROUP_STRATEGY,
+        )
+
+    def _remove_actor_placement_group(self, actor: ActorHandle):
+        """Remove the placement group associated with the actor."""
+        placement_group = self._actor_to_placement_group.pop(actor, None)
+        if placement_group is None:
+            return
+        try:
+            ray.util.remove_placement_group(placement_group)
+        except ValueError:
+            # ValueError thrown from ray.util.remove_placement_group means the
+            # placement group has already been removed. Non-fatal.
+            logger.debug(
+                f"Placement group {placement_group.id.hex()} for "
+                f"{self._map_worker_cls_name} was already removed."
+            )
 
     def _update_running_actor_state(self, actor: ActorHandle) -> bool:
         """Update running actor state. This is called for every actor
@@ -1196,7 +1316,7 @@ class _ActorPool(AutoscalingActorPool):
         Returns:
             True if the actor is dead (and should be released from the pool).
         """
-        actor_state = actor._get_local_state()
+        actor_state = self._get_actor_state_fn(actor)
 
         # 1) Check if actor is restarting
         running_actor_state = self._running_actors[actor]
@@ -1311,6 +1431,7 @@ class _ActorPool(AutoscalingActorPool):
                 self._pending_or_restarting_usage.subtract(usage)
             )
             del self._actor_to_logical_id[actor]
+            self._remove_actor_placement_group(actor)
             return True
         # No pending actors, so indicate to the caller that no actors were killed.
         return False
@@ -1336,6 +1457,7 @@ class _ActorPool(AutoscalingActorPool):
                 self._pending_or_restarting_usage.subtract(usage)
             )
             self._actor_to_logical_id.pop(actor, None)
+            self._remove_actor_placement_group(actor)
 
         if force:
             for actor in pending.values():
@@ -1396,6 +1518,12 @@ class _ActorPool(AutoscalingActorPool):
             self._pending_or_restarting_usage = (
                 self._pending_or_restarting_usage.subtract(usage)
             )
+
+        # Remove the actor's placement group (if any) so reserved resources
+        # don't outlive it. NOTE: removing the PG force-kills the actor even on
+        # the ref-counting path above, so a PG-backed actor can't be
+        # reconstructed for object lineage once it's released.
+        self._remove_actor_placement_group(actor)
 
     def _find_actor_with_locality(self, bundle: RefBundle) -> Optional[ActorHandle]:
         """Find the least-busy alive actor on the preferred node with the most data.
