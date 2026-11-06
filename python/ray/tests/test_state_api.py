@@ -82,7 +82,9 @@ from ray.util.state import (
 from ray.util.state.common import (
     ActorState,
     Humanify,
+    NodeState,
     ObjectState,
+    PlacementGroupState,
     RuntimeEnvState,
     StateResource,
     StateSchema,
@@ -93,9 +95,12 @@ from ray.util.state.common import (
 from ray.util.state.exception import DataSourceUnavailable, RayStateApiException
 from ray.util.state.state_cli import (
     AvailableFormat,
+    _get_terminal_width,
     _normalize_filter_keys,
     _parse_filter,
     format_list_api_output,
+    get_table_output,
+    output_with_format,
     ray_get,
     ray_list,
     summary_state_cli_group,
@@ -626,6 +631,177 @@ def test_runtime_env_state_humanify_creation_time_ms():
     assert state["creation_time_ms"] == "0:00:36.639000"
 
 
+_FULL_NODE_ID = "057ae8704b49ce135e8f6665d66f44c6a81572f7e9d6475cd507ab9f"
+
+
+def _fake_node(node_id=_FULL_NODE_ID, ip="10.121.130.4", gpu=None, head=False):
+    resources = {
+        "CPU": 4.0,
+        "memory": 8 * 2**30,
+        f"node:{ip}": 1.0,
+        "object_store_memory": 48 * 2**30,
+    }
+    if gpu is not None:
+        resources["GPU"] = gpu
+    return {
+        "node_id": node_id,
+        "node_ip": ip,
+        "is_head_node": head,
+        "state": "ALIVE",
+        "state_message": None,
+        "node_name": ip,
+        "resources_total": resources,
+        "labels": {"ray.io/node-group": "worker-group", "ray.io/node-id": node_id},
+        "start_time_ms": 1700000000000,
+        "end_time_ms": 0,
+    }
+
+
+def _list_nodes_output(nodes, format=AvailableFormat.DEFAULT, detail=False):
+    return output_with_format(nodes, schema=NodeState, format=format, detail=detail)
+
+
+@pytest.mark.parametrize("format", [AvailableFormat.DEFAULT, AvailableFormat.TABLE])
+def test_list_nodes_default_table_is_concise(monkeypatch, format):
+    """`ray list nodes` prints one line per node with the key resources as
+    their own columns, and without the state message, labels, row index or
+    the Stats/Table wrapper."""
+    monkeypatch.delenv("COLUMNS", raising=False)
+    nodes = [
+        _fake_node(gpu=1.0),
+        _fake_node(node_id="657f" + "a" * 52, ip="10.121.129.5", head=True),
+    ]
+    out = _list_nodes_output(nodes, format=format)
+    lines = out.splitlines()
+
+    assert lines[0].split() == [
+        "NODE_ID",
+        "NODE_IP",
+        "IS_HEAD_NODE",
+        "STATE",
+        "NODE_NAME",
+        "CPU",
+        "GPU",
+        "MEMORY",
+        "OBJ_STORE",
+    ]
+    # One header line plus exactly one line per node.
+    assert len(lines) == 1 + len(nodes)
+    for removed in ("Stats:", "Table:", "STATE_MESSAGE", "LABELS", "RESOURCES_TOTAL"):
+        assert removed not in out
+    # No terminal width constraint (not a tty), so the full ID is kept and the
+    # row starts with it (no row index).
+    assert lines[1].split() == [
+        _FULL_NODE_ID,
+        "10.121.130.4",
+        "False",
+        "ALIVE",
+        "10.121.130.4",
+        "4.0",
+        "1.0",
+        "8.000",
+        "GiB",
+        "48.000",
+        "GiB",
+    ]
+    # A node without GPUs shows 0.
+    assert lines[2].split()[:7] == [
+        "657f" + "a" * 52,
+        "10.121.129.5",
+        "True",
+        "ALIVE",
+        "10.121.129.5",
+        "4.0",
+        "0",
+    ]
+
+
+def test_list_nodes_truncates_node_id_only_when_terminal_is_narrow(monkeypatch):
+    def nodes():
+        return [_fake_node(), _fake_node(node_id="657f" + "a" * 52, ip="10.0.0.2")]
+
+    monkeypatch.setenv("COLUMNS", "300")
+    wide = _list_nodes_output(nodes())
+    assert _FULL_NODE_ID in wide
+    assert "..." not in wide
+
+    monkeypatch.setenv("COLUMNS", "100")
+    narrow = _list_nodes_output(nodes())
+    assert _FULL_NODE_ID not in narrow
+    lines = narrow.splitlines()
+    assert lines[1].startswith("057ae870... ")
+    assert lines[2].startswith("657faaaa... ")
+    assert all(len(line) <= 100 for line in lines)
+
+
+@pytest.mark.parametrize("fileno", [None, 3])
+def test_terminal_width_with_non_callable_stdout_fileno(monkeypatch, fileno):
+    """A replaced stdout whose `fileno` is not callable is treated as not a
+    terminal instead of crashing the CLI."""
+
+    class FakeStdout:
+        pass
+
+    fake = FakeStdout()
+    fake.fileno = fileno
+    monkeypatch.delenv("COLUMNS", raising=False)
+    monkeypatch.setattr(sys, "stdout", fake)
+    assert _get_terminal_width() is None
+
+
+def test_list_nodes_table_does_not_mutate_rows(monkeypatch):
+    """Rendering must not rewrite the caller's row dicts: rendering the
+    verbose table first used to turn `resources_total` into a YAML string,
+    which then broke the concise table for the same rows."""
+    import copy
+
+    monkeypatch.delenv("COLUMNS", raising=False)
+    nodes = [NodeState.humanify(_fake_node())]
+    before = copy.deepcopy(nodes)
+
+    get_table_output(nodes, NodeState, detail=True)
+    assert nodes == before
+    out = get_table_output(nodes, NodeState, detail=False)
+    assert nodes == before
+    assert "8.000 GiB" in out
+
+
+def test_list_nodes_detail_and_json_yaml_unchanged(monkeypatch):
+    monkeypatch.setenv("COLUMNS", "80")
+
+    detail = _list_nodes_output(
+        [_fake_node()], format=AvailableFormat.TABLE, detail=True
+    )
+    for expected in ("Stats:", "Table:", "RESOURCES_TOTAL", "LABELS", _FULL_NODE_ID):
+        assert expected in detail
+
+    for fmt, load in (
+        (AvailableFormat.JSON, json.loads),
+        (AvailableFormat.YAML, yaml.safe_load),
+    ):
+        data = load(_list_nodes_output([_fake_node(gpu=1.0)], format=fmt))[0]
+        assert data["node_id"] == _FULL_NODE_ID
+        assert data["state_message"] is None
+        assert data["labels"]["ray.io/node-group"] == "worker-group"
+        assert data["resources_total"]["GPU"] == 1.0
+        assert data["resources_total"]["memory"] == "8.000 GiB"
+
+
+def test_default_table_output_unchanged_for_non_node_resources():
+    pg = {
+        "placement_group_id": "pg_abcdef0123456789",
+        "name": "test-pg",
+        "creator_job_id": "01000000",
+        "state": "CREATED",
+    }
+    out = output_with_format(
+        [pg], schema=PlacementGroupState, format=AvailableFormat.DEFAULT
+    )
+    assert "Stats:" in out
+    assert "Table:" in out
+    assert "PLACEMENT_GROUP_ID" in out
+
+
 def is_hex(val):
     try:
         int_val = int(val, 16)
@@ -704,7 +880,7 @@ def test_cli_apis_sanity_check(ray_start_cluster):
         lambda: verify_output(ray_list, ["workers"], ["Stats:", "Table:", "WORKER_ID"])
     )
     wait_for_condition(
-        lambda: verify_output(ray_list, ["nodes"], ["Stats:", "Table:", "NODE_ID"])
+        lambda: verify_output(ray_list, ["nodes"], ["NODE_ID", "CPU", "OBJ_STORE"])
     )
     wait_for_condition(
         lambda: verify_output(

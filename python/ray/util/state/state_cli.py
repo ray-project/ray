@@ -1,5 +1,7 @@
 import json
 import logging
+import os
+import sys
 from datetime import datetime
 from enum import Enum, unique
 from typing import Dict, List, Optional, Tuple
@@ -25,6 +27,7 @@ from ray.util.state.common import (
     DEFAULT_RPC_TIMEOUT,
     GetApiOptions,
     ListApiOptions,
+    NodeState,
     PredicateType,
     StateResource,
     StateSchema,
@@ -170,6 +173,8 @@ def get_table_output(state_data: List, schema: StateSchema, detail: bool) -> str
     A B C
     -----
 
+    Nodes use a concise one-line-per-node layout unless `detail` is True.
+
     Args:
         state_data: A list of state data.
         schema: The schema for the corresponding resource.
@@ -178,15 +183,20 @@ def get_table_output(state_data: List, schema: StateSchema, detail: bool) -> str
     Returns:
         The table formatted string.
     """
+    if schema is NodeState and not detail:
+        return _get_node_table_output(state_data)
+
     time = datetime.now()
     header = "=" * 8 + f" List: {time} " + "=" * 8
     headers = []
     table = []
     cols = schema.list_columns(detail=detail)
     for data in state_data:
-        for key, val in data.items():
-            if isinstance(val, dict):
-                data[key] = yaml.dump(val, indent=2)
+        # Render nested dicts as YAML without modifying the caller's dict.
+        data = {
+            key: yaml.dump(val, indent=2) if isinstance(val, dict) else val
+            for key, val in data.items()
+        }
         keys = set(data.keys())
         headers = []
         for col in cols:
@@ -203,6 +213,93 @@ Table:
 ------------------------------
 {tabulate(table, headers=headers, showindex=True, tablefmt="plain", floatfmt=".3f")}
 """
+
+
+_NODE_TABLE_HEADERS = [
+    "NODE_ID",
+    "NODE_IP",
+    "IS_HEAD_NODE",
+    "STATE",
+    "NODE_NAME",
+    "CPU",
+    "GPU",
+    "MEMORY",
+    "OBJ_STORE",
+]
+_SHORT_NODE_ID_LEN = 8
+
+
+def _get_terminal_width() -> Optional[int]:
+    """Return the terminal width, or None if stdout is not a terminal.
+
+    The COLUMNS environment variable takes precedence, as in
+    `shutil.get_terminal_size`. Unlike `shutil.get_terminal_size`, there is no
+    80-column fallback, so piped output is never treated as narrow.
+    """
+    columns = os.environ.get("COLUMNS")
+    if columns:
+        try:
+            width = int(columns)
+            if width > 0:
+                return width
+        except ValueError:
+            pass
+    try:
+        return os.get_terminal_size(sys.stdout.fileno()).columns
+    except (AttributeError, TypeError, ValueError, OSError):
+        return None
+
+
+def _get_node_table_output(state_data: List[Dict]) -> str:
+    """Display a concise table of nodes, one line per node.
+
+    The key resources get their own columns, and the state message and labels
+    are left out; `--detail` shows everything. The node ID is shortened only
+    if the full table doesn't fit in the terminal.
+    """
+    rows = []
+    for node in state_data:
+        resources = node.get("resources_total")
+        if not isinstance(resources, dict):
+            resources = {}
+        rows.append(
+            [
+                node.get("node_id") or "",
+                node.get("node_ip"),
+                node.get("is_head_node"),
+                node.get("state"),
+                node.get("node_name"),
+                resources.get("CPU", 0),
+                resources.get("GPU", 0),
+                resources.get("memory", 0),
+                resources.get("object_store_memory", 0),
+            ]
+        )
+
+    def render(rows: List[List]) -> str:
+        # Columns are separated by two spaces, like `kubectl get`. tabulate's
+        # "plain" format pads columns whose header is wider than their values by two
+        # more characters, which makes the table wider than needed.
+        lines = [_NODE_TABLE_HEADERS] + [
+            ["" if value is None else str(value) for value in row] for row in rows
+        ]
+        widths = [max(len(line[i]) for line in lines) for i in range(len(lines[0]))]
+        return "\n".join(
+            "  ".join(cell.ljust(w) for cell, w in zip(line, widths)).rstrip()
+            for line in lines
+        )
+
+    table = render(rows)
+    width = _get_terminal_width()
+    if width is not None and max(len(line) for line in table.splitlines()) > width:
+        short_rows = []
+        for row in rows:
+            node_id = row[0]
+            if len(node_id) > _SHORT_NODE_ID_LEN:
+                node_id = node_id[:_SHORT_NODE_ID_LEN] + "..."
+            short_rows.append([node_id] + row[1:])
+        table = render(short_rows)
+    return table
 
 
 def output_with_format(
