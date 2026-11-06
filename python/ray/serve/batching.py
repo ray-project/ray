@@ -5,7 +5,7 @@ import time
 from collections import deque
 from dataclasses import dataclass
 from functools import wraps
-from inspect import Parameter, isasyncgenfunction, iscoroutinefunction
+from inspect import Parameter, Signature, isasyncgenfunction, iscoroutinefunction
 from typing import (
     Any,
     AsyncGenerator,
@@ -28,7 +28,6 @@ from ray import serve
 from ray._common.signature import (
     DUMMY_TYPE,
     extract_signature,
-    flatten_args,
     recover_args,
 )
 from ray._common.utils import get_or_create_event_loop
@@ -101,11 +100,16 @@ def _batch_args_kwargs(
     # Ray's flatten arg format is a list with alternating key and values
     # e.g. args=(1, 2), kwargs={"key": "val"} got turned into
     #      [None, 1, None, 2, "key", "val"]
-    arg_lengths = {len(args) for args in list_of_flattened_args}
-    assert (
-        len(arg_lengths) == 1
-    ), "All batch requests should have the same number of parameters."
-    arg_length = arg_lengths.pop()
+    # Values are lined up by position, so every request must use the same
+    # names in the same order (`_flatten_canonical_args` orders them).
+    arg_names = list_of_flattened_args[0][::2]
+    for args in list_of_flattened_args[1:]:
+        if args[::2] != arg_names:
+            raise ValueError(
+                "All requests in a batch must pass the same parameters to the "
+                "batched function."
+            )
+    arg_length = len(list_of_flattened_args[0])
 
     batched_flattened_args = []
     for idx in range(arg_length):
@@ -117,6 +121,46 @@ def _batch_args_kwargs(
             )
 
     return recover_args(batched_flattened_args)
+
+
+def _flatten_canonical_args(
+    signature: Signature,
+    var_keyword_name: Optional[str],
+    args: Tuple[Any, ...],
+    kwargs: Dict[str, Any],
+) -> List[Any]:
+    """Flatten a call like `flatten_args`, but in a layout set by `signature`.
+
+    `_batch_args_kwargs` lines requests up by position, so `f(1, b=2)`,
+    `f(a=1, b=2)` and `f(b=2, a=1)` must all flatten the same way. Values that
+    can be passed positionally become positional, named keywords follow the
+    signature's order, and extra `**kwargs` keys are sorted by name.
+    """
+    try:
+        bound = signature.bind(*args, **kwargs)
+    except TypeError as exc:  # capture a friendlier stacktrace
+        raise TypeError(str(exc)) from None
+
+    flattened_args = []
+    if not kwargs:
+        # Positional values are already bound in signature order.
+        for value in args:
+            flattened_args += [DUMMY_TYPE, value]
+        return flattened_args
+
+    keyword_args = bound.kwargs
+    extras = bound.arguments.get(var_keyword_name) if var_keyword_name else None
+    if extras:
+        keyword_args = {
+            name: value for name, value in keyword_args.items() if name not in extras
+        }
+        keyword_args.update(sorted(extras.items()))
+
+    for value in bound.args:
+        flattened_args += [DUMMY_TYPE, value]
+    for name, value in keyword_args.items():
+        flattened_args += [name, value]
+    return flattened_args
 
 
 def _is_first_input_value(
@@ -950,6 +994,11 @@ def batch(
 
     def _batch_decorator(_func):
         signature_parameters = extract_signature(_func)
+        signature = Signature(signature_parameters)
+        var_keyword_name = next(
+            (p.name for p in signature_parameters if p.kind == Parameter.VAR_KEYWORD),
+            None,
+        )
         lazy_batch_queue_wrapper = _LazyBatchQueueWrapper(
             max_batch_size,
             batch_wait_timeout_s,
@@ -973,7 +1022,9 @@ def batch(
                     break
 
         def enqueue_request(args, kwargs) -> asyncio.Future:
-            flattened_args: List = flatten_args(signature_parameters, args, kwargs)
+            flattened_args: List = _flatten_canonical_args(
+                signature, var_keyword_name, args, kwargs
+            )
 
             # If the function is a method, remove self as an argument.
             self = extract_self_if_method_call(args, _func)
