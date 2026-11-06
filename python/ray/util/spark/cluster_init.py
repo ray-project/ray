@@ -1443,6 +1443,51 @@ def setup_global_ray_cluster(
     `setup_global_ray_cluster` call terminates.
     If "is_blocking" is False,
     once Ray cluster setup completes, return immediately.
+
+    Args:
+        max_worker_nodes: The maximum number of Ray worker nodes to start. Set
+            it to ``ray.util.spark.MAX_NUM_WORKER_NODES`` to use all available
+            resources of the Spark application.
+        is_blocking: If True, block until the call is interrupted, then shut
+            down the cluster. If False, return once the cluster is set up.
+        min_worker_nodes: The minimum number of worker nodes. If None or equal
+            to ``max_worker_nodes``, autoscaling is disabled.
+        num_cpus_worker_node: The number of CPUs available to each Ray worker
+            node. See ``setup_ray_cluster`` for the default.
+        num_cpus_head_node: The number of CPUs available to the Ray head node.
+            Defaults to the number of CPU cores on the Spark driver node.
+        num_gpus_worker_node: The number of GPUs available to each Ray worker
+            node. See ``setup_ray_cluster`` for the default.
+        num_gpus_head_node: The number of GPUs available to the Ray head node.
+            Defaults to the number of GPUs on the Spark driver node.
+        memory_worker_node: The heap memory for each Ray worker node, passed as
+            ``--memory`` to ``ray start``.
+        memory_head_node: The heap memory for the Ray head node, passed as
+            ``--memory`` to ``ray start``.
+        object_store_memory_worker_node: The object store memory for each Ray
+            worker node. See ``setup_ray_cluster`` for the default and cap.
+        object_store_memory_head_node: The object store memory for the Ray head
+            node. See ``setup_ray_cluster`` for the default and cap.
+        head_node_options: Extra ``ray start`` options for the head node, with
+            keys in ``foo_bar`` form and None as the value of a flag option.
+        worker_node_options: Extra ``ray start`` options for the worker nodes,
+            with keys in ``foo_bar`` form and None as the value of a flag
+            option.
+        strict_mode: If True, raise an exception when the Spark cluster lacks
+            the resources for the requested allocation. If False, log a warning.
+        collect_log_to_path: If set, the path to collect the Ray node logs to
+            after the nodes terminate.
+        autoscale_upscaling_speed: The number of nodes allowed to be pending as
+            a multiple of the current number of nodes, when autoscaling is
+            enabled.
+        autoscale_idle_timeout_minutes: The number of minutes a worker node must
+            be idle before the autoscaler removes it, when autoscaling is
+            enabled.
+
+    Returns:
+        If ``is_blocking`` is False, a tuple of ``(address,
+        remote_connection_address)``, as ``setup_ray_cluster`` returns.
+        Otherwise None, once the cluster shuts down.
     """
 
     cluster_address = _setup_ray_cluster_internal(
