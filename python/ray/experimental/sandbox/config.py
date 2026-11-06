@@ -20,18 +20,19 @@ _DEFAULT_DNS_ENV = "RAY_SANDBOX_DEFAULT_DNS"
 
 
 def default_public_dns() -> Tuple[str, ...]:
-    """Resolvers a network="public" sandbox uses when it names none.
+    """Resolvers a network="public" sandbox uses when its config sets no dns.
 
-    ``RAY_SANDBOX_DEFAULT_DNS``, a comma-separated list of IP addresses,
+    ``RAY_SANDBOX_DEFAULT_DNS``, a comma-separated list of IPv4 addresses,
     replaces ``DEFAULT_PUBLIC_DNS`` on a node. Networks that block DNS to
     public resolvers need it, since a sandbox can't fall back to the node's
-    own resolver.
+    own resolver. A "public" sandbox has no IPv6 route, so an IPv6 resolver
+    could never answer it.
 
     Returns:
         The resolvers.
 
     Raises:
-        ValueError: If an entry of ``RAY_SANDBOX_DEFAULT_DNS`` isn't an IP
+        ValueError: If an entry of ``RAY_SANDBOX_DEFAULT_DNS`` isn't an IPv4
             address.
     """
     value = os.environ.get(_DEFAULT_DNS_ENV, "")
@@ -40,11 +41,14 @@ def default_public_dns() -> Tuple[str, ...]:
         return DEFAULT_PUBLIC_DNS
     for server in servers:
         try:
-            ipaddress.ip_address(server)
+            ipv4 = ipaddress.ip_address(server).version == 4
         except ValueError:
+            ipv4 = False
+        if not ipv4:
             raise ValueError(
-                f"{_DEFAULT_DNS_ENV} entry {server!r} isn't an IP address"
-            ) from None
+                f"{_DEFAULT_DNS_ENV} entry {server!r} isn't an IPv4 address, "
+                'and network="public" sandboxes have no IPv6 route'
+            )
     return servers
 
 
