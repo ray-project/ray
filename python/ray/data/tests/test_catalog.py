@@ -82,10 +82,17 @@ def uc_catalog():
 
 @pytest.fixture
 def isolated_env(monkeypatch):
-    # resolve() exports vended creds to os.environ and may call ray.init.
-    # Isolate the env mutation and skip the real ray.init for unit tests.
-    monkeypatch.setattr("ray.is_initialized", lambda: True)
+    """A private copy of ``os.environ``, and a ``ray.init`` that fails if called.
+
+    ``resolve()`` must neither write vended credentials to the environment nor
+    start Ray: in the environment they override the instance role for every
+    other cloud access in the job.
+    """
     monkeypatch.setattr(os, "environ", dict(os.environ))
+    monkeypatch.setattr("ray.is_initialized", lambda: False)
+    monkeypatch.setattr(
+        "ray.init", mock.Mock(side_effect=AssertionError("resolve() started Ray"))
+    )
     return os.environ
 
 
@@ -103,46 +110,86 @@ def test_resolve_storage_aws(uc_catalog, isolated_env, reader):
         patcher.stop()
 
     assert resolved.path == "s3://bucket/path"
-    # AWS creds are exported to the environment for both readers.
-    assert isolated_env["AWS_ACCESS_KEY_ID"] == "AKIA"
-    assert isolated_env["AWS_SESSION_TOKEN"] == "token"
-    # Delta additionally gets an explicit S3FileSystem for the data scan;
-    # Parquet reads via the environment-configured filesystem.
+    # Both readers get an explicit S3FileSystem carrying the vended creds, which
+    # pickles into the read tasks; Delta also gets them in `storage_options`
+    # for deltalake's transaction log read.
+    assert isinstance(resolved.filesystem, pafs.S3FileSystem)
     if reader is ReaderFormat.DELTA:
-        assert isinstance(resolved.filesystem, pafs.S3FileSystem)
+        assert resolved.storage_options == {
+            "AWS_ACCESS_KEY_ID": "AKIA",
+            "AWS_SECRET_ACCESS_KEY": "secret",
+            "AWS_SESSION_TOKEN": "token",
+            "AWS_REGION": "us-west-2",
+        }
     else:
-        assert resolved.filesystem is None
+        assert resolved.storage_options is None
     assert resolved.data_format is ReaderFormat.DELTA
 
 
-def test_resolve_aws_requires_region(isolated_env):
+@pytest.mark.parametrize("reader", [ReaderFormat.DELTA, ReaderFormat.PARQUET])
+def test_resolve_aws_requires_region(isolated_env, reader):
     catalog = DatabricksUnityCatalog(
         url="https://h.databricks.com", token="t"
     )  # no region
     patcher = _mock_uc_sdk()
     try:
         with pytest.raises(ValueError, match="region"):
-            catalog.resolve("main.sales.txns", reader=ReaderFormat.DELTA)
+            catalog.resolve("main.sales.txns", reader=reader)
     finally:
         patcher.stop()
 
 
-def test_resolve_initializes_ray_with_runtime_env(uc_catalog, monkeypatch):
-    # When Ray isn't running, vended creds are propagated via runtime_env.
-    monkeypatch.setattr(os, "environ", dict(os.environ))
-    monkeypatch.setattr("ray.is_initialized", lambda: False)
-    init_kwargs = {}
-    monkeypatch.setattr("ray.init", lambda **kw: init_kwargs.update(kw))
+def _azure_resp():
+    return GenerateTemporaryTableCredentialResponse(
+        url="abfss://c@acct.dfs.core.windows.net/path",
+        azure_user_delegation_sas=AzureUserDelegationSas(sas_token="sv=2021&sig=abc"),
+    )
 
-    patcher = _mock_uc_sdk()
+
+@pytest.mark.parametrize("mode", [CatalogAccessMode.READ, CatalogAccessMode.WRITE])
+@pytest.mark.parametrize(
+    "creds, storage_location, reader",
+    [
+        (AWS_RESP, None, ReaderFormat.DELTA),
+        (AWS_RESP, None, ReaderFormat.PARQUET),
+        (_azure_resp(), "abfss://c@acct.dfs.core.windows.net/path", ReaderFormat.DELTA),
+        ("gcp", "gs://bucket/path", ReaderFormat.PARQUET),
+    ],
+    ids=["aws-delta", "aws-parquet", "azure-delta", "gcp-parquet"],
+)
+def test_resolve_leaves_environment_and_ray_alone(
+    uc_catalog, isolated_env, creds, storage_location, reader, mode
+):
+    """Vended creds travel only in the returned filesystem / storage_options.
+
+    In ``os.environ`` (or a ``runtime_env`` set through ``ray.init``) they would
+    override the instance role for every other cloud access in the job, with a
+    short-lived credential scoped to one table, so writes to the user's own
+    buckets failed.
+    """
+    env_before = dict(isolated_env)
+    patcher = _mock_uc_sdk(
+        creds=_gcp_resp() if creds == "gcp" else creds,
+        storage_location=storage_location,
+    )
     try:
-        uc_catalog.resolve("main.sales.txns", reader=ReaderFormat.PARQUET)
+        resolved = uc_catalog.resolve("main.sales.txns", reader=reader, mode=mode)
     finally:
         patcher.stop()
 
-    env_vars = init_kwargs["runtime_env"]["env_vars"]
-    assert env_vars["AWS_ACCESS_KEY_ID"] == "AKIA"
-    assert env_vars["AWS_SESSION_TOKEN"] == "token"
+    assert dict(isolated_env) == env_before
+    assert resolved.filesystem is not None or resolved.storage_options
+
+
+def test_resolve_rejects_unknown_credential_type(uc_catalog, isolated_env):
+    patcher = _mock_uc_sdk(
+        creds=GenerateTemporaryTableCredentialResponse(url="s3://bucket/path")
+    )
+    try:
+        with pytest.raises(ValueError, match="No known credential type"):
+            uc_catalog.resolve("main.sales.txns", reader=ReaderFormat.DELTA)
+    finally:
+        patcher.stop()
 
 
 def test_resolve_retries_once_on_401(uc_catalog, isolated_env):
@@ -202,16 +249,15 @@ def test_resolve_azure_vends_sas_via_storage_options(isolated_env):
 
     # There is no picklable pyarrow Azure filesystem to build a SAS into, so the
     # credential travels to the read tasks in `storage_options` -- a plain dict
-    # that pickles with the read plan. The env var is also set, but reaches only
-    # the driver once Ray is running, so it cannot be the only channel.
+    # that pickles with the read plan. It's not written to the environment.
     assert resolved.filesystem is None
     assert resolved.storage_options == {"azure_storage_sas_token": "sv=2021&sig=abc"}
-    assert isolated_env["AZURE_STORAGE_SAS_TOKEN"] == "sv=2021&sig=abc"
+    assert "AZURE_STORAGE_SAS_TOKEN" not in isolated_env
 
 
 def test_resolve_azure_strips_leading_question_mark(isolated_env):
     # UC may return the SAS as a full query string ("?sv=..."); the leading "?"
-    # must be stripped in both channels it travels through.
+    # must be stripped for deltalake's `storage_options`.
     catalog = DatabricksUnityCatalog(url="https://h.databricks.com", token="t")
     azure_resp = GenerateTemporaryTableCredentialResponse(
         url="abfss://c@acct.dfs.core.windows.net/path",
@@ -223,7 +269,6 @@ def test_resolve_azure_strips_leading_question_mark(isolated_env):
     finally:
         patcher.stop()
 
-    assert isolated_env["AZURE_STORAGE_SAS_TOKEN"] == "sv=2021&sig=abc"
     assert resolved.storage_options == {"azure_storage_sas_token": "sv=2021&sig=abc"}
 
 
@@ -529,9 +574,8 @@ def test_resolve_requests_operation_for_mode(
 
 
 def test_resolve_write_mode_builds_aws_filesystem(uc_catalog, isolated_env):
-    # Unlike READ (where AWS Parquet rides on env vars), WRITE builds an explicit
-    # S3FileSystem so the vended session token travels with the pickled datasink
-    # to the write workers.
+    # WRITE builds an explicit S3FileSystem (as READ does) so the vended
+    # session token travels with the pickled datasink to the write workers.
     patcher = _mock_uc_sdk()
     try:
         resolved = uc_catalog.resolve(
@@ -686,11 +730,13 @@ def test_write_delta_catalog_merges_storage_options_user_wins(
     assert kwargs["user_storage_options"] == {"AWS_REGION": "user-region"}
 
 
-def test_write_delta_with_unity_catalog_builds_s3_filesystem(uc_catalog, isolated_env):
+def test_write_delta_with_unity_catalog_builds_s3_filesystem(uc_catalog, monkeypatch):
     # The real DatabricksUnityCatalog (SDK mocked, no workspace hit) must hand
     # write_delta an S3FileSystem carrying the vended session token. That
     # explicit filesystem is the AWS-shaped signal a worker uses to decide a
     # credential refresh is safe -- see DeltaDatasink._can_refresh_worker_credentials.
+    # Ray Data would start Ray for `ray.data.range`; the write itself is mocked.
+    monkeypatch.setattr("ray.is_initialized", lambda: True)
     patcher = _mock_uc_sdk(storage_location="s3://bucket/tbl")
     try:
         with mock.patch(
@@ -702,6 +748,9 @@ def test_write_delta_with_unity_catalog_builds_s3_filesystem(uc_catalog, isolate
 
     _, kwargs = datasink_cls.call_args
     assert isinstance(kwargs["filesystem"], pafs.S3FileSystem)
+    # The driver's Delta commit reads these, not the environment.
+    assert kwargs["storage_options"]["AWS_SESSION_TOKEN"] == "token"
+    assert kwargs["storage_options"]["AWS_REGION"] == "us-west-2"
     assert kwargs["catalog"] is uc_catalog
     # The identifier, not the resolved physical path -- a refresh re-resolves it.
     assert kwargs["table_identifier"] == "main.sales.txns"

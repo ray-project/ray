@@ -1713,8 +1713,8 @@ def test_worker_refresh_restores_environment_mutated_by_resolve(temp_delta_path)
     """A worker-side ``catalog.resolve()`` must not leave credentials behind in
     the worker process's environment.
 
-    Unity Catalog delivers vended credentials by writing them into
-    ``os.environ`` (``_apply_env``) and never restores them. A Ray worker
+    A ``Catalog`` may deliver vended credentials by writing them into
+    ``os.environ`` and never restoring them (Unity Catalog used to). A Ray worker
     process outlives the task and is reused for unrelated ones, so anything
     left there leaks into whatever runs next. The refreshed filesystem carries
     the credentials the write actually uses, so nothing needs them in the
