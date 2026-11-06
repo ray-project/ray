@@ -17,6 +17,7 @@ from ray.tune.search.sample import (
     Float,
     Integer,
     LogUniform,
+    Normal,
     Quantized,
 )
 from ray.tune.search.variant_generator import parse_spec_vars
@@ -344,6 +345,12 @@ class NevergradSearch(Searcher):
                     return ng.p.Log(
                         lower=domain.lower, upper=domain.upper, exponent=math.e
                     )
+                if isinstance(sampler, Normal):
+                    # `Scalar` with infinite bounds starts at NaN, and normal
+                    # domains are unbounded, so set the mean and sd instead.
+                    return ng.p.Scalar(
+                        init=sampler.mean, mutable_sigma=False
+                    ).set_mutation(sigma=sampler.sd)
                 return ng.p.Scalar(lower=domain.lower, upper=domain.upper)
 
             elif isinstance(domain, Integer):
