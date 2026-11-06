@@ -45,6 +45,7 @@ ray_cc_test(
     ],
     tags = ["team:core"],
     deps = [
+        "//src/ray/common:constants",
         "//src/ray/observability:fake_metric",
         "//src/ray/raylet/scheduling:local_resource_manager",
         "//src/ray/util:clock",

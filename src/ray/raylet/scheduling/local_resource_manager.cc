@@ -22,6 +22,8 @@
 #include <utility>
 #include <vector>
 
+#include "absl/strings/match.h"
+#include "ray/common/constants.h"
 #include "ray/common/scheduling/placement_group_util.h"
 #include "ray/common/scheduling/resource_set.h"
 #include "ray/util/logging.h"
@@ -529,6 +531,31 @@ void LocalResourceManager::SetLocalNodeDraining(
     const rpc::DrainRayletRequest &drain_request) {
   drain_request_ = std::make_optional(drain_request);
   OnResourceOrStateChanged();
+}
+
+absl::flat_hash_map<std::string, std::string> LocalResourceManager::SetLocalNodeLabels(
+    const absl::flat_hash_map<std::string, std::string> &labels) {
+  // Preserve reserved "ray.io/"-prefixed labels (managed by Ray) and replace all
+  // other user-defined labels with the provided set.
+  absl::flat_hash_map<std::string, std::string> new_labels;
+  for (const auto &[key, value] : local_resources_.labels) {
+    if (absl::StartsWith(key, kReservedNodeLabelKeyPrefix)) {
+      new_labels.emplace(key, value);
+    }
+  }
+  for (const auto &[key, value] : labels) {
+    // Defensive: never let a caller overwrite reserved labels.
+    if (!absl::StartsWith(key, kReservedNodeLabelKeyPrefix)) {
+      new_labels[key] = value;
+    }
+  }
+  if (new_labels == local_resources_.labels) {
+    // No change; avoid an unnecessary resource-view broadcast.
+    return local_resources_.labels;
+  }
+  local_resources_.labels = std::move(new_labels);
+  OnResourceOrStateChanged();
+  return local_resources_.labels;
 }
 
 }  // namespace ray
