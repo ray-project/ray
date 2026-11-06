@@ -45,12 +45,16 @@ class FakeHealthManager:
     """Returns the queued in-flight and diagnosis decisions, and records the
     started diagnoses."""
 
+    worker_probes = []
+
     def __init__(self, inflight_checks):
         self.decisions = []
         self.diagnosis_decisions = []
         self.diagnoses = []
+        self.worker_statuses = None
 
-    def evaluate_inflight_checks(self):
+    def evaluate_inflight_checks(self, worker_statuses):
+        self.worker_statuses = worker_statuses
         return self.decisions.pop(0) if self.decisions else Noop()
 
     def start_on_demand_checks(self, checks, timeout):
@@ -185,7 +189,7 @@ def test_health_callback_resets_each_attempt_and_starts_its_preflight_checks(
         MagicMock(metadata=MagicMock(node_id=node_id)) for node_id in ("b", "a", "b")
     ]
     callback.after_worker_group_start(worker_group)
-    health_manager.reset.assert_called_once_with(["a", "b"])
+    health_manager.reset.assert_called_once_with(["a", "b"], worker_group)
     if preflight_checks:
         health_manager.start_on_demand_checks.assert_called_once_with(
             preflight_checks, timeout=DEFAULT_ON_DEMAND_PROBE_TIMEOUT_S
@@ -195,6 +199,27 @@ def test_health_callback_resets_each_attempt_and_starts_its_preflight_checks(
 
     callback.before_worker_group_shutdown(worker_group)
     health_manager.shutdown.assert_called_once()
+
+
+def test_health_callback_gives_each_worker_the_worker_probes():
+    health_manager = MagicMock(worker_probes=["probe"])
+    callback = HealthCallback(health_manager, preflight_checks=[])
+    workers = [MagicMock(), MagicMock()]
+    assert callback.before_init_train_context(workers) == {
+        "worker_probes": [["probe"], ["probe"]]
+    }
+
+    health_manager.worker_probes = []
+    assert callback.before_init_train_context(workers) == {}
+
+
+def test_the_inflight_checks_get_the_worker_group_poll():
+    controller, _ = _running_controller(MockFailurePolicy(None))
+    _step(controller)
+    worker_group_status = controller.get_worker_group().poll_status()
+    assert controller._health_manager.worker_statuses == (
+        worker_group_status.worker_statuses
+    )
 
 
 def test_user_callbacks_get_the_health_decision():

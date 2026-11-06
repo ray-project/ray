@@ -35,7 +35,10 @@ from ray.train.health.probe import (
 from ray.train.health.state import HealthState
 
 if TYPE_CHECKING:
-    from ray.train.v2._internal.execution.worker_group import WorkerStatus
+    from ray.train.v2._internal.execution.worker_group import (
+        WorkerGroup,
+        WorkerStatus,
+    )
 
 logger = logging.getLogger(__name__)
 
@@ -90,8 +93,8 @@ class HealthManager:
     """Runs a training run's health checks, and evaluates their results into
     health decisions.
 
-    It runs two kinds of checks on the nodes of the attempt that ``reset()``
-    starts, and on the controller's node:
+    It runs two kinds of checks on the nodes and workers of the attempt that
+    ``reset()`` starts, and on the controller's node:
 
     - In-flight checks run throughout training. Their probes are sampled
       continuously, and each ``evaluate_inflight_checks()`` evaluates their
@@ -122,9 +125,14 @@ class HealthManager:
         self._node_monitor_group = NodeMonitorGroup(inflight_probes)
         # The latest status of each NodeMonitor of the in-flight probes.
         self._latest_status = NodeMonitorGroupPollStatus(node_monitor_statuses={})
+        # The attempt's worker group, which runs the on-demand WorkerProbes.
+        self._worker_group: Optional["WorkerGroup"] = None
         # The probes and evaluators of the on-demand checks that are running.
         self._on_demand_probes: List[Probe] = []
         self._on_demand_evaluators: List[Evaluator] = []
+        # {probe name: {world rank: ProbeResult}} of the on-demand
+        # WorkerProbes. None while they run.
+        self._on_demand_worker_results: Optional[Dict[str, Dict[int, ProbeResult]]] = {}
         # The IDs of the evaluators whose failure was logged.
         self._failed_evaluators: Set[int] = set()
         # The nodes evicted so far. reset() keeps them.
@@ -139,16 +147,24 @@ class HealthManager:
         """The in-flight checks' ``WorkerProbe``\\ s, for each worker to sample."""
         return list(self._worker_probes)
 
-    def reset(self, node_ids: List[NodeIdStr]) -> None:
+    def reset(
+        self,
+        node_ids: List[NodeIdStr],
+        worker_group: Optional["WorkerGroup"] = None,
+    ) -> None:
         """Start monitoring a new attempt of the training run, and stop
         monitoring the previous one. Called at the start of each attempt, before
         its pre-flight checks and training.
 
         Args:
             node_ids: The nodes the attempt's workers run on.
+            worker_group: The attempt's worker group, which runs the on-demand
+                WorkerProbes.
         """
         self._latest_status = NodeMonitorGroupPollStatus(node_monitor_statuses={})
+        self._worker_group = worker_group
         self._on_demand_evaluators = []
+        self._on_demand_worker_results = {}
         self._node_monitor_group.shutdown()
         self._node_monitor_group.start_worker_node_monitors(node_ids)
         self._node_monitor_group.start_controller_node_monitor(
@@ -194,22 +210,32 @@ class HealthManager:
     def start_on_demand_checks(
         self, checks: Sequence[HealthCheck], timeout: float
     ) -> None:
-        """Start running on-demand checks once on the monitored nodes.
-        ``evaluate_on_demand_checks()`` evaluates their results.
+        """Start running on-demand checks once on the monitored nodes and
+        workers. ``evaluate_on_demand_checks()`` evaluates their results.
 
         Args:
             checks: The checks, such as pre-flight checks or the checks of a
                 ``Diagnose``.
-            timeout: Timeout in seconds for the nodes to answer.
+            timeout: Timeout in seconds for the nodes and workers to answer.
         """
+        self._on_demand_evaluators = [
+            evaluator for check in checks for evaluator in check.evaluator_creator()
+        ]
+        # Nothing would read the results.
+        if not self._on_demand_evaluators:
+            return
         probes = {p.probe_name(): p for check in checks for p in check.probe_creator()}
         self._on_demand_probes = list(probes.values())
         self._node_monitor_group.poll_probes_async(
             self._on_demand_probes, timeout_s=timeout
         )
-        self._on_demand_evaluators = [
-            evaluator for check in checks for evaluator in check.evaluator_creator()
+        worker_probes = [
+            p for p in self._on_demand_probes if isinstance(p, WorkerProbe)
         ]
+        self._on_demand_worker_results = {}
+        if worker_probes and self._worker_group is not None:
+            self._worker_group.poll_probes_async(worker_probes, timeout_s=timeout)
+            self._on_demand_worker_results = None
 
     def evaluate_on_demand_checks(self) -> Optional[HealthDecision]:
         """Evaluate the results of the on-demand checks that
@@ -221,13 +247,18 @@ class HealthManager:
         """
         if not self._on_demand_evaluators:
             return Noop()
+        if self._on_demand_worker_results is None:
+            self._on_demand_worker_results = self._worker_group.poll_probe_results()
         status = self._node_monitor_group.poll_probe_results()
-        if status is None:
+        if status is None or self._on_demand_worker_results is None:
             return None
         evaluators, self._on_demand_evaluators = self._on_demand_evaluators, []
-        decision = self._decide(
-            evaluators, _to_health_state(status, self._on_demand_probes)
+        state = _to_health_state(status, self._on_demand_probes)
+        state = replace(
+            state,
+            probe_results={**state.probe_results, **self._on_demand_worker_results},
         )
+        decision = self._decide(evaluators, state)
         if isinstance(decision, Noop):
             logger.info("The on-demand health checks found nothing to act on.")
         return decision

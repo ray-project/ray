@@ -17,6 +17,7 @@ from ray.train.health import (
     Noop,
     PeriodicHealthCheck,
     ProbeResult,
+    WorkerProbe,
 )
 from ray.train.v2._internal.constants import HEALTH_CHECK_INTERVAL_S_ENV_VAR
 from ray.train.v2.api.callback import UserCallback
@@ -106,6 +107,13 @@ class DiagnosisProbe(NodeProbe):
         return ProbeResult(metrics={"bad": float(is_bad)})
 
 
+class RankProbe(WorkerProbe):
+    """Answers on each worker it runs on."""
+
+    def poll(self) -> ProbeResult:
+        return ProbeResult()
+
+
 class EvictBadNodes(Evaluator):
     def evaluate(self, state):
         results = state.probe_results.get("DiagnosisProbe", {})
@@ -113,20 +121,26 @@ class EvictBadNodes(Evaluator):
         decision = Noop()
         if bad_nodes:
             decision = Evict(reason="bad node", target_nodes=bad_nodes)
-        _scenario().record.remote(("diagnosis", type(decision).__name__))
+        ranks = sorted(state.probe_results.get("RankProbe", {}))
+        _scenario().record.remote(("diagnosis", type(decision).__name__, ranks))
         return decision
 
 
 class DiagnoseOnIssue(Evaluator):
-    """Diagnoses when its probe starts to report an issue."""
+    """Diagnoses when its probe, and the workers' health reports if
+    ``report_metric`` is set, start to report an issue."""
 
-    def __init__(self, probe_name):
+    def __init__(self, probe_name, report_metric=None):
         self._probe_name = probe_name
+        self._report_metric = report_metric
         self._had_issue = False
 
     def evaluate(self, state):
         results = state.probe_results.get(self._probe_name, {}).values()
         has_issue = any(r.metrics.get("issue") for r in results)
+        if self._report_metric:
+            reports = state.health_reports.values()
+            has_issue &= any(r.metrics.get(self._report_metric) for r in reports)
         started = has_issue and not self._had_issue
         self._had_issue = has_issue
         if not started:
@@ -135,7 +149,7 @@ class DiagnoseOnIssue(Evaluator):
             reason=f"{self._probe_name} reports an issue",
             checks=[
                 HealthCheck(
-                    probe_creator=lambda: [DiagnosisProbe()],
+                    probe_creator=lambda: [DiagnosisProbe(), RankProbe()],
                     evaluator_creator=lambda: [EvictBadNodes()],
                 )
             ],
@@ -165,10 +179,13 @@ def diagnose_train_fn():
         return
 
     time.sleep(1)
-    # Probe A reports an issue, and its diagnosis finds nothing to act on.
+    # Probe A and the training step report an issue, and their diagnosis finds
+    # nothing to act on.
+    ray.train.health.report({"slow_step": 1.0})
     ray.get(scenario.set.remote(issue_a=True))
-    _wait_for_event(scenario, ("diagnosis", "Noop"))
+    _wait_for_event(scenario, ("diagnosis", "Noop", [0]))
     ray.get(scenario.set.remote(issue_a=False))
+    ray.train.health.report({"slow_step": 0.0})
     time.sleep(1)
     # Probe B reports an issue, and its diagnosis finds this node bad.
     ray.get(scenario.set.remote(issue_b=True, bad_node=node_id))
@@ -188,7 +205,7 @@ def test_diagnose_keeps_training_or_evicts(cluster):
                     PeriodicHealthCheck(
                         probe_creator=lambda: [ProbeA(), ProbeB()],
                         evaluator_creator=lambda: [
-                            DiagnoseOnIssue("ProbeA"),
+                            DiagnoseOnIssue("ProbeA", report_metric="slow_step"),
                             DiagnoseOnIssue("ProbeB"),
                         ],
                         poll_interval_s=0.1,
@@ -201,9 +218,9 @@ def test_diagnose_keeps_training_or_evicts(cluster):
 
     assert ray.get(scenario.get_events.remote()) == [
         ("decision", "Diagnose"),
-        ("diagnosis", "Noop"),
+        ("diagnosis", "Noop", [0]),
         ("decision", "Diagnose"),
-        ("diagnosis", "Evict"),
+        ("diagnosis", "Evict", [0]),
         ("decision", "Evict"),
     ]
     # The eviction restarted the worker group.
