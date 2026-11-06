@@ -167,7 +167,9 @@ class _CheckpointManager:
                     f"checkpoint_score_attr must be set to a key in the "
                     f"result dict. Valid keys are: {valid_keys}"
                 )
-                checkpoint_result = float("-inf")
+                # Rank a missing score as the worst valid score in either order.
+                # Applying the order factor would turn it into +inf in "min" mode.
+                return True, float("-inf")
         else:
             checkpoint_result = float("-inf")
 

@@ -160,6 +160,39 @@ def test_keep_latest_checkpoint(checkpoint_paths):
     assert Path(checkpoint_paths[1]).exists()
 
 
+@pytest.mark.parametrize("order", ["min", "max"])
+def test_checkpoint_without_score_ranks_worst(order, checkpoint_paths):
+    """A checkpoint without the score attribute ranks below every scored
+    checkpoint in either order."""
+    manager = _CheckpointManager(
+        checkpoint_config=CheckpointConfig(
+            num_to_keep=2,
+            checkpoint_score_attribute="score",
+            checkpoint_score_order=order,
+        )
+    )
+
+    # The best scores are 1 and 3 in "min" order, -1 and -3 in "max" order.
+    sign = 1 if order == "min" else -1
+    scores = [5, None, 3, 4, 1]
+    for i, score in enumerate(scores):
+        metrics = {"iter": i} if score is None else {"iter": i, "score": sign * score}
+        manager.register_checkpoint(
+            _TrainingResult(
+                checkpoint=Checkpoint.from_directory(checkpoint_paths[i]),
+                metrics=metrics,
+            )
+        )
+
+    assert [
+        tracked_checkpoint.metrics["iter"]
+        for tracked_checkpoint in manager.best_checkpoint_results
+    ] == [2, 4]
+    assert not Path(checkpoint_paths[1]).exists()
+    assert Path(checkpoint_paths[2]).exists()
+    assert Path(checkpoint_paths[4]).exists()
+
+
 @pytest.mark.parametrize(
     "metrics",
     [
