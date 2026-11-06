@@ -45,14 +45,16 @@ class TestConcatenator:
         assert [list(v) for v in result["out"]] == [[3, 1], [4, 2]]
 
         # When all requested columns are missing and raise_if_missing=False,
-        # the DataFrame should be returned unmodified without raising KeyError.
+        # the output column should still be created with empty arrays to
+        # maintain schema consistency.
         all_missing_prep = Concatenator(
             columns=["missing_1", "missing_2"],
             output_column_name="out",
             raise_if_missing=False,
         )
-        unchanged = all_missing_prep.transform_batch(df.copy())
-        assert_frame_equal(unchanged, df)
+        result = all_missing_prep.transform_batch(df.copy())
+        assert "out" in result.columns
+        assert [list(v) for v in result["out"]] == [[], []]
 
     def test_exclude_column(self):
         df = pd.DataFrame({"a": [1, 2, 3, 4], "b": [2, 3, 4, 5], "c": [3, 4, 5, 6]})

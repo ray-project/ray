@@ -165,9 +165,8 @@ class Concatenator(SerializablePreprocessorBase):
 
         present_columns = [col for col in self._columns if col in df.columns]
         if not present_columns:
-            return df
-
-        if self._flatten:
+            concatenated = np.empty((len(df), 0), dtype=self._dtype or np.float64)
+        elif self._flatten:
             concatenated = self._stack_columns(df, columns=present_columns)
             concatenated = [
                 np.concatenate(
@@ -188,7 +187,9 @@ class Concatenator(SerializablePreprocessorBase):
         df = df.drop(columns=present_columns)
         # Use a Pandas Series for column assignment to get more consistent
         # behavior across Pandas versions.
-        df.loc[:, self._output_column_name] = pd.Series(list(concatenated))
+        df.loc[:, self._output_column_name] = pd.Series(
+            list(concatenated), index=df.index
+        )
         return df
 
     def get_input_columns(self) -> List[str]:
