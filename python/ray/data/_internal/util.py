@@ -937,27 +937,25 @@ def find_insertion_index(
             return left + len(column_range_view)
 
         if descending[col_idx] is True:
-            # ``np.searchsorted`` expects the array to be sorted in ascending
-            # order, so we pass ``sorter``, which is an array of integer indices
-            # that turn ``column_range_view`` into ascending order.
-            asc_indices = np.arange(len(column_range_view) - 1, -1, -1)
+            # A reversed slice view of a descending range is in ascending
+            # order, so ``np.searchsorted`` can binary search it directly
+            # without allocating an O(n) ``sorter`` index array per call.
+            ascending_view = column_range_view[::-1]
 
             # The returned index is an index into the ascending order of
             # ``column_range_view``, so we need to subtract it from
             # ``len(column_range_view)`` to get the index in the original descending
             # order of ``column_range_view``.
             left_ins_offset_asc = np.searchsorted(
-                column_range_view,
+                ascending_view,
                 cur_pivot_val,
                 side="left",
-                sorter=asc_indices,
             )
 
             right_ins_offset_asc = np.searchsorted(
-                column_range_view,
+                ascending_view,
                 cur_pivot_val,
                 side="right",
-                sorter=asc_indices,
             )
 
             # NOTE: Converting back from ascending offsets into original

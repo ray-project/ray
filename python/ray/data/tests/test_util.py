@@ -28,6 +28,7 @@ from ray.data._internal.usage.util import (
 )
 from ray.data._internal.util import (
     NULL_SENTINEL,
+    find_insertion_index,
     find_partition_index,
     get_max_task_capacity,
     iterate_with_retry,
@@ -627,6 +628,35 @@ def test_find_partition_index_duplicates_descending():
     assert find_partition_index(table, (1,), sort_key) == 5
     # Insert (3,) -> belongs at index 0
     assert find_partition_index(table, (3,), sort_key) == 0
+
+
+def test_find_insertion_index_descending_uses_slice_view(monkeypatch):
+    def disallow_arange(*args, **kwargs):
+        raise AssertionError("np.arange should not be called in find_insertion_index")
+
+    col1 = np.array([5, 5, 5, 3, 3, 1], dtype=np.int64)
+    col2 = np.array([10, 20, 30, 30, 10, 5], dtype=np.int64)
+    monkeypatch.setattr(np, "arange", disallow_arange)
+
+    assert (
+        find_insertion_index(
+            key_columns=[col1, col2],
+            pivot=(5, 20),
+            descending=[True, False],
+            has_nulls=[False, False],
+        )
+        == 2
+    )
+    assert (
+        find_insertion_index(
+            key_columns=[col1, col2],
+            pivot=(3, 20),
+            descending=[True, True],
+            start_from_idx=3,
+            has_nulls=[False, False],
+        )
+        == 4
+    )
 
 
 def test_merge_resources_to_ray_remote_args():
