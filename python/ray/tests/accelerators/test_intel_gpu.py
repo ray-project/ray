@@ -1,5 +1,6 @@
 import os
 import sys
+import types
 from unittest.mock import patch
 
 import pytest
@@ -8,7 +9,13 @@ import ray
 from ray._common.utils import RESOURCE_CONSTRAINT_PREFIX
 from ray._private.accelerators import IntelGPUAcceleratorManager as Accelerator
 from ray._private.test_utils import mock_accelerator_detection
-from ray.util.accelerators import INTEL_MAX_1100, INTEL_MAX_1550
+from ray.util.accelerators import (
+    INTEL_ARC_PRO_B50,
+    INTEL_ARC_PRO_B60,
+    INTEL_ARC_PRO_B70,
+    INTEL_MAX_1100,
+    INTEL_MAX_1550,
+)
 
 
 @pytest.fixture(autouse=False)
@@ -85,6 +92,31 @@ def test_get_current_node_accelerator_type():
 
     if old_dpctl is not None:
         sys.modules["dpctl"] = old_dpctl
+
+
+@pytest.mark.parametrize(
+    "device_name,expected",
+    [
+        ("Intel(R) Arc(TM) Pro B50 Graphics", INTEL_ARC_PRO_B50),
+        ("Intel(R) Arc(TM) Pro B60 Graphics", INTEL_ARC_PRO_B60),
+        ("Intel(R) Arc(TM) Pro B70 Graphics", INTEL_ARC_PRO_B70),
+        ("Intel(R) Arc Pro B60 Graphics", INTEL_ARC_PRO_B60),
+        ("Intel(R) ARC(tm) PRO b50 Graphics", INTEL_ARC_PRO_B50),
+        ("Intel(R) Data Center GPU Max 1550", INTEL_MAX_1550),
+        ("Intel(R) Data Center GPU Max 1100", INTEL_MAX_1100),
+    ],
+)
+def test_get_current_node_accelerator_type_from_device_name(
+    monkeypatch, device_name, expected
+):
+    class SyclDevice:
+        def __init__(self, info):
+            self.name = device_name
+
+    fake_dpctl = types.ModuleType("dpctl")
+    fake_dpctl.SyclDevice = SyclDevice
+    monkeypatch.setitem(sys.modules, "dpctl", fake_dpctl)
+    assert Accelerator.get_current_node_accelerator_type() == expected
 
 
 def test_intel_gpu_accelerator_manager_api():
