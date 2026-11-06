@@ -6,7 +6,7 @@ the decode-time temporaries of the largest column and most of the next, and a
 schema pin's cast. The rules are fitted to measured peaks and lean high.
 """
 
-from typing import Mapping, Optional, Sequence, Set, Tuple
+from typing import Mapping, Sequence, Set, Tuple
 
 import pyarrow as pa
 from pyarrow.parquet import ColumnSchema, RowGroupMetaData
@@ -16,7 +16,6 @@ from ray.data._internal.datasource_v2.formats.parquet.parquet_decoded_size impor
     _LIST,
     LeafChunk,
     Read,
-    detect_delta_byte_array,
     estimate_added_columns,
     estimate_ancestors,
     estimate_leaf,
@@ -64,11 +63,10 @@ def estimate_row_group_work(
     column_leaves: Sequence[Sequence[int]],
     leaves: Mapping[int, LeafChunk],
     counted: Set[int],
-    data_pages: Optional[Sequence[Optional[int]]] = None,
 ) -> int:
     """What one row group's leaves keep, plus two columns' decode-time buffers:
     ``column_leaves`` holds each column read, in ``columns=`` order, as its leaf
-    indices; ``leaves`` the unpinned leaves; ``counted`` the ancestors sized."""
+    indices; ``leaves`` the unpinned leaves modelled; ``counted`` the ancestors sized."""
     # Two zeros, so there is always a largest column and a next.
     kept, temporaries = 0, [0, 0]
     for position, leaf_indices in enumerate(column_leaves):
@@ -79,7 +77,9 @@ def estimate_row_group_work(
         # over what that leaf and the ones before it keep.
         column_kept = column_peak = 0
         for leaf_idx in leaf_indices:
-            leaf = leaves[leaf_idx]
+            # A leaf the estimator doesn't model is charged by the caller.
+            if (leaf := leaves.get(leaf_idx)) is None:
+                continue
             ancestors = estimate_ancestors(leaf=leaf, counted=counted)
             leaf_kept, leaf_temporary = estimate_leaf_work(
                 leaf=leaf,
@@ -87,7 +87,6 @@ def estimate_row_group_work(
                 reserved=reserved,
                 rows=row_group.num_rows,
                 ancestors=ancestors,
-                pages=data_pages[leaf_idx] if data_pages else None,
             )
             column_kept += ancestors + leaf_kept
             column_peak = max(column_peak, column_kept + leaf_temporary)
@@ -106,7 +105,6 @@ def estimate_leaf_work(
     reserved: int,
     rows: int,
     ancestors: int = 0,
-    pages: Optional[int] = None,
 ) -> Tuple[int, int]:
     """One leaf's buffers: (kept until the row group is read, temporary)."""
     chunk = leaf.chunk
@@ -119,27 +117,20 @@ def estimate_leaf_work(
     grows = 2 if repeated else 1
     decoded = estimate_leaf(leaf=leaf)
     dictionary = _dictionary_bytes(leaf)
-    # A DELTA_BYTE_ARRAY guess (128 times its pages) covers the decoder's buffers.
-    guessed = chunk.physical_type == "BYTE_ARRAY" and leaf.size_statistics_bytes is None
-    guessed = guessed and detect_delta_byte_array(chunk)
     # int16 definition and repetition levels, and the decoded leaf.
     kept = 2 * capacity * (nullable + repeated) + decoded
     temporary = 0
     reader_bytes = 0
     if chunk.compression != "UNCOMPRESSED":
-        # Pages decompress into a buffer the size of the largest page or the
-        # dictionary page. Pages fill to a byte target, so the largest is at
-        # most twice the average; without a page count, the whole chunk.
-        uncompressed = chunk.total_uncompressed_size
-        page = uncompressed if pages is None else 2 * uncompressed // max(pages, 1)
-        reader_bytes = max(min(page, uncompressed), dictionary)
-    if _DELTA_ENCODINGS & set(chunk.encodings) and not guessed:
+        # Pages decompress into a buffer the size of the largest page, bounded by
+        # the chunk, or of the dictionary page.
+        reader_bytes = max(chunk.total_uncompressed_size, dictionary)
+    if _DELTA_ENCODINGS & set(chunk.encodings):
         # DELTA decoders unpack a page's int32 lengths, 4 bytes a value, and
         # DELTA_BYTE_ARRAY's its prefix lengths and rebuilt values too.
-        state = 4 * levels
+        reader_bytes += 4 * levels
         if "DELTA_BYTE_ARRAY" in chunk.encodings:
-            state = 8 * levels + decoded
-        reader_bytes += min(state, 2 * state // max(pages or 1, 1))
+            reader_bytes += 4 * levels + decoded
     if reserved > rows:
         # Reserved past the rows (a list's position), the page reader measured
         # as held only while the leaf decodes.
@@ -159,9 +150,8 @@ def estimate_leaf_work(
         node = leaf.profile.nodes[-1]
         width = node.width if node.kind == _BINARY else 4
         temporary += width * max(capacity - leaf.slots(), 0)
-        # The builder's copy of the values, which the 128-times guess covers.
-        if not guessed:
-            temporary += estimate_string_bytes(leaf=leaf)
+        # The builder's copy of the values.
+        temporary += estimate_string_bytes(leaf=leaf)
         # A string list's offsets are held alongside the builder: both count.
         return kept, temporary + list_offsets
     # Fixed width: the dictionary, then values and validity at capacity.
@@ -178,7 +168,7 @@ def estimate_leaf_work(
         temporary += chunk.has_dictionary_page * values
     else:
         values = slots * _PHYSICAL_WIDTH[chunk.physical_type]
-        zero_copy = _zero_copy(physical_type=chunk.physical_type, arrow_type=leaf.type)
+        zero_copy = leaf.profile.nodes[-1].keeps_bitmap
     if zero_copy:
         # Trimmed and handed over: the decoded size counts what's kept.
         temporary += max(values - decoded, 0) + validity
@@ -194,19 +184,16 @@ def estimate_cast(
     column_leaves: Mapping[str, Sequence[LeafChunk]],
     file_schema: pa.Schema,
     pinned_schema: pa.Schema,
-    pieces: int,
     read: Read,
 ) -> int:
     """What a pin's cast allocates for one row group, times 1.5: a crude bound.
-    ``column_leaves`` holds each column read as its leaves, profiled as pinned. A
-    nested cast copies once per one of the ``pieces`` the scanner yields."""
+    ``column_leaves`` holds each column read as its leaves, profiled as pinned."""
     size = estimate_added_columns(row_group=row_group, read=read)
     for name, leaves in column_leaves.items():
         before, after = file_schema.field(name).type, pinned_schema.field(name).type
         if before == after:
             continue
-        copies = pieces if _nested(before) or _nested(after) else 1
-        size += copies * estimate_row_group(
+        size += estimate_row_group(
             row_group=row_group,
             leaves=leaves,
             read=read._replace(added_row_bytes=0, added_row_group_bytes=0),
@@ -235,23 +222,3 @@ def _list_offset_width(leaf: LeafChunk) -> int:
     """Bytes per offset of the widest list above ``leaf``, 4 if none."""
     widths = [node.width for node in leaf.profile.nodes[:-1] if node.kind == _LIST]
     return max(widths, default=4)
-
-
-def _zero_copy(physical_type: str, arrow_type: pa.DataType) -> bool:
-    """Whether PyArrow hands the decoded values to Arrow without a copy."""
-    # Only these: it copies into every other type, even date32.
-    if physical_type in ("INT32", "INT64"):
-        return arrow_type in (pa.int32(), pa.int64()) or (
-            physical_type == "INT64" and pa.types.is_timestamp(arrow_type)
-        )
-    floats = (("FLOAT", pa.float32()), ("DOUBLE", pa.float64()))
-    return (physical_type, arrow_type) in floats
-
-
-def _nested(arrow_type: pa.DataType) -> bool:
-    """Whether ``arrow_type`` has a list, map or union: casts copy per piece."""
-    if isinstance(arrow_type, pa.BaseExtensionType):
-        arrow_type = arrow_type.storage_type
-    if pa.types.is_struct(arrow_type):
-        return any(_nested(field.type) for field in arrow_type)
-    return pa.types.is_nested(arrow_type)

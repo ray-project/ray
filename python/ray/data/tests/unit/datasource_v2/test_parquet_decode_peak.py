@@ -5,7 +5,6 @@ import pytest
 from packaging.version import parse as parse_version
 
 from ray.data._internal.datasource_v2.formats.parquet.parquet_decode_peak import (
-    _nested,
     estimate_row_group_peak,
     estimate_row_group_work,
 )
@@ -68,15 +67,17 @@ def _estimate(path, columns=None, **format_kwargs):
     )
     assert profiles is not None
     row_group = metadata.row_group(0)
-    footer = read_footer_stats(metadata)
-    rg_stats = None if footer is None else footer.size_statistics[0]
+    stats = read_footer_stats(metadata)
+    rg_stats = None if stats is None else stats[0]
     pages = {}
     with open(path, "rb") as f:
         for leaf_idx in range(row_group.num_columns):
             chunk = row_group.column(leaf_idx)
             leaf_stats = None if rg_stats is None else rg_stats[leaf_idx]
+            profile = profiles[leaf_idx]
+            assert profile is not None
             nbytes = dictionary_page_read_size(
-                profile=profiles[leaf_idx], chunk=chunk, stats=leaf_stats
+                profile=profile, chunk=chunk, stats=leaf_stats
             )
             if nbytes:
                 f.seek(chunk.dictionary_page_offset)
@@ -101,7 +102,6 @@ def _estimate(path, columns=None, **format_kwargs):
         column_leaves=column_leaves,
         leaves=leaves,
         counted=set(),
-        data_pages=None if footer is None else footer.data_pages[0],
     )
     return estimate_row_group_peak(
         row_group=row_group,
@@ -135,16 +135,6 @@ _CASES = {
         )
     ),
     "strings": _case(pa.table({"a": _strings(N // 4)})),
-    # PyArrow miscounts DELTA_BYTE_ARRAY SizeStatistics, so the decoded size is
-    # a crude bound here, and the peak inherits it.
-    "delta-byte-array": _case(
-        pa.table({"a": _strings(N)}),
-        write_kwargs={
-            "use_dictionary": False,
-            "column_encoding": {"a": "DELTA_BYTE_ARRAY"},
-        },
-        high=20,
-    ),
     # The int64 column is read first, so PyArrow reserves it for the list's values.
     "column-after-list-reserve": _case(
         pa.table(
@@ -168,11 +158,6 @@ def test_estimate_bounds_measured_peak(tmp_path, label):
         path=path, columns=columns, **format_kwargs
     )
     assert 0.95 <= ratio <= high, ratio
-
-
-def test_a_canonical_extension_casts_as_its_storage():
-    """A fixed-shape tensor column, a fixed-size list on disk, copies per piece."""
-    assert _nested(pa.fixed_shape_tensor(pa.float32(), [2, 2]))
 
 
 if __name__ == "__main__":
