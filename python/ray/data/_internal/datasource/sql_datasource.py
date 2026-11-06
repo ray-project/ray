@@ -98,6 +98,7 @@ class SQLDatasource(Datasource):
         sql_params: Optional[Any] = None,
     ):
         self.sql = sql
+        self.shard_key_list = list(shard_keys) if shard_keys else None
         if shard_keys and len(shard_keys) > 1:
             self.shard_keys = f"CONCAT({','.join(shard_keys)})"
         elif shard_keys and len(shard_keys) == 1:
@@ -197,10 +198,31 @@ class SQLDatasource(Datasource):
 
     def _create_parallel_read_fn(self, task_id: int, parallelism: int):
         hash_fn = self.shard_hash_fn
-        query = (
-            f"SELECT * FROM ({self.sql}) as T "
-            f"WHERE MOD(ABS({hash_fn}({self.shard_keys})), {parallelism}) = {task_id}"
+        hash_predicate = (
+            f"MOD(ABS({hash_fn}({self.shard_keys})), " f"{parallelism}) = {task_id}"
         )
+
+        if self.shard_key_list:
+            non_null_conditions = [f"{key} IS NOT NULL" for key in self.shard_key_list]
+            non_null_predicate = "(" + " AND ".join(non_null_conditions) + ")"
+
+            if task_id == 0:
+                # Task 0 must catch every row the other tasks reject, so use the
+                # exact boolean complement of the non-NULL guard rather than an
+                # "any key IS NULL" test. In PostgreSQL a row-valued shard key
+                # with mixed NULL fields (e.g. (1, NULL)) is FALSE for BOTH
+                # "IS NULL" and "IS NOT NULL", so an OR-of-IS-NULL guard would
+                # drop such a row from every shard unless its hash bucket is 0.
+                # IS [NOT] NULL never yields UNKNOWN, so NOT(...) is the strict
+                # complement and routes those rows here (no silent data loss).
+                # For scalar keys this is identical to "any key IS NULL".
+                predicate = f"(NOT {non_null_predicate} OR {hash_predicate})"
+            else:
+                predicate = f"({non_null_predicate} AND {hash_predicate})"
+        else:
+            predicate = hash_predicate
+
+        query = f"SELECT * FROM ({self.sql}) AS T WHERE {predicate}"
 
         def read_fn() -> Iterable[Block]:
             with _connect(self.connection_factory) as cursor:
