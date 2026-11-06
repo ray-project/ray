@@ -27,6 +27,7 @@ from ray.data._internal.execution.operators.shuffle_operators.shuffle_tasks impo
     BlockTransformer,
     PartitionFn,
     _shuffle_map_task,
+    merge_runtime_envs,
 )
 from ray.data.block import Block, BlockMetadata, BlockStats
 from ray.data.context import DataContext
@@ -73,6 +74,9 @@ class ShuffleMapOp(InternalQueueOperatorMixin, PhysicalOperator):
             May change the block schema.
         map_runtime_env: Optional runtime_env for map tasks; useful to
             isolate map workers from other ops.
+        map_ray_remote_args: Optional user ``ray.remote`` options for map
+            tasks (e.g. custom resources). They override the defaults; a
+            ``runtime_env`` is merged onto ``map_runtime_env``.
         map_cpus: CPU request per map task.
         peak_memory_multiplier: Multiplier applied to a task's input bytes to
             derive its memory request.
@@ -90,6 +94,7 @@ class ShuffleMapOp(InternalQueueOperatorMixin, PhysicalOperator):
         partition_fn: PartitionFn,
         block_transformer: Optional[BlockTransformer] = None,
         map_runtime_env: Optional[Dict[str, Any]] = None,
+        map_ray_remote_args: Optional[Dict[str, Any]] = None,
         map_cpus: float = _DEFAULT_SHUFFLE_MAP_TASK_NUM_CPUS,
         peak_memory_multiplier: float = SHUFFLE_PEAK_MEMORY_MULTIPLIER,
         name: str = "ShuffleMap",
@@ -107,6 +112,7 @@ class ShuffleMapOp(InternalQueueOperatorMixin, PhysicalOperator):
         # -- Map task config -------------------------------------------------
         self._shuffle_map_task_num_cpus: float = map_cpus
         self._map_runtime_env: Optional[Dict[str, Any]] = map_runtime_env
+        self._map_ray_remote_args: Dict[str, Any] = dict(map_ray_remote_args or {})
         self._peak_memory_multiplier: float = peak_memory_multiplier
 
         # -- Pre-map merge ---------------------------------------------------
@@ -211,18 +217,30 @@ class ShuffleMapOp(InternalQueueOperatorMixin, PhysicalOperator):
         resources: Dict[str, Any] = {"num_cpus": self._shuffle_map_task_num_cpus}
         if estimated_bytes > 0:
             resources["memory"] = int(estimated_bytes * self._peak_memory_multiplier)
+        user_args = dict(self._map_ray_remote_args)
+        user_runtime_env = user_args.pop("runtime_env", None)
+        resources.update(
+            {
+                k: user_args[k]
+                for k in ("num_cpus", "num_gpus", "memory")
+                if k in user_args
+            }
+        )
 
         ray_options: Dict[str, Any] = {
             **resources,
+            **user_args,
             "name": self.name,
             "num_returns": self._num_partitions + 1,
         }
-        if target_node_id is not None:
+        if target_node_id is not None and "scheduling_strategy" not in user_args:
             ray_options["scheduling_strategy"] = NodeAffinitySchedulingStrategy(
                 target_node_id, soft=True
             )
-        if self._map_runtime_env is not None:
-            ray_options["runtime_env"] = self._map_runtime_env
+        if self._map_runtime_env is not None or user_runtime_env is not None:
+            ray_options["runtime_env"] = merge_runtime_envs(
+                self._map_runtime_env, user_runtime_env or {}
+            )
 
         map_refs = _shuffle_map_task.options(**ray_options).remote(
             *block_refs,

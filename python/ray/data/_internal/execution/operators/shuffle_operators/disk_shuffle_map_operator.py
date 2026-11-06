@@ -35,6 +35,7 @@ from ray.data._internal.execution.operators.shuffle_operators.shuffle_map_operat
 )
 from ray.data._internal.execution.operators.shuffle_operators.shuffle_tasks import (
     SHUFFLE_PEAK_MEMORY_MULTIPLIER,
+    merge_runtime_envs,
 )
 from ray.data._internal.execution.util import merge_label_selector
 from ray.data.block import BlockExecStats, BlockMetadata, BlockStats
@@ -69,6 +70,7 @@ class DiskHashShuffleMapOp(InternalQueueOperatorMixin, PhysicalOperator):
         partition_fn: PartitionFn,
         block_transformer: Optional[BlockTransformer] = None,
         map_runtime_env: Optional[Dict[str, Any]] = None,
+        map_ray_remote_args: Optional[Dict[str, Any]] = None,
         map_cpus: float = _DEFAULT_SHUFFLE_MAP_TASK_NUM_CPUS,
         name: str = "DiskHashShuffleMap",
     ):
@@ -85,6 +87,8 @@ class DiskHashShuffleMapOp(InternalQueueOperatorMixin, PhysicalOperator):
         # -- Map task config -------------------------------------------------
         self._shuffle_map_task_num_cpus: float = map_cpus
         self._map_runtime_env: Optional[Dict[str, Any]] = map_runtime_env
+        # User ray.remote options; they override defaults, runtime_env merges.
+        self._map_ray_remote_args: Dict[str, Any] = dict(map_ray_remote_args or {})
 
         # -- Pre-map merge ---------------------------------------------------
         # Buffered blocks are coalesced per node into a single map task once
@@ -215,14 +219,25 @@ class DiskHashShuffleMapOp(InternalQueueOperatorMixin, PhysicalOperator):
         resources: Dict[str, Any] = {"num_cpus": self._shuffle_map_task_num_cpus}
         if estimated_bytes > 0:
             resources["memory"] = estimated_bytes * SHUFFLE_PEAK_MEMORY_MULTIPLIER
+        user_args = dict(self._map_ray_remote_args)
+        user_runtime_env = user_args.pop("runtime_env", None)
+        resources.update(
+            {
+                k: user_args[k]
+                for k in ("num_cpus", "num_gpus", "memory")
+                if k in user_args
+            }
+        )
 
-        ray_options: Dict[str, Any] = {**resources, "name": self.name}
-        if target_node_id is not None:
+        ray_options: Dict[str, Any] = {**resources, **user_args, "name": self.name}
+        if target_node_id is not None and "scheduling_strategy" not in user_args:
             ray_options["scheduling_strategy"] = NodeAffinitySchedulingStrategy(
                 target_node_id, soft=True
             )
-        if self._map_runtime_env is not None:
-            ray_options["runtime_env"] = self._map_runtime_env
+        if self._map_runtime_env is not None or user_runtime_env is not None:
+            ray_options["runtime_env"] = merge_runtime_envs(
+                self._map_runtime_env, user_runtime_env or {}
+            )
 
         ray_options = merge_label_selector(
             ray_options, self.data_context.execution_options.label_selector

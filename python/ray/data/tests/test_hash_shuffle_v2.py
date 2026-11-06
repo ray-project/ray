@@ -508,6 +508,48 @@ def test_disk_shuffle_map_task_uses_context_label_selector(restore_data_context)
     }
 
 
+@pytest.mark.parametrize(
+    "map_cls, task_path",
+    [
+        (ShuffleMapOp, "shuffle_map_operator._shuffle_map_task"),
+        (DiskHashShuffleMapOp, "disk_shuffle_map_operator._disk_shuffle_map_task"),
+    ],
+)
+def test_shuffle_map_task_applies_map_ray_remote_args(
+    restore_data_context, map_cls, task_path
+):
+    op = map_cls(
+        InputDataBuffer(restore_data_context, []),
+        restore_data_context,
+        num_partitions=1,
+        partition_fn=lambda table: {},
+        map_runtime_env={"env_vars": {"POLARS_MAX_THREADS": "1"}},
+        map_ray_remote_args={
+            "num_cpus": 2,
+            "resources": {"bar": 1},
+            "runtime_env": {"env_vars": {"CUSTOM": "x"}},
+            "name": "ignored",
+        },
+    )
+    op.start(ExecutionOptions(), noop_counter())
+
+    with patch(
+        f"ray.data._internal.execution.operators.shuffle_operators.{task_path}"
+    ) as shuffle_map_task:
+        shuffle_map_task.options.return_value.remote.return_value = MagicMock()
+        op._submit_shuffle_map_task([], [])
+
+    kwargs = shuffle_map_task.options.call_args.kwargs
+    assert kwargs["num_cpus"] == 2
+    assert kwargs["resources"] == {"bar": 1}
+    assert kwargs["runtime_env"]["env_vars"] == {
+        "POLARS_MAX_THREADS": "1",
+        "CUSTOM": "x",
+    }
+    assert kwargs["name"] == op.name
+    assert op._map_resource_usage.cpu == 2
+
+
 def test_disk_shuffle_reduce_task_merges_label_selector(restore_data_context):
     restore_data_context.execution_options.label_selector = {
         "subcluster": "train",

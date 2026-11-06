@@ -6,7 +6,17 @@ import math
 import time
 import typing
 from dataclasses import replace
-from typing import Callable, Dict, Generator, Iterable, List, Optional, Tuple, Union
+from typing import (
+    Any,
+    Callable,
+    Dict,
+    Generator,
+    Iterable,
+    List,
+    Optional,
+    Tuple,
+    Union,
+)
 
 import pyarrow as pa
 
@@ -62,6 +72,17 @@ def resolve_partition_fn(
 
 # Peak working-set of a shuffle map/reduce task is ~2x the input bytes
 SHUFFLE_PEAK_MEMORY_MULTIPLIER = 2
+
+
+def merge_runtime_envs(
+    base: Optional[Dict[str, Any]], user: Dict[str, Any]
+) -> Dict[str, Any]:
+    """Overlay a user ``runtime_env`` on an operator default, merging ``env_vars``."""
+    base = base or {}
+    merged = {**base, **user}
+    if "env_vars" in base or "env_vars" in user:
+        merged["env_vars"] = {**base.get("env_vars", {}), **user.get("env_vars", {})}
+    return merged
 
 
 def _ipc_write_options(compression: Optional[str]) -> pa.ipc.IpcWriteOptions:
