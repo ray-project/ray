@@ -140,7 +140,13 @@ Set the `RAY_RUNTIME_ENV_BEARER_TOKEN` environment variable to your bearer token
 export RAY_RUNTIME_ENV_BEARER_TOKEN="your_bearer_token_here"
 ```
 
-Ray automatically includes this token in the `Authorization` header when it downloads HTTPS URIs in your `runtime_env`:
+Set `RAY_RUNTIME_ENV_BEARER_TOKEN_HOSTS` to a comma-separated list of hostnames. List each hostname without a port or IPv6 brackets, for example `example.com` or `::1`. Ray sends the token only to these hosts, because whoever submits a job chooses the URIs Ray downloads. If you leave the variable unset, Ray never sends the token. Ray never sends the token over plain `http://`.
+
+```bash
+export RAY_RUNTIME_ENV_BEARER_TOKEN_HOSTS="example.com"
+```
+
+Ray includes the token in the `Authorization` header when it downloads HTTPS URIs on a listed host in your `runtime_env`:
 
 ```python
 runtime_env = {"working_dir": "https://example.com/private/repo.zip"}
@@ -176,6 +182,8 @@ headGroupSpec:
                 secretKeyRef:
                   name: bearer-token-secret
                   key: RAY_RUNTIME_ENV_BEARER_TOKEN
+            - name: RAY_RUNTIME_ENV_BEARER_TOKEN_HOSTS
+              value: "example.com"
 
 workerGroupSpecs:
     ...
@@ -189,6 +197,8 @@ workerGroupSpecs:
                 secretKeyRef:
                   name: bearer-token-secret
                   key: RAY_RUNTIME_ENV_BEARER_TOKEN
+            - name: RAY_RUNTIME_ENV_BEARER_TOKEN_HOSTS
+              value: "example.com"
 ```
 
 3\. Apply your KubeRay config.
