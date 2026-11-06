@@ -591,6 +591,124 @@ TEST_F(GcsPlacementGroupSchedulerTest, DestroyPlacementGroup) {
   ASSERT_FALSE(raylet_clients_[0]->GrantRemovePlacementGroupBundles());
 }
 
+// Regression test for https://github.com/ray-project/ray/issues/64696: bundle
+// removal used to be abandoned after five transient RPC failures even though the
+// node was still alive, leaking the placement group's resources on that raylet.
+TEST_F(GcsPlacementGroupSchedulerTest, DestroyPlacementGroupKeepsRetryingLiveNode) {
+  auto node = GenNodeInfo();
+  AddNode(node);
+  ASSERT_EQ(1, gcs_node_manager_->GetAllAliveNodes().size());
+
+  auto placement_group = std::make_shared<GcsPlacementGroup>(
+      GenCreatePlacementGroupRequest(), "", counter_, clock_);
+  scheduler_->ScheduleUnplacedBundles(SchedulePgRequest{
+      placement_group,
+      [this](std::shared_ptr<GcsPlacementGroup> placement_group, bool is_insfeasble) {
+        absl::MutexLock lock(&placement_group_requests_mutex_);
+        failure_placement_groups_.emplace_back(std::move(placement_group));
+      },
+      [this](std::shared_ptr<GcsPlacementGroup> placement_group) {
+        absl::MutexLock lock(&placement_group_requests_mutex_);
+        success_placement_groups_.emplace_back(std::move(placement_group));
+      }});
+  ASSERT_TRUE(raylet_clients_[0]->GrantPrepareBundleResources());
+  WaitPendingDone(raylet_clients_[0]->commit_callbacks, 1);
+  ASSERT_TRUE(raylet_clients_[0]->GrantCommitBundleResources());
+  WaitPlacementGroupPendingDone(1, GcsPlacementGroupStatus::SUCCESS);
+
+  scheduler_->DestroyPlacementGroupBundleResourcesIfExists(
+      placement_group->GetPlacementGroupID());
+
+  // Five transient failures used to exhaust the retry budget.
+  for (int attempt = 0; attempt < 5; ++attempt) {
+    WaitPendingDone(raylet_clients_[0]->remove_pg_bundles_callbacks, 1);
+    ASSERT_TRUE(raylet_clients_[0]->GrantRemovePlacementGroupBundles(
+        Status::RpcError("unavailable", grpc::StatusCode::UNAVAILABLE)));
+  }
+  // The node is still alive, so GCS must keep trying.
+  WaitPendingDone(raylet_clients_[0]->remove_pg_bundles_callbacks, 1);
+  ASSERT_EQ(raylet_clients_[0]->num_remove_pg_bundles_requested, 6);
+  ASSERT_TRUE(raylet_clients_[0]->GrantRemovePlacementGroupBundles());
+
+  // Nothing is retried after a successful removal.
+  ASSERT_FALSE(raylet_clients_[0]->GrantRemovePlacementGroupBundles());
+}
+
+// The prepared bundles of a failed scheduling attempt are removed with a bounded
+// retry budget: the placement group is rescheduled with the same bundle IDs, and a
+// late removal would cancel every lease and worker of the group on that node.
+TEST_F(GcsPlacementGroupSchedulerTest, FailedPrepareCleanupKeepsBoundedRetries) {
+  auto node0 = GenNodeInfo(0);
+  auto node1 = GenNodeInfo(1);
+  AddNode(node0);
+  AddNode(node1);
+  ASSERT_EQ(2, gcs_node_manager_->GetAllAliveNodes().size());
+
+  auto placement_group = std::make_shared<GcsPlacementGroup>(
+      GenCreatePlacementGroupRequest(), "", counter_, clock_);
+  scheduler_->ScheduleUnplacedBundles(SchedulePgRequest{
+      placement_group,
+      [this](std::shared_ptr<GcsPlacementGroup> placement_group, bool is_insfeasble) {
+        absl::MutexLock lock(&placement_group_requests_mutex_);
+        failure_placement_groups_.emplace_back(std::move(placement_group));
+      },
+      [this](std::shared_ptr<GcsPlacementGroup> placement_group) {
+        absl::MutexLock lock(&placement_group_requests_mutex_);
+        success_placement_groups_.emplace_back(std::move(placement_group));
+      }});
+  // node0 prepares its bundle, node1 rejects, so GCS removes node0's bundle.
+  ASSERT_TRUE(raylet_clients_[0]->GrantPrepareBundleResources());
+  ASSERT_TRUE(raylet_clients_[1]->GrantPrepareBundleResources(false));
+  WaitPlacementGroupPendingDone(1, GcsPlacementGroupStatus::FAILURE);
+
+  for (int attempt = 0; attempt < 5; ++attempt) {
+    WaitPendingDone(raylet_clients_[0]->remove_pg_bundles_callbacks, 1);
+    ASSERT_TRUE(raylet_clients_[0]->GrantRemovePlacementGroupBundles(
+        Status::RpcError("unavailable", grpc::StatusCode::UNAVAILABLE)));
+  }
+  // Five attempts in total, then GCS gives up even though the node is alive.
+  std::this_thread::sleep_for(std::chrono::milliseconds(1500));
+  ASSERT_EQ(raylet_clients_[0]->num_remove_pg_bundles_requested, 5);
+  ASSERT_FALSE(raylet_clients_[0]->GrantRemovePlacementGroupBundles());
+}
+
+// Once the node is dead the raylet cannot hold the bundles anymore, so the
+// retry loop ends.
+TEST_F(GcsPlacementGroupSchedulerTest, DestroyPlacementGroupStopsRetryingDeadNode) {
+  auto node = GenNodeInfo();
+  AddNode(node);
+
+  auto placement_group = std::make_shared<GcsPlacementGroup>(
+      GenCreatePlacementGroupRequest(), "", counter_, clock_);
+  scheduler_->ScheduleUnplacedBundles(SchedulePgRequest{
+      placement_group,
+      [this](std::shared_ptr<GcsPlacementGroup> placement_group, bool is_insfeasble) {
+        absl::MutexLock lock(&placement_group_requests_mutex_);
+        failure_placement_groups_.emplace_back(std::move(placement_group));
+      },
+      [this](std::shared_ptr<GcsPlacementGroup> placement_group) {
+        absl::MutexLock lock(&placement_group_requests_mutex_);
+        success_placement_groups_.emplace_back(std::move(placement_group));
+      }});
+  ASSERT_TRUE(raylet_clients_[0]->GrantPrepareBundleResources());
+  WaitPendingDone(raylet_clients_[0]->commit_callbacks, 1);
+  ASSERT_TRUE(raylet_clients_[0]->GrantCommitBundleResources());
+  WaitPlacementGroupPendingDone(1, GcsPlacementGroupStatus::SUCCESS);
+
+  scheduler_->DestroyPlacementGroupBundleResourcesIfExists(
+      placement_group->GetPlacementGroupID());
+  WaitPendingDone(raylet_clients_[0]->remove_pg_bundles_callbacks, 1);
+
+  // The node dies while the removal is failing transiently.
+  RemoveNode(node);
+  ASSERT_TRUE(raylet_clients_[0]->GrantRemovePlacementGroupBundles(
+      Status::RpcError("unavailable", grpc::StatusCode::UNAVAILABLE)));
+
+  // Give the retry timer a chance to fire; no new request may be sent.
+  std::this_thread::sleep_for(std::chrono::milliseconds(1500));
+  ASSERT_EQ(raylet_clients_[0]->num_remove_pg_bundles_requested, 1);
+}
+
 TEST_F(GcsPlacementGroupSchedulerTest, DestroyCancelledPlacementGroup) {
   auto node0 = GenNodeInfo(0);
   auto node1 = GenNodeInfo(1);

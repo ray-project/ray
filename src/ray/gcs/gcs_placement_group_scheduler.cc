@@ -21,9 +21,16 @@
 #include <vector>
 
 #include "ray/asio/asio_util.h"
+#include "ray/common/grpc_util.h"
 
 namespace ray {
 namespace gcs {
+
+namespace {
+// Retries for removing the prepared bundles of a failed scheduling attempt: five
+// attempts in total, matching the previous fixed budget.
+constexpr int kMaxPreparedBundleRemovalRetries = 4;
+}  // namespace
 
 GcsPlacementGroupScheduler::GcsPlacementGroupScheduler(
     instrumented_io_context &io_context,
@@ -176,7 +183,9 @@ void GcsPlacementGroupScheduler::DestroyPlacementGroupBundleResourcesIfExists(
     // There could be leasing bundles and committed bundles at the same time if placement
     // groups are rescheduling, so we need to destroy prepared bundles and committed
     // bundles at the same time.
-    DestroyPlacementGroupPreparedBundleResources(placement_group_id);
+    // The placement group is being removed, so retry while the node is alive.
+    DestroyPlacementGroupPreparedBundleResources(placement_group_id,
+                                                 /*max_retries=*/std::nullopt);
     DestroyPlacementGroupCommittedBundleResources(placement_group_id);
     // GCS no longer locally restores the freed resources here; the next
     // ray-syncer broadcast from each raylet whose bundles were cancelled will
@@ -254,26 +263,18 @@ void GcsPlacementGroupScheduler::CommitResources(
 void GcsPlacementGroupScheduler::RemovePlacementGroupBundles(
     const PlacementGroupID &placement_group_id,
     const std::vector<std::shared_ptr<const BundleSpecification>> &bundle_specs,
-    const std::optional<std::shared_ptr<const ray::rpc::GcsNodeInfo>> &node,
-    int max_retry,
-    int current_retry_count) {
+    const NodeID &node_id,
+    std::optional<int> remaining_retries) {
   if (bundle_specs.empty()) {
     RAY_LOG(WARNING) << "RemovePlacementGroupBundles called on empty bundle list.";
     return;
   }
+  // Look the node up on every attempt: a node that died since the last attempt
+  // cannot hold the bundles anymore, so the cleanup obligation ends with it.
+  const auto node = gcs_node_manager_.GetAliveNode(node_id);
   if (!node.has_value()) {
     RAY_LOG(INFO) << "Node for placement group " << placement_group_id
                   << " has already been removed. Remove request will be ignored.";
-    return;
-  }
-
-  auto node_id = NodeID::FromBinary(node.value()->node_id());
-
-  if (max_retry == current_retry_count) {
-    RAY_LOG(ERROR) << "Failed to remove " << bundle_specs.size()
-                   << " bundle(s) for placement group " << placement_group_id
-                   << " at node " << node_id
-                   << " because the max retry count is reached.";
     return;
   }
 
@@ -285,39 +286,43 @@ void GcsPlacementGroupScheduler::RemovePlacementGroupBundles(
   raylet_client->RemovePlacementGroupBundles(
       placement_group_id,
       bundle_specs,
-      [this,
-       placement_group_id,
-       bundle_specs,
-       node_id,
-       node,
-       max_retry,
-       current_retry_count](const Status &status,
-                            const rpc::RemovePlacementGroupBundlesReply &reply) {
+      [this, placement_group_id, bundle_specs, node_id, remaining_retries](
+          const Status &status, const rpc::RemovePlacementGroupBundlesReply &reply) {
         if (status.ok()) {
           RAY_LOG(INFO) << "Finished removing " << bundle_specs.size()
                         << " bundle(s) for placement group " << placement_group_id
                         << " at node " << node_id;
-        } else {
-          // We couldn't delete the pg resources because of network issue. Retry.
-          RAY_LOG(WARNING) << "Failed to remove " << bundle_specs.size()
-                           << " bundle(s) for placement group " << placement_group_id
-                           << " at node " << node_id << ". Status: " << status;
-          execute_after(
-              io_context_,
-              [this,
-               placement_group_id,
-               bundle_specs,
-               node,
-               max_retry,
-               current_retry_count] {
-                RemovePlacementGroupBundles(placement_group_id,
-                                            bundle_specs,
-                                            node,
-                                            max_retry,
-                                            current_retry_count + 1);
-              },
-              std::chrono::milliseconds(1000) /* milliseconds */);
+          return;
         }
+        if (!IsGrpcRetryableStatus(status)) {
+          RAY_LOG(ERROR) << "Failed to remove " << bundle_specs.size()
+                         << " bundle(s) for placement group " << placement_group_id
+                         << " at node " << node_id
+                         << " with a non-retryable status: " << status;
+          return;
+        }
+        if (remaining_retries.has_value() && *remaining_retries == 0) {
+          RAY_LOG(ERROR) << "Failed to remove " << bundle_specs.size()
+                         << " bundle(s) for placement group " << placement_group_id
+                         << " at node " << node_id
+                         << " because the max retry count is reached.";
+          return;
+        }
+        RAY_LOG(WARNING) << "Failed to remove " << bundle_specs.size()
+                         << " bundle(s) for placement group " << placement_group_id
+                         << " at node " << node_id << ". Status: " << status
+                         << ". Retrying.";
+        auto next_remaining_retries = remaining_retries;
+        if (next_remaining_retries.has_value()) {
+          --*next_remaining_retries;
+        }
+        execute_after(
+            io_context_,
+            [this, placement_group_id, bundle_specs, node_id, next_remaining_retries] {
+              RemovePlacementGroupBundles(
+                  placement_group_id, bundle_specs, node_id, next_remaining_retries);
+            },
+            std::chrono::milliseconds(1000) /* milliseconds */);
       });
 }
 
@@ -413,7 +418,12 @@ void GcsPlacementGroupScheduler::OnAllBundlePrepareRequestReturned(
     // NOTE: A placement group may be scheduled several times to succeed.
     // If a prepare failure occurs during scheduling, we just need to release the prepared
     // bundle resources of this scheduling.
-    DestroyPlacementGroupPreparedBundleResources(placement_group_id);
+    // The placement group is rescheduled with the same bundle IDs right after this,
+    // and the raylet's removal handler cancels every lease and worker of the placement
+    // group on the node. A removal retried after a newer attempt reserved bundles there
+    // would destroy them, so keep the retry budget bounded on this path.
+    DestroyPlacementGroupPreparedBundleResources(placement_group_id,
+                                                 kMaxPreparedBundleRemovalRetries);
     auto it = placement_group_leasing_in_progress_.find(placement_group_id);
     RAY_CHECK(it != placement_group_leasing_in_progress_.end());
     placement_group_leasing_in_progress_.erase(it);
@@ -667,7 +677,7 @@ GroupBundlesByNode(const BundleLocations &bundle_locations) {
 }  // namespace
 
 void GcsPlacementGroupScheduler::DestroyPlacementGroupPreparedBundleResources(
-    const PlacementGroupID &placement_group_id) {
+    const PlacementGroupID &placement_group_id, std::optional<int> max_retries) {
   // Get the locations of prepared bundles.
   auto it = placement_group_leasing_in_progress_.find(placement_group_id);
   if (it != placement_group_leasing_in_progress_.end()) {
@@ -679,11 +689,8 @@ void GcsPlacementGroupScheduler::DestroyPlacementGroupPreparedBundleResources(
     RAY_LOG(INFO) << "Removing all prepared bundles of a placement group, id is "
                   << placement_group_id;
     for (auto &entry : GroupBundlesByNode(*leasing_bundle_locations)) {
-      RemovePlacementGroupBundles(placement_group_id,
-                                  entry.second,
-                                  gcs_node_manager_.GetAliveNode(entry.first),
-                                  /*max_retry*/ 5,
-                                  /*current_retry_count*/ 0);
+      RemovePlacementGroupBundles(
+          placement_group_id, entry.second, entry.first, max_retries);
     }
   }
 }
@@ -700,12 +707,13 @@ void GcsPlacementGroupScheduler::DestroyPlacementGroupCommittedBundleResources(
     // handles them in a single RPC.
     RAY_LOG(INFO) << "Removing all committed bundles of a placement group, id is "
                   << placement_group_id;
+    // Committed bundles are only destroyed when the placement group is removed, so
+    // nothing will reuse these bundle IDs: retry while the node is alive.
     for (auto &entry : GroupBundlesByNode(*committed_bundle_locations)) {
       RemovePlacementGroupBundles(placement_group_id,
                                   entry.second,
-                                  gcs_node_manager_.GetAliveNode(entry.first),
-                                  /*max_retry*/ 5,
-                                  /*current_retry_count*/ 0);
+                                  entry.first,
+                                  /*remaining_retries=*/std::nullopt);
     }
     committed_bundle_location_index_.Erase(placement_group_id);
   }
