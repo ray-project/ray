@@ -1,8 +1,8 @@
 import asyncio
-import functools
 import inspect
 import logging
 import time
+import weakref
 from collections import OrderedDict
 from typing import Any, Callable, List, Set
 
@@ -24,19 +24,31 @@ def _noop_del(self) -> None:
     pass
 
 
-@functools.lru_cache(maxsize=None)
+# Maps a model class to its subclass from `_subclass_without_del`. The subclass
+# refers to the model class through `__bases__`, so weak keys would never be
+# released. Weak values let both classes be collected once no evicted model
+# uses the subclass.
+_subclasses_without_del: "weakref.WeakValueDictionary[type, type]" = (
+    weakref.WeakValueDictionary()
+)
+
+
 def _subclass_without_del(cls: type) -> type:
     """Return a subclass of `cls` whose `__del__` does nothing."""
-    return type(
-        cls.__name__,
-        (cls,),
-        {
-            "__del__": _noop_del,
-            "__slots__": (),
-            "__module__": cls.__module__,
-            "__qualname__": cls.__qualname__,
-        },
-    )
+    subclass = _subclasses_without_del.get(cls)
+    if subclass is None:
+        subclass = type(
+            cls.__name__,
+            (cls,),
+            {
+                "__del__": _noop_del,
+                "__slots__": (),
+                "__module__": cls.__module__,
+                "__qualname__": cls.__qualname__,
+            },
+        )
+        _subclasses_without_del[cls] = subclass
+    return subclass
 
 
 def _skip_del_on_collection(model: Any) -> None:
