@@ -438,6 +438,7 @@ class PredicatePushdown(Rule):
                 right_columns_suffix=op.right_columns_suffix,
                 partition_size_hint=op.partition_size_hint,
                 aggregator_ray_remote_args=op.aggregator_ray_remote_args,
+                condition=op.condition,
             )
         if isinstance(op, Union) and is_dataclass(op):
             return Union(new_inputs)

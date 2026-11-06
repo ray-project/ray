@@ -19,6 +19,7 @@ from ray.data._internal.logical.rules import (
     CommonSubExprElimination,
     ConfigureMapTaskMemoryUsingOutputSize,
     DeriveListFilesPushdown,
+    ExtractEquiJoinKeys,
     FuseOperators,
     InheritTargetMaxBlockSizeRule,
     LimitPushdownRule,
@@ -31,6 +32,9 @@ from ray.util.annotations import DeveloperAPI
 
 _LOGICAL_RULESET = Ruleset(
     [
+        # Runs first so the key columns it derives from ``Join.condition`` are
+        # visible to the rules that reason about join keys (predicate pushdown).
+        ExtractEquiJoinKeys,
         LimitPushdownRule,
         ProjectionPushdown,
         PredicatePushdown,
