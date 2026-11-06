@@ -778,6 +778,36 @@ def test_train_test_split(ray_start_regular_shared_2_cpus):
         ds.train_test_split(test_size=9)
 
 
+@pytest.mark.parametrize(
+    "split",
+    [
+        lambda ds: ds.split_at_indices([6])[0],
+        lambda ds: ds.split_proportionately([0.75])[0],
+        lambda ds: ds.train_test_split(test_size=0.25)[0],
+        lambda ds: ds.train_test_split(test_size=2)[0],
+    ],
+    ids=["split_at_indices", "split_proportionately", "float", "int"],
+)
+def test_split_keeps_row_order_by_default(
+    ray_start_regular_shared_2_cpus, restore_data_context, split
+):
+    assert not DataContext.get_current().execution_options.preserve_order
+
+    def delay_block_of_row_2(batch):
+        # Make the block [2, 3] finish after the blocks that follow it.
+        if 2 in batch["id"]:
+            time.sleep(2)
+        return batch
+
+    ds = ray.data.range(8, override_num_blocks=4).map_batches(
+        delay_block_of_row_2, batch_size=None
+    )
+    assert extract_values("id", split(ds).take_all()) == [0, 1, 2, 3, 4, 5]
+    # Datasets derived from each other share these options, so the split must not
+    # change them.
+    assert not ds.context.execution_options.preserve_order
+
+
 def test_train_test_split_stratified(ray_start_regular_shared_2_cpus):
     # Test basic stratification with simple dataset
     data = [
