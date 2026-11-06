@@ -1,0 +1,44 @@
+{
+  "r_value_matrix": [
+    {
+      "experiment_type": "r_value_matrix",
+      "subtask_index": 0,
+      "subtask_count": 4,
+      "item_ids": [
+        "chain_rows1000000_ops2",
+        "chain_rows5000000_ops2",
+        "chain_rows10000000_ops2"
+      ]
+    },
+    {
+      "experiment_type": "r_value_matrix",
+      "subtask_index": 1,
+      "subtask_count": 4,
+      "item_ids": [
+        "chain_rows1000000_ops4",
+        "chain_rows5000000_ops4",
+        "chain_rows10000000_ops4"
+      ]
+    },
+    {
+      "experiment_type": "r_value_matrix",
+      "subtask_index": 2,
+      "subtask_count": 4,
+      "item_ids": [
+        "chain_rows1000000_ops8",
+        "chain_rows5000000_ops8",
+        "chain_rows10000000_ops8"
+      ]
+    },
+    {
+      "experiment_type": "r_value_matrix",
+      "subtask_index": 3,
+      "subtask_count": 4,
+      "item_ids": [
+        "chain_rows1000000_ops12",
+        "chain_rows5000000_ops12",
+        "chain_rows10000000_ops12"
+      ]
+    }
+  ]
+}
