@@ -457,9 +457,9 @@ ray.get(worker.close.remote())
 
 A profile is the keyword arguments of `create` plus a `size`, the number of sandboxes it keeps. A sandbox that a create takes still counts toward the size until it's deleted, by `delete`, by its TTL, or by a checkpoint that stops it, and only then does the runtime boot a new one in its place. So a pool never holds more sandboxes than its size, and a create that finds none booted boots one as usual, outside the pool. Everything fixed at boot must match: image, CPU, memory, disk, workdir, network, DNS, egress allowlist, capabilities, shell, GPUs, mounts, `readonly`, and `rootless`. A create's `env`, `ttl_seconds`, and `timeout_seconds` don't need to match: a sandbox taken from the pool runs every command with the create's `env` on top of the profile's, and its TTL starts at the create. Creates that match no profile boot as usual. Call `close` to delete the sandboxes the pool still holds.
 
-#### Send creates to whichever actor has a sandbox ready
+#### Route `create` calls to an actor with a ready sandbox
 
-A warm pool belongs to the runtime that booted it: only that runtime's `create` calls take its sandboxes. With pools on many actors, a caller needs to know which actor has a sandbox ready. Give the runtimes a `WarmPoolStore` and they publish their pools to it, every sandbox ready or in use, whenever that changes and every 10 seconds. Callers ask the store for ready sandboxes and send their create to the actor that holds one. `RayWarmPoolStore` keeps the records in a detached actor:
+A warm pool belongs to the runtime that booted it, and only that runtime's `create` calls take its sandboxes. With pools on many actors, a caller needs to know which actor has a sandbox ready. Give the runtimes a `WarmPoolStore`, and each runtime publishes its pool to the store whenever the pool changes and every 10 seconds. The published records cover every sandbox in the pool, whether ready or in use. Callers ask the store for ready sandboxes and send each `create` call to the actor that holds one. `RayWarmPoolStore` keeps the records in a detached actor:
 
 ```python
 import ray
@@ -498,7 +498,11 @@ runs += [hosts[0].run.remote(command) for command in commands[len(entries) :]]
 print(ray.get(runs))
 ```
 
-A runtime publishes under its actor's name, or its ID if the actor has no name; `warm_pool_host` overrides it. Each record holds a sandbox's profile `name`, slot, state, and node. Only the runtime hands its sandboxes out, and only those still ready on it, so the store can lag without harm: a create sent on a stale record boots a sandbox cold, and no sandbox goes to two creates. Pass the record's `sandbox_id` as `warm_sandbox`, and the create takes that sandbox while it's still ready; then a caller that sends at most one create per record never sends a runtime more creates than it has sandboxes ready, even when the store lags by a publish. Records expire 30 seconds after their host's last publish, so an actor that dies drops out.
+A runtime publishes under its actor's name, or under the actor's ID if the actor has no name. Set `warm_pool_host` to publish under a different name. Each record holds a sandbox's profile `name`, slot, state, and node.
+
+Only the runtime hands out its sandboxes, and only the ones still ready on it, so the store can lag without harm. A `create` call sent on a stale record boots a sandbox cold, and no sandbox goes to two `create` calls. Pass the record's `sandbox_id` as `warm_sandbox`, and the call takes that sandbox while it's still ready. A caller that sends at most one `create` call per record then never sends a runtime more calls than it has sandboxes ready, even when the store lags by a publish.
+
+Records expire 30 seconds after their host's last publish, so an actor that dies drops out.
 
 To keep the records in your own database, subclass `WarmPoolStore` and implement two methods. `publish(host, entries)` replaces the records of `host`, and an empty list removes them. `ready(profile)` returns the profile's ready records that haven't expired. For example, with a table whose columns follow `WarmPoolEntry`'s fields:
 
@@ -517,7 +521,7 @@ class PostgresWarmPoolStore(WarmPoolStore):
         return psycopg.connect(self.dsn)
 
     def publish(self, host, entries):
-        with self._connect() as conn:  # one transaction
+        with self._connect() as conn:  # One transaction.
             conn.execute("DELETE FROM warm_sandboxes WHERE host = %s", (host,))
             conn.cursor().executemany(
                 "INSERT INTO warm_sandboxes VALUES (%s, %s, %s, %s, %s, %s, %s, %s)",
