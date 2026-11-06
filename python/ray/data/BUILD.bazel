@@ -564,6 +564,20 @@ py_test(
 )
 
 py_test(
+    name = "test_shuffle_batches",
+    size = "medium",
+    srcs = ["tests/test_shuffle_batches.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
     name = "test_repartition_e2e",
     size = "medium",
     srcs = ["tests/test_repartition_e2e.py"],
