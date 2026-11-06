@@ -38,7 +38,16 @@ from ray.data._internal.datasource_v2.interfaces.file_manifest import (
 from ray.data._internal.datasource_v2.interfaces.file_partitioner import (
     PartitionHints,
 )
+from ray.data._internal.logical.interfaces import LogicalPlan
+from ray.data._internal.logical.operators import InputData, ReadFiles
+from ray.data._internal.logical.rules.bind_generated_id_column import (
+    BindGeneratedIdColumn,
+)
 from ray.data._internal.util import unify_schemas_with_validation
+from ray.data.checkpoint import CheckpointConfig
+from ray.data.checkpoint.generated_id import GeneratedIdColumn
+from ray.data.checkpoint.interfaces import InvalidCheckpointingConfig
+from ray.data.context import DataContext
 from ray.data.datasource.partitioning import Partitioning, PartitionStyle
 
 
@@ -198,6 +207,83 @@ def test_infer_schema_with_include_paths(tmp_path):
     assert schema.field("path").type == pa.string()
 
 
+def test_infer_schema_with_custom_path_column(tmp_path):
+    file_path = tmp_path / "data.parquet"
+    _write_parquet(str(file_path), pa.table({"path": ["original"], "id": [1]}))
+
+    datasource = ParquetDatasourceV2([str(file_path)], include_paths="source_file")
+    schema = datasource.infer_schema(_manifest_of([str(file_path)]))
+    scanner = datasource.create_scanner(schema)
+
+    assert schema.names == ["path", "id", "source_file"]
+    assert schema.field("source_file").type == pa.string()
+    assert scanner.read_schema() == schema
+
+
+def test_custom_path_column_rejects_row_hash_name(tmp_path):
+    with pytest.raises(ValueError, match="conflicts with `row_hash`"):
+        ParquetDatasourceV2(
+            [str(tmp_path)], include_paths="row_hash", include_row_hash=True
+        )
+
+
+@pytest.mark.parametrize("generated_id_name", ["source_file", "checkpoint_id"])
+def test_custom_path_column_with_plan_time_generated_id(tmp_path, generated_id_name):
+    path = str(tmp_path / "data.parquet")
+    _write_parquet(path, pa.table({"id": [1]}))
+    datasource = ParquetDatasourceV2([path], include_paths="source_file")
+    schema = datasource.infer_schema(_manifest_of([path]))
+    read_files = ReadFiles(
+        datasource_name=datasource.name,
+        scanner=datasource.create_scanner(schema),
+        schema=schema,
+        parallelism=-1,
+        input_dependencies=[InputData(input_data=[])],
+    )
+    context = DataContext.get_current().copy()
+    context.checkpoint_config = CheckpointConfig(
+        generated_id_column=generated_id_name,
+        checkpoint_path=str(tmp_path / "checkpoint"),
+    )
+    plan = LogicalPlan(read_files, context)
+    if generated_id_name == "source_file":
+        with pytest.raises(InvalidCheckpointingConfig, match="already exists"):
+            BindGeneratedIdColumn().apply(plan)
+        return
+
+    bound = BindGeneratedIdColumn().apply(plan)
+    schema = bound.dag.infer_schema()
+    assert isinstance(schema, pa.Schema)
+    assert schema.names == ["id", "source_file", "checkpoint_id"]
+    assert schema.field("source_file").type == pa.string()
+    assert schema.field("checkpoint_id").type == GeneratedIdColumn("checkpoint_id").type
+
+
+def test_custom_path_column_rejects_partition_name(tmp_path):
+    partition_dir = tmp_path / "year=2024"
+    partition_dir.mkdir()
+    file_path = partition_dir / "data.parquet"
+    _write_parquet(str(file_path), pa.table({"id": [1]}))
+
+    datasource = ParquetDatasourceV2(
+        [str(tmp_path)],
+        include_paths="year",
+        partitioning=Partitioning(PartitionStyle.HIVE),
+    )
+    sample = _manifest_of([str(file_path)])
+    schema = datasource.infer_schema(sample)
+
+    with pytest.raises(ValueError, match="conflicts with a partition column"):
+        datasource.create_scanner(
+            schema, partitioning=datasource.resolve_partitioning(sample)
+        )
+
+    # A direct caller may skip the resolved partitioning passed by read_parquet.
+    scanner = datasource.create_scanner(schema)
+    with pytest.raises(ValueError, match="conflicts with a partition column"):
+        list(scanner.create_reader().read(sample))
+
+
 def test_infer_schema_returns_empty_schema_on_empty_manifest(tmp_path):
     datasource = ParquetDatasourceV2([str(tmp_path)])
     empty = FileManifest.construct_manifest(paths=[], sizes=[], chunk_metadatas=[])
@@ -265,12 +351,13 @@ def test_infer_schema_with_include_row_hash_existing_column_promoted_to_uint64(
     tmp_path,
 ):
     file_path = tmp_path / "data.parquet"
-    _write_parquet(str(file_path), pa.table({"val": [1, 2], "row_hash": [10, 20]}))
+    _write_parquet(str(file_path), pa.table({"row_hash": [10, 20], "val": [1, 2]}))
 
     datasource = ParquetDatasourceV2([str(file_path)], include_row_hash=True)
     schema = datasource.infer_schema(_manifest_of([str(file_path)]))
 
     assert schema.field("row_hash").type == pa.uint64()
+    assert schema.names == ["val", "row_hash"]
 
 
 def test_create_scanner_propagates_include_row_hash(tmp_path):

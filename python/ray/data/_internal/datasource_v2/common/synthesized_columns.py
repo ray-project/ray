@@ -1,4 +1,5 @@
-"""The built-in synthesized columns: ``path`` and ``row_hash``.
+"""The built-in synthesized columns: ``path`` (or a custom DataSourceV2
+name) and ``row_hash``.
 
 The interface they implement, :class:`SynthesizedColumn`, and its input
 :class:`ReadUnitPosition` live in
@@ -60,9 +61,9 @@ def _compute_row_hashes(file_path: str, start_row: int, num_rows: int) -> np.nda
 @DeveloperAPI
 @dataclass(frozen=True)
 class PathColumn(SynthesizedColumn):
-    """The ``path`` column behind ``include_paths=True``: the source file path."""
+    """Source file path, named ``path`` by default."""
 
-    name = INCLUDE_PATHS_COLUMN_NAME
+    name: str = INCLUDE_PATHS_COLUMN_NAME
     type = pa.string()
 
     def compute(self, position: ReadUnitPosition, num_rows: int) -> pa.Array:
