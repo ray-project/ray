@@ -49,7 +49,6 @@ def start_serve_with_context():
         ray.shutdown()
 
 
-@pytest.mark.asyncio
 async def _single_model_multiplexer(
     make_model: Callable[[str], Any]
 ) -> _ModelMultiplexWrapper:
@@ -65,6 +64,7 @@ async def _single_model_multiplexer(
     return multiplexer
 
 
+@pytest.mark.asyncio
 class TestMultiplexWrapper:
     async def test_failed_to_get_replica_context(self):
         async def model_load_func(model_id: str):
