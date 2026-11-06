@@ -1,6 +1,7 @@
 import asyncio
 import json
 import sys
+import time
 from unittest.mock import AsyncMock, call, patch
 
 import aiohttp
@@ -89,6 +90,237 @@ async def test_http_request_udf_with_qps(mock_session):
 
         assert len(results) == 2
         assert mock_sleep.called  # Should have called sleep for QPS limiting
+
+
+# The real asyncio.sleep, for tests that patch asyncio.sleep.
+_real_sleep = asyncio.sleep
+
+
+class _FakeResponse:
+    status = 200
+    reason = "OK"
+
+    def __init__(self, body):
+        self._body = body
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *exc_info):
+        return False
+
+    async def json(self):
+        return self._body
+
+
+class _FakeSession:
+    """A client session that calls ``on_send`` when a request is actually sent.
+
+    Like aiohttp, a request goes out only when ``session.post(...)`` is
+    awaited, so ``on_send`` runs then and not when ``post`` is called.
+    """
+
+    def __init__(self, on_send, body=None):
+        self.on_send = on_send
+        self.body = body
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *exc_info):
+        return False
+
+    def post(self, url, headers=None, data=None):
+        return self._send(json.loads(data))
+
+    async def _send(self, payload):
+        await self.on_send(payload)
+        return _FakeResponse({"echo": payload} if self.body is None else self.body)
+
+
+@pytest.mark.asyncio
+async def test_http_request_udf_spaces_requests_by_qps():
+    """Requests go out as the qps allows, not all at once after the waits."""
+    clock = {"now": 0.0}
+    send_times = []
+
+    async def fake_sleep(delay):
+        # Let requests that were already started run, then move the clock.
+        await _real_sleep(0)
+        clock["now"] += delay
+
+    async def on_send(payload):
+        send_times.append(clock["now"])
+
+    udf = HttpRequestUDF(
+        data_column="__data",
+        expected_input_keys=["payload"],
+        url="http://test.com/api",
+        qps=2,
+        session_factory=lambda: _FakeSession(on_send),  # noqa: E731
+    )
+    batch = {"__data": [{"payload": {"text": f"hello{i}"}} for i in range(3)]}
+
+    with patch("time.time", side_effect=lambda: clock["now"]), patch(
+        "asyncio.sleep", new=fake_sleep
+    ):
+        results = []
+        async for result in udf(batch):
+            results.extend(result["__data"])
+
+    assert len(results) == 3
+    # One request every 1 / qps = 0.5 seconds.
+    assert send_times == [0.5, 1.0, 1.5]
+
+
+@pytest.mark.asyncio
+async def test_http_request_udf_sends_requests_concurrently():
+    """Without a qps limit, every request is in flight before any finishes."""
+    events = []
+
+    async def on_send(payload):
+        events.append(("sent", payload["text"]))
+        # Network latency: the other requests can start in the meantime.
+        await _real_sleep(0)
+        events.append(("done", payload["text"]))
+
+    udf = HttpRequestUDF(
+        data_column="__data",
+        expected_input_keys=["payload"],
+        url="http://test.com/api",
+        qps=None,
+        session_factory=lambda: _FakeSession(on_send),  # noqa: E731
+    )
+    batch = {"__data": [{"payload": {"text": f"hello{i}"}} for i in range(3)]}
+
+    results = []
+    async for result in udf(batch):
+        results.extend(result["__data"])
+
+    assert [event for event, _ in events[:3]] == ["sent", "sent", "sent"]
+    # Each row still gets its own response.
+    assert [row["http_response"]["echo"]["text"] for row in results] == [
+        "hello0",
+        "hello1",
+        "hello2",
+    ]
+
+
+@pytest.mark.asyncio
+async def test_http_request_udf_cancels_pending_requests_when_a_row_fails():
+    """A row that runs out of retries cancels the requests still in flight."""
+    cancelled = []
+
+    async def on_send(payload):
+        if payload["text"] == "fails":
+            raise asyncio.TimeoutError()
+        try:
+            # This response never arrives.
+            await asyncio.Event().wait()
+        except asyncio.CancelledError:
+            cancelled.append(payload["text"])
+            raise
+
+    udf = HttpRequestUDF(
+        data_column="__data",
+        expected_input_keys=["payload"],
+        url="http://test.com/api",
+        max_retries=0,
+        base_retry_wait_time_in_s=0,
+        qps=None,
+        session_factory=lambda: _FakeSession(on_send),  # noqa: E731
+    )
+    batch = {"__data": [{"payload": {"text": "fails"}}, {"payload": {"text": "slow"}}]}
+
+    with pytest.raises(RuntimeError, match=r"Reached maximum retries.*fails"):
+        async for _ in udf(batch):
+            pass
+
+    assert cancelled == ["slow"]
+
+
+@pytest.mark.asyncio
+async def test_http_request_udf_stops_sending_after_a_row_fails():
+    """With a qps, rows not sent yet are skipped once a row has failed."""
+    sent = []
+
+    async def on_send(payload):
+        sent.append(payload["text"])
+        raise aiohttp.ClientConnectionError("connection refused")
+
+    udf = HttpRequestUDF(
+        data_column="__data",
+        expected_input_keys=["payload"],
+        url="http://test.com/api",
+        max_retries=0,
+        base_retry_wait_time_in_s=0,
+        qps=50,
+        session_factory=lambda: _FakeSession(on_send),  # noqa: E731
+    )
+    batch = {"__data": [{"payload": {"text": str(i)}} for i in range(5)]}
+
+    with pytest.raises(RuntimeError, match="Reached maximum retries"):
+        async for _ in udf(batch):
+            pass
+
+    assert sent == ["0"]
+
+
+@pytest.mark.asyncio
+async def test_http_request_udf_retries_wait_for_the_qps():
+    """A retry takes a send slot too, so retries can't push the rate over the qps."""
+    send_times = []
+    failed_once = set()
+
+    async def on_send(payload):
+        send_times.append(time.monotonic())
+        if payload["text"] not in failed_once:
+            failed_once.add(payload["text"])
+            raise aiohttp.ClientConnectionError("connection refused")
+
+    udf = HttpRequestUDF(
+        data_column="__data",
+        expected_input_keys=["payload"],
+        url="http://test.com/api",
+        max_retries=1,
+        base_retry_wait_time_in_s=0,
+        qps=20,
+        session_factory=lambda: _FakeSession(on_send),  # noqa: E731
+    )
+    batch = {"__data": [{"payload": {"text": str(i)}} for i in range(3)]}
+
+    results = []
+    async for result in udf(batch):
+        results.extend(result["__data"])
+
+    assert len(results) == 3
+    assert len(send_times) == 6
+    gaps = [later - earlier for earlier, later in zip(send_times, send_times[1:])]
+    assert min(gaps) >= 0.04
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("body", [{}, []])
+async def test_http_request_udf_accepts_empty_json_response(body):
+    """An empty JSON body is a successful response, not a failed request."""
+
+    async def on_send(payload):
+        pass
+
+    udf = HttpRequestUDF(
+        data_column="__data",
+        expected_input_keys=["payload"],
+        url="http://test.com/api",
+        qps=None,
+        session_factory=lambda: _FakeSession(on_send, body=body),  # noqa: E731
+    )
+    batch = {"__data": [{"payload": {"text": "hello"}}]}
+
+    results = []
+    async for result in udf(batch):
+        results.extend(result["__data"])
+
+    assert results[0]["http_response"] == body
 
 
 @pytest.mark.asyncio
