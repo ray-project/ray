@@ -431,14 +431,15 @@ class ActorPoolMapOperator(MapOperator, ReportsExtraResourceUsage):
     def _start_actor(
         self,
         labels: Dict[str, str],
-        logical_actor_id: LogicalActorId,
+        logical_actor_id: Optional[LogicalActorId],
         scheduling_strategy: SchedulingStrategyT = None,
     ) -> Tuple[ActorHandle, ObjectRef, ExecutionResources]:
         """Start a new actor and add it to the actor pool as a pending actor.
 
         Args:
             labels: The key-value labels to launch the actor with.
-            logical_actor_id: The logical id of the actor.
+            logical_actor_id: The logical id of the actor, or None to have the
+                worker use its own Ray actor id (the actor-only backend).
             scheduling_strategy: Placement resolved by the caller for this
                 actor (e.g. a ``NodeAffinitySchedulingStrategy``). ``None``
                 keeps the operator's default.
@@ -885,7 +886,7 @@ class _MapWorker:
         ctx: DataContext,
         src_fn_name: str,
         map_transformer: MapTransformer,
-        logical_actor_id: LogicalActorId,
+        logical_actor_id: Optional[LogicalActorId],
         actor_location_tracker: ActorHandle[ActorLocationTracker],
     ):
         self.src_fn_name: str = src_fn_name
@@ -895,7 +896,9 @@ class _MapWorker:
         DataContext._set_current(ctx)
         # Initialize state for this actor with retry logic for UDF init failures.
         self._init_udf_with_retries(ctx)
-        self._logical_actor_id = logical_actor_id
+        self._logical_actor_id = (
+            logical_actor_id or ray.get_runtime_context().get_actor_id()
+        )
         actor_location_tracker.update_actor_location.remote(
             self._logical_actor_id, ray.get_runtime_context().get_node_id()
         )
@@ -1078,7 +1081,7 @@ class _ActorPool(AutoscalingActorPool):
     @override
     def num_draining_actors(self) -> int:
         """Always 0: this pool kills actors outright rather than draining them,
-        so ``serving_size`` and ``current_size`` always agree here."""
+        so ``serving_size`` and ``total_size`` always agree here."""
         return 0
 
     @override

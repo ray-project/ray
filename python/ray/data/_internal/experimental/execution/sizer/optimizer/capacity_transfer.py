@@ -28,7 +28,7 @@ from ray.data._internal.execution.execution_flags import (
     SIZER_TRANSFER_TIMEOUT_S,
 )
 from ray.data._internal.execution.interfaces import ExecutionResources
-from ray.data._internal.execution.interfaces.common import LogicalActorId, NodeIdStr
+from ray.data._internal.execution.interfaces.common import ActorId, NodeIdStr
 from ray.data._internal.experimental.execution.operators.actor_pool_models import (
     PlacedScalingRequest,
     ScaleDownRequest,
@@ -123,11 +123,11 @@ class TransferInFlight:
     # held), per node; ``apply`` creates them.
     to_bring_up_by_node: Dict[NodeIdStr, int] = field(default_factory=dict)
     # The recipient's actors (pending and running) when the transfer fired.
-    preexisting_ids: FrozenSet[LogicalActorId] = frozenset()
+    preexisting_ids: FrozenSet[ActorId] = frozenset()
     # The recipient's actors created since, accumulated as they are placed:
     # the transfer's (the guard blocks every other decision on the recipient
     # while it is in flight).
-    claimed_ids: Tuple[LogicalActorId, ...] = ()
+    claimed_ids: Tuple[ActorId, ...] = ()
     # This transfer's entry in ``TransferState.recent_transfers``, stamped
     # with the close time when it closes.
     record: Optional[RecentTransfer] = None
@@ -226,13 +226,13 @@ class VictimCandidate:
     unconsumed_outputs: int
     tasks_in_flight: int
     donor: DonorCapacity = field(compare=False)
-    actor_id: LogicalActorId = field(compare=False)
+    actor_id: ActorId = field(compare=False)
 
     @classmethod
     def build(
         cls,
         donor: DonorCapacity,
-        actor_id: LogicalActorId,
+        actor_id: ActorId,
         *,
         pending: bool,
         tasks_in_flight: int,

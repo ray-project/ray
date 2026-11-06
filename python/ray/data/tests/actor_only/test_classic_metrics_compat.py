@@ -24,13 +24,13 @@ from ray.data._internal.experimental.execution.streaming_executor import (
 )
 
 
-def _actor_pool_op(*, current_size=3, output_limit=300.0, pull_bytes=40.0):
+def _actor_pool_op(*, total_size=3, output_limit=300.0, pull_bytes=40.0):
     op = MagicMock(spec=ExperimentalActorPoolMapOperator)
     op._metrics = MagicMock()
     op.has_completed.return_value = False
     op.remaining_pull_bytes.return_value = pull_bytes
     pool = op.actor_pool
-    pool.current_size.return_value = current_size
+    pool.total_size.return_value = total_size
     pool.per_actor_resource_usage.return_value = ExecutionResources(
         cpu=2, gpu=1, memory=1000
     )
@@ -80,9 +80,9 @@ def test_stats_export_fills_classic_metrics(
 
 
 def test_actor_only_budget_is_held_actors_times_shape():
-    # Every actor holding resources counts (current_size includes pending and
+    # Every actor holding resources counts (total_size includes pending and
     # draining ones); the object store budget is their summed output limits.
-    budget = _actor_only_budget(_actor_pool_op(current_size=3))
+    budget = _actor_only_budget(_actor_pool_op(total_size=3))
     assert budget is not None
     assert (budget.cpu, budget.gpu, budget.memory) == (6, 3, 3000)
     assert budget.object_store_memory == 300.0

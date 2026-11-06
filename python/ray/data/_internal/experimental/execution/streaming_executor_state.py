@@ -35,6 +35,7 @@ from ray.data._internal.execution.streaming_executor_state import (
 from ray.data._internal.experimental.execution.operators.actor_pool_map_operator import (
     ExperimentalActorPoolMapOperator,
 )
+from ray.exceptions import RayError
 
 logger = logging.getLogger(__name__)
 
@@ -93,11 +94,17 @@ def process_completed_tasks(
                         continue
                     try:
                         task.on_task_finished()
+                    except RayError:
+                        # Init deaths are charged in ``_on_actor_init_death``;
+                        # one that reaches here exhausted
+                        # ``max_consecutive_actor_init_deaths``.
+                        raise
                     except Exception:
                         # The readiness probe of an actor that failed to START
-                        # (e.g. its target node died). The pool has already
-                        # dropped the pending entry; the sizer re-places on its
-                        # next tick, so this must not abort the loop.
+                        # for a non-Ray reason (e.g. its budget couldn't be
+                        # derived). The pool has already dropped the pending
+                        # entry; the sizer re-places on its next tick, so this
+                        # must not abort the loop.
                         logger.debug(
                             f"An actor of {op.name} failed to start; "
                             "reconciling on the next sizing tick.",

@@ -8,7 +8,7 @@ from dataclasses import dataclass, field
 from typing import AbstractSet, Dict, Hashable, Iterable, List, Optional, Tuple, TypeVar
 
 from ray.data._internal.execution.interfaces import ExecutionResources, NodeIdStr
-from ray.data._internal.execution.interfaces.common import LogicalActorId
+from ray.data._internal.execution.interfaces.common import ActorId
 
 # Fallback bytes-per-actor used to convert a node's queued input into a
 # collocation fill when a view carries no per-actor input-bytes figure
@@ -93,13 +93,13 @@ class OpPlacementView:
     # cheapest to drain first (see ``victim_drain_cost_by_node``). Busy actors
     # ARE victims -- they just take longer to drain. Empty unless the view was
     # built with ``rank_victims``.
-    victim_ids_by_node: Dict[NodeIdStr, List[LogicalActorId]]
+    victim_ids_by_node: Dict[NodeIdStr, List[ActorId]]
     # Non-draining actors with zero tasks in flight, per node. Evicting
     # these (like cancelling pendings) frees capacity ~immediately.
     idle_actors_by_node: Dict[NodeIdStr, int]
     # Pending (not yet ready) actors per target node -- the cheapest victims:
     # cancelling one frees its claimed capacity immediately.
-    pending_ids_by_node: Dict[NodeIdStr, List[LogicalActorId]]
+    pending_ids_by_node: Dict[NodeIdStr, List[ActorId]]
     # The op's schedulable nodes (label_selector / node pin), before the
     # has-capacity filter. None = unconstrained. Each strategy's fit check
     # enforces capacity, so ``filter_schedulable_nodes(free)`` = match ∩
@@ -116,7 +116,7 @@ class OpPlacementView:
     )
     # Pendings with no target node (placement-group or initial-size actors):
     # cancelled by id, since no node-shaped downscale can reach them.
-    untargeted_pending_ids: List[LogicalActorId] = field(default_factory=list)
+    untargeted_pending_ids: List[ActorId] = field(default_factory=list)
     # This op's input/output share of its total observed byte flow (each in
     # [0, 1], summing to 1). 0.5/0.5 = no data yet; the rank multiplies each
     # side's actor counts by 2 x weight so the neutral value preserves the

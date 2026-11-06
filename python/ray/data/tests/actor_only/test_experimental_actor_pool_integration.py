@@ -220,10 +220,10 @@ def test_resource_bank_output_backpressure_cache_updates_incrementally():
     task_id_2 = _tid(2)
     bank = ResourceBank()
     pool, _ = _build_pool(_ProbeWorker)
-    pool._actor_to_logical_id[actor] = actor_id
-    pool._logical_id_to_actor[actor_id] = actor
+    pool._actor_to_id[actor] = actor_id
+    pool._id_to_actor[actor_id] = actor
     pool._running_actors[actor] = _ExperimentalActorState(
-        logical_id=actor_id,
+        actor_id=actor_id,
         num_tasks_in_flight=1,
         num_input_bytes_in_flight=0,
         actor_location=node_id,
@@ -240,7 +240,7 @@ def test_resource_bank_output_backpressure_cache_updates_incrementally():
     op._task_ray_id = {1: task_id_1}
     op._data_tasks = {1: _FakeDataTask(task_idx=1, task_id=task_id_1)}
 
-    bank.maybe_register_actor(op=op, actor_id=actor_id, new_node_id=node_id)
+    bank.maybe_register_actor(op=op, actor_id=actor_id, node_id=node_id)
     bank.on_task_submitted(actor_id=actor_id, task_id=task_id_1, input_bms=[])
 
     assert op.output_backpressured_fraction() == (0, 1)
@@ -276,7 +276,7 @@ def test_resource_bank_output_backpressure_cache_updates_incrementally():
     bank.on_task_completed(op=op, task_id=task_id_1)
     assert op.output_backpressured_fraction() == (1, 1)
 
-    pool._logical_id_to_actor.pop(actor_id)
+    pool._id_to_actor.pop(actor_id)
     bank.deregister_actor(actor_id=actor_id)
     assert op.output_backpressured_fraction() == (0, 0)
 
@@ -652,7 +652,7 @@ def test_on_task_completed_tolerates_released_actor(two_node_cluster):
 # ---------------------------------------------------------------------------
 # The output-backpressure path asks the pool for an actor's output
 # limits even after the actor was released (a lingering data-task ref). A bare
-# _logical_id_to_actor[actor_id] lookup KeyError'd there and crashed the
+# _id_to_actor[actor_id] lookup KeyError'd there and crashed the
 # executor (relieve_output_limit_deadlock -> is_output_backpressured -> output_bytes_limit);
 # a released / unknown actor must yield no constraint instead.
 # ---------------------------------------------------------------------------

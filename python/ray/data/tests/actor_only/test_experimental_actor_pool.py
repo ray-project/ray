@@ -42,7 +42,6 @@ from ray.data._internal.experimental.execution.operators.actor_pool_map_operator
 )
 from ray.data._internal.experimental.execution.operators.actor_pool_models import (
     _ACTOR_STATE_ALIVE,
-    _ACTOR_STATE_RESTARTING,
     DrainReason,
     ScaleDownRequest,
     ScaleUpRequest,
@@ -76,6 +75,7 @@ class _RecordingResourceBank(ResourceBankBase):
     """Minimal ``ResourceBankBase`` for the pool scheduling tests."""
 
     def __init__(self, node_resources: Optional[ExecutionResources] = None):
+        self.deregistered: List[str] = []
         self._node_resources = node_resources or ExecutionResources(
             cpu=4, object_store_memory=1024**3
         )
@@ -99,7 +99,7 @@ class _RecordingResourceBank(ResourceBankBase):
 
     @override
     def deregister_actor(self, actor_id: str) -> None:
-        pass
+        self.deregistered.append(actor_id)
 
 
 class _RecordingActorOnlyMetrics:
@@ -555,88 +555,6 @@ class TestExperimentalActorPool(unittest.TestCase):
         assert a5 == actor1
         assert a6 == actor1
 
-    def test_evicting_restarting_actor_keeps_counters_consistent(self):
-        """Draining a RESTARTING victim (e.g. a sizer eviction during chaos)
-        must retire it from the restarting accounting: otherwise the
-        restarting count leaks forever and num_alive_actors goes negative."""
-        pool = self._create_pool()
-        actor = self._add_ready_actor(pool)
-
-        # GCS reports the actor RESTARTING (its node died).
-        with mock.patch.object(
-            ActorHandle, "_get_local_state", return_value=_ACTOR_STATE_RESTARTING
-        ):
-            pool.refresh_actor_state()
-        assert pool.num_restarting_actors() == 1
-        assert pool.pending_logical_usage() == ExecutionResources(cpu=1)
-
-        # The sizer picks it as an eviction victim.
-        pool.begin_draining(actor, reason=DrainReason.ALLOC_SHRINK)
-
-        assert pool.num_restarting_actors() == 0
-        assert pool.num_alive_actors() == 0
-        assert pool.pending_logical_usage() == ExecutionResources.zero()
-
-        # Full release retires it without double-decrementing.
-        pool._release_running_actor(actor)
-        assert pool.num_restarting_actors() == 0
-        assert pool.num_alive_actors() == 0
-        assert pool.num_draining_actors() == 0
-
-    def test_relocated_actor_moves_node_keyed_bookkeeping(self):
-        """When an actor lands on a new node, everything keyed by its location
-        moves with it: the committed-usage ledger, the per-node actor index, and
-        the per-node count of actors with in-flight tasks."""
-        pool = self._create_pool()
-        actor = self._add_ready_actor(pool, node_id="node1")
-        pool.on_task_submitted(actor, _make_bundle(100))
-        state = pool._running_actors[actor]
-
-        assert set(pool.committed_usage_by_node) == {"node1"}
-        assert set(pool._node_to_actor_states) == {"node1"}
-        assert pool.active_nodes() == {"node1"}
-
-        pool._relocate_actor(actor, state, "node2")
-
-        assert set(pool.committed_usage_by_node) == {"node2"}
-        assert pool.committed_usage_by_node["node2"] == ExecutionResources(cpu=1)
-        assert set(pool._node_to_actor_states) == {"node2"}
-        assert pool.active_nodes() == {"node2"}
-        assert state.actor_location == "node2"
-        assert pool._node_to_active_actor_count == {"node2": 1}
-
-    def test_relocated_actor_leaves_no_residue_when_released(self):
-        """The bug this guards: release debits whichever node the actor lives on
-        now, so if the ledger wasn't moved the old node keeps a charge nothing
-        can ever clear -- a permanent overdraft the sizer evicts against forever.
-        """
-        pool = self._create_pool()
-        actor = self._add_ready_actor(pool, node_id="node1")
-        state = pool._running_actors[actor]
-
-        pool._relocate_actor(actor, state, "node2")
-        pool._release_running_actor(actor)
-
-        # Nothing charged to either node, and no empty-node residue.
-        assert pool.committed_usage_by_node == {}
-        assert pool._node_to_actor_states == {}
-        assert pool.active_nodes() == set()
-
-    def test_relocate_actor_is_noop_for_unchanged_location(self):
-        """Called on every refresh, so the common case must not churn counters."""
-        pool = self._create_pool()
-        actor = self._add_ready_actor(pool, node_id="node1")
-        pool.on_task_submitted(actor, _make_bundle(100))
-        state = pool._running_actors[actor]
-        before = dict(pool.committed_usage_by_node)
-
-        for _ in range(3):
-            pool._relocate_actor(actor, state, "node1")
-
-        assert pool.committed_usage_by_node == before
-        assert pool.active_nodes() == {"node1"}
-        assert pool._node_to_active_actor_count == {"node1": 1}
-
     @staticmethod
     def _drain_metrics() -> _RecordingActorOnlyMetrics:
         return _RecordingActorOnlyMetrics()
@@ -759,8 +677,8 @@ class TestExperimentalActorPool(unittest.TestCase):
         self._set_outstanding_outputs(pool, actor, 1)  # one outstanding block
 
         pool.begin_draining(actor, reason=DrainReason.ALLOC_SHRINK)
-        # DEAD (not RESTARTING): nothing is coming back to serve the work, so
-        # the drain is interrupted.
+        # DEAD: nothing is coming back to serve the work, so the drain is
+        # interrupted.
         with mock.patch.object(ActorHandle, "_get_local_state", return_value=None):
             pool.refresh_actor_state()
 
@@ -783,7 +701,55 @@ class TestExperimentalActorPool(unittest.TestCase):
         assert metrics.count("interrupted") == 0
         assert pool.num_draining_actors() == 0
 
-    def test_drain_metrics_cancelled_on_reclaim_and_restart(self):
+    def test_dead_running_actor_is_released(self):
+        """An actor that dies while serving (not draining) is released, not
+        left in the pool: it leaves the heaps, the status counts and the
+        committed usage, and is deregistered from the bank, so the sizer sees
+        the capacity gone and places a replacement."""
+        pool = self._create_pool(max_tasks_in_flight=4)
+        dead = self._add_ready_actor(pool, node_id="node1")
+        alive = self._add_ready_actor(pool, node_id="node2")
+        dead_id = pool.get_actor_logical_id(dead)
+        pool.on_task_submitted(dead, _make_bundle(100, node_id="node1"))
+
+        def local_state(handle):
+            return None if handle is dead else _ACTOR_STATE_ALIVE
+
+        with mock.patch.object(
+            ActorHandle, "_get_local_state", autospec=True, side_effect=local_state
+        ):
+            pool.refresh_actor_state()
+
+        assert pool.num_running_actors() == 1
+        assert pool.num_active_actors() == 0
+        assert pool.num_tasks_in_flight() == 0
+        assert not pool.has_actor(dead_id)
+        assert "node1" not in pool.committed_usage_by_node
+        assert cast(_RecordingResourceBank, pool.resource_bank).deregistered == [
+            dead_id
+        ]
+        assert pool.select_actors() is alive
+
+    def test_failed_task_on_released_dead_actor_is_a_noop(self):
+        """``release_dead_actor`` (called when a task fails with an actor-death
+        error) releases the actor at once; its other in-flight tasks complete
+        later and must not touch the pool or re-admit it to the heaps."""
+        pool = self._create_pool(max_tasks_in_flight=4)
+        actor = self._add_ready_actor(pool)
+        b1, b2 = _make_bundle(100), _make_bundle(100)
+        pool.on_task_submitted(actor, b1)
+        pool.on_task_submitted(actor, b2)
+
+        pool.release_dead_actor(actor)
+        pool.on_task_completed(actor, b1)
+        pool.release_dead_actor(actor)  # second failed task: idempotent
+        pool.on_task_completed(actor, b2)
+
+        assert pool.num_running_actors() == 0
+        assert pool.num_tasks_in_flight() == 0
+        assert pool.select_actors() is None
+
+    def test_drain_metrics_cancelled_on_reclaim(self):
         metrics = self._drain_metrics()
         pool = self._create_pool_with_metrics(metrics, max_tasks_in_flight=4)
 
@@ -793,20 +759,6 @@ class TestExperimentalActorPool(unittest.TestCase):
         assert pool.reclaim_draining_actors(limit=1) == 1
         assert metrics.count("cancelled") == 1
         assert metrics.count("cancelled", "resize", "reclaimed") == 1
-        assert pool.num_draining_actors() == 0
-
-        # A core restart of a draining actor that still owes work also
-        # cancels the drain (the actor comes back to serve it).
-        restarted = self._add_ready_actor(pool)
-        pool.on_task_submitted(restarted, _make_bundle(100))
-        pool.begin_draining(restarted, reason=DrainReason.ALLOC_SHRINK)
-        with mock.patch.object(
-            ActorHandle, "_get_local_state", return_value=_ACTOR_STATE_RESTARTING
-        ):
-            pool.refresh_actor_state()
-        assert metrics.count("cancelled") == 2
-        assert metrics.count("cancelled", "alloc_shrink", "core_restart") == 1
-        assert metrics.count("started") == 2
         assert pool.num_draining_actors() == 0
         assert metrics.count("interrupted") == 0
 
@@ -858,13 +810,13 @@ class TestExperimentalActorPool(unittest.TestCase):
         """The ``num_*_actors`` views are served from the status histogram
         ``_status_counts``; after every lifecycle transition they must equal a
         brute-force scan of ``_running_actors``. IDLE means schedulable with
-        nothing in flight, so DRAINING and RESTARTING actors are never idle."""
+        nothing in flight, so DRAINING actors are never idle."""
 
         def oracle(pool: _ExperimentalActorPool) -> int:
             return sum(
                 1
                 for state in pool._running_actors.values()
-                if state.status not in (ActorStatus.DRAINING, ActorStatus.RESTARTING)
+                if state.status is not ActorStatus.DRAINING
                 and state.num_tasks_in_flight == 0
             )
 
@@ -876,9 +828,7 @@ class TestExperimentalActorPool(unittest.TestCase):
             states = list(pool._running_actors.values())
             assert sum(pool._status_counts.values()) == len(states), label
             assert pool.num_draining_actors() == len(pool._draining_actors), label
-            assert pool.num_restarting_actors() == sum(
-                1 for st in states if st.status is ActorStatus.RESTARTING
-            ), label
+            assert pool.num_restarting_actors() == 0, label
             assert pool.num_active_actors() == sum(
                 1 for st in states if st.num_tasks_in_flight > 0
             ), label
@@ -906,19 +856,6 @@ class TestExperimentalActorPool(unittest.TestCase):
         check(pool, 1, "actor1 one task left")
         pool.on_task_completed(actor1, b1)
         check(pool, 2, "actor1 drained")
-
-        # RESTARTING actors are not schedulable, so they leave the idle count
-        # and come back once ALIVE again.
-        with mock.patch.object(
-            ActorHandle, "_get_local_state", return_value=_ACTOR_STATE_RESTARTING
-        ):
-            pool.refresh_actor_state()
-        check(pool, 0, "both restarting")
-        with mock.patch.object(
-            ActorHandle, "_get_local_state", return_value=_ACTOR_STATE_ALIVE
-        ):
-            pool.refresh_actor_state()
-        check(pool, 2, "both recovered")
 
         # Draining an idle actor, then reclaiming it.
         pool.begin_draining(actor1, reason=DrainReason.RESIZE)
@@ -1095,22 +1032,6 @@ class TestExperimentalActorPool(unittest.TestCase):
         assert applied == 2
         assert pool.num_draining_actors() == 0
         assert pool.num_pending_actors() == 1
-
-    def test_refresh_disabled_still_reaps_dead_draining_actor(self):
-        """With RAY_DATA_REFRESH_ACTOR_STATE off, the pool skips the full
-        (expensive) per-actor refresh -- but draining actors must still be
-        observed, or a dead one holds its DRAINING slot and its node's
-        capacity accounting for the rest of the run."""
-        pool = self._create_pool()
-        actor = self._add_ready_actor(pool)
-        pool.begin_draining(actor, reason=DrainReason.ALLOC_SHRINK)
-
-        with mock.patch.object(
-            pool_mod, "REFRESH_ACTOR_STATE", False
-        ), mock.patch.object(ActorHandle, "_get_local_state", return_value=None):
-            pool.refresh_actor_state()
-        assert actor not in pool._running_actors
-        assert pool.num_draining_actors() == 0
 
     def test_estimate_bytes_per_output_is_node_scoped(self):
         """The estimate only looks at the actors on the requested node (budgets
@@ -1460,6 +1381,49 @@ def test_ray_remote_args_fn_must_only_assign_a_placement_group():
         non_pg._merge_ray_remote_args()
 
 
+def test_actors_are_never_restarted_by_ray_core():
+    """Ray core never restarts actor-only actors (``max_restarts=0``): a dead
+    actor is replaced by the sizer and its work redone by Ray Data lineage
+    recovery. Core still retries tasks on a live actor, so
+    ``max_task_retries`` stays on unless the user set it. A
+    ``ray_remote_args_fn`` cannot turn restarts back on."""
+    op = _make_actor_op({"num_cpus": 1})
+    merged = op._merge_ray_remote_args()
+    assert merged["max_restarts"] == 0
+    assert merged["max_task_retries"] == -1
+
+    user_retries = _make_actor_op({"num_cpus": 1, "max_task_retries": 2})
+    assert user_retries._merge_ray_remote_args()["max_task_retries"] == 2
+
+    fn_restarts = _make_actor_op(
+        {"num_cpus": 1},
+        ray_remote_args_fn=lambda: {
+            "scheduling_strategy": PlacementGroupSchedulingStrategy(
+                placement_group=cast(PlacementGroup, object())
+            ),
+            "max_restarts": -1,
+        },
+    )
+    with pytest.raises(NotImplementedError, match="max_restarts"):
+        fn_restarts._merge_ray_remote_args()
+
+
+def test_init_death_budget_counts_only_init_failures(restore_data_context):
+    """``max_consecutive_actor_init_deaths`` is charged only when the actor's
+    ``__init__`` raised (a broken UDF). A process or node lost while starting
+    is not charged: the sizer just re-places the actor."""
+    restore_data_context.max_consecutive_actor_init_deaths = 0
+    op = _make_actor_op({"num_cpus": 1})
+
+    lost = ray.exceptions.RayActorError(actor_init_failed=False)
+    op._on_actor_init_death(lost)
+    assert op._consecutive_actor_init_deaths == 0
+
+    broken_udf = ray.exceptions.RayActorError(actor_init_failed=True)
+    with pytest.raises(ray.exceptions.RayActorError):
+        op._on_actor_init_death(broken_udf)
+
+
 def test_data_default_scheduling_strategy_never_reaches_actors():
     """Under the actor-only backend the sizer owns placement, so Ray Data's own
     default ``scheduling_strategy`` ("SPREAD", stamped by read_api on every
@@ -1496,48 +1460,6 @@ def test_user_custom_scheduling_strategy_is_rejected():
     assert user_op._user_set_ray_remote_args["scheduling_strategy"] is custom
     with pytest.raises(NotImplementedError, match="scheduling_strategy"):
         user_op.validate_ray_remote_args()
-
-
-def test_node_active_counter_follows_actor_relocation():
-    # Regression: the active-actor counter is keyed by actor_location, which
-    # changes when Ray core restarts the actor on another node. Decrementing
-    # the completion-time location raised KeyError (and leaked the dispatch
-    # node's count). _relocate_actor is the only writer of actor_location and
-    # must move the count with it, so the paired decrement finds the node
-    # that was incremented.
-    from ray.data._internal.experimental.execution.operators.actor_pool_models import (  # noqa: E501
-        _ExperimentalActorState,
-    )
-
-    pool = cast(Any, object.__new__(_ExperimentalActorPool))
-    pool._node_to_active_actor_count = {}
-    pool.committed_usage_by_node = {}
-    pool._actor_resource_usage = {}
-    pool._node_to_actor_states = {}
-    state = _ExperimentalActorState(
-        logical_id="la-1",
-        num_tasks_in_flight=1,
-        num_input_bytes_in_flight=0,
-        actor_location="nodeA",
-        max_num_outputs=float("inf"),
-        max_num_output_bytes=float("inf"),
-        max_tasks_in_flight=4,
-        latest_task_submission_ts=0.0,
-        status=ActorStatus.ACTIVE,
-    )
-
-    pool._mark_node_actor_active(state)
-    assert pool._node_to_active_actor_count == {"nodeA": 1}
-
-    # Actor restarts elsewhere while its task is still in flight: the count
-    # moves with it.
-    pool._relocate_actor(cast(ActorHandle, object()), state, "nodeB")
-    assert pool._node_to_active_actor_count == {"nodeB": 1}
-
-    # The completion-time decrement hits nodeB, not nodeA.
-    state.num_tasks_in_flight = 0
-    pool._mark_node_actor_inactive(state)
-    assert pool._node_to_active_actor_count == {}
 
 
 def test_is_output_backpressured_counts_blocked_tasks_not_actors():
@@ -1589,13 +1511,13 @@ def test_expired_pending_actor_is_released_and_killed(monkeypatch):
     pool._pending_actors = {ref: actor}
     pool._pending_actor_info = {
         ref: _PendingActorInfo(
-            logical_id="la-1", target_node_id="nodeA", created_at=1000.0
+            actor_id="la-1", target_node_id="nodeA", created_at=1000.0
         )
     }
     pool._actor_resource_usage = {actor: usage}
     pool._total_usage = usage
-    pool._pending_or_restarting_usage = usage
-    pool._actor_to_logical_id = {actor: "la-1"}
+    pool._pending_usage = usage
+    pool._actor_to_id = {actor: "la-1"}
     removed_committed = []
     pool._remove_committed_usage = lambda node, u: removed_committed.append((node, u))
 
@@ -1609,8 +1531,8 @@ def test_expired_pending_actor_is_released_and_killed(monkeypatch):
     assert killed == [actor]
     assert removed_committed == [("nodeA", usage)]
     assert pool._total_usage.cpu == 0
-    assert pool._pending_or_restarting_usage.cpu == 0
-    assert actor not in pool._actor_to_logical_id
+    assert pool._pending_usage.cpu == 0
+    assert actor not in pool._actor_to_id
 
 
 def test_input_queue_bytes_by_node_tracks_queued_bundles():
@@ -1640,7 +1562,7 @@ def test_backpressure_progress_str_reports_blocked_share():
     op.output_backpressured_actors = lambda: (2, 5)
 
     class _Pool:
-        def current_size(self):
+        def total_size(self):
             return 5
 
     with mock.patch.object(
@@ -1670,7 +1592,7 @@ def test_backpressure_progress_str_reads_write_through_cache():
     )
 
     class _Pool:
-        def current_size(self):
+        def total_size(self):
             return 5
 
     with mock.patch.object(
