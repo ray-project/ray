@@ -515,8 +515,14 @@ def _add_partitions_to_table(
                     f"to target type {column_type}."
                 ) from e
 
-            values_are_equal = pc.all(pc.equal(column, table[field]))
-            values_are_equal = values_are_equal.as_py()
+            if value is None:
+                # ``pc.equal`` of two nulls is null, not true. A null
+                # partition value (see ``Partitioning.null_fallback``)
+                # matches only a column that is all null.
+                values_are_equal = table[field].null_count == len(table)
+            else:
+                values_are_equal = pc.all(pc.equal(column, table[field]))
+                values_are_equal = values_are_equal.as_py()
 
             if not values_are_equal:
                 raise ValueError(
