@@ -1929,7 +1929,7 @@ py_test(
 
 py_test(
     name = "test_random_shuffle_v2",
-    size = "small",
+    size = "medium",
     srcs = ["tests/test_random_shuffle_v2.py"],
     tags = [
         "exclusive",

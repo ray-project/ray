@@ -478,10 +478,18 @@ def test_read_map_batches_operator_fusion_with_random_shuffle_operator(
         return {"id": [x + 1 for x in batch["id"]]}
 
     n = 10
+    ctx = DataContext.get_current()
     ds = ray.data.range(n)
     ds = ds.map_batches(fn, batch_size=None)
     ds = ds.random_shuffle()
     assert set(extract_values("id", ds.take_all())) == set(range(1, n + 1))
+    if ctx.shuffle_strategy == ShuffleStrategy.SHUFFLE_V2:
+        # Shuffle v2 keeps the upstream map as its own operator.
+        prefix = "Disk" if ctx.use_disk_based_hash_shuffle else ""
+        assert "ReadRange->MapBatches(fn)" in ds.stats()
+        assert f"{prefix}RandomShuffleMap(partitions=" in ds.stats()
+        _check_usage_record(["ReadRange", "MapBatches", "RandomShuffle"])
+        return
     assert "ReadRange->MapBatches(fn)->RandomShuffle" in ds.stats()
     _check_usage_record(["ReadRange", "MapBatches", "RandomShuffle"])
 
@@ -548,6 +556,10 @@ def test_random_shuffle_fuses_at_most_one_upstream_map(
     ray_start_regular_shared_2_cpus, filter_kwargs, map_batches_kwargs
 ):
     from ray.data._internal.util import explain_plan
+
+    # Map -> shuffle fusion only exists on the legacy all-to-all path.
+    ctx = DataContext.get_current()
+    ctx.shuffle_strategy = ShuffleStrategy.SORT_SHUFFLE_PULL_BASED
 
     # Two MapOperators left unfused by map fusion must not both be fused into the
     # shuffle: only one `ctx.upstream_map_transformer` survives, so the outer map

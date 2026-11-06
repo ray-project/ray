@@ -2,7 +2,7 @@ import dataclasses
 import functools
 import logging
 from collections import defaultdict
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 import ray
 from ray.data._internal.execution.bundle_queue import (
@@ -26,6 +26,7 @@ from ray.data._internal.execution.operators.shuffle_operators.shuffle_tasks impo
     SHUFFLE_PEAK_MEMORY_MULTIPLIER,
     BlockTransformer,
     PartitionFn,
+    TaskScopedPartitioner,
     _shuffle_map_task,
     merge_runtime_envs,
 )
@@ -91,7 +92,7 @@ class ShuffleMapOp(InternalQueueOperatorMixin, PhysicalOperator):
         data_context: DataContext,
         *,
         num_partitions: int,
-        partition_fn: PartitionFn,
+        partition_fn: Union[PartitionFn, TaskScopedPartitioner],
         block_transformer: Optional[BlockTransformer] = None,
         map_runtime_env: Optional[Dict[str, Any]] = None,
         map_ray_remote_args: Optional[Dict[str, Any]] = None,
@@ -106,7 +107,7 @@ class ShuffleMapOp(InternalQueueOperatorMixin, PhysicalOperator):
         )
 
         self._num_partitions: int = num_partitions
-        self._partition_fn: PartitionFn = partition_fn
+        self._partition_fn: Union[PartitionFn, TaskScopedPartitioner] = partition_fn
         self._block_transformer: Optional[BlockTransformer] = block_transformer
 
         # -- Map task config -------------------------------------------------

@@ -5,7 +5,7 @@ import secrets
 import tempfile
 import typing
 from collections import defaultdict
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 import ray
 from ray.data._internal.execution.bundle_queue import (
@@ -28,6 +28,7 @@ from ray.data._internal.execution.operators.base_physical_operator import (
 from ray.data._internal.execution.operators.shuffle_operators.disk_shuffle_tasks import (  # noqa: E501
     BlockTransformer,
     PartitionFn,
+    TaskScopedPartitioner,
     _disk_shuffle_map_task,
 )
 from ray.data._internal.execution.operators.shuffle_operators.shuffle_map_operator import (  # noqa: E501
@@ -67,7 +68,7 @@ class DiskHashShuffleMapOp(InternalQueueOperatorMixin, PhysicalOperator):
         data_context: DataContext,
         *,
         num_partitions: int,
-        partition_fn: PartitionFn,
+        partition_fn: Union[PartitionFn, TaskScopedPartitioner],
         block_transformer: Optional[BlockTransformer] = None,
         map_runtime_env: Optional[Dict[str, Any]] = None,
         map_ray_remote_args: Optional[Dict[str, Any]] = None,
@@ -81,7 +82,7 @@ class DiskHashShuffleMapOp(InternalQueueOperatorMixin, PhysicalOperator):
         )
 
         self._num_partitions: int = num_partitions
-        self._partition_fn: PartitionFn = partition_fn
+        self._partition_fn: Union[PartitionFn, TaskScopedPartitioner] = partition_fn
         self._block_transformer: Optional[BlockTransformer] = block_transformer
 
         # -- Map task config -------------------------------------------------

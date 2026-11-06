@@ -50,6 +50,8 @@ from ray.tests.conftest import *  # noqa
 
 def test_random_shuffle_operator(ray_start_regular_shared_2_cpus):
     ctx = DataContext.get_current()
+    # Checks the legacy all-to-all shape; v2 is covered in test_random_shuffle_v2.py.
+    ctx.shuffle_strategy = ShuffleStrategy.SORT_SHUFFLE_PULL_BASED
 
     planner = create_planner()
     read_op = get_parquet_read_logical_op()
