@@ -103,3 +103,24 @@ class SamplingInMemorySizeEstimator(InMemorySizeEstimator):
             in_memory_size = file_size
 
         return in_memory_size / file_size
+
+
+@DeveloperAPI
+class OnDiskSizeEstimator(InMemorySizeEstimator):
+    """Estimates each row's in-memory size as its bytes on disk.
+
+    A chunk row weighs its own ``size_bytes``, not its whole file's size.
+    V1 sizes CSV and JSON reads by on-disk bytes the same way, and nothing
+    is read to estimate.
+    """
+
+    def estimate_in_memory_sizes(self, manifest: FileManifest) -> np.ndarray:
+        return np.array(
+            [
+                file_size if metadata is None else metadata["size_bytes"]
+                for file_size, metadata in zip(
+                    manifest.file_sizes, manifest.file_chunk_metadatas
+                )
+            ],
+            dtype=np.int64,
+        )
