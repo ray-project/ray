@@ -9,6 +9,7 @@ import gc
 import socket
 import subprocess
 import sys
+import time
 from types import SimpleNamespace
 from typing import List
 from unittest.mock import patch
@@ -34,6 +35,7 @@ from ray.llm._internal.serve.routing_policies.kv_aware.kv_token_tracker import (
 from ray.llm._internal.serve.routing_policies.kv_aware.lifecycle import (
     LifecycleEventForwarder,
 )
+from ray.llm._internal.serve.routing_policies.kv_aware.token_channel import TokenSender
 from ray.serve._private.common import (
     DeploymentID,
     DeploymentTargetInfo,
@@ -41,7 +43,11 @@ from ray.serve._private.common import (
     RunningReplicaInfo,
 )
 from ray.serve._private.constants import SERVE_CONTROLLER_NAME, SERVE_NAMESPACE
-from ray.serve._private.long_poll import LongPollClient, LongPollNamespace
+from ray.serve._private.long_poll import (
+    LongPollClient,
+    LongPollNamespace,
+    UpdatedObject,
+)
 from ray.serve.config import RequestRouterConfig
 from ray.serve.llm.request_router import KVAwareRouter
 
@@ -276,7 +282,7 @@ def _ports_released(endpoints):
 
 
 def test_router_shutdown_closes_sockets():
-    """Repeated router lifetimes release mesh and lifecycle resources."""
+    """Queued membership updates cannot reopen sockets during router shutdown."""
     pytest.importorskip("dynamo.llm")
     # Ray's driver opens gRPC connections lazily. Measure in a fresh process
     # so unrelated Ray connections cannot change the descriptor baseline.
@@ -298,7 +304,13 @@ async def _check_router_shutdown():
     baseline = None
     # The first lifetime initializes the process-wide Dynamo and ZMQ runtimes.
     for _ in range(6):
-        tracker = _NoLongPollTracker()
+        # Keep the real LongPoll client; only the controller RPC is stubbed.
+        with patch.object(ray, "get_actor"):
+            tracker = _StandaloneTracker(
+                serve_deployment_id=DeploymentID(name="LLMServer", app_name="app")
+            )
+        sender = TokenSender()
+        tracker.subscribe_token_endpoints(sender.connect)
         forwarder = LifecycleEventForwarder()
         try:
             await tracker.start_lifecycle_receiver()
@@ -309,10 +321,44 @@ async def _check_router_shutdown():
             await tracker._svc.register_replica_peer(endpoints[1])
             receive_task = tracker._lifecycle_receiver._task
             forwarder.report(endpoints[0], "on_request_completed", "finished")
+
+            workers = _router_targets({"engine": None})
+            workers.running_replicas[0].routing_stats.update(
+                {
+                    "kv_event_metadata": {
+                        "endpoint": endpoints[1],
+                        "block_size": 16,
+                        "max_num_batched_tokens": 8192,
+                        "dp_rank": 0,
+                    },
+                    "kv_token_metadata": {"endpoint": endpoints[0]},
+                }
+            )
+            sender.connect([endpoints[0]])
+            # Queue both callbacks before stop(), without letting them run yet.
+            client = tracker._long_poll_client
+            client._process_update(
+                {
+                    key: UpdatedObject(
+                        workers
+                        if key[1] == tracker._serve_deployment_id
+                        else _router_targets({"peer": endpoints[1]}),
+                        1,
+                        time.time(),
+                    )
+                    for key in client.key_listeners
+                }
+            )
         finally:
             forwarder.close()
-            await LLMRouter.__del__(SimpleNamespace(_kv_token_tracker=tracker))
+            await LLMRouter.__del__(
+                SimpleNamespace(_kv_token_tracker=tracker, _token_sender=sender)
+            )
+        await asyncio.sleep(0)
         assert receive_task.done()
+        assert not tracker._pending_tasks
+        assert sender._context is None
+        assert not sender._sockets
         await async_wait_for_condition(lambda: _ports_released(endpoints), timeout=5)
         gc.collect()
         if baseline is None:

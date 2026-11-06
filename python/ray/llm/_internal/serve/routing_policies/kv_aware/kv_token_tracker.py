@@ -168,6 +168,7 @@ class KVTokenTracker:
         self._request_ids_by_worker: Dict[int, Set[str]] = {}
         self._pending_tasks: Set[asyncio.Task] = set()
         self._long_poll_client: Optional[LongPollClient] = None
+        self._stopping = False
         self._create_selection_service()
         self._start_replica_tracking()
 
@@ -295,6 +296,8 @@ class KVTokenTracker:
         (carried in ``RunningReplicaInfo.routing_stats``); newly advertised replicas
         are registered with the selection service and departed ones evicted.
         """
+        if self._stopping:
+            return
         members: Dict[int, tuple] = {}
         token_endpoints: Dict[int, str] = {}
         for replica in target_info.running_replicas:
@@ -356,6 +359,8 @@ class KVTokenTracker:
 
     async def shutdown(self) -> None:
         """Stop membership updates and release lifecycle and mesh sockets."""
+        # stop() does not cancel LongPoll callbacks already queued on this loop.
+        self._stopping = True
         if self._long_poll_client is not None:
             self._long_poll_client.stop()
             self._long_poll_client = None
@@ -381,6 +386,8 @@ class KVTokenTracker:
     def _on_router_targets(self, target_info: DeploymentTargetInfo) -> None:
         """LongPoll listener: keep the selection service's replica-mesh peers in
         sync with the running LLMRouter replicas that advertise an endpoint."""
+        if self._stopping:
+            return
         peers: Set[str] = set()
         for replica in target_info.running_replicas:
             metadata = replica.routing_stats.get(KV_REPLICA_SYNC_METADATA_KEY)
