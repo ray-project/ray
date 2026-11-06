@@ -96,6 +96,19 @@ class EarlyStoppingSuite(unittest.TestCase):
             rule.on_trial_result(runner, t2, result(10, 450)), TrialScheduler.STOP
         )
 
+    def testMedianStoppingRequiresMode(self):
+        # A missing `mode` must raise, not silently minimize the metric.
+        rule = MedianStoppingRule(metric="episode_reward_mean")
+        self.assertTrue(rule.set_search_properties(None, None))
+        with self.assertRaises(ValueError):
+            rule.on_trial_add(mock_tune_controller(), Trial(MOCK_TRAINABLE_NAME))
+
+        # A mode passed later through `set_search_properties` still works.
+        rule = MedianStoppingRule(metric="episode_reward_mean")
+        self.assertTrue(rule.set_search_properties(None, "max"))
+        rule.on_trial_add(mock_tune_controller(), Trial(MOCK_TRAINABLE_NAME))
+        self.assertIs(rule._compare_op, max)
+
     def testMedianStoppingOnCompleteOnly(self):
         rule = MedianStoppingRule(
             metric="episode_reward_mean",
