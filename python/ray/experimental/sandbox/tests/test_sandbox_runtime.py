@@ -106,6 +106,7 @@ def test_create_forwards_config_fields_to_backend():
         rootless=True,
         readonly=False,
         shell="/bin/bash",
+        oom_score_adj=0,
     )
     (config,) = runtime._backend.configs
     assert config.image == "fake:latest"
@@ -118,6 +119,7 @@ def test_create_forwards_config_fields_to_backend():
     assert config.rootless is True
     assert config.readonly is False
     assert config.shell == "/bin/bash"
+    assert config.oom_score_adj == 0
 
 
 def test_ttl_is_enforced_by_the_runtime():

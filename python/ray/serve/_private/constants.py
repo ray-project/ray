@@ -269,6 +269,11 @@ CONTROLLER_MAX_CONCURRENCY = get_env_int_positive(
 
 DEFAULT_GRACEFUL_SHUTDOWN_TIMEOUT_S = 20
 DEFAULT_GRACEFUL_SHUTDOWN_WAIT_LOOP_S = 2
+#: `graceful_shutdown_wait_loop_s` may be 0. A draining replica still sleeps at
+#: least this long between checks, and logs that it is waiting at most once per
+#: `DRAIN_WAITING_LOG_INTERVAL_S`.
+MIN_GRACEFUL_SHUTDOWN_WAIT_LOOP_S = 0.01
+DRAIN_WAITING_LOG_INTERVAL_S = 1.0
 DEFAULT_HEALTH_CHECK_PERIOD_S = 10
 
 # Dependency ordered shutdown deletes deployments in tiers, callers before

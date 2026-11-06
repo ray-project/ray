@@ -44,47 +44,39 @@ LEARNER_RESULTS_VAR_IS_KEY = "var_IS"
 class APPOConfig(IMPALAConfig):
     """Defines a configuration class from which an APPO Algorithm can be built.
 
-    .. testcode::
+    Examples:
+        >>> from ray.rllib.algorithms.appo import APPOConfig
+        >>> config = (
+        ...     APPOConfig()
+        ...     .training(lr=0.01, grad_clip=30.0, train_batch_size_per_learner=50)
+        ... )
+        >>> config = config.learners(num_learners=1)
+        >>> config = config.env_runners(num_env_runners=1)
+        >>> config = config.environment("CartPole-v1")
+        >>> # Build an Algorithm object from the config and run 1 training iteration.
+        >>> algo = config.build()
+        >>> _ = algo.train()
+        >>> del algo
 
-        from ray.rllib.algorithms.appo import APPOConfig
-        config = (
-            APPOConfig()
-            .training(lr=0.01, grad_clip=30.0, train_batch_size_per_learner=50)
-        )
-        config = config.learners(num_learners=1)
-        config = config.env_runners(num_env_runners=1)
-        config = config.environment("CartPole-v1")
-
-        # Build an Algorithm object from the config and run 1 training iteration.
-        algo = config.build()
-        algo.train()
-        del algo
-
-    .. testcode::
-
-        from ray.rllib.algorithms.appo import APPOConfig
-        from ray import tune
-
-        config = APPOConfig()
-        # Update the config object.
-        config = config.training(lr=tune.grid_search([0.001,]))
-        # Set the config object's env.
-        config = config.environment(env="CartPole-v1")
-        # Use to_dict() to get the old-style python config dict when running with tune.
-        tune.Tuner(
-            "APPO",
-            run_config=tune.RunConfig(
-                stop={"training_iteration": 1},
-                verbose=0,
-            ),
-            param_space=config.to_dict(),
-
-        ).fit()
-
-    .. testoutput::
-        :hide:
-
-        ...
+        >>> from ray.rllib.algorithms.appo import APPOConfig
+        >>> from ray import tune
+        >>> config = APPOConfig()
+        >>> # Update the config object.
+        >>> config = config.training(lr=tune.grid_search([0.001,]))
+        >>> # Set the config object's env.
+        >>> config = config.environment(env="CartPole-v1")
+        >>> # Use to_dict() to get the old-style python config dict when running with tune.
+        >>> print("[ignore]"); results = tune.Tuner(
+        ...     "APPO",
+        ...     run_config=tune.RunConfig(
+        ...         stop={"training_iteration": 1},
+        ...         verbose=0,
+        ...     ),
+        ...     param_space=config.to_dict(),
+        ... ).fit()  # doctest: +ELLIPSIS
+        [ignore]...
+        >>> results.num_errors
+        0
     """
 
     def __init__(self, algo_class=None):
