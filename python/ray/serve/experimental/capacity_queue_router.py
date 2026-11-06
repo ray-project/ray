@@ -2,6 +2,7 @@
 
 import asyncio
 import logging
+from dataclasses import replace
 from typing import Dict, List, Optional
 
 import ray
@@ -14,6 +15,7 @@ from ray.serve._private.constants import (
 from ray.serve._private.request_router.pow_2_router import (
     PowerOfTwoChoicesRequestRouter,
 )
+from ray.serve._private.utils import generate_request_id
 from ray.serve.request_router import (
     LocalityMixin,
     MultiplexMixin,
@@ -146,6 +148,15 @@ class CapacityQueueRouter(LocalityMixin, MultiplexMixin, RequestRouter):
         # reclaims it.
         if is_retry:
             self._pending_tokens.pop(internal_request_id, None)
+
+        # Sibling handle calls inherit their parent's internal request ID, and
+        # a retry can still have an old result's completion callback in flight.
+        # Give each token owner its own ID without mutating the parent's
+        # metadata used to track cancellation of pending assignments.
+        pending_request.metadata = replace(
+            pending_request.metadata, internal_request_id=generate_request_id()
+        )
+        internal_request_id = pending_request.metadata.internal_request_id
 
         # Wait for at least one replica.
         while len(self._replicas) == 0:

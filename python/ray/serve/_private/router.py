@@ -1339,7 +1339,7 @@ class AsyncioRouter:
                 replica_metadata=replica.replica_metadata,
                 _replica=replica,
                 _deployment_id=None,  # Injected by DeploymentHandle for dispatch-time validation.
-                _request_metadata=request_meta,
+                _request_metadata=pr.metadata,
                 _method_name=request_meta.call_method,
                 _slot_token=slot_token,
             )
@@ -1365,7 +1365,8 @@ class AsyncioRouter:
                     and self.request_router
                 ):
                     self._active_request_router.on_request_completed(
-                        replica.replica_id, request_meta.internal_request_id
+                        replica.replica_id,
+                        selection._request_metadata.internal_request_id,
                     )
             finally:
                 # Decrement reserved slots metric even if release failed,
@@ -1425,7 +1426,11 @@ class AsyncioRouter:
         pr = PendingRequest(
             args=list(request_args),
             kwargs=request_kwargs,
-            metadata=replace(request_meta, _reserved_slot_token=selection._slot_token),
+            metadata=replace(
+                request_meta,
+                internal_request_id=selection._request_metadata.internal_request_id,
+                _reserved_slot_token=selection._slot_token,
+            ),
         )
 
         try:

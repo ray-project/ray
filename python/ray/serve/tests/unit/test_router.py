@@ -63,6 +63,7 @@ from ray.serve.exceptions import (
     DeploymentUnavailableError,
     ReplicaUnavailableError,
 )
+from ray.serve.experimental.capacity_queue_router import CapacityQueueRouter
 
 
 class FakeReplicaResult(ReplicaResult):
@@ -401,6 +402,119 @@ def dummy_request_metadata(is_streaming: bool = False) -> RequestMetadata:
         internal_request_id="test-internal-request-1",
         is_streaming=is_streaming,
     )
+
+
+@pytest.mark.asyncio
+class TestCapacityQueueAttemptOwnership:
+    @staticmethod
+    def configure_policy(policy, replicas):
+        policy._pending_tokens = {}
+        policy._acquired_tokens = {}
+        policy._max_fault_retries = 3
+        policy._replicas = {r.replica_id: r for r in replicas}
+        policy._uid_to_replica_id = {
+            r.replica_id.unique_id: r.replica_id for r in replicas
+        }
+        released = []
+        policy._safe_release = released.append
+        policy._capacity_queue = Mock()
+
+        def acquire():
+            future = asyncio.get_running_loop().create_future()
+            replica = replicas.pop(0)
+            future.set_result(replica.replica_id.unique_id)
+            return future
+
+        policy._capacity_queue.acquire.remote.side_effect = acquire
+        for method in (
+            "_choose_replica_for_request",
+            "on_request_routed",
+            "on_request_completed",
+        ):
+            setattr(
+                policy, method, getattr(CapacityQueueRouter, method).__get__(policy)
+            )
+        return released
+
+    async def test_sibling_calls_release_independent_tokens(self, setup_router):
+        router, policy = setup_router
+        replica = FakeReplica(
+            ReplicaID(unique_id="replica", deployment_id=DeploymentID(name="test"))
+        )
+        policy.set_replica_to_return(replica)
+        released = self.configure_policy(policy, [replica, replica])
+        metadata = dummy_request_metadata()
+        first = await router.assign_request(metadata)
+        second = await router.assign_request(metadata)
+        first.fire_done_callbacks()
+        second.fire_done_callbacks()
+        await async_wait_for_condition(lambda: len(released) == 2)
+        assert released == ["replica", "replica"]
+        assert metadata.internal_request_id == "test-internal-request-1"
+
+    @pytest.mark.parametrize("is_streaming", [False, True])
+    async def test_dispatch_preserves_token_owner(self, setup_router, is_streaming):
+        router, policy = setup_router
+        replica = FakeReplica(
+            ReplicaID(unique_id="replica", deployment_id=DeploymentID(name="test"))
+        )
+        policy.set_replica_to_return(replica)
+        released = self.configure_policy(policy, [replica])
+        metadata = dummy_request_metadata(is_streaming)
+        async with router.choose_replica(metadata) as selection:
+            result = await router.dispatch(selection, metadata)
+        result.fire_done_callbacks()
+        await async_wait_for_condition(lambda: len(released) == 1)
+        assert released == ["replica"]
+        assert metadata.internal_request_id == "test-internal-request-1"
+
+    @pytest.mark.parametrize("same_replica", [False, True])
+    async def test_old_completion_does_not_release_retry_token(
+        self, setup_router, same_replica
+    ):
+        router, policy = setup_router
+        router._enable_strict_max_ongoing_requests = True
+        dep = DeploymentID(name="test")
+        replica_id = ReplicaID(unique_id="first", deployment_id=dep)
+        first = FakeReplica(
+            replica_id,
+            queue_len_info=ReplicaQueueLengthInfo(
+                accepted=False, num_ongoing_requests=1
+            ),
+        )
+        second = FakeReplica(
+            ReplicaID(unique_id="second", deployment_id=dep),
+            queue_len_info=ReplicaQueueLengthInfo(
+                accepted=True, num_ongoing_requests=1
+            ),
+        )
+        if same_replica:
+            second = first
+        policy.set_replica_to_return(second)
+        released = self.configure_policy(policy, [first, second])
+        rejected_results = []
+        original_send = first.try_send_request
+
+        def send(*args, **kwargs):
+            result = original_send(*args, **kwargs)
+            rejected_results.append(result)
+            if same_replica:
+                first._queue_len_info = ReplicaQueueLengthInfo(
+                    accepted=True, num_ongoing_requests=1
+                )
+            return result
+
+        first.try_send_request = send
+        result = await router.assign_request(dummy_request_metadata())
+        rejected_results[0].fire_done_callbacks()
+        # A loop barrier waits until the scheduled completion has been handled.
+        barrier = asyncio.get_running_loop().create_future()
+        asyncio.get_running_loop().call_soon(barrier.set_result, None)
+        await barrier
+        assert released == []
+        result.fire_done_callbacks()
+        await async_wait_for_condition(lambda: len(released) == 1)
+        assert released == [second.replica_id.unique_id]
 
 
 class FakeReplicaMetricsManager:
