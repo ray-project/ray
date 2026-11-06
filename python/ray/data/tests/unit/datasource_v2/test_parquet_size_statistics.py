@@ -4,6 +4,8 @@ A desynced cursor returns wrong numbers rather than raising, so hand-built paylo
 pin each skip width PyArrow footers never exercise.
 """
 
+import sys
+
 import pytest
 from packaging.version import parse as parse_version
 
@@ -12,13 +14,15 @@ from ray.data._internal.datasource_v2.formats.parquet.parquet_size_statistics im
     footer_bytes,
     read_footer_stats,
 )
+from ray.data._internal.utils.arrow_utils import get_pyarrow_version
 
 pa = pytest.importorskip("pyarrow")
 pq = pytest.importorskip("pyarrow.parquet")
 
 # PyArrow 17 writes no SizeStatistics; 23 does (18 to 22 unchecked).
+pyarrow_version = get_pyarrow_version()
 requires_pyarrow_23 = pytest.mark.skipif(
-    parse_version(pa.__version__) < parse_version("23.0.0"),
+    pyarrow_version is None or pyarrow_version < parse_version("23.0.0"),
     reason="PyArrow 17 writes no SizeStatistics",
 )
 
@@ -101,7 +105,8 @@ def test_size_statistics_match_ground_truth(tmp_path, values, arrow_type, expect
     assert stats[0] == [pss.LeafSizeStats(*expected)]
 
 
-# Thrift compact type ids.
+# Thrift compact type ids, copied from the spec rather than taken from ``pss``:
+# payloads built from a wrong id in the module would carry it too and still pass.
 _BOOL_TRUE, _BYTE, _I64 = 1, 3, 6
 _DOUBLE, _BINARY, _LIST, _STRUCT = 7, 8, 9, 12
 
@@ -174,13 +179,29 @@ def test_column_metadata_payloads(payload, expected):
         [0x0C, 0x20, 0x1C, 0x00, 0x00, 0x00],
         # Field 16 as an i64 rather than a struct.
         [0x06, 0x20, 0x02, 0x00],
+        # String bytes of -1 (zigzag 1).
+        [0x0C, 0x20, 0x16, 0x01, 0x00, 0x00],
+        # A repetition histogram holding -1.
+        [0x0C, 0x20, 0x29, 0x16, 0x01, 0x00, 0x00],
     ],
-    ids=["geospatial", "size-statistics-not-a-struct"],
+    ids=[
+        "geospatial",
+        "size-statistics-not-a-struct",
+        "negative-bytes",
+        "negative-histogram",
+    ],
 )
-def test_wrong_field_types_are_rejected(payload):
-    """A field whose type contradicts parquet.thrift means the cursor desynced."""
-    with pytest.raises(pss._ThriftDesync, match="expected"):
+def test_impossible_fields_are_rejected(payload):
+    """A field of the wrong type or a negative count means the cursor desynced."""
+    with pytest.raises(pss._ThriftDesync):
         _walk(_one_leaf_footer(payload))
+
+
+def test_bytes_after_the_footer_are_rejected():
+    """Bytes the walk doesn't reach mean the buffer isn't one footer."""
+    footer = bytes(_one_leaf_footer([0x00])) + b"\x00"
+    with pytest.raises(pss._ThriftDesync, match="after the footer"):
+        _walk(memoryview(footer).cast("B"))
 
 
 def test_truncated_footer_gives_none(tmp_path, monkeypatch):
@@ -218,7 +239,21 @@ def test_not_a_dictionary_page_header_gives_none(tmp_path):
     assert pss.read_dictionary_page(data_page) is None
 
 
-if __name__ == "__main__":
-    import sys
+@pytest.mark.parametrize(
+    "payload",
+    [
+        # Field 1 as a map of about 2**40 double keys and values, which skipping
+        # reads no bytes of: the count must raise rather than loop.
+        [0x1B, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x3F, 0x77] + [0x00] * 56,
+        # Field 1 as a struct whose field 1 is a struct, and so on, past the
+        # recursion limit.
+        [0x1C] * sys.getrecursionlimit(),
+    ],
+    ids=["count-past-the-buffer", "nested-structs"],
+)
+def test_corrupt_header_gives_none(payload):
+    assert pss.read_dictionary_page(bytes(payload)) is None
 
+
+if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))
