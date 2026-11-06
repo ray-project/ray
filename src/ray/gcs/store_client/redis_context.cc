@@ -14,6 +14,7 @@
 
 #include "ray/gcs/store_client/redis_context.h"
 
+#include <algorithm>
 #include <cerrno>
 #include <charconv>
 #include <cstddef>
@@ -496,6 +497,23 @@ void RedisRequestContext::Run() {
     return Status::RedisError(REPLY->str);      \
   }
 
+namespace {
+
+// The reconnect backoff reuses the command retry settings. A base of 0 keeps
+// every delay at 0, so a Redis that is down for a moment uses up the whole
+// reconnect budget at once, and a negative one wraps to a delay that never
+// ends. Floor the base at 1 ms and keep the ceiling at or above it.
+ExponentialBackoff MakeReconnectBackoff() {
+  const int64_t base_ms =
+      std::max<int64_t>(RayConfig::instance().redis_retry_base_ms(), 1);
+  const int64_t max_ms =
+      std::max<int64_t>(RayConfig::instance().redis_retry_max_ms(), base_ms);
+  return ExponentialBackoff(
+      base_ms, RayConfig::instance().redis_retry_multiplier(), max_ms);
+}
+
+}  // namespace
+
 RedisContext::RedisContext(instrumented_io_context &io_service,
                            ClockInterface &clock,
                            std::optional<RedisMetrics> metrics)
@@ -506,9 +524,7 @@ RedisContext::RedisContext(instrumented_io_context &io_service,
       ssl_context_(nullptr),
       redis_db_probe_timeout_milliseconds_(
           RayConfig::instance().redis_db_probe_timeout_milliseconds()),
-      reconnect_backoff_(RayConfig::instance().redis_retry_base_ms(),
-                         RayConfig::instance().redis_retry_multiplier(),
-                         RayConfig::instance().redis_retry_max_ms()),
+      reconnect_backoff_(MakeReconnectBackoff()),
       resolver_(io_service) {
   redisSSLContextError ssl_error;
   redisInitOpenSSL();
@@ -1750,6 +1766,11 @@ void RedisContext::OnWritesLost(const std::string &reason) {
 
 void RedisContext::EnableWriteWatermark(std::string key, std::string field) {
   if (!RayConfig::instance().redis_reconnect_verify_writes()) {
+    // Ray reads only "1" and "true" as on, so a value such as "yes" turns the
+    // check off too. Say so, since nothing else shows it.
+    RAY_LOG(INFO) << "The Redis write watermark for " << field
+                  << " is off (RAY_redis_reconnect_verify_writes): GCS will not "
+                     "check after a reconnect that Redis kept its writes.";
     return;
   }
   RAY_CHECK(redis_async_context_);

@@ -506,6 +506,37 @@ TEST_F(RedisAsyncContextTest, TestAcceptThenCloseBacksOff) {
   EXPECT_GE(proxy.closed_on_accept(), 1);
   EXPECT_LE(proxy.closed_on_accept(), 10);
 }
+
+// The reconnect backoff reuses redis_retry_base_ms. Set to 0, it must still
+// back off; otherwise a short outage spends the whole reconnect budget at once
+// and GCS exits long before the grace period ends.
+TEST_F(RedisAsyncContextTest, TestReconnectBacksOffWithZeroRetryBase) {
+  RayConfig::instance().initialize(R"({"redis_retry_base_ms": 0})");
+  absl::Cleanup restore = [] {
+    RayConfig::instance().initialize(R"({"redis_retry_base_ms": 100})");
+  };
+  ClosingProxy proxy(TEST_REDIS_SERVER_PORTS.front());
+  instrumented_io_context io;
+  auto work = boost::asio::make_work_guard(io.get_executor());
+  std::thread io_thread([&io] { io.run(); });
+  ray::Clock clock;
+  auto ctx = std::make_unique<RedisContext>(io, clock);
+  absl::Cleanup stop = [&] {
+    work.reset();
+    io.stop();
+    io_thread.join();
+    ctx.reset();
+  };
+  ASSERT_TRUE(
+      ctx->Connect("127.0.0.1", proxy.port(), /*username=*/"", /*password=*/"").ok());
+
+  proxy.StartClosing();
+  std::this_thread::sleep_for(2s);
+  // The backoff starts at 1ms and doubles up to 1s: about a dozen attempts in
+  // 2s, far below the 120-attempt budget.
+  EXPECT_GE(proxy.closed_on_accept(), 1);
+  EXPECT_LE(proxy.closed_on_accept(), 20);
+}
 #endif
 
 // A server that answers -NOAUTH never ran the command: that is what commands

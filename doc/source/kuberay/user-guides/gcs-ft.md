@@ -462,6 +462,11 @@ write's reply but before its marker reaches Redis, the check fails although
 nothing was lost, and GCS restarts as it did before in-place reconnects. Set `RAY_redis_reconnect_verify_writes=0` to turn off both
 the check and the marker writes; GCS then continues after any reconnect.
 
+The check only covers writes made by the running GCS process. A GCS doesn't
+read the marker when it starts; it writes its own. So upgrading from a Ray
+version without the check needs no migration, and a GCS that exited because of
+the check starts normally on the Redis it finds.
+
 ### Tuning the reconnect
 
 Set these as environment variables on every node before `ray start`. The first
@@ -473,9 +478,9 @@ retry behavior of individual Redis commands.
 | `RAY_redis_reconnect_grace_period_ms` | `60000` | How long commands wait out a reconnect before they start spending their retry budget, counted from when the connection dropped. With `0`, a command gives up after its own retry budget, roughly 3.5 seconds, as before in-place reconnects; GCS still reconnects in place. |
 | `RAY_redis_reconnect_connect_timeout_ms` | `5000` | How long each reconnect attempt waits for its TCP connect before trying again. Without it, a connect to an address that no longer answers, such as a deleted Redis Pod's IP, waits out the kernel's SYN retries for about two minutes. `0` turns the timeout off. |
 | `RAY_redis_reconnect_sentinel_timeout_ms` | `2000` | Timeout for each step of the query a reconnect sends to Sentinel to find the current primary. `0` or less uses the startup probe timeout. |
-| `RAY_redis_reconnect_verify_writes` | `1` | Whether GCS checks, before resuming, that Redis kept every write it acknowledged, and exits if not. See [When Redis comes back without data](#when-redis-comes-back-without-data). |
+| `RAY_redis_reconnect_verify_writes` | `1` | Whether GCS checks, before resuming, that Redis kept every write it acknowledged, and exits if not. Only `1` and `true` turn it on. See [When Redis comes back without data](#when-redis-comes-back-without-data). |
 | `RAY_redis_db_connect_retries` | `120` | Reconnect attempts before GCS exits. Also bounds the connect attempts at startup. |
-| `RAY_redis_retry_base_ms` | `100` | First backoff between attempts. |
+| `RAY_redis_retry_base_ms` | `100` | First backoff between attempts. Reconnects use at least 1 ms. |
 | `RAY_redis_retry_multiplier` | `2` | Backoff growth. |
 | `RAY_redis_retry_max_ms` | `1000` | Backoff ceiling. |
 | `RAY_num_redis_request_retries` | `5` | Retries for a single command once the grace period has passed. |
