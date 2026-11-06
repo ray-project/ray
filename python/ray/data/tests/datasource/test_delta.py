@@ -327,6 +327,175 @@ def test_read_unity_catalog_rejects_column_mapping(tmp_path):
             )
 
 
+_DATES = ["2026-01-01", "2026-01-02", "2026-01-03"]
+
+
+def _write_partitioned_table(path: str) -> None:
+    """Two files per date partition, so pruning is visible in the file list."""
+    from deltalake import write_deltalake
+
+    for i in range(2):
+        write_deltalake(
+            path,
+            pa.table({"date": _DATES, "x": [10 * i + d for d in range(3)]}),
+            partition_by=["date"],
+            mode="append",
+        )
+
+
+def _input_dates(ds) -> list:
+    """The partition dates of the files the read lists, without running it."""
+    return sorted(
+        part.split("=", 1)[1]
+        for file in ds.input_files()
+        for part in file.split("/")
+        if part.startswith("date=")
+    )
+
+
+def _supports_file_pruning_predicate() -> bool:
+    import inspect
+
+    from deltalake import DeltaTable
+
+    parameters = inspect.signature(DeltaTable.to_pyarrow_dataset).parameters
+    return "file_pruning_predicate" in parameters
+
+
+@pytest.mark.parametrize(
+    "partition_filters, dates",
+    [
+        ([("date", "=", "2026-01-02")], ["2026-01-02"]),
+        ([("date", "in", ["2026-01-01", "2026-01-03"])], ["2026-01-01", "2026-01-03"]),
+        ([("date", ">", "2026-01-01")], ["2026-01-02", "2026-01-03"]),
+        ([("date", ">=", "2026-01-02"), ("date", "<", "2026-01-03")], ["2026-01-02"]),
+    ],
+    ids=["eq", "in", "range", "and"],
+)
+def test_delta_read_partition_filters(tmp_path, partition_filters, dates):
+    """Only the matching partitions' files are listed, and the rows are exact."""
+    path = os.path.join(tmp_path, "partitioned")
+    _write_partitioned_table(path)
+
+    ds = ray.data.read_delta(path, partition_filters=partition_filters)
+
+    assert _input_dates(ds) == sorted(dates * 2)
+    assert sorted(row["date"] for row in ds.take_all()) == sorted(dates * 2)
+
+
+def test_delta_read_partition_filters_or_groups(tmp_path):
+    """An OR of AND groups needs deltalake's ``file_pruning_predicate`` (1.6.6+)."""
+    path = os.path.join(tmp_path, "partitioned")
+    _write_partitioned_table(path)
+    partition_filters = [[("date", "=", "2026-01-01")], [("date", "=", "2026-01-03")]]
+
+    if not _supports_file_pruning_predicate():
+        with pytest.raises(ValueError, match="needs deltalake 1.6.6 or later"):
+            ray.data.read_delta(path, partition_filters=partition_filters)
+        return
+
+    ds = ray.data.read_delta(path, partition_filters=partition_filters)
+
+    assert _input_dates(ds) == ["2026-01-01"] * 2 + ["2026-01-03"] * 2
+
+
+@pytest.mark.parametrize(
+    "partition_filters, match",
+    [
+        ([("x", "=", 1)], "can only use partition columns, but 'x'"),
+        ([], "non-empty list"),
+        ([("date", "=")], r"\(column, op, value\) tuple"),
+        ([[("date", "=", "2026-01-01")], []], "list of such lists"),
+    ],
+    ids=["data-column", "empty", "short-tuple", "empty-group"],
+)
+def test_delta_read_partition_filters_rejects_invalid(
+    tmp_path, partition_filters, match
+):
+    path = os.path.join(tmp_path, "partitioned")
+    _write_partitioned_table(path)
+
+    with pytest.raises(ValueError, match=match):
+        ray.data.read_delta(path, partition_filters=partition_filters)
+
+
+def test_read_unity_catalog_partition_filters(tmp_path):
+    """``partition_filters`` reaches ``read_delta`` through ``reader_kwargs``."""
+    from ray.data.catalog import DatabricksUnityCatalog, ResolvedSource
+
+    path = os.path.join(tmp_path, "partitioned")
+    _write_partitioned_table(path)
+
+    with mock.patch.object(
+        DatabricksUnityCatalog, "resolve", return_value=ResolvedSource(path=path)
+    ), pytest.warns(DeprecationWarning, match="read_unity_catalog"):
+        ds = ray.data.read_unity_catalog(
+            table="main.db.tbl",
+            url="https://h.databricks.com",
+            token="t",
+            data_format="delta",
+            reader_kwargs={"partition_filters": [("date", "=", "2026-01-02")]},
+        )
+
+    assert _input_dates(ds) == ["2026-01-02"] * 2
+
+
+def test_delta_read_takes_file_sizes_from_the_log(tmp_path):
+    """Listing makes no per-file ``get_file_info`` call; sizes come from the log.
+
+    Partition values with special characters check that the log's paths, which
+    are URL-encoded once more than the fragment paths, are decoded exactly once.
+    """
+    import fsspec.implementations.local
+    import pyarrow.fs as pafs
+    from deltalake import write_deltalake
+
+    path = os.path.join(tmp_path, "special")
+    write_deltalake(
+        path,
+        pa.table({"p": ["a b", "x/y", "100%", "plain"], "x": [1, 2, 3, 4]}),
+        partition_by=["p"],
+    )
+
+    class _CountingLocalFileSystem(fsspec.implementations.local.LocalFileSystem):
+        info_calls = 0
+
+        def info(self, *args, **kwargs):
+            type(self).info_calls += 1
+            return super().info(*args, **kwargs)
+
+    counting = _CountingLocalFileSystem(skip_instance_cache=True)
+    filesystem = pafs.SubTreeFileSystem(
+        path, pafs.PyFileSystem(pafs.FSSpecHandler(counting))
+    )
+
+    ds = ray.data.read_delta(path, filesystem=filesystem)
+
+    assert _CountingLocalFileSystem.info_calls == 0
+    assert len(ds.input_files()) == 4
+
+
+def test_delta_file_sizes_match_the_files(tmp_path):
+    from deltalake import DeltaTable, write_deltalake
+
+    from ray.data.read_api import _delta_file_sizes
+
+    path = os.path.join(tmp_path, "special")
+    write_deltalake(
+        path,
+        pa.table({"p": ["a b", "x/y", "100%", None], "x": [1, 2, 3, 4]}),
+        partition_by=["p"],
+    )
+    dt = DeltaTable(path)
+
+    sizes = _delta_file_sizes(dt)
+
+    fragments = [f.path for f in dt.to_pyarrow_dataset().get_fragments()]
+    assert sorted(sizes) == sorted(fragments)
+    for fragment in fragments:
+        assert sizes[fragment] == os.path.getsize(os.path.join(path, fragment))
+
+
 if __name__ == "__main__":
     import sys
 
