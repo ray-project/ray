@@ -45,6 +45,8 @@ from ray.data._internal.execution.operators.shuffle_operators.shuffle_tasks impo
     BlockTransformer,
     PartitionFn,
     ReduceFn,
+    TaskScopedPartitioner,
+    resolve_partition_fn,
 )
 from ray.data._internal.output_buffer import (
     BlockOutputBuffer,
@@ -70,7 +72,7 @@ _DEFAULT_FETCH_THREADS = 16
 @ray.remote  # pyrefly: ignore[no-matching-overload]
 def _disk_shuffle_map_task(
     *blocks: Block,
-    partition_fn: PartitionFn,
+    partition_fn: Union[PartitionFn, TaskScopedPartitioner],
     num_partitions: int,
     out_dir: str,
     map_id: int,
@@ -141,6 +143,7 @@ def _disk_shuffle_map_task(
     try:
         with open(tmp_path, "wb") as out_file:
             writer = _PartitionWriter(out_file, map_id, compression)
+            partition_fn = resolve_partition_fn(partition_fn, map_id)
             for block in blocks:
                 # Accept any Ray Data Block (Arrow / pandas / ...) at the
                 # boundary and normalize to ``pa.Table`` here. Downstream
