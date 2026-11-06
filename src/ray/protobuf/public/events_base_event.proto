@@ -34,6 +34,7 @@ import "src/ray/protobuf/public/events_submission_job_lifecycle_event.proto";
 import "src/ray/protobuf/public/platform_event.proto";
 import "src/ray/protobuf/public/events_worker_lifecycle_event.proto";
 import "src/ray/protobuf/public/events_worker_definition_event.proto";
+import "src/ray/protobuf/public/events_health_event.proto";
 
 // This is the base message for all ray events.
 message RayEvent {
@@ -46,6 +47,7 @@ message RayEvent {
     CLUSTER_LIFECYCLE = 4;
     AUTOSCALER = 5;
     JOBS = 6;
+    RAY_TRAIN = 7;
   }
 
   // The potential types of events that can be generated.
@@ -72,6 +74,7 @@ message RayEvent {
     PLATFORM_EVENT = 15;
     WORKER_LIFECYCLE_EVENT = 16;
     WORKER_DEFINITION_EVENT = 17;
+    HEALTH_EVENT = 18;
   }
 
   // The severities of events that can be generated.
@@ -128,4 +131,5 @@ message RayEvent {
   PlatformEvent platform_event = 23;
   WorkerLifecycleEvent worker_lifecycle_event = 24;
   WorkerDefinitionEvent worker_definition_event = 25;
+  HealthEvent health_event = 26;
 }

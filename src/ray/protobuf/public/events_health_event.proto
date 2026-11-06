@@ -1,0 +1,168 @@
+// Copyright 2026 The Ray Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//  http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+syntax = "proto3";
+
+package ray.rpc.events;
+
+import "google/protobuf/struct.proto";
+import "google/protobuf/timestamp.proto";
+
+// Health events are emitted by the Ray health plane: the built-in detectors
+// (e.g. the NCCL hang detector) and user-written probes and evaluators.
+//
+// Upgrade rules: changes are additive only. Readers must ignore unknown fields
+// and treat an unknown enum value as its *_UNSPECIFIED default.
+//
+// Every HealthEvent carries exactly one body:
+//   - HealthFinding: an issue a checker has found. It is a full snapshot, so
+//     the newest event for a `finding_id` (by `sequence`) is its current state.
+//   - HealthCheckerDisabled: the checker gave up; no further events follow.
+//   - HealthDecision: the HealthManager decided to act on one or more findings.
+
+message HealthEvent {
+  // A stable name for the checker that emitted the event, e.g.
+  // "nccl_hang_detector", a probe or evaluator `name`, or "health_manager".
+  string checker_name = 1;
+  // Strictly increasing per checker instance; orders the events.
+  uint64 sequence = 2;
+  // When the observation behind the event was made (e.g. when the poll's
+  // `ncclras` query returned). RayEvent.timestamp is when the event was built.
+  google.protobuf.Timestamp observed_at = 3;
+
+  oneof body {
+    HealthFinding finding = 10;
+    HealthCheckerDisabled checker_disabled = 11;
+    HealthDecision decision = 12;
+  }
+}
+
+// An issue found by a checker.
+message HealthFinding {
+  enum State {
+    STATE_UNSPECIFIED = 0;
+    // First event for this finding.
+    NEW = 1;
+    // Still open, with changed details.
+    UPDATED = 2;
+    // The issue cleared on its own. Final.
+    RESOLVED = 3;
+    // The issue is ended through an exception or stoppage. Final.
+    STOPPED = 4;
+  }
+
+  // Evidence attached to a finding.
+  message HealthArtifact {
+    // e.g. "ras_text_report", "diagnostics_dir", "py_spy_dump".
+    string name = 1;
+    oneof content {
+      // URI for an artifact (e.g. the experiment storage path).
+      string uri = 2;
+      // Text, capped at 32 KB.
+      string text = 3;
+    }
+  }
+
+  // Stable across the finding's events and globally unique.
+  string finding_id = 1;
+  State state = 2;
+  // When the underlying issue began (may be earlier than the NEW event).
+  google.protobuf.Timestamp started_at = 3;
+  // Short human-readable summary, e.g. "2 NCCL communicators stalled".
+  string summary = 4;
+
+  // Attached only on the events that produced them, not repeated on every event.
+  repeated HealthArtifact artifacts = 5;
+
+  // Checker-specific details. Built-in checkers get a typed message; user
+  // checkers use `custom`.
+  oneof details {
+    NcclHangFinding nccl_hang = 20;
+    google.protobuf.Struct custom = 100;
+  }
+}
+
+// One NCCL hang incident: all communicators stalled in an attempt from the
+// first suspicion until the last one recovers (RESOLVED).
+message NcclHangFinding {
+  message Communicator {
+    enum State {
+      STATE_UNSPECIFIED = 0;
+      // Stalled past the suspicion threshold.
+      SUSPECTED = 1;
+      // Stalled past the confirmation threshold; stays CONFIRMED until it recovers.
+      CONFIRMED = 2;
+    }
+
+    // The NCCL RAS communicator hash.
+    string communicator_id = 1;
+    State state = 2;
+    // When the stall began.
+    google.protobuf.Timestamp stalled_since = 3;
+  }
+
+  // The communicators hung at this poll, ordered by `communicator_id`. A
+  // recovered communicator drops off the list.
+  repeated Communicator communicators = 1;
+  // The Ray Train run and attempt the hang occurred in.
+  string run_id = 2;
+  string attempt_id = 3;
+}
+
+// The checker gave up for good; no further events follow from it.
+message HealthCheckerDisabled {
+  enum Reason {
+    REASON_UNSPECIFIED = 0;
+    // An external tool or library is missing or rejects the query (e.g.
+    // `ncclras`).
+    DEPENDENCY_UNAVAILABLE = 1;
+    // The checker raised an unexpected error.
+    INTERNAL_ERROR = 2;
+    // The checker's configuration is invalid.
+    INVALID_CONFIG = 3;
+  }
+
+  Reason reason = 1;
+  // Human-readable detail, e.g. the exception message.
+  string detail = 2;
+}
+
+// The action the HealthManager took (ignoring NOOP)
+message HealthDecision {
+  enum Action {
+    ACTION_UNSPECIFIED = 0;
+    // Run an on-demand probe on the targets.
+    DIAGNOSE = 1;
+    // Restart from the last checkpoint.
+    REATTEMPT = 2;
+    // Remove the target nodes and restart without them.
+    EVICT = 3;
+  }
+
+  // Globally unique.
+  string decision_id = 1;
+  Action action = 2;
+  // Each contributing evaluator's reason, joined.
+  string reason = 3;
+  // The evaluators whose decisions were merged into this one.
+  repeated string evaluators = 4;
+  // The findings this decision acts on.
+  repeated string finding_ids = 5;
+  // EVICT and DIAGNOSE: the target nodes.
+  repeated bytes target_node_ids = 6;
+  // DIAGNOSE only: the target world ranks.
+  repeated int32 target_ranks = 7;
+  // DIAGNOSE only: the names of the on-demand probes to run.
+  repeated string on_demand_probes = 8;
+}

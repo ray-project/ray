@@ -12,6 +12,7 @@ proto_library(
         ":events_actor_task_definition_event_proto",
         ":events_driver_job_definition_event_proto",
         ":events_driver_job_lifecycle_event_proto",
+        ":events_health_event_proto",
         ":events_node_definition_event_proto",
         ":events_node_lifecycle_event_proto",
         ":events_placement_group_definition_event_proto",
@@ -200,6 +201,20 @@ proto_library(
 cc_proto_library(
     name = "events_worker_definition_event_cc_proto",
     deps = [":events_worker_definition_event_proto"],
+)
+
+proto_library(
+    name = "events_health_event_proto",
+    srcs = ["events_health_event.proto"],
+    deps = [
+        "@com_google_protobuf//:struct_proto",
+        "@com_google_protobuf//:timestamp_proto",
+    ],
+)
+
+cc_proto_library(
+    name = "events_health_event_cc_proto",
+    deps = [":events_health_event_proto"],
 )
 
 proto_library(
