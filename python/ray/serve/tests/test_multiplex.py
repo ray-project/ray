@@ -1,5 +1,8 @@
 import asyncio
+import gc
 import os
+import warnings
+import weakref
 from typing import List
 
 import httpx
@@ -154,6 +157,116 @@ class TestMultiplexWrapper:
         assert multiplexer.models == {"1": MyModel("1")}
         with pytest.raises(Exception, match="1 is dead"):
             await multiplexer.load_model("2")
+
+    async def test_unload_model_calls_del_once(self, start_serve_with_context):
+        """__del__ is not called again when an evicted model is collected."""
+        calls = []
+
+        class MyModel:
+            def __init__(self, model_id):
+                self.model_id = model_id
+
+            def __del__(self):
+                calls.append(self.model_id)
+
+        async def model_load_func(model_id: str) -> MyModel:
+            return MyModel(model_id)
+
+        multiplexer = _ModelMultiplexWrapper(
+            model_load_func, None, max_num_models_per_replica=1
+        )
+        await multiplexer.metrics_pusher.graceful_shutdown()
+        model_ref = weakref.ref(await multiplexer.load_model("1"))
+        await multiplexer.load_model("2")
+        gc.collect()
+        assert model_ref() is None
+        assert calls == ["1"]
+
+    async def test_unload_model_calls_raising_del_once(self, start_serve_with_context):
+        """A __del__ that raises during eviction is not called again either."""
+        calls = []
+
+        class MyModel:
+            def __init__(self, model_id):
+                self.model_id = model_id
+
+            def __del__(self):
+                calls.append(self.model_id)
+                raise RuntimeError(f"{self.model_id} failed to clean up")
+
+        async def model_load_func(model_id: str) -> MyModel:
+            return MyModel(model_id)
+
+        multiplexer = _ModelMultiplexWrapper(
+            model_load_func, None, max_num_models_per_replica=1
+        )
+        await multiplexer.metrics_pusher.graceful_shutdown()
+        model = await multiplexer.load_model("1")
+        with pytest.raises(RuntimeError, match="1 failed to clean up"):
+            await multiplexer.load_model("2")
+        assert list(multiplexer.models) == []
+        assert calls == ["1"]
+
+        # `model` keeps the evicted model alive, so make the call that Python
+        # makes when it collects the model: it looks `__del__` up on the type.
+        type(model).__del__(model)
+        assert calls == ["1"]
+
+    async def test_unload_model_awaits_async_del_once(self, start_serve_with_context):
+        """An async __del__ is awaited once and not called again on collection."""
+        calls = []
+
+        class MyModel:
+            def __init__(self, model_id):
+                self.model_id = model_id
+
+            async def __del__(self):
+                calls.append(self.model_id)
+
+        async def model_load_func(model_id: str) -> MyModel:
+            return MyModel(model_id)
+
+        multiplexer = _ModelMultiplexWrapper(
+            model_load_func, None, max_num_models_per_replica=1
+        )
+        await multiplexer.metrics_pusher.graceful_shutdown()
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            model_ref = weakref.ref(await multiplexer.load_model("1"))
+            await multiplexer.load_model("2")
+            gc.collect()
+        # Calling an async __del__ at collection creates a coroutine that is
+        # never awaited, which Python reports as a RuntimeWarning.
+        assert not [w for w in caught if issubclass(w.category, RuntimeWarning)]
+        assert calls == ["1"]
+        assert model_ref() is None
+
+    async def test_unload_model_with_slots(self, start_serve_with_context):
+        """A model class that defines __slots__ and __del__ can be evicted."""
+        calls = []
+
+        class MyModel:
+            __slots__ = ("model_id", "__weakref__")
+
+            def __init__(self, model_id):
+                self.model_id = model_id
+
+            def __del__(self):
+                calls.append(self.model_id)
+
+        async def model_load_func(model_id: str) -> MyModel:
+            return MyModel(model_id)
+
+        multiplexer = _ModelMultiplexWrapper(
+            model_load_func, None, max_num_models_per_replica=1
+        )
+        await multiplexer.metrics_pusher.graceful_shutdown()
+        model_ref = weakref.ref(await multiplexer.load_model("1"))
+        await multiplexer.load_model("2")
+        assert list(multiplexer.models) == ["2"]
+        gc.collect()
+        assert model_ref() is None
+        assert calls == ["1"]
 
     async def test_push_model_ids_info_after_unload_model(self):
         """
