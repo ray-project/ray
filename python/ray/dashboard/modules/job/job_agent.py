@@ -1,3 +1,4 @@
+import asyncio
 import dataclasses
 import json
 import logging
@@ -11,6 +12,7 @@ import ray.dashboard.optional_utils as optional_utils
 import ray.dashboard.utils as dashboard_utils
 from ray.dashboard.modules.job.common import (
     JobDeleteResponse,
+    JobInfoStorageClient,
     JobLogsResponse,
     JobStopResponse,
     JobSubmitRequest,
@@ -205,7 +207,31 @@ class JobAgent(dashboard_utils.DashboardAgentModule):
         return self._job_manager
 
     async def run(self, server):
-        pass
+        # Creating the JobManager connects this agent to Ray as a driver and
+        # schedules recovery of jobs left PENDING or RUNNING by a previous agent
+        # instance. The head node handles job submissions by default, so when it
+        # finds such jobs at startup it creates the JobManager right away and
+        # recovery does not wait for the next Job API request. Otherwise the
+        # JobManager stays lazy, so the agent does not show up as a driver on
+        # clusters that never use the Job API.
+        if not self._dashboard_agent.is_head:
+            return
+        try:
+            jobs = await JobInfoStorageClient(
+                self._dashboard_agent.gcs_client
+            ).get_all_jobs()
+            if all(job.status.is_terminal() for job in jobs.values()):
+                return
+            # `ray.init` blocks, so connect off the event loop.
+            await asyncio.get_running_loop().run_in_executor(
+                None, optional_utils.init_ray_connection, self.gcs_address
+            )
+            self.get_job_manager()
+        except Exception:
+            logger.exception(
+                "Failed to recover unfinished jobs at startup. They will be "
+                "recovered on the next Job API request instead."
+            )
 
     @staticmethod
     def is_minimal_module():
