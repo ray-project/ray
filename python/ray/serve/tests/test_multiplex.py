@@ -241,6 +241,37 @@ class TestMultiplexWrapper:
         assert calls == ["1"]
         assert model_ref() is None
 
+    async def test_unload_model_releases_model_class(self, start_serve_with_context):
+        """Evicting a model does not keep its class alive."""
+
+        def make_model_load_func():
+            class MyModel:
+                def __init__(self, model_id):
+                    self.model_id = model_id
+
+                def __del__(self):
+                    pass
+
+            async def model_load_func(model_id: str) -> MyModel:
+                return MyModel(model_id)
+
+            return model_load_func, weakref.ref(MyModel)
+
+        model_load_func, class_ref = make_model_load_func()
+        multiplexer = _ModelMultiplexWrapper(
+            model_load_func, None, max_num_models_per_replica=1
+        )
+        await multiplexer.metrics_pusher.graceful_shutdown()
+        await multiplexer.load_model("1")
+        await multiplexer.load_model("2")
+        del multiplexer, model_load_func
+        # Classes are freed only by the cycle collector. The first pass frees
+        # the subclass made at eviction, which drops its cache entry, and the
+        # second pass frees the model class.
+        gc.collect()
+        gc.collect()
+        assert class_ref() is None
+
     async def test_unload_model_with_slots(self, start_serve_with_context):
         """A model class that defines __slots__ and __del__ can be evicted."""
         calls = []
