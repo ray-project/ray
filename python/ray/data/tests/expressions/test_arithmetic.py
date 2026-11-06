@@ -234,6 +234,19 @@ class TestArithmeticIntegration:
                 [True, False, False],
                 "is_infinite",
             ),
+            # Test fill_null
+            pytest.param(
+                [{"x": 1}, {"x": None}, {"x": 3}],
+                lambda: col("x").fill_null(0),
+                [1, 0, 3],
+                "fill_null_int",
+            ),
+            pytest.param(
+                [{"x": "a"}, {"x": None}],
+                lambda: col("x").fill_null("unknown"),
+                ["a", "unknown"],
+                "fill_null_string",
+            ),
         ],
     )
     def test_with_column_null_handling_operations(
