@@ -16,8 +16,19 @@ from ray.data._internal.execution.lineage_tracker import (
 from ray.data._internal.execution.operators.base_physical_operator import (
     InternalQueueOperatorMixin,
 )
+from ray.exceptions import ObjectLostError, RayActorError, RayTaskError
 
 logger = logging.getLogger(__name__)
+
+
+def is_data_lineage_recoverable_error(error: BaseException) -> bool:
+    """Whether lineage reconstruction can recover from ``error``.
+
+    That is a lost object, or a task that failed because an actor it called died.
+    """
+    if isinstance(error, ObjectLostError):
+        return True
+    return isinstance(error, RayTaskError) and isinstance(error, RayActorError)
 
 
 class LineageReconstructionMixin(InternalQueueOperatorMixin, abc.ABC):
