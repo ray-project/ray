@@ -1,4 +1,10 @@
-"""ZMQ socket helpers shared by the KV router's one-way channels."""
+"""
+ZMQ socket helpers shared by the KV router's one-way channels.
+
+1. Token channel: send prompt token IDs from LLMRouter to the selected LLMServer.
+2. Lifecycle updates: send request progress/completion from LLMServer to its
+   owning LLMRouter.
+"""
 
 from collections import OrderedDict
 from typing import List, Optional, TypeVar

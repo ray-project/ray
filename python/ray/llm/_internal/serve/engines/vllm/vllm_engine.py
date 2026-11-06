@@ -389,10 +389,13 @@ class VLLMEngine(LLMEngine):
         # replaces the engine error in the response.
         app.state.server = types.SimpleNamespace()
         if self._token_receiver is not None:
-            # vLLM's SageMaker bootstrap builds the stack eagerly. Reset it so
-            # add_middleware can extend the existing middleware list. Bind the
-            # owner before vLLM spawns tasks, including for the response stream.
+            # The middleware stack may already be built; reset it so
+            # add_middleware can extend the existing middleware list.
             app.middleware_stack = None
+            # Bind the owning LLMRouter's endpoint in a ContextVar before vLLM
+            # creates its handler task, which inherits the context. Keep it bound
+            # while the returned StreamingResponse is consumed outside that task,
+            # so token tracking sends progress/completion to the owning LLMRouter.
             app.add_middleware(RequestLifecycleOwnerMiddleware)
             install_prompt_token_forwarding(
                 app.state,

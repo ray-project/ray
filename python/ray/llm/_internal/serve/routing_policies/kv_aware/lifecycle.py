@@ -1,10 +1,3 @@
-"""LifecycleEventForwarder: Push events to the selecting router over ZMQ.
-LifecycleReceiver: Receive and apply events on the selecting router.
-LifecycleCodec: Encode and decode the shared msgpack wire format.
-RequestLifecycleOwnerMiddleware: Bind the router's endpoint from the request
-    header throughout the handler and response stream.
-"""
-
 import asyncio
 import contextlib
 import contextvars
