@@ -185,6 +185,57 @@ def test_launcher_joins_the_cgroup_and_restricts_cpus(tmp_path):
     assert (tmp_path / "cgroup.procs").read_text() == pid.strip()
 
 
+def test_whole_core_placement_keeps_sandboxes_off_each_others_cores(
+    manager, shared, monkeypatch
+):
+    """RAY_SANDBOX_CPU_PLACEMENT=core gives a sandbox whole physical cores,
+    the least used first, so no two sandboxes share a core's hardware threads
+    while the pool has a core that no sandbox uses."""
+    (shared / "cpuset.cpus.effective").write_text("0-7")
+    # Four cores of two threads, each core's threads numbered four apart.
+    monkeypatch.setattr(cgroup, "_siblings", lambda c: frozenset({c % 4, c % 4 + 4}))
+    assert manager.choose_cpus(2, []) == [0, 1]
+    monkeypatch.setenv("RAY_SANDBOX_CPU_PLACEMENT", "core")
+    used = []
+    for _ in range(4):
+        used.append(manager.choose_cpus(2, used))
+    assert used == [[0, 4], [1, 5], [2, 6], [3, 7]]
+    # Once every core is taken, the least used one is shared.
+    assert manager.choose_cpus(1, used) == [0, 4]
+    # Three threads' worth takes two whole cores.
+    assert manager.choose_cpus(3, []) == [0, 1, 4, 5]
+    manager.check(1, 0)
+    monkeypatch.setenv("RAY_SANDBOX_CPU_PLACEMENT", "socket")
+    with pytest.raises(RuntimeError, match="RAY_SANDBOX_CPU_PLACEMENT"):
+        manager.check(1, 0)
+
+
+def test_a_cpu_whose_topology_cant_be_read_is_a_core_of_its_own(tmp_path, monkeypatch):
+    """A sibling list that's missing, empty or malformed makes the CPU a core
+    of its own, and a list always includes the CPU it describes."""
+    files = {0: "0,4", 1: "", 2: "x-y"}
+    real_read = cgroup._read
+
+    def read(path):
+        name = str(path)
+        for cpu, text in files.items():
+            if name.endswith(f"/cpu{cpu}/topology/thread_siblings_list"):
+                return text
+        if "/topology/" in name:
+            raise FileNotFoundError(name)
+        return real_read(path)
+
+    monkeypatch.setattr(cgroup, "_read", read)
+    cgroup._siblings.cache_clear()
+    try:
+        assert cgroup._siblings(0) == {0, 4}
+        assert cgroup._siblings(1) == {1}
+        assert cgroup._siblings(2) == {2}
+        assert cgroup._siblings(3) == {3}
+    finally:
+        cgroup._siblings.cache_clear()
+
+
 @pytest.mark.parametrize("limited", [False, True])
 def test_launcher_sets_oom_priority_before_exec(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, limited: bool
