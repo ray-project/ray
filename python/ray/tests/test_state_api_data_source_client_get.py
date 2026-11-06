@@ -928,7 +928,9 @@ def test_list_get_task_multiple_attempt_finished_after_retry(shutdown_only):
         for task_attempt in task_attempts[1:]:
             assert task_attempt["state"] == "FAILED"
 
-        task_attempts[0]["state"] == "FINISHED"
+        # list_tasks returns a task's latest attempt first.
+        assert task_attempts[0]["attempt_number"] == 2
+        assert task_attempts[0]["state"] == "FINISHED"
 
         assert {task_attempt["attempt_number"] for task_attempt in task_attempts} == {
             0,
