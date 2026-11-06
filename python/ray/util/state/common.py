@@ -169,6 +169,9 @@ class ListApiOptions:
         # Check the filters in the ListApiOptions conflicts. Specifically for:
         # - multiple '=' filters with the same key but different values.
         # - '=' and '!=' filters with the same key and the same value.
+        # Note: Keys and values are compared case-sensitively on the client;
+        # differently cased string filters fall through to the server, which
+        # evaluates string predicates case-insensitively and returns [].
         equal_filters = {}
         not_equal_filters: Dict[str, Set[SupportedFilterType]] = {}
 
