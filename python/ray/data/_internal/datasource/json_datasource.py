@@ -1,11 +1,10 @@
 import io
 import logging
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union
+from typing import TYPE_CHECKING, Any, Dict, Iterator, List, Optional, Union
 
 import pandas as pd
 
 from ray.data._internal.pandas_block import PandasBlockAccessor
-from ray.data._internal.tensor_extensions.arrow import pyarrow_table_from_pydict
 from ray.data.context import DataContext
 from ray.data.datasource.file_based_datasource import FileBasedDatasource
 
@@ -13,6 +12,48 @@ if TYPE_CHECKING:
     import pyarrow
 
 logger = logging.getLogger(__name__)
+
+
+def read_with_python_json(
+    buffer: "pyarrow.Buffer", path: str
+) -> Iterator["pyarrow.Table"]:
+    """Read a whole JSON document with ``json.load``.
+
+    The fallback for input ``pyarrow.json`` rejects, such as a top-level
+    array. Decode errors are re-raised with ``path`` in the message.
+    """
+    import json
+
+    import pyarrow as pa
+
+    if buffer.size == 0:
+        return
+    try:
+        parsed_json = json.load(io.BytesIO(buffer))
+    except json.JSONDecodeError as json_error:
+        raise json.JSONDecodeError(
+            (
+                f"Failed to read JSON file: {path}. "
+                "Please check that the file contains valid JSON. "
+                f"{json_error.msg}"
+            ),
+            json_error.doc,
+            json_error.pos,
+        ) from json_error
+    except UnicodeDecodeError as decode_error:
+        raise UnicodeDecodeError(
+            decode_error.encoding,
+            decode_error.object,
+            decode_error.start,
+            decode_error.end,
+            (
+                f"{decode_error.reason}. "
+                f"Failed to read JSON file: {path}. "
+                "Please check that the file uses a valid text encoding."
+            ),
+        ) from decode_error
+    yield pa.Table.from_pylist(parsed_json)
+
 
 JSON_FILE_EXTENSIONS = [
     "json",
@@ -116,37 +157,8 @@ class ArrowJSONDatasource(FileBasedDatasource):
                     # unrelated error, simply reraise
                     raise e
 
-    def _read_with_python_json(self, buffer: "pyarrow.lib.Buffer"):
-        """Fallback method to read JSON files with Python's native json.load(),
-        in case the default pyarrow json reader fails."""
-        import json
-
-        import pyarrow as pa
-
-        # Check if the buffer is empty
-        if buffer.size == 0:
-            return
-
-        parsed_json = json.load(io.BytesIO(buffer))
-        try:
-            yield pa.Table.from_pylist(parsed_json)
-        except AttributeError as e:
-            # For PyArrow < 7.0.0, `pa.Table.from_pylist()` is not available.
-            # Construct a dict from the list and call
-            # `pa.Table.from_pydict()` instead.
-            assert "no attribute 'from_pylist'" in str(e), str(e)
-            from collections import defaultdict
-
-            dct = defaultdict(list)
-            for row in parsed_json:
-                for k, v in row.items():
-                    dct[k].append(v)
-            yield pyarrow_table_from_pydict(dct)
-
     # TODO(ekl) The PyArrow JSON reader doesn't support streaming reads.
     def _read_stream(self, f: "pyarrow.NativeFile", path: str):
-        import json
-
         import pyarrow as pa
 
         buffer: pa.lib.Buffer = f.read_buffer()
@@ -160,30 +172,7 @@ class ArrowJSONDatasource(FileBasedDatasource):
                 f"Falling back to native json.load(), which may be slower. "
                 f"PyArrow error was:\n{e}"
             )
-            try:
-                yield from self._read_with_python_json(buffer)
-            except json.JSONDecodeError as json_error:
-                raise json.JSONDecodeError(
-                    (
-                        f"Failed to read JSON file: {path}. "
-                        "Please check that the file contains valid JSON. "
-                        f"{json_error.msg}"
-                    ),
-                    json_error.doc,
-                    json_error.pos,
-                ) from json_error
-            except UnicodeDecodeError as decode_error:
-                raise UnicodeDecodeError(
-                    decode_error.encoding,
-                    decode_error.object,
-                    decode_error.start,
-                    decode_error.end,
-                    (
-                        f"{decode_error.reason}. "
-                        f"Failed to read JSON file: {path}. "
-                        "Please check that the file uses a valid text encoding."
-                    ),
-                ) from decode_error
+            yield from read_with_python_json(buffer, path)
 
 
 class PandasJSONDatasource(FileBasedDatasource):
