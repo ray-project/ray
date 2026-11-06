@@ -100,7 +100,10 @@ class RichSubProgressBar(BaseProgressBar):
         )
 
     def update(self, increment: int = 0, total: Optional[int] = None) -> None:
-        if self._enabled and increment != 0:
+        # Like ProgressBar.update: a new total is worth redrawing even when
+        # nothing was completed since the last call.
+        total_changed = total is not None and total != self._total
+        if self._enabled and (increment != 0 or total_changed):
             if total is not None:
                 self._total = total
             self._completed += increment
