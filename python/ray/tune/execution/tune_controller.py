@@ -1368,19 +1368,17 @@ class TuneController:
         # The trial actor is going away, so any decision queued from buffered
         # results (e.g. CONTINUE) must not be executed on it anymore.
         self._queued_trial_decisions.pop(trial.trial_id, None)
+        # Any in-flight save future is discarded below, so its result is never
+        # processed. A decision cached for that save would otherwise survive and
+        # be executed by the trial's next save (e.g. after a paused trial is
+        # resumed), so drop it here (see #57906).
+        self._cached_trial_decisions.pop(trial.trial_id, None)
 
         if trial.status == Trial.ERROR:
             logger.debug(f"Not requesting trial STOP as it is ERROR already: {trial}")
             return
 
         logger.debug(f"Requesting to STOP actor for trial {trial}")
-
-        if trial.is_saving:
-            logger.debug(
-                f"Trial {trial} is currently saving/pausing. Scheduling STOP after "
-                f"save resolved."
-            )
-            self._cached_trial_decisions[trial.trial_id] = TrialScheduler.STOP
 
         trial.temporary_state.saving_to = None
         trial.temporary_state.restoring_from = None
@@ -1471,9 +1469,6 @@ class TuneController:
             self._schedule_trial_save(trial=trial)
         else:
             self._schedule_trial_stop(trial)
-            # Override cached STOP with PAUSE (see #57906).
-            if trial.trial_id in self._cached_trial_decisions:
-                self._cached_trial_decisions[trial.trial_id] = TrialScheduler.PAUSE
             self._set_trial_status(trial, Trial.PAUSED)
 
     ###
