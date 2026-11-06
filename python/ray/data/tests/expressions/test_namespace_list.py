@@ -176,6 +176,84 @@ class TestListNamespace:
         )
         assert result_table.select(["flattened"]).combine_chunks().equals(expected)
 
+    def test_list_sum(self, ray_start_regular_shared, dataset_format):
+        """Test list.sum() aggregates numeric elements per row."""
+        data = [
+            {"items": [1, 2, 3]},
+            {"items": [4, 5, None]},
+            {"items": []},  # empty lists yield 0
+        ]
+        ds = _create_dataset(data, dataset_format)
+        result = ds.with_column("total", col("items").list.sum()).to_pandas()
+        expected = pd.DataFrame(
+            {
+                "items": [[1, 2, 3], [4, 5, None], []],
+                "total": [6, 9, 0],
+            }
+        )
+        assert rows_same(result, expected)
+
+    def test_list_sum_fixed_size_list_with_null(
+        self, ray_start_regular_shared, dataset_format
+    ):
+        """Test list.sum() on fixed_size_list with null entries (null-fill before cast)."""
+        if dataset_format != "arrow":
+            pytest.skip("FixedSizeList type only available via Arrow tables.")
+        table = pa.table(
+            {
+                "items": pa.array(
+                    [[1, 2], None, [3, 4]],
+                    type=pa.list_(pa.int64(), 2),
+                ),
+            }
+        )
+        ds = _create_dataset(None, dataset_format, arrow_table=table)
+        result = ds.with_column("total", col("items").list.sum())
+        rows = result.take_all()
+        assert len(rows) == 3
+        assert rows[0]["total"] == 3
+        assert rows[1]["total"] is None
+        assert rows[2]["total"] == 7
+
+    def test_list_mean(self, ray_start_regular_shared, dataset_format):
+        """Test list.mean() computes mean of elements per row."""
+        data = [
+            {"items": [1.0, 2.0, 3.0]},
+            {"items": [4.0, 5.0, None]},
+            {"items": []},
+        ]
+        ds = _create_dataset(data, dataset_format)
+        result = ds.with_column("avg", col("items").list.mean()).to_pandas()
+        expected = pd.DataFrame(
+            {
+                "items": [[1.0, 2.0, 3.0], [4.0, 5.0, None], []],
+                "avg": [2.0, 4.5, None],
+            }
+        )
+        assert rows_same(result, expected)
+
+    def test_list_mean_fixed_size_list_with_null(
+        self, ray_start_regular_shared, dataset_format
+    ):
+        """Test list.mean() on fixed_size_list with null entries (null-fill before cast)."""
+        if dataset_format != "arrow":
+            pytest.skip("FixedSizeList type only available via Arrow tables.")
+        table = pa.table(
+            {
+                "items": pa.array(
+                    [[1.0, 2.0], None, [3.0, 4.0]],
+                    type=pa.list_(pa.float64(), 2),
+                ),
+            }
+        )
+        ds = _create_dataset(None, dataset_format, arrow_table=table)
+        result = ds.with_column("avg", col("items").list.mean())
+        rows = result.take_all()
+        assert len(rows) == 3
+        assert rows[0]["avg"] == 1.5
+        assert rows[1]["avg"] is None
+        assert rows[2]["avg"] == 3.5
+
 
 if __name__ == "__main__":
     import sys
