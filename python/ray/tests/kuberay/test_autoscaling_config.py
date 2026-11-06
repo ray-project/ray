@@ -17,6 +17,7 @@ from ray.autoscaler._private.kuberay.autoscaling_config import (
     _get_custom_resources,
     _get_num_tpus,
     _get_ray_resources_from_group_spec,
+    _is_gpu_resource_key,
     _round_up_k8s_quantity,
 )
 from ray.autoscaler._private.kuberay.utils import tpu_node_selectors_to_type
@@ -431,6 +432,21 @@ def _get_autoscaling_config_with_v5litepod() -> dict[str, Any]:
     config["available_node_types"]["tpu-group"]["resources"]["TPU-v5litepod-8-head"] = 1
     config["available_node_types"]["tpu-group"]["resources"].pop("TPU-v4-16-head", None)
     return config
+
+
+def _get_worker_group_with_dra_device_class(device_class: str, count: str) -> dict:
+    """CPU worker group whose container requests a DRA implicit extended resource.
+
+    DRA exposes a DeviceClass as an extended resource named
+    "deviceclass.resource.kubernetes.io/<device-class>" rather than as a
+    vendor-specific "<vendor>/gpu" key.
+    """
+    group = copy.deepcopy(get_basic_ray_cr()["spec"]["workerGroupSpecs"][0])
+    group["groupName"] = "dra-group"
+    group["template"]["spec"]["containers"][0]["resources"]["limits"][
+        f"deviceclass.resource.kubernetes.io/{device_class}"
+    ] = count
+    return group
 
 
 @pytest.mark.parametrize(
@@ -927,6 +943,29 @@ RAY_RESOURCES_TEST_DATA = (
             },
             id="tpu-group-v5litepod",
         ),
+        pytest.param(
+            _get_worker_group_with_dra_device_class("gpu.nvidia.com", "2"),
+            False,
+            {
+                "CPU": 1,
+                "memory": 536870912,
+                "Custom2": 5,
+                "Custom3": 1,
+                "GPU": 2,
+            },
+            id="dra-gpu-group",
+        ),
+        pytest.param(
+            _get_worker_group_with_dra_device_class("tpu.google.com", "4"),
+            False,
+            {
+                "CPU": 1,
+                "memory": 536870912,
+                "Custom2": 5,
+                "Custom3": 1,
+            },
+            id="dra-tpu-group-not-counted-as-gpu",
+        ),
     ]
 )
 
@@ -939,6 +978,27 @@ def test_get_ray_resources_from_group_spec(
     expected_resources: Dict[str, Any],
 ):
     assert _get_ray_resources_from_group_spec(group_spec, is_head) == expected_resources
+
+
+@pytest.mark.parametrize(
+    "key,expected",
+    [
+        ("nvidia.com/gpu", True),
+        ("amd.com/gpu", True),
+        ("intel.com/gpu", True),
+        ("deviceclass.resource.kubernetes.io/gpu.nvidia.com", True),
+        ("deviceclass.resource.kubernetes.io/gpu.example.com", True),
+        ("deviceclass.resource.kubernetes.io/tpu.google.com", False),
+        # A bare "gpu" device class still matches via the "gpu" suffix rule.
+        ("deviceclass.resource.kubernetes.io/gpu", True),
+        ("deviceclass.resource.kubernetes.io/mygpu.example.com", False),
+        ("google.com/tpu", False),
+        ("cpu", False),
+        ("memory", False),
+    ],
+)
+def test_is_gpu_resource_key(key: str, expected: bool):
+    assert _is_gpu_resource_key(key) is expected
 
 
 @pytest.mark.skipif(platform.system() == "Windows", reason="Not relevant.")
