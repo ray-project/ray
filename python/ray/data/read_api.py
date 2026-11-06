@@ -2990,7 +2990,8 @@ def read_orc(
         If you encounter a DataSourceV2 limitation, use the V1 reader by
         setting ``ray.data.DataContext.get_current().use_datasource_v2 = False``,
         or ``RAY_DATA_USE_DATASOURCE_V2=0`` in the environment before importing
-        Ray. This shared setting also affects ``read_parquet()``.
+        Ray. This shared setting also affects ``read_parquet()`` and
+        ``read_delta()``.
 
     Examples:
         Read an ORC file in remote storage or local storage.
@@ -6323,6 +6324,16 @@ def read_delta(
     - Column statistics from the Delta log for row-group pruning
     - Authentication via ``storage_options``
 
+    .. note::
+
+        Set ``ray.data.DataContext.get_current().use_delta_datasource_v2 = True``
+        (or ``RAY_DATA_USE_DELTA_DATASOURCE_V2=1``) to read through the
+        DataSourceV2 pipeline, which also needs ``use_datasource_v2``. It pins
+        the table version when ``read_delta`` is called, lists the data files
+        in Ray tasks rather than on the driver, and splits files into row-group
+        read units. Tables it can't read yet, such as ones with deletion
+        vectors or column mapping, are read with the V1 reader.
+
     Examples:
 
         Read a local Delta table:
@@ -6458,6 +6469,55 @@ def read_delta(
 
             _, normalized_path = pafs.FileSystem.from_uri(path)
             filesystem = pafs.SubTreeFileSystem(normalized_path, resolved.filesystem)
+
+    ctx = DataContext.get_current()
+    if ctx.use_datasource_v2 and ctx.use_delta_datasource_v2:
+        from ray.data._internal.datasource_v2.formats.delta.delta_datasource_v2 import (
+            DeltaDatasourceV2,
+            delta_datasource_v2_unsupported_reason,
+        )
+
+        # The V2 reader lists the data files in its listing tasks, so the driver
+        # only needs the log's metadata.
+        log_only_table = DeltaTable(
+            path,
+            version=version,
+            storage_options=storage_options,
+            without_files=True,
+        )
+        unsupported_reason = delta_datasource_v2_unsupported_reason(
+            log_only_table,
+            include_paths=include_paths,
+            arrow_parquet_args=arrow_parquet_args,
+        )
+        if unsupported_reason is None:
+            datasource_v2 = DeltaDatasourceV2(
+                log_only_table,
+                storage_options=storage_options,
+                filesystem=filesystem,
+                columns=columns,
+                include_paths=include_paths,
+                shuffle=shuffle,
+                version_pinned_by_caller=version is not None,
+            )
+            return _read_datasource_v2(
+                datasource_v2,
+                parallelism=_get_num_output_blocks(parallelism, override_num_blocks),
+                num_cpus=num_cpus,
+                num_gpus=num_gpus,
+                memory=memory,
+                ray_remote_args=ray_remote_args,
+                label_selector=label_selector,
+                fallback_strategy=fallback_strategy,
+                max_calls=max_calls,
+                resources=resources,
+                accelerator_type=accelerator_type,
+                runtime_env=runtime_env,
+                concurrency=concurrency,
+            )
+        logger.info(
+            "Reading Delta table %r with the V1 reader: %s.", path, unsupported_reason
+        )
 
     dt = DeltaTable(path, version=version, storage_options=storage_options)
     try:
