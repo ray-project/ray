@@ -8506,6 +8506,9 @@ class Dataset:
 
         # Enforce ordering for plans that require it (Zip, Sort).
         if preserve_order or self._logical_plan.require_preserve_order():
+            # Copy so the DataContext's options, which other datasets share, keep
+            # their value.
+            executor._options = copy.copy(executor._options)
             executor._options.preserve_order = True
 
         return executor.execute(dag, initial_stats=stats, callbacks=callbacks)

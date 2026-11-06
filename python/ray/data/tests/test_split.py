@@ -803,6 +803,9 @@ def test_split_keeps_row_order_by_default(
         delay_block_of_row_2, batch_size=None
     )
     assert extract_values("id", split(ds).take_all()) == [0, 1, 2, 3, 4, 5]
+    # Datasets derived from each other share these options, so the split must not
+    # change them.
+    assert not ds.context.execution_options.preserve_order
 
 
 def test_train_test_split_stratified(ray_start_regular_shared_2_cpus):
