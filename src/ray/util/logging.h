@@ -72,6 +72,10 @@ enum { ERROR = 0 };
 #endif
 #endif
 
+#ifndef _WIN32
+#include <signal.h>  // for struct sigaction, used by saved_signal_actions_ below
+#endif
+
 #if defined(DEBUG) && DEBUG == 1
 // Bazel defines the DEBUG macro for historical reasons:
 // https://github.com/bazelbuild/bazel/issues/3513#issuecomment-323829248
@@ -412,6 +416,19 @@ class RayLog {
   /// This flag is used to avoid calling UninstallSignalAction in ShutDownRayLog if
   /// InstallFailureSignalHandler was not called.
   static bool is_failure_signal_handler_installed_;
+  /// What each failure signal's disposition was before InstallFailureSignalHandler
+  /// replaced it, and what absl then installed. UninstallSignalAction uses the
+  /// latter to tell "still ours" from "someone installed over us afterwards", and
+  /// restores the former only in the first case. See the comment there.
+#ifndef _WIN32
+  struct SavedSignalAction {
+    int signal_num;
+    struct sigaction previous;
+    struct sigaction installed;
+    bool installed_known;
+  };
+  static std::vector<SavedSignalAction> saved_signal_actions_;
+#endif
   /// Whether emit json logs.
   static bool log_format_json_;
   // Log format pattern.
