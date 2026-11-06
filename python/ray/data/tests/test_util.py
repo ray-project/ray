@@ -1,3 +1,4 @@
+import sys
 from typing import Any, Dict, List, Optional, Type
 
 import numpy as np
@@ -370,6 +371,7 @@ def test_iterate_with_retry_unwrap_cause():
     assert attempts == 1
 
 
+@pytest.mark.skipif(sys.version_info < (3, 11), reason="add_note is Python 3.11+")
 @pytest.mark.parametrize("retryable", [False, True])
 def test_iterate_with_retry_annotates_s3_permissions(monkeypatch, retryable):
     monkeypatch.setattr("time.sleep", lambda _: None)
@@ -416,7 +418,9 @@ def test_iterate_with_retry_annotates_s3_permissions(monkeypatch, retryable):
         )
     assert str(exc_info.value) == (
         "When testing for existence of bucket 'my-bucket': "
-        "AWS Error ACCESS_DENIED during HeadBucket operation: No response body.\n"
+        "AWS Error ACCESS_DENIED during HeadBucket operation: No response body."
+    )
+    assert exc_info.value.__notes__ == [
         f"{retry_line}\n"
         "This looks like an AWS S3 permissions error. Make sure your "
         "credentials have the correct permissions. If this problem persists, "
@@ -426,6 +430,39 @@ def test_iterate_with_retry_annotates_s3_permissions(monkeypatch, retryable):
         "configure `ray.data.DataContext.get_current()` (`retried_io_errors` "
         "for I/O; `retried_map_errors` and `max_map_retries` for any task) "
         "if you believe this to be transient."
+    ]
+
+
+@pytest.mark.parametrize(
+    "make_exc",
+    [
+        lambda: ValueError("boom"),
+        # The third positional arg of an OSError is the filename.
+        lambda: OSError(2, "No such file or directory"),
+        # The constructor only accepts an ActorDiedErrorContext.
+        lambda: ray.exceptions.ActorDiedError(),
+    ],
+)
+def test_iterate_with_retry_raises_picklable_exception(make_exc):
+    # A task's exception is pickled and rebuilt in the driver, so the retry
+    # context must not change how the exception unpickles.
+    def failing_iterable():
+        raise make_exc()
+        yield
+
+    with pytest.raises(Exception) as exc_info:
+        list(
+            iterate_with_retry(
+                failing_iterable, description="read data", match=[], max_attempts=1
+            )
+        )
+
+    original = make_exc()
+    rebuilt = ray.cloudpickle.loads(ray.cloudpickle.dumps(exc_info.value))
+    assert type(rebuilt) is type(original)
+    assert str(rebuilt) == str(original)
+    assert getattr(rebuilt, "__notes__", None) == getattr(
+        exc_info.value, "__notes__", None
     )
 
 

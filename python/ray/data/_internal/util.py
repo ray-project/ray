@@ -38,6 +38,7 @@ import pyarrow.fs
 
 import ray
 from ray._common.retry import call_with_retry, format_exception, matches_error
+from ray._common.utils import add_exception_note
 from ray.data.context import DEFAULT_READ_OP_MIN_NUM_BLOCKS, WARN_PREFIX, DataContext
 from ray.util.annotations import DeveloperAPI
 
@@ -1600,7 +1601,11 @@ def _annotate_exception_with_retry_context(
     total_backoff_s: float,
     exception_str: str,
 ) -> BaseException:
-    """Append retry context to ``exc``, preserving its type and traceback."""
+    """Attach retry context to ``exc`` as a note, leaving its type and args intact.
+
+    The exception is pickled and rebuilt in the driver by calling its
+    constructor with ``exc.args``, so rewriting ``args`` can break it.
+    """
     suffix = (
         f"Failed to {description} after {attempts}/{max_attempts} "
         f"attempts (total backoff {total_backoff_s:.1f}s)."
@@ -1618,22 +1623,8 @@ def _annotate_exception_with_retry_context(
         "for I/O; `retried_map_errors` and `max_map_retries` for any task) "
         "if you believe this to be transient."
     )
-    try:
-        if exc.args and isinstance(exc.args[0], str):
-            exc.args = (f"{exc.args[0]}\n{suffix}",) + exc.args[1:]
-        else:
-            exc.args = exc.args + (suffix,)
-        return exc
-    except Exception:
-        try:
-            new = type(exc)(f"{exc}\n{suffix}")
-            new.__traceback__ = exc.__traceback__
-            new.__cause__ = exc.__cause__
-            new.__context__ = exc.__context__
-            new.__suppress_context__ = exc.__suppress_context__
-            return new
-        except Exception:
-            return exc
+    add_exception_note(exc, suffix)
+    return exc
 
 
 def iterate_with_retry(
