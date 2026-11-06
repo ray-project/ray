@@ -5,6 +5,7 @@ import time
 
 import numpy as np
 import pandas as pd
+import pyarrow as pa
 import pytest
 
 import ray
@@ -228,6 +229,19 @@ def test_global_tabular_std(ray_start_regular_shared_2_cpus, ds_format, num_part
         nan_ds = _to_pandas(nan_ds)
     assert pd.isnull(nan_ds.std("A"))
     assert pd.isnull(nan_ds.std("A", ignore_nulls=False))
+
+
+@pytest.mark.parametrize("dtype", [pa.int64(), pa.uint64()])
+@pytest.mark.parametrize("num_blocks", [1, 2])
+def test_std_large_integers(ray_start_regular_shared_2_cpus, dtype, num_blocks):
+    # Integers beyond 2**53 cannot be cast to float64 with a checked cast.
+    values = [2**53 + 2, 2**53 + 6]
+    table = pa.table({"k": [0, 0], "A": pa.array(values, type=dtype)})
+    ds = ray.data.from_arrow(table).repartition(num_blocks)
+    expected = np.std(values, ddof=1)
+
+    assert ds.std("A") == expected
+    assert ds.groupby("k").std("A").take_all() == [{"k": 0, "std(A)": expected}]
 
 
 def test_global_aggregation_over_empty_dataset(ray_start_regular_shared_2_cpus):
