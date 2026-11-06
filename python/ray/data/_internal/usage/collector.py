@@ -199,6 +199,15 @@ def usage_collection_disabled() -> bool:
     return not usage_stats_enabled() or os.environ.get("RAY_DATA_USAGE_DISABLED") == "1"
 
 
+def cluster_metrics_collection_disabled() -> bool:
+    """True when ``RAY_DATA_USAGE_CLUSTER_METRICS_DISABLED=1`` is set. This
+    turns off only the cluster metrics read from Prometheus (spilled bytes,
+    node deaths, OOM kills, unexpected worker kills, object reconstruction
+    attempts and task retries), so the rest of usage collection still runs.
+    """
+    return os.environ.get("RAY_DATA_USAGE_CLUSTER_METRICS_DISABLED") == "1"
+
+
 def cluster_spilled_bytes() -> Optional[int]:
     """Cluster-wide cumulative spilled bytes from Prometheus, scoped to this
     session. None if the query failed.

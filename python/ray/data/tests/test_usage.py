@@ -575,5 +575,62 @@ def test_callback_none_baseline_falls_back_to_first_snapshot(monkeypatch):
     assert cb._compute_cluster_deltas() == {"m": 300}
 
 
+def test_poller_polls_immediately_then_sleeps_with_jitter(monkeypatch):
+    """The poll loop polls before its first sleep, waits a random fraction of
+    the interval once, then sleeps the interval within the jitter bounds."""
+
+    class _StopLoop(Exception):
+        pass
+
+    # "poll" or "sleep", in call order.
+    events = []
+    sleeps = []
+
+    def fake_sleep(s):
+        events.append("sleep")
+        sleeps.append(s)
+        if len(sleeps) >= 3:
+            raise _StopLoop
+
+    monkeypatch.setattr(poller.time, "sleep", fake_sleep)
+    p = poller.ClusterMetricsPoller({"m": lambda: 1}, interval_s=60)
+    monkeypatch.setattr(p, "poll_once", lambda: events.append("poll"))
+    with pytest.raises(_StopLoop):
+        p._run()
+
+    assert events == ["poll", "sleep"] * 3
+    assert 0 <= sleeps[0] <= 60
+    for s in sleeps[1:]:
+        assert 60 * (1 - poller._POLL_JITTER) <= s <= 60 * (1 + poller._POLL_JITTER)
+
+
+def test_cluster_metrics_disabled_skips_poller(
+    reset_collector, mock_record, monkeypatch, executor
+):
+    """RAY_DATA_USAGE_CLUSTER_METRICS_DISABLED=1 never starts the poller and
+    records the cluster metric fields as None, while the rest of the payload is
+    still recorded."""
+    monkeypatch.setenv("RAY_DATA_USAGE_CLUSTER_METRICS_DISABLED", "1")
+
+    def fail_get_poller():
+        raise AssertionError("poller must not be used")
+
+    monkeypatch.setattr(
+        "ray.data._internal.usage.execution_callback.get_poller", fail_get_poller
+    )
+    ds = ray.data.range(1).map_batches(lambda b: b)
+    callback = UsageCallback(ds._logical_plan)
+    callback.before_execution_starts(executor)
+    callback.after_execution_succeeds(executor)
+
+    _, payload_json = mock_record[-1]
+    entry = json.loads(payload_json)["executions"][0]
+    assert entry["workload"]["plan_str"] == "MapBatches\n+- ReadRange\n"
+    # None fields are omitted from the payload, so no cluster metrics appear.
+    assert entry["performance"] == {
+        "lineage_reconstruction": {"num_object_lost_task_failures": 0}
+    }
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", "-s", __file__]))
