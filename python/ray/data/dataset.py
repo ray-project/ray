@@ -448,7 +448,7 @@ class Dataset:
     @PublicAPI(api_group=BT_API_GROUP)
     def map(
         self,
-        fn: Callable[[Dict[str, Any]], Dict[str, Any]],
+        fn: UserDefinedFunction[Dict[str, Any], Dict[str, Any]],
         *,
         compute: Optional[ComputeStrategy] = None,
         fn_args: Optional[Iterable[Any]] = None,
@@ -622,7 +622,7 @@ class Dataset:
     def _set_name(self, name: Optional[str]):
         self.set_name(name)
 
-    def set_name(self, name: Optional[str]):
+    def set_name(self, name: Optional[str]) -> None:
         """Set the name of the dataset.
 
         Used as a prefix for metrics tags.
@@ -1320,7 +1320,7 @@ class Dataset:
         ],
         *,
         batch_format: Optional[str] = "pandas",
-        compute: Optional[str] = None,
+        compute: Optional[ComputeStrategy] = None,
         concurrency: Optional[int] = None,
         num_cpus: Optional[float] = None,
         num_gpus: Optional[float] = None,
@@ -1477,7 +1477,7 @@ class Dataset:
         self,
         cols: List[str],
         *,
-        compute: Optional[str] = None,
+        compute: Optional[ComputeStrategy] = None,
         concurrency: Optional[int] = None,
         num_cpus: Optional[float] = None,
         num_gpus: Optional[float] = None,
@@ -1619,7 +1619,7 @@ class Dataset:
         self,
         cols: Union[str, List[str]],
         *,
-        compute: Union[str, ComputeStrategy] = None,
+        compute: Optional[ComputeStrategy] = None,
         concurrency: Optional[int] = None,
         num_cpus: Optional[float] = None,
         num_gpus: Optional[float] = None,
@@ -1752,7 +1752,7 @@ class Dataset:
         accelerator_type: Optional[str] = None,
         runtime_env: Optional[Dict[str, Any]] = None,
         **ray_remote_args,
-    ):
+    ) -> "Dataset":
         """Rename columns in the dataset.
 
         Examples:
@@ -2076,7 +2076,7 @@ class Dataset:
         fn: Optional[UserDefinedFunction[Dict[str, Any], bool]] = None,
         expr: Optional[Union[str, Expr]] = None,
         *,
-        compute: Union[str, ComputeStrategy] = None,
+        compute: Optional[ComputeStrategy] = None,
         fn_args: Optional[Iterable[Any]] = None,
         fn_kwargs: Optional[Dict[str, Any]] = None,
         fn_constructor_args: Optional[Iterable[Any]] = None,
@@ -2463,7 +2463,7 @@ class Dataset:
     def random_shuffle(
         self,
         *,
-        seed: Optional[int | RandomSeedConfig] = None,
+        seed: Optional[Union[int, RandomSeedConfig]] = None,
         num_blocks: Optional[int] = None,
         **ray_remote_args,
     ) -> "Dataset":
@@ -2544,7 +2544,7 @@ class Dataset:
     def randomize_block_order(
         self,
         *,
-        seed: Optional[int | RandomSeedConfig] = None,
+        seed: Optional[Union[int, RandomSeedConfig]] = None,
     ) -> "Dataset":
         """Randomly shuffle the :ref:`blocks <dataset_concept>` of this :class:`Dataset`.
 
@@ -2593,7 +2593,7 @@ class Dataset:
 
     @PublicAPI(api_group=BT_API_GROUP)
     def random_sample(
-        self, fraction: float, *, seed: Optional[int | RandomSeedConfig] = None
+        self, fraction: float, *, seed: Optional[Union[int, RandomSeedConfig]] = None
     ) -> "Dataset":
         """Returns a new :class:`Dataset` containing a random fraction of the rows.
         In other words, this method "randomly filters" the rows of the dataset without
@@ -3607,8 +3607,8 @@ class Dataset:
         ds: "Dataset",
         join_type: str,
         num_partitions: int,
-        on: Tuple[str] = ("id",),
-        right_on: Optional[Tuple[str]] = None,
+        on: Tuple[str, ...] = ("id",),
+        right_on: Optional[Tuple[str, ...]] = None,
         left_suffix: Optional[str] = None,
         right_suffix: Optional[str] = None,
         *,
@@ -4288,7 +4288,7 @@ class Dataset:
         self,
         key: Union[str, List[str]],
         descending: Union[bool, List[bool]] = False,
-        boundaries: List[Union[int, float]] = None,
+        boundaries: Optional[List[Union[int, float]]] = None,
     ) -> "Dataset":
         """Sort the dataset by the specified key column or key function.
         The `key` parameter must be specified (i.e., it cannot be `None`).
@@ -4830,8 +4830,7 @@ class Dataset:
             80
 
         Returns:
-            The in-memory size of the dataset in bytes, or None if the
-            in-memory size is not known.
+            The in-memory size of the dataset in bytes.
         """
         # If the size is known from metadata, return it.
         if self._logical_plan.dag.infer_metadata().size_bytes is not None:
@@ -4875,7 +4874,7 @@ class Dataset:
         min_rows_per_file: Optional[int] = None,
         max_rows_per_file: Optional[int] = None,
         min_bytes_per_file: Optional[int] = None,
-        ray_remote_args: Dict[str, Any] = None,
+        ray_remote_args: Optional[Dict[str, Any]] = None,
         concurrency: Optional[int] = None,
         num_rows_per_file: Optional[int] = None,
         mode: SaveMode = SaveMode.APPEND,
@@ -5084,7 +5083,7 @@ class Dataset:
         filename_provider: Optional[FilenameProvider] = None,
         pandas_json_args_fn: Optional[Callable[[], Dict[str, Any]]] = None,
         min_rows_per_file: Optional[int] = None,
-        ray_remote_args: Dict[str, Any] = None,
+        ray_remote_args: Optional[Dict[str, Any]] = None,
         concurrency: Optional[int] = None,
         num_rows_per_file: Optional[int] = None,
         mode: SaveMode = SaveMode.APPEND,
@@ -5210,7 +5209,7 @@ class Dataset:
         overwrite_filter: Optional["Expr"] = None,
         upsert_kwargs: Optional[Dict[str, Any]] = None,
         overwrite_kwargs: Optional[Dict[str, Any]] = None,
-        ray_remote_args: Dict[str, Any] = None,
+        ray_remote_args: Optional[Dict[str, Any]] = None,
         concurrency: Optional[int] = None,
     ) -> None:
         """Writes the :class:`~ray.data.Dataset` to an Iceberg table.
@@ -5495,7 +5494,7 @@ class Dataset:
         try_create_dir: bool = True,
         arrow_open_stream_args: Optional[Dict[str, Any]] = None,
         filename_provider: Optional[FilenameProvider] = None,
-        ray_remote_args: Dict[str, Any] = None,
+        ray_remote_args: Optional[Dict[str, Any]] = None,
         concurrency: Optional[int] = None,
         mode: SaveMode = SaveMode.APPEND,
     ) -> None:
@@ -5573,7 +5572,7 @@ class Dataset:
         filename_provider: Optional[FilenameProvider] = None,
         arrow_csv_args_fn: Optional[Callable[[], Dict[str, Any]]] = None,
         min_rows_per_file: Optional[int] = None,
-        ray_remote_args: Dict[str, Any] = None,
+        ray_remote_args: Optional[Dict[str, Any]] = None,
         concurrency: Optional[int] = None,
         num_rows_per_file: Optional[int] = None,
         mode: SaveMode = SaveMode.APPEND,
@@ -5821,7 +5820,7 @@ class Dataset:
         arrow_open_stream_args: Optional[Dict[str, Any]] = None,
         filename_provider: Optional[FilenameProvider] = None,
         min_rows_per_file: Optional[int] = None,
-        ray_remote_args: Dict[str, Any] = None,
+        ray_remote_args: Optional[Dict[str, Any]] = None,
         concurrency: Optional[int] = None,
         num_rows_per_file: Optional[int] = None,
         mode: SaveMode = SaveMode.APPEND,
@@ -5931,7 +5930,7 @@ class Dataset:
         arrow_open_stream_args: Optional[Dict[str, Any]] = None,
         filename_provider: Optional[FilenameProvider] = None,
         min_rows_per_file: Optional[int] = None,
-        ray_remote_args: Dict[str, Any] = None,
+        ray_remote_args: Optional[Dict[str, Any]] = None,
         encoder: WebDatasetEncoderConfig = True,
         concurrency: Optional[int] = None,
         num_rows_per_file: Optional[int] = None,
@@ -6030,7 +6029,7 @@ class Dataset:
         arrow_open_stream_args: Optional[Dict[str, Any]] = None,
         filename_provider: Optional[FilenameProvider] = None,
         min_rows_per_file: Optional[int] = None,
-        ray_remote_args: Dict[str, Any] = None,
+        ray_remote_args: Optional[Dict[str, Any]] = None,
         concurrency: Optional[int] = None,
         num_rows_per_file: Optional[int] = None,
         mode: SaveMode = SaveMode.APPEND,
@@ -6183,11 +6182,11 @@ class Dataset:
     def write_snowflake(
         self,
         table: str,
-        connection_parameters: str,
+        connection_parameters: Dict[str, Any],
         *,
-        ray_remote_args: Dict[str, Any] = None,
+        ray_remote_args: Optional[Dict[str, Any]] = None,
         concurrency: Optional[int] = None,
-    ):
+    ) -> None:
         """Write this ``Dataset`` to a Snowflake table.
 
         Examples:
@@ -6241,7 +6240,7 @@ class Dataset:
         uri: str,
         database: str,
         collection: str,
-        ray_remote_args: Dict[str, Any] = None,
+        ray_remote_args: Optional[Dict[str, Any]] = None,
         concurrency: Optional[int] = None,
     ) -> None:
         """Writes the :class:`~ray.data.Dataset` to a MongoDB database.
@@ -6312,7 +6311,7 @@ class Dataset:
         dataset: str,
         max_retry_cnt: int = 10,
         overwrite_table: Optional[bool] = True,
-        ray_remote_args: Dict[str, Any] = None,
+        ray_remote_args: Optional[Dict[str, Any]] = None,
         concurrency: Optional[int] = None,
     ) -> None:
         """Write the dataset to a BigQuery dataset table.
@@ -6387,7 +6386,7 @@ class Dataset:
         client_kwargs: Optional[Dict[str, Any]] = None,
         table_settings: Optional[ClickHouseTableSettings] = None,
         max_insert_block_rows: Optional[int] = None,
-        ray_remote_args: Dict[str, Any] = None,
+        ray_remote_args: Optional[Dict[str, Any]] = None,
         concurrency: Optional[int] = None,
     ) -> None:
         """Write the dataset to a ClickHouse dataset table.
@@ -6518,7 +6517,7 @@ class Dataset:
         vector_column: str = "vector",
         batch_size: int = 10000,
         distance_metric: str = "cosine_distance",
-        ray_remote_args: Dict[str, Any] = None,
+        ray_remote_args: Optional[Dict[str, Any]] = None,
         concurrency: Optional[int] = None,
     ) -> None:
         """Write the dataset to a Turbopuffer vector database namespace.
@@ -6635,7 +6634,7 @@ class Dataset:
         table_id: Optional[List[str]] = None,
         namespace_impl: Optional[str] = None,
         namespace_properties: Optional[Dict[str, str]] = None,
-        ray_remote_args: Dict[str, Any] = None,
+        ray_remote_args: Optional[Dict[str, Any]] = None,
         concurrency: Optional[int] = None,
     ) -> None:
         """Write the dataset to a Lance dataset.
@@ -6751,7 +6750,7 @@ class Dataset:
         self,
         datasink: Datasink,
         *,
-        ray_remote_args: Dict[str, Any] = None,
+        ray_remote_args: Optional[Dict[str, Any]] = None,
         concurrency: Optional[int] = None,
     ) -> None:
         """Writes the dataset to a custom :class:`~ray.data.Datasink`.
@@ -7280,15 +7279,21 @@ class Dataset:
         feature_columns: Union[str, List[str]],
         label_columns: Union[str, List[str]],
         *,
-        additional_columns: Union[str, List[str]] = None,
+        additional_columns: Optional[Union[str, List[str]]] = None,
         prefetch_batches: int = 1,
         batch_size: int = 1,
         drop_last: bool = False,
         local_shuffle_buffer_size: Optional[int] = None,
         local_shuffle_seed: Optional[int] = None,
-        feature_type_spec: Union["tf.TypeSpec", Dict[str, "tf.TypeSpec"]] = None,
-        label_type_spec: Union["tf.TypeSpec", Dict[str, "tf.TypeSpec"]] = None,
-        additional_type_spec: Union["tf.TypeSpec", Dict[str, "tf.TypeSpec"]] = None,
+        feature_type_spec: Optional[
+            Union["tf.TypeSpec", Dict[str, "tf.TypeSpec"]]
+        ] = None,
+        label_type_spec: Optional[
+            Union["tf.TypeSpec", Dict[str, "tf.TypeSpec"]]
+        ] = None,
+        additional_type_spec: Optional[
+            Union["tf.TypeSpec", Dict[str, "tf.TypeSpec"]]
+        ] = None,
     ) -> "tf.data.Dataset":
         """Return a `TensorFlow Dataset <https://www.tensorflow.org/api_docs/python/tf/data/Dataset/>`_
         over this :class:`~ray.data.Dataset`.
@@ -7647,7 +7652,7 @@ class Dataset:
 
     @ConsumptionAPI(pattern="Time complexity:")
     @PublicAPI(api_group=IOC_API_GROUP)
-    def to_pandas(self, limit: int = None) -> "pandas.DataFrame":
+    def to_pandas(self, limit: Optional[int] = None) -> "pandas.DataFrame":
         """Convert this :class:`~ray.data.Dataset` to a single pandas DataFrame.
 
         This method errors if the number of rows exceeds the provided ``limit``.
@@ -7990,7 +7995,7 @@ class Dataset:
         return self.get_stats_summary().to_string()
 
     @PublicAPI(api_group=IM_API_GROUP, stability="alpha")
-    def explain(self):
+    def explain(self) -> None:
         """Show the logical plan and physical plan of the dataset.
 
         Examples:
