@@ -14,6 +14,8 @@ import logging
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Iterator, List, NamedTuple, Optional, Tuple, Union
 
+from ray.util.debug import log_once
+
 logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
@@ -100,7 +102,7 @@ class _ListHeader:
 
 
 class _ThriftDesync(Exception):
-    """A field's type contradicts parquet.thrift: the reader has lost its place."""
+    """A field's type or a count is impossible: the reader has lost its place."""
 
 
 class _CompactReader:
@@ -143,12 +145,21 @@ class _CompactReader:
         n = self._varint()
         return (n >> 1) ^ -(n & 1)
 
+    def _element_count(self) -> int:
+        """A container's varint element count, no more than the bytes left."""
+        count = self._varint()
+        # Every element takes a byte at least. A corrupt count must raise here:
+        # skipping fixed-width elements reads nothing, so it would loop instead.
+        if count > len(self._buf) - self._pos:
+            raise _ThriftDesync(f"{count} elements run past the buffer")
+        return count
+
     def _list_header(self) -> _ListHeader:
         """A list or set header."""
         header = self._byte()
         count = (header >> _NIBBLE_BITS) & _NIBBLE_MASK
         if count == _LONG_FORM_COUNT:
-            count = self._varint()
+            count = self._element_count()
         return _ListHeader(count, header & _NIBBLE_MASK)
 
     def _fields(self) -> Iterator[_FieldHeader]:
@@ -194,7 +205,7 @@ class _CompactReader:
         elif field_type == _DOUBLE:
             self._pos += _DOUBLE_BYTES
         elif field_type == _MAP:
-            count = self._varint()
+            count = self._element_count()
             if count:
                 header = self._byte()
                 key_type = (header >> _NIBBLE_BITS) & _NIBBLE_MASK
@@ -255,7 +266,10 @@ class _CompactReader:
                 f"SizeStatistics field {field_id} is a list of type "
                 f"{header.element_type}, expected i64"
             )
-        return tuple(self._zigzag() for _ in range(header.count))
+        counts = tuple(self._zigzag() for _ in range(header.count))
+        if counts and min(counts) < 0:
+            raise _ThriftDesync(f"SizeStatistics field {field_id} has a negative count")
+        return counts
 
     def _size_statistics(self) -> LeafSizeStats:
         unencoded: Optional[int] = None
@@ -270,6 +284,8 @@ class _CompactReader:
                         f"SizeStatistics field 1 has type {field.type}, expected i64"
                     )
                 unencoded = self._zigzag()
+                if unencoded < 0:
+                    raise _ThriftDesync("SizeStatistics field 1 is negative")
             elif field.id == _SIZE_STATS_REPETITION_HISTOGRAM:
                 if field.type != _LIST:
                     raise _ThriftDesync(
@@ -343,22 +359,27 @@ class _CompactReader:
                     stats.append(self._row_group())
             else:
                 self._skip(field.type)
+        # Bytes that aren't exactly one FileMetaData aren't the footer.
+        if self._pos != len(self._buf):
+            raise _ThriftDesync("bytes left after the footer")
         return stats
 
 
 def footer_bytes(metadata: "FileMetaData") -> Optional[memoryview]:
-    """The raw Thrift footer behind a ``FileMetaData``, or ``None``: from
-    ``__reduce__``, which PyArrow pickles it with, so no I/O but not public API."""
-    try:
-        payload = metadata.__reduce__()[1][0]
-    except Exception as exc:
-        logger.error(f"Error getting footer bytes: {exc}")
-        return None
+    """A ``FileMetaData``'s Thrift footer, or ``None``: from ``__reduce__``, which
+    PyArrow pickles it with by writing it out again, so no I/O but not public API."""
     try:
         # Unsigned: ``memoryview(pyarrow.Buffer)`` gives signed bytes.
-        return memoryview(payload).cast("B")
-    except (TypeError, ValueError) as exc:
-        logger.error(f"Error casting footer bytes: {exc}")
+        return memoryview(metadata.__reduce__()[1][0]).cast("B")
+    except Exception as exc:
+        # Once per process: a PyArrow release that changes __reduce__ fails
+        # every file the same way.
+        if log_once("parquet_footer_bytes_unavailable"):
+            logger.warning(
+                "Can't get Parquet footer bytes from PyArrow's FileMetaData, so "
+                "SizeStatistics won't be read: %s",
+                exc,
+            )
         return None
 
 
@@ -372,14 +393,20 @@ def read_footer_stats(
         return None
     try:
         row_groups = _CompactReader(buf).read()
+        num_row_groups = metadata.num_row_groups
+        num_columns = metadata.num_columns
     except Exception as exc:
-        logger.error(f"Error reading footer stats: {exc}")
         # Sizing falls back, so a footer this can't decode must not fail the read.
+        if log_once("parquet_footer_stats_unreadable"):
+            logger.warning(
+                "Can't read SizeStatistics from a Parquet footer; files that "
+                "fail like this are sized without them: %s",
+                exc,
+            )
         return None
 
-    if len(row_groups) != metadata.num_row_groups:
+    if len(row_groups) != num_row_groups:
         return None
-    num_columns = metadata.num_columns
     if any(len(columns) != num_columns for columns in row_groups):
         return None
     return row_groups
@@ -414,7 +441,8 @@ def read_dictionary_page(buf: Union[bytes, memoryview]) -> Optional[DictionaryPa
                         reader._skip(sub.type)
             else:
                 reader._skip(field.type)
-    except (IndexError, _ThriftDesync):
+    except (IndexError, RecursionError, _ThriftDesync):
+        # RecursionError: structs nested deeper than the stack allows.
         return None
     if (
         page_type != _DICTIONARY_PAGE
