@@ -50,7 +50,13 @@ filegroup(
 doctest(
     size = "enormous",
     data = glob(["offline/tests/data/cartpole/cartpole-v1_large/*.parquet"]),
-    env = {"TF_USE_LEGACY_KERAS": "1"},
+    # Don't forward worker logs to the driver: doctest captures driver stdout, so a
+    # worker line such as a Gloo connection message fails whichever example is
+    # running when it arrives.
+    env = {
+        "RAY_LOG_TO_DRIVER": "0",
+        "TF_USE_LEGACY_KERAS": "1",
+    },
     files = glob(
         ["**/*.py"],
         exclude = [

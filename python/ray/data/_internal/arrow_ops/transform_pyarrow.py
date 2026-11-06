@@ -14,6 +14,7 @@ from ray.data._internal.tensor_extensions.arrow import (
     MIN_PYARROW_VERSION_CHUNKED_ARRAY_TO_NUMPY_ZERO_COPY_ONLY,
     get_arrow_extension_fixed_shape_tensor_types,
     get_arrow_extension_tensor_types,
+    native_tensor_array_to_numpy,
     unify_tensor_arrays,
     unify_tensor_types,
 )
@@ -23,6 +24,7 @@ from ray.data._internal.tensor_extensions.chunked_tensor_take import (
     _TakeFallbackReason,
     try_prepare_chunked_tensor_take,
 )
+from ray.data._internal.tensor_extensions.utils import create_ragged_ndarray
 from ray.data._internal.utils.arrow_utils import get_pyarrow_version
 from ray.data._internal.utils.transform_pyarrow import (
     _concatenate_extension_column,
@@ -159,8 +161,7 @@ def _hash_partition_vectorized(
     projected_table: "pyarrow.Table",
     num_partitions: int,
 ) -> np.ndarray:
-    """
-    For each row, calculates hash(row_values) % num_partitions in a vectorized
+    """For each row, calculates hash(row_values) % num_partitions in a vectorized
     manner using Polars, falling back to :func:`_hash_partition` when Polars is
     unavailable or cannot handle the input.
 
@@ -486,8 +487,7 @@ def _reconcile_diverging_fields(
     unique_schemas: List["pyarrow.Schema"],
     promote_types: bool,
 ) -> Dict[str, Any]:
-    """
-    Identify and reconcile fields whose presence or types differ across the provided schemas.
+    """Identify and reconcile fields whose presence or types differ across the provided schemas.
 
     Args:
         unique_schemas: List of PyArrow schemas to find diverging fields in.
@@ -522,11 +522,21 @@ def _reconcile_diverging_fields(
             flags["has_null"] |= pyarrow.types.is_null(field_type)
             flags["has_struct"] |= pyarrow.types.is_struct(field_type)
 
-            # Check for object-tensor conflict after every type is collected.
-            if flags["has_object"] and flags["has_tensor"]:
-                raise ValueError(
-                    f"Found columns with both objects and tensors: {field_name}"
-                )
+    # Check for object-tensor conflicts after every type is collected, so the
+    # error names all conflicting columns rather than only the first.
+    object_tensor_fields = [
+        field_name
+        for field_name, flags in field_flags.items()
+        if flags["has_object"] and flags["has_tensor"]
+    ]
+    if object_tensor_fields:
+        raise ValueError(
+            "Found columns with both objects and tensors: "
+            f"{', '.join(object_tensor_fields)}. "
+            "Return each of these columns in one form in every batch. Nested "
+            "Python lists (`ndarray.tolist()`) keep it an object column, and "
+            "same-shaped ndarrays keep it a tensor column."
+        )
 
     # Reconcile only after all schemas have been inspected. This prevents a
     # null arm or an intermediate special type from masking later types.
@@ -546,8 +556,7 @@ def _reconcile_field(
     field_types: List[pyarrow.DataType],
     promote_types: bool = False,
 ) -> Optional[pyarrow.DataType]:
-    """
-    Reconcile a single divergent field across schemas.
+    """Reconcile a single divergent field across schemas.
 
     Returns reconciled type or None if default PyArrow handling is sufficient.
     ``pa.null()`` entries are stripped first — null unifies with any type.
@@ -570,7 +579,8 @@ def _reconcile_field(
 
     # Handle special cases in priority order
 
-    # 1. Tensor fields
+    # 1. Tensor fields. A block whose column is typed null, that is a column
+    #    of only None values, unifies to the tensor type with null rows.
     tensor_types = get_arrow_extension_tensor_types()
     tensor_field_types = [t for t in non_null_types if isinstance(t, tensor_types)]
 
@@ -648,8 +658,7 @@ def reorder_columns_by_schema(
 def unify_schemas(
     schemas: List["pyarrow.Schema"], *, promote_types: bool = False
 ) -> "pyarrow.Schema":
-    """
-    Unify schemas handling Ray-specific types (tensors, objects, etc.).
+    """Unify schemas handling Ray-specific types (tensors, objects, etc.).
 
     Falls back to PyArrow's unify_schemas when possible, with custom
     handling for tensor arrays, object types, and recursive struct unification.
@@ -673,12 +682,13 @@ def unify_schemas(
 
     # Try PyArrow's unification first, only reconcile for tensor fields
     try:
-        return _unify_schemas_pyarrow(schemas_to_unify, promote_types)
+        unified = _unify_schemas_pyarrow(schemas_to_unify, promote_types)
     except (pyarrow.lib.ArrowTypeError, pyarrow.lib.ArrowInvalid) as e:
         # If we raise only on non tensor errors, it fails to unify PythonObjectType and pyarrow primitives.
         # Look at test_pyarrow_conversion_error_handling for an example.
         pyarrow_exception = e
-        pass
+    else:
+        return unified
 
     # Reconcile diverging fields
     overrides = _reconcile_diverging_fields(schemas_to_unify, promote_types)
@@ -698,21 +708,18 @@ def unify_schemas(
             for field in schema
         ]
         updated_schemas.append(pyarrow.schema(fields, metadata=schema.metadata))
-    schemas_to_unify = updated_schemas
 
     # Final unification with overrides applied
     try:
-        return _unify_schemas_pyarrow(schemas_to_unify, promote_types)
+        return _unify_schemas_pyarrow(updated_schemas, promote_types)
     except Exception as e:
-        schemas_str = "\n-----\n".join(str(s) for s in schemas_to_unify)
+        schemas_str = "\n-----\n".join(str(s) for s in updated_schemas)
         logger.error(f"Failed to unify schemas: {schemas_str}", exc_info=e)
         raise
 
 
 def _concatenate_chunked_arrays(arrs: "pyarrow.ChunkedArray") -> "pyarrow.ChunkedArray":
-    """
-    Concatenate provided chunked arrays into a single chunked array.
-    """
+    """Concatenate provided chunked arrays into a single chunked array."""
     from ray.data.extensions import get_arrow_extension_tensor_types
 
     tensor_types = get_arrow_extension_tensor_types()
@@ -751,8 +758,7 @@ def _concatenate_chunked_arrays(arrs: "pyarrow.ChunkedArray") -> "pyarrow.Chunke
 def _extract_unified_struct_types(
     schema: "pyarrow.Schema",
 ) -> Dict[str, "pyarrow.StructType"]:
-    """
-    Extract all struct fields from a schema and map their names to types.
+    """Extract all struct fields from a schema and map their names to types.
 
     Args:
         schema: Arrow schema to extract struct types from.
@@ -772,8 +778,7 @@ def _backfill_missing_fields(
     unified_struct_type: "pyarrow.StructType",
     block_length: int,
 ) -> "pyarrow.StructArray":
-    """
-    Align a struct column's fields to match the unified schema's struct type.
+    """Align a struct column's fields to match the unified schema's struct type.
 
     Args:
         column: The column data to align.
@@ -855,7 +860,7 @@ def _backfill_missing_fields(
                 # Convert to variable-shaped if needed
                 if _is_native_tensor_type(current_array.type):
                     current_array = ArrowVariableShapedTensorArray.from_numpy(
-                        current_array.to_numpy_ndarray()
+                        native_tensor_array_to_numpy(current_array)
                     )
                 else:
                     current_array = current_array.to_var_shaped_tensor_array(
@@ -891,8 +896,7 @@ def _backfill_missing_fields(
 def _align_struct_fields(
     blocks: List["pyarrow.Table"], schema: "pyarrow.Schema"
 ) -> List["pyarrow.Table"]:
-    """
-    Align struct columns across blocks to match the provided schema.
+    """Align struct columns across blocks to match the provided schema.
 
     Struct columns in each block are backfilled with nulls for fields present
     in the unified schema but missing in that block. Struct fields absent from
@@ -1213,6 +1217,64 @@ def _concat_cols_via_concat_tables(
     return {col_name: table.column(col_name) for col_name in table.schema.names}
 
 
+# Max number of conflicting columns listed in a schema unification error.
+_MAX_DIVERGING_FIELDS_IN_ERROR = 20
+
+
+def _summarize_diverging_fields(
+    schemas: List["pyarrow.Schema"],
+) -> Dict[str, Dict[str, int]]:
+    """Count how many schemas have each type, for columns whose types differ.
+
+    Args:
+        schemas: Schemas that failed to unify, one per block.
+
+    Returns:
+        A dictionary mapping each column with more than one type to a dictionary
+        from type name to the number of schemas with that type.
+    """
+    type_counts = defaultdict(lambda: defaultdict(int))
+    for schema in schemas:
+        for field in schema:
+            type_counts[field.name][str(field.type)] += 1
+    return {
+        field_name: dict(counts)
+        for field_name, counts in type_counts.items()
+        if len(counts) > 1
+    }
+
+
+def _format_schema_unification_error(
+    schemas: List["pyarrow.Schema"], cause: Exception
+) -> str:
+    """Build an error message naming the columns and types that failed to unify.
+
+    Args:
+        schemas: Schemas that failed to unify, one per block.
+        cause: The exception raised by schema unification.
+
+    Returns:
+        The error message.
+    """
+    diverging_fields = _summarize_diverging_fields(schemas)
+    lines = [f"Failed to unify schemas across {len(schemas)} blocks."]
+    if diverging_fields:
+        lines.append("Columns with incompatible types:")
+        for field_name, counts in itertools.islice(
+            diverging_fields.items(), _MAX_DIVERGING_FIELDS_IN_ERROR
+        ):
+            types_str = ", ".join(
+                f"{type_str} ({count} block{'s' if count > 1 else ''})"
+                for type_str, count in counts.items()
+            )
+            lines.append(f"  - '{field_name}': {types_str}")
+        num_omitted = len(diverging_fields) - _MAX_DIVERGING_FIELDS_IN_ERROR
+        if num_omitted > 0:
+            lines.append(f"  ... and {num_omitted} more")
+    lines.append(f"Cause: {cause}")
+    return "\n".join(lines)
+
+
 def concat(
     blocks: List["pyarrow.Table"],
     *,
@@ -1237,7 +1299,9 @@ def concat(
     """
     import pyarrow as pa
 
-    from ray.data._internal.tensor_extensions.arrow import ArrowConversionError
+    from ray.data._internal.tensor_extensions.arrow import (
+        ArrowSchemaUnificationError,
+    )
     from ray.data.context import DataContext
     from ray.data.extensions import get_arrow_extension_tensor_types
 
@@ -1255,12 +1319,8 @@ def concat(
     try:
         schema = unify_schemas(schemas_to_unify, promote_types=promote_types)
     except Exception as e:
-        raise ArrowConversionError(
-            f"Failed to unify schemas: {str(e)}\n"
-            f"{'-' * 16}\n"
-            f"Schemas:\n"
-            f"{'-' * 16}\n"
-            f"{schemas_to_unify}"
+        raise ArrowSchemaUnificationError(
+            _format_schema_unification_error(schemas_to_unify, e)
         ) from e
 
     matched_blocks: List[pa.Table] = []
@@ -1444,16 +1504,22 @@ def to_numpy(
         if _is_native_tensor_type(array.type):
             # This is zero-copy. We use to_numpy_ndarray() because to_numpy
             # will flatten n-dim array into 1d.
-            return array.to_numpy_ndarray()
+            return native_tensor_array_to_numpy(array)
         return array.to_numpy(zero_copy_only=zero_copy_only)
     elif isinstance(array, pa.ChunkedArray):
         if pa.types.is_null(array.type):
             return np.full(array.length(), np.nan, dtype=np.float32)
         if _is_native_tensor_type(array.type):
             # Convert each chunk to numpy, then stack them
-            numpy_chunks = [chunk.to_numpy_ndarray() for chunk in array.chunks]
+            numpy_chunks = [native_tensor_array_to_numpy(c) for c in array.chunks]
             if len(numpy_chunks) == 0:
                 return np.empty((0,) + tuple(array.type.shape))
+            if array.null_count > 0:
+                # A chunk with a null row is one ndarray per row and a chunk
+                # without is dense, so join them row by row.
+                return create_ragged_ndarray(
+                    [row for chunk in numpy_chunks for row in chunk]
+                )
             return np.vstack(numpy_chunks)
         if PYARROW_VERSION >= MIN_PYARROW_VERSION_CHUNKED_ARRAY_TO_NUMPY_ZERO_COPY_ONLY:
             return array.to_numpy(zero_copy_only=zero_copy_only)

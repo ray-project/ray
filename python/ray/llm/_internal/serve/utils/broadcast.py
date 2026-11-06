@@ -21,8 +21,7 @@ def broadcast(
     kwargs: Union[Dict[str, Any], Callable[[Any], Dict[str, Any]]] = None,
     combine: Optional[Callable[[List[Any]], Any]] = None,
 ) -> Any:
-    """
-    Broadcasts a method call to all replicas of the given handle.
+    """Broadcasts a method call to all replicas of the given handle.
 
     This is useful for broadcasting a control plane message such as kv-cache
     reset or weight update to all replicas of the given handle.
