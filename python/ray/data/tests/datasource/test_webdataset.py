@@ -92,6 +92,9 @@ def test_webdataset_expand_json(
 
 def test_webdataset_expand_json_edge_cases(ray_start_2_cpus, tmp_path):
     import json
+    import pyarrow.fs
+
+    from ray.data._internal.datasource.webdataset_datasource import WebDatasetDatasource
 
     path = os.path.join(tmp_path, "edge_000000.tar")
     with TarWriter(path) as tf:
@@ -116,6 +119,18 @@ def test_webdataset_expand_json_edge_cases(ray_start_2_cpus, tmp_path):
     assert list(records[0]["single_list"]) == ["only_one"]
     assert records[0]["count"] == 42
     assert records[1]["txt"] == "second_txt"
+
+    non_dict_path = os.path.join(tmp_path, "non_dict.tar")
+    with TarWriter(non_dict_path) as tf:
+        tf.write("0.json", json.dumps(["not", "a", "dict"]).encode("utf-8"))
+
+    datasource = WebDatasetDatasource(
+        paths=[str(non_dict_path)], decoder=None, expand_json=True
+    )
+    local_fs = pyarrow.fs.LocalFileSystem()
+    with local_fs.open_input_stream(str(non_dict_path)) as stream:
+        with pytest.raises(TypeError, match="Expected a JSON object"):
+            list(datasource._read_stream(stream, str(non_dict_path)))
 
 
 def test_webdataset_preserves_single_element_list_without_expand_json(

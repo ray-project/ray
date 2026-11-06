@@ -249,10 +249,10 @@ def _default_decoder(
     """
     sample = dict(sample)
     for key, value in sample.items():
-        extension = key.split(".")[-1].lower()
         if key.startswith("__"):
             continue
-        elif extension in ["txt", "text"]:
+        extension = key.split(".")[-1].lower()
+        if extension in ["txt", "text"]:
             sample[key] = value.decode("utf-8")
         elif extension in ["cls", "cls2"]:
             sample[key] = int(value.decode("utf-8"))
@@ -322,10 +322,10 @@ def _default_encoder(sample: Dict[str, Any], format: Optional[Union[str, bool]] 
     """
     sample = dict(sample)
     for key, value in sample.items():
-        extension = key.split(".")[-1].lower()
         if key.startswith("__"):
             continue
-        elif extension in ["txt", "text"]:
+        extension = key.split(".")[-1].lower()
+        if extension in ["txt", "text"]:
             sample[key] = value.encode("utf-8")
         elif extension in ["cls", "cls2"]:
             sample[key] = str(value).encode("utf-8")
@@ -463,6 +463,10 @@ class WebDatasetDatasource(FileBasedDatasource):
                 else:
                     raise TypeError(
                         f"Unsupported data type" f" {type(sample['json'])} for sample"
+                    )
+                if not isinstance(parsed_json, dict):
+                    raise TypeError(
+                        f"Expected a JSON object (dict) for expand_json, but got {type(parsed_json)}"
                     )
                 for k, v in parsed_json.items():
                     if k not in sample:
