@@ -18,6 +18,7 @@ from ray.tune.progress_reporter import (
     _best_trial_str,
     _detect_reporter,
     _fair_filter_trials,
+    _get_progress_table_data,
     _max_len,
     _time_passed_str,
     _trial_progress_str,
@@ -689,6 +690,37 @@ class ProgressReporterTest(unittest.TestCase):
         )
         reporter7.report(trials, done=False)
         assert EXPECTED_NESTED_SORT_RESULT in reporter7._output
+
+    def testSortByMetricMissingMetric(self):
+        """Terminated trials without a usable metric are ranked last."""
+        trials = []
+        # Trial 1 finished without reporting the metric, trial 3 reported NaN.
+        for i, value in enumerate([0.3, None, 0.2, float("nan"), 0.4]):
+            t = Mock()
+            t.status = "TERMINATED"
+            t.trial_id = "%05d" % i
+            t.local_experiment_path = "/foo"
+            t.temporary_state = Mock()
+            t.temporary_state.location = "here"
+            t.run_metadata = Mock()
+            t.config = {"a": i}
+            t.evaluated_params = {"a": i}
+            t.last_result = {"config": {"a": i}}
+            if value is not None:
+                t.last_result["metric_1"] = value
+            t.__str__ = lambda self: self.trial_id
+            trials.append(t)
+
+        for mode, expected in (("min", [2, 0, 4, 1, 3]), ("max", [4, 0, 2, 1, 3])):
+            data, _, _ = _get_progress_table_data(
+                trials,
+                ["metric_1"],
+                ["a"],
+                metric="metric_1",
+                mode=mode,
+                sort_by_metric=True,
+            )
+            assert [row[0] for row in data] == ["%05d" % i for i in expected]
 
     def testEndToEndReporting(self):
         try:
