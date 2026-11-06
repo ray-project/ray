@@ -1219,6 +1219,8 @@ class SearchSpaceTest(unittest.TestCase):
             (tune.qrandint(0, 9, 5), {0, 5}),
             (tune.qrandint(1, 10, 1), set(range(1, 10))),
             (tune.qlograndint(1, 20, 4), {4, 8, 12, 16, 20}),
+            (tune.qlograndint(5, 23, 4), {8, 12, 16, 20}),
+            (tune.qlograndint(2, 10, 1), set(range(2, 10))),
         ):
             with self.subTest(expected=sorted(expected)):
                 searcher = HyperOptSearch(
