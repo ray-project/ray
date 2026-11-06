@@ -5,6 +5,7 @@ The read path behind `ray.data.read_*` when
 and *how* to decode it; the framework does listing, planning, pushdown, task
 grouping and execution. Parquet is the file-based reference implementation.
 Hive uses the metadata-backed path to stream one HiveServer2 query per execution.
+Delta Lake uses it to list the data files a table version's log names.
 
 ## Layout
 
@@ -160,3 +161,11 @@ Every hook's docstring says when to override it and what you gain.
 `infer_schema(None)` resolves the table schema on the driver through HiveServer2 (HS2) metadata, or returns the explicit Arrow schema for a query. `_HiveScanner.read_schema()` reports that schema. The scanner carries the read specification, including a connection factory that Ray can serialize, and schema to the worker, where it creates a `_HiveReader`. The factory creates separate connections for driver metadata lookup and worker data reads. The reader executes at most one HS2 data query and uses `fetchmany()` to yield Arrow tables incrementally.
 
 Once the data connection is open, `read_hs2_batches()` attempts to cancel the operation and close any cursor and the connection in `finally`. This covers completion, errors, and early generator closure. Cleanup is best effort. Closing a Dataset iterator can force the streaming executor to stop the read worker while it's fetching rows. That forced stop can bypass the reader's `finally`, even when the caller closes the iterator normally. Abrupt worker termination can also prevent `finally` from running, so immediate server cancellation or explicit cursor and connection cleanup isn't guaranteed.
+
+## How does Delta Lake fit?
+
+`DeltaDatasourceV2` extends `DataSourceWithMetadata`, because a Delta table's data files are the ones its transaction log names at a version, not whatever the table directory holds. `read_delta` uses it when `use_datasource_v2` and `use_delta_datasource_v2` are both set and `delta_datasource_v2_unsupported_reason()` finds nothing the V1 reader would handle differently (deletion vectors, column mapping, PyArrow scan options, ...).
+
+On the driver, `read_delta` opens the log without its file list, pins the version and takes the schema and partition columns from the log. `DeltaFileIndexer` gets a picklable `DeltaTableSnapshot`, reopens the table at that version in the `ListFiles` task and lists the `add` actions. It extends `FooterFileIndexer`, which reads each file's footer, so listing rows are row-group runs and `OnlineBinPacker` groups them as for Parquet; `as_whole_file_indexer()` returns a log-based `DeltaWholeFileIndexer` for metadata-only reads.
+
+The data files are Parquet: `DeltaScanner` is a `ParquetScanner`. Partition values come from the Hive-style partition directories through a `Partitioning` with `null_fallback=HIVE_DEFAULT_PARTITION`, and the listing fails a file that isn't under them. Everything is read through a filesystem rooted at the table directory with paths relative to it, as `DeltaTable.to_pyarrow_dataset` does: the `filesystem` argument, or the one `deltalake` builds from `storage_options`.
