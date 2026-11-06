@@ -224,6 +224,52 @@ def test_imputer_constant_categorical():
         np.testing.assert_array_equal(transformed_df[column].values, expected[column])
 
 
+def test_imputer_categorical_append_and_existing_category():
+    # 1. Categorical column in append mode (output_columns != columns) with a new fill_value
+    df_new_cat = pd.DataFrame({"A_cat": pd.Categorical(["one", "two", None, "four"])})
+    imputer_append = SimpleImputer(
+        columns=["A_cat"],
+        output_columns=["A_cat_imputed"],
+        strategy="constant",
+        fill_value="three",
+    )
+    out_append = imputer_append.transform_batch(df_new_cat.copy())
+    np.testing.assert_array_equal(
+        out_append["A_cat_imputed"].to_numpy(), ["one", "two", "three", "four"]
+    )
+    # Original input column must remain unmodified with its original missing value
+    assert pd.isna(out_append["A_cat"].iloc[2])
+    assert "three" not in out_append["A_cat"].cat.categories
+
+    # 2. Categorical column where fill_value is already in categories (e.g. most_frequent or constant),
+    # including when the underlying codes buffer is read-only (zero-copy / shared memory).
+    df_existing_cat = pd.DataFrame(
+        {"A_cat": pd.Categorical(["one", "two", None, "two"])}
+    )
+    imputer_existing = SimpleImputer(
+        columns=["A_cat"], strategy="constant", fill_value="two"
+    )
+    df_readonly_cat = df_existing_cat.copy(deep=True)
+    df_readonly_cat["A_cat"].values._codes.flags.writeable = False
+    out_existing = imputer_existing.transform_batch(df_readonly_cat)
+    np.testing.assert_array_equal(
+        out_existing["A_cat"].to_numpy(), ["one", "two", "two", "two"]
+    )
+
+    # 3. Categorical column with strategy="most_frequent" in both in-place and append modes
+    imputer_most_freq = SimpleImputer(
+        columns=["A_cat"],
+        output_columns=["A_cat_most_freq"],
+        strategy="most_frequent",
+    )
+    imputer_most_freq.stats_ = {"most_frequent(A_cat)": "two"}
+    out_most_freq = imputer_most_freq.transform_batch(df_existing_cat.copy())
+    np.testing.assert_array_equal(
+        out_most_freq["A_cat_most_freq"].to_numpy(), ["one", "two", "two", "two"]
+    )
+    assert pd.isna(out_most_freq["A_cat"].iloc[2])
+
+
 class TestSimpleImputerSerialization:
     """Test CloudPickle-based serialization/deserialization functionality for SimpleImputer."""
 

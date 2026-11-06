@@ -205,19 +205,26 @@ class SimpleImputer(SerializablePreprocessorBase):
                 # Create the column with the fill_value if it doesn't exist
                 df[output_column] = value
             else:
-                if is_categorical_dtype(df.dtypes[column]):
-                    df[output_column] = df[column].cat.add_categories([value])
-
                 if (
                     output_column != column
                     # If the backing array is memory-mapped from shared memory, then the
                     # array won't be writeable.
                     or (
-                        isinstance(df[output_column].values, np.ndarray)
-                        and not df[output_column].values.flags.writeable
+                        isinstance(df[column].values, np.ndarray)
+                        and not df[column].values.flags.writeable
+                    )
+                    or (
+                        is_categorical_dtype(df.dtypes[column])
+                        and not df[column].values.codes.flags.writeable
                     )
                 ):
                     df[output_column] = df[column].copy(deep=True)
+
+                if (
+                    is_categorical_dtype(df.dtypes[output_column])
+                    and value not in df[output_column].cat.categories
+                ):
+                    df[output_column] = df[output_column].cat.add_categories([value])
 
                 df.fillna({output_column: value}, inplace=True)
 
