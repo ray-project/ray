@@ -6,6 +6,8 @@ import textwrap
 import types
 from typing import List
 
+from ray._private.runtime_env.redaction import redact_uris_in_text
+
 
 class SubprocessCalledProcessError(subprocess.CalledProcessError):
     """The subprocess.CalledProcessError with stripped stdout."""
@@ -29,7 +31,7 @@ class SubprocessCalledProcessError(subprocess.CalledProcessError):
             if self.cmd_index is None
             else [f"Run cmd[{self.cmd_index}] failed with the following details."]
         )
-        str_list.append(super().__str__())
+        str_list.append(redact_uris_in_text(super().__str__()))
         out = {
             "stdout": self.stdout,
             "stderr": self.stderr,
@@ -37,7 +39,9 @@ class SubprocessCalledProcessError(subprocess.CalledProcessError):
         for name, s in out.items():
             if s:
                 subtitle = f"Last {self.LAST_N_LINES} lines of {name}:"
-                last_n_line_str = self._get_last_n_line(s, self.LAST_N_LINES).strip()
+                last_n_line_str = redact_uris_in_text(
+                    self._get_last_n_line(s, self.LAST_N_LINES).strip()
+                )
                 str_list.append(
                     f"{subtitle}\n{textwrap.indent(last_n_line_str, ' ' * 4)}"
                 )
@@ -73,7 +77,7 @@ async def check_output_cmd(
     """
 
     cmd_index = next(cmd_index_gen)
-    logger.info("Run cmd[%s] %s", cmd_index, repr(cmd))
+    logger.info("Run cmd[%s] %s", cmd_index, redact_uris_in_text(repr(cmd)))
 
     proc = None
     try:
