@@ -97,6 +97,9 @@ class TraceContextManager:
         self.trace_name = trace_name
         self.span_kind = span_kind
         self.trace_context = trace_context
+        # Detach token for the OpenTelemetry context attached in __enter__.
+        # Only set on the sampled path (where we actually attach/push).
+        self._token = None
 
         self.is_tracing_enabled = is_tracing_enabled()
 
@@ -115,7 +118,7 @@ class TraceContextManager:
             if not self.span.get_span_context().trace_flags.sampled:
                 return self
             new_ctx = set_span_in_context(self.span)
-            set_trace_context(new_ctx)
+            self._token = set_trace_context(new_ctx)
             _append_trace_stack(self.span)
             set_span_name(self.trace_name)
 
@@ -129,7 +132,10 @@ class TraceContextManager:
             # be reported as errors in the trace. They cause noise
             # in the trace and are not meaningful to the user.
             self.span.end()
-            _pop_trace_stack()
+            # Only detach/pop what we actually attached/pushed (sampled path).
+            if self._token is not None:
+                detach_trace_context(self._token)
+                _pop_trace_stack()
 
         return False
 
