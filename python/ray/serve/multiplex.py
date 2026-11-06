@@ -2,6 +2,7 @@ import asyncio
 import inspect
 import logging
 import time
+import weakref
 from collections import OrderedDict
 from typing import Any, Callable, List, Set
 
@@ -17,6 +18,60 @@ from ray.serve._private.usage import ServeUsageTag
 from ray.serve.context import _get_global_client, _get_internal_replica_context
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
+
+
+def _noop_del(self) -> None:
+    pass
+
+
+# Maps a model class to its subclass from `_subclass_without_del`. The subclass
+# refers to the model class through `__bases__`, so weak keys would never be
+# released. Weak values let both classes be collected once no evicted model
+# uses the subclass.
+_subclasses_without_del: "weakref.WeakValueDictionary[type, type]" = (
+    weakref.WeakValueDictionary()
+)
+
+
+def _subclass_without_del(cls: type) -> type:
+    """Return a subclass of `cls` whose `__del__` does nothing."""
+    subclass = _subclasses_without_del.get(cls)
+    if subclass is None:
+        subclass = type(
+            cls.__name__,
+            (cls,),
+            {
+                "__del__": _noop_del,
+                "__slots__": (),
+                "__module__": cls.__module__,
+                "__qualname__": cls.__qualname__,
+            },
+        )
+        _subclasses_without_del[cls] = subclass
+    return subclass
+
+
+def _skip_del_on_collection(model: Any) -> None:
+    """Keep Python from calling `model.__del__` again when `model` is collected.
+
+    Python looks `__del__` up on the type, so assigning it on the instance does
+    not stop the second call. Swap the instance to a subclass whose `__del__`
+    does nothing instead.
+    """
+    if type(model).__dict__.get("__del__") is _noop_del:
+        # Already swapped, for example when the same object was returned for
+        # more than one model ID.
+        return
+    try:
+        model.__class__ = _subclass_without_del(type(model))
+    except Exception as e:
+        # Some types, such as extension types, cannot be subclassed or cannot
+        # have `__class__` reassigned, and creating the subclass runs metaclass
+        # hooks. In those cases `__del__` runs again on collection, as before.
+        logger.warning(
+            f"Could not keep `{type(model).__qualname__}.__del__` from running "
+            f"again when the evicted model is collected: {e!r}"
+        )
 
 
 class _ModelMultiplexWrapper:
@@ -249,11 +304,15 @@ class _ModelMultiplexWrapper:
         # If the model has __del__ attribute, call it.
         # This is to clean up the model resources eagerly.
         if hasattr(model, "__del__"):
-            if not inspect.iscoroutinefunction(model.__del__):
-                await asyncio.get_running_loop().run_in_executor(None, model.__del__)
-            else:
-                await model.__del__()
-            model.__del__ = lambda _: None
+            try:
+                if not inspect.iscoroutinefunction(model.__del__):
+                    await asyncio.get_running_loop().run_in_executor(
+                        None, model.__del__
+                    )
+                else:
+                    await model.__del__()
+            finally:
+                _skip_del_on_collection(model)
         unload_latency_ms = (time.time() - unload_start_time) * 1000.0
         self.model_unload_latency_ms.observe(unload_latency_ms)
         logger.debug(
