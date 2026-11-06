@@ -1,5 +1,6 @@
 import sys
 from collections import Counter
+from decimal import Decimal
 
 import numpy as np
 import pandas as pd
@@ -324,6 +325,23 @@ class TestApproximateQuantile:
 
         result = ds.aggregate(ApproximateQuantile(on="value", quantiles=[0.5]))
         assert result["approx_quantile(value)"] == [15.0]
+
+    def test_approximate_quantile_decimal(self, ray_start_regular_shared_2_cpus):
+        values = [Decimal("5.00"), None, Decimal("15.00"), Decimal("25.00")]
+        table = pa.table({"value": pa.array(values, type=pa.decimal128(10, 2))})
+        ds = ray.data.from_arrow(table)
+
+        result = ds.aggregate(ApproximateQuantile(on="value", quantiles=[0.5]))
+        assert result["approx_quantile(value)"] == [15.0]
+
+    def test_approximate_quantile_rejects_timestamps(
+        self, ray_start_regular_shared_2_cpus
+    ):
+        table = pa.table({"value": pa.array([0, 1], type=pa.timestamp("ms"))})
+        ds = ray.data.from_arrow(table)
+
+        with pytest.raises(TypeError):
+            ds.aggregate(ApproximateQuantile(on="value", quantiles=[0.5]))
 
     def test_approximate_quantile_custom_alias(self, ray_start_regular_shared_2_cpus):
         data = [
