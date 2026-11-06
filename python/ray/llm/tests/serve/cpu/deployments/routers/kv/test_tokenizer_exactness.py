@@ -10,6 +10,7 @@ parameter semantics (special-token defaults, ``add_generation_prompt``,
 """
 
 import json
+import os
 import sys
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
@@ -140,6 +141,24 @@ class TestChatExactness:
     async def test_matches_transformers_ground_truth(
         self, tokenizer, hf_tokenizer, messages
     ):
+        ids = await tokenizer.tokenize(
+            {"model": "test-model", "messages": messages},
+            request_path="/v1/chat/completions",
+        )
+        assert ids == _hf_chat_ids(hf_tokenizer, messages)
+
+    async def test_builds_with_engine_only_settings_on_cpu(
+        self, monkeypatch, hf_tokenizer
+    ):
+        """The router replica inherits the deployment's runtime_env, which can
+        force Model Runner V2 for the GPU engine. On this GPU-less node V2 fails
+        validation ("Model Runner V2 requires Triton"), so the router must build
+        its tokenizer without the engine's settings and tokenize the same."""
+        monkeypatch.setenv("VLLM_USE_V2_MODEL_RUNNER", "1")
+        tokenizer = _build_tokenizer()
+        assert os.environ["VLLM_USE_V2_MODEL_RUNNER"] == "1"
+
+        messages = CHAT_CASES[1].values[0]
         ids = await tokenizer.tokenize(
             {"model": "test-model", "messages": messages},
             request_path="/v1/chat/completions",
