@@ -35,6 +35,14 @@ except ImportError:
     pass
 
 
+try:
+    from ray.util.collective.collective_group.xccl_collective_group import XCCLGroup
+
+    register_collective_backend("XCCL", XCCLGroup)
+except ImportError:
+    pass
+
+
 def nccl_available():
     return is_backend_available("NCCL")
 
