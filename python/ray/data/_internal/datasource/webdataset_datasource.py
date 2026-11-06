@@ -217,7 +217,7 @@ def _group_by_keys(
         if suffix in current_sample:
             raise ValueError(
                 f"{fname}: duplicate file name in tar file "
-                + f"{suffix} {current_sample.keys()}, tar is {meta['__url__']}"
+                + f"{suffix} {current_sample.keys()}, tar is {meta.get('__url__')}"
             )
         if suffixes is None or _check_suffix(suffix, suffixes):
             current_sample[suffix] = value
@@ -249,14 +249,14 @@ def _default_decoder(
     """
     sample = dict(sample)
     for key, value in sample.items():
-        extension = key.split(".")[-1]
+        extension = key.split(".")[-1].lower()
         if key.startswith("__"):
             continue
         elif extension in ["txt", "text"]:
             sample[key] = value.decode("utf-8")
         elif extension in ["cls", "cls2"]:
             sample[key] = int(value.decode("utf-8"))
-        elif extension in ["jpg", "png", "ppm", "pgm", "pbm", "pnm"]:
+        elif extension in ["jpg", "jpeg", "png", "ppm", "pgm", "pbm", "pnm"]:
             import numpy as np
             import PIL.Image
 
@@ -322,10 +322,10 @@ def _default_encoder(sample: Dict[str, Any], format: Optional[Union[str, bool]] 
     """
     sample = dict(sample)
     for key, value in sample.items():
-        extension = key.split(".")[-1]
+        extension = key.split(".")[-1].lower()
         if key.startswith("__"):
             continue
-        elif extension in ["txt"]:
+        elif extension in ["txt", "text"]:
             sample[key] = value.encode("utf-8")
         elif extension in ["cls", "cls2"]:
             sample[key] = str(value).encode("utf-8")
@@ -453,7 +453,7 @@ class WebDatasetDatasource(FileBasedDatasource):
         for sample in samples:
             if self.decoder is not None:
                 sample = _apply_list(self.decoder, sample, default=default_decoder)
-            if self.expand_json:
+            if self.expand_json and "json" in sample:
                 if isinstance(sample["json"], bytes):
                     parsed_json = json.loads(sample["json"].decode("utf-8"))
                 elif isinstance(sample["json"], str):
@@ -466,14 +466,8 @@ class WebDatasetDatasource(FileBasedDatasource):
                     )
                 for k, v in parsed_json.items():
                     if k not in sample:
-                        sample[k] = []
-                    sample[k].append(v)
-            rows.append(
-                {
-                    k: v[0] if isinstance(v, list) and len(v) == 1 else v
-                    for k, v in sample.items()
-                }
-            )
+                        sample[k] = v
+            rows.append(sample)
             if len(rows) >= WEBDATASET_READ_CHUNK_SIZE:
                 yield pd.DataFrame.from_records(rows)
                 rows = []
