@@ -14,6 +14,7 @@ from ray.data._internal.datasource.json_datasource import PandasJSONDatasource
 from ray.data._internal.pandas_block import PandasBlockBuilder
 from ray.data._internal.util import rows_same
 from ray.data.block import BlockAccessor
+from ray.data.context import DataContext
 from ray.data.datasource.file_based_datasource import (
     FILE_SIZE_FETCH_PARALLELIZATION_THRESHOLD,
 )
@@ -25,8 +26,33 @@ from ray.tests.conftest import *  # noqa
 pytestmark = pytest.mark.timeout(360)
 
 
+@pytest.fixture(params=[False, True], ids=["v1", "v2"])
+def json_reader_version(request, monkeypatch):
+    monkeypatch.setattr(DataContext.get_current(), "use_datasource_v2", request.param)
+    return request.param
+
+
+@pytest.fixture
+def json_reader_v1(monkeypatch):
+    """Pin a test of the pandas ``lines=True`` reader to V1."""
+    monkeypatch.setattr(DataContext.get_current(), "use_datasource_v2", False)
+
+
+@pytest.fixture
+def json_v2_small_chunks(monkeypatch):
+    """Use the V2 reader with 256-byte chunks and 1 KiB read tasks."""
+    ctx = DataContext.get_current()
+    monkeypatch.setattr(ctx, "use_datasource_v2", True)
+    monkeypatch.setattr(ctx, "target_min_block_size", 1)
+    monkeypatch.setattr(ctx, "target_max_block_size", 1024)
+    monkeypatch.setenv("RAY_DATA_LINE_CHUNK_BYTES", "256")
+
+
 def test_json_read(
-    ray_start_regular_shared, target_max_block_size_infinite_or_default, tmp_path
+    ray_start_regular_shared,
+    target_max_block_size_infinite_or_default,
+    tmp_path,
+    json_reader_version,
 ):
     df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
     path1 = os.path.join(tmp_path, "test1.json")
@@ -36,12 +62,17 @@ def test_json_read(
     pd.testing.assert_frame_equal(df1.astype(dsdf.dtypes.to_dict()), dsdf)
     # Metadata ops.
     assert ds.count() == 3
-    assert ds.input_files() == [path1]
+    if not json_reader_version:
+        # V2 lists files at execution time.
+        assert ds.input_files() == [path1]
     assert ds.schema() == Schema(pa.schema([("one", pa.int64()), ("two", pa.string())]))
 
 
 def test_zipped_json_read(
-    ray_start_regular_shared, tmp_path, target_max_block_size_infinite_or_default
+    ray_start_regular_shared,
+    tmp_path,
+    target_max_block_size_infinite_or_default,
+    json_reader_version,
 ):
     df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
     path1 = os.path.join(tmp_path, "test1.json.gz")
@@ -51,11 +82,16 @@ def test_zipped_json_read(
     pd.testing.assert_frame_equal(df1.astype(dsdf.dtypes.to_dict()), dsdf)
     # Metadata ops.
     assert ds.count() == 3
-    assert ds.input_files() == [path1]
+    if not json_reader_version:
+        # V2 lists files at execution time.
+        assert ds.input_files() == [path1]
 
 
 def test_read_json_fallback_from_pyarrow_failure(
-    ray_start_regular_shared, local_path, target_max_block_size_infinite_or_default
+    ray_start_regular_shared,
+    local_path,
+    target_max_block_size_infinite_or_default,
+    json_reader_version,
 ):
     # Try to read this with read_json() to trigger fallback logic
     # to read bytes with json.load().
@@ -80,6 +116,7 @@ def test_json_read_with_read_options(
     ray_start_regular_shared,
     tmp_path,
     target_max_block_size_infinite_or_default,
+    json_reader_version,
 ):
     # Arrow's JSON ReadOptions isn't serializable in pyarrow < 8.0.0, so this test
     # covers our custom ReadOptions serializer.
@@ -97,7 +134,9 @@ def test_json_read_with_read_options(
     pd.testing.assert_frame_equal(df1.astype(dsdf.dtypes.to_dict()), dsdf)
     # Test metadata ops.
     assert ds.count() == 3
-    assert ds.input_files() == [path1]
+    if not json_reader_version:
+        # V2 lists files at execution time.
+        assert ds.input_files() == [path1]
     assert ds.schema() == Schema(pa.schema([("one", pa.int64()), ("two", pa.string())]))
 
 
@@ -105,6 +144,7 @@ def test_json_read_with_parse_options(
     ray_start_regular_shared,
     tmp_path,
     target_max_block_size_infinite_or_default,
+    json_reader_version,
 ):
     # Arrow's JSON ParseOptions isn't serializable in pyarrow < 8.0.0, so this test
     # covers our custom ParseOptions serializer, similar to ReadOptions in above test.
@@ -126,11 +166,15 @@ def test_json_read_with_parse_options(
     pd.testing.assert_series_equal(df1["two"].astype(dsdf["two"].dtype), dsdf["two"])
     # Test metadata ops.
     assert ds.count() == 3
-    assert ds.input_files() == [path1]
+    if not json_reader_version:
+        # V2 lists files at execution time.
+        assert ds.input_files() == [path1]
     assert ds.schema() == Schema(pa.schema([("two", pa.string())]))
 
 
-def test_json_read_invalid_format_includes_path(ray_start_regular_shared, tmp_path):
+def test_json_read_invalid_format_includes_path(
+    ray_start_regular_shared, tmp_path, json_reader_version
+):
     path = tmp_path / "malformed.json"
     path.write_text(
         """
@@ -150,7 +194,9 @@ def test_json_read_invalid_format_includes_path(ray_start_regular_shared, tmp_pa
     assert path.as_posix() in str(exc_info.value)
 
 
-def test_json_read_invalid_utf8_includes_path(ray_start_regular_shared, tmp_path):
+def test_json_read_invalid_utf8_includes_path(
+    ray_start_regular_shared, tmp_path, json_reader_version
+):
     path = tmp_path / "malformed_encoding.json"
     path.write_bytes(b'[{"name": "\xff"}]')
 
@@ -161,10 +207,13 @@ def test_json_read_invalid_utf8_includes_path(ray_start_regular_shared, tmp_path
     error_message = str(exc_info.value)
     assert path.as_posix() in error_message
     assert "utf-8" in error_message.lower()
-    assert isinstance(error, RayTaskError)
-    assert isinstance(error.cause, UnicodeDecodeError)
+    if not json_reader_version:
+        # V2 reads the file for the schema while planning, outside a task.
+        assert isinstance(error, RayTaskError)
+        assert isinstance(error.cause, UnicodeDecodeError)
 
 
+@pytest.mark.usefixtures("json_reader_v1")
 @pytest.mark.parametrize(
     "content",
     [
@@ -190,6 +239,7 @@ def test_jsonl_read_invalid_format_includes_path(
     assert "Expected object or value" in str(exc_info.value)
 
 
+@pytest.mark.usefixtures("json_reader_v1")
 @pytest.mark.parametrize(
     "content",
     [
@@ -218,6 +268,7 @@ def test_jsonl_read_invalid_utf8_includes_path(
     assert "utf-8" in str(error).lower()
 
 
+@pytest.mark.usefixtures("json_reader_v1")
 @pytest.mark.parametrize("override_num_blocks", [None, 1, 3])
 def test_jsonl_lists(
     ray_start_regular_shared,
@@ -246,6 +297,7 @@ def test_jsonl_lists(
     assert result[2] == {"0": "rocking", "1": "with", "2": "ray"}
 
 
+@pytest.mark.usefixtures("json_reader_v1")
 def test_jsonl_mixed_types(
     ray_start_regular_shared, tmp_path, target_max_block_size_infinite_or_default
 ):
@@ -294,6 +346,7 @@ def test_json_roundtrip(
     tmp_path,
     override_num_blocks,
     target_max_block_size_infinite_or_default,
+    json_reader_version,
 ):
     df = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
 
@@ -315,6 +368,7 @@ def test_json_read_small_file_unit_block_size(
     ray_start_regular_shared,
     tmp_path,
     target_max_block_size_infinite_or_default,
+    json_reader_version,
 ):
     """Test reading a small JSON file with unit block_size."""
 
@@ -326,7 +380,9 @@ def test_json_read_small_file_unit_block_size(
     pd.testing.assert_frame_equal(df1.astype(dsdf.dtypes.to_dict()), dsdf)
     # Test metadata ops.
     assert ds.count() == 3
-    assert ds.input_files() == [path1]
+    if not json_reader_version:
+        # V2 lists files at execution time.
+        assert ds.input_files() == [path1]
     assert ds.schema() == Schema(pa.schema([("one", pa.int64()), ("two", pa.string())]))
 
 
@@ -334,6 +390,7 @@ def test_json_read_file_larger_than_block_size(
     ray_start_regular_shared,
     tmp_path,
     target_max_block_size_infinite_or_default,
+    json_reader_version,
 ):
     """Test reading a JSON file larger than the block size."""
     block_size = 1024
@@ -354,14 +411,19 @@ def test_json_read_file_larger_than_block_size(
     pd.testing.assert_frame_equal(df2.astype(dsdf.dtypes.to_dict()), dsdf)
     # Test metadata ops.
     assert ds.count() == num_rows
-    assert ds.input_files() == [path2]
+    if not json_reader_version:
+        # V2 lists files at execution time.
+        assert ds.input_files() == [path2]
     assert ds.schema() == Schema(
         pa.schema([("one", pa.string()), ("two", pa.string())])
     )
 
 
 def test_json_read_negative_block_size_fallback(
-    ray_start_regular_shared, tmp_path, target_max_block_size_infinite_or_default
+    ray_start_regular_shared,
+    tmp_path,
+    target_max_block_size_infinite_or_default,
+    json_reader_version,
 ):
     """Test reading JSON with negative block_size triggers fallback to json.load()."""
 
@@ -376,7 +438,10 @@ def test_json_read_negative_block_size_fallback(
 
 
 def test_json_read_zero_block_size_failure(
-    ray_start_regular_shared, tmp_path, target_max_block_size_infinite_or_default
+    ray_start_regular_shared,
+    tmp_path,
+    target_max_block_size_infinite_or_default,
+    json_reader_version,
 ):
     """Test reading JSON with zero block_size fails in both arrow and fallback."""
 
@@ -444,7 +509,10 @@ def test_mixed_gzipped_json_files(
 
 
 def test_json_with_http_path_parallelization(
-    ray_start_regular_shared, httpserver, target_max_block_size_infinite_or_default
+    ray_start_regular_shared,
+    httpserver,
+    target_max_block_size_infinite_or_default,
+    json_reader_version,
 ):
     num_files = FILE_SIZE_FETCH_PARALLELIZATION_THRESHOLD
     urls = []
@@ -459,6 +527,53 @@ def test_json_with_http_path_parallelization(
     assert sorted(actual_rows, key=lambda row: row["id"]) == sorted(
         expected_rows, key=lambda row: row["id"]
     )
+
+
+@pytest.mark.parametrize(
+    "file_name,lines", [("data.jsonl", False), ("data.json", True)]
+)
+def test_read_json_v2_splits_json_lines_files(
+    ray_start_regular_shared, tmp_path, json_v2_small_chunks, file_name, lines
+):
+    path = tmp_path / file_name
+    path.write_text("".join(json.dumps({"id": i}) + "\n" for i in range(1000)))
+
+    ds = ray.data.read_json(str(path), lines=lines, include_paths=True).materialize()
+    rows = ds.take_all()
+
+    assert ds.num_blocks() > 1
+    assert sorted(row["id"] for row in rows) == list(range(1000))
+    assert {row["path"] for row in rows} == {str(path)}
+
+
+def test_read_json_v2_keeps_a_key_first_seen_late_in_a_chunk(
+    ray_start_regular_shared, tmp_path, monkeypatch
+):
+    # pyarrow.dataset infers a JSON fragment's schema from its first 1 MiB
+    # block; the V2 reader must not drop a key that first appears after it.
+    monkeypatch.setattr(DataContext.get_current(), "use_datasource_v2", True)
+    path = tmp_path / "data.jsonl"
+    rows = [{"a": i} for i in range(200_000)] + [{"a": -1, "late": "x"}]
+    path.write_text("".join(json.dumps(row) + "\n" for row in rows))
+
+    late = ray.data.read_json(str(path)).filter(lambda row: row["a"] == -1).take_all()
+
+    assert late == [{"a": -1, "late": "x"}]
+
+
+def test_read_json_v2_lines_reports_the_file_of_a_bad_line(
+    ray_start_regular_shared, tmp_path, monkeypatch
+):
+    monkeypatch.setattr(DataContext.get_current(), "use_datasource_v2", True)
+    path = tmp_path / "malformed.jsonl"
+    path.write_text('{"name": "A", "value": 1}\n{"name": "B", "value":\n')
+
+    with pytest.raises(
+        ValueError, match="Failed to parse line-delimited JSON from file"
+    ) as exc_info:
+        ray.data.read_json(str(path), lines=True).materialize()
+
+    assert path.as_posix() in str(exc_info.value)
 
 
 class TestPandasJSONDatasource:

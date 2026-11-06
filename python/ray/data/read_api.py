@@ -2322,6 +2322,23 @@ def read_json(
     For JSON file, the whole file is read as one row.
     For JSONL file, each line of file is read as separate row.
 
+    Note:
+        The DataSourceV2 reader is selected through the ``use_datasource_v2``
+        setting of :class:`~ray.data.context.DataContext`. It parses with
+        ``pyarrow.json`` for both values of ``lines`` and splits each large
+        uncompressed JSON Lines file into byte ranges read by separate tasks:
+        every such file when ``lines=True``, else only ``.jsonl`` files.
+        Column types are inferred per piece. With ``lines=True`` it differs
+        from the V1 pandas reader: nested objects become structs rather than
+        Python objects, date-like strings stay strings, integer columns with
+        nulls stay integers, and every line must be a JSON object.
+        ``arrow_open_stream_args``, and JSON options other than
+        ``read_options`` and ``parse_options``, use the V1 reader. To use the
+        V1 reader everywhere, set
+        ``ray.data.DataContext.get_current().use_datasource_v2 = False``, or
+        ``RAY_DATA_USE_DATASOURCE_V2=0`` in the environment before importing
+        Ray.
+
     Examples:
         Read a JSON file in remote storage.
 
@@ -2439,6 +2456,44 @@ def read_json(
         for param, value in incompatible_params.items():
             if value:
                 raise ValueError(f"`{param}` is not supported when `lines=True`. ")
+
+    from ray.data._internal.datasource_v2.formats.json.json_datasource_v2 import (
+        JSON_V2_ARGS,
+        JsonDatasourceV2,
+    )
+
+    if (
+        DataContext.get_current().use_datasource_v2
+        and not arrow_open_stream_args
+        and set(arrow_json_args) <= JSON_V2_ARGS
+    ):
+        datasource_v2 = JsonDatasourceV2(
+            paths=paths if isinstance(paths, list) else [paths],
+            lines=lines,
+            arrow_json_args=arrow_json_args,
+            filesystem=filesystem,
+            partitioning=partitioning,
+            file_extensions=file_extensions,
+            ignore_missing_paths=ignore_missing_paths,
+            include_paths=include_paths,
+            shuffle=shuffle,
+        )
+        return _read_datasource_v2(
+            datasource_v2,
+            parallelism=_get_num_output_blocks(parallelism, override_num_blocks),
+            num_cpus=num_cpus,
+            num_gpus=num_gpus,
+            memory=memory,
+            ray_remote_args=ray_remote_args,
+            label_selector=label_selector,
+            fallback_strategy=fallback_strategy,
+            max_calls=max_calls,
+            resources=resources,
+            accelerator_type=accelerator_type,
+            runtime_env=runtime_env,
+            concurrency=concurrency,
+            partition_filter=partition_filter,
+        )
 
     file_based_datasource_kwargs = dict(
         filesystem=filesystem,
