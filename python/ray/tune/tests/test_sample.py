@@ -1324,6 +1324,16 @@ class SearchSpaceTest(unittest.TestCase):
         self.assertAlmostEqual(np.mean(values), 5, delta=0.3)
         self.assertAlmostEqual(np.std(values), 2, delta=0.3)
 
+        # qrandn drops quantization, so it must take the same path.
+        searcher = NevergradSearch(
+            space={"a": tune.qrandn(5, 2, 0.5)},
+            optimizer=ng.optimizers.RandomSearchMaker(sampler="parametrization"),
+            metric="m",
+            mode="min",
+        )
+        values = [searcher.suggest(f"trial_{i}")["a"] for i in range(20)]
+        self.assertTrue(np.isfinite(values).all())
+
     def testSampleBoundsNevergrad(self):
         import nevergrad as ng
 
