@@ -39,9 +39,12 @@ from ray.core.generated.autoscaler_pb2 import (
 )
 from ray.core.generated.instance_manager_pb2 import (
     Instance,
+    InstanceUpdateEvent,
     LaunchRequest,
     NodeKind,
+    StatusCode,
     TerminationRequest,
+    UpdateInstanceManagerStateRequest,
 )
 
 s_to_ns = 1 * 1_000_000_000
@@ -132,6 +135,24 @@ def setup():
 
 
 class TestReconciler:
+    @staticmethod
+    def _update_instance(instance_manager, instance_id, status):
+        reply = instance_manager.update_instance_manager_state(
+            UpdateInstanceManagerStateRequest(
+                expected_version=-1,
+                updates=[
+                    InstanceUpdateEvent(
+                        instance_id=instance_id,
+                        new_instance_status=status,
+                        instance_type="type-1",
+                        launch_request_id=f"{instance_id}-request",
+                        upsert=True,
+                    )
+                ],
+            )
+        )
+        assert reply.status.code == StatusCode.OK
+
     @staticmethod
     def _add_instances(instance_storage, instances):
         for instance in instances:
@@ -1181,6 +1202,121 @@ class TestReconciler:
                 == instances[event.instance_id].launch_request_id
             )
             assert event.instance_type == "type-1"
+
+    @staticmethod
+    @pytest.mark.parametrize("history_limit", [10, 200])
+    @mock.patch("time.time_ns")
+    def test_launch_oldest_queued_instance_after_many_retries(
+        mock_time_ns, history_limit, monkeypatch, setup
+    ):
+        instance_manager, instance_storage, _, _ = setup
+        monkeypatch.setattr(
+            "ray.autoscaler.v2.instance_manager.common.MAX_STATUS_HISTORY_LENGTH",
+            history_limit,
+        )
+        mock_time_ns.return_value = s_to_ns
+        TestReconciler._update_instance(instance_manager, "older", Instance.QUEUED)
+        mock_time_ns.return_value = 2 * s_to_ns
+        TestReconciler._update_instance(instance_manager, "newer", Instance.QUEUED)
+
+        # Exceed the history limit. The original queue time
+        # must still determine launch order after allocation retries.
+        for _ in range(100):
+            mock_time_ns.return_value += s_to_ns
+            TestReconciler._update_instance(
+                instance_manager, "older", Instance.REQUESTED
+            )
+            mock_time_ns.return_value += s_to_ns
+            TestReconciler._update_instance(instance_manager, "older", Instance.QUEUED)
+
+        Reconciler._handle_instances_launch(
+            instance_manager,
+            MockAutoscalingConfig(configs={"max_concurrent_launches": 1}),
+        )
+        instances, _ = instance_storage.get_instances()
+        assert instances["older"].status == Instance.REQUESTED
+        assert instances["newer"].status == Instance.QUEUED
+        assert len(instances["older"].status_history) == history_limit
+
+    @staticmethod
+    @pytest.mark.parametrize("history_limit", [10, 200])
+    @mock.patch("time.time_ns")
+    def test_allocate_oldest_requested_instance_after_many_retries(
+        mock_time_ns, history_limit, monkeypatch, setup
+    ):
+        instance_manager, instance_storage, _, _ = setup
+        monkeypatch.setattr(
+            "ray.autoscaler.v2.instance_manager.common.MAX_STATUS_HISTORY_LENGTH",
+            history_limit,
+        )
+        mock_time_ns.return_value = 0
+        TestReconciler._update_instance(instance_manager, "older", Instance.QUEUED)
+        mock_time_ns.return_value = s_to_ns
+        TestReconciler._update_instance(instance_manager, "older", Instance.REQUESTED)
+        mock_time_ns.return_value = 2 * s_to_ns
+        TestReconciler._update_instance(instance_manager, "newer", Instance.QUEUED)
+        TestReconciler._update_instance(instance_manager, "newer", Instance.REQUESTED)
+
+        for _ in range(100):
+            mock_time_ns.return_value += s_to_ns
+            TestReconciler._update_instance(instance_manager, "older", Instance.QUEUED)
+            mock_time_ns.return_value += s_to_ns
+            TestReconciler._update_instance(
+                instance_manager, "older", Instance.REQUESTED
+            )
+
+        Reconciler._handle_cloud_instance_allocation(
+            instance_manager,
+            non_terminated_cloud_instances={
+                "cloud-1": CloudInstance(
+                    cloud_instance_id="cloud-1",
+                    node_type="type-1",
+                    node_kind=NodeKind.WORKER,
+                    is_running=True,
+                )
+            },
+            cloud_provider_errors=[],
+        )
+        instances, _ = instance_storage.get_instances()
+        assert instances["older"].status == Instance.ALLOCATED
+        assert instances["newer"].status == Instance.REQUESTED
+        assert len(instances["older"].status_history) == history_limit
+
+    @staticmethod
+    @pytest.mark.parametrize("max_retries", [3, 100])
+    @pytest.mark.parametrize("history_limit", [10, 200])
+    @mock.patch("time.time_ns")
+    def test_stuck_requested_instance_retry_limit(
+        mock_time_ns, max_retries, history_limit, monkeypatch, setup
+    ):
+        instance_manager, instance_storage, _, _ = setup
+        monkeypatch.setattr(
+            "ray.autoscaler.v2.instance_manager.common.MAX_STATUS_HISTORY_LENGTH",
+            history_limit,
+        )
+        mock_time_ns.return_value = s_to_ns
+        TestReconciler._update_instance(instance_manager, "retry", Instance.QUEUED)
+        reconcile_config = InstanceReconcileConfig(
+            request_status_timeout_s=1,
+            max_num_retry_request_to_allocate=max_retries,
+        )
+
+        # Retry accounting must include requests already trimmed from history.
+        for attempt in range(max_retries + 1):
+            TestReconciler._update_instance(
+                instance_manager, "retry", Instance.REQUESTED
+            )
+            mock_time_ns.return_value += 2 * s_to_ns
+            Reconciler._handle_stuck_instances(
+                instance_manager, reconcile_config, logger
+            )
+            instances, _ = instance_storage.get_instances()
+            instance = instances["retry"]
+            expected_status = (
+                Instance.QUEUED if attempt < max_retries else Instance.ALLOCATION_FAILED
+            )
+            assert instance.status == expected_status
+            assert len(instance.status_history) <= history_limit
 
     @staticmethod
     @mock.patch("time.time_ns")
