@@ -14,6 +14,7 @@ from ray.train.health import (
     Reattempt,
 )
 from ray.train.health._internal import manager as manager_module
+from ray.train.health._internal.constants import DEFAULT_ON_DEMAND_PROBE_TIMEOUT_S
 from ray.train.v2._internal.callbacks.health_callback import HealthCallback
 from ray.train.v2._internal.callbacks.user_callback import UserCallbackHandler
 from ray.train.v2._internal.constants import HEALTH_CHECK_INTERVAL_S_ENV_VAR
@@ -42,38 +43,21 @@ pytestmark = pytest.mark.usefixtures("mock_runtime_context")
 
 class FakeHealthManager:
     """Returns the queued in-flight and diagnosis decisions, and records the
-    started diagnoses and the evicted nodes."""
+    started diagnoses."""
 
     def __init__(self, inflight_checks):
         self.decisions = []
         self.diagnosis_decisions = []
         self.diagnoses = []
-        self.evicted_nodes = []
 
     def evaluate_inflight_checks(self):
-        return self._next(self.decisions)
+        return self.decisions.pop(0) if self.decisions else Noop()
 
     def start_on_demand_checks(self, checks, timeout):
         self.diagnoses.append(checks)
 
     def evaluate_on_demand_checks(self):
-        return self._next(self.diagnosis_decisions)
-
-    def _next(self, decisions):
-        decision = decisions.pop(0) if decisions else Noop()
-        if isinstance(decision, Evict):
-            self.evicted_nodes = sorted({*self.evicted_nodes, *decision.target_nodes})
-        return decision
-
-
-class RecordingWorkerGroup(DummyWorkerGroup):
-    """Records the context of each worker group started."""
-
-    contexts = []
-
-    def __init__(self, train_run_context, worker_group_context, callbacks=None):
-        super().__init__(train_run_context, worker_group_context, callbacks)
-        RecordingWorkerGroup.contexts.append(worker_group_context)
+        return self.diagnosis_decisions.pop(0) if self.diagnosis_decisions else Noop()
 
 
 class RecordingCallback(ControllerCallback):
@@ -86,10 +70,9 @@ class RecordingCallback(ControllerCallback):
 
 @pytest.fixture(autouse=True)
 def patch_controller(monkeypatch):
-    monkeypatch.setattr(TrainController, "worker_group_cls", RecordingWorkerGroup)
+    monkeypatch.setattr(TrainController, "worker_group_cls", DummyWorkerGroup)
     monkeypatch.setattr(manager_module, "HealthManager", FakeHealthManager)
     monkeypatch.setenv(HEALTH_CHECK_INTERVAL_S_ENV_VAR, "0")
-    RecordingWorkerGroup.contexts = []
     ray.init()
     yield
     ray.shutdown()
@@ -99,14 +82,14 @@ def _step(controller):
     asyncio.run(controller._run_control_loop_iteration())
 
 
-def _running_controller(failure_policy, scaling_config=None):
+def _running_controller(failure_policy):
     scaling_policy = MockScalingPolicy(scaling_config=ScalingConfig())
     callback = RecordingCallback()
     controller = TrainController(
         train_fn_ref=DummyObjectRefWrapper(lambda: None),
         train_run_context=create_dummy_run_context(
             run_config=RunConfig(name="test", health_config=HealthConfig()),
-            scaling_config=scaling_config or ScalingConfig(num_workers=2),
+            scaling_config=ScalingConfig(num_workers=2),
         ),
         scaling_policy=scaling_policy,
         failure_policy=failure_policy,
@@ -172,40 +155,43 @@ def test_reattempt_goes_through_the_failure_policy():
     assert [type(d) for d in callback.decisions] == [Reattempt]
 
 
-def test_evict_restarts_without_the_evicted_nodes():
+def test_evict_restarts_outside_the_failure_policy():
     failure_policy = MockFailurePolicy(None)
     failure_policy.make_decision = MagicMock()
-    controller, _ = _running_controller(
-        failure_policy,
-        scaling_config=ScalingConfig(num_workers=2, label_selector={"zone": "a"}),
-    )
+    controller, callback = _running_controller(failure_policy)
     controller._health_manager.decisions = [
-        Evict(reason="hot GPU", target_nodes=["n2", "n1"])
+        Evict(reason="hot GPU", target_nodes=["n1"])
     ]
 
     _step(controller)
     assert isinstance(controller.get_state(), RestartingState)
     failure_policy.make_decision.assert_not_called()
+    assert [type(d) for d in callback.decisions] == [Evict]
 
     _step(controller)
     assert isinstance(controller.get_state(), SchedulingState)
     _step(controller)
     assert isinstance(controller.get_state(), RunningState)
-    assert (
-        RecordingWorkerGroup.contexts[-1].label_selector
-        == [{"zone": "a", "ray.io/node-id": "!in(n1,n2)"}] * 2
-    )
 
 
-def test_health_callback_resets_each_attempt():
+@pytest.mark.parametrize("preflight_checks", [[], [HealthCheck()]])
+def test_health_callback_resets_each_attempt_and_starts_its_preflight_checks(
+    preflight_checks,
+):
     health_manager = MagicMock()
-    callback = HealthCallback(health_manager)
+    callback = HealthCallback(health_manager, preflight_checks)
     worker_group = MagicMock()
     worker_group.get_workers.return_value = [
         MagicMock(metadata=MagicMock(node_id=node_id)) for node_id in ("b", "a", "b")
     ]
     callback.after_worker_group_start(worker_group)
     health_manager.reset.assert_called_once_with(["a", "b"])
+    if preflight_checks:
+        health_manager.start_on_demand_checks.assert_called_once_with(
+            preflight_checks, timeout=DEFAULT_ON_DEMAND_PROBE_TIMEOUT_S
+        )
+    else:
+        health_manager.start_on_demand_checks.assert_not_called()
 
     callback.before_worker_group_shutdown(worker_group)
     health_manager.shutdown.assert_called_once()

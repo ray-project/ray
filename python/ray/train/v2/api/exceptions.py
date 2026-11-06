@@ -1,10 +1,10 @@
 from typing import TYPE_CHECKING, Dict
 
+from ray.train.health import HealthDecision
 from ray.train.v2._internal.exceptions import RayTrainError
 from ray.util.annotations import DeveloperAPI, PublicAPI
 
 if TYPE_CHECKING:
-    from ray.train.health import HealthDecision
     from ray.train.v2.api.preemption import PreemptionInfo
 
 
@@ -42,7 +42,7 @@ class HealthCheckError(WorkerGroupError):
         decision: The health decision, a ``Reattempt`` or an ``Evict``.
     """
 
-    def __init__(self, decision: "HealthDecision"):
+    def __init__(self, decision: HealthDecision):
         super().__init__(
             f"A health check decided to {type(decision).__name__}: {decision.reason}",
             worker_failures={},

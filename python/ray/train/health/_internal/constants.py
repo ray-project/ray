@@ -7,5 +7,6 @@ DEFAULT_NODE_MONITOR_HEALTH_CHECK_TIMEOUT_S = 60.0
 # Timeout in seconds for each poll to wait for the NodeMonitors.
 DEFAULT_NODE_MONITOR_POLL_TIMEOUT_S = 1.0
 
-# Timeout in seconds for the nodes to answer the checks of a Diagnose.
-DEFAULT_DIAGNOSE_TIMEOUT_S = 60.0
+# Timeout in seconds for the nodes to answer on-demand checks: the pre-flight
+# checks and the checks of a Diagnose.
+DEFAULT_ON_DEMAND_PROBE_TIMEOUT_S = 60.0
