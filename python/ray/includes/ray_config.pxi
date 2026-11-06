@@ -7,6 +7,10 @@ cdef class Config:
         return RayConfig.instance().initialize(config_list)
 
     @staticmethod
+    def JOB_ID():
+        return RayConfig.instance().JOB_ID().decode("utf-8")
+
+    @staticmethod
     def ray_cookie():
         return RayConfig.instance().ray_cookie()
 

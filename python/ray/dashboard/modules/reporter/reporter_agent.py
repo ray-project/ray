@@ -131,6 +131,41 @@ def jsonify_asdict(o) -> str:
     return json.dumps(dashboard_utils.to_google_style(recursive_asdict(o)))
 
 
+FORK_SERVER_COMPONENT_NAME = "ray::fork_server"
+
+
+def _is_fork_server_cmdline(cmdline: List[str]) -> bool:
+    """Return True if cmdline belongs to a live fork_server.py daemon."""
+    if not cmdline or cmdline[0].startswith("ray::"):
+        return False
+    basenames = {os.path.basename(arg) for arg in cmdline}
+    return (
+        "fork_server.py" in basenames
+        and "_cgroup_bootstrap.py" not in basenames
+        and "setup_worker.py" not in basenames
+        and any(arg.startswith("--socket-path=") for arg in cmdline)
+    )
+
+
+def _get_fork_server_processes(agents: dict, generate_proc_key) -> dict:
+    """Discover live fork_server.py direct children of runtime_env_agent."""
+    fork_servers = {}
+    for agent_proc in agents.values():
+        try:
+            children = agent_proc.children(recursive=False)
+        except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
+            continue
+        for child in children:
+            try:
+                if child.status() != psutil.STATUS_ZOMBIE and _is_fork_server_cmdline(
+                    child.cmdline()
+                ):
+                    fork_servers[generate_proc_key(child)] = child
+            except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
+                continue
+    return fork_servers
+
+
 # A list of gauges to record and export metrics.
 METRICS_GAUGES = {
     # CPU metrics
@@ -211,6 +246,12 @@ METRICS_GAUGES = {
         "node_cgroup_mem_total",
         "Container memory limit on a ray node",
         "bytes",
+        NODE_TAG_KEYS,
+    ),
+    "node_fork_server_count": Gauge(
+        "node_fork_server_count",
+        "Active Python worker fork server processes on a ray node",
+        "processes",
         NODE_TAG_KEYS,
     ),
     # GPU metrics
@@ -543,6 +584,9 @@ class ReporterAgent(
         # The last reported worker proc names (e.g., ray::*).
         self._latest_worker_proc_names = set()
         self._latest_gpu_worker_proc_names = set()
+        self._fork_server_metric_active = env_bool(
+            "RAY_enable_worker_fork_server", False
+        )
         self._network_stats_hist = [(0, (0.0, 0.0))]  # time, (sent, recv)
         self._disk_io_stats_hist = [
             (0, (0.0, 0.0, 0, 0))
@@ -1160,7 +1204,9 @@ class ReporterAgent(
         workers, agents = await asyncio.gather(
             self._async_get_worker_processes(), self._async_get_agent_processes()
         )
+        fork_servers = _get_fork_server_processes(agents, self._generate_proc_key)
         workers.update(agents)
+        workers.update(fork_servers)
         if not workers:
             return []
         else:
@@ -1190,13 +1236,19 @@ class ReporterAgent(
                             gpu_pid_mapping[proc["pid"]].append(proc)
 
             result = []
-            for w in self._workers.values():
+            for key, w in self._workers.items():
                 try:
                     if w.status() == psutil.STATUS_ZOMBIE:
                         continue
 
                     # Get basic process info
                     worker_info = _process_as_dict(w)
+                    if key in fork_servers:
+                        cmdline = worker_info.get("cmdline") or []
+                        worker_info["cmdline"] = [
+                            FORK_SERVER_COMPONENT_NAME,
+                            *cmdline[1:],
+                        ]
 
                     # Add GPU information if available
                     worker_pid = worker_info["pid"]
@@ -1215,7 +1267,11 @@ class ReporterAgent(
                     worker_info["gpu_utilization"] = gpu_utilization  # percentage
 
                     result.append(worker_info)
-                except psutil.NoSuchProcess:
+                except (
+                    psutil.NoSuchProcess,
+                    psutil.AccessDenied,
+                    psutil.ZombieProcess,
+                ):
                     # the process may have terminated due to race condition.
                     continue
 
@@ -1784,6 +1840,22 @@ class ReporterAgent(
                         tags=node_tags,
                     ),
                 ]
+            )
+
+        fork_server_count = sum(
+            1
+            for w in stats.get("workers", ())
+            if (w.get("cmdline") or [None])[0] == FORK_SERVER_COMPONENT_NAME
+        )
+        if fork_server_count > 0:
+            self._fork_server_metric_active = True
+        if self._fork_server_metric_active:
+            records_reported.append(
+                Record(
+                    gauge=METRICS_GAUGES["node_fork_server_count"],
+                    value=fork_server_count,
+                    tags=node_tags,
+                )
             )
 
         # The output example of GpuUtilizationInfo.

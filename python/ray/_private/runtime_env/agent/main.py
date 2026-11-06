@@ -141,6 +141,13 @@ if __name__ == "__main__":
         default="",
         help="The filepath to dump runtime env agent stderr.",
     )
+    parser.add_argument(
+        "--workers-cgroup-path",
+        required=False,
+        type=str,
+        default="",
+        help="The cgroup v2 path where worker fork servers should be placed.",
+    )
 
     args = parser.parse_args()
 
@@ -175,6 +182,7 @@ if __name__ == "__main__":
         temp_dir=args.temp_dir,
         address=args.node_ip_address,
         runtime_env_agent_port=args.runtime_env_agent_port,
+        workers_cgroup_path=args.workers_cgroup_path,
     )
 
     ray._raylet.setproctitle(ray_constants.AGENT_PROCESS_TYPE_RUNTIME_ENV_AGENT)

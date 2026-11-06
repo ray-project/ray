@@ -1303,4 +1303,18 @@ RAY_CONFIG(bool, enable_worker_fork_server, false)
 
 // Timeout in milliseconds for a fork server socket request before falling back to
 // starting a fresh worker process.
-RAY_CONFIG(int64_t, worker_fork_server_timeout_ms, 500)
+RAY_CONFIG(int64_t, worker_fork_server_timeout_ms, 100)
+
+// Maximum number of active fork server processes (including the default server) that
+// RuntimeEnvAgent keeps running on a single node before new environments fall back to
+// spawning workers via execvpe.
+RAY_CONFIG(int64_t, max_active_fork_servers, 32)
+
+// Maximum number of idle (ref_cnt == 0) non-default fork server processes cached by
+// RuntimeEnvAgent for scale-to-zero reuse. Defaults to 0 so v1 stops non-default fork
+// servers immediately when their last environment reference drops to zero.
+RAY_CONFIG(int64_t, runtime_env_max_idle_fork_servers, 0)
+
+// Time-to-live in seconds for cached idle non-default fork server processes when
+// runtime_env_max_idle_fork_servers > 0.
+RAY_CONFIG(int64_t, runtime_env_fork_server_idle_ttl_s, 60)

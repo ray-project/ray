@@ -36,6 +36,8 @@ struct WorkerPoolMetrics {
   ray::observability::MetricInterface
       &num_cached_workers_skipped_dynamic_options_mismatch_sum;
   ray::observability::MetricInterface &num_workers_started_from_cache_sum;
+  ray::observability::MetricInterface &num_workers_forked_from_server_sum;
+  ray::observability::MetricInterface &num_worker_fork_server_fallbacks_sum;
   ray::observability::MetricInterface &worker_register_time_ms_histogram;
 };
 
@@ -203,6 +205,23 @@ inline ray::stats::Sum GetNumWorkersStartedFromCacheMetric() {
       /*name=*/"internal_num_processes_started_from_cache",
       /*description=*/"The total number of workers started from a cached worker process.",
       /*unit=*/"workers"};
+}
+
+inline ray::stats::Sum GetNumWorkersForkedFromServerMetric() {
+  return ray::stats::Sum{
+      /*name=*/"internal_num_processes_forked_from_server",
+      /*description=*/
+      "The total number of Python worker processes created via a worker fork server.",
+      /*unit=*/"processes"};
+}
+
+inline ray::stats::Sum GetNumWorkerForkServerFallbacksMetric() {
+  return ray::stats::Sum{
+      /*name=*/"internal_num_fork_server_fallbacks",
+      /*description=*/
+      "The total number of worker process starts that fell back from a configured fork "
+      "server socket to spawning a fresh interpreter.",
+      /*unit=*/"processes"};
 }
 
 inline ray::stats::Histogram GetWorkerRegisterTimeMsHistogramMetric() {

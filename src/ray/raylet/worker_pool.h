@@ -769,9 +769,17 @@ class WorkerPool : public WorkerPoolInterface {
   /// Set of jobs whose drivers have exited.
   absl::flat_hash_set<JobID> finished_jobs_;
 
+  struct UnhealthyForkServerSocket {
+    int64_t until_ms = 0;
+    uint64_t st_dev = 0;
+    uint64_t st_ino = 0;
+  };
+
   /// Map of fork server socket paths that failed or timed out to the steady-clock
-  /// timestamp (ms) until which they should be bypassed.
-  absl::flat_hash_map<std::string, int64_t> unhealthy_fork_server_sockets_until_ms_;
+  /// cooldown deadline and socket inode at failure time. Atomically replacing a socket
+  /// via os.replace() changes its inode and immediately clears the cooldown.
+  absl::flat_hash_map<std::string, UnhealthyForkServerSocket>
+      unhealthy_fork_server_sockets_;
 
   /// A map of idle workers that are pending exit.
   absl::flat_hash_map<WorkerID, std::shared_ptr<WorkerInterface>>

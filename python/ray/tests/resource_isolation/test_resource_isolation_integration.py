@@ -4,7 +4,7 @@ import subprocess
 import sys
 import textwrap
 from pathlib import Path
-from typing import Set
+from typing import Optional, Set
 
 import pytest
 from click.testing import CliRunner
@@ -15,6 +15,11 @@ import ray._private.ray_constants as ray_constants
 import ray.scripts.scripts as scripts
 from ray._common.test_utils import wait_for_condition
 from ray._private.resource_isolation_config import ResourceIsolationConfig
+
+try:
+    import torch
+except ImportError:
+    torch = None
 
 # These tests are intended to run in CI inside a container.
 #
@@ -28,8 +33,24 @@ from ray._private.resource_isolation_config import ResourceIsolationConfig
 #  sudo chmod -R u+rwx /sys/fs/cgroup/resource_isolation_test/
 #  echo $$ | sudo tee /sys/fs/cgroup/resource_isolation_test/cgroup.procs
 #
-# Comment the following line out.
-_ROOT_CGROUP = Path("/sys/fs/cgroup")
+def _resolve_root_cgroup() -> Path:
+    env_override = os.environ.get("RAY_TEST_RESOURCE_ISOLATION_ROOT_CGROUP")
+    if env_override:
+        return Path(env_override)
+    default_root = Path("/sys/fs/cgroup")
+    if os.access(default_root, os.W_OK):
+        return default_root
+    try:
+        rel = Path("/proc/self/cgroup").read_text().strip().split(":", 2)[2]
+        self_cgroup = default_root / rel.lstrip("/")
+        if self_cgroup.is_dir() and os.access(self_cgroup, os.W_OK):
+            return self_cgroup
+    except Exception:
+        pass
+    return default_root
+
+
+_ROOT_CGROUP = _resolve_root_cgroup()
 #
 # To run locally, uncomment the following line.
 # _ROOT_CGROUP = Path("/sys/fs/cgroup/resource_isolation_test")
@@ -415,28 +436,60 @@ def assert_system_processes_are_in_system_cgroup(
         ), f"Expected only system process passed into the raylet. Found {lines}. You may have added a new dashboard subprocess module in which case you need to update _EXPECTED_DASHBOARD_SUBPROCESS_MODULES"
 
 
+def _is_fork_server_pid(pid: str) -> bool:
+    try:
+        cmdline = (
+            Path(f"/proc/{pid}/cmdline")
+            .read_bytes()
+            .decode("utf-8", errors="ignore")
+            .split("\x00")
+        )
+    except OSError:
+        return False
+    if not cmdline or cmdline[0].startswith("ray::"):
+        return False
+    basenames = [os.path.basename(arg) for arg in cmdline]
+    return (
+        "fork_server.py" in basenames
+        and any(arg.startswith("--socket-path=") for arg in cmdline)
+        and "_cgroup_bootstrap.py" not in basenames
+        and "setup_worker.py" not in basenames
+    )
+
+
 def assert_worker_processes_are_in_workers_cgroup(
     node_id: str,
     resource_isolation_config: ResourceIsolationConfig,
     worker_pids: Set[str],
+    expected_fork_server_count: Optional[int] = None,
 ):
-    """Asserts that the worker processes were created in the correct cgroup.
-
-    Args:
-        node_id: used to construct the path of the cgroup subtree
-        resource_isolation_config: used to construct the path of the cgroup
-            subtree
-        worker_pids: a set of pids that are expected inside the workers
-            leaf cgroup.
-    """
+    """Asserts that the worker processes (and fork servers, when enabled) are in user/workers."""
     base_cgroup_for_node = resource_isolation_config.cgroup_path
     node_cgroup = Path(base_cgroup_for_node) / f"ray-node_{node_id}"
     workers_cgroup_procs = node_cgroup / "user" / "workers" / "cgroup.procs"
     with open(workers_cgroup_procs, "r") as cgroup_procs_file:
-        pids_in_cgroup = set()
-        lines = cgroup_procs_file.readlines()
-        for line in lines:
-            pids_in_cgroup.add(line.strip())
+        pids_in_cgroup = {
+            line.strip() for line in cgroup_procs_file.readlines() if line.strip()
+        }
+    if expected_fork_server_count is not None:
+        assert worker_pids.issubset(
+            pids_in_cgroup
+        ), f"Missing worker PIDs {worker_pids - pids_in_cgroup} in {pids_in_cgroup}"
+        extra_pids = pids_in_cgroup - worker_pids
+        assert all(
+            _is_fork_server_pid(pid) for pid in extra_pids
+        ), f"Unexpected non-fork-server PIDs in user/workers: {extra_pids}"
+        assert len(extra_pids) == expected_fork_server_count
+    elif ray_constants.env_bool("RAY_enable_worker_fork_server", False):
+        assert worker_pids.issubset(
+            pids_in_cgroup
+        ), f"Missing worker PIDs {worker_pids - pids_in_cgroup} in {pids_in_cgroup}"
+        extra_pids = pids_in_cgroup - worker_pids
+        assert len(extra_pids) >= 1
+        assert all(
+            _is_fork_server_pid(pid) for pid in extra_pids
+        ), f"Unexpected non-fork-server PIDs in user/workers: {extra_pids}"
+    else:
         assert pids_in_cgroup == worker_pids
 
 
@@ -630,6 +683,190 @@ def test_ray_init_resource_isolation_creates_cgroup_hierarchy_and_cleans_up(
     assert_worker_processes_are_in_workers_cgroup(
         node_id, resource_isolation_config, worker_pids
     )
+    ray.shutdown()
+    assert_cgroup_hierarchy_cleaned_up_for_node(node_id, resource_isolation_config)
+
+
+@pytest.mark.skipif(
+    torch is None, reason="PyTorch is required for preload cgroup test."
+)
+def test_ray_init_resource_isolation_with_worker_fork_server(ray_shutdown):
+    """Verify fork servers spawn directly inside user/workers via python -S bootstrap,
+    charging 100% of preloaded torch memory to user (not system), keeping forked
+    workers inherited in user/workers with oom_score_adj=+1000 while fork servers
+    retain baseline oom_score_adj, and tearing down the cgroup tree cleanly."""
+    cgroup_path = str(_TEST_CGROUP)
+    system_reserved_cpu = 1
+    system_reserved_memory = 1024**3
+    object_store_memory = 512 * 1024**2
+    num_cpus = 4
+    resource_isolation_config = ResourceIsolationConfig(
+        enable_resource_isolation=True,
+        cgroup_path=cgroup_path,
+        system_reserved_cpu=system_reserved_cpu,
+        system_reserved_memory=system_reserved_memory,
+    )
+    node_id = generate_node_id()
+    os.environ["RAY_OVERRIDE_NODE_ID_FOR_TESTING"] = node_id
+    driver_oom_baseline = int(Path("/proc/self/oom_score_adj").read_text().strip())
+
+    ray.init(
+        address="local",
+        num_cpus=num_cpus,
+        include_dashboard=False,
+        enable_resource_isolation=True,
+        cgroup_path=cgroup_path,
+        system_reserved_cpu=system_reserved_cpu,
+        system_reserved_memory=system_reserved_memory,
+        object_store_memory=object_store_memory,
+        _system_config={"enable_worker_fork_server": True},
+    )
+    assert_cgroup_hierarchy_exists_for_node(node_id, resource_isolation_config)
+
+    node_cgroup = Path(cgroup_path) / f"ray-node_{node_id}"
+    system_mem_file = node_cgroup / "system" / "memory.current"
+    system_stat_file = node_cgroup / "system" / "memory.stat"
+    user_mem_file = node_cgroup / "user" / "memory.current"
+    user_stat_file = node_cgroup / "user" / "memory.stat"
+    system_leaf_procs_file = node_cgroup / "system" / "leaf" / "cgroup.procs"
+    workers_procs_file = node_cgroup / "user" / "workers" / "cgroup.procs"
+
+    def _read_anon_bytes(stat_file: Path) -> int:
+        for line in stat_file.read_text().splitlines():
+            parts = line.split()
+            if len(parts) == 2 and parts[0] == "anon":
+                return int(parts[1])
+        return 0
+
+    def _find_runtime_env_agent_pid(pids: Set[str]) -> str:
+        matches = []
+        for pid in pids:
+            try:
+                argv0 = (
+                    Path(f"/proc/{pid}/cmdline")
+                    .read_bytes()
+                    .decode("utf-8", "ignore")
+                    .split("\x00", 1)[0]
+                    .strip()
+                )
+            except OSError:
+                continue
+            if argv0 == ray_constants.AGENT_PROCESS_TYPE_RUNTIME_ENV_AGENT:
+                matches.append(pid)
+        assert (
+            len(matches) == 1
+        ), f"Expected exactly 1 RuntimeEnvAgent in system/leaf PIDs {pids}, got {matches}"
+        return matches[0]
+
+    def _read_rss_anon_bytes(pid: str) -> int:
+        for line in Path(f"/proc/{pid}/status").read_text().splitlines():
+            if line.startswith("RssAnon:"):
+                return int(line.split()[1]) * 1024
+        return 0
+
+    @ray.remote(num_cpus=1)
+    class ProbeActor:
+        def info(self):
+            return os.getpid(), os.getppid(), "torch" in sys.modules
+
+    # Spawn a default {} forked actor and confirm core system processes in system/leaf.
+    default_actor = ProbeActor.remote()
+    def_pid, def_fs_pid, def_has_torch = ray.get(default_actor.info.remote())
+    assert def_has_torch is False
+    assert _is_fork_server_pid(str(def_fs_pid))
+
+    assert_system_processes_are_in_system_cgroup(
+        node_id,
+        resource_isolation_config,
+        len(_EXPECTED_SYSTEM_PROCESSES_RAY_INIT),
+    )
+    init_sys_pids = {
+        line.strip()
+        for line in system_leaf_procs_file.read_text().splitlines()
+        if line.strip()
+    }
+    agent_pid = _find_runtime_env_agent_pid(init_sys_pids)
+
+    agent_anon_before = _read_rss_anon_bytes(agent_pid)
+    user_mem_before = int(user_mem_file.read_text().strip())
+    user_anon_before = _read_anon_bytes(user_stat_file)
+
+    # Spawn two actors preloading PyTorch in a shared non-default fork server.
+    torch_actors = [
+        ProbeActor.options(runtime_env={"preload_modules": ["torch"]}).remote()
+        for _ in range(2)
+    ]
+    torch_infos = ray.get([a.info.remote() for a in torch_actors])
+    t_pid1, torch_fs_pid, t1_has_torch = torch_infos[0]
+    t_pid2, torch_fs_pid2, t2_has_torch = torch_infos[1]
+    assert t1_has_torch is True and t2_has_torch is True
+    assert torch_fs_pid == torch_fs_pid2
+    assert torch_fs_pid != def_fs_pid
+    assert _is_fork_server_pid(str(torch_fs_pid))
+
+    agent_anon_after = _read_rss_anon_bytes(agent_pid)
+    sys_mem_after = int(system_mem_file.read_text().strip())
+    sys_anon_after = _read_anon_bytes(system_stat_file)
+    user_mem_after = int(user_mem_file.read_text().strip())
+    user_anon_after = _read_anon_bytes(user_stat_file)
+    agent_anon_delta = agent_anon_after - agent_anon_before
+    user_delta = user_mem_after - user_mem_before
+    user_anon_delta = user_anon_after - user_anon_before
+    torch_fs_anon = _read_rss_anon_bytes(str(torch_fs_pid))
+    assert sys_mem_after > 0 and sys_anon_after > 0
+
+    # All ~185 MiB of preloaded PyTorch pages fault inside user/workers (and share CoW
+    # across the fork server + both actors so total user delta stays well under 2x),
+    # while RuntimeEnvAgent inside system/leaf retains ~0 preload overhead (<10 MiB).
+    assert torch_fs_anon > 120 * 1024 * 1024
+    assert (
+        user_delta > 120 * 1024 * 1024 and user_anon_delta > 120 * 1024 * 1024
+    ), f"Expected >120 MiB charged to user cgroup, got current={user_delta}, anon={user_anon_delta}"
+    assert user_anon_delta < int(
+        torch_fs_anon * 1.8
+    ), f"Expected CoW sharing across fork server + 2 actors in user cgroup, got user_anon_delta={user_anon_delta}, torch_fs_anon={torch_fs_anon}"
+    assert (
+        agent_anon_delta < 10 * 1024 * 1024
+    ), f"Expected RuntimeEnvAgent RssAnon delta <10 MiB, got {agent_anon_delta}"
+
+    # Verify exact cgroup.procs membership: runtime_env_agent stays in system/leaf,
+    # while BOTH fork servers and all forked actors + driver live in user/workers.
+    system_leaf_pids = {
+        line.strip()
+        for line in system_leaf_procs_file.read_text().splitlines()
+        if line.strip()
+    }
+    workers_cgroup_pids = {
+        line.strip()
+        for line in workers_procs_file.read_text().splitlines()
+        if line.strip()
+    }
+    assert str(def_fs_pid) not in system_leaf_pids
+    assert str(torch_fs_pid) not in system_leaf_pids
+    assert {str(def_fs_pid), str(torch_fs_pid)}.issubset(workers_cgroup_pids)
+
+    # Note: WorkerPool may also keep an idle prestarted default worker in user/workers;
+    # kill only explicitly examine our live actors + fork servers:
+    expected_known = {
+        str(os.getpid()),
+        str(def_pid),
+        str(t_pid1),
+        str(t_pid2),
+        str(def_fs_pid),
+        str(torch_fs_pid),
+    }
+    assert expected_known.issubset(workers_cgroup_pids)
+
+    # Verify kernel OOM priority: forked workers get +1000 while fork servers retain baseline.
+    for w_pid in (def_pid, t_pid1, t_pid2):
+        w_oom = int(Path(f"/proc/{w_pid}/oom_score_adj").read_text().strip())
+        assert w_oom == 1000, f"Expected worker {w_pid} oom_score_adj=1000, got {w_oom}"
+    for fs_pid in (def_fs_pid, torch_fs_pid):
+        fs_oom = int(Path(f"/proc/{fs_pid}/oom_score_adj").read_text().strip())
+        assert (
+            fs_oom == driver_oom_baseline and fs_oom < 1000
+        ), f"Expected fork server {fs_pid} baseline oom_score_adj={driver_oom_baseline}, got {fs_oom}"
+
     ray.shutdown()
     assert_cgroup_hierarchy_cleaned_up_for_node(node_id, resource_isolation_config)
 

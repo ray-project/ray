@@ -59,6 +59,13 @@ void AgentManager::StartAgent(AddProcessToCgroupHook add_to_cgroup) {
                   : "0"});
   env.insert({"RAY_enable_worker_fork_server",
               RayConfig::instance().enable_worker_fork_server() ? "1" : "0"});
+  env.insert({"RAY_max_active_fork_servers",
+              std::to_string(RayConfig::instance().max_active_fork_servers())});
+  env.insert({"RAY_runtime_env_max_idle_fork_servers",
+              std::to_string(RayConfig::instance().runtime_env_max_idle_fork_servers())});
+  env.insert(
+      {"RAY_runtime_env_fork_server_idle_ttl_s",
+       std::to_string(RayConfig::instance().runtime_env_fork_server_idle_ttl_s())});
   if (!RayConfig::instance().preload_python_modules().empty()) {
     env.insert({"RAY_preload_python_modules",
                 absl::StrJoin(RayConfig::instance().preload_python_modules(), ",")});

@@ -16,8 +16,10 @@
 
 #if !defined(_WIN32)
 #include <sys/socket.h>
+#include <sys/stat.h>
 #include <sys/time.h>
 #include <sys/un.h>
+#include <time.h>
 #include <unistd.h>
 #endif
 
@@ -180,6 +182,8 @@ WorkerPool::WorkerPool(instrumented_io_context &io_service,
   // metric not existing at all).
   worker_pool_metrics_.num_workers_started_sum.Record(0);
   worker_pool_metrics_.num_workers_started_from_cache_sum.Record(0);
+  worker_pool_metrics_.num_workers_forked_from_server_sum.Record(0);
+  worker_pool_metrics_.num_worker_fork_server_fallbacks_sum.Record(0);
   worker_pool_metrics_.num_cached_workers_skipped_job_mismatch_sum.Record(0);
   worker_pool_metrics_.num_cached_workers_skipped_dynamic_options_mismatch_sum.Record(0);
   worker_pool_metrics_.num_cached_workers_skipped_runtime_environment_mismatch_sum.Record(
@@ -806,31 +810,67 @@ std::unique_ptr<ProcessInterface> WorkerPool::TryStartProcessViaForkServer(
     return nullptr;
   }
 
-  constexpr int64_t kUnhealthySocketCooldownMs = 5000;
-  const int64_t now_steady_ms = current_time_ms();
-  auto unhealthy_it =
-      unhealthy_fork_server_sockets_until_ms_.find(fork_server_socket_path);
-  if (unhealthy_it != unhealthy_fork_server_sockets_until_ms_.end()) {
-    if (now_steady_ms < unhealthy_it->second) {
-      return nullptr;
-    }
-    unhealthy_fork_server_sockets_until_ms_.erase(unhealthy_it);
-  }
-
   struct sockaddr_un addr = {};
   addr.sun_family = AF_UNIX;
   if (fork_server_socket_path.size() >= sizeof(addr.sun_path)) {
     RAY_LOG(WARNING).WithField(worker_id)
         << "Fork server socket path exceeds sun_path limit: " << fork_server_socket_path
         << "; falling back to execvpe.";
-    unhealthy_fork_server_sockets_until_ms_[fork_server_socket_path] =
-        now_steady_ms + kUnhealthySocketCooldownMs;
+    worker_pool_metrics_.num_worker_fork_server_fallbacks_sum.Record(1);
     return nullptr;
   }
-  std::strncpy(addr.sun_path, fork_server_socket_path.c_str(), sizeof(addr.sun_path) - 1);
 
+  struct stat sock_st = {};
+  const bool has_live_sock =
+      stat(fork_server_socket_path.c_str(), &sock_st) == 0 && S_ISSOCK(sock_st.st_mode);
+  const uint64_t cur_dev = has_live_sock ? static_cast<uint64_t>(sock_st.st_dev) : 0;
+  const uint64_t cur_ino = has_live_sock ? static_cast<uint64_t>(sock_st.st_ino) : 0;
+
+  constexpr int64_t kUnhealthySocketCooldownMs = 5000;
+  const int64_t now_steady_ms = current_time_ms();
+  auto unhealthy_it = unhealthy_fork_server_sockets_.find(fork_server_socket_path);
+  if (unhealthy_it != unhealthy_fork_server_sockets_.end()) {
+    if (now_steady_ms < unhealthy_it->second.until_ms &&
+        unhealthy_it->second.st_dev == cur_dev &&
+        unhealthy_it->second.st_ino == cur_ino) {
+      worker_pool_metrics_.num_worker_fork_server_fallbacks_sum.Record(1);
+      return nullptr;
+    }
+    unhealthy_fork_server_sockets_.erase(unhealthy_it);
+  }
+  if (!has_live_sock) {
+    unhealthy_fork_server_sockets_[fork_server_socket_path] =
+        UnhealthyForkServerSocket{now_steady_ms + kUnhealthySocketCooldownMs, 0, 0};
+    worker_pool_metrics_.num_worker_fork_server_fallbacks_sum.Record(1);
+    return nullptr;
+  }
+
+  auto mark_socket_unhealthy_and_fallback = [&]() -> std::unique_ptr<ProcessInterface> {
+    struct stat post_st = {};
+    const bool still_exists =
+        stat(fork_server_socket_path.c_str(), &post_st) == 0 && S_ISSOCK(post_st.st_mode);
+    // Record (0, 0) if the socket was unlinked on crash so missing-socket checks cool
+    // down while any newly published socket inode replaces it immediately; otherwise
+    // record pre-connect (cur_dev, cur_ino) so an os.replace() during timeout is never
+    // poisoned.
+    unhealthy_fork_server_sockets_[fork_server_socket_path] =
+        UnhealthyForkServerSocket{current_time_ms() + kUnhealthySocketCooldownMs,
+                                  still_exists ? cur_dev : 0,
+                                  still_exists ? cur_ino : 0};
+    worker_pool_metrics_.num_worker_fork_server_fallbacks_sum.Record(1);
+    return nullptr;
+  };
+
+  std::memcpy(
+      addr.sun_path, fork_server_socket_path.data(), fork_server_socket_path.size());
+
+#ifdef SOCK_CLOEXEC
+  int sock_fd = socket(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC, 0);
+#else
   int sock_fd = socket(AF_UNIX, SOCK_STREAM, 0);
+#endif
   if (sock_fd < 0) {
+    worker_pool_metrics_.num_worker_fork_server_fallbacks_sum.Record(1);
     return nullptr;
   }
   const int64_t timeout_ms =
@@ -841,18 +881,21 @@ std::unique_ptr<ProcessInterface> WorkerPool::TryStartProcessViaForkServer(
   setsockopt(sock_fd, SOL_SOCKET, SO_SNDTIMEO, &tv, sizeof(tv));
 
   if (connect(sock_fd, reinterpret_cast<struct sockaddr *>(&addr), sizeof(addr)) == -1) {
-    if (errno != ENOENT) {
-      unhealthy_fork_server_sockets_until_ms_[fork_server_socket_path] =
-          current_time_ms() + kUnhealthySocketCooldownMs;
-    }
+    const int connect_errno = errno;
     RAY_LOG(WARNING).WithField(worker_id)
         << "Failed to connect to fork server at " << fork_server_socket_path << ": "
-        << strerror(errno) << "; falling back to execvpe.";
+        << strerror(connect_errno) << "; falling back to execvpe.";
     close(sock_fd);
-    return nullptr;
+    return mark_socket_unhealthy_and_fallback();
   }
 
-  const int64_t deadline_ms = current_sys_time_ms() + timeout_ms;
+  // Use POSIX CLOCK_MONOTONIC so C++ Raylet and Python fork_server.py compare against
+  // the identical kernel monotonic epoch unaffected by NTP wall-clock jumps.
+  struct timespec mono_ts = {};
+  clock_gettime(CLOCK_MONOTONIC, &mono_ts);
+  const int64_t deadline_ms = static_cast<int64_t>(mono_ts.tv_sec) * 1000 +
+                              static_cast<int64_t>(mono_ts.tv_nsec) / 1000000 +
+                              timeout_ms;
   nlohmann::json req = {{"args", worker_args},
                         {"env", env},
                         {"runtime_env_vars", runtime_env_vars},
@@ -867,10 +910,8 @@ std::unique_ptr<ProcessInterface> WorkerPool::TryStartProcessViaForkServer(
       if (errno == EINTR) {
         continue;
       }
-      unhealthy_fork_server_sockets_until_ms_[fork_server_socket_path] =
-          current_time_ms() + kUnhealthySocketCooldownMs;
       close(sock_fd);
-      return nullptr;
+      return mark_socket_unhealthy_and_fallback();
     }
     total_sent += static_cast<size_t>(sent);
   }
@@ -898,18 +939,16 @@ std::unique_ptr<ProcessInterface> WorkerPool::TryStartProcessViaForkServer(
     RAY_LOG(WARNING).WithField(worker_id)
         << "Invalid response from fork server at " << fork_server_socket_path << ": "
         << response << "; falling back to execvpe.";
-    unhealthy_fork_server_sockets_until_ms_[fork_server_socket_path] =
-        current_time_ms() + kUnhealthySocketCooldownMs;
-    return nullptr;
+    return mark_socket_unhealthy_and_fallback();
   }
 
 #ifdef __linux__
+  // Fork servers run inside the user/workers cgroup when resource isolation is active,
+  // so forked children inherit user/workers directly without per-worker cgroup writes.
   KnownChildrenTracker::instance().AddKnownChild(
       [forked_pid]() -> pid_t { return forked_pid; });
 #endif
-  if (add_to_cgroup_hook_) {
-    add_to_cgroup_hook_(std::to_string(forked_pid));
-  }
+  worker_pool_metrics_.num_workers_forked_from_server_sum.Record(1);
 
   return std::make_unique<Process>(forked_pid);
 #endif

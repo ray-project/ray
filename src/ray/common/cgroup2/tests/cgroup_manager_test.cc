@@ -509,6 +509,12 @@ TEST(CgroupManagerTest, GetConstraintValueReturnsValue) {
   ASSERT_TRUE(cgroup_manager_s.ok()) << cgroup_manager_s.ToString();
 
   std::unique_ptr<CgroupManager> cgroup_manager = std::move(cgroup_manager_s.value());
+  ASSERT_EQ(cgroup_manager->GetSystemCgroupPath(),
+            "/sys/fs/cgroup/ray-node_node_id_123/system");
+  ASSERT_EQ(cgroup_manager->GetUserCgroupPath(),
+            "/sys/fs/cgroup/ray-node_node_id_123/user");
+  ASSERT_EQ(cgroup_manager->GetWorkersCgroupPath(),
+            "/sys/fs/cgroup/ray-node_node_id_123/user/workers");
 
   StatusOr<std::string> min_value =
       cgroup_manager->GetSystemCgroupConstraintValue("memory.min");

@@ -1,10 +1,12 @@
 import argparse
+import asyncio
 import gc
 import importlib
 import json
 import logging
 import os
 import random
+import select
 import signal
 import socket
 import subprocess
@@ -13,7 +15,7 @@ import time
 from contextlib import suppress
 from pathlib import Path
 from types import ModuleType
-from typing import TYPE_CHECKING, Dict, List, Optional
+from typing import IO, TYPE_CHECKING, Dict, List, Optional, Tuple
 
 import ray
 import ray._private.ray_constants as ray_constants
@@ -34,20 +36,25 @@ class ForkServerProcess:
         socket_path: str,
         preload_modules: Optional[List[str]] = None,
         context: Optional["RuntimeEnvContext"] = None,
+        cgroup_path: Optional[str] = None,
     ):
         self.socket_path = socket_path
+        self.started_at = time.monotonic()
+        self.ready_at: Optional[float] = None
+        self._stopped = False
+
         os.makedirs(os.path.dirname(socket_path), exist_ok=True)
         Path(socket_path).unlink(missing_ok=True)
 
+        workers_dir = os.path.dirname(os.path.abspath(__file__))
         fork_server_args = [
             os.path.abspath(__file__),
             f"--socket-path={socket_path}",
             f"--preload-modules={','.join(preload_modules or [])}",
+            "--monitor-stdin",
         ]
         if context is not None:
-            setup_worker_path = os.path.join(
-                os.path.dirname(__file__), "setup_worker.py"
-            )
+            setup_worker_path = os.path.join(workers_dir, "setup_worker.py")
             cmd = [
                 sys.executable,
                 setup_worker_path,
@@ -58,25 +65,39 @@ class ForkServerProcess:
         else:
             cmd = [sys.executable, *fork_server_args]
 
+        if cgroup_path and sys.platform.startswith("linux"):
+            cgroup_bootstrap_path = os.path.join(workers_dir, "_cgroup_bootstrap.py")
+            cmd = [
+                sys.executable,
+                "-S",
+                cgroup_bootstrap_path,
+                cgroup_path,
+                *cmd,
+            ]
+
+        # Omit preexec_fn so CPython uses os.posix_spawn safely inside multi-threaded
+        # RuntimeEnvAgent (including worker threads). Fate-sharing with the parent
+        # process uses stdin=PIPE + --monitor-stdin instead of PR_SET_PDEATHSIG, which
+        # is bound to the spawning thread on Linux and leaks .sock files on SIGKILL.
         self.process = subprocess.Popen(
             cmd,
+            stdin=subprocess.PIPE,
             close_fds=True,
             start_new_session=True,
-            preexec_fn=(
-                ray._private.utils.set_kill_on_parent_death_linux
-                if sys.platform.startswith("linux")
-                else None
-            ),
         )
+        self._lifeline: Optional[IO[bytes]] = self.process.stdin
 
-    def wait_ready(self, timeout_s: Optional[float] = None) -> None:
+    def is_alive(self) -> bool:
+        return not self._stopped and self.process.poll() is None
+
+    async def wait_ready(self, timeout_s: Optional[float] = None) -> None:
         if timeout_s is None:
             timeout_s = float(
                 os.environ.get("RAY_fork_server_ready_timeout_s", "120.0")
             )
         deadline = time.monotonic() + timeout_s
         while not os.path.exists(self.socket_path):
-            if self.process.poll() is not None:
+            if self._stopped or self.process.poll() is not None:
                 raise RuntimeError(
                     f"ForkServer exited prematurely with code {self.process.returncode}"
                 )
@@ -84,10 +105,18 @@ class ForkServerProcess:
                 raise TimeoutError(
                     f"Timed out waiting for ForkServer socket at {self.socket_path}"
                 )
-            time.sleep(0.01)
+            await asyncio.sleep(0.01)
+        if self.ready_at is None:
+            self.ready_at = time.monotonic()
 
     def stop(self) -> None:
-        Path(self.socket_path).unlink(missing_ok=True)
+        if self._stopped:
+            return
+        self._stopped = True
+        if self._lifeline is not None:
+            with suppress(OSError):
+                self._lifeline.close()
+            self._lifeline = None
         if self.process.poll() is None:
             try:
                 os.killpg(self.process.pid, signal.SIGTERM)
@@ -96,6 +125,7 @@ class ForkServerProcess:
                 with suppress(Exception):
                     os.killpg(self.process.pid, signal.SIGKILL)
                     self.process.wait(timeout=1.0)
+        Path(self.socket_path).unlink(missing_ok=True)
 
 
 def _preload_modules(preload_arg: str) -> None:
@@ -150,6 +180,22 @@ def _recv_line(conn: socket.socket) -> bytes:
         buf.extend(chunk)
 
 
+def _is_lifeline_closed(lifeline_fd: int) -> bool:
+    """Return True if the parent write-end of the lifeline pipe reached EOF."""
+    try:
+        return os.read(lifeline_fd, 1) == b""
+    except (BlockingIOError, InterruptedError):
+        return False
+    except OSError:
+        return True
+
+
+def _monotonic_time_ms() -> int:
+    if hasattr(time, "clock_gettime_ns") and hasattr(time, "CLOCK_MONOTONIC"):
+        return time.clock_gettime_ns(time.CLOCK_MONOTONIC) // 1_000_000
+    return int(time.monotonic() * 1000)
+
+
 def _prepare_child_environment(
     saved_omp_num_threads: Optional[str],
     saved_je_arrow_malloc_conf: Optional[str],
@@ -190,23 +236,35 @@ def _prepare_child_environment(
             if omp_threads > 0:
                 ray._private.utils.set_blas_and_torch_num_threads(omp_threads)
 
-    # Refresh C++ authentication token cache from updated os.environ.
+    # Refresh C++ RayConfig (including RAY_JOB_ID / RAY_RAYLET_PID internal flags)
+    # and authentication token cache from the child's updated os.environ.
+    ray._raylet.Config.initialize("")
     ray._raylet.AuthenticationTokenLoader.instance().reset_cache()
 
-    # Refresh import-time global_worker attributes that depend on os.environ.
+    # Refresh import-time ray_constants and global_worker attributes when user env
+    # overrides Ray flags without touching ray_constants pages on standard workers.
     gw = ray._private.worker.global_worker
-    if runtime_env_vars or not (child_env.keys() <= _RAYLET_INTERNAL_ENV_KEYS):
+    non_internal_child_keys = child_env.keys() - _RAYLET_INTERNAL_ENV_KEYS
+    if runtime_env_vars or non_internal_child_keys:
         gw.original_visible_accelerator_ids = (
             ray._private.utils.get_visible_accelerator_ids()
         )
-    gw._enable_record_actor_task_log = ray_constants.env_bool(
-        "RAY_ENABLE_RECORD_ACTOR_TASK_LOG", False
+    has_ray_const_override = any(
+        key.startswith("RAY_") or key == "FUNCTION_SIZE_ERROR_THRESHOLD"
+        for key in (*runtime_env_vars.keys(), *non_internal_child_keys)
     )
-    if (
-        "RAY_ENABLE_ZERO_COPY_TORCH_TENSORS" in child_env
-        or "RAY_ENABLE_ZERO_COPY_TORCH_TENSORS" in runtime_env_vars
-    ):
-        gw.serialization_context_map.clear()
+    if has_ray_const_override:
+        prev_zero_copy = ray_constants.RAY_ENABLE_ZERO_COPY_TORCH_TENSORS
+        importlib.reload(ray_constants)
+        if (
+            ray_constants.RAY_ENABLE_ZERO_COPY_TORCH_TENSORS != prev_zero_copy
+            or "RAY_ENABLE_ZERO_COPY_TORCH_TENSORS" in runtime_env_vars
+            or "RAY_ENABLE_ZERO_COPY_TORCH_TENSORS" in non_internal_child_keys
+        ):
+            gw.serialization_context_map.clear()
+    gw._enable_record_actor_task_log = (
+        ray_constants.RAY_ENABLE_RECORD_ACTOR_TASK_LOGGING
+    )
 
     random.seed()
     for mod_name in ("numpy.random", "torch"):
@@ -221,7 +279,19 @@ def _run_fork_server(argv: Optional[List[str]] = None) -> Optional[ModuleType]:
     parser = argparse.ArgumentParser(description="Ray Python worker fork server")
     parser.add_argument("--socket-path", required=True, type=str)
     parser.add_argument("--preload-modules", default="", type=str)
+    parser.add_argument("--monitor-stdin", action="store_true")
     args = parser.parse_args(argv)
+
+    lifeline_fd: Optional[int] = None
+    if args.monitor_stdin:
+        lifeline_fd = os.dup(0)
+        os.set_inheritable(lifeline_fd, False)
+        os.set_blocking(lifeline_fd, False)
+        devnull_fd = os.open(os.devnull, os.O_RDONLY)
+        try:
+            os.dup2(devnull_fd, 0)
+        finally:
+            os.close(devnull_fd)
 
     signal.signal(signal.SIGCHLD, signal.SIG_IGN)
 
@@ -245,6 +315,12 @@ def _run_fork_server(argv: Optional[List[str]] = None) -> Optional[ModuleType]:
     gc.collect()
     gc.freeze()
 
+    if lifeline_fd is not None:
+        readable, _, _ = select.select([lifeline_fd], [], [], 0)
+        if readable and _is_lifeline_closed(lifeline_fd):
+            os.close(lifeline_fd)
+            return None
+
     socket_path = os.path.abspath(args.socket_path)
     socket_dir = os.path.dirname(socket_path)
     os.makedirs(socket_dir, exist_ok=True)
@@ -253,24 +329,57 @@ def _run_fork_server(argv: Optional[List[str]] = None) -> Optional[ModuleType]:
     Path(tmp_socket_path).unlink(missing_ok=True)
 
     server_sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-    server_sock.bind(tmp_socket_path)
-    os.chmod(tmp_socket_path, 0o600)
-    server_sock.listen(128)
-    os.replace(tmp_socket_path, socket_path)
+    wakeup_r, wakeup_w = os.pipe()
+    os.set_blocking(wakeup_r, False)
+    os.set_blocking(wakeup_w, False)
+    published_stat: Optional[Tuple[int, int]] = None
+    stop_requested = False
 
-    def _cleanup_and_exit(_signum, _frame):
-        server_sock.close()
-        Path(tmp_socket_path).unlink(missing_ok=True)
-        Path(socket_path).unlink(missing_ok=True)
-        os._exit(0)
+    def _handle_sigterm(_signum, _frame):
+        nonlocal stop_requested
+        stop_requested = True
 
-    signal.signal(signal.SIGTERM, _cleanup_and_exit)
+    signal.set_wakeup_fd(wakeup_w, warn_on_full_buffer=False)
+    signal.signal(signal.SIGTERM, _handle_sigterm)
 
     try:
-        while True:
+        server_sock.bind(tmp_socket_path)
+        os.chmod(tmp_socket_path, 0o600)
+        tmp_st = os.lstat(tmp_socket_path)
+        server_sock.listen(128)
+        server_sock.setblocking(False)
+        if stop_requested:
+            return None
+        if lifeline_fd is not None:
+            readable, _, _ = select.select([lifeline_fd], [], [], 0)
+            if readable and _is_lifeline_closed(lifeline_fd):
+                return None
+        os.replace(tmp_socket_path, socket_path)
+        published_stat = (tmp_st.st_dev, tmp_st.st_ino)
+
+        watch_fds = [server_sock, wakeup_r]
+        if lifeline_fd is not None:
+            watch_fds.append(lifeline_fd)
+        while not stop_requested:
+            try:
+                readable, _, _ = select.select(watch_fds, [], [])
+            except InterruptedError:
+                continue
+            except (OSError, ValueError):
+                break
+
+            if wakeup_r in readable:
+                with suppress(BlockingIOError, InterruptedError, OSError):
+                    os.read(wakeup_r, 64)
+            if lifeline_fd is not None and lifeline_fd in readable:
+                if _is_lifeline_closed(lifeline_fd):
+                    break
+            if stop_requested or server_sock not in readable:
+                continue
+
             try:
                 conn, _ = server_sock.accept()
-            except InterruptedError:
+            except (BlockingIOError, InterruptedError):
                 continue
             except OSError:
                 break
@@ -283,9 +392,7 @@ def _run_fork_server(argv: Optional[List[str]] = None) -> Optional[ModuleType]:
                     continue
                 req = json.loads(line)
                 deadline_ms = req.get("deadline_ms")
-                if deadline_ms is not None and time.time() * 1000.0 > float(
-                    deadline_ms
-                ):
+                if deadline_ms is not None and _monotonic_time_ms() > int(deadline_ms):
                     with suppress(OSError):
                         conn.sendall(
                             json.dumps({"error": "request expired"}).encode("utf-8")
@@ -315,13 +422,18 @@ def _run_fork_server(argv: Optional[List[str]] = None) -> Optional[ModuleType]:
             else:
                 with suppress(OSError):
                     os.setpgrp()
-                conn.close()
-                server_sock.close()
-
+                signal.set_wakeup_fd(-1)
                 signal.signal(signal.SIGCHLD, signal.SIG_DFL)
                 signal.signal(signal.SIGTERM, signal.SIG_DFL)
                 signal.signal(signal.SIGINT, signal.default_int_handler)
                 signal.pthread_sigmask(signal.SIG_UNBLOCK, {signal.SIGINT})
+
+                conn.close()
+                server_sock.close()
+                for fd_to_close in (wakeup_r, wakeup_w, lifeline_fd):
+                    if fd_to_close is not None:
+                        with suppress(OSError):
+                            os.close(fd_to_close)
 
                 _prepare_child_environment(
                     saved_omp_num_threads,
@@ -334,8 +446,20 @@ def _run_fork_server(argv: Optional[List[str]] = None) -> Optional[ModuleType]:
                 return default_worker
     finally:
         if os.getpid() == server_pid:
+            with suppress(ValueError, OSError):
+                signal.set_wakeup_fd(-1)
+            with suppress(OSError):
+                server_sock.close()
+            for fd_to_close in (wakeup_r, wakeup_w, lifeline_fd):
+                if fd_to_close is not None:
+                    with suppress(OSError):
+                        os.close(fd_to_close)
             Path(tmp_socket_path).unlink(missing_ok=True)
-            Path(socket_path).unlink(missing_ok=True)
+            if published_stat is not None:
+                with suppress(OSError):
+                    cur_st = os.lstat(socket_path)
+                    if (cur_st.st_dev, cur_st.st_ino) == published_stat:
+                        os.unlink(socket_path)
 
     return None
 

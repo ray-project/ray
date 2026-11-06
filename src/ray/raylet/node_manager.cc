@@ -3631,6 +3631,13 @@ std::unique_ptr<AgentManager> NodeManager::CreateRuntimeEnvAgentManager(
     }
   }
 
+  if (config.enable_resource_isolation && cgroup_manager_ != nullptr) {
+    const std::string workers_cgroup_path = cgroup_manager_->GetWorkersCgroupPath();
+    if (!workers_cgroup_path.empty()) {
+      agent_command_line.push_back("--workers-cgroup-path=" + workers_cgroup_path);
+    }
+  }
+
   std::string agent_name = "runtime_env_agent";
 
   auto options = AgentManager::Options({self_node_id,

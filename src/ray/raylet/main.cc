@@ -380,6 +380,10 @@ int main(int argc, char *argv[]) {
       ray::raylet::GetNumCachedWorkersSkippedDynamicOptionsMismatchMetric();
   ray::stats::Sum num_workers_started_from_cache_sum =
       ray::raylet::GetNumWorkersStartedFromCacheMetric();
+  ray::stats::Sum num_workers_forked_from_server_sum =
+      ray::raylet::GetNumWorkersForkedFromServerMetric();
+  ray::stats::Sum num_worker_fork_server_fallbacks_sum =
+      ray::raylet::GetNumWorkerForkServerFallbacksMetric();
   ray::stats::Histogram worker_register_time_ms_histogram =
       ray::raylet::GetWorkerRegisterTimeMsHistogramMetric();
 
@@ -395,6 +399,8 @@ int main(int argc, char *argv[]) {
       num_cached_workers_skipped_runtime_environment_mismatch_sum,
       num_cached_workers_skipped_dynamic_options_mismatch_sum,
       num_workers_started_from_cache_sum,
+      num_workers_forked_from_server_sum,
+      num_worker_fork_server_fallbacks_sum,
       worker_register_time_ms_histogram};
   std::shared_ptr<plasma::PlasmaClient> plasma_client;
   std::unique_ptr<ray::raylet::PlacementGroupResourceManager>

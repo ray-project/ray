@@ -3,6 +3,7 @@ import copy
 import json
 import logging
 import os
+import subprocess
 import sys
 import threading
 import time
@@ -36,9 +37,11 @@ from ray._private.test_utils import (
 )
 from ray.core.generated.metrics_pb2 import Metric
 from ray.dashboard.modules.reporter.reporter_agent import (
+    FORK_SERVER_COMPONENT_NAME,
     METRICS_GAUGES,
     ReporterAgent,
     TpuUtilizationInfo,
+    _is_fork_server_cmdline,
 )
 from ray.dashboard.modules.reporter.reporter_head import (
     MULTI_TASK_WARNING_HEADER,
@@ -2049,6 +2052,148 @@ def test_export_processes_metrics_off_event_loop() -> None:
 
     assert [kind for kind, _ in metric_calls] == ["histogram", "number"]
     assert all(thread_id != threading.get_ident() for _, thread_id in metric_calls)
+
+
+@pytest.mark.asyncio
+async def test_fork_server_metrics_and_discovery(tmp_path) -> None:
+    """Verify ReporterAgent counts direct fork_server.py children, excludes
+    bootstrappers/grandchildren, and reports ray::fork_server component stats."""
+    assert _is_fork_server_cmdline(
+        ["python", "/ray/_private/workers/fork_server.py", "--socket-path=/tmp/fs.sock"]
+    )
+    assert not _is_fork_server_cmdline(
+        [
+            "python",
+            "-S",
+            "/ray/_private/workers/_cgroup_bootstrap.py",
+            "/sys/fs/cgroup/workers",
+            "python",
+            "/ray/_private/workers/fork_server.py",
+            "--socket-path=/tmp/fs.sock",
+        ]
+    )
+    assert not _is_fork_server_cmdline(
+        [
+            "python",
+            "/ray/_private/workers/setup_worker.py",
+            "/ray/_private/workers/fork_server.py",
+            "--socket-path=/tmp/fs.sock",
+        ]
+    )
+    assert not _is_fork_server_cmdline(
+        ["bash", "-c", "exec python /ray/fork_server.py --socket-path=/tmp/fs.sock"]
+    )
+    assert not _is_fork_server_cmdline(["ray::Actor.__init__"])
+
+    # Spawn a real agent child hierarchy:
+    #   fake_agent -> [fake_fork_server -> fake_forked_worker, fake_pip_child]
+    agent_script = (
+        "import subprocess, sys, time\n"
+        "fs = subprocess.Popen([sys.executable, '-c', "
+        '"import subprocess, sys, time; '
+        "w = subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(60)', "
+        "'fork_server.py', '--socket-path=/tmp/grandchild.sock']); "
+        "print(w.pid, flush=True); "
+        'time.sleep(60)", '
+        "'/path/to/fork_server.py', '--socket-path=/tmp/fs.sock'], "
+        "stdout=subprocess.PIPE, text=True)\n"
+        "pip_p = subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(60)', "
+        "'pip', 'install'])\n"
+        "w_pid = fs.stdout.readline().strip()\n"
+        "print(fs.pid, pip_p.pid, w_pid, flush=True)\n"
+        "time.sleep(60)\n"
+    )
+    fake_agent = subprocess.Popen(
+        [sys.executable, "-c", agent_script],
+        stdout=subprocess.PIPE,
+        text=True,
+    )
+    pids_to_kill = [fake_agent.pid]
+    try:
+        line = fake_agent.stdout.readline().strip()
+        fs_pid, pip_pid, grandchild_pid = [int(x) for x in line.split()]
+        pids_to_kill.extend([fs_pid, pip_pid, grandchild_pid])
+
+        reporter, _ = _make_reporter_agent_and_capture(tmp_path)
+
+        async def _fake_worker_pids():
+            return []
+
+        async def _fake_agent_pids():
+            return [fake_agent.pid]
+
+        reporter._async_get_worker_pids_from_raylet = _fake_worker_pids
+        reporter._async_get_agent_pids_from_raylet = _fake_agent_pids
+
+        workers = await reporter._async_get_workers_and_agents()
+        fs_entries = [
+            w
+            for w in workers
+            if (w.get("cmdline") or [None])[0] == FORK_SERVER_COMPONENT_NAME
+        ]
+        assert [w["pid"] for w in fs_entries] == [fs_pid]
+        returned_pids = {w["pid"] for w in workers}
+        assert pip_pid not in returned_pids
+        assert grandchild_pid not in returned_pids
+
+        stats = copy.deepcopy(STATS_TEMPLATE)
+        stats["workers"] = workers
+        records = reporter._to_records(stats, {})
+
+        fs_count_records = [
+            r for r in records if r.gauge.name == "node_fork_server_count"
+        ]
+        assert len(fs_count_records) == 1
+        assert fs_count_records[0].value == 1
+        assert fs_count_records[0].tags == {
+            "ip": stats["ip"],
+            "RayNodeType": "head",
+            "IsHeadNode": "true",
+        }
+        fs_rss = [
+            r
+            for r in records
+            if r.gauge.name == "component_rss_bytes"
+            and r.tags.get("Component") == FORK_SERVER_COMPONENT_NAME
+        ]
+        assert len(fs_rss) == 1 and fs_rss[0].value > 0
+
+        # Killing the fork server turns it into a zombie (until reaped), drops
+        # node_fork_server_count to 0, and resets ray::fork_server gauges to 0.
+        psutil.Process(fs_pid).kill()
+        wait_for_condition(
+            lambda: not psutil.pid_exists(fs_pid)
+            or psutil.Process(fs_pid).status() == psutil.STATUS_ZOMBIE,
+            timeout=5,
+        )
+        workers_after = await reporter._async_get_workers_and_agents()
+        fs_after = [
+            w
+            for w in workers_after
+            if (w.get("cmdline") or [None])[0] == FORK_SERVER_COMPONENT_NAME
+        ]
+        assert fs_after == []
+        stats["workers"] = workers_after
+        records_after = reporter._to_records(stats, {})
+        fs_count_after = [
+            r for r in records_after if r.gauge.name == "node_fork_server_count"
+        ]
+        assert len(fs_count_after) == 1 and fs_count_after[0].value == 0
+        fs_rss_after = [
+            r
+            for r in records_after
+            if r.gauge.name == "component_rss_bytes"
+            and r.tags.get("Component") == FORK_SERVER_COMPONENT_NAME
+        ]
+        assert len(fs_rss_after) == 1 and fs_rss_after[0].value == 0.0
+    finally:
+        for pid in pids_to_kill:
+            try:
+                psutil.Process(pid).kill()
+            except psutil.NoSuchProcess:
+                pass
+        fake_agent.wait(timeout=5)
+        fake_agent.stdout.close()
 
 
 if __name__ == "__main__":

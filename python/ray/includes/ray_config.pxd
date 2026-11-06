@@ -101,3 +101,5 @@ cdef extern from "ray/common/ray_config.h" nogil:
         uint64_t gcs_mark_task_failed_on_worker_dead_delay_ms() const
 
         uint64_t gcs_mark_task_failed_on_job_done_delay_ms() const
+
+        c_string JOB_ID() const

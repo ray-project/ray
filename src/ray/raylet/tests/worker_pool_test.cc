@@ -571,6 +571,8 @@ class WorkerPoolTest : public ::testing::Test {
   ray::observability::FakeGauge
       fake_num_cached_workers_skipped_dynamic_options_mismatch_metric_;
   ray::observability::FakeGauge fake_num_workers_started_from_cache_metric_;
+  ray::observability::FakeCounter fake_num_workers_forked_from_server_metric_;
+  ray::observability::FakeCounter fake_num_worker_fork_server_fallbacks_metric_;
   ray::observability::FakeHistogram fake_worker_register_time_ms_histogram_;
   WorkerPoolMetrics worker_pool_metrics_ = {
       fake_num_workers_started_metric_,
@@ -578,6 +580,8 @@ class WorkerPoolTest : public ::testing::Test {
       fake_num_cached_workers_skipped_runtime_environment_mismatch_metric_,
       fake_num_cached_workers_skipped_dynamic_options_mismatch_metric_,
       fake_num_workers_started_from_cache_metric_,
+      fake_num_workers_forked_from_server_metric_,
+      fake_num_worker_fork_server_fallbacks_metric_,
       fake_worker_register_time_ms_histogram_};
 };
 
@@ -2898,7 +2902,7 @@ TEST_F(WorkerPoolDriverRegisteredTest, StartWorkerProcessViaForkServerAndFallbac
   ASSERT_EQ(req_json["runtime_env_vars"]["MY_RUNTIME_VAR"].get<std::string>(), "val123");
 
   // 3. When the listening socket accepts the connection in the kernel backlog but the
-  // server never replies, StartWorkerProcess must time out after ~500ms (SO_RCVTIMEO),
+  // server never replies, StartWorkerProcess must time out after ~100ms (SO_RCVTIMEO),
   // mark the socket unhealthy, and fall back to StartProcess.
   auto t_start = std::chrono::steady_clock::now();
   auto [timeout_proc, timeout_wid] =
@@ -2916,11 +2920,13 @@ TEST_F(WorkerPoolDriverRegisteredTest, StartWorkerProcessViaForkServerAndFallbac
   ASSERT_NE(timeout_proc.GetId(), expected_fork_pid);
   ASSERT_FALSE(timeout_wid.IsNil());
   ASSERT_EQ(worker_pool_->GetProcessSize(), 1);
-  EXPECT_GE(elapsed_ms, 400);
-  EXPECT_LT(elapsed_ms, 2500);
+  EXPECT_GE(elapsed_ms, 80);
+  EXPECT_LT(elapsed_ms, 1000);
+  EXPECT_EQ(fake_num_workers_forked_from_server_metric_.GetTagToValue()[{}], 2.0);
+  EXPECT_EQ(fake_num_worker_fork_server_fallbacks_metric_.GetTagToValue()[{}], 1.0);
 
-  // 4. Subsequent spawns on the same unhealthy socket must bypass it immediately
-  // without stalling for another 500ms.
+  // 4. Subsequent spawns on the same unhealthy socket inode must bypass it immediately
+  // without stalling for another 100ms.
   auto t_start_2 = std::chrono::steady_clock::now();
   auto [bypass_proc, bypass_wid] =
       worker_pool_->StartWorkerProcess(Language::PYTHON,
@@ -2937,13 +2943,84 @@ TEST_F(WorkerPoolDriverRegisteredTest, StartWorkerProcessViaForkServerAndFallbac
   ASSERT_NE(bypass_proc.GetId(), expected_fork_pid);
   ASSERT_FALSE(bypass_wid.IsNil());
   ASSERT_EQ(worker_pool_->GetProcessSize(), 2);
-  EXPECT_LT(elapsed_ms_2, 200);
+  EXPECT_LT(elapsed_ms_2, 80);
+  EXPECT_EQ(fake_num_worker_fork_server_fallbacks_metric_.GetTagToValue()[{}], 2.0);
+
+  // 4b. Unlinking the socket on crash sets an ENOENT (0, 0) cooldown, and atomically
+  // publishing ANY new live socket clears that ENOENT cooldown immediately.
+  unlink(sock_path.c_str());
+  for (int i = 0; i < 2; ++i) {
+    auto [enoent_proc, enoent_wid] = worker_pool_->StartWorkerProcess(
+        Language::PYTHON,
+        rpc::WorkerType::WORKER,
+        JOB_ID,
+        &status,
+        /*dynamic_options=*/{},
+        /*runtime_env_hash=*/123,
+        /*serialized_runtime_env_context=*/ctx_json.dump(),
+        env_info);
+    ASSERT_NE(enoent_proc.GetId(), expected_fork_pid);
+    ASSERT_FALSE(enoent_wid.IsNil());
+  }
+  ASSERT_EQ(worker_pool_->GetProcessSize(), 4);
+  EXPECT_EQ(fake_num_worker_fork_server_fallbacks_metric_.GetTagToValue()[{}], 4.0);
+
+  std::string tmp_respawn_sock = sock_path + ".new";
+  unlink(tmp_respawn_sock.c_str());
+  int respawn_fd = socket(AF_UNIX, SOCK_STREAM, 0);
+  ASSERT_GE(respawn_fd, 0);
+  struct sockaddr_un respawn_addr = {};
+  respawn_addr.sun_family = AF_UNIX;
+  std::strncpy(
+      respawn_addr.sun_path, tmp_respawn_sock.c_str(), sizeof(respawn_addr.sun_path) - 1);
+  ASSERT_EQ(
+      bind(respawn_fd, reinterpret_cast<struct sockaddr *>(&respawn_addr), sizeof(addr)),
+      0);
+  ASSERT_EQ(listen(respawn_fd, 4), 0);
+  ASSERT_EQ(rename(tmp_respawn_sock.c_str(), sock_path.c_str()), 0);
+
+  const pid_t expected_respawn_pid = static_cast<pid_t>(Process::PID_MAX_LIMIT + 1001);
+  std::thread respawn_thread([respawn_fd, expected_respawn_pid]() {
+    int conn_fd = accept(respawn_fd, nullptr, nullptr);
+    if (conn_fd >= 0) {
+      std::string req;
+      char buf[1024];
+      while (req.find('\n') == std::string::npos) {
+        ssize_t n = read(conn_fd, buf, sizeof(buf));
+        if (n <= 0) {
+          break;
+        }
+        req.append(buf, static_cast<size_t>(n));
+      }
+      std::string reply = "{\"pid\": " + std::to_string(expected_respawn_pid) + "}\n";
+      ssize_t written = write(conn_fd, reply.data(), reply.size());
+      EXPECT_EQ(written, static_cast<ssize_t>(reply.size()));
+      close(conn_fd);
+    }
+  });
+  auto [respawn_proc, respawn_wid] =
+      worker_pool_->StartWorkerProcess(Language::PYTHON,
+                                       rpc::WorkerType::WORKER,
+                                       JOB_ID,
+                                       &status,
+                                       /*dynamic_options=*/{},
+                                       /*runtime_env_hash=*/123,
+                                       /*serialized_runtime_env_context=*/ctx_json.dump(),
+                                       env_info);
+  respawn_thread.join();
+  close(respawn_fd);
+  ASSERT_EQ(respawn_proc.GetId(), expected_respawn_pid);
+  ASSERT_FALSE(respawn_wid.IsNil());
+  ASSERT_EQ(worker_pool_->GetProcessSize(), 4);
+  EXPECT_EQ(fake_num_workers_forked_from_server_metric_.GetTagToValue()[{}], 3.0);
+  EXPECT_EQ(fake_num_worker_fork_server_fallbacks_metric_.GetTagToValue()[{}], 4.0);
 
   close(listen_fd);
   unlink(sock_path.c_str());
   std::filesystem::remove_all(temp_dir);
 
-  // 5. When dynamic_options is non-empty, StartWorkerProcess must bypass ForkServer.
+  // 5. When dynamic_options is non-empty, StartWorkerProcess must bypass ForkServer
+  // directly without incrementing the fallback failure metric.
   auto [dyn_proc, dyn_wid] =
       worker_pool_->StartWorkerProcess(Language::PYTHON,
                                        rpc::WorkerType::WORKER,
@@ -2955,7 +3032,8 @@ TEST_F(WorkerPoolDriverRegisteredTest, StartWorkerProcessViaForkServerAndFallbac
                                        env_info);
   ASSERT_NE(dyn_proc.GetId(), expected_fork_pid);
   ASSERT_FALSE(dyn_wid.IsNil());
-  ASSERT_EQ(worker_pool_->GetProcessSize(), 3);
+  ASSERT_EQ(worker_pool_->GetProcessSize(), 5);
+  EXPECT_EQ(fake_num_worker_fork_server_fallbacks_metric_.GetTagToValue()[{}], 4.0);
 
   RayConfig::instance().enable_worker_fork_server() = false;
 }
