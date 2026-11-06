@@ -101,10 +101,7 @@ class _SGLangGenerateTask(_SGLangTask):
 
     async def run(self, engine: Any, request: SGLangEngineRequest) -> Dict[str, Any]:
         output = await self._generate_async(engine, request)
-        return {
-            **SGLangOutputData.from_sglang_engine_output(output).model_dump(),
-            "params": str(request.params),
-        }
+        return SGLangOutputData.from_sglang_engine_output(output).model_dump()
 
     async def _generate_async(
         self, engine: Any, request: SGLangEngineRequest

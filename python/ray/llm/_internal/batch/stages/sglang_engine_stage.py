@@ -99,6 +99,8 @@ class SGLangEngineWrapper:
         t = time.perf_counter()
         async with self.semaphore:
             output = await self.task.run(self.engine, request)
+        if self.task.params_column is not None:
+            output["params"] = str(params)
         return request_id, idx_in_batch, output, time.perf_counter() - t
 
     def shutdown(self):

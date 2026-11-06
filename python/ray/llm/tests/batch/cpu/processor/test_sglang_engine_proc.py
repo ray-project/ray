@@ -14,7 +14,6 @@ from ray.llm._internal.batch.processor.sglang_engine_proc import (
     build_sglang_engine_processor,
 )
 from ray.llm._internal.batch.tasks.sglang.base import _SGLangTask
-from ray.llm._internal.batch.tasks.sglang.generate import _SGLangGenerateTask
 
 
 def test_sglang_engine_processor():
@@ -146,6 +145,14 @@ def test_task_prepare_config_applies_rules():
     assert config.detokenize_stage is True
 
 
+@pytest.mark.parametrize("detokenize_stage", [False, {"enabled": False}])
+def test_task_prepare_config_allows_disabled_unsupported_stage(detokenize_stage):
+    config = SGLangEngineProcessorConfig(
+        model_source="Qwen/Qwen3.5-0.8B", detokenize_stage=detokenize_stage
+    )
+    assert _ToyTask.prepare_config(config).detokenize_stage is False
+
+
 @pytest.mark.parametrize("detokenize_stage", [True, {"enabled": True}])
 def test_task_prepare_config_rejects_unsupported_stage(detokenize_stage):
     config = SGLangEngineProcessorConfig(
@@ -160,7 +167,7 @@ def test_generate_task_rejects_task_kwargs():
         model_source="Qwen/Qwen3.5-0.8B", task_kwargs={"scale": 2}
     )
     with pytest.raises(ValueError, match="takes no task_kwargs"):
-        _SGLangGenerateTask.prepare_config(config)
+        ProcessorBuilder.build(config)
 
 
 if __name__ == "__main__":

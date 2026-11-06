@@ -120,12 +120,12 @@ def build_sglang_engine_processor(
         download_model_files,
     )
 
+    task_cls = get_sglang_task_cls(config.task_type)
+    config = task_cls.prepare_config(config)
+
     ray.init(runtime_env=config.runtime_env, ignore_reinit_error=True)
 
     stages = []
-
-    task_cls = get_sglang_task_cls(config.task_type)
-    config = task_cls.prepare_config(config)
 
     # Prepare processor defaults for merging into stage configs
     trust_remote_code = config.engine_kwargs.get("trust_remote_code", False)

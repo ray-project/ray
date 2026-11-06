@@ -1,13 +1,10 @@
 """The base class for SGLang batch tasks."""
 
 import logging
-from typing import Any, ClassVar, Dict, Optional, Tuple, Type
+from typing import TYPE_CHECKING, Any, ClassVar, Dict, Optional, Tuple, Type
 
 from pydantic import BaseModel
 
-from ray.llm._internal.batch.processor.sglang_engine_proc import (
-    SGLangEngineProcessorConfig,
-)
 from ray.llm._internal.batch.processor.utils import build_cpu_stage_map_kwargs
 from ray.llm._internal.batch.stages.base import StatefulStage
 from ray.llm._internal.batch.stages.configs import (
@@ -16,6 +13,11 @@ from ray.llm._internal.batch.stages.configs import (
     TokenizerStageConfig,
     resolve_stage_config,
 )
+
+if TYPE_CHECKING:
+    from ray.llm._internal.batch.processor.sglang_engine_proc import (
+        SGLangEngineProcessorConfig,
+    )
 
 logger = logging.getLogger(__name__)
 
@@ -38,7 +40,8 @@ class _SGLangTask:
     required_input_keys: ClassVar[Dict[str, str]] = {}
     # Input columns the task can use, and their descriptions.
     optional_input_keys: ClassVar[Dict[str, str]] = {}
-    # Column with per-row parameters, passed to `prepare_request` as `params`.
+    # Column with per-row parameters, passed to `prepare_request` as `params`
+    # and added to the output as the `params` column.
     params_column: ClassVar[Optional[str]] = None
     # Stages the task can't use. They're turned off, and enabling one raises.
     unsupported_stages: ClassVar[Tuple[str, ...]] = ()
@@ -49,8 +52,8 @@ class _SGLangTask:
 
     @classmethod
     def prepare_config(
-        cls, config: SGLangEngineProcessorConfig
-    ) -> SGLangEngineProcessorConfig:
+        cls, config: "SGLangEngineProcessorConfig"
+    ) -> "SGLangEngineProcessorConfig":
         """Apply the task's rules to the config and return the updated copy."""
         if cls.options_model is not None:
             task_kwargs = cls.options_model(**config.task_kwargs).model_dump()
@@ -93,7 +96,7 @@ class _SGLangTask:
 
     @classmethod
     def build_tokenize_stage(
-        cls, config: SGLangEngineProcessorConfig, stage_cfg: TokenizerStageConfig
+        cls, config: "SGLangEngineProcessorConfig", stage_cfg: TokenizerStageConfig
     ) -> StatefulStage:
         """Build the tokenize stage. By default, it tokenizes the prompt."""
         from ray.llm._internal.batch.stages import TokenizeStage
