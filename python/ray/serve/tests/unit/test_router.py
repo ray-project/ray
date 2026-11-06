@@ -1,11 +1,16 @@
 import asyncio
 import concurrent.futures
+import contextvars
+import gc
+import inspect
 import random
 import sys
 import threading
+import weakref
 from collections import defaultdict
 from contextlib import asynccontextmanager
 from dataclasses import replace
+from types import SimpleNamespace
 from typing import Callable, Dict, List, Optional, Set, Tuple
 from unittest.mock import Mock, patch
 
@@ -13,6 +18,7 @@ import grpc
 import pytest
 
 import ray
+import ray.serve.context
 from ray._common.test_utils import async_wait_for_condition, wait_for_condition
 from ray._common.utils import get_or_create_event_loop
 from ray.exceptions import (
@@ -35,6 +41,7 @@ from ray.serve._private.constants import (
     RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE,
     RAY_SERVE_METRICS_EXPORT_INTERVAL_MS,
 )
+from ray.serve._private.default_impl import create_init_handle_options
 from ray.serve._private.replica import Replica as ServeReplica
 from ray.serve._private.replica_result import ReplicaResult, gRPCReplicaResult
 from ray.serve._private.request_router import (
@@ -50,6 +57,7 @@ from ray.serve._private.router import (
     CurrentLoopRouter,
     RouterMetricsManager,
     SingletonThreadRouter,
+    _ClaimableFuture,
 )
 from ray.serve._private.test_utils import FakeCounter, FakeGauge, MockTimer
 from ray.serve._private.utils import (
@@ -58,11 +66,13 @@ from ray.serve._private.utils import (
     get_random_string,
 )
 from ray.serve.config import AutoscalingConfig, RequestRouterConfig
+from ray.serve.context import _RequestContext
 from ray.serve.exceptions import (
     BackPressureError,
     DeploymentUnavailableError,
     ReplicaUnavailableError,
 )
+from ray.serve.handle import DeploymentHandle, DeploymentResponse
 
 
 class FakeReplicaResult(ReplicaResult):
@@ -3491,6 +3501,241 @@ class TestCustomRequestRouterAPIs:
         )
         # Should complete without error.
         await r._backoff(0)
+
+
+def _response(future) -> DeploymentResponse:
+    return DeploymentResponse(
+        future,
+        RequestMetadata(request_id="r", internal_request_id="i"),
+        _is_router_running_in_separate_loop=False,
+        _pending_call=("handle", ("arg",), {"k": 1}),
+    )
+
+
+def test_claim_takes_over_a_call_before_routing_starts():
+    async def run():
+        task = asyncio.ensure_future(asyncio.sleep(10))
+        response = _response(task)
+        assert response._claim_pending_call() == ("handle", ("arg",), {"k": 1})
+        await asyncio.sleep(0)
+        assert task.cancelled()
+        assert response._claim_pending_call() is None
+
+    asyncio.run(run())
+
+
+def test_claim_refuses_a_call_that_is_already_routing():
+    async def run():
+        task = asyncio.ensure_future(asyncio.sleep(10))
+        response = _response(task)
+        response._request_metadata._routing_started = True
+        assert response._claim_pending_call() is None
+        assert not task.cancelled()
+        task.cancel()
+
+    asyncio.run(run())
+
+
+def test_claim_refuses_a_cancelled_call():
+    async def run():
+        task = asyncio.ensure_future(asyncio.sleep(10))
+        response = _response(task)
+        response.cancel()
+        # The task has not seen its cancellation yet, but the caller's cancel stands.
+        assert not task.done()
+        assert response._claim_pending_call() is None
+
+    asyncio.run(run())
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("routing_started", [False, True])
+async def test_current_loop_claim_refuses_once_routing_starts(
+    setup_router, routing_started
+):
+    router, fake_request_router = setup_router
+    replica = FakeReplica(
+        ReplicaID(unique_id="r1", deployment_id=DeploymentID(name="test"))
+    )
+    fake_request_router.set_replica_to_return(replica)
+    fake_request_router.set_should_block_requests(True)
+    current_loop_router = CurrentLoopRouter.__new__(CurrentLoopRouter)
+    current_loop_router._asyncio_loop = asyncio.get_running_loop()
+    current_loop_router._asyncio_router = router
+    meta = RequestMetadata(request_id="r", internal_request_id="i")
+    task = current_loop_router.assign_request(meta, "arg")
+    response = DeploymentResponse(
+        task,
+        meta,
+        _is_router_running_in_separate_loop=False,
+        _pending_call=("handle", ("arg",), {}),
+    )
+    if not routing_started:
+        assert response._claim_pending_call() == ("handle", ("arg",), {})
+        with pytest.raises(asyncio.CancelledError):
+            await task
+        assert not meta._routing_started and not replica._requests_sent
+        return
+    await async_wait_for_condition(
+        lambda: len(fake_request_router._blocked_requests) == 1
+    )
+    assert meta._routing_started
+    assert response._claim_pending_call() is None
+    fake_request_router.unblock_requests(1)
+    await task
+    assert len(replica._requests_sent) == 1
+    assert response._pending_call is None
+
+
+@pytest.fixture
+def thread_router():
+    # Only the router loop matters here; the rest of the router is never used.
+    router = SingletonThreadRouter.__new__(SingletonThreadRouter)
+    router._asyncio_loop = asyncio.new_event_loop()
+    thread = threading.Thread(target=router._asyncio_loop.run_forever, daemon=True)
+    thread.start()
+    yield router
+    router._asyncio_loop.call_soon_threadsafe(router._asyncio_loop.stop)
+    thread.join(timeout=5)
+    router._asyncio_loop.close()
+
+
+async def _routed(ran):
+    ran.append(True)
+    return "result"
+
+
+def test_claimable_call_routes_while_the_callers_loop_is_blocked(thread_router):
+    routed = threading.Event()
+
+    async def routing():
+        routed.set()
+        return "result"
+
+    async def run():
+        future = thread_router._wrap_asyncio_call_in_future(routing(), claimable=True)
+        # Blocks this loop, like a handler waiting on the call's side effect.
+        assert routed.wait(timeout=5)
+        assert future.result(timeout=5) == "result"
+
+    asyncio.run(run())
+
+
+def test_claimed_call_never_reaches_the_router_thread(thread_router):
+    async def run():
+        ran = []
+        coro = _routed(ran)
+        release = threading.Event()
+        # Holds the router thread so the claim comes first.
+        thread_router._asyncio_loop.call_soon_threadsafe(release.wait, 5)
+        future = thread_router._wrap_asyncio_call_in_future(coro, claimable=True)
+        assert future.claim()
+        release.set()
+        with pytest.raises(concurrent.futures.CancelledError):
+            future.result(timeout=5)
+        # Closed, so it doesn't warn that it was never awaited.
+        await async_wait_for_condition(
+            lambda: inspect.getcoroutinestate(coro) == inspect.CORO_CLOSED
+        )
+        assert not ran
+
+    asyncio.run(run())
+
+
+def test_claim_refuses_a_call_the_router_thread_started(thread_router):
+    started = threading.Event()
+
+    async def routing():
+        started.set()
+        # Still routing when the claim runs.
+        await asyncio.sleep(0.1)
+        return "result"
+
+    async def run():
+        future = thread_router._wrap_asyncio_call_in_future(routing(), claimable=True)
+        response = DeploymentResponse(
+            future,
+            RequestMetadata(request_id="r", internal_request_id="i"),
+            _pending_call=("handle", (), {}),
+        )
+        assert started.wait(timeout=5)
+        assert response._claim_pending_call() is None
+        assert await asyncio.wrap_future(future) == "result"
+
+    asyncio.run(run())
+
+
+def test_response_drops_its_pending_call_once_routing_ends(thread_router):
+    async def run():
+        future = thread_router._wrap_asyncio_call_in_future(_routed([]), claimable=True)
+        response = DeploymentResponse(
+            future,
+            RequestMetadata(request_id="r", internal_request_id="i"),
+            _pending_call=("handle", ("arg",), {}),
+        )
+        assert await asyncio.wrap_future(future) == "result"
+        assert response._pending_call is None
+        return weakref.ref(future), weakref.ref(response)
+
+    gc.disable()
+    try:
+        refs = asyncio.run(run())
+        # Refcounting alone frees both once the router thread drops its callbacks.
+        wait_for_condition(lambda: all(ref() is None for ref in refs), timeout=5)
+    finally:
+        gc.enable()
+
+
+def test_assign_request_is_claimable_only_in_a_forwardable_request(thread_router):
+    thread_router._asyncio_router = SimpleNamespace(
+        assign_request=lambda meta: _routed([])
+    )
+
+    def call(forwardable):
+        ray.serve.context._serve_request_context.set(
+            _RequestContext(request_id="parent", _forwardable=forwardable)
+        )
+        meta = RequestMetadata(request_id="c", internal_request_id="c")
+        return thread_router.assign_request(meta)
+
+    async def run():
+        plain, claimable = call(False), call(True)
+        assert not isinstance(plain, _ClaimableFuture)
+        assert isinstance(claimable, _ClaimableFuture)
+        for future in (plain, claimable):
+            assert await asyncio.wrap_future(future) == "result"
+
+    asyncio.run(run())
+
+
+@pytest.mark.parametrize("stream", [False, True])
+def test_remote_keeps_a_pending_call_only_in_a_forwardable_request(stream):
+    router = SimpleNamespace(
+        assign_request=lambda meta, *args, **kwargs: concurrent.futures.Future()
+    )
+    handle = DeploymentHandle(
+        "d",
+        "app",
+        init_options=create_init_handle_options(_run_router_in_separate_loop=True),
+        _router=router,
+        _request_counter=Mock(),
+    ).options(stream=stream)
+
+    def run():
+        ray.serve.context._serve_request_context.set(
+            _RequestContext(request_id="parent")
+        )
+        assert handle.remote(1)._pending_call is None
+        ray.serve.context._serve_request_context.set(
+            _RequestContext(request_id="parent", _forwardable=True)
+        )
+        inner = handle.remote(1)
+        response = handle.remote(inner, k=2)
+        assert response._pending_call == (handle, (inner,), {"k": 2})
+        # The outer call consumes the inner response, so it can't be forwarded.
+        assert inner._claim_pending_call() is None
+
+    contextvars.copy_context().run(run)
 
 
 if __name__ == "__main__":
