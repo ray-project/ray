@@ -3,6 +3,7 @@ from typing import Any, Dict, List, Optional, Type
 import numpy as np
 import pandas as pd
 import pyarrow as pa
+import pyarrow.fs as pa_fs
 import pytest
 from typing_extensions import Hashable
 
@@ -27,6 +28,8 @@ from ray.data._internal.usage.util import (
 )
 from ray.data._internal.util import (
     NULL_SENTINEL,
+    RetryingPyFileSystem,
+    filesystem_for_sized_opens,
     find_insertion_index,
     find_partition_index,
     get_max_task_capacity,
@@ -729,6 +732,23 @@ def test_execution_options_label_selector_field():
 
     options = ExecutionOptions(label_selector={"subcluster": "train"})
     assert options.label_selector == {"subcluster": "train"}
+
+
+def test_filesystem_for_sized_opens_unwraps_only_s3():
+    s3 = pa_fs.S3FileSystem(anonymous=True, region="us-east-1")
+    assert (
+        filesystem_for_sized_opens(RetryingPyFileSystem.wrap(s3, retryable_errors=[]))
+        is s3
+    )
+    local = RetryingPyFileSystem.wrap(pa_fs.LocalFileSystem(), retryable_errors=[])
+    assert filesystem_for_sized_opens(local) is local
+
+
+def test_filesystem_for_sized_opens_without_s3_support(monkeypatch):
+    # A pyarrow build without S3 support has no ``pyarrow.fs.S3FileSystem``.
+    monkeypatch.delattr(pa_fs, "S3FileSystem")
+    local = RetryingPyFileSystem.wrap(pa_fs.LocalFileSystem(), retryable_errors=[])
+    assert filesystem_for_sized_opens(local) is local
 
 
 if __name__ == "__main__":

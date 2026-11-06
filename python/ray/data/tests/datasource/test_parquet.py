@@ -3477,9 +3477,10 @@ def test_parquet_sampling_fails_on_permanent_error(
         raise PermissionError("Access Denied: invalid credentials")
 
     if DataContext.get_current().use_datasource_v2:
-        # V2 samples schema on the driver by reading Parquet footers via
-        # ``pq.read_schema``; a permanent OSError there must propagate.
-        target = "pyarrow.parquet.read_schema"
+        # V2 samples schema on the driver by reading Parquet footers through
+        # a ``ParquetFileFormat`` fragment; a permanent OSError there must
+        # propagate.
+        target = "pyarrow.dataset.ParquetFileFormat"
     else:
         # V1 samples files through a remote task wrapping
         # ``_fetch_parquet_file_info``; retries are capped so the error
@@ -3492,6 +3493,41 @@ def test_parquet_sampling_fails_on_permanent_error(
     with patch(target, new=_raise_permission_error):
         with pytest.raises(Exception, match="Access Denied"):
             ray.data.read_parquet(str(tmp_path)).materialize()
+
+
+def test_parquet_sampling_retries_transient_error(
+    ray_start_regular_shared, tmp_path, use_datasource_v2
+):
+    """V2 schema sampling retries a footer read that fails with an error in
+    ``DataContext.retried_io_errors``."""
+    from unittest.mock import patch
+
+    if not DataContext.get_current().use_datasource_v2:
+        pytest.skip("V2 reads the sample's footers on the driver.")
+
+    pq.write_table(pa.table({"col": [1, 2, 3]}), tmp_path / "data.parquet")
+    footer_reads = []
+
+    class _FailFirstFooterRead:
+        def __init__(self, fragment):
+            self._fragment = fragment
+
+        @property
+        def metadata(self):
+            footer_reads.append(1)
+            if len(footer_reads) == 1:
+                raise OSError("AWS Error SLOW_DOWN during GetObject operation")
+            return self._fragment.metadata
+
+    class _Format(pds.ParquetFileFormat):
+        def make_fragment(self, *args, **kwargs):
+            return _FailFirstFooterRead(super().make_fragment(*args, **kwargs))
+
+    with patch("pyarrow.dataset.ParquetFileFormat", new=_Format):
+        rows = ray.data.read_parquet(str(tmp_path)).take_all()
+
+    assert len(footer_reads) == 2
+    assert sorted(row["col"] for row in rows) == [1, 2, 3]
 
 
 @pytest.mark.timeout(30)
