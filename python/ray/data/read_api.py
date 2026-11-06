@@ -5963,6 +5963,14 @@ def read_lance(
     """Create a :class:`~ray.data.Dataset` from one or more
     `Lance Datasets <https://lance-format.github.io/lance-python-doc/dataset.html>`_.
 
+    .. note::
+        Filtered reads leave row-count metadata unknown without scanning the
+        data during planning. ``count()`` executes the read. Non-stratified
+        ``train_test_split()`` uses materialized rows to determine split sizes.
+        Count-only reads may still read payload columns because this reader
+        does not support automatic projection pushdown. Use ``columns`` to
+        explicitly limit the columns read when appropriate.
+
     Examples:
         >>> import ray
         >>> ds = ray.data.read_lance( # doctest: +SKIP
