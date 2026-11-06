@@ -4150,6 +4150,13 @@ def read_hive(
     Configure authentication, transport, and TLS certificate verification in
     ``connection_factory``. ``GSSAPI`` also requires ``impyla[kerberos]`` and
     Kerberos credentials on those nodes.
+    Supported authentication profiles include ``PLAIN`` (username and password),
+    ``GSSAPI`` (Kerberos/SPNEGO with ``kerberos_service_name``), and ``NOSASL``
+    (unauthenticated SASL-disabled HiveServer2). For TLS connections, configure
+    ``use_ssl=True`` and provide trusted ``ca_cert`` in the factory. Connections
+    fail closed with descriptive errors for untrusted certificates, hostname
+    mismatches, missing/expired Kerberos credentials, missing Kerberos dependencies,
+    and invalid authentication settings.
     The real-server integration test covers ``PLAIN`` with HiveServer2 in
     server mode ``NONE``. It doesn't cover ``NOSASL`` or ``GSSAPI``.
 
