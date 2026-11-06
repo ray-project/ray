@@ -77,32 +77,24 @@ def as_completed(
         Use this function instead of calling :meth:`~ray.get` inside a for loop. See
         https://docs.ray.io/en/latest/ray-core/patterns/ray-get-loop.html for more details.
 
-    Example:
+    Examples:
         Suppose we have a function that sleeps for x seconds depending on the input.
         We expect to obtain a partially sorted list of results.
 
-        .. testcode:: python
-            import ray
-            import time
-
-            @ray.remote
-            def f(x):
-                time.sleep(x)
-                return x
-
-            refs = [f.remote(i) for i in [10, 4, 6, 8, 2]]
-            for x in ray.util.as_completed(refs, chunk_size=2):
-                print(x)
-
-        .. testoutput::
-            :options: +MOCK
-
-            # Output:
-            4
-            2
-            6
-            8
-            10
+        >>> import ray  # doctest: +SKIP_EXAMPLE
+        >>> import time
+        >>> @ray.remote
+        ... def f(x):
+        ...     time.sleep(x)
+        ...     return x
+        >>> refs = [f.remote(i) for i in [10, 4, 6, 8, 2]]
+        >>> for x in ray.util.as_completed(refs, chunk_size=2):
+        ...     print(x)
+        4
+        2
+        6
+        8
+        10
 
     Args:
         refs: A list of Ray object refs.
@@ -151,47 +143,32 @@ def map_unordered(
     .. note::
         There is generally no guarantee on the order of results.
 
-    Example:
+    Examples:
         Suppose we have a function that sleeps for x seconds depending on the input.
         We expect to obtain a partially sorted list of results.
 
-        .. testcode:: python
-
-            import ray
-            import time
-
-            @ray.remote
-            def f(x):
-                time.sleep(x)
-                return x
-
-            # Example 1: chunk_size=2
-            for x in ray.util.map_unordered(f, [10, 4, 6, 8, 2], chunk_size=2):
-                print(x)
-
-        .. testoutput::
-            :options: +MOCK
-
-            4
-            2
-            6
-            8
-            10
-
-        .. testcode:: python
-
-            # Example 2: backpressure_size=2, chunk_size=1
-            for x in ray.util.map_unordered(f, [10, 4, 6, 8, 2], backpressure_size=2, chunk_size=1):
-                print(x)
-
-        .. testoutput::
-            :options: +MOCK
-
-            4
-            10
-            6
-            8
-            2
+        >>> import ray  # doctest: +SKIP_EXAMPLE
+        >>> import time
+        >>> @ray.remote
+        ... def f(x):
+        ...     time.sleep(x)
+        ...     return x
+        >>> # Example 1: chunk_size=2
+        >>> for x in ray.util.map_unordered(f, [10, 4, 6, 8, 2], chunk_size=2):
+        ...     print(x)
+        4
+        2
+        6
+        8
+        10
+        >>> # Example 2: backpressure_size=2, chunk_size=1
+        >>> for x in ray.util.map_unordered(f, [10, 4, 6, 8, 2], backpressure_size=2, chunk_size=1):
+        ...     print(x)
+        4
+        10
+        6
+        8
+        2
 
     Args:
         fn: A remote function to apply to the list of items. For more complex use cases, use Ray Data's
