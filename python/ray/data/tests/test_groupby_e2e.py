@@ -848,7 +848,6 @@ def test_groupby_multi_agg_with_nans(
 @pytest.mark.parametrize("null", [None, np.nan])
 def test_groupby_aggregations_are_associative(
     ray_start_regular_shared_2_cpus,
-    configure_shuffle_method,
     ds_format,
     ignore_nulls,
     null,
