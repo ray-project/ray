@@ -1660,6 +1660,26 @@ def test_tensors_in_tables_parquet(
     )
 
 
+def test_tensor_schema_limit_then_project_preserves_conversion_inputs(
+    ray_start_regular_shared, tmp_path, use_datasource_v2
+):
+    values = np.arange(8, dtype=np.int64).reshape(4, 2)
+    path = tmp_path / "tensors.parquet"
+    pq.write_table(
+        pa.table({"id": list(range(4)), "tensor": [row.tobytes() for row in values]}),
+        path,
+    )
+    dataset = ray.data.read_parquet(
+        str(path),
+        tensor_column_schema={"tensor": (values.dtype, (2,))},
+        override_num_blocks=1,
+    )
+    reference = dataset.limit(1).take_all()
+    assert len(reference) == 1 and reference[0]["id"] == 0
+    np.testing.assert_array_equal(reference[0]["tensor"], values[0])
+    assert dataset.limit(1).select_columns(["id"]).take_all() == [{"id": 0}]
+
+
 def test_multiple_files_with_ragged_arrays(
     ray_start_regular_shared, tmp_path, target_max_block_size_infinite_or_default
 ):

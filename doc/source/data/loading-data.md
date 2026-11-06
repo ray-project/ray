@@ -875,11 +875,13 @@ For a trusted, row-producing SQL query, pass `query` and an explicit `pyarrow.Sc
 Query reads require an explicit Arrow schema. DataSourceV2 planning needs it on the driver before the read worker executes the query. See [issue #66840](https://github.com/ray-project/ray/issues/66840) for optional schema inference from the same query execution.
 :::
 
-Non-nullable fields reject null rows. Table reads support scalar boolean values, numbers, strings, binary values, dates, timestamps, and decimals. Hive `TIMESTAMP` maps to `pa.timestamp("us")` without a time zone; Impyla truncates sub-microsecond precision. Complex types are unsupported.
+Non-nullable fields reject null rows. Table reads support scalar boolean values, numbers, strings, binary values, dates, timestamps, and decimals. Hive `TIMESTAMP` maps to `pa.timestamp("us")` without a time zone. The client truncates sub-microsecond precision. Complex types are unsupported.
 
-Because table reads use `SELECT *`, an unsupported column type prevents reading the whole table. Use `query=` to select supported columns and provide a matching schema.
+Table schema inference checks every column before Dataset optimization. An unsupported column type prevents planning a table read, even if you later select supported columns. Use `query=` to select supported columns and provide a matching schema.
 
-The scanner doesn't push Ray Data filters, projections, or `Dataset.limit()` into HiveServer2. The `limit` argument applies only to table reads and adds a SQL `LIMIT` clause.
+For table reads, Ray pushes required columns, supported expression filters, and `Dataset.limit()` into HiveServer2 when the operation order permits. This reduces returned data and Ray processing. It doesn't guarantee less storage scanning. The `limit` argument applies only to table reads and adds a SQL `LIMIT` clause. A source limit prevents later filters from moving into SQL. Unsupported conditions run in Ray and prevent a later limit from moving ahead of them. Ray sends query SQL unchanged.
+
+Filter pushdown supports comparisons against compatible integer, decimal, and date literals, boolean and string equality, explicit null checks, and supported Boolean combinations. Floating-point, `CHAR`, and `TIMESTAMP` comparisons, `is_in()` and `not_in()`, UDFs, and callable filters run in Ray. Special column names use Hive's default `hive.support.quoted.identifiers=column` mode. Special-name pushdown isn't supported in the `none` mode.
 
 Pass a zero-argument `connection_factory` that Ray can serialize and that returns a new connection from `impala.dbapi.connect()` on each call. Ray calls the factory on the driver for table metadata and on the read worker for data. Query reads with an explicit schema only call it on the read worker. Ray closes each returned connection. Install the factory's dependencies and make its credentials and certificate files available wherever it runs.
 
@@ -896,6 +898,7 @@ import os
 
 import pyarrow as pa
 import ray
+from ray.data.expressions import col
 
 def create_connection():
     from impala.dbapi import connect
@@ -913,6 +916,7 @@ def create_connection():
 dataset = ray.data.read_hive(
     "analytics.events", connection_factory=create_connection, user="reader"
 )
+reduced_dataset = dataset.filter(expr=col("id") >= 100).select_columns(["name"]).limit(20)
 query_dataset = ray.data.read_hive(
     query="SELECT * FROM analytics.events",
     schema=pa.schema(
