@@ -181,13 +181,19 @@ class DownstreamCapacityBackpressurePolicy(BackpressurePolicy):
         significantly. Apply backpressure.
 
         When downstream capacity is zero but this operator already has output
-        queued, the ratio is reported as infinite.
+        queued, the ratio is reported as infinite. For terminal operators this
+        applies only when an external consumer is active.
         """
         downstream_capacity_size_bytes = self._get_downstream_capacity_size_bytes(op)
         if downstream_capacity_size_bytes == 0:
             output_size_bytes = self._resource_manager.get_mem_op_outputs(
                 op, include_ineligible_downstream=True
             )
+            # A terminal operator's downstream is its external consumer
+            # (iter_batches / streaming_split). Without counting it here, a
+            # consumer with nothing in flight would let the terminal op's
+            # output queue grow without bound. Write pipelines have no external
+            # consumer and keep the previous behavior.
             has_downstream = (
                 bool(op.output_dependencies)
                 or self._resource_manager.has_external_consumer

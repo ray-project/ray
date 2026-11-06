@@ -240,8 +240,8 @@ def test_backpressure_when_downstream_capacity_is_zero(
     Regression test for https://github.com/ray-project/ray/issues/67340. The
     actor's slow ``__init__`` keeps downstream capacity at zero while the
     producer has output queued. Without backpressure the producer fills the
-    shared object-store budget; with it, the queue stays under the budget and
-    the pipeline still drains every row.
+    shared object-store budget; with it, the queue stays within one block of
+    the budget and the pipeline still drains every row.
     """
     object_store_memory = 200 * MiB
     ray.init(num_cpus=4, object_store_memory=object_store_memory)
@@ -323,7 +323,12 @@ def test_backpressure_when_downstream_capacity_is_zero(
 
     assert len(ds.take_all()) == num_blocks
     assert producer_metrics_seen > 0
-    assert peak_producer_outqueue_bytes < output_budget, peak_producer_outqueue_bytes
+    # Backpressure is evaluated between task submissions, so one block can be
+    # admitted after the utilization gate opens. Allow that single block of
+    # overshoot; without the fix the queue grows to fill the whole store.
+    assert (
+        peak_producer_outqueue_bytes < output_budget + block_size
+    ), peak_producer_outqueue_bytes
 
 
 def test_no_deadlock_with_preserve_order(
