@@ -2,7 +2,7 @@
 # https://github.com/ray-project/ray/pull/29448#discussion_r1006256498
 
 python-snappy
-tensorflow-datasets==4.9.3
+tensorflow-datasets==4.9.3; python_version < '3.15'  # needs dm-tree: no cp315 wheel
 datasets>=3.0.2
 pytest-repeat
 soundfile
@@ -26,12 +26,12 @@ pytest-mock
 decord
 snowflake-connector-python>=3.15.0
 pyiceberg[sql-sqlite]==0.11.0; python_version < '3.14'
-pyiceberg[sql-sqlite]==0.12.0; python_version >= '3.14'
+pyiceberg[sql-sqlite]==0.12.0; python_version >= '3.14' and python_version < '3.15'
 clickhouse-connect
-confluent-kafka
+confluent-kafka; python_version < '3.15'
 pybase64
 hudi==0.5.0
-mcap
+mcap; python_version < '3.15'  # needs lz4: no cp315 wheel
 datasketches; python_version < '3.14'
 # `azurite` powers the Azure emulator in test_catalog_azure.py, the same way
 # `kafka` powers test_kafka.py's broker.
@@ -42,11 +42,11 @@ torch
 tensorflow; python_version < '3.14'
 jax
 jaxlib
-tensorflow-datasets
+tensorflow-datasets; python_version < '3.15'
 tensorflow-metadata>=1.17.0
 tf-keras; python_version < '3.14'
-torchvision==0.25.0
-confluent-kafka
+torchvision==0.25.0; python_version < '3.15'
+confluent-kafka; python_version < '3.15'
 zarr<3 ; python_version >= '3.11' and python_version < '3.14'  # zarr 2.18.4+ requires py3.11+ (v2 API)
 zarr>=2.18,<2.18.4 ; python_version < '3.11'  # 2.18.3: last v2 line supporting py3.10
 # No zarr 2.x installs on py3.14: all need numcodecs<0.16, which has no cp314 wheels.
@@ -69,5 +69,5 @@ lerobot>=0.5.0,<0.6; python_version >= "3.12" and python_version < "3.14"  # eve
 # requirement in its metadata, so the line has to be pinned by hand: 0.10.x is
 # built for torch 2.10 (0.9.x fails to load against it with a c10 ABI symbol
 # error, and 0.11.x targets torch 2.11). lerobot 0.5.1 allows torchcodec>=0.3,<0.11.
-torchcodec>=0.10,<0.11; python_version >= "3.12"
+torchcodec>=0.10,<0.11; python_version >= "3.12" and python_version < "3.15"
 av; python_version >= "3.12"

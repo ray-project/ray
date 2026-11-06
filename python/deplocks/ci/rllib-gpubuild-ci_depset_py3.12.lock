@@ -2338,7 +2338,7 @@ mmh3==5.2.1 \
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   ray
-moviepy==2.2.1 \
+moviepy==2.2.1 ; python_full_version < '3.15' \
     --hash=sha256:6b56803fec2ac54b557404126ac1160e65448e03798fa282bd23e8fab3795060 \
     --hash=sha256:c80cb56815ece94e5e3e2d361aa40070eeb30a09d23a24c4e684d03e16deacb1
     # via
@@ -2686,7 +2686,7 @@ numba-cuda==0.28.2 ; sys_platform != 'darwin' \
     --hash=sha256:fab7c67fb263c461bcd7ec9be61bdb6b4142a6c376e85ab5e40e63e35b87aaf6 \
     --hash=sha256:ff94d4e8ee2576b900f3422895aed93e55b090939f9da2696d858cc85ea446b5
     # via cudf-cu12
-numexpr==2.14.1 \
+numexpr==2.14.1 ; python_full_version < '3.15' \
     --hash=sha256:03130afa04edf83a7b590d207444f05a00363c9b9ea5d81c0f53b1ea13fad55a \
     --hash=sha256:05f9366d23a2e991fd5a8b5e61a17558f028ba86158a4552f8f239b005cdf83c \
     --hash=sha256:06855053de7a3a8425429bd996e8ae3c50b57637ad3e757e0fa0602a7874be30 \
@@ -3021,7 +3021,7 @@ onnx-ir==0.2.1 ; platform_machine != 'arm64' or sys_platform != 'darwin' \
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   onnxscript
-onnxruntime==1.24.4 ; platform_machine != 'arm64' or sys_platform != 'darwin' \
+onnxruntime==1.24.4 ; (python_full_version < '3.15' and platform_machine != 'arm64') or (python_full_version < '3.15' and sys_platform != 'darwin') \
     --hash=sha256:046ff290045a387676941a02a8ae5c3ebec6b4f551ae228711968c4a69d8f6b7 \
     --hash=sha256:0bdfce8e9a6497cec584aab407b71bf697dac5e1b7b7974adc50bf7533bdb3a2 \
     --hash=sha256:0d640eb9f3782689b55cfa715094474cd5662f2f137be6a6f847a594b6e9705c \
@@ -3532,7 +3532,7 @@ prettytable==3.17.0 \
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   skops
-proglog==0.1.12 \
+proglog==0.1.12 ; python_full_version < '3.15' \
     --hash=sha256:361ee074721c277b89b75c061336cb8c5f287c92b043efa562ccf7866cda931c \
     --hash=sha256:ccaafce51e80a81c65dc907a460c07ccb8ec1f78dc660cfd8f9ec3a22f01b84c
     # via

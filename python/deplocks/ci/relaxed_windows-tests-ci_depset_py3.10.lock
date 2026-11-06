@@ -849,7 +849,7 @@ cryptography==44.0.3 \
 #   pyjwt
 #   pyopenssl
 #   trustme
-cupy-cuda12x==13.6.0; sys_platform != "darwin" \
+cupy-cuda12x==13.6.0; python_full_version < "3.15" and sys_platform != "darwin" \
     --hash=sha256:297b4268f839de67ef7865c2202d3f5a0fb8d20bd43360bc51b6e60cb4406447 \
     --hash=sha256:4d2dfd9bb4705d446f542739a3616b4c9eea98d674fce247402cc9bcec89a1e4 \
     --hash=sha256:52d9e7f83d920da7d81ec2e791c2c2c747fdaa1d7b811971b34865ce6371e98a \
@@ -942,7 +942,7 @@ distlib==0.4.3 \
 # via
 #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
 #   virtualenv
-dm-tree==0.1.10 \
+dm-tree==0.1.10; python_full_version < "3.15" \
     --hash=sha256:012c2b376e88d3685c73a4b5c23be41fe933e14e380dcd90172971690b0e02d2 \
     --hash=sha256:033f9a063e1e19b6c65fb5c76079bd923044f5a6095357ad2637845513d47938 \
     --hash=sha256:0e8f8f1354f178112732b30d2293bc53d212ea64a9556db80a926af3d4647a6b \
@@ -1040,7 +1040,7 @@ fastjsonschema==2.21.2 \
 # via
 #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
 #   nbformat
-fastrlock==0.8.3; sys_platform != "darwin" \
+fastrlock==0.8.3; python_full_version < "3.15" and sys_platform != "darwin" \
     --hash=sha256:001fd86bcac78c79658bac496e8a17472d64d558cd2227fdc768aa77f877fe40 \
     --hash=sha256:04bb5eef8f460d13b8c0084ea5a9d3aab2c0573991c880c0a34a56bb14951d30 \
     --hash=sha256:05029d7080c0c61a81d5fee78e842c9a1bf22552cd56129451a252655290dcef \
@@ -1354,7 +1354,7 @@ fsspec==2023.12.1 \
 #   -r python/requirements.txt
 #   torch
 #   torch-geometric
-gast==0.7.0 \
+gast==0.7.0; python_full_version < "3.15" \
     --hash=sha256:0bb14cd1b806722e91ddbab6fb86bba148c22b40e7ff11e248974e04c8adfdae \
     --hash=sha256:99cbf1365633a74099f69c59bd650476b96baa5ef196fec88032b00b31ba36f7
 # via
@@ -2322,7 +2322,7 @@ lxml==6.1.0 \
 # via
 #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
 #   -r python/requirements/test-requirements.txt
-lz4==4.4.5 \
+lz4==4.4.5; python_full_version < "3.15" \
     --hash=sha256:0846e6e78f374156ccf21c631de80967e03cc3c01c373c665789dc0c5431e7fc \
     --hash=sha256:0bba042ec5a61fa77c7e380351a61cb768277801240249841defd2ff0a10742f \
     --hash=sha256:12233624f1bc2cebc414f9efb3113a03e89acce3ab6f72035577bc61b270d24d \
@@ -3045,7 +3045,7 @@ numba==0.61.2; python_full_version < "3.14" \
 # via
 #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
 #   -r python/requirements/test-requirements.txt
-numexpr==2.14.1 \
+numexpr==2.14.1; python_full_version < "3.15" \
     --hash=sha256:03130afa04edf83a7b590d207444f05a00363c9b9ea5d81c0f53b1ea13fad55a \
     --hash=sha256:05f9366d23a2e991fd5a8b5e61a17558f028ba86158a4552f8f239b005cdf83c \
     --hash=sha256:06855053de7a3a8425429bd996e8ae3c50b57637ad3e757e0fa0602a7874be30 \
@@ -5530,7 +5530,7 @@ tensorflow-io-gcs-filesystem==0.31.0; python_full_version < "3.12" \
 #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
 #   -r python/requirements/ml/dl-cpu-requirements.txt
 #   tensorflow
-tensorflow-probability==0.24.0 \
+tensorflow-probability==0.24.0; python_full_version < "3.15" \
     --hash=sha256:8c1774683e38359dbcaf3697e79b7e6a4e69b9c7b3679e78ee18f43e59e5759b
 # via
 #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt

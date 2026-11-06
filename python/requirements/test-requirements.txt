@@ -30,22 +30,27 @@ flask==2.1.3
 freezegun==1.1.0
 google-api-python-client==2.111.0
 google-cloud-storage==2.14.0
-gradio==6.15.2; platform_system != "Windows"
+# Not installed on py3.15: gradio needs orjson, whose cp315 wheels need glibc 2.39 (Ray images are 2.35).
+gradio==6.15.2; platform_system != "Windows" and python_version < '3.15'
 graphviz==0.20.3
 websockets==15.0.1
-joblib==1.2.0
+joblib==1.2.0; python_version < '3.15'
+# scikit-learn's only cp315 release (1.9.1) needs joblib>=1.4.0.
+joblib; python_version >= '3.15'
 # 1.33 is what langchain-core (via langchain-text-splitters in the ray-torch
 # image) requires; nothing else here caps it and it is the last release.
 jsonpatch==1.33
 kubernetes==24.2.0
 llvmlite==0.44.0; python_version < '3.14'
-llvmlite==0.47.0; python_version >= '3.14'
+llvmlite==0.47.0; python_version >= '3.14' and python_version < '3.15'
+llvmlite; python_version >= '3.15'
 lxml>=6.0.2
 moto[s3,server]==5.1.18
 mypy==1.7.0
 pyright==1.1.408
 numba==0.61.2; python_version < '3.14'
-numba==0.65.0; python_version >= '3.14'
+numba==0.65.0; python_version >= '3.14' and python_version < '3.15'
+numba; python_version >= '3.15'
 openpyxl==3.0.10
 opentelemetry-api==1.39.0
 opentelemetry-sdk==1.39.0
@@ -63,7 +68,8 @@ pydot==1.4.2
 pygame==2.5.2; python_version < '3.14'
 Pygments==2.18.0
 pymongo==4.3.2; python_version < '3.14'
-pymongo==4.18.2; python_version >= '3.14'
+pymongo==4.18.2; python_version >= '3.14' and python_version < '3.15'
+pymongo; python_version >= '3.15'
 pyspark==3.4.1
 pytest==7.4.4; python_version < '3.14'
 pytest==8.3.3; python_version >= '3.14'
@@ -92,7 +98,8 @@ memray; platform_system != "Windows" and sys_platform != "darwin" and platform_m
 # TensorFlow 2.19 requires NumPy <2.2 on Python 3.10–3.11.
 numpy==2.1.3; python_version < '3.12'
 numpy==2.2.6; python_version >= '3.12' and python_version < '3.14'
-numpy==2.3.3; python_version >= '3.14'
+numpy==2.3.3; python_version >= '3.14' and python_version < '3.15'
+numpy; python_version >= '3.15'
 ipywidgets==8.1.3
 pyzmq>=27.1.0
 colorama
@@ -132,29 +139,39 @@ backoff==1.10
 
 # Pin below the grpcio async perf regression. See
 # https://github.com/grpc/grpc/issues/43092.
-# py3.14 has no pre-regression cp314 wheel so it stays on 1.76.0.
+# py3.14 and py3.15 have no pre-regression wheels, so they stay on the first
+# release with wheels for them: 1.76.0 for cp314, 1.84.0 for cp315.
 grpcio==1.75.0; python_version < '3.14'
-grpcio==1.76.0; python_version >= '3.14'
+grpcio==1.76.0; python_version >= '3.14' and python_version < '3.15'
+grpcio==1.84.0; python_version >= '3.15'
 grpcio-tools==1.71.2; python_version < '3.12'
 grpcio-tools==1.75.0; python_version >= '3.12' and python_version < '3.14'
-grpcio-tools==1.76.0; python_version >= '3.14'
+grpcio-tools==1.76.0; python_version >= '3.14' and python_version < '3.15'
+# Not installed on py3.15: every grpcio-tools release with cp315 wheels needs protobuf 7.
 grpcio-status==1.71.2; python_version < '3.12'
 grpcio-status==1.75.0; python_version >= '3.12' and python_version < '3.14'
-grpcio-status==1.76.0; python_version >= '3.14'
+grpcio-status==1.76.0; python_version >= '3.14' and python_version < '3.15'
+grpcio-status==1.84.0; python_version >= '3.15'
 # grpcio-reflection (a ray[serve] dependency) tracks grpcio the same way, but
 # lags further behind wherever protobuf is 5.27.5: its bundled protobuf gencode
 # must not be newer than the runtime, and 1.68+ was generated with protobuf 5.28+.
 grpcio-reflection==1.67.1; python_version < '3.12'
 grpcio-reflection==1.75.0; python_version >= '3.12' and python_version < '3.14'
-grpcio-reflection==1.76.0; python_version >= '3.14'
+grpcio-reflection==1.76.0; python_version >= '3.14' and python_version < '3.15'
+# On py3.15 it stays on 1.81.1, the last release built for protobuf 6 (1.82.0 is
+# yanked for declaring protobuf 6 support it doesn't have).
+grpcio-reflection==1.81.1; python_version >= '3.15'
 
 # For test_basic.py::test_omp_threads_set
-threadpoolctl==3.1.0
-numexpr==2.14.1
+threadpoolctl==3.1.0; python_version < '3.15'
+# scikit-learn's only cp315 release (1.9.1) needs threadpoolctl>=3.5.0.
+threadpoolctl; python_version >= '3.15'
+numexpr==2.14.1; python_version < '3.15'
 
 # For test_rdt_gloo.py
 tensordict==0.8.3; sys_platform != "darwin" and python_version < '3.14'
-tensordict==0.14.2; sys_platform != "darwin" and python_version >= '3.14'
+tensordict==0.14.2; sys_platform != "darwin" and python_version >= '3.14' and python_version < '3.15'
+tensordict; sys_platform != "darwin" and python_version >= '3.15'
 
 # For `serve run --reload` CLI.
 watchfiles>=0.20
@@ -185,21 +202,24 @@ protobuf==6.33.6; python_version >= '3.12'
 # constraint by py3.10 depsets, so these are dual-pinned here with markers to
 # preserve the cross-py-version compat path.
 scipy==1.15.3; python_version < '3.11'
-scipy==1.17.1; python_version >= '3.11'
+scipy==1.17.1; python_version >= '3.11' and python_version < '3.15'
+scipy; python_version >= '3.15'
 contourpy==1.3.2; python_version < '3.11'
-contourpy==1.3.3; python_version >= '3.11'
+contourpy==1.3.3; python_version >= '3.11' and python_version < '3.15'
+contourpy; python_version >= '3.15'
 networkx==3.4.2; python_version < '3.11'
 networkx==3.6.1; python_version >= '3.11'
 cffi>=1.17.1,<2; python_version < '3.14'
 # cffi 2.0 is the first release with cp314 wheels.
-cffi==2.0.0; python_version >= '3.14'
+cffi==2.0.0; python_version >= '3.14' and python_version < '3.15'
+cffi; python_version >= '3.15'
 # cupy-cuda12x 13.x requires fastrlock; cupy 14 (the py3.14 pin) dropped it.
 fastrlock>=0.8.3; sys_platform != 'darwin' and python_version < '3.14'
-lz4>=4.4.5
+lz4>=4.4.5; python_version < '3.15'
 pyyaml>=6.0.3
 msgpack>=1.1.2
 
 # TODO(aslonnie): remove this
 # this is required as some packages depends on ray and will pick up older version of
 # ray, which has overly strict version requirements.
-ray>=2.47.1
+ray>=2.47.1; python_version < '3.15'  # no PyPI release has cp315 wheels yet

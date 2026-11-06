@@ -739,7 +739,7 @@ cryptography==44.0.3 \
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   mlflow
     #   pyopenssl
-cupy-cuda12x==13.6.0 ; sys_platform != 'darwin' \
+cupy-cuda12x==13.6.0 ; python_full_version < '3.15' and sys_platform != 'darwin' \
     --hash=sha256:297b4268f839de67ef7865c2202d3f5a0fb8d20bd43360bc51b6e60cb4406447 \
     --hash=sha256:4d2dfd9bb4705d446f542739a3616b4c9eea98d674fce247402cc9bcec89a1e4 \
     --hash=sha256:52d9e7f83d920da7d81ec2e791c2c2c747fdaa1d7b811971b34865ce6371e98a \
@@ -772,7 +772,7 @@ databricks-sdk==0.72.0 \
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   mlflow-skinny
     #   mlflow-tracing
-decorator==5.2.1 \
+decorator==5.2.1 ; python_full_version < '3.15' \
     --hash=sha256:65f266143752f734b0a7cc83c46f4618af75b8c5911b00ccb61d0ac9b6da0360 \
     --hash=sha256:d316bb415a2d9e2d2b3abcc4084c6502fc09240e292cd76a76afc106a1c8e04a
     # via
@@ -904,7 +904,7 @@ fastapi==0.133.0 \
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   mlflow-skinny
     #   ray
-fastrlock==0.8.3 ; sys_platform != 'darwin' \
+fastrlock==0.8.3 ; python_full_version < '3.15' and sys_platform != 'darwin' \
     --hash=sha256:001fd86bcac78c79658bac496e8a17472d64d558cd2227fdc768aa77f877fe40 \
     --hash=sha256:04bb5eef8f460d13b8c0084ea5a9d3aab2c0573991c880c0a34a56bb14951d30 \
     --hash=sha256:05029d7080c0c61a81d5fee78e842c9a1bf22552cd56129451a252655290dcef \
@@ -1206,7 +1206,7 @@ fsspec==2023.12.1 \
     #   s3fs
     #   torch
     #   torch-geometric
-gast==0.7.0 \
+gast==0.7.0 ; python_full_version < '3.15' \
     --hash=sha256:0bb14cd1b806722e91ddbab6fb86bba148c22b40e7ff11e248974e04c8adfdae \
     --hash=sha256:99cbf1365633a74099f69c59bd650476b96baa5ef196fec88032b00b31ba36f7
     # via
@@ -2442,7 +2442,7 @@ mmh3==5.2.1 \
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   ray
-moviepy==2.2.1 \
+moviepy==2.2.1 ; python_full_version < '3.15' \
     --hash=sha256:6b56803fec2ac54b557404126ac1160e65448e03798fa282bd23e8fab3795060 \
     --hash=sha256:c80cb56815ece94e5e3e2d361aa40070eeb30a09d23a24c4e684d03e16deacb1
     # via
@@ -2740,7 +2740,7 @@ networkx==3.2.1 \
     --hash=sha256:9f1bb5cf3409bf324e0a722c20bdb4c20ee39bf1c30ce8ae499c8502b0b5e0c6 \
     --hash=sha256:f18c69adc97877c42332c170849c96cefa91881c99a7cb3e95b7c659ebdc1ec2
     # via torch
-numexpr==2.14.1 \
+numexpr==2.14.1 ; python_full_version < '3.15' \
     --hash=sha256:03130afa04edf83a7b590d207444f05a00363c9b9ea5d81c0f53b1ea13fad55a \
     --hash=sha256:05f9366d23a2e991fd5a8b5e61a17558f028ba86158a4552f8f239b005cdf83c \
     --hash=sha256:06855053de7a3a8425429bd996e8ae3c50b57637ad3e757e0fa0602a7874be30 \
@@ -3453,7 +3453,7 @@ prettytable==3.17.0 \
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   skops
-proglog==0.1.12 \
+proglog==0.1.12 ; python_full_version < '3.15' \
     --hash=sha256:361ee074721c277b89b75c061336cb8c5f287c92b043efa562ccf7866cda931c \
     --hash=sha256:ccaafce51e80a81c65dc907a460c07ccb8ec1f78dc660cfd8f9ec3a22f01b84c
     # via
@@ -4917,7 +4917,7 @@ tensorflow-metadata==1.17.3 ; python_full_version < '3.12' and sys_platform != '
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   tensorflow-datasets
-tensorflow-probability==0.24.0 \
+tensorflow-probability==0.24.0 ; python_full_version < '3.15' \
     --hash=sha256:8c1774683e38359dbcaf3697e79b7e6a4e69b9c7b3679e78ee18f43e59e5759b
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
@@ -5063,7 +5063,7 @@ torch-geometric==2.5.3 \
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   -r python/requirements/ml/dl-cpu-requirements.txt
-torch-scatter==2.1.2+cpu.torch.2.10 ; sys_platform == 'linux' \
+torch-scatter==2.1.2+cpu.torch.2.10 ; python_full_version < '3.15' and sys_platform == 'linux' \
     --hash=sha256:0599a83015ae2a33fb1570413d2e3547391137c01639217b8259e71eae756f57 \
     --hash=sha256:20174bb3310340ed08989727a728c11bb6152199112e81b1769721fdb39e5fee \
     --hash=sha256:37dd8b4022ffed1592d3bcae5446e98a70c0d33373c50792943973813a2c08dc \
@@ -5077,7 +5077,7 @@ torch-scatter==2.1.2+cpu.torch.2.10 ; sys_platform == 'linux' \
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   -r python/requirements/ml/dl-cpu-requirements.txt
-torch-sparse==0.6.18+pt210cpu ; sys_platform == 'linux' \
+torch-sparse==0.6.18+pt210cpu ; python_full_version < '3.15' and sys_platform == 'linux' \
     --hash=sha256:231d5b46988ef1d1dc085a6e4fcaf7716e66c691b0805d01e00645225e4572a1
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
@@ -5102,7 +5102,7 @@ torchtext==0.18.0+cpu ; python_full_version < '3.14' \
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   -r python/requirements/ml/dl-cpu-requirements.txt
-torchvision==0.25.0+cpu \
+torchvision==0.25.0+cpu ; python_full_version < '3.15' \
     --hash=sha256:0c2d0da9bc011a0fde1d125af396a8fbe94d99becf9d313764f24ca7657a3448 \
     --hash=sha256:2d444009c0956669ada149f61ed78f257c1cc96d259efa6acf3929ca96ceb3f0 \
     --hash=sha256:3e2ae9981e32a5b9db685659d5c7af0f04b159ff20394650a90124baf6ada51a \
