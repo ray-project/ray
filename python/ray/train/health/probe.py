@@ -21,12 +21,15 @@ class ProbeResult:
         error: The exception that kept the probe from taking the reading, if
             any.
         step: The training step the reading belongs to, if any.
+        detail: Output of the reading that isn't a number, for example a report
+            or a stack trace, if any.
     """
 
     metrics: Dict[str, float] = field(default_factory=dict)
     timestamp_s: Optional[float] = None
     error: Optional[Exception] = None
     step: Optional[int] = None
+    detail: Optional[str] = None
 
 
 @PublicAPI(stability="alpha")
