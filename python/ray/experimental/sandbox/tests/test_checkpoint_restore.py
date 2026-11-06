@@ -351,6 +351,31 @@ class TestCheckpointRestore(unittest.TestCase):
             self.backend._sandbox_metadata[sandbox_id]["status"] == SandboxStatus.PAUSED
         )
 
+    def test_restore_in_place_waits_for_a_new_pid_file(self):
+        """A sandbox restored in place loses its old launch's pid file first,
+        so the start loop waits for the restore to write a new one before it
+        asks `runsc state`."""
+        sandbox_id, root_dir = self._create_mock_sandbox()
+        pid_file = os.path.join(root_dir, "sandbox.pid")
+        with open(pid_file, "w") as f:
+            f.write("12345")  # Written by the launch that the checkpoint stops.
+        stale_at_launch = []
+        launch = self._launches()
+
+        def popen(argv, *args, **kwargs):
+            stale_at_launch.append(os.path.exists(pid_file))
+            return launch(argv, *args, **kwargs)
+
+        stack, _, _ = self._fake_runsc()
+        with stack, patch("subprocess.Popen", side_effect=popen):
+            self.backend.checkpoint_sandbox(
+                sandbox_id,
+                checkpoint_path=os.path.join(self.temp_dir, "pid_checkpoint"),
+                leave_running=True,
+            )
+        assert stale_at_launch == [False]
+        assert os.path.exists(pid_file)
+
     def test_checkpoint_restores_an_overlayfs_sandbox_in_its_overlay(self):
         """leave_running=True restores an overlayfs sandbox inside its kernel
         overlay."""

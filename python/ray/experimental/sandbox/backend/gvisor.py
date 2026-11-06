@@ -1807,10 +1807,10 @@ class GVisorSandboxBackend(BaseSandboxBackend):
         """
         config: SandboxConfig = meta["config"]
         root_dir = meta["root_dir"]
-        # The launch script waits for these to be written; stale copies from
-        # the previous launch would let it go on before the new holder and
-        # slirp4netns are up.
-        for name in ("netns.pid", "slirp4netns.ready"):
+        # The launch script waits for these to be written, and the start loop
+        # for the pid file; stale copies from the previous launch would let
+        # them go on before the new holder, slirp4netns and container are up.
+        for name in ("netns.pid", "slirp4netns.ready", _PID_FILE):
             try:
                 os.remove(os.path.join(root_dir, name))
             except FileNotFoundError:
