@@ -1599,8 +1599,11 @@ def filesystem_for_sized_opens(
     size, ``S3FileSystem`` opens without any request, so it is returned
     unwrapped. Other filesystems keep the wrapper.
     """
-    if isinstance(filesystem, RetryingPyFileSystem) and isinstance(
-        filesystem.unwrap(), pyarrow.fs.S3FileSystem
+    # ``type_name``, not ``isinstance``: a pyarrow build without S3 support
+    # raises ImportError on any reference to ``pyarrow.fs.S3FileSystem``.
+    if (
+        isinstance(filesystem, RetryingPyFileSystem)
+        and filesystem.unwrap().type_name == "s3"
     ):
         return filesystem.unwrap()
     return filesystem
