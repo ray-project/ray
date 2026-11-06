@@ -186,7 +186,9 @@ class Concatenator(SerializablePreprocessorBase):
         df = df.drop(columns=self._columns)
         # Use a Pandas Series for column assignment to get more consistent
         # behavior across Pandas versions.
-        df.loc[:, self._output_column_name] = pd.Series(list(concatenated))
+        df.loc[:, self._output_column_name] = pd.Series(
+            list(concatenated), index=df.index
+        )
         return df
 
     def get_input_columns(self) -> List[str]:
