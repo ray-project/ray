@@ -1686,6 +1686,17 @@ class _ExperimentalActorPool(AutoscalingActorPool):
             return float("inf")
         return self._running_actors[actor].max_num_output_bytes
 
+    def running_actor_ids(self) -> List[LogicalActorId]:
+        """Logical ids of running actors, draining ones included."""
+        return [state.logical_id for state in self._running_actors.values()]
+
+    def total_output_bytes_limit(self) -> float:
+        """Sum of ``output_bytes_limit`` over running actors. Draining ones
+        count: they hold their outputs until those are consumed."""
+        return sum(
+            state.max_num_output_bytes for state in self._running_actors.values()
+        )
+
     def estimate_bytes_per_output(self, node_id: NodeIdStr) -> float | None:
         """Estimated bytes per output block for the actors on ``node_id``, or
         None if none of them has a finite output-bytes budget.

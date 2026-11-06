@@ -168,6 +168,7 @@ class ExperimentalStreamingExecutor(StreamingExecutor):
 
         self._resource_bank.drain_consumed_blocks()
         self._launch_tasks()
+        self._sample_output_backpressure(topology)
 
         self._actor_only_metrics.maybe_update(
             topology=topology, resource_bank=self._resource_bank
@@ -236,6 +237,24 @@ class ExperimentalStreamingExecutor(StreamingExecutor):
                 ):
                     self._refresh_progress_manager(self._topology)
                     self._last_progress_refresh_timestamp = now
+            # Classic metric, kept for backwards compatibility: a ready bundle
+            # no actor will take is this backend's submission backpressure.
+            op.notify_in_task_submission_backpressure(
+                op.has_queued_bundle(), "ActorAdmission"
+            )
+
+    def _sample_output_backpressure(self, topology: Topology) -> None:
+        """Classic per-op output-backpressure metric, kept for backwards
+        compatibility: an op is backpressured when all its running actors are
+        blocked on their output budget."""
+        for op in topology:
+            if not isinstance(op, ExperimentalActorPoolMapOperator):
+                continue
+            blocked, running = op.cached_output_backpressured_actors()
+            op.notify_in_task_output_backpressure(
+                not op.has_completed() and running > 0 and blocked == running,
+                "Output",
+            )
 
     @override
     def shutdown(self, force: bool, exception: Optional[Exception] = None):
@@ -273,6 +292,25 @@ class ExperimentalStreamingExecutor(StreamingExecutor):
             # The base shutdown cancels the coordinator allocation through the
             # cluster autoscaler; the sizer holds no coordinator lifecycle.
             self._sizer = None
+
+    @override
+    def _update_stats_metrics(self, state: str, force_update: bool = False):
+        # Backwards compatibility only: this backend has no ResourceManager
+        # usages, so fill the classic per-op metrics it would have set. Remove
+        # with them once task pools are gone, in favor of the actor-only metrics.
+        if (
+            force_update
+            or time.time() - self._metrics_last_updated > self.UPDATE_METRICS_INTERVAL_S
+        ):
+            assert self._topology is not None
+            assert self._resource_bank is not None
+            for op, op_state in self._topology.items():
+                op._metrics.obj_store_mem_used = self._resource_bank.live_object_store(
+                    op=op
+                ).total_bytes()
+                if isinstance(op, ExperimentalActorPoolMapOperator):
+                    op_state.refresh_actor_metrics()
+        super()._update_stats_metrics(state, force_update=force_update)
 
     @override
     def _get_operator_progress_extra(self, op_state: OpState) -> str:
