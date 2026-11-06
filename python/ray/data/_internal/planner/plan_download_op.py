@@ -166,7 +166,7 @@ def plan_download_op(
             init_fn=init_fn,
         )
 
-        metadata_map_operator = get_actor_pool_map_operator_cls()(
+        metadata_map_operator = get_actor_pool_map_operator_cls(data_context)(
             metadata_map_transformer,
             split_map_operator,
             data_context,

@@ -97,6 +97,20 @@ class TaskPullRequest:
         return cls(bytes_to_read=float("inf"), blocks_to_read=float("inf"))
 
 
+@dataclass
+class TaskPullResponse:
+    """What one ``on_data_ready`` pull actually consumed of its
+    ``TaskPullRequest`` budget, in bytes and blocks."""
+
+    bytes_read: float = 0
+    blocks_read: float = 0
+
+    def all_fields_lt(self, other: "TaskPullRequest"):
+        a = self.bytes_read < other.bytes_to_read
+        b = self.blocks_read < other.blocks_to_read
+        return a and b
+
+
 class OpTask(ABC):
     """Abstract class that represents a task that is created by an PhysicalOperator.
 
@@ -295,9 +309,10 @@ class DataOpTask(OpTask):
 
     def on_data_ready(
         self,
-        max_bytes_to_read: Optional[int],
+        *,
+        max_to_read: TaskPullRequest,
         metadata_fetcher: "MetadataFetcher",
-    ) -> int:
+    ) -> TaskPullResponse:
         """Pull ready ``(block_ref, meta_ref)`` pairs from the streaming
         generator and let ``metadata_fetcher`` turn each into an emitted
         ``RefBundle``.
@@ -331,24 +346,28 @@ class DataOpTask(OpTask):
         is postponed until the task's deferred pairs have emitted.
 
         Args:
-            max_bytes_to_read: Max bytes of blocks to read. If None, all
-                currently available pairs are drained.
+            max_to_read: Soft max bytes of blocks to read. Hard max on
+                the number of blocks to read (since we can pull 1 block at a
+                time). Will stop pulling from streaming generators when the
+                first limit is reached.
             metadata_fetcher: Strategy that fetches/emits each pulled pair.
 
         Returns:
-            The number of bytes accounted for (for the budget loop).
+            The number of bytes and blocks accounted for (for the budget loop).
         """
-        bytes_read = 0
 
-        self._track_task_output_backpressure(max_bytes_to_read)
+        response = TaskPullResponse()
+
+        self._track_task_output_backpressure(max_to_read)
 
         if self._state is not TaskGeneratorState.ACTIVE or self.has_pending_emits():
             # Already DRAINED, or earlier pairs still await their background
             # metadata fetch. Don't pull further output ahead of unfetched
             # metadata; retry once the pending pairs have emitted.
-            return 0
+            return response
 
-        while max_bytes_to_read is None or bytes_read < max_bytes_to_read:
+        while response.all_fields_lt(max_to_read):
+
             if self._pending_block_ref.is_nil():
                 assert self._pending_meta_ref.is_nil(), (
                     "This method expects streaming generators to yield blocks then "
@@ -434,7 +453,8 @@ class DataOpTask(OpTask):
             # object store). Not refunded on a later drop: the budget is
             # recomputed each scheduling iteration, so there's no balance to
             # restore.
-            bytes_read += object_size
+            response.bytes_read += object_size
+            response.blocks_read += 1
             self._pending_block_ref = ray.ObjectRef.nil()
             self._pending_meta_ref = ray.ObjectRef.nil()
 
@@ -444,16 +464,16 @@ class DataOpTask(OpTask):
         if self.is_drained():
             metadata_fetcher.in_data_ready_done(self)
 
-        return bytes_read
+        return response
 
-    def _track_task_output_backpressure(self, max_bytes_to_read: Optional[int]):
+    def _track_task_output_backpressure(self, max_to_read: TaskPullRequest):
         has_unread_output = (
             not self._pending_block_ref.is_nil()
             or not self._pending_meta_ref.is_nil()
             or not self._streaming_gen._stream_exhausted()
         )
 
-        if max_bytes_to_read == 0 and has_unread_output:
+        if not max_to_read.all_fields_gt(TaskPullRequest.zero()) and has_unread_output:
             # A zero read budget counts as output backpressure only while the
             # task still has output to consume.
             if self._start_output_backpressure_s is None:
@@ -1332,6 +1352,7 @@ class PhysicalOperator(Operator):
             restarting=0,
             pending=0,
             active=0,
+            draining=0,
             idle=0,
             pool_utilization=0,
             tasks_in_flight=0,

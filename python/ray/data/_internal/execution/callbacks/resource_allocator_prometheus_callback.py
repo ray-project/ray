@@ -54,10 +54,10 @@ class ResourceAllocatorPrometheusCallback(ExecutionCallback):
         if topology is None or resource_manager is None:
             return
 
-        for i, op in enumerate(topology):
+        for op, op_state in topology.items():
             tags = {
                 "dataset": dataset_id,
-                "operator": executor._get_operator_id(op, i),
+                "operator": op_state.op_tag(),
             }
             self._update_budget_metrics(op, tags, resource_manager)
             self._update_max_bytes_to_read_metric(op, tags, resource_manager)

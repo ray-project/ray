@@ -15,6 +15,9 @@ NodeIdStr = str
 # labels must be set before creation, and the Core ID only exists afterwards.
 LogicalActorId = str
 
+# Placement-group id strings (``PlacementGroup.id.hex()``).
+PlacementGroupIdStr = str
+
 
 class ActorStatus(str, Enum):
     """Lifecycle state of an actor in a Ray Data actor pool."""

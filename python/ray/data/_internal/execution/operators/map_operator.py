@@ -513,7 +513,7 @@ class MapOperator(LineageReconstructionMixin, PhysicalOperator, ABC):
                     "`ActorPoolStrategy` because actors are already isolated."
                 )
 
-            ActorPoolMapOperator = get_actor_pool_map_operator_cls()
+            ActorPoolMapOperator = get_actor_pool_map_operator_cls(data_context)
             return ActorPoolMapOperator(
                 map_transformer,
                 input_op,

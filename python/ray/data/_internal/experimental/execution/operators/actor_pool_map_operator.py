@@ -951,6 +951,25 @@ class ExperimentalActorPoolMapOperator(ActorPoolMapOperator):
             self.actor_pool.reset_output_limit()
         return super().refresh_state()
 
+    def has_enough_budget_for_prebuffered_outputs(self) -> bool:
+        """With low object store, the operator may not have enough budget
+        for prebuffered outputs. Returns True if at least one actor has more
+        budget than prebuffered outputs. False if all actors are stalled on
+        prebuffered outputs."""
+        for actor_id in self.actor_pool.get_logical_ids():
+            actor_object_store = self.resource_bank.live_object_store(actor_id=actor_id)
+            limit = TaskPullRequest(
+                bytes_to_read=self.max_output_bytes_for_actor(actor_id=actor_id),
+                blocks_to_read=self.max_outputs_for_actor(actor_id=actor_id),
+            )
+            usage = TaskPullRequest(
+                bytes_to_read=actor_object_store.num_prebuffered_output_bytes,
+                blocks_to_read=actor_object_store.num_prebuffered_output_blocks,
+            )
+            if limit.all_fields_gt(usage):
+                return True
+        return False
+
     def upgrade_output_limit(self) -> bool:
         """In the scenario that
             - the upstream operator cannot produce more outputs (output

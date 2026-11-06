@@ -8547,10 +8547,14 @@ class Dataset:
             - Iterator is fully exhausted (ie until StopIteration is raised)
             - Executor instances is garbage-collected
         """
-        from ray.data._internal.execution.streaming_executor import StreamingExecutor
+        from ray.data._internal.execution.streaming_executor import (
+            get_streaming_executor_cls,
+        )
 
         self._run_index += 1
-        return StreamingExecutor(self._context, self.get_dataset_id())
+        return get_streaming_executor_cls(self._context)(
+            self._context, self.get_dataset_id()
+        )
 
     def _initial_stats(self) -> DatasetStats:
         """The initial stats to seed a fresh executor for this dataset.

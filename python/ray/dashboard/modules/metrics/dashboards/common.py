@@ -604,6 +604,65 @@ class Row:
 
 
 @DeveloperAPI
+class IdGenerator:
+    """Hands out unique ids for the panels and rows of a single dashboard.
+
+    Grafana only requires that ids be unique within a dashboard, so picking
+    them by hand is pure bookkeeping. Let the generator assign them in
+    declaration order instead::
+
+        _ids = IdGenerator()
+
+        FOO_PANEL = Panel(id=_ids.next(), ...)
+
+    Ids assigned this way shift whenever a panel is added or removed above
+    them, so a panel that is referenced from outside its module -- a
+    ``panelId=`` Grafana embed in the dashboard frontend, for instance -- must
+    keep its literal id by reserving it::
+
+        BAR_PANEL = Panel(id=_ids.reserve(24), ...)
+    """
+
+    def __init__(self, start: int = 1):
+        """Initializes the generator.
+
+        Args:
+            start: The first id to hand out.
+        """
+        self._next_id = start
+        self._used = set()
+
+    def next(self) -> int:
+        """Hands out the lowest id this generator has not handed out yet.
+
+        Returns:
+            The assigned id.
+        """
+        while self._next_id in self._used:
+            self._next_id += 1
+        return self.reserve(self._next_id)
+
+    def reserve(self, id: int) -> int:
+        """Claims `id` so that no later `next()` hands it out again.
+
+        Args:
+            id: The id to claim.
+
+        Returns:
+            The claimed id, so this can be called inline as `id=_ids.reserve(24)`.
+
+        Raises:
+            ValueError: If `id` was already handed out by this generator.
+        """
+        if id in self._used:
+            raise ValueError(
+                f"id {id} is already used. Ids must be unique within a dashboard."
+            )
+        self._used.add(id)
+        return id
+
+
+@DeveloperAPI
 @dataclass
 class DashboardConfig:
     # This dashboard name is an internal key used to determine which env vars

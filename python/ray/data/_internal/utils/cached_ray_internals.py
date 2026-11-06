@@ -3,6 +3,7 @@ from typing import Dict, Tuple
 import ray
 import ray._private.internal_api
 import ray._private.state
+from ray.data._internal.execution.interfaces.common import NodeIdStr
 from ray.data._internal.execution.node_trackers.actor_location import (
     get_or_create_actor_location_tracker,
 )
@@ -36,3 +37,15 @@ def get_actor_locations(logical_actor_ids: Tuple[str, ...]) -> Dict[str, str]:
             logical_actor_ids
         )
     )
+
+
+@timed_cache(ttl=5)
+def get_alive_node_labels() -> Dict[NodeIdStr, Dict[str, str]]:
+    """Node labels (``ray.nodes()[...]["Labels"]``) per alive node, keyed by
+    node id. Resolves label-selector eligibility for actor placement."""
+    node_labels: Dict[NodeIdStr, Dict[str, str]] = {}
+    for node_info in ray.nodes():
+        if not node_info["alive"]:
+            continue
+        node_labels[node_info["NodeID"]] = node_info.get("Labels") or {}
+    return node_labels
