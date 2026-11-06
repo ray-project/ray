@@ -7,7 +7,6 @@ enabled (``RAY_DATA_ACTOR_ONLY_BACKEND``, see
 
 Each module here subclasses the corresponding base class and overrides only the
 behavior that differs under the actor-only backend. The overrides are wired in
-through existing seams (the operator factory in
-``ray.data._internal.execution.operators.__init__`` and the physical ruleset in
-``ray.data._internal.logical.optimizers``) rather than by monkeypatching.
+through existing seams -- the map operator factory and the streaming-executor
+factory -- rather than by monkeypatching.
 """

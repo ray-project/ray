@@ -64,6 +64,39 @@ METADATA_GET_TIMEOUT_S = 1.0
 Waitable = Union[ray.ObjectRef, ObjectRefGenerator]
 
 
+@dataclass(kw_only=True, slots=True, eq=False)
+class TaskPullRequest:
+    """A budget for pulling task outputs, in bytes and blocks.
+
+    Used by pull-based dispatch: an operator quotes how much output it can
+    absorb per actor (``ExperimentalActorPoolMapOperator.task_pull_request``),
+    and the streaming executor caps each generator read to that budget.
+    """
+
+    bytes_to_read: float
+    blocks_to_read: float
+
+    def max(self, other: "TaskPullRequest"):
+        return TaskPullRequest(
+            bytes_to_read=max(self.bytes_to_read, other.bytes_to_read),
+            blocks_to_read=max(self.blocks_to_read, other.blocks_to_read),
+        )
+
+    def all_fields_gt(self, other: "TaskPullRequest") -> bool:
+        return (
+            self.bytes_to_read > other.bytes_to_read
+            and self.blocks_to_read > other.blocks_to_read
+        )
+
+    @classmethod
+    def zero(cls) -> "TaskPullRequest":
+        return cls(bytes_to_read=0, blocks_to_read=0)
+
+    @classmethod
+    def inf(cls) -> "TaskPullRequest":
+        return cls(bytes_to_read=float("inf"), blocks_to_read=float("inf"))
+
+
 class OpTask(ABC):
     """Abstract class that represents a task that is created by an PhysicalOperator.
 
@@ -1021,6 +1054,13 @@ class PhysicalOperator(Operator):
         """
         return True
 
+    def launch_task(self):
+        """Launch one queued task, for operators that opt into pull-based
+        dispatch (they also define ``can_submit_task()``, which must have
+        returned True). The streaming executor drives both; the default is a
+        no-op for push-dispatched operators."""
+        return None
+
     def add_input(self, refs: RefBundle, input_index: int) -> None:
         """Called when an upstream result is available.
 
@@ -1243,6 +1283,26 @@ class PhysicalOperator(Operator):
     def in_task_submission_backpressure(self) -> bool:
         """Whether submitting new tasks for this operator is currently blocked."""
         return self._in_task_submission_backpressure
+
+    def backpressure_progress_str(self) -> str:
+        """Progress-bar tag describing active backpressure, or "" if none.
+
+        Overridable so an operator can report a more informative quantity than
+        the policy name that tripped: an actor pool, for instance, knows what
+        share of its actors is actually blocked.
+        """
+        backpressure_types = []
+        if self._in_task_submission_backpressure:
+            # The op is backpressured from submitting new tasks.
+            policy = self._task_submission_backpressure_policy or ""
+            backpressure_types.append(f"tasks({policy})")
+        if self._in_task_output_backpressure:
+            # The op is backpressured from producing new outputs.
+            policy = self._task_output_backpressure_policy or ""
+            backpressure_types.append(f"outputs({policy})")
+        if not backpressure_types:
+            return ""
+        return f"[backpressured:{','.join(backpressure_types)}]"
 
     def get_autoscaling_actor_pools(self) -> List[AutoscalingActorPool]:
         """Return a list of `AutoscalingActorPool`s managed by this operator."""

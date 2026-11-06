@@ -185,6 +185,8 @@ class StreamingExecutor(Executor, threading.Thread):
         dataset_id: str = "unknown_dataset",
     ):
         self._data_context = data_context
+        # Resolved once so the backend can't change mid-execution.
+        self._actor_only_backend = actor_only_backend_enabled(data_context)
         self._ranker = create_ranker()
         self._start_time: Optional[float] = None
         self._initial_stats: Optional[DatasetStats] = None
@@ -208,7 +210,7 @@ class StreamingExecutor(Executor, threading.Thread):
         # Live object-store accounting. Only the actor-only backend feeds it, so
         # it stays None (and every ResourceBank method is unreachable) otherwise.
         self._resource_bank: Optional[ResourceBankBase] = (
-            ResourceBank() if actor_only_backend_enabled() else None
+            ResourceBank() if self._actor_only_backend else None
         )
 
         self._dataset_id = dataset_id
@@ -323,7 +325,7 @@ class StreamingExecutor(Executor, threading.Thread):
             resource_bank=self._resource_bank,
         )
 
-        if actor_only_backend_enabled():
+        if self._actor_only_backend:
             # Reject shuffle / all-to-all ops and unsupported options here,
             # while the topology is still just a plan: the actor-only backend
             # has no implementation for them and would otherwise stall midway.

@@ -4,7 +4,7 @@ from typing import List, Optional
 
 from ray import ObjectRef
 from ray.actor import ActorHandle
-from ray.data._internal.execution.interfaces.common import NodeIdStr
+from ray.data._internal.execution.interfaces.common import LogicalActorId, NodeIdStr
 from ray.data._internal.execution.interfaces.execution_options import ExecutionResources
 from ray.data._internal.execution.interfaces.ref_bundle import RefBundle
 from ray.util.annotations import DeveloperAPI
@@ -42,21 +42,29 @@ class AutoscalingActorConfig:
         no new work is available for scheduling in the actor pool (ie
         when operator completes execution).
     max_size: The maximum number of running actors to be maintained
-        in the pool.
+        in the pool. Typed ``float`` only so ``float("inf")`` can mean
+        unbounded (what ``ActorPoolStrategy`` passes when ``max_size`` is
+        unset); finite values are whole numbers.
     initial_size: The initial number of actors to start with.
     max_actor_concurrency: The maximum number of concurrent tasks a
         single actor can execute (derived from `ray_remote_args`
         passed to the operator).
     max_tasks_in_flight_per_actor: The maximum number of tasks that can
         be submitted to a single actor at any given time.
+    max_num_output_bytes_per_actor: Per-actor cap on outstanding output
+        bytes, used by the actor-only backend's output backpressure.
+    max_num_outputs_per_actor: Per-actor cap on outstanding output
+        blocks, used by the actor-only backend's output backpressure.
     """
 
     min_size: int
-    max_size: int
+    max_size: float
     initial_size: int
     max_tasks_in_flight_per_actor: int
     max_actor_concurrency: int
     per_actor_resource_usage: ExecutionResources
+    max_num_output_bytes_per_actor: Optional[int] = None
+    max_num_outputs_per_actor: Optional[int] = None
 
     def __post_init__(self):
         assert self.min_size >= 1
@@ -73,6 +81,7 @@ class ActorPoolInfo:
     running: int
     pending: int
     restarting: int
+    draining: int = 0
     active: int = 0
     idle: int = 0
     pool_utilization: float = 0.0
@@ -82,6 +91,7 @@ class ActorPoolInfo:
         return (
             f"running={self.running}, restarting={self.restarting}, "
             f"pending={self.pending}, active={self.active}, idle={self.idle}, "
+            f"draining={self.draining}, "
             f"util={self.pool_utilization:.3f}, tasks_in_flight={self.tasks_in_flight}"
         )
 
@@ -112,6 +122,15 @@ class AutoscalingActorPool(ABC):
         ...
 
     @abstractmethod
+    def num_draining_actors(self) -> int:
+        """Number of actors draining prior to release.
+
+        These actors still hold their resources but accept no new tasks, so
+        they count towards ``current_size`` but not ``serving_size``.
+        """
+        ...
+
+    @abstractmethod
     def num_active_actors(self) -> int:
         """Number of actors with at least one active task."""
         ...
@@ -127,9 +146,16 @@ class AutoscalingActorPool(ABC):
         submitted to the actor pool)."""
         ...
 
-    def can_schedule_task(self) -> bool:
+    def can_schedule_task(
+        self, bundle: Optional[RefBundle], actor_locality_enabled: bool
+    ) -> bool:
         """Returns `True` iff the actor pool has an available actor that can run a task."""
-        return self.select_actors() is not None
+        return (
+            self.select_actors(
+                bundle=bundle, actor_locality_enabled=actor_locality_enabled
+            )
+            is not None
+        )
 
     @abstractmethod
     def scale(self, req: ActorPoolScalingRequest) -> Optional[int]:
@@ -143,12 +169,12 @@ class AutoscalingActorPool(ABC):
         ...
 
     @abstractmethod
-    def on_task_submitted(self, actor: ActorHandle):
+    def on_task_submitted(self, actor: ActorHandle, input_bundle: RefBundle):
         """Callback when an actor is picked for running a task"""
         ...
 
     @abstractmethod
-    def on_task_completed(self, actor: ActorHandle):
+    def on_task_completed(self, actor: ActorHandle, input_bundle: RefBundle):
         """Called when a task completes. Returns the provided actor to the pool."""
         ...
 
@@ -207,6 +233,30 @@ class AutoscalingActorPool(ABC):
         """
         ...
 
+    @abstractmethod
+    def get_logical_ids(self) -> List[LogicalActorId]:
+        """Get the logical IDs for pending and running actors in the actor pool.
+
+        We can't use Ray Core actor IDs because we need to identify actors by labels,
+        but labels must be set before creation, and actor IDs aren't available until
+        after.
+        """
+        ...
+
+    @abstractmethod
+    def current_logical_usage(self) -> ExecutionResources:
+        # Both pending and running actors count towards our current resource usage.
+        ...
+
+    @abstractmethod
+    def pending_logical_usage(self) -> ExecutionResources:
+        # Both pending and restarting actors count towards pending processor usage.
+        ...
+
+    @abstractmethod
+    def get_actor_logical_id(self, actor: ActorHandle) -> LogicalActorId:
+        ...
+
     def get_logical_id_label_key(self) -> str:
         """Get the label key for the logical actor ID.
 
@@ -225,6 +275,7 @@ class AutoscalingActorPool(ABC):
             running=self.num_alive_actors(),
             pending=self.num_pending_actors(),
             restarting=self.num_restarting_actors(),
+            draining=self.num_draining_actors(),
             active=self.num_active_actors(),
             idle=self.num_idle_actors(),
             pool_utilization=pool_util,
@@ -255,21 +306,44 @@ class AutoscalingActorPool(ABC):
         return self._config.initial_size
 
     def current_size(self) -> int:
+        """Total actors this pool holds resources for.
+
+        Includes draining actors: they keep their CPU/GPU/memory (and their
+        placement-group bundle) reserved until they are actually dead, so
+        anything reasoning about *resource footprint* -- cluster capacity,
+        placement, PG accounting -- must count them.
+
+        Sizing decisions want :meth:`serving_size` instead.
+        """
+        return self.serving_size() + self.num_draining_actors()
+
+    def serving_size(self) -> int:
+        """Actors that can serve work, now or shortly.
+
+        Pending actors count (they are on their way to serving); draining
+        actors do not (they will never take another task).
+        This is the number sizing decisions want: ``scale()`` only ever adds to
+        or removes from this set, so clamping a delta against ``current_size``
+        would let already-dying actors crowd out live ones.
+        """
         return self.num_pending_actors() + self.num_running_actors()
 
     def min_size(self) -> int:
         """Min size of the actor pool."""
         return self._config.min_size
 
-    def max_size(self) -> int:
-        """Max size of the actor pool."""
+    def max_size(self) -> float:
+        """Max size of the actor pool (``inf`` when unbounded)."""
         return self._config.max_size
 
     def get_pool_util(self) -> float:
         """Calculate the utilization of the given actor pool."""
 
-        # If there are no running actors, we set the utilization to indicate that the pool should be scaled up immediately.
-        if self.current_size() == 0:
+        # If there are no serving actors, we set the utilization to indicate that the pool should be scaled up immediately.
+        # NOTE: This is deliberately `serving_size`: a pool whose actors are all
+        #       draining has no capacity to run the work it is holding, and must
+        #       read as saturated so it gets replenished.
+        if self.serving_size() == 0:
             return float("inf")
         else:
             # We compute utilization as a ratio of
@@ -280,5 +354,5 @@ class AutoscalingActorPool(ABC):
             # to queue tasks (to pipeline task execution by overlapping block
             # fetching with the execution of the previous task)
             return self.num_tasks_in_flight() / (
-                self.max_actor_concurrency() * self.current_size()
+                self.max_actor_concurrency() * self.serving_size()
             )

@@ -114,7 +114,7 @@ py_test_module_list(
 
 # Tests for the actor-only backend (RAY_DATA_ACTOR_ONLY_BACKEND=1).
 py_test_module_list(
-    size = "small",
+    size = "medium",
     env = {
         "RAY_DATA_ACTOR_ONLY_BACKEND": "1",
     },
