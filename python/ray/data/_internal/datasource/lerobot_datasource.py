@@ -974,8 +974,7 @@ def _prepare_delta_segment(
 
     segment_start, segment_end = int(global_idx[0]), int(global_idx[-1]) + 1
     if (
-        len(global_idx) != segment_end - segment_start
-        or (len(global_idx) > 1 and bool(np.any(np.diff(global_idx) != 1)))
+        bool(np.any(np.diff(global_idx) != 1))
         or int(row_from.min()) < segment_start
         or int(row_to.max()) > segment_end
     ):
