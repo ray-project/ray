@@ -232,6 +232,32 @@ def test_dict_and_none_use_arrow_block(ray_start_regular_shared, restore_data_co
     assert isinstance(block, pa.Table)
 
 
+@pytest.mark.parametrize(
+    "dtype, expected_type",
+    [
+        ("Int64", pa.int64()),
+        ("UInt64", pa.uint64()),
+        ("boolean", pa.bool_()),
+        (pd.StringDtype(storage="python"), pa.string()),
+    ],
+)
+def test_to_arrow_preserves_all_null_extension_dtype(dtype, expected_type):
+    frame = pd.DataFrame({"value": pd.Series([None, None], dtype=dtype)})
+
+    table = PandasBlockAccessor.for_block(frame).to_arrow()
+
+    assert table.schema.field("value").type == expected_type
+    assert table["value"].to_pylist() == [None, None]
+
+
+def test_to_arrow_keeps_untyped_all_null_object_column_null_typed():
+    frame = pd.DataFrame({"value": pd.Series([None, None], dtype=object)})
+
+    table = PandasBlockAccessor.for_block(frame).to_arrow()
+
+    assert table.schema.field("value").type == pa.null()
+
+
 class TestSizeBytes:
     def test_small(ray_start_regular_shared):
         animals = ["Flamingo", "Centipede"]
