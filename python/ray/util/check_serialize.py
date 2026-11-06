@@ -1,6 +1,7 @@
 """A utility for debugging serialization issues."""
 
 import inspect
+import sys
 from contextlib import contextmanager
 from typing import Any, Optional, Set, Tuple
 
@@ -197,10 +198,13 @@ def inspect_serializability(
     .. versionadded:: 1.1.0
 
     """
+    if print_file is None:
+        # Wrap stdout for this call only. colorama.init() would replace the
+        # global sys.stdout/sys.stderr, which stacked a wrapper on every call
+        # and broke callers that redirect stdout.
+        print_file = colorama.AnsiToWin32(sys.stdout).stream
     printer = _Printer(print_file)
-    # Wrap the streams once for the whole traversal and restore them afterwards.
-    with colorama.colorama_text():
-        return _inspect_serializability(base_obj, name, depth, None, None, printer)
+    return _inspect_serializability(base_obj, name, depth, None, None, printer)
 
 
 def _inspect_serializability(
