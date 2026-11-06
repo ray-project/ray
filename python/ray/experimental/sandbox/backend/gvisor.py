@@ -223,9 +223,20 @@ def _runsc_args(rootless: bool, ignore_cgroups: bool) -> List[str]:
         args.append("--rootless")
     if ignore_cgroups:
         args.append("--ignore-cgroups")
-    args.extend(shlex.split(os.environ.get(_RUNSC_FLAGS_ENV, "")))
+    args.extend(_runsc_extra_flags())
     args.extend(["--root", _RUNSC_ROOT])
     return args
+
+
+def _runsc_extra_flags() -> List[str]:
+    """The global flags that RAY_SANDBOX_RUNSC_FLAGS adds to every runsc call."""
+    value = os.environ.get(_RUNSC_FLAGS_ENV, "")
+    try:
+        return shlex.split(value)
+    except ValueError as err:
+        raise ValueError(
+            f"{_RUNSC_FLAGS_ENV}={value!r} isn't a valid shell command line: {err}"
+        ) from None
 
 
 # The egress allowlist ruleset lives in the sandbox's root_dir and is loaded
@@ -571,12 +582,17 @@ class GVisorSandboxBackend(BaseSandboxBackend):
         return sandbox_id
 
     def _check_host_requirements(self, config: SandboxConfig) -> None:
-        """Fail early when the node lacks a binary that the sandbox needs."""
+        """Fail early when the node lacks a binary that the sandbox needs, or
+        sets runsc flags that can't be parsed."""
         if not shutil.which("runsc"):
             raise SandboxCreationError(
                 "gVisor executable 'runsc' not found in PATH. "
                 "Please install gVisor (runsc) on the node."
             )
+        try:
+            _runsc_extra_flags()
+        except ValueError as err:
+            raise SandboxCreationError(str(err)) from None
         if config.network == "public":
             missing = [
                 b

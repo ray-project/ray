@@ -3321,5 +3321,16 @@ def test_runsc_flags_from_the_node_reach_every_runsc_call(monkeypatch):
     ]
 
 
+def test_runsc_flags_that_cant_be_parsed_fail_creates(monkeypatch):
+    """An unbalanced quote in RAY_SANDBOX_RUNSC_FLAGS fails creates with an
+    error that names the variable, rather than running sandboxes without the
+    node's flags."""
+    monkeypatch.setenv("RAY_SANDBOX_RUNSC_FLAGS", "--platform='kvm")
+    monkeypatch.setattr(gvisor.shutil, "which", lambda name: f"/usr/bin/{name}")
+    backend = GVisorSandboxBackend(image_manager=_RecordingImageManager())
+    with pytest.raises(SandboxCreationError, match="RAY_SANDBOX_RUNSC_FLAGS"):
+        backend.create_sandbox(GVisorSandboxConfig(image="busybox:latest"))
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))
