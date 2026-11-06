@@ -4,7 +4,6 @@ A desynced cursor returns wrong numbers rather than raising, so hand-built paylo
 pin each skip width PyArrow footers never exercise.
 """
 
-import numpy as np
 import pytest
 from packaging.version import parse as parse_version
 
@@ -99,35 +98,11 @@ def test_size_statistics_match_ground_truth(tmp_path, values, arrow_type, expect
     stats = read_footer_stats(pq.read_metadata(str(path)))
 
     assert stats is not None
-    assert stats.size_statistics[0] == [pss.LeafSizeStats(*expected)]
-
-
-def test_data_pages_match_ground_truth(tmp_path):
-    """A page per 1,000-row write batch. Version 2 data pages count; the
-    dictionary page is not a data page."""
-    path = tmp_path / "pages.parquet"
-    table = pa.table(
-        {
-            "a": pa.array(np.arange(10_000) % 10),
-            "b": pa.array([f"v{i % 10}" for i in range(10_000)]),
-        }
-    )
-    pq.write_table(
-        table,
-        path,
-        row_group_size=5_000,
-        data_page_size=1,
-        write_batch_size=1_000,
-        data_page_version="2.0",
-    )
-    stats = read_footer_stats(pq.read_metadata(path))
-
-    assert stats is not None
-    assert stats.data_pages == [[5, 5], [5, 5]]
+    assert stats[0] == [pss.LeafSizeStats(*expected)]
 
 
 # Thrift compact type ids.
-_BOOL_TRUE, _BYTE, _I32, _I64 = 1, 3, 5, 6
+_BOOL_TRUE, _BYTE, _I64 = 1, 3, 6
 _DOUBLE, _BINARY, _LIST, _STRUCT = 7, 8, 9, 12
 
 
@@ -162,7 +137,7 @@ def test_skip_consumes_exactly_the_payload(field_type, payload):
     # garble. Field 16 holds SizeStatistics with field 1 set to 5.
     size_statistics_5 = [0xFC, 0x16, 0x0A, 0x00, 0x00]
     footer = _one_leaf_footer([0x10 | field_type, *payload, *size_statistics_5])
-    assert _walk(footer) == ([[pss.LeafSizeStats(5, (), ())]], [[None]])
+    assert _walk(footer) == [[pss.LeafSizeStats(5, (), ())]]
 
 
 @pytest.mark.parametrize(
@@ -188,43 +163,7 @@ def test_skip_consumes_exactly_the_payload(field_type, payload):
 )
 def test_column_metadata_payloads(payload, expected):
     leaf = None if expected is None else pss.LeafSizeStats(*expected)
-    assert _walk(_one_leaf_footer(payload)) == ([[leaf]], [[None]])
-
-
-def _page_stats(page_type, count):
-    # PageEncodingStats: page_type (field 1), encoding 0 (field 2) and count
-    # (field 3), each an i32 field header and a zigzag value, then STOP.
-    return [0x15, 2 * page_type, 0x15, 0x00, 0x15, 2 * count, 0x00]
-
-
-@pytest.mark.parametrize(
-    "payload, expected",
-    [
-        # encoding_stats (field 13) with a dictionary page and 4 data pages.
-        (
-            [0xD9, _list_header(2, _STRUCT)]
-            + _page_stats(2, 1)
-            + _page_stats(0, 4)
-            + [0x00],
-            (None, 4),
-        ),
-        # Version 2 data pages count too.
-        ([0xD9, _list_header(1, _STRUCT)] + _page_stats(3, 3) + [0x00], (None, 3)),
-        # An empty list of element type 0.
-        ([0xD9, 0x00, 0x00], None),
-        # Field 13, then SizeStatistics as field 16, three ids on.
-        (
-            [0xD9, _list_header(1, _STRUCT)]
-            + _page_stats(0, 4)
-            + [0x3C, 0x16, 0x0A, 0x00, 0x00],
-            (pss.LeafSizeStats(5, (), ()), 4),
-        ),
-    ],
-    ids=["dictionary-and-data", "data-page-v2", "empty", "both"],
-)
-def test_encoding_stats_payloads(payload, expected):
-    leaf, pages = (None, None) if expected is None else expected
-    assert _walk(_one_leaf_footer(payload)) == ([[leaf]], [[pages]])
+    assert _walk(_one_leaf_footer(payload)) == [[leaf]]
 
 
 @pytest.mark.parametrize(
@@ -233,12 +172,10 @@ def test_encoding_stats_payloads(payload, expected):
         # Field 17, geospatial statistics, is a struct too: a cursor that drifted
         # onto it as field 16 is caught by its field 1, which isn't an i64.
         [0x0C, 0x20, 0x1C, 0x00, 0x00, 0x00],
-        # Field 13 as an i64 rather than a list.
-        [0xD6, 0x02, 0x00],
-        # Field 13 as a list of i32s rather than structs.
-        [0xD9, _list_header(1, _I32), 0x02, 0x00],
+        # Field 16 as an i64 rather than a struct.
+        [0x06, 0x20, 0x02, 0x00],
     ],
-    ids=["geospatial", "encoding-stats-not-a-list", "encoding-stats-of-i32s"],
+    ids=["geospatial", "size-statistics-not-a-struct"],
 )
 def test_wrong_field_types_are_rejected(payload):
     """A field whose type contradicts parquet.thrift means the cursor desynced."""

@@ -40,9 +40,6 @@ from ray.data._internal.datasource_v2.formats.parquet.parquet_size_statistics im
     read_dictionary_page,
     read_footer_stats,
 )
-from ray.data._internal.datasource_v2.formats.parquet.parquet_utils import (
-    _row_group_uncompressed_size,
-)
 from ray.data._internal.datasource_v2.interfaces.file_indexer import FileInfo
 from ray.data._internal.datasource_v2.interfaces.file_manifest import FileChunk
 from ray.data._internal.planner.plan_expression.expression_visitors import (
@@ -60,11 +57,6 @@ logger = logging.getLogger(__name__)
 
 # Dictionary pages by row group index, then by leaf index.
 _DictionaryPages = dict[int, dict[int, DictionaryPage]]
-# A row group's decode peak, as a multiple of its uncompressed bytes, when the
-# estimator doesn't model its schema (a view or dictionary column, a union): a
-# crude bound, high on purpose, since a read task sized under its peak can run a
-# node out of memory.
-_UNMODELLED_DECODE_RATIO = 10
 
 
 @dataclass(frozen=True)
@@ -115,13 +107,14 @@ class _FileSizing(NamedTuple):
     columns: list[ColumnSchema]  # every leaf, by leaf index
     leaf_indices: list[int]  # the leaves a read task decodes
     column_leaves: list[list[int]]  # each column read, in PyArrow's order, as leaves
-    profiles: list[LeafProfile] | None  # as PyArrow decodes them; None if unmodelled
+    # As PyArrow decodes them, ``None`` for a leaf or a file the estimator doesn't model.
+    profiles: list[LeafProfile | None] | None
     # The columns the pin retypes, as their leaves, and the leaves as the pin
     # casts them; empty and ``None`` when it retypes none.
     cast_leaves: dict[str, list[int]]
-    cast_profiles: list[LeafProfile] | None
+    cast_profiles: list[LeafProfile | None] | None
     file_schema: pa.Schema | None
-    read: Read  # the read's format kwargs and the columns it appends
+    read: Read  # the columns it appends
 
 
 # Half floats are the odd one out: they ride on FIXED_LEN_BYTE_ARRAY, which
@@ -174,8 +167,12 @@ class FooterReader:
         excluded_read_unit_ids: AbstractSet[str] | None = None,
         format_kwargs: dict | None = None,
         read_schema: pa.Schema | None = None,
+        read_task_bytes: int | None = None,
     ):
-        from ray.data.context import DEFAULT_RETRIED_IO_ERRORS
+        from ray.data.context import (
+            DEFAULT_RETRIED_IO_ERRORS,
+            DEFAULT_TARGET_MAX_BLOCK_SIZE,
+        )
 
         self.retried_io_errors = (
             retried_io_errors
@@ -224,13 +221,16 @@ class FooterReader:
         # Reused across files; make_fragment is what lets us apply
         # split_by_row_group.
         self.file_format = pds.ParquetFileFormat()
-        # The ``ParquetFileFormat`` kwargs the read tasks pass; their type
-        # options change what the estimator sizes.
+        # The ``ParquetFileFormat`` kwargs the read tasks pass; the estimator
+        # doesn't model some of their options.
         self.format_kwargs = dict(format_kwargs or {})
         # The dataset schema: the read tasks cast every batch to it, when
         # ``casts_to_schema`` says they do, and append its columns a file lacks.
         self.read_schema = read_schema
         self.pinned_schema = read_schema if casts_to_schema(read_schema) else None
+        # The decode peak bytes the partitioner packs a read task to. A row group
+        # the estimator can't size is charged all of it, so it reads alone.
+        self.read_task_bytes = read_task_bytes or DEFAULT_TARGET_MAX_BLOCK_SIZE
 
     def _file_sizing(
         self, file: FileInfo, fragment: pds.ParquetFileFragment, metadata: FileMetaData
@@ -313,7 +313,6 @@ class FooterReader:
             cast_profiles=cast_profiles,
             file_schema=file_schema,
             read=Read(
-                format_kwargs=self.format_kwargs,
                 added_row_bytes=added_row_bytes,
                 added_row_group_bytes=added_row_group_bytes,
             ),
@@ -324,17 +323,13 @@ class FooterReader:
         row_group: RowGroupMetaData,
         sizing: _FileSizing,
         size_stats: list[LeafSizeStats | None] | None,
-        data_pages: list[int | None] | None,
         dictionary_pages: dict[int, DictionaryPage] | None,
     ) -> int:
         """PyArrow's estimated peak bytes decoding ``row_group`` as a read task does,
         leaning high: a read task over its budget is what runs a node out of memory."""
         if sizing.profiles is None:
-            # Summed per column, as ``total_byte_size`` can be the compressed size
-            # (apache/arrow#48138).
-            work = _UNMODELLED_DECODE_RATIO * _row_group_uncompressed_size(
-                rg_meta=row_group, column_indices=sizing.leaf_indices
-            )
+            # A file the estimator doesn't model: a read task's budget.
+            work = self.read_task_bytes
         else:
             chunks = leaf_chunks(
                 row_group=row_group,
@@ -350,8 +345,8 @@ class FooterReader:
                 column_leaves=sizing.column_leaves,
                 leaves=leaves,
                 counted=set(),
-                data_pages=data_pages,
             )
+            modelled = len(chunks) == len(sizing.leaf_indices)
             if self.pinned_schema is None:
                 work += estimate_added_columns(row_group=row_group, read=sizing.read)
             else:
@@ -367,16 +362,21 @@ class FooterReader:
                     )
                     for name, indices in sizing.cast_leaves.items()
                 }
-                # One piece, as the estimate was fitted: a read task's batch
-                # size isn't known at listing time.
+                modelled = modelled and all(
+                    len(cast_leaves[name]) == len(indices)
+                    for name, indices in sizing.cast_leaves.items()
+                )
                 work += estimate_cast(
                     row_group=row_group,
                     column_leaves=cast_leaves,
                     file_schema=sizing.file_schema,
                     pinned_schema=self.pinned_schema,
-                    pieces=1,
                     read=sizing.read,
                 )
+            if not modelled:
+                # A leaf or cast the estimator doesn't model, such as a view, a
+                # dictionary or a struct gaining a field: a read task's budget, once.
+                work += self.read_task_bytes
         return estimate_row_group_peak(
             row_group=row_group,
             leaf_indices=sizing.leaf_indices,
@@ -475,7 +475,7 @@ class FooterReader:
         metadata: FileMetaData,
         rg_indices: Iterable[int],
         leaf_indices: list[int],
-        leaf_profiles: list[LeafProfile],
+        leaf_profiles: list[LeafProfile | None],
         size_stats: list[list[LeafSizeStats | None]] | None,
     ) -> _DictionaryPages:
         """The dictionary page headers the estimator asks for, read concurrently. A
@@ -483,16 +483,19 @@ class FooterReader:
         pages: _DictionaryPages = {}
         # Only a string leaf without SizeStatistics bytes can want its page, so
         # the rest skip building their chunk's metadata.
-        text_leaves = [
-            j for j in leaf_indices if leaf_profiles[j].nodes[-1].kind == _BINARY
-        ]
+        text_leaves = {
+            j: profile
+            for j in leaf_indices
+            if (profile := leaf_profiles[j]) is not None
+            and profile.nodes[-1].kind == _BINARY
+        }
         if not text_leaves:
             return pages
         wanted = []
         for rg_idx in rg_indices:
             row_group = metadata.row_group(rg_idx)
             rg_stats = None if size_stats is None else size_stats[rg_idx]
-            for leaf_idx in text_leaves:
+            for leaf_idx, profile in text_leaves.items():
                 stats = None if rg_stats is None else rg_stats[leaf_idx]
                 if (
                     stats is not None
@@ -501,7 +504,7 @@ class FooterReader:
                     continue
                 chunk = row_group.column(leaf_idx)
                 nbytes = dictionary_page_read_size(
-                    profile=leaf_profiles[leaf_idx], chunk=chunk, stats=stats
+                    profile=profile, chunk=chunk, stats=stats
                 )
                 if nbytes:
                     wanted.append(
@@ -646,9 +649,7 @@ class FooterReader:
             # One Thrift walk per file over the footer bytes ``metadata`` already
             # holds -- no extra IO, though ``__reduce__`` re-serializes the
             # footer, so skip it when every row group was pruned.
-            footer = read_footer_stats(metadata)
-            size_stats = None if footer is None else footer.size_statistics
-            data_pages = None if footer is None else footer.data_pages
+            size_stats = read_footer_stats(metadata)
             sizing = self._file_sizing(file=file, fragment=fragment, metadata=metadata)
             dictionary_pages: _DictionaryPages = {}
             if sizing.profiles is not None:
@@ -666,7 +667,6 @@ class FooterReader:
                     row_group=row_group,
                     sizing=sizing,
                     size_stats=None if size_stats is None else size_stats[rg_idx],
-                    data_pages=None if data_pages is None else data_pages[rg_idx],
                     dictionary_pages=dictionary_pages.get(rg_idx),
                 )
                 per_rg.append(

@@ -60,6 +60,15 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
+def _read_task_bytes(max_bucket_size: Optional[int]) -> int:
+    """The decode peak bytes a read task packs to."""
+    # Without a block target ``read_api`` passes ``sys.maxsize``, one bin for every
+    # file, so that takes the default.
+    if not max_bucket_size or max_bucket_size >= sys.maxsize:
+        max_bucket_size = DEFAULT_TARGET_MAX_BLOCK_SIZE
+    return env_integer("RAY_DATA_PARQUET_BIN_PACKING_BYTES", max_bucket_size)
+
+
 @DeveloperAPI
 class ParquetDatasourceV2(FileDataSourceV2):
     """V2 Parquet datasource.
@@ -208,6 +217,9 @@ class ParquetDatasourceV2(FileDataSourceV2):
                 kwargs=self._parquet_format_kwargs, casts=casts_to_schema(schema)
             ),
             read_schema=schema,
+            read_task_bytes=_read_task_bytes(
+                DataContext.get_current().target_max_block_size
+            ),
         )
 
     def get_file_partitioner(self, **kwargs):
@@ -218,13 +230,11 @@ class ParquetDatasourceV2(FileDataSourceV2):
         )
 
         # Bins are budgeted on the estimated decode peak, so a read task's decode
-        # stays near ``target_max_block_size``. Without a block target ``read_api``
-        # passes ``sys.maxsize``, one bin for every file, so that takes the default.
+        # stays near ``target_max_block_size``.
         hints = kwargs.get("hints")
-        budget = hints.max_bucket_size if hints is not None else None
-        if not budget or budget >= sys.maxsize:
-            budget = DEFAULT_TARGET_MAX_BLOCK_SIZE
-        max_bin_bytes = env_integer("RAY_DATA_PARQUET_BIN_PACKING_BYTES", budget)
+        max_bin_bytes = _read_task_bytes(
+            hints.max_bucket_size if hints is not None else None
+        )
         max_shared_open_bins = env_integer(
             "RAY_DATA_PARQUET_BIN_PACKING_MAX_SHARED_OPEN_BINS", 16
         )
