@@ -27,6 +27,11 @@ py_library(
     deps = ["//python/ray/tests:conftest"],
 )
 
+py_library(
+    name = "datasource_v2_unit_conftest",
+    srcs = ["tests/unit/datasource_v2/conftest.py"],
+)
+
 py_test_module_list(
     size = "small",
     files = glob(["tests/unit/**/test_*.py"]),
@@ -36,6 +41,7 @@ py_test_module_list(
     ],
     deps = [
         ":conftest",
+        ":datasource_v2_unit_conftest",
         "//:ray_lib",
     ],
 )
@@ -553,6 +559,20 @@ py_test(
     name = "test_random_e2e",
     size = "large",
     srcs = ["tests/test_random_e2e.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
+    name = "test_shuffle_batches",
+    size = "medium",
+    srcs = ["tests/test_shuffle_batches.py"],
     tags = [
         "exclusive",
         "team:data",
@@ -1961,6 +1981,20 @@ py_test(
     name = "test_push_split_coordinator",
     size = "large",
     srcs = ["tests/test_push_split_coordinator.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
+    name = "test_push_split_iterator",
+    size = "large",
+    srcs = ["tests/test_push_split_iterator.py"],
     tags = [
         "exclusive",
         "team:data",
