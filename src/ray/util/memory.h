@@ -18,6 +18,8 @@
 
 namespace ray {
 
+class ParallelMemcopyThreadPool;
+
 // A helper function for doing memcpy with multiple threads. This is required
 // to saturate the memory bandwidth of modern cpus.
 void parallel_memcopy(uint8_t *dst,
@@ -25,5 +27,21 @@ void parallel_memcopy(uint8_t *dst,
                       int64_t nbytes,
                       uintptr_t block_size,
                       int num_threads);
+
+// Creates a reusable thread pool for parallel memory copies. Returns nullptr
+// if `num_threads` is less than or equal to 1.
+ParallelMemcopyThreadPool *CreateParallelMemcopyThreadPool(int num_threads);
+
+// Destroys a thread pool created via CreateParallelMemcopyThreadPool.
+void DestroyParallelMemcopyThreadPool(ParallelMemcopyThreadPool *pool);
+
+// Parallel memcpy implementation that reuses an existing thread pool. Falls
+// back to `parallel_memcopy` when `pool` is nullptr.
+void parallel_memcopy_with_pool(ParallelMemcopyThreadPool *pool,
+                                uint8_t *dst,
+                                const uint8_t *src,
+                                int64_t nbytes,
+                                uintptr_t block_size,
+                                int num_threads);
 
 }  // namespace ray
