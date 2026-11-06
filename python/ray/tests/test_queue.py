@@ -7,7 +7,7 @@ import ray
 from ray._common.test_utils import wait_for_condition
 from ray._private.test_utils import BatchQueue
 from ray.exceptions import GetTimeoutError, RayActorError
-from ray.util.queue import Empty, Full, Queue
+from ray.util.queue import Empty, Full, Queue, _QueueActor
 
 
 # Remote helper functions for testing concurrency
@@ -46,11 +46,18 @@ def test_get(ray_start_regular_shared):
     q.put(item)
     assert q.get(timeout=0.2) == item
 
+    item = 2
+    q.put(item)
+    assert q.get(timeout=0) == item
+
     with pytest.raises(ValueError):
         q.get(timeout=-1)
 
     with pytest.raises(Empty):
         q.get_nowait()
+
+    with pytest.raises(Empty):
+        q.get(timeout=0)
 
     with pytest.raises(Empty):
         q.get(timeout=0.2)
@@ -69,11 +76,18 @@ async def test_get_async(ray_start_regular_shared):
     await q.put_async(item)
     assert await q.get_async(timeout=0.2) == item
 
+    item = 2
+    await q.put_async(item)
+    assert await q.get_async(timeout=0) == item
+
     with pytest.raises(ValueError):
         await q.get_async(timeout=-1)
 
     with pytest.raises(Empty):
         await q.get_async(block=False)
+
+    with pytest.raises(Empty):
+        await q.get_async(timeout=0)
 
     with pytest.raises(Empty):
         await q.get_async(timeout=0.2)
@@ -91,12 +105,19 @@ def test_put(ray_start_regular_shared):
     q.put(item, timeout=0.2)
     assert q.get() == item
 
+    item = 2
+    q.put(item, timeout=0)
+    assert q.get() == item
+
     with pytest.raises(ValueError):
         q.put(0, timeout=-1)
 
     q.put(0)
     with pytest.raises(Full):
         q.put_nowait(1)
+
+    with pytest.raises(Full):
+        q.put(1, timeout=0)
 
     with pytest.raises(Full):
         q.put(1, timeout=0.2)
@@ -115,6 +136,10 @@ async def test_put_async(ray_start_regular_shared):
     await q.put_async(item, timeout=0.2)
     assert await q.get_async() == item
 
+    item = 2
+    await q.put_async(item, timeout=0)
+    assert await q.get_async() == item
+
     with pytest.raises(ValueError):
         await q.put_async(0, timeout=-1)
 
@@ -123,7 +148,27 @@ async def test_put_async(ray_start_regular_shared):
         await q.put_async(1, block=False)
 
     with pytest.raises(Full):
+        await q.put_async(1, timeout=0)
+
+    with pytest.raises(Full):
         await q.put_async(1, timeout=0.2)
+
+
+@pytest.mark.asyncio
+async def test_queue_actor_zero_timeout():
+    actor = _QueueActor(maxsize=1)
+
+    with pytest.raises(Empty):
+        await actor.get(timeout=0)
+
+    await actor.put("x", timeout=0)
+    assert actor.qsize() == 1
+
+    with pytest.raises(Full):
+        await actor.put("y", timeout=0)
+
+    assert await actor.get(timeout=0) == "x"
+    assert actor.empty()
 
 
 def test_concurrent_get(ray_start_regular_shared):
