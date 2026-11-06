@@ -197,7 +197,7 @@ cffi==2.0.0; python_version >= '3.14'
 fastrlock>=0.8.3; sys_platform != 'darwin' and python_version < '3.14'
 lz4>=4.4.5
 pyyaml>=6.0.3
-msgpack>=1.1.2
+msgpack>=1.2.1
 
 # TODO(aslonnie): remove this
 # this is required as some packages depends on ray and will pick up older version of
