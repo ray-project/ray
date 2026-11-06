@@ -2302,34 +2302,17 @@ std::vector<rpc::ObjectReference> CoreWorker::SubmitTask(
   return returned_refs;
 }
 
-Status CoreWorker::CheckNoConsumeOnceArgs(const std::vector<ObjectID> &arg_ids) const {
-  // Each lookup below takes the reference counter lock, so skip them when there is
-  // nothing to find.
-  if (!reference_counter_->HasConsumeOnceObjects()) {
-    return Status::OK();
-  }
-  for (const ObjectID &object_id : arg_ids) {
-    if (object_id.IsNil()) {
-      continue;
-    }
-    const std::optional<MoveState> move_state =
-        reference_counter_->GetMoveState(object_id);
-    if (!move_state.has_value()) {
-      // At this point, object_id is not nil, move state should have not null value.
-      // This might be a bug somewhere in reference counter.
-      // But still its not MOVABLE, therefore not failing here.
-      RAY_LOG(WARNING) << absl::StrFormat(
-          "No reference found for task argument %s while checking for consume-once "
-          "arguments.",
-          object_id.Hex());
-      continue;
-    }
-    if (*move_state != MoveState::NOT_MOVABLE) {
-      return Status::InvalidArgument(absl::StrFormat(
-          "Object %s was created with _consume_once=True.", object_id.Hex()));
-    }
-  }
-  return Status::OK();
+std::optional<MoveState> CoreWorker::GetMoveState(const ObjectID &object_id) const {
+  return reference_counter_->GetMoveState(object_id);
+}
+
+std::vector<std::optional<MoveState>> CoreWorker::GetMoveStates(
+    const std::vector<ObjectID> &object_ids) const {
+  return reference_counter_->GetMoveStates(object_ids);
+}
+
+bool CoreWorker::HasConsumeOnceObjects() const {
+  return reference_counter_->HasConsumeOnceObjects();
 }
 
 Status CoreWorker::CreateActor(const RayFunction &function,
@@ -2717,6 +2700,18 @@ Status CoreWorker::SubmitActorTask(
         "Too many tasks (%d) pending to be executed for actor %s. Please try later",
         actor_task_submitter_->NumPendingTasks(actor_id),
         actor_id.Hex()));
+  }
+
+  // Nothing after this commit to MOVED can fail, so a committed move always has a
+  // consuming task.
+  std::vector<ObjectID> arg_ids;
+  for (const std::unique_ptr<TaskArg> &arg : args) {
+    if (std::optional<ObjectID> arg_id = arg->GetReferenceId()) {
+      arg_ids.push_back(*arg_id);
+    }
+  }
+  if (!arg_ids.empty() && reference_counter_->HasConsumeOnceObjects()) {
+    RAY_RETURN_NOT_OK(reference_counter_->TryCommitMoves(arg_ids));
   }
 
   auto actor_handle = actor_manager_->GetActorHandle(actor_id);
