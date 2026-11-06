@@ -270,6 +270,20 @@ def test_jsonl_mixed_types(
     assert result[2] == data[2]
 
 
+@pytest.mark.parametrize(
+    "param, value",
+    [
+        ("filesystem", fs.LocalFileSystem()),
+        ("arrow_open_stream_args", {"compression": "gzip"}),
+        ("arrow_json_args", {"read_options": pajson.ReadOptions()}),
+    ],
+)
+def test_jsonl_rejects_unsupported_args(tmp_path, param, value):
+    path = os.path.join(tmp_path, "test.jsonl")
+    with pytest.raises(ValueError, match=f"`{param}` is not supported"):
+        ray.data.read_json(path, lines=True, **{param: value})
+
+
 def test_json_write(
     ray_start_regular_shared, tmp_path, target_max_block_size_infinite_or_default
 ):
