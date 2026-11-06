@@ -2,13 +2,23 @@ import argparse
 import os
 import subprocess
 import sys
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple, Union
 
 from ci.ray_ci.doc.api_param_coverage import (
+    PresenceViolation,
     Violation,
     build_class_index,
+    new_presence_violations_for_file,
     new_violations_for_file,
 )
+
+# Which check to run: parameter coverage, or docstring and Returns: presence.
+CHECK_PARAMS = "params"
+CHECK_PRESENCE = "presence"
+_CHECKS = {
+    CHECK_PARAMS: new_violations_for_file,
+    CHECK_PRESENCE: new_presence_violations_for_file,
+}
 
 # Only the Python API surface is in scope. Mirror the audit's skip list so
 # tests, examples, and vendored code never enter the index or the diff.
@@ -118,8 +128,13 @@ def _iter_source_files(checkout_dir: str):
                 continue
 
 
-def find_violations(checkout_dir: str, base_ref: str) -> Tuple[List[Violation], str]:
-    """Run the diff-scoped coverage check. Returns ``(violations, base_sha)``.
+def find_violations(
+    checkout_dir: str, base_ref: str, check: str = CHECK_PARAMS
+) -> Tuple[List[Union[Violation, PresenceViolation]], str]:
+    """Run a diff-scoped coverage check. Returns ``(violations, base_sha)``.
+
+    ``check`` is :data:`CHECK_PARAMS` or :data:`CHECK_PRESENCE`. Both share the
+    changed-file diff and the base and head class indexes.
 
     Raises RuntimeError when the base revision cannot be resolved (fail-closed
     responsibility is left to the caller so it can honor the warn/blocking
@@ -161,14 +176,15 @@ def find_violations(checkout_dir: str, base_ref: str) -> Tuple[List[Violation], 
     head_index = build_class_index(head_files)
     base_index = build_class_index(base_files)
 
+    new_violations = _CHECKS[check]
     head_by_path = dict(head_files)
-    violations: List[Violation] = []
+    violations: List[Union[Violation, PresenceViolation]] = []
     for path, _base_path in changed:
         head_source = head_by_path.get(path)
         if head_source is None:
             continue
         violations.extend(
-            new_violations_for_file(
+            new_violations(
                 path,
                 base_sources[path],
                 head_source,
@@ -190,14 +206,25 @@ def _parse_args(argv: Optional[List[str]] = None) -> argparse.Namespace:
         description=(
             "Fail a pull request that adds a new @PublicAPI callable, or a new "
             "parameter on an existing one, without a docstring Args: entry. "
-            "Pre-existing gaps are grandfathered; only newly-undocumented params "
-            "on the changed public surface are reported. Static: parses source, "
-            "no Ray build or import needed."
+            "With --check presence, fail one that adds a public callable with no "
+            "docstring, or with a return annotation and no Returns: section. "
+            "Pre-existing gaps are grandfathered; only new gaps on the changed "
+            "public surface are reported. Static: parses source, no Ray build "
+            "or import needed."
         )
     )
     parser.add_argument(
         "ray_checkout_dir",
         help="Path to the Ray checkout to scan.",
+    )
+    parser.add_argument(
+        "--check",
+        choices=sorted(_CHECKS),
+        default=CHECK_PARAMS,
+        help=(
+            "Which check to run: Args: coverage of parameters, or presence of "
+            "the docstring and its Returns: section. (default: params)"
+        ),
     )
     parser.add_argument(
         "--base-ref",
@@ -215,29 +242,7 @@ def _parse_args(argv: Optional[List[str]] = None) -> argparse.Namespace:
     return parser.parse_args(argv)
 
 
-def main(argv: Optional[List[str]] = None) -> None:
-    args = _parse_args(argv)
-    ray_checkout_dir = args.ray_checkout_dir
-    base_ref = args.base_ref
-    blocking = args.blocking
-
-    try:
-        violations, base = find_violations(ray_checkout_dir, base_ref)
-    except RuntimeError as e:
-        # Fail-closed only when blocking; in warn mode a missing base branch
-        # must not break the build.
-        print(f"--- API param coverage: {e}", file=sys.stderr)
-        sys.exit(1 if blocking else 0)
-
-    print(
-        f"--- Checking new-parameter documentation coverage against {base[:12]}...",
-        file=sys.stderr,
-    )
-
-    if not violations:
-        print("No newly-undocumented public-API parameters. ", file=sys.stderr)
-        return
-
+def _report_params(violations: List[Violation]) -> None:
     print(
         "Public APIs with newly-undocumented parameters "
         "(add an Args: entry for each):",
@@ -255,6 +260,52 @@ def main(argv: Optional[List[str]] = None) -> None:
         "grandfathered; this gate fires only on new or changed public API.",
         file=sys.stderr,
     )
+
+
+def _report_presence(violations: List[PresenceViolation]) -> None:
+    print(
+        "Public APIs with a newly-missing docstring or Returns: section:",
+        file=sys.stderr,
+    )
+    for v in violations:
+        missing = ", ".join(v.missing)
+        print(f"\t{v.path}:{v.lineno}  {v.qualname}  ->  {missing}", file=sys.stderr)
+
+    print(
+        f"\n{len(violations)} public class(es) or callable(s) with a newly-missing "
+        "docstring part. Add a docstring, and for a callable that annotates a "
+        "return value, a Returns: (or Yields:) section. Pre-existing gaps are "
+        "grandfathered; this gate fires only on new or changed public API.",
+        file=sys.stderr,
+    )
+
+
+def main(argv: Optional[List[str]] = None) -> None:
+    args = _parse_args(argv)
+    ray_checkout_dir = args.ray_checkout_dir
+    base_ref = args.base_ref
+    blocking = args.blocking
+    check = args.check
+    title = "API param coverage" if check == CHECK_PARAMS else "API docstring presence"
+
+    try:
+        violations, base = find_violations(ray_checkout_dir, base_ref, check)
+    except RuntimeError as e:
+        # Fail-closed only when blocking; in warn mode a missing base branch
+        # must not break the build.
+        print(f"--- {title}: {e}", file=sys.stderr)
+        sys.exit(1 if blocking else 0)
+
+    print(f"--- Checking {title} against {base[:12]}...", file=sys.stderr)
+
+    if not violations:
+        print("No new public-API documentation gaps.", file=sys.stderr)
+        return
+
+    if check == CHECK_PARAMS:
+        _report_params(violations)
+    else:
+        _report_presence(violations)
 
     if blocking:
         sys.exit(1)
