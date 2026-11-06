@@ -671,6 +671,109 @@ def handle_num_replicas_auto(
     return max_ongoing_requests, autoscaling_config
 
 
+_GANG_ALIGNED_AUTOSCALING_BOUNDS = (
+    "min_replicas",
+    "max_replicas",
+    "initial_replicas",
+)
+
+
+def validate_gang_scheduling_bounds(
+    gang_size: int,
+    autoscaling_config: Optional[Union[Dict, AutoscalingConfig]],
+    *,
+    ignore_default_bounds: bool = False,
+) -> None:
+    """Validate that explicitly set autoscaling bounds are multiples of gang_size.
+
+    Bounds left at their defaults are not checked: gang scheduling rounds the
+    autoscaler's decisions up to whole gangs, so the defaults are safe.
+
+    Set ``ignore_default_bounds`` when validating a config read back from a
+    deployment. ``handle_num_replicas_auto`` merges ``AutoscalingConfig.default()``
+    into that config, which marks the default bounds as explicitly set even
+    when the user left them unset.
+    """
+    if autoscaling_config is None:
+        return
+
+    if isinstance(autoscaling_config, AutoscalingConfig):
+        defaults = AutoscalingConfig.default() if ignore_default_bounds else None
+        bounds = {
+            name: getattr(autoscaling_config, name)
+            for name in autoscaling_config.model_fields_set
+            if name in _GANG_ALIGNED_AUTOSCALING_BOUNDS
+            and (
+                defaults is None
+                or getattr(autoscaling_config, name) != getattr(defaults, name)
+            )
+        }
+    else:
+        bounds = {
+            name: autoscaling_config[name]
+            for name in _GANG_ALIGNED_AUTOSCALING_BOUNDS
+            if name in autoscaling_config
+        }
+
+    for field_name, value in bounds.items():
+        if value is not None and value % gang_size != 0:
+            raise ValueError(
+                f"autoscaling_config.{field_name} ({value}) must be a multiple of "
+                f"gang_size ({gang_size})."
+            )
+
+
+def validate_gang_scheduling_autoscaling_config(
+    gang_scheduling_config: Union[Dict, GangSchedulingConfig],
+    autoscaling_config: Union[Dict, AutoscalingConfig],
+    *,
+    ignore_default_bounds: bool = False,
+) -> None:
+    """Validate autoscaling bounds against an explicit gang configuration."""
+    if isinstance(gang_scheduling_config, dict):
+        gang_size = gang_scheduling_config.get("gang_size")
+    else:
+        gang_size = gang_scheduling_config.gang_size
+    if gang_size is not None:
+        validate_gang_scheduling_bounds(
+            gang_size,
+            autoscaling_config,
+            ignore_default_bounds=ignore_default_bounds,
+        )
+
+
+def validate_gang_scheduling_options(
+    gang_scheduling_config: Any,
+    autoscaling_config: Any,
+    current_gang_scheduling_config: Optional[GangSchedulingConfig],
+    current_autoscaling_config: Optional[AutoscalingConfig],
+) -> None:
+    """Validate an options update against the deployment's resulting config.
+
+    Options left at ``DEFAULT.VALUE`` fall back to the deployment's current
+    configuration, so adding or changing either gang scheduling or autoscaling
+    is validated against the other.
+
+    This lives at module scope so ``Deployment.options()`` does not create
+    helper locals before it captures user-configured option names from
+    ``locals()``.
+    """
+    if gang_scheduling_config is DEFAULT.VALUE:
+        gang_scheduling_config = current_gang_scheduling_config
+    autoscaling_config_from_current = autoscaling_config is DEFAULT.VALUE
+    if autoscaling_config_from_current:
+        autoscaling_config = current_autoscaling_config
+
+    if gang_scheduling_config is None or autoscaling_config is None:
+        return
+
+    validate_gang_scheduling_autoscaling_config(
+        gang_scheduling_config,
+        autoscaling_config,
+        ignore_default_bounds=autoscaling_config_from_current,
+    )
+
+
 class ReplicaConfig:
     """Internal datastructure wrapping config options for a deployment's replicas.
 
