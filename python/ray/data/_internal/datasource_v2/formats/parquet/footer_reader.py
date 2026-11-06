@@ -117,6 +117,9 @@ class _FileSizing(NamedTuple):
     read: Read  # the columns it appends
 
 
+# A row group's peak bytes for whatever in it the estimator doesn't model.
+_UNMODELLED_BYTES = 12 << 20
+
 # Half floats are the odd one out: they ride on FIXED_LEN_BYTE_ARRAY, which
 # also carries decimals and UUIDs, so they are only identifiable by logical type.
 _FLOAT_PHYSICAL_TYPES = frozenset({"FLOAT", "DOUBLE"})
@@ -167,12 +170,8 @@ class FooterReader:
         excluded_read_unit_ids: AbstractSet[str] | None = None,
         format_kwargs: dict | None = None,
         read_schema: pa.Schema | None = None,
-        read_task_bytes: int | None = None,
     ):
-        from ray.data.context import (
-            DEFAULT_RETRIED_IO_ERRORS,
-            DEFAULT_TARGET_MAX_BLOCK_SIZE,
-        )
+        from ray.data.context import DEFAULT_RETRIED_IO_ERRORS
 
         self.retried_io_errors = (
             retried_io_errors
@@ -228,9 +227,6 @@ class FooterReader:
         # ``casts_to_schema`` says they do, and append its columns a file lacks.
         self.read_schema = read_schema
         self.pinned_schema = read_schema if casts_to_schema(read_schema) else None
-        # The decode peak bytes the partitioner packs a read task to. A row group
-        # the estimator can't size is charged all of it, so it reads alone.
-        self.read_task_bytes = read_task_bytes or DEFAULT_TARGET_MAX_BLOCK_SIZE
 
     def _file_sizing(
         self, file: FileInfo, fragment: pds.ParquetFileFragment, metadata: FileMetaData
@@ -328,8 +324,8 @@ class FooterReader:
         """PyArrow's estimated peak bytes decoding ``row_group`` as a read task does,
         leaning high: a read task over its budget is what runs a node out of memory."""
         if sizing.profiles is None:
-            # A file the estimator doesn't model: a read task's budget.
-            work = self.read_task_bytes
+            # A file the estimator doesn't model.
+            work = _UNMODELLED_BYTES
         else:
             chunks = leaf_chunks(
                 row_group=row_group,
@@ -375,8 +371,8 @@ class FooterReader:
                 )
             if not modelled:
                 # A leaf or cast the estimator doesn't model, such as a view, a
-                # dictionary or a struct gaining a field: a read task's budget, once.
-                work += self.read_task_bytes
+                # dictionary or a struct gaining a field: charged once.
+                work += _UNMODELLED_BYTES
         return estimate_row_group_peak(
             row_group=row_group,
             leaf_indices=sizing.leaf_indices,

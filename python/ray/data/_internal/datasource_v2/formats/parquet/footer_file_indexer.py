@@ -148,7 +148,6 @@ class FooterFileIndexer(NonSamplingFileIndexer):
         small_shuffle_chunk_size: int = 0,
         format_kwargs: Optional[dict] = None,
         read_schema: Optional[pa.Schema] = None,
-        read_task_bytes: Optional[int] = None,
         io_concurrency: Optional[int] = None,
         footer_batch_size: Optional[int] = None,
         result_batch_size: Optional[int] = None,
@@ -166,10 +165,9 @@ class FooterFileIndexer(NonSamplingFileIndexer):
         # than a single, possibly tiny, row group.
         self._small_shuffle_chunk_size = small_shuffle_chunk_size
         # For the footer readers' size estimate: the read tasks' ``ParquetFileFormat``
-        # kwargs, the dataset schema they cast to and the bytes they pack to.
+        # kwargs and the dataset schema they cast to.
         self._format_kwargs = dict(format_kwargs or {})
         self._read_schema = read_schema
-        self._read_task_bytes = read_task_bytes
         # Every knob is re-read here rather than taken from the module-level
         # constant, so ``monkeypatch.setenv`` and release-test env overrides work
         # after this module has already been imported. An explicit ctor argument
@@ -309,7 +307,6 @@ class FooterFileIndexer(NonSamplingFileIndexer):
                 excluded_read_unit_ids=excluded_read_unit_ids,
                 format_kwargs=self._format_kwargs,
                 read_schema=self._read_schema,
-                read_task_bytes=self._read_task_bytes,
             )
             for _ in range(self._num_actors)
         ]
