@@ -8435,6 +8435,84 @@ class TestDeploymentRankManagerIntegrationE2E:
             3,
         ], f"Expected reassigned ranks [0, 1, 2, 3], got {ranks}"
 
+    def _recover_with_rank_gap(self, create_dsm):
+        """Recover two replicas with ranks {0, 5} so the next update reassigns 5 -> 1.
+
+        Returns the recovered deployment state manager, its deployment state, and
+        the ID of the replica whose rank is reassigned.
+        """
+        dsm: DeploymentStateManager = create_dsm()
+        info_1, _ = deployment_info(num_replicas=2, version="1")
+        dsm.deploy(TEST_DEPLOYMENT_ID, info_1)
+        dsm.save_checkpoint()
+        ds = dsm._get_deployment_state_for_testing(TEST_DEPLOYMENT_ID)
+        dsm.update()
+        self._set_replicas_ready(ds, [ReplicaState.STARTING])
+        dsm.update()
+        replica_ids = [r.replica_id for r in ds._replicas.get([ReplicaState.RUNNING])]
+
+        replica_rank_context.clear()
+        replica_rank_context[replica_ids[0].unique_id] = ReplicaRank(
+            rank=0, node_rank=0, local_rank=0
+        )
+        replica_rank_context[replica_ids[1].unique_id] = ReplicaRank(
+            rank=5, node_rank=0, local_rank=1
+        )
+        new_dsm: DeploymentStateManager = create_dsm(
+            [replica_id.to_full_id_str() for replica_id in replica_ids]
+        )
+        new_ds = new_dsm._get_deployment_state_for_testing(TEST_DEPLOYMENT_ID)
+        self._set_replicas_ready(new_ds, [ReplicaState.RECOVERING])
+        new_dsm.update()
+        assert new_ds.curr_status_info.status == DeploymentStatus.HEALTHY
+
+        # Reassigns rank 5 -> 1 and starts the reconfigure on that replica.
+        new_dsm.update()
+        assert list(new_ds._pending_rank_reconfigures) == [replica_ids[1]]
+        return new_dsm, new_ds, replica_ids[1]
+
+    def test_rank_reassignment_reconfigure_keeps_serving(
+        self, mock_deployment_state_manager
+    ):
+        """The replica stays RUNNING while its rank reconfigure is in flight."""
+        create_dsm, _, _, _ = mock_deployment_state_manager
+        dsm, ds, reassigned_id = self._recover_with_rank_gap(create_dsm)
+
+        for _ in range(3):
+            dsm.update()
+        check_counts(ds, total=2, by_state=[(ReplicaState.RUNNING, 2, None)])
+        assert ds.curr_status_info.status == DeploymentStatus.HEALTHY
+        assert reassigned_id in ds._pending_rank_reconfigures
+
+        # Once the reconfigure succeeds, it's no longer tracked.
+        ds._replicas.get_by_id(reassigned_id)._actor.set_ready()
+        dsm.update()
+        assert not ds._pending_rank_reconfigures
+        check_counts(ds, total=2, by_state=[(ReplicaState.RUNNING, 2, None)])
+        assert ds.curr_status_info.status == DeploymentStatus.HEALTHY
+        assert ds._replica_failure_count == 0
+
+    def test_rank_reassignment_reconfigure_failure_is_logged(
+        self, mock_deployment_state_manager, monkeypatch
+    ):
+        """A failed rank reconfigure is logged; the replica keeps serving."""
+        errors = []
+        monkeypatch.setattr(ds_mod.logger, "error", errors.append)
+        create_dsm, _, _, _ = mock_deployment_state_manager
+        dsm, ds, reassigned_id = self._recover_with_rank_gap(create_dsm)
+
+        ds._replicas.get_by_id(reassigned_id)._actor.set_failed_to_start()
+        dsm.update()
+
+        assert not ds._pending_rank_reconfigures
+        assert len(errors) == 1
+        assert str(reassigned_id) in errors[0]
+        assert "reconfigure failed" in errors[0]
+        # Not replaced: replacing it can churn replicas forever.
+        check_counts(ds, total=2, by_state=[(ReplicaState.RUNNING, 2, None)])
+        assert ds.curr_status_info.status == DeploymentStatus.HEALTHY
+        assert ds._replica_failure_count == 0
+
     def test_rank_consistency_during_version_rollout(
         self, mock_deployment_state_manager
     ):
