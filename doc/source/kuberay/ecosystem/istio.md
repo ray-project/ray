@@ -164,7 +164,7 @@ spec:
 EOF
 ```
 
-Note that this Headless Service manifest _must_ list _all_ the ports used by Ray explicitly, including _all_ worker ports. See [Configuring Ray](../../core/configure.md#all-nodes) for more details on the ports required by Ray.
+Note that this Headless Service manifest _must_ list _all_ the ports used by Ray explicitly, including _all_ worker ports. See [Configuring Ray](../../cluster/configure.md#all-nodes) for more details on the ports required by Ray.
 
 :::{note}
 Kubernetes Service doesn't support specifying ports in ranges. You _must_ set them one by one.
