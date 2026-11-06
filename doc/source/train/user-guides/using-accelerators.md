@@ -187,6 +187,63 @@ trainer = TorchTrainer(
 )
 trainer.fit()
 ```
+
+(tpu-pytorch-simple-fsdp)=
+
+The `parallel_strategy="fsdp"` option supports only CUDA GPUs. To shard a model across TPU workers, install [TorchTitan](https://github.com/google-pytorch/torchtitan) and pass `parallel_strategy="simple_fsdp"` to {func}`ray.train.torch.prepare_model`. Ray Train shards the model over a 1D `DeviceMesh` with TorchTitan's `simple_fsdp`, using `DTensor` placements that compile as a single graph with `torch.compile(..., backend="tpu")`. Create the optimizer after calling `prepare_model`, and divide the loss by the world size before `backward()` because `simple_fsdp` sums gradients across workers.
+
+The following example defines a `train_func` that shards a model with `simple_fsdp` and compiles the training step across the 16 TPU workers configured above:
+
+```python
+import torch
+from torch.utils.data import DataLoader, TensorDataset
+from torchtitan.experiments.graph_trainer import simple_fsdp
+
+import ray.train
+from ray.train.torch import prepare_data_loader, prepare_model
+
+
+def train_func():
+    model = torch.nn.Sequential(
+        torch.nn.Linear(128, 256),
+        torch.nn.SiLU(),
+        torch.nn.Linear(256, 32),
+    )
+    mp_policy = simple_fsdp.MixedPrecisionPolicy(
+        param_dtype=torch.bfloat16,
+        reduce_dtype=torch.float32,
+    )
+    model = prepare_model(
+        model,
+        parallel_strategy="simple_fsdp",
+        parallel_strategy_kwargs={"mp_policy": mp_policy},
+    )
+    optimizer = torch.optim.AdamW(model.parameters(), lr=1e-3)
+
+    dataset = TensorDataset(
+        torch.randn(1024, 128, dtype=torch.bfloat16),
+        torch.randint(0, 32, (1024,)),
+    )
+    dataloader = DataLoader(dataset, batch_size=32, shuffle=True, drop_last=True)
+    dataloader = prepare_data_loader(dataloader)
+
+    world_size = ray.train.get_context().get_world_size()
+
+    def train_step(mod, inputs, targets):
+        outputs = mod(inputs)
+        loss = torch.nn.functional.cross_entropy(outputs.float(), targets)
+        (loss / world_size).backward()
+        return loss.detach()
+
+    compiled_step = torch.compile(train_step, backend="tpu")
+
+    for inputs, targets in dataloader:
+        optimizer.zero_grad()
+        loss = compiled_step(model, inputs, targets)
+        optimizer.step()
+
+    ray.train.report({"loss": loss.item()})
+```
 :::
 ::::
 
