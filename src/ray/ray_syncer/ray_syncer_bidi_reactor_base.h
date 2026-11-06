@@ -233,9 +233,14 @@ class RaySyncerBidiReactorBase : public RaySyncerBidiReactor, public T {
   using T::StartRead;
   using T::StartWrite;
 
+  // NOTE: Every handler dispatched to io_context_ below captures a strong
+  // reference to the reactor (self_ref_). OnDone() releases self_ref_ from a
+  // handler on the same io_context_, and gRPC may invoke OnReadDone/OnWriteDone
+  // before that handler runs; without the capture, a handler queued earlier
+  // could run after the reactor has been destroyed (use-after-free).
   void OnWriteDone(bool ok) override {
     io_context_.dispatch(
-        [this, disconnected = IsDisconnected(), ok]() {
+        [this, self = self_ref_, disconnected = IsDisconnected(), ok]() {
           if (*disconnected) {
             return;
           }
@@ -253,7 +258,7 @@ class RaySyncerBidiReactorBase : public RaySyncerBidiReactor, public T {
   void OnReadDone(bool ok) override {
     if (!ok) {
       io_context_.dispatch(
-          [this]() {
+          [this, self = self_ref_]() {
             RAY_LOG_EVERY_MS(INFO, 1000) << "Failed to read a message from node: "
                                          << NodeID::FromBinary(GetRemoteNodeID());
             Disconnect();
@@ -309,7 +314,7 @@ class RaySyncerBidiReactorBase : public RaySyncerBidiReactor, public T {
     // task is queued and this read must post one. If not, a task is already queued and
     // will pick up all messages in the buffer later.
     if (buffer_was_empty) {
-      io_context_.dispatch([this]() { ProcessBufferedSyncMessages(); },
+      io_context_.dispatch([this, self = self_ref_]() { ProcessBufferedSyncMessages(); },
                            "RaySyncer.ProcessBufferedSyncMessages");
     }
   }
