@@ -170,12 +170,9 @@ steps:
       - skip-on-premerge
     instance_type: medium
     commands:
-      - cleanup() { ./ci/build/upload_build_info.sh; }; trap cleanup EXIT
-      - (cd python/ray/dashboard/client && npm ci && npm run build)
-      - pip install -e python[client]
-      - bazel test --config=ci --jobs=1 $(./ci/run/bazel_export_options)
-        --test_tag_filters=mem_pressure -- //python/ray/tests/...
-    job_env: corebuild-py3.10
+      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests/... core
+        --only-tags mem_pressure
+        --python-version 3.10 --build-name corebuild-py3.10
 
   - label: ":ray: core: out of disk tests"
     tags:
