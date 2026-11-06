@@ -75,6 +75,7 @@ def create_cluster_autoscaler(
             execution_id=execution_id,
             scheduling_strategy=data_context.scheduling_strategy,
             scheduling_strategy_large_args=data_context.scheduling_strategy_large_args,
+            autoscaling_coordinator=autoscaling_coordinator,
         )
 
     elif cluster_autoscaler_version == ClusterAutoscalerVersion.RATE_BASED:

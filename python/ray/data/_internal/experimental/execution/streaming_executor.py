@@ -114,10 +114,11 @@ class ExperimentalStreamingExecutor(StreamingExecutor):
         # The cluster autoscaler owns the coordinator request's lifecycle; the
         # sizer only reads allocations through the reporter.
         self._sizer = OperatorSizer(
-            dataset_id=self._dataset_id, resource_reporter=self._resource_reporter
+            dataset_id=self._dataset_id,
+            topology=self._topology,
+            resource_reporter=self._resource_reporter,
         )
-        self._sizer.bootstrap(topology=self._topology)
-        self._sizer.initial_sizing_request(topology=self._topology)
+        self._sizer.initial_sizing_request()
 
         self._actor_only_metrics = ActorOnlyMetrics(
             dataset_id=self._dataset_id, update_interval=self.UPDATE_METRICS_INTERVAL_S
@@ -135,11 +136,12 @@ class ExperimentalStreamingExecutor(StreamingExecutor):
         assert self._sizer is not None
         assert self._actor_only_metrics is not None
 
-        # One per-node capacity view for this whole step, shared by the bank
-        # and the sizer.
-        self._resource_bank.set_node_view(
-            node_view=self._resource_reporter.get_reserved_resources_by_node()
+        # One cluster read for this whole step, shared by the bank and the
+        # sizer, so they never disagree about capacity within a step.
+        cluster_view = self._resource_reporter.get_cluster_view(
+            include_labels=True, include_draining_nodes=True
         )
+        self._resource_bank.set_node_view(node_view=cluster_view.reserved_by_node)
         self._resource_bank.drain_consumed_blocks()
 
         num_errored_blocks = process_completed_tasks(
@@ -153,7 +155,13 @@ class ExperimentalStreamingExecutor(StreamingExecutor):
 
         self._maybe_run_escape_hatch()
 
-        self._sizer.perform_sizing_decision(topology=topology)
+        self._sizer.perform_sizing_decision(
+            cluster_view=cluster_view,
+            seconds_since_allocation_change=(
+                self._resource_reporter.seconds_since_allocation_change()
+            ),
+        )
+        self._process_draining_and_pending_actors(topology)
 
         self._resource_bank.drain_consumed_blocks()
         self._launch_tasks()
@@ -167,6 +175,24 @@ class ExperimentalStreamingExecutor(StreamingExecutor):
         self._cluster_autoscaler.try_trigger_scaling()
 
         return self._finalize_scheduling_loop_step(topology)
+
+    @staticmethod
+    def _process_draining_and_pending_actors(topology: Topology) -> None:
+        """Release drained actors and expire stuck pendings, on every step.
+
+        Runs after sizing, so a same-step upscale can revive a draining actor
+        before it would otherwise be released. A pending that can never become
+        ready (failed restart, stuck env install) would hold its op's sizing
+        forever through the pending gate, so it is expired and re-placed
+        against current cluster state on the next sizing tick.
+        """
+        for op in topology:
+            if (
+                isinstance(op, ExperimentalActorPoolMapOperator)
+                and op.get_autoscaling_actor_pools()
+            ):
+                op.process_draining_actors()
+                op.actor_pool.release_expired_pending_actors()
 
     def _maybe_run_escape_hatch(self) -> None:
         now = time.perf_counter()
