@@ -5,6 +5,11 @@ and caches the latest values of the metrics captured.
 An execution captures a copy of the latest snapshot as its baseline when
 it starts, then computes the delta between the latest snapshot and that
 baseline when it ends.
+
+Every driver that has run a Dataset polls until it exits, and
+``RAY_PROMETHEUS_HOST`` can be a metrics backend shared by many clusters.
+Before adding a metric or shortening the interval, estimate the total query
+rate (drivers * queries per poll / interval).
 """
 
 import logging
