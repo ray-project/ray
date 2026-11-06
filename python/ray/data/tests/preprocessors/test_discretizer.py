@@ -346,8 +346,16 @@ def test_kbins_discretizer_transform_pandas_preserves_unselected_columns():
     assert list(out["passthrough_str"]) == ["x", "y", "z"]
     assert list(out["passthrough_obj"]) == [{"k": 1}, {"k": 2}, {"k": 3}]
 
+
+def test_kbins_discretizer_transform_pandas_overlapping_output_columns():
     # Overlapping output_columns and columns (output_columns[0] == columns[1])
     # should still bin the original input column B rather than the overwritten output.
+    df = pd.DataFrame(
+        {
+            "A": [0.5, 1.5, 2.5],
+            "B": [10.0, 20.0, 30.0],
+        }
+    )
     overlapping = CustomKBinsDiscretizer(
         columns=["A", "B"],
         bins={"A": [0.0, 1.0, 2.0, 3.0], "B": [0.0, 15.0, 35.0]},
