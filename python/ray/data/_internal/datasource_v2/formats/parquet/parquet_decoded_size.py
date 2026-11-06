@@ -3,7 +3,7 @@
 The Arrow schema is walked into one chain of arrays per Parquet leaf: its structs
 and lists, then the leaf. Each array is sized from the footer's counts as validity
 bitmap plus offsets plus values: exact with SizeStatistics, a bound without.
-Schemas it doesn't model, views and dictionaries among them, give ``None``.
+Leaves it doesn't model, views and dictionaries among them, get no profile.
 """
 
 from __future__ import annotations
@@ -34,6 +34,7 @@ _FIXED_SIZE_LIST = "fixed_size_list"
 _FIXED_WIDTH = "fixed_width"
 _BOOLEAN = "boolean"
 _NULL = "null"  # Arrow's null type allocates no buffers.
+_UNSUPPORTED = "unsupported"  # A view, a dictionary, a union: not modelled.
 # String and binary leaves, which only BYTE_ARRAY values decode to.
 _BINARY = "binary"
 
@@ -66,8 +67,6 @@ class _ArrowNode(NamedTuple):
     width: int = 0
     # A bitmap even when null-free: a zero-copy read keeps the one it decoded.
     keeps_bitmap: bool = False
-    # A leaf's Arrow type, an extension type's storage type; ``None`` above it.
-    arrow_type: pa.DataType | None = None
 
 
 class LeafProfile(NamedTuple):
@@ -79,10 +78,6 @@ class LeafProfile(NamedTuple):
     max_repetition_level: int
     # The writer counts every DELTA_BYTE_ARRAY value in SizeStatistics bytes.
     counts_delta_byte_array: bool = False
-
-
-class _UnsupportedLayout(Exception):
-    """An Arrow type this module cannot size, which sends the file to fallback."""
 
 
 class _Position(NamedTuple):
@@ -105,16 +100,13 @@ def _leaf_layout(arrow_type: pa.DataType) -> tuple[str, int]:
         return _BOOLEAN, 0
     if detect_string_type(arrow_type):
         return _BINARY, _offset_width(arrow_type)
-    if pa.types.is_dictionary(arrow_type):
-        # Dictionaries, like views, fall back rather than be sized.
-        raise _UnsupportedLayout(arrow_type)
     try:
         bit_width = arrow_type.bit_width
     except ValueError:
         # No fixed width: a view, a union, a list view.
-        raise _UnsupportedLayout(arrow_type) from None
-    if bit_width % 8:
-        raise _UnsupportedLayout(arrow_type)
+        return _UNSUPPORTED, 0
+    if pa.types.is_dictionary(arrow_type) or bit_width % 8:
+        return _UNSUPPORTED, 0
     return _FIXED_WIDTH, bit_width // 8
 
 
@@ -205,7 +197,6 @@ class _SchemaWalk:
                 def_level=def_level,
                 width=width,
                 keeps_bitmap=_is_zero_copy_type(arrow_type),
-                arrow_type=arrow_type,
             )
             self.leaves.append((chain + (leaf,), pos.depth))
             return
@@ -244,17 +235,12 @@ class _SchemaWalk:
         )
 
 
-def _walk(arrow_schema: pa.Schema) -> _SchemaWalk | None:
-    """Walk ``arrow_schema`` into leaf chains, or ``None`` if it can't be sized."""
+def _walk(arrow_schema: pa.Schema) -> _SchemaWalk:
+    """Walk ``arrow_schema`` into leaf chains."""
     walk = _SchemaWalk()
     top = _Position(depth=0, parent_def=0, slot_depth=0, slot_def=0, scale=1)
-    try:
-        for field in arrow_schema:
-            walk.visit(
-                arrow_type=field.type, nullable=field.nullable, pos=top, chain=()
-            )
-    except _UnsupportedLayout:
-        return None
+    for field in arrow_schema:
+        walk.visit(arrow_type=field.type, nullable=field.nullable, pos=top, chain=())
     return walk
 
 
@@ -269,22 +255,23 @@ def _matches(leaf: _ArrowNode, rep: int, column: ColumnSchema) -> bool:
 
 def build_leaf_profiles(
     parquet_schema: ParquetSchema, file_metadata: FileMetaData | None = None
-) -> list[LeafProfile] | None:
-    """One :class:`LeafProfile` per leaf, in row group column order.
+) -> list[LeafProfile | None] | None:
+    """One :class:`LeafProfile` per leaf, in row group column order, ``None`` for a
+    leaf this module doesn't model.
 
     Args:
         parquet_schema: The file's schema.
-        file_metadata: The file's footer, which names its writer.
+        file_metadata: The file's footer, for its writer.
 
     Returns:
-        The profiles, or ``None`` for a schema this module doesn't model.
+        The profiles, or ``None`` for a file this module doesn't model at all.
     """
     try:
         arrow_schema = parquet_schema.to_arrow_schema()
     except (pa.ArrowException, ValueError, TypeError):
         return None
     walk = _walk(arrow_schema)
-    if walk is None or len(walk.leaves) != len(parquet_schema):
+    if len(walk.leaves) != len(parquet_schema):
         return None
     writer = "" if file_metadata is None else file_metadata.created_by or ""
     # Arrow C++ writers leave out of a DELTA_BYTE_ARRAY chunk's count each value
@@ -292,12 +279,15 @@ def build_leaf_profiles(
     # report 8 bytes, where arrow-rs reports 8,000.
     counts_delta = writer != "" and not writer.startswith("parquet-cpp")
 
-    profiles: list[LeafProfile] = []
+    profiles: list[LeafProfile | None] = []
     for leaf_idx, (chain, max_repetition_level) in enumerate(walk.leaves):
         column = parquet_schema.column(leaf_idx)
         leaf = chain[-1]
-        if not _matches(leaf=leaf, rep=max_repetition_level, column=column):
-            return None
+        if leaf.kind == _UNSUPPORTED or not _matches(
+            leaf=leaf, rep=max_repetition_level, column=column
+        ):
+            profiles.append(None)
+            continue
         if leaf.keeps_bitmap and column.physical_type not in _ZERO_COPY_PHYSICAL_TYPES:
             leaf = leaf._replace(keeps_bitmap=False)
         profiles.append(
@@ -372,10 +362,13 @@ class LeafChunk:
             ):
                 self._null_count = statistics.null_count
 
-    @property
-    def type(self) -> pa.DataType:
-        """The leaf array's Arrow type; an extension type's storage type."""
-        return self.profile.nodes[-1].arrow_type
+    def modelled(self) -> bool:
+        """False for DELTA_BYTE_ARRAY strings without SizeStatistics bytes to trust."""
+        return not (
+            self.profile.nodes[-1].kind == _BINARY
+            and self.size_statistics_bytes is None
+            and detect_delta_byte_array(self.chunk)
+        )
 
     def levels_known(self) -> bool:
         """Whether every slot and null count is exact, not a bound."""
@@ -471,24 +464,27 @@ def _bitmap_size(length: int) -> int:
 
 def leaf_chunks(
     row_group: RowGroupMetaData,
-    leaf_profiles: Sequence[LeafProfile],
+    leaf_profiles: Sequence[LeafProfile | None],
     leaf_indices: Iterable[int],
     size_stats: Sequence[LeafSizeStats | None] | None,
     dictionary_pages: Mapping[int, DictionaryPage] | None = None,
 ) -> list[LeafChunk]:
-    """A :class:`LeafChunk` for each of ``leaf_indices`` in ``row_group``."""
+    """A :class:`LeafChunk` for each of ``leaf_indices`` in ``row_group`` this module
+    models: fewer than asked for means a leaf needs the caller's fallback."""
     pages, stats = dictionary_pages or {}, size_stats or ()
-    return [
+    chunks = [
         LeafChunk(
             index=leaf_idx,
-            profile=leaf_profiles[leaf_idx],
+            profile=profile,
             chunk=row_group.column(leaf_idx),
             stats=stats[leaf_idx] if leaf_idx < len(stats) else None,
             num_rows=row_group.num_rows,
             dictionary_page=pages.get(leaf_idx),
         )
         for leaf_idx in leaf_indices
+        if (profile := leaf_profiles[leaf_idx]) is not None
     ]
+    return [leaf for leaf in chunks if leaf.modelled()]
 
 
 # The estimate.
@@ -584,30 +580,17 @@ def _string_bytes(leaf: LeafChunk) -> tuple[int, bool]:
     """The value bytes, and whether they are the upper bound from plain pages."""
     if leaf.size_statistics_bytes is not None:
         return leaf.size_statistics_bytes, False
-    if detect_delta_byte_array(leaf.chunk):
-        return estimate_delta_byte_array(leaf.chunk), False
     if detect_dictionary_indexed(leaf.chunk):
         return estimate_dictionary_indexed(leaf), False
     fewest_values = leaf.fewest_values()
     return estimate_plain_bytes(chunk=leaf.chunk, fewest_values=fewest_values), True
 
 
-# Any DELTA_BYTE_ARRAY page without SizeStatistics bytes to trust: none written,
-# as by Spark 3.5, or PyArrow's.
+# Any DELTA_BYTE_ARRAY page. Without SizeStatistics bytes to trust (none written,
+# as by Spark 3.5, or PyArrow's) its strings aren't modelled: prefixes shared
+# across sorted runs can decode to 76 times the chunk.
 def detect_delta_byte_array(chunk: ColumnChunkMetaData) -> bool:
     return "DELTA_BYTE_ARRAY" in chunk.encodings
-
-
-# Above the most any measured column decoded to: values in sorted runs, at 76
-# times their chunk's uncompressed bytes, which 64 would have put under.
-_DELTA_BYTE_ARRAY_EXPANSION = 128
-
-
-def estimate_delta_byte_array(chunk: ColumnChunkMetaData) -> int:
-    """A guess: the values at 128 times the chunk's uncompressed bytes. Under for
-    long sorted runs: a million rows of 2 KB URLs, each repeated 1,000 times."""
-    expansion = min(chunk.num_values, _DELTA_BYTE_ARRAY_EXPANSION)
-    return expansion * chunk.total_uncompressed_size
 
 
 # Data pages that index a dictionary page, without SizeStatistics bytes.
