@@ -1,6 +1,19 @@
+import inspect
 from collections.abc import Iterator as IteratorABC
 from functools import partial
-from typing import Any, Callable, Dict, Iterable, Iterator, List, Optional, Tuple, Union
+from typing import (
+    Any,
+    AsyncIterator,
+    Awaitable,
+    Callable,
+    Dict,
+    Iterable,
+    Iterator,
+    List,
+    Optional,
+    Tuple,
+    Union,
+)
 
 from ray.data._internal.compute import ComputeStrategy
 from ray.data._internal.logical.interfaces import LogicalPlan
@@ -266,7 +279,22 @@ class GroupedData:
         #       object in its closure to ensure its serializability
         #
         # See https://github.com/ray-project/ray/issues/54280 for more details
-        if isinstance(fn, CallableClass):
+        if isinstance(fn, CallableClass) and (
+            inspect.iscoroutinefunction(fn.__call__)
+            or inspect.isasyncgenfunction(fn.__call__)
+        ):
+
+            class wrapped_fn:
+                def __init__(self, *args, **kwargs):
+                    self.fn = fn(*args, **kwargs)
+
+                async def __call__(self, batch, *args, **kwargs):
+                    async for result in _apply_async_udf_to_groups(
+                        self.fn, batch, keys, batch_format, *args, **kwargs
+                    ):
+                        yield result
+
+        elif isinstance(fn, CallableClass):
 
             class wrapped_fn:
                 def __init__(self, *args, **kwargs):
@@ -627,6 +655,43 @@ def _apply_udf_to_groups(
 
     NOTE: This function is defined at module level to avoid capturing closures and make it serializable.
     """
+    for batch in _iter_group_batches(block, keys, batch_format):
+        result = udf(batch, *args, **kwargs)
+
+        # Check if the UDF returned an iterator/generator.
+        if isinstance(result, IteratorABC):
+            # If so, yield each item from the iterator.
+            yield from result
+        else:
+            # Otherwise, yield the single result.
+            yield result
+
+
+async def _apply_async_udf_to_groups(
+    udf: Union[
+        Callable[[DataBatch, ...], Awaitable[DataBatch]],
+        Callable[[DataBatch, ...], AsyncIterator[DataBatch]],
+    ],
+    block: Block,
+    keys: List[str],
+    batch_format: Optional[str],
+    *args: Any,
+    **kwargs: Any,
+) -> AsyncIterator[DataBatch]:
+    """Async counterpart of `_apply_udf_to_groups` for async UDFs."""
+    for batch in _iter_group_batches(block, keys, batch_format):
+        result = udf(batch, *args, **kwargs)
+        if inspect.isasyncgen(result):
+            async for item in result:
+                yield item
+        else:
+            yield await result
+
+
+def _iter_group_batches(
+    block: Block, keys: List[str], batch_format: Optional[str]
+) -> Iterator[DataBatch]:
+    """Yields one batch per group of rows sharing the same values of `keys`."""
     block_accessor = BlockAccessor.for_block(block)
 
     boundaries = block_accessor._get_group_boundaries_sorted(keys)
@@ -638,17 +703,7 @@ def _apply_udf_to_groups(
         # Convert corresponding block of each group to batch format here,
         # because the block format here can be different from batch format
         # (e.g. block is Arrow format, and batch is NumPy format).
-        result = udf(
-            group_block_accessor.to_batch_format(batch_format), *args, **kwargs
-        )
-
-        # Check if the UDF returned an iterator/generator.
-        if isinstance(result, IteratorABC):
-            # If so, yield each item from the iterator.
-            yield from result
-        else:
-            # Otherwise, yield the single result.
-            yield result
+        yield group_block_accessor.to_batch_format(batch_format)
 
 
 # Backwards compatibility alias.

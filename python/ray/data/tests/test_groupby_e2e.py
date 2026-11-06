@@ -1,7 +1,7 @@
 import itertools
 import random
 import time
-from typing import Iterator, Optional
+from typing import AsyncIterator, Iterator, Optional
 
 import numpy as np
 import pandas as pd
@@ -15,7 +15,7 @@ from ray.data._internal.arrow_ops.transform_pyarrow import (
     combine_chunks,
 )
 from ray.data._internal.planner.exchange.sort_task_spec import SortKey
-from ray.data._internal.util import is_nan
+from ray.data._internal.util import is_nan, rows_same
 from ray.data._internal.utils.arrow_utils import get_pyarrow_version
 from ray.data.aggregate import (
     AbsMax,
@@ -1388,6 +1388,34 @@ def test_map_groups_generator_udf(
 
     assert actual_data == expected_data
     assert result_ds.count() == 6
+
+
+def test_map_groups_async_function_callable_class(
+    ray_start_regular_shared_2_cpus, configure_shuffle_method
+):
+    class AsyncIdentity:
+        async def __call__(self, df: pd.DataFrame) -> pd.DataFrame:
+            return df
+
+    ds = ray.data.from_items([{"group": 1}, {"group": 2}])
+
+    result = ds.groupby("group").map_groups(AsyncIdentity)
+
+    assert rows_same(result.to_pandas(), pd.DataFrame({"group": [1, 2]}))
+
+
+def test_map_groups_async_generator_callable_class(
+    ray_start_regular_shared_2_cpus, configure_shuffle_method
+):
+    class AsyncGeneratorIdentity:
+        async def __call__(self, df: pd.DataFrame) -> AsyncIterator[pd.DataFrame]:
+            yield df
+
+    ds = ray.data.from_items([{"group": 1}, {"group": 2}])
+
+    result = ds.groupby("group").map_groups(AsyncGeneratorIdentity)
+
+    assert rows_same(result.to_pandas(), pd.DataFrame({"group": [1, 2]}))
 
 
 if __name__ == "__main__":
