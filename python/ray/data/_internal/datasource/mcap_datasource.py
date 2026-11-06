@@ -94,6 +94,7 @@ class MCAPDatasource(FileBasedDatasource):
         time_range: Optional[TimeRange] = None,
         message_types: Optional[Union[List[str], Set[str]]] = None,
         include_metadata: bool = True,
+        batch_size: Optional[int] = None,
         **file_based_datasource_kwargs,
     ):
         """Initialize MCAP datasource.
@@ -110,17 +111,28 @@ class MCAPDatasource(FileBasedDatasource):
             include_metadata: Whether to include MCAP metadata fields in the output.
                 Defaults to True. When True, includes schema, channel, and message
                 metadata.
+            batch_size: Optional number of messages per output block. When set,
+                ``_read_stream`` yields one block per batch instead of one block
+                per file. Defaults to ``None`` (whole-file block). Must be
+                positive if set.
             **file_based_datasource_kwargs: Additional arguments for FileBasedDatasource.
         """
         super().__init__(paths, **file_based_datasource_kwargs)
 
         _check_import(self, module="mcap", package="mcap")
 
+        if batch_size is not None:
+            if not isinstance(batch_size, int) or batch_size <= 0:
+                raise ValueError(
+                    f"batch_size must be a positive integer, got {batch_size!r}"
+                )
+
         # Convert to sets for faster lookup
         self._topics = set(topics) if topics else None
         self._message_types = set(message_types) if message_types else None
         self._time_range = time_range
         self._include_metadata = include_metadata
+        self._batch_size = batch_size
 
     def _read_stream(self, f: "pyarrow.NativeFile", path: str) -> Iterator[Block]:
         """Read MCAP file and yield blocks of message data.
@@ -164,6 +176,10 @@ class MCAPDatasource(FileBasedDatasource):
             # Convert message to dictionary format
             message_data = self._message_to_dict(schema, channel, message, path)
             builder.add(message_data)
+
+            if self._batch_size is not None and builder.num_rows() >= self._batch_size:
+                yield builder.build()
+                builder = DelegatingBlockBuilder()
 
         # Yield the block if we have any messages
         if builder.num_rows() > 0:
