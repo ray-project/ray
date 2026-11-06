@@ -92,7 +92,15 @@ class RLModuleSpec:
             )
 
     def build(self) -> "RLModule":
-        """Builds the RLModule from this spec."""
+        """Builds the RLModule from this spec.
+
+        Returns:
+            A new instance of `module_class`, built from this spec's spaces, model
+            config, and catalog class.
+
+        Raises:
+            ValueError: If `module_class` or `observation_space` isn't set.
+        """
         if self.module_class is None:
             raise ValueError("RLModule class is not set.")
         if self.observation_space is None:
@@ -115,6 +123,18 @@ class RLModuleSpec:
 
     @classmethod
     def from_module(cls, module: "RLModule") -> "RLModuleSpec":
+        """Creates an RLModuleSpec from an existing RLModule.
+
+        Args:
+            module: The RLModule to create a spec for. Must not be a MultiRLModule.
+
+        Returns:
+            An RLModuleSpec with `module`'s class, spaces, `inference_only` and
+            `learner_only` flags, model config, and catalog class.
+
+        Raises:
+            ValueError: If `module` is a MultiRLModule.
+        """
         from ray.rllib.core.rl_module.multi_rl_module import MultiRLModule
 
         if isinstance(module, MultiRLModule):
@@ -163,8 +183,15 @@ class RLModuleSpec:
         }
 
     @classmethod
-    def from_dict(cls, d):
-        """Returns a single agent RLModule spec from a serialized representation."""
+    def from_dict(cls, d: Dict[str, Any]) -> "RLModuleSpec":
+        """Returns a single agent RLModule spec from a serialized representation.
+
+        Args:
+            d: The serialized spec, as `to_dict()` returns it.
+
+        Returns:
+            The RLModuleSpec rebuilt from `d`.
+        """
         module_class = deserialize_type(d["module_class"])
         try:
             spec = RLModuleSpec(
@@ -226,7 +253,11 @@ class RLModuleSpec:
             self.load_state_path = self.load_state_path or other.load_state_path
 
     def as_multi_rl_module_spec(self) -> "MultiRLModuleSpec":
-        """Returns a MultiRLModuleSpec (`self` under DEFAULT_MODULE_ID key)."""
+        """Returns a MultiRLModuleSpec (`self` under DEFAULT_MODULE_ID key).
+
+        Returns:
+            A new MultiRLModuleSpec holding this spec under `DEFAULT_MODULE_ID`.
+        """
         from ray.rllib.core.rl_module.multi_rl_module import MultiRLModuleSpec
 
         return MultiRLModuleSpec(
@@ -525,6 +556,10 @@ class RLModule(Checkpointable, abc.ABC):
         `Distribution.to_deterministic()`. See the documentation of the
         :py:class:`~ray.rllib.core.distribution.distribution.Distribution` class for
         more details.
+
+        Returns:
+            The action distribution class, or None if no action distribution class
+            is needed. The base implementation raises `NotImplementedError`.
         """
         raise NotImplementedError
 
@@ -541,6 +576,10 @@ class RLModule(Checkpointable, abc.ABC):
         `Distribution.to_deterministic()`. See the documentation of the
         :py:class:`~ray.rllib.core.distribution.distribution.Distribution` class for
         more details.
+
+        Returns:
+            The action distribution class, or None if no action distribution class
+            is needed. The base implementation raises `NotImplementedError`.
         """
         raise NotImplementedError
 
@@ -557,6 +596,10 @@ class RLModule(Checkpointable, abc.ABC):
         `Distribution.to_deterministic()`. See the documentation of the
         :py:class:`~ray.rllib.core.distribution.distribution.Distribution` class for
         more details.
+
+        Returns:
+            The action distribution class, or None if no action distribution class
+            is needed. The base implementation raises `NotImplementedError`.
         """
         raise NotImplementedError
 
@@ -688,6 +731,9 @@ class RLModule(Checkpointable, abc.ABC):
         By default, RLlib assumes that the module is non-recurrent, if the initial
         state is an empty dict and recurrent otherwise.
         This behavior can be customized by overriding this method.
+
+        Returns:
+            Whether this RLModule is stateful.
         """
         if self._is_stateful is None:
             initial_state = self.get_initial_state()
@@ -753,7 +799,13 @@ class RLModule(Checkpointable, abc.ABC):
         )
 
     def as_multi_rl_module(self) -> "MultiRLModule":
-        """Returns a multi-agent wrapper around this module."""
+        """Returns a multi-agent wrapper around this module.
+
+        Returns:
+            A new MultiRLModule built from this module's spec, under
+            `DEFAULT_MODULE_ID`. The MultiRLModule holds a newly built module, not
+            this module instance.
+        """
         from ray.rllib.core.rl_module.multi_rl_module import MultiRLModule
 
         multi_rl_module = MultiRLModule(

@@ -34,6 +34,7 @@ from ray.experimental.sandbox._internal import cdi, egress_guard, overlayfs
 from ray.experimental.sandbox._internal.cgroup import (
     SandboxCgroup,
     SandboxCgroupManager,
+    wrap_command,
 )
 from ray.experimental.sandbox._internal.image_utils import (
     ROOTFS_IMAGE,
@@ -1114,8 +1115,7 @@ class GVisorSandboxBackend(BaseSandboxBackend):
             gpu_run_args=gpu_run_args,
             rootfs_overlay=rootfs_overlay,
         )
-        if cgroup is not None:
-            run_args = cgroup.wrap(run_args)
+        run_args = wrap_command(run_args, cgroup, config.oom_score_adj)
 
         stderr_log_path = os.path.join(root_dir, "runsc.stderr.log")
         stderr_file = open(stderr_log_path, "w+", encoding="utf-8")
@@ -2218,8 +2218,7 @@ class GVisorSandboxBackend(BaseSandboxBackend):
 
     @staticmethod
     def _wrap_workload(meta, args):
-        cgroup = meta.get("cgroup")
-        return cgroup.wrap(args) if cgroup is not None else args
+        return wrap_command(args, meta.get("cgroup"), meta["config"].oom_score_adj)
 
     def _delete_container_state(self, config: SandboxConfig, sandbox_id: str) -> None:
         """Best-effort ``runsc delete -force`` for teardown paths.

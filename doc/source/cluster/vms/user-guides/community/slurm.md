@@ -126,6 +126,8 @@ Below, you'll see that we explicitly specify the number of CPUs (`num-cpus`) and
 
 After the training job is completed, the Ray cluster will be stopped automatically.
 
+Starting in Ray 2.61, {ref}`token authentication <token-auth>` is on by default, so every node needs the same token. The script creates one with `ray get-auth-token --generate` before it starts Ray, and every node reads it from `~/.ray/auth_token`. This works when the job's nodes share the home directory. If they don't, put the token file on a filesystem that every node can read and set `RAY_AUTH_TOKEN_PATH` to its path.
+
 :::{note}
 The -u argument tells python to print to stdout unbuffered, which is important with how slurm deals with rerouting output. If this argument is not included, you may get strange printing behavior such as printed statements not being logged by slurm until the program has terminated.
 :::
