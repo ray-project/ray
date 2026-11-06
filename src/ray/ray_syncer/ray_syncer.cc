@@ -20,7 +20,7 @@
 #include <utility>
 #include <vector>
 
-#include "ray/common/asio/asio_util.h"
+#include "ray/asio/asio_util.h"
 #include "ray/common/ray_config.h"
 #include "ray/ray_syncer/node_state.h"
 #include "ray/ray_syncer/ray_syncer_client.h"
@@ -29,17 +29,18 @@
 namespace ray::syncer {
 
 RaySyncer::RaySyncer(instrumented_io_context &io_context,
+                     std::shared_ptr<PeriodicalRunnerInterface> periodical_runner,
                      const std::string &local_node_id,
                      size_t max_batch_size,
                      uint64_t max_batch_delay_ms,
-                     RpcCompletionCallback on_rpc_completion)
+                     MessagesReceivedCallback on_messages_received)
     : io_context_(io_context),
       local_node_id_(local_node_id),
       node_state_(std::make_unique<NodeState>()),
-      timer_(PeriodicalRunner::Create(io_context)),
+      periodical_runner_(std::move(periodical_runner)),
       max_batch_size_(max_batch_size),
       max_batch_delay_ms_(max_batch_delay_ms),
-      on_rpc_completion_(std::move(on_rpc_completion)) {
+      on_messages_received_(std::move(on_messages_received)) {
   stopped_ = std::make_shared<bool>(false);
 }
 
@@ -54,6 +55,11 @@ RaySyncer::~RaySyncer() {
 
 std::shared_ptr<const RaySyncMessage> RaySyncer::GetSyncMessage(
     const std::string &node_id, MessageType message_type) const {
+  if (!IsValidMessageType(message_type)) {
+    RAY_LOG_EVERY_MS(WARNING, 1000)
+        << "Ignoring GetSyncMessage for invalid message type " << message_type;
+    return nullptr;
+  }
   auto task = std::packaged_task<std::shared_ptr<const RaySyncMessage>()>(
       [this, &node_id, message_type]() -> std::shared_ptr<const RaySyncMessage> {
         auto &view = node_state_->GetClusterView();
@@ -88,7 +94,7 @@ void RaySyncer::Connect(const std::string &node_id,
             /* local_node_id */ GetLocalNodeID(),
             /* io_context */ io_context_,
             /* message_processor */
-            [this](auto msg) { BroadcastMessage(std::move(msg)); },
+            [this](auto messages) { BroadcastMessages(std::move(messages)); },
             /* cleanup_cb */
             [this, channel](RaySyncerBidiReactor *bidi_reactor, bool restart) {
               const std::string &remote_node_id = bidi_reactor->GetRemoteNodeID();
@@ -124,9 +130,8 @@ void RaySyncer::Connect(const std::string &node_id,
 }
 
 void RaySyncer::Connect(std::shared_ptr<RaySyncerBidiReactor> reactor) {
-  // Bind rpc completion callback.
-  if (on_rpc_completion_) {
-    reactor->SetRpcCompletionCallbackForOnce(on_rpc_completion_);
+  if (on_messages_received_) {
+    reactor->SetMessagesReceivedCallbackForOnce(on_messages_received_);
   }
 
   boost::asio::dispatch(
@@ -177,15 +182,15 @@ void RaySyncer::Register(MessageType message_type,
 
         // Set job to pull from reporter periodically
         if (reporter != nullptr && pull_from_reporter_interval_ms > 0) {
-          timer_->RunFnPeriodically(
+          periodical_runner_->RunFnPeriodically(
               [this, stopped = stopped_, message_type]() {
                 if (*stopped) {
                   return;
                 }
-                OnDemandBroadcasting(message_type);
+                BroadcastMessageIfNewVersion(message_type);
               },
               pull_from_reporter_interval_ms,
-              "RaySyncer.OnDemandBroadcasting");
+              "RaySyncer.BroadcastMessageIfNewVersion");
         }
 
         RAY_LOG(DEBUG) << "Registered components: "
@@ -196,40 +201,37 @@ void RaySyncer::Register(MessageType message_type,
       "RaySyncerRegister");
 }
 
-bool RaySyncer::OnDemandBroadcasting(MessageType message_type) {
+bool RaySyncer::BroadcastMessageIfNewVersion(MessageType message_type) {
   auto msg = node_state_->CreateSyncMessage(message_type);
   if (msg) {
     RAY_CHECK(msg->node_id() == GetLocalNodeID());
-    BroadcastMessage(std::make_shared<RaySyncMessage>(std::move(*msg)));
+    BroadcastMessages({std::make_shared<RaySyncMessage>(std::move(*msg))});
     return true;
   }
   return false;
 }
 
-void RaySyncer::BroadcastMessage(std::shared_ptr<const RaySyncMessage> message) {
+void RaySyncer::BroadcastMessages(
+    std::vector<std::shared_ptr<const RaySyncMessage>> messages) {
   io_context_.dispatch(
-      [this, message] {
-        // The message is stale. Just skip this one.
-        RAY_LOG(DEBUG) << "Receive message from: "
-                       << NodeID::FromBinary(message->node_id()) << " to "
-                       << NodeID::FromBinary(GetLocalNodeID());
-        if (!node_state_->ConsumeSyncMessage(message)) {
-          return;
-        }
-        for (auto &reactor : sync_reactors_) {
-          reactor.second->PushToSendingQueue(message);
+      [this, messages = std::move(messages)]() mutable {
+        for (const auto &accepted :
+             node_state_->ConsumeSyncMessages(std::move(messages))) {
+          for (auto &reactor : sync_reactors_) {
+            reactor.second->PushToSendingQueue(accepted);
+          }
         }
       },
-      "RaySyncer.BroadcastMessage");
+      "RaySyncer.BroadcastMessages");
 }
 
-ServerBidiReactor *RaySyncerService::StartSync(grpc::CallbackServerContext *context) {
+SyncStreamReactor *RaySyncerService::StartSync(grpc::CallbackServerContext *context) {
   auto reactor = std::make_shared<RayServerBidiReactor>(
       context,
       syncer_.GetIOContext(),
       syncer_.GetLocalNodeID(),
       /*message_processor=*/
-      [this](auto msg) mutable { syncer_.BroadcastMessage(msg); },
+      [this](auto messages) mutable { syncer_.BroadcastMessages(std::move(messages)); },
       /*cleanup_cb=*/
       [this](RaySyncerBidiReactor *bidi_reactor, bool reconnect) mutable {
         // No need to reconnect for server side.

@@ -35,9 +35,6 @@ class LeaseSpecification : public MessageWrapper<rpc::LeaseSpec> {
  public:
   explicit LeaseSpecification(const rpc::TaskSpec &task_spec);
 
-  /// Construct an empty task specification. This should not be used directly.
-  LeaseSpecification() { ComputeResources(); }
-
   explicit LeaseSpecification(rpc::LeaseSpec lease_spec)
       : MessageWrapper(std::move(lease_spec)) {
     ComputeResources();
@@ -59,6 +56,7 @@ class LeaseSpecification : public MessageWrapper<rpc::LeaseSpec> {
   bool IsNodeAffinitySchedulingStrategy() const;
   NodeID GetNodeAffinitySchedulingStrategyNodeId() const;
   bool GetNodeAffinitySchedulingStrategySoft() const;
+  bool HasHardNodeAffinity() const;
   std::vector<ObjectID> GetDependencyIds() const;
   const std::vector<rpc::ObjectReference> &GetDependencies() const;
 

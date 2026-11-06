@@ -10,6 +10,7 @@ from ray import serve
 from ray._common.test_utils import (
     SignalActor,
     async_wait_for_condition,
+    run_string_as_driver,
     wait_for_condition,
 )
 from ray._common.utils import get_or_create_event_loop
@@ -391,6 +392,75 @@ def test_chained_deployment_response_upstream_crash_downstream_stays_in_rotation
     RAY_SERVE_FORCE_LOCAL_TESTING_MODE,
     reason="local_testing_mode has different failure handling.",
 )
+def test_chained_deployment_response_upstream_crash_fails_fast(serve_instance):
+    """When upstream dies in a chained DeploymentResponse, the request should
+    fail immediately with an error — not hang until the caller's timeout.
+    """
+
+    @serve.deployment(num_replicas=2)
+    class Adder:
+        def __init__(self, increment: int):
+            self._increment = increment
+
+        def __call__(self, val: int) -> int:
+            context = serve.get_replica_context()
+            if val == 0 and context.rank.rank == 0:
+                os._exit(0)
+            return val + self._increment
+
+    @serve.deployment
+    class Multiplier:
+        def __init__(self, multiple: int):
+            self._multiple = multiple
+
+        def __call__(self, val: int) -> int:
+            return val * self._multiple
+
+    @serve.deployment
+    class Ingress:
+        def __init__(self, adder: DeploymentHandle, multiplier: DeploymentHandle):
+            self._adder = adder
+            self._multiplier = multiplier
+
+        async def __call__(self, input: int) -> int:
+            adder_response: DeploymentResponse = self._adder.remote(input)
+            multiplier_response: DeploymentResponse = self._multiplier.remote(
+                adder_response
+            )
+            return await multiplier_response
+
+    app = Ingress.bind(
+        Adder.bind(increment=1),
+        Multiplier.bind(multiple=2),
+    )
+    handle: DeploymentHandle = serve.run(app)
+
+    # Warmup: (5 + 1) * 2 = 12
+    assert handle.remote(5).result(timeout_s=10) == 12
+
+    # Send requests until we hit the rank-0 replica that will die.
+    # The request must raise a RayServeException (not a TimeoutError), with
+    # Ray's ActorDiedError text embedded (actor id / replica name, etc.).
+    with pytest.raises(RayServeException) as exc_info:
+        while True:
+            handle.remote(0).result(timeout_s=10)
+    err_text = str(exc_info.value)
+    assert "Multiplier" in err_text
+    assert "Adder" in err_text
+
+
+@pytest.mark.skipif(
+    sys.platform == "win32",
+    reason="ActorDiedError not raised properly on Windows.",
+)
+@pytest.mark.skipif(
+    RAY_SERVE_USE_GRPC_BY_DEFAULT,
+    reason="Chained object refs use Ray actor transport; gRPC path differs.",
+)
+@pytest.mark.skipif(
+    RAY_SERVE_FORCE_LOCAL_TESTING_MODE,
+    reason="local_testing_mode has different failure handling.",
+)
 def test_chained_deployment_response_downstream_crash_replica_marked_dead(
     serve_instance,
 ):
@@ -556,84 +626,6 @@ def test_chained_deployment_response_middle_of_chain_crash(serve_instance):
 
 
 @pytest.mark.skipif(
-    sys.platform == "win32",
-    reason="ActorDiedError not raised properly on Windows.",
-)
-@pytest.mark.skipif(
-    RAY_SERVE_USE_GRPC_BY_DEFAULT,
-    reason="Chained object refs use Ray actor transport; gRPC path differs.",
-)
-@pytest.mark.skipif(
-    RAY_SERVE_FORCE_LOCAL_TESTING_MODE,
-    reason="local_testing_mode has different failure handling.",
-)
-def test_chained_deployment_response_multiple_crashes_then_success(serve_instance):
-    """
-    Multiple crash requests followed by multiple success requests.
-    Verifies recovery and routing after repeated upstream failures.
-    """
-
-    @serve.deployment
-    class Adder:
-        def __init__(self, increment: int):
-            self._increment = increment
-
-        def __call__(self, val: int) -> int:
-            if val == 0:
-                os._exit(0)
-            return val + self._increment
-
-    @serve.deployment
-    class Multiplier:
-        def __init__(self, multiple: int):
-            self._multiple = multiple
-
-        def __call__(self, val: int) -> int:
-            return val * self._multiple
-
-    @serve.deployment
-    class Ingress:
-        def __init__(self, adder: DeploymentHandle, multiplier: DeploymentHandle):
-            self._adder = adder
-            self._multiplier = multiplier
-
-        async def __call__(self, input: int) -> int:
-            adder_response: DeploymentResponse = self._adder.remote(input)
-            multiplier_response: DeploymentResponse = self._multiplier.remote(
-                adder_response
-            )
-            return await multiplier_response
-
-    app = Ingress.bind(
-        Adder.bind(increment=1),
-        Multiplier.bind(multiple=2),
-    )
-    handle: DeploymentHandle = serve.run(app)
-
-    # Warmup
-    assert handle.remote(5).result(timeout_s=10) == 12
-
-    # Trigger multiple crashes (each kills Adder, controller restarts it)
-    for _ in range(3):
-        crash_response = handle.remote(0)
-        with pytest.raises((RayActorError, Exception)):
-            crash_response.result(timeout_s=5)
-
-    # Wait for Adder to be healthy
-    wait_for_condition(
-        check_num_replicas_eq,
-        name="Adder",
-        target=1,
-        timeout=30,
-    )
-
-    # Multiple success requests should all succeed
-    for i in range(3):
-        result = handle.remote(2).result(timeout_s=30)
-        assert result == 6, f"Request {i}: expected 6, got {result}"
-
-
-@pytest.mark.skipif(
     RAY_SERVE_USE_GRPC_BY_DEFAULT,
     reason="Chained object refs use Ray actor transport; gRPC path differs.",
 )
@@ -734,7 +726,15 @@ def test_nested_deployment_response_error(serve_instance):
     reason="local_testing_mode doesn't support _to_object_ref",
 )
 def test_convert_to_object_ref(serve_instance):
-    """Test converting deployment handle refs to Ray object refs."""
+    """Test converting deployment handle refs to Ray object refs.
+
+    Converting a deployment handle ref to a Ray object ref should be async and
+    *not* block until the downstream result has been produced. This test enforces
+    the behavior by blocking the downstream tasks using a signal actor until after
+    the object refs have been produced.
+    """
+
+    signal = SignalActor.remote()
 
     @ray.remote
     def identity_task(inp: Any):
@@ -742,6 +742,7 @@ def test_convert_to_object_ref(serve_instance):
 
     @serve.deployment
     def downstream():
+        ray.get(signal.wait.remote())
         return "hello"
 
     @serve.deployment
@@ -750,13 +751,105 @@ def test_convert_to_object_ref(serve_instance):
             self._handle = handle
 
         async def __call__(self):
-            ref = self._handle.remote()
-            return await identity_task.remote(await ref._to_object_ref())
+            obj_ref = await self._handle.remote()._to_object_ref()
+            await signal.wait.remote()
+            return await identity_task.remote(obj_ref)
 
     handle = serve.run(Deployment.bind(downstream.bind()))
 
-    ref = handle.remote()
-    assert ray.get(identity_task.remote(ref._to_object_ref_sync())) == "hello"
+    obj_ref = handle.remote()._to_object_ref_sync()
+    ray.get(signal.send.remote())
+    assert ray.get(identity_task.remote(obj_ref)) == "hello"
+
+
+@pytest.mark.skipif(
+    RAY_SERVE_USE_GRPC_BY_DEFAULT,
+    reason="Cannot get object ref when using gRPC.",
+)
+@pytest.mark.skipif(
+    RAY_SERVE_FORCE_LOCAL_TESTING_MODE,
+    reason="local_testing_mode doesn't support _to_object_ref",
+)
+def test_composition_arg_waits_for_upstream_result(serve_instance):
+    """By-reference composition args must not be enqueued before they're ready.
+
+    `_to_object_ref` returns a peeked ref without waiting for the value.
+    By-reference composition then waits via ``ObjectRef._ready()`` so
+    unresolved args stay out of the router's queued-request metrics.
+
+    Peek and wait are split so a hang-on-peek and a skip-the-wait fail
+    differently.
+    """
+
+    signal = SignalActor.remote()
+
+    @serve.deployment
+    def downstream():
+        ray.get(signal.wait.remote())
+        return "hello"
+
+    @serve.deployment
+    class Deployment:
+        def __init__(self, handle: DeploymentHandle):
+            self._handle = handle
+
+        async def __call__(self):
+            # Peek must return while downstream is still blocked.
+            obj_ref = await self._handle.remote()._to_object_ref()
+
+            wait_task = asyncio.create_task(obj_ref._ready())
+            _, pending = await asyncio.wait({wait_task}, timeout=1)
+            still_waiting = wait_task in pending
+
+            await signal.send.remote()
+            await asyncio.wait_for(wait_task, timeout=30)
+            return still_waiting, await obj_ref
+
+    handle = serve.run(Deployment.bind(downstream.bind()))
+
+    still_waiting, result = handle.remote().result()
+    assert still_waiting, "wait resolved before the upstream result was produced"
+    assert result == "hello"
+
+
+_WAIT_FOR_OBJECT_REF_READY_SHUTDOWN_DRIVER = """
+import asyncio
+
+import ray
+from ray._common.test_utils import SignalActor
+
+
+async def main():
+    ray.init()
+    signal = SignalActor.remote()
+
+    @ray.remote
+    def blocked():
+        ray.get(signal.wait.remote())
+        return "ok"
+
+    wait_task = asyncio.create_task(blocked.remote()._ready())
+    await asyncio.sleep(0.5)
+    assert not wait_task.done(), "wait should still be pending"
+    ray.shutdown()
+
+    try:
+        await asyncio.wait_for(wait_task, timeout=10)
+    except ray.exceptions.RaySystemError as e:
+        assert "shutting down" in str(e), str(e)
+        print("DRIVER_OK")
+        return
+    raise AssertionError("wait did not raise after ray.shutdown()")
+
+
+asyncio.run(main())
+"""
+
+
+def test_wait_for_object_ref_ready_shutdown_unblocks():
+    """Shutdown must complete a pending wait and release its Cython callback."""
+    out = run_string_as_driver(_WAIT_FOR_OBJECT_REF_READY_SHUTDOWN_DRIVER, timeout=120)
+    assert "DRIVER_OK" in out, out
 
 
 def test_generators(serve_instance):

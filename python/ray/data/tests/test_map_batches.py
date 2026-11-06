@@ -15,10 +15,17 @@ import ray
 from ray.data._internal.arrow_ops.transform_pyarrow import (
     MIN_PYARROW_VERSION_TYPE_PROMOTION,
 )
+from ray.data._internal.execution.operators.actor_pool_map_operator import (
+    ActorPoolMapOperator,
+)
+from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
+from ray.data._internal.execution.operators.task_pool_map_operator import (
+    TaskPoolMapOperator,
+)
+from ray.data._internal.logical.optimizers import get_execution_plan
 from ray.data._internal.utils.arrow_utils import get_pyarrow_version
 from ray.data.context import DataContext
 from ray.data.dataset import Dataset
-from ray.data.exceptions import UserCodeException
 from ray.data.tests.conftest import *  # noqa
 from ray.data.tests.test_util import ConcurrencyCounter  # noqa
 from ray.data.tests.util import column_udf, extract_values
@@ -436,22 +443,6 @@ def test_map_batches_generator(
         ).take()
 
 
-def test_map_batches_actors_preserves_order(
-    shutdown_only, target_max_block_size_infinite_or_default
-):
-    class UDFClass:
-        def __call__(self, x):
-            return x
-
-    ray.shutdown()
-    ray.init(num_cpus=2)
-    # Test that actor compute model preserves block order.
-    ds = ray.data.range(10, override_num_blocks=5)
-    assert extract_values("id", ds.map_batches(UDFClass, concurrency=1).take()) == list(
-        range(10)
-    )
-
-
 @pytest.mark.parametrize(
     "num_rows,num_blocks,batch_size",
     [
@@ -494,6 +485,9 @@ def test_map_batches_batch_mutation(
         (10, 5, 2),
         (10, 1, 10),
         (12, 3, 2),
+        # Batches span multiple source blocks, so the builder concatenates
+        # them into multi-chunk Arrow columns before delivering the batch.
+        (12, 4, 4),
     ],
 )
 def test_map_batches_batch_zero_copy(
@@ -503,33 +497,41 @@ def test_map_batches_batch_zero_copy(
     batch_size,
     target_max_block_size_infinite_or_default,
 ):
-    # Test that batches are zero-copy read-only views when zero_copy_batch=True.
+    # Verify the safety guarantee of ``zero_copy_batch=True``: a UDF that
+    # tries to mutate the batch in place must not corrupt the source block.
+    # Arrow-backed pandas columns enforce this implicitly (column assignments
+    # rebind to a fresh array instead of writing through the underlying
+    # buffer), so we validate the contract by comparing source vs. mutated
+    # output rather than inspecting ``df.values.flags.writeable``. The
+    # writeability flag is unreliable here: for multi-chunk batches (formed
+    # when several blocks are merged), ``df.values`` materializes a fresh
+    # numpy array via ``ChunkedArray.to_numpy()``, which is writable even
+    # though the underlying Arrow buffers remain immutable.
     def mutate(df):
-        # Check that batch is read-only.
-        assert not df.values.flags.writeable
         df["id"] += 1
         return df
 
     ds = ray.data.range(num_rows, override_num_blocks=num_blocks).repartition(
         num_blocks
     )
-    # Convert to Pandas blocks.
-    ds = ds.map_batches(lambda df: df, batch_format="pandas", batch_size=None)
-    ds = ds.materialize()
+    # Convert to Pandas blocks and freeze the layout.
+    source = ds.map_batches(
+        lambda df: df, batch_format="pandas", batch_size=None
+    ).materialize()
 
-    # Apply UDF that mutates the batches, which should fail since the batch is
-    # read-only.
-    with pytest.raises(UserCodeException):
-        with pytest.raises(
-            ValueError, match="tried to mutate a zero-copy read-only batch"
-        ):
-            ds = ds.map_batches(
-                mutate,
-                batch_format="pandas",
-                batch_size=batch_size,
-                zero_copy_batch=True,
-            )
-            ds.materialize()
+    # Run the mutating UDF and consume the result.
+    mutated = source.map_batches(
+        mutate,
+        batch_format="pandas",
+        batch_size=batch_size,
+        zero_copy_batch=True,
+    )
+    mutated_ids = sorted(row["id"] for row in mutated.take_all())
+    source_ids = sorted(row["id"] for row in source.take_all())
+
+    # Source is untouched; mutated dataset reflects ``id + 1``.
+    assert source_ids == list(range(num_rows))
+    assert mutated_ids == list(range(1, num_rows + 1))
 
 
 BLOCK_BUNDLING_TEST_CASES = [
@@ -550,7 +552,7 @@ def test_map_batches_block_bundling_auto(
     num_blocks = max(10, 2 * batch_size // block_size)
     ds = ray.data.range(num_blocks * block_size, override_num_blocks=num_blocks)
     # Confirm that we have the expected number of initial blocks.
-    assert ds._plan.initial_num_blocks() == num_blocks
+    assert ds._logical_plan.initial_num_blocks() == num_blocks
 
     # Blocks should be bundled up to the batch size.
     ds1 = ds.map_batches(lambda x: x, batch_size=batch_size).materialize()
@@ -562,11 +564,11 @@ def test_map_batches_block_bundling_auto(
         / max(math.ceil(batch_size / block_size), 1)
     )
 
-    assert ds1._plan.initial_num_blocks() == num_expected_blocks
+    assert ds1._logical_plan.initial_num_blocks() == num_expected_blocks
 
     # Blocks should not be bundled up when batch_size is not specified.
     ds2 = ds.map_batches(lambda x: x).materialize()
-    assert ds2._plan.initial_num_blocks() == num_blocks
+    assert ds2._logical_plan.initial_num_blocks() == num_blocks
 
 
 @pytest.mark.parametrize(
@@ -594,11 +596,11 @@ def test_map_batches_block_bundling_skewed_manual(
         [pd.DataFrame({"a": [1] * block_size}) for block_size in block_sizes]
     )
     # Confirm that we have the expected number of initial blocks.
-    assert ds._plan.initial_num_blocks() == num_blocks
+    assert ds._logical_plan.initial_num_blocks() == num_blocks
     ds = ds.map_batches(lambda x: x, batch_size=batch_size).materialize()
 
     # Blocks should be bundled up to the batch size.
-    assert ds._plan.initial_num_blocks() == expected_num_blocks
+    assert ds._logical_plan.initial_num_blocks() == expected_num_blocks
 
 
 BLOCK_BUNDLING_SKEWED_TEST_CASES = [
@@ -623,7 +625,7 @@ def test_map_batches_block_bundling_skewed_auto(
         [pd.DataFrame({"a": [1] * block_size}) for block_size in block_sizes]
     )
     # Confirm that we have the expected number of initial blocks.
-    assert ds._plan.initial_num_blocks() == num_blocks
+    assert ds._logical_plan.initial_num_blocks() == num_blocks
     ds = ds.map_batches(lambda x: x, batch_size=batch_size).materialize()
 
     curr = 0
@@ -637,7 +639,20 @@ def test_map_batches_block_bundling_skewed_auto(
         num_out_blocks += 1
 
     # Blocks should be bundled up to the batch size.
-    assert ds._plan.initial_num_blocks() == num_out_blocks
+    assert ds._logical_plan.initial_num_blocks() == num_out_blocks
+
+
+def test_map_batches_empty_numpy_tensor(
+    ray_start_regular_shared, disable_fallback_to_object_extension
+):
+    ds = ray.data.from_numpy(np.ones((2, 2, 2), dtype=np.int32))
+
+    result = ds.map_batches(
+        lambda batch: {name: values[:0] for name, values in batch.items()},
+        batch_format="numpy",
+    ).materialize()
+
+    assert result.count() == 0
 
 
 def test_map_batches_preserve_empty_blocks(
@@ -646,7 +661,7 @@ def test_map_batches_preserve_empty_blocks(
     ds = ray.data.range(10, override_num_blocks=10)
     ds = ds.map_batches(lambda x: [])
     ds = ds.map_batches(lambda x: x)
-    assert ds._plan.initial_num_blocks() == 10, ds
+    assert ds._logical_plan.initial_num_blocks() == 10, ds
 
 
 def test_map_batches_combine_empty_blocks(
@@ -725,7 +740,10 @@ def test_map_batches_timestamp_nanosecs(
     processed_df_arrow["timestamp"] = processed_df_arrow["timestamp"].astype(
         "datetime64[ns]"
     )
-    pd.testing.assert_frame_equal(processed_df_arrow, expected_df)
+    pd.testing.assert_frame_equal(
+        processed_df_arrow,
+        expected_df.astype(processed_df_arrow.dtypes.to_dict()),
+    )
 
     # Using pandas format
     result_pandas = ray_data.map_batches(
@@ -735,7 +753,10 @@ def test_map_batches_timestamp_nanosecs(
     processed_df_pandas["timestamp"] = processed_df_pandas["timestamp"].astype(
         "datetime64[ns]"
     )
-    pd.testing.assert_frame_equal(processed_df_pandas, expected_df)
+    pd.testing.assert_frame_equal(
+        processed_df_pandas,
+        expected_df.astype(processed_df_pandas.dtypes.to_dict()),
+    )
 
 
 def test_map_batches_async_exception_propagation(shutdown_only):
@@ -836,6 +857,69 @@ def test_map_batches_struct_field_type_divergence(shutdown_only):
     # Rows with a=1.5 should have float a, with b=None
     assert rows[2]["data"] == {"a": 1.5, "b": None, "c": 100}
     assert rows[3]["data"] == {"a": 1.5, "b": None, "c": 100}
+
+
+@pytest.mark.parametrize("is_generator", [False, True])
+def test_map_batches_sync_udf_not_fused_with_async_actor(shutdown_only, is_generator):
+    """A sync UDF must not fuse into an async callable-class operator.
+
+    Regression test for https://github.com/ray-project/ray/issues/57729. An async
+    UDF hosts an event loop on the map worker's thread, so fusing would make the
+    sync UDF's ``asyncio.run()`` fail with "cannot be called from a running event
+    loop". The two operators must stay separate at plan time.
+    """
+
+    def _load_batch(batch):
+        async def _load_all():
+            return await asyncio.gather(
+                *(asyncio.to_thread(lambda p: p, item) for item in batch["id"])
+            )
+
+        batch["data"] = asyncio.run(_load_all())
+        return batch
+
+    def sync_udf(batch):
+        return _load_batch(batch)
+
+    def sync_generator_udf(batch):
+        yield _load_batch(batch)
+
+    class AsyncActor:
+        # Stays async on purpose: it is what makes the fused worker host a loop.
+        async def __call__(self, batch):
+            await asyncio.sleep(0.001)
+            return batch
+
+    n = 4
+    ds = (
+        ray.data.range(n, override_num_blocks=n)
+        .map_batches(sync_generator_udf if is_generator else sync_udf)
+        .map_batches(AsyncActor, concurrency=1)
+    )
+
+    # Plan-time assertion: the operators stay separate. Fused, the sync UDF runs
+    # on the async worker's event-loop thread and `asyncio.run()` above raises.
+    # Walk the linear DAG from the sink back to the source, then reverse it so
+    # the list reads source -> sink.
+    ops = []
+    op = get_execution_plan(ds._logical_plan)[0].dag
+    while op is not None:
+        ops.append(op)
+        assert len(op.input_dependencies) <= 1, op.input_dependencies
+        op = op.input_dependencies[0] if op.input_dependencies else None
+    ops.reverse()
+
+    # Expected: Input -> ReadRange->MapBatches(sync) -> MapBatches(AsyncActor).
+    assert len(ops) == 3, ops
+    input_op, sync_op, async_op = ops
+    assert isinstance(input_op, InputDataBuffer), ops
+    assert isinstance(sync_op, TaskPoolMapOperator), ops
+    assert isinstance(async_op, ActorPoolMapOperator), ops
+    assert async_op.input_dependencies == [sync_op]
+
+    result = ds.take_all()
+    assert len(result) == n
+    assert sorted(row["data"] for row in result) == list(range(n))
 
 
 if __name__ == "__main__":

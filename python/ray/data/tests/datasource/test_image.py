@@ -1,5 +1,4 @@
 import os
-import tempfile
 from typing import Dict
 
 import numpy as np
@@ -62,7 +61,9 @@ class TestReadImages:
             (64, 64, 3),
         ]
 
-    @pytest.mark.parametrize("size", [(-32, 32), (32, -32), (-32, -32)])
+    @pytest.mark.parametrize(
+        "size", [(-32, 32), (32, -32), (-32, -32), (0, 32), (32, 0), (0, 0)]
+    )
     def test_invalid_size(self, ray_start_regular_shared, size):
         with pytest.raises(ValueError):
             ray.data.read_images("example://image-datasets/simple", size=size)
@@ -158,21 +159,39 @@ class TestReadImages:
         try:
             root = "example://image-datasets/simple"
             ds = ray.data.read_images(root, override_num_blocks=1)
-            assert ds._plan.initial_num_blocks() == 1
+            assert ds._logical_plan.initial_num_blocks() == 1
             ds = ds.materialize()
             # Verify dynamic block splitting taking effect to generate more blocks.
-            assert ds._plan.initial_num_blocks() == 3
+            assert ds._logical_plan.initial_num_blocks() == 3
 
             # Test union of same datasets
             union_ds = ds.union(ds, ds, ds).materialize()
-            assert union_ds._plan.initial_num_blocks() == 12
+            assert union_ds._logical_plan.initial_num_blocks() == 12
         finally:
             ctx.target_max_block_size = target_max_block_size
 
-    def test_unidentified_image_error(ray_start_regular_shared):
-        with tempfile.NamedTemporaryFile(suffix=".png") as file:
-            with pytest.raises(ValueError):
-                ray.data.read_images(paths=file.name).materialize()
+    def test_unidentified_image_error(ray_start_regular_shared, tmp_path):
+        path = str(tmp_path / "invalid.png")
+        with open(path, "wb") as file:
+            file.write(b"spam")  # Invalid bytes for a PNG file
+
+        with pytest.raises(ValueError):
+            ray.data.read_images(paths=file.name).materialize()
+
+    def test_disallowed_format_not_decoded(ray_start_regular_shared, tmp_path):
+        # EPS bytes named `.jpg`. PIL selects a plugin by file signature, not
+        # extension, and the EPS plugin shells out to Ghostscript. The reader
+        # must refuse formats outside its raster allowlist instead of dispatching
+        # untrusted bytes to such a parser.
+        eps_bytes = (
+            b"%!PS-Adobe-3.0 EPSF-3.0\n" b"%%BoundingBox: 0 0 100 100\n" b"showpage\n"
+        )
+        path = str(tmp_path / "payload.jpg")
+        with open(path, "wb") as file:
+            file.write(eps_bytes)
+
+        with pytest.raises(ValueError):
+            ray.data.read_images(paths=path).materialize()
 
 
 class TestWriteImages:

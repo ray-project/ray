@@ -46,6 +46,7 @@ from ray.exceptions import (
     RayTaskError,
     ReferenceCountingAssertionError,
     RuntimeEnvSetupError,
+    StreamingGeneratorReplayInconsistentError,
     TaskCancelledError,
     TaskPlacementGroupRemoved,
     TaskUnschedulableError,
@@ -105,8 +106,7 @@ def _rdt_ref_deserializer(
     tensor_transport: str,
     rdt_meta: "ray.experimental.rdt.rdt_manager.RDTMeta",
 ) -> "ray.ObjectRef":
-    """
-    Deserialize an RDT object ref. When the RDT object ref is deserialized,
+    """Deserialize an RDT object ref. When the RDT object ref is deserialized,
     it firstly deserializes the normal object ref, and then adds metadata of
     the RDT object to the RDT manager, which will be used to fetch
     the RDT object later.
@@ -229,9 +229,14 @@ class SerializationContext:
                         "This is likely because the object you're trying to borrow an object that was not created on the "
                         "owner (not through ray.put). This is not supported yet, see issue #59644 for more details."
                     )
-                # We don't want to send over any target buffers the user set
-                if rdt_meta.target_buffers:
-                    rdt_meta = rdt_meta._replace(target_buffers=None)
+                # target_buffers and target_device are the local consumer's
+                # receive targets, so don't send them over to borrowers. Otherwise
+                # a target set for this process's own ray.get would leak into the
+                # borrowing process's fetch.
+                if rdt_meta.target_buffers or rdt_meta.target_device:
+                    rdt_meta = rdt_meta._replace(
+                        target_buffers=None, target_device=None
+                    )
                 return _rdt_ref_deserializer, (
                     obj.binary(),
                     obj.call_site(),
@@ -337,9 +342,7 @@ class SerializationContext:
         data: Any,
         out_of_band_tensors: Optional[List[Any]],
     ) -> Any:
-        """
-
-        Args:
+        """Args:
             data: The data to deserialize.
             out_of_band_tensors: Tensors that were sent out-of-band. If this is
                 not None, then the serialized data will contain placeholders
@@ -523,11 +526,21 @@ class SerializationContext:
             elif error_type == ErrorType.Value("TASK_UNSCHEDULABLE_ERROR"):
                 error_info = self._deserialize_error_info(data, metadata_fields)
                 return TaskUnschedulableError(error_info.error_message)
+            elif error_type == ErrorType.Value("WORKER_STARTUP_FAILED"):
+                error_info = self._deserialize_error_info(data, metadata_fields)
+                return RaySystemError(error_info.error_message)
             elif error_type == ErrorType.Value("ACTOR_UNSCHEDULABLE_ERROR"):
                 error_info = self._deserialize_error_info(data, metadata_fields)
                 return ActorUnschedulableError(error_info.error_message)
             elif error_type == ErrorType.Value("END_OF_STREAMING_GENERATOR"):
                 return ObjectRefStreamEndOfStreamError()
+            elif error_type == ErrorType.Value(
+                "STREAMING_GENERATOR_REPLAY_INCONSISTENT"
+            ):
+                error_info = self._deserialize_error_info(data, metadata_fields)
+                return StreamingGeneratorReplayInconsistentError(
+                    error_info.error_message
+                )
             elif error_type == ErrorType.Value("ACTOR_UNAVAILABLE"):
                 error_info = self._deserialize_error_info(data, metadata_fields)
                 if error_info.HasField("actor_unavailable_error"):
@@ -740,8 +753,7 @@ class SerializationContext:
     def store_rdt_objects(
         self, obj_id: str, tensors: List[Any], tensor_transport: str
     ) -> bytes:
-        """
-        Store RDT objects in the RDT store.
+        """Store RDT objects in the RDT store.
 
         Args:
             obj_id: The object ID of the value. `obj_id` is required, and the RDT data (e.g. tensors) in `value`

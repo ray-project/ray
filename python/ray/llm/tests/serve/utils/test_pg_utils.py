@@ -79,6 +79,47 @@ def test_sort_bundle_indices_by_node(
     assert result == expected_sorted_bundle_indices
 
 
+@pytest.mark.parametrize(
+    "bundles_to_node_id,driver_node_id,expected_sorted_bundle_indices",
+    [
+        # Explicit driver node orders that node's bundles first, even though the
+        # head node (NODE_A) also owns bundles.
+        pytest.param(
+            {0: NODE_A, 1: NODE_B, 2: NODE_A, 3: NODE_B},
+            NODE_B,
+            [1, 3, 0, 2],
+        ),
+        # Head node (NODE_A) owns no bundles; explicit driver still wins over
+        # lexicographic fallback (which would otherwise pick NODE_B first).
+        pytest.param(
+            {0: NODE_B, 1: NODE_C, 2: NODE_B, 3: NODE_C},
+            NODE_C,
+            [1, 3, 0, 2],
+        ),
+    ],
+)
+def test_explicit_driver_node_ordered_first(
+    bundles_to_node_id, driver_node_id, expected_sorted_bundle_indices
+):
+    mock_pg = MagicMock()
+
+    with (
+        patch(
+            "ray.llm._internal.serve.utils.pg_utils.placement_group_table",
+            return_value={"bundles_to_node_id": bundles_to_node_id},
+        ),
+        patch(
+            "ray.llm._internal.serve.utils.pg_utils.get_head_node_id",
+            return_value=NODE_A,
+        ),
+    ):
+        result = get_bundle_indices_sorted_by_node(
+            mock_pg, driver_node_id=driver_node_id
+        )
+
+    assert result == expected_sorted_bundle_indices
+
+
 # Integration test: verifies the full path through a real cluster, though
 # bundle ordering across nodes is non-deterministic and may already be sorted.
 @pytest.mark.parametrize("strategy", ["SPREAD", "PACK"])

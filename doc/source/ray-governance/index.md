@@ -1,3 +1,9 @@
+---
+myst:
+  html_meta:
+    description: "Ray's technical governance: the roles of contributors, committers, and the Technical Steering Committee, and how project decisions are made."
+---
+
 (governance)=
 
 # Governance

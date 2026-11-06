@@ -1,5 +1,5 @@
 import sys
-from typing import List
+from typing import List, Optional
 
 import pytest
 
@@ -45,7 +45,9 @@ B, V = BrokenPipeError, ValueError
         ([B, B, B, B, B, B, None], B),
     ],
 )
-def test_gcp_broken_pipe_retry(error_input, expected_error_raised):
+def test_gcp_broken_pipe_retry(
+    error_input: list, expected_error_raised: Optional[type]
+):
     """Tests retries of BrokenPipeError in GCPNodeProvider.
 
     Args:

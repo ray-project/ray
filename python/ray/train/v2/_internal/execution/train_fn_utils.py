@@ -24,6 +24,7 @@ logger = logging.getLogger(__name__)
 if TYPE_CHECKING:
     from ray.data import DataIterator
     from ray.train import Checkpoint
+    from ray.train.v2._internal.execution.preemption import PreemptionInfo
     from ray.train.v2.api.reported_checkpoint import ReportedCheckpoint
 
 
@@ -83,11 +84,14 @@ class TrainFnUtils(ABC):
     def get_all_reported_checkpoints(
         self,
         consistency_mode: CheckpointConsistencyMode = CheckpointConsistencyMode.VALIDATED,
+        timeout_s: Optional[float] = None,
     ) -> List["ReportedCheckpoint"]:
         """Get all the checkpoints reported by the workers.
 
         Args:
             consistency_mode: Read semantics for checkpoint retrieval. Defaults to VALIDATED.
+            timeout_s: Timeout in seconds for reading checkpoints and validation data.
+                Defaults to ``None`` to not time out.
 
         Returns:
             A list of ReportedCheckpoint objects that represent the checkpoints and
@@ -114,6 +118,28 @@ class TrainFnUtils(ABC):
 
         Returns:
             The train context for this training process.
+        """
+        pass
+
+    @abstractmethod
+    def get_preemption_info(self) -> Optional["PreemptionInfo"]:
+        """Return the latest preemption signal for this worker, or None.
+
+        Returns:
+            A PreemptionInfo if a preemption affecting this worker group has
+            been detected, otherwise None.
+        """
+        pass
+
+    @abstractmethod
+    def report_health(self, metrics: Dict[str, float], step: Optional[int]) -> None:
+        """Report health metrics for the controller to read on its next poll.
+
+        This method is used by the public API function :func:`ray.train.health.report`.
+
+        Args:
+            metrics: The metrics to report.
+            step: The step they belong to.
         """
         pass
 
@@ -174,6 +200,17 @@ class DistributedTrainFnUtils(TrainFnUtils):
     def get_context(self) -> DistributedTrainContext:
         return DistributedTrainContext()
 
+    def get_preemption_info(self) -> Optional["PreemptionInfo"]:
+        local_info = get_internal_train_context().preemption_context.preemption_info
+        return collective_impl.broadcast_from_rank_zero(
+            local_info,
+            caller_method_name="ray.train.get_preemption_info",
+            relaxable=True,
+        )
+
+    def report_health(self, metrics: Dict[str, float], step: Optional[int]) -> None:
+        get_internal_train_context().report_health(metrics, step)
+
     def is_distributed(self) -> bool:
         return True
 
@@ -186,9 +223,10 @@ class DistributedTrainFnUtils(TrainFnUtils):
     def get_all_reported_checkpoints(
         self,
         consistency_mode: CheckpointConsistencyMode = CheckpointConsistencyMode.VALIDATED,
+        timeout_s: Optional[float] = None,
     ) -> List["ReportedCheckpoint"]:
         return get_internal_train_context().get_all_reported_checkpoints(
-            consistency_mode=consistency_mode
+            consistency_mode=consistency_mode, timeout_s=timeout_s
         )
 
 
@@ -244,6 +282,14 @@ class LocalTrainFnUtils(TrainFnUtils):
     def get_context(self) -> LocalTrainContext:
         return self._context
 
+    def get_preemption_info(self) -> Optional["PreemptionInfo"]:
+        # Local mode runs in a single process with no preemption watcher.
+        return None
+
+    def report_health(self, metrics: Dict[str, float], step: Optional[int]) -> None:
+        # Local mode has no controller to read health reports.
+        pass
+
     def is_distributed(self) -> bool:
         return False
 
@@ -262,6 +308,7 @@ class LocalTrainFnUtils(TrainFnUtils):
     def get_all_reported_checkpoints(
         self,
         consistency_mode: CheckpointConsistencyMode = CheckpointConsistencyMode.VALIDATED,
+        timeout_s: Optional[float] = None,
     ) -> List["ReportedCheckpoint"]:
         return []
 

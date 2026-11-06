@@ -1,5 +1,4 @@
 import argparse
-
 import functools
 import time
 import numpy
@@ -37,8 +36,8 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--batch-size",
-        type=int,
-        default=10_000,
+        type=lambda v: v if v == "auto" else int(v),
+        default="auto",
         help="Batch size to use with 'map_batches'.",
     )
     parser.add_argument(
@@ -112,7 +111,10 @@ def main(args: argparse.Namespace) -> None:
             )
 
     def benchmark_fn():
-        # Load the dataset.
+        # Leave ``num_cpus`` unset: the fusion rule canonicalizes an unspecified
+        # ``num_cpus`` to 1, so any other value here (0.99 included) makes the
+        # read incompatible with the downstream ``map_batches`` ops and they stop
+        # fusing. Unfused, every read output crosses the object store.
         ds = ray.data.read_parquet(path)
 
         # Apply the map transformation.

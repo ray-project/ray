@@ -13,6 +13,9 @@ import pyarrow
 import pyarrow as pa
 import pyarrow.types as pat
 
+from ray.data._internal.arrow_ops.transform_pyarrow import (
+    reorder_columns_by_schema,
+)
 from ray.data._internal.execution.interfaces import TaskContext
 from ray.data._internal.util import _check_import
 from ray.data.block import Block, BlockAccessor
@@ -78,8 +81,7 @@ def _arrow_to_clickhouse_type(field: pyarrow.Field) -> str:
 
 @dataclass
 class ClickHouseTableSettings:
-    """
-    Additional table creation instructions for ClickHouse.
+    """Additional table creation instructions for ClickHouse.
 
     Attributes:
         engine: The engine definition for the created table. Defaults
@@ -100,8 +102,7 @@ class ClickHouseTableSettings:
 
 @PublicAPI(stability="alpha")
 class SinkMode(IntEnum):
-    """
-    Enum of possible modes for sinking data
+    """Enum of possible modes for sinking data
 
     Attributes:
         CREATE: Create a new table; fail if that table already exists.
@@ -409,6 +410,7 @@ class ClickHouseDatasink(Datasink):
                 arrow_table = BlockAccessor.for_block(block).to_arrow()
                 row_count = arrow_table.num_rows
                 if self._schema is not None:
+                    arrow_table = reorder_columns_by_schema(arrow_table, self._schema)
                     arrow_table = arrow_table.cast(self._schema, safe=True)
                 if self._max_insert_block_rows is not None:
                     max_chunk_size = self._max_insert_block_rows

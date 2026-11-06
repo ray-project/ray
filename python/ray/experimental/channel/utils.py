@@ -4,8 +4,7 @@ import ray
 
 
 def get_self_actor() -> Optional["ray.actor.ActorHandle"]:
-    """
-    Get the current actor handle in this worker.
+    """Get the current actor handle in this worker.
     If this is called in a driver process, it will return None.
     """
     try:
@@ -53,7 +52,7 @@ def split_actors_by_node_locality(
     on the same node as the given node. The remote actors will be on a different node.
 
     Args:
-        writer_node: The node of the writer
+        node: The node to compare actor locations against.
         actor_and_node_list: List of (actor, node) tuples
 
     Returns:

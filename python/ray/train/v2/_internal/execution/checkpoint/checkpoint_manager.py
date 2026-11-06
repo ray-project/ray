@@ -28,7 +28,10 @@ from ray.train.v2._internal.execution.training_report import _TrainingReport
 from ray.train.v2._internal.execution.worker_group import Worker
 from ray.train.v2._internal.util import wait_with_logging
 from ray.train.v2.api.report_config import CheckpointConsistencyMode
-from ray.train.v2.api.reported_checkpoint import ReportedCheckpoint
+from ray.train.v2.api.reported_checkpoint import (
+    ReportedCheckpoint,
+    ReportedCheckpointStatus,
+)
 from ray.train.v2.api.validation_config import ValidationTaskConfig
 
 logger = logging.getLogger(__name__)
@@ -51,10 +54,16 @@ class _CheckpointManagerState(BaseModel):
     ray_version: str = ray.__version__
     checkpoint_results: List[_TrainingResultState]
     checkpoint_report_indices: List[int]
-    latest_checkpoint_result: Optional[_TrainingResultState]
+    latest_checkpoint_result: Optional[_TrainingResultState] = None
     pending_training_results: List[_TrainingResultState]
     pending_validation_specs: List[Union[bool, ValidationTaskConfig]]
     current_report_index: int
+
+    # List of processed checkpoints based on if successfully validated,
+    #   timed out or failed due to an error or canceled for some reason.
+    validated_checkpoint_dir_names: List[str]
+    timed_out_validation_checkpoint_dir_names: List[str]
+    failed_validation_checkpoint_dir_names: List[str]
 
 
 def _get_training_result_from_state(
@@ -104,10 +113,21 @@ class CheckpointManager(_CheckpointManager, ReportCallback, WorkerGroupCallback)
             Checkpoint, Tuple[_TrainingResult, Union[bool, ValidationTaskConfig]]
         ] = {}
 
+        # Set of checkpoints that have successfully completed, been timed out
+        #   or failed validation.
+        self._validated_checkpoints: set = set()
+        self._timed_out_validation_checkpoints: set = set()
+        self._failed_validation_checkpoints: set = set()
+
         # Map from checkpoint to report index. Used to order checkpoints.
         self._checkpoint_to_report_index = {}
 
         self._condition = asyncio.Condition()
+
+        # Strong references to background tasks created via
+        # ``asyncio.create_task`` to prevent them from being garbage
+        # collected mid-execution. The event loop only keeps weak refs.
+        self._background_tasks: set = set()
 
         self._collective_warn_interval_s = env_float(
             COLLECTIVE_WARN_INTERVAL_S_ENV_VAR,
@@ -168,31 +188,55 @@ class CheckpointManager(_CheckpointManager, ReportCallback, WorkerGroupCallback)
 
         self._notify()
 
-    def update_checkpoints_with_metrics(
-        self, checkpoint_to_metrics: Dict[Checkpoint, Dict[str, Any]]
+    def update_checkpoints_with_validation_result(
+        self,
+        checkpoint_updates: Dict[
+            Checkpoint, Tuple[Dict[str, Any], ReportedCheckpointStatus]
+        ],
     ):
-        """Update the checkpoints with the metrics."""
-        for checkpoint, metrics in checkpoint_to_metrics.items():
+        """Finalize pending validations by recording terminal status and metrics.
+
+        * For VALIDATED checkpoints, metrics are merged into the checkpoint's
+          existing metrics and the checkpoint is re-sorted.
+        * For VALIDATION_TIMEOUT and VALIDATION_FAILED checkpoints, metrics are
+          left untouched and the checkpoint retains its original training-time
+          score position.
+        """
+        for checkpoint, (metrics, status) in checkpoint_updates.items():
             if checkpoint not in self._pending_training_results:
                 logger.warning(
                     f"Checkpoint {checkpoint} not found in pending training results. "
                 )
                 continue
             checkpoint_result, _ = self._pending_training_results[checkpoint]
-            checkpoint_result.metrics.update(metrics)
             if checkpoint_result not in self._checkpoint_results:
                 raise ValueError(
                     f"Checkpoint {checkpoint} was in pending training results but not "
                     "checkpoint results. "
                 )
-            self._checkpoint_results.remove(checkpoint_result)
-            _insert_into_sorted_list(
-                self._checkpoint_results,
-                checkpoint_result,
-                key=self._get_checkpoint_score,
-                checkpoint_to_report_index=self._checkpoint_to_report_index,
-            )
             self._pending_training_results.pop(checkpoint)
+
+            if status == ReportedCheckpointStatus.VALIDATED:
+                # Update the metrics and sort into checkpoint_results
+                checkpoint_result.metrics.update(metrics)
+                self._checkpoint_results.remove(checkpoint_result)
+                _insert_into_sorted_list(
+                    self._checkpoint_results,
+                    checkpoint_result,
+                    key=self._get_checkpoint_score,
+                    checkpoint_to_report_index=self._checkpoint_to_report_index,
+                )
+                self._validated_checkpoints.add(checkpoint)
+            elif status == ReportedCheckpointStatus.VALIDATION_TIMEOUT:
+                self._timed_out_validation_checkpoints.add(checkpoint)
+            elif status == ReportedCheckpointStatus.VALIDATION_FAILED:
+                self._failed_validation_checkpoints.add(checkpoint)
+            else:
+                raise ValueError(
+                    f"Unexpected terminal validation status {status} for "
+                    f"checkpoint {checkpoint}."
+                )
+
         self._save_state_and_delete_old_checkpoints()
         self._notify()
 
@@ -209,7 +253,12 @@ class CheckpointManager(_CheckpointManager, ReportCallback, WorkerGroupCallback)
             async with self._condition:
                 self._condition.notify_all()
 
-        asyncio.create_task(async_notify())
+        # Keep a strong reference to the task so it isn't garbage
+        # collected before completing, which would silently drop
+        # the notification and could leave listeners waiting forever.
+        task = asyncio.create_task(async_notify())
+        self._background_tasks.add(task)
+        task.add_done_callback(self._background_tasks.discard)
 
     def _save_state_and_delete_old_checkpoints(self):
         """Delete the old checkpoints."""
@@ -235,6 +284,15 @@ class CheckpointManager(_CheckpointManager, ReportCallback, WorkerGroupCallback)
             for checkpoint_result in results_to_delete:
                 del self._checkpoint_to_report_index[checkpoint_result.checkpoint]
 
+                # discard doesn't raise an error if the element isn't found
+                self._validated_checkpoints.discard(checkpoint_result.checkpoint)
+                self._timed_out_validation_checkpoints.discard(
+                    checkpoint_result.checkpoint
+                )
+                self._failed_validation_checkpoints.discard(
+                    checkpoint_result.checkpoint
+                )
+
         # Save the checkpoint manager state to storage.
         # Note: We save the state before deleting the old checkpoints.
         # If deletion happens first and the process crashes, our snapshot
@@ -245,7 +303,7 @@ class CheckpointManager(_CheckpointManager, ReportCallback, WorkerGroupCallback)
         # Delete the old checkpoints.
         for checkpoint_result in results_to_delete:
             checkpoint = checkpoint_result.checkpoint
-            logger.debug("Deleting checkpoint: ", checkpoint)
+            logger.debug("Deleting checkpoint: %s", checkpoint)
             delete_fs_path(fs=checkpoint.filesystem, fs_path=checkpoint.path)
 
     # --------------------------
@@ -281,6 +339,19 @@ class CheckpointManager(_CheckpointManager, ReportCallback, WorkerGroupCallback)
             v for _, v in self._pending_training_results.values()
         ]
 
+        validated_ckpt_dir_names = [
+            self._storage_context.extract_checkpoint_dir_name_from_path(checkpoint.path)
+            for checkpoint in self._validated_checkpoints
+        ]
+        timed_out_validation_ckpt_dir_names = [
+            self._storage_context.extract_checkpoint_dir_name_from_path(checkpoint.path)
+            for checkpoint in self._timed_out_validation_checkpoints
+        ]
+        failed_validation_ckpt_dir_names = [
+            self._storage_context.extract_checkpoint_dir_name_from_path(checkpoint.path)
+            for checkpoint in self._failed_validation_checkpoints
+        ]
+
         manager_snapshot = _CheckpointManagerState(
             checkpoint_results=checkpoint_results,
             checkpoint_report_indices=checkpoint_report_indices,
@@ -288,6 +359,9 @@ class CheckpointManager(_CheckpointManager, ReportCallback, WorkerGroupCallback)
             pending_training_results=pending_training_results,
             pending_validation_specs=pending_validation_specs,
             current_report_index=self._current_report_index,
+            validated_checkpoint_dir_names=validated_ckpt_dir_names,
+            timed_out_validation_checkpoint_dir_names=timed_out_validation_ckpt_dir_names,
+            failed_validation_checkpoint_dir_names=failed_validation_ckpt_dir_names,
         )
         return manager_snapshot.json()
 
@@ -364,6 +438,28 @@ class CheckpointManager(_CheckpointManager, ReportCallback, WorkerGroupCallback)
                 validation_spec,
             )
 
+        # Restore terminal validation statuses. Only checkpoints still in
+        # _checkpoint_results can be looked up; evicted checkpoints are irrelevant.
+        for dir_names, target_set in (
+            (
+                manager_snapshot.validated_checkpoint_dir_names,
+                self._validated_checkpoints,
+            ),
+            (
+                manager_snapshot.timed_out_validation_checkpoint_dir_names,
+                self._timed_out_validation_checkpoints,
+            ),
+            (
+                manager_snapshot.failed_validation_checkpoint_dir_names,
+                self._failed_validation_checkpoints,
+            ),
+        ):
+            for dir_name in dir_names:
+                if dir_name in checkpoint_dir_name_to_checkpoint_result:
+                    target_set.add(
+                        checkpoint_dir_name_to_checkpoint_result[dir_name].checkpoint
+                    )
+
         self._current_report_index = manager_snapshot.current_report_index
 
     def _maybe_load_state_from_storage(self):
@@ -425,14 +521,12 @@ class CheckpointManager(_CheckpointManager, ReportCallback, WorkerGroupCallback)
                 fs=checkpoint.filesystem, fs_path=checkpoint.path
             ):
                 raise CheckpointManagerInitializationError(
-                    message=(
-                        "The run snapshot contains a reference to a checkpoint "
-                        f"that does not exist anymore ({checkpoint}). You are "
-                        "running in a corrupted run directory `experiment_fs_path`."
-                        "Please configure a new, unique `RunConfig(name)` "
-                        "or delete the existing folder at "
-                        f"`{self._storage_context.experiment_fs_path}`."
-                    )
+                    "The run snapshot contains a reference to a checkpoint "
+                    f"that does not exist anymore ({checkpoint}). You are "
+                    "running in a corrupted run directory `experiment_fs_path`. "
+                    "Please configure a new, unique `RunConfig(name)` "
+                    "or delete the existing folder at "
+                    f"`{self._storage_context.experiment_fs_path}`."
                 )
 
     # --------------------------
@@ -471,6 +565,21 @@ class CheckpointManager(_CheckpointManager, ReportCallback, WorkerGroupCallback)
     # Get all reported checkpoints API
     # --------------------------------
 
+    def _get_checkpoint_status(
+        self, checkpoint: Checkpoint
+    ) -> ReportedCheckpointStatus:
+        """Get ReportedCheckpoint's status."""
+        if checkpoint in self._pending_training_results:
+            return ReportedCheckpointStatus.PENDING_VALIDATION
+        elif checkpoint in self._timed_out_validation_checkpoints:
+            return ReportedCheckpointStatus.VALIDATION_TIMEOUT
+        elif checkpoint in self._failed_validation_checkpoints:
+            return ReportedCheckpointStatus.VALIDATION_FAILED
+        elif checkpoint in self._validated_checkpoints:
+            return ReportedCheckpointStatus.VALIDATED
+        else:
+            return ReportedCheckpointStatus.COMMITTED
+
     def _generate_get_all_reported_checkpoints_periodic_warning(
         self, start_time: float, consistency_mode: CheckpointConsistencyMode
     ) -> str:
@@ -486,12 +595,14 @@ class CheckpointManager(_CheckpointManager, ReportCallback, WorkerGroupCallback)
         self,
         current_report_index: int,
         consistency_mode: CheckpointConsistencyMode = CheckpointConsistencyMode.VALIDATED,
+        timeout_s: Optional[float] = None,
     ) -> List[ReportedCheckpoint]:
         """Get all the reported checkpoints so far.
 
         Args:
             current_report_index: The current report index.
             consistency_mode: Read semantics for checkpoint retrieval. Defaults to VALIDATED.
+            timeout_s: Timeout in seconds. Defaults to None to run forever.
 
         Returns:
             A list of ReportedCheckpoint objects that represent the checkpoints and
@@ -517,15 +628,21 @@ class CheckpointManager(_CheckpointManager, ReportCallback, WorkerGroupCallback)
             )
 
         async with self._condition:
-            await wait_with_logging(
-                self._condition,
-                predicate=predicate,
-                generate_warning_message=lambda: self._generate_get_all_reported_checkpoints_periodic_warning(
-                    start_time, consistency_mode
-                ),
-                warn_interval_s=self._collective_warn_interval_s,
-                timeout_s=-1,  # wait forever
-            )
+            try:
+                await wait_with_logging(
+                    self._condition,
+                    predicate=predicate,
+                    generate_warning_message=lambda: self._generate_get_all_reported_checkpoints_periodic_warning(
+                        start_time, consistency_mode
+                    ),
+                    warn_interval_s=self._collective_warn_interval_s,
+                    timeout_s=timeout_s,
+                )
+            except (asyncio.TimeoutError, TimeoutError):
+                # Time out due to checkpoint upload or validation in progress
+                logger.debug(
+                    "Timed out waiting for reported_checkpoint to become available."
+                )
 
         # TODO: might be nice for CheckpointManager to manage ReportedCheckpoint
         # instead of _TrainingResult but that is a large refactor.
@@ -533,6 +650,7 @@ class CheckpointManager(_CheckpointManager, ReportCallback, WorkerGroupCallback)
             ReportedCheckpoint(
                 checkpoint=tr.checkpoint,
                 metrics=tr.metrics,
+                status=self._get_checkpoint_status(tr.checkpoint),
             )
             for tr in self._checkpoint_results
         ]

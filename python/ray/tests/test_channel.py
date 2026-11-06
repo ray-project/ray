@@ -17,16 +17,15 @@ from ray._private.test_utils import get_actor_node_id
 from ray.dag.compiled_dag_node import CompiledDAG
 from ray.exceptions import RayChannelError, RayChannelTimeoutError
 from ray.experimental.channel.torch_tensor_type import TorchTensorType
-from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
 logger = logging.getLogger(__name__)
 
 
 def create_driver_actor():
     return CompiledDAG.DAGDriverProxyActor.options(
-        scheduling_strategy=NodeAffinitySchedulingStrategy(
-            ray.get_runtime_context().get_node_id(), soft=False
-        )
+        label_selector={
+            ray._raylet.RAY_NODE_ID_KEY: ray.get_runtime_context().get_node_id()
+        }
     ).remote()
 
 
@@ -1141,7 +1140,7 @@ def test_payload_large(ray_start_cluster):
 
     def create_actor(node):
         return Actor.options(
-            scheduling_strategy=NodeAffinitySchedulingStrategy(node, soft=False)
+            label_selector={ray._raylet.RAY_NODE_ID_KEY: node}
         ).remote()
 
     driver_node = ray.get_runtime_context().get_node_id()
@@ -1191,7 +1190,7 @@ def test_payload_resize_large(ray_start_cluster):
 
     def create_actor(node):
         return Actor.options(
-            scheduling_strategy=NodeAffinitySchedulingStrategy(node, soft=False)
+            label_selector={ray._raylet.RAY_NODE_ID_KEY: node}
         ).remote()
 
     driver_node = ray.get_runtime_context().get_node_id()
@@ -1242,7 +1241,7 @@ def test_readers_on_different_nodes(ray_start_cluster):
 
     def create_actor(node):
         return Actor.options(
-            scheduling_strategy=NodeAffinitySchedulingStrategy(node, soft=False)
+            label_selector={ray._raylet.RAY_NODE_ID_KEY: node}
         ).remote()
 
     a = create_actor(nodes[0])
@@ -1297,7 +1296,7 @@ def test_bunch_readers_on_different_nodes(ray_start_cluster):
 
     def create_actor(node):
         return Actor.options(
-            scheduling_strategy=NodeAffinitySchedulingStrategy(node, soft=False)
+            label_selector={ray._raylet.RAY_NODE_ID_KEY: node}
         ).remote()
 
     a = create_actor(nodes[0])

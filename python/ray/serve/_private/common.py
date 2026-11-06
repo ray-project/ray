@@ -32,7 +32,7 @@ class DeploymentID:
         # The _hash attribute is excluded from pickling via __getstate__, so after
         # deserialization it gets recomputed with the correct per-process hash seed.
         try:
-            return self._hash
+            return self._hash  # pyrefly: ignore[missing-attribute]
         except AttributeError:
             h = hash((self.name, self.app_name))
             object.__setattr__(self, "_hash", h)
@@ -72,7 +72,7 @@ class ReplicaID:
         # The _hash attribute is excluded from pickling via __getstate__, so after
         # deserialization it gets recomputed with the correct per-process hash seed.
         try:
-            return self._hash
+            return self._hash  # pyrefly: ignore[missing-attribute]
         except AttributeError:
             h = hash((self.unique_id, self.deployment_id))
             object.__setattr__(self, "_hash", h)
@@ -87,6 +87,12 @@ class ReplicaID:
         object.__setattr__(self, "deployment_id", state["deployment_id"])
 
     def to_full_id_str(self) -> str:
+        """Format this replica ID as a full ID string.
+
+        Returns:
+            ``SERVE_REPLICA::`` followed by the app name, deployment name, and
+            unique ID, joined by ``#``. The app name is omitted when it's empty.
+        """
         s = f"{self.deployment_id.name}#{self.unique_id}"
         if self.deployment_id.app_name:
             s = f"{self.deployment_id.app_name}#{s}"
@@ -95,10 +101,31 @@ class ReplicaID:
 
     @staticmethod
     def is_full_id_str(s: str) -> bool:
+        """Check whether a string is a full replica ID string.
+
+        Args:
+            s: The string to check.
+
+        Returns:
+            True if ``s`` starts with the ``SERVE_REPLICA::`` prefix.
+        """
         return s.startswith(REPLICA_ID_FULL_ID_STR_PREFIX)
 
     @classmethod
     def from_full_id_str(cls, s: str):
+        """Parse a full ID string into a replica ID.
+
+        The inverse of ``to_full_id_str``.
+
+        Args:
+            s: A full replica ID string.
+
+        Returns:
+            The parsed replica ID.
+
+        Raises:
+            ValueError: If ``s`` doesn't have two or three ``#``-delimited fields.
+        """
         assert cls.is_full_id_str(s)
 
         parsed = s[len(REPLICA_ID_FULL_ID_STR_PREFIX) :].split("#")
@@ -188,6 +215,7 @@ class ReplicaState(str, Enum):
     RECOVERING = "RECOVERING"
     RUNNING = "RUNNING"
     STOPPING = "STOPPING"
+    STOPPED = "STOPPED"
     PENDING_MIGRATION = "PENDING_MIGRATION"
 
 
@@ -228,6 +256,7 @@ class DeploymentStatusTrigger(str, Enum):
     DOWNSCALE_COMPLETED = "DOWNSCALE_COMPLETED"
     AUTOSCALING = "AUTOSCALING"
     REPLICA_STARTUP_FAILED = "REPLICA_STARTUP_FAILED"
+    DEPLOYMENT_ACTOR_FAILED = "DEPLOYMENT_ACTOR_FAILED"
     HEALTH_CHECK_FAILED = "HEALTH_CHECK_FAILED"
     INTERNAL_ERROR = "INTERNAL_ERROR"
     DELETING = "DELETING"
@@ -245,6 +274,8 @@ class DeploymentStatusInternalTrigger(str, Enum):
     MANUALLY_INCREASE_NUM_REPLICAS = "MANUALLY_INCREASE_NUM_REPLICAS"
     MANUALLY_DECREASE_NUM_REPLICAS = "MANUALLY_DECREASE_NUM_REPLICAS"
     REPLICA_STARTUP_FAILED = "REPLICA_STARTUP_FAILED"
+    ROLLING_UPDATE_FAILED = "ROLLING_UPDATE_FAILED"
+    DEPLOYMENT_ACTOR_FAILED = "DEPLOYMENT_ACTOR_FAILED"
     HEALTH_CHECK_FAILED = "HEALTH_CHECK_FAILED"
     INTERNAL_ERROR = "INTERNAL_ERROR"
     DELETE = "DELETE"
@@ -285,7 +316,9 @@ class DeploymentStatusInfo:
     message: str = ""
 
     @property
-    def rank(self) -> int:
+    # Implicitly returns None when neither (status,) nor
+    # (status, status_trigger) is in DEPLOYMENT_STATUS_RANKING_ORDER.
+    def rank(self) -> Optional[int]:  # type: ignore[return]
         """Get priority of state based on ranking_order().
 
         The ranked order indicates what the status should be of a
@@ -303,8 +336,8 @@ class DeploymentStatusInfo:
 
     def _updated_copy(
         self,
-        status: DeploymentStatus = None,
-        status_trigger: DeploymentStatusTrigger = None,
+        status: Optional[DeploymentStatus] = None,
+        status_trigger: Optional[DeploymentStatusTrigger] = None,
         message: str = "",
     ):
         """Returns a copy of the current object with the passed in kwargs updated."""
@@ -351,6 +384,15 @@ class DeploymentStatusInfo:
             return self._updated_copy(
                 status=DeploymentStatus.UPDATING,
                 status_trigger=DeploymentStatusTrigger.DELETING,
+                message=message,
+            )
+
+        # A stopped rolling update is a deployment failure even if autoscaling
+        # or an earlier health failure changed the current status.
+        elif trigger == DeploymentStatusInternalTrigger.ROLLING_UPDATE_FAILED:
+            return self._updated_copy(
+                status=DeploymentStatus.DEPLOY_FAILED,
+                status_trigger=DeploymentStatusTrigger.REPLICA_STARTUP_FAILED,
                 message=message,
             )
 
@@ -408,6 +450,12 @@ class DeploymentStatusInfo:
                     status_trigger=DeploymentStatusTrigger.REPLICA_STARTUP_FAILED,
                     message=message,
                 )
+            elif trigger == DeploymentStatusInternalTrigger.DEPLOYMENT_ACTOR_FAILED:
+                return self._updated_copy(
+                    status=DeploymentStatus.DEPLOY_FAILED,
+                    status_trigger=DeploymentStatusTrigger.DEPLOYMENT_ACTOR_FAILED,
+                    message=message,
+                )
 
         elif self.status in {DeploymentStatus.UPSCALING, DeploymentStatus.DOWNSCALING}:
             # Failures occurred while upscaling/downscaling
@@ -421,6 +469,12 @@ class DeploymentStatusInfo:
                 return self._updated_copy(
                     status=DeploymentStatus.UNHEALTHY,
                     status_trigger=DeploymentStatusTrigger.REPLICA_STARTUP_FAILED,
+                    message=message,
+                )
+            elif trigger == DeploymentStatusInternalTrigger.DEPLOYMENT_ACTOR_FAILED:
+                return self._updated_copy(
+                    status=DeploymentStatus.UNHEALTHY,
+                    status_trigger=DeploymentStatusTrigger.DEPLOYMENT_ACTOR_FAILED,
                     message=message,
                 )
             # Deployment transitions to healthy
@@ -547,6 +601,14 @@ class DeploymentStatusInfo:
                     message=message,
                 )
 
+            # Deployment actors can't be recreated and won't be retried
+            elif trigger == DeploymentStatusInternalTrigger.DEPLOYMENT_ACTOR_FAILED:
+                return self._updated_copy(
+                    status=DeploymentStatus.UNHEALTHY,
+                    status_trigger=DeploymentStatusTrigger.DEPLOYMENT_ACTOR_FAILED,
+                    message=message,
+                )
+
         elif self.status == DeploymentStatus.UNHEALTHY:
             # The deployment recovered
             if trigger == DeploymentStatusInternalTrigger.HEALTHY:
@@ -575,6 +637,12 @@ class DeploymentStatusInfo:
                 return self._updated_copy(
                     status=DeploymentStatus.UNHEALTHY,
                     status_trigger=DeploymentStatusTrigger.REPLICA_STARTUP_FAILED,
+                    message=message,
+                )
+            elif trigger == DeploymentStatusInternalTrigger.DEPLOYMENT_ACTOR_FAILED:
+                return self._updated_copy(
+                    status=DeploymentStatus.UNHEALTHY,
+                    status_trigger=DeploymentStatusTrigger.DEPLOYMENT_ACTOR_FAILED,
                     message=message,
                 )
 
@@ -606,6 +674,12 @@ class DeploymentStatusInfo:
                 return self._updated_copy(
                     status=DeploymentStatus.DEPLOY_FAILED,
                     status_trigger=DeploymentStatusTrigger.REPLICA_STARTUP_FAILED,
+                    message=message,
+                )
+            elif trigger == DeploymentStatusInternalTrigger.DEPLOYMENT_ACTOR_FAILED:
+                return self._updated_copy(
+                    status=DeploymentStatus.DEPLOY_FAILED,
+                    status_trigger=DeploymentStatusTrigger.DEPLOYMENT_ACTOR_FAILED,
                     message=message,
                 )
 
@@ -645,7 +719,9 @@ class RunningReplicaInfo:
     is_cross_language: bool = False
     multiplexed_model_ids: List[str] = field(default_factory=list)
     routing_stats: Dict[str, Any] = field(default_factory=dict)
+    replica_metadata: Dict[str, Any] = field(default_factory=dict)
     port: Optional[int] = None
+    backend_http_port: Optional[int] = None
 
     def __post_init__(self):
         # Set hash value when object is constructed.
@@ -659,11 +735,15 @@ class RunningReplicaInfo:
                 [
                     self.replica_id.to_full_id_str(),
                     self.node_id if self.node_id else "",
+                    self.node_ip if self.node_ip else "",
                     self.actor_name,
                     str(self.max_ongoing_requests),
                     str(self.is_cross_language),
                     str(self.multiplexed_model_ids),
                     str(self.routing_stats),
+                    str(self.replica_metadata),
+                    str(self.port),
+                    str(self.backend_http_port),
                 ]
             )
         )
@@ -673,13 +753,14 @@ class RunningReplicaInfo:
         object.__setattr__(self, "_hash", hash_val)
 
     def __hash__(self):
-        return self._hash
+        # Set via `object.__setattr__` above (frozen dataclass).
+        return self._hash  # pyrefly: ignore[missing-attribute]
 
     def __eq__(self, other):
         return all(
             [
                 isinstance(other, RunningReplicaInfo),
-                self._hash == other._hash,
+                self._hash == other._hash,  # pyrefly: ignore[missing-attribute]
             ]
         )
 
@@ -692,10 +773,6 @@ class RunningReplicaInfo:
 class DeploymentTargetInfo:
     is_available: bool
     running_replicas: List[RunningReplicaInfo]
-
-
-class ServeDeployMode(str, Enum):
-    MULTI_APP = "MULTI_APP"
 
 
 class ServeComponentType(str, Enum):
@@ -771,10 +848,17 @@ class RequestMetadata:
     # Multiplexed model ID.
     multiplexed_model_id: str = ""
 
+    # Session ID.
+    session_id: str = ""
+
     # If this request expects a streaming response.
     is_streaming: bool = False
 
     _http_method: str = ""
+
+    # Full gRPC service method (e.g. "/pkg.Service/Method") for direct-ingress gRPC
+    # requests. Mirrors the proxy's `method` metric tag (`gRPCProxyRequest.method`).
+    _grpc_service_method: str = ""
 
     # The client address in "host:port" format, if available.
     _client: str = ""
@@ -799,6 +883,9 @@ class RequestMetadata:
     request_serialization: str = "cloudpickle"
     response_serialization: str = "cloudpickle"
 
+    # Token for a replica-side slot reserved by choose_replica().
+    _reserved_slot_token: Optional[str] = None
+
     @property
     def is_http_request(self) -> bool:
         return self._request_protocol == RequestProtocol.HTTP
@@ -806,6 +893,10 @@ class RequestMetadata:
     @property
     def is_grpc_request(self) -> bool:
         return self._request_protocol == RequestProtocol.GRPC
+
+    @property
+    def protocol(self) -> RequestProtocol:
+        return self._request_protocol
 
 
 class StreamingHTTPRequest:
@@ -844,11 +935,16 @@ class StreamingHTTPRequest:
     @property
     def receive_asgi_messages(self) -> Callable[[RequestMetadata], Awaitable[bytes]]:
         if self._receive_asgi_messages is None:
+            # Constructor invariant: if `receive_asgi_messages` wasn't passed,
+            # then `proxy_actor_name` is not None.
+            assert self._proxy_actor_name is not None
             self._cached_proxy_actor = ray.get_actor(
                 self._proxy_actor_name, namespace=SERVE_NAMESPACE
             )
             self._receive_asgi_messages = (
-                self._cached_proxy_actor.receive_asgi_messages.remote
+                # `ActorHandle.__getattr__` is annotated `Never`; per-method
+                # attributes exist on real handles at runtime.
+                self._cached_proxy_actor.receive_asgi_messages.remote  # type: ignore[attr-defined]
             )
 
         return self._receive_asgi_messages
@@ -871,9 +967,9 @@ class ReplicaQueueLengthInfo:
 class CreatePlacementGroupRequest:
     bundles: List[Dict[str, float]]
     strategy: str
-    target_node_id: str
+    target_node_id: Optional[str]
     name: str
-    runtime_env: Optional[str] = None
+    runtime_env: Optional[Dict[str, Any]] = None
     bundle_label_selector: Optional[List[Dict[str, str]]] = None
     fallback_strategy: Optional[List[Dict[str, Any]]] = None
 
@@ -950,14 +1046,9 @@ class HandleMetricReport:
         handle_source: Describes what kind of entity holds this
             deployment handle: a Serve proxy, a Serve replica, or
             unknown.
-        aggregated_queued_requests: average number of queued requests at the
-            handle over the past look_back_period_s seconds.
         queued_requests: list of values of queued requests at the
             handle over the past look_back_period_s seconds. This is a list because
             we take multiple measurements over time.
-        aggregated_metrics: A map of metric name to the aggregated value over the past
-            look_back_period_s seconds at the handle for each replica. Replica keys
-            use ReplicaID.to_full_id_str() for efficient controller-side lookups.
         metrics: A map of metric name to the list of values running at that handle for each replica
             over the past look_back_period_s seconds. Replica keys use to_full_id_str().
             This is a list because we take multiple measurements over time.
@@ -968,11 +1059,7 @@ class HandleMetricReport:
     handle_id: str
     actor_id: str
     handle_source: DeploymentHandleSource
-    aggregated_queued_requests: float
     queued_requests: TimeSeries
-    aggregated_metrics: Dict[
-        str, Dict[str, float]
-    ]  # replica key = ReplicaID.to_full_id_str()
     metrics: Dict[
         str, Dict[str, TimeSeries]
     ]  # replica key = ReplicaID.to_full_id_str()
@@ -980,10 +1067,12 @@ class HandleMetricReport:
 
     @property
     def total_requests(self) -> float:
-        """Total number of queued and running requests."""
-        return self.aggregated_queued_requests + sum(
-            self.aggregated_metrics.get(RUNNING_REQUESTS_KEY, {}).values()
-        )
+        """Peak queued + running requests over this handle's reported window, summed
+        per series so it over-states any single instant. Diagnostic only: it gates and
+        labels the log line emitted when a handle's metrics are dropped."""
+        running = self.metrics.get(RUNNING_REQUESTS_KEY, {}).values()
+        series = [self.queued_requests, *running]
+        return sum(max(point.value for point in s) for s in series if s)
 
     @property
     def is_serve_component_source(self) -> bool:
@@ -1006,8 +1095,6 @@ class ReplicaMetricReport:
 
     Args:
         replica_id: The replica ID of the replica.
-        aggregated_metrics: A map of metric name to the aggregated value over the past
-            look_back_period_s seconds at the replica.
         metrics: A map of metric name to the list of values running at that replica
             over the past look_back_period_s seconds. This is a list because
             we take multiple measurements over time.
@@ -1015,21 +1102,5 @@ class ReplicaMetricReport:
     """
 
     replica_id: ReplicaID
-    aggregated_metrics: Dict[str, float]
     metrics: Dict[str, TimeSeries]
     timestamp: float
-
-
-@dataclass
-class AsyncInferenceTaskQueueMetricReport:
-    """Metric report from QueueMonitor to controller for async inference.
-
-    Args:
-        deployment_id: The deployment ID this queue belongs to.
-        queue_length: The number of pending tasks in the broker queue.
-        timestamp_s: The time at which this report was created.
-    """
-
-    deployment_id: DeploymentID
-    queue_length: int
-    timestamp_s: float

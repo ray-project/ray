@@ -7,7 +7,6 @@ ray_cc_test(
     tags = ["team:core"],
     deps = [
         "//src/ray/gcs/postable",
-        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -17,6 +16,5 @@ ray_cc_test(
     tags = ["team:core"],
     deps = [
         "//src/ray/gcs/postable:function_traits",
-        "@com_google_googletest//:gtest_main",
     ],
 )

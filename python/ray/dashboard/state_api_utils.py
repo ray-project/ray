@@ -5,6 +5,10 @@ from typing import Awaitable, Callable, List, Tuple
 import aiohttp.web
 
 from ray.dashboard.optional_utils import rest_response
+from ray.dashboard.runtime_env_redaction import (
+    redact_state_rows,
+    should_redact_runtime_env,
+)
 from ray.dashboard.utils import HTTPStatusCode
 from ray.util.state.common import (
     DEFAULT_LIMIT,
@@ -40,11 +44,13 @@ async def handle_list_api(
     req: aiohttp.web.Request,
 ):
     try:
-        result = await list_api_fn(option=options_from_req(req))
+        result = asdict(await list_api_fn(option=options_from_req(req)))
+        if should_redact_runtime_env(req):
+            result["result"] = redact_state_rows(result["result"])
         return do_reply(
             status_code=HTTPStatusCode.OK,
             error_message="",
-            result=asdict(result),
+            result=result,
         )
     except ValueError as e:
         return do_reply(
@@ -202,6 +208,7 @@ def do_filter(
         filters: A list of KV tuple to filter data (key, val). The data is filtered
             if data[key] != val.
         state_dataclass: The state schema.
+        detail: If True, include detail-only columns; otherwise drop them.
 
     Returns:
         A list of filtered state data in dictionary. Each state data's

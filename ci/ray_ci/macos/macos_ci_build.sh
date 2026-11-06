@@ -37,6 +37,13 @@ build() {
   export MAC_JARS=1
   export RAY_INSTALL_JAVA=1
   export RAY_ENABLE_WINDOWS_OR_OSX_CLUSTER=1
+  # Resolve pip and uv through the CI package mirror where it is reachable, so the
+  # installs below do not depend on files.pythonhosted.org being healthy
+  # (pypi/support#11895). Sourced, because it exports the index variables. The `|| true`
+  # matters under `set -e`: this must never be the reason a wheel build fails, and every
+  # path inside it already falls back to public PyPI.
+  # shellcheck source=ci/ray_ci/macos/pypi_proxy.sh
+  source ./ci/ray_ci/macos/pypi_proxy.sh || true
   . ./ci/ci.sh init && source ~/.zshenv
   source ~/.zshrc
   ./ci/ci.sh build_macos_wheels_and_jars

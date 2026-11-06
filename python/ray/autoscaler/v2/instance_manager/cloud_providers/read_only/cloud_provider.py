@@ -16,8 +16,7 @@ from ray.core.generated.autoscaler_pb2 import NodeStatus
 
 
 class ReadOnlyProvider(ICloudInstanceProvider):
-    """
-    A read only provider that use the ray node states from the GCS as the
+    """A read only provider that use the ray node states from the GCS as the
     cloud instances.
 
     This is used for laptop mode / manual cluster setup modes, in order to
@@ -61,7 +60,7 @@ class ReadOnlyProvider(ICloudInstanceProvider):
 
         return cloud_instances
 
-    def terminate(self, instance_id: CloudInstanceId) -> None:
+    def terminate(self, ids: List[CloudInstanceId], request_id: str) -> None:
         raise NotImplementedError("Cannot terminate instances in read-only mode.")
 
     def launch(

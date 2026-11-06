@@ -1,5 +1,17 @@
 [project]
-requires-python = ">=3.9"
+requires-python = ">=3.10"
+
+[tool.mypy]
+# No global settings here: flags come from the pre-commit hook invocations.
+# This table must exist for the per-module overrides below to be read.
+
+[[tool.mypy.overrides]]
+module = ["ray.serve.generated.*", "ray.core.generated.*"]
+# Generated protobuf modules have no static names; treat them as `Any`
+# whether or not the generated files exist in the checkout (parity with
+# `replace-imports-with-any` in pyrefly.toml).
+follow_imports = "skip"
+ignore_missing_imports = true
 
 [tool.ruff]
 line-length = 88
@@ -10,11 +22,15 @@ extend-exclude = [
     "python/build/",
     "python/ray/workflow/tests/mock_server.py",
     "python/ray/serve/tests/test_config_files/syntax_error.py",
-    "rllib/examples/envs/classes/multi_agent/footsies/game/proto/footsies_service_pb2.py",
-    "rllib/examples/envs/classes/multi_agent/footsies/game/proto/footsies_service_pb2_grpc.py",
+    "python/ray/rllib/examples/envs/classes/multi_agent/footsies/game/proto/footsies_service_pb2.py",
+    "python/ray/rllib/examples/envs/classes/multi_agent/footsies/game/proto/footsies_service_pb2_grpc.py",
+    "python/ray/experimental/sandbox/http/_proto/*_pb2.py",
+    "python/ray/experimental/sandbox/http/_proto/*_grpc.py",
 ]
 
 [tool.ruff.lint]
+# Pin the base rule set: newer ruff versions enable many more rules by default.
+select = ["E4", "E7", "E9", "F"]
 extend-select = ["I", "B", "Q", "C4", "W"]
 ignore = [
     "B003",
@@ -37,7 +53,10 @@ ignore = [
     "B026",
     "B027",
     "B904",
+    "B905",
     "C419",
+    # New in ruff > 0.8.4 (C4 family); not yet applied to the codebase
+    "C420",
     # Below are auto-fixable rules
     "I001",
 ]

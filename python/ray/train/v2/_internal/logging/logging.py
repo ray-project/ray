@@ -65,6 +65,19 @@ class TrainContextFilter(logging.Filter):
             return self.controller_filter(record)
 
 
+class TrainLogLevelFilter(logging.Filter):
+    """Filter that applies log level filtering only to ray.train log records."""
+
+    def __init__(self, log_level: str = "INFO"):
+        super().__init__()
+        self._log_level = getattr(logging, log_level)
+
+    def filter(self, record):
+        if record.name == "ray.train" or record.name.startswith("ray.train."):
+            return record.levelno >= self._log_level
+        return True
+
+
 class SessionFileHandler(logging.Handler):
     """A handler that writes to a log file in the Ray session directory.
 
@@ -122,15 +135,14 @@ class SessionFileHandler(logging.Handler):
 
 
 class LoggingManager:
-    """
-    A utility class for managing the logging configuration of Ray Train.
-    """
+    """A utility class for managing the logging configuration of Ray Train."""
 
     @staticmethod
     def _get_base_logger_config_dict(
-        context: Union[TrainRunContext, TrainContext]
+        context: Union[TrainRunContext, TrainContext],
     ) -> dict:
         """Return the base logging configuration dictionary."""
+        log_level = LoggingManager._resolve_log_level(context)
         # Using Ray worker ID as the file identifier where logs are written to.
         file_identifier = ray.get_runtime_context().get_worker_id()
         # Return the base logging configuration as a Python dictionary.
@@ -143,9 +155,16 @@ class LoggingManager:
             "filters": {
                 "core_context_filter": {"()": CoreContextFilter},
                 "train_context_filter": {"()": TrainContextFilter, "context": context},
+                "train_log_level_filter": {
+                    "()": TrainLogLevelFilter,
+                    "log_level": log_level,
+                },
             },
             "handlers": {
-                "console": {"class": get_module_name(PlainRayHandler)},
+                "console": {
+                    "class": get_module_name(PlainRayHandler),
+                    "filters": ["train_log_level_filter"],
+                },
                 "file_train_sys_controller": {
                     "class": get_module_name(SessionFileHandler),
                     "formatter": "ray_json",
@@ -156,7 +175,11 @@ class LoggingManager:
                     "class": get_module_name(SessionFileHandler),
                     "formatter": "ray_json",
                     "filename": f"ray-train-app-controller-{file_identifier}.log",
-                    "filters": ["core_context_filter", "train_context_filter"],
+                    "filters": [
+                        "core_context_filter",
+                        "train_context_filter",
+                        "train_log_level_filter",
+                    ],
                 },
                 "file_train_sys_worker": {
                     "class": get_module_name(SessionFileHandler),
@@ -168,17 +191,34 @@ class LoggingManager:
                     "class": get_module_name(SessionFileHandler),
                     "formatter": "ray_json",
                     "filename": f"ray-train-app-worker-{file_identifier}.log",
-                    "filters": ["core_context_filter", "train_context_filter"],
+                    "filters": [
+                        "core_context_filter",
+                        "train_context_filter",
+                        "train_log_level_filter",
+                    ],
                 },
             },
             "loggers": {},
         }
 
     @staticmethod
+    def _resolve_log_level(
+        context: Union[TrainRunContext, TrainContext],
+    ) -> str:
+        """Returns the log level from RunConfig's LoggingConfig."""
+        if isinstance(context, TrainContext):
+            run_config = context.train_run_context.get_run_config()
+        else:
+            run_config = context.get_run_config()
+
+        return run_config.logging_config.log_level
+
+    @staticmethod
     def _get_controller_logger_config_dict(context: TrainRunContext) -> dict:
         """Return the controller logger configuration dictionary.
 
         On the controller process, only the `ray.train` logger is configured.
+        It is broadly set to level DEBUG, with downstream processing by log handlers.
         This logger emits logs to the following three locations:
             - `file_train_sys_controller`: Ray Train system logs.
             - `file_train_app_controller`: Ray Train application logs.
@@ -187,7 +227,7 @@ class LoggingManager:
 
         config_dict = LoggingManager._get_base_logger_config_dict(context)
         config_dict["loggers"]["ray.train"] = {
-            "level": "INFO",
+            "level": "DEBUG",
             "handlers": [
                 "file_train_sys_controller",
                 "file_train_app_controller",
@@ -208,6 +248,8 @@ class LoggingManager:
             - `file_train_sys_worker`: Ray Train system logs.
             - `file_train_app_worker`: Ray Train application logs.
             - `console`: Logs to the console.
+        It is broadly set to level DEBUG, with downstream processing by log handlers.
+
         Second, the root logger is configured and emits logs to the following
         two locations:
             - `console`: Logs to the console.
@@ -218,7 +260,7 @@ class LoggingManager:
 
         config_dict = LoggingManager._get_base_logger_config_dict(context)
         config_dict["loggers"]["ray.train"] = {
-            "level": "INFO",
+            "level": "DEBUG",
             "handlers": ["file_train_sys_worker", "file_train_app_worker", "console"],
             "propagate": False,
         }
@@ -230,17 +272,14 @@ class LoggingManager:
 
     @staticmethod
     def configure_controller_logger(context: TrainRunContext) -> None:
-        """
-        Configure the logger on the controller process, which is the `ray.train` logger.
-        """
+        """Configure the logger on the controller process, which is the `ray.train` logger."""
         config = LoggingManager._get_controller_logger_config_dict(context)
         logging.config.dictConfig(config)
         # TODO: Return the controller log file path.
 
     @staticmethod
     def configure_worker_logger(context: TrainContext) -> None:
-        """
-        Configure the loggers on the worker process, which contains the
+        """Configure the loggers on the worker process, which contains the
         `ray.train` logger and the root logger.
         """
         config = LoggingManager._get_worker_logger_config_dict(context)
@@ -265,9 +304,7 @@ class LoggingManager:
 
 
 def get_train_application_controller_log_path() -> Optional[str]:
-    """
-    Return the path to the file train application controller log file.
-    """
+    """Return the path to the file train application controller log file."""
     # TODO: This is a temporary solution. We should return the log file path in
     # the `configure_controller_logger` function.
     logger = logging.getLogger("ray.train")
@@ -281,9 +318,7 @@ def get_train_application_controller_log_path() -> Optional[str]:
 
 
 def get_train_application_worker_log_path() -> Optional[str]:
-    """
-    Return the path to the file train application worker log file.
-    """
+    """Return the path to the file train application worker log file."""
     # TODO: This is a temporary solution. We should return the log file path in
     # the `configure_worker_logger` function.
     logger = logging.getLogger("ray.train")

@@ -1,3 +1,4 @@
+import secrets
 import subprocess
 import time
 from typing import List
@@ -89,6 +90,9 @@ head_node_vol = volume()
 worker_node_vol = volume()
 head_node_container_name = "gcs" + str(int(time.time()))
 
+# Shared by every node container, since `ray start --head` never creates a token.
+_cluster_auth_token = secrets.token_hex(32)
+
 
 def gen_head_node(envs):
     return container(
@@ -110,7 +114,7 @@ def gen_head_node(envs):
             "0.0.0.0",
         ],
         volumes={"{head_node_vol.name}": {"bind": "/tmp", "mode": "rw"}},
-        environment=envs,
+        environment={**envs, "RAY_AUTH_TOKEN": _cluster_auth_token},
         wrapper_class=Container,
         ports={
             "8000/tcp": None,
@@ -139,7 +143,7 @@ def gen_worker_node(envs, num_cpus):
             f"{num_cpus}",
         ],
         volumes={"{worker_node_vol.name}": {"bind": "/tmp", "mode": "rw"}},
-        environment=envs,
+        environment={**envs, "RAY_AUTH_TOKEN": _cluster_auth_token},
         wrapper_class=Container,
         ports={
             "8000/tcp": None,
@@ -199,7 +203,10 @@ def run_in_container(cmds: List[List[str]], container_id: str):
 
 
 IMAGE_NAME = "rayproject/ray:runtime_env_container"
-NESTED_IMAGE_NAME = "rayproject/ray:runtime_env_container_nested"
+# After `docker save` / `podman load`, Podman typically tags the image as below (not the
+# Docker daemon name). Use that ref for `podman create` so resolution stays local.
+PODMAN_BASE_IMAGE = "localhost/runtime_env_container:latest"
+NESTED_IMAGE_NAME = "localhost/runtime_env_container_nested:latest"
 
 
 @pytest.fixture(scope="session")
@@ -246,7 +253,11 @@ def podman_docker_cluster():
             ["id"],
             ["sudo", "groupadd", "-g", docker_group_id, "docker"],
             ["sudo", "usermod", "-aG", "docker", "ray"],
-            ["podman", "pull", f"docker-daemon:{IMAGE_NAME}"],
+            [
+                "bash",
+                "-c",
+                f"docker save {IMAGE_NAME} | podman load",
+            ],
         ],
         container_id,
     )
@@ -269,7 +280,7 @@ app = Model.bind()
         [
             ["bash", "-c", "echo helloworldalice >> /tmp/file.txt"],
             ["bash", "-c", f"echo '{serve_app}' >> /tmp/serve_application.py"],
-            ["podman", "create", "--name", "tmp_container", IMAGE_NAME],
+            ["podman", "create", "--name", "tmp_container", PODMAN_BASE_IMAGE],
             ["podman", "cp", "/tmp/file.txt", "tmp_container:/home/ray/file.txt"],
             [
                 "podman",

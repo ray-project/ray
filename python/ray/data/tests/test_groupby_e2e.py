@@ -32,11 +32,12 @@ from ray.data.aggregate import (
     Unique,
 )
 from ray.data.block import BlockAccessor
-from ray.data.context import DataContext, ShuffleStrategy
+from ray.data.context import ShuffleStrategy
 from ray.data.expressions import col
 from ray.data.tests.conftest import *  # noqa
 from ray.data.tests.util import named_values
 from ray.tests.conftest import *  # noqa
+from ray.util.annotations import RayDeprecationWarning
 
 RANDOM_SEED = 123
 
@@ -52,6 +53,7 @@ def _sort_series_of_lists_elements(s: pd.Series):
 
 def test_grouped_dataset_repr(
     ray_start_regular_shared_2_cpus,
+    configure_shuffle_method,
     disable_fallback_to_object_extension,
     target_max_block_size_infinite_or_default,
 ):
@@ -66,7 +68,7 @@ def test_groupby_arrow(
     target_max_block_size_infinite_or_default,
 ):
     # Test empty dataset.
-    agg_ds = ray.data.range(10).filter(lambda r: r["id"] > 10).groupby("value").count()
+    agg_ds = ray.data.range(10).filter(lambda r: r["id"] > 10).groupby("id").count()
     assert agg_ds.count() == 0
 
 
@@ -83,6 +85,7 @@ def test_groupby_none(
 
 def test_groupby_errors(
     ray_start_regular_shared_2_cpus,
+    configure_shuffle_method,
     disable_fallback_to_object_extension,
     target_max_block_size_infinite_or_default,
 ):
@@ -153,7 +156,7 @@ def test_groupby_with_column_expression_udf(
     ]
 
 
-def test_arrow_nan_element(ray_start_regular_shared_2_cpus):
+def test_arrow_nan_element(ray_start_regular_shared_2_cpus, configure_shuffle_method):
     ds = ray.data.from_items(
         [
             1.0,
@@ -405,12 +408,13 @@ def test_groupby_tabular_sum(
     configure_shuffle_method,
     disable_fallback_to_object_extension,
 ):
-    ctx = DataContext.get_current()
-
-    if ctx.shuffle_strategy == ShuffleStrategy.HASH_SHUFFLE and ds_format == "pandas":
+    if (
+        ds_format == "pandas"
+        and get_pyarrow_version() < MIN_PYARROW_VERSION_TYPE_PROMOTION
+    ):
         pytest.skip(
-            "Pandas derives integer columns with null as doubles, "
-            "therefore deviating schemas for blocks containing nulls"
+            "PyArrow < 14 cannot unify double vs int64 schemas produced by "
+            "pandas nullable integer columns with nulls"
         )
 
     # Test built-in sum aggregation
@@ -469,13 +473,14 @@ def test_groupby_tabular_sum(
     nan_agg_ds = ds.groupby("A").sum("B")
     assert nan_agg_ds.count() == 3
 
+    result = nan_agg_ds.sort("A").to_pandas()
+
     expected = pd.DataFrame(
         {
-            "A": [0, 1, 2],
-            "sum(B)": pd.Series([None, None, None], dtype="object"),
+            "A": pd.Series([0, 1, 2], dtype=result["A"].dtype),
+            "sum(B)": pd.Series([None, None, None], dtype=result["sum(B)"].dtype),
         },
     )
-    result = nan_agg_ds.sort("A").to_pandas()
 
     print("Result: ", result)
     print("Expected: ", expected)
@@ -490,12 +495,17 @@ def test_groupby_tabular_sum(
 @pytest.mark.parametrize("batch_format", ["pandas", "pyarrow"])
 def test_as_list_e2e(
     ray_start_regular_shared_2_cpus,
+    configure_shuffle_method,
     batch_format,
     num_parts,
     disable_fallback_to_object_extension,
 ):
-    ds = ray.data.range(10)
-    ds = ds.with_column("group_key", col("id") % 3).repartition(num_parts)
+    ds = (
+        ray.data.range(10)
+        .with_column("group_key", col("id") % 3)
+        .repartition(num_parts)
+        .map_batches(lambda x: x, batch_format=batch_format)
+    )
 
     # Listing all elements per group:
     result = ds.groupby("group_key").aggregate(AsList(on="id")).take_all()
@@ -514,20 +524,25 @@ def test_as_list_e2e(
 @pytest.mark.parametrize("batch_format", ["pandas", "pyarrow"])
 def test_as_list_with_nulls(
     ray_start_regular_shared_2_cpus,
+    configure_shuffle_method,
     batch_format,
     num_parts,
     disable_fallback_to_object_extension,
 ):
     # Test with nulls included (default behavior: ignore_nulls=False)
-    ds = ray.data.from_items(
-        [
-            {"group": "A", "value": 1},
-            {"group": "A", "value": None},
-            {"group": "A", "value": 3},
-            {"group": "B", "value": None},
-            {"group": "B", "value": 5},
-        ]
-    ).repartition(num_parts)
+    ds = (
+        ray.data.from_items(
+            [
+                {"group": "A", "value": 1},
+                {"group": "A", "value": None},
+                {"group": "A", "value": 3},
+                {"group": "B", "value": None},
+                {"group": "B", "value": 5},
+            ]
+        )
+        .repartition(num_parts)
+        .map_batches(lambda x: x, batch_format=batch_format)
+    )
 
     # Default: nulls are included in the list
     result = ds.groupby("group").aggregate(AsList(on="value")).take_all()
@@ -575,7 +590,8 @@ def test_groupby_arrow_multi_agg(
         # NOTE: Hash-shuffle internally converts to pyarrow
         (
             ds_format == "pandas"
-            and configure_shuffle_method == ShuffleStrategy.HASH_SHUFFLE
+            and configure_shuffle_method
+            in (ShuffleStrategy.HASH_SHUFFLE, ShuffleStrategy.SHUFFLE_V2)
         )
     )
 
@@ -652,6 +668,12 @@ def test_groupby_arrow_multi_agg(
 
     agg_df["unique(B)"] = _sort_series_of_lists_elements(agg_df["unique(B)"])
     expected_df["unique(B)"] = _sort_series_of_lists_elements(expected_df["unique(B)"])
+
+    # to_pandas() now preserves Arrow-backed dtypes via types_mapper; coerce
+    # the expected DataFrame's numeric columns to match.
+    expected_df = expected_df.astype(
+        {col: agg_df[col].dtype for col in expected_df.columns if col != "unique(B)"}
+    )
 
     print(f"Expected: {expected_df}")
     print(f"Result: {agg_df}")
@@ -1002,11 +1024,13 @@ def test_groupby_map_groups_for_pandas(
     # The function (i.e. the normalization) performed on each group doesn't
     # aggregate rows, so we still have 3 rows.
     assert mapped.count() == 3
+    result = mapped.sort(["A", "C"]).to_pandas()
+
+    # to_pandas() now preserves Arrow-backed dtypes via types_mapper; build the
+    # expected DataFrame with matching dtypes.
     expected = pd.DataFrame(
         {"A": ["a", "a", "b"], "B": [0.5, 0.5, 1.000000], "C": [0.4, 0.6, 1.0]}
-    )
-
-    result = mapped.sort(["A", "C"]).to_pandas()
+    ).astype(result.dtypes.to_dict())
 
     pd.testing.assert_frame_equal(expected, result)
 
@@ -1150,6 +1174,16 @@ def test_groupby_map_groups_ray_remote_args_fn(
     assert sorted([x["value"] for x in ds.take()]) == [69, 69, 69, 69]
 
 
+def test_map_groups_ray_remote_args_fn_deprecation_warning():
+    grouped_ds = ray.data.range(1).groupby("id")
+
+    with pytest.warns(RayDeprecationWarning, match="ray_remote_args_fn"):
+        grouped_ds.map_groups(
+            lambda batch: batch,
+            ray_remote_args_fn=lambda: {},
+        )
+
+
 def test_groupby_map_groups_extra_args(
     ray_start_regular_shared_2_cpus,
     configure_shuffle_method,
@@ -1289,7 +1323,9 @@ def test_groupby_map_groups_multicolumn_with_nan(
     )
 
 
-def test_groupby_map_groups_with_partial(disable_fallback_to_object_extension, capsys):
+def test_groupby_map_groups_with_partial(
+    configure_shuffle_method, disable_fallback_to_object_extension, capsys
+):
     """
     The partial function name should show up as
     +- Sort
@@ -1318,7 +1354,9 @@ def test_groupby_map_groups_with_partial(disable_fallback_to_object_extension, c
     assert "MapBatches(func)" in captured.out
 
 
-def test_map_groups_generator_udf(ray_start_regular_shared_2_cpus):
+def test_map_groups_generator_udf(
+    ray_start_regular_shared_2_cpus, configure_shuffle_method
+):
     """
     Tests that map_groups supports UDFs that return generators (iterators).
     """

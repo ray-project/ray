@@ -14,6 +14,7 @@ import yaml
 import ray
 import ray._private.ray_constants as ray_constants
 from ray._common.network_utils import build_address
+from ray.autoscaler._private.auth_token import load_local_token
 from ray.autoscaler._private.fake_multi_node.command_runner import (
     FakeDockerCommandRunner,
 )
@@ -136,6 +137,7 @@ def create_node_spec(
     bootstrap_config_path: Optional[str] = None,
     private_key_path: Optional[str] = None,
     public_key_path: Optional[str] = None,
+    auth_token_path: Optional[str] = None,
 ):
     node_spec = copy.deepcopy(DOCKER_NODE_SKELETON)
     node_spec["image"] = docker_image
@@ -222,6 +224,13 @@ def create_node_spec(
         f"{host_dir(mounted_node_dir)}:/cluster/node",
         f"{host_dir(public_key_path)}:/home/ray/.ssh/authorized_keys",
     ]
+    # `ray up`'s token file mount can't deliver the token here: worker updaters
+    # are disabled, and the head's `ray start` runs when its container starts,
+    # before `ray up` syncs files.
+    if auth_token_path:
+        node_spec["volumes"].append(
+            f"{host_dir(auth_token_path)}:/home/ray/.ray/auth_token:ro"
+        )
 
     # Pass these environment variables (to the head node)
     # These variables are propagated by the `docker compose` command.
@@ -234,6 +243,26 @@ def create_node_spec(
     return node_spec
 
 
+def _write_cluster_auth_token(path: str) -> None:
+    """Write the local token for the nodes to mount. Never creates one: every
+    CLI command that builds this provider, such as `ray down`, gets here."""
+    token = load_local_token()
+    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    try:
+        try:
+            os.write(fd, token.encode())
+        finally:
+            os.close(fd)
+        if hasattr(os, "getuid") and os.getuid() == 0:
+            # Nodes run as the image's `ray` user (uid 1000) and the mount is
+            # read-only, so a root-owned 0600 token would be unreadable to them.
+            os.chown(path, 1000, -1)
+    except BaseException:
+        # A partial file would be reused by every later construction.
+        os.unlink(path)
+        raise
+
+
 class FakeMultiNodeProvider(NodeProvider):
     """A node provider that implements multi-node on a single machine.
 
@@ -241,10 +270,11 @@ class FakeMultiNodeProvider(NodeProvider):
 
     def __init__(
         self,
-        provider_config,
-        cluster_name,
+        provider_config: Dict[str, Any],
+        cluster_name: str,
     ):
-        """
+        """Initialize the fake multi-node provider.
+
         Args:
             provider_config: Configuration for the provider.
             cluster_name: Name of the cluster.
@@ -492,6 +522,16 @@ class FakeMultiNodeDockerProvider(FakeMultiNodeProvider):
         )
         self._docker_compose_config = None
 
+        self._auth_token_path = None
+        # shortcut: in token mode this mounts the local token even when the
+        # cluster YAML mounts its own ~/.ray/auth_token, which the provider
+        # can't see. Pass the YAML's file_mounts in if a test needs it.
+        # The provider gets only the provider section, so DockerCluster copies the
+        # cluster YAML's auth_mode into it.
+        self._auth_mode = provider_config.get("auth_mode")
+        if (self._auth_mode or "token") == "token":
+            self._auth_token_path = os.path.join(self._volume_dir, "auth_token")
+
         self._node_state_path = os.path.join(self._volume_dir, "nodes.json")
         self._docker_status_path = os.path.join(self._volume_dir, "status.json")
 
@@ -530,6 +570,17 @@ class FakeMultiNodeDockerProvider(FakeMultiNodeProvider):
 
         resource_str = json.dumps(resources, indent=None)
 
+        # The docker monitor may start a node before the token is written, and
+        # Docker would create a missing bind mount source as a directory. Inside
+        # the head the host file always exists: `ray up` wrote it first.
+        auth_token_path = self._auth_token_path
+        if (
+            auth_token_path
+            and not self.in_docker_container
+            and not os.path.exists(auth_token_path)
+        ):
+            auth_token_path = None
+
         return create_node_spec(
             head=head,
             docker_image=self._docker_image,
@@ -544,6 +595,8 @@ class FakeMultiNodeDockerProvider(FakeMultiNodeProvider):
             env_vars={
                 "RAY_OVERRIDE_NODE_ID_FOR_TESTING": node_id,
                 ray_constants.RESOURCES_ENVIRONMENT_VARIABLE: resource_str,
+                # Nodes here run no start commands, so `ray up` can't set it.
+                **({"RAY_AUTH_MODE": self._auth_mode} if self._auth_mode else {}),
                 **self.provider_config.get("env_vars", {}),
             },
             volume_dir=self._volume_dir,
@@ -553,6 +606,7 @@ class FakeMultiNodeDockerProvider(FakeMultiNodeProvider):
             bootstrap_config_path=self._boostrap_config_path,
             public_key_path=self._public_key_path,
             private_key_path=self._private_key_path,
+            auth_token_path=auth_token_path,
         )
 
     def _load_node_state(self) -> bool:
@@ -643,6 +697,11 @@ class FakeMultiNodeDockerProvider(FakeMultiNodeProvider):
 
             return node_id not in self._nodes and not self._is_docker_running(node_id)
 
+    @property
+    def mounts_auth_token(self) -> bool:
+        """Whether every node gets the token as a read-only volume."""
+        return self._auth_token_path is not None
+
     def get_command_runner(
         self,
         log_prefix: str,
@@ -702,6 +761,15 @@ class FakeMultiNodeDockerProvider(FakeMultiNodeProvider):
                 next_id = FAKE_HEAD_NODE_ID
             else:
                 next_id = self._next_hex_node_id()
+
+            # Written on the first launch, by then `ray up` has created the
+            # local token. Later launches reuse it: nodes bind-mount the file.
+            if (
+                self._auth_token_path
+                and not self.in_docker_container
+                and not os.path.exists(self._auth_token_path)
+            ):
+                _write_cluster_auth_token(self._auth_token_path)
 
             self._nodes[next_id] = {
                 "tags": tags,

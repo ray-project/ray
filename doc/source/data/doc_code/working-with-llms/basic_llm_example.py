@@ -12,7 +12,7 @@ from ray.data.llm import vLLMEngineProcessorConfig, build_processor
 # __basic_config_example_start__
 # Basic vLLM configuration
 config = vLLMEngineProcessorConfig(
-    model_source="unsloth/Llama-3.1-8B-Instruct",
+    model_source="Qwen/Qwen3.5-0.8B",
     engine_kwargs={
         "enable_chunked_prefill": True,
         "max_num_batched_tokens": 4096,  # Reduce if CUDA OOM occurs
@@ -58,7 +58,7 @@ if __name__ == "__main__":
 # __hf_token_config_example_start__
 # Configuration with Hugging Face token
 config_with_token = vLLMEngineProcessorConfig(
-    model_source="unsloth/Llama-3.1-8B-Instruct",
+    model_source="Qwen/Qwen3.5-0.8B",
     runtime_env={"env_vars": {"HF_TOKEN": "your_huggingface_token"}},
     concurrency=1,
     batch_size=64,
@@ -71,7 +71,7 @@ config_with_token = vLLMEngineProcessorConfig(
 # pipeline_parallel_size=2: Use 2 pipeline stages (total 4 GPUs needed)
 # Total GPUs required = tensor_parallel_size * pipeline_parallel_size = 4
 config = vLLMEngineProcessorConfig(
-    model_source="unsloth/Llama-3.1-8B-Instruct",
+    model_source="Qwen/Qwen3.5-0.8B",
     engine_kwargs={
         "max_model_len": 16384,
         "tensor_parallel_size": 2,
@@ -81,7 +81,6 @@ config = vLLMEngineProcessorConfig(
     },
     concurrency=1,
     batch_size=32,
-    accelerator_type="L4",
 )
 # __parallel_config_example_end__
 
@@ -89,7 +88,7 @@ config = vLLMEngineProcessorConfig(
 # RunAI streamer configuration for optimized model loading
 # Note: Install vLLM with runai dependencies: pip install -U "vllm[runai]>=0.10.1"
 config = vLLMEngineProcessorConfig(
-    model_source="unsloth/Llama-3.1-8B-Instruct",
+    model_source="Qwen/Qwen3.5-0.8B",
     engine_kwargs={
         "load_format": "runai_streamer",
         "max_model_len": 16384,
@@ -102,7 +101,7 @@ config = vLLMEngineProcessorConfig(
 # __lora_config_example_start__
 # Multi-LoRA configuration
 config = vLLMEngineProcessorConfig(
-    model_source="unsloth/Llama-3.1-8B-Instruct",
+    model_source="Qwen/Qwen3.5-0.8B",
     engine_kwargs={
         "enable_lora": True,
         "max_lora_rank": 32,
@@ -140,12 +139,17 @@ for path in (input_path, output_path, checkpoint_path):
 # __row_level_fault_tolerance_config_example_start__
 # Row-level fault tolerance configuration
 config = vLLMEngineProcessorConfig(
-    model_source="unsloth/Llama-3.1-8B-Instruct",
+    model_source="Qwen/Qwen3.5-0.8B",
     concurrency=1,
     batch_size=64,
     should_continue_on_error=True,
 )
 # __row_level_fault_tolerance_config_example_end__
+
+# Seed the input directory because Ray Data V2's `read_parquet` errors on empty dirs
+ray.data.from_items(
+    [{"id": i, "message": f"Question {i}: What is 2 + 2?"} for i in range(4)]
+).write_parquet(input_path)
 
 # __checkpoint_config_setup_example_start__
 from ray.data.checkpoint import CheckpointConfig
@@ -160,7 +164,11 @@ ctx.checkpoint_config = CheckpointConfig(
 
 # __checkpoint_usage_example_start__
 processor_config = vLLMEngineProcessorConfig(
-    model_source="unsloth/Llama-3.1-8B-Instruct",
+    model_source="Qwen/Qwen3.5-0.8B",
+    engine_kwargs={
+        "max_num_batched_tokens": 4096,
+        "max_model_len": 4096,
+    },
     concurrency=1,
     batch_size=16,
 )
@@ -169,7 +177,7 @@ processor = build_processor(
     processor_config,
     preprocess=lambda row: dict(
         id=row["id"], # Preserve the ID column for checkpointing
-        prompt=row["prompt"],
+        messages=[{"role": "user", "content": row["message"]}],
         sampling_params=dict(
             temperature=0.3,
             max_tokens=10,
@@ -191,7 +199,7 @@ ds.write_parquet(output_path)
 # GPU memory management configuration
 # If you encounter CUDA out of memory errors, try these optimizations:
 config_memory_optimized = vLLMEngineProcessorConfig(
-    model_source="unsloth/Llama-3.1-8B-Instruct",
+    model_source="Qwen/Qwen3.5-0.8B",
     engine_kwargs={
         "max_model_len": 8192,
         "max_num_batched_tokens": 2048,
@@ -205,7 +213,7 @@ config_memory_optimized = vLLMEngineProcessorConfig(
 
 # For very large models or limited GPU memory:
 config_minimal_memory = vLLMEngineProcessorConfig(
-    model_source="unsloth/Llama-3.1-8B-Instruct",
+    model_source="Qwen/Qwen3.5-0.8B",
     engine_kwargs={
         "max_model_len": 4096,
         "max_num_batched_tokens": 1024,
@@ -296,8 +304,8 @@ from ray.serve.llm.openai_api_models import CompletionRequest
 
 llm_config = LLMConfig(
     model_loading_config=ModelLoadingConfig(
-        model_id="facebook/opt-1.3b",
-        model_source="facebook/opt-1.3b",
+        model_id="Qwen/Qwen3.5-0.8B",
+        model_source="Qwen/Qwen3.5-0.8B",
     ),
     deployment_config=dict(
         name="demo_deployment_config",
@@ -337,7 +345,7 @@ processor1 = build_processor(
         method="completions",
         dtype="CompletionRequest",
         request_kwargs=dict(
-            model="facebook/opt-1.3b",
+            model="Qwen/Qwen3.5-0.8B",
             prompt=f"This is a prompt for {row['id']}",
             stream=False,
         ),
@@ -353,7 +361,7 @@ processor2 = build_processor(
         method="completions",
         dtype="CompletionRequest",
         request_kwargs=dict(
-            model="facebook/opt-1.3b",
+            model="Qwen/Qwen3.5-0.8B",
             prompt=row["prompt"],
             stream=False,
         ),
@@ -368,7 +376,7 @@ print(ds.take_all())
 
 # __cross_node_parallelism_config_example_start__
 config = vLLMEngineProcessorConfig(
-    model_source="unsloth/Llama-3.1-8B-Instruct",
+    model_source="Qwen/Qwen3.5-0.8B",
     engine_kwargs={
         "enable_chunked_prefill": True,
         "max_num_batched_tokens": 4096,
@@ -383,8 +391,10 @@ config = vLLMEngineProcessorConfig(
 # __cross_node_parallelism_config_example_end__
 
 # __custom_placement_group_strategy_config_example_start__
+# Simple: specify resources per worker, auto-replicated by TP*PP (4 workers here)
+# Alternative: use "bundles": [{"GPU": 1}] * 4 for explicit bundle control
 config = vLLMEngineProcessorConfig(
-    model_source="unsloth/Llama-3.1-8B-Instruct",
+    model_source="Qwen/Qwen3.5-0.8B",
     engine_kwargs={
         "enable_chunked_prefill": True,
         "max_num_batched_tokens": 4096,
@@ -396,7 +406,7 @@ config = vLLMEngineProcessorConfig(
     batch_size=32,
     concurrency=1,
     placement_group_config={
-        "bundles": [{"GPU": 1}] * 4,
+        "bundle_per_worker": {"GPU": 1},
         "strategy": "STRICT_PACK",
     },
 )
@@ -404,7 +414,7 @@ config = vLLMEngineProcessorConfig(
 
 # __concurrent_config_example_start__
 config = vLLMEngineProcessorConfig(
-    model_source="unsloth/Llama-3.1-8B-Instruct",
+    model_source="Qwen/Qwen3.5-0.8B",
     engine_kwargs={
         "enable_chunked_prefill": True,
         "max_num_batched_tokens": 4096,
@@ -418,7 +428,7 @@ config = vLLMEngineProcessorConfig(
 
 # __concurrent_config_fixed_pool_example_start__
 config = vLLMEngineProcessorConfig(
-    model_source="unsloth/Llama-3.1-8B-Instruct",
+    model_source="Qwen/Qwen3.5-0.8B",
     engine_kwargs={
         "enable_chunked_prefill": True,
         "max_num_batched_tokens": 4096,
@@ -433,7 +443,7 @@ config = vLLMEngineProcessorConfig(
 # Tuning concurrent batch processing
 # Configure both parameters together for optimal throughput
 config = vLLMEngineProcessorConfig(
-    model_source="unsloth/Llama-3.1-8B-Instruct",
+    model_source="Qwen/Qwen3.5-0.8B",
     engine_kwargs={
         "enable_chunked_prefill": True,
         "max_num_batched_tokens": 4096,
@@ -445,7 +455,7 @@ config = vLLMEngineProcessorConfig(
     max_concurrent_batches=8,
     # Number of tasks Ray Data queues per actor (default: 16)
     # Increase to keep actor task queue saturated
-    experimental={"max_tasks_in_flight_per_actor": 16},
+    max_tasks_in_flight_per_actor=16,
 )
 # __concurrent_batches_tuning_example_end__
 # __basic_llm_example_end__

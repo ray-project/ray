@@ -31,33 +31,25 @@ class TuneReportCheckpointCallback(RayReportCallback):
             and returns a modified dict. For example, this can be used to
             average results across CV fold when using ``xgboost.cv``.
 
-    Examples
-    --------
+    Examples:
+        Reporting checkpoints and metrics to Ray Tune when running many
+        independent xgboost trials (without data parallelism within a trial).
 
-    Reporting checkpoints and metrics to Ray Tune when running many
-    independent xgboost trials (without data parallelism within a trial).
-
-    .. testcode::
-        :skipif: True
-
-        import xgboost
-
-        from ray.tune import Tuner
-        from ray.tune.integration.xgboost import TuneReportCheckpointCallback
-
-        def train_fn(config):
-            # Report log loss to Ray Tune after each validation epoch.
-            bst = xgboost.train(
-                ...,
-                callbacks=[
-                    TuneReportCheckpointCallback(
-                        metrics={"loss": "eval-logloss"}, frequency=1
-                    )
-                ],
-            )
-
-        tuner = Tuner(train_fn)
-        results = tuner.fit()
+        >>> import xgboost  # doctest: +SKIP_EXAMPLE
+        >>> from ray.tune import Tuner
+        >>> from ray.tune.integration.xgboost import TuneReportCheckpointCallback
+        >>> def train_fn(config):
+        ...     # Report log loss to Ray Tune after each validation epoch.
+        ...     bst = xgboost.train(
+        ...         ...,
+        ...         callbacks=[
+        ...             TuneReportCheckpointCallback(
+        ...                 metrics={"loss": "eval-logloss"}, frequency=1
+        ...             )
+        ...         ],
+        ...     )
+        >>> tuner = Tuner(train_fn)
+        >>> results = tuner.fit()
     """
 
     def __init__(

@@ -57,7 +57,8 @@ class Autoscaler:
         event_logger: Optional[AutoscalerEventLogger] = None,
         metrics_reporter: Optional[AutoscalerMetricsReporter] = None,
     ) -> None:
-        """
+        """Initialize the autoscaler.
+
         Args:
             session_name: The current Ray session name.
             config_reader: The config reader.
@@ -92,8 +93,7 @@ class Autoscaler:
     def _init_cloud_instance_provider(
         self, config: AutoscalingConfig, config_reader: IConfigReader
     ):
-        """
-        Initialize the cloud provider, and its dependencies (the v1 node provider)
+        """Initialize the cloud provider, and its dependencies (the v1 node provider)
 
         Args:
             config: The autoscaling config.
@@ -106,6 +106,7 @@ class Autoscaler:
             self._cloud_instance_provider = KubeRayProvider(
                 config.get_config("cluster_name"),
                 provider_config,
+                gcs_client=self._gcs_client,
             )
         elif config.provider == Provider.READ_ONLY:
             provider_config["gcs_address"] = self._gcs_client.address
@@ -130,16 +131,19 @@ class Autoscaler:
         gcs_client: GcsClient,
         config: AutoscalingConfig,
     ):
-        """
-        Initialize the instance manager, and its dependencies.
-        """
+        """Initialize the instance manager, and its dependencies."""
 
         instance_storage = InstanceStorage(
             cluster_id=session_name,
             storage=InMemoryStorage(),
         )
         subscribers: List[InstanceUpdatedSubscriber] = []
-        subscribers.append(CloudInstanceUpdater(cloud_provider=cloud_provider))
+        subscribers.append(
+            CloudInstanceUpdater(
+                cloud_provider=cloud_provider,
+                metrics_reporter=self._metrics_reporter,
+            )
+        )
         subscribers.append(
             RayStopper(gcs_client=gcs_client, error_queue=self._ray_stop_errors_queue)
         )

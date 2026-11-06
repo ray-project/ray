@@ -53,7 +53,7 @@ def compute_optimal_throughput(
     rates: Dict[T, float],
     resource_requirements: Dict[T, ExecutionResources],
     resource_limits: ExecutionResources,
-    concurrency_limits: Dict[T, int],
+    concurrency_limits: Dict[T, int | None],
 ) -> float:
     """Compute the optimal throughput for a pipeline.
 
@@ -111,11 +111,17 @@ def _max_throughput_from_resources(
 
 def _max_throughput_from_concurrency(
     rates: Dict[T, float],
-    concurrency_limits: Dict[T, int],
+    concurrency_limits: Dict[T, int | None],
 ) -> float:
     """Each operator's throughput is capped at rate * concurrency_limit."""
     assert rates, "Rates must be non-empty"
     assert (
         rates.keys() <= concurrency_limits.keys()
     ), "You must provide a concurrency limit for each operator with a rate."
-    return min(rates[op] * concurrency_limits[op] for op in rates)
+
+    # Convert `None` to float("inf") for operators with no concurrency limit
+    normalized_concurrency_limits: Dict[T, float] = {
+        op: limit if limit is not None else float("inf")
+        for op, limit in concurrency_limits.items()
+    }
+    return min(rates[op] * normalized_concurrency_limits[op] for op in rates)

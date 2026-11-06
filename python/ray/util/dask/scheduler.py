@@ -7,7 +7,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from multiprocessing.pool import ThreadPool
 from pprint import pprint
-from typing import Optional
+from typing import Any, Callable, List, Optional
 
 import dask
 from dask.core import ishashable, istask
@@ -43,8 +43,7 @@ def enable_dask_on_ray(
     shuffle: Optional[str] = "tasks",
     use_shuffle_optimization: Optional[bool] = True,
 ) -> dask.config.set:
-    """
-    Enable Dask-on-Ray scheduler. This helper sets the Dask-on-Ray scheduler
+    """Enable Dask-on-Ray scheduler. This helper sets the Dask-on-Ray scheduler
     as the default Dask scheduler in the Dask config. By default, it will also
     cause the task-based shuffle to be used for any Dask shuffle operations
     (required for multi-node Ray clusters, not sharing a filesystem), and will
@@ -84,15 +83,12 @@ def enable_dask_on_ray(
 
 
 def disable_dask_on_ray():
-    """
-    Unsets the scheduler, shuffle method, and DataFrame optimizer.
-    """
+    """Unsets the scheduler, shuffle method, and DataFrame optimizer."""
     return dask.config.set(scheduler=None, shuffle=None, dataframe_optimize=None)
 
 
-def ray_dask_get(dsk, keys, **kwargs):
-    """
-    A Dask-Ray scheduler. This scheduler will send top-level (non-inlined) Dask
+def ray_dask_get(dsk: Any, keys: List[str], **kwargs: Any):
+    """A Dask-Ray scheduler. This scheduler will send top-level (non-inlined) Dask
     tasks to a Ray cluster for execution. The scheduler will wait for the
     tasks to finish executing, fetch the results, and repackage them into the
     appropriate Dask collections. This particular scheduler uses a threadpool
@@ -116,13 +112,13 @@ def ray_dask_get(dsk, keys, **kwargs):
 
     Args:
         dsk: Dask graph, represented as a task DAG dictionary.
-        keys (List[str]): List of Dask graph keys whose values we wish to
+        keys: List of Dask graph keys whose values we wish to
             compute and return.
-        ray_callbacks (Optional[list[callable]]): Dask-Ray callbacks.
-        num_workers (Optional[int]): The number of worker threads to use in
-            the Ray task submission traversal of the Dask graph.
-        pool (Optional[ThreadPool]): A multiprocessing threadpool to use to
-            submit Ray tasks.
+        **kwargs: Optional scheduler overrides. Supported keys include
+            ``ray_callbacks`` (Dask-Ray callbacks), ``num_workers`` (number of
+            worker threads to use when traversing the Dask graph), and
+            ``pool`` (a multiprocessing threadpool to use to submit Ray
+            tasks).
 
     Returns:
         Computed values corresponding to the provided keys.
@@ -233,9 +229,13 @@ def ray_dask_get(dsk, keys, **kwargs):
     return result
 
 
-def _apply_async_wrapper(apply_async, real_func, *extra_args, **extra_kwargs):
-    """
-    Wraps the given pool `apply_async` function, hotswapping `real_func` in as
+def _apply_async_wrapper(
+    apply_async: Callable,
+    real_func: Callable,
+    *extra_args: Any,
+    **extra_kwargs: Any,
+):
+    """Wraps the given pool `apply_async` function, hotswapping `real_func` in as
     the function to be applied and adding `extra_args` and `extra_kwargs` to
     `real_func`'s call.
 
@@ -265,20 +265,19 @@ def _apply_async_wrapper(apply_async, real_func, *extra_args, **extra_kwargs):
 
 
 def _rayify_task_wrapper(
-    key,
-    task_info,
-    dumps,
-    loads,
-    get_id,
-    pack_exception,
-    ray_presubmit_cbs,
-    ray_postsubmit_cbs,
-    ray_pretask_cbs,
-    ray_posttask_cbs,
-    scoped_ray_remote_args,
+    key: Any,
+    task_info: Any,
+    dumps: Callable,
+    loads: Callable,
+    get_id: Callable,
+    pack_exception: Callable,
+    ray_presubmit_cbs: Optional[List[Callable]],
+    ray_postsubmit_cbs: Optional[List[Callable]],
+    ray_pretask_cbs: Optional[List[Callable]],
+    ray_posttask_cbs: Optional[List[Callable]],
+    scoped_ray_remote_args: dict,
 ):
-    """
-    The core Ray-Dask task execution wrapper, to be given to the thread pool's
+    """The core Ray-Dask task execution wrapper, to be given to the thread pool's
     `apply_async` function. Exactly the same as `execute_task`, except that it
     calls `_rayify_task` on the task instead of `_execute_task`.
 
@@ -322,17 +321,16 @@ def _rayify_task_wrapper(
 
 
 def _rayify_task(
-    task,
-    key,
-    deps,
-    ray_presubmit_cbs,
-    ray_postsubmit_cbs,
-    ray_pretask_cbs,
-    ray_posttask_cbs,
-    ray_remote_args,
+    task: Any,
+    key: Any,
+    deps: dict,
+    ray_presubmit_cbs: Optional[List[Callable]],
+    ray_postsubmit_cbs: Optional[List[Callable]],
+    ray_pretask_cbs: Optional[List[Callable]],
+    ray_posttask_cbs: Optional[List[Callable]],
+    ray_remote_args: dict,
 ):
-    """
-    Rayifies the given task, submitting it as a Ray task to the Ray cluster.
+    """Rayifies the given task, submitting it as a Ray task to the Ray cluster.
 
     Args:
         task: A Dask graph value, being either a literal, dependency
@@ -426,10 +424,14 @@ def _rayify_task(
 
 @ray.remote
 def dask_task_wrapper(
-    task, repack, key, ray_pretask_cbs, ray_posttask_cbs, *arg_object_refs
+    task: Any,
+    repack: Callable,
+    key: Any,
+    ray_pretask_cbs: Optional[List[Callable]],
+    ray_posttask_cbs: Optional[List[Callable]],
+    *arg_object_refs: ray.ObjectRef,
 ):
-    """
-    A Ray remote function acting as a Dask task wrapper. This function will
+    """A Ray remote function acting as a Dask task wrapper. This function will
     repackage the given `arg_object_refs` into its original `deps` using
     `repack`, and then pass it to the provided Dask Task object , `task`.
 
@@ -440,7 +442,7 @@ def dask_task_wrapper(
         key: The Dask key for this task.
         ray_pretask_cbs: Pre-task execution callbacks.
         ray_posttask_cbs: Post-task execution callback.
-        *arg_object_refs (ObjectRef): Ray object references representing the dependencies'
+        *arg_object_refs: Ray object references representing the dependencies'
             results.
 
     Returns:
@@ -513,14 +515,15 @@ def render_progress_bar(tracker, object_refs):
     pprint(ray.get(tracker.report.remote()))
 
 
-def ray_get_unpack(object_refs, progress_bar_actor=None):
-    """
-    Unpacks object references, gets the object references, and repacks.
+def ray_get_unpack(object_refs: Any, progress_bar_actor: Optional[Any] = None) -> Any:
+    """Unpacks object references, gets the object references, and repacks.
     Traverses arbitrary data structures.
 
     Args:
         object_refs: A (potentially nested) Python object containing Ray object
             references.
+        progress_bar_actor: An optional Ray actor used to render a progress bar
+            while waiting on the object references to resolve.
 
     Returns:
         The input Python object with all contained Ray object references
@@ -549,9 +552,8 @@ def ray_get_unpack(object_refs, progress_bar_actor=None):
         return get_result(object_refs)
 
 
-def ray_dask_get_sync(dsk, keys, **kwargs):
-    """
-    A synchronous Dask-Ray scheduler. This scheduler will send top-level
+def ray_dask_get_sync(dsk: Any, keys: List[str], **kwargs: Any):
+    """A synchronous Dask-Ray scheduler. This scheduler will send top-level
     (non-inlined) Dask tasks to a Ray cluster for execution. The scheduler will
     wait for the tasks to finish executing, fetch the results, and repackage
     them into the appropriate Dask collections. This particular scheduler
@@ -572,8 +574,10 @@ def ray_dask_get_sync(dsk, keys, **kwargs):
 
     Args:
         dsk: Dask graph, represented as a task DAG dictionary.
-        keys (List[str]): List of Dask graph keys whose values we wish to
+        keys: List of Dask graph keys whose values we wish to
             compute and return.
+        **kwargs: Optional scheduler overrides. Supported keys include
+            ``ray_callbacks`` (Dask-Ray callbacks).
 
     Returns:
         Computed values corresponding to the provided keys.

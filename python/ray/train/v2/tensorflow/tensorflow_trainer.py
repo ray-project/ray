@@ -40,96 +40,80 @@ class TensorflowTrainer(DataParallelTrainer):
         ``tf.config.threading.set_inter_op_parallelism_threads(num_cpus)``)
         at the beginning of your ``train_loop_per_worker`` function.
 
-
-    .. testcode::
-
-        from ray import train
-
-        def train_loop_per_worker():
-            # Report intermediate results for callbacks or logging and
-            # checkpoint data.
-            train.report(...)
-
-            # Returns dict of last saved checkpoint.
-            train.get_checkpoint()
-
-            # Returns the Dataset shard for the given key.
-            train.get_dataset_shard("my_dataset")
-
-            # Returns the total number of workers executing training.
-            train.get_context().get_world_size()
-
-            # Returns the rank of this worker.
-            train.get_context().get_world_rank()
-
-            # Returns the rank of the worker on the current node.
-            train.get_context().get_local_rank()
-
     Any returns from the ``train_loop_per_worker`` will be discarded and not
     used or persisted anywhere.
 
-    Example:
-
-    .. testcode::
-
-        import os
-        import tempfile
-        import tensorflow as tf
-
-        import ray
-        from ray import train
-        from ray.train import Checkpoint, ScalingConfig
-        from ray.train.tensorflow import TensorflowTrainer
-
-        def build_model():
-            # toy neural network : 1-layer
-            return tf.keras.Sequential(
-                [tf.keras.layers.Dense(
-                    1, activation="linear", input_shape=(1,))]
-            )
-
-        def train_loop_per_worker(config):
-            dataset_shard = train.get_dataset_shard("train")
-            strategy = tf.distribute.experimental.MultiWorkerMirroredStrategy()
-            with strategy.scope():
-                model = build_model()
-                model.compile(
-                    optimizer="Adam", loss="mean_squared_error", metrics=["mse"])
-
-            tf_dataset = dataset_shard.to_tf(
-                feature_columns="x",
-                label_columns="y",
-                batch_size=1
-            )
-            for epoch in range(config["num_epochs"]):
-                model.fit(tf_dataset)
-
-                # Create checkpoint.
-                checkpoint_dir = tempfile.mkdtemp()
-                model.save_weights(
-                    os.path.join(checkpoint_dir, "my_checkpoint")
-                )
-                checkpoint = Checkpoint.from_directory(checkpoint_dir)
-
-                train.report(
-                    {},
-                    checkpoint=checkpoint,
-                )
-
-        train_dataset = ray.data.from_items([{"x": x, "y": x + 1} for x in range(32)])
-        trainer = TensorflowTrainer(
-            train_loop_per_worker=train_loop_per_worker,
-            scaling_config=ScalingConfig(num_workers=3, use_gpu=False),
-            datasets={"train": train_dataset},
-            train_loop_config={"num_epochs": 2},
-        )
-        result = trainer.fit()
-
-    .. testoutput::
-        :options:+ELLIPSIS
-        :hide:
-
+    Examples:
+        >>> from ray import train
+        >>> def train_loop_per_worker():
+        ...     # Report intermediate results for callbacks or logging and
+        ...     # checkpoint data.
+        ...     train.report(...)
         ...
+        ...     # Returns the last saved checkpoint, or None.
+        ...     train.get_checkpoint()
+        ...
+        ...     # Returns the Dataset shard for the given key.
+        ...     train.get_dataset_shard("my_dataset")
+        ...
+        ...     # Returns the total number of workers executing training.
+        ...     train.get_context().get_world_size()
+        ...
+        ...     # Returns the rank of this worker.
+        ...     train.get_context().get_world_rank()
+        ...
+        ...     # Returns the rank of the worker on the current node.
+        ...     train.get_context().get_local_rank()
+
+        >>> import os
+        >>> import tempfile
+        >>> import tensorflow as tf
+        >>> import ray
+        >>> from ray import train
+        >>> from ray.train import Checkpoint, ScalingConfig
+        >>> from ray.train.tensorflow import TensorflowTrainer
+        >>> def build_model():
+        ...     # toy neural network : 1-layer
+        ...     return tf.keras.Sequential(
+        ...         [tf.keras.layers.Dense(
+        ...             1, activation="linear", input_shape=(1,))]
+        ...     )
+        >>> def train_loop_per_worker(config):
+        ...     dataset_shard = train.get_dataset_shard("train")
+        ...     strategy = tf.distribute.experimental.MultiWorkerMirroredStrategy()
+        ...     with strategy.scope():
+        ...         model = build_model()
+        ...         model.compile(
+        ...             optimizer="Adam", loss="mean_squared_error", metrics=["mse"])
+        ...
+        ...     tf_dataset = dataset_shard.to_tf(
+        ...         feature_columns="x",
+        ...         label_columns="y",
+        ...         batch_size=1,
+        ...     )
+        ...     for epoch in range(config["num_epochs"]):
+        ...         model.fit(tf_dataset)
+        ...
+        ...         # Create checkpoint.
+        ...         checkpoint_dir = tempfile.mkdtemp()
+        ...         model.save_weights(
+        ...             os.path.join(checkpoint_dir, "my_checkpoint")
+        ...         )
+        ...         checkpoint = Checkpoint.from_directory(checkpoint_dir)
+        ...
+        ...         train.report(
+        ...             {},
+        ...             checkpoint=checkpoint,
+        ...         )
+        >>> train_dataset = ray.data.from_items([{"x": x, "y": x + 1} for x in range(32)])
+        >>> trainer = TensorflowTrainer(
+        ...     train_loop_per_worker=train_loop_per_worker,
+        ...     scaling_config=ScalingConfig(num_workers=3, use_gpu=False),
+        ...     datasets={"train": train_dataset},
+        ...     train_loop_config={"num_epochs": 2},
+        ... )
+        >>> print("[ignore]"); result = trainer.fit()  # doctest: +ELLIPSIS
+        [ignore]...
 
     Args:
         train_loop_per_worker: The training function to execute on each worker.
@@ -149,6 +133,9 @@ class TensorflowTrainer(DataParallelTrainer):
             ``num_workers`` determines how many Python processes are used for training,
             and ``use_gpu`` determines whether or not each process should use GPUs.
             See :class:`~ray.train.ScalingConfig` for more info.
+        dataset_config: The configuration for ingesting the input ``datasets``.
+            By default, all the Ray Datasets are split equally across workers.
+            See :class:`~ray.train.DataConfig` for more details.
         run_config: The configuration for the execution of the training run.
             See :class:`~ray.train.RunConfig` for more info.
         datasets: The Ray Datasets to ingest for training.
@@ -161,13 +148,13 @@ class TensorflowTrainer(DataParallelTrainer):
             If provided and ``ray.train.report`` is called with the ``validation``
             argument, Ray Train will validate the reported checkpoint using
             the validation function specified in this config.
-        resume_from_checkpoint: [Deprecated]
         metadata: [Deprecated]
+        resume_from_checkpoint: [Deprecated]
     """
 
     def __init__(
         self,
-        train_loop_per_worker: Union[Callable[[], None], Callable[[Dict], None]],
+        train_loop_per_worker: Union[Callable[[], Any], Callable[[Dict], Any]],
         *,
         train_loop_config: Optional[Dict] = None,
         tensorflow_config: Optional["TensorflowConfig"] = None,

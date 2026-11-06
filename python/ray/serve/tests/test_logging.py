@@ -1,3 +1,4 @@
+import builtins
 import io
 import json
 import logging
@@ -155,7 +156,7 @@ def test_http_access_log_in_stderr(serve_instance, log_format):
                 [
                     name in s,
                     _get_expected_replica_log_content(replica_id) in s,
-                    f"-- {method} {route} {status_code}" in s,
+                    f"{method} {route} {status_code}" in s,
                     "ms" in s,
                     ("OOPS!" in s and "RuntimeError" in s)
                     if fail
@@ -355,7 +356,7 @@ def test_http_access_log_in_logs_file(serve_instance, log_format):
                     [
                         name in line,
                         f"default_{name} {replica_id}" in line,
-                        f"-- {call_info['method']} {call_info['expected_route']} {call_info['expected_status']}"
+                        f"{call_info['method']} {call_info['expected_route']} {call_info['expected_status']}"
                         in line,
                         "ms" in line,
                     ]
@@ -1153,7 +1154,7 @@ def test_configure_component_logger_with_log_encoding_env_text(log_encoding):
     "ray_instance, expect_client_ip",
     [
         ({"RAY_SERVE_LOG_CLIENT_ADDRESS": "1"}, True),
-        ({}, False),
+        ({"RAY_SERVE_LOG_CLIENT_ADDRESS": "0"}, False),
     ],
     indirect=["ray_instance"],
 )
@@ -1193,10 +1194,6 @@ def test_http_access_log_client_address(
         wait_for_condition(check_log, timeout=20)
 
 
-@pytest.mark.skipif(
-    os.environ.get("RAY_SERVE_ENABLE_HA_PROXY", "0") == "1",
-    reason="gRPC not supported for HAProxy.",
-)
 @pytest.mark.parametrize(
     "ray_instance",
     [
@@ -1507,6 +1504,36 @@ def test_request_id_uniqueness_with_buffering(serve_and_ray_shutdown, ray_instan
         return True
 
     wait_for_condition(check_logs)
+
+
+def test_redirected_print_file_fallback_preserves_print_semantics():
+    """The file fallback must behave like the builtin print.
+
+    With RAY_SERVE_LOG_TO_STDERR=0, print is replaced by redirected_print in
+    every replica. Anything that writes with print(..., file=f) — including
+    logging.Formatter.formatException, which formats tracebacks through
+    print(..., file=StringIO()) — must still receive the unpacked arguments.
+    """
+    buf = io.StringIO()
+    redirected_print("hello", "world", file=buf)
+    assert buf.getvalue() == "hello world\n"
+
+    original_print = builtins.print
+    builtins.print = redirected_print
+    try:
+        try:
+            raise ZeroDivisionError("division by zero")
+        except ZeroDivisionError as exc:
+            text = logging.Formatter().formatException(
+                (type(exc), exc, exc.__traceback__)
+            )
+    finally:
+        builtins.print = original_print
+
+    # startswith, not `in`: when the fallback garbles the traceback into a
+    # tuple repr, both strings still appear somewhere in the text.
+    assert text.startswith("Traceback (most recent call last):")
+    assert "ZeroDivisionError: division by zero" in text
 
 
 if __name__ == "__main__":

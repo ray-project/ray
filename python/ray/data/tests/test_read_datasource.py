@@ -14,6 +14,7 @@ from ray.data.context import DataContext
 from ray.data.datasource import Datasource, ReadTask
 from ray.data.tests.conftest import *  # noqa
 from ray.tests.conftest import *  # noqa
+from ray.util.annotations import RayDeprecationWarning
 
 if TYPE_CHECKING:
     from ray.actor import ActorHandle
@@ -115,6 +116,27 @@ class TestDatasource(Datasource):
         return read_tasks
 
 
+def test_read_datasource_ray_remote_args_deprecation_warning(shutdown_only):
+    with pytest.warns(
+        RayDeprecationWarning, match="`ray_remote_args` is deprecated"
+    ) as warning_records:
+        ray.data.read_datasource(
+            RangeDatasource(n=1),
+            ray_remote_args={"scheduling_strategy": "SPREAD"},
+        )
+
+    warning_records = [
+        warning
+        for warning in warning_records
+        if "`ray_remote_args` is deprecated" in str(warning.message)
+    ]
+
+    # The deprecated argument should produce exactly one warning.
+    assert len(warning_records) == 1
+    # The warning should point to the public API caller, not Ray Data internals.
+    assert warning_records[0].filename == __file__
+
+
 @pytest.mark.parametrize(
     "concurrency,compute,expected_strategy_type",
     [
@@ -149,7 +171,7 @@ def test_read_datasource_compute_strategy(
     )
 
     # Get the logical plan to inspect the compute strategy on the logical operator
-    logical_plan = ds._plan._logical_plan
+    logical_plan = ds._logical_plan
     read_op = find_read_op(logical_plan.dag)
 
     # Verify the compute strategy type on the logical operator

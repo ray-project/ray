@@ -20,7 +20,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 # TODO(barakmich): Running a logger in a logger causes loopback.
 # The client logger need its own root -- possibly this one.
-# For the moment, let's just not propogate beyond this point.
+# For the moment, let's just not propagate beyond this point.
 logger.propagate = False
 
 
@@ -74,8 +74,7 @@ class LogstreamClient:
                     return
 
     def _process_rpc_error(self, e: grpc.RpcError) -> bool:
-        """
-        Processes RPC errors that occur while reading from data stream.
+        """Processes RPC errors that occur while reading from data stream.
         Returns True if the error can be recovered from, False otherwise.
         """
         if self.client_worker._can_reconnect(e):

@@ -5,17 +5,21 @@ ray_cc_library(
     hdrs = [
         "postable.h",
     ],
-    visibility = ["//src/ray/gcs:__subpackages__"],
+    visibility = [
+        ":__subpackages__",
+        "//src/ray/gcs:__pkg__",
+        "//src/ray/gcs/store_client:__pkg__",
+    ],
     deps = [
         ":function_traits",
-        "//src/ray/common:asio",
+        "//src/ray/asio:instrumented_io_context",
     ],
 )
 
 ray_cc_library(
     name = "function_traits",
     hdrs = ["function_traits.h"],
-    visibility = ["//src/ray/gcs/postable:__subpackages__"],
+    visibility = [":__subpackages__"],
     deps = [
         "@boost//:functional",
     ],

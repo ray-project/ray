@@ -65,8 +65,8 @@ gcp_gpu_instances = {
     "n1-standard-16-nvidia-tesla-t4-1": (16, 1),
     "n1-standard-64-nvidia-tesla-t4-4": (64, 4),
     "n1-standard-32-nvidia-tesla-t4-2": (32, 2),
-    "n1-highmem-64-nvidia-tesla-v100-8": {64, 8},
-    "n1-highmem-96-nvidia-tesla-v100-8": {96, 8},
+    "n1-highmem-64-nvidia-tesla-v100-8": (64, 8),
+    "n1-highmem-96-nvidia-tesla-v100-8": (96, 8),
 }
 
 
@@ -101,6 +101,12 @@ def parse_condition(cond: int, limit: float = float("inf")) -> float:
 
 
 def get_concurrency_group(test: Test) -> Tuple[str, int]:
+    if (
+        test.get("working_dir", "").startswith("llm_tests/")
+        or test.get("group") == "llm-doc"
+    ):
+        return "llm-h100", 4
+
     if test.get("env", None) == "gce":
         concurrent_group = gce_gpu_cpu_to_concurrent_groups
     else:
@@ -131,20 +137,35 @@ def get_concurrency_group(test: Test) -> Tuple[str, int]:
 
 def get_test_resources(test: Test) -> Tuple[int, int]:
     cluster_compute = load_test_cluster_compute(test)
-    return get_test_resources_from_cluster_compute(cluster_compute)
+    return get_test_resources_from_cluster_compute(
+        cluster_compute, is_new_schema=test.uses_anyscale_sdk_2026()
+    )
 
 
-def get_test_resources_from_cluster_compute(cluster_compute: Dict) -> Tuple[int, int]:
+def get_test_resources_from_cluster_compute(
+    cluster_compute: Dict, is_new_schema: bool = False
+) -> Tuple[int, int]:
     instances = []
 
-    # Add head node instance
-    instances.append((cluster_compute["head_node_type"]["instance_type"], 1))
+    if is_new_schema:
+        # New schema: head_node, worker_nodes, min_nodes/max_nodes
+        head_node = cluster_compute.get("head_node", {})
+        if head_node.get("instance_type"):
+            instances.append((head_node["instance_type"], 1))
 
-    # Add worker node instances
-    instances.extend(
-        (w["instance_type"], w.get("max_workers", w.get("min_workers", 1)))
-        for w in cluster_compute["worker_node_types"]
-    )
+        for w in cluster_compute.get("worker_nodes", []):
+            if w.get("instance_type"):
+                instances.append(
+                    (w["instance_type"], w.get("max_nodes", w.get("min_nodes", 1)))
+                )
+    else:
+        # Legacy schema: head_node_type, worker_node_types, min_workers/max_workers
+        instances.append((cluster_compute["head_node_type"]["instance_type"], 1))
+
+        instances.extend(
+            (w["instance_type"], w.get("max_workers", w.get("min_workers", 1)))
+            for w in cluster_compute["worker_node_types"]
+        )
 
     aws_instance_types = load_instance_types()
     total_cpus = 0

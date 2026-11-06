@@ -20,7 +20,7 @@ namespace ray {
 
 namespace raylet_scheduling_policy {
 
-scheduling::NodeID CompositeSchedulingPolicy::Schedule(
+NodeSchedulingResult CompositeSchedulingPolicy::Schedule(
     const ResourceRequest &resource_request, SchedulingOptions options) {
   switch (options.scheduling_type_) {
   case SchedulingType::SPREAD:
@@ -31,8 +31,6 @@ scheduling::NodeID CompositeSchedulingPolicy::Schedule(
     return hybrid_policy_.Schedule(resource_request, options);
   case SchedulingType::NODE_AFFINITY:
     return node_affinity_policy_.Schedule(resource_request, options);
-  case SchedulingType::AFFINITY_WITH_BUNDLE:
-    return affinity_with_bundle_policy_.Schedule(resource_request, options);
   case SchedulingType::NODE_LABEL:
     return node_label_scheduling_policy_.Schedule(resource_request, options);
   default:
@@ -45,16 +43,40 @@ scheduling::NodeID CompositeSchedulingPolicy::Schedule(
 
 SchedulingResult CompositeBundleSchedulingPolicy::Schedule(
     const std::vector<const ResourceRequest *> &resource_request_list,
-    SchedulingOptions options) {
+    SchedulingOptions options,
+    absl::flat_hash_set<scheduling::NodeID> candidate_nodes) {
+  if (options.topology_scheduling_strategy_ != TopologySchedulingStrategy::NONE) {
+    NodeScheduleFn node_schedule_fn =
+        [this](const std::vector<const ResourceRequest *> &reqs,
+               SchedulingOptions opts,
+               absl::flat_hash_set<scheduling::NodeID> nodes) {
+          opts.topology_scheduling_strategy_ = TopologySchedulingStrategy::NONE;
+          return this->Schedule(reqs, std::move(opts), std::move(nodes));
+        };
+    switch (options.topology_scheduling_strategy_) {
+    case TopologySchedulingStrategy::STRICT_PACK:
+      return topology_strict_pack_policy_.Schedule(
+          resource_request_list, options, std::move(candidate_nodes), node_schedule_fn);
+    default:
+      RAY_LOG(FATAL) << "Unsupported topology scheduling strategy: "
+                     << static_cast<int>(options.topology_scheduling_strategy_);
+    }
+    UNREACHABLE;
+  }
+
   switch (options.scheduling_type_) {
   case SchedulingType::BUNDLE_PACK:
-    return bundle_pack_policy_.Schedule(resource_request_list, options);
+    return bundle_pack_policy_.Schedule(
+        resource_request_list, options, std::move(candidate_nodes));
   case SchedulingType::BUNDLE_SPREAD:
-    return bundle_spread_policy_.Schedule(resource_request_list, options);
+    return bundle_spread_policy_.Schedule(
+        resource_request_list, options, std::move(candidate_nodes));
   case SchedulingType::BUNDLE_STRICT_PACK:
-    return bundle_strict_pack_policy_.Schedule(resource_request_list, options);
+    return bundle_strict_pack_policy_.Schedule(
+        resource_request_list, options, std::move(candidate_nodes));
   case SchedulingType::BUNDLE_STRICT_SPREAD:
-    return bundle_strict_spread_policy_.Schedule(resource_request_list, options);
+    return bundle_strict_spread_policy_.Schedule(
+        resource_request_list, options, std::move(candidate_nodes));
   default:
     RAY_LOG(FATAL) << "Unsupported scheduling type: "
                    << static_cast<typename std::underlying_type<SchedulingType>::type>(

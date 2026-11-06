@@ -1,4 +1,3 @@
-import json
 import logging
 import sys
 from threading import RLock
@@ -56,6 +55,7 @@ class SparkNodeProvider(NodeProvider):
         self.ray_head_port = self.provider_config["ray_head_port"]
         # The unique id for the Ray on spark cluster.
         self.cluster_id = self.provider_config["cluster_unique_id"]
+        self._refresh_nodes()
 
     def get_next_node_id(self):
         with self.lock:
@@ -64,62 +64,49 @@ class SparkNodeProvider(NodeProvider):
 
     def non_terminated_nodes(self, tag_filters):
         with self.lock:
+            self._refresh_nodes()
             nodes = []
-
-            died_nodes = []
             for node_id in self._nodes:
-                if node_id == str(HEAD_NODE_ID):
-                    status = "running"
-                else:
-                    status = self._query_node_status(node_id)
-
-                if status == "running":
-                    if (
-                        self._nodes[node_id]["tags"][TAG_RAY_NODE_STATUS]
-                        == STATUS_SETTING_UP
-                    ):
-                        self._nodes[node_id]["tags"][
-                            TAG_RAY_NODE_STATUS
-                        ] = STATUS_UP_TO_DATE
-                        logger.info(
-                            f"Spark node provider node {node_id} starts running."
-                        )
-
-                if status == "terminated":
-                    died_nodes.append(node_id)
-                else:
-                    tags = self.node_tags(node_id)
-                    ok = True
-                    for k, v in tag_filters.items():
-                        if tags.get(k) != v:
-                            ok = False
-                    if ok:
-                        nodes.append(node_id)
-
-            for died_node_id in died_nodes:
-                self._nodes.pop(died_node_id)
+                tags = self.node_tags(node_id)
+                if all(tags.get(k) == v for k, v in tag_filters.items()):
+                    nodes.append(node_id)
 
             return nodes
 
-    def _query_node_status(self, node_id):
-        spark_job_group_id = self._gen_spark_job_group_id(node_id)
-
+    def _refresh_nodes(self):
         response = requests.post(
-            url=self.spark_job_server_url + "/query_task_status",
-            json={"spark_job_group_id": spark_job_group_id},
+            url=self.spark_job_server_url + "/query_nodes",
+            json={},
         )
         response.raise_for_status()
+        result = response.json()
 
-        decoded_resp = response.content.decode("utf-8")
-        json_res = json.loads(decoded_resp)
-        return json_res["status"]
+        nodes = {
+            str(HEAD_NODE_ID): {
+                "status": "running",
+                "tags": {
+                    TAG_RAY_NODE_KIND: NODE_KIND_HEAD,
+                    TAG_RAY_USER_NODE_TYPE: HEAD_NODE_TYPE,
+                    TAG_RAY_NODE_NAME: HEAD_NODE_ID,
+                    TAG_RAY_NODE_STATUS: STATUS_UP_TO_DATE,
+                },
+            }
+        }
+        for node in result["nodes"]:
+            node_id = str(node["node_id"])
+            tags = node["tags"]
+            tags[TAG_RAY_NODE_STATUS] = (
+                STATUS_UP_TO_DATE if node["status"] == "running" else STATUS_SETTING_UP
+            )
+            nodes[node_id] = {"status": node["status"], "tags": tags}
+
+        self._nodes = nodes
+        self._next_node_id = max(self._next_node_id, result["max_node_id"])
 
     def is_running(self, node_id):
         with self.lock:
             return (
-                node_id in self._nodes
-                and self._nodes[node_id]["tags"][TAG_RAY_NODE_STATUS]
-                == STATUS_UP_TO_DATE
+                node_id in self._nodes and self._nodes[node_id]["status"] == "running"
             )
 
     def is_terminated(self, node_id):
@@ -140,8 +127,15 @@ class SparkNodeProvider(NodeProvider):
         return self._get_ip(node_id)
 
     def set_node_tags(self, node_id, tags):
-        assert node_id in self._nodes
-        self._nodes[node_id]["tags"].update(tags)
+        with self.lock:
+            assert node_id in self._nodes
+            self._nodes[node_id]["tags"].update(tags)
+            if node_id != str(HEAD_NODE_ID):
+                response = requests.post(
+                    url=self.spark_job_server_url + "/set_node_tags",
+                    json={"node_id": node_id, "tags": tags},
+                )
+                response.raise_for_status()
 
     def create_node(
         self, node_config: Dict[str, Any], tags: Dict[str, str], count: int
@@ -186,30 +180,42 @@ class SparkNodeProvider(NodeProvider):
             conf["worker_node_options"] = _append_resources_config(
                 conf["worker_node_options"], resources
             )
-            response = requests.post(
-                url=self.spark_job_server_url + "/create_node",
-                json={
-                    "spark_job_group_id": self._gen_spark_job_group_id(node_id),
-                    "spark_job_group_desc": (
-                        "This job group is for spark job which runs the Ray "
-                        f"cluster worker node {node_id} connecting to ray "
-                        f"head node {build_address(self.ray_head_ip, self.ray_head_port)}"
-                    ),
-                    "using_stage_scheduling": conf["using_stage_scheduling"],
-                    "ray_head_ip": self.ray_head_ip,
-                    "ray_head_port": self.ray_head_port,
-                    "ray_temp_dir": conf["ray_temp_dir"],
-                    "num_cpus_per_node": num_cpus_per_node,
-                    "num_gpus_per_node": num_gpus_per_node,
-                    "heap_memory_per_node": heap_memory_per_node,
-                    "object_store_memory_per_node": object_store_memory_per_node,
-                    "worker_node_options": conf["worker_node_options"],
-                    "collect_log_to_path": conf["collect_log_to_path"],
-                    "node_id": resources["NODE_ID_AS_RESOURCE"],
-                },
+
+            node_tags = tags.copy()
+            node_tags.update(
+                {
+                    TAG_RAY_NODE_KIND: NODE_KIND_WORKER,
+                    TAG_RAY_USER_NODE_TYPE: node_type,
+                    TAG_RAY_NODE_NAME: node_id,
+                    TAG_RAY_NODE_STATUS: STATUS_SETTING_UP,
+                }
             )
 
             try:
+                response = requests.post(
+                    url=self.spark_job_server_url + "/create_node",
+                    json={
+                        "spark_job_group_id": self._gen_spark_job_group_id(node_id),
+                        "spark_job_group_desc": (
+                            "This job group is for spark job which runs the Ray "
+                            f"cluster worker node {node_id} connecting to ray head "
+                            f"node {build_address(self.ray_head_ip, self.ray_head_port)}"
+                        ),
+                        "using_stage_scheduling": conf["using_stage_scheduling"],
+                        "ray_head_ip": self.ray_head_ip,
+                        "ray_head_port": self.ray_head_port,
+                        "ray_temp_dir": conf["ray_temp_dir"],
+                        "num_cpus_per_node": num_cpus_per_node,
+                        "num_gpus_per_node": num_gpus_per_node,
+                        "heap_memory_per_node": heap_memory_per_node,
+                        "object_store_memory_per_node": object_store_memory_per_node,
+                        "worker_node_options": conf["worker_node_options"],
+                        "collect_log_to_path": conf["collect_log_to_path"],
+                        "node_id": resources["NODE_ID_AS_RESOURCE"],
+                        "node_type": node_type,
+                        "tags": node_tags,
+                    },
+                )
                 # Spark job server is locally launched, if spark job server request
                 # failed, it is unlikely network error but probably unrecoverable
                 # error, so we make it fast-fail.
@@ -221,21 +227,17 @@ class SparkNodeProvider(NodeProvider):
                     sys.exc_info(),
                 )
 
-            self._nodes[node_id] = {
-                "tags": {
-                    TAG_RAY_NODE_KIND: NODE_KIND_WORKER,
-                    TAG_RAY_USER_NODE_TYPE: node_type,
-                    TAG_RAY_NODE_NAME: node_id,
-                    TAG_RAY_NODE_STATUS: STATUS_SETTING_UP,
-                },
-            }
+            self._nodes[node_id] = {"status": "pending", "tags": node_tags}
             logger.info(f"Spark node provider creates node {node_id}.")
 
     def terminate_node(self, node_id):
-        if node_id in self._nodes:
+        if node_id != str(HEAD_NODE_ID):
             response = requests.post(
                 url=self.spark_job_server_url + "/terminate_node",
-                json={"spark_job_group_id": self._gen_spark_job_group_id(node_id)},
+                json={
+                    "node_id": node_id,
+                    "spark_job_group_id": self._gen_spark_job_group_id(node_id),
+                },
             )
             response.raise_for_status()
 

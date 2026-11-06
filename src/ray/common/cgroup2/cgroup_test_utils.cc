@@ -297,7 +297,7 @@ TempFile::~TempFile() {
 }
 
 void TempFile::AppendLine(const std::string &line) {
-  file_output_stream_ << line;
+  file_output_stream_ << line << std::endl;
   file_output_stream_.flush();
   // All current callers treat this is as a fatal error so this is a RAY_CHECK
   // instead of returning a Status.

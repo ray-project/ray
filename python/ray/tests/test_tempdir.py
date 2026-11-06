@@ -53,7 +53,7 @@ def test_tempdir_created_successfully(delete_default_temp_dir, shutdown_only):
     shutil.rmtree(temp_dir, ignore_errors=True)
 
 
-def test_tempdir_commandline(delete_default_temp_dir):
+def test_tempdir_commandline(delete_default_temp_dir, create_auth_token):
     temp_dir = os.path.join(
         "/tmp/test", uuid.uuid4().hex[:-10]
     )  # truncate the uuid to avoid the socket path length limit
@@ -194,6 +194,8 @@ def test_head_temp_dir_shared_with_worker(ray_start_cluster):
         "Worker node default temp dir resolution logic maybe wrong."
     )
 
+    ray.shutdown()
+    cluster.shutdown()
     shutil.rmtree(head_temp_dir)
 
 
@@ -228,6 +230,8 @@ def test_worker_temp_dir_different_from_head(ray_start_cluster):
         worker_temp_dir != default_head_temp_dir
     ), "Worker temp_dir should be different from head node's default temp_dir"
 
+    ray.shutdown()
+    cluster.shutdown()
     shutil.rmtree(worker_temp_dir)
     shutil.rmtree(default_head_temp_dir)
 
@@ -273,6 +277,8 @@ def test_both_nodes_different_temp_dirs(ray_start_cluster):
     assert os.path.exists(head_temp_dir), "Head temp_dir should exist"
     assert os.path.exists(worker_temp_dir), "Worker temp_dir should exist"
 
+    ray.shutdown()
+    cluster.shutdown()
     shutil.rmtree(head_temp_dir)
     shutil.rmtree(worker_temp_dir)
 

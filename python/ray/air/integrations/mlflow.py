@@ -141,6 +141,9 @@ def setup_mlflow(
                 mlflow.autolog()
                 xgboost_results = xgb.train(config, ...)
 
+    Returns:
+        The ``mlflow`` module, or a noop module for non-rank-zero workers when
+        ``rank_zero_only`` is True.
     """
     if not mlflow:
         raise RuntimeError(

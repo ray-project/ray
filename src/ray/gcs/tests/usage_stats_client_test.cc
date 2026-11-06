@@ -19,8 +19,8 @@
 #include <memory>
 #include <string>
 
-#include "mock/ray/gcs/gcs_kv_manager.h"
-#include "ray/common/asio/asio_util.h"
+#include "ray/asio/asio_util.h"
+#include "ray/gcs/fake_gcs_kv_manager.h"
 #include "ray/gcs/gcs_kv_manager.h"
 
 using namespace ray;  // NOLINT
@@ -28,7 +28,7 @@ using namespace ray;  // NOLINT
 class UsageStatsClientTest : public ::testing::Test {
  protected:
   void SetUp() override {
-    fake_kv_ = std::make_unique<gcs::FakeInternalKVInterface>();
+    fake_kv_ = std::make_unique<gcs::FakeInternalKV>();
     io_context_ =
         std::make_unique<InstrumentedIOContextWithThread>("UsageStatsClientTest");
   }
@@ -36,7 +36,7 @@ class UsageStatsClientTest : public ::testing::Test {
     io_context_.reset();
     fake_kv_.reset();
   }
-  std::unique_ptr<gcs::FakeInternalKVInterface> fake_kv_;
+  std::unique_ptr<gcs::FakeInternalKV> fake_kv_;
   std::unique_ptr<InstrumentedIOContextWithThread> io_context_;
 };
 
@@ -50,7 +50,7 @@ TEST_F(UsageStatsClientTest, TestRecordExtraUsageTag) {
                    ASSERT_EQ(value.value(), "value1");
                  },
                  io_context_->GetIoService()});
-  // Make sure the value is overriden for the same key.
+  // Make sure the value is overridden for the same key.
   usage_stats_client.RecordExtraUsageTag(usage::TagKey::_TEST2, "value2");
   fake_kv_->Get("usage_stats",
                 "extra_usage_tag__test2",

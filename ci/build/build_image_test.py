@@ -36,8 +36,8 @@ class TestRayImageName(unittest.TestCase):
         self.assertEqual(ri.wanda_image_name, "ray-extra-py3.10-cpu")
 
     def test_ray_llm_cuda(self):
-        ri = RayImage("ray-llm", "3.11", "cu12.8.1-cudnn")
-        self.assertEqual(ri.wanda_image_name, "ray-llm-py3.11-cu12.8.1-cudnn")
+        ri = RayImage("ray-llm", "3.12", "cu13.0.0-cudnn")
+        self.assertEqual(ri.wanda_image_name, "ray-llm-py3.12-cu13.0.0-cudnn")
 
     def test_aarch64_suffix(self):
         ri = RayImage("ray", "3.10", "cpu", "aarch64")
@@ -56,7 +56,7 @@ class TestRayImageValidation(unittest.TestCase):
 
     def test_invalid_python(self):
         with self.assertRaises(RayImageError):
-            RayImage("ray-llm", "3.10", "cu12.8.1-cudnn").validate()
+            RayImage("ray-llm", "3.10", "cu13.0.0-cudnn").validate()
 
     def test_invalid_platform(self):
         with self.assertRaises(RayImageError):
@@ -64,7 +64,7 @@ class TestRayImageValidation(unittest.TestCase):
 
     def test_invalid_architecture(self):
         with self.assertRaises(RayImageError):
-            RayImage("ray-llm", "3.11", "cu12.8.1-cudnn", "aarch64").validate()
+            RayImage("ray-llm", "3.12", "cu13.0.0-cudnn", "invalid").validate()
 
 
 class TestGetWandaSpecPath(unittest.TestCase):
@@ -98,13 +98,13 @@ class TestGetWandaSpecPath(unittest.TestCase):
 
     def test_ray_llm_cuda(self):
         self.assertEqual(
-            self._spec("ray-llm", "cu12.8.1-cudnn"),
+            self._spec("ray-llm", "cu13.0.0-cudnn"),
             "ci/docker/ray-llm-image-cuda.wanda.yaml",
         )
 
     def test_ray_llm_extra_cuda(self):
         self.assertEqual(
-            self._spec("ray-llm-extra", "cu12.8.1-cudnn"),
+            self._spec("ray-llm-extra", "cu13.0.0-cudnn"),
             "ci/docker/ray-llm-extra-image-cuda.wanda.yaml",
         )
 
@@ -141,7 +141,7 @@ class TestValidation(unittest.TestCase):
             ),
         ):
             with self.assertRaises(BuildError):
-                ImageBuildConfig.from_args("ray-llm", "3.10", "cu12.8.1-cudnn")
+                ImageBuildConfig.from_args("ray-llm", "3.10", "cu13.0.0-cudnn")
 
 
 def _config(**kwargs):
@@ -217,9 +217,9 @@ class TestConfigWandaImageTag(unittest.TestCase):
 
     def test_ray_llm_cuda(self):
         c = _config(
-            image_type="ray-llm", python_version="3.11", platform="cu12.8.1-cudnn"
+            image_type="ray-llm", python_version="3.12", platform="cu13.0.0-cudnn"
         )
-        self.assertEqual(c.ray_image.wanda_image_name, "ray-llm-py3.11-cu12.8.1-cudnn")
+        self.assertEqual(c.ray_image.wanda_image_name, "ray-llm-py3.12-cu13.0.0-cudnn")
 
     def test_aarch64_suffix(self):
         c = _config(architecture="aarch64")
@@ -239,15 +239,15 @@ class TestConfigNightlyAlias(unittest.TestCase):
 
     def test_ray_llm_default_has_nightly(self):
         c = _config(
-            image_type="ray-llm", python_version="3.11", platform="cu12.8.1-cudnn"
+            image_type="ray-llm", python_version="3.12", platform="cu13.0.0-cudnn"
         )
         self.assertEqual(c.nightly_alias, f"{REGISTRY_PREFIX}ray-llm:nightly")
 
     def test_ray_llm_extra_default_has_nightly_extra(self):
         c = _config(
             image_type="ray-llm-extra",
-            python_version="3.11",
-            platform="cu12.8.1-cudnn",
+            python_version="3.12",
+            platform="cu13.0.0-cudnn",
         )
         self.assertEqual(c.nightly_alias, f"{REGISTRY_PREFIX}ray-llm:nightly-extra")
 
@@ -296,15 +296,15 @@ class TestBuildEnv(unittest.TestCase):
 
     def test_ray_llm_image_type(self):
         env = _config(
-            image_type="ray-llm", python_version="3.11", platform="cu12.8.1-cudnn"
+            image_type="ray-llm", python_version="3.12", platform="cu13.0.0-cudnn"
         ).build_env
         self.assertEqual(env["IMAGE_TYPE"], "ray-llm")
 
     def test_ray_llm_extra_image_type(self):
         env = _config(
             image_type="ray-llm-extra",
-            python_version="3.11",
-            platform="cu12.8.1-cudnn",
+            python_version="3.12",
+            platform="cu13.0.0-cudnn",
         ).build_env
         self.assertEqual(env["IMAGE_TYPE"], "ray-llm")
 
@@ -400,8 +400,7 @@ class TestFromArgs(unittest.TestCase):
             with self.assertRaises(BuildError):
                 ImageBuildConfig.from_args("ray-extra", "3.10", "tpu")
 
-    def test_from_args_rejects_unsupported_arch(self):
-        """ray-llm only supports x86_64; aarch64 should be rejected."""
+    def test_from_args_accepts_aarch64(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             ray_root = _make_ray_root(tmpdir)
             with (
@@ -412,9 +411,15 @@ class TestFromArgs(unittest.TestCase):
                     "ci.build.build_common._platform.machine", return_value="aarch64"
                 ),
                 mock.patch("build_image.find_ray_root", return_value=ray_root),
+                mock.patch("build_image.get_git_commit", return_value="abc1234"),
             ):
-                with self.assertRaises(BuildError):
-                    ImageBuildConfig.from_args("ray-llm", "3.11", "cu12.8.1-cudnn")
+                config = ImageBuildConfig.from_args("ray-llm", "3.12", "cu13.0.0-cudnn")
+
+        self.assertEqual(config.ray_image.architecture, "aarch64")
+        self.assertEqual(
+            config.wanda_image_tag,
+            f"{REGISTRY_PREFIX}ray-llm-py3.12-cu13.0.0-cudnn-aarch64",
+        )
 
 
 class TestSupportedImageTypes(unittest.TestCase):

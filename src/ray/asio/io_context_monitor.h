@@ -1,0 +1,150 @@
+// Copyright 2026 The Ray Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//  http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+#pragma once
+
+#include <functional>
+#include <memory>
+#include <string>
+#include <thread>
+#include <vector>
+
+#include "absl/synchronization/mutex.h"
+#include "absl/time/time.h"
+#include "ray/asio/instrumented_io_context.h"
+#include "ray/common/ray_config.h"
+#include "ray/observability/metric_interface.h"
+#include "ray/observability/windowed_max.h"
+#include "ray/util/clock.h"
+
+namespace ray {
+
+/// A single io_context to be monitored.
+struct MonitoredIOContext {
+  /// Human-readable name, used as the "Name" metric tag and in logs.
+  std::string name;
+  /// The io_context to probe. Must outlive the IOContextMonitor.
+  instrumented_io_context *io_context;
+  /// If true, this io_context's health contributes to the aggregate health
+  /// returned by Tick(). If false, the io_context is still probed and its
+  /// metrics are still recorded, but it does not affect the aggregate health.
+  /// Callers use this to exclude non-critical event loops from the health check.
+  bool include_in_health_check = true;
+};
+
+/// The probe state machine. Tracks registered io_contexts, posts probes, and
+/// evaluates health based on the latency to execute the probes.
+///
+/// This separation from IOContextMonitorThread allows deterministic unit testing
+/// by calling Tick() directly with a FakeClock.
+class IOContextMonitor {
+ public:
+  /// @param io_contexts io_contexts to monitor. Must outlive the monitor.
+  /// @param latency_gauge Gauge metric for the max probe latency (ms) observed over
+  ///   the latency window, tagged by "Name".
+  /// @param unhealthy_counter Counter metric incremented by 1 each time a probe
+  ///   misses the healthy deadline, tagged by "Name".
+  /// @param healthy_deadline If a probe has been outstanding longer than this, the
+  ///   io_context is considered unhealthy.
+  /// @param latency_window Sliding window over which the max probe latency is
+  ///   tracked and exported.
+  /// @param clock Clock to use for time. Defaults to a real clock. Inject a
+  ///   FakeClock in tests for deterministic behavior.
+  IOContextMonitor(std::vector<MonitoredIOContext> io_contexts,
+                   observability::MetricInterface &latency_gauge,
+                   observability::MetricInterface &unhealthy_counter,
+                   absl::Duration healthy_deadline,
+                   absl::Duration latency_window = absl::Milliseconds(
+                       RayConfig::instance().io_context_monitor_latency_window_ms()),
+                   std::shared_ptr<ClockInterface> clock = std::make_shared<Clock>());
+
+  /// Run one probe cycle: check previous probes, emit metrics/logs, post new probes.
+  /// Returns true iff all io_contexts with include_in_health_check set are healthy.
+  bool Tick();
+
+ private:
+  struct ProbeState {
+    ProbeState(std::string name_val,
+               instrumented_io_context &io_context_val,
+               bool include_in_health_check_val,
+               std::shared_ptr<ClockInterface> clock_val,
+               absl::Duration latency_window_duration)
+        : name(std::move(name_val)),
+          io_context(io_context_val),
+          include_in_health_check(include_in_health_check_val),
+          clock(std::move(clock_val)),
+          latency_window(latency_window_duration) {}
+
+    const std::string name;
+    instrumented_io_context &io_context;
+    const bool include_in_health_check;
+    const std::shared_ptr<ClockInterface> clock;
+
+    // Mutex protecting fields written by the probe callback (on the io_context
+    // thread) and read by the monitor in ProcessProbe.
+    absl::Mutex mu;
+    // Defaults to true to kick off the probe in the first iteration.
+    bool last_probe_completed ABSL_GUARDED_BY(mu) = true;
+    absl::Time probe_complete_time ABSL_GUARDED_BY(mu) = absl::InfinitePast();
+
+    // Only accessed from the monitor (via Tick/ProcessProbe).
+    absl::Time probe_post_time = absl::InfinitePast();
+    bool healthy = true;
+    bool deadline_warning_logged = false;
+    // Sliding window of recent probe latencies; only accessed from the monitor.
+    observability::WindowedMax latency_window;
+  };
+
+  bool ProcessProbe(const std::shared_ptr<ProbeState> &probe);
+  static void ExecuteProbeOnIOContext(const std::shared_ptr<ProbeState> &probe)
+      ABSL_LOCKS_EXCLUDED(probe->mu);
+
+  const absl::Duration healthy_deadline_;
+  const std::shared_ptr<ClockInterface> clock_;
+  observability::MetricInterface &latency_gauge_;
+  observability::MetricInterface &unhealthy_counter_;
+  std::vector<std::shared_ptr<ProbeState>> probe_states_;
+};
+
+/// Runs an IOContextMonitor on a dedicated thread, calling Tick() at a
+/// configurable interval.
+class IOContextMonitorThread {
+ public:
+  /// @param monitor The monitor to call into.
+  /// @param probe_interval How often to call monitor->Tick().
+  /// @param health_callback Called from the monitor thread after each tick with the
+  ///   aggregate health status (true means healthy).
+  IOContextMonitorThread(std::unique_ptr<IOContextMonitor> monitor,
+                         absl::Duration probe_interval,
+                         std::function<void(bool healthy)> health_callback);
+  ~IOContextMonitorThread();
+
+  IOContextMonitorThread(const IOContextMonitorThread &) = delete;
+  IOContextMonitorThread &operator=(const IOContextMonitorThread &) = delete;
+
+  void Start();
+  void Stop();
+
+ private:
+  void Run() ABSL_LOCKS_EXCLUDED(mutex_);
+
+  std::unique_ptr<IOContextMonitor> monitor_;
+  const absl::Duration probe_interval_;
+  const std::function<void(bool)> health_callback_;
+  absl::Mutex mutex_;
+  bool running_ ABSL_GUARDED_BY(mutex_) = false;
+  std::thread thread_;
+};
+
+}  // namespace ray

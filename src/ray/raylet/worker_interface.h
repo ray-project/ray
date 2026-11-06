@@ -59,7 +59,7 @@ class WorkerInterface {
   virtual const ProcessInterface &GetProcess() const = 0;
   virtual void SetProcess(std::unique_ptr<ProcessInterface> proc) = 0;
   virtual rpc::Language GetLanguage() const = 0;
-  virtual const std::string IpAddress() const = 0;
+  virtual std::string IpAddress() const = 0;
   virtual void AsyncNotifyGCSRestart() = 0;
   /// Connect this worker's gRPC client.
   virtual void Connect(int port) = 0;
@@ -87,7 +87,8 @@ class WorkerInterface {
   virtual std::optional<pid_t> GetSavedProcessGroupId() const = 0;
   virtual void SetSavedProcessGroupId(pid_t pgid) = 0;
 
-  virtual void ActorCallArgWaitComplete(int64_t tag) = 0;
+  virtual void ActorCallArgWaitComplete(const TaskID &task_id,
+                                        int32_t attempt_number) = 0;
 
   virtual const BundleID &GetBundleId() const = 0;
   virtual void SetBundleId(const BundleID &bundle_id) = 0;
@@ -106,19 +107,17 @@ class WorkerInterface {
 
   virtual void ClearLifetimeAllocatedInstances() = 0;
 
-  virtual RayLease &GetGrantedLease() = 0;
-
   virtual void GrantLease(const RayLease &granted_lease) = 0;
 
   virtual bool IsRegistered() = 0;
 
   virtual rpc::CoreWorkerClientInterface *rpc_client() = 0;
 
-  /// Return True if the worker is available for scheduling a task or actor.
-  virtual bool IsAvailableForScheduling() const = 0;
-
-  /// Time when the last task was assigned to this worker.
-  virtual absl::Time GetGrantedLeaseTime() const = 0;
+  /**
+   * @return The time when the last task was assigned to this worker, or std::nullopt if
+   * the worker has never been granted a lease.
+   */
+  virtual std::optional<absl::Time> GetLastGrantedLeaseTime() const = 0;
 
   virtual void SetJobId(const JobID &job_id) = 0;
 

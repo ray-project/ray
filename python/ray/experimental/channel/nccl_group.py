@@ -19,8 +19,7 @@ logger = logging.getLogger(__name__)
 
 
 class _NcclGroup(Communicator):
-    """
-    Represents an actor's NCCL communicator. This is the default NCCL communicator
+    """Represents an actor's NCCL communicator. This is the default NCCL communicator
     to be used in Compiled Graph if a custom communicator is not provided.
 
     This class is not thread-safe.
@@ -35,8 +34,7 @@ class _NcclGroup(Communicator):
         cuda_stream: Optional["torch.cuda.Stream"],
         use_communication_streams: bool = False,
     ):
-        """
-        Initialize a NCCL communicator that can be used to communicate p2p with
+        """Initialize a NCCL communicator that can be used to communicate p2p with
         other GPU actors.
 
         This method blocks until the same call has been made on all other
@@ -121,11 +119,13 @@ class _NcclGroup(Communicator):
         return self._actor_handles
 
     def get_rank(self, actor: ray.actor.ActorHandle) -> int:
-        """
-        Return the given actor's rank in the NCCL communicator.
+        """Return the given actor's rank in the NCCL communicator.
 
         Args:
             actor: The actor handle to look up.
+
+        Returns:
+            The rank of ``actor`` within the NCCL group.
         """
         actor_ids = [a._ray_actor_id for a in self._actor_handles]
         try:
@@ -135,20 +135,15 @@ class _NcclGroup(Communicator):
         return rank
 
     def get_self_rank(self) -> Optional[int]:
-        """
-        Return this actor's rank.
-        """
+        """Return this actor's rank."""
         return self._rank
 
     def get_world_size(self) -> int:
-        """
-        Return the number of ranks in the NCCL communicator.
-        """
+        """Return the number of ranks in the NCCL communicator."""
         return self._world_size
 
     def send(self, buf: "torch.Tensor", peer_rank: int) -> None:
-        """
-        Send a torch.Tensor to a peer.
+        """Send a torch.Tensor to a peer.
 
         This returns when the send kernel has been queued, but the kernel may
         not have completed. Therefore, the caller should ensure that there are
@@ -188,18 +183,22 @@ class _NcclGroup(Communicator):
         shape: Tuple[int],
         dtype: "torch.dtype",
         peer_rank: int,
-        allocator=Optional[TorchTensorAllocator],
+        allocator: Optional[TorchTensorAllocator] = None,
     ) -> "torch.Tensor":
-        """
-        Receive a torch.Tensor from a peer and synchronize the current stream.
+        """Receive a torch.Tensor from a peer and synchronize the current stream.
 
         After this call returns, the receive buffer is safe to read from from
         any stream. An RayChannelError will be raised if an error occurred (e.g.,
         remote actor died), and the buffer is not safe to read.
 
         Args:
-            buf: The torch.Tensor to receive into. This buffer is safe to read
+            shape: The shape of the tensor to receive.
+            dtype: The dtype of the tensor to receive.
             peer_rank: The rank of the actor to receive from.
+            allocator: A function used to allocate the receive buffer.
+
+        Returns:
+            The tensor received from ``peer_rank``.
         """
         if self._closed:
             raise RayChannelError("NCCL group has been destroyed.")
@@ -345,9 +344,7 @@ class _NcclGroup(Communicator):
         return torch.cuda.StreamContext(self._send_stream)
 
     def destroy(self) -> None:
-        """
-        Destroy the NCCL group.
-        """
+        """Destroy the NCCL group."""
         if self._closed:
             return
 

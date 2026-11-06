@@ -40,7 +40,7 @@ def compute_additional_split_factor(
     if mem_size:
         expected_block_size = mem_size / num_read_tasks
         logger.debug(
-            f"Expected in-memory size {mem_size}," f" block size {expected_block_size}"
+            f"Expected in-memory size {mem_size}, block size {expected_block_size}"
         )
         if target_max_block_size is None:
             # Unlimited block size -> no extra splits
@@ -88,8 +88,7 @@ def compute_additional_split_factor(
 
 
 class SetReadParallelismRule(Rule):
-    """
-    This rule sets the read op's task parallelism based on the target block
+    """This rule sets the read op's task parallelism based on the target block
     size, the requested parallelism, the number of read files, and the
     available resources in the cluster.
 
@@ -107,12 +106,12 @@ class SetReadParallelismRule(Rule):
                 continue
             logical_op = plan.op_map[op]
             if isinstance(logical_op, Read):
-                self._apply(op, logical_op)
+                self._apply(plan, op, logical_op)
             ops += op.input_dependencies
 
         return plan
 
-    def _apply(self, op: PhysicalOperator, logical_op: Read):
+    def _apply(self, plan: PhysicalPlan, op: PhysicalOperator, logical_op: Read):
         estimated_in_mem_bytes = logical_op.infer_metadata().size_bytes
 
         (
@@ -134,7 +133,7 @@ class SetReadParallelismRule(Rule):
                 f"Using autodetected parallelism={detected_parallelism} "
                 f"for operator {logical_op.name} to satisfy {reason}."
             )
-        logical_op.set_detected_parallelism(detected_parallelism)
+        plan.op_map[op] = logical_op.set_detected_parallelism(detected_parallelism)
 
         if k is not None:
             logger.debug(

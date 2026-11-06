@@ -1,7 +1,7 @@
 import logging
 from abc import ABC, abstractmethod
-from dataclasses import dataclass, field
-from typing import Set
+from dataclasses import asdict, dataclass, field, fields
+from typing import Dict, Set
 
 from ray._common.filters import CoreContextFilter
 from ray._common.formatters import JSONFormatter, TextFormatter
@@ -87,6 +87,28 @@ class LoggingConfig:
                     "The valid attributes are: "
                     f"{set(LOGRECORD_STANDARD_ATTRS)}"
                 )
+
+    def to_dict(self) -> Dict[str, object]:
+        """Serialize to a plain dict suitable for JSON transport.
+
+        Returns:
+            A dict that maps each field name to its value.
+        """
+        return asdict(self)
+
+    @classmethod
+    def from_dict(cls, d: Dict[str, object]) -> "LoggingConfig":
+        """Create a LoggingConfig from a dict, ignoring unknown keys.
+
+        Args:
+            d: A dict that maps field names to values, such as the output of
+                :meth:`to_dict`.
+
+        Returns:
+            A LoggingConfig built from the keys of ``d`` that match a field.
+        """
+        known = {f.name for f in fields(cls)}
+        return cls(**{k: v for k, v in d.items() if k in known})
 
     def _configure_logging(self):
         """Set up the logging configuration for the current process."""

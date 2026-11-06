@@ -43,19 +43,26 @@ from ray.data.llm import (
 video_processor_config = vLLMEngineProcessorConfig(
     model_source="Qwen/Qwen3-VL-4B-Instruct",
     engine_kwargs=dict(
-        tensor_parallel_size=4,
+        tensor_parallel_size=1,
         pipeline_parallel_size=1,
         trust_remote_code=True,
         limit_mm_per_prompt={"video": 1},
+        mm_processor_kwargs={
+            "size": {
+                "shortest_edge": 65536,
+                "longest_edge": 20 * 1088 * 1920,
+            },
+            "do_sample_frames": False,
+        },
     ),
     batch_size=1,
-    accelerator_type="L4",
     concurrency=1,
     prepare_multimodal_stage={
         "enabled": True,
         "model_config_kwargs": dict(
             # See available model config kwargs at https://docs.vllm.ai/en/latest/api/vllm/config/#vllm.config.ModelConfig
             allowed_local_media_path="/tmp",
+            media_io_kwargs={"video": {"num_frames": 20, "fps": 2}},
         ),
     },
     chat_template_stage=True,
@@ -104,12 +111,6 @@ def video_preprocess(row: dict) -> dict:
             "max_tokens": 150,
             "detokenize": False,
         },
-        # Optional: Multimodal processor kwargs for video processing
-        "mm_processor_kwargs": dict(
-            min_pixels=28 * 28,
-            max_pixels=1280 * 28 * 28,
-            fps=1,
-        ),
     }
 
 
@@ -174,19 +175,26 @@ def create_vlm_video_config():
     return vLLMEngineProcessorConfig(
         model_source="Qwen/Qwen3-VL-4B-Instruct",
         engine_kwargs=dict(
-            tensor_parallel_size=4,
+            tensor_parallel_size=1,
             pipeline_parallel_size=1,
             trust_remote_code=True,
             limit_mm_per_prompt={"video": 1},
+            mm_processor_kwargs={
+                "size": {
+                    "shortest_edge": 65536,
+                    "longest_edge": 20 * 1088 * 1920,
+                },
+                "do_sample_frames": False,
+            },
         ),
         batch_size=1,
-        accelerator_type="L4",
         concurrency=1,
         prepare_multimodal_stage={
             "enabled": True,
             "model_config_kwargs": dict(
                 # See available model config kwargs at https://docs.vllm.ai/en/latest/api/vllm/config/#vllm.config.ModelConfig
                 allowed_local_media_path="/tmp",
+                media_io_kwargs={"video": {"num_frames": 20, "fps": 2}},
             ),
         },
         chat_template_stage=True,

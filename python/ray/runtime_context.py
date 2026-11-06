@@ -15,9 +15,17 @@ logger = logging.getLogger(__name__)
 
 @PublicAPI
 class RuntimeContext(object):
-    """A class used for getting runtime context."""
+    """A class used for getting runtime context.
 
-    def __init__(self, worker):
+    Use :func:`~ray.runtime_context.get_runtime_context` to get an instance instead of
+    constructing one.
+
+    Args:
+        worker: The worker that backs this context: the global Ray worker, or
+            an object that emulates it for Ray Client.
+    """
+
+    def __init__(self, worker: Any):
         assert worker is not None
         self.worker = worker
 
@@ -575,8 +583,7 @@ class RuntimeContext(object):
         return self.get_accelerator_ids()
 
     def get_accelerator_ids(self) -> Dict[str, List[str]]:
-        """
-        Get the current worker's visible accelerator ids.
+        """Get the current worker's visible accelerator ids.
 
         Returns:
             A dictionary keyed by the accelerator resource name. The values are a list
@@ -597,8 +604,7 @@ class RuntimeContext(object):
         return ids_dict
 
     def get_node_labels(self) -> Dict[str, List[str]]:
-        """
-        Get the node labels of the current worker.
+        """Get the node labels of the current worker.
 
         Returns:
             A dictionary of label key-value pairs.
@@ -658,6 +664,8 @@ def get_runtime_context() -> RuntimeContext:
             # Get the task id.
             ray.get_runtime_context().get_task_id()
 
+    Returns:
+        The :class:`RuntimeContext` for the current driver, worker, or actor.
     """
     with _runtime_context_lock:
         global _runtime_context

@@ -1,4 +1,5 @@
 # coding: utf-8
+import importlib
 import os
 import sys
 import tempfile
@@ -156,6 +157,37 @@ def test_node_type_configs():
     assert node_type_configs["worker_nodes1"].labels == {"foo": "bar"}
 
 
+@pytest.mark.parametrize(
+    "env_value, expected",
+    [(600, 600.0), (30, 30.0), (0, 0.0), (-1, None)],
+)
+def test_pending_idle_timeout_s(monkeypatch, env_value, expected):
+    monkeypatch.setattr(
+        config_mod, "RAY_AUTOSCALER_PENDING_NODE_IDLE_TIMEOUT_S", env_value
+    )
+    config = FileConfigReader(
+        get_test_config_path("test_ray_complex.yaml")
+    ).get_cached_autoscaling_config()
+    assert config.get_pending_idle_timeout_s() == expected
+
+
+def test_pending_idle_timeout_s_disabled_by_default(monkeypatch):
+    monkeypatch.delenv("RAY_AUTOSCALER_PENDING_NODE_IDLE_TIMEOUT_S", raising=False)
+    # Re-evaluate the constant without the env var set.
+    constants = importlib.reload(
+        importlib.import_module("ray.autoscaler._private.constants")
+    )
+    monkeypatch.setattr(
+        config_mod,
+        "RAY_AUTOSCALER_PENDING_NODE_IDLE_TIMEOUT_S",
+        constants.RAY_AUTOSCALER_PENDING_NODE_IDLE_TIMEOUT_S,
+    )
+    config = FileConfigReader(
+        get_test_config_path("test_ray_complex.yaml")
+    ).get_cached_autoscaling_config()
+    assert config.get_pending_idle_timeout_s() is None
+
+
 def test_read_config():
     # Make a temp config file from aws/defaults.yaml
     with tempfile.NamedTemporaryFile(mode="w", delete=False) as f:
@@ -211,6 +243,7 @@ def test_readonly_node_type_name_and_fallback(monkeypatch):
         ),
         _DummyNodeState("worker.custom", b"\x02", {"CPU": 2}),
         _DummyNodeState("worker.custom", b"\x03", {"CPU": 2}),
+        _DummyNodeState("worker.custom", b"\x04", {"CPU": 2}),
         _DummyNodeState("", unnamed_worker_id, {"CPU": 3}),
     ]
     monkeypatch.setattr(
@@ -230,10 +263,17 @@ def test_readonly_node_type_name_and_fallback(monkeypatch):
     assert cfg.get_head_node_type() == "ray.head.default"
     # Preferred name aggregation
     assert "worker.custom" in node_types
-    assert node_types["worker.custom"]["max_workers"] == 2
+    assert node_types["worker.custom"]["max_workers"] == 3
     # Fallback for unnamed worker
     assert fallback_name in node_types
     assert node_types[fallback_name]["max_workers"] == 1
+
+    # Global max_workers should be the sum of all worker-type max_workers,
+    # NOT the count of node type names.
+    # Here: 3 distinct types (head, worker.custom, fallback), but
+    # 4 actual workers (3 x worker.custom + 1 x fallback).
+    # The old buggy `len(available_node_types)` returned 3 instead of 4.
+    assert cfg.get_config("max_workers") == 4
 
 
 if __name__ == "__main__":

@@ -3,6 +3,9 @@
 # isort: skip_file
 
 # __tf_setup_begin__
+import os
+os.environ["TF_USE_LEGACY_KERAS"] = "1"
+
 import sys
 import numpy as np
 

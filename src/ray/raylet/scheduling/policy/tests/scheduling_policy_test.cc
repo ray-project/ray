@@ -12,15 +12,14 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "gmock/gmock.h"
 #include "gtest/gtest.h"
+#include "ray/asio/periodical_runner.h"
 #include "ray/raylet/scheduling/policy/composite_scheduling_policy.h"
 
 namespace ray {
 
 namespace raylet {
 
-using ::testing::_;
 using namespace ray::raylet_scheduling_policy;
 
 NodeResources CreateNodeResources(double available_cpu,
@@ -30,9 +29,9 @@ NodeResources CreateNodeResources(double available_cpu,
                                   double available_gpu,
                                   double total_gpu) {
   NodeResources resources;
-  resources.available.Set(ResourceID::CPU(), available_cpu)
-      .Set(ResourceID::Memory(), available_memory)
-      .Set(ResourceID::GPU(), available_gpu);
+  resources.SetAvailableResource(ResourceID::CPU(), available_cpu);
+  resources.SetAvailableResource(ResourceID::Memory(), available_memory);
+  resources.SetAvailableResource(ResourceID::GPU(), available_gpu);
   resources.total.Set(ResourceID::CPU(), total_cpu)
       .Set(ResourceID::Memory(), total_memory)
       .Set(ResourceID::GPU(), total_gpu);
@@ -69,6 +68,7 @@ class SchedulingPolicyTest : public ::testing::Test {
                              avoid_local_node,
                              require_node_available,
                              avoid_gpu_nodes,
+                             /*target_topology_assignment*/ std::nullopt,
                              /*scheduling_context*/ nullptr,
                              /*preferred node*/ "",
                              schedule_top_k_absolute,
@@ -78,9 +78,19 @@ class SchedulingPolicyTest : public ::testing::Test {
   std::unique_ptr<ClusterResourceManager> MockClusterResourceManager(
       const absl::flat_hash_map<scheduling::NodeID, Node> &nodes_map) {
     static instrumented_io_context io_context;
-    auto cluster_resource_manager = std::make_unique<ClusterResourceManager>(io_context);
+    auto cluster_resource_manager =
+        std::make_unique<ClusterResourceManager>(PeriodicalRunner::Create(io_context));
     cluster_resource_manager->nodes_ = nodes_map;
     return cluster_resource_manager;
+  }
+
+  absl::flat_hash_set<scheduling::NodeID> GetCandidateNodes(
+      const ClusterResourceManager &crm) {
+    absl::flat_hash_set<scheduling::NodeID> candidate_nodes;
+    for (const auto &[id, node] : crm.GetResourceView()) {
+      candidate_nodes.insert(id);
+    }
+    return candidate_nodes;
   }
 };
 
@@ -98,50 +108,66 @@ TEST_F(SchedulingPolicyTest, NodeAffinityPolicyTest) {
   raylet_scheduling_policy::CompositeSchedulingPolicy scheduling_policy(
       scheduling::NodeID("local"), *cluster_resource_manager, [](auto) { return true; });
 
-  auto to_schedule = scheduling_policy.Schedule(
-      req, SchedulingOptions::NodeAffinity(false, false, "local", false));
+  auto to_schedule =
+      scheduling_policy
+          .Schedule(req, SchedulingOptions::NodeAffinity(false, false, "local", false))
+          .node_id;
   ASSERT_EQ(to_schedule, scheduling::NodeID("local"));
 
-  to_schedule = scheduling_policy.Schedule(
-      req, SchedulingOptions::NodeAffinity(false, false, "unavailable", false));
+  to_schedule =
+      scheduling_policy
+          .Schedule(req,
+                    SchedulingOptions::NodeAffinity(false, false, "unavailable", false))
+          .node_id;
   // Prefer the specified node even if it's not available right now.
   ASSERT_EQ(to_schedule, scheduling::NodeID("unavailable"));
 
-  to_schedule = scheduling_policy.Schedule(
-      req, SchedulingOptions::NodeAffinity(false, false, "unavailable", true));
+  to_schedule =
+      scheduling_policy
+          .Schedule(req,
+                    SchedulingOptions::NodeAffinity(false, false, "unavailable", true))
+          .node_id;
   // Prefer the specified node even if it's not available right now.
   ASSERT_EQ(to_schedule, scheduling::NodeID("unavailable"));
 
-  to_schedule = scheduling_policy.Schedule(
+  auto result = scheduling_policy.Schedule(
       req,
       SchedulingOptions::NodeAffinity(
           false, false, "unavailable", false, false, /*fail_on_unavailable=*/true));
   // The task is unschedulable since soft is false and fail_on_unavailable is true.
-  ASSERT_TRUE(to_schedule.IsNil());
+  ASSERT_TRUE(result.IsNoNodeAvailable());
 
-  to_schedule = scheduling_policy.Schedule(
-      req, SchedulingOptions::NodeAffinity(false, false, "unavailable", true, true));
+  to_schedule = scheduling_policy
+                    .Schedule(req,
+                              SchedulingOptions::NodeAffinity(
+                                  false, false, "unavailable", true, true))
+                    .node_id;
   // The task is scheduled somewhere else since soft is true and spill_on_unavailable is
   // also true.
   ASSERT_EQ(to_schedule, scheduling::NodeID("local"));
 
-  to_schedule = scheduling_policy.Schedule(
+  result = scheduling_policy.Schedule(
       req, SchedulingOptions::NodeAffinity(false, false, "infeasible", false));
   // The task is unschedulable since soft is false.
-  ASSERT_TRUE(to_schedule.IsNil());
+  ASSERT_TRUE(result.IsInfeasible());
 
-  to_schedule = scheduling_policy.Schedule(
-      req, SchedulingOptions::NodeAffinity(false, false, "infeasible", true));
+  to_schedule =
+      scheduling_policy
+          .Schedule(req,
+                    SchedulingOptions::NodeAffinity(false, false, "infeasible", true))
+          .node_id;
   // The task is scheduled somewhere else since soft is true.
   ASSERT_EQ(to_schedule, scheduling::NodeID("local"));
 
-  to_schedule = scheduling_policy.Schedule(
+  result = scheduling_policy.Schedule(
       req, SchedulingOptions::NodeAffinity(false, false, "not_exist", false));
   // The task is unschedulable since soft is false.
-  ASSERT_TRUE(to_schedule.IsNil());
+  ASSERT_TRUE(result.IsInfeasible());
 
-  to_schedule = scheduling_policy.Schedule(
-      req, SchedulingOptions::NodeAffinity(false, false, "not_exist", true));
+  to_schedule =
+      scheduling_policy
+          .Schedule(req, SchedulingOptions::NodeAffinity(false, false, "not_exist", true))
+          .node_id;
   // The task is scheduled somewhere else since soft is true.
   ASSERT_EQ(to_schedule, scheduling::NodeID("local"));
 }
@@ -160,27 +186,36 @@ TEST_F(SchedulingPolicyTest, SpreadPolicyTest) {
       local_node, *cluster_resource_manager, [](auto) { return true; });
 
   auto to_schedule =
-      scheduling_policy.Schedule(req, SchedulingOptions::Spread(false, false));
+      scheduling_policy.Schedule(req, SchedulingOptions::Spread(false, false)).node_id;
   ASSERT_EQ(to_schedule, local_node);
 
-  to_schedule = scheduling_policy.Schedule(req, SchedulingOptions::Spread(false, false));
+  to_schedule =
+      scheduling_policy.Schedule(req, SchedulingOptions::Spread(false, false)).node_id;
   ASSERT_EQ(to_schedule, remote_node_3);
 
-  to_schedule = scheduling_policy.Schedule(
-      req, SchedulingOptions::Spread(/*avoid_local_node=*/true, false));
+  to_schedule =
+      scheduling_policy
+          .Schedule(req, SchedulingOptions::Spread(/*avoid_local_node=*/true, false))
+          .node_id;
   ASSERT_EQ(to_schedule, remote_node_3);
 
   // Spread across feasible nodes if there is no available nodes
   req = ResourceMapToResourceRequest({{"GPU", 1}}, false);
-  to_schedule = scheduling_policy.Schedule(req, SchedulingOptions::Spread(false, false));
+  to_schedule =
+      scheduling_policy.Schedule(req, SchedulingOptions::Spread(false, false)).node_id;
   ASSERT_EQ(to_schedule, local_node);
 
-  to_schedule = scheduling_policy.Schedule(req, SchedulingOptions::Spread(false, false));
+  to_schedule =
+      scheduling_policy.Schedule(req, SchedulingOptions::Spread(false, false)).node_id;
   ASSERT_EQ(to_schedule, remote_node);
 
-  to_schedule = scheduling_policy.Schedule(
+  const auto result = scheduling_policy.Schedule(
       req, SchedulingOptions::Spread(false, /*require_node_available=*/true));
-  ASSERT_TRUE(to_schedule.IsNil());
+  ASSERT_TRUE(result.IsNoNodeAvailable());
+  ASSERT_TRUE(result.node_id.IsNil());
+  req = ResourceMapToResourceRequest({{"GPU", 5}}, false);
+  ASSERT_TRUE(scheduling_policy.Schedule(req, SchedulingOptions::Spread(false, false))
+                  .IsInfeasible());
 }
 
 TEST_F(SchedulingPolicyTest, RandomPolicyTest) {
@@ -201,7 +236,8 @@ TEST_F(SchedulingPolicyTest, RandomPolicyTest) {
   size_t num_node_0_picks = 0;
   size_t num_node_1_picks = 0;
   for (int i = 0; i < 1000; i++) {
-    auto to_schedule = scheduling_policy.Schedule(req, SchedulingOptions::Random());
+    auto to_schedule =
+        scheduling_policy.Schedule(req, SchedulingOptions::Random()).node_id;
     ASSERT_TRUE(to_schedule.ToInt() >= 0);
     ASSERT_TRUE(to_schedule.ToInt() <= 1);
     if (to_schedule.ToInt() == 0) {
@@ -232,7 +268,7 @@ TEST_F(SchedulingPolicyTest, AvailableDefinitionTest) {
   auto task_req2 = ResourceMapToResourceRequest({{"CPU", 1}}, false);
 
   NodeResources resources;
-  resources.available.Set(ResourceID::CPU(), 2.0);
+  resources.SetAvailableResource(ResourceID::CPU(), 2.0);
   resources.total.Set(ResourceID::CPU(), 2.0);
   ASSERT_FALSE(resources.IsAvailable(task_req1));
   ASSERT_TRUE(resources.IsAvailable(task_req2));
@@ -241,17 +277,17 @@ TEST_F(SchedulingPolicyTest, AvailableDefinitionTest) {
 TEST_F(SchedulingPolicyTest, CriticalResourceUtilizationDefinitionTest) {
   {
     NodeResources resources;
-    resources.available.Set(ResourceID::CPU(), 1.0);
+    resources.SetAvailableResource(ResourceID::CPU(), 1.0);
     resources.total.Set(ResourceID::CPU(), 2.0);
     ASSERT_EQ(resources.CalculateCriticalResourceUtilization(), 0.5);
   }
   {
     // Basic test of max
     NodeResources resources;
-    resources.available.Set(ResourceID::CPU(), 1.0)
-        .Set(ResourceID::Memory(), 0.25)
-        .Set(ResourceID::GPU(), 1)
-        .Set(ResourceID::ObjectStoreMemory(), 50);
+    resources.SetAvailableResource(ResourceID::CPU(), 1.0);
+    resources.SetAvailableResource(ResourceID::Memory(), 0.25);
+    resources.SetAvailableResource(ResourceID::GPU(), 1);
+    resources.SetAvailableResource(ResourceID::ObjectStoreMemory(), 50);
     resources.total.Set(ResourceID::CPU(), 2.0)
         .Set(ResourceID::Memory(), 1)
         .Set(ResourceID::GPU(), 2)
@@ -262,10 +298,10 @@ TEST_F(SchedulingPolicyTest, CriticalResourceUtilizationDefinitionTest) {
   {
     // Skip GPU
     NodeResources resources;
-    resources.available.Set(ResourceID::CPU(), 1.0)
-        .Set(ResourceID::Memory(), 0.25)
-        .Set(ResourceID::GPU(), 0)
-        .Set(ResourceID::ObjectStoreMemory(), 50);
+    resources.SetAvailableResource(ResourceID::CPU(), 1.0);
+    resources.SetAvailableResource(ResourceID::Memory(), 0.25);
+    resources.SetAvailableResource(ResourceID::GPU(), 0);
+    resources.SetAvailableResource(ResourceID::ObjectStoreMemory(), 50);
     resources.total.Set(ResourceID::CPU(), 2.0)
         .Set(ResourceID::Memory(), 1)
         .Set(ResourceID::GPU(), 2)
@@ -286,7 +322,8 @@ TEST_F(SchedulingPolicyTest, AvailableTruncationTest) {
   auto cluster_resource_manager = MockClusterResourceManager(nodes);
   auto to_schedule = raylet_scheduling_policy::CompositeSchedulingPolicy(
                          local_node, *cluster_resource_manager, [](auto) { return true; })
-                         .Schedule(req, HybridOptions(0.51, false, false));
+                         .Schedule(req, HybridOptions(0.51, false, false))
+                         .node_id;
   ASSERT_EQ(to_schedule, local_node);
 }
 
@@ -301,7 +338,8 @@ TEST_F(SchedulingPolicyTest, AvailableTieBreakTest) {
   auto cluster_resource_manager = MockClusterResourceManager(nodes);
   auto to_schedule = raylet_scheduling_policy::CompositeSchedulingPolicy(
                          local_node, *cluster_resource_manager, [](auto) { return true; })
-                         .Schedule(req, HybridOptions(0.50, false, false));
+                         .Schedule(req, HybridOptions(0.50, false, false))
+                         .node_id;
   ASSERT_EQ(to_schedule, remote_node);
 }
 
@@ -316,21 +354,23 @@ TEST_F(SchedulingPolicyTest, AvailableOverFeasibleTest) {
   auto cluster_resource_manager = MockClusterResourceManager(nodes);
   auto to_schedule = raylet_scheduling_policy::CompositeSchedulingPolicy(
                          local_node, *cluster_resource_manager, [](auto) { return true; })
-                         .Schedule(req, HybridOptions(0.50, false, false));
+                         .Schedule(req, HybridOptions(0.50, false, false))
+                         .node_id;
   ASSERT_EQ(to_schedule, remote_node);
 }
 
 TEST_F(SchedulingPolicyTest, InfeasibleTest) {
-  // All the nodes are infeasible, so we return -1.
+  // All the nodes are infeasible.
   ResourceRequest req = ResourceMapToResourceRequest({{"CPU", 1}, {"GPU", 1}}, false);
   nodes.emplace(local_node, CreateNodeResources(10, 10, 0, 0, 0, 0));
   nodes.emplace(remote_node, CreateNodeResources(1, 10, 0, 0, 0, 0));
 
   auto cluster_resource_manager = MockClusterResourceManager(nodes);
-  auto to_schedule = raylet_scheduling_policy::CompositeSchedulingPolicy(
-                         local_node, *cluster_resource_manager, [](auto) { return true; })
-                         .Schedule(req, HybridOptions(0.50, false, false));
-  ASSERT_TRUE(to_schedule.IsNil());
+  const auto result =
+      raylet_scheduling_policy::CompositeSchedulingPolicy(
+          local_node, *cluster_resource_manager, [](auto) { return true; })
+          .Schedule(req, HybridOptions(0.50, false, false));
+  ASSERT_TRUE(result.IsInfeasible());
 }
 
 TEST_F(SchedulingPolicyTest, BarelyFeasibleTest) {
@@ -343,7 +383,8 @@ TEST_F(SchedulingPolicyTest, BarelyFeasibleTest) {
   auto cluster_resource_manager = MockClusterResourceManager(nodes);
   auto to_schedule = raylet_scheduling_policy::CompositeSchedulingPolicy(
                          local_node, *cluster_resource_manager, [](auto) { return true; })
-                         .Schedule(req, HybridOptions(0.50, false, false));
+                         .Schedule(req, HybridOptions(0.50, false, false))
+                         .node_id;
   ASSERT_EQ(to_schedule, local_node);
 }
 
@@ -357,7 +398,8 @@ TEST_F(SchedulingPolicyTest, TruncationAcrossFeasibleNodesTest) {
   auto cluster_resource_manager = MockClusterResourceManager(nodes);
   auto to_schedule = raylet_scheduling_policy::CompositeSchedulingPolicy(
                          local_node, *cluster_resource_manager, [](auto) { return true; })
-                         .Schedule(req, HybridOptions(0.51, false, false));
+                         .Schedule(req, HybridOptions(0.51, false, false))
+                         .node_id;
   ASSERT_EQ(to_schedule, local_node);
 }
 
@@ -371,7 +413,8 @@ TEST_F(SchedulingPolicyTest, ForceSpillbackIfAvailableTest) {
   auto cluster_resource_manager = MockClusterResourceManager(nodes);
   auto to_schedule = raylet_scheduling_policy::CompositeSchedulingPolicy(
                          local_node, *cluster_resource_manager, [](auto) { return true; })
-                         .Schedule(req, HybridOptions(0.51, true, true));
+                         .Schedule(req, HybridOptions(0.51, true, true))
+                         .node_id;
   ASSERT_EQ(to_schedule, remote_node);
 }
 
@@ -389,7 +432,8 @@ TEST_F(SchedulingPolicyTest, AvoidSchedulingCPURequestsOnGPUNodes) {
         raylet_scheduling_policy::CompositeSchedulingPolicy(
             local_node, *cluster_resource_manager, [](auto) { return true; })
             .Schedule(ResourceMapToResourceRequest({{"CPU", 1}}, false),
-                      HybridOptions(0.51, false, true, true));
+                      HybridOptions(0.51, false, true, true))
+            .node_id;
     ASSERT_EQ(to_schedule, remote_node);
   }
   {
@@ -398,7 +442,8 @@ TEST_F(SchedulingPolicyTest, AvoidSchedulingCPURequestsOnGPUNodes) {
     const auto to_schedule =
         raylet_scheduling_policy::CompositeSchedulingPolicy(
             local_node, *cluster_resource_manager, [](auto) { return true; })
-            .Schedule(req, HybridOptions(0.51, false, true, true));
+            .Schedule(req, HybridOptions(0.51, false, true, true))
+            .node_id;
     ASSERT_EQ(to_schedule, local_node);
   }
   {
@@ -407,7 +452,8 @@ TEST_F(SchedulingPolicyTest, AvoidSchedulingCPURequestsOnGPUNodes) {
     const auto to_schedule =
         raylet_scheduling_policy::CompositeSchedulingPolicy(
             local_node, *cluster_resource_manager, [](auto) { return true; })
-            .Schedule(req, HybridOptions(0.51, false, true, true));
+            .Schedule(req, HybridOptions(0.51, false, true, true))
+            .node_id;
     ASSERT_EQ(to_schedule, remote_node);
   }
   {
@@ -417,7 +463,8 @@ TEST_F(SchedulingPolicyTest, AvoidSchedulingCPURequestsOnGPUNodes) {
     const auto to_schedule =
         raylet_scheduling_policy::CompositeSchedulingPolicy(
             local_node, *cluster_resource_manager, [](auto) { return true; })
-            .Schedule(req, HybridOptions(0.51, false, true, true));
+            .Schedule(req, HybridOptions(0.51, false, true, true))
+            .node_id;
     ASSERT_EQ(to_schedule, local_node);
   }
 }
@@ -433,7 +480,8 @@ TEST_F(SchedulingPolicyTest, SchedulenCPURequestsOnGPUNodeAsALastResort) {
   const auto to_schedule =
       raylet_scheduling_policy::CompositeSchedulingPolicy(
           local_node, *cluster_resource_manager, [](auto) { return true; })
-          .Schedule(req, HybridOptions(0.51, false, true, true));
+          .Schedule(req, HybridOptions(0.51, false, true, true))
+          .node_id;
   ASSERT_EQ(to_schedule, remote_node);
 }
 
@@ -447,7 +495,8 @@ TEST_F(SchedulingPolicyTest, ForceSpillbackTest) {
   auto cluster_resource_manager = MockClusterResourceManager(nodes);
   auto to_schedule = raylet_scheduling_policy::CompositeSchedulingPolicy(
                          local_node, *cluster_resource_manager, [](auto) { return true; })
-                         .Schedule(req, HybridOptions(0.51, true, false));
+                         .Schedule(req, HybridOptions(0.51, true, false))
+                         .node_id;
   ASSERT_EQ(to_schedule, remote_node);
 }
 
@@ -462,7 +511,8 @@ TEST_F(SchedulingPolicyTest, ForceSpillbackOnlyFeasibleLocallyTest) {
   auto cluster_resource_manager = MockClusterResourceManager(nodes);
   auto to_schedule = raylet_scheduling_policy::CompositeSchedulingPolicy(
                          local_node, *cluster_resource_manager, [](auto) { return true; })
-                         .Schedule(req, HybridOptions(0.51, true, false));
+                         .Schedule(req, HybridOptions(0.51, true, false))
+                         .node_id;
   ASSERT_TRUE(to_schedule.IsNil());
 }
 
@@ -484,7 +534,8 @@ TEST_F(SchedulingPolicyTest, NonGpuNodePreferredSchedulingTest) {
                                    HybridOptions(0.51,
                                                  false,
                                                  true,
-                                                 /*gpu_avoid_scheduling*/ true));
+                                                 /*gpu_avoid_scheduling*/ true))
+                         .node_id;
   ASSERT_EQ(to_schedule, remote_node);
 
   req = ResourceMapToResourceRequest({{"CPU", 3}}, false);
@@ -494,7 +545,8 @@ TEST_F(SchedulingPolicyTest, NonGpuNodePreferredSchedulingTest) {
                               HybridOptions(0.51,
                                             false,
                                             true,
-                                            /*gpu_avoid_scheduling*/ true));
+                                            /*gpu_avoid_scheduling*/ true))
+                    .node_id;
   ASSERT_EQ(to_schedule, remote_node_2);
 
   req = ResourceMapToResourceRequest({{"CPU", 1}, {"GPU", 1}}, false);
@@ -504,7 +556,8 @@ TEST_F(SchedulingPolicyTest, NonGpuNodePreferredSchedulingTest) {
                               HybridOptions(0.51,
                                             false,
                                             true,
-                                            /*gpu_avoid_scheduling*/ true));
+                                            /*gpu_avoid_scheduling*/ true))
+                    .node_id;
   ASSERT_EQ(to_schedule, local_node);
 
   req = ResourceMapToResourceRequest({{"CPU", 2}}, false);
@@ -514,7 +567,8 @@ TEST_F(SchedulingPolicyTest, NonGpuNodePreferredSchedulingTest) {
                               HybridOptions(0.51,
                                             false,
                                             true,
-                                            /*gpu_avoid_scheduling*/ true));
+                                            /*gpu_avoid_scheduling*/ true))
+                    .node_id;
   ASSERT_EQ(to_schedule, remote_node);
 }
 
@@ -532,35 +586,34 @@ TEST_F(SchedulingPolicyTest, StrictPackBundleSchedulingTest) {
   req_list.push_back(&req);
   req_list.push_back(&req);
 
+  raylet_scheduling_policy::BundleStrictPackSchedulingPolicy policy(
+      *cluster_resource_manager);
+
   // No target node.
   auto strict_pack_op = SchedulingOptions::BundleStrictPack(scheduling::NodeID::Nil());
-  auto to_schedule = raylet_scheduling_policy::BundleStrictPackSchedulingPolicy(
-                         *cluster_resource_manager, [](auto) { return true; })
-                         .Schedule(req_list, strict_pack_op);
+  SchedulingResult to_schedule = policy.Schedule(
+      req_list, strict_pack_op, GetCandidateNodes(*cluster_resource_manager));
   ASSERT_TRUE(to_schedule.status.IsSuccess());
   ASSERT_EQ(to_schedule.selected_nodes[0], local_node);
 
   // Target node has enough available resources.
   strict_pack_op = SchedulingOptions::BundleStrictPack(remote_node_2);
-  to_schedule = raylet_scheduling_policy::BundleStrictPackSchedulingPolicy(
-                    *cluster_resource_manager, [](auto) { return true; })
-                    .Schedule(req_list, strict_pack_op);
+  to_schedule = policy.Schedule(
+      req_list, strict_pack_op, GetCandidateNodes(*cluster_resource_manager));
   ASSERT_TRUE(to_schedule.status.IsSuccess());
   ASSERT_EQ(to_schedule.selected_nodes[0], remote_node_2);
 
   // Target node doesn't have enough available resources.
   strict_pack_op = SchedulingOptions::BundleStrictPack(remote_node);
-  to_schedule = raylet_scheduling_policy::BundleStrictPackSchedulingPolicy(
-                    *cluster_resource_manager, [](auto) { return true; })
-                    .Schedule(req_list, strict_pack_op);
+  to_schedule = policy.Schedule(
+      req_list, strict_pack_op, GetCandidateNodes(*cluster_resource_manager));
   ASSERT_TRUE(to_schedule.status.IsSuccess());
   ASSERT_EQ(to_schedule.selected_nodes[0], local_node);
 
   // Target node doesn't exist.
   strict_pack_op = SchedulingOptions::BundleStrictPack(scheduling::NodeID(888));
-  to_schedule = raylet_scheduling_policy::BundleStrictPackSchedulingPolicy(
-                    *cluster_resource_manager, [](auto) { return true; })
-                    .Schedule(req_list, strict_pack_op);
+  to_schedule = policy.Schedule(
+      req_list, strict_pack_op, GetCandidateNodes(*cluster_resource_manager));
   ASSERT_TRUE(to_schedule.status.IsSuccess());
   ASSERT_EQ(to_schedule.selected_nodes[0], local_node);
 }
@@ -579,9 +632,11 @@ TEST_F(SchedulingPolicyTest, StrictPackBundleLabelSelectorSuccessTest) {
   std::vector<const ResourceRequest *> req_list = {&req_east, &req_east};
 
   auto strict_pack_op = SchedulingOptions::BundleStrictPack(scheduling::NodeID::Nil());
-  auto result = raylet_scheduling_policy::BundleStrictPackSchedulingPolicy(
-                    *cluster_resource_manager, [](auto) { return true; })
-                    .Schedule(req_list, strict_pack_op);
+  auto result =
+      raylet_scheduling_policy::BundleStrictPackSchedulingPolicy(
+          *cluster_resource_manager)
+          .Schedule(
+              req_list, strict_pack_op, GetCandidateNodes(*cluster_resource_manager));
 
   ASSERT_TRUE(result.status.IsSuccess());
   ASSERT_EQ(result.selected_nodes.size(), 2);
@@ -607,9 +662,11 @@ TEST_F(SchedulingPolicyTest, StrictPackBundleLabelSelectorInfeasibleTest) {
   std::vector<const ResourceRequest *> req_list = {&req_east, &req_west};
 
   auto strict_pack_op = SchedulingOptions::BundleStrictPack(scheduling::NodeID::Nil());
-  auto result = raylet_scheduling_policy::BundleStrictPackSchedulingPolicy(
-                    *cluster_resource_manager, [](auto) { return true; })
-                    .Schedule(req_list, strict_pack_op);
+  auto result =
+      raylet_scheduling_policy::BundleStrictPackSchedulingPolicy(
+          *cluster_resource_manager)
+          .Schedule(
+              req_list, strict_pack_op, GetCandidateNodes(*cluster_resource_manager));
 
   // Should correctly detect that aggregate constraints cannot be satisfied.
   ASSERT_TRUE(result.status.IsInfeasible());
@@ -630,9 +687,9 @@ TEST_F(SchedulingPolicyTest, PackBundleLabelSelectorInfeasibleTest) {
 
   // The PACK policy should detect the missing label and return Infeasible immediately.
   auto pack_op = SchedulingOptions::BundlePack();
-  auto result = raylet_scheduling_policy::BundlePackSchedulingPolicy(
-                    *cluster_resource_manager, [](auto) { return true; })
-                    .Schedule(req_list, pack_op);
+  auto result =
+      raylet_scheduling_policy::BundlePackSchedulingPolicy(*cluster_resource_manager)
+          .Schedule(req_list, pack_op, GetCandidateNodes(*cluster_resource_manager));
 
   ASSERT_TRUE(result.status.IsInfeasible());
 }
@@ -650,9 +707,9 @@ TEST_F(SchedulingPolicyTest, SpreadBundleLabelSelectorInfeasibleTest) {
 
   // The SPREAD policy should detect request is infeasible due to the label.
   auto spread_op = SchedulingOptions::BundleSpread();
-  auto result = raylet_scheduling_policy::BundleSpreadSchedulingPolicy(
-                    *cluster_resource_manager, [](auto) { return true; })
-                    .Schedule(req_list, spread_op);
+  auto result =
+      raylet_scheduling_policy::BundleSpreadSchedulingPolicy(*cluster_resource_manager)
+          .Schedule(req_list, spread_op, GetCandidateNodes(*cluster_resource_manager));
 
   ASSERT_TRUE(result.status.IsInfeasible());
 }
@@ -670,16 +727,168 @@ TEST_F(SchedulingPolicyTest, StrictSpreadBundleLabelSelectorInfeasibleTest) {
 
   // STRICT_SPREAD scheduling policy should correctly determine request is infeasible.
   auto strict_spread_op = SchedulingOptions::BundleStrictSpread();
-  auto result = raylet_scheduling_policy::BundleStrictSpreadSchedulingPolicy(
-                    *cluster_resource_manager, [](auto) { return true; })
-                    .Schedule(req_list, strict_spread_op);
+  auto result =
+      raylet_scheduling_policy::BundleStrictSpreadSchedulingPolicy(
+          *cluster_resource_manager)
+          .Schedule(
+              req_list, strict_spread_op, GetCandidateNodes(*cluster_resource_manager));
 
   ASSERT_TRUE(result.status.IsInfeasible());
 }
 
-int main(int argc, char **argv) {
-  ::testing::InitGoogleTest(&argc, argv);
-  return RUN_ALL_TESTS();
+TEST_F(SchedulingPolicyTest, GpuDomainSchedulingFeasibleTest) {
+  // We have two racks, rack-1 has 18 nodes, rack-2 has 2 nodes
+  // Each node has 4 GPUs and 2 CPUs.
+  // When requesting 15 bundles of {4 GPU, 2 CPU}, the request is only feasible on rack-1.
+  // We then request the remaining 3 bundles of {4 GPU, 2 CPU} on rack-1.
+
+  const std::string kDomainLabelKey = "ray.io/gpu-domain";
+
+  absl::flat_hash_map<std::string, std::string> rack1_labels = {
+      {kDomainLabelKey, "rack-1"}, {"ray.io/accelerator-type", "GB300"}};
+  absl::flat_hash_map<std::string, std::string> rack2_labels = {
+      {kDomainLabelKey, "rack-2"}, {"ray.io/accelerator-type", "GB300"}};
+
+  std::vector<scheduling::NodeID> rack1_node_ids;
+  for (int i = 0; i < 18; i++) {
+    scheduling::NodeID node_id = scheduling::NodeID(i);
+    NodeResources resources = CreateNodeResources(2, 2, 0, 0, 4, 4);
+    resources.labels = rack1_labels;
+    nodes.emplace(node_id, resources);
+    rack1_node_ids.push_back(node_id);
+  }
+  for (int i = 18; i < 20; i++) {
+    scheduling::NodeID node_id = scheduling::NodeID(i);
+    NodeResources resources = CreateNodeResources(2, 2, 0, 0, 4, 4);
+    resources.labels = rack2_labels;
+    nodes.emplace(node_id, resources);
+  }
+  // Add nodes without rack labels to the cluster
+  for (int i = 20; i < 40; i++) {
+    scheduling::NodeID node_id = scheduling::NodeID(i);
+    NodeResources resources = CreateNodeResources(2, 2, 0, 0, 4, 4);
+    nodes.emplace(node_id, resources);
+  }
+
+  std::unique_ptr<ClusterResourceManager> cluster_resource_manager =
+      MockClusterResourceManager(nodes);
+
+  ResourceRequest bundle_req =
+      ResourceMapToResourceRequest({{"CPU", 2}, {"GPU", 4}}, false);
+  std::vector<const ResourceRequest *> req_list(15, &bundle_req);
+
+  TopologyStrictPackSchedulingPolicy topology_policy(*cluster_resource_manager);
+  SchedulingOptions options = SchedulingOptions::BundlePack(
+      std::make_pair(kDomainLabelKey, std::optional<std::string>(std::nullopt)));
+
+  BundlePackSchedulingPolicy bundle_pack_policy(*cluster_resource_manager);
+  NodeScheduleFn node_schedule_fn = [&bundle_pack_policy](
+                                        const std::vector<const ResourceRequest *> &reqs,
+                                        SchedulingOptions opts,
+                                        absl::flat_hash_set<scheduling::NodeID> nodes) {
+    return bundle_pack_policy.Schedule(reqs, opts, std::move(nodes));
+  };
+
+  // Schedule should return SUCCESS with 15 nodes all from rack-1
+  SchedulingResult result_1 = topology_policy.Schedule(
+      req_list, options, GetCandidateNodes(*cluster_resource_manager), node_schedule_fn);
+
+  ASSERT_TRUE(result_1.status.IsSuccess());
+  ASSERT_TRUE(result_1.selected_topology_assignment.has_value());
+  ASSERT_EQ(result_1.selected_topology_assignment->first, kDomainLabelKey);
+  ASSERT_EQ(result_1.selected_topology_assignment->second, "rack-1");
+  ASSERT_EQ(result_1.selected_nodes.size(), 15);
+
+  for (const scheduling::NodeID &node_id : result_1.selected_nodes) {
+    const NodeResources &node_resources =
+        cluster_resource_manager->GetNodeResources(node_id);
+    absl::flat_hash_map<std::string, std::string>::const_iterator it =
+        node_resources.labels.find(kDomainLabelKey);
+    ASSERT_NE(it, node_resources.labels.end());
+    ASSERT_EQ(it->second, result_1.selected_topology_assignment->second);
+  }
+
+  // Subtract the resources from the selected nodes
+  for (size_t i = 0; i < result_1.selected_nodes.size(); i++) {
+    ASSERT_TRUE(cluster_resource_manager->SubtractNodeAvailableResources(
+        result_1.selected_nodes[i], bundle_req));
+  }
+
+  // Schedule the remaining 3 bundles on the remaining nodes in rack-1
+  std::vector<const ResourceRequest *> req_list_2(3, &bundle_req);
+
+  SchedulingResult result_2 =
+      topology_policy.Schedule(req_list_2,
+                               options,
+                               GetCandidateNodes(*cluster_resource_manager),
+                               node_schedule_fn);
+
+  ASSERT_TRUE(result_2.status.IsSuccess());
+  ASSERT_TRUE(result_2.selected_topology_assignment.has_value());
+  ASSERT_EQ(result_2.selected_topology_assignment->first, kDomainLabelKey);
+  ASSERT_EQ(result_2.selected_topology_assignment->second, "rack-1");
+  ASSERT_EQ(result_2.selected_nodes.size(), 3);
+
+  for (const scheduling::NodeID &node_id : result_2.selected_nodes) {
+    const NodeResources &node_resources =
+        cluster_resource_manager->GetNodeResources(node_id);
+    absl::flat_hash_map<std::string, std::string>::const_iterator it =
+        node_resources.labels.find(kDomainLabelKey);
+    ASSERT_NE(it, node_resources.labels.end());
+    ASSERT_EQ(it->second, result_2.selected_topology_assignment->second);
+  }
+
+  // Verify the remaining 3 bundles uses nodes that weren't fully consumed by the first 15
+  // bundles.
+  absl::flat_hash_set<scheduling::NodeID> first_batch_nodes(
+      result_1.selected_nodes.begin(), result_1.selected_nodes.end());
+  for (const scheduling::NodeID &node_id : result_2.selected_nodes) {
+    ASSERT_FALSE(first_batch_nodes.contains(node_id))
+        << "Node " << node_id.ToInt()
+        << " was already used in the first batch (resources should be exhausted)";
+  }
+}
+
+TEST_F(SchedulingPolicyTest, GpuDomainSchedulingInfeasibleTest) {
+  // We have one rack with 2 nodes, each node has 4 GPUs and 2 CPUs.
+  // Since we're requesting 16 bundles of {4 GPU, 2 CPU}, the request is infeasible.
+
+  const std::string kDomainLabelKey = "ray.io/gpu-domain";
+
+  absl::flat_hash_map<std::string, std::string> rack2_labels = {
+      {kDomainLabelKey, "rack-2"}, {"ray.io/accelerator-type", "GB300"}};
+
+  for (int i = 0; i < 2; i++) {
+    scheduling::NodeID node_id = scheduling::NodeID(i);
+    NodeResources resources = CreateNodeResources(2, 2, 0, 0, 4, 4);
+    resources.labels = rack2_labels;
+    nodes.emplace(node_id, resources);
+  }
+
+  std::unique_ptr<ClusterResourceManager> cluster_resource_manager =
+      MockClusterResourceManager(nodes);
+
+  ResourceRequest bundle_req =
+      ResourceMapToResourceRequest({{"CPU", 2}, {"GPU", 4}}, false);
+  std::vector<const ResourceRequest *> req_list(16, &bundle_req);
+
+  TopologyStrictPackSchedulingPolicy topology_policy(*cluster_resource_manager);
+  SchedulingOptions options = SchedulingOptions::BundlePack(
+      std::make_pair(kDomainLabelKey, std::optional<std::string>(std::nullopt)));
+
+  BundlePackSchedulingPolicy bundle_pack_policy(*cluster_resource_manager);
+  NodeScheduleFn node_schedule_fn = [&bundle_pack_policy](
+                                        const std::vector<const ResourceRequest *> &reqs,
+                                        SchedulingOptions opts,
+                                        absl::flat_hash_set<scheduling::NodeID> nodes) {
+    return bundle_pack_policy.Schedule(reqs, opts, std::move(nodes));
+  };
+
+  SchedulingResult result = topology_policy.Schedule(
+      req_list, options, GetCandidateNodes(*cluster_resource_manager), node_schedule_fn);
+
+  ASSERT_TRUE(result.status.IsInfeasible());
+  ASSERT_FALSE(result.selected_topology_assignment.has_value());
 }
 
 }  // namespace raylet

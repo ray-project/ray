@@ -1,6 +1,7 @@
 import asyncio
 import copy
 import uuid
+import warnings
 from itertools import chain
 from typing import (
     Any,
@@ -23,7 +24,7 @@ from ray.experimental.channel.auto_transport_type import AutoTransportType
 from ray.experimental.channel.communicator import Communicator
 from ray.experimental.channel.torch_tensor_type import TorchTensorType
 from ray.experimental.util.types import Device
-from ray.util.annotations import DeveloperAPI
+from ray.util.annotations import DeveloperAPI, RayDeprecationWarning
 
 T = TypeVar("T")
 
@@ -45,17 +46,18 @@ class DAGNode(DAGNodeBase):
         options: Dict[str, Any],
         other_args_to_resolve: Dict[str, Any],
     ):
-        """
-        args:
-            args (Tuple[Any]): Bound node arguments.
-                ex: func_or_class.bind(1)
-            kwargs (Dict[str, Any]): Bound node keyword arguments.
-                ex: func_or_class.bind(a=1)
-            options (Dict[str, Any]): Bound node options arguments.
-                ex: func_or_class.options(num_cpus=2)
-            other_args_to_resolve (Dict[str, Any]): Bound kwargs to resolve
-                that's specific to subclass implementation without exposing
-                as args in base class, example: ClassMethodNode
+        """Initialize the node with its bound arguments and options.
+
+        Args:
+            args: Bound node arguments. For example,
+                ``func_or_class.bind(1)``.
+            kwargs: Bound node keyword arguments. For example,
+                ``func_or_class.bind(a=1)``.
+            options: Bound node options arguments. For example,
+                ``func_or_class.options(num_cpus=2)``.
+            other_args_to_resolve: Bound kwargs to resolve that are specific
+                to a subclass implementation, without exposing them as args
+                in the base class. For example, ``ClassMethodNode``.
         """
         self._bound_args: Tuple[Any] = args or []
         self._bound_kwargs: Dict[str, Any] = kwargs or {}
@@ -92,8 +94,7 @@ class DAGNode(DAGNodeBase):
         self.is_cgraph_output_node = False
 
     def _collect_upstream_nodes(self) -> List["DAGNode"]:
-        """
-        Retrieve upstream nodes and update their downstream dependencies.
+        """Retrieve upstream nodes and update their downstream dependencies.
 
         Currently, the DAG assumes that all DAGNodes in `args`, `kwargs`, and
         `other_args_to_resolve` are upstream nodes. However, Ray Compiled Graphs
@@ -145,8 +146,7 @@ class DAGNode(DAGNodeBase):
         _static_shape: bool = False,
         _direct_return: bool = False,
     ):
-        """
-        Configure the torch tensor transport for this node.
+        """Configure the torch tensor transport for this node.
 
         Args:
             transport: Specifies the tensor transport mechanism.
@@ -173,6 +173,9 @@ class DAGNode(DAGNodeBase):
                 other data. If a "nccl" transport is used, this allows the
                 sender and receiver to eliminate performance overhead from
                 an additional data transfer.
+
+        Returns:
+            This DAG node with the configured tensor transport.
         """
         try:
             device = Device(device)
@@ -363,17 +366,28 @@ class DAGNode(DAGNodeBase):
         )
 
     def execute(
-        self, *args, _ray_cache_refs: bool = False, **kwargs
+        self, *args: Any, _ray_cache_refs: bool = False, **kwargs: Any
     ) -> Union[ray.ObjectRef, "ray.actor.ActorHandle"]:
         """Execute this DAG using the Ray default executor _execute_impl().
 
         Args:
+            *args: Positional arguments forwarded to ``_execute_impl`` on each node.
             _ray_cache_refs: If true, stores the default executor's return values
                 on each node in this DAG in a cache. These should be a mix of:
                 - ray.ObjectRefs pointing to the outputs of method and function nodes
                 - Serve handles for class nodes
                 - resolved values representing user input at runtime
+            **kwargs: Keyword arguments forwarded to ``_execute_impl`` on each node.
+
+        Returns:
+            The result of executing the DAG (an ``ObjectRef`` or an
+            ``ActorHandle`` depending on the root node type).
         """
+        warnings.warn(
+            "DAGNode.execute() is deprecated and will be removed in a future release.",
+            RayDeprecationWarning,
+            stacklevel=2,
+        )
 
         def executor(node):
             return node._execute_impl(*args, **kwargs)
@@ -419,6 +433,10 @@ class DAGNode(DAGNodeBase):
         Examples:
             f.remote(a, [b]) -> [a, b]
             f.remote(a, [b], key={"nested": [c]}) -> [a, b, c]
+
+        Returns:
+            All child DAGNodes referenced (transitively) by this node's
+            args, kwargs, and other_args_to_resolve.
         """
 
         scanner = _PyObjScanner()
@@ -524,8 +542,7 @@ class DAGNode(DAGNodeBase):
         )
 
     def traverse_and_apply(self, fn: "Callable[[DAGNode], T]"):
-        """
-        Traverse all nodes in the connected component of the DAG that contains
+        """Traverse all nodes in the connected component of the DAG that contains
         the `self` node, and apply the given function to each node.
         """
         visited = set()
@@ -573,9 +590,8 @@ class DAGNode(DAGNodeBase):
                     if neighbor not in visited:
                         queue.append(neighbor)
 
-    def _raise_nested_dag_node_error(self, args):
-        """
-        Raise an error for nested DAGNodes in Ray Compiled Graphs.
+    def _raise_nested_dag_node_error(self, args: Tuple[Any, ...]) -> None:
+        """Raise an error for nested DAGNodes in Ray Compiled Graphs.
 
         Args:
             args: The arguments of the DAGNode.
@@ -601,9 +617,7 @@ class DAGNode(DAGNodeBase):
         )
 
     def _find_root(self) -> "DAGNode":
-        """
-        Return the root node of the DAG. The root node must be an InputNode.
-        """
+        """Return the root node of the DAG. The root node must be an InputNode."""
         from ray.dag.input_node import InputNode
 
         node = self
@@ -622,8 +636,7 @@ class DAGNode(DAGNodeBase):
         predicate_fn: Callable,
         apply_fn: Callable,
     ):
-        """
-        Apply a given function to DAGNodes in source_input_list, and return
+        """Apply a given function to DAGNodes in source_input_list, and return
         the replaced inputs without mutating or coping any DAGNode.
 
         Args:

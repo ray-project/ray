@@ -114,6 +114,9 @@ class SQLDatasource(Datasource):
     def supports_sharding(self, parallelism: int) -> bool:
         """Check if database supports sharding with MOD/ABS/CONCAT operations.
 
+        Args:
+            parallelism: The number of shards to split the read into.
+
         Returns:
             bool: True if sharding is supported, False otherwise.
         """

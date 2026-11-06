@@ -5,14 +5,24 @@ import logging
 import os
 import signal
 import sys
+from typing import Optional
 
 import ray
 import ray._private.ray_constants as ray_constants
 import ray.dashboard.consts as dashboard_consts
 import ray.dashboard.utils as dashboard_utils
-from ray._common.network_utils import build_address, is_localhost
+from ray._common.network_utils import (
+    build_address,
+    get_all_interfaces_ip,
+    get_localhost_ip,
+    is_localhost,
+)
 from ray._common.utils import get_or_create_event_loop
 from ray._private import logging_utils
+from ray._private.gcs_passive_utils import (
+    PassiveLatch,
+    async_put_kv_passive_safe,
+)
 from ray._private.process_watcher import create_check_raylet_task
 from ray._private.ray_constants import AGENT_GRPC_MAX_MESSAGE_LENGTH
 from ray._private.ray_logging import setup_component_logger
@@ -22,6 +32,10 @@ from ray._raylet import (
     METRICS_EXPORT_PORT_NAME,
     GcsClient,
     persist_port,
+)
+from ray.dashboard.event_loop_monitor import (
+    EVENT_LOOP_MONITOR_ENABLED,
+    EventLoopMonitor,
 )
 
 logger = logging.getLogger(__name__)
@@ -41,6 +55,7 @@ class DashboardAgent:
         listen_port=ray_constants.DEFAULT_DASHBOARD_AGENT_LISTEN_PORT,
         disable_metrics_collection: bool = False,
         is_head: bool = False,
+        enable_gpu_metrics: bool = True,
         *,  # the following are required kwargs
         object_store_name: str,
         raylet_name: str,
@@ -71,12 +86,15 @@ class DashboardAgent:
         self.raylet_name = raylet_name
         self.node_id = os.environ["RAY_NODE_ID"]
         self.metrics_collection_disabled = disable_metrics_collection
+        self.enable_gpu_metrics = enable_gpu_metrics
         self.session_name = session_name
 
         # grpc server is None in mininal.
         self.server = None
         # http_server is None in minimal.
         self.http_server = None
+        # Event-loop stall monitor, started in run() for non-minimal agents.
+        self._event_loop_monitor = None
 
         # Used by the agent and sub-modules.
         self.gcs_client = GcsClient(
@@ -85,6 +103,15 @@ class DashboardAgent:
         )
 
         self.is_head = is_head
+        self._address_passive_latch = PassiveLatch(
+            "agent address",
+            logger,
+            action_desc_passive=(
+                "GCS is in passive mode and refused the agent address registration. "
+                "Retrying until this GCS is promoted."
+            ),
+            action_desc_promoted="GCS was promoted to leader. Registered the agent address.",
+        )
 
         if not self.minimal:
             self._init_non_minimal()
@@ -109,12 +136,7 @@ class DashboardAgent:
         from grpc import aio as aiogrpc
 
         from ray._common.tls_utils import add_port_to_grpc_server
-        from ray._private.authentication.authentication_utils import (
-            is_token_auth_enabled,
-        )
-        from ray._private.authentication.grpc_authentication_server_interceptor import (
-            AsyncAuthenticationServerInterceptor,
-        )
+        from ray._private.grpc_utils import create_grpc_server_with_interceptors
         from ray.dashboard.http_server_agent import HttpServerAgent
 
         # We would want to suppress deprecating warnings from aiogrpc library
@@ -130,13 +152,8 @@ class DashboardAgent:
         else:
             aiogrpc.init_grpc_aio()
 
-        # Add authentication interceptor if token auth is enabled
-        interceptors = []
-        if is_token_auth_enabled():
-            interceptors.append(AsyncAuthenticationServerInterceptor())
-
-        self.server = aiogrpc.server(
-            interceptors=interceptors,
+        self.server = create_grpc_server_with_interceptors(
+            asynchronous=True,
             options=(
                 ("grpc.so_reuseport", 0),
                 (
@@ -150,7 +167,9 @@ class DashboardAgent:
             ),  # noqa
         )
 
-        grpc_ip = "127.0.0.1" if is_localhost(self.ip) else "0.0.0.0"
+        grpc_ip = (
+            get_localhost_ip() if is_localhost(self.ip) else get_all_interfaces_ip()
+        )
         self.grpc_port = add_port_to_grpc_server(
             self.server, build_address(grpc_ip, self.grpc_port)
         )
@@ -198,6 +217,47 @@ class DashboardAgent:
     def get_node_id(self) -> str:
         return self.node_id
 
+    async def _put_agent_address(self, http_port: int, grpc_port: int) -> bool:
+        """Publish this agent's address under both of the keys that resolve it.
+
+        DASHBOARD_AGENT_ADDR_NODE_ID_PREFIX: <node_id> -> (ip, http_port, grpc_port)
+        DASHBOARD_AGENT_ADDR_IP_PREFIX: <ip> -> (node_id, http_port, grpc_port)
+
+        Returns whether the write landed, i.e. was not refused as passive. The
+        write is attempted rather than predicted with is_gcs_leader(): it has to
+        happen anyway, so its answer is a leadership probe that costs nothing.
+        """
+        return await async_put_kv_passive_safe(
+            self.gcs_client,
+            f"{dashboard_consts.DASHBOARD_AGENT_ADDR_NODE_ID_PREFIX}{self.node_id}",
+            json.dumps([self.ip, http_port, grpc_port]),
+            overwrite=True,
+            namespace=ray_constants.KV_NAMESPACE_DASHBOARD,
+        ) and await async_put_kv_passive_safe(
+            self.gcs_client,
+            f"{dashboard_consts.DASHBOARD_AGENT_ADDR_IP_PREFIX}{self.ip}",
+            json.dumps([self.node_id, http_port, grpc_port]),
+            overwrite=True,
+            namespace=ray_constants.KV_NAMESPACE_DASHBOARD,
+        )
+
+    async def _register_agent_address(
+        self, http_port: int, grpc_port: int
+    ) -> Optional[asyncio.Task]:
+        """Publish this agent's address, handing a refused write to a retry task."""
+        if await self._put_agent_address(http_port, grpc_port):
+            return None
+        # A passive head's agent talks to its own passive GCS, which refuses the
+        # write.
+        self._address_passive_latch.note_passive()
+        return asyncio.create_task(self._retry_agent_address(http_port, grpc_port))
+
+    async def _retry_agent_address(self, http_port: int, grpc_port: int):
+        """Re-attempt the registration until the local GCS stops refusing it."""
+        while not await self._put_agent_address(http_port, grpc_port):
+            await asyncio.sleep(dashboard_consts.GCS_REGISTER_RETRY_INTERVAL_S)
+        self._address_passive_latch.promoted()
+
     async def run(self):
         # Start a grpc asyncio server.
         if self.server:
@@ -232,29 +292,17 @@ class DashboardAgent:
             self.listen_port if self.http_server and launch_http_server else -1,
         )
 
+        retry_task = None
         if launch_http_server:
             # Writes agent address to kv.
-            # DASHBOARD_AGENT_ADDR_NODE_ID_PREFIX: <node_id> -> (ip, http_port, grpc_port)
-            # DASHBOARD_AGENT_ADDR_IP_PREFIX: <ip> -> (node_id, http_port, grpc_port)
             # -1 should indicate that http server is not started.
             http_port = -1 if not self.http_server else self.http_server.http_port
             grpc_port = -1 if not self.server else self.grpc_port
-            put_by_node_id = self.gcs_client.async_internal_kv_put(
-                f"{dashboard_consts.DASHBOARD_AGENT_ADDR_NODE_ID_PREFIX}{self.node_id}".encode(),
-                json.dumps([self.ip, http_port, grpc_port]).encode(),
-                True,
-                namespace=ray_constants.KV_NAMESPACE_DASHBOARD,
-            )
-            put_by_ip = self.gcs_client.async_internal_kv_put(
-                f"{dashboard_consts.DASHBOARD_AGENT_ADDR_IP_PREFIX}{self.ip}".encode(),
-                json.dumps([self.node_id, http_port, grpc_port]).encode(),
-                True,
-                namespace=ray_constants.KV_NAMESPACE_DASHBOARD,
-            )
-
-            await asyncio.gather(put_by_node_id, put_by_ip)
+            retry_task = await self._register_agent_address(http_port, grpc_port)
 
         tasks = [m.run(self.server) for m in modules]
+        if retry_task is not None:
+            tasks.append(retry_task)
 
         if sys.platform not in ["win32", "cygwin"]:
 
@@ -278,7 +326,21 @@ class DashboardAgent:
 
             tasks.append(wait_forever())
 
-        await asyncio.gather(*tasks)
+        # Watch the serving event loop for stalls while the module tasks run;
+        # this loop also handles job submission and metric/event export.
+        # Started here (not during startup) so slow module loading isn't misread
+        # as a stall, and kept adjacent to the try/finally so stop() always
+        # runs. Not started for minimal agents; opt in elsewhere with
+        # RAY_DASHBOARD_AGENT_LOOP_MONITOR_ENABLED=1.
+        if not self.minimal and EVENT_LOOP_MONITOR_ENABLED:
+            self._event_loop_monitor = EventLoopMonitor()
+            self._event_loop_monitor.start()
+
+        try:
+            await asyncio.gather(*tasks)
+        finally:
+            if self._event_loop_monitor is not None:
+                self._event_loop_monitor.stop()
 
         if self.http_server:
             await self.http_server.cleanup()
@@ -420,6 +482,12 @@ if __name__ == "__main__":
         help=("If this arg is set, metrics report won't be enabled from the agent."),
     )
     parser.add_argument(
+        "--enable-gpu-metrics",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Enable GPU metric collection in the dashboard agent.",
+    )
+    parser.add_argument(
         "--head",
         action="store_true",
         help="Whether this node is the head node.",
@@ -494,6 +562,7 @@ if __name__ == "__main__":
             raylet_name=args.raylet_name,
             disable_metrics_collection=args.disable_metrics_collection,
             is_head=args.head,
+            enable_gpu_metrics=args.enable_gpu_metrics,
             session_name=args.session_name,
         )
 

@@ -1,5 +1,7 @@
 import argparse
+import tempfile
 from datetime import timedelta
+from pathlib import Path
 
 import numpy as np
 import torch
@@ -40,7 +42,10 @@ def train_func(config):
     hidden_size = config.get("hidden_size", 1)
     lr = config.get("lr", 1e-2)
     num_steps = config.get("num_steps", 100)
+    num_replicas = config.get("num_replicas", 1)
     report_interval = config.get("report_interval", 10)
+    error_step = config.get("error_step")
+    error_rank = config.get("error_rank", 0)
 
     context = ray.train.get_context()
     world_rank = context.get_world_rank()
@@ -54,11 +59,16 @@ def train_func(config):
     optimizer = torch.optim.SGD(model.parameters(), lr=lr)
     loss_fn = nn.MSELoss()
 
-    # torchft process group and checkpoint transport
-    pg = ProcessGroupGloo(timeout=timedelta(seconds=5))
+    # torchft process group and checkpoint transport.
+    # Timeouts must be generous enough to re-form the gloo process group after a
+    # replica fails. On loaded CI machines a 5s gloo store wait is too short, which
+    # makes the post-failure reconfigure time out (DistStoreError) and breaks
+    # recovery. Keep these <= the Manager timeout so the PG wait isn't cancelled
+    # by the outer quorum timeout first.
+    pg = ProcessGroupGloo(timeout=timedelta(seconds=30))
     transport = PGTransport(
         pg,
-        timeout=timedelta(seconds=10),
+        timeout=timedelta(seconds=30),
         device=torch.device("cpu"),
     )
 
@@ -75,13 +85,13 @@ def train_func(config):
 
     manager = Manager(
         pg=pg,
-        min_replica_size=1,
+        min_replica_size=num_replicas,
         load_state_dict=load_state_dict,
         state_dict=state_dict,
         world_size=1,
         rank=0,
         replica_id=f"train_ddp_{world_rank}",
-        timeout=timedelta(seconds=30),
+        timeout=timedelta(seconds=60),
         checkpoint_transport=transport,
     )
 
@@ -125,14 +135,40 @@ def train_func(config):
         num_batches += 1
 
         step = manager.current_step()
+        if error_step is not None and step >= error_step and world_rank == error_rank:
+            marker = Path(
+                ray.train.get_context()
+                .get_storage()
+                .build_checkpoint_path_from_name("error_marker")
+            )
+            if not marker.exists():
+                marker.parent.mkdir(parents=True, exist_ok=True)
+                marker.touch()
+                raise RuntimeError(
+                    f"Simulated replica failure at step {step} on rank {world_rank}"
+                )
         if step % report_interval == 0 or step >= num_steps:
             avg_loss = running_loss / max(num_batches, 1)
             weight = model.module.weight.detach().flatten().tolist()
             bias = model.module.bias.detach().flatten().tolist()
-            result = {"loss": avg_loss, "weight": weight, "bias": bias}
+            result = {"loss": avg_loss, "weight": weight, "bias": bias, "step": step}
+            # TODO(tseah): remove this check once we support reporting with 1/2 workers.
+            if config.get("training_requires_all_workers", True):
+                with tempfile.TemporaryDirectory() as temp_checkpoint_dir:
+                    ray.train.report(
+                        result,
+                        checkpoint=ray.train.Checkpoint.from_directory(
+                            temp_checkpoint_dir
+                        ),
+                    )
             results.append(result)
             running_loss = 0.0
             num_batches = 0
+
+    # Needed to avoid "split brain" where worker X dies, worker Y finishes, worker X resumes,
+    # and worker X gets stuck in loss.backward()
+    print(f"Shutting down manager on rank {world_rank}")
+    manager.shutdown()
 
     return results
 

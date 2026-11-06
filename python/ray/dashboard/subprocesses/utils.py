@@ -20,19 +20,27 @@ class ResponseType(enum.Enum):
 def module_logging_filename(
     module_name: str, logging_filename: str, extension: str = ""
 ) -> str:
-    """
-    Parse logging_filename = STEM EXTENSION,
-    return STEM _ MODULE_NAME _ EXTENSION
+    """Parse logging_filename = STEM EXTENSION, return STEM _ MODULE_NAME _ EXTENSION.
 
     If logging_filename is empty, return empty string.
     If extension is empty, use the extension from logging_filename.
 
+    Args:
+        module_name: Name of the subprocess module, embedded in the output stem.
+        logging_filename: Original log filename (e.g. ``dashboard.log``).
+        extension: Override extension. Defaults to the extension of
+            ``logging_filename``.
+
+    Returns:
+        The new filename with the module name embedded between the stem and
+        extension, or an empty string when ``logging_filename`` is empty.
+
     Example:
-    module_name = "TestModule"
-    logging_filename = "dashboard.log"
-    STEM = "dashboard"
-    EXTENSION = ".log"
-    return "dashboard_TestModule.log"
+        module_name = "TestModule"
+        logging_filename = "dashboard.log"
+        STEM = "dashboard"
+        EXTENSION = ".log"
+        return "dashboard_TestModule.log"
     """
     if not logging_filename:
         return ""
@@ -55,9 +63,7 @@ def get_named_pipe_path(module_name: str, session_name: str) -> str:
 def get_http_session_to_module(
     module_name: str, socket_dir: str, session_name: str
 ) -> aiohttp.ClientSession:
-    """
-    Get the aiohttp http client session to the subprocess module.
-    """
+    """Get the aiohttp http client session to the subprocess module."""
     if sys.platform == "win32":
         named_pipe_path = get_named_pipe_path(module_name, session_name)
         connector = aiohttp.NamedPipeConnector(named_pipe_path)

@@ -34,12 +34,21 @@ class JobConfig:
             `CLASSPATH` in Java and `PYTHONPATH` in Python.
             See :ref:`Ray cross-language programming <cross_language>` for more details.
         runtime_env: A :ref:`runtime environment <runtime-environments>` dictionary.
+        _client_job: Whether this job was submitted via Ray Client.
         metadata: An opaque metadata dictionary.
         ray_namespace: A :ref:`namespace <namespaces-guide>`
             is a logical grouping of jobs and named actors.
         default_actor_lifetime: The default value of actor lifetime,
             can be "detached" or "non_detached".
             See :ref:`actor lifetimes <actor-lifetimes>` for more details.
+        _disable_job_level_lineage_reconstruction: Whether to turn off Ray Core
+            lineage reconstruction for this job, leaving the application
+            responsible for reconstructing its own lost objects. When ``True``,
+            the job's workers never pin object lineage. When ``False``, the
+            cluster-level ``lineage_pinning_enabled`` system config applies.
+            Defaults to ``False``. This config is currently experimental.
+        _py_driver_sys_path: A list of directories that specify the search path
+            for python workers.
     """
 
     def __init__(
@@ -51,18 +60,21 @@ class JobConfig:
         metadata: Optional[dict] = None,
         ray_namespace: Optional[str] = None,
         default_actor_lifetime: str = "non_detached",
+        _disable_job_level_lineage_reconstruction: bool = False,
         _py_driver_sys_path: Optional[List[str]] = None,
     ):
         #: The jvm options for java workers of the job.
         self.jvm_options = jvm_options or []
         #: A list of directories or jar files that
         #: specify the search path for user code.
-        self.code_search_path = code_search_path or []
-        # It's difficult to find the error that caused by the
-        # code_search_path is a string. So we assert here.
-        assert isinstance(self.code_search_path, (list, tuple)), (
-            f"The type of code search path is incorrect: " f"{type(code_search_path)}"
-        )
+        validated_code_search_path = code_search_path or []
+        # Validate eagerly so optimized Python runs do not skip this check.
+        if not isinstance(validated_code_search_path, (list, tuple)):
+            raise TypeError(
+                "The type of code search path is incorrect: "
+                f"{type(code_search_path)}"
+            )
+        self.code_search_path = validated_code_search_path
         self._client_job = _client_job
         #: An opaque metadata dictionary.
         self.metadata = metadata or {}
@@ -70,6 +82,9 @@ class JobConfig:
         self.ray_namespace = ray_namespace
         self.set_runtime_env(runtime_env)
         self.set_default_actor_lifetime(default_actor_lifetime)
+        self._disable_job_level_lineage_reconstruction = (
+            _disable_job_level_lineage_reconstruction
+        )
         # A list of directories that specify the search path for python workers.
         self._py_driver_sys_path = _py_driver_sys_path or []
         # Python logging configurations that will be passed to Ray tasks/actors.
@@ -133,6 +148,26 @@ class JobConfig:
         """
         self.py_logging_config = logging_config
 
+    def ensure_logging_config(
+        self,
+        logging_config: Optional[Union[dict, LoggingConfig]] = None,
+    ) -> None:
+        """Set logging config from a dict or LoggingConfig if not already configured.
+
+        This is a no-op when *logging_config* is ``None`` or
+        ``py_logging_config`` is already set.
+        """
+        if logging_config is None or self.py_logging_config is not None:
+            return
+        if isinstance(logging_config, dict):
+            logging_config = LoggingConfig.from_dict(logging_config)
+        elif not isinstance(logging_config, LoggingConfig):
+            raise TypeError(
+                "logging_config must be a dict or LoggingConfig, "
+                f"got {type(logging_config)}"
+            )
+        self.set_py_logging_config(logging_config)
+
     def set_ray_namespace(self, ray_namespace: str) -> None:
         """Set Ray :ref:`namespace <namespaces-guide>`.
 
@@ -176,7 +211,19 @@ class JobConfig:
 
         if not isinstance(runtime_env, RuntimeEnv):
             runtime_env = RuntimeEnv(**self.runtime_env)
-        _validate_no_local_paths(runtime_env)
+
+        # Skip local path validation for Ray Client jobs.
+        # This is required for Ray Client to work with working_dir (e.g., UV support).
+        # For Ray Client (_client_job=True), the working_dir is already validated
+        # and uploaded to GCS on the client side. The server-side job_config may
+        # temporarily contain a local extracted path during the proxy flow, but this
+        # is safe because:
+        # 1. The actual GCS URI was already validated on the client
+        # 2. Workers get their runtime_env from GCS with the correct URI
+        # 3. Validating again on the server causes false "not a valid URI" errors
+        if not self._client_job:
+            _validate_no_local_paths(runtime_env)
+
         return runtime_env
 
     def _get_proto_job_config(self):
@@ -210,6 +257,9 @@ class JobConfig:
 
             if self._default_actor_lifetime is not None:
                 pb.default_actor_lifetime = self._default_actor_lifetime
+            pb.disable_job_level_lineage_reconstruction = (
+                self._disable_job_level_lineage_reconstruction
+            )
             if self.py_logging_config:
                 pb.serialized_py_logging_config = pickle.dumps(self.py_logging_config)
             self._cached_pb = pb
@@ -228,7 +278,7 @@ class JobConfig:
         return self._get_proto_job_config().runtime_env_info.runtime_env_config
 
     @classmethod
-    def from_json(cls, job_config_json):
+    def from_json(cls, job_config_json: Dict[str, Any]) -> "JobConfig":
         """Generates a JobConfig object from json.
 
         Examples:
@@ -241,6 +291,9 @@ class JobConfig:
 
         Args:
             job_config_json: The job config json dictionary.
+
+        Returns:
+            A :class:`JobConfig` instance built from the dictionary.
         """
         return cls(
             jvm_options=job_config_json.get("jvm_options", None),
@@ -248,6 +301,9 @@ class JobConfig:
             runtime_env=job_config_json.get("runtime_env", None),
             metadata=job_config_json.get("metadata", None),
             ray_namespace=job_config_json.get("ray_namespace", None),
+            _disable_job_level_lineage_reconstruction=job_config_json.get(
+                "disable_job_level_lineage_reconstruction", False
+            ),
             _client_job=job_config_json.get("client_job", False),
             _py_driver_sys_path=job_config_json.get("py_driver_sys_path", None),
         )

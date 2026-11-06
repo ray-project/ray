@@ -19,6 +19,7 @@ class TaskEventsMetadataBuffer:
         max_buffer_size: int = 1000,
         max_dropped_attempts_per_metadata_entry: int = 100,
         common_metric_tags: Optional[Dict[str, str]] = None,
+        publisher_name: str = "",
     ):
         self._buffer_maxlen = max(
             max_buffer_size - 1, 1
@@ -31,7 +32,13 @@ class TaskEventsMetadataBuffer:
 
         self._common_metric_tags = common_metric_tags or {}
         self._metric_recorder = OpenTelemetryMetricRecorder()
-        self._dropped_metadata_count_metric_name = f"{AGGREGATOR_AGENT_METRIC_PREFIX}_task_metadata_buffer_dropped_attempts_total"
+        # Namespace the counter per publisher so buffers feeding different publishers
+        # register distinct instruments on the process-global meter instead of colliding
+        # on a single name.
+        self._dropped_metadata_count_metric_name = (
+            f"{AGGREGATOR_AGENT_METRIC_PREFIX}_{publisher_name}"
+            "_task_metadata_buffer_dropped_attempts_total"
+        )
         self._metric_recorder.register_counter_metric(
             self._dropped_metadata_count_metric_name,
             "Total number of dropped task attempt metadata entries which were dropped due to buffer being full",

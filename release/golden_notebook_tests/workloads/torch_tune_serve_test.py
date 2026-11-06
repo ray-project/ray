@@ -2,6 +2,7 @@ import argparse
 import atexit
 import json
 import os
+import secrets
 import tempfile
 import time
 import subprocess
@@ -252,6 +253,8 @@ if __name__ == "__main__":
 
     if os.environ.get("IS_SMOKE_TEST"):
         args.smoke_test = True
+        # `ray start --head` never creates a token; the head and this driver share it.
+        os.environ.setdefault("RAY_AUTH_TOKEN", secrets.token_hex(32))
         proc = subprocess.Popen(["ray", "start", "--head"])
         proc.wait()
         os.environ["RAY_ADDRESS"] = "ray://localhost:10001"

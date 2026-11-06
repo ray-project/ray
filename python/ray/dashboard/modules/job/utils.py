@@ -7,7 +7,6 @@ import traceback
 from dataclasses import dataclass
 from typing import Any, AsyncIterator, Dict, List, Optional, Tuple, Union
 
-from ray._private import ray_constants
 from ray._raylet import RAY_INTERNAL_NAMESPACE_PREFIX, GcsClient
 from ray.dashboard.modules.job.common import (
     JOB_ID_METADATA_KEY,
@@ -32,18 +31,6 @@ logger = logging.getLogger(__name__)
 
 MAX_CHUNK_LINE_LENGTH = 10
 MAX_CHUNK_CHAR_LENGTH = 20000
-
-
-async def get_head_node_id(gcs_client: GcsClient) -> Optional[str]:
-    """Fetches Head node id persisted in GCS"""
-    head_node_id_hex_bytes = await gcs_client.async_internal_kv_get(
-        ray_constants.KV_HEAD_NODE_ID_KEY,
-        namespace=ray_constants.KV_NAMESPACE_JOB,
-        timeout=30,
-    )
-    if head_node_id_hex_bytes is None:
-        return None
-    return head_node_id_hex_bytes.decode()
 
 
 def strip_keys_with_value_none(d: Dict[str, Any]) -> Dict[str, Any]:
@@ -223,9 +210,7 @@ async def find_job_by_ids(
     job_info_client: JobInfoStorageClient,
     job_or_submission_id: str,
 ) -> Optional[JobDetails]:
-    """
-    Attempts to find the job with a given submission_id or job id.
-    """
+    """Attempts to find the job with a given submission_id or job id."""
     # First try to find by job_id
     driver_jobs, submission_job_drivers = await get_driver_jobs(
         gcs_client, job_or_submission_id=job_or_submission_id
@@ -268,8 +253,7 @@ async def find_jobs_by_job_ids(
     job_info_client: JobInfoStorageClient,
     job_ids: List[str],
 ) -> Dict[str, JobDetails]:
-    """
-    Returns a dictionary of submission jobs with the given job ids, keyed by the job id.
+    """Returns a dictionary of submission jobs with the given job ids, keyed by the job id.
 
     This only accepts job ids and not submission ids.
     """

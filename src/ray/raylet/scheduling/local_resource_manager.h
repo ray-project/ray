@@ -25,6 +25,7 @@
 #include "ray/common/scheduling/fixed_point.h"
 #include "ray/observability/metric_interface.h"
 #include "ray/ray_syncer/ray_syncer.h"
+#include "ray/util/clock.h"
 #include "src/ray/protobuf/gcs.pb.h"
 #include "src/ray/protobuf/node_manager.pb.h"
 
@@ -65,7 +66,7 @@ class LocalResourceManager : public syncer::ReporterInterface {
       std::function<void(const rpc::NodeDeathInfo &)> shutdown_raylet_gracefully,
       std::function<void(const NodeResources &)> resource_change_subscriber,
       ray::observability::MetricInterface &resource_usage_gauge,
-      std::function<absl::Time()> now_fn = nullptr);
+      ClockInterface &clock);
 
   scheduling::NodeID GetNodeId() const { return local_node_id_; }
 
@@ -162,7 +163,25 @@ class LocalResourceManager : public syncer::ReporterInterface {
   /// Record the metrics.
   void RecordMetrics() const;
 
-  bool IsLocalNodeIdle() const { return GetResourceIdleTime() != absl::nullopt; }
+  /// Whether the local node is idle as of the most recently synced resource state.
+  ///
+  /// This might not be reflective of the node's current state since Object Store
+  /// usage is refreshed at periodic intervals. Therefore, this might be giving a
+  /// stale view of object store memory. Other resources (WorkFootprints and Resources)
+  /// are updated eagerly on allocation/release.
+  bool WasLastRecordedNodeStateIdle() const {
+    return GetResourceIdleTime() != absl::nullopt;
+  }
+
+  /// Returns whether the local node is idle for an idle-termination drain decision.
+  ///
+  /// Refreshes the object store memory usage. This is needed since pinning/unpinning
+  /// doesn't update the usage eagerly and if not refreshed here, might lead to reading
+  /// a stale value, draining a node with an object's primary copy.
+  bool IsLocalNodeIdleForDrain() {
+    UpdateAvailableObjectStoreMemResource();
+    return WasLastRecordedNodeStateIdle();
+  }
 
   /// Change the local node to the draining state.
   /// After that, no new tasks can be scheduled onto the local node.
@@ -240,8 +259,7 @@ class LocalResourceManager : public syncer::ReporterInterface {
   /// Each entry tracks the current idle time (or nullopt if busy) and optionally
   /// a saved time for speculative busy marking (used only for WorkFootprints).
   absl::flat_hash_map<WorkArtifact, IdleTimeState> idle_time_states_;
-  /// Function to get current time. Defaults to absl::Now() if not provided.
-  std::function<absl::Time()> now_fn_;
+  ClockInterface &clock_;
   /// Function to get used object store memory.
   std::function<int64_t(void)> get_used_object_store_memory_;
   /// Function to get whether the pull manager is at capacity.

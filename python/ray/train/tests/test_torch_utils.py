@@ -33,6 +33,9 @@ def test_contains_tensor():
     assert contains_tensor([1, 2, 3, {"dict": t}, 5, 6])
     assert contains_tensor({"outer": [1, 2, 3, {"dict": t}, 5, 6]})
     assert contains_tensor({t: [1, 2, 3, {"dict": 2}, 5, 6]})
+    assert contains_tensor(torch_module)
+    assert contains_tensor({"model": torch_module})
+    assert contains_tensor([1, 2, torch_module])
     assert not contains_tensor([4, 5, 6])
 
 

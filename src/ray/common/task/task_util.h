@@ -20,11 +20,13 @@
 #include <utility>
 #include <vector>
 
+#include "absl/time/time.h"
 #include "ray/common/buffer.h"
 #include "ray/common/ray_object.h"
 #include "ray/common/scheduling/fallback_strategy.h"
 #include "ray/common/scheduling/label_selector.h"
 #include "ray/common/task/task_spec.h"
+#include "ray/util/clock.h"
 #include "src/ray/protobuf/common.pb.h"
 
 namespace ray {
@@ -35,13 +37,15 @@ struct TaskFailureEntry {
   rpc::RayErrorInfo ray_error_info_;
 
   /// The creation time of this entry.
-  std::chrono::steady_clock::time_point creation_time_;
+  SteadyTimePoint creation_time_;
 
   /// Whether this task should be retried.
   bool should_retry_;
-  TaskFailureEntry(const rpc::RayErrorInfo &ray_error_info, bool should_retry)
+  TaskFailureEntry(const rpc::RayErrorInfo &ray_error_info,
+                   bool should_retry,
+                   ClockInterface &clock)
       : ray_error_info_(ray_error_info),
-        creation_time_(std::chrono::steady_clock::now()),
+        creation_time_(clock.SteadyNow()),
         should_retry_(should_retry) {}
 };
 
@@ -156,7 +160,8 @@ class TaskSpecBuilder {
       const std::unordered_map<std::string, std::string> &labels = {},
       const LabelSelector &label_selector = {},
       const std::vector<FallbackOption> &fallback_strategy =
-          std::vector<FallbackOption>()) {
+          std::vector<FallbackOption>(),
+      uint64_t num_objects_per_yield = 1) {
     message_->set_type(TaskType::NORMAL_TASK);
     message_->set_name(name);
     message_->set_language(language);
@@ -175,6 +180,7 @@ class TaskSpecBuilder {
     message_->set_returns_dynamic(returns_dynamic);
     message_->set_streaming_generator(is_streaming_generator);
     message_->set_generator_backpressure_num_objects(generator_backpressure_num_objects);
+    message_->set_num_objects_per_yield(num_objects_per_yield);
     message_->mutable_required_resources()->insert(required_resources.begin(),
                                                    required_resources.end());
     message_->mutable_required_placement_resources()->insert(
@@ -260,7 +266,8 @@ class TaskSpecBuilder {
       const std::vector<ConcurrencyGroup> &concurrency_groups = {},
       const std::string &extension_data = "",
       bool allow_out_of_order_execution = false,
-      ActorID root_detached_actor_id = ActorID::Nil()) {
+      ActorID root_detached_actor_id = ActorID::Nil(),
+      int64_t actor_generator_backpressure_num_objects = -1) {
     message_->set_type(TaskType::ACTOR_CREATION_TASK);
     auto actor_creation_spec = message_->mutable_actor_creation_task_spec();
     actor_creation_spec->set_actor_id(actor_id.Binary());
@@ -287,6 +294,8 @@ class TaskSpecBuilder {
       }
     }
     actor_creation_spec->set_allow_out_of_order_execution(allow_out_of_order_execution);
+    actor_creation_spec->set_actor_generator_backpressure_num_objects(
+        actor_generator_backpressure_num_objects);
     message_->mutable_scheduling_strategy()->CopyFrom(scheduling_strategy);
     if (!root_detached_actor_id.IsNil()) {
       message_->set_root_detached_actor_id(root_detached_actor_id.Binary());
@@ -305,7 +314,9 @@ class TaskSpecBuilder {
       bool retry_exceptions,
       const std::string &serialized_retry_exception_allowlist,
       uint64_t concurrency_group_sequence_number,
-      const std::optional<std::string> &tensor_transport) {
+      const std::optional<std::string> &tensor_transport,
+      bool is_detached_actor,
+      int64_t actor_generator_backpressure_num_objects = -1) {
     message_->set_type(TaskType::ACTOR_TASK);
     message_->set_max_retries(max_retries);
     message_->set_retry_exceptions(retry_exceptions);
@@ -316,6 +327,11 @@ class TaskSpecBuilder {
     actor_spec->set_actor_creation_dummy_object_id(
         actor_creation_dummy_object_id.Binary());
     actor_spec->set_concurrency_group_sequence_number(concurrency_group_sequence_number);
+    actor_spec->set_is_detached_actor(is_detached_actor);
+    if (actor_generator_backpressure_num_objects > 0) {
+      actor_spec->set_actor_generator_backpressure_num_objects(
+          actor_generator_backpressure_num_objects);
+    }
     if (tensor_transport.has_value()) {
       message_->set_tensor_transport(*tensor_transport);
     }

@@ -408,5 +408,99 @@ def test_cancel(shutdown_only, use_asyncio):
         pass
 
 
+def test_streaming_generator_replay_inconsistent_fails_fast(ray_start_cluster):
+    """
+    A streaming generator whose object count differs across attempts must fail
+    fast on replay with StreamingGeneratorReplayInconsistentError, instead of
+    hanging downstream consumers on objects that will never be produced.
+
+    Setup:
+    1. Head + worker node. A detached actor on the head tracks the attempt
+       number across cluster changes.
+    2. Generator runs on the worker; first attempt yields 3 objects (pins EOF
+       to 3); the replay raises immediately with no yields (reports the app
+       exception as stream index 0 → actual count 1).
+    3. Kill the worker (drops the produced objects); add a fresh worker.
+    4. ray.get on the original refs forces lineage reconstruction; the replay's
+       object count mismatches the pinned EOF, and the task fails fast.
+    5. refs[0] already holds the reported app exception (plasma does not
+       overwrite), so ray.get raises RayTaskError; remaining refs raise
+       StreamingGeneratorReplayInconsistentError.
+    """
+    from ray.exceptions import (
+        RayTaskError,
+        StreamingGeneratorReplayInconsistentError,
+    )
+
+    # Yields must exceed max_direct_call_object_size so they live in plasma and
+    # are lost with the worker (forcing reconstruction). The threshold is kept
+    # large enough that the replay's RayTaskError can still be inlined to the
+    # owner; otherwise MarkTaskReturnObjectsFailed seals
+    # STREAMING_GENERATOR_REPLAY_INCONSISTENT into local plasma for index 0
+    # before the worker-plasma exception is fetched.
+    system_config = {
+        **RECONSTRUCTION_CONFIG,
+        "max_direct_call_object_size": 10_000,
+    }
+
+    cluster = ray_start_cluster
+    cluster.add_node(
+        num_cpus=0,
+        resources={"head": 1},
+        _system_config=system_config,
+        enable_object_reconstruction=True,
+    )
+    ray.init(address=cluster.address)
+    worker = cluster.add_node(num_cpus=1, resources={"worker": 1})
+    cluster.wait_for_nodes()
+
+    # Detached actor survives worker death, so the replay sees a different
+    # attempt number and yields a different object count.
+    @ray.remote(num_cpus=0, resources={"head": 0.01})
+    class AttemptCounter:
+        def __init__(self) -> None:
+            self.n = 0
+
+        def next(self) -> int:
+            self.n += 1
+            return self.n
+
+    AttemptCounter.options(name="counter", lifetime="detached").remote()
+
+    @ray.remote(num_returns="streaming", resources={"worker": 1}, max_retries=-1)
+    def gen():
+        attempt = ray.get(ray.get_actor("counter").next.remote())
+        # First attempt yields 3 objects → EOF pinned to 3. Replay raises with
+        # no yields → reports 1 stream item (the exception) → count mismatch.
+        if attempt > 1:
+            raise ValueError("intentional replay failure")
+        for i in range(3):
+            yield np.zeros(20_000, dtype=np.uint8) + i
+
+    gen_ref = gen.remote()
+    refs = list(gen_ref)
+    assert len(refs) == 3
+
+    # Drop the generator handle and kill the producing node so the objects are
+    # lost; the next ray.get has to replay the task on a fresh worker.
+    del gen_ref
+    cluster.remove_node(worker, allow_graceful=False)
+    cluster.add_node(num_cpus=1, resources={"worker": 1})
+    cluster.wait_for_nodes()
+
+    # Reading any original ref forces reconstruction. The replay reports only
+    # the app exception at index 0 (count 1 ≠ 3), so the task fails fast.
+    # Index 0 keeps the already-written RayTaskError; later indexes get
+    # StreamingGeneratorReplayInconsistentError.
+    with pytest.raises(RayTaskError, match="intentional replay failure"):
+        ray.get(refs[0])
+    for ref in refs[1:]:
+        with pytest.raises(
+            StreamingGeneratorReplayInconsistentError,
+            match=r"produced 1 objects, expected 3",
+        ):
+            ray.get(ref)
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-sv", __file__]))

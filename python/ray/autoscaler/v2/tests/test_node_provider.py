@@ -7,10 +7,12 @@ import unittest
 # coding: utf-8
 # coding: utf-8
 from collections import defaultdict
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Union
+from unittest import mock
 from unittest.mock import MagicMock
 
 import pytest  # noqa
+import requests
 
 import ray
 from ray._common.test_utils import wait_for_condition
@@ -22,6 +24,9 @@ from ray.autoscaler._private.constants import (
 from ray.autoscaler._private.fake_multi_node.node_provider import FakeMultiNodeProvider
 from ray.autoscaler._private.kuberay.node_provider import IKubernetesHttpApiClient
 from ray.autoscaler.v2.instance_manager.cloud_providers.kuberay.cloud_provider import (
+    IDLE_SUSPEND_KEY,
+    IDLE_TERMINATION_CLEANUP_FINALIZER,
+    IDLE_TERMINATION_OPTIONS_KEY,
     KubeRayProvider,
 )
 from ray.autoscaler.v2.instance_manager.config import (
@@ -345,6 +350,7 @@ class MockKubernetesHttpApiClient(IKubernetesHttpApiClient):
         self._ray_cluster = ray_cluster
         self._pod_list = pod_list
         self._patches = {}
+        self._deletes = []
 
     def get(self, path: str) -> Dict[str, Any]:
         if "pods" in path:
@@ -354,12 +360,21 @@ class MockKubernetesHttpApiClient(IKubernetesHttpApiClient):
 
         raise NotImplementedError(f"get {path}")
 
-    def patch(self, path: str, patches: List[Dict[str, Any]]):
+    def patch(
+        self,
+        path: str,
+        patches: Union[List[Dict[str, Any]], Dict[str, Any]],
+        content_type: str = "application/json-patch+json",
+    ):
         self._patches[path] = patches
         return {path: patches}
 
-    def get_patches(self, path: str) -> List[Dict[str, Any]]:
+    def get_patches(self, path: str) -> Union[List[Dict[str, Any]], Dict[str, Any]]:
         return self._patches[path]
+
+    def delete(self, path: str) -> Dict[str, Any]:
+        self._deletes.append(path)
+        return {}
 
 
 class KubeRayProviderIntegrationTest(unittest.TestCase):
@@ -378,8 +393,12 @@ class KubeRayProviderIntegrationTest(unittest.TestCase):
                 "namespace": "default",
                 "head_node_type": "headgroup",
             },
+            gcs_client=MagicMock(),
             k8s_api_client=self.mock_client,
         )
+        # In production _sync_with_api_server caches the CR before the
+        # no-driver annotation is set; mirror that for the dispatch tests.
+        self.provider._ray_cluster = raycluster_cr
 
     def test_get_nodes(self):
         nodes = self.provider.get_non_terminated()
@@ -418,6 +437,55 @@ class KubeRayProviderIntegrationTest(unittest.TestCase):
             "path": "/spec/workerGroupSpecs/0/replicas",
             "value": 2,  # 1 + 1
         }
+
+    def test_launch_total_max_replicas_cap_fails_and_caches_request(self):
+        """A fully capped launch is cached and reports LaunchNodeError."""
+        self.mock_client._ray_cluster["spec"]["workerGroupSpecs"][0]["replicas"] = 1
+        self.mock_client._ray_cluster["spec"]["workerGroupSpecs"][0]["maxReplicas"] = 1
+
+        self.provider.launch(shape={"small-group": 2}, request_id="launch-cap")
+
+        assert "launch-cap" in self.provider._requests
+        assert self.mock_client._patches == {}
+
+        errors = self.provider.poll_errors()
+        assert len(errors) == 1
+        assert isinstance(errors[0], LaunchNodeError)
+        assert errors[0].request_id == "launch-cap"
+        assert errors[0].node_type == "small-group"
+        assert errors[0].count == 2
+        assert "maxReplicas" in str(errors[0])
+
+        # Replay of the same request id must not try again.
+        self.provider.launch(shape={"small-group": 2}, request_id="launch-cap")
+        assert self.provider.poll_errors() == []
+        assert self.mock_client._patches == {}
+
+    def test_launch_partial_max_replicas_cap_fails_leftover(self):
+        """A partial cap patches what fits, caches the id, and fails the leftover."""
+        self.mock_client._ray_cluster["spec"]["workerGroupSpecs"][0]["replicas"] = 1
+        self.mock_client._ray_cluster["spec"]["workerGroupSpecs"][0]["maxReplicas"] = 2
+
+        self.provider.launch(shape={"small-group": 2}, request_id="launch-partial")
+
+        assert "launch-partial" in self.provider._requests
+        patches = self.mock_client.get_patches(
+            f"rayclusters/{self.provider._cluster_name}"
+        )
+        assert patches == [
+            {
+                "op": "replace",
+                "path": "/spec/workerGroupSpecs/0/replicas",
+                "value": 2,
+            }
+        ]
+
+        errors = self.provider.poll_errors()
+        assert len(errors) == 1
+        assert isinstance(errors[0], LaunchNodeError)
+        assert errors[0].request_id == "launch-partial"
+        assert errors[0].node_type == "small-group"
+        assert errors[0].count == 1
 
     def test_terminate_node(self):
         self.provider.terminate(
@@ -648,6 +716,7 @@ class KubeRayProviderIntegrationTest(unittest.TestCase):
                 "namespace": "default",
                 "head_node_type": "headgroup",
             },
+            gcs_client=MagicMock(),
             k8s_api_client=mock_client,
         )
 
@@ -694,6 +763,7 @@ class KubeRayProviderIntegrationTest(unittest.TestCase):
                 "namespace": "default",
                 "head_node_type": "headgroup",
             },
+            gcs_client=MagicMock(),
             k8s_api_client=mock_client,
         )
 
@@ -768,6 +838,331 @@ class KubeRayProviderIntegrationTest(unittest.TestCase):
         assert finished_deletes == set()
         assert workers_to_delete == {pod_names[0], pod_names[1]}
 
+    def _overwrite_patch_to_persist_finalizer(self) -> None:
+        """Overwrite mock_client.patch() to behave like a real K8s API server for
+        the RayCluster finalizer patch. Add the finalizer to the cached CR and
+        return the patched resource.
+        """
+
+        def patch_and_persist(
+            path: str,
+            patches: Union[List[Dict[str, Any]], Dict[str, Any]],
+            content_type="application/json-patch+json",
+        ):
+            self.mock_client._patches[path] = patches  # what the default patch() does
+            self.provider._ray_cluster.setdefault("metadata", {}).setdefault(
+                "finalizers", []
+            ).append(IDLE_TERMINATION_CLEANUP_FINALIZER)
+            return self.provider._ray_cluster
+
+        self.mock_client.patch = patch_and_persist
+
+    def test_apply_idle_termination_policy_delete_adds_finalizer_then_deletes(self):
+        self.provider._idle_termination_policy = "Delete"
+        self._overwrite_patch_to_persist_finalizer()
+        path = f"rayclusters/{self.provider._cluster_name}"
+        self.provider._apply_idle_termination_policy()
+        patch = self.mock_client.get_patches(path)
+
+        assert patch == [
+            {
+                "op": "test",
+                "path": "/metadata/resourceVersion",
+                "value": "123456",
+            },
+            {
+                "op": "add",
+                "path": "/metadata/finalizers",
+                "value": [IDLE_TERMINATION_CLEANUP_FINALIZER],
+            },
+        ]
+        assert self.mock_client._deletes == [path]
+
+    def test_apply_idle_termination_policy_delete_finalizer_idempotent(self):
+        self.provider._ray_cluster.setdefault("metadata", {})["finalizers"] = [
+            IDLE_TERMINATION_CLEANUP_FINALIZER
+        ]
+        self.provider._idle_termination_policy = "Delete"
+        self.provider._apply_idle_termination_policy()
+        path = f"rayclusters/{self.provider._cluster_name}"
+        # Finalizer already present: no patch needed, only the delete.
+        assert path not in self.mock_client._patches
+        assert self.mock_client._deletes == [path]
+
+    def test_apply_idle_termination_policy_delete_finalizer_appends_when_others_present(
+        self,
+    ):
+        other_finalizer = "GCSFTFinalizer"  # e.g. set by kuberay-operator
+        self.provider._ray_cluster.setdefault("metadata", {})["finalizers"] = [
+            other_finalizer
+        ]
+        self._overwrite_patch_to_persist_finalizer()
+        path = f"rayclusters/{self.provider._cluster_name}"
+        self.provider._idle_termination_policy = "Delete"
+        self.provider._apply_idle_termination_policy()
+
+        assert self.mock_client.get_patches(path) == [
+            {
+                "op": "test",
+                "path": "/metadata/resourceVersion",
+                "value": "123456",
+            },
+            {
+                "op": "add",
+                "path": "/metadata/finalizers/-",
+                "value": IDLE_TERMINATION_CLEANUP_FINALIZER,
+            },
+        ]
+        # The pre-existing finalizer must survive the append, not get clobbered.
+        assert self.provider._ray_cluster["metadata"]["finalizers"] == [
+            other_finalizer,
+            IDLE_TERMINATION_CLEANUP_FINALIZER,
+        ]
+        assert self.mock_client._deletes == [path]
+
+    def test_apply_idle_termination_policy_delete_swallows_patch_failure(self):
+        path = f"rayclusters/{self.provider._cluster_name}"
+
+        def failing_patch(*args, **kwargs):
+            raise RuntimeError("k8s unreachable")
+
+        self.mock_client.patch = failing_patch
+        self.provider._idle_termination_policy = "Delete"
+        # Should not raise, and should not proceed to delete.
+        self.provider._apply_idle_termination_policy()
+        assert path not in self.mock_client._patches
+        assert self.mock_client._deletes == []
+
+    def test_apply_idle_termination_policy_delete_swallows_delete_failure(self):
+        self._overwrite_patch_to_persist_finalizer()
+        path = f"rayclusters/{self.provider._cluster_name}"
+
+        delete_calls = []
+
+        def failing_delete(path):
+            delete_calls.append(path)
+            raise RuntimeError("k8s unreachable")
+
+        self.mock_client.delete = failing_delete
+        self.provider._idle_termination_policy = "Delete"
+        # Should not raise, even though DELETE itself failed.
+        self.provider._apply_idle_termination_policy()
+
+        assert delete_calls == [path]
+        assert self.mock_client.get_patches(path) == [
+            {
+                "op": "test",
+                "path": "/metadata/resourceVersion",
+                "value": "123456",
+            },
+            {
+                "op": "add",
+                "path": "/metadata/finalizers",
+                "value": [IDLE_TERMINATION_CLEANUP_FINALIZER],
+            },
+        ]
+
+    def test_apply_idle_termination_policy_delete_skips_delete_on_patch_conflict(self):
+        def conflicting_patch(*args, **kwargs):
+            resp = requests.Response()
+            resp.status_code = 422
+            raise requests.HTTPError(response=resp)
+
+        self.mock_client.patch = conflicting_patch
+        self.provider._idle_termination_policy = "Delete"
+        self.provider._apply_idle_termination_policy()
+
+        assert self.mock_client._deletes == []
+
+    def test_apply_idle_termination_policy_suspend_patches_idle_suspend(self):
+        self.provider._idle_termination_policy = "Suspend"
+        self.provider._apply_idle_termination_policy()
+        path = f"rayclusters/{self.provider._cluster_name}"
+        assert self.mock_client.get_patches(path) == {"spec": {IDLE_SUSPEND_KEY: True}}
+        assert self.mock_client._deletes == []
+
+    def test_apply_idle_termination_policy_suspend_patches_idempotent(self):
+        self.provider._idle_termination_policy = "Suspend"
+        self.provider._ray_cluster.setdefault("spec", {}).setdefault(
+            IDLE_SUSPEND_KEY, True
+        )
+        self.provider._apply_idle_termination_policy()
+        path = f"rayclusters/{self.provider._cluster_name}"
+        assert path not in self.mock_client._patches
+        assert self.mock_client._deletes == []
+
+    def test_apply_idle_termination_policy_suspend_swallows_patch_failure(self):
+        path = f"rayclusters/{self.provider._cluster_name}"
+
+        def failing_patch(*args, **kwargs):
+            raise RuntimeError("k8s unreachable")
+
+        self.mock_client.patch = failing_patch
+        self.provider._idle_termination_policy = "Suspend"
+        # Should not raise.
+        self.provider._apply_idle_termination_policy()
+        assert path not in self.mock_client._patches
+        assert self.mock_client._deletes == []
+
+    def test_apply_idle_termination_policy_unknown_takes_no_action(self):
+        self.provider._idle_termination_policy = "Bogus"
+        self.provider._apply_idle_termination_policy()
+        path = f"rayclusters/{self.provider._cluster_name}"
+        assert path not in self.mock_client._patches
+        assert self.mock_client._deletes == []
+
+    # --- No-driver termination predicate + dispatch ---
+
+    def _make_gcs(self, *jobs):
+        class _Config:
+            def __init__(self, ray_namespace):
+                self.ray_namespace = ray_namespace
+
+        class _Job:
+            def __init__(self, dead, ray_namespace, end_time=0):
+                self.is_dead = dead
+                self.end_time = end_time
+                self.config = _Config(ray_namespace)
+
+        class _Gcs:
+            def get_all_job_info(self, **_):
+                return {i: _Job(*job) for i, job in enumerate(jobs)}
+
+        return _Gcs()
+
+    def test_driver_status_filters_internal(self):
+        gcs = self._make_gcs(
+            (False, "_ray_internal_dashboard"),
+            (False, "_ray_internal_something"),
+        )
+        self.provider._gcs_client = gcs
+        assert self.provider._driver_status()[0] is False
+
+    def test_driver_status_counts_user_driver(self):
+        gcs = self._make_gcs(
+            (False, "_ray_internal_dashboard"),
+            (False, "default"),
+        )
+        self.provider._gcs_client = gcs
+        assert self.provider._driver_status()[0] is True
+
+    def test_driver_status_ignores_dead(self):
+        gcs = self._make_gcs((True, "default", 42))
+        self.provider._gcs_client = gcs
+        assert self.provider._driver_status() == (False, 42)
+
+    def test_driver_status_fail_closed(self):
+        class _FailingGcs:
+            def get_all_job_info(self, **_):
+                raise RuntimeError("gcs unreachable")
+
+        self.provider._gcs_client = _FailingGcs()
+        assert self.provider._driver_status()[0] is True
+
+    def test_evaluate_idle_termination_disabled_when_timeout_none(self):
+        path = f"rayclusters/{self.provider._cluster_name}"
+        self.provider._gcs_client = self._make_gcs()  # no drivers
+        self.provider._idle_termination_timeout_seconds = None
+        self.provider._evaluate_idle_termination()
+        assert path not in self.mock_client._patches
+        assert self.provider._no_driver_observed_since is None
+
+    def test_evaluate_idle_termination_waits_for_timeout(self):
+        self.provider._gcs_client = self._make_gcs()  # no drivers
+        self.provider._idle_termination_timeout_seconds = 100.0
+        self.provider._idle_termination_policy = "Delete"
+
+        self._overwrite_patch_to_persist_finalizer()
+
+        def evaluate_at(t):
+            with mock.patch("time.monotonic", return_value=t):
+                self.provider._evaluate_idle_termination()
+
+        path = f"rayclusters/{self.provider._cluster_name}"
+        evaluate_at(0.0)
+        assert path not in self.mock_client._patches  # anchored, not yet
+        evaluate_at(50.0)
+        assert path not in self.mock_client._patches  # still below timeout
+        evaluate_at(100.0)
+        assert self.mock_client._patches.get(path) == [
+            {
+                "op": "test",
+                "path": "/metadata/resourceVersion",
+                "value": "123456",
+            },
+            {
+                "op": "add",
+                "path": "/metadata/finalizers",
+                "value": [IDLE_TERMINATION_CLEANUP_FINALIZER],
+            },
+        ]
+        assert self.mock_client._deletes == [path]
+
+    def test_evaluate_idle_termination_resets_when_driver_attaches(self):
+        path = f"rayclusters/{self.provider._cluster_name}"
+        self.provider._idle_termination_timeout_seconds = 100.0
+
+        with mock.patch("time.monotonic", return_value=0.0):
+            self.provider._gcs_client = self._make_gcs()  # no drivers
+            self.provider._evaluate_idle_termination()
+        assert self.provider._no_driver_observed_since == 0.0
+
+        # Driver attaches → anchor cleared, no patch.
+        with mock.patch("time.monotonic", return_value=50.0):
+            self.provider._gcs_client = self._make_gcs((False, "default"))
+            self.provider._evaluate_idle_termination()
+        assert self.provider._no_driver_observed_since is None
+        assert path not in self.mock_client._patches
+
+    def test_evaluate_idle_termination_resets_on_intermittent_driver(self):
+        self.provider._idle_termination_timeout_seconds = 100.0
+
+        # No driver: anchor at t=0.
+        with mock.patch("time.monotonic", return_value=0.0):
+            self.provider._gcs_client = self._make_gcs()
+            self.provider._evaluate_idle_termination()
+        assert self.provider._no_driver_observed_since == 0.0
+
+        # A short-lived driver started and finished between loops (a dead job
+        # with a newer end time): the timer must restart.
+        with mock.patch("time.monotonic", return_value=50.0):
+            self.provider._gcs_client = self._make_gcs((True, "default", 42))
+            self.provider._evaluate_idle_termination()
+        assert self.provider._no_driver_observed_since == 50.0
+        assert self.provider._last_seen_job_end_time == 42
+
+    def test_refresh_idle_termination_config_reads_value(self):
+        self.provider._ray_cluster = {
+            "spec": {
+                "idleTerminationOptions": {
+                    "timeoutSeconds": 1800,
+                    "policy": "Suspend",
+                }
+            }
+        }
+        self.provider._refresh_idle_termination_config()
+        assert self.provider._idle_termination_timeout_seconds == 1800.0
+        assert self.provider._idle_termination_policy == "Suspend"
+
+    def test_refresh_idle_termination_config_unset(self):
+        self.provider._ray_cluster = {"spec": {IDLE_TERMINATION_OPTIONS_KEY: {}}}
+        self.provider._refresh_idle_termination_config()
+        assert self.provider._idle_termination_timeout_seconds is None
+        assert self.provider._idle_termination_policy == "Suspend"
+
+    def test_refresh_idle_termination_config_policy_defaults_to_suspend(self):
+        self.provider._ray_cluster = {
+            "spec": {"idleTerminationOptions": {"timeoutSeconds": 1800}}
+        }
+        self.provider._refresh_idle_termination_config()
+        assert self.provider._idle_termination_timeout_seconds == 1800.0
+        assert self.provider._idle_termination_policy == "Suspend"
+
+    def test_refresh_idle_termination_config_no_idle_termination_options(self):
+        self.provider._ray_cluster = {"spec": {}}
+        self.provider._refresh_idle_termination_config()
+        assert self.provider._idle_termination_timeout_seconds is None
+
     def test_scale_down_with_multi_host_group(self):
         """
         Test the case where a worker group has numOfHosts > 1.
@@ -787,6 +1182,7 @@ class KubeRayProviderIntegrationTest(unittest.TestCase):
                 "namespace": "default",
                 "head_node_type": "headgroup",
             },
+            gcs_client=MagicMock(),
             k8s_api_client=mock_client,
         )
 

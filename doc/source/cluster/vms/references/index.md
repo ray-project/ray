@@ -1,3 +1,9 @@
+---
+myst:
+  html_meta:
+    description: "Reference documentation index for running Ray clusters on virtual machines."
+---
+
 (vm-cluster-api-references)=
 
 # API References

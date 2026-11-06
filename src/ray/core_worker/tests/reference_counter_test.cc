@@ -20,20 +20,20 @@
 #include <vector>
 
 #include "absl/functional/bind_front.h"
-#include "gmock/gmock.h"
 #include "gtest/gtest.h"
-#include "mock/ray/pubsub/publisher.h"
-#include "ray/common/asio/instrumented_io_context.h"
-#include "ray/common/asio/periodical_runner.h"
+#include "ray/asio/instrumented_io_context.h"
+#include "ray/asio/periodical_runner.h"
 #include "ray/common/ray_object.h"
 #include "ray/core_worker/reference_counter_interface.h"
 #include "ray/core_worker/store_provider/memory_store/memory_store.h"
 #include "ray/core_worker_rpc_client/fake_core_worker_client.h"
 #include "ray/observability/fake_metric.h"
+#include "ray/pubsub/fake_publisher.h"
 #include "ray/pubsub/fake_subscriber.h"
 #include "ray/pubsub/publisher.h"
 #include "ray/pubsub/publisher_interface.h"
 #include "ray/pubsub/subscriber_interface.h"
+#include "ray/util/clock.h"
 
 namespace ray {
 namespace core {
@@ -49,7 +49,7 @@ class ReferenceCountTest : public ::testing::Test {
 
   virtual void SetUp() {
     rpc::Address addr;
-    publisher_ = std::make_shared<pubsub::MockPublisher>();
+    publisher_ = std::make_shared<pubsub::FakePublisher>();
     subscriber_ = std::make_shared<pubsub::FakeSubscriber>();
     owned_object_count_metric_ = std::make_shared<ray::observability::FakeGauge>();
     owned_object_size_metric_ = std::make_shared<ray::observability::FakeGauge>();
@@ -58,6 +58,7 @@ class ReferenceCountTest : public ::testing::Test {
         publisher_.get(),
         subscriber_.get(),
         [](const NodeID &node_id) { return false; },
+        [](const ObjectID &, const absl::flat_hash_set<NodeID> &) {},
         *owned_object_count_metric_,
         *owned_object_size_metric_);
   }
@@ -71,7 +72,7 @@ class ReferenceCountTest : public ::testing::Test {
 
   void AssertNoLeaks() { ASSERT_EQ(rc->NumObjectIDsInScope(), 0); }
 
-  std::shared_ptr<pubsub::MockPublisher> publisher_;
+  std::shared_ptr<pubsub::FakePublisher> publisher_;
   std::shared_ptr<pubsub::FakeSubscriber> subscriber_;
 };
 
@@ -83,7 +84,7 @@ class ReferenceCountLineageEnabledTest : public ::testing::Test {
 
   virtual void SetUp() {
     rpc::Address addr;
-    publisher_ = std::make_shared<pubsub::MockPublisher>();
+    publisher_ = std::make_shared<pubsub::FakePublisher>();
     subscriber_ = std::make_shared<pubsub::FakeSubscriber>();
     owned_object_count_metric_ = std::make_shared<ray::observability::FakeGauge>();
     owned_object_size_metric_ = std::make_shared<ray::observability::FakeGauge>();
@@ -92,6 +93,7 @@ class ReferenceCountLineageEnabledTest : public ::testing::Test {
         publisher_.get(),
         subscriber_.get(),
         [](const NodeID &node_id) { return false; },
+        [](const ObjectID &, const absl::flat_hash_set<NodeID> &) {},
         *owned_object_count_metric_,
         *owned_object_size_metric_,
         /*lineage_pinning_enabled=*/true);
@@ -103,16 +105,16 @@ class ReferenceCountLineageEnabledTest : public ::testing::Test {
     rc.reset();
   }
 
-  std::shared_ptr<pubsub::MockPublisher> publisher_;
+  std::shared_ptr<pubsub::FakePublisher> publisher_;
   std::shared_ptr<pubsub::FakeSubscriber> subscriber_;
 };
 
 /// The 2 classes below are implemented to support distributed mock test using
-/// MockWorkerClient.
+/// FakeWorkerClient.
 /// How it works? if Publish is called, the corresponding callback from
 /// the Subscriber is called.
-class MockDistributedSubscriber;
-class MockDistributedPublisher;
+class FakeDistributedSubscriber;
+class FakeDistributedPublisher;
 
 using ObjectToCallbackMap =
     absl::flat_hash_map<ObjectID, pubsub::SubscriptionItemCallback>;
@@ -132,20 +134,20 @@ static std::string GenerateID(UniqueID publisher_id, UniqueID subscriber_id) {
   return publisher_id.Binary() + subscriber_id.Binary();
 }
 
-class MockCoreWorkerClientInterface : public rpc::FakeCoreWorkerClient {
+class FakeCoreWorkerClientForTest : public rpc::FakeCoreWorkerClient {
  public:
-  ~MockCoreWorkerClientInterface() = default;
+  ~FakeCoreWorkerClientForTest() = default;
   virtual void WaitForRefRemoved(const ObjectID object_id,
                                  const ObjectID contained_in_id,
                                  rpc::Address owner_address) = 0;
 };
 
 using PublisherFactoryFn =
-    std::function<std::shared_ptr<MockCoreWorkerClientInterface>(const rpc::Address &)>;
+    std::function<std::shared_ptr<FakeCoreWorkerClientForTest>(const rpc::Address &)>;
 
-class MockDistributedSubscriber : public pubsub::SubscriberInterface {
+class FakeDistributedSubscriber : public pubsub::SubscriberInterface {
  public:
-  MockDistributedSubscriber(pubsub::SubscriptionIndex *dict,
+  FakeDistributedSubscriber(pubsub::SubscriptionIndex *dict,
                             SubscriptionCallbackMap *sub_callback_map,
                             SubscriptionFailureCallbackMap *sub_failure_callback_map,
                             UniqueID subscriber_id,
@@ -154,15 +156,15 @@ class MockDistributedSubscriber : public pubsub::SubscriberInterface {
         subscription_callback_map_(sub_callback_map),
         subscription_failure_callback_map_(sub_failure_callback_map),
         subscriber_id_(subscriber_id),
-        subscriber_(std::make_unique<pubsub::SubscriberState>(
-            subscriber_id,
-            /*get_time_ms=*/[]() { return 1.0; },
-            /*subscriber_timeout_ms=*/1000,
-            /*publish_batch_size=*/1000,
-            UniqueID::FromRandom())),
+        subscriber_(
+            std::make_unique<pubsub::SubscriberState>(subscriber_id,
+                                                      /*clock=*/clock_,
+                                                      /*subscriber_timeout_ms=*/1000,
+                                                      /*publish_batch_size=*/1000,
+                                                      UniqueID::FromRandom())),
         client_factory_(client_factory) {}
 
-  ~MockDistributedSubscriber() = default;
+  ~FakeDistributedSubscriber() = default;
 
   void Subscribe(
       std::unique_ptr<rpc::SubMessage> sub_message,
@@ -227,13 +229,16 @@ class MockDistributedSubscriber : public pubsub::SubscriberInterface {
   SubscriptionCallbackMap *subscription_callback_map_;
   SubscriptionFailureCallbackMap *subscription_failure_callback_map_;
   UniqueID subscriber_id_;
+  // Declared before subscriber_ so it outlives the SubscriberState that holds a
+  // ClockInterface& to it.
+  ray::Clock clock_;
   std::unique_ptr<pubsub::SubscriberState> subscriber_;
   PublisherFactoryFn client_factory_;
 };
 
-class MockDistributedPublisher : public pubsub::PublisherInterface {
+class FakeDistributedPublisher : public pubsub::PublisherInterface {
  public:
-  MockDistributedPublisher(pubsub::SubscriptionIndex *dict,
+  FakeDistributedPublisher(pubsub::SubscriptionIndex *dict,
                            SubscriptionCallbackMap *sub_callback_map,
                            SubscriptionFailureCallbackMap *sub_failure_callback_map,
                            WorkerID publisher_id)
@@ -241,7 +246,7 @@ class MockDistributedPublisher : public pubsub::PublisherInterface {
         subscription_callback_map_(sub_callback_map),
         subscription_failure_callback_map_(sub_failure_callback_map),
         publisher_id_(publisher_id) {}
-  ~MockDistributedPublisher() = default;
+  ~FakeDistributedPublisher() = default;
 
   StatusSet<StatusT::InvalidArgument> RegisterSubscription(
       const rpc::ChannelType channel_type,
@@ -293,7 +298,7 @@ class MockDistributedPublisher : public pubsub::PublisherInterface {
   WorkerID publisher_id_;
 };
 
-class MockWorkerClient : public MockCoreWorkerClientInterface {
+class FakeWorkerClient : public FakeCoreWorkerClientForTest {
  public:
   // Helper function to generate a random address.
   static rpc::Address CreateRandomAddress(const std::string &addr) {
@@ -304,15 +309,15 @@ class MockWorkerClient : public MockCoreWorkerClientInterface {
     return address;
   }
 
-  explicit MockWorkerClient(const std::string &addr,
+  explicit FakeWorkerClient(const std::string &addr,
                             PublisherFactoryFn client_factory = nullptr)
       : address_(CreateRandomAddress(addr)),
-        publisher_(std::make_shared<MockDistributedPublisher>(
+        publisher_(std::make_shared<FakeDistributedPublisher>(
             &directory,
             &subscription_callback_map,
             &subscription_failure_callback_map,
             WorkerID::FromBinary(address_.worker_id()))),
-        subscriber_(std::make_shared<MockDistributedSubscriber>(
+        subscriber_(std::make_shared<FakeDistributedSubscriber>(
             &directory,
             &subscription_callback_map,
             &subscription_failure_callback_map,
@@ -325,11 +330,12 @@ class MockWorkerClient : public MockCoreWorkerClientInterface {
             publisher_.get(),
             subscriber_.get(),
             [](const NodeID &node_id) { return true; },
+            [](const ObjectID &, const absl::flat_hash_set<NodeID> &) {},
             *owned_object_count_metric_,
             *owned_object_size_metric_,
             /*lineage_pinning_enabled=*/false) {}
 
-  ~MockWorkerClient() override {
+  ~FakeWorkerClient() override {
     if (!failed_) {
       AssertNoLeaks();
     }
@@ -390,11 +396,6 @@ class MockWorkerClient : public MockCoreWorkerClientInterface {
                        0,
                        LineageReconstructionEligibility::INELIGIBLE_PUT,
                        /*add_local_ref=*/true);
-  }
-
-  void PutWithForeignOwner(const ObjectID &object_id, const rpc::Address &owner_address) {
-    rc_.AddLocalReference(object_id, "");
-    rc_.AddBorrowedObject(object_id, {}, owner_address, /*foreign=*/true);
   }
 
   void PutWrappedId(const ObjectID outer_id, const ObjectID &inner_id) {
@@ -487,13 +488,13 @@ class MockWorkerClient : public MockCoreWorkerClientInterface {
     ASSERT_EQ(rc_.NumObjectIDsInScope(), 0);
   }
 
-  // Global map from Worker ID -> MockWorkerClient.
+  // Global map from Worker ID -> FakeWorkerClient.
   // Global map from Object ID -> owner worker ID, list of objects that it depends on,
   // worker address that it's scheduled on. Worker map of pending return IDs.
 
   rpc::Address address_;
-  std::shared_ptr<MockDistributedPublisher> publisher_;
-  std::shared_ptr<MockDistributedSubscriber> subscriber_;
+  std::shared_ptr<FakeDistributedPublisher> publisher_;
+  std::shared_ptr<FakeDistributedSubscriber> subscriber_;
   std::shared_ptr<ray::observability::FakeGauge> owned_object_count_metric_;
   std::shared_ptr<ray::observability::FakeGauge> owned_object_size_metric_;
   // The ReferenceCounter at the "client".
@@ -836,6 +837,70 @@ TEST_F(ReferenceCountTest, TestGetLocalityData) {
   rc->RemoveLocalReference(obj3, nullptr);
 }
 
+// Tests that location updates are skipped until a raylet subscribes.
+TEST_F(ReferenceCountTest, TestSkipsLocationPublishUntilSubscribed) {
+  auto obj = ObjectID::FromRandom();
+  auto node = NodeID::FromRandom();
+  rpc::Address address;
+  address.set_ip_address("1.2.3.4");
+  rc->AddOwnedObject(obj,
+                     {},
+                     address,
+                     "file.py:42",
+                     100,
+                     LineageReconstructionEligibility::INELIGIBLE_PUT,
+                     /*add_local_ref=*/true);
+
+  publisher_->publish_calls.clear();
+  rc->AddObjectLocation(obj, node);
+  EXPECT_EQ(publisher_->publish_calls.size(), 0);
+
+  publisher_->publish_calls.clear();
+  rc->PublishObjectLocationSnapshot(obj);
+  rc->RemoveObjectLocation(obj, node);
+  EXPECT_EQ(publisher_->publish_calls.size(), 2);
+
+  rc->RemoveLocalReference(obj, nullptr);
+}
+
+// Tests that the ref-removed failure is only published for objects that had a subscriber.
+TEST_F(ReferenceCountTest, TestDeathFailurePublishGatedBySubscription) {
+  auto unwatched = ObjectID::FromRandom();
+  auto watched = ObjectID::FromRandom();
+  rpc::Address address;
+  address.set_ip_address("1.2.3.4");
+  rc->AddOwnedObject(unwatched,
+                     {},
+                     address,
+                     "file.py:42",
+                     100,
+                     LineageReconstructionEligibility::INELIGIBLE_PUT,
+                     /*add_local_ref=*/true);
+  rc->AddOwnedObject(watched,
+                     {},
+                     address,
+                     "file.py:42",
+                     100,
+                     LineageReconstructionEligibility::INELIGIBLE_PUT,
+                     /*add_local_ref=*/true);
+
+  publisher_->publish_failure_calls.clear();
+  rc->RemoveLocalReference(unwatched, nullptr);
+  EXPECT_EQ(publisher_->publish_failure_calls.size(), 0);
+  ASSERT_FALSE(rc->HasReference(unwatched));
+
+  publisher_->publish_calls.clear();
+  rc->PublishObjectLocationSnapshot(watched);
+  EXPECT_EQ(publisher_->publish_calls.size(), 1);
+  publisher_->publish_failure_calls.clear();
+  rc->RemoveLocalReference(watched, nullptr);
+  EXPECT_EQ(publisher_->publish_failure_calls.size(), 1);
+  EXPECT_EQ(publisher_->publish_failure_calls[0].first,
+            rpc::ChannelType::WORKER_OBJECT_LOCATIONS_CHANNEL);
+  EXPECT_EQ(publisher_->publish_failure_calls[0].second, watched.Binary());
+  ASSERT_FALSE(rc->HasReference(watched));
+}
+
 // Tests that we can get the owner address correctly for objects that we own,
 // objects that we borrowed via a serialized object ID, and objects whose
 // origin we do not know.
@@ -886,7 +951,7 @@ TEST(MemoryStoreIntegrationTest, TestSimple) {
   uint8_t data[] = {1, 2, 3, 4, 5, 6, 7, 8};
   RayObject buffer(std::make_shared<LocalMemoryBuffer>(data, sizeof(data)), nullptr, {});
 
-  auto publisher = std::make_shared<pubsub::MockPublisher>();
+  auto publisher = std::make_shared<pubsub::FakePublisher>();
   auto subscriber = std::make_shared<pubsub::FakeSubscriber>();
   auto owned_object_count_metric = std::make_shared<ray::observability::FakeGauge>();
   auto owned_object_size_metric = std::make_shared<ray::observability::FakeGauge>();
@@ -895,10 +960,13 @@ TEST(MemoryStoreIntegrationTest, TestSimple) {
       publisher.get(),
       subscriber.get(),
       /*is_node_dead=*/[](const NodeID &) { return false; },
+      /*free_object_on_nodes_async=*/
+      [](const ObjectID &, const absl::flat_hash_set<NodeID> &) {},
       *owned_object_count_metric,
       *owned_object_size_metric);
   InstrumentedIOContextWithThread io_context("TestSimple");
-  CoreWorkerMemoryStore store(io_context.GetIoService());
+  Clock clock;
+  CoreWorkerMemoryStore store(io_context.GetIoService(), clock);
 
   // Tests putting an object with no references is ignored.
   store.Put(buffer, id2, rc->HasReference(id2));
@@ -931,8 +999,8 @@ TEST(MemoryStoreIntegrationTest, TestSimple) {
 // outer_id = ray.put([inner_id])
 // res = borrower.remote(outer_id)
 TEST(DistributedReferenceCountTest, TestNoBorrow) {
-  auto borrower = std::make_shared<MockWorkerClient>("1");
-  auto owner = std::make_shared<MockWorkerClient>(
+  auto borrower = std::make_shared<FakeWorkerClient>("1");
+  auto owner = std::make_shared<FakeWorkerClient>(
       "2", [&](const rpc::Address &addr) { return borrower; });
 
   // The owner creates an inner object and wraps it.
@@ -987,8 +1055,8 @@ TEST(DistributedReferenceCountTest, TestNoBorrow) {
 // outer_id = ray.put([inner_id])
 // res = borrower.remote(outer_id)
 TEST(DistributedReferenceCountTest, TestSimpleBorrower) {
-  auto borrower = std::make_shared<MockWorkerClient>("1");
-  auto owner = std::make_shared<MockWorkerClient>(
+  auto borrower = std::make_shared<FakeWorkerClient>("1");
+  auto owner = std::make_shared<FakeWorkerClient>(
       "2", [&](const rpc::Address &addr) { return borrower; });
 
   // The owner creates an inner object and wraps it.
@@ -1058,8 +1126,8 @@ TEST(DistributedReferenceCountTest, TestSimpleBorrowerFailure) {
   // We need to clean up the failure callback map, so that we can properly test failure
   // scenario.
   subscription_failure_callback_map.clear();
-  auto borrower = std::make_shared<MockWorkerClient>("1");
-  auto owner = std::make_shared<MockWorkerClient>(
+  auto borrower = std::make_shared<FakeWorkerClient>("1");
+  auto owner = std::make_shared<FakeWorkerClient>(
       "2", [&](const rpc::Address &addr) { return borrower; });
 
   // The owner creates an inner object and wraps it.
@@ -1110,6 +1178,79 @@ TEST(DistributedReferenceCountTest, TestSimpleBorrowerFailure) {
   ASSERT_FALSE(owner->rc_.HasReference(outer_id));
 }
 
+// A borrower is given a reference to an object ID, removes the reference,
+// then the borrower process dies. The owner receives both the ref removed
+// message and the failure notification, triggering two cleanup callbacks.
+//
+// @ray.remote
+// class Borrower:
+//     def __init__(self, inner_ids):
+//         self.inner_id = inner_ids[0]
+//     def release(self):
+//         del self.inner_id
+//         # Process dies after releasing reference.
+//
+// inner_id = ray.put(1)
+// outer_id = ray.put([inner_id])
+// b = Borrower.remote(outer_id)
+// b.release.remote()
+TEST(DistributedReferenceCountTest, TestCleanupBorrowersOnRefRemovedIdempotent) {
+  auto borrower = std::make_shared<FakeWorkerClient>("1");
+  auto owner = std::make_shared<FakeWorkerClient>(
+      "2", [&](const rpc::Address &addr) { return borrower; });
+
+  // The owner creates an inner object and wraps it.
+  auto inner_id = ObjectID::FromRandom();
+  auto outer_id = ObjectID::FromRandom();
+  owner->Put(inner_id);
+  owner->PutWrappedId(outer_id, inner_id);
+
+  // The owner submits a task that depends on the outer object.
+  auto return_id = owner->SubmitTaskWithArg(outer_id);
+  owner->rc_.RemoveLocalReference(outer_id, nullptr);
+  owner->rc_.RemoveLocalReference(inner_id, nullptr);
+  ASSERT_TRUE(owner->rc_.HasReference(outer_id));
+  ASSERT_TRUE(owner->rc_.HasReference(inner_id));
+
+  // The borrower is given a reference to the inner object.
+  borrower->ExecuteTaskWithArg(outer_id, inner_id, owner->address_);
+  ASSERT_TRUE(borrower->rc_.HasReference(inner_id));
+
+  // The borrower task returns to the owner while still using inner_id.
+  auto borrower_refs = borrower->FinishExecutingTask(outer_id, ObjectID::Nil());
+  ASSERT_FALSE(borrower->rc_.HasReference(outer_id));
+  ASSERT_TRUE(borrower->rc_.HasReference(inner_id));
+
+  // The owner receives the borrower's reply and merges the borrower's ref count.
+  owner->HandleSubmittedTaskFinished(
+      return_id, outer_id, {}, borrower->address_, borrower_refs);
+  // Owner now has borrower in inner's borrowers list.
+  ASSERT_TRUE(owner->rc_.HasReference(inner_id));
+  ASSERT_FALSE(owner->rc_.HasReference(outer_id));
+
+  // The borrower removes its reference to inner_id.
+  borrower->rc_.RemoveLocalReference(inner_id, nullptr);
+  ASSERT_FALSE(borrower->rc_.HasReference(inner_id));
+  // Owner still has reference because it hasn't received the message yet.
+  ASSERT_TRUE(owner->rc_.HasReference(inner_id));
+
+  // Owner subscribes to borrower's ref removed and borrower sends the message.
+  // This triggers message_published_callback -> CleanupBorrowersOnRefRemoved (1st call).
+  borrower->FlushBorrowerCallbacks();
+  // Owner's reference should now be cleaned up.
+  ASSERT_FALSE(owner->rc_.HasReference(inner_id));
+
+  // Now simulate the race condition: publisher_failed_callback fires after
+  // message_published_callback has already cleaned up.
+  // This should trigger CleanupBorrowersOnRefRemoved (2nd call) which should be
+  // idempotent.
+  borrower->FailAllWaitForRefRemovedRequests();
+
+  // Verify the final state is correct - no references should remain.
+  ASSERT_FALSE(owner->rc_.HasReference(inner_id));
+  ASSERT_FALSE(owner->rc_.HasReference(outer_id));
+}
+
 // A borrower is given a reference to an object ID, keeps the reference past
 // the task's lifetime, then deletes the reference before it hears from the
 // owner.
@@ -1123,8 +1264,8 @@ TEST(DistributedReferenceCountTest, TestSimpleBorrowerFailure) {
 // outer_id = ray.put([inner_id])
 // res = Borrower.remote(outer_id)
 TEST(DistributedReferenceCountTest, TestSimpleBorrowerReferenceRemoved) {
-  auto borrower = std::make_shared<MockWorkerClient>("1");
-  auto owner = std::make_shared<MockWorkerClient>(
+  auto borrower = std::make_shared<FakeWorkerClient>("1");
+  auto owner = std::make_shared<FakeWorkerClient>(
       "2", [&](const rpc::Address &addr) { return borrower; });
 
   // The owner creates an inner object and wraps it.
@@ -1190,9 +1331,9 @@ TEST(DistributedReferenceCountTest, TestSimpleBorrowerReferenceRemoved) {
 // outer_id = ray.put([inner_id])
 // res = borrower.remote(outer_id)
 TEST(DistributedReferenceCountTest, TestBorrowerTree) {
-  auto borrower1 = std::make_shared<MockWorkerClient>("1");
-  auto borrower2 = std::make_shared<MockWorkerClient>("2");
-  auto owner = std::make_shared<MockWorkerClient>("3", [&](const rpc::Address &addr) {
+  auto borrower1 = std::make_shared<FakeWorkerClient>("1");
+  auto borrower2 = std::make_shared<FakeWorkerClient>("2");
+  auto owner = std::make_shared<FakeWorkerClient>("3", [&](const rpc::Address &addr) {
     if (addr.ip_address() == borrower1->address_.ip_address()) {
       return borrower1;
     } else {
@@ -1282,8 +1423,8 @@ TEST(DistributedReferenceCountTest, TestBorrowerTree) {
 // outer_id = ray.put([mid_id])
 // res = borrower.remote(outer_id)
 TEST(DistributedReferenceCountTest, TestNestedObjectNoBorrow) {
-  auto borrower = std::make_shared<MockWorkerClient>("1");
-  auto owner = std::make_shared<MockWorkerClient>(
+  auto borrower = std::make_shared<FakeWorkerClient>("1");
+  auto owner = std::make_shared<FakeWorkerClient>(
       "2", [&](const rpc::Address &addr) { return borrower; });
 
   // The owner creates an inner object and wraps it.
@@ -1348,8 +1489,8 @@ TEST(DistributedReferenceCountTest, TestNestedObjectNoBorrow) {
 // outer_id = ray.put([mid_id])
 // res = borrower.remote(outer_id)
 TEST(DistributedReferenceCountTest, TestNestedObject) {
-  auto borrower = std::make_shared<MockWorkerClient>("1");
-  auto owner = std::make_shared<MockWorkerClient>(
+  auto borrower = std::make_shared<FakeWorkerClient>("1");
+  auto owner = std::make_shared<FakeWorkerClient>(
       "2", [&](const rpc::Address &addr) { return borrower; });
 
   // The owner creates an inner object and wraps it.
@@ -1431,9 +1572,9 @@ TEST(DistributedReferenceCountTest, TestNestedObject) {
 // owner_id3 = ray.put([owner_id2])
 // res = borrower1.remote(owner_id3)
 TEST(DistributedReferenceCountTest, TestNestedObjectDifferentOwners) {
-  auto borrower1 = std::make_shared<MockWorkerClient>("1");
-  auto borrower2 = std::make_shared<MockWorkerClient>("2");
-  auto owner = std::make_shared<MockWorkerClient>("3", [&](const rpc::Address &addr) {
+  auto borrower1 = std::make_shared<FakeWorkerClient>("1");
+  auto borrower2 = std::make_shared<FakeWorkerClient>("2");
+  auto owner = std::make_shared<FakeWorkerClient>("3", [&](const rpc::Address &addr) {
     if (addr.ip_address() == borrower1->address_.ip_address()) {
       return borrower1;
     } else {
@@ -1530,9 +1671,9 @@ TEST(DistributedReferenceCountTest, TestNestedObjectDifferentOwners) {
 // owner_id3 = ray.put([owner_id2])
 // res = borrower1.remote(owner_id3)
 TEST(DistributedReferenceCountTest, TestNestedObjectDifferentOwners2) {
-  auto borrower1 = std::make_shared<MockWorkerClient>("1");
-  auto borrower2 = std::make_shared<MockWorkerClient>("2");
-  auto owner = std::make_shared<MockWorkerClient>("3", [&](const rpc::Address &addr) {
+  auto borrower1 = std::make_shared<FakeWorkerClient>("1");
+  auto borrower2 = std::make_shared<FakeWorkerClient>("2");
+  auto owner = std::make_shared<FakeWorkerClient>("3", [&](const rpc::Address &addr) {
     if (addr.ip_address() == borrower1->address_.ip_address()) {
       return borrower1;
     } else {
@@ -1631,8 +1772,8 @@ TEST(DistributedReferenceCountTest, TestNestedObjectDifferentOwners2) {
 // outer_id = ray.put([inner_id])
 // res = borrower.remote(outer_id)
 TEST(DistributedReferenceCountTest, TestBorrowerPingPong) {
-  auto borrower = std::make_shared<MockWorkerClient>("1");
-  auto owner = std::make_shared<MockWorkerClient>("2", [&](const rpc::Address &addr) {
+  auto borrower = std::make_shared<FakeWorkerClient>("1");
+  auto owner = std::make_shared<FakeWorkerClient>("2", [&](const rpc::Address &addr) {
     RAY_CHECK(addr.ip_address() == borrower->address_.ip_address());
     return borrower;
   });
@@ -1716,8 +1857,8 @@ TEST(DistributedReferenceCountTest, TestBorrowerPingPong) {
 // res = task.remote(outer_id)
 // Actor.remote(outer_id)
 TEST(DistributedReferenceCountTest, TestDuplicateBorrower) {
-  auto borrower = std::make_shared<MockWorkerClient>("1");
-  auto owner = std::make_shared<MockWorkerClient>(
+  auto borrower = std::make_shared<FakeWorkerClient>("1");
+  auto owner = std::make_shared<FakeWorkerClient>(
       "2", [&](const rpc::Address &addr) { return borrower; });
 
   // The owner creates an inner object and wraps it.
@@ -1777,114 +1918,13 @@ TEST(DistributedReferenceCountTest, TestDuplicateBorrower) {
   ASSERT_FALSE(owner->rc_.HasReference(outer_id));
 }
 
-// Two tasks execute on the same worker. After the inner object id returned is
-// transited twice on the same worker, a WaitForRefRemoved RPC is still able
-// to retrieve the right containment metadata about the inner id.
-//
-// This unit test covers scenarios from test_dataset.py::test_callable_classes
-// and test_dataset_pipeline.py::test_pipeline_actors.
-//
-// @ray.remote
-// def owner_task1():
-//     inner_id = ray.put(data, _owner=owner)
-//     return inner_id
-//
-// @ray.remote
-// def owner_task2(x):
-//     ray.put(data, _owner=owner)
-//
-// return_id = owner_task1.remote()
-// inner_id = ray.get(outer_id)[0]
-// return_id2 = owner_task2.remote(inner_id)
-//
-TEST(DistributedReferenceCountTest, TestForeignOwner) {
-  auto caller = std::make_shared<MockWorkerClient>("1");
-  auto owner = std::make_shared<MockWorkerClient>("2");
-  auto foreign_owner =
-      std::make_shared<MockWorkerClient>("3", [&](const rpc::Address &addr) {
-        if (addr.ip_address() == owner->address_.ip_address()) {
-          return owner;
-        } else
-          return caller;
-      });
-
-  //
-  // Phase 1 -- submit and execute owner_task1()
-  //
-  // Caller submits a task.
-  auto return_id = caller->SubmitTaskWithArg(ObjectID::Nil());
-  // Task returns inner_id as its return value.
-  auto inner_id = ObjectID::FromRandom();
-  owner->PutWithForeignOwner(inner_id, foreign_owner->address_);
-  ASSERT_FALSE(caller->rc_.HasReference(inner_id));
-  auto refs = owner->FinishExecutingTask(
-      ObjectID::Nil(), return_id, &inner_id, &caller->address_);
-  ASSERT_TRUE(refs.empty());
-  ASSERT_TRUE(owner->rc_.HasReference(inner_id));
-  ASSERT_FALSE(caller->rc_.HasReference(inner_id));
-  // Caller receives the owner's message, but inner_id is still in scope
-  // because caller has a reference to return_id.
-  caller->HandleSubmittedTaskFinished(
-      return_id, ObjectID::Nil(), {{return_id, {inner_id}}});
-  ASSERT_TRUE(caller->rc_.HasReference(inner_id));
-
-  //
-  // Phase 2 -- submit and execute owner_task2(x)
-  //
-  auto return_id2 = caller->SubmitTaskWithArg(return_id);
-  caller->rc_.RemoveLocalReference(return_id, nullptr);
-  ASSERT_TRUE(owner->rc_.HasReference(inner_id));
-  ASSERT_TRUE(caller->rc_.HasReference(inner_id));
-  caller->rc_.RemoveLocalReference(return_id2, nullptr);
-  // Owner receives a reference to inner_id. It still has a reference when
-  // the task returns.
-  owner->ExecuteTaskWithArg(return_id, inner_id, caller->address_);
-  auto refs2 = owner->FinishExecutingTask(return_id, return_id2);
-  // owner merges ref count into the caller.
-  caller->HandleSubmittedTaskFinished(return_id2, return_id, {}, owner->address_, refs2);
-  ASSERT_FALSE(caller->rc_.HasReference(inner_id));
-  ASSERT_FALSE(owner->rc_.HasReference(return_id));
-  ASSERT_FALSE(caller->rc_.HasReference(return_id));
-  ASSERT_FALSE(owner->rc_.HasReference(return_id2));
-  ASSERT_FALSE(caller->rc_.HasReference(return_id2));
-  ASSERT_TRUE(owner->rc_.HasReference(inner_id));
-
-  //
-  // Phase 3 -- foreign owner gets ref removed information.
-  //
-  // Emulate ref removed callback.
-  foreign_owner->rc_.AddOwnedObject(inner_id,
-                                    {},
-                                    foreign_owner->address_,
-                                    "",
-                                    0,
-                                    LineageReconstructionEligibility::INELIGIBLE_PUT,
-                                    /*add_local_ref=*/false);
-  foreign_owner->rc_.AddBorrowerAddress(inner_id, owner->address_);
-
-  // Foreign owner waits on owner.
-  ASSERT_TRUE(owner->FlushBorrowerCallbacks());
-  ASSERT_TRUE(foreign_owner->rc_.HasReference(inner_id));
-  ASSERT_TRUE(owner->rc_.HasReference(inner_id));
-  ASSERT_FALSE(caller->FlushBorrowerCallbacks());
-  owner->rc_.RemoveLocalReference(inner_id, nullptr);
-  owner->rc_.RemoveLocalReference(inner_id, nullptr);
-  caller->rc_.RemoveLocalReference(inner_id, nullptr);
-
-  // Foreign owner waits on caller next.
-  ASSERT_TRUE(caller->FlushBorrowerCallbacks());
-  ASSERT_FALSE(owner->rc_.HasReference(inner_id));
-  ASSERT_FALSE(foreign_owner->rc_.HasReference(inner_id));
-  ASSERT_FALSE(caller->rc_.HasReference(inner_id));
-}
-
 // A borrower is given references to 2 different objects, which each contain a
 // reference to an object ID. The borrower unwraps both objects and receives a
 // duplicate reference to the inner ID.
 TEST(DistributedReferenceCountTest, TestDuplicateNestedObject) {
-  auto borrower1 = std::make_shared<MockWorkerClient>("1");
-  auto borrower2 = std::make_shared<MockWorkerClient>("2");
-  auto owner = std::make_shared<MockWorkerClient>("3", [&](const rpc::Address &addr) {
+  auto borrower1 = std::make_shared<FakeWorkerClient>("1");
+  auto borrower2 = std::make_shared<FakeWorkerClient>("2");
+  auto owner = std::make_shared<FakeWorkerClient>("3", [&](const rpc::Address &addr) {
     if (addr.ip_address() == borrower1->address_.ip_address()) {
       return borrower1;
     } else {
@@ -1965,8 +2005,8 @@ TEST(DistributedReferenceCountTest, TestDuplicateNestedObject) {
 //
 // returns_id.remote()
 TEST(DistributedReferenceCountTest, TestReturnObjectIdNoBorrow) {
-  auto caller = std::make_shared<MockWorkerClient>("1");
-  auto owner = std::make_shared<MockWorkerClient>("3", [&](const rpc::Address &addr) {
+  auto caller = std::make_shared<FakeWorkerClient>("1");
+  auto owner = std::make_shared<FakeWorkerClient>("3", [&](const rpc::Address &addr) {
     RAY_CHECK(addr.ip_address() == caller->address_.ip_address());
     return caller;
   });
@@ -2006,8 +2046,8 @@ TEST(DistributedReferenceCountTest, TestReturnObjectIdNoBorrow) {
 //
 // return_id = returns_id.remote()
 TEST(DistributedReferenceCountTest, TestReturnObjectIdBorrow) {
-  auto caller = std::make_shared<MockWorkerClient>("1");
-  auto owner = std::make_shared<MockWorkerClient>("3", [&](const rpc::Address &addr) {
+  auto caller = std::make_shared<FakeWorkerClient>("1");
+  auto owner = std::make_shared<FakeWorkerClient>("3", [&](const rpc::Address &addr) {
     RAY_CHECK(addr.ip_address() == caller->address_.ip_address());
     return caller;
   });
@@ -2051,9 +2091,9 @@ TEST(DistributedReferenceCountTest, TestReturnObjectIdBorrow) {
 // return_id = returns_id.remote()
 // borrow.remote(return_id)
 TEST(DistributedReferenceCountTest, TestReturnObjectIdBorrowChain) {
-  auto caller = std::make_shared<MockWorkerClient>("1");
-  auto borrower = std::make_shared<MockWorkerClient>("2");
-  auto owner = std::make_shared<MockWorkerClient>("3", [&](const rpc::Address &addr) {
+  auto caller = std::make_shared<FakeWorkerClient>("1");
+  auto borrower = std::make_shared<FakeWorkerClient>("2");
+  auto owner = std::make_shared<FakeWorkerClient>("3", [&](const rpc::Address &addr) {
     if (addr.ip_address() == caller->address_.ip_address()) {
       return caller;
     } else {
@@ -2123,9 +2163,9 @@ TEST(DistributedReferenceCountTest, TestReturnObjectIdBorrowChain) {
 // return_id = returns_id.remote()
 // returns_borrowed_id.remote(return_id)
 TEST(DistributedReferenceCountTest, TestReturnBorrowedId) {
-  auto caller = std::make_shared<MockWorkerClient>("1");
-  auto borrower = std::make_shared<MockWorkerClient>("2");
-  auto owner = std::make_shared<MockWorkerClient>("3", [&](const rpc::Address &addr) {
+  auto caller = std::make_shared<FakeWorkerClient>("1");
+  auto borrower = std::make_shared<FakeWorkerClient>("2");
+  auto owner = std::make_shared<FakeWorkerClient>("3", [&](const rpc::Address &addr) {
     if (addr.ip_address() == caller->address_.ip_address()) {
       return caller;
     } else {
@@ -2211,9 +2251,9 @@ TEST(DistributedReferenceCountTest, TestReturnBorrowedId) {
 // return_id = returns_id.remote()
 // inner_id = ray.get(returns_borrowed_id.remote(return_id))[0]
 TEST(DistributedReferenceCountTest, TestReturnBorrowedIdDeserialize) {
-  auto caller = std::make_shared<MockWorkerClient>("1");
-  auto borrower = std::make_shared<MockWorkerClient>("2");
-  auto owner = std::make_shared<MockWorkerClient>("3", [&](const rpc::Address &addr) {
+  auto caller = std::make_shared<FakeWorkerClient>("1");
+  auto borrower = std::make_shared<FakeWorkerClient>("2");
+  auto owner = std::make_shared<FakeWorkerClient>("3", [&](const rpc::Address &addr) {
     if (addr.ip_address() == caller->address_.ip_address()) {
       return caller;
     } else {
@@ -2297,13 +2337,13 @@ TEST(DistributedReferenceCountTest, TestReturnBorrowedIdDeserialize) {
 // nested_return_id = ray.get(return_id)
 // inner_id = ray.get(nested_return_id)
 TEST(DistributedReferenceCountTest, TestReturnIdChain) {
-  auto root = std::make_shared<MockWorkerClient>("1");
-  auto worker = std::make_shared<MockWorkerClient>("2", [&](const rpc::Address &addr) {
+  auto root = std::make_shared<FakeWorkerClient>("1");
+  auto worker = std::make_shared<FakeWorkerClient>("2", [&](const rpc::Address &addr) {
     RAY_CHECK(addr.ip_address() == root->address_.ip_address());
     return root;
   });
   auto nested_worker =
-      std::make_shared<MockWorkerClient>("3", [&](const rpc::Address &addr) {
+      std::make_shared<FakeWorkerClient>("3", [&](const rpc::Address &addr) {
         RAY_CHECK(addr.ip_address() == worker->address_.ip_address());
         return worker;
       });
@@ -2357,13 +2397,13 @@ TEST(DistributedReferenceCountTest, TestReturnIdChain) {
 // return_id = worker.remote()
 // inner_id = ray.get(return_id)
 TEST(DistributedReferenceCountTest, TestReturnBorrowedIdChain) {
-  auto root = std::make_shared<MockWorkerClient>("1");
-  auto worker = std::make_shared<MockWorkerClient>("2", [&](const rpc::Address &addr) {
+  auto root = std::make_shared<FakeWorkerClient>("1");
+  auto worker = std::make_shared<FakeWorkerClient>("2", [&](const rpc::Address &addr) {
     RAY_CHECK(addr.ip_address() == root->address_.ip_address());
     return root;
   });
   auto nested_worker =
-      std::make_shared<MockWorkerClient>("3", [&](const rpc::Address &addr) {
+      std::make_shared<FakeWorkerClient>("3", [&](const rpc::Address &addr) {
         if (addr.ip_address() == root->address_.ip_address()) {
           return root;
         } else {
@@ -2436,13 +2476,13 @@ TEST(DistributedReferenceCountTest, TestReturnBorrowedIdChain) {
 // return_id = worker.remote()
 // inner_id = ray.get(return_id)
 TEST(DistributedReferenceCountTest, TestReturnBorrowedIdChainOutOfOrder) {
-  auto root = std::make_shared<MockWorkerClient>("1");
-  auto worker = std::make_shared<MockWorkerClient>("2", [&](const rpc::Address &addr) {
+  auto root = std::make_shared<FakeWorkerClient>("1");
+  auto worker = std::make_shared<FakeWorkerClient>("2", [&](const rpc::Address &addr) {
     RAY_CHECK(addr.ip_address() == root->address_.ip_address());
     return root;
   });
   auto nested_worker =
-      std::make_shared<MockWorkerClient>("3", [&](const rpc::Address &addr) {
+      std::make_shared<FakeWorkerClient>("3", [&](const rpc::Address &addr) {
         if (addr.ip_address() == root->address_.ip_address()) {
           return root;
         } else {
@@ -2863,7 +2903,7 @@ TEST_F(ReferenceCountTest, TestGetObjectStatusReplyDelayed) {
   ObjectID inner_id = ObjectID::FromRandom();
 
   // We have a reference to the borrowed ObjectRef.
-  rpc::Address owner_address(MockWorkerClient::CreateRandomAddress("1234"));
+  rpc::Address owner_address(FakeWorkerClient::CreateRandomAddress("1234"));
   rc->AddLocalReference(outer_id, "");
   rc->AddBorrowedObject(outer_id, ObjectID::Nil(), owner_address);
   ASSERT_TRUE(rc->HasReference(outer_id));
@@ -2895,8 +2935,8 @@ TEST_F(ReferenceCountTest, TestGetObjectStatusReplyDelayed) {
 }
 
 TEST_F(ReferenceCountTest, TestDelayedWaitForRefRemoved) {
-  auto borrower = std::make_shared<MockWorkerClient>("1");
-  auto owner = std::make_shared<MockWorkerClient>(
+  auto borrower = std::make_shared<FakeWorkerClient>("1");
+  auto owner = std::make_shared<FakeWorkerClient>(
       "2", [&](const rpc::Address &addr) { return borrower; });
 
   // Owner owns a nested object ref, borrower is using the outer ObjectRef.
@@ -2947,8 +2987,8 @@ TEST_F(ReferenceCountTest, TestDelayedWaitForRefRemoved) {
 }
 
 TEST_F(ReferenceCountTest, TestRepeatedDeserialization) {
-  auto borrower = std::make_shared<MockWorkerClient>("1");
-  auto owner = std::make_shared<MockWorkerClient>(
+  auto borrower = std::make_shared<FakeWorkerClient>("1");
+  auto owner = std::make_shared<FakeWorkerClient>(
       "2", [&](const rpc::Address &addr) { return borrower; });
 
   // Owner owns a nested object ref, borrower is using the outer ObjectRef.
@@ -3010,10 +3050,10 @@ TEST_F(ReferenceCountTest, TestRepeatedDeserialization) {
 
 // Matches test_reference_counting_2.py::test_forward_nested_ref.
 TEST_F(ReferenceCountTest, TestForwardNestedRefs) {
-  auto borrower1 = std::make_shared<MockWorkerClient>("1");
-  auto borrower2 = std::make_shared<MockWorkerClient>("2");
+  auto borrower1 = std::make_shared<FakeWorkerClient>("1");
+  auto borrower2 = std::make_shared<FakeWorkerClient>("2");
   bool first_borrower = true;
-  auto owner = std::make_shared<MockWorkerClient>("2", [&](const rpc::Address &addr) {
+  auto owner = std::make_shared<FakeWorkerClient>("2", [&](const rpc::Address &addr) {
     return first_borrower ? borrower1 : borrower2;
   });
 
@@ -3152,7 +3192,7 @@ TEST_F(ReferenceCountTest, TestOwnedObjectCounters) {
                      LineageReconstructionEligibility::INELIGIBLE_PUT,
                      /*add_local_ref=*/true);
 
-  rc->RecordMetrics();
+  rc->RecordOwnerMetrics();
 
   // Both should be in pending_creation state initially
   auto count_metrics = owned_object_count_metric_->GetTagToValue();
@@ -3163,7 +3203,7 @@ TEST_F(ReferenceCountTest, TestOwnedObjectCounters) {
 
   // Test 2: Transition from pending to in_memory (no pinned_at_node_id, not spilled)
   rc->UpdateObjectPendingCreation(pending_id1, false);
-  rc->RecordMetrics();
+  rc->RecordOwnerMetrics();
   count_metrics = owned_object_count_metric_->GetTagToValue();
   ASSERT_EQ((count_metrics[{{"State", "PendingCreation"}}]), 1);
   ASSERT_EQ((count_metrics[{{"State", "InMemory"}}]), 1);
@@ -3174,7 +3214,7 @@ TEST_F(ReferenceCountTest, TestOwnedObjectCounters) {
   NodeID node1 = NodeID::FromRandom();
   rc->UpdateObjectPendingCreation(pending_id2, false);
   rc->UpdateObjectPinnedAtRaylet(pending_id2, node1);
-  rc->RecordMetrics();
+  rc->RecordOwnerMetrics();
   count_metrics = owned_object_count_metric_->GetTagToValue();
   ASSERT_EQ((count_metrics[{{"State", "PendingCreation"}}]), 0);
   ASSERT_EQ((count_metrics[{{"State", "InMemory"}}]), 1);
@@ -3184,7 +3224,7 @@ TEST_F(ReferenceCountTest, TestOwnedObjectCounters) {
 
   // Test 4: Object spilling
   rc->HandleObjectSpilled(pending_id2, "s3://bucket/object", node1);
-  rc->RecordMetrics();
+  rc->RecordOwnerMetrics();
   count_metrics = owned_object_count_metric_->GetTagToValue();
   ASSERT_EQ((count_metrics[{{"State", "InPlasma"}}]), 0);
   ASSERT_EQ((count_metrics[{{"State", "Spilled"}}]), 1);
@@ -3194,21 +3234,21 @@ TEST_F(ReferenceCountTest, TestOwnedObjectCounters) {
 
   // Test 5: Update object size
   rc->UpdateObjectSize(pending_id1, 150);
-  rc->RecordMetrics();
+  rc->RecordOwnerMetrics();
   size_metrics = owned_object_size_metric_->GetTagToValue();
   ASSERT_EQ((size_metrics[{{"State", "InMemory"}}]), 150);
 
   // Test 6: Delete objects
   std::vector<ObjectID> deleted;
   rc->RemoveLocalReference(pending_id1, &deleted);
-  rc->RecordMetrics();
+  rc->RecordOwnerMetrics();
   count_metrics = owned_object_count_metric_->GetTagToValue();
   ASSERT_EQ((count_metrics[{{"State", "InMemory"}}]), 0);
   size_metrics = owned_object_size_metric_->GetTagToValue();
   ASSERT_EQ((size_metrics[{{"State", "InMemory"}}]), 0);
 
   rc->RemoveLocalReference(pending_id2, &deleted);
-  rc->RecordMetrics();
+  rc->RecordOwnerMetrics();
   count_metrics = owned_object_count_metric_->GetTagToValue();
   ASSERT_EQ((count_metrics[{{"State", "Spilled"}}]), 0);
   size_metrics = owned_object_size_metric_->GetTagToValue();
@@ -3226,9 +3266,78 @@ TEST_F(ReferenceCountTest, TestOwnedObjectCounters) {
   ASSERT_EQ((size_metrics[{{"State", "Spilled"}}]), 0);
 }
 
+// This test verifies the `has_ever_owned_objects_` flag for metric emission
+// A worker emits owned-object series IF AND ONLY IF it has owned at least one
+// non-actor object in its lifetime. Once this flag is set to true,
+// it remains true forever, preventing emission drops when the active count hits 0
+TEST_F(ReferenceCountTest, TestRecordOwnerMetricsGate) {
+  rpc::Address addr;
+  addr.set_worker_id(WorkerID::FromRandom().Binary());
+
+  rc->RecordOwnerMetrics();
+  ASSERT_TRUE(owned_object_count_metric_->GetTagToValue().empty());
+  ASSERT_TRUE(owned_object_size_metric_->GetTagToValue().empty());
+
+  // Add one owned object that is PendingCreation. the gate must
+  // flip and all four state series get written. We assert via the
+  // PendingCreation value moving from "absent" to 1.
+  ObjectID owned = ObjectID::FromRandom();
+  ASSERT_FALSE(ObjectID::IsActorID(owned));
+  rc->AddOwnedObject(owned,
+                     {},
+                     addr,
+                     "",
+                     100,
+                     LineageReconstructionEligibility::INELIGIBLE_PUT,
+                     /*add_local_ref=*/true);
+  rc->RecordOwnerMetrics();
+  auto count = owned_object_count_metric_->GetTagToValue();
+  ASSERT_EQ((count[{{"State", "PendingCreation"}}]), 1);
+  ASSERT_TRUE(count.contains({{"State", "InMemory"}}));
+  ASSERT_TRUE(count.contains({{"State", "InPlasma"}}));
+  ASSERT_TRUE(count.contains({{"State", "Spilled"}}));
+
+  // Remove the only owned ref so the count returns to 0. The sticky
+  // flag must keep emitting
+  std::vector<ObjectID> deleted;
+  rc->RemoveLocalReference(owned, &deleted);
+  ASSERT_EQ(deleted.size(), 1);
+  ASSERT_EQ(rc->NumObjectIDsInScope(), 0);
+  rc->RecordOwnerMetrics();
+  count = owned_object_count_metric_->GetTagToValue();
+  ASSERT_EQ((count[{{"State", "PendingCreation"}}]), 0)
+      << "Sticky broken: RecordOwnerMetrics did not re-emit after "
+         "owned count returned to 0";
+}
+
+// Actor ObjectIDs are excluded from owned-object metrics.
+TEST_F(ReferenceCountTest, TestRecordOwnerMetricsIgnoresActorOwnership) {
+  rpc::Address addr;
+  addr.set_worker_id(WorkerID::FromRandom().Binary());
+
+  ObjectID actor_id =
+      ObjectID::ForActorHandle(ActorID::Of(JobID::FromInt(1), TaskID::Nil(), 1));
+  ASSERT_TRUE(ObjectID::IsActorID(actor_id));
+  rc->AddOwnedObject(actor_id,
+                     {},
+                     addr,
+                     "",
+                     /*object_size=*/0,
+                     LineageReconstructionEligibility::INELIGIBLE_PUT,
+                     /*add_local_ref=*/true);
+  rc->RecordOwnerMetrics();
+  ASSERT_TRUE(owned_object_count_metric_->GetTagToValue().empty())
+      << "Owning an actor ObjectID must not flip has_ever_owned_objects_";
+  ASSERT_TRUE(owned_object_size_metric_->GetTagToValue().empty());
+
+  // Cleanup so the fixture teardown's AssertNoLeaks passes.
+  std::vector<ObjectID> deleted;
+  rc->RemoveLocalReference(actor_id, &deleted);
+}
+
 TEST(DistributedReferenceCountTest, TestAddNestedObjectIdsIdempotency) {
-  auto caller = std::make_shared<MockWorkerClient>("1");
-  auto executor = std::make_shared<MockWorkerClient>(
+  auto caller = std::make_shared<FakeWorkerClient>("1");
+  auto executor = std::make_shared<FakeWorkerClient>(
       "2", [&](const rpc::Address &addr) { return caller; });
 
   {
@@ -3297,8 +3406,3 @@ TEST(DistributedReferenceCountTest, TestAddNestedObjectIdsIdempotency) {
 
 }  // namespace core
 }  // namespace ray
-
-int main(int argc, char **argv) {
-  ::testing::InitGoogleTest(&argc, argv);
-  return RUN_ALL_TESTS();
-}

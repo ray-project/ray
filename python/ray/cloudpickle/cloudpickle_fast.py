@@ -6,6 +6,7 @@ namespace.
 
 See: tests/test_backward_compat.py
 """
+
 from . import cloudpickle
 
 

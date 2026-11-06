@@ -83,8 +83,7 @@ histogram_bucket_rows = [
 
 
 class RuntimeMetricsHistogram:
-    """
-    Class that tracks a histogram of values.
+    """Class that tracks a histogram of values.
 
     Contains helper methods to record the values and apply those values to a `ray.util.metrics.Histogram` metric.
     """
@@ -104,8 +103,7 @@ class RuntimeMetricsHistogram:
         metric: Histogram,
         tags: Dict[str, str],
     ):
-        """
-        This method calculates the difference between the current bucket counts and the previous bucket counts,
+        """This method calculates the difference between the current bucket counts and the previous bucket counts,
         and applies those observations to the metric.
 
         This method stores the previous_bucket_counts in the metric as `last_applied_bucket_counts_for_tags`.
@@ -153,8 +151,7 @@ class RuntimeMetricsHistogram:
         return f"(samples: {total_samples}, avg: {average:.2f})"
 
     def _calculate_average_value(self) -> Tuple[int, float]:
-        """
-        Calculate the average value of all samples.
+        """Calculate the average value of all samples.
 
         Used to show a representative value for the histogram when
         printing the histogram as a string.

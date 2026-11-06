@@ -12,8 +12,11 @@ logger = logging.getLogger(__name__)
 
 
 async def http_get(http_session, url, timeout_seconds=60):
+    from ray._private.test_utils import _auth_token_header
+
+    headers = _auth_token_header()
     async with asyncio_timeout(timeout_seconds):
-        async with http_session.get(url) as response:
+        async with http_session.get(url, headers=headers) as response:
             return await response.json()
 
 

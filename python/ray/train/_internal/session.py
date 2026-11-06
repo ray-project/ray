@@ -208,6 +208,9 @@ class _TrainSession:
         # Queue for sending results from training actor to main thread.
         self._inter_actor_queue: Optional[ray_queue.Queue[Dict]] = None
 
+        # Open `_QueueActor.get` call on the inter-actor queue, kept across polls.
+        self._pending_inter_actor_get: Optional[ray.ObjectRef] = None
+
         # Queue for raising exceptions from runner thread to main thread.
         # The error queue has a max size of one to prevent stacking error and force
         # error reporting to block until finished.
@@ -247,6 +250,9 @@ class _TrainSession:
 
         Raises any Exception from training.
         """
+        # Resolve the open `_QueueActor.get` call so the queue actor can exit.
+        self._wake_pending_inter_actor_get()
+
         # Set the stop event for the training thread to gracefully exit.
         self.stop_event.set()
 
@@ -328,21 +334,44 @@ class _TrainSession:
         """Get result from result queue. Pass result from training actor result queue if needed."""
         result = None
         if self._inter_actor_queue is not None:
-            try:
-                inter_actor_item = self._inter_actor_queue.get(
-                    block=block, timeout=_RESULT_FETCH_TIMEOUT
-                )
-                if inter_actor_item:
-                    # Must release continue_lock to allow report to work.
-                    self.continue_lock.release()
-                    self.report(inter_actor_item)
-            except ray_queue.Empty:
-                pass
+            inter_actor_item = self._poll_inter_actor_queue()
+            if inter_actor_item is not None:
+                # Must release continue_lock to allow report to work.
+                self.continue_lock.release()
+                self.report(inter_actor_item)
         try:
             result = self.result_queue.get(block=block, timeout=_RESULT_FETCH_TIMEOUT)
         except queue.Empty:
             pass
         return result
+
+    def _poll_inter_actor_queue(self) -> Optional[Dict]:
+        """Wait up to ``_RESULT_FETCH_TIMEOUT`` for the next inter-actor item.
+
+        Keeps one ``_QueueActor.get`` call open across polls and checks it with
+        ``ray.wait``. The call has no timeout, so it only returns once an item
+        arrives. Waits even when the caller does not block, because a new call
+        needs a round trip to return an item that is already queued.
+        """
+        if self._pending_inter_actor_get is None:
+            self._pending_inter_actor_get = self._inter_actor_queue.actor.get.remote()
+        ready, _ = ray.wait(
+            [self._pending_inter_actor_get], timeout=_RESULT_FETCH_TIMEOUT
+        )
+        if not ready:
+            return None
+        pending_get = self._pending_inter_actor_get
+        self._pending_inter_actor_get = None
+        return ray.get(pending_get)
+
+    def _wake_pending_inter_actor_get(self):
+        """Wake the open ``_QueueActor.get`` call with ``None``, which polling skips."""
+        pending_get = self._pending_inter_actor_get
+        self._pending_inter_actor_get = None
+        if pending_get is None or ray.wait([pending_get], timeout=0)[0]:
+            return
+        wake_put = self._inter_actor_queue.actor.put.remote(None)
+        ray.wait([pending_get, wake_put], num_returns=2, timeout=_RESULT_FETCH_TIMEOUT)
 
     def _auto_fill_metrics(self, result: dict) -> dict:
         """Add autofilled metrics and update attributes."""
@@ -633,6 +662,13 @@ def get_accelerator(default_accelerator_cls: Type[Accelerator]) -> Accelerator:
     If an accelerator has not been set, then this method will construct an
     accelerator using the provided accelerator class.
 
+    Args:
+        default_accelerator_cls: The accelerator class to instantiate if no
+            accelerator has been set yet for this session.
+
+    Returns:
+        The accelerator associated with this training session.
+
     Raises:
         SessionMisuseError: if the session is uninitialized.
     """
@@ -730,49 +766,45 @@ def report(
         If you need to synchronize workers, you can use a framework-native barrier
         such as `torch.distributed.barrier()`.
 
-    Example:
-
-        .. testcode::
-
-            import tempfile
-
-            from ray import train
-            from ray.train import Checkpoint
-            from ray.train.torch import TorchTrainer
-
-
-            def train_func(config):
-                start_epoch = 0
-                checkpoint = train.get_checkpoint()
-                if checkpoint:
-                    with checkpoint.as_directory() as checkpoint_dir:
-                        # Load back training state
-                        ...
-
-                for epoch in range(start_epoch, config.get("num_epochs", 10)):
-                    # Do training...
-
-                    metrics = {"loss": ...}
-
-                    with tempfile.TemporaryDirectory() as temp_checkpoint_dir:
-                       # Save the checkpoint...
-                       # torch.save(...)
-
-                        checkpoint = Checkpoint.from_directory(temp_checkpoint_dir)
-
-                        # Example: Only the rank 0 worker uploads the checkpoint.
-                        if ray.train.get_context().get_world_rank() == 0:
-                            train.report(metrics, checkpoint=checkpoint)
-                        else:
-                            train.report(metrics, checkpoint=None)
-
-            trainer = TorchTrainer(
-                train_func, scaling_config=train.ScalingConfig(num_workers=2)
-            )
+    Examples:
+        >>> import tempfile
+        >>> from ray import train
+        >>> from ray.train import Checkpoint
+        >>> from ray.train.torch import TorchTrainer
+        >>> def train_func(config):
+        ...     start_epoch = 0
+        ...     checkpoint = train.get_checkpoint()
+        ...     if checkpoint:
+        ...         with checkpoint.as_directory() as checkpoint_dir:
+        ...             # Load back training state
+        ...             ...
+        ...
+        ...     for epoch in range(start_epoch, config.get("num_epochs", 10)):
+        ...         # Do training...
+        ...
+        ...         metrics = {"loss": ...}
+        ...
+        ...         with tempfile.TemporaryDirectory() as temp_checkpoint_dir:
+        ...            # Save the checkpoint...
+        ...            # torch.save(...)
+        ...
+        ...             checkpoint = Checkpoint.from_directory(temp_checkpoint_dir)
+        ...
+        ...             # Example: Only the rank 0 worker uploads the checkpoint.
+        ...             if train.get_context().get_world_rank() == 0:
+        ...                 train.report(metrics, checkpoint=checkpoint)
+        ...             else:
+        ...                 train.report(metrics, checkpoint=None)
+        >>> trainer = TorchTrainer(
+        ...     train_func, scaling_config=train.ScalingConfig(num_workers=2)
+        ... )
 
     Args:
         metrics: The metrics you want to report.
         checkpoint: The optional checkpoint you want to report.
+        checkpoint_dir_name: Optional custom name for the checkpoint directory.
+            Only supported in the new Ray Train implementation (Train V2);
+            ignored otherwise.
     """
     if checkpoint_dir_name is not None:
         logger.warning(
@@ -805,39 +837,32 @@ def report(
 def get_checkpoint() -> Optional[Checkpoint]:
     """Access the latest reported checkpoint to resume from if one exists.
 
-    Example:
-
-        .. testcode::
-
-            import tempfile
-
-            from ray import train
-            from ray.train import Checkpoint
-            from ray.train.torch import TorchTrainer
-
-
-            def train_func(config):
-                start_epoch = 0
-                checkpoint = train.get_checkpoint()
-                if checkpoint:
-                    with checkpoint.as_directory() as checkpoint_dir:
-                        # Load back training state
-                        ...
-
-                for epoch in range(start_epoch, config.get("num_epochs", 10)):
-                    # Do training...
-
-                    metrics = {"loss": ...}
-
-                    with tempfile.TemporaryDirectory() as temp_checkpoint_dir:
-                       # Save the checkpoint...
-
-                        checkpoint = Checkpoint.from_directory(temp_checkpoint_dir)
-                        train.report(metrics, checkpoint=checkpoint)
-
-            trainer = TorchTrainer(
-                train_func, scaling_config=train.ScalingConfig(num_workers=2)
-            )
+    Examples:
+        >>> import tempfile
+        >>> from ray import train
+        >>> from ray.train import Checkpoint
+        >>> from ray.train.torch import TorchTrainer
+        >>> def train_func(config):
+        ...     start_epoch = 0
+        ...     checkpoint = train.get_checkpoint()
+        ...     if checkpoint:
+        ...         with checkpoint.as_directory() as checkpoint_dir:
+        ...             # Load back training state
+        ...             ...
+        ...
+        ...     for epoch in range(start_epoch, config.get("num_epochs", 10)):
+        ...         # Do training...
+        ...
+        ...         metrics = {"loss": ...}
+        ...
+        ...         with tempfile.TemporaryDirectory() as temp_checkpoint_dir:
+        ...            # Save the checkpoint...
+        ...
+        ...             checkpoint = Checkpoint.from_directory(temp_checkpoint_dir)
+        ...             train.report(metrics, checkpoint=checkpoint)
+        >>> trainer = TorchTrainer(
+        ...     train_func, scaling_config=train.ScalingConfig(num_workers=2)
+        ... )
 
     Returns:
         Checkpoint object if the session is currently being resumed.
@@ -865,42 +890,72 @@ def get_checkpoint() -> Optional[Checkpoint]:
 @PublicAPI(stability="beta")
 @_warn_session_misuse()
 def get_metadata() -> Dict[str, Any]:
-    """User metadata dict passed to the Trainer constructor."""
+    """User metadata dict passed to the Trainer constructor.
+
+    Returns:
+        The ``metadata`` dict passed to the Trainer, or ``None`` if called
+        outside a Ray Train or Ray Tune function.
+    """
     return get_session().metadata
 
 
 @PublicAPI(stability="beta")
 @_warn_session_misuse()
 def get_experiment_name() -> str:
-    """Experiment name for the corresponding trial."""
+    """Experiment name for the corresponding trial.
+
+    Returns:
+        The experiment name, or ``None`` if called outside a Ray Train or Ray
+        Tune function.
+    """
     return get_session().experiment_name
 
 
 @PublicAPI(stability="beta")
 @_warn_session_misuse()
 def get_trial_name() -> str:
-    """Trial name for the corresponding trial."""
+    """Trial name for the corresponding trial.
+
+    Returns:
+        The trial name, or ``None`` if called outside a Ray Train or Ray Tune
+        function.
+    """
     return get_session().trial_name
 
 
 @PublicAPI(stability="beta")
 @_warn_session_misuse()
 def get_trial_id() -> str:
-    """Trial id for the corresponding trial."""
+    """Trial id for the corresponding trial.
+
+    Returns:
+        The trial ID, or ``None`` if called outside a Ray Train or Ray Tune
+        function.
+    """
     return get_session().trial_id
 
 
 @PublicAPI(stability="alpha")
 @_warn_session_misuse()
 def get_run_id() -> str:
-    """Unique Train Run id for the corresponding trial."""
+    """Unique Train Run id for the corresponding trial.
+
+    Returns:
+        The run ID, or ``None`` if called outside a Ray Train or Ray Tune
+        function.
+    """
     return get_session().run_id
 
 
 @PublicAPI(stability="beta")
 @_warn_session_misuse()
 def get_trial_resources() -> "PlacementGroupFactory":
-    """Trial resources for the corresponding trial."""
+    """Trial resources for the corresponding trial.
+
+    Returns:
+        The trial's ``PlacementGroupFactory``, or ``None`` if called outside a
+        Ray Train or Ray Tune function.
+    """
     return get_session().trial_resources
 
 
@@ -911,20 +966,17 @@ def get_trial_dir() -> str:
     If calling from a Train session, this will give the trial directory of its parent
     Tune session.
 
-    .. testcode::
-
-        import ray.tune
-
-        def train_func(config):
-            print(ray.tune.get_context().get_trial_dir())
-
-        tuner = ray.tune.Tuner(train_func)
-        tuner.fit()
-
-    .. testoutput::
-        :options: +MOCK
-
+    Examples:
+        >>> import ray.tune  # doctest: +SKIP_EXAMPLE
+        >>> def train_func(config):
+        ...     print(ray.tune.get_context().get_trial_dir())
+        >>> tuner = ray.tune.Tuner(train_func)
+        >>> tuner.fit()
         /Users/root/ray_results/train_func_2023-07-19_15-01-37/train_func_d620c_00000_0_2023-07-19_15-01-40
+
+    Returns:
+        The trial directory path, or ``None`` if called outside a Ray Train or
+        Ray Tune function.
     """
     return get_session().trial_dir
 
@@ -934,30 +986,26 @@ def get_trial_dir() -> str:
 def get_world_size() -> int:
     """Get the current world size (i.e. total number of workers) for this run.
 
-    .. testcode::
+    Examples:
+        >>> import ray
+        >>> from ray import train
+        >>> from ray.train import ScalingConfig
+        >>> from ray.train.tensorflow import TensorflowTrainer
+        >>> NUM_WORKERS = 2
+        >>> def train_loop_per_worker(config):
+        ...     assert train.get_context().get_world_size() == NUM_WORKERS
+        >>> train_dataset = ray.data.read_csv("s3://anonymous@ray-example-data/iris.csv")
+        >>> trainer = TensorflowTrainer(
+        ...     train_loop_per_worker,
+        ...     scaling_config=ScalingConfig(num_workers=NUM_WORKERS),
+        ...     datasets={"train": train_dataset}
+        ... )
+        >>> print("[ignore]"); trainer.fit()  # doctest: +ELLIPSIS
+        [ignore]...
 
-        import ray
-        from ray import train
-        from ray.train import ScalingConfig
-        from ray.train.tensorflow import TensorflowTrainer
-
-        NUM_WORKERS = 2
-
-        def train_loop_per_worker(config):
-            assert train.get_context().get_world_size() == NUM_WORKERS
-
-        train_dataset = ray.data.read_csv("s3://anonymous@ray-example-data/iris.csv")
-        trainer = TensorflowTrainer(
-            train_loop_per_worker,
-            scaling_config=ScalingConfig(num_workers=NUM_WORKERS),
-            datasets={"train": train_dataset}
-        )
-        trainer.fit()
-
-    .. testoutput::
-        :hide:
-
-        ...
+    Returns:
+        The total number of workers, or ``1`` if called outside a Ray Train or
+        Ray Tune function.
     """
     session = get_session()
     if not hasattr(session, "world_size"):
@@ -974,29 +1022,26 @@ def get_world_size() -> int:
 def get_world_rank() -> int:
     """Get the world rank of this worker.
 
-    .. testcode::
+    Examples:
+        >>> import ray
+        >>> from ray import train
+        >>> from ray.train import ScalingConfig
+        >>> from ray.train.tensorflow import TensorflowTrainer
+        >>> def train_loop_per_worker(config):
+        ...     if train.get_context().get_world_rank() == 0:
+        ...         print("Worker 0")
+        >>> train_dataset = ray.data.read_csv("s3://anonymous@ray-example-data/iris.csv")
+        >>> trainer = TensorflowTrainer(
+        ...     train_loop_per_worker,
+        ...     scaling_config=ScalingConfig(num_workers=2),
+        ...     datasets={"train": train_dataset}
+        ... )
+        >>> print("[ignore]"); trainer.fit()  # doctest: +ELLIPSIS
+        [ignore]...
 
-        import ray
-        from ray import train
-        from ray.train import ScalingConfig
-        from ray.train.tensorflow import TensorflowTrainer
-
-        def train_loop_per_worker(config):
-            if train.get_context().get_world_rank() == 0:
-                print("Worker 0")
-
-        train_dataset = ray.data.read_csv("s3://anonymous@ray-example-data/iris.csv")
-        trainer = TensorflowTrainer(
-            train_loop_per_worker,
-            scaling_config=ScalingConfig(num_workers=2),
-            datasets={"train": train_dataset}
-        )
-        trainer.fit()
-
-    .. testoutput::
-        :hide:
-
-        ...
+    Returns:
+        This worker's rank among all workers, or ``0`` if called outside a Ray
+        Train or Ray Tune function.
     """
     session = get_session()
     if not hasattr(session, "world_rank"):
@@ -1013,32 +1058,28 @@ def get_world_rank() -> int:
 def get_local_rank() -> int:
     """Get the local rank of this worker (rank of the worker on its node).
 
-    .. testcode::
+    Examples:
+        >>> import torch  # doctest: +SKIP_EXAMPLE
+        >>> import ray
+        >>> from ray import train
+        >>> from ray.train import ScalingConfig
+        >>> from ray.train.torch import TorchTrainer
+        >>> def train_loop_per_worker(config):
+        ...     if torch.cuda.is_available():
+        ...         torch.cuda.set_device(train.get_context().get_local_rank())
+        ...     ...
+        >>> train_dataset = ray.data.read_csv("s3://anonymous@ray-example-data/iris.csv")
+        >>> trainer = TorchTrainer(
+        ...     train_loop_per_worker,
+        ...     scaling_config=ScalingConfig(num_workers=2, use_gpu=True),
+        ...     datasets={"train": train_dataset}
+        ... )
+        >>> print("[ignore]"); trainer.fit()  # doctest: +ELLIPSIS
+        [ignore]...
 
-        import torch
-
-        import ray
-        from ray import train
-        from ray.train import ScalingConfig
-        from ray.train.torch import TorchTrainer
-
-        def train_loop_per_worker(config):
-            if torch.cuda.is_available():
-                torch.cuda.set_device(train.get_context().get_local_rank())
-            ...
-
-        train_dataset = ray.data.read_csv("s3://anonymous@ray-example-data/iris.csv")
-        trainer = TorchTrainer(
-            train_loop_per_worker,
-            scaling_config=ScalingConfig(num_workers=2, use_gpu=True),
-            datasets={"train": train_dataset}
-        )
-        trainer.fit()
-
-    .. testoutput::
-        :hide:
-
-        ...
+    Returns:
+        This worker's rank among the workers on its node, or ``0`` if called
+        outside a Ray Train or Ray Tune function.
     """
     session = get_session()
     if not hasattr(session, "local_rank"):
@@ -1055,29 +1096,23 @@ def get_local_rank() -> int:
 def get_local_world_size() -> int:
     """Get the local world size of this node (i.e. number of workers on this node).
 
-    Example:
+    Examples:
+        >>> import ray
+        >>> from ray import train
+        >>> from ray.train import ScalingConfig
+        >>> from ray.train.torch import TorchTrainer
+        >>> def train_loop_per_worker():
+        ...     print(train.get_context().get_local_world_size())
+        >>> train_dataset = ray.data.from_items(
+        ...     [{"x": x, "y": x + 1} for x in range(32)])
+        >>> trainer = TorchTrainer(train_loop_per_worker,
+        ...     scaling_config=ScalingConfig(num_workers=1),
+        ...     datasets={"train": train_dataset})
+        >>> print("[ignore]"); trainer.fit()  # doctest: +ELLIPSIS
+        [ignore]...
 
-        .. testcode::
-
-            import ray
-            from ray import train
-            from ray.train import ScalingConfig
-            from ray.train.torch import TorchTrainer
-
-            def train_loop_per_worker():
-                print(train.get_context().get_local_world_size())
-
-            train_dataset = ray.data.from_items(
-                [{"x": x, "y": x + 1} for x in range(32)])
-            trainer = TorchTrainer(train_loop_per_worker,
-                scaling_config=ScalingConfig(num_workers=1),
-                datasets={"train": train_dataset})
-            trainer.fit()
-
-        .. testoutput::
-            :hide:
-
-            ...
+    Returns:
+        The number of workers running on this node.
     """
     session = get_session()
     if not hasattr(session, "local_world_size"):
@@ -1094,29 +1129,23 @@ def get_local_world_size() -> int:
 def get_node_rank() -> int:
     """Get the rank of this node.
 
-    Example:
+    Examples:
+        >>> import ray
+        >>> from ray import train
+        >>> from ray.train import ScalingConfig
+        >>> from ray.train.torch import TorchTrainer
+        >>> def train_loop_per_worker():
+        ...     print(train.get_context().get_node_rank())
+        >>> train_dataset = ray.data.from_items(
+        ...     [{"x": x, "y": x + 1} for x in range(32)])
+        >>> trainer = TorchTrainer(train_loop_per_worker,
+        ...     scaling_config=ScalingConfig(num_workers=1),
+        ...     datasets={"train": train_dataset})
+        >>> print("[ignore]"); trainer.fit()  # doctest: +ELLIPSIS
+        [ignore]...
 
-        .. testcode::
-
-            import ray
-            from ray import train
-            from ray.train import ScalingConfig
-            from ray.train.torch import TorchTrainer
-
-            def train_loop_per_worker():
-                print(train.get_context().get_node_rank())
-
-            train_dataset = ray.data.from_items(
-                [{"x": x, "y": x + 1} for x in range(32)])
-            trainer = TorchTrainer(train_loop_per_worker,
-                scaling_config=ScalingConfig(num_workers=1),
-                datasets={"train": train_dataset})
-            trainer.fit()
-
-        .. testoutput::
-            :hide:
-
-            ...
+    Returns:
+        The rank of this node within the cluster.
     """
     session = get_session()
     if not hasattr(session, "node_rank"):
@@ -1139,33 +1168,26 @@ def get_dataset_shard(
     :meth:`~ray.data.DataIterator.to_tf` on this shard to convert it to the
     appropriate framework-specific data type.
 
-    .. testcode::
-
-        import ray
-        from ray import train
-        from ray.train import ScalingConfig
-        from ray.train.torch import TorchTrainer
-
-        def train_loop_per_worker(config):
-            ...
-            for epoch in range(2):
-                # Trainer will automatically handle sharding.
-                data_shard = train.get_dataset_shard("train")
-                for batch in data_shard.iter_torch_batches():
-                    ...
-
-        train_dataset = ray.data.read_csv("s3://anonymous@ray-example-data/iris.csv")
-        trainer = TorchTrainer(
-            train_loop_per_worker,
-            scaling_config=ScalingConfig(num_workers=2),
-            datasets={"train": train_dataset}
-        )
-        trainer.fit()
-
-    .. testoutput::
-        :hide:
-
-        ...
+    Examples:
+        >>> import ray
+        >>> from ray import train
+        >>> from ray.train import ScalingConfig
+        >>> from ray.train.torch import TorchTrainer
+        >>> def train_loop_per_worker(config):
+        ...     ...
+        ...     for epoch in range(2):
+        ...         # Trainer will automatically handle sharding.
+        ...         data_shard = train.get_dataset_shard("train")
+        ...         for batch in data_shard.iter_torch_batches():
+        ...             ...
+        >>> train_dataset = ray.data.read_csv("s3://anonymous@ray-example-data/iris.csv")
+        >>> trainer = TorchTrainer(
+        ...     train_loop_per_worker,
+        ...     scaling_config=ScalingConfig(num_workers=2),
+        ...     datasets={"train": train_dataset}
+        ... )
+        >>> print("[ignore]"); trainer.fit()  # doctest: +ELLIPSIS
+        [ignore]...
 
     Args:
         dataset_name: If a Dictionary of Datasets was passed to ``Trainer``, then

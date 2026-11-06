@@ -9,6 +9,7 @@ import ray.tests.aws.utils.helpers as helpers
 import ray.tests.aws.utils.stubs as stubs
 from ray.autoscaler._private.aws.config import (
     DEFAULT_AMI,
+    _configure_key_pair,
     _configure_subnet,
     _get_subnets_or_die,
     bootstrap_aws,
@@ -33,6 +34,66 @@ from ray.tests.aws.utils.constants import (
     DEFAULT_SG_WITH_RULES_AUX_SUBNET,
     DEFAULT_SUBNET,
 )
+
+
+def test_key_pair_creation_retries_after_duplicate(ec2_client_stub, tmp_path):
+    key_name = "ray-test-key"
+    next_key_name = f"{key_name}_key-1"
+    key_path = tmp_path / f"{key_name}.pem"
+    next_key_path = tmp_path / f"{next_key_name}.pem"
+    config = {
+        "provider": {
+            "region": "us-west-2",
+            "key_pair": {"key_name": key_name},
+        },
+        "auth": {},
+        "available_node_types": {
+            "ray.head.default": {"node_config": {}},
+            "ray.worker.default": {"node_config": {}},
+        },
+    }
+
+    ec2_client_stub.add_response(
+        "describe_key_pairs",
+        service_response={"KeyPairs": []},
+        expected_params={"Filters": [{"Name": "key-name", "Values": [key_name]}]},
+    )
+    ec2_client_stub.add_client_error(
+        "create_key_pair",
+        service_error_code="InvalidKeyPair.Duplicate",
+        service_message="The key pair already exists.",
+        http_status_code=400,
+        expected_params={"KeyName": key_name},
+    )
+    ec2_client_stub.add_response(
+        "describe_key_pairs",
+        service_response={"KeyPairs": []},
+        expected_params={"Filters": [{"Name": "key-name", "Values": [next_key_name]}]},
+    )
+    ec2_client_stub.add_response(
+        "create_key_pair",
+        service_response={
+            "KeyName": next_key_name,
+            "KeyMaterial": "private-key-material",
+            "KeyFingerprint": "00:11:22:33:44:55:66:77",
+        },
+        expected_params={"KeyName": next_key_name},
+    )
+
+    with patch(
+        "ray.autoscaler._private.aws.config.key_pair",
+        side_effect=[
+            (key_name, str(key_path)),
+            (next_key_name, str(next_key_path)),
+        ],
+    ):
+        result = _configure_key_pair(config)
+
+    assert result["auth"]["ssh_private_key"] == str(next_key_path)
+    assert not key_path.exists()
+    assert next_key_path.read_text() == "private-key-material"
+    for node_type in result["available_node_types"].values():
+        assert node_type["node_config"]["KeyName"] == next_key_name
 
 
 def test_use_subnets_in_only_one_vpc(iam_client_stub, ec2_client_stub):

@@ -117,6 +117,28 @@ def test_numpy_write(ray_start_regular_shared, tmp_path):
     assert actual_array == np.array((0,))
 
 
+def test_read_numpy_pickle_blocked_by_default(ray_start_regular_shared, tmp_path):
+    """Object-dtype .npy files must not be loaded by default (GHSA-3pfc-79r8-p8r7)."""
+    arr = np.array(["hello", "world"], dtype=object)
+    path = os.path.join(tmp_path, "object.npy")
+    np.save(path, arr, allow_pickle=True)
+
+    ds = ray.data.read_numpy(path)
+    with pytest.raises(ValueError, match="allow_pickle"):
+        ds.take_all()
+
+
+def test_read_numpy_pickle_opt_in(ray_start_regular_shared, tmp_path):
+    """Callers can explicitly opt in to pickle loading."""
+    arr = np.array(["hello", "world"], dtype=object)
+    path = os.path.join(tmp_path, "object.npy")
+    np.save(path, arr, allow_pickle=True)
+
+    ds = ray.data.read_numpy(path, allow_pickle=True)
+    rows = ds.take_all()
+    assert sorted(r["data"] for r in rows) == ["hello", "world"]
+
+
 if __name__ == "__main__":
     import sys
 

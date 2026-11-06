@@ -77,7 +77,6 @@ from ray.experimental.compiled_dag_ref import (
     _process_return_vals,
 )
 from ray.util.annotations import DeveloperAPI
-from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
 logger = logging.getLogger(__name__)
 
@@ -103,9 +102,8 @@ def _shutdown_all_compiled_dags():
 
 def _check_unused_dag_input_attributes(
     output_node: "ray.dag.MultiOutputNode", input_attributes: Set[str]
-) -> Set[str]:
-    """
-    Helper function to check that all input attributes are used in the DAG.
+) -> None:
+    """Helper function to check that all input attributes are used in the DAG.
     For example, if the user creates an input attribute by calling
     InputNode()["x"], we ensure that there is a path from the
     InputAttributeNode corresponding to "x" to the DAG's output. If an
@@ -149,7 +147,7 @@ def _check_unused_dag_input_attributes(
 
 @DeveloperAPI
 def do_allocate_channel(
-    self,
+    self: Any,
     reader_and_node_list: List[Tuple["ray.actor.ActorHandle", str]],
     typ: ChannelOutputType,
     driver_actor_id: Optional[str] = None,
@@ -157,6 +155,7 @@ def do_allocate_channel(
     """Generic actor method to allocate an output channel.
 
     Args:
+        self: The actor instance this method is bound to.
         reader_and_node_list: A list of tuples, where each tuple contains a reader
             actor handle and the node ID where the actor is located.
         typ: The output type hint for the channel.
@@ -184,7 +183,7 @@ def do_allocate_channel(
 
 @DeveloperAPI
 def do_exec_tasks(
-    self,
+    self: Any,
     tasks: List["ExecutableTask"],
     schedule: List[_DAGNodeOperation],
     overlap_gpu_communication: bool = False,
@@ -195,6 +194,7 @@ def do_exec_tasks(
     exception is thrown.
 
     Args:
+        self: The actor instance this method is bound to.
         tasks: the executable tasks corresponding to the actor methods.
         schedule: A list of _DAGNodeOperation that should be executed in order.
         overlap_gpu_communication: Whether to overlap GPU communication with
@@ -262,7 +262,7 @@ def do_exec_tasks(
 
 @DeveloperAPI
 def do_profile_tasks(
-    self,
+    self: Any,
     tasks: List["ExecutableTask"],
     schedule: List[_DAGNodeOperation],
     overlap_gpu_communication: bool = False,
@@ -270,6 +270,7 @@ def do_profile_tasks(
     """A generic actor method similar to `do_exec_tasks`, but with profiling enabled.
 
     Args:
+        self: The actor instance this method is bound to.
         tasks: the executable tasks corresponding to the actor methods.
         schedule: A list of _DAGNodeOperation that should be executed in order.
         overlap_gpu_communication: Whether to overlap GPU communication with
@@ -337,8 +338,7 @@ def _wrap_exception(exc):
 
 
 def _get_comm_group_id(type_hint: ChannelOutputType) -> Optional[str]:
-    """
-    Get the communicator group ID from the type hint. If the type hint does not
+    """Get the communicator group ID from the type hint. If the type hint does not
     require communicator, return None.
 
     Args:
@@ -355,8 +355,7 @@ def _get_comm_group_id(type_hint: ChannelOutputType) -> Optional[str]:
 
 
 def _device_context_manager():
-    """
-    Return a context manager for executing communication operations
+    """Return a context manager for executing communication operations
     (i.e., READ and WRITE). For accelerator operations, the context manager
     uses the proper cuda device from channel context, otherwise,
     nullcontext will be returned.
@@ -386,7 +385,8 @@ class CompiledTask:
     """Wraps the normal Ray DAGNode with some metadata."""
 
     def __init__(self, idx: int, dag_node: "ray.dag.DAGNode"):
-        """
+        """Initialize a CompiledTask.
+
         Args:
             idx: A unique index into the original DAG.
             dag_node: The original DAG node created by the user.
@@ -460,11 +460,14 @@ class _ExecutableTaskInput:
         self.channel_idx = channel_idx
 
     def resolve(self, channel_results: Any) -> Any:
-        """
-        Resolve the input value from the channel results.
+        """Resolve the input value from the channel results.
 
         Args:
             channel_results: The results from reading the input channels.
+
+        Returns:
+            The resolved input value (either a value read from the channel or
+            the passthrough value).
         """
 
         if isinstance(self.input_variant, ChannelInterface):
@@ -486,7 +489,8 @@ class ExecutableTask:
         resolved_args: List[Any],
         resolved_kwargs: Dict[str, Any],
     ):
-        """
+        """Initialize an ExecutableTask.
+
         Args:
             task: The CompiledTask that this ExecutableTask corresponds to.
             resolved_args: The arguments to the method. Arguments that are
@@ -556,8 +560,7 @@ class ExecutableTask:
         self._intermediate_future: Optional[DAGOperationFuture] = None
 
     def cancel(self):
-        """
-        Close all the input channels and the output channel. The exact behavior
+        """Close all the input channels and the output channel. The exact behavior
         depends on the type of channel. Typically, it will release the resources
         used by the channels.
         """
@@ -565,16 +568,14 @@ class ExecutableTask:
         self.output_writer.close()
 
     def destroy_cuda_event(self):
-        """
-        If this executable task has created a GPU future that is not yet waited on,
+        """If this executable task has created a GPU future that is not yet waited on,
         that future is in the channel context cache. Remove the future from the cache
         and destroy its CUDA event.
         """
         GPUFuture.remove_gpu_future(self.task_idx)
 
-    def prepare(self, overlap_gpu_communication: bool = False):
-        """
-        Prepare the task for execution. The `exec_operation` function can only
+    def prepare(self, overlap_gpu_communication: bool = False) -> None:
+        """Prepare the task for execution. The `exec_operation` function can only
         be called after `prepare` has been called.
 
         Args:
@@ -619,8 +620,7 @@ class ExecutableTask:
     def wrap_and_set_intermediate_future(
         self, val: Any, wrap_in_gpu_future: bool
     ) -> None:
-        """
-        Wrap the value in a `DAGOperationFuture` and store to the intermediate future.
+        """Wrap the value in a `DAGOperationFuture` and store to the intermediate future.
         The value corresponds to result of a READ or COMPUTE operation.
 
         If wrap_in_gpu_future is True, the value will be wrapped in a GPUFuture,
@@ -639,8 +639,7 @@ class ExecutableTask:
         self._intermediate_future = future
 
     def reset_and_wait_intermediate_future(self) -> Any:
-        """
-        Reset the intermediate future and wait for the result.
+        """Reset the intermediate future and wait for the result.
 
         The wait does not block the CPU because:
         - If the future is a ResolvedFuture, the result is immediately returned.
@@ -655,8 +654,7 @@ class ExecutableTask:
         return future.wait()
 
     def _read(self, overlap_gpu_communication: bool) -> bool:
-        """
-        Read input data from upstream DAG nodes and cache the intermediate result.
+        """Read input data from upstream DAG nodes and cache the intermediate result.
 
         Args:
             overlap_gpu_communication: Whether to overlap GPU communication with
@@ -684,10 +682,9 @@ class ExecutableTask:
     def _compute(
         self,
         overlap_gpu_communication: bool,
-        class_handle,
+        class_handle: Any,
     ) -> bool:
-        """
-        Retrieve the intermediate result from the READ operation and perform the
+        """Retrieve the intermediate result from the READ operation and perform the
         computation. Then, cache the new intermediate result. The caller must ensure
         that the last operation executed is READ so that the function retrieves the
         correct intermediate result.
@@ -737,8 +734,7 @@ class ExecutableTask:
         return False
 
     def _write(self) -> bool:
-        """
-        Retrieve the intermediate result from the COMPUTE operation and write to its
+        """Retrieve the intermediate result from the COMPUTE operation and write to its
         downstream DAG nodes. The caller must ensure that the last operation executed
         is COMPUTE so that the function retrieves the correct intermediate result.
 
@@ -756,12 +752,11 @@ class ExecutableTask:
 
     def exec_operation(
         self,
-        class_handle,
+        class_handle: Any,
         op_type: _DAGNodeOperationType,
         overlap_gpu_communication: bool = False,
     ) -> bool:
-        """
-        An ExecutableTask corresponds to a DAGNode. It consists of three
+        """An ExecutableTask corresponds to a DAGNode. It consists of three
         operations: READ, COMPUTE, and WRITE, which should be executed in
         order to ensure that each operation can read the correct intermediate
         result.
@@ -814,8 +809,7 @@ class CompiledDAG:
 
     @ray.remote(num_cpus=0)
     class DAGDriverProxyActor:
-        """
-        To support the driver as a reader, the output writer needs to be able to invoke
+        """To support the driver as a reader, the output writer needs to be able to invoke
         remote functions on the driver. This is necessary so that the output writer can
         create a reader ref on the driver node, and later potentially create a larger
         reader ref on the driver node if the channel backing store needs to be resized.
@@ -839,7 +833,8 @@ class CompiledDAG:
         overlap_gpu_communication: Optional[bool] = None,
         default_communicator: Optional[Union[Communicator, str]] = "create",
     ):
-        """
+        """Initialize the compiled DAG.
+
         Args:
             submit_timeout: The maximum time in seconds to wait for execute() calls.
                 None means using default timeout (DAGContext.submit_timeout),
@@ -870,7 +865,7 @@ class CompiledDAG:
                 communication and computation can be overlapped, which can improve
                 the performance of the DAG execution. If None, the default value
                 will be used.
-            _default_communicator: The default communicator to use to transfer
+            default_communicator: The default communicator to use to transfer
                 tensors. Three types of values are valid. (1) Communicator:
                 For p2p operations, this is the default communicator
                 to use for nodes annotated with `with_tensor_transport()` and when
@@ -885,9 +880,6 @@ class CompiledDAG:
                 an already created collective communicator if the p2p actors are a subset.
                 Otherwise, a new communicator is created.
                 (3) None: a ValueError will be thrown if a custom communicator is not specified.
-
-        Returns:
-            Channel: A wrapper around ray.ObjectRef.
         """
         from ray.dag import DAGContext
 
@@ -1041,9 +1033,9 @@ class CompiledDAG:
             # resized, etc.). The driver actor serves as a way for the output writer
             # to invoke remote functions on the driver node.
             return CompiledDAG.DAGDriverProxyActor.options(
-                scheduling_strategy=NodeAffinitySchedulingStrategy(
-                    ray.get_runtime_context().get_node_id(), soft=False
-                )
+                label_selector={
+                    ray._raylet.RAY_NODE_ID_KEY: ray.get_runtime_context().get_node_id()
+                }
             ).remote()
 
         self._proxy_actor = _create_proxy_actor()
@@ -1065,9 +1057,7 @@ class CompiledDAG:
         return self._is_teardown
 
     def get_id(self) -> str:
-        """
-        Get the unique ID of the compiled DAG.
-        """
+        """Get the unique ID of the compiled DAG."""
         return self._dag_id
 
     def __str__(self) -> str:
@@ -1307,9 +1297,7 @@ class CompiledDAG:
         self._input_kwargs = tuple(input_kwargs)
 
     def _init_communicators(self) -> None:
-        """
-        Initialize communicators for the DAG.
-        """
+        """Initialize communicators for the DAG."""
 
         # First, initialize communicators that are passed in by the user.
         for communicator, type_hints in self._communicator_to_type_hints.items():
@@ -1376,8 +1364,7 @@ class CompiledDAG:
         actors: Set["ray.actor.ActorHandle"],
         collective_op: bool = False,
     ) -> None:
-        """
-        Track the usage of a communicator.
+        """Track the usage of a communicator.
 
         This method first determines the communicator to use: if a custom
         communicator is specified, use it; if not and a default communicator
@@ -1454,9 +1441,7 @@ class CompiledDAG:
         self,
         auto_transport_tasks: Set["CompiledTask"],
     ) -> None:
-        """
-        Resolve the auto transport type hint for the DAG.
-        """
+        """Resolve the auto transport type hint for the DAG."""
         type_hint_resolver = TypeHintResolver(self.actor_to_gpu_ids)
         # Resolve AutoChannelType type hints and track the actors that use accelerator.
         # This is needed so that the communicator group can be initialized for
@@ -1483,9 +1468,7 @@ class CompiledDAG:
                 )
 
     def _check_leaf_nodes(self) -> None:
-        """
-        Check if there are leaf nodes in the DAG and raise an error if there are.
-        """
+        """Check if there are leaf nodes in the DAG and raise an error if there are."""
         from ray.dag import (
             ClassMethodNode,
             DAGNode,
@@ -1513,9 +1496,7 @@ class CompiledDAG:
 
     @staticmethod
     def _get_gpu_ids(actor_handle: "ray.actor.ActorHandle") -> List[str]:
-        """
-        Get the GPU IDs of an actor handle.
-        """
+        """Get the GPU IDs of an actor handle."""
         accelerator_ids = ray.get(
             actor_handle.__ray_call__.remote(
                 lambda self: ray.get_runtime_context().get_accelerator_ids()
@@ -1524,8 +1505,7 @@ class CompiledDAG:
         return accelerator_ids.get("GPU", [])
 
     def _get_node_id(self, actor_handle: Optional["ray.actor.ActorHandle"]) -> str:
-        """
-        Get the node ID of an actor handle and cache it.
+        """Get the node ID of an actor handle and cache it.
 
         Args:
             actor_handle: The actor handle, or None if the actor handle is the
@@ -1922,8 +1902,7 @@ class CompiledDAG:
     def _generate_dag_operation_graph_node(
         self,
     ) -> Dict["ray.actor.ActorHandle", List[List[_DAGOperationGraphNode]]]:
-        """
-        Generate READ, COMPUTE, and WRITE operations for each DAG node.
+        """Generate READ, COMPUTE, and WRITE operations for each DAG node.
 
         Returns:
             A dictionary that maps an actor handle to a list of lists of
@@ -2002,8 +1981,7 @@ class CompiledDAG:
     def _build_execution_schedule(
         self,
     ) -> Dict["ray.actor.ActorHandle", List[_DAGNodeOperation]]:
-        """
-        Generate an execution schedule for each actor. The schedule is a list of
+        """Generate an execution schedule for each actor. The schedule is a list of
         _DAGNodeOperation.
 
         Step 1: Generate a DAG node operation graph. Refer to the functions
@@ -2054,8 +2032,7 @@ class CompiledDAG:
             return _extract_execution_schedule(actor_to_execution_schedule)
 
     def _detect_deadlock(self) -> bool:
-        """
-        TODO (kevin85421): Avoid false negatives.
+        """TODO (kevin85421): Avoid false negatives.
 
         Currently, a compiled graph may deadlock if there are accelerator channels,
         and the readers have control dependencies on the same actor. For example:
@@ -2312,8 +2289,7 @@ class CompiledDAG:
         return result
 
     def _delete_execution_results(self, execution_index: int, channel_index: int):
-        """
-        Delete the execution results for the given execution index and channel index.
+        """Delete the execution results for the given execution index and channel index.
         This method should be called when a CompiledDAGRef or CompiledDAGFuture is
         destructed.
 
@@ -2331,9 +2307,7 @@ class CompiledDAG:
         self._clean_up_buffers(execution_index)
 
     def _try_release_result_buffer(self, execution_index: int):
-        """
-        Try to release the result buffer for the given execution index.
-        """
+        """Try to release the result buffer for the given execution index."""
 
         should_release = False
         got_channel_idxs = self._got_ref_idxs.get(execution_index, set())
@@ -2364,8 +2338,7 @@ class CompiledDAG:
     def _try_release_native_buffer(
         self, idx_to_release: int, timeout: Optional[float] = None
     ) -> bool:
-        """
-        Try to release the native buffer for the given execution index.
+        """Try to release the native buffer for the given execution index.
 
         Args:
             idx_to_release: The execution index to release buffers from.
@@ -2414,8 +2387,7 @@ class CompiledDAG:
     def _try_release_buffer(
         self, idx_to_release: int, timeout: Optional[float] = None
     ) -> bool:
-        """
-        Try to release the buffer for the given execution index.
+        """Try to release the buffer for the given execution index.
         First try to release the native buffer, then try to release the result buffer.
 
         Args:
@@ -2433,8 +2405,7 @@ class CompiledDAG:
         return self._try_release_result_buffer(idx_to_release)
 
     def _try_release_buffers(self):
-        """
-        Repeatedly release buffer if possible.
+        """Repeatedly release buffer if possible.
 
         This method starts from _max_finished_execution_index + 1 and tries to release
         as many buffers as possible. If a native buffer is released,
@@ -2453,8 +2424,7 @@ class CompiledDAG:
                 timeout = max(timeout, 0)
 
     def _clean_up_buffers(self, idx_to_release: int):
-        """
-        Clean up native and result buffers.
+        """Clean up native and result buffers.
 
         This method:
         1. Tries to release the buffer for the given execution index.
@@ -2545,14 +2515,14 @@ class CompiledDAG:
 
     def execute(
         self,
-        *args,
-        **kwargs,
+        *args: Any,
+        **kwargs: Any,
     ) -> Union[CompiledDAGRef, List[CompiledDAGRef]]:
         """Execute this DAG using the compiled execution path.
 
         Args:
-            args: Args to the InputNode.
-            kwargs: Kwargs to the InputNode
+            *args: Args to the InputNode.
+            **kwargs: Kwargs to the InputNode
 
         Returns:
             A list of Channels that can be used to read the DAG result.
@@ -2606,8 +2576,7 @@ class CompiledDAG:
         return ref
 
     def _check_inputs(self, args: Tuple[Any, ...], kwargs: Dict[str, Any]) -> None:
-        """
-        Helper method to check that the DAG args provided by the user during
+        """Helper method to check that the DAG args provided by the user during
         execution are valid according to the defined DAG.
         """
         if len(args) != self._input_num_positional_args:
@@ -2626,16 +2595,16 @@ class CompiledDAG:
 
     async def execute_async(
         self,
-        *args,
-        **kwargs,
+        *args: Any,
+        **kwargs: Any,
     ) -> Union[CompiledDAGFuture, List[CompiledDAGFuture]]:
         """Execute this DAG using the compiled execution path.
 
         NOTE: Not thread-safe.
 
         Args:
-            args: Args to the InputNode.
-            kwargs: Kwargs to the InputNode.
+            *args: Args to the InputNode.
+            **kwargs: Kwargs to the InputNode.
 
         Returns:
             A list of Channels that can be used to read the DAG result.
@@ -2676,8 +2645,7 @@ class CompiledDAG:
         return fut
 
     def _visualize_ascii(self) -> str:
-        """
-        Visualize the compiled graph in
+        """Visualize the compiled graph in
         ASCII format with directional markers.
 
         This function generates an ASCII visualization of a Compiled Graph,
@@ -3013,8 +2981,7 @@ class CompiledDAG:
     def get_channel_details(
         self, channel: ChannelInterface, downstream_actor_id: str
     ) -> str:
-        """
-        Get details about outer and inner channel types and channel ids
+        """Get details about outer and inner channel types and channel ids
         based on the channel and the downstream actor ID.
         Used for graph visualization.
         Args:
@@ -3044,13 +3011,12 @@ class CompiledDAG:
 
     def visualize(
         self,
-        filename="compiled_graph",
-        format="png",
-        view=False,
-        channel_details=False,
+        filename: str = "compiled_graph",
+        format: str = "png",
+        view: bool = False,
+        channel_details: bool = False,
     ) -> str:
-        """
-        Visualize the compiled graph by showing tasks and their dependencies.
+        """Visualize the compiled graph by showing tasks and their dependencies.
         This method should be called **after** the graph has been compiled using
         `experimental_compile()`.
 
@@ -3230,9 +3196,7 @@ class CompiledDAG:
         return dot.source
 
     def _register_input_output_custom_serializer(self):
-        """
-        Register custom serializers for input, input attribute, and output nodes.
-        """
+        """Register custom serializers for input, input attribute, and output nodes."""
         assert self.input_task_idx is not None
         assert self.output_task_idx is not None
 
@@ -3250,8 +3214,7 @@ class CompiledDAG:
             output.type_hint.register_custom_serializer()
 
     def teardown(self, kill_actors: bool = False):
-        """
-        Teardown and cancel all actor tasks for this DAG. After this
+        """Teardown and cancel all actor tasks for this DAG. After this
         function returns, the actors should be available to execute new tasks
         or compile a new DAG.
 

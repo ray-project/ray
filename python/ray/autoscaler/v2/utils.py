@@ -49,11 +49,12 @@ from ray.experimental.internal_kv import internal_kv_get_gcs_client
 
 
 def _count_by(data: Any, key: str) -> Dict[str, int]:
-    """
-    Count the number of items by the given keys.
+    """Count the number of items by the given key.
+
     Args:
         data: the data to be counted
-        keys: the keys to count by
+        key: the key to count by
+
     Returns:
         counts: the counts
     """
@@ -65,20 +66,18 @@ def _count_by(data: Any, key: str) -> Dict[str, int]:
 
 
 class ProtobufUtil:
-    """
-    A utility class for protobuf objects.
-    """
+    """A utility class for protobuf objects."""
 
     @staticmethod
-    def to_dict(proto):
-        """
-        Convert a protobuf object to a dict.
+    def to_dict(proto: Any) -> Dict[str, Any]:
+        """Convert a protobuf object to a dict.
 
         This is a slow conversion, and should only be used for debugging or
         latency insensitve code.
 
         Args:
             proto: the protobuf object
+
         Returns:
             dict: the dict
         """
@@ -91,12 +90,12 @@ class ProtobufUtil:
         )
 
     @staticmethod
-    def to_dict_list(protos):
-        """
-        Convert a list of protobuf objects to a list of dicts.
+    def to_dict_list(protos: List[Any]) -> List[Dict[str, Any]]:
+        """Convert a list of protobuf objects to a list of dicts.
 
         Args:
             protos: the list of protobuf objects
+
         Returns:
             dict_list: the list of dicts
         """
@@ -104,14 +103,10 @@ class ProtobufUtil:
 
 
 class ResourceRequestUtil(ProtobufUtil):
-    """
-    A utility class for resource requests, autoscaler.proto.ResourceRequest
-    """
+    """A utility class for resource requests, autoscaler.proto.ResourceRequest"""
 
     class PlacementConstraintType(Enum):
-        """
-        The affinity type for the resource request.
-        """
+        """The affinity type for the resource request."""
 
         ANTI_AFFINITY = "ANTI_AFFINITY"
         AFFINITY = "AFFINITY"
@@ -120,8 +115,7 @@ class ResourceRequestUtil(ProtobufUtil):
     def group_by_count(
         requests: List[ResourceRequest],
     ) -> List[ResourceRequestByCountProto]:
-        """
-        Aggregate resource requests by shape.
+        """Aggregate resource requests by shape.
         Args:
             requests: the list of resource requests
         Returns:
@@ -144,8 +138,7 @@ class ResourceRequestUtil(ProtobufUtil):
     def ungroup_by_count(
         requests_by_count: List[ResourceRequestByCountProto],
     ) -> List[ResourceRequest]:
-        """
-        Flatten the resource requests by count to resource requests.
+        """Flatten the resource requests by count to resource requests.
         Args:
             requests_by_count: the resource requests by count
         Returns:
@@ -161,8 +154,7 @@ class ResourceRequestUtil(ProtobufUtil):
     def to_resource_map(
         request: ResourceRequest,
     ) -> Dict[str, float]:
-        """
-        Convert the resource request by count to resource map.
+        """Convert the resource request by count to resource map.
         Args:
             request: the resource request
         Returns:
@@ -177,8 +169,7 @@ class ResourceRequestUtil(ProtobufUtil):
     def to_resource_maps(
         requests: List[ResourceRequest],
     ) -> List[Dict[str, float]]:
-        """
-        Convert the resource requests by count to resource map.
+        """Convert the resource requests by count to resource map.
         Args:
             requests: the resource requests
         Returns:
@@ -192,8 +183,7 @@ class ResourceRequestUtil(ProtobufUtil):
         constraints: Optional[List[Tuple[PlacementConstraintType, str, str]]] = None,
         label_selectors: Optional[List[List[Tuple[str, int, List[str]]]]] = None,
     ) -> ResourceRequest:
-        """
-        Make a resource request from the given resources map.
+        """Make a resource request from the given resources map.
         Args:
             resources_map: Mapping of resource names to quantities.
             constraints: Placement constraints. Each tuple is (constraint_type,
@@ -254,8 +244,7 @@ class ResourceRequestUtil(ProtobufUtil):
     def combine_requests_with_affinity(
         resource_requests: List[ResourceRequest],
     ) -> List[ResourceRequest]:
-        """
-        Combine the resource requests with affinity constraints
+        """Combine the resource requests with affinity constraints
         into the same request. This is so that requests with affinity
          constraints could be considered and placed together.
 
@@ -335,8 +324,7 @@ class ResourceRequestUtil(ProtobufUtil):
     def _label_selector_key(
         label_selectors: List[LabelSelector],
     ) -> Tuple:
-        """
-        Convert label selectors into a hashable form for grouping.
+        """Convert label selectors into a hashable form for grouping.
         This is used for gang requests with identical label_selectors.
         """
         result = []
@@ -355,10 +343,7 @@ class ResourceRequestUtil(ProtobufUtil):
 
 
 class ClusterStatusFormatter:
-    """
-    A formatter to format the ClusterStatus into a string.
-
-    """
+    """A formatter to format the ClusterStatus into a string."""
 
     @classmethod
     def format(cls, data: ClusterStatus, verbose: bool = False) -> str:
@@ -472,7 +457,7 @@ class ClusterStatusFormatter:
         return "\n".join(node_usage_report_lines)
 
     @staticmethod
-    def _header_info(data: ClusterStatus, verbose: bool) -> (str, int):
+    def _header_info(data: ClusterStatus, verbose: bool) -> Tuple[str, int]:
         # Get the request timestamp or default to the current time
         time = (
             datetime.fromtimestamp(data.stats.request_ts_s)
@@ -603,7 +588,8 @@ class ClusterStatusFormatter:
         """Returns a formatted string describing the resource constraints from request_resources().
 
         Args:
-            data: ClusterStatus object containing resource demand information.
+            cluster_constraint_demand: List of cluster constraint demands
+                containing resource demand information.
 
         Returns:
             String containing the formatted constraints report, either listing each constraint
@@ -736,8 +722,7 @@ class ClusterStatusParser:
 
     @classmethod
     def _parse_stats(cls, reply: GetClusterStatusReply, stats: Stats) -> Stats:
-        """
-        Parse the stats from the get cluster status reply.
+        """Parse the stats from the get cluster status reply.
         Args:
             reply: the get cluster status reply
             stats: the stats
@@ -759,8 +744,7 @@ class ClusterStatusParser:
     def _parse_resource_demands(
         cls, state: ClusterResourceState
     ) -> List[ResourceDemand]:
-        """
-        Parse the resource demands from the cluster resource state.
+        """Parse the resource demands from the cluster resource state.
         Args:
             state: the cluster resource state
         Returns:
@@ -812,8 +796,7 @@ class ClusterStatusParser:
         cls,
         requests: List[ResourceRequest],
     ) -> List[ResourceRequestByCount]:
-        """
-        Aggregate resource requests by shape.
+        """Aggregate resource requests by shape.
         Args:
             requests: the list of resource requests
         Returns:
@@ -834,8 +817,7 @@ class ClusterStatusParser:
     def _parse_node_resource_usage(
         cls, node_state: NodeState, usage: Dict[str, ResourceUsage]
     ) -> Dict[str, ResourceUsage]:
-        """
-        Parse the node resource usage from the node state.
+        """Parse the node resource usage from the node state.
         Args:
             node_state: the node state
             usage: the usage dict to be updated. This is a dict of
@@ -869,8 +851,7 @@ class ClusterStatusParser:
         cls,
         state: ClusterResourceState,
     ) -> List[ResourceUsage]:
-        """
-        Parse the cluster resource usage from the cluster resource state.
+        """Parse the cluster resource usage from the cluster resource state.
         Args:
             state: the cluster resource state
         Returns:
@@ -892,8 +873,7 @@ class ClusterStatusParser:
         cls,
         state: ClusterResourceState,
     ) -> Tuple[List[NodeInfo], List[NodeInfo]]:
-        """
-        Parse the node info from the cluster resource state.
+        """Parse the node info from the cluster resource state.
         Args:
             state: the cluster resource state
         Returns:
@@ -959,8 +939,7 @@ class ClusterStatusParser:
     def _parse_launch_requests(
         cls, state: AutoscalingState
     ) -> Tuple[List[LaunchRequest], List[LaunchRequest]]:
-        """
-        Parse the launch requests from the autoscaling state.
+        """Parse the launch requests from the autoscaling state.
         Args:
             state: the autoscaling state, empty if there's no autoscaling state
                 being reported.
@@ -998,8 +977,7 @@ class ClusterStatusParser:
 
     @classmethod
     def _parse_pending(cls, state: AutoscalingState) -> List[NodeInfo]:
-        """
-        Parse the pending requests/nodes from the autoscaling state.
+        """Parse the pending requests/nodes from the autoscaling state.
         Args:
             state: the autoscaling state, empty if there's no autoscaling state
                 being reported.
@@ -1027,8 +1005,7 @@ cached_is_autoscaler_v2 = None
 def is_autoscaler_v2(
     fetch_from_server: bool = False, gcs_client: Optional[GcsClient] = None
 ) -> bool:
-    """
-    Check if the autoscaler is v2 from reading GCS internal KV.
+    """Check if the autoscaler is v2 from reading GCS internal KV.
 
     If the method is called multiple times, the result will be cached in the module.
 
@@ -1077,8 +1054,7 @@ def is_autoscaler_v2(
 
 
 def is_head_node(node_state: NodeState) -> bool:
-    """
-    Check if the node is a head node from the node state.
+    """Check if the node is a head node from the node state.
 
     Args:
         node_state: the node state

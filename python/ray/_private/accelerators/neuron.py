@@ -56,8 +56,7 @@ class NeuronAcceleratorManager(AcceleratorManager):
 
     @staticmethod
     def get_current_node_num_accelerators() -> int:
-        """
-        Attempt to detect the number of Neuron cores on this machine.
+        """Attempt to detect the number of Neuron cores on this machine.
 
         Returns:
             The number of Neuron cores if any were detected, otherwise 0.
@@ -104,7 +103,7 @@ class NeuronAcceleratorManager(AcceleratorManager):
         given visible_neuron_core_ids.
 
         Args:
-            visible_neuron_core_ids (List[str]): List of int representing core IDs.
+            visible_neuron_core_ids: List of str representing core IDs.
         """
         if env_bool(NOSET_AWS_NEURON_RT_VISIBLE_CORES_ENV_VAR, False):
             return

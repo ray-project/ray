@@ -400,7 +400,7 @@ def memory_summary(
         except RuntimeError:
             continue
         core_worker_stats.extend(stats["coreWorkersStats"])
-        assert type(stats) is dict and "coreWorkersStats" in stats
+        assert isinstance(stats, dict) and "coreWorkersStats" in stats
 
     # Build memory table with "group_by" and "sort_by" parameters
     group_by, sort_by = get_group_by_type(group_by), get_sorting_type(sort_by)

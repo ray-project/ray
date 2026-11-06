@@ -8,6 +8,7 @@ ray_cc_library(
     hdrs = [
         "metric.h",
     ],
+    visibility = ["//visibility:public"],
     deps = [
         ":tag_defs",
         "//src/ray/common:ray_config",
@@ -43,9 +44,12 @@ ray_cc_library(
             "-lpthread",
         ],
     }),
+    visibility = ["//visibility:public"],
     deps = [
         ":stats_metric",
         ":tag_defs",
+        "//src/ray/asio:instrumented_io_context",
+        "//src/ray/asio:io_service_pool",
         "//src/ray/observability:metric_interface",
         "//src/ray/rpc:metrics_agent_client",
         "//src/ray/util:network_util",
@@ -67,7 +71,6 @@ ray_cc_library(
     name = "quadratic_bucket_scheme",
     srcs = ["quadratic_bucket_scheme.cc"],
     hdrs = ["quadratic_bucket_scheme.h"],
-    visibility = ["//visibility:public"],
     deps = [
         "//src/ray/util:logging",
     ],
@@ -77,7 +80,6 @@ ray_cc_library(
     name = "bucket_histogram",
     srcs = ["bucket_histogram.cc"],
     hdrs = ["bucket_histogram.h"],
-    visibility = ["//visibility:public"],
     deps = [
         ":quadratic_bucket_scheme",
     ],
@@ -87,7 +89,7 @@ ray_cc_library(
     name = "percentile_tracker",
     srcs = ["percentile_tracker.cc"],
     hdrs = ["percentile_tracker.h"],
-    visibility = ["//visibility:public"],
+    visibility = [":__subpackages__"],
     deps = [
         ":bucket_histogram",
         ":quadratic_bucket_scheme",
@@ -99,7 +101,10 @@ ray_cc_library(
     name = "percentile_metric",
     srcs = ["percentile_metric.cc"],
     hdrs = ["percentile_metric.h"],
-    visibility = ["//visibility:public"],
+    visibility = [
+        "//src/ray/common:__pkg__",
+        "//src/ray/core_worker:__pkg__",
+    ],
     deps = [
         ":percentile_tracker",
         ":stats_metric",

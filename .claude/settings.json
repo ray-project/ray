@@ -1,0 +1,18 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(bazel build *)",
+      "Bash(bazel test *)",
+      "Bash(bazel run *)",
+      "Bash(bazel query *)",
+      "Bash(bazel info *)",
+      "Bash(python -m pytest *)",
+      "Bash(pip install -e *)",
+      "Bash(git status)",
+      "Bash(git diff *)",
+      "Bash(git log *)",
+      "Bash(git branch *)"
+    ],
+    "deny": []
+  }
+}

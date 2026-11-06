@@ -36,9 +36,14 @@ struct GcsServerMetrics {
   ray::observability::MetricInterface &event_recorder_dropped_events_counter;
   ray::observability::MetricInterface &storage_operation_latency_in_ms_histogram;
   ray::observability::MetricInterface &storage_operation_count_counter;
+  ray::observability::MetricInterface &redis_request_payload_bytes_sum;
+  ray::observability::MetricInterface &redis_response_payload_bytes_sum;
+  ray::observability::MetricInterface &redis_command_count_counter;
   ray::observability::MetricInterface &resource_usage_gauge;
   ray::observability::MetricInterface &scheduler_placement_time_ms_histogram;
   ray::observability::MetricInterface &health_check_rpc_latency_ms_histogram;
+  ray::observability::MetricInterface &io_context_monitor_latency_ms_gauge;
+  ray::observability::MetricInterface &io_context_monitor_unhealthy_counter;
 };
 
 inline ray::stats::Gauge GetRunningJobGaugeMetric() {
@@ -147,22 +152,88 @@ inline ray::stats::Gauge GetGcsActorByStateGaugeMetric() {
   };
 }
 
+// TableName is a bounded internal table name -- see NormalizeTableNameLabel in
+// store_client/table_name_label.h. Keys, internal-KV namespaces and any other
+// user-supplied string are never labels. Note that the tag_keys list below is
+// the tag allowlist on both metric stacks: OpenCensus turns it into the view's
+// column set (metric.cc, RegisterAsView) and OpenTelemetry seeds its attribute
+// map from it and drops anything undeclared (metric.cc, Metric::Record), so a
+// tag recorded without being declared here is exported by neither.
+
 inline ray::stats::Histogram GetGcsStorageOperationLatencyInMsHistogramMetric() {
   return ray::stats::Histogram{
       /*name=*/"gcs_storage_operation_latency_ms",
-      /*description=*/"Time to invoke an operation on Gcs storage",
+      /*description=*/
+      "Time to invoke an operation on GCS storage, broken down by operation and "
+      "by the GCS table it addressed. Recorded when the operation completes.",
       /*unit=*/"",
       /*boundaries=*/{0.1, 1, 10, 100, 1000, 10000},
-      /*tag_keys=*/{"Operation"},
+      /*tag_keys=*/{"Operation", "TableName"},
   };
 }
 
 inline ray::stats::Count GetGcsStorageOperationCountCounterMetric() {
   return ray::stats::Count{
       /*name=*/"gcs_storage_operation_count",
-      /*description=*/"Number of operations invoked on Gcs storage",
+      /*description=*/
+      "Number of operations invoked on GCS storage, broken down by operation and "
+      "by the GCS table it addressed. Recorded when the operation is issued, so "
+      "this leads gcs_storage_operation_latency_ms by the number in flight.",
       /*unit=*/"",
-      /*tag_keys=*/{"Operation"},
+      /*tag_keys=*/{"Operation", "TableName"},
+  };
+}
+
+// The payload definitions below are normative: they are what the metric means,
+// and tests assert exact deltas against them. "Payload" is always the
+// application data carried by RESP values, and never the RESP framing
+// ("*N\r\n", "$len\r\n", type prefixes, trailing CRLF), TLS records or TCP/IP
+// headers.
+// GCS values are not compressed anywhere between GcsTable::Put and the socket,
+// so compressed bytes do not arise. To reconcile with Redis' own
+// total_net_input_bytes, add framing: 3 + digits(nargs) per command plus
+// 5 + digits(len) per argument.
+
+inline ray::stats::Sum GetGcsRedisRequestPayloadBytesSumMetric() {
+  return ray::stats::Sum{
+      /*name=*/"gcs_redis_request_payload_bytes",
+      /*description=*/
+      "Bytes of Redis command arguments accepted for sending by the GCS Redis "
+      "client: the sum of the byte lengths of the RESP arguments, including the "
+      "command verb, the Redis key, hash field names and values. Excludes RESP "
+      "framing, TLS and TCP/IP overhead; GCS values are not compressed. Recorded "
+      "on the first successful submission of each logical command; retries are "
+      "not counted again.",
+      /*unit=*/"bytes",
+      /*tag_keys=*/{"Command", "TableName"},
+  };
+}
+
+inline ray::stats::Sum GetGcsRedisResponsePayloadBytesSumMetric() {
+  return ray::stats::Sum{
+      /*name=*/"gcs_redis_response_payload_bytes",
+      /*description=*/
+      "Bytes of Redis replies received by the GCS: the sum of the byte lengths "
+      "of every bulk string and status string in the reply, including the field "
+      "names returned by HSCAN. Integers count as their decimal text; nil replies "
+      "contribute zero. Excludes RESP framing, TLS and TCP/IP overhead. A reply "
+      "that comes back as an error is retried instead of delivered, and "
+      "contributes nothing at all -- error bytes are never counted here.",
+      /*unit=*/"bytes",
+      /*tag_keys=*/{"Command", "TableName"},
+  };
+}
+
+inline ray::stats::Count GetGcsRedisCommandCountCounterMetric() {
+  return ray::stats::Count{
+      /*name=*/"gcs_redis_command_count",
+      /*description=*/
+      "Number of logical Redis commands accepted for sending by the GCS Redis "
+      "client, broken down by command and table. Batched operations count once "
+      "per chunk and a table scan counts once per HSCAN command. Retries are not "
+      "counted again, so this is not a count of network round trips.",
+      /*unit=*/"",
+      /*tag_keys=*/{"Command", "TableName"},
   };
 }
 
@@ -173,6 +244,27 @@ inline ray::stats::Histogram GetHealthCheckRpcLatencyMsHistogramMetric() {
       /*unit=*/"",
       /*boundaries=*/{1, 10, 100, 1000, 10000},
       /*tag_keys=*/{},
+  };
+}
+
+inline ray::stats::Gauge GetIoContextMonitorLatencyMsGaugeMetric() {
+  return ray::stats::Gauge{
+      /*name=*/"io_context_monitor_latency_ms",
+      /*description=*/
+      "Latency of the most recent probe on this io context.",
+      /*unit=*/"ms",
+      /*tag_keys=*/{"Name"},
+  };
+}
+
+inline ray::stats::Count GetIoContextMonitorUnhealthyCountMetric() {
+  return ray::stats::Count{
+      /*name=*/"io_context_monitor_unhealthy_count",
+      /*description=*/
+      "Number of times this io_context was marked unhealthy by the io context monitor "
+      "(i.e. a probe exceeded the healthy deadline).",
+      /*unit=*/"",
+      /*tag_keys=*/{"Name"},
   };
 }
 

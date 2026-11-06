@@ -21,7 +21,8 @@ namespace ray {
 
 namespace raylet {
 
-std::unique_ptr<WorkerKillingPolicyInterface> WorkerKillingPolicyFactory::Create() {
+std::unique_ptr<WorkerKillingPolicyInterface> WorkerKillingPolicyFactory::Create(
+    bool resource_isolation_enabled, const CgroupManagerInterface &cgroup_manager) {
   return std::make_unique<NoopWorkerKillingPolicy>();
 }
 

@@ -49,7 +49,7 @@ def test_from_items_parallelism(ray_start_regular_shared, parallelism):
     ds = ray.data.from_items(records, override_num_blocks=parallelism)
     out = ds.take_all()
     assert out == records
-    assert ds._plan.initial_num_blocks() == parallelism
+    assert ds._logical_plan.initial_num_blocks() == parallelism
 
 
 def test_from_items_parallelism_truncated(ray_start_regular_shared):
@@ -61,7 +61,7 @@ def test_from_items_parallelism_truncated(ray_start_regular_shared):
     ds = ray.data.from_items(records, override_num_blocks=parallelism)
     out = ds.take_all()
     assert out == records
-    assert ds._plan.initial_num_blocks() == n
+    assert ds._logical_plan.initial_num_blocks() == n
 
 
 if __name__ == "__main__":

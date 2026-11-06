@@ -1,0 +1,8 @@
+Build: 4155333   State: Finished   Success: False   Duration: 628s
+Failing command: python -m sphinx -T -W --keep-going -j auto -b html -d _build/doctrees -D language=en . $READTHEDOCS_OUTPUT/html
+Exit code: 1
+
+Sphinx warnings (1):
+  /home/docs/checkouts/readthedocs.org/user_builds/anyscale-ray/checkouts/63617/doc/source/serve/llm/examples.md:17: WARNING: unknown document: '/_collections/serve/tutorials/deployment-serve-llm/npu-ascend/README' [ref.doc]
+
+Summary line: build finished with problems, 1 warning.

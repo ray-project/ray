@@ -7,7 +7,7 @@ import jinja2
 import yaml
 
 from ray_release.bazel import bazel_runfile
-from ray_release.config import get_test_cloud_id
+from ray_release.config import get_test_cloud_id, get_test_cloud_name
 from ray_release.exception import ReleaseTestConfigError
 
 if TYPE_CHECKING:
@@ -102,7 +102,7 @@ def load_test_cluster_compute(
 ) -> Optional[Dict]:
     cluster_compute_file = test["cluster"]["cluster_compute"]
     working_dir = get_working_dir(test, test_definition_root)
-    f = os.path.join(working_dir, cluster_compute_file)
+    f = os.path.normpath(os.path.join(working_dir, cluster_compute_file))
     env = _populate_cluster_compute_variables(test)
     return _load_and_render_yaml_template(f, env=env)
 
@@ -111,5 +111,7 @@ def _populate_cluster_compute_variables(test: "Test") -> Dict:
     env = _get_test_environment()
 
     cloud_id = get_test_cloud_id(test)
+    cloud_name = get_test_cloud_name(test)
     env["ANYSCALE_CLOUD_ID"] = cloud_id
+    env["ANYSCALE_CLOUD_NAME"] = cloud_name
     return env

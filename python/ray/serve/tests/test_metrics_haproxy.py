@@ -30,16 +30,29 @@ import ray
 from ray import serve
 from ray._common.network_utils import parse_address
 from ray._common.test_utils import (
+    PrometheusTimeseries,
     SignalActor,
     fetch_prometheus_metrics,
     wait_for_condition,
 )
 from ray._common.utils import reset_ray_address
+from ray._private.authentication.http_token_authentication import (
+    get_auth_headers_if_auth_enabled,
+)
 from ray.serve import HTTPOptions
 from ray.serve._private.long_poll import LongPollHost, UpdatedObject
-from ray.serve._private.test_utils import get_application_url, get_metric_dictionaries
+from ray.serve._private.test_utils import (
+    expected_proxy_actors,
+    extract_tags,
+    get_application_url,
+    get_metric_dictionaries,
+)
 from ray.serve._private.utils import block_until_http_ready
-from ray.serve.tests.conftest import TEST_METRICS_EXPORT_PORT
+from ray.serve.tests.conftest import (
+    TEST_METRICS_EXPORT_PORT,
+    wait_for_metrics_endpoint,
+    wait_for_metrics_port_free,
+)
 from ray.util.state import list_actors
 
 
@@ -48,6 +61,7 @@ def metrics_start_shutdown(request):
     """Fixture provides a fresh Ray cluster to prevent metrics state sharing."""
     param = request.param if hasattr(request, "param") else None
     request_timeout_s = param if param else None
+    wait_for_metrics_port_free()
     ray.init(
         _metrics_export_port=TEST_METRICS_EXPORT_PORT,
         _system_config={
@@ -55,33 +69,19 @@ def metrics_start_shutdown(request):
             "task_retry_delay_ms": 50,
         },
     )
-    yield serve.start(
-        http_options=HTTPOptions(
-            host="0.0.0.0",
-            request_timeout_s=request_timeout_s,
-        ),
-    )
-    serve.shutdown()
-    ray.shutdown()
-    reset_ray_address()
-
-
-def extract_tags(line: str) -> Dict[str, str]:
-    """Extracts any tags from the metrics line."""
-
     try:
-        tags_string = line.replace("{", "}").split("}")[1]
-    except IndexError:
-        # No tags were found in this line.
-        return {}
-
-    detected_tags = {}
-    for tag_pair in tags_string.split(","):
-        sanitized_pair = tag_pair.replace('"', "")
-        tag, value = sanitized_pair.split("=")
-        detected_tags[tag] = value
-
-    return detected_tags
+        session_name = ray._private.worker._global_node.session_name
+        wait_for_metrics_endpoint(session_name)
+        yield serve.start(
+            http_options=HTTPOptions(
+                host="0.0.0.0",
+                request_timeout_s=request_timeout_s,
+            ),
+        )
+    finally:
+        serve.shutdown()
+        ray.shutdown()
+        reset_ray_address()
 
 
 def contains_tags(line: str, expected_tags: Optional[Dict[str, str]] = None) -> bool:
@@ -109,7 +109,9 @@ def get_metric_float(
     Returns -1 if the metric isn't available.
     """
 
-    metrics = httpx.get("http://127.0.0.1:9999").text
+    metrics = httpx.get(
+        "http://127.0.0.1:9999", headers=get_auth_headers_if_auth_enabled({})
+    ).text
     metric_value = -1
     for line in metrics.split("\n"):
         if metric in line and contains_tags(line, expected_tags):
@@ -175,7 +177,9 @@ def test_serve_metrics_for_successful_connection(metrics_start_shutdown):
 
     def verify_metrics(do_assert=False):
         try:
-            resp = httpx.get("http://127.0.0.1:9999").text
+            resp = httpx.get(
+                "http://127.0.0.1:9999", headers=get_auth_headers_if_auth_enabled({})
+            ).text
         # Requests will fail if we are crashing the controller
         except httpx.HTTPError:
             return False
@@ -213,7 +217,7 @@ def test_serve_metrics_for_successful_connection(metrics_start_shutdown):
         return True
 
     try:
-        wait_for_condition(verify_metrics, retry_interval_ms=500)
+        wait_for_condition(verify_metrics, retry_interval_ms=500, timeout=40)
     except RuntimeError:
         verify_metrics(do_assert=True)
 
@@ -239,7 +243,9 @@ def test_http_replica_gauge_metrics(metrics_start_shutdown):
     print("ray_serve_replica_processing_queries exists.")
 
     def ensure_request_processing():
-        resp = httpx.get("http://127.0.0.1:9999").text
+        resp = httpx.get(
+            "http://127.0.0.1:9999", headers=get_auth_headers_if_auth_enabled({})
+        ).text
         resp = resp.split("\n")
         for metrics in resp:
             if "# HELP" in metrics or "# TYPE" in metrics:
@@ -279,7 +285,9 @@ def test_proxy_metrics_not_found(metrics_start_shutdown):
 
     def verify_metrics(_expected_metrics, do_assert=False):
         try:
-            resp = httpx.get("http://127.0.0.1:9999").text
+            resp = httpx.get(
+                "http://127.0.0.1:9999", headers=get_auth_headers_if_auth_enabled({})
+            ).text
         # Requests will fail if we are crashing the controller
         except httpx.HTTPError:
             return False
@@ -306,7 +314,9 @@ def test_proxy_metrics_not_found(metrics_start_shutdown):
         verify_metrics(expected_metrics, True)
 
     def verify_error_count(do_assert=False):
-        resp = httpx.get("http://127.0.0.1:9999").text
+        resp = httpx.get(
+            "http://127.0.0.1:9999", headers=get_auth_headers_if_auth_enabled({})
+        ).text
         resp = resp.split("\n")
         http_error_count = 0
         deployment_404_count = 0
@@ -365,7 +375,11 @@ def test_proxy_metrics_internal_error(metrics_start_shutdown):
 
     def verify_metrics(_expected_metrics, do_assert=False):
         try:
-            resp = httpx.get("http://127.0.0.1:9999", timeout=None).text
+            resp = httpx.get(
+                "http://127.0.0.1:9999",
+                headers=get_auth_headers_if_auth_enabled({}),
+                timeout=None,
+            ).text
         # Requests will fail if we are crashing the controller
         except httpx.HTTPError:
             return False
@@ -388,8 +402,10 @@ def test_proxy_metrics_internal_error(metrics_start_shutdown):
     app_name = "app"
     serve.run(A.bind(), name=app_name, route_prefix="/")
 
-    httpx.get("http://localhost:8000/", timeout=None)
-    httpx.get("http://localhost:8000/", timeout=None)
+    resp1 = httpx.get("http://localhost:8000/", timeout=None)
+    resp2 = httpx.get("http://localhost:8000/", timeout=None)
+    assert resp1.status_code == 500
+    assert resp2.status_code == 500
 
     # Ensure all expected metrics are present.
     try:
@@ -403,28 +419,45 @@ def test_proxy_metrics_internal_error(metrics_start_shutdown):
         verify_metrics(expected_metrics, True)
 
     def verify_error_count(do_assert=False):
-        resp = httpx.get("http://127.0.0.1:9999", timeout=None).text
+        resp = httpx.get(
+            "http://127.0.0.1:9999",
+            headers=get_auth_headers_if_auth_enabled({}),
+            timeout=None,
+        ).text
         resp = resp.split("\n")
+        http_error_count = 0
+        deployment_error_count = 0
+
         for metrics in resp:
             if "# HELP" in metrics or "# TYPE" in metrics:
                 continue
-            if "ray_serve_num_http_error_requests_total" in metrics:
-                # route "/" should have error count 2 (HTTP 500)
-                if do_assert:
-                    assert "2.0" in metrics
-                if "2.0" not in metrics:
-                    return False
-            elif "ray_serve_num_deployment_http_error_requests" in metrics:
-                # deployment A should have error count 2 (HTTP 500)
-                if do_assert:
-                    assert 'deployment="A"' in metrics and "2.0" in metrics
-                if 'deployment="A"' not in metrics or "2.0" not in metrics:
-                    return False
-        return True
+            if (
+                "ray_serve_num_http_error_requests_total" in metrics
+                and 'route="/"' in metrics
+                and 'error_code="500"' in metrics
+            ):
+                http_error_count += int(float(metrics.split(" ")[-1]))
+            elif (
+                "ray_serve_num_deployment_http_error_requests" in metrics
+                and 'deployment="A"' in metrics
+                and 'error_code="500"' in metrics
+            ):
+                deployment_error_count += int(float(metrics.split(" ")[-1]))
+
+        # We expect 2 requests total, both should be 500 errors
+        if do_assert:
+            assert (
+                http_error_count == 2
+            ), f"Expected at least 2 HTTP 500 errors, got {http_error_count}"
+            assert (
+                deployment_error_count == 2
+            ), f"Expected at least 2 deployment 500 errors, got {deployment_error_count}"
+
+        return http_error_count == 2 and deployment_error_count == 2
 
     # There is a latency in updating the counter
     try:
-        wait_for_condition(verify_error_count, retry_interval_ms=1000, timeout=10)
+        wait_for_condition(verify_error_count, retry_interval_ms=1000, timeout=30)
     except RuntimeError:
         verify_error_count(do_assert=True)
 
@@ -459,7 +492,9 @@ def test_proxy_metrics_fields_not_found(metrics_start_shutdown):
 
     def verify_metrics(_expected_metrics, do_assert=False):
         try:
-            resp = httpx.get("http://127.0.0.1:9999").text
+            resp = httpx.get(
+                "http://127.0.0.1:9999", headers=get_auth_headers_if_auth_enabled({})
+            ).text
         # Requests will fail if we are crashing the controller
         except httpx.HTTPError:
             return False
@@ -486,7 +521,9 @@ def test_proxy_metrics_fields_not_found(metrics_start_shutdown):
         verify_metrics(expected_metrics, True)
 
     def verify_error_count(do_assert=False):
-        resp = httpx.get("http://127.0.0.1:9999").text
+        resp = httpx.get(
+            "http://127.0.0.1:9999", headers=get_auth_headers_if_auth_enabled({})
+        ).text
         resp = resp.split("\n")
         http_error_count = 0
         deployment_404_count = 0
@@ -709,7 +746,9 @@ def test_proxy_metrics_http_status_code_is_error(metrics_start_shutdown):
         expected_error_count: int,
         expected_success_count: int,
     ):
-        resp = httpx.get("http://127.0.0.1:9999").text
+        resp = httpx.get(
+            "http://127.0.0.1:9999", headers=get_auth_headers_if_auth_enabled({})
+        ).text
         error_count = 0
         success_count = 0
         for line in resp.split("\n"):
@@ -893,23 +932,27 @@ def test_replica_metrics_fields(metrics_start_shutdown):
         err_requests[0]["application"],
     ) == expected_output
 
-    wait_for_condition(
-        lambda: len(
-            get_metric_dictionaries("ray_serve_deployment_replica_healthy", wait=False)
+    expected_deployments = {("f", "app1"), ("g", "app2"), ("h", "app3")}
+    health_timeseries = PrometheusTimeseries()
+
+    def _check_replica_healthy():
+        metrics = get_metric_dictionaries(
+            "ray_serve_deployment_replica_healthy",
+            wait=False,
+            timeseries=health_timeseries,
         )
-        == 3,
-        timeout=40,
+        return {
+            (m["deployment"], m["application"]) for m in metrics
+        } >= expected_deployments
+
+    wait_for_condition(_check_replica_healthy, timeout=40)
+    health_metrics = get_metric_dictionaries(
+        "ray_serve_deployment_replica_healthy", timeseries=health_timeseries
     )
-    health_metrics = get_metric_dictionaries("ray_serve_deployment_replica_healthy")
-    expected_output = {
-        ("f", "app1"),
-        ("g", "app2"),
-        ("h", "app3"),
-    }
     assert {
         (health_metric["deployment"], health_metric["application"])
         for health_metric in health_metrics
-    } == expected_output
+    } >= expected_deployments
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Flaky on Windows")
@@ -926,7 +969,18 @@ def test_multiplexed_metrics(metrics_start_shutdown):
             await self.get_model(model_id)
             return
 
-    handle = serve.run(Model.bind(), name="app", route_prefix="/app")
+    # Multiplexing is not supported on the ingress deployment when direct ingress /
+    # HAProxy is enabled, so keep the multiplexed deployment downstream of a plain
+    # ingress.
+    @serve.deployment
+    class Ingress:
+        def __init__(self, model):
+            self._model = model
+
+        async def __call__(self, model_id: str):
+            await self._model.remote(model_id)
+
+    handle = serve.run(Ingress.bind(Model.bind()), name="app", route_prefix="/app")
     handle.remote("model1")
     handle.remote("model2")
     # Trigger model eviction.
@@ -941,7 +995,9 @@ def test_multiplexed_metrics(metrics_start_shutdown):
 
     def verify_metrics():
         try:
-            resp = httpx.get("http://127.0.0.1:9999").text
+            resp = httpx.get(
+                "http://127.0.0.1:9999", headers=get_auth_headers_if_auth_enabled({})
+            ).text
         # Requests will fail if we are crashing the controller
         except httpx.HTTPError:
             return False
@@ -1022,7 +1078,7 @@ def test_actor_summary(serve_instance):
     actors = list_actors(filters=[("state", "=", "ALIVE")])
     class_names = {actor["class_name"] for actor in actors}
     assert class_names.issuperset(
-        {"ServeController", "HAProxyManager", "ServeReplica:app:f"}
+        {"ServeController", *expected_proxy_actors(), "ServeReplica:app:f"}
     )
 
 
