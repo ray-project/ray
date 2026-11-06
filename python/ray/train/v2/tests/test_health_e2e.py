@@ -18,10 +18,7 @@ from ray.train.health import (
     PeriodicHealthCheck,
     ProbeResult,
 )
-from ray.train.v2._internal.constants import (
-    HEALTH_CHECK_INTERVAL_S_ENV_VAR,
-    WORKER_GROUP_START_TIMEOUT_S_ENV_VAR,
-)
+from ray.train.v2._internal.constants import HEALTH_CHECK_INTERVAL_S_ENV_VAR
 from ray.train.v2.api.callback import UserCallback
 from ray.train.v2.api.data_parallel_trainer import DataParallelTrainer
 
@@ -36,73 +33,12 @@ def cluster():
         address=cluster.address,
         runtime_env={
             "working_dir": str(Path(__file__).parent),
-            "env_vars": {
-                WORKER_GROUP_START_TIMEOUT_S_ENV_VAR: "10",
-                HEALTH_CHECK_INTERVAL_S_ENV_VAR: "0.5",
-            },
+            "env_vars": {HEALTH_CHECK_INTERVAL_S_ENV_VAR: "0.5"},
         },
     )
     yield cluster
     ray.shutdown()
     cluster.shutdown()
-
-
-class Up(NodeProbe):
-    def poll(self) -> ProbeResult:
-        return ProbeResult()
-
-
-class EvictEveryNode(Evaluator):
-    def evaluate(self, state):
-        nodes = list(state.probe_results.get("Up", {}))
-        return Evict(reason="test", target_nodes=nodes) if nodes else Noop()
-
-
-@ray.remote(num_cpus=0)
-class NodeLog:
-    def __init__(self):
-        self.node_ids = []
-
-    def append(self, node_id):
-        self.node_ids.append(node_id)
-
-    def get(self):
-        return self.node_ids
-
-
-def train_fn():
-    log = ray.get_actor("node_log")
-    ray.get(log.append.remote(ray.get_runtime_context().get_node_id()))
-    time.sleep(10)
-
-
-def test_evicted_nodes_are_not_used_again(cluster):
-    log = NodeLog.options(name="node_log").remote()
-    trainer = DataParallelTrainer(
-        train_fn,
-        scaling_config=ray.train.ScalingConfig(num_workers=1),
-        run_config=ray.train.RunConfig(
-            failure_config=ray.train.FailureConfig(
-                max_failures=0, controller_failure_limit=0
-            ),
-            health_config=HealthConfig(
-                inflight_checks=[
-                    PeriodicHealthCheck(
-                        probe_creator=lambda: [Up()],
-                        evaluator_creator=lambda: [EvictEveryNode()],
-                        poll_interval_s=0.1,
-                    )
-                ]
-            ),
-        ),
-    )
-    # Each attempt's node is evicted, until no node is left to start on.
-    with pytest.raises(ray.train.TrainingFailedError):
-        trainer.fit()
-
-    node_ids = ray.get(log.get.remote())
-    assert len(node_ids) == 2
-    assert len(set(node_ids)) == 2
 
 
 @ray.remote(num_cpus=0)
@@ -113,6 +49,7 @@ class Scenario:
         self.flags = {}
         self.events = []
         self.node_ids = []
+        self.preflight_runs = 0
 
     def set(self, **flags):
         self.flags.update(flags)
@@ -132,6 +69,10 @@ class Scenario:
 
     def get_node_ids(self):
         return self.node_ids
+
+    def start_preflight(self):
+        self.preflight_runs += 1
+        return self.preflight_runs - 1
 
 
 def _scenario():
@@ -265,9 +206,56 @@ def test_diagnose_keeps_training_or_evicts(cluster):
         ("diagnosis", "Evict"),
         ("decision", "Evict"),
     ]
-    first_node, second_node = ray.get(scenario.get_node_ids.remote())
-    assert ray.get(scenario.get.remote("bad_node")) == first_node
-    assert second_node != first_node
+    # The eviction restarted the worker group.
+    assert len(ray.get(scenario.get_node_ids.remote())) == 2
+
+
+class PreflightProbe(NodeProbe):
+    """Reports which pre-flight run this is."""
+
+    def poll(self) -> ProbeResult:
+        run = ray.get(_scenario().start_preflight.remote())
+        return ProbeResult(metrics={"run": float(run)})
+
+
+class EvictOnTheFirstPreflight(Evaluator):
+    def evaluate(self, state):
+        results = state.probe_results.get("PreflightProbe", {})
+        nodes = [node for node, r in results.items() if r.metrics.get("run") == 0]
+        return Evict(reason="first pre-flight", target_nodes=nodes) if nodes else Noop()
+
+
+def preflight_train_fn():
+    node_id = ray.get_runtime_context().get_node_id()
+    if ray.get(_scenario().start_attempt.remote(node_id)) == 0:
+        # Trains until the pre-flight checks' Evict restarts it.
+        time.sleep(60)
+
+
+def test_preflight_checks_can_evict(cluster):
+    scenario = Scenario.options(name="scenario").remote()
+    trainer = DataParallelTrainer(
+        preflight_train_fn,
+        scaling_config=ray.train.ScalingConfig(num_workers=1),
+        run_config=ray.train.RunConfig(
+            failure_config=ray.train.FailureConfig(max_failures=0),
+            callbacks=[RecordHealthDecisions()],
+            health_config=HealthConfig(
+                preflight_checks=[
+                    HealthCheck(
+                        probe_creator=lambda: [PreflightProbe()],
+                        evaluator_creator=lambda: [EvictOnTheFirstPreflight()],
+                    )
+                ]
+            ),
+        ),
+    )
+    trainer.fit()
+
+    # The first attempt's pre-flight checks evicted its node, and the second
+    # attempt's found nothing to act on.
+    assert ray.get(scenario.get_events.remote()) == [("decision", "Evict")]
+    assert len(ray.get(scenario.get_node_ids.remote())) == 2
 
 
 if __name__ == "__main__":

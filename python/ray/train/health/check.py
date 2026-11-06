@@ -51,8 +51,8 @@ class HealthConfig:
 
     Attributes:
         inflight_checks: Checks that run during training.
-        preflight_checks: Checks that run once on each node before training
-            starts.
+        preflight_checks: Checks that run once on each attempt's nodes, as its
+            workers start.
     """
 
     inflight_checks: List[PeriodicHealthCheck] = field(default_factory=list)

@@ -1,11 +1,9 @@
-from typing import TYPE_CHECKING, Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
 from ray.train import Checkpoint
+from ray.train.health import HealthDecision
 from ray.train.v2._internal.execution.context import TrainRunContext
 from ray.util.annotations import DeveloperAPI
-
-if TYPE_CHECKING:
-    from ray.train.health import HealthDecision
 
 
 @DeveloperAPI
@@ -56,7 +54,7 @@ class UserCallback(RayTrainCallback):
         pass
 
     def after_health_decision(
-        self, run_context: TrainRunContext, health_decision: "HealthDecision"
+        self, run_context: TrainRunContext, health_decision: HealthDecision
     ):
         """Called after the health checks of ``RunConfig.health_config`` decide
         on something other than a ``Noop``, before Ray Train acts on it.
