@@ -14,6 +14,7 @@
 
 #include "ray/core_worker/reference_counter.h"
 
+#include <algorithm>
 #include <memory>
 #include <string>
 #include <utility>
@@ -1314,6 +1315,78 @@ TEST(DistributedReferenceCountTest, TestSimpleBorrowerReferenceRemoved) {
   borrower->FlushBorrowerCallbacks();
   ASSERT_FALSE(borrower->rc_.HasReference(inner_id));
   ASSERT_FALSE(owner->rc_.HasReference(inner_id));
+}
+
+// Regression test for a memory-store entry leak. When a borrower drops the last
+// reference to an object, the owner learns about it asynchronously through
+// CleanupBorrowersOnRefRemoved, which deletes the reference through an internal
+// path with no caller-provided `deleted` vector. The owner must still delete the
+// object's in-process (memory store) value via the memory-store delete callback,
+// otherwise its memory-store entry leaks.
+//
+// The setup mirrors TestSimpleBorrowerReferenceRemoved.
+TEST(DistributedReferenceCountTest, TestMemoryStoreDeletedWhenBorrowerReleasesLast) {
+  auto borrower = std::make_shared<FakeWorkerClient>("1");
+  auto owner = std::make_shared<FakeWorkerClient>(
+      "2", [&](const rpc::Address &addr) { return borrower; });
+
+  // Record the objects that the owner's reference counter deletes from its
+  // in-process memory store. Captured through a shared_ptr so it outlives the
+  // owner, whose destructor may still fire the callback.
+  auto memory_store_deleted = std::make_shared<std::vector<ObjectID>>();
+  owner->rc_.SetMemoryStoreDeleteCallback(
+      [memory_store_deleted](const std::vector<ObjectID> &deleted) {
+        memory_store_deleted->insert(
+            memory_store_deleted->end(), deleted.begin(), deleted.end());
+      });
+  auto count_deleted = [&](const ObjectID &id) {
+    return std::count(memory_store_deleted->begin(), memory_store_deleted->end(), id);
+  };
+
+  // The owner creates an inner object and wraps it.
+  auto inner_id = ObjectID::FromRandom();
+  auto outer_id = ObjectID::FromRandom();
+  owner->Put(inner_id);
+  owner->PutWrappedId(outer_id, inner_id);
+
+  // The owner submits a task that depends on the outer object. The task will be
+  // given a reference to inner_id.
+  auto return_id = owner->SubmitTaskWithArg(outer_id);
+  // The owner's local references go out of scope, but both objects stay pinned
+  // because the task is still borrowing them.
+  owner->rc_.RemoveLocalReference(outer_id, nullptr);
+  owner->rc_.RemoveLocalReference(inner_id, nullptr);
+  ASSERT_TRUE(owner->rc_.HasReference(outer_id));
+  ASSERT_TRUE(owner->rc_.HasReference(inner_id));
+
+  // The borrower is given a reference to the inner object.
+  borrower->ExecuteTaskWithArg(outer_id, inner_id, owner->address_);
+  ASSERT_TRUE(borrower->rc_.HasReference(inner_id));
+
+  // The borrower task returns to the owner while still using inner_id, and the
+  // owner merges the borrower's ref count into its own.
+  auto borrower_refs = borrower->FinishExecutingTask(outer_id, ObjectID::Nil());
+  owner->HandleSubmittedTaskFinished(
+      return_id, outer_id, {}, borrower->address_, borrower_refs);
+  ASSERT_TRUE(owner->rc_.HasReference(inner_id));
+  // inner_id is still borrowed, so it must not have been deleted from the
+  // owner's memory store yet.
+  ASSERT_EQ(count_deleted(inner_id), 0);
+
+  // The borrower drops the last reference to inner_id. The owner still holds its
+  // reference until it hears back from the borrower.
+  borrower->rc_.RemoveLocalReference(inner_id, nullptr);
+  ASSERT_TRUE(owner->rc_.HasReference(inner_id));
+  ASSERT_EQ(count_deleted(inner_id), 0);
+
+  // The borrower notifies the owner that it is no longer using inner_id. The
+  // owner's reference now goes out of scope through CleanupBorrowersOnRefRemoved.
+  borrower->FlushBorrowerCallbacks();
+  ASSERT_FALSE(owner->rc_.HasReference(inner_id));
+
+  // Even though the borrower released last, the owner must have deleted inner_id
+  // from its in-process memory store.
+  ASSERT_GT(count_deleted(inner_id), 0);
 }
 
 // A borrower is given a reference to an object ID, passes the reference to
