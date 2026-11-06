@@ -4,8 +4,14 @@ import math
 from time import sleep, perf_counter
 import json
 import ray
+import ray._common.test_utils
+import ray._private.test_utils as test_utils
 
 from dashboard_test import DashboardTestAtScale
+
+
+def no_resource_leaks():
+    return test_utils.no_resource_leaks_excluding_node_resources()
 
 
 def test_max_actors_launch(cpus_per_actor, total_actors):
@@ -88,13 +94,18 @@ def run_one(total_actors, cpus_per_actor, no_wait):
     )
     print(f"Through put: {throughput}")
 
-    return {
+    result = {
         "actor_launch_time": actor_launch_time,
         "actor_ready_time": actor_ready_time,
         "total_time": actor_launch_time + actor_ready_time,
         "num_actors": total_actors,
         "throughput": throughput,
     }
+
+    del actors
+    ray._common.test_utils.wait_for_condition(no_resource_leaks)
+
+    return result
 
 
 def main():
