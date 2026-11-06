@@ -515,13 +515,19 @@ class OnlineBinPacker(FilePartitioner):
 def _concat_extra_columns(per_row: List[Optional[pa.Table]]) -> Optional[pa.Table]:
     """The bin's extra columns, one row per output row, or ``None`` for none."""
     # All-or-nothing: a bin can hold rows from several ``add_input`` calls, but
-    # every manifest one source lists carries the same extra columns.
+    # every manifest one source lists carries the same extra columns, built
+    # with one explicit schema.
     present = [table for table in per_row if table is not None]
     if not present:
         return None
     assert len(present) == len(per_row), (
         f"{len(present)} of {len(per_row)} bin items carry extra columns; "
         "a manifest's rows either all have them or none do"
+    )
+    schema = present[0].schema
+    assert all(table.schema.equals(schema) for table in present), (
+        "a source's manifests must build their extra columns with one explicit "
+        "schema, not one inferred from values"
     )
     # Each row arrived as its own one-row slice; merge them into one chunk per
     # column, since Ray serializes a column chunk by chunk.

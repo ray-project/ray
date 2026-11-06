@@ -148,9 +148,16 @@ class FileManifest:
         needs here -- for Iceberg, each file's delete files, partition values
         and record count.
 
-        A partitioner that rebuilds its output rows instead of slicing its
-        input must pass these to :meth:`construct_manifest`, or that state
+        Only ``OnlineBinPacker`` carries them to the read tasks;
+        ``RoundRobinPartitioner`` rejects a manifest that has them. A new
+        partitioner that rebuilds its output rows instead of slicing its
+        input must pass them to :meth:`construct_manifest`, or that state
         never reaches the reader.
+
+        Build them with one explicit schema for every manifest a source
+        lists. A packer merges rows from several manifests, and a type
+        inferred from values can be null in one manifest and typed in the
+        next.
 
         Returns:
             One row per manifest row, or ``None`` when the manifest carries

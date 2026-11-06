@@ -354,6 +354,28 @@ def test_source_columns_survive_a_split_run() -> None:
         assert manifest.as_block()["__src"].to_pylist() == ["f-state"]
 
 
+def test_bin_spanning_two_inputs_keeps_source_columns() -> None:
+    """A bin holding rows from two ``add_input`` calls keeps each row's columns."""
+    packer = OnlineBinPacker(100)
+    for path in ["a", "b"]:
+        packer.add_input(
+            _with_extra(
+                FileManifest.construct_manifest(
+                    paths=[path], sizes=[40], chunk_metadatas=[None]
+                ),
+                [f"{path}-state"],
+            )
+        )
+    packer.finalize()
+
+    manifest = packer.next_partition()
+    assert not packer.has_partition()
+    assert list(manifest.paths) == ["a", "b"]
+    column = manifest.as_block()["__src"]
+    assert column.to_pylist() == ["a-state", "b-state"]
+    assert column.num_chunks == 1
+
+
 def test_manifest_without_source_columns_is_unchanged() -> None:
     """The common case: three required columns in, three out."""
     packer = OnlineBinPacker(100)

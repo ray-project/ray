@@ -31,6 +31,7 @@ from ray.data._internal.logical.interfaces import (
     Rule,
 )
 from ray.data._internal.logical.operators import (
+    Count,
     Filter,
     Limit,
     ListFiles,
@@ -246,6 +247,25 @@ def test_final_pushdown_is_left_alone(tmp_path):
     derived = _list_files_of(_apply(count_rows))
 
     assert derived.predicate is predicate
+
+
+def test_count_pushdown_marks_its_listing_final(tmp_path):
+    """The real ``PushdownCountFiles`` sets ``pushdown_is_final`` on its listing.
+
+    Parquet only counts from footers with no filter, so the pinned predicate
+    here is ``None``; ``test_final_pushdown_is_left_alone`` covers one surviving.
+    """
+    read_files = _mk_read_files(tmp_path)
+
+    optimized = LogicalOptimizer().optimize(
+        LogicalPlan(
+            dag=Count(input_dependencies=[read_files]),
+            context=DataContext.get_current(),
+        )
+    )
+
+    assert isinstance(optimized.dag, MapBatches)
+    assert _list_files_of(optimized).pushdown_is_final
 
 
 class _WeakenScannerPredicate(Rule):
