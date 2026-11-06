@@ -9,7 +9,6 @@ from typing import (
     Hashable,
     List,
     Optional,
-    Set,
     Tuple,
     Union,
 )
@@ -21,14 +20,19 @@ import pyarrow as pa
 import pyarrow.compute as pc
 
 from ray.data._internal.util import is_null
+from ray.data.aggregate import TopKUnique, Unique
 from ray.data.block import BlockAccessor
+from ray.data.datatype import DataType
 from ray.data.preprocessor import (
     Preprocessor,
     PreprocessorNotFittedException,
     SerializablePreprocessorBase,
 )
 from ray.data.preprocessors.utils import (
+    _Computed,
+    _PublicField,
     make_post_processor,
+    migrate_private_fields,
 )
 from ray.data.preprocessors.version_support import SerializablePreprocessor
 from ray.data.util.data_batch_conversion import BatchFormat
@@ -153,6 +157,8 @@ class OrdinalEncoder(SerializablePreprocessorBase):
             Another preprocessor that encodes categorical data.
     """
 
+    _supports_deferred_fit = True
+
     def __init__(
         self,
         columns: List[str],
@@ -162,24 +168,42 @@ class OrdinalEncoder(SerializablePreprocessorBase):
     ):
         super().__init__()
         # TODO: allow user to specify order of values within each column.
-        self.columns = columns
-        self.encode_lists = encode_lists
-        self.output_columns = Preprocessor._derive_and_validate_output_columns(
+        self._columns = columns
+        self._encode_lists = encode_lists
+        self._output_columns = Preprocessor._derive_and_validate_output_columns(
             columns, output_columns
         )
 
+    @property
+    def columns(self) -> List[str]:
+        """The columns to separately encode."""
+        return self._columns
+
+    @property
+    def encode_lists(self) -> bool:
+        """Whether list elements are encoded individually instead of as whole lists."""
+        return self._encode_lists
+
+    @property
+    def output_columns(self) -> Optional[List[str]]:
+        """The names of the transformed columns.
+
+        Same as ``columns`` if you didn't set ``output_columns``.
+        """
+        return self._output_columns
+
     def _fit(self, dataset: "Dataset") -> Preprocessor:
-        self.stat_computation_plan.add_callable_stat(
-            stat_fn=lambda key_gen: compute_unique_value_indices(
-                dataset=dataset,
-                columns=self.columns,
-                encode_lists=self.encode_lists,
-                key_gen=key_gen,
+        self._stat_computation_plan.add_aggregator(
+            aggregator_fn=lambda col: Unique(
+                on=col,
+                ignore_nulls=False,
+                encode_lists=(
+                    Unique.ListEncodingMode.FLATTEN if self._encode_lists else None
+                ),
+                alias_name=f"unique_values({col})",
             ),
             post_process_fn=unique_post_fn(),
-            stat_key_fn=lambda col: f"unique({col})",
-            post_key_fn=lambda col: f"unique_values({col})",
-            columns=self.columns,
+            columns=self._columns,
         )
         return self
 
@@ -207,13 +231,13 @@ class OrdinalEncoder(SerializablePreprocessorBase):
         ordinal_map = self._get_ordinal_map(column_name)
         # If encoding lists, entire column is flattened, hence we map individual
         # elements inside the list element (of the column)
-        if self.encode_lists:
+        if self._encode_lists:
             return [ordinal_map.get(x) for x in element]
 
         return ordinal_map.get(tuple(element))
 
     def _transform_pandas(self, df: pd.DataFrame):
-        _validate_df(df, *self.columns)
+        _validate_df(df, *self._columns)
 
         def column_ordinal_encoder(s: pd.Series):
             if _is_series_composed_of_lists(s):
@@ -224,7 +248,7 @@ class OrdinalEncoder(SerializablePreprocessorBase):
             s_values = self._get_ordinal_map(s.name)
             return s.map(s_values)
 
-        df[self.output_columns] = df[self.columns].apply(column_ordinal_encoder)
+        df[self._output_columns] = df[self._columns].apply(column_ordinal_encoder)
         return df
 
     def _transform_arrow(self, table: pa.Table) -> pa.Table:
@@ -236,10 +260,10 @@ class OrdinalEncoder(SerializablePreprocessorBase):
         until runtime, so we fall back to pandas here if list columns are found.
         """
         # Validate that columns don't contain null values (consistent with pandas path)
-        _validate_arrow(table, *self.columns)
+        _validate_arrow(table, *self._columns)
 
         # Check for list columns (runtime fallback for PandasBlockSchema datasets)
-        for col_name in self.columns:
+        for col_name in self._columns:
             col_type = table.schema.field(col_name).type
             if pa.types.is_list(col_type) or pa.types.is_large_list(col_type):
                 # Fall back to pandas transform for list columns
@@ -247,7 +271,7 @@ class OrdinalEncoder(SerializablePreprocessorBase):
                 result_df = self._transform_pandas(df)
                 return pa.Table.from_pandas(result_df, preserve_index=False)
 
-        for input_col, output_col in zip(self.columns, self.output_columns):
+        for input_col, output_col in zip(self._columns, self._output_columns):
             column = table.column(input_col)
             encoded_column = self._encode_column_vectorized(column, input_col)
 
@@ -284,25 +308,42 @@ class OrdinalEncoder(SerializablePreprocessorBase):
 
     def _get_serializable_fields(self) -> Dict[str, Any]:
         return {
-            "columns": self.columns,
-            "output_columns": self.output_columns,
-            "encode_lists": self.encode_lists,
+            "columns": self._columns,
+            "output_columns": self._output_columns,
+            "encode_lists": self._encode_lists,
             "_fitted": getattr(self, "_fitted", None),
         }
 
     def _set_serializable_fields(self, fields: Dict[str, Any], version: int):
         # required fields
-        self.columns = fields["columns"]
-        self.output_columns = fields["output_columns"]
-        self.encode_lists = fields["encode_lists"]
+        self._columns = fields["columns"]
+        self._output_columns = fields["output_columns"]
+        self._encode_lists = fields["encode_lists"]
         # optional fields
         self._fitted = fields.get("_fitted")
 
+    def __setstate__(self, state: Dict[str, Any]) -> None:
+        """Handle backwards compatibility for old pickled objects."""
+        super().__setstate__(state)
+        migrate_private_fields(
+            self,
+            fields={
+                "_columns": _PublicField(public_field="columns"),
+                "_output_columns": _PublicField(
+                    public_field="output_columns",
+                    default=_Computed(lambda obj: obj._columns),
+                ),
+                "_encode_lists": _PublicField(
+                    public_field="encode_lists", default=True
+                ),
+            },
+        )
+
     def __repr__(self):
         return (
-            f"{self.__class__.__name__}(columns={self.columns!r}, "
-            f"encode_lists={self.encode_lists!r}, "
-            f"output_columns={self.output_columns!r})"
+            f"{self.__class__.__name__}(columns={self._columns!r}, "
+            f"encode_lists={self._encode_lists!r}, "
+            f"output_columns={self._output_columns!r})"
         )
 
 
@@ -398,6 +439,8 @@ class OneHotEncoder(SerializablePreprocessorBase):
             :class:`OrdinalEncoder`.
     """  # noqa: E501
 
+    _supports_deferred_fit = True
+
     def __init__(
         self,
         columns: List[str],
@@ -407,25 +450,54 @@ class OneHotEncoder(SerializablePreprocessorBase):
     ):
         super().__init__()
         # TODO: add `drop` parameter.
-        self.columns = columns
-        self.max_categories = max_categories or {}
-        self.output_columns = Preprocessor._derive_and_validate_output_columns(
+        self._columns = columns
+        self._max_categories = max_categories or {}
+        self._output_columns = Preprocessor._derive_and_validate_output_columns(
             columns, output_columns
         )
 
+    @property
+    def columns(self) -> List[str]:
+        """The columns to separately encode."""
+        return self._columns
+
+    @property
+    def max_categories(self) -> Dict[str, int]:
+        """The maximum number of features to create for each column.
+
+        A column that isn't in the mapping gets a feature for every category.
+        """
+        return self._max_categories
+
+    @property
+    def output_columns(self) -> List[str]:
+        """The names of the transformed columns.
+
+        Same as ``columns`` if you didn't set ``output_columns``.
+        """
+        return self._output_columns
+
     def _fit(self, dataset: "Dataset") -> Preprocessor:
-        self.stat_computation_plan.add_callable_stat(
-            stat_fn=lambda key_gen: compute_unique_value_indices(
-                dataset=dataset,
-                columns=self.columns,
-                encode_lists=False,
-                key_gen=key_gen,
-                max_categories=self.max_categories,
+        _validate_max_categories(self._max_categories, self._columns)
+        self._stat_computation_plan.add_aggregator(
+            aggregator_fn=lambda col: (
+                TopKUnique(
+                    on=col,
+                    k=self._max_categories[col],
+                    ignore_nulls=False,
+                    encode_lists=False,
+                    alias_name=f"unique_values({col})",
+                )
+                if col in self._max_categories
+                else Unique(
+                    on=col,
+                    ignore_nulls=False,
+                    encode_lists=None,
+                    alias_name=f"unique_values({col})",
+                )
             ),
             post_process_fn=unique_post_fn(),
-            stat_key_fn=lambda col: f"unique({col})",
-            post_key_fn=lambda col: f"unique_values({col})",
-            columns=self.columns,
+            columns=self._columns,
         )
         return self
 
@@ -435,6 +507,18 @@ class OneHotEncoder(SerializablePreprocessorBase):
         return BatchFormat.ARROW
 
     def safe_get(self, v: Any, stats: Dict[str, int]):
+        """Look up the encoded index of a value.
+
+        Lists and arrays are converted to tuples before the lookup.
+
+        Args:
+            v: The value to look up.
+            stats: A mapping from category values to encoded indices.
+
+        Returns:
+            The index that ``stats`` maps ``v`` to, or ``-1`` if ``v`` is missing from
+            ``stats`` or is unhashable.
+        """
         if isinstance(v, (list, np.ndarray)):
             v = tuple(v)
         if isinstance(v, Hashable):
@@ -443,10 +527,10 @@ class OneHotEncoder(SerializablePreprocessorBase):
             return -1  # Unhashable type treated as a missing category
 
     def _transform_pandas(self, df: pd.DataFrame):
-        _validate_df(df, *self.columns)
+        _validate_df(df, *self._columns)
 
         # Compute new one-hot encoded columns
-        for column, output_column in zip(self.columns, self.output_columns):
+        for column, output_column in zip(self._columns, self._output_columns):
             stats = self.stats_[f"unique_values({column})"]
             num_categories = len(stats)
             one_hot = np.zeros((len(df), num_categories), dtype=np.uint8)
@@ -474,10 +558,10 @@ class OneHotEncoder(SerializablePreprocessorBase):
         until runtime, so we fall back to pandas here if list columns are found.
         """
         # Validate that columns don't contain null values (consistent with pandas path)
-        _validate_arrow(table, *self.columns)
+        _validate_arrow(table, *self._columns)
 
         # Check for list columns (runtime fallback for PandasBlockSchema datasets)
-        for col_name in self.columns:
+        for col_name in self._columns:
             col_type = table.schema.field(col_name).type
             if pa.types.is_list(col_type) or pa.types.is_large_list(col_type):
                 # Fall back to pandas transform for list columns
@@ -485,7 +569,7 @@ class OneHotEncoder(SerializablePreprocessorBase):
                 result_df = self._transform_pandas(df)
                 return pa.Table.from_pandas(result_df, preserve_index=False)
 
-        for input_col, output_col in zip(self.columns, self.output_columns):
+        for input_col, output_col in zip(self._columns, self._output_columns):
             column = table.column(input_col)
             encoded_column = self._encode_column_one_hot(column, input_col)
 
@@ -539,25 +623,42 @@ class OneHotEncoder(SerializablePreprocessorBase):
 
     def _get_serializable_fields(self) -> Dict[str, Any]:
         return {
-            "columns": self.columns,
-            "output_columns": self.output_columns,
-            "max_categories": self.max_categories,
+            "columns": self._columns,
+            "output_columns": self._output_columns,
+            "max_categories": self._max_categories,
             "_fitted": getattr(self, "_fitted", None),
         }
 
     def _set_serializable_fields(self, fields: Dict[str, Any], version: int):
         # required fields
-        self.columns = fields["columns"]
-        self.output_columns = fields["output_columns"]
-        self.max_categories = fields["max_categories"]
+        self._columns = fields["columns"]
+        self._output_columns = fields["output_columns"]
+        self._max_categories = fields["max_categories"]
         # optional fields
         self._fitted = fields.get("_fitted")
 
+    def __setstate__(self, state: Dict[str, Any]) -> None:
+        """Handle backwards compatibility for old pickled objects."""
+        super().__setstate__(state)
+        migrate_private_fields(
+            self,
+            fields={
+                "_columns": _PublicField(public_field="columns"),
+                "_output_columns": _PublicField(
+                    public_field="output_columns",
+                    default=_Computed(lambda obj: obj._columns),
+                ),
+                "_max_categories": _PublicField(
+                    public_field="max_categories", default={}
+                ),
+            },
+        )
+
     def __repr__(self):
         return (
-            f"{self.__class__.__name__}(columns={self.columns!r}, "
-            f"max_categories={self.max_categories!r}, "
-            f"output_columns={self.output_columns!r})"
+            f"{self.__class__.__name__}(columns={self._columns!r}, "
+            f"max_categories={self._max_categories!r}, "
+            f"output_columns={self._output_columns!r})"
         )
 
 
@@ -646,6 +747,8 @@ class MultiHotEncoder(SerializablePreprocessorBase):
     [1]: https://scikit-learn.org/stable/modules/generated/sklearn.preprocessing.MultiLabelBinarizer.html
     """
 
+    _supports_deferred_fit = True
+
     def __init__(
         self,
         columns: List[str],
@@ -655,30 +758,59 @@ class MultiHotEncoder(SerializablePreprocessorBase):
     ):
         super().__init__()
         # TODO: add `drop` parameter.
-        self.columns = columns
-        self.max_categories = max_categories or {}
-        self.output_columns = Preprocessor._derive_and_validate_output_columns(
+        self._columns = columns
+        self._max_categories = max_categories or {}
+        self._output_columns = Preprocessor._derive_and_validate_output_columns(
             columns, output_columns
         )
 
+    @property
+    def columns(self) -> List[str]:
+        """The columns to separately encode."""
+        return self._columns
+
+    @property
+    def max_categories(self) -> Dict[str, int]:
+        """The maximum number of features to create for each column.
+
+        A column that isn't in the mapping gets a feature for every unique category.
+        """
+        return self._max_categories
+
+    @property
+    def output_columns(self) -> List[str]:
+        """The names of the transformed columns.
+
+        Same as ``columns`` if you didn't set ``output_columns``.
+        """
+        return self._output_columns
+
     def _fit(self, dataset: "Dataset") -> Preprocessor:
-        self.stat_computation_plan.add_callable_stat(
-            stat_fn=lambda key_gen: compute_unique_value_indices(
-                dataset=dataset,
-                columns=self.columns,
-                encode_lists=True,
-                key_gen=key_gen,
-                max_categories=self.max_categories,
+        _validate_max_categories(self._max_categories, self._columns)
+        self._stat_computation_plan.add_aggregator(
+            aggregator_fn=lambda col: (
+                TopKUnique(
+                    on=col,
+                    k=self._max_categories[col],
+                    ignore_nulls=False,
+                    encode_lists=True,
+                    alias_name=f"unique_values({col})",
+                )
+                if col in self._max_categories
+                else Unique(
+                    on=col,
+                    ignore_nulls=False,
+                    encode_lists=Unique.ListEncodingMode.FLATTEN,
+                    alias_name=f"unique_values({col})",
+                )
             ),
             post_process_fn=unique_post_fn(),
-            stat_key_fn=lambda col: f"unique({col})",
-            post_key_fn=lambda col: f"unique_values({col})",
-            columns=self.columns,
+            columns=self._columns,
         )
         return self
 
     def _transform_pandas(self, df: pd.DataFrame):
-        _validate_df(df, *self.columns)
+        _validate_df(df, *self._columns)
 
         def encode_list(element: list, *, name: str):
             if isinstance(element, np.ndarray):
@@ -689,32 +821,49 @@ class MultiHotEncoder(SerializablePreprocessorBase):
             counter = Counter(element)
             return [counter.get(x, 0) for x in stats]
 
-        for column, output_column in zip(self.columns, self.output_columns):
+        for column, output_column in zip(self._columns, self._output_columns):
             df[output_column] = df[column].map(partial(encode_list, name=column))
 
         return df
 
     def _get_serializable_fields(self) -> Dict[str, Any]:
         return {
-            "columns": self.columns,
-            "output_columns": self.output_columns,
-            "max_categories": self.max_categories,
+            "columns": self._columns,
+            "output_columns": self._output_columns,
+            "max_categories": self._max_categories,
             "_fitted": getattr(self, "_fitted", None),
         }
 
     def _set_serializable_fields(self, fields: Dict[str, Any], version: int):
         # required fields
-        self.columns = fields["columns"]
-        self.output_columns = fields["output_columns"]
-        self.max_categories = fields["max_categories"]
+        self._columns = fields["columns"]
+        self._output_columns = fields["output_columns"]
+        self._max_categories = fields["max_categories"]
         # optional fields
         self._fitted = fields.get("_fitted")
 
+    def __setstate__(self, state: Dict[str, Any]) -> None:
+        """Handle backwards compatibility for old pickled objects."""
+        super().__setstate__(state)
+        migrate_private_fields(
+            self,
+            fields={
+                "_columns": _PublicField(public_field="columns"),
+                "_output_columns": _PublicField(
+                    public_field="output_columns",
+                    default=_Computed(lambda obj: obj._columns),
+                ),
+                "_max_categories": _PublicField(
+                    public_field="max_categories", default={}
+                ),
+            },
+        )
+
     def __repr__(self):
         return (
-            f"{self.__class__.__name__}(columns={self.columns!r}, "
-            f"max_categories={self.max_categories!r}, "
-            f"output_columns={self.output_columns})"
+            f"{self.__class__.__name__}(columns={self._columns!r}, "
+            f"max_categories={self._max_categories!r}, "
+            f"output_columns={self._output_columns!r})"
         )
 
 
@@ -785,33 +934,47 @@ class LabelEncoder(SerializablePreprocessorBase):
             :class:`LabelEncoder`.
     """
 
+    _supports_deferred_fit = True
+
     def __init__(self, label_column: str, *, output_column: Optional[str] = None):
         super().__init__()
-        self.label_column = label_column
-        self.output_column = output_column or label_column
+        self._label_column = label_column
+        self._output_column = output_column or label_column
+
+    @property
+    def label_column(self) -> str:
+        """The column that contains the labels to encode."""
+        return self._label_column
+
+    @property
+    def output_column(self) -> str:
+        """The name of the column that contains the encoded labels.
+
+        Same as ``label_column`` if you didn't set ``output_column``.
+        """
+        return self._output_column
 
     def _fit(self, dataset: "Dataset") -> Preprocessor:
-        self.stat_computation_plan.add_callable_stat(
-            stat_fn=lambda key_gen: compute_unique_value_indices(
-                dataset=dataset,
-                columns=[self.label_column],
-                key_gen=key_gen,
+        self._stat_computation_plan.add_aggregator(
+            aggregator_fn=lambda col: Unique(
+                on=col,
+                ignore_nulls=False,
+                encode_lists=Unique.ListEncodingMode.FLATTEN,
+                alias_name=f"unique_values({col})",
             ),
             post_process_fn=unique_post_fn(),
-            stat_key_fn=lambda col: f"unique({col})",
-            post_key_fn=lambda col: f"unique_values({col})",
-            columns=[self.label_column],
+            columns=[self._label_column],
         )
         return self
 
     def _transform_pandas(self, df: pd.DataFrame):
-        _validate_df(df, self.label_column)
+        _validate_df(df, self._label_column)
 
         def column_label_encoder(s: pd.Series):
             s_values = self.stats_[f"unique_values({s.name})"]
             return s.map(s_values)
 
-        df[self.output_column] = df[self.label_column].transform(column_label_encoder)
+        df[self._output_column] = df[self._label_column].transform(column_label_encoder)
         return df
 
     def inverse_transform(self, ds: "Dataset") -> "Dataset":
@@ -848,36 +1011,60 @@ class LabelEncoder(SerializablePreprocessorBase):
             inverse_values = {
                 value: key
                 for key, value in self.stats_[
-                    f"unique_values({self.label_column})"
+                    f"unique_values({self._label_column})"
                 ].items()
             }
             return s.map(inverse_values)
 
-        df[self.label_column] = df[self.output_column].transform(column_label_decoder)
+        df[self._label_column] = df[self._output_column].transform(column_label_decoder)
         return df
 
     def get_input_columns(self) -> List[str]:
-        return [self.label_column]
+        """Return the names of the columns this preprocessor reads.
+
+        Returns:
+            A list that contains ``label_column``.
+        """
+        return [self._label_column]
 
     def get_output_columns(self) -> List[str]:
-        return [self.output_column]
+        """Return the names of the columns this preprocessor writes.
+
+        Returns:
+            A list that contains ``output_column``.
+        """
+        return [self._output_column]
 
     def _get_serializable_fields(self) -> Dict[str, Any]:
         return {
-            "label_column": self.label_column,
-            "output_column": self.output_column,
+            "label_column": self._label_column,
+            "output_column": self._output_column,
             "_fitted": getattr(self, "_fitted", None),
         }
 
     def _set_serializable_fields(self, fields: Dict[str, Any], version: int):
         # required fields
-        self.label_column = fields["label_column"]
-        self.output_column = fields["output_column"]
+        self._label_column = fields["label_column"]
+        self._output_column = fields["output_column"]
         # optional fields
         self._fitted = fields.get("_fitted")
 
+    def __setstate__(self, state: Dict[str, Any]) -> None:
+        """Handle backwards compatibility for old pickled objects."""
+        super().__setstate__(state)
+        migrate_private_fields(
+            self,
+            fields={
+                "_label_column": _PublicField(public_field="label_column"),
+                "_output_column": _PublicField(
+                    public_field="output_column",
+                    default=_Computed(lambda obj: obj._label_column),
+                ),
+            },
+        )
+
     def __repr__(self):
-        return f"{self.__class__.__name__}(label_column={self.label_column!r}, output_column={self.output_column!r})"
+        return f"{self.__class__.__name__}(label_column={self._label_column!r}, output_column={self._output_column!r})"
 
 
 @PublicAPI(stability="alpha")
@@ -942,6 +1129,8 @@ class Categorizer(SerializablePreprocessorBase):
 
     """  # noqa: E501
 
+    _supports_deferred_fit = True
+
     def __init__(
         self,
         columns: List[str],
@@ -952,61 +1141,82 @@ class Categorizer(SerializablePreprocessorBase):
         if not dtypes:
             dtypes = {}
 
-        self.columns = columns
-        self.dtypes = dtypes
-        self.output_columns = Preprocessor._derive_and_validate_output_columns(
+        self._columns = columns
+        self._dtypes = dtypes
+        self._output_columns = Preprocessor._derive_and_validate_output_columns(
             columns, output_columns
         )
 
+    @property
+    def columns(self) -> List[str]:
+        """The columns to convert to ``pd.CategoricalDtype``."""
+        return self._columns
+
+    @property
+    def dtypes(self) -> Optional[Dict[str, pd.CategoricalDtype]]:
+        """The ``pd.CategoricalDtype`` to use for each column.
+
+        The categories of columns that aren't in this mapping are inferred during
+        fitting.
+        """
+        return self._dtypes
+
+    @property
+    def output_columns(self) -> List[str]:
+        """The names of the transformed columns.
+
+        Same as ``columns`` if you didn't set ``output_columns``.
+        """
+        return self._output_columns
+
     def _fit(self, dataset: "Dataset") -> Preprocessor:
         columns_to_get = [
-            column for column in self.columns if column not in self.dtypes
+            column for column in self._columns if column not in self._dtypes
         ]
-        self.stats_ |= self.dtypes
+        self.stats_ |= self._dtypes
         if not columns_to_get:
             return self
 
         def callback(unique_indices: Dict[str, Dict]) -> pd.CategoricalDtype:
             return pd.CategoricalDtype(unique_indices.keys())
 
-        self.stat_computation_plan.add_callable_stat(
-            stat_fn=lambda key_gen: compute_unique_value_indices(
-                dataset=dataset,
-                columns=columns_to_get,
-                key_gen=key_gen,
+        self._stat_computation_plan.add_aggregator(
+            aggregator_fn=lambda col: Unique(
+                on=col,
+                ignore_nulls=False,
+                encode_lists=Unique.ListEncodingMode.FLATTEN,
+                alias_name=col,
             ),
             post_process_fn=make_post_processor(
                 base_fn=unique_post_fn(drop_na_values=True),
                 callbacks=[callback],
             ),
-            stat_key_fn=lambda col: f"unique({col})",
-            post_key_fn=lambda col: col,
             columns=columns_to_get,
         )
 
         return self
 
     def _transform_pandas(self, df: pd.DataFrame):
-        df[self.output_columns] = df[self.columns].astype(self.stats_)
+        df[self._output_columns] = df[self._columns].astype(self.stats_)
         return df
 
     def _get_serializable_fields(self) -> Dict[str, Any]:
         return {
-            "columns": self.columns,
-            "output_columns": self.output_columns,
+            "columns": self._columns,
+            "output_columns": self._output_columns,
             "_fitted": getattr(self, "_fitted", None),
             "dtypes": {
                 col: {"categories": list(dtype.categories), "ordered": dtype.ordered}
-                for col, dtype in self.dtypes.items()
+                for col, dtype in self._dtypes.items()
             }
-            if hasattr(self, "dtypes") and self.dtypes
+            if hasattr(self, "_dtypes") and self._dtypes
             else None,
         }
 
     def _set_serializable_fields(self, fields: Dict[str, Any], version: int):
         # required fields
         # Handle dtypes field specially
-        self.dtypes = (
+        self._dtypes = (
             {
                 col: pd.CategoricalDtype(
                     categories=dtype_data["categories"], ordered=dtype_data["ordered"]
@@ -1017,28 +1227,39 @@ class Categorizer(SerializablePreprocessorBase):
             else {}
         )
 
-        self.columns = fields["columns"]
-        self.output_columns = fields["output_columns"]
+        self._columns = fields["columns"]
+        self._output_columns = fields["output_columns"]
         # optional fields
         self._fitted = fields.get("_fitted")
 
+    def __setstate__(self, state: Dict[str, Any]) -> None:
+        """Handle backwards compatibility for old pickled objects."""
+        super().__setstate__(state)
+        migrate_private_fields(
+            self,
+            fields={
+                "_columns": _PublicField(public_field="columns"),
+                "_output_columns": _PublicField(
+                    public_field="output_columns",
+                    default=_Computed(lambda obj: obj._columns),
+                ),
+                "_dtypes": _PublicField(public_field="dtypes", default={}),
+            },
+        )
+
     def __repr__(self):
         return (
-            f"{self.__class__.__name__}(columns={self.columns!r}, "
-            f"dtypes={self.dtypes!r}, output_columns={self.output_columns!r})"
+            f"{self.__class__.__name__}(columns={self._columns!r}, "
+            f"dtypes={self._dtypes!r}, output_columns={self._output_columns!r})"
         )
 
 
-def compute_unique_value_indices(
-    *,
-    dataset: "Dataset",
-    columns: List[str],
-    key_gen: Callable,
-    encode_lists: bool = True,
-    max_categories: Optional[Dict[str, int]] = None,
-):
-    if max_categories is None:
-        max_categories = {}
+def _validate_max_categories(
+    max_categories: Optional[Dict[str, int]], columns: List[str]
+) -> None:
+    """Validate that every ``max_categories`` key is one of ``columns``."""
+    if not max_categories:
+        return
     columns_set = set(columns)
     for column in max_categories:
         if column not in columns_set:
@@ -1047,61 +1268,31 @@ def compute_unique_value_indices(
                 f"{columns}."
             )
 
-    def get_pd_value_counts_per_column(col: pd.Series) -> Dict:
 
-        # special handling for lists
-        if _is_series_composed_of_lists(col):
-            if encode_lists:
-                counter = Counter()
+def _is_null(value: Any) -> bool:
+    """``is_null``, extended to pandas' missing-value sentinels.
 
-                def update_counter(element):
-                    counter.update(element)
-                    return element
+    ``ray.data._internal.util.is_null`` qualifies ``None`` and ``np.nan``. It
+    does not recognise ``pd.NA`` or ``pd.NaT``, which is what an Arrow-backed
+    column uses, and ``pd.NA`` is not a float so ``is_nan`` cannot catch it.
 
-                col.map(update_counter)
-                return counter
-            else:
-                # convert to tuples to make lists hashable
-                col = col.map(lambda x: tuple(x))
-        return Counter(col.value_counts(dropna=False).to_dict())
+    An unrecognised null survives the filter in ``gen_value_index`` below and
+    reaches ``sorted()``, where comparing it against a real category raises
+    ``TypeError: boolean value of NA is ambiguous`` -- obscuring the
+    ``ValueError`` that is supposed to tell the user to impute first.
 
-    def get_pd_value_counts(df: pd.DataFrame) -> Dict[str, List[Dict]]:
-
-        df_columns = df.columns.tolist()
-        result = {}
-        for col in columns:
-            if col in df_columns:
-                result[col] = [get_pd_value_counts_per_column(df[col])]
-            else:
-                raise ValueError(
-                    f"Column '{col}' does not exist in DataFrame, which has columns: {df_columns}"  # noqa: E501
-                )
-        return result
-
-    value_counts_ds = dataset.map_batches(get_pd_value_counts, batch_format="pandas")
-    unique_values_by_col: Dict[str, Set] = {key_gen(col): set() for col in columns}
-    for batch in value_counts_ds.iter_batches(batch_size=None):
-        for col, counters in batch.items():
-            for counter in counters:
-                counter: Dict[Any, int] = {
-                    k: v for k, v in counter.items() if v is not None
-                }
-                if col in max_categories:
-                    counter: Dict[Any, int] = dict(
-                        Counter(counter).most_common(max_categories[col])
-                    )
-                # add only column values since frequencies are needed beyond this point
-                unique_values_by_col[key_gen(col)].update(counter.keys())
-
-    return unique_values_by_col
+    Both sentinels are singletons, so identity comparison is exact and cheap.
+    ``pd.isna`` is deliberately not used: it returns an array for array-like
+    input, and the values here may be lists when ``encode_lists`` is set.
+    """
+    return is_null(value) or value is pd.NA or value is pd.NaT
 
 
 # FIXME: the arrow format path is broken: https://anyscale1.atlassian.net/browse/DATA-1788
 def unique_post_fn(
     drop_na_values: bool = False, batch_format: BatchFormat = None
 ) -> Callable:
-    """
-    Returns a post-processing function that generates an encoding map by
+    """Returns a post-processing function that generates an encoding map by
     sorting the unique values produced during aggregation or stats computation.
 
     Args:
@@ -1120,8 +1311,7 @@ def unique_post_fn(
     """
 
     def gen_value_index(values: List) -> Dict[Any, int]:
-        """
-        Generate an encoding map from a list of unique values using Python sorting.
+        """Generate an encoding map from a list of unique values using Python sorting.
 
         Args:
             values: List of unique values to encode (can include lists/tuples).
@@ -1135,13 +1325,13 @@ def unique_post_fn(
         """
         # NOTE: We special-case null here since it prevents provided
         #       values sequence from being sortable
-        if any(is_null(v) for v in values) and not drop_na_values:
+        if any(_is_null(v) for v in values) and not drop_na_values:
             raise ValueError(
                 "Unable to fit column because it contains null"
                 " values. Consider imputing missing values first."
             )
 
-        non_null_values = [v for v in values if not is_null(v)]
+        non_null_values = [v for v in values if not _is_null(v)]
 
         return {
             (v if not isinstance(v, list) else tuple(v)): i
@@ -1179,9 +1369,10 @@ def unique_post_fn(
 
         # Drop nulls if requested
         if drop_na_values:
-            values = pc.drop_null(values)
+            mask = pc.is_null(values, nan_is_null=True)
+            values = pc.filter(values, pc.invert(mask))
         else:
-            if pc.any(pc.is_null(values)).as_py():
+            if pc.any(pc.is_null(values, nan_is_null=True)).as_py():
                 raise ValueError(
                     "Unable to fit column because it contains null"
                     " values. Consider imputing missing values first."
@@ -1223,7 +1414,9 @@ def _validate_arrow(table: pa.Table, *columns: str) -> None:
         ValueError: If any of the specified columns contain null values.
     """
     null_columns = [
-        column for column in columns if pc.any(pc.is_null(table.column(column))).as_py()
+        column
+        for column in columns
+        if pc.any(pc.is_null(table.column(column), nan_is_null=True)).as_py()
     ]
     if null_columns:
         raise ValueError(
@@ -1233,9 +1426,23 @@ def _validate_arrow(table: pa.Table, *columns: str) -> None:
 
 
 def _is_series_composed_of_lists(series: pd.Series) -> bool:
+    # An Arrow-backed column states its element type in its dtype, so it can be
+    # recognised without inspecting a value. The `is_object_dtype` check below
+    # is False for such a column -- its dtype is `list<item: string>[pyarrow]`,
+    # not `object` -- so without this check a list column would be treated as
+    # scalar. That sends it to `value_counts`, which has no pyarrow kernel for
+    # list types and raises `ArrowNotImplementedError`.
+    #
+    # `from_dtype` returns None for a dtype it cannot model and `is_list_type`
+    # is False for a NumPy-backed one, so an object column of lists still falls
+    # through to the check below.
+    dtype = DataType.from_dtype(series.dtype)
+    if dtype is not None and dtype.is_list_type():
+        return True
+
     # we assume that all elements are a list here
     first_not_none_element = next(
-        (element for element in series if element is not None), None
+        (element for element in series if not _is_null(element)), None
     )
     return pandas.api.types.is_object_dtype(series.dtype) and isinstance(
         first_not_none_element, (list, np.ndarray)

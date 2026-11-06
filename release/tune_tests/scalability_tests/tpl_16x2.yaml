@@ -1,15 +1,13 @@
-cloud_id: {{env["ANYSCALE_CLOUD_ID"]}}
-region: us-west-2
+cloud: {{env["ANYSCALE_CLOUD_NAME"]}}
 
-max_workers: 15
-
-head_node_type:
-    name: head_node
+head_node:
     instance_type: m5a.large
+    # Test's wait_for_nodes: 16 > 15 workers — head must count as a usable node.
+    resources:
+      CPU: 2
 
-worker_node_types:
-    - name: worker_node
-      instance_type: m5a.large
-      min_workers: 15
-      max_workers: 15
-      use_spot: false
+worker_nodes:
+    - instance_type: m5a.large
+      min_nodes: 15
+      max_nodes: 15
+      market_type: ON_DEMAND

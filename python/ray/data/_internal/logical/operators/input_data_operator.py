@@ -1,4 +1,5 @@
 import functools
+from dataclasses import dataclass, field
 from typing import List, Optional
 
 from ray.data._internal.execution.interfaces import RefBundle
@@ -11,21 +12,24 @@ __all__ = [
 ]
 
 
+@dataclass(frozen=True, repr=False, eq=False)
 class InputData(LogicalOperator, SourceOperator):
     """Logical operator for input data.
 
     This may hold cached blocks from a previous Dataset execution.
     """
 
-    def __init__(
-        self,
-        input_data: List[RefBundle],
-    ):
-        super().__init__("InputData", [], len(input_data))
-        self.input_data = input_data
+    input_data: List[RefBundle]
+    _input_dependencies: list[LogicalOperator] = field(
+        init=False, repr=False, default_factory=list
+    )
 
     def output_data(self) -> Optional[List[RefBundle]]:
         return self.input_data
+
+    @property
+    def num_outputs(self) -> Optional[int]:
+        return len(self.input_data)
 
     def infer_metadata(self) -> BlockMetadata:
         return self._cached_output_metadata

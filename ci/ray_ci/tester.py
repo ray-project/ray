@@ -5,11 +5,7 @@ from typing import List, Optional, Set, Tuple
 import click
 import yaml
 
-from ci.ray_ci.builder_container import BuilderContainer
 from ci.ray_ci.configs import (
-    DEFAULT_ARCHITECTURE,
-    DEFAULT_BUILD_TYPE,
-    DEFAULT_PYTHON_VERSION,
     PYTHON_VERSIONS,
 )
 from ci.ray_ci.container import _DOCKER_ECR_REPO
@@ -97,6 +93,17 @@ bazel_workspace_dir = os.environ.get("BUILD_WORKSPACE_DIRECTORY", "")
     help=(
         "Run only high impact tests. "
         "High impact tests are tests that often catch regressions in the past."
+    ),
+)
+@click.option(
+    "--exact-targets",
+    is_flag=True,
+    show_default=True,
+    default=False,
+    help=(
+        "Run the given targets as listed, without narrowing them to high "
+        "impact and changed tests on microcheck runs. For callers that already "
+        "computed the exact set to run, such as the docs-example-test steps."
     ),
 )
 @click.option(
@@ -211,6 +218,7 @@ def main(
     cache_test_results: bool,
     run_flaky_tests: bool,
     run_high_impact_tests: bool,
+    exact_targets: bool,
     skip_ray_installation: bool,
     build_only: bool,
     gpus: int,
@@ -231,11 +239,6 @@ def main(
     ci_init()
     ecr_docker_login(_DOCKER_ECR_REPO.split("/")[0])
 
-    if build_type == "wheel" or build_type == "wheel-aarch64":
-        # for wheel testing, we first build the wheel and then use it for running tests
-        architecture = DEFAULT_ARCHITECTURE if build_type == "wheel" else "aarch64"
-        wheel_python_version = python_version or DEFAULT_PYTHON_VERSION
-        BuilderContainer(wheel_python_version, DEFAULT_BUILD_TYPE, architecture).run()
     bisect_run_test_target = bisect_run_test_target or os.environ.get(
         "RAYCI_BISECT_TEST_TARGET"
     )
@@ -264,8 +267,8 @@ def main(
     if bisect_run_test_target:
         test_targets = [bisect_run_test_target]
     else:
-        get_high_impact_tests = (
-            run_high_impact_tests or os.environ.get("RAYCI_MICROCHECK_RUN") == "1"
+        get_high_impact_tests = _narrow_to_high_impact_tests(
+            run_high_impact_tests, exact_targets
         )
         lookup_test_database = os.environ.get("RAYCI_DISABLE_TEST_DB") != "1"
         test_targets = _get_test_targets(
@@ -293,6 +296,14 @@ def main(
         cache_test_results=cache_test_results,
     )
     sys.exit(0 if success else 42)
+
+
+def _narrow_to_high_impact_tests(
+    run_high_impact_tests: bool, exact_targets: bool
+) -> bool:
+    if exact_targets:
+        return False
+    return run_high_impact_tests or os.environ.get("RAYCI_MICROCHECK_RUN") == "1"
 
 
 def _add_default_except_tags(except_tags: str) -> str:

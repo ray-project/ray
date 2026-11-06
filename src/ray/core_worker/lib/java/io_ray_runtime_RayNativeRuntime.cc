@@ -26,8 +26,9 @@
 #include "jni_utils.h"  // NOLINT(build/include_subdir)
 #include "ray/common/id.h"
 #include "ray/common/ray_config.h"
-#include "ray/core_worker/actor_handle.h"
+#include "ray/core_worker/actor_management/actor_handle.h"
 #include "ray/core_worker/core_worker.h"
+#include "ray/rpc/authentication/authentication_token_loader.h"
 #include "ray/util/time.h"
 
 thread_local JNIEnv *local_env = nullptr;
@@ -121,7 +122,7 @@ Java_io_ray_runtime_RayNativeRuntime_nativeInitialize(JNIEnv *env,
                                                       jbyteArray workerId,
                                                       jint runtimeEnvHash) {
   auto task_execution_callback =
-      [](const rpc::Address &caller_address,
+      [](const rpc::Address &owner_address,
          TaskType task_type,
          const std::string task_name,
          const RayFunction &ray_function,
@@ -143,6 +144,7 @@ Java_io_ray_runtime_RayNativeRuntime_nativeInitialize(JNIEnv *env,
          bool is_streaming_generator,
          bool should_retry_exceptions,
          int64_t generator_backpressure_num_objects,
+         int64_t num_objects_per_yield,
          const std::optional<std::string> &tensor_transport) {
         // These 3 parameters are used for Python only, and Java worker
         // will not use them.
@@ -237,7 +239,7 @@ Java_io_ray_runtime_RayNativeRuntime_nativeInitialize(JNIEnv *env,
                 data_size,
                 metadata,
                 contained_object_ids,
-                caller_address,
+                owner_address,
                 &task_output_inlined_bytes,
                 result_ptr));
 
@@ -252,7 +254,7 @@ Java_io_ray_runtime_RayNativeRuntime_nativeInitialize(JNIEnv *env,
             }
 
             RAY_CHECK_OK(CoreWorkerProcess::GetCoreWorker().SealReturnObject(
-                result_id, result, ObjectID::Nil(), caller_address));
+                result_id, result, ObjectID::Nil(), owner_address));
           }
         }
 
@@ -370,6 +372,15 @@ JNIEXPORT void JNICALL Java_io_ray_runtime_RayNativeRuntime_nativeRunTaskExecuto
   // TO fix this, we explicitly quit the process here. This only affects worker processes,
   // not driver processes because only worker processes call `RunTaskExecutionLoop`.
   _Exit(0);
+}
+
+JNIEXPORT void JNICALL
+Java_io_ray_runtime_RayNativeRuntime_nativeCreateTokenIfMissingForOwnCluster(JNIEnv *env,
+                                                                             jclass) {
+  const std::string error = ray::rpc::CreateTokenIfMissingForOwnCluster();
+  if (!error.empty()) {
+    env->ThrowNew(java_ray_exception_class, error.c_str());
+  }
 }
 
 JNIEXPORT void JNICALL Java_io_ray_runtime_RayNativeRuntime_nativeShutdown(JNIEnv *env,

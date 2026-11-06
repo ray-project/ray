@@ -47,15 +47,14 @@ audio_processor_config = vLLMEngineProcessorConfig(
         limit_mm_per_prompt={"audio": 1},
     ),
     batch_size=16,
-    accelerator_type="L4",
     concurrency=1,
     prepare_multimodal_stage={
         "enabled": True,
         "chat_template_content_format": "openai",
     },
-    chat_template_stage={"enabled": True},
-    tokenize_stage={"enabled": True},
-    detokenize_stage={"enabled": True},
+    chat_template_stage=True,
+    tokenize_stage=True,
+    detokenize_stage=True,
 )
 # __omni_audio_config_example_end__
 
@@ -112,6 +111,7 @@ def audio_postprocess(row: dict) -> dict:
 
 
 def load_audio_dataset():
+# __omni_audio_load_dataset_example_start__
     """
     Load audio dataset from MRSAudio Hugging Face dataset.
     """
@@ -151,6 +151,7 @@ def load_audio_dataset():
     except Exception as e:
         print(f"Error loading dataset: {e}")
         return None
+# __omni_audio_load_dataset_example_end__
 
 
 def create_omni_audio_config():
@@ -163,19 +164,18 @@ def create_omni_audio_config():
             limit_mm_per_prompt={"audio": 1},
         ),
         batch_size=16,
-        accelerator_type="L4",
         concurrency=1,
         prepare_multimodal_stage={
             "enabled": True,
             "chat_template_content_format": "openai",
         },
-        chat_template_stage={"enabled": True},
-        tokenize_stage={"enabled": True},
-        detokenize_stage={"enabled": True},
+        chat_template_stage=True,
+        tokenize_stage=True,
+        detokenize_stage=True,
     )
 
-
 def run_omni_audio_example():
+# __omni_audio_run_example_start__
     """Run the complete Omni audio example workflow."""
     config = create_omni_audio_config()
     audio_dataset = load_audio_dataset()
@@ -191,7 +191,7 @@ def run_omni_audio_example():
         print(f"Has multimodal support: {config.prepare_multimodal_stage.get('enabled', False)}")
         result = processor(audio_dataset).take_all()
         return config, processor, result
-    # __omni_audio_run_example_end__
+# __omni_audio_run_example_end__
     return None, None, None
 
 

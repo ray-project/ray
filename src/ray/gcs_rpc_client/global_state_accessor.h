@@ -22,7 +22,7 @@
 
 #include "absl/base/thread_annotations.h"
 #include "absl/synchronization/mutex.h"
-#include "ray/common/asio/instrumented_io_context.h"
+#include "ray/asio/instrumented_io_context.h"
 #include "ray/gcs_rpc_client/gcs_client.h"
 
 namespace ray {
@@ -156,7 +156,8 @@ class GlobalStateAccessor {
   ///
   /// \param worker_id The ID of worker to update in the GCS Service.
   /// \param num_paused_threads_delta The delta of paused threads of worker to update in
-  /// the GCS Service. \return Is operation success.
+  /// the GCS Service.
+  /// \return Whether the operation succeeded.
   bool UpdateWorkerNumPausedThreads(const WorkerID &worker_id,
                                     const int num_paused_threads_delta);
 

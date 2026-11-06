@@ -93,5 +93,11 @@ def test_parse_cluster_address_validation():
         parse_cluster_info(f"{scheme}://localhost:10001")
 
 
+def test_parse_cluster_info_ignores_extra_kwargs():
+    """Test that parse_cluster_info with http:// gracefully ignores extra kwargs."""
+    result = parse_cluster_info("http://localhost:8265", cloud="test")
+    assert result.address == "http://localhost:8265"
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))

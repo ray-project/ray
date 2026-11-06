@@ -68,6 +68,14 @@ class HyperBandScheduler(FIFOScheduler):
             Note that you can pass in something non-temporal such as
             `training_iteration` as a measure of progress, the only requirement
             is that the attribute should increase monotonically.
+            Valid values are any key reported in the result dict by your
+            trainable. The auto-filled keys ``"training_iteration"`` (the
+            iteration count) and ``"time_total_s"`` (wall-clock seconds since
+            the trial started) always work; any additional numeric, monotonic
+            key your trainable reports via ``tune.report({...})`` is also valid
+            (for example ``"timesteps_total"`` or a custom progress counter).
+            Passing a key that is not present in the reported result causes
+            the scheduler to skip its decision for that step.
         metric: The training result objective value attribute. Stopping
             procedures will use this attribute. If None but a mode was passed,
             the `ray.tune.result.DEFAULT_METRIC` will be used per default.
@@ -154,7 +162,12 @@ class HyperBandScheduler(FIFOScheduler):
         On a new trial add, if current bracket is not filled,
         add to current bracket. Else, if current band is not filled,
         create new bracket, add to current bracket.
-        Else, create new iteration, create new bracket, add to bracket."""
+        Else, create new iteration, create new bracket, add to bracket.
+
+        Args:
+            tune_controller: The controller running the experiment.
+            trial: The trial that was added.
+        """
         if not self._metric or not self._metric_op:
             raise ValueError(
                 "{} has been instantiated without a valid `metric` ({}) or "
@@ -220,7 +233,17 @@ class HyperBandScheduler(FIFOScheduler):
 
         This scheduler will not start trials but will stop trials.
         The current running trial will not be handled,
-        as the trialrunner will be given control to handle it."""
+        as the trialrunner will be given control to handle it.
+
+        Args:
+            tune_controller: The controller running the experiment.
+            trial: The trial that reported the result.
+            result: The result the trial reported.
+
+        Returns:
+            The scheduling decision for the trial: ``TrialScheduler.CONTINUE``,
+            ``TrialScheduler.PAUSE``, or ``TrialScheduler.STOP``.
+        """
 
         bracket, _ = self._trial_info[trial]
         bracket.update_trial_stats(trial, result)
@@ -339,7 +362,12 @@ class HyperBandScheduler(FIFOScheduler):
         """Notification when trial terminates.
 
         Trial info is removed from bracket. Triggers halving if bracket is
-        not finished."""
+        not finished.
+
+        Args:
+            tune_controller: The controller running the experiment.
+            trial: The trial to remove.
+        """
         bracket, _ = self._trial_info[trial]
         bracket.cleanup_trial(trial)
         if not bracket.finished() and not bracket.is_being_processed:
@@ -349,11 +377,22 @@ class HyperBandScheduler(FIFOScheduler):
     def on_trial_complete(
         self, tune_controller: "TuneController", trial: Trial, result: Dict
     ):
-        """Cleans up trial info from bracket if trial completed early."""
+        """Cleans up trial info from bracket if trial completed early.
+
+        Args:
+            tune_controller: The controller running the experiment.
+            trial: The trial that completed.
+            result: The last result the trial reported. Unused.
+        """
         self.on_trial_remove(tune_controller, trial)
 
     def on_trial_error(self, tune_controller: "TuneController", trial: Trial):
-        """Cleans up trial info from bracket if trial errored early."""
+        """Cleans up trial info from bracket if trial errored early.
+
+        Args:
+            tune_controller: The controller running the experiment.
+            trial: The trial that errored.
+        """
         self.on_trial_remove(tune_controller, trial)
 
     def choose_trial_to_run(self, tune_controller: "TuneController") -> Optional[Trial]:
@@ -362,6 +401,14 @@ class HyperBandScheduler(FIFOScheduler):
         List of trials not used since all trials are tracked as state
         of scheduler. If iteration is occupied (ie, no trials to run),
         then look into next iteration.
+
+        Args:
+            tune_controller: The controller running the experiment. Unused.
+
+        Returns:
+            A ``PENDING`` trial, or a ``PAUSED`` trial that its bracket marked
+            to unpause, from the least complete bracket that has one, or
+            ``None`` if there's no such trial.
         """
 
         for hyperband in self._hyperbands:
@@ -393,6 +440,9 @@ class HyperBandScheduler(FIFOScheduler):
 
         "Completed" indicates an approximate progress metric. Some brackets,
         like ones that are unfilled, will not reach 100%.
+
+        Returns:
+            The progress message.
         """
         out = "Using HyperBand: "
         out += "num_stopped={} total_brackets={}".format(
@@ -406,6 +456,13 @@ class HyperBandScheduler(FIFOScheduler):
         return out
 
     def state(self) -> Dict[str, int]:
+        """Returns the number of brackets and the number of stopped trials.
+
+        Returns:
+            A dict with the keys ``num_brackets``, the total number of brackets
+            created across all iterations, and ``num_stopped``, the number of
+            trials the scheduler has stopped.
+        """
         return {
             "num_brackets": sum(len(band) for band in self._hyperbands),
             "num_stopped": self._num_stopped,

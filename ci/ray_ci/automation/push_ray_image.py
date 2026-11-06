@@ -1,38 +1,34 @@
 import logging
+import os
 import sys
 from datetime import datetime
 from typing import List
 
 import click
 
-from ci.ray_ci.automation.crane_lib import (
-    CraneError,
-    call_crane_copy,
-    call_crane_manifest,
+from ci.ray_ci.automation.crane_lib import CraneError, read_file_from_image
+from ci.ray_ci.automation.image_tags_lib import (
+    ImageTagsError,
+    copy_image,
+    format_platform_tag,
+    get_platform_suffixes,
+    get_python_suffixes,
+    image_exists,
 )
 from ci.ray_ci.configs import (
     ARCHITECTURE,
-    DEFAULT_ARCHITECTURE,
-    DEFAULT_PYTHON_TAG_VERSION,
     PYTHON_VERSIONS,
 )
 from ci.ray_ci.docker_container import (
-    ARCHITECTURES_RAY,
-    ARCHITECTURES_RAY_LLM,
-    ARCHITECTURES_RAY_ML,
-    GPU_PLATFORM,
     PLATFORMS_RAY,
-    PLATFORMS_RAY_LLM,
-    PLATFORMS_RAY_ML,
-    PYTHON_VERSIONS_RAY,
-    PYTHON_VERSIONS_RAY_LLM,
-    PYTHON_VERSIONS_RAY_ML,
-    RAY_REPO_MAP,
     RayType,
 )
-from ci.ray_ci.utils import ecr_docker_login
+from ci.ray_ci.ray_image import IMAGE_TYPE_CONFIG, RayImage, RayImageError
+from ci.ray_ci.utils import ci_init, ecr_docker_login
 
-VALID_IMAGE_TYPES = [rt.value for rt in RayType]
+from ray_release.configs.global_config import get_global_config
+
+VALID_IMAGE_TYPES = list(IMAGE_TYPE_CONFIG.keys())
 
 logging.basicConfig(
     level=logging.INFO,
@@ -41,19 +37,28 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+# rayci auto-uploads everything under /artifact-mount as Buildkite artifacts.
+# Mirrors the old ci/build/build-ray-docker.sh staging location so the artifact
+# filename/layout is unchanged for downstream consumers.
+ARTIFACT_MOUNT_IMAGE_INFO_DIR = "/artifact-mount/.image-info"
+# Path of the pip freeze inside the image filesystem (no leading slash in the
+# crane-exported tar). Written by ci/docker/ray-image.Dockerfile.
+PIP_FREEZE_PATH_IN_IMAGE = os.path.join("home", "ray", "pip-freeze.txt")
+
+# Platforms published to Docker Hub only as nightly images for now. They are
+# still built on releases/* branches, but not pushed, so they don't ship as part
+# of a Ray release yet.
+NIGHTLY_ONLY_PLATFORMS = {"cu13.3.1-cudnn"}
+
 
 class PushRayImageError(Exception):
     """Error raised when pushing ray images fails."""
 
 
+# Re-export for backward compatibility with tests
 def compact_cuda_suffix(platform: str) -> str:
     """Convert a CUDA platform string to compact suffix (e.g. cu12.1.1-cudnn8 -> -cu121)."""
-    platform_base = platform.split("-", 1)[0]
-    parts = platform_base.split(".")
-    if len(parts) < 2:
-        raise PushRayImageError(f"Unrecognized GPU platform format: {platform}")
-
-    return f"-{parts[0]}{parts[1]}"
+    return format_platform_tag(platform)
 
 
 class RayImagePushContext:
@@ -95,42 +100,21 @@ class RayImagePushContext:
         self.rayci_build_id = rayci_build_id
         self.pull_request = pull_request
 
-        arch_suffix = "" if architecture == DEFAULT_ARCHITECTURE else f"-{architecture}"
-        self.arch_suffix = arch_suffix
+        self.ray_image = RayImage(
+            image_type=ray_type.value,
+            python_version=python_version,
+            platform=platform,
+            architecture=architecture,
+        )
+        self.arch_suffix = self.ray_image.arch_suffix
         self.wanda_tag = f"{rayci_build_id}-{self.wanda_image_name()}"
-        self.docker_hub_repo = f"rayproject/{RAY_REPO_MAP[self.ray_type.value]}"
+        self.docker_hub_repo = f"rayproject/{self.ray_image.repo}"
 
     def assert_published_image_type(self) -> None:
-        invalid_python_version = (
-            f"Invalid python version {self.python_version} for {self.ray_type}"
-        )
-        invalid_platform = f"Invalid platform {self.platform} for {self.ray_type}"
-        invalid_architecture = (
-            f"Invalid architecture {self.architecture} for {self.ray_type}"
-        )
-
-        if self.ray_type in [RayType.RAY_ML, RayType.RAY_ML_EXTRA]:
-            if self.python_version not in PYTHON_VERSIONS_RAY_ML:
-                raise PushRayImageError(invalid_python_version)
-            if self.platform not in PLATFORMS_RAY_ML:
-                raise PushRayImageError(invalid_platform)
-            if self.architecture not in ARCHITECTURES_RAY_ML:
-                raise PushRayImageError(invalid_architecture)
-        elif self.ray_type in [RayType.RAY_LLM, RayType.RAY_LLM_EXTRA]:
-            if self.python_version not in PYTHON_VERSIONS_RAY_LLM:
-                raise PushRayImageError(invalid_python_version)
-            if self.platform not in PLATFORMS_RAY_LLM:
-                raise PushRayImageError(invalid_platform)
-            if self.architecture not in ARCHITECTURES_RAY_LLM:
-                raise PushRayImageError(invalid_architecture)
-        else:
-            # ray or ray-extra
-            if self.python_version not in PYTHON_VERSIONS_RAY:
-                raise PushRayImageError(invalid_python_version)
-            if self.platform not in PLATFORMS_RAY:
-                raise PushRayImageError(invalid_platform)
-            if self.architecture not in ARCHITECTURES_RAY:
-                raise PushRayImageError(invalid_architecture)
+        try:
+            self.ray_image.validate()
+        except RayImageError as e:
+            raise PushRayImageError(str(e)) from e
 
     def destination_tags(self) -> List[str]:
         """
@@ -155,14 +139,6 @@ class RayImagePushContext:
                     )
         return tags
 
-    def wanda_image_name(self) -> str:
-        """Get the wanda source image name for this context."""
-        if self.platform == "cpu":
-            return (
-                f"{self.ray_type.value}-py{self.python_version}-cpu{self.arch_suffix}"
-            )
-        return f"{self.ray_type.value}-py{self.python_version}-{self.platform}{self.arch_suffix}"
-
     def _versions(self) -> List[str]:
         """Compute version tags based on branch/schedule/PR status."""
         is_master = self.branch == "master"
@@ -184,71 +160,158 @@ class RayImagePushContext:
         else:
             return [sha_tag, self.rayci_build_id]
 
+    def wanda_image_name(self) -> str:
+        """Get the wanda source image name for this context."""
+        return self.ray_image.wanda_image_name
+
     def _variation_suffix(self) -> str:
         """Get -extra suffix for extra image types."""
-        if self.ray_type in {
-            RayType.RAY_EXTRA,
-            RayType.RAY_ML_EXTRA,
-            RayType.RAY_LLM_EXTRA,
-        }:
-            return "-extra"
-        return ""
+        return self.ray_image.variation_suffix
 
     def _python_suffixes(self) -> List[str]:
         """Get python version suffixes (includes empty for default version)."""
-        suffixes = [f"-py{self.python_version.replace('.', '')}"]
-        if self.python_version == DEFAULT_PYTHON_TAG_VERSION:
-            suffixes.append("")
-        return suffixes
+        return get_python_suffixes(self.python_version)
 
     def _platform_suffixes(self) -> List[str]:
         """Get platform suffixes (includes aliases like -gpu for GPU_PLATFORM)."""
-        if self.platform == "cpu":
-            suffixes = ["-cpu"]
-            # no tag is alias to cpu for ray image
-            if self.ray_type in {RayType.RAY, RayType.RAY_EXTRA}:
-                suffixes.append("")
-            return suffixes
+        return get_platform_suffixes(self.platform, self.ray_type.value)
 
-        suffixes = [compact_cuda_suffix(self.platform)]
-        if self.platform == GPU_PLATFORM:
-            # gpu is alias to GPU_PLATFORM value for ray image
-            suffixes.append("-gpu")
-            # no tag is alias to gpu for ray-ml image
-            if self.ray_type in {RayType.RAY_ML, RayType.RAY_ML_EXTRA}:
-                suffixes.append("")
+    def pip_freeze_canonical_tag(self) -> str:
+        """
+        Canonical image tag used to name the pip-freeze Buildkite artifact.
 
-        return suffixes
+        Mirrors the old RayDockerContainer._get_image_tags(external=False)[0]
+        contract: the *internal* version tag (bare "<sha6>" on master/PR/other,
+        "<release_name>.<sha6>" on releases/* branches) -- NOT the external
+        "nightly.*" tag. Format: "<version><variation>-py<NN>-cpu<arch_suffix>".
+
+        This is the source-of-truth filename consumed by the anyscale/product
+        repo at devprod/rayrelease/releaser.py:
+        update_doc_with_latest_docker_dependencies. Keep the two in sync.
+        """
+        sha = self.commit[:6]
+        if self.branch and self.branch.startswith("releases/"):
+            version = f"{self.branch[len('releases/'):]}.{sha}"
+        else:
+            version = sha
+        py_tag = f"-py{self.python_version.replace('.', '')}"
+        return f"{version}{self._variation_suffix()}{py_tag}-cpu{self.arch_suffix}"
+
+    def pip_freeze_artifact_filename(self) -> str:
+        """Buildkite artifact basename: "<image_type>:<canonical_tag>_pip-freeze.txt"."""
+        return (
+            f"{self.ray_image.image_type}:"
+            f"{self.pip_freeze_canonical_tag()}_pip-freeze.txt"
+        )
 
 
 def _image_exists(tag: str) -> bool:
     """Check if a container image manifest exists using crane."""
-    try:
-        call_crane_manifest(tag)
-        return True
-    except CraneError:
-        return False
+    return image_exists(tag)
 
 
 def _copy_image(reference: str, destination: str, dry_run: bool = False) -> None:
     """Copy a container image from source to destination using crane."""
-    if dry_run:
-        logger.info(f"DRY RUN: Would copy {reference} -> {destination}")
-        return
-
-    logger.info(f"Copying {reference} -> {destination}")
     try:
-        call_crane_copy(reference, destination)
-        logger.info(f"Successfully copied to {destination}")
-    except CraneError as e:
-        raise PushRayImageError(f"Crane copy failed: {e}")
+        copy_image(reference, destination, dry_run)
+    except ImageTagsError as e:
+        raise PushRayImageError(str(e))
+
+
+def _export_pip_freeze(src_ref: str, ctx: RayImagePushContext) -> str:
+    """
+    Export the image's pip-freeze.txt and stage it as a Buildkite artifact.
+
+    Reads PIP_FREEZE_PATH_IN_IMAGE straight out of the image via crane (no
+    docker daemon, no full-filesystem extraction) and writes it under
+    ARTIFACT_MOUNT_IMAGE_INFO_DIR using ctx.pip_freeze_artifact_filename().
+
+    Runs independently of whether images are pushed (dry_run), so the shipped
+    dependencies record is produced even on PR/dry-run builds -- mirroring the
+    old ci/build/build-ray-docker.sh behavior.
+
+    Returns the staged file path.
+
+    Raises:
+        PushRayImageError: if the image has no pip-freeze.txt, or if the crane
+            export / filesystem staging fails (CraneError / OSError are wrapped,
+            mirroring _copy_image's handling of ImageTagsError).
+    """
+    logger.info(f"Exporting pip freeze from {src_ref}")
+    try:
+        content = read_file_from_image(src_ref, PIP_FREEZE_PATH_IN_IMAGE)
+    except (CraneError, OSError) as e:
+        # OSError covers e.g. a non-executable crane binary (PermissionError)
+        # or a full disk while exporting (TemporaryDirectory); wrap it like the
+        # staging step below, per this function's contract.
+        raise PushRayImageError(
+            f"Failed to export pip-freeze from {src_ref}: {e}"
+        ) from e
+
+    if content is None:
+        raise PushRayImageError(
+            f"pip-freeze.txt not found in image {src_ref} "
+            f"at /{PIP_FREEZE_PATH_IN_IMAGE}"
+        )
+
+    try:
+        os.makedirs(ARTIFACT_MOUNT_IMAGE_INFO_DIR, exist_ok=True)
+        dest = os.path.join(
+            ARTIFACT_MOUNT_IMAGE_INFO_DIR, ctx.pip_freeze_artifact_filename()
+        )
+        with open(dest, "wb") as f:
+            f.write(content)
+    except OSError as e:
+        raise PushRayImageError(
+            f"Failed to stage pip-freeze from {src_ref}: {e}"
+        ) from e
+
+    logger.info(f"Staged pip freeze Buildkite artifact at {dest}")
+    return dest
+
+
+def _should_upload(pipeline_id: str, branch: str, rayci_schedule: str) -> bool:
+    """
+    Check if upload should proceed based on pipeline and branch context.
+
+    Mirrors the logic from RayDockerContainer._should_upload() to prevent
+    accidental pushes from feature branches or non-postmerge pipelines.
+
+    Returns True only if:
+    - Pipeline is a postmerge pipeline AND
+    - Branch is releases/* OR (branch is master AND schedule is nightly)
+    """
+    postmerge_pipelines = get_global_config()["ci_pipeline_postmerge"]
+    if pipeline_id not in postmerge_pipelines:
+        logger.info(
+            f"Pipeline {pipeline_id} is not a postmerge pipeline, skipping upload"
+        )
+        return False
+
+    if branch.startswith("releases/"):
+        return True
+
+    if branch == "master" and rayci_schedule == "nightly":
+        return True
+
+    logger.info(
+        f"Branch '{branch}' with schedule '{rayci_schedule}' is not eligible for upload. "
+        "Upload is only allowed for releases/* branches or master with nightly schedule."
+    )
+    return False
 
 
 @click.command()
 @click.option(
     "--python-version", type=click.Choice(list(PYTHON_VERSIONS.keys())), required=True
 )
-@click.option("--platform", type=click.Choice(list(PLATFORMS_RAY)), required=True)
+@click.option(
+    "--platform",
+    type=click.Choice(list(PLATFORMS_RAY)),
+    required=True,
+    multiple=True,
+    help="Platform(s) to push. Can be specified multiple times.",
+)
 @click.option(
     "--image-type",
     type=click.Choice(VALID_IMAGE_TYPES),
@@ -257,66 +320,110 @@ def _copy_image(reference: str, destination: str, dry_run: bool = False) -> None
 @click.option("--architecture", type=click.Choice(ARCHITECTURE), required=True)
 @click.option("--rayci-work-repo", type=str, required=True, envvar="RAYCI_WORK_REPO")
 @click.option("--rayci-build-id", type=str, required=True, envvar="RAYCI_BUILD_ID")
+@click.option("--pipeline-id", type=str, required=True, envvar="BUILDKITE_PIPELINE_ID")
 @click.option("--branch", type=str, required=True, envvar="BUILDKITE_BRANCH")
 @click.option("--commit", type=str, required=True, envvar="BUILDKITE_COMMIT")
 @click.option("--rayci-schedule", type=str, default="", envvar="RAYCI_SCHEDULE")
 @click.option(
     "--pull-request", type=str, default="false", envvar="BUILDKITE_PULL_REQUEST"
 )
-@click.option("--upload", is_flag=True, default=False)
 def main(
     python_version: str,
-    platform: str,
+    platform: tuple,
     image_type: str,
     architecture: str,
     rayci_work_repo: str,
     rayci_build_id: str,
+    pipeline_id: str,
     branch: str,
     commit: str,
     rayci_schedule: str,
     pull_request: str,
-    upload: bool,
 ) -> None:
     """
-    Publish a Wanda-cached ray image to Docker Hub.
+    Publish Wanda-cached ray image(s) to Docker Hub.
 
     Tags are generated matching the original RayDockerContainer format:
     {version}{variation}{python_suffix}{platform}{architecture_suffix}
+
+    Multiple platforms can be specified to push in a single invocation.
     """
-    dry_run = not upload
+    ci_init()
+
+    dry_run = not _should_upload(pipeline_id, branch, rayci_schedule)
     if dry_run:
-        logger.info("DRY RUN MODE - no images will be pushed")
+        logger.info(
+            "DRY RUN MODE - upload conditions not met, no images will be pushed"
+        )
 
-    ctx = RayImagePushContext(
-        ray_type=RayType(image_type),
-        python_version=python_version,
-        platform=platform,
-        architecture=architecture,
-        branch=branch,
-        commit=commit,
-        rayci_schedule=rayci_schedule,
-        rayci_build_id=rayci_build_id,
-        pull_request=pull_request,
-    )
-
-    ctx.assert_published_image_type()
+    platforms = list(platform)
+    logger.info(f"Processing {len(platforms)} platform(s): {platforms}")
 
     ecr_registry = rayci_work_repo.split("/")[0]
     ecr_docker_login(ecr_registry)
 
-    src_ref = f"{rayci_work_repo}:{ctx.wanda_tag}"
-    logger.info(f"Verifying source image in Wanda cache: {src_ref}")
-    if not _image_exists(src_ref):
-        raise PushRayImageError(f"Source image not found in Wanda cache: {src_ref}")
+    all_tags = []
+    for plat in platforms:
+        if plat in NIGHTLY_ONLY_PLATFORMS and branch.startswith("releases/"):
+            logger.info(
+                f"Skipping platform {plat}: nightly-only, not published from "
+                f"release branch {branch}"
+            )
+            continue
 
-    destination_tags = ctx.destination_tags()
-    for tag in destination_tags:
-        dest_ref = f"{ctx.docker_hub_repo}:{tag}"
-        _copy_image(src_ref, dest_ref, dry_run=dry_run)
+        logger.info(f"\n{'='*60}\nProcessing platform: {plat}\n{'='*60}")
+
+        ctx = RayImagePushContext(
+            ray_type=RayType(image_type),
+            python_version=python_version,
+            platform=plat,
+            architecture=architecture,
+            branch=branch,
+            commit=commit,
+            rayci_schedule=rayci_schedule,
+            rayci_build_id=rayci_build_id,
+            pull_request=pull_request,
+        )
+
+        ctx.assert_published_image_type()
+
+        src_ref = f"{rayci_work_repo}:{ctx.wanda_tag}"
+        logger.info(f"Verifying source image in Wanda cache: {src_ref}")
+        if not _image_exists(src_ref):
+            raise PushRayImageError(f"Source image not found in Wanda cache: {src_ref}")
+
+        # Re-emit the per-image pip freeze as a Buildkite artifact (cpu only).
+        # Downstream consumer: anyscale/product
+        # devprod/rayrelease/releaser.py:update_doc_with_latest_docker_dependencies.
+        # Runs regardless of dry_run: the shipped-deps record is independent of
+        # whether we push to Docker Hub.
+        #
+        # Best-effort by design: this publish step is skip-on-premerge, so the
+        # path only ever runs in postmerge and cannot be validated pre-merge.
+        # A failure here must never break image publishing (the critical path),
+        # so swallow and log any error rather than propagating it.
+        if plat == "cpu":
+            try:
+                _export_pip_freeze(src_ref, ctx)
+            except Exception as e:
+                logger.error(
+                    f"Failed to stage pip-freeze artifact for {src_ref}; "
+                    f"continuing without it: {e}",
+                    exc_info=True,
+                )
+
+        destination_tags = ctx.destination_tags()
+        for tag in destination_tags:
+            dest_ref = f"{ctx.docker_hub_repo}:{tag}"
+            _copy_image(src_ref, dest_ref, dry_run=dry_run)
+
+        all_tags.extend(destination_tags)
+        logger.info(f"Completed platform {plat} with tags: {destination_tags}")
 
     logger.info(
-        f"Successfully pushed {ctx.ray_type.value} image with tags: {destination_tags}"
+        f"\nSuccessfully processed {len(platforms)} platform(s) for {image_type}"
     )
+    logger.info(f"Total tags: {len(all_tags)}")
 
 
 if __name__ == "__main__":

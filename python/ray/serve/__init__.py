@@ -6,11 +6,14 @@ try:
         Application,
         Deployment,
         RunTarget,
+        _router_application,
         _run,
         _run_many,
         delete,
         deployment,
         get_app_handle,
+        get_deployment_actor,
+        get_deployment_actor_context,
         get_deployment_handle,
         get_multiplexed_model_id,
         get_replica_context,
@@ -24,7 +27,9 @@ try:
         status,
     )
     from ray.serve.batching import batch
-    from ray.serve.config import HTTPOptions
+    from ray.serve.config import ControllerOptions, HTTPOptions
+    from ray.serve.schema import TracingConfig
+    from ray.serve.utils import get_trace_context
 
 except ModuleNotFoundError as e:
     e.msg += (
@@ -43,10 +48,16 @@ ray._private.worker.blocking_get_inside_async_warned = True
 __all__ = [
     "_run",
     "_run_many",
+    "_router_application",
     "batch",
     "start",
+    "ControllerOptions",
     "HTTPOptions",
+    "TracingConfig",
     "get_replica_context",
+    "get_deployment_actor",
+    "get_deployment_actor_context",
+    "get_trace_context",
     "shutdown",
     "shutdown_async",
     "ingress",

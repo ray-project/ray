@@ -43,24 +43,31 @@ from ray.data.llm import (
 video_processor_config = vLLMEngineProcessorConfig(
     model_source="Qwen/Qwen3-VL-4B-Instruct",
     engine_kwargs=dict(
-        tensor_parallel_size=4,
+        tensor_parallel_size=1,
         pipeline_parallel_size=1,
         trust_remote_code=True,
         limit_mm_per_prompt={"video": 1},
+        mm_processor_kwargs={
+            "size": {
+                "shortest_edge": 65536,
+                "longest_edge": 20 * 1088 * 1920,
+            },
+            "do_sample_frames": False,
+        },
     ),
     batch_size=1,
-    accelerator_type="L4",
     concurrency=1,
     prepare_multimodal_stage={
         "enabled": True,
         "model_config_kwargs": dict(
             # See available model config kwargs at https://docs.vllm.ai/en/latest/api/vllm/config/#vllm.config.ModelConfig
             allowed_local_media_path="/tmp",
+            media_io_kwargs={"video": {"num_frames": 20, "fps": 2}},
         ),
     },
-    chat_template_stage={"enabled": True},
-    tokenize_stage={"enabled": True},
-    detokenize_stage={"enabled": True},
+    chat_template_stage=True,
+    tokenize_stage=True,
+    detokenize_stage=True,
 )
 # __vlm_video_config_example_end__
 
@@ -104,12 +111,6 @@ def video_preprocess(row: dict) -> dict:
             "max_tokens": 150,
             "detokenize": False,
         },
-        # Optional: Multimodal processor kwargs for video processing
-        "mm_processor_kwargs": dict(
-            min_pixels=28 * 28,
-            max_pixels=1280 * 28 * 28,
-            fps=1,
-        ),
     }
 
 
@@ -123,6 +124,7 @@ def video_postprocess(row: dict) -> dict:
 
 
 def load_video_dataset():
+# __vlm_video_load_dataset_example_start__
     """
     Load video dataset from ShareGPTVideo Hugging Face dataset.
     """
@@ -166,35 +168,43 @@ def load_video_dataset():
     except Exception as e:
         print(f"Error loading dataset: {e}")
         return None
-
+# __vlm_video_load_dataset_example_end__
 
 def create_vlm_video_config():
     """Create VLM video configuration."""
     return vLLMEngineProcessorConfig(
         model_source="Qwen/Qwen3-VL-4B-Instruct",
         engine_kwargs=dict(
-            tensor_parallel_size=4,
+            tensor_parallel_size=1,
             pipeline_parallel_size=1,
             trust_remote_code=True,
             limit_mm_per_prompt={"video": 1},
+            mm_processor_kwargs={
+                "size": {
+                    "shortest_edge": 65536,
+                    "longest_edge": 20 * 1088 * 1920,
+                },
+                "do_sample_frames": False,
+            },
         ),
         batch_size=1,
-        accelerator_type="L4",
         concurrency=1,
         prepare_multimodal_stage={
             "enabled": True,
             "model_config_kwargs": dict(
                 # See available model config kwargs at https://docs.vllm.ai/en/latest/api/vllm/config/#vllm.config.ModelConfig
                 allowed_local_media_path="/tmp",
+                media_io_kwargs={"video": {"num_frames": 20, "fps": 2}},
             ),
         },
-        chat_template_stage={"enabled": True},
-        tokenize_stage={"enabled": True},
-        detokenize_stage={"enabled": True},
+        chat_template_stage=True,
+        tokenize_stage=True,
+        detokenize_stage=True,
     )
 
 
 def run_vlm_video_example():
+# __vlm_video_run_example_start__
     """Run the complete VLM video example workflow."""
     config = create_vlm_video_config()
     video_dataset = load_video_dataset()
@@ -210,7 +220,7 @@ def run_vlm_video_example():
         print(f"Has multimodal support: {config.prepare_multimodal_stage.get('enabled', False)}")
         result = processor(video_dataset).take_all()
         return config, processor, result
-    # __vlm_video_run_example_end__
+# __vlm_video_run_example_end__
     return None, None, None
 
 

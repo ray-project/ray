@@ -1,12 +1,13 @@
 import itertools
 import logging
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Union
 
 from ray.data._internal.compute import (
     ActorPoolStrategy,
     ComputeStrategy,
     TaskPoolStrategy,
 )
+from ray.data._internal.execution.bundle_queue import ExactMultipleSize, RebundleQueue
 from ray.data._internal.execution.interfaces import (
     PhysicalOperator,
     RefBundle,
@@ -21,7 +22,14 @@ from ray.data._internal.execution.operators.actor_pool_map_operator import (
 from ray.data._internal.execution.operators.base_physical_operator import (
     AllToAllOperator,
 )
+from ray.data._internal.execution.operators.limit_operator import LimitOperator
 from ray.data._internal.execution.operators.map_operator import MapOperator
+from ray.data._internal.execution.operators.shuffle_operators.disk_shuffle_reduce_operator import (  # noqa: E501
+    DiskHashShuffleReduceOp,
+)
+from ray.data._internal.execution.operators.shuffle_operators.shuffle_reduce_operator import (
+    ShuffleReduceOp,
+)
 from ray.data._internal.execution.operators.task_pool_map_operator import (
     TaskPoolMapOperator,
 )
@@ -34,8 +42,10 @@ from ray.data._internal.logical.operators import (
     RandomShuffle,
     Repartition,
     StreamingRepartition,
+    Write,
 )
-from ray.data._internal.streaming_repartition import StreamingRepartitionRefBundler
+from ray.data.block import CallableClass
+from ray.data.datasource.file_datasink import _FileDatasink
 from ray.util.annotations import DeveloperAPI
 
 __all__ = [
@@ -44,11 +54,29 @@ __all__ = [
 ]
 
 
-# Scheduling strategy can be inherited from upstream operator if not specified.
-INHERITABLE_REMOTE_ARGS = ["scheduling_strategy"]
+# Scheduling strategy and label selector can be inherited from upstream operator if not specified.
+INHERITABLE_REMOTE_ARGS = ["scheduling_strategy", "label_selector"]
 
 
 logger = logging.getLogger(__name__)
+
+
+def _udf_kind(op: AbstractMap) -> Optional[str]:
+    """Classify a map op's UDF as ``"sync"``, ``"async_class"``, or ``None``.
+
+    ``"async_class"`` is a callable class with an async ``__call__``: it hosts an
+    event loop on the map worker's thread. ``"sync"`` is a classless non-async
+    UDF, invoked straight from the worker's iterator. Callable-class sync UDFs
+    return ``None`` -- they run on the actor's own thread, so they are neither.
+    """
+    from ray.data._internal.planner.plan_udf_map_op import _is_async_udf
+
+    if not isinstance(op, AbstractUDFMap):
+        return None
+    fn = op.fn
+    if isinstance(fn, CallableClass):
+        return "async_class" if _is_async_udf(fn.__call__) else None
+    return None if _is_async_udf(fn) else "sync"
 
 
 class FuseOperators(Rule):
@@ -68,6 +96,11 @@ class FuseOperators(Rule):
         # we fuse together MapOperator -> AllToAllOperator pairs.
         fused_dag = self._fuse_all_to_all_operators_in_dag(fused_dag)
 
+        # Fuse a downstream task-pool map into the hash-shuffle reduce.
+        # Runs after map fusion so any downstream map chain is already
+        # collapsed into a single TaskPoolMapOperator.
+        fused_dag = self._fuse_map_into_shuffle_reduce_in_dag(fused_dag)
+
         # Update output dependencies after fusion.
         # TODO(hchen): Instead of updating the depdencies manually,
         # we need a better abstraction for manipulating the DAG.
@@ -86,6 +119,74 @@ class FuseOperators(Rule):
         for input in op.input_dependencies:
             input._output_dependencies.append(op)
             self._update_output_deps(input)
+
+    def _fuse_map_into_shuffle_reduce_in_dag(
+        self, dag: PhysicalOperator, has_downstream_limit: bool = False
+    ) -> PhysicalOperator:
+        """Starting at the given operator, traverses up the DAG of operators
+        and fuses compatible ShuffleReduceOp -> TaskPoolMapOperator pairs
+        (object-store and disk-based variants share the same fusion policy).
+        Returns the current (root) operator after completing upstream fusions.
+        """
+        if self._can_fuse_map_into_shuffle_reduce(dag, has_downstream_limit):
+            dag = self._get_fused_map_into_shuffle_reduce_operator(
+                dag, dag.input_dependencies[0]
+            )
+
+        has_downstream_limit = has_downstream_limit or isinstance(dag, LimitOperator)
+        dag._input_dependencies = [
+            self._fuse_map_into_shuffle_reduce_in_dag(upstream_op, has_downstream_limit)
+            for upstream_op in dag.input_dependencies
+        ]
+        return dag
+
+    def _can_fuse_map_into_shuffle_reduce(
+        self, dag: PhysicalOperator, has_downstream_limit: bool
+    ) -> bool:
+        """Whether ``dag`` is a task-pool map that can be fused into the
+        hash-shuffle reduce immediately upstream of it.
+        """
+        # `dag` must be a fusable task-pool map.
+        if not (isinstance(dag, TaskPoolMapOperator) and dag.supports_fusion()):
+            return False
+
+        # Don't fuse a map with a `concurrency=` cap: the reduce runs one task
+        # per partition with no concurrency cap, so fusing would silently ignore
+        # the limit.
+        if dag.get_max_concurrency_limit() is not None:
+            return False
+
+        # Don't fuse under a downstream limit. A standalone map is throttled at
+        # task admission , but a fused reduce task runs the map over its whole
+        # partition before the limit can stop it this could materializing far
+        # more than requested.
+        if has_downstream_limit:
+            return False
+
+        # A non-file-datasink write defers `on_write_start` to the map op (e.g.
+        # Iceberg schema evolution), which the fused reduce never runs. File
+        # datasinks run it driver-side in `Dataset.write_datasink`, so they're
+        # safe; non-write maps have no such hook.
+        # TODO: support non-file-datasink writes by running the map's `on_start`
+        # hook in the fused reduce op.
+        logical_op = self._op_map.get(dag)
+        if isinstance(logical_op, Write) and not isinstance(
+            logical_op.datasink_or_legacy_datasource, _FileDatasink
+        ):
+            return False
+
+        # The sole upstream must be a hash-shuffle reduce (object-store or disk-based)
+        # that hasn't already fused with a map.
+        upstream_ops = dag.input_dependencies
+        if len(upstream_ops) != 1 or not isinstance(
+            upstream_ops[0], (ShuffleReduceOp, DiskHashShuffleReduceOp)
+        ):
+            return False
+        reduce_op = upstream_ops[0]
+        if reduce_op._fused_output_map_transformer is not None:
+            return False
+
+        return are_op_remote_args_compatible(self._op_map[reduce_op], self._op_map[dag])
 
     def _fuse_streaming_repartition_operators_in_dag(
         self, dag: PhysicalOperator
@@ -224,6 +325,17 @@ class FuseOperators(Rule):
         down_logical_op = self._op_map[down_op]
         up_logical_op = self._op_map[up_op]
 
+        # An AllToAllOperator that already absorbed a map must not absorb another.
+        # Map fusion runs first and collapses every fusable map chain, so a
+        # MapOperator still upstream of a fused shuffle was deliberately left
+        # unfused (e.g. incompatible compute strategies). The fused transform fn
+        # also carries a single `ctx.upstream_map_transformer`, so a second fusion
+        # would overwrite the first and silently drop that map.
+        if isinstance(down_op, AllToAllOperator) and any(
+            isinstance(op, AbstractMap) for op in down_op._logical_operators
+        ):
+            return False
+
         if up_op.get_additional_split_factor() > 1:
             return False
 
@@ -251,23 +363,13 @@ class FuseOperators(Rule):
             or (
                 isinstance(up_logical_op, AbstractMap)
                 and isinstance(down_logical_op, Repartition)
-                and down_logical_op._shuffle
+                and down_logical_op.shuffle
             )
         ):
             return False
 
         # Only fuse if the ops' remote arguments are compatible.
-        if not are_remote_args_compatible(
-            getattr(up_logical_op, "_ray_remote_args", {}),
-            getattr(down_logical_op, "_ray_remote_args", {}),
-        ):
-            return False
-
-        # Do not fuse if either op specifies a `_ray_remote_args_fn`,
-        # since it is not known whether the generated args will be compatible.
-        if getattr(up_logical_op, "_ray_remote_args_fn", None) or getattr(
-            down_logical_op, "_ray_remote_args_fn", None
-        ):
+        if not are_op_remote_args_compatible(up_logical_op, down_logical_op):
             return False
 
         if not self._can_merge_target_max_block_size(
@@ -278,18 +380,27 @@ class FuseOperators(Rule):
 
         # only allow fusion of MapBatches -> StreamingRepartition
         if isinstance(down_logical_op, StreamingRepartition):
-            return (
+            if not (
                 isinstance(up_logical_op, MapBatches)
-                and up_logical_op._batch_size is not None
                 and down_logical_op.target_num_rows_per_block is not None
                 and down_logical_op.target_num_rows_per_block > 0
-                # When the batch_size is a multiple of target_num_rows_per_block, fusing would still produce exactly identical sequence of blocks.
-                # See `_fuse_streaming_repartition_operators_in_dag` docstring for details.
-                # TODO: when the StreamingRepartition supports none_strict_mode, we can fuse
-                # `MapBatches -> StreamingRepartition` no matter what the `batch_size` and `target_num_rows` are.
-                # https://anyscale1.atlassian.net/browse/DATA-1731
-                and up_logical_op._batch_size
-                % down_logical_op.target_num_rows_per_block
+            ):
+                return False
+
+            # Non-strict mode: can always fuse, no matter what batch_size is.
+            # This allows fusion without cross-task buffering by using default bundler.
+            if not down_logical_op.strict:
+                return True
+
+            # Strict mode: only fuse when batch_size is a multiple of target_num_rows_per_block.
+            # When batch_size % target == 0, each batch can be perfectly sliced into chunks
+            # without cross-task buffering. See `_fuse_streaming_repartition_operators_in_dag`
+            # docstring for details.
+            # "auto" batch_size is resolved at task runtime, so divisibility is unknown at
+            # plan time — skip fusion and let the operators run separately.
+            return (
+                isinstance(up_logical_op.batch_size, int)
+                and up_logical_op.batch_size % down_logical_op.target_num_rows_per_block
                 == 0
             )
         # Other operators cannot fuse with StreamingRepartition.
@@ -298,6 +409,61 @@ class FuseOperators(Rule):
 
         # Otherwise, ops are compatible for fusion.
         return True
+
+    def _get_fused_map_into_shuffle_reduce_operator(
+        self,
+        down_op: TaskPoolMapOperator,
+        up_op: Union[ShuffleReduceOp, DiskHashShuffleReduceOp],
+    ) -> Union[ShuffleReduceOp, DiskHashShuffleReduceOp]:
+        name = up_op.name + "->" + down_op.name
+
+        up_logical_op = self._op_map.pop(up_op)
+        self._op_map.pop(down_op)
+
+        if isinstance(up_op, DiskHashShuffleReduceOp):
+            fused_op = DiskHashShuffleReduceOp(
+                up_op.input_dependencies,
+                up_op.data_context,
+                num_partitions=up_op._num_partitions,
+                reduce_fn=up_op._reduce_fn,
+                disallow_block_splitting=up_op._disallow_block_splitting,
+                reduce_ray_remote_args=up_op._reduce_ray_remote_args,
+                peak_memory_multiplier=up_op._peak_memory_multiplier,
+                should_emit_empty_partitions=up_op._emit_empty_partitions,
+                # The fused map (filter/flat_map/...) may change the row count.
+                preserves_row_count=False,
+                name=name,
+                fused_output_map_transformer=down_op.get_map_transformer(),
+                fused_output_map_task_kwargs=down_op.get_map_task_kwargs(),
+                fused_output_map_target_max_block_size_override=(
+                    down_op.target_max_block_size_override
+                ),
+            )
+        else:  # object-store ShuffleReduceOp (may be multi-input for Join)
+            fused_op = ShuffleReduceOp(
+                up_op.input_dependencies,
+                up_op.data_context,
+                num_partitions=up_op._num_partitions,
+                reduce_fn=up_op._reduce_fn,
+                disallow_block_splitting=up_op._disallow_block_splitting,
+                reduce_ray_remote_args=up_op._reduce_ray_remote_args,
+                preserve_partition_order=up_op._preserve_partition_order,
+                peak_memory_multiplier=up_op._peak_memory_multiplier,
+                should_emit_empty_partitions=up_op._emit_empty_partitions,
+                # The fused map (filter/flat_map/...) may change the row count.
+                preserves_row_count=False,
+                name=name,
+                fused_output_map_transformer=down_op.get_map_transformer(),
+                fused_output_map_task_kwargs=down_op.get_map_task_kwargs(),
+                fused_output_map_target_max_block_size_override=(
+                    down_op.target_max_block_size_override
+                ),
+            )
+        fused_op.set_logical_operators(
+            *up_op._logical_operators, *down_op._logical_operators
+        )
+        self._op_map[fused_op] = up_logical_op
+        return fused_op
 
     def _get_fused_streaming_repartition_operator(
         self, down_op: PhysicalOperator, up_op: PhysicalOperator
@@ -313,40 +479,61 @@ class FuseOperators(Rule):
         up_logical_op = self._op_map.pop(up_op)
         assert isinstance(up_logical_op, MapBatches)
         assert isinstance(down_logical_op, StreamingRepartition)
-        assert (
-            up_logical_op._batch_size % down_logical_op.target_num_rows_per_block == 0
-        )
-        batch_size = up_logical_op._batch_size
+
+        batch_size = up_logical_op.batch_size
+
+        # Choose ref_bundler and fusion behavior based on strict mode
+        if down_logical_op.strict:
+            # Strict mode: use StreamingRepartitionRefBundler for stitching.
+            # Only works when batch_size % target == 0 (verified in _can_fuse).
+            assert batch_size % down_logical_op.target_num_rows_per_block == 0, (
+                f"Strict mode fusion requires batch_size ({batch_size}) to be "
+                f"a multiple of target_num_rows_per_block "
+                f"({down_logical_op.target_num_rows_per_block})"
+            )
+            ref_bundler = RebundleQueue(ExactMultipleSize(batch_size))
+        else:
+            # Non-strict mode: use default pass-through bundler.
+            # Works with any batch_size without cross-task buffering.
+            ref_bundler = None
 
         compute = self._fuse_compute_strategy(
-            up_logical_op._compute, down_logical_op._compute
+            up_logical_op.compute, down_logical_op.compute
         )
         assert compute is not None
 
         map_task_kwargs = {**up_op._map_task_kwargs, **down_op._map_task_kwargs}
 
-        ray_remote_args = up_logical_op._ray_remote_args
+        ray_remote_args = up_logical_op.ray_remote_args
         ray_remote_args_fn = (
-            up_logical_op._ray_remote_args_fn or down_logical_op._ray_remote_args_fn
+            up_logical_op.ray_remote_args_fn or down_logical_op.ray_remote_args_fn
         )
         input_deps = up_op.input_dependencies
         assert len(input_deps) == 1
         input_op = input_deps[0]
 
         assert up_op.data_context is down_op.data_context
+
+        # In non-strict mode, use min_rows_per_bundle to ensure creating batches with batch_size.
+        # In strict mode, ref_bundler handles bundling, so do not set min_rows_per_bundle.
+        # "auto" batch_size is resolved at task runtime, so we cannot set a fixed
+        # min_rows_per_bundle at plan time — leave it as None and let bundling use its default.
+        min_rows = (
+            None if (down_logical_op.strict or batch_size == "auto") else batch_size
+        )
+
         op = MapOperator.create(
             up_op.get_map_transformer().fuse(down_op.get_map_transformer()),
             input_op,
             up_op.data_context,
             name=name,
             compute_strategy=compute,
-            ref_bundler=StreamingRepartitionRefBundler(batch_size),
+            ref_bundler=ref_bundler,
+            min_rows_per_bundle=min_rows,
             map_task_kwargs=map_task_kwargs,
             ray_remote_args=ray_remote_args,
             ray_remote_args_fn=ray_remote_args_fn,
-            # For now, we don't want to over-fuse StreamingRepartition with other map operators,
-            # so the result operator does not support further fusion.
-            supports_fusion=False,
+            supports_fusion=True,
         )
         op.set_logical_operators(*up_op._logical_operators, *down_op._logical_operators)
         for map_task_kwargs_fn in itertools.chain(
@@ -354,17 +541,17 @@ class FuseOperators(Rule):
         ):
             op.add_map_task_kwargs_fn(map_task_kwargs_fn)
 
-        input_op = up_logical_op.input_dependency
+        input_op = up_logical_op.input_dependencies[0]
         logical_op = AbstractUDFMap(
             name,
-            input_op,
-            up_logical_op._fn,
-            can_modify_num_rows=up_logical_op.can_modify_num_rows(),
-            fn_args=up_logical_op._fn_args,
-            fn_kwargs=up_logical_op._fn_kwargs,
-            fn_constructor_args=up_logical_op._fn_constructor_args,
-            fn_constructor_kwargs=up_logical_op._fn_constructor_kwargs,
-            min_rows_per_bundled_input=batch_size,
+            [input_op],
+            up_logical_op.fn,
+            can_modify_num_rows=up_logical_op.can_modify_num_rows,
+            fn_args=up_logical_op.fn_args,
+            fn_kwargs=up_logical_op.fn_kwargs,
+            fn_constructor_args=up_logical_op.fn_constructor_args,
+            fn_constructor_kwargs=up_logical_op.fn_constructor_kwargs,
+            min_rows_per_bundled_input=min_rows,
             compute=compute,
             ray_remote_args_fn=ray_remote_args_fn,
             ray_remote_args=ray_remote_args,
@@ -449,16 +636,16 @@ class FuseOperators(Rule):
         )
 
         compute = self._fuse_compute_strategy(
-            up_logical_op._compute, down_logical_op._compute
+            up_logical_op.compute, down_logical_op.compute
         )
         assert compute is not None
 
         # Merge map task kwargs
         map_task_kwargs = {**up_op._map_task_kwargs, **down_op._map_task_kwargs}
 
-        ray_remote_args = up_logical_op._ray_remote_args
+        ray_remote_args = up_logical_op.ray_remote_args
         ray_remote_args_fn = (
-            up_logical_op._ray_remote_args_fn or down_logical_op._ray_remote_args_fn
+            up_logical_op.ray_remote_args_fn or down_logical_op.ray_remote_args_fn
         )
         # Make the upstream operator's inputs the new, fused operator's inputs.
         input_deps = up_op.input_dependencies
@@ -479,6 +666,23 @@ class FuseOperators(Rule):
         else:
             on_start = up_on_start or down_on_start
 
+        # Preserve StreamingRepartitionRefBundler if either operator has one.
+        # This is critical for strict-mode streaming repartition to maintain
+        # exact block size guarantees during further fusion.
+        ref_bundler = None
+        if isinstance(up_op._block_ref_bundler, RebundleQueue) and isinstance(
+            up_op._block_ref_bundler._strategy, ExactMultipleSize
+        ):
+            ref_bundler = up_op._block_ref_bundler
+        elif isinstance(down_op._block_ref_bundler, RebundleQueue) and isinstance(
+            down_op._block_ref_bundler._strategy, ExactMultipleSize
+        ):
+            ref_bundler = down_op._block_ref_bundler
+
+        isolate_workers = (
+            isinstance(up_op, TaskPoolMapOperator) and up_op.isolate_workers
+        ) or (isinstance(down_op, TaskPoolMapOperator) and down_op.isolate_workers)
+
         # Fused physical map operator.
         assert up_op.data_context is down_op.data_context
         op = MapOperator.create(
@@ -488,11 +692,15 @@ class FuseOperators(Rule):
             target_max_block_size_override=target_max_block_size,
             name=name,
             compute_strategy=compute,
-            min_rows_per_bundle=min_rows_per_bundled_input,
+            min_rows_per_bundle=min_rows_per_bundled_input
+            if ref_bundler is None
+            else None,
+            ref_bundler=ref_bundler,
             map_task_kwargs=map_task_kwargs,
             ray_remote_args=ray_remote_args,
             ray_remote_args_fn=ray_remote_args_fn,
             on_start=on_start,
+            isolate_workers=isolate_workers,
         )
         op.set_logical_operators(*up_op._logical_operators, *down_op._logical_operators)
         for map_task_kwargs_fn in itertools.chain(
@@ -504,23 +712,23 @@ class FuseOperators(Rule):
         # TODO(Scott): This is hacky, remove this once we push fusion to be purely based
         # on a lower-level operator spec.
         if isinstance(up_logical_op, AbstractUDFMap):
-            input_op = up_logical_op.input_dependency
+            input_op = up_logical_op.input_dependencies[0]
         else:
             # Bottom out at the source logical op (e.g. Read()).
             input_op = up_logical_op
 
         can_modify_num_rows = (
-            up_logical_op.can_modify_num_rows() or down_logical_op.can_modify_num_rows()
+            up_logical_op.can_modify_num_rows or down_logical_op.can_modify_num_rows
         )
         if isinstance(down_logical_op, AbstractUDFMap):
             logical_op = AbstractUDFMap(
                 name,
-                input_op,
-                down_logical_op._fn,
-                fn_args=down_logical_op._fn_args,
-                fn_kwargs=down_logical_op._fn_kwargs,
-                fn_constructor_args=down_logical_op._fn_constructor_args,
-                fn_constructor_kwargs=down_logical_op._fn_constructor_kwargs,
+                [input_op],
+                down_logical_op.fn,
+                fn_args=down_logical_op.fn_args,
+                fn_kwargs=down_logical_op.fn_kwargs,
+                fn_constructor_args=down_logical_op.fn_constructor_args,
+                fn_constructor_kwargs=down_logical_op.fn_constructor_kwargs,
                 min_rows_per_bundled_input=min_rows_per_bundled_input,
                 compute=compute,
                 can_modify_num_rows=can_modify_num_rows,
@@ -531,7 +739,7 @@ class FuseOperators(Rule):
             # The downstream op is AbstractMap instead of AbstractUDFMap.
             logical_op = AbstractMap(
                 name,
-                input_op,
+                [input_op],
                 can_modify_num_rows=can_modify_num_rows,
                 min_rows_per_bundled_input=min_rows_per_bundled_input,
                 ray_remote_args_fn=ray_remote_args_fn,
@@ -547,8 +755,8 @@ class FuseOperators(Rule):
         down_logical_op: AbstractMap,
         up_logical_op: AbstractMap,
     ) -> Optional[int]:
-        us_bundle_min_rows_req = up_logical_op._min_rows_per_bundled_input
-        ds_bundle_min_rows_req = down_logical_op._min_rows_per_bundled_input
+        us_bundle_min_rows_req = up_logical_op.min_rows_per_bundled_input
+        ds_bundle_min_rows_req = down_logical_op.min_rows_per_bundled_input
 
         # In case neither of the ops specify `min_rows_per_bundled_input`,
         # return None
@@ -579,7 +787,7 @@ class FuseOperators(Rule):
         assert isinstance(up_logical_op, AbstractMap)
 
         # Fuse transformation functions.
-        ray_remote_args = up_logical_op._ray_remote_args
+        ray_remote_args = up_logical_op.ray_remote_args
         down_transform_fn = down_op.get_transformation_fn()
         up_map_transformer = up_op.get_map_transformer()
 
@@ -615,20 +823,21 @@ class FuseOperators(Rule):
             sub_progress_bar_names=down_op._sub_progress_bar_names,
             name=name,
         )
+        op.set_logical_operators(*up_op._logical_operators, *down_op._logical_operators)
         # Bottom out at the source logical op (e.g. Read()).
         input_op = up_logical_op
 
         if isinstance(down_logical_op, RandomShuffle):
             logical_op = RandomShuffle(
-                input_op,
                 name=name,
+                input_dependencies=[input_op],
                 ray_remote_args=ray_remote_args,
             )
         elif isinstance(down_logical_op, Repartition):
             logical_op = Repartition(
-                input_op,
-                num_outputs=down_logical_op._num_outputs,
-                shuffle=down_logical_op._shuffle,
+                num_outputs=down_logical_op.num_outputs,
+                input_dependencies=[input_op],
+                shuffle=down_logical_op.shuffle,
             )
         self._op_map[op] = logical_op
         # Return the fused physical operator.
@@ -642,10 +851,22 @@ class FuseOperators(Rule):
     ) -> bool:
         if (
             cls._fuse_compute_strategy(
-                upstream_op._compute,
-                downstream_op._compute,
+                upstream_op.compute,
+                downstream_op.compute,
             )
             is None
+        ):
+            return False
+
+        # Don't fuse a sync UDF into an async callable-class UDF: the latter hosts
+        # an event loop on the map worker's thread, so fusing would put the sync
+        # UDF on that loop thread and break user code calling ``asyncio.run()``
+        # (https://github.com/ray-project/ray/issues/57729). They also scale
+        # differently (IO-bound vs CPU-bound), so they make poor fusion
+        # candidates even aside from the event-loop issue.
+        if (
+            _udf_kind(upstream_op) == "sync"
+            and _udf_kind(downstream_op) == "async_class"
         ):
             return False
 
@@ -664,19 +885,49 @@ class FuseOperators(Rule):
         #   ``Filter->MapBatches(batch_size=...)``
         #
         if (
-            upstream_op.can_modify_num_rows()
-            and downstream_op._min_rows_per_bundled_input is not None
-        ):
+            upstream_op.can_modify_num_rows
+            # For historical consistency, we allow fusing `MapBatches` even if it
+            # can modify the number of rows. Before #60448, `MapBatches` was
+            # incorrectly marked as not modifying row counts, so it was always
+            # fused. We preserve that behavior here to avoid regressions.
+            #
+            # For the full history, see https://github.com/ray-project/ray/pull/60756.
+            and not isinstance(upstream_op, MapBatches)
+        ) and downstream_op.min_rows_per_bundled_input is not None:
             logger.debug(
                 f"Upstream operator '{upstream_op}' could be modifying # of input "
                 f"rows, while downstream operator '{downstream_op}' expects at least "
-                f"{downstream_op._min_rows_per_bundled_input} rows in a batch. "
+                f"{downstream_op.min_rows_per_bundled_input} rows in a batch. "
                 f"Skipping fusion"
             )
 
             return False
 
         return True
+
+
+def are_op_remote_args_compatible(
+    up_logical_op: Union[AbstractMap, AbstractAllToAll],
+    down_logical_op: Union[AbstractMap, AbstractAllToAll],
+) -> bool:
+    """Check whether two logical ops can be fused based on their Ray remote args.
+
+    Two ops are compatible only if their ``ray_remote_args`` are mergeable and
+    neither op specifies a ``ray_remote_args_fn``, since the args it generates
+    are not known ahead of time.
+    """
+    # Do not fuse if either op specifies a `ray_remote_args_fn`,
+    # since it is not known whether the generated args will be compatible.
+    # Only `AbstractMap` ops carry a `ray_remote_args_fn`.
+    for logical_op in (up_logical_op, down_logical_op):
+        if isinstance(logical_op, AbstractMap) and logical_op.ray_remote_args_fn:
+            return False
+
+    # Only fuse if the ops' remote arguments are compatible.
+    return are_remote_args_compatible(
+        up_logical_op.ray_remote_args,
+        down_logical_op.ray_remote_args,
+    )
 
 
 @DeveloperAPI
@@ -695,6 +946,7 @@ def are_remote_args_compatible(
 
     if prev_args != remote_args:
         return False
+
     return True
 
 

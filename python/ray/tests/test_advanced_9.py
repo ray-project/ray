@@ -7,12 +7,15 @@ import pytest
 import ray
 import ray._private.ray_constants as ray_constants
 from ray._common.network_utils import parse_address
-from ray._common.test_utils import Semaphore, wait_for_condition
+from ray._common.test_utils import (
+    Semaphore,
+    run_string_as_driver,
+    wait_for_condition,
+)
 from ray._private.test_utils import (
     client_test_enabled,
     external_redis_test_enabled,
     get_gcs_memory_used,
-    run_string_as_driver,
     run_string_as_driver_nonblocking,
 )
 from ray._raylet import GCS_PID_KEY, GcsClient
@@ -62,32 +65,6 @@ def test_back_pressure(shutdown_only_with_initialization_check):
         assert False
 
     ray.shutdown()
-
-
-def test_local_mode_deadlock(shutdown_only_with_initialization_check):
-    ray.init(local_mode=True)
-
-    @ray.remote
-    class Foo:
-        def __init__(self):
-            pass
-
-        def ping_actor(self, actor):
-            actor.ping.remote()
-            return 3
-
-    @ray.remote
-    class Bar:
-        def __init__(self):
-            pass
-
-        def ping(self):
-            return 1
-
-    foo = Foo.remote()
-    bar = Bar.remote()
-    # Expect ping_actor call returns normally without deadlock.
-    assert ray.get(foo.ping_actor.remote(bar)) == 3
 
 
 def function_entry_num(job_id):
@@ -364,7 +341,7 @@ print(ray.get([use_gpu.remote(), use_gpu.remote()]))
 
 
 @pytest.mark.skipif(external_redis_test_enabled(), reason="Only valid in non redis env")
-def test_redis_not_available(monkeypatch, call_ray_stop_only):
+def test_redis_not_available(monkeypatch, call_ray_stop_only, create_auth_token):
     monkeypatch.setenv("RAY_redis_db_connect_retries", "5")
     monkeypatch.setenv("RAY_REDIS_ADDRESS", "localhost:12345")
 

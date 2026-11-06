@@ -19,14 +19,13 @@ class NCCLUniqueIDStore:
         nccl_id: the NCCLUniqueID held in this store.
     """
 
-    def __init__(self, name):
+    def __init__(self, name: str):
         self.name = name
         self.nccl_id = None
         self.event = asyncio.Event()
 
-    async def set_id(self, uid):
-        """
-        Initialize the NCCL unique ID for this store.
+    async def set_id(self, uid: bytes):
+        """Initialize the NCCL unique ID for this store.
 
         Args:
             uid: the unique ID generated via the NCCL generate_communicator_id API.

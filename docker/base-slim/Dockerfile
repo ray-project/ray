@@ -4,7 +4,7 @@
 # Mainly for use on Anyscale.
 
 ARG BASE_IMAGE
-FROM ${BASE_IMAGE} AS main-build
+FROM ${BASE_IMAGE}
 ARG PYTHON_VERSION="3.10"
 ARG PYTHON_DEPSET="python/deplocks/base_slim/ray_base_slim_py${PYTHON_VERSION}.lock"
 ARG CONSTRAINTS_FILE="python/requirements_compiled_py${PYTHON_VERSION}.txt"
@@ -34,6 +34,7 @@ APT_PKGS=(
 )
 
 apt-get update
+apt-get upgrade -y
 apt-get install -y --no-install-recommends "${APT_PKGS[@]}"
 rm -rf /var/lib/apt/lists/*
 
@@ -42,7 +43,7 @@ usermod -aG sudo ray
 echo 'ray ALL=NOPASSWD: ALL' >> /etc/sudoers
 
 # Install uv
-curl -sSL -o- https://astral.sh/uv/install.sh | env UV_UNMANAGED_INSTALL="/usr/local/bin" sh
+curl -sSL -o- https://astral.sh/uv/0.13.4/install.sh | env UV_UNMANAGED_INSTALL="/usr/local/bin" sh
 
 # Determine the architecture of the host
 if [[ "${HOSTTYPE}" =~ ^x86_64 ]]; then
@@ -119,8 +120,34 @@ rm /tmp/miniforge.sh
 /home/ray/anaconda3/bin/conda init bash
 
 eval "$(/home/ray/anaconda3/bin/conda shell.bash activate)"
-/home/ray/anaconda3/bin/conda install -y "python=${PYTHON_VERSION}"
+# Pin certifi and pip to their eMudhra CA fix releases. certifi matches the pin
+# in the lock files, so the lock install below leaves conda's copy in place.
+# conda-forge certifi 2026.10.19 allows python 3.10 only through a repodata
+# patch (conda-forge/conda-forge-repodata-patches-feedstock@d7dcb640); its other
+# 2026 builds require python>=3.11, and without a 3.10 build the solver drops
+# certifi, requests and conda itself and fails with RemoveError.
+# TODO(elliot-barn): remove this conditional once Python 3.10 is deprecated.
+CONDA_PIP_SPEC=("pip=26.2.2")
+if [[ "${PYTHON_VERSION}" == "3.10" ]]; then
+    # conda-forge pip 26.2.2 requires python>=3.11; 3.10 installs it from PyPI below.
+    CONDA_PIP_SPEC=()
+fi
+# CVE-2026-111497: brotli-python < 1.2.1 is vulnerable. conda-forge has no py3.10
+# build of 1.2.1, so 3.10 installs the PyPI wheel below.
+CONDA_BROTLI_SPEC=("brotli-python>=1.2.1")
+if [[ "${PYTHON_VERSION}" == "3.10" ]]; then
+    CONDA_BROTLI_SPEC=()
+fi
+/home/ray/anaconda3/bin/conda install -y "python=${PYTHON_VERSION}" "certifi=2026.10.19" "${CONDA_PIP_SPEC[@]}" "${CONDA_BROTLI_SPEC[@]}"
 /home/ray/anaconda3/bin/conda clean -a
+
+# conda-forge pip 26.2.2 requires python>=3.11; PyPI's supports 3.10.
+if [[ "${PYTHON_VERSION}" == "3.10" ]]; then
+    uv pip install --system --no-cache-dir pip==26.2.2
+    /home/ray/anaconda3/bin/conda remove --force -y brotli-python
+    uv pip install --system --no-cache-dir --no-deps "Brotli==1.2.1"
+    /home/ray/anaconda3/bin/conda clean -y --all
+fi
 
 uv pip install --system --no-cache-dir --no-deps --index-strategy unsafe-best-match \
     -r $HOME/python_depset.lock
@@ -132,62 +159,5 @@ mkdir -p /tmp/supervisord
 EOF
 
 ENV PATH="/home/ray/.local/bin:/home/ray/anaconda3/bin:$PATH"
-
-# --- HAProxy Build Stage ---
-FROM $BASE_IMAGE AS haproxy-builder
-
-RUN <<EOF
-#!/bin/bash
-set -euo pipefail
-
-apt-get update -y
-apt-get install -y --no-install-recommends \
-    build-essential \
-    ca-certificates \
-    curl \
-    libc6-dev \
-    liblua5.3-dev \
-    libpcre3-dev \
-    libssl-dev \
-    zlib1g-dev
-rm -rf /var/lib/apt/lists/*
-
-# Install HAProxy from source
-HAPROXY_VERSION="2.8.12"
-BUILD_DIR=$(mktemp -d)
-curl -sSfL -o "${BUILD_DIR}/haproxy.tar.gz" "https://www.haproxy.org/download/2.8/src/haproxy-${HAPROXY_VERSION}.tar.gz"
-tar -xzf "${BUILD_DIR}/haproxy.tar.gz" -C "${BUILD_DIR}" --strip-components=1
-make -C "${BUILD_DIR}" TARGET=linux-glibc USE_OPENSSL=1 USE_ZLIB=1 USE_PCRE=1 USE_LUA=1 USE_PROMEX=1 -j$(nproc)
-make -C "${BUILD_DIR}" install SBINDIR=/usr/local/bin
-rm -rf "${BUILD_DIR}"
-
-EOF
-
-# --- Return to main image ---
-FROM main-build AS main
-
-# Switch to root for system-level HAProxy setup
-USER root
-
-# Copy HAProxy binary from builder stage
-COPY --from=haproxy-builder /usr/local/bin/haproxy /usr/local/bin/haproxy
-
-# Install HAProxy runtime dependency and setup
-RUN <<EOF
-#!/bin/bash
-set -euo pipefail
-
-apt-get update -y
-apt-get install -y --no-install-recommends socat liblua5.3-0
-
-mkdir -p /etc/haproxy /run/haproxy /var/log/haproxy
-chown -R ray:"$(id -gn ray)" /run/haproxy
-
-rm -rf /var/lib/apt/lists/*
-
-EOF
-
-USER ray
-WORKDIR /home/ray
 
 CMD ["bash"]

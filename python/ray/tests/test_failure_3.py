@@ -57,7 +57,7 @@ def test_plasma_store_operation_after_raylet_dies(ray_start_cluster):
     cluster = ray_start_cluster
     system_configs = {
         "health_check_initial_delay_ms": 0,
-        "health_check_timeout_ms": 10,
+        "health_check_timeout_ms": 100,
         "health_check_failure_threshold": 1,
     }
     cluster.add_node(

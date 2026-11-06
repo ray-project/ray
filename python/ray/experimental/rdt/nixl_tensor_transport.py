@@ -1,0 +1,940 @@
+import contextlib
+import functools
+import glob
+import logging
+import math
+import os
+import threading
+import time
+import traceback
+from collections import OrderedDict
+from dataclasses import dataclass, field
+from typing import TYPE_CHECKING, Any, Dict, List, Optional
+
+import ray
+from ray._private.ray_constants import (
+    NIXL_REMOTE_AGENT_CACHE_MAXSIZE,
+    RDT_FETCH_FAIL_TIMEOUT_SECONDS,
+)
+from ray.experimental.rdt.nixl_memory_pool import (
+    MemoryPoolManager,
+    TensorLayout,
+    group_tensors_by_desc,
+    packed_offsets,
+)
+from ray.experimental.rdt.tensor_transport_manager import (
+    CommunicatorMetadata,
+    FetchRequest,
+    TensorTransportManager,
+    TensorTransportMetadata,
+)
+
+if TYPE_CHECKING:
+    import torch
+
+logger = logging.getLogger(__name__)
+
+
+@functools.lru_cache(maxsize=1)
+def _is_efa_available() -> bool:
+    """Detect whether AWS EFA (Elastic Fabric Adapter) devices are present.
+
+    A bare host exposes ``efa*`` netdevs, but inside a container/Kubernetes pod
+    netdevs are network-namespaced away and only the rdma-verbs devices under
+    ``/sys/class/infiniband`` are mounted in. Those verbs devices are not
+    EFA-specific -- ordinary InfiniBand/RoCE NICs appear there too -- so we
+    confirm each one is bound to the kernel ``efa`` driver before treating it as
+    EFA. Without that check, non-AWS RDMA nodes would wrongly auto-select the
+    LIBFABRIC backend instead of UCX.
+    """
+    if glob.glob("/sys/class/net/efa*"):
+        return True
+    for ib_dev in glob.glob("/sys/class/infiniband/*"):
+        # A stale or broken sysfs entry shouldn't abort the scan; skip it and
+        # keep looking (defaulting to UCX if nothing resolves to the efa driver).
+        try:
+            driver = os.path.realpath(os.path.join(ib_dev, "device", "driver"))
+        except OSError:
+            continue
+        if os.path.basename(driver) == "efa":
+            return True
+    return False
+
+
+def _nixl_transport_available_in_process() -> bool:
+    """Returns whether the NIXL tensor transport can be initialized in this process.
+
+    Returns:
+        True if the NIXL agent initializes successfully, False on any failure
+        (e.g. nixl not installed, LIBFABRIC/EFA probe failure, or other backend
+        init errors).
+    """
+    try:
+        from ray.experimental.rdt.util import get_tensor_transport_manager
+
+        get_tensor_transport_manager("NIXL").get_nixl_agent()
+        return True
+    except Exception:
+        logger.debug("NIXL tensor transport unavailable on actor.", exc_info=True)
+        return False
+
+
+@dataclass
+class NixlCommunicatorMetadata(CommunicatorMetadata):
+    """Metadata for the NIXL communicator."""
+
+
+@dataclass
+class NixlTransportMetadata(TensorTransportMetadata):
+    """Metadata for tensors stored in the GPU object store for NIXL transport.
+
+    Args:
+        nixl_serialized_descs: Serialized tensor descriptors for NIXL transport.
+        nixl_agent_meta: The additional metadata of the remote NIXL agent.
+        nixl_agent_name: The name of the NIXL agent.
+        nixl_agent_meta_version: The version of the NIXL agent metadata.
+    """
+
+    nixl_serialized_descs: Optional[bytes] = None
+    nixl_agent_meta: Optional[bytes] = None
+    nixl_agent_name: Optional[str] = None
+    nixl_agent_meta_version: Optional[int] = 0
+
+    __eq__ = object.__eq__
+    __hash__ = object.__hash__
+
+
+@dataclass
+class TensorDesc:
+    # nixlRegDList handle.
+    reg_desc: Any
+    # tracks the number of NIXL metadata containing the tensor.
+    metadata_count: int
+    # size in bytes of the registered storage.
+    size: int
+
+
+@dataclass
+class NixlFetchRequest(FetchRequest):
+    """NIXL-specific FetchRequest carrying the async transfer state.
+
+    Returned by fetch_multiple_tensors and consumed by wait_fetch_complete.
+
+    Args:
+        obj_id: Inherited. The object ID for the transfer, used for abort checks and cleanup.
+        tensors: Inherited. Pre-allocated output tensors (populated before the transfer starts).
+        xfer_handle: NIXL transfer request handle.
+        nixl_agent: Reference to the NIXL agent.
+        remote_name: Name of the remote NIXL agent.
+        remove_tensor_descs: Whether to remove tensor descriptors from the cache during cleanup.
+        registered_tensors: Tensors that were registered with NIXL, to deregister
+            on cleanup. These are the buffers behind ``tensors``, which for a
+            group transfer are views into fewer, larger buffers.
+    """
+
+    xfer_handle: Any = None
+    nixl_agent: Any = None
+    remote_name: Optional[str] = None
+    remove_tensor_descs: bool = False
+    transport: Any = None
+    registered_tensors: List["torch.Tensor"] = field(default_factory=list)
+
+    def __del__(self):
+        if self.transport is not None:
+            self.transport._cleanup_transfer(
+                self.obj_id,
+                self.registered_tensors,
+                self.xfer_handle,
+                self.remote_name,
+                self.remove_tensor_descs,
+            )
+
+
+class NixlTensorTransport(TensorTransportManager):
+    def __init__(self):
+        # This is lazily initialized because it requires NIXL to actually be installed and we want to allow an owner that is just coordinating to not need to have NIXL installed.
+        self._nixl_agent = None
+        self._aborted_transfer_obj_ids = set()
+        self._aborted_transfer_obj_ids_lock = threading.Lock()
+        # Mapping from tensor storage data pointer to the NIXL descriptor and reference count.
+        # Unlike _managed_meta_nixl, we only deregister tensors when ALL metadata containing the tensor is freed.
+        self._tensor_desc_cache: Dict[int, TensorDesc] = {}
+        # Mapping from object ID to the NIXL managed meta.
+        # The lifetime of _managed_meta_nixl is tied to the object ref and freed when the ref goes out of scope.
+        self._managed_meta_nixl: Dict[str, Any] = {}
+        # Lock protecting _tensor_desc_cache and _managed_meta_nixl since they can be
+        # accessed from the main task execution thread or the _ray_system thread.
+        self._cache_lock = threading.RLock()
+        # LRU cache of remote agent names. When full, the least
+        # recently used remote agent is evicted and remove_remote_agent is called.
+        self._remote_agents: OrderedDict = OrderedDict()
+        # Guards _remote_agents only, held briefly and never while waiting for an agent lock.
+        self._remote_agent_cache_lock = threading.Lock()
+        # Per thread, the cleanups that a finalizer deferred while the thread holds the
+        # cache lock, or None when it does not hold it.
+        self._local = threading.local()
+        # One lock per remote agent. Fetching from an agent, polling its transfers and
+        # removing it all hold it, so an agent is never removed with a transfer in flight.
+        # Locks are never deleted, so an agent always has the same one. It is reentrant
+        # because garbage collection can run _cleanup_transfer on a thread that holds it.
+        self._remote_agent_locks: Dict[str, Any] = {}
+        # Transfers that may still be in flight on each remote agent.
+        self._inflight_xfers: Dict[str, set] = {}
+        # Handles to release once the polling of an agent's transfers ends. An agent
+        # has an entry only while it is being polled.
+        self._deferred_releases: Dict[str, List[Any]] = {}
+        # Increment the version whenever memory is deregistered.
+        self._nixl_agent_meta_version = 0
+        self._memory_pool: Optional[MemoryPoolManager] = None
+        # The NIXL backend the agent was actually created with ("UCX" or "LIBFABRIC").
+        self._backend: Optional[str] = None
+        # The CUDA stream to synchronize before NIXL memory registration in
+        # extract_tensor_transport_metadata. When None, all streams on each
+        # device are synchronized instead.
+        self._cuda_stream: Optional["torch.cuda.Stream"] = None
+
+    def tensor_transport_backend(self) -> str:
+        return "NIXL"
+
+    def set_cuda_stream(self, stream: Optional["torch.cuda.Stream"]) -> None:
+        """Sets the CUDA stream to synchronize before NIXL memory registration.
+
+        See :func:`ray.experimental.set_nixl_cuda_stream` for details.
+        """
+        self._cuda_stream = stream
+
+    @staticmethod
+    def is_one_sided() -> bool:
+        return True
+
+    @staticmethod
+    def can_abort_transport() -> bool:
+        return True
+
+    def register_nixl_memory(self, tensor: "torch.Tensor") -> None:
+        """Registers the tensor's memory with NIXL and bumps the reference count so the memory region is never deregistered."""
+        self._add_tensor_descs([tensor])
+
+    def register_nixl_memory_pool(self, size: int, device: "torch.device") -> None:
+        """Pre-allocates a memory pool and registers it with NIXL.
+
+        Args:
+            size: Size of the memory pool in bytes.
+            device: Device to allocate the pool on (cpu or cuda).
+
+        Raises:
+            ValueError: If a memory pool is already registered.
+        """
+        if self._memory_pool is not None:
+            raise ValueError(
+                "A memory pool is already registered. "
+                "Only one memory pool is supported."
+            )
+        nixl_agent = self.get_nixl_agent()
+        pool = MemoryPoolManager(pool_size=size, device=device)
+        nixl_agent.register_memory(pool.get_pool_tensor())
+        self._memory_pool = pool
+
+    def deregister_nixl_memory(self, tensor: "torch.Tensor") -> None:
+        """Decrements the reference count for the tensor's NIXL memory registration.
+        If the count reaches 0, the memory is deregistered from NIXL.
+        """
+        self._remove_tensor_descs([tensor])
+
+    def select_backend(self) -> str:
+        """Returns the NIXL backend to attempt.
+
+        Prefers LIBFABRIC when EFA devices are present and UCX everywhere else.
+        LIBFABRIC requires GPUDirect (GDR) for CUDA registration; if it isn't
+        available, ``_add_tensor_descs`` surfaces a clear error at registration
+        time with backend-specific troubleshooting guidance.
+        """
+        return "LIBFABRIC" if _is_efa_available() else "UCX"
+
+    def _make_nixl_agent(self, backend: str):
+        """Creates a NIXL agent configured with the given backend."""
+        from nixl._api import nixl_agent, nixl_agent_config
+
+        agent_config = nixl_agent_config(backends=[backend])
+        ctx = ray.get_runtime_context()
+        actor_id = ctx.get_actor_id()
+        if actor_id is None:
+            # If the actor id is None, it means the current process is a driver.
+            import uuid
+
+            actor_id = f"RAY-DRIVER-{uuid.uuid4()}"
+        return nixl_agent(actor_id, agent_config)
+
+    def get_nixl_agent(self):
+        """Returns the NIXL agent, building it once on first use."""
+        if self._nixl_agent is None:
+            self._nixl_agent = self._init_nixl_agent()
+        return self._nixl_agent
+
+    def _init_nixl_agent(self):
+        """Builds the NIXL agent for the selected backend."""
+        backend = self.select_backend()
+        agent = self._make_nixl_agent(backend)
+        self._backend = backend
+        logger.info("Using NIXL backend: %s", backend)
+        return agent
+
+    def actor_has_tensor_transport(self, actor: "ray.actor.ActorHandle") -> bool:
+        # TODO(dayshah): This is called on a .remote RDT call, so it's quite expensive.
+        def __ray_actor_has_tensor_transport__(
+            self: "ray.actor.ActorHandle",
+        ) -> bool:
+            return _nixl_transport_available_in_process()
+
+        return ray.get(
+            actor.__ray_call__.options(concurrency_group="_ray_system").remote(
+                __ray_actor_has_tensor_transport__
+            )
+        )
+
+    def extract_tensor_transport_metadata(
+        self,
+        obj_id: str,
+        rdt_object: List["torch.Tensor"],
+    ) -> NixlTransportMetadata:
+        import torch
+
+        with self._cache_lock:
+            device = None
+            tensor_meta = []
+
+            if rdt_object:
+                # We assume all tensors in one RDT object have the same device type,
+                # but we don't assume they're all on the same device.
+                devices = set()
+                device = rdt_object[0].device
+                for t in rdt_object:
+                    if t.device.type != device.type:
+                        raise ValueError(
+                            "All tensors in an RDT object must have the same device type."
+                        )
+                    if not t.is_contiguous():
+                        raise ValueError(
+                            "All tensors in an RDT object must be contiguous."
+                        )
+                    tensor_meta.append((t.shape, t.dtype))
+                    devices.add(t.device)
+                if device.type == "cuda":
+                    # We have to synchronize before memory registration to assure the
+                    # object has been created because nixl doesn't guarantee it will.
+                    stream = self._cuda_stream
+                    if stream is None:
+                        # No stream set: block on all streams of each device.
+                        for dev in devices:
+                            torch.cuda.synchronize(dev)
+                    else:
+                        # Block only on the user-provided stream.
+                        for dev in devices:
+                            if dev != stream.device:
+                                raise ValueError(
+                                    "Device mismatch between the CUDA stream set via "
+                                    "ray.experimental.set_nixl_cuda_stream and the "
+                                    "tensors in this RDT object: the stream is on "
+                                    f"device {stream.device}, but a tensor is on "
+                                    f"device {dev}. The stream's device must match "
+                                    "the device of every tensor in the object."
+                                )
+                        stream.synchronize()
+
+                nixl_agent = self.get_nixl_agent()
+                # Use the pool when no tensor already has an existing NIXL
+                # registration (via register_nixl_memory).
+                pool_device = (
+                    self._memory_pool.get_pool_tensor().device
+                    if self._memory_pool is not None
+                    else None
+                )
+                pool_eligible = (
+                    self._memory_pool is not None
+                    and not any(self._tensor_memory_registered(t) for t in rdt_object)
+                    and (
+                        pool_device.type == "cpu"
+                        or all(t.device == pool_device for t in rdt_object)
+                    )
+                )
+                if pool_eligible:
+                    xfer_descs = self._allocate_pool_xfer_descs(obj_id, rdt_object)
+                else:
+                    self._add_tensor_descs(rdt_object)
+                    xfer_descs = nixl_agent.get_xfer_descs(rdt_object)
+
+                serialized_descs = nixl_agent.get_serialized_descs(xfer_descs)
+                agent_meta = nixl_agent.get_agent_metadata()
+                agent_name = nixl_agent.name
+                agent_meta_version = self._nixl_agent_meta_version
+            else:
+                serialized_descs, agent_meta = None, None
+                agent_name, agent_meta_version = None, None
+
+            ret = NixlTransportMetadata(
+                tensor_meta=tensor_meta,
+                tensor_device=device.type if device else None,
+                nixl_serialized_descs=serialized_descs,
+                nixl_agent_meta=agent_meta,
+                nixl_agent_name=agent_name,
+                nixl_agent_meta_version=agent_meta_version,
+            )
+            self._put_meta(obj_id, ret)
+            return ret
+
+    def get_communicator_metadata(
+        self,
+        src_actor: "ray.actor.ActorHandle",
+        dst_actor: "ray.actor.ActorHandle",
+        backend: Optional[str] = None,
+    ) -> NixlCommunicatorMetadata:
+        return NixlCommunicatorMetadata()
+
+    def fetch_multiple_tensors(
+        self,
+        obj_id: str,
+        tensor_transport_metadata: TensorTransportMetadata,
+        communicator_metadata: CommunicatorMetadata,
+        target_buffers: Optional[List["torch.Tensor"]] = None,
+    ) -> NixlFetchRequest:
+        """Initiates an async transfer for multiple tensors.
+
+        This triggers the transfer but does not wait for completion.
+        Call wait_fetch_complete(fetch_request) to wait for the transfer to
+        finish and retrieve the tensors.
+
+        Args:
+            obj_id: The object ID for the transfer.
+            tensor_transport_metadata: Metadata for the tensor transport.
+            communicator_metadata: Metadata for the communicator.
+            target_buffers: Optional pre-allocated buffers to receive tensors into.
+
+        Returns:
+            A NixlFetchRequest carrying the async transfer state.
+        """
+        import torch
+
+        assert isinstance(tensor_transport_metadata, NixlTransportMetadata)
+        assert isinstance(communicator_metadata, NixlCommunicatorMetadata)
+
+        nixl_serialized_descs = tensor_transport_metadata.nixl_serialized_descs
+        remote_nixl_agent_meta = tensor_transport_metadata.nixl_agent_meta
+        tensor_meta = tensor_transport_metadata.tensor_meta
+        device = tensor_transport_metadata.tensor_device
+
+        if target_buffers:
+            target_device_types = {t.device.type for t in target_buffers}
+            if len(target_device_types) > 1:
+                raise ValueError(
+                    "All target buffers for an RDT object must have the same "
+                    f"device type, but got {sorted(target_device_types)}."
+                )
+
+        with self._aborted_transfer_obj_ids_lock:
+            if obj_id in self._aborted_transfer_obj_ids:
+                self._aborted_transfer_obj_ids.remove(obj_id)
+                raise RuntimeError(f"NIXL transfer aborted for object id: {obj_id}")
+
+        remote_name = None
+        xfer_handle = None
+        added_tensor_descs = False
+        registered_tensors: List["torch.Tensor"] = []
+        tensors: List["torch.Tensor"] = []
+
+        try:
+            nixl_agent = self.get_nixl_agent()
+            remote_xfer_descs = nixl_agent.deserialize_descs(nixl_serialized_descs)
+            packed_group_nbytes = [
+                remote_xfer_descs[i][1] for i in range(remote_xfer_descs.descCount())
+            ]
+
+            tensor_layouts = [
+                TensorLayout(math.prod(shape) * dtype.itemsize, dtype.itemsize)
+                for shape, dtype in tensor_meta
+            ]
+
+            desc_groups = group_tensors_by_desc(tensor_layouts, packed_group_nbytes)
+
+            if target_buffers:
+                tensors = target_buffers
+                # NIXL requires the local and remote lists to agree on descriptor
+                # count and length, so build both together, one per tensor.
+                # Target buffers may live on a different device type than the
+                # source (cross-device fetch), so each list has its own mem type.
+                local_mem_type = "cuda" if tensors[0].is_cuda else "cpu"
+                remote_mem_type = "cuda" if device == "cuda" else "cpu"
+                local_descs = []
+                remote_descs = []
+                for desc_idx, desc_group in enumerate(desc_groups):
+                    addr, _length, dev_id = remote_xfer_descs[desc_idx]
+                    offsets, _ = packed_offsets([tensor_layouts[j] for j in desc_group])
+                    for offset, tensor_i in zip(offsets, desc_group):
+                        buf = tensors[tensor_i]
+                        nbytes = tensor_layouts[tensor_i].nbytes
+                        local_descs.append(
+                            (buf.data_ptr(), nbytes, max(buf.get_device(), 0))
+                        )
+                        remote_descs.append((addr + offset, nbytes, dev_id))
+                self._add_tensor_descs(tensors)
+                added_tensor_descs = True
+                registered_tensors = tensors
+                local_xfer_descs = nixl_agent.get_xfer_descs(
+                    local_descs, mem_type=local_mem_type
+                )
+                remote_xfer_descs = nixl_agent.get_xfer_descs(
+                    remote_descs, mem_type=remote_mem_type
+                )
+            else:
+                # One buffer per remote descriptor; views at recovered offsets.
+                group_buffers = [
+                    torch.empty(nbytes, dtype=torch.uint8, device=device)
+                    for nbytes in packed_group_nbytes
+                ]
+                tensors = [None] * len(tensor_meta)  # type: ignore[list-item]
+                for desc_idx, desc_group in enumerate(desc_groups):
+                    offsets, _ = packed_offsets([tensor_layouts[j] for j in desc_group])
+                    for offset, tensor_i in zip(offsets, desc_group):
+                        shape, dtype = tensor_meta[tensor_i]
+                        nbytes = tensor_layouts[tensor_i].nbytes
+                        tensors[tensor_i] = (
+                            group_buffers[desc_idx][offset : offset + nbytes]
+                            .view(dtype)
+                            .reshape(shape)
+                        )
+
+                self._add_tensor_descs(group_buffers)
+                added_tensor_descs = True
+                registered_tensors = group_buffers
+                local_xfer_descs = nixl_agent.get_xfer_descs(group_buffers)
+
+            remote_name = tensor_transport_metadata.nixl_agent_name
+            remote_agent_meta_version = (
+                tensor_transport_metadata.nixl_agent_meta_version
+            )
+
+            if NIXL_REMOTE_AGENT_CACHE_MAXSIZE > 0:
+                self._evict_if_full(remote_name)
+
+            with self._remote_agent_lock(remote_name):
+                self._prepare_remote_agent(
+                    remote_name, remote_agent_meta_version, remote_nixl_agent_meta
+                )
+
+                xfer_handle = nixl_agent.initialize_xfer(
+                    "READ",
+                    local_xfer_descs,
+                    remote_xfer_descs,
+                    remote_name,
+                    b"UUID",
+                )
+
+                state = nixl_agent.transfer(xfer_handle)
+                if state == "ERR":
+                    raise RuntimeError("NIXL transfer got to Error state.")
+                self._inflight_xfers.setdefault(remote_name, set()).add(xfer_handle)
+
+            return NixlFetchRequest(
+                tensors=tensors,
+                obj_id=obj_id,
+                xfer_handle=xfer_handle,
+                nixl_agent=nixl_agent,
+                remote_name=remote_name,
+                remove_tensor_descs=added_tensor_descs,
+                transport=self,
+                registered_tensors=registered_tensors,
+            )
+        except Exception:
+            self._cleanup_transfer(
+                obj_id,
+                registered_tensors,
+                xfer_handle,
+                remote_name,
+                added_tensor_descs,
+            )
+            # TODO(swang): There is a circular import error because ray.util
+            # currently depends on ray.experimental.internal_kv.
+            from ray.exceptions import RayDirectTransportError
+
+            raise RayDirectTransportError(
+                f"The NIXL transfer failed for object id: {obj_id}. The source actor may have died during the transfer. "
+                f"The exception thrown from nixl transfer was:\n {traceback.format_exc()}"
+            ) from None
+
+    def wait_fetch_complete(
+        self, fetch_request: FetchRequest, timeout: float = -1
+    ) -> List["torch.Tensor"]:
+        """Waits for a previously initiated fetch to complete and returns the tensors.
+
+        Args:
+            fetch_request: The NixlFetchRequest returned by fetch_multiple_tensors.
+            timeout: Maximum time in seconds to wait. -1 means wait indefinitely.
+                0 means return immediately if not ready.
+
+        Returns:
+            List of tensors that were transferred.
+
+        Raises:
+            RayDirectTransportError: If the transfer failed.
+            TimeoutError: If the timeout is exceeded.
+        """
+        assert isinstance(fetch_request, NixlFetchRequest)
+        obj_id = fetch_request.obj_id
+
+        if not fetch_request.tensors:
+            return fetch_request.tensors
+
+        try:
+            # Check the state of the transfer continuously.
+            deadline = None if timeout < 0 else time.monotonic() + timeout
+            while True:
+                agent_lock = self._remote_agent_lock(fetch_request.remote_name)
+                # Don't block on a removal in progress, so the timeout and abort checks still run.
+                if agent_lock.acquire(blocking=False):
+                    try:
+                        state = self.get_nixl_agent().check_xfer_state(
+                            fetch_request.xfer_handle
+                        )
+                    finally:
+                        agent_lock.release()
+                else:
+                    state = "PROC"
+                if state == "ERR":
+                    raise RuntimeError("NIXL transfer got to Error state.")
+                if state == "PROC":
+                    if deadline is not None and time.monotonic() >= deadline:
+                        raise TimeoutError(
+                            f"NIXL transfer timed out after {timeout}s for object id: {obj_id}"
+                        )
+                    with self._aborted_transfer_obj_ids_lock:
+                        if obj_id in self._aborted_transfer_obj_ids:
+                            self._aborted_transfer_obj_ids.remove(obj_id)
+                            raise RuntimeError(
+                                f"NIXL transfer aborted for object id: {obj_id}"
+                            )
+                    time.sleep(0.001)  # Avoid busy waiting
+                elif state == "DONE":
+                    break
+
+            return fetch_request.tensors
+        except TimeoutError:
+            raise
+        except Exception:
+            from ray.exceptions import RayDirectTransportError
+
+            raise RayDirectTransportError(
+                f"The NIXL transfer failed for object id: {obj_id}. The source actor may have died during the transfer. "
+                f"The exception thrown from nixl transfer was:\n {traceback.format_exc()}"
+            ) from None
+
+    def _cleanup_transfer(
+        self,
+        obj_id: str,
+        tensors: List["torch.Tensor"],
+        xfer_handle: Any,
+        remote_name: Optional[str],
+        remove_tensor_descs: bool,
+    ) -> None:
+        """Cleans up resources after a transfer completes or fails."""
+        deferred = getattr(self._local, "deferred", None)
+        if deferred is not None:
+            deferred.append(
+                (obj_id, tensors, xfer_handle, remote_name, remove_tensor_descs)
+            )
+            return
+        # We could raise errors or NIXL could raise errors like NIXL_ERR_REMOTE_DISCONNECT,
+        # so doing best effort cleanup.
+        nixl_agent = self._nixl_agent
+        if nixl_agent is None:
+            return
+        # We could raise errors or NIXL could raise errors like NIXL_ERR_REMOTE_DISCONNECT,
+        # so doing best effort cleanup.
+        with self._aborted_transfer_obj_ids_lock:
+            self._aborted_transfer_obj_ids.discard(obj_id)
+        if remote_name:
+            with self._remote_agent_lock(remote_name):
+                inflight = self._inflight_xfers.get(remote_name, set())
+                if xfer_handle:
+                    inflight.discard(xfer_handle)
+                    deferred = self._deferred_releases.get(remote_name)
+                    if deferred is None:
+                        nixl_agent.release_xfer_handle(xfer_handle)
+                    else:
+                        deferred.append(xfer_handle)
+                # Without the cache, the last transfer on the agent removes it.
+                if NIXL_REMOTE_AGENT_CACHE_MAXSIZE == 0 and not inflight:
+                    nixl_agent.remove_remote_agent(remote_name)
+        if remove_tensor_descs:
+            self._remove_tensor_descs(tensors)
+
+    def _remote_agent_lock(self, remote_name: str) -> Any:
+        return self._remote_agent_locks.setdefault(remote_name, threading.RLock())
+
+    @contextlib.contextmanager
+    def _cache_guard(self):
+        """Holds the cache lock.
+
+        Garbage collection can run _cleanup_transfer on this thread meanwhile, and it
+        would wait for an agent lock. So _cleanup_transfer defers to the release here.
+        """
+        deferred = []
+        try:
+            with self._remote_agent_cache_lock:
+                self._local.deferred = deferred
+                yield
+        finally:
+            self._local.deferred = None
+            for args in deferred:
+                try:
+                    self._cleanup_transfer(*args)
+                except Exception:
+                    logger.exception("Failed to run deferred transfer cleanup")
+
+    def _finish_transfers(self, remote_name: str) -> None:
+        """Polls the transfers in flight on the agent until they are no longer in progress.
+
+        The caller holds the agent lock and is about to remove the agent.
+        """
+        nixl_agent = self.get_nixl_agent()
+        # On timeout the removal fails the stuck transfer instead of hanging here.
+        deadline = time.monotonic() + RDT_FETCH_FAIL_TIMEOUT_SECONDS
+        inflight = self._inflight_xfers.get(remote_name, set())
+        # Garbage collection can run _cleanup_transfer on this thread while it polls.
+        # That defers releasing handles to the end, so a polled handle is never freed.
+        deferred = self._deferred_releases[remote_name] = []
+        try:
+            for xfer_handle in list(inflight):
+                try:
+                    while (
+                        nixl_agent.check_xfer_state(xfer_handle) == "PROC"
+                        and time.monotonic() < deadline
+                    ):
+                        time.sleep(0.001)
+                except Exception:
+                    # The error surfaces from wait_fetch_complete.
+                    pass
+            inflight.clear()
+        finally:
+            del self._deferred_releases[remote_name]
+            for xfer_handle in deferred:
+                try:
+                    nixl_agent.release_xfer_handle(xfer_handle)
+                except Exception:
+                    logger.exception("Failed to release deferred transfer handle")
+
+    def _prepare_remote_agent(
+        self, remote_name: str, version: int, remote_nixl_agent_meta: bytes
+    ) -> None:
+        """Makes the remote agent ready for a new transfer and updates the cache.
+
+        If its metadata version changed, the transfers in flight on it are polled to
+        completion and the agent is removed first, then the new metadata is added.
+        The caller holds the agent lock.
+        """
+        nixl_agent = self.get_nixl_agent()
+        if NIXL_REMOTE_AGENT_CACHE_MAXSIZE > 0:
+            with self._cache_guard():
+                cached_version = self._remote_agents.get(remote_name)
+            # A different version means memory was deregistered. We need to remove the
+            # remote agent before adding it, because `nixlRemoteSection` currently does
+            # not support updating descriptor list in such a case (there is potential
+            # memory overlap). Removing it fails the transfers still in flight on it.
+            if cached_version is not None and cached_version != version:
+                self._finish_transfers(remote_name)
+                with self._cache_guard():
+                    del self._remote_agents[remote_name]
+                nixl_agent.remove_remote_agent(remote_name)
+        nixl_agent.add_remote_agent(remote_nixl_agent_meta)
+        if NIXL_REMOTE_AGENT_CACHE_MAXSIZE > 0:
+            with self._cache_guard():
+                self._remote_agents[remote_name] = version
+                self._remote_agents.move_to_end(remote_name)
+
+    def _evict_if_full(self, remote_name: str) -> None:
+        """Evicts the least recently used remote agent if adding remote_name needs room.
+
+        Runs before the agent lock of remote_name is taken, so no thread ever holds two
+        agent locks.
+        """
+        while True:
+            with self._cache_guard():
+                if (
+                    remote_name in self._remote_agents
+                    or len(self._remote_agents) < NIXL_REMOTE_AGENT_CACHE_MAXSIZE
+                ):
+                    return
+                victim = next(iter(self._remote_agents))
+            with self._remote_agent_lock(victim):
+                with self._cache_guard():
+                    cached = victim in self._remote_agents
+                # Another thread may have evicted it while we waited for the lock.
+                if cached:
+                    self._finish_transfers(victim)
+                    with self._cache_guard():
+                        self._remote_agents.pop(victim, None)
+                    self.get_nixl_agent().remove_remote_agent(victim)
+
+    def recv_multiple_tensors(
+        self,
+        obj_id: str,
+        tensor_transport_metadata: TensorTransportMetadata,
+        communicator_metadata: CommunicatorMetadata,
+        target_buffers: Optional[List["torch.Tensor"]] = None,
+    ) -> List["torch.Tensor"]:
+        """Receives multiple tensors synchronously."""
+        fetch_request = self.fetch_multiple_tensors(
+            obj_id, tensor_transport_metadata, communicator_metadata, target_buffers
+        )
+        return self.wait_fetch_complete(fetch_request)
+
+    def send_multiple_tensors(
+        self,
+        tensors: List["torch.Tensor"],
+        tensor_transport_metadata: TensorTransportMetadata,
+        communicator_metadata: CommunicatorMetadata,
+    ):
+        raise NotImplementedError(
+            "NIXL transport does not support send_multiple_tensors, since it is a one-sided transport."
+        )
+
+    def garbage_collect(
+        self,
+        obj_id: str,
+        tensor_transport_meta: TensorTransportMetadata,
+        tensors: List["torch.Tensor"],
+    ):
+        with self._cache_lock:
+            assert isinstance(tensor_transport_meta, NixlTransportMetadata)
+            if obj_id not in self._managed_meta_nixl:
+                return
+            self._managed_meta_nixl.pop(obj_id, None)
+            if self._memory_pool is None or not self._memory_pool.free_object(obj_id):
+                self._remove_tensor_descs(tensors)
+
+    def abort_transport(
+        self,
+        obj_id: str,
+        communicator_metadata: CommunicatorMetadata,
+    ):
+        with self._aborted_transfer_obj_ids_lock:
+            self._aborted_transfer_obj_ids.add(obj_id)
+
+    def _get_num_managed_meta_nixl(self) -> int:
+        with self._cache_lock:
+            return len(self._managed_meta_nixl)
+
+    def _get_meta(self, object_id: str) -> Optional[NixlTransportMetadata]:
+        """Get the NIXL transport metadata for the given object ID if it exists"""
+        with self._cache_lock:
+            if object_id in self._managed_meta_nixl:
+                return self._managed_meta_nixl[object_id]
+            return None
+
+    def _put_meta(self, object_id: str, meta: NixlTransportMetadata):
+        """Store the NIXL transport metadata for the given object ID"""
+        with self._cache_lock:
+            self._managed_meta_nixl[object_id] = meta
+
+    def _remove_tensor_descs(self, tensors: List["torch.Tensor"]):
+        """Decrements the reference count for each tensor. If the count reaches 0,
+        the memory is deregistered from NIXL.
+        """
+        with self._cache_lock:
+            for tensor in tensors:
+                key = tensor.untyped_storage().data_ptr()
+                if key not in self._tensor_desc_cache:
+                    continue
+                tensor_desc = self._tensor_desc_cache[key]
+                tensor_desc.metadata_count -= 1
+                if tensor_desc.metadata_count == 0:
+                    self._tensor_desc_cache.pop(key)
+                    self.get_nixl_agent().deregister_memory(tensor_desc.reg_desc)
+                    self._nixl_agent_meta_version += 1
+
+    def _add_tensor_descs(self, tensors: List["torch.Tensor"]):
+        """If this is the first time the tensor is being registered, we register the
+        full underlying pytorch storage object with NIXL. Otherwise, we increment the reference count.
+        """
+        with self._cache_lock:
+            for tensor in tensors:
+                key = tensor.untyped_storage().data_ptr()
+                nbytes = tensor.untyped_storage().nbytes()
+                if key in self._tensor_desc_cache:
+                    tensor_desc = self._tensor_desc_cache[key]
+                    if nbytes > tensor_desc.size:
+                        raise ValueError(
+                            f"Tensor storage at {key:#x} was found in the NIXL "
+                            f"registration cache, but its size ({nbytes} bytes) is "
+                            f"larger than the registered size ({tensor_desc.size} "
+                            "bytes). Call deregister_nixl_memory on the old tensor "
+                            "first."
+                        )
+                    tensor_desc.metadata_count += 1
+                    continue
+                mem_type = "cuda" if tensor.is_cuda else "cpu"
+                # the GPU ID of the device the tensor is on.
+                # NOTE: we clip this to 0 since the GPU ID is not used for
+                # CPU tensors, and get_device returns -1 for CPU tensors.
+                # This triggers an error in nixl since it expects an unsigned.
+                gpu_id = max(tensor.get_device(), 0)
+                # Registering the full underlying pytorch storage object by
+                # constructing a memory region with the data pointer, size,
+                # GPU ID, and meta info. Doing the equivalent of what nixl
+                # does for pytorch tensors internally:
+                # https://github.com/ai-dynamo/nixl/blob/dd23ef01bd366aef89fa552f2b042f89a0b45fcb/src/api/python/_api.py#L1034
+                try:
+                    reg_desc = self.get_nixl_agent().register_memory(
+                        [
+                            (
+                                tensor.untyped_storage().data_ptr(),
+                                tensor.untyped_storage().nbytes(),
+                                gpu_id,
+                                "",
+                            )
+                        ],
+                        mem_type=mem_type,
+                    )
+                except Exception as e:
+                    # TODO(xyuzh): Remove the warning after nixl surfaces the error message
+                    if self._backend == "LIBFABRIC":
+                        troubleshooting = (
+                            "See https://github.com/ai-dynamo/nixl/blob/main/src/plugins/libfabric/README.md "
+                            "for LIBFABRIC troubleshooting. "
+                            "Set FI_LOG_LEVEL=Debug for libfabric diagnostics."
+                        )
+                    else:
+                        troubleshooting = (
+                            "See https://docs.ray.io/en/latest/ray-core/direct-transport/direct-transport.html "
+                            "for NIXL/UCX configuration. "
+                            "Set UCX_LOG_LEVEL=debug for UCX diagnostics."
+                        )
+                    vmm_hint = ""
+                    alloc_conf = os.environ.get("PYTORCH_CUDA_ALLOC_CONF", "").lower()
+                    if mem_type == "cuda" and "expandable_segments:true" in alloc_conf:
+                        vmm_hint = (
+                            " PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True is set; "
+                            "CUDA VMM memory can't be RDMA-registered — allocate "
+                            "transferred tensors without expandable_segments."
+                        )
+                    raise RuntimeError(
+                        f"Failed to register {mem_type} memory with NIXL "
+                        f"(backend={self._backend}, "
+                        f"size={tensor.untyped_storage().nbytes()} bytes, "
+                        f"gpu_id={gpu_id}).{vmm_hint} {troubleshooting}"
+                    ) from e
+                self._tensor_desc_cache[key] = TensorDesc(reg_desc, 1, nbytes)
+
+    def _tensor_memory_registered(self, t: "torch.Tensor") -> bool:
+        """Check if the tensor's memory has been registered with NIXL."""
+        return t.untyped_storage().data_ptr() in self._tensor_desc_cache
+
+    def _allocate_pool_xfer_descs(
+        self, obj_id: str, tensors: List["torch.Tensor"]
+    ) -> Any:
+        """Allocate pool memory for tensors and return NIXL transfer descriptors."""
+        pool = self._memory_pool
+        regions = pool.allocate_group(obj_id, tensors)
+        try:
+            return self._nixl_agent.get_xfer_descs(regions)
+        except Exception:
+            pool.free_object(obj_id)
+            raise

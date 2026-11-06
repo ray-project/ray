@@ -3,9 +3,9 @@ import io
 import logging
 import time
 from collections import deque
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from functools import wraps
-from inspect import isasyncgenfunction, iscoroutinefunction
+from inspect import Parameter, isasyncgenfunction, iscoroutinefunction
 from typing import (
     Any,
     AsyncGenerator,
@@ -25,7 +25,12 @@ from typing import (
 )
 
 from ray import serve
-from ray._common.signature import extract_signature, flatten_args, recover_args
+from ray._common.signature import (
+    DUMMY_TYPE,
+    extract_signature,
+    flatten_args,
+    recover_args,
+)
 from ray._common.utils import get_or_create_event_loop
 from ray.serve._private.constants import (
     BATCH_EXECUTION_TIME_BUCKETS_MS,
@@ -33,6 +38,10 @@ from ray.serve._private.constants import (
     BATCH_UTILIZATION_BUCKETS_PERCENT,
     BATCH_WAIT_TIME_BUCKETS_MS,
     SERVE_LOGGER_NAME,
+)
+from ray.serve._private.tracing_utils import (
+    BatchTraceContextManager,
+    get_trace_context,
 )
 from ray.serve._private.utils import extract_self_if_method_call
 from ray.serve.exceptions import RayServeException
@@ -53,6 +62,8 @@ class _SingleRequest:
     flattened_args: List[Any]
     future: asyncio.Future
     request_context: serve.context._RequestContext
+    trace_context: Optional[Any]
+    enqueue_time: float = field(default_factory=time.time)
 
 
 @dataclass
@@ -109,6 +120,33 @@ def _batch_args_kwargs(
     return recover_args(batched_flattened_args)
 
 
+def _is_first_input_value(
+    input_parameters: List[Parameter], flattened_args: List[Any]
+) -> bool:
+    """Whether the first flattened value is the whole first input parameter.
+
+    `batch_size_fn` sizes `flattened_args[1]`, so it must be the only value
+    bound to the handler's first input parameter.
+    """
+    if not input_parameters or not flattened_args:
+        return False
+
+    first_parameter = input_parameters[0]
+    if first_parameter.kind == Parameter.VAR_KEYWORD:
+        return False
+    if flattened_args[0] != DUMMY_TYPE:
+        # Other kinds don't take keywords, so a matching name lands in `**kwargs`.
+        return flattened_args[0] == first_parameter.name and first_parameter.kind in (
+            Parameter.POSITIONAL_OR_KEYWORD,
+            Parameter.KEYWORD_ONLY,
+        )
+    if first_parameter.kind == Parameter.VAR_POSITIONAL:
+        # `*args` holds every positional value, so it must get exactly one.
+        args, _ = recover_args(flattened_args)
+        return len(args) == 1
+    return True
+
+
 class _BatchQueue:
     def __init__(
         self,
@@ -134,9 +172,9 @@ class _BatchQueue:
             batch_wait_timeout_s: time to wait before returning an incomplete
                 batch.
             max_concurrent_batches: max number of batches to run concurrently.
-            handle_batch_func(Optional[Callable]): callback to run in the
+            handle_batch_func: callback to run in the
                 background to handle batches if provided.
-            batch_size_fn(Optional[Callable[[List], int]]): optional function to
+            batch_size_fn: optional function to
                 compute the effective batch size. If None, uses len(batch).
                 The function takes a list of requests and returns an integer
                 representing the batch size. This is useful for batching based
@@ -234,16 +272,9 @@ class _BatchQueue:
         if self.batch_size_fn is None:
             return len(batch)
 
-        # Extract the actual data items from requests to pass to batch_size_fn.
-        # We need to reconstruct the original arguments from flattened_args.
-        items = []
-        for request in batch:
-            # Recover the original arguments from flattened format
-            args, kwargs = recover_args(request.flattened_args)
-            # The batch function expects a single positional argument (the item)
-            # after 'self' has been extracted (if it was a method)
-            items.append(args[0])
-
+        # Flattened arguments alternate names and values, with `self` already
+        # removed. `enqueue_request` ensures the first value is the first input.
+        items = [request.flattened_args[1] for request in batch]
         return self.batch_size_fn(items)
 
     async def wait_for_batch(self) -> Tuple[List[_SingleRequest], int]:
@@ -280,8 +311,11 @@ class _BatchQueue:
 
         batch.append(first_item)
 
-        # Wait self.timeout_s seconds for new queue arrivals.
+        # Wait self.timeout_s seconds for new queue arrivals, counted from when
+        # the first request arrived. It may have waited in the queue for a
+        # permit, and that time counts toward the timeout.
         batch_start_time = time.time()
+        timeout_start_time = min(first_item.enqueue_time, batch_start_time)
         while True:
             # Record queue length metric.
             self._batch_queue_length_gauge.set(
@@ -289,7 +323,7 @@ class _BatchQueue:
             )
 
             remaining_batch_time_s = max(
-                batch_wait_timeout_s - (time.time() - batch_start_time), 0
+                batch_wait_timeout_s - (time.time() - timeout_start_time), 0
             )
             try:
                 # Wait for new arrivals.
@@ -344,7 +378,7 @@ class _BatchQueue:
 
             current_batch_size = self._compute_batch_size(batch)
             if (
-                time.time() - batch_start_time >= batch_wait_timeout_s
+                time.time() - timeout_start_time >= batch_wait_timeout_s
                 or current_batch_size >= max_batch_size
             ):
                 break
@@ -472,19 +506,29 @@ class _BatchQueue:
         # So we unset the request context so the current context is not inherited by the task, _process_batch.
         serve.context._unset_request_context()
         while not self._loop.is_closed():
-            batch, _ = await self.wait_for_batch()
+            # NOTE: this semaphore caps the number of concurrent batches specified by `max_concurrent_batches`
+            # Take the permit before forming the batch, so requests that arrive
+            # while every permit is in use join one batch instead of each
+            # waiting for a permit in a batch of its own.
+            await self.semaphore.acquire()
+            try:
+                batch, _ = await self.wait_for_batch()
 
-            # Split batch by multiplexed_model_id to ensure requests for different
-            # models are processed in separate batches. This is necessary when using
-            # model multiplexing with batching, as a single batch containing requests
-            # for different models would not work correctly.
-            sub_batches = self._split_batch_by_model_id(batch)
+                # Split batch by multiplexed_model_id to ensure requests for different
+                # models are processed in separate batches. This is necessary when using
+                # model multiplexing with batching, as a single batch containing requests
+                # for different models would not work correctly.
+                sub_batches = self._split_batch_by_model_id(batch)
 
-            # Process all sub-batches together under a single semaphore permit.
-            # This ensures sub-batches from the same original batch run concurrently
-            # rather than being serialized by the semaphore.
-            promise = self._process_sub_batches(func, sub_batches)
-            task = asyncio.create_task(promise)
+                # Process all sub-batches together under the permit taken above.
+                # This ensures sub-batches from the same original batch run concurrently
+                # rather than being serialized by the semaphore. The permit is released
+                # in _handle_completed_task.
+                promise = self._process_sub_batches(func, sub_batches)
+                task = asyncio.create_task(promise)
+            except BaseException:
+                self.semaphore.release()
+                raise
             self.tasks.add(task)
             self.curr_iteration_start_times[task] = time.time()
             task.add_done_callback(self._handle_completed_task)
@@ -494,23 +538,21 @@ class _BatchQueue:
     ) -> None:
         """Processes multiple sub-batches concurrently under a single semaphore permit.
 
-        This method acquires the semaphore once and then processes all sub-batches
-        in parallel, ensuring that sub-batches from the same original batch don't
-        compete for semaphore permits.
+        _process_batches acquires the permit before forming the batch, and this
+        method processes all sub-batches in parallel, ensuring that sub-batches
+        from the same original batch don't compete for semaphore permits.
         """
-        # NOTE: this semaphore caps the number of concurrent batches specified by `max_concurrent_batches`
-        async with self.semaphore:
-            # Create tasks for each sub-batch. We use asyncio.create_task() instead
-            # of passing coroutines directly to asyncio.gather() because create_task
-            # copies the current context, giving each sub-batch its own isolated
-            # contextvars. This prevents concurrent sub-batches from overwriting
-            # each other's _serve_batch_request_context, which would cause
-            # get_multiplexed_model_id() to return wrong values.
-            tasks = [
-                asyncio.create_task(self._process_batch_inner(func, sub_batch))
-                for sub_batch in sub_batches
-            ]
-            await asyncio.gather(*tasks)
+        # Create tasks for each sub-batch. We use asyncio.create_task() instead
+        # of passing coroutines directly to asyncio.gather() because create_task
+        # copies the current context, giving each sub-batch its own isolated
+        # contextvars. This prevents concurrent sub-batches from overwriting
+        # each other's _serve_batch_request_context, which would cause
+        # get_multiplexed_model_id() to return wrong values.
+        tasks = [
+            asyncio.create_task(self._process_batch_inner(func, sub_batch))
+            for sub_batch in sub_batches
+        ]
+        await asyncio.gather(*tasks)
 
     async def _process_batch_inner(
         self, func: Callable, batch: List[_SingleRequest]
@@ -567,12 +609,17 @@ class _BatchQueue:
                 [req.request_context for req in batch]
             )
 
-            if isasyncgenfunction(func):
-                func_generator = func_future_or_generator
-                await self._consume_func_generator(func_generator, futures, len(batch))
-            else:
-                func_future = func_future_or_generator
-                await self._assign_func_results(func_future, futures, len(batch))
+            # As OTEL span cannot belong to multiple traces, we choose the first request’s context
+            # as the parent, so the span emitted by this batch will appear only in the first request’s trace.
+            with BatchTraceContextManager(batch[0].trace_context):
+                if isasyncgenfunction(func):
+                    func_generator = func_future_or_generator
+                    await self._consume_func_generator(
+                        func_generator, futures, len(batch)
+                    )
+                else:
+                    func_future = func_future_or_generator
+                    await self._assign_func_results(func_future, futures, len(batch))
 
             # Reset the batch request context after the batch is processed
             serve.context._set_batch_request_context([])
@@ -589,6 +636,7 @@ class _BatchQueue:
             )
 
     def _handle_completed_task(self, task: asyncio.Task) -> None:
+        self.semaphore.release()
         self.tasks.remove(task)
         del self.curr_iteration_start_times[task]
         self._log_if_exception(task.exception())
@@ -875,6 +923,9 @@ def batch(
             app = BatchedDeployment.bind()
 
     Arguments:
+        _func: When ``@serve.batch`` is applied without arguments, this is the
+            wrapped async function or method. When applied with arguments,
+            ``_func`` is ``None`` and a decorator is returned instead.
         max_batch_size: the maximum batch size that will be executed in
             one call to the underlying function.
         batch_wait_timeout_s: the maximum duration to wait for
@@ -889,6 +940,10 @@ def batch(
             based on custom metrics such as total nodes in graphs, total tokens
             in sequences, or other domain-specific measures. If None, the batch
             size is computed as len(batch).
+
+    Returns:
+        The decorated async function/method (when ``_func`` is supplied) or a
+        decorator that produces one.
     """
     # `_func` will be None in the case when the decorator is parametrized.
     # See the comment at the end of this function for a detailed explanation.
@@ -907,6 +962,7 @@ def batch(
     _validate_batch_size_fn(batch_size_fn)
 
     def _batch_decorator(_func):
+        signature_parameters = extract_signature(_func)
         lazy_batch_queue_wrapper = _LazyBatchQueueWrapper(
             max_batch_size,
             batch_wait_timeout_s,
@@ -930,19 +986,36 @@ def batch(
                     break
 
         def enqueue_request(args, kwargs) -> asyncio.Future:
-            flattened_args: List = flatten_args(extract_signature(_func), args, kwargs)
+            flattened_args: List = flatten_args(signature_parameters, args, kwargs)
 
             # If the function is a method, remove self as an argument.
             self = extract_self_if_method_call(args, _func)
             if self is not None:
                 flattened_args = flattened_args[2:]
 
+            if batch_size_fn is not None:
+                input_parameters = (
+                    signature_parameters[1:]
+                    if self is not None
+                    else signature_parameters
+                )
+                if not _is_first_input_value(input_parameters, flattened_args):
+                    raise TypeError(
+                        "When using `batch_size_fn`, pass the handler's first input "
+                        "parameter as the first argument, positionally or by "
+                        "keyword. `batch_size_fn` cannot size `**kwargs` or `*args` "
+                        "with more than one value."
+                    )
+
             batch_queue = lazy_batch_queue_wrapper.queue
 
             future = get_or_create_event_loop().create_future()
             request_context = serve.context._get_serve_request_context()
+            trace_context = get_trace_context()
             batch_queue.put(
-                _SingleRequest(self, flattened_args, future, request_context)
+                _SingleRequest(
+                    self, flattened_args, future, request_context, trace_context
+                )
             )
             return future
 

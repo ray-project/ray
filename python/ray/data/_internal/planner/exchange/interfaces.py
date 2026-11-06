@@ -5,9 +5,8 @@ import ray._private.worker
 from ray.data._internal.execution.interfaces import RefBundle
 from ray.data._internal.stats import StatsDict
 from ray.data._internal.util import convert_bytes_to_human_readable_str
-from ray.data.block import Block, BlockType
+from ray.data.block import Block
 from ray.data.context import DataContext
-from ray.data.util.data_batch_conversion import BatchFormat
 
 if TYPE_CHECKING:
 
@@ -17,8 +16,7 @@ logger = logging.getLogger(__name__)
 
 
 class ExchangeTaskSpec:
-    """
-    An interface to specify the exchange map and reduce tasks.
+    """An interface to specify the exchange map and reduce tasks.
 
     Subclasses should implement the `map` and `reduce` static methods.
     `map` method is to transform one input block into multiple output blocks.
@@ -49,8 +47,7 @@ class ExchangeTaskSpec:
         block: Block,
         output_num_blocks: int,
     ) -> List[Union[Block, "BlockMetadataWithSchema"]]:
-        """
-        Map function to be run on each input block.
+        """Map function to be run on each input block.
 
         Returns list of [BlockMetadata, Block1, Block2, ..., BlockN].
         """
@@ -61,11 +58,10 @@ class ExchangeTaskSpec:
         *mapper_outputs: List[Block],
         partial_reduce: bool = False,
     ) -> Tuple[Block, "BlockMetadataWithSchema"]:
-        """
-        Reduce function to be run for each output block.
+        """Reduce function to be run for each output block.
 
         Args:
-            mapper_outputs: List of map output blocks to reduce.
+            *mapper_outputs: List of map output blocks to reduce.
             partial_reduce: Whether should partially or fully reduce.
 
         Returns:
@@ -73,26 +69,15 @@ class ExchangeTaskSpec:
         """
         raise NotImplementedError
 
-    @staticmethod
-    def _derive_target_block_type(batch_format: str) -> Optional[BlockType]:
-        if batch_format == BatchFormat.ARROW:
-            return BlockType.ARROW
-        elif batch_format == BatchFormat.PANDAS:
-            return BlockType.PANDAS
-        else:
-            # NOTE: Unless desired batch-format is specified, avoid
-            #       overriding existing one
-            return None
-
 
 class ExchangeTaskScheduler:
-    """
-    An interface to schedule exchange tasks (`exchange_spec`) for multi-nodes
+    """An interface to schedule exchange tasks (`exchange_spec`) for multi-nodes
     execution.
     """
 
     def __init__(self, exchange_spec: ExchangeTaskSpec):
-        """
+        """Initialize the scheduler.
+
         Args:
             exchange_spec: The implementation of exchange tasks to execute.
         """
@@ -112,9 +97,7 @@ class ExchangeTaskScheduler:
         reduce_ray_remote_args: Optional[Dict[str, Any]] = None,
         warn_on_driver_memory_usage: Optional[int] = None,
     ) -> Tuple[List[RefBundle], StatsDict]:
-        """
-        Execute the exchange tasks on input `refs`.
-        """
+        """Execute the exchange tasks on input `refs`."""
         raise NotImplementedError
 
     def warn_on_high_local_memory_store_usage(self) -> None:

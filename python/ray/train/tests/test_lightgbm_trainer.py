@@ -99,6 +99,23 @@ def test_resume_from_checkpoint(ray_start_6_cpus, tmpdir):
     assert get_num_trees(model) == 10
 
 
+def test_fit_with_arrow_backed_pandas_dtypes(ray_start_6_cpus):
+    # `from_items` produces Arrow-backed blocks, so `to_pandas()` inside the
+    # trainer returns Arrow-backed dtypes — the regression path this test guards.
+    train_dataset = ray.data.from_items(train_df.to_dict("records"))
+    valid_dataset = ray.data.from_items(test_df.to_dict("records"))
+
+    trainer = LightGBMTrainer(
+        scaling_config=scale_config,
+        label_column="target",
+        params=params,
+        datasets={TRAIN_DATASET_KEY: train_dataset, "valid": valid_dataset},
+    )
+    result = trainer.fit()
+    model = LightGBMTrainer.get_model(result.checkpoint)
+    assert get_num_trees(model) == 10
+
+
 @pytest.mark.parametrize(
     "freq_end_expected",
     [

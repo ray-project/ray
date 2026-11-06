@@ -437,6 +437,7 @@ def test_filter_expression_display_names(ray_start_regular_shared):
     """Test that filter operations display meaningful expression names in plans."""
     import pyarrow.compute as pc
 
+    from ray.data._internal.dataset_repr import build_dataset_summary_repr
     from ray.data.datatype import DataType
     from ray.data.expressions import udf
 
@@ -444,11 +445,136 @@ def test_filter_expression_display_names(ray_start_regular_shared):
     def _str_len(array):
         return pc.greater(pc.binary_length(array), 0)
 
-    plan_str = str(ray.data.from_items(["a", ""]).filter(expr=_str_len(col("item"))))
+    ds = ray.data.from_items(["a", ""]).filter(expr=_str_len(col("item")))
+    plan_str = build_dataset_summary_repr(ds)
     assert plan_str == (
         "Filter(_str_len(col('item')))\n"
         "+- Dataset(num_rows=2, schema={item: string})"
     )
+
+
+@pytest.mark.skipif(
+    get_pyarrow_version() < parse_version("20.0.0"),
+    reason="predicate expressions require PyArrow >= 20.0.0",
+)
+@pytest.mark.parametrize(
+    "compute,concurrency,expected_size",
+    [
+        (None, None, None),
+        (None, 4, 4),
+    ],
+)
+def test_filter_expr_compute_resolution(
+    ray_start_regular_shared, compute, concurrency, expected_size
+):
+    """`filter(expr=...)` must honor `compute` and accept `concurrency` as
+    a deprecated legacy fallback, matching every other operator.
+
+    Before this fix, the expr branch silently dropped `compute=` and only
+    looked at `concurrency=`, which broke fusion with downstream operators
+    that set their compute strategy explicitly."""
+    from ray.data._internal.compute import TaskPoolStrategy
+
+    ds = ray.data.range(10)
+    filtered = ds.filter(expr=col("id") > 5, compute=compute, concurrency=concurrency)
+    filter_op = filtered._logical_plan.dag
+    assert isinstance(filter_op.compute, TaskPoolStrategy)
+    assert filter_op.compute.size == expected_size
+
+
+@pytest.mark.skipif(
+    get_pyarrow_version() < parse_version("20.0.0"),
+    reason="predicate expressions require PyArrow >= 20.0.0",
+)
+def test_filter_expr_compute_honors_taskpoolstrategy(ray_start_regular_shared):
+    """Passing a concrete TaskPoolStrategy through `compute=` must round-trip."""
+    from ray.data._internal.compute import TaskPoolStrategy
+
+    ds = ray.data.range(10)
+    filtered = ds.filter(expr=col("id") > 5, compute=TaskPoolStrategy(size=20))
+    filter_op = filtered._logical_plan.dag
+    assert isinstance(filter_op.compute, TaskPoolStrategy)
+    assert filter_op.compute.size == 20
+
+
+@pytest.mark.skipif(
+    get_pyarrow_version() < parse_version("20.0.0"),
+    reason="predicate expressions require PyArrow >= 20.0.0",
+)
+def test_filter_expr_concurrency_is_deprecated(ray_start_regular_shared, caplog):
+    """The legacy `concurrency=` argument still works on `filter(expr=...)`,
+    but must emit the deprecation warning like every other operator."""
+    import logging
+
+    # `ray.data` configures `propagate=False`, so caplog (which hooks the root
+    # logger) won't see the warning unless we attach its handler directly to
+    # the emitter.
+    util_logger = logging.getLogger("ray.data._internal.util")
+    util_logger.addHandler(caplog.handler)
+    prev_level = util_logger.level
+    util_logger.setLevel(logging.WARNING)
+    try:
+        ds = ray.data.range(10)
+        ds.filter(expr=col("id") > 5, concurrency=4)
+    finally:
+        util_logger.removeHandler(caplog.handler)
+        util_logger.setLevel(prev_level)
+
+    assert "``concurrency`` is deprecated" in caplog.text
+
+
+@pytest.mark.skipif(
+    get_pyarrow_version() < parse_version("20.0.0"),
+    reason="predicate expressions require PyArrow >= 20.0.0",
+)
+def test_filter_expr_rejects_actor_pool(ray_start_regular_shared):
+    """An ActorPoolStrategy with a predicate expression is misuse — there's
+    no state to maintain — and must raise a clear error."""
+    from ray.data._internal.compute import ActorPoolStrategy
+
+    ds = ray.data.range(10)
+    with pytest.raises(ValueError):
+        ds.filter(expr=col("id") > 5, compute=ActorPoolStrategy(size=2))
+
+
+# https://github.com/ray-project/ray/issues/51217
+def test_filter_udf_preserves_dictionary_encoded_column_type(
+    ray_start_regular_shared, tmp_path
+):
+    """Filtering with a UDF (``fn=``) was silently converting Arrow
+    ``dictionary``-encoded columns to plain ``string``, changing the column's
+    on-disk type even though the values themselves were unchanged.
+
+    NOTE: ``Dataset.schema()`` doesn't catch this: ``Filter`` is tagged
+    ``LogicalOperatorPreservesSchema``, so ``schema()`` just echoes the input
+    schema instead of reflecting the materialized block. That makes ``schema()``
+    report the *original* (correct) type even if the physical block's type
+    has changed, so this test reads the actual output block's Arrow type
+    instead.
+    """
+    table = pa.table(
+        {
+            "id": pa.array([1, 2, 3], type=pa.int64()),
+            "category": pa.array(["a", "b", "a"]).dictionary_encode(),
+        }
+    )
+    parquet_file = tmp_path / "dictionary_data.parquet"
+    pq.write_table(table, parquet_file)
+
+    ds = ray.data.read_parquet(str(parquet_file))
+    original_type = ray.get(ds.to_arrow_refs()[0]).schema.field("category").type
+    assert pa.types.is_dictionary(original_type)
+
+    filtered_ds = ds.filter(lambda row: row["id"] != 2)
+    filtered_table = pa.concat_tables(ray.get(filtered_ds.to_arrow_refs()))
+    filtered_type = filtered_table.schema.field("category").type
+
+    assert filtered_type == original_type, (
+        f"filter() changed the on-disk type of 'category' from {original_type} "
+        f"to {filtered_type}"
+    )
+    assert filtered_table.column("id").to_pylist() == [1, 3]
+    assert filtered_table.column("category").to_pylist() == ["a", "a"]
 
 
 if __name__ == "__main__":

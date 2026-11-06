@@ -4,7 +4,7 @@ from inspect import getmembers, isfunction, ismodule
 import pytest
 
 import ray
-from ray._private.test_utils import run_string_as_driver
+from ray._common.test_utils import run_string_as_driver
 
 
 # NOTE: Before adding a new API to Ray (and modifying this test), the new API

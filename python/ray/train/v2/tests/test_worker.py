@@ -4,6 +4,7 @@ from unittest.mock import create_autospec
 
 import pytest
 
+import ray.train.health as health
 from ray.actor import ActorHandle
 from ray.train.v2._internal.constants import ENABLE_WORKER_STRUCTURED_LOGGING_ENV_VAR
 from ray.train.v2._internal.execution.context import (
@@ -11,17 +12,16 @@ from ray.train.v2._internal.execution.context import (
     TrainRunContext,
     get_train_context,
 )
+from ray.train.v2._internal.execution.preemption import PreemptionInfo
 from ray.train.v2._internal.execution.storage import StorageContext
 from ray.train.v2._internal.execution.worker_group.worker import RayTrainWorker
 from ray.train.v2._internal.util import ObjectRefWrapper
 
 
-@pytest.mark.parametrize("created_nested_threads", [True, False])
-def test_worker_finished_after_all_threads_finish(monkeypatch, created_nested_threads):
+def _init_worker(monkeypatch) -> RayTrainWorker:
+    """Return a RayTrainWorker with a train context, in this process."""
     # Disable this to avoid TypeError from logging MagicMock
     monkeypatch.setenv(ENABLE_WORKER_STRUCTURED_LOGGING_ENV_VAR, False)
-
-    # Initialize RayTrainWorker state
     worker = RayTrainWorker()
     worker.init_train_context(
         train_run_context=create_autospec(TrainRunContext, instance=True),
@@ -37,6 +37,12 @@ def test_worker_finished_after_all_threads_finish(monkeypatch, created_nested_th
         worker_callbacks=[],
         controller_actor=create_autospec(ActorHandle, instance=True),
     )
+    return worker
+
+
+@pytest.mark.parametrize("created_nested_threads", [True, False])
+def test_worker_finished_after_all_threads_finish(monkeypatch, created_nested_threads):
+    worker = _init_worker(monkeypatch)
     global_queue = queue.Queue()
 
     def train_fn():
@@ -68,6 +74,34 @@ def test_worker_finished_after_all_threads_finish(monkeypatch, created_nested_th
         assert queue_contents == ["nested"]
     else:
         assert queue_contents == ["main"]
+
+
+def test_mark_preempt_stores_info(monkeypatch):
+    """mark_preempt stores the signal in the worker's PreemptionContext."""
+    worker = _init_worker(monkeypatch)
+
+    info = PreemptionInfo(deadline_ms=30_000, preempted_node_to_ranks={"node-a": [0]})
+    worker.mark_preempt(info)
+
+    assert get_train_context().preemption_context.preemption_info is info
+
+
+def test_health_report_reaches_poll_status(monkeypatch):
+    worker = _init_worker(monkeypatch)
+    assert worker.poll_status().health_report is None
+
+    health.report({"loss": 1.0, "grad_norm": 2.0}, step=1)
+    health.report({"loss": 0.5})
+    report = worker.poll_status().health_report
+    assert report.metrics == {"loss": 0.5}
+    assert report.step is None
+
+
+def test_health_report_rejects_torch_tensors(monkeypatch):
+    torch = pytest.importorskip("torch")
+    _init_worker(monkeypatch)
+    with pytest.raises(ValueError, match="Torch tensors"):
+        health.report({"grad_norm": torch.tensor(1.0)})
 
 
 if __name__ == "__main__":

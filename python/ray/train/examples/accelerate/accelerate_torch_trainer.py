@@ -1,6 +1,5 @@
 # __accelerate_torch_basic_example_start__
-"""
-Minimal Ray Train and Accelerate example adapted from
+"""Minimal Ray Train and Accelerate example adapted from
 https://github.com/huggingface/accelerate/blob/main/examples/nlp_example.py
 
 Fine-tune a BERT model with Hugging Face Accelerate and Ray Train and Ray Data
@@ -140,7 +139,7 @@ if __name__ == "__main__":
     }
 
     # Prepare Ray Datasets
-    hf_datasets = load_dataset("glue", "mrpc")
+    hf_datasets = load_dataset("nyu-mll/glue", "mrpc")
     ray_datasets = {
         "train": ray.data.from_huggingface(hf_datasets["train"]),
         "validation": ray.data.from_huggingface(hf_datasets["validation"]),

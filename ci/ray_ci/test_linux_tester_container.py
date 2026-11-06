@@ -98,6 +98,13 @@ def test_run_tests_in_docker() -> None:
         )._run_tests_in_docker(["t1", "t2"], [0, 1], "/tmp", ["v=k"], "flag")
         input_str = inputs[-1]
         assert "--env ENV_01 --env ENV_02 --env BUILDKITE" in input_str
+        # The index configuration has to reach the nested container: the bazel
+        # invocation inside it reads the --repo_env passthrough from the repo's
+        # .bazelrc, which only has an effect on variables that container has.
+        assert (
+            "--env PIP_INDEX_URL --env UV_INDEX_URL "
+            "--env RULES_PYTHON_PIP_ISOLATED" in input_str
+        )
         assert "--network host" in input_str
         assert '--gpus "device=0,1"' in input_str
         assert "--volume /tmp:/tmp/bazel_event_logs" in input_str
@@ -164,7 +171,16 @@ def test_ray_installation() -> None:
     def _mock_subprocess(inputs: List[str], env, stdout, stderr) -> None:
         install_ray_cmds.append(inputs)
 
-    with mock.patch("subprocess.check_call", side_effect=_mock_subprocess):
+    # RAYCI_IMAGE_PIP_INDEX_URL is set in every forge step, so the expected
+    # command below depends on the environment unless it is pinned here.
+    with mock.patch(
+        "subprocess.check_call", side_effect=_mock_subprocess
+    ), mock.patch.dict(
+        os.environ,
+        {
+            "RAYCI_IMAGE_PIP_INDEX_URL": "",
+        },
+    ):
         LinuxTesterContainer("team", build_type="debug")
         docker_image = f"{_DOCKER_ECR_REPO}:team"
         assert install_ray_cmds[-1] == [
@@ -180,10 +196,43 @@ def test_ray_installation() -> None:
             "BUILD_TYPE=debug",
             "--build-arg",
             "BUILDKITE_CACHE_READONLY=",
+            "--build-arg",
+            "RAYCI_IMAGE_PIP_INDEX_URL=",
             "-f",
             "ci/ray_ci/tests.env.Dockerfile",
             "/ray",
         ]
+
+
+def test_ray_installation_wheel() -> None:
+    install_ray_cmds = []
+
+    def _mock_subprocess(inputs: List[str], env, stdout, stderr) -> None:
+        install_ray_cmds.append(inputs)
+
+    with mock.patch("subprocess.check_call", side_effect=_mock_subprocess):
+        LinuxTesterContainer("team", build_type="wheel", python_version="3.10")
+        docker_image = f"{_DOCKER_ECR_REPO}:team"
+        cmd = install_ray_cmds[-1]
+        assert cmd[0:6] == [
+            "docker",
+            "build",
+            "--pull",
+            "--progress=plain",
+            "-t",
+            docker_image,
+        ]
+        # Verify BUILD_TYPE=wheel is passed
+        build_type_idx = cmd.index("BUILD_TYPE=wheel") - 1
+        assert cmd[build_type_idx] == "--build-arg"
+        # Verify RAY_CORE_IMAGE is passed (for dashboard/redis fallback)
+        assert any("RAY_CORE_IMAGE=" in arg for arg in cmd)
+        # Verify RAY_DASHBOARD_IMAGE is passed
+        assert any("RAY_DASHBOARD_IMAGE=" in arg for arg in cmd)
+        # Verify RAY_WHEEL_IMAGE is passed
+        assert any("RAY_WHEEL_IMAGE=" in arg for arg in cmd)
+        wheel_arg = [arg for arg in cmd if "RAY_WHEEL_IMAGE=" in arg][0]
+        assert "ray-wheel-py3.10" in wheel_arg
 
 
 def test_run_tests() -> None:

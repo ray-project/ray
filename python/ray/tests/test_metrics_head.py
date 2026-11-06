@@ -2,19 +2,32 @@
 import json
 import logging
 import os
+import re
 import sys
 import tempfile
 
 import pytest
 
-from ray._common.utils import get_ray_temp_dir
+from ray._common.utils import get_default_ray_temp_dir
 from ray._private.ray_constants import SESSION_LATEST
+from ray.dashboard.modules.metrics.dashboards.data_llm_dashboard_panels import (
+    DATA_LLM_GRAFANA_PANELS,
+    data_llm_dashboard_config,
+)
 from ray.dashboard.modules.metrics.dashboards.default_dashboard_panels import (
     DEFAULT_GRAFANA_ROWS,
+    MAX_NPUS,
     MAX_PERCENTAGE_EXPRESSION,
+    MAX_PLUS_PENDING_NPUS,
+    OVERVIEW_AND_HEALTH_PANELS,
+    RAY_RESOURCES_PANELS,
 )
 from ray.dashboard.modules.metrics.dashboards.serve_dashboard_panels import (
     SERVE_GRAFANA_PANELS,
+)
+from ray.dashboard.modules.metrics.grafana_dashboard_factory import (
+    GRAFANA_DASHBOARD_GLOBAL_FILTERS_OVERRIDE_ENV_VAR_TEMPLATE,
+    generate_data_llm_grafana_dashboard,
 )
 from ray.tests.conftest import _ray_start
 
@@ -45,7 +58,7 @@ def test_metrics_folder_and_content(is_temp_dir_set, temp_dir_val):
         include_dashboard=True, _temp_dir=temp_dir_val if is_temp_dir_set else None
     ) as context:
         session_dir = context["session_dir"]
-        temp_dir = temp_dir_val if is_temp_dir_set else get_ray_temp_dir()
+        temp_dir = temp_dir_val if is_temp_dir_set else get_default_ray_temp_dir()
         assert os.path.exists(
             f"{session_dir}/metrics/grafana/provisioning/dashboards/default.yml"
         )
@@ -72,7 +85,9 @@ def test_metrics_folder_and_content(is_temp_dir_set, temp_dir_val):
 
         assert os.path.exists(f"{session_dir}/metrics/prometheus/prometheus.yml")
         with open(f"{session_dir}/metrics/prometheus/prometheus.yml", "r") as f:
-            target_path = os.path.join(temp_dir, "prom_metrics_service_discovery.json")
+            target_path = os.path.join(
+                session_dir, "prom_metrics_service_discovery.json"
+            )
             assert f"- '{target_path}'" in f.read()
 
 
@@ -235,6 +250,85 @@ def test_default_dashboard_utilizes_global_filters():
                 assert "{global_filters}" in target.expr
 
 
+def test_cluster_npu_utilization_averages_reported_samples():
+    cluster_utilization = next(
+        panel
+        for panel in OVERVIEW_AND_HEALTH_PANELS
+        if panel.title == "Cluster Utilization"
+    )
+    npu_target = next(
+        target
+        for target in cluster_utilization.targets
+        if target.legend == "NPU AI Core (physical)"
+    )
+
+    assert npu_target.expr == (
+        'avg(ray_node_npus_utilization{{instance=~"$Instance",{global_filters}}})'
+    )
+
+
+def test_cluster_npu_hbm_utilization_uses_reported_capacity():
+    cluster_utilization = next(
+        panel
+        for panel in OVERVIEW_AND_HEALTH_PANELS
+        if panel.title == "Cluster Utilization"
+    )
+    hbm_target = next(
+        target for target in cluster_utilization.targets if target.legend == "NPU HBM"
+    )
+
+    assert hbm_target.expr == (
+        'sum(ray_node_npu_hbm_used{{instance=~"$Instance",{global_filters}}}) '
+        '/ on() (sum(ray_node_npu_hbm_available{{instance=~"$Instance",'
+        '{global_filters}}}) + sum(ray_node_npu_hbm_used{{instance=~"$Instance",'
+        "{global_filters}}})) * 100"
+    )
+
+
+def test_npu_health_panel_preserves_dcmi_severity():
+    health_panel = next(
+        panel
+        for row in DEFAULT_GRAFANA_ROWS
+        for panel in row.panels
+        if panel.title == "Node NPU Health"
+    )
+
+    assert "0 is OK" in health_panel.description
+    assert "3 is critical" in health_panel.description
+    assert "4 means that health information is missing" in health_panel.description
+    assert health_panel.targets[0].expr.startswith("max(ray_node_npu_health")
+
+
+def test_logical_npu_usage_panel():
+    logical_npu_usage = next(
+        panel for panel in RAY_RESOURCES_PANELS if panel.title == "Logical NPU Usage"
+    )
+
+    assert logical_npu_usage.unit == "NPUs"
+    assert [
+        (target.legend, target.expr) for target in logical_npu_usage.targets[:2]
+    ] == [
+        (
+            "NPU Usage: {{instance}}",
+            'sum(ray_resources{{Name="NPU",State="USED",instance=~"$Instance",'
+            "{global_filters}}}) by (instance)",
+        ),
+        (
+            "MAX",
+            'sum(ray_resources{{Name="NPU",instance=~"$Instance",'
+            "{global_filters}}})",
+        ),
+    ]
+    pending_target = logical_npu_usage.targets[2]
+    assert pending_target.legend == "MAX + PENDING"
+    assert pending_target.expr == (
+        f"({MAX_PLUS_PENDING_NPUS} and {MAX_PLUS_PENDING_NPUS} > "
+        f"({MAX_NPUS} or vector(0)))"
+    )
+    assert 'resource="NPU"' in pending_target.expr
+    assert "autoscaler_pending_resources" in pending_target.expr
+
+
 def test_serve_dashboard_utilizes_global_filters():
     for panel in SERVE_GRAFANA_PANELS:
         for target in panel.targets:
@@ -242,6 +336,146 @@ def test_serve_dashboard_utilizes_global_filters():
                 # We skip expressions that are constant value targets serving as visual aids
                 continue
             assert "{global_filters}" in target.expr
+
+
+DATA_LLM_GLOBAL_FILTERS_ENV_VAR = (
+    GRAFANA_DASHBOARD_GLOBAL_FILTERS_OVERRIDE_ENV_VAR_TEMPLATE.format(
+        name=data_llm_dashboard_config.name
+    )
+)
+SESSION_FILTER = 'SessionName=~"$SessionName"'
+RAY_IO_CLUSTER_FILTER = 'ray_io_cluster=~"$Cluster"'
+# The filter Anyscale's managed Grafana injects through the env override.
+CLUSTER_ID_FILTER = 'ClusterId=~"$ClusterId"'
+
+
+def _generate_data_llm_dashboard(monkeypatch, override_filter):
+    if override_filter is None:
+        monkeypatch.delenv(DATA_LLM_GLOBAL_FILTERS_ENV_VAR, raising=False)
+    else:
+        monkeypatch.setenv(DATA_LLM_GLOBAL_FILTERS_ENV_VAR, override_filter)
+    content, _ = generate_data_llm_grafana_dashboard()
+    return json.loads(content)
+
+
+def _panel_exprs(dashboard):
+    return [t["expr"] for panel in dashboard["panels"] for t in panel["targets"]]
+
+
+def _variables_by_name(dashboard):
+    return {v["name"]: v for v in dashboard["templating"]["list"]}
+
+
+def test_data_llm_dashboard_utilizes_global_filters():
+    """Every label selector of every Data LLM target carries `{global_filters}`.
+
+    A mean divides a sum by a count, so each selector is checked, not just
+    each expression.
+    """
+    for panel in DATA_LLM_GRAFANA_PANELS:
+        for target in panel.targets:
+            # In the template, each selector opens with an escaped "{{".
+            num_selectors = target.expr.count("{{")
+            num_filtered = target.expr.count("{global_filters}")
+
+            assert num_selectors > 0, f"{panel.title}: {target.expr}"
+            assert num_filtered == num_selectors, f"{panel.title}: {target.expr}"
+
+
+def test_data_llm_dashboard_has_session_and_cluster_variables(monkeypatch):
+    """The generated Data LLM dashboard offers SessionName and Cluster
+    dropdowns ahead of the model and worker dropdowns that they narrow.
+    """
+    dashboard = _generate_data_llm_dashboard(monkeypatch, override_filter=None)
+
+    names = [v["name"] for v in dashboard["templating"]["list"]]
+
+    assert names == [
+        "datasource",
+        "SessionName",
+        "Cluster",
+        "vllm_model_name",
+        "workerid",
+        "interval",
+    ]
+
+
+@pytest.mark.parametrize("override_filter", [None, CLUSTER_ID_FILTER])
+def test_data_llm_dashboard_panels_apply_all_filters(monkeypatch, override_filter):
+    """Every selector of every generated panel query carries both standard
+    filters, plus the env override filter when one is set.
+    """
+    dashboard = _generate_data_llm_dashboard(monkeypatch, override_filter)
+
+    exprs = _panel_exprs(dashboard)
+
+    assert exprs
+    expected = [SESSION_FILTER, RAY_IO_CLUSTER_FILTER]
+    if override_filter is not None:
+        expected.append(override_filter)
+    for expr in exprs:
+        # After formatting, each selector opens with a single "{".
+        num_selectors = expr.count("{")
+        for label_filter in expected:
+            assert expr.count(label_filter) == num_selectors, expr
+
+
+@pytest.mark.parametrize("override_filter", [None, CLUSTER_ID_FILTER])
+def test_data_llm_dashboard_variables_avoid_self_reference(
+    monkeypatch, override_filter
+):
+    """The SessionName and Cluster dropdowns carry the env override filter but
+    never their own variable, and the model and worker dropdowns narrow to the
+    chosen session and cluster.
+    """
+    dashboard = _generate_data_llm_dashboard(monkeypatch, override_filter)
+
+    variables = _variables_by_name(dashboard)
+
+    for name in ("SessionName", "Cluster"):
+        query = variables[name]["query"]["query"]
+        # Match the quoted value so "$ClusterId" doesn't count as "$Cluster".
+        assert f'"${name}"' not in query, query
+        if override_filter is not None:
+            assert override_filter in query, query
+    for name in ("vllm_model_name", "workerid"):
+        query = variables[name]["query"]["query"]
+        assert SESSION_FILTER in query, query
+        assert RAY_IO_CLUSTER_FILTER in query, query
+
+
+@pytest.mark.parametrize("override_filter", [None, CLUSTER_ID_FILTER])
+def test_data_llm_dashboard_has_no_dangling_commas(monkeypatch, override_filter):
+    """No generated panel or dropdown selector has an empty matcher between
+    commas, or a comma next to a brace, which Prometheus would reject.
+    """
+    dashboard = _generate_data_llm_dashboard(monkeypatch, override_filter)
+
+    queries = _panel_exprs(dashboard) + [
+        v["query"]["query"]
+        for v in dashboard["templating"]["list"]
+        if isinstance(v.get("query"), dict)
+    ]
+
+    assert queries
+    for query in queries:
+        assert not re.search(r",\s*,|,\s*}|{\s*,", query), query
+
+
+def test_serve_dashboard_excludes_system_traffic():
+    for panel in SERVE_GRAFANA_PANELS:
+        for target in panel.targets:
+            expr = target.expr
+            # Combined targets select by __name__ and carry neither selector, so both apply.
+            combined = bool(
+                re.search(r'__name__\s*=~\s*["\']ray_serve_\(http\|grpc\)', expr)
+            )
+            if combined or re.search(r"ray_serve_(num_)?http_\w*request", expr):
+                assert 'route!~"/-/.*"' in expr, f"{panel.title}: {expr}"
+            if combined or re.search(r"ray_serve_(num_)?grpc_\w*request", expr):
+                assert (
+                    r'method!~"/ray\\.serve\\.RayServeAPIService/.*"' in expr
+                ), f"{panel.title}: {expr}"
 
 
 if __name__ == "__main__":

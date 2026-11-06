@@ -23,80 +23,51 @@ namespace observability {
 
 RayEventRecorder::RayEventRecorder(
     rpc::EventAggregatorClient &event_aggregator_client,
-    instrumented_io_context &io_service,
+    std::shared_ptr<PeriodicalRunnerInterface> periodical_runner,
     size_t max_buffer_size,
     std::string_view metric_source,
     ray::observability::MetricInterface &dropped_events_counter,
     const NodeID &node_id)
-    : event_aggregator_client_(event_aggregator_client),
-      periodical_runner_(PeriodicalRunner::Create(io_service)),
-      max_buffer_size_(max_buffer_size),
-      metric_source_(metric_source),
-      buffer_(max_buffer_size),
-      dropped_events_counter_(dropped_events_counter),
-      node_id_(node_id) {}
-
-void RayEventRecorder::StartExportingEvents() {
-  absl::MutexLock lock(&mutex_);
-  if (!RayConfig::instance().enable_ray_event()) {
-    RAY_LOG(INFO) << "Ray event recording is disabled. Skipping start exporting events.";
-    return;
-  }
-  if (exporting_started_) {
-    return;
-  }
-  exporting_started_ = true;
-  periodical_runner_->RunFnPeriodically(
-      [this]() { ExportEvents(); },
-      RayConfig::instance().ray_events_report_interval_ms(),
-      "RayEventRecorder.ExportEvents");
-}
+    : RayEventRecorderBase(event_aggregator_client,
+                           std::move(periodical_runner),
+                           max_buffer_size,
+                           metric_source,
+                           dropped_events_counter,
+                           node_id),
+      buffer_(max_buffer_size) {}
 
 void RayEventRecorder::ExportEvents() {
   absl::MutexLock lock(&mutex_);
   if (buffer_.empty()) {
     return;
   }
-  rpc::events::AddEventsRequest request;
-  rpc::events::RayEventsData ray_event_data;
-  // group the event in the buffer_ by their entity id and type; then for each group,
-  // merge the events into a single event. maintain the order of the events in the buffer.
-  std::list<std::unique_ptr<RayEventInterface>> grouped_events;
-  absl::flat_hash_map<RayEventKey,
-                      std::list<std::unique_ptr<RayEventInterface>>::iterator>
-      event_key_to_iterator;
+  // Skip if there's already an in-flight gRPC call to avoid overlapping requests.
+  // This prevents the race where StopExportingEvents() could return while a
+  // periodic export is still in flight.
+  if (grpc_in_progress_) {
+    RAY_LOG_EVERY_N_OR_DEBUG(WARNING, 100)
+        << "Previous RayEventRecorder export in progress: new events will be exported "
+           "once previous export completes.";
+    return;
+  }
+  // Drain the buffer and hand the events to the shared group/serialize/send path.
+  std::list<std::unique_ptr<RayEventInterface>> events;
   for (auto &event : buffer_) {
-    auto key = std::make_pair(event->GetEntityId(), event->GetEventType());
-    auto [it, inserted] = event_key_to_iterator.try_emplace(key);
-    if (inserted) {
-      grouped_events.push_back(std::move(event));
-      event_key_to_iterator[key] = std::prev(grouped_events.end());
-    } else {
-      (*it->second)->Merge(std::move(*event));
-    }
+    events.push_back(std::move(event));
   }
-  for (auto &event : grouped_events) {
-    rpc::events::RayEvent ray_event = std::move(*event).Serialize();
-    // Set node_id centrally for all events
-    ray_event.set_node_id(node_id_.Binary());
-    *ray_event_data.mutable_events()->Add() = std::move(ray_event);
-  }
-  *request.mutable_events_data() = std::move(ray_event_data);
   buffer_.clear();
 
-  event_aggregator_client_.AddEvents(
-      request, [](Status status, rpc::events::AddEventsReply reply) {
-        if (!status.ok()) {
-          // TODO(#56391): Add a metric to track the number of failed events. Also
-          // add logic for error recovery.
-          RAY_LOG(ERROR) << "Failed to record ray event: " << status.ToString();
-        }
-      });
+  rpc::events::AddEventsRequest request;
+  GroupAndSerializeEvents(std::move(events), request.mutable_events_data());
+  SendRequest(std::move(request));
 }
 
 void RayEventRecorder::AddEvents(
     std::vector<std::unique_ptr<RayEventInterface>> &&data_list) {
   absl::MutexLock lock(&mutex_);
+  if (!enabled_) {
+    return;
+  }
   if (!RayConfig::instance().enable_ray_event()) {
     return;
   }

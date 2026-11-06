@@ -2,6 +2,7 @@
 import logging
 import os
 import pickle
+import platform
 import random
 import re
 import sys
@@ -11,11 +12,11 @@ import pytest
 
 import ray
 import ray.cluster_utils
-from ray._common.test_utils import SignalActor
-from ray._private.test_utils import (
-    client_test_enabled,
+from ray._common.test_utils import (
+    SignalActor,
     run_string_as_driver,
 )
+from ray._private.test_utils import client_test_enabled
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 
 import psutil
@@ -237,11 +238,32 @@ def test_default_worker_import_dependency(shutdown_only):
 @pytest.mark.skipif(
     sys.platform != "linux", reason="Windows/OSX thread count not policed yet."
 )
-def test_worker_thread_count(monkeypatch, shutdown_only):
+@pytest.mark.parametrize(
+    "recorder_env, expected_thread_counts",
+    [
+        pytest.param(
+            {"RAY_enable_ray_task_event_recorder": "0"},
+            {21, 22, 23, 24},
+            id="task_event_recorder_off",
+        ),
+        pytest.param(
+            {"RAY_enable_ray_event": "1", "RAY_enable_ray_task_event_recorder": "1"},
+            {22, 23, 24, 25},
+            id="task_event_recorder_on",
+        ),
+    ],
+)
+def test_worker_thread_count(
+    monkeypatch, shutdown_only, recorder_env, expected_thread_counts
+):
     """This test will fail if the number of threads spawned by a worker process
     increases. If you find that a patch is now causing this test to fail,
     consider if this thread count change is expected and adjust the test
     (or your patch) accordingly!
+
+    RayTaskEventRecorder spawns one dedicated io thread when active (which needs both
+    enable_ray_event and enable_ray_task_event_recorder), so the expected count is
+    parametrized on that flag instead of depending on the compiled default.
     """
 
     @ray.remote
@@ -257,6 +279,8 @@ def test_worker_thread_count(monkeypatch, shutdown_only):
     monkeypatch.setenv("RAY_worker_num_grpc_internal_threads", "1")
     monkeypatch.setenv("RAY_num_server_call_thread", "1")
     monkeypatch.setenv("RAY_core_worker_num_server_call_thread", "1")
+    for k, v in recorder_env.items():
+        monkeypatch.setenv(k, v)
 
     # TODO(#55215): The for loop and the 'assert ... in {..,..}' complicates this
     # test unnecessarily. We should only need to call the assert after
@@ -268,31 +292,45 @@ def test_worker_thread_count(monkeypatch, shutdown_only):
         ray.get(actor.get_thread_count.remote())
     # Lowering these numbers in this assert should be celebrated,
     # increasing these numbers should be scrutinized
-    assert ray.get(actor.get_thread_count.remote()) in {21, 22, 23}
+    assert ray.get(actor.get_thread_count.remote()) in expected_thread_counts
 
 
 # https://github.com/ray-project/ray/issues/7287
-def test_omp_threads_set(ray_start_cluster, monkeypatch):
+@pytest.mark.parametrize(
+    "env_var,num_threads_env_vars",
+    [
+        ("OMP_NUM_THREADS", None),
+        ("RAYON_NUM_THREADS", "OMP_NUM_THREADS,RAYON_NUM_THREADS"),
+    ],
+)
+def test_num_threads_env_var_set(
+    ray_start_cluster, monkeypatch, env_var, num_threads_env_vars
+):
+    monkeypatch.delenv(env_var, raising=False)
+    if num_threads_env_vars is None:
+        monkeypatch.delenv("RAY_NUM_THREADS_ENV_VARS", raising=False)
+    else:
+        monkeypatch.setenv("RAY_NUM_THREADS_ENV_VARS", num_threads_env_vars)
     cluster = ray_start_cluster
     cluster.add_node(num_cpus=2)
     ray.init(address=cluster.address)
 
     @ray.remote
     def f():
-        return os.environ.get("OMP_NUM_THREADS")
+        return os.environ.get(env_var)
 
     @ray.remote
     class Actor:
         def f(self):
-            return os.environ.get("OMP_NUM_THREADS")
+            return os.environ.get(env_var)
 
     ###########################
     # Test basic tasks
     ###########################
-    # Test override to num_cpus if OMP_NUM_THREADS not set
+    # Test override to num_cpus if the env var is not set
     assert ray.get(f.options(num_cpus=2).remote()) == "2"
 
-    # Test override to default cpu number if OMP_NUM_THREADS not set
+    # Test override to default cpu number if the env var is not set
     assert ray.get(f.remote()) == "1"
 
     # Test set to 1 for fractional CPU
@@ -304,17 +342,13 @@ def test_omp_threads_set(ray_start_cluster, monkeypatch):
     from ray.runtime_env import RuntimeEnv
 
     assert (
-        ray.get(
-            f.options(
-                runtime_env=RuntimeEnv(env_vars={"OMP_NUM_THREADS": "2"})
-            ).remote()
-        )
+        ray.get(f.options(runtime_env=RuntimeEnv(env_vars={env_var: "2"})).remote())
         == "2"
     )
     assert (
         ray.get(
             f.options(
-                num_cpus=1, runtime_env=RuntimeEnv(env_vars={"OMP_NUM_THREADS": "2"})
+                num_cpus=1, runtime_env=RuntimeEnv(env_vars={env_var: "2"})
             ).remote()
         )
         == "2"
@@ -323,7 +357,7 @@ def test_omp_threads_set(ray_start_cluster, monkeypatch):
     ###########################
     # Test actor tasks
     ###########################
-    # Test actor tasks set OMP_NUM_THREADS correctly in a similar way.
+    # Test actor tasks set the env var correctly in a similar way.
     assert ray.get(Actor.remote().f.remote()) == "1"
     assert ray.get(Actor.options(num_cpus=2).remote().f.remote()) == "2"
     assert ray.get(Actor.options(num_cpus=0.25).remote().f.remote()) == "1"
@@ -333,23 +367,59 @@ def test_omp_threads_set(ray_start_cluster, monkeypatch):
     ###########################
     @ray.remote
     def g():
-        return os.getpid(), os.environ.get("OMP_NUM_THREADS")
+        return os.getpid(), os.environ.get(env_var)
 
     # Set to 1
-    pid1, omp_num_threads = ray.get(g.remote())
-    assert omp_num_threads == "1"
+    pid1, num_threads = ray.get(g.remote())
+    assert num_threads == "1"
     # Set to 2
-    pid2, omp_num_threads = ray.get(g.options(num_cpus=2).remote())
+    pid2, num_threads = ray.get(g.options(num_cpus=2).remote())
     assert pid1 == pid2
-    assert omp_num_threads == "2"
+    assert num_threads == "2"
 
     ###########################
     # Test not setting the value with environ already set to 1 in env
     ###########################
     with monkeypatch.context() as m:
-        m.setenv("OMP_NUM_THREADS", "1")
+        m.setenv(env_var, "1")
         cluster.add_node(num_cpus=4)
     assert ray.get(f.options(num_cpus=4).remote()) == "1"
+
+
+@pytest.mark.parametrize(
+    "num_threads_env_vars,expected",
+    [
+        (None, {"OMP_NUM_THREADS": "2", "RAYON_NUM_THREADS": None}),
+        (
+            "OMP_NUM_THREADS,RAYON_NUM_THREADS",
+            {"OMP_NUM_THREADS": "2", "RAYON_NUM_THREADS": "2"},
+        ),
+        pytest.param(
+            "",
+            {"OMP_NUM_THREADS": None, "RAYON_NUM_THREADS": None},
+            marks=pytest.mark.skipif(
+                sys.platform == "win32",
+                reason="Windows deletes an env var set to an empty string.",
+            ),
+        ),
+    ],
+)
+def test_num_threads_env_vars_config(
+    shutdown_only, monkeypatch, num_threads_env_vars, expected
+):
+    for name in ["RAY_NUM_THREADS_ENV_VARS", *expected]:
+        monkeypatch.delenv(name, raising=False)
+    # Set per job, through the job's runtime_env.
+    env_vars = {}
+    if num_threads_env_vars is not None:
+        env_vars["RAY_NUM_THREADS_ENV_VARS"] = num_threads_env_vars
+    ray.init(num_cpus=2, runtime_env={"env_vars": env_vars})
+
+    @ray.remote(num_cpus=2)
+    def f():
+        return {name: os.environ.get(name) for name in expected}
+
+    assert ray.get(f.remote()) == expected
 
 
 def test_submit_api(shutdown_only):
@@ -582,6 +652,15 @@ print("remote", ray.get(check.remote()))
 
 
 # https://github.com/ray-project/ray/issues/54868
+@pytest.mark.skipif(
+    sys.platform == "darwin" and platform.machine() == "arm64",
+    reason=(
+        "On Apple Silicon the GPU resource is managed by AppleGPUAcceleratorManager, "
+        "which has no visible-devices env var (e.g. CUDA_VISIBLE_DEVICES) to set or "
+        "override, so this NVIDIA-specific override behavior does not apply. Manager "
+        "selection is hardware-based, so NVIDIA semantics can't be exercised on a Mac."
+    ),
+)
 def test_not_override_accelerator_ids_when_num_accelerators_is_zero():
     not_override_check_script = """
 import ray
@@ -603,13 +682,7 @@ print("task check", ray.get(check.remote()))
 print("actor check", ray.get(Actor.options(num_gpus=0).remote().check.remote()))
 """
 
-    run_string_as_driver(
-        not_override_check_script,
-        dict(
-            os.environ,
-            **{"RAY_ACCEL_ENV_VAR_OVERRIDE_ON_ZERO": "0"},
-        ),
-    )
+    run_string_as_driver(not_override_check_script)
 
     override_check_script = """
 import ray
@@ -631,7 +704,13 @@ print("task check", ray.get(check.remote()))
 print("actor check", ray.get(Actor.options(num_gpus=0).remote().check.remote()))
 """
 
-    run_string_as_driver(override_check_script)
+    run_string_as_driver(
+        override_check_script,
+        dict(
+            os.environ,
+            **{"RAY_ACCEL_ENV_VAR_OVERRIDE_ON_ZERO": "1"},
+        ),
+    )
 
 
 def test_put_get(shutdown_only):
@@ -759,7 +838,7 @@ def test_fetch_local(ray_start_cluster_head):
     assert (1, 0) == (len(ready_ref), len(remaining_ref))
 
 
-def test_nested_functions(ray_start_shared_local_modes):
+def test_nested_functions(ray_start_regular_shared):
     # Make sure that remote functions can use other values that are defined
     # after the remote function but before the first function invocation.
     @ray.remote
@@ -776,7 +855,7 @@ def test_nested_functions(ray_start_shared_local_modes):
     assert ray.get(f.remote()) == (1, 2)
 
 
-def test_recursive_remote_call(ray_start_shared_local_modes):
+def test_recursive_remote_call(ray_start_regular_shared):
     # Test a remote function that recursively calls itself.
     @ray.remote
     def factorial(n):
@@ -792,7 +871,7 @@ def test_recursive_remote_call(ray_start_shared_local_modes):
     assert ray.get(factorial.remote(5)) == 120
 
 
-def test_mutually_recursive_functions(ray_start_shared_local_modes):
+def test_mutually_recursive_functions(ray_start_regular_shared):
     # Test remote functions that recursively call each other.
     @ray.remote
     def factorial_even(n):
@@ -810,7 +889,7 @@ def test_mutually_recursive_functions(ray_start_shared_local_modes):
     assert ray.get(factorial_odd.remote(5)) == 120
 
 
-def test_ray_recursive_objects(ray_start_shared_local_modes):
+def test_ray_recursive_objects(ray_start_regular_shared):
     class ClassA:
         pass
 
@@ -836,7 +915,7 @@ def test_ray_recursive_objects(ray_start_shared_local_modes):
         ray.put(obj)
 
 
-def test_passing_arguments_by_value_out_of_the_box(ray_start_shared_local_modes):
+def test_passing_arguments_by_value_out_of_the_box(ray_start_regular_shared):
     @ray.remote
     def f(x):
         return x
@@ -868,7 +947,7 @@ def test_passing_arguments_by_value_out_of_the_box(ray_start_shared_local_modes)
     ray.get(ray.put(Foo))
 
 
-def test_putting_object_that_closes_over_object_ref(ray_start_shared_local_modes):
+def test_putting_object_that_closes_over_object_ref(ray_start_regular_shared):
     # This test is here to prevent a regression of
     # https://github.com/ray-project/ray/issues/1317.
 
@@ -883,7 +962,7 @@ def test_putting_object_that_closes_over_object_ref(ray_start_shared_local_modes
     ray.put(f)
 
 
-def test_keyword_args(ray_start_shared_local_modes):
+def test_keyword_args(ray_start_regular_shared):
     @ray.remote
     def keyword_fct1(a, b="hello"):
         return "{} {}".format(a, b)
@@ -968,7 +1047,7 @@ def test_keyword_args(ray_start_shared_local_modes):
     assert ray.get(f3.remote(4)) == 4
 
 
-def test_args_starkwargs(ray_start_shared_local_modes):
+def test_args_starkwargs(ray_start_regular_shared):
     def starkwargs(a, b, **kwargs):
         return a, b, kwargs
 
@@ -996,7 +1075,7 @@ def test_args_starkwargs(ray_start_shared_local_modes):
     ray.get(remote_test_function.remote(local_method, actor_method))
 
 
-def test_args_named_and_star(ray_start_shared_local_modes):
+def test_args_named_and_star(ray_start_regular_shared):
     def hello(a, x="hello", **kwargs):
         return a, x, kwargs
 
@@ -1034,7 +1113,7 @@ def test_args_named_and_star(ray_start_shared_local_modes):
     ray.get(remote_test_function.remote(local_method, actor_method))
 
 
-def test_oversized_function(ray_start_shared_local_modes):
+def test_oversized_function(ray_start_regular_shared):
     bar = bytearray(800 * 1024 * 125)
 
     @ray.remote
@@ -1053,7 +1132,7 @@ def test_oversized_function(ray_start_shared_local_modes):
         Actor.remote()
 
 
-def test_args_stars_after(ray_start_shared_local_modes):
+def test_args_stars_after(ray_start_regular_shared):
     def star_args_after(a="hello", b="heo", *args, **kwargs):
         return a, b, args, kwargs
 
@@ -1084,7 +1163,7 @@ def test_args_stars_after(ray_start_shared_local_modes):
 
 
 @pytest.mark.skipif(client_test_enabled(), reason="internal api")
-def test_object_id_backward_compatibility(ray_start_shared_local_modes):
+def test_object_id_backward_compatibility(ray_start_regular_shared):
     # We've renamed Python's `ObjectID` to `ObjectRef`, and added a type
     # alias for backward compatibility.
     # This test is to make sure legacy code can still use `ObjectID`.
@@ -1099,7 +1178,7 @@ def test_object_id_backward_compatibility(ray_start_shared_local_modes):
     assert isinstance(object_ref, ray.ObjectRef)
 
 
-def test_nonascii_in_function_body(ray_start_shared_local_modes):
+def test_nonascii_in_function_body(ray_start_regular_shared):
     @ray.remote
     def return_a_greek_char():
         return "φ"
@@ -1107,7 +1186,7 @@ def test_nonascii_in_function_body(ray_start_shared_local_modes):
     assert ray.get(return_a_greek_char.remote()) == "φ"
 
 
-def test_failed_task(ray_start_shared_local_modes, error_pubsub):
+def test_failed_task(ray_start_regular_shared, error_pubsub):
     @ray.remote
     def throw_exception_fct1():
         raise Exception("Test function 1 intentionally failed.")
@@ -1169,7 +1248,7 @@ def test_failed_task(ray_start_shared_local_modes, error_pubsub):
         assert False
 
 
-def test_base_exception_raised(ray_start_shared_local_modes):
+def test_base_exception_raised(ray_start_regular_shared):
     @ray.remote
     def f():
         raise BaseException("rip")

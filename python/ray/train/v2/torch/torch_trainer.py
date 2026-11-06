@@ -34,105 +34,92 @@ class TorchTrainer(DataParallelTrainer):
     * :ref:`PyTorch Lightning Guide <train-pytorch-lightning>`
     * :ref:`Hugging Face Transformers Guide <train-pytorch-transformers>`
 
-    Example:
-
-        .. testcode::
-
-            import os
-            import tempfile
-
-            import torch
-            from torch import nn
-            from torch.nn.parallel import DistributedDataParallel
-
-            import ray.train
-            from ray.train.torch import TorchTrainer
-
-
-            # If using GPUs, set this to True.
-            use_gpu = False
-            # Number of processes to run training on.
-            num_workers = 2
-
-            # Define your network structure.
-            class NeuralNetwork(nn.Module):
-                def __init__(self):
-                    super(NeuralNetwork, self).__init__()
-                    self.layer1 = nn.Linear(1, 32)
-                    self.relu = nn.ReLU()
-                    self.layer2 = nn.Linear(32, 1)
-
-                def forward(self, input):
-                    return self.layer2(self.relu(self.layer1(input)))
-
-            # Training loop.
-            def train_fn_per_worker(config):
-
-                # Read configurations.
-                lr = config["lr"]
-                batch_size = config["batch_size"]
-                num_epochs = config["num_epochs"]
-
-                # Fetch training dataset.
-                train_dataset_shard = ray.train.get_dataset_shard("train")
-
-                # Instantiate and prepare model for training.
-                model = NeuralNetwork()
-                model = ray.train.torch.prepare_model(model)
-
-                # Define loss and optimizer.
-                loss_fn = nn.MSELoss()
-                optimizer = torch.optim.SGD(model.parameters(), lr=lr)
-
-                # Create data loader.
-                dataloader = train_dataset_shard.iter_torch_batches(
-                    batch_size=batch_size, dtypes=torch.float
-                )
-
-                # Train multiple epochs.
-                for epoch in range(num_epochs):
-                    # Train epoch.
-                    for batch in dataloader:
-                        output = model(batch["input"])
-                        loss = loss_fn(output, batch["label"])
-                        optimizer.zero_grad()
-                        loss.backward()
-                        optimizer.step()
-
-                    # Create checkpoint.
-                    base_model = (
-                        model.module
-                        if isinstance(model, DistributedDataParallel)
-                        else model
-                    )
-
-                    with tempfile.TemporaryDirectory() as temp_checkpoint_dir:
-                        torch.save(
-                            {"model_state_dict": base_model.state_dict()},
-                            os.path.join(temp_checkpoint_dir, "model.pt"),
-                        )
-                        checkpoint = ray.train.Checkpoint.from_directory(temp_checkpoint_dir)
-                        # Report metrics and checkpoint.
-                        ray.train.report({"loss": loss.item()}, checkpoint=checkpoint)
-
-            # Define datasets.
-            train_dataset = ray.data.from_items(
-                [{"input": [x], "label": [2 * x + 1]} for x in range(128)]
-            )
-
-            # Initialize the Trainer.
-            trainer = TorchTrainer(
-                train_fn_per_worker,
-                train_loop_config={"num_epochs": 1, "lr": 0.01, "batch_size": 32},
-                scaling_config=ray.train.ScalingConfig(num_workers=num_workers, use_gpu=use_gpu),
-                datasets={"train": train_dataset},
-            )
-
-            # Train the model.
-            result = trainer.fit()
-
-            # Inspect the results.
-            final_loss = result.metrics["loss"]
+    Examples:
+        >>> import os
+        >>> import tempfile
+        >>> import torch
+        >>> from torch import nn
+        >>> from torch.nn.parallel import DistributedDataParallel
+        >>> import ray.train
+        >>> from ray.train.torch import TorchTrainer
+        >>> # If using GPUs, set this to True.
+        >>> use_gpu = False
+        >>> # Number of processes to run training on.
+        >>> num_workers = 2
+        >>> # Define your network structure.
+        >>> class NeuralNetwork(nn.Module):
+        ...     def __init__(self):
+        ...         super(NeuralNetwork, self).__init__()
+        ...         self.layer1 = nn.Linear(1, 32)
+        ...         self.relu = nn.ReLU()
+        ...         self.layer2 = nn.Linear(32, 1)
+        ...
+        ...     def forward(self, input):
+        ...         return self.layer2(self.relu(self.layer1(input)))
+        >>> # Training loop.
+        >>> def train_fn_per_worker(config):
+        ...
+        ...     # Read configurations.
+        ...     lr = config["lr"]
+        ...     batch_size = config["batch_size"]
+        ...     num_epochs = config["num_epochs"]
+        ...
+        ...     # Fetch training dataset.
+        ...     train_dataset_shard = ray.train.get_dataset_shard("train")
+        ...
+        ...     # Instantiate and prepare model for training.
+        ...     model = NeuralNetwork()
+        ...     model = ray.train.torch.prepare_model(model)
+        ...
+        ...     # Define loss and optimizer.
+        ...     loss_fn = nn.MSELoss()
+        ...     optimizer = torch.optim.SGD(model.parameters(), lr=lr)
+        ...
+        ...     # Create data loader.
+        ...     dataloader = train_dataset_shard.iter_torch_batches(
+        ...         batch_size=batch_size, dtypes=torch.float
+        ...     )
+        ...
+        ...     # Train multiple epochs.
+        ...     for epoch in range(num_epochs):
+        ...         # Train epoch.
+        ...         for batch in dataloader:
+        ...             output = model(batch["input"])
+        ...             loss = loss_fn(output, batch["label"])
+        ...             optimizer.zero_grad()
+        ...             loss.backward()
+        ...             optimizer.step()
+        ...
+        ...         # Create checkpoint.
+        ...         base_model = (
+        ...             model.module
+        ...             if isinstance(model, DistributedDataParallel)
+        ...             else model
+        ...         )
+        ...
+        ...         with tempfile.TemporaryDirectory() as temp_checkpoint_dir:
+        ...             torch.save(
+        ...                 {"model_state_dict": base_model.state_dict()},
+        ...                 os.path.join(temp_checkpoint_dir, "model.pt"),
+        ...             )
+        ...             checkpoint = ray.train.Checkpoint.from_directory(temp_checkpoint_dir)
+        ...             # Report metrics and checkpoint.
+        ...             ray.train.report({"loss": loss.item()}, checkpoint=checkpoint)
+        >>> # Define datasets.
+        >>> train_dataset = ray.data.from_items(
+        ...     [{"input": [x], "label": [2 * x + 1]} for x in range(128)]
+        ... )
+        >>> # Initialize the Trainer.
+        >>> trainer = TorchTrainer(
+        ...     train_fn_per_worker,
+        ...     train_loop_config={"num_epochs": 1, "lr": 0.01, "batch_size": 32},
+        ...     scaling_config=ray.train.ScalingConfig(num_workers=num_workers, use_gpu=use_gpu),
+        ...     datasets={"train": train_dataset},
+        ... )
+        >>> # Train the model.
+        >>> result = trainer.fit()
+        >>> # Inspect the results.
+        >>> final_loss = result.metrics["loss"]
 
     Args:
         train_loop_per_worker: The training function to execute on each worker.
@@ -167,13 +154,13 @@ class TorchTrainer(DataParallelTrainer):
             If provided and ``ray.train.report`` is called with the ``validation``
             argument, Ray Train will validate the reported checkpoint using
             the validation function specified in this config.
-        resume_from_checkpoint: [Deprecated]
         metadata: [Deprecated]
+        resume_from_checkpoint: [Deprecated]
     """
 
     def __init__(
         self,
-        train_loop_per_worker: Union[Callable[[], None], Callable[[Dict], None]],
+        train_loop_per_worker: Union[Callable[[], Any], Callable[[Dict], Any]],
         *,
         train_loop_config: Optional[Dict] = None,
         torch_config: Optional["TorchConfig"] = None,
@@ -191,7 +178,13 @@ class TorchTrainer(DataParallelTrainer):
         torch_config = torch_config or TorchConfig()
         if not torch_config.backend:
             is_gpu_training = scaling_config and scaling_config.use_gpu
-            torch_config.backend = "nccl" if is_gpu_training else "gloo"
+            is_tpu_training = scaling_config and getattr(
+                scaling_config, "use_tpu", False
+            )
+            if is_tpu_training:
+                torch_config.backend = "tpu_dist"
+            else:
+                torch_config.backend = "nccl" if is_gpu_training else "gloo"
 
         super(TorchTrainer, self).__init__(
             train_loop_per_worker=train_loop_per_worker,

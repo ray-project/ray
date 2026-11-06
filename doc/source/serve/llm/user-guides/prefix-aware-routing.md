@@ -1,3 +1,9 @@
+---
+myst:
+  html_meta:
+    description: "Route LLM requests by prompt prefix to exploit KV cache locality, with load balance checks and imbalanced-load fallback."
+---
+
 (prefix-aware-routing-guide)=
 # Prefix-aware routing
 
@@ -7,7 +13,7 @@ Optimize LLM inference with cache locality using prefix-aware request routing.
 This API is in alpha and may change before becoming stable.
 :::
 
-LLM inference can benefit significantly from cache locality optimization. When one replica processes multiple prompts that share a prefix, the engine can reuse previously computed KV-cache entries, reducing computation overhead and improving response times. This technique is known as [Automatic Prefix Caching (APC)](https://docs.vllm.ai/en/stable/features/automatic_prefix_caching.html) in vLLM.
+LLM inference can benefit significantly from cache locality optimization. When one replica processes multiple prompts that share a prefix, the engine can reuse previously computed KV-cache entries, reducing computation overhead and improving response times. This technique is known as [Automatic Prefix Caching (APC)](https://docs.vllm.ai/en/stable/features/automatic_prefix_caching/) in vLLM.
 
 The `PrefixCacheAffinityRouter` routes requests with similar prefixes to the same replicas, maximizing KV cache hit rates.
 
@@ -39,6 +45,10 @@ When load is balanced, the router uses a prefix tree to find replicas that have 
 
 When load is imbalanced (queue length difference exceeds threshold), the router prioritizes load balancing over cache locality and falls back to the standard Power of Two Choices algorithm.
 
+### Multiplexed models (LoRA adapters)
+
+For requests with a multiplexed model ID, such as requests for a LoRA adapter, the router matches prefixes only against text cached for the same model, because vLLM doesn't share KV cache across adapters. If the replicas chosen for a request are much busier than the least busy replica that has the model or has the fewest models loaded, the router sends the request to that replica instead, which loads the model there. `multiplex_spill_threshold` sets how much busier.
+
 ### Prefix tree management
 
 The router maintains a distributed prefix tree actor that:
@@ -66,6 +76,8 @@ The `PrefixCacheAffinityRouter` provides several configuration parameters to tun
 
 - **`match_rate_threshold`** (default: 0.1): Minimum prefix match rate (0.0-1.0) required to use prefix cache-aware routing. Higher values require stronger prefix matches before routing for cache locality.
 
+- **`multiplex_spill_threshold`** (default: 64): For multiplexed requests, how many more ongoing requests the chosen replicas can have than the least busy alternative before the request goes to that alternative. Lower values spread popular adapters to more replicas sooner. Set it to `float("inf")` to never spill.
+
 ### Memory management parameters
 
 - **`do_eviction`** (default: False): Enable automatic eviction of old prefix tree entries to approximate the LLM engine's eviction policy.
@@ -86,5 +98,5 @@ The `PrefixCacheAffinityRouter` provides several configuration parameters to tun
 ## See also
 
 - {doc}`Architecture: Request routing <../architecture/routing-policies>`
-- [vLLM Automatic Prefix Caching](https://docs.vllm.ai/en/stable/features/automatic_prefix_caching.html)
+- [vLLM Automatic Prefix Caching](https://docs.vllm.ai/en/stable/features/automatic_prefix_caching/)
 

@@ -63,7 +63,7 @@ async def check_output_cmd(
             the first item in cmd.
         logger: The logger instance.
         cmd_index_gen: The cmd index generator, default is itertools.count(1).
-        kwargs: All arguments are passed to the create_subprocess_exec.
+        **kwargs: All arguments are passed to the create_subprocess_exec.
 
     Returns:
         The stdout of cmd.

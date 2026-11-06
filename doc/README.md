@@ -2,6 +2,12 @@
 
 Repository for documentation of the Ray project, hosted at [docs.ray.io](https://docs.ray.io).
 
+## Contributing new documentation pages
+
+Author new documentation files under `doc/source/` as MyST Markdown (`.md`), not reStructuredText (`.rst`). A lint check rejects newly added `.rst` files. Edits to existing `.rst` files continue to work. `git mv` is not flagged for any rename, which covers file renames and directory reorganization.
+
+MyST is a Markdown superset that supports the Sphinx directives used throughout the docs. See the [MyST Parser documentation](https://myst-parser.readthedocs.io/) for syntax reference.
+
 ## Installation
 
 To build the documentation, make sure you have `ray` installed first.
@@ -47,8 +53,8 @@ This ensures consistent messaging across documentation pages.
 
 ## Checking for broken links
 
-To check if there are broken links, run the following (we are currently not running this
-in the CI since there are false positives).
+To check if there are broken links, run the following. CI runs the link check only after
+merge, as a soft-fail step that reports broken links without blocking.
 
 ```bash
 make linkcheck
@@ -62,14 +68,12 @@ To run tests for examples shipping with docstrings in Python files, run the foll
 make doctest
 ```
 
-## Adding examples as MyST Markdown Notebooks
+## Running in-tree notebooks
 
-You can now add [executable notebooks](https://myst-nb.readthedocs.io/en/latest/use/markdown.html) to this project,
-which will get built into the documentation.
-<!--An [example can be found here](./source/serve/tutorials/rllib.md).-->
-By default, building the docs with `make develop` will not run those notebooks.
-If you set the `RUN_NOTEBOOKS` environment variable to `"cache"`, each notebook cell will be run when you build the
-documentation, and outputs will be cached into `_build/.jupyter_cache`.
+Some pages in the documentation are still notebooks, and the documentation is retiring them. Don't add new ones. To write a new guide or publish a new example, see `source/ray-contribute/docs.md`.
+
+By default, building the docs with `make develop` doesn't run the notebooks.
+If you set the `RUN_NOTEBOOKS` environment variable to `"cache"`, the build runs each notebook cell and caches the outputs in `_build/.jupyter_cache`.
 
 ```bash
 RUN_NOTEBOOKS="cache" make develop
@@ -77,10 +81,8 @@ RUN_NOTEBOOKS="cache" make develop
 
 To force re-running the notebooks, use `RUN_NOTEBOOKS="force"`.
 
-Using caching, this means the first time you build the documentation, it might take a while to run the notebooks.
-After that, notebook execution is only triggered when you change the notebook source file.
-
-The benefits of working with notebooks for examples are that you don't separate the code from the documentation, but can still easily smoke-test the code.
+With caching, the first build might take a while to run the notebooks.
+After that, the build only runs a notebook again when you change its source file.
 
 ## Adding Markdown docs from external (ecosystem) repositories
 

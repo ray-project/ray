@@ -20,10 +20,20 @@
 #include <utility>
 
 #include "ray/core_worker/core_worker.h"
+#include "ray/observability/ray_task_event_recorder.h"
+#include "ray/stats/metric.h"
+#include "ray/util/process_utils.h"
 
 namespace ray {
 
 namespace core {
+
+namespace {
+// Bounds the flush below, which unlike ExportNow blocks. This runs on every worker exit,
+// so the bound is deliberately tight: a slow agent costs latency on a very hot path,
+// while a timed-out flush only loses what would have been lost anyway.
+constexpr int64_t kExitMetricsFlushTimeoutMs = 500;
+}  // namespace
 
 CoreWorkerShutdownExecutor::CoreWorkerShutdownExecutor(
     std::shared_ptr<CoreWorker> core_worker)
@@ -77,9 +87,18 @@ void CoreWorkerShutdownExecutor::ExecuteGracefulShutdown(
   core_worker->task_event_buffer_->FlushEvents(/*forced=*/true);
   core_worker->task_event_buffer_->Stop();
 
+  // Flush and stop the task-event RayEventRecorder before its dedicated io thread (owned
+  // by CoreWorkerProcessImpl) is torn down.
+  if (core_worker->ray_task_event_recorder_ != nullptr) {
+    core_worker->ray_task_event_recorder_->StopExportingEvents();
+  }
+
   if (core_worker->options_.worker_type != WorkerType::WORKER) {
     core_worker->event_loops_running_ = false;
   }
+  // Cancel pending WaitAsync callbacks while the interpreter is still alive
+  // (unlike ~CoreWorker). Must run before the io thread is joined.
+  core_worker->CancelAllWaitAsync();
   core_worker->io_service_.stop();
   RAY_LOG(INFO) << "Waiting for joining a core worker io thread. If it hangs here, there "
                    "might be deadlock or a high load in the core worker io service.";
@@ -91,6 +110,16 @@ void CoreWorkerShutdownExecutor::ExecuteGracefulShutdown(
       RAY_LOG(INFO)
           << "Skipping IO thread join since we're already running in the IO thread";
     }
+  }
+
+  // Post stop() as a handler so it runs after all pending Py_DECREF callbacks
+  // have executed — avoids leaking Python refcounts if callbacks are in flight.
+  core_worker->object_freed_callback_service_.post(
+      [&svc = core_worker->object_freed_callback_service_]() { svc.stop(); },
+      "CoreWorker.StopCallbackService");
+  RAY_LOG(INFO) << "Waiting for joining the object-freed callback thread.";
+  if (core_worker->object_freed_callback_thread_.joinable()) {
+    core_worker->object_freed_callback_thread_.join();
   }
 
   core_worker->core_worker_server_->Shutdown();
@@ -322,22 +351,33 @@ void CoreWorkerShutdownExecutor::DisconnectServices(
   core_worker->RecordMetrics();
 
   if (core_worker->options_.worker_type == WorkerType::DRIVER &&
-      core_worker->task_event_buffer_->Enabled() &&
+      (core_worker->task_event_buffer_->Enabled() ||
+       observability::RayTaskEventRecorder::Enabled()) &&
       !RayConfig::instance().task_events_skip_driver_for_test()) {
     auto task_event = std::make_unique<worker::TaskStatusEvent>(
         core_worker->worker_context_->GetCurrentTaskID(),
         core_worker->worker_context_->GetCurrentJobID(),
         /* attempt_number */ 0,
         rpc::TaskStatus::FINISHED,
-        /* timestamp */ absl::GetCurrentTimeNanos(),
+        /* timestamp */ core_worker->clock_.NowUnixNanos(),
         /*is_actor_task_event=*/
         core_worker->worker_context_->GetCurrentActorID().IsNil(),
         core_worker->options_.session_name,
         core_worker->GetCurrentNodeId());
-    core_worker->task_event_buffer_->AddTaskEvent(std::move(task_event));
+    if (observability::RayTaskEventRecorder::Enabled()) {
+      core_worker->ray_task_event_recorder_->AddEvents(
+          task_event->ToRayEventInterfaces());
+    }
+    if (core_worker->task_event_buffer_->Enabled()) {
+      core_worker->task_event_buffer_->AddTaskEvent(std::move(task_event));
+    }
   }
 
   opencensus::stats::StatsExporter::ExportNow();
+  // OpenTelemetry has no exporter-side ExportNow, so flush it here too: this runs on
+  // the force path as well, and anything recorded since the last periodic push would
+  // otherwise die with the process.
+  ray::stats::FlushMetrics(kExitMetricsFlushTimeoutMs);
 
   if (core_worker->connected_.exchange(false)) {
     RAY_LOG(INFO) << "Sending disconnect message to the local raylet.";

@@ -2,11 +2,13 @@ import os
 import sys
 import tempfile
 import unittest
-from typing import Callable, Dict
+from typing import TYPE_CHECKING, Callable, Dict
+
+if TYPE_CHECKING:
+    from ray_release.github_client import GitHubRepo
 from unittest.mock import patch
 
 import yaml
-from github import Repository
 
 from ray_release.bazel import bazel_runfile
 from ray_release.buildkite.concurrency import (
@@ -72,7 +74,7 @@ class MockTest(Test):
     def update_from_s3(self) -> None:
         self["update_from_s3"] = True
 
-    def is_jailed_with_open_issue(self, ray_github: Repository) -> bool:
+    def is_jailed_with_open_issue(self, ray_github: "GitHubRepo") -> bool:
         return False
 
 
@@ -699,6 +701,49 @@ class BuildkiteSettingsTest(unittest.TestCase):
         self.assertEqual(cpus, 16 + 32 * 4 + 24 * 8)
         self.assertEqual(gpus, 2 * 8)
 
+    def testInstanceResourcesNewSchema(self):
+        # New schema: head_node + worker_nodes
+        cpus, gpus = get_test_resources_from_cluster_compute(
+            {
+                "head_node": {"instance_type": "m5.4xlarge"},  # 16 CPUs, 0 GPUs
+                "worker_nodes": [
+                    {
+                        "instance_type": "m5.8xlarge",  # 32 CPUS, 0 GPUs
+                        "min_nodes": 1,
+                        "max_nodes": 4,
+                    },
+                    {
+                        "instance_type": "g3.8xlarge",  # 32 CPUs, 2 GPUs
+                        "min_nodes": 8,
+                        "max_nodes": 8,
+                    },
+                ],
+            },
+            is_new_schema=True,
+        )
+        self.assertEqual(cpus, 16 + 32 * 4 + 32 * 8)
+        self.assertEqual(gpus, 2 * 8)
+
+    def testInstanceResourcesNewSchemaEmpty(self):
+        # New schema: empty config returns 0 resources
+        cpus, gpus = get_test_resources_from_cluster_compute({}, is_new_schema=True)
+        self.assertEqual(cpus, 0)
+        self.assertEqual(gpus, 0)
+
+    def testInstanceResourcesNewSchemaMissingInstanceType(self):
+        # New schema: worker without instance_type is skipped
+        cpus, gpus = get_test_resources_from_cluster_compute(
+            {
+                "head_node": {"instance_type": "m5.4xlarge"},  # 16 CPUs
+                "worker_nodes": [
+                    {"min_nodes": 4},  # no instance_type, skipped
+                ],
+            },
+            is_new_schema=True,
+        )
+        self.assertEqual(cpus, 16)
+        self.assertEqual(gpus, 0)
+
     def testConcurrencyGroups(self):
         def _return(ret):
             def _inner(*args, **kwargs):
@@ -735,6 +780,19 @@ class BuildkiteSettingsTest(unittest.TestCase):
         test_concurrency(8, 0, "minuscule")
         test_concurrency(1, 0, "minuscule")
         test_concurrency(33, 0, "small")
+
+    def testLLMH100ConcurrencyGroup(self):
+        for working_dir in (
+            "llm_tests/serve",
+            "llm_tests/batch",
+            "llm_tests/kv_router_test",
+        ):
+            test = Test({"name": "llm_test", "working_dir": working_dir})
+            self.assertEqual(get_concurrency_group(test), ("llm-h100", 4))
+        test = Test(
+            {"name": "llm_doc_tests", "working_dir": "//doc", "group": "llm-doc"}
+        )
+        self.assertEqual(get_concurrency_group(test), ("llm-h100", 4))
 
     def testConcurrencyGroupSmokeTest(self):
         with tempfile.TemporaryDirectory() as tmpdir:

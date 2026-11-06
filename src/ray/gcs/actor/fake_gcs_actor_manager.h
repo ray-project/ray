@@ -1,0 +1,99 @@
+// Copyright The Ray Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//  http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+#pragma once
+
+#include <memory>
+#include <string>
+
+#include "ray/asio/instrumented_io_context.h"
+#include "ray/gcs/actor/gcs_actor_manager.h"
+#include "ray/observability/fake_metric.h"
+#include "ray/observability/fake_ray_event_recorder.h"
+#include "ray/pubsub/fake_publisher.h"
+#include "ray/pubsub/gcs_publisher.h"
+#include "ray/util/clock.h"
+
+namespace ray {
+namespace gcs {
+
+// Owns the io_context, event recorder, gauges, and Clock that back
+// GcsActorManager. Inherited privately and first by the fake so these are
+// constructed before the GcsActorManager base (base-from-member idiom); plain
+// members would be constructed after the base, which reads them.
+struct FakeGcsActorManagerDeps {
+  instrumented_io_context io_context;
+  observability::FakeRayEventRecorder ray_event_recorder;
+  observability::FakeGauge actor_by_state_gauge;
+  observability::FakeGauge gcs_actor_by_state_gauge;
+  Clock clock;
+};
+
+// Hand-written fake for GcsActorManager. Subclasses the concrete manager with a
+// null scheduler/storage/publisher and fake dependencies, and overrides the RPC
+// handlers with no-op bodies.
+class FakeGcsActorManager : private FakeGcsActorManagerDeps, public GcsActorManager {
+ public:
+  FakeGcsActorManager(RuntimeEnvManager &runtime_env_manager,
+                      GCSFunctionManager &function_manager,
+                      rpc::RayletClientPool &raylet_client_pool,
+                      rpc::CoreWorkerClientPool &worker_client_pool)
+      : GcsActorManager(
+            /*scheduler=*/nullptr,
+            /*gcs_table_storage=*/nullptr,
+            /*io_context=*/io_context,
+            /*gcs_publisher=*/nullptr,
+            runtime_env_manager,
+            function_manager,
+            [](const ActorID &) {},
+            raylet_client_pool,
+            worker_client_pool,
+            /*ray_event_recorder=*/ray_event_recorder,
+            /*session_name=*/"",
+            /*actor_by_state_gauge=*/actor_by_state_gauge,
+            /*gcs_actor_by_state_gauge=*/gcs_actor_by_state_gauge,
+            /*observability_publisher=*/FakeObsPublisher(),
+            /*clock=*/clock) {}
+
+  static pubsub::ObservabilityPublisher *FakeObsPublisher() {
+    static auto holder = std::make_unique<pubsub::ObservabilityPublisher>(
+        std::make_unique<pubsub::FakePublisher>());
+    return holder.get();
+  }
+
+  void HandleRegisterActor(rpc::RegisterActorRequest request,
+                           rpc::RegisterActorReply *reply,
+                           rpc::SendReplyCallback send_reply_callback) override {}
+  void HandleCreateActor(rpc::CreateActorRequest request,
+                         rpc::CreateActorReply *reply,
+                         rpc::SendReplyCallback send_reply_callback) override {}
+  void HandleGetActorInfo(rpc::GetActorInfoRequest request,
+                          rpc::GetActorInfoReply *reply,
+                          rpc::SendReplyCallback send_reply_callback) override {}
+  void HandleGetNamedActorInfo(rpc::GetNamedActorInfoRequest request,
+                               rpc::GetNamedActorInfoReply *reply,
+                               rpc::SendReplyCallback send_reply_callback) override {}
+  void HandleListNamedActors(rpc::ListNamedActorsRequest request,
+                             rpc::ListNamedActorsReply *reply,
+                             rpc::SendReplyCallback send_reply_callback) override {}
+  void HandleGetAllActorInfo(rpc::GetAllActorInfoRequest request,
+                             rpc::GetAllActorInfoReply *reply,
+                             rpc::SendReplyCallback send_reply_callback) override {}
+  void HandleKillActorViaGcs(rpc::KillActorViaGcsRequest request,
+                             rpc::KillActorViaGcsReply *reply,
+                             rpc::SendReplyCallback send_reply_callback) override {}
+};
+
+}  // namespace gcs
+}  // namespace ray

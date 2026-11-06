@@ -1,13 +1,21 @@
 import collections
 import os
 import time
+from typing import Dict, List, Optional
+from unittest.mock import MagicMock, patch
 
 import pytest
 
 import ray
+import ray.train.health as health
+from ray._common.test_utils import SignalActor, wait_for_condition
 from ray._private.state import state as ray_state
-from ray.exceptions import RayActorError
+from ray.exceptions import RayActorError, RayTaskError
 from ray.runtime_env import RuntimeEnv
+from ray.train.health._internal.probe_utils import ScheduledProbe
+from ray.train.health.probe import ProbeResult, WorkerProbe
+from ray.train.v2._internal.callbacks import backend_setup
+from ray.train.v2._internal.callbacks.backend_setup import BackendSetupCallback
 from ray.train.v2._internal.constants import (
     ENV_VARS_TO_PROPAGATE,
     WORKER_GROUP_START_TIMEOUT_S_ENV_VAR,
@@ -20,8 +28,14 @@ from ray.train.v2._internal.exceptions import (
     WorkerHealthCheckFailedError,
     WorkerHealthCheckTimeoutError,
 )
-from ray.train.v2._internal.execution.callback import WorkerGroupCallback
-from ray.train.v2._internal.execution.context import get_train_context
+from ray.train.v2._internal.execution.callback import (
+    ReplicaGroupCallback,
+    WorkerGroupCallback,
+)
+from ray.train.v2._internal.execution.context import (
+    DistributedContext,
+    get_train_context,
+)
 from ray.train.v2._internal.execution.worker_group import (
     ActorMetadata,
     RayTrainWorker,
@@ -85,6 +99,79 @@ def test_worker_group_create():
         worker_group.get_workers()
 
 
+def test_replace_replica_group():
+    """Test that replace_replica_group correctly replaces a failing replica group."""
+    wg = _default_inactive_worker_group()
+    wg._start()
+
+    # Remember old state.
+    old_workers = wg.get_workers()
+    old_state = wg.get_worker_group_state()
+    old_replica_groups = wg.get_replica_groups()
+    old_rg0_workers = old_replica_groups[0].get_workers()
+    old_rg1_workers = old_replica_groups[1].get_workers()
+
+    # Replace replica group 0 and get new state.
+    wg.replace_replica_group(0)
+    new_workers = wg.get_workers()
+    new_state = wg.get_worker_group_state()
+    new_replica_groups = wg.get_replica_groups()
+
+    # Assert most of WorkerGroupState is preserved.
+    assert len(new_workers) == len(old_workers)
+    assert new_state.start_time == old_state.start_time
+    assert new_state.placement_group_handle is old_state.placement_group_handle
+    assert new_state.sync_actor is old_state.sync_actor
+
+    # Assert replica group 0 workers are replaced but with same distributed contexts.
+    new_rg0_workers = new_replica_groups[0].get_workers()
+    for old_w, new_w in zip(old_rg0_workers, new_rg0_workers):
+        assert new_w is not old_w
+    new_rg1_workers = new_replica_groups[1].get_workers()
+    for old_w, new_w in zip(old_rg1_workers, new_rg1_workers):
+        assert new_w is old_w
+    for old_w, new_w in zip(old_rg0_workers, new_rg0_workers):
+        assert (
+            new_w.distributed_context.world_rank == old_w.distributed_context.world_rank
+        )
+
+    # Assert other state is as expected.
+    for w in new_rg0_workers:
+        assert (
+            wg._worker_rank_to_replica_group_rank[w.distributed_context.world_rank] == 0
+        )
+    for old_w in old_rg0_workers:
+        assert (
+            old_w.distributed_context.world_rank not in wg._world_rank_to_ongoing_poll
+        )
+
+    wg.shutdown()
+
+
+def test_replace_replica_group_succeed_on_retry():
+    """Test that replace_replica_group raises WorkerGroupStartupFailedError
+    when a replacement worker fails to initialize."""
+
+    class FailingWorker(RayTrainWorker):
+        def __init__(self):
+            raise RuntimeError("Replacement worker failed to start.")
+
+    wg = _default_inactive_worker_group()
+    wg._start()
+
+    # Swap the worker class so replacement workers will fail.
+    wg._worker_cls = FailingWorker
+
+    with pytest.raises(WorkerGroupStartupFailedError):
+        wg.replace_replica_group(0)
+
+    # Swap worker class so second attempt succeeds.
+    wg._worker_cls = RayTrainWorker
+    wg.replace_replica_group(0)
+
+    wg.shutdown()
+
+
 @pytest.mark.parametrize(
     "runtime_env",
     [{"env_vars": {"DUMMY_VAR": "abcd"}}, RuntimeEnv(env_vars={"DUMMY_VAR": "abcd"})],
@@ -131,9 +218,41 @@ def test_actor_start_failure():
 
     with pytest.raises(WorkerGroupStartupFailedError):
         wg._start()
+    # TODO: this and other tests should verify that we shut down the worker group.
 
 
-def test_callback_start_failure():
+def test_actor_death_during_train_fn_launch():
+    """A worker dying while the train fn is launched (e.g. its node is lost)
+    doesn't fail startup. The worker group has fully started, so the death is
+    reported by the next poll like any other worker failure."""
+
+    class DyingWorker(RayTrainWorker):
+        def run_train_fn(self, train_fn_ref):
+            os._exit(1)
+
+    wg = _default_inactive_worker_group()
+    wg._worker_cls = DyingWorker
+    wg._start()
+    assert wg.has_started()
+
+    deadline = time.monotonic() + 30
+    status = wg.poll_status()
+    while len(status.errors) < len(wg):
+        assert time.monotonic() < deadline, f"Dead workers not reported: {status}"
+        time.sleep(0.1)
+        status = wg.poll_status()
+
+    assert all(
+        isinstance(error, WorkerHealthCheckFailedError)
+        and isinstance(error.health_check_failure, RayActorError)
+        for error in status.errors.values()
+    )
+    wg.shutdown()
+
+
+def test_callback_start_failure(monkeypatch):
+    monkeypatch.setenv(WORKER_GROUP_START_TIMEOUT_S_ENV_VAR, "5")
+
     class FailingCallback(WorkerGroupCallback):
         def after_worker_group_start(self, worker_group):
             raise RuntimeError("Worker failed to start.")
@@ -143,6 +262,14 @@ def test_callback_start_failure():
     with pytest.raises(RuntimeError):
         wg._start()
 
+    # A failed start cleans up after itself; `WorkerGroup.create()` callers
+    # never receive the worker group, so they can't shut it down.
+    assert not wg.has_started()
+
+    # The failed group released its placement group and workers, so a full-size
+    # group fits on the 4-CPU cluster again.
+    wg = _default_inactive_worker_group()
+    wg._start()
     wg.shutdown()
 
 
@@ -163,6 +290,100 @@ def test_start_timeout(monkeypatch):
     with pytest.raises(WorkerGroupStartupTimeoutError):
         # Not enough CPU resources are available, so the workers will not start.
         wg._start()
+
+
+def test_tpu_slice_reservation_timeout_is_retryable(monkeypatch):
+    """TPU head reservation timeouts should surface as the retryable
+    ``WorkerGroupStartupTimeoutError`` so the controller transitions
+    SCHEDULING -> RESCHEDULING instead of failing the run, matching the
+    behavior of CPU/GPU placement-group timeouts.
+
+    Also verifies that Ray Train's worker-group-start timeout is forwarded
+    to ``SlicePlacementGroup`` so users have a single knob governing how
+    long the cluster has to provide capacity.
+    """
+    from ray.train.v2._internal.execution.worker_group import worker_group as wg_mod
+
+    monkeypatch.setenv(WORKER_GROUP_START_TIMEOUT_S_ENV_VAR, "0.1")
+
+    # SlicePlacementGroup blocks synchronously on a TPU head PG; simulate the
+    # "cluster still autoscaling" scenario where reserve_tpu_slice times out
+    # and capture the timeout that Ray Train passed in.
+    captured_kwargs = {}
+
+    def _raise_timeout(*args, **kwargs):
+        captured_kwargs.update(kwargs)
+        raise TimeoutError(
+            "Failed to reserve TPU head for slice with shape: v5litepod-8 "
+            "after 0.1 seconds."
+        )
+
+    monkeypatch.setattr(wg_mod, "SlicePlacementGroup", _raise_timeout)
+    monkeypatch.setattr(
+        wg_mod, "get_tpu_version_from_type", lambda accelerator_type: "v5litepod"
+    )
+
+    tpu_scaling_config = ScalingConfig(
+        num_workers=4,
+        resources_per_worker={"TPU": 4},
+        accelerator_type="TPU-V5LITEPOD",
+        topology="2x4",
+        use_tpu=True,
+    )
+    wg = _default_inactive_worker_group(
+        train_run_context=create_dummy_run_context(scaling_config=tpu_scaling_config),
+        worker_group_context=_default_worker_group_context(
+            num_workers=4,
+            resources_per_worker={"TPU": 4},
+            num_slices=2,
+        ),
+    )
+
+    with pytest.raises(WorkerGroupStartupTimeoutError):
+        wg._create_placement_group(tpu_scaling_config, wg._worker_group_context)
+
+    # Ray Train should forward its own startup timeout to the TPU head wait
+    # rather than relying on the hard-coded default in reserve_tpu_slice.
+    assert captured_kwargs.get("head_reservation_timeout_s") == 0.1
+
+
+def test_tpu_slice_reservation_non_timeout_failure_is_retryable(monkeypatch):
+    """Non-timeout failures from ``SlicePlacementGroup`` (e.g. transient
+    RPC errors) should surface as the retryable
+    ``WorkerGroupStartupFailedError``, matching the precedent of the
+    worker-actor startup path (``RayActorError`` -> ``WorkerGroupStartupFailedError``)
+    so non-timeout startup failures retry consistently across CPU/GPU/TPU.
+    """
+    from ray.train.v2._internal.execution.worker_group import worker_group as wg_mod
+
+    def _raise_runtime_error(*args, **kwargs):
+        raise RuntimeError("transient placement group reservation error")
+
+    monkeypatch.setattr(wg_mod, "SlicePlacementGroup", _raise_runtime_error)
+    monkeypatch.setattr(
+        wg_mod, "get_tpu_version_from_type", lambda accelerator_type: "v5litepod"
+    )
+
+    tpu_scaling_config = ScalingConfig(
+        num_workers=4,
+        resources_per_worker={"TPU": 4},
+        accelerator_type="TPU-V5LITEPOD",
+        topology="2x4",
+        use_tpu=True,
+    )
+    wg = _default_inactive_worker_group(
+        train_run_context=create_dummy_run_context(scaling_config=tpu_scaling_config),
+        worker_group_context=_default_worker_group_context(
+            num_workers=4,
+            resources_per_worker={"TPU": 4},
+            num_slices=2,
+        ),
+    )
+
+    with pytest.raises(
+        WorkerGroupStartupFailedError, match="Failed to reserve TPU slice"
+    ):
+        wg._create_placement_group(tpu_scaling_config, wg._worker_group_context)
 
 
 def test_zombie_actor_termination(ray_start_4_cpus):
@@ -260,6 +481,10 @@ def test_insufficient_cluster_resources_startup_failure(monkeypatch):
         wg._start()
 
 
+# TODO: consider test_poll_status methods that verify that _world_rank_to_ongoing_poll
+# is updated correctly.
+
+
 def test_poll_status_running():
     worker_group_context = _default_worker_group_context(
         train_fn_ref=DummyObjectRefWrapper(lambda: time.sleep(60)),
@@ -272,6 +497,8 @@ def test_poll_status_running():
     assert len(status.worker_statuses) == 4
     assert not status.finished
     assert not status.errors
+    assert status.worker_rank_to_replica_group_rank == {0: 0, 1: 1, 2: 2, 3: 3}
+    assert status.failing_replica_group_indices == set()
 
 
 def test_poll_status_finished():
@@ -292,6 +519,8 @@ def test_poll_status_finished():
     assert len(status.worker_statuses) == 4
     assert status.finished
     assert not status.errors
+    assert status.worker_rank_to_replica_group_rank == {0: 0, 1: 1, 2: 2, 3: 3}
+    assert status.failing_replica_group_indices == set()
 
 
 @pytest.mark.parametrize("actor_failure", [True, False])
@@ -326,6 +555,8 @@ def test_poll_status_failures(monkeypatch, tmp_path, actor_failure):
 
     assert len(status.worker_statuses) == 4
     assert status.finished
+    assert status.worker_rank_to_replica_group_rank == {0: 0, 1: 1, 2: 2, 3: 3}
+    assert status.failing_replica_group_indices == {0, 1, 2, 3}
     if actor_failure:
         assert len(status.errors) == 4
         assert [
@@ -366,6 +597,7 @@ def test_poll_status_healthcheck_timeout(monkeypatch):
                 for error in status.errors.values()
             ]
         )
+        assert status.failing_replica_group_indices == {0, 1, 2, 3}
 
         wg.shutdown()
 
@@ -466,13 +698,18 @@ def test_local_rank_assignment():
             for pid, node_id, gpu_id in zip(pids, node_ids, gpu_ids)
         ]
 
-    def setup_and_check_worker_group(pids, node_ids, gpu_ids, expected_local_ranks):
+    def setup_and_check_worker_group(
+        pids: List[int],
+        node_ids: List[str],
+        gpu_ids: List[Optional[str]],
+        expected_local_ranks: Dict[int, int],
+    ):
         """
         Create a worker group, group workers by IP, and check local ranks assignment.
 
         Args:
             pids: List of unique process IDs.
-            ids: List of node ids corresponding to each PID.
+            node_ids: List of node ids corresponding to each PID.
             gpu_ids: List of GPU IDs or None for each PID.
             expected_local_ranks: Dictionary mapping PID to the
                 expected local rank.
@@ -525,7 +762,8 @@ def test_local_rank_assignment():
     setup_and_check_worker_group(**gpu_workers_multiple_gpus_config)
 
 
-def test_setup_worker_group(tmp_path):
+@pytest.mark.parametrize("replace_rg", [False, True], ids=["start", "replace_rg"])
+def test_setup_worker_group(tmp_path, replace_rg):
     num_workers = 4
     worker_group = WorkerGroup(
         train_run_context=create_dummy_run_context(
@@ -533,7 +771,12 @@ def test_setup_worker_group(tmp_path):
         ),
         worker_group_context=_default_worker_group_context(num_workers=num_workers),
     )
+    if replace_rg:
+        worker_group._manages_replica_groups = True
     worker_group._start()
+
+    if replace_rg:
+        worker_group.replace_replica_group(0)
 
     def get_world_size():
         return ray.train.get_context().get_world_size()
@@ -544,6 +787,22 @@ def test_setup_worker_group(tmp_path):
     def get_storage_context_name():
         return ray.train.get_context().get_storage().experiment_dir_name
 
+    def get_local_rank():
+        return ray.train.get_context().get_local_rank()
+
+    def get_local_world_size():
+        return ray.train.get_context().get_local_world_size()
+
+    def get_node_rank():
+        return ray.train.get_context().get_node_rank()
+
+    if replace_rg:
+        assert worker_group.execute(get_local_rank) == [0] * num_workers
+        assert worker_group.execute(get_local_world_size) == [1] * num_workers
+    else:
+        assert worker_group.execute(get_local_rank) == list(range(num_workers))
+        assert worker_group.execute(get_local_world_size) == [num_workers] * num_workers
+    assert worker_group.execute(get_node_rank) == [0] * num_workers
     assert worker_group.execute(get_world_size) == [num_workers] * num_workers
     assert sorted(worker_group.execute(get_world_rank)) == list(range(num_workers))
     assert worker_group.execute(get_storage_context_name) == ["test"] * num_workers
@@ -591,10 +850,73 @@ def test_worker_group_callback():
     assert hooks.after_worker_group_shutdown_hook_called
 
 
-def test_worker_log_file_paths():
+def _make_backend_setup_callback_with_failing_shutdown(
+    error: Exception,
+) -> BackendSetupCallback:
+    """Build a `BackendSetupCallback` whose backend raises `error` from `on_shutdown`."""
+    failing_backend = MagicMock()
+    failing_backend.on_shutdown.side_effect = error
+    backend_config = MagicMock()
+    backend_config.backend_cls.return_value = failing_backend
+    cb = BackendSetupCallback(backend_config)
+    cb._backend = failing_backend
+    return cb
+
+
+@pytest.mark.parametrize(
+    "shutdown_error",
+    [
+        RayActorError(actor_id="abc", error_msg="actor died"),
+        RayTaskError(
+            function_name="_shutdown_torch",
+            traceback_str="traceback",
+            cause=RuntimeError("NCCL error: remote process exited"),
+            proctitle="test",
+            pid=1,
+            ip="127.0.0.1",
+        ),
+    ],
+    ids=["RayActorError", "RayTaskError"],
+)
+def test_backend_setup_callback_swallows_shutdown_failure(shutdown_error):
+    """Test `BackendSetupCallback` swallows both RayActorError and RayTaskError so
+    `WorkerGroup.shutdown()` does not propagate the cleanup failure.
+    """
+    cb = _make_backend_setup_callback_with_failing_shutdown(shutdown_error)
+    failing_backend = cb._backend
+
+    wg = _default_inactive_worker_group(callbacks=[cb])
+    wg._start()
+
+    with patch.object(backend_setup, "logger") as mock_logger:
+        wg.shutdown()  # must not raise
+
+    failing_backend.on_shutdown.assert_called_once()
+    mock_logger.warning.assert_called_once()
+    msg = mock_logger.warning.call_args.args[0]
+    assert "Graceful shutdown of backend failed" in msg
+    # exc_info=True keeps the underlying NCCL/actor failure in the logs.
+    assert mock_logger.warning.call_args.kwargs.get("exc_info") is True
+
+
+def test_backend_setup_callback_propagates_unexpected_shutdown_error():
+    """Non-Ray exceptions from `on_shutdown` must propagate so they aren't
+    silently masked."""
+    cb = _make_backend_setup_callback_with_failing_shutdown(
+        ValueError("unexpected backend bug")
+    )
+    with pytest.raises(ValueError, match="unexpected backend bug"):
+        cb.before_execution_group_shutdown(MagicMock())
+
+
+@pytest.mark.parametrize("replace_rg", [False, True], ids=["start", "replace_rg"])
+def test_worker_log_file_paths(replace_rg):
     """Test that log file paths are correctly assigned to workers."""
     wg = _default_inactive_worker_group()
     wg._start()
+
+    if replace_rg:
+        wg.replace_replica_group(0)
 
     # Check that all workers have log file paths assigned
     workers = wg.get_workers()
@@ -602,6 +924,199 @@ def test_worker_log_file_paths():
         assert worker.log_file_path is not None
         assert "ray-train-app-worker" in worker.log_file_path
 
+    wg.shutdown()
+
+
+def test_replica_group_callback():
+    """Check that replica group callback hooks are called during replace_replica_group."""
+
+    class AssertCallback(ReplicaGroupCallback):
+        def __init__(self):
+            self.shutdown_rg = None
+            self.start_rg = None
+            self.init_context_workers = None
+
+        def before_replica_group_shutdown(self, replica_group):
+            self.shutdown_rg = replica_group
+
+        def after_replica_group_start(self, replica_group):
+            self.start_rg = replica_group
+
+        def before_init_train_context(self, workers):
+            self.init_context_workers = workers
+            return {}
+
+    hooks = AssertCallback()
+    wg = _default_inactive_worker_group(callbacks=[hooks])
+    wg._start()
+
+    old_rg = wg.get_replica_groups()[0]
+    wg.replace_replica_group(0)
+    new_rg = wg.get_replica_groups()[0]
+
+    assert hooks.shutdown_rg is old_rg
+    assert hooks.start_rg is new_rg
+    assert hooks.start_rg is not hooks.shutdown_rg
+    assert hooks.init_context_workers == new_rg.get_workers()
+
+    wg.shutdown()
+
+
+class RankProbe(WorkerProbe):
+    def poll(self) -> ProbeResult:
+        return ProbeResult(
+            metrics={"rank": float(get_train_context().get_world_rank())}
+        )
+
+
+class FailingProbe(WorkerProbe):
+    def poll(self) -> ProbeResult:
+        raise RuntimeError("probe failed")
+
+
+class NoResultProbe(WorkerProbe):
+    def poll(self) -> ProbeResult:
+        return None
+
+
+class BlockingProbe(WorkerProbe):
+    def __init__(self, signal):
+        self._signal = signal
+
+    def poll(self) -> ProbeResult:
+        ray.get(self._signal.wait.remote())
+        return ProbeResult()
+
+
+def _wait_for_probe_results(worker_group, timeout_s=30):
+    deadline = time.monotonic() + timeout_s
+    while (results := worker_group.poll_probe_results()) is None:
+        assert time.monotonic() < deadline, "The on-demand probes never finished."
+        time.sleep(0.1)
+    return results
+
+
+class WorkerProbesCallback(WorkerGroupCallback):
+    def __init__(self, probes):
+        self._probes = probes
+
+    def before_init_train_context(self, workers):
+        return {"worker_probes": [self._probes] * len(workers)}
+
+
+def test_poll_status_includes_worker_probe_results():
+    probes = [
+        ScheduledProbe(RankProbe(), poll_interval_s=0.1),
+        ScheduledProbe(FailingProbe(), poll_interval_s=0.1),
+        ScheduledProbe(NoResultProbe(), poll_interval_s=0.1),
+    ]
+    wg = _default_inactive_worker_group(callbacks=[WorkerProbesCallback(probes)])
+    wg._start()
+
+    def every_probe_sampled():
+        statuses = wg.poll_status(timeout=5).worker_statuses.values()
+        return all(len(status.probe_results) == 3 for status in statuses)
+
+    wait_for_condition(every_probe_sampled)
+
+    for rank, status in wg.poll_status(timeout=5).worker_statuses.items():
+        assert status.probe_results["RankProbe"].metrics == {"rank": float(rank)}
+        assert status.probe_results["RankProbe"].timestamp_s is not None
+        # A probe that raises is reported, not fatal to the worker.
+        assert isinstance(status.probe_results["FailingProbe"].error, RuntimeError)
+        assert isinstance(status.probe_results["NoResultProbe"].error, TypeError)
+    wg.shutdown()
+
+
+def test_poll_status_includes_health_report():
+    def train_fn():
+        rank = get_train_context().get_world_rank()
+        health.report({"rank": float(rank)}, step=rank)
+        time.sleep(60)
+
+    wg = _default_inactive_worker_group(
+        worker_group_context=_default_worker_group_context(
+            train_fn_ref=DummyObjectRefWrapper(train_fn)
+        )
+    )
+    wg._start()
+
+    def every_rank_reported():
+        statuses = wg.poll_status(timeout=5).worker_statuses.values()
+        return all(status.health_report is not None for status in statuses)
+
+    wait_for_condition(every_rank_reported)
+
+    for rank, status in wg.poll_status(timeout=5).worker_statuses.items():
+        assert status.health_report.metrics == {"rank": float(rank)}
+        assert status.health_report.step == rank
+    wg.shutdown()
+
+
+def test_poll_probes_async_collects_each_rank():
+    wg = _default_inactive_worker_group()
+    wg._start()
+
+    with pytest.raises(ValueError, match="ranks \\[4\\]"):
+        wg.poll_probes_async([RankProbe()], timeout_s=30, ranks=[4])
+
+    wg.poll_probes_async([RankProbe()], timeout_s=30, ranks=[1, 3])
+    with pytest.raises(RuntimeError, match="still running"):
+        wg.poll_probes_async([RankProbe()], timeout_s=30)
+    results = _wait_for_probe_results(wg)["RankProbe"]
+    assert {rank: r.metrics for rank, r in results.items()} == {
+        1: {"rank": 1.0},
+        3: {"rank": 3.0},
+    }
+
+    wg.poll_probes_async([RankProbe()], timeout_s=30)
+    assert sorted(_wait_for_probe_results(wg)["RankProbe"]) == [0, 1, 2, 3]
+    wg.shutdown()
+
+
+def test_poll_probe_results_times_out_unfinished_ranks():
+    signal = SignalActor.remote()
+    wg = _default_inactive_worker_group()
+    wg._start()
+
+    wg.poll_probes_async([BlockingProbe(signal)], timeout_s=1, ranks=[0])
+
+    assert wg.poll_probe_results() is None
+    # The on-demand probe runs apart from poll_status, which still answers.
+    ray.get(wg.get_workers()[0].actor.poll_status.remote(), timeout=5)
+    (result,) = _wait_for_probe_results(wg)["BlockingProbe"].values()
+    assert isinstance(result.error, TimeoutError)
+    assert "rank 0" in str(result.error)
+
+    ray.get(signal.send.remote())
+    wg.shutdown()
+
+
+def test_poll_probe_results_asks_once_more_after_the_timeout():
+    wg = _default_inactive_worker_group()
+    wg._start()
+
+    # The probe finishes in time, but the first poll comes after the timeout.
+    wg.poll_probes_async([RankProbe()], timeout_s=0.1, ranks=[0])
+    time.sleep(1)
+    assert wg.poll_probe_results() is None
+    time.sleep(1)
+    assert wg.poll_probe_results()["RankProbe"][0].metrics == {"rank": 0.0}
+    wg.shutdown()
+
+
+def test_poll_probe_results_reports_replaced_ranks():
+    signal = SignalActor.remote()
+    wg = _default_inactive_worker_group()
+    wg._start()
+
+    wg.poll_probes_async([BlockingProbe(signal)], timeout_s=30, ranks=[0])
+    wg.replace_replica_group(0)
+    (result,) = _wait_for_probe_results(wg)["BlockingProbe"].values()
+    # The old actor died, or the new one never started the probes.
+    assert isinstance(result.error, (RayActorError, RayTaskError))
+
+    ray.get(signal.send.remote())
     wg.shutdown()
 
 
@@ -781,6 +1296,437 @@ def test_check_cluster_resources_and_raise_if_insufficient(monkeypatch):
         num_workers=4,  # Exactly matches 4.0 CPU available
         should_raise=False,
     )
+
+
+def _make_worker(node_id, node_ip, gpu_ids=None):
+    """Helper to create a Worker with minimal metadata for rank assignment tests."""
+    return Worker(
+        actor=None,
+        metadata=ActorMetadata(
+            node_id=node_id,
+            node_ip=node_ip,
+            hostname="dummy",
+            accelerator_ids={"GPU": gpu_ids} if gpu_ids else {},
+            pid=0,
+        ),
+        resources={"GPU": 1} if gpu_ids else {"CPU": 1},
+    )
+
+
+@pytest.mark.parametrize(
+    "workers, starting_world_rank, world_size, replica_group_size, "
+    "expected_contexts",
+    [
+        pytest.param(
+            # 4 workers on 2 nodes, 2 GPUs each
+            [
+                _make_worker("node0", "10.0.0.1", ["1"]),
+                _make_worker("node1", "10.0.0.2", ["1"]),
+                _make_worker("node0", "10.0.0.1", ["0"]),
+                _make_worker("node1", "10.0.0.2", ["0"]),
+            ],
+            0,
+            None,
+            None,
+            # After sorting: node0/gpu0, node0/gpu1, node1/gpu0, node1/gpu1
+            [
+                DistributedContext(
+                    local_rank=0,
+                    local_world_size=2,
+                    world_rank=0,
+                    world_size=4,
+                    node_rank=0,
+                ),
+                DistributedContext(
+                    local_rank=1,
+                    local_world_size=2,
+                    world_rank=1,
+                    world_size=4,
+                    node_rank=0,
+                ),
+                DistributedContext(
+                    local_rank=0,
+                    local_world_size=2,
+                    world_rank=2,
+                    world_size=4,
+                    node_rank=1,
+                ),
+                DistributedContext(
+                    local_rank=1,
+                    local_world_size=2,
+                    world_rank=3,
+                    world_size=4,
+                    node_rank=1,
+                ),
+            ],
+            id="no_replica_groups",
+        ),
+        pytest.param(
+            # 4 workers on 2 nodes — each worker is its own replica group
+            [
+                _make_worker("node0", "10.0.0.1", ["1"]),
+                _make_worker("node1", "10.0.0.2", ["0"]),
+                _make_worker("node0", "10.0.0.1", ["0"]),
+                _make_worker("node1", "10.0.0.2", ["1"]),
+            ],
+            0,
+            None,
+            1,
+            # After sorting: node0/gpu0, node0/gpu1, node1/gpu0, node1/gpu1
+            # Each worker is its own replica group, so local_rank=0,
+            # local_world_size=1, node_rank=0 for all.
+            [
+                DistributedContext(
+                    local_rank=0,
+                    local_world_size=1,
+                    world_rank=0,
+                    world_size=4,
+                    node_rank=0,
+                ),
+                DistributedContext(
+                    local_rank=0,
+                    local_world_size=1,
+                    world_rank=1,
+                    world_size=4,
+                    node_rank=0,
+                ),
+                DistributedContext(
+                    local_rank=0,
+                    local_world_size=1,
+                    world_rank=2,
+                    world_size=4,
+                    node_rank=0,
+                ),
+                DistributedContext(
+                    local_rank=0,
+                    local_world_size=1,
+                    world_rank=3,
+                    world_size=4,
+                    node_rank=0,
+                ),
+            ],
+            id="replica_group_size_1",
+        ),
+        pytest.param(
+            # 8 workers across 3 nodes (2-4-2 GPUs), replica_group_size=4
+            [
+                _make_worker("nodeA", "10.0.0.1", ["1"]),
+                _make_worker("nodeB", "10.0.0.2", ["3"]),
+                _make_worker("nodeA", "10.0.0.1", ["0"]),
+                _make_worker("nodeB", "10.0.0.2", ["0"]),
+                _make_worker("nodeC", "10.0.0.3", ["1"]),
+                _make_worker("nodeB", "10.0.0.2", ["2"]),
+                _make_worker("nodeB", "10.0.0.2", ["1"]),
+                _make_worker("nodeC", "10.0.0.3", ["0"]),
+            ],
+            0,
+            None,
+            4,
+            [
+                # RG0: A/gpu0, A/gpu1, B/gpu0, B/gpu1
+                DistributedContext(
+                    local_rank=0,
+                    local_world_size=2,
+                    world_rank=0,
+                    world_size=8,
+                    node_rank=0,
+                ),
+                DistributedContext(
+                    local_rank=1,
+                    local_world_size=2,
+                    world_rank=1,
+                    world_size=8,
+                    node_rank=0,
+                ),
+                DistributedContext(
+                    local_rank=0,
+                    local_world_size=2,
+                    world_rank=2,
+                    world_size=8,
+                    node_rank=1,
+                ),
+                DistributedContext(
+                    local_rank=1,
+                    local_world_size=2,
+                    world_rank=3,
+                    world_size=8,
+                    node_rank=1,
+                ),
+                # RG1: B/gpu2, B/gpu3, C/gpu0, C/gpu1
+                DistributedContext(
+                    local_rank=0,
+                    local_world_size=2,
+                    world_rank=4,
+                    world_size=8,
+                    node_rank=0,
+                ),
+                DistributedContext(
+                    local_rank=1,
+                    local_world_size=2,
+                    world_rank=5,
+                    world_size=8,
+                    node_rank=0,
+                ),
+                DistributedContext(
+                    local_rank=0,
+                    local_world_size=2,
+                    world_rank=6,
+                    world_size=8,
+                    node_rank=1,
+                ),
+                DistributedContext(
+                    local_rank=1,
+                    local_world_size=2,
+                    world_rank=7,
+                    world_size=8,
+                    node_rank=1,
+                ),
+            ],
+            id="replica_group_size_4_node_straddling",
+        ),
+        pytest.param(
+            # Simulates replacing replica group 1 in a 4-worker setup with replica_group_size=2.
+            [
+                _make_worker("node0", "10.0.0.1", ["0"]),
+                _make_worker("node1", "10.0.0.2", ["0"]),
+            ],
+            2,
+            4,
+            2,
+            [
+                DistributedContext(
+                    local_rank=0,
+                    local_world_size=1,
+                    world_rank=2,
+                    world_size=4,
+                    node_rank=0,
+                ),
+                DistributedContext(
+                    local_rank=0,
+                    local_world_size=1,
+                    world_rank=3,
+                    world_size=4,
+                    node_rank=1,
+                ),
+            ],
+            id="replica_group_size_2_replace",
+        ),
+    ],
+)
+def test_assign_worker_ranks(
+    workers,
+    starting_world_rank,
+    world_size,
+    replica_group_size,
+    expected_contexts,
+):
+    result = WorkerGroup._assign_worker_ranks(
+        workers,
+        starting_world_rank=starting_world_rank,
+        world_size=world_size,
+        replica_group_size=replica_group_size,
+    )
+    assert len(result) == len(expected_contexts)
+    for i, (worker, expected) in enumerate(zip(result, expected_contexts)):
+        ctx = worker.distributed_context
+        assert ctx == expected, f"Worker {i}: expected {expected}, got {ctx}"
+
+
+def test_assign_worker_ranks_tpu():
+    """Verify TPU rank assignment orders workers by slice, host, and TPU ID.
+
+    Hosts without TPU_WORKER_ID sort after labeled hosts and stay contiguous by
+    node ID.
+    """
+    worker_cls = ray.remote(num_cpus=0)(RayTrainWorker)
+    # (pod_name, tpu_worker_id, node_id, node_ip, tpu_ids)
+    # Intentionally scramble:
+    # - Slice order: "slice-1" before "slice-0"
+    # - Host order within slice-0: node1 (TPU_WORKER_ID=1) listed before
+    #   node0 (TPU_WORKER_ID=0), plus 2 interleaved fallback hosts where
+    #   TPU_WORKER_ID="unset" parses to None without triggering GCE metadata HTTP calls
+    # - Device order within node0: ["10"], ["2", "3"], ["0"] (numeric: 0 < 2 < 10)
+    specs = [
+        ("slice-1", "0", "node2", "10.0.0.3", ["1"]),
+        ("slice-0", "1", "node1", "10.0.0.2", ["1"]),
+        ("slice-0", "unset", "node_unlabeled_b", "10.0.0.5", ["1"]),
+        ("slice-0", "unset", "node_unlabeled_a", "10.0.0.4", ["1"]),
+        ("slice-0", "0", "node0", "10.0.0.1", ["10"]),
+        ("slice-0", "unset", "node_unlabeled_b", "10.0.0.5", ["0"]),
+        ("slice-0", "0", "node0", "10.0.0.1", ["0"]),
+        ("slice-1", "0", "node2", "10.0.0.3", ["0"]),
+        ("slice-0", "unset", "node_unlabeled_a", "10.0.0.4", ["0"]),
+        ("slice-0", "1", "node1", "10.0.0.2", ["0"]),
+        ("slice-0", "0", "node0", "10.0.0.1", ["2", "3"]),
+    ]
+    host_actors = {}
+    for pod_name, tpu_worker_id, node_id, _, _ in specs:
+        if node_id not in host_actors:
+            host_actors[node_id] = worker_cls.options(
+                runtime_env={
+                    "env_vars": {
+                        "TPU_NAME": pod_name,
+                        "TPU_WORKER_ID": tpu_worker_id,
+                    }
+                }
+            ).remote()
+
+    try:
+        workers = [
+            Worker(
+                actor=host_actors[node_id],
+                metadata=ActorMetadata(
+                    node_id=node_id,
+                    node_ip=node_ip,
+                    hostname="dummy",
+                    accelerator_ids={"TPU": tpu_ids},
+                    pid=i,
+                ),
+                resources={"TPU": len(tpu_ids)},
+            )
+            for i, (_, _, node_id, node_ip, tpu_ids) in enumerate(specs)
+        ]
+
+        result = WorkerGroup._assign_worker_ranks(workers)
+
+        assert [
+            (
+                w.metadata.node_id,
+                w.metadata.accelerator_ids["TPU"],
+                w.distributed_context,
+            )
+            for w in result
+        ] == [
+            # slice-0, node0 (TPU_WORKER_ID=0): TPU IDs ["0"], ["2", "3"], ["10"]
+            (
+                "node0",
+                ["0"],
+                DistributedContext(
+                    local_rank=0,
+                    local_world_size=3,
+                    world_rank=0,
+                    world_size=11,
+                    node_rank=0,
+                ),
+            ),
+            (
+                "node0",
+                ["2", "3"],
+                DistributedContext(
+                    local_rank=1,
+                    local_world_size=3,
+                    world_rank=1,
+                    world_size=11,
+                    node_rank=0,
+                ),
+            ),
+            (
+                "node0",
+                ["10"],
+                DistributedContext(
+                    local_rank=2,
+                    local_world_size=3,
+                    world_rank=2,
+                    world_size=11,
+                    node_rank=0,
+                ),
+            ),
+            # slice-0, node1 (TPU_WORKER_ID=1): TPU IDs ["0"], ["1"]
+            (
+                "node1",
+                ["0"],
+                DistributedContext(
+                    local_rank=0,
+                    local_world_size=2,
+                    world_rank=3,
+                    world_size=11,
+                    node_rank=1,
+                ),
+            ),
+            (
+                "node1",
+                ["1"],
+                DistributedContext(
+                    local_rank=1,
+                    local_world_size=2,
+                    world_rank=4,
+                    world_size=11,
+                    node_rank=1,
+                ),
+            ),
+            # slice-0, node_unlabeled_a (fallback when TPU_WORKER_ID is None, grouped by node_id)
+            (
+                "node_unlabeled_a",
+                ["0"],
+                DistributedContext(
+                    local_rank=0,
+                    local_world_size=2,
+                    world_rank=5,
+                    world_size=11,
+                    node_rank=2,
+                ),
+            ),
+            (
+                "node_unlabeled_a",
+                ["1"],
+                DistributedContext(
+                    local_rank=1,
+                    local_world_size=2,
+                    world_rank=6,
+                    world_size=11,
+                    node_rank=2,
+                ),
+            ),
+            # slice-0, node_unlabeled_b (fallback when TPU_WORKER_ID is None, grouped by node_id)
+            (
+                "node_unlabeled_b",
+                ["0"],
+                DistributedContext(
+                    local_rank=0,
+                    local_world_size=2,
+                    world_rank=7,
+                    world_size=11,
+                    node_rank=3,
+                ),
+            ),
+            (
+                "node_unlabeled_b",
+                ["1"],
+                DistributedContext(
+                    local_rank=1,
+                    local_world_size=2,
+                    world_rank=8,
+                    world_size=11,
+                    node_rank=3,
+                ),
+            ),
+            # slice-1, node2 (TPU_WORKER_ID=0): TPU IDs ["0"], ["1"]
+            (
+                "node2",
+                ["0"],
+                DistributedContext(
+                    local_rank=0,
+                    local_world_size=2,
+                    world_rank=9,
+                    world_size=11,
+                    node_rank=4,
+                ),
+            ),
+            (
+                "node2",
+                ["1"],
+                DistributedContext(
+                    local_rank=1,
+                    local_world_size=2,
+                    world_rank=10,
+                    world_size=11,
+                    node_rank=4,
+                ),
+            ),
+        ]
+    finally:
+        for actor in host_actors.values():
+            ray.kill(actor)
 
 
 if __name__ == "__main__":

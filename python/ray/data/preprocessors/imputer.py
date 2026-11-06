@@ -1,14 +1,14 @@
 import logging
-from collections import Counter
 from numbers import Number
-from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Union
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union
 
 import numpy as np
 import pandas as pd
 from pandas.api.types import is_categorical_dtype
 
-from ray.data.aggregate import Mean
+from ray.data.aggregate import Mean, TopKUnique
 from ray.data.preprocessor import SerializablePreprocessorBase
+from ray.data.preprocessors.utils import _Computed, _PublicField, migrate_private_fields
 from ray.data.preprocessors.version_support import (
     SerializablePreprocessor as Serializable,
 )
@@ -109,6 +109,8 @@ class SimpleImputer(SerializablePreprocessorBase):
 
     _valid_strategies = ["mean", "most_frequent", "constant"]
 
+    _supports_deferred_fit = True
+
     def __init__(
         self,
         columns: List[str],
@@ -118,9 +120,9 @@ class SimpleImputer(SerializablePreprocessorBase):
         output_columns: Optional[List[str]] = None,
     ):
         super().__init__()
-        self.columns = columns
-        self.strategy = strategy
-        self.fill_value = fill_value
+        self._columns = columns
+        self._strategy = strategy
+        self._fill_value = fill_value
 
         if strategy not in self._valid_strategies:
             raise ValueError(
@@ -136,32 +138,61 @@ class SimpleImputer(SerializablePreprocessorBase):
                     '`fill_value` must be set when using "constant" strategy.'
                 )
 
-        self.output_columns = (
+        self._output_columns = (
             SerializablePreprocessorBase._derive_and_validate_output_columns(
                 columns, output_columns
             )
         )
 
+    @property
+    def columns(self) -> List[str]:
+        """The columns to apply imputation to."""
+        return self._columns
+
+    @property
+    def strategy(self) -> str:
+        """How imputed values are chosen.
+
+        One of ``"mean"``, ``"most_frequent"``, or ``"constant"``.
+        """
+        return self._strategy
+
+    @property
+    def fill_value(self) -> Optional[Union[str, Number]]:
+        """The value to use when ``strategy`` is ``"constant"``."""
+        return self._fill_value
+
+    @property
+    def output_columns(self) -> List[str]:
+        """The names of the transformed columns.
+
+        Same as ``columns`` if you didn't set ``output_columns``.
+        """
+        return self._output_columns
+
     def _fit(self, dataset: "Dataset") -> SerializablePreprocessorBase:
-        if self.strategy == "mean":
-            self.stat_computation_plan.add_aggregator(
-                aggregator_fn=Mean, columns=self.columns
+        if self._strategy == "mean":
+            self._stat_computation_plan.add_aggregator(
+                aggregator_fn=Mean, columns=self._columns
             )
-        elif self.strategy == "most_frequent":
-            self.stat_computation_plan.add_callable_stat(
-                stat_fn=lambda key_gen: _get_most_frequent_values(
-                    dataset=dataset,
-                    columns=self.columns,
-                    key_gen=key_gen,
+        elif self._strategy == "most_frequent":
+            # NOTE: Ties are broken by picking the smallest value, and a column
+            #       with no non-null values yields no most frequent value.
+            self._stat_computation_plan.add_aggregator(
+                aggregator_fn=lambda col: TopKUnique(
+                    on=col,
+                    k=1,
+                    ignore_nulls=True,
+                    alias_name=f"most_frequent({col})",
                 ),
-                stat_key_fn=lambda col: f"most_frequent({col})",
-                columns=self.columns,
+                post_process_fn=lambda top: top[0] if top else None,
+                columns=self._columns,
             )
 
         return self
 
     def _transform_pandas(self, df: pd.DataFrame):
-        for column, output_column in zip(self.columns, self.output_columns):
+        for column, output_column in zip(self._columns, self._output_columns):
             value = self._get_fill_value(column)
 
             if value is None:
@@ -193,63 +224,63 @@ class SimpleImputer(SerializablePreprocessorBase):
         return df
 
     def _get_fill_value(self, column):
-        if self.strategy == "mean":
+        if self._strategy == "mean":
             return self.stats_[f"mean({column})"]
-        elif self.strategy == "most_frequent":
+        elif self._strategy == "most_frequent":
             return self.stats_[f"most_frequent({column})"]
-        elif self.strategy == "constant":
-            return self.fill_value
+        elif self._strategy == "constant":
+            return self._fill_value
         else:
             raise ValueError(
-                f"Strategy {self.strategy} is not supported. "
-                "Supported values are: {self._valid_strategies}"
+                f"Strategy {self._strategy} is not supported. "
+                f"Supported values are: {self._valid_strategies}"
             )
 
     def __repr__(self):
         return (
-            f"{self.__class__.__name__}(columns={self.columns!r}, "
-            f"strategy={self.strategy!r}, fill_value={self.fill_value!r}, "
-            f"output_columns={self.output_columns!r})"
+            f"{self.__class__.__name__}(columns={self._columns!r}, "
+            f"strategy={self._strategy!r}, fill_value={self._fill_value!r}, "
+            f"output_columns={self._output_columns!r})"
         )
 
     def _get_serializable_fields(self) -> Dict[str, Any]:
         return {
-            "columns": self.columns,
-            "output_columns": self.output_columns,
+            "columns": self._columns,
+            "output_columns": self._output_columns,
             "_fitted": getattr(self, "_fitted", None),
-            "strategy": self.strategy,
-            "fill_value": getattr(self, "fill_value", None),
+            "strategy": self._strategy,
+            "fill_value": getattr(
+                self, "_fill_value", getattr(self, "fill_value", None)
+            ),
         }
 
     def _set_serializable_fields(self, fields: Dict[str, Any], version: int):
         # required fields
-        self.columns = fields["columns"]
-        self.output_columns = fields["output_columns"]
-        self.strategy = fields["strategy"]
+        self._columns = fields["columns"]
+        self._output_columns = fields["output_columns"]
+        self._strategy = fields["strategy"]
         # optional fields
         self._fitted = fields.get("_fitted")
-        self.fill_value = fields.get("fill_value")
+        self._fill_value = fields.get("fill_value")
 
-        if self.strategy == "constant":
+        if self._strategy == "constant":
             self._is_fittable = False
 
-
-def _get_most_frequent_values(
-    dataset: "Dataset",
-    columns: List[str],
-    key_gen: Callable[[str], str],
-) -> Dict[str, Union[str, Number]]:
-    def get_pd_value_counts(df: pd.DataFrame) -> Dict[str, List[Counter]]:
-        return {col: [Counter(df[col].value_counts().to_dict())] for col in columns}
-
-    value_counts = dataset.map_batches(get_pd_value_counts, batch_format="pandas")
-    final_counters = {col: Counter() for col in columns}
-    for batch in value_counts.iter_batches(batch_size=None):
-        for col, counters in batch.items():
-            for counter in counters:
-                final_counters[col] += counter
-
-    return {
-        key_gen(column): final_counters[column].most_common(1)[0][0]  # noqa
-        for column in columns
-    }
+    def __setstate__(self, state: Dict[str, Any]) -> None:
+        """Handle backwards compatibility for old pickled objects."""
+        super().__setstate__(state)
+        migrate_private_fields(
+            self,
+            fields={
+                "_columns": _PublicField(public_field="columns"),
+                "_output_columns": _PublicField(
+                    public_field="output_columns",
+                    default=_Computed(lambda obj: obj._columns),
+                ),
+                "_strategy": _PublicField(public_field="strategy"),
+                "_fill_value": _PublicField(
+                    public_field="fill_value",
+                    default=None,
+                ),  # _fill_value is optional
+            },
+        )

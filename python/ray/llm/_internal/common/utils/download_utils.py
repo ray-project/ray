@@ -20,6 +20,9 @@ torch = try_import("torch")
 logger = get_logger(__name__)
 
 STREAMING_LOAD_FORMATS = ["runai_streamer", "runai_streamer_sharded", "tensorizer"]
+# ModelExpress pulls weights from a serving peer or streams them itself, so nodes
+# only need the non-weight files locally.
+MODEL_EXPRESS_LOAD_FORMATS = ["modelexpress", "mx"]
 
 
 class NodeModelDownloadable(enum.Enum):
@@ -57,7 +60,7 @@ class NodeModelDownloadable(enum.Enum):
 def get_model_entrypoint(model_id: str) -> str:
     """Get the path to entrypoint of the model on disk if it exists, otherwise return the model id as is.
 
-    Entrypoint is typically <TRANSFORMERS_CACHE>/models--<model_id>/
+    Entrypoint is typically <HF_HUB_CACHE>/models--<model_id>/
 
     Args:
         model_id: Hugging Face model ID.
@@ -65,10 +68,10 @@ def get_model_entrypoint(model_id: str) -> str:
     Returns:
         The path to the entrypoint of the model on disk if it exists, otherwise the model id as is.
     """
-    from transformers.utils.hub import TRANSFORMERS_CACHE
+    from huggingface_hub.constants import HF_HUB_CACHE
 
     model_dir = Path(
-        TRANSFORMERS_CACHE, f"models--{model_id.replace('/', '--')}"
+        HF_HUB_CACHE, f"models--{model_id.replace('/', '--')}"
     ).expanduser()
     if not model_dir.exists():
         return model_id
@@ -80,6 +83,9 @@ def get_model_location_on_disk(model_id: str) -> str:
 
     Args:
         model_id: Hugging Face model ID.
+
+    Returns:
+        The path to the model on disk if it exists, otherwise the model id as is.
     """
     model_dir = Path(get_model_entrypoint(model_id))
     model_id_or_path = model_id
@@ -127,7 +133,8 @@ class CloudModelDownloader(CloudModelAccessor):
             tokenizer_only: whether to download only the tokenizer files.
             exclude_safetensors: whether to download safetensors files to disk.
 
-        Returns: file path of model if downloaded, else the model id.
+        Returns:
+            File path of model if downloaded, else the model id.
         """
         bucket_uri = self.mirror_config.bucket_uri
 
@@ -246,8 +253,7 @@ def download_model_files(
     download_extra_files: bool = True,
     callback: Optional[CallbackBase] = None,
 ) -> Optional[str]:
-    """
-    Download the model files from the cloud storage. We support two ways to specify
+    """Download the model files from the cloud storage. We support two ways to specify
     the remote model path in the cloud storage:
     Approach 1:
     - model_id: The vanilla model id such as "meta-llama/Llama-3.1-8B-Instruct".

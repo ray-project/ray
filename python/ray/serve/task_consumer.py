@@ -59,8 +59,7 @@ def _instantiate_adapter(
 def instantiate_adapter_from_config(
     task_processor_config: TaskProcessorConfig,
 ) -> TaskProcessorAdapter:
-    """
-    Create a TaskProcessorAdapter instance from the provided configuration and call .initialize(). This function supports two ways to specify an adapter:
+    """Create a TaskProcessorAdapter instance from the provided configuration and call .initialize(). This function supports two ways to specify an adapter:
 
     1. String path: A fully qualified module path to an adapter class
        Example: "ray.serve.task_processor.CeleryTaskProcessorAdapter"
@@ -93,8 +92,7 @@ def instantiate_adapter_from_config(
 
 @PublicAPI(stability="alpha")
 def task_consumer(*, task_processor_config: TaskProcessorConfig):
-    """
-    Decorator to mark a class as a TaskConsumer.
+    """Decorator to mark a class as a TaskConsumer.
 
     Args:
         task_processor_config: Configuration for the task processor (required)
@@ -169,8 +167,7 @@ def task_consumer(*, task_processor_config: TaskProcessorConfig):
 def task_handler(
     _func: Optional[Callable] = None, *, name: Optional[str] = None
 ) -> Callable:
-    """
-    Decorator to mark a method as a task handler.
+    """Decorator to mark a method as a task handler.
     Optionally specify a task name. Default is the method name.
 
     Arguments:
@@ -201,8 +198,17 @@ def task_handler(
         raise ValueError(f"Task name must be a non-empty string, got {name}")
 
     def decorator(f):
-        # async functions are not supported yet in celery `threads` worker pool
-        if not inspect.iscoroutinefunction(f):
+        # Handle both sync and async functions
+        if inspect.iscoroutinefunction(f):
+
+            @wraps(f)
+            async def async_wrapper(*args, **kwargs):
+                return await f(*args, **kwargs)
+
+            async_wrapper._is_task_handler = True  # type: ignore
+            async_wrapper._task_name = name or f.__name__  # type: ignore
+            return async_wrapper
+        else:
 
             @wraps(f)
             def wrapper(*args, **kwargs):
@@ -211,9 +217,6 @@ def task_handler(
             wrapper._is_task_handler = True  # type: ignore
             wrapper._task_name = name or f.__name__  # type: ignore
             return wrapper
-
-        else:
-            raise NotImplementedError("Async task handlers are not supported yet")
 
     if _func is not None:
         # Used without arguments: @task_handler

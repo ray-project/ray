@@ -39,7 +39,8 @@ void SubscriberChannel::Subscribe(
   const auto publisher_id = UniqueID::FromBinary(publisher_address.worker_id());
 
   if (key_id) {
-    subscription_map_[publisher_id].per_entity_subscription.try_emplace(
+    // Last subscribe wins
+    subscription_map_[publisher_id].per_entity_subscription.insert_or_assign(
         *key_id,
         SubscriptionInfo(std::move(subscription_callback),
                          std::move(subscription_failure_callback)));
@@ -438,11 +439,16 @@ void Subscriber::SendCommandBatchIfPossible(const rpc::Address &publisher_addres
             }
           }
           if (!status.ok()) {
+            RAY_CHECK(!status.IsInvalidArgument()) << absl::StrFormat(
+                "Request to subscribe to the publisher failed due to bad arguments: %s."
+                " Is the subscriber's ray version consistent with the publisher's ray "
+                "version?",
+                status.message());
             // This means the publisher has failed.
             // The publisher dead detection & command clean up will be done
             // from the long polling request.
             RAY_LOG(WARNING) << "The command batch request to " << publisher_id
-                             << " has failed";
+                             << " has failed: " << status.message();
           }
           {
             absl::MutexLock lock(&mutex_);

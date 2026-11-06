@@ -119,6 +119,9 @@ class Searcher:
             config: Tune config dict.
             **spec: Any kwargs for forward compatibility.
                 Info like Experiment.PUBLIC_KEYS is provided through here.
+
+        Returns:
+            True if the search properties were set successfully, False otherwise.
         """
         return False
 
@@ -357,13 +360,30 @@ class Searcher:
 
         Args:
             max_concurrent: Number of maximum concurrent trials.
+
+        Returns:
+            True if the searcher handles max concurrency internally,
+            False otherwise.
         """
         return False
 
     def get_state(self) -> Dict:
+        """Returns the searcher's state, for checkpointing.
+
+        When a searcher wraps another one, such as ``ConcurrencyLimiter``, the
+        search algorithm saves each wrapper's state from this method.
+
+        Returns:
+            The searcher's state, in a form ``set_state`` accepts.
+        """
         raise NotImplementedError
 
     def set_state(self, state: Dict):
+        """Restores the searcher's state from a checkpoint.
+
+        Args:
+            state: A state that ``get_state`` returned.
+        """
         raise NotImplementedError
 
     def save_to_dir(self, checkpoint_dir: str, session_str: str = "default"):
@@ -477,7 +497,7 @@ class ConcurrencyLimiter(Searcher):
     """
 
     def __init__(self, searcher: Searcher, max_concurrent: int, batch: bool = False):
-        assert type(max_concurrent) is int and max_concurrent > 0
+        assert isinstance(max_concurrent, int) and max_concurrent > 0
         self.searcher = searcher
         self.max_concurrent = max_concurrent
         self.batch = batch

@@ -7,6 +7,7 @@ import pytest
 from ray import serve
 from ray._common.test_utils import wait_for_condition
 from ray.serve._private.common import DeploymentID
+from ray.serve._private.constants import RAY_SERVE_ENABLE_HA_PROXY
 from ray.serve._private.request_router.common import (
     PendingRequest,
 )
@@ -155,6 +156,13 @@ def test_num_replicas_auto(manage_ray_with_telemetry, mode):
     )
 
 
+@pytest.mark.skipif(
+    RAY_SERVE_ENABLE_HA_PROXY,
+    reason=(
+        "Custom ingress request routers are currently only available with Ray "
+        "Serve LLM and RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING."
+    ),
+)
 def test_custom_request_router_telemetry(manage_ray_with_telemetry):
     """Check that the custom request router telemetry is recorded."""
 

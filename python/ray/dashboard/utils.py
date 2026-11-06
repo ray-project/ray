@@ -61,27 +61,29 @@ class FrontendNotFoundError(OSError):
 
 
 class DashboardAgentModule(abc.ABC):
-    def __init__(self, dashboard_agent):
-        """
-        Initialize current module when DashboardAgent loading modules.
-        :param dashboard_agent: The DashboardAgent instance.
+    def __init__(self, dashboard_agent: Any):
+        """Initialize current module when DashboardAgent loading modules.
+
+        Args:
+            dashboard_agent: The DashboardAgent instance.
         """
         self._dashboard_agent = dashboard_agent
         self.session_name = dashboard_agent.session_name
 
     @abc.abstractmethod
-    async def run(self, server):
-        """
-        Run the module in an asyncio loop. An agent module can provide
-        servicers to the server.
-        :param server: Asyncio GRPC server, or None if ray is minimal.
+    async def run(self, server: Any):
+        """Run the module in an asyncio loop.
+
+        An agent module can provide servicers to the server.
+
+        Args:
+            server: Asyncio GRPC server, or None if ray is minimal.
         """
 
     @staticmethod
     @abc.abstractclassmethod
     def is_minimal_module():
-        """
-        Return True if the module is minimal, meaning it
+        """Return True if the module is minimal, meaning it
         should work with `pip install ray` that doesn't requires additional
         dependencies.
         """
@@ -103,16 +105,19 @@ class DashboardHeadModuleConfig:
     ip: str
     http_host: str
     http_port: int
+    # The head's own client, shared so that modules observe the leadership its
+    # CheckAlive loop caches. A private client would never see a promotion.
+    gcs_client: GcsClient
 
 
 class DashboardHeadModule(abc.ABC):
     def __init__(self, config: DashboardHeadModuleConfig):
-        """
-        Initialize current module when DashboardHead loading modules.
-        :param config: The DashboardHeadModuleConfig instance.
+        """Initialize current module when DashboardHead loading modules.
+
+        Args:
+            config: The DashboardHeadModuleConfig instance.
         """
         self._config = config
-        self._gcs_client = None
         self._aiogrpc_gcs_channel = None  # lazy init
         self._http_session = None  # lazy init
 
@@ -169,14 +174,7 @@ class DashboardHeadModule(abc.ABC):
 
     @property
     def gcs_client(self):
-        if self._gcs_client is None:
-            self._gcs_client = GcsClient(
-                address=self._config.gcs_address,
-                cluster_id=self._config.cluster_id_hex,
-            )
-            if not internal_kv._internal_kv_initialized():
-                internal_kv._initialize_internal_kv(self._gcs_client)
-        return self._gcs_client
+        return self._config.gcs_client
 
     @property
     def aiogrpc_gcs_channel(self):
@@ -191,19 +189,22 @@ class DashboardHeadModule(abc.ABC):
 
     @abc.abstractmethod
     async def run(self):
-        """
-        Run the module in an asyncio loop. A head module can provide
+        """Run the module in an asyncio loop. A head module can provide
         servicers to the server.
         """
 
     @staticmethod
     @abc.abstractclassmethod
     def is_minimal_module():
-        """
-        Return True if the module is minimal, meaning it
+        """Return True if the module is minimal, meaning it
         should work with `pip install ray` that doesn't requires additional
         dependencies.
         """
+
+    @classmethod
+    def is_enabled(cls) -> bool:
+        """Return True if the module is enabled and should be loaded."""
+        return True
 
 
 class RateLimitedModule(abc.ABC):
@@ -236,13 +237,14 @@ class RateLimitedModule(abc.ABC):
     """
 
     def __init__(self, max_num_call: int, logger: Optional[logging.Logger] = None):
-        """
+        """Initialize the rate limiter.
+
         Args:
             max_num_call: Maximal number of concurrent invocations of all decorated
                 functions in the instance.
                 Setting to -1 will disable rate limiting.
-
-            logger: Logger
+            logger: Optional logger used to emit a warning when the rate limit
+                is hit.
         """
         self.max_num_call_ = max_num_call
         self.num_call_ = 0
@@ -301,9 +303,7 @@ def dashboard_module(enable):
 
 
 def get_all_modules(module_type):
-    """
-    Get all importable modules that are subclass of a given module type.
-    """
+    """Get all importable modules that are subclass of a given module type."""
     logger.info(f"Get all modules by type: {module_type.__name__}")
     import ray.dashboard.modules
 
@@ -675,7 +675,7 @@ def ray_address_to_api_server_url(address: Optional[str]) -> str:
     address = services.canonicalize_bootstrap_address_or_die(address)
     gcs_client = GcsClient(address=address)
 
-    ray.experimental.internal_kv._initialize_internal_kv(gcs_client)
+    internal_kv._initialize_internal_kv(gcs_client)
     api_server_url = ray._private.utils.internal_kv_get_with_retry(
         gcs_client,
         ray_constants.DASHBOARD_ADDRESS,
@@ -745,6 +745,9 @@ def compose_state_message(
             This is a string representation of `gcs_pb2.NodeDeathInfo.Reason`.
         death_reason_message: The message of node death.
             This corresponds to `gcs_pb2.NodeDeathInfo.ReasonMessage`.
+
+    Returns:
+        The composed state message, or None when no information is available.
     """
     if death_reason == "EXPECTED_TERMINATION":
         state_message = "Expected termination"
@@ -768,3 +771,15 @@ def compose_state_message(
 def close_logger_file_descriptor(logger_instance):
     for handler in logger_instance.handlers:
         handler.close()
+
+
+async def get_head_node_id(gcs_client: GcsClient, timeout: int = 30) -> Optional[str]:
+    """Fetches Head node id persisted in GCS"""
+    head_node_id_hex_bytes = await gcs_client.async_internal_kv_get(
+        ray_constants.KV_HEAD_NODE_ID_KEY,
+        namespace=ray_constants.KV_NAMESPACE_JOB,
+        timeout=timeout,
+    )
+    if head_node_id_hex_bytes is None:
+        return None
+    return head_node_id_hex_bytes.decode()

@@ -21,7 +21,13 @@
 #include <vector>
 
 #include "ray/common/grpc_util.h"
-#include "ray/common/scheduling/label_selector.h"
+#include "ray/observability/ray_actor_task_definition_event.h"
+#include "ray/observability/ray_task_definition_event.h"
+#include "ray/observability/ray_task_event_recorder.h"
+#include "ray/observability/ray_task_lifecycle_event.h"
+#include "ray/observability/ray_task_profile_event.h"
+#include "ray/observability/task_event_populators.h"
+#include "ray/util/graceful_shutdown.h"
 
 namespace ray {
 namespace core {
@@ -93,39 +99,39 @@ void TaskStatusEvent::ToRpcTaskEvents(rpc::TaskEvents *rpc_task_events) {
     return;
   }
 
-  if (state_update_->node_id_.has_value()) {
+  if (state_update_->node_id.has_value()) {
     RAY_CHECK(task_status_ == rpc::TaskStatus::SUBMITTED_TO_WORKER)
         << "When task status changes to SUBMITTED_TO_WORKER, the Node ID should be "
            "included in the status update";
-    dst_state_update->set_node_id(state_update_->node_id_->Binary());
+    dst_state_update->set_node_id(state_update_->node_id->Binary());
   }
 
-  if (state_update_->worker_id_.has_value()) {
+  if (state_update_->worker_id.has_value()) {
     RAY_CHECK(task_status_ == rpc::TaskStatus::SUBMITTED_TO_WORKER)
         << "When task status changes to SUBMITTED_TO_WORKER, Worker ID should be "
            "included in the status update";
-    dst_state_update->set_worker_id(state_update_->worker_id_->Binary());
+    dst_state_update->set_worker_id(state_update_->worker_id->Binary());
   }
 
-  if (state_update_->error_info_.has_value()) {
-    *(dst_state_update->mutable_error_info()) = *state_update_->error_info_;
+  if (state_update_->error_info.has_value()) {
+    *(dst_state_update->mutable_error_info()) = *state_update_->error_info;
   }
 
-  if (state_update_->task_log_info_.has_value()) {
+  if (state_update_->task_log_info.has_value()) {
     dst_state_update->mutable_task_log_info()->MergeFrom(
-        state_update_->task_log_info_.value());
+        state_update_->task_log_info.value());
   }
 
-  if (!state_update_->actor_repr_name_.empty()) {
-    dst_state_update->set_actor_repr_name(state_update_->actor_repr_name_);
+  if (!state_update_->actor_repr_name.empty()) {
+    dst_state_update->set_actor_repr_name(state_update_->actor_repr_name);
   }
 
-  if (state_update_->pid_.has_value()) {
-    dst_state_update->set_worker_pid(state_update_->pid_.value());
+  if (state_update_->pid.has_value()) {
+    dst_state_update->set_worker_pid(state_update_->pid.value());
   }
 
-  if (state_update_->is_debugger_paused_.has_value()) {
-    dst_state_update->set_is_debugger_paused(state_update_->is_debugger_paused_.value());
+  if (state_update_->is_debugger_paused.has_value()) {
+    dst_state_update->set_is_debugger_paused(state_update_->is_debugger_paused.value());
   }
 }
 
@@ -149,147 +155,38 @@ void TaskStatusEvent::ToRpcTaskExportEvents(
     return;
   }
 
-  if (state_update_->node_id_.has_value()) {
+  if (state_update_->node_id.has_value()) {
     RAY_CHECK(task_status_ == rpc::TaskStatus::SUBMITTED_TO_WORKER)
         << "Node ID should be included when task status changes to "
            "SUBMITTED_TO_WORKER.";
-    dst_state_update->set_node_id(state_update_->node_id_->Binary());
+    dst_state_update->set_node_id(state_update_->node_id->Binary());
   }
 
-  if (state_update_->worker_id_.has_value()) {
+  if (state_update_->worker_id.has_value()) {
     RAY_CHECK(task_status_ == rpc::TaskStatus::SUBMITTED_TO_WORKER)
         << "Worker ID should be included when task status changes to "
            "SUBMITTED_TO_WORKER.";
-    dst_state_update->set_worker_id(state_update_->worker_id_->Binary());
+    dst_state_update->set_worker_id(state_update_->worker_id->Binary());
   }
 
-  if (state_update_->error_info_.has_value()) {
+  if (state_update_->error_info.has_value()) {
     auto error_info = dst_state_update->mutable_error_info();
-    error_info->set_error_message((*state_update_->error_info_).error_message());
-    error_info->set_error_type((*state_update_->error_info_).error_type());
+    error_info->set_error_message((*state_update_->error_info).error_message());
+    error_info->set_error_type((*state_update_->error_info).error_type());
   }
 
-  if (state_update_->task_log_info_.has_value()) {
+  if (state_update_->task_log_info.has_value()) {
     rpc::ExportTaskEventData::TaskLogInfo export_task_log_info;
-    gcs::TaskLogInfoToExport(state_update_->task_log_info_.value(),
-                             &export_task_log_info);
+    gcs::TaskLogInfoToExport(state_update_->task_log_info.value(), &export_task_log_info);
     dst_state_update->mutable_task_log_info()->MergeFrom(export_task_log_info);
   }
 
-  if (state_update_->pid_.has_value()) {
-    dst_state_update->set_worker_pid(state_update_->pid_.value());
+  if (state_update_->pid.has_value()) {
+    dst_state_update->set_worker_pid(state_update_->pid.value());
   }
 
-  if (state_update_->is_debugger_paused_.has_value()) {
-    dst_state_update->set_is_debugger_paused(state_update_->is_debugger_paused_.value());
-  }
-}
-
-// Assuming the task_spec_ it not null
-// populate the TaskDefinitionEvent or ActorTaskDefinitionEvent
-template <typename T>
-void TaskStatusEvent::PopulateRpcRayTaskDefinitionEvent(T &definition_event_data) {
-  // Task identifier
-  definition_event_data.set_task_id(task_id_.Binary());
-  definition_event_data.set_task_attempt(attempt_number_);
-
-  // Common fields
-  definition_event_data.set_language(task_spec_->GetLanguage());
-  const auto &required_resources = task_spec_->GetRequiredResources().GetResourceMap();
-  definition_event_data.mutable_required_resources()->insert(
-      std::make_move_iterator(required_resources.begin()),
-      std::make_move_iterator(required_resources.end()));
-  definition_event_data.set_serialized_runtime_env(
-      task_spec_->RuntimeEnvInfo().serialized_runtime_env());
-  definition_event_data.set_job_id(job_id_.Binary());
-  // NOTE: we set the parent task id of a task to the submitter task id, where the
-  // submitter  task id is:
-  // - For concurrent actors: the actor creation task's task id.
-  // - Otherwise: the CoreWorker main thread's task id.
-  definition_event_data.set_parent_task_id(task_spec_->SubmitterTaskId().Binary());
-  definition_event_data.set_placement_group_id(
-      task_spec_->PlacementGroupBundleId().first.Binary());
-  const auto &labels = task_spec_->GetMessage().labels();
-  definition_event_data.mutable_ref_ids()->insert(labels.begin(), labels.end());
-  const auto &call_site = task_spec_->GetMessage().call_site();
-  if (!call_site.empty()) {
-    definition_event_data.set_call_site(call_site);
-  }
-  const auto &label_selector = task_spec_->GetMessage().label_selector();
-  if (label_selector.label_constraints_size() > 0) {
-    *definition_event_data.mutable_label_selector() =
-        ray::LabelSelector(label_selector).ToStringMap();
-  }
-
-  // Specific fields
-  if constexpr (std::is_same_v<T, rpc::events::ActorTaskDefinitionEvent>) {
-    definition_event_data.mutable_actor_func()->CopyFrom(
-        task_spec_->FunctionDescriptor()->GetMessage());
-    definition_event_data.set_actor_id(task_spec_->ActorId().Binary());
-    definition_event_data.set_actor_task_name(task_spec_->GetName());
-  } else {
-    definition_event_data.mutable_task_func()->CopyFrom(
-        task_spec_->FunctionDescriptor()->GetMessage());
-    definition_event_data.set_task_type(task_spec_->GetMessage().type());
-    definition_event_data.set_task_name(task_spec_->GetName());
-  }
-}
-
-void TaskStatusEvent::PopulateRpcRayTaskLifecycleEvent(
-    rpc::events::TaskLifecycleEvent &lifecycle_event_data,
-    google::protobuf::Timestamp timestamp) {
-  // Task identifier
-  lifecycle_event_data.set_task_id(task_id_.Binary());
-  lifecycle_event_data.set_task_attempt(attempt_number_);
-
-  // Task state
-  if (task_status_ != rpc::TaskStatus::NIL) {
-    rpc::events::TaskLifecycleEvent::StateTransition state_transition;
-    state_transition.set_state(task_status_);
-    state_transition.mutable_timestamp()->CopyFrom(timestamp);
-    *lifecycle_event_data.mutable_state_transitions()->Add() =
-        std::move(state_transition);
-  }
-
-  lifecycle_event_data.set_node_id(node_id_.Binary());
-  lifecycle_event_data.set_job_id(job_id_.Binary());
-
-  // Task property updates
-  if (!state_update_.has_value()) {
-    return;
-  }
-
-  if (state_update_->error_info_.has_value()) {
-    lifecycle_event_data.mutable_ray_error_info()->CopyFrom(*state_update_->error_info_);
-  }
-
-  if (!state_update_->actor_repr_name_.empty()) {
-    lifecycle_event_data.set_actor_repr_name(state_update_->actor_repr_name_);
-  }
-
-  if (state_update_->node_id_.has_value()) {
-    RAY_CHECK(task_status_ == rpc::TaskStatus::SUBMITTED_TO_WORKER)
-            .WithField("TaskStatus", task_status_)
-        << "Node ID should be included when task status changes to "
-           "SUBMITTED_TO_WORKER.";
-    lifecycle_event_data.set_node_id(state_update_->node_id_->Binary());
-  }
-
-  if (state_update_->worker_id_.has_value()) {
-    RAY_CHECK(task_status_ == rpc::TaskStatus::SUBMITTED_TO_WORKER)
-            .WithField("TaskStatus", task_status_)
-        << "Worker ID should be included when task status changes to "
-           "SUBMITTED_TO_WORKER.";
-    lifecycle_event_data.set_worker_id(state_update_->worker_id_->Binary());
-  }
-
-  if (state_update_->pid_.has_value()) {
-    lifecycle_event_data.set_worker_pid(state_update_->pid_.value());
-  }
-
-  if (state_update_->is_debugger_paused_.has_value()) {
-    lifecycle_event_data.set_is_debugger_paused(
-        state_update_->is_debugger_paused_.value());
+  if (state_update_->is_debugger_paused.has_value()) {
+    dst_state_update->set_is_debugger_paused(state_update_->is_debugger_paused.value());
   }
 }
 
@@ -325,11 +222,13 @@ void TaskStatusEvent::ToRpcRayEvents(RayEventsTuple &ray_events_tuple) {
     if (is_actor_task_event_) {
       auto actor_task_definition_event =
           ray_events_tuple.task_definition_event->mutable_actor_task_definition_event();
-      PopulateRpcRayTaskDefinitionEvent(*actor_task_definition_event);
+      ray::observability::PopulateTaskDefinitionEvent(
+          *task_spec_, task_id_, job_id_, attempt_number_, *actor_task_definition_event);
     } else {
       auto task_definition_event =
           ray_events_tuple.task_definition_event->mutable_task_definition_event();
-      PopulateRpcRayTaskDefinitionEvent(*task_definition_event);
+      ray::observability::PopulateTaskDefinitionEvent(
+          *task_spec_, task_id_, job_id_, attempt_number_, *task_definition_event);
     }
   }
 
@@ -341,7 +240,42 @@ void TaskStatusEvent::ToRpcRayEvents(RayEventsTuple &ray_events_tuple) {
                                 timestamp);
   auto task_lifecycle_event =
       ray_events_tuple.task_lifecycle_event.value().mutable_task_lifecycle_event();
-  PopulateRpcRayTaskLifecycleEvent(*task_lifecycle_event, timestamp);
+  ray::observability::AppendTaskLifecycleUpdate(task_id_,
+                                                job_id_,
+                                                attempt_number_,
+                                                task_status_,
+                                                timestamp_,
+                                                state_update_,
+                                                *task_lifecycle_event);
+}
+
+std::vector<std::unique_ptr<ray::observability::RayEventInterface>>
+TaskStatusEvent::ToRayEventInterfaces() {
+  std::vector<std::unique_ptr<ray::observability::RayEventInterface>> events;
+
+  // Definition event (static metadata): only when the task spec is attached.
+  // The recorder de-dups definition events per attempt via no-op merge.
+  if (task_spec_) {
+    if (is_actor_task_event_) {
+      events.push_back(std::make_unique<ray::observability::RayActorTaskDefinitionEvent>(
+          task_spec_, task_id_, job_id_, attempt_number_, session_name_, timestamp_));
+    } else {
+      events.push_back(std::make_unique<ray::observability::RayTaskDefinitionEvent>(
+          task_spec_, task_id_, job_id_, attempt_number_, session_name_, timestamp_));
+    }
+  }
+
+  // Lifecycle event (dynamic state transition): always produced.
+  events.push_back(
+      std::make_unique<ray::observability::RayTaskLifecycleEvent>(task_id_,
+                                                                  job_id_,
+                                                                  attempt_number_,
+                                                                  task_status_,
+                                                                  state_update_,
+                                                                  session_name_,
+                                                                  timestamp_));
+
+  return events;
 }
 
 void TaskProfileEvent::ToRpcTaskEvents(rpc::TaskEvents *rpc_task_events) {
@@ -396,15 +330,24 @@ void TaskProfileEvent::ToRpcRayEvents(RayEventsTuple &ray_events_tuple) {
   // Using profile start time as the event generation timestamp
   google::protobuf::Timestamp timestamp = AbslTimeNanosToProtoTimestamp(start_time_);
 
-  // Populate Ray event base fields
-  auto &ray_event = ray_events_tuple.task_profile_event.emplace();
-  PopulateRpcRayEventBaseFields(ray_event, timestamp);
+  // Populate Ray event base fields only if not already populated
+  rpc::events::RayEvent *ray_event_ptr;
+  if (!ray_events_tuple.task_profile_event) {
+    auto &ray_event = ray_events_tuple.task_profile_event.emplace();
+    PopulateRpcRayEventBaseFields(ray_event, timestamp);
+    ray_event_ptr = &ray_event;
 
-  // Populate the task profile event
-  auto *task_profile_events = ray_event.mutable_task_profile_events();
-  task_profile_events->set_task_id(task_id_.Binary());
-  task_profile_events->set_job_id(job_id_.Binary());
-  task_profile_events->set_attempt_number(attempt_number_);
+    // Populate the task profile event base fields
+    auto *task_profile_events = ray_event_ptr->mutable_task_profile_events();
+    task_profile_events->set_task_id(task_id_.Binary());
+    task_profile_events->set_job_id(job_id_.Binary());
+    task_profile_events->set_attempt_number(attempt_number_);
+  } else {
+    ray_event_ptr = &ray_events_tuple.task_profile_event.value();
+  }
+
+  // Add this profile event to the events list
+  auto *task_profile_events = ray_event_ptr->mutable_task_profile_events();
   auto profile_events = task_profile_events->mutable_profile_events();
   profile_events->set_component_type(component_type_);
   profile_events->set_component_id(component_id_);
@@ -414,6 +357,30 @@ void TaskProfileEvent::ToRpcRayEvents(RayEventsTuple &ray_events_tuple) {
   event_entry->set_start_time(start_time_);
   event_entry->set_end_time(end_time_);
   event_entry->set_extra_data(std::move(extra_data_));
+}
+
+std::vector<std::unique_ptr<ray::observability::RayEventInterface>>
+TaskProfileEvent::ToRayEventInterfaces() {
+  rpc::events::TaskProfileEvents task_profile_events;
+  task_profile_events.set_task_id(task_id_.Binary());
+  task_profile_events.set_job_id(job_id_.Binary());
+  task_profile_events.set_attempt_number(attempt_number_);
+  auto *profile_events = task_profile_events.mutable_profile_events();
+  profile_events->set_component_type(component_type_);
+  profile_events->set_component_id(component_id_);
+  profile_events->set_node_ip_address(node_ip_address_);
+  auto *event_entry = profile_events->add_events();
+  event_entry->set_event_name(event_name_);
+  event_entry->set_start_time(start_time_);
+  event_entry->set_end_time(end_time_);
+  // Copy (not move): the same TaskProfileEvent may also be flushed to GCS/export via the
+  // buffer after this recorder-path conversion runs.
+  event_entry->set_extra_data(extra_data_);
+
+  std::vector<std::unique_ptr<ray::observability::RayEventInterface>> events;
+  events.push_back(std::make_unique<ray::observability::RayTaskProfileEvent>(
+      std::move(task_profile_events), session_name_, start_time_));
+  return events;
 }
 
 bool TaskEventBufferImpl::RecordTaskStatusEventIfNeeded(
@@ -436,7 +403,7 @@ bool TaskEventBufferImpl::RecordTaskStatusEventIfNeeded(
       job_id,
       attempt_number,
       status,
-      /* timestamp */ absl::GetCurrentTimeNanos(),
+      /* timestamp */ clock_.NowUnixNanos(),
       /*is_actor_task_event=*/spec.IsActorTask(),
       session_name_,
       node_id_,
@@ -447,17 +414,52 @@ bool TaskEventBufferImpl::RecordTaskStatusEventIfNeeded(
   return true;
 }
 
+void RecordTaskStatusEventToRecorderIfNeeded(
+    ray::observability::RayEventRecorderInterface &ray_task_event_recorder,
+    const TaskID &task_id,
+    const JobID &job_id,
+    int32_t attempt_number,
+    const TaskSpecification &spec,
+    rpc::TaskStatus status,
+    int64_t timestamp,
+    const std::string &session_name,
+    const NodeID &node_id,
+    bool include_task_info,
+    std::optional<const TaskStatusEvent::TaskStateUpdate> state_update) {
+  // Skip building the event objects when the recorder path is disabled.
+  if (!observability::RayTaskEventRecorder::Enabled()) {
+    return;
+  }
+  if (!spec.EnableTaskEvents()) {
+    return;
+  }
+  TaskStatusEvent event(
+      task_id,
+      job_id,
+      attempt_number,
+      status,
+      /*timestamp=*/timestamp,
+      /*is_actor_task_event=*/spec.IsActorTask(),
+      session_name,
+      node_id,
+      include_task_info ? std::make_shared<const TaskSpecification>(spec) : nullptr,
+      std::move(state_update));
+  ray_task_event_recorder.AddEvents(event.ToRayEventInterfaces());
+}
+
 TaskEventBufferImpl::TaskEventBufferImpl(
     std::unique_ptr<gcs::GcsClient> gcs_client,
     std::unique_ptr<rpc::EventAggregatorClient> event_aggregator_client,
     std::string session_name,
-    const NodeID &node_id)
+    const NodeID &node_id,
+    ClockInterface &clock)
     : work_guard_(boost::asio::make_work_guard(io_service_)),
       periodical_runner_(PeriodicalRunner::Create(io_service_)),
       gcs_client_(std::move(gcs_client)),
       event_aggregator_client_(std::move(event_aggregator_client)),
       session_name_(session_name),
-      node_id_(node_id) {}
+      node_id_(node_id),
+      clock_(clock) {}
 
 TaskEventBufferImpl::~TaskEventBufferImpl() { Stop(); }
 
@@ -465,14 +467,23 @@ Status TaskEventBufferImpl::Start(bool auto_flush) {
   absl::MutexLock lock(&mutex_);
   send_task_events_to_gcs_enabled_ =
       RayConfig::instance().enable_core_worker_task_event_to_gcs();
-  send_ray_events_to_aggregator_enabled_ =
+  // The RayTaskEventRecorder takes over the aggregator send when it is active
+  // (needs both enable_ray_task_event_recorder and enable_ray_event)
+  // When active, disable the task_event_buffer to aggregator path to avoid double
+  // reporting.
+  const bool ray_task_event_recorder_enabled =
+      observability::RayTaskEventRecorder::Enabled();
+  task_event_buffer_to_aggregator_enabled_ =
+      !ray_task_event_recorder_enabled &&
       RayConfig::instance().enable_core_worker_ray_event_to_aggregator();
 
   // We want to make sure that only one of the event export mechanism is enabled. And
   // if both are enabled, we will use the event aggregator instead of the export API.
   // This code will be removed when we deprecate the export API implementation.
-  export_event_write_enabled_ = !send_ray_events_to_aggregator_enabled_ &&
-                                TaskEventBufferImpl::IsExportAPIEnabledTask();
+  const bool task_events_sent_to_aggregator =
+      ray_task_event_recorder_enabled || task_event_buffer_to_aggregator_enabled_;
+  export_event_write_enabled_ =
+      !task_events_sent_to_aggregator && TaskEventBufferImpl::IsExportAPIEnabledTask();
   auto report_interval_ms = RayConfig::instance().task_events_report_interval_ms();
   RAY_CHECK(report_interval_ms > 0)
       << "RAY_task_events_report_interval_ms should be > 0 to use TaskEventBuffer.";
@@ -510,6 +521,13 @@ Status TaskEventBufferImpl::Start(bool auto_flush) {
 
   enabled_ = true;
 
+  // Record only while one of the destinations above is live. When the recorder handles
+  // the aggregator send and GCS/export are off, buffered events are dropped at flush, so
+  // filling the ring on the task's call path is pure overhead.
+  recording_enabled_ = send_task_events_to_gcs_enabled_ ||
+                       task_event_buffer_to_aggregator_enabled_ ||
+                       export_event_write_enabled_;
+
   if (!auto_flush) {
     return Status::OK();
   }
@@ -525,7 +543,45 @@ void TaskEventBufferImpl::Stop() {
   if (!enabled_) {
     return;
   }
+  // Set enabled_ to false early to prevent double-stop and disable new events
+  enabled_ = false;
   RAY_LOG(INFO) << "Shutting down TaskEventBuffer.";
+
+  auto flush_timeout_ms = RayConfig::instance().task_events_shutdown_flush_timeout_ms();
+
+  // Local handler implementing GracefulShutdownHandler interface.
+  class ShutdownHandler : public GracefulShutdownHandler {
+   public:
+    explicit ShutdownHandler(TaskEventBufferImpl *buffer) : buffer_(buffer) {}
+
+    bool WaitUntilIdle(absl::Duration timeout) override {
+      absl::MutexLock lock(&buffer_->grpc_completion_mutex_);
+      auto deadline = buffer_->clock_.Now() + timeout;
+      while (buffer_->gcs_grpc_in_progress_.load() > 0 ||
+             buffer_->event_aggregator_grpc_in_progress_.load() > 0) {
+        if (buffer_->grpc_completion_cv_.WaitWithDeadline(
+                &buffer_->grpc_completion_mutex_, deadline)) {
+          return false;  // Timeout
+        }
+      }
+      return true;
+    }
+
+    void Flush() override {
+      // Use stopping_ flag to allow flush without re-enabling event ingestion.
+      // This prevents the race where new events could be added during shutdown.
+      buffer_->stopping_ = true;
+      buffer_->FlushEvents(/*forced=*/true);
+      buffer_->stopping_ = false;
+    }
+
+   private:
+    TaskEventBufferImpl *buffer_;
+  };
+
+  ShutdownHandler handler(this);
+  GracefulShutdownWithFlush(
+      handler, absl::Milliseconds(flush_timeout_ms), "TaskEventBuffer");
 
   // Shutting down the io service to exit the io_thread. This should prevent
   // any other callbacks to be run on the io thread.
@@ -545,7 +601,7 @@ void TaskEventBufferImpl::Stop() {
   }
 }
 
-bool TaskEventBufferImpl::Enabled() const { return enabled_; }
+bool TaskEventBufferImpl::Enabled() const { return enabled_ && recording_enabled_; }
 
 void TaskEventBufferImpl::GetTaskStatusEventsToSend(
     std::vector<std::shared_ptr<TaskEvent>> *status_events_to_send,
@@ -713,7 +769,7 @@ TaskEventBuffer::TaskEventDataToSend TaskEventBufferImpl::CreateDataToSend(
           event->ToRpcTaskEvents(&(itr_task_events->second));
         }
 
-        if (send_ray_events_to_aggregator_enabled_) {
+        if (task_event_buffer_to_aggregator_enabled_) {
           auto [itr_ray_events, _] = agg_ray_events.try_emplace(event->GetTaskAttempt());
           event->ToRpcRayEvents(itr_ray_events->second);
         }
@@ -735,7 +791,7 @@ TaskEventBuffer::TaskEventDataToSend TaskEventBufferImpl::CreateDataToSend(
   }
 
   // Convert to rpc::events::RayEventsData
-  if (send_ray_events_to_aggregator_enabled_) {
+  if (task_event_buffer_to_aggregator_enabled_) {
     auto ray_events_data = CreateRayEventsDataToSend(std::move(agg_ray_events),
                                                      dropped_task_attempts_to_send);
     data_to_send.ray_events_data = std::move(ray_events_data);
@@ -788,11 +844,11 @@ void TaskEventBufferImpl::SendTaskEventsToGCS(std::unique_ptr<rpc::TaskEventData
   {
     // Sending the protobuf to GCS.
     absl::MutexLock lock(&mutex_);
-    // The flag should be unset when on_complete is invoked.
+    // The in-flight counter will be decremented when on_complete is invoked.
     task_accessor = &gcs_client_->Tasks();
   }
 
-  gcs_grpc_in_progress_ = true;
+  gcs_grpc_in_progress_.fetch_add(1);
   auto num_task_attempts_to_send = data->events_by_task_size();
   auto num_dropped_task_attempts_to_send = data->dropped_task_attempts_size();
   auto num_bytes_to_send = data->ByteSizeLong();
@@ -816,14 +872,20 @@ void TaskEventBufferImpl::SendTaskEventsToGCS(std::unique_ptr<rpc::TaskEventData
                                      num_dropped_task_attempts_to_send);
       this->stats_counter_.Increment(kTotalTaskEventsBytesReported, num_bytes_to_send);
     }
-    gcs_grpc_in_progress_ = false;
+    // Signal under mutex to avoid lost wakeup race condition.
+    {
+      absl::MutexLock lock(&grpc_completion_mutex_);
+      auto previous = gcs_grpc_in_progress_.fetch_sub(1);
+      RAY_CHECK_GT(previous, 0);
+      grpc_completion_cv_.Signal();
+    }
   };
   task_accessor->AsyncAddTaskEventData(std::move(data), on_complete);
 }
 
 void TaskEventBufferImpl::SendRayEventsToAggregator(
     std::unique_ptr<rpc::events::RayEventsData> data) {
-  event_aggregator_grpc_in_progress_ = true;
+  event_aggregator_grpc_in_progress_.fetch_add(1);
   auto num_task_events_to_send = data->events_size();
   auto num_dropped_task_attempts_to_send =
       data->task_events_metadata().dropped_task_attempts_size();
@@ -850,20 +912,24 @@ void TaskEventBufferImpl::SendRayEventsToAggregator(
               TaskEventBufferCounter::kTotalNumLostTaskAttemptsReportedToAggregator,
               num_dropped_task_attempts_to_send);
         }
-        event_aggregator_grpc_in_progress_ = false;
+        // Signal under mutex to avoid lost wakeup race condition.
+        {
+          absl::MutexLock lock(&grpc_completion_mutex_);
+          auto previous = event_aggregator_grpc_in_progress_.fetch_sub(1);
+          RAY_CHECK_GT(previous, 0);
+          grpc_completion_cv_.Signal();
+        }
       };
 
-  if (num_task_events_to_send == 0 && num_dropped_task_attempts_to_send == 0) {
-    event_aggregator_grpc_in_progress_ = false;
-  } else {
-    rpc::events::AddEventsRequest request;
-    *request.mutable_events_data() = std::move(*data);
-    event_aggregator_client_->AddEvents(request, on_complete);
-  }
+  rpc::events::AddEventsRequest request;
+  *request.mutable_events_data() = std::move(*data);
+  event_aggregator_client_->AddEvents(request, on_complete);
 }
 
 void TaskEventBufferImpl::FlushEvents(bool forced) {
-  if (!enabled_) {
+  // Allow flush during shutdown (stopping_) even if enabled_ is false.
+  // This ensures the final flush happens without re-enabling event ingestion.
+  if (!enabled_ && !stopping_) {
     return;
   }
 
@@ -871,14 +937,16 @@ void TaskEventBufferImpl::FlushEvents(bool forced) {
   // message. Here we don't keep different cursors for GCS and the event aggregator
   // because in most cases, the GCS and the event aggregator will not be enabled at the
   // same time.
-  if ((gcs_grpc_in_progress_ || event_aggregator_grpc_in_progress_) && !forced) {
+  if ((gcs_grpc_in_progress_.load() > 0 ||
+       event_aggregator_grpc_in_progress_.load() > 0) &&
+      !forced) {
     RAY_LOG_EVERY_N_OR_DEBUG(WARNING, 100)
         << "GCS or the event aggregator hasn't replied to the previous flush events "
            "call (likely overloaded). "
            "Skipping reporting task state events and retry later."
-        << "[gcs_grpc_in_progress=" << gcs_grpc_in_progress_ << "]"
-        << "[event_aggregator_grpc_in_progress=" << event_aggregator_grpc_in_progress_
-        << "]"
+        << "[gcs_grpc_in_progress=" << gcs_grpc_in_progress_.load() << "]"
+        << "[event_aggregator_grpc_in_progress="
+        << event_aggregator_grpc_in_progress_.load() << "]"
         << "[cur_status_events_size="
         << stats_counter_.Get(TaskEventBufferCounter::kNumTaskStatusEventsStored)
         << "][cur_profile_events_size="
@@ -909,10 +977,20 @@ void TaskEventBufferImpl::FlushEvents(bool forced) {
   if (export_event_write_enabled_) {
     WriteExportData(status_events_to_write_for_export, profile_events_to_send);
   }
-  if (send_task_events_to_gcs_enabled_) {
+  // Only send to GCS if there's actual data or metadata to send.
+  const bool has_gcs_payload =
+      data.task_event_data && (data.task_event_data->events_by_task_size() > 0 ||
+                               data.task_event_data->dropped_task_attempts_size() > 0 ||
+                               data.task_event_data->num_profile_events_dropped() > 0);
+  if (send_task_events_to_gcs_enabled_ && has_gcs_payload) {
     SendTaskEventsToGCS(std::move(data.task_event_data));
   }
-  if (send_ray_events_to_aggregator_enabled_) {
+  // Only send to event aggregator if there's actual data or metadata to send.
+  const bool has_aggregator_payload =
+      data.ray_events_data &&
+      (data.ray_events_data->events_size() > 0 ||
+       data.ray_events_data->task_events_metadata().dropped_task_attempts_size() > 0);
+  if (task_event_buffer_to_aggregator_enabled_ && has_aggregator_payload) {
     SendRayEventsToAggregator(std::move(data.ray_events_data));
   }
 }
@@ -947,7 +1025,7 @@ void TaskEventBufferImpl::AddTaskEvent(std::unique_ptr<TaskEvent> task_event) {
 
 void TaskEventBufferImpl::AddTaskStatusEvent(std::unique_ptr<TaskEvent> status_event) {
   absl::MutexLock lock(&mutex_);
-  if (!enabled_) {
+  if (!Enabled()) {
     return;
   }
   std::shared_ptr<TaskEvent> status_event_shared_ptr = std::move(status_event);
@@ -994,7 +1072,7 @@ void TaskEventBufferImpl::AddTaskStatusEvent(std::unique_ptr<TaskEvent> status_e
 
 void TaskEventBufferImpl::AddTaskProfileEvent(std::unique_ptr<TaskEvent> profile_event) {
   absl::MutexLock lock(&profile_mutex_);
-  if (!enabled_) {
+  if (!Enabled()) {
     return;
   }
   std::shared_ptr<TaskEvent> profile_event_shared_ptr = std::move(profile_event);
@@ -1051,8 +1129,9 @@ std::string TaskEventBufferImpl::DebugString() {
   ss << "\nIO Service Stats:\n";
   ss << io_service_.stats()->StatsString();
   ss << "\nOther Stats:"
-     << "\n\tgcs_grpc_in_progress:" << gcs_grpc_in_progress_
-     << "\n\tevent_aggregator_grpc_in_progress:" << event_aggregator_grpc_in_progress_
+     << "\n\tgcs_grpc_in_progress:" << gcs_grpc_in_progress_.load()
+     << "\n\tevent_aggregator_grpc_in_progress:"
+     << event_aggregator_grpc_in_progress_.load()
      << "\n\tcurrent number of task status events in buffer: "
      << stats[TaskEventBufferCounter::kNumTaskStatusEventsStored]
      << "\n\tcurrent number of profile events in buffer: "

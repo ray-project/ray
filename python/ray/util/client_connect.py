@@ -31,8 +31,13 @@ def connect(
     _credentials: Optional["grpc.ChannelCredentials"] = None,  # noqa: F821
     ray_init_kwargs: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
+    # Check if Ray is already connected (any type of connection)
     if ray.is_connected():
-        ignore_reinit_error = ray_init_kwargs.get("ignore_reinit_error", False)
+        ignore_reinit_error = (
+            ray_init_kwargs.get("ignore_reinit_error", False)
+            if ray_init_kwargs is not None
+            else False
+        )
         if ignore_reinit_error:
             logger.info(
                 "Calling ray.init() again after it has already been called. "
@@ -40,7 +45,7 @@ def connect(
             )
             return ray.get_context().client_worker.connection_info()
         raise RuntimeError(
-            "Ray Client is already connected. Maybe you called "
+            "Ray Client is already initialized. Maybe you called "
             'ray.init("ray://<address>") twice by accident?'
         )
 

@@ -1,9 +1,14 @@
+---
+myst:
+  html_meta:
+    description: "Choose between async def and def in Serve deployments, size the threadpool, and avoid blocking I/O behind a FastAPI ingress."
+---
+
 (serve-asyncio-best-practices)=
 
 # Asyncio and concurrency best practices in Ray Serve
 
-The code that runs inside of each replica in a Ray Serve deployment runs on an asyncio event loop.
-Asyncio enables efficient I/O bound concurrency but requires following a few best practices for optimal performance.
+The code that runs inside of each replica in a Ray Serve deployment runs on an asyncio event loop. Asyncio enables efficient I/O bound concurrency but requires following a few best practices for optimal performance.
 
 This guide explains:
 
@@ -75,8 +80,8 @@ For a synchronous deployment:
 
 How this method executes depends on configuration:
 
-- With `RAY_SERVE_RUN_SYNC_IN_THREADPOOL=0` (current default), `__call__` runs directly on the user event loop and blocks it for 1 second.
-- With `RAY_SERVE_RUN_SYNC_IN_THREADPOOL=1`, Serve offloads `__call__` to a threadpool so the event loop stays responsive.
+- With `RAY_SERVE_RUN_SYNC_IN_THREADPOOL=1` (the default), Serve offloads `__call__` to a threadpool so the event loop stays responsive.
+- With `RAY_SERVE_RUN_SYNC_IN_THREADPOOL=0`, `__call__` runs directly on the user event loop and blocks it for 1 second.
 
 ### FastAPI ingress (`@serve.ingress`)
 
@@ -95,11 +100,9 @@ Important differences:
 
 ## Threadpool sizing and overrides
 
-Serve sets a default threadpool size for user code that mirrors Python's
-`ThreadPoolExecutor` defaults while respecting `ray_actor_options["num_cpus"]`.
+Serve sets a default threadpool size for user code that mirrors Python's `ThreadPoolExecutor` defaults while respecting `ray_actor_options["num_cpus"]`.
 
-In most cases, the default is fine. If you need to tune it, you can override the default
-executor inside your deployment:
+In most cases, the default is fine. If you need to tune it, you can override the default executor inside your deployment:
 
 ```{literalinclude} ../doc_code/asyncio_best_practices.py
 :start-after: __threadpool_override_begin__
@@ -128,6 +131,8 @@ Blocking I/O example:
 ```
 
 Even though the method is `async def`, `requests.get` blocks the loop. No other requests can run on this replica during the request call. Blocking in `async def` is still blocking.
+
+If the blocking call hangs and you've configured a request timeout, Ray Serve cancels the request when that timeout expires, but that cancellation is best-effort. Python only delivers `asyncio` cancellation when the task cooperates and yields control back to the event loop. A synchronous call such as `requests.get` doesn't do that, so one hung request can stall the replica's event loop and prevent later requests from running on that replica.
 
 Non-blocking equivalent with async HTTP client:
 
@@ -269,16 +274,7 @@ Ray Serve exposes several environment variables that control how user code inter
 
 ### `RAY_SERVE_RUN_SYNC_IN_THREADPOOL`
 
-By default (`RAY_SERVE_RUN_SYNC_IN_THREADPOOL=0`), which means synchronous methods in a deployment run directly on the user event loop. To help you migrate to a safer model, Serve emits a warning like:
-
-> `RAY_SERVE_RUN_SYNC_IN_THREADPOOL_WARNING`: Calling sync method '...' directly on the asyncio loop. In a future version, sync methods will be run in a threadpool by default...
-
-This warning means:
-
-- You have a `def` method that is currently running on the event loop.
-- In a future version, that method runs in a threadpool instead.
-
-You can opt in to the future behavior now by setting:
+By default (`RAY_SERVE_RUN_SYNC_IN_THREADPOOL=1`), synchronous methods in a deployment run in a threadpool:
 
 ```bash
 export RAY_SERVE_RUN_SYNC_IN_THREADPOOL=1
@@ -289,10 +285,12 @@ When this flag is `1`:
 - Serve runs synchronous methods in a threadpool.
 - The event loop is free to keep serving other requests while sync methods run.
 
-Before enabling this in production, make sure:
+Make sure:
 
 - Your handler code and any shared state are thread-safe.
 - Your model objects can safely be used from multiple threads, or you protect them with locks.
+
+Set this flag to `0` to retain the legacy behavior of running synchronous methods directly on the user event loop.
 
 ### `RAY_SERVE_RUN_USER_CODE_IN_SEPARATE_THREAD`
 

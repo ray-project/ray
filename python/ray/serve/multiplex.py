@@ -175,7 +175,7 @@ class _ModelMultiplexWrapper:
             The user-constructed model object.
         """
 
-        if type(model_id) is not str:
+        if not isinstance(model_id, str):
             raise TypeError("The model ID must be a string.")
 
         if not model_id:
@@ -184,9 +184,11 @@ class _ModelMultiplexWrapper:
         self.get_model_requests_counter.inc()
 
         if model_id in self.models:
-            # Move the model to the end of the OrderedDict to ensure LRU caching.
-            model = self.models.pop(model_id)
-            self.models[model_id] = model
+            # Move the model to the end of the OrderedDict to mark it as
+            # most-recently-used. Using move_to_end() instead of pop()+reinsert
+            # avoids a race condition where concurrent coroutines could see the
+            # key as missing during the brief window between pop and reinsert.
+            self.models.move_to_end(model_id)
             return self.models[model_id]
         else:
             # Set the flag to push the multiplexed replica info to the controller
@@ -212,7 +214,7 @@ class _ModelMultiplexWrapper:
                         self._push_multiplexed_replica_info = True
 
                     # Load the model.
-                    logger.info(f"Loading model '{model_id}'.")
+                    logger.debug(f"Loading model '{model_id}'.")
                     self.models_load_counter.inc()
                     load_start_time = time.time()
                     if self.self_arg is None:
@@ -222,7 +224,7 @@ class _ModelMultiplexWrapper:
                             self.self_arg, model_id
                         )
                     load_latency_ms = (time.time() - load_start_time) * 1000.0
-                    logger.info(
+                    logger.debug(
                         f"Successfully loaded model '{model_id}' in "
                         f"{load_latency_ms:.1f}ms."
                     )
@@ -242,7 +244,7 @@ class _ModelMultiplexWrapper:
         self.models_unload_counter.inc()
         unload_start_time = time.time()
         model_id, model = self.models.popitem(last=False)
-        logger.info(f"Unloading model '{model_id}'.")
+        logger.debug(f"Unloading model '{model_id}'.")
 
         # If the model has __del__ attribute, call it.
         # This is to clean up the model resources eagerly.
@@ -254,7 +256,7 @@ class _ModelMultiplexWrapper:
             model.__del__ = lambda _: None
         unload_latency_ms = (time.time() - unload_start_time) * 1000.0
         self.model_unload_latency_ms.observe(unload_latency_ms)
-        logger.info(
+        logger.debug(
             f"Successfully unloaded model '{model_id}' in {unload_latency_ms:.1f}ms."
         )
         self.registered_model_gauge.set(0, tags={"model_id": model_id})

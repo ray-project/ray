@@ -57,6 +57,9 @@ class RayEventPublisher(RayEventPublisherInterface):
     The worker loop continuously pulls batches from the event buffer and publishes them to the destination.
     """
 
+    # Cap the exponent to avoid computing unnecessarily large intermediate
+    _MAX_BACKOFF_EXPONENT = 30
+
     def __init__(
         self,
         name: str,
@@ -197,9 +200,10 @@ class RayEventPublisher(RayEventPublisherInterface):
         Args:
             attempt: The current attempt number (0-based)
         """
+        capped_attempt = min(attempt, self._MAX_BACKOFF_EXPONENT)
         delay = min(
             self._max_backoff,
-            self._initial_backoff * (2**attempt),
+            self._initial_backoff * (2**capped_attempt),
         )
         if self._jitter_ratio > 0:
             jitter = delay * self._jitter_ratio

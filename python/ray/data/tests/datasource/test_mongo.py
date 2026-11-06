@@ -1,4 +1,7 @@
+import shutil
 import subprocess
+import tempfile
+import time
 
 import pandas as pd
 import pyarrow as pa
@@ -9,18 +12,39 @@ from ray.data.tests.conftest import *  # noqa
 from ray.data.tests.mock_http_server import *  # noqa
 from ray.tests.conftest import *  # noqa
 
-# To run tests locally, make sure you install mongodb
-# and start a local service:
-# sudo apt-get install -y mongodb
+# To run tests locally, make sure you install mongodb-org and have mongod
+# available on your PATH. Started directly since mongodb-org has no SysV init
+# script. See https://hub.docker.com/_/mongo
 
 
 @pytest.fixture
 def start_mongo():
     import pymongo
+    import pymongo.errors
 
-    subprocess.check_call(["service", "mongodb", "start"])
+    dbpath = tempfile.mkdtemp(prefix="mongod_test_")
+    proc = subprocess.Popen(
+        ["mongod", "--dbpath", dbpath, "--bind_ip", "127.0.0.1"],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+    # Wait for mongod to accept connections.
     mongo_url = "mongodb://localhost:27017"
-    client = pymongo.MongoClient(mongo_url)
+    for _ in range(30):
+        if proc.poll() is not None:
+            raise RuntimeError(
+                f"mongod exited unexpectedly (returncode={proc.returncode})"
+            )
+        try:
+            client = pymongo.MongoClient(mongo_url, serverSelectionTimeoutMS=1000)
+            client.admin.command("ping")
+            break
+        except pymongo.errors.PyMongoError:
+            time.sleep(0.5)
+    else:
+        proc.kill()
+        raise RuntimeError("mongod failed to start")
+
     # Make sure a clean slate for each test by dropping
     # previously created ones (if any).
     for db in client.list_database_names():
@@ -29,7 +53,9 @@ def start_mongo():
             client.drop_database(db)
     yield client, mongo_url
 
-    subprocess.check_call(["service", "mongodb", "stop"])
+    proc.terminate()
+    proc.wait(timeout=10)
+    shutil.rmtree(dbpath)
 
 
 def test_read_write_mongo(ray_start_regular_shared, start_mongo):
@@ -82,7 +108,8 @@ def test_read_write_mongo(ray_start_regular_shared, start_mongo):
     ds_schema = ds.schema()
     assert ds_schema.names == ["float_field", "int_field"]
     assert ds_schema.types == [pa.float64(), pa.int32()]
-    assert df.equals(ds.to_pandas())
+    result = ds.to_pandas()
+    pd.testing.assert_frame_equal(df.astype(result.dtypes.to_dict()), result)
 
     # Read with schema inference, which will read all columns (including the auto
     # generated internal column "_id").
@@ -100,7 +127,8 @@ def test_read_write_mongo(ray_start_regular_shared, start_mongo):
         pa.float64(),
         pa.int32(),
     ]
-    assert df.equals(ds.drop_columns(["_id"]).to_pandas())
+    result = ds.drop_columns(["_id"]).to_pandas()
+    pd.testing.assert_frame_equal(df.astype(result.dtypes.to_dict()), result)
 
     # Read a subset of the collection.
     ds = ray.data.read_mongo(
@@ -129,7 +157,8 @@ def test_read_write_mongo(ray_start_regular_shared, start_mongo):
         pa.float64(),
         pa.int32(),
     ]
-    assert df.equals(ds.drop_columns(["_id"]).to_pandas())
+    result = ds.drop_columns(["_id"]).to_pandas()
+    pd.testing.assert_frame_equal(df.astype(result.dtypes.to_dict()), result)
 
     # Read with a parallelism larger than number of rows.
     ds = ray.data.read_mongo(
@@ -146,7 +175,8 @@ def test_read_write_mongo(ray_start_regular_shared, start_mongo):
         pa.float64(),
         pa.int32(),
     ]
-    assert df.equals(ds.drop_columns(["_id"]).to_pandas())
+    result = ds.drop_columns(["_id"]).to_pandas()
+    pd.testing.assert_frame_equal(df.astype(result.dtypes.to_dict()), result)
 
     # Add a column and then write back to MongoDB.
     # Inject 2 more test docs.
@@ -205,7 +235,8 @@ def test_mongo_datasource(ray_start_regular_shared, start_mongo):
     ds_schema = ds.schema()
     assert ds_schema.names == ["float_field", "int_field"]
     assert ds_schema.types == [pa.float64(), pa.int32()]
-    assert df.equals(ds.to_pandas())
+    result = ds.to_pandas()
+    pd.testing.assert_frame_equal(df.astype(result.dtypes.to_dict()), result)
 
     # Read with schema inference, which will read all columns (including the auto
     # generated internal column "_id").
@@ -221,7 +252,8 @@ def test_mongo_datasource(ray_start_regular_shared, start_mongo):
     ds_schema = ds.schema()
     assert ds_schema.names == ["_id", "float_field", "int_field"]
     assert ds_schema.types[1:] == [pa.float64(), pa.int32()]
-    assert df.equals(ds.drop_columns(["_id"]).to_pandas())
+    result = ds.drop_columns(["_id"]).to_pandas()
+    pd.testing.assert_frame_equal(df.astype(result.dtypes.to_dict()), result)
 
     # Read with auto-tuned parallelism.
     ds = ray.data.read_mongo(
@@ -234,7 +266,8 @@ def test_mongo_datasource(ray_start_regular_shared, start_mongo):
     ds_schema = ds.schema()
     assert ds_schema.names == ["_id", "float_field", "int_field"]
     assert ds_schema.types[1:] == [pa.float64(), pa.int32()]
-    assert df.equals(ds.drop_columns(["_id"]).to_pandas())
+    result = ds.drop_columns(["_id"]).to_pandas()
+    pd.testing.assert_frame_equal(df.astype(result.dtypes.to_dict()), result)
 
     # Read with a parallelism larger than number of rows.
     ds = ray.data.read_mongo(
@@ -244,7 +277,8 @@ def test_mongo_datasource(ray_start_regular_shared, start_mongo):
         override_num_blocks=1000,
     )
     assert ds.schema(fetch_if_missing=False) is None
-    assert df.equals(ds.drop_columns(["_id"]).to_pandas())
+    result = ds.drop_columns(["_id"]).to_pandas()
+    pd.testing.assert_frame_equal(df.astype(result.dtypes.to_dict()), result)
 
     # Read a subset of the collection.
     ds = ray.data.read_mongo(

@@ -1,0 +1,18 @@
+RocksDB's WITH_TSAN block appends `-Wl,-pie` to CMAKE_EXE_LINKER_FLAGS,
+passing `-pie` directly to the linker behind the compiler driver's back.
+With Ray's rules_foreign_cc crosstool (clang + static libc++ via
+BAZEL_LINKLIBS), the driver still emits non-PIE startup objects, so every
+CMake try_compile probe fails to link and configure aborts at the first
+REQUIRED check (`find_package(Threads)`). TSan does not require PIE with
+clang on x86_64/aarch64 Linux; `-fsanitize=thread` alone is sufficient.
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -372,7 +372,7 @@
+ 
+ option(WITH_TSAN "build with TSAN" OFF)
+ if(WITH_TSAN)
+-  set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -fsanitize=thread -Wl,-pie")
++  set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -fsanitize=thread")
+   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fsanitize=thread -fPIC")
+   set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -fsanitize=thread -fPIC")
+   if(WITH_JEMALLOC)

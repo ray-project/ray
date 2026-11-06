@@ -25,7 +25,7 @@
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
-#include "ray/common/asio/instrumented_io_context.h"
+#include "ray/asio/instrumented_io_context.h"
 #include "ray/common/id.h"
 #include "ray/pubsub/subscriber_interface.h"
 #include "ray/rpc/rpc_callback_types.h"
@@ -136,8 +136,8 @@ class SubscriberChannel {
 
  protected:
   /// Invoke the publisher failure callback to the designated IO service for the given key
-  /// id. \return Return true if the given key id needs to be unsubscribed. False
-  /// otherwise.
+  /// id.
+  /// \return True if the given key id needs to be unsubscribed, and false otherwise.
   bool HandlePublisherFailureInternal(const rpc::Address &publisher_address,
                                       const std::string &key_id,
                                       const Status &status);

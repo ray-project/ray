@@ -10,7 +10,7 @@ import platform
 import subprocess
 import tarfile
 import tempfile
-from typing import List
+from typing import List, Optional
 
 import runfiles
 
@@ -114,6 +114,90 @@ def _extract_tar_to_dir(tar_path: str, output_dir: str) -> None:
                 logger.warning(f"Skipping path on different drive: {m.name}")
                 continue
             tf.extract(m, path=output_dir)
+
+
+def _strip_leading_dot_slash(name: str) -> str:
+    """Strip a single literal leading "./" from a tar member name.
+
+    Uses an explicit prefix check rather than str.lstrip("./"), which would
+    strip a *set* of leading '.'/'/' characters and conflate distinct names
+    (e.g. ".hidden" -> "hidden").
+    """
+    return name[2:] if name.startswith("./") else name
+
+
+def _read_member_from_tar(tar_path: str, path_in_image: str) -> Optional[bytes]:
+    """
+    Read the bytes of a single regular-file member from a tar, without
+    extracting the archive.
+
+    This deliberately avoids tarfile's hardlink/symlink resolution (which
+    `crane export` tars trigger for deduplicated files such as the identical
+    ``.dist-info/INSTALLER`` files, and which aborts a full extraction with a
+    ``KeyError: "linkname ... not found"``). Only the requested member is read,
+    and only if it is a regular file.
+
+    Args:
+        tar_path: Path to the tar file.
+        path_in_image: Member name to read (e.g. "home/ray/pip-freeze.txt",
+            with no leading slash -- matching crane export tar member names).
+
+    Returns:
+        The member's bytes, or None if it is absent or not a regular file.
+    """
+    normalized = _strip_leading_dot_slash(path_in_image)
+    with tarfile.open(tar_path, mode="r:*") as tf:
+        # Match on the normalized name so a "./"-prefixed archive is handled the
+        # same as a bare one, and let the last match win so the top image
+        # layer's copy takes precedence over any shadowed lower-layer entry.
+        member = None
+        for m in tf:
+            if _strip_leading_dot_slash(m.name) == normalized:
+                member = m
+        if member is None or not member.isfile():
+            return None
+        extracted = tf.extractfile(member)
+        if extracted is None:
+            return None
+        return extracted.read()
+
+
+def read_file_from_image(tag: str, path_in_image: str) -> Optional[bytes]:
+    """
+    Export a container image and read a single file from its filesystem.
+
+    Equivalent to ``crane export <tag>`` followed by reading one path out of
+    the resulting tar -- but without extracting the whole filesystem, so it is
+    immune to the hardlink-resolution failures that break a full extraction of
+    `crane export` tars (see _read_member_from_tar). No docker daemon required.
+
+    Args:
+        tag: Image reference to export.
+        path_in_image: File to read, as a tar member name with no leading slash
+            (e.g. "home/ray/pip-freeze.txt").
+
+    Returns:
+        The file's bytes, or None if the file is absent from the image.
+
+    Raises:
+        CraneError: If the crane export or the tar read fails.
+    """
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tar_path = os.path.join(tmpdir, "image.tar")
+        crane_cmd = [_crane_binary(), "export", tag, tar_path]
+        logger.info(f"Running: {' '.join(crane_cmd)}")
+
+        try:
+            subprocess.check_call(crane_cmd, env=os.environ)
+        except subprocess.CalledProcessError as e:
+            raise CraneError(f"crane export failed (rc={e.returncode})")
+        except FileNotFoundError:
+            raise CraneError(f"Crane binary not found at {crane_cmd[0]}")
+
+        try:
+            return _read_member_from_tar(tar_path, path_in_image)
+        except Exception as e:
+            raise CraneError(f"reading {path_in_image} from image tar failed: {e}")
 
 
 def call_crane_copy(source: str, destination: str) -> None:

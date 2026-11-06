@@ -1,4 +1,4 @@
 name: "forge"
 froms:
-  - ubuntu:20.04
+  - ubuntu:22.04
 dockerfile: .buildkite/release-automation/forge_x86_64.Dockerfile

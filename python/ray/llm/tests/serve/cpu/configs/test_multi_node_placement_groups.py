@@ -1,5 +1,6 @@
 from typing import Any, Dict
 
+import pydantic
 import pytest
 
 from ray.llm._internal.serve.core.server.llm_server import LLMServer
@@ -12,6 +13,7 @@ def get_llm_config_with_placement_group(
     tensor_parallel_size: int = 1,
     pipeline_parallel_size: int = 1,
     placement_group_config: Dict[str, Any] = None,
+    runtime_env: Dict[str, Any] = None,
 ) -> LLMConfig:
     """Create LLMConfig with specified parallelism parameters and placement group config."""
     return LLMConfig(
@@ -31,7 +33,7 @@ def get_llm_config_with_placement_group(
             distributed_executor_backend="ray",
         ),
         placement_group_config=placement_group_config,
-        runtime_env=None,
+        runtime_env=runtime_env,
     )
 
 
@@ -98,9 +100,9 @@ def test_llm_serve_default_placement_strategy(tp_size, pp_size):
 def test_llm_serve_placement_group_validation():
     """Test validation of placement group configurations."""
 
-    # Test missing bundles
+    # Test missing both bundle_per_worker and bundles
     with pytest.raises(
-        ValueError, match="placement_group_config must contain 'bundles'"
+        ValueError, match="must specify either 'bundle_per_worker' or 'bundles'"
     ):
         llm_config = get_llm_config_with_placement_group(
             placement_group_config={"strategy": "PACK"}
@@ -279,6 +281,334 @@ def test_fractional_gpu_env_var_override_preserved():
     runtime_env = engine_config.get_runtime_env_with_local_env_vars()
 
     assert runtime_env["env_vars"]["VLLM_RAY_PER_WORKER_GPUS"] == "0.6"
+
+
+@pytest.mark.parametrize(
+    "tp_size,pp_size",
+    [
+        (2, 1),
+        (1, 2),
+        (2, 2),
+        (4, 2),
+    ],
+)
+def test_bundle_per_worker_expands_correctly(tp_size, pp_size):
+    """Test that bundle_per_worker is auto-replicated based on tp*pp."""
+    expected_bundles = tp_size * pp_size
+
+    llm_config = get_llm_config_with_placement_group(
+        tensor_parallel_size=tp_size,
+        pipeline_parallel_size=pp_size,
+        placement_group_config={"bundle_per_worker": {"GPU": 1, "CPU": 2}},
+    )
+
+    # Verify the configuration is properly set
+    assert llm_config.placement_group_config == {
+        "bundle_per_worker": {"GPU": 1, "CPU": 2}
+    }
+
+    # Test that serve options are generated correctly
+    serve_options = LLMServer.get_deployment_options(llm_config)
+    assert "placement_group_bundles" in serve_options
+    assert len(serve_options["placement_group_bundles"]) == expected_bundles
+
+    # Each bundle should have the specified resources (plus accelerator hint injection)
+    for i, bundle in enumerate(serve_options["placement_group_bundles"]):
+        # First bundle gets merged with replica actor resources
+        if i == 0:
+            assert bundle["GPU"] >= 1
+            assert bundle["CPU"] >= 2
+        else:
+            assert bundle["GPU"] == 1
+            assert bundle["CPU"] == 2
+
+
+def test_bundle_per_worker_conflict_with_bundles():
+    """Test that specifying both bundle_per_worker and bundles raises error."""
+    with pytest.raises(ValueError, match="Cannot specify both"):
+        llm_config = LLMConfig(
+            model_loading_config=ModelLoadingConfig(
+                model_id="test_model",
+                model_source="facebook/opt-125m",
+            ),
+            placement_group_config={
+                "bundle_per_worker": {"GPU": 1, "CPU": 1},
+                "bundles": [{"GPU": 1}],
+            },
+        )
+        # Validation happens when VLLMEngineConfig is created
+        VLLMEngineConfig.from_llm_config(llm_config)
+
+
+def test_bundle_per_worker_uses_pack_strategy():
+    """Test that bundle_per_worker defaults to PACK strategy."""
+    llm_config = get_llm_config_with_placement_group(
+        tensor_parallel_size=2,
+        pipeline_parallel_size=1,
+        placement_group_config={"bundle_per_worker": {"GPU": 1}},
+    )
+
+    serve_options = LLMServer.get_deployment_options(llm_config)
+    assert serve_options["placement_group_strategy"] == "PACK"
+
+
+def test_bundle_per_worker_injects_accelerator_type():
+    """Test that bundle_per_worker bundles get accelerator type hint injected."""
+    llm_config = LLMConfig(
+        model_loading_config=ModelLoadingConfig(
+            model_id="test_model",
+            model_source="facebook/opt-125m",
+        ),
+        engine_kwargs=dict(
+            tensor_parallel_size=2,
+            pipeline_parallel_size=1,
+            distributed_executor_backend="ray",
+        ),
+        accelerator_type="L4",
+        placement_group_config={"bundle_per_worker": {"GPU": 1, "CPU": 2}},
+    )
+
+    serve_options = LLMServer.get_deployment_options(llm_config)
+
+    # All bundles should have accelerator type hint injected
+    for bundle in serve_options["placement_group_bundles"]:
+        assert "accelerator_type:L4" in bundle
+        assert bundle["accelerator_type:L4"] == 0.001
+
+
+def test_bundle_per_worker_fractional_gpu_env_var():
+    """Test that fractional GPU in bundle_per_worker injects VLLM_RAY_PER_WORKER_GPUS."""
+    llm_config = LLMConfig(
+        model_loading_config=ModelLoadingConfig(
+            model_id="test_model",
+            model_source="facebook/opt-125m",
+        ),
+        placement_group_config={"bundle_per_worker": {"GPU": 0.5, "CPU": 1}},
+    )
+
+    engine_config = VLLMEngineConfig.from_llm_config(llm_config)
+    runtime_env = engine_config.get_runtime_env_with_local_env_vars()
+
+    assert runtime_env["env_vars"]["VLLM_RAY_PER_WORKER_GPUS"] == "0.5"
+
+
+def test_bundle_per_worker_non_fractional_gpu_no_env_var():
+    """Test that non-fractional GPU in bundle_per_worker does not inject env var."""
+    llm_config = LLMConfig(
+        model_loading_config=ModelLoadingConfig(
+            model_id="test_model",
+            model_source="facebook/opt-125m",
+        ),
+        placement_group_config={"bundle_per_worker": {"GPU": 1, "CPU": 1}},
+    )
+
+    engine_config = VLLMEngineConfig.from_llm_config(llm_config)
+    runtime_env = engine_config.get_runtime_env_with_local_env_vars()
+
+    assert "VLLM_RAY_PER_WORKER_GPUS" not in runtime_env.get("env_vars", {})
+
+
+def test_llm_serve_placement_group_explicit_none():
+    """Test that explicitly setting bundle_per_worker key to None does not crash."""
+    llm_config = LLMConfig(
+        model_loading_config=ModelLoadingConfig(
+            model_id="test_model",
+            model_source="facebook/opt-1.3b",
+        ),
+        placement_group_config={
+            "bundle_per_worker": None,
+            "bundles": [{"GPU": 1}],
+        },
+    )
+
+    # This should succeed fall back to the GPU bundles
+    serve_options = LLMServer.get_deployment_options(llm_config)
+    assert len(serve_options["placement_group_bundles"]) > 0
+
+
+class TestAcceleratorTypeValidation:
+    """Test accelerator_type validation with CPU-only configurations."""
+
+    def test_llm_config_accelerator_type_with_cpu_config_raises_error(self):
+        """LLMConfig raises error with accelerator_type and CPU config."""
+        with pytest.raises(
+            pydantic.ValidationError,
+            match="cannot be used with CPU-only configurations",
+        ):
+            LLMConfig(
+                model_loading_config={"model_id": "test_model"},
+                accelerator_type="L4",
+                accelerator_config={"kind": "cpu"},
+            )
+
+    def test_llm_config_accelerator_type_with_cpu_only_bundles_raises_error(self):
+        """LLMConfig raises error with accelerator_type and CPU-only bundles."""
+        with pytest.raises(
+            pydantic.ValidationError,
+            match="cannot be used with CPU-only configurations",
+        ):
+            LLMConfig(
+                model_loading_config={"model_id": "test_model"},
+                accelerator_type="L4",
+                placement_group_config={"bundles": [{"CPU": 4}]},
+            )
+
+    def test_llm_config_accelerator_type_with_empty_bundles_raises_error(self):
+        """LLMConfig raises error with accelerator_type and empty bundles."""
+        with pytest.raises(
+            pydantic.ValidationError,
+            match="cannot be used with CPU-only configurations",
+        ):
+            LLMConfig(
+                model_loading_config={"model_id": "test_model"},
+                accelerator_type="L4",
+                placement_group_config={"bundles": []},
+            )
+
+    def test_llm_config_accelerator_type_with_gpu_bundles_succeeds(self):
+        """Test that LLMConfig succeeds when accelerator_type is set with GPU bundles."""
+        config = LLMConfig(
+            model_loading_config={"model_id": "test_model"},
+            accelerator_type="L4",
+            placement_group_config={"bundles": [{"GPU": 1, "CPU": 4}]},
+        )
+        assert config.accelerator_type == "L4"
+
+    def test_llm_config_accelerator_type_default_uses_gpu(self):
+        """Test that LLMConfig with accelerator_type defaults to GPU."""
+        config = LLMConfig(
+            model_loading_config={"model_id": "test_model"},
+            accelerator_type="L4",
+        )
+        assert config.accelerator_type == "L4"
+
+
+@pytest.mark.parametrize(
+    "placement_group_config,runtime_env,expected_present,expected_absent",
+    [
+        # Fractional bundle: the derived value reaches the replica so the vLLM
+        # engine subprocess sizes each worker's GPU request correctly.
+        (
+            {"bundles": [{"GPU": 0.25, "CPU": 1}]},
+            None,
+            {"VLLM_RAY_PER_WORKER_GPUS": "0.25"},
+            [],
+        ),
+        # A user-provided value wins over the derived one.
+        (
+            {"bundles": [{"GPU": 0.25, "CPU": 1}]},
+            {"env_vars": {"VLLM_RAY_PER_WORKER_GPUS": "0.2"}},
+            {"VLLM_RAY_PER_WORKER_GPUS": "0.2"},
+            [],
+        ),
+        # An unrelated user env var coexists with the derived one.
+        (
+            {"bundles": [{"GPU": 0.25, "CPU": 1}]},
+            {"env_vars": {"MY_VAR": "keep_me"}},
+            {"VLLM_RAY_PER_WORKER_GPUS": "0.25", "MY_VAR": "keep_me"},
+            [],
+        ),
+        # An explicit env_vars=None must not crash; the derived value still applies.
+        (
+            {"bundles": [{"GPU": 0.25, "CPU": 1}]},
+            {"env_vars": None},
+            {"VLLM_RAY_PER_WORKER_GPUS": "0.25"},
+            [],
+        ),
+        # Full-GPU bundle: nothing is injected.
+        (
+            {"bundles": [{"GPU": 1, "CPU": 1}]},
+            None,
+            {},
+            ["VLLM_RAY_PER_WORKER_GPUS"],
+        ),
+    ],
+)
+def test_per_worker_gpus_env_on_replica(
+    placement_group_config, runtime_env, expected_present, expected_absent
+):
+    """get_deployment_options must expose VLLM_RAY_PER_WORKER_GPUS to the engine.
+
+    The vLLM engine runs in a subprocess of the replica actor and reads
+    VLLM_RAY_PER_WORKER_GPUS (default 1.0) to size each worker's GPU request, so
+    a fractional bundle's derived value must land on the replica actor's
+    runtime_env, an explicit value must win, unrelated user env vars must be
+    preserved, an explicit env_vars=None must not crash, and a full-GPU bundle
+    must inject nothing.
+    """
+    llm_config = get_llm_config_with_placement_group(
+        placement_group_config=placement_group_config,
+        runtime_env=runtime_env,
+    )
+
+    serve_options = LLMServer.get_deployment_options(llm_config)
+
+    env_vars = serve_options["ray_actor_options"]["runtime_env"].get("env_vars", {})
+    for key, value in expected_present.items():
+        assert env_vars[key] == value
+    for key in expected_absent:
+        assert key not in env_vars
+
+
+def test_all_engine_derived_env_vars_reach_replica(monkeypatch):
+    """Every engine-derived env var -- not only VLLM_RAY_PER_WORKER_GPUS -- must
+    reach the replica actor. get_deployment_options consumes the engine's
+    runtime_env builder wholesale, so a future derived var cannot re-open the
+    propagation gap.
+    """
+
+    def fake_derive(self):
+        return {
+            "env_vars": {
+                "VLLM_RAY_PER_WORKER_GPUS": "0.25",
+                "SOME_NEW_DERIVED_VAR": "x",
+            }
+        }
+
+    monkeypatch.setattr(
+        VLLMEngineConfig, "get_runtime_env_with_local_env_vars", fake_derive
+    )
+
+    llm_config = get_llm_config_with_placement_group(
+        placement_group_config={"bundles": [{"GPU": 0.25, "CPU": 1}]},
+    )
+
+    serve_options = LLMServer.get_deployment_options(llm_config)
+
+    env_vars = serve_options["ray_actor_options"]["runtime_env"]["env_vars"]
+    assert env_vars["VLLM_RAY_PER_WORKER_GPUS"] == "0.25"
+    assert env_vars["SOME_NEW_DERIVED_VAR"] == "x"
+
+
+@pytest.mark.parametrize(
+    "runtime_env",
+    [
+        None,  # no user runtime_env
+        {"env_vars": {"FOO": "bar"}},  # populated dict: the real aliasing risk
+    ],
+)
+def test_get_runtime_env_with_local_env_vars_does_not_mutate_self(runtime_env):
+    """The builder must be pure: deriving env vars must not write back into
+    self.runtime_env, otherwise folding the result into the replica runtime_env
+    would leak into the config. The populated-dict case is the one the old
+    in-place mutation actually corrupted.
+    """
+    llm_config = get_llm_config_with_placement_group(
+        placement_group_config={"bundles": [{"GPU": 0.25, "CPU": 1}]},
+        runtime_env=runtime_env,
+    )
+    engine_config = VLLMEngineConfig.from_llm_config(llm_config)
+
+    out = engine_config.get_runtime_env_with_local_env_vars()
+
+    # The derived value is present in the returned dict ...
+    assert out["env_vars"]["VLLM_RAY_PER_WORKER_GPUS"] == "0.25"
+    # ... but self.runtime_env was not mutated as a side effect.
+    if runtime_env is None:
+        assert engine_config.runtime_env is None
+    else:
+        assert engine_config.runtime_env["env_vars"] == {"FOO": "bar"}
+        assert "VLLM_RAY_PER_WORKER_GPUS" not in engine_config.runtime_env["env_vars"]
 
 
 if __name__ == "__main__":

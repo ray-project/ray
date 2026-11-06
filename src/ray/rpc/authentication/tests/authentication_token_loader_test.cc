@@ -14,9 +14,16 @@
 
 #include "ray/rpc/authentication/authentication_token_loader.h"
 
+#include <algorithm>
+#include <cctype>
+#include <chrono>
 #include <fstream>
+#include <iterator>
+#include <optional>
 #include <string>
+#include <thread>
 
+#include "absl/strings/escaping.h"
 #include "gtest/gtest.h"
 #include "ray/common/ray_config.h"
 #include "ray/util/env.h"
@@ -27,14 +34,7 @@
 #endif
 
 #ifdef _WIN32
-#ifndef _WINDOWS_
-#ifndef WIN32_LEAN_AND_MEAN  // Sorry for the inconvenience. Please include any related
-                             // headers you need manually.
-                             // (https://stackoverflow.com/a/8294669)
-#define WIN32_LEAN_AND_MEAN  // Prevent inclusion of WinSock2.h
-#endif
 #include <Windows.h>  // Force inclusion of WinGDI here to resolve name conflict
-#endif
 #include <direct.h>   // For _mkdir on Windows
 #include <process.h>  // For _getpid on Windows
 #endif
@@ -80,12 +80,26 @@ class AuthenticationTokenLoaderTest : public ::testing::Test {
       default_token_path_ = ".ray/auth_token";
     }
 #endif
+#ifndef _WIN32
+    struct stat dir_stat;
+    if (!test_home_dir_.empty() &&
+        stat((test_home_dir_ + "/.ray").c_str(), &dir_stat) == 0) {
+      ray_dir_mode_ = dir_stat.st_mode & 07777;
+    }
+#endif
     cleanup_env();
     // Reset the singleton's cached state for test isolation
     AuthenticationTokenLoader::instance().ResetCache();
   }
 
   void TearDown() override {
+#ifndef _WIN32
+    // Tests change the mode of ~/.ray, which is the real one when HOME is set.
+    // 0700 is the mode ensure_ray_dir_exists creates a missing ~/.ray with.
+    if (!test_home_dir_.empty()) {
+      chmod((test_home_dir_ + "/.ray").c_str(), ray_dir_mode_.value_or(0700));
+    }
+#endif
     // Clean up after test
     cleanup_env();
     // Reset the singleton's cached state for test isolation
@@ -141,6 +155,9 @@ class AuthenticationTokenLoaderTest : public ::testing::Test {
 
   std::string default_token_path_;
   std::string test_home_dir_;  // Fallback home directory for tests
+#ifndef _WIN32
+  std::optional<mode_t> ray_dir_mode_;
+#endif
 };
 
 TEST_F(AuthenticationTokenLoaderTest, TestLoadFromEnvVariable) {
@@ -288,8 +305,8 @@ TEST_F(AuthenticationTokenLoaderTest, TestErrorWhenAuthEnabledButNoToken) {
         auto &loader = AuthenticationTokenLoader::instance();
         loader.GetToken();
       },
-      "Token authentication is enabled but Ray couldn't find an "
-      "authentication token.");
+      "it has no token or the cluster has token authentication disabled.*run `ray "
+      "get-auth-token` on the head node.*set RAY_AUTH_MODE=disabled");
 }
 
 TEST_F(AuthenticationTokenLoaderTest, TestCaching) {
@@ -325,6 +342,146 @@ TEST_F(AuthenticationTokenLoaderTest, TestWhitespaceHandling) {
   EXPECT_TRUE(token_opt->Equals(expected));
 }
 
+std::string ReadWholeFile(const std::string &path) {
+  std::ifstream file(path);
+  return std::string(std::istreambuf_iterator<char>(file),
+                     std::istreambuf_iterator<char>());
+}
+
+TEST_F(AuthenticationTokenLoaderTest, TestCreateTokenIfMissingWritesOwnerOnlyToken) {
+  ensure_ray_dir_exists();
+
+  EXPECT_EQ(AuthenticationTokenLoader::instance().CreateTokenIfMissing(), "");
+
+  std::string token = ReadWholeFile(default_token_path_);
+  EXPECT_EQ(token.size(), 64);
+  EXPECT_TRUE(std::all_of(token.begin(), token.end(), [](char c) {
+    return std::isdigit(static_cast<unsigned char>(c)) || (c >= 'a' && c <= 'f');
+  }));
+#ifndef _WIN32
+  struct stat file_stat;
+  ASSERT_EQ(stat(default_token_path_.c_str(), &file_stat), 0);
+  EXPECT_EQ(file_stat.st_mode & 0777, 0600);
+#endif
+  auto loaded = AuthenticationTokenLoader::instance().GetToken(/*ignore_auth_mode=*/true);
+  ASSERT_TRUE(loaded != nullptr);
+  EXPECT_TRUE(loaded->Equals(AuthenticationToken(token)));
+}
+
+TEST_F(AuthenticationTokenLoaderTest, TestCreateTokenIfMissingKeepsExistingToken) {
+  ensure_ray_dir_exists();
+  const std::string content = "\n  \nexisting-token\n";
+  write_token_file(default_token_path_, content);
+
+  EXPECT_EQ(AuthenticationTokenLoader::instance().CreateTokenIfMissing(), "");
+
+  EXPECT_EQ(ReadWholeFile(default_token_path_), content);
+}
+
+#ifndef _WIN32
+TEST_F(AuthenticationTokenLoaderTest, TestLoadRestrictsWorldReadableDefaultToken) {
+  ensure_ray_dir_exists();
+  write_token_file(default_token_path_, "existing-token");
+  ASSERT_EQ(chmod(default_token_path_.c_str(), 0644), 0);
+
+  auto loaded = AuthenticationTokenLoader::instance().GetToken();
+
+  ASSERT_TRUE(loaded != nullptr);
+  EXPECT_TRUE(loaded->Equals(AuthenticationToken("existing-token")));
+  struct stat file_stat;
+  ASSERT_EQ(stat(default_token_path_.c_str(), &file_stat), 0);
+  EXPECT_EQ(file_stat.st_mode & 0777, 0600);
+}
+
+TEST_F(AuthenticationTokenLoaderTest, TestLoadRestrictsWorldReadableRayDir) {
+  ensure_ray_dir_exists();
+  write_token_file(default_token_path_, "existing-token");
+  const std::string ray_dir = test_home_dir_ + "/.ray";
+  ASSERT_EQ(chmod(ray_dir.c_str(), 0755), 0);
+
+  ASSERT_TRUE(AuthenticationTokenLoader::instance().GetToken() != nullptr);
+
+  struct stat dir_stat;
+  ASSERT_EQ(stat(ray_dir.c_str(), &dir_stat), 0);
+  EXPECT_EQ(dir_stat.st_mode & 0777, 0700);
+}
+
+TEST_F(AuthenticationTokenLoaderTest, TestLoadLeavesRayDirAloneWithoutToken) {
+  ensure_ray_dir_exists();
+  const std::string ray_dir = test_home_dir_ + "/.ray";
+  ASSERT_EQ(chmod(ray_dir.c_str(), 0755), 0);
+
+  EXPECT_TRUE(AuthenticationTokenLoader::instance().GetToken(/*ignore_auth_mode=*/true) ==
+              nullptr);
+
+  struct stat dir_stat;
+  ASSERT_EQ(stat(ray_dir.c_str(), &dir_stat), 0);
+  EXPECT_EQ(dir_stat.st_mode & 0777, 0755);
+}
+
+TEST_F(AuthenticationTokenLoaderTest, TestLoadLeavesDefaultTokenAloneWithEnvToken) {
+  ensure_ray_dir_exists();
+  write_token_file(default_token_path_, "default-token");
+  ASSERT_EQ(chmod(default_token_path_.c_str(), 0644), 0);
+  set_env_var("RAY_AUTH_TOKEN", "test-token-from-env");
+
+  ASSERT_TRUE(AuthenticationTokenLoader::instance().GetToken() != nullptr);
+
+  struct stat file_stat;
+  ASSERT_EQ(stat(default_token_path_.c_str(), &file_stat), 0);
+  EXPECT_EQ(file_stat.st_mode & 0777, 0644);
+}
+
+TEST_F(AuthenticationTokenLoaderTest, TestLoadLeavesTokenPathFileModeAlone) {
+  ensure_ray_dir_exists();
+  const std::string ray_dir = test_home_dir_ + "/.ray";
+  ASSERT_EQ(chmod(ray_dir.c_str(), 0755), 0);
+  std::string temp_token_path = get_temp_token_path();
+  write_token_file(temp_token_path, "test-token-from-file");
+  ASSERT_EQ(chmod(temp_token_path.c_str(), 0644), 0);
+  set_env_var("RAY_AUTH_TOKEN_PATH", temp_token_path.c_str());
+
+  ASSERT_TRUE(AuthenticationTokenLoader::instance().GetToken() != nullptr);
+
+  struct stat file_stat;
+  ASSERT_EQ(stat(temp_token_path.c_str(), &file_stat), 0);
+  EXPECT_EQ(file_stat.st_mode & 0777, 0644);
+  ASSERT_EQ(stat(ray_dir.c_str(), &file_stat), 0);
+  EXPECT_EQ(file_stat.st_mode & 0777, 0755);
+  remove(temp_token_path.c_str());
+}
+#endif
+
+TEST_F(AuthenticationTokenLoaderTest, TestCreateTokenIfMissingReplacesBlankFile) {
+  ensure_ray_dir_exists();
+  write_token_file(default_token_path_, " \n\t\n");
+
+  EXPECT_EQ(AuthenticationTokenLoader::instance().CreateTokenIfMissing(), "");
+
+  EXPECT_EQ(ReadWholeFile(default_token_path_).size(), 64);
+}
+
+TEST_F(AuthenticationTokenLoaderTest, TestCreateTokenIfMissingReportsBadTokenPath) {
+  set_env_var("RAY_AUTH_TOKEN_PATH", "/nonexistent/ray_test_token");
+
+  EXPECT_NE(AuthenticationTokenLoader::instance().CreateTokenIfMissing().find(
+                "/nonexistent/ray_test_token"),
+            std::string::npos);
+  EXPECT_FALSE(std::ifstream(default_token_path_).good());
+}
+
+TEST_F(AuthenticationTokenLoaderTest, TestFirstNonBlankLine) {
+  ensure_ray_dir_exists();
+  write_token_file(default_token_path_, "\n  \n token-after-blank-lines \nsecond-line\n");
+
+  auto &loader = AuthenticationTokenLoader::instance();
+  auto token_opt = loader.GetToken();
+
+  ASSERT_TRUE(token_opt != nullptr);
+  AuthenticationToken expected("token-after-blank-lines");
+  EXPECT_TRUE(token_opt->Equals(expected));
+}
+
 TEST_F(AuthenticationTokenLoaderTest, TestIgnoreAuthModeGetToken) {
   // Disable auth mode
   RayConfig::instance().initialize(R"({"AUTH_MODE": "disabled"})");
@@ -352,10 +509,61 @@ TEST_F(AuthenticationTokenLoaderTest, TestIgnoreAuthModeGetToken) {
   RayConfig::instance().initialize(R"({"AUTH_MODE": "token"})");
 }
 
+TEST_F(AuthenticationTokenLoaderTest, TestJWTExpiration) {
+  // Enable K8s token auth
+  RayConfig::instance().initialize(
+      R"({"AUTH_MODE": "token", "ENABLE_K8S_TOKEN_AUTH": true})");
+  AuthenticationTokenLoader::instance().ResetCache();
+
+  // Create a JWT with expiration time buffer (300) + 1 seconds
+  auto now = std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
+  int64_t exp = now + 301;
+
+  std::string header =
+      "eyJhbGciOiJub25lIiwidHlwIjoiSldUIn0";  // {"alg":"none","typ":"JWT"}
+  std::string payload_json = "{\"exp\":" + std::to_string(exp) + "}";
+  std::string payload;
+  absl::Base64Escape(payload_json, &payload);
+  std::replace(payload.begin(), payload.end(), '+', '-');
+  std::replace(payload.begin(), payload.end(), '/', '_');
+  payload.erase(std::remove(payload.begin(), payload.end(), '='), payload.end());
+
+  std::string jwt = header + "." + payload + ".signature";
+
+  set_env_var("RAY_AUTH_TOKEN", jwt.c_str());
+
+  auto &loader = AuthenticationTokenLoader::instance();
+  auto token1 = loader.GetToken();
+  ASSERT_TRUE(token1 != nullptr);
+  EXPECT_EQ(token1->GetRawValue(), jwt);
+
+  // Wait for it to expire
+  std::this_thread::sleep_for(std::chrono::seconds(2));
+
+  // Next call should revoke and reload. Change the env var to verify it reloads.
+  set_env_var("RAY_AUTH_TOKEN", "new-token");
+
+  auto token2 = loader.GetToken();
+  ASSERT_TRUE(token2 != nullptr);
+  EXPECT_EQ(token2->GetRawValue(), "new-token");
+
+  // Re-enable auth for other tests
+  RayConfig::instance().initialize(
+      R"({"AUTH_MODE": "token", "ENABLE_K8S_TOKEN_AUTH": false})");
+}
+
+TEST_F(AuthenticationTokenLoaderTest, TestK8sTokenAuthWithAuthDisabledFails) {
+  RayConfig::instance().initialize(
+      R"({"AUTH_MODE": "disabled", "ENABLE_K8S_TOKEN_AUTH": true})");
+  AuthenticationTokenLoader::instance().ResetCache();
+
+  EXPECT_DEATH(AuthenticationTokenLoader::instance().GetToken(),
+               "Kubernetes token authentication \\(ENABLE_K8S_TOKEN_AUTH\\) requires "
+               "RAY_AUTH_MODE=token");
+
+  RayConfig::instance().initialize(
+      R"({"AUTH_MODE": "token", "ENABLE_K8S_TOKEN_AUTH": false})");
+}
+
 }  // namespace rpc
 }  // namespace ray
-
-int main(int argc, char **argv) {
-  ::testing::InitGoogleTest(&argc, argv);
-  return RUN_ALL_TESTS();
-}

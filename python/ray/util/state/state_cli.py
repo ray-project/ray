@@ -93,6 +93,43 @@ def _parse_filter(filter: str) -> Tuple[str, PredicateType, SupportedFilterType]
     return (key, predicate, value)
 
 
+def _normalize_filter_keys(
+    resource: StateResource,
+    filters: List[Tuple[str, PredicateType, SupportedFilterType]],
+) -> List[Tuple[str, PredicateType, SupportedFilterType]]:
+    """Normalize filter keys to match the resource schema.
+
+    Filter values are already documented as case-insensitive, but filter keys
+    may be entered with different casing by users, e.g. STATE=RUNNING instead
+    of state=RUNNING. Normalize keys when they match a valid schema column
+    case-insensitively. If the key is invalid, raise a clear error instead of
+    returning an empty result that later becomes "No resource in the cluster".
+    """
+    schema = resource_to_schema(resource)
+    valid_columns = schema.list_columns(detail=True) or schema.list_columns(
+        detail=False
+    )
+    valid_column_by_lowercase = {column.lower(): column for column in valid_columns}
+
+    normalized_filters = []
+    for key, predicate, value in filters:
+        if key in valid_columns:
+            normalized_filters.append((key, predicate, value))
+            continue
+
+        normalized_key = valid_column_by_lowercase.get(key.lower())
+        if normalized_key is not None:
+            normalized_filters.append((normalized_key, predicate, value))
+            continue
+
+        raise click.BadParameter(
+            f"Invalid filter key {key!r} for resource {resource.value!r}. "
+            f"Available filter keys are: {', '.join(valid_columns)}"
+        )
+
+    return normalized_filters
+
+
 def _get_available_formats() -> List[str]:
     """Return the available formats in a list of string"""
     return [format_enum.value for format_enum in AvailableFormat]
@@ -105,6 +142,9 @@ def _get_available_resources(
 
     Args:
         excluded: List of resources that should be excluded
+
+    Returns:
+        A list of available resource names with dashes in place of underscores.
     """
     # All resource names use '_' rather than '-'. But users options have '-'
     return [
@@ -133,6 +173,7 @@ def get_table_output(state_data: List, schema: StateSchema, detail: bool) -> str
     Args:
         state_data: A list of state data.
         schema: The schema for the corresponding resource.
+        detail: Whether to include columns marked as detail-only.
 
     Returns:
         The table formatted string.
@@ -394,6 +435,8 @@ def ray_get(
     Args:
         resource: The type of the resource to query.
         id: The id of the resource.
+        address: Ray bootstrap address. If None, it's resolved from the local cluster.
+        timeout: Max timeout for the state API request.
 
     Raises:
         :class:`RayStateApiException <ray.util.state.exception.RayStateApiException>`
@@ -539,6 +582,12 @@ def ray_list(
 
     Args:
         resource: The type of the resource to query.
+        format: Output format; one of the values from `AvailableFormat`.
+        filter: Filter expressions in the form ``key=val`` or ``key!=val``.
+        limit: Max number of entries to return.
+        detail: When True, include detail-only columns.
+        timeout: Max timeout for the state API request.
+        address: Ray bootstrap address. If empty, resolved from the local cluster.
 
     Raises:
         :class:`RayStateApiException <ray.util.state.exception.RayStateApiException>`
@@ -556,6 +605,7 @@ def ray_list(
     client = StateApiClient(address=address)
 
     filter = [_parse_filter(f) for f in filter]
+    filter = _normalize_filter_keys(resource, filter)
 
     options = ListApiOptions(
         limit=limit,
@@ -603,7 +653,7 @@ def summary_state_cli_group(ctx):
 @address_option
 @click.pass_context
 @PublicAPI(stability="stable")
-def task_summary(ctx, timeout: float, address: str):
+def task_summary(ctx: click.Context, timeout: float, address: str):
     """Summarize the task state of the cluster.
 
     By default, the output contains the information grouped by
@@ -611,6 +661,11 @@ def task_summary(ctx, timeout: float, address: str):
 
     The output schema is
     :class:`~ray.util.state.common.TaskSummaries`.
+
+    Args:
+        ctx: The Click invocation context.
+        timeout: Max timeout for the state API request.
+        address: Ray bootstrap address. If empty, resolved from the local cluster.
 
     Raises:
         :class:`RayStateApiException <ray.util.state.exception.RayStateApiException>`
@@ -634,7 +689,7 @@ def task_summary(ctx, timeout: float, address: str):
 @address_option
 @click.pass_context
 @PublicAPI(stability="stable")
-def actor_summary(ctx, timeout: float, address: str):
+def actor_summary(ctx: click.Context, timeout: float, address: str):
     """Summarize the actor state of the cluster.
 
     By default, the output contains the information grouped by
@@ -643,6 +698,11 @@ def actor_summary(ctx, timeout: float, address: str):
     The output schema is
     :class:`ray.util.state.common.ActorSummaries
     <ray.util.state.common.ActorSummaries>`.
+
+    Args:
+        ctx: The Click invocation context.
+        timeout: Max timeout for the state API request.
+        address: Ray bootstrap address. If empty, resolved from the local cluster.
 
     Raises:
         :class:`RayStateApiException <ray.util.state.exception.RayStateApiException>`
@@ -666,7 +726,7 @@ def actor_summary(ctx, timeout: float, address: str):
 @address_option
 @click.pass_context
 @PublicAPI(stability="stable")
-def object_summary(ctx, timeout: float, address: str):
+def object_summary(ctx: click.Context, timeout: float, address: str):
     """Summarize the object state of the cluster.
 
     The API is recommended when debugging memory leaks.
@@ -694,6 +754,11 @@ def object_summary(ctx, timeout: float, address: str):
     The output schema is
     :class:`ray.util.state.common.ObjectSummaries
     <ray.util.state.common.ObjectSummaries>`.
+
+    Args:
+        ctx: The Click invocation context.
+        timeout: Max timeout for the state API request.
+        address: Ray bootstrap address. If empty, resolved from the local cluster.
 
     Raises:
         :class:`RayStateApiException <ray.util.state.exception.RayStateApiException>`
@@ -803,6 +868,9 @@ def _get_head_node_ip(address: Optional[str] = None):
     Args:
         address: ray cluster address, e.g. "auto", "localhost:6379"
 
+    Returns:
+        The resolved head node IP address.
+
     Raises:
         click.UsageError: if node ip could not be resolved
     """
@@ -865,33 +933,39 @@ def _print_log(
 
 
 LOG_CLI_HELP_MSG = """
-Get logs based on filename (cluster) or resource identifiers (actor)
+Get Ray logs by file name, or by the actor, task, worker, or job that wrote them.
+
+`ray logs cluster` lists or prints log files by file name on one node. By
+default, it reads the head node. To read another node, pass `--node-id` or
+`--node-ip`. You can get node IDs and IPs from `ray list nodes`. The `actor`,
+`task`, `worker`, and `job` subcommands find the log file of one specific
+resource for you.
 
 Example:
 
-    Get all the log files available on a node (ray address could be
-    obtained from `ray start --head` or `ray.init()`).
+    [ray logs cluster] List all the log files on the head node.
 
     ```
     ray logs cluster
     ```
 
-    [ray logs cluster] Print the last 500 lines of raylet.out on a head node.
+    [ray logs cluster] Print the last 500 lines of raylet.out on the head node.
 
     ```
     ray logs cluster raylet.out --tail 500
     ```
 
-    Or simply, using `ray logs` as an alias for `ray logs cluster`:
+    `ray logs <GLOB_FILTER>` is shorthand for `ray logs cluster <GLOB_FILTER>`:
 
     ```
     ray logs raylet.out --tail 500
     ```
 
-    Print the last 500 lines of raylet.out on a worker node id A.
+    [ray logs cluster] Print the last 500 lines of raylet.out on the node with
+    ID <NODE_ID> instead of the head node.
 
     ```
-    ray logs raylet.out --tail 500 —-node-id A
+    ray logs raylet.out --tail 500 --node-id <NODE_ID>
     ```
 
     [ray logs actor] Follow the log file with an actor id ABC.
@@ -949,7 +1023,7 @@ logs_state_cli_group = LogCommandGroup(help=LOG_CLI_HELP_MSG)
 @click.pass_context
 @PublicAPI(stability="stable")
 def log_cluster(
-    ctx,
+    ctx: click.Context,
     glob_filter: str,
     address: Optional[str],
     node_id: Optional[str],
@@ -961,23 +1035,26 @@ def log_cluster(
     encoding: str,
     encoding_errors: str,
 ):
-    """Get/List logs that matches the GLOB_FILTER in the cluster.
-    By default, it prints a list of log files that match the filter.
-    By default, it prints the head node logs.
-    If there's only 1 match, it will print the log file.
+    """List or print the log files that match GLOB_FILTER on one node.
+
+    By default, this command reads the head node. To read another node, pass
+    `--node-id` or `--node-ip`. If exactly one file on the node matches
+    GLOB_FILTER, the command prints that file. Otherwise, it lists the
+    matching files. GLOB_FILTER defaults to `*`, which lists every log file on
+    the node.
 
     Example:
 
-        Print the last 500 lines of raylet.out on a head node.
+        Print the last 500 lines of raylet.out on the head node.
 
         ```
         ray logs [cluster] raylet.out --tail 500
         ```
 
-        Print the last 500 lines of raylet.out on a worker node id A.
+        Print the last 500 lines of raylet.out on the node with ID <NODE_ID>.
 
         ```
-        ray logs [cluster] raylet.out --tail 500 —-node-id A
+        ray logs [cluster] raylet.out --tail 500 --node-id <NODE_ID>
         ```
 
         Download the gcs_server.txt file to the local machine.
@@ -991,6 +1068,22 @@ def log_cluster(
         ```
         ray logs [cluster] raylet.out --tail 100 -f
         ```
+
+    Args:
+        ctx: The Click invocation context.
+        glob_filter: Glob pattern that selects which log files to retrieve.
+        address: Ray bootstrap address. If None, resolved from the local cluster.
+        node_id: Id of the node to query.
+        node_ip: Ip of the node to query.
+        follow: When True, stream the log file as it is written.
+        tail: Number of lines to tail from the end of the file. ``-1`` for all.
+        interval: How frequently to poll for new content when ``follow`` is set.
+        timeout: Max timeout for the underlying API request.
+        encoding: Encoding used to decode log bytes into strings.
+        encoding_errors: Decoder error-handling scheme (e.g. ``strict``).
+
+    Returns:
+        ``None``. Output is written to stdout.
 
     Raises:
         :class:`RayStateApiException <ray.util.state.exception.RayStateApiException>` if the CLI
@@ -1067,7 +1160,7 @@ def log_cluster(
 @click.pass_context
 @PublicAPI(stability="stable")
 def log_actor(
-    ctx,
+    ctx: click.Context,
     id: Optional[str],
     pid: Optional[str],
     address: Optional[str],
@@ -1094,7 +1187,7 @@ def log_actor(
         (ip=x.x.x.x, pid=123, class_name) logs.
 
         ```
-        ray logs actor --pid=123  —ip=x.x.x.x
+        ray logs actor --pid=123 --node-ip=x.x.x.x
         ```
 
         Get the actor err log file.
@@ -1102,6 +1195,19 @@ def log_actor(
         ```
         ray logs actor --id ABCDEFG --err
         ```
+
+    Args:
+        ctx: The Click invocation context.
+        id: Actor id to fetch logs for.
+        pid: Pid of the actor process.
+        address: Ray bootstrap address. If None, resolved from the local cluster.
+        node_id: Id of the node to query.
+        node_ip: Ip of the node to query.
+        follow: When True, stream the log file as it is written.
+        tail: Number of lines to tail from the end of the file. ``-1`` for all.
+        interval: How frequently to poll for new content when ``follow`` is set.
+        timeout: Max timeout for the underlying API request.
+        err: When True, query stderr files instead of stdout.
 
     Raises:
         :class:`RayStateApiException <ray.util.state.exception.RayStateApiException>`
@@ -1149,7 +1255,7 @@ def log_actor(
 @click.pass_context
 @PublicAPI(stability="stable")
 def log_worker(
-    ctx,
+    ctx: click.Context,
     pid: Optional[str],
     address: Optional[str],
     node_id: Optional[str],
@@ -1175,6 +1281,18 @@ def log_worker(
         ```
         ray logs worker --pid 123 --err
         ```
+
+    Args:
+        ctx: The Click invocation context.
+        pid: Pid of the worker process.
+        address: Ray bootstrap address. If None, resolved from the local cluster.
+        node_id: Id of the node to query.
+        node_ip: Ip of the node to query.
+        follow: When True, stream the log file as it is written.
+        tail: Number of lines to tail from the end of the file. ``-1`` for all.
+        interval: How frequently to poll for new content when ``follow`` is set.
+        timeout: Max timeout for the underlying API request.
+        err: When True, query stderr files instead of stdout.
 
     Raises:
         :class:`RayStateApiException <ray.util.state.exception.RayStateApiException>`
@@ -1214,7 +1332,7 @@ def log_worker(
 @click.pass_context
 @PublicAPI(stability="stable")
 def log_job(
-    ctx,
+    ctx: click.Context,
     submission_id: Optional[str],
     address: Optional[str],
     follow: bool,
@@ -1235,9 +1353,18 @@ def log_job(
         Follow the submission job log.
 
         ```
-        ray logs jobs --id raysubmit_xxx --follow
+        ray logs job --id raysubmit_xxx --follow
 
         ```
+
+    Args:
+        ctx: The Click invocation context.
+        submission_id: Submission job id (e.g. ``raysubmit_xxx``).
+        address: Ray bootstrap address. If None, resolved from the local cluster.
+        follow: When True, stream the log file as it is written.
+        tail: Number of lines to tail from the end of the file. ``-1`` for all.
+        interval: How frequently to poll for new content when ``follow`` is set.
+        timeout: Max timeout for the underlying API request.
 
     Raises:
         :class:`RayStateApiException <ray.util.state.exception.RayStateApiException>`
@@ -1280,7 +1407,7 @@ def log_job(
 @click.pass_context
 @PublicAPI(stability="stable")
 def log_task(
-    ctx,
+    ctx: click.Context,
     task_id: Optional[str],
     attempt_number: int,
     address: Optional[str],
@@ -1297,18 +1424,29 @@ def log_task(
         Follow the log file from a task with task id = ABCDEFG
 
         ```
-        ray logs tasks --id ABCDEFG --follow
+        ray logs task --id ABCDEFG --follow
         ```
 
         Get the log from a retry attempt 1 from a task.
 
         ```
-        ray logs tasks --id ABCDEFG -a 1
+        ray logs task --id ABCDEFG -a 1
         ```
 
     Note: If a task is from a concurrent actor (i.e. an async actor or
     a threaded actor), the log of the tasks are expected to be interleaved.
     Please use `ray logs actor --id <actor_id>` for the entire actor log.
+
+    Args:
+        ctx: The Click invocation context.
+        task_id: Task id to fetch logs for.
+        attempt_number: Which attempt of the task to fetch (default ``0``).
+        address: Ray bootstrap address. If None, resolved from the local cluster.
+        follow: When True, stream the log file as it is written.
+        interval: How frequently to poll for new content when ``follow`` is set.
+        tail: Number of lines to tail from the end of the file. ``-1`` for all.
+        timeout: Max timeout for the underlying API request.
+        err: When True, query stderr files instead of stdout.
 
     Raises:
         :class:`RayStateApiException <ray.util.state.exception.RayStateApiException>`

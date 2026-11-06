@@ -4,17 +4,16 @@ import logging
 import os
 import socket
 import threading
-import time
-from typing import List, Tuple
+from typing import Any, List, Tuple
 
 import numpy as np
 
 import ray
-import ray.experimental.internal_kv as _internal_kv
 from . import types
 from ray._common.network_utils import find_free_port, is_ipv6
-from ray.util.collective.collective_group.torch_gloo_collective_group import (
-    get_master_address_metadata_key as _get_master_addr_key,
+from ray.util.collective.backend_registry import (
+    _global_registry,
+    register_collective_backend,
 )
 
 logger = logging.getLogger(__name__)
@@ -22,43 +21,38 @@ logger = logging.getLogger(__name__)
 try:
     from ray.util.collective.collective_group.nccl_collective_group import NCCLGroup
 
-    _NCCL_AVAILABLE = True
-    _LOG_NCCL_WARNING = False
+    register_collective_backend("NCCL", NCCLGroup)
 except ImportError:
-    _NCCL_AVAILABLE = False
-    _LOG_NCCL_WARNING = True
-
+    pass
 
 try:
     from ray.util.collective.collective_group.torch_gloo_collective_group import (
         TorchGLOOGroup,
     )
 
-    _TORCH_DISTRIBUTED_AVAILABLE = True
+    register_collective_backend("GLOO", TorchGLOOGroup)
 except ImportError:
-    _TORCH_DISTRIBUTED_AVAILABLE = False
+    pass
 
 
 def nccl_available():
-    global _LOG_NCCL_WARNING
-    if ray.get_gpu_ids() and _LOG_NCCL_WARNING:
-        logger.warning(
-            "NCCL seems unavailable. Please install Cupy "
-            "following the guide at: "
-            "https://docs.cupy.dev/en/stable/install.html."
-        )
-        _LOG_NCCL_WARNING = False
-    return _NCCL_AVAILABLE
+    return is_backend_available("NCCL")
 
 
 def gloo_available():
-    # Since we use torch_gloo as the backend for Gloo,
-    # we can just return the availability of torch.distributed.
-    return _TORCH_DISTRIBUTED_AVAILABLE
+    return is_backend_available("GLOO")
 
 
-def torch_distributed_available():
-    return _TORCH_DISTRIBUTED_AVAILABLE
+def is_backend_available(backend: str) -> bool:
+    """Check if a collective backend is available.
+
+    Args:
+        backend: The name of the backend to check (e.g., "NCCL", "GLOO").
+
+    Returns:
+        True if the backend is available, False otherwise.
+    """
+    return _global_registry.check(backend)
 
 
 def get_address_and_port() -> Tuple[str, int]:
@@ -78,47 +72,31 @@ class GroupManager(object):
 
     def __init__(self):
         self._name_group_map = {}
+        self._registry = _global_registry
 
     def create_collective_group(
-        self, backend, world_size, rank, group_name, gloo_timeout
+        self, backend, world_size, rank, group_name, gloo_timeout=None
     ):
         """The entry to create new collective groups in the manager.
 
         Put the registration and the group information into the manager
         metadata as well.
         """
-        backend = types.Backend(backend)
-        if backend == types.Backend.GLOO:
-            # Rendezvous: ensure a MASTER_ADDR:MASTER_PORT is published in internal_kv.
-            metadata_key = _get_master_addr_key(group_name)
-            if rank == 0:
-                addr, port = get_address_and_port()
-                _internal_kv._internal_kv_put(metadata_key, f"{addr}:{port}")
-            else:
-                # Wait until rank 0 publishes the metadata or timeout.
-                deadline_s = time.time() + (
-                    gloo_timeout / 1000.0 if gloo_timeout else 30.0
-                )
-                while True:
-                    meta = _internal_kv._internal_kv_get(metadata_key)
-                    if meta is not None:
-                        break
-                    if time.time() > deadline_s:
-                        raise TimeoutError(
-                            f"Timed out waiting for GLOO rendezvous metadata for group '{group_name}'."
-                        )
-                    time.sleep(0.05)
+        backend = backend.upper()
+        backend_cls = self._registry.get(backend)
 
+        if not backend_cls.check_backend_availability():
+            raise RuntimeError(
+                f"Backend {backend} is not available. Please check the installation."
+            )
+
+        if backend == "GLOO":
             logger.debug(
                 "Creating torch.distributed GLOO group: '{}'...".format(group_name)
             )
-            g = TorchGLOOGroup(world_size, rank, group_name, gloo_timeout)
-        elif backend == types.Backend.NCCL:
-            _check_backend_availability(backend)
-            logger.debug("Creating NCCL group: '{}'...".format(group_name))
-            g = NCCLGroup(world_size, rank, group_name)
+            g = backend_cls(world_size, rank, group_name, gloo_timeout)
         else:
-            raise RuntimeError(f"Unexpected backend: {backend}")
+            g = backend_cls(world_size, rank, group_name)
 
         self._name_group_map[group_name] = g
         return self._name_group_map[group_name]
@@ -171,7 +149,7 @@ def is_group_initialized(group_name):
 def init_collective_group(
     world_size: int,
     rank: int,
-    backend=types.Backend.NCCL,
+    backend: types.Backend = types.Backend.NCCL,
     group_name: str = "default",
     gloo_timeout: int = 30000,
 ):
@@ -182,13 +160,10 @@ def init_collective_group(
         rank: the rank of the current process.
         backend: the CCL backend to use, NCCL or GLOO.
         group_name: the name of the collective group.
-
-    Returns:
-        None
+        gloo_timeout: timeout in milliseconds for GLOO operations.
     """
     _check_inside_actor()
-    backend = types.Backend(backend)
-    _check_backend_availability(backend)
+
     global _group_mgr
     global _group_mgr_lock
 
@@ -198,7 +173,7 @@ def init_collective_group(
 
     with _group_mgr_lock:
         if _group_mgr.is_group_exist(group_name):
-            raise RuntimeError("Trying to initialize a group twice.")
+            raise RuntimeError("Trying to initialize a group a second time.")
 
         assert world_size > 0
         assert rank >= 0
@@ -209,10 +184,10 @@ def init_collective_group(
 
 
 def create_collective_group(
-    actors,
+    actors: List[Any],
     world_size: int,
     ranks: List[int],
-    backend=types.Backend.NCCL,
+    backend: types.Backend = types.Backend.NCCL,
     group_name: str = "default",
     gloo_timeout: int = 30000,
 ):
@@ -223,15 +198,11 @@ def create_collective_group(
     Args:
         actors: a list of actors to be set in a collective group.
         world_size: the total number of processes in the group.
-        ranks (List[int]): the rank of each actor.
+        ranks: the rank of each actor.
         backend: the CCL backend to use, NCCL or GLOO.
         group_name: the name of the collective group.
-
-    Returns:
-        None
+        gloo_timeout: timeout in milliseconds for GLOO operations.
     """
-    backend = types.Backend(backend)
-    _check_backend_availability(backend)
 
     name = "info_" + group_name
     try:
@@ -261,6 +232,19 @@ def create_collective_group(
         raise RuntimeError("Ranks must be non-negative.")
     if not all(ranks) < world_size:
         raise RuntimeError("Ranks cannot be greater than world_size.")
+
+    # Check if backend is registered and available
+    backend_upper = backend.upper()
+    if not _global_registry.is_registered(backend_upper):
+        raise RuntimeError(
+            f"Backend {backend_upper} is not registered. "
+            f"Please register it using register_collective_backend('{backend_upper}', YourBackendClass)."
+        )
+    if not _global_registry.check(backend_upper):
+        raise RuntimeError(
+            f"Backend {backend_upper} is registered but not available. "
+            f"Please check the installation requirements for this backend."
+        )
 
     # avoid a circular dependency
     from ray.util.collective.util import Info
@@ -325,16 +309,17 @@ def get_collective_group_size(group_name: str = "default") -> int:
         return g.world_size
 
 
-def allreduce(tensor, group_name: str = "default", op=types.ReduceOp.SUM):
+def allreduce(
+    tensor: Any,
+    group_name: str = "default",
+    op: types.ReduceOp = types.ReduceOp.SUM,
+):
     """Collective allreduce the tensor across the group.
 
     Args:
         tensor: the tensor to be all-reduced on this process.
         group_name: the collective group name to perform allreduce.
         op: The reduce operation.
-
-    Returns:
-        None
     """
     _check_single_tensor_input(tensor)
     g = get_group_handle(group_name)
@@ -344,17 +329,16 @@ def allreduce(tensor, group_name: str = "default", op=types.ReduceOp.SUM):
 
 
 def allreduce_multigpu(
-    tensor_list: list, group_name: str = "default", op=types.ReduceOp.SUM
+    tensor_list: list,
+    group_name: str = "default",
+    op: types.ReduceOp = types.ReduceOp.SUM,
 ):
     """Collective allreduce a list of tensors across the group.
 
     Args:
-        tensor_list (List[tensor]): list of tensors to be allreduced,
-            each on a GPU.
+        tensor_list: list of tensors to be allreduced, each on a GPU.
         group_name: the collective group name to perform allreduce.
-
-    Returns:
-        None
+        op: The reduce operation.
     """
     if not types.cupy_available():
         raise RuntimeError("Multigpu calls requires NCCL and Cupy.")
@@ -370,16 +354,16 @@ def barrier(group_name: str = "default"):
 
     Args:
         group_name: the name of the group to barrier.
-
-    Returns:
-        None
     """
     g = get_group_handle(group_name)
     g.barrier()
 
 
 def reduce(
-    tensor, dst_rank: int = 0, group_name: str = "default", op=types.ReduceOp.SUM
+    tensor: Any,
+    dst_rank: int = 0,
+    group_name: str = "default",
+    op: types.ReduceOp = types.ReduceOp.SUM,
 ):
     """Reduce the tensor across the group to the destination rank.
 
@@ -388,9 +372,6 @@ def reduce(
         dst_rank: the rank of the destination process.
         group_name: the collective group name to perform reduce.
         op: The reduce operation.
-
-    Returns:
-        None
     """
     _check_single_tensor_input(tensor)
     g = get_group_handle(group_name)
@@ -409,7 +390,7 @@ def reduce_multigpu(
     dst_rank: int = 0,
     dst_tensor: int = 0,
     group_name: str = "default",
-    op=types.ReduceOp.SUM,
+    op: types.ReduceOp = types.ReduceOp.SUM,
 ):
     """Reduce the tensor across the group to the destination rank
     and destination tensor.
@@ -421,9 +402,6 @@ def reduce_multigpu(
         dst_tensor: the index of GPU at the destination.
         group_name: the collective group name to perform reduce.
         op: The reduce operation.
-
-    Returns:
-        None
     """
     if not types.cupy_available():
         raise RuntimeError("Multigpu calls requires NCCL and Cupy.")
@@ -440,16 +418,13 @@ def reduce_multigpu(
     g.reduce(tensor_list, opts)
 
 
-def broadcast(tensor, src_rank: int = 0, group_name: str = "default"):
+def broadcast(tensor: Any, src_rank: int = 0, group_name: str = "default"):
     """Broadcast the tensor from a source process to all others.
 
     Args:
         tensor: the tensor to be broadcasted (src) or received (destination).
         src_rank: the rank of the source process.
         group_name: the collective group name to perform broadcast.
-
-    Returns:
-        None
     """
     _check_single_tensor_input(tensor)
     g = get_group_handle(group_name)
@@ -463,7 +438,10 @@ def broadcast(tensor, src_rank: int = 0, group_name: str = "default"):
 
 
 def broadcast_multigpu(
-    tensor_list, src_rank: int = 0, src_tensor: int = 0, group_name: str = "default"
+    tensor_list: list,
+    src_rank: int = 0,
+    src_tensor: int = 0,
+    group_name: str = "default",
 ):
     """Broadcast the tensor from a source GPU to all other GPUs.
 
@@ -472,9 +450,6 @@ def broadcast_multigpu(
         src_rank: the rank of the source process.
         src_tensor: the index of the source GPU on the source process.
         group_name: the collective group name to perform broadcast.
-
-    Returns:
-        None
     """
     if not types.cupy_available():
         raise RuntimeError("Multigpu calls requires NCCL and Cupy.")
@@ -490,16 +465,13 @@ def broadcast_multigpu(
     g.broadcast(tensor_list, opts)
 
 
-def allgather(tensor_list: list, tensor, group_name: str = "default"):
+def allgather(tensor_list: list, tensor: Any, group_name: str = "default"):
     """Allgather tensors from each process of the group into a list.
 
     Args:
         tensor_list: the results, stored as a list of tensors.
         tensor: the tensor (to be gathered) in the current process
         group_name: the name of the collective group.
-
-    Returns:
-        None
     """
     _check_single_tensor_input(tensor)
     _check_tensor_list_input(tensor_list)
@@ -521,14 +493,11 @@ def allgather_multigpu(
     """Allgather tensors from each gpus of the group into lists.
 
     Args:
-        output_tensor_lists (List[List[tensor]]): gathered results, with shape
+        output_tensor_lists: gathered results, with shape
             must be num_gpus * world_size * shape(tensor).
-        input_tensor_list: (List[tensor]): a list of tensors, with shape
+        input_tensor_list: a list of tensors, with shape
             num_gpus * shape(tensor).
         group_name: the name of the collective group.
-
-    Returns:
-        None
     """
     if not types.cupy_available():
         raise RuntimeError("Multigpu calls requires NCCL and Cupy.")
@@ -540,7 +509,10 @@ def allgather_multigpu(
 
 
 def reducescatter(
-    tensor, tensor_list: list, group_name: str = "default", op=types.ReduceOp.SUM
+    tensor: Any,
+    tensor_list: list,
+    group_name: str = "default",
+    op: types.ReduceOp = types.ReduceOp.SUM,
 ):
     """Reducescatter a list of tensors across the group.
 
@@ -552,9 +524,6 @@ def reducescatter(
         tensor_list: The list of tensors to be reduced and scattered.
         group_name: the name of the collective group.
         op: The reduce operation.
-
-    Returns:
-        None
     """
     _check_single_tensor_input(tensor)
     _check_tensor_list_input(tensor_list)
@@ -570,10 +539,10 @@ def reducescatter(
 
 
 def reducescatter_multigpu(
-    output_tensor_list,
-    input_tensor_lists,
+    output_tensor_list: list,
+    input_tensor_lists: list,
     group_name: str = "default",
-    op=types.ReduceOp.SUM,
+    op: types.ReduceOp = types.ReduceOp.SUM,
 ):
     """Reducescatter a list of tensors across all GPUs.
 
@@ -584,9 +553,6 @@ def reducescatter_multigpu(
             num_gpus * world_size * shape(tensor).
         group_name: the name of the collective group.
         op: The reduce operation.
-
-    Returns:
-        None.
     """
     if not types.cupy_available():
         raise RuntimeError("Multigpu calls requires NCCL and Cupy.")
@@ -598,16 +564,13 @@ def reducescatter_multigpu(
     g.reducescatter(output_tensor_list, input_tensor_lists, opts)
 
 
-def send(tensor, dst_rank: int, group_name: str = "default"):
+def send(tensor: Any, dst_rank: int, group_name: str = "default"):
     """Send a tensor to a remote process synchronously.
 
     Args:
         tensor: the tensor to send.
         dst_rank: the rank of the destination process.
         group_name: the name of the collective group.
-
-    Returns:
-        None
     """
     _check_single_tensor_input(tensor)
     g = get_group_handle(group_name)
@@ -620,7 +583,7 @@ def send(tensor, dst_rank: int, group_name: str = "default"):
 
 
 def send_multigpu(
-    tensor,
+    tensor: Any,
     dst_rank: int,
     dst_gpu_index: int,
     group_name: str = "default",
@@ -638,9 +601,6 @@ def send_multigpu(
         group_name: the name of the collective group.
         n_elements: if specified, send the next n elements
             from the starting address of tensor.
-
-    Returns:
-        None
     """
     if not types.cupy_available():
         raise RuntimeError("send_multigpu call requires NCCL.")
@@ -661,16 +621,13 @@ def send_multigpu(
     g.send([tensor], opts)
 
 
-def recv(tensor, src_rank: int, group_name: str = "default"):
+def recv(tensor: Any, src_rank: int, group_name: str = "default"):
     """Receive a tensor from a remote process synchronously.
 
     Args:
         tensor: the received tensor.
         src_rank: the rank of the source process.
         group_name: the name of the collective group.
-
-    Returns:
-        None
     """
     _check_single_tensor_input(tensor)
     g = get_group_handle(group_name)
@@ -683,7 +640,7 @@ def recv(tensor, src_rank: int, group_name: str = "default"):
 
 
 def recv_multigpu(
-    tensor,
+    tensor: Any,
     src_rank: int,
     src_gpu_index: int,
     group_name: str = "default",
@@ -699,9 +656,8 @@ def recv_multigpu(
         src_rank: The rank of the source process.
         src_gpu_index: The index of the source GPU on the src process.
         group_name: The name of the collective group.
-
-    Returns:
-        None
+        n_elements: if specified, receive the next n elements
+            from the starting address of tensor.
     """
     if not types.cupy_available():
         raise RuntimeError("recv_multigpu call requires NCCL.")
@@ -727,9 +683,6 @@ def synchronize(gpu_id: int):
 
     Args:
         gpu_id: the GPU device id to synchronize.
-
-    Returns:
-        None
     """
     if not types.cupy_available():
         raise RuntimeError("synchronize call requires CUDA and NCCL.")
@@ -776,7 +729,7 @@ def get_group_handle(group_name: str = "default"):
                     rank = int(os.environ["collective_rank"])
                     world_size = int(os.environ["collective_world_size"])
                     backend = os.environ["collective_backend"]
-                    gloo_timeout = os.getenv("collective_gloo_timeout", 30000)
+                    gloo_timeout = int(os.getenv("collective_gloo_timeout", 30000))
                     _group_mgr.create_collective_group(
                         backend, world_size, rank, group_name, gloo_timeout
                     )
@@ -803,17 +756,6 @@ def _check_single_tensor_input(tensor):
         "Unrecognized tensor type '{}'. Supported types are: "
         "np.ndarray, torch.Tensor, cupy.ndarray.".format(type(tensor))
     )
-
-
-def _check_backend_availability(backend: types.Backend):
-    """Check whether the backend is available."""
-    if backend == types.Backend.GLOO:
-        # Now we have deprecated pygloo, and use torch_gloo in all cases.
-        if not torch_distributed_available():
-            raise RuntimeError("torch.distributed is not available.")
-    elif backend == types.Backend.NCCL:
-        if not nccl_available():
-            raise RuntimeError("NCCL is not available.")
 
 
 def _check_inside_actor():

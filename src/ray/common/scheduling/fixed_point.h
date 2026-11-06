@@ -18,6 +18,7 @@
 #include <cstdint>
 #include <iostream>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "ray/common/constants.h"
@@ -106,6 +107,12 @@ class FixedPoint {
   bool operator!=(FixedPoint const &ru1) const { return (i_ != ru1.i_); };
 
   [[nodiscard]] double Double() const { return round(i_) / kResourceUnitScaling; };
+
+  /// Hashes i_, not Double(), which rounds. operator== compares i_.
+  template <typename H>
+  friend H AbslHashValue(H h, const FixedPoint &fp) {
+    return H::combine(std::move(h), fp.i_);
+  }
 
   friend std::ostream &operator<<(std::ostream &out, FixedPoint const &ru1);
 };

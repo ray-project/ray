@@ -2,7 +2,7 @@ import logging
 from typing import Any, Dict
 
 import ray
-from ray._private.ray_logging.constants import LogKey
+from ray._common.logging_constants import LogKey
 
 
 class CoreContextFilter(logging.Filter):
@@ -14,8 +14,7 @@ class CoreContextFilter(logging.Filter):
 
     @classmethod
     def get_ray_core_logging_context(cls) -> Dict[str, Any]:
-        """
-        Get the ray core logging context as a dict.
+        """Get the ray core logging context as a dict.
         Only use this function if you need include the attributes to the log record
         yourself by bypassing the filter.
         """

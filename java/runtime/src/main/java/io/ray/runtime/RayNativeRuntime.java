@@ -55,44 +55,43 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
     super(rayConfig);
   }
 
-  private void updateSessionDir() {
-    // Fetch session dir from GCS.
-    final String sessionDir = getGcsClient().getInternalKV("session", "session_dir");
-    Preconditions.checkNotNull(sessionDir);
-    rayConfig.setSessionDir(sessionDir);
-  }
-
   @Override
   public void start() {
     try {
+      if (rayConfig.workerMode == WorkerType.DRIVER) {
+        // In order to remove redis dependency in Java lang, we use a temp dir to load library
+        // instead of getting session dir from redis.
+        String tmpDir = "/tmp/ray/".concat(String.valueOf(System.currentTimeMillis()));
+        JniUtils.loadLibrary(tmpDir, BinaryFileUtil.CORE_WORKER_JAVA_LIBRARY, true);
+      }
       if (rayConfig.workerMode == WorkerType.DRIVER && rayConfig.getBootstrapAddress() == null) {
         // Set it to true before `RunManager.startRayHead` so `Ray.shutdown()` can still kill
         // Ray processes even if `Ray.init()` failed.
         startRayHead = true;
+        // `ray start --head` never creates a token, so create a missing one first.
+        nativeCreateTokenIfMissingForOwnCluster();
         RunManager.startRayHead(rayConfig);
       }
       Preconditions.checkNotNull(rayConfig.getBootstrapAddress());
 
-      // In order to remove redis dependency in Java lang, we use a temp dir to load library
-      // instead of getting session dir from redis.
       if (rayConfig.workerMode == WorkerType.DRIVER) {
-        String tmpDir = "/tmp/ray/".concat(String.valueOf(System.currentTimeMillis()));
-        JniUtils.loadLibrary(tmpDir, BinaryFileUtil.CORE_WORKER_JAVA_LIBRARY, true);
-        updateSessionDir();
+        GcsNodeInfo nodeInfo = getGcsClient().getNodeToConnectForDriver(rayConfig.nodeIp);
+
+        // Update session dir.
+        final String sessionDir = nodeInfo.getSessionDir();
+        Preconditions.checkNotNull(sessionDir, "Session dir not found in node info");
+        rayConfig.setSessionDir(sessionDir);
         Preconditions.checkNotNull(rayConfig.sessionDir);
+
+        rayConfig.rayletSocketName = nodeInfo.getRayletSocketName();
+        rayConfig.objectStoreSocketName = nodeInfo.getObjectStoreSocketName();
+        rayConfig.nodeManagerPort = nodeInfo.getNodeManagerPort();
       } else {
         // Expose ray ABI symbols which may be depended by other shared
         // libraries such as libstreaming_java.so.
         // See BUILD.bazel:libcore_worker_library_java.so
         Preconditions.checkNotNull(rayConfig.sessionDir);
         JniUtils.loadLibrary(rayConfig.sessionDir, BinaryFileUtil.CORE_WORKER_JAVA_LIBRARY, true);
-      }
-
-      if (rayConfig.workerMode == WorkerType.DRIVER) {
-        GcsNodeInfo nodeInfo = getGcsClient().getNodeToConnectForDriver(rayConfig.nodeIp);
-        rayConfig.rayletSocketName = nodeInfo.getRayletSocketName();
-        rayConfig.objectStoreSocketName = nodeInfo.getObjectStoreSocketName();
-        rayConfig.nodeManagerPort = nodeInfo.getNodeManagerPort();
       }
 
       if (rayConfig.workerMode == WorkerType.DRIVER && rayConfig.getJobId() == JobId.NIL) {
@@ -263,6 +262,8 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
       byte[] serializedJobConfig,
       byte[] workerId,
       int runtimeEnvHash);
+
+  private static native void nativeCreateTokenIfMissingForOwnCluster();
 
   private static native void nativeRunTaskExecutor(TaskExecutor taskExecutor);
 

@@ -2,10 +2,12 @@ import multiprocessing
 import os
 import signal
 import tempfile
+import threading
 from pathlib import Path
 
 import pyarrow.fs
 import pytest
+import torch
 
 import ray
 from ray.tests.client_test_utils import create_remote_signal_actor
@@ -281,6 +283,151 @@ def test_sigint_abort(spam_sigint):
             time.sleep(1)
             os.kill(process.pid, signal.SIGINT)
     process.join()
+
+
+SUPPORTED_OBJECTS = [
+    {"loss": 1.0},
+    {"loss": 1, "accuracy": 0.95},
+    {"loss": None},
+    {"loss": "label"},
+    {"nested": {"a": 1}},
+]
+# Objects that can't be serialized
+UNSUPPORTED_OBJECTS = [
+    pytest.param(lambda: {"loss": torch.tensor(1.0)}, id="torch_tensor"),
+    pytest.param(
+        lambda: {"nested": {"a": torch.tensor(1.0)}},
+        id="nested_torch_tensor",
+    ),
+    pytest.param(
+        lambda: torch.nn.Linear(1, 1).state_dict(),
+        id="torch_state_dict",
+    ),
+]
+
+
+def test_supported_report_metrics(tmp_path):
+    def train_fn():
+        for metric in SUPPORTED_OBJECTS:
+            with tempfile.TemporaryDirectory() as temp_dir:
+                ray.train.report(
+                    metrics=metric,
+                    checkpoint=ray.train.Checkpoint.from_directory(temp_dir),
+                )
+
+    trainer = DataParallelTrainer(
+        train_fn,
+        scaling_config=ScalingConfig(num_workers=1),
+        run_config=RunConfig(
+            name="test-supported-report-metrics", storage_path=str(tmp_path)
+        ),
+    )
+    result = trainer.fit()
+    for (_, actual_metric), expected_metric in zip(
+        result.best_checkpoints, SUPPORTED_OBJECTS, strict=True
+    ):
+        assert actual_metric == expected_metric
+
+    restored_result = Result.from_path(tmp_path / "test-supported-report-metrics")
+    for (_, actual_metric), expected_metric in zip(
+        restored_result.best_checkpoints, SUPPORTED_OBJECTS, strict=True
+    ):
+        assert actual_metric == expected_metric
+
+
+@pytest.mark.parametrize("make_object", UNSUPPORTED_OBJECTS)
+def test_unsupported_report_metrics(make_object, tmp_path):
+    def train_fn():
+        with tempfile.TemporaryDirectory() as temp_dir:
+            ray.train.report(
+                metrics=make_object(),
+                checkpoint=ray.train.Checkpoint.from_directory(temp_dir),
+            )
+
+    trainer = DataParallelTrainer(
+        train_fn,
+        scaling_config=ScalingConfig(num_workers=1),
+        run_config=RunConfig(
+            name="test-unsupported-report-metrics", storage_path=str(tmp_path)
+        ),
+    )
+    with pytest.raises(WorkerGroupError) as exc_info:
+        trainer.fit()
+
+    assert len(exc_info.value.worker_failures) == 1
+    worker_error = exc_info.value.worker_failures[0]
+    assert isinstance(worker_error, ValueError)
+    assert worker_error.args[0].startswith(
+        "Passing objects containing Torch tensors as metrics is not supported as it will throw an exception on deserialization."
+    )
+
+
+@pytest.mark.parametrize("metric", SUPPORTED_OBJECTS)
+def test_supported_returned_metrics(metric, tmp_path):
+    def train_fn():
+        return metric
+
+    trainer = DataParallelTrainer(
+        train_fn,
+        scaling_config=ScalingConfig(num_workers=1),
+        run_config=RunConfig(
+            name="test-supported-return-metrics", storage_path=str(tmp_path)
+        ),
+    )
+    result = trainer.fit()
+    assert result.return_value == metric
+
+
+@pytest.mark.parametrize("make_object", UNSUPPORTED_OBJECTS)
+def test_unsupported_returned_metrics(make_object, tmp_path):
+    def train_fn():
+        return make_object()
+
+    trainer = DataParallelTrainer(
+        train_fn,
+        scaling_config=ScalingConfig(num_workers=1),
+        run_config=RunConfig(
+            name="test-unsupported-report-metrics", storage_path=str(tmp_path)
+        ),
+    )
+    with pytest.raises(WorkerGroupError) as exc_info:
+        trainer.fit()
+
+    assert len(exc_info.value.worker_failures) == 1
+    worker_error = exc_info.value.worker_failures[0]
+    assert isinstance(worker_error, ValueError)
+    assert worker_error.args[0].startswith(
+        "Returning objects containing Torch tensors from the training function is not supported as it will throw an exception on deserialization."
+    )
+
+
+def test_serialization_failure_that_slips_past_the_check(tmp_path):
+    """A serialization failure the eager check misses still points at user code.
+
+    Without the hint, this surfaces as a bare "worker health check failed" with a
+    traceback made up entirely of `cloudpickle` frames.
+    """
+
+    def train_fn():
+        #
+        return threading.Lock()
+
+    trainer = DataParallelTrainer(
+        train_fn,
+        scaling_config=ScalingConfig(num_workers=1),
+        run_config=RunConfig(
+            name="test-slips-past-the-check", storage_path=str(tmp_path)
+        ),
+    )
+    with pytest.raises(WorkerGroupError) as exc_info:
+        trainer.fit()
+
+    error_str = str(exc_info.value)
+    assert "cannot pickle '_thread.lock' object" in error_str
+    assert (
+        "Hint: This is a failure to serialize a value that the training function produced, which is needed to send it back to the Ray Train controller."
+        in error_str
+    )
 
 
 if __name__ == "__main__":

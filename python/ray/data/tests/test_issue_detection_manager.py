@@ -7,6 +7,9 @@ import pytest
 
 import ray
 from ray._private import ray_constants
+from ray.data._internal.execution.callbacks.insert_issue_detectors import (
+    IssueDetectionExecutionCallback,
+)
 from ray.data._internal.execution.operators.input_data_buffer import (
     InputDataBuffer,
 )
@@ -24,6 +27,8 @@ from ray.data._internal.issue_detection.issue_detector_manager import (
 from ray.data._internal.operator_event_exporter import (
     format_export_issue_event_name,
 )
+from ray.data._internal.planner import create_planner
+from ray.data._internal.usage.execution_callback import UsageCallback
 from ray.data.context import DataContext
 
 
@@ -74,10 +79,6 @@ def test_report_issues():
             ),
         ]
     )
-    assert input_operator.metrics.issue_detector_hanging == 1
-    assert input_operator.metrics.issue_detector_high_memory == 0
-    assert map_operator.metrics.issue_detector_hanging == 0
-    assert map_operator.metrics.issue_detector_high_memory == 1
 
     data = _get_exported_data()
     assert len(data) == 2
@@ -95,6 +96,94 @@ def test_report_issues():
         IssueType.HIGH_MEMORY
     )
     assert data[1]["event_data"]["message"] == "High memory usage detected"
+
+    # The manager stores raw (issue_type, operator) pairs
+    expected_issues = {
+        (IssueType.HANGING, input_operator),
+        (IssueType.HIGH_MEMORY, map_operator),
+    }
+    assert detector.get_detected_issues() == expected_issues
+
+    # Reporting the same issues again must not grow the deduplicated set.
+    detector._report_issues(
+        [
+            Issue(
+                dataset_name="dataset",
+                operator_id=input_operator.id,
+                issue_type=IssueType.HANGING,
+                message="Hanging detected",
+            ),
+        ]
+    )
+    assert detector.get_detected_issues() == expected_issues
+
+
+def test_invoke_final_detection():
+    ctx = DataContext.get_current()
+    executor = StreamingExecutor(ctx)
+    executor._topology = {}
+    detector = IssueDetectorManager(executor)
+    issue_detector = MagicMock()
+    issue_detector.detection_time_interval_s.return_value = 30
+    issue_detector.detect_periodic.return_value = []
+    issue_detector.detect_final.return_value = []
+    detector._issue_detectors = [issue_detector]
+    detector._last_detection_times = {
+        issue_detector: float("inf"),
+    }
+
+    detector.invoke_periodic_detection()
+    issue_detector.detect_periodic.assert_not_called()
+
+    detector.invoke_final_detection()
+    issue_detector.detect_final.assert_called_once_with()
+
+
+def test_execution_end_detection_skips_disabled_detectors():
+    ctx = DataContext.get_current()
+    executor = StreamingExecutor(ctx)
+    executor._topology = {}
+    detector = IssueDetectorManager(executor)
+    issue_detector = MagicMock()
+    issue_detector.detection_time_interval_s.return_value = -1
+    detector._issue_detectors = [issue_detector]
+
+    detector.invoke_final_detection()
+
+    issue_detector.detect_final.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    "callback_name, callback_args",
+    [
+        ("after_execution_succeeds", ()),
+        ("after_execution_fails", (RuntimeError(),)),
+    ],
+)
+def test_issue_detection_callback_invokes_execution_end_detection(
+    callback_name, callback_args
+):
+    callback = IssueDetectionExecutionCallback()
+    executor = MagicMock()
+
+    getattr(callback, callback_name)(executor, *callback_args)
+
+    executor._issue_detector_manager.invoke_final_detection.assert_called_once_with()
+
+
+def test_issue_detection_callback_precedes_usage_callback():
+    _, callbacks = create_planner().plan(ray.data.range(1)._logical_plan)
+
+    issue_detection_index = next(
+        i
+        for i, callback in enumerate(callbacks)
+        if isinstance(callback, IssueDetectionExecutionCallback)
+    )
+    usage_index = next(
+        i for i, callback in enumerate(callbacks) if isinstance(callback, UsageCallback)
+    )
+
+    assert issue_detection_index < usage_index
 
 
 if __name__ == "__main__":

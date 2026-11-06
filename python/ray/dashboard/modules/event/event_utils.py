@@ -8,6 +8,7 @@ import mmap
 import os
 import time
 from concurrent.futures import ThreadPoolExecutor
+from typing import Callable, Dict, List, Optional
 
 from ray._common.utils import get_or_create_event_loop, run_background_task
 from ray.dashboard.modules.event import event_consts
@@ -94,21 +95,20 @@ def _read_file(
 
 
 def monitor_events(
-    event_dir,
-    callback,
+    event_dir: str,
+    callback: Callable[[List[str]], None],
     monitor_thread_pool_executor: ThreadPoolExecutor,
-    scan_interval_seconds=event_consts.SCAN_EVENT_DIR_INTERVAL_SECONDS,
-    start_mtime=time.time() + event_consts.SCAN_EVENT_START_OFFSET_SECONDS,
-    monitor_files=None,
-    source_types=None,
-):
+    scan_interval_seconds: float = event_consts.SCAN_EVENT_DIR_INTERVAL_SECONDS,
+    start_mtime: float = time.time() + event_consts.SCAN_EVENT_START_OFFSET_SECONDS,
+    monitor_files: Optional[Dict[int, tuple]] = None,
+    source_types: Optional[List[str]] = None,
+) -> asyncio.Task:
     """Monitor events in directory. New events will be read and passed to the
     callback.
 
     Args:
         event_dir: The event log directory.
-        callback (def callback(List[str]): pass): A callback accepts a list of
-            event strings.
+        callback: A callback that accepts a list of event strings.
         monitor_thread_pool_executor: A thread pool exector to monitor/update
             events. None means it will use the default execturo which uses
             num_cpus of the machine * 5 threads (before python 3.8) or
@@ -116,12 +116,14 @@ def monitor_events(
         scan_interval_seconds: An interval seconds between two scans.
         start_mtime: Only the event log files whose last modification
             time is greater than start_mtime are monitored.
-        monitor_files (Dict[int, MonitorFile]): The map from event log file id
-            to MonitorFile object. Monitor all files start from the beginning
-            if the value is None.
-        source_types (List[str]): A list of source type name from
+        monitor_files: The map from event log file id to MonitorFile object.
+            Monitor all files start from the beginning if the value is None.
+        source_types: A list of source type name from
             event_pb2.Event.SourceType.keys(). Monitor all source types if the
             value is None.
+
+    Returns:
+        The background ``asyncio.Task`` driving the periodic directory scan.
     """
     loop = get_or_create_event_loop()
     if monitor_files is None:

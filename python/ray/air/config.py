@@ -47,7 +47,9 @@ _DEPRECATED_VALUE = "DEPRECATED"
 logger = logging.getLogger(__name__)
 
 
-def _repr_dataclass(obj, *, default_values: Optional[Dict[str, Any]] = None) -> str:
+def _repr_dataclass(
+    obj: Any, *, default_values: Optional[Dict[str, Any]] = None
+) -> str:
     """A utility function to elegantly represent dataclasses.
 
     In contrast to the default dataclass `__repr__`, which shows all parameters, this
@@ -109,6 +111,19 @@ class ScalingConfig:
             rank 0 worker, so one example use case is to set a minimum amount
             of resources (e.g. CPU memory) required by the rank 0 node.
             By default, this assigns 1 CPU to the training coordinator.
+
+            Accepts the same resource keys that Ray uses for scheduling tasks
+            and actors (see :ref:`Resources <core-resources>`):
+
+            - ``"CPU"``: number of logical CPUs.
+            - ``"GPU"``: number of logical GPUs.
+            - ``"memory"``: heap memory reserved on the node, in bytes
+              (for example, ``"memory": 1e9`` reserves 1 GB).
+            - Any :ref:`custom resource <custom-resources>` name configured on
+              your cluster (for example, ``"TPU": 1``, ``"special_hardware": 1``).
+
+            Keys are case-sensitive: use ``"CPU"`` and ``"GPU"`` (uppercase),
+            and ``"memory"`` (lowercase).
         num_workers: The number of workers (Ray actors) to launch.
             Each worker will reserve 1 CPU by default. The number of CPUs
             reserved by each worker can be overridden with the
@@ -121,7 +136,20 @@ class ScalingConfig:
             defined in this Dict is reserved for each worker.
             Define the ``"CPU"`` key (case-sensitive) to
             override the number of CPUs used by each worker.
-            This can also be used to request :ref:`custom resources <custom-resources>`.
+
+            Accepts the same resource keys as ``trainer_resources``:
+
+            - ``"CPU"``: number of logical CPUs per worker.
+            - ``"GPU"``: number of logical GPUs per worker. Prefer setting
+              ``use_gpu=True`` (which reserves 1 GPU per worker) and only
+              override this key when you need a different per-worker count.
+            - ``"memory"``: heap memory reserved per worker, in bytes
+              (for example, ``"memory": 1e9`` reserves 1 GB per worker).
+            - Any :ref:`custom resource <custom-resources>` name configured on
+              your cluster (for example, ``"TPU": 1``, ``"special_hardware": 1``).
+
+            Keys are case-sensitive: use ``"CPU"`` and ``"GPU"`` (uppercase),
+            and ``"memory"`` (lowercase).
         placement_strategy: The placement strategy to use for the
             placement group of the Ray actors. See :ref:`Placement Group
             Strategies <pgroup-strategy>` for the possible options.
@@ -208,6 +236,11 @@ class ScalingConfig:
             resources_per_worker.setdefault(accelerator, 0.001)
         return resources_per_worker
 
+    def _label_selector_per_worker(
+        self, num_workers: int
+    ) -> Optional[List[Dict[str, str]]]:
+        return None
+
     @property
     def _trainer_resources_not_none(self):
         if self.trainer_resources is None:
@@ -265,7 +298,13 @@ class ScalingConfig:
         }
 
     def as_placement_group_factory(self) -> "PlacementGroupFactory":
-        """Returns a PlacementGroupFactory to specify resources for Tune."""
+        """Returns a PlacementGroupFactory to specify resources for Tune.
+
+        Returns:
+            A ``PlacementGroupFactory`` with an empty head bundle, one bundle
+            that combines the trainer's resources with the first worker's, and
+            one bundle for each other worker.
+        """
         from ray.tune.execution.placement_groups import PlacementGroupFactory
 
         trainer_bundle = self._trainer_resources_not_none
@@ -289,6 +328,12 @@ class ScalingConfig:
         modifies a trial's PlacementGroupFactory but doesn't propagate
         the changes to ScalingConfig. TrainTrainable needs to reconstruct
         a ScalingConfig from on the trial's PlacementGroupFactory.
+
+        Args:
+            pgf: The placement group factory to convert.
+
+        Returns:
+            The ``ScalingConfig`` that the placement group factory describes.
         """
 
         # pgf.bundles = [{trainer + worker}, {worker}, ..., {worker}]
@@ -540,7 +585,7 @@ class RunConfig:
         sync_config: Configuration object for syncing. See train.SyncConfig.
         verbose: 0, 1, or 2. Verbosity mode.
             0 = silent, 1 = default, 2 = verbose. Defaults to 1.
-            If the ``RAY_AIR_NEW_OUTPUT=1`` environment variable is set,
+            If the ``RAY_AIR_NEW_OUTPUT=0`` environment variable is set,
             uses the old verbosity settings:
             0 = silent, 1 = only status updates, 2 = status and brief
             results, 3 = status and detailed results.

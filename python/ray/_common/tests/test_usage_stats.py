@@ -16,12 +16,14 @@ from jsonschema import validate
 import ray
 import ray._common.usage.usage_constants as usage_constants
 import ray._common.usage.usage_lib as ray_usage_lib
-from ray._common.test_utils import wait_for_condition
+from ray._common.test_utils import (
+    run_string_as_driver,
+    wait_for_condition,
+)
 from ray._common.usage.usage_lib import ClusterConfigToReport, UsageStatsEnabledness
 from ray._private.accelerators import NvidiaGPUAcceleratorManager
 from ray._private.test_utils import (
     format_web_url,
-    run_string_as_driver,
     wait_until_server_available,
 )
 from ray._raylet import GcsClient
@@ -717,6 +719,10 @@ def test_usage_stats_enabled_endpoint(
 ):
     import requests
 
+    from ray._private.authentication.http_token_authentication import (
+        get_auth_headers_if_auth_enabled,
+    )
+
     with monkeypatch.context() as m:
         m.setenv("RAY_USAGE_STATS_ENABLED", "0")
         m.setenv("RAY_USAGE_STATS_PROMPT_ENABLED", "0")
@@ -726,7 +732,10 @@ def test_usage_stats_enabled_endpoint(
         webui_url = context["webui_url"]
         assert wait_until_server_available(webui_url)
         webui_url = format_web_url(webui_url)
-        response = requests.get(f"{webui_url}/usage_stats_enabled")
+        response = requests.get(
+            f"{webui_url}/usage_stats_enabled",
+            headers=get_auth_headers_if_auth_enabled({}),
+        )
         assert response.status_code == 200
         assert response.json()["result"] is True
         assert response.json()["data"]["usageStatsEnabled"] is False
@@ -740,13 +749,19 @@ def test_usage_stats_enabled_endpoint(
 def test_get_cluster_id(ray_start_cluster, reset_usage_stats):
     import requests
 
+    from ray._private.authentication.http_token_authentication import (
+        get_auth_headers_if_auth_enabled,
+    )
+
     cluster = ray_start_cluster
     cluster.add_node(num_cpus=0)
     context = ray.init(address=cluster.address)
     webui_url = context["webui_url"]
     assert wait_until_server_available(webui_url)
     webui_url = format_web_url(webui_url)
-    response = requests.get(f"{webui_url}/cluster_id")
+    response = requests.get(
+        f"{webui_url}/cluster_id", headers=get_auth_headers_if_auth_enabled({})
+    )
     assert response.status_code == 200
     assert response.json()["result"] is True
     gcs_client = GcsClient(address=ray.get_runtime_context().gcs_address)

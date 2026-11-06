@@ -4,7 +4,7 @@ from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple, TypeVar, Uni
 
 import ray
 from ray._private.ray_constants import CALLER_MEMORY_USAGE_PER_OBJECT_REF
-from ray.data._internal.execution.interfaces import RefBundle, TaskContext
+from ray.data._internal.execution.interfaces import BlockEntry, RefBundle, TaskContext
 from ray.data._internal.planner.exchange.interfaces import (
     ExchangeTaskScheduler,
     ExchangeTaskSpec,
@@ -62,8 +62,7 @@ class _MergeTaskSchedule:
         )
 
     def get_num_reducers_per_merge_idx(self, merge_idx: int) -> int:
-        """
-        Each intermediate merge task will produce outputs for a partition of P
+        """Each intermediate merge task will produce outputs for a partition of P
         final reduce tasks. This helper function returns P based on the merge
         task index.
         """
@@ -91,8 +90,7 @@ class _MergeTaskSchedule:
         return merge_idx
 
     def round_robin_reduce_idx_iterator(self):
-        """
-        When there are multiple nodes, merge tasks are spread throughout the
+        """When there are multiple nodes, merge tasks are spread throughout the
         cluster to improve load-balancing. Each merge task produces outputs for
         a contiguous partition of reduce tasks. This method creates an iterator
         that returns reduce task indices round-robin across the merge tasks.
@@ -206,8 +204,7 @@ class _PipelinedStageExecutor:
         return self
 
     def __next__(self) -> List["BlockMetadataWithSchema"]:
-        """
-        Submit one round of tasks. If we already have the max concurrent rounds
+        """Submit one round of tasks. If we already have the max concurrent rounds
         in flight, first wait for the oldest round of tasks to finish.
         """
         prev_metadata_and_schema = []
@@ -412,8 +409,7 @@ class _ReduceStageIterator:
 
 
 class PushBasedShuffleTaskScheduler(ExchangeTaskScheduler):
-    """
-    Push-based shuffle merges intermediate map outputs on the reducer nodes
+    """Push-based shuffle merges intermediate map outputs on the reducer nodes
     while other map tasks are executing. The merged outputs are merged again
     during a final reduce stage. This works as follows:
 
@@ -651,12 +647,7 @@ class PushBasedShuffleTaskScheduler(ExchangeTaskScheduler):
         for block, meta_with_schema in zip(new_blocks, reduce_stage_metadata_schema):
             output.append(
                 RefBundle(
-                    [
-                        (
-                            block,
-                            meta_with_schema.metadata,
-                        )
-                    ],
+                    [BlockEntry(block, meta_with_schema.metadata)],
                     owns_blocks=input_owned,
                     schema=meta_with_schema.schema,
                 )
@@ -716,9 +707,7 @@ class PushBasedShuffleTaskScheduler(ExchangeTaskScheduler):
         *all_mapper_outputs: List[List[Block]],
         reduce_args: Optional[List[Any]] = None,
     ) -> List[Union["BlockMetadataWithSchema", Block]]:
-        """
-        Returns list of [BlockMetadata, O1, O2, O3, ...output_num_blocks].
-        """
+        """Returns list of [BlockMetadata, O1, O2, O3, ...output_num_blocks]."""
         assert (
             len({len(mapper_outputs) for mapper_outputs in all_mapper_outputs}) == 1
         ), "Received different number of map inputs"
@@ -750,7 +739,7 @@ class PushBasedShuffleTaskScheduler(ExchangeTaskScheduler):
             input_files=None,
             exec_stats=stats.build(),
         )
-        meta_with_schema = BlockMetadataWithSchema(metadata=meta, schema=schema)
+        meta_with_schema = BlockMetadataWithSchema.from_metadata(meta, schema=schema)
         yield meta_with_schema
 
     @staticmethod

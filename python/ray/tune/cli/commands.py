@@ -53,8 +53,11 @@ def _check_tabulate():
         raise ImportError("Tabulate not installed. Please run `pip install tabulate`.")
 
 
-def print_format_output(dataframe):
+def print_format_output(dataframe: pd.DataFrame):
     """Prints output of given dataframe to fit into terminal.
+
+    Args:
+        dataframe: The dataframe to print to the terminal.
 
     Returns:
         table: Final outputted dataframe.

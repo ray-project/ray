@@ -13,6 +13,7 @@ srcs:
   - gen_ray_pkg.py
   - release/BUILD.bazel
   - release/requirements_py310.txt
+  - ci/build/container_resource_utils.py
 build_args:
   - ARCH_SUFFIX
   - BUILDKITE_BAZEL_CACHE_URL
@@ -20,3 +21,4 @@ build_args:
   - MANYLINUX_VERSION
 build_hint_args:
   - BUILDKITE_CACHE_READONLY
+  - IS_LOCAL_BUILD

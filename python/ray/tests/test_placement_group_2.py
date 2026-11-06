@@ -5,14 +5,16 @@ import pytest
 
 import ray
 import ray.cluster_utils
-from ray._common.test_utils import wait_for_condition
+from ray._common.test_utils import (
+    run_string_as_driver,
+    wait_for_condition,
+)
 from ray._private.test_utils import (
     get_other_nodes,
     kill_actor_and_wait_for_failure,
     placement_group_assert_no_leak,
-    run_string_as_driver,
 )
-from ray.util.placement_group import get_current_placement_group
+from ray.util.placement_group import PlacementGroup, get_current_placement_group
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 
 
@@ -124,6 +126,99 @@ def test_placement_group_wait(ray_start_cluster):
             get_node_id.options(scheduling_strategy=scheduling_strategy).remote()
         )
         assert node_id == table["bundles_to_node_id"][i]
+
+
+@pytest.mark.asyncio
+async def test_placement_group_ready_async(ray_start_cluster):
+    """Test that pg.ready() works with async/await."""
+    cluster = ray_start_cluster
+    cluster.add_node(num_cpus=2)
+    ray.init(address=cluster.address)
+    cluster.wait_for_nodes()
+
+    placement_group = ray.util.placement_group(
+        name="async_test",
+        strategy="SPREAD",
+        bundles=[{"CPU": 1}],
+    )
+
+    pg = await placement_group.ready()
+    assert pg.bundle_specs == placement_group.bundle_specs
+    assert pg.id.binary() == placement_group.id.binary()
+
+    placement_group_assert_no_leak([placement_group])
+
+
+def test_placement_group_ready_removed(ray_start_cluster):
+    """Test that pg.ready() raises TaskPlacementGroupRemoved when PG is removed."""
+    cluster = ray_start_cluster
+    cluster.add_node(num_cpus=2)
+    ray.init(address=cluster.address)
+    cluster.wait_for_nodes()
+
+    placement_group = ray.util.placement_group(
+        name="removed_test",
+        strategy="SPREAD",
+        bundles=[{"CPU": 1}],
+    )
+
+    # Wait for PG to be ready first.
+    ray.get(placement_group.ready())
+
+    # remove_placement_group waits for GCS to mark PG as REMOVED, though Raylet
+    # resource cleanup is async. This test only needs the GCS state update.
+    ray.util.remove_placement_group(placement_group)
+
+    ref = placement_group.ready()
+
+    with pytest.raises(ray.exceptions.TaskPlacementGroupRemoved):
+        ray.get(ref, timeout=5)
+
+
+def test_placement_group_ready_passed_to_task(ray_start_cluster):
+    """Test that pg.ready() ObjectRef can be passed to a downstream task."""
+    cluster = ray_start_cluster
+    cluster.add_node(num_cpus=2)
+    ray.init(address=cluster.address)
+
+    @ray.remote
+    def create_pg_ref():
+        pg = ray.util.placement_group([{"CPU": 1}])
+        return pg.ready()
+
+    ref = ray.get(create_pg_ref.remote())
+    placement_group = ray.get(ref)
+    assert isinstance(placement_group, PlacementGroup)
+    assert placement_group.bundle_specs == [{"CPU": 1}]
+
+    placement_group_assert_no_leak([placement_group])
+
+
+def test_placement_group_ready_owner_worker_dies(ray_start_cluster):
+    """Test pg.ready() raises OwnerDiedError when the owner worker dies."""
+    cluster = ray_start_cluster
+    cluster.add_node(num_cpus=2)
+    ray.init(address=cluster.address)
+
+    @ray.remote(num_cpus=1)
+    class PGCreator:
+        def create_pending_pg_ref(self):
+            # Use an unsatisfiable bundle so the PG stays PENDING. Otherwise
+            # the PG schedules almost instantly, and by the time the actor
+            # method returns, the value is already in memory_store_. Serializing
+            # the ObjectRef inlines it, so the driver gets the value locally
+            # without ever contacting the owner.
+            pg = ray.util.placement_group([{"GPU": 1}])
+            return pg.ready()
+
+    creator = PGCreator.remote()
+    ref = ray.get(creator.create_pending_pg_ref.remote())
+
+    ray.kill(creator)
+    time.sleep(1)
+
+    with pytest.raises(ray.exceptions.OwnerDiedError):
+        ray.get(ref)
 
 
 def test_schedule_placement_group_when_node_add(ray_start_cluster):

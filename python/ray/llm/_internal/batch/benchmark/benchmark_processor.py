@@ -1,6 +1,5 @@
 #!/usr/bin/env python
-"""
-Benchmark Ray Data LLM offline batch inference throughput.
+"""Benchmark Ray Data LLM offline batch inference throughput.
 
 Sample usage:
 python ray.llm._internal.batch.benchmark.benchmark_processor --mode vllm_engine --batch-size 64 --concurrency 1 --num-prompts 10000 --model facebook/opt-1.3b
@@ -11,7 +10,11 @@ import argparse
 import sys
 from dataclasses import dataclass
 from enum import Enum
+from statistics import mean
 from time import perf_counter, sleep
+from typing import Any
+
+import numpy as np
 
 import ray
 from .dataset import ShareGPTDataset
@@ -55,10 +58,8 @@ VLLM_ENGINE_KWARGS = {
     "max_num_batched_tokens": 4096,
 }
 
-# Default pooling parameters for classification
-CLASSIFY_POOLING_PARAMS = {
-    "truncate_prompt_tokens": -1,
-}
+# Default tokenization kwargs for classification -- truncate to max_model_len.
+CLASSIFY_TOKENIZATION_KWARGS_DEFAULT = {"truncation": True, "max_length": 512}
 
 
 def build_vllm_engine_kwargs(**kwargs) -> dict:
@@ -91,9 +92,9 @@ def _build_vllm_engine_config(
         model_source=model,
         batch_size=batch_size,
         concurrency=concurrency,
-        apply_chat_template=False,
-        tokenize=False,
-        detokenize=False,
+        chat_template_stage=False,
+        tokenize_stage=False,
+        detokenize_stage=False,
         engine_kwargs=engine_kwargs,
     )
 
@@ -121,6 +122,37 @@ def _build_serve_deployment_config(
     )
 
 
+def _percentile(values: list[float], p: float) -> float:
+    if not values:
+        return 0.0
+    return float(np.percentile(values, p))
+
+
+def _summarize_request_latencies(
+    rows: list[dict[str, Any]]
+) -> dict[str, float | int] | None:
+    latencies: list[float] = []
+    for row in rows:
+        if row.get("__inference_error__", ""):
+            continue
+        latency = row.get("time_taken_llm")
+        if not isinstance(latency, (int, float)) or latency < 0:
+            continue
+        latencies.append(float(latency))
+
+    if not latencies:
+        return None
+
+    return {
+        "count": len(latencies),
+        "mean": mean(latencies),
+        "p50": _percentile(latencies, 50),
+        "p90": _percentile(latencies, 90),
+        "p95": _percentile(latencies, 95),
+        "p99": _percentile(latencies, 99),
+    }
+
+
 @dataclass(slots=True)
 class BenchmarkResult:
     mode: Mode
@@ -128,6 +160,7 @@ class BenchmarkResult:
     concurrency: int
     samples: int
     elapsed_s: float
+    request_latency_stats_s: dict[str, float | int] | None = None
 
     @property
     def throughput(self) -> float:
@@ -142,6 +175,12 @@ class BenchmarkResult:
         print(f"Concurrency : {self.concurrency}")
         print(f"Time (s)    : {self.elapsed_s:.2f}")
         print(f"Throughput  : {self.throughput:.2f} req/s")
+        if self.request_latency_stats_s is not None:
+            print(
+                "Req latency : "
+                f"{self.request_latency_stats_s['mean']:.4f} s mean "
+                f"(n={self.request_latency_stats_s['count']})"
+            )
         print("=" * 60)
 
 
@@ -224,7 +263,7 @@ def build_classify_processor(
     batch_size: int,
     concurrency: int,
     model: str,
-    pooling_params: dict = CLASSIFY_POOLING_PARAMS,
+    tokenization_kwargs: dict = CLASSIFY_TOKENIZATION_KWARGS_DEFAULT,
     max_model_len: int = 512,
     distributed_executor_backend: str = None,
 ):
@@ -233,6 +272,9 @@ def build_classify_processor(
     engine_kwargs = VLLM_ENGINE_KWARGS.copy()
     if distributed_executor_backend is not None:
         engine_kwargs["distributed_executor_backend"] = distributed_executor_backend
+
+    # Truncate prompts to max_model_len to avoid errors on long inputs.
+    tokenization_kwargs = {**tokenization_kwargs, "max_length": max_model_len}
 
     config = vLLMEngineProcessorConfig(
         model_source=model,
@@ -248,7 +290,7 @@ def build_classify_processor(
         config,
         preprocess=lambda row: dict(
             prompt=row["prompt"],
-            pooling_params=pooling_params,
+            tokenization_kwargs=tokenization_kwargs,
         ),
         postprocess=lambda row: {
             "probs": float(row["embeddings"][0])
@@ -426,7 +468,7 @@ def run_processor(
     total_samples = dataset.count()
 
     start = perf_counter()
-    processor(dataset).materialize()
+    processed = processor(dataset).materialize()
     elapsed = perf_counter() - start
 
     return BenchmarkResult(
@@ -435,6 +477,7 @@ def run_processor(
         concurrency=kwargs.get("concurrency"),
         samples=total_samples,
         elapsed_s=elapsed,
+        request_latency_stats_s=_summarize_request_latencies(processed.take_all()),
     )
 
 
@@ -487,7 +530,6 @@ def benchmark(
             batch_size=batch_size,
             concurrency=concurrency,
             model=model,
-            pooling_params=CLASSIFY_POOLING_PARAMS,
             distributed_executor_backend=distributed_executor_backend,
         )
     else:

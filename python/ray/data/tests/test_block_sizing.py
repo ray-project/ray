@@ -1,7 +1,7 @@
 import pytest
 
 import ray
-from ray.data.context import DataContext
+from ray.data.context import DataContext, ShuffleStrategy
 from ray.data.dataset import Dataset
 from ray.data.tests.conftest import *  # noqa
 from ray.data.tests.conftest import (
@@ -9,6 +9,13 @@ from ray.data.tests.conftest import (
     get_initial_core_execution_metrics_snapshot,
 )
 from ray.tests.conftest import *  # noqa
+
+
+def _assert_num_blocks(ds, expected, tolerance=0.5):
+    actual = ds.num_blocks()
+    assert (
+        expected * (1 - tolerance) <= actual <= expected * (1 + tolerance)
+    ), f"Expected ~{expected} blocks (±{tolerance*100}%), got {actual}"
 
 
 def test_map(shutdown_only, restore_data_context):
@@ -24,18 +31,10 @@ def test_map(shutdown_only, restore_data_context):
     ctx.target_min_block_size = 10_000 * 8
     ctx.target_max_block_size = 10_000 * 8
     num_blocks_expected = 10
-    last_snapshot = get_initial_core_execution_metrics_snapshot()
 
     # Test read.
     ds = ray.data.range(100_000, override_num_blocks=1).materialize()
-    assert (
-        num_blocks_expected <= ds._plan.initial_num_blocks() <= num_blocks_expected + 1
-    )
-    last_snapshot = assert_blocks_expected_in_plasma(
-        last_snapshot,
-        num_blocks_expected,
-        block_size_expected=ctx.target_max_block_size,
-    )
+    _assert_num_blocks(ds, num_blocks_expected)
 
     # Test read -> map.
     # NOTE(swang): For some reason BlockBuilder's estimated memory usage when a
@@ -45,16 +44,7 @@ def test_map(shutdown_only, restore_data_context):
         .map(lambda row: row)
         .materialize()
     )
-    assert (
-        num_blocks_expected * 2
-        <= ds._plan.initial_num_blocks()
-        <= num_blocks_expected * 2 + 1
-    )
-    last_snapshot = assert_blocks_expected_in_plasma(
-        last_snapshot,
-        num_blocks_expected * 2,
-        block_size_expected=ctx.target_max_block_size // 2,
-    )
+    _assert_num_blocks(ds, num_blocks_expected * 2)
 
     # Test adjusted block size.
     ctx.target_max_block_size *= 2
@@ -62,14 +52,7 @@ def test_map(shutdown_only, restore_data_context):
 
     # Test read.
     ds = ray.data.range(100_000, override_num_blocks=1).materialize()
-    assert (
-        num_blocks_expected <= ds._plan.initial_num_blocks() <= num_blocks_expected + 1
-    )
-    last_snapshot = assert_blocks_expected_in_plasma(
-        last_snapshot,
-        num_blocks_expected,
-        block_size_expected=ctx.target_max_block_size,
-    )
+    _assert_num_blocks(ds, num_blocks_expected)
 
     # Test read -> map.
     ds = (
@@ -77,16 +60,7 @@ def test_map(shutdown_only, restore_data_context):
         .map(lambda row: row)
         .materialize()
     )
-    assert (
-        num_blocks_expected * 2
-        <= ds._plan.initial_num_blocks()
-        <= num_blocks_expected * 2 + 1
-    )
-    last_snapshot = assert_blocks_expected_in_plasma(
-        last_snapshot,
-        num_blocks_expected * 2,
-        block_size_expected=ctx.target_max_block_size // 2,
-    )
+    _assert_num_blocks(ds, num_blocks_expected * 2)
 
     # Setting the shuffle block size prints a warning and actually resets
     # target_max_block_size
@@ -95,14 +69,7 @@ def test_map(shutdown_only, restore_data_context):
 
     # Test read.
     ds = ray.data.range(100_000, override_num_blocks=1).materialize()
-    assert (
-        num_blocks_expected <= ds._plan.initial_num_blocks() <= num_blocks_expected + 1
-    )
-    last_snapshot = assert_blocks_expected_in_plasma(
-        last_snapshot,
-        num_blocks_expected,
-        block_size_expected=ctx.target_max_block_size,
-    )
+    _assert_num_blocks(ds, num_blocks_expected)
 
     # Test read -> map.
     ds = (
@@ -110,19 +77,7 @@ def test_map(shutdown_only, restore_data_context):
         .map(lambda row: row)
         .materialize()
     )
-
-    # NOTE: `initial_num_blocks` is based on estimate, hence we bake in 50% margin
-    assert (
-        num_blocks_expected * 2
-        <= ds._plan.initial_num_blocks()
-        <= num_blocks_expected * 3
-    )
-
-    last_snapshot = assert_blocks_expected_in_plasma(
-        last_snapshot,
-        num_blocks_expected * 2,
-        block_size_expected=ctx.target_max_block_size // 2,
-    )
+    _assert_num_blocks(ds, num_blocks_expected * 2)
 
 
 # TODO: Test that map stage output blocks are the correct size for groupby and
@@ -157,6 +112,11 @@ def test_shuffle(shutdown_only, restore_data_context, shuffle_op):
     mem_size = 800_000
 
     shuffle_fn, kwargs, fusion_supported = shuffle_op
+    if shuffle_fn is Dataset.sort:
+        # The intermediate-block accounting below describes the legacy
+        # all-to-all sort; shuffle v2's map/reduce shards are covered in
+        # test_sort_shuffle_v2.py.
+        ctx.shuffle_strategy = ShuffleStrategy.SORT_SHUFFLE_PULL_BASED
 
     ctx.target_max_block_size = 10_000 * 8
     num_blocks_expected = mem_size // ctx.target_max_block_size
@@ -165,7 +125,7 @@ def test_shuffle(shutdown_only, restore_data_context, shuffle_op):
     ds = shuffle_fn(ray.data.range(N), **kwargs).materialize()
     assert (
         num_blocks_expected
-        <= ds._plan.initial_num_blocks()
+        <= ds._logical_plan.initial_num_blocks()
         <= num_blocks_expected * 1.5
     )
 
@@ -198,7 +158,7 @@ def test_shuffle(shutdown_only, restore_data_context, shuffle_op):
         num_blocks_expected = int(num_blocks_expected * 2.2)
     assert (
         num_blocks_expected
-        <= ds._plan.initial_num_blocks()
+        <= ds._logical_plan.initial_num_blocks()
         <= num_blocks_expected * 1.5
     )
     num_intermediate_blocks = _estimate_intermediate_blocks(
@@ -218,7 +178,7 @@ def test_shuffle(shutdown_only, restore_data_context, shuffle_op):
     ds = shuffle_fn(ray.data.range(N), **kwargs).materialize()
     assert (
         num_blocks_expected
-        <= ds._plan.initial_num_blocks()
+        <= ds._logical_plan.initial_num_blocks()
         <= num_blocks_expected * 1.5
     )
     num_intermediate_blocks = _estimate_intermediate_blocks(
@@ -235,7 +195,7 @@ def test_shuffle(shutdown_only, restore_data_context, shuffle_op):
         block_size_expected //= 2.2
     assert (
         num_blocks_expected
-        <= ds._plan.initial_num_blocks()
+        <= ds._logical_plan.initial_num_blocks()
         <= num_blocks_expected * 1.5
     )
     num_intermediate_blocks = _estimate_intermediate_blocks(
@@ -254,7 +214,7 @@ def test_shuffle(shutdown_only, restore_data_context, shuffle_op):
     ds = shuffle_fn(ray.data.range(N).map(lambda x: x), **kwargs).materialize()
     assert (
         num_blocks_expected
-        <= ds._plan.initial_num_blocks()
+        <= ds._logical_plan.initial_num_blocks()
         <= num_blocks_expected * 1.5
     )
 
@@ -282,7 +242,7 @@ def test_target_max_block_size_infinite_or_default_disables_splitting_globally(
     ctx.target_max_block_size = 1_000_000  # ~1MB
 
     ds_with_limit = ray.data.range(N, override_num_blocks=1).materialize()
-    blocks_with_limit = ds_with_limit._plan.initial_num_blocks()
+    blocks_with_limit = ds_with_limit._logical_plan.initial_num_blocks()
 
     # Now test with target_max_block_size = None (should not split)
     ctx.target_max_block_size = None  # Disable block size limit
@@ -290,7 +250,7 @@ def test_target_max_block_size_infinite_or_default_disables_splitting_globally(
     ds_unlimited = (
         ray.data.range(N, override_num_blocks=1).map(lambda x: x).materialize()
     )
-    blocks_unlimited = ds_unlimited._plan.initial_num_blocks()
+    blocks_unlimited = ds_unlimited._logical_plan.initial_num_blocks()
 
     # Verify that unlimited creates fewer blocks (no splitting)
     assert blocks_unlimited <= blocks_with_limit

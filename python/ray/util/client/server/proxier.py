@@ -21,9 +21,12 @@ import ray.core.generated.ray_client_pb2_grpc as ray_client_pb2_grpc
 import ray.core.generated.runtime_env_agent_pb2 as runtime_env_agent_pb2
 from ray._common.network_utils import (
     build_address,
+    get_localhost_ip,
     is_ipv6,
     is_localhost,
 )
+from ray._common.tls_utils import add_port_to_grpc_server
+from ray._common.utils import env_integer
 from ray._private.authentication.http_token_authentication import (
     format_authentication_http_error,
     get_auth_headers_if_auth_enabled,
@@ -37,7 +40,6 @@ from ray._private.services import (
     get_node_with_retry,
     start_ray_client_server,
 )
-from ray._private.tls_utils import add_port_to_grpc_server
 from ray._private.utils import detect_fate_sharing_support
 from ray._raylet import GcsClient
 from ray.cloudpickle.compat import pickle
@@ -62,7 +64,7 @@ CHECK_PROCESS_INTERVAL_S = 30
 MIN_SPECIFIC_SERVER_PORT = 23000
 MAX_SPECIFIC_SERVER_PORT = 24000
 
-CHECK_CHANNEL_TIMEOUT_S = 30
+CHECK_CHANNEL_TIMEOUT_S = env_integer("RAY_CLIENT_SERVER_CHECK_CHANNEL_TIMEOUT_S", 30)
 
 LOGSTREAM_RETRIES = 5
 LOGSTREAM_RETRY_INTERVAL_SEC = 2
@@ -79,9 +81,7 @@ class SpecificServer:
         return self.process_handle_future.done()
 
     def wait_ready(self, timeout: Optional[float] = None) -> None:
-        """
-        Wait for the server to actually start up.
-        """
+        """Wait for the server to actually start up."""
         res = self.process_handle_future.result(timeout=timeout)
         if res is None:
             # This is only set to none when server creation specifically fails.
@@ -113,8 +113,7 @@ class SpecificServer:
 
 
 def _match_running_client_server(command: List[str]) -> bool:
-    """
-    Detects if the main process in the given command is the RayClient Server.
+    """Detects if the main process in the given command is the RayClient Server.
     This works by ensuring that the command is of the form:
         <py_executable> -m ray.util.client.server <args>
     """
@@ -168,9 +167,7 @@ class ProxyManager:
         atexit.register(self._cleanup)
 
     def _get_unused_port(self, family: int = socket.AF_INET) -> int:
-        """
-        Search for a port in _free_ports that is unused.
-        """
+        """Search for a port in _free_ports that is unused."""
         with self.server_lock:
             num_ports = len(self._free_ports)
             for _ in range(num_ports):
@@ -188,9 +185,7 @@ class ProxyManager:
 
     @property
     def address(self) -> str:
-        """
-        Returns the provided Ray bootstrap address, or creates a new cluster.
-        """
+        """Returns the provided Ray bootstrap address, or creates a new cluster."""
         if self._address:
             return self._address
         # Start a new, locally scoped cluster.
@@ -220,8 +215,7 @@ class ProxyManager:
         return self._node
 
     def create_specific_server(self, client_id: str) -> SpecificServer:
-        """
-        Create, but not start a SpecificServer for a given client. This
+        """Create, but not start a SpecificServer for a given client. This
         method must be called once per client.
         """
         with self.server_lock:
@@ -229,7 +223,7 @@ class ProxyManager:
                 self.servers.get(client_id) is None
             ), f"Server already created for Client: {client_id}"
 
-            host = "127.0.0.1"
+            host = get_localhost_ip()
             port = self._get_unused_port(
                 socket.AF_INET6 if is_ipv6(host) else socket.AF_INET
             )
@@ -342,8 +336,7 @@ class ProxyManager:
         )
 
     def start_specific_server(self, client_id: str, job_config: JobConfig) -> bool:
-        """
-        Start up a RayClient Server for an incoming client to
+        """Start up a RayClient Server for an incoming client to
         communicate with. Returns whether creation was successful.
         """
         specific_server = self._get_server_for_client(client_id)
@@ -368,7 +361,7 @@ class ProxyManager:
 
         proc = start_ray_client_server(
             self.address,
-            "127.0.0.1",
+            get_localhost_ip(),
             specific_server.port,
             stdout_file=output,
             stderr_file=error,
@@ -421,8 +414,7 @@ class ProxyManager:
         self,
         client_id: str,
     ) -> Optional["grpc._channel.Channel"]:
-        """
-        Find the gRPC Channel for the given client_id. This will block until
+        """Find the gRPC Channel for the given client_id. This will block until
         the server process has started.
         """
         server = self._get_server_for_client(client_id)
@@ -440,9 +432,7 @@ class ProxyManager:
             return None
 
     def _check_processes(self):
-        """
-        Keeps the internal servers dictionary up-to-date with running servers.
-        """
+        """Keeps the internal servers dictionary up-to-date with running servers."""
         while True:
             with self.server_lock:
                 for client_id, specific_server in list(self.servers.items()):
@@ -458,8 +448,7 @@ class ProxyManager:
             time.sleep(CHECK_PROCESS_INTERVAL_S)
 
     def _cleanup(self) -> None:
-        """
-        Forcibly kill all spawned RayClient Servers. This ensures cleanup
+        """Forcibly kill all spawned RayClient Servers. This ensures cleanup
         for platforms where fate sharing is not supported.
         """
         for server in self.servers.values():
@@ -645,8 +634,7 @@ def ray_client_server_env_prep(job_config: JobConfig) -> JobConfig:
 def prepare_runtime_init_req(
     init_request: ray_client_pb2.DataRequest,
 ) -> Tuple[ray_client_pb2.DataRequest, JobConfig]:
-    """
-    Extract JobConfig and possibly mutate InitRequest before it is passed to
+    """Extract JobConfig and possibly mutate InitRequest before it is passed to
     the specific RayClient Server.
     """
     init_type = init_request.WhichOneof("type")
@@ -705,8 +693,7 @@ class DataServicerProxy(ray_client_pb2_grpc.RayletDataStreamerServicer):
     def modify_connection_info_resp(
         self, init_resp: ray_client_pb2.DataResponse
     ) -> ray_client_pb2.DataResponse:
-        """
-        Modify the `num_clients` returned the ConnectionInfoResponse because
+        """Modify the `num_clients` returned the ConnectionInfoResponse because
         individual SpecificServers only have **one** client.
         """
         init_type = init_resp.WhichOneof("type")
@@ -925,8 +912,8 @@ def serve_proxier(
     ray_client_pb2_grpc.add_RayletDataStreamerServicer_to_server(data_servicer, server)
     ray_client_pb2_grpc.add_RayletLogStreamerServicer_to_server(logs_servicer, server)
     if not is_localhost(host):
-        add_port_to_grpc_server(server, f"127.0.0.1:{port}")
-    add_port_to_grpc_server(server, f"{host}:{port}")
+        add_port_to_grpc_server(server, build_address(get_localhost_ip(), port))
+    add_port_to_grpc_server(server, build_address(host, port))
     server.start()
     return ClientServerHandle(
         task_servicer=task_servicer,

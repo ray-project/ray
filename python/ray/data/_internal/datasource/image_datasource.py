@@ -1,10 +1,12 @@
 import io
 import logging
 import time
+from dataclasses import replace
 from typing import TYPE_CHECKING, Iterator, List, Optional, Tuple, Union
 
 import numpy as np
 
+from ray.data._internal.datasource.image_utils import _ALLOWED_PIL_FORMATS
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
 from ray.data._internal.util import _check_import
 from ray.data.block import Block, BlockMetadata
@@ -51,7 +53,7 @@ class ImageDatasource(FileBasedDatasource):
                 f"but got {len(size)} integers instead."
             )
 
-        if size is not None and (size[0] < 0 or size[1] < 0):
+        if size is not None and (size[0] <= 0 or size[1] <= 0):
             raise ValueError(
                 f"Expected `size` to contain positive integers, but got {size} instead."
             )
@@ -76,9 +78,12 @@ class ImageDatasource(FileBasedDatasource):
         data = f.readall()
 
         try:
-            image = Image.open(io.BytesIO(data))
+            image = Image.open(io.BytesIO(data), formats=_ALLOWED_PIL_FORMATS)
         except UnidentifiedImageError as e:
-            raise ValueError(f"PIL couldn't load image file at path '{path}'.") from e
+            raise ValueError(
+                f"PIL couldn't load image file at path '{path}'. Ray Data only "
+                f"decodes these image formats: {_ALLOWED_PIL_FORMATS}."
+            ) from e
 
         if self.size is not None and image.size != tuple(reversed(self.size)):
             height, width = self.size
@@ -170,5 +175,7 @@ class ImageFileMetadataProvider(DefaultFileMetadataProvider):
             paths, rows_per_file=rows_per_file, file_sizes=file_sizes
         )
         if metadata.size_bytes is not None:
-            metadata.size_bytes = int(metadata.size_bytes * self._encoding_ratio)
+            metadata = replace(
+                metadata, size_bytes=int(metadata.size_bytes * self._encoding_ratio)
+            )
         return metadata

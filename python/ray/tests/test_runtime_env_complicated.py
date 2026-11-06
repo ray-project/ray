@@ -1,5 +1,6 @@
 import os
 import platform
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -12,7 +13,10 @@ import pytest
 import yaml
 
 import ray
-from ray._common.test_utils import wait_for_condition
+from ray._common.test_utils import (
+    run_string_as_driver,
+    wait_for_condition,
+)
 from ray._common.utils import try_to_create_directory
 from ray._private.runtime_env.conda import (
     _current_py_version,
@@ -27,7 +31,6 @@ from ray._private.runtime_env.conda_utils import (
 )
 from ray._private.test_utils import (
     chdir,
-    run_string_as_driver,
     run_string_as_driver_nonblocking,
 )
 from ray._private.utils import (
@@ -696,6 +699,31 @@ def test_client_working_dir_filepath(call_ray_start, tmp_path):
             assert ray.get(f.remote())
 
 
+@pytest.mark.skipif(_WIN32, reason="Fails on windows")
+@pytest.mark.skipif(
+    os.environ.get("CI") and sys.platform != "linux",
+    reason="This test is only run on linux CI machines.",
+)
+@pytest.mark.parametrize(
+    "call_ray_start",
+    ["ray start --head --ray-client-server-port 24001 --port 0"],
+    indirect=True,
+)
+def test_client_working_dir_tar_xz(call_ray_start, tmp_path):
+    working_dir = tmp_path / "working_dir"
+    working_dir.mkdir()
+    (working_dir / "marker.txt").write_text("tar.xz works")
+    package = shutil.make_archive(str(tmp_path / "working_dir"), "xztar", working_dir)
+
+    with ray.client("localhost:24001").env({"working_dir": package}).connect():
+
+        @ray.remote
+        def read_marker():
+            return Path("marker.txt").read_text()
+
+        assert ray.get(read_marker.remote()) == "tar.xz works"
+
+
 @pytest.mark.skipif(_WIN32, reason="Hangs on windows")
 @pytest.mark.skipif(
     os.environ.get("CI") and sys.platform != "linux",
@@ -918,7 +946,6 @@ def test_e2e_complex(call_ray_start, tmp_path):
     requirement_path.write_text(
         "\n".join(
             [
-                "PyGithub",
                 f"pandas=={pandas_version}",
                 "typer",
                 "aiofiles",

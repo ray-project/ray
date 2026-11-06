@@ -232,6 +232,98 @@ def test_custom_kbins_discretizer(
     assert rows_same(out_df, expected_df)
 
 
+def test_custom_kbins_discretizer_serialization():
+    """Test CustomKBinsDiscretizer serialization and deserialization functionality."""
+    from ray.data.preprocessor import SerializablePreprocessorBase
+
+    # Create discretizer
+    discretizer = CustomKBinsDiscretizer(
+        columns=["A"], bins={"A": [0, 1, 2, 3]}, right=True
+    )
+
+    # Serialize using CloudPickle
+    serialized = discretizer.serialize()
+
+    # Verify it's binary CloudPickle format
+    assert isinstance(serialized, bytes)
+    assert serialized.startswith(SerializablePreprocessorBase.MAGIC_CLOUDPICKLE)
+
+    # Deserialize
+    deserialized = CustomKBinsDiscretizer.deserialize(serialized)
+
+    # Verify type and field values
+    assert isinstance(deserialized, CustomKBinsDiscretizer)
+    assert deserialized.columns == ["A"]
+    assert deserialized.bins == {"A": [0, 1, 2, 3]}
+    assert deserialized.right is True
+
+    # Verify it works correctly
+    df = pd.DataFrame({"A": [0.5, 1.5, 2.5]})
+    result = deserialized.transform_batch(df)
+
+    # Verify discretization was applied correctly
+    assert "A" in result.columns
+    assert len(result) == 3
+
+
+def test_uniform_kbins_discretizer_serialization():
+    """Test UniformKBinsDiscretizer serialization and deserialization functionality."""
+    import ray
+    from ray.data.preprocessor import SerializablePreprocessorBase
+
+    # Create and fit discretizer
+    discretizer = UniformKBinsDiscretizer(columns=["A"], bins=3)
+    df = pd.DataFrame({"A": [1.0, 2.0, 3.0, 4.0, 5.0, 6.0]})
+    ds = ray.data.from_pandas(df)
+    fitted_discretizer = discretizer.fit(ds)
+
+    # Serialize using CloudPickle
+    serialized = fitted_discretizer.serialize()
+
+    # Verify it's binary CloudPickle format
+    assert isinstance(serialized, bytes)
+    assert serialized.startswith(SerializablePreprocessorBase.MAGIC_CLOUDPICKLE)
+
+    # Deserialize
+    deserialized = UniformKBinsDiscretizer.deserialize(serialized)
+
+    # Verify type and field values
+    assert isinstance(deserialized, UniformKBinsDiscretizer)
+    assert deserialized._fitted
+    assert deserialized.columns == ["A"]
+    assert deserialized.bins == 3
+
+    # Verify stats are preserved: bin edges for 3 bins = 4 edge values
+    assert "A" in deserialized.stats_
+    assert len(deserialized.stats_["A"]) == 4
+
+    # Verify it works correctly
+    test_df = pd.DataFrame({"A": [1.5, 3.5, 5.5]})
+    result = deserialized.transform_batch(test_df)
+
+    # Verify discretization was applied correctly
+    assert "A" in result.columns
+    assert len(result) == 3
+
+
+@pytest.mark.parametrize("bins", (0, -3, {"A": 0}))
+def test_uniform_kbins_discretizer_rejects_non_positive_bins(bins):
+    # A non-positive bin count has no meaning; without this check `bins=0`
+    # produced an all-null column instead of an error.
+    with pytest.raises(ValueError, match="bins must be a positive integer"):
+        UniformKBinsDiscretizer(["A"], bins=bins)
+
+
+@pytest.mark.parametrize("bins", ([1, 2], "abc", 3.5))
+def test_uniform_kbins_discretizer_defers_non_integer_bins_to_fit(bins):
+    # Non-integer `bins` keeps reaching the type check in `_fit`, which names
+    # the parameter, rather than tripping the positivity comparison.
+    discretizer = UniformKBinsDiscretizer(["A"], bins=bins)
+    ds = ray.data.from_pandas(pd.DataFrame({"A": [1.0, 2.0]}))
+    with pytest.raises(TypeError, match="`bins` must be an integer"):
+        discretizer.fit(ds)
+
+
 if __name__ == "__main__":
     import sys
 

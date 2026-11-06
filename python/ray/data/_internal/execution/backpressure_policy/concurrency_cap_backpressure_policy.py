@@ -1,5 +1,6 @@
 import logging
 import math
+import warnings
 from collections import defaultdict
 from typing import TYPE_CHECKING, Dict
 
@@ -7,11 +8,12 @@ from .backpressure_policy import BackpressurePolicy
 from .downstream_capacity_backpressure_policy import (
     get_available_object_store_budget_fraction,
 )
-from ray._private.ray_constants import env_float
+from ray._common.utils import env_float
 from ray.data._internal.execution.operators.map_operator import MapOperator
 from ray.data._internal.execution.operators.task_pool_map_operator import (
     TaskPoolMapOperator,
 )
+from ray.util.annotations import Deprecated, RayDeprecationWarning
 
 if TYPE_CHECKING:
     from ray.data._internal.execution.interfaces.physical_operator import (
@@ -22,6 +24,10 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
+@Deprecated(
+    message="ConcurrencyCapBackpressurePolicy is deprecated and will be removed "
+    "on or after Ray 2.59.",
+)
 class ConcurrencyCapBackpressurePolicy(BackpressurePolicy):
     """A backpressure policy that caps the concurrency of each operator.
     This policy dynamically limits the number of concurrent tasks per operator
@@ -95,6 +101,14 @@ class ConcurrencyCapBackpressurePolicy(BackpressurePolicy):
             self._data_context.enable_dynamic_output_queue_size_backpressure
         )
 
+        if self.enable_dynamic_output_queue_size_backpressure:
+            warnings.warn(
+                "ConcurrencyCapBackpressurePolicy is deprecated and will be "
+                "removed on or after Ray 2.59.",
+                RayDeprecationWarning,
+                stacklevel=2,
+            )
+
         dynamic_output_queue_size_backpressure_configs = ""
         if self.enable_dynamic_output_queue_size_backpressure:
             dynamic_output_queue_size_backpressure_configs = (
@@ -108,8 +122,7 @@ class ConcurrencyCapBackpressurePolicy(BackpressurePolicy):
         )
 
     def _update_ewma_asymmetric(self, prev_value: float, sample: float) -> float:
-        """
-        Update EWMA with asymmetric behavior: fast rise, slow fall.
+        """Update EWMA with asymmetric behavior: fast rise, slow fall.
         Args:
             prev_value: Previous EWMA value
             sample: New sample value
@@ -157,7 +170,7 @@ class ConcurrencyCapBackpressurePolicy(BackpressurePolicy):
             not isinstance(op, MapOperator)
             or not self._resource_manager.is_op_eligible(op)
             or not self.enable_dynamic_output_queue_size_backpressure
-            or self._resource_manager.has_materializing_downstream_op(op)
+            or self._resource_manager._is_blocking_materializing_op(op)
         ):
             return num_tasks_running < self._concurrency_caps[op]
 
@@ -178,7 +191,9 @@ class ConcurrencyCapBackpressurePolicy(BackpressurePolicy):
         # Current total queued bytes (this op + downstream)
         current_queue_size_bytes = self._resource_manager.get_mem_op_internal(
             op
-        ) + self._resource_manager.get_op_outputs_object_store_usage_with_downstream(op)
+        ) + self._resource_manager.get_mem_op_outputs(
+            op, include_ineligible_downstream=True
+        )
 
         # Update EWMA state (level & dev) and compute effective cap. Note that
         # we don't update the EWMA state if the objectstore budget (available) vs total

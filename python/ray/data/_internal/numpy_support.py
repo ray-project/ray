@@ -69,8 +69,7 @@ def _detect_highest_datetime_precision(datetime_list: List[datetime]) -> str:
 
 
 def _convert_to_datetime64(dt: datetime, precision: str) -> np.datetime64:
-    """
-    Converts a datetime object to a numpy datetime64 object with the specified
+    """Converts a datetime object to a numpy datetime64 object with the specified
     precision.
 
     Args:
@@ -101,13 +100,13 @@ def _convert_datetime_to_np_datetime(datetime_list: List[datetime]) -> np.ndarra
     precision.
 
     Args:
-        datetime_list (List[datetime]): A list of `datetime` objects to be converted.
+        datetime_list: A list of `datetime` objects to be converted.
             Each `datetime` object represents a specific point in time.
 
     Returns:
-        np.ndarray: A NumPy array containing the `datetime64` values of the datetime
-           objects from the input list, with the appropriate precision (e.g., nanoseconds,
-           microseconds, milliseconds, etc.).
+        A NumPy array containing the `datetime64` values of the datetime
+        objects from the input list, with the appropriate precision (e.g., nanoseconds,
+        microseconds, milliseconds, etc.).
     """
     # Detect the highest precision for the datetime objects
     precision = _detect_highest_datetime_precision(datetime_list)
@@ -123,6 +122,9 @@ def convert_to_numpy(column_values: Any) -> np.ndarray:
     This includes lists of scalars, objects supporting the array protocol, and lists
     of objects supporting the array protocol, such as `[1, 2, 3]`, `Tensor([1, 2, 3])`,
     and `[array(1), array(2), array(3)]`.
+
+    Args:
+        column_values: The column values from a UDF to attempt to convert.
 
     Returns:
         The input as an np.ndarray if possible, otherwise the original input.

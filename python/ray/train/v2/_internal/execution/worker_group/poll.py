@@ -1,15 +1,32 @@
 import re
 from collections import defaultdict
-from dataclasses import dataclass
-from typing import Dict, Optional
+from dataclasses import dataclass, field
+from typing import Any, Dict, Optional, Set
 
 from ray._private.ray_logging import NUMBERS
-from ray.train.v2._internal.exceptions import WorkerHealthCheckFailedError
+from ray.exceptions import RayActorError
+from ray.train.health.probe import ProbeResult
+from ray.train.v2._internal.exceptions import (
+    UserExceptionWithTraceback,
+    WorkerHealthCheckFailedError,
+)
+from ray.train.v2._internal.execution.preemption import PreemptionInfo
 from ray.train.v2._internal.execution.training_report import _TrainingReport
 from ray.train.v2.api.exceptions import WorkerGroupError
 from ray.types import ObjectRef
 
 ERR_CHAR_LIMIT = 1000
+
+
+def _is_preempted_actor(error: Optional[Exception]) -> bool:
+    """Whether a worker error is a node-preemption-caused death.
+
+    A worker killed by a node reclaim surfaces as a WorkerHealthCheckFailedError
+    wrapping a RayActorError whose ``preempted`` flag is set.
+    """
+    if isinstance(error, WorkerHealthCheckFailedError):
+        error = error.health_check_failure
+    return isinstance(error, RayActorError) and error.preempted
 
 
 def _normalize_error_string(error_str: str) -> str:
@@ -19,8 +36,7 @@ def _normalize_error_string(error_str: str) -> str:
 
 
 def _truncate_error_string(error_str: str) -> str:
-    """
-    Truncates error strings to include the first ERR_CHAR_LIMIT // 2
+    """Truncates error strings to include the first ERR_CHAR_LIMIT // 2
     characters and the last ERR_CHAR_LIMIT // 2 characters.
     """
     if len(error_str) >= ERR_CHAR_LIMIT:
@@ -37,25 +53,66 @@ class WorkerStatus:
     running: bool
     error: Optional[Exception] = None
     training_report: Optional[_TrainingReport] = None
+    return_value: Any = field(default=None)
+    preemption_info: Optional[PreemptionInfo] = None
+    probe_results: Dict[str, ProbeResult] = field(default_factory=dict)
+    health_report: Optional[ProbeResult] = None
 
 
 @dataclass(frozen=True)
 class WorkerGroupPollStatus:
     worker_statuses: Dict[int, WorkerStatus]
+    worker_rank_to_replica_group_rank: Optional[Dict[int, int]] = None
+
+    @property
+    def all_replica_group_indices(self) -> Set[int]:
+        """Return the set of all replica group indices."""
+        if self.worker_rank_to_replica_group_rank is None:
+            return set()
+        return set(self.worker_rank_to_replica_group_rank.values())
+
+    @property
+    def failing_replica_group_indices(self) -> Set[int]:
+        """Return the set of replica group indices that have failing workers."""
+        if self.worker_rank_to_replica_group_rank is None:
+            return set()
+        return {
+            self.worker_rank_to_replica_group_rank[rank]
+            for rank in self.errors
+            if rank in self.worker_rank_to_replica_group_rank
+        }
 
     @property
     def errors(self) -> Dict[int, Exception]:
-        return {
-            world_rank: status.error
-            for world_rank, status in self.worker_statuses.items()
-            if status.error is not None
-        }
+        errors = {}
+        for world_rank, status in self.worker_statuses.items():
+            if status.error is not None:
+                error = status.error
+                if isinstance(error, UserExceptionWithTraceback):
+                    error = error._base_exc
+                errors[world_rank] = error
+        return errors
 
     def get_worker_group_error(self) -> WorkerGroupError:
         return WorkerGroupError(
             error_message=self.get_error_string(),
             worker_failures=self.errors,
         )
+
+    def get_preemption_info(self) -> Optional[PreemptionInfo]:
+        """Return the preemption info echoed by any worker, or None.
+
+        The PreemptionWatcher fans the same PreemptionInfo out to every worker,
+        so any non-None echo reflects the current preemption; return the first.
+        """
+        for status in self.worker_statuses.values():
+            if status.preemption_info is not None:
+                return status.preemption_info
+        return None
+
+    def has_preempted_worker(self) -> bool:
+        """Whether any worker was killed by a node reclaim."""
+        return any(_is_preempted_actor(error) for error in self.errors.values())
 
     @property
     def finished(self) -> bool:
@@ -64,8 +121,7 @@ class WorkerGroupPollStatus:
         )
 
     def get_error_string(self) -> str:
-        """
-        Returns a string representation of worker group errors.
+        """Returns a string representation of worker group errors.
         Groups similar errors (ignoring numbers) and shows original error examples.
         """
         # Group errors by normalized strings (ignoring numbers)

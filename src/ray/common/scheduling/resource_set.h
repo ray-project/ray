@@ -21,6 +21,7 @@
 #include <unordered_map>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/hash/hash.h"
 #include "ray/common/scheduling/fixed_point.h"
 #include "ray/common/scheduling/scheduling_ids.h"
 
@@ -75,12 +76,12 @@ class ResourceSet {
   bool operator!=(const ResourceSet &other) const { return !(*this == other); }
 
   /// Check whether this set is a subset of another one.
-  /// If A <= B, it means for each resource, its value in A is less than or equqal to that
+  /// If A <= B, it means for each resource, its value in A is less than or equal to that
   /// in B.
   bool operator<=(const ResourceSet &other) const;
 
   /// Check whether this set is a super set of another one.
-  /// If A >= B, it means for each resource, its value in A is larger than or equqal to
+  /// If A >= B, it means for each resource, its value in A is larger than or equal to
   /// that in B.
   bool operator>=(const ResourceSet &other) const { return other <= *this; }
 
@@ -166,7 +167,7 @@ class NodeResourceSet {
   NodeResourceSet &operator-=(const ResourceSet &other);
 
   /// Check whether this set is a super set of other.
-  /// If A >= B, it means for each resource, its value in A is larger than or equqal to
+  /// If A >= B, it means for each resource, its value in A is larger than or equal to
   /// that in B.
   bool operator>=(const ResourceSet &other) const;
 
@@ -205,12 +206,11 @@ namespace std {
 template <>
 struct hash<ray::ResourceSet> {
   size_t operator()(ray::ResourceSet const &k) const {
-    size_t seed = k.GetResourceMap().size();
-    for (auto &elem : k.GetResourceMap()) {
-      seed ^= std::hash<std::string>()(elem.first);
-      seed ^= std::hash<double>()(elem.second);
-    }
-    return seed;
+    // Hash resources_ directly, the same map operator== compares. GetResourceMap()
+    // would allocate and take a lock per entry, and this is on the scheduling path.
+    // absl's hash is not stable across processes or shared libraries, so do not
+    // persist or transmit the value.
+    return absl::HashOf(k.Resources());
   }
 };
 }  // namespace std

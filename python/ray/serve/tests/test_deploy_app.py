@@ -115,7 +115,7 @@ def check_multi_app():
 def test_deploy_multi_app_basic(serve_instance):
     client = serve_instance
 
-    config = ServeDeploySchema.parse_obj(get_test_deploy_config())
+    config = ServeDeploySchema.model_validate(get_test_deploy_config())
     client.deploy_apps(config)
     check_multi_app()
 
@@ -131,14 +131,14 @@ def test_two_fastapi_in_one_application(serve_instance):
             }
         ],
     }
-    client.deploy_apps(ServeDeploySchema.parse_obj(config))
+    client.deploy_apps(ServeDeploySchema.model_validate(config))
     wait_for_condition(check_deploy_failed, app_name="app1", message="FastAPI")
 
 
 def test_deploy_multi_app_update_config(serve_instance):
     client = serve_instance
     config = get_test_deploy_config()
-    client.deploy_apps(ServeDeploySchema.parse_obj(config))
+    client.deploy_apps(ServeDeploySchema.model_validate(config))
     check_multi_app()
 
     config["applications"][0]["deployments"] = [
@@ -159,7 +159,7 @@ def test_deploy_multi_app_update_config(serve_instance):
         },
     ]
 
-    client.deploy_apps(ServeDeploySchema.parse_obj(config))
+    client.deploy_apps(ServeDeploySchema.model_validate(config))
     url = get_application_url("HTTP", app_name="app1")
     wait_for_condition(
         lambda: httpx.post(url, json=["ADD", 2]).text == "1 pizzas please!"
@@ -174,7 +174,7 @@ def test_deploy_multi_app_update_num_replicas(serve_instance):
     client = serve_instance
 
     config = get_test_deploy_config()
-    client.deploy_apps(ServeDeploySchema.parse_obj(config))
+    client.deploy_apps(ServeDeploySchema.model_validate(config))
     check_multi_app()
 
     actors = list_actors(filters=[("state", "=", "ALIVE")])
@@ -219,7 +219,7 @@ def test_deploy_multi_app_update_num_replicas(serve_instance):
         },
     ]
 
-    client.deploy_apps(ServeDeploySchema.parse_obj(config))
+    client.deploy_apps(ServeDeploySchema.model_validate(config))
     url = get_application_url("HTTP", app_name="app1")
     wait_for_condition(
         lambda: httpx.post(url, json=["ADD", 2]).text == "2 pizzas please!",
@@ -249,7 +249,7 @@ def test_deploy_multi_app_update_timestamp(serve_instance):
     assert "app2" not in serve.status().applications
 
     config = get_test_deploy_config()
-    client.deploy_apps(ServeDeploySchema.parse_obj(config))
+    client.deploy_apps(ServeDeploySchema.model_validate(config))
     wait_for_condition(check_running, app_name="app1", timeout=15)
     wait_for_condition(check_running, app_name="app2", timeout=15)
 
@@ -273,7 +273,7 @@ def test_deploy_multi_app_update_timestamp(serve_instance):
             "num_replicas": 3,
         },
     ]
-    client.deploy_apps(ServeDeploySchema.parse_obj(config))
+    client.deploy_apps(ServeDeploySchema.model_validate(config))
     wait_for_condition(check_running, app_name="app1", timeout=15)
     wait_for_condition(check_running, app_name="app2", timeout=15)
     assert (
@@ -302,7 +302,7 @@ def test_deploy_multi_app_overwrite_apps(serve_instance):
 
     world_import_path = "ray.serve.tests.test_config_files.world.DagNode"
     pizza_import_path = "ray.serve.tests.test_config_files.pizza.serve_dag"
-    test_config = ServeDeploySchema.parse_obj(
+    test_config = ServeDeploySchema.model_validate(
         {
             "applications": [
                 {
@@ -349,7 +349,7 @@ def test_deploy_multi_app_overwrite_apps2(serve_instance):
 
     world_import_path = "ray.serve.tests.test_config_files.world.DagNode"
     pizza_import_path = "ray.serve.tests.test_config_files.pizza.serve_dag"
-    test_config = ServeDeploySchema.parse_obj(
+    test_config = ServeDeploySchema.model_validate(
         {
             "applications": [
                 {
@@ -377,7 +377,7 @@ def test_deploy_multi_app_overwrite_apps2(serve_instance):
     )
 
     # Deploy app3
-    new_config = ServeDeploySchema.parse_obj(
+    new_config = ServeDeploySchema.model_validate(
         {
             "applications": [
                 {
@@ -438,7 +438,7 @@ def test_deploy_multi_app_deployments_removed(serve_instance):
         "Multiplier",
         "Router",
     ]
-    test_config = ServeDeploySchema.parse_obj(
+    test_config = ServeDeploySchema.model_validate(
         {
             "applications": [
                 {
@@ -511,7 +511,9 @@ def test_deploy_config_update_heavyweight(serve_instance, field_to_update: str):
         ]
     }
 
-    client.deploy_apps(ServeDeploySchema.parse_obj(config_template), _blocking=True)
+    client.deploy_apps(
+        ServeDeploySchema.model_validate(config_template), _blocking=True
+    )
     check_running()
     url = get_application_url("HTTP", app_name=SERVE_DEFAULT_APP_NAME)
     pid1, _ = httpx.get(url).json()
@@ -529,7 +531,9 @@ def test_deploy_config_update_heavyweight(serve_instance, field_to_update: str):
             "num_cpus": 0.2
         }
 
-    client.deploy_apps(ServeDeploySchema.parse_obj(config_template), _blocking=True)
+    client.deploy_apps(
+        ServeDeploySchema.model_validate(config_template), _blocking=True
+    )
     check_running()
     url = get_application_url("HTTP", app_name=SERVE_DEFAULT_APP_NAME)
 
@@ -550,7 +554,8 @@ def test_update_config_user_config(serve_instance):
 
     # Deploy first time
     client.deploy_apps(
-        ServeDeploySchema.parse_obj({"applications": [config_template]}), _blocking=True
+        ServeDeploySchema.model_validate({"applications": [config_template]}),
+        _blocking=True,
     )
     check_running()
     # Query
@@ -560,7 +565,9 @@ def test_update_config_user_config(serve_instance):
 
     # Redeploy with updated option
     config_template["deployments"][0]["user_config"] = {"name": "bob"}
-    client.deploy_apps(ServeDeploySchema.parse_obj({"applications": [config_template]}))
+    client.deploy_apps(
+        ServeDeploySchema.model_validate({"applications": [config_template]})
+    )
 
     # Query
     def check():
@@ -588,7 +595,9 @@ def test_update_config_max_ongoing_requests(serve_instance):
     config_template["deployments"][0]["max_ongoing_requests"] = 1000
 
     # Deploy first time, max_ongoing_requests set to 1000.
-    client.deploy_apps(ServeDeploySchema.parse_obj({"applications": [config_template]}))
+    client.deploy_apps(
+        ServeDeploySchema.model_validate({"applications": [config_template]})
+    )
     wait_for_condition(check_running, timeout=15)
     handle = serve.get_app_handle(SERVE_DEFAULT_APP_NAME)
 
@@ -608,7 +617,9 @@ def test_update_config_max_ongoing_requests(serve_instance):
     signal.send.remote(clear=True)
     # Redeploy with max concurrent queries set to 5
     config_template["deployments"][0]["max_ongoing_requests"] = 5
-    client.deploy_apps(ServeDeploySchema.parse_obj({"applications": [config_template]}))
+    client.deploy_apps(
+        ServeDeploySchema.model_validate({"applications": [config_template]})
+    )
     wait_for_condition(check_running, timeout=2)
 
     # Send 10 requests. Only 5 of them should be sent to the replica
@@ -634,7 +645,9 @@ def test_update_config_health_check_period(serve_instance):
     }
 
     # Deploy first time, wait for replica running and deployment healthy
-    client.deploy_apps(ServeDeploySchema.parse_obj({"applications": [config_template]}))
+    client.deploy_apps(
+        ServeDeploySchema.model_validate({"applications": [config_template]})
+    )
     wait_for_condition(check_running, timeout=15)
 
     handle = serve.get_app_handle(SERVE_DEFAULT_APP_NAME)
@@ -648,7 +661,9 @@ def test_update_config_health_check_period(serve_instance):
 
     # Update the deployment's health check period to 0.1 seconds.
     config_template["deployments"][0]["health_check_period_s"] = 0.1
-    client.deploy_apps(ServeDeploySchema.parse_obj({"applications": [config_template]}))
+    client.deploy_apps(
+        ServeDeploySchema.model_validate({"applications": [config_template]})
+    )
     wait_for_condition(check_running, timeout=15)
 
     # Health check counter should now quickly increase due to the shorter period.
@@ -681,7 +696,9 @@ def test_update_config_health_check_timeout(serve_instance):
     }
 
     # Deploy first time, wait for replica running and deployment healthy
-    client.deploy_apps(ServeDeploySchema.parse_obj({"applications": [config_template]}))
+    client.deploy_apps(
+        ServeDeploySchema.model_validate({"applications": [config_template]})
+    )
     wait_for_condition(check_running, timeout=15)
 
     handle = serve.get_deployment_handle("f", SERVE_DEFAULT_APP_NAME)
@@ -689,7 +706,9 @@ def test_update_config_health_check_timeout(serve_instance):
 
     # Redeploy with health check timeout reduced to 1 second
     config_template["deployments"][0]["health_check_timeout_s"] = 1
-    client.deploy_apps(ServeDeploySchema.parse_obj({"applications": [config_template]}))
+    client.deploy_apps(
+        ServeDeploySchema.model_validate({"applications": [config_template]})
+    )
     wait_for_condition(check_running, timeout=15)
 
     # Check that it's the same replica, it didn't get teared down
@@ -735,7 +754,9 @@ def test_update_autoscaling_config(serve_instance):
     }
 
     print(time.ctime(), "Deploying pid application.")
-    client.deploy_apps(ServeDeploySchema.parse_obj({"applications": [config_template]}))
+    client.deploy_apps(
+        ServeDeploySchema.model_validate({"applications": [config_template]})
+    )
     wait_for_condition(check_running, timeout=15)
     print(time.ctime(), "Application is RUNNING.")
 
@@ -755,7 +776,9 @@ def test_update_autoscaling_config(serve_instance):
     # With frequent metrics updates, use a shorter lookback to make the scale down
     # portion of this test responsive.
     config_template["deployments"][0]["autoscaling_config"]["look_back_period_s"] = 2
-    client.deploy_apps(ServeDeploySchema.parse_obj({"applications": [config_template]}))
+    client.deploy_apps(
+        ServeDeploySchema.model_validate({"applications": [config_template]})
+    )
 
     wait_for_condition(check_num_replicas_gte, name="A", target=2)
     print(time.ctime(), "Number of replicas scaled up. Unblocking signal.")
@@ -808,7 +831,7 @@ def test_deploy_multi_app_deleting(serve_instance):
     """Test deleting an application by removing from config."""
     client = serve_instance
 
-    config = ServeDeploySchema.parse_obj(get_test_deploy_config())
+    config = ServeDeploySchema.model_validate(get_test_deploy_config())
     client.deploy_apps(config)
     check_multi_app()
 
@@ -852,7 +875,7 @@ def test_deploy_nonexistent_deployment(serve_instance):
     """
     client = serve_instance
 
-    config = ServeDeploySchema.parse_obj(get_test_deploy_config())
+    config = ServeDeploySchema.model_validate(get_test_deploy_config())
     # Change names to invalid names that don't contain "deployment" or "application"
     config.applications[1].name = "random1"
     config.applications[1].deployments[0].name = "random2"
@@ -874,7 +897,7 @@ def test_deploy_nonexistent_deployment(serve_instance):
 
 def test_get_app_handle(serve_instance):
     client = serve_instance
-    config = ServeDeploySchema.parse_obj(get_test_deploy_config())
+    config = ServeDeploySchema.model_validate(get_test_deploy_config())
     client.deploy_apps(config)
     check_multi_app()
 

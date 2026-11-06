@@ -17,9 +17,42 @@ def test_scaling_config_validation():
 
     with pytest.raises(
         ValueError,
-        match="If `label_selector` is a list, it must be the same length as `num_workers`",
+        match=(
+            "If `label_selector` is a list, it must be the same length as "
+            "`max_workers`"
+        ),
     ):
         ScalingConfig(num_workers=2, label_selector=[{"subcluster": "my_subcluster"}])
+    with pytest.raises(
+        ValueError,
+        match=(
+            "If `label_selector` is a list, it must be the same length as "
+            "`max_workers`"
+        ),
+    ):
+        ScalingConfig(
+            num_workers=(2, 3),
+            label_selector=[{"subcluster": "a"}, {"subcluster": "b"}],
+        )
+
+
+def test_label_selector_per_worker():
+    # None -> None (no constraint; downstream consumers handle this directly).
+    assert ScalingConfig(num_workers=3)._label_selector_per_worker(3) is None
+
+    # Dict -> replicated per worker, decoupled from the original.
+    cfg = ScalingConfig(num_workers=2, label_selector={"zone": "a"})
+    result = cfg._label_selector_per_worker(2)
+    assert result == [{"zone": "a"}, {"zone": "a"}]
+    result[0]["zone"] = "b"
+    assert cfg.label_selector == {"zone": "a"}
+
+    # List -> sliced to num_workers, decoupled from the original.
+    cfg = ScalingConfig(
+        num_workers=(1, 3),
+        label_selector=[{"a": "1"}, {"a": "2"}, {"a": "3"}],
+    )
+    assert cfg._label_selector_per_worker(2) == [{"a": "1"}, {"a": "2"}]
 
 
 def test_scaling_config_accelerator_type():
@@ -36,6 +69,17 @@ def test_scaling_config_accelerator_type():
     assert scaling_config.additional_resources_per_worker == {
         "accelerator_type:A100": 0.001
     }
+
+
+def test_scaling_config_tpu_min_workers_multiple():
+    with pytest.raises(ValueError, match="min_workers"):
+        ScalingConfig(
+            num_workers=(1, 2),
+            use_tpu=True,
+            topology="2x2x2",
+            accelerator_type="TPU-V4",
+            resources_per_worker={"TPU": 4},
+        )
 
 
 def test_storage_filesystem_repr():

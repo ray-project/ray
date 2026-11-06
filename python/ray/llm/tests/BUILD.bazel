@@ -39,31 +39,11 @@ py_test_module_list(
     ],
 )
 
-py_test_module_list(
-    size = "large",
-    env = {
-        "VLLM_FLASH_ATTN_VERSION": "2",
-    },
-    files = glob(
-        ["batch/gpu/**/test_*.py"],
-    ),
-    tags = [
-        "exclusive",
-        "gpu",
-        "team:llm",
-    ],
-    deps = [
-        ":conftest",
-        "//:ray_lib",
-    ],
-)
-
 # Serve test
-# CPU tests
+# Utils unit tests
 py_test_module_list(
-    size = "large",
-    data = glob(["serve/**/*.yaml"]),
-    files = glob(["serve/cpu/**/test_*.py"]),
+    size = "small",
+    files = glob(["serve/utils/test_*.py"]),
     tags = [
         "cpu",
         "exclusive",
@@ -75,14 +55,79 @@ py_test_module_list(
     ],
 )
 
-# Large GPU tests
+# CPU tests
 py_test_module_list(
     size = "large",
     data = glob(["serve/**/*.yaml"]),
-    files = glob(["serve/gpu/**/test_*.py"]),
+    # *_direct_streaming.py files run only in the dedicated target below,
+    # which sets the direct-streaming + HAProxy env they require.
+    files = glob(
+        ["serve/cpu/**/test_*.py"],
+        exclude = ["serve/cpu/**/*_direct_streaming.py"],
+    ),
+    tags = [
+        "cpu",
+        "exclusive",
+        "team:llm",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+# Direct-streaming integration tests
+py_test_module_list(
+    size = "large",
+    data = glob(["serve/**/*.yaml"]),
+    env = {
+        "RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING": "1",
+        "RAY_SERVE_ENABLE_HA_PROXY": "1",
+        "RAY_SERVE_INGRESS_REQUEST_ROUTER_FORWARD_BODY": "1",
+    },
+    files = [
+        "serve/cpu/deployments/data_parallel/test_dp_direct_streaming.py",
+        "serve/cpu/deployments/prefill_decode_disagg/test_pd_direct_streaming.py",
+        "serve/cpu/deployments/routers/test_openai_router_app_direct_streaming.py",
+        "serve/cpu/deployments/routers/test_router_direct_streaming.py",
+    ],
+    tags = [
+        "cpu",
+        "exclusive",
+        "team:llm",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+# Multi-turn OpenAI-compatible HTTP benchmark (CLI + engine unit tests)
+py_test_module_list(
+    size = "large",
+    files = glob(["serve/benchmark/test_*.py"]),
+    tags = [
+        "cpu",
+        "exclusive",
+        "team:llm",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test_module_list(
+    size = "large",
+    data = glob(["serve/**/*.yaml"]),
+    env = {
+        "RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING": "1",
+        "RAY_SERVE_ENABLE_HA_PROXY": "1",
+    },
+    files = ["serve/cpu/integration/test_openai_compatibility.py"],
+    name_suffix = "_direct_streaming",
     tags = [
         "exclusive",
-        "gpu",
         "team:llm",
     ],
     deps = [

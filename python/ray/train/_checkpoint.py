@@ -149,6 +149,9 @@ class Checkpoint(metaclass=_CheckpointMetaClass):
         """Return the metadata dict stored with the checkpoint.
 
         If no metadata is stored, an empty dict is returned.
+
+        Returns:
+            The metadata dict, or an empty dict if none is stored.
         """
         metadata_path = Path(self.path, _METADATA_FILE_NAME).as_posix()
         if not _exists_at_fs_path(self.filesystem, metadata_path):
@@ -161,6 +164,9 @@ class Checkpoint(metaclass=_CheckpointMetaClass):
         """Set the metadata stored with this checkpoint.
 
         This will overwrite any existing metadata stored with this checkpoint.
+
+        Args:
+            metadata: The metadata to store. Must be JSON-serializable.
         """
         metadata_path = Path(self.path, _METADATA_FILE_NAME).as_posix()
         with self.filesystem.open_output_stream(metadata_path) as f:
@@ -170,6 +176,10 @@ class Checkpoint(metaclass=_CheckpointMetaClass):
         """Update the metadata stored with this checkpoint.
 
         This will update any existing metadata stored with this checkpoint.
+
+        Args:
+            metadata: The keys and values to merge into the existing metadata.
+                Must be JSON-serializable.
         """
         existing_metadata = self.get_metadata()
         existing_metadata.update(metadata)
@@ -256,29 +266,22 @@ class Checkpoint(metaclass=_CheckpointMetaClass):
         Users should treat the returned checkpoint directory as read-only and avoid
         changing any data within it, as it may be deleted when exiting the context.
 
-        Example:
+        Examples:
+            >>> from pathlib import Path
+            >>> import tempfile
+            >>> from ray.train import Checkpoint
+            >>> temp_dir = tempfile.mkdtemp()
+            >>> (Path(temp_dir) / "example.txt").write_text("example checkpoint data")
+            23
+            >>> checkpoint = Checkpoint.from_directory(temp_dir)
+            >>> with checkpoint.as_directory() as checkpoint_dir:
+            ...     # Do some read-only processing of files within checkpoint_dir
+            ...     pass
+            >>> # At this point, if a temporary directory was created, it will have
+            >>> # been deleted.
 
-        .. testcode::
-            :hide:
-
-            from pathlib import Path
-            import tempfile
-
-            from ray.train import Checkpoint
-
-            temp_dir = tempfile.mkdtemp()
-            (Path(temp_dir) / "example.txt").write_text("example checkpoint data")
-            checkpoint = Checkpoint.from_directory(temp_dir)
-
-        .. testcode::
-
-            with checkpoint.as_directory() as checkpoint_dir:
-                # Do some read-only processing of files within checkpoint_dir
-                pass
-
-            # At this point, if a temporary directory was created, it will have
-            # been deleted.
-
+        Yields:
+            str: The local path to the checkpoint directory.
         """
         if isinstance(self.filesystem, pyarrow.fs.LocalFileSystem):
             yield self.path
@@ -353,6 +356,14 @@ class Checkpoint(metaclass=_CheckpointMetaClass):
 
 def _get_del_lock_path(path: str, suffix: str = None) -> str:
     """Get the path to the deletion lock file for a file/directory at `path`.
+
+    Args:
+        path: The path of the file or directory to generate a lock path for.
+        suffix: Suffix appended after ``.del_lock_``. Defaults to the current
+            process ID.
+
+    Returns:
+        The deletion lock file path.
 
     Example:
 

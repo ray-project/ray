@@ -20,7 +20,8 @@ namespace observability {
 RayActorLifecycleEvent::RayActorLifecycleEvent(
     const rpc::ActorTableData &data,
     rpc::events::ActorLifecycleEvent::State state,
-    const std::string &session_name)
+    const std::string &session_name,
+    rpc::events::ActorLifecycleEvent::RestartReason restart_reason)
     : RayEvent<rpc::events::ActorLifecycleEvent>(
           rpc::events::RayEvent::GCS,
           rpc::events::RayEvent::ACTOR_LIFECYCLE_EVENT,
@@ -38,6 +39,18 @@ RayActorLifecycleEvent::RayActorLifecycleEvent(
     RAY_CHECK(data.has_node_id());
     state_transition.set_node_id(data.node_id());
     state_transition.set_worker_id(data.address().worker_id());
+    state_transition.set_pid(data.pid());
+    state_transition.set_port(data.address().port());
+  }
+
+  if (state == rpc::events::ActorLifecycleEvent::RESTARTING) {
+    if (data.preempted()) {
+      state_transition.set_restart_reason(
+          rpc::events::ActorLifecycleEvent::NODE_PREEMPTION);
+    } else if (restart_reason != rpc::events::ActorLifecycleEvent::ACTOR_FAILURE) {
+      state_transition.set_restart_reason(restart_reason);
+    }
+    // ACTOR_FAILURE is the default (0), no need to explicitly set
   }
 
   if (state == rpc::events::ActorLifecycleEvent::DEAD) {

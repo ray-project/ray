@@ -5,12 +5,12 @@ set -x
 
 cd "$(dirname "$0")"
 
-(cd .. && bazel build //java:all_tests_deploy.jar)
+(cd .. && bazel build //java:all_tests_bin_deploy.jar)
 
 function generate_one()
 {
   file=${2//./_}.h
-  javac -h ./ "$1" -classpath ../bazel-bin/java/all_tests_deploy.jar -d runtime/target/
+  javac -h ./ "$1" -classpath ../bazel-bin/java/all_tests_bin_deploy.jar -d runtime/target/
   clang-format -i "$file"
 
   cat <<EOF > ../src/ray/core_worker/lib/java/"$file"

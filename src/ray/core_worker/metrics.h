@@ -14,7 +14,10 @@
 
 #pragma once
 
+#include <memory>
+
 #include "ray/stats/metric.h"
+#include "ray/stats/percentile_metric.h"
 
 namespace ray {
 namespace core {
@@ -70,6 +73,55 @@ inline ray::stats::Gauge GetTotalLineageBytesGaugeMetric() {
       /*unit=*/"",
       /*tag_keys=*/{},
   };
+}
+
+/// @brief Counter of attempts to recover lost objects owned by this worker.
+/// @return The `object_recovery_attempts` counter, tagged by recovery Type.
+inline ray::stats::Count GetObjectRecoveryAttemptsCountMetric() {
+  return ray::stats::Count{
+      /*name=*/"object_recovery_attempts",
+      /*description=*/
+      "Total number of recovery attempts for lost objects owned by this worker. A lost "
+      "object can contribute one Pin attempt if recoverable via secondary copy. ",
+      "It can also contribute a reconstruct attempt if no copy could be found."
+      /*unit=*/"",
+      // Expected tags:
+      // - Type: "Pin" (promote a secondary copy to primary) or "Reconstruct"
+      //   (resubmit the task that created the object).
+      /*tag_keys=*/{"Type"},
+  };
+}
+
+/// @brief Counter of task retries scheduled by this worker as the task owner.
+/// @return The `task_retry_submissions` counter, tagged by Reason and Name.
+inline ray::stats::Count GetTaskRetrySubmissionsCountMetric() {
+  return ray::stats::Count{
+      /*name=*/"task_retry_submissions",
+      /*description=*/
+      "Total number of times this worker resubmitted a task it owns, either to retry "
+      "a failed attempt or to reconstruct a lost object.",
+      /*unit=*/"",
+      // Expected tags:
+      // - Reason: the rpc::ErrorType name of the failed attempt (e.g. OUT_OF_MEMORY,
+      //   WORKER_DIED, NODE_DIED), or LINEAGE_RECONSTRUCTION.
+      // - Name: the name of the function called (Keep this tag name in sync with the
+      // TASK_OR_ACTOR_NAME_TAG_KEY in
+      // python/ray/_private/telemetry/metric_cardinality.py)
+      /*tag_keys=*/{"Reason", "Name"},
+  };
+}
+
+inline std::unique_ptr<ray::stats::PercentileMetric>
+GetSchedulerPlacementTimePercentileMsMetric() {
+  return std::make_unique<ray::stats::PercentileMetric>(
+      /*name=*/"scheduler_placement_time_ms",
+      /*description=*/
+      "The time it takes for a workload (task, actor, placement group) to be placed. "
+      "This is the time from when the tasks dependencies are resolved to when it "
+      "actually reserves resources on a node to run.",
+      /*unit=*/"ms",
+      /*max_expected_value=*/10000.0,
+      /*num_buckets=*/128);
 }
 
 }  // namespace core

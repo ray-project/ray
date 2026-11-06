@@ -11,6 +11,7 @@ import yaml
 
 import ray
 from ray import serve
+from ray._common.test_utils import wait_for_condition
 from ray.llm._internal.serve.core.configs.openai_api_models import (
     ChatCompletionRequest,
     CompletionRequest,
@@ -29,6 +30,7 @@ from ray.serve.llm import (
     ModelLoadingConfig,
     build_openai_app,
 )
+from ray.serve.schema import ApplicationStatus
 
 MOCK_MODEL_ID = "mock-model"
 
@@ -66,7 +68,6 @@ def llm_config(model_pixtral_12b, disable_placement_bundles):
         model_loading_config=ModelLoadingConfig(
             model_id=model_pixtral_12b,
         ),
-        accelerator_type="L4",
         runtime_env={},
         log_engine_metrics=False,
     )
@@ -198,6 +199,13 @@ def get_rayllm_testing_model(
     args = LLMServingArgs(llm_configs=[str(test_model_path.absolute())])
     router_app = build_openai_app(args)
     serve._run(router_app, name="router", _blocking=False)
+
+    wait_for_condition(
+        lambda: serve.status().applications["router"].status
+        == ApplicationStatus.RUNNING,
+        timeout=200,
+        retry_interval_ms=2000,
+    )
 
     # Block until the deployment is ready
     # Wait at most 200s [3 min]

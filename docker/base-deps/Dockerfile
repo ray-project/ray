@@ -4,6 +4,7 @@
 
 # The GPU options are NVIDIA CUDA developer images.
 ARG BASE_IMAGE="ubuntu:22.04"
+
 FROM ${BASE_IMAGE}
 # If this arg is not "autoscaler" then no autoscaler requirements will be included
 ENV TZ=America/Los_Angeles
@@ -69,8 +70,8 @@ USER $RAY_UID
 ENV HOME=/home/ray
 WORKDIR /home/ray
 
-COPY "$CONSTRAINTS_FILE" /home/ray/requirements_compiled.txt
-COPY "$PYTHON_DEPSET" /home/ray/python_depset.lock
+COPY --chown=ray "$CONSTRAINTS_FILE" /home/ray/requirements_compiled.txt
+COPY --chown=ray "$PYTHON_DEPSET" /home/ray/python_depset.lock
 
 SHELL ["/bin/bash", "-c"]
 
@@ -99,15 +100,46 @@ wget --quiet \
 $HOME/anaconda3/bin/conda init
 echo 'export PATH=$HOME/anaconda3/bin:$PATH' >> $HOME/.bashrc
 rm /tmp/miniforge.sh
-$HOME/anaconda3/bin/conda install -y libgcc-ng python=$PYTHON_VERSION
-$HOME/anaconda3/bin/conda install -y -c conda-forge libffi=3.4.2
+# libffi needs a floor (>=3.4.6), not an exact pin, and must be solved
+# together with python: an exact pin in a separate step re-solves the env and
+# downgrades python to whatever patch release tolerates that libffi — on 3.14
+# that's 3.14.0, which fatally crashes Ray async actors running on fiber
+# stacks (python/cpython#141944, fixed upstream in 3.14.2).
+#
+# Pin certifi and pip to their eMudhra CA fix releases. certifi matches the pin
+# in the lock files, so the lock install below leaves conda's copy in place.
+# conda-forge certifi 2026.10.19 allows python 3.10 only through a repodata
+# patch (conda-forge/conda-forge-repodata-patches-feedstock@d7dcb640); its other
+# 2026 builds require python>=3.11, and without a 3.10 build the solver drops
+# certifi, requests and conda itself and fails with RemoveError.
+# TODO(elliot-barn): remove this conditional once Python 3.10 is deprecated.
+CONDA_PIP_SPEC=("pip=26.2.2")
+if [[ "${PYTHON_VERSION}" == "3.10" ]]; then
+    # conda-forge pip 26.2.2 requires python>=3.11; 3.10 installs it from PyPI below.
+    CONDA_PIP_SPEC=()
+fi
+# CVE-2026-111497: brotli-python < 1.2.1 is vulnerable. conda-forge has no py3.10
+# build of 1.2.1, so 3.10 installs the PyPI wheel below.
+CONDA_BROTLI_SPEC=("brotli-python>=1.2.1")
+if [[ "${PYTHON_VERSION}" == "3.10" ]]; then
+    CONDA_BROTLI_SPEC=()
+fi
+$HOME/anaconda3/bin/conda install -y libgcc-ng python=$PYTHON_VERSION "libffi>=3.4.6" "certifi=2026.10.19" "${CONDA_PIP_SPEC[@]}" "${CONDA_BROTLI_SPEC[@]}"
 $HOME/anaconda3/bin/conda clean -y --all
 
 # Install uv
-wget -qO- https://astral.sh/uv/install.sh | sudo -E env UV_UNMANAGED_INSTALL="/usr/local/bin" sh
+wget -qO- https://astral.sh/uv/0.13.4/install.sh | sudo -E env UV_UNMANAGED_INSTALL="/usr/local/bin" sh
 
 # Set up Conda as system Python
 export PATH=$HOME/anaconda3/bin:$PATH
+
+# conda-forge pip 26.2.2 requires python>=3.11; PyPI's supports 3.10.
+if [[ "${PYTHON_VERSION}" == "3.10" ]]; then
+    uv pip install --system --no-cache-dir pip==26.2.2
+    $HOME/anaconda3/bin/conda remove --force -y brotli-python
+    uv pip install --system --no-cache-dir --no-deps "Brotli==1.2.1"
+    $HOME/anaconda3/bin/conda clean -y --all
+fi
 
 # Some packages are on PyPI as well as other indices, but the latter
 # (unhelpfully) take precedence. We use `--index-strategy unsafe-best-match`

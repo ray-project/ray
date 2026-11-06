@@ -27,12 +27,13 @@ from ray._private.ray_constants import (
     env_float,
     env_integer,
 )
+from ray._private.ray_logging.logging_config import LoggingConfig
 from ray._private.runtime_env.py_modules import upload_py_modules_if_needed
 from ray._private.runtime_env.working_dir import upload_working_dir_if_needed
 
 # Use cloudpickle's version of pickle for UnpicklingError
 from ray.cloudpickle.compat import pickle
-from ray.exceptions import GetTimeoutError
+from ray.exceptions import AuthenticationError, GetTimeoutError
 from ray.job_config import JobConfig
 from ray.util.client.client_pickler import dumps_from_client, loads_from_server
 from ray.util.client.common import (
@@ -82,6 +83,73 @@ def backoff(timeout: int) -> int:
     if timeout > MAX_TIMEOUT_SEC:
         timeout = MAX_TIMEOUT_SEC
     return timeout
+
+
+def prepare_init_request_args(
+    job_config: Optional[JobConfig],
+    ray_init_kwargs: Optional[Dict[str, Any]] = None,
+) -> Tuple[Optional[bytes], Dict[str, Any]]:
+    """Normalize *ray_init_kwargs* and serialize ``job_config`` for an ``InitRequest``.
+
+    This handles:
+    * Converting a :class:`LoggingConfig` in ``ray_init_kwargs`` to a plain dict
+      so it can be JSON-encoded for transport.
+    * Propagating the logging config onto ``job_config`` when it has not already
+      been set.
+    * Uploading ``py_modules`` / ``working_dir`` runtime-env artifacts and
+      pickling the resulting ``job_config``.
+
+    Args:
+        job_config: Job settings to pickle for the server, or ``None`` if the
+            request has no serialized job config.
+        ray_init_kwargs: Keyword arguments for ``ray.init`` on the client
+            server. A shallow copy is returned, with values normalized for JSON
+            (e.g. ``logging_config`` as a plain dict). ``None`` is treated as
+            ``{}``.
+
+    Returns:
+        A ``(serialized_job_config, ray_init_kwargs)`` tuple whose values can
+        be placed directly into a ``ray_client_pb2.InitRequest``.
+    """
+    if ray_init_kwargs is None:
+        ray_init_kwargs = {}
+    else:
+        ray_init_kwargs = dict(ray_init_kwargs)
+
+    if "logging_config" in ray_init_kwargs and isinstance(
+        ray_init_kwargs["logging_config"], LoggingConfig
+    ):
+        ray_init_kwargs["logging_config"] = ray_init_kwargs["logging_config"].to_dict()
+
+    if job_config is None:
+        serialized_job_config = None
+    else:
+        job_config.ensure_logging_config(ray_init_kwargs.get("logging_config"))
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            from ray._private.ray_constants import RAY_RUNTIME_ENV_IGNORE_GITIGNORE
+
+            runtime_env = job_config.runtime_env or {}
+            include_gitignore = (
+                os.environ.get(RAY_RUNTIME_ENV_IGNORE_GITIGNORE, "0") != "1"
+            )
+            runtime_env = upload_py_modules_if_needed(
+                runtime_env,
+                scratch_dir=tmp_dir,
+                include_gitignore=include_gitignore,
+                logger=logger,
+            )
+            runtime_env = upload_working_dir_if_needed(
+                runtime_env,
+                scratch_dir=tmp_dir,
+                include_gitignore=include_gitignore,
+                logger=logger,
+            )
+            runtime_env.pop("excludes", None)
+            job_config.set_runtime_env(runtime_env, validate=True)
+
+        serialized_job_config = pickle.dumps(job_config)
+
+    return serialized_job_config, ray_init_kwargs
 
 
 class Worker:
@@ -139,9 +207,16 @@ class Worker:
         # Set to True when the connection cannot be recovered and reconnect
         # attempts should be stopped
         self._in_shutdown = False
+        # Set when the server rejects the token; re-raised by every later call.
+        self._rejection: Optional[AuthenticationError] = None
         # Set to True after initial connection succeeds
         self._has_connected = False
 
+        from ray._private.authentication.authentication_token_setup import (
+            ensure_token_if_auth_enabled,
+        )
+
+        ensure_token_if_auth_enabled(create_token_if_missing=False)
         self._connect_channel()
         self._has_connected = True
 
@@ -173,8 +248,7 @@ class Worker:
         self._release_thread.start()
 
     def _connect_channel(self, reconnecting=False) -> None:
-        """
-        Attempts to connect to the server specified by conn_str. If
+        """Attempts to connect to the server specified by conn_str. If
         reconnecting after an RPC error, cleans up the old channel and
         continues to attempt to connect until the grace period is over.
         """
@@ -274,8 +348,7 @@ class Worker:
             raise ConnectionError("ray client connection timeout")
 
     def _can_reconnect(self, e: grpc.RpcError) -> bool:
-        """
-        Returns True if the RPC error can be recovered from and a retry is
+        """Returns True if the RPC error can be recovered from and a retry is
         appropriate, false otherwise.
         """
         if not self._reconnect_enabled:
@@ -286,6 +359,9 @@ class Worker:
         if e.code() in GRPC_UNRECOVERABLE_ERRORS:
             # Unrecoverable error -- These errors are specifically raised
             # by the server's application logic
+            return False
+        if e.code() == grpc.StatusCode.UNAUTHENTICATED:
+            # A rejected token stays rejected; retrying can't fix it.
             return False
         if e.code() == grpc.StatusCode.INTERNAL:
             details = e.details()
@@ -298,8 +374,7 @@ class Worker:
         return True
 
     def _call_stub(self, stub_name: str, *args, **kwargs) -> Any:
-        """
-        Calls the stub specified by stub_name (Schedule, WaitObject, etc...).
+        """Calls the stub specified by stub_name (Schedule, WaitObject, etc...).
         If a recoverable error occurrs while calling the stub, attempts to
         retry the RPC.
         """
@@ -307,9 +382,15 @@ class Worker:
             try:
                 return getattr(self.server, stub_name)(*args, **kwargs)
             except grpc.RpcError as e:
-                if self._can_reconnect(e):
+                # A recorded rejection ends the retry even when this call's
+                # error looks recoverable, such as UNAVAILABLE.
+                if self._rejection is None and self._can_reconnect(e):
                     time.sleep(0.5)
                     continue
+                if e.code() == grpc.StatusCode.UNAUTHENTICATED:
+                    raise self._reject(e) from e
+                if self._rejection is not None:
+                    raise self._rejection from e
                 raise
             except ValueError:
                 # Trying to use the stub on a cancelled channel will raise
@@ -318,13 +399,12 @@ class Worker:
                 # again.
                 time.sleep(0.5)
                 continue
-        raise ConnectionError("Client is shutting down.")
+        raise self._rejection or ConnectionError("Client is shutting down.")
 
     def _get_object_iterator(
         self, req: ray_client_pb2.GetRequest, *args, **kwargs
     ) -> Any:
-        """
-        Calls the stub for GetObject on the underlying server stub. If a
+        """Calls the stub for GetObject on the underlying server stub. If a
         recoverable error occurs while streaming the response, attempts
         to retry the get starting from the first chunk that hasn't been
         received.
@@ -355,9 +435,15 @@ class Worker:
                         return
                 return
             except grpc.RpcError as e:
-                if self._can_reconnect(e):
+                # A recorded rejection ends the retry even when this call's
+                # error looks recoverable, such as UNAVAILABLE.
+                if self._rejection is None and self._can_reconnect(e):
                     time.sleep(0.5)
                     continue
+                if e.code() == grpc.StatusCode.UNAUTHENTICATED:
+                    raise self._reject(e) from e
+                if self._rejection is not None:
+                    raise self._rejection from e
                 raise
             except ValueError:
                 # Trying to use the stub on a cancelled channel will raise
@@ -366,16 +452,29 @@ class Worker:
                 # again.
                 time.sleep(0.5)
                 continue
-        raise ConnectionError("Client is shutting down.")
+        raise self._rejection or ConnectionError("Client is shutting down.")
+
+    def _reject(self, e: grpc.RpcError) -> AuthenticationError:
+        """Record a token rejection, which no retry can fix.
+
+        Safe to call from the data thread: it doesn't set ``_in_shutdown``,
+        which would make the main thread's calls fail with a generic error.
+        """
+        self._rejection = AuthenticationError(e.details())
+        return self._rejection
 
     def _add_ids_to_metadata(self, metadata: Any):
-        """
-        Adds a unique req_id and the current thread's identifier to the
+        """Adds a unique req_id and the current thread's identifier to the
         metadata. These values are useful for preventing mutating operations
         from being replayed on the server side in the event that the client
         must retry a requsest.
+
         Args:
             metadata: the gRPC metadata to append the IDs to
+
+        Returns:
+            The metadata with the thread id and request id appended, or the
+            original metadata unchanged if reconnects are disabled.
         """
         if not self._reconnect_enabled:
             # IDs not needed if the reconnects are disabled
@@ -490,7 +589,6 @@ class Worker:
         val,
         *,
         client_ref_id: bytes = None,
-        _owner: Optional[ClientActorHandle] = None,
     ):
         if isinstance(val, ClientObjectRef):
             raise TypeError(
@@ -501,16 +599,12 @@ class Worker:
                 "call 'put' on it (or return it)."
             )
         data = dumps_from_client(val, self._client_id)
-        return self._put_pickled(data, client_ref_id, _owner)
+        return self._put_pickled(data, client_ref_id)
 
-    def _put_pickled(
-        self, data, client_ref_id: bytes, owner: Optional[ClientActorHandle] = None
-    ):
+    def _put_pickled(self, data, client_ref_id: bytes):
         req = ray_client_pb2.PutRequest(data=data)
         if client_ref_id is not None:
             req.client_ref_id = client_ref_id
-        if owner is not None:
-            req.owner_id = owner.actor_ref.id
 
         resp = self.data_client.PutObject(req)
         if not resp.valid:
@@ -766,7 +860,14 @@ class Worker:
     ):
         req = ray_client_pb2.ClusterInfoRequest()
         req.type = req_type
-        resp = self.server.ClusterInfo(req, timeout=timeout, metadata=self.metadata)
+        try:
+            resp = self.server.ClusterInfo(req, timeout=timeout, metadata=self.metadata)
+        except grpc.RpcError as e:
+            # Only a rejection is converted: _connect_channel retries other
+            # RpcErrors from ping_server.
+            if e.code() == grpc.StatusCode.UNAUTHENTICATED:
+                raise self._reject(e) from e
+            raise
         if resp.WhichOneof("response_type") == "resource_table":
             # translate from a proto map to a python dict
             output_dict = dict(resp.resource_table.table)
@@ -874,41 +975,10 @@ class Worker:
         self, job_config: JobConfig, ray_init_kwargs: Optional[Dict[str, Any]] = None
     ):
         """Initialize the server"""
-        if ray_init_kwargs is None:
-            ray_init_kwargs = {}
         try:
-            if job_config is None:
-                serialized_job_config = None
-            else:
-                with tempfile.TemporaryDirectory() as tmp_dir:
-                    from ray._private.ray_constants import (
-                        RAY_RUNTIME_ENV_IGNORE_GITIGNORE,
-                    )
-
-                    runtime_env = job_config.runtime_env or {}
-                    # Determine whether to respect .gitignore files based on environment variable
-                    # Default is True (respect .gitignore). Set to False if env var is "1".
-                    include_gitignore = (
-                        os.environ.get(RAY_RUNTIME_ENV_IGNORE_GITIGNORE, "0") != "1"
-                    )
-                    runtime_env = upload_py_modules_if_needed(
-                        runtime_env,
-                        scratch_dir=tmp_dir,
-                        include_gitignore=include_gitignore,
-                        logger=logger,
-                    )
-                    runtime_env = upload_working_dir_if_needed(
-                        runtime_env,
-                        scratch_dir=tmp_dir,
-                        include_gitignore=include_gitignore,
-                        logger=logger,
-                    )
-                    # Remove excludes, it isn't relevant after the upload step.
-                    runtime_env.pop("excludes", None)
-                    job_config.set_runtime_env(runtime_env, validate=True)
-
-                serialized_job_config = pickle.dumps(job_config)
-
+            serialized_job_config, ray_init_kwargs = prepare_init_request_args(
+                job_config, ray_init_kwargs
+            )
             response = self.data_client.Init(
                 ray_client_pb2.InitRequest(
                     job_config=serialized_job_config,
@@ -957,6 +1027,8 @@ def make_client_id() -> str:
 
 
 def decode_exception(e: grpc.RpcError) -> Exception:
+    if e.code() == grpc.StatusCode.UNAUTHENTICATED:
+        return AuthenticationError(e.details())
     if e.code() != grpc.StatusCode.ABORTED:
         # The ABORTED status code is used by the server when an application
         # error is serialized into the exception details. If the code

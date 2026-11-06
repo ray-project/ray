@@ -3,7 +3,7 @@ import os
 import shutil
 import tempfile
 from pathlib import Path
-from typing import Any, Dict
+from typing import TYPE_CHECKING, Any, Dict, Optional, Union
 
 import torch
 from packaging.version import Version
@@ -12,6 +12,7 @@ import ray
 import ray.train
 from ray._common.usage.usage_lib import TagKey, record_extra_usage_tag
 from ray.train import Checkpoint
+from ray.train.v2._internal.constants import is_v2_enabled
 from ray.util import PublicAPI
 
 
@@ -24,6 +25,12 @@ def import_lightning():  # noqa: F402
 
 
 pl = import_lightning()
+
+if is_v2_enabled():
+    from ray.train.v2.api.report_config import CheckpointUploadMode
+
+if TYPE_CHECKING:
+    from ray.train.v2.api.validation_config import ValidationTaskConfig
 
 _LIGHTNING_GREATER_EQUAL_2_0 = Version(pl.__version__) >= Version("2.0.0")
 _LIGHTNING_LESS_THAN_2_1 = Version(pl.__version__) < Version("2.1.0")
@@ -70,10 +77,15 @@ class RayDDPStrategy(pl.strategies.DDPStrategy):
 
     @property
     def root_device(self) -> torch.device:
+        """This worker's device, from :func:`ray.train.torch.get_device`."""
         return ray.train.torch.get_device()
 
     @property
     def distributed_sampler_kwargs(self) -> Dict[str, Any]:
+        """Keyword arguments for the distributed sampler.
+
+        ``num_replicas`` is the world size and ``rank`` is this worker's global rank.
+        """
         return dict(
             num_replicas=self.world_size,
             rank=self.global_rank,
@@ -99,10 +111,15 @@ class RayFSDPStrategy(FSDPStrategy):  # noqa: F821
 
     @property
     def root_device(self) -> torch.device:
+        """This worker's device, from :func:`ray.train.torch.get_device`."""
         return ray.train.torch.get_device()
 
     @property
     def distributed_sampler_kwargs(self) -> Dict[str, Any]:
+        """Keyword arguments for the distributed sampler.
+
+        ``num_replicas`` is the world size and ``rank`` is this worker's global rank.
+        """
         return dict(
             num_replicas=self.world_size,
             rank=self.global_rank,
@@ -117,6 +134,12 @@ class RayFSDPStrategy(FSDPStrategy):  # noqa: F821
         checkpointing.
 
         See the note in the class docstring for more details.
+
+        Returns:
+            The model's state dict. With Lightning 2.0.x and PyTorch FSDP, it's the
+            full state dict gathered on rank 0 and offloaded to CPU, with the
+            ``_forward_module.`` prefix removed from its keys. Otherwise, it's the
+            state dict that the parent ``FSDPStrategy`` returns.
         """
 
         assert self.model is not None, "Failed to get the state dict for a None model!"
@@ -163,10 +186,15 @@ class RayDeepSpeedStrategy(pl.strategies.DeepSpeedStrategy):
 
     @property
     def root_device(self) -> torch.device:
+        """This worker's device, from :func:`ray.train.torch.get_device`."""
         return ray.train.torch.get_device()
 
     @property
     def distributed_sampler_kwargs(self) -> Dict[str, Any]:
+        """Keyword arguments for the distributed sampler.
+
+        ``num_replicas`` is the world size and ``rank`` is this worker's global rank.
+        """
         return dict(
             num_replicas=self.world_size,
             rank=self.global_rank,
@@ -182,32 +210,79 @@ class RayLightningEnvironment(LightningEnvironment):  # noqa: F821
         record_extra_usage_tag(TagKey.TRAIN_LIGHTNING_RAYLIGHTNINGENVIRONMENT, "1")
 
     def world_size(self) -> int:
+        """Return the number of workers in the training run.
+
+        Returns:
+            The world size from the Ray Train context.
+        """
         return ray.train.get_context().get_world_size()
 
     def global_rank(self) -> int:
+        """Return this worker's rank across all workers.
+
+        Returns:
+            The world rank from the Ray Train context.
+        """
         return ray.train.get_context().get_world_rank()
 
     def local_rank(self) -> int:
+        """Return this worker's rank among the workers on its node.
+
+        Returns:
+            The local rank from the Ray Train context.
+        """
         return ray.train.get_context().get_local_rank()
 
     def node_rank(self) -> int:
+        """Return the rank of the node this worker runs on.
+
+        Returns:
+            The node rank from the Ray Train context.
+        """
         return ray.train.get_context().get_node_rank()
 
     def set_world_size(self, size: int) -> None:
+        """Do nothing, because :meth:`world_size` reads the Ray Train context.
+
+        Args:
+            size: Ignored.
+        """
         # Disable it since `world_size()` directly returns data from Train context.
         pass
 
     def set_global_rank(self, rank: int) -> None:
+        """Do nothing, because :meth:`global_rank` reads the Ray Train context.
+
+        Args:
+            rank: Ignored.
+        """
         # Disable it since `global_rank()` directly returns data from Train.
         pass
 
     def teardown(self):
+        """Do nothing, in place of the parent environment's teardown."""
         pass
 
 
 @PublicAPI(stability="beta")
 def prepare_trainer(trainer: pl.Trainer) -> pl.Trainer:
-    """Prepare the PyTorch Lightning Trainer for distributed execution."""
+    """Prepare the PyTorch Lightning Trainer for distributed execution.
+
+    Checks that the trainer's strategy is a :class:`RayDDPStrategy`,
+    :class:`RayFSDPStrategy`, or :class:`RayDeepSpeedStrategy`, or a subclass of
+    one, and that its cluster environment, if it has one, is a
+    :class:`RayLightningEnvironment`.
+
+    Args:
+        trainer: The Lightning ``Trainer`` to prepare.
+
+    Returns:
+        The same ``trainer`` object.
+
+    Raises:
+        RuntimeError: If the trainer's strategy or cluster environment isn't one
+            of the classes above.
+    """
 
     # Check strategy class
     valid_strategy_class = [RayDDPStrategy, RayFSDPStrategy, RayDeepSpeedStrategy]
@@ -253,29 +328,96 @@ class RayTrainReportCallback(pl.callbacks.Callback):
     For customized reporting and checkpointing logic, implement your own
     `lightning.pytorch.callbacks.Callback` following this user
     guide: :ref:`Saving and Loading Checkpoints <train-dl-saving-checkpoints>`.
+
+    Args:
+        checkpoint_upload_mode: The manner in which to upload the checkpoint.
+            See :ref:`Checkpoint upload modes <train-checkpoint-upload-modes>`
+            for more details. Ray Train v2 only. Defaults to
+            ``CheckpointUploadMode.SYNC``.
+        validation: Whether to asynchronously validate the checkpoint, or a
+            ``ValidationTaskConfig`` for the validation task. See
+            :ref:`Validating checkpoints asynchronously <train-validating-checkpoints>`
+            for more details. Ray Train v2 only.
+        checkpoint_frequency: Only report a checkpoint and metrics every
+            ``checkpoint_frequency`` epochs. Defaults to ``1``, which reports on
+            every epoch. If ``max_epochs`` isn't a multiple of
+            ``checkpoint_frequency``, the epochs after the last multiple aren't
+            reported.
+
+    Raises:
+        TypeError: If ``checkpoint_frequency`` isn't an integer.
+        ValueError: If ``checkpoint_frequency`` is less than 1, or if
+            ``checkpoint_upload_mode`` or ``validation`` is set on Ray Train v1.
     """
 
     CHECKPOINT_NAME = "checkpoint.ckpt"
 
-    def __init__(self) -> None:
+    def __init__(
+        self,
+        # v2-only arguments
+        checkpoint_upload_mode: Optional["CheckpointUploadMode"] = None,
+        validation: Union[bool, "ValidationTaskConfig"] = False,
+        checkpoint_frequency: int = 1,
+    ) -> None:
         super().__init__()
+        if not isinstance(checkpoint_frequency, int) or isinstance(
+            checkpoint_frequency, bool
+        ):
+            raise TypeError(
+                "`checkpoint_frequency` must be an integer, got "
+                f"{type(checkpoint_frequency).__name__}."
+            )
+        if checkpoint_frequency < 1:
+            raise ValueError(
+                "`checkpoint_frequency` must be a positive integer, got "
+                f"{checkpoint_frequency}."
+            )
+        self.checkpoint_frequency = checkpoint_frequency
+        self.checkpoint_upload_mode = checkpoint_upload_mode
+        self.validation = validation
+
+        if is_v2_enabled():
+            if checkpoint_upload_mode is None:
+                self.checkpoint_upload_mode = CheckpointUploadMode.SYNC
+        else:
+            if checkpoint_upload_mode is not None:
+                raise ValueError(
+                    "`checkpoint_upload_mode` is only supported in Ray Train v2. "
+                    "To enable it, please set `RAY_TRAIN_V2_ENABLED=1`."
+                )
+            if validation:
+                raise ValueError(
+                    "`validation` is only supported in Ray Train v2. "
+                    "To enable it, please set `RAY_TRAIN_V2_ENABLED=1`."
+                )
+
         job_id = ray.get_runtime_context().get_job_id()
         experiment_name = ray.train.get_context().get_experiment_name()
-        self.local_rank = ray.train.get_context().get_local_rank()
 
         self.tmpdir_prefix = Path(
             tempfile.gettempdir(),
-            f"lightning_checkpoints-job_id={job_id}-name={experiment_name}",
+            f"lightning_checkpoints-job_id={job_id}-name={experiment_name}-world_rank={ray.train.get_context().get_world_rank()}",
         ).as_posix()
-        if os.path.isdir(self.tmpdir_prefix) and self.local_rank == 0:
+        if os.path.isdir(self.tmpdir_prefix):
             shutil.rmtree(self.tmpdir_prefix)
 
         record_extra_usage_tag(TagKey.TRAIN_LIGHTNING_RAYTRAINREPORTCALLBACK, "1")
 
-    def on_train_epoch_end(self, trainer, pl_module) -> None:
-        # Creates a checkpoint dir with fixed name
-        tmpdir = Path(self.tmpdir_prefix, str(trainer.current_epoch)).as_posix()
-        os.makedirs(tmpdir, exist_ok=True)
+    def on_train_epoch_end(
+        self, trainer: pl.Trainer, pl_module: pl.LightningModule
+    ) -> None:
+        """Report metrics and a checkpoint to Ray Train at the end of an epoch.
+
+        Reports only every ``checkpoint_frequency`` epochs.
+
+        Args:
+            trainer: The Lightning trainer. The callback reports its
+                ``callback_metrics`` and saves its checkpoint.
+            pl_module: The Lightning module being trained. Unused.
+        """
+        # Only report (metrics + checkpoint) every `checkpoint_frequency` epochs.
+        if (trainer.current_epoch + 1) % self.checkpoint_frequency != 0:
+            return
 
         # Fetch metrics
         metrics = trainer.callback_metrics
@@ -285,16 +427,40 @@ class RayTrainReportCallback(pl.callbacks.Callback):
         metrics["epoch"] = trainer.current_epoch
         metrics["step"] = trainer.global_step
 
+        # Creates a checkpoint dir with fixed name
+        tmpdir = Path(self.tmpdir_prefix, str(trainer.current_epoch)).as_posix()
+        os.makedirs(tmpdir, exist_ok=True)
+
         # Save checkpoint to local
         ckpt_path = Path(tmpdir, self.CHECKPOINT_NAME).as_posix()
+        # TODO: with CheckpointUploadMode.ASYNC, this does cpu -> disk synchronously
+        # and disk -> remote asynchronously. We can add a new CheckpointIO class to do
+        # cpu -> remote asynchronously and a checkpoint_upload_fn to wait for it.
         trainer.save_checkpoint(ckpt_path, weights_only=False)
+        checkpoint = Checkpoint.from_directory(tmpdir)
 
         # Report to train session
-        checkpoint = Checkpoint.from_directory(tmpdir)
-        ray.train.report(metrics=metrics, checkpoint=checkpoint)
+        if is_v2_enabled():
+            ray.train.report(
+                metrics=metrics,
+                checkpoint=checkpoint,
+                checkpoint_upload_mode=self.checkpoint_upload_mode,
+                validation=self.validation,
+            )
+        else:
+            ray.train.report(metrics=metrics, checkpoint=checkpoint)
 
         # Add a barrier to ensure all workers finished reporting here
         trainer.strategy.barrier()
 
-        if self.local_rank == 0:
-            shutil.rmtree(tmpdir)
+        # With CheckpointUploadMode.ASYNC, the upload may still be in progress
+        # after report() returns. Let ray.train.report delete_local_checkpoint_after_upload
+        # handle cleanup instead.
+        if is_v2_enabled() and self.checkpoint_upload_mode is not None:
+            # Check here because CheckpointUploadMode is only imported when is_v2_enabled() is True
+            if (
+                self.checkpoint_upload_mode.default_delete_local_checkpoint_after_upload()
+            ):
+                return
+
+        shutil.rmtree(tmpdir)

@@ -5,7 +5,7 @@ import typing
 from collections import defaultdict
 from typing import Callable, Dict, List, Optional
 
-from ray._private.ray_constants import env_integer
+from ray._common.utils import env_integer
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
 from ray.data._internal.execution.operators.sub_progress import SubProgressBarMixin
 from ray.data._internal.execution.streaming_executor_state import (
@@ -124,7 +124,7 @@ class LoggingExecutionProgressManager(BaseExecutionProgressManager):
             op = state.op
             if isinstance(op, InputDataBuffer):
                 continue
-            total = op.num_output_rows_total() or 1
+            total = op.num_output_rows_total()
 
             contains_sub_progress_bars = isinstance(op, SubProgressBarMixin)
             sub_progress_bar_enabled = show_op_progress and (
@@ -212,13 +212,17 @@ class LoggingExecutionProgressManager(BaseExecutionProgressManager):
         if op_metrics is not None:
             op_metrics.completed = opstate.op.metrics.row_outputs_taken
             total = opstate.op.num_output_rows_total()
+            if total is None and opstate.op.has_completed():
+                # Resolve an unknown total to the actual output count once the operator is done.
+                total = op_metrics.completed
             if total is not None:
                 op_metrics.total = total
             op_metrics.desc = format_op_state_summary(opstate, resource_manager)
 
 
 def _format_progress(m: _LoggingMetrics) -> str:
-    return f"{m.name}: {m.completed}/{m.total or '?'}"
+    total = "?" if m.total is None else m.total
+    return f"{m.name}: {m.completed}/{total}"
 
 
 def _log_global_progress(m: _LoggingMetrics):

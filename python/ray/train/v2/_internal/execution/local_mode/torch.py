@@ -1,6 +1,6 @@
 import logging
 import os
-from typing import Callable
+from typing import Any, Callable
 
 import torch
 import torch.distributed as dist
@@ -76,9 +76,9 @@ class LocalTorchController(LocalController):
             )
         )
 
-    def run(self, train_func: Callable[[], None]) -> Result:
+    def run(self, train_func: Callable[[], Any]) -> Result:
         self._set_train_fn_utils()
-        train_func()
+        train_result = train_func()
         train_fn_utils = get_train_fn_utils()
         assert isinstance(train_fn_utils, LocalTrainFnUtils)
         result = Result(
@@ -86,6 +86,7 @@ class LocalTorchController(LocalController):
             checkpoint=train_fn_utils.get_checkpoint(),
             path=None,
             error=None,
+            return_value=train_result,
         )
         if dist.is_initialized():
             dist.destroy_process_group()

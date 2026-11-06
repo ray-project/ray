@@ -12,8 +12,7 @@ from ray.util.annotations import PublicAPI
 
 
 def _process_return_vals(return_vals: List[Any], return_single_output: bool):
-    """
-    Process return values for return to the DAG caller. Any exceptions found in
+    """Process return values for return to the DAG caller. Any exceptions found in
     return_vals will be raised. If return_single_output=True, it indicates that
     the original DAG did not have a MultiOutputNode, so the DAG caller expects
     a single return value instead of a list.
@@ -35,8 +34,7 @@ def _process_return_vals(return_vals: List[Any], return_single_output: bool):
 
 @PublicAPI(stability="alpha")
 class CompiledDAGRef:
-    """
-    A reference to a compiled DAG execution result.
+    """A reference to a compiled DAG execution result.
 
     This is a subclass of ObjectRef and resembles ObjectRef.  For example,
     similar to ObjectRef, ray.get() can be called on it to retrieve the result.
@@ -53,21 +51,18 @@ class CompiledDAGRef:
         execution_index: int,
         channel_index: Optional[int] = None,
     ):
-        """
+        """Initialize a CompiledDAGRef.
+
         Args:
             dag: The compiled DAG that generated this CompiledDAGRef.
             execution_index: The index of the execution for the DAG.
                 A DAG can be executed multiple times, and execution index
                 indicates which execution this CompiledDAGRef corresponds to.
-            actor_execution_loop_refs: The actor execution loop refs that
-                are used to execute the DAG. This can be used internally to
-                check the task execution errors in case of exceptions.
             channel_index: The index of the DAG's output channel to fetch
                 the result from. A DAG can have multiple output channels, and
                 channel index indicates which channel this CompiledDAGRef
                 corresponds to. If channel index is not provided, this CompiledDAGRef
                 wraps the results from all output channels.
-
         """
         self._dag = dag
         self._execution_index = execution_index
@@ -104,6 +99,22 @@ class CompiledDAGRef:
         self._dag._delete_execution_results(self._execution_index, self._channel_index)
 
     def get(self, timeout: Optional[float] = None):
+        """Wait for the execution result and return it.
+
+        ``ray.get()`` on a CompiledDAGRef calls this method. It can be called only
+        once per CompiledDAGRef.
+
+        Args:
+            timeout: The maximum time in seconds to wait for the execution. None
+                uses the compiled graph's default get timeout, 0 returns or times out
+                without blocking, and -1 waits indefinitely.
+
+        Returns:
+            The execution result.
+
+        Raises:
+            ValueError: If the result was already retrieved.
+        """
         if self._ray_get_called:
             raise ValueError(
                 "ray.get() can only be called once "
@@ -152,8 +163,7 @@ class CompiledDAGRef:
 
 @PublicAPI(stability="alpha")
 class CompiledDAGFuture:
-    """
-    A reference to a compiled DAG execution result, when executed with asyncio.
+    """A reference to a compiled DAG execution result, when executed with asyncio.
     This differs from CompiledDAGRef in that `await` must be called on the
     future to get the result, instead of `ray.get()`.
 
@@ -164,6 +174,14 @@ class CompiledDAGFuture:
     2. ray.wait() is not supported.
     3. CompiledDAGFuture cannot be copied, deep copied, or pickled.
     4. CompiledDAGFuture cannot be passed as an argument to another task.
+
+    Args:
+        dag: The compiled DAG that generated this CompiledDAGFuture.
+        execution_index: The index of the DAG execution that this
+            CompiledDAGFuture corresponds to.
+        fut: The asyncio future that resolves to the execution result.
+        channel_index: The index of the DAG output channel to fetch the result
+            from. If None, the result wraps the results of all output channels.
     """
 
     def __init__(

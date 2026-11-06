@@ -14,6 +14,7 @@
 
 #pragma once
 
+#include <atomic>
 #include <list>
 #include <memory>
 #include <string>
@@ -49,14 +50,18 @@ class ReferenceCounter : public ReferenceCounterInterface,
       pubsub::PublisherInterface *object_info_publisher,
       pubsub::SubscriberInterface *object_info_subscriber,
       std::function<bool(const NodeID &node_id)> is_node_dead,
+      std::function<void(const ObjectID &object_id,
+                         const absl::flat_hash_set<NodeID> &locations)>
+          free_object_on_nodes_async,
       ray::observability::MetricInterface &owned_object_by_state_counter,
       ray::observability::MetricInterface &owned_object_sizes_by_state_counter,
       bool lineage_pinning_enabled = false)
       : rpc_address_(std::move(rpc_address)),
-        lineage_pinning_enabled_(lineage_pinning_enabled),
         object_info_publisher_(object_info_publisher),
         object_info_subscriber_(object_info_subscriber),
         is_node_dead_(std::move(is_node_dead)),
+        free_object_on_nodes_async_(std::move(free_object_on_nodes_async)),
+        lineage_pinning_enabled_(lineage_pinning_enabled),
         owned_object_count_by_state_(owned_object_by_state_counter),
         owned_object_sizes_by_state_(owned_object_sizes_by_state_counter) {}
 
@@ -125,8 +130,7 @@ class ReferenceCounter : public ReferenceCounterInterface,
 
   bool AddBorrowedObject(const ObjectID &object_id,
                          const ObjectID &outer_id,
-                         const rpc::Address &owner_address,
-                         bool foreign_owner_already_monitoring = false) override
+                         const rpc::Address &owner_address) override
       ABSL_LOCKS_EXCLUDED(mutex_);
 
   bool GetOwner(const ObjectID &object_id,
@@ -172,7 +176,7 @@ class ReferenceCounter : public ReferenceCounterInterface,
 
   size_t NumActorsOwnedByUs() const override ABSL_LOCKS_EXCLUDED(mutex_);
 
-  void RecordMetrics() override;
+  void RecordOwnerMetrics() override;
 
   std::unordered_set<ObjectID> GetAllInScopeObjectIDs() const override
       ABSL_LOCKS_EXCLUDED(mutex_);
@@ -257,6 +261,10 @@ class ReferenceCounter : public ReferenceCounterInterface,
 
   std::optional<std::string> GetTensorTransport(const ObjectID &object_id) const override;
 
+  void SetLineagePinningEnabled(bool lineage_pinning_enabled) override {
+    lineage_pinning_enabled_.store(lineage_pinning_enabled);
+  }
+
  private:
   /// Contains information related to nested object refs only.
   struct NestedReferenceCount {
@@ -328,10 +336,15 @@ class ReferenceCounter : public ReferenceCounterInterface,
     /// Constructor from a protobuf. This is assumed to be a message from
     /// another process, so the object defaults to not being owned by us.
     static Reference FromProto(const rpc::ObjectReferenceCount &ref_count);
-    /// Serialize to a protobuf.
-    /// When `deduct_local_ref` is true, one local ref should be removed
-    /// when determining if the object has actual local references.
-    void ToProto(rpc::ObjectReferenceCount *ref, bool deduct_local_ref = false) const;
+
+    /// Serialize to a protobuf object.
+    ///
+    /// \param[in] ref The protobuf object to populate.
+    /// \param[in] object_id The ObjectID corresponding to this reference.
+    /// \param[in] has_local_ref Whether this worker is still using the ObjectID locally.
+    void ToProto(rpc::ObjectReferenceCount *ref,
+                 const ObjectID &object_id,
+                 bool has_local_ref) const;
 
     /// The reference count. This number includes:
     /// - Python references to the ObjectID.
@@ -425,6 +438,11 @@ class ReferenceCounter : public ReferenceCounterInterface,
     /// If this object is owned by us and stored in plasma, this contains all
     /// object locations.
     absl::flat_hash_set<NodeID> locations;
+    /// Set once a raylet subscribes to this object's locations. This acts like a
+    /// prefilter. Inline objects would never have a subscription, so those objects
+    /// that never had one could skip all subscriber related operations and
+    /// acquiring the related lock to speed up the object owner.
+    bool has_ever_had_location_subscriber = false;
     /// The object's owner's address, if we know it. If this process is the
     /// owner, then this is added during creation of the Reference. If this is
     /// process is a borrower, the borrower must add the owner's address before
@@ -490,13 +508,6 @@ class ReferenceCounter : public ReferenceCounterInterface,
     /// Whether this object has been spilled to external storage.
     bool spilled = false;
 
-    /// Whether the object was created with a foreign owner (i.e., _owner set).
-    /// In this case, the owner is already monitoring this reference with a
-    /// WaitForRefRemoved() call, and it is an error to return borrower
-    /// metadata to the parent of the current task.
-    /// See https://github.com/ray-project/ray/pull/19910 for more context.
-    bool foreign_owner_already_monitoring = false;
-
     /// ObjectRefs nested in this object that are or were in use. These objects
     /// are not owned by us, and we need to report that we are borrowing them
     /// to their owner. Nesting is transitive, so this flag is set as long as
@@ -511,7 +522,6 @@ class ReferenceCounter : public ReferenceCounterInterface,
   };
 
   using ReferenceTable = absl::flat_hash_map<ObjectID, Reference>;
-  using ReferenceProtoTable = absl::flat_hash_map<ObjectID, rpc::ObjectReferenceCount>;
 
   bool AddOwnedObjectInternal(const ObjectID &object_id,
                               const std::vector<ObjectID> &contained_ids,
@@ -546,11 +556,6 @@ class ReferenceCounter : public ReferenceCounterInterface,
 
   /// Deserialize a ReferenceTable.
   static ReferenceTable ReferenceTableFromProto(const ReferenceTableProto &proto);
-
-  /// Packs an object ID to ObjectReferenceCount map, into an array of
-  /// ObjectReferenceCount. Consumes the input proto table.
-  static void ReferenceTableToProto(ReferenceProtoTable &table,
-                                    ReferenceTableProto *proto);
 
   /// Remove references for the provided object IDs that correspond to them
   /// being dependencies to a submitted task. This should be called when
@@ -598,7 +603,19 @@ class ReferenceCounter : public ReferenceCounterInterface,
   bool GetAndClearLocalBorrowersInternal(const ObjectID &object_id,
                                          bool for_ref_removed,
                                          bool deduct_local_ref,
-                                         ReferenceProtoTable *borrowed_refs)
+                                         ReferenceTableProto *borrowed_refs)
+      ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
+
+  /// Recursive implementation of `GetAndClearLocalBorrowersInternal`, used to traverse
+  /// the graph of children IDs contained within the specified object ID.
+  ///
+  /// `encountered_ids` is used to memoize object IDs that have already been added to
+  /// `borrowed_refs` to avoid processing and mutating the same entry twice.
+  bool GetAndClearLocalBorrowersInternal(const ObjectID &object_id,
+                                         bool for_ref_removed,
+                                         bool deduct_local_ref,
+                                         ReferenceTableProto *borrowed_refs,
+                                         absl::flat_hash_set<ObjectID> &encountered_ids)
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   /// Merge remote borrowers into our local ref count. This will add any
@@ -635,14 +652,9 @@ class ReferenceCounter : public ReferenceCounterInterface,
   /// Helper method to add an object that we are borrowing. This is used when
   /// deserializing IDs from a task's arguments, or when deserializing an ID
   /// during ray.get().
-  ///
-  /// \param[in] foreign_owner_already_monitoring Whether to set the bit that an
-  ///            externally assigned owner is monitoring the lifetime of this
-  ///            object. This is the case for `ray.put(..., _owner=ZZZ)`.
   bool AddBorrowedObjectInternal(const ObjectID &object_id,
                                  const ObjectID &outer_id,
-                                 const rpc::Address &owner_address,
-                                 bool foreign_owner_already_monitoring)
+                                 const rpc::Address &owner_address)
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   /// Helper method to delete an entry from the reference map and run any necessary
@@ -726,12 +738,6 @@ class ReferenceCounter : public ReferenceCounterInterface,
   /// object's owner.
   rpc::Address rpc_address_;
 
-  /// Feature flag for lineage pinning. If this is false, then we will keep the
-  /// lineage ref count, but this will not be used to decide when the object's
-  /// Reference can be deleted. The object's lineage ref count is the number of
-  /// tasks that depend on that object that may be retried in the future.
-  const bool lineage_pinning_enabled_;
-
   /// Protects access to the reference counting state.
   mutable absl::Mutex mutex_;
 
@@ -779,6 +785,12 @@ class ReferenceCounter : public ReferenceCounterInterface,
   /// the object will be added to the buffer objects to recover.
   const std::function<bool(const NodeID &node_id)> is_node_dead_;
 
+  /// Called to send free local object RPCs to all raylets that hold a copy of
+  /// the object.
+  const std::function<void(const ObjectID &object_id,
+                           const absl::flat_hash_set<NodeID> &locations)>
+      free_object_on_nodes_async_;
+
   /// A buffer of the objects whose primary or spilled locations have been lost
   /// due to node failure. These objects are still in scope and need to be
   /// recovered.
@@ -790,6 +802,16 @@ class ReferenceCounter : public ReferenceCounterInterface,
   /// Keep track of actors owend by this worker.
   size_t num_actors_owned_by_us_ ABSL_GUARDED_BY(mutex_) = 0;
 
+  /// Feature flag for lineage pinning. If this is false, then we will keep the
+  /// lineage ref count, but this will not be used to decide when the object's
+  /// Reference can be deleted. The object's lineage ref count is the number of
+  /// tasks that depend on that object that may be retried in the future.
+  std::atomic<bool> lineage_pinning_enabled_;
+
+  /// Sticky: set to true the first time this worker becomes the owner of
+  /// any non-actor object. Never reset. Gates owner-side metric emission
+  /// so non-owners do not pollute per-worker metric cardinality.
+  std::atomic<bool> has_ever_owned_objects_{false};
   /// Track counts of owned objects by state.
   /// These are atomic to allow lock-free reads via public getters.
   std::atomic<size_t> owned_objects_pending_creation_{0};

@@ -23,6 +23,11 @@
             "description": "A unique identifier for the head node and workers of this cluster.",
             "type": "string"
         },
+        "auth_mode": {
+            "description": "Ray's authentication mode on every node. `ray up` ships the auth token to the cluster unless this is `disabled`, and sets RAY_AUTH_MODE in every node's start commands when it is given.",
+            "type": "string",
+            "enum": ["token", "disabled"]
+        },
         "max_workers": {
             "description": "The maximum number of workers nodes to launch in addition to the head node. This should be no larger than the sum of min_workers for all available node types.",
             "type": "integer",
@@ -204,6 +209,25 @@
             "type": "object",
             "description": "How Ray will authenticate with newly launched nodes.",
             "additionalProperties": false,
+            "allOf": [
+                {
+                    "if": {
+                        "properties": {
+                            "ssh_proxy_use_node_id": {
+                                "const": true
+                            }
+                        },
+                        "required": [
+                            "ssh_proxy_use_node_id"
+                        ]
+                    },
+                    "then": {
+                        "required": [
+                            "ssh_proxy_command"
+                        ]
+                    }
+                }
+            ],
             "properties": {
                 "ssh_user": {
                     "type": "string",
@@ -218,6 +242,11 @@
                 "ssh_proxy_command": {
                     "description": "A value for ProxyCommand ssh option, for connecting through proxies. Example: nc -x proxy.example.com:1234 %h %p",
                     "type": "string"
+                },
+                "ssh_proxy_use_node_id": {
+                    "description": "Whether to use the provider node ID instead of the node IP as the SSH target. This is useful for proxy commands that require a node ID.",
+                    "type": "boolean",
+                    "default": false
                 }
             }
         },
@@ -346,6 +375,7 @@
                        "min_workers": {"type": "integer"},
                        "max_workers": {"type": "integer"},
                        "idle_timeout_s": {"type": "number", "nullable": true},
+                       "priority": {"type": "integer"},
                        "resources": {
 						   "type": "object",
 						   "patternProperties": {

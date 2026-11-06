@@ -1,3 +1,4 @@
+from types import ModuleType
 from typing import TYPE_CHECKING, Any, Dict, Optional, Union
 
 from ray_release.exception import ClusterEnvCreateError
@@ -30,6 +31,14 @@ class Anyscale:
             self._anyscale_pkg = anyscale
 
         return self._anyscale_pkg
+
+    @property
+    def compute_config(self) -> ModuleType:
+        return self._anyscale().compute_config
+
+    @property
+    def cloud(self) -> ModuleType:
+        return self._anyscale().cloud
 
     def project_name_by_id(self, project_id: str) -> str:
         return self._anyscale().project.get(project_id).name
@@ -101,7 +110,6 @@ def create_cluster_env_from_image(
                     config_json=dict(
                         docker_image=image,
                         ray_version="nightly",
-                        env_vars=runtime_env,
                     ),
                 )
             )

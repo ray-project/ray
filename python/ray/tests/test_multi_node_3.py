@@ -8,12 +8,14 @@ import pytest
 
 import ray
 import ray._private.ray_constants as ray_constants
-from ray._common.test_utils import Semaphore
+from ray._common.test_utils import (
+    Semaphore,
+    run_string_as_driver,
+)
 from ray._private.test_utils import (
     check_call_ray,
     check_call_subprocess,
     kill_process_by_name,
-    run_string_as_driver,
     run_string_as_driver_nonblocking,
     start_redis_instance,
     wait_for_children_of_pid,
@@ -24,7 +26,7 @@ from ray._private.utils import detect_fate_sharing_support
 import psutil
 
 
-def test_calling_start_ray_head(call_ray_stop_only):
+def test_calling_start_ray_head(call_ray_stop_only, create_auth_token):
     # Test that we can call ray start with various command line
     # parameters.
 
@@ -129,7 +131,7 @@ def test_calling_start_ray_head(call_ray_stop_only):
     )
     check_call_ray(["stop"])
 
-    temp_dir = ray._common.utils.get_ray_temp_dir()
+    temp_dir = ray._common.utils.get_default_ray_temp_dir()
 
     # Test starting Ray with RAY_REDIS_ADDRESS env.
     _, proc = start_redis_instance(
@@ -142,7 +144,10 @@ def test_calling_start_ray_head(call_ray_stop_only):
     del os.environ["RAY_REDIS_ADDRESS"]
 
     # Test --block. Killing a child process should cause the command to exit.
-    blocked = subprocess.Popen(["ray", "start", "--head", "--block", "--port", "0"])
+    blocked = subprocess.Popen(
+        ["ray", "start", "--head", "--block", "--port", "0"],
+        env={**os.environ, "RAY_GRACEFUL_SHUTDOWN_DRAIN_TIMEOUT_S": "0"},
+    )
 
     blocked.poll()
     assert blocked.returncode is None
@@ -180,7 +185,10 @@ for i in range(0, 5):
     assert blocked.returncode != 0, "ray start shouldn't return 0 on bad exit"
 
     # Test --block. Killing the command should clean up all child processes.
-    blocked = subprocess.Popen(["ray", "start", "--head", "--block", "--port", "0"])
+    blocked = subprocess.Popen(
+        ["ray", "start", "--head", "--block", "--port", "0"],
+        env={**os.environ, "RAY_GRACEFUL_SHUTDOWN_DRAIN_TIMEOUT_S": "0"},
+    )
     blocked.poll()
     assert blocked.returncode is None
 
@@ -199,7 +207,55 @@ for i in range(0, 5):
     assert blocked.returncode != 0, "ray start shouldn't return 0 on bad exit"
 
 
-def test_ray_start_non_head(call_ray_stop_only, monkeypatch):
+def test_graceful_shutdown_drains_node_on_sigterm(
+    call_ray_stop_only, monkeypatch, tmp_path, create_auth_token
+):
+    # Opt-in graceful drain on SIGTERM (#64181): with
+    # RAY_GRACEFUL_SHUTDOWN_DRAIN_TIMEOUT_S set, SIGTERM to a `ray start --block`
+    # node marks the node draining and waits for it to finish before tearing
+    # down, instead of killing the raylet within ~1s. We assert on the drain log
+    # markers, which only appear when the option is enabled.
+    import signal
+    import time
+
+    monkeypatch.setenv("RAY_GRACEFUL_SHUTDOWN_DRAIN_TIMEOUT_S", "8")
+    monkeypatch.setenv("RAY_GRACEFUL_SHUTDOWN_POLL_INTERVAL_S", "0.5")
+
+    log_path = tmp_path / "ray_start.log"
+    with open(log_path, "w") as out:
+        blocked = subprocess.Popen(
+            ["ray", "start", "--head", "--block", "--include-dashboard", "false"],
+            stdout=out,
+            stderr=subprocess.STDOUT,
+        )
+        try:
+            # Wait for the runtime to come up.
+            deadline = time.time() + 30
+            while time.time() < deadline and blocked.poll() is None:
+                if "Ray runtime started" in log_path.read_text():
+                    break
+                time.sleep(0.5)
+            assert "Ray runtime started" in log_path.read_text(), log_path.read_text()
+
+            # SIGTERM the supervisor, as Kubernetes would to PID 1.
+            blocked.send_signal(signal.SIGTERM)
+            blocked.wait(timeout=30)
+
+            # The node drained before teardown (these markers are absent when the
+            # option is off, which tears the raylet down within ~1s).
+            log = log_path.read_text()
+            assert "received SIGTERM. Draining for up to 8" in log, log[-2000:]
+            assert (
+                "Local node finished draining" in log
+                or "did not finish draining within" in log
+            ), log[-2000:]
+        finally:
+            if blocked.poll() is None:
+                blocked.kill()
+                blocked.wait()
+
+
+def test_ray_start_non_head(call_ray_stop_only, monkeypatch, create_auth_token):
     # Test that we can call ray start to connect to an existing cluster.
 
     # Test starting Ray with a port specified.
@@ -420,13 +476,13 @@ def redis_proc():
         "(There cannot be external Redis in Windows)"
     ),
 )
-def test_ray_stop_should_not_kill_external_redis(redis_proc):
+def test_ray_stop_should_not_kill_external_redis(redis_proc, create_auth_token):
     check_call_ray(["start", "--head"])
     subprocess.check_call(["ray", "stop"])
     assert redis_proc.poll() is None
 
 
-def test_ray_stop_kill_workers():
+def test_ray_stop_kill_workers(create_auth_token):
     check_call_ray(["start", "--head"])
 
     ray.init(address="auto")

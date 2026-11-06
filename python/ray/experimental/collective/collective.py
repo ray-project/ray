@@ -6,7 +6,6 @@ import ray
 import ray.experimental.internal_kv as internal_kv
 from ray.experimental.collective.communicator import CommunicatorHandle
 from ray.util.annotations import PublicAPI
-from ray.util.collective.collective import get_address_and_port
 from ray.util.collective.collective_group.torch_gloo_collective_group import (
     get_master_address_metadata_key,
 )
@@ -45,8 +44,7 @@ class RemoteCommunicatorManager:
         actors: Optional[List[ray.actor.ActorHandle]] = None,
         backend: Optional[Backend] = None,
     ):
-        """
-        Get the collective groups that the given actors are a subset of. Filter by
+        """Get the collective groups that the given actors are a subset of. Filter by
         backend if provided.
         """
         actors = actors or []
@@ -66,8 +64,7 @@ class RemoteCommunicatorManager:
 def get_collective_groups(
     actors: List[ray.actor.ActorHandle], backend: Optional[str] = None
 ) -> List[CommunicatorHandle]:
-    """
-    Get the collective groups that the given actors are a subset of. Filter by
+    """Get the collective groups that the given actors are a subset of. Filter by
     backend if provided.
 
     Args:
@@ -130,17 +127,7 @@ def create_collective_group(
 
     metadata_key = None
     if backend == Backend.GLOO:
-        # Perform extra setup for torch.distributed.
-        # torch.distributed requires a master address and port. Find a suitable
-        # port on one of the actors.
-        master_addr, master_port = ray.get(
-            actors[0].__ray_call__.remote(lambda self: get_address_and_port())
-        )
-
-        # Store the metadata on a named actor that all of the other
-        # actors can access.
         metadata_key = get_master_address_metadata_key(name)
-        internal_kv._internal_kv_put(metadata_key, f"{master_addr}:{master_port}")
 
     def _do_init_collective_group(self, rank: int):
         ray.util.collective.init_collective_group(
@@ -170,8 +157,7 @@ def create_collective_group(
 
 @PublicAPI(stability="alpha")
 def destroy_collective_group(group_or_name: Union[CommunicatorHandle, str]):
-    """
-    Destroy a collective group. If this functions returns successfully, then
+    """Destroy a collective group. If this functions returns successfully, then
     the actors that were in the collective can be reused to create a new
     collective group.
 
@@ -209,8 +195,7 @@ def destroy_collective_group(group_or_name: Union[CommunicatorHandle, str]):
 
 @PublicAPI(stability="alpha")
 def destroy_all_collective_groups():
-    """
-    Destroy all collective groups. This will destroy all collective groups that
+    """Destroy all collective groups. This will destroy all collective groups that
     were previously created by this process. After this function returns, the
     actors participating in those collective groups can be reused to create a
     new collective group.

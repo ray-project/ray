@@ -34,29 +34,37 @@ using SubscriptionItemCallback = std::function<void(rpc::PubMessage &&)>;
 using SubscriptionFailureCallback =
     std::function<void(const std::string &, const Status &)>;
 
-/// Interface for a subscriber to one or more pubsub channels from a publisher.
+/**
+ * @brief Interface for a subscriber to one or more pubsub channels from a publisher.
+ */
 class SubscriberInterface {
  public:
-  /// There are two modes of subscriptions. Each channel can only be subscribed in one
-  /// mode, i.e.
-  /// - Calling Subscribe() to subscribe to one or more entities in a channel.
-  /// - Calling Subscribe() once to subscribe to all entities in a channel.
-  /// NOTE: It is an error to call both Subscribe() to all entities and then only
-  /// subscribe to one entity on the same channel type.
-
-  /// Subscribe to entity key_id in channel channel_type.
-  /// NOTE(sang): All the callbacks could be executed in a different thread from a caller.
-  /// For example, Subscriber executes callbacks on a passed io_service.
-  ///
-  /// \param sub_message The subscription message.
-  /// \param channel_type The channel to subscribe to.
-  /// \param publisher_address Address of the publisher to subscribe the object.
-  /// \param key_id The entity id to subscribe from the publisher. Subscribes to all
-  /// entities if nullopt.
-  /// \param subscription_callback A callback that is invoked whenever the given entity
-  /// information is received by the subscriber.
-  /// \param subscription_failure_callback A callback that is invoked whenever the
-  /// connection to publisher is broken (e.g. the publisher fails).
+  /**
+   * @brief Subscribe to entity key_id in channel channel_type.
+   *
+   * There are two modes of subscriptions. Each channel can only be subscribed in one
+   * mode, i.e.
+   * - Calling Subscribe() to subscribe to one or more entities in a channel.
+   * - Calling Subscribe() once to subscribe to all entities in a channel.
+   *
+   * @note It is an error to call both Subscribe() to all entities and then only
+   * subscribe to one entity on the same channel type.
+   *
+   * @note All the callbacks could be executed in a different thread from a caller.
+   * For example, Subscriber executes callbacks on a passed io_service.
+   *
+   * @param sub_message The subscription message.
+   * @param channel_type The channel to subscribe to.
+   * @param publisher_address Address of the publisher to subscribe the object.
+   * @param key_id The entity id to subscribe from the publisher. Subscribes to all
+   *        entities if nullopt.
+   * @param subscribe_done_callback A callback that is invoked when the subscription
+   *        request completes.
+   * @param subscription_callback A callback that is invoked whenever the given entity
+   *        information is received by the subscriber.
+   * @param subscription_failure_callback A callback that is invoked whenever the
+   *        connection to publisher is broken (e.g. the publisher fails).
+   */
   virtual void Subscribe(std::unique_ptr<rpc::SubMessage> sub_message,
                          rpc::ChannelType channel_type,
                          const rpc::Address &publisher_address,
@@ -65,41 +73,72 @@ class SubscriberInterface {
                          SubscriptionItemCallback subscription_callback,
                          SubscriptionFailureCallback subscription_failure_callback) = 0;
 
-  /// Unsubscribe the entity if the entity has been subscribed with Subscribe().
-  /// NOTE: This method is expected to be idempotent and can handle retries
-  ///
-  /// \param channel_type The channel to unsubscribe from.
-  /// \param publisher_address The publisher address that it will unsubscribe from.
-  /// \param key_id The entity id to unsubscribe. Unsubscribes from all entities if
-  /// nullopt.
+  /**
+   * @brief Unsubscribe the entity if the entity has been subscribed with Subscribe().
+   *
+   * @note This method is expected to be idempotent and can handle retries.
+   *
+   * @param channel_type The channel to unsubscribe from.
+   * @param publisher_address The publisher address that it will unsubscribe from.
+   * @param key_id The entity id to unsubscribe. Unsubscribes from all entities if
+   *        nullopt.
+   */
   virtual void Unsubscribe(rpc::ChannelType channel_type,
                            const rpc::Address &publisher_address,
                            const std::optional<std::string> &key_id) = 0;
 
-  /// Test only.
-  /// Checks if the entity key_id is being subscribed to specifically.
-  /// Does not consider if the subscriber is subscribed to all entities in a channel.
-  ///
-  /// \param publisher_address The publisher address to check.
-  /// \param key_id The entity id to check.
+  /**
+   * @brief Checks if the entity key_id is being subscribed to specifically.
+   *
+   * Does not consider if the subscriber is subscribed to all entities in a channel.
+   *
+   * @note Test only.
+   *
+   * @param channel_type The channel type to check.
+   * @param publisher_address The publisher address to check.
+   * @param key_id The entity id to check.
+   * @return true if the entity is being subscribed to specifically.
+   * @return false otherwise.
+   */
   virtual bool IsSubscribed(rpc::ChannelType channel_type,
                             const rpc::Address &publisher_address,
                             const std::string &key_id) const = 0;
 
+  /**
+   * @brief Returns a debug string representation of the subscriber.
+   *
+   * @return A string containing debug information.
+   */
   virtual std::string DebugString() const = 0;
 
   virtual ~SubscriberInterface() = default;
 };
 
-/// Interface for the client used by a subscriber.
+/**
+ * @brief Interface for the client used by a subscriber.
+ */
 class SubscriberClientInterface {
  public:
-  /// Send a long polling request to a publisher.
+  /**
+   * @brief Send a long polling request to a publisher.
+   *
+   * @param request The long polling request.
+   * @param callback The callback to receive the reply.
+   */
   virtual void PubsubLongPolling(
       rpc::PubsubLongPollingRequest &&request,
       const rpc::ClientCallback<rpc::PubsubLongPollingReply> &callback) = 0;
 
-  /// Send a pubsub command batch to a publisher.
+  /**
+   * @brief Send a pubsub command batch to a publisher.
+   *
+   * @param request The command batch request.
+   * @param callback The callback to receive the reply.
+   *        - On success: status argument is set ok.
+   *        - On error: status.ok == false.
+   *          - InvalidArgument: the command type or channel type of the request is
+   *            invalid.
+   */
   virtual void PubsubCommandBatch(
       rpc::PubsubCommandBatchRequest &&request,
       const rpc::ClientCallback<rpc::PubsubCommandBatchReply> &callback) = 0;

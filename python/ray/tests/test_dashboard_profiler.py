@@ -8,9 +8,17 @@ import requests
 import ray
 from ray._private.test_utils import (
     format_web_url,
+    request_with_auth_token,
     wait_until_server_available,
     wait_until_succeeded_without_exception,
 )
+
+
+@pytest.fixture(autouse=True)
+def enable_profiling():
+    os.environ["RAY_DASHBOARD_ENABLE_PROFILING"] = "1"
+    yield
+    os.environ.pop("RAY_DASHBOARD_ENABLE_PROFILING", None)
 
 
 @pytest.mark.skipif(
@@ -26,6 +34,13 @@ from ray._private.test_utils import (
 @pytest.mark.parametrize("native", ["0", "1"])
 @pytest.mark.parametrize("node_info", ["node_id", "ip"])
 def test_profiler_endpoints(ray_start_with_dashboard, native, node_info):
+    if native == "1" and sys.platform == "linux":
+        pytest.skip(
+            "py-spy --native 'failed to get os threadid' "
+            "(https://github.com/ray-project/ray/issues/30566); "
+            "see also https://github.com/benfred/py-spy/issues/490; "
+            "disabled as part of Ubuntu 22.04 upgrade"
+        )
     # Sanity check py-spy are installed.
     subprocess.check_call(["py-spy", "--version"])
 
@@ -61,7 +76,7 @@ def test_profiler_endpoints(ray_start_with_dashboard, native, node_info):
             f"{webui_url}/worker/traceback?pid={pid}&{get_node_info()}&native={native}"
         )
         print("GET URL", url)
-        response = requests.get(url)
+        response = request_with_auth_token("GET", url)
         print("STATUS CODE", response.status_code)
         print("HEADERS", response.headers)
         content = response.content.decode("utf-8")
@@ -83,8 +98,9 @@ def test_profiler_endpoints(ray_start_with_dashboard, native, node_info):
     )
 
     def get_actor_flamegraph():
-        response = requests.get(
-            f"{webui_url}/worker/cpu_profile?pid={pid}&{get_node_info()}&native={native}"
+        response = request_with_auth_token(
+            "GET",
+            f"{webui_url}/worker/cpu_profile?pid={pid}&{get_node_info()}&native={native}",
         )
         response.raise_for_status()
         assert response.headers["Content-Type"] == "image/svg+xml", response.headers
@@ -150,8 +166,9 @@ def test_memory_profiler_endpoint(ray_start_with_dashboard, leaks, node_info):
             return f"ip={node_ip}"
 
     def get_actor_memory_flamegraph():
-        response = requests.get(
-            f"{webui_url}/memory_profile?pid={pid}&{get_node_info()}&leaks={leaks}&duration=5"
+        response = request_with_auth_token(
+            "GET",
+            f"{webui_url}/memory_profile?pid={pid}&{get_node_info()}&leaks={leaks}&duration=5",
         )
         response.raise_for_status()
 
@@ -174,8 +191,9 @@ def test_memory_profiler_endpoint(ray_start_with_dashboard, leaks, node_info):
     )
 
     def get_actor_memory_multiple_flamegraphs():
-        response = requests.get(
-            f"{webui_url}/memory_profile?pid={pid}&{get_node_info()}&leaks={leaks}&duration=5"
+        response = request_with_auth_token(
+            "GET",
+            f"{webui_url}/memory_profile?pid={pid}&{get_node_info()}&leaks={leaks}&duration=5",
         )
         response.raise_for_status()
 
@@ -242,8 +260,8 @@ def test_profiler_failure_message(ray_start_with_dashboard, node_info):
             return f"ip={node_ip}"
 
     def get_actor_stack():
-        response = requests.get(
-            f"{webui_url}/worker/traceback?pid={pid}&{get_node_info()}"
+        response = request_with_auth_token(
+            "GET", f"{webui_url}/worker/traceback?pid={pid}&{get_node_info()}"
         )
         response.raise_for_status()
         content = response.content.decode("utf-8")
@@ -259,8 +277,8 @@ def test_profiler_failure_message(ray_start_with_dashboard, node_info):
     )
 
     # Check we return the right status code and error message on failure.
-    response = requests.get(
-        f"{webui_url}/worker/traceback?pid=1234567&{get_node_info()}"
+    response = request_with_auth_token(
+        "GET", f"{webui_url}/worker/traceback?pid=1234567&{get_node_info()}"
     )
     content = response.content.decode("utf-8")
     print(content)
@@ -268,8 +286,8 @@ def test_profiler_failure_message(ray_start_with_dashboard, node_info):
     assert "Failed to execute" in content, content
 
     # Check we return the right status code and error message on failure.
-    response = requests.get(
-        f"{webui_url}/worker/cpu_profile?pid=1234567&{get_node_info()}"
+    response = request_with_auth_token(
+        "GET", f"{webui_url}/worker/cpu_profile?pid=1234567&{get_node_info()}"
     )
     content = response.content.decode("utf-8")
     print(content)
@@ -277,7 +295,9 @@ def test_profiler_failure_message(ray_start_with_dashboard, node_info):
     assert "Failed to execute" in content, content
 
     # Check we return the right status code and error message on failure.
-    response = requests.get(f"{webui_url}/memory_profile?pid=1234567&{get_node_info()}")
+    response = request_with_auth_token(
+        "GET", f"{webui_url}/memory_profile?pid=1234567&{get_node_info()}"
+    )
     content = response.content.decode("utf-8")
     print(content)
     assert "text/plain" in response.headers["Content-Type"], response.headers
@@ -291,7 +311,9 @@ def test_profiler_failure_message(ray_start_with_dashboard, node_info):
         wrong_param = "ip=1.2.3.4"
         expect_msg = "Failed to execute: no agent address found for node IP 1.2.3.4"
 
-    response = requests.get(f"{webui_url}/memory_profile?pid=1234567&{wrong_param}")
+    response = request_with_auth_token(
+        "GET", f"{webui_url}/memory_profile?pid=1234567&{wrong_param}"
+    )
     content = response.content.decode("utf-8")
     print(content)
     assert expect_msg in content, content

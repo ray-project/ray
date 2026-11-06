@@ -2,7 +2,7 @@ import copy
 import os
 from typing import Any, Dict, Tuple
 
-from ray._common.utils import get_ray_temp_dir
+from ray._common.utils import get_default_ray_temp_dir
 from ray.autoscaler._private.cli_logger import cli_logger
 
 unsupported_field_message = "The field {} is not supported for on-premise clusters."
@@ -11,8 +11,7 @@ LOCAL_CLUSTER_NODE_TYPE = "local.cluster.node"
 
 
 def prepare_local(config: Dict[str, Any]) -> Tuple[Dict[str, Any], bool]:
-    """
-    Prepare local cluster config for ingestion by cluster launcher and
+    """Prepare local cluster config for ingestion by cluster launcher and
     autoscaler.
     """
     config = copy.deepcopy(config)
@@ -116,11 +115,15 @@ def prepare_manual(config: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def get_lock_path(cluster_name: str) -> str:
-    return os.path.join(get_ray_temp_dir(), "cluster-{}.lock".format(cluster_name))
+    return os.path.join(
+        get_default_ray_temp_dir(), "cluster-{}.lock".format(cluster_name)
+    )
 
 
 def get_state_path(cluster_name: str) -> str:
-    return os.path.join(get_ray_temp_dir(), "cluster-{}.state".format(cluster_name))
+    return os.path.join(
+        get_default_ray_temp_dir(), "cluster-{}.state".format(cluster_name)
+    )
 
 
 def bootstrap_local(config: Dict[str, Any]) -> Dict[str, Any]:

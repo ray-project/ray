@@ -3,10 +3,10 @@ import tempfile
 import torch
 import evaluate
 from datasets import load_dataset
+from torch.optim import AdamW
 from transformers import (
     AutoTokenizer,
     AutoModelForSequenceClassification,
-    AdamW,
     get_linear_schedule_with_warmup,
 )
 from accelerate import Accelerator
@@ -22,7 +22,7 @@ def train_func():
     accelerator = Accelerator()
 
     # Datasets
-    dataset = load_dataset("yelp_review_full")
+    dataset = load_dataset("Yelp/yelp_review_full")
     tokenizer = AutoTokenizer.from_pretrained("bert-base-cased")
 
     def tokenize_function(examples):
