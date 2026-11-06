@@ -94,27 +94,47 @@ class UDFSpec:
 
 
 class _MapActorContext:
-    def __init__(
-        self,
-        is_async: bool = False,
-        udf_instances: Optional[Dict[int, Any]] = None,
-    ):
+    def __init__(self):
         """Initialize the map actor context.
 
-        Args:
-            is_async: Whether any UDF is async
-            udf_instances: Dict mapping UDF class ID to instantiated instance
+        The context starts empty. UDF instances are registered incrementally
+        via :meth:`add_udf_specs`, which also lazily sets up the async event
+        loop the first time an async UDF is added. This supports fused
+        operators (e.g. Actor->Actor fusion), where multiple callable-class
+        UDFs — possibly a mix of sync and async — share a single context.
         """
-        self.is_async = is_async
+        # ``is_async`` reflects whether the async event loop has been set up,
+        # i.e. whether any registered UDF is async. Sync and async UDFs can
+        # coexist in the same context when operators are fused.
+        self.is_async = False
         self.udf_map_asyncio_loop = None
         self.udf_map_asyncio_thread = None
-        self.udf_instances = udf_instances or {}
+        self.udf_instances = {}
 
-        if is_async:
-            self._init_async()
+    def add_udf_specs(self, udf_specs: List["UDFSpec"]):
+        """Instantiate and register the given UDF specs into this context.
+
+        Instances are keyed by ``spec.make_key()`` and deduplicated, so calling
+        this repeatedly (as happens when fused operators chain their init
+        functions) is idempotent per key. If any added UDF is async, the async
+        event loop is initialized on demand.
+        """
+        for spec in udf_specs:
+            udf_key = spec.spec.make_key()
+            if udf_key not in self.udf_instances:
+                # Instantiate using the wrapped/processed class.
+                self.udf_instances[udf_key] = spec.instantiation_class(
+                    *spec.spec.args, **spec.spec.kwargs
+                )
+            if not self.is_async and _is_async_udf(spec.instantiation_class.__call__):
+                self._init_async()
 
     def _init_async(self):
         # Only used for callable class with async generator `__call__` method.
+        # Idempotent: the loop is set up at most once per context.
+        if self.udf_map_asyncio_loop is not None:
+            return
+
         loop = get_or_create_event_loop()
 
         def run_loop():
@@ -123,6 +143,7 @@ class _MapActorContext:
 
         thread = Thread(target=run_loop, daemon=True)
         thread.start()
+        self.is_async = True
         self.udf_map_asyncio_loop = loop
         self.udf_map_asyncio_thread = thread
 
@@ -464,7 +485,11 @@ def _get_udf(
 
             def _wrapped_udf_map_fn(item: Any) -> Any:
                 assert ray.data._map_actor_context is not None
-                assert not ray.data._map_actor_context.is_async
+                # NOTE: We intentionally do not assert ``not is_async`` here.
+                # When this sync UDF is fused with an async UDF (e.g.
+                # Actor->Actor fusion), they share a context whose async loop
+                # is set up for the async UDF. This sync UDF is still
+                # dispatched synchronously and is unaffected by that loop.
                 try:
                     # Use spec's key for lookup
                     udf_key = captured_spec.make_key()
@@ -677,28 +702,15 @@ def create_actor_context_init_fn(
     def init_fn():
         import ray
 
+        # Lazily create the shared context. When operators are fused (e.g.
+        # Actor->Actor fusion), each operator's init_fn is chained, so the
+        # context may already exist — in that case we merge our UDFs into it
+        # rather than clobbering it (which would drop the other operator's
+        # registered UDF instances).
         if ray.data._map_actor_context is None:
-            # Check if any UDF is async
-            has_async_udf = any(
-                _is_async_udf(spec.instantiation_class.__call__) for spec in udf_specs
-            )
+            ray.data._map_actor_context = _MapActorContext()
 
-            # Create instances for all callable class UDFs
-            udf_instances = {}
-            for spec in udf_specs:
-                # Use the spec's key for deduplication and lookup
-                udf_key = spec.spec.make_key()
-                if udf_key not in udf_instances:
-                    # Instantiate using the wrapped/processed class
-                    udf_instances[udf_key] = spec.instantiation_class(
-                        *spec.spec.args, **spec.spec.kwargs
-                    )
-
-            # Single unified context for all UDFs
-            ray.data._map_actor_context = _MapActorContext(
-                is_async=has_async_udf,
-                udf_instances=udf_instances,
-            )
+        ray.data._map_actor_context.add_udf_specs(udf_specs)
 
     return init_fn
 

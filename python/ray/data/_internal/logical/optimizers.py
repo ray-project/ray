@@ -50,6 +50,36 @@ _PHYSICAL_RULESET = Ruleset(
 )
 
 
+_actor_only_rules_installed = False
+
+
+def _maybe_install_actor_only_rules() -> None:
+    """Swap default optimization rules for their experimental actor-only overrides.
+
+    This is the ruleset-swap wiring seam for the actor-only backend: when
+    ``actor_only_backend_enabled()`` is true, the experimental ``FuseOperators``
+    (which additionally allows Actor->Actor fusion) replaces the default rule in
+    the physical ruleset. No-op otherwise, so the default ruleset above stays
+    backend-agnostic.
+    """
+    global _actor_only_rules_installed
+    if _actor_only_rules_installed:
+        return
+
+    from ray.data._internal.execution.execution_flags import actor_only_backend_enabled
+
+    if not actor_only_backend_enabled():
+        return
+
+    from ray.data._internal.experimental.logical.rules.operator_fusion import (
+        FuseOperators as ExperimentalFuseOperators,
+    )
+
+    if FuseOperators in list(_PHYSICAL_RULESET):
+        _PHYSICAL_RULESET.replace(FuseOperators, ExperimentalFuseOperators)
+    _actor_only_rules_installed = True
+
+
 @DeveloperAPI
 def get_logical_ruleset() -> Ruleset:
     return _LOGICAL_RULESET
@@ -57,6 +87,7 @@ def get_logical_ruleset() -> Ruleset:
 
 @DeveloperAPI
 def get_physical_ruleset() -> Ruleset:
+    _maybe_install_actor_only_rules()
     return _PHYSICAL_RULESET
 
 
