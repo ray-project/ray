@@ -1035,3 +1035,24 @@ def configure_http_middlewares(http_options: HTTPOptions) -> HTTPOptions:
         )
 
     return http_options
+
+
+def builtin_app_health_path(route_prefix: Optional[str]) -> Optional[str]:
+    """Per-app health path, or None when it would be the system route.
+
+    ``/{route_prefix}/-/healthz`` is the built-in application health route.
+    A route prefix of ``/`` (or empty) makes that string ``/-/healthz``, which
+    is already the proxy and direct-ingress system health route. That system
+    route stays a dataplane readiness check and does not call user
+    ``check_health``.
+    """
+    if route_prefix is None or route_prefix == "" or route_prefix == "/":
+        return None
+    prefix = route_prefix[:-1] if route_prefix.endswith("/") else route_prefix
+    return f"{prefix}/-/healthz"
+
+
+def is_builtin_app_health_path(route_prefix: Optional[str], route_path: str) -> bool:
+    """Whether ``route_path`` is the built-in per-app health route."""
+    expected = builtin_app_health_path(route_prefix)
+    return expected is not None and route_path == expected
