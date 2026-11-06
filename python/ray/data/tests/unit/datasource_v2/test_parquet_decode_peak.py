@@ -155,11 +155,9 @@ def test_a_failed_footer_read_still_bounds_the_peak(
 
 
 @pytest.mark.parametrize("unmodelled", ["file", "delta-byte-array-leaf"])
-def test_unmodelled_row_groups_charge_a_read_task_budget(
-    tmp_path, monkeypatch, unmodelled
-):
+def test_unmodelled_row_groups_charge_a_flat_cost(tmp_path, monkeypatch, unmodelled):
     """A file, or a leaf like DELTA_BYTE_ARRAY strings without trusted sizes, that
-    the estimator doesn't model costs each row group a read task's budget, once."""
+    the estimator doesn't model costs each row group a flat charge, once."""
     import ray.data._internal.datasource_v2.formats.parquet.footer_reader as reader
 
     path = tmp_path / "f.parquet"
@@ -172,10 +170,10 @@ def test_unmodelled_row_groups_charge_a_read_task_budget(
             "column_encoding": {"s": "DELTA_BYTE_ARRAY"},
         }
     pq.write_table(_mixed(), path, row_group_size=M // 4, **write_kwargs)
-    budget = 64 << 20
-    sizes = _sizes(path, read_task_bytes=budget)
+    charge = reader._UNMODELLED_BYTES
+    sizes = _sizes(path)
     assert len(sizes) == 4
-    assert all(budget < size < budget + (1 << 20) for size in sizes), sizes
+    assert all(charge < size < charge + (1 << 20) for size in sizes), sizes
 
 
 def test_pinned_schema_adds_the_cast_and_the_added_columns(tmp_path):
