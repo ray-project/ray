@@ -6,8 +6,11 @@ from unittest.mock import patch
 import pytest
 
 from ray.autoscaler._private.command_runner import (
+    _OUTPUT_END_MARKER,
+    _OUTPUT_START_MARKER,
     DockerCommandRunner,
     SSHCommandRunner,
+    _strip_output_markers,
     _with_environment_variables,
 )
 from ray.autoscaler.command_runner import CommandRunnerInterface
@@ -216,6 +219,46 @@ def test_rsync_uses_node_id_as_proxy_target():
 
     download_command = process_runner.calls[0]
     assert f"ray@{node_id}:/remote/source" in download_command
+
+
+def test_ssh_command_runner_strips_profile_output():
+    """Regression test for https://github.com/ray-project/ray/issues/62045.
+
+    Login shells may print a MOTD or other banners around the command's own
+    output. Captured output must contain only what the command printed.
+    """
+    process_runner = MockProcessRunner()
+    provider = MockProvider()
+    provider.create_node({}, {}, 1)
+    cmd_runner = SSHCommandRunner(
+        log_prefix="prefix",
+        node_id="0",
+        provider=provider,
+        auth_config=auth_config,
+        cluster_name="cluster",
+        process_runner=process_runner,
+        use_internal_ip=False,
+    )
+    process_runner.respond_to_call(
+        "echo hello",
+        [
+            "Welcome to the node, disk quota is 95% full\r\n"
+            f"{_OUTPUT_START_MARKER}\r\nhello\r\n\r\n{_OUTPUT_END_MARKER}\r\n"
+            "logout banner\r\n"
+        ],
+    )
+
+    assert cmd_runner.run("echo hello", with_output=True) == b"hello"
+    process_runner.assert_has_call("1.2.3.4", pattern=_OUTPUT_START_MARKER)
+    process_runner.assert_has_call("1.2.3.4", pattern="exit \\$__ray_status")
+
+
+@pytest.mark.parametrize(
+    "output",
+    [b"plain output with no markers", b"only " + _OUTPUT_START_MARKER.encode()],
+)
+def test_strip_output_markers_passthrough(output):
+    assert _strip_output_markers(output) == output
 
 
 def test_docker_command_runner():
