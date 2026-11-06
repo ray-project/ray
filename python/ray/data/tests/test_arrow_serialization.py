@@ -65,6 +65,23 @@ def binary_array():
 
 
 @pytest.fixture
+def string_view_array():
+    # Mix of long (out-of-line), short (inlined in the view), and null values.
+    return pa.array(
+        ["foo" * 10, "bar", None, "quux" * 10, "inline"] * 200,
+        type=pa.string_view(),
+    )
+
+
+@pytest.fixture
+def binary_view_array():
+    return pa.array(
+        [b"foo" * 10, b"bar", None, b"quux" * 10] * 250,
+        type=pa.binary_view(),
+    )
+
+
+@pytest.fixture
 def fixed_size_binary_array():
     return pa.array([b"foo", b"bar", b"baz", None, b"qux"] * 200, type=pa.binary(3))
 
@@ -286,6 +303,17 @@ pytest_custom_serialization_arrays = [
     (lazy_fixture("pickled_objects_array"), 0.1),
 ]
 
+if get_pyarrow_version() >= parse_version("19.0.0"):
+    # View types were added in Arrow 16.0.0, but pa.Array.from_buffers only
+    # accepts their variadic buffers from 19.0.0 on; older versions fall back to
+    # Arrow IPC.
+    pytest_custom_serialization_arrays += [
+        # String view array
+        (lazy_fixture("string_view_array"), 0.1),
+        # Binary view array
+        (lazy_fixture("binary_view_array"), 0.1),
+    ]
+
 
 @pytest.mark.parametrize("data,cap_mult", pytest_custom_serialization_arrays)
 def test_custom_arrow_data_serializer(ray_start_regular_shared, data, cap_mult):
@@ -330,6 +358,76 @@ def test_custom_arrow_data_serializer(ray_start_regular_shared, data, cap_mult):
         slice_buf_size = post_slice.get_total_buffer_size()
         if buf_size > 0:
             assert buf_size / slice_buf_size - len(data) / len(post_slice) < 100
+
+
+requires_view_serialization = pytest.mark.skipif(
+    get_pyarrow_version() < parse_version("19.0.0"),
+    reason="View arrays use the Arrow IPC fallback before pyarrow 19.",
+)
+
+
+def _make_view_array(arrow_type):
+    # Three chunks, so the concatenated array has several variadic data buffers:
+    # all long, long/short/null mix, all short (inlined in the views).
+    to_type = (
+        (lambda v: v) if arrow_type == pa.string_view() else (lambda v: v.encode())
+    )
+    chunks = [
+        [to_type(f"long-value-{i:04d}-" + "x" * 20) for i in range(100)],
+        [
+            None
+            if i % 5 == 0
+            else to_type(f"s{i}" if i % 2 else f"mixed-{i}-" + "y" * 20)
+            for i in range(100)
+        ],
+        [to_type(f"short{i}") for i in range(100)],
+    ]
+    return pa.concat_arrays([pa.array(c, type=arrow_type) for c in chunks])
+
+
+@requires_view_serialization
+@pytest.mark.parametrize("arrow_type", [pa.string_view(), pa.binary_view()], ids=str)
+@pytest.mark.parametrize(
+    "offset,length",
+    [
+        (0, 300),  # full array
+        (0, 0),  # empty
+        (150, 0),  # empty, in the middle
+        (10, 20),  # within the first data buffer
+        (90, 30),  # spans two data buffers
+        (110, 3),  # only nulls and inlined values around it
+        (200, 100),  # only inlined values, no data buffer referenced
+    ],
+)
+def test_view_array_slice_roundtrip(
+    ray_start_regular_shared, arrow_type, offset, length
+):
+    ray._private.worker.global_worker.get_serialization_context()
+    full = _make_view_array(arrow_type)
+    assert len(full.buffers()) > 3
+    table = pa.table({"v": full}).slice(offset, length)
+
+    result = pickle.loads(pickle.dumps(table))
+
+    result.validate(full=True)
+    assert result.equals(table)
+    # Only the referenced bytes are kept.
+    referenced = sum(len(v) for v in table["v"].to_pylist() if v and len(v) > 12)
+    kept = sum(b.size for c in result["v"].chunks for b in c.buffers()[2:])
+    assert kept == referenced
+
+
+@requires_view_serialization
+@pytest.mark.parametrize("arrow_type", [pa.string_view(), pa.binary_view()], ids=str)
+def test_view_array_small_slice_size(ray_start_regular_shared, arrow_type):
+    ray._private.worker.global_worker.get_serialization_context()
+    full = pa.concat_arrays([_make_view_array(arrow_type)] * 100)
+    table = pa.table({"v": full})
+
+    full_size = len(pickle.dumps(table))
+    slice_size = len(pickle.dumps(table.slice(1000, 10)))
+
+    assert slice_size < full_size / 100
 
 
 def test_custom_arrow_data_serializer_fallback(
