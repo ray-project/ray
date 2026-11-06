@@ -178,6 +178,8 @@ class ClusterResourceScheduler {
   ///  \param actor_creation: True if this is an actor creation task.
   ///  \param force_spillback: True if we want to avoid local node.
   ///  \param preferred_node_id: The node where the task is preferred to be placed.
+  ///  \param require_node_available: Only pick a node that has available resources now;
+  ///  otherwise a node may still be picked even when the whole cluster is full.
   ///
   ///  \return See `NodeSchedulingResult`.
   NodeSchedulingResult GetBestSchedulableNode(
@@ -185,7 +187,8 @@ class ClusterResourceScheduler {
       const rpc::SchedulingStrategy &scheduling_strategy,
       bool actor_creation,
       bool force_spillback,
-      const std::string &preferred_node_id);
+      const std::string &preferred_node_id,
+      bool require_node_available = false);
 
   /// Same as above, with the resource request given as a map plus a label
   /// selector.
@@ -196,7 +199,8 @@ class ClusterResourceScheduler {
       bool requires_object_store_memory,
       bool actor_creation,
       bool force_spillback,
-      const std::string &preferred_node_id);
+      const std::string &preferred_node_id,
+      bool require_node_available = false);
 
   /// Identifier of local node.
   scheduling::NodeID local_node_id_;

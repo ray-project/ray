@@ -15,6 +15,7 @@
 
 // clang-format off
 #include "ray/raylet/scheduling/cluster_lease_manager.h"
+#include "ray/common/bundle_spec.h"
 
 #include <memory>
 #include <string>
@@ -293,7 +294,8 @@ RayLease CreateLease(
     rpc::SchedulingStrategy scheduling_strategy = rpc::SchedulingStrategy(),
     const LeaseID &lease_id = LeaseID::FromRandom(),
     const LabelSelector &label_selector = {},
-    const std::vector<FallbackOption> &fallback_strategy = {}) {
+    const std::vector<FallbackOption> &fallback_strategy = {},
+    bool is_actor_creation = false) {
   TaskSpecBuilder spec_builder;
   TaskID id = RandomTaskId();
   JobID job_id = RandomJobId();
@@ -338,11 +340,30 @@ RayLease CreateLease(
     }
   }
 
-  spec_builder.SetNormalTaskSpec(0, false, "", scheduling_strategy, ActorID::Nil());
+  if (is_actor_creation) {
+    spec_builder.SetActorCreationTaskSpec(ActorID::Of(job_id, TaskID::Nil(), 0),
+                                          /*serialized_actor_handle=*/"",
+                                          scheduling_strategy);
+  } else {
+    spec_builder.SetNormalTaskSpec(0, false, "", scheduling_strategy, ActorID::Nil());
+  }
   TaskSpecification spec = std::move(spec_builder).ConsumeAndBuild();
   LeaseSpecification lease_spec(spec.GetMessage());
   lease_spec.GetMutableMessage().set_lease_id(lease_id.Binary());
   return RayLease(std::move(lease_spec));
+}
+
+absl::flat_hash_map<std::string, double> ToFlatMap(
+    const std::unordered_map<std::string, double> &m) {
+  return absl::flat_hash_map<std::string, double>(m.begin(), m.end());
+}
+
+absl::flat_hash_map<std::string, double> ZeroedCopy(
+    absl::flat_hash_map<std::string, double> m) {
+  for (auto &entry : m) {
+    entry.second = 0.0;
+  }
+  return m;
 }
 
 class FakeLeaseDependencyManager : public LeaseDependencyManagerInterface {
@@ -465,6 +486,15 @@ class ClusterLeaseManagerTest : public ::testing::Test {
   }
 
   void Shutdown() {}
+
+  void AddNodeWithResources(const NodeID &id,
+                            const absl::flat_hash_map<std::string, double> &total,
+                            const absl::flat_hash_map<std::string, double> &available) {
+    scheduler_->GetClusterResourceManager().AddOrUpdateNode(
+        scheduling::NodeID(id.Binary()), total, available);
+    rpc::GcsNodeAddressAndLiveness info;
+    node_info_[id] = info;
+  }
 
   void AddNode(const NodeID &id,
                double num_cpus,
@@ -3462,6 +3492,135 @@ TEST_F(ClusterLeaseManagerTestWithoutCPUsAtHead, OneCpuInfeasibleLease) {
     }
     ASSERT_TRUE(one_cpu_found);
   }
+}
+
+TEST_F(ClusterLeaseManagerTest, PgLeaseParksUntilHiddenBundleNodeAppears) {
+  // Tests that a placement group actor lease waits while every bundle node it can see
+  // is full, and is scheduled onto a bundle node with room as soon as one appears.
+  auto pg = PlacementGroupID::Of(JobID::FromInt(10));
+  NodeID known_full = NodeID::FromRandom();
+  auto total0 = ToFlatMap(AddPlacementGroupConstraint({{"CPU", 2.0}}, pg, 0));
+  AddNodeWithResources(known_full, total0, ZeroedCopy(total0));
+
+  rpc::SchedulingStrategy strategy;
+  strategy.mutable_placement_group_scheduling_strategy()->set_placement_group_id(
+      pg.Binary());
+  strategy.mutable_placement_group_scheduling_strategy()
+      ->set_placement_group_bundle_index(-1);
+  RayLease lease = CreateLease(AddPlacementGroupConstraint({{"CPU", 1.0}}, pg, -1),
+                               0,
+                               {},
+                               nullptr,
+                               strategy,
+                               LeaseID::FromRandom(),
+                               {},
+                               {},
+                               /*is_actor_creation=*/true);
+  rpc::RequestWorkerLeaseReply reply;
+  bool callback_occurred = false;
+  auto callback = [&callback_occurred](
+                      Status, std::function<void()>, std::function<void()>) {
+    callback_occurred = true;
+  };
+  lease_manager_.QueueAndScheduleLease(
+      lease,
+      false,
+      false,
+      std::vector<internal::ReplyCallback>{internal::ReplyCallback(callback, &reply)});
+  pool_.TriggerCallbacks();
+  ASSERT_FALSE(callback_occurred);
+  ASSERT_EQ(lease_manager_.GetPendingQueueSize(), 1);
+  ASSERT_EQ(lease_manager_.GetInfeasibleQueueSize(), 0);
+
+  NodeID hidden = NodeID::FromRandom();
+  auto total1 = ToFlatMap(AddPlacementGroupConstraint({{"CPU", 2.0}}, pg, 1));
+  AddNodeWithResources(hidden, total1, total1);
+  lease_manager_.ScheduleAndGrantLeases();
+  pool_.TriggerCallbacks();
+  ASSERT_TRUE(callback_occurred);
+  ASSERT_EQ(reply.retry_at_raylet_address().node_id(), hidden.Binary());
+}
+
+TEST_F(ClusterLeaseManagerTest, ActorLeaseWaitsWhenNoNodeIsAvailable) {
+  // Tests that an actor lease that acquires resources for its lifetime waits in the
+  // schedule queue while every feasible node is busy, and is scheduled once one has room.
+  NodeID carrier = NodeID::FromRandom();
+  absl::flat_hash_map<std::string, double> total{{"CPU", 4.0}, {"accel", 2.0}};
+  absl::flat_hash_map<std::string, double> none{{"CPU", 0.0}, {"accel", 0.0}};
+  AddNodeWithResources(carrier, total, none);
+
+  RayLease lease = CreateLease({{"accel", 1.0}},
+                               0,
+                               {},
+                               nullptr,
+                               rpc::SchedulingStrategy(),
+                               LeaseID::FromRandom(),
+                               {},
+                               {},
+                               /*is_actor_creation=*/true);
+  rpc::RequestWorkerLeaseReply reply;
+  bool callback_occurred = false;
+  auto callback = [&callback_occurred](
+                      Status, std::function<void()>, std::function<void()>) {
+    callback_occurred = true;
+  };
+  lease_manager_.QueueAndScheduleLease(
+      lease,
+      false,
+      false,
+      std::vector<internal::ReplyCallback>{internal::ReplyCallback(callback, &reply)});
+  pool_.TriggerCallbacks();
+  ASSERT_FALSE(callback_occurred);
+  ASSERT_EQ(lease_manager_.GetPendingQueueSize(), 1);
+  ASSERT_EQ(lease_manager_.GetInfeasibleQueueSize(), 0);
+
+  AddNodeWithResources(carrier, total, total);
+  lease_manager_.ScheduleAndGrantLeases();
+  pool_.TriggerCallbacks();
+  ASSERT_TRUE(callback_occurred);
+  ASSERT_EQ(reply.retry_at_raylet_address().node_id(), carrier.Binary());
+  ASSERT_EQ(lease_manager_.GetPendingQueueSize(), 0);
+}
+
+TEST_F(ClusterLeaseManagerTest, PinnedActorLeaseStillGoesToItsNode) {
+  // Tests that an actor lease pinned to one node is still sent there when that node is
+  // busy.
+  NodeID pinned = NodeID::FromRandom();
+  absl::flat_hash_map<std::string, double> total{{"CPU", 4.0}, {"accel", 2.0}};
+  absl::flat_hash_map<std::string, double> none{{"CPU", 0.0}, {"accel", 0.0}};
+  AddNodeWithResources(pinned, total, none);
+  scheduler_->GetClusterResourceManager().SetNodeLabels(
+      scheduling::NodeID(pinned.Binary()), {{"ray.io/node-id", pinned.Hex()}});
+
+  LabelSelector selector;
+  selector.AddConstraint(
+      LabelConstraint("ray.io/node-id", LabelSelectorOperator::LABEL_IN, {pinned.Hex()}));
+  RayLease lease = CreateLease({{"accel", 1.0}},
+                               0,
+                               {},
+                               nullptr,
+                               rpc::SchedulingStrategy(),
+                               LeaseID::FromRandom(),
+                               selector,
+                               {},
+                               /*is_actor_creation=*/true);
+  rpc::RequestWorkerLeaseReply reply;
+  bool callback_occurred = false;
+  auto callback = [&callback_occurred](
+                      Status, std::function<void()>, std::function<void()>) {
+    callback_occurred = true;
+  };
+  lease_manager_.QueueAndScheduleLease(
+      lease,
+      false,
+      false,
+      std::vector<internal::ReplyCallback>{internal::ReplyCallback(callback, &reply)});
+  pool_.TriggerCallbacks();
+
+  ASSERT_TRUE(callback_occurred);
+  ASSERT_FALSE(reply.canceled());
+  ASSERT_EQ(reply.retry_at_raylet_address().node_id(), pinned.Binary());
+  ASSERT_EQ(lease_manager_.GetPendingQueueSize(), 0);
 }
 
 }  // namespace raylet

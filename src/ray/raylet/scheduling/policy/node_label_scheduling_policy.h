@@ -57,11 +57,12 @@ class NodeLabelSchedulingPolicy : public ISchedulingPolicy {
       const absl::flat_hash_map<scheduling::NodeID, const Node *> &candidate_nodes,
       const rpc::LabelMatchExpressions &expressions) const;
 
-  scheduling::NodeID SelectBestNode(
+  NodeSchedulingResult SelectBestNode(
       const absl::flat_hash_map<scheduling::NodeID, const Node *> &hard_match_nodes,
       const absl::flat_hash_map<scheduling::NodeID, const Node *>
           &hard_and_soft_match_nodes,
-      const ResourceRequest &resource_request);
+      const ResourceRequest &resource_request,
+      bool require_node_available);
 
   scheduling::NodeID SelectRandomNode(
       const absl::flat_hash_map<scheduling::NodeID, const Node *> &candidate_nodes);
