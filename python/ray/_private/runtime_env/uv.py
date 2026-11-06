@@ -44,7 +44,7 @@ def _expand_env_vars(value: str, env: Mapping[str, str]) -> str:
 
 
 def _get_uv_hash_env_vars(uv_dict: Dict, runtime_env: Dict) -> Dict[str, str]:
-    """Return per-runtime values referenced by fields expanded during install."""
+    """Return per-runtime values referenced by install fields or affecting install."""
     referenced_vars = set()
     for field in _UV_ENV_VAR_FIELDS:
         for value in uv_dict.get(field, []):
@@ -60,6 +60,7 @@ def _get_uv_hash_env_vars(uv_dict: Dict, runtime_env: Dict) -> Dict[str, str]:
         # stable content identifier that is available before the directory is unpacked.
         hash_env[working_dir_var] = working_dir
 
+    hash_env.update(dependency_utils.get_install_env_vars(runtime_env))
     runtime_env_vars = runtime_env.get("env_vars") or {}
     for name in referenced_vars:
         if name in runtime_env_vars:
