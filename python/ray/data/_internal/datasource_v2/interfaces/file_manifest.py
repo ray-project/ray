@@ -72,6 +72,19 @@ PATH_COLUMN_NAME = "__path"
 FILE_SIZE_COLUMN_NAME = "__file_size"
 FILE_CHUNK_METADATA_COLUMN_NAME = "__file_chunk_metadata"
 
+# Explicit nullable types keep whole files, singleton runs and coalesced runs
+# compatible across concat and streaming-generator serialization.
+_CHUNK_TYPE = pa.struct(
+    [
+        pa.field("unit_ids", pa.list_(pa.int64())),
+        pa.field("num_rows", pa.int64()),
+        pa.field("size_bytes", pa.int64()),
+        pa.field("fully_matched", pa.bool_()),
+        pa.field("unit_sizes", pa.list_(pa.int64())),
+        pa.field("unit_rows", pa.list_(pa.int64())),
+    ]
+)
+
 
 class FileManifest:
     """Structured view over file paths, sizes, and per-chunk metadata.
@@ -199,9 +212,11 @@ class FileManifest:
 
         block = pa.table(
             {
-                PATH_COLUMN_NAME: paths,
-                FILE_SIZE_COLUMN_NAME: sizes,
-                FILE_CHUNK_METADATA_COLUMN_NAME: chunk_metadatas,
+                PATH_COLUMN_NAME: pa.array(paths, type=pa.string()),
+                FILE_SIZE_COLUMN_NAME: pa.array(sizes, type=pa.int64()),
+                FILE_CHUNK_METADATA_COLUMN_NAME: pa.array(
+                    chunk_metadatas, type=_CHUNK_TYPE
+                ),
             }
         )
         return cls(block)

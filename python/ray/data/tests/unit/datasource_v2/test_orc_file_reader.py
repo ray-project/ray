@@ -1587,10 +1587,8 @@ def test_orc_reader_initial_estimate_is_cached(
         assert list(reader.read(_manifest(path))) == []
     estimate.assert_called_once()
     expected = 16 if available else _ARROW_DEFAULT_BATCH_SIZE
-    assert [request["batch_size"] for request in orc_read_requests["scans"]] == [
-        expected,
-        expected,
-    ]
+    assert reader._sampled_batch_size == expected
+    assert orc_read_requests["scans"] == []
 
 
 @pytest.mark.parametrize("batch_size,target", [(7, 65536), (None, None)])

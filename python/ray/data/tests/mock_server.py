@@ -2,6 +2,7 @@ import shutil
 import signal
 import socket
 import subprocess as sp
+import tempfile
 import time
 
 # extracted from aioboto3
@@ -63,21 +64,22 @@ def start_service(service_name, host, port):
     # moto 5.x no longer accepts a service name argument - all services
     # are served on a single endpoint
     args = [moto_svr_path, "-H", host, "-p", str(port)]
-    # For debugging
-    # args = '{0} {1} -H {2} -p {3} 2>&1 | \
-    # tee -a /tmp/moto.log'.format(moto_svr_path, service_name, host, port)
-    process = sp.Popen(
-        args, stdin=sp.PIPE, stdout=sp.PIPE, stderr=sp.PIPE
-    )  # shell=True
+    # Request logs can fill unconsumed pipes and block the mock service.
+    with tempfile.NamedTemporaryFile(
+        prefix=f"moto-{service_name}-", suffix=".log", delete=False
+    ) as log:
+        log_path = log.name
+        process = sp.Popen(args, stdin=sp.PIPE, stdout=log, stderr=sp.STDOUT)
+    print(f"moto_server logs: {log_path}")
     url = f"http://{build_address(host, port)}"
 
     for i in range(0, 30):
         output = process.poll()
         if output is not None:
             print("moto_server exited status {0}".format(output))
-            stdout, stderr = process.communicate()
-            print("moto_server stdout: {0}".format(stdout))
-            print("moto_server stderr: {0}".format(stderr))
+            process.communicate()
+            with open(log_path, encoding="utf-8", errors="replace") as log:
+                print(log.read())
             pytest.fail("Can not start service: {}".format(service_name))
 
         try:
