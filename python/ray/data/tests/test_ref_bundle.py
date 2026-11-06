@@ -339,6 +339,49 @@ def test_slice_ref_bundle_with_none_slices():
     assert remaining.slices == (BlockSlice(start_offset=2, end_offset=4),)
 
 
+def test_slice_ref_bundle_preserves_metadata_and_empty_trailing_blocks():
+    """Test that slicing forwards output_split_idx and reconstruction_stamp,
+    and keeps zero-row blocks after the split point in the remaining bundle."""
+    block_ref_one = ObjectRef(b"1" * 28)
+    block_ref_empty = ObjectRef(b"2" * 28)
+    block_ref_two = ObjectRef(b"3" * 28)
+
+    meta_one = BlockMetadata(
+        num_rows=4, size_bytes=40, exec_stats=None, input_files=None
+    )
+    meta_empty = BlockMetadata(
+        num_rows=0, size_bytes=0, exec_stats=None, input_files=None
+    )
+    meta_two = BlockMetadata(
+        num_rows=3, size_bytes=30, exec_stats=None, input_files=None
+    )
+    stamp = ReconstructionStamp("task:0", frozenset({"plan"}))
+
+    bundle = RefBundle(
+        blocks=[
+            BlockEntry(block_ref_one, meta_one),
+            BlockEntry(block_ref_empty, meta_empty),
+            BlockEntry(block_ref_two, meta_two),
+        ],
+        owns_blocks=True,
+        schema=_TEST_SCHEMA,
+        output_split_idx=2,
+        reconstruction_stamp=stamp,
+    )
+
+    consumed, remaining = bundle.slice(4)
+
+    assert consumed.num_rows() == 4
+    assert consumed.block_refs == [block_ref_one]
+    assert consumed.output_split_idx == 2
+    assert consumed.reconstruction_stamp == stamp
+
+    assert remaining.num_rows() == 3
+    assert remaining.block_refs == [block_ref_empty, block_ref_two]
+    assert remaining.output_split_idx == 2
+    assert remaining.reconstruction_stamp == stamp
+
+
 def test_ref_bundle_str():
     """Test the __str__ method returns a readable representation."""
     block_ref_one = ObjectRef(b"1" * 28)
