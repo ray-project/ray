@@ -20,6 +20,7 @@
 #include <utility>
 #include <vector>
 
+#include "absl/strings/str_format.h"
 #include "ray/common/protobuf_utils.h"
 #include "ray/core_worker/task_submission/task_submission_util.h"
 
@@ -541,6 +542,9 @@ void ActorTaskSubmitter::SendPendingTasks(const ActorID &actor_id) {
     // whether we should fail pending tasks or restart the actor.
     // If the actor is restarted, ConnectActor will be called
     // and pending tasks will be sent at that time.
+    RAY_LOG(DEBUG).WithField(actor_id)
+        << "Actor is already out of scope but still pending death from GCS, not sending "
+           "pending tasks.";
     return;
   }
   if (!client_queue.client_address_.has_value()) {
@@ -645,6 +649,12 @@ void ActorTaskSubmitter::HandlePushTaskReply(const Status &status,
                                              const TaskSpecification &task_spec) {
   const auto task_id = task_spec.TaskId();
   const auto actor_id = task_spec.ActorId();
+
+  RAY_LOG(DEBUG).WithField(task_id).WithField(actor_id)
+      << absl::StrFormat("Task %s finished from actor %s on node %s",
+                         task_id.Hex(),
+                         actor_id.Hex(),
+                         NodeID::FromBinary(addr.node_id()).Hex());
 
   bool resubmit_generator = false;
   {
@@ -1081,6 +1091,8 @@ void ActorTaskSubmitter::CancelTask(TaskSpecification task_spec, bool recursive)
 bool ActorTaskSubmitter::QueueGeneratorForResubmit(const TaskSpecification &spec) {
   // TODO(dayshah): Needs to integrate with the cancellation logic - what if task was
   // cancelled before this?
+  RAY_LOG(DEBUG).WithField(spec.TaskId()) << absl::StrFormat(
+      "Queueing generator for resubmit on actor %s", spec.ActorId().Hex());
   absl::MutexLock lock(&mu_);
   generators_to_resubmit_.insert(spec.TaskId());
   return true;

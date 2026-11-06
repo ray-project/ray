@@ -27,6 +27,7 @@
 #include <utility>
 #include <vector>
 
+#include "absl/random/random.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_split.h"
 #include "ray/common/constants.h"
@@ -44,6 +45,20 @@
 namespace ray {
 
 namespace raylet {
+
+std::optional<std::string> GetWorkerGrpcThreadsWarning(int64_t detected_cpus,
+                                                       int64_t configured_threads) {
+  if (detected_cpus <= kWorkerGrpcThreadsWarningThreshold || configured_threads > 0) {
+    return std::nullopt;
+  }
+
+  return absl::StrFormat(
+      "Ray detected %d CPUs on this node. Consider setting "
+      "RAY_worker_num_grpc_internal_threads to reduce the number of gRPC threads. See "
+      "https://docs.ray.io/en/latest/ray-core/"
+      "configure.html#worker-grpc-thread-configuration for details.",
+      detected_cpus);
+}
 
 namespace {
 
@@ -83,6 +98,29 @@ bool OptionalsMatchOrEitherEmpty(const std::optional<bool> &ask,
 }
 
 }  // namespace
+
+std::vector<int> BuildWorkerPortPool(const std::vector<int> &worker_ports,
+                                     int min_worker_port,
+                                     int max_worker_port,
+                                     absl::BitGenRef gen) {
+  std::vector<int> ports;
+  if (!worker_ports.empty()) {
+    ports = worker_ports;
+  } else if (min_worker_port != 0) {
+    if (max_worker_port == 0) {
+      max_worker_port = 65535;  // Maximum valid port number.
+    }
+    RAY_CHECK(min_worker_port > 0 && min_worker_port <= 65535);
+    RAY_CHECK(max_worker_port >= min_worker_port && max_worker_port <= 65535);
+    ports.reserve(max_worker_port - min_worker_port + 1);
+    for (int port = min_worker_port; port <= max_worker_port; port++) {
+      ports.push_back(port);
+    }
+  }
+
+  std::shuffle(ports.begin(), ports.end(), gen);
+  return ports;
+}
 
 WorkerPool::WorkerPool(instrumented_io_context &io_service,
                        std::shared_ptr<PeriodicalRunnerInterface> periodical_runner,
@@ -145,22 +183,17 @@ WorkerPool::WorkerPool(instrumented_io_context &io_service,
     state.worker_command = entry.second;
     RAY_CHECK(!state.worker_command.empty()) << "Worker command must not be empty.";
   }
-  // Initialize free ports list with all ports in the specified range.
-  if (!worker_ports.empty()) {
-    free_ports_ = std::make_unique<std::queue<int>>();
-    for (int port : worker_ports) {
-      free_ports_->push(port);
-    }
-  } else if (min_worker_port != 0) {
-    if (max_worker_port == 0) {
-      max_worker_port = 65535;  // Maximum valid port number.
-    }
-    RAY_CHECK(min_worker_port > 0 && min_worker_port <= 65535);
-    RAY_CHECK(max_worker_port >= min_worker_port && max_worker_port <= 65535);
-    free_ports_ = std::make_unique<std::queue<int>>();
-    for (int port = min_worker_port; port <= max_worker_port; port++) {
-      free_ports_->push(port);
-    }
+  // Initialize the free ports list with the configured ports, in a random order
+  // so that raylets sharing a network namespace don't all start from the low end
+  // of the range. See BuildWorkerPortPool.
+  absl::BitGen bitgen;
+  std::vector<int> ports =
+      BuildWorkerPortPool(worker_ports, min_worker_port, max_worker_port, bitgen);
+  if (!ports.empty()) {
+    free_ports_ =
+        std::make_unique<std::queue<int>>(std::deque<int>(ports.begin(), ports.end()));
+    RAY_LOG(INFO) << "Initialized the worker port pool with " << ports.size()
+                  << " shuffled ports.";
   }
 }
 
@@ -552,31 +585,57 @@ std::tuple<const ProcessInterface &, WorkerID> WorkerPool::StartWorkerProcess(
 
 void WorkerPool::AdjustWorkerOomScore(pid_t pid) const {
 #ifdef __linux__
-  std::ifstream original_oom_score_file;
-  std::ofstream oom_score_file;
   std::string filename("/proc/" + std::to_string(pid) + "/oom_score_adj");
-  original_oom_score_file.open(filename, std::ifstream::in);
+
+  // Read the worker's current oom_score_adj as the baseline for the
+  // additive adjustment. If the read fails for any reason (the /proc
+  // entry is not yet visible, the file is unreadable, the parse fails,
+  // etc.), bail out rather than silently writing `0 + delta`: on
+  // hardened deployments where the raylet runs with a negative
+  // oom_score_adj the worker inherits that negative value, and writing
+  // `0 + delta` would make the worker much more kernel-OOM-killable
+  // than the operator configured.
+  std::ifstream original_oom_score_file(filename, std::ifstream::in);
+  if (!original_oom_score_file.is_open()) {
+    RAY_LOG(WARNING) << absl::StrFormat(
+        "Cannot read OOM score for worker with PID %d, "
+        "error: %s, skipping OOM score adjustment",
+        pid,
+        strerror(errno));
+    return;
+  }
   int original_oom_score_adj = 0;
-  if (original_oom_score_file.is_open()) {
-    original_oom_score_file >> original_oom_score_adj;
-  } else {
-    RAY_LOG(INFO) << "Failed to get OOM score adjustment for worker with PID " << pid
-                  << ", error: " << strerror(errno);
+  original_oom_score_file >> original_oom_score_adj;
+  if (original_oom_score_file.fail()) {
+    RAY_LOG(WARNING) << absl::StrFormat(
+        "Failed to parse OOM score for worker with PID %d, "
+        "error: %s, skipping OOM score adjustment",
+        pid,
+        strerror(errno));
+    return;
   }
   original_oom_score_file.close();
-  oom_score_file.open(filename, std::ofstream::out);
+
   int relative_oom_score_adj =
-      std::min(RayConfig::instance().worker_oom_score_adjustment(), 1000);
-  relative_oom_score_adj = std::max(relative_oom_score_adj, 0);
-  int oom_score_adj = std::min(original_oom_score_adj + relative_oom_score_adj, 1000);
+      std::clamp(RayConfig::instance().worker_oom_score_adjustment(), 0, 1000);
+  // Clamp to the kernel-accepted range [-1000, 1000]. The previous code
+  // clamped only the upper bound, which silently accepted out-of-range
+  // inputs if either term was negative.
+  int oom_score_adj =
+      std::clamp(original_oom_score_adj + relative_oom_score_adj, -1000, 1000);
+
+  std::ofstream oom_score_file(filename, std::ofstream::out);
   if (oom_score_file.is_open()) {
     // Adjust worker's OOM score so that the OS prioritizes killing these
     // processes over the raylet.
     oom_score_file << std::to_string(oom_score_adj);
   }
   if (oom_score_file.fail()) {
-    RAY_LOG(INFO) << "Failed to set OOM score adjustment for worker with PID " << pid
-                  << ", error: " << strerror(errno);
+    RAY_LOG(WARNING) << absl::StrFormat(
+        "Failed to set OOM score adjustment for worker with PID %d, "
+        "error: %s, skipping OOM score adjustment",
+        pid,
+        strerror(errno));
   }
   oom_score_file.close();
 #endif
@@ -733,7 +792,6 @@ Status WorkerPool::GetNextFreePort(int *port) {
 
 void WorkerPool::MarkPortAsFree(int port) {
   if (free_ports_) {
-    RAY_CHECK(port != 0) << "";
     free_ports_->push(port);
   }
 }

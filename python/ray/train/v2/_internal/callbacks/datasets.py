@@ -1,9 +1,12 @@
 import copy
 import logging
+from pathlib import Path
 from typing import TYPE_CHECKING, Dict, List, Optional
 
 import ray
 import ray.train
+from ray.data.context import DataContext
+from ray.train.v2._internal.data_integration.dataset_manager import DatasetManager
 from ray.train.v2._internal.data_integration.interfaces import (
     DatasetShardMetadata,
     DatasetShardProvider,
@@ -20,7 +23,6 @@ from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
 if TYPE_CHECKING:
     from ray.data import DataIterator, Dataset, NodeIdStr
-    from ray.data.context import DataContext
 
 logger = logging.getLogger(__name__)
 
@@ -30,14 +32,10 @@ class RayDatasetShardProvider:
         self,
         datasets: Dict[str, GenDataset],
         data_config: ray.train.DataConfig,
-        data_context: "DataContext",
+        data_context: DataContext,
         world_size: int,
         worker_node_ids: List["NodeIdStr"],
     ):
-        from ray.train.v2._internal.data_integration.dataset_manager import (
-            DatasetManager,
-        )
-
         self._dataset_names = set(datasets)
         self._dataset_manager = (
             ray.remote(DatasetManager)
@@ -70,13 +68,17 @@ class RayDatasetShardProvider:
             self._cached_dataset_shards[dataset_name] = ray.get(
                 self._dataset_manager.get_dataset_shard.remote(dataset_info)
             )
+        elif dataset_info.state_dict is not None:
+            raise ValueError(
+                "Loading a `state_dict` is only supported for the first call to "
+                "`ray.train.get_dataset_shard` for a dataset. "
+                "Updating the data iterator state is not supported."
+            )
 
         return self._cached_dataset_shards[dataset_name]
 
     def shutdown_data_executors(self) -> None:
-        """
-        Attempts to eagerly shutdown the data executors for datasets, freeing resources allocated to data execution.
-        """
+        """Attempts to eagerly shutdown the data executors for datasets, freeing resources allocated to data execution."""
         try:
             self._dataset_manager.shutdown_data_executors.remote()
         except Exception:
@@ -93,8 +95,36 @@ class DatasetsCallback(WorkerGroupCallback):
     ):
         self._datasets = datasets
         self._data_config = copy.deepcopy(train_run_context.dataset_config)
-        self._scaling_config = train_run_context.scaling_config
         self._dataset_shard_provider: Optional[RayDatasetShardProvider] = None
+
+        # Update default dataset checkpoint paths/filesystem to the RunConfig settings.
+        storage_context = train_run_context.run_config.storage_context
+        dataset_checkpoint_configs = self._data_config.dataset_checkpoint_configs
+        for dataset_name, checkpoint_config in dataset_checkpoint_configs.items():
+            if not checkpoint_config.checkpoint_path:
+                checkpoint_config.checkpoint_path = Path(
+                    storage_context.experiment_fs_path,
+                    "ray_data_checkpoints",
+                    dataset_name,
+                ).as_posix()
+                # The default path is on the RunConfig storage filesystem.
+                # Otherwise, the filesystem is inferred from the user's path.
+                if not checkpoint_config.override_filesystem:
+                    checkpoint_config.override_filesystem = (
+                        storage_context.storage_filesystem
+                    )
+
+        # Datasets can't share a checkpoint path, since the checkpoint files
+        # aren't partitioned by dataset.
+        checkpoint_paths = [
+            config.checkpoint_path for config in dataset_checkpoint_configs.values()
+        ]
+        if len(set(checkpoint_paths)) != len(checkpoint_paths):
+            raise ValueError(
+                "Each dataset in `DataConfig.dataset_checkpoint_configs` must use a "
+                "different `checkpoint_path`, but got: "
+                f"{dict(zip(dataset_checkpoint_configs, checkpoint_paths))}"
+            )
 
         # Capture the current DataContext to propagate it to
         # the Train workers later.
@@ -104,22 +134,7 @@ class DatasetsCallback(WorkerGroupCallback):
         # 3. Lastly, when the worker group is initialized, the Controller
         #    will call the `after_worker_group_start` callback to propagate
         #    the DataContext to Train workers.
-        from ray.data.context import DataContext
-
         self._data_context = copy.deepcopy(DataContext.get_current())
-
-    def get_train_total_resources(
-        self, scaling_config: ray.train.ScalingConfig
-    ) -> Dict[str, float]:
-        """Return the resources reserved for training, so that Data can exclude
-        these resources logically from its available pool."""
-        if scaling_config.elasticity_enabled:
-            # If Train is running with a variable number of workers,
-            # we can't provide a fixed number of resources to exclude.
-            # Instead, Train and Data should coordinate via the autoscaling
-            # coordinator to allocate resources dynamically.
-            return {}
-        return scaling_config.total_resources
 
     # --------------------------
     # WorkerGroupCallback
@@ -132,13 +147,6 @@ class DatasetsCallback(WorkerGroupCallback):
         worker_node_ids = [worker.metadata.node_id for worker in workers]
         datasets = {k: v() if callable(v) else v for k, v in self._datasets.items()}
 
-        # TODO: Move this to the constructor.
-        # Notify the DataConfig about the total resources reserved for training.
-        total_train_resources = self.get_train_total_resources(self._scaling_config)
-        self._data_config.set_train_total_resources(
-            total_train_resources.get("CPU", 0), total_train_resources.get("GPU", 0)
-        )
-
         self._dataset_shard_provider = RayDatasetShardProvider(
             datasets=datasets,
             data_config=self._data_config,
@@ -150,9 +158,7 @@ class DatasetsCallback(WorkerGroupCallback):
 
     def after_worker_group_start(self, worker_group: WorkerGroup):
         # Propagate DataContext
-        from ray.data.context import DataContext
-
-        def _propagate_data_context(ctx: "DataContext"):
+        def _propagate_data_context(ctx: DataContext):
             DataContext._set_current(ctx)
 
         worker_group.execute(

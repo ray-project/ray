@@ -30,12 +30,6 @@ namespace raylet {
 
 namespace {
 
-bool HasHardNodeAffinity(const LabelSelector &label_selector) {
-  const std::optional<absl::flat_hash_set<std::string>> hard_node_affinity_values =
-      GetHardNodeAffinityValues(label_selector);
-  return hard_node_affinity_values.has_value() && !hard_node_affinity_values->empty();
-}
-
 bool AllLabelSelectorsAreHardNodeAffinity(
     const SchedulingClassDescriptor &scheduling_class_descriptor) {
   if (!HasHardNodeAffinity(scheduling_class_descriptor.label_selector)) {
@@ -85,7 +79,6 @@ void SchedulerResourceReporter::FillResourceUsage(rpc::ResourcesData &data) cons
     return;
   }
 
-  auto resource_loads = data.mutable_resource_load();
   auto resource_load_by_shape =
       data.mutable_resource_load_by_shape()->mutable_resource_demands();
 
@@ -103,8 +96,9 @@ void SchedulerResourceReporter::FillResourceUsage(rpc::ResourcesData &data) cons
         break;
       }
 
-      const auto &scheduling_class_descriptor =
+      const auto &scheduling_class_descriptor_ptr =
           SchedulingClassToIds::GetSchedulingClassDescriptor(scheduling_class);
+      const auto &scheduling_class_descriptor = *scheduling_class_descriptor_ptr;
       const auto &label_selectors = scheduling_class_descriptor.label_selector;
       const bool is_node_affinity_scheduling_strategy =
           scheduling_class_descriptor.scheduling_strategy.scheduling_strategy_case() ==
@@ -131,11 +125,6 @@ void SchedulerResourceReporter::FillResourceUsage(rpc::ResourcesData &data) cons
       for (const auto &resource : resources) {
         const auto &label = resource.first;
         const auto &quantity = resource.second;
-
-        if (count != 0) {
-          // Add to `resource_loads`.
-          (*resource_loads)[label] += quantity * count;
-        }
         // Add to `resource_load_by_shape`.
         (*by_shape_entry->mutable_shape())[label] = quantity;
       }
@@ -214,9 +203,9 @@ void SchedulerResourceReporter::FillPendingActorCountByShape(
         data.mutable_resource_load_by_shape()->mutable_resource_demands();
     for (const auto &shape_entry : pending_count_by_shape) {
       auto by_shape_entry = resource_load_by_shape->Add();
-      for (const auto &resource_entry :
-           SchedulingClassToIds::GetSchedulingClassDescriptor(shape_entry.first)
-               .resource_set.GetResourceMap()) {
+      const auto &descriptor =
+          SchedulingClassToIds::GetSchedulingClassDescriptor(shape_entry.first);
+      for (const auto &resource_entry : descriptor->resource_set.GetResourceMap()) {
         (*by_shape_entry->mutable_shape())[resource_entry.first] = resource_entry.second;
       }
       by_shape_entry->set_num_infeasible_requests_queued(shape_entry.second.first);

@@ -4,7 +4,6 @@ import copy
 import functools
 import logging
 import math
-import pickle
 import time
 from abc import ABC, abstractmethod
 from dataclasses import replace
@@ -14,12 +13,15 @@ from typing import (
     Callable,
     Dict,
     Final,
+    FrozenSet,
     Iterable,
     Iterator,
     List,
     Optional,
     Union,
 )
+
+from typing_extensions import override
 
 from ray._private.ray_constants import (
     DEFAULT_OBJECT_STORE_MEMORY_PROPORTION,
@@ -30,9 +32,12 @@ from ray.data._internal.util import GiB
 if TYPE_CHECKING:
     import pyarrow as pa
 
+    from ray.data._internal.execution.block_ref_counter import BlockRefCounter
+    from ray.data._internal.execution.lineage_tracker import LineageTracker
+
 import ray
 from ray import ObjectRef
-from ray._raylet import ObjectRefGenerator, StreamingGeneratorStats
+from ray._raylet import ObjectRefGenerator
 from ray.data._internal.compute import (
     ActorPoolStrategy,
     ComputeStrategy,
@@ -63,15 +68,26 @@ from ray.data._internal.execution.interfaces.physical_operator import (
 from ray.data._internal.execution.interfaces.ref_bundle import (
     _iter_sliced_blocks,
 )
-from ray.data._internal.execution.operators.base_physical_operator import (
-    InternalQueueOperatorMixin,
-    OneToOneOperator,
+from ray.data._internal.execution.lineage_tracker import (
+    LineageTaskId,
+    ObjectReuseStatus,
+    ParentBlockOutput,
+    ReconstructionPlanId,
+)
+from ray.data._internal.execution.operators.lineage_reconstruction_mixin import (
+    LineageReconstructionMixin,
 )
 from ray.data._internal.execution.operators.map_transformer import (
     BlockMapTransformFn,
+    CustomOpStatsReporter,
     MapTransformer,
+    TransformClock,
 )
-from ray.data._internal.execution.util import memory_string, merge_label_selector
+from ray.data._internal.execution.util import (
+    memory_string,
+    merge_label_selector,
+    yield_block_with_stats,
+)
 from ray.data._internal.stats import StatsDict
 from ray.data._internal.util import MemoryProfiler, iterate_with_retry
 from ray.data.block import (
@@ -193,7 +209,7 @@ def _get_schema_from_bundle(
     return None
 
 
-class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
+class MapOperator(LineageReconstructionMixin, PhysicalOperator, ABC):
     """A streaming operator that maps input bundles 1:1 to output bundles.
 
     This operator implements the distributed map operation, supporting both task
@@ -264,7 +280,7 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
         self._metadata_tasks: Dict[int, MetadataOpTask] = {}
         self._next_metadata_task_idx = 0
         # Keep track of all finished streaming generators.
-        super().__init__(name, input_op, data_context, target_max_block_size_override)
+        super().__init__(name, [input_op], data_context, target_max_block_size_override)
 
         # If set, then all output blocks will be split into
         # this many sub-blocks. This is to avoid having
@@ -481,8 +497,13 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
         else:
             raise ValueError(f"Unsupported execution strategy {compute_strategy}")
 
-    def start(self, options: "ExecutionOptions"):
-        super().start(options)
+    def start(
+        self,
+        options: "ExecutionOptions",
+        block_ref_counter: "BlockRefCounter",
+        lineage_tracker: Optional["LineageTracker"] = None,
+    ):
+        super().start(options, block_ref_counter, lineage_tracker)
         # Create output queue with desired ordering semantics.
         if options.preserve_order:
             self._output_queue = ReorderingBundleQueue()
@@ -524,7 +545,9 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
 
     def _add_input_inner(self, refs: RefBundle, input_index: int):
         assert input_index == 0, input_index
-        # Add RefBundle to the bundler.
+
+        # Add RefBundle to the bundler. A reconstruction input (one carrying a
+        # `reconstruction_stamp`) passes through the bundler unchanged.
         self._block_ref_bundler.add(refs)
         self._metrics.on_input_queued(refs, input_index=0)
 
@@ -592,6 +615,11 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
         """
         pass
 
+    @override
+    def _enqueue_reconstruction_output(self, bundle: RefBundle, task_index: int):
+        self._output_queue.add(bundle, key=task_index)
+        self._metrics.on_output_queued(bundle)
+
     def _submit_data_task(
         self,
         gen: ObjectRefGenerator,
@@ -607,13 +635,101 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
         task_index = self._next_data_task_idx
         self._next_data_task_idx += 1
 
+        # Resolve this attempt's lineage identity up front so the callbacks below
+        # can close over it. Both stay None when this operator has no lineage
+        # tracker. The callbacks branch on the tracker, which is set exactly when
+        # the identity is.
+        lineage_tracker = self._lineage_tracker
+        lineage_task_id: Optional[LineageTaskId] = None
+        reconstruction_plan_ids: FrozenSet[ReconstructionPlanId] = frozenset()
+        # The last output this reconstruction task withholds for its child reconstruction tasks. Read
+        # once at submission.
+        last_withheld_output_index: Optional[int] = None
+        if lineage_tracker is not None:
+            (
+                lineage_task_id,
+                reconstruction_plan_ids,
+                dependencies,
+            ) = self._lineage_for_submission(lineage_tracker, task_index, inputs)
+            # Sort by logical task ID for repeatability
+            sorted_reconstruction_plan_ids = sorted(reconstruction_plan_ids)
+            if sorted_reconstruction_plan_ids:
+                for reconstruction_plan_id in sorted_reconstruction_plan_ids:
+                    lineage_tracker.register_task_submission(
+                        lineage_task_id, dependencies, reconstruction_plan_id
+                    )
+                last_withheld_output_index = self._last_withheld_output_index(
+                    lineage_task_id, reconstruction_plan_ids
+                )
+            else:
+                lineage_tracker.register_task_submission(lineage_task_id, dependencies)
+                # A fresh seed task retains its input, so reconstruction can resubmit it.
+                if self._is_seed_operator():
+                    lineage_tracker.register_seed_input(lineage_task_id, inputs)
+
+        # This task's next output_index. A per-task closure local, so it is scoped
+        # exactly right and resets naturally on a re-execution.
+        next_output_index = 0
+
         def _output_ready_callback(
             task_index,
             output: RefBundle,
         ):
+            nonlocal next_output_index
             # Since output is streamed, it should only contain one block.
             assert len(output) == 1
+            output_index = next_output_index
+            next_output_index += 1
             self._metrics.on_task_output_generated(task_index, output)
+
+            if lineage_tracker is not None:
+                # Attribute the block to (this task, output_index) so whichever
+                # downstream task consumes it can name its own dependencies.
+                lineage_tracker.register_block_output(
+                    lineage_task_id, output.block_refs[0].hex(), output_index
+                )
+                if sorted_reconstruction_plan_ids:
+                    for reconstruction_plan_id in sorted_reconstruction_plan_ids:
+                        status = lineage_tracker.get_object_reuse_status(
+                            lineage_task_id, output_index, reconstruction_plan_id
+                        )
+                        # REUSED: withhold until the child reconstruction task's whole input set is
+                        # re-produced, then release it as one bundle
+                        # (`_release_reconstruction_blocks_to_child`). Emitting now would run the
+                        # child reconstruction task against part of its input.
+                        if status is ObjectReuseStatus.OBJECT_REUSED:
+                            self._reconstruction_outputs.setdefault(
+                                reconstruction_plan_id, {}
+                            )[
+                                ParentBlockOutput(
+                                    parent_lineage_task_id=lineage_task_id,
+                                    output_index=output_index,
+                                )
+                            ] = output
+                        # NEW: no earlier attempt delivered this output, so queue it now.
+                        # Only the plan this task is the target of returns NEW, so this
+                        # runs at most once per output. An output is never both NEW and
+                        # REUSED, so a NEW output is never also withheld.
+                        elif status is ObjectReuseStatus.OBJECT_NEW:
+                            lineage_tracker.register_block_queued(
+                                lineage_task_id, output_index, reconstruction_plan_id
+                            )
+                            self._enqueue_reconstruction_output(output, task_index)
+                    # Outputs arrive in index order. So once the last withheld output
+                    # is produced, every output this task withholds is held, and the
+                    # child reconstruction tasks whose whole input set is held are released now instead
+                    # of when the task completes. Release checks each child reconstruction task's input
+                    # set itself.
+                    if output_index == last_withheld_output_index:
+                        self._release_reconstruction_blocks_to_child(
+                            lineage_task_id, reconstruction_plan_ids, task_index
+                        )
+                    # PRUNED (a copy of the rows outlives the loss) or UNRELATED (the
+                    # plan already finished with this task), so block is dropped.
+                    return
+                else:
+                    # This is a fresh task
+                    lineage_tracker.register_block_queued(lineage_task_id, output_index)
 
             # Notify output queue that the task has produced an new output.
             self._output_queue.add(output, key=task_index)
@@ -624,17 +740,21 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
             exception: Optional[Exception],
             task_exec_stats: Optional[TaskExecWorkerStats],
             task_exec_driver_stats: Optional[TaskExecDriverStats],
+            aborted: bool,
         ):
             # NOTE: `TaskExecStats` could be null in case there's no blocks
             #       emitted (current limitation, since it's emitted along with
             #       `BlockMetadata`)
-            assert exception or (
-                task_exec_driver_stats
+            assert (
+                exception or task_exec_driver_stats
             ), "Driver's task execution stats must be provided on task's successful completion"
 
-            self._metrics.on_task_finished(
-                task_index, exception, task_exec_stats, task_exec_driver_stats
-            )
+            if aborted:
+                self._metrics.on_task_aborted(task_index)
+            else:
+                self._metrics.on_task_finished(
+                    task_index, exception, task_exec_stats, task_exec_driver_stats
+                )
 
             # Estimate number of tasks and rows from inputs received and tasks
             # submitted so far
@@ -646,6 +766,22 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
                 self._next_data_task_idx, self.upstream_op_num_outputs(), self._metrics
             )
 
+            if lineage_tracker is not None and exception is None:
+                # Child reconstruction tasks are released at the last withheld output. Releasing again
+                # here is the fallback for withheld outputs that index did not
+                # cover, such as ones added by a plan re-traced mid-run. It runs
+                # before reporting the completion itself.
+                if sorted_reconstruction_plan_ids:
+                    self._release_reconstruction_blocks_to_child(
+                        lineage_task_id, reconstruction_plan_ids, task_index
+                    )
+                    for reconstruction_plan_id in sorted_reconstruction_plan_ids:
+                        lineage_tracker.register_task_complete(
+                            lineage_task_id, reconstruction_plan_id
+                        )
+                else:
+                    lineage_tracker.register_task_complete(lineage_task_id)
+
             self._data_tasks.pop(task_index)
             # Notify output queue that this task is complete.
             self._output_queue.finalize(key=task_index)
@@ -655,9 +791,15 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
         data_task = DataOpTask(
             task_index,
             gen,
-            lambda output: _output_ready_callback(task_index, output),
-            functools.partial(_task_done_callback, task_index),
+            self._block_ref_counter,
+            self.id,
+            output_ready_callback=lambda output: _output_ready_callback(
+                task_index, output
+            ),
+            task_done_callback=functools.partial(_task_done_callback, task_index),
             operator_name=self.name,
+            lineage_task_id=lineage_task_id,
+            reconstruction_plan_ids=reconstruction_plan_ids,
         )
         self._metrics.on_task_submitted(
             task_index, inputs, task_id=data_task.get_task_id()
@@ -817,22 +959,48 @@ def _map_task(
         # the same schema)
         yielded_schema: bool = False
 
+        # Defines a reporter a transform calls to report its ``CustomOpStats``
+        # which are recorded during the task execution on the worker.
+        # This is owned by _map_task so it belongs to actual, possibly-fused, running task
+        # rather than a transformer instance reused across tasks.
+        op_stats_reporter = CustomOpStatsReporter()
+        # Likewise owned by _map_task: an actor pool shares one transformer
+        # across every task the actor runs, and with
+        # `max_concurrent_calls_per_actor > 1` several run at once.
+        clock = TransformClock()
+
         def transform_iter_factory():
+            # Clear any per-task custom stats before each attempt (the reporter
+            # is reused across retries of this task), so a prior attempt's stats
+            # can't leak into this one. A producing transform repopulates it
+            # before the first block is yielded.
+            op_stats_reporter.clear()
+            clock.drain()
             blocks_iter = (
                 _iter_sliced_blocks(blocks, slices) if slices else iter(blocks)
             )
-            return map_transformer.apply_transform(blocks_iter, ctx)
-
-        if retry_on:
-            block_iter = iterate_with_retry(
-                transform_iter_factory,
-                description="apply UDF transform",
-                match=None if retry_on is True else retry_on,
-                max_attempts=data_context.max_map_retries + 1,
-                unwrap_cause=True,
+            return map_transformer.apply_transform(
+                blocks_iter,
+                ctx,
+                op_stats_reporter.report,
+                clock=clock,
             )
-        else:
-            block_iter = transform_iter_factory()
+
+        match retry_on:
+            case True:
+                to_match = None
+            case False:
+                to_match = []
+            case _:
+                to_match = retry_on
+
+        block_iter = iterate_with_retry(
+            transform_iter_factory,
+            description="apply UDF transform",
+            match=to_match,
+            max_attempts=data_context.max_map_retries + 1,
+            unwrap_cause=True,
+        )
 
         with MemoryProfiler(data_context.memory_usage_poll_interval_s) as profiler:
             for block in block_iter:
@@ -842,34 +1010,37 @@ def _map_task(
                 # Finish processing before yielding the block!
                 blk_exec_stats_builder.finish()
 
-                # Yield block and retrieve its Ray object serialization timing
-                gen_stats: StreamingGeneratorStats = yield block
-
-                exec_stats = blk_exec_stats_builder.build(
-                    block_ser_time_s=(
-                        gen_stats.object_creation_dur_s if gen_stats else None
-                    ),
-                    udf_time_s=map_transformer.udf_time_s(reset=True),
-                    task_idx=ctx.task_idx,
-                )
-
-                # NOTE: This tracks task duration up to this point, though we're primarily
-                #       interested in task total duration
-                # TODO figure out a better way to track task total duration
-                task_dur_s = time.perf_counter() - task_start_s
-
-                bm = BlockMetadataWithSchema.from_metadata(
-                    replace(
-                        block_meta,
-                        exec_stats=exec_stats,
-                        task_exec_stats=TaskExecWorkerStats(
-                            task_wall_time_s=task_dur_s,
-                            max_uss_bytes=profiler.estimate_max_uss(),
+                def build_metadata(block_ser_time_s):
+                    phase_times = clock.drain()
+                    exec_stats = blk_exec_stats_builder.build(
+                        block_ser_time_s=block_ser_time_s,
+                        block_transform_time_s=phase_times.total_s,
+                        input_prep_time_s=phase_times.input_prep_s,
+                        function_body_time_s=phase_times.function_body_s,
+                        output_build_time_s=phase_times.output_build_s,
+                        stage_time_s=phase_times.stage_s,
+                        task_idx=ctx.task_idx,
+                    )
+                    # NOTE: This tracks task duration up to this point, though we're
+                    # primarily interested in task total duration.
+                    # TODO figure out a better way to track task total duration
+                    task_dur_s = time.perf_counter() - task_start_s
+                    return BlockMetadataWithSchema.from_metadata(
+                        replace(
+                            block_meta,
+                            exec_stats=exec_stats,
+                            task_exec_stats=TaskExecWorkerStats(
+                                task_wall_time_s=task_dur_s,
+                                max_uss_bytes=profiler.estimate_max_uss(),
+                                # Reported by producing transforms through the
+                                # per-task reporter; empty if the op reports nothing.
+                                custom_op_stats=op_stats_reporter.get_stats(),
+                            ),
                         ),
-                    ),
-                    schema=block_schema if not yielded_schema else None,
-                )
-                yield pickle.dumps(bm)
+                        schema=block_schema if not yielded_schema else None,
+                    )
+
+                yield from yield_block_with_stats(block, build_metadata)
 
                 # Reset trackers
                 yielded_schema = True
@@ -879,9 +1050,10 @@ def _map_task(
 def _canonicalize_ray_remote_args(ray_remote_args: Dict[str, Any]) -> Dict[str, Any]:
     """Enforce rules on ray remote args for map tasks.
 
-    Namely, args must explicitly specify either CPU or GPU, not both. Disallowing
-    mixed resources avoids potential starvation and deadlock issues during scheduling,
-    and should not be a serious limitation for users.
+    Map tasks default to 1 CPU. GPU map tasks that don't specify ``num_cpus`` also
+    reserve 1 CPU, so the scheduler accounts for the CPU work GPU UDFs always do and
+    doesn't overpack CPU tasks onto the node hosting them. Users can opt out by
+    explicitly passing ``num_cpus=0``.
     """
     ray_remote_args = ray_remote_args.copy()
 
@@ -895,7 +1067,11 @@ def _canonicalize_ray_remote_args(ray_remote_args: Dict[str, Any]) -> Dict[str, 
             "https://github.com/ray-project/ray/issues/new/choose"
         )
 
-    if "num_cpus" not in ray_remote_args and "num_gpus" not in ray_remote_args:
+    if "num_cpus" not in ray_remote_args:
+        # Map tasks default to 1 CPU. GPU map tasks that don't specify num_cpus also
+        # reserve 1 CPU, so the scheduler accounts for the CPU work GPU UDFs always do and
+        # doesn't overpack CPU tasks onto the node hosting them. Users can opt out by
+        # explicitly passing num_cpus=0.
         ray_remote_args["num_cpus"] = 1
 
     return ray_remote_args

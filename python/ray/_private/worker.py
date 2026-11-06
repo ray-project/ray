@@ -77,6 +77,7 @@ from ray._private.ray_logging.logging_config import LoggingConfig
 from ray._private.resource_isolation_config import ResourceIsolationConfig
 from ray._private.runtime_env.constants import RAY_JOB_CONFIG_JSON_ENV_VAR
 from ray._private.runtime_env.py_modules import upload_py_modules_if_needed
+from ray._private.runtime_env.redaction import redact_runtime_env
 from ray._private.runtime_env.setup_hook import (
     upload_worker_process_setup_hook_if_needed,
 )
@@ -91,6 +92,7 @@ from ray._raylet import (
 from ray.actor import ActorClass
 from ray.exceptions import (
     ActorHandleNotFoundError,
+    AuthenticationError,
     ObjectStoreFullError,
     RayError,
     RaySystemError,
@@ -662,9 +664,7 @@ class Worker:
 
     @contextmanager
     def worker_paused_by_debugger(self):
-        """
-        Updates the worker num paused threads when the worker is paused by debugger
-        """
+        """Updates the worker num paused threads when the worker is paused by debugger"""
         try:
             worker_id = self.core_worker.get_worker_id()
             ray._private.state.update_worker_num_paused_threads(worker_id, 1)
@@ -852,8 +852,9 @@ class Worker:
             )
             if not is_one_sided_transport(tensor_transport):
                 raise ValueError(
-                    f"ray.put is not supported for two-sided RDT transport {tensor_transport}. "
-                    f"Either pass a one-sided transport, or return the value from an actor task and use the @ray.method(tensor_transport={tensor_transport}) decorator instead."
+                    f"ray.put() is not supported for two-sided RDT transport {tensor_transport!r}. "
+                    "Use a one-sided transport such as NIXL, or return the value from an actor task "
+                    f"and use the @ray.method(tensor_transport={tensor_transport!r}) decorator instead."
                 )
         try:
             if tensor_transport is not None:
@@ -1149,10 +1150,15 @@ class Worker:
         # TPU_VISIBLE_CHIPS, ..) then respect that in the sense that only IDs
         # that appear in (CUDA_VISIBLE_DEVICES, ONEAPI_DEVICE_SELECTOR,
         # HIP_VISIBLE_DEVICES, NEURON_RT_VISIBLE_CORES, TPU_VISIBLE_CHIPS, ..)
-        # should be returned.
+        # should be returned. When set via a worker's runtime_env, original_ids
+        # may be narrower than the node raylet's resource pool, so raylet slot
+        # indices in assigned_ids can exceed len(original_ids).
         if self.original_visible_accelerator_ids.get(resource_name, None) is not None:
             original_ids = self.original_visible_accelerator_ids[resource_name]
-            assigned_ids = {str(original_ids[i]) for i in assigned_ids}
+            if all(i < len(original_ids) for i in assigned_ids):
+                assigned_ids = {str(original_ids[i]) for i in assigned_ids}
+            else:
+                assigned_ids = {str(x) for x in original_ids}
         return list(assigned_ids)
 
     def shutdown_rdt_manager(self):
@@ -1231,9 +1237,7 @@ def get_dashboard_url():
 
 
 def _remove_protocol_from_url(url: Optional[str]) -> str:
-    """
-    Helper function to remove protocol from URL if it exists.
-    """
+    """Helper function to remove protocol from URL if it exists."""
     if not url:
         return url
     parsed_url = urllib.parse.urlparse(url)
@@ -1245,9 +1249,7 @@ def _remove_protocol_from_url(url: Optional[str]) -> str:
 
 
 class BaseContext(metaclass=ABCMeta):
-    """
-    Base class for RayContext and ClientContext
-    """
+    """Base class for RayContext and ClientContext"""
 
     dashboard_url: Optional[str]
     python_version: str
@@ -1255,8 +1257,7 @@ class BaseContext(metaclass=ABCMeta):
 
     @abstractmethod
     def disconnect(self):
-        """
-        If this context is for directly attaching to a cluster, disconnect
+        """If this context is for directly attaching to a cluster, disconnect
         will call ray.shutdown(). Otherwise, if the context is for a ray
         client connection, the client will be disconnected.
         """
@@ -1345,9 +1346,7 @@ class BaseContext(metaclass=ABCMeta):
 
 @dataclass
 class RayContext(BaseContext, Mapping):
-    """
-    Context manager for attached drivers.
-    """
+    """Context manager for attached drivers."""
 
     dashboard_url: Optional[str]
     python_version: str
@@ -1409,8 +1408,7 @@ _global_node = None
 def _maybe_modify_runtime_env(
     runtime_env: Optional[Dict[str, Any]], _skip_env_hook: bool
 ) -> Dict[str, Any]:
-    """
-    If you set RAY_ENABLE_UV_RUN_RUNTIME_ENV, which is the default, and run the driver with `uv run`,
+    """If you set RAY_ENABLE_UV_RUN_RUNTIME_ENV, which is the default, and run the driver with `uv run`,
     this function sets up a runtime environment that replicates the driver's environment to the
     workers. Otherwise, if a runtime environment hook is present it will modify the runtime environment.
     """
@@ -1463,8 +1461,7 @@ def init(
     proxy_server_url: Optional[str] = None,
     **kwargs,
 ) -> BaseContext:
-    """
-    Connect to an existing Ray cluster or start one and connect to it.
+    """Connect to an existing Ray cluster or start one and connect to it.
 
     This method handles two cases; either a Ray cluster already exists and we
     just attach this driver to it or we start all of the processes associated
@@ -1795,9 +1792,10 @@ def init(
             # None means there was a conflict.
             raise ValueError(
                 "Failed to merge the Job's runtime env "
-                f"{injected_job_config.runtime_env} with "
-                f"a ray.init's runtime env {driver_runtime_env} because "
-                "of a conflict. Specifying the same runtime_env fields "
+                f"{redact_runtime_env(injected_job_config.runtime_env)} with "
+                f"a ray.init's runtime env {redact_runtime_env(driver_runtime_env)} "
+                "because of a conflict. "
+                "Specifying the same runtime_env fields "
                 "or the same environment variable keys is not allowed. "
                 "Use RAY_OVERRIDE_JOB_RUNTIME_ENV=1 to instruct Ray to "
                 "combine Job and Driver's runtime environment in the event of "
@@ -1982,6 +1980,9 @@ def init(
                 spawn_reaper=False,
                 connect_only=True,
             )
+        except AuthenticationError:
+            # A ConnectionError subclass; keep its fix text instead of wrapping it.
+            raise
         except (ConnectionError, RuntimeError) as e:
             if gcs_address == ray._private.utils.read_ray_address(_temp_dir):
                 logger.info(
@@ -2175,6 +2176,18 @@ def custom_excepthook(type, value, tb):
 
 
 sys.excepthook = custom_excepthook
+
+
+def _should_ignore_worker_log_prefix(worker) -> bool:
+    """Whether to skip the "(name pid=...)" prefix on worker logs forwarded
+    to the driver: either the job's LoggingConfig implies it (structured
+    output would otherwise be broken by the prefix), or the user explicitly
+    opted out via RAY_DISABLE_WORKER_LOG_PREFIX.
+    """
+    return (
+        worker.job_logging_config is not None
+        or ray_constants.RAY_DISABLE_WORKER_LOG_PREFIX
+    )
 
 
 def print_to_stdstream(data, ignore_prefix: bool):
@@ -2751,9 +2764,7 @@ def connect(
         )
         worker.listener_thread.daemon = True
         worker.listener_thread.start()
-        # If the job's logging config is set, don't add the prefix
-        # (task/actor's name and its PID) to the logs.
-        ignore_prefix = global_worker.job_logging_config is not None
+        ignore_prefix = _should_ignore_worker_log_prefix(global_worker)
 
         if log_to_driver:
             global_worker_stdstream_dispatcher.add_handler(
@@ -2803,8 +2814,7 @@ def disconnect(exiting_interpreter=False):
             worker.logger_thread.join()
         worker.threads_stopped.clear()
 
-        # Ignore the prefix if the logging config is set.
-        ignore_prefix = worker.job_logging_config is not None
+        ignore_prefix = _should_ignore_worker_log_prefix(worker)
         for leftover in stdout_deduplicator.flush():
             print_worker_logs(leftover, sys.stdout, ignore_prefix)
         for leftover in stderr_deduplicator.flush():
@@ -2901,10 +2911,10 @@ def get(
 
     Related patterns and anti-patterns:
 
-    - :doc:`/ray-core/patterns/ray-get-loop`
-    - :doc:`/ray-core/patterns/unnecessary-ray-get`
-    - :doc:`/ray-core/patterns/ray-get-submission-order`
-    - :doc:`/ray-core/patterns/ray-get-too-many-objects`
+    - :doc:`/core/patterns/ray-get-loop`
+    - :doc:`/core/patterns/unnecessary-ray-get`
+    - :doc:`/core/patterns/ray-get-submission-order`
+    - :doc:`/core/patterns/ray-get-too-many-objects`
 
 
     Args:
@@ -3033,9 +3043,9 @@ def put(
 
     Related patterns and anti-patterns:
 
-    - :doc:`/ray-core/patterns/return-ray-put`
-    - :doc:`/ray-core/patterns/pass-large-arg-by-value`
-    - :doc:`/ray-core/patterns/closure-capture-large-objects`
+    - :doc:`/core/patterns/return-ray-put`
+    - :doc:`/core/patterns/pass-large-arg-by-value`
+    - :doc:`/core/patterns/closure-capture-large-objects`
 
     Args:
         value: The Python object to be stored.
@@ -3091,8 +3101,9 @@ def wait(
 
     If timeout is set, the function returns either when the requested number of
     IDs are ready or when the timeout is reached, whichever occurs first. If it
-    is not set, the function simply waits until that number of objects is ready
-    and returns that exact number of object refs.
+    is not set, the function uses a timeout of 10**6 seconds (about 11.6 days),
+    so it waits until that number of objects is ready, or until that timeout
+    is reached.
 
     `ray_waitables` is a list of :class:`~ray.ObjectRef` and
     :class:`~ray.ObjectRefGenerator`.
@@ -3121,8 +3132,8 @@ def wait(
 
     Related patterns and anti-patterns:
 
-    - :doc:`/ray-core/patterns/limit-pending-tasks`
-    - :doc:`/ray-core/patterns/ray-get-submission-order`
+    - :doc:`/core/patterns/limit-pending-tasks`
+    - :doc:`/core/patterns/ray-get-submission-order`
 
     Args:
         ray_waitables: List of :class:`~ObjectRef` or
@@ -3130,7 +3141,7 @@ def wait(
             not be ready. Note that these must be unique.
         num_returns: The number of ray_waitables that should be returned.
         timeout: The maximum amount of time in seconds to wait before
-            returning.
+            returning. If None, Ray uses 10**6 seconds.
         fetch_local: If True, wait for the object to be downloaded onto
             the local node before returning it as ready. If the `ray_waitable`
             is a generator, it will wait until the next object in the generator
@@ -3218,6 +3229,197 @@ def wait(
             fetch_local,
         )
         return ready_ids, remaining_ids
+
+
+@client_mode_hook
+def _wait_generators_bulk(
+    ray_generators: List[Tuple[ObjectRefGenerator, List[bool]]],
+    *,
+    num_return: int = 1,
+    timeout: Optional[float] = None,
+) -> List[Tuple[ObjectRefGenerator, List[ObjectRef]]]:
+    """Private API: wait for batches of next refs from streaming generators.
+
+    Each input element is ``(generator, fetch_local_per_ref)``. For each
+    generator, this waits for the last requested ref without fetching it
+    locally. The requested refs are deterministic stream positions, so once the
+    last ref is ready, the whole batch can be returned and consumed. It then
+    fetches only the refs whose corresponding ``fetch_local`` flag is true
+    before returning the batch.
+
+    Args:
+        ray_generators: A list of ``(generator, fetch_local_per_ref)`` tuples.
+            ``generator`` is an ``ObjectRefGenerator`` and
+            ``fetch_local_per_ref`` is a non-empty ``list[bool]`` whose length
+            is the number of next refs to request from that generator. The
+            i-th bool indicates whether the i-th requested ref should be
+            fetched to the local node before the batch is returned. All
+            generators must be unique.
+        num_return: The maximum number of generator batches to return. Must be
+            positive and no greater than ``len(ray_generators)``. Defaults to 1.
+        timeout: The maximum number of seconds to wait before returning. If
+            ``None`` (default), waits indefinitely. Must be nonnegative.
+
+    Returns:
+        A list of at most ``num_return`` ``(generator, refs)`` tuples, one per
+        ready generator batch. ``refs`` is the full list of requested refs for
+        that generator (length equal to its ``fetch_local_per_ref``). Returns
+        an empty list if no batch became ready within the timeout.
+
+    Raises:
+        TypeError: If ``ray_generators`` or any element has the wrong type.
+        ValueError: If a ``fetch_local_per_ref`` is empty, generators are not
+            unique, ``timeout`` is negative, or ``num_return`` is out of range.
+
+    Example:
+        >>> ready = _wait_generators_bulk(  # doctest: +SKIP
+        ...     [
+        ...         (gen1, [True, False]),
+        ...         (gen2, [False, True]),
+        ...     ],
+        ...     num_return=1,
+        ...     timeout=2,
+        ... )
+        >>> assert ready == [(gen1, [ref1, ref2])]  # doctest: +SKIP
+    """
+    worker = global_worker
+    worker.check_connected()
+
+    if (
+        hasattr(worker, "core_worker")
+        and worker.core_worker.current_actor_is_asyncio()
+        and timeout != 0
+    ):
+        global blocking_wait_inside_async_warned
+        if not blocking_wait_inside_async_warned:
+            logger.debug(
+                "Using blocking ray._private.worker._wait_generators_bulk inside "
+                "async method. This blocks the event loop. Please use `await` "
+                "on object ref with asyncio.wait. "
+            )
+            blocking_wait_inside_async_warned = True
+
+    if not isinstance(ray_generators, list):
+        raise TypeError(
+            "_wait_generators_bulk() expected a list of "
+            "(ray.ObjectRefGenerator, list[bool]) tuples, "
+            f"got {type(ray_generators)}"
+        )
+
+    if timeout is not None and timeout < 0:
+        raise ValueError(
+            "The 'timeout' argument must be nonnegative. " f"Received {timeout}"
+        )
+
+    for i, pair in enumerate(ray_generators):
+        if not isinstance(pair, tuple) or len(pair) != 2:
+            raise TypeError(
+                "_wait_generators_bulk() expected each element to be a "
+                "(generator, fetch_local_per_ref) tuple; "
+                f"got {type(pair)} at index {i}"
+            )
+        generator, fetch_locals = pair
+        if not isinstance(generator, ObjectRefGenerator):
+            raise TypeError(
+                "_wait_generators_bulk() tuple first element must be "
+                "ray.ObjectRefGenerator, "
+                f"got {type(generator)} at index {i}"
+            )
+        if not isinstance(fetch_locals, list):
+            raise TypeError(
+                "_wait_generators_bulk() tuple second element must be list[bool], "
+                f"got {type(fetch_locals)} at index {i}"
+            )
+        if len(fetch_locals) == 0:
+            raise ValueError(
+                "_wait_generators_bulk() fetch_local_per_ref must be non-empty "
+                f"at index {i}"
+            )
+        for j, fetch_local in enumerate(fetch_locals):
+            if not isinstance(fetch_local, bool):
+                raise TypeError(
+                    "_wait_generators_bulk() fetch_local_per_ref entries must be "
+                    f"bool, got {type(fetch_local)} at index {i}, ref {j}"
+                )
+
+    with profiling.profile("ray._wait_generators_bulk"):
+        if len(ray_generators) == 0:
+            return []
+
+        if len(ray_generators) != len({pair[0] for pair in ray_generators}):
+            raise ValueError(
+                "_wait_generators_bulk requires a list of unique generators."
+            )
+
+        if num_return <= 0:
+            raise ValueError("Invalid number of generators to return %d." % num_return)
+        if num_return > len(ray_generators):
+            raise ValueError(
+                "num_return cannot be greater than the number "
+                "of generators provided to _wait_generators_bulk."
+            )
+
+        generator_refs: List[List[ObjectRef]] = []
+        last_refs: List[ObjectRef] = []
+        last_ref_to_gen_index = {}
+        last_refs_fetch_local = True
+        for gen_index, (generator, fetch_locals) in enumerate(ray_generators):
+            refs = generator._get_next_ref_n(len(fetch_locals))
+            generator_refs.append(refs)
+            last_refs.append(refs[-1])
+            last_ref_to_gen_index[refs[-1]] = gen_index
+            last_refs_fetch_local = last_refs_fetch_local and fetch_locals[-1]
+
+        deadline = None if timeout is None else time.monotonic() + timeout
+
+        def timeout_remaining() -> Optional[float]:
+            if deadline is None:
+                return None
+            return max(0, deadline - time.monotonic())
+
+        ready_last_refs, _ = wait(
+            last_refs,
+            num_returns=num_return,
+            timeout=timeout_remaining(),
+            fetch_local=last_refs_fetch_local,
+        )
+        ready_last_indices = [
+            last_ref_to_gen_index[last_ref] for last_ref in ready_last_refs
+        ]
+
+        ready_local_ref_set = set(ready_last_refs) if last_refs_fetch_local else set()
+        ready_batch_infos = []
+        refs_to_fetch_local = []
+        for gen_index in ready_last_indices:
+            refs = generator_refs[gen_index]
+            fetch_locals = ray_generators[gen_index][1]
+            required_local_refs = []
+            for ref, fetch_local in zip(refs, fetch_locals):
+                if not fetch_local:
+                    continue
+                required_local_refs.append(ref)
+                if ref not in ready_local_ref_set:
+                    refs_to_fetch_local.append(ref)
+            ready_batch_infos.append((gen_index, refs, required_local_refs))
+
+        if refs_to_fetch_local:
+            ready_refs, _ = wait(
+                refs_to_fetch_local,
+                num_returns=len(refs_to_fetch_local),
+                timeout=timeout_remaining(),
+                fetch_local=True,
+            )
+            ready_local_ref_set.update(ready_refs)
+
+        result = []
+        for gen_index, refs, required_local_refs in ready_batch_infos:
+            if len(result) >= num_return:
+                break
+            generator = ray_generators[gen_index][0]
+            if all(ref in ready_local_ref_set for ref in required_local_refs):
+                generator._consume_next_ref_n(len(refs))
+                result.append((generator, refs))
+        return result
 
 
 @PublicAPI
@@ -3322,8 +3524,9 @@ def cancel(
         Cancelled Tasks aren't retried. `max_task_retries` aren't respected.
 
         Calling ray.get on a cancelled Task raises a TaskCancelledError
-        if the Task has been scheduled or interrupted.
-        It raises a WorkerCrashedError if `force=True`.
+        if the Task has been scheduled or interrupted. This also holds
+        if `force=True`: even though Ray kills the worker running the Task,
+        ray.get raises a TaskCancelledError, not a WorkerCrashedError.
 
         If `recursive=True`, all the child Tasks and Actor Tasks
         are cancelled. If `force=True` and `recursive=True`, `force=True`
@@ -3709,9 +3912,10 @@ def remote(
 
             - ``num_returns``: *remote functions only*. Number of object refs
               returned by the remote function invocation. The default is 1.
-              Pass ``"dynamic"`` to allow the task to decide at runtime;
-              callers receive an ``ObjectRef[DynamicObjectRefGenerator]``.
-              See :ref:`dynamic generators <dynamic-generators>` for details.
+              Pass ``"streaming"`` for a generator task that yields object refs
+              lazily. See :ref:`generators <generators>` for details.
+              ``"dynamic"`` is deprecated; prefer ``"streaming"``. See
+              :ref:`dynamic generators <dynamic-generators>` for the legacy API.
             - ``num_cpus``: CPU resources to reserve for the task or actor.
               By default, tasks use 1 CPU resource and actors use 1 CPU for
               scheduling and 0 CPU for running. See

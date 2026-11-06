@@ -1,9 +1,12 @@
 import time
 
+import numpy as np
+import pandas as pd
 import pyarrow as pa
 import pytest
 
 import ray
+from ray.data._internal import batcher as batcher_module
 from ray.data._internal.arrow_block import ArrowBlockAccessor
 from ray.data._internal.arrow_ops.transform_pyarrow import try_combine_chunked_columns
 from ray.data._internal.batcher import (
@@ -12,11 +15,39 @@ from ray.data._internal.batcher import (
     ShufflingBatcher,
 )
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
+from ray.data._internal.tensor_extensions import chunked_tensor_take
+from ray.data._internal.tensor_extensions.arrow import ArrowTensorArray
 from ray.data.block import BlockAccessor
 
 
 def gen_block(num_rows):
     return pa.table({"foo": [1] * num_rows})
+
+
+@pytest.mark.parametrize("ensure_copy", [False, True])
+@pytest.mark.parametrize("max_chunksize", [None, 2])
+@pytest.mark.parametrize("prefix_rows", [0, 1])
+def test_batching_arrow_ipc_bytes(ensure_copy, max_chunksize, prefix_rows):
+    table = pa.table({"value": [0, None, 2, 3, 4], "label": list("abcde")})
+    sink = pa.BufferOutputStream()
+    with pa.ipc.new_stream(sink, table.schema) as writer:
+        writer.write_table(table, max_chunksize=max_chunksize)
+
+    batcher = Batcher(batch_size=2, ensure_copy=ensure_copy)
+    if prefix_rows:
+        batcher.add(table.slice(0, prefix_rows))
+    batcher.add(sink.getvalue().to_pybytes())
+    batcher.done_adding()
+
+    batches = []
+    while batcher.has_any():
+        batches.append(batcher.next_batch())
+
+    expected = pa.concat_tables([table.slice(0, prefix_rows), table])
+    assert [batch.num_rows for batch in batches] == (
+        [2, 2, 1] if prefix_rows == 0 else [2, 2, 2]
+    )
+    assert pa.concat_tables(batches).equals(expected)
 
 
 def test_shuffling_batcher():
@@ -88,12 +119,15 @@ def test_shuffling_batcher():
     add_and_check(15, expect_has_batch=True)  # total=35
 
     # All 35 rows are still uncompacted since no next_batch() has been called.
-    assert batcher._shuffle_buffer is None
+    assert batcher._buffer_state is None
     assert batcher._builder.num_rows() == 35
 
     # Consume one batch — this triggers the first compaction.
     next_and_check(expect_full_batch=True, expect_has_batch_after=True)
-    assert batcher._shuffle_buffer is not None  # compaction happened
+    assert batcher._buffer_state is not None  # compaction happened
+    assert batcher._buffer_state.batch_head == batch_size
+    assert batcher._buffer_state.remaining_rows == 30
+    first_buffer_state = batcher._buffer_state
     assert batcher._builder.num_rows() == 0  # all rows moved to compacted buffer
 
     # Add more data while consuming.
@@ -104,6 +138,10 @@ def test_shuffling_batcher():
         batch = batcher.next_batch()
         assert len(batch) == batch_size
         total_yielded += batch_size
+
+    # Carrying remaining rows through a later compaction atomically replaces
+    # the buffer generation rather than resetting its fields independently.
+    assert batcher._buffer_state is not first_buffer_state
 
     # Streaming exhausted: remaining rows <= batch_size (not enough to trigger
     # has_batch without more data or done_adding).
@@ -235,7 +273,8 @@ def _collect_rows_full_method(blocks, batch_size, buffer_size, seed):
     shuffle_buffer_min_size = max(buffer_size, batch_size)
 
     min_rows_to_yield_batch = max(
-        1, int(shuffle_buffer_min_size * SHUFFLE_BUFFER_COMPACTION_THRESHOLD)
+        batch_size,
+        int(shuffle_buffer_min_size * SHUFFLE_BUFFER_COMPACTION_THRESHOLD),
     )
 
     builder = DelegatingBlockBuilder()
@@ -342,11 +381,9 @@ def test_incremental_index_matches_full_method(
 def test_no_partial_batch_mid_stream():
     """has_batch() must not return True when total rows < batch_size.
 
-    With SHUFFLE_BUFFER_COMPACTION_THRESHOLD < 1.0, _min_rows_to_yield_batch
-    can be less than batch_size. If we drain the compacted buffer below
-    batch_size while no uncompacted rows are available, has_batch() must
-    return False — otherwise next_batch() would return a partial batch
-    mid-stream.
+    Once the compacted buffer is drained below batch_size and no uncompacted
+    rows are waiting, has_batch() must return False. Otherwise next_batch()
+    would return a partial batch mid-stream.
     """
     batch_size = 10
     buffer_size = 10  # common case: equal to batch_size
@@ -383,6 +420,239 @@ def test_no_partial_batch_mid_stream():
 
     total = sum(len(b) for b in batches) + len(final_batch)
     assert total == 35
+
+
+def test_no_partial_batch_when_uncompacted_rows_available():
+    """Rows waiting in the builder must be merged instead of yielding a short batch.
+
+    Regression test: `has_batch()` gates on the total number of unyielded rows, but
+    `next_batch()` used to only recompact once the compacted buffer fell to
+    `_min_rows_to_yield_batch`. When the compacted buffer held more than that but
+    fewer than `batch_size` rows, it was sliced on its own and yielded a short batch
+    mid-stream, even though more rows were already waiting in the builder.
+
+    With ``batch_size=8`` and blocks of ``[30, 10]``, the 30-row block drains to a
+    remainder of 6, which must be merged with the 10 pending rows rather than emitted
+    as a batch of 6.
+    """
+    batch_size = 8
+    batcher = ShufflingBatcher(
+        batch_size=batch_size,
+        shuffle_buffer_min_size=batch_size,
+        shuffle_seed=0,
+    )
+
+    sizes = []
+    for block_size in (30, 10):
+        batcher.add(gen_block(block_size))
+        while batcher.has_batch():
+            sizes.append(len(batcher.next_batch()))
+    batcher.done_adding()
+    while batcher.has_batch() or batcher.has_any():
+        sizes.append(len(batcher.next_batch()))
+
+    short_mid_stream = [size for size in sizes[:-1] if size != batch_size]
+    assert not short_mid_stream, f"expected only the last batch to be short: {sizes}"
+    assert sum(sizes) == 40
+    # 40 rows in batches of 8 is 5 batches, whatever the blocking.
+    assert sizes == [batch_size] * 5
+
+
+@pytest.mark.parametrize("fail_stage", [None, "prepare", "take"])
+@pytest.mark.parametrize("variable_shape", [False, True])
+def test_shuffling_batcher_production_tensors(
+    shutdown_only, monkeypatch, fail_stage, variable_shape
+):
+    ray.shutdown()
+    ray.init(num_cpus=1)
+    blocks = []
+    for start in range(0, 4096, 256):
+        ids = np.arange(start, start + 256, dtype=np.int64)
+        if variable_shape:
+            values = np.empty(len(ids), dtype=object)
+            for i, row_id in enumerate(ids):
+                values[i] = np.full(
+                    (512 * (1 + row_id % 2), 4), row_id, dtype=np.float32
+                )
+        else:
+            values = np.broadcast_to(ids[:, None], (256, 256)).astype(np.float32).copy()
+        blocks.append(
+            pa.table({"row_id": ids, "tensor": ArrowTensorArray.from_numpy(values)})
+        )
+
+    def consume():
+        batcher = ShufflingBatcher(
+            batch_size=128, shuffle_buffer_min_size=1024, shuffle_seed=51
+        )
+        batches = []
+        generations = set()
+
+        def drain():
+            while batcher.has_batch():
+                batches.append(batcher.next_batch())
+                generations.add(id(batcher._buffer_state.shuffled_indices))
+
+        for block in blocks:
+            batcher.add(block)
+            drain()
+        batcher.done_adding()
+        drain()
+        if batcher.has_any():
+            batches.append(batcher.next_batch())
+        return pa.concat_tables(batches), generations
+
+    with monkeypatch.context() as patch:
+        patch.setattr(chunked_tensor_take, "ENABLE_CHUNKED_TENSOR_TAKE", False)
+        expected, _ = consume()
+    calls = []
+    failures = []
+    plan_type = (
+        chunked_tensor_take.PreparedVariableShapedTensorTake
+        if variable_shape
+        else chunked_tensor_take.PreparedFixedShapedTensorTake
+    )
+    original = plan_type.take
+
+    def record_take(plan, indices):
+        if fail_stage == "take":
+            failures.append(1)
+            raise ValueError("injected take failure")
+        result = original(plan, indices)
+        calls.append(len(indices))
+        return result
+
+    monkeypatch.setattr(plan_type, "take", record_take)
+    preparation_calls = []
+    if fail_stage == "prepare":
+
+        def fail_prepare(*args, **kwargs):
+            preparation_calls.append(1)
+            raise ValueError("injected preparation failure")
+
+        monkeypatch.setattr(
+            batcher_module, "try_prepare_chunked_tensor_take", fail_prepare
+        )
+    actual, generations = consume()
+    assert len(generations) > 1
+    assert actual.equals(expected)
+    np.testing.assert_array_equal(
+        np.sort(actual.column("row_id").to_numpy()), np.arange(4096)
+    )
+    if fail_stage == "prepare":
+        assert preparation_calls
+        assert not calls
+    elif fail_stage == "take":
+        assert failures
+        assert not calls
+    else:
+        assert calls
+
+
+@pytest.mark.parametrize("fail_first_build", [False, True])
+def test_shuffle_generation_preserves_pandas_values(monkeypatch, fail_first_build):
+    monkeypatch.setattr(
+        batcher_module, "get_total_obj_store_mem_on_node", lambda: 10**12
+    )
+    batcher = ShufflingBatcher(batch_size=1, shuffle_buffer_min_size=2, shuffle_seed=17)
+    batcher.add(pd.DataFrame({"value": ["a", "b", "c", "d"]}))
+    batches = [batcher.next_batch() for _ in range(3)]
+    large_integer = 2**60 + 1
+    batcher.add(pd.DataFrame({"value": [large_integer]}))
+    batcher.add(pd.DataFrame({"value": [1.5]}))
+    batcher.done_adding()
+    old_state = batcher._buffer_state
+    old_rng_state = batcher._rng.bit_generator.state
+    original_concat = pd.concat
+    concat_inputs = []
+
+    def concat(tables, *args, **kwargs):
+        concat_inputs.append([len(table) for table in tables])
+        if fail_first_build and len(concat_inputs) == 1:
+            raise RuntimeError("concat failed")
+        return original_concat(tables, *args, **kwargs)
+
+    with monkeypatch.context() as patch:
+        patch.setattr(pd, "concat", concat)
+        if fail_first_build:
+            with pytest.raises(RuntimeError, match="concat failed"):
+                batcher.next_batch()
+            assert batcher._buffer_state is old_state
+            assert batcher._builder.num_rows() == 2
+            assert batcher._num_rows() == 3
+            assert batcher._rng.bit_generator.state == old_rng_state
+        while batcher.has_any():
+            batches.append(batcher.next_batch())
+
+    # Pending int/float blocks and object carry-over must be combined together.
+    # Combining the pending blocks first silently rounds the large integer.
+    assert concat_inputs == [[1, 1, 1]] * (2 if fail_first_build else 1)
+    values = pd.concat(batches)["value"].tolist()
+    assert [value for value in values if isinstance(value, int)] == [large_integer]
+    assert sorted(map(str, values)) == sorted(
+        map(str, ["a", "b", "c", "d", large_integer, 1.5])
+    )
+
+
+@pytest.mark.parametrize("block_format", ["arrow", "pandas"])
+@pytest.mark.parametrize("buffered", [False, True])
+def test_builder_additional_blocks_are_not_retained(block_format, buffered):
+    make_block = pa.table if block_format == "arrow" else pd.DataFrame
+    builder = DelegatingBlockBuilder()
+    if buffered:
+        builder.add_block(make_block({"id": [0]}))
+    extra = make_block({"id": [1]})
+    for _ in range(2):
+        actual = builder.build(additional_blocks=[extra])
+        assert actual.equals(make_block({"id": [0, 1] if buffered else [1]}))
+        assert builder.num_rows() == int(buffered)
+    assert BlockAccessor.for_block(builder.build()).num_rows() == int(buffered)
+
+
+@pytest.mark.parametrize("failure_stage", ["prepare", "publish"])
+def test_shuffle_generation_retry_preserves_rows_and_rng(
+    shutdown_only, monkeypatch, failure_stage
+):
+    ray.shutdown()
+    ray.init(num_cpus=1)
+    batcher = ShufflingBatcher(
+        batch_size=128, shuffle_buffer_min_size=1024, shuffle_seed=17
+    )
+    old_state = batcher_module._ShuffleBufferState(
+        pa.table({"id": np.arange(1024)}),
+        np.arange(1024, dtype=np.int64),
+        {},
+        batch_head=768,
+    )
+    batcher._buffer_state = old_state
+    batcher.add(pa.table({"id": np.arange(1024, 2048)}))
+    batcher.done_adding()
+    old_builder = batcher._builder
+    old_rng_state = batcher._rng.bit_generator.state
+
+    def fail(*args, **kwargs):
+        raise RuntimeError("generation failed")
+
+    target = (
+        "_prepare_local_shuffle_arrow_table"
+        if failure_stage == "prepare"
+        else "_ShuffleBufferState"
+    )
+    with monkeypatch.context() as patch:
+        patch.setattr(batcher_module, target, fail)
+        with pytest.raises(RuntimeError, match="generation failed"):
+            batcher.next_batch()
+    assert batcher._builder is old_builder
+    assert batcher._buffer_state is old_state
+    assert batcher._num_rows() == 1280
+    assert batcher._rng.bit_generator.state == old_rng_state
+
+    ids = []
+    while batcher.has_any():
+        ids.extend(batcher.next_batch().column("id").to_pylist())
+    source_ids = np.concatenate([np.arange(1024, 2048), np.arange(768, 1024)])
+    expected = source_ids[np.random.default_rng(17).permutation(1280)]
+    np.testing.assert_array_equal(ids, expected)
+    assert len(set(ids)) == 1280
 
 
 if __name__ == "__main__":

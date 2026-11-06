@@ -1,4 +1,6 @@
+import contextlib
 import copy
+import datetime
 import sys
 from collections import defaultdict
 from pathlib import Path
@@ -9,12 +11,18 @@ import jsonpatch
 import pytest
 import yaml
 
+from ray.autoscaler._private.kuberay import node_provider as node_provider_module
 from ray.autoscaler._private.kuberay.node_provider import (
+    IN_CLUSTER_CA_CERT_PATH,
+    IN_CLUSTER_TOKEN_PATH,
+    KUBERAY_REQUEST_TIMEOUT_S,
     KubeRayNodeProvider,
+    KubernetesHttpApiClient,
     ScaleRequest,
     _worker_group_index,
     _worker_group_max_replicas,
     _worker_group_replicas,
+    load_k8s_secrets,
 )
 from ray.autoscaler._private.util import NodeID
 from ray.autoscaler.batching_node_provider import NodeData
@@ -365,6 +373,198 @@ def test_safe_to_scale(
         assert patched_cpu_workers_to_delete == cpu_workers_to_delete
         assert patched_gpu_workers_to_delete == gpu_workers_to_delete
         assert patched_tpu_workers_to_delete == tpu_workers_to_delete
+
+
+CLIENT_CERT_PATH = "/etc/ray-k8s-auth/tls.crt"
+CLIENT_KEY_PATH = "/etc/ray-k8s-auth/tls.key"
+CA_CERT_PATH = "/etc/ray-k8s-auth/ca.crt"
+
+
+def _mock_auth_config(
+    client_cert_path=None, client_key_path=None, ca_cert_path=None
+) -> mock._patch:
+    """Patch the auth configuration read from the environment at import time."""
+    return mock.patch.multiple(
+        node_provider_module,
+        KUBERAY_CLIENT_CERT_PATH=client_cert_path,
+        KUBERAY_CLIENT_KEY_PATH=client_key_path,
+        KUBERAY_CA_CERT_PATH=ca_cert_path,
+    )
+
+
+@contextlib.contextmanager
+def _mock_token_file(token: str = "fake-token", exists: bool = True):
+    """Fake the ServiceAccount token file projected into a Pod by Kubernetes."""
+    with mock.patch(
+        "builtins.open", mock.mock_open(read_data=token)
+    ) as mock_open, mock.patch.object(
+        node_provider_module.os.path, "exists", return_value=exists
+    ):
+        yield mock_open
+
+
+def _mock_ok_response(payload):
+    response = mock.MagicMock()
+    response.status_code = 200
+    response.json.return_value = payload
+    return response
+
+
+def test_load_k8s_secrets_defaults_to_in_cluster_auth():
+    """With no auth configured, the in-cluster ServiceAccount is used, as before."""
+    with _mock_auth_config(), _mock_token_file() as mock_open:
+        headers, verify, cert = load_k8s_secrets()
+
+    mock_open.assert_called_once_with(IN_CLUSTER_TOKEN_PATH)
+    assert headers == {"Authorization": "Bearer fake-token"}
+    assert verify == IN_CLUSTER_CA_CERT_PATH
+    assert cert is None
+
+
+def test_load_k8s_secrets_with_client_cert():
+    """A configured client certificate is returned for use as `requests`' `cert`."""
+    with _mock_auth_config(
+        client_cert_path=CLIENT_CERT_PATH,
+        client_key_path=CLIENT_KEY_PATH,
+        ca_cert_path=CA_CERT_PATH,
+    ), _mock_token_file():
+        headers, verify, cert = load_k8s_secrets()
+
+    assert headers == {"Authorization": "Bearer fake-token"}
+    assert verify == CA_CERT_PATH
+    assert cert == (CLIENT_CERT_PATH, CLIENT_KEY_PATH)
+
+
+def test_load_k8s_secrets_ca_cert_override_only():
+    """The CA certificate can be overridden without configuring a client cert."""
+    with _mock_auth_config(ca_cert_path=CA_CERT_PATH), _mock_token_file():
+        headers, verify, cert = load_k8s_secrets()
+
+    assert headers == {"Authorization": "Bearer fake-token"}
+    assert verify == CA_CERT_PATH
+    assert cert is None
+
+
+def test_load_k8s_secrets_token_optional_with_client_cert():
+    """A missing ServiceAccount token is tolerated when using a client cert."""
+    with _mock_auth_config(
+        client_cert_path=CLIENT_CERT_PATH, client_key_path=CLIENT_KEY_PATH
+    ), _mock_token_file(exists=False):
+        headers, verify, cert = load_k8s_secrets()
+
+    assert headers == {}
+    assert verify == IN_CLUSTER_CA_CERT_PATH
+    assert cert == (CLIENT_CERT_PATH, CLIENT_KEY_PATH)
+
+
+def test_load_k8s_secrets_token_required_without_client_cert():
+    """A missing ServiceAccount token still raises in the default configuration."""
+    with _mock_auth_config(), mock.patch(
+        "builtins.open", side_effect=FileNotFoundError
+    ):
+        with pytest.raises(FileNotFoundError):
+            load_k8s_secrets()
+
+
+@pytest.mark.parametrize(
+    "client_cert_path,client_key_path",
+    [(CLIENT_CERT_PATH, None), (None, CLIENT_KEY_PATH)],
+)
+def test_load_k8s_secrets_requires_cert_and_key_together(
+    client_cert_path, client_key_path
+):
+    with _mock_auth_config(
+        client_cert_path=client_cert_path, client_key_path=client_key_path
+    ), _mock_token_file():
+        with pytest.raises(ValueError, match="must be set together"):
+            load_k8s_secrets()
+
+
+def test_client_get_defaults_unchanged():
+    """`get` sends the in-cluster bearer token and no client cert, as before."""
+    client = KubernetesHttpApiClient(namespace="default")
+    with _mock_auth_config(), _mock_token_file(), mock.patch.object(
+        node_provider_module.requests, "get"
+    ) as mock_get:
+        mock_get.return_value = _mock_ok_response({"kind": "PodList"})
+        assert client.get("pods") == {"kind": "PodList"}
+
+    args, kwargs = mock_get.call_args
+    assert args == (
+        node_provider_module.url_from_resource(namespace="default", path="pods"),
+    )
+    assert kwargs == {
+        "headers": {"Authorization": "Bearer fake-token"},
+        "timeout": KUBERAY_REQUEST_TIMEOUT_S,
+        "verify": IN_CLUSTER_CA_CERT_PATH,
+        "cert": None,
+    }
+
+
+def test_client_patch_defaults_unchanged():
+    """`patch` sends the in-cluster bearer token and no client cert, as before."""
+    client = KubernetesHttpApiClient(namespace="default")
+    with _mock_auth_config(), _mock_token_file(), mock.patch.object(
+        node_provider_module.requests, "patch"
+    ) as mock_patch:
+        mock_patch.return_value = _mock_ok_response({"kind": "RayCluster"})
+        assert client.patch("rayclusters/fake", [{"op": "remove", "path": "/x"}]) == {
+            "kind": "RayCluster"
+        }
+
+    _, kwargs = mock_patch.call_args
+    assert kwargs == {
+        "headers": {
+            "Authorization": "Bearer fake-token",
+            "Content-type": "application/json-patch+json",
+        },
+        "timeout": KUBERAY_REQUEST_TIMEOUT_S,
+        "verify": IN_CLUSTER_CA_CERT_PATH,
+        "cert": None,
+    }
+
+
+def test_client_caches_credentials_until_they_expire():
+    """Credentials are loaded once and reused until the refresh period elapses."""
+    client = KubernetesHttpApiClient(namespace="default")
+    with _mock_auth_config(), _mock_token_file(), mock.patch.object(
+        node_provider_module, "load_k8s_secrets", return_value=({}, "ca", None)
+    ) as mock_load, mock.patch.object(node_provider_module.requests, "get") as mock_get:
+        mock_get.return_value = _mock_ok_response({})
+
+        client.get("pods")
+        client.get("pods")
+        assert mock_load.call_count == 1
+
+        # Force the cached credentials to look expired.
+        client._token_expires_at = datetime.datetime.now() - datetime.timedelta(
+            seconds=1
+        )
+        client.get("pods")
+        assert mock_load.call_count == 2
+
+
+@pytest.mark.parametrize("method", ["get", "patch"])
+def test_client_uses_configured_client_cert(method: str):
+    """A configured client cert and CA are passed through to `requests`."""
+    client = KubernetesHttpApiClient(namespace="default")
+    with _mock_auth_config(
+        client_cert_path=CLIENT_CERT_PATH,
+        client_key_path=CLIENT_KEY_PATH,
+        ca_cert_path=CA_CERT_PATH,
+    ), _mock_token_file(), mock.patch.object(
+        node_provider_module.requests, method
+    ) as mock_request:
+        mock_request.return_value = _mock_ok_response({})
+        if method == "get":
+            client.get("pods")
+        else:
+            client.patch("rayclusters/fake", [])
+
+    _, kwargs = mock_request.call_args
+    assert kwargs["cert"] == (CLIENT_CERT_PATH, CLIENT_KEY_PATH)
+    assert kwargs["verify"] == CA_CERT_PATH
+    assert kwargs["headers"]["Authorization"] == "Bearer fake-token"
 
 
 if __name__ == "__main__":

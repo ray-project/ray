@@ -6,12 +6,22 @@ from typing import Dict, Optional, Tuple
 import ray
 import ray._private.ray_constants as ray_constants
 from ray._common.constants import HEAD_NODE_RESOURCE_NAME, NODE_ID_PREFIX
-from ray._common.utils import RESOURCE_CONSTRAINT_PREFIX
+from ray._common.utils import (
+    RESOURCE_CONSTRAINT_PREFIX,
+    env_bool,
+    get_cgroup_aware_swap_memory,
+)
 from ray._private import accelerators
 from ray._private.accelerators import AcceleratorManager
 from ray._private.resource_isolation_config import ResourceIsolationConfig
 
 logger = logging.getLogger(__name__)
+
+# Mirrors the C++ RAY_CONFIG of the same name. When true, swap is counted as
+# part of node capacity for scheduling and ray status. The C++ raylet reads the
+# same env var to gate the OOM killer's swap accounting, so flipping this env
+# var keeps both sides consistent.
+_COUNT_SWAP_IN_MEMORY_MONITOR = env_bool("RAY_count_swap_in_memory_monitor", False)
 
 
 class ResourceAndLabelSpec:
@@ -31,8 +41,7 @@ class ResourceAndLabelSpec:
         resources: Optional[Dict[str, float]] = None,
         labels: Optional[Dict[str, str]] = None,
     ):
-        """
-        Initialize a ResourceAndLabelSpec
+        """Initialize a ResourceAndLabelSpec
 
         Args:
             num_cpus: The CPUs allocated for this raylet.
@@ -379,21 +388,22 @@ class ResourceAndLabelSpec:
         self,
         resource_isolation_config: Optional[ResourceIsolationConfig] = None,
     ):
-        """
-        Resolves logical and object store memory resources if not
+        """Resolves logical and object store memory resources if not
         explicitly set.
 
         Args:
             resource_isolation_config: Optional resource isolation config. When
                 enabled and memory is not explicitly set, the system reserved
-                memory for resource isolation is subtracted from available user memory.
+                memory for resource isolation is subtracted from available user
+                memory.
         """
         # Choose a default object store size.
         system_memory = ray._common.utils.get_system_memory()
-        if (
+        isolation_enabled = (
             resource_isolation_config is not None
             and resource_isolation_config.is_enabled()
-        ):
+        )
+        if isolation_enabled:
             available_memory_bytes = (
                 system_memory
                 - resource_isolation_config.system_reserved_memory
@@ -408,7 +418,14 @@ class ResourceAndLabelSpec:
 
         memory = self.memory
         if memory is None:
-            memory = available_memory_bytes - self.object_store_memory
+            # Optionally include swap as overflow capacity for the Ray "memory"
+            # resource so scheduling and ray status reflect the kernel's
+            # effective working set. Off by default; flip via
+            # RAY_count_swap_in_memory_monitor=1 (matches the C++ flag).
+            swap_total = 0
+            if _COUNT_SWAP_IN_MEMORY_MONITOR:
+                swap_total, _ = get_cgroup_aware_swap_memory()
+            memory = available_memory_bytes + swap_total - self.object_store_memory
             if memory < 100e6 and memory < 0.05 * system_memory:
                 raise ValueError(
                     "After taking into account object store and redis memory "
@@ -427,8 +444,7 @@ class ResourceAndLabelSpec:
     def _get_current_node_accelerator(
         num_gpus: Optional[int], resources: Dict[str, float]
     ) -> Tuple[AcceleratorManager, int]:
-        """
-        Returns the AcceleratorManager and accelerator count for the accelerator
+        """Returns the AcceleratorManager and accelerator count for the accelerator
         associated with this node. This assumes each node has at most one accelerator type.
         If no accelerators are present, returns None.
 

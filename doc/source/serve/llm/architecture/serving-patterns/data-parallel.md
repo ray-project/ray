@@ -1,3 +1,9 @@
+---
+myst:
+  html_meta:
+    description: "Data parallel attention architecture in Ray Serve LLM: DPServer, the gang master registry, request flow, and autoscaling behavior."
+---
+
 (serve-llm-architecture-data-parallel)=
 # Data parallel attention
 
@@ -192,8 +198,7 @@ name: dp-pd-architecture
 Combined DP + PD architecture: each phase has its own gang-scheduled DP group.
 ```
 
-Each phase can have an independent `data_parallel_size`.
-`PDDecodeServer` orchestrates remote prefill then runs decode locally.
+Each phase can have an independent `data_parallel_size`. `PDDecodeServer` orchestrates remote prefill then runs decode locally.
 
 ## See also
 

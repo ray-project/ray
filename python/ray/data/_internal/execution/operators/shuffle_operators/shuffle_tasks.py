@@ -2,8 +2,8 @@
 
 import logging
 import math
-import pickle
 import time
+import typing
 from dataclasses import replace
 from typing import Callable, Dict, Generator, Iterable, List, Optional, Tuple, Union
 
@@ -11,9 +11,9 @@ import pyarrow as pa
 
 import ray
 from ray import ObjectRef
-from ray._raylet import (
-    StreamingGeneratorStats,  # pyrefly: ignore[missing-module-attribute]
-)
+from ray.data._internal.arrow_ops import transform_pyarrow
+from ray.data._internal.execution.interfaces.task_context import TaskContext
+from ray.data._internal.execution.util import yield_block_with_stats
 from ray.data._internal.output_buffer import BlockOutputBuffer, OutputBlockSizeOption
 from ray.data._internal.table_block import TableBlockAccessor
 from ray.data.block import (
@@ -25,12 +25,17 @@ from ray.data.block import (
     BlockType,
     TaskExecWorkerStats,
 )
+from ray.data.context import DataContext
 from ray.exceptions import GetTimeoutError
+
+if typing.TYPE_CHECKING:
+    from ray.data._internal.execution.operators.map_transformer import MapTransformer
 
 logger = logging.getLogger(__name__)
 
 PartitionFn = Callable[[pa.Table], Dict[int, pa.Table]]
-ReduceFn = Callable[[int, List[pa.Table]], Iterable[Block]]
+ReduceFn = Callable[[int, List[List[pa.Table]]], Iterable[Block]]
+BlockTransformer = Callable[["pa.Table"], "pa.Table"]
 
 # Peak working-set of a shuffle map/reduce task is ~2x the input bytes
 SHUFFLE_PEAK_MEMORY_MULTIPLIER = 2
@@ -96,6 +101,7 @@ def _shuffle_map_task(
     partition_fn: PartitionFn,
     num_partitions: int,
     compression: Optional[str],
+    block_transformer: Optional[BlockTransformer] = None,
 ) -> Tuple[
     Union[Tuple[BlockMetadata, Dict[int, Tuple[int, int]], "pa.Schema"], pa.Buffer],
     ...,
@@ -108,15 +114,34 @@ def _shuffle_map_task(
     total_rows = sum(a.num_rows() for a in accessors)
     total_bytes = sum((a.size_bytes() or 0) for a in accessors)
 
+    if block_transformer is not None:
+        arrow_inputs = [
+            TableBlockAccessor.try_convert_block_type(b, block_type=BlockType.ARROW)
+            for a, b in zip(accessors, blocks)
+            if a.num_rows() > 0
+        ] or [
+            TableBlockAccessor.try_convert_block_type(
+                blocks[0], block_type=BlockType.ARROW
+            )
+        ]
+        combined_input = transform_pyarrow.concat(arrow_inputs, promote_types=True)
+        shard_source_blocks: Tuple[Block, ...] = (block_transformer(combined_input),)
+        partition_accumulators = _partition_blocks_to_shards(
+            shard_source_blocks, partition_fn
+        )
+    else:
+        shard_source_blocks = blocks
+        partition_accumulators = (
+            {}
+            if total_rows == 0
+            else _partition_blocks_to_shards(shard_source_blocks, partition_fn)
+        )
+
     ipc_write_options = _ipc_write_options(compression)
     output_schema = TableBlockAccessor.try_convert_block_type(
-        blocks[0], block_type=BlockType.ARROW
+        shard_source_blocks[0], block_type=BlockType.ARROW
     ).schema
     empty_shard = _encode_partition_ipc(output_schema.empty_table(), ipc_write_options)
-
-    partition_accumulators = (
-        {} if total_rows == 0 else _partition_blocks_to_shards(blocks, partition_fn)
-    )
 
     shard_sizes: Dict[int, Tuple[int, int]] = {}
     partition_bufs: List[pa.Buffer] = []
@@ -125,7 +150,15 @@ def _shuffle_map_task(
         if not tables:
             partition_bufs.append(empty_shard)
             continue
-        merged = pa.concat_tables(tables) if len(tables) > 1 else tables[0]
+        merged = (
+            transform_pyarrow.concat(
+                tables,
+                promote_types=True,
+                preserve_order=True,
+            )
+            if len(tables) > 1
+            else tables[0]
+        )
         shard_sizes[partition_id] = (merged.num_rows, merged.nbytes)
         partition_bufs.append(_encode_partition_ipc(merged, ipc_write_options))
         del merged
@@ -206,112 +239,143 @@ def _get_shard_batch(
         raise
 
 
-@ray.remote(max_calls=1)
-def _shuffle_reduce_task(
+def _gather_input_shards(
     shard_refs: List[ObjectRef],
     partition_id: int,
-    reduce_fn: ReduceFn,
-    target_max_block_size: Optional[int],
-    streaming: bool,
     batch_size: int,
     get_timeout_s: float,
-) -> Generator[Union[Block, bytes], None, None]:
-    """Reduce stage: fetch one partition's shards and run reduce_fn over them.
-
-    With streaming=True, reduce_fn is called each time the accumulated input
-    passes target_max_block_size and its output is reshaped to that size via a
-    BlockOutputBuffer; this bounds peak input memory but requires reduce_fn to
-    produce valid output from partial input.  With streaming=False, all shards
-    are accumulated and reduce_fn is called once, use this when it needs the
-    whole partition (sort, aggregate).
-
-    Args:
-        shard_refs: ObjectRefs to this partition's IPC shards from every mapper.
-            May contain None for mappers that produced no rows here.
-        partition_id: Partition this reducer owns.
-        reduce_fn: User-supplied reduce callable.
-        target_max_block_size: Output block size, and the streaming flush
-            threshold.  None emits blocks as-is (no reshaping, no streaming
-            flush) -- the "partition = block" contract.
-        streaming: Flush incrementally (True) or accumulate then reduce (False).
-        batch_size: Number of shard refs to ray.get() at a time.
-        get_timeout_s: Timeout for batch ray.get().
-    """
-    start_time_s = time.perf_counter()
-
-    accum_tables: List[pa.Table] = []
-    accum_bytes: int = 0
-    output_buffer: Optional[BlockOutputBuffer] = None
-
-    def _yield_with_stats(block: Block):
-        """Yield (block, pickled metadata) following the streaming-gen protocol."""
-        exec_stats_builder = BlockExecStats.builder()
-        exec_stats_builder.finish()
-        gen_stats: StreamingGeneratorStats = yield block
-        exec_stats = exec_stats_builder.build(
-            block_ser_time_s=(gen_stats.object_creation_dur_s if gen_stats else None),
-        )
-        yield pickle.dumps(
-            BlockMetadataWithSchema.from_block(
-                block,
-                block_exec_stats=exec_stats,
-                task_exec_stats=TaskExecWorkerStats(
-                    task_wall_time_s=time.perf_counter() - start_time_s,
-                ),
-            )
-        )
-
-    def _flush(tables: List[pa.Table]):
-        nonlocal output_buffer
-        if output_buffer is None:
-            output_buffer = BlockOutputBuffer(
-                OutputBlockSizeOption.of(
-                    target_max_block_size=target_max_block_size,
-                )
-            )
-        for block in reduce_fn(partition_id, tables):
-            output_buffer.add_block(block)
-            while output_buffer.has_next():
-                yield from _yield_with_stats(output_buffer.next())
-
-    # Step 1: fetch shard refs in batches, decompress, accumulate.  In
-    # streaming mode, when the accumulator reaches target_max_block_size,
-    # flush through reduce_fn and yield any ready output blocks.
+) -> List[pa.Table]:
+    """Fetch + decompress every shard of one input for one partition."""
+    tables: List[pa.Table] = []
     num_batches = math.ceil(len(shard_refs) / batch_size) if batch_size else 0
     for batch_index, batch_start in enumerate(range(0, len(shard_refs), batch_size)):
         batch = shard_refs[batch_start : batch_start + batch_size]
         for buf in _get_shard_batch(
-            batch,
-            partition_id,
-            batch_index,
-            num_batches,
-            get_timeout_s,
+            batch, partition_id, batch_index, num_batches, get_timeout_s
         ):
             if buf is None:
                 continue
             table = _read_partition_ipc(buf)
             if table is None:
                 continue
-            accum_tables.append(table)
-            accum_bytes += table.nbytes
+            tables.append(table)
+    return tables
 
-            if (
-                streaming
-                and target_max_block_size is not None
-                and accum_bytes >= target_max_block_size
+
+@ray.remote
+def _shuffle_reduce_task(
+    shard_refs_by_input: List[List[ObjectRef]],
+    partition_id: int,
+    reduce_fn: ReduceFn,
+    target_max_block_size: Optional[int],
+    batch_size: int,
+    get_timeout_s: float,
+    map_transformer: Optional["MapTransformer"],
+    map_task_context: Optional["TaskContext"],
+    data_context: Optional["DataContext"],
+) -> Generator[Union[Block, bytes], None, None]:
+    """Reduce stage: fetch this partition's shards and run reduce_fn over them.
+
+    ``shard_refs_by_input`` carries one shard-ref list per upstream input -- one
+    for single-input shuffles (repartition/sort), several for multi-input ones
+    (e.g. join).  Every input's full shard list is accumulated, then reduce_fn is
+    called once with ``tables_by_input`` aligned with ``shard_refs_by_input``.
+
+    Args:
+        shard_refs_by_input: Per-input lists of ObjectRefs to this partition's
+            IPC shards from every mapper.  May contain None for empty shards.
+        partition_id: Partition this reducer owns.
+        reduce_fn: User-supplied reduce callable.
+        target_max_block_size: Output block size.  None emits blocks as-is.
+        batch_size: Number of shard refs to ray.get() at a time.
+        get_timeout_s: Timeout for batch ray.get().
+        map_transformer: Fused downstream map applied to reduce output (or None).
+        map_task_context: TaskContext for the fused map, built by the reduce op
+            -- carries task_idx, op_name, the block-size override, and per-task
+            kwargs (e.g. a Write's ``write_uuid``); None when nothing is fused.
+        data_context: DataContext to install for the fused map (or None).
+    """
+    start_time_s = time.perf_counter()
+
+    output_buffer: Optional[BlockOutputBuffer] = None
+
+    exec_stats_builder = BlockExecStats.builder()
+
+    def _yield_with_stats(block: Block):
+        """Yield a block then its pickled metadata (streaming-gen protocol)."""
+        exec_stats_builder.finish()
+
+        def build_metadata(block_ser_time_s):
+            nonlocal exec_stats_builder
+            meta = BlockMetadataWithSchema.from_block(
+                block,
+                block_exec_stats=exec_stats_builder.build(
+                    block_ser_time_s=block_ser_time_s,
+                    task_idx=partition_id,
+                ),
+                task_exec_stats=TaskExecWorkerStats(
+                    task_wall_time_s=time.perf_counter() - start_time_s,
+                ),
+            )
+            exec_stats_builder = BlockExecStats.builder()
+            return meta
+
+        yield from yield_block_with_stats(block, build_metadata)
+
+    def _flush(tables_by_input: List[List[pa.Table]]):
+        nonlocal output_buffer
+        if output_buffer is None and target_max_block_size is not None:
+            output_buffer = BlockOutputBuffer(
+                OutputBlockSizeOption.of(
+                    target_max_block_size=target_max_block_size,
+                )
+            )
+        for block in reduce_fn(partition_id, tables_by_input):
+            # Yield raw blocks: a fused map (and `_yield_with_stats`) is applied
+            # downstream of ``_reduce_output_blocks``.
+            if output_buffer is None:
+                yield block
+            else:
+                output_buffer.add_block(block)
+                yield from output_buffer.iter_ready_blocks()
+
+    def _reduce_output_blocks():
+        # Gather every input's full shard list, then call reduce_fn exactly once
+        # with all inputs together (no streaming: a multi-input reducer needs
+        # every input's shards, and single-input reducers run blocking too).
+        tables_by_input = [
+            _gather_input_shards(shard_refs, partition_id, batch_size, get_timeout_s)
+            for shard_refs in shard_refs_by_input
+        ]
+        if any(tables_by_input):
+            yield from _flush(tables_by_input)
+
+        # Finalize the buffer to flush any partial block.
+        if output_buffer is not None:
+            output_buffer.finalize()
+            yield from output_buffer.iter_ready_blocks()
+
+    if map_transformer is None:
+        for block in _reduce_output_blocks():
+            yield from _yield_with_stats(block)
+    else:
+        assert map_task_context is not None and data_context is not None
+        with DataContext.current(data_context), TaskContext.current(map_task_context):
+            from ray.data._internal.execution.operators.map_transformer import (
+                TransformClock,
+            )
+
+            map_transformer.override_target_max_block_size(
+                map_task_context.target_max_block_size_override
+            )
+            for block in map_transformer.apply_transform(
+                _reduce_output_blocks(),
+                map_task_context,
+                clock=TransformClock(),
             ):
-                tables, accum_tables = accum_tables, []
-                accum_bytes = 0
-                yield from _flush(tables)
-
-    # Step 2: drain remaining shards through reduce_fn.  This is the only
-    # reduce_fn call in blocking mode, and the tail-flush in streaming mode.
-    if accum_tables:
-        yield from _flush(accum_tables)
-
-    # Step 3: if reduce_fn ran at least once, finalize the buffer to flush
-    # any partial block.
-    if output_buffer is not None:
-        output_buffer.finalize()
-        while output_buffer.has_next():
-            yield from _yield_with_stats(output_buffer.next())
+                if BlockAccessor.for_block(block).num_rows() == 0:
+                    # An unfused MapOperator bundles empty inputs with non-empty
+                    # ones, so it never emits an empty block for them; a fused
+                    # map sees one partition per task and would. Drop them.
+                    continue
+                yield from _yield_with_stats(block)

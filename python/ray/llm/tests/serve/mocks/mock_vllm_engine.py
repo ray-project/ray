@@ -66,6 +66,10 @@ class MockVLLMEngine(LLMEngine):
         """Start the mock engine."""
         self.started = True
 
+    def routing_stats(self) -> Dict[str, Any]:
+        """Mock engine advertises no routing stats (no KV-cache events)."""
+        return {}
+
     async def resolve_lora(self, lora_model: DiskMultiplexConfig):
         """Resolve/load a LoRA model."""
         self._current_lora_model[lora_model.model_id] = lora_model
@@ -173,7 +177,11 @@ class MockVLLMEngine(LLMEngine):
             return response
 
         def check_model(model: Optional[str]) -> None:
-            if model is not None and model != self.llm_config.model_id:
+            if (
+                model is not None
+                and model != self.llm_config.model_id
+                and model not in self._current_lora_model
+            ):
                 raise HTTPException(
                     status_code=404,
                     detail=f"Could not find model {model}",
@@ -232,6 +240,10 @@ class MockVLLMEngine(LLMEngine):
             check_model(body.model)
             return await to_response(self.completions(body))
 
+        # Real vLLM's build_app returns an app whose middleware stack is already
+        # built, which makes Starlette reject add_middleware. Mirror that so tests
+        # exercise the same app shape LLMServer sees in reality.
+        app.middleware_stack = app.build_middleware_stack()
         return app
 
     async def chat(
@@ -668,6 +680,21 @@ class MockVLLMEngine(LLMEngine):
                 },
             )
             yield response
+
+
+class MockAsyncLLM:
+    """Mock vLLM's AsyncLLM: ``generate`` replays a fixed list of
+    ``RequestOutput``s, with ``error_after`` raising mid-stream."""
+
+    def __init__(self, script, error_after=None):
+        self.script = script
+        self.error_after = error_after
+
+    async def generate(self, prompt, sampling_params, request_id, **kwargs):
+        for i, output in enumerate(self.script):
+            if self.error_after is not None and i == self.error_after:
+                raise RuntimeError("engine failure")
+            yield output
 
 
 class FakeLoraModelLoader(LoraModelLoader):

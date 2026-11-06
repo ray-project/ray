@@ -1,0 +1,7 @@
+Build: 4023375   State: Finished   Success: True   Duration: 536s
+Command: python -m sphinx -T -W --keep-going -j auto -b html -d _build/doctrees -D language=en . $READTHEDOCS_OUTPUT/html
+Exit code: 0
+
+Sphinx warnings (0):
+
+Summary line: build succeeded.

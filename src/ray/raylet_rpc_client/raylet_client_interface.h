@@ -80,7 +80,7 @@ class RayletClientInterface {
   /// Notify raylets to release unused workers.
   /// \param workers_in_use Workers currently in use.
   /// \param callback Callback that will be called after raylet completes the release of
-  /// unused workers. \return ray::Status
+  /// unused workers.
   virtual void ReleaseUnusedActorWorkers(
       const std::vector<WorkerID> &workers_in_use,
       const rpc::ClientCallback<rpc::ReleaseUnusedActorWorkersReply> &callback) = 0;
@@ -225,7 +225,13 @@ class RayletClientInterface {
       const rpc::CancelLocalTaskRequest &request,
       const rpc::ClientCallback<rpc::CancelLocalTaskReply> &callback) = 0;
 
-  virtual void FreeLocalObjects(const rpc::FreeLocalObjectsRequest &request) = 0;
+  /// Free objects from the raylet's local object store.
+  /// \param request The objects to free.
+  /// \param callback If set, invoked on the caller's io_service when the reply
+  /// (or a channel-health failure) arrives.
+  virtual void FreeLocalObjects(
+      const rpc::FreeLocalObjectsRequest &request,
+      const rpc::ClientCallback<rpc::FreeLocalObjectsReply> &callback = {}) = 0;
 
   virtual ~RayletClientInterface() = default;
 };

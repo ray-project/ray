@@ -6,17 +6,17 @@ myst:
 
 (api-stability)=
 
-# API Stability
+# API stability
 
 Ray provides stability guarantees for its public APIs in Ray core and libraries, which are decorated/labeled accordingly.
 
 An API can be labeled:
 
 * {ref}`PublicAPI <public-api-def>`, which means the API is exposed to end users. PublicAPI has three sub-levels (alpha, beta, stable), as described below.
-* {ref}`DeveloperAPI <developer-api-def>`, which means the API is explicitly exposed to *advanced* Ray users and library developers
+* {ref}`DeveloperAPI <developer-api-def>`, which means the API is explicitly exposed to *advanced* Ray users and library developers.
 * {ref}`Deprecated <deprecated-api-def>`, which may be removed in future releases of Ray.
 
-Ray's PublicAPI stability definitions are based off the [Google stability level guidelines](https://google.aip.dev/181), with minor differences:
+Ray's PublicAPI stability definitions are based on the [Google stability level guidelines](https://google.aip.dev/181), with minor differences:
 
 (api-stability-alpha)=
 
@@ -44,18 +44,18 @@ A *stable* component **must** be fully-supported over the lifetime of the major 
 
 ### Docstrings
 
-```{eval-rst}
-.. _public-api-def:
+Each annotation's docstring defines its guarantees:
 
-.. autofunction:: ray.util.annotations.PublicAPI
+(public-api-def)=
 
-.. _developer-api-def:
+- {py:func}`ray.util.annotations.PublicAPI`
 
-.. autofunction:: ray.util.annotations.DeveloperAPI
+(developer-api-def)=
 
-.. _deprecated-api-def:
+- {py:func}`ray.util.annotations.DeveloperAPI`
 
-.. autofunction:: ray.util.annotations.Deprecated
-```
+(deprecated-api-def)=
+
+- {py:func}`ray.util.annotations.Deprecated`
 
 Undecorated functions can be generally assumed to not be part of the Ray public API.

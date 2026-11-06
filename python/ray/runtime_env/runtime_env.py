@@ -97,6 +97,22 @@ class RuntimeEnvConfig(dict):
     def parse_and_validate_runtime_env_config(
         config: Union[Dict, "RuntimeEnvConfig"]
     ) -> "RuntimeEnvConfig":
+        """Validate a ``runtime_env`` ``config`` value and return it as a RuntimeEnvConfig.
+
+        Ray uses this method to validate the ``config`` field of a runtime environment.
+        A dict is filtered to the known fields, with a warning that lists any unknown
+        keys, and passed to the RuntimeEnvConfig constructor.
+
+        Args:
+            config: A dict of config fields, or a RuntimeEnvConfig, which is returned
+                unchanged.
+
+        Returns:
+            The validated RuntimeEnvConfig.
+
+        Raises:
+            TypeError: If ``config`` isn't a dict or a RuntimeEnvConfig.
+        """
         if isinstance(config, RuntimeEnvConfig):
             return config
         elif isinstance(config, Dict):
@@ -119,6 +135,7 @@ class RuntimeEnvConfig(dict):
 
     @classmethod
     def default_config(cls):
+        """Return a new RuntimeEnvConfig with every field set to its default."""
         return RuntimeEnvConfig(**cls._default_config)
 
     def build_proto_runtime_env_config(self) -> ProtoRuntimeEnvConfig:
@@ -146,6 +163,11 @@ class RuntimeEnvConfig(dict):
         )
 
     def to_dict(self) -> Dict:
+        """Return the config as a plain dict.
+
+        Returns:
+            A deep copy of the config fields as a dict.
+        """
         return dict(deepcopy(self))
 
 
@@ -218,7 +240,7 @@ class RuntimeEnv(dict):
         # Example for using container
         RuntimeEnv(
             container={"image": "anyscale/ray-ml:nightly-py38-cpu",
-            "run_options": ["--cap-drop SYS_ADMIN","--log-level=debug"]})
+            "run_options": ["--cap-drop=SYS_ADMIN","--log-level=debug"]})
 
         # Example for set env_vars
         RuntimeEnv(env_vars={"OMP_NUM_THREADS": "32", "TF_WARNINGS": "none"})
@@ -236,13 +258,15 @@ class RuntimeEnv(dict):
         py_modules: List of local paths or remote URIs (either in the GCS or external
             storage), each of which is an archive that Ray unpacks and
             inserts into the PYTHONPATH of the workers. Supported formats for
-            remote URIs: ``.zip``, ``.whl``, ``.tar.gz``, and ``.tgz``.
+            remote URIs: ``.zip``, ``.whl``, ``.tar.gz``, ``.tgz``, and
+            ``.tar.xz``.
         py_executable: Path or command to the Python executable that Ray uses to
             launch worker processes. By default, Ray uses the same interpreter
             that is running the driver.
         working_dir: Local path or remote URI (either in the GCS or external storage) of an
             archive that Ray unpacks in the directory of each task/actor.
-            Supported formats for remote URIs: ``.zip``, ``.tar.gz``, and ``.tgz``.
+            Supported formats for local paths and remote URIs: ``.zip``,
+            ``.tar.gz``, ``.tgz``, and ``.tar.xz``.
         pip: Either a list of pip packages, a string
             containing the path to a pip requirements.txt file, or a Python
             dictionary that has three fields: 1) ``packages`` (required, List[str]): a
@@ -268,6 +292,13 @@ class RuntimeEnv(dict):
             ``env_vars`` parameters.
             The `run_options` list spec is here:
             https://docs.docker.com/engine/reference/run/
+            Each `run_options` item is passed as exactly one argument, so
+            write a flag and its value as `--flag=value` or as two items.
+            `$NAME` and `${NAME}` in an item are expanded from the node's
+            whole environment, the job's `env_vars` as written, and the values
+            Ray sets for the container, such as the mounted
+            `RAY_AUTH_TOKEN_PATH`; `$$` is a literal `$`. Expanded values, like the rest of `run_options`, appear on
+            podman's command line.
         env_vars: Environment variables to set.
         worker_process_setup_hook: Experimental. The setup hook that's
             called after workers start and before Tasks and Actors are scheduled.
@@ -452,9 +483,32 @@ class RuntimeEnv(dict):
         return super().__setitem__(key, res_value)
 
     def set(self, name: str, value: Any) -> None:
+        """Set a runtime environment field, validating the value.
+
+        Equivalent to ``runtime_env[name] = value``. A dataclass value is converted to
+        a dict first.
+
+        Args:
+            name: The field name, such as ``"pip"`` or a plugin name.
+            value: The field value.
+        """
         self.__setitem__(name, value)
 
-    def get(self, name, default=None, data_class=None):
+    def get(
+        self, name: str, default: Any = None, data_class: Optional[type] = None
+    ) -> Any:
+        """Return the value of a runtime environment field.
+
+        Args:
+            name: The field name.
+            default: The value to return if the field isn't set.
+            data_class: A dataclass to convert the field value to. If None, the
+                value is returned as stored.
+
+        Returns:
+            The field value, converted to ``data_class`` if one is given, or
+            ``default`` if the field isn't set.
+        """
         if name not in self:
             return default
         if not data_class:
@@ -464,9 +518,24 @@ class RuntimeEnv(dict):
 
     @classmethod
     def deserialize(cls, serialized_runtime_env: str) -> "RuntimeEnv":  # noqa: F821
+        """Create a RuntimeEnv from a JSON string produced by :meth:`serialize`.
+
+        The fields aren't validated again.
+
+        Args:
+            serialized_runtime_env: The JSON-serialized runtime environment.
+
+        Returns:
+            The deserialized RuntimeEnv.
+        """
         return cls(_validate=False, **json.loads(serialized_runtime_env))
 
     def serialize(self) -> str:
+        """Validate this runtime environment and serialize it to JSON.
+
+        Returns:
+            A JSON string with sorted keys.
+        """
         # To ensure the accuracy of Proto, `__setitem__` can only guarantee the
         # accuracy of a certain field, not the overall accuracy
         runtime_env = type(self)(_validate=True, **self)
@@ -476,6 +545,12 @@ class RuntimeEnv(dict):
         )
 
     def to_dict(self) -> Dict:
+        """Return the runtime environment as a plain dict.
+
+        Returns:
+            A deep copy of the runtime environment fields as a dict, with a
+            ``config`` field converted from a RuntimeEnvConfig to a dict.
+        """
         runtime_env_dict = dict(deepcopy(self))
 
         # Replace strongly-typed RuntimeEnvConfig with a dict to allow the returned
@@ -486,91 +561,201 @@ class RuntimeEnv(dict):
         return runtime_env_dict
 
     def has_working_dir(self) -> bool:
+        """Return whether the ``working_dir`` field is set.
+
+        Returns:
+            True if ``working_dir`` is set to a value other than None.
+        """
         return self.get("working_dir") is not None
 
     def working_dir_uri(self) -> Optional[str]:
+        """Return the value of the ``working_dir`` field.
+
+        Returns:
+            The ``working_dir`` value, or None if it isn't set.
+        """
         return self.get("working_dir")
 
     def py_modules_uris(self) -> List[str]:
+        """Return the entries of the ``py_modules`` field.
+
+        Returns:
+            A list of the ``py_modules`` entries, or an empty list if it isn't set.
+        """
         if "py_modules" in self:
             return list(self["py_modules"])
         return []
 
     def conda_uri(self) -> Optional[str]:
+        """Return the URI that identifies the conda environment this runtime env creates.
+
+        Returns:
+            A ``conda://`` URI derived from a hash of the ``conda`` dict, or None if
+            ``conda`` isn't set or names an existing environment.
+        """
         if "conda" in self:
             return get_conda_uri(self)
         return None
 
     def pip_uri(self) -> Optional[str]:
+        """Return the URI that identifies the pip environment this runtime env creates.
+
+        Returns:
+            A ``pip://`` URI derived from a hash of the ``pip`` field, or None if
+            ``pip`` isn't set.
+        """
         if "pip" in self:
             return get_pip_uri(self)
         return None
 
     def uv_uri(self) -> Optional[str]:
+        """Return the URI that identifies the uv environment this runtime env creates.
+
+        Returns:
+            A ``uv://`` URI derived from a hash of the ``uv`` field and the environment
+            variables that affect it, or None if ``uv`` isn't set.
+        """
         if "uv" in self:
             return get_uv_uri(self)
         return None
 
     def plugin_uris(self) -> List[str]:
-        """Not implemented yet, always return a empty list"""
+        """Not implemented yet, always return a empty list
+
+        Returns:
+            An empty list.
+        """
         return []
 
     def working_dir(self) -> str:
+        """Return the value of the ``working_dir`` field.
+
+        Returns:
+            The ``working_dir`` value, or an empty string if it isn't set.
+        """
         return self.get("working_dir", "")
 
     def py_modules(self) -> List[str]:
+        """Return the entries of the ``py_modules`` field.
+
+        Returns:
+            A list of the ``py_modules`` entries, or an empty list if it isn't set.
+        """
         if "py_modules" in self:
             return list(self["py_modules"])
         return []
 
     def py_executable(self) -> Optional[str]:
+        """Return the value of the ``py_executable`` field.
+
+        Returns:
+            The ``py_executable`` value, or None if it isn't set.
+        """
         return self.get("py_executable", None)
 
     def java_jars(self) -> List[str]:
+        """Return the entries of the ``java_jars`` field.
+
+        Returns:
+            A list of the ``java_jars`` entries, or an empty list if it isn't set.
+        """
         if "java_jars" in self:
             return list(self["java_jars"])
         return []
 
     def nsight(self) -> Optional[Union[str, Dict[str, str]]]:
+        """Return the Nsight profiling config set through the ``nsight`` argument.
+
+        Returns:
+            The ``nsight`` value, or None if it isn't set.
+        """
         return self.get("_nsight", None)
 
     def rocprof_sys(self) -> Optional[Union[str, Dict[str, Dict[str, str]]]]:
+        """Return the rocprof-sys profiling config set through the ``rocprof_sys`` argument.
+
+        Returns:
+            The ``rocprof_sys`` value, or None if it isn't set.
+        """
         return self.get("_rocprof_sys", None)
 
     def env_vars(self) -> Dict:
+        """Return the value of the ``env_vars`` field.
+
+        Returns:
+            The ``env_vars`` dict, or an empty dict if it isn't set.
+        """
         return self.get("env_vars", {})
 
-    def has_conda(self) -> str:
+    def has_conda(self) -> bool:
+        """Return whether the ``conda`` field is set.
+
+        Returns:
+            True if ``conda`` is set to a non-empty value, otherwise False.
+        """
         if self.get("conda"):
             return True
         return False
 
-    def conda_env_name(self) -> str:
+    def conda_env_name(self) -> Optional[str]:
+        """Return the name of the existing conda environment to use.
+
+        Returns:
+            The ``conda`` value if it's a string, which names an existing conda
+            environment, otherwise None.
+        """
         if not self.has_conda() or not isinstance(self["conda"], str):
             return None
         return self["conda"]
 
-    def conda_config(self) -> str:
+    def conda_config(self) -> Optional[str]:
+        """Return the conda environment spec as JSON.
+
+        Returns:
+            The ``conda`` dict serialized to JSON with sorted keys, or None if
+            ``conda`` isn't set or isn't a dict.
+        """
         if not self.has_conda() or not isinstance(self["conda"], dict):
             return None
         return json.dumps(self["conda"], sort_keys=True)
 
     def has_pip(self) -> bool:
+        """Return whether the ``pip`` field is set.
+
+        Returns:
+            True if ``pip`` is set to a non-empty value, otherwise False.
+        """
         if self.get("pip"):
             return True
         return False
 
     def has_uv(self) -> bool:
+        """Return whether the ``uv`` field is set.
+
+        Returns:
+            True if ``uv`` is set to a non-empty value, otherwise False.
+        """
         if self.get("uv"):
             return True
         return False
 
     def virtualenv_name(self) -> Optional[str]:
+        """Return the ``pip`` field if it's a string.
+
+        Returns:
+            The ``pip`` value if it's a string, otherwise None.
+        """
         if not self.has_pip() or not isinstance(self["pip"], str):
             return None
         return self["pip"]
 
     def pip_config(self) -> Dict:
+        """Return the validated ``pip`` config.
+
+        Returns:
+            The ``pip`` field as a validated dict, or an empty dict if ``pip`` isn't
+            set or is a string.
+        """
         if not self.has_pip() or isinstance(self["pip"], str):
             return {}
         # Parse and validate field pip on method `__setitem__`
@@ -578,13 +763,31 @@ class RuntimeEnv(dict):
         return self["pip"]
 
     def uv_config(self) -> Dict:
+        """Return the validated ``uv`` config.
+
+        Returns:
+            The ``uv`` field as a validated dict, or an empty dict if ``uv`` isn't set
+            or is a string.
+        """
         if not self.has_uv() or isinstance(self["uv"], str):
             return {}
         # Parse and validate field pip on method `__setitem__`
         self["uv"] = self["uv"]
         return self["uv"]
 
-    def get_extension(self, key) -> Optional[str]:
+    def get_extension(self, key: str) -> Optional[str]:
+        """Return the value of an extension field.
+
+        Args:
+            key: The extension field name. Must be one of
+                ``RuntimeEnv.extensions_fields``.
+
+        Returns:
+            The field value, or None if it isn't set.
+
+        Raises:
+            ValueError: If ``key`` isn't an extension field.
+        """
         if key not in RuntimeEnv.extensions_fields:
             raise ValueError(
                 f"Extension key must be one of {RuntimeEnv.extensions_fields}, "
@@ -593,29 +796,64 @@ class RuntimeEnv(dict):
         return self.get(key)
 
     def has_py_container(self) -> bool:
+        """Return whether the ``container`` field is set.
+
+        Returns:
+            True if ``container`` is set to a non-empty value, otherwise False.
+        """
         if self.get("container"):
             return True
         return False
 
     def py_container_image(self) -> Optional[str]:
+        """Return the image of the ``container`` field.
+
+        Returns:
+            The ``image`` entry of ``container``, an empty string if ``container`` has
+            no ``image`` entry, or None if ``container`` isn't set.
+        """
         if not self.has_py_container():
             return None
         return self["container"].get("image", "")
 
     def py_container_worker_path(self) -> Optional[str]:
+        """Return the worker path of the ``container`` field.
+
+        Returns:
+            The ``worker_path`` entry of ``container``, an empty string if
+            ``container`` has no ``worker_path`` entry, or None if ``container`` isn't
+            set.
+        """
         if not self.has_py_container():
             return None
         return self["container"].get("worker_path", "")
 
-    def py_container_run_options(self) -> List:
+    def py_container_run_options(self) -> Optional[List]:
+        """Return the run options of the ``container`` field.
+
+        Returns:
+            The ``run_options`` entry of ``container``, an empty list if ``container``
+            has no ``run_options`` entry, or None if ``container`` isn't set.
+        """
         if not self.has_py_container():
             return None
         return self["container"].get("run_options", [])
 
     def image_uri(self) -> Optional[str]:
+        """Return the value of the ``image_uri`` field.
+
+        Returns:
+            The ``image_uri`` value, or None if it isn't set.
+        """
         return self.get("image_uri")
 
     def plugins(self) -> List[Tuple[str, Any]]:
+        """Return the fields that aren't built-in runtime environment fields.
+
+        Returns:
+            A list of ``(name, value)`` pairs, one for each field whose name isn't in
+            :attr:`known_fields`, such as a runtime environment plugin.
+        """
         result = list()
         for key, value in self.items():
             if key not in self.known_fields:

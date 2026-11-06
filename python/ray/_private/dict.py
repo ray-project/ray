@@ -10,8 +10,7 @@ T = TypeVar("T")
 
 @Deprecated
 def merge_dicts(d1: dict, d2: dict) -> dict:
-    """
-    Args:
+    """Args:
         d1: Dict 1.
         d2: Dict 2.
 
@@ -139,10 +138,8 @@ def flatten_dict(
                 remove.append(key)
             elif flatten_list and isinstance(value, list):
                 for i, v in enumerate(value):
-                    if prevent_delimiter and delimiter in subkey:
-                        # Raise if delimiter is in any of the subkeys
-                        _raise_delimiter_exception()
-
+                    # No delimiter check: `i` comes from enumerate(), so the
+                    # index string is always digits and can never contain it.
                     add[delimiter.join([key, str(i)])] = v
                 remove.append(key)
 
@@ -229,8 +226,7 @@ def unflatten_list_dict(dt: Dict[str, T], delimiter: str = "/") -> Dict[str, T]:
 def unflattened_lookup(
     flat_key: str, lookup: Union[Mapping, Sequence], delimiter: str = "/", **kwargs
 ) -> Union[Mapping, Sequence]:
-    """
-    Unflatten `flat_key` and iteratively look up in `lookup`. E.g.
+    """Unflatten `flat_key` and iteratively look up in `lookup`. E.g.
     `flat_key="a/0/b"` will try to return `lookup["a"][0]["b"]`.
     """
     if flat_key in lookup:

@@ -10,12 +10,17 @@ import pytest
 
 import ray
 from ray import logger, tune
+from ray._common.test_utils import SignalActor
 from ray.train.tests.util import create_dict_checkpoint, load_dict_checkpoint
 from ray.tune import CheckpointConfig, Trainable, register_trainable, run_experiments
 from ray.tune.error import TuneError
 from ray.tune.result_grid import ResultGrid
 from ray.tune.schedulers.trial_scheduler import FIFOScheduler, TrialScheduler
 from ray.tune.tune import _check_mixin
+
+# Safety net so a broken signal handshake fails the test instead of hanging.
+# This is a timeout guard, not a synchronization delay.
+SIGNAL_TIMEOUT_S = 60
 
 
 @pytest.fixture
@@ -65,6 +70,14 @@ class MyResettableClass(Trainable):
 
         if self.fail:
             raise RuntimeError("Failing")
+
+        # Test coordination hooks (no-op unless configured), used to force a
+        # deterministic actor scheduling order without relying on sleeps.
+        signal = self.config.get("signal")
+        if signal is not None and self.config.get("send_signal"):
+            ray.get(signal.send.remote())
+        if signal is not None and self.config.get("wait_signal"):
+            ray.get(signal.wait.remote(), timeout=SIGNAL_TIMEOUT_S)
 
         if self.sleep:
             time.sleep(self.sleep)
@@ -126,6 +139,14 @@ def train_fn(config):
 
         # Dump the current config
         marker.write_text(str(num_resets))
+
+        # Test coordination hooks (no-op unless configured), used to force a
+        # deterministic actor scheduling order without relying on sleeps.
+        signal = config.get("signal")
+        if signal is not None and config.get("send_signal"):
+            ray.get(signal.send.remote())
+        if signal is not None and config.get("wait_signal"):
+            ray.get(signal.wait.remote(), timeout=SIGNAL_TIMEOUT_S)
 
         if sleep:
             time.sleep(sleep)
@@ -382,17 +403,32 @@ def test_multi_trial_reuse_with_failing(
     - Trial 1 succeeds, trial 2 fails
     - Trial 3 will be scheduled after trial 2 failed, so won't reuse actor
     - Trial 4 will be scheduled after trial 1 succeeded, so will reuse actor
+
+    A signal actor makes the ordering deterministic instead of relying on
+    sleeps: trial 1 (success) holds its actor until trial 3 has already started
+    on a fresh actor and releases it. This guarantees no cached actor is
+    available when trial 3 is scheduled, so trial 3 cannot reuse trial 1's
+    actor, while trial 4 still reuses a cached successful actor afterwards.
     """
     monkeypatch.setenv("TUNE_MAX_PENDING_TRIALS_PG", "2")
 
     register_trainable("foo2", trainable)
 
+    signal = SignalActor.remote()
+
+    fail = [False, True, False, False]
     [trial1, trial2, trial3, trial4] = tune.run(
         "foo2",
         config={
-            "fail": tune.grid_search([False, True, False, False]),
+            "id": tune.grid_search([0, 1, 2, 3]),
+            "fail": tune.sample_from(lambda config: fail[config["id"]]),
+            "signal": signal,
+            # Trial 1 blocks on the signal (holding its actor); trial 3 sends it
+            # once it is running on its own fresh actor, then trial 1 completes
+            # and its actor becomes available for trial 4 to reuse.
+            "wait_signal": tune.sample_from(lambda config: config["id"] == 0),
+            "send_signal": tune.sample_from(lambda config: config["id"] == 2),
             "marker_dir": tmp_path,
-            "sleep": 2,
         },
         reuse_actors=True,
         resources_per_trial={"cpu": 2},

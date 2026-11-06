@@ -8,6 +8,9 @@ from ray._private.thirdparty.tabulate.tabulate import tabulate
 from ray.air.config import RunConfig, ScalingConfig
 from ray.train import BackendConfig, Checkpoint
 from ray.train._internal import session
+from ray.train._internal.autoscaling_coordinator_client import (
+    TrainV1ResourceReservation,
+)
 from ray.train._internal.backend_executor import BackendExecutor, TrialInfo
 from ray.train._internal.data_config import DataConfig
 from ray.train._internal.session import _TrainingResult, get_session
@@ -33,19 +36,6 @@ class DataParallelTrainer(BaseTrainer):
     This Trainer runs the function ``train_loop_per_worker`` on multiple Ray
     Actors.
 
-    The ``train_loop_per_worker`` function is expected to take in either 0 or 1
-    arguments:
-
-    .. testcode::
-
-        def train_loop_per_worker():
-            ...
-
-    .. testcode::
-
-        def train_loop_per_worker(config: Dict):
-            ...
-
     If ``train_loop_per_worker`` accepts an argument, then
     ``train_loop_config`` will be passed in as the argument. This is useful if you
     want to tune the values in ``train_loop_config`` as hyperparameters.
@@ -56,63 +46,8 @@ class DataParallelTrainer(BaseTrainer):
     ``train_loop_per_worker``. All the other datasets will not be split and
     ``train.get_dataset_shard(...)`` will return the entire Dataset.
 
-    Inside the ``train_loop_per_worker`` function, you can use any of the
-    :ref:`Ray Train loop methods <train-loop-api>`.
-
-    .. testcode::
-
-        from ray import train
-
-        def train_loop_per_worker():
-            # Report intermediate results for callbacks or logging and
-            # checkpoint data.
-            train.report(...)
-
-            # Returns dict of last saved checkpoint.
-            train.get_checkpoint()
-
-            # Returns the Dataset shard for the given key.
-            train.get_dataset_shard("my_dataset")
-
-            # Returns the total number of workers executing training.
-            train.get_context().get_world_size()
-
-            # Returns the rank of this worker.
-            train.get_context().get_world_rank()
-
-            # Returns the rank of the worker on the current node.
-            train.get_context().get_local_rank()
-
     Any returns from the ``train_loop_per_worker`` will be discarded and not
     used or persisted anywhere.
-
-    **How do I use DataParallelTrainer or any of its subclasses?**
-
-    Example:
-
-    .. testcode::
-        :skipif: True
-
-        import ray
-        from ray import train
-        from ray.train import ScalingConfig
-        from ray.train.data_parallel_trainer import DataParallelTrainer
-
-        def train_loop_for_worker():
-            dataset_shard_for_this_worker = train.get_dataset_shard("train")
-
-            # 3 items for 3 workers, each worker gets 1 item
-            batches = list(dataset_shard_for_this_worker.iter_batches(batch_size=1))
-            assert len(batches) == 1
-
-        train_dataset = ray.data.from_items([1, 2, 3])
-        assert train_dataset.count() == 3
-        trainer = DataParallelTrainer(
-            train_loop_for_worker,
-            scaling_config=ScalingConfig(num_workers=3),
-            datasets={"train": train_dataset},
-        )
-        result = trainer.fit()
 
     **How do I develop on top of DataParallelTrainer?**
 
@@ -133,48 +68,94 @@ class DataParallelTrainer(BaseTrainer):
         that automatically handles setting the proper environment variables for
         distributed Tensorflow on each actor.
 
-    For 1, you can set a predefined training loop in __init__
+    Examples:
+        The ``train_loop_per_worker`` function is expected to take in either 0 or 1
+        arguments:
 
-    .. testcode::
+        >>> def train_loop_per_worker():
+        ...     ...
 
-        from ray.train.data_parallel_trainer import DataParallelTrainer
+        >>> def train_loop_per_worker(config: Dict):
+        ...     ...
 
-        class MyDataParallelTrainer(DataParallelTrainer):
-            def __init__(self, *args, **kwargs):
-                predefined_train_loop_per_worker = lambda: 1
-                super().__init__(predefined_train_loop_per_worker, *args, **kwargs)
+        Inside the ``train_loop_per_worker`` function, you can use any of the
+        :ref:`Ray Train loop methods <train-loop-api>`.
 
+        >>> from ray import train
+        >>> def train_loop_per_worker():
+        ...     # Report intermediate results for callbacks or logging and
+        ...     # checkpoint data.
+        ...     train.report(...)
+        ...
+        ...     # Returns the last saved checkpoint, or None.
+        ...     train.get_checkpoint()
+        ...
+        ...     # Returns the Dataset shard for the given key.
+        ...     train.get_dataset_shard("my_dataset")
+        ...
+        ...     # Returns the total number of workers executing training.
+        ...     train.get_context().get_world_size()
+        ...
+        ...     # Returns the rank of this worker.
+        ...     train.get_context().get_world_rank()
+        ...
+        ...     # Returns the rank of the worker on the current node.
+        ...     train.get_context().get_local_rank()
 
-    For 2, you can implement the ``ray.train.Backend`` and ``ray.train.BackendConfig``
-    interfaces.
+        **How do I use DataParallelTrainer or any of its subclasses?**
 
-    .. testcode::
+        >>> import ray  # doctest: +SKIP
+        >>> from ray import train  # doctest: +SKIP
+        >>> from ray.train import ScalingConfig  # doctest: +SKIP
+        >>> from ray.train.data_parallel_trainer import DataParallelTrainer  # doctest: +SKIP
+        >>> def train_loop_for_worker():  # doctest: +SKIP
+        ...     dataset_shard_for_this_worker = train.get_dataset_shard("train")
+        ...
+        ...     # 3 items for 3 workers, each worker gets 1 item
+        ...     batches = list(dataset_shard_for_this_worker.iter_batches(batch_size=1))
+        ...     assert len(batches) == 1
+        >>> train_dataset = ray.data.from_items([1, 2, 3])  # doctest: +SKIP
+        >>> assert train_dataset.count() == 3  # doctest: +SKIP
+        >>> trainer = DataParallelTrainer(  # doctest: +SKIP
+        ...     train_loop_for_worker,
+        ...     scaling_config=ScalingConfig(num_workers=3),
+        ...     datasets={"train": train_dataset},
+        ... )
+        >>> result = trainer.fit()  # doctest: +SKIP
 
-        from dataclasses import dataclass
-        from ray.train.backend import Backend, BackendConfig
+        For 1, you can set a predefined training loop in __init__
 
-        class MyBackend(Backend):
-            def on_start(self, worker_group, backend_config):
-                def set_env_var(env_var_value):
-                    import os
-                    os.environ["MY_ENV_VAR"] = env_var_value
+        >>> from ray.train.data_parallel_trainer import DataParallelTrainer
+        >>> class MyDataParallelTrainer(DataParallelTrainer):
+        ...     def __init__(self, *args, **kwargs):
+        ...         predefined_train_loop_per_worker = lambda: 1
+        ...         super().__init__(predefined_train_loop_per_worker, *args, **kwargs)
 
-                worker_group.execute(set_env_var, backend_config.env_var)
+        For 2, you can implement the ``ray.train.Backend`` and ``ray.train.BackendConfig``
+        interfaces.
 
-        @dataclass
-        class MyBackendConfig(BackendConfig):
-            env_var: str = "default_value"
-
-            def backend_cls(self):
-                return MyBackend
-
-        class MyTrainer(DataParallelTrainer):
-            def __init__(self, train_loop_per_worker, my_backend_config:
-                MyBackendConfig, **kwargs):
-
-                super().__init__(
-                    train_loop_per_worker,
-                    backend_config=my_backend_config, **kwargs)
+        >>> from dataclasses import dataclass
+        >>> from ray.train.backend import Backend, BackendConfig
+        >>> class MyBackend(Backend):
+        ...     def on_start(self, worker_group, backend_config):
+        ...         def set_env_var(env_var_value):
+        ...             import os
+        ...             os.environ["MY_ENV_VAR"] = env_var_value
+        ...
+        ...         worker_group.execute(set_env_var, backend_config.env_var)
+        >>> @dataclass
+        ... class MyBackendConfig(BackendConfig):
+        ...     env_var: str = "default_value"
+        ...
+        ...     def backend_cls(self):
+        ...         return MyBackend
+        >>> class MyTrainer(DataParallelTrainer):
+        ...     def __init__(self, train_loop_per_worker, my_backend_config:
+        ...         MyBackendConfig, **kwargs):
+        ...
+        ...         super().__init__(
+        ...             train_loop_per_worker,
+        ...             backend_config=my_backend_config, **kwargs)
 
     Args:
         train_loop_per_worker: The training function to execute.
@@ -257,12 +238,6 @@ class DataParallelTrainer(BaseTrainer):
             datasets=datasets,
             metadata=metadata,
             resume_from_checkpoint=resume_from_checkpoint,
-        )
-
-        train_total_resources = self.scaling_config.total_resources
-        self._data_config.set_train_total_resources(
-            train_total_resources.get("CPU", 0),
-            train_total_resources.get("GPU", 0),
         )
 
         if env_integer(RAY_TRAIN_ENABLE_STATE_TRACKING, 0):
@@ -454,23 +429,39 @@ class DataParallelTrainer(BaseTrainer):
             max_retries=0,
         )
 
-        # Start the remote actors.
-        backend_executor.start()
+        requester_id = f"train-{trial_info.run_id}"
 
-        training_iterator = self._training_iterator_cls(
-            backend_executor=backend_executor,
-            backend_config=self._backend_config,
-            train_func=train_loop_per_worker,
-            datasets=self.datasets,
-            metadata=self.metadata,
-            data_config=self._data_config,
-            checkpoint=self.starting_checkpoint,
-        )
+        # NOTE: This spawns a thread that will continously refresh
+        # its autoscaling request.
+        with TrainV1ResourceReservation(
+            requester_id=requester_id,
+            scaling_config=scaling_config,
+            num_workers=scaling_config.num_workers,
+        ):
+            try:
+                # Start the remote actors.
+                # TODO(jhsu): Later, we need to fix this to support passing in the
+                # locations of each reservation
+                backend_executor.start()
 
-        self._run_training(training_iterator)
+                training_iterator = self._training_iterator_cls(
+                    backend_executor=backend_executor,
+                    backend_config=self._backend_config,
+                    train_func=train_loop_per_worker,
+                    datasets=self.datasets,
+                    metadata=self.metadata,
+                    data_config=self._data_config,
+                    checkpoint=self.starting_checkpoint,
+                )
 
-        # Shutdown workers.
-        backend_executor.shutdown()
+                self._run_training(training_iterator)
+            finally:
+                # Shut down workers (and release their placement group) before the
+                # resource reservation is cancelled on context exit. Otherwise there
+                # is a window where workers still hold CPUs/GPUs without an active
+                # reservation, allowing Ray Data to potentially reclaim those resources
+                # during teardown.
+                backend_executor.shutdown()
 
     def get_dataset_config(self) -> DataConfig:
         """Returns a copy of this Trainer's final dataset configs.

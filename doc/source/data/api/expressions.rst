@@ -1,3 +1,6 @@
+.. meta::
+   :description: Reference for Ray Data expressions: use col and lit to build column-based operations for filtering and transforms, with classes and namespaces.
+
 .. _expressions-api:
 
 Expressions API
@@ -18,6 +21,7 @@ Public API
     :toctree: doc/
 
     star
+    unnest
     col
     lit
     udf
@@ -44,6 +48,7 @@ instantiate them directly, but you may encounter them when working with expressi
     UnaryExpr
     UDFExpr
     StarExpr
+    UnnestExpr
     DownloadExpr
     MonotonicallyIncreasingIdExpr
     RandomExpr
@@ -58,7 +63,7 @@ These namespace classes provide specialized operations for list, string, struct,
 
 The following example shows how to use the string namespace to transform text columns:
 
-.. testcode::
+.. code-block:: python
 
     import ray
     from ray.data.expressions import col
@@ -74,7 +79,7 @@ The following example shows how to use the string namespace to transform text co
     ds = ds.with_column("upper_name", col("name").str.upper())
     ds.show()
 
-.. testoutput::
+.. code-block:: text
 
     {'name': 'alice', 'upper_name': 'ALICE'}
     {'name': 'bob', 'upper_name': 'BOB'}
@@ -82,7 +87,7 @@ The following example shows how to use the string namespace to transform text co
 
 The following example demonstrates using the list namespace to work with array columns:
 
-.. testcode::
+.. code-block:: python
 
     import ray
     from ray.data.expressions import col
@@ -98,7 +103,7 @@ The following example demonstrates using the list namespace to work with array c
     ds = ds.with_column("num_scores", col("scores").list.len())
     ds.show()
 
-.. testoutput::
+.. code-block:: text
 
     {'scores': [85, 90, 78], 'num_scores': 3}
     {'scores': [92, 88], 'num_scores': 2}
@@ -106,7 +111,7 @@ The following example demonstrates using the list namespace to work with array c
 
 You can also perform list-specific transformations like sorting and flattening:
 
-.. testcode::
+.. code-block:: python
 
     import ray
     from ray.data.expressions import col
@@ -124,14 +129,14 @@ You can also perform list-specific transformations like sorting and flattening:
     )
     ds.show()
 
-.. testoutput::
+.. code-block:: text
 
     {'values': [3, 1, 2], 'nested': [[1, 2], [3]], 'sorted_values': [3, 2, 1], 'flattened_nested': [1, 2, 3]}
     {'values': [2, None, 5], 'nested': [[4], []], 'sorted_values': [5, 2, None], 'flattened_nested': [4]}
 
 The following example shows how to use the struct namespace to access nested fields:
 
-.. testcode::
+.. code-block:: python
 
     import ray
     from ray.data.expressions import col
@@ -147,7 +152,7 @@ The following example shows how to use the struct namespace to access nested fie
     ds = ds.with_column("user_name", col("user").struct.field("name"))
     ds.show()
 
-.. testoutput::
+.. code-block:: text
 
     {'user': {'name': 'alice', 'age': 25}, 'user_name': 'alice'}
     {'user': {'name': 'bob', 'age': 30}, 'user_name': 'bob'}
@@ -156,7 +161,7 @@ The following example shows how to use the struct namespace to access nested fie
 The following example shows how to use the array namespace to convert fixed-size
 list columns to variable-length lists:
 
-.. testcode::
+.. code-block:: python
 
     import pyarrow as pa
     import ray
@@ -170,14 +175,14 @@ list columns to variable-length lists:
     ds = ds.with_column("features_list", col("features").arr.to_list())
     ds.show()
 
-.. testoutput::
+.. code-block:: text
 
     {'features': [1, 2], 'features_list': [1, 2]}
     {'features': [3, 4], 'features_list': [3, 4]}
 
 The following example shows how to use the `datetime` namespace to extract components:
 
-.. testcode::
+.. code-block:: python
 
     import datetime
     import pandas as pd
@@ -192,7 +197,7 @@ The following example shows how to use the `datetime` namespace to extract compo
     ds = ds.with_column("year", col("ts").dt.year())
     ds.show()
 
-.. testoutput::
+.. code-block:: text
 
     {'ts': datetime.datetime(2024, 1, 2, 3, 4, 5), 'year': 2024}
     {'ts': datetime.datetime(2024, 2, 3, 4, 5, 6), 'year': 2024}

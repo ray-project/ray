@@ -1,3 +1,9 @@
+---
+myst:
+  html_meta:
+    description: "Serve multiple small models on one GPU with fractional GPU allocation, covering placement groups and memory management."
+---
+
 (fractional-gpu-guide)=
 # Fractional GPU serving
 
@@ -121,5 +127,5 @@ Use the following parameters to configure fractional GPU allocation. The placeme
 ## See also
 
 - {doc}`Quickstart <../quick-start>` - Basic LLM deployment examples
-- [Ray placement groups](https://docs.ray.io/en/latest/ray-core/scheduling/placement-group.html) - Ray Core placement group documentation
+- [Ray placement groups](../../../core/scheduling/placement-group.md) - Ray Core placement group documentation
 

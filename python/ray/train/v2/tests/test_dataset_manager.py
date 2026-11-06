@@ -71,19 +71,25 @@ async def test_get_multiple_datasets_serially(ray_start_4_cpus):
         dataset_manager, "sharded_1", NUM_TRAIN_WORKERS
     )
     assert all(isinstance(shard, StreamSplitDataIterator) for shard in shards)
-    assert all(shard._get_dataset_tag().startswith("sharded_1_") for shard in shards)
+    assert all(
+        shard._get_dataset_tag()["dataset"].startswith("sharded_1_") for shard in shards
+    )
 
     shards = await get_dataset_shard_for_all_workers(
         dataset_manager, "sharded_2", NUM_TRAIN_WORKERS
     )
     assert all(isinstance(shard, StreamSplitDataIterator) for shard in shards)
-    assert all(shard._get_dataset_tag().startswith("sharded_2_") for shard in shards)
+    assert all(
+        shard._get_dataset_tag()["dataset"].startswith("sharded_2_") for shard in shards
+    )
 
     shards = await get_dataset_shard_for_all_workers(
         dataset_manager, "unsharded", NUM_TRAIN_WORKERS
     )
     assert not any(isinstance(shard, StreamSplitDataIterator) for shard in shards)
-    assert all(shard._get_dataset_tag().startswith("unsharded_") for shard in shards)
+    assert all(
+        shard._get_dataset_tag()["dataset"].startswith("unsharded_") for shard in shards
+    )
 
 
 @pytest.mark.asyncio
@@ -122,7 +128,7 @@ async def test_get_multiple_datasets_interleaved(ray_start_4_cpus):
     assert all(isinstance(iterator, StreamSplitDataIterator) for iterator in iterators)
     expected_names = ["train", "valid", "train", "valid"]
     assert all(
-        it._get_dataset_tag().startswith(f"{name}_")
+        it._get_dataset_tag()["dataset"].startswith(f"{name}_")
         for it, name in zip(iterators, expected_names)
     )
 
@@ -158,20 +164,24 @@ async def test_get_multiple_datasets_rank_specific(ray_start_4_cpus):
         dataset_manager, "train", NUM_TRAIN_WORKERS
     )
     assert all(isinstance(iterator, StreamSplitDataIterator) for iterator in iterators)
-    assert all(it._get_dataset_tag().startswith("train_") for it in iterators)
+    assert all(
+        it._get_dataset_tag()["dataset"].startswith("train_") for it in iterators
+    )
 
     # if world_rank == 0:
     #     ray.train.get_dataset_shard("valid")
     iterator = await get_dataset_shard_for_worker(dataset_manager, "valid", 0)
     assert not isinstance(iterator, StreamSplitDataIterator)
-    assert iterator._get_dataset_tag().startswith("valid_")
+    assert iterator._get_dataset_tag()["dataset"].startswith("valid_")
 
     # ray.train.get_dataset_shard("train")
     iterators = await get_dataset_shard_for_all_workers(
         dataset_manager, "train", NUM_TRAIN_WORKERS
     )
     assert all(isinstance(iterator, StreamSplitDataIterator) for iterator in iterators)
-    assert all(it._get_dataset_tag().startswith("train_") for it in iterators)
+    assert all(
+        it._get_dataset_tag()["dataset"].startswith("train_") for it in iterators
+    )
 
 
 @pytest.mark.asyncio
@@ -225,6 +235,33 @@ async def test_dataset_manager_shutdown_multiple_datasets(ray_start_4_cpus):
 
     for remote_mock in remote_mocks:
         remote_mock.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_push_based_split_coordinators_are_cleaned_up(ray_start_4_cpus):
+    """Push-based split coordinators are tracked for executor shutdown, the
+    same as pull-based ones."""
+    from ray.data._internal.iterator.push_split_iterator import (
+        PushBasedDataIterator,
+    )
+    from ray.train._internal.push_based_data_config import PushBasedDataConfig
+
+    NUM_TRAIN_WORKERS = 2
+    dataset_manager = DatasetManager(
+        datasets={"train": ray.data.range(100)},
+        data_config=PushBasedDataConfig(),
+        data_context=DataContext.get_current(),
+        world_size=NUM_TRAIN_WORKERS,
+        worker_node_ids=None,
+    )
+
+    shards = await get_dataset_shard_for_all_workers(
+        dataset_manager, "train", NUM_TRAIN_WORKERS
+    )
+    assert all(isinstance(shard, PushBasedDataIterator) for shard in shards)
+    assert dataset_manager._coordinator_actors == [shards[0]._coord_actor]
+
+    dataset_manager.shutdown_data_executors()
 
 
 if __name__ == "__main__":

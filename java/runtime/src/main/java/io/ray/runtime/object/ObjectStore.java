@@ -184,14 +184,6 @@ public abstract class ObjectStore {
   }
 
   /**
-   * Delete a list of objects from the object store.
-   *
-   * @param objectIds IDs of the objects to delete.
-   * @param localOnly Whether only delete the objects in local node, or all nodes in the cluster.
-   */
-  public abstract void delete(List<ObjectId> objectIds, boolean localOnly);
-
-  /**
    * Increase the local reference count for this object ID.
    *
    * @param objectId The object ID to increase the reference count for.

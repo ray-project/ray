@@ -1,6 +1,8 @@
 import logging
+import os
 import sys
 import threading
+import time
 import uuid
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
@@ -12,6 +14,7 @@ import ray
 from ray._common.retry import retry
 from ray._common.utils import env_float
 from ray.actor import ActorHandle
+from ray.train.health.probe import ProbeResult
 from ray.train.v2._internal.constants import (
     AWS_RETRYABLE_TOKENS,
     CHECKPOINT_UPLOAD_WARN_INTERVAL_S_ENV_VAR,
@@ -21,6 +24,7 @@ from ray.train.v2._internal.execution.checkpoint.sync_actor import (
     SynchronizationActor,
     SynchronizationBarrierResetError,
 )
+from ray.train.v2._internal.execution.preemption import PreemptionContext
 from ray.train.v2._internal.execution.storage import StorageContext, delete_fs_path
 from ray.train.v2._internal.execution.training_report import (
     _TrainingReport,
@@ -124,6 +128,7 @@ class TrainContext:
     distributed_context: DistributedContext
     execution_context: ExecutionContext
     storage_context: StorageContext
+    preemption_context: PreemptionContext
     controller_actor: ActorHandle
 
     dataset_shard_provider: "DatasetShardProvider"
@@ -133,15 +138,37 @@ class TrainContext:
     checkpoint: Optional["Checkpoint"] = None
     current_report_index: int = 0
     report_call_index: int = 0
+    # Identifies which collective a call to the `SynchronizationActor` belongs to.
+    collective_seq: int = 0
+    # The thread launcher that runs the latest on-demand probes.
+    on_demand_probe_runner: Optional["ThreadRunner"] = None
     report_order_condition: threading.Condition = threading.Condition()
     checkpoint_upload_threadpool: ThreadPoolExecutor = ThreadPoolExecutor(
         max_workers=MAX_CHECKPOINT_UPLOAD_THREADS
     )
+    # The worker health sent on each status poll: the latest reading of each
+    # sampled WorkerProbe, and the latest health.report().
+    health_lock: threading.Lock = field(default_factory=threading.Lock)
+    probe_results: Dict[str, ProbeResult] = field(default_factory=dict)
+    health_report: Optional[ProbeResult] = None
 
     def __post_init__(self):
         # Ray train initializes worker with current report index
         # report_call_index should start at the current report index
         self.report_call_index = self.current_report_index
+
+    def next_collective_seq(self) -> int:
+        """Sequence number identifying the next collective this worker enters.
+
+        The `SynchronizationActor` uses it to tell one collective from the
+        next, so that a worker that has fallen behind cannot be handed a later
+        collective's payload.
+
+        Returns:
+            The sequence number to pass with the next collective call.
+        """
+        self.collective_seq += 1
+        return self.collective_seq
 
     def get_experiment_name(self) -> str:
         return self.train_run_context.run_config.name
@@ -187,6 +214,29 @@ class TrainContext:
                 timeout_s,
             )
         )
+
+    def report_health(self, metrics: Dict[str, float], step: Optional[int]) -> None:
+        """Replace this worker's latest health report.
+
+        Args:
+            metrics: The metrics to report.
+            step: The step they belong to.
+
+        Raises:
+            ValueError: If the metrics contain Torch tensors.
+        """
+        if "torch" in sys.modules:
+            from ray.air._internal.torch_utils import contains_tensor
+
+            if contains_tensor(metrics):
+                raise ValueError(
+                    "Passing Torch tensors as health metrics is not supported, "
+                    "since they fail to deserialize. Convert them to Python "
+                    "numbers first, for example with `.item()`."
+                )
+        report = ProbeResult(metrics=metrics, timestamp_s=time.time(), step=step)
+        with self.health_lock:
+            self.health_report = report
 
     def get_dataset_shard(self, dataset_info: "DatasetShardMetadata") -> "DataIterator":
         """Returns the :class:`ray.data.DataIterator` shard for this worker.
@@ -239,6 +289,8 @@ class TrainContext:
                     world_size=self.distributed_context.world_size,
                     data=checkpoint_dir_name,
                     caller_method_name="ray.train.report",
+                    collective_seq=self.next_collective_seq(),
+                    relaxable=True,
                 )
             )
 
@@ -390,8 +442,7 @@ class TrainContext:
         ] = None,
         validation: Union[bool, ValidationTaskConfig] = False,
     ) -> None:
-        """
-        Upload checkpoint to remote storage and put a training
+        """Upload checkpoint to remote storage and put a training
         result on the result queue of this worker process.
 
         TODO: the report function should be implemented in the worker instead
@@ -463,6 +514,8 @@ class TrainContext:
                 )
                 # Keep report indexes aligned across workers.
                 self.report_call_index -= 1
+                # Keep collective sequence aligned across workers. The next report will increment it.
+                self.collective_seq -= 1
                 return
 
             # Upload checkpoint, wait for turn, and report.
@@ -475,9 +528,44 @@ class TrainContext:
                     checkpoint_upload_fn,
                     validation,
                 )
+
+                if (
+                    training_report.checkpoint is not None
+                    and not is_managed_checkpoint(
+                        self.storage_context, training_report.checkpoint
+                    )
+                ):
+                    raise ValueError(
+                        "Your `checkpoint_upload_fn` returned a checkpoint outside the experiment "
+                        "directory. Update it to write to a path under the configured storage path, "
+                        "or use `ray.train.get_context().get_storage().experiment_fs_path` to "
+                        "construct the destination.\n"
+                        f" - storage filesystem:    {self.storage_context.storage_filesystem}\n"
+                        f" - checkpoint filesystem: {training_report.checkpoint.filesystem}\n"
+                        f" - storage path:          {self.storage_context.experiment_fs_path}\n"
+                        f" - checkpoint path:       {training_report.checkpoint.path}\n"
+                    )
                 self._wait_then_report(training_report, report_call_index)
 
             elif checkpoint_upload_mode == CheckpointUploadMode.NO_UPLOAD:
+                if checkpoint is not None and not is_managed_checkpoint(
+                    self.storage_context, checkpoint
+                ):
+                    raise ValueError(
+                        "Your `ray.train.report(checkpoint)` is outside the experiment "
+                        "directory. Either upload to the Ray Train run directory, or report a "
+                        "pointer checkpoint that points to the URI of your actual checkpoint, like: \n"
+                        ">>> checkpoint_uri = custom_checkpoint_upload_logic(...)\n"
+                        ">>> with tempfile.TemporaryDirectory() as tempdir:\n"
+                        '>>>    with open(os.path.join(tempdir, "pointer_ckpt.json"), "w") as f:\n'
+                        '>>>        json.dump({"uri": checkpoint_uri}, f)\n'
+                        ">>>    ray.train.report({}, checkpoint=Checkpoint.from_directory(tempdir))\n"
+                        f" - storage filesystem:    {self.storage_context.storage_filesystem}\n"
+                        f" - checkpoint filesystem: {checkpoint.filesystem}\n"
+                        f" - storage path:          {self.storage_context.experiment_fs_path}\n"
+                        f" - checkpoint path:       {checkpoint.path}\n"
+                    )
+
                 training_report = _TrainingReport(
                     checkpoint=checkpoint,
                     metrics=metrics,
@@ -502,13 +590,45 @@ class TrainContext:
                             checkpoint_upload_fn,
                             validation,
                         )
+                    except Exception as e:
+                        # TODO: env var to disable eager raising
+                        logger.exception(
+                            "`ray.train.report(checkpoint_upload_mode=ASYNC)` checkpoint "
+                            "upload failed in the background thread. Raising eagerly "
+                            "to avoid training in a corrupted state with more potential "
+                            "progress lost due to checkpointing failures."
+                        )
+                        self.execution_context.training_thread_runner.get_exception_queue().put(
+                            construct_user_exception_with_traceback(e)
+                        )
+                        return
+
+                    try:
+                        if (
+                            training_report.checkpoint is not None
+                            and not is_managed_checkpoint(
+                                self.storage_context, training_report.checkpoint
+                            )
+                        ):
+                            raise ValueError(
+                                "Your `checkpoint_upload_fn` returned a checkpoint outside the experiment "
+                                "directory. Update it to write to a path under the configured storage path, "
+                                "or use `ray.train.get_context().get_storage().experiment_fs_path` to "
+                                "construct the destination.\n"
+                                f" - storage filesystem:    {self.storage_context.storage_filesystem}\n"
+                                f" - checkpoint filesystem: {training_report.checkpoint.filesystem}\n"
+                                f" - storage path:          {self.storage_context.experiment_fs_path}\n"
+                                f" - checkpoint path:       {training_report.checkpoint.path}\n"
+                            )
+
                         self._wait_then_report(training_report, report_call_index)
                     except Exception as e:
                         # TODO: env var to disable eager raising
                         logger.exception(
-                            "Checkpoint upload failed in the background thread. Raising eagerly "
-                            "to avoid training in a corrupted state with more potential progress "
-                            "lost due to checkpointing failures."
+                            "`ray.train.report(checkpoint_upload_mode=ASYNC)` checkpoint "
+                            "validation failed in the background thread. Raising eagerly "
+                            "to avoid training in a corrupted state with more potential "
+                            "progress lost due to checkpointing failures."
                         )
                         self.execution_context.training_thread_runner.get_exception_queue().put(
                             construct_user_exception_with_traceback(e)
@@ -555,3 +675,34 @@ def set_train_context(context) -> None:
     global _train_context
     with _context_lock:
         _train_context = context
+
+
+def is_managed_checkpoint(
+    storage_context: StorageContext, checkpoint: "Checkpoint"
+) -> bool:
+    """Whether a checkpoint is managed by Ray Train.
+
+    A checkpoint is saved on the same filesystem as the experiment storage and
+    within the experiment storage path allows it to be managed by Ray Train.
+
+    Args:
+        storage_context: The experiment storage context.
+        checkpoint: The checkpoint to check.
+
+    Returns:
+        If the checkpoint is within the experiment storage path
+    """
+    if storage_context.storage_filesystem != checkpoint.filesystem:
+        return False
+
+    # Resolve paths for symlinks and `..`.
+    if Path(checkpoint.path).is_absolute():
+        checkpoint_path = Path(checkpoint.path).resolve()
+    else:
+        checkpoint_path = Path(os.path.normpath(checkpoint.path))
+    if Path(storage_context.experiment_fs_path).is_absolute():
+        experiment_path = Path(storage_context.experiment_fs_path).resolve()
+    else:
+        experiment_path = Path(os.path.normpath(storage_context.experiment_fs_path))
+
+    return checkpoint_path.is_relative_to(experiment_path)

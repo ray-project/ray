@@ -1,4 +1,5 @@
 import abc
+import functools
 import logging
 import os
 import posixpath
@@ -9,19 +10,29 @@ from typing import List, Optional, Tuple
 
 import numpy as np
 import pyarrow
+import pyarrow.compute
 from pyarrow.fs import FileSelector, FileType
 
 import ray
 from ray._common.retry import call_with_retry
 from ray.data._internal.arrow_ops import transform_pyarrow
 from ray.data._internal.execution.interfaces.ref_bundle import RefBundle
-from ray.data.block import Block, BlockMetadata, Schema
+from ray.data.block import Block, BlockAccessor, BlockMetadata, Schema
 from ray.data.checkpoint import CheckpointConfig
 from ray.data.checkpoint.checkpoint_writer import PENDING_CHECKPOINT_SUFFIX
+from ray.data.checkpoint.generated_id import (
+    _COMPACTED_CHECKPOINT_SCHEMA,
+    FILE_NAME_FIELD,
+    PATH_PREFIX_FIELD,
+    GeneratedIdCheckpoint,
+    _checkpoint_from_compacted,
+    _compact_file_ids,
+)
 from ray.data.checkpoint.util import build_pending_checkpoint_trie
 from ray.data.context import DataContext
 from ray.data.datasource.path_util import _unwrap_protocol
 from ray.types import ObjectRef
+from ray.util.annotations import DeveloperAPI
 
 logger = logging.getLogger(__name__)
 
@@ -166,8 +177,19 @@ def convert_and_sort_checkpointed_ids(
     return checkpointed_ids_ndarray, checkpoint_size
 
 
+@DeveloperAPI
 class CheckpointManager(abc.ABC):
-    """Manage checkpoint data."""
+    """Manage checkpoint data.
+
+    Subclasses passed as ``CheckpointConfig.checkpoint_manager_cls`` must have
+    a constructor accepting ``(checkpoint_config=..., data_context=...)``
+    keyword arguments, and their ``load_checkpoint`` must return an
+    ``(ObjectRef, int)`` tuple: the ref is passed opaquely to the configured
+    ``CheckpointFilter`` class's constructor, and the int (size in bytes) is
+    used for the per-actor memory reservation of the filter actors. Returning
+    ``(None, 0)`` means there is no checkpoint data to restore from, and the
+    checkpoint filter operator is not added to the plan.
+    """
 
     def __init__(
         self,
@@ -219,11 +241,60 @@ class CheckpointManager(abc.ABC):
             ObjectRef: The ref of checkpointed IDs array. None if no checkpoint was loaded.
             int: the size of the checkpointed IDs array.
         """
+        start_t = time.perf_counter()
+
+        loaded = self._load_checkpoint_block(data_file_dir, data_file_filesystem)
+        if loaded is None:
+            return None, 0
+        block_ref, schema = loaded
+
+        # Convert arrow-typed ids to sorted numpy-typed ids.
+        # Note: the convert is very time-consuming.
+        # Get the object ref the checkpointed IDs, because we do not want the IDs
+        # to occupy the memory of the head node.
+        ctx_label_selector = self._data_context.execution_options.label_selector
+        task = convert_and_sort_checkpointed_ids
+        if ctx_label_selector:
+            task = task.options(label_selector=ctx_label_selector)
+        (
+            checkpointed_ids_ref,
+            checkpoint_size_ref,
+        ) = task.remote(block_ref, self.id_column)
+
+        checkpoint_size = ray.get(checkpoint_size_ref)
+
+        logger.info(
+            "Checkpoint loaded for %s in %.2f seconds. SizeBytes = %d, Schema = %s",
+            type(self).__name__,
+            time.perf_counter() - start_t,
+            checkpoint_size,
+            schema.to_string(),
+        )
+        return checkpointed_ids_ref, checkpoint_size
+
+    def _load_checkpoint_block(
+        self,
+        data_file_dir: Optional[str] = None,
+        data_file_filesystem: Optional["pyarrow.fs.FileSystem"] = None,
+    ) -> Optional[Tuple[ObjectRef[Block], Schema]]:
+        """Clean pending checkpoints, then load the committed IDs as one block.
+
+        The IDs pass through :meth:`_preprocess_data_pipeline` first. Shared by
+        :meth:`load_checkpoint` and the generated-ID checkpoint load.
+
+        Args:
+            data_file_dir: Directory where data files are written; see
+                :meth:`load_checkpoint`.
+            data_file_filesystem: Filesystem for data files; see
+                :meth:`load_checkpoint`.
+
+        Returns:
+            The block ref and its schema, or None when there are no committed
+            checkpoint rows.
+        """
         logger.info(
             "Loading checkpoint from %s, this could take a while.", self.checkpoint_path
         )
-
-        start_t = time.time()
 
         # Clean up pending checkpoints before loading (runs as a Ray task)
         if data_file_dir is not None:
@@ -244,19 +315,29 @@ class CheckpointManager(abc.ABC):
                 allow_not_found=True,
             )
         )
-        if not any(f.type == FileType.File for f in entries):
-            return None, 0
+        committed_checkpoint_paths = [
+            entry.path
+            for entry in entries
+            if entry.type == FileType.File
+            and entry.path.endswith(".parquet")
+            and not entry.path.endswith(f"{PENDING_CHECKPOINT_SUFFIX}.parquet")
+        ]
+        if not committed_checkpoint_paths:
+            return None
 
-        # Load the checkpoint data
+        # Read explicit committed files so pending checkpoints can't filter rows
+        # when a sink doesn't provide a data-file directory for cleanup.
         checkpoint_ds: ray.data.Dataset = ray.data.read_parquet(
-            self.checkpoint_path,
+            committed_checkpoint_paths,
             filesystem=self.filesystem,
             partition_filter=self.checkpoint_path_partition_filter,
         )
         checkpoint_ds.set_name("checkpoint_dataset")
 
         # Manually disable checkpointing for loading the checkpoint metadata
-        # to avoid recursively restoring checkpoints.
+        # to avoid recursively restoring checkpoints. This also keeps a
+        # generated ID column off the checkpoint files, which already hold
+        # the saved IDs.
         # TODO: Clean way to do this would be to introduce per Op config
         # [https://github.com/ray-project/ray/issues/54520]
         checkpoint_ds.context.checkpoint_config = None
@@ -272,9 +353,9 @@ class CheckpointManager(abc.ABC):
 
         assert len(ref_bundles) == 1
 
-        # If there are no valid files under the checkpoint_path, return None, 0.
+        # If there are no valid files under the checkpoint_path, return None.
         if ref_bundles[0].num_rows() == 0:
-            return None, 0
+            return None
 
         ref_bundle: RefBundle = ref_bundles[0]
         schema: Schema = ref_bundle.schema
@@ -283,30 +364,7 @@ class CheckpointManager(abc.ABC):
         metadata: BlockMetadata = ref_bundle.blocks[0].metadata
         # Validate the loaded checkpoint
         self._validate_loaded_checkpoint(schema, metadata)
-
-        # Convert arrow-typed ids to sorted numpy-typed ids.
-        # Note: the convert is very time-consuming.
-        # Get the object ref the checkpointed IDs, because we do not want the IDs
-        # to occupy the memory of the head node.
-        ctx_label_selector = self._data_context.execution_options.label_selector
-        task = convert_and_sort_checkpointed_ids
-        if ctx_label_selector:
-            task = task.options(label_selector=ctx_label_selector)
-        (
-            checkpointed_ids_ref,
-            checkpoint_size_ref,
-        ) = task.remote(block_ref, self.id_column)
-
-        checkpoint_size = ray.get(checkpoint_size_ref)
-
-        logger.info(
-            "Checkpoint loaded for %s in %.2f seconds. SizeBytes = %d, Schema = %s",
-            type(self).__name__,
-            time.time() - start_t,
-            checkpoint_size,
-            schema.to_string(),
-        )
-        return checkpointed_ids_ref, checkpoint_size
+        return block_ref, schema
 
     def _clean_pending_checkpoints(
         self,
@@ -365,18 +423,132 @@ class CheckpointManager(abc.ABC):
         pass
 
 
+@DeveloperAPI
 class IdColumnCheckpointManager(CheckpointManager):
     """Manager for regular ID columns."""
 
 
+def _add_file_key_columns(batch: pyarrow.Table, id_column: str) -> pyarrow.Table:
+    """Pull the file-naming fields out of the generated IDs for grouping."""
+    ids = batch[id_column]
+    return pyarrow.table(
+        {
+            PATH_PREFIX_FIELD: pyarrow.compute.cast(
+                pyarrow.compute.struct_field(ids, PATH_PREFIX_FIELD), pyarrow.string()
+            ),
+            FILE_NAME_FIELD: pyarrow.compute.cast(
+                pyarrow.compute.struct_field(ids, FILE_NAME_FIELD), pyarrow.string()
+            ),
+            id_column: ids,
+        }
+    )
+
+
+def _compact_file_group(batch: pyarrow.Table, id_column: str) -> pyarrow.Table:
+    return _compact_file_ids(batch[id_column])
+
+
+@DeveloperAPI
+class GeneratedIdColumnCheckpointManager(CheckpointManager):
+    """Manager for ``CheckpointConfig(generated_id_column=...)``.
+
+    Committed checkpoint files hold one generated ID per output row. Loading
+    groups them by file and row group into a :class:`GeneratedIdCheckpoint`:
+    the read units that are done, which listing skips, and the row masks of
+    partly done row groups, which the reader filters. The actor-pool
+    :class:`CheckpointFilter` path isn't used for generated IDs.
+    """
+
+    def _preprocess_data_pipeline(
+        self, checkpoint_ds: "ray.data.Dataset"
+    ) -> "ray.data.Dataset":
+        """Compact the committed IDs into one row per input file."""
+        checkpoint_ds = checkpoint_ds.map_batches(
+            functools.partial(_add_file_key_columns, id_column=self.id_column),
+            batch_format="pyarrow",
+            batch_size=None,
+        )
+        return checkpoint_ds.groupby([PATH_PREFIX_FIELD, FILE_NAME_FIELD]).map_groups(
+            functools.partial(_compact_file_group, id_column=self.id_column),
+            batch_format="pyarrow",
+        )
+
+    def _validate_loaded_checkpoint(
+        self, schema: Schema, metadata: BlockMetadata
+    ) -> None:
+        if metadata.num_rows > 0:
+            assert schema == _COMPACTED_CHECKPOINT_SCHEMA, (
+                f"Compacted checkpoint schema {schema} != "
+                f"{_COMPACTED_CHECKPOINT_SCHEMA}"
+            )
+
+    def load_checkpoint(
+        self,
+        data_file_dir: Optional[str] = None,
+        data_file_filesystem: Optional["pyarrow.fs.FileSystem"] = None,
+    ) -> Tuple[Optional[ObjectRef[np.ndarray]], int]:
+        raise NotImplementedError(
+            "Generated row IDs can't be loaded into the ID-filter array; use "
+            "`load_generated_id_checkpoint` instead."
+        )
+
+    def load_generated_id_checkpoint(
+        self,
+        data_file_dir: Optional[str] = None,
+        data_file_filesystem: Optional["pyarrow.fs.FileSystem"] = None,
+    ) -> GeneratedIdCheckpoint:
+        """Clean pending checkpoints, then load what the checkpoint says is done.
+
+        Args:
+            data_file_dir: Directory where data files are written; see
+                :meth:`CheckpointManager.load_checkpoint`.
+            data_file_filesystem: Filesystem for data files; see
+                :meth:`CheckpointManager.load_checkpoint`.
+
+        Returns:
+            The done read unit ids and the masks of partly done row groups;
+            empty when nothing is committed.
+        """
+        start_t = time.perf_counter()
+        loaded = self._load_checkpoint_block(data_file_dir, data_file_filesystem)
+        if loaded is None:
+            return GeneratedIdCheckpoint()
+        block_ref, _ = loaded
+        compacted = BlockAccessor.for_block(ray.get(block_ref)).to_arrow()
+        checkpoint = _checkpoint_from_compacted(compacted)
+        logger.info(
+            "Generated-ID checkpoint loaded in %.2f seconds: %d done read "
+            "units, %d partly done row groups.",
+            time.perf_counter() - start_t,
+            len(checkpoint.done_unit_ids),
+            checkpoint.partial_masks.num_rows,
+        )
+        return checkpoint
+
+
+@DeveloperAPI
 class CheckpointFilter(abc.ABC):
     """Abstract class which defines the interface for filtering checkpointed rows
     based on varying backends.
+
+    Subclasses passed as ``CheckpointConfig.checkpoint_filter_cls`` are
+    constructed with ``(checkpoint_config, checkpoint_ref)``, where
+    ``checkpoint_ref`` is the ``ObjectRef`` returned by the checkpoint
+    manager's ``load_checkpoint`` (by default, a sorted NumPy array of
+    checkpointed IDs). Subclasses that define their own constructor must
+    accept the same two arguments. The class is instantiated once per
+    checkpoint filter actor on a remote worker, so it must be serializable
+    (or importable) there.
     """
 
-    def __init__(self, config: CheckpointConfig):
+    def __init__(
+        self,
+        config: CheckpointConfig,
+        checkpoint_ref: Optional[ObjectRef] = None,
+    ):
         self.ckpt_config = config
         self.id_column = self.ckpt_config.id_column
+        self.checkpoint_ref = checkpoint_ref
 
     @abstractmethod
     def filter_rows_for_block(self, block: Block) -> Block:
@@ -391,6 +563,7 @@ class CheckpointFilter(abc.ABC):
         raise NotImplementedError
 
 
+@DeveloperAPI
 class NumpyArrayBasedCheckpointFilter(CheckpointFilter):
     """CheckpointFilter for batch-based backends.
 
@@ -403,7 +576,7 @@ class NumpyArrayBasedCheckpointFilter(CheckpointFilter):
         checkpoint_config: CheckpointConfig,
         checkpoint_ref: ObjectRef[np.ndarray],
     ):
-        super().__init__(checkpoint_config)
+        super().__init__(checkpoint_config, checkpoint_ref)
         self.checkpointed_ids = ray.get(checkpoint_ref)
         assert isinstance(self.checkpointed_ids, np.ndarray)
 

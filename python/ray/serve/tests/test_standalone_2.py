@@ -12,12 +12,15 @@ from ray import serve
 from ray._common.test_utils import wait_for_condition
 from ray.exceptions import RayActorError
 from ray.serve._private.constants import (
-    RAY_SERVE_ENABLE_HA_PROXY,
     SERVE_DEFAULT_APP_NAME,
     SERVE_NAMESPACE,
 )
+from ray.serve._private.test_utils import expected_proxy_actors
 from ray.serve.context import _get_global_client
-from ray.tests.conftest import call_ray_stop_only  # noqa: F401
+from ray.tests.conftest import (  # noqa: F401
+    call_ray_stop_only,
+    hold_test_auth_mode,
+)
 from ray.util.state import list_actors
 
 
@@ -34,14 +37,15 @@ def shutdown_ray_and_serve():
 
 @contextmanager
 def start_and_shutdown_ray_cli():
-    subprocess.check_output(["ray", "stop", "--force"])
-    wait_for_condition(_check_ray_stop, timeout=15)
-    subprocess.check_output(["ray", "start", "--head"])
+    with hold_test_auth_mode():
+        subprocess.check_output(["ray", "stop", "--force"])
+        wait_for_condition(_check_ray_stop, timeout=15)
+        subprocess.check_output(["ray", "start", "--head"])
 
-    yield
+        yield
 
-    subprocess.check_output(["ray", "stop", "--force"])
-    wait_for_condition(_check_ray_stop, timeout=15)
+        subprocess.check_output(["ray", "stop", "--force"])
+        wait_for_condition(_check_ray_stop, timeout=15)
 
 
 @pytest.fixture(scope="function")
@@ -103,11 +107,11 @@ def test_serve_namespace(shutdown_ray_and_serve, ray_namespace):
 
         serve.run(f.bind())
 
-        proxy_classes = {"ProxyActor"}
-        if RAY_SERVE_ENABLE_HA_PROXY:
-            # Under HAProxy the per-node HAProxyManager joins the fallback ProxyActor.
-            proxy_classes.add("HAProxyManager")
-        expected_actors = {"ServeController", *proxy_classes, "ServeReplica:default:f"}
+        expected_actors = {
+            "ServeController",
+            *expected_proxy_actors(),
+            "ServeReplica:default:f",
+        }
 
         def check_serve_actors():
             actors = list_actors(

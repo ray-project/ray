@@ -837,5 +837,47 @@ def test_inspect_func_serialization_prints_qualname():
     ), f"Expected inner closure qualname in output, got:\n{output}"
 
 
+def test_streaming_generator_replay_inconsistent_error_deserialization(monkeypatch):
+    """The STREAMING_GENERATOR_REPLAY_INCONSISTENT error type must deserialize
+    to StreamingGeneratorReplayInconsistentError carrying the C++-side
+    error_message, not fall through to the generic
+    RaySystemError("Unrecognized error type ...").
+    """
+    from ray._private.serialization import SerializationContext
+    from ray.core.generated.common_pb2 import ErrorType, RayErrorInfo
+    from ray.exceptions import (
+        RaySystemError,
+        StreamingGeneratorReplayInconsistentError,
+    )
+
+    # Bypass __init__ — it registers reducers that expect a connected worker.
+    # _deserialize_object only needs _deserialize_error_info for this branch.
+    ctx = SerializationContext.__new__(SerializationContext)
+
+    expected_message = (
+        "Streaming generator task abc123 was re-executed and produced 2 "
+        "objects, expected 3. The generator output is non-deterministic."
+    )
+    fake_error_info = RayErrorInfo()
+    fake_error_info.error_message = expected_message
+    fake_error_info.error_type = ErrorType.STREAMING_GENERATOR_REPLAY_INCONSISTENT
+    monkeypatch.setattr(
+        ctx, "_deserialize_error_info", lambda data, fields: fake_error_info
+    )
+
+    metadata = str(ErrorType.Value("STREAMING_GENERATOR_REPLAY_INCONSISTENT")).encode()
+
+    result = ctx._deserialize_object(
+        data=b"",  # content irrelevant — _deserialize_error_info is mocked
+        metadata=metadata,
+        object_ref=None,
+        out_of_band_tensors=None,
+    )
+
+    assert isinstance(result, StreamingGeneratorReplayInconsistentError)
+    assert isinstance(result, RaySystemError)  # inheritance sanity
+    assert expected_message in str(result)
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-sv", __file__]))

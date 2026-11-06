@@ -1,0 +1,20 @@
+Build: state=Finished  success=False  exit=1  build finished with problems, 4 warnings.
+
+Root-cause groups (1) — a structural root masks a downstream flood; fix the root, rebuild, and the masked references clear together:
+  ROOT [T2] autosummary-stub-not-found — ray.data.Dataset.* (2 stubs not generated, masking 2 downstream references)
+        where:  doc/source/apis/data/ray.data.Dataset.rst:20
+        stubs:  ray.data.Dataset.map_batches, ray.data.Dataset.map
+        fix:    Do not fix per entry when the failure is in bulk. Determine scope first: many missing stubs sharing a module prefix point at one root -- confirm the module imports under the build's mock set (autodoc_mock_imports) and that autosummary_generate is on; when an API-ref restructuring is in flight, the correct move may be to revert or repair the file moves rather than edit each entry. A lone missing stub means the member no longer exists -- update or drop the autosummary entry.
+        safety: judgment (needs your call)
+    masks 2 downstream py:* reference(s) — collapsed (full list in --json):
+          doc/source/apis/data/aggregate.rst:6  ray.data.Dataset.map_batches
+          doc/source/apis/data/aggregate.rst:6  ray.data.Dataset.map
+
+Findings (0):
+  (none)
+
+Unclassified (0) — no rule matched; resolve with the user, then file a skill-improvement ticket to add a rule:
+
+Suppressed (0) — known-benign, not actionable:
+
+Next: fix Tier 2 first (it masks others), then rebuild and re-run — do not assume one pass is complete.

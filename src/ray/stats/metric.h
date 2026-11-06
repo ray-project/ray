@@ -234,6 +234,11 @@ class Sum : public Metric {
 
 enum StatsType : uint8_t { COUNT, SUM, GAUGE, HISTOGRAM };
 
+/// Exports this process metrics now instead of waiting for the periodic push, so
+/// values recorded just before a force kill are not lost. Returns false if metrics
+/// are disabled or the export did not finish within timeout_ms.
+bool FlushMetrics(int64_t timeout_ms);
+
 namespace internal {
 void RegisterAsView(opencensus::stats::ViewDescriptor view_descriptor,
                     const std::vector<opencensus::tags::TagKey> &keys);

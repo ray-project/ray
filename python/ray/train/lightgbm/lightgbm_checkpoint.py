@@ -5,13 +5,21 @@ from typing import TYPE_CHECKING, Optional
 import lightgbm
 
 from ray.train._internal.framework_checkpoint import FrameworkCheckpoint
-from ray.util.annotations import PublicAPI
+from ray.train.constants import V2_MIGRATION_GUIDE_LINK_MESSAGE
+from ray.util.annotations import Deprecated, PublicAPI
 
 if TYPE_CHECKING:
     from ray.data.preprocessor import Preprocessor
 
+_LIGHTGBM_CHECKPOINT_DEPRECATION_MESSAGE = (
+    "`LightGBMCheckpoint` is deprecated and will be removed in a future release. "
+    "Use `ray.train.Checkpoint` directly instead. "
+    f"{V2_MIGRATION_GUIDE_LINK_MESSAGE}"
+)
+
 
 @PublicAPI(stability="beta")
+@Deprecated(message=_LIGHTGBM_CHECKPOINT_DEPRECATION_MESSAGE, warning=True)
 class LightGBMCheckpoint(FrameworkCheckpoint):
     """A :py:class:`~ray.train.Checkpoint` with LightGBM-specific functionality."""
 
@@ -27,6 +35,15 @@ class LightGBMCheckpoint(FrameworkCheckpoint):
     ) -> "LightGBMCheckpoint":
         """Create a :py:class:`~ray.train.Checkpoint` that stores a LightGBM model.
 
+        Examples:
+            >>> import lightgbm
+            >>> import numpy as np
+            >>> from ray.train.lightgbm import LightGBMCheckpoint
+            >>> train_X = np.array([[1, 2], [3, 4]])
+            >>> train_y = np.array([0, 1])
+            >>> model = lightgbm.LGBMClassifier(verbose=-1).fit(train_X, train_y)
+            >>> checkpoint = LightGBMCheckpoint.from_model(model.booster_)
+
         Args:
             booster: The LightGBM model to store in the checkpoint.
             preprocessor: A fitted preprocessor to be applied before inference.
@@ -37,19 +54,6 @@ class LightGBMCheckpoint(FrameworkCheckpoint):
 
         Returns:
             An :py:class:`LightGBMCheckpoint` containing the specified ``Estimator``.
-
-        Examples:
-            .. testcode::
-
-                import lightgbm
-                import numpy as np
-                from ray.train.lightgbm import LightGBMCheckpoint
-
-                train_X = np.array([[1, 2], [3, 4]])
-                train_y = np.array([0, 1])
-
-                model = lightgbm.LGBMClassifier().fit(train_X, train_y)
-                checkpoint = LightGBMCheckpoint.from_model(model.booster_)
         """
         checkpoint_path = Path(path or tempfile.mkdtemp())
 
@@ -65,7 +69,11 @@ class LightGBMCheckpoint(FrameworkCheckpoint):
         return checkpoint
 
     def get_model(self) -> lightgbm.Booster:
-        """Retrieve the LightGBM model stored in this checkpoint."""
+        """Retrieve the LightGBM model stored in this checkpoint.
+
+        Returns:
+            The ``lightgbm.Booster`` loaded from the checkpoint.
+        """
         with self.as_directory() as checkpoint_path:
             return lightgbm.Booster(
                 model_file=Path(checkpoint_path, self.MODEL_FILENAME).as_posix()

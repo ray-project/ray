@@ -123,7 +123,9 @@ def build_dp_openai_app(builder_config: dict) -> Application:
             "DPServer=ingress, LLMRouter=ingress_request_router"
         )
         return direct_deployment._with_ingress_request_router(
-            _build_openai_ingress_request_router(server=direct_deployment)
+            _build_openai_ingress_request_router(
+                server=direct_deployment, llm_config=llm_config
+            )
         )
 
     dp_deployment = build_dp_deployment(llm_config)

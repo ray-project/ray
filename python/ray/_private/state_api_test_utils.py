@@ -1,6 +1,7 @@
 import asyncio
 import concurrent.futures
 import logging
+import os
 import pprint
 import time
 import traceback
@@ -349,8 +350,14 @@ def get_state_api_manager(gcs_address: str) -> StateAPIManager:
     gcs_client = GcsClient(address=gcs_address)
     gcs_channel = GcsChannel(gcs_address=gcs_address, aio=True)
     gcs_channel.connect()
+    # Task events are read from the dashboard head, which the client reaches over the
+    # subprocess module's socket rather than through the GCS channel.
+    node = ray._private.worker.global_worker.node
     state_api_data_source_client = StateDataSourceClient(
-        gcs_channel.channel(), gcs_client
+        gcs_channel.channel(),
+        gcs_client,
+        dashboard_socket_dir=os.path.join(node.get_session_dir_path(), "sockets"),
+        dashboard_session_name=node.session_name,
     )
     return StateAPIManager(
         state_api_data_source_client,
@@ -398,8 +405,7 @@ def summarize_worker_startup_time():
 def verify_failed_task(
     name: str, error_type: str, error_message: Union[str, List[str], None] = None
 ) -> bool:
-    """
-    Check if a task with 'name' has failed with the exact error type 'error_type'
+    """Check if a task with 'name' has failed with the exact error type 'error_type'
     and 'error_message' in the error message.
     """
     tasks = list_tasks(filters=[("name", "=", name)], detail=True)
@@ -416,8 +422,7 @@ def verify_failed_task(
 
 
 def wait_for_task_states(name_to_state: Dict[str, str], timeout: float = 30) -> None:
-    """
-    Block until every task in ``name_to_state`` is observed in its expected
+    """Block until every task in ``name_to_state`` is observed in its expected
     state via the State API, or raise if the timeout expires.
     """
 
@@ -431,8 +436,7 @@ def wait_for_task_states(name_to_state: Dict[str, str], timeout: float = 30) -> 
 
 
 def _is_actor_task_running(actor_pid: int, task_name: str):
-    """
-    Check whether the actor task `task_name` is running on the actor process
+    """Check whether the actor task `task_name` is running on the actor process
     with pid `actor_pid`.
 
     Args:
@@ -501,9 +505,7 @@ def _is_actor_task_running(actor_pid: int, task_name: str):
 
 
 def verify_schema(state, result_dict: dict, detail: bool = False):
-    """
-    Verify the schema of the result_dict is the same as the state.
-    """
+    """Verify the schema of the result_dict is the same as the state."""
     state_fields_columns = set()
     if detail:
         state_fields_columns = state.columns()

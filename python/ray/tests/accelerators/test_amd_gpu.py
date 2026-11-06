@@ -5,47 +5,36 @@ from unittest.mock import patch
 import pytest
 
 import ray
-from ray._private.accelerators import (
-    AMDGPUAcceleratorManager,
-    get_accelerator_manager_for_resource,
-)
+from ray._private.accelerators import AMDGPUAcceleratorManager
+from ray._private.test_utils import mock_accelerator_detection
 
 
-@patch(
-    "ray._private.accelerators.AMDGPUAcceleratorManager.get_current_node_num_accelerators",  # noqa: E501
-    return_value=4,
-)
-def test_visible_amd_gpu_ids(mock_get_num_accelerators, monkeypatch, shutdown_only):
+def test_visible_amd_gpu_ids(monkeypatch, shutdown_only):
     monkeypatch.setenv("HIP_VISIBLE_DEVICES", "0,1,2")
-    # Delete the cache so it can be re-populated the next time
-    # we call get_accelerator_manager_for_resource
-    del get_accelerator_manager_for_resource._resource_name_to_accelerator_manager
-    ray.init()
-    _ = mock_get_num_accelerators.called
-    assert ray.available_resources()["GPU"] == 3
+    with mock_accelerator_detection(AMDGPUAcceleratorManager, num_accelerators=4):
+        ray.init()
+        assert ray.available_resources()["GPU"] == 3
 
 
-@patch(
-    "ray._private.accelerators.AMDGPUAcceleratorManager._get_amd_device_ids",
-    return_value=["0x74a1", "0x74a1", "0x74a1", "0x74a1"],
-)
-def test_visible_amd_gpu_type(mock_get_amd_device_ids, shutdown_only):
-    ray.init()
-    _ = mock_get_amd_device_ids.called
-    assert (
-        AMDGPUAcceleratorManager.get_current_node_accelerator_type()
-        == "AMD-Instinct-MI300X-OAM"
-    )
+def test_visible_amd_gpu_type():
+    with patch.object(
+        AMDGPUAcceleratorManager,
+        "_get_amd_device_ids",
+        return_value=["0x74a1", "0x74a1", "0x74a1", "0x74a1"],
+    ):
+        assert (
+            AMDGPUAcceleratorManager.get_current_node_accelerator_type()
+            == "AMD-Instinct-MI300X-OAM"
+        )
 
 
-@patch(
-    "ray._private.accelerators.AMDGPUAcceleratorManager._get_amd_device_ids",
-    return_value=["0x640f", "0x640f", "0x640f", "0x640f"],
-)
-def test_visible_amd_gpu_type_bad_device_id(mock_get_num_accelerators, shutdown_only):
-    ray.init()
-    _ = mock_get_num_accelerators.called
-    assert AMDGPUAcceleratorManager.get_current_node_accelerator_type() is None
+def test_visible_amd_gpu_type_bad_device_id():
+    with patch.object(
+        AMDGPUAcceleratorManager,
+        "_get_amd_device_ids",
+        return_value=["0x640f", "0x640f", "0x640f", "0x640f"],
+    ):
+        assert AMDGPUAcceleratorManager.get_current_node_accelerator_type() is None
 
 
 def test_get_current_process_visible_accelerator_ids(monkeypatch):

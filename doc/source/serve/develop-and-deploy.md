@@ -1,3 +1,9 @@
+---
+myst:
+  html_meta:
+    description: "End-to-end workflow for converting an ML model to a Serve app, testing it locally with serve run, building a config file, and deploying to production."
+---
+
 (serve-develop-and-deploy)=
 
 # Develop and Deploy an ML Application
@@ -21,15 +27,10 @@ This example uses a text-translation model:
 
 The Python file, called `model.py`, uses the `Translator` class to translate English text to French.
 
-- The `Translator`'s `__init__` method loads the [t5-small](https://huggingface.co/t5-small)
-  tokenizer and model. `t5-small` is a text-to-text model that performs a task
-  when its input is prefixed with a description of that task.
-- The `translate` method prefixes the input with `"translate English to French: "`,
-  calls `model.generate()` to produce the output tokens, and decodes them back into
-  a translated string.
+- The `Translator`'s `__init__` method loads the [t5-small](https://huggingface.co/t5-small) tokenizer and model. `t5-small` is a text-to-text model that performs a task when its input is prefixed with a description of that task.
+- The `translate` method prefixes the input with `"translate English to French: "`, calls `model.generate()` to produce the output tokens, and decodes them back into a translated string.
 
-Copy and paste the script and run it locally. It translates `"Hello world!"`
-into `"Bonjour Monde!"`.
+Copy and paste the script and run it locally. It translates `"Hello world!"` into `"Bonjour Monde!"`.
 
 ```console
 $ python model.py
@@ -161,6 +162,6 @@ Deploy the Ray Serve application in production on Kubernetes using the [KubeRay]
 
 ## Monitor Ray Serve
 
-Use the Ray Dashboard to get a high-level overview of your Ray Cluster and Ray Serve application's states. The Ray Dashboard is available both during local testing and on a remote cluster in production. Ray Serve provides some in-built metrics and logging as well as utilities for adding custom metrics and logs in your application. For production deployments, exporting logs and metrics to your observability platforms is recommended. See [Monitoring](serve-monitoring) for more details. 
+Use the Ray dashboard to get a high-level overview of your Ray Cluster and Ray Serve application's states. The Ray dashboard is available both during local testing and on a remote cluster in production. Ray Serve provides some in-built metrics and logging as well as utilities for adding custom metrics and logs in your application. For production deployments, exporting logs and metrics to your observability platforms is recommended. See [Monitoring](serve-monitoring) for more details. 
 
 [KubeRay]: kuberay-index

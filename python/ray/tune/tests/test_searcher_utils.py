@@ -77,6 +77,58 @@ def test_odd_repeat():
     assert len(parameter_set) == 3
 
 
+@pytest.mark.parametrize("num_configs", [0, 1])
+def test_repeater_searcher_finished(num_configs, tmp_path):
+    suggestions = iter(
+        [None] + [{"score": 1}] * num_configs + [None, Searcher.FINISHED]
+    )
+    results = []
+
+    class TestSuggestion(Searcher):
+        def suggest(self, trial_id):
+            return next(suggestions)
+
+        def on_trial_complete(self, trial_id, result=None, **kwargs):
+            results.append((trial_id, result))
+
+    repeat = 3
+    searcher = Repeater(TestSuggestion(metric="result", mode="max"), repeat=repeat)
+    alg = SearchGenerator(searcher)
+    alg.add_configurations(
+        {
+            "test": {
+                "run": MOCK_TRAINABLE_NAME,
+                "num_samples": repeat * 2,
+                "storage_path": str(tmp_path),
+            }
+        }
+    )
+
+    # A temporary lack of suggestions must not finish the search.
+    assert alg.next_trial() is None
+    assert not alg.is_finished()
+    trials = []
+    for _ in range(num_configs * repeat):
+        trial = alg.next_trial()
+        assert trial.config["score"] == 1
+        trials.append(trial)
+
+    assert alg.next_trial() is None
+    assert not alg.is_finished()
+    assert alg.next_trial() is None
+    assert alg.is_finished()
+    assert alg.next_trial() is None
+    assert results == []
+
+    # Exhausting suggestions must preserve result aggregation for pending trials.
+    for index, trial in enumerate(trials):
+        alg.on_trial_complete(trial.trial_id, {"result": index})
+        if index < repeat - 1:
+            assert results == []
+    if trials:
+        assert results == [(trials[0].trial_id, {"result": 1})]
+
+
 def test_set_get_repeater():
     class TestSuggestion(Searcher):
         def __init__(self, index):

@@ -120,4 +120,14 @@ if [[ "${CI-}" == "true" && "${BUILDKITE-}" != "" ]]; then
       echo "build --remote_upload_local_results=false" >> ~/.bazelrc
     fi
   fi
+
+  # The clear above drops the mirror rewrite whichever pypi proxy hook wrote it, and this
+  # script runs after them: `ci/ci.sh init` reaches here through install-dependencies.sh,
+  # and on macOS that is the line straight after the proxy is sourced
+  # (ci/ray_ci/macos/macos_ci.sh). Restoring is a no-op unless a hook already found the
+  # mirror reachable, so an unreachable mirror still means no rewrite.
+  # shellcheck source=ci/bazel_mirror_downloader.sh
+  if source "$(dirname "${BASH_SOURCE[0]}")/../bazel_mirror_downloader.sh" 2>/dev/null; then
+    rayci_bazel_downloader_restore
+  fi
 fi

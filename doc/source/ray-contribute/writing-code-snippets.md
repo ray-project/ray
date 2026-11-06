@@ -1,7 +1,7 @@
 ---
 myst:
   html_meta:
-    description: "Guide to writing runnable, CI-tested code examples for Ray docs using doctest-style, code-output-style, and literalinclude formats. Read this when adding code snippets to docstrings or user guides so they keep working for users."
+    description: "Guide to writing runnable, CI-tested code examples for Ray docs: doctest-style examples in docstrings, and code-output-style and literalinclude examples on documentation pages. Also covers debugging an example that fails. Read this when adding code snippets to docstrings or user guides so they keep working for users."
 ---
 
 (writing-code-snippets_ref)=
@@ -10,7 +10,7 @@ myst:
 
 Users learn from example. So, whether you're writing a docstring or a user guide, include examples that illustrate the relevant APIs. Your examples should run out-of-the-box so that users can copy them and adapt them to their own needs.
 
-This page describes how to write code snippets so that they're tested in CI.
+This page describes how to write code snippets so that they're tested in CI, and how to show code that CI can't run.
 
 :::{note}
 The examples in this guide use reStructuredText. If you're writing Markdown, use MyST syntax. To learn more, read the [MyST documentation](https://myst-parser.readthedocs.io/en/latest/syntax/roles-and-directives.html#directives-a-block-level-extension-point).
@@ -18,15 +18,14 @@ The examples in this guide use reStructuredText. If you're writing Markdown, use
 
 ## Types of examples
 
-There are three types of examples: *doctest-style*, *code-output-style*, and *literalinclude*.
+There are three types of examples: *doctest-style*, *code-output-style*, and *literalinclude*. Use *doctest-style* in docstrings, and the other two on documentation pages.
 
 ### *doctest-style* examples
 
-*doctest-style* examples mimic interactive Python sessions.
+*doctest-style* examples mimic interactive Python sessions. Write them in docstrings, under an `Example:` section:
 
 ```
-.. doctest::
-
+Example:
     >>> def is_even(x):
     ...     return (x % 2) == 0
     >>> is_even(0)
@@ -46,18 +45,8 @@ True
 False
 ```
 
-:::{tip}
-If you're writing docstrings, exclude `.. doctest::` to simplify your code:
-
-```
-Example:
-    >>> def is_even(x):
-    ...     return (x % 2) == 0
-    >>> is_even(0)
-    True
-    >>> is_even(1)
-    False
-```
+:::{note}
+Don't use *doctest-style* examples on documentation pages. On a page, use *code-output-style* or *literalinclude* instead.
 :::
 
 ### *code-output-style* examples
@@ -81,7 +70,7 @@ Example:
 
 They're rendered like this:
 
-```{testcode}
+```python
 def is_even(x):
     return (x % 2) == 0
 
@@ -89,7 +78,7 @@ print(is_even(0))
 print(is_even(1))
 ```
 
-```{testoutput}
+```text
 True
 False
 ```
@@ -119,19 +108,18 @@ They're rendered like this:
 
 ## Which type of example should you write?
 
-There's no hard rule about which style you should use. Choose the style that best illustrates your API.
+In a docstring, use *doctest-style*. On a documentation page, choose between *code-output-style* and *literalinclude*, whichever best illustrates your API.
 
 :::{tip}
-If you're not sure which style to use, use *code-output-style*.
+If you're not sure which style to use on a documentation page, use *code-output-style*.
 :::
 
 ### When to use *doctest-style*
 
-If you're writing a small example that emphasizes object representations, or if you want to print intermediate objects, use *doctest-style*.
+Use *doctest-style* in docstrings. It suits small examples that emphasize object representations or print intermediate objects:
 
 ```
-.. doctest::
-
+Example:
     >>> import ray
     >>> ds = ray.data.range(100)
     >>> ds.schema()
@@ -144,7 +132,7 @@ If you're writing a small example that emphasizes object representations, or if 
 
 ### When to use *code-output-style*
 
-If you're writing a longer example, or if object representations aren't relevant to your example, use *code-output-style*.
+On a documentation page, use *code-output-style* to show the code and its expected output, including object representations.
 
 ```
 .. testcode::
@@ -190,32 +178,32 @@ If you're writing a longer example, or if object representations aren't relevant
 
 ### When to use *literalinclude*
 
-If you're writing an end-to-end examples and your examples doesn't contain outputs, use *literalinclude*.
+If you're writing a longer example that doesn't show outputs, use *literalinclude*. For a full guide that CI doesn't test, see {ref}`writing-e2e-guide`.
 
 ## How to handle hard-to-test examples
 
 ### When is it okay to not test an example?
 
-You don't need to test examples that depend on external systems like Weights and Biases.
+You don't need to test examples that depend on external systems such as Weights and Biases.
+
+A `testcode` block tells readers and maintainers that CI runs the code. Use it only for blocks that CI executes. Show any code that CI doesn't run as a plain code block.
 
 ### Skipping *doctest-style* examples
 
 To skip a *doctest-style* example, append `# doctest: +SKIP` to your Python code.
 
 ```
-.. doctest::
-
+Example:
     >>> import ray
     >>> ray.data.read_images("s3://private-bucket")  # doctest: +SKIP
 ```
 
-### Skipping *code-output-style* examples
+### Showing *code-output-style* examples that CI doesn't run
 
-To skip a *code-output-style* example, add `:skipif: True` to the `testcode` block.
+To show a *code-output-style* example that CI doesn't run, write a plain `code-block` instead of a `testcode` block. Don't add `:skipif: True` to a `testcode` block. The block never runs, but it reads as tested code.
 
 ```
-.. testcode::
-    :skipif: True
+.. code-block:: python
 
     from ray.air.integrations.wandb import WandbLoggerCallback
     callback = WandbLoggerCallback(
@@ -225,9 +213,11 @@ To skip a *code-output-style* example, add `:skipif: True` to the `testcode` blo
     )
 ```
 
-## How to handle long or non-determnistic outputs
+In MyST Markdown, use a fenced block with a language, such as `` ```python ``. To show sample output, add a second plain block with the `text` language in place of a `testoutput` block.
 
-If your Python code is non-deterministic, or if your output is excessively long, you may want to skip all or part of an output.
+## How to handle long or non-deterministic outputs
+
+If your Python code is non-deterministic, or if your output is excessively long, you can skip all or part of the output.
 
 ### Ignoring *doctest-style* outputs
 
@@ -257,7 +247,7 @@ If parts of your output are long or non-deterministic, replace problematic secti
     Dataset(num_rows=..., schema=...)
 ```
 
-If your output is nondeterministic and you want to display a sample output, add `:options: +MOCK`.
+If your output is non-deterministic and you want to display a sample output, add `:options: +MOCK`.
 
 ```
 .. testcode::
@@ -279,58 +269,53 @@ If your output is hard to test and you don't want to display a sample output, ex
     print("This output is hidden and untested")
 ```
 
+## How to add a page's examples to CI
+
+CI tests a documentation page's `doctest` and `testcode` examples only if `doc/BUILD.bazel` names the page. When you add the first runnable example to a page, add the page to its library's `doctest_each` list in `doc/BUILD.bazel`, or to the `team:none` list if no library owns it. The `doc_prose_doctest_targets` lint fails a PR that adds a runnable example to a page that no target names, and a PR that leaves a page with no runnable example in a list.
+
 ## How to test examples with GPUs
 
-To configure Bazel to run an example with GPUs, complete the following steps:
+Bazel `doctest` rules in `BUILD.bazel` files decide which files CI tests, and a rule with `gpu = True` runs its files on GPUs. To run an example with GPUs, move its file from the CPU rule to a GPU rule.
 
-1. Open the corresponding `BUILD` file. If your example is in the `doc/` folder, open `doc/BUILD`. If your example is in the `python/` folder, open a file like `python/ray/train/BUILD`.
+For a documentation page under `doc/source/`, complete the following steps:
 
-2. Locate the `doctest` rule. It looks like this:
+1. Open `doc/BUILD.bazel` and find the `doctest_each` rule for the page's library. It lists each page with a runnable example and gives every page its own test target.
 
-   ```
-   doctest(
-       files = glob(
-           include=["source/**/*.rst"],
-       ),
-       size = "large",
-       tags = ["team:none"]
-   )
-   ```
+2. Remove the page from that list.
 
-3. Add the file that contains your example to the list of excluded files.
+3. Add the page to the library's GPU `doctest` rule. If the library doesn't have one, create it.
 
    ```
    doctest(
-       files = glob(
-           include=["source/**/*.rst"],
-           exclude=["source/data/requires-gpus.rst"]
-       ),
-       tags = ["team:none"]
+       name = "doctest[train-gpu]",
+       files = [
+           "source/train/user-guides/using-accelerators.md",
+       ],
+       gpu = True,
+       tags = ["team:ml"],
    )
    ```
 
-4. If it doesn't already exist, create a `doctest` rule with `gpu` set to `True`.
+For a docstring in a Python module, complete the following steps:
+
+1. Open the library's `BUILD.bazel` file, such as `python/ray/train/BUILD.bazel`.
+
+2. Add the module to the `exclude` list of the library's CPU `doctest` rule glob.
+
+3. Add the module to the library's GPU `doctest` rule. If the library doesn't have one, create it.
 
    ```
    doctest(
-       files = [],
-       tags = ["team:none"],
-       gpu = True
+       name = "py_doctest[train-gpu]",
+       files = [
+           "tensorflow/tensorflow_trainer.py",
+       ],
+       gpu = True,
+       tags = ["team:ml"],
    )
    ```
 
-5. Add the file that contains your example to the GPU rule.
-
-   ```
-   doctest(
-       files = ["source/data/requires-gpus.rst"]
-       size = "large",
-       tags = ["team:none"],
-       gpu = True
-   )
-   ```
-
-For a practical example, see `doc/BUILD` or `python/ray/train/BUILD`.
+For practical examples, see `doc/BUILD.bazel` and `python/ray/train/BUILD.bazel`.
 
 ## How to locally test examples
 
@@ -347,3 +332,27 @@ pytest --doctest-modules python/ray/data/read_api.py
 pytest --doctest-modules python/ray/data/read_api.py::ray.data.read_api.range
 pytest --doctest-modules doc/source/data/getting-started.rst
 ```
+
+## How to debug a failing example
+
+When a code snippet fails in CI, two questions decide what you need to do about it: what kind of failure is it, and what was the example protecting. To find which step failed, see [Per-library docs example tests](ci.md#per-library-docs-example-tests), which maps each documentation path to the step that runs its examples.
+
+### What kind of failure is it?
+
+- **The example ran, but its output didn't match.** This is an ordinary test failure. Reproduce it locally with `pytest --doctest-modules <file>` and compare the actual output against the expected `testoutput` or `>>>` block. Either the code changed or the expected output is wrong.
+- **The build failed before your example ran.** An import error or a `conf.py` error can abort the build, and the rest of the log is unreliable after an abort. Fix that error first, then re-read the log.
+- **A Sphinx warning failed the build.** The doc site host (Read the Docs) render gate treats warnings as errors, so a malformed directive or a broken cross-reference fails the build even when your code is correct. This is a markup problem, not a code failure. See [the Read the Docs render gate](ci.md#the-read-the-docs-render-gate).
+
+### What was the example protecting?
+
+A failing example is a signal, but the right response depends on what the example was there to catch. There are three cases:
+
+- **A breaking-change detector.** The snippet is user-facing code that broke because the library's behavior changed. Treat the failure as a real signal: either don't land the change, or land it with breaking-change communication. Once the change is approved, do update the example to match the new behavior, so the page stays correct for the version that ships. What's wrong is updating it *instead of* communicating the break, because that hides the change from the users who copied the old example.
+- **An example validator.** The example itself is wrong, such as a typo, a bad merge, or a stale import, and just needs to run. Fix the example. Don't mistake it for a code regression.
+- **A drift indicator.** The example still runs, but the prose around it has gone stale relative to what the code now does. Update the narrative, not just the example.
+
+The same example can fail different ways at different times. An `IndentationError` introduced by a bad merge is an example-validator failure, so fix the snippet. An `ImportError` from an upstream API change to that same example is a breaking-change signal, so fix the code or communicate the break. The failure text tells you which case you're in.
+
+Let the intent guide whether to skip. Skipping with `# doctest: +SKIP`, or moving the example to a plain code block, is right for an example that depends on an external system, but it's the wrong response to a breaking-change detector. Skipping there hides a real break from users.
+
+Doc edits don't run example tests by default, so a green PR isn't evidence that a changed example still runs. When you change an example, add the [`docs-example-test` label](ci.md#running-the-tests-for-your-doc-changes) to run its tests before you merge.

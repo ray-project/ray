@@ -76,15 +76,19 @@ class LocalNode : public ray::syncer::ReporterInterface {
 class RemoteNodes : public ray::syncer::ReceiverInterface {
  public:
   RemoteNodes() {}
-  void ConsumeSyncMessage(
-      std::shared_ptr<const ray::rpc::syncer::RaySyncMessage> msg) override {
-    auto version = msg->version();
-    int state = *reinterpret_cast<const int *>(msg->sync_message().data());
-    auto iter = infos_.find(msg->node_id());
-    if (iter == infos_.end() || iter->second.second < version) {
-      RAY_LOG(INFO) << "Update node " << ray::NodeID::FromBinary(msg->node_id()).Hex()
-                    << " to (" << state << ", v:" << version << ")";
-      infos_[msg->node_id()] = std::make_pair(state, version);
+  void ConsumeSyncMessages(
+      ray::rpc::syncer::MessageType /*message_type*/,
+      std::vector<std::shared_ptr<const ray::rpc::syncer::RaySyncMessage>> msgs)
+      override {
+    for (const auto &msg : msgs) {
+      auto version = msg->version();
+      int state = *reinterpret_cast<const int *>(msg->sync_message().data());
+      auto iter = infos_.find(msg->node_id());
+      if (iter == infos_.end() || iter->second.second < version) {
+        RAY_LOG(INFO) << "Update node " << ray::NodeID::FromBinary(msg->node_id()).Hex()
+                      << " to (" << state << ", v:" << version << ")";
+        infos_[msg->node_id()] = std::make_pair(state, version);
+      }
     }
   }
 
@@ -106,6 +110,7 @@ int main(int argc, char *argv[]) {
   // RPC related field
   grpc::ServerBuilder builder;
   std::unique_ptr<ray::syncer::RaySyncerService> service;
+  std::unique_ptr<ray::syncer::RaySyncerGrpcService> grpc_service;
   std::unique_ptr<grpc::Server> server;
   std::shared_ptr<grpc::Channel> channel;
   syncer.Register(
@@ -114,8 +119,9 @@ int main(int argc, char *argv[]) {
     RAY_LOG(INFO) << "Start server on port " << server_port;
     auto server_address = ray::BuildAddress("0.0.0.0", server_port);
     service = std::make_unique<ray::syncer::RaySyncerService>(syncer);
+    grpc_service = std::make_unique<ray::syncer::RaySyncerGrpcService>(*service);
     builder.AddListeningPort(server_address, grpc::InsecureServerCredentials());
-    builder.RegisterService(service.get());
+    builder.RegisterService(grpc_service.get());
     server = builder.BuildAndStart();
   }
   if (leader_port != ".") {

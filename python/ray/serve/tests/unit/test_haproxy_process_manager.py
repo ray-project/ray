@@ -7,7 +7,9 @@ stop, which keeps serving its stale config indefinitely.
 """
 import asyncio
 import os
+import subprocess
 import sys
+import textwrap
 from typing import Optional
 
 import pytest
@@ -135,6 +137,53 @@ class TestIsOurHaproxy:
         # Missing /proc entry (or any non-Linux platform) -> OSError -> False.
         api.config_file_path = "/tmp/whatever/haproxy.cfg"
         assert api._is_our_haproxy(2_000_000_000) is False
+
+
+class TestCountHaproxyProcesses:
+    """`count_haproxy_processes` scans /proc for processes whose cmdline carries
+    our config path, so the count spans live, draining, and leaked workers."""
+
+    @pytest.mark.skipif(
+        not sys.platform.startswith("linux"), reason="/proc is Linux-only"
+    )
+    def test_counts_matching_processes(self, api):
+        # Point config_file_path at a real token in this process's cmdline so at
+        # least this process is counted.
+        with open(f"/proc/{os.getpid()}/cmdline", "rb") as f:
+            argv = [t for t in f.read().split(b"\0") if t]
+        api.config_file_path = argv[0].decode()
+        assert api.count_haproxy_processes() >= 1
+
+    @pytest.mark.skipif(
+        not sys.platform.startswith("linux"), reason="/proc is Linux-only"
+    )
+    def test_returns_zero_when_no_match(self, api):
+        api.config_file_path = "/tmp/not-in-any-cmdline/haproxy.cfg"
+        assert api.count_haproxy_processes() == 0
+
+
+def test_import_serve_does_not_require_jinja2():
+    """A plain `import ray.serve` must not require jinja2 (issue #65507).
+
+    jinja2 is only needed when HAProxy mode actually renders its config, so
+    haproxy.py must import it lazily; a module-scope import breaks
+    `import ray.serve` on installs that don't have jinja2.
+    """
+    code = textwrap.dedent(
+        """
+        import importlib.abc, sys
+
+        class BlockJinja(importlib.abc.MetaPathFinder):
+            def find_spec(self, fullname, path=None, target=None):
+                if fullname == "jinja2" or fullname.startswith("jinja2."):
+                    raise ModuleNotFoundError("No module named 'jinja2'")
+
+        sys.meta_path.insert(0, BlockJinja())
+        import ray.serve
+        import ray.serve._private.controller
+        """
+    )
+    subprocess.check_call([sys.executable, "-c", code])
 
 
 if __name__ == "__main__":

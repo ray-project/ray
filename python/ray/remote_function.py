@@ -156,7 +156,9 @@ class RemoteFunction:
             )
 
         self._language = language
-        self._is_generator = inspect.isgeneratorfunction(function)
+        self._is_generator = inspect.isgeneratorfunction(
+            function
+        ) or inspect.isasyncgenfunction(function)
         self._function = function
         self._function_signature = None
         # Guards trace injection to enforce exactly once semantics
@@ -181,6 +183,10 @@ class RemoteFunction:
         self.remote = _remote_proxy
 
     def __call__(self, *args, **kwargs):
+        """Raise a TypeError, because remote functions can't be called directly.
+
+        Call ``.remote()`` on the function instead.
+        """
         raise TypeError(
             "Remote functions cannot be called directly. Instead "
             f"of running '{self._function_name}()', "
@@ -214,6 +220,11 @@ class RemoteFunction:
         - ``resources`` (Dict[str, float]): The quantity of various custom resources
           to reserve for this task or for the lifetime of the actor.
           This is a dictionary mapping strings (resource names) to floats.
+        - ``name``: A human-readable name for the task. If set, the name appears
+          alongside the task in the Ray Dashboard, logs, and the State API
+          (for example, ``ray list tasks``), which is useful for debugging and
+          observability. Names don't need to be unique. Defaults to the remote
+          function's name.
         - ``label_selector`` (Dict[str, str]): If specified, the labels required for the node on
           which this actor can be scheduled on. The label selector consist of key-value pairs,
           where the keys are label names and the value are expressions consisting of an operator
@@ -299,7 +310,16 @@ class RemoteFunction:
         # merging options from '@ray.remote'.
         default_options.pop("max_calls", None)
         updated_options = ray_option_utils.update_options(default_options, task_options)
-        ray_option_utils.validate_task_options(updated_options, in_options=True)
+        # Only validate num_returns when this .options() call overrides it.
+        # Otherwise a default num_returns='dynamic' from @ray.remote would
+        # re-warn on unrelated overrides like .options(num_cpus=2).
+        ray_option_utils.validate_task_options(
+            updated_options,
+            in_options=True,
+            is_generator_callable=(
+                self._is_generator if "num_returns" in task_options else None
+            ),
+        )
 
         # Only update runtime_env and re-calculate serialized runtime env info when
         # ".options()" specifies new runtime_env.
@@ -327,8 +347,7 @@ class RemoteFunction:
 
             @DeveloperAPI
             def bind(self, *args, **kwargs):
-                """
-                For Ray DAG building that creates static graph from decorated
+                """For Ray DAG building that creates static graph from decorated
                 class or functions.
                 """
                 from ray.dag.function_node import FunctionNode
@@ -559,8 +578,7 @@ class RemoteFunction:
 
     @DeveloperAPI
     def bind(self, *args, **kwargs):
-        """
-        For Ray DAG building that creates static graph from decorated
+        """For Ray DAG building that creates static graph from decorated
         class or functions.
         """
 

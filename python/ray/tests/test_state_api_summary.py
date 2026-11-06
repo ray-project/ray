@@ -396,7 +396,7 @@ def test_actor_summary(ray_start_cluster):
     ray.init(address=cluster.address)
     cluster.add_node(num_cpus=2)
 
-    @ray.remote(num_gpus=1)
+    @ray.remote(resources={"nonexistent_resource": 1})
     class Infeasible:
         pass
 

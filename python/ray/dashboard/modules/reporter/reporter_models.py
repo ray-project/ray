@@ -1,13 +1,13 @@
 from typing import Dict, List, Optional, Tuple
 
-from ray._common.pydantic_compat import PYDANTIC_INSTALLED, BaseModel
+from ray._common.pydantic_compat import PYDANTIC_INSTALLED, BaseModel, Field
 
 if PYDANTIC_INSTALLED:
+    from pydantic import field_validator
 
     # TODO(aguo): Use these pydantic models in the dashboard API as well.
     class ProcessGPUInfo(BaseModel):
-        """
-        Information about GPU usage for a single process.
+        """Information about GPU usage for a single process.
         NOTE: Backwards compatibility for this model must be maintained.
         If broken, the downstream dashboard API and UI code will break.
         If you must make a backwards-incompatible change, you must make sure
@@ -19,8 +19,7 @@ if PYDANTIC_INSTALLED:
         gpuUtilization: Optional[int] = None  # percentage
 
     class GpuUtilizationInfo(BaseModel):
-        """
-        GPU utilization information for a single GPU device.
+        """GPU utilization information for a single GPU device.
         NOTE: Backwards compatibility for this model must be maintained.
         If broken, the downstream dashboard API and UI code will break.
         If you must make a backwards-incompatible change, you must make sure
@@ -39,9 +38,30 @@ if PYDANTIC_INSTALLED:
         powerMw: Optional[int] = None  # current power draw in milliwatts
         temperatureC: Optional[int] = None  # temperature in Celsius
 
+    class ProcessNpuInfo(BaseModel):
+        """Ascend NPU memory information for a single process."""
+
+        pid: int
+        npuMemoryUsage: int  # bytes
+
+    class NpuUtilizationInfo(BaseModel):
+        """Ascend NPU utilization information for a single device."""
+
+        index: int  # logical index used by ASCEND_RT_VISIBLE_DEVICES
+        cardId: int
+        deviceId: int
+        physicalId: Optional[int] = None
+        name: str
+        utilizationAicore: Optional[int] = None  # percentage
+        memoryUsed: Optional[int] = None  # bytes
+        memoryTotal: Optional[int] = None  # bytes
+        healthStatus: Optional[int] = None  # 0-3 DCMI severity, 4 means missing
+        powerMw: Optional[int] = None
+        temperatureC: Optional[int] = None
+        processesPids: Optional[List[ProcessNpuInfo]] = None
+
     class TpuUtilizationInfo(BaseModel):
-        """
-        TPU utilization information for a single TPU device.
+        """TPU utilization information for a single TPU device.
         NOTE: Backwards compatibility for this model must be maintained.
         If broken, the downstream dashboard API and UI code will break.
         If you must make a backwards-incompatible change, you must make sure
@@ -59,8 +79,7 @@ if PYDANTIC_INSTALLED:
         memoryTotal: int  # in bytes
 
     class CpuTimes(BaseModel):
-        """
-        CPU times information based on psutil.scputimes.
+        """CPU times information based on psutil.scputimes.
         NOTE: Backwards compatibility for this model must be maintained.
         If broken, the downstream dashboard API and UI code will break.
         If you must make a backwards-incompatible change, you must make sure
@@ -73,8 +92,7 @@ if PYDANTIC_INSTALLED:
         childrenSystem: float
 
     class MemoryInfo(BaseModel):
-        """
-        Memory information based on psutil.svmem.
+        """Memory information based on psutil.svmem.
         NOTE: Backwards compatibility for this model must be maintained.
         If broken, the downstream dashboard API and UI code will break.
         If you must make a backwards-incompatible change, you must make sure
@@ -87,8 +105,7 @@ if PYDANTIC_INSTALLED:
         pageins: Optional[float] = None
 
     class MemoryFullInfo(MemoryInfo):
-        """
-        Memory full information based on psutil.smem.
+        """Memory full information based on psutil.smem.
         NOTE: Backwards compatibility for this model must be maintained.
         If broken, the downstream dashboard API and UI code will break.
         If you must make a backwards-incompatible change, you must make sure
@@ -98,8 +115,7 @@ if PYDANTIC_INSTALLED:
         uss: float
 
     class ProcessInfo(BaseModel):
-        """
-        Process information from psutil.
+        """Process information from psutil.
         NOTE: Backwards compatibility for this model must be maintained.
         If broken, the downstream dashboard API and UI code will break.
         If you must make a backwards-incompatible change, you must make sure
@@ -116,6 +132,12 @@ if PYDANTIC_INSTALLED:
         numFds: Optional[int] = None  # Not available on Windows
         gpuMemoryUsage: Optional[int] = None  # in MB, added by _get_workers
         gpuUtilization: Optional[int] = None  # percentage, added by _get_workers
+        npuMemoryUsage: Optional[int] = None  # in bytes, added by _get_workers
+
+        @field_validator("cmdline", mode="before")
+        @classmethod
+        def _normalize_cmdline(cls, value):
+            return [] if value is None else value
 
     # Note: The actual data structure uses tuples for some fields, not structured objects
     # These are type aliases to document the tuple structure
@@ -135,8 +157,7 @@ if PYDANTIC_INSTALLED:
     NetworkSpeed = Tuple[float, float]  # (sendSpeed, receiveSpeed) in bytes/sec
 
     class DiskUsage(BaseModel):
-        """
-        Disk usage information based on psutil.diskusage.
+        """Disk usage information based on psutil.diskusage.
         NOTE: Backwards compatibility for this model must be maintained.
         If broken, the downstream dashboard API and UI code will break.
         If you must make a backwards-incompatible change, you must make sure
@@ -149,8 +170,7 @@ if PYDANTIC_INSTALLED:
         percent: float
 
     class StatsPayload(BaseModel):
-        """
-        Main stats payload returned by _compose_stats_payload.
+        """Main stats payload returned by _compose_stats_payload.
         NOTE: Backwards compatibility for this model must be maintained.
         If broken, the downstream dashboard API and UI code will break.
         If you must make a backwards-incompatible change, you must make sure
@@ -177,11 +197,19 @@ if PYDANTIC_INSTALLED:
         diskIo: DiskIOStats  # (readBytes, writeBytes, readCount, writeCount)
         diskIoSpeed: DiskIOSpeed  # (readSpeed, writeSpeed, readIops, writeIops)
         gpus: List[GpuUtilizationInfo]
+        # Older Reporter agents do not include this field. Keep a per-payload
+        # empty list default so a newer Dashboard Head can parse their data.
+        npus: List[NpuUtilizationInfo] = Field(default_factory=list)
         tpus: List[TpuUtilizationInfo]
         network: NetworkStats  # (sent, received) in bytes
         networkSpeed: NetworkSpeed  # (sendSpeed, receiveSpeed) in bytes/sec
         cmdline: List[str]  # deprecated field from raylet
         gcs: Optional[ProcessInfo] = None  # only present on head node
+
+        @field_validator("cmdline", mode="before")
+        @classmethod
+        def _normalize_cmdline(cls, value):
+            return [] if value is None else value
 
 else:
     StatsPayload = None

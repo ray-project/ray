@@ -53,6 +53,24 @@ Binary
 
    read_binary_files
 
+Catalog
+^^^^^^^
+
+.. autosummary::
+   :nosignatures:
+   :toctree: doc/
+
+   Catalog
+
+   DatabricksUnityCatalog
+
+.. autosummary::
+   :nosignatures:
+   :toctree: doc/
+   :template: autosummary/class_without_autosummary.rst
+
+   ReaderFormat
+
 CSV
 ^^^
 
@@ -179,6 +197,15 @@ Lance
 
    read_lance
 
+LeRobot
+^^^^^^^
+
+.. autosummary::
+   :nosignatures:
+   :toctree: doc/
+
+   read_lerobot
+
 MCAP (Message Capture)
 ^^^^^^^^^^^^^^^^^^^^^^
 
@@ -225,6 +252,15 @@ NumPy
    from_numpy
    read_numpy
 
+ORC
+^^^
+
+.. autosummary::
+   :nosignatures:
+   :toctree: doc/
+
+   read_orc
+
 Pandas
 ^^^^^^
 
@@ -260,6 +296,15 @@ SQL Databases
    :toctree: doc/
 
    read_sql
+
+HiveServer2
+^^^^^^^^^^^
+
+.. autosummary::
+   :nosignatures:
+   :toctree: doc/
+
+   read_hive
 
 Snowflake
 ^^^^^^^^^

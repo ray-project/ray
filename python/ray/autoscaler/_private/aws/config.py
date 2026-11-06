@@ -74,8 +74,7 @@ assert Version(boto3.__version__) >= Version(
 
 
 def key_pair(i, region, key_name):
-    """
-    If key_name is not None, key_pair will be named after key_name.
+    """If key_name is not None, key_pair will be named after key_name.
     Returns the ith default (aws_key_pair_name, key_pair_path).
     """
     if i == 0:
@@ -405,7 +404,19 @@ def _configure_key_pair(config):
             cli_logger.verbose(
                 "Creating new key pair {} for use as the default.", cf.bold(key_name)
             )
-            key = ec2.create_key_pair(KeyName=key_name)
+            try:
+                key = ec2.create_key_pair(KeyName=key_name)
+            except botocore.exceptions.ClientError as exc:
+                error_code = (
+                    exc.response.get("Error", {}).get("Code") if exc.response else None
+                )
+                if error_code != "InvalidKeyPair.Duplicate":
+                    raise
+                cli_logger.verbose(
+                    "Key pair {} was created concurrently; trying another name.",
+                    cf.bold(key_name),
+                )
+                continue
 
             # We need to make sure to _create_ the file with the right
             # permissions. In order to do that we need to change the default
@@ -1189,8 +1200,7 @@ def _configure_subnets_and_groups_from_network_interfaces(
 
 
 def _subnets_in_network_config(config: Dict[str, Any]) -> List[str]:
-    """
-    Returns all subnet IDs found in the given node config's network interfaces.
+    """Returns all subnet IDs found in the given node config's network interfaces.
 
     Args:
         config: node config
@@ -1204,8 +1214,7 @@ def _subnets_in_network_config(config: Dict[str, Any]) -> List[str]:
 
 
 def _security_groups_in_network_config(config: Dict[str, Any]) -> List[List[str]]:
-    """
-    Returns all security group IDs found in the given node config's network
+    """Returns all security group IDs found in the given node config's network
     interfaces.
 
     Args:

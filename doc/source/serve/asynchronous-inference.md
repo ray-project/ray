@@ -1,3 +1,9 @@
+---
+myst:
+  html_meta:
+    description: "Run long-running inference asynchronously using the @task_consumer and @task_handler APIs with Celery-backed queues, keeping HTTP responses immediate."
+---
+
 (serve-asynchronous-inference)=
 
 :::{warning}

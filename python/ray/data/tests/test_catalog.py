@@ -1,0 +1,773 @@
+"""Tests for the Catalog connector API (ray.data.catalog)."""
+
+import contextlib
+import os
+import pickle
+from unittest import mock
+
+import pyarrow as pa
+import pyarrow.fs as pafs
+import pyarrow.parquet as pq
+import pytest
+from packaging.version import parse as parse_version
+
+import ray
+from ray.data._internal.utils.arrow_utils import get_pyarrow_version
+from ray.data.catalog import (
+    CatalogAccessMode,
+    DatabricksUnityCatalog,
+    ReaderFormat,
+    ResolvedSource,
+)
+from ray.data.tests.catalog_test_utils import FakeCatalog
+
+# conftest provides ray_start_regular_shared
+from ray.data.tests.conftest import *  # noqa: F401,F403
+
+pytest.importorskip("databricks.sdk")
+from databricks.sdk.service.catalog import (  # noqa: E402
+    AwsCredentials,
+    AzureUserDelegationSas,
+    DataSourceFormat,
+    GcpOauthToken,
+    GenerateTemporaryTableCredentialResponse,
+    TableInfo,
+)
+
+AWS_RESP = GenerateTemporaryTableCredentialResponse(
+    url="s3://bucket/path",
+    aws_temp_credentials=AwsCredentials(
+        access_key_id="AKIA",
+        secret_access_key="secret",
+        session_token="token",
+    ),
+)
+
+
+def _mock_uc_sdk(*, data_source_format="DELTA", storage_location=None, creds=None):
+    """Patch DatabricksUnityCatalog._workspace_client to return canned SDK responses.
+
+    Replaces the catalog's two SDK calls (``tables.get`` /
+    ``generate_temporary_table_credentials``) so no Databricks workspace is hit.
+    Returns an already-started patcher; the caller is responsible for ``stop()``.
+    """
+    creds = creds if creds is not None else AWS_RESP
+    table_info = TableInfo(
+        table_id="tid-123",
+        data_source_format=(
+            DataSourceFormat(data_source_format) if data_source_format else None
+        ),
+        storage_location=storage_location,
+    )
+    client = mock.MagicMock()
+    client.tables.get.return_value = table_info
+    gen = client.temporary_table_credentials.generate_temporary_table_credentials
+    gen.return_value = creds
+
+    patcher = mock.patch.object(
+        DatabricksUnityCatalog, "_workspace_client", return_value=client
+    )
+    patcher.start()
+    return patcher
+
+
+@pytest.fixture
+def uc_catalog():
+    return DatabricksUnityCatalog(
+        url="https://dbc-test.cloud.databricks.com",
+        token="dapi-test",
+        region="us-west-2",
+    )
+
+
+@pytest.fixture
+def isolated_env(monkeypatch):
+    # resolve() exports vended creds to os.environ and may call ray.init.
+    # Isolate the env mutation and skip the real ray.init for unit tests.
+    monkeypatch.setattr("ray.is_initialized", lambda: True)
+    monkeypatch.setattr(os, "environ", dict(os.environ))
+    return os.environ
+
+
+# ---------------------------------------------------------------------------
+# DatabricksUnityCatalog.resolve
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("reader", [ReaderFormat.DELTA, ReaderFormat.PARQUET])
+def test_resolve_storage_aws(uc_catalog, isolated_env, reader):
+    patcher = _mock_uc_sdk()
+    try:
+        resolved = uc_catalog.resolve("main.sales.txns", reader=reader)
+    finally:
+        patcher.stop()
+
+    assert resolved.path == "s3://bucket/path"
+    # AWS creds are exported to the environment for both readers.
+    assert isolated_env["AWS_ACCESS_KEY_ID"] == "AKIA"
+    assert isolated_env["AWS_SESSION_TOKEN"] == "token"
+    # Delta additionally gets an explicit S3FileSystem for the data scan;
+    # Parquet reads via the environment-configured filesystem.
+    if reader is ReaderFormat.DELTA:
+        assert isinstance(resolved.filesystem, pafs.S3FileSystem)
+    else:
+        assert resolved.filesystem is None
+    assert resolved.data_format is ReaderFormat.DELTA
+
+
+def test_resolve_aws_requires_region(isolated_env):
+    catalog = DatabricksUnityCatalog(
+        url="https://h.databricks.com", token="t"
+    )  # no region
+    patcher = _mock_uc_sdk()
+    try:
+        with pytest.raises(ValueError, match="region"):
+            catalog.resolve("main.sales.txns", reader=ReaderFormat.DELTA)
+    finally:
+        patcher.stop()
+
+
+def test_resolve_initializes_ray_with_runtime_env(uc_catalog, monkeypatch):
+    # When Ray isn't running, vended creds are propagated via runtime_env.
+    monkeypatch.setattr(os, "environ", dict(os.environ))
+    monkeypatch.setattr("ray.is_initialized", lambda: False)
+    init_kwargs = {}
+    monkeypatch.setattr("ray.init", lambda **kw: init_kwargs.update(kw))
+
+    patcher = _mock_uc_sdk()
+    try:
+        uc_catalog.resolve("main.sales.txns", reader=ReaderFormat.PARQUET)
+    finally:
+        patcher.stop()
+
+    env_vars = init_kwargs["runtime_env"]["env_vars"]
+    assert env_vars["AWS_ACCESS_KEY_ID"] == "AKIA"
+    assert env_vars["AWS_SESSION_TOKEN"] == "token"
+
+
+def test_resolve_retries_once_on_401(uc_catalog, isolated_env):
+    # On a 401, the provider is invalidated and the SDK call is retried once
+    # (mirrors the old request_with_401_retry behavior).
+    from databricks.sdk.errors import Unauthenticated
+
+    client = mock.MagicMock()
+    client.tables.get.side_effect = [
+        Unauthenticated("expired"),
+        TableInfo(
+            table_id="tid-123",
+            data_source_format=DataSourceFormat("DELTA"),
+            storage_location="s3://bucket/path",
+        ),
+    ]
+    gen = client.temporary_table_credentials.generate_temporary_table_credentials
+    gen.return_value = AWS_RESP
+
+    with mock.patch.object(
+        DatabricksUnityCatalog, "_workspace_client", return_value=client
+    ), mock.patch.object(uc_catalog._provider, "invalidate") as invalidate:
+        resolved = uc_catalog.resolve("main.sales.txns", reader=ReaderFormat.PARQUET)
+
+    invalidate.assert_called_once()
+    assert client.tables.get.call_count == 2
+    assert resolved.path == "s3://bucket/path"
+
+
+def test_resolve_iceberg(uc_catalog):
+    # Iceberg resolution does not hit the credential-vending REST endpoints.
+    resolved = uc_catalog.resolve("main.sales.txns", reader=ReaderFormat.ICEBERG)
+
+    assert resolved.path is None
+    assert resolved.filesystem is None
+    assert resolved.data_format is ReaderFormat.ICEBERG
+    ckw = resolved.catalog_kwargs
+    assert ckw["type"] == "rest"
+    assert ckw["uri"] == (
+        "https://dbc-test.cloud.databricks.com/api/2.1/unity-catalog/iceberg-rest"
+    )
+    assert ckw["token"] == "dapi-test"
+    assert ckw["header.X-Iceberg-Access-Delegation"] == "vended-credentials"
+
+
+def test_resolve_azure_vends_sas_via_storage_options(isolated_env):
+    catalog = DatabricksUnityCatalog(url="https://h.databricks.com", token="t")
+    azure_resp = GenerateTemporaryTableCredentialResponse(
+        url="abfss://c@acct.dfs.core.windows.net/path",
+        azure_user_delegation_sas=AzureUserDelegationSas(sas_token="sv=2021&sig=abc"),
+    )
+    patcher = _mock_uc_sdk(creds=azure_resp)
+    try:
+        resolved = catalog.resolve("main.sales.txns", reader=ReaderFormat.DELTA)
+    finally:
+        patcher.stop()
+
+    # There is no picklable pyarrow Azure filesystem to build a SAS into, so the
+    # credential travels to the read tasks in `storage_options` -- a plain dict
+    # that pickles with the read plan. The env var is also set, but reaches only
+    # the driver once Ray is running, so it cannot be the only channel.
+    assert resolved.filesystem is None
+    assert resolved.storage_options == {"azure_storage_sas_token": "sv=2021&sig=abc"}
+    assert isolated_env["AZURE_STORAGE_SAS_TOKEN"] == "sv=2021&sig=abc"
+
+
+def test_resolve_azure_strips_leading_question_mark(isolated_env):
+    # UC may return the SAS as a full query string ("?sv=..."); the leading "?"
+    # must be stripped in both channels it travels through.
+    catalog = DatabricksUnityCatalog(url="https://h.databricks.com", token="t")
+    azure_resp = GenerateTemporaryTableCredentialResponse(
+        url="abfss://c@acct.dfs.core.windows.net/path",
+        azure_user_delegation_sas=AzureUserDelegationSas(sas_token="?sv=2021&sig=abc"),
+    )
+    patcher = _mock_uc_sdk(creds=azure_resp)
+    try:
+        resolved = catalog.resolve("main.sales.txns", reader=ReaderFormat.DELTA)
+    finally:
+        patcher.stop()
+
+    assert isolated_env["AZURE_STORAGE_SAS_TOKEN"] == "sv=2021&sig=abc"
+    assert resolved.storage_options == {"azure_storage_sas_token": "sv=2021&sig=abc"}
+
+
+# Mocking `get_pyarrow_version` gets past catalog.py's floor check, but the
+# `AzureFileSystem(sas_token=...)` call that follows hits the *installed*
+# pyarrow, which only grew that parameter in 20.0.0 (apache/arrow#45705). The
+# v17 and mongo lanes ship older pyarrow, so these raise `TypeError` there.
+_installed_pyarrow = get_pyarrow_version()
+needs_sas_capable_pyarrow = pytest.mark.skipif(
+    _installed_pyarrow is None or _installed_pyarrow < parse_version("20.0.0"),
+    reason="pyarrow.fs.AzureFileSystem gained sas_token in 20.0.0",
+)
+
+
+def _azure_parquet_resolve(isolated_env, pyarrow_version):
+    """Resolve an Azure Parquet table with `pyarrow.__version__` forced.
+
+    The pyarrow floor for Parquet-on-Azure is a property of the installed
+    pyarrow, so pinning the reported version is what keeps these two tests
+    meaningful on any lane -- the v17 one included.
+    """
+    catalog = DatabricksUnityCatalog(url="https://h.databricks.com", token="t")
+    azure_resp = GenerateTemporaryTableCredentialResponse(
+        url="abfss://c@acct.dfs.core.windows.net/path",
+        azure_user_delegation_sas=AzureUserDelegationSas(sas_token="sv=2021&sig=abc"),
+    )
+    patcher = _mock_uc_sdk(data_source_format="PARQUET", creds=azure_resp)
+    try:
+        with mock.patch(
+            "ray.data._internal.utils.arrow_utils.get_pyarrow_version",
+            return_value=(parse_version(pyarrow_version) if pyarrow_version else None),
+        ):
+            return catalog.resolve("main.sales.txns", reader=ReaderFormat.PARQUET)
+    finally:
+        patcher.stop()
+
+
+@pytest.mark.parametrize("old_version", ["17.0.0", "19.0.1"])
+def test_resolve_azure_parquet_rejects_old_pyarrow(isolated_env, old_version):
+    # `read_parquet` is filesystem-only, and `pyarrow.fs.AzureFileSystem` gained
+    # its `sas_token` parameter in 20.0.0 (apache/arrow#45705). Below that a
+    # vended SAS cannot reach the reader by any route, and pyarrow does not say
+    # so in Python -- it falls through to DefaultAzureCredential and, over a
+    # plain-HTTP endpoint, aborts the process with SIGABRT. Hence the up-front
+    # ImportError.
+    with pytest.raises(ImportError, match="requires pyarrow >= 20.0.0"):
+        _azure_parquet_resolve(isolated_env, old_version)
+
+
+@needs_sas_capable_pyarrow
+@pytest.mark.parametrize("new_version", ["20.0.0", "23.0.1"])
+def test_resolve_azure_parquet_builds_filesystem_on_new_pyarrow(
+    isolated_env, new_version
+):
+    # On a pyarrow that can take a SAS, the Parquet branch builds an explicit
+    # AzureFileSystem carrying it -- `read_parquet` is filesystem-only, so that
+    # is the channel that has to be populated.
+    resolved = _azure_parquet_resolve(isolated_env, new_version)
+
+    assert isinstance(resolved.filesystem, pafs.AzureFileSystem)
+    # The `<container>@<account>.dfs.core.windows.net` authority must be gone:
+    # pyarrow only parses that form when it builds the filesystem from the URI
+    # itself, and here we are handing it one, so the authority would be taken as
+    # part of the path and the read would 404.
+    assert resolved.path == "abfs://c/path"
+    # storage_options is still populated for readers that take it.
+    assert resolved.storage_options == {"azure_storage_sas_token": "sv=2021&sig=abc"}
+
+
+@pytest.mark.parametrize(
+    "url,expected",
+    [
+        (
+            "abfss://cont@acct.dfs.core.windows.net/a/b",
+            ("acct", "cont", "a/b"),
+        ),
+        ("abfs://cont@acct.dfs.core.windows.net/x", ("acct", "cont", "x")),
+        # Table at the container root: no key.
+        ("abfss://cont@acct.dfs.core.windows.net/", ("acct", "cont", "")),
+    ],
+)
+def test_parse_azure_url(url, expected):
+    from ray.data.catalog import _parse_azure_url
+
+    assert _parse_azure_url(url) == expected
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        # No account authority -- nothing to take the account name from.
+        "abfss://container/path",
+        "s3://bucket/key",
+        "https://acct.dfs.core.windows.net/cont/path",
+    ],
+)
+def test_parse_azure_url_rejects_unexpected_shapes(url):
+    from ray.data.catalog import _parse_azure_url
+
+    with pytest.raises(ValueError):
+        _parse_azure_url(url)
+
+
+@needs_sas_capable_pyarrow
+def test_resolve_azure_parquet_warns_when_pyarrow_version_unknown(isolated_env):
+    # pyarrow vendored inside another package reports no version. Warn rather
+    # than block, matching `_check_pyarrow_version`'s stance. Asserted on the
+    # logger call rather than via caplog: ray.data's logger does not propagate
+    # to the root handler caplog installs.
+    with mock.patch("ray.data.catalog.logger") as mock_logger:
+        resolved = _azure_parquet_resolve(isolated_env, None)
+
+    assert resolved.storage_options == {"azure_storage_sas_token": "sv=2021&sig=abc"}
+    mock_logger.warning.assert_called_once()
+    assert "could not be determined" in mock_logger.warning.call_args[0][0]
+
+
+def test_resolve_azure_delta_has_no_pyarrow_floor(isolated_env):
+    # Delta must keep working on old pyarrow: its SAS goes to deltalake's
+    # object_store via `storage_options`, which has its own Azure client and
+    # never touches `pyarrow.fs.AzureFileSystem`.
+    catalog = DatabricksUnityCatalog(url="https://h.databricks.com", token="t")
+    azure_resp = GenerateTemporaryTableCredentialResponse(
+        url="abfss://c@acct.dfs.core.windows.net/path",
+        azure_user_delegation_sas=AzureUserDelegationSas(sas_token="sv=2021&sig=abc"),
+    )
+    patcher = _mock_uc_sdk(creds=azure_resp)
+    try:
+        with mock.patch(
+            "ray.data._internal.utils.arrow_utils.get_pyarrow_version",
+            return_value=parse_version("17.0.0"),
+        ):
+            resolved = catalog.resolve("main.sales.txns", reader=ReaderFormat.DELTA)
+    finally:
+        patcher.stop()
+
+    assert resolved.storage_options == {"azure_storage_sas_token": "sv=2021&sig=abc"}
+
+
+def _gcp_resp():
+    return GenerateTemporaryTableCredentialResponse(
+        url="gs://bucket/path",
+        gcp_oauth_token=GcpOauthToken(oauth_token="ya29.tok"),
+        expiration_time=4102444800000,  # far-future epoch ms
+    )
+
+
+def test_resolve_gcp_parquet_builds_filesystem(uc_catalog, isolated_env):
+    # GCP vends an OAuth token (not a service-account JSON); for Parquet it rides
+    # on an explicit GcsFileSystem (the data scan), never an env var.
+    patcher = _mock_uc_sdk(creds=_gcp_resp(), storage_location="gs://bucket/path")
+    try:
+        resolved = uc_catalog.resolve("main.sales.txns", reader=ReaderFormat.PARQUET)
+    finally:
+        patcher.stop()
+
+    assert isinstance(resolved.filesystem, pafs.GcsFileSystem)
+    assert "GOOGLE_APPLICATION_CREDENTIALS" not in isolated_env
+
+
+def test_resolve_gcp_delta_raises(uc_catalog, isolated_env):
+    # deltalake's object_store can't use a GCS OAuth token, so GCP + Delta is
+    # rejected up front with an actionable error instead of failing deep in the
+    # log read against the GCE metadata server.
+    patcher = _mock_uc_sdk(creds=_gcp_resp(), storage_location="gs://bucket/path")
+    try:
+        with pytest.raises(RuntimeError, match="GCP-backed Delta"):
+            uc_catalog.resolve("main.sales.txns", reader=ReaderFormat.DELTA)
+    finally:
+        patcher.stop()
+
+
+# ---------------------------------------------------------------------------
+# Reader integration via a fake catalog (no network)
+# ---------------------------------------------------------------------------
+
+
+# Defined in an importable module rather than here so it survives pickling to a
+# Ray worker -- ``write_delta`` ships the catalog to its write tasks, and a class
+# defined in a pytest module can't be imported back by name there.
+_FakeCatalog = FakeCatalog
+
+
+def test_read_parquet_with_catalog(ray_start_regular_shared, tmp_path):
+    path = str(tmp_path / "data.parquet")
+    pq.write_table(pa.table({"id": [1, 2, 3]}), path)
+
+    catalog = _FakeCatalog(ResolvedSource(path=path))
+    ds = ray.data.read_parquet("main.db.tbl", catalog=catalog)
+
+    assert sorted(r["id"] for r in ds.take_all()) == [1, 2, 3]
+    assert catalog.calls == [
+        ("main.db.tbl", ReaderFormat.PARQUET, CatalogAccessMode.READ)
+    ]
+
+
+@pytest.mark.parametrize("reader", ["parquet", "delta"])
+def test_catalog_filesystem_overrides_with_warning(reader):
+    # The catalog-resolved filesystem overrides a user-supplied one, but warns.
+    # The warning fires at the top of the reader body; suppress any downstream
+    # failure from the (intentionally unreachable) s3 path.
+    if reader == "delta":
+        pytest.importorskip("deltalake")
+    fs = pafs.S3FileSystem(
+        access_key="AKIA", secret_key="secret", session_token="t", region="us-west-2"
+    )
+    catalog = _FakeCatalog(ResolvedSource(path="s3://b/p", filesystem=fs))
+    read_fn = ray.data.read_parquet if reader == "parquet" else ray.data.read_delta
+
+    with mock.patch.object(ray.data.read_api.logger, "warning") as warn:
+        with contextlib.suppress(Exception):
+            read_fn("main.db.tbl", catalog=catalog, filesystem=pafs.LocalFileSystem())
+
+    assert any(
+        "Overriding the provided `filesystem`" in str(c) for c in warn.call_args_list
+    )
+
+
+def test_read_delta_with_catalog(ray_start_regular_shared, tmp_path):
+    deltalake = pytest.importorskip("deltalake")
+    path = str(tmp_path / "delta-table")
+    deltalake.write_deltalake(path, pa.table({"id": [1, 2, 3]}))
+
+    catalog = _FakeCatalog(ResolvedSource(path=path))
+    ds = ray.data.read_delta("main.db.tbl", catalog=catalog)
+
+    assert sorted(r["id"] for r in ds.take_all()) == [1, 2, 3]
+    assert catalog.calls == [
+        ("main.db.tbl", ReaderFormat.DELTA, CatalogAccessMode.READ)
+    ]
+
+
+def test_read_iceberg_uses_catalog_resolved_kwargs():
+    catalog = _FakeCatalog(
+        ResolvedSource(catalog_kwargs={"type": "rest", "uri": "u", "token": "tk"})
+    )
+    with mock.patch(
+        "ray.data._internal.datasource.iceberg_datasource.IcebergDatasource"
+    ) as ds_cls, mock.patch("ray.data.read_api.read_datasource"):
+        ray.data.read_iceberg(table_identifier="main.db.tbl", catalog=catalog)
+
+    _, kwargs = ds_cls.call_args
+    assert kwargs["catalog_kwargs"] == {"type": "rest", "uri": "u", "token": "tk"}
+    assert catalog.calls == [
+        ("main.db.tbl", ReaderFormat.ICEBERG, CatalogAccessMode.READ)
+    ]
+
+
+def test_read_iceberg_explicit_catalog_kwargs_take_precedence():
+    # When both catalog and catalog_kwargs are given, catalog is ignored.
+    catalog = _FakeCatalog(ResolvedSource(catalog_kwargs={"type": "rest", "uri": "u"}))
+    with mock.patch(
+        "ray.data._internal.datasource.iceberg_datasource.IcebergDatasource"
+    ) as ds_cls, mock.patch("ray.data.read_api.read_datasource"):
+        ray.data.read_iceberg(
+            table_identifier="main.db.tbl",
+            catalog=catalog,
+            catalog_kwargs={"type": "sql", "uri": "explicit"},
+        )
+
+    _, kwargs = ds_cls.call_args
+    assert kwargs["catalog_kwargs"] == {"type": "sql", "uri": "explicit"}
+    assert catalog.calls == []  # catalog was not consulted
+
+
+# ---------------------------------------------------------------------------
+# CatalogAccessMode + write-mode credential vending
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "mode,expected_op",
+    [(CatalogAccessMode.READ, "READ"), (CatalogAccessMode.WRITE, "READ_WRITE")],
+)
+def test_access_mode_maps_to_databricks_table_op(mode, expected_op):
+    from databricks.sdk.service.catalog import TableOperation
+
+    assert mode.as_databricks_table_op() == TableOperation[expected_op]
+
+
+@pytest.mark.parametrize(
+    "mode,expected_op",
+    [(CatalogAccessMode.READ, "READ"), (CatalogAccessMode.WRITE, "READ_WRITE")],
+)
+def test_resolve_requests_operation_for_mode(
+    uc_catalog, isolated_env, mode, expected_op
+):
+    # resolve() must vend credentials for the requested access mode.
+    from databricks.sdk.service.catalog import TableOperation
+
+    client = mock.MagicMock()
+    client.tables.get.return_value = TableInfo(
+        table_id="tid-123", data_source_format=DataSourceFormat("DELTA")
+    )
+    gen = client.temporary_table_credentials.generate_temporary_table_credentials
+    gen.return_value = AWS_RESP
+    with mock.patch.object(
+        DatabricksUnityCatalog, "_workspace_client", return_value=client
+    ):
+        uc_catalog.resolve("main.sales.txns", reader=ReaderFormat.PARQUET, mode=mode)
+
+    assert gen.call_args.kwargs["operation"] == TableOperation[expected_op]
+
+
+def test_resolve_write_mode_builds_aws_filesystem(uc_catalog, isolated_env):
+    # Unlike READ (where AWS Parquet rides on env vars), WRITE builds an explicit
+    # S3FileSystem so the vended session token travels with the pickled datasink
+    # to the write workers.
+    patcher = _mock_uc_sdk()
+    try:
+        resolved = uc_catalog.resolve(
+            "main.sales.txns", reader=ReaderFormat.PARQUET, mode=CatalogAccessMode.WRITE
+        )
+    finally:
+        patcher.stop()
+
+    assert isinstance(resolved.filesystem, pafs.S3FileSystem)
+
+
+# ---------------------------------------------------------------------------
+# Writer integration via a fake catalog (no network)
+# ---------------------------------------------------------------------------
+
+
+def test_write_parquet_with_catalog(ray_start_regular_shared, tmp_path):
+    # write_parquet resolves the table identifier on the driver and writes to the
+    # catalog-resolved physical location, requesting WRITE access. The location is
+    # pre-created and try_create_dir=False, since a catalog write targets an
+    # existing location (try_create_dir=True with a catalog is rejected).
+    out = str(tmp_path / "out")
+    os.makedirs(out)
+    catalog = _FakeCatalog(ResolvedSource(path=out))
+    ray.data.range(3).write_parquet(
+        "main.db.tbl", catalog=catalog, try_create_dir=False
+    )
+
+    assert catalog.calls == [
+        ("main.db.tbl", ReaderFormat.PARQUET, CatalogAccessMode.WRITE)
+    ]
+    ds = ray.data.read_parquet(out)
+    assert sorted(r["id"] for r in ds.take_all()) == [0, 1, 2]
+
+
+def test_write_parquet_catalog_rejects_try_create_dir(ray_start_regular_shared):
+    # try_create_dir=True (the default) with a catalog is rejected: the catalog
+    # targets an existing location, and directory creation on object storage needs
+    # bucket-level access the vended, prefix-scoped credentials may not have.
+    catalog = _FakeCatalog(ResolvedSource(path="s3://bucket/prefix"))
+    with pytest.raises(ValueError, match="try_create_dir"):
+        ray.data.range(1).write_parquet("main.db.tbl", catalog=catalog)
+    assert catalog.calls == []  # rejected before the catalog is consulted
+
+
+def test_write_parquet_catalog_rejects_filesystem(ray_start_regular_shared):
+    # Passing both `filesystem` and `catalog` is rejected — the catalog resolves
+    # the filesystem itself with the appropriate credentials.
+    catalog = _FakeCatalog(
+        ResolvedSource(path="s3://bucket/prefix", filesystem=pafs.LocalFileSystem())
+    )
+    with pytest.raises(ValueError, match="filesystem"):
+        ray.data.range(1).write_parquet(
+            "main.db.tbl",
+            catalog=catalog,
+            try_create_dir=False,
+            filesystem=pafs.LocalFileSystem(),
+        )
+
+
+def test_write_iceberg_uses_catalog_resolved_kwargs(ray_start_regular_shared):
+    catalog = _FakeCatalog(
+        ResolvedSource(
+            catalog_kwargs={"type": "rest", "uri": "u", "token": "tk"},
+            table_identifier="db.tbl",
+        )
+    )
+    with mock.patch("ray.data.dataset.IcebergDatasink") as ds_cls, mock.patch.object(
+        ray.data.Dataset, "write_datasink"
+    ):
+        ray.data.range(1).write_iceberg("main.db.tbl", catalog=catalog)
+
+    _, kwargs = ds_cls.call_args
+    assert kwargs["catalog_kwargs"] == {"type": "rest", "uri": "u", "token": "tk"}
+    assert kwargs["table_identifier"] == "db.tbl"
+    assert catalog.calls == [
+        ("main.db.tbl", ReaderFormat.ICEBERG, CatalogAccessMode.WRITE)
+    ]
+
+
+def test_write_iceberg_rejects_catalog_kwargs_with_catalog(ray_start_regular_shared):
+    # Passing both `catalog` and `catalog_kwargs` is rejected.
+    catalog = _FakeCatalog(ResolvedSource(catalog_kwargs={"type": "rest", "uri": "u"}))
+    with pytest.raises(ValueError, match="catalog_kwargs"):
+        ray.data.range(1).write_iceberg(
+            "main.db.tbl",
+            catalog=catalog,
+            catalog_kwargs={"type": "sql", "uri": "explicit"},
+        )
+    assert catalog.calls == []  # rejected before the catalog is consulted
+
+
+def test_write_delta_with_catalog(ray_start_regular_shared, tmp_path):
+    # write_delta resolves the table identifier on the driver and writes to the
+    # catalog-resolved physical location, requesting WRITE access.
+    deltalake = pytest.importorskip("deltalake")  # noqa: F841
+    out = str(tmp_path / "delta-out")
+    catalog = _FakeCatalog(ResolvedSource(path=out))
+
+    ray.data.range(3).write_delta("main.db.tbl", catalog=catalog)
+
+    assert catalog.calls == [
+        ("main.db.tbl", ReaderFormat.DELTA, CatalogAccessMode.WRITE)
+    ]
+    ds = ray.data.read_delta(out)
+    assert sorted(r["id"] for r in ds.take_all()) == [0, 1, 2]
+
+
+def test_write_delta_catalog_rejects_filesystem(ray_start_regular_shared):
+    # Passing both `filesystem` and `catalog` is rejected, matching write_parquet:
+    # a silent credential swap is a bigger hazard on a write than on a read.
+    catalog = _FakeCatalog(ResolvedSource(path="s3://bucket/prefix"))
+    with pytest.raises(ValueError, match="filesystem"):
+        ray.data.range(1).write_delta(
+            "main.db.tbl", catalog=catalog, filesystem=pafs.LocalFileSystem()
+        )
+
+
+def test_write_delta_catalog_merges_storage_options_user_wins(
+    ray_start_regular_shared, tmp_path
+):
+    # The catalog supplies defaults; the caller's own storage_options override
+    # them. Asserted on the datasink rather than end-to-end, since the merged
+    # dict is what gets forwarded to deltalake.
+    out = str(tmp_path / "delta-out")
+    catalog = _FakeCatalog(
+        ResolvedSource(
+            path=out,
+            storage_options={
+                "AWS_SESSION_TOKEN": "catalog-token",
+                "AWS_REGION": "catalog-region",
+            },
+        )
+    )
+
+    with mock.patch(
+        "ray.data.dataset.DeltaDatasink"
+    ) as datasink_cls, mock.patch.object(ray.data.Dataset, "write_datasink"):
+        ray.data.range(1).write_delta(
+            "main.db.tbl",
+            catalog=catalog,
+            storage_options={"AWS_REGION": "user-region"},
+        )
+
+    _, kwargs = datasink_cls.call_args
+    assert kwargs["storage_options"] == {
+        "AWS_SESSION_TOKEN": "catalog-token",
+        "AWS_REGION": "user-region",
+    }
+    # The caller's original values are threaded through separately so a later
+    # credential refresh re-merges against them rather than the merged dict.
+    assert kwargs["user_storage_options"] == {"AWS_REGION": "user-region"}
+
+
+def test_write_delta_with_unity_catalog_builds_s3_filesystem(uc_catalog, isolated_env):
+    # The real DatabricksUnityCatalog (SDK mocked, no workspace hit) must hand
+    # write_delta an S3FileSystem carrying the vended session token. That
+    # explicit filesystem is the AWS-shaped signal a worker uses to decide a
+    # credential refresh is safe -- see DeltaDatasink._can_refresh_worker_credentials.
+    patcher = _mock_uc_sdk(storage_location="s3://bucket/tbl")
+    try:
+        with mock.patch(
+            "ray.data.dataset.DeltaDatasink"
+        ) as datasink_cls, mock.patch.object(ray.data.Dataset, "write_datasink"):
+            ray.data.range(1).write_delta("main.sales.txns", catalog=uc_catalog)
+    finally:
+        patcher.stop()
+
+    _, kwargs = datasink_cls.call_args
+    assert isinstance(kwargs["filesystem"], pafs.S3FileSystem)
+    assert kwargs["catalog"] is uc_catalog
+    # The identifier, not the resolved physical path -- a refresh re-resolves it.
+    assert kwargs["table_identifier"] == "main.sales.txns"
+
+
+# ---------------------------------------------------------------------------
+# Serialization
+# ---------------------------------------------------------------------------
+
+
+def test_unity_catalog_is_picklable(uc_catalog):
+    restored = pickle.loads(pickle.dumps(uc_catalog))
+    assert isinstance(restored, DatabricksUnityCatalog)
+    assert restored.region == "us-west-2"
+
+
+def test_resolved_source_with_filesystem_is_picklable():
+    fs = pafs.S3FileSystem(
+        access_key="AKIA", secret_key="secret", session_token="t", region="us-west-2"
+    )
+    src = ResolvedSource(path="s3://b/p", filesystem=fs, data_format=ReaderFormat.DELTA)
+    restored = pickle.loads(pickle.dumps(src))
+    assert restored.path == "s3://b/p"
+    assert isinstance(restored.filesystem, pafs.S3FileSystem)
+    assert restored.data_format is ReaderFormat.DELTA
+
+
+# ---------------------------------------------------------------------------
+# Deprecated read_unity_catalog shim
+# ---------------------------------------------------------------------------
+
+
+def test_read_unity_catalog_deprecation_delegates():
+    with mock.patch("ray.data.read_api.read_delta") as read_delta:
+        with pytest.warns(DeprecationWarning, match="read_unity_catalog"):
+            ray.data.read_unity_catalog(
+                table="main.db.tbl",
+                url="https://h.databricks.com",
+                token="t",
+                data_format="delta",
+            )
+
+    read_delta.assert_called_once()
+    _, kwargs = read_delta.call_args
+    assert isinstance(kwargs["catalog"], DatabricksUnityCatalog)
+
+
+def test_read_unity_catalog_infers_format_from_cred_url():
+    # Metadata omits both data_source_format and storage_location; the vended
+    # credential URL extension must still identify the format.
+    creds = GenerateTemporaryTableCredentialResponse(url="s3://bucket/data.parquet")
+    patcher = _mock_uc_sdk(data_source_format=None, storage_location=None, creds=creds)
+    try:
+        with mock.patch("ray.data.read_api.read_parquet") as read_parquet, pytest.warns(
+            DeprecationWarning
+        ):
+            ray.data.read_unity_catalog(
+                table="main.db.tbl", url="https://h.databricks.com", token="t"
+            )
+    finally:
+        patcher.stop()
+
+    read_parquet.assert_called_once()
+
+
+if __name__ == "__main__":
+    import sys
+
+    sys.exit(pytest.main(["-v", __file__]))

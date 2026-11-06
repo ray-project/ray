@@ -24,6 +24,7 @@ except (ImportError, ModuleNotFoundError) as e:
 import fnmatch
 import logging
 import os
+import posixpath
 import shutil
 from pathlib import Path
 from typing import TYPE_CHECKING, Callable, List, Optional, Tuple, Type, Union
@@ -208,9 +209,14 @@ def _upload_to_fs_path(
             Ex: ["*.png"] to exclude all .png images.
     """
 
+    if os.path.isfile(local_path):
+        parent = posixpath.dirname(fs_path)
+        if parent:
+            _create_directory(fs=fs, fs_path=parent)
+        _pyarrow_fs_copy_files(local_path, fs_path, destination_filesystem=fs)
+        return
+
     if not exclude:
-        # TODO(justinvyu): uploading a single file doesn't work
-        # (since we always create a directory at fs_path)
         _create_directory(fs=fs, fs_path=fs_path)
         _pyarrow_fs_copy_files(local_path, fs_path, destination_filesystem=fs)
         return
@@ -394,6 +400,7 @@ class StorageContext:
         storage_path: Union[str, os.PathLike],
         experiment_dir_name: str,
         storage_filesystem: Optional[pyarrow.fs.FileSystem] = None,
+        read_only: bool = False,
     ):
         self.custom_fs_provided = storage_filesystem is not None
 
@@ -406,8 +413,10 @@ class StorageContext:
         )
         self.storage_fs_path = Path(self.storage_fs_path).as_posix()
 
-        self._create_validation_file()
-        self._check_validation_file()
+        self.read_only = read_only
+        if not self.read_only:
+            self._create_validation_file()
+            self._check_validation_file()
 
     def __str__(self):
         return (
@@ -465,6 +474,11 @@ class StorageContext:
         Returns:
             Checkpoint: A Checkpoint pointing to the persisted checkpoint location.
         """
+        if self.read_only:
+            raise RuntimeError(
+                "Cannot perform write/validation operations as the StorageContext is read-only."
+            )
+
         # TODO(justinvyu): Fix this cyclical import.
         from ray.train import Checkpoint
 

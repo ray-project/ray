@@ -23,7 +23,6 @@
 
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_split.h"
-#include "gmock/gmock.h"
 #include "gtest/gtest.h"
 #include "nlohmann/json.hpp"
 #include "ray/common/status.h"
@@ -32,7 +31,6 @@
 #include "ray/util/path_utils.h"
 #include "ray/util/time.h"
 
-using namespace testing;  // NOLINT
 using json = nlohmann::json;
 
 namespace ray {
@@ -87,9 +85,9 @@ void VerifyOnlyNthOccurenceLogged(bool fallback_to_debug) {
   for (int i = counter - 8; i <= counter; i++) {
     std::string expected_str = absl::StrFormat("[%d] this is a test log", i);
     if (i % 3 == 1) {
-      EXPECT_THAT(output, HasSubstr(expected_str));
+      EXPECT_NE(output.find(expected_str), std::string::npos);
     } else {
-      EXPECT_THAT(output, Not(HasSubstr(expected_str)));
+      EXPECT_EQ(output.find(expected_str), std::string::npos);
     }
   }
 
@@ -322,8 +320,8 @@ TEST(PrintLogTest, RayCheckOk) {
 
   Status some_error_status = Status::Invalid("deadbeef");
   ASSERT_DEATH(RAY_CHECK_OK(some_error_status) << "this log is printed",
-               HasSubstr("Check failed: some_error_status Status not OK: Invalid: "
-                         "deadbeef this log is printed"));
+               "Check failed: some_error_status Status not OK: Invalid: "
+               "deadbeef this log is printed");
 }
 
 #ifndef _WIN32

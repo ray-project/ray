@@ -2,15 +2,18 @@ import collections
 import copy
 import logging
 import os
+import time
 import traceback
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Collection, Dict, List, Optional, Tuple, Union
 
 import ray
+from ray._private.accelerators import TPUAcceleratorManager
 from ray._private.ray_constants import env_float
 from ray._private.state import state as ray_state
 from ray.actor import ActorHandle
 from ray.exceptions import RayActorError
 from ray.runtime_env import RuntimeEnv
+from ray.train.health.probe import ProbeResult, WorkerProbe
 from ray.train.v2._internal.constants import (
     COLLECTIVE_TIMEOUT_S_ENV_VAR,
     COLLECTIVE_WARN_INTERVAL_S_ENV_VAR,
@@ -63,6 +66,8 @@ from ray.train.v2._internal.execution.worker_group.worker import (
     RayTrainWorker,
     Worker,
     WorkerStatus,
+    get_on_demand_probe_results,
+    start_on_demand_probes,
 )
 from ray.train.v2._internal.logging.logging import get_train_application_worker_log_path
 from ray.train.v2._internal.util import (
@@ -83,6 +88,24 @@ from ray.util.tpu import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+_SERIALIZATION_FAILURE_MARKERS = (
+    "cannot pickle",
+    "Cannot pickle",
+    "cannot serialize",
+    "Can't pickle",
+    "PicklingError",
+    "ray/cloudpickle/cloudpickle.py",
+)
+
+
+def _get_tpu_node_info() -> Tuple[Optional[str], Optional[int]]:
+    """Return the TPU slice name and integer host worker ID for the current node."""
+    return (
+        get_current_pod_name(),
+        TPUAcceleratorManager.get_current_node_tpu_worker_id(),
+    )
 
 
 class WorkerGroup(ExecutionGroup):
@@ -158,6 +181,13 @@ class WorkerGroup(ExecutionGroup):
         # Tracks ongoing poll tasks by world rank.
         self._world_rank_to_ongoing_poll: Dict[int, PollTask] = {}
         self._latest_poll_status: Optional[WorkerGroupPollStatus] = None
+        # The on-demand probes that poll_probes_async() polls: their names, the
+        # time their results are due, whether the workers were asked once more
+        # after it, and {world rank: ObjectRef of the rank's latest call}.
+        self._on_demand_probe_names: List[str] = []
+        self._on_demand_deadline = 0.0
+        self._on_demand_asked_once_more = False
+        self._world_rank_to_on_demand_poll: Dict[int, ObjectRef] = {}
 
         # Environment variables
         self._worker_group_start_timeout_s = float(
@@ -194,18 +224,32 @@ class WorkerGroup(ExecutionGroup):
     def _start(
         self,
     ):
-        """Internal method to start the worker group."""
+        """Internal method to start the worker group.
+
+        Raises:
+            ValueError: If workers are already started.
+        """
+        # Checked before the try so that a rejected call doesn't clean up the
+        # state of the already-running worker group.
+        self._assert_inactive()
 
         worker_group_state_builder = WorkerGroupStateBuilder()
-
         try:
             self._start_impl(
                 worker_group_state_builder,
             )
         except Exception as e:
-            if not self.has_started():
-                # Clean up partial worker group state.
+            # Clean up the partial worker group. The state may already be built if
+            # the failure happened after `build()`.
+            try:
                 worker_group_state_builder.shutdown()
+            except Exception:
+                # Don't let a cleanup failure mask the original startup error.
+                logger.warning(
+                    "Failed to clean up the partially started worker group.",
+                    exc_info=True,
+                )
+            self._clear_state()
             raise e
 
         assert self.has_started(), "Worker group failed to start."
@@ -248,11 +292,9 @@ class WorkerGroup(ExecutionGroup):
             worker_group_state_builder: Builder for constructing worker group state.
 
         Raises:
-            ValueError: If workers are already started.
             WorkerGroupStartupTimeoutError: If startup times out requesting resources.
             WorkerGroupStartupFailedError: If workers fail during initialization.
         """
-        self._assert_inactive()
         worker_group_context = self._worker_group_context
         start_time = time_monotonic()
 
@@ -375,12 +417,25 @@ class WorkerGroup(ExecutionGroup):
         # Launch the training function on each worker.
         # This task should start a worker thread and return immediately.
         launch_start = time_monotonic()
-        ray.get(
-            [
-                worker.actor.run_train_fn.remote(worker_group_context.train_fn_ref)
-                for worker in workers
-            ]
-        )
+        try:
+            ray.get(
+                [
+                    worker.actor.run_train_fn.remote(worker_group_context.train_fn_ref)
+                    for worker in workers
+                ]
+            )
+        except RayActorError:
+            # The worker group is fully started at this point, so a worker dying
+            # here (e.g. its node was lost) is a failure of the running group.
+            # The next poll reports it, and the failure policy decides whether to
+            # retry, charging it to the preemption budget if the node was
+            # preempted.
+            logger.warning(
+                "A worker died while launching the training function. "
+                "The failure will be reported on the next poll.",
+                exc_info=True,
+            )
+
         logger.debug(
             "[Worker Group Initialization] Train function launched on "
             f"workers in {time_monotonic() - launch_start:.2f}s."
@@ -655,6 +710,7 @@ class WorkerGroup(ExecutionGroup):
         self._replica_groups = None
         self._worker_rank_to_replica_group_rank = None
         self._world_rank_to_ongoing_poll.clear()
+        self._world_rank_to_on_demand_poll.clear()
 
     def abort(self):
         """Abort the worker group."""
@@ -669,6 +725,22 @@ class WorkerGroup(ExecutionGroup):
 
         for callback in self._callbacks:
             callback.after_worker_group_abort(self._worker_group_context)
+
+    def set_required_barrier_ranks(self, ranks: Optional[Collection[int]]) -> bool:
+        """Release the synchronization barrier once `ranks` have joined.
+
+        Used during a node preemption so healthy workers are not stranded
+        waiting on a rank that has already been reclaimed. Pass None to restore
+        the default, where every rank must join.
+
+        Args:
+            ranks: The ranks the barrier should wait for, or None for all.
+
+        Returns:
+            True if the barrier accepted the set.
+        """
+        sync_actor = self._worker_group_state.sync_actor
+        return ray.get(sync_actor.set_required_ranks.remote(ranks))
 
     #####################################################################################
     # Polling Worker Group
@@ -779,6 +851,30 @@ class WorkerGroup(ExecutionGroup):
                     "A worker health check failed.\n"
                     f"Worker info: {workers[done_rank]}"
                 )
+
+                # The ray.get can fail for serialization / deserialization, adds a hint to users.
+                try:
+                    exception_msg = str(e)
+
+                    if any(
+                        marker in exception_msg
+                        for marker in _SERIALIZATION_FAILURE_MARKERS
+                    ):
+                        error_msg += (
+                            "\nHint: This is a failure to serialize a value that "
+                            "the training function produced, which is needed to "
+                            "send it back to the Ray Train controller. "
+                            "Ray Train checks the most common cases up front, "
+                            "but cannot cover every type. "
+                            "Look for non-serializable objects in: \n"
+                            " (1) the `metrics` passed to `ray.train.report()`,\n"
+                            " (2) the value returned by the training function, and\n"
+                            " (3) exceptions raised by the training function.\n"
+                            "The traceback below shows the object that failed to serialize."
+                        )
+                except Exception:
+                    error_msg += "\nFailed to convert the exception to a string."
+
                 poll_result = WorkerStatus(
                     running=False,
                     error=WorkerHealthCheckFailedError(error_msg, failure=e),
@@ -811,6 +907,110 @@ class WorkerGroup(ExecutionGroup):
             else:
                 poll_tasks.append(worker.actor.poll_status.remote())
         return poll_tasks
+
+    def poll_probes_async(
+        self,
+        probes: List[WorkerProbe],
+        timeout_s: float,
+        ranks: Optional[List[int]] = None,
+    ) -> None:
+        """Start polling some probes once on some workers. Get their results with
+        ``poll_probe_results()``.
+
+        Args:
+            probes: The probes to poll.
+            timeout_s: Timeout in seconds for the workers to answer.
+            ranks: The world ranks of the workers to poll them on. ``None`` means
+                every worker.
+
+        Raises:
+            RuntimeError: If the previous on-demand probes are still running.
+            ValueError: If a rank has no worker.
+        """
+        if self._world_rank_to_on_demand_poll:
+            raise RuntimeError("The previous on-demand probes are still running.")
+        world_rank_to_worker = dict(enumerate(self.get_workers()))
+        ranks = list(world_rank_to_worker) if ranks is None else ranks
+        missing = [rank for rank in ranks if rank not in world_rank_to_worker]
+        if missing:
+            raise ValueError(f"No workers with ranks {missing}.")
+        self._on_demand_probe_names = [probe.probe_name() for probe in probes]
+        self._on_demand_deadline = time_monotonic() + timeout_s
+        self._on_demand_asked_once_more = False
+        self._world_rank_to_on_demand_poll = {
+            rank: world_rank_to_worker[rank].execute_async(
+                start_on_demand_probes, probes
+            )
+            for rank in ranks
+        }
+
+    def poll_probe_results(self) -> Optional[Dict[str, Dict[int, ProbeResult]]]:
+        """Get the results of the probes that ``poll_probes_async()`` polls, once
+        every worker answered or timed out. A worker that timed out, or whose
+        actor failed, gets a result with the error for each probe.
+
+        Each call asks again the workers whose probes were still running. After
+        the timeout, they are asked once more before they time out.
+
+        Returns:
+            ``{probe name: {world rank: ProbeResult}}``, or ``None`` while a
+            worker has yet to answer or time out.
+        """
+        workers = self.get_workers()
+        poll_to_world_rank = {
+            poll: rank for rank, poll in self._world_rank_to_on_demand_poll.items()
+        }
+        done_polls, hanging_polls = ray.wait(
+            list(poll_to_world_rank), num_returns=len(poll_to_world_rank), timeout=0
+        )
+
+        rank_to_results: Dict[int, Dict[str, ProbeResult]] = {}
+        running_ranks: List[int] = []
+        for done_poll in done_polls:
+            done_rank = poll_to_world_rank[done_poll]
+            try:
+                rank_results = ray.get(done_poll)
+            except Exception as e:
+                rank_results = self._error_results(e)
+            if rank_results is None:
+                running_ranks.append(done_rank)
+            else:
+                rank_to_results[done_rank] = rank_results
+
+        if (running_ranks or hanging_polls) and not self._on_demand_asked_once_more:
+            self._on_demand_asked_once_more = (
+                time_monotonic() >= self._on_demand_deadline
+            )
+            for rank in running_ranks:
+                self._world_rank_to_on_demand_poll[rank] = workers[rank].execute_async(
+                    get_on_demand_probe_results
+                )
+            return None
+
+        # {world rank: {probe name: result}} -> {probe name: {world rank: result}}
+        results: Dict[str, Dict[int, ProbeResult]] = {}
+        for rank in self._world_rank_to_on_demand_poll:
+            rank_results = rank_to_results.get(rank) or self._error_results(
+                TimeoutError(f"The worker with rank {rank} did not finish in time.")
+            )
+            for name, result in rank_results.items():
+                results.setdefault(name, {})[rank] = result
+        self._world_rank_to_on_demand_poll = {}
+        return results
+
+    def _error_results(self, error: Exception) -> Dict[str, ProbeResult]:
+        """Return a result with the error for each on-demand probe.
+
+        Args:
+            error: The error.
+
+        Returns:
+            ``{probe name: ProbeResult}`` with the error.
+        """
+        return {
+            name: ProbeResult(timestamp_s=time.time(), error=error)
+            for name in self._on_demand_probe_names
+        }
 
     #####################################################################################
     # Replica Group Replacement
@@ -970,22 +1170,30 @@ class WorkerGroup(ExecutionGroup):
 
     @staticmethod
     def _sort_workers_by_tpu_pod_name(workers: List[Worker]) -> List[Worker]:
-        """
-        Sort workers by their TPU Pod name to ensure deterministic
+        """Sort workers by their TPU Pod name to ensure deterministic
         topology mapping for TPU multi-slice. The TPU Pod name is based on
         TPU_NAME env var, which is unique and indexed within the Ray worker group
-        requesting TPUs.
+        requesting TPUs. Within each pod, order hosts by TPU worker ID and sort
+        workers on the same host by their lowest assigned TPU ID.
         """
-        pod_name_refs = [
-            worker.execute_async(get_current_pod_name) for worker in workers
-        ]
-        pod_names = ray.get(pod_name_refs)
+        node_infos = ray.get(
+            [worker.execute_async(_get_tpu_node_info) for worker in workers]
+        )
 
-        # Zip workers with names and sort by name.
-        worker_name_pairs = list(zip(workers, pod_names))
-        worker_name_pairs.sort(key=lambda pair: pair[1] or "")
+        def sort_key(pair):
+            worker, (pod_name, tpu_worker_id) = pair
+            return (
+                pod_name or "",
+                float("inf") if tpu_worker_id is None else tpu_worker_id,
+                # Keeps each host's workers contiguous when TPU_WORKER_ID is unset.
+                worker.metadata.node_id,
+                min(
+                    (int(i) for i in worker.metadata.accelerator_ids.get("TPU", [])),
+                    default=0,
+                ),
+            )
 
-        return [w for w, name in worker_name_pairs]
+        return [worker for worker, _ in sorted(zip(workers, node_infos), key=sort_key)]
 
     @staticmethod
     def _assign_worker_ranks(

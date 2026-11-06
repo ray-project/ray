@@ -29,10 +29,10 @@ class Result(ResultV1):
     """The output of ``trainer.fit()``.
 
     Attributes:
-        metrics: The latest set of metrics reported by the training function
-            via :func:`ray.train.report`.
+        metrics: The metrics attached to the latest checkpoint saved by the
+            training function with :func:`ray.train.report`.
         checkpoint: The latest checkpoint saved by the training function
-            via :func:`ray.train.report`.
+            with :func:`ray.train.report`.
         return_value: The value returned by the user-defined training function on the
             rank 0 worker, or ``None`` if no value was returned or if training did
             not complete successfully. The return value must be serializable.
@@ -93,6 +93,7 @@ class Result(ResultV1):
             storage_path=storage_path,
             experiment_dir_name=experiment_dir_name,
             storage_filesystem=fs,
+            read_only=True,
         )
 
         # Validate that the checkpoint manager snapshot file exists

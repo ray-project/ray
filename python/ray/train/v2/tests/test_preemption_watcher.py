@@ -1,12 +1,17 @@
 """Unit tests for the preemption watcher."""
-from typing import Dict
+from typing import Dict, Optional
 from unittest.mock import Mock, patch
 
 import pytest
 
 import ray
 from ray.train.v2._internal.callbacks.preemption_callback import PreemptionCallback
-from ray.train.v2._internal.execution.preemption import PreemptionWatcher
+from ray.train.v2._internal.execution.preemption import (
+    PreemptionContext,
+    PreemptionInfo,
+    PreemptionWatcher,
+    merge_preemption_info,
+)
 
 _PREEMPTION_MOD = "ray.train.v2._internal.execution.preemption"
 
@@ -14,6 +19,7 @@ _PREEMPTION_MOD = "ray.train.v2._internal.execution.preemption"
 def _make_watcher(
     node_to_ranks: Dict[str, list],
     fd_map: Dict[str, list],
+    worker_actors_by_rank: Optional[Dict[int, object]] = None,
 ) -> PreemptionWatcher:
     """Construct a watcher with a fixed failure-domain map, then halt its loop.
 
@@ -24,7 +30,10 @@ def _make_watcher(
     with patch.object(
         PreemptionWatcher, "_build_failure_domain_map", return_value=fd
     ), patch(f"{_PREEMPTION_MOD}._get_draining_nodes", return_value={}):
-        watcher = PreemptionWatcher(node_to_ranks=node_to_ranks)
+        watcher = PreemptionWatcher(
+            node_to_ranks=node_to_ranks,
+            worker_actors_by_rank=worker_actors_by_rank,
+        )
         watcher._stop_event.set()
         watcher._monitor_thread.join(timeout=5)
     return watcher
@@ -106,6 +115,33 @@ class TestPreemptionWatcher:
         _poll_once_with(watcher, return_value=None)  # must not raise
         assert watcher.get_latest_preemption_info() is None
 
+    def test_fans_out_mark_preempt_to_all_workers(self):
+        """On a preemption, mark_preempt is sent to every worker (preempted or not)."""
+        actor0, actor1 = Mock(), Mock()
+        watcher = _make_watcher(
+            node_to_ranks={"node-a": [0], "node-b": [1]},
+            fd_map={"node-a": [0], "node-b": [1]},
+            worker_actors_by_rank={0: actor0, 1: actor1},
+        )
+        # Only node-a is preempted, but both workers must be notified.
+        _poll_once_with(watcher, return_value={"node-a": 30_000})
+
+        for actor in (actor0, actor1):
+            actor.mark_preempt.remote.assert_called_once()
+            (sent_info,) = actor.mark_preempt.remote.call_args.args
+            assert sent_info.preempted_node_ids == ["node-a"]
+            assert sent_info.preempted_ranks == [0]
+
+    def test_no_fan_out_without_preemption(self):
+        actor0 = Mock()
+        watcher = _make_watcher(
+            node_to_ranks={"node-a": [0]},
+            fd_map={"node-a": [0]},
+            worker_actors_by_rank={0: actor0},
+        )
+        _poll_once_with(watcher, return_value={})
+        actor0.mark_preempt.remote.assert_not_called()
+
 
 class TestBuildFailureDomainMap:
     def test_falls_back_on_ray_nodes_error(self, monkeypatch):
@@ -184,6 +220,44 @@ class TestPreemptionCallbackTeardown:
 
         mock_kill.assert_called_once_with(watcher)
         assert callback._watcher is None
+
+
+def test_merge_preemption_info_unions_nodes_and_keeps_earliest_deadline():
+    a = PreemptionInfo(deadline_ms=5000, preempted_node_to_ranks={"n1": [0, 1]})
+    b = PreemptionInfo(deadline_ms=3000, preempted_node_to_ranks={"n2": [2]})
+    merged = merge_preemption_info(a, b)
+    assert merged.deadline_ms == 3000
+    assert merged.preempted_node_to_ranks == {"n1": [0, 1], "n2": [2]}
+    assert merged.preempted_node_ids == ["n1", "n2"]
+    assert merged.preempted_ranks == [0, 1, 2]
+
+
+def test_merge_preemption_info_dedupes_overlapping_ranks():
+    a = PreemptionInfo(deadline_ms=5000, preempted_node_to_ranks={"n1": [0, 1]})
+    # Same node reappears with an additional rank; None deadline must not erase
+    # the known one.
+    b = PreemptionInfo(deadline_ms=None, preempted_node_to_ranks={"n1": [1, 3]})
+    merged = merge_preemption_info(a, b)
+    assert merged.deadline_ms == 5000
+    assert merged.preempted_node_to_ranks == {"n1": [0, 1, 3]}
+
+
+def test_merge_preemption_info_both_deadlines_none():
+    a = PreemptionInfo(deadline_ms=None, preempted_node_to_ranks={"n1": [0]})
+    b = PreemptionInfo(deadline_ms=None, preempted_node_to_ranks={"n2": [1]})
+    assert merge_preemption_info(a, b).deadline_ms is None
+
+
+def test_preemption_context_set_and_get():
+    info = PreemptionInfo(deadline_ms=None, preempted_node_to_ranks={"n1": [0]})
+    ctx = PreemptionContext()
+
+    # No signal yet.
+    assert ctx.preemption_info is None
+
+    # After the watcher sets a signal, reads return it (purely informational).
+    ctx.preemption_info = info
+    assert ctx.preemption_info is info
 
 
 if __name__ == "__main__":

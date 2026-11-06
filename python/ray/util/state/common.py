@@ -386,7 +386,7 @@ def filter_fields(data: dict, state_dataclass: StateSchema, detail: bool) -> dic
         A new dictionary containing only the columns allowed by the schema.
     """
     filtered_data = {}
-    columns = state_dataclass.columns() if detail else state_dataclass.base_columns()
+    columns = state_dataclass.list_columns(detail=detail)
     for col in columns:
         if col in data:
             filtered_data[col] = data[col]
@@ -564,20 +564,20 @@ class PlacementGroupState(StateSchema):
     is_detached: Optional[bool] = state_column(filterable=True, detail=True)
     #: The scheduling stats of the placement group.
     stats: Optional[dict] = state_column(filterable=False, detail=True)
-    #: The node label key used for label-domain scheduling
-    #: (e.g. "ray.io/gpu-domain"). Empty string if the placement group
-    #: does not use label-domain scheduling.
+    #: The topology strategy for this placement group: a dict mapping each
+    #: topology label key (e.g. "ray.io/gpu-domain") to a placement strategy
+    #: (e.g. "STRICT_PACK"). Empty dict if the placement group does not use
+    #: a topology strategy.
     #:
     #: NOTE: This field is experimental and may change in the future.
-    label_domain_key: Optional[str] = state_column(filterable=False, detail=True)
-    #: The selected label domain values for label-domain-aware scheduling.
-    #: Maps the domain label key to the chosen value
-    #: (e.g. {"ray.io/gpu-domain": "rack-1"}).
+    topology_strategy: Optional[dict] = state_column(filterable=False, detail=True)
+    #: Topology assignments: a dict mapping each topology label key to the
+    #: value the scheduler has selected for this PG (e.g.
+    #: {"ray.io/gpu-domain": "rack-1"}). Empty dict if no topology values
+    #: have been selected yet.
     #:
     #: NOTE: This field is experimental and may change in the future.
-    label_domain_assignments: Optional[dict] = state_column(
-        filterable=False, detail=True
-    )
+    topology_assignments: Optional[dict] = state_column(filterable=False, detail=True)
 
 
 @dataclass(init=not IS_PYDANTIC_2)
@@ -1105,8 +1105,7 @@ class TaskSummaries:
     def to_summary_by_lineage(
         cls, *, tasks: List[Dict], actors: List[Dict]
     ) -> "TaskSummaries":
-        """
-        This summarizes tasks by lineage.
+        """This summarizes tasks by lineage.
         i.e. A task will be grouped with another task if they have the
         same parent.
 
@@ -1148,8 +1147,7 @@ class TaskSummaries:
         actor_dict = {actor["actor_id"]: actor for actor in actors}
 
         def get_or_create_task_group(task_id: str) -> Optional[NestedTaskSummary]:
-            """
-            Gets an already created task_group
+            """Gets an already created task_group
             OR
             Creates a task group and puts it in the right place under its parent.
             For actor tasks, the parent is the Actor that owns it. For all other
@@ -1209,8 +1207,7 @@ class TaskSummaries:
         def get_or_create_actor_task_group(
             actor_id: str,
         ) -> Optional[NestedTaskSummary]:
-            """
-            Gets an existing task group that represents an actor.
+            """Gets an existing task group that represents an actor.
             OR
             Creates a task group that represents an actor. The owner of the actor is
             the parent of the creation_task that created that actor.
@@ -1291,8 +1288,7 @@ class TaskSummaries:
         def merge_sibings_for_task_group(
             siblings: List[NestedTaskSummary],
         ) -> Tuple[List[NestedTaskSummary], Optional[int]]:
-            """
-            Merges task summaries with the same name into a group if there are more than
+            """Merges task summaries with the same name into a group if there are more than
             one child with that name.
 
             Args:
@@ -1373,8 +1369,7 @@ class TaskSummaries:
         def calc_total_for_task_group(
             task_group: NestedTaskSummary,
         ) -> NestedTaskSummary:
-            """
-            Calculates the total of a group as the sum of all children.
+            """Calculates the total of a group as the sum of all children.
             Sorts children by timestamp
             """
             if not len(task_group.children):
@@ -1623,9 +1618,7 @@ def protobuf_message_to_dict(
 
 
 def protobuf_to_task_state_dict(message: TaskEvents) -> dict:
-    """
-    Convert a TaskEvents to a dic repr of `TaskState`
-    """
+    """Convert a TaskEvents to a dic repr of `TaskState`"""
     task_attempt = protobuf_message_to_dict(
         message=message,
         fields_to_decode=[
@@ -1688,6 +1681,13 @@ def protobuf_to_task_state_dict(message: TaskEvents) -> dict:
     for src, keys in mappings:
         for key in keys:
             task_state[key] = src.get(key)
+
+    task_log_info = task_state["task_log_info"]
+    if task_log_info:
+        # The offsets are int64, which MessageToDict renders as strings.
+        for field in ("stdout_start", "stdout_end", "stderr_start", "stderr_end"):
+            if field in task_log_info:
+                task_log_info[field] = int(task_log_info[field])
 
     task_state["creation_time_ms"] = None
     task_state["start_time_ms"] = None

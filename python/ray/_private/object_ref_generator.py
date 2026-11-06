@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import collections
-from typing import TYPE_CHECKING, Deque, Iterator, Optional
+from typing import TYPE_CHECKING, Any, Deque, Iterator, Optional
 
 import ray
 from ray.exceptions import GetTimeoutError, ObjectRefStreamEndOfStreamError
@@ -52,6 +52,10 @@ class ObjectRefGenerator:
         obj_ref_gen: ray.ObjectRefGenerator = gen.remote()
         for obj_ref in obj_ref_gen:
             print("Got:", ray.get(obj_ref))
+
+    Args:
+        generator_ref: The object ref of the generator task.
+        worker: The Ray worker that owns the generator task.
     """
 
     def __init__(self, generator_ref: "ray.ObjectRef", worker: "Worker"):
@@ -82,14 +86,33 @@ class ObjectRefGenerator:
         """
         return self._next_sync()
 
-    def send(self, value):
+    def send(self, value: Any):
+        """Not supported. Always raises ``NotImplementedError``.
+
+        Args:
+            value: Ignored.
+        """
         raise NotImplementedError("`gen.send` is not supported.")
 
-    def throw(self, value):
+    def throw(self, value: Any):
+        """Not supported. Always raises ``NotImplementedError``.
+
+        Args:
+            value: Ignored.
+        """
         raise NotImplementedError("`gen.throw` is not supported.")
 
     def close(self):
-        raise NotImplementedError("`gen.close` is not supported.")
+        """Not supported. Always raises ``NotImplementedError``.
+
+        To stop the generator task, cancel it with :func:`ray.cancel`. After
+        cancellation, ``next(gen)`` can return an object ref that contains a
+        :class:`~ray.exceptions.TaskCancelledError`.
+        """
+        raise NotImplementedError(
+            "`gen.close` is not supported. To stop the generator task, "
+            "call `ray.cancel(gen)`."
+        )
 
     def __aiter__(self) -> "ObjectRefGenerator":
         return self
@@ -97,14 +120,33 @@ class ObjectRefGenerator:
     async def __anext__(self):
         return await self._next_async()
 
-    async def asend(self, value):
+    async def asend(self, value: Any):
+        """Not supported. Always raises ``NotImplementedError``.
+
+        Args:
+            value: Ignored.
+        """
         raise NotImplementedError("`gen.asend` is not supported.")
 
-    async def athrow(self, value):
+    async def athrow(self, value: Any):
+        """Not supported. Always raises ``NotImplementedError``.
+
+        Args:
+            value: Ignored.
+        """
         raise NotImplementedError("`gen.athrow` is not supported.")
 
     async def aclose(self):
-        raise NotImplementedError("`gen.aclose` is not supported.")
+        """Not supported. Always raises ``NotImplementedError``.
+
+        To stop the generator task, cancel it with :func:`ray.cancel`. After
+        cancellation, ``next(gen)`` can return an object ref that contains a
+        :class:`~ray.exceptions.TaskCancelledError`.
+        """
+        raise NotImplementedError(
+            "`gen.aclose` is not supported. To stop the generator task, "
+            "call `ray.cancel(gen)`."
+        )
 
     def completed(self) -> "ray.ObjectRef":
         """Returns an object ref that is ready when
@@ -114,6 +156,9 @@ class ObjectRefGenerator:
         the `ray.get(gen.completed())` raises an exception.
 
         The function returns immediately.
+
+        Returns:
+            The object ref of the generator task.
         """
         return self._generator_ref
 
@@ -125,6 +170,9 @@ class ObjectRefGenerator:
         (this condition should be checked using is_finished).
 
         The function returns immediately.
+
+        Returns:
+            True if the next object ref is ready, otherwise False.
         """
         self.worker.check_connected()
         core_worker = self.worker.core_worker
@@ -148,6 +196,10 @@ class ObjectRefGenerator:
         or StopAsyncIteration
 
         The function returns immediately.
+
+        Returns:
+            True if the generator task finished and every object ref has been
+            consumed, otherwise False.
         """
         self.worker.check_connected()
         core_worker = self.worker.core_worker
@@ -179,6 +231,82 @@ class ObjectRefGenerator:
         """Return the binary id of the next object in the stream."""
         self.worker.check_connected()
         return self.worker.core_worker.peek_next_object_id_binary(self._generator_ref)
+
+    def _stream_exhausted(self) -> bool:
+        """Whether the stream's end-of-stream marker has been reached and all
+        yielded refs consumed.
+
+        Non-blocking, in-memory check (unlike ``is_finished``, this does not
+        ``ray.get`` the generator return object). When True, the only thing
+        left is the end-of-stream ``ray.get`` of the return object that
+        ``_next_sync`` performs to surface ``StopIteration`` / task errors.
+        """
+        self.worker.check_connected()
+        return self.worker.core_worker.is_object_ref_stream_finished(
+            self._generator_ref
+        )
+
+    def _get_next_ref_n(self, num_refs: int) -> list["ray.ObjectRef"]:
+        """Return the next num_refs references from a generator without consuming them.
+
+        The returned refs are not consumed; wait for the last one to become ready
+        before calling ``_consume_next_ref_n`` to advance the stream.
+
+        If ``num_refs`` overshoots the end of the stream, the extra refs are
+        positions the generator will never produce. ``ray.get`` on such a ref
+        raises ``ObjectRefStreamEndOfStreamError`` when the stream ended cleanly.
+        If the stream is ended by owner-side task termination before those
+        positions can be produced -- for example task cancellation, actor death,
+        or worker death -- the ref surfaces that terminal error instead. Python
+        generator application exceptions are normally reported as a stream item;
+        positions after that reported exception may still be clean
+        end-of-stream. A task that fails before the generator executor starts,
+        such as one with a failed by-reference dependency, has no streamed
+        exception item; its EOF-region refs preserve the serialized error from
+        the generator completion object instead.
+
+        Args:
+            num_refs: The number of references to return, starting from the
+                current head of the stream. Must be positive.
+
+        Returns:
+            A list of exactly num_refs ObjectRefs corresponding to the next
+            results in the stream, starting from the current head.
+        """
+        if num_refs <= 0:
+            raise ValueError("num_refs must be positive")
+        self.worker.check_connected()
+        core_worker = self.worker.core_worker
+        return [
+            ref
+            for ref, _ in core_worker.peek_object_ref_stream_n(
+                self._generator_ref, num_refs
+            )
+        ]
+
+    def _consume_next_ref_n(self, num_refs: int) -> None:
+        """Consume (advance) the next num_refs references from a generator.
+
+        The caller must have waited for the last requested ref to become ready
+        (see ``_get_next_ref_n``); otherwise this raises ``ValueError`` instead
+        of silently advancing past unwritten objects.
+
+        If the requested range crosses the end of the stream, EOF/error refs in
+        the range are also consumed so a later peek starts after this returned
+        batch.
+
+        Args:
+            num_refs: The number of references to consume, starting from the
+                current head of the stream. Must be positive.
+        """
+        if num_refs <= 0:
+            raise ValueError("num_refs must be positive")
+        self.worker.check_connected()
+        core_worker = self.worker.core_worker
+        try:
+            core_worker.try_read_next_object_ref_stream_n(self._generator_ref, num_refs)
+        except ObjectRefStreamEndOfStreamError:
+            return
 
     def _next_sync(self, timeout_s: Optional[int | float] = None) -> "ray.ObjectRef":
         """Waits for timeout_s and returns the object ref if available.
@@ -267,10 +395,11 @@ class ObjectRefGenerator:
 
         if not is_ready:
             # TODO(swang): Avoid fetching the value.
-            _, unready = await asyncio.wait(
-                [asyncio.create_task(self._suppress_exceptions(ref))], timeout=timeout_s
-            )
-            if len(unready) > 0:
+            try:
+                await asyncio.wait_for(
+                    self._suppress_exceptions(ref), timeout=timeout_s
+                )
+            except asyncio.TimeoutError:
                 return ray.ObjectRef.nil()
 
         try:

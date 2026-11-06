@@ -57,27 +57,23 @@ def is_actor_alive(actor_id: str, timeout: int) -> bool:
 
 
 def construct_data_config(data_config: DataConfig) -> DataConfigSchema:
-    """Serialize a user-facing DataConfig into the exportable schema.
-
-    Note: This function assumes data_config._execution_options (a defaultdict)
-    hasn't been read between initialization of the field and this function call.
-    Any read materializes a dataset key and affects the data config shape,
-    wrongly capturing a per dataset execution options even if the user only
-    provided a default.
-    """
-    exec_options = data_config._execution_options
-
+    """Serialize a user-facing DataConfig into the exportable schema."""
+    user_execution_options = data_config._user_execution_options
     per_dataset_execution_options = {}
-    if exec_options:
+    default_options = DataConfig.default_ingest_options()
+
+    if isinstance(user_execution_options, dict):
         per_dataset_execution_options = {
             ds_name: execution_options_to_model(opts)
-            for ds_name, opts in exec_options.items()
+            for ds_name, opts in user_execution_options.items()
         }
+    elif user_execution_options is not None:
+        default_options = user_execution_options
 
     return DataConfigSchema(
         datasets_to_split=data_config._datasets_to_split,
         data_execution_options=DataExecutionOptions(
-            default=execution_options_to_model(exec_options.default_factory()),
+            default=execution_options_to_model(default_options),
             per_dataset_execution_options=per_dataset_execution_options,
         ),
         enable_shard_locality=data_config._enable_shard_locality,

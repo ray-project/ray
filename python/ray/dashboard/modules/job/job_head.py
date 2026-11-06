@@ -50,6 +50,10 @@ from ray.dashboard.modules.job.utils import (
     parse_and_validate_request,
 )
 from ray.dashboard.modules.version import CURRENT_VERSION, VersionResponse
+from ray.dashboard.runtime_env_redaction import (
+    redact_runtime_env,
+    should_redact_runtime_env,
+)
 from ray.dashboard.subprocesses.module import SubprocessModule
 from ray.dashboard.subprocesses.routes import SubprocessRouteTable as routes
 from ray.dashboard.subprocesses.utils import ResponseType
@@ -66,8 +70,7 @@ class RayActivityStatus(str, enum.Enum):
 
 
 class RayActivityResponse(BaseModel, extra=Extra.allow):
-    """
-    Pydantic model used to inform if a particular Ray component can be considered
+    """Pydantic model used to inform if a particular Ray component can be considered
     active, and metadata about observation.
     """
 
@@ -213,17 +216,28 @@ class JobAgentSubmissionClient:
                 raise
 
 
+def _job_details_to_dict(job: JobDetails, redact: bool) -> Dict:
+    """Serialize `job` for an HTTP response, optionally redacting its runtime env."""
+    job_dict = job.dict()
+    if redact:
+        job_dict["runtime_env"] = redact_runtime_env(job_dict.get("runtime_env"))
+    return job_dict
+
+
 class JobHead(SubprocessModule):
     """Runs on the head node of a Ray cluster and handles Ray Jobs APIs.
 
     NOTE(architkulkarni): Please keep this class in sync with the OpenAPI spec at
     `doc/source/cluster/running-applications/job-submission/openapi.yml`.
-    We currently do not automatically check that the OpenAPI
-    spec is in sync with the implementation. If any changes are made to the
-    paths in the @route decorators or in the Responses returned by the
-    methods (or any nested fields in the Responses), you will need to find the
-    corresponding field of the OpenAPI yaml file and update it manually. Also,
-    bump the version number in the yaml file and in this class's `get_version`.
+    If any changes are made to the paths in the @route decorators or in the
+    Responses returned by the methods (or any nested fields in the Responses),
+    you will need to find the corresponding field of the OpenAPI yaml file and
+    update it manually. Also, bump the version number in the yaml file and
+    `CURRENT_VERSION` in `ray/dashboard/modules/version.py`.
+
+    The OpenAPI tests in `tests/test_http_job_server.py` check that the spec's
+    routes match this class's, that its version matches `CURRENT_VERSION`, and
+    that the responses of the endpoints they exercise match the spec's schemas.
     """
 
     # Time that we sleep while tailing logs while waiting for
@@ -249,8 +263,7 @@ class JobHead(SubprocessModule):
     async def get_target_agent(
         self, timeout_s: float = WAIT_AVAILABLE_AGENT_TIMEOUT
     ) -> JobAgentSubmissionClient:
-        """
-        Get a `JobAgentSubmissionClient`, which is a client for interacting with jobs
+        """Get a `JobAgentSubmissionClient`, which is a client for interacting with jobs
         via an agent process.
 
         Args:
@@ -309,8 +322,7 @@ class JobHead(SubprocessModule):
         )
 
     async def _fetch_agent_info(self, target_node_id: NodeID) -> Tuple[str, int, int]:
-        """
-        Fetches agent info by the Node ID. May raise exception if there's network error or the
+        """Fetches agent info by the Node ID. May raise exception if there's network error or the
         agent info is not found.
 
         Returns: (ip, http_port, grpc_port)
@@ -406,16 +418,21 @@ class JobHead(SubprocessModule):
             job_agent_client = await self.get_target_agent()
             resp = await job_agent_client.submit_job_internal(submit_request)
         except asyncio.TimeoutError:
+            logger.warning(
+                "Timed out waiting for an available job agent to submit the job."
+            )
             return Response(
                 text="No available agent to submit job, please try again later.",
                 status=aiohttp.web.HTTPInternalServerError.status_code,
             )
         except (TypeError, ValueError):
+            logger.warning("Failed to submit job due to an invalid request.")
             return Response(
                 text=traceback.format_exc(),
                 status=aiohttp.web.HTTPBadRequest.status_code,
             )
         except Exception:
+            logger.exception("Failed to submit job due to unexpected exception.")
             return Response(
                 text=traceback.format_exc(),
                 status=aiohttp.web.HTTPInternalServerError.status_code,
@@ -506,7 +523,7 @@ class JobHead(SubprocessModule):
             )
 
         return Response(
-            text=json.dumps(job.dict()),
+            text=json.dumps(_job_details_to_dict(job, should_redact_runtime_env(req))),
             content_type="application/json",
         )
 
@@ -531,11 +548,18 @@ class JobHead(SubprocessModule):
             )
             for submission_id, job in submission_jobs.items()
         ]
+        redact = should_redact_runtime_env(req)
         return Response(
             text=json.dumps(
                 [
-                    *[submission_job.dict() for submission_job in submission_jobs],
-                    *[job_info.dict() for job_info in driver_jobs.values()],
+                    *[
+                        _job_details_to_dict(submission_job, redact)
+                        for submission_job in submission_jobs
+                    ],
+                    *[
+                        _job_details_to_dict(job_info, redact)
+                        for job_info in driver_jobs.values()
+                    ],
                 ]
             ),
             content_type="application/json",

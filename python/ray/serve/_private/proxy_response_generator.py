@@ -129,7 +129,9 @@ class ProxyResponseGenerator(_ProxyResponseGeneratorBase):
         return result
 
     async def _await_response_anext(self) -> Any:
-        return await self._response.__anext__()
+        # Only called when `self._response` is a `DeploymentResponseGenerator`
+        # (checked via `isinstance` in `__anext__`).
+        return await self._response.__anext__()  # type: ignore[union-attr]
 
     async def _get_next_streaming_result(self) -> Any:
         next_result_task = asyncio.create_task(self._await_response_anext())
@@ -162,6 +164,20 @@ class ProxyResponseGenerator(_ProxyResponseGeneratorBase):
     async def _await_response(self) -> Any:
         return await self._response
 
+    async def _cancel_result_task(self, result_task: asyncio.Task):
+        """Cancel the response and wait for the local task awaiting it to exit."""
+        self._response.cancel()
+        result_task.cancel()
+        # `gather` (unlike a bare `await`) still propagates cancellation of the
+        # caller; exceptions from the task itself are returned instead.
+        result = (await asyncio.gather(result_task, return_exceptions=True))[0]
+        if isinstance(result, Exception) and not isinstance(
+            result, RequestCancelledError
+        ):
+            logger.warning(
+                f"Unexpected error while cancelling the response: {result!r}"
+            )
+
     async def _get_unary_result(self) -> Any:
         result_task = asyncio.create_task(self._await_response())
         tasks = [result_task]
@@ -174,8 +190,8 @@ class ProxyResponseGenerator(_ProxyResponseGeneratorBase):
         if result_task in done:
             return result_task.result()
         elif self._disconnected_task in done:
-            self._response.cancel()
+            await self._cancel_result_task(result_task)
             raise asyncio.CancelledError()
         else:
-            self._response.cancel()
+            await self._cancel_result_task(result_task)
             raise TimeoutError()

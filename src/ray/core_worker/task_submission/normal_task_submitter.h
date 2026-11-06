@@ -135,7 +135,7 @@ class NormalTaskSubmitter {
   void CancelTask(TaskSpecification task_spec, bool force_kill, bool recursive);
 
   /// Request the owner of the object ID to cancel a request.
-  /// It is used when a object ID is not owned by the current process.
+  /// It is used when an object ID is not owned by the current process.
   /// We cannot cancel the task in this case because we don't have enough
   /// information to cancel a task.
   void RequestOwnerToCancelTask(const ObjectID &object_id,
@@ -189,10 +189,10 @@ class NormalTaskSubmitter {
                                 const rpc::Address *raylet_address = nullptr)
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
-  /// Cancel a pending worker lease and retry until the cancellation succeeds
-  /// (i.e., the raylet drops the request). This should be called when there
-  /// are no more tasks queued with the given scheduling key and there is an
-  /// in-flight lease request for that key.
+  /// Cancel a pending worker lease. This should be called when there are no
+  /// more tasks queued with the given scheduling key and there is an in-flight
+  /// lease request for that key. The raylet tombstones the cancellation so the
+  /// caller does not need to retry.
   void CancelWorkerLeaseIfNeeded(const SchedulingKey &scheduling_key)
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
@@ -297,15 +297,24 @@ class NormalTaskSubmitter {
     SchedulingKey scheduling_key;
     LeaseID lease_id;
     bool is_busy = false;
+    bool has_executed_task = false;
   };
 
   // Map from worker address to a LeaseEntry struct containing the lease's metadata.
   absl::flat_hash_map<rpc::Address, LeaseEntry> worker_to_lease_entry_
       ABSL_GUARDED_BY(mu_);
 
+  /// Metadata about a single in-flight worker lease request to a raylet.
+  struct PendingLeaseRequest {
+    /// The address of the raylet that the lease was requested from.
+    rpc::Address raylet_address;
+    /// Whether a CancelWorkerLease has already been sent for this lease.
+    bool cancel_requested = false;
+  };
+
   struct SchedulingKeyEntry {
     // Keep track of pending worker lease requests to the raylet.
-    absl::flat_hash_map<LeaseID, rpc::Address> pending_lease_requests;
+    absl::flat_hash_map<LeaseID, PendingLeaseRequest> pending_lease_requests;
 
     std::optional<LeaseSpecification> lease_spec;
     // Tasks that are queued for execution. We keep an individual queue per

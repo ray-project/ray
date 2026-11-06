@@ -89,9 +89,21 @@ def test_ray_actor_events(ray_start_cluster, httpserver):
     # Kill the actor and verify we get a DEAD state with death cause
     ray.kill(a)
 
-    # Wait for the death event to be published
+    # Wait for the death event to be published.
     httpserver.expect_request("/", method="POST").respond_with_data("", status=200)
-    wait_for_condition(lambda: len(httpserver.log) >= 2)
+    wait_for_condition(
+        lambda: any(
+            any(
+                transition.get("state") == "DEAD"
+                for transition in event["actorLifecycleEvent"].get(
+                    "stateTransitions", []
+                )
+            )
+            for request, _ in httpserver.log
+            for event in json.loads(request.data)
+            if "actorLifecycleEvent" in event
+        )
+    )
 
     has_dead_state = False
     for death_req, _ in httpserver.log:

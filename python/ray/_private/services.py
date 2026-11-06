@@ -281,8 +281,7 @@ class ConsolePopen(subprocess.Popen):
 
 
 def _find_address_from_flag(flag: str):
-    """
-    Attempts to find all valid Ray addresses on this node, specified by the
+    """Attempts to find all valid Ray addresses on this node, specified by the
     flag.
 
     Params:
@@ -516,8 +515,7 @@ def get_node_to_connect_for_driver(
     temp_dir: str = None,
     timeout_seconds: int = ray_constants.GCS_SERVER_REQUEST_TIMEOUT_SECONDS,
 ) -> GcsNodeInfo:
-    """
-    Get the node to connect to for the driver.
+    """Get the node to connect to for the driver.
     If node_ip_address, node_name, and/or temp_dir are provided, they will be used to filter the nodes to connect to.
     If node_ip_address, node_name, and/or temp_dir are not provided, or if multiple node matches the filters,
     the following logic will be applied to resolve the node to connect to:
@@ -599,9 +597,7 @@ def get_node_to_connect_for_driver(
 
 
 def get_node(gcs_address, node_id):
-    """
-    Get the node information from the global state accessor.
-    """
+    """Get the node information from the global state accessor."""
     global_state = ray._private.state.GlobalState()
     gcs_options = _get_gcs_client_options(gcs_address)
     global_state._initialize_global_state(gcs_options)
@@ -1245,6 +1241,8 @@ def start_api_server(
     stdout_filepath: Optional[str] = None,
     stderr_filepath: Optional[str] = None,
     proxy_server_url: Optional[str] = None,
+    gcs_is_passive: bool = False,
+    tracing_startup_hook: Optional[str] = None,
 ):
     """Start a API server process.
 
@@ -1280,10 +1278,16 @@ def start_api_server(
             If None, stderr is not redirected.
         proxy_server_url: The url to redirect dashboard backend api requests to
             Ex: http://historyserver:8080
+        gcs_is_passive: Whether the GCS already rejected this node's writes
+            because it is passive.
+        tracing_startup_hook: The `module:function` tracing hook this node was
+            started with. The dashboard only needs it to republish the key after
+            a promotion; the active head writes it before this process exists.
 
     Returns:
         A tuple of :
-            - Dashboard URL if dashboard enabled and started.
+            - Dashboard URL if dashboard enabled and started, None if the
+              dashboard is running but has not registered its address yet.
             - ProcessInfo for the process that was started.
     """
     try:
@@ -1359,7 +1363,11 @@ def start_api_server(
             f"--cluster-id-hex={cluster_id_hex}",
             f"--node-ip-address={node_ip_address}",
             f"--proxy-server-url={proxy_server_url or ''}",
+            f"--tracing-startup-hook={tracing_startup_hook or ''}",
         ]
+
+        if gcs_is_passive:
+            command.append("--gcs-is-passive")
 
         if stdout_filepath:
             command.append(f"--stdout-filepath={stdout_filepath}")
@@ -1400,6 +1408,17 @@ def start_api_server(
         # Retrieve the dashboard url
         gcs_client = GcsClient(address=gcs_address, cluster_id=cluster_id_hex)
         ray.experimental.internal_kv._initialize_internal_kv(gcs_client)
+        if gcs_is_passive:
+            # A passive GCS rejects the dashboard's registration, so polling for
+            # its address would burn RAY_DASHBOARD_STARTUP_TIMEOUT_S and then
+            # report a failure for a dashboard that is running fine. The dashboard
+            # head registers itself once this GCS is promoted.
+            logger.info(
+                "GCS is in passive mode. The dashboard is running, but its address "
+                "stays unregistered until this head is promoted."
+            )
+            return None, process_info
+
         dashboard_url = None
         dashboard_returncode = None
         start_time_s = time.time()
@@ -1658,6 +1677,7 @@ def start_raylet(
     env_updates: Optional[dict] = None,
     node_name: Optional[str] = None,
     webui: Optional[str] = None,
+    enable_gpu_metrics: bool = True,
 ):
     """Start a raylet, which is a combined local scheduler and object manager.
 
@@ -1741,6 +1761,7 @@ def start_raylet(
         env_updates: Environment variable overrides.
         node_name: The name of the node.
         webui: The url of the UI.
+        enable_gpu_metrics: Whether the dashboard agent should collect GPU metrics.
     Returns:
         ProcessInfo for the process that was started.
     """
@@ -1914,6 +1935,9 @@ def start_raylet(
 
     if is_head_node:
         dashboard_agent_command.append("--head")
+
+    if not enable_gpu_metrics:
+        dashboard_agent_command.append("--no-enable-gpu-metrics")
 
     runtime_env_agent_command = [
         *_build_python_executable_command_memory_profileable(

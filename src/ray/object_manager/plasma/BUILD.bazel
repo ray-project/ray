@@ -30,6 +30,13 @@ ray_cc_library(
         "//conditions:default": [],
     }),
     linkopts = PLASMA_LINKOPTS,
+    visibility = [
+        "//src/ray/core_worker:__pkg__",
+        "//src/ray/core_worker/tests:__pkg__",
+        "//src/ray/object_manager:__pkg__",
+        "//src/ray/raylet:__pkg__",
+        "//src/ray/raylet/tests:__pkg__",
+    ],
     deps = [
         ":fling",
         ":object_manager_plasma_common",
@@ -56,7 +63,11 @@ ray_cc_library(
     hdrs = [
         "fake_plasma_client.h",
     ],
-    visibility = ["//visibility:public"],
+    visibility = [
+        "//src/ray/core_worker/tests:__pkg__",
+        "//src/ray/object_manager/tests:__pkg__",
+        "//src/ray/raylet/tests:__pkg__",
+    ],
     deps = [
         ":plasma_client_interface",
         "//src/ray/common:buffer",
@@ -100,6 +111,11 @@ ray_cc_library(
     hdrs = ["store_runner.h"],
     copts = PLASMA_COPTS,
     linkopts = PLASMA_LINKOPTS,
+    visibility = [
+        "//src/ray/core_worker/tests:__pkg__",
+        "//src/ray/object_manager:__pkg__",
+        "//src/ray/object_manager/tests:__pkg__",
+    ],
     deps = [
         ":object_lifecycle_manager",
         ":plasma_allocator",
@@ -159,6 +175,7 @@ ray_cc_library(
     name = "object_lifecycle_manager",
     srcs = ["object_lifecycle_manager.cc"],
     hdrs = ["object_lifecycle_manager.h"],
+    visibility = [":__subpackages__"],
     deps = [
         ":plasma_allocator",
         ":plasma_connection_protocol",
@@ -209,6 +226,7 @@ ray_cc_library(
     name = "plasma_eviction_policy",
     srcs = ["eviction_policy.cc"],
     hdrs = ["eviction_policy.h"],
+    visibility = [":__subpackages__"],
     deps = [
         ":object_manager_plasma_common",
         ":plasma_allocator",
@@ -221,6 +239,7 @@ ray_cc_library(
     name = "plasma_object_store",
     srcs = ["object_store.cc"],
     hdrs = ["object_store.h"],
+    visibility = [":__subpackages__"],
     deps = [
         ":object_manager_plasma_common",
         ":plasma_allocator_interface",
@@ -245,6 +264,7 @@ ray_cc_library(
     name = "plasma_allocator",
     srcs = ["plasma_allocator.cc"],
     hdrs = ["plasma_allocator.h"],
+    visibility = [":__subpackages__"],
     deps = [
         ":plasma_allocator_interface",
         ":plasma_malloc",

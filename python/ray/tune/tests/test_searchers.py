@@ -839,6 +839,38 @@ class BayesOptHashPrecisionTest(unittest.TestCase):
             BayesOptSearch(repeat_float_precision=True)
 
 
+class BayesOptConvergenceWarningTest(unittest.TestCase):
+    def testWarnsAndStopsOnConvergence(self):
+        """BayesOptSearch should warn (not silently stop) when it converges."""
+        from ray.tune.search import Searcher
+        from ray.tune.search.bayesopt import BayesOptSearch
+
+        space = {"width": tune.uniform(0, 20), "height": tune.uniform(-100, 100)}
+        # patience=1 -> the search stops as soon as a config first repeats,
+        # making convergence deterministic and quick to reach.
+        searcher = BayesOptSearch(
+            space=space, metric="loss", mode="min", random_state=42, patience=1
+        )
+        logger_name = "ray.tune.search.bayesopt.bayesopt_search"
+        finished = False
+        with self.assertLogs(logger_name, level="WARNING") as cm:
+            for i in range(50):
+                config = searcher.suggest(f"trial_{i}")
+                if config == Searcher.FINISHED:
+                    finished = True
+                    break
+                if config is None:
+                    continue
+                searcher.on_trial_complete(
+                    f"trial_{i}", {"loss": config["width"] + config["height"]}
+                )
+        self.assertTrue(finished, "BayesOptSearch should finish once converged")
+        self.assertTrue(
+            any("stopping early" in msg for msg in cm.output),
+            f"Expected a convergence warning, got: {cm.output}",
+        )
+
+
 if __name__ == "__main__":
     import sys
 

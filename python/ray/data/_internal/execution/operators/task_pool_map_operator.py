@@ -15,6 +15,7 @@ from ray.data._internal.execution.interfaces import (
     ExecutionResources,
     PhysicalOperator,
     RefBundle,
+    ReportsExtraResourceUsage,
     TaskContext,
 )
 from ray.data._internal.execution.operators.map_operator import (
@@ -23,10 +24,13 @@ from ray.data._internal.execution.operators.map_operator import (
 )
 from ray.data._internal.execution.operators.map_transformer import MapTransformer
 from ray.data._internal.remote_fn import cached_remote_fn
+from ray.data._internal.utils.cached_ray_internals import (
+    get_local_ongoing_lineage_reconstruction_tasks,
+)
 from ray.data.context import DataContext
 
 
-class TaskPoolMapOperator(MapOperator):
+class TaskPoolMapOperator(MapOperator, ReportsExtraResourceUsage):
     """A MapOperator implementation that executes tasks on a task pool."""
 
     def __init__(
@@ -162,6 +166,19 @@ class TaskPoolMapOperator(MapOperator):
     def _output_queues(self) -> List["BaseBundleQueue"]:
         return [self._output_queue]
 
+    @override
+    def _get_dynamic_ray_remote_args(
+        self, input_bundle: Optional[RefBundle] = None
+    ) -> Dict[str, Any]:
+        ray_remote_args = super()._get_dynamic_ray_remote_args(input_bundle)
+        # `.options()` replaces `_labels` wholesale, so user labels would erase the
+        # operator id that lineage reconstruction accounting keys on. Merge instead.
+        ray_remote_args["_labels"] = {
+            **(ray_remote_args.pop("_labels", None) or {}),
+            self._OPERATOR_ID_LABEL_KEY: self.id,
+        }
+        return ray_remote_args
+
     def _try_schedule_task(self, bundle: RefBundle, strict: bool):
         # Notify first input for deferred initialization (e.g., Iceberg schema evolution).
         self._notify_first_input(bundle)
@@ -222,6 +239,35 @@ class TaskPoolMapOperator(MapOperator):
             cpu=self._ray_remote_args.get("num_cpus", 0),
             gpu=self._ray_remote_args.get("num_gpus", 0),
             memory=self._ray_remote_args.get("memory", 0),
+        )
+
+    def extra_resource_usage(self) -> ExecutionResources:
+        """Returns resources occupied by lineage reconstruction tasks.
+
+        When an output object is lost, Ray Core re-runs the task that produced
+        it. Those retries aren't submitted by this operator, so they don't show
+        up in the operator's own accounting, but they occupy real resources. The
+        resource manager adds this on top of the standard usage so backpressure
+        doesn't hand out budget that Ray Core has already spent.
+
+        Returns zero when
+        `DataContext.enable_lineage_reconstruction_resource_accounting` is off.
+        """
+        if not self.data_context.enable_lineage_reconstruction_resource_accounting:
+            return ExecutionResources.zero()
+
+        return self.incremental_resource_usage().scale(
+            self._num_lineage_reconstruction_tasks()
+        )
+
+    def _num_lineage_reconstruction_tasks(self) -> int:
+        # Reconstruction tasks inherit the labels of the task they replay, so
+        # they carry the `_OPERATOR_ID_LABEL_KEY` attached in `__init__`.
+        task_infos = get_local_ongoing_lineage_reconstruction_tasks()
+        return sum(
+            num_tasks
+            for task_info, num_tasks in task_infos
+            if task_info.labels.get(self._OPERATOR_ID_LABEL_KEY) == self.id
         )
 
     def min_scheduling_resources(

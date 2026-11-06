@@ -92,6 +92,7 @@ class _DeploymentHandleBase(Generic[T]):
         )
 
         self._router: Optional[Router] = _router
+        self._create_router: CreateRouterCallable
         if _create_router is None:
             self._create_router = create_router
         else:
@@ -295,7 +296,6 @@ class _DeploymentHandleBase(Generic[T]):
         multiplexed_model_id: Union[str, DEFAULT] = DEFAULT.VALUE,
         session_id: Union[str, DEFAULT] = DEFAULT.VALUE,
         stream: Union[bool, DEFAULT] = DEFAULT.VALUE,
-        use_new_handle_api: Union[bool, DEFAULT] = DEFAULT.VALUE,
         _prefer_local_routing: Union[bool, DEFAULT] = DEFAULT.VALUE,
     ) -> "DeploymentHandle[T]":
         raise NotImplementedError
@@ -323,7 +323,8 @@ class _DeploymentHandleBase(Generic[T]):
             if self._is_router_running_in_separate_loop:
                 await asyncio.wrap_future(shutdown_future)
             else:
-                await shutdown_future
+                # In same-loop mode the future is an `asyncio.Future`.
+                await cast(asyncio.Future, shutdown_future)
 
     def __repr__(self) -> str:
         return f"{self.__class__.__name__}" f"(deployment='{self.deployment_name}')"
@@ -406,9 +407,12 @@ class _DeploymentResponseBase(Generic[R]):
                 # Use `asyncio.wrap_future` so `self._replica_result_future` can be awaited
                 # safely from any asyncio loop.
                 # self._replica_result_future is a object of type concurrent.futures.Future
-                self._replica_result = await asyncio.wrap_future(
-                    self._replica_result_future
+                concurrent_future = cast(
+                    "concurrent.futures.Future[ReplicaResult]",
+                    self._replica_result_future,
                 )
+                result: ReplicaResult = await asyncio.wrap_future(concurrent_future)
+                self._replica_result = result
             else:
                 # self._replica_result_future is a object of type asyncio.Future
                 async_future = cast(
@@ -429,14 +433,12 @@ class _DeploymentResponseBase(Generic[R]):
           called on the object ref, attempting to cancel the request and any downstream
           requests it makes.
 
-        If the request is successfully cancelled, subsequent operations on the ref will
-        raise an exception:
-
-            - If the request was cancelled before assignment, they'll raise
-              `asyncio.CancelledError` (or a `concurrent.futures.CancelledError` for
-              synchronous methods like `.result()`.).
-            - If the request was cancelled after assignment, they'll raise
-              `ray.exceptions.TaskCancelledError`.
+        If the request is successfully cancelled, subsequent operations on the response
+        raise `ray.serve.exceptions.RequestCancelledError`. This is the same whether the
+        request was cancelled before or after it was assigned to a replica, and whether
+        you `await` the response or call a synchronous method such as `.result()`.
+        `RequestCancelledError` is a subclass of `ray.exceptions.TaskCancelledError`,
+        so `except TaskCancelledError` also catches it.
         """
         if self._cancelled:
             return
@@ -457,6 +459,8 @@ class _DeploymentResponseBase(Generic[R]):
         except RequestCancelledError:
             # request is already cancelled nothing to do here
             return
+        # Populated by `_fetch_future_result_sync()` above.
+        # pyrefly: ignore[missing-attribute]
         self._replica_result.cancel()
 
     @DeveloperAPI
@@ -572,6 +576,14 @@ class DeploymentResponse(_DeploymentResponseBase[R]):
 
         If `timeout_s` is provided and the result is not available before the timeout,
         a `TimeoutError` is raised.
+
+        Args:
+            timeout_s: Seconds to wait for the result. Waits indefinitely if None.
+            _skip_asyncio_check: Internal. Skip the check that raises when
+                called from an asyncio event loop.
+
+        Returns:
+            The result of the handle call.
         """
 
         if not _skip_asyncio_check and is_running_in_asyncio_loop():
@@ -638,17 +650,8 @@ class DeploymentResponse(_DeploymentResponseBase[R]):
                 "loop. Use `await response._to_object_ref()` instead."
             )
 
-        # First, fetch the result of the future
-        start_time_s = time.time()
         replica_result = self._fetch_future_result_sync(_timeout_s)
-
-        # Then, if necessary, resolve generator to ref
-        remaining_timeout_s = calculate_remaining_timeout(
-            timeout_s=_timeout_s,
-            start_time_s=start_time_s,
-            curr_time_s=time.time(),
-        )
-        return replica_result.to_object_ref(timeout_s=remaining_timeout_s)
+        return replica_result.to_object_ref()
 
 
 @PublicAPI(stability="stable")
@@ -755,6 +758,13 @@ class DeploymentResponseGenerator(_DeploymentResponseBase[R]):
           - Inside a deployment: use `async for`
 
         Always raises `TypeError`.
+
+        Args:
+            timeout_s: Unused.
+            _skip_asyncio_check: Unused.
+
+        Returns:
+            Never returns.
         """
         raise TypeError(
             "`DeploymentResponseGenerator` doesn't support `.result()`. "
@@ -883,6 +893,8 @@ class DeploymentBroadcastResponse:
                 self._replica_results = self._ensure_scheduled().result(
                     timeout=timeout_s
                 )
+        # Non-None invariant: populated above.
+        assert self._replica_results is not None
         return self._replica_results
 
     async def _fetch_replica_results_async(self) -> List[ReplicaResult]:
@@ -957,8 +969,8 @@ class DeploymentBroadcastResponse:
         )
         futures = [executor.submit(_fetch_one, rr) for rr in replica_results]
 
-        collected = []
-        first_error = None
+        collected: List[Any] = []
+        first_error: Optional[Exception] = None
         for fut in futures:
             try:
                 collected.append(fut.result())
@@ -1082,7 +1094,6 @@ class DeploymentHandle(_DeploymentHandleBase[T]):
         multiplexed_model_id: Union[str, DEFAULT] = DEFAULT.VALUE,
         session_id: Union[str, DEFAULT] = DEFAULT.VALUE,
         stream: Union[bool, DEFAULT] = DEFAULT.VALUE,
-        use_new_handle_api: Union[bool, DEFAULT] = DEFAULT.VALUE,
         _prefer_local_routing: Union[bool, DEFAULT] = DEFAULT.VALUE,
         _by_reference: Union[bool, DEFAULT] = DEFAULT.VALUE,
         request_serialization: Union[str, DEFAULT] = DEFAULT.VALUE,
@@ -1095,7 +1106,6 @@ class DeploymentHandle(_DeploymentHandleBase[T]):
             multiplexed_model_id: The model ID to use for multiplexed model requests.
             session_id: Session identifier used for honoring session stickiness.
             stream: Whether to use streaming for the request.
-            use_new_handle_api: Whether to use the new handle API.
             _prefer_local_routing: Whether to prefer local routing.
             _by_reference: Whether to use by reference.
             request_serialization: Serialization method for RPC requests.
@@ -1117,12 +1127,6 @@ class DeploymentHandle(_DeploymentHandleBase[T]):
                 multiplexed_model_id="model:v1",
             ).remote()
         """
-        if use_new_handle_api is not DEFAULT.VALUE:
-            warnings.warn(
-                "Setting `use_new_handle_api` no longer has any effect. "
-                "This argument will be removed in a future version."
-            )
-
         if _prefer_local_routing is not DEFAULT.VALUE:
             warnings.warn(
                 "Modifying `_prefer_local_routing` with `options()` is "

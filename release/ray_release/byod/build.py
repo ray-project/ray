@@ -43,6 +43,16 @@ def build_anyscale_custom_byod_image(
         docker_build_cmd = "docker build --progress=plain .".split()
         docker_build_cmd += ["--build-arg", f"BASE_IMAGE={base_image}"]
         docker_build_cmd += ["-t", image]
+        # The step's index, forwarded into the build: this is a plain docker build
+        # rather than a wanda one, so it inherits nothing from the step environment,
+        # and without this the ARG in byod.Dockerfile has no value to take. Appended
+        # after -t so the argument prefix stays stable for callers and tests that
+        # match on it.
+        docker_build_cmd += [
+            "--build-arg",
+            "RAYCI_IMAGE_PIP_INDEX_URL="
+            + os.environ.get("RAYCI_IMAGE_PIP_INDEX_URL", ""),
+        ]
 
         env = os.environ.copy()
         env["DOCKER_BUILDKIT"] = "1"

@@ -488,6 +488,17 @@ def test_backup_release_tags(
                 "test-py310-gpu",
             ],
         ),
+        (
+            "test",
+            "ray-llm",
+            ["3.12"],
+            ["cu13.0.0-cudnn"],
+            ["x86_64", "aarch64"],
+            [
+                "test-py312-cu130",
+                "test-py312-cu130-aarch64",
+            ],
+        ),
         # tpu + aarch64 excluded via exceptions in ray-images.yaml
         (
             "test",

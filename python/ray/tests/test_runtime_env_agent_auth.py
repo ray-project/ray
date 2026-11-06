@@ -8,16 +8,21 @@ import pytest
 
 import ray
 from ray._common.test_utils import wait_for_condition
+from ray._private.authentication.authentication_constants import (
+    TOKEN_AUTH_ERROR_MESSAGE,
+)
 from ray._private.authentication.http_token_authentication import (
     format_authentication_http_error,
     get_auth_headers_if_auth_enabled,
 )
 from ray._private.authentication_test_utils import (
+    clear_auth_token_sources,
     reset_auth_token_state,
     set_auth_mode,
     set_env_auth_token,
 )
 from ray.core.generated import runtime_env_agent_pb2
+from ray.exceptions import AuthenticationError
 
 
 def _agent_url(agent_address: str, path: str) -> str:
@@ -65,8 +70,7 @@ def test_runtime_env_agent_requires_auth_missing_token(setup_cluster_with_token_
     assert exc_info.value.code == 401
     body = exc_info.value.read().decode("utf-8", "ignore")
     assert "Missing authentication token" in body
-    formatted = format_authentication_http_error(401, body)
-    assert formatted.startswith("Authentication required")
+    assert format_authentication_http_error(401, body) == TOKEN_AUTH_ERROR_MESSAGE
 
 
 def test_runtime_env_agent_rejects_invalid_token(setup_cluster_with_token_auth):
@@ -142,6 +146,19 @@ def test_inject_token_if_enabled_respects_existing_header(cleanup_auth_token_env
     headers_to_add = get_auth_headers_if_auth_enabled(headers)
 
     assert headers_to_add == {}
+
+
+def test_inject_token_if_enabled_raises_without_token(cleanup_auth_token_env):
+    set_auth_mode("token")
+    clear_auth_token_sources(remove_default=True)
+    reset_auth_token_state()
+
+    with pytest.raises(AuthenticationError) as exc_info:
+        get_auth_headers_if_auth_enabled({})
+
+    # The C++ token loader raises this, so equality also checks that its
+    # message matches the Python constant.
+    assert exc_info.value.message == TOKEN_AUTH_ERROR_MESSAGE
 
 
 def test_format_authentication_http_error_non_auth_status():

@@ -141,10 +141,14 @@ def _explore(
                 perturbation_factor = random.choice(perturbation_factors)
                 new_config[key] = config[key] * perturbation_factor
                 operations[key] = f"* {perturbation_factor}"
-            if isinstance(config[key], int):
-                # If this hyperparameter started out as an integer (ex: `batch_size`),
-                # convert the new value back
-                new_config[key] = int(new_config[key])
+            if isinstance(config[key], bool):
+                # Keep as bool, let `resample_probability` flip it and ignore
+                # `perturbation_factor`
+                new_config[key] = bool(new_config[key])
+            elif isinstance(config[key], int):
+                # If this parameter started out as an integer (e.g. `batch_size`),
+                # round before converting the new value back.
+                new_config[key] = int(round(new_config[key]))
         else:
             raise ValueError(
                 f"Unsupported hyperparameter distribution type: {type(distribution)}"
@@ -994,13 +998,27 @@ class PopulationBasedTraining(FIFOScheduler):
             )
             if num_trials_in_quantile > len(trials) / 2:
                 num_trials_in_quantile = int(math.floor(len(trials) / 2))
-            return (trials[:num_trials_in_quantile], trials[-num_trials_in_quantile:])
+            # Indexed from the front as `trials[-num_trials_in_quantile:]` is the
+            # whole population
+            return (
+                trials[:num_trials_in_quantile],
+                trials[len(trials) - num_trials_in_quantile :],
+            )
 
     def choose_trial_to_run(self, tune_controller: "TuneController") -> Optional[Trial]:
         """Ensures all trials get fair share of time (as defined by time_attr).
 
         This enables the PBT scheduler to support a greater number of
         concurrent trials than can fit in the cluster at any given time.
+
+        Args:
+            tune_controller: The controller running the experiment.
+
+        Returns:
+            The ``PENDING`` or ``PAUSED`` trial with the lowest ``time_attr``
+            value as of its last perturbation interval, or ``None`` if there's
+            none. In synchronous mode, only trials that
+            haven't reached the next perturbation point are candidates.
         """
         candidates = []
         for trial in tune_controller.get_trials():
@@ -1020,11 +1038,22 @@ class PopulationBasedTraining(FIFOScheduler):
 
     # Unit test only. TODO(xwjiang): Remove test-specific APIs.
     def reset_stats(self):
+        """Reset the counts of perturbations and checkpoints to zero."""
         self._num_perturbations = 0
         self._num_checkpoints = 0
 
     # Unit test only. TODO(xwjiang): Remove test-specific APIs.
     def last_scores(self, trials: List[Trial]) -> List[float]:
+        """Returns the last recorded score of each unfinished trial.
+
+        Args:
+            trials: The trials to read scores from.
+
+        Returns:
+            The last score of each trial in ``trials`` that has a score and
+            hasn't finished. Scores are mode-adjusted: the metric value is
+            negated when ``mode`` is ``"min"``, so higher is always better.
+        """
         scores = []
         for trial in trials:
             state = self._trial_state[trial]

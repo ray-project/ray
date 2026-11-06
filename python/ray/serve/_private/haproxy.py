@@ -1,12 +1,15 @@
 import asyncio
 import csv
 import functools
+import http.client
 import io
 import json
 import logging
 import os
 import re
 import shutil
+import signal
+import socket
 import string
 import time
 from abc import ABC, abstractmethod
@@ -15,11 +18,13 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Set, Tuple
 
-from jinja2 import Environment
-
 import ray
 from ray._common.network_utils import get_localhost_ip
 from ray._common.utils import get_or_create_event_loop
+from ray._private.authentication import authentication_utils as auth_utils
+from ray._private.authentication.http_token_authentication import (
+    start_metrics_wsgi_server,
+)
 from ray.serve._private.common import (
     NodeId,
     ReplicaID,
@@ -36,7 +41,14 @@ from ray.serve._private.constants import (
     RAY_SERVE_HAPROXY_BALANCE_ALGORITHM,
     RAY_SERVE_HAPROXY_BINARY_PATH,
     RAY_SERVE_HAPROXY_BROADCAST_COALESCE_S,
+    RAY_SERVE_HAPROXY_CLOSE_SPREAD_TIME_S,
     RAY_SERVE_HAPROXY_CONFIG_FILE_LOC,
+    RAY_SERVE_HAPROXY_EXPORTER_SOCKET_PATH,
+    RAY_SERVE_HAPROXY_H2_BE_INITIAL_WINDOW_SIZE,
+    RAY_SERVE_HAPROXY_H2_BE_MAX_CONCURRENT_STREAMS,
+    RAY_SERVE_HAPROXY_H2_FE_INITIAL_WINDOW_SIZE,
+    RAY_SERVE_HAPROXY_H2_FE_MAX_CONCURRENT_STREAMS,
+    RAY_SERVE_HAPROXY_H2_MAX_FRAME_SIZE,
     RAY_SERVE_HAPROXY_HARD_STOP_AFTER_S,
     RAY_SERVE_HAPROXY_HEALTH_CHECK_DOWNINTER,
     RAY_SERVE_HAPROXY_HEALTH_CHECK_FALL,
@@ -50,9 +62,13 @@ from ray.serve._private.constants import (
     RAY_SERVE_HAPROXY_INGRESS_TIMEOUT_SERVER_S,
     RAY_SERVE_HAPROXY_LOG_TARGET,
     RAY_SERVE_HAPROXY_MAXCONN,
+    RAY_SERVE_HAPROXY_METRICS_ENABLED,
     RAY_SERVE_HAPROXY_METRICS_PORT,
+    RAY_SERVE_HAPROXY_METRICS_REPORT_INTERVAL_S,
     RAY_SERVE_HAPROXY_METRICS_SOCKET_PATH,
     RAY_SERVE_HAPROXY_NBTHREAD,
+    RAY_SERVE_HAPROXY_OBSERVE_ERROR_LIMIT,
+    RAY_SERVE_HAPROXY_OBSERVE_MARK_DOWN_ENABLED,
     RAY_SERVE_HAPROXY_RETRIES,
     RAY_SERVE_HAPROXY_RETRY_ON,
     RAY_SERVE_HAPROXY_SERVER_STATE_BASE,
@@ -69,18 +85,31 @@ from ray.serve._private.constants import (
     RAY_SERVE_INGRESS_REQUEST_ROUTER_FORWARD_BODY,
     RAY_SERVE_INGRESS_REQUEST_ROUTER_METRICS_ENABLED,
     SERVE_CONTROLLER_NAME,
+    SERVE_INGRESS_ROUTER_HEADER_PREFIX,
+    SERVE_INGRESS_ROUTER_REQUEST_PATH_HEADER,
     SERVE_LOGGER_NAME,
+    SERVE_MULTIPLEXED_MODEL_ID,
     SERVE_NAMESPACE,
+    SERVE_ROUTER_APPLICATION_DIRECT_RESPONSE_HEADER,
+    SERVE_ROUTER_APPLICATION_ORIGINAL_METHOD_HEADER,
     SERVE_SESSION_ID,
 )
 from ray.serve._private.haproxy_templates import (
     HAPROXY_CONFIG_TEMPLATE,
+    HAPROXY_GRPC_HEALTHZ_RULES_TEMPLATE,
     HAPROXY_HEALTHZ_RULES_TEMPLATE,
 )
 from ray.serve._private.logging_utils import get_component_logger_file_path
 from ray.serve._private.long_poll import LongPollClient, LongPollNamespace
-from ray.serve._private.proxy import ProxyActorInterface
-from ray.serve._private.utils import get_head_node_id
+from ray.serve._private.proxy import (
+    ProxyActorInterface,
+    apply_per_node_port_overrides,
+)
+from ray.serve._private.routing_config import (
+    RoutingConfigSnapshot,
+    RoutingConfigVersion,
+)
+from ray.serve._private.utils import get_head_node_id, is_grpc_enabled
 from ray.serve.config import HTTPOptions, gRPCOptions
 from ray.serve.schema import (
     LoggingConfig,
@@ -93,49 +122,87 @@ logger = logging.getLogger(SERVE_LOGGER_NAME)
 
 
 @functools.cache
-def _load_lua_template() -> string.Template:
-    path = Path(__file__).parent / "ingress_request_router.lua.tmpl"
-    try:
-        return string.Template(path.read_text())
-    except FileNotFoundError as e:
-        raise FileNotFoundError(
-            f"{path.name} is missing. Ray Serve installation is incomplete."
-        ) from e
+def _haproxy_fmt_literal(value: Any) -> str:
+    r"""Format a string as a double-quoted HAProxy log-format literal for a
+    `set-var-fmt` rule.
+
+    App, route, and deployment names can contain any character, so the value is
+    quoted and the characters that are special inside a HAProxy double-quoted
+    log-format string are escaped: `\` (escape), `"` (delimiter), `%`
+    (directive), and `$` (env var). HAProxy removes the escaping when it reads
+    the config, so the stored value is the original string.
+
+    Example: `a"b%c` becomes `"a\"b%%c"`.
+    """
+    s = str(value)
+    s = s.replace("\\", "\\\\")
+    s = s.replace('"', '\\"')
+    s = s.replace("%", "%%")
+    s = s.replace("$", "\\$")
+    return '"' + s + '"'
+
+
+def _load_lua_template(*file_names: str) -> string.Template:
+    contents = []
+    for file_name in file_names:
+        path = Path(__file__).parent / file_name
+        try:
+            contents.append(path.read_text())
+        except FileNotFoundError as e:
+            raise FileNotFoundError(
+                f"{path.name} is missing. Ray Serve installation is incomplete."
+            ) from e
+    return string.Template("\n".join(contents))
 
 
 def _routers_and_targets_by_backend(
     backends: "List[BackendConfig]",
-) -> "Tuple[Dict[str, ServerConfig], Dict[str, List[Tuple[str, str]]]]":
-    """Per-backend router and replica map, restricted to backends with both.
+    local_host: "Optional[str]" = None,
+) -> "Tuple[Dict[str, List[ServerConfig]], Dict[str, List[Tuple[str, str]]]]":
+    """Router pools and replica maps for routed or fallback-enabled backends.
 
-    Pick deterministically within each router pool to avoid the first-response
-    latency regression from cycling routers across requests.
+    Prefers routers co-located with this HAProxy so the /internal/route hop
+    stays on-node. Falls back to the lexicographically smallest router when none
+    is co-located.
     """
-    routers: Dict[str, ServerConfig] = {}
+    routers: Dict[str, List[ServerConfig]] = {}
     targets: Dict[str, List[Tuple[str, str]]] = {}
     for backend in backends:
-        if not backend.ingress_request_router_servers:
+        if (
+            not backend.ingress_request_router_servers
+            and not backend.ingress_router_fallback
+        ):
             continue
         entries = [
             (s.replica_id, s.name) for s in backend.servers if s.replica_id is not None
         ]
         if not entries:
             continue
-        # Host-first so co-located routers sort adjacent in debug output.
-        routers[backend.name] = min(
-            backend.ingress_request_router_servers, key=lambda s: (s.host, s.port)
-        )
+        candidates = backend.ingress_request_router_servers
+        colocated = [s for s in candidates if s.host == local_host]
+        if not candidates:
+            pool = []
+        elif colocated:
+            pool = sorted(colocated, key=lambda s: (s.host, s.port))
+        else:
+            pool = [min(candidates, key=lambda s: (s.host, s.port))]
+        routers[backend.name] = pool
         targets[backend.name] = entries
     return routers, targets
 
 
-def _format_routers_lua(routers: "Dict[str, ServerConfig]") -> str:
-    """Render {backend_name: ServerConfig} as a Lua table literal."""
+def _format_routers_lua(routers: "Dict[str, List[ServerConfig]]") -> str:
+    """Render {backend_name: [ServerConfig, ...]} as a Lua table literal."""
+
+    def _server_lua(s: "ServerConfig") -> str:
+        return (
+            f"{{ host = {json.dumps(s.host)}, port = {s.port}, "
+            f"host_header = {json.dumps(f'{s.host}:{s.port}')} }}"
+        )
+
     body = ",\n".join(
-        f"    [{json.dumps(name)}] = "
-        f"{{ host = {json.dumps(s.host)}, port = {s.port}, "
-        f"host_header = {json.dumps(f'{s.host}:{s.port}')} }}"
-        for name, s in routers.items()
+        f"    [{json.dumps(name)}] = {{ {', '.join(_server_lua(s) for s in pool)} }}"
+        for name, pool in routers.items()
     )
     return "{\n" + body + "\n}"
 
@@ -154,6 +221,76 @@ def _format_replica_targets_lua(
             f"    [{json.dumps(backend_name)}] = " + "{\n" + inner + "\n    }"
         )
     return "{\n" + ",\n".join(backends_lua) + "\n}"
+
+
+def _lua_str(value: str) -> str:
+    # Escape all but printable ASCII as \ddd; json.dumps' \uXXXX is invalid Lua.
+    escaped = "".join(
+        chr(b) if 0x20 <= b < 0x7F and b not in b'"\\' else f"\\{b:03d}"
+        for b in value.encode()
+    )
+    return f'"{escaped}"'
+
+
+def _format_router_application_pools_lua(
+    backends: "List[BackendConfig]",
+    local_host: "Optional[str]" = None,
+) -> Optional[str]:
+    """Render router application metadata and decision endpoints as Lua."""
+    entries = []
+    for backend in backends:
+        if not backend.is_router_application:
+            continue
+        servers = sorted(backend.servers, key=lambda s: (s.host, s.port))
+        colocated = [s for s in servers if s.host == local_host]
+        remote = [s for s in servers if s.host != local_host]
+        if not colocated and not remote and backend.fallback_server is not None:
+            colocated = [backend.fallback_server]
+
+        def format_pool(pool: List[ServerConfig]) -> str:
+            return ", ".join(
+                f"{{ host = {_lua_str(s.host)}, port = {s.port}, "
+                f"host_header = {_lua_str(f'{s.host}:{s.port}')} }}"
+                for s in pool
+            )
+
+        local_pool_lua = format_pool(colocated)
+        remote_pool_lua = format_pool(remote)
+        entries.append(
+            f"    [{_lua_str(backend.name)}] = {{ app = {_lua_str(backend.app_name)}, "
+            f"p = {_lua_str(backend.path_prefix or '/')}, "
+            f"local_pool = {{ {local_pool_lua} }}, "
+            f"remote_pool = {{ {remote_pool_lua} }} }}"
+        )
+    if not entries:
+        return None
+    return "{\n" + ",\n".join(entries) + "\n}"
+
+
+def _format_router_target_apps_lua(backends: "List[BackendConfig]") -> str:
+    """Render valid application and replica destinations as Lua."""
+    entries = []
+    for backend in backends:
+        if (
+            not backend.app_name
+            or backend.is_router_application
+            or not any(s.replica_id is not None for s in backend.servers)
+        ):
+            continue
+        replicas = ",\n".join(
+            f"            [{_lua_str(s.replica_id)}] = {_lua_str(s.name)}"
+            for s in backend.servers
+            if s.replica_id is not None
+        )
+        entries.append(
+            f"    [{_lua_str(backend.app_name)}] = {{\n"
+            f"        b = {_lua_str(backend.name)},\n"
+            f"        p = {_lua_str(backend.path_prefix or '/')},\n"
+            f"        d = {_lua_str(backend.ingress_deployment_name)},\n"
+            f"        r = {{\n{replicas}\n        }}\n"
+            "    }"
+        )
+    return "{\n" + ",\n".join(entries) + "\n}"
 
 
 def _write_if_changed(path: str, content: str) -> bool:
@@ -254,8 +391,7 @@ class ServerStats:
 
     @property
     def can_drain_safely(self) -> bool:
-        """
-        Return True if the server can be drained safely based on the current load.
+        """Return True if the server can be drained safely based on the current load.
         Safe to drain when:
         - No current active sessions (0)
         - No queued requests waiting
@@ -346,6 +482,57 @@ class HealthRouteInfo:
     routes_content_type: str = "application/json"
 
 
+def build_grpc_healthcheck_request_hex(path: str) -> str:
+    """Build the raw HTTP/2 bytes for a unary gRPC health-check request.
+
+    HAProxy's `http-check` cannot health-check a gRPC server: `http-check send`
+    truncates its body at the first NUL byte, and a gRPC length-prefixed message
+    always begins with the NUL compression-flag byte. With no message frame, the
+    server receives a message-less unary call and stalls until the check times
+    out. We therefore drive the check via `tcp-check send-binary`, which emits
+    exact bytes (NUL included), replaying a complete gRPC request: the HTTP/2
+    connection preface, an empty SETTINGS frame, a HEADERS frame (HPACK literal,
+    no Huffman/dynamic table), and a DATA frame carrying an empty message
+    (`00 00 00 00 00`) with END_STREAM. The peer responds with the real
+    `Healthz` body, which `tcp-check expect binary` matches against the healthy
+    message. Returns the request as a hex string for `tcp-check send-binary`.
+    """
+
+    def hpack_str(s: str) -> bytes:
+        b = s.encode()
+        # Literal string, no Huffman; lengths here are always < 127.
+        assert len(b) < 127, f"header value too long for simple HPACK: {s!r}"
+        return bytes([len(b)]) + b
+
+    def hpack_header(name: str, value: str) -> bytes:
+        # 0x00 = literal header field without indexing, new name.
+        return b"\x00" + hpack_str(name) + hpack_str(value)
+
+    def h2_frame(frame_type: int, flags: int, stream_id: int, payload: bytes) -> bytes:
+        return (
+            len(payload).to_bytes(3, "big")
+            + bytes([frame_type, flags])
+            + stream_id.to_bytes(4, "big")
+            + payload
+        )
+
+    preface = b"PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n"
+    settings = h2_frame(0x4, 0x0, 0, b"")  # empty SETTINGS
+    headers_block = b"".join(
+        [
+            hpack_header(":method", "POST"),
+            hpack_header(":scheme", "http"),
+            hpack_header(":path", path),
+            hpack_header(":authority", "ray-serve-grpc"),
+            hpack_header("te", "trailers"),
+            hpack_header("content-type", "application/grpc"),
+        ]
+    )
+    headers = h2_frame(0x1, 0x4, 1, headers_block)  # END_HEADERS (not END_STREAM)
+    data = h2_frame(0x0, 0x1, 1, b"\x00\x00\x00\x00\x00")  # empty msg, END_STREAM
+    return (preface + settings + headers + data).hex()
+
+
 @dataclass
 class ServerConfig:
     """Configuration for a single server."""
@@ -413,8 +600,9 @@ class BackendConfig:
     # The interval between two consecutive health checks when the server is in the DOWN state
     health_check_downinter: Optional[str] = None
 
-    # Endpoint path that the health check mechanism will send a request to. It's typically an HTTP path.
-    health_check_path: Optional[str] = "/-/healthz"
+    # Endpoint path that the health check mechanism will send a request to.
+    http_health_check_path: Optional[str] = "/-/healthz"
+    grpc_health_check_path: Optional[str] = "/ray.serve.RayServeAPIService/Healthz"
 
     # List of servers in this backend
     servers: List[ServerConfig] = field(default_factory=list)
@@ -422,12 +610,27 @@ class BackendConfig:
     # Ingress request router servers. When populated, HAProxy Lua calls
     # /internal/route on one of these to pick a data-plane replica.
     ingress_request_router_servers: List[ServerConfig] = field(default_factory=list)
+    # Stays true when a configured router has no running replicas.
+    ingress_router_fallback: bool = False
 
     # The fallback server for this backend.
     fallback_server: Optional[ServerConfig] = None
 
+    # When set, the application serves as an application level router.
+    is_router_application: bool = False
+
     # The app name for this backend.
     app_name: str = field(default_factory=str)
+
+    # Name of the app's ingress deployment. Rendered into the per-request HTTP
+    # metrics log line so HAProxy-emitted ingress metrics carry the deployment
+    # tag (matching what the Python proxy records). Empty when unknown.
+    ingress_deployment_name: str = field(default_factory=str)
+
+    # Protocol of this backend. HTTP backends are path-routed and use HTTP/1.1;
+    # gRPC backends are header-routed (by the `application` gRPC metadata) and
+    # speak HTTP/2 cleartext to replica direct-ingress gRPC servers.
+    protocol: RequestProtocol = RequestProtocol.HTTP
 
     def build_health_check_config(self, global_config: "HAProxyConfig") -> dict:
         """Build health check configuration for HAProxy backend.
@@ -463,10 +666,16 @@ class BackendConfig:
             else global_config.health_check_downinter
         )
         health_path = (
-            self.health_check_path
-            if self.health_check_path is not None
-            else global_config.health_check_path
+            self.http_health_check_path
+            if self.http_health_check_path is not None
+            else global_config.http_health_check_path
         )
+        if self.protocol == RequestProtocol.GRPC:
+            health_path = (
+                self.grpc_health_check_path
+                if self.grpc_health_check_path is not None
+                else global_config.grpc_health_check_path
+            )
 
         # Build default-server directive
         parts = []
@@ -490,13 +699,26 @@ class BackendConfig:
 
         default_server_directive = "default-server " + " ".join(parts)
 
-        return {
+        result = {
             "health_path": health_path,
             "default_server_directive": default_server_directive,
         }
 
+        # gRPC backends are health-checked via `tcp-check send-binary` (see
+        # build_grpc_healthcheck_request_hex for why `http-check` can't be used).
+        # Precompute the request bytes and the expected response marker so the
+        # template just emits them.
+        if self.protocol == RequestProtocol.GRPC:
+            assert health_path is not None
+            result["grpc_healthcheck_request_hex"] = build_grpc_healthcheck_request_hex(
+                health_path
+            )
+            result["grpc_healthcheck_expect_hex"] = HEALTHY_MESSAGE.encode().hex()
+
+        return result
+
     def __str__(self) -> str:
-        return f"BackendConfig(app_name='{self.app_name}', name='{self.name}', path_prefix='{self.path_prefix}', servers={self.servers}, ingress_request_router_servers={self.ingress_request_router_servers}, fallback_server={self.fallback_server})"
+        return f"BackendConfig(app_name='{self.app_name}', name='{self.name}', path_prefix='{self.path_prefix}', servers={self.servers}, ingress_request_router_servers={self.ingress_request_router_servers}, fallback_server={self.fallback_server}, is_router_application={self.is_router_application}, protocol={self.protocol.value})"
 
     def __repr__(self) -> str:
         return str(self)
@@ -518,6 +740,8 @@ class HAProxyConfig:
     stats_uri: str = "/stats"
     metrics_port: int = RAY_SERVE_HAPROXY_METRICS_PORT
     metrics_uri: str = "/metrics"
+    metrics_auth_required: bool = False
+    exporter_socket_path: str = RAY_SERVE_HAPROXY_EXPORTER_SOCKET_PATH
     # All timeout values are in seconds
     timeout_queue_s: Optional[int] = None
     timeout_connect_s: Optional[int] = RAY_SERVE_HAPROXY_TIMEOUT_CONNECT_S
@@ -525,10 +749,17 @@ class HAProxyConfig:
     timeout_server_s: Optional[int] = RAY_SERVE_HAPROXY_TIMEOUT_SERVER_S
     timeout_http_request_s: Optional[int] = None
     hard_stop_after_s: Optional[int] = RAY_SERVE_HAPROXY_HARD_STOP_AFTER_S
+    # See RAY_SERVE_HAPROXY_CLOSE_SPREAD_TIME_S.
+    close_spread_time_s: Optional[int] = RAY_SERVE_HAPROXY_CLOSE_SPREAD_TIME_S
+    # See RAY_SERVE_HAPROXY_OBSERVE_MARK_DOWN_ENABLED.
+    observe_mark_down_enabled: bool = RAY_SERVE_HAPROXY_OBSERVE_MARK_DOWN_ENABLED
+    observe_error_limit: int = RAY_SERVE_HAPROXY_OBSERVE_ERROR_LIMIT
     custom_global: Dict[str, str] = field(default_factory=dict)
     custom_defaults: Dict[str, str] = field(default_factory=dict)
     inject_process_id_header: bool = False
     reload_id: Optional[str] = None  # Unique ID for each reload
+    # Path to the shared 500 error page, written during initialization.
+    error_file_path: Optional[str] = None
     tcp_nodelay: bool = RAY_SERVE_HAPROXY_TCP_NODELAY
     enable_so_reuseport: bool = (
         os.environ.get("SERVE_SOCKET_REUSE_PORT_ENABLED", "0") == "1"
@@ -553,9 +784,14 @@ class HAProxyConfig:
     # The interval between two consecutive health checks when the server is in the DOWN state
     health_check_downinter: Optional[str] = RAY_SERVE_HAPROXY_HEALTH_CHECK_DOWNINTER
 
-    health_check_path: Optional[str] = "/-/healthz"  # For HTTP health checks
+    http_health_check_path: Optional[str] = "/-/healthz"  # For HTTP health checks
+    grpc_health_check_path: Optional[
+        str
+    ] = "/ray.serve.RayServeAPIService/Healthz"  # For gRPC health checks
 
     http_options: HTTPOptions = field(default_factory=HTTPOptions)
+
+    grpc_options: gRPCOptions = field(default_factory=gRPCOptions)
 
     log_target: str = RAY_SERVE_HAPROXY_LOG_TARGET
 
@@ -567,6 +803,14 @@ class HAProxyConfig:
     ingress_request_router_metrics_enabled: bool = (
         RAY_SERVE_INGRESS_REQUEST_ROUTER_METRICS_ENABLED
     )
+
+    # Per-request HTTP ingress metrics (serve_num_http_requests, latency,
+    # errors) emitted from HAProxy log datagrams -- the metrics the Python proxy
+    # emits in non-HAProxy mode. On by default whenever HAProxy metrics are
+    # enabled. When set, the http_frontend renders a per-request RFC 5424 log
+    # line to metrics_socket_path. gRPC is intentionally excluded due to
+    # limitations in parsing trailers.
+    metrics_enabled: bool = RAY_SERVE_HAPROXY_METRICS_ENABLED
     metrics_socket_path: str = RAY_SERVE_HAPROXY_METRICS_SOCKET_PATH
 
     balance_algorithm: str = RAY_SERVE_HAPROXY_BALANCE_ALGORITHM
@@ -583,7 +827,13 @@ class HAProxyConfig:
 
     is_head: bool = False
 
+    # Tuning flags
     bufsize: int = RAY_SERVE_HAPROXY_TUNE_BUFSIZE
+    h2_max_frame_size: int = RAY_SERVE_HAPROXY_H2_MAX_FRAME_SIZE
+    h2_be_initial_window_size: int = RAY_SERVE_HAPROXY_H2_BE_INITIAL_WINDOW_SIZE
+    h2_be_max_concurrent_streams: int = RAY_SERVE_HAPROXY_H2_BE_MAX_CONCURRENT_STREAMS
+    h2_fe_initial_window_size: int = RAY_SERVE_HAPROXY_H2_FE_INITIAL_WINDOW_SIZE
+    h2_fe_max_concurrent_streams: int = RAY_SERVE_HAPROXY_H2_FE_MAX_CONCURRENT_STREAMS
 
     @property
     def frontend_host(self) -> str:
@@ -598,6 +848,20 @@ class HAProxyConfig:
     @property
     def frontend_port(self) -> int:
         return self.http_options.port
+
+    @property
+    def grpc_enabled(self) -> bool:
+        return is_grpc_enabled(self.grpc_options)
+
+    @property
+    def grpc_frontend_host(self) -> str:
+        # gRPCOptions has no host field; reuse the HTTP host so both proxies
+        # bind on the same interface.
+        return self.frontend_host
+
+    @property
+    def grpc_frontend_port(self) -> int:
+        return self.grpc_options.port
 
     @property
     def timeout_http_keep_alive_s(self) -> int:
@@ -646,8 +910,6 @@ class HAProxyConfig:
             routes_content_type="application/json" if healthy else "text/plain",
         )
 
-    # TODO: support custom root_path and https
-
 
 class ProxyApi(ABC):
     """Generic interface for load balancer management operations."""
@@ -689,15 +951,19 @@ class HAProxyApi(ProxyApi):
     def __init__(
         self,
         cfg: HAProxyConfig,
-        backend_configs: Dict[str, BackendConfig] = None,
+        backend_configs: Optional[Dict[str, BackendConfig]] = None,
         config_file_path: str = RAY_SERVE_HAPROXY_CONFIG_FILE_LOC,
     ):
         self.cfg = cfg
         self.backend_configs = backend_configs or {}
+        # Standalone gRPC fallback server used for requests (e.g. ListApplications)
+        # that can only be answered by the Serve proxy.
+        self.grpc_fallback_server: Optional[ServerConfig] = None
+        self.grpc_fallback_backend: Optional[BackendConfig] = None
         self.config_file_path = config_file_path
         # Lock to prevent concurrent config modifications
         self._config_lock = asyncio.Lock()
-        self._proc = None
+        self._proc: Optional[asyncio.subprocess.Process] = None
         # Track old processes from graceful reloads that may still be draining
         self._old_procs: List[asyncio.subprocess.Process] = []
         # Per-spawn counter for stdout/stderr file names.
@@ -718,8 +984,7 @@ class HAProxyApi(ProxyApi):
         self._initialize_directories_and_error_files()
 
     def _initialize_directories_and_error_files(self) -> None:
-        """
-        Ensures all required directories exist, creates a unified 500 error file,
+        """Ensures all required directories exist, creates a unified 500 error file,
         and assigns its path to self.cfg.error_file_path. Called once during initialization.
         """
         # Create a config file directory
@@ -729,6 +994,8 @@ class HAProxyApi(ProxyApi):
         # Create a socket directory
         socket_dir = os.path.dirname(self.cfg.socket_path)
         os.makedirs(socket_dir, exist_ok=True)
+        if self.cfg.metrics_auth_required:
+            os.makedirs(os.path.dirname(self.cfg.exporter_socket_path), exist_ok=True)
 
         # Sweep std-stream logs left by a previous incarnation on this node.
         # No worker has spawned yet, so any match belongs to a dead actor.
@@ -785,6 +1052,23 @@ class HAProxyApi(ProxyApi):
             self._retire_log_files(p)
         self._old_procs = still_alive
 
+    def _soft_stop_old_procs(self) -> None:
+        """Send SIGUSR1 to displaced workers so they close their listeners and
+        drain.
+
+        HAProxy's `-sf` flag already requests this, but its delivery can be
+        lost, so the manager sends the signal itself where it is reliable.
+        """
+        self._prune_old_procs()
+        for proc in self._old_procs:
+            if not self._is_our_haproxy(proc.pid):
+                continue
+            try:
+                # This is a no-op if the worker is already draining
+                os.kill(proc.pid, signal.SIGUSR1)
+            except OSError:
+                pass
+
     def _is_our_haproxy(self, pid: int) -> bool:
         """Whether `pid` is currently one of our haproxy workers.
 
@@ -799,11 +1083,99 @@ class HAProxyApi(ProxyApi):
         except OSError:
             return False
 
+    def count_haproxy_processes(self) -> int:
+        """Number of HAProxy processes on the node belonging to this manager.
+
+        Scans /proc for processes whose cmdline references our config file, so
+        the count spans the live worker, draining workers from prior reloads,
+        and any leaked/orphaned workers — making it a signal for process leaks.
+        Returns 0 on non-Linux / no-/proc platforms where /proc is unavailable.
+        """
+        try:
+            entries = os.listdir("/proc")
+        except OSError:
+            return 0
+
+        processes = {
+            entry
+            for entry in entries
+            if entry.isdigit() and self._is_our_haproxy(int(entry))
+        }
+        return len(processes)
+
+    async def compute_target_mismatch(self) -> int:
+        """Cardinality of the mismatch between the controller's broadcasted
+        targets and the targets HAProxy actually reports in its stats.
+
+        Broadcasted targets are the (backend, server) pairs the controller asked
+        this proxy to configure; reported targets are the (backend, server) pairs
+        present in HAProxy's live stats. The result is the symmetric difference,
+        so it counts both targets not yet applied to HAProxy and stale targets
+        HAProxy still reports.
+        """
+        expected = set()
+        for backend_name, backend_config in self.backend_configs.items():
+            for server in backend_config.servers:
+                expected.add((backend_name, server.name))
+            # The generated config also renders the fallback server as a real
+            # `server ... backup` line in the same backend, so it appears in
+            # get_all_stats; count it as expected or the gauge never converges
+            # to zero for backends that have a fallback.
+            if backend_config.fallback_server is not None:
+                expected.add((backend_name, backend_config.fallback_server.name))
+
+        # Note that if an entire backend scaled down (when an app is removed),
+        # get_all_stats will filter out that entire backend, so there could be
+        # stale servers in that haproxy backend but not reported by this metric.
+        # This case is rare and not really something we worry about since requests
+        # shouldn't be hitting that backend or should return errors anyways.
+        stats = await self.get_all_stats()
+        reported = {
+            (backend_name, server_name)
+            for backend_name, servers in stats.items()
+            for server_name in servers
+        }
+        return len(expected ^ reported)
+
+    async def count_ongoing_http_requests(self) -> int:
+        """Total in-flight HTTP requests across this node's HTTP app backends.
+
+        Sums each HTTP backend's aggregate `scur` (current sessions), which
+        counts request streams actively being served. Unlike the frontend scur
+        it does not count idle keep-alive connections, and unlike server-connection
+        counts it is unaffected by `http-reuse`. The aggregate row also includes
+        requests queued waiting for a server. The `-via-ingress-request-router`
+        backends are included (a router request lives in exactly one backend).
+        """
+        suffix = "-via-ingress-request-router"
+        stats = self._parse_haproxy_csv_stats(
+            await self._send_socket_command("show stat")
+        )
+        total = 0
+        for backend_name, servers in stats.items():
+            # The via-router backend is rendered from its app's BackendConfig but
+            # under a suffixed name; strip it to look the config (and protocol) up.
+            base = (
+                backend_name[: -len(suffix)]
+                if backend_name.endswith(suffix)
+                else backend_name
+            )
+            backend_config = self.backend_configs.get(base)
+            if (
+                backend_config is None
+                or backend_config.protocol != RequestProtocol.HTTP
+            ):
+                continue
+            backend_row = servers.get("BACKEND")
+            if backend_row is not None:
+                total += backend_row.current_sessions
+        return total
+
     def _retire_log_files(self, proc: asyncio.subprocess.Process) -> None:
         """Move an exited proc's std-stream logs into the bounded debug ring,
         deleting the oldest pair once the ring exceeds its cap. Only call this
         for procs that have exited — their fds must be closed."""
-        self._retired_logs.append((proc._stdout_path, proc._stderr_path))
+        self._retired_logs.append((proc._stdout_path, proc._stderr_path))  # type: ignore[attr-defined]  # pyrefly: ignore[missing-attribute]
         while len(self._retired_logs) > self._max_retained_logs:
             for path in self._retired_logs.popleft():
                 try:
@@ -843,8 +1215,10 @@ class HAProxyApi(ProxyApi):
                 stdout=stdout_file,
                 stderr=stderr_file,
             )
-        proc._stdout_path = stdout_path
-        proc._stderr_path = stderr_path
+        # stdout/stderr paths are stashed on the proc so they travel with it to
+        # _retire_log_files; asyncio's Process does not declare them.
+        proc._stdout_path = stdout_path  # type: ignore[attr-defined]  # pyrefly: ignore[missing-attribute]
+        proc._stderr_path = stderr_path  # type: ignore[attr-defined]  # pyrefly: ignore[missing-attribute]
         logger.info(
             f"Starting HAProxy (spawn #{self._spawn_seq}, pid={proc.pid}, "
             f"stdout={stdout_path}, stderr={stderr_path}); args={args}"
@@ -874,6 +1248,9 @@ class HAProxyApi(ProxyApi):
         """Perform a graceful reload of HAProxy by starting a new process with -sf."""
         try:
             old_proc = self._proc
+            # _graceful_reload only runs with a live proc; None would already
+            # crash below, so assert to narrow rather than change behavior.
+            assert old_proc is not None
             await self._wait_for_hap_availability(old_proc)
 
             # Save server state if optimization is enabled
@@ -903,6 +1280,12 @@ class HAProxyApi(ProxyApi):
             if old_proc is not None:
                 self._old_procs.append(old_proc)
 
+            # `-sf` only re-signals stranded workers on the next reload, and
+            # there is none after the final one. Re-send SIGUSR1 directly so a
+            # worker left serving stale config stops now instead of racing the
+            # client's next request.
+            self._soft_stop_old_procs()
+
             logger.info(
                 "Successfully performed graceful HAProxy reload with process restart."
             )
@@ -917,12 +1300,11 @@ class HAProxyApi(ProxyApi):
     ) -> None:
         start_time = time.time()
 
-        # TODO: update this to use health checks
         while time.time() - start_time < timeout_s:
             if proc.returncode is not None:
                 # Both streams were redirected to files at spawn; tail them.
-                stderr_text = _tail_file(proc._stderr_path)
-                stdout_text = _tail_file(proc._stdout_path)
+                stderr_text = _tail_file(proc._stderr_path)  # type: ignore[attr-defined]  # pyrefly: ignore[missing-attribute]
+                stdout_text = _tail_file(proc._stdout_path)  # type: ignore[attr-defined]  # pyrefly: ignore[missing-attribute]
                 output = stderr_text or stdout_text
 
                 raise RuntimeError(
@@ -940,7 +1322,7 @@ class HAProxyApi(ProxyApi):
 
         raise RuntimeError(
             f"HAProxy (pid={proc.pid}) did not take over the admin socket within "
-            f"{timeout_s} seconds. stderr: {_tail_file(proc._stderr_path)}"
+            f"{timeout_s} seconds. stderr: {_tail_file(proc._stderr_path)}"  # type: ignore[attr-defined]  # pyrefly: ignore[missing-attribute]
         )
 
     def _write_ingress_request_router_lua(
@@ -952,7 +1334,9 @@ class HAProxyApi(ProxyApi):
         Returns the script path, or None if no backend has both ingress
         request routers AND replicas with replica IDs.
         """
-        routers, targets = _routers_and_targets_by_backend(backends)
+        routers, targets = _routers_and_targets_by_backend(
+            backends, local_host=get_localhost_ip()
+        )
         if not routers:
             return None
 
@@ -976,13 +1360,13 @@ class HAProxyApi(ProxyApi):
             metrics_post = ""
             metrics_set_truncated = ""
 
-        content = _load_lua_template().substitute(
+        content = _load_lua_template(
+            "request_router_common.lua.tmpl", "ingress_request_router.lua.tmpl"
+        ).substitute(
             TIMEOUT_S=RAY_SERVE_HAPROXY_INGRESS_REQUEST_ROUTER_TIMEOUT_S,
             FORWARD_BODY=str(RAY_SERVE_INGRESS_REQUEST_ROUTER_FORWARD_BODY).lower(),
-            # HAProxy's req_get_headers() returns lowercase header keys,
-            # so lowercase here for the Lua lookup. Empty string disables
-            # forwarding entirely.
             SESSION_HEADER=SERVE_SESSION_ID.lower(),
+            REQUEST_PATH_HEADER=SERVE_INGRESS_ROUTER_REQUEST_PATH_HEADER,
             ROUTERS=_format_routers_lua(routers),
             REPLICA_TARGETS=_format_replica_targets_lua(targets),
             METRICS_PRE_CALL_ROUTER=metrics_pre,
@@ -997,10 +1381,44 @@ class HAProxyApi(ProxyApi):
             logger.debug(f"Wrote Lua routing script to {lua_path}")
         return lua_path
 
-    def _generate_config_file_internal(self) -> bool:
+    def _write_router_application_lua(
+        self, backends: List[BackendConfig]
+    ) -> Optional[str]:
+        """Write the router-application Lua; None if there are no routers."""
+        routers_lua = _format_router_application_pools_lua(
+            backends, local_host=get_localhost_ip()
+        )
+        if routers_lua is None:
+            return None
+
+        content = _load_lua_template(
+            "request_router_common.lua.tmpl", "router_application.lua.tmpl"
+        ).substitute(
+            TIMEOUT_S=RAY_SERVE_HAPROXY_INGRESS_REQUEST_ROUTER_TIMEOUT_S,
+            DIRECT_RESPONSE_HEADER=SERVE_ROUTER_APPLICATION_DIRECT_RESPONSE_HEADER,
+            ORIGINAL_METHOD_HEADER=SERVE_ROUTER_APPLICATION_ORIGINAL_METHOD_HEADER,
+            REQUEST_PATH_HEADER=SERVE_INGRESS_ROUTER_REQUEST_PATH_HEADER,
+            SESSION_HEADER=SERVE_SESSION_ID.lower(),
+            ROUTERS=routers_lua,
+            APPS=_format_router_target_apps_lua(backends),
+        )
+        lua_path = os.path.join(
+            os.path.dirname(self.config_file_path), "router_application.lua"
+        )
+        if _write_if_changed(lua_path, content):
+            logger.debug(f"Wrote router application Lua script to {lua_path}")
+        return lua_path
+
+    def _generate_config_file_internal(self) -> None:
         """Internal config generation without locking (for use within locked sections)."""
         try:
+            # Imported lazily so that a plain `import ray.serve` doesn't require
+            # jinja2; it's only needed when HAProxy mode is actually used.
+            from jinja2 import Environment
+
             env = Environment()
+            # Escapes names before they are rendered into set-var-fmt values.
+            env.filters["haproxy_fmt"] = _haproxy_fmt_literal
 
             # Backends are sorted in decreasing order of length of path prefix
             # to ensure that the longest path prefix match is taken first.
@@ -1010,41 +1428,92 @@ class HAProxyApi(ProxyApi):
                 key=lambda be: (-len(be.path_prefix), be.path_prefix),
             )
 
+            # HTTP backends are path-routed; gRPC backends are header-routed
+            # (by the `application` gRPC metadata) and need a different
+            # frontend / backend rendering. Split them up here so the template
+            # can iterate each set independently.
+            http_backends = [b for b in backends if b.protocol == RequestProtocol.HTTP]
+            grpc_backends = [b for b in backends if b.protocol == RequestProtocol.GRPC]
+
             # Derive from the write result: returns None when no backend has
-            # both routers and replicas with IDs (transient during scaling).
+            # replica IDs plus routers or an enabled fallback policy.
+            # The ingress request router is HTTP-only.
             ingress_request_router_lua_path = self._write_ingress_request_router_lua(
-                backends
+                http_backends
             )
             has_ingress_request_router = ingress_request_router_lua_path is not None
+            router_application_lua_path = self._write_router_application_lua(
+                http_backends
+            )
 
-            # Enrich backends with precomputed health check configuration strings
-            backends_with_health_config = [
+            # Enrich HTTP backends with precomputed health check configuration strings
+            http_backends_with_health_config = [
                 {
                     "backend": backend,
                     "health_config": backend.build_health_check_config(self.cfg),
                 }
-                for backend in backends
+                for backend in http_backends
             ]
 
-            health_route_info = self.cfg.build_health_route_info(backends)
+            # Enrich gRPC backends with precomputed health check configuration strings
+            grpc_backends_with_health_config = [
+                {
+                    "backend": backend,
+                    "health_config": backend.build_health_check_config(self.cfg),
+                }
+                for backend in grpc_backends
+            ]
+
+            # Healthz / routes only consider HTTP backends. The HAProxy `/-/healthz`
+            # and `/-/routes` endpoints are HTTP-facing.
+            health_route_info = self.cfg.build_health_route_info(http_backends)
 
             # Render healthz rules separately for readability/reuse
             healthz_template = env.from_string(HAPROXY_HEALTHZ_RULES_TEMPLATE)
             healthz_rules = healthz_template.render(
                 {
                     "config": self.cfg,
-                    "backends": backends,
+                    "backends": http_backends,
                     "health_info": health_route_info,
                 }
             )
+            grpc_healthz_template = env.from_string(HAPROXY_GRPC_HEALTHZ_RULES_TEMPLATE)
+            grpc_healthz_rules = grpc_healthz_template.render(
+                {
+                    "config": self.cfg,
+                    "backends": grpc_backends,
+                    "health_info": health_route_info,
+                }
+            )
+
+            # Generate the gRPC fallback backend with health check configuration, which only
+            # contains the head node serve proxy. This is only used for ListApplication requests
+            # since HAProxy can't construct the gRPC response itself, so it relies on the serve
+            # proxy to do so.
+            grpc_fallback_backend_with_health_config = None
+            if (
+                self.grpc_fallback_server is not None
+                and self.grpc_fallback_backend is not None
+            ):
+                grpc_fallback_backend_with_health_config = {
+                    "backend": self.grpc_fallback_backend,
+                    "health_config": self.grpc_fallback_backend.build_health_check_config(
+                        self.cfg
+                    ),
+                }
 
             config_template = env.from_string(HAPROXY_CONFIG_TEMPLATE)
             config_content = config_template.render(
                 {
                     "config": self.cfg,
-                    "backends": backends,
-                    "backends_with_health_config": backends_with_health_config,
+                    "backends": http_backends,
+                    "grpc_backends": grpc_backends,
+                    "backends_with_health_config": http_backends_with_health_config,
+                    "grpc_backends_with_health_config": (
+                        grpc_backends_with_health_config
+                    ),
                     "healthz_rules": healthz_rules,
+                    "grpc_healthz_rules": grpc_healthz_rules,
                     "route_info": health_route_info,
                     "has_ingress_request_router": has_ingress_request_router,
                     "ingress_request_router_lua_path": ingress_request_router_lua_path,
@@ -1057,8 +1526,20 @@ class HAProxyApi(ProxyApi):
                     "ingress_request_router_forward_body": (
                         RAY_SERVE_INGRESS_REQUEST_ROUTER_FORWARD_BODY
                     ),
+                    "ingress_request_router_header_prefix": (
+                        SERVE_INGRESS_ROUTER_HEADER_PREFIX
+                    ),
+                    "multiplexed_model_id_headers": (
+                        SERVE_MULTIPLEXED_MODEL_ID,
+                        SERVE_MULTIPLEXED_MODEL_ID.replace("_", "-"),
+                    ),
                     "ingress_request_router_metrics_enabled": self.cfg.ingress_request_router_metrics_enabled,
+                    "has_router_applications": router_application_lua_path is not None,
+                    "router_application_lua_path": router_application_lua_path,
+                    "metrics_enabled": self.cfg.metrics_enabled,
                     "metrics_socket_path": self.cfg.metrics_socket_path,
+                    "grpc_fallback_backend_with_health_config": grpc_fallback_backend_with_health_config,
+                    "healthy_message": HEALTHY_MESSAGE,  # the message in the response body for healthy replicas
                 }
             )
 
@@ -1088,8 +1569,7 @@ class HAProxyApi(ProxyApi):
             raise
 
     async def start(self) -> None:
-        """
-        Generate HAProxy configuration files and start the HAProxy server process.
+        """Generate HAProxy configuration files and start the HAProxy server process.
 
         This method creates the necessary configuration files and launches the HAProxy
         process in foreground mode, ensuring that the proxy is running with the latest
@@ -1301,6 +1781,31 @@ class HAProxyApi(ProxyApi):
             len(bc.servers) > 0 for bc in backend_configs.values()
         )
 
+    def set_grpc_fallback_server(self, server: Optional[ServerConfig]) -> None:
+        self.grpc_fallback_server = server
+        if server is not None:
+            self.grpc_fallback_backend = BackendConfig(
+                name="grpc_fallback_backend",
+                path_prefix="/",  # this is unused for grpc
+                protocol=RequestProtocol.GRPC,
+                servers=[server],
+            )
+        else:
+            self.grpc_fallback_backend = None
+
+    async def is_grpc_fallback_ready(self) -> bool:
+        """True iff the running HAProxy has an UP server in grpc_fallback_backend."""
+        if self.grpc_fallback_backend is None:
+            return False
+        try:
+            stats = self._parse_haproxy_csv_stats(
+                await self._send_socket_command("show stat")
+            )
+        except Exception:
+            return False
+        servers = stats.get("grpc_fallback_backend", {})
+        return any(server.is_up for server in servers.values())
+
     async def _get_running_pid(self) -> Optional[int]:
         """Pid of the HAProxy process currently answering the admin socket,
         or None if the socket is unavailable or the response is unparseable.
@@ -1327,6 +1832,81 @@ class HAProxyApi(ProxyApi):
             return False
 
 
+def haproxy_metrics_auth_required() -> bool:
+    """Whether HAProxy's exporter and stats page need the token: token auth is
+    on and RAY_AUTH_SKIP_METRICS is unset, the rule Ray's metrics endpoints use."""
+    return (
+        auth_utils.is_token_auth_enabled() and not auth_utils.is_metrics_auth_skipped()
+    )
+
+
+class _UnixHTTPConnection(http.client.HTTPConnection):
+    def __init__(self, path: str, timeout: float):
+        super().__init__("localhost", timeout=timeout)
+        self._path = path
+
+    def connect(self) -> None:
+        sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        sock.settimeout(self.timeout)
+        try:
+            sock.connect(self._path)
+        except BaseException:
+            # Close now: a failed connect never reaches self.sock, so
+            # HTTPConnection.close() wouldn't close it.
+            sock.close()
+            raise
+        self.sock = sock
+
+
+def _fetch_from_unix_socket(
+    socket_path: str, method: str, target: str, timeout_s: float
+) -> Tuple[str, str, bytes]:
+    """Returns (status line, content type, body) for one HTTP request."""
+    conn = _UnixHTTPConnection(socket_path, timeout=timeout_s)
+    try:
+        conn.request(method, target)
+        resp = conn.getresponse()
+        content_type = resp.getheader("Content-Type", "text/plain")
+        return f"{resp.status} {resp.reason}", content_type, resp.read()
+    finally:
+        conn.close()
+
+
+def make_exporter_proxy_app(cfg: HAProxyConfig, timeout_s: float = 10.0):
+    """WSGI app that forwards GETs for HAProxy's exporter and stats page to
+    HAProxy's unix-socket listener. HAProxyManager serves it behind the token
+    check, so it does no auth itself."""
+    stats_uri = cfg.stats_uri
+
+    def app(environ, start_response):
+        method = environ.get("REQUEST_METHOD")
+        path = environ.get("PATH_INFO", "")
+        is_stats = path == stats_uri or path.startswith(stats_uri + ";")
+        if method not in ("GET", "HEAD") or not (path == cfg.metrics_uri or is_stats):
+            start_response("404 Not Found", [("Content-Type", "text/plain")])
+            return [b"Not Found"]
+        query = environ.get("QUERY_STRING")
+        target = path + ("?" + query if query else "")
+        fetch = functools.partial(
+            _fetch_from_unix_socket, cfg.exporter_socket_path, method, target, timeout_s
+        )
+        try:
+            try:
+                status, content_type, body = fetch()
+            except (OSError, http.client.HTTPException):
+                # An -sf reload can reset a connection still queued on the old
+                # worker's listener; the retry reaches the new worker. -x hands
+                # the listener over and avoids this.
+                status, content_type, body = fetch()
+        except (OSError, http.client.HTTPException) as e:
+            start_response("503 Service Unavailable", [("Content-Type", "text/plain")])
+            return [f"HAProxy exporter unavailable: {e}".encode()]
+        start_response(status, [("Content-Type", content_type)])
+        return [body]
+
+    return app
+
+
 @ray.remote(num_cpus=0)
 class HAProxyManager(ProxyActorInterface):
     def __init__(
@@ -1337,6 +1917,7 @@ class HAProxyManager(ProxyActorInterface):
         node_id: NodeId,
         node_ip_address: str,
         logging_config: LoggingConfig,
+        tracing_config=None,
         long_poll_client: Optional[LongPollClient] = None,
     ):  # noqa: F821
         super().__init__(
@@ -1358,6 +1939,11 @@ class HAProxyManager(ProxyActorInterface):
         self.event_loop = get_or_create_event_loop()
 
         self._target_groups: List[TargetGroup] = []
+        self._target_groups_version: Optional[RoutingConfigVersion] = None
+        self._received_target_groups_broadcast = False
+        # Last target groups installed by a successful HAProxy reload.
+        self._applied_target_groups: Optional[List[TargetGroup]] = None
+        self._applied_target_groups_version: Optional[RoutingConfigVersion] = None
 
         # Fallback targets.
         self._http_fallback_target: Optional[Target] = None
@@ -1397,8 +1983,13 @@ class HAProxyManager(ProxyActorInterface):
         )
 
         is_head = self._node_id == get_head_node_id()
+        apply_per_node_port_overrides(self._http_options, self._grpc_options, is_head)
 
-        startup_msg = f"HAProxy starting on node {self._node_id} (HTTP port: {self._http_options.port})."
+        startup_msg = f"HAProxy starting on node {self._node_id} (HTTP port: {self._http_options.port}"
+        if is_grpc_enabled(self._grpc_options):
+            startup_msg += f", gRPC port: {self._grpc_options.port})."
+        else:
+            startup_msg += ")."
         logger.info(startup_msg)
         logger.debug(
             f"Configure HAProxyManager actor {ray.get_runtime_context().get_actor_id()} "
@@ -1411,9 +2002,11 @@ class HAProxyManager(ProxyActorInterface):
             d, f = os.path.split(path)
             return os.path.join(d, self._node_id, f)
 
+        metrics_auth_required = haproxy_metrics_auth_required()
         self._haproxy = HAProxyApi(
             cfg=HAProxyConfig(
                 http_options=http_options,
+                grpc_options=grpc_options,
                 is_head=is_head,
                 socket_path=_per_node(RAY_SERVE_HAPROXY_SOCKET_PATH),
                 server_state_base=os.path.join(
@@ -1421,37 +2014,49 @@ class HAProxyManager(ProxyActorInterface):
                 ),
                 server_state_file=_per_node(RAY_SERVE_HAPROXY_SERVER_STATE_FILE),
                 metrics_socket_path=_per_node(RAY_SERVE_HAPROXY_METRICS_SOCKET_PATH),
+                metrics_auth_required=metrics_auth_required,
+                exporter_socket_path=_per_node(RAY_SERVE_HAPROXY_EXPORTER_SOCKET_PATH),
             ),
             config_file_path=_per_node(RAY_SERVE_HAPROXY_CONFIG_FILE_LOC),
         )
 
-        # Start the metrics collector for the ingress request router. The
-        # collector owns its own dgram socket and transport lifecycle; we
-        # only hold a reference so we can close it on shutdown.
-        self._metrics_collector: Optional["HAProxyMetricsCollector"] = None
+        self._exporter_server = None
+        if metrics_auth_required:
+            self._exporter_server = start_metrics_wsgi_server(
+                self._haproxy.cfg.metrics_port,
+                make_exporter_proxy_app(self._haproxy.cfg),
+                # Co-located managers share the port when HAProxy uses
+                # SO_REUSEPORT for its own listeners.
+                reuse_port=self._haproxy.cfg.enable_so_reuseport,
+            )
+
+        self._metrics_collector = None
         self._metrics_attach_task: Optional[asyncio.Task] = None
-        if self._haproxy.cfg.ingress_request_router_metrics_enabled:
+        if RAY_SERVE_HAPROXY_METRICS_ENABLED:
             from ray.serve._private.haproxy_metrics import HAProxyMetricsCollector
 
+            # The metrics collector owns all serve_haproxy_* metrics for this proxy.
+            # It is constructed if haproxy metrics are enabled. start() always begins
+            # node-level polling and binds the per-request dgram reader (where
+            # HAProxy writes one line per request). It returns its bind task (which
+            # ready() awaits to surface bind failures).
+            self._metrics_collector = HAProxyMetricsCollector(
+                haproxy_api=self._haproxy,
+                node_id=self._node_id,
+                node_ip_address=self._node_ip_address,
+            )
             try:
-                os.makedirs(
-                    os.path.dirname(self._haproxy.cfg.metrics_socket_path),
-                    exist_ok=True,
-                )
-                self._metrics_collector = HAProxyMetricsCollector()
-                self._metrics_attach_task = self.event_loop.create_task(
-                    self._metrics_collector.bind_and_attach(
-                        self._haproxy.cfg.metrics_socket_path,
-                        loop=self.event_loop,
-                    )
+                self._metrics_attach_task = self._metrics_collector.start(
+                    self.event_loop,
+                    poll_interval_s=RAY_SERVE_HAPROXY_METRICS_REPORT_INTERVAL_S,
+                    metrics_socket_path=self._haproxy.cfg.metrics_socket_path,
                 )
             except Exception:
                 logger.exception(
-                    "Failed to construct ingress-request-router metrics "
-                    "collector; metrics will not be emitted. HAProxy will "
-                    "continue normally."
+                    "Failed to start the per-request metrics datagram reader; "
+                    "per-request metrics will not be emitted. Node-level metrics "
+                    "and HAProxy continue normally."
                 )
-                self._metrics_collector = None
 
         self._haproxy_start_task = self.event_loop.create_task(self._haproxy.start())
 
@@ -1476,6 +2081,11 @@ class HAProxyManager(ProxyActorInterface):
         except Exception as e:
             raise RuntimeError(f"Error stopping HAProxy during shutdown: {e}")
         finally:
+            if self._exporter_server is not None:
+                # Free the metrics port before a replacement manager binds it.
+                await asyncio.to_thread(self._exporter_server.shutdown)
+                self._exporter_server.server_close()
+                self._exporter_server = None
             if self._metrics_collector is not None:
                 self._metrics_collector.close()
                 self._metrics_collector = None
@@ -1493,13 +2103,13 @@ class HAProxyManager(ProxyActorInterface):
                 try:
                     await self._metrics_attach_task
                 except Exception:
+                    # Only the dgram reader failed. Leave the collector intact
+                    # so node-level gauges keep polling; the socket is left
+                    # unbound (bind_and_attach is safe to have failed).
                     logger.exception(
                         "Failed to bind/attach metrics dgram reader; "
-                        "metrics will not be drained."
+                        "per-request router metrics will not be drained."
                     )
-                    if self._metrics_collector is not None:
-                        self._metrics_collector.close()
-                        self._metrics_collector = None
         except Exception as e:
             logger.exception("Failed to start HAProxy.")
             raise e from None
@@ -1514,7 +2124,11 @@ class HAProxyManager(ProxyActorInterface):
             ]
         )
 
-    async def serving(self, wait_for_applications_running: bool = True) -> None:
+    async def serving(
+        self,
+        wait_for_applications_running: bool = True,
+        expected_routing_config_version: Optional[RoutingConfigVersion] = None,
+    ) -> None:
         """Wait for the HAProxy process to be ready to serve requests."""
         if not wait_for_applications_running:
             return
@@ -1524,20 +2138,69 @@ class HAProxyManager(ProxyActorInterface):
             if self._is_draining():
                 return
 
+            # We have not received an update from the controller yet. We always
+            # get at least one broadcast even if target groups is empty (e.g.
+            # when the user sets route_prefix=None).
+            if not self._received_target_groups_broadcast:
+                await asyncio.sleep(0.2)
+                continue
+
+            # Desired target groups may have a pending HAProxy reload.
+            target_groups = self._applied_target_groups
+            if target_groups is None:
+                await asyncio.sleep(0.2)
+                continue
+
+            if expected_routing_config_version is not None:
+                if (
+                    self._applied_target_groups_version is None
+                    or not self._applied_target_groups_version.is_at_least(
+                        expected_routing_config_version
+                    )
+                ):
+                    await asyncio.sleep(0.2)
+                    continue
+
+            # When gRPC is used, haproxy relies on the fallback serve proxy to
+            # handle ListApplications requests, so we block until HAProxy reprots
+            # an UP server in grpc_fallback_backend.
+            if (
+                is_grpc_enabled(self._grpc_options)
+                and not await self._haproxy.is_grpc_fallback_ready()
+            ):
+                await asyncio.sleep(0.2)
+                continue
+
+            desired_backend_servers = {
+                self._generate_backend_name(tg): {
+                    self._generate_server_name(target) for target in tg.targets
+                }
+                for tg in target_groups
+            }
+            fallback_servers = {
+                self._generate_server_name(target)
+                for target in (
+                    self._http_fallback_target,
+                    self._grpc_fallback_target,
+                )
+                if target is not None
+            }
+
             try:
-                all_backends = set()
-                ready_backends = set()
                 stats = await self._haproxy.get_all_stats()
+                ready_backends = set()
                 for backend, servers in stats.items():
-                    # The backend name is suffixed with the protocol. We omit
-                    # grpc backends for now since they aren't supported yet.
-                    if backend.lower().startswith("grpc"):
-                        continue
-                    all_backends.add(backend)
-                    for server in servers.values():
-                        if server.is_up:
+                    desired_servers = desired_backend_servers.get(backend, set())
+                    desired_servers.update(fallback_servers)
+                    for server_name, server in servers.items():
+                        if not server.is_up:
+                            continue
+
+                        if server_name in desired_servers:
                             ready_backends.add(backend)
-                ready_to_serve = all_backends == ready_backends
+                            break
+
+                ready_to_serve = set(desired_backend_servers) == ready_backends
             except Exception:
                 pass
             if not ready_to_serve:
@@ -1586,6 +2249,8 @@ class HAProxyManager(ProxyActorInterface):
         """
         if not self._is_draining():
             return False
+        # _is_draining() is True here, so _draining_start_time is set.
+        assert self._draining_start_time is not None
         if (time.time() - self._draining_start_time) <= PROXY_MIN_DRAINING_PERIOD_S:
             return False
         if self._haproxy.has_alive_old_procs():
@@ -1602,7 +2267,7 @@ class HAProxyManager(ProxyActorInterface):
         return await self._haproxy.is_running()
 
     def pong(self) -> str:
-        pass
+        return "pong"
 
     async def receive_asgi_messages(self, request_metadata: RequestMetadata) -> bytes:
         raise NotImplementedError("Receive is handled by the ingress replicas.")
@@ -1619,26 +2284,39 @@ class HAProxyManager(ProxyActorInterface):
         """Get the logging configuration (for testing purposes)."""
         log_file_path = None
         for handler in logger.handlers:
-            if isinstance(handler, logging.handlers.MemoryHandler):
+            if isinstance(handler, logging.handlers.MemoryHandler) and isinstance(
+                handler.target, logging.FileHandler
+            ):
                 log_file_path = handler.target.baseFilename
 
         return log_file_path
+
+    def _generate_server_name(self, target: Target) -> str:
+        # The server name is derived from the replica's actor name, with the
+        # format `SERVE_REPLICA::<app>#<deployment>#<replica_id>`, or the
+        # proxy's actor name, with the format `SERVE_PROXY_ACTOR-<node_id>`.
+        # Special characters in the names are converted to comply with haproxy
+        # config's allowed characters, e.g. `#` -> `-`.
+        return self.get_safe_name(target.name)
 
     def _target_to_server(self, target: Target) -> ServerConfig:
         """Convert a target to a server."""
         # Use localhost if target is on the same node as HAProxy
         host = get_localhost_ip() if target.ip == self._node_ip_address else target.ip
         return ServerConfig(
-            # The server name is derived from the replica's actor name, with the
-            # format `SERVE_REPLICA::<app>#<deployment>#<replica_id>`, or the
-            # proxy's actor name, with the format `SERVE_PROXY_ACTOR-<node_id>`.
-            # Special characters in the names are converted to comply with haproxy
-            # config's allowed characters, e.g. `#` -> `-`.
-            name=self.get_safe_name(target.name),
+            name=self._generate_server_name(target),
             host=host,
             port=target.port,
             # Unsanitized actor name; matches what /internal/route returns.
             replica_id=target.name,
+        )
+
+    def _generate_backend_name(self, target_group: TargetGroup) -> str:
+        # The name is lowercased and formatted as <protocol>-<app_name>. Special
+        # characters in the name are converted to comply with haproxy config's
+        # allowed characters, e.g. `#` -> `-`.
+        return self.get_safe_name(
+            f"{target_group.protocol.value.lower()}-{target_group.app_name}"
         )
 
     def _create_backend_config(
@@ -1659,17 +2337,16 @@ class HAProxyManager(ProxyActorInterface):
             fallback_server = self._target_to_server(fallback_target)
 
         return BackendConfig(
-            # The name is lowercased and formatted as <protocol>-<app_name>. Special
-            # characters in the name are converted to comply with haproxy config's
-            # allowed characters, e.g. `#` -> `-`.
-            name=self.get_safe_name(
-                f"{target_group.protocol.value.lower()}-{target_group.app_name}"
-            ),
+            name=self._generate_backend_name(target_group),
             path_prefix=target_group.route_prefix,
             servers=servers,
             ingress_request_router_servers=ingress_request_router_servers,
+            ingress_router_fallback=target_group.ingress_router_fallback,
             app_name=target_group.app_name,
+            ingress_deployment_name=target_group.ingress_deployment_name,
             fallback_server=fallback_server,
+            protocol=target_group.protocol,
+            is_router_application=target_group.is_router_application,
         )
 
     async def _reload_haproxy(self) -> None:
@@ -1681,8 +2358,11 @@ class HAProxyManager(ProxyActorInterface):
             await self._haproxy.reload()
 
     async def _update_haproxy_backends(self) -> None:
+        # Preserve the exact target groups installed by this reload.
+        target_groups = self._target_groups
+        target_groups_version = self._target_groups_version
         backend_configs = []
-        for target_group in self._target_groups:
+        for target_group in target_groups:
             fallback_target = None
             if target_group.protocol == RequestProtocol.HTTP:
                 fallback_target = self._http_fallback_target
@@ -1702,10 +2382,22 @@ class HAProxyManager(ProxyActorInterface):
         }
 
         self._haproxy.set_backend_configs(name_to_backend_configs)
-        await self._reload_haproxy()
 
-    def update_target_groups(self, target_groups: List[TargetGroup]) -> None:
-        self._target_groups = target_groups
+        grpc_fallback_server = (
+            self._target_to_server(self._grpc_fallback_target)
+            if self._grpc_fallback_target is not None
+            else None
+        )
+        self._haproxy.set_grpc_fallback_server(grpc_fallback_server)
+
+        await self._reload_haproxy()
+        self._applied_target_groups = target_groups
+        self._applied_target_groups_version = target_groups_version
+
+    def update_target_groups(self, routing_config: RoutingConfigSnapshot) -> None:
+        self._target_groups = routing_config.target_groups
+        self._target_groups_version = routing_config.version
+        self._received_target_groups_broadcast = True
         self._schedule_haproxy_update()
 
     def update_fallback_targets(

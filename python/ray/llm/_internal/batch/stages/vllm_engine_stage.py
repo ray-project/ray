@@ -17,7 +17,11 @@ import torch
 from pydantic import BaseModel, Field, root_validator
 
 if TYPE_CHECKING:
-    from vllm.inputs import MultiModalDataDict
+    try:
+        # vLLM >= 0.19: MultiModalDataDict moved to vllm.inputs.llm
+        from vllm.inputs.llm import MultiModalDataDict
+    except ImportError:
+        from vllm.inputs import MultiModalDataDict
 else:
     MultiModalDataDict = Any
 
@@ -45,6 +49,34 @@ logger = logging.getLogger(__name__)
 
 # Length of prompt snippet to surface in case of recoverable error
 _MAX_PROMPT_LENGTH_IN_ERROR = 500
+
+
+# Module-level cache for vLLM prompt classes. Populated on first call to
+# _get_vllm_prompt_classes() so that import resolution (and the try/except)
+# only happens once rather than on every inference request.
+_VLLM_PROMPT_CLASSES = None
+
+
+def _get_vllm_prompt_classes():
+    """Return (TokensPrompt, TextPrompt) compatible with both old and new vLLM.
+
+    Starting from vLLM >= 0.19, the ``data.py`` submodule was removed and
+    ``TokensPrompt`` / ``TextPrompt`` were moved to ``vllm.inputs.llm``.
+    They are no longer re-exported from ``vllm.inputs`` directly.
+    This helper abstracts that difference so the rest of the code works
+    with any supported vLLM version.
+    """
+    global _VLLM_PROMPT_CLASSES
+    if _VLLM_PROMPT_CLASSES is None:
+        try:
+            # vLLM >= 0.19: classes live in vllm.inputs.llm and are NOT
+            # re-exported from vllm.inputs.__init__.
+            from vllm.inputs.llm import TextPrompt, TokensPrompt
+        except ImportError:
+            # vLLM < 0.19: classes were re-exported from vllm.inputs directly.
+            from vllm.inputs import TextPrompt, TokensPrompt  # type: ignore[no-redef]
+        _VLLM_PROMPT_CLASSES = (TokensPrompt, TextPrompt)
+    return _VLLM_PROMPT_CLASSES
 
 
 class vLLMEngineRequest(BaseModel):
@@ -228,7 +260,6 @@ class vLLMEngineWrapper:
         self.request_id = 0
         self.idx_in_batch_column = idx_in_batch_column
         self.task_type = kwargs.pop("task_type", vLLMTaskType.GENERATE)
-        self._image_row_column_warning_logged = False
 
         # Use model_source in kwargs["model"] because "model" is actually
         # the model source in vLLM.
@@ -392,32 +423,7 @@ class vLLMEngineWrapper:
 
         multimodal_data = row.pop("multimodal_data", None)
 
-        # TODO (jeffreywang): Remove the legacy `image` row column path in Ray 2.58.0.
-        if "image" in row:
-            legacy_image = row.pop("image")
-            if not self._image_row_column_warning_logged:
-                logger.warning(
-                    "The 'image' input column is deprecated. Provide images via "
-                    "the 'multimodal_data' column (e.g. multimodal_data="
-                    "{'image': [...]}), or enable `prepare_multimodal_stage` to "
-                    "populate it automatically from chat messages."
-                )
-                self._image_row_column_warning_logged = True
-            if legacy_image is not None and len(legacy_image) > 0:
-                if multimodal_data is None:
-                    multimodal_data = {"image": legacy_image}
-                elif "image" in multimodal_data:
-                    raise ValueError(
-                        "Both the deprecated 'image' column and "
-                        "multimodal_data['image'] are set on the same row. "
-                        "Remove the 'image' column and pass images only via "
-                        "multimodal_data['image']."
-                    )
-                else:
-                    multimodal_data = {**multimodal_data, "image": legacy_image}
-
-        # TODO (jeffreywang): Remove in Ray 2.58.0 as we decouple the multimodal
-        # processor from the vLLM engine; these kwargs become unneeded here.
+        # Pass multimodal settings through to vLLM's prompt API.
         mm_processor_kwargs = row.pop("mm_processor_kwargs", None)
         multimodal_uuids = row.pop("multimodal_uuids", None)
 
@@ -509,10 +515,16 @@ class vLLMEngineWrapper:
             The output of the request.
         """
 
-        import vllm
+        import vllm  # noqa: F401  (needed for vllm.outputs, vllm.SamplingParams, etc.)
+
+        # Use the compatibility helper to support both vLLM < 0.19 (where
+        # TokensPrompt/TextPrompt were exported from vllm.inputs) and
+        # vLLM >= 0.19 (where they live in vllm.inputs.llm and are NOT
+        # re-exported). See: https://github.com/ray-project/ray/issues/64275
+        TokensPrompt, TextPrompt = _get_vllm_prompt_classes()
 
         if request.prompt_token_ids is not None:
-            llm_prompt = vllm.inputs.TokensPrompt(
+            llm_prompt = TokensPrompt(
                 prompt_token_ids=request.prompt_token_ids,
                 multi_modal_data=request.multimodal_data,
                 mm_processor_kwargs=request.mm_processor_kwargs,
@@ -520,7 +532,7 @@ class vLLMEngineWrapper:
             )
         else:
             assert request.prompt
-            llm_prompt = vllm.inputs.TextPrompt(
+            llm_prompt = TextPrompt(
                 prompt=request.prompt,
                 multi_modal_data=request.multimodal_data,
                 mm_processor_kwargs=request.mm_processor_kwargs,
@@ -545,6 +557,7 @@ class vLLMEngineWrapper:
                 request_id=str(request.request_id),
                 prompt=llm_prompt,
                 sampling_params=request.params,
+                tokenization_kwargs=request.tokenization_kwargs,
                 lora_request=request.lora_request,
             )
 
@@ -590,8 +603,7 @@ class vLLMEngineStageUDF(StatefulStageUDF):
         should_continue_on_error: bool = False,
         log_engine_metrics: bool = True,
     ):
-        """
-        Initialize the vLLMEngineStageUDF.
+        """Initialize the vLLMEngineStageUDF.
 
         Args:
             data_column: The data column name.
@@ -670,8 +682,7 @@ class vLLMEngineStageUDF(StatefulStageUDF):
         self,
         engine_kwargs: Dict[str, Any],
     ) -> Dict[str, Any]:
-        """
-        Normalize the engine kwargs.
+        """Normalize the engine kwargs.
 
         Args:
             engine_kwargs: The kwargs to normalize.
@@ -862,9 +873,7 @@ def _ray_scheduling_strategy_fn(
 
 
 class vLLMEngineStage(StatefulStage):
-    """
-    A stage that runs vLLM engine.
-    """
+    """A stage that runs vLLM engine."""
 
     fn: Type[StatefulStageUDF] = vLLMEngineStageUDF
 
@@ -978,14 +987,14 @@ class vLLMEngineStage(StatefulStage):
         ret = {
             "prompt": "The text prompt (str). Required if tokenized_prompt is not provided. Either prompt or tokenized_prompt must be provided.",
             "tokenized_prompt": "The tokenized prompt. Required if prompt is not provided. Either prompt or tokenized_prompt must be provided.",
-            "image": "[DEPRECATED] The image(s) for multimodal input. Prefer `multimodal_data={'image': [...]}` or enable `prepare_multimodal_stage`.",
             "model": "The model to use for this request. If the model is different from the "
             "model set in the stage, then this is a LoRA request.",
             "multimodal_data": "The multimodal data to pass to the model, if the model supports it.",
             "mm_processor_kwargs": "The kwargs for the engine's multimodal processor.",
             "multimodal_uuids": "User-specified UUIDs for multimodal items, mapped by modality.",
         }
-        if self._get_task_type() == vLLMTaskType.EMBED:
+        task_type = self._get_task_type()
+        if task_type == vLLMTaskType.EMBED:
             ret["pooling_params"] = (
                 "The pooling parameters. See "
                 "https://docs.vllm.ai/en/latest/api/vllm/#vllm.PoolingParams "
@@ -995,7 +1004,19 @@ class vLLMEngineStage(StatefulStage):
                 "Tokenization keyword arguments passed to the vLLM engine. "
                 "Use this to control prompt truncation, e.g. "
                 '{"truncation": true, "max_length": 512}. '
-                "See https://docs.vllm.ai/en/latest/features/input_processing.html "
+                "See "
+                "https://docs.vllm.ai/en/latest/api/vllm/entrypoints/pooling/offline/#vllm.entrypoints.pooling.offline.PoolingOfflineMixin.embed "
                 "for details."
+            )
+        elif task_type == vLLMTaskType.GENERATE:
+            ret["tokenization_kwargs"] = (
+                "Tokenization keyword arguments passed to the vLLM engine. "
+                "Use this to control prompt truncation, e.g. "
+                '{"truncation": true, "max_length": 512}. Truncation also '
+                "applies to a tokenized_prompt. vLLM keeps the last max_length "
+                "tokens for generation and the first for pooling; set "
+                '"truncation_side" to "left" (last) or "right" (first) to choose. '
+                "Leave room for the generated tokens: max_length bounds the "
+                "prompt only."
             )
         return ret

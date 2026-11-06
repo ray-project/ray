@@ -1,3 +1,6 @@
+.. meta::
+   :description: CLI reference for inspecting live Ray state with ray list, ray get, ray summary, and ray logs across tasks, actors, objects, and nodes.
+
 .. _state-api-cli-ref:
 
 State CLI

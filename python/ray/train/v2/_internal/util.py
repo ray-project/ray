@@ -149,6 +149,16 @@ def time_monotonic():
     return time.monotonic()
 
 
+def time_seconds():
+    """Wall-clock time in seconds since the epoch.
+
+    Separate from `time_monotonic` because preemption deadlines from Ray Core
+    are epoch-based timestamps, not monotonic. Wrapped here so it can be mocked
+    in tests.
+    """
+    return time.time()
+
+
 def _copy_doc(copy_func):
     def wrapped(func):
         func.__doc__ = copy_func.__doc__
@@ -161,8 +171,7 @@ def _copy_doc(copy_func):
 def invoke_context_managers(
     context_managers: List[ContextManager],
 ) -> Generator[None, None, None]:
-    """
-    Utility to invoke a list of context managers and yield sequentially.
+    """Utility to invoke a list of context managers and yield sequentially.
 
     Args:
         context_managers: List of context managers to invoke.

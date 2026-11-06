@@ -273,6 +273,75 @@ def test_push(init):
     assert len(pool._pending_submits) == 0
 
 
+def test_dead_actor_is_evicted(init):
+    # https://github.com/ray-project/ray/issues/50313
+    @ray.remote
+    class MyActor:
+        def __init__(self, healthy):
+            self.healthy = healthy
+
+        def run(self, x):
+            if not self.healthy:
+                ray.actor.exit_actor()
+            return x
+
+    good = MyActor.remote(True)
+    bad = MyActor.remote(False)
+    pool = ActorPool([good, bad])
+
+    results = []
+    for i in range(6):
+        pool.submit(lambda a, v: a.run.remote(v), i)
+        try:
+            results.append(pool.get_next_unordered())
+        except ray.exceptions.RayActorError:
+            pass
+
+    assert sorted(results) == [1, 2, 3, 4, 5]
+    assert bad not in pool._idle_actors
+    assert len(pool._idle_actors) == 1
+
+
+def test_task_error_keeps_actor(init):
+    # A failing task does not kill the actor, so it must stay in the pool.
+    @ray.remote
+    class MyActor:
+        def run(self, x):
+            if x == 0:
+                raise ValueError("boom")
+            return x
+
+    actor = MyActor.remote()
+    pool = ActorPool([actor])
+
+    pool.submit(lambda a, v: a.run.remote(v), 0)
+    with pytest.raises(ray.exceptions.RayTaskError):
+        pool.get_next()
+    assert pool._idle_actors == [actor]
+
+    pool.submit(lambda a, v: a.run.remote(v), 1)
+    assert pool.get_next() == 1
+
+
+def test_unavailable_actor_is_kept(init, monkeypatch):
+    @ray.remote
+    class MyActor:
+        def run(self):
+            return 1
+
+    actor = MyActor.remote()
+    pool = ActorPool([actor])
+    pool.submit(lambda a, _: a.run.remote(), None)
+
+    def raise_unavailable(_):
+        raise ray.exceptions.ActorUnavailableError("temporarily unavailable", None)
+
+    monkeypatch.setattr(ray, "get", raise_unavailable)
+    with pytest.raises(ray.exceptions.ActorUnavailableError):
+        pool.get_next()
+    assert pool._idle_actors == [actor]
+
+
 if __name__ == "__main__":
 
     sys.exit(pytest.main(["-sv", __file__]))

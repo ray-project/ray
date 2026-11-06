@@ -4,11 +4,10 @@ import pickle
 import uuid
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-from typing import Any, Dict, Optional, Set, Tuple
-
-import grpc
+from typing import Any, Dict, Optional, Set, Tuple, Union
 
 import ray
+from ray._private.grpc_utils import init_grpc_channel
 from ray.actor import ActorHandle
 from ray.serve._private.common import (
     DeploymentID,
@@ -184,6 +183,10 @@ class gRPCReplicaWrapper(ReplicaWrapper):
 class RunningReplica:
     """Contains info on a running replica.
     Also defines the interface for a request router to talk to a replica.
+
+    Args:
+        replica_info: Information about the replica, such as its ID, actor
+            handle, and multiplexed model IDs.
     """
 
     def __init__(self, replica_info: RunningReplicaInfo):
@@ -194,7 +197,9 @@ class RunningReplica:
         # This avoids the borrower-of-borrower pattern while minimizing GCS lookups.
         actor_handle = replica_info.get_actor_handle()
         if replica_info.is_cross_language:
-            self._actor_handle = JavaActorHandleProxy(actor_handle)
+            self._actor_handle: Union[
+                ActorHandle, JavaActorHandleProxy
+            ] = JavaActorHandleProxy(actor_handle)
         else:
             self._actor_handle = actor_handle
 
@@ -204,7 +209,7 @@ class RunningReplica:
 
         # Replica wrappers
         self._actor_replica_wrapper = ActorReplicaWrapper(self._actor_handle)
-        self._grpc_replica_wrapper = None
+        self._grpc_replica_wrapper: Optional[gRPCReplicaWrapper] = None
 
     def update_replica_info(self, replica_info: RunningReplicaInfo) -> None:
         """Update mutable fields from a new RunningReplicaInfo.
@@ -220,6 +225,9 @@ class RunningReplica:
         will reflect the new values. Fields that are cached separately
         (e.g., _actor_handle) are NOT refreshed here because they are tied
         to the replica's identity and should never change for a live replica.
+
+        Args:
+            replica_info: The replica's updated information.
         """
         self._replica_info = replica_info
         self._multiplexed_model_ids = set(replica_info.multiplexed_model_ids)
@@ -237,7 +245,9 @@ class RunningReplica:
     @property
     def node_id(self) -> str:
         """Node ID of the node this replica is running on."""
-        return self._replica_info.node_id
+        # NOTE: `RunningReplicaInfo.node_id` is `Optional[str]`, so this can
+        # actually return `None` despite the declared return type.
+        return self._replica_info.node_id  # type: ignore[return-value]
 
     @property
     def availability_zone(self) -> Optional[str]:
@@ -281,8 +291,12 @@ class RunningReplica:
 
     @property
     def stub(self):
+        """gRPC stub for sending requests to the replica, created on first access."""
         if self._stub is None:
-            self._channel = grpc.aio.insecure_channel(
+            # Created via the shared helper so that Ray's authentication client
+            # interceptors and TLS credentials are applied; a raw insecure
+            # channel would be rejected by the replica's authenticated server.
+            self._channel = init_grpc_channel(
                 f"{self._replica_info.node_ip}:{self._replica_info.port}",
                 options=[
                     (
@@ -290,6 +304,7 @@ class RunningReplica:
                         RAY_SERVE_REPLICA_GRPC_MAX_MESSAGE_LENGTH,
                     )
                 ],
+                asynchronous=True,
             )
             self._stub = ASGIServiceStub(self._channel)
 
@@ -308,12 +323,23 @@ class RunningReplica:
         )
 
     def push_proxy_handle(self, handle: ActorHandle):
-        """When on proxy, push proxy's self handle to replica"""
+        """When on proxy, push proxy's self handle to replica
+
+        Args:
+            handle: The proxy's own actor handle.
+        """
         self._actor_handle.push_proxy_handle.remote(handle)
 
     async def get_queue_len(self, *, deadline_s: float) -> int:
         """Returns current queue len for the replica.
         `deadline_s` is passed to verify backoff for testing.
+
+        Args:
+            deadline_s: Deadline, in seconds, for the replica to respond. This
+                implementation doesn't use it.
+
+        Returns:
+            The number of requests ongoing on the replica.
         """
         # NOTE(edoakes): the `get_num_ongoing_requests` method name is shared by
         # the Python and Java replica implementations. If you change it, you need to
@@ -328,7 +354,16 @@ class RunningReplica:
     def try_send_request(
         self, pr: PendingRequest, with_rejection: bool
     ) -> ReplicaResult:
-        """Try to send the request to this replica. It may be rejected."""
+        """Try to send the request to this replica. It may be rejected.
+
+        Args:
+            pr: The request to send.
+            with_rejection: Whether the replica can reject the request. Java
+                replicas don't support rejection.
+
+        Returns:
+            The result of the request.
+        """
         wrapper = self._get_replica_wrapper(pr)
         if self._replica_info.is_cross_language:
             assert not with_rejection, "Request rejection not supported for Java."
@@ -344,6 +379,16 @@ class RunningReplica:
         Returns a unique token that can be used to release the slot later.
         This is used in the choose_replica/dispatch pattern to track
         reservations that haven't been dispatched yet.
+
+        Args:
+            request_metadata: Metadata of the request the slot is for.
+
+        Returns:
+            A tuple of the slot token and the replica's queue length info, which
+            says whether the replica accepted the reservation.
+
+        Raises:
+            RuntimeError: If the replica is a Java replica.
         """
         if self._replica_info.is_cross_language:
             raise RuntimeError("Slot reservation not supported for Java.")
@@ -375,6 +420,15 @@ class RunningReplica:
         reserving a slot (e.g., due to an error or cancellation).
 
         Returns the replica's reported num_ongoing_requests after the release.
+
+        Args:
+            slot_token: The token that ``reserve_slot`` returned.
+
+        Returns:
+            The replica's number of ongoing requests after the release.
+
+        Raises:
+            RuntimeError: If the replica is a Java replica.
         """
         if self._replica_info.is_cross_language:
             raise RuntimeError("Slot reservation not supported for Java.")
@@ -470,8 +524,8 @@ class ReplicaSelection:
         or None if this selection was created without a reservation.
         """
         if self._slot_token is None:
-            return
+            return  # type: ignore[return-value]
         if self._dispatched and not force:
-            return
+            return  # type: ignore[return-value]
 
         return await self._replica.release_slot(self._slot_token)

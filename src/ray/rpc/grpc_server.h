@@ -51,7 +51,8 @@ namespace rpc {
           AUTH_TYPE == ClusterIdAuthType::NO_AUTH ? ClusterID::Nil() : cluster_id, \
           auth_token,                                                              \
           MAX_ACTIVE_RPCS,                                                         \
-          RECORD_METRICS));                                                        \
+          RECORD_METRICS,                                                          \
+          server_metrics));                                                        \
   server_call_factories->emplace_back(std::move(HANDLER##_call_factory));
 
 /// Define a RPC service handler with gRPC server metrics enabled.
@@ -81,7 +82,7 @@ namespace rpc {
 
 class GrpcService;
 
-/// Class that represents an gRPC server.
+/// Class that represents a gRPC server.
 ///
 /// A `GrpcServer` listens on a specific port. It owns
 /// 1) a `ServerCompletionQueue` that is used for polling events from gRPC,
@@ -98,7 +99,8 @@ class GrpcServer {
   /// \param[in] port The port to bind this server to. If it's 0, a random available port
   ///  will be chosen.
   /// \param[in] listen_to_localhost_only If true, binds only on localhost, not other
-  /// interfaces. \param[in] num_threads Number of gRPC completion queue threads to use.
+  /// interfaces.
+  /// \param[in] num_threads Number of gRPC completion queue threads to use.
   /// \param[in] keepalive_time_ms Connection keepalive time (ms).
   /// \param[in] auth_token Authentication token that clients must present when making
   /// RPCs to the server. If nullptr, no authentication token is required.
@@ -200,6 +202,8 @@ class GrpcServer {
   /// The `ServerCallFactory` objects.
   std::vector<std::unique_ptr<ServerCallFactory>> server_call_factories_;
 
+  GrpcServerMetrics server_metrics_;
+
   /// The number of threads and completion queues the server is polling from for incoming
   /// requests. These threads are also responsible for creating the proto request objects.
   int num_threads_;
@@ -250,11 +254,13 @@ class GrpcService {
   /// and the maximum number of concurrent requests that this gRPC server can handle.
   /// \param[in] cluster_id The cluster ID for authentication.
   /// \param[in] auth_token The authentication token for token-based authentication.
+  /// \param[in] server_metrics The server's metric objects.
   virtual void InitServerCallFactories(
       const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
       std::vector<std::unique_ptr<ServerCallFactory>> *server_call_factories,
       const ClusterID &cluster_id,
-      std::shared_ptr<const AuthenticationToken> auth_token) = 0;
+      std::shared_ptr<const AuthenticationToken> auth_token,
+      GrpcServerMetrics &server_metrics) = 0;
 
   /// The main event loop, to which the service handler functions will be posted.
   instrumented_io_context &main_service_;

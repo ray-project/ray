@@ -1,3 +1,9 @@
+---
+myst:
+  html_meta:
+    description: "Launch a Ray cluster on GCP with the cluster launcher, including service account configuration for worker nodes."
+---
+
 # Launching Ray Clusters on GCP
 
 This guide details the steps needed to start a Ray cluster in GCP.
@@ -15,8 +21,7 @@ pip install -U ray[default]
 
 ## Install and Configure Google API Client
 
-If you have never created a Google APIs Console project, read google Cloud's [Managing Projects page](https://cloud.google.com/resource-manager/docs/creating-managing-projects?visit_id=637952351450670909-433962807&rd=1) and create a project in the [Google API Console](https://console.developers.google.com/).
-Next, install the Google API Client using `pip install -U google-api-python-client`.
+If you have never created a Google APIs Console project, read google Cloud's [Managing Projects page](https://cloud.google.com/resource-manager/docs/creating-managing-projects?visit_id=637952351450670909-433962807&rd=1) and create a project in the [Google API Console](https://console.developers.google.com/). Next, install the Google API Client using `pip install -U google-api-python-client`.
 
 ```bash
 # Install the Google API Client.

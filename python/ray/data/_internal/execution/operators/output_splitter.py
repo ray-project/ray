@@ -2,7 +2,11 @@ import logging
 import math
 import time
 from dataclasses import replace
-from typing import Any, Collection, Dict, List, Optional, Tuple
+from typing import TYPE_CHECKING, Any, Collection, Dict, List, Optional, Tuple
+
+if TYPE_CHECKING:
+    from ray.data._internal.execution.block_ref_counter import BlockRefCounter
+    from ray.data._internal.execution.lineage_tracker import LineageTracker
 
 from typing_extensions import override
 
@@ -22,18 +26,25 @@ from ray.data._internal.execution.interfaces import (
 from ray.data._internal.execution.operators.base_physical_operator import (
     InternalQueueOperatorMixin,
 )
-from ray.data._internal.execution.util import locality_string
+from ray.data._internal.execution.util import locality_string, memory_string
 from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data._internal.stats import StatsDict
 from ray.data.block import Block, BlockAccessor, BlockMetadata
 from ray.data.context import DataContext
 from ray.types import ObjectRef
+from ray.util.debug import log_once
 
 logger = logging.getLogger(__name__)
 
 DEFAULT_OUTPUT_SPLITTER_MAX_BUFFERING_FACTOR = env_float(
     "RAY_DATA_DEFAULT_OUTPUT_SPLITTER_MAX_BUFFERING_FACTOR", 2
 )
+
+# Warn when the blocks training workers need can take up at least this fraction
+# of an operator's even share of the object store.
+# Note that this warning threshold is based on the ReservationOpResourceAllocator
+# and roughly matches the part of that share guaranteed to the operator.
+MEMORY_CONSTRAINED_WARNING_FRACTION = 0.5
 
 
 class OutputSplitter(InternalQueueOperatorMixin, PhysicalOperator):
@@ -124,13 +135,72 @@ class OutputSplitter(InternalQueueOperatorMixin, PhysicalOperator):
         # The total number of rows is the same as the number of input rows.
         return self.input_dependencies[0].num_output_rows_total()
 
-    def start(self, options: ExecutionOptions) -> None:
+    def start(
+        self,
+        options: ExecutionOptions,
+        block_ref_counter: "BlockRefCounter",
+        lineage_tracker: Optional["LineageTracker"] = None,
+    ) -> None:
         if options.preserve_order:
             # If preserve_order is set, we need to ignore locality hints to ensure determinism.
             self._locality_hints = None
             self._max_buffer_size = 0
 
-        super().start(options)
+        super().start(options, block_ref_counter, lineage_tracker)
+
+    def maybe_warn_memory_constrained(
+        self,
+        *,
+        object_store_memory_share_per_op: float,
+    ) -> None:
+        """Warn once if the blocks training workers need to have prefetched can
+        take up a large share of an operator's share of the object store.
+
+        Blocks buffered here and in consumers' prefetch stay charged to the
+        upstream operators that produced them. If they can take up most of
+        what those operators get, the operators can't produce more, and
+        ingestion slows down or stalls (for example, while the locality buffer
+        waits to fill up).
+
+        Args:
+            object_store_memory_share_per_op: The global object store limit
+                split evenly across operators eligible for resource allocation,
+                in bytes.
+        """
+        num_inputs = self._metrics.num_inputs_received
+        if not num_inputs:
+            # The bundle size isn't known yet.
+            return
+        avg_bundle_bytes = self._metrics.bytes_inputs_received / num_inputs
+        # The locality buffer, plus at least one prefetched bundle per consumer
+        # (the floor at prefetch_batches=1).
+        required_bytes = (
+            self._max_buffer_size + self.num_output_splits()
+        ) * avg_bundle_bytes
+        if required_bytes < (
+            MEMORY_CONSTRAINED_WARNING_FRACTION * object_store_memory_share_per_op
+        ):
+            return
+        if not log_once("output_splitter_memory_constrained"):
+            return
+        logger.warning(
+            "Training ingest object store memory requirements may exceed the "
+            "amount allotted by Ray Data: at least "
+            f"{memory_string(required_bytes)} of blocks need to be generated and "
+            "held in the object store for training workers to prefetch, while the "
+            "last operator producing data only gets about "
+            f"{memory_string(object_store_memory_share_per_op)} of object store "
+            "memory budget. This large memory requirement may trigger Ray Data "
+            "budget backpressure, causing training ingestion to slow down or "
+            "stall. To fix this, either:\n"
+            "  - Increase the available object store memory: add nodes or use "
+            "larger ones, or increase the "
+            "`RAY_DEFAULT_OBJECT_STORE_MEMORY_PROPORTION` environment variable "
+            "when starting the Ray cluster.\n"
+            "  - Reduce training-side buffering: lower `prefetch_batches` in your "
+            "`iter_batches` call and/or disable shard locality by setting "
+            "`DataConfig(enable_shard_locality=False)`."
+        )
 
     def throttling_disabled(self) -> bool:
         """Disables resource-based throttling.
@@ -323,7 +393,17 @@ class OutputSplitter(InternalQueueOperatorMixin, PhysicalOperator):
                 output.append(b)
                 acc += b.num_rows()
             else:
+                input_refs = {entry.ref for entry in b.blocks}
                 left, right = _split(b, nrow - acc, label_selector)
+                # Only register genuinely new blocks created by _split_block.
+                for part in (left, right):
+                    for entry in part.blocks:
+                        if entry.ref not in input_refs:
+                            self._block_ref_counter.on_block_produced(
+                                entry.ref,
+                                entry.metadata.size_bytes or 0,
+                                self.id,
+                            )
                 output.append(left)
                 acc += left.num_rows()
                 self._buffer.add(right)

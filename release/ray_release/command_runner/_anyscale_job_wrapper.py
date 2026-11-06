@@ -9,19 +9,24 @@ have access to the ray_release package.
 import argparse
 import json
 import logging
+import math
 import multiprocessing
 import os
 import subprocess
 import sys
 import time
 from pathlib import Path
-from typing import List, Optional, Tuple
+from typing import List, Optional, Tuple, TypedDict
 from urllib.parse import urlparse
 
 AZURE_STORAGE_ACCOUNT = "rayreleasetests"
 OUTPUT_JSON_FILENAME = "output.json"
 AWS_CP_TIMEOUT = 300
 TIMEOUT_RETURN_CODE = 124  # same as bash timeout
+
+# Prometheus metric type for idle worker evictions. We expect Ray to kill idle workers
+# under memory pressure, so we exclude them from the OOM check.
+IDLE_WORKER_EVICTION_METRIC_TYPE = "MemoryManager.IdleWorkerEviction.Total"
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
@@ -31,6 +36,20 @@ formatter = logging.Formatter(
 )
 handler.setFormatter(formatter)
 logger.addHandler(handler)
+
+
+class PrometheusSeries(TypedDict):
+    """A single time series from a Prometheus query result.
+
+    Attributes:
+        metric: The series' label set, e.g. ``{"Type": ..., "Name": ...}``. Empty
+            when the query aggregated the labels away.
+        values: ``[timestamp, value]`` samples over the queried range. Prometheus
+            renders the values as strings.
+    """
+
+    metric: dict[str, str]
+    values: list[list]
 
 
 def exponential_backoff_retry(
@@ -304,30 +323,74 @@ def _metric_unavailable(check_name: str, metrics: dict, key: str) -> bool:
     return False
 
 
-def run_oom_check():
-    metrics = _load_metrics_for_check("OOM check", "RAYTEST_FAIL_ON_WORKER_OOM")
+def _summarize_metric_series(series_list: list[PrometheusSeries]) -> str:
+    """Summarize each series by its latest value, omitting raw samples."""
+    summaries = []
+    for series in series_list:
+        labels = series.get("metric", {})
+        values = series.get("values", [])
+        name = labels.get("Name", "unknown")
+        metric_type = labels.get("Type", "unknown")
+        final_value = values[-1][1] if values else "unknown"
+        summaries.append(f"  - {name} ({metric_type}): {final_value}")
+    return "\n".join(summaries)
+
+
+def run_ray_oom_kill_check():
+    """Fail if Ray's memory monitor evicted any workers."""
+    check_name = "Ray OOM kill check"
+    metrics = _load_metrics_for_check(check_name, "RAYTEST_FAIL_ON_RAY_OOM_KILL")
     if metrics is None:
         return 1
 
-    return_code = 0
-    if _metric_unavailable("OOM check", metrics, "worker_oom_kills"):
-        return_code = 1
-    elif metrics["worker_oom_kills"]:
-        logger.error(
-            f"Test failed: OOM worker kills detected. Details: {metrics['worker_oom_kills']}"
-        )
-        return_code = 1
+    if _metric_unavailable(check_name, metrics, "worker_oom_kills"):
+        return 1
 
-    if _metric_unavailable("OOM check", metrics, "unexpected_worker_failures"):
-        return_code = 1
-    elif metrics["unexpected_worker_failures"]:
+    worker_oom_kills = _filter_idle_worker_kills(metrics["worker_oom_kills"])
+    if worker_oom_kills:
+        logger.error(
+            "Test failed: OOM worker kills detected. "
+            "Latest cumulative counter values by metric:\n"
+            f"{_summarize_metric_series(worker_oom_kills)}"
+        )
+        return 1
+    return 0
+
+
+def _filter_idle_worker_kills(worker_oom_kills: list) -> list:
+    """Drop idle-worker evictions from the worker OOM kill series.
+
+    Idle-worker evictions are expected behavior, so we exclude them and only keep task
+    and actor kills.
+    """
+    return [
+        series
+        for series in worker_oom_kills
+        if series.get("metric", {}).get("Type") != IDLE_WORKER_EVICTION_METRIC_TYPE
+    ]
+
+
+def run_unexpected_worker_failure_check():
+    """Fail if any worker died from a cause Ray's memory monitor never saw."""
+    check_name = "Unexpected worker failure check"
+    metrics = _load_metrics_for_check(
+        check_name, "RAYTEST_FAIL_ON_UNEXPECTED_WORKER_FAILURE"
+    )
+    if metrics is None:
+        return 1
+
+    if _metric_unavailable(check_name, metrics, "unexpected_worker_failures"):
+        return 1
+
+    if metrics["unexpected_worker_failures"]:
         logger.error(
             "Test failed: Unexpected worker failures detected "
             "(potential kernel OOM kills or SIGKILLs not captured by Ray's memory monitor). "
-            f"Details: {metrics['unexpected_worker_failures']}"
+            "Latest cumulative counter values by metric:\n"
+            f"{_summarize_metric_series(metrics['unexpected_worker_failures'])}"
         )
-        return_code = 1
-    return return_code
+        return 1
+    return 0
 
 
 def run_spilling_check():
@@ -345,6 +408,68 @@ def run_spilling_check():
         )
         return_code = 1
     return return_code
+
+
+def run_obj_store_util_check(max_percent: str):
+    """Fail if peak object store utilization exceeded ``max_percent`` percent."""
+    check_name = "Object store utilization check"
+    env_var = "RAYTEST_MAX_OBJ_STORE_UTIL_PERCENT"
+
+    try:
+        threshold = float(max_percent)
+    except ValueError:
+        logger.error(f"{check_name}: {env_var!r} isn't a number: {max_percent!r}.")
+        return 1
+
+    if threshold < 0:
+        logger.info(f"{check_name} skipped: {env_var} is {max_percent}.")
+        return 0
+
+    metrics = _load_metrics_for_check(check_name, env_var)
+    if metrics is None:
+        return 1
+    if _metric_unavailable(check_name, metrics, "object_store_util_percent"):
+        return 1
+
+    peak_percent = _peak_metric_value(metrics["object_store_util_percent"])
+    if peak_percent is None:
+        logger.error(
+            f"{check_name}: 'object_store_util_percent' contains no samples, likely "
+            "a collection issue."
+        )
+        return 0
+
+    if peak_percent > threshold:
+        logger.error(
+            f"Test failed: peak object store utilization {peak_percent:.1f}% exceeded "
+            f"the {threshold:.1f}% limit set by {env_var}."
+        )
+        return 1
+
+    logger.info(
+        f"{check_name} passed: peak object store utilization {peak_percent:.1f}% "
+        f"is within the {threshold:.1f}% limit."
+    )
+    return 0
+
+
+def _peak_metric_value(series: list[PrometheusSeries]) -> float | None:
+    """Return the largest sample across a Prometheus query result.
+
+    Args:
+        series: One entry per label set the query returned, each holding that
+            series' samples over the queried range.
+
+    Returns:
+        The largest value, or ``None`` if there aren't any valid values.
+    """
+    values = [
+        float(value)
+        for entry in series
+        for _, value in entry.get("values", [])
+        if not math.isnan(float(value))
+    ]
+    return max(values) if values else None
 
 
 def run_dead_node_check():
@@ -461,17 +586,35 @@ def main(
                 os.environ.get("METRICS_OUTPUT_JSON", None), metrics_cloud_storage_uri
             )
 
-        test_fail_on_worker_oom = os.environ.get("RAYTEST_FAIL_ON_WORKER_OOM") == "1"
+        test_fail_on_ray_oom_kill = (
+            os.environ.get("RAYTEST_FAIL_ON_RAY_OOM_KILL") == "1"
+        )
 
-        # Fail if any OOM kills occurred
-        if return_code == 0 and test_fail_on_worker_oom:
-            return_code = run_oom_check()
+        # Fail if Ray's memory monitor killed any worker
+        if return_code == 0 and test_fail_on_ray_oom_kill:
+            return_code = run_ray_oom_kill_check()
+
+        test_fail_on_unexpected_worker_failure = (
+            os.environ.get("RAYTEST_FAIL_ON_UNEXPECTED_WORKER_FAILURE") == "1"
+        )
+
+        # Fail if any worker died for a reason the memory monitor didn't capture
+        if return_code == 0 and test_fail_on_unexpected_worker_failure:
+            return_code = run_unexpected_worker_failure_check()
 
         test_fail_on_spilling = os.environ.get("RAYTEST_FAIL_ON_SPILLING") == "1"
 
         # Fail if any object-store spilling occurred
         if return_code == 0 and test_fail_on_spilling:
             return_code = run_spilling_check()
+
+        max_obj_store_util_percent = os.environ.get(
+            "RAYTEST_MAX_OBJ_STORE_UTIL_PERCENT"
+        )
+
+        # Fail if the object store filled up beyond the configured limit.
+        if return_code == 0 and max_obj_store_util_percent:
+            return_code = run_obj_store_util_check(max_obj_store_util_percent)
 
         uploaded_artifact = run_storage_cp(
             artifact_path,

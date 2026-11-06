@@ -22,7 +22,7 @@ from ray.util.annotations import PublicAPI
 logger = logging.getLogger(__name__)
 
 
-@PublicAPI(stability="beta")
+@PublicAPI(stability="stable")
 class ProcessorConfig(_ProcessorConfig):
     """The processor configuration.
 
@@ -32,9 +32,6 @@ class ProcessorConfig(_ProcessorConfig):
             On the other hand, small batch sizes are more fault-tolerant and could
             reduce bubbles in the data pipeline. You can tune the batch size to balance
             the throughput and fault-tolerance based on your use case.
-        resources_per_bundle: The resource bundles for placement groups.
-            You can specify a custom device label e.g. {'NPU': 1}.
-            The default resource bundle for LLM Stage is always a GPU resource i.e. {'GPU': 1}.
         accelerator_type: The accelerator type used by the LLM stage in a processor.
             Default to None, meaning that only the CPU will be used.
         concurrency: The number of workers for data parallelism. Default to 1.
@@ -48,8 +45,8 @@ class ProcessorConfig(_ProcessorConfig):
     pass
 
 
-@PublicAPI(stability="beta")
-class HttpRequestProcessorConfig(_HttpRequestProcessorConfig):
+@PublicAPI(stability="stable")
+class HttpRequestProcessorConfig(_HttpRequestProcessorConfig, ProcessorConfig):
     """The configuration for the HTTP request processor.
 
     Args:
@@ -62,46 +59,41 @@ class HttpRequestProcessorConfig(_HttpRequestProcessorConfig):
             is used (``1 <= m <= n``).
 
     Examples:
-        .. testcode::
-            :skipif: True
-
-            import ray
-            from ray.data.llm import HttpRequestProcessorConfig, build_processor
-
-            config = HttpRequestProcessorConfig(
-                url="https://api.openai.com/v1/chat/completions",
-                headers={"Authorization": "Bearer sk-..."},
-                concurrency=1,
-            )
-            processor = build_processor(
-                config,
-                preprocess=lambda row: dict(
-                    payload=dict(
-                        model="gpt-4o-mini",
-                        messages=[
-                            {"role": "system", "content": "You are a calculator"},
-                            {"role": "user", "content": f"{row['id']} ** 3 = ?"},
-                        ],
-                        temperature=0.3,
-                        max_tokens=20,
-                    ),
-                ),
-                postprocess=lambda row: dict(
-                    resp=row["http_response"]["choices"][0]["message"]["content"],
-                ),
-            )
-
-            ds = ray.data.range(10)
-            ds = processor(ds)
-            for row in ds.take_all():
-                print(row)
+        >>> import ray  # doctest: +SKIP_EXAMPLE
+        >>> from ray.data.llm import HttpRequestProcessorConfig, build_processor
+        >>> config = HttpRequestProcessorConfig(
+        ...     url="https://api.openai.com/v1/chat/completions",
+        ...     headers={"Authorization": "Bearer sk-..."},
+        ...     concurrency=1,
+        ... )
+        >>> processor = build_processor(
+        ...     config,
+        ...     preprocess=lambda row: dict(
+        ...         payload=dict(
+        ...             model="gpt-4o-mini",
+        ...             messages=[
+        ...                 {"role": "system", "content": "You are a calculator"},
+        ...                 {"role": "user", "content": f"{row['id']} ** 3 = ?"},
+        ...             ],
+        ...             temperature=0.3,
+        ...             max_tokens=20,
+        ...         ),
+        ...     ),
+        ...     postprocess=lambda row: dict(
+        ...         resp=row["http_response"]["choices"][0]["message"]["content"],
+        ...     ),
+        ... )
+        >>> ds = ray.data.range(10)
+        >>> ds = processor(ds)
+        >>> for row in ds.take_all():
+        ...     print(row)
     """
 
     pass
 
 
-@PublicAPI(stability="beta")
-class vLLMEngineProcessorConfig(_vLLMEngineProcessorConfig):
+@PublicAPI(stability="stable")
+class vLLMEngineProcessorConfig(_vLLMEngineProcessorConfig, ProcessorConfig):
     """The configuration for the vLLM engine processor.
 
     Args:
@@ -155,17 +147,13 @@ class vLLMEngineProcessorConfig(_vLLMEngineProcessorConfig):
             (``PACK``/``STRICT_PACK``/``SPREAD``/``STRICT_SPREAD``).
         chat_template_stage: Chat templating stage config (bool | dict | ChatTemplateStageConfig).
             Defaults to True. Use nested config for per-stage control over batch_size,
-            concurrency, runtime_env, num_cpus, memory, and model_source. Legacy
-            ``apply_chat_template`` and ``chat_template`` fields are deprecated but
-            still supported.
+            concurrency, runtime_env, num_cpus, memory, and model_source.
         tokenize_stage: Tokenizer stage config (bool | dict | TokenizerStageConfig).
             Defaults to True. Use nested config for per-stage control over batch_size,
-            concurrency, runtime_env, num_cpus, memory, and model_source. Legacy
-            ``tokenize`` field is deprecated but still supported.
+            concurrency, runtime_env, num_cpus, memory, and model_source.
         detokenize_stage: Detokenizer stage config (bool | dict | DetokenizeStageConfig).
             Defaults to True. Use nested config for per-stage control over batch_size,
-            concurrency, runtime_env, num_cpus, memory, and model_source. Legacy
-            ``detokenize`` field is deprecated but still supported.
+            concurrency, runtime_env, num_cpus, memory, and model_source.
         prepare_multimodal_stage: Multimodal preprocessing stage config
             (bool | dict | PrepareMultimodalStageConfig). Defaults to False.
             Use nested config for per-stage control over batch_size, concurrency,
@@ -182,60 +170,54 @@ class vLLMEngineProcessorConfig(_vLLMEngineProcessorConfig):
 
     Examples:
 
-        .. testcode::
-            :skipif: True
-
-            import ray
-            from ray.data.llm import vLLMEngineProcessorConfig, build_processor
-
-            config = vLLMEngineProcessorConfig(
-                model_source="meta-llama/Meta-Llama-3.1-8B-Instruct",
-                engine_kwargs=dict(
-                    enable_prefix_caching=True,
-                    enable_chunked_prefill=True,
-                    max_num_batched_tokens=4096,
-                ),
-                concurrency=1,
-                batch_size=64,
-            )
-            processor = build_processor(
-                config,
-                preprocess=lambda row: dict(
-                    messages=[
-                        {"role": "system", "content": "You are a calculator"},
-                        {"role": "user", "content": f"{row['id']} ** 3 = ?"},
-                    ],
-                    sampling_params=dict(
-                        temperature=0.3,
-                        max_tokens=20,
-                        detokenize=False,
-                    ),
-                ),
-                postprocess=lambda row: dict(
-                    resp=row["generated_text"],
-                ),
-            )
-
-            # The processor requires specific input columns, which depend on
-            # your processor config. You can use the following API to check
-            # the required input columns:
-            processor.log_input_column_names()
-            # Example log:
-            # The first stage of the processor is ChatTemplateStage.
-            # Required input columns:
-            #     messages: A list of messages in OpenAI chat format.
-
-            ds = ray.data.range(300)
-            ds = processor(ds)
-            for row in ds.take_all():
-                print(row)
+        >>> import ray  # doctest: +SKIP_EXAMPLE
+        >>> from ray.data.llm import vLLMEngineProcessorConfig, build_processor
+        >>> config = vLLMEngineProcessorConfig(
+        ...     model_source="meta-llama/Meta-Llama-3.1-8B-Instruct",
+        ...     engine_kwargs=dict(
+        ...         enable_prefix_caching=True,
+        ...         enable_chunked_prefill=True,
+        ...         max_num_batched_tokens=4096,
+        ...     ),
+        ...     concurrency=1,
+        ...     batch_size=64,
+        ... )
+        >>> processor = build_processor(
+        ...     config,
+        ...     preprocess=lambda row: dict(
+        ...         messages=[
+        ...             {"role": "system", "content": "You are a calculator"},
+        ...             {"role": "user", "content": f"{row['id']} ** 3 = ?"},
+        ...         ],
+        ...         sampling_params=dict(
+        ...             temperature=0.3,
+        ...             max_tokens=20,
+        ...             detokenize=False,
+        ...         ),
+        ...     ),
+        ...     postprocess=lambda row: dict(
+        ...         resp=row["generated_text"],
+        ...     ),
+        ... )
+        >>> # The processor requires specific input columns, which depend on
+        >>> # your processor config. You can use the following API to check
+        >>> # the required input columns:
+        >>> processor.log_input_column_names()
+        >>> # Example log:
+        >>> # The first stage of the processor is ChatTemplateStage.
+        >>> # Required input columns:
+        >>> #     messages: A list of messages in OpenAI chat format.
+        >>> ds = ray.data.range(300)
+        >>> ds = processor(ds)
+        >>> for row in ds.take_all():
+        ...     print(row)
     """
 
     pass
 
 
-@PublicAPI(stability="beta")
-class SGLangEngineProcessorConfig(_SGLangEngineProcessorConfig):
+@PublicAPI(stability="stable")
+class SGLangEngineProcessorConfig(_SGLangEngineProcessorConfig, ProcessorConfig):
     """The configuration for the SGLang engine processor.
 
     Args:
@@ -268,16 +250,13 @@ class SGLangEngineProcessorConfig(_SGLangEngineProcessorConfig):
             env var.
         chat_template_stage: Chat templating stage config (bool | dict | ChatTemplateStageConfig).
             Defaults to True. Use nested config for per-stage control over batch_size,
-            concurrency, runtime_env, num_cpus, and memory. Legacy ``apply_chat_template``
-            and ``chat_template`` fields are deprecated but still supported.
+            concurrency, runtime_env, num_cpus, and memory.
         tokenize_stage: Tokenizer stage config (bool | dict | TokenizerStageConfig).
             Defaults to True. Use nested config for per-stage control over batch_size,
-            concurrency, runtime_env, num_cpus, memory, and model_source. Legacy
-            ``tokenize`` field is deprecated but still supported.
+            concurrency, runtime_env, num_cpus, memory, and model_source.
         detokenize_stage: Detokenizer stage config (bool | dict | DetokenizeStageConfig).
             Defaults to True. Use nested config for per-stage control over batch_size,
-            concurrency, runtime_env, num_cpus, memory, and model_source. Legacy
-            ``detokenize`` field is deprecated but still supported.
+            concurrency, runtime_env, num_cpus, memory, and model_source.
         accelerator_type: The accelerator type used by the LLM stage in a processor.
             Default to None, meaning that only the CPU will be used.
         concurrency: The number of workers for data parallelism. Default to 1.
@@ -288,48 +267,43 @@ class SGLangEngineProcessorConfig(_SGLangEngineProcessorConfig):
             Stage-specific concurrency can be set via nested stage configs.
 
     Examples:
-        .. testcode::
-            :skipif: True
-
-            import ray
-            from ray.data.llm import SGLangEngineProcessorConfig, build_processor
-
-            config = SGLangEngineProcessorConfig(
-                model_source="meta-llama/Meta-Llama-3.1-8B-Instruct",
-                engine_kwargs=dict(
-                    dtype="half",
-                ),
-                concurrency=1,
-                batch_size=64,
-            )
-            processor = build_processor(
-                config,
-                preprocess=lambda row: dict(
-                    messages=[
-                        {"role": "system", "content": "You are a calculator"},
-                        {"role": "user", "content": f"{row['id']} ** 3 = ?"},
-                    ],
-                    sampling_params=dict(
-                        temperature=0.3,
-                        max_new_tokens=20,
-                    ),
-                ),
-                postprocess=lambda row: dict(
-                    resp=row["generated_text"],
-                ),
-            )
-
-            ds = ray.data.range(300)
-            ds = processor(ds)
-            for row in ds.take_all():
-                print(row)
+        >>> import ray  # doctest: +SKIP_EXAMPLE
+        >>> from ray.data.llm import SGLangEngineProcessorConfig, build_processor
+        >>> config = SGLangEngineProcessorConfig(
+        ...     model_source="meta-llama/Meta-Llama-3.1-8B-Instruct",
+        ...     engine_kwargs=dict(
+        ...         dtype="half",
+        ...     ),
+        ...     concurrency=1,
+        ...     batch_size=64,
+        ... )
+        >>> processor = build_processor(
+        ...     config,
+        ...     preprocess=lambda row: dict(
+        ...         messages=[
+        ...             {"role": "system", "content": "You are a calculator"},
+        ...             {"role": "user", "content": f"{row['id']} ** 3 = ?"},
+        ...         ],
+        ...         sampling_params=dict(
+        ...             temperature=0.3,
+        ...             max_new_tokens=20,
+        ...         ),
+        ...     ),
+        ...     postprocess=lambda row: dict(
+        ...         resp=row["generated_text"],
+        ...     ),
+        ... )
+        >>> ds = ray.data.range(300)
+        >>> ds = processor(ds)
+        >>> for row in ds.take_all():
+        ...     print(row)
     """
 
     pass
 
 
-@PublicAPI(stability="beta")
-class ServeDeploymentProcessorConfig(_ServeDeploymentProcessorConfig):
+@PublicAPI(stability="stable")
+class ServeDeploymentProcessorConfig(_ServeDeploymentProcessorConfig, ProcessorConfig):
     """The configuration for the serve deployment processor.
 
     This processor enables sharing serve deployments across multiple processors. This is useful
@@ -353,88 +327,79 @@ class ServeDeploymentProcessorConfig(_ServeDeploymentProcessorConfig):
 
     Examples:
 
-        .. testcode::
-            :skipif: True
-
-            import ray
-            from ray import serve
-            from ray.data.llm import ServeDeploymentProcessorConfig, build_processor
-            from ray.serve.llm import (
-                LLMConfig,
-                ModelLoadingConfig,
-                build_llm_deployment,
-            )
-            from ray.serve.llm.openai_api_models import CompletionRequest
-
-            llm_config = LLMConfig(
-                model_loading_config=ModelLoadingConfig(
-                    model_id="facebook/opt-1.3b",
-                    model_source="facebook/opt-1.3b",
-                ),
-                accelerator_type="A10G",
-                deployment_config=dict(
-                    name="facebook",
-                    autoscaling_config=dict(
-                        min_replicas=1,
-                        max_replicas=1,
-                    ),
-                ),
-                engine_kwargs=dict(
-                    enable_prefix_caching=True,
-                    enable_chunked_prefill=True,
-                    max_num_batched_tokens=4096,
-                ),
-            )
-
-            APP_NAME = "facebook_opt_app"
-            DEPLOYMENT_NAME = "facebook_deployment"
-            override_serve_options = dict(name=DEPLOYMENT_NAME)
-
-            llm_app = build_llm_deployment(
-                llm_config, override_serve_options=override_serve_options
-            )
-            app = serve.run(llm_app, name=APP_NAME)
-
-            config = ServeDeploymentProcessorConfig(
-                deployment_name=DEPLOYMENT_NAME,
-                app_name=APP_NAME,
-                dtype_mapping={
-                    "CompletionRequest": CompletionRequest,
-                },
-                concurrency=1,
-                batch_size=64,
-            )
-            processor = build_processor(
-                config,
-                preprocess=lambda row: dict(
-                    method="completions",
-                    dtype="CompletionRequest",
-                    request_kwargs=dict(
-                        model="facebook/opt-1.3b",
-                        prompt=f"This is a prompt for {row['id']}",
-                        stream=False,
-                    ),
-                ),
-                postprocess=lambda row: dict(
-                    resp=row["choices"][0]["text"],
-                ),
-            )
-
-            # The processor requires specific input columns, which depend on
-            # your processor config. You can use the following API to check
-            # the required input columns:
-            processor.log_input_column_names()
-
-            ds = ray.data.range(10)
-            ds = processor(ds)
-            for row in ds.take_all():
-                print(row)
+        >>> import ray  # doctest: +SKIP_EXAMPLE
+        >>> from ray import serve
+        >>> from ray.data.llm import ServeDeploymentProcessorConfig, build_processor
+        >>> from ray.serve.llm import (
+        ...     LLMConfig,
+        ...     ModelLoadingConfig,
+        ...     build_llm_deployment,
+        ... )
+        >>> from ray.serve.llm.openai_api_models import CompletionRequest
+        >>> llm_config = LLMConfig(
+        ...     model_loading_config=ModelLoadingConfig(
+        ...         model_id="facebook/opt-1.3b",
+        ...         model_source="facebook/opt-1.3b",
+        ...     ),
+        ...     accelerator_type="A10G",
+        ...     deployment_config=dict(
+        ...         name="facebook",
+        ...         autoscaling_config=dict(
+        ...             min_replicas=1,
+        ...             max_replicas=1,
+        ...         ),
+        ...     ),
+        ...     engine_kwargs=dict(
+        ...         enable_prefix_caching=True,
+        ...         enable_chunked_prefill=True,
+        ...         max_num_batched_tokens=4096,
+        ...     ),
+        ... )
+        >>> APP_NAME = "facebook_opt_app"
+        >>> DEPLOYMENT_NAME = "facebook_deployment"
+        >>> override_serve_options = dict(name=DEPLOYMENT_NAME)
+        >>> llm_app = build_llm_deployment(
+        ...     llm_config, override_serve_options=override_serve_options
+        ... )
+        >>> app = serve.run(llm_app, name=APP_NAME)
+        >>> config = ServeDeploymentProcessorConfig(
+        ...     deployment_name=DEPLOYMENT_NAME,
+        ...     app_name=APP_NAME,
+        ...     dtype_mapping={
+        ...         "CompletionRequest": CompletionRequest,
+        ...     },
+        ...     concurrency=1,
+        ...     batch_size=64,
+        ... )
+        >>> processor = build_processor(
+        ...     config,
+        ...     preprocess=lambda row: dict(
+        ...         method="completions",
+        ...         dtype="CompletionRequest",
+        ...         request_kwargs=dict(
+        ...             model="facebook/opt-1.3b",
+        ...             prompt=f"This is a prompt for {row['id']}",
+        ...             stream=False,
+        ...         ),
+        ...     ),
+        ...     postprocess=lambda row: dict(
+        ...         resp=row["choices"][0]["text"],
+        ...     ),
+        ... )
+        >>> # The processor requires specific input columns, which depend on
+        >>> # your processor config. You can use the following API to check
+        >>> # the required input columns:
+        >>> processor.log_input_column_names()
+        >>> ds = ray.data.range(10)
+        >>> ds = processor(ds)
+        >>> for row in ds.take_all():
+        ...     print(row)
     """
 
     pass
 
 
-@PublicAPI(stability="beta")
+@PublicAPI(stability="stable")
 class ChatTemplateStageConfig(_ChatTemplateStageConfig):
     """The configuration for the chat template stage.
 
@@ -463,7 +428,7 @@ class ChatTemplateStageConfig(_ChatTemplateStageConfig):
     pass
 
 
-@PublicAPI(stability="beta")
+@PublicAPI(stability="stable")
 class DetokenizeStageConfig(_DetokenizeStageConfig):
     """The configuration for the detokenize stage.
 
@@ -488,7 +453,7 @@ class DetokenizeStageConfig(_DetokenizeStageConfig):
     pass
 
 
-@PublicAPI(stability="beta")
+@PublicAPI(stability="stable")
 class PrepareMultimodalStageConfig(_PrepareMultimodalStageConfig):
     """The configuration for the prepare multimodal stage.
 
@@ -520,7 +485,7 @@ class PrepareMultimodalStageConfig(_PrepareMultimodalStageConfig):
     pass
 
 
-@PublicAPI(stability="beta")
+@PublicAPI(stability="stable")
 class TokenizerStageConfig(_TokenizerStageConfig):
     """The configuration for the tokenizer stage.
 
@@ -545,7 +510,7 @@ class TokenizerStageConfig(_TokenizerStageConfig):
     pass
 
 
-@PublicAPI(stability="beta")
+@PublicAPI(stability="stable")
 class HttpRequestStageConfig(_HttpRequestStageConfig):
     """The configuration for the http request stage.
 
@@ -568,7 +533,7 @@ class HttpRequestStageConfig(_HttpRequestStageConfig):
     pass
 
 
-@PublicAPI(stability="beta")
+@PublicAPI(stability="stable")
 def build_processor(
     config: ProcessorConfig,
     preprocess: Optional[UserDefinedFunction] = None,
@@ -583,9 +548,7 @@ def build_processor(
         config: The processor config. Supports nested stage configs for per-stage
             control over batch_size, concurrency, runtime_env, num_cpus, and memory
             (e.g., ``chat_template_stage=ChatTemplateStageConfig(batch_size=128)``
-            or ``tokenize_stage={"batch_size": 256, "concurrency": 2}``). Legacy
-            boolean flags (``apply_chat_template``, ``tokenize``, ``detokenize``)
-            are deprecated but still supported with deprecation warnings.
+            or ``tokenize_stage={"batch_size": 256, "concurrency": 2}``).
         preprocess: An optional lambda function that takes a row (dict) as input
             and returns a preprocessed row (dict). The output row must contain the
             required fields for the following processing stages. Each row
@@ -612,112 +575,94 @@ def build_processor(
     Examples:
         Basic usage:
 
-        .. testcode::
-            :skipif: True
-
-            import ray
-            from ray.data.llm import vLLMEngineProcessorConfig, build_processor
-
-            config = vLLMEngineProcessorConfig(
-                model_source="meta-llama/Meta-Llama-3.1-8B-Instruct",
-                engine_kwargs=dict(
-                    enable_prefix_caching=True,
-                    enable_chunked_prefill=True,
-                    max_num_batched_tokens=4096,
-                ),
-                concurrency=1,
-                batch_size=64,
-            )
-
-            processor = build_processor(
-                config,
-                preprocess=lambda row: dict(
-                    messages=[
-                        {"role": "system", "content": "You are a calculator"},
-                        {"role": "user", "content": f"{row['id']} ** 3 = ?"},
-                    ],
-                    sampling_params=dict(
-                        temperature=0.3,
-                        max_tokens=20,
-                        detokenize=False,
-                    ),
-                ),
-                postprocess=lambda row: dict(
-                    resp=row["generated_text"],
-                    **row,  # This will return all the original columns in the dataset.
-                ),
-            )
-
-            ds = ray.data.range(300)
-            ds = processor(ds)
-            for row in ds.take_all():
-                print(row)
+        >>> import ray  # doctest: +SKIP_EXAMPLE
+        >>> from ray.data.llm import vLLMEngineProcessorConfig, build_processor
+        >>> config = vLLMEngineProcessorConfig(
+        ...     model_source="meta-llama/Meta-Llama-3.1-8B-Instruct",
+        ...     engine_kwargs=dict(
+        ...         enable_prefix_caching=True,
+        ...         enable_chunked_prefill=True,
+        ...         max_num_batched_tokens=4096,
+        ...     ),
+        ...     concurrency=1,
+        ...     batch_size=64,
+        ... )
+        >>> processor = build_processor(
+        ...     config,
+        ...     preprocess=lambda row: dict(
+        ...         messages=[
+        ...             {"role": "system", "content": "You are a calculator"},
+        ...             {"role": "user", "content": f"{row['id']} ** 3 = ?"},
+        ...         ],
+        ...         sampling_params=dict(
+        ...             temperature=0.3,
+        ...             max_tokens=20,
+        ...             detokenize=False,
+        ...         ),
+        ...     ),
+        ...     postprocess=lambda row: dict(
+        ...         resp=row["generated_text"],
+        ...         **row,  # This will return all the original columns in the dataset.
+        ...     ),
+        ... )
+        >>> ds = ray.data.range(300)
+        >>> ds = processor(ds)
+        >>> for row in ds.take_all():
+        ...     print(row)
 
         Using map_kwargs to control preprocess/postprocess resources:
 
-        .. testcode::
-            :skipif: True
-
-            import ray
-            from ray.data.llm import vLLMEngineProcessorConfig, build_processor
-
-            config = vLLMEngineProcessorConfig(
-                model_source="meta-llama/Meta-Llama-3.1-8B-Instruct",
-                concurrency=1,
-                batch_size=64,
-            )
-
-            processor = build_processor(
-                config,
-                preprocess=lambda row: dict(
-                    messages=[{"role": "user", "content": row["prompt"]}],
-                    sampling_params=dict(temperature=0.3, max_tokens=20),
-                ),
-                postprocess=lambda row: dict(resp=row["generated_text"]),
-                preprocess_map_kwargs={"num_cpus": 0.5},
-                postprocess_map_kwargs={"num_cpus": 0.25},
-            )
-
-            ds = ray.data.range(300)
-            ds = processor(ds)
-            for row in ds.take_all():
-                print(row)
+        >>> import ray
+        >>> from ray.data.llm import vLLMEngineProcessorConfig, build_processor
+        >>> config = vLLMEngineProcessorConfig(
+        ...     model_source="meta-llama/Meta-Llama-3.1-8B-Instruct",
+        ...     concurrency=1,
+        ...     batch_size=64,
+        ... )
+        >>> processor = build_processor(
+        ...     config,
+        ...     preprocess=lambda row: dict(
+        ...         messages=[{"role": "user", "content": row["prompt"]}],
+        ...         sampling_params=dict(temperature=0.3, max_tokens=20),
+        ...     ),
+        ...     postprocess=lambda row: dict(resp=row["generated_text"]),
+        ...     preprocess_map_kwargs={"num_cpus": 0.5},
+        ...     postprocess_map_kwargs={"num_cpus": 0.25},
+        ... )
+        >>> ds = ray.data.range(300)
+        >>> ds = processor(ds)
+        >>> for row in ds.take_all():
+        ...     print(row)
 
         Using builder_kwargs to pass chat_template_kwargs:
 
-        .. testcode::
-            :skipif: True
-
-            import ray
-            from ray.data.llm import vLLMEngineProcessorConfig, build_processor
-
-            config = vLLMEngineProcessorConfig(
-                model_source="Qwen/Qwen3-0.6B",
-                chat_template_stage={"enabled": True},
-                concurrency=1,
-                batch_size=64,
-            )
-
-            processor = build_processor(
-                config,
-                preprocess=lambda row: dict(
-                    messages=[
-                        {"role": "user", "content": row["prompt"]},
-                    ],
-                    sampling_params=dict(
-                        temperature=0.6,
-                        max_tokens=100,
-                    ),
-                ),
-                builder_kwargs=dict(
-                    chat_template_kwargs={"enable_thinking": True},
-                ),
-            )
-
-            ds = ray.data.from_items([{"prompt": "What is 2+2?"}])
-            ds = processor(ds)
-            for row in ds.take_all():
-                print(row)
+        >>> import ray
+        >>> from ray.data.llm import vLLMEngineProcessorConfig, build_processor
+        >>> config = vLLMEngineProcessorConfig(
+        ...     model_source="Qwen/Qwen3-0.6B",
+        ...     chat_template_stage={"enabled": True},
+        ...     concurrency=1,
+        ...     batch_size=64,
+        ... )
+        >>> processor = build_processor(
+        ...     config,
+        ...     preprocess=lambda row: dict(
+        ...         messages=[
+        ...             {"role": "user", "content": row["prompt"]},
+        ...         ],
+        ...         sampling_params=dict(
+        ...             temperature=0.6,
+        ...             max_tokens=100,
+        ...         ),
+        ...     ),
+        ...     builder_kwargs=dict(
+        ...         chat_template_kwargs={"enable_thinking": True},
+        ...     ),
+        ... )
+        >>> ds = ray.data.from_items([{"prompt": "What is 2+2?"}])
+        >>> ds = processor(ds)
+        >>> for row in ds.take_all():
+        ...     print(row)
     """
     from ray.llm._internal.batch.processor import ProcessorBuilder
 
