@@ -34,15 +34,33 @@ class TensorTransportMetadata:
     tensor_device: Optional[str] = None
 
 
+@dataclass
+class FetchRequest:
+    """Represents a pending or completed tensor fetch operation.
+
+    The default fetch/wait implementation stores the tensors here directly
+    after a synchronous recv. Transports with true async capability may
+    subclass this to carry additional state needed by wait_fetch_complete.
+
+    Subclasses should handle all resource cleanup in __del__ rather than
+    in wait_fetch_complete, so that resources are released even if the
+    caller never waits on the request.
+
+    Args:
+        obj_id: The object ID for the fetch operation.
+        tensors: The fetched tensors.
+    """
+
+    obj_id: str
+    tensors: List[Any]
+
+
 class TensorTransportManager(ABC):
-    """
-    Interface with which to implement custom tensor transports.
-    """
+    """Interface with which to implement custom tensor transports."""
 
     @abstractmethod
     def tensor_transport_backend(self) -> str:
-        """
-        Returns the name of your tensor transport backend.
+        """Returns the name of your tensor transport backend.
         Ray uses this name to match your transport with the ``tensor_transport`` argument
         on the method.
 
@@ -53,8 +71,7 @@ class TensorTransportManager(ABC):
     @staticmethod
     @abstractmethod
     def is_one_sided() -> bool:
-        """
-        Indicates whether your transport uses one-sided communication where only the receiver
+        """Indicates whether your transport uses one-sided communication where only the receiver
         initiates the transfer.
 
         One-sided transports: The receiver can directly read the sender's memory without the sender
@@ -75,8 +92,7 @@ class TensorTransportManager(ABC):
     @staticmethod
     @abstractmethod
     def can_abort_transport() -> bool:
-        """
-        Indicates whether your transport can safely abort an in-progress transfer.
+        """Indicates whether your transport can safely abort an in-progress transfer.
 
         If ``True``, Ray calls `abort_transport` on both the source and destination actors when a
         send / recv error, allowing your transport to clean up gracefully.
@@ -108,8 +124,7 @@ class TensorTransportManager(ABC):
         obj_id: str,
         rdt_object: List[Any],
     ) -> TensorTransportMetadata:
-        """
-        Implement this method to create the TensorTransportMetadata you defined previously.
+        """Implement this method to create the TensorTransportMetadata you defined previously.
         Ray calls this on the source actor immediately after the actor task creates the result tensors.
         Implement this to:
 
@@ -132,8 +147,7 @@ class TensorTransportManager(ABC):
         dst_actor: "ray.actor.ActorHandle",
         backend: Optional[str] = None,
     ) -> CommunicatorMetadata:
-        """
-        Gets the CommunicatorMetadata for a send/recv. Ray calls this on the owner/driver process before
+        """Gets the CommunicatorMetadata for a send/recv. Ray calls this on the owner/driver process before
         orchestrating the transfer. You can typically implement this to return information both actors
         need to identify each other such as ranks in a collective group. Many forms of transports such
         as one-sided RDMA reads may be ok just returning empty CommunicatorMetadata here.
@@ -155,8 +169,7 @@ class TensorTransportManager(ABC):
         communicator_metadata: CommunicatorMetadata,
         target_buffers: Optional[List[Any]] = None,
     ) -> List[Any]:
-        """
-        Receives tensors on the destination actor. Ray calls this on the destination
+        """Receives tensors on the destination actor. Ray calls this on the destination
         actor during the transfer.
 
         Args:
@@ -168,6 +181,56 @@ class TensorTransportManager(ABC):
             List[Any]: The received tensors.
         """
 
+    def fetch_multiple_tensors(
+        self,
+        obj_id: str,
+        tensor_transport_metadata: TensorTransportMetadata,
+        communicator_metadata: CommunicatorMetadata,
+        target_buffers: Optional[List[Any]] = None,
+    ) -> FetchRequest:
+        """Initiate a fetch for multiple tensors without waiting for completion.
+
+        The default implementation calls recv_multiple_tensors synchronously and
+        stores the result in a FetchRequest. Transports with true async capability
+        should override both this method and wait_fetch_complete.
+
+        Call wait_fetch_complete(fetch_request) afterward to retrieve the tensors.
+
+        Args:
+            obj_id: The object ID for the related GPU object.
+            tensor_transport_metadata: The tensor transport metadata for the GPU object.
+            communicator_metadata: The communicator metadata for the send/recv operation.
+            target_buffers: Pre-allocated buffers to receive the tensors into if possible.
+
+        Returns:
+            A FetchRequest whose tensors field is already populated.
+        """
+        tensors = self.recv_multiple_tensors(
+            obj_id, tensor_transport_metadata, communicator_metadata, target_buffers
+        )
+        return FetchRequest(obj_id=obj_id, tensors=tensors)
+
+    def wait_fetch_complete(
+        self, fetch_request: FetchRequest, timeout: float = -1
+    ) -> List[Any]:
+        """Wait for a previously initiated fetch to complete and return the tensors.
+
+        The default implementation returns the tensors stored in the FetchRequest
+        directly, since the default fetch_multiple_tensors is synchronous.
+
+        Args:
+            fetch_request: The FetchRequest returned by fetch_multiple_tensors.
+            timeout: Maximum time in seconds to wait. -1 means wait indefinitely.
+                0 means return immediately if not ready.
+
+        Returns:
+            The received tensors.
+
+        Raises:
+            TimeoutError: If timeout is exceeded.
+        """
+        return fetch_request.tensors
+
     @abstractmethod
     def send_multiple_tensors(
         self,
@@ -175,8 +238,7 @@ class TensorTransportManager(ABC):
         tensor_transport_metadata: TensorTransportMetadata,
         communicator_metadata: CommunicatorMetadata,
     ):
-        """
-        Sends tensors from the source actor to the destination actor. Ray calls this on the source actor
+        """Sends tensors from the source actor to the destination actor. Ray calls this on the source actor
         during the transfer. Implement this to perform the actual data transfer using your transport's
         send mechanism. For one-sided transports, you can simply avoid implementing this method or even
         raise a NotImplementedError to ensure it's not being called.
@@ -194,8 +256,7 @@ class TensorTransportManager(ABC):
         tensor_transport_meta: TensorTransportMetadata,
         tensors: List[Any],
     ):
-        """
-        Clean up resources for an RDT object. Ray calls this on the source actor
+        """Clean up resources for an RDT object. Ray calls this on the source actor
         after Ray's distributed reference counting protocol determines the object is out of scope.
 
         Use this to release any resources your transport allocated, such as deregistering memory buffers.
@@ -214,8 +275,7 @@ class TensorTransportManager(ABC):
         obj_id: str,
         communicator_metadata: CommunicatorMetadata,
     ):
-        """
-        Aborts an in-progress transfer. Ray calls this on both the source and destination actors
+        """Aborts an in-progress transfer. Ray calls this on both the source and destination actors
         when a system error occurs if `can_abort_transport` returns ``True``.
 
         Args:

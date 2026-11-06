@@ -15,8 +15,7 @@ class PrepareMultimodalUDF(StatefulStageUDF):
         chat_template_content_format: str,
         apply_sys_msg_formatting: bool = False,
     ):
-        """
-        Initialize the PrepareMultimodalUDF.
+        """Initialize the PrepareMultimodalUDF.
 
         Args:
             data_column: The data column name.
@@ -34,6 +33,13 @@ class PrepareMultimodalUDF(StatefulStageUDF):
                 "vLLM is not installed or failed to import. Please run "
                 "`pip install ray[llm]` to install required dependencies."
             ) from e
+
+        model_config_kwargs = dict(model_config_kwargs)
+        if model_config_kwargs.get("dtype") in (None, "auto"):
+            # This CPU stage only uses ModelConfig to parse multimodal chat
+            # messages. Avoid vLLM's device-specific dtype auto-detection,
+            # which can fail on CPU-only nodes.
+            model_config_kwargs["dtype"] = "float32"
 
         self.model_config = ModelConfig(**model_config_kwargs)
         self.chat_template_content_format = chat_template_content_format
@@ -77,8 +83,7 @@ class PrepareMultimodalUDF(StatefulStageUDF):
         return system_messages, non_system_messages
 
     async def udf(self, batch: List[Dict[str, Any]]) -> AsyncIterator[Dict[str, Any]]:
-        """
-        Process multimodal data from input messages.
+        """Process multimodal data from input messages.
 
         Args:
             batch: A list of rows to process.
@@ -88,7 +93,7 @@ class PrepareMultimodalUDF(StatefulStageUDF):
             along with processing metadata.
         """
         try:
-            from vllm.entrypoints.chat_utils import parse_chat_messages_async
+            from vllm.renderers.chat_utils import parse_chat_messages_async
         except ImportError as e:
             raise ImportError(
                 "vLLM is not installed or failed to import. Please run "
@@ -142,9 +147,7 @@ class PrepareMultimodalUDF(StatefulStageUDF):
 
 
 class PrepareMultimodalStage(StatefulStage):
-    """
-    A stage that prepares multimodal data from the input messages for a specific model.
-    """
+    """A stage that prepares multimodal data from the input messages for a specific model."""
 
     fn: StatefulStageUDF = PrepareMultimodalUDF
 

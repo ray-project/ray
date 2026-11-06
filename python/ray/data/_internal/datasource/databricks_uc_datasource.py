@@ -14,6 +14,7 @@ from ray.data._internal.datasource.databricks_credentials import (
     build_headers,
     request_with_401_retry,
 )
+from ray.data._internal.object_extensions.arrow import raise_on_pickle_object_columns
 from ray.data.block import BlockMetadata
 from ray.data.datasource.datasource import Datasource, ReadTask
 from ray.util.annotations import PublicAPI
@@ -29,6 +30,19 @@ _STATEMENT_EXEC_POLL_TIME_S = 1
 
 @PublicAPI(stability="alpha")
 class DatabricksUCDatasource(Datasource):
+    """Datasource that runs a SQL query on a Databricks warehouse and reads the result.
+
+    Constructing the datasource submits the query and waits for it to finish.
+
+    Args:
+        warehouse_id: The ID of the Databricks SQL warehouse that runs the query.
+        catalog: The default catalog name used by the query.
+        schema: The default schema used by the query.
+        query: The SQL query to run.
+        credential_provider: The credential provider that supplies the workspace
+            host and the authentication token.
+    """
+
     def __init__(
         self,
         warehouse_id: str,
@@ -181,6 +195,9 @@ class DatabricksUCDatasource(Datasource):
                     with pyarrow.ipc.open_stream(raw_response.content) as reader:
                         arrow_table = reader.read_all()
 
+                    # Unpickling untrusted data can execute arbitrary code. Reject
+                    # object columns unless the user has explicitly opted in.
+                    raise_on_pickle_object_columns(arrow_table)
                     yield arrow_table
 
             def read_fn():

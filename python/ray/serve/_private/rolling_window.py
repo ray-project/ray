@@ -1,6 +1,6 @@
 import threading
 import time
-from typing import List
+from typing import List, Optional
 
 
 class _ThreadBuckets:
@@ -21,10 +21,10 @@ class _ThreadBuckets:
 class _ThreadLocalRef(threading.local):
     """Thread-local reference to the thread's _ThreadBuckets instance."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         super().__init__()
         # by using threading.local, each thread gets its own instance of _ThreadBuckets.
-        self.data: _ThreadBuckets = None
+        self.data: Optional[_ThreadBuckets] = None
 
 
 class _RollingWindowBase:

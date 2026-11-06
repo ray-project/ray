@@ -59,6 +59,7 @@ class FakeApplicationStateManager:
         route_prefixes,
         ingress_deployments,
         ingress_request_router_deployments=None,
+        router_applications=None,
     ):
         self.app_statuses = app_statuses
         self.route_prefixes = route_prefixes
@@ -66,6 +67,7 @@ class FakeApplicationStateManager:
         self.ingress_request_router_deployments = (
             ingress_request_router_deployments or {}
         )
+        self.router_applications = set(router_applications or [])
 
     def list_app_statuses(self):
         return self.app_statuses
@@ -78,6 +80,9 @@ class FakeApplicationStateManager:
 
     def get_ingress_request_router_deployment_name(self, app_name):
         return self.ingress_request_router_deployments.get(app_name)
+
+    def is_router_application(self, app_name):
+        return app_name in self.router_applications
 
 
 class FakeProxyState:
@@ -184,6 +189,9 @@ class FakeDeploymentStateManager:
             actor_name=replica_info.replica_id.unique_id,
         )
 
+    def get_deployment(self, id: DeploymentID):
+        return None
+
     def get_deployment_details(self, id: DeploymentID) -> Optional[DeploymentDetails]:
         if id not in self.running_replica_infos:
             return None
@@ -204,6 +212,13 @@ class FakeDeploymentStateManager:
 
     def get_ingress_replicas_info(self) -> List[Tuple[str, str, int, int]]:
         return []
+
+    def get_ingress_membership_version(self) -> int:
+        # Advance every call so the reconcile gate never skips in tests that
+        # exercise the reconcile body. The gate's skip behavior is covered by
+        # test_ingress_port_reconcile_gated_on_membership_version.
+        self._ingress_version = getattr(self, "_ingress_version", 0) + 1
+        return self._ingress_version
 
 
 class FakeTestingDeploymentStateManager:
@@ -237,6 +252,8 @@ class FakeDirectIngressController(ServeController):
         self.deployment_state_manager = deployment_state_manager
         self.proxy_state_manager = proxy_state_manager
         self._direct_ingress_enabled = True
+        self._last_ingress_port_tuples = set()
+        self._last_ingress_membership_version = -1
         self._ha_proxy_enabled = False
         self._controller_node_id = "head_node_id"
 
@@ -772,8 +789,10 @@ def test_get_target_groups_only_includes_ingress_deployments(
     )
 
 
+@pytest.mark.parametrize("has_running_router_replicas", [False, True])
 def test_get_target_groups_populates_ingress_request_router_targets(
     direct_ingress_controller: FakeDirectIngressController,
+    has_running_router_replicas,
 ):
     app_name = "app1"
     route_prefix = "/app1"
@@ -811,7 +830,9 @@ def test_get_target_groups_populates_ingress_request_router_targets(
     direct_ingress_controller.deployment_state_manager = FakeDeploymentStateManager(
         running_replica_infos={
             ingress_deployment_id: [ingress_replica_info],
-            router_deployment_id: [router_replica_info],
+            router_deployment_id: [router_replica_info]
+            if has_running_router_replicas
+            else [],
         },
     )
 
@@ -835,6 +856,8 @@ def test_get_target_groups_populates_ingress_request_router_targets(
                     name="ingress_replica",
                 )
             ],
+            ingress_deployment_name=ingress_deployment_id.name,
+            ingress_router_fallback=True,
             ingress_request_router_targets=[
                 Target(
                     ip="10.0.0.2",
@@ -842,8 +865,87 @@ def test_get_target_groups_populates_ingress_request_router_targets(
                     instance_id="",
                     name="router_replica",
                 )
-            ],
+            ]
+            if has_running_router_replicas
+            else [],
         )
+    ]
+
+
+def test_get_target_groups_marks_router_application_on_http_only(
+    direct_ingress_controller: FakeDirectIngressController,
+):
+    """Only the HTTP target group carries the router marker."""
+    app_name = "router"
+    ingress_deployment_id = DeploymentID(name="Router", app_name=app_name)
+    replica_id = ReplicaID(unique_id="r1", deployment_id=ingress_deployment_id)
+
+    direct_ingress_controller.application_state_manager = FakeApplicationStateManager(
+        app_statuses={app_name: {}, "model": {}},
+        route_prefixes={app_name: "/", "model": "/v1/model"},
+        ingress_deployments={app_name: ingress_deployment_id.name},
+        router_applications=[app_name],
+    )
+    direct_ingress_controller.deployment_state_manager = FakeDeploymentStateManager(
+        running_replica_infos={
+            ingress_deployment_id: [
+                RunningReplicaInfo(
+                    replica_id=replica_id,
+                    node_id="node1",
+                    node_ip="10.0.0.1",
+                    availability_zone="az1",
+                    actor_name="router_replica",
+                    max_ongoing_requests=100,
+                )
+            ],
+        },
+    )
+    http_port = direct_ingress_controller.allocate_replica_port(
+        "node1", replica_id.unique_id, RequestProtocol.HTTP
+    )
+    grpc_port = direct_ingress_controller.allocate_replica_port(
+        "node1", replica_id.unique_id, RequestProtocol.GRPC
+    )
+
+    target_groups = direct_ingress_controller.get_target_groups(app_name=app_name)
+
+    assert [(tg.protocol, tg.is_router_application) for tg in target_groups] == [
+        (RequestProtocol.HTTP, True),
+        (RequestProtocol.GRPC, False),
+    ]
+    assert target_groups[0].targets == [
+        Target(ip="10.0.0.1", port=http_port, instance_id="", name="r1")
+    ]
+    assert target_groups[1].targets[0].port == grpc_port
+
+
+@pytest.mark.parametrize("ha_proxy_enabled", [False, True])
+def test_get_target_groups_keeps_router_marker_with_no_running_replicas(
+    direct_ingress_controller: FakeDirectIngressController, ha_proxy_enabled: bool
+):
+    """A scaled-to-zero router application keeps its marker."""
+    direct_ingress_controller._ha_proxy_enabled = ha_proxy_enabled
+    app_name = "router"
+    direct_ingress_controller.application_state_manager = FakeApplicationStateManager(
+        app_statuses={app_name: {}},
+        route_prefixes={app_name: "/"},
+        ingress_deployments={app_name: "Router"},
+        router_applications=[app_name],
+    )
+    direct_ingress_controller.deployment_state_manager = FakeDeploymentStateManager(
+        running_replica_infos={},
+    )
+    direct_ingress_controller.proxy_state_manager.add_proxy_details(
+        "node1", "10.0.0.1", "proxy1"
+    )
+
+    target_groups = direct_ingress_controller.get_target_groups(
+        app_name=app_name, from_proxy_manager=True
+    )
+
+    assert [(tg.protocol, tg.is_router_application) for tg in target_groups] == [
+        (RequestProtocol.HTTP, True),
+        (RequestProtocol.GRPC, False),
     ]
 
 
@@ -1134,6 +1236,119 @@ def test_stop_one_running_replica_for_testing_delegates_to_manager(
     direct_ingress_controller._stop_one_running_replica_for_testing(deployment_id)
 
     assert deployment_state_manager.stopped_deployment_id == deployment_id
+
+
+def test_recon_port_gate_feeds_only_new_ingress_tuples(
+    direct_ingress_controller: FakeDirectIngressController,
+):
+    """C3: update_ports is fed only the set-diff of
+    ingress tuples new since the last sync -- the full set on the first tick (empty
+    cache) and an empty list on an unchanged second tick."""
+    tuples = [("node1", "r1", 30000, 40000), ("node2", "r2", 30001, 40001)]
+    direct_ingress_controller.deployment_state_manager.get_ingress_replicas_info = (
+        lambda: list(tuples)
+    )
+
+    with mock.patch.object(NodePortManager, "update_ports") as mock_update:
+        # First tick: cache empty -> full emit.
+        direct_ingress_controller._maybe_update_ingress_ports()
+        assert set(mock_update.call_args[0][0]) == set(tuples)
+
+        # Second tick: ingress set unchanged -> empty diff.
+        mock_update.reset_mock()
+        direct_ingress_controller._maybe_update_ingress_ports()
+        assert mock_update.call_args[0][0] == []
+
+
+def test_recon_port_gate_prune_skips_unchanged_node(
+    direct_ingress_controller: FakeDirectIngressController,
+):
+    """C4: prune skips a node's O(replicas) reclaim
+    scan when that node's alive-replica set is unchanged since the last prune."""
+    deployment_id = DeploymentID(name="app1_ingress", app_name="app1")
+    replica_id = ReplicaID(unique_id="replica1", deployment_id=deployment_id)
+    replica_info = RunningReplicaInfo(
+        replica_id=replica_id,
+        node_id="node1",
+        node_ip="10.0.0.1",
+        availability_zone="az1",
+        actor_name="replica1",
+        max_ongoing_requests=100,
+    )
+    direct_ingress_controller.deployment_state_manager = FakeDeploymentStateManager(
+        running_replica_infos={deployment_id: [replica_info]},
+    )
+    direct_ingress_controller.allocate_replica_port(
+        "node1", replica_id.unique_id, RequestProtocol.HTTP
+    )
+    node1_manager = NodePortManager.get_node_manager("node1")
+
+    with mock.patch.object(
+        node1_manager,
+        "_prune_replica_ports",
+        wraps=node1_manager._prune_replica_ports,
+    ) as spy:
+        # First tick: fingerprint unset -> reclaim scan runs.
+        direct_ingress_controller._maybe_update_ingress_ports()
+        assert spy.call_count == 1
+        # Second tick: alive set unchanged -> reclaim scan skipped.
+        direct_ingress_controller._maybe_update_ingress_ports()
+        assert spy.call_count == 1
+
+
+def test_ingress_port_reconcile_gated_on_membership_version(
+    direct_ingress_controller: FakeDirectIngressController,
+):
+    """The direct-ingress port reconcile is skipped on ticks where the ingress
+    membership version is unchanged and no port is awaiting quarantine reclaim, and
+    runs again as soon as the version advances."""
+    dsm = FakeDeploymentStateManager(running_replica_infos={})
+    dsm.get_ingress_replicas_info = lambda: [("node1", "r1", 30000, 40000)]
+    version = {"v": 1}
+    # Constant version until we bump it (overrides the always-advancing fake default).
+    dsm.get_ingress_membership_version = lambda: version["v"]
+    direct_ingress_controller.deployment_state_manager = dsm
+
+    with mock.patch.object(NodePortManager, "update_ports") as mock_update:
+        # First tick: version (1) differs from the controller's initial -1 -> runs.
+        direct_ingress_controller._maybe_update_ingress_ports()
+        assert mock_update.call_count == 1
+
+        # Unchanged version and nothing quarantined -> gate skips the reconcile.
+        direct_ingress_controller._maybe_update_ingress_ports()
+        assert mock_update.call_count == 1
+
+        # Membership version advances -> reconcile runs again.
+        version["v"] = 2
+        direct_ingress_controller._maybe_update_ingress_ports()
+        assert mock_update.call_count == 2
+
+
+def test_reconcile_version_not_advanced_on_failure(
+    direct_ingress_controller: FakeDirectIngressController,
+):
+    """If the port reconcile raises, the ingress membership version must NOT be marked
+    reconciled -- otherwise the gate would skip the retry (the outer control loop catches
+    the exception and re-runs the step next tick) and leave ports out of sync."""
+    dsm = FakeDeploymentStateManager(running_replica_infos={})
+    dsm.get_ingress_replicas_info = lambda: [("node1", "r1", 30000, 40000)]
+    dsm.get_ingress_membership_version = lambda: 1
+    direct_ingress_controller.deployment_state_manager = dsm
+
+    # First tick: update_ports raises -> reconcile fails.
+    with mock.patch.object(
+        NodePortManager, "update_ports", side_effect=RuntimeError("boom")
+    ):
+        with pytest.raises(RuntimeError):
+            direct_ingress_controller._maybe_update_ingress_ports()
+    # Version stays at the initial sentinel -> the failed reconcile is still pending.
+    assert direct_ingress_controller._last_ingress_membership_version == -1
+
+    # Next tick: update_ports succeeds -> the reconcile is retried, not skipped.
+    with mock.patch.object(NodePortManager, "update_ports") as ok:
+        direct_ingress_controller._maybe_update_ingress_ports()
+        assert ok.call_count == 1  # retried
+    assert direct_ingress_controller._last_ingress_membership_version == 1
 
 
 if __name__ == "__main__":

@@ -4,6 +4,7 @@ import subprocess
 import time
 import traceback
 from threading import Thread
+from typing import Any, Dict, List, Optional
 
 import click
 
@@ -20,6 +21,7 @@ from ray.autoscaler._private.constants import (
 )
 from ray.autoscaler._private.event_system import CreateClusterEvent, global_event_system
 from ray.autoscaler._private.log_timer import LogTimer
+from ray.autoscaler._private.util import with_envs
 from ray.autoscaler.tags import (
     STATUS_SETTING_UP,
     STATUS_SYNCING_FILES,
@@ -53,6 +55,11 @@ class NodeUpdater:
         runtime_hash: Used to check for config changes
         file_mounts_contents_hash: Used to check for changes to file mounts
         is_head_node: Whether to use head start/setup commands
+        node_resources: Optional resources string that the raylet should
+            advertise on startup.
+        node_labels: Optional labels for the node.
+        cluster_synced_files: Files synced from the head to worker nodes after
+            the head node finishes its setup.
         rsync_options: Extra options related to the rsync command.
         process_runner: the module to use to run the commands
             in the CommandRunner. E.g., subprocess.
@@ -62,31 +69,34 @@ class NodeUpdater:
         restart_only: Whether to skip setup commands & just restart ray
         for_recovery: True if updater is for a recovering node. Only used for
             metric tracking.
+        auth_mode: The cluster YAML's `auth_mode`. When given, the start
+            commands run with RAY_AUTH_MODE set to it.
     """
 
     def __init__(
         self,
-        node_id,
-        provider_config,
-        provider,
-        auth_config,
-        cluster_name,
-        file_mounts,
-        initialization_commands,
-        setup_commands,
-        ray_start_commands,
-        runtime_hash,
-        file_mounts_contents_hash,
-        is_head_node,
-        node_resources=None,
-        node_labels=None,
-        cluster_synced_files=None,
-        rsync_options=None,
-        process_runner=subprocess,
-        use_internal_ip=False,
-        docker_config=None,
-        restart_only=False,
-        for_recovery=False,
+        node_id: str,
+        provider_config: dict,
+        provider: Any,
+        auth_config: dict,
+        cluster_name: str,
+        file_mounts: dict,
+        initialization_commands: list,
+        setup_commands: list,
+        ray_start_commands: list,
+        runtime_hash: str,
+        file_mounts_contents_hash: str,
+        is_head_node: bool,
+        node_resources: Optional[str] = None,
+        node_labels: Optional[Dict[str, str]] = None,
+        cluster_synced_files: Optional[List[str]] = None,
+        rsync_options: Optional[Dict[str, Any]] = None,
+        process_runner: Any = subprocess,
+        use_internal_ip: bool = False,
+        docker_config: Optional[Dict[str, Any]] = None,
+        restart_only: bool = False,
+        for_recovery: bool = False,
+        auth_mode: Optional[str] = None,
     ):
         self.log_prefix = "NodeUpdater: {}: ".format(node_id)
         # Three cases:
@@ -123,6 +133,10 @@ class NodeUpdater:
 
         self.initialization_commands = initialization_commands
         self.setup_commands = setup_commands
+        if auth_mode:
+            ray_start_commands = with_envs(
+                ray_start_commands, {"RAY_AUTH_MODE": auth_mode}
+            )
         self.ray_start_commands = ray_start_commands
         self.node_resources = node_resources
         self.node_labels = node_labels

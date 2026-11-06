@@ -4,6 +4,7 @@ import numpy as np
 
 from ray.data._internal.execution.interfaces import (
     AllToAllTransformFn,
+    BlockEntry,
     RefBundle,
     TaskContext,
 )
@@ -34,7 +35,7 @@ def generate_randomize_blocks_fn(
         for i, ref_bundle in enumerate(refs):
             index_to_schema[i] = ref_bundle.schema
             blocks_with_metadata.extend(
-                (block, meta, i) for block, meta in ref_bundle.blocks
+                (entry.ref, entry.metadata, i) for entry in ref_bundle.blocks
             )
 
         if len(blocks_with_metadata) == 0:
@@ -49,12 +50,7 @@ def generate_randomize_blocks_fn(
                 stats_list.append(meta.to_stats())
                 output.append(
                     RefBundle(
-                        [
-                            (
-                                block,
-                                meta,
-                            )
-                        ],
+                        [BlockEntry(block, meta)],
                         owns_blocks=input_owned,
                         schema=index_to_schema[i],
                     )

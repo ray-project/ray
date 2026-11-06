@@ -1,6 +1,7 @@
 import asyncio
 import concurrent.futures
 import logging
+import os
 import pprint
 import time
 import traceback
@@ -71,11 +72,18 @@ def invoke_state_api(
     """Invoke a State API
 
     Args:
-        - verify_cb: Callback that takes in the response from `state_api_fn` and
+        verify_cb: Callback that takes in the response from `state_api_fn` and
             returns a boolean, indicating the correctness of the results.
-        - state_api_fn: Function of the state API
-        - state_stats: Stats
-        - kwargs: Keyword arguments to be forwarded to the `state_api_fn`
+        state_api_fn: Function of the state API.
+        state_stats: Stats container that tracks latency and call counts.
+        key_suffix: Optional suffix appended to the stats key for this call.
+        print_result: If True, pretty-print the API result.
+        err_msg: Optional message included in the assertion error if the
+            verify callback fails.
+        **kwargs: Keyword arguments to be forwarded to the `state_api_fn`.
+
+    Returns:
+        The response from ``state_api_fn``.
     """
     if "timeout" not in kwargs:
         kwargs["timeout"] = STATE_LIST_TIMEOUT
@@ -198,14 +206,14 @@ class StateAPIGeneratorActor:
         """An actor that periodically issues state API
 
         Args:
-            - apis: List of StateAPICallSpec
-            - call_interval_s: State apis in the `apis` will be issued
+            apis: List of StateAPICallSpec.
+            call_interval_s: State apis in the `apis` will be issued
                 every `call_interval_s` seconds.
-            - print_interval_s: How frequent state api stats will be dumped.
-            - wait_after_stop: When true, call to `ray.get(actor.stop.remote())`
+            print_interval_s: How frequent state api stats will be dumped.
+            wait_after_stop: When true, call to `ray.get(actor.stop.remote())`
                 will wait for all pending state APIs to return.
                 Setting it to `False` might miss some long-running state apis calls.
-            - print_result: True if result of each API call is printed. Default False.
+            print_result: True if result of each API call is printed. Default False.
         """
         # Configs
         self._apis = apis
@@ -342,8 +350,14 @@ def get_state_api_manager(gcs_address: str) -> StateAPIManager:
     gcs_client = GcsClient(address=gcs_address)
     gcs_channel = GcsChannel(gcs_address=gcs_address, aio=True)
     gcs_channel.connect()
+    # Task events are read from the dashboard head, which the client reaches over the
+    # subprocess module's socket rather than through the GCS channel.
+    node = ray._private.worker.global_worker.node
     state_api_data_source_client = StateDataSourceClient(
-        gcs_channel.channel(), gcs_client
+        gcs_channel.channel(),
+        gcs_client,
+        dashboard_socket_dir=os.path.join(node.get_session_dir_path(), "sockets"),
+        dashboard_session_name=node.session_name,
     )
     return StateAPIManager(
         state_api_data_source_client,
@@ -391,8 +405,7 @@ def summarize_worker_startup_time():
 def verify_failed_task(
     name: str, error_type: str, error_message: Union[str, List[str], None] = None
 ) -> bool:
-    """
-    Check if a task with 'name' has failed with the exact error type 'error_type'
+    """Check if a task with 'name' has failed with the exact error type 'error_type'
     and 'error_message' in the error message.
     """
     tasks = list_tasks(filters=[("name", "=", name)], detail=True)
@@ -409,8 +422,7 @@ def verify_failed_task(
 
 
 def wait_for_task_states(name_to_state: Dict[str, str], timeout: float = 30) -> None:
-    """
-    Block until every task in ``name_to_state`` is observed in its expected
+    """Block until every task in ``name_to_state`` is observed in its expected
     state via the State API, or raise if the timeout expires.
     """
 
@@ -424,8 +436,7 @@ def wait_for_task_states(name_to_state: Dict[str, str], timeout: float = 30) -> 
 
 
 def _is_actor_task_running(actor_pid: int, task_name: str):
-    """
-    Check whether the actor task `task_name` is running on the actor process
+    """Check whether the actor task `task_name` is running on the actor process
     with pid `actor_pid`.
 
     Args:
@@ -494,9 +505,7 @@ def _is_actor_task_running(actor_pid: int, task_name: str):
 
 
 def verify_schema(state, result_dict: dict, detail: bool = False):
-    """
-    Verify the schema of the result_dict is the same as the state.
-    """
+    """Verify the schema of the result_dict is the same as the state."""
     state_fields_columns = set()
     if detail:
         state_fields_columns = state.columns()

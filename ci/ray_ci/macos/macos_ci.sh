@@ -88,7 +88,7 @@ run_core_dashboard_test() {
   (bazel test --config=ci --dynamic_mode=off \
     --test_env=CI $(./ci/run/bazel_export_options) --build_tests_only \
     --test_tag_filters=-post_wheel_build -- \
-    //:all python/ray/dashboard/... -python/ray/serve/... -rllib/...) || exit 42
+    //:all python/ray/dashboard/... -python/ray/serve/... -python/ray/rllib/...) || exit 42
 }
 
 run_ray_cpp() {
@@ -122,6 +122,13 @@ _prelude() {
     (which bazel && bazel clean) || true;
   fi
   export SKIP_PIP_INSTALL=1
+  # Resolve pip and uv through the CI package mirror where it is reachable, so the
+  # installs below do not depend on files.pythonhosted.org being healthy
+  # (pypi/support#11895). Sourced, because it exports the index variables. The `|| true`
+  # matters under `set -e`: this must never be the reason a wheel build fails, and every
+  # path inside it already falls back to public PyPI.
+  # shellcheck source=ci/ray_ci/macos/pypi_proxy.sh
+  source ./ci/ray_ci/macos/pypi_proxy.sh || true
   . ./ci/ci.sh init && source ~/.zshenv
   source ~/.zshrc
 

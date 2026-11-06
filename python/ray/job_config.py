@@ -34,12 +34,21 @@ class JobConfig:
             `CLASSPATH` in Java and `PYTHONPATH` in Python.
             See :ref:`Ray cross-language programming <cross_language>` for more details.
         runtime_env: A :ref:`runtime environment <runtime-environments>` dictionary.
+        _client_job: Whether this job was submitted via Ray Client.
         metadata: An opaque metadata dictionary.
         ray_namespace: A :ref:`namespace <namespaces-guide>`
             is a logical grouping of jobs and named actors.
         default_actor_lifetime: The default value of actor lifetime,
             can be "detached" or "non_detached".
             See :ref:`actor lifetimes <actor-lifetimes>` for more details.
+        _disable_job_level_lineage_reconstruction: Whether to turn off Ray Core
+            lineage reconstruction for this job, leaving the application
+            responsible for reconstructing its own lost objects. When ``True``,
+            the job's workers never pin object lineage. When ``False``, the
+            cluster-level ``lineage_pinning_enabled`` system config applies.
+            Defaults to ``False``. This config is currently experimental.
+        _py_driver_sys_path: A list of directories that specify the search path
+            for python workers.
     """
 
     def __init__(
@@ -51,6 +60,7 @@ class JobConfig:
         metadata: Optional[dict] = None,
         ray_namespace: Optional[str] = None,
         default_actor_lifetime: str = "non_detached",
+        _disable_job_level_lineage_reconstruction: bool = False,
         _py_driver_sys_path: Optional[List[str]] = None,
     ):
         #: The jvm options for java workers of the job.
@@ -72,6 +82,9 @@ class JobConfig:
         self.ray_namespace = ray_namespace
         self.set_runtime_env(runtime_env)
         self.set_default_actor_lifetime(default_actor_lifetime)
+        self._disable_job_level_lineage_reconstruction = (
+            _disable_job_level_lineage_reconstruction
+        )
         # A list of directories that specify the search path for python workers.
         self._py_driver_sys_path = _py_driver_sys_path or []
         # Python logging configurations that will be passed to Ray tasks/actors.
@@ -244,6 +257,9 @@ class JobConfig:
 
             if self._default_actor_lifetime is not None:
                 pb.default_actor_lifetime = self._default_actor_lifetime
+            pb.disable_job_level_lineage_reconstruction = (
+                self._disable_job_level_lineage_reconstruction
+            )
             if self.py_logging_config:
                 pb.serialized_py_logging_config = pickle.dumps(self.py_logging_config)
             self._cached_pb = pb
@@ -262,7 +278,7 @@ class JobConfig:
         return self._get_proto_job_config().runtime_env_info.runtime_env_config
 
     @classmethod
-    def from_json(cls, job_config_json):
+    def from_json(cls, job_config_json: Dict[str, Any]) -> "JobConfig":
         """Generates a JobConfig object from json.
 
         Examples:
@@ -275,6 +291,9 @@ class JobConfig:
 
         Args:
             job_config_json: The job config json dictionary.
+
+        Returns:
+            A :class:`JobConfig` instance built from the dictionary.
         """
         return cls(
             jvm_options=job_config_json.get("jvm_options", None),
@@ -282,6 +301,9 @@ class JobConfig:
             runtime_env=job_config_json.get("runtime_env", None),
             metadata=job_config_json.get("metadata", None),
             ray_namespace=job_config_json.get("ray_namespace", None),
+            _disable_job_level_lineage_reconstruction=job_config_json.get(
+                "disable_job_level_lineage_reconstruction", False
+            ),
             _client_job=job_config_json.get("client_job", False),
             _py_driver_sys_path=job_config_json.get("py_driver_sys_path", None),
         )

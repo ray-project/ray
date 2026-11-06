@@ -1,3 +1,4 @@
+import os
 from typing import Iterator
 from unittest import mock
 
@@ -13,6 +14,7 @@ import ray
 from ray.data._internal.datasource.bigquery_datasink import BigQueryDatasink
 from ray.data._internal.datasource.bigquery_datasource import BigQueryDatasource
 from ray.data._internal.execution.interfaces.task_context import TaskContext
+from ray.data._internal.object_extensions.arrow import ArrowPythonObjectArray
 from ray.data._internal.planner.plan_write_op import generate_collect_write_stats_fn
 from ray.data.block import Block
 from ray.data.tests.conftest import *  # noqa
@@ -126,6 +128,30 @@ class TestReadBigQuery:
         )
         read_tasks_list = bq_ds.get_read_tasks(parallelism)
         assert len(read_tasks_list) == parallelism
+
+    def test_read_rejects_pickle_object_columns(self, bqs_client_full_mock, tmp_path):
+        """A Storage Read API stream carrying a pickled-object column must be
+        rejected before anything is unpickled."""
+        marker = tmp_path / "exploit_marker"
+
+        class Exploit:
+            def __reduce__(self):
+                return (os.system, (f"touch {marker}",))
+
+        poisoned = pa.table(
+            {"id": [1, 2], "evil": ArrowPythonObjectArray.from_objects([Exploit()] * 2)}
+        )
+        bqs_client_full_mock.read_rows.return_value.to_arrow.return_value = poisoned
+
+        bq_ds = BigQueryDatasource(
+            project_id=_TEST_GCP_PROJECT_ID,
+            dataset=_TEST_BQ_DATASET,
+        )
+        read_task = bq_ds.get_read_tasks(1)[0]
+        with pytest.raises(ValueError, match="arrow_pickled_object"):
+            list(read_task())
+
+        assert not marker.exists(), "pickle.load executed attacker code"
 
     @pytest.mark.parametrize(
         "parallelism",
@@ -254,6 +280,28 @@ class TestWriteBigQuery:
                 }
             ),
         )
+
+    def test_write_empty_block(self, ray_get_mock):
+        """Test that writing a zero-sized block doesn't crash.
+
+        See https://github.com/ray-project/ray/issues/51892
+        """
+        bq_datasink = BigQueryDatasink(
+            project_id=_TEST_GCP_PROJECT_ID,
+            dataset=_TEST_BQ_DATASET,
+        )
+        # Create an empty block with schema but no rows
+        block = pa.Table.from_arrays([pa.array([], type=pa.int64())], names=["data"])
+        ctx = TaskContext(1, "")
+        # This should not raise an error - empty blocks should be skipped
+        bq_datasink.write(
+            blocks=[block],
+            ctx=ctx,
+        )
+
+        # write() always calls ray.get(), but with an empty list since the
+        # zero-row block is filtered out (no remote write tasks launched).
+        ray_get_mock.assert_called_once_with([])
 
 
 if __name__ == "__main__":

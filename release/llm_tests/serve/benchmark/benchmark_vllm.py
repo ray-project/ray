@@ -86,30 +86,34 @@ def get_vllm_cli_args(llm_config):
 
     cli_args = ["--model", llm_config["model_loading_config"]["model_id"]]
     for key, value in engine_kwargs.items():
-        cli_args.append("--" + key.replace("_", "-"))
-        if isinstance(value, dict):
-            cli_args.append(json.dumps(value))
-        elif isinstance(value, bool):
-            pass
-        else:
-            cli_args.append(str(value))
-
-    cli_args.extend(
-        ["--tensor-parallel-size", str(engine_kwargs["tensor_parallel_size"])]
-    )
-
-    if "max_model_len" in engine_kwargs:
-        cli_args.extend(["--max-model-len", str(engine_kwargs["max_model_len"])])
-
+        cli_args.extend(_engine_kwarg_to_cli(key, value))
     return cli_args
 
 
-def get_ray_options(llm_config):
-    num_gpus = llm_config["tensor_parallelism"]["degree"]
-    acc_type = llm_config["accelerator_type"]
-    resources = {f"accelerator_type:{acc_type}": 0.001}
+def _engine_kwarg_to_cli(key, value):
+    """Translate one engine_kwargs entry to vllm CLI args.
 
-    return {"num_gpus": num_gpus, "resources": resources}
+    vLLM uses argparse.BooleanOptionalAction for bool fields, so emit the
+    explicit `--flag` / `--no-flag` form to honor the configured value
+    regardless of the engine default.
+    """
+    if value is None:
+        return []
+    flag = "--" + key.replace("_", "-")
+    if isinstance(value, bool):
+        return [flag] if value else ["--no-" + key.replace("_", "-")]
+    if isinstance(value, dict):
+        return [flag, json.dumps(value)]
+    return [flag, str(value)]
+
+
+def get_ray_options(llm_config):
+    engine_kwargs = llm_config["engine_kwargs"]
+    num_gpus = engine_kwargs.get("tensor_parallel_size", 1) * engine_kwargs.get(
+        "pipeline_parallel_size", 1
+    )
+
+    return {"num_gpus": num_gpus}
 
 
 def start_vllm_process(vllm_cli_args):
@@ -236,7 +240,7 @@ def main(pargs):
 
     results = run_vllm_benchmark(vllm_cli_args)
 
-    tag = f"{llm_config['accelerator_type']}-TP{llm_config['engine_kwargs']['tensor_parallel_size']}"
+    tag = f"TP{llm_config['engine_kwargs']['tensor_parallel_size']}"
     service_metadata = {
         "cloud_name": "",
         "service_name": "",

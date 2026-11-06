@@ -140,8 +140,11 @@ class _ClientContext:
             secure: Whether to use a TLS secured gRPC channel
             metadata: gRPC metadata to send on connect
             connection_retries: number of connection attempts to make
+            namespace: The namespace to connect to.
             ignore_version: whether to ignore Python or Ray version mismatches.
                 This should only be used for debugging purposes.
+            _credentials: Optional gRPC channel credentials for secure connection.
+            ray_init_kwargs: Optional additional keyword arguments for ray.init().
 
         Returns:
             Dictionary of connection info, e.g., {"num_clients": 1}.
@@ -251,15 +254,19 @@ class _ClientContext:
 
     # remote can be called outside of a connection, which is why it
     # exists on the same API layer as connect() itself.
-    def remote(self, *args, **kwargs):
+    def remote(self, *args: Any, **kwargs: Any):
         """remote is the hook stub passed on to replace `ray.remote`.
 
         This sets up remote functions or actors, as the decorator,
         but does not execute them.
 
         Args:
-            args: opaque arguments
-            kwargs: opaque keyword arguments
+            *args: opaque arguments forwarded to ``_ClientAPI.remote``.
+            **kwargs: opaque keyword arguments forwarded to ``_ClientAPI.remote``.
+
+        Returns:
+            A client-side stub for the remote function or actor, or a
+            decorator that produces one when applied.
         """
         return self.api.remote(*args, **kwargs)
 

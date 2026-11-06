@@ -34,7 +34,25 @@ import { NodeRows } from "./NodeRow";
 const codeTextStyle = {
   fontFamily: "Roboto Mono, monospace",
 };
-const columns = [
+const acceleratorColumnLabels = {
+  gpu: {
+    utilization: "GPUs",
+    memory: "GRAM",
+  },
+  tpu: {
+    utilization: "TPUs",
+    memory: "HBM",
+  },
+  npu: {
+    utilization: "NPUs",
+    memory: "HBM",
+  },
+  generic: {
+    utilization: "Accelerators",
+    memory: "Accelerator Memory",
+  },
+};
+const getColumns = (acceleratorType: keyof typeof acceleratorColumnLabels) => [
   { label: "" }, // Expand button
   { label: "Host / Worker Process name" },
   { label: "State" },
@@ -72,21 +90,23 @@ const columns = [
     ),
   },
   {
-    label: "GPU",
+    label: acceleratorColumnLabels[acceleratorType].utilization,
     helpInfo: (
       <Typography>
-        Usage of each GPU device. If no GPU usage is detected, here are the
-        potential root causes:
+        Usage of each accelerator device (e.g. GPU, NPU, TPU). If no usage is
+        detected, here are the potential root causes:
         <br />
-        1. non-GPU Ray image is used on this node. Switch to a GPU Ray image and
-        try again. <br />
-        2. Non Nvidia or AMD GPUs are being used.
+        1. Non-accelerator Ray image is used on this node. Switch to an
+        appropriate image and try again. <br />
+        2. An unsupported accelerator or driver version is being used.
         <br />
-        3. pynvml or pyamdsmi module raises an exception.
+        3. pynvml, pyamdsmi, Ascend DCMI, or the TPU plugin raises an exception.
       </Typography>
     ),
   },
-  { label: "GRAM" },
+  {
+    label: acceleratorColumnLabels[acceleratorType].memory,
+  },
   { label: "Object Store Memory" },
   {
     label: "Disk(root)",
@@ -247,6 +267,28 @@ const Nodes = () => {
     maxPage,
   } = sliceToPage(nodeList, page.pageNo, page.pageSize);
 
+  const accelerators: (keyof typeof acceleratorColumnLabels)[] = [];
+  if (nodeList.some((node) => node.gpus && node.gpus.length > 0)) {
+    accelerators.push("gpu");
+  }
+  if (nodeList.some((node) => node.tpus && node.tpus.length > 0)) {
+    accelerators.push("tpu");
+  }
+  if (nodeList.some((node) => node.npus && node.npus.length > 0)) {
+    accelerators.push("npu");
+  }
+  const accelerator = accelerators.length !== 1 ? "generic" : accelerators[0];
+  const showAcceleratorColumns = accelerators.length > 0;
+
+  const unfilteredColumns = getColumns(accelerator);
+  const columns = showAcceleratorColumns
+    ? unfilteredColumns
+    : unfilteredColumns.filter(
+        (col) =>
+          col.label !== acceleratorColumnLabels[accelerator].utilization &&
+          col.label !== acceleratorColumnLabels[accelerator].memory,
+      );
+
   return (
     <Box
       sx={{
@@ -374,6 +416,7 @@ const Nodes = () => {
                     node={node}
                     isRefreshing={isRefreshing}
                     startExpanded={nodeList.length === 1}
+                    showAcceleratorColumns={showAcceleratorColumns}
                   />
                 ))}
               </TableBody>

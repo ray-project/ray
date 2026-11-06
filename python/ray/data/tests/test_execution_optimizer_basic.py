@@ -250,7 +250,7 @@ def test_map_rows_e2e(ray_start_regular_shared_2_cpus):
     expected = [1, 2, 3, 4, 5]
     actual = sorted(extract_values("id", ds.take_all()))
     assert actual == expected, f"Expected {expected}, but got {actual}"
-    _check_usage_record(["ReadRange", "Map"])
+    _check_usage_record(["ReadRange", "MapRows"])
 
 
 def test_filter_operator(ray_start_regular_shared_2_cpus):
@@ -299,7 +299,7 @@ def test_project_operator_select(ray_start_regular_shared_2_cpus):
     physical_plan = PhysicalOptimizer().optimize(physical_plan)
     physical_op = physical_plan.dag
     assert isinstance(physical_op, TaskPoolMapOperator)
-    assert isinstance(physical_op.input_dependency, TaskPoolMapOperator)
+    assert isinstance(physical_op.input_dependencies[0], TaskPoolMapOperator)
 
 
 def test_project_operator_rename(ray_start_regular_shared_2_cpus):
@@ -327,7 +327,7 @@ def test_project_operator_rename(ray_start_regular_shared_2_cpus):
     physical_plan = PhysicalOptimizer().optimize(physical_plan)
     physical_op = physical_plan.dag
     assert isinstance(physical_op, TaskPoolMapOperator)
-    assert isinstance(physical_op.input_dependency, TaskPoolMapOperator)
+    assert isinstance(physical_op.input_dependencies[0], TaskPoolMapOperator)
 
 
 def test_flat_map(ray_start_regular_shared_2_cpus):

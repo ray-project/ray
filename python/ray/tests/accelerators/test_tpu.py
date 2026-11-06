@@ -6,6 +6,7 @@ from unittest.mock import patch
 import pytest
 import requests
 
+import ray
 from ray._private.accelerators import TPUAcceleratorManager, tpu
 
 
@@ -21,20 +22,172 @@ def test_autodetect_num_tpus_accel(mock_glob):
     assert TPUAcceleratorManager.get_current_node_num_accelerators() == 4
 
 
+@patch("os.path.isdir")
+@patch("glob.glob")
+@patch("os.listdir")
+def test_autodetect_num_tpus_accel_ignores_blackwell_directory(
+    mock_list, mock_glob, mock_isdir
+):
+    # NVIDIA drivers 570.x (Blackwell-class GPUs, e.g. RTX 5090) create
+    # /dev/accel as a directory containing /dev/accel/accel0. The non-recursive
+    # glob matches the directory entry; filtering directories out keeps real
+    # TPU chips (character devices at /dev/accel0..N) while rejecting the
+    # NVIDIA false positive.
+    mock_glob.return_value = ["/dev/accel"]
+    mock_isdir.side_effect = lambda p: p == "/dev/accel"
+    mock_list.side_effect = FileNotFoundError
+    TPUAcceleratorManager.get_current_node_num_accelerators.cache_clear()
+    assert TPUAcceleratorManager.get_current_node_num_accelerators() == 0
+
+
 @patch("glob.glob")
 @patch("os.listdir")
 def test_autodetect_num_tpus_vfio(mock_list, mock_glob):
     mock_glob.return_value = []
-    mock_list.return_value = [f"{i}" for i in range(4)]
-    TPUAcceleratorManager.get_current_node_num_accelerators.cache_clear()
-    assert TPUAcceleratorManager.get_current_node_num_accelerators() == 4
+    # Four VFIO groups. Each group is backed by a single Google TPU PCI device
+    # (vendor 0x1ae0) at /sys/kernel/iommu_groups/<n>/devices/<bdf>/vendor.
+    listdir_results = {"/dev/vfio": [f"{i}" for i in range(4)]}
+    listdir_results.update(
+        {f"/sys/kernel/iommu_groups/{i}/devices": [f"0000:00:0{i}.0"] for i in range(4)}
+    )
+
+    def fake_listdir(path):
+        try:
+            return listdir_results[path]
+        except KeyError:
+            raise AssertionError(f"unexpected listdir: {path}")
+
+    mock_list.side_effect = fake_listdir
+    with patch(
+        "builtins.open",
+        mock.mock_open(read_data="0x1ae0\n"),
+    ):
+        TPUAcceleratorManager.get_current_node_num_accelerators.cache_clear()
+        assert TPUAcceleratorManager.get_current_node_num_accelerators() == 4
 
 
 @patch("glob.glob")
 @patch("os.listdir")
-def test_autodetect_num_tpus_without_devices(mock_list, mock_glob):
-    mock_list.side_effect = FileNotFoundError
+def test_autodetect_num_tpus_vfio_ignores_non_tpu_vendor(mock_list, mock_glob):
+    # NVIDIA BlueField-3's SoC Management Interface is bound to vfio-pci by
+    # RShim and surfaces as /dev/vfio/96. The underlying device is vendor
+    # 0x15b3 (Mellanox), not Google (0x1ae0). Ray must NOT count it as a TPU,
+    # otherwise NVIDIA GPUs on the same node would fail to register.
     mock_glob.return_value = []
+    listdir_results = {
+        "/dev/vfio": ["vfio", "96"],
+        "/sys/kernel/iommu_groups/96/devices": ["0016:03:00.2"],
+    }
+
+    def fake_listdir(path):
+        try:
+            return listdir_results[path]
+        except KeyError:
+            raise AssertionError(f"unexpected listdir: {path}")
+
+    mock_list.side_effect = fake_listdir
+    with patch(
+        "builtins.open",
+        mock.mock_open(read_data="0x15b3\n"),
+    ):
+        TPUAcceleratorManager.get_current_node_num_accelerators.cache_clear()
+        assert TPUAcceleratorManager.get_current_node_num_accelerators() == 0
+
+
+@patch("glob.glob")
+@patch("os.listdir")
+def test_autodetect_num_tpus_vfio_mixed_groups(mock_list, mock_glob):
+    # Two VFIO groups: one is a Google TPU (vendor 0x1ae0), the other is the
+    # BlueField-3 SoC (vendor 0x15b3). Only the TPU-backed group is counted.
+    mock_glob.return_value = []
+    listdir_results = {
+        "/dev/vfio": ["vfio", "10", "96"],
+        "/sys/kernel/iommu_groups/10/devices": ["0000:01:00.0"],
+        "/sys/kernel/iommu_groups/96/devices": ["0016:03:00.2"],
+    }
+    # Build keys with os.path.join so they match production path construction
+    # on both POSIX and Windows (where join inserts backslashes).
+    vendor_results = {
+        os.path.join(
+            "/sys/kernel/iommu_groups/10/devices", "0000:01:00.0", "vendor"
+        ): "0x1ae0\n",
+        os.path.join(
+            "/sys/kernel/iommu_groups/96/devices", "0016:03:00.2", "vendor"
+        ): "0x15b3\n",
+    }
+
+    def fake_listdir(path):
+        try:
+            return listdir_results[path]
+        except KeyError:
+            raise AssertionError(f"unexpected listdir: {path}")
+
+    def fake_open(path, *args, **kwargs):
+        try:
+            return mock.mock_open(read_data=vendor_results[path])()
+        except KeyError:
+            raise AssertionError(f"unexpected open: {path}")
+
+    mock_list.side_effect = fake_listdir
+    with patch("builtins.open", side_effect=fake_open):
+        TPUAcceleratorManager.get_current_node_num_accelerators.cache_clear()
+        assert TPUAcceleratorManager.get_current_node_num_accelerators() == 1
+
+
+@pytest.mark.parametrize(
+    "error",
+    [
+        pytest.param(FileNotFoundError(), id="missing"),
+        pytest.param(PermissionError(13, "Permission denied"), id="permission"),
+        pytest.param(OSError(5, "Input/output error"), id="eio"),
+    ],
+)
+@patch("glob.glob")
+@patch("os.listdir")
+def test_autodetect_num_tpus_vfio_sysfs_error_fails_closed(mock_list, mock_glob, error):
+    mock_glob.return_value = []
+
+    def fake_listdir(path):
+        if path == "/dev/vfio":
+            return ["vfio", "96"]
+        if path == "/sys/kernel/iommu_groups/96/devices":
+            raise error
+        raise AssertionError(f"unexpected listdir: {path}")
+
+    mock_list.side_effect = fake_listdir
+    TPUAcceleratorManager.get_current_node_num_accelerators.cache_clear()
+    assert TPUAcceleratorManager.get_current_node_num_accelerators() == 0
+
+
+@patch("os.listdir", return_value=["0000:c2:00.0"])
+def test_is_vfio_group_a_tpu_unicode_decode_error_fails_closed(mock_list):
+    open_mock = mock.mock_open()
+    open_mock.return_value.__enter__.return_value.read.side_effect = UnicodeDecodeError(
+        "ascii", b"\xff", 0, 1, "invalid byte"
+    )
+    with patch("builtins.open", open_mock):
+        assert tpu._is_vfio_group_a_tpu(96) is False
+
+
+@pytest.mark.parametrize(
+    "error",
+    [
+        pytest.param(FileNotFoundError(), id="missing"),
+        pytest.param(PermissionError(13, "Permission denied"), id="permission"),
+        pytest.param(OSError(5, "Input/output error"), id="eio"),
+    ],
+)
+@patch("glob.glob")
+@patch("os.listdir")
+def test_autodetect_num_tpus_without_devices(mock_list, mock_glob, error):
+    mock_glob.return_value = []
+
+    def fake_listdir(path):
+        if path == "/dev/vfio":
+            raise error
+        raise AssertionError(f"unexpected listdir: {path}")
+
+    mock_list.side_effect = fake_listdir
     TPUAcceleratorManager.get_current_node_num_accelerators.cache_clear()
     assert TPUAcceleratorManager.get_current_node_num_accelerators() == 0
 
@@ -212,6 +365,7 @@ def test_set_tpu_visible_ids_and_bounds(mock_glob, test_case):
             )
             assert os.environ[tpu.TPU_HOST_BOUNDS_ENV_VAR] == tpu.TPU_SINGLE_HOST_BOUNDS
             assert os.environ[tpu.TPU_VISIBLE_CHIPS_ENV_VAR] == ",".join(tpu_chips)
+            assert os.environ[tpu.TPU_VISIBLE_DEVICES_ENV_VAR] == ",".join(tpu_chips)
         elif len(tpu_chips) == 2:
             assert (
                 os.environ[tpu.TPU_CHIPS_PER_HOST_BOUNDS_ENV_VAR]
@@ -219,15 +373,448 @@ def test_set_tpu_visible_ids_and_bounds(mock_glob, test_case):
             )
             assert os.environ[tpu.TPU_HOST_BOUNDS_ENV_VAR] == tpu.TPU_SINGLE_HOST_BOUNDS
             assert os.environ[tpu.TPU_VISIBLE_CHIPS_ENV_VAR] == ",".join(tpu_chips)
+            assert os.environ[tpu.TPU_VISIBLE_DEVICES_ENV_VAR] == ",".join(tpu_chips)
         elif len(tpu_chips) == 4:
             # Check that nothing is set, let the ML framework use the defaults.
             assert os.environ.get(tpu.TPU_CHIPS_PER_HOST_BOUNDS_ENV_VAR, None) is None
             assert os.environ.get(tpu.TPU_SINGLE_HOST_BOUNDS, None) is None
             assert os.environ.get(tpu.TPU_VISIBLE_CHIPS_ENV_VAR, None) is None
+            assert os.environ.get(tpu.TPU_VISIBLE_DEVICES_ENV_VAR, None) is None
         else:  # len(tpu_chips) == 8
             assert os.environ.get(tpu.TPU_CHIPS_PER_HOST_BOUNDS_ENV_VAR, None) is None
             assert os.environ.get(tpu.TPU_SINGLE_HOST_BOUNDS, None) is None
             assert os.environ.get(tpu.TPU_VISIBLE_CHIPS_ENV_VAR, None) is None
+            assert os.environ.get(tpu.TPU_VISIBLE_DEVICES_ENV_VAR, None) is None
+
+
+@pytest.mark.parametrize(
+    "device_ids, expected_chips, expected_devices, expected_bounds",
+    [
+        # 2 logical devices (even passed out of order), both on physical chip 0.
+        (["1", "0"], "0", "0,1", tpu.TPU_CHIPS_PER_HOST_BOUNDS_1_CHIP_CONFIG),
+        # 4 logical devices spanning physical chips 0 and 1.
+        (
+            ["0", "1", "2", "3"],
+            "0,1",
+            "0,1,2,3",
+            tpu.TPU_CHIPS_PER_HOST_BOUNDS_2_CHIP_CONFIG,
+        ),
+        # The other half of the node maps onto the other half of the chips.
+        (
+            ["4", "5", "6", "7"],
+            "2,3",
+            "4,5,6,7",
+            tpu.TPU_CHIPS_PER_HOST_BOUNDS_2_CHIP_CONFIG,
+        ),
+        # Every device on the node: let the ML framework use the defaults.
+        ([str(i) for i in range(8)], None, None, None),
+    ],
+)
+@patch("glob.glob")
+def test_set_tpu_visible_ids_and_bounds_dual_device(
+    mock_glob, device_ids, expected_chips, expected_devices, expected_bounds
+):
+    """Dual-device chips (v7x) expose 2 logical devices per physical chip, so the
+    device IDs Ray assigns are collapsed onto chips for TPU_VISIBLE_CHIPS while
+    remaining uncollapsed in TPU_VISIBLE_DEVICES.
+    """
+    # 4 physical chips, enumerated by the driver as 8 logical devices.
+    mock_glob.return_value = ["/dev/accel" + str(x) for x in range(8)]
+    with patch.dict(
+        "os.environ", {tpu.RAY_TPU_RESOURCE_PER_CHIP_ENV_VAR: "2"}, clear=True
+    ):
+        TPUAcceleratorManager.get_current_node_num_accelerators.cache_clear()
+        TPUAcceleratorManager.set_current_process_visible_accelerator_ids(device_ids)
+        assert os.environ.get(tpu.TPU_VISIBLE_CHIPS_ENV_VAR) == expected_chips
+        assert os.environ.get(tpu.TPU_VISIBLE_DEVICES_ENV_VAR) == expected_devices
+        assert os.environ.get(tpu.TPU_CHIPS_PER_HOST_BOUNDS_ENV_VAR) == expected_bounds
+
+
+@patch("glob.glob")
+def test_set_tpu_visible_ids_sub_chip_allocation(mock_glob):
+    """A sub-chip allocation masks TPU_VISIBLE_CHIPS to the physical chip while
+    preserving the exact logical device ID in TPU_VISIBLE_DEVICES.
+    """
+    mock_glob.return_value = ["/dev/accel" + str(x) for x in range(8)]
+    for device_id in ("0", "1"):
+        with patch.dict(
+            "os.environ", {tpu.RAY_TPU_RESOURCE_PER_CHIP_ENV_VAR: "2"}, clear=True
+        ):
+            TPUAcceleratorManager.get_current_node_num_accelerators.cache_clear()
+            TPUAcceleratorManager.set_current_process_visible_accelerator_ids(
+                [device_id]
+            )
+            assert os.environ[tpu.TPU_VISIBLE_CHIPS_ENV_VAR] == "0"
+            assert os.environ[tpu.TPU_VISIBLE_DEVICES_ENV_VAR] == device_id
+            assert (
+                os.environ[tpu.TPU_CHIPS_PER_HOST_BOUNDS_ENV_VAR]
+                == tpu.TPU_CHIPS_PER_HOST_BOUNDS_1_CHIP_CONFIG
+            )
+
+
+@pytest.mark.parametrize(
+    "num_devices, tpu_chips, initial_env, expected_visible_chips, expected_chip_bounds, expected_host_bounds",
+    [
+        # 4-chip full-node allocation preserves explicit collective/subslice bounds.
+        (
+            4,
+            ["0", "1", "2", "3"],
+            {
+                tpu.TPU_CHIPS_PER_HOST_BOUNDS_ENV_VAR: "2,2,1",
+                tpu.TPU_HOST_BOUNDS_ENV_VAR: "1,2,2",
+            },
+            None,
+            "2,2,1",
+            "1,2,2",
+        ),
+        # 1-chip node (e.g. v6e-1) full-node allocation preserves "1,1,1" defaults.
+        (
+            1,
+            ["0"],
+            {
+                tpu.TPU_CHIPS_PER_HOST_BOUNDS_ENV_VAR: "1,1,1",
+                tpu.TPU_HOST_BOUNDS_ENV_VAR: "1,1,1",
+            },
+            None,
+            "1,1,1",
+            "1,1,1",
+        ),
+        # 2-chip node (e.g. ct6e-standard-2t) full-node allocation preserves "1,2,1" defaults.
+        (
+            2,
+            ["0", "1"],
+            {
+                tpu.TPU_CHIPS_PER_HOST_BOUNDS_ENV_VAR: "1,2,1",
+                tpu.TPU_HOST_BOUNDS_ENV_VAR: "1,1,1",
+            },
+            None,
+            "1,2,1",
+            "1,1,1",
+        ),
+        # Standalone 1-chip task on a 4-chip multi-host container overrides
+        # container-level 4-chip/multi-host defaults to single-host 1-chip bounds.
+        (
+            4,
+            ["0"],
+            {
+                tpu.TPU_CHIPS_PER_HOST_BOUNDS_ENV_VAR: "2,2,1",
+                tpu.TPU_HOST_BOUNDS_ENV_VAR: "1,1,4",
+            },
+            "0",
+            "1,1,1",
+            "1,1,1",
+        ),
+        # Standalone 2-chip task on a 4-chip multi-host container overrides
+        # container bounds to single-host 2-chip bounds.
+        (
+            4,
+            ["2", "3"],
+            {
+                tpu.TPU_CHIPS_PER_HOST_BOUNDS_ENV_VAR: "2,2,1",
+                tpu.TPU_HOST_BOUNDS_ENV_VAR: "2,2,1",
+            },
+            "2,3",
+            "1,2,1",
+            "1,1,1",
+        ),
+        # 1-chip-per-worker collective (e.g. TorchTPU / verl without NOSET=1) where
+        # TPU_CHIPS_PER_HOST_BOUNDS already matches "1,1,1" sets TPU_VISIBLE_CHIPS
+        # while preserving the multi-worker TPU_HOST_BOUNDS="2,2,1".
+        (
+            4,
+            ["2"],
+            {
+                tpu.TPU_CHIPS_PER_HOST_BOUNDS_ENV_VAR: "1,1,1",
+                tpu.TPU_HOST_BOUNDS_ENV_VAR: "2,2,1",
+            },
+            "2",
+            "1,1,1",
+            "2,2,1",
+        ),
+        # Framework-managed worker with NOSET=1 (e.g. verl PlatformTPU) leaves all
+        # caller-supplied TPU visibility and bounds env vars untouched.
+        (
+            4,
+            ["3"],
+            {
+                tpu.NOSET_TPU_VISIBLE_CHIPS_ENV_VAR: "1",
+                tpu.TPU_VISIBLE_CHIPS_ENV_VAR: "3",
+                tpu.TPU_VISIBLE_DEVICES_ENV_VAR: "3",
+                tpu.TPU_CHIPS_PER_HOST_BOUNDS_ENV_VAR: "1,1,1",
+                tpu.TPU_HOST_BOUNDS_ENV_VAR: "4,4,1",
+            },
+            "3",
+            "1,1,1",
+            "4,4,1",
+        ),
+    ],
+)
+@patch("glob.glob")
+def test_set_tpu_visible_ids_preserves_explicit_bounds(
+    mock_glob,
+    num_devices,
+    tpu_chips,
+    initial_env,
+    expected_visible_chips,
+    expected_chip_bounds,
+    expected_host_bounds,
+):
+    """Verify TPU bounds handling across full-node, sub-host, and NOSET=1 tasks."""
+    mock_glob.return_value = ["/dev/accel" + str(x) for x in range(num_devices)]
+    with patch.dict("os.environ", initial_env, clear=True):
+        TPUAcceleratorManager.get_current_node_num_accelerators.cache_clear()
+        TPUAcceleratorManager.set_current_process_visible_accelerator_ids(tpu_chips)
+        assert os.environ.get(tpu.TPU_VISIBLE_CHIPS_ENV_VAR) == expected_visible_chips
+        assert os.environ.get(tpu.TPU_VISIBLE_DEVICES_ENV_VAR) == expected_visible_chips
+        assert (
+            os.environ.get(tpu.TPU_CHIPS_PER_HOST_BOUNDS_ENV_VAR)
+            == expected_chip_bounds
+        )
+        assert os.environ.get(tpu.TPU_HOST_BOUNDS_ENV_VAR) == expected_host_bounds
+
+
+@pytest.mark.parametrize(
+    "num_devices, expected_visible_chips",
+    [
+        (4, None),
+        (8, "0,1,2,3"),
+    ],
+)
+@patch("glob.glob")
+def test_set_tpu_visible_ids_reused_worker_bounds_cleanup(
+    mock_glob, num_devices, expected_visible_chips
+):
+    """Reusing a worker on a >2-chip node (1-chip -> 2-chip -> 4-chip) clears stale sub-host bounds."""
+    mock_glob.return_value = ["/dev/accel" + str(x) for x in range(num_devices)]
+    TPUAcceleratorManager.get_current_node_num_accelerators.cache_clear()
+    with patch.dict("os.environ", {}, clear=True):
+        TPUAcceleratorManager.set_current_process_visible_accelerator_ids(["0"])
+        assert os.environ.get(tpu.TPU_VISIBLE_CHIPS_ENV_VAR) == "0"
+        assert os.environ.get(tpu.TPU_VISIBLE_DEVICES_ENV_VAR) == "0"
+        assert os.environ.get(tpu.TPU_CHIPS_PER_HOST_BOUNDS_ENV_VAR) == "1,1,1"
+        assert os.environ.get(tpu.TPU_HOST_BOUNDS_ENV_VAR) == "1,1,1"
+
+        TPUAcceleratorManager.set_current_process_visible_accelerator_ids(["0", "1"])
+        assert os.environ.get(tpu.TPU_VISIBLE_CHIPS_ENV_VAR) == "0,1"
+        assert os.environ.get(tpu.TPU_VISIBLE_DEVICES_ENV_VAR) == "0,1"
+        assert os.environ.get(tpu.TPU_CHIPS_PER_HOST_BOUNDS_ENV_VAR) == "1,2,1"
+        assert os.environ.get(tpu.TPU_HOST_BOUNDS_ENV_VAR) == "1,1,1"
+
+        TPUAcceleratorManager.set_current_process_visible_accelerator_ids(
+            ["0", "1", "2", "3"]
+        )
+        assert os.environ.get(tpu.TPU_VISIBLE_CHIPS_ENV_VAR) == expected_visible_chips
+        assert os.environ.get(tpu.TPU_VISIBLE_DEVICES_ENV_VAR) == expected_visible_chips
+        assert os.environ.get(tpu.TPU_CHIPS_PER_HOST_BOUNDS_ENV_VAR) is None
+        assert os.environ.get(tpu.TPU_HOST_BOUNDS_ENV_VAR) is None
+
+        TPUAcceleratorManager.set_current_process_visible_accelerator_ids(["0"])
+        assert os.environ.get(tpu.TPU_VISIBLE_CHIPS_ENV_VAR) == "0"
+        assert os.environ.get(tpu.TPU_VISIBLE_DEVICES_ENV_VAR) == "0"
+        assert os.environ.get(tpu.TPU_CHIPS_PER_HOST_BOUNDS_ENV_VAR) == "1,1,1"
+        assert os.environ.get(tpu.TPU_HOST_BOUNDS_ENV_VAR) == "1,1,1"
+
+        TPUAcceleratorManager.set_current_process_visible_accelerator_ids([])
+        assert os.environ.get(tpu.TPU_VISIBLE_CHIPS_ENV_VAR) == ""
+        assert os.environ.get(tpu.TPU_VISIBLE_DEVICES_ENV_VAR) == ""
+        assert os.environ.get(tpu.TPU_CHIPS_PER_HOST_BOUNDS_ENV_VAR) is None
+        assert os.environ.get(tpu.TPU_HOST_BOUNDS_ENV_VAR) is None
+
+        TPUAcceleratorManager.set_current_process_visible_accelerator_ids(
+            ["0", "1", "2", "3"]
+        )
+        assert os.environ.get(tpu.TPU_VISIBLE_CHIPS_ENV_VAR) == expected_visible_chips
+        assert os.environ.get(tpu.TPU_VISIBLE_DEVICES_ENV_VAR) == expected_visible_chips
+        assert os.environ.get(tpu.TPU_CHIPS_PER_HOST_BOUNDS_ENV_VAR) is None
+        assert os.environ.get(tpu.TPU_HOST_BOUNDS_ENV_VAR) is None
+
+
+def test_tpu_worker_visible_devices_and_chips(shutdown_only):
+    """Verify real Ray workers set both TPU_VISIBLE_DEVICES and TPU_VISIBLE_CHIPS,
+    and preserve caller-supplied env vars when NOSET=1."""
+    ray.init(num_cpus=8, resources={"TPU": 8})
+
+    @ray.remote(num_cpus=0.5, resources={"TPU": 1})
+    class TPUWorker:
+        def get_tpu_state(self):
+            return {
+                "accelerator_ids": ray.get_runtime_context().get_accelerator_ids()[
+                    "TPU"
+                ],
+                "visible_chips": os.environ.get(tpu.TPU_VISIBLE_CHIPS_ENV_VAR),
+                "visible_devices": os.environ.get(tpu.TPU_VISIBLE_DEVICES_ENV_VAR),
+                "chip_bounds": os.environ.get(tpu.TPU_CHIPS_PER_HOST_BOUNDS_ENV_VAR),
+                "host_bounds": os.environ.get(tpu.TPU_HOST_BOUNDS_ENV_VAR),
+            }
+
+    # 1. Default Ray-managed worker env vars with RAY_TPU_RESOURCE_PER_CHIP=2:
+    #    8 workers each get 1 logical device (0..7) and 1 physical chip (0..3).
+    managed_workers = [
+        TPUWorker.options(
+            runtime_env={"env_vars": {tpu.RAY_TPU_RESOURCE_PER_CHIP_ENV_VAR: "2"}}
+        ).remote()
+        for _ in range(8)
+    ]
+    managed_states = ray.get([w.get_tpu_state.remote() for w in managed_workers])
+    assert sorted(s["visible_devices"] for s in managed_states) == [
+        str(i) for i in range(8)
+    ]
+    assert sorted(s["visible_chips"] for s in managed_states) == [
+        "0",
+        "0",
+        "1",
+        "1",
+        "2",
+        "2",
+        "3",
+        "3",
+    ]
+    for s in managed_states:
+        dev_id = int(s["accelerator_ids"][0])
+        assert s["visible_devices"] == str(dev_id)
+        assert s["visible_chips"] == str(dev_id // 2)
+        assert s["chip_bounds"] == "1,1,1"
+        assert s["host_bounds"] == "1,1,1"
+    for w in managed_workers:
+        ray.kill(w)
+
+    # 2. Framework-managed workers with NOSET=1 preserve per-actor TPU env vars.
+    for resource_per_chip, host_bounds in [(1, "2,2,1"), (2, "2,2,4")]:
+        workers = [
+            TPUWorker.options(
+                runtime_env={
+                    "env_vars": {
+                        tpu.NOSET_TPU_VISIBLE_CHIPS_ENV_VAR: "1",
+                        tpu.RAY_TPU_RESOURCE_PER_CHIP_ENV_VAR: str(resource_per_chip),
+                        tpu.TPU_VISIBLE_CHIPS_ENV_VAR: str(i),
+                        tpu.TPU_CHIPS_PER_HOST_BOUNDS_ENV_VAR: "1,1,1",
+                        tpu.TPU_HOST_BOUNDS_ENV_VAR: host_bounds,
+                    }
+                }
+            ).remote()
+            for i in range(4)
+        ]
+        for i, state in enumerate(ray.get([w.get_tpu_state.remote() for w in workers])):
+            assert int(state["accelerator_ids"][0]) // resource_per_chip == i
+            assert state["visible_chips"] == str(i)
+            assert state["visible_devices"] is None
+            assert state["chip_bounds"] == "1,1,1"
+            assert state["host_bounds"] == host_bounds
+        for w in workers:
+            ray.kill(w)
+
+
+def test_tpu_task_env_restored_on_reused_worker(shutdown_only):
+    """A reused worker restores every TPU env var a normal task changed, not just
+    TPU_VISIBLE_CHIPS, so the next task sees the container's original values
+    (for example the chip/host bounds the GKE device plugin injects).
+    """
+    ray.init(num_cpus=1, resources={"TPU": 4})
+    tracked_env_vars = (
+        tpu.TPU_VISIBLE_CHIPS_ENV_VAR,
+        tpu.TPU_VISIBLE_DEVICES_ENV_VAR,
+        tpu.TPU_CHIPS_PER_HOST_BOUNDS_ENV_VAR,
+        tpu.TPU_HOST_BOUNDS_ENV_VAR,
+    )
+    container_env = {
+        tpu.TPU_CHIPS_PER_HOST_BOUNDS_ENV_VAR: "2,2,1",
+        tpu.TPU_HOST_BOUNDS_ENV_VAR: "2,2,1",
+    }
+
+    def snapshot_env():
+        return {
+            "pid": os.getpid(),
+            **{var: os.environ.get(var) for var in tracked_env_vars},
+        }
+
+    tpu_task = ray.remote(
+        resources={"TPU": 1}, runtime_env={"env_vars": container_env}
+    )(snapshot_env)
+    cpu_task = ray.remote(runtime_env={"env_vars": container_env})(snapshot_env)
+
+    tpu_env = ray.get(tpu_task.remote())
+    assert tpu_env[tpu.TPU_VISIBLE_CHIPS_ENV_VAR] in {"0", "1", "2", "3"}
+    assert (
+        tpu_env[tpu.TPU_VISIBLE_DEVICES_ENV_VAR]
+        == tpu_env[tpu.TPU_VISIBLE_CHIPS_ENV_VAR]
+    )
+    assert tpu_env[tpu.TPU_CHIPS_PER_HOST_BOUNDS_ENV_VAR] == "1,1,1"
+    assert tpu_env[tpu.TPU_HOST_BOUNDS_ENV_VAR] == "1,1,1"
+
+    # Idle workers are reused most-recently-released first, so the CPU task
+    # normally lands on the TPU task's process; retry in case it does not.
+    for _ in range(10):
+        cpu_env = ray.get(cpu_task.remote())
+        if cpu_env["pid"] == tpu_env["pid"]:
+            break
+    else:
+        pytest.fail("CPU task never reused the TPU task's worker process.")
+    assert cpu_env[tpu.TPU_VISIBLE_CHIPS_ENV_VAR] is None
+    assert cpu_env[tpu.TPU_VISIBLE_DEVICES_ENV_VAR] is None
+    assert cpu_env[tpu.TPU_CHIPS_PER_HOST_BOUNDS_ENV_VAR] == "2,2,1"
+    assert cpu_env[tpu.TPU_HOST_BOUNDS_ENV_VAR] == "2,2,1"
+
+
+def test_get_current_process_visible_accelerator_ids(monkeypatch):
+    """Test get_current_process_visible_accelerator_ids with default and opt-in settings."""
+    monkeypatch.delenv(tpu.TPU_VISIBLE_CHIPS_ENV_VAR, raising=False)
+    monkeypatch.delenv(tpu.RAY_TPU_RESOURCE_PER_CHIP_ENV_VAR, raising=False)
+    assert TPUAcceleratorManager.get_current_process_visible_accelerator_ids() is None
+
+    monkeypatch.setenv(tpu.TPU_VISIBLE_CHIPS_ENV_VAR, "")
+    assert TPUAcceleratorManager.get_current_process_visible_accelerator_ids() == []
+
+    # Default host-level mode: preserves physical chip IDs.
+    monkeypatch.setenv(tpu.TPU_VISIBLE_CHIPS_ENV_VAR, "0,1,2,3")
+    assert TPUAcceleratorManager.get_current_process_visible_accelerator_ids() == [
+        "0",
+        "1",
+        "2",
+        "3",
+    ]
+
+    # Opt-in per-device mode: expands physical chips to logical device IDs.
+    monkeypatch.setenv(tpu.RAY_TPU_RESOURCE_PER_CHIP_ENV_VAR, "2")
+    assert TPUAcceleratorManager.get_current_process_visible_accelerator_ids() == [
+        str(i) for i in range(8)
+    ]
+
+    # A trailing comma must not be expanded into a bogus device ID.
+    monkeypatch.setenv(tpu.TPU_VISIBLE_CHIPS_ENV_VAR, "0,1,")
+    assert TPUAcceleratorManager.get_current_process_visible_accelerator_ids() == [
+        str(i) for i in range(4)
+    ]
+
+
+def test_get_tpu_resource_per_chip(monkeypatch):
+    """Test get_tpu_resource_per_chip defaults to 1 and respects RAY_TPU_RESOURCE_PER_CHIP."""
+    monkeypatch.delenv(tpu.RAY_TPU_RESOURCE_PER_CHIP_ENV_VAR, raising=False)
+    assert tpu.get_tpu_resource_per_chip() == 1
+
+    monkeypatch.setenv(tpu.RAY_TPU_RESOURCE_PER_CHIP_ENV_VAR, "2")
+    assert tpu.get_tpu_resource_per_chip() == 2
+
+    for invalid_value in ["0", "-1", "abc"]:
+        monkeypatch.setenv(tpu.RAY_TPU_RESOURCE_PER_CHIP_ENV_VAR, invalid_value)
+        with pytest.raises(
+            ValueError, match="RAY_TPU_RESOURCE_PER_CHIP must be a positive integer"
+        ):
+            tpu.get_tpu_resource_per_chip()
+
+
+@pytest.mark.parametrize(
+    "accelerator_type, expected",
+    [
+        ("TPU-V6E", "v6e"),
+        ("TPU-V5LITEPOD", "v5litepod"),
+        ("tpuv6e-8", "v6e-8"),
+        ("tpu7x-16", "v7x-16"),
+        ("v4-8", "v4-8"),
+        (None, ""),
+    ],
+)
+def test_normalize_tpu_accelerator_type(accelerator_type, expected):
+    assert tpu.normalize_tpu_accelerator_type(accelerator_type) == expected
 
 
 @pytest.mark.parametrize(
@@ -322,6 +909,211 @@ def test_get_num_tpu_visible_chips_per_host():
     # Other TPU generations default to 4
     assert tpu.get_num_tpu_visible_chips_per_host("v4-8") == 4
     assert tpu.get_num_tpu_visible_chips_per_host("v5p-8") == 4
+
+
+# Subslice topology test helpers
+
+
+def test_parse_topology_dims():
+    """Test topology string parsing."""
+    assert tpu._parse_topology_dims("2x4") == (2, 4)
+    assert tpu._parse_topology_dims("16x16") == (16, 16)
+    assert tpu._parse_topology_dims("2x2x2") == (2, 2, 2)
+    assert tpu._parse_topology_dims("4x8x16") == (4, 8, 16)
+
+
+def test_get_worker_dims_2d():
+    """Test worker dimension lookup for 2D topologies."""
+    assert tpu._get_worker_dims_for_topology("2x2") == (1, 1)
+    assert tpu._get_worker_dims_for_topology("2x4") == (1, 2)
+    assert tpu._get_worker_dims_for_topology("4x4") == (2, 2)
+    assert tpu._get_worker_dims_for_topology("8x16") == (4, 8)
+    assert tpu._get_worker_dims_for_topology("16x32") == (8, 16)
+    assert tpu._get_worker_dims_for_topology("32x32") == (16, 16)
+
+
+def test_get_worker_dims_3d():
+    """3D worker dims are the chip dims divided by the 2x2x1-chip host shape."""
+    assert tpu._get_worker_dims_for_topology("2x2x1") == (1, 1, 1)
+    assert tpu._get_worker_dims_for_topology("2x2x2") == (1, 1, 2)
+    assert tpu._get_worker_dims_for_topology("4x4x4") == (2, 2, 4)
+    assert tpu._get_worker_dims_for_topology("4x4x12") == (2, 2, 12)
+    assert tpu._get_worker_dims_for_topology("16x16x24") == (8, 8, 24)
+    assert tpu._get_worker_dims_for_topology("16x24x24") == (8, 12, 24)
+
+
+@pytest.mark.parametrize(
+    "topology, match",
+    [
+        ("1x1", "Unknown 2D topology"),
+        ("2x8", "Unknown 2D topology"),
+        ("99x99", "Unknown 2D topology"),
+        ("3x3x3", "Unknown 3D topology"),
+        ("2", "Unsupported topology dimensionality"),
+    ],
+)
+def test_get_worker_dims_unknown(topology, match):
+    """Unknown topologies or unsupported dimensionalities raise ValueError."""
+    with pytest.raises(ValueError, match=match):
+        tpu._get_worker_dims_for_topology(topology)
+
+
+def test_get_default_chips_per_vm():
+    """Test default chips per VM."""
+    # v6e single-host: total chips
+    assert tpu._get_default_chips_per_vm("2x4", "v6e") == 8
+    assert tpu._get_default_chips_per_vm("2x2", "v6e") == 4
+    assert tpu._get_default_chips_per_vm("1x1", "v6e") == 1
+    # v6e multi-host: 4 chips
+    assert tpu._get_default_chips_per_vm("4x8", "v6e") == 4
+    # v4/v5p: always 4
+    assert tpu._get_default_chips_per_vm("2x2x2", "v4") == 4
+
+
+@pytest.mark.parametrize(
+    "physical_worker_id, parent_topology, subslice_topology, expected_index",
+    [
+        # 4x4 parent: 2x2 worker grid, x fastest-varying, each worker owning
+        # 2x2 chips. Worker (x, y): 0=(0,0), 1=(1,0), 2=(0,1), 3=(1,1).
+        # A 2x4 chip subslice is 2 chips in x by 4 in y, i.e. one worker in x
+        # and two in y, so it groups workers by their x position.
+        (0, "4x4", "2x2", 0),
+        (1, "4x4", "2x2", 1),
+        (2, "4x4", "2x2", 2),
+        (3, "4x4", "2x2", 3),
+        (0, "4x4", "2x4", 0),
+        (1, "4x4", "2x4", 1),
+        (2, "4x4", "2x4", 0),
+        (3, "4x4", "2x4", 1),
+        # 4x4x4 parent, 16 workers: (x, y, z) host grid (2, 2, 4).
+        # Worker 0 -> (0, 0, 0); Worker 8 -> (0, 0, 2).
+        (0, "4x4x4", "2x2x1", 0),
+        (0, "4x4x4", "2x2x2", 0),
+        (8, "4x4x4", "2x2x1", 8),
+        (8, "4x4x4", "2x2x2", 4),
+    ],
+)
+def test_get_subslice_index(
+    physical_worker_id, parent_topology, subslice_topology, expected_index
+):
+    """Test subslice index computation for 2D and 3D topologies."""
+    assert (
+        tpu._get_subslice_index(physical_worker_id, parent_topology, subslice_topology)
+        == expected_index
+    )
+
+
+@pytest.mark.parametrize(
+    "coords, parent_topology, expected_worker_id",
+    [
+        # 4x4 v6e — 4 workers in a 2×2 mesh
+        ([[0, 0], [0, 1], [1, 0], [1, 1]], "4x4", 0),
+        ([[2, 0], [2, 1], [3, 0], [3, 1]], "4x4", 1),
+        ([[0, 2], [0, 3], [1, 2], [1, 3]], "4x4", 2),
+        ([[2, 2], [2, 3], [3, 2], [3, 3]], "4x4", 3),
+        # 2x4 single-host v6e (8 chips on one VM — worker at the origin)
+        (
+            [[0, 0], [0, 1], [0, 2], [0, 3], [1, 0], [1, 1], [1, 2], [1, 3]],
+            "2x4",
+            0,
+        ),
+        # 4x8 (v6e-32): a 2x4 worker grid; the non-square grid checks per-axis
+        # block sizes.
+        ([[0, 4], [1, 4], [0, 5], [1, 5]], "4x8", 4),
+        ([[2, 6], [3, 6], [2, 7], [3, 7]], "4x8", 7),
+        # JAX reports [x, y, 0] on 2D generations; z is ignored.
+        ([[2, 2, 0], [3, 2, 0], [2, 3, 0], [3, 3, 0]], "4x4", 3),
+    ],
+)
+def test_get_physical_worker_id_2d(coords, parent_topology, expected_worker_id):
+    """Test physical worker ID computation from 2D chip coordinates."""
+    assert (
+        tpu._get_physical_worker_id_from_coords(coords, parent_topology)
+        == expected_worker_id
+    )
+
+
+@pytest.mark.parametrize(
+    "coords, parent_topology, expected_worker_id",
+    [
+        # 4x4x4: worker grid (x,y,z)=(2,2,4); each worker owns 2 chips in x,
+        # 2 in y, 1 in z. Coords are [x, y, z].
+        # Worker 0: x in {0,1}, y in {0,1}, z=0.
+        ([[0, 0, 0], [1, 0, 0], [0, 1, 0], [1, 1, 0]], "4x4x4", 0),
+        # Worker 1: wx=1 (x in {2,3}, y in {0,1}, z=0).
+        ([[2, 0, 0], [3, 0, 0], [2, 1, 0], [3, 1, 0]], "4x4x4", 1),
+        # Worker 2: wy=1 (x in {0,1}, y in {2,3}, z=0).
+        ([[0, 2, 0], [1, 2, 0], [0, 3, 0], [1, 3, 0]], "4x4x4", 2),
+        # Worker 4: wz=1 (x in {0,1}, y in {0,1}, z=1) -> linear = wz*(dy*dx) = 1*(2*2) = 4.
+        ([[0, 0, 1], [1, 0, 1], [0, 1, 1], [1, 1, 1]], "4x4x4", 4),
+        # Worker 8: wz=2 (z=2) -> linear = wz*(dy*dx) = 2*(2*2) = 8.
+        ([[0, 0, 2], [1, 0, 2], [0, 1, 2], [1, 1, 2]], "4x4x4", 8),
+        # 2x2x4 (tpu7x-16): a 1x1x4 worker grid, so worker ID equals z.
+        ([[0, 0, 2], [1, 0, 2], [0, 1, 2], [1, 1, 2]], "2x2x4", 2),
+    ],
+)
+def test_get_physical_worker_id_3d(coords, parent_topology, expected_worker_id):
+    """Test physical worker ID computation from 3D chip coordinates."""
+    assert (
+        tpu._get_physical_worker_id_from_coords(coords, parent_topology)
+        == expected_worker_id
+    )
+
+
+@pytest.mark.parametrize(
+    "coords, parent_topology",
+    [
+        # 2D: x coordinate far outside the 4x4 chip grid → wx out of bounds.
+        ([[99, 0], [99, 1]], "4x4"),
+        # 2D: negative coordinate → wx out of bounds.
+        ([[-2, 0], [-1, 0]], "4x4"),
+        # 3D: z coordinate outside the 4x4x4 grid → wz out of bounds.
+        ([[0, 0, 99], [1, 0, 99]], "4x4x4"),
+    ],
+)
+def test_get_physical_worker_id_out_of_bounds(coords, parent_topology):
+    """Chip coordinates that map outside the worker grid raise ValueError in
+    both 2D and 3D, rather than silently producing an incorrect worker ID.
+    """
+    with pytest.raises(ValueError, match="out of bounds"):
+        tpu._get_physical_worker_id_from_coords(coords, parent_topology)
+
+
+def test_query_local_tpu_chip_coordinates(monkeypatch):
+    """Returns one coordinate list per local JAX TPU device."""
+    monkeypatch.setenv("TPU_WORKER_HOSTNAMES", "10.0.0.1,10.0.0.2,10.0.0.3,10.0.0.4")
+    devices = [mock.MagicMock(coords=(2, 0, 0)), mock.MagicMock(coords=(3, 0, 0))]
+    monkeypatch.setitem(
+        sys.modules, "jax", mock.MagicMock(local_devices=lambda backend: devices)
+    )
+    assert tpu._query_local_tpu_chip_coordinates(num_hosts=4) == [
+        [2, 0, 0],
+        [3, 0, 0],
+    ]
+
+
+@pytest.mark.parametrize(
+    "hostnames, jax_module, match",
+    [
+        # Without every peer hostname, PJRT would report host-local coordinates.
+        (
+            "10.0.0.1",
+            mock.MagicMock(local_devices=lambda backend: []),
+            "requires all worker hostnames",
+        ),
+        # A None entry in sys.modules makes `import jax` raise ImportError.
+        ("10.0.0.1,10.0.0.2,10.0.0.3,10.0.0.4", None, "JAX is required"),
+    ],
+)
+def test_query_local_tpu_chip_coordinates_raises(
+    monkeypatch, hostnames, jax_module, match
+):
+    """Coordinate discovery raises RuntimeError when peer hostnames are missing
+    or JAX is not installed."""
+    monkeypatch.setenv("TPU_WORKER_HOSTNAMES", hostnames)
+    monkeypatch.setitem(sys.modules, "jax", jax_module)
+    with pytest.raises(RuntimeError, match=match):
+        tpu._query_local_tpu_chip_coordinates(num_hosts=4)
 
 
 if __name__ == "__main__":

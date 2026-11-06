@@ -22,7 +22,7 @@
 #include "absl/container/flat_hash_map.h"
 #include "absl/types/optional.h"
 #include "ray/common/id.h"
-#include "ray/core_worker/task_submission/actor_submit_queue.h"
+#include "ray/core_worker/task_submission/actor_submit_queue_interface.h"
 
 namespace ray {
 namespace core {
@@ -34,7 +34,7 @@ namespace core {
  * Emplaced request is inserted into pending queue; once the request's dependency
  * is resolved it's moved from pending queue into sending queue.
  */
-class OutofOrderActorSubmitQueue : public IActorSubmitQueue {
+class OutofOrderActorSubmitQueue : public ActorSubmitQueueInterface {
  public:
   /// Add a task into the queue.
   void Emplace(const std::string &concurrency_group,

@@ -38,7 +38,18 @@ def redirected_print(*objects, sep=" ", end="\n", file=None, flush=False):
     # should move this to ray core and make it available to both libraries.
 
     if file not in [sys.stdout, sys.stderr, None]:
-        return _original_print(objects, sep=sep, end=end, file=file, flush=flush)
+        _original_print(*objects, sep=sep, end=end, file=file, flush=flush)
+        return
+
+    # If sys.stdout/stderr has been redirected (e.g. contextlib.redirect_stdout(),
+    # or wrapping by libraries like wandb / MLflow / colorama / IPython), tee to
+    # the original print so the redirect target also receives the output. The
+    # logger still gets the message below, so structured logs aren't silently
+    # dropped when a third-party library wraps the stream.
+    if (file in (sys.stdout, None) and sys.stdout is not sys.__stdout__) or (
+        file is sys.stderr and sys.stderr is not sys.__stderr__
+    ):
+        _original_print(*objects, sep=sep, end=end, file=file, flush=flush)
 
     root_logger = logging.getLogger()
     message = sep.join(map(str, objects))
@@ -57,8 +68,7 @@ def redirected_print(*objects, sep=" ", end="\n", file=None, flush=False):
 
 
 def patch_print_function() -> None:
-    """
-    Patch the print function to redirect logs to Train's logger.
+    """Patch the print function to redirect logs to Train's logger.
     Only patch the print function if the environment variable is set to "1"
     """
     if env_bool(ENABLE_PRINT_PATCH_ENV_VAR, DEFAULT_ENABLE_PRINT_PATCH):

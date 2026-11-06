@@ -15,7 +15,7 @@ from ray.llm._internal.serve.core.configs.openai_api_models import (
 from ray.util.annotations import PublicAPI
 
 
-@PublicAPI(stability="beta")
+@PublicAPI(stability="stable")
 class ChatCompletionRequest(_ChatCompletionRequest):
     """ChatCompletionRequest is the request body for the chat completion API.
 
@@ -25,7 +25,7 @@ class ChatCompletionRequest(_ChatCompletionRequest):
     pass
 
 
-@PublicAPI(stability="beta")
+@PublicAPI(stability="stable")
 class CompletionRequest(_CompletionRequest):
     """CompletionRequest is the request body for the completion API.
 
@@ -35,7 +35,7 @@ class CompletionRequest(_CompletionRequest):
     pass
 
 
-@PublicAPI(stability="beta")
+@PublicAPI(stability="stable")
 class ChatCompletionStreamResponse(_ChatCompletionStreamResponse):
     """ChatCompletionStreamResponse is the response body for the chat completion API.
 
@@ -45,7 +45,7 @@ class ChatCompletionStreamResponse(_ChatCompletionStreamResponse):
     pass
 
 
-@PublicAPI(stability="beta")
+@PublicAPI(stability="stable")
 class ChatCompletionResponse(_ChatCompletionResponse):
     """ChatCompletionResponse is the response body for the chat completion API.
 
@@ -55,7 +55,7 @@ class ChatCompletionResponse(_ChatCompletionResponse):
     pass
 
 
-@PublicAPI(stability="beta")
+@PublicAPI(stability="stable")
 class CompletionStreamResponse(_CompletionStreamResponse):
     """CompletionStreamResponse is the response body for the completion API.
 
@@ -65,7 +65,7 @@ class CompletionStreamResponse(_CompletionStreamResponse):
     pass
 
 
-@PublicAPI(stability="beta")
+@PublicAPI(stability="stable")
 class CompletionResponse(_CompletionResponse):
     """CompletionResponse is the response body for the completion API.
 
@@ -78,7 +78,7 @@ class CompletionResponse(_CompletionResponse):
 EmbeddingRequest = _EmbeddingRequest
 
 
-@PublicAPI(stability="beta")
+@PublicAPI(stability="stable")
 class EmbeddingResponse(_EmbeddingResponse):
     """EmbeddingResponse is the response body for the embedding API.
 
@@ -88,7 +88,7 @@ class EmbeddingResponse(_EmbeddingResponse):
     pass
 
 
-@PublicAPI(stability="beta")
+@PublicAPI(stability="stable")
 class TranscriptionRequest(_TranscriptionRequest):
     """TranscriptionRequest is the request body for the transcription API.
 
@@ -98,7 +98,7 @@ class TranscriptionRequest(_TranscriptionRequest):
     pass
 
 
-@PublicAPI(stability="beta")
+@PublicAPI(stability="stable")
 class TranscriptionResponse(_TranscriptionResponse):
     """TranscriptionResponse is the response body for the transcription API.
 
@@ -108,7 +108,7 @@ class TranscriptionResponse(_TranscriptionResponse):
     pass
 
 
-@PublicAPI(stability="beta")
+@PublicAPI(stability="stable")
 class TranscriptionStreamResponse(_TranscriptionStreamResponse):
     """TranscriptionStreamResponse is the response body for the transcription API.
 
@@ -118,7 +118,7 @@ class TranscriptionStreamResponse(_TranscriptionStreamResponse):
     pass
 
 
-@PublicAPI(stability="beta")
+@PublicAPI(stability="stable")
 class ErrorResponse(_ErrorResponse):
     """The returned response in case of an error."""
 

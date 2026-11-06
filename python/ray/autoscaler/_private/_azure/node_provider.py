@@ -5,7 +5,7 @@ import time
 from concurrent.futures import Future, ThreadPoolExecutor
 from pathlib import Path
 from threading import RLock
-from typing import List, Optional
+from typing import Dict, List, Optional
 from uuid import uuid4
 
 from azure.common.credentials import get_cli_profile
@@ -13,16 +13,17 @@ from azure.core.exceptions import ResourceNotFoundError
 from azure.identity import DefaultAzureCredential
 from azure.mgmt.compute import ComputeManagementClient
 from azure.mgmt.network import NetworkManagementClient
-from azure.mgmt.resource import ResourceManagementClient
-from azure.mgmt.resource.resources.models import DeploymentMode
+from azure.mgmt.resource.resources import ResourceManagementClient
 
 from ray._common.usage.usage_lib import get_cloud_from_metadata_requests
 from ray.autoscaler._private._azure.config import (
+    DeploymentMode,
     _delete_role_assignments_for_principal,
     _generate_arm_guid,
     _is_shared_msi,
     bootstrap_azure,
     get_azure_sdk_function,
+    get_deployments_client,
 )
 from ray.autoscaler._private.constants import (
     AUTOSCALER_NODE_START_WAIT_S,
@@ -110,6 +111,9 @@ class AzureNodeProvider(NodeProvider):
         self.compute_client = ComputeManagementClient(credential, subscription_id)
         self.network_client = NetworkManagementClient(credential, subscription_id)
         self.resource_client = ResourceManagementClient(credential, subscription_id)
+        self.deployments_client = get_deployments_client(
+            self.resource_client, credential, subscription_id
+        )
 
         self.lock = RLock()
 
@@ -297,13 +301,19 @@ class AzureNodeProvider(NodeProvider):
         nodes = self._get_filtered_nodes(tag_filters=tag_filters)
         return [k for k, v in nodes.items() if v["status"].startswith("deallocat")]
 
-    def non_terminated_nodes(self, tag_filters):
+    def non_terminated_nodes(self, tag_filters: Dict[str, str]) -> List[str]:
         """Return a list of node ids filtered by the specified tags dict.
 
         This list must not include terminated nodes. For performance reasons,
         providers are allowed to cache the result of a call to nodes() to
         serve single-node queries (e.g. is_running(node_id)). This means that
         nodes() must be called again to refresh results.
+
+        Args:
+            tag_filters: Tags to filter nodes by.
+
+        Returns:
+            List of non-terminated node ids matching the tag filters.
 
         Examples:
             >>> from ray.autoscaler.tags import TAG_RAY_NODE_KIND
@@ -488,7 +498,7 @@ class AzureNodeProvider(NodeProvider):
 
         # TODO: we could get the private/public ips back directly
         create_or_update = get_azure_sdk_function(
-            client=self.resource_client.deployments,
+            client=self.deployments_client.deployments,
             function_name="create_or_update",
         )
         create_or_update(
@@ -736,7 +746,7 @@ class AzureNodeProvider(NodeProvider):
                 client=self.resource_client.resources,
                 function_name="get_by_id",
             )
-            existing_msi = get_identity(msi_id, "2023-01-31")
+            existing_msi = get_identity(resource_id=msi_id, api_version="2023-01-31")
             msi_principal_id = getattr(existing_msi, "properties", {}).get(
                 "principalId"
             )

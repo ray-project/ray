@@ -2,6 +2,7 @@ import logging
 import time
 from typing import Dict, List
 
+from ray.autoscaler._private.constants import RAY_AUTOSCALER_AVAILABILITY_RECOVERY_S
 from ray.autoscaler.v2.instance_manager.instance_manager import (
     InstanceUpdatedSubscriber,
 )
@@ -71,3 +72,31 @@ class CloudResourceMonitor(InstanceUpdatedSubscriber):
                     1 - self._last_unavailable_timestamp[node_type] / max_ts
                 )
         return resource_availability_scores
+
+    def get_recoverable_resource_availabilities(self) -> Dict[NodeType, float]:
+        """Calculate a continuous recovery score from 0.0 to 1.0.
+
+        score = 0.0 if (current_time - last_unavailable_timestamp) < safety_floor
+        else min(1.0, (current_time - last_unavailable_timestamp) /
+        RAY_AUTOSCALER_AVAILABILITY_RECOVERY_S)
+        """
+        assert (
+            RAY_AUTOSCALER_AVAILABILITY_RECOVERY_S > 0
+        ), "RAY_AUTOSCALER_AVAILABILITY_RECOVERY_S must be positive"
+        recovery_scores: Dict[NodeType, float] = {}
+        current_time = time.time()
+
+        # Safety floor is 10s or 10% of recovery window.
+        # This ensures that we don't immediately retry a failed node type
+        # and be stuck in a retry loop.
+        safety_floor = min(10, RAY_AUTOSCALER_AVAILABILITY_RECOVERY_S * 0.1)
+
+        for node_type, last_ts in self._last_unavailable_timestamp.items():
+            diff = current_time - last_ts
+            if diff < safety_floor:
+                recovery_scores[node_type] = 0.0
+            else:
+                recovery_scores[node_type] = min(
+                    1.0, diff / RAY_AUTOSCALER_AVAILABILITY_RECOVERY_S
+                )
+        return recovery_scores

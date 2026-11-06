@@ -25,6 +25,9 @@ class OutputIterator(Iterator[RefBundle], ABC):
             output_split_idx: The output split index to get results for. This arg is
                 only allowed for iterators created by `Dataset.streaming_split()`.
 
+        Returns:
+            The next ``RefBundle`` of outputs for the given split index.
+
         Raises:
             StopIteration: If there are no more outputs to return.
         """
@@ -63,6 +66,9 @@ class Executor(ContextManager, ABC):
                 This method keeps and uses the exact list you pass in, so do not
                 pass an empty list like ``[]`` directly. Create the list first,
                 then pass it.
+
+        Returns:
+            An ``OutputIterator`` over the execution's output ref bundles.
         """
         ...
 

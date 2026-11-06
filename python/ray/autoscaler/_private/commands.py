@@ -1,3 +1,5 @@
+import atexit
+import contextlib
 import copy
 import datetime
 import hashlib
@@ -12,16 +14,27 @@ import tempfile
 import time
 from concurrent.futures import ThreadPoolExecutor
 from types import ModuleType
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import IO, Any, Dict, List, Optional, Tuple, Union
 
 import click
 import yaml
 
 import ray
 from ray._common.usage import usage_lib
+from ray._private.authentication.authentication_token_setup import (
+    _get_default_token_path,
+)
 from ray.autoscaler._private import subprocess_output_util as cmd_output_util
+from ray.autoscaler._private.auth_token import (
+    AUTH_TOKEN_REMOTE_PATH,
+    load_or_create_cluster_token,
+)
 from ray.autoscaler._private.autoscaler import AutoscalerSummary
 from ray.autoscaler._private.cli_logger import cf, cli_logger
+from ray.autoscaler._private.cli_output_helpers import (
+    USEFUL_COMMANDS_HEADING,
+    print_head_node_context_separator_if_needed,
+)
 from ray.autoscaler._private.cluster_dump import (
     Archive,
     GetParameters,
@@ -114,10 +127,12 @@ def try_reload_log_state(provider_config: Dict[str, Any], log_state: dict) -> No
 
 
 def debug_status(
-    status, error, verbose: bool = False, address: Optional[str] = None
+    status: bytes,
+    error: bytes,
+    verbose: bool = False,
+    address: Optional[str] = None,
 ) -> str:
-    """
-    Return a debug string for the autoscaler.
+    """Return a debug string for the autoscaler.
 
     Args:
         status: The autoscaler status string for v1
@@ -126,7 +141,7 @@ def debug_status(
         address: The address of the cluster (gcs address).
 
     Returns:
-        str: A debug string for the cluster's status.
+        A debug string for the cluster's status.
     """
     from ray.autoscaler.v2.utils import is_autoscaler_v2
 
@@ -135,10 +150,10 @@ def debug_status(
         from ray.autoscaler.v2.utils import ClusterStatusFormatter
 
         cluster_status = get_cluster_status(address)
-        status = ClusterStatusFormatter.format(cluster_status, verbose=verbose)
+        status_str = ClusterStatusFormatter.format(cluster_status, verbose=verbose)
     elif status:
-        status = status.decode("utf-8")
-        status_dict = json.loads(status)
+        decoded_status = status.decode("utf-8")
+        status_dict = json.loads(decoded_status)
         lm_summary_dict = status_dict.get("load_metrics_report")
         autoscaler_summary_dict = status_dict.get("autoscaler_report")
         timestamp = status_dict.get("time")
@@ -157,7 +172,7 @@ def debug_status(
                 **autoscaler_summary_dict,
             )
             report_time = datetime.datetime.fromtimestamp(timestamp)
-            status = format_info_string(
+            status_str = format_info_string(
                 lm_summary,
                 autoscaler_summary,
                 time=report_time,
@@ -166,21 +181,21 @@ def debug_status(
                 verbose=verbose,
             )
         else:
-            status = (
+            status_str = (
                 "No cluster status. It may take a few seconds "
                 "for the Ray internal services to start up."
             )
     else:
-        status = (
+        status_str = (
             "No cluster status. It may take a few seconds "
             "for the Ray internal services to start up."
         )
 
     if error:
-        status += "\n"
-        status += error.decode("utf-8")
+        status_str += "\n"
+        status_str += error.decode("utf-8")
 
-    return status
+    return status_str
 
 
 def request_resources(
@@ -202,12 +217,12 @@ def request_resources(
         num_cpus: Scale the cluster to ensure this number of CPUs are
             available. This request is persistent until another call to
             request_resources() is made.
-        bundles (List[ResourceDict]): Scale the cluster to ensure this set of
-            resource shapes can fit. This request is persistent until another
-            call to request_resources() is made.
-        bundle_label_selectors (List[Dict[str,str]]): Optional label selectors
-            that new nodes must satisfy. (e.g. [{"accelerator-type": "A100"}])
-            The elements in the bundle_label_selectors should be one-to-one mapping
+        bundles: Scale the cluster to ensure this set of resource shapes can
+            fit. This request is persistent until another call to
+            request_resources() is made.
+        bundle_label_selectors: Optional label selectors that new nodes
+            must satisfy (e.g. [{"accelerator-type": "A100"}]). The elements
+            in the bundle_label_selectors should be one-to-one mapping
             to the elements in bundles.
     """
     if not ray.is_initialized():
@@ -785,6 +800,13 @@ def get_or_create_head_node(
     creating_new_head = _should_create_new_head(
         head_node, launch_hash, head_node_type, provider
     )
+    # Resolve the token before launching a head, so a bad token source fails
+    # first. Keep auth_token_file open until the head updater has synced it.
+    # A digest with no token file mount means the cluster keeps its own token.
+    keep_cluster_auth_token = no_restart and not creating_new_head
+    auth_token_file, auth_token_sha256 = _add_auth_token_file_mount(
+        config, keep_cluster_auth_token
+    )
     if creating_new_head:
         with cli_logger.group("Acquiring an up-to-date head node"):
             global_event_system.execute_callback(
@@ -827,19 +849,41 @@ def get_or_create_head_node(
         # cf.bold(provider.node_tags(head_node)[TAG_RAY_NODE_NAME]),
         _tags=dict(),
     ):  # add id, ARN to tags?
+        hashed_config = config
+        ships_auth_token = (
+            auth_token_sha256 is not None
+            and AUTH_TOKEN_REMOTE_PATH in config["file_mounts"]
+        )
+        if ships_auth_token:
+            # The mount's source may be a temp file whose path changes on every
+            # run, so hash the token itself: a changed token, or a cluster that
+            # lacked it, syncs it.
+            hashed_config = {
+                **config,
+                "file_mounts": {
+                    remote: local
+                    for remote, local in config["file_mounts"].items()
+                    if remote != AUTH_TOKEN_REMOTE_PATH
+                },
+                "auth_token_sha256": auth_token_sha256,
+            }
         # TODO(ekl) right now we always update the head node even if the
         # hash matches.
         # We could prompt the user for what they want to do here.
         # No need to pass in cluster_sync_files because we use this
         # hash to set up the head node
         (runtime_hash, file_mounts_contents_hash) = hash_runtime_conf(
-            config["file_mounts"], None, config
+            hashed_config["file_mounts"], None, hashed_config
         )
 
         if not no_monitor_on_head:
             # Return remote_config_file to avoid prematurely closing it.
             config, remote_config_file = _set_up_config_for_head_node(
-                config, provider, no_restart
+                config,
+                provider,
+                no_restart,
+                map_head_auth_token=auth_token_sha256 is not None
+                and not ships_auth_token,
             )
             cli_logger.print("Prepared bootstrap config")
 
@@ -906,6 +950,7 @@ def get_or_create_head_node(
             },
             docker_config=config.get("docker"),
             restart_only=restart_only,
+            auth_mode=config.get("auth_mode"),
         )
         updater.start()
         updater.join()
@@ -932,7 +977,8 @@ def get_or_create_head_node(
         modifiers = ""
 
     cli_logger.newline()
-    with cli_logger.group("Useful commands:"):
+    print_head_node_context_separator_if_needed(ray_start_commands, cli_logger, cf)
+    with cli_logger.group(USEFUL_COMMANDS_HEADING):
         printable_config_file = os.path.abspath(printable_config_file)
 
         cli_logger.print("To terminate the cluster:")
@@ -986,6 +1032,8 @@ def get_or_create_head_node(
             os.remove(remote_config_file.name)
         except OSError:
             pass  # Ignore cleanup errors
+    if auth_token_file is not None:
+        auth_token_file.close()
 
 
 def _should_create_new_head(
@@ -1004,12 +1052,13 @@ def _should_create_new_head(
         node's node_type.
 
     Args:
-        head_node_id (Optional[str]): head node id if a head exists, else None
+        head_node_id: head node id if a head exists, else None
         new_launch_hash: hash of current user-submitted head config
         new_head_node_type: current user-submitted head node-type key
+        provider: Node provider used to read tags on the existing head.
 
     Returns:
-        bool: True if a new Ray head node should be launched, False otherwise
+        True if a new Ray head node should be launched, False otherwise
     """
     if not head_node_id:
         # No head node exists, need to create it.
@@ -1048,8 +1097,86 @@ def _should_create_new_head(
     return new_head_required
 
 
+def _ships_local_auth_token(config: Dict[str, Any]) -> bool:
+    """Whether `ray up` ships this machine's token, rather than none or the
+    one the cluster YAML mounts at ~/.ray/auth_token. The cluster YAML's
+    auth_mode decides, not this machine's RAY_AUTH_MODE."""
+    return (
+        config.get("auth_mode", "token") == "token"
+        and AUTH_TOKEN_REMOTE_PATH not in config["file_mounts"]
+    )
+
+
+def _add_auth_token_file_mount(
+    config: Dict[str, Any], keep_cluster_auth_token: bool
+) -> Tuple[Optional[IO[str]], Optional[str]]:
+    """Ship the local auth token to the head node, which ships it to workers.
+
+    Args:
+        config: The cluster config; its file_mounts gain the token.
+        keep_cluster_auth_token: Leave the cluster's current token in place,
+            for a head whose running Ray won't restart to pick up a new one.
+
+    Returns:
+        The temporary file holding a RAY_AUTH_TOKEN value, or None; keep it
+        open until the file mounts are synced. Then the token's SHA-256 hex
+        digest, or None when the cluster YAML sets `auth_mode: disabled` or
+        mounts the token.
+    """
+    if not _ships_local_auth_token(config):
+        return None, None
+    token = load_or_create_cluster_token()
+    token_sha256 = hashlib.sha256(token.encode()).hexdigest()
+    if keep_cluster_auth_token:
+        cli_logger.warning(
+            "If your local auth token differs from the cluster's, `{}` leaves "
+            "the cluster's in place. Run `ray up` without it to replace it.",
+            cf.bold("--no-restart"),
+        )
+        return None, token_sha256
+
+    token_path = os.environ.get("RAY_AUTH_TOKEN_PATH")
+    if not os.environ.get("RAY_AUTH_TOKEN"):
+        # Mount the token file itself: Ray writes no copy of a token it can read
+        # from a file. rsync would copy a symlink as a dangling link.
+        source_path = os.path.realpath(token_path or _get_default_token_path())
+        # rsync keeps the file's mode, so the head's copy is as readable as this.
+        if os.stat(source_path).st_mode & 0o077:
+            cli_logger.warning(
+                "The auth token file {} can be read by other users, and the "
+                "cluster's copy keeps its mode. Run `chmod 600 {}`.",
+                source_path,
+                source_path,
+            )
+        config["file_mounts"][AUTH_TOKEN_REMOTE_PATH] = source_path
+        return None, token_sha256
+
+    is_windows = sys.platform == "win32"
+    # NamedTemporaryFile creates the file with mode 0600.
+    token_file = tempfile.NamedTemporaryFile(
+        "w", prefix="ray-auth-token-", delete=not is_windows
+    )
+    token_file.write(token)
+    token_file.flush()
+    if is_windows:
+        # rsync and scp can't open the file while it is open on Windows, so it
+        # is closed now and removed at exit, even when `ray up` fails.
+        token_file.close()
+        atexit.register(_remove_file_if_exists, token_file.name)
+    config["file_mounts"][AUTH_TOKEN_REMOTE_PATH] = token_file.name
+    return token_file, token_sha256
+
+
+def _remove_file_if_exists(path: str) -> None:
+    with contextlib.suppress(FileNotFoundError):
+        os.remove(path)
+
+
 def _set_up_config_for_head_node(
-    config: Dict[str, Any], provider: NodeProvider, no_restart: bool
+    config: Dict[str, Any],
+    provider: NodeProvider,
+    no_restart: bool,
+    map_head_auth_token: bool,
 ) -> Tuple[Dict[str, Any], Any]:
     """Prepares autoscaling config and, if needed, ssh key, to be mounted onto
     the Ray head node for use by the autoscaler.
@@ -1064,6 +1191,7 @@ def _set_up_config_for_head_node(
     # drop proxy options if they exist, otherwise
     # head node won't be able to connect to workers
     remote_config["auth"].pop("ssh_proxy_command", None)
+    remote_config["auth"].pop("ssh_proxy_use_node_id", None)
 
     # Drop the head_node field if it was introduced. It is technically not a
     # valid field in the config, but it may have been introduced after
@@ -1080,6 +1208,11 @@ def _set_up_config_for_head_node(
     new_mounts = {}
     for remote_path in config["file_mounts"]:
         new_mounts[remote_path] = remote_path
+    if map_head_auth_token:
+        # The head keeps its own token file, which workers launched later need.
+        # A head started before token file mounts has none, and its autoscaler
+        # can't load this config until a `ray up` without --no-restart.
+        new_mounts[AUTH_TOKEN_REMOTE_PATH] = AUTH_TOKEN_REMOTE_PATH
     remote_config["file_mounts"] = new_mounts
     remote_config["no_restart"] = no_restart
 
@@ -1129,7 +1262,7 @@ def attach_cluster(
         override_cluster_name: set the name of the cluster
         no_config_cache: whether to skip the config cache
         new: whether to force a new screen
-        port_forward ( (int,int) or list[(int,int)] ): port(s) to forward
+        port_forward: port(s) to forward
         node_ip: IP address of the node to attach to
     """
 
@@ -1200,6 +1333,9 @@ def exec_cluster(
             node.
         extra_screen_args: optional custom additional args to screen command
         node_ip: IP address of the node to execute on
+
+    Returns:
+        The command output if ``with_output`` is True, otherwise an empty string.
     """
     assert not (screen and tmux), "Can specify only one of `screen` or `tmux`."
     assert run_env in RUN_ENV_TYPES, "--run_env must be in {}".format(RUN_ENV_TYPES)
@@ -1381,12 +1517,13 @@ def rsync(
         target: target dir
         override_cluster_name: set the name of the cluster
         down: whether we're syncing remote -> local
-        ip_address: Address of node. Raise Exception
-            if both ip_address and 'all_nodes' are provided.
-        use_internal_ip: Whether the provided ip_address is
-            public or private.
+        ip_address: Address of node. Raise Exception if both ip_address
+            and 'all_nodes' are provided.
+        use_internal_ip: Whether the provided ip_address is public or private.
+        no_config_cache: whether to skip the config cache when bootstrapping.
         all_nodes: whether to sync worker nodes in addition to the head node
         should_bootstrap: whether to bootstrap cluster config before syncing
+        _runner: subprocess-like module used to invoke rsync. Mainly for testing.
     """
     if bool(source) != bool(target):
         cli_logger.abort("Expected either both a source and a target, or neither.")
@@ -1527,8 +1664,9 @@ def _get_running_head_node(
     _allow_uninitialized_state: bool = False,
 ) -> str:
     """Get a valid, running head node.
+
     Args:
-        config (Dict[str, Any]): Cluster Config dictionary
+        config: Cluster Config dictionary
         printable_config_file: Used for printing formatted CLI commands.
         override_cluster_name: Passed to `get_or_create_head_node` to
             override the cluster name present in `config`.
@@ -1538,6 +1676,8 @@ def _get_running_head_node(
             is not 'UP TO DATE'. This is used to allow `ray attach` and
             `ray exec` to debug a cluster in a bad state.
 
+    Returns:
+        The node id of the running head node.
     """
     provider = _provider or _get_node_provider(
         config["provider"], config["cluster_name"]

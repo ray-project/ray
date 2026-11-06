@@ -36,7 +36,7 @@ class LocalResourceManagerTest : public ::testing::Test {
       absl::flat_hash_map<ResourceID, double> resource_usage_map) {
     NodeResources resources;
     for (auto &[resource_id, total] : resource_usage_map) {
-      resources.available.Set(resource_id, total);
+      resources.SetAvailableResource(resource_id, total);
       resources.total.Set(resource_id, total);
     }
     return resources;
@@ -75,7 +75,7 @@ class LocalResourceManagerTest : public ::testing::Test {
 
   // Asserts that the node is idle and returns the idle time.
   absl::Time AssertIdleAndGetTime() {
-    EXPECT_TRUE(manager->IsLocalNodeIdle());
+    EXPECT_TRUE(manager->WasLastRecordedNodeStateIdle());
     auto idle_time = manager->GetResourceIdleTime();
     EXPECT_TRUE(idle_time.has_value());
     return idle_time.value();
@@ -83,7 +83,7 @@ class LocalResourceManagerTest : public ::testing::Test {
 
   // Asserts that the node is busy (not idle).
   void AssertBusy() {
-    EXPECT_FALSE(manager->IsLocalNodeIdle());
+    EXPECT_FALSE(manager->WasLastRecordedNodeStateIdle());
     EXPECT_FALSE(manager->GetResourceIdleTime().has_value());
   }
 

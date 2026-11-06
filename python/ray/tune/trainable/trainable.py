@@ -169,15 +169,17 @@ class Trainable:
         This can be overridden by sub-classes to set the correct trial resource
         allocation, so the user does not need to.
 
-        .. testcode::
-
-            @classmethod
-            def default_resource_request(cls, config):
-                return PlacementGroupFactory([{"CPU": 1}, {"CPU": 1}])
-
+        Examples:
+            >>> from ray.tune import PlacementGroupFactory, Trainable
+            >>> class MyTrainable(Trainable):
+            ...     @classmethod
+            ...     def default_resource_request(cls, config):
+            ...         return PlacementGroupFactory([{"CPU": 1}, {"CPU": 1}])
+            >>> MyTrainable.default_resource_request({}).required_resources
+            {'CPU': 2.0}
 
         Args:
-            config[Dict[str, Any]]: The Trainable's config dict.
+            config: The Trainable's config dict.
 
         Returns:
             PlacementGroupFactory: A PlacementGroupFactory consumed by Tune
@@ -191,10 +193,14 @@ class Trainable:
 
         Args:
             config: The Trainer's config dict.
+
+        Returns:
+            A help string describing the resources required by the trainable.
         """
         return ""
 
     def get_current_ip_pid(self):
+        """Returns the IP address of the node and the ID of the process this runs in."""
         return self._local_ip, os.getpid()
 
     def get_auto_filled_metrics(
@@ -209,6 +215,18 @@ class Trainable:
         If ``debug_metrics_only`` is True, only metrics that don't
         require at least one iteration will be returned
         (``ray.tune.result.DEBUG_METRICS``).
+
+        Args:
+            now: The time to report in the ``date`` metric, and in
+                ``timestamp`` when ``timestamp`` isn't given. Defaults to the
+                current time.
+            time_this_iter: The value of the ``time_this_iter_s`` metric.
+            timestamp: The value of the ``timestamp`` metric, in seconds since
+                the epoch. Defaults to ``now``.
+            debug_metrics_only: Whether to return only the debug metrics.
+
+        Returns:
+            A dict that maps each auto-filled metric name to its value.
         """
         if now is None:
             now = datetime.today()
@@ -233,6 +251,11 @@ class Trainable:
         return autofilled
 
     def is_actor(self):
+        """Whether this trainable runs in a Ray actor.
+
+        Returns:
+            True if it runs in a Ray actor, False otherwise.
+        """
         try:
             actor_id = ray._private.worker.global_worker.actor_id
             return actor_id != actor_id.nil()
@@ -256,6 +279,8 @@ class Trainable:
                 the whole buffer.
             max_buffer_length: Maximum number of results to buffer.
 
+        Returns:
+            A list of result dicts collected from each call to ``train()``.
         """
         results = []
 
@@ -392,6 +417,12 @@ class Trainable:
         return result
 
     def get_state(self):
+        """Returns the trainable's training progress and the Ray version.
+
+        Returns:
+            A dict with the iteration count, total timesteps, total time,
+            total episodes, the last result, and the Ray version.
+        """
         return {
             "iteration": self._iteration,
             "timesteps_total": self._timesteps_total,
@@ -592,11 +623,23 @@ class Trainable:
         export_dir = export_dir or self.logdir
         return self._export_model(export_formats, export_dir)
 
-    def reset(self, new_config, storage=None):
+    def reset(
+        self, new_config: Dict[str, Any], storage: Optional[StorageContext] = None
+    ) -> bool:
         """Resets trial for use with new config.
 
         Subclasses should override reset_config() to actually
-        reset actor behavior for the new config."""
+        reset actor behavior for the new config.
+
+        Args:
+            new_config: The config for the new trial. This method removes the
+                trial info and log file entries Tune adds to it.
+            storage: The storage context for the new trial.
+
+        Returns:
+            True if the trainable was reset, False if ``reset_config``
+            returned False.
+        """
         self.config = new_config
 
         self._storage = storage
@@ -740,11 +783,10 @@ class Trainable:
 
         This is not set if not using Tune.
 
-        .. testcode::
-
-            from ray.tune import Trainable
-
-            name = Trainable().trial_name
+        Examples:
+            >>> from ray.tune import Trainable
+            >>> Trainable().trial_name
+            'default'
         """
         if self._trial_info:
             return self._trial_info.trial_name
@@ -757,11 +799,10 @@ class Trainable:
 
         This is not set if not using Tune.
 
-        .. testcode::
-
-            from ray.tune import Trainable
-
-            trial_id = Trainable().trial_id
+        Examples:
+            >>> from ray.tune import Trainable
+            >>> Trainable().trial_id
+            'default'
         """
         if self._trial_info:
             return self._trial_info.trial_id
@@ -774,11 +815,10 @@ class Trainable:
 
         This is not set if not using Tune.
 
-        .. testcode::
-
-            from ray.tune import Trainable
-
-            trial_resources = Trainable().trial_resources
+        Examples:
+            >>> from ray.tune import Trainable
+            >>> print(Trainable().trial_resources)
+            None
         """
         if self._trial_info:
             return self._trial_info.trial_resources
@@ -809,7 +849,7 @@ class Trainable:
         """Returns configuration passed in by Tune."""
         return self.config
 
-    def step(self):
+    def step(self) -> Dict:
         """Subclasses should override this to implement train().
 
         The return value will be automatically passed to the loggers. Users
@@ -963,7 +1003,7 @@ class Trainable:
             export_formats: List of formats that should be exported.
             export_dir: Directory to place exported models.
 
-        Return:
+        Returns:
             A dict that maps ExportFormats to successfully exported models.
         """
         return {}

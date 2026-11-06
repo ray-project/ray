@@ -19,12 +19,34 @@
 #include <string>
 #include <utility>
 
+#include "absl/strings/internal/resize_uninitialized.h"
 #include "ray/util/logging.h"
 
 namespace ray {
 namespace {
 const size_t UINT64_size = sizeof(uint64_t);
+
+bool AppendFileSection(const std::string &path,
+                       uint64_t offset,
+                       uint64_t size,
+                       std::string &output) {
+  std::ifstream file(path, std::ios::binary);
+  file.seekg(static_cast<std::streamoff>(offset));
+  const size_t old_size = output.size();
+  // Grow `output` without value-initializing the new bytes (file.read overwrites
+  // them); std::string::resize would needlessly zero-fill first.
+  absl::strings_internal::STLStringResizeUninitialized(&output, old_size + size);
+  file.read(&output[old_size], static_cast<std::streamsize>(size));
+
+  uint64_t bytes_read = static_cast<uint64_t>(file.gcount());
+  // Shrink the string back to its original state to drop uninitialized garbage
+  if (bytes_read != size) {
+    output.resize(old_size);
+    return false;
+  }
+  return true;
 }
+}  // namespace
 
 /* static */ std::optional<SpilledObjectReader>
 SpilledObjectReader::CreateSpilledObjectReader(const std::string &object_url) {
@@ -171,28 +193,12 @@ uint64_t SpilledObjectReader::ToUINT64(const std::string &s) {
 bool SpilledObjectReader::ReadFromDataSection(uint64_t offset,
                                               uint64_t size,
                                               std::string &output) const {
-  std::ifstream file(file_path_, std::ios::binary);
-  file.seekg(data_offset_ + offset);
-  std::istreambuf_iterator<char> start(file), end;
-  uint64_t size_idx = 0;
-  for (auto it = start; size_idx < size && it != end; ++it) {
-    output.push_back(*it);
-    ++size_idx;
-  }
-  return size_idx == size;
+  return AppendFileSection(file_path_, data_offset_ + offset, size, output);
 }
 
 bool SpilledObjectReader::ReadFromMetadataSection(uint64_t offset,
                                                   uint64_t size,
                                                   std::string &output) const {
-  std::ifstream file(file_path_, std::ios::binary);
-  file.seekg(metadata_offset_ + offset);
-  std::istreambuf_iterator<char> start(file), end;
-  uint64_t size_idx = 0;
-  for (auto it = start; size_idx < size && it != end; ++it) {
-    output.push_back(*it);
-    ++size_idx;
-  }
-  return size_idx == size;
+  return AppendFileSection(file_path_, metadata_offset_ + offset, size, output);
 }
 }  // namespace ray

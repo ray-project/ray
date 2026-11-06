@@ -105,15 +105,20 @@ class RayServegRPCContext:
     This class implements most of the methods from ServicerContext
     (see: https://grpc.github.io/grpc/python/grpc.html#grpc.ServicerContext). It's
     serializable and can be passed with the request to be used on the deployment.
+
+    Args:
+        grpc_context: The gRPC servicer context to copy state from.
     """
 
     def __init__(self, grpc_context: grpc._cython.cygrpc._ServicerContext):
         self._auth_context = grpc_context.auth_context()
         self._code = grpc_context.code()
         self._details = grpc_context.details()
-        self._invocation_metadata = [  # noqa: C416
-            (key, value) for key, value in grpc_context.invocation_metadata()
-        ]
+        self._invocation_metadata = []
+        self._invocation_metadata_dict = {}
+        for key, value in grpc_context.invocation_metadata():
+            self._invocation_metadata.append((key, value))
+            self._invocation_metadata_dict[key] = value
         self._peer = grpc_context.peer()
         self._peer_identities = grpc_context.peer_identities()
         self._peer_identity_key = grpc_context.peer_identity_key()
@@ -145,6 +150,47 @@ class RayServegRPCContext:
           The details string of the RPC.
         """
         return self._details
+
+    def request_id(self) -> Optional[str]:
+        """Accesses the request ID for the RPC.
+
+        Returns:
+          The request ID for the RPC.
+        """
+        return self._invocation_metadata_dict.get("request_id")
+
+    def application(self) -> Optional[str]:
+        """Accesses the target application name for the RPC, if provided.
+
+        Returns:
+          The application name from the request metadata, or None if not set.
+        """
+        return self._invocation_metadata_dict.get("application")
+
+    def multiplexed_model_id(self) -> Optional[str]:
+        """Accesses the multiplexed model ID for the RPC, if provided.
+
+        Returns:
+            The value of the ``multiplexed_model_id`` invocation metadata key, or
+            None if the RPC didn't set it.
+        """
+        return self._invocation_metadata_dict.get("multiplexed_model_id")
+
+    def traceparent(self) -> Optional[str]:
+        """Accesses the traceparent for the RPC.
+
+        Returns:
+          The traceparent for the RPC.
+        """
+        return self._invocation_metadata_dict.get("traceparent")
+
+    def tracestate(self) -> Optional[str]:
+        """Accesses the tracestate for the RPC.
+
+        Returns:
+          The tracestate for the RPC.
+        """
+        return self._invocation_metadata_dict.get("tracestate")
 
     def invocation_metadata(self) -> List[Tuple[str, str]]:
         """Accesses the metadata sent by the client.
@@ -188,6 +234,11 @@ class RayServegRPCContext:
         return self._peer_identity_key
 
     def trailing_metadata(self) -> List[Tuple[str, str]]:
+        """Get the trailing metadata for the RPC.
+
+        Returns:
+            The trailing metadata, as key-value pairs.
+        """
         return self._trailing_metadata
 
     def set_code(self, code: grpc.StatusCode):

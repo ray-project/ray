@@ -233,6 +233,13 @@ const NodeDetailPage = () => {
                 actors={nodeDetail.actors}
                 workers={nodeDetail?.workers}
                 detailPathPrefix="/actors"
+                showAcceleratorColumns={
+                  !!(
+                    nodeDetail?.gpus?.length ||
+                    nodeDetail?.npus?.length ||
+                    nodeDetail?.tpus?.length
+                  )
+                }
               />
             </TableContainer>
           </React.Fragment>

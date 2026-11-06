@@ -124,6 +124,11 @@ class CheckpointManager(_CheckpointManager, ReportCallback, WorkerGroupCallback)
 
         self._condition = asyncio.Condition()
 
+        # Strong references to background tasks created via
+        # ``asyncio.create_task`` to prevent them from being garbage
+        # collected mid-execution. The event loop only keeps weak refs.
+        self._background_tasks: set = set()
+
         self._collective_warn_interval_s = env_float(
             COLLECTIVE_WARN_INTERVAL_S_ENV_VAR,
             DEFAULT_COLLECTIVE_WARN_INTERVAL_S,
@@ -248,7 +253,12 @@ class CheckpointManager(_CheckpointManager, ReportCallback, WorkerGroupCallback)
             async with self._condition:
                 self._condition.notify_all()
 
-        asyncio.create_task(async_notify())
+        # Keep a strong reference to the task so it isn't garbage
+        # collected before completing, which would silently drop
+        # the notification and could leave listeners waiting forever.
+        task = asyncio.create_task(async_notify())
+        self._background_tasks.add(task)
+        task.add_done_callback(self._background_tasks.discard)
 
     def _save_state_and_delete_old_checkpoints(self):
         """Delete the old checkpoints."""

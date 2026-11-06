@@ -50,8 +50,7 @@ def register_tensor_transport(
     transport_manager_class: type[TensorTransportManager],
     data_type: type,
 ):
-    """
-    Register a new tensor transport for use in Ray. Note that this needs to be called
+    """Register a new tensor transport for use in Ray. Note that this needs to be called
     before you create the actors that will use the transport. The actors also
     need to be created in the same process from which you call this function.
 
@@ -154,8 +153,7 @@ def get_tensor_transport_manager(
 def register_custom_tensor_transports_on_actor(
     actor: "ray.actor.ActorHandle",
 ) -> Optional[ObjectRef]:
-    """
-    If there's no custom transports to register, returns None.
+    """If there's no custom transports to register, returns None.
     Otherwise returns an ObjectRef for a task on the actor that will register the custom transports.
     """
     global transport_manager_info
@@ -208,15 +206,11 @@ def normalize_and_validate_tensor_transport(tensor_transport: str) -> str:
     return tensor_transport
 
 
-def validate_one_sided(tensor_transport: str, ray_usage_func: str):
+def is_one_sided_transport(tensor_transport: str) -> bool:
     _ensure_default_transports_registered()
-    if not transport_manager_info[
+    return transport_manager_info[
         tensor_transport
-    ].transport_manager_class.is_one_sided():
-        raise ValueError(
-            f"Trying to use two-sided tensor transport: {tensor_transport} for {ray_usage_func}. "
-            "This is only supported for one-sided transports such as NIXL or the OBJECT_STORE."
-        )
+    ].transport_manager_class.is_one_sided()
 
 
 @PublicAPI(stability="alpha")
@@ -229,6 +223,10 @@ def register_nixl_memory(tensor: "torch.Tensor") -> None:
     if the same tensor is re-used in multiple RDT objects.
 
     If called on a tensor that is already registered with NIXL, we still prevent the tensor's memory from being deregistered.
+
+    The registration covers the tensor's whole underlying storage and is not resized afterwards. If a registered storage is freed without
+    calling :func:`ray.experimental.deregister_nixl_memory` and a larger storage is later allocated at the same address, a ``ValueError``
+    is raised. Resizing a pre-registered buffer is also not free, so allocate it at its full intended size up front.
 
     Args:
         tensor: A PyTorch tensor whose memory should be registered with NIXL.
@@ -294,13 +292,108 @@ def deregister_nixl_memory(tensor: "torch.Tensor") -> None:
     nixl_transport.deregister_nixl_memory(tensor)
 
 
+@PublicAPI(stability="alpha")
+def register_nixl_memory_pool(size: int, device: "torch.device") -> None:
+    """Pre-allocates a memory pool and registers it with NIXL.
+
+    This enables pool-based memory management for NIXL transfers, which can improve
+    performance by avoiding repeated memory registration/deregistration. The pool is
+    registered once with NIXL and individual tensors are copied into it on ``ray.put``.
+
+    Only the tensors passed to ``ray.put`` are copied (by their own byte size),
+    not their full underlying storage. Contiguous tensors from a single
+    ``ray.put`` are packed into as few pool blocks as the free list allows.
+    Pool blocks are freed when the ``ObjectRef`` goes out of scope.
+
+    Each tensor is placed on a multiple of its own element size, so tensors
+    sharing a dtype pack with no padding between them.
+
+    If the pool has insufficient space for an allocation,
+    :class:`NixlOutOfMemoryError` is raised.
+
+    Args:
+        size: Size of the memory pool in bytes.
+        device: Device to allocate the pool on (e.g., ``torch.device("cpu")``
+            or ``torch.device("cuda")``).
+
+    Example:
+
+        .. code-block:: python
+
+            import torch
+            import ray
+            from ray.experimental import register_nixl_memory_pool
+
+            @ray.remote(num_gpus=1, enable_tensor_transport=True)
+            class Trainer:
+                def __init__(self):
+                    # Pre-allocate a 1GB GPU memory pool for NIXL transfers
+                    register_nixl_memory_pool(1024 * 1024 * 1024, torch.device("cuda"))
+
+                def get_weight_ref(self):
+                    weight = torch.randn(1000, 1000, device="cuda")
+                    return ray.put(weight, _tensor_transport="nixl")
+    """
+    nixl_transport = get_tensor_transport_manager("NIXL")
+    nixl_transport.register_nixl_memory_pool(size, device)
+
+
+@PublicAPI(stability="alpha")
+def set_nixl_cuda_stream(stream: Optional["torch.cuda.Stream"]) -> None:
+    """Sets the CUDA stream to synchronize before NIXL memory registration.
+
+    When an actor creates an RDT object (via ``ray.put(_tensor_transport="nixl")``
+    or by returning tensors from a task annotated with
+    ``@ray.method(tensor_transport="nixl")``), Ray must synchronize the device
+    before registering the tensor memory with NIXL, because NIXL does not
+    guarantee the tensor storage has been allocated. By default Ray calls
+    ``torch.cuda.synchronize`` for each device, which blocks *all* streams on
+    that device. Use this function to instead block only on the specific
+    stream that produced the tensors.
+
+    The stream applies to all subsequent RDT object creations on this actor
+    until changed. Calling this again overwrites the previous stream. Pass
+    ``None`` to clear it and restore the default full-device synchronization.
+
+    Args:
+        stream: The CUDA stream to synchronize, or ``None`` to block on all
+            streams of each device.
+
+    Example:
+
+        .. code-block:: python
+
+            import torch
+            import ray
+            from ray.experimental import set_nixl_cuda_stream
+
+            @ray.remote(num_gpus=1, enable_tensor_transport=True)
+            class Trainer:
+                def __init__(self):
+                    # A long-lived stream this actor produces its RDT tensors on.
+                    self.stream = torch.cuda.Stream()
+                    # Only block on `self.stream` instead of every stream on the
+                    # device. Set once; it applies to all subsequent ray.put calls.
+                    set_nixl_cuda_stream(self.stream)
+
+                def get_weight_ref(self):
+                    with torch.cuda.stream(self.stream):
+                        weight = torch.randn(1000, 1000, device="cuda")
+                    return ray.put(weight, _tensor_transport="nixl")
+    """
+    nixl_transport = get_tensor_transport_manager("NIXL")
+    nixl_transport.set_cuda_stream(stream)
+
+
 def create_empty_tensors_from_metadata(
     tensor_transport_meta: TensorTransportMetadata,
+    device: Optional[str] = None,
 ) -> List["torch.Tensor"]:
     import torch
 
     tensors = []
-    device = tensor_transport_meta.tensor_device
+    if device is None:
+        device = tensor_transport_meta.tensor_device
     for meta in tensor_transport_meta.tensor_meta:
         shape, dtype = meta
         tensor = torch.empty(shape, dtype=dtype, device=device)

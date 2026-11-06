@@ -28,12 +28,14 @@ class AcceleratorManager(ABC):
 
     @staticmethod
     @abstractmethod
-    def get_visible_accelerator_ids_env_var() -> str:
+    def get_visible_accelerator_ids_env_var() -> Optional[str]:
         """Get the env var that sets the ids of visible accelerators of this family.
 
         Returns:
             The env var for setting visible accelerator ids: e.g.,
-                CUDA_VISIBLE_DEVICES for NVIDIA GPUs.
+                CUDA_VISIBLE_DEVICES for NVIDIA GPUs. Returns None for accelerator
+                families that have no visible-devices env var (e.g. Apple Silicon
+                MPS, which exposes a single device that cannot be selected or hidden).
         """
 
     @staticmethod
@@ -154,5 +156,38 @@ class AcceleratorManager(ABC):
 
         Returns:
             A dictionary mapping accelerator related label keys to values.
+        """
+        return None
+
+    @staticmethod
+    def get_cdi_kind() -> Optional[str]:
+        """Get the CDI (Container Device Interface) kind for this
+        accelerator family, e.g. "nvidia.com/gpu".
+
+        Returns:
+            The CDI kind, or None if this accelerator family doesn't
+            support CDI-based device injection (e.g. into Ray Sandboxes).
+        """
+        return None
+
+    @staticmethod
+    def generate_cdi_spec() -> Optional[Dict]:
+        """Generate and return a CDI spec describing this accelerator
+        family's devices on the current node. Only meaningful when
+        `get_cdi_kind()` returns non-None. Returns the parsed spec directly
+        rather than writing to disk. Implementations should avoid writing
+        a spec file themselves too, so callers never have to reconcile a
+        cached-on-disk spec with one generated in-process.
+
+        Returns:
+            The parsed CDI spec. This default implementation returns None,
+            meaning this accelerator family doesn't implement CDI spec
+            generation. A family that does implement it (e.g.
+            NVIDIA's) instead raises if generation is attempted and fails.
+            Callers only call this once they've already confirmed CDI is
+            supported (via `get_cdi_kind()`), so at that point a failure
+            is a real error, not "unsupported". Callers should let
+            that exception propagate as a fatal error rather than
+            treating it like this method's None return.
         """
         return None

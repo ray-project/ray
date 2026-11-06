@@ -27,7 +27,7 @@ from ci.build.build_common import (
 )
 
 # Configuration Constants
-SUPPORTED_PYTHON_VERSIONS = ("3.10", "3.11", "3.12", "3.13")
+SUPPORTED_PYTHON_VERSIONS = ("3.10", "3.11", "3.12", "3.13", "3.14")
 RAYMAKE_SPEC = "ci/docker/ray-wheel.wanda.yaml"
 RAYCI_REGISTRY = "cr.ray.io/rayproject"
 
@@ -68,6 +68,7 @@ class BuildConfig:
             "IS_LOCAL_BUILD": "true",
             "RAY_JAVA_IMAGE": java_image,
             "RAY_DASHBOARD_IMAGE": dashboard_image,
+            "WHEEL_NAME_SUFFIX": "",
         }
 
     @classmethod

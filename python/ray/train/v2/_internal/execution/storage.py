@@ -24,6 +24,7 @@ except (ImportError, ModuleNotFoundError) as e:
 import fnmatch
 import logging
 import os
+import posixpath
 import shutil
 from pathlib import Path
 from typing import TYPE_CHECKING, Callable, List, Optional, Tuple, Type, Union
@@ -54,7 +55,8 @@ class _ExcludingLocalFilesystem(LocalFileSystem):
         exclude: List of patterns that are applied to files returned by
             ``self.find()``. If a file path matches this pattern, it will
             be excluded.
-
+        **kwargs: Additional keyword arguments forwarded to
+            ``pyarrow.fs.LocalFileSystem``.
     """
 
     def __init__(self, root_path: Path, exclude: List[str], **kwargs):
@@ -207,9 +209,14 @@ def _upload_to_fs_path(
             Ex: ["*.png"] to exclude all .png images.
     """
 
+    if os.path.isfile(local_path):
+        parent = posixpath.dirname(fs_path)
+        if parent:
+            _create_directory(fs=fs, fs_path=parent)
+        _pyarrow_fs_copy_files(local_path, fs_path, destination_filesystem=fs)
+        return
+
     if not exclude:
-        # TODO(justinvyu): uploading a single file doesn't work
-        # (since we always create a directory at fs_path)
         _create_directory(fs=fs, fs_path=fs_path)
         _pyarrow_fs_copy_files(local_path, fs_path, destination_filesystem=fs)
         return
@@ -259,6 +266,13 @@ def _exists_at_fs_path(fs: pyarrow.fs.FileSystem, fs_path: str) -> bool:
 def _is_directory(fs: pyarrow.fs.FileSystem, fs_path: str) -> bool:
     """Checks if (fs, fs_path) is a directory or a file.
 
+    Args:
+        fs: The filesystem to query.
+        fs_path: The path on the filesystem.
+
+    Returns:
+        ``True`` if the path is a directory, ``False`` if it is a file.
+
     Raises:
         FileNotFoundError: if (fs, fs_path) doesn't exist.
     """
@@ -299,6 +313,9 @@ def get_fs_and_path(
             this will be auto-resolved by pyarrow. If provided, the storage_path
             is assumed to be prefix-stripped already, and must be a valid path
             on the filesystem.
+
+    Returns:
+        A ``(filesystem, path)`` tuple.
     """
     storage_path = str(storage_path)
 
@@ -383,6 +400,7 @@ class StorageContext:
         storage_path: Union[str, os.PathLike],
         experiment_dir_name: str,
         storage_filesystem: Optional[pyarrow.fs.FileSystem] = None,
+        read_only: bool = False,
     ):
         self.custom_fs_provided = storage_filesystem is not None
 
@@ -395,8 +413,10 @@ class StorageContext:
         )
         self.storage_fs_path = Path(self.storage_fs_path).as_posix()
 
-        self._create_validation_file()
-        self._check_validation_file()
+        self.read_only = read_only
+        if not self.read_only:
+            self._create_validation_file()
+            self._check_validation_file()
 
     def __str__(self):
         return (
@@ -448,10 +468,17 @@ class StorageContext:
         Args:
             checkpoint: The checkpoint to persist to
                 (fs, experiment_fs_path / checkpoint_dir_name).
+            checkpoint_dir_name: Name of the destination directory for the
+                checkpoint, relative to ``experiment_fs_path``.
 
         Returns:
             Checkpoint: A Checkpoint pointing to the persisted checkpoint location.
         """
+        if self.read_only:
+            raise RuntimeError(
+                "Cannot perform write/validation operations as the StorageContext is read-only."
+            )
+
         # TODO(justinvyu): Fix this cyclical import.
         from ray.train import Checkpoint
 

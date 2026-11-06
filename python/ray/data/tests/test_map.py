@@ -5,13 +5,15 @@ import os
 import random
 import threading
 import time
-from typing import Iterator, Literal
+import warnings
+from typing import Callable, Iterable, Iterator, List, Literal, Optional
 from unittest.mock import Mock
 
 import numpy as np
 import pandas as pd
 import pyarrow as pa
 import pyarrow.compute as pc
+import pyarrow.parquet as pq
 import pytest
 
 import ray
@@ -22,18 +24,28 @@ from ray._common.test_utils import (
 from ray.data._internal.arrow_ops.transform_pyarrow import (
     MIN_PYARROW_VERSION_TYPE_PROMOTION,
 )
+from ray.data._internal.execution.operators.task_pool_map_operator import (
+    TaskPoolMapOperator,
+)
+from ray.data._internal.logical.optimizers import get_execution_plan
 from ray.data._internal.planner.plan_udf_map_op import (
     _generate_transform_fn_for_async_map,
     _MapActorContext,
 )
 from ray.data._internal.utils.arrow_utils import get_pyarrow_version
+from ray.data.block import Block, BlockMetadata
 from ray.data.context import DataContext
+from ray.data.dataset import Dataset
+from ray.data.datasource import Datasource, ReadTask
 from ray.data.exceptions import UserCodeException
+from ray.data.expressions import col
 from ray.data.tests.conftest import *  # noqa
 from ray.data.tests.test_util import ConcurrencyCounter  # noqa
 from ray.data.tests.util import extract_values
 from ray.exceptions import RayTaskError
+from ray.runtime_env import RuntimeEnv
 from ray.tests.conftest import *  # noqa
+from ray.util.annotations import RayDeprecationWarning
 
 
 def test_specifying_num_cpus_and_num_gpus_logs_warning(
@@ -48,6 +60,88 @@ def test_specifying_num_cpus_and_num_gpus_logs_warning(
             "Specifying both num_cpus and num_gpus for map tasks is experimental"
             in caplog.text
         ), caplog.text
+
+
+def test_ray_remote_args_fn_deprecation_warning(shutdown_only):
+    ds = ray.data.range(1)
+
+    def ray_remote_args_fn():
+        return {}
+
+    with pytest.warns(RayDeprecationWarning, match="ray_remote_args_fn"):
+        ds.map(lambda row: row, ray_remote_args_fn=ray_remote_args_fn)
+    with pytest.warns(RayDeprecationWarning, match="ray_remote_args_fn"):
+        ds.map_batches(lambda batch: batch, ray_remote_args_fn=ray_remote_args_fn)
+    with pytest.warns(RayDeprecationWarning, match="ray_remote_args_fn"):
+        ds.flat_map(lambda row: [row], ray_remote_args_fn=ray_remote_args_fn)
+    with pytest.warns(RayDeprecationWarning, match="ray_remote_args_fn"):
+        ds.filter(expr=col("id") >= 0, ray_remote_args_fn=ray_remote_args_fn)
+
+
+@pytest.mark.parametrize(
+    "transform_fn",
+    [
+        lambda ds: ds.map(lambda row: row, scheduling_strategy="SPREAD"),
+        lambda ds: ds.map_batches(lambda batch: batch, scheduling_strategy="SPREAD"),
+        lambda ds: ds.flat_map(lambda row: [row], scheduling_strategy="SPREAD"),
+        lambda ds: ds.with_column("copy", col("id"), scheduling_strategy="SPREAD"),
+        lambda ds: ds.with_columns({"copy": col("id")}, scheduling_strategy="SPREAD"),
+        lambda ds: ds.filter(expr=col("id") >= 0, scheduling_strategy="SPREAD"),
+        lambda ds: ds.add_column(
+            "copy", lambda batch: batch["id"], scheduling_strategy="SPREAD"
+        ),
+        lambda ds: ds.drop_columns(["id"], scheduling_strategy="SPREAD"),
+        lambda ds: ds.select_columns(["id"], scheduling_strategy="SPREAD"),
+        lambda ds: ds.rename_columns({"id": "renamed"}, scheduling_strategy="SPREAD"),
+    ],
+    ids=[
+        "map",
+        "map_batches",
+        "flat_map",
+        "with_column",
+        "with_columns",
+        "filter",
+        "add_column",
+        "drop_columns",
+        "select_columns",
+        "rename_columns",
+    ],
+)
+def test_transform_ray_remote_args_deprecation_warning(
+    shutdown_only, transform_fn: Callable[[Dataset], Dataset]
+):
+    ds = ray.data.range(1)
+
+    with pytest.warns(
+        RayDeprecationWarning, match="ray_remote_args"
+    ) as warning_records:
+        transform_fn(ds)
+
+    # Each API call should produce only one warning, even if it calls another
+    # Dataset method.
+    assert len(warning_records) == 1
+    # The warning should point to the public API caller, not a Dataset method.
+    assert warning_records[0].filename == __file__
+
+
+@pytest.mark.parametrize(
+    "transform_fn",
+    [
+        lambda ds, **opts: ds.with_column("copy", col("id"), **opts),
+        lambda ds, **opts: ds.add_column("copy", lambda b: b["id"], **opts),
+        lambda ds, **opts: ds.drop_columns(["id"], **opts),
+    ],
+    ids=["with_column", "add_column", "drop_columns"],
+)
+def test_column_named_remote_args_no_warning(
+    shutdown_only, transform_fn: Callable[..., Dataset]
+):
+    """Check that named parameters don't warn when column APIs pass them along."""
+    ds = ray.data.range(1)
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", RayDeprecationWarning)
+        transform_fn(ds, num_cpus=0, num_gpus=0, memory=1)
 
 
 def test_invalid_max_tasks_in_flight_raises_error():
@@ -228,6 +322,69 @@ def test_actor_task_failure(
             return x
 
     ds.map_batches(Mapper, concurrency=1).materialize()
+
+
+def test_task_retry_on_errors_succeeds(restore_data_context):
+    ctx = DataContext.get_current()
+    ctx.retried_map_errors = ["transient error"]
+    ctx.max_map_retries = 3
+
+    class FlakyUDF:
+        def __init__(self):
+            self._counter = 0
+
+        def __call__(self, batch):
+            self._counter += 1
+            if self._counter <= 2:
+                raise ValueError("transient error")
+            return batch
+
+    result = ray.data.range(2, override_num_blocks=1).map_batches(FlakyUDF).take_all()
+    assert sorted(extract_values("id", result)) == list(range(2)), result
+
+
+def test_task_retry_on_errors_exhausted(restore_data_context):
+    ctx = DataContext.get_current()
+    ctx.retried_map_errors = ["persistent bug"]
+    ctx.max_map_retries = 2
+
+    def always_fails(batch):
+        raise ValueError("persistent bug")
+
+    with pytest.raises(ray.exceptions.RayTaskError):
+        ray.data.range(2, override_num_blocks=1).map_batches(always_fails).take_all()
+
+
+def test_task_retry_non_matching_exception_not_retried(restore_data_context):
+    ctx = DataContext.get_current()
+    ctx.retried_map_errors = ["rate limit"]
+
+    def udf(batch):
+        raise ValueError("not a retryable error")
+
+    with pytest.raises(ray.exceptions.RayTaskError):
+        ray.data.range(2, override_num_blocks=1).map_batches(udf).take_all()
+
+
+def test_task_retry_true_retries_any_exception(shutdown_only, restore_data_context):
+    ctx = DataContext.get_current()
+    ctx.retried_map_errors = True
+    ctx.max_map_retries = 3
+
+    class FlakyUDF:
+        def __init__(self):
+            self._counter = 0
+
+        def __call__(self, batch):
+            self._counter += 1
+            if self._counter <= 2:
+                raise RuntimeError("any kind of transient error")
+            if self._counter <= 3:
+                raise ValueError("also a retryable error")
+            return batch
+
+    result = ray.data.range(2, override_num_blocks=1).map_batches(FlakyUDF).take_all()
+    assert sorted(extract_values("id", result)) == list(range(2)), result
 
 
 def test_gpu_workers_not_reused(
@@ -605,12 +762,49 @@ def test_drop_columns(
         assert ds.drop_columns([]).take(1) == [{"col1": 1, "col2": 2, "col3": 3}]
         assert ds.drop_columns(["col1", "col2", "col3"]).take(1) == []
         assert ds.drop_columns(["col1", "col2"]).take(1) == [{"col3": 3}]
-        # Test dropping non-existent column
-        with pytest.raises((UserCodeException, KeyError)):
-            ds.drop_columns(["dummy_col", "col1", "col2"]).materialize()
 
     with pytest.raises(ValueError, match="drop_columns expects unique column names"):
         ds1.drop_columns(["col1", "col2", "col2"])
+
+
+@pytest.mark.parametrize(
+    "source,eager",
+    [
+        # Parquet source: input ``pa.Schema`` is known, so ``drop_columns``
+        # raises immediately at the call site.
+        ("parquet", True),
+        # ``from_pandas`` source: input schema is a ``PandasBlockSchema``,
+        # not a ``pa.Schema``, so the typed-chain reshape is skipped and
+        # the error surfaces inside ``materialize`` as a
+        # ``UserCodeException`` wrapping the PyArrow ``KeyError``.
+        ("pandas", False),
+        # UDF chain: input schema is opaque downstream of ``map_batches``,
+        # same fallback as ``pandas``.
+        ("udf", False),
+    ],
+)
+def test_drop_columns_missing_column_raises(
+    ray_start_regular_shared,
+    tmp_path,
+    target_max_block_size_infinite_or_default,
+    source,
+    eager,
+):
+    df = pd.DataFrame({"col1": [1, 2, 3], "col2": [2, 3, 4], "col3": [3, 4, 5]})
+    if source == "parquet":
+        ray.data.from_pandas(df).write_parquet(str(tmp_path))
+        ds = ray.data.read_parquet(str(tmp_path))
+    elif source == "pandas":
+        ds = ray.data.from_pandas(df)
+    else:
+        ds = ray.data.from_pandas(df).map_batches(lambda b: b)
+
+    if eager:
+        with pytest.raises(KeyError, match="not found in dataset schema"):
+            ds.drop_columns(["dummy_col", "col1", "col2"])
+    else:
+        with pytest.raises((UserCodeException, KeyError)):
+            ds.drop_columns(["dummy_col", "col1", "col2"]).materialize()
 
 
 def test_select_rename_columns(
@@ -1396,6 +1590,125 @@ def test_map_with_max_calls():
             ray_remote_args_fn=lambda: {"max_calls": 1},
         )
         ds.take_all()
+
+
+def test_downstream_operators_scheduled_on_different_workers_than_read_workers(
+    restore_data_context, shutdown_only
+):
+    """Test that downstream operators don't get scheduled on same workers as reads when
+    ``isolate_read_workers`` is ``True``.
+
+    The test works by setting an environment variable in the read worker and checking
+    that it isn't set in the map worker.
+    """
+    ray.data.DataContext.get_current().isolate_read_workers = True
+
+    if ray.is_initialized():
+        ray.shutdown()
+
+    # This test assumes that the number of Ray worker processes is equal to the number
+    # of logical CPUs. This is true at the time of writing, but it's an implementation
+    # detail that could change. I'm using this approach since it seems like the most
+    # pragmatic way to test this.
+    ray.init(num_cpus=1)
+
+    class SetMarkerDatasource(Datasource):
+        def get_read_tasks(
+            self,
+            parallelism: int,
+            per_task_row_limit: Optional[int] = None,
+            data_context: Optional["DataContext"] = None,
+        ) -> List[ReadTask]:
+            def read_fn() -> Iterable[Block]:
+                os.environ["MARKER"] = "1"
+                yield pa.Table.from_pydict({"id": [0]})
+
+            return [
+                ReadTask(
+                    read_fn,
+                    BlockMetadata(
+                        num_rows=1, size_bytes=4, input_files=None, exec_stats=None
+                    ),
+                )
+            ]
+
+        def estimate_inmemory_data_size(self) -> Optional[int]:
+            return None
+
+    def check_marker_not_set(row):
+        assert os.environ.get("MARKER") != "1", (
+            "Expected MARKER to not be set in the map worker. This means the map "
+            "worker was scheduled on the same worker as the read worker."
+        )
+        return row
+
+    ray.data.read_datasource(SetMarkerDatasource()).map(
+        check_marker_not_set
+    ).materialize()
+
+
+@pytest.mark.parametrize(
+    "runtime_env", [{"env_vars": {"MARKER": "1"}}, RuntimeEnv(env_vars={"MARKER": "1"})]
+)
+def test_isolate_read_workers_preserves_runtime_env(
+    runtime_env, ray_start_regular_shared, restore_data_context
+):
+    """The `isolate_read_workers` implementation uses runtime envs to isolate workers.
+    This test verifies that Ray Data preserves the user-specified runtime env when you
+    set the flag.
+    """
+    ray.data.DataContext.get_current().isolate_read_workers = True
+
+    class CheckEnvVarDatasource(Datasource):
+        def get_read_tasks(
+            self,
+            parallelism: int,
+            per_task_row_limit: Optional[int] = None,
+            data_context: Optional["DataContext"] = None,
+        ) -> List[ReadTask]:
+            def read_fn() -> Iterable[Block]:
+                assert os.environ.get("MARKER") == "1"
+                yield pa.Table.from_pydict({"id": [0]})
+
+            return [
+                ReadTask(
+                    read_fn,
+                    BlockMetadata(
+                        num_rows=1, size_bytes=4, input_files=None, exec_stats=None
+                    ),
+                )
+            ]
+
+        def estimate_inmemory_data_size(self) -> Optional[int]:
+            return None
+
+    ray.data.read_datasource(
+        CheckEnvVarDatasource(), ray_remote_args={"runtime_env": runtime_env}
+    ).materialize()
+
+
+@pytest.mark.parametrize("isolate_read_workers", [True, False])
+def test_isolate_read_workers_propagated_for_datasource_v2(
+    tmp_path, ray_start_regular_shared, restore_data_context, isolate_read_workers
+):
+    """DataContext.isolate_read_workers must land on the ReadFiles physical op (DSv2)."""
+    ctx = DataContext.get_current()
+    ctx.use_datasource_v2 = True
+    ctx.isolate_read_workers = isolate_read_workers
+
+    pq.write_table(pa.table({"a": [1]}), str(tmp_path / "data.parquet"))
+    ds = ray.data.read_parquet(str(tmp_path))
+
+    physical_plan, _ = get_execution_plan(ds._logical_plan)
+    op = physical_plan.dag
+    while op is not None:
+        if isinstance(op, TaskPoolMapOperator) and "ReadFiles" in op.name:
+            assert op.isolate_workers is isolate_read_workers
+            return
+        deps = op.input_dependencies
+        op = deps[0] if deps else None
+
+    pytest.fail("Expected a ReadFiles TaskPoolMapOperator in the physical plan")
 
 
 if __name__ == "__main__":

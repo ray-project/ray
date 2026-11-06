@@ -59,7 +59,7 @@ class TaskContext:
         return getattr(_thread_local, "task_context", None)
 
     @classmethod
-    def set_current(cls, context):
+    def set_current(cls, context: "TaskContext") -> None:
         """Set the TaskContext for the current thread.
 
         Args:

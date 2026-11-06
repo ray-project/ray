@@ -64,7 +64,7 @@ class TestRayImageValidation(unittest.TestCase):
 
     def test_invalid_architecture(self):
         with self.assertRaises(RayImageError):
-            RayImage("ray-llm", "3.12", "cu13.0.0-cudnn", "aarch64").validate()
+            RayImage("ray-llm", "3.12", "cu13.0.0-cudnn", "invalid").validate()
 
 
 class TestGetWandaSpecPath(unittest.TestCase):
@@ -400,8 +400,7 @@ class TestFromArgs(unittest.TestCase):
             with self.assertRaises(BuildError):
                 ImageBuildConfig.from_args("ray-extra", "3.10", "tpu")
 
-    def test_from_args_rejects_unsupported_arch(self):
-        """ray-llm only supports x86_64; aarch64 should be rejected."""
+    def test_from_args_accepts_aarch64(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             ray_root = _make_ray_root(tmpdir)
             with (
@@ -412,9 +411,15 @@ class TestFromArgs(unittest.TestCase):
                     "ci.build.build_common._platform.machine", return_value="aarch64"
                 ),
                 mock.patch("build_image.find_ray_root", return_value=ray_root),
+                mock.patch("build_image.get_git_commit", return_value="abc1234"),
             ):
-                with self.assertRaises(BuildError):
-                    ImageBuildConfig.from_args("ray-llm", "3.12", "cu13.0.0-cudnn")
+                config = ImageBuildConfig.from_args("ray-llm", "3.12", "cu13.0.0-cudnn")
+
+        self.assertEqual(config.ray_image.architecture, "aarch64")
+        self.assertEqual(
+            config.wanda_image_tag,
+            f"{REGISTRY_PREFIX}ray-llm-py3.12-cu13.0.0-cudnn-aarch64",
+        )
 
 
 class TestSupportedImageTypes(unittest.TestCase):

@@ -32,8 +32,7 @@ from ray.dashboard.modules.job.common import (
 )
 from ray.dashboard.modules.job.job_log_storage_client import JobLogStorageClient
 from ray.dashboard.modules.job.job_supervisor import JobSupervisor
-from ray.dashboard.modules.job.utils import get_head_node_id
-from ray.dashboard.utils import close_logger_file_descriptor
+from ray.dashboard.utils import close_logger_file_descriptor, get_head_node_id
 from ray.exceptions import ActorDiedError, ActorUnschedulableError, RuntimeEnvSetupError
 from ray.job_submission import JobErrorType, JobStatus
 from ray.runtime_env import RuntimeEnvConfig
@@ -69,13 +68,17 @@ class JobManager:
     WAIT_FOR_ACTOR_DEATH_TIMEOUT_S = 0.1
 
     def __init__(
-        self, gcs_client: GcsClient, logs_dir: str, timeout_check_timer: Timer = None
+        self,
+        gcs_client: GcsClient,
+        logs_dir: str,
+        timeout_check_timer: Timer = None,
+        session_name: str = "",
     ):
         self._gcs_client = gcs_client
         self._logs_dir = logs_dir
-        self._job_info_client = JobInfoStorageClient(gcs_client, logs_dir)
-        self._gcs_address = gcs_client.address
-        self._cluster_id_hex = gcs_client.cluster_id.hex()
+        self._job_info_client = JobInfoStorageClient(
+            gcs_client, logs_dir, session_name=session_name
+        )
         self._log_client = JobLogStorageClient()
         self._supervisor_actor_cls = ray.remote(JobSupervisor)
         self._timeout_check_timer = timeout_check_timer or Timer()
@@ -377,6 +380,8 @@ class JobManager:
 
         Args:
             user_runtime_env: The runtime_env specified by the user.
+            submission_id: The submission id of the job; used to derive the log
+                file path piped into the runtime env config.
             resources_specified: Whether the user specified resources in the
                 submit_job() call. If so, we will skip the workaround introduced
                 in #24546 for GPU detection and just use the user's resource
@@ -475,8 +480,7 @@ class JobManager:
         entrypoint_label_selector: Optional[Dict[str, str]] = None,
         _start_signal_actor: Optional[ActorHandle] = None,
     ) -> str:
-        """
-        Job execution happens asynchronously.
+        """Job execution happens asynchronously.
 
         1) Generate a new unique id for this job submission, each call of this
             method assumes they're independent submission with its own new
@@ -490,6 +494,8 @@ class JobManager:
         Args:
             entrypoint: Driver command to execute in subprocess shell.
                 Represents the entrypoint to start user application.
+            submission_id: Optional caller-provided submission id. When None, a
+                new id is generated via ``generate_job_id()``.
             runtime_env: Runtime environment used to execute driver command,
                 which could contain its own ray.init() to configure runtime
                 env at ray cluster, task and actor level.
@@ -600,8 +606,6 @@ class JobManager:
                 submission_id,
                 entrypoint,
                 metadata or {},
-                self._gcs_address,
-                self._cluster_id_hex,
                 self._logs_dir,
             )
             supervisor.run.remote(

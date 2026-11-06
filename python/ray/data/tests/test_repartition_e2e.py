@@ -152,10 +152,8 @@ def test_repartition_target_num_rows_per_block(
     all_data = []
 
     for ref_bundle in ds.iter_internal_ref_bundles():
-        block, block_metadata = (
-            ray.get(ref_bundle.blocks[0][0]),
-            ref_bundle.blocks[0][1],
-        )
+        first = ref_bundle.blocks[0]
+        block, block_metadata = ray.get(first.ref), first.metadata
 
         # NOTE: Because our block rows % target_num_rows_per_block == 0, we can
         #       assert equality here
@@ -228,7 +226,7 @@ def test_repartition_empty_datasets(ray_start_regular_shared_2_cpus, shuffle):
     assert len(ref_bundles) == num_partitions
     for ref_bundle in ref_bundles:
         assert len(ref_bundle.blocks) == 1
-        metadata = ref_bundle.blocks[0][1]
+        metadata = ref_bundle.blocks[0].metadata
         assert metadata.num_rows == 0
         assert metadata.size_bytes == 0
 
@@ -443,8 +441,8 @@ def test_streaming_repartition_with_partial_last_block(
 
     block_row_counts = []
     for ref_bundle in ds.iter_internal_ref_bundles():
-        for _, metadata in ref_bundle.blocks:
-            block_row_counts.append(metadata.num_rows)
+        for entry in ref_bundle.blocks:
+            block_row_counts.append(entry.metadata.num_rows)
 
     assert sum(block_row_counts) == num_rows, f"Expected {num_rows} total rows"
 

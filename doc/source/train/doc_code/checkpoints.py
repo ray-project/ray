@@ -248,8 +248,7 @@ class CustomRayTrainReportCallback(Callback):
             metrics["custom_metric"] = 123
 
             checkpoint = None
-            global_rank = ray.train.get_context().get_world_rank() == 0
-            if global_rank == 0 and should_checkpoint:
+            if should_checkpoint:
                 # Save model checkpoint file to tmpdir
                 ckpt_path = os.path.join(tmpdir, "ckpt.pt")
                 trainer.save_checkpoint(ckpt_path, weights_only=False)
@@ -258,6 +257,7 @@ class CustomRayTrainReportCallback(Callback):
 
             # Report to train session
             ray.train.report(metrics=metrics, checkpoint=checkpoint)
+            trainer.strategy.barrier()
 # __lightning_custom_save_example_end__
 
 # __lightning_restore_example_start__
@@ -307,7 +307,7 @@ def train_func(config):
     # Configure logging, saving, evaluation strategies as usual.
     args = TrainingArguments(
         ...,
-        evaluation_strategy="epoch",
+        eval_strategy="epoch",
         save_strategy="epoch",
         logging_strategy="step",
     )
@@ -402,7 +402,7 @@ from ray.train import Checkpoint
 
 # For demonstration, create a locally available directory with a `model.pt` file.
 example_checkpoint_dir = Path("/tmp/test-checkpoint")
-example_checkpoint_dir.mkdir()
+example_checkpoint_dir.mkdir(exist_ok=True)
 example_checkpoint_dir.joinpath("model.pt").touch()
 
 # Create the checkpoint, which is a reference to the directory.

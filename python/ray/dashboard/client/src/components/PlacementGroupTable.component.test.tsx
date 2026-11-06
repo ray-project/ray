@@ -107,8 +107,8 @@ describe("PlacementGroupTable", () => {
     const labelSelectorHeaders = screen.getAllByText("Label Selector");
     expect(labelSelectorHeaders.length).toBeGreaterThan(0);
 
-    const labelDomainHeaders = screen.getAllByText("Label Domain");
-    expect(labelDomainHeaders.length).toBeGreaterThan(0);
+    const topologyHeaders = screen.getAllByText("Topology");
+    expect(topologyHeaders.length).toBeGreaterThan(0);
 
     const schedulingDetailHeaders = screen.getAllByText("Scheduling Detail");
     expect(schedulingDetailHeaders.length).toBeGreaterThan(0);
@@ -287,7 +287,7 @@ describe("PlacementGroupTable", () => {
     // Check that null stats are handled gracefully
     expect(screen.getByText("pg-123456789")).toBeInTheDocument();
     const dashes = screen.getAllByText("-");
-    expect(dashes.length).toBeGreaterThan(0); // Null scheduling detail and empty label domain
+    expect(dashes.length).toBeGreaterThan(0); // Null scheduling detail and empty topology
   });
 
   it("renders placement groups with empty name", () => {
@@ -308,7 +308,7 @@ describe("PlacementGroupTable", () => {
     // Check that empty names are handled gracefully
     expect(screen.getByText("pg-123456789")).toBeInTheDocument();
     const dashes = screen.getAllByText("-");
-    expect(dashes.length).toBeGreaterThan(0); // Empty name and empty label domain
+    expect(dashes.length).toBeGreaterThan(0); // Empty name and empty topology
   });
 
   it("renders state counter for placement groups", () => {
@@ -386,8 +386,8 @@ describe("PlacementGroupTable", () => {
     const labelSelectorHeaders = screen.getAllByText("Label Selector");
     expect(labelSelectorHeaders.length).toBeGreaterThan(0);
 
-    const labelDomainHeaders = screen.getAllByText("Label Domain");
-    expect(labelDomainHeaders.length).toBeGreaterThan(0);
+    const topologyHeaders = screen.getAllByText("Topology");
+    expect(topologyHeaders.length).toBeGreaterThan(0);
 
     const schedulingDetailHeaders = screen.getAllByText("Scheduling Detail");
     expect(schedulingDetailHeaders.length).toBeGreaterThan(0);

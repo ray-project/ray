@@ -84,8 +84,7 @@ class _PdbWrap(Pdb):
 
 
 class _RemotePdb(Pdb):
-    """
-    This will run pdb as a ephemeral telnet service. Once you connect no one
+    """This will run pdb as a ephemeral telnet service. Once you connect no one
     else can connect. On construction this object will block execution till a
     client has connected.
     Based on https://github.com/tamentis/rpdb I think ...
@@ -230,9 +229,7 @@ def _connect_ray_pdb(
     breakpoint_uuid=None,
     debugger_external=False,
 ):
-    """
-    Opens a remote PDB on first available port.
-    """
+    """Opens a remote PDB on first available port."""
     if debugger_external:
         assert not host, "Cannot specify both host and debugger_external"
         host = get_all_interfaces_ip()
@@ -258,7 +255,10 @@ def _connect_ray_pdb(
     )
     sockname = rdb._listen_socket.getsockname()
     pdb_address = build_address(ip_address, sockname[1])
-    parentframeinfo = inspect.getouterframes(inspect.currentframe())[2]
+    frames = inspect.getouterframes(inspect.currentframe())
+    # Use the parent frame if available, otherwise fall back to the current frame
+    # In some call paths (e.g., post-mortem debugging), there may not be enough frames
+    parentframeinfo = frames[2] if len(frames) > 2 else frames[-1]
     data = {
         "proctitle": ray._raylet.getproctitle(),
         "pdb_address": pdb_address,

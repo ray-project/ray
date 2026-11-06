@@ -7,6 +7,9 @@ import pytest
 
 import ray
 from ray._private.internal_api import memory_summary
+from ray.data._internal.execution.backpressure_policy.downstream_capacity_backpressure_policy import (
+    DownstreamCapacityBackpressurePolicy,
+)
 from ray.data._internal.execution.util import memory_string
 from ray.data._internal.util import MiB
 from ray.data.block import BlockMetadata
@@ -191,15 +194,37 @@ def test_no_deadlock_on_resource_contention(
         insert_limit_op=insert_limit_op,
     )
 
-    from ray.data._internal.execution.resource_manager import (
-        ReservationOpResourceAllocator,
+    from ray.data._internal.execution.streaming_executor_state import IdleDetector
+
+    with patch.object(IdleDetector, "DETECTION_INTERVAL_S", 0.1):
+        assert len(ds.take_all()) == num_blocks
+
+
+def test_no_deadlock_when_downstream_capacity_policy_zeros_limit(
+    shutdown_only, restore_data_context  # noqa: F811
+):
+    """Test when DownstreamCapacityBackpressurePolicy zeros the output limit,
+    the execution can still proceed without deadlock."""
+    cluster_obj_store_mem = 100 * MiB
+    ray.init(num_cpus=2, object_store_memory=cluster_obj_store_mem)
+
+    num_blocks = 20
+    block_size = 1 * MiB
+    ds = _build_dataset(
+        obj_store_limit=cluster_obj_store_mem // 2,
+        producer_num_cpus=1,
+        consumer_num_cpus=1,
+        num_blocks=num_blocks,
+        block_size=block_size,
     )
 
+    # Force DownstreamCapacityBackpressurePolicy to always return 0 to trigger unblock
     with patch.object(
-        ReservationOpResourceAllocator.IdleDetector,
-        "DETECTION_INTERVAL_S",
-        0.1,
+        DownstreamCapacityBackpressurePolicy,
+        "max_task_output_bytes_to_read",
+        lambda self, op: 0,
     ):
+        # Without the escape hatch firing, this would hang.
         assert len(ds.take_all()) == num_blocks
 
 

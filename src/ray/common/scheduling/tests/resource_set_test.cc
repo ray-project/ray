@@ -89,4 +89,47 @@ TEST_F(NodeResourceSetTest, TestExplicitResourceIds) {
             std::set<ResourceID>({ResourceID("CPU"), ResourceID("custom1")}));
 }
 
+class ResourceSetTest : public ::testing::Test {};
+
+// std::hash<ResourceSet> must agree with operator==: equal sets hash equally,
+// regardless of the order the resources were inserted.
+TEST_F(ResourceSetTest, TestHashConsistentWithEquality) {
+  absl::flat_hash_map<std::string, double> map_a = {
+      {"CPU", 2}, {"GPU", 1}, {"custom1", 3}};
+  absl::flat_hash_map<std::string, double> map_b = {
+      {"custom1", 3}, {"CPU", 2}, {"GPU", 1}};
+  ResourceSet a(map_a);
+  ResourceSet b(map_b);
+  ASSERT_EQ(a, b);
+  EXPECT_EQ(std::hash<ResourceSet>()(a), std::hash<ResourceSet>()(b));
+
+  // Different quantity -> not equal, and must not hash equal either.
+  absl::flat_hash_map<std::string, double> map_c = {
+      {"CPU", 2}, {"GPU", 2}, {"custom1", 3}};
+  ResourceSet c(map_c);
+  ASSERT_NE(a, c);
+  EXPECT_NE(std::hash<ResourceSet>()(a), std::hash<ResourceSet>()(c));
+
+  // Swapping quantities between resources must not collide.
+  absl::flat_hash_map<std::string, double> map_d = {{"CPU", 1}, {"GPU", 2}};
+  absl::flat_hash_map<std::string, double> map_e = {{"CPU", 2}, {"GPU", 1}};
+  ResourceSet d(map_d);
+  ResourceSet e(map_e);
+  EXPECT_NE(std::hash<ResourceSet>()(d), std::hash<ResourceSet>()(e));
+
+  // Repeated quantities on different resources must not collide.
+  absl::flat_hash_map<std::string, double> map_f = {{"CPU", 1}, {"GPU", 1}};
+  absl::flat_hash_map<std::string, double> map_g = {{"CPU", 2}, {"GPU", 2}};
+  ResourceSet f(map_f);
+  ResourceSet g(map_g);
+  EXPECT_NE(std::hash<ResourceSet>()(f), std::hash<ResourceSet>()(g));
+
+  // Usable as a hash-map key.
+  absl::flat_hash_map<ResourceSet, int> counts;
+  counts[a]++;
+  counts[b]++;
+  EXPECT_EQ(counts.size(), 1);
+  EXPECT_EQ(counts[a], 2);
+}
+
 }  // namespace ray

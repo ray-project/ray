@@ -4,16 +4,20 @@ import logging
 import time
 from dataclasses import asdict, dataclass, replace
 from enum import Enum
-from pathlib import Path
 from typing import Any, Dict, Optional, Tuple, Union
 
+from ray._common.observability.config import is_python_ray_event_enabled
+from ray._common.runtime_env_package import (
+    PACKAGE_UPLOAD_EXTENSIONS,
+    has_package_extension,
+)
+from ray._common.runtime_env_uri import parse_uri
 from ray._private import ray_constants
 from ray._private.event.export_event_logger import (
     EventLogType,
     check_export_api_enabled,
     get_export_event_logger,
 )
-from ray._private.runtime_env.packaging import parse_uri
 from ray._raylet import RAY_INTERNAL_NAMESPACE_PREFIX, GcsClient
 from ray.core.generated.export_event_pb2 import ExportEvent
 from ray.core.generated.export_submission_job_event_pb2 import (
@@ -31,12 +35,65 @@ JOB_ACTOR_NAME_TEMPLATE = f"{RAY_INTERNAL_NAMESPACE_PREFIX}job_actor_" + "{job_i
 SUPERVISOR_ACTOR_RAY_NAMESPACE = "SUPERVISOR_ACTOR_RAY_NAMESPACE"
 JOB_LOGS_PATH_TEMPLATE = "job-driver-{submission_id}.log"
 
+# Event type names (from RayEvent.EventType in
+# src/ray/protobuf/public/events_base_event.proto) for submission job events
+# emitted through the Python EventRecorder (Ray event export framework).
+SUBMISSION_JOB_DEFINITION_EVENT_TYPE = "SUBMISSION_JOB_DEFINITION_EVENT"
+SUBMISSION_JOB_LIFECYCLE_EVENT_TYPE = "SUBMISSION_JOB_LIFECYCLE_EVENT"
+
+
+def submission_job_events_enabled() -> bool:
+    """Whether any submission job event is emitted via the Ray event export framework."""
+    return is_python_ray_event_enabled(
+        SUBMISSION_JOB_DEFINITION_EVENT_TYPE
+    ) or is_python_ray_event_enabled(SUBMISSION_JOB_LIFECYCLE_EVENT_TYPE)
+
+
 logger = logging.getLogger(__name__)
+
+
+def _ensure_event_recorder_initialized() -> bool:
+    """Lazily initialize this process's EventRecorder from the local Ray node.
+
+    Returns whether the recorder is initialized.
+    """
+    import ray
+    from ray._raylet import EventRecorder
+
+    if EventRecorder.instance() is not None:
+        return True
+    if not ray.is_initialized():
+        logger.warning(
+            "Ray is not initialized; submission job events will not be emitted."
+        )
+        return False
+    node = ray._private.worker.global_worker.node
+    # The aggregator agent is served on the dashboard agent's gRPC server,
+    # which listens on metrics_agent_port.
+    EventRecorder.initialize(
+        aggregator_port=node.metrics_agent_port,
+        node_ip=node.node_ip_address,
+        node_id_hex=node.node_id,
+        max_buffer_size=10000,
+        metric_source="submission_job",
+    )
+    logger.info("Initialized ray event recorder for submission job events.")
+    return True
+
+
+def shutdown_event_recorder() -> None:
+    """Flush and shut down this process's EventRecorder. No-op if not initialized."""
+    from ray._raylet import EventRecorder
+
+    EventRecorder.shutdown()
 
 
 @PublicAPI(stability="stable")
 class JobStatus(str, Enum):
     """An enumeration for describing the status of a job."""
+
+    # NOTE: keep in sync with SubmissionJobLifecycleEvent.State in
+    # src/ray/protobuf/public/events_submission_job_lifecycle_event.proto.
 
     #: The job has not started yet, likely waiting for the runtime_env to be set up.
     PENDING = "PENDING"
@@ -219,9 +276,7 @@ class JobInfo:
 
 
 class JobInfoStorageClient:
-    """
-    Interface to put and get job data from the Internal KV store.
-    """
+    """Interface to put and get job data from the Internal KV store."""
 
     # Please keep this format in sync with JobDataKey()
     # in src/ray/gcs/gcs_server/gcs_job_manager.h.
@@ -232,15 +287,17 @@ class JobInfoStorageClient:
         self,
         gcs_client: GcsClient,
         export_event_log_dir_root: Optional[str] = None,
+        session_name: str = "",
     ):
-        """
-        Initialize the JobInfoStorageClient which manages data in the internal KV store.
+        """Initialize the JobInfoStorageClient which manages data in the internal KV store.
         Export Submission Job events are written when the KV store is updated if
         the feature flag is on and a export_event_log_dir_root is passed.
         export_event_log_dir_root doesn't need to be passed if the caller
-        is not modifying data in the KV store.
+        is not modifying data in the KV store. session_name is attached to
+        submission job events emitted via the Ray event export framework.
         """
         self._gcs_client = gcs_client
+        self._session_name = session_name
         self._export_submission_job_event_logger: logging.Logger = None
         try:
             if (
@@ -275,7 +332,7 @@ class JobInfoStorageClient:
         Returns:
             True if a new key is added.
         """
-        added_num = await self._gcs_client.async_internal_kv_put(
+        added_num = await self._gcs_client.async_internal_kv_put(  # passive-ok: job submission only on active leader
             self.JOB_DATA_KEY.format(job_id=job_id).encode(),
             json.dumps(job_info.to_json()).encode(),
             overwrite,
@@ -283,18 +340,121 @@ class JobInfoStorageClient:
             timeout=timeout,
         )
         if added_num == 1 or overwrite:
-            # Write export event if data was updated in the KV store
-            try:
-                self._write_submission_job_export_event(job_id, job_info)
-            except Exception:
-                logger.exception("Error while writing job submission export event.")
+            definition_enabled = is_python_ray_event_enabled(
+                SUBMISSION_JOB_DEFINITION_EVENT_TYPE
+            )
+            lifecycle_enabled = is_python_ray_event_enabled(
+                SUBMISSION_JOB_LIFECYCLE_EVENT_TYPE
+            )
+            if definition_enabled or lifecycle_enabled:
+                try:
+                    self._emit_submission_job_events(
+                        job_id,
+                        job_info,
+                        emit_definition=definition_enabled and added_num == 1,
+                        emit_lifecycle=lifecycle_enabled,
+                    )
+                except Exception:
+                    logger.exception(
+                        "Error emitting submission job event using Ray event "
+                        "export framework."
+                    )
+            # The export event carries both definition and status transition
+            # fields; keep writing it unless both Ray events fully replace it.
+            if not (definition_enabled and lifecycle_enabled):
+                try:
+                    self._write_submission_job_export_event(job_id, job_info)
+                except Exception:
+                    logger.exception("Error while writing job submission export event.")
         return added_num == 1
+
+    def _emit_submission_job_events(
+        self,
+        job_id: str,
+        job_info: JobInfo,
+        emit_definition: bool,
+        emit_lifecycle: bool,
+    ) -> None:
+        """Emit submission job events using the Ray event export framework."""
+        from ray._common.observability import (
+            SubmissionJobDefinitionEventBuilder,
+            SubmissionJobLifecycleEventBuilder,
+        )
+        from ray._raylet import EventRecorder
+        from ray.core.generated.events_submission_job_lifecycle_event_pb2 import (
+            SubmissionJobLifecycleEvent,
+        )
+
+        if not _ensure_event_recorder_initialized():
+            return
+
+        # Emit definition event once per job (first write). A failure here
+        # shouldn't prevent the lifecycle event from being emitted.
+        if emit_definition:
+            try:
+                builder = SubmissionJobDefinitionEventBuilder(
+                    submission_id=job_id,
+                    entrypoint=job_info.entrypoint,
+                    serialized_runtime_env=(
+                        json.dumps(job_info.runtime_env)
+                        if job_info.runtime_env is not None
+                        else None
+                    ),
+                    metadata=job_info.metadata,
+                    entrypoint_num_cpus=job_info.entrypoint_num_cpus,
+                    entrypoint_num_gpus=job_info.entrypoint_num_gpus,
+                    entrypoint_memory=job_info.entrypoint_memory,
+                    entrypoint_resources=job_info.entrypoint_resources,
+                    session_name=self._session_name,
+                )
+                if not EventRecorder.emit(builder.build()):
+                    logger.warning(
+                        f"Failed to emit submission job definition event for {job_id}."
+                    )
+            except Exception:
+                logger.warning(
+                    "Error emitting submission job definition event.", exc_info=True
+                )
+
+        # Emit lifecycle event on every status change
+        if not emit_lifecycle:
+            return
+
+        state = SubmissionJobLifecycleEvent.State.DESCRIPTOR.values_by_name.get(
+            job_info.status.name
+        )
+        if state is None:
+            logger.error(
+                f"{job_info.status.name} is not a valid "
+                "SubmissionJobLifecycleEvent.State enum value. "
+                "Lifecycle event will not be emitted."
+            )
+            return
+
+        try:
+            builder = SubmissionJobLifecycleEventBuilder(
+                submission_id=job_id,
+                state=state.number,
+                transition_message=job_info.message or "",
+                error_type=(job_info.error_type.value if job_info.error_type else None),
+                driver_node_id=job_info.driver_node_id,
+                driver_agent_http_address=job_info.driver_agent_http_address,
+                driver_exit_code=job_info.driver_exit_code,
+                session_name=self._session_name,
+            )
+            if not EventRecorder.emit(builder.build()):
+                logger.warning(
+                    f"Failed to emit submission job lifecycle event for {job_id}."
+                )
+        except Exception:
+            logger.warning(
+                "Error emitting submission job lifecycle event.", exc_info=True
+            )
 
     def _write_submission_job_export_event(
         self, job_id: str, job_info: JobInfo
     ) -> None:
-        """
-        Write Submission Job export event if _export_submission_job_event_logger
+        """Write Submission Job export event if _export_submission_job_event_logger
         exists. The logger will exist if the export API feature flag is enabled
         and a log directory was passed to JobInfoStorageClient.
         """
@@ -342,7 +502,7 @@ class JobInfoStorageClient:
             return JobInfo.from_json(json.loads(serialized_info))
 
     async def delete_info(self, job_id: str, timeout: int = 30):
-        await self._gcs_client.async_internal_kv_del(
+        await self._gcs_client.async_internal_kv_del(  # passive-ok: job deletion only on active leader
             self.JOB_DATA_KEY.format(job_id=job_id).encode(),
             False,
             namespace=ray_constants.KV_NAMESPACE_JOB,
@@ -373,7 +533,10 @@ class JobInfoStorageClient:
         )
         if old_info is not None:
             if status != old_info.status and old_info.status.is_terminal():
-                assert False, "Attempted to change job status from a terminal state."
+                raise RuntimeError(
+                    f"Attempted to change job status from a terminal state: "
+                    f"{old_info.status} -> {status}"
+                )
             new_info = replace(old_info, **jobinfo_replace_kwargs)
         else:
             new_info = JobInfo(
@@ -419,9 +582,12 @@ class JobInfoStorageClient:
 
 
 def uri_to_http_components(package_uri: str) -> Tuple[str, str]:
-    suffix = Path(package_uri).suffix
-    if suffix not in {".zip", ".whl"}:
-        raise ValueError(f"package_uri ({package_uri}) does not end in .zip or .whl")
+    if not has_package_extension(package_uri, PACKAGE_UPLOAD_EXTENSIONS):
+        formats = ", ".join(PACKAGE_UPLOAD_EXTENSIONS)
+        raise ValueError(
+            f"package_uri ({package_uri}) does not end in a supported format: "
+            f"{formats}"
+        )
     # We need to strip the <protocol>:// prefix to make it possible to pass
     # the package_uri over HTTP.
     protocol, package_name = parse_uri(package_uri)

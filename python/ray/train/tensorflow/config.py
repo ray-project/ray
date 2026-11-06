@@ -18,6 +18,12 @@ logger = logging.getLogger(__name__)
 @PublicAPI(stability="beta")
 @dataclass
 class TensorflowConfig(BackendConfig):
+    """Configuration for TensorFlow distributed training setup.
+
+    Ray Train sets the ``TF_CONFIG`` environment variable on each worker from the
+    addresses of all the workers. This config takes no arguments.
+    """
+
     @property
     def backend_cls(self):
         return _TensorflowBackend
@@ -44,6 +50,7 @@ def _setup_tensorflow_environment(worker_addresses: List[str], index: int):
         "task": {"type": "worker", "index": index},
     }
     os.environ["TF_CONFIG"] = json.dumps(tf_config)
+    os.environ["TF_USE_LEGACY_KERAS"] = "1"
 
 
 class _TensorflowBackend(Backend):

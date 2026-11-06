@@ -1,19 +1,22 @@
+import pickle
 from copy import deepcopy
+from types import SimpleNamespace
 
 import pytest
 
 from ray.serve._private.common import TargetCapacityDirection
 from ray.serve._private.controller import (
+    ServeController,
     applications_match,
     calculate_target_capacity_direction,
 )
 from ray.serve._private.controller_health_metrics_tracker import (
     _HEALTH_METRICS_HISTORY_SIZE,
-    ControllerHealthMetrics,
     ControllerHealthMetricsTracker,
-    DurationStats,
 )
 from ray.serve.schema import (
+    ControllerHealthMetrics,
+    DurationStats,
     HTTPOptionsSchema,
     ServeApplicationSchema,
     ServeDeploySchema,
@@ -390,6 +393,7 @@ class TestControllerHealthMetrics:
         assert metrics.controller_start_time == 0.0
         assert metrics.uptime_s == 0.0
         assert metrics.num_control_loops == 0
+        assert metrics.last_control_loop_time == 0.0
         assert metrics.loop_duration_s is None
         assert metrics.event_loop_delay_s == 0.0
         assert metrics.num_asyncio_tasks == 0
@@ -424,6 +428,7 @@ class TestControllerHealthMetrics:
             "controller_start_time",
             "uptime_s",
             "num_control_loops",
+            "last_control_loop_time",
             "loop_duration_s",
             "loops_per_second",
             "last_sleep_duration_s",
@@ -544,6 +549,25 @@ class TestCollectHealthMetrics:
 
         # Should be approximately 0.5 loops per second
         assert 0.4 < loops_per_second < 0.6
+
+    def test_last_control_loop_time_propagated(self):
+        """Test that last_control_loop_time on the tracker is propagated through
+        collect_metrics."""
+        tracker = ControllerHealthMetricsTracker()
+
+        # Default: tracker has not recorded a control loop yet.
+        metrics = tracker.collect_metrics()
+        assert metrics.last_control_loop_time == 0.0
+
+        # Set a specific timestamp and verify it is reflected in collected metrics.
+        tracker.last_control_loop_time = 12345.6789
+        metrics = tracker.collect_metrics()
+        assert metrics.last_control_loop_time == 12345.6789
+
+        # Update it again and verify the latest value is returned.
+        tracker.last_control_loop_time = 99999.0
+        metrics = tracker.collect_metrics()
+        assert metrics.last_control_loop_time == 99999.0
 
     def test_component_update_durations_tracked(self):
         """Test that component update durations are tracked with DurationStats."""
@@ -691,6 +715,30 @@ class TestControllerHealthMetricsTracker:
         assert len(tracker.dsm_update_durations) == _HEALTH_METRICS_HISTORY_SIZE
         # The oldest values should have been dropped
         assert tracker.dsm_update_durations[0] == 50.0
+
+
+class TestConfigCheckpoint:
+    def _read(self, checkpoint):
+        return ServeController._read_config_checkpoint(
+            SimpleNamespace(kv_store=SimpleNamespace(get=lambda _key: checkpoint))
+        )
+
+    def test_reads_checkpoint_written_before_config_id(self):
+        """Four-field checkpoints from older controllers still load."""
+        app = {"name": "a", "import_path": "fake.a"}
+        legacy = pickle.dumps((1.0, None, TargetCapacityDirection.UP, {"a": app}))
+        deployment_time, config, direction = self._read(legacy)
+        assert deployment_time == 1.0
+        assert direction == TargetCapacityDirection.UP
+        assert [a.name for a in config.applications] == ["a"]
+        assert config.config_id is None
+
+    def test_reads_config_id(self):
+        app = {"name": "a", "import_path": "fake.a"}
+        current = pickle.dumps((1.0, None, None, {"a": app}, "c1"))
+        _, config, _ = self._read(current)
+        assert config.config_id == "c1"
+        assert self._read(None) == (0.0, None, None)
 
 
 if __name__ == "__main__":

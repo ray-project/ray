@@ -1,4 +1,5 @@
 import asyncio
+import threading
 
 import pytest
 
@@ -132,6 +133,62 @@ async def test_multiple_replicas(serve_instance):
     }
     assert len(new_actors) == 2
     assert len(new_actors.intersection(actors)) == 1
+
+
+@pytest.mark.asyncio
+async def test_failing_replica_found_among_many(serve_instance):
+    """The health-check sweep finds a single failing replica at an arbitrary
+    position among many healthy ones and replaces only it."""
+    h = serve.run(
+        Patient.options(num_replicas=12, ray_actor_options={"num_cpus": 0.1}).bind()
+    )
+    actors = set()
+
+    async def all_replicas_seen():
+        actors.clear()
+        actors.update(
+            a._actor_id for a in await asyncio.gather(*[h.remote() for _ in range(300)])
+        )
+        return len(actors) == 12
+
+    await async_wait_for_condition(all_replicas_seen, timeout=30)
+
+    failed = (await h.set_should_fail.remote())._actor_id
+    await async_wait_for_condition(
+        check_new_actor_started, handle=h, original_actors=actors, timeout=60
+    )
+
+    async def only_failed_replica_replaced():
+        new_actors = {
+            a._actor_id for a in await asyncio.gather(*[h.remote() for _ in range(300)])
+        }
+        return (
+            len(new_actors) == 12
+            and failed not in new_actors
+            and len(new_actors.intersection(actors)) == 11
+        )
+
+    await async_wait_for_condition(only_failed_replica_replaced, timeout=60)
+
+
+@pytest.mark.asyncio
+async def test_crashed_replica_replaced_among_many(serve_instance):
+    """A replica whose actor dies outright is detected by the sweep and
+    replaced, restoring the full replica set."""
+    h = serve.run(
+        Patient.options(num_replicas=12, ray_actor_options={"num_cpus": 0.1}).bind()
+    )
+    victim = await h.remote()
+    victim_id = victim._actor_id
+    ray.kill(victim)
+
+    async def victim_replaced():
+        new_actors = {
+            a._actor_id for a in await asyncio.gather(*[h.remote() for _ in range(300)])
+        }
+        return victim_id not in new_actors and len(new_actors) == 12
+
+    await async_wait_for_condition(victim_replaced, timeout=60)
 
 
 def test_inherit_healthcheck(serve_instance):
@@ -290,6 +347,76 @@ def test_health_check_failure_makes_deployment_unhealthy_transition(serve_instan
     # Check that deployment stays unhealthy
     for _ in range(5):
         assert check_status(DeploymentStatus.UNHEALTHY)
+
+
+def test_replica_stalled_in_user_code_marked_unhealthy(serve_instance):
+    """
+    When a replica stalls in the request-serving path and the user-loop watchdog is
+    enabled (RAY_SERVE_USER_HEALTH_CHECK_PROBE_MAX_FAIL > 0), repeated probe timeouts
+    cause call_user_health_check() to raise, the controller marks the replica unhealthy,
+    and a fresh replica is started (issue #61263).
+
+    The watchdog is on by default (MAX_FAIL=3). We use short intervals here so probe
+    failures accumulate quickly within the test window.
+    """
+    # threading.Event.wait() blocks the asyncio event loop (unlike asyncio.Event which
+    # yields control). This simulates a replica stuck in a long synchronous call.
+    @serve.deployment(
+        health_check_period_s=1,
+        health_check_timeout_s=3,
+        graceful_shutdown_timeout_s=0,
+        ray_actor_options={
+            "runtime_env": {
+                "env_vars": {
+                    # Enable the user-loop watchdog with short intervals so that
+                    # probe failures accumulate quickly within the test window.
+                    "RAY_SERVE_USER_HEALTH_CHECK_PROBE_MAX_FAIL": "2",
+                    "RAY_SERVE_USER_HEALTH_CHECK_PROBE_INTERVAL_S": "0.5",
+                    "RAY_SERVE_USER_HEALTH_CHECK_PROBE_TIMEOUT_S": "1",
+                }
+            }
+        },
+    )
+    class StalledReplica:
+        def __init__(self):
+            self._unblock = threading.Event()
+
+        async def __call__(self):
+            self._unblock.wait()
+            return "ok"
+
+        def set_unblock(self):
+            self._unblock.set()
+
+    handle = serve.run(StalledReplica.bind())
+
+    # Send a request so the replica blocks on _unblock.wait(), wedging the user loop.
+    ref = handle.remote()
+
+    def deployment_unhealthy():
+        app_status = serve.status().applications[SERVE_DEFAULT_APP_NAME]
+        return (
+            app_status.deployments["StalledReplica"].status
+            == DeploymentStatus.UNHEALTHY
+        )
+
+    wait_for_condition(deployment_unhealthy, timeout=60)
+
+    # Unblock so replicas can finish (stalled replica may already be replaced).
+    handle.set_unblock.remote()
+    try:
+        ray.get(ref, timeout=2)
+    except Exception:
+        pass
+
+    # Wait for deployment to recover (new replica is healthy).
+    def deployment_healthy():
+        app_status = serve.status().applications[SERVE_DEFAULT_APP_NAME]
+        return (
+            app_status.deployments["StalledReplica"].status == DeploymentStatus.HEALTHY
+        )
+
+    wait_for_condition(deployment_healthy, timeout=30)
 
 
 def test_gang_health_check_restarts_gang(serve_instance):

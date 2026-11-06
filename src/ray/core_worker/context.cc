@@ -19,7 +19,9 @@
 #include <memory>
 #include <string>
 
+#include "absl/strings/str_format.h"
 #include "ray/common/runtime_env_common.h"
+#include "ray/common/runtime_env_redaction.h"
 
 namespace ray {
 namespace core {
@@ -192,19 +194,31 @@ ObjectIDIndexType WorkerContext::GetNextPutIndex() {
   return GetThreadContext().GetNextPutIndex();
 }
 
-void WorkerContext::MaybeInitializeJobInfo(const JobID &job_id,
+bool WorkerContext::MaybeInitializeJobInfo(const JobID &job_id,
                                            const rpc::JobConfig &job_config) {
-  {
-    absl::ReaderMutexLock lock(&mutex_);
-    if (!current_job_id_.IsNil() && job_config_.has_value()) {
-      RAY_CHECK(current_job_id_ == job_id);
-      return;
-    }
-  }
   absl::WriterMutexLock lock(&mutex_);
+  if (!current_job_id_.IsNil() && job_config_.has_value()) {
+    RAY_CHECK(current_job_id_ == job_id);
+    return false;
+  }
+
   current_job_id_ = job_id;
   job_config_ = job_config;
   RAY_CHECK(current_job_id_ == job_id);
+  return true;
+}
+
+bool WorkerContext::GetDisableJobLevelLineageReconstruction() const {
+  absl::ReaderMutexLock lock(&mutex_);
+  return job_config_.has_value() &&
+         job_config_->disable_job_level_lineage_reconstruction();
+}
+
+bool WorkerContext::ShouldPinObjectLineage() const {
+  if (GetDisableJobLevelLineageReconstruction()) {
+    return false;
+  }
+  return RayConfig::instance().lineage_pinning_enabled();
 }
 
 int64_t WorkerContext::GetTaskDepth() const {
@@ -339,7 +353,11 @@ void WorkerContext::SetCurrentTask(const TaskSpecification &task_spec) {
 
     // Ray currently doesn't reuse worker to run tasks or actors with different runtime
     // envs.
-    RAY_CHECK_EQ(serialized_runtime_env_, serialized_runtime_env);
+    RAY_CHECK(serialized_runtime_env_ == serialized_runtime_env) << absl::StrFormat(
+        "Serialized_runtime_env mismatch: %s vs %s. "
+        "Ray does not reuse workers to run tasks or actors with different runtime envs.",
+        RedactSerializedRuntimeEnv(serialized_runtime_env_),
+        RedactSerializedRuntimeEnv(serialized_runtime_env));
     if (!IsRuntimeEnvEmpty(serialized_runtime_env)) {
       RAY_CHECK(runtime_env_ != nullptr);
     }
@@ -434,32 +452,29 @@ bool WorkerContext::CurrentActorDetached() const {
 
 ObjectID WorkerContext::GetGeneratorReturnId(const TaskID &task_id,
                                              std::optional<ObjectIDIndexType> put_index) {
-  TaskID current_task_id;
-  // We only allow to specify both task id and put index or not specifying both.
-  RAY_CHECK((task_id.IsNil() && !put_index.has_value()) ||
-            (!task_id.IsNil() || put_index.has_value()));
-  if (task_id.IsNil()) {
-    const auto &task_spec = GetCurrentTask();
-    current_task_id = task_spec->TaskId();
-  } else {
-    current_task_id = task_id;
-  }
+  // Deducing only one of the two would key the ObjectID to one task while drawing the
+  // index from another, so the caller must supply both or neither.
+  RAY_CHECK_EQ(task_id.IsNil(), !put_index.has_value())
+      << "task_id and put_index must both be specified or both omitted";
 
-  ObjectIDIndexType current_put_index = 0;
-  if (!put_index.has_value()) {
-    current_put_index = GetNextPutIndex();
-  } else {
+  TaskID current_task_id;
+  ObjectIDIndexType current_put_index;
+  if (put_index.has_value()) {
     // Streaming generator case.
-    current_put_index = put_index.value();
+    current_task_id = task_id;
+    current_put_index = *put_index;
     // We don't allow to return more than GetMaxNumGeneratorReturnIndex()
     // return values.
     auto max_generator_returns = GetThreadContext().GetMaxNumGeneratorReturnIndex();
-    if (put_index > max_generator_returns) {
+    if (current_put_index > max_generator_returns) {
       RAY_LOG(FATAL).WithField(current_task_id)
           << "The generator returns " << current_put_index
           << " items, which exceed the maximum number of return values allowed, "
           << max_generator_returns;
     }
+  } else {
+    current_task_id = GetCurrentTask()->TaskId();
+    current_put_index = GetNextPutIndex();
   }
 
   return ObjectID::FromIndex(current_task_id, current_put_index);

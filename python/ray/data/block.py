@@ -1,4 +1,5 @@
 import collections
+import functools
 import logging
 import sys
 import time
@@ -190,11 +191,35 @@ def to_stats(metas: List["BlockMetadata"]) -> List["BlockStats"]:
 
 @DeveloperAPI
 @dataclass(frozen=True)
+class CustomOpStats:
+    """Base for operator-specific, worker-reported per-task stats.
+
+    A generic extension slot carried by :class:`TaskExecWorkerStats`. Operators
+    that want to report extra per-task stats to the driver subclass this; it
+    cannot be instantiated directly.
+    """
+
+    def __post_init__(self):
+        if type(self) is CustomOpStats:
+            raise TypeError("CustomOpStats cannot be instantiated directly")
+
+
+@DeveloperAPI
+@dataclass(frozen=True)
 class TaskExecWorkerStats:
     """Task's execution stats reported from the executing worker"""
 
     # Total task's wall-clock time from start to finish (measured on the worker)
     task_wall_time_s: float
+
+    # Peak USS (Unique Set Size) memory in bytes observed during the task,
+    # or None if USS measurement is unavailable (e.g., non-Linux platforms).
+    max_uss_bytes: Optional[int] = None
+
+    # Operator-specific worker-reported stats: one CustomOpStats entry per
+    # reporting transform (fused transforms each contribute one). Empty for
+    # operators that do not report any extra stats.
+    custom_op_stats: List[CustomOpStats] = field(default_factory=list)
 
 
 @DeveloperAPI
@@ -211,22 +236,45 @@ class BlockExecStats:
         default_factory=lambda: ray.runtime_context.get_runtime_context().get_node_id()
     )
 
-    # Absolute wall-clock timestamp when block generation started.
+    # `time.perf_counter()` reading on the producing worker when block
+    # generation started. Monotonic with an undefined, per-machine reference
+    # point: only differences between readings taken on the same node are
+    # meaningful. Never compare across nodes; use `start_unix_time_s` for that.
     start_time_s: Optional[float] = None
-    # Absolute wall-clock timestamp when block generation finished.
+    # `time.perf_counter()` reading on the producing worker when block
+    # generation finished. Same caveats as `start_time_s`.
     end_time_s: Optional[float] = None
+    # `time.time()` on the producing worker when block generation started.
+    # Shares an epoch across nodes, so it is safe to compare across blocks
+    # produced on different machines. Not monotonic (NTP can step it); derive
+    # the block's end as `start_unix_time_s + wall_time_s` rather than reading
+    # the clock twice.
+    start_unix_time_s: Optional[float] = None
     # Total wall-clock duration of the block generation (computed as end_time_s - start_time_s).
     wall_time_s: Optional[float] = None
-    # Time spent inside UDF while generating block.
-    udf_time_s: Optional[float] = 0
+    # Time spent in the map transform chain while generating this block: the
+    # whole chain, not just the user's functions. The three fields below
+    # decompose it and sum back to it.
+    block_transform_time_s: Optional[float] = 0
+    # Time spent turning input blocks into the batches or rows the transforms
+    # consume.
+    input_prep_time_s: Optional[float] = None
+    # Time spent inside the stage bodies themselves, whether the caller wrote
+    # them or Ray Data supplied them, with the formatting and block building
+    # around them excluded.
+    function_body_time_s: Optional[float] = None
+    # Time spent assembling transform output back into blocks. Includes
+    # materializing Python objects into Arrow, which is why it is not covered by
+    # `block_ser_time_s`.
+    output_build_time_s: Optional[float] = None
+    # The same total split per fused stage instead of per phase, in chain
+    # order. `None` unless `DataContext.per_stage_map_timing` is set and the
+    # chain has more than one stage.
+    stage_time_s: Optional[Tuple[float, ...]] = None
     # Time spent serializing this block into a Ray object.
     block_ser_time_s: Optional[float] = None
     # Total CPU time consumed by the worker process during the task, across all threads.
     cpu_time_s: Optional[float] = None
-
-    # Peak USS (Unique Set Size) memory in bytes observed while computing this block,
-    # as estimated by the memory profiler.
-    max_uss_bytes: int = 0
 
     @staticmethod
     def builder() -> "_BlockExecStatsBuilder":
@@ -242,6 +290,7 @@ class _BlockExecStatsBuilder:
 
     def __init__(self):
         self._start_time = time.perf_counter()
+        self._start_unix_time = time.time()
         self._start_cpu = time.process_time()
         self._end_time = None
         self._end_cpu = None
@@ -258,6 +307,7 @@ class _BlockExecStatsBuilder:
         return BlockExecStats(
             start_time_s=self._start_time,
             end_time_s=self._end_time,
+            start_unix_time_s=self._start_unix_time,
             wall_time_s=self._end_time - self._start_time,
             cpu_time_s=self._end_cpu - self._start_cpu,
             **kwargs,
@@ -310,6 +360,17 @@ class BlockMetadata(BlockStats):
         return BlockStats(
             **{key: self.__getattribute__(key) for key in _BLOCK_STATS_FIELD_NAMES}
         )
+
+
+@functools.lru_cache(maxsize=128)
+def _read_arrow_schema_cached(schema_bytes: bytes) -> "pa.Schema":
+    # Hot path on the StreamingExecutor scheduling thread: every completed task
+    # ships a `BlockMetadataWithSchema` whose `schema` is serialized Arrow IPC
+    # bytes. For wide schemas (hundreds of columns, especially with extension
+    # types like ArrowTensorType) `pa.ipc.read_schema` can dominate scheduler
+    # CPU. The same schema bytes recur across tasks of the same operator, so a
+    # small LRU collapses thousands of identical re-parses into one.
+    return pa.ipc.read_schema(pa.BufferReader(schema_bytes))
 
 
 @DeveloperAPI(stability="alpha")
@@ -367,9 +428,13 @@ class BlockMetadataWithSchema(BlockMetadata):
         return state
 
     def __setstate__(self, state: Dict[str, Any]):
-        schema_val: bytes | Schema | None = state["schema"]
+        schema_val: bytes | bytearray | Schema | None = state["schema"]
         if isinstance(schema_val, (bytes, bytearray)):
-            state["schema"] = pa.ipc.read_schema(pa.BufferReader(schema_val))
+            # `bytearray` itself is unhashable so it can't key the LRU cache —
+            # coerce to `bytes` first.
+            if isinstance(schema_val, bytearray):
+                schema_val = bytes(schema_val)
+            state["schema"] = _read_arrow_schema_cached(schema_val)
         self.__dict__.update(state)
 
 
@@ -392,6 +457,9 @@ class BlockAccessor:
         Args:
             public_row_format: Whether to cast rows into the public Dict row
                 format (this incurs extra copy conversions).
+
+        Returns:
+            An iterator over rows in this block.
         """
         raise NotImplementedError
 
@@ -432,8 +500,7 @@ class BlockAccessor:
         raise NotImplementedError
 
     def upsert_column(self, column_name: str, column_data: BlockColumn) -> Block:
-        """
-        Upserts a column into the block. If the column already exists, it will be replaced.
+        """Upserts a column into the block. If the column already exists, it will be replaced.
 
         Args:
             column_name: The name of the column to upsert.
@@ -459,6 +526,10 @@ class BlockAccessor:
 
         Args:
             columns: Name of columns to convert, or None if converting all columns.
+
+        Returns:
+            A NumPy ndarray when a single column is selected, or a dict mapping
+            column names to ndarrays when multiple columns are selected.
         """
         raise NotImplementedError
 
@@ -676,7 +747,7 @@ class BlockAccessor:
         """Return a list of sorted partitions of this block."""
         raise NotImplementedError
 
-    def _aggregate(self, key: "SortKey", aggs: Tuple["AggregateFn"]) -> Block:
+    def _aggregate(self, key: "SortKey", aggs: Tuple["AggregateFn", ...]) -> Block:
         """Combine rows with the same key into an accumulator."""
         raise NotImplementedError
 
@@ -691,7 +762,7 @@ class BlockAccessor:
     def _combine_aggregated_blocks(
         blocks: List[Block],
         sort_key: "SortKey",
-        aggs: Tuple["AggregateFn"],
+        aggs: Tuple["AggregateFn", ...],
         finalize: bool = True,
     ) -> Tuple[Block, BlockMetadataWithSchema]:
         """Aggregate partially combined and sorted blocks."""
@@ -717,8 +788,7 @@ class BlockAccessor:
         raise NotImplementedError
 
     def _get_group_boundaries_sorted(self, keys: List[str]) -> np.ndarray:
-        """
-        NOTE: THIS METHOD ASSUMES THAT PROVIDED BLOCK IS ALREADY SORTED
+        """NOTE: THIS METHOD ASSUMES THAT PROVIDED BLOCK IS ALREADY SORTED
 
         Compute boundaries of the groups within a block based on provided
         key (a column or a list of columns)
@@ -726,8 +796,6 @@ class BlockAccessor:
         NOTE: In each column, NaNs/None are considered to be the same group.
 
         Args:
-            block: sorted block for which grouping of rows will be determined
-                    based on provided key
             keys: list of columns determining the key for every row based on
                     which the block will be grouped
 
@@ -752,8 +820,7 @@ class BlockAccessor:
     def _iter_groups_sorted(
         self, sort_key: "SortKey"
     ) -> Iterator[Tuple[Sequence[KeyType], Block]]:
-        """
-        NOTE: THIS METHOD ASSUMES THE BLOCK BEING SORTED
+        """NOTE: THIS METHOD ASSUMES THE BLOCK BEING SORTED
 
         Creates an iterator over (zero-copy) blocks of rows grouped by
         provided key(s).
@@ -789,7 +856,7 @@ class BlockColumnAccessor:
 
     def sum(self, *, ignore_nulls: bool, as_py: bool = True) -> Optional[U]:
         """Returns a sum of the values in the column"""
-        return NotImplementedError()
+        raise NotImplementedError()
 
     def min(self, *, ignore_nulls: bool, as_py: bool = True) -> Optional[U]:
         """Returns a min of the values in the column"""
@@ -817,8 +884,7 @@ class BlockColumnAccessor:
         raise NotImplementedError()
 
     def hash(self) -> BlockColumn:
-        """
-        Computes a 64-bit hash value for each row in the column.
+        """Computes a 64-bit hash value for each row in the column.
 
         Provides a unified hashing method across supported backends.
         Handles complex types like lists or nested structures by producing a single hash per row.
@@ -842,8 +908,7 @@ class BlockColumnAccessor:
         raise NotImplementedError()
 
     def is_composed_of_lists(self) -> bool:
-        """
-        Checks whether the column is composed of list-like elements.
+        """Checks whether the column is composed of list-like elements.
 
         Returns:
             True if the column is made up of list-like values; False otherwise.

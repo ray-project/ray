@@ -10,6 +10,7 @@ from packaging.version import parse as parse_version
 
 from ray.data._internal.arrow_ops.transform_pyarrow import combine_chunked_array
 from ray.data._internal.tensor_extensions.arrow import (
+    MIN_PYARROW_VERSION_FIXED_SHAPE_TENSOR_SCALAR,
     ArrowConversionError,
     ArrowTensorArray,
     ArrowTensorType,
@@ -24,13 +25,21 @@ from ray.data._internal.tensor_extensions.arrow import (
     concat_tensor_arrays,
     create_arrow_fixed_shape_tensor_type,
     fixed_shape_extension_scalar_to_ndarray,
+    native_tensor_array_to_numpy,
     unify_tensor_arrays,
 )
-from ray.data._internal.tensor_extensions.pandas import TensorArray, TensorDtype
+from ray.data._internal.tensor_extensions.pandas import (
+    TensorArray,
+    TensorArrayElement,
+    TensorDtype,
+)
 from ray.data._internal.tensor_extensions.utils import (
+    _is_ndarray_variable_shaped_tensor,
+    _should_convert_to_tensor,
     create_ragged_ndarray,
 )
 from ray.data._internal.utils.arrow_utils import get_pyarrow_version
+from ray.data.context import DataContext
 
 
 @pytest.mark.parametrize(
@@ -58,6 +67,19 @@ def test_tensor_array_validation():
 
     with pytest.raises(TypeError):
         TensorArray([object(), object()])
+
+
+def test_tensor_array_from_tensor_array_element():
+    # NumPy 2 made ``np.array(..., copy=False)`` raise whenever a copy is needed,
+    # which is always the case for the single-element list built here.
+    arr = TensorArray(np.arange(12).reshape((3, 2, 2)))
+    element = arr[1]
+    assert isinstance(element, TensorArrayElement)
+
+    t_arr = TensorArray(element)
+
+    assert len(t_arr) == 1
+    np.testing.assert_array_equal(t_arr.to_numpy(), np.arange(4, 8).reshape((1, 2, 2)))
 
 
 def test_pandas_to_arrow_fixed_shape_tensor_conversion(tensor_format_context):
@@ -1463,6 +1485,498 @@ def test_arrow_extension_serialize_deserialize_cache_thread_safety():
     for result in results[1:]:
         assert result.shape == results[0].shape
         assert result.value_type == results[0].value_type
+
+
+def _arrow_values_view(arr: ArrowVariableShapedTensorArray) -> np.ndarray:
+    """The tensor payload buffer of a variable-shaped tensor array, as ndarray."""
+    data_array = arr.storage.field("data")
+    dtype = data_array.type.value_type.to_pandas_dtype()
+    return np.frombuffer(data_array.buffers()[3], dtype=dtype)
+
+
+def _to_pandas(arr: ArrowVariableShapedTensorArray) -> TensorArray:
+    """Convert through the pandas extension protocol, as a pandas batch does."""
+    return TensorDtype(
+        None, arr.storage.field("data").type.value_type.to_pandas_dtype()
+    ).__from_arrow__(arr)
+
+
+def test_variable_shaped_uniform_rows_to_pandas_is_zero_copy():
+    """Uniform rows reach pandas as a view, without copying the payload.
+
+    A variable-shaped tensor column whose rows all happen to have the same shape
+    holds its values contiguously, so the dense array pandas wants is already
+    there. Building it used to stack the per-row views, copying everything.
+    """
+    data = np.arange(12, dtype=np.float32).reshape(3, 4)
+    arr = ArrowVariableShapedTensorArray.from_numpy(data)
+
+    tensor_array = _to_pandas(arr)
+
+    np.testing.assert_array_equal(tensor_array.to_numpy(), data)
+    assert np.shares_memory(tensor_array._tensor, _arrow_values_view(arr))
+
+
+def test_variable_shaped_uniform_rows_sliced_to_pandas_is_zero_copy():
+    """Slicing offsets the view rather than defeating it."""
+    data = np.arange(20, dtype=np.float32).reshape(5, 4)
+    arr = ArrowVariableShapedTensorArray.from_numpy(data)
+
+    tensor_array = _to_pandas(arr.slice(1, 3))
+
+    np.testing.assert_array_equal(tensor_array.to_numpy(), data[1:4])
+    assert np.shares_memory(tensor_array._tensor, _arrow_values_view(arr))
+
+
+def test_variable_shaped_ragged_rows_to_pandas_unchanged():
+    """Genuinely ragged rows cannot share one view, and still convert correctly."""
+    rows = [np.arange(3, dtype=np.float32), np.arange(5, dtype=np.float32)]
+    arr = ArrowVariableShapedTensorArray.from_numpy(rows)
+
+    tensor_array = _to_pandas(arr)
+
+    assert len(tensor_array) == 2
+    for actual, expected in zip(tensor_array.to_numpy(), rows):
+        np.testing.assert_array_equal(actual, expected)
+
+
+def test_variable_shaped_to_numpy_still_returns_one_ndarray_per_row():
+    """``to_numpy`` keeps returning per-row views, including for uniform rows.
+
+    The dense fast path is opt-in through ``_to_dense_numpy_or_none`` rather
+    than folded into ``to_numpy``. A one-row slice of a ragged column is
+    trivially uniform, so folding it in would change what ``to_numpy`` returns
+    for a ragged column depending on how it was sliced.
+    """
+    uniform = ArrowVariableShapedTensorArray.from_numpy(
+        np.arange(12, dtype=np.float32).reshape(3, 4)
+    )
+    assert uniform.to_numpy().dtype == object
+
+    ragged = ArrowVariableShapedTensorArray.from_numpy(
+        [np.zeros((2, 2)), np.zeros((3, 3))]
+    )
+    assert ragged.to_numpy().dtype == object
+    assert ragged.slice(0, 1).to_numpy().dtype == object
+
+
+def test_variable_shaped_multidimensional_rows_to_pandas_is_zero_copy():
+    """Uniform rows of more than one dimension share the view too."""
+    data = np.arange(24, dtype=np.float32).reshape(4, 2, 3)
+    arr = ArrowVariableShapedTensorArray.from_numpy(data)
+
+    tensor_array = _to_pandas(arr)
+
+    np.testing.assert_array_equal(tensor_array.to_numpy(), data)
+    assert np.shares_memory(tensor_array._tensor, _arrow_values_view(arr))
+
+
+def test_to_dense_numpy_or_none_declines_rows_differing_in_one_extent():
+    """Rows of the same rank but different extents are still ragged."""
+    arr = ArrowVariableShapedTensorArray.from_numpy(
+        [np.zeros((2, 3)), np.zeros((2, 4))]
+    )
+    assert arr._to_dense_numpy_or_none() is None
+
+
+def test_to_dense_numpy_or_none_declines_rows_of_equal_size_but_different_shape():
+    """Rows can hold the same number of items and still not share a shape.
+
+    ``(2, 3)`` and ``(3, 2)`` are six items either way, so the rows sit adjacent
+    in the buffer at a fixed stride and every check but the shapes themselves
+    passes. A view over them would report the second row's shape as the first's.
+    """
+    arr = ArrowVariableShapedTensorArray.from_numpy(
+        [np.arange(6).reshape(2, 3), np.arange(6).reshape(3, 2)]
+    )
+    assert arr._to_dense_numpy_or_none() is None
+
+
+def test_to_dense_numpy_or_none_declines_ragged_rows():
+    """The fast path reports that it cannot describe ragged rows."""
+    ragged = ArrowVariableShapedTensorArray.from_numpy(
+        [np.zeros((2, 2)), np.zeros((3, 3))]
+    )
+    assert ragged._to_dense_numpy_or_none() is None
+
+    uniform = ArrowVariableShapedTensorArray.from_numpy(
+        np.arange(12, dtype=np.float32).reshape(3, 4)
+    )
+    dense = uniform._to_dense_numpy_or_none()
+    assert dense is not None
+    assert dense.shape == (3, 4)
+    assert dense.dtype == np.float32
+
+
+def test_variable_shaped_columns_with_nothing_to_view_still_convert():
+    """A column with no rows, or rows of no items, has no payload to share.
+
+    Both decline: an empty column is not worth a second path, and a zero-size
+    row leaves nothing for a view to point at. Converting them has to keep
+    working either way, since an empty block and a zero-width tensor are both
+    ordinary. See https://github.com/ray-project/ray/issues/64766.
+    """
+    empty = ArrowVariableShapedTensorArray.from_numpy(
+        np.arange(20, dtype=np.float32).reshape(5, 4)
+    ).slice(0, 0)
+    assert empty._to_dense_numpy_or_none() is None
+    assert len(_to_pandas(empty)) == 0
+
+    for shape in [(3, 0), (3, 2, 0)]:
+        zero_sized = ArrowVariableShapedTensorArray.from_numpy(
+            np.zeros(shape, dtype=np.float32)
+        )
+        assert zero_sized._to_dense_numpy_or_none() is None
+        assert _to_pandas(zero_sized).to_numpy().shape == shape
+
+
+def _with_null_row(
+    arr: ArrowVariableShapedTensorArray, level: str
+) -> ArrowVariableShapedTensorArray:
+    """``arr`` with row 1 marked null at ``level``.
+
+    ``from_numpy`` never makes a null row, and ``take`` with a null index marks
+    one at all three levels at once, which hides what each is doing. The storage
+    is ``struct<data: large_list, shape: list>``, and validity on the struct is
+    independent of validity on either child.
+    """
+    mask = pa.array([False, True, False])
+    data, shape = arr.storage.field("data"), arr.storage.field("shape")
+    struct_mask = None
+    if level == "struct":
+        struct_mask = mask
+    elif level == "data":
+        data = pa.LargeListArray.from_arrays(data.offsets, data.values, mask=mask)
+    elif level == "shape":
+        shape = pa.ListArray.from_arrays(shape.offsets, shape.values, mask=mask)
+    else:
+        raise ValueError(level)
+
+    storage = pa.StructArray.from_arrays(
+        [data, shape], names=["data", "shape"], mask=struct_mask
+    )
+    return pa.ExtensionArray.from_storage(arr.type, storage)
+
+
+@pytest.mark.parametrize("level", ["struct", "data", "shape"])
+def test_to_dense_numpy_or_none_declines_null_rows(level):
+    """A null row has no shape, so no single view can describe the column.
+
+    Each level has to be checked on its own. A null marked only on the struct,
+    or only on the ``data`` child, leaves uniform shapes and adjacent offsets
+    behind it, so every other check passes and the view that comes back presents
+    the null row's untouched buffer contents as data.
+    """
+    arr = ArrowVariableShapedTensorArray.from_numpy(
+        np.arange(12, dtype=np.float32).reshape(3, 4)
+    )
+    assert arr._to_dense_numpy_or_none() is not None
+
+    assert _with_null_row(arr, level)._to_dense_numpy_or_none() is None
+
+
+def test_variable_shaped_null_rows_to_pandas_unchanged():
+    """Declining leaves a null-bearing column converting exactly as it did.
+
+    Pandas has no null tensor to convert one into, so what the old path made of
+    a null row is what this one has to keep making of it.
+    """
+    arr = ArrowVariableShapedTensorArray.from_numpy(
+        np.arange(12, dtype=np.float32).reshape(3, 4)
+    ).take(pa.array([0, None, 2], type=pa.int64()))
+    assert arr.null_count > 0
+
+    expected = arr.to_numpy(zero_copy_only=False)
+    actual = _to_pandas(arr).to_numpy()
+
+    assert len(actual) == len(expected)
+    for actual_row, expected_row in zip(actual, expected):
+        np.testing.assert_array_equal(actual_row, expected_row)
+
+
+def _fixed_tensors():
+    return ArrowTensorArray.from_numpy(np.arange(12, dtype=np.float32).reshape(2, 3, 2))
+
+
+def _boolean_tensors():
+    return ArrowTensorArray.from_numpy(
+        np.array([[True, False, True], [False, False, True]])
+    )
+
+
+def _string_tensors():
+    return ArrowTensorArray.from_numpy(np.array([["ab", "c"], ["d", "ef"]]))
+
+
+def _variable_shaped_tensors():
+    return ArrowVariableShapedTensorArray.from_numpy(
+        create_ragged_ndarray([np.zeros((2, 2)), np.ones((3, 1))])
+    )
+
+
+def _rows(values):
+    return [None if row is None else row.tolist() for row in values]
+
+
+@pytest.mark.parametrize(
+    "make_tensors",
+    [_fixed_tensors, _boolean_tensors, _string_tensors, _variable_shaped_tensors],
+)
+def test_tensor_array_to_numpy_with_null_rows(make_tensors):
+    """A tensor array that holds a null row converts to one ndarray per row with
+    None for the null row, for a sliced array too, since a dense array has no
+    slot for a missing row."""
+    tensors = make_tensors()
+    expected = _rows(tensors.to_numpy(zero_copy_only=False))
+    with_null = pa.concat_arrays([tensors, pa.nulls(1, type=tensors.type), tensors])
+
+    as_numpy = with_null.to_numpy(zero_copy_only=False)
+    sliced = with_null[1:4].to_numpy(zero_copy_only=False)
+
+    assert as_numpy.dtype == object
+    assert _rows(as_numpy) == expected + [None] + expected
+    assert _rows(sliced) == [expected[1], None, expected[0]]
+    assert _rows(with_null.to_pylist()) == expected + [None] + expected
+
+
+@pytest.mark.parametrize(
+    "values, expected",
+    [
+        ([None, np.ones(2), np.ones(2)], True),
+        ([None, None, np.ones(2)], True),
+        (create_ragged_ndarray([None, np.ones(2)]), True),
+        ([None, 1, 2], False),
+        ([None, [1.0, 2.0]], False),
+        ([None, None], False),
+    ],
+)
+def test_should_convert_to_tensor_skips_leading_nulls(values, expected):
+    """A None at the front of a column is a null row, not the column's type.
+    The decision to make a tensor column looks at the first value that is
+    not None, so a column of ndarrays with a leading None is still a tensor
+    column, and a column with no ndarray is not."""
+    assert _should_convert_to_tensor(values, "x") is expected
+
+
+def test_should_convert_to_tensor_accepts_array_like_without_iteration():
+    """An ndarray-like column that supports ``__array__`` and ``__len__`` but
+    not iteration, such as some tensor wrappers, is a tensor column. The check
+    must decide on the collection itself before it looks at any element."""
+
+    class ArrayLike:
+        def __len__(self):
+            return 2
+
+        def __array__(self, dtype=None, copy=None):
+            return np.ones((2, 2))
+
+    assert _should_convert_to_tensor(ArrayLike(), "x") is True
+
+
+def test_variable_shaped_check_skips_null_rows():
+    """Null rows have no shape, so they neither make a column variable-shaped
+    nor hide that its tensors differ in shape."""
+    fixed = create_ragged_ndarray([None, np.ones((2, 2)), None, np.ones((2, 2))])
+    ragged = create_ragged_ndarray([None, np.ones((2, 2)), np.ones((3, 2))])
+
+    assert not _is_ndarray_variable_shaped_tensor(fixed)
+    assert _is_ndarray_variable_shaped_tensor(ragged)
+
+
+def test_unify_tensor_arrays_with_only_null_rows(tensor_format_context):
+    """A slice of a tensor column that holds only null rows, as the batcher can
+    cut one, unifies with a column of another shape. It becomes null rows of
+    the variable-shaped type instead of failing to rebuild a tensor from
+    nothing."""
+    with_null = ArrowTensorArray.from_numpy([None, np.ones((2, 2)), None])
+    only_nulls = with_null[0:1]
+    other_shape = ArrowTensorArray.from_numpy(np.ones((1, 3, 2)))
+
+    unified = unify_tensor_arrays([only_nulls, other_shape])
+
+    assert all(isinstance(a.type, ArrowVariableShapedTensorType) for a in unified)
+    assert unified[0].null_count == len(unified[0]) == 1
+    assert _rows(unified[1].to_numpy()) == [[[1, 1], [1, 1], [1, 1]]]
+
+
+def test_tensor_dtype_from_arrow_keeps_shape_with_null_rows(tensor_format_context):
+    """A tensor column with a null row converts to a pandas TensorArray whose
+    rows keep the tensor shape, with None for the null row. pyarrow's native
+    fixed-shape storage reads back flat, so each row is reshaped."""
+    tensor = np.ones((2, 2), np.float32)
+    arrow_array = ArrowTensorArray.from_numpy([None, tensor, tensor])
+    dtype = TensorDtype((2, 2), np.dtype(np.float32))
+
+    single = dtype.__from_arrow__(arrow_array).to_numpy()
+    chunked = dtype.__from_arrow__(
+        pa.chunked_array([arrow_array, arrow_array[1:]])
+    ).to_numpy()
+
+    def shapes(rows):
+        return [None if r is None else r.shape for r in rows]
+
+    assert shapes(single) == [None, (2, 2), (2, 2)]
+    assert shapes(chunked) == [None, (2, 2), (2, 2), (2, 2), (2, 2)]
+
+
+@pytest.mark.parametrize(
+    "make_tensors", [_fixed_tensors, _boolean_tensors, _string_tensors]
+)
+def test_tensor_array_to_numpy_slice_after_null_row(make_tensors):
+    """A null-free slice taken after a null row reads its own rows, not its
+    neighbours'. The null row holds no values, so the slice's first offset is
+    not a multiple of the tensor size, and the dense path has to start from
+    it rather than from the slice position."""
+    tensors = make_tensors()
+    expected = _rows(tensors.to_numpy(zero_copy_only=False))
+    with_null = pa.concat_arrays([tensors, pa.nulls(1, type=tensors.type), tensors])
+
+    after_null = with_null[3:5]
+
+    assert after_null.null_count == 0
+    assert _rows(after_null.to_numpy(zero_copy_only=False)) == expected
+    assert _rows(with_null[4:5].to_numpy(zero_copy_only=False)) == expected[1:]
+
+
+@pytest.mark.parametrize(
+    "tensor_format", [FixedShapeTensorFormat.V1, FixedShapeTensorFormat.V2]
+)
+def test_unify_tensor_arrays_with_all_null_chunk(restore_data_context, tensor_format):
+    """A chunk of only null rows, typed as a fixed-shape tensor, unifies with
+    a chunk of another shape into a ragged column. The null rows stay null."""
+    DataContext.get_current().arrow_fixed_shape_tensor_format = tensor_format
+    small = ArrowTensorArray.from_numpy(np.ones((1, 2, 2), np.float32))
+    big = ArrowTensorArray.from_numpy(np.ones((1, 3, 2), np.float32))
+    all_null = pa.nulls(2, type=small.type)
+
+    unified = unify_tensor_arrays([all_null, big])
+    column = pa.chunked_array(unified)
+
+    assert isinstance(column.type, ArrowVariableShapedTensorType)
+    assert column.to_pylist()[:2] == [None, None]
+    np.testing.assert_array_equal(column.to_pylist()[2], np.ones((3, 2), np.float32))
+
+
+@pytest.mark.skipif(
+    get_pyarrow_version() < MIN_PYARROW_VERSION_FIXED_SHAPE_TENSOR_SCALAR,
+    reason="pyarrow native fixed-shape tensors need pyarrow >= 16",
+)
+def test_native_tensor_array_to_numpy_with_null_rows():
+    """A pyarrow native fixed-shape tensor array with a null row converts to
+    one ndarray per row with None for the null row, instead of the zeros that
+    pyarrow reads from the null row's storage. Without a null row it stays one
+    dense array."""
+    tensor_type = pa.fixed_shape_tensor(pa.int64(), (2,))
+    tensors = pa.array([[1, 1], [2, 2], [3, 3]], type=tensor_type)
+    with_null = tensors.take(pa.array([0, None, 2]))
+
+    dense = native_tensor_array_to_numpy(tensors)
+    with_none = native_tensor_array_to_numpy(with_null)
+
+    assert dense.shape == (3, 2) and dense.dtype == np.int64
+    assert _rows(with_none) == [[1, 1], None, [3, 3]]
+    assert _rows(native_tensor_array_to_numpy(with_null[1:])) == [None, [3, 3]]
+    assert _rows(native_tensor_array_to_numpy(pa.nulls(2, tensor_type))) == [
+        None,
+        None,
+    ]
+
+
+def test_variable_shaped_tensor_array_to_numpy_with_null_children():
+    """A variable-shaped row whose data or shape child is null, rather than the
+    struct slot, reads back as None too, instead of as a neighbour's bytes."""
+    tensor_type = ArrowVariableShapedTensorType(pa.float64(), 2)
+    storage = pa.array(
+        [
+            {"data": [1.0, 2.0], "shape": [1, 2]},
+            None,
+            {"data": None, "shape": [1, 1]},
+            {"data": [3.0], "shape": None},
+            {"data": [4.0], "shape": [1, 1]},
+        ],
+        type=tensor_type.storage_type,
+    )
+
+    rows = tensor_type.wrap_array(storage).to_numpy(zero_copy_only=False)
+
+    assert _rows(rows) == [[[1.0, 2.0]], None, None, None, [[4.0]]]
+
+
+@pytest.mark.parametrize("as_list", [False, True])
+def test_tensor_array_from_numpy_with_none_rows(as_list):
+    """Tensors with None among them become a tensor array with null rows, for
+    uniform and for ragged shapes, and read back unchanged."""
+    square = np.zeros((2, 2), np.float32)
+    big = np.ones((3, 3), np.float32)
+    uniform = [None, square, square]
+    ragged = [square, None, big]
+
+    for rows, expected_type in [
+        (uniform, ArrowTensorArray),
+        (ragged, ArrowVariableShapedTensorArray),
+    ]:
+        values = rows if as_list else create_ragged_ndarray(rows)
+
+        tensors = ArrowTensorArray.from_numpy(values)
+
+        assert isinstance(tensors, expected_type)
+        assert tensors.null_count == 1
+        assert _rows(tensors.to_numpy(zero_copy_only=False)) == _rows(rows)
+
+    # Without a tensor there is no type to build the column from.
+    with pytest.raises(ArrowConversionError):
+        ArrowTensorArray.from_numpy(create_ragged_ndarray([None, None]))
+
+
+@pytest.mark.parametrize("other_shape", [(2, 2), (3, 3)])
+def test_unify_tensor_arrays_null_chunk_becomes_null_rows(other_shape):
+    """A null-typed chunk among tensor chunks becomes null rows of the unified
+    tensor type, in place, whether the tensor chunks share a shape or not."""
+    tensors = ArrowTensorArray.from_numpy(np.zeros((2, 2, 2), np.int32))
+    other = ArrowTensorArray.from_numpy(np.ones((1,) + other_shape, np.int32))
+    nulls = pa.nulls(3)
+
+    unified = unify_tensor_arrays([tensors, nulls, other])
+
+    assert [chunk.type for chunk in unified] == [unified[0].type] * 3
+    assert [chunk.null_count for chunk in unified] == [0, 3, 0]
+    assert [len(chunk) for chunk in unified] == [2, 3, 1]
+    assert unified[0].type == unify_tensor_arrays([tensors, other])[0].type
+
+
+def test_unify_tensor_arrays_keeps_null_rows_through_shape_promotion():
+    """A fixed-shape chunk that already holds a null row keeps that row null
+    when a differently shaped chunk promotes it to the variable-shaped type,
+    for a sliced chunk too, instead of reading a neighbour's tensor."""
+    ones = np.ones((2, 2), np.float32)
+    sevens = np.full((2, 2), 7, np.float32)
+    with_null = ArrowTensorArray.from_numpy(create_ragged_ndarray([ones, None, sevens]))
+    other = ArrowTensorArray.from_numpy(np.zeros((1, 3, 3), np.float32))
+
+    promoted = unify_tensor_arrays([with_null, other])[0]
+    promoted_slice = unify_tensor_arrays([with_null[1:], other])[0]
+
+    assert isinstance(promoted.type, ArrowVariableShapedTensorType)
+    assert promoted.null_count == 1
+    assert _rows(promoted.to_numpy(zero_copy_only=False)) == _rows([ones, None, sevens])
+    assert _rows(promoted_slice.to_numpy(zero_copy_only=False)) == _rows([None, sevens])
+
+
+def test_tensor_column_with_null_rows_to_pandas_and_back():
+    """A chunked tensor column with null rows converts to pandas with those rows
+    missing, and converts back to a tensor column with the same null rows."""
+    tensors = ArrowTensorArray.from_numpy(np.zeros((2, 2), np.float32))
+    column = pa.chunked_array([tensors, pa.nulls(1, type=tensors.type), tensors])
+    table = pa.table({"x": column})
+
+    df = table.to_pandas()
+    back = pa.table({"x": pa.array(df["x"])})
+
+    assert list(df["x"].isna()) == [False, False, True, False, False]
+    assert np.asarray(df["x"].iloc[0]).tolist() == [0.0, 0.0]
+    assert back.schema.field("x").type == tensors.type
+    assert back["x"].null_count == 1
+    assert _rows(back["x"].to_pylist()) == _rows(column.to_pylist())
 
 
 if __name__ == "__main__":

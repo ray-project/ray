@@ -41,6 +41,7 @@ from ray._private.utils import (
     parse_resources_json,
 )
 from ray.autoscaler._private.cli_logger import add_click_logging_options, cf, cli_logger
+from ray.autoscaler._private.cli_output_helpers import print_next_steps_context_note
 from ray.autoscaler._private.commands import (
     RUN_ENV_TYPES,
     attach_cluster,
@@ -890,17 +891,11 @@ def start(
             )
     labels_dict = {**labels_from_file, **labels_from_string}
 
-    available_memory_bytes = ray._private.utils.estimate_available_memory()
-    object_store_memory = ray._private.utils.resolve_object_store_memory(
-        available_memory_bytes, object_store_memory
-    )
-
     resource_isolation_config = ResourceIsolationConfig(
         enable_resource_isolation=enable_resource_isolation,
         cgroup_path=cgroup_path,
         system_reserved_cpu=system_reserved_cpu,
         system_reserved_memory=system_reserved_memory,
-        object_store_memory=object_store_memory,
     )
 
     # - For non-worker processes, thread the behavior explicitly via RayParams.log_to_stderr.
@@ -934,7 +929,6 @@ def start(
         object_manager_port=object_manager_port,
         node_manager_port=node_manager_port,
         memory=memory,
-        available_memory_bytes=available_memory_bytes,
         object_store_memory=object_store_memory,
         redis_username=redis_username,
         redis_password=redis_password,
@@ -1071,7 +1065,24 @@ def start(
                     " flag of `ray start` command."
                 )
 
-        # Ensure auth token is available if authentication mode is token
+        from ray._raylet import (
+            AuthenticationMode,
+            AuthenticationTokenLoader,
+            get_authentication_mode,
+        )
+
+        # has_token raises other auth errors, such as RAY_AUTH_TOKEN_PATH naming a
+        # missing file, unchanged.
+        if get_authentication_mode() == AuthenticationMode.TOKEN and not (
+            AuthenticationTokenLoader.instance().has_token(ignore_auth_mode=True)
+        ):
+            # Worker nodes of this cluster need the same token, so a token made
+            # here could only work for a single-node cluster.
+            cli_logger.abort(
+                "Token authentication is enabled but no authentication token was "
+                "found. Run `ray get-auth-token --generate` to create one, then put "
+                "that token on every node of the cluster before starting it."
+            )
         ensure_token_if_auth_enabled(system_config, create_token_if_missing=False)
 
         node = ray._private.node.Node(
@@ -1089,6 +1100,7 @@ def start(
         cli_logger.success("-" * len(startup_msg))
         cli_logger.newline()
         with cli_logger.group("Next steps"):
+            print_next_steps_context_note(cli_logger, cf)
             dashboard_url = node.address_info["webui_url"]
             if ray_constants.ENABLE_RAY_CLUSTER:
                 cli_logger.print("To add another node to this Ray cluster, run")
@@ -1358,6 +1370,16 @@ def stop(force: bool, grace_period: int):
         Unless `force` is specified, it gracefully kills processes. If
         processes are not cleaned within `grace_period`, it force kill all
         remaining processes.
+
+        Args:
+            force: When ``True``, send ``SIGKILL`` immediately. Otherwise send
+                ``SIGTERM`` and escalate to ``SIGKILL`` after ``grace_period``.
+            grace_period: Number of seconds to wait for graceful termination
+                before sending ``SIGKILL`` to processes that are still alive.
+            processes_to_kill: Sequence of ``(keyword, filter_by_cmd)`` pairs
+                identifying the processes to terminate. ``keyword`` is matched
+                against either the process name (when ``filter_by_cmd`` is
+                ``True``) or the joined command line.
 
         Returns:
             total_procs_found: Total number of processes found from
@@ -1969,18 +1991,18 @@ def rsync_up(cluster_config_file, source, target, cluster_name, all_nodes):
 )
 @add_click_logging_options
 def submit(
-    cluster_config_file,
-    screen,
-    tmux,
-    stop,
-    start,
-    cluster_name,
-    no_config_cache,
-    port_forward,
-    script,
-    args,
-    script_args,
-    disable_usage_stats,
+    cluster_config_file: str,
+    screen: bool,
+    tmux: bool,
+    stop: bool,
+    start: bool,
+    cluster_name: Optional[str],
+    no_config_cache: bool,
+    port_forward: Tuple[int, ...],
+    script: str,
+    args: Optional[str],
+    script_args: Tuple[str, ...],
+    disable_usage_stats: bool,
     extra_screen_args: Optional[str] = None,
 ):
     """Uploads and runs a script on the specified cluster.
@@ -1991,6 +2013,21 @@ def submit(
 
     Example:
         ray submit [CLUSTER.YAML] experiment.py -- --smoke-test
+
+    Args:
+        cluster_config_file: Path to the cluster YAML configuration file.
+        screen: When ``True``, run the script inside a ``screen`` session.
+        tmux: When ``True``, run the script inside a ``tmux`` session.
+        stop: When ``True``, stop the cluster after the script finishes.
+        start: When ``True``, start the cluster if it is not already running.
+        cluster_name: Optional override for the cluster name configured in the cluster YAML.
+        no_config_cache: When ``True``, disable the local cluster config cache.
+        port_forward: Local ports to forward to the cluster head node.
+        script: Path to the Python script to upload and run.
+        args: Deprecated single-string form of ``script_args``. Prefer ``-- --arg1 --arg2``.
+        script_args: Positional arguments forwarded to the remote script.
+        disable_usage_stats: When ``True``, disable usage statistics collection.
+        extra_screen_args: Extra arguments appended to the ``screen`` invocation when ``screen`` is enabled.
     """
     cli_logger.doassert(
         not (screen and tmux),
@@ -2699,7 +2736,15 @@ def drain_node(
     help="The Kubernetes namespace the Ray Cluster lives in.\n"
     "Should coincide with the `metadata.namespace` of the RayCluster CR.",
 )
-def kuberay_autoscaler(cluster_name: str, cluster_namespace: str) -> None:
+@click.option(
+    "--gcs-address",
+    required=False,
+    type=str,
+    help="The address (host:port) of GCS. Defaults to <node_ip>:6379.",
+)
+def kuberay_autoscaler(
+    cluster_name: str, cluster_namespace: str, gcs_address: Optional[str]
+) -> None:
     """Runs the autoscaler for a Ray cluster managed by the KubeRay operator.
 
     `ray kuberay-autoscaler` is meant to be used as an entry point in
@@ -2710,7 +2755,7 @@ def kuberay_autoscaler(cluster_name: str, cluster_namespace: str) -> None:
     # client.
     from ray.autoscaler._private.kuberay.run_autoscaler import run_kuberay_autoscaler
 
-    run_kuberay_autoscaler(cluster_name, cluster_namespace)
+    run_kuberay_autoscaler(cluster_name, cluster_namespace, gcs_address)
 
 
 @cli.command(name="health-check", hidden=True)
@@ -2731,8 +2776,7 @@ def kuberay_autoscaler(cluster_name: str, cluster_namespace: str) -> None:
     help="Skip comparison of GCS version with local Ray version.",
 )
 def healthcheck(address, component, skip_version_check):
-    """
-    This is NOT a public API.
+    """This is NOT a public API.
 
     Health check a Ray or a specific component. Exit code 0 is healthy.
     """
@@ -2895,9 +2939,6 @@ def get_auth_token(generate):
 
     If --generate is specified, a new token is created and saved to ~/.ray/auth_token if one does not exist.
     """
-    from ray._private.authentication.authentication_token_setup import (
-        generate_and_save_token,
-    )
     from ray._raylet import (
         AuthenticationTokenLoader,
     )
@@ -2908,8 +2949,10 @@ def get_auth_token(generate):
     if not loader.has_token(ignore_auth_mode=True):
         if generate:
             click.echo("Generating new authentication token...", err=True)
-            generate_and_save_token()
-            loader.reset_cache()
+            try:
+                loader.create_token_if_missing()
+            except RuntimeError as e:
+                raise click.ClickException(str(e)) from e
         else:
             raise click.ClickException(
                 "No authentication token found. Use ray `get-auth-token --generate` to create one.",

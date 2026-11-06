@@ -59,7 +59,11 @@ def create_checkpoint_filter_op(
     if info.type == fs.FileType.NotFound:
         return physical_input_op
 
-    checkpoint_manager = IdColumnCheckpointManager(checkpoint_config=checkpoint_config)
+    manager_cls = checkpoint_config.checkpoint_manager_cls or IdColumnCheckpointManager
+    checkpoint_manager = manager_cls(
+        checkpoint_config=checkpoint_config,
+        data_context=data_context,
+    )
     # load checkpointed IDs as a numpy ndarray and store it to object store.
     checkpointed_ids_ref, checkpointed_ids_size = checkpoint_manager.load_checkpoint(
         data_file_dir, data_file_filesystem
@@ -126,7 +130,10 @@ class _CheckpointFilterFn:
 
     def init_checkpoint_filter(self):
         """Called once per actor worker to materialize the filter."""
-        self._filter = NumpyArrayBasedCheckpointFilter(self._config, self._ref)
+        filter_cls = (
+            self._config.checkpoint_filter_cls or NumpyArrayBasedCheckpointFilter
+        )
+        self._filter = filter_cls(self._config, self._ref)
 
     def __call__(self, blocks: Iterable[Block], ctx: TaskContext) -> Iterable[Block]:
         assert self._filter is not None, "checkpoint filter was not initialized!"

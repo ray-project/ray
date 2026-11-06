@@ -35,8 +35,8 @@ using ray::PeriodicalRunner;
 class LocalNode : public ray::syncer::ReporterInterface {
  public:
   LocalNode(instrumented_io_context &io_context, ray::NodeID node_id)
-      : node_id_(node_id), timer_(PeriodicalRunner::Create(io_context)) {
-    timer_->RunFnPeriodically(
+      : node_id_(node_id), periodical_runner_(PeriodicalRunner::Create(io_context)) {
+    periodical_runner_->RunFnPeriodically(
         [this]() {
           auto v = static_cast<double>(std::rand()) / RAND_MAX;
           if (v < 0.3) {
@@ -70,21 +70,25 @@ class LocalNode : public ray::syncer::ReporterInterface {
   int64_t version_ = 0;
   int state_ = 0;
   ray::NodeID node_id_;
-  std::shared_ptr<PeriodicalRunner> timer_;
+  std::shared_ptr<PeriodicalRunner> periodical_runner_;
 };
 
 class RemoteNodes : public ray::syncer::ReceiverInterface {
  public:
   RemoteNodes() {}
-  void ConsumeSyncMessage(
-      std::shared_ptr<const ray::rpc::syncer::RaySyncMessage> msg) override {
-    auto version = msg->version();
-    int state = *reinterpret_cast<const int *>(msg->sync_message().data());
-    auto iter = infos_.find(msg->node_id());
-    if (iter == infos_.end() || iter->second.second < version) {
-      RAY_LOG(INFO) << "Update node " << ray::NodeID::FromBinary(msg->node_id()).Hex()
-                    << " to (" << state << ", v:" << version << ")";
-      infos_[msg->node_id()] = std::make_pair(state, version);
+  void ConsumeSyncMessages(
+      ray::rpc::syncer::MessageType /*message_type*/,
+      std::vector<std::shared_ptr<const ray::rpc::syncer::RaySyncMessage>> msgs)
+      override {
+    for (const auto &msg : msgs) {
+      auto version = msg->version();
+      int state = *reinterpret_cast<const int *>(msg->sync_message().data());
+      auto iter = infos_.find(msg->node_id());
+      if (iter == infos_.end() || iter->second.second < version) {
+        RAY_LOG(INFO) << "Update node " << ray::NodeID::FromBinary(msg->node_id()).Hex()
+                      << " to (" << state << ", v:" << version << ")";
+        infos_[msg->node_id()] = std::make_pair(state, version);
+      }
     }
   }
 
@@ -101,10 +105,12 @@ int main(int argc, char *argv[]) {
   auto leader_port = std::string(argv[2]);
   auto local_node = std::make_unique<LocalNode>(io_context, node_id);
   auto remote_node = std::make_unique<RemoteNodes>();
-  ray::syncer::RaySyncer syncer(io_context, node_id.Binary(), 1, 0);
+  ray::syncer::RaySyncer syncer(
+      io_context, PeriodicalRunner::Create(io_context), node_id.Binary(), 1, 0);
   // RPC related field
   grpc::ServerBuilder builder;
   std::unique_ptr<ray::syncer::RaySyncerService> service;
+  std::unique_ptr<ray::syncer::RaySyncerGrpcService> grpc_service;
   std::unique_ptr<grpc::Server> server;
   std::shared_ptr<grpc::Channel> channel;
   syncer.Register(
@@ -113,8 +119,9 @@ int main(int argc, char *argv[]) {
     RAY_LOG(INFO) << "Start server on port " << server_port;
     auto server_address = ray::BuildAddress("0.0.0.0", server_port);
     service = std::make_unique<ray::syncer::RaySyncerService>(syncer);
+    grpc_service = std::make_unique<ray::syncer::RaySyncerGrpcService>(*service);
     builder.AddListeningPort(server_address, grpc::InsecureServerCredentials());
-    builder.RegisterService(service.get());
+    builder.RegisterService(grpc_service.get());
     server = builder.BuildAndStart();
   }
   if (leader_port != ".") {

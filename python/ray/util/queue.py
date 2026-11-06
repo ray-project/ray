@@ -9,11 +9,21 @@ from ray.util.annotations import PublicAPI
 
 @PublicAPI(stability="beta")
 class Empty(queue.Empty):
+    """Raised when getting an item from an empty Queue.
+
+    A non-blocking get raises it at once, and a blocking get raises it on timeout.
+    """
+
     pass
 
 
 @PublicAPI(stability="beta")
 class Full(queue.Full):
+    """Raised when putting an item into a full Queue.
+
+    A non-blocking put raises it at once, and a blocking put raises it on timeout.
+    """
+
     pass
 
 
@@ -31,25 +41,23 @@ class Queue:
     serialization overhead.
 
     Args:
-        maxsize (optional, int): maximum size of the queue. If zero, size is
+        maxsize: maximum size of the queue. If zero, size is
             unbounded.
-        actor_options (optional, Dict): Dictionary of options to pass into
+        actor_options: Dictionary of options to pass into
             the QueueActor during creation. These are directly passed into
             QueueActor.options(...). This could be useful if you
             need to pass in custom resource requirements, for example.
 
     Examples:
-        .. testcode::
-
-            from ray.util.queue import Queue
-            q = Queue()
-            items = list(range(10))
-            for item in items:
-                q.put(item)
-            for item in items:
-                assert item == q.get()
-            # Create Queue with the underlying actor reserving 1 CPU.
-            q = Queue(actor_options={"num_cpus": 1})
+        >>> from ray.util.queue import Queue
+        >>> q = Queue()
+        >>> items = list(range(10))
+        >>> for item in items:
+        ...     q.put(item)
+        >>> for item in items:
+        ...     assert item == q.get()
+        >>> # Create Queue with the underlying actor reserving 1 CPU.
+        >>> q = Queue(actor_options={"num_cpus": 1})
     """
 
     def __init__(self, maxsize: int = 0, actor_options: Optional[Dict] = None) -> None:
@@ -67,19 +75,36 @@ class Queue:
         return self.size()
 
     def size(self) -> int:
-        """The size of the queue."""
+        """The size of the queue.
+
+        Returns:
+            The number of items in the queue.
+        """
         return ray.get(self.actor.qsize.remote())
 
     def qsize(self) -> int:
-        """The size of the queue."""
+        """The size of the queue.
+
+        Returns:
+            The number of items in the queue.
+        """
         return self.size()
 
     def empty(self) -> bool:
-        """Whether the queue is empty."""
+        """Whether the queue is empty.
+
+        Returns:
+            True if the queue has no items, otherwise False.
+        """
         return ray.get(self.actor.empty.remote())
 
     def full(self) -> bool:
-        """Whether the queue is full."""
+        """Whether the queue is full.
+
+        Returns:
+            True if the queue holds ``maxsize`` items, otherwise False. A queue with
+            a ``maxsize`` of zero is never full.
+        """
         return ray.get(self.actor.full.remote())
 
     def put(
@@ -92,6 +117,14 @@ class Queue:
 
         There is no guarantee of order if multiple producers put to the same
         full queue.
+
+        Args:
+            item: The item to enqueue.
+            block: If True, wait up to ``timeout`` for space to become
+                available. If False, raise ``Full`` immediately when the
+                queue is full.
+            timeout: Maximum number of seconds to wait when ``block`` is
+                True. ``None`` waits forever.
 
         Raises:
             Full: if the queue is full and blocking is False.
@@ -120,6 +153,14 @@ class Queue:
         There is no guarantee of order if multiple producers put to the same
         full queue.
 
+        Args:
+            item: The item to enqueue.
+            block: If True, wait up to ``timeout`` for space to become
+                available. If False, raise ``Full`` immediately when the
+                queue is full.
+            timeout: Maximum number of seconds to wait when ``block`` is
+                True. ``None`` waits forever.
+
         Raises:
             Full: if the queue is full and blocking is False.
             Full: if the queue is full, blocking is True, and it timed out.
@@ -144,6 +185,13 @@ class Queue:
 
         There is no guarantee of order if multiple consumers get from the
         same empty queue.
+
+        Args:
+            block: If True, wait up to ``timeout`` for an item to become
+                available. If False, raise ``Empty`` immediately when the
+                queue is empty.
+            timeout: Maximum number of seconds to wait when ``block`` is
+                True. ``None`` waits forever.
 
         Returns:
             The next item in the queue.
@@ -172,8 +220,16 @@ class Queue:
         There is no guarantee of order if multiple consumers get from the
         same empty queue.
 
+        Args:
+            block: If True, wait up to ``timeout`` for an item to become
+                available. If False, raise ``Empty`` immediately when the
+                queue is empty.
+            timeout: Maximum number of seconds to wait when ``block`` is
+                True. ``None`` waits forever.
+
         Returns:
             The next item in the queue.
+
         Raises:
             Empty: if the queue is empty and blocking is False.
             Empty: if the queue is empty, blocking is True, and it timed out.
@@ -193,6 +249,9 @@ class Queue:
     def put_nowait(self, item: Any) -> None:
         """Equivalent to put(item, block=False).
 
+        Args:
+            item: The item to enqueue.
+
         Raises:
             Full: if the queue is full.
         """
@@ -200,6 +259,9 @@ class Queue:
 
     def put_nowait_batch(self, items: Iterable) -> None:
         """Takes in a list of items and puts them into the queue in order.
+
+        Args:
+            items: Iterable of items to enqueue in order.
 
         Raises:
             Full: if the items will not fit in the queue
@@ -212,6 +274,9 @@ class Queue:
     def get_nowait(self) -> Any:
         """Equivalent to get(block=False).
 
+        Returns:
+            The next item in the queue.
+
         Raises:
             Empty: if the queue is empty.
         """
@@ -220,6 +285,12 @@ class Queue:
     def get_nowait_batch(self, num_items: int) -> List[Any]:
         """Gets items from the queue and returns them in a
         list in order.
+
+        Args:
+            num_items: Number of items to dequeue.
+
+        Returns:
+            A list of up to ``num_items`` items dequeued in FIFO order.
 
         Raises:
             Empty: if the queue does not contain the desired number of items

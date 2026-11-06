@@ -61,6 +61,7 @@ class LoggerCallback(Callback):
         """Handle logging when a trial reports a result.
 
         Args:
+            iteration: Iteration of the experiment that this result belongs to.
             trial: Trial object.
             result: Result dictionary.
         """

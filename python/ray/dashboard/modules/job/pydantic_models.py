@@ -36,9 +36,7 @@ if PYDANTIC_INSTALLED:
 
     @PublicAPI(stability="beta")
     class JobDetails(BaseModel):
-        """
-        Job data with extra details about its driver and its submission.
-        """
+        """Job data with extra details about its driver and its submission."""
 
         type: JobType = Field(..., description="The type of job.")
         job_id: Optional[str] = Field(
@@ -84,7 +82,12 @@ if PYDANTIC_INSTALLED:
             None, description="Arbitrary user-provided metadata for the job."
         )
         runtime_env: Optional[Dict[str, Any]] = Field(
-            None, description="The runtime environment for the job."
+            None,
+            description=(
+                "The runtime environment for the job. Secret values (e.g. "
+                "`env_vars`) are redacted when the dashboard serves this to a "
+                "browser; the Ray CLI and Python SDK receive the raw values."
+            ),
         )
         # the node info where the driver running on.
         #     - driver_agent_http_address: this node's agent http address

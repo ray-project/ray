@@ -29,6 +29,7 @@ from ray._common.network_utils import (
     node_ip_address_from_perspective,
     parse_address,
 )
+from ray._private.resource_and_label_spec import ResourceAndLabelSpec
 from ray._private.resource_isolation_config import ResourceIsolationConfig
 from ray._raylet import GcsClient, GcsClientOptions, NodeID
 from ray.core.generated.common_pb2 import Language
@@ -155,6 +156,9 @@ def _build_python_executable_command_memory_profileable(
             e.g., `-u`.
             It means the logs are flushed immediately (good when there's a failure),
             but writing to a log file can be slower.
+
+    Returns:
+        The list of command arguments to use when launching the component.
     """
     command = [
         sys.executable,
@@ -277,8 +281,7 @@ class ConsolePopen(subprocess.Popen):
 
 
 def _find_address_from_flag(flag: str):
-    """
-    Attempts to find all valid Ray addresses on this node, specified by the
+    """Attempts to find all valid Ray addresses on this node, specified by the
     flag.
 
     Params:
@@ -416,6 +419,11 @@ def get_ray_address_from_environment(addr: str, temp_dir: Optional[str]):
     we will fallback to connecting to any detected Ray cluster (legacy).
     3. Otherwise, use the provided address.
 
+    Args:
+        addr: The user-supplied Ray address (may be ``None`` or ``"auto"``).
+        temp_dir: The Ray temp directory used to look up the last active
+            cluster, or ``None`` to use the default temp directory.
+
     Returns:
         A string to pass into `ray.init(address=...)`, e.g. ip:port, `auto`.
     """
@@ -471,6 +479,9 @@ def wait_for_node(
         timeout: The amount of time in seconds to wait before raising an
             exception.
 
+    Returns:
+        None. Returns once the node appears in the client table.
+
     Raises:
         TimeoutError: An exception is raised if the timeout expires before
             the node appears in the client table.
@@ -504,8 +515,7 @@ def get_node_to_connect_for_driver(
     temp_dir: str = None,
     timeout_seconds: int = ray_constants.GCS_SERVER_REQUEST_TIMEOUT_SECONDS,
 ) -> GcsNodeInfo:
-    """
-    Get the node to connect to for the driver.
+    """Get the node to connect to for the driver.
     If node_ip_address, node_name, and/or temp_dir are provided, they will be used to filter the nodes to connect to.
     If node_ip_address, node_name, and/or temp_dir are not provided, or if multiple node matches the filters,
     the following logic will be applied to resolve the node to connect to:
@@ -587,9 +597,7 @@ def get_node_to_connect_for_driver(
 
 
 def get_node(gcs_address, node_id):
-    """
-    Get the node information from the global state accessor.
-    """
+    """Get the node information from the global state accessor."""
     global_state = ray._private.state.GlobalState()
     gcs_options = _get_gcs_client_options(gcs_address)
     global_state._initialize_global_state(gcs_options)
@@ -680,6 +688,12 @@ def canonicalize_bootstrap_address(
     This function should be used to process user supplied Ray cluster address,
     via ray.init() or `--address` flags, before using the address to connect.
 
+    Args:
+        addr: The user-supplied Ray address (may be ``None``, ``"auto"``, or
+            ``"local"``).
+        temp_dir: The Ray temp directory used to look up the last active
+            cluster, or ``None`` to use the default temp directory.
+
     Returns:
         Ray cluster address string in <host:port> format or None if the caller
         should start a local Ray instance.
@@ -715,6 +729,11 @@ def canonicalize_bootstrap_address_or_die(
     look for any running local GCS processes, based on pgrep output. This is to
     allow easier use of Ray CLIs when debugging a local Ray instance (whose GCS
     addresses are not recorded).
+
+    Args:
+        addr: The user-supplied Ray address (may be ``None`` or ``"auto"``).
+        temp_dir: The Ray temp directory used to look up the last active
+            cluster, or ``None`` to use the default temp directory.
 
     Returns:
         Ray cluster address string in <host:port> format. Throws a
@@ -807,7 +826,11 @@ def get_node_instance_id():
     return os.getenv("RAY_CLOUD_INSTANCE_ID", "")
 
 
-def create_redis_client(redis_address, password=None, username=None):
+def create_redis_client(
+    redis_address: str,
+    password: Optional[str] = None,
+    username: Optional[str] = None,
+):
     """Create a Redis client.
 
     Args:
@@ -1061,6 +1084,8 @@ def start_ray_process(
             raise
 
     def _get_stream_name(stream):
+        if stream == subprocess.DEVNULL:
+            return os.devnull
         if stream is not None:
             try:
                 return stream.name
@@ -1080,13 +1105,17 @@ def start_ray_process(
     )
 
 
-def start_reaper(fate_share=None):
+def start_reaper(fate_share: Optional[bool] = None):
     """Start the reaper process.
 
     This is a lightweight process that simply
     waits for its parent process to die and then terminates its own
     process group. This allows us to ensure that ray processes are always
     terminated properly so long as that process itself isn't SIGKILLed.
+
+    Args:
+        fate_share: If True, the reaper process is bound to the parent's job
+            on Windows so it terminates with the parent.
 
     Returns:
         ProcessInfo for the process that was started.
@@ -1182,13 +1211,8 @@ def start_log_monitor(
         )
         command.append(f"--logging-format={logging_format}")
 
-    stdout_file = None
-    if stdout_filepath:
-        stdout_file = open(os.devnull, "w")
-
-    stderr_file = None
-    if stderr_filepath:
-        stderr_file = open(os.devnull, "w")
+    stdout_file = subprocess.DEVNULL if stdout_filepath else None
+    stderr_file = subprocess.DEVNULL if stderr_filepath else None
 
     process_info = start_ray_process(
         command,
@@ -1217,6 +1241,8 @@ def start_api_server(
     stdout_filepath: Optional[str] = None,
     stderr_filepath: Optional[str] = None,
     proxy_server_url: Optional[str] = None,
+    gcs_is_passive: bool = False,
+    tracing_startup_hook: Optional[str] = None,
 ):
     """Start a API server process.
 
@@ -1235,11 +1261,13 @@ def start_api_server(
         node_ip_address: The IP address where this is running.
         temp_dir: The temporary directory used for log files and
             information for this Ray session.
+        logdir: The log directory used to generate dashboard log.
         session_dir: The session directory under temp_dir.
             It is used as a identifier of individual cluster.
-        logdir: The log directory used to generate dashboard log.
         port: The port to bind the dashboard web server to.
             Defaults to 8265.
+        fate_share: If True, the API server is bound to the parent's job on
+            Windows so it terminates with the parent.
         max_bytes: Log rotation parameter. Corresponding to
             RotatingFileHandler's maxBytes.
         backup_count: Log rotation parameter. Corresponding to
@@ -1250,10 +1278,16 @@ def start_api_server(
             If None, stderr is not redirected.
         proxy_server_url: The url to redirect dashboard backend api requests to
             Ex: http://historyserver:8080
+        gcs_is_passive: Whether the GCS already rejected this node's writes
+            because it is passive.
+        tracing_startup_hook: The `module:function` tracing hook this node was
+            started with. The dashboard only needs it to republish the key after
+            a promotion; the active head writes it before this process exists.
 
     Returns:
         A tuple of :
-            - Dashboard URL if dashboard enabled and started.
+            - Dashboard URL if dashboard enabled and started, None if the
+              dashboard is running but has not registered its address yet.
             - ProcessInfo for the process that was started.
     """
     try:
@@ -1329,7 +1363,11 @@ def start_api_server(
             f"--cluster-id-hex={cluster_id_hex}",
             f"--node-ip-address={node_ip_address}",
             f"--proxy-server-url={proxy_server_url or ''}",
+            f"--tracing-startup-hook={tracing_startup_hook or ''}",
         ]
+
+        if gcs_is_passive:
+            command.append("--gcs-is-passive")
 
         if stdout_filepath:
             command.append(f"--stdout-filepath={stdout_filepath}")
@@ -1356,13 +1394,8 @@ def start_api_server(
             command.append("--modules-to-load=UsageStatsHead")
             command.append("--disable-frontend")
 
-        stdout_file = None
-        if stdout_filepath:
-            stdout_file = open(os.devnull, "w")
-
-        stderr_file = None
-        if stderr_filepath:
-            stderr_file = open(os.devnull, "w")
+        stdout_file = subprocess.DEVNULL if stdout_filepath else None
+        stderr_file = subprocess.DEVNULL if stderr_filepath else None
 
         process_info = start_ray_process(
             command,
@@ -1375,6 +1408,17 @@ def start_api_server(
         # Retrieve the dashboard url
         gcs_client = GcsClient(address=gcs_address, cluster_id=cluster_id_hex)
         ray.experimental.internal_kv._initialize_internal_kv(gcs_client)
+        if gcs_is_passive:
+            # A passive GCS rejects the dashboard's registration, so polling for
+            # its address would burn RAY_DASHBOARD_STARTUP_TIMEOUT_S and then
+            # report a failure for a dashboard that is running fine. The dashboard
+            # head registers itself once this GCS is promoted.
+            logger.info(
+                "GCS is in passive mode. The dashboard is running, but its address "
+                "stays unregistered until this head is promoted."
+            )
+            return None, process_info
+
         dashboard_url = None
         dashboard_returncode = None
         start_time_s = time.time()
@@ -1525,6 +1569,8 @@ def start_gcs_server(
         redis_password: The password of the Redis server.
         config: Optional configuration that will
             override defaults in RayConfig.
+        fate_share: If True, the GCS server is bound to the parent's job on
+            Windows so it terminates with the parent.
         gcs_server_port: Port number of the gcs server.
         metrics_agent_port: The port where metrics agent is bound to.
         node_ip_address: IP Address of a node where gcs server starts.
@@ -1567,13 +1613,8 @@ def start_gcs_server(
     if redis_password:
         command += [f"--redis_password={redis_password}"]
 
-    stdout_file = None
-    if stdout_filepath:
-        stdout_file = open(os.devnull, "w")
-
-    stderr_file = None
-    if stderr_filepath:
-        stderr_file = open(os.devnull, "w")
+    stdout_file = subprocess.DEVNULL if stdout_filepath else None
+    stderr_file = subprocess.DEVNULL if stderr_filepath else None
 
     process_info = start_ray_process(
         command,
@@ -1600,7 +1641,7 @@ def start_raylet(
     session_dir: str,
     resource_dir: str,
     log_dir: str,
-    resource_and_label_spec,
+    resource_and_label_spec: ResourceAndLabelSpec,
     plasma_directory: str,
     fallback_directory: str,
     object_store_memory: int,
@@ -1636,6 +1677,7 @@ def start_raylet(
     env_updates: Optional[dict] = None,
     node_name: Optional[str] = None,
     webui: Optional[str] = None,
+    enable_gpu_metrics: bool = True,
 ):
     """Start a raylet, which is a combined local scheduler and object manager.
 
@@ -1719,6 +1761,7 @@ def start_raylet(
         env_updates: Environment variable overrides.
         node_name: The name of the node.
         webui: The url of the UI.
+        enable_gpu_metrics: Whether the dashboard agent should collect GPU metrics.
     Returns:
         ProcessInfo for the process that was started.
     """
@@ -1893,6 +1936,9 @@ def start_raylet(
     if is_head_node:
         dashboard_agent_command.append("--head")
 
+    if not enable_gpu_metrics:
+        dashboard_agent_command.append("--no-enable-gpu-metrics")
+
     runtime_env_agent_command = [
         *_build_python_executable_command_memory_profileable(
             ray_constants.PROCESS_TYPE_RUNTIME_ENV_AGENT, session_dir
@@ -2016,13 +2062,8 @@ def start_raylet(
             f"--node-name={node_name}",
         )
 
-    stdout_file = None
-    if raylet_stdout_filepath:
-        stdout_file = open(os.devnull, "w")
-
-    stderr_file = None
-    if raylet_stderr_filepath:
-        stderr_file = open(os.devnull, "w")
+    stdout_file = subprocess.DEVNULL if raylet_stdout_filepath else None
+    stderr_file = subprocess.DEVNULL if raylet_stderr_filepath else None
 
     process_info = start_ray_process(
         command,
@@ -2340,12 +2381,16 @@ def start_monitor(
         stderr_filepath: The file path to dump monitor stderr.
             If None, stderr is not redirected.
         autoscaling_config: path to autoscaling config file.
+        fate_share: If True, the monitor is bound to the parent's job on
+            Windows so it terminates with the parent.
         max_bytes: Log rotation parameter. Corresponding to
             RotatingFileHandler's maxBytes.
         backup_count: Log rotation parameter. Corresponding to
             RotatingFileHandler's backupCount.
         monitor_ip: IP address of the machine that the monitor will be
             run on. Can be excluded, but required for autoscaler metrics.
+        autoscaler_v2: If True, use the v2 autoscaler entrypoint.
+
     Returns:
         ProcessInfo for the process that was started.
     """
@@ -2384,13 +2429,8 @@ def start_monitor(
     if monitor_ip:
         command.append("--monitor-ip=" + monitor_ip)
 
-    stdout_file = None
-    if stdout_filepath:
-        stdout_file = open(os.devnull, "w")
-
-    stderr_file = None
-    if stderr_filepath:
-        stderr_file = open(os.devnull, "w")
+    stdout_file = subprocess.DEVNULL if stdout_filepath else None
+    stderr_file = subprocess.DEVNULL if stderr_filepath else None
 
     process_info = start_ray_process(
         command,
@@ -2428,11 +2468,13 @@ def start_ray_client_server(
             no redirection should happen, then this should be None.
         redis_username: The username of the Redis server.
         redis_password: The password of the Redis server.
+        fate_share: If True, the client server is bound to the parent's job on
+            Windows so it terminates with the parent.
         runtime_env_agent_address: Address to the Runtime Env Agent listens on via HTTP.
             Only needed when server_type == "proxy".
         node_id: The hex ID of this node.
         server_type: Whether to start the proxy version of Ray Client.
-        serialized_runtime_env_context (str|None): If specified, the serialized
+        serialized_runtime_env_context: If specified, the serialized
             runtime_env_context to start the client server in.
 
     Returns:

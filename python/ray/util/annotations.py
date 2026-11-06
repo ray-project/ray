@@ -30,7 +30,7 @@ def PublicAPI(
     ...
 
 
-def PublicAPI(*args, **kwargs):
+def PublicAPI(*args: Any, **kwargs: Any):
     """Annotation for documenting public APIs.
 
     Public APIs are classes and methods exposed to end users of Ray.
@@ -48,9 +48,17 @@ def PublicAPI(*args, **kwargs):
     :ref:`Ray API Stability definitions <api-stability>`.
 
     Args:
-        stability: One of {"stable", "beta", "alpha"}.
-        api_group: Optional. Used only for doc rendering purpose. APIs in the same group
-                   will be grouped together in the API doc pages.
+        *args: When used as a bare ``@PublicAPI`` decorator, contains the
+            wrapped function or class as the single positional argument.
+        **kwargs: Supported keyword arguments are ``stability`` (one of
+            ``"stable"``, ``"beta"``, ``"alpha"``) and ``api_group`` (used
+            only for doc rendering; APIs in the same group are grouped
+            together in the API doc pages).
+
+    Returns:
+        Either the annotated object (when used as ``@PublicAPI``) or a
+        decorator that annotates an object (when used as
+        ``@PublicAPI(...)``).
 
     Examples:
         >>> from ray.util.annotations import PublicAPI
@@ -96,12 +104,23 @@ def DeveloperAPI() -> Callable[[F], F]:
     ...
 
 
-def DeveloperAPI(*args, **kwargs):
+def DeveloperAPI(*args: Any, **kwargs: Any):
     """Annotation for documenting developer APIs.
 
     Developer APIs are lower-level methods explicitly exposed to advanced Ray
     users and library developers. Their interfaces may change across minor
     Ray releases.
+
+    Args:
+        *args: When used as a bare ``@DeveloperAPI`` decorator, contains the
+            wrapped function or class as the single positional argument.
+        **kwargs: Reserved for future use; no keyword arguments are currently
+            supported.
+
+    Returns:
+        Either the annotated object (when used as ``@DeveloperAPI``) or a
+        decorator that annotates an object (when used as
+        ``@DeveloperAPI()``).
 
     Examples:
         >>> from ray.util.annotations import DeveloperAPI
@@ -145,14 +164,23 @@ def Deprecated(*, message: str = ..., warning: bool = False) -> Callable[[F], F]
     ...
 
 
-def Deprecated(*args, **kwargs):
+def Deprecated(*args: Any, **kwargs: Any):
     """Annotation for documenting a deprecated API.
 
     Deprecated APIs may be removed in future releases of Ray.
 
     Args:
-        message: a message to help users understand the reason for the
-            deprecation, and provide a migration path.
+        *args: When used as a bare ``@Deprecated`` decorator, contains the
+            wrapped function or class as the single positional argument.
+        **kwargs: Supported keyword arguments are ``message`` (a string to
+            help users understand the reason for the deprecation and provide
+            a migration path) and ``warning`` (whether to also emit a
+            ``RayDeprecationWarning`` at runtime; defaults to ``False``).
+
+    Returns:
+        Either the annotated object (when used as ``@Deprecated``) or a
+        decorator that annotates an object (when used as
+        ``@Deprecated(...)``).
 
     Examples:
         >>> from ray.util.annotations import Deprecated
@@ -242,7 +270,15 @@ def _append_doc(obj, *, message: str, directive: Optional[str] = None) -> None:
 
 
 def _get_indent(docstring: str) -> int:
-    """
+    """Return the indentation level (in spaces) of the docstring body.
+
+    Args:
+        docstring: The docstring whose body indentation should be measured.
+
+    Returns:
+        The number of leading whitespace characters on the second non-empty
+        line of the docstring (i.e. the indentation of the body), or 0 if
+        the docstring is empty or contains only a summary line.
 
     Example:
         >>> def f():

@@ -149,6 +149,7 @@ _DASHBOARD_METRICS = [
     "ray_dashboard_api_requests_count_requests_created",
     "ray_component_cpu_percentage",
     "ray_component_uss_mb",
+    "ray_component_uss_bytes",
 ]
 
 _EVENT_AGGREGATOR_METRICS = [
@@ -196,7 +197,9 @@ if sys.platform == "linux" or sys.platform == "linux2":
 _NODE_COMPONENT_METRICS = [
     "ray_component_cpu_percentage",
     "ray_component_rss_mb",
+    "ray_component_rss_bytes",
     "ray_component_uss_mb",
+    "ray_component_uss_bytes",
     "ray_component_num_fds",
 ]
 
@@ -434,6 +437,41 @@ def test_metrics_export_end_to_end(_setup_cluster_for_test):
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Not working in Windows.")
 @pytest.mark.skipif(prometheus_client is None, reason="Prometheus not installed")
+def test_metrics_survive_force_kill_without_explicit_flush(shutdown_only):
+    """The shutdown hook flushes, so a caller does not have to flush to survive a kill.
+
+    The report interval outlasts the test, so the periodic push cannot deliver the
+    sample and only the flush in DisconnectServices can.
+    """
+    addr = ray.init(_system_config={"metrics_report_interval_ms": 60000})
+
+    @ray.remote(num_cpus=0)
+    class Recorder:
+        def record(self):
+            from ray.util.metrics import Histogram
+
+            Histogram(
+                "test_exit_flush_ms", description="", boundaries=[1.0, 10.0]
+            ).observe(5.0)
+
+    recorder = Recorder.remote()
+    ray.get(recorder.record.remote())
+    ray.kill(recorder, no_restart=True)
+
+    timeseries = PrometheusTimeseries()
+
+    def exit_flushed_metric_is_exported():
+        metrics = raw_metric_timeseries(addr, timeseries)
+        assert "ray_test_exit_flush_ms_sum" in metrics
+        return True
+
+    wait_for_condition(
+        exit_flushed_metric_is_exported, timeout=30, retry_interval_ms=1000
+    )
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="Not working in Windows.")
+@pytest.mark.skipif(prometheus_client is None, reason="Prometheus not installed")
 def test_metrics_export_node_metrics(shutdown_only):
     # Verify node metrics are available.
     addr = ray.init()
@@ -515,6 +553,10 @@ def httpserver_listen_address():
                 # Turn off task events generation to avoid the task events from the
                 # cluster impacting the test result
                 "RAY_task_events_report_interval_ms": 0,
+                # Also turn off RayEvent emission so the cluster's own node/job events do
+                # not reach the aggregator and inflate events_received_total past the
+                # injected 3.
+                "RAY_enable_ray_event": "0",
                 "RAY_enable_open_telemetry": "true",
             },
         },
@@ -820,13 +862,15 @@ def test_per_func_name_stats(shutdown_only):
     comp_metrics = [
         "ray_component_cpu_percentage",
         "ray_component_rss_mb",
+        "ray_component_rss_bytes",
         "ray_component_num_fds",
     ]
     timeseries = PrometheusTimeseries()
     if sys.platform == "linux" or sys.platform == "linux2":
         # Uss only available from Linux
         comp_metrics.append("ray_component_uss_mb")
-        comp_metrics.append("ray_component_mem_shared_bytes")
+        comp_metrics.append("ray_component_uss_bytes")
+        comp_metrics.append("ray_component_shared_bytes")
     addr = ray.init(num_cpus=2)
 
     @ray.remote
@@ -927,6 +971,7 @@ def test_prometheus_file_based_service_discovery(ray_start_cluster):
     writer = PrometheusServiceDiscoveryWriter(
         addr["gcs_address"],
         "/tmp/ray",
+        "/tmp/ray/session_latest",
     )
 
     def get_metrics_export_address_from_node(nodes):
@@ -961,13 +1006,60 @@ def test_prometheus_file_based_service_discovery(ray_start_cluster):
     )
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Symlinks may need privileges.")
+def test_prom_service_discovery_session_scoped(ray_start_cluster, tmp_path):
+    """Test that the discovery file is written to session_dir and a
+    backward-compatible symlink is created at temp_dir."""
+    cluster = ray_start_cluster
+    cluster.add_node()
+    cluster.wait_for_nodes()
+    addr = ray.init(address=cluster.address)
+
+    temp_dir = str(tmp_path / "ray")
+    session_dir = str(tmp_path / "ray" / "session_test")
+    os.makedirs(temp_dir, exist_ok=True)
+    os.makedirs(session_dir, exist_ok=True)
+
+    writer = PrometheusServiceDiscoveryWriter(
+        addr["gcs_address"],
+        temp_dir,
+        session_dir,
+    )
+
+    # Verify the target file is in session_dir, not temp_dir
+    assert writer.get_target_file_name().startswith(session_dir)
+    assert writer.get_temp_file_name().startswith(session_dir)
+
+    # Write the discovery file
+    writer.write()
+
+    # Verify the file exists in session_dir
+    target_file = writer.get_target_file_name()
+    assert os.path.exists(target_file)
+
+    # Verify the symlink exists at the old temp_dir location
+    legacy_path = os.path.join(
+        temp_dir,
+        ray._private.ray_constants.PROMETHEUS_SERVICE_DISCOVERY_FILE,
+    )
+    assert os.path.islink(legacy_path)
+    assert os.path.realpath(legacy_path) == os.path.realpath(target_file)
+
+    # Verify the content is valid JSON and matches
+    with open(target_file) as f:
+        session_content = json.load(f)
+    with open(legacy_path) as f:
+        legacy_content = json.load(f)
+    assert session_content == legacy_content
+
+
 def test_prome_file_discovery_run_by_dashboard(shutdown_only):
     ray.init(num_cpus=0)
     global_node = ray._private.worker._global_node
-    temp_dir = global_node.get_temp_dir_path()
+    session_dir = global_node.get_session_dir_path()
 
     def is_service_discovery_exist():
-        for path in pathlib.Path(temp_dir).iterdir():
+        for path in pathlib.Path(session_dir).iterdir():
             if PROMETHEUS_SERVICE_DISCOVERY_FILE in str(path):
                 return True
         return False

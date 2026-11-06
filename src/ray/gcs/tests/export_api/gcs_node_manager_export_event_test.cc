@@ -21,7 +21,6 @@
 #include <thread>
 #include <vector>
 
-#include "mock/ray/pubsub/publisher.h"
 #include "ray/common/test_utils.h"
 #include "ray/gcs/gcs_node_manager.h"
 #include "ray/gcs/store_client/in_memory_store_client.h"
@@ -29,6 +28,7 @@
 #include "ray/pubsub/fake_publisher.h"
 #include "ray/pubsub/gcs_publisher.h"
 #include "ray/raylet_rpc_client/fake_raylet_client.h"
+#include "ray/util/clock.h"
 #include "ray/util/event.h"
 #include "ray/util/string_utils.h"
 
@@ -51,17 +51,20 @@ class GcsNodeManagerExportAPITest : public ::testing::Test {
         [raylet_client = std::move(raylet_client)](const rpc::Address &) {
           return raylet_client;
         });
-    gcs_publisher_ = std::make_unique<pubsub::GcsPublisher>(
-        std::make_unique<ray::pubsub::MockPublisher>());
+    gcs_publisher_ =
+        std::make_unique<pubsub::GcsPublisher>(std::make_unique<pubsub::FakePublisher>());
     observability_publisher_ = std::make_unique<pubsub::ObservabilityPublisher>(
         std::make_unique<pubsub::FakePublisher>());
     gcs_table_storage_ = std::make_unique<gcs::GcsTableStorage>(
         std::make_unique<gcs::InMemoryStoreClient>());
 
+    // Pin ray events off so WriteNodeExportEvent exercises the export-API (file) path
+    // instead of short-circuiting to the RayEventRecorder.
     RayConfig::instance().initialize(
         R"(
 {
-  "enable_export_api_write": true
+  "enable_export_api_write": true,
+  "enable_ray_event": false
 }
   )");
     log_dir_ = GenerateLogDir();
@@ -81,6 +84,7 @@ class GcsNodeManagerExportAPITest : public ::testing::Test {
   }
 
  protected:
+  Clock clock_;
   std::unique_ptr<gcs::GcsTableStorage> gcs_table_storage_;
   std::unique_ptr<rpc::RayletClientPool> client_pool_;
   std::shared_ptr<pubsub::GcsPublisher> gcs_publisher_;
@@ -99,7 +103,8 @@ TEST_F(GcsNodeManagerExportAPITest, TestExportEventRegisterNode) {
                                    ClusterID::Nil(),
                                    /*ray_event_recorder=*/fake_ray_event_recorder,
                                    /*session_name=*/"",
-                                   observability_publisher_.get());
+                                   observability_publisher_.get(),
+                                   clock_);
   auto node = GenNodeInfo();
 
   rpc::RegisterNodeRequest register_request;
@@ -128,7 +133,8 @@ TEST_F(GcsNodeManagerExportAPITest, TestExportEventUnregisterNode) {
                                    ClusterID::Nil(),
                                    /*ray_event_recorder=*/fake_ray_event_recorder,
                                    /*session_name=*/"",
-                                   observability_publisher_.get());
+                                   observability_publisher_.get(),
+                                   clock_);
   auto node = GenNodeInfo();
   auto node_id = NodeID::FromBinary(node->node_id());
   node_manager.AddNode(node);

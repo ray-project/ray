@@ -13,7 +13,7 @@ import pytest
 
 import ray
 from ray.data._internal.equalize import _equalize
-from ray.data._internal.execution.interfaces import RefBundle
+from ray.data._internal.execution.interfaces import BlockEntry, RefBundle
 from ray.data._internal.execution.interfaces.ref_bundle import (
     _ref_bundles_iterator_to_block_refs_list,
 )
@@ -101,7 +101,7 @@ def _test_equal_split_balanced(block_sizes, num_splits):
         blocks.append(ray.put(block))
         metadata.append(BlockAccessor.for_block(block).get_metadata())
         schema = BlockAccessor.for_block(block).schema()
-        blk = (blocks[-1], metadata[-1])
+        blk = BlockEntry(blocks[-1], metadata[-1])
         ref_bundles.append(RefBundle((blk,), owns_blocks=True, schema=schema))
         total_rows += block_size
 
@@ -268,7 +268,7 @@ def test_split_at_indices_coverage(
 
     ds = ray.data.range(20, override_num_blocks=num_blocks)
     splits = ds.split_at_indices(indices)
-    r = [extract_values("id", s.sort("id").take_all()) for s in splits]
+    r = [sorted(extract_values("id", s.take_all())) for s in splits]
     # Use np.array_split() semantics as our correctness ground-truth.
     assert r == [arr.tolist() for arr in np.array_split(list(range(20)), indices)]
 
@@ -377,7 +377,9 @@ def test_split_hints(ray_start_regular_shared_2_cpus):
         def __init__(self):
             pass
 
-    def assert_split_assignment(block_node_ids, actor_node_ids, expected_split_result):
+    def assert_split_assignment(
+        block_node_ids: list, actor_node_ids: list, expected_split_result: list
+    ):
         """Helper function to setup split hints test.
 
         Args:
@@ -507,15 +509,17 @@ def _create_block_and_metadata(data: Any) -> Tuple[ObjectRef[Block], BlockMetada
 def _create_bundle(blocks: List[List[Any]]) -> RefBundle:
     schema = BlockAccessor.for_block(pd.DataFrame({"id": []})).schema()
     return RefBundle(
-        [_create_block_and_metadata(block) for block in blocks],
+        [BlockEntry(*_create_block_and_metadata(block)) for block in blocks],
         owns_blocks=True,
         schema=schema,
     )
 
 
 def _create_blocks_with_metadata(blocks):
+    # Returns the legacy 2-tuple shape (BlockPartition) consumed by the
+    # split helpers in ``ray.data._internal.split``.
     bundle = _create_bundle(blocks)
-    return list(bundle.blocks)
+    return [(entry.ref, entry.metadata) for entry in bundle.blocks]
 
 
 def test_split_single_block(ray_start_regular_shared_2_cpus):
@@ -618,35 +622,35 @@ def test_generate_global_split_results(ray_start_regular_shared_2_cpus):
 
 def test_private_split_at_indices(ray_start_regular_shared_2_cpus):
     inputs = _create_blocks_with_metadata([])
-    splits = list(zip(*_split_at_indices(inputs, [0], True)))
+    splits = list(zip(*_split_at_indices(inputs, [0])))
     verify_splits(splits, [[], []])
 
-    splits = list(zip(*_split_at_indices(inputs, [], True)))
+    splits = list(zip(*_split_at_indices(inputs, [])))
     verify_splits(splits, [[]])
 
     inputs = _create_blocks_with_metadata([[1], [2, 3], [4]])
 
-    splits = list(zip(*_split_at_indices(inputs, [1], True)))
+    splits = list(zip(*_split_at_indices(inputs, [1])))
     verify_splits(splits, [[[1]], [[2, 3], [4]]])
 
     inputs = _create_blocks_with_metadata([[1], [2, 3], [4]])
-    splits = list(zip(*_split_at_indices(inputs, [2], True)))
+    splits = list(zip(*_split_at_indices(inputs, [2])))
     verify_splits(splits, [[[1], [2]], [[3], [4]]])
 
     inputs = _create_blocks_with_metadata([[1], [2, 3], [4]])
-    splits = list(zip(*_split_at_indices(inputs, [1], True)))
+    splits = list(zip(*_split_at_indices(inputs, [1])))
     verify_splits(splits, [[[1]], [[2, 3], [4]]])
 
     inputs = _create_blocks_with_metadata([[1], [2, 3], [4]])
-    splits = list(zip(*_split_at_indices(inputs, [2, 2], True)))
+    splits = list(zip(*_split_at_indices(inputs, [2, 2])))
     verify_splits(splits, [[[1], [2]], [], [[3], [4]]])
 
     inputs = _create_blocks_with_metadata([[1], [2, 3], [4]])
-    splits = list(zip(*_split_at_indices(inputs, [], True)))
+    splits = list(zip(*_split_at_indices(inputs, [])))
     verify_splits(splits, [[[1], [2, 3], [4]]])
 
     inputs = _create_blocks_with_metadata([[1], [2, 3], [4]])
-    splits = list(zip(*_split_at_indices(inputs, [0, 4], True)))
+    splits = list(zip(*_split_at_indices(inputs, [0, 4])))
     verify_splits(splits, [[], [[1], [2, 3], [4]], []])
 
 
@@ -943,6 +947,23 @@ def test_streaming_train_test_split_wrong_params(
             hash_column=hash_column,
             seed=seed,
         )
+
+
+def test_streaming_split_materialize_reports_to_executor(
+    ray_start_regular_shared_2_cpus,
+):
+    """`materialize()` on a split shard tells the executor what it is holding.
+
+    Those blocks stay alive for the rest of the job, so without the report the
+    block ref counter counts them as unconsumed output and backpressures the
+    producer down to a single task.
+    """
+    (shard,) = ray.data.range(200, override_num_blocks=10).streaming_split(1)
+    materialized = shard.materialize()
+    assert shard._iter_stats.iter_prefetched_bytes == materialized.size_bytes()
+
+    materialized_again = shard.materialize()
+    assert shard._iter_stats.iter_prefetched_bytes == materialized_again.size_bytes()
 
 
 @pytest.mark.parametrize("prefetch_batches", [0, 2])

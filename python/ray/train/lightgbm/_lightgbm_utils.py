@@ -2,7 +2,7 @@ import tempfile
 from abc import abstractmethod
 from contextlib import contextmanager
 from pathlib import Path
-from typing import Callable, Dict, List, Optional, Union
+from typing import TYPE_CHECKING, Callable, Dict, List, Optional, Union
 
 from lightgbm.basic import Booster
 from lightgbm.callback import CallbackEnv
@@ -11,6 +11,57 @@ import ray.train
 from ray.train import Checkpoint
 from ray.tune.utils import flatten_dict
 from ray.util.annotations import PublicAPI
+
+if TYPE_CHECKING:
+    import pandas as pd
+
+
+@PublicAPI(stability="alpha")
+def normalize_pandas_for_lightgbm(df: "pd.DataFrame") -> "pd.DataFrame":
+    """Map Arrow-backed pandas dtypes to NumPy-nullable equivalents.
+
+    LightGBM's pandas input validation rejects Arrow-backed dtypes like
+    ``int64[pyarrow]``. Since Ray Data 2.56, ``Dataset.to_pandas()`` preserves
+    Arrow-backed dtypes when the source was Arrow, so callers passing the
+    resulting frame to ``lightgbm.Dataset`` must normalize first.
+
+    This helper is a faster alternative to
+    ``df.convert_dtypes(dtype_backend="numpy_nullable")``:
+
+    - It maps dtypes mechanically rather than scanning every value.
+    - It only touches ``pd.ArrowDtype`` columns. NumPy-backed columns (e.g.
+      from ``ray.data.from_pandas`` shards) keep their original buffers.
+
+    Only numeric and boolean Arrow dtypes are remapped. Other Arrow dtypes
+    (string, decimal, timestamp) are left as-is; LightGBM doesn't accept them
+    as features anyway.
+
+    Args:
+        df: The pandas DataFrame to normalize.
+
+    Returns:
+        A DataFrame with Arrow-backed numeric/boolean columns replaced by
+        NumPy-nullable equivalents. Other columns are returned unchanged.
+    """
+    import pandas as pd
+    import pyarrow as pa
+
+    dtype_mapping = {}
+    for column, dtype in df.dtypes.items():
+        if not isinstance(dtype, pd.ArrowDtype):
+            continue
+        arrow_dtype = dtype.pyarrow_dtype
+        if pa.types.is_signed_integer(arrow_dtype):
+            dtype_mapping[column] = f"Int{arrow_dtype.bit_width}"
+        elif pa.types.is_unsigned_integer(arrow_dtype):
+            dtype_mapping[column] = f"UInt{arrow_dtype.bit_width}"
+        elif pa.types.is_floating(arrow_dtype):
+            dtype_mapping[column] = f"Float{arrow_dtype.bit_width}"
+        elif pa.types.is_boolean(arrow_dtype):
+            dtype_mapping[column] = "boolean"
+    if dtype_mapping:
+        df = df.astype(dtype_mapping, copy=False)
+    return df
 
 
 class RayReportCallback:
@@ -132,6 +183,33 @@ class RayReportCallback:
 class RayTrainReportCallback(RayReportCallback):
     """Creates a callback that reports metrics and checkpoints model.
 
+    Examples:
+        Reporting checkpoints and metrics to Ray Tune when running many
+        independent LightGBM trials (without data parallelism within a trial).
+
+        >>> import lightgbm  # doctest: +SKIP_EXAMPLE
+        >>> from ray.train.lightgbm import RayTrainReportCallback
+        >>> config = {
+        ...     # ...
+        ...     "metric": ["binary_logloss", "binary_error"],
+        ... }
+        >>> # Report only log loss to Tune after each validation epoch.
+        >>> bst = lightgbm.train(
+        ...     ...,
+        ...     callbacks=[
+        ...         RayTrainReportCallback(
+        ...             metrics={"loss": "eval-binary_logloss"}, frequency=1
+        ...         )
+        ...     ],
+        ... )
+
+        Loading a model from a checkpoint reported by this callback.
+
+        >>> from ray.train.lightgbm import RayTrainReportCallback
+        >>> # Get a `Checkpoint` object that is saved by the callback during training.
+        >>> result = trainer.fit()
+        >>> booster = RayTrainReportCallback.get_model(result.checkpoint)
+
     Args:
         metrics: Metrics to report. If this is a list,
             each item should be a metric key reported by LightGBM,
@@ -146,46 +224,6 @@ class RayTrainReportCallback(RayReportCallback):
         results_postprocessing_fn: An optional Callable that takes in
             the metrics dict that will be reported (after it has been flattened)
             and returns a modified dict.
-
-    Examples
-    --------
-
-    Reporting checkpoints and metrics to Ray Tune when running many
-    independent LightGBM trials (without data parallelism within a trial).
-
-    .. testcode::
-        :skipif: True
-
-        import lightgbm
-
-        from ray.train.lightgbm import RayTrainReportCallback
-
-        config = {
-            # ...
-            "metric": ["binary_logloss", "binary_error"],
-        }
-
-        # Report only log loss to Tune after each validation epoch.
-        bst = lightgbm.train(
-            ...,
-            callbacks=[
-                RayTrainReportCallback(
-                    metrics={"loss": "eval-binary_logloss"}, frequency=1
-                )
-            ],
-        )
-
-    Loading a model from a checkpoint reported by this callback.
-
-    .. testcode::
-        :skipif: True
-
-        from ray.train.lightgbm import RayTrainReportCallback
-
-        # Get a `Checkpoint` object that is saved by the callback during training.
-        result = trainer.fit()
-        booster = RayTrainReportCallback.get_model(result.checkpoint)
-
     """
 
     @contextmanager

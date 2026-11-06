@@ -471,7 +471,7 @@ def test_basic_log_stream(call_ray_start_shared):
 
         ray.worker.log_client.log = test_log
         ray.worker.log_client.set_logstream_level(logging.DEBUG)
-        # Allow some time to propogate
+        # Allow some time to propagate
         time.sleep(1)
         x = ray.put("Foo")
         assert ray.get(x) == "Foo"
@@ -859,6 +859,12 @@ def test_ignore_reinit(call_ray_start_shared, shutdown_only):
     ctx1 = ray.init(SHARED_CLIENT_SERVER_ADDRESS)
     ctx2 = ray.init(SHARED_CLIENT_SERVER_ADDRESS, ignore_reinit_error=True)
     assert ctx1 == ctx2
+
+
+def test_reinit_error_says_already_initialized(call_ray_start_shared, shutdown_only):
+    ray.init(SHARED_CLIENT_SERVER_ADDRESS)
+    with pytest.raises(RuntimeError, match="Ray Client is already initialized"):
+        ray.init(SHARED_CLIENT_SERVER_ADDRESS)
 
 
 def test_client_actor_missing_field(call_ray_start_shared):

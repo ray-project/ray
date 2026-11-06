@@ -14,7 +14,7 @@ from ray.util.collective.types import (
 
 
 class BaseGroup(metaclass=ABCMeta):
-    def __init__(self, world_size, rank, group_name):
+    def __init__(self, world_size: int, rank: int, group_name: str):
         """Init the process group with basic information.
 
         Args:

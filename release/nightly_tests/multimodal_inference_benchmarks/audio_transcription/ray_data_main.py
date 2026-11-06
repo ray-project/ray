@@ -5,8 +5,8 @@ import uuid
 
 import numpy as np
 import ray
+import soundfile as sf
 import torch
-import torchaudio
 import torchaudio.transforms as T
 from transformers import AutoModelForSpeechSeq2Seq, AutoProcessor
 from benchmark import Benchmark
@@ -17,6 +17,10 @@ SAMPLING_RATE = 16000
 INPUT_PATH = "s3://anonymous@ray-example-data/common_voice_17/parquet/"
 OUTPUT_PATH = f"s3://ray-data-write-benchmark/{uuid.uuid4().hex}"
 BATCH_SIZE = 64
+# Ray Data can't prevent OOMs if you don't set `memory` for high-memory UDFs
+# like this one. We chose this value because it was the max USS we observed in
+# previous nightly test runs.
+PREPROCESS_MEMORY = 3_143_442_432  # ~3.1 GB
 
 ray.init()
 
@@ -37,7 +41,12 @@ def resample(item):
     # the system automatically on Ray Data 2.51+ with the `with_column` API.
     audio = item.pop("audio")
     audio_bytes = audio["bytes"]
-    waveform, sampling_rate = torchaudio.load(io.BytesIO(audio_bytes), format="flac")
+    # torchaudio>=2.9 routes `torchaudio.load` through torchcodec, which the image
+    # doesn't ship, so decode the audio bytes (MP3) with soundfile instead.
+    data, sampling_rate = sf.read(
+        io.BytesIO(audio_bytes), dtype="float32", always_2d=True
+    )
+    waveform = torch.from_numpy(data.T)
     waveform = T.Resample(sampling_rate, SAMPLING_RATE)(waveform).squeeze()
     item["arr"] = np.array(waveform)
     return item
@@ -85,16 +94,25 @@ def decoder(batch):
     # NOTE: Remove the `token_ids` column since we don't need it anymore. This is done by
     # the system automatically on Ray Data 2.51+ with the `with_column` API.
     token_ids = batch.pop("token_ids")
-    transcription = processor.batch_decode(token_ids, skip_special_tokens=True)
+    # transformers 5 fails on rows that are numpy arrays (Ray hands over ragged
+    # batches as an object array), so pass plain lists of ints.
+    transcription = processor.batch_decode(
+        [ids.tolist() for ids in token_ids], skip_special_tokens=True
+    )
     batch["transcription"] = transcription
     batch["transcription_length"] = np.array([len(t) for t in transcription])
     return batch
 
 
 def run_pipeline():
+    # These are best practices we recommend to avoid OOMs, though they're opt-in and
+    # not enabled by default.
+    ray.data.DataContext.get_current().isolate_read_workers = True
+    ray.data.DataContext.get_current().default_map_logical_memory_enabled = True
+
     ds = ray.data.read_parquet(INPUT_PATH)
-    ds = ds.map(resample)
-    ds = ds.map_batches(whisper_preprocess, batch_size="auto")
+    ds = ds.map(resample, memory=PREPROCESS_MEMORY)
+    ds = ds.map_batches(whisper_preprocess, batch_size="auto", memory=PREPROCESS_MEMORY)
     ds = ds.map_batches(
         Transcriber,
         batch_size=BATCH_SIZE,

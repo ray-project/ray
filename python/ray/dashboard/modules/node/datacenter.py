@@ -1,4 +1,4 @@
-import logging
+import copy
 from typing import List, Optional
 
 import ray.dashboard.consts as dashboard_consts
@@ -12,8 +12,6 @@ from ray.dashboard.utils import (
     async_loop_forever,
     compose_state_message,
 )
-
-logger = logging.getLogger(__name__)
 
 
 class DataSource:
@@ -58,8 +56,7 @@ class DataOrganizer:
     @classmethod
     @async_loop_forever(dashboard_consts.RAY_DASHBOARD_STATS_UPDATING_INTERVAL)
     async def organize(cls, thread_pool_executor):
-        """
-        Organizes data: read from (node_physical_stats, node_stats) and updates
+        """Organizes data: read from (node_physical_stats, node_stats) and updates
         (node_workers, node_worker_stats).
 
         This methods is not really async, but DataSource is not thread safe so we need
@@ -148,6 +145,7 @@ class DataOrganizer:
         }
 
         node_info = node_physical_stats
+
         # Merge node stats to node physical stats under raylet
         node_info["raylet"] = node_stats
         node_info["raylet"].update(ray_stats)
@@ -158,6 +156,11 @@ class DataOrganizer:
         node_info["raylet"]["stateMessage"] = compose_state_message(
             death_info.get("reason", None), death_info.get("reasonMessage", None)
         )
+
+        # TODO(spencer-p): TPU process linking is currently prone to over-counting
+        # as it attaches all TPU workers to every chip. This will be addressed
+        # with a more robust mapping in a future update.
+        node_info["tpus"] = copy.deepcopy(node_info.get("tpus", []))
 
         if not get_summary:
             actor_table_entries = DataSource.node_actors.get(node_id, {})
@@ -214,6 +217,7 @@ class DataOrganizer:
         node_physical_stats = DataSource.node_physical_stats.get(node_id, {})
         actor_process_stats = None
         actor_process_gpu_stats = []
+        actor_process_npu_stats = []
         if pid:
             for process_stats in node_physical_stats.get("workers", []):
                 if process_stats["pid"] == pid:
@@ -228,7 +232,16 @@ class DataOrganizer:
                         actor_process_gpu_stats.append(gpu_stats)
                         break
 
+            for npu_stats in node_physical_stats.get("npus", []):
+                # npu_stats.get("processesPids") can be None, an empty list or a
+                # list of dictionaries.
+                for process in npu_stats.get("processesPids") or []:
+                    if process["pid"] == pid:
+                        actor_process_npu_stats.append(npu_stats)
+                        break
+
         actor["gpus"] = actor_process_gpu_stats
+        actor["npus"] = actor_process_npu_stats
         actor["processStats"] = actor_process_stats
         actor["mem"] = node_physical_stats.get("mem", [])
 
@@ -236,5 +249,9 @@ class DataOrganizer:
             actor["requiredResources"]
         )
         actor["requiredResources"] = required_resources
+
+        # TODO(spencer-p): TPU process linking is currently prone to over-counting.
+        # This will be addressed with a more robust mapping in a future update.
+        actor["tpus"] = []
 
         return actor

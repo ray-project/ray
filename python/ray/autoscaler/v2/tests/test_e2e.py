@@ -1,10 +1,17 @@
 import os
+import secrets
 import subprocess
 import sys
 import time
 from typing import Dict
 
 import pytest
+
+# RayConfig reads the auth mode once at import, so set the mode before importing
+# ray. A per-process random token, inherited by subprocesses, lets the cluster
+# and this process agree without a hard-coded secret.
+os.environ["RAY_AUTH_MODE"] = "token"
+os.environ.setdefault("RAY_AUTH_TOKEN", secrets.token_hex(32))
 
 import ray
 from ray._common.constants import HEAD_NODE_RESOURCE_NAME
@@ -958,6 +965,59 @@ def test_pg_scheduled_on_node_with_bundle_label_selector(autoscaler_v2):
             bundle_selector = actual_bundle_selectors[bundle_index]
             node_labels = nodes[bundle_node_id]
             assert _verify_node_labels_for_selector(node_labels, bundle_selector)
+
+    finally:
+        ray.shutdown()
+        cluster.shutdown()
+
+
+def test_priority_selection_e2e():
+    cluster = AutoscalingCluster(
+        head_resources={"CPU": 0},
+        worker_node_types={
+            "high-priority": {
+                "resources": {"CPU": 1},
+                "node_config": {},
+                "priority": 10,
+                "min_workers": 0,
+                "max_workers": 1,
+            },
+            "low-priority": {
+                "resources": {"CPU": 1},
+                "node_config": {},
+                "priority": 0,
+                "min_workers": 0,
+                "max_workers": 1,
+            },
+        },
+        autoscaler_v2=True,
+    )
+
+    try:
+        cluster.start()
+        ray.init("auto")
+        gcs_address = ray.get_runtime_context().gcs_address
+
+        @ray.remote(num_cpus=1)
+        def foo():
+            import time
+
+            time.sleep(5)
+            return True
+
+        # Submit a task
+        foo.remote()
+
+        def high_priority_node_launched():
+            status = get_cluster_status(gcs_address)
+            active_node_types = {
+                node.ray_node_type_name for node in status.active_nodes
+            }
+            assert "low-priority" not in active_node_types
+            return "high-priority" in active_node_types
+
+        # Wait for the high priority node to be launched
+        wait_for_condition(high_priority_node_launched, timeout=30)
 
     finally:
         ray.shutdown()

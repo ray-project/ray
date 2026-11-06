@@ -19,7 +19,7 @@ from ray.tune.search import ConcurrencyLimiter
 from ray.tune.search.hyperopt import HyperOptSearch
 
 
-def f_unpack_dict(dct):
+def f_unpack_dict(dct: dict) -> dict:
     """Unpacks all sub-dictionaries in given dictionary recursively.
     There should be no duplicated keys across all nested
     subdictionaries, or some instances will be lost without warning

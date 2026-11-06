@@ -16,8 +16,7 @@ TorchTensorAllocator = Callable[[Tuple[int], "torch.dtype"], "torch.Tensor"]
 
 @DeveloperAPI
 class Communicator(ABC):
-    """
-    Communicator for a group of Compiled Graph actors on NVIDIA GPU.
+    """Communicator for a group of Compiled Graph actors on NVIDIA GPU.
 
     The Compiled Graph execution leverages this internally to support communication
     between actors in the group.
@@ -25,8 +24,7 @@ class Communicator(ABC):
 
     @abstractmethod
     def initialize(self, rank: int) -> None:
-        """
-        Initialize the communicator from the actor.
+        """Initialize the communicator from the actor.
 
         This is called once by Compiled Graph on each actor to initialize the
         communicator,before any other methods.
@@ -38,38 +36,33 @@ class Communicator(ABC):
 
     @abstractmethod
     def get_actor_handles(self) -> List["ray.actor.ActorHandle"]:
-        """
-        Get handles of all actors for this communicator group.
-        """
+        """Get handles of all actors for this communicator group."""
         raise NotImplementedError
 
     @abstractmethod
     def get_rank(self, actor: ray.actor.ActorHandle) -> int:
-        """
-        Return the given actor's rank in the group.
+        """Return the given actor's rank in the group.
 
         Args:
             actor: The actor handle to look up.
+
+        Returns:
+            The rank of ``actor`` within the communicator group.
         """
         raise NotImplementedError
 
     @abstractmethod
     def get_self_rank(self) -> Optional[int]:
-        """
-        Return this actor's rank.
-        """
+        """Return this actor's rank."""
         raise NotImplementedError
 
     def get_world_size(self) -> int:
-        """
-        Return the number of ranks in the group.
-        """
+        """Return the number of ranks in the group."""
         raise NotImplementedError
 
     @abstractmethod
     def send(self, value: "torch.Tensor", peer_rank: int) -> None:
-        """
-        Send a torch.Tensor to a peer.
+        """Send a torch.Tensor to a peer.
 
         This returns when the send kernel has been queued, but the kernel may
         not have completed. Therefore, the caller should ensure that there are
@@ -90,8 +83,7 @@ class Communicator(ABC):
         peer_rank: int,
         allocator: Optional[TorchTensorAllocator] = None,
     ) -> "torch.Tensor":
-        """
-        Receive a torch.Tensor from a peer and synchronize.
+        """Receive a torch.Tensor from a peer and synchronize.
 
         After this call returns, the receive buffer is safe to read from from
         any stream. An RayChannelError will be raised if an error occurred (e.g.,
@@ -102,23 +94,22 @@ class Communicator(ABC):
             dtype: The dtype of the tensor to receive.
             peer_rank: The rank of the actor to receive from.
             allocator: A function to allocate the tensor to receive into.
+
+        Returns:
+            The tensor received from ``peer_rank``.
         """
         raise NotImplementedError
 
     @property
     @abstractmethod
     def recv_stream(self):
-        """
-        Return the torch stream context used for receiving tensors.
-        """
+        """Return the torch stream context used for receiving tensors."""
         raise NotImplementedError
 
     @property
     @abstractmethod
     def send_stream(self):
-        """
-        Return the torch stream context used for sending tensors.
-        """
+        """Return the torch stream context used for sending tensors."""
         raise NotImplementedError
 
     @abstractmethod
@@ -127,8 +118,7 @@ class Communicator(ABC):
         send_buf: "torch.Tensor",
         recv_buf: "torch.Tensor",
     ) -> None:
-        """
-        Collectively allgather the tensor across the group.
+        """Collectively allgather the tensor across the group.
 
         Args:
             send_buf: The input torch.tensor to allgather. It should already be
@@ -144,8 +134,7 @@ class Communicator(ABC):
         recv_buf: "torch.Tensor",
         op: ReduceOp,
     ) -> None:
-        """
-        Collectively allreduce the tensor across the group.
+        """Collectively allreduce the tensor across the group.
 
         Args:
             send_buf: The input torch.tensor to allreduce. It should already be
@@ -162,8 +151,7 @@ class Communicator(ABC):
         recv_buf: "torch.Tensor",
         op: ReduceOp,
     ) -> None:
-        """
-        Collectively reducescatter the tensor across the group.
+        """Collectively reducescatter the tensor across the group.
 
         Args:
             send_buf: The input torch.tensor to reducescatter. It should already be
@@ -175,8 +163,7 @@ class Communicator(ABC):
 
     @abstractmethod
     def destroy(self) -> None:
-        """
-        Destroy the GPU communicator.
+        """Destroy the GPU communicator.
 
         Any destruction and cleanup for the GPU communicator should be
         done here. Implement as a noop is nothing is needed.
@@ -185,15 +172,11 @@ class Communicator(ABC):
 
     @abstractmethod
     def get_transport_name(self) -> str:
-        """
-        Return the type of the communicator (gpu or cpu).
-        """
+        """Return the type of the communicator (gpu or cpu)."""
         raise NotImplementedError
 
     @classmethod
     @abstractmethod
     def generate_communicator_id(cls) -> str:
-        """
-        Return the unique id of the communicator.
-        """
+        """Return the unique id of the communicator."""
         raise NotImplementedError

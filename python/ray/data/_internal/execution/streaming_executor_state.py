@@ -9,11 +9,12 @@ import threading
 import time
 from collections import defaultdict
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Dict, List, Optional, Tuple
+from typing import TYPE_CHECKING, Dict, List, Optional, Set, Tuple
 
 import ray
 from ray.data._internal.actor_autoscaler.autoscaling_actor_pool import ActorPoolInfo
 from ray.data._internal.execution.backpressure_policy import BackpressurePolicy
+from ray.data._internal.execution.block_ref_counter import BlockRefCounter
 from ray.data._internal.execution.bundle_queue import (
     ThreadSafeBundleQueue,
     create_bundle_queue,
@@ -33,19 +34,28 @@ from ray.data._internal.execution.operators.base_physical_operator import (
     InternalQueueOperatorMixin,
 )
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
+from ray.data._internal.execution.operators.lineage_reconstruction_mixin import (
+    LineageReconstructionMixin,
+)
 from ray.data._internal.execution.ranker import Ranker
 from ray.data._internal.execution.resource_manager import (
     ResourceManager,
+    terminal_operator_from_topology,
 )
 from ray.data._internal.execution.util import memory_string
 from ray.data._internal.util import (
     unify_schemas_with_validation,
 )
+from ray.data.exceptions import LineageReconstructionError
+from ray.exceptions import ObjectLostError, UserCodeException
 
 if TYPE_CHECKING:
+    from ray.data._internal.execution.lineage_tracker import LineageTracker
+    from ray.data._internal.execution.metadata_fetcher import MetadataFetcher
     from ray.data.block import Schema
 
 logger = logging.getLogger(__name__)
+
 
 # Holds the full execution state of the streaming topology. It's a dict mapping each
 # operator to tracked streaming exec state.
@@ -53,6 +63,197 @@ Topology = Dict[PhysicalOperator, "OpState"]
 
 # Maximum time `process_completed_tasks` will block in `ray.wait()` waiting for tasks to complete.
 WAIT_FOR_TASK_COMPLETION_TIMEOUT_S = 0.1
+
+
+class IdleDetector:
+    """Utility class for detecting idle operators.
+
+    Note, stalling can happen when there are less resources than Data executor
+    expects. E.g., when some resources are preempted by non-Data code, see
+    `test_no_deadlock_on_resource_contention` as an example.
+
+    This class is used to detect potential stalling and allow the execution
+    to make progress.
+    """
+
+    # The interval to detect idle operators.
+    # When downstream is idle, we'll allow reading at least one task output
+    # per this interval,
+    DETECTION_INTERVAL_S = 10.0
+    # Print a warning if an operator is idle for this time.
+    WARN_ON_IDLE_TIME_S = 60.0
+    # Whether a warning has been printed.
+    _warn_printed = False
+
+    def __init__(self):
+        # per-op fields
+        self.last_num_outputs = defaultdict(int)
+        self.last_output_time = defaultdict(lambda: time.time())
+        self.last_detection_time = defaultdict(lambda: time.time())
+
+    def detect_idle(self, op: PhysicalOperator):
+        cur_time = time.time()
+        if cur_time - self.last_detection_time[op] > self.DETECTION_INTERVAL_S:
+            cur_num_outputs = op.metrics.num_task_outputs_generated
+            if cur_num_outputs > self.last_num_outputs[op]:
+                self.last_num_outputs[op] = cur_num_outputs
+                self.last_output_time[op] = cur_time
+                self.last_detection_time[op] = cur_time
+            else:
+                self.print_warning_if_idle_for_too_long(
+                    op, cur_time - self.last_output_time[op]
+                )
+                return True
+
+        return False
+
+    @classmethod
+    def print_warning_if_idle_for_too_long(cls, op: PhysicalOperator, idle_time: float):
+        """Print a warning if an operator is idle for too long."""
+        if idle_time < cls.WARN_ON_IDLE_TIME_S or cls._warn_printed:
+            return
+        cls._warn_printed = True
+        msg = (
+            f"Operator {op} is running but has no outputs for {idle_time} seconds."
+            " Execution may be slower than expected.\n"
+            "Ignore this warning if your UDF is expected to be slow."
+            " Otherwise, this can happen when there are fewer cluster resources"
+            " available to Ray Data than expected."
+            " If you have non-Data tasks or actors running in the cluster, exclude"
+            " their resources from Ray Data with"
+            " `DataContext.get_current().execution_options.exclude_resources`."
+            " This message will only print once."
+        )
+
+        logger.warning(msg)
+
+
+class OutputBackpressureGuard:
+    """Escape hatch for streaming output backpressure.
+
+    When backpressure policies collectively allow 0 bytes of task output to be
+    read for an operator, the pipeline can deadlock if downstream is also
+    starved (no active tasks, no queued inputs). This guard inspects the
+    topology and resource state and decides whether to unblock the backpressure.
+
+    The guard owns per-operator idle-detection state across the lifetime of
+    a single executor, so it must be constructed once and reused across
+    scheduling-loop iterations.
+    """
+
+    def __init__(
+        self,
+        topology: Topology,
+        resource_manager: ResourceManager,
+        release_interval_s: Optional[float] = None,
+    ):
+        self._topology = topology
+        self._resource_manager = resource_manager
+        self._idle_detector = IdleDetector()
+        # Per-op minimum interval between releases. ``None`` or non-positive
+        # disables it and preserves the legacy behavior of releasing whenever
+        # the raw evaluation says so. Wall clock (``time.time()``) matches the
+        # idiom already used by ``IdleDetector``.
+        if release_interval_s is None or release_interval_s <= 0:
+            self._release_interval_s = 0.0
+        else:
+            self._release_interval_s = float(release_interval_s)
+        # Per-op timestamp of the last release that actually produced output.
+        # A missing entry reads as 0, which falls outside the interval so the
+        # first release for each op is not throttled.
+        self._last_release_time: Dict[PhysicalOperator, float] = {}
+
+    def notify_release_emitted(self, op: PhysicalOperator) -> None:
+        """Record that a release granted to ``op`` actually yielded output.
+
+        Callers must invoke this only once task output was really read, so the
+        interval throttles the rate at which upstream tasks are unblocked to
+        produce more output rather than the rate at which releases are merely
+        offered. A release that turns out to be a no-op leaves the interval
+        untouched and stays available for the next iteration."""
+        self._last_release_time[op] = time.time()
+
+    def should_unblock(self, op: PhysicalOperator) -> bool:
+        """Return True if output backpressure should be relaxed for ``op``
+        to preserve pipeline liveness.
+
+        With a positive ``release_interval_s``, releases that produced output
+        are rate-limited to at most one per interval per op. This is a pure
+        query: the caller is responsible for calling ``notify_release_emitted``
+        once the granted release actually yields output."""
+        # Evaluate first, unconditionally so the idle-detection state advances
+        # (and its idle warning keeps firing) regardless of the throttle. The
+        # unblock it may authorize is still gated by the interval below; only the
+        # idle bookkeeping itself is not.
+        if not self._evaluate_unblock_raw(op):
+            return False
+        if self._release_interval_s <= 0:
+            return True
+        last_release_time = self._last_release_time.get(op, 0)
+        return time.time() - last_release_time >= self._release_interval_s
+
+    def _evaluate_unblock_raw(self, op: PhysicalOperator) -> bool:
+        """Underlying liveness check without interval throttling."""
+        downstream_eligible_ops = list(
+            self._resource_manager.get_downstream_eligible_ops(op)
+        )
+
+        # If this operator is a terminal one (no downstream eligible ops):
+        # - No external consumer (e.g., write pipelines where we control draining):
+        #   always unblock to maintain liveness.
+        # - External consumer (iter_batches, streaming_split): only unblock if
+        #   consumers are starving (blocked waiting in get_output_blocking). This
+        #   prevents blocks from piling up when consumers are slow, while still
+        #   maintaining liveness when the budget is too small for even one block.
+        if not downstream_eligible_ops:
+            if not self._resource_manager.has_external_consumer:
+                return True
+            # Check the DAG root rather than the last eligible op because
+            # consumers block in get_output_blocking on the root's OpState,
+            # which may differ (e.g., OutputSplitter or LimitOperator).
+            output_op = terminal_operator_from_topology(self._topology)
+            output_op_state = self._topology[output_op]
+            return output_op_state.num_waiting_consumers > 0
+
+        for downstream_op in downstream_eligible_ops:
+            # To maintain liveness of the pipeline, we relax output backpressure
+            # in one of the following cases.
+            if downstream_op.num_active_tasks() == 0:
+                downstream_op_state = self._topology[downstream_op]
+
+                # Case 1: Downstream operator
+                #   - Does *not* have running tasks and
+                #   - Is not able to schedule (resource constrained)
+                #
+                # In this case by relaxing output backpressure we allow upstream
+                # operator's task to complete sooner to free up resources.
+                if not self._can_submit_new_task(downstream_op):
+                    return True
+
+                # Case 2: Downstream operator
+                #   - Does *not* have running tasks and
+                #   - *Can* schedule new tasks
+                #   - Does *not* have any input blocks in the queue
+                #
+                # In this case we relax output backpressure to produce at least
+                # 1 block for downstream operator.
+                elif downstream_op_state.total_enqueued_input_blocks() == 0:
+                    return True
+
+        # As a last resort we check whether operator has been idling (ie not
+        # producing any outputs) for a while, and unblock in that case.
+        return self._idle_detector.detect_idle(op)
+
+    def _can_submit_new_task(self, op: PhysicalOperator) -> bool:
+        """Whether ``op`` can submit a new task under current resource budgets.
+
+        Falls back to True when no op-level resource allocator is enabled —
+        in that case there is no budget-based throttling to wait on, so the
+        liveness check shouldn't claim downstream is blocked on resources.
+        """
+        if not self._resource_manager.op_resource_allocator_enabled():
+            return True
+        return self._resource_manager.op_resource_allocator.can_submit_new_task(op)
 
 
 class OpBufferQueue:
@@ -91,6 +292,9 @@ class OpBufferQueue:
         Args:
             output_split_idx: If specified, only check ref bundles with the
                 given output split. When None, checks the default queue (index 0).
+
+        Returns:
+            ``True`` if a ``RefBundle`` is available for the requested split.
         """
         return self._get_queue_for(output_split_idx).has_next()
 
@@ -330,6 +534,10 @@ class OpState:
 
         This method must be thread-safe.
 
+        Args:
+            output_split_idx: Optional output split index for streaming-split
+                consumers; ``None`` reads from the default output queue.
+
         Returns:
             The RefBundle from the output queue, or an error / end of stream indicator.
 
@@ -389,7 +597,10 @@ class OpState:
 
 
 def build_streaming_topology(
-    dag: PhysicalOperator, options: ExecutionOptions
+    dag: PhysicalOperator,
+    options: ExecutionOptions,
+    block_ref_counter: BlockRefCounter,
+    lineage_tracker: Optional["LineageTracker"] = None,
 ) -> Topology:
     """Instantiate the streaming operator state topology for the given DAG.
 
@@ -400,6 +611,11 @@ def build_streaming_topology(
     Args:
         dag: The operator DAG to instantiate.
         options: The execution options to use to start operators.
+        block_ref_counter: The executor-wide shared counter for tracking
+            object-store memory.
+        lineage_tracker: Optional tracker for experimental lineage reconstruction.
+            Attached to every operator so they can record task lineage as they
+            execute. ``None`` disables tracking.
 
     Returns:
         The topology dict holding the streaming execution state.
@@ -421,17 +637,187 @@ def build_streaming_topology(
         # Create state.
         op_state = OpState(op, inqueues)
         topology[op] = op_state
-        op.start(options)
+        op.start(options, block_ref_counter, lineage_tracker)
         return op_state
 
     setup_state(dag)
     return topology
 
 
+def _clear_downstream_completion_state(
+    topology: Topology, start_op: PhysicalOperator
+) -> None:
+    """Clear the completion state of ``start_op`` and everything downstream so a
+    re-injected seed input can flow through again.
+
+    A finished op clears its external input queue every tick and is filtered out
+    of dispatch (see ``update_operator_states`` / ``get_eligible_operators``), and
+    ``_is_execution_marked_finished`` / ``inputs_done_called`` are one-way latches.
+    Walk the operator subgraph downstream of ``start_op`` and clear them; normal
+    completion re-fires once the reconstructed partition finishes draining.
+    """
+    stack = [start_op]
+    seen = set()
+    while stack:
+        op = stack.pop()
+        if op in seen:
+            continue
+        seen.add(op)
+        op._is_execution_marked_finished = False
+        op._inputs_complete = False
+        op_state = topology[op]
+        op_state.inputs_done_called = False
+        op_state.input_done_called = [False] * len(op.input_dependencies)
+        stack.extend(op.output_dependencies)
+
+    logger.info(
+        "[lineage-reconstruction] Cleared completion state for operators: "
+        + ", ".join(f'"{op.name}"' for op in seen)
+    )
+
+
+def _reconstruct_lost_object(
+    topology: Topology,
+    lineage_tracker: "LineageTracker",
+    state: "OpState",
+    task: OpTask,
+    lost_error: ObjectLostError,
+) -> None:
+    """Plan and trigger a reconstruction for a lost task output.
+
+    Walks the failed task's dependencies to its seed tasks, gets their retained seed inputs,
+    and resubmits them to the source operator. Only the branches on the
+    path to the lost object are re-executed -- outputs the plan does not need are
+    dropped as ``OBJECT_PRUNED`` rather than re-emitted.
+
+    Args:
+        topology: The executor's operator topology, searched for the operator
+            that retained each seed task's input.
+        lineage_tracker: The tracker recording the dataset's task lineage.
+        state: The state of the operator whose task output was lost.
+        task: The task whose output was lost.
+        lost_error: The error raised when reading the lost output.
+
+    Raises:
+        LineageReconstructionError: If reconstruction cannot start. It is the
+            only exception raised for a "cannot reconstruct" path: this runs on the
+            executor thread, so the caller catches it and falls back to the error
+            path rather than tearing down the whole dataset.
+    """
+    if not isinstance(task, DataOpTask) or not task.is_lineage_tracked:
+        raise LineageReconstructionError(
+            lost_error,
+            f"task {task.task_index()} on operator {state.op.name!r} is not tracked "
+            "by the lineage graph.",
+        ) from lost_error
+
+    # A retry of a failed reconstruction attempt reuses the reconstruction plans it served; a fresh failure
+    # opens a new one. Plans keep separate buckets on shared ancestors, so concurrent
+    # plans do not interfere.
+    traced_seed_ids: Set[str] = set()
+    reconstruction_plan_ids: Set[str] = set()
+    try:
+        if task.reconstruction_plan_ids:
+            for failed_plan_id in sorted(task.reconstruction_plan_ids):
+                seed_ids, reconstruction_plan_id = lineage_tracker.register_task_failed(
+                    task.lineage_task_id, failed_plan_id
+                )
+                traced_seed_ids.update(seed_ids)
+                reconstruction_plan_ids.add(reconstruction_plan_id)
+        else:
+            seed_ids, reconstruction_plan_id = lineage_tracker.register_task_failed(
+                task.lineage_task_id
+            )
+            traced_seed_ids.update(seed_ids)
+            reconstruction_plan_ids.add(reconstruction_plan_id)
+    except ValueError as err:
+        raise LineageReconstructionError(
+            lost_error,
+            f"task {task.lineage_task_id} on operator {state.op.name!r} is not "
+            f"registered with the lineage graph ({err}).",
+        ) from lost_error
+
+    seed_task_ids = sorted(traced_seed_ids)
+    plans_str = ", ".join(sorted(reconstruction_plan_ids))
+
+    # Get each seed's retained input from the tracker, and the operator that ran the
+    # seed, which is where the input is re-injected.
+    resubmissions = []
+    for seed_id in seed_task_ids:
+        try:
+            seed_input = lineage_tracker.get_seed_input(seed_id)
+        except ValueError as err:
+            raise LineageReconstructionError(
+                lost_error, f"no retained input for seed task {seed_id} ({err})."
+            ) from lost_error
+        seed_op = next(
+            (
+                op
+                for op in topology
+                if isinstance(op, LineageReconstructionMixin)
+                and op.owns_data_task(seed_id)
+            ),
+            None,
+        )
+        if seed_op is None:
+            raise LineageReconstructionError(
+                lost_error, f"no operator owns seed task {seed_id}."
+            ) from lost_error
+        resubmissions.append((seed_id, seed_op, seed_input))
+
+    # Abort the task so the operator releases every resource it reserved. It's
+    # not counted as failed since its lost output is being reconstructed.
+    task.mark_aborted(lost_error, aborted_for_reconstruction=True)
+
+    for seed_id, seed_op, seed_input in resubmissions:
+        # Clear the completion state of the seed op and everything downstream so a
+        # re-injected seed input can flow through again.
+        _clear_downstream_completion_state(topology, seed_op)
+        # If a reconstruction task for this seed is already queued, these plans join it.
+        if seed_op.join_queued_reconstruction_task(seed_id, reconstruction_plan_ids):
+            logger.info(
+                "[lineage-reconstruction] Plan(s) %s joined the queued reconstruction task "
+                "of seed task %s on operator %r.",
+                plans_str,
+                seed_id,
+                seed_op.name,
+            )
+            continue
+        # `OpState.output_queue` of the source is the seed op's `input_queues[0]`
+        # (same object, wired in `build_streaming_topology`).
+        # Backpressure gates the resubmission like any other input.
+        # The seed's identity travels on the bundle as its `reconstruction_stamp`.
+        # Without it the resubmitted bundle is minted a fresh id and the plan never
+        # resolves.
+        seed_input = seed_op.stamp_seed_reconstruction_task(
+            seed_id, reconstruction_plan_ids, seed_input
+        )
+        source_op = seed_op.input_dependencies[0]
+        topology[source_op].add_output(seed_input)
+        logger.info(
+            "[lineage-reconstruction] Re-injected seed task %s on operator %r "
+            "(~%s bytes) for plan(s) %s.",
+            seed_id,
+            seed_op.name,
+            seed_input.size_bytes(),
+            plans_str,
+        )
+
+    logger.warning(
+        "Reconstructing lost object for task %s via plan(s) %s from seed task(s) %s.",
+        task.lineage_task_id,
+        plans_str,
+        ", ".join(seed_task_ids),
+    )
+
+
 def process_completed_tasks(
     topology: Topology,
     backpressure_policies: List[BackpressurePolicy],
     max_errored_blocks: int,
+    output_backpressure_guard: OutputBackpressureGuard,
+    metadata_fetcher: "MetadataFetcher",
+    lineage_tracker: Optional["LineageTracker"] = None,
 ) -> int:
     """Process any newly completed tasks. To update operator
     states, call `update_operator_states()` afterwards.
@@ -441,10 +827,20 @@ def process_completed_tasks(
         backpressure_policies: The backpressure policies to use.
         max_errored_blocks: Max number of errored blocks to allow,
             unlimited if negative.
+        output_backpressure_guard: Escape hatch for streaming output
+            backpressure. Bumps a fully-throttled output limit (0 bytes) to
+            1 byte when the guard signals a stall.
+        metadata_fetcher: Resolves pulled (block_ref, meta_ref) pairs into
+            emitted RefBundles. The threaded fetcher defers metadata fetches to
+            a background thread (emitting in per-op order as they become ready);
+            the inline fetcher emits synchronously.
+        lineage_tracker: Optional tracker for experimental lineage reconstruction.
+            When set, a lost task output is reconstructed from its lineage instead
+            of counting as an errored block. ``None`` disables reconstruction.
+
     Returns:
         The number of errored blocks.
     """
-
     # All active tasks, keyed by their waitables.
     active_tasks: Dict[Waitable, Tuple[OpState, OpTask]] = {}
     for op, state in topology.items():
@@ -452,6 +848,10 @@ def process_completed_tasks(
             active_tasks[task.get_waitable()] = (state, task)
 
     remaining_output_budget: Dict[OpState, int] = {}
+    # Ops the guard unblocked this iteration. The release only counts against
+    # the guard's interval once output is actually read below, so a release that
+    # finds nothing to read doesn't consume the op's window.
+    guard_released_ops: Set[PhysicalOperator] = set()
     for op, state in topology.items():
         # Check all backpressure policies for max_task_output_bytes_to_read
         # Use the minimum limit from all policies (most restrictive)
@@ -472,14 +872,62 @@ def process_completed_tasks(
             max_bytes_to_read is None or max_bytes_to_read >= 0
         ), f"Max bytes to read must either be null or >= 0 (got {max_bytes_to_read})"
 
-        # If no policy provides a limit, there's no limit
-        op.notify_in_task_output_backpressure(max_bytes_to_read == 0, limiting_policy)
+        # Apply the escape hatch after aggregating across all policies so it
+        # fires regardless of which policy drove the limit to 0.
+        if max_bytes_to_read == 0 and output_backpressure_guard.should_unblock(op):
+            max_bytes_to_read = 1
+            # Confirmed further down, once this op's output is really read.
+            guard_released_ops.add(op)
+
+        # When the guard bumped the limit above 0, clear the policy attribution too
+        in_backpressure = max_bytes_to_read == 0
+        op.notify_in_task_output_backpressure(
+            in_backpressure, limiting_policy if in_backpressure else None
+        )
 
         if max_bytes_to_read is not None:
             remaining_output_budget[state] = max_bytes_to_read
 
     # Process completed Ray tasks and notify operators.
     num_errored_blocks = 0
+
+    def _record_errored_block(e: BaseException, op_name: str) -> None:
+        """Apply ``max_errored_blocks`` accounting to a block-level error from
+        either ``on_data_ready`` or a deferred metadata fetch. Raises to abort
+        once the budget is exhausted."""
+        nonlocal num_errored_blocks
+        num_errored_blocks += 1
+        should_ignore = (
+            max_errored_blocks < 0 or max_errored_blocks >= num_errored_blocks
+        )
+        error_message = f'An exception was raised from a task of operator "{op_name}".'
+        if should_ignore:
+            remaining = (
+                max_errored_blocks - num_errored_blocks
+                if max_errored_blocks >= 0
+                else "unlimited"
+            )
+            error_message += (
+                f" Ignoring this exception with remaining"
+                f" max_errored_blocks={remaining}."
+            )
+            logger.error(error_message, exc_info=e)
+        else:
+            error_message += (
+                " Dataset execution will now abort."
+                " To ignore this exception and continue, set"
+                " DataContext.max_errored_blocks."
+            )
+            # For a user-code error the traceback is re-logged (cleaned) when the
+            # exception propagates to the top-level handler, so don't dump it here
+            # too. Genuine internal / system errors keep the full traceback in
+            # place for diagnostics.
+            if isinstance(e, UserCodeException):
+                logger.error(error_message)
+            else:
+                logger.error(error_message, exc_info=e)
+            raise e from None
+
     if active_tasks:
         ready, _ = ray.wait(
             list(active_tasks.keys()),
@@ -498,52 +946,89 @@ def process_completed_tasks(
             state, task = active_tasks[ref]
             ready_tasks_by_op[state].append(task)
 
+        # Per-op task processing. ``metadata_fetcher`` decides how each pulled
+        # (block_ref, meta_ref) pair becomes an emitted RefBundle:
+        # - inline mode: ``on_data_ready`` fetches + emits each pair inline and
+        #   fires the task's done-callback at end-of-stream (``submit`` is a
+        #   no-op).
+        # - threaded mode: every pulled pair is deferred (budget arithmetic uses
+        #   the block's local ``object_size``, no per-ref ``ray.get``) and handed
+        #   to the background fetcher by ``submit``; emission and the postponed
+        #   done-callback happen in ``emit_ready_and_fire_done_callbacks``, preserving the per-op,
+        #   per-task, per-pair emission order.
         for state, ready_tasks in ready_tasks_by_op.items():
             # TODO elaborate why sorting (helps preserve_order case)
             ready_tasks = sorted(ready_tasks, key=lambda t: t.task_index())
-            for task in ready_tasks:
-                if isinstance(task, DataOpTask):
-                    try:
-                        bytes_read = task.on_data_ready(
-                            remaining_output_budget.get(state, None)
-                        )
-                        if state in remaining_output_budget:
-                            # Clamp remaining output budget at 0
-                            remaining_output_budget[state] = max(
-                                remaining_output_budget[state] - bytes_read, 0
+            op_data_tasks: List[DataOpTask] = []
+            try:
+                for task in ready_tasks:
+                    if isinstance(task, DataOpTask):
+                        try:
+                            bytes_read = task.on_data_ready(
+                                remaining_output_budget.get(state, None),
+                                metadata_fetcher,
                             )
-                    except Exception as e:
-                        num_errored_blocks += 1
-                        should_ignore = (
-                            max_errored_blocks < 0
-                            or max_errored_blocks >= num_errored_blocks
-                        )
-                        error_message = (
-                            "An exception was raised from a task of "
-                            f'operator "{state.op.name}".'
-                        )
-                        if should_ignore:
-                            remaining = (
-                                max_errored_blocks - num_errored_blocks
-                                if max_errored_blocks >= 0
-                                else "unlimited"
+                            op_data_tasks.append(task)
+                            if bytes_read > 0 and state.op in guard_released_ops:
+                                # The guard's release produced real output, so
+                                # start this op's interval from here.
+                                guard_released_ops.discard(state.op)
+                                output_backpressure_guard.notify_release_emitted(
+                                    state.op
+                                )
+                            if state in remaining_output_budget:
+                                # Clamp remaining output budget at 0
+                                remaining_output_budget[state] = max(
+                                    remaining_output_budget[state] - bytes_read, 0
+                                )
+                        except ObjectLostError as e:
+                            # Experimental lineage reconstruction: if we can trace
+                            # the lost output back to a tracked seed input,
+                            # resubmit that seed input's chain instead of
+                            # counting an error.
+                            if lineage_tracker is None:
+                                _record_errored_block(e, state.op.name)
+                                continue
+                            logger.info(
+                                "[lineage-reconstruction] Detected lost object while "
+                                f"reading output of task {task.task_index()} on "
+                                f'operator "{state.op.name}"; attempting lineage '
+                                "reconstruction."
                             )
-                            error_message += (
-                                " Ignoring this exception with remaining"
-                                f" max_errored_blocks={remaining}."
-                            )
-                            logger.error(error_message, exc_info=e)
-                        else:
-                            error_message += (
-                                " Dataset execution will now abort."
-                                " To ignore this exception and continue, set"
-                                " DataContext.max_errored_blocks."
-                            )
-                            logger.exception(error_message)
-                            raise e from None
-                else:
-                    assert isinstance(task, MetadataOpTask)
-                    task.on_task_finished()
+                            lineage_tracker.num_object_reconstruction_attempts += 1
+                            try:
+                                _reconstruct_lost_object(
+                                    topology, lineage_tracker, state, task, e
+                                )
+                            except LineageReconstructionError as recon_error:
+                                # In case lineage reconstruction fails, abort the task
+                                task.mark_aborted(recon_error)
+                                _record_errored_block(recon_error, state.op.name)
+                        except Exception as e:
+                            _record_errored_block(e, state.op.name)
+                    else:
+                        assert isinstance(task, MetadataOpTask)
+                        task.on_task_finished()
+            finally:
+                # Hand this op's just-deferred pairs to the fetcher, and register
+                # any end-of-stream tasks for a postponed done-callback (a no-op
+                # in inline mode, where the pairs already emitted above). In a
+                # ``finally`` so a thrown error can't strand pairs already
+                # deferred into the fetcher this iteration.
+                metadata_fetcher.submit(state, op_data_tasks)
+
+    # Emit whatever's ready, in per-op order, then fire any postponed done
+    # callbacks — UNCONDITIONALLY, even when there are no active tasks this
+    # iteration. Pairs deferred in earlier iterations (their tasks may already
+    # be gone) can still have metadata land later; gating this on `active_tasks`
+    # would strand them and stall output forever. Deferred metadata-fetch
+    # failures go through the same `max_errored_blocks` accounting as inline
+    # `on_data_ready` errors. (Inline mode returns nothing here.)
+    for (
+        failed_op_name,
+        fetch_exc,
+    ) in metadata_fetcher.emit_ready_and_fire_done_callbacks():
+        _record_errored_block(fetch_exc, failed_op_name)
 
     # Pull any operator outputs into the streaming op state.
     for op, op_state in topology.items():
@@ -558,7 +1043,6 @@ def update_operator_states(topology: Topology) -> None:
     Should be called after `process_completed_tasks()`."""
 
     for op, op_state in topology.items():
-
         # Call inputs_done() on ops where no more inputs are coming.
         if op_state.inputs_done_called:
             continue
@@ -579,7 +1063,6 @@ def update_operator_states(topology: Topology) -> None:
     # For each op, if all of its downstream operators have completed,
     # call mark_execution_finished() to also complete this op.
     for op, op_state in reversed(list(topology.items())):
-
         dependents_completed = len(op.output_dependencies) > 0 and all(
             dep.has_completed() for dep in op.output_dependencies
         )
@@ -858,6 +1341,7 @@ def dedupe_schemas_with_validation(
             schema=old_schema,
             owns_blocks=bundle.owns_blocks,
             output_split_idx=bundle.output_split_idx,
+            reconstruction_stamp=bundle.reconstruction_stamp,
             _cached_object_meta=bundle._cached_object_meta,
             _cached_preferred_locations=bundle._cached_preferred_locations,
         ),

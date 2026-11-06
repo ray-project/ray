@@ -345,7 +345,9 @@ def test_disable_usage_stats(monkeypatch, tmp_path):
 # compared to 3.7. Without this, tests would fail.
 # Todo: This should be removed again. Also, some tests are currently skipped.
 @pytest.mark.skipif(sys.platform == "darwin", reason="Currently failing on OSX")
-def test_ray_start(configure_lang, monkeypatch, tmp_path, cleanup_ray):
+def test_ray_start(
+    configure_lang, monkeypatch, tmp_path, cleanup_ray, create_auth_token
+):
     monkeypatch.setenv("RAY_USAGE_STATS_CONFIG_PATH", str(tmp_path / "config.json"))
     runner = CliRunner(env={"RAY_USAGE_STATS_PROMPT_ENABLED": "0"})
     temp_dir = os.path.join("/tmp", uuid.uuid4().hex)
@@ -398,7 +400,9 @@ def test_ray_start(configure_lang, monkeypatch, tmp_path, cleanup_ray):
     sys.platform == "darwin" and "travis" in os.environ.get("USER", ""),
     reason=("Mac builds don't provide proper locale support"),
 )
-def test_ray_start_worker_can_specify_temp_dir(configure_lang, tmp_path, cleanup_ray):
+def test_ray_start_worker_can_specify_temp_dir(
+    configure_lang, tmp_path, cleanup_ray, create_auth_token
+):
     """
     Verify that ray start --temp-dir works on worker nodes independently of head node.
     """
@@ -1065,7 +1069,7 @@ def test_ray_submit(configure_lang, configure_aws, _unlink_test_ssh_key):
 @pytest.mark.parametrize("enable_v2", [True, False])
 def test_ray_status(shutdown_only, monkeypatch, enable_v2):
     address = ray.init(
-        num_cpus=3, _system_config={"enable_autoscaler_v2": enable_v2}
+        num_cpus=3, num_gpus=0, _system_config={"enable_autoscaler_v2": enable_v2}
     ).get("address")
     runner = CliRunner()
 

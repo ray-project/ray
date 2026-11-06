@@ -281,6 +281,25 @@ def test_streaming_split_e2e(ray_start_10_cpus_shared):
                 assert lengths == [300, 300, 400], lengths
 
 
+def test_streaming_split_over_materialized_all_to_all(ray_start_10_cpus_shared):
+    """Regression test: pass-through all-to-all op over a materialized dataset.
+
+    `randomize_block_order` reorders its input bundles instead of producing new
+    blocks, so the blocks it emits are still owned by whoever built the
+    materialized dataset -- the caller, not the `SplitCoordinator` actor that
+    runs the split's plan. The operator must not register an object
+    out-of-scope callback on a block it doesn't own; doing so raises
+    "Cannot register an out-of-scope/freed callback ... not owned by this
+    worker" and fails the whole execution before a single row is read.
+    """
+    ds = ray.data.range(100, override_num_blocks=10).materialize()
+    ds = ds.randomize_block_order()
+
+    (it,) = ds.streaming_split(1, equal=True)
+
+    assert sorted(row["id"] for row in it.iter_rows()) == list(range(100))
+
+
 def test_streaming_split_barrier(ray_start_10_cpus_shared):
     ds = ray.data.range(20, override_num_blocks=20)
     (
@@ -396,6 +415,101 @@ def test_streaming_split_independent_finish(ray_start_10_cpus_shared):
     )
 
     assert len(ready) == 2
+
+
+def test_streaming_split_early_exit_shuts_down_executor(ray_start_10_cpus_shared):
+    """When every split breaks out of ``iter_batches`` early, the executor
+    on the SplitCoordinator should be shut down promptly — much faster than
+    the dataset would naturally finish.
+
+    The shutdown signal must come from the consumer's thread (via
+    ``_on_iteration_end``), not from the inner ``gen_blocks`` generator's
+    ``finally``: that generator runs inside the async-prefetch filling
+    worker thread, so on early ``break`` its cleanup is GC-bound and may
+    not fire within the test's timeout under load (CI flake)."""
+
+    num_splits = 2
+    # A slow per-block map ensures natural completion is much slower than
+    # our wait_for_condition timeout. If the shutdown were waiting on the
+    # producer to drain naturally, this test would time out.
+    def slow_map(row):
+        time.sleep(0.5)
+        return row
+
+    ds = ray.data.range(1000, override_num_blocks=20).map(slow_map)
+    splits = ds.streaming_split(num_splits, equal=True)
+
+    threads = []
+    for split in splits:
+
+        def consume(it=split):
+            for i, _ in enumerate(it.iter_batches(batch_size=10, prefetch_batches=0)):
+                if i == 0:
+                    break
+
+        t = threading.Thread(target=consume)
+        t.start()
+        threads.append(t)
+
+    for t in threads:
+        t.join()
+
+    # Shutdown is fire-and-forget from the iterator; wait for the
+    # coordinator to process the last ``notify_split_finished`` call.
+    # Tight timeout to catch the regression where shutdown waits for the
+    # slow producer to drain naturally.
+    coord = splits[0]._coord_actor
+    wait_for_condition(
+        lambda: ray.get(coord._is_executor_shutdown.remote()),
+        timeout=10,
+    )
+
+
+def test_streaming_split_partial_early_exit_keeps_executor(
+    ray_start_10_cpus_shared,
+):
+    """When only some splits exit early, the executor must stay alive so
+    the remaining splits can continue iterating."""
+
+    num_splits = 2
+    num_blocks_per_split = 20
+    total_rows = num_splits * num_blocks_per_split * 10
+    ds = ray.data.range(
+        total_rows, override_num_blocks=num_splits * num_blocks_per_split
+    )
+    i1, i2 = ds.streaming_split(num_splits, equal=True)
+
+    other_count = [0]
+
+    def break_early():
+        for i, _ in enumerate(i1.iter_batches(batch_size=10, prefetch_batches=0)):
+            if i == 0:
+                break
+
+    def consume_all():
+        for _ in i2.iter_batches(batch_size=10, prefetch_batches=0):
+            other_count[0] += 1
+
+    t1 = threading.Thread(target=break_early)
+    t2 = threading.Thread(target=consume_all)
+    # Both threads must call iter_batches concurrently — streaming_split
+    # has a barrier that requires every split to start an epoch before any
+    # split can pull blocks.
+    t1.start()
+    t2.start()
+    t1.join(timeout=30)
+    t2.join(timeout=30)
+
+    # The remaining split iterated to completion — the executor stayed
+    # alive even after the first split finished.
+    assert other_count[0] == num_blocks_per_split, other_count[0]
+
+    # And once both splits finished, the executor was shut down.
+    coord = i1._coord_actor
+    wait_for_condition(
+        lambda: ray.get(coord._is_executor_shutdown.remote()),
+        timeout=10,
+    )
 
 
 def test_streaming_split_error_propagation(
@@ -519,14 +633,28 @@ def test_streaming_split_context(ray_start_10_cpus_shared):
 
 
 def test_streaming_split_dataset_tag(ray_start_10_cpus_shared):
-    """Test that _get_dataset_tag() returns correct tags from the coordinator."""
+    """The tag names the epoch the split is about to consume, not the last one."""
     ds = ray.data.range(10)
     i1, i2 = ds.streaming_split(2, equal=True)
 
-    tag1 = i1._get_dataset_tag()
-    tag2 = i2._get_dataset_tag()
-    assert "_split_0" in tag1
-    assert "_split_1" in tag2
+    @ray.remote
+    def consume(it):
+        return sum(1 for _ in it.iter_rows())
+
+    def dataset_ids():
+        tags1 = i1._get_dataset_tag()
+        tags2 = i2._get_dataset_tag()
+        assert tags1["split_index"] == "0"
+        assert tags2["split_index"] == "1"
+        assert tags1["dataset"] == tags2["dataset"]
+        return tags1["dataset"]
+
+    # Verify the run indices are correct within the dataset ids
+    assert dataset_ids().endswith("_0")
+    ray.get([consume.remote(i1), consume.remote(i2)])
+    assert dataset_ids().endswith("_1")
+    ray.get([consume.remote(i1), consume.remote(i2)])
+    assert dataset_ids().endswith("_2")
 
 
 def test_configure_spread_e2e(ray_start_10_cpus_shared, restore_data_context):

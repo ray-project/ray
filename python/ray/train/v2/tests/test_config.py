@@ -36,6 +36,25 @@ def test_scaling_config_validation():
         )
 
 
+def test_label_selector_per_worker():
+    # None -> None (no constraint; downstream consumers handle this directly).
+    assert ScalingConfig(num_workers=3)._label_selector_per_worker(3) is None
+
+    # Dict -> replicated per worker, decoupled from the original.
+    cfg = ScalingConfig(num_workers=2, label_selector={"zone": "a"})
+    result = cfg._label_selector_per_worker(2)
+    assert result == [{"zone": "a"}, {"zone": "a"}]
+    result[0]["zone"] = "b"
+    assert cfg.label_selector == {"zone": "a"}
+
+    # List -> sliced to num_workers, decoupled from the original.
+    cfg = ScalingConfig(
+        num_workers=(1, 3),
+        label_selector=[{"a": "1"}, {"a": "2"}, {"a": "3"}],
+    )
+    assert cfg._label_selector_per_worker(2) == [{"a": "1"}, {"a": "2"}]
+
+
 def test_scaling_config_accelerator_type():
     scaling_config = ScalingConfig(num_workers=2, use_gpu=True, accelerator_type="A100")
     assert scaling_config.accelerator_type == "A100"

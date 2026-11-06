@@ -11,7 +11,7 @@ fi
 
 # Strip lightning>=2 from tune-test-requirements so lightning1 back-compat
 # build only has pytorch-lightning==1.8.6 (v1), not the v2 lightning package.
-TUNE_TEST_REQ="python/requirements/ml/py313/tune-test-requirements.txt"
+TUNE_TEST_REQ="python/requirements/ml/tune-test-requirements.txt"
 if [[ -f "$TUNE_TEST_REQ" ]]; then
     sed '/^lightning/d' "$TUNE_TEST_REQ" > /tmp/ray-deps/tune-test-requirements-no-lightning.txt
 fi

@@ -63,7 +63,7 @@ class InstanceStorage:
         self,
         instance: Instance,
         expected_instance_version: Optional[int] = None,
-        expected_storage_verison: Optional[int] = None,
+        expected_storage_version: Optional[int] = None,
     ) -> StoreStatus:
         """Upsert an instance in the storage.
         If the expected_instance_version is specified, the update will fail
@@ -92,7 +92,7 @@ class InstanceStorage:
             key=instance.instance_id,
             value=instance.SerializeToString(),
             expected_entry_version=expected_instance_version,
-            expected_storage_version=expected_storage_verison,
+            expected_storage_version=expected_storage_version,
             insert_only=False,
         )
 
@@ -130,13 +130,13 @@ class InstanceStorage:
     def batch_delete_instances(
         self, instance_ids: List[str], expected_storage_version: Optional[int] = None
     ) -> StoreStatus:
-        """Delete instances from the storage. If the expected_version is
-        specified, the update will fail if the current storage version does not
-        match the expected version.
+        """Delete instances from the storage. If the expected_storage_version
+        is specified, the update will fail if the current storage version does
+        not match the expected version.
 
         Args:
-            to_delete: A list of instances to be deleted.
-            expected_version: The expected storage version.
+            instance_ids: A list of instance ids to be deleted.
+            expected_storage_version: The expected storage version.
 
         Returns:
             StoreStatus: A tuple of (success, storage_version).

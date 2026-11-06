@@ -109,22 +109,30 @@ class Concatenator(SerializablePreprocessorBase):
 
     @property
     def columns(self) -> List[str]:
+        """The columns to concatenate, in concatenation order."""
         return self._columns
 
     @property
     def output_column_name(self) -> str:
+        """The name of the column that holds the concatenated tensors."""
         return self._output_column_name
 
     @property
     def dtype(self) -> Optional[np.dtype]:
+        """The ``dtype`` of the output tensors.
+
+        ``None`` means the ``dtype`` follows standard coercion rules.
+        """
         return self._dtype
 
     @property
     def raise_if_missing(self) -> bool:
+        """Whether a missing column raises an error instead of logging a warning."""
         return self._raise_if_missing
 
     @property
     def flatten(self) -> bool:
+        """Whether nested vectors in the columns are flattened during concatenation."""
         return self._flatten
 
     def _validate(self, df: pd.DataFrame) -> None:
@@ -138,11 +146,29 @@ class Concatenator(SerializablePreprocessorBase):
             else:
                 logger.warning(message)
 
+    def _stack_columns(self, df: pd.DataFrame, dtype=None) -> np.ndarray:
+        """Stack ``self._columns`` into one 2-D array, one column at a time.
+
+        ``df[self._columns].to_numpy()`` cannot be used here. For a selection of
+        more than one Arrow-backed column it returns ``dtype=object`` -- an array
+        of pointers to Python objects rather than numbers -- even when no value
+        is missing, because pandas has no rule for combining Arrow extension
+        types into a single NumPy dtype and falls back to the catch-all. That
+        turns the output tensor column into pickled Python objects, silently.
+
+        Converting each column on its own avoids the fallback: a single
+        Arrow-backed column converts to its natural NumPy dtype, widening to
+        ``float64`` and using ``np.nan`` if it contains nulls, exactly as a
+        NumPy-backed column would.
+        """
+        columns = [df[column].to_numpy(dtype=dtype) for column in self._columns]
+        return np.column_stack(columns)
+
     def _transform_pandas(self, df: pd.DataFrame):
         self._validate(df)
 
         if self._flatten:
-            concatenated = df[self._columns].to_numpy()
+            concatenated = self._stack_columns(df)
             concatenated = [
                 np.concatenate(
                     [
@@ -155,7 +181,7 @@ class Concatenator(SerializablePreprocessorBase):
                 for row in concatenated
             ]
         else:
-            concatenated = df[self._columns].to_numpy(dtype=self._dtype)
+            concatenated = self._stack_columns(df, dtype=self._dtype)
 
         df = df.drop(columns=self._columns)
         # Use a Pandas Series for column assignment to get more consistent
@@ -164,9 +190,19 @@ class Concatenator(SerializablePreprocessorBase):
         return df
 
     def get_input_columns(self) -> List[str]:
+        """Return the names of the columns this preprocessor reads.
+
+        Returns:
+            The columns to concatenate.
+        """
         return self._columns
 
     def get_output_columns(self) -> List[str]:
+        """Return the names of the columns this preprocessor writes.
+
+        Returns:
+            A list that contains ``output_column_name``.
+        """
         return [self._output_column_name]
 
     def __repr__(self):

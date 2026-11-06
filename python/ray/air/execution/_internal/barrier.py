@@ -40,7 +40,7 @@ class Barrier:
         # Collect received results
         self._results: List[Tuple[Any]] = []
 
-    def arrive(self, *data):
+    def arrive(self, *data: Any):
         """Notify barrier that a result successfully arrived.
 
         This will count against the ``max_results`` limit. The received result

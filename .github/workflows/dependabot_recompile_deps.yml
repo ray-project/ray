@@ -1,0 +1,82 @@
+name: Dependabot recompile deplocks
+
+# Dependabot bumps pins in python/requirements/**, but has no way to run the
+# lock file compilation that CI validates (ci.sh compile_pip_dependencies and
+# raydepsets). This workflow reacts to pushes on dependabot's pip branches,
+# regenerates all lock files, and pushes the result back onto the PR branch.
+#
+# Loop safety: the follow-up push is made by github-actions[bot] with the
+# workflow GITHUB_TOKEN, which never triggers new workflow runs, and the job
+# is additionally gated on the dependabot actor. "[dependabot skip]" in the
+# commit message lets dependabot keep rebasing/force-pushing its branch over
+# our commit.
+
+on:
+  push:
+    branches:
+      - "dependabot/pip/**"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  recompile:
+    name: Recompile dependency lock files
+    if: github.repository == 'ray-project/ray' && github.actor == 'dependabot[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - name: Checkout dependabot branch
+        uses: actions/checkout@v4
+
+      - name: Install uv
+        # Keep in sync with the uv version pinned in WORKSPACE. The hermetic
+        # bazel-provisioned uv does the lock compilation; this one is only for
+        # raydepsets pre-hooks (placeholder wheel build) that call uv from PATH.
+        run: |
+          curl -LsSf https://astral.sh/uv/0.9.26/install.sh | sh
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      - name: Install bazelisk
+        run: |
+          if ! command -v bazelisk >/dev/null 2>&1; then
+            sudo curl -fsSL -o /usr/local/bin/bazelisk \
+              https://github.com/bazelbuild/bazelisk/releases/download/v1.26.0/bazelisk-linux-amd64
+            sudo chmod +x /usr/local/bin/bazelisk
+          fi
+          bazelisk version
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Recompile requirements_compiled.txt
+        # Mirrors the "pip-compile dependencies" Buildkite job
+        # (.buildkite/dependencies.rayci.yml), which runs on a py3.11 image.
+        run: |
+          python -m venv /tmp/pip-compile-venv
+          source /tmp/pip-compile-venv/bin/activate
+          ./ci/ci.sh compile_pip_dependencies
+
+      - name: Recompile raydepsets lock files
+        # Mirrors the "raydepsets: compile all dependencies" Buildkite job.
+        run: bazelisk run //ci/raydepsets:raydepsets -- build --all-configs
+
+      - name: Commit and push updated lock files
+        run: |
+          if git diff --quiet; then
+            echo "Lock files already up to date; nothing to push."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -u
+          git commit --signoff \
+            -m "[deps] Recompile dependency lock files" \
+            -m "[dependabot skip]"
+          git push

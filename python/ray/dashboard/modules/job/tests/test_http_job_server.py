@@ -1,6 +1,8 @@
+import inspect
 import json
 import logging
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -11,8 +13,8 @@ from typing import Optional
 from unittest.mock import patch
 
 import pytest
-import requests
 import yaml
+from openapi_schema_validator import OAS30Validator, validate
 
 import ray
 from ray._common.test_utils import wait_for_condition
@@ -24,10 +26,12 @@ from ray._private.runtime_env.packaging import (
 from ray._private.test_utils import (
     chdir,
     format_web_url,
+    request_with_auth_token,
     wait_until_server_available,
 )
 from ray.dashboard.modules.dashboard_sdk import ClusterInfo, parse_cluster_info
 from ray.dashboard.modules.job.common import uri_to_http_components
+from ray.dashboard.modules.job.job_head import JobHead
 from ray.dashboard.modules.job.pydantic_models import JobDetails
 from ray.dashboard.modules.job.tests.test_cli_integration import set_env_var
 from ray.dashboard.modules.version import CURRENT_VERSION
@@ -43,10 +47,30 @@ logger = logging.getLogger(__name__)
 
 DRIVER_SCRIPT_DIR = os.path.join(os.path.dirname(__file__), "subprocess_driver_scripts")
 
+# The Ray Jobs REST API spec published on docs.ray.io, which users generate
+# client libraries from. The tests below keep it in sync with JobHead.
+OPENAPI_SPEC_PATH = (
+    Path(__file__).parents[6]
+    / "doc/source/cluster/running-applications/job-submission/openapi.yml"
+)
+
+# JobHead routes deliberately left out of the OpenAPI spec, as
+# (method, normalized path) pairs.
+ROUTES_NOT_IN_OPENAPI_SPEC = {
+    # Used internally by JobSubmissionClient to upload `working_dir` and
+    # `py_modules` packages before submitting a job. Not part of the public
+    # contract that the spec describes.
+    ("GET", "/api/packages/{}/{}"),
+    ("PUT", "/api/packages/{}/{}"),
+    # Reports dashboard component activity. Not a Jobs API endpoint; it's only
+    # served from JobHead.
+    ("GET", "/api/component_activities"),
+}
+
 
 @pytest.fixture(scope="module")
 def headers():
-    return {"Connection": "keep-alive", "Authorization": "TOK:<MY_TOKEN>"}
+    return {"Connection": "keep-alive"}
 
 
 @pytest.fixture(scope="module")
@@ -201,6 +225,9 @@ def _check_job_stopped(client: JobSubmissionClient, job_id: str) -> bool:
         "local_py_modules",
         "working_dir_and_local_py_modules_whl",
         "local_working_dir_zip",
+        "local_working_dir_tar_gz",
+        "local_working_dir_tgz",
+        "local_working_dir_tar_xz",
         "pip_txt",
         "conda_yaml",
         "local_py_modules",
@@ -226,6 +253,9 @@ ray.get(f.remote())
     elif request.param in {
         "local_working_dir",
         "local_working_dir_zip",
+        "local_working_dir_tar_gz",
+        "local_working_dir_tgz",
+        "local_working_dir_tar_xz",
         "local_py_modules",
         "working_dir_and_local_py_modules_whl",
     }:
@@ -264,6 +294,31 @@ ray.get(f.remote())
                     "entrypoint": "python test.py",
                     "expected_logs": "Hello from test_module!\n",
                 }
+            elif request.param in {
+                "local_working_dir_tar_gz",
+                "local_working_dir_tgz",
+                "local_working_dir_tar_xz",
+            }:
+                archive_format = (
+                    "xztar" if request.param == "local_working_dir_tar_xz" else "gztar"
+                )
+                with tempfile.TemporaryDirectory() as archive_dir:
+                    archive = Path(
+                        shutil.make_archive(
+                            os.path.join(archive_dir, "test"),
+                            archive_format,
+                            tmp_dir,
+                        )
+                    )
+                    if request.param == "local_working_dir_tgz":
+                        tgz_archive = archive.with_name("test.tgz")
+                        archive.rename(tgz_archive)
+                        archive = tgz_archive
+                    yield {
+                        "runtime_env": {"working_dir": str(archive)},
+                        "entrypoint": "python test.py",
+                        "expected_logs": "Hello from test_module!\n",
+                    }
             elif request.param == "local_py_modules":
                 yield {
                     "runtime_env": {"py_modules": [str(Path(tmp_dir) / "test_module")]},
@@ -430,7 +485,7 @@ def test_http_bad_request(job_sdk_client):
 
 def test_invalid_runtime_env(job_sdk_client):
     client = job_sdk_client
-    with pytest.raises(ValueError, match="Only .zip files supported"):
+    with pytest.raises(ValueError, match="supported for working_dir URIs"):
         client.submit_job(
             entrypoint="echo hello", runtime_env={"working_dir": "s3://not_a_zip"}
         )
@@ -637,8 +692,106 @@ def test_version_endpoint(job_sdk_client):
     }
 
 
-def test_request_headers(job_sdk_client):
+@pytest.fixture(scope="module")
+def openapi_spec():
+    with open(OPENAPI_SPEC_PATH) as f:
+        return yaml.safe_load(f)
+
+
+def _normalize_route(path: str) -> str:
+    # aiohttp registers some routes with a trailing slash and names the path
+    # parameter differently from the spec, so compare on the shape only.
+    return re.sub(r"\{[^}]+\}", "{}", path.rstrip("/"))
+
+
+def _job_head_routes():
+    return {
+        (h.__route_method__, _normalize_route(h.__route_path__))
+        for _, h in inspect.getmembers(
+            JobHead, lambda o: inspect.isfunction(o) and hasattr(o, "__route_path__")
+        )
+    }
+
+
+def _spec_routes(spec):
+    return {
+        (method.upper(), _normalize_route(path))
+        for path, operations in spec["paths"].items()
+        for method in operations
+    }
+
+
+def test_openapi_spec_routes_are_served(openapi_spec):
+    """Every operation in the OpenAPI spec is registered by JobHead."""
+    missing = _spec_routes(openapi_spec) - _job_head_routes()
+    assert not missing, f"Spec declares routes that JobHead doesn't serve: {missing}"
+
+
+def test_job_head_routes_are_in_openapi_spec(openapi_spec):
+    """Every JobHead route is in the OpenAPI spec or deliberately left out."""
+    undocumented = (
+        _job_head_routes() - _spec_routes(openapi_spec) - ROUTES_NOT_IN_OPENAPI_SPEC
+    )
+    assert not undocumented, (
+        f"JobHead serves routes missing from {OPENAPI_SPEC_PATH.name}: "
+        f"{undocumented}. Document them in the spec, or add them to "
+        "ROUTES_NOT_IN_OPENAPI_SPEC with the reason they're left out."
+    )
+
+
+def test_openapi_spec_version_matches_current_version(openapi_spec):
+    """The spec's major version tracks CURRENT_VERSION."""
+    assert openapi_spec["info"]["version"].split(".")[0] == CURRENT_VERSION
+
+
+def _assert_matches_openapi_spec(spec, method: str, path: str, response):
+    operation = spec["paths"][path][method.lower()]
+    assert response.status_code in operation["responses"], (
+        f"{method} {path} returned {response.status_code}, which the spec "
+        "doesn't declare."
+    )
+    content = operation["responses"][response.status_code].get("content", {})
+    if "application/json" not in content:
+        return
+    # Inline the spec's components so `#/components/...` refs resolve against
+    # the schema root.
+    schema = {
+        **content["application/json"]["schema"],
+        "components": spec["components"],
+    }
+    validate(response.json(), schema, cls=OAS30Validator)
+
+
+def test_responses_match_openapi_spec(job_sdk_client, openapi_spec):
+    """Responses from a real job server conform to the spec's schemas."""
     client = job_sdk_client
+
+    def check(method, spec_path, url, **kwargs):
+        r = client._do_request(method, url, **kwargs)
+        _assert_matches_openapi_spec(openapi_spec, method, spec_path, r)
+        return r
+
+    check("GET", "/api/version", "/api/version")
+
+    r = check("POST", "/api/jobs", "/api/jobs/", json_data={"entrypoint": "echo hello"})
+    submission_id = r.json()["submission_id"]
+    wait_for_condition(_check_job_succeeded, client=client, job_id=submission_id)
+
+    check("GET", "/api/jobs", "/api/jobs/")
+    check("GET", "/api/jobs/{submission_id}", f"/api/jobs/{submission_id}")
+    check("GET", "/api/jobs/{submission_id}/logs", f"/api/jobs/{submission_id}/logs")
+    check("POST", "/api/jobs/{submission_id}/stop", f"/api/jobs/{submission_id}/stop")
+    check("DELETE", "/api/jobs/{submission_id}", f"/api/jobs/{submission_id}")
+    r = check("GET", "/api/jobs/{submission_id}", f"/api/jobs/{submission_id}")
+    assert r.status_code == 404
+
+
+def test_request_headers(job_sdk_client):
+    from ray._private.test_utils import _auth_token_header
+
+    client = job_sdk_client
+    expected_headers = {"Connection": "keep-alive"}
+    expected_headers.update(_auth_token_header())
     with patch("requests.request") as mock_request:
         _ = client._do_request(
             "POST",
@@ -651,7 +804,7 @@ def test_request_headers(job_sdk_client):
             cookies=None,
             data=None,
             json={"entrypoint": "ls"},
-            headers={"Connection": "keep-alive", "Authorization": "TOK:<MY_TOKEN>"},
+            headers=expected_headers,
             verify=True,
         )
 
@@ -757,16 +910,21 @@ async def test_get_upload_package(ray_start_context, tmp_path):
     package_file = tmp_path / package_name
     create_package(str(pkg_dir), package_file, include_gitignore=True)
 
-    resp = requests.get(url.format(protocol=protocol, package_name=package_name))
+    resp = request_with_auth_token(
+        "GET", url.format(protocol=protocol, package_name=package_name)
+    )
     assert resp.status_code == 404
 
-    resp = requests.put(
+    resp = request_with_auth_token(
+        "PUT",
         url.format(protocol=protocol, package_name=package_name),
         data=package_file.read_bytes(),
     )
     assert resp.status_code == 200
 
-    resp = requests.get(url.format(protocol=protocol, package_name=package_name))
+    resp = request_with_auth_token(
+        "GET", url.format(protocol=protocol, package_name=package_name)
+    )
     assert resp.status_code == 200
 
     await download_and_unpack_package(package_uri, str(tmp_path), gcs_client)

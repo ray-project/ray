@@ -1,4 +1,4 @@
-import { GPUStats } from "./node";
+import { GPUStats, NPUStats, TPUStats } from "./node";
 
 export enum ActorEnum {
   DEPENDENCIES_UNREADY = "DEPENDENCIES_UNREADY",
@@ -45,6 +45,8 @@ export type ActorDetail = {
   numLocalObjects: number;
   numObjectRefsInScope: number;
   gpus?: GPUStats[]; // GPU stats fetched from node, 1 entry per GPU
+  npus?: NPUStats[]; // Ascend NPU stats associated with the actor process
+  tpus?: TPUStats[]; // TPU stats fetched from node, 1 entry per TPU
   processStats: {
     cmdline: string[];
     cpuPercent: number;
@@ -64,6 +66,7 @@ export type ActorDetail = {
       [key: string]: number;
     };
     pid: number | null;
+    npuMemoryUsage?: number; // bytes, aggregated across all NPUs
   };
   mem?: number[]; // total memory, free memory, memory used ratio
 } & Actor;

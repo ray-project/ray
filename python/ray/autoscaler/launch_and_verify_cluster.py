@@ -1,5 +1,4 @@
-"""
-This script automates the process of launching and verifying a Ray cluster using a given
+"""This script automates the process of launching and verifying a Ray cluster using a given
 cluster configuration file. It also handles cluster cleanup before and after the
 verification process. The script requires one command-line argument: the path to the
 cluster configuration file.
@@ -31,8 +30,7 @@ from ray.autoscaler._private.aws.config import RAY
 
 
 def check_arguments():
-    """
-    Check command line arguments and return the cluster configuration file path, the
+    """Check command line arguments and return the cluster configuration file path, the
     number of retries, the number of expected nodes, and the value of the
     --no-config-cache flag.
     """
@@ -85,9 +83,8 @@ def check_arguments():
     )
 
 
-def get_docker_image(docker_override):
-    """
-    Get the docker image to use for the head node and worker nodes.
+def get_docker_image(docker_override: str):
+    """Get the docker image to use for the head node and worker nodes.
 
     Args:
         docker_override: The value of the --docker-override flag.
@@ -112,9 +109,8 @@ def get_docker_image(docker_override):
     return None
 
 
-def check_file(file_path):
-    """
-    Check if the provided file path is valid and readable.
+def check_file(file_path: Path):
+    """Check if the provided file path is valid and readable.
 
     Args:
         file_path: The path of the file to check.
@@ -236,11 +232,11 @@ def download_ssh_key_gcp():
     os.chmod(local_key_path, 0o400)
 
 
-def cleanup_cluster(config_yaml, cluster_config):
-    """
-    Clean up the cluster using the given cluster configuration file.
+def cleanup_cluster(config_yaml: dict, cluster_config: Path) -> None:
+    """Clean up the cluster using the given cluster configuration file.
 
     Args:
+        config_yaml: The parsed cluster configuration.
         cluster_config: The path of the cluster configuration file.
     """
     print("======================================")
@@ -301,9 +297,7 @@ def cleanup_security_group(ec2_client, id):
 
 
 def ensure_ssh_keys_azure():
-    """
-    Ensure that the SSH keys for Azure tests exist, and create them if they don't.
-    """
+    """Ensure that the SSH keys for Azure tests exist, and create them if they don't."""
     print("======================================")
     print("Ensuring Azure SSH keys exist...")
     private_key_path = os.path.expanduser("~/.ssh/ray-autoscaler-tests-ssh-key")
@@ -370,21 +364,23 @@ def cleanup_security_groups(config):
 
 
 def run_ray_commands(
-    config_yaml,
-    cluster_config,
-    retries,
-    no_config_cache,
-    num_expected_nodes=1,
+    config_yaml: dict,
+    cluster_config: Path,
+    retries: int,
+    no_config_cache: bool,
+    num_expected_nodes: int = 1,
 ):
-    """
-    Run the necessary Ray commands to start a cluster, verify Ray is running, and clean
+    """Run the necessary Ray commands to start a cluster, verify Ray is running, and clean
     up the cluster.
 
     Args:
+        config_yaml: The parsed cluster configuration.
         cluster_config: The path of the cluster configuration file.
         retries: The number of retries for the verification step.
         no_config_cache: Whether to pass the --no-config-cache flag to the ray CLI
             commands.
+        num_expected_nodes: The number of nodes that should be running before
+            verification is considered successful.
     """
     provider_type = config_yaml.get("provider", {}).get("type")
     if provider_type == "azure":

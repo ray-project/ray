@@ -15,24 +15,30 @@ import timeit
 import traceback
 import uuid
 from collections.abc import Hashable
-from contextlib import contextmanager, redirect_stderr, redirect_stdout
+from contextlib import ExitStack, contextmanager, redirect_stderr, redirect_stdout
 from datetime import datetime
-from typing import Any, Callable, Dict, List, Optional, Set, Tuple
+from typing import Any, Callable, Dict, List, Optional, Set, Tuple, Type
+from unittest.mock import patch
 from urllib.parse import quote, urlparse
 
 import requests
 import yaml
 
 import ray
+import ray._private.accelerators
 import ray._private.memory_monitor as memory_monitor
 import ray._private.services
 import ray._private.services as services
 import ray._private.utils
 import ray.dashboard.consts as dashboard_consts
+from ray._common.constants import HEAD_NODE_RESOURCE_NAME
 from ray._common.network_utils import build_address, parse_address
 from ray._common.test_utils import (
+    DEFAULT_DRIVER_TIMEOUT_SECONDS,
+    KILLED_DRIVER_DRAIN_TIMEOUT_SECONDS,
     MetricSamplePattern,
     PrometheusTimeseries,
+    _detach_process,
     fetch_prometheus_metric_timeseries,
     fetch_prometheus_timeseries,
     wait_for_condition,
@@ -65,6 +71,108 @@ REDIS_EXECUTABLE = os.path.join(
 )
 
 
+def _auth_token_header():
+    from ray._raylet import AuthenticationTokenLoader
+
+    return AuthenticationTokenLoader.instance().get_token_for_http_header(
+        ignore_auth_mode=True
+    )
+
+
+def request_with_auth_token(method, url, **kwargs):
+    """Like ``requests.request`` but attaches the cluster's auth token."""
+    kwargs["headers"] = {**_auth_token_header(), **(kwargs.get("headers") or {})}
+    return requests.request(method, url, **kwargs)
+
+
+def auth_token_grpc_metadata():
+    """gRPC metadata carrying the cluster's auth token, empty when there is none."""
+    return tuple(_auth_token_header().items())
+
+
+def call_with_auth_token(rpc, request, **kwargs):
+    """Call a gRPC stub method with the auth token this process has, if any."""
+    import grpc
+
+    from ray._private.authentication.authentication_constants import (
+        TOKEN_AUTH_ERROR_MESSAGE,
+    )
+
+    try:
+        return rpc(request, metadata=auth_token_grpc_metadata(), **kwargs)
+    except grpc.RpcError as e:
+        # The token comes from this process's token file whatever the cluster's
+        # mode, and a cluster with auth disabled rejects it.
+        if TOKEN_AUTH_ERROR_MESSAGE not in (e.details() or ""):
+            raise
+        return rpc(request, **kwargs)
+
+
+def _shutdown_raylet(raylet_address, graceful):
+    import grpc
+    from grpc._channel import _InactiveRpcError
+
+    from ray.core.generated import node_manager_pb2_grpc
+
+    stub = node_manager_pb2_grpc.NodeManagerServiceStub(
+        grpc.insecure_channel(raylet_address)
+    )
+    try:
+        call_with_auth_token(
+            stub.ShutdownRaylet,
+            node_manager_pb2.ShutdownRayletRequest(graceful=graceful),
+        )
+    except _InactiveRpcError:
+        assert not graceful
+
+
+def get_gpu_visible_devices_env_var() -> Optional[str]:
+    """Name of the visible devices env var for this node's GPU family, or None.
+
+    The name differs per family (CUDA_VISIBLE_DEVICES on NVIDIA, HIP_VISIBLE_DEVICES
+    on AMD), and Apple Silicon has none at all, so callers must handle None.
+    """
+    return ray._private.accelerators.get_accelerator_manager_for_resource(
+        "GPU"
+    ).get_visible_accelerator_ids_env_var()
+
+
+@contextmanager
+def mock_accelerator_detection(manager, num_accelerators: Optional[int] = None):
+    resource_name = manager.get_resource_name()
+    with ExitStack() as stack:
+        stack.enter_context(
+            patch(
+                "ray._private.accelerators.get_all_accelerator_resource_names",
+                return_value=[resource_name],
+            )
+        )
+        stack.enter_context(
+            patch(
+                "ray._private.accelerators.get_accelerator_manager_for_resource",
+                side_effect=lambda name: manager if name == resource_name else None,
+            )
+        )
+        if num_accelerators is not None:
+            stack.enter_context(
+                patch.object(
+                    manager,
+                    "get_current_node_num_accelerators",
+                    return_value=num_accelerators,
+                )
+            )
+        yield
+
+
+@contextmanager
+def mock_no_accelerators():
+    with patch(
+        "ray._private.accelerators.get_all_accelerator_resource_names",
+        return_value=[],
+    ):
+        yield
+
+
 def make_global_state_accessor(ray_context):
     gcs_options = GcsClientOptions.create(
         ray_context.address_info["gcs_address"],
@@ -79,6 +187,28 @@ def make_global_state_accessor(ray_context):
 
 def external_redis_test_enabled():
     return os.environ.get("TEST_EXTERNAL_REDIS") == "1"
+
+
+def rocksdb_gcs_test_enabled():
+    """True when the test suite should run against the RocksDB GCS backend
+    (REP-64). Set by the buildkite ":ray: core: rocksdb tests" job.
+    """
+    return os.environ.get("TEST_GCS_ROCKSDB") == "1"
+
+
+def sandbox_test_enabled():
+    """True when the test suite should run the sandboxing tests.
+    Set by the buildkite ":ray: core: sandbox tests" job.
+    """
+    return os.environ.get("TEST_SANDBOX") == "1"
+
+
+def persistent_gcs_test_enabled():
+    """True when the GCS backend under test persists state across restart
+    (external Redis or RocksDB). Use this — not external_redis_test_enabled —
+    to branch test assertions on "is GCS state durable across restart?".
+    """
+    return external_redis_test_enabled() or rocksdb_gcs_test_enabled()
 
 
 def redis_replicas():
@@ -182,10 +312,10 @@ def start_redis_instance(
     port_denylist: Optional[List[int]] = None,
     listen_to_localhost_only: bool = False,
     enable_tls: bool = False,
-    replica_of=None,
-    leader_id=None,
-    db_dir=None,
-    free_port=0,
+    replica_of: Optional[int] = None,
+    leader_id: Optional[bytes] = None,
+    db_dir: Optional[str] = None,
+    free_port: int = 0,
 ):
     """Start a single Redis server.
 
@@ -208,12 +338,21 @@ def start_redis_instance(
             no redirection should happen, then this should be None.
         password: Prevents external clients without the password
             from connecting to Redis if provided.
+        fate_share: If True, the Redis process is bound to the parent's job
+            on Windows so it terminates with the parent.
         port_denylist: A set of denylist ports that shouldn't
             be used when allocating a new port.
         listen_to_localhost_only: Redis server only listens to
             localhost (127.0.0.1) if it's true,
             otherwise it listens to all network interfaces.
         enable_tls: Enable the TLS/SSL in Redis or not
+        replica_of: When set, configure this server as a replica of the
+            given primary Redis port.
+        leader_id: Cluster node id of the leader to replicate when running
+            with multiple replicas.
+        db_dir: Directory passed to ``--dir`` so Redis persists data here.
+        free_port: Plaintext port used alongside ``--tls-port`` when TLS is
+            enabled.
 
     Returns:
         A tuple of the port used by Redis and ProcessInfo for the process that
@@ -314,7 +453,7 @@ def start_redis_instance(
     return node_id, process_info
 
 
-def _pid_alive(pid):
+def _pid_alive(pid: int):
     """Check if the process with this PID is alive or not.
 
     Args:
@@ -518,16 +657,26 @@ def kill_processes(process_infos: List[ProcessInfo]):
 
 
 def run_string_as_driver_stdout_stderr(
-    driver_script: str, env: Dict = None, encode: str = "utf-8"
+    driver_script: str,
+    env: Dict = None,
+    encode: str = "utf-8",
+    timeout: Optional[float] = DEFAULT_DRIVER_TIMEOUT_SECONDS,
 ) -> Tuple[str, str]:
     """Run a driver as a separate process.
 
     Args:
         driver_script: A string to run as a Python script.
         env: The environment variables for the driver.
+        encode: Text encoding used to send the script to the subprocess and
+            decode its stdout/stderr.
+        timeout: Seconds to wait for the driver to exit before killing it and
+            raising. Pass None to wait forever.
 
     Returns:
         The script's stdout and stderr.
+
+    Raises:
+        subprocess.TimeoutExpired: If the driver did not exit within ``timeout``.
     """
     proc = subprocess.Popen(
         [sys.executable, "-"],
@@ -537,7 +686,27 @@ def run_string_as_driver_stdout_stderr(
         env=env,
     )
     with proc:
-        outputs_bytes = proc.communicate(driver_script.encode(encoding=encode))
+        try:
+            outputs_bytes = proc.communicate(
+                driver_script.encode(encoding=encode), timeout=timeout
+            )
+        except subprocess.TimeoutExpired as e:
+            proc.kill()
+            try:
+                outputs_bytes = proc.communicate(
+                    timeout=KILLED_DRIVER_DRAIN_TIMEOUT_SECONDS
+                )
+            except subprocess.TimeoutExpired:
+                # The driver did not die on SIGKILL either, so take whatever
+                # was captured before the first timeout and stop waiting on it.
+                outputs_bytes = (e.stdout or b"", e.stderr or b"")
+                _detach_process(proc)
+            logger.error(
+                "Driver did not exit within %ss; killed it. Output so far:\n%s",
+                timeout,
+                outputs_bytes,
+            )
+            raise
         out_str, err_str = [
             ray._common.utils.decode(output, encode_type=encode)
             for output in outputs_bytes
@@ -551,11 +720,12 @@ def run_string_as_driver_stdout_stderr(
         return out_str, err_str
 
 
-def run_string_as_driver_nonblocking(driver_script, env: Dict = None):
+def run_string_as_driver_nonblocking(driver_script: str, env: Dict = None):
     """Start a driver as a separate process and return immediately.
 
     Args:
         driver_script: A string to run as a Python script.
+        env: The environment variables for the driver.
 
     Returns:
         A handle to the driver process.
@@ -704,7 +874,12 @@ def get_metric_check_condition(
 
 
 def wait_until_succeeded_without_exception(
-    func, exceptions, *args, timeout_ms=1000, retry_interval_ms=100, raise_last_ex=False
+    func: Callable,
+    exceptions: Tuple[Type[BaseException], ...],
+    *args,
+    timeout_ms: int = 1000,
+    retry_interval_ms: int = 100,
+    raise_last_ex: bool = False,
 ):
     """A helper function that waits until a given function
         completes without exceptions.
@@ -712,13 +887,13 @@ def wait_until_succeeded_without_exception(
     Args:
         func: A function to run.
         exceptions: Exceptions that are supposed to occur.
-        args: arguments to pass for a given func
+        *args: arguments to pass for a given func
         timeout_ms: Maximum timeout in milliseconds.
         retry_interval_ms: Retry interval in milliseconds.
         raise_last_ex: Raise the last exception when timeout.
 
-    Return:
-        Whether exception occurs within a timeout.
+    Returns:
+        Whether ``func`` succeeded within the timeout.
     """
     if isinstance(type(exceptions), tuple):
         raise Exception("exceptions arguments should be given as a tuple")
@@ -981,7 +1156,12 @@ def raw_metric_timeseries(
 
 
 def get_system_metric_for_component(
-    system_metric: str, component: str, prometheus_server_address: str
+    system_metric: str,
+    component: str,
+    prometheus_server_address: str,
+    max_attempts: int = 3,
+    backoff_base_s: float = 1.0,
+    request_timeout_s: float = 30.0,
 ) -> List[float]:
     """Get the system metric for a given component from a Prometheus server address.
     Please note:
@@ -989,18 +1169,60 @@ def get_system_metric_for_component(
     requires the server address.
     - It assumes the system metric has a `Component` label and `pid` label. `pid` is the
     process id, so it can be used to uniquely identify the process.
+
+    Retries up to ``max_attempts`` times on connection errors, timeouts, and HTTP 5xx
+    responses, with exponential backoff (``backoff_base_s`` * 2^(attempt-1) seconds).
+    HTTP 4xx responses are not retried — they indicate a bad query.
     """
     session_name = os.path.basename(
         ray._private.worker._global_node.get_session_dir_path()
     )
     query = f"sum({system_metric}{{Component='{component}',SessionName='{session_name}'}}) by (pid)"
-    resp = requests.get(
-        f"{prometheus_server_address}/api/v1/query?query={quote(query)}"
-    )
-    if resp.status_code != 200:
-        raise Exception(f"Failed to query Prometheus: {resp.status_code}")
-    result = resp.json()
-    return [float(item["value"][1]) for item in result["data"]["result"]]
+    url = f"{prometheus_server_address}/api/v1/query?query={quote(query)}"
+
+    for attempt in range(1, max_attempts + 1):
+        backoff_s = backoff_base_s * (2 ** (attempt - 1))
+        try:
+            resp = requests.get(url, timeout=request_timeout_s)
+            resp.raise_for_status()
+        except requests.exceptions.RequestException as e:
+            # HTTPError from raise_for_status() sets e.response; other
+            # RequestException subclasses (ConnectionError, Timeout, ...) leave it None.
+            err_resp = e.response
+            status_code = err_resp.status_code if err_resp is not None else None
+            body_truncated = (err_resp.text or "")[:500] if err_resp is not None else ""
+            # 4xx indicates a malformed query — don't retry.
+            is_retryable = status_code is None or status_code >= 500
+            if is_retryable and attempt < max_attempts:
+                logger.warning(
+                    "Prometheus query failed (attempt %d/%d), retrying in %.1fs: "
+                    "error=%r, url=%s, query=%s",
+                    attempt,
+                    max_attempts,
+                    backoff_s,
+                    e,
+                    url,
+                    query,
+                )
+                time.sleep(backoff_s)
+                continue
+            if status_code is not None:
+                raise RuntimeError(
+                    f"Failed to query Prometheus after {attempt} attempts: "
+                    f"last_status={status_code}, url={url}, query={query}, "
+                    f"response_body={body_truncated!r}"
+                ) from e
+            raise RuntimeError(
+                f"Failed to query Prometheus after {attempt} attempts: "
+                f"last_error={e!r}, url={url}, query={query}"
+            ) from e
+
+        if attempt > 1:
+            logger.info(
+                "Prometheus query succeeded on attempt %d/%d", attempt, max_attempts
+            )
+        result = resp.json()
+        return [float(item["value"][1]) for item in result["data"]["result"]]
 
 
 def get_test_config_path(config_file_name):
@@ -1040,6 +1262,16 @@ class BatchQueue(Queue):
     ) -> List[Any]:
         """Gets batch of items from the queue and returns them in a
         list in order.
+
+        Args:
+            batch_size: Max number of items to return. ``None`` means drain
+                everything currently in the queue (subject to the timeouts).
+            total_timeout: Total time, in seconds, to wait for the entire batch.
+            first_timeout: Time, in seconds, to wait for the first item before
+                raising ``Empty``.
+
+        Returns:
+            List of items pulled off the queue, in arrival order.
 
         Raises:
             Empty: if the queue does not contain the desired number of items
@@ -1114,6 +1346,10 @@ def placement_group_assert_no_leak(pgs_created):
 
     def wait_for_resource_recovered():
         for resource, val in ray.available_resources().items():
+            # The detached AutoscalingCoordinator holds part of the head
+            # node resource until the cluster shuts down.
+            if resource == HEAD_NODE_RESOURCE_NAME:
+                continue
             if resource in cluster_resources and cluster_resources[resource] != val:
                 return False
             if "_group_" in resource:
@@ -1132,8 +1368,11 @@ def monitor_memory_usage(
 
     The monitor will run on the same node as this function is called.
 
-    Params:
-        interval_s: The interval memory usage information is printed
+    Args:
+        print_interval_s: How often, in seconds, memory usage information is
+            logged.
+        record_interval_s: How often, in seconds, the monitor samples and
+            records memory usage between log lines.
         warning_threshold: The threshold where the
             memory usage warning is printed.
 
@@ -1415,20 +1654,7 @@ class RayletKiller(NodeKillerBase):
         return True
 
     def _kill_raylet(self, ip, port, graceful=False):
-        import grpc
-        from grpc._channel import _InactiveRpcError
-
-        from ray.core.generated import node_manager_pb2_grpc
-
-        raylet_address = build_address(ip, port)
-        channel = grpc.insecure_channel(raylet_address)
-        stub = node_manager_pb2_grpc.NodeManagerServiceStub(channel)
-        try:
-            stub.ShutdownRaylet(
-                node_manager_pb2.ShutdownRayletRequest(graceful=graceful)
-            )
-        except _InactiveRpcError:
-            assert not graceful
+        _shutdown_raylet(build_address(ip, port), graceful)
 
 
 @ray.remote(num_cpus=0)
@@ -1775,27 +2001,17 @@ def get_resource_usage(gcs_address, timeout=10):
 # Gets the load metrics report assuming gcs is local.
 def get_load_metrics_report(webui_url):
     webui_url = format_web_url(webui_url)
-    response = requests.get(f"{webui_url}/api/cluster_status")
+    response = request_with_auth_token("GET", f"{webui_url}/api/cluster_status")
     response.raise_for_status()
     return response.json()["data"]["clusterStatus"]["loadMetricsReport"]
 
 
 # Send a RPC to the raylet to have it self-destruct its process.
 def kill_raylet(raylet, graceful=False):
-    import grpc
-    from grpc._channel import _InactiveRpcError
-
-    from ray.core.generated import node_manager_pb2_grpc
-
-    raylet_address = build_address(
-        raylet["NodeManagerAddress"], raylet["NodeManagerPort"]
+    _shutdown_raylet(
+        build_address(raylet["NodeManagerAddress"], raylet["NodeManagerPort"]),
+        graceful,
     )
-    channel = grpc.insecure_channel(raylet_address)
-    stub = node_manager_pb2_grpc.NodeManagerServiceStub(channel)
-    try:
-        stub.ShutdownRaylet(node_manager_pb2.ShutdownRayletRequest(graceful=graceful))
-    except _InactiveRpcError:
-        assert not graceful
 
 
 def get_gcs_memory_used():

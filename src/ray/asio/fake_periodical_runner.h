@@ -20,7 +20,7 @@
 #include <memory>
 #include <string>
 
-#include "ray/asio/periodical_runner.h"
+#include "ray/asio/periodical_runner_interface.h"
 
 namespace ray {
 

@@ -2,6 +2,7 @@ import copy
 import json
 import math
 import os
+import re
 from dataclasses import asdict
 from typing import List, Tuple
 
@@ -26,6 +27,9 @@ from ray.dashboard.modules.metrics.dashboards.serve_deployment_dashboard_panels 
 from ray.dashboard.modules.metrics.dashboards.serve_llm_dashboard_panels import (
     serve_llm_dashboard_config,
 )
+from ray.dashboard.modules.metrics.dashboards.serve_llm_sglang_dashboard_panels import (
+    serve_llm_sglang_dashboard_config,
+)
 from ray.dashboard.modules.metrics.dashboards.train_dashboard_panels import (
     train_dashboard_config,
 )
@@ -49,9 +53,12 @@ ROW_HEIGHT = 1  # Height of row container
 def _read_configs_for_dashboard(
     dashboard_config: DashboardConfig,
 ) -> Tuple[str, List[str], str]:
-    """
-    Reads environment variable configs for overriding uid, global_filters,
-    and the log link URL for a given dashboard.
+    """Reads environment variable configs for overriding uid, global_filters, and the log link URL for a given dashboard.
+
+    Args:
+        dashboard_config: The dashboard whose env-var overrides are read.
+            ``dashboard_config.name`` selects the env-var suffix and
+            ``default_uid`` is used as a fallback.
 
     Returns:
       Tuple with format uid, global_filters, log_link_url
@@ -90,8 +97,7 @@ def _read_configs_for_dashboard(
 
 
 def generate_default_grafana_dashboard() -> Tuple[str, str]:
-    """
-    Generates the dashboard output for the default dashboard and returns
+    """Generates the dashboard output for the default dashboard and returns
     both the content and the uid.
 
     Returns:
@@ -101,8 +107,7 @@ def generate_default_grafana_dashboard() -> Tuple[str, str]:
 
 
 def generate_serve_grafana_dashboard() -> Tuple[str, str]:
-    """
-    Generates the dashboard output for the serve dashboard and returns
+    """Generates the dashboard output for the serve dashboard and returns
     both the content and the uid.
 
     Returns:
@@ -112,8 +117,7 @@ def generate_serve_grafana_dashboard() -> Tuple[str, str]:
 
 
 def generate_serve_deployment_grafana_dashboard() -> Tuple[str, str]:
-    """
-    Generates the dashboard output for the serve dashboard and returns
+    """Generates the dashboard output for the serve dashboard and returns
     both the content and the uid.
 
     Returns:
@@ -123,8 +127,7 @@ def generate_serve_deployment_grafana_dashboard() -> Tuple[str, str]:
 
 
 def generate_serve_llm_grafana_dashboard() -> Tuple[str, str]:
-    """
-    Generates the dashboard output for the serve dashboard and returns
+    """Generates the dashboard output for the serve dashboard and returns
     both the content and the uid.
 
     Returns:
@@ -133,9 +136,18 @@ def generate_serve_llm_grafana_dashboard() -> Tuple[str, str]:
     return _generate_grafana_dashboard(serve_llm_dashboard_config)
 
 
-def generate_data_grafana_dashboard() -> Tuple[str, str]:
+def generate_serve_llm_sglang_grafana_dashboard() -> Tuple[str, str]:
+    """Generates the SGLang Serve LLM dashboard and returns both the content
+    and the uid.
+
+    Returns:
+      Tuple with format content, uid
     """
-    Generates the dashboard output for the data dashboard and returns
+    return _generate_grafana_dashboard(serve_llm_sglang_dashboard_config)
+
+
+def generate_data_grafana_dashboard() -> Tuple[str, str]:
+    """Generates the dashboard output for the data dashboard and returns
     both the content and the uid.
 
     Returns:
@@ -145,8 +157,7 @@ def generate_data_grafana_dashboard() -> Tuple[str, str]:
 
 
 def generate_data_llm_grafana_dashboard() -> Tuple[str, str]:
-    """
-    Generates the dashboard output for the Data LLM dashboard and returns
+    """Generates the dashboard output for the Data LLM dashboard and returns
     both the content and the uid.
 
     This dashboard provides vLLM metrics visibility for Ray Data LLM workloads,
@@ -160,8 +171,7 @@ def generate_data_llm_grafana_dashboard() -> Tuple[str, str]:
 
 
 def generate_train_grafana_dashboard() -> Tuple[str, str]:
-    """
-    Generates the dashboard output for the train dashboard and returns
+    """Generates the dashboard output for the train dashboard and returns
     both the content and the uid.
 
     Returns:
@@ -171,7 +181,12 @@ def generate_train_grafana_dashboard() -> Tuple[str, str]:
 
 
 def _generate_grafana_dashboard(dashboard_config: DashboardConfig) -> str:
-    """
+    """Render the Grafana dashboard JSON for the given config.
+
+    Args:
+        dashboard_config: Configuration describing the panels and base
+            template JSON file to use for rendering.
+
     Returns:
       Tuple with format dashboard_content, uid
     """
@@ -189,12 +204,13 @@ def _generate_grafana_dashboard(dashboard_config: DashboardConfig) -> str:
     for variable in variables:
         if "definition" not in variable:
             continue
-        variable["definition"] = variable["definition"].format(
-            global_filters=global_filters_str
-        )
-        variable["query"]["query"] = variable["query"]["query"].format(
-            global_filters=global_filters_str
-        )
+        definition = variable["definition"].format(global_filters=global_filters_str)
+        query = variable["query"]["query"].format(global_filters=global_filters_str)
+        if not global_filters_str:
+            definition = _clean_empty_filters(definition)
+            query = _clean_empty_filters(query)
+        variable["definition"] = definition
+        variable["query"]["query"] = query
 
     tags = base_json.get("tags", []) or []
     tags.append(f"rayVersion:{ray.__version__}")
@@ -214,8 +230,7 @@ def _generate_panel_template(
     base_y_position: int,
     log_link_url: str,
 ) -> dict:
-    """
-    Helper method to generate a panel template with common configuration.
+    """Helper method to generate a panel template with common configuration.
 
     Args:
         panel: The panel configuration
@@ -379,8 +394,7 @@ def _generate_panel_template(
 
 
 def _create_row_panel(row: Panel, y_position: int) -> dict:
-    """
-    Creates a Grafana row panel that spans the full dashboard width.
+    """Creates a Grafana row panel that spans the full dashboard width.
     Row panels can be collapsed to hide their contained panels.
 
     Args:
@@ -401,8 +415,7 @@ def _create_row_panel(row: Panel, y_position: int) -> dict:
 
 
 def _calculate_panel_heights(num_panels: int) -> int:
-    """
-    Calculate the total height needed for a set of panels.
+    """Calculate the total height needed for a set of panels.
 
     Args:
         num_panels: Number of panels to position
@@ -417,8 +430,7 @@ def _calculate_panel_heights(num_panels: int) -> int:
 def _generate_grafana_panels(
     config: DashboardConfig, global_filters: List[str], log_link_url: str
 ) -> List[dict]:
-    """
-    Generates Grafana panel configurations for a dashboard.
+    """Generates Grafana panel configurations for a dashboard.
 
     The dashboard layout follows these rules:
     - Panels are arranged in 2 columns (12 units wide each)
@@ -490,6 +502,20 @@ def _generate_grafana_panels(
     return panels
 
 
+def _clean_empty_filters(expr: str) -> str:
+    """Clean up malformed PromQL when global_filters is empty.
+
+    Removes artifacts like trailing/leading commas in label matchers:
+      ", ," → ","
+      ", }" → "}"
+      "{ ," → "{"
+    """
+    expr = re.sub(r",\s*,", ",", expr)
+    expr = re.sub(r",\s*}", "}", expr)
+    expr = re.sub(r"{\s*,", "{", expr)
+    return expr
+
+
 def gen_incrementing_alphabets(length):
     assert 65 + length < 96, "we only support up to 26 targets at a time."
     # 65: ascii code of 'A'.
@@ -502,11 +528,13 @@ def _generate_targets(panel: Panel, panel_global_filters: List[str]) -> List[dic
         panel.targets, gen_incrementing_alphabets(len(panel.targets))
     ):
         template = copy.deepcopy(target.template.value)
+        global_filters_str = ",".join(panel_global_filters)
+        expr = target.expr.format(global_filters=global_filters_str)
+        if not global_filters_str:
+            expr = _clean_empty_filters(expr)
         template.update(
             {
-                "expr": target.expr.format(
-                    global_filters=",".join(panel_global_filters)
-                ),
+                "expr": expr,
                 "legendFormat": target.legend,
                 "refId": ref_id,
             }

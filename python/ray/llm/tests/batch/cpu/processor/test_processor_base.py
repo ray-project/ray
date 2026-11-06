@@ -1,4 +1,5 @@
 import sys
+import warnings
 from typing import Any, AsyncIterator, Dict, List, Type
 from unittest.mock import patch
 
@@ -17,6 +18,7 @@ from ray.llm._internal.batch.processor.base import (
     ProcessorConfig,
 )
 from ray.llm._internal.batch.stages.base import StatefulStage, StatefulStageUDF
+from ray.util.annotations import RayDeprecationWarning
 
 
 def test_empty_processor():
@@ -159,6 +161,23 @@ class DummyStage(StatefulStage):
 
 class DummyProcessorConfig(ProcessorConfig):
     pass
+
+
+def test_does_not_emit_ray_remote_args_fn_deprecation_warning():
+    processor = Processor(
+        config=ProcessorConfig(batch_size=64),
+        stages=[
+            DummyStage(
+                map_batches_kwargs={
+                    "concurrency": 1,
+                    "ray_remote_args_fn": lambda: {},
+                }
+            )
+        ],
+    )
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", RayDeprecationWarning)
+        processor(ray.data.range(1))
 
 
 def test_builder():
@@ -408,37 +427,6 @@ class TestOfflineProcessorConfig:
         )
         assert config.max_tasks_in_flight_per_actor == expected
         assert config.max_concurrent_batches == kwargs.get("max_concurrent_batches", 8)
-
-    def test_experimental_max_tasks_in_flight_per_actor_deprecated(self):
-        """Setting `experimental['max_tasks_in_flight_per_actor']` migrates to
-        the top-level field with a deprecation log; the explicit top-level
-        field overrides it but the warning still fires."""
-
-        def has_deprecation_log(warning_mock):
-            return any(
-                "max_tasks_in_flight_per_actor" in call.args[0]
-                and "deprecated" in call.args[0]
-                for call in warning_mock.call_args_list
-            )
-
-        # Migration: experimental → top-level field.
-        with patch.object(processor_base.logger, "warning") as warning_mock:
-            cfg = vLLMEngineProcessorConfig(
-                model_source="unsloth/Llama-3.2-1B-Instruct",
-                experimental={"max_tasks_in_flight_per_actor": 10},
-            )
-        assert cfg.max_tasks_in_flight_per_actor == 10
-        assert has_deprecation_log(warning_mock)
-
-        # Explicit top-level beats experimental, but warning still fires.
-        with patch.object(processor_base.logger, "warning") as warning_mock:
-            cfg = vLLMEngineProcessorConfig(
-                model_source="unsloth/Llama-3.2-1B-Instruct",
-                max_tasks_in_flight_per_actor=20,
-                experimental={"max_tasks_in_flight_per_actor": 10},
-            )
-        assert cfg.max_tasks_in_flight_per_actor == 20
-        assert has_deprecation_log(warning_mock)
 
     def test_max_tasks_in_flight_under_max_concurrent_batches_warns(self):
         with patch.object(processor_base.logger, "warning") as warning_mock:

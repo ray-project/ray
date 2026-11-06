@@ -13,6 +13,7 @@ from ray.data._internal.execution.interfaces.physical_operator import (
     RefBundle,
     TaskExecDriverStats,
 )
+from ray.data._internal.execution.interfaces.ref_bundle import BlockEntry
 from ray.data._internal.execution.operators.input_data_buffer import (
     InputDataBuffer,
 )
@@ -28,6 +29,7 @@ from ray.data._internal.issue_detection.detectors.hanging_detector import (
 from ray.data._internal.issue_detection.detectors.high_memory_detector import (
     HighMemoryIssueDetector,
 )
+from ray.data._internal.util import GiB
 from ray.data.block import BlockMetadata, TaskExecWorkerStats
 from ray.data.context import DataContext
 from ray.tests.conftest import *  # noqa
@@ -93,7 +95,7 @@ class TestHangingExecutionIssueDetector:
         assert detector._op_task_stats_std_factor_threshold == std_factor
 
     @patch(
-        "ray.data._internal.execution.interfaces.op_runtime_metrics.TaskDurationStats"
+        "ray.data._internal.execution.interfaces.op_runtime_metrics.DistributionTracker"
     )
     def test_basic_hanging_detection(
         self, mock_stats_cls, ray_start_regular_shared, restore_data_context
@@ -108,9 +110,9 @@ class TestHangingExecutionIssueDetector:
         mocked_mean = 2.0  # Increase from 0.5 to 2.0 seconds
         mocked_stddev = 0.2  # Increase from 0.05 to 0.2 seconds
         mock_stats = mock_stats_cls.return_value
-        mock_stats.count.return_value = 20  # Enough samples
-        mock_stats.mean.return_value = mocked_mean
-        mock_stats.stddev.return_value = mocked_stddev
+        mock_stats.num_samples = 20  # Enough samples
+        mock_stats.mean = mocked_mean
+        mock_stats.stddev = mocked_stddev
 
         # Explicitly enable hanging detection for this test
         ctx = DataContext.get_current()
@@ -161,7 +163,9 @@ class TestHangingExecutionIssueDetector:
             num_rows=1, size_bytes=1, exec_stats=None, input_files=None
         )
         input_bundle = RefBundle(
-            blocks=((block_ref, metadata),), owns_blocks=True, schema=None
+            blocks=(BlockEntry(block_ref, metadata),),
+            owns_blocks=True,
+            schema=None,
         )
 
         mock_perf_counter.return_value = 0.0
@@ -184,14 +188,14 @@ class TestHangingExecutionIssueDetector:
         )
 
         # Start detecting — all tasks were submitted at t=0, so no time has elapsed.
-        issues = detector.detect()
+        issues = detector.detect_periodic()
         assert len(issues) == 0
 
         # Advance perf_counter to trigger the issue detection
         mock_perf_counter.return_value = 10.0
 
-        # On the second detect() call, the hanging task should be detected
-        issues = detector.detect()
+        # On the second detect_periodic() call, the hanging task should be detected
+        issues = detector.detect_periodic()
         assert len(issues) > 0, "Expected hanging issue to be detected"
         assert issues[0].issue_type.value == "hanging"
         assert "has been running or stuck in scheduling for" in issues[0].message
@@ -202,12 +206,12 @@ class TestHangingExecutionIssueDetector:
     "configured_memory, actual_memory, should_return_issue",
     [
         # User has appropriately configured memory, so no issue.
-        (4 * 1024**3, 4 * 1024**3, False),
+        (8 * GiB, 8 * GiB, False),
         # User hasn't configured memory correctly and memory use is high, so issue.
-        (None, 4 * 1024**3, True),
-        (1, 4 * 1024**3, True),
+        (None, 8 * GiB, True),
+        (1 * GiB, 8 * GiB, True),
         # User hasn't configured memory correctly but memory use is low, so no issue.
-        (None, 4 * 1024**3 - 1, False),
+        (None, 1 * GiB, False),
     ],
 )
 def test_high_memory_detection(
@@ -222,7 +226,10 @@ def test_high_memory_detection(
         data_context=ctx,
         ray_remote_args={"memory": configured_memory},
     )
-    map_operator._metrics = MagicMock(average_max_uss_per_task=actual_memory)
+    map_operator._metrics = MagicMock()
+    map_operator._metrics.max_uss_bytes.num_samples = 1
+    map_operator._metrics.max_uss_bytes.mean = actual_memory
+    map_operator._metrics.max_uss_bytes.max = actual_memory
     topology = {input_data_buffer: MagicMock(), map_operator: MagicMock()}
 
     operators = list(topology.keys())
@@ -232,9 +239,62 @@ def test_high_memory_detection(
         operators=operators,
         config=ctx.issue_detectors_config.high_memory_detector_config,
     )
-    issues = detector.detect()
+    issues = detector.detect_periodic()
 
     assert should_return_issue == bool(issues)
+    if should_return_issue:
+        normalized_message = " ".join(issues[0].message.split())
+        assert "`memory=10737418240` (10.0GiB)" in normalized_message
+
+
+@pytest.mark.parametrize(
+    "configured_memory, max_memory, expected_memory_configuration, expected_memory",
+    [
+        (10 * GiB, 8 * GiB, None, None),
+        (
+            10 * GiB - 1,
+            8 * GiB,
+            "The configured logical memory was 10.0GiB.",
+            10 * GiB,
+        ),
+        (None, 8 * GiB, None, None),
+        (0, 1, "The configured logical memory was 0.0B.", 2),
+        (1, None, None, None),
+    ],
+)
+def test_high_memory_detection_on_execution_end(
+    configured_memory,
+    max_memory,
+    expected_memory_configuration,
+    expected_memory,
+    restore_data_context,
+):
+    ctx = DataContext.get_current()
+    input_data_buffer = InputDataBuffer(ctx, input_data=[])
+    map_operator = MapOperator.create(
+        map_transformer=MagicMock(),
+        input_op=input_data_buffer,
+        data_context=ctx,
+        ray_remote_args={"memory": configured_memory},
+    )
+    if max_memory is not None:
+        map_operator.metrics.max_uss_bytes.add_sample(max_memory // 2)
+        map_operator.metrics.max_uss_bytes.add_sample(max_memory)
+
+    detector = HighMemoryIssueDetector(
+        dataset_id="id",
+        operators=[input_data_buffer, map_operator],
+        config=ctx.issue_detectors_config.high_memory_detector_config,
+    )
+
+    issues = detector.detect_final()
+
+    assert (expected_memory_configuration is not None) == bool(issues)
+    if expected_memory_configuration is not None:
+        normalized_message = " ".join(issues[0].message.split())
+        assert map_operator.name in normalized_message
+        assert expected_memory_configuration in normalized_message
+        assert f"`memory={expected_memory}`" in normalized_message
 
 
 if __name__ == "__main__":

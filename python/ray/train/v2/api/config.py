@@ -50,6 +50,22 @@ class ScalingConfig(ScalingConfigV1):
             defined in this Dict is reserved for each worker.
             Define the ``"CPU"`` and ``"GPU"`` keys (case-sensitive) to
             override the number of CPU or GPUs used by each worker.
+
+            Accepts the same resource keys that Ray uses for scheduling tasks
+            and actors (see :ref:`Resources <core-resources>`):
+
+            - ``"CPU"``: number of logical CPUs per worker.
+            - ``"GPU"``: number of logical GPUs per worker. Prefer setting
+              ``use_gpu=True`` (which reserves 1 GPU per worker) and only
+              override this key when you need a different per-worker count.
+            - ``"TPU"``: number of logical TPUs per worker, when ``use_tpu=True``.
+            - ``"memory"``: heap memory reserved per worker, in bytes
+              (for example, ``"memory": 1e9`` reserves 1 GB per worker).
+            - Any :ref:`custom resource <custom-resources>` name configured on
+              your cluster (for example, ``"special_hardware": 1``).
+
+            Keys are case-sensitive: use ``"CPU"``, ``"GPU"``, and ``"TPU"``
+            (uppercase), and ``"memory"`` (lowercase).
         placement_strategy: The placement strategy to use for the
             placement group of the Ray actors. See :ref:`Placement Group
             Strategies <pgroup-strategy>` for the possible options.
@@ -154,6 +170,24 @@ class ScalingConfig(ScalingConfigV1):
             else self.num_workers[1]
         )
 
+    def _label_selector_per_worker(
+        self, num_workers: int
+    ) -> Optional[List[Dict[str, str]]]:
+        """Normalize ``label_selector`` into a per-worker list of length ``num_workers``.
+
+        - ``None`` -> ``None`` (no constraint; downstream consumers — the
+          placement-group path and the autoscaling coordinator — both
+          accept ``None`` and treat it as "no label requirement").
+        - ``Dict`` -> the same dict replicated for each worker
+        - ``List`` -> the first ``num_workers`` entries (validated to be
+          ``max_workers`` long in ``__post_init__``)
+        """
+        if isinstance(self.label_selector, list):
+            return [s.copy() for s in self.label_selector[:num_workers]]
+        if isinstance(self.label_selector, dict):
+            return [self.label_selector.copy() for _ in range(num_workers)]
+        return None
+
     @property
     def total_resources(self):
         """Map of total resources required for training.
@@ -215,7 +249,7 @@ class ScalingConfig(ScalingConfigV1):
                 workers_per_slice, tpu_resources = get_tpu_worker_resources(
                     topology=self.topology,
                     accelerator_type=self.accelerator_type,
-                    resources_per_unit=self.resources_per_worker,
+                    resources_per_worker=self.resources_per_worker,
                     num_slices=1,
                 )
             except Exception as e:
@@ -253,6 +287,7 @@ class ScalingConfig(ScalingConfigV1):
 
     @property
     def _trainer_resources_not_none(self):
+        # V2 controller uses num_cpus=0; trainer_resources are V1-only.
         return {}
 
     @property
@@ -333,10 +368,39 @@ class FailureConfig(FailureConfigV1):
         controller_failure_limit: [DeveloperAPI] The maximum number of controller failures to tolerate.
             Setting to -1 will lead to infinite controller retries.
             Setting to 0 will disable controller retries. Defaults to -1.
+        max_preemption_failures: The maximum number of node-preemption interruptions
+            to recover from, counted separately from ``max_failures`` (which is
+            reserved for real failures). Will recover from the latest checkpoint
+            if present. Setting to -1 leads to infinite preemption retries;
+            setting to 0 disables them. Defaults to -1.
+        relax_collectives_on_preemption: Whether Ray Train's own preemption and
+            checkpoint collectives may complete without the workers on a
+            preempted node, so healthy workers can commit a just-in-time
+            checkpoint instead of being stranded. This covers
+            ``ray.train.report()`` and ``ray.train.get_preemption_info()``,
+            which normally require every rank to finish, so if a worker is
+            killed before it finishes then the rest would be stranded. Enable it when
+            a checkpoint upload may take longer than the preemption drain
+            window; it is unnecessary when a training step plus a checkpoint
+            fits comfortably inside that window, since the preempted workers are
+            then still alive to take part in the collectives themselves. Has no
+            effect when rank 0 is among the preempted ranks, since rank 0 is the
+            sole writer of the broadcast payload. Defaults to False.
+        preemption_grace_s: How long the surviving workers may keep running past
+            the preemption deadline, in seconds. Ray Train otherwise tears them
+            down the moment the deadline passes, which cuts off whatever they
+            were doing. This is most usefully when the upload of a just-in-time
+            checkpoint takes longer than the drain window itself. Pair it with
+            ``relax_collectives_on_preemption`` so the survivors can also commit
+            without the workers that have already gone. Defaults to 0.0, which
+            restarts as soon as the preemption deadline passes.
     """
 
     fail_fast: Union[bool, str] = _DEPRECATED
     controller_failure_limit: int = -1
+    max_preemption_failures: int = -1
+    relax_collectives_on_preemption: bool = False
+    preemption_grace_s: float = 0.0
 
     def __post_init__(self):
         if self.fail_fast != _DEPRECATED:
@@ -486,6 +550,10 @@ class RunConfig:
 
     @cached_property
     def storage_context(self) -> StorageContext:
+        """The storage context for this run's storage path and filesystem.
+
+        Built from ``storage_path``, ``name``, and ``storage_filesystem``.
+        """
         return StorageContext(
             storage_path=self.storage_path,
             experiment_dir_name=self.name,

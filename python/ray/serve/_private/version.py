@@ -31,7 +31,7 @@ class DeploymentVersion:
         if code_version is not None and not isinstance(code_version, str):
             raise TypeError(f"code_version must be str, got {type(code_version)}.")
         if code_version is None:
-            self.code_version = get_random_string()
+            self.code_version: str = get_random_string()
         else:
             self.code_version = code_version
 
@@ -61,6 +61,11 @@ class DeploymentVersion:
 
     def __hash__(self) -> int:
         return self._hash
+
+    @property
+    def version_id(self) -> str:
+        """Hexadecimal form of the version hash used for equality."""
+        return f"{self._hash:08x}"
 
     def __eq__(self, other: Any) -> bool:
         if not isinstance(other, DeploymentVersion):
@@ -101,7 +106,7 @@ class DeploymentVersion:
         # If these change, the controller will rolling upgrade existing replicas.
         serialized_ray_actor_options = _serialize(self.ray_actor_options or {})
         self.ray_actor_options_hash = crc32(serialized_ray_actor_options)
-        combined_placement_group_options = {}
+        combined_placement_group_options: Dict[str, Any] = {}
         if self.placement_group_bundles is not None:
             combined_placement_group_options["bundles"] = self.placement_group_bundles
         if self.placement_group_strategy is not None:

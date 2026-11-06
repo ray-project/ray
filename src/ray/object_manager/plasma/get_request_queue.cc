@@ -61,7 +61,7 @@ void GetRequestQueue::AddRequest(const std::shared_ptr<ClientInterface> &client,
   for (const auto &object_id : unique_ids) {
     // Check if this object is already present locally. If so, record that the object is
     // being used and mark it as accounted for.
-    auto entry = object_lifecycle_mgr_.GetObject(object_id);
+    auto entry = object_lifecycle_manager_.GetObject(object_id);
     if (entry != nullptr && entry->Sealed()) {
       // Update the get request to take into account the present object.
       auto *plasma_object = &get_request->objects_[object_id];
@@ -168,7 +168,7 @@ void GetRequestQueue::MarkObjectSealed(const ObjectID &object_id) {
   size_t num_requests = get_requests.size();
   for (size_t i = 0; i < num_requests; ++i) {
     auto get_request = get_requests[index];
-    auto entry = object_lifecycle_mgr_.GetObject(object_id);
+    auto entry = object_lifecycle_manager_.GetObject(object_id);
     RAY_CHECK(entry != nullptr);
     auto *plasma_object = &get_request->objects_[object_id];
     entry->ToPlasmaObject(plasma_object, /* check sealed */ true);

@@ -1,5 +1,3 @@
-import logging
-import warnings
 from copy import deepcopy
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
@@ -9,18 +7,16 @@ from ray.serve._private.config import (
     RequestRouterConfig,
     handle_num_replicas_auto,
 )
-from ray.serve._private.constants import SERVE_LOGGER_NAME
 from ray.serve._private.usage import ServeUsageTag
 from ray.serve._private.utils import DEFAULT, Default
 from ray.serve.config import (
     AutoscalingConfig,
+    BackpressureConfig,
     DeploymentActorConfig,
     GangSchedulingConfig,
 )
 from ray.serve.schema import DeploymentSchema, LoggingConfig, RayActorOptionsSchema
 from ray.util.annotations import PublicAPI
-
-logger = logging.getLogger(SERVE_LOGGER_NAME)
 
 
 @PublicAPI(stability="stable")
@@ -58,6 +54,10 @@ class Application:
                 my_app:
                     import_path: python_file:app
 
+    Args:
+        bound_deployment: The deployment, with its arguments bound. Use
+            ``Deployment.bind()`` to create an application rather than
+            constructing one directly.
     """
 
     def __init__(self, bound_deployment: "Deployment"):
@@ -109,8 +109,22 @@ class Deployment:
         deployment_config: DeploymentConfig,
         replica_config: ReplicaConfig,
         version: Optional[str] = None,
-        _internal=False,
+        _internal: bool = False,
     ) -> None:
+        """Construct a Deployment. Should only be called by Serve internals.
+
+        Args:
+            name: Unique name of this deployment.
+            deployment_config: Serve-level configuration (number of replicas,
+                user config, autoscaling, etc.).
+            replica_config: Replica-level configuration (actor options, init
+                args/kwargs, etc.).
+            version: Optional opaque deployment version used to determine
+                whether replicas need to be restarted on update.
+            _internal: Internal flag; ``Deployment`` instances must be created
+                via the ``@serve.deployment`` decorator, which sets this to
+                ``True``.
+        """
         if not _internal:
             raise RuntimeError(
                 "The Deployment constructor should not be called "
@@ -129,10 +143,10 @@ class Deployment:
         if not isinstance(name, str):
             raise TypeError("name must be a string.")
 
-        # name does not contain #
+        # '#' is the replica ID delimiter, so it cannot appear in a name.
         if "#" in name:
-            warnings.warn(
-                f"Deployment names should not contain the '#' character, this will raise an error starting in Ray 2.46.0. "
+            raise ValueError(
+                f"Deployment names must not contain the '#' character. "
                 f"Current name: {name}."
             )
 
@@ -143,6 +157,7 @@ class Deployment:
 
     @property
     def version(self) -> Optional[str]:
+        """Opaque version that determines whether replicas restart on update."""
         return self._version
 
     @property
@@ -171,11 +186,9 @@ class Deployment:
         return self._deployment_config.max_queued_requests
 
     @property
-    def route_prefix(self):
-        raise ValueError(
-            "`route_prefix` can no longer be specified at the deployment level. "
-            "Pass it to `serve.run` or in the application config instead."
-        )
+    def backpressure_config(self) -> BackpressureConfig:
+        """Config of the HTTP response for requests rejected due to backpressure."""
+        return self._deployment_config.backpressure_config
 
     @property
     def ray_actor_options(self) -> Optional[Dict]:
@@ -184,38 +197,50 @@ class Deployment:
 
     @property
     def init_args(self) -> Tuple[Any]:
+        """Positional arguments passed to the deployment's constructor."""
         return self._replica_config.init_args
 
     @property
     def init_kwargs(self) -> Tuple[Any]:
+        """Keyword arguments passed to the deployment's constructor."""
         return self._replica_config.init_kwargs
 
     @property
-    def url(self) -> Optional[str]:
-        logger.warning(
-            "DeprecationWarning: `Deployment.url` is deprecated "
-            "and will be removed in the future."
-        )
-        return None
-
-    @property
     def logging_config(self) -> Dict:
+        """Logging configuration of the deployment."""
         return self._deployment_config.logging_config
 
     def set_logging_config(self, logging_config: Dict):
+        """Set the logging configuration of the deployment.
+
+        Args:
+            logging_config: The logging configuration.
+        """
         self._deployment_config.logging_config = logging_config
 
     def __call__(self):
+        """Not supported. Deployments can't be called or constructed directly.
+
+        Raises:
+            RuntimeError: Always.
+        """
         raise RuntimeError(
             "Deployments cannot be constructed directly. "
             "Use `deployment.deploy() instead.`"
         )
 
-    def bind(self, *args, **kwargs) -> Application:
+    def bind(self, *args: Any, **kwargs: Any) -> Application:
         """Bind the arguments to the deployment and return an Application.
 
         The returned Application can be deployed using `serve.run` (or via
         config file) or bound to another deployment for composition.
+
+        Args:
+            *args: Positional arguments to pass to the deployment's constructor.
+            **kwargs: Keyword arguments to pass to the deployment's constructor.
+
+        Returns:
+            An application that contains this deployment with the given arguments.
         """
         return Application(self.options(_init_args=args, _init_kwargs=kwargs))
 
@@ -225,7 +250,6 @@ class Deployment:
         name: Default[str] = DEFAULT.VALUE,
         version: Default[str] = DEFAULT.VALUE,
         num_replicas: Default[Optional[Union[int, str]]] = DEFAULT.VALUE,
-        route_prefix: Default[Union[str, None]] = DEFAULT.VALUE,
         ray_actor_options: Default[Optional[Dict]] = DEFAULT.VALUE,
         placement_group_bundles: Default[List[Dict[str, float]]] = DEFAULT.VALUE,
         placement_group_strategy: Default[str] = DEFAULT.VALUE,
@@ -236,6 +260,9 @@ class Deployment:
         user_config: Default[Optional[Any]] = DEFAULT.VALUE,
         max_ongoing_requests: Default[int] = DEFAULT.VALUE,
         max_queued_requests: Default[int] = DEFAULT.VALUE,
+        backpressure_config: Default[
+            Union[Dict, BackpressureConfig, None]
+        ] = DEFAULT.VALUE,
         autoscaling_config: Default[
             Union[Dict, AutoscalingConfig, None]
         ] = DEFAULT.VALUE,
@@ -257,18 +284,77 @@ class Deployment:
         deployment_actors: Default[
             Optional[List[Union[Dict, DeploymentActorConfig]]]
         ] = DEFAULT.VALUE,
+        max_surge_percent: Default[int] = DEFAULT.VALUE,
     ) -> "Deployment":
         """Return a copy of this deployment with updated options.
 
         Only those options passed in will be updated, all others will remain
         unchanged from the existing deployment.
 
-        Refer to the `@serve.deployment` decorator docs for available arguments.
+        See the `@serve.deployment` decorator docs for details on each option.
+
+        Args:
+            func_or_class: The class or function to run as this deployment.
+            name: Unique name for this deployment within the application.
+            version: Removed. Specifying this argument raises a ValueError.
+            num_replicas: Number of replicas handling requests, or "auto" to
+                autoscale.
+            ray_actor_options: Options for the replica actor, such as resources and
+                runtime environment.
+            placement_group_bundles: Placement group bundles scheduled for each
+                replica. Cannot be combined with `max_replicas_per_node`.
+            placement_group_strategy: Scheduling strategy for those bundles.
+            placement_group_bundle_label_selector: Label selectors applied to the
+                placement group, either one for all bundles or one per bundle.
+            max_replicas_per_node: Maximum replicas of this deployment on one node.
+                Cannot be combined with `placement_group_bundles`.
+            user_config: Config passed to the replica's `reconfigure` method without
+                restarting replicas.
+            max_ongoing_requests: Maximum number of requests a replica can handle
+                at once.
+            max_queued_requests: Maximum number of requests queued at each caller.
+                Additional requests are rejected when the queue is full.
+            backpressure_config: HTTP response settings for requests rejected
+                because the queue is full.
+            autoscaling_config: Autoscaling parameters. Set `num_replicas` to "auto"
+                or leave it unset when using this.
+            graceful_shutdown_wait_loop_s: Seconds between checks for unfinished
+                requests during shutdown.
+            graceful_shutdown_timeout_s: Seconds allowed for a graceful shutdown
+                before the replica is forcibly stopped.
+            health_check_period_s: Seconds between health checks on a replica.
+            health_check_timeout_s: Seconds allowed for a health check to finish
+                before it is considered failed.
+            logging_config: Logging options for this deployment's replicas.
+            request_router_config: Request routing options for this deployment.
+            _init_args: Internal. Positional arguments for the deployment
+                constructor; use `.bind()` instead.
+            _init_kwargs: Internal. Keyword arguments for the deployment
+                constructor; use `.bind()` instead.
+            _internal: Internal. Set by Serve when it calls this method.
+            max_constructor_retry_count: Maximum retries of the deployment
+                constructor before the deployment is marked failed.
+            gang_scheduling_config: Options for scheduling replicas together in
+                groups called gangs.
+            deployment_actors: Actors shared by all replicas of this deployment.
+            max_surge_percent: Extra replicas allowed during a rolling restart,
+                as a percentage of the target count. Must be in ``[0, 100]``.
+                The allowance rounds up to whole replicas or gangs. When positive,
+                replacements start before old replicas stop. If the cluster lacks
+                capacity, old replicas keep serving while replacements wait.
+                Stopping replicas do not count toward the limit, so live actors
+                can exceed the target plus surge while old replicas drain.
+                Lightweight configuration changes to replicas on the new code
+                wait until restarts finish. Setting this to ``0`` stops old
+                replicas before starting replacements.
+
+        Returns:
+            A copy of this deployment with the given options applied.
         """
-        if route_prefix is not DEFAULT.VALUE:
+        if not _internal and version is not DEFAULT.VALUE:
             raise ValueError(
-                "`route_prefix` can no longer be specified at the deployment level. "
-                "Pass it to `serve.run` or in the application config instead."
+                "`version` in `Deployment.options()` has been removed. "
+                "Serve manages deployment versions internally."
             )
 
         # Modify max_ongoing_requests and autoscaling_config if
@@ -316,14 +402,7 @@ class Deployment:
         if num_replicas == 0:
             raise ValueError("num_replicas is expected to larger than 0")
 
-        if not _internal and version is not DEFAULT.VALUE:
-            logger.warning(
-                "DeprecationWarning: `version` in `Deployment.options()` has been "
-                "deprecated. Explicitly specifying version will raise an error in the "
-                "future!"
-            )
-
-        elif num_replicas not in [DEFAULT.VALUE, None, "auto"]:
+        if num_replicas not in [DEFAULT.VALUE, None, "auto"]:
             new_deployment_config.num_replicas = num_replicas
 
         if user_config is not DEFAULT.VALUE:
@@ -335,10 +414,16 @@ class Deployment:
         if max_queued_requests is not DEFAULT.VALUE:
             new_deployment_config.max_queued_requests = max_queued_requests
 
+        if backpressure_config is not DEFAULT.VALUE:
+            new_deployment_config.backpressure_config = backpressure_config
+
         if max_constructor_retry_count is not DEFAULT.VALUE:
             new_deployment_config.max_constructor_retry_count = (
                 max_constructor_retry_count
             )
+
+        if max_surge_percent is not DEFAULT.VALUE:
+            new_deployment_config.max_surge_percent = max_surge_percent
 
         if func_or_class is None:
             func_or_class = self._replica_config.deployment_def
@@ -482,6 +567,9 @@ def deployment_to_schema(d: Deployment) -> DeploymentSchema:
 
     Args:
         d: Deployment object to convert
+
+    Returns:
+        The structured ``DeploymentSchema`` representing ``d``.
     """
 
     if d.ray_actor_options is not None:
@@ -498,6 +586,7 @@ def deployment_to_schema(d: Deployment) -> DeploymentSchema:
         else d.num_replicas,
         "max_ongoing_requests": d.max_ongoing_requests,
         "max_queued_requests": d.max_queued_requests,
+        "backpressure_config": d.backpressure_config,
         "user_config": d.user_config,
         "autoscaling_config": d._deployment_config.autoscaling_config,
         "graceful_shutdown_wait_loop_s": d._deployment_config.graceful_shutdown_wait_loop_s,  # noqa: E501
@@ -513,6 +602,7 @@ def deployment_to_schema(d: Deployment) -> DeploymentSchema:
         "gang_scheduling_config": d._deployment_config.gang_scheduling_config,
         "deployment_actors": d._deployment_config.deployment_actors,
         "rolling_update_percentage": d._deployment_config.rolling_update_percentage,
+        "max_surge_percent": d._deployment_config.max_surge_percent,
     }
 
     # Let non-user-configured options be set to defaults. If the schema
@@ -567,6 +657,7 @@ def schema_to_deployment(s: DeploymentSchema) -> Deployment:
         user_config=s.user_config,
         max_ongoing_requests=s.max_ongoing_requests,
         max_queued_requests=s.max_queued_requests,
+        backpressure_config=s.backpressure_config,
         autoscaling_config=s.autoscaling_config,
         graceful_shutdown_wait_loop_s=s.graceful_shutdown_wait_loop_s,
         graceful_shutdown_timeout_s=s.graceful_shutdown_timeout_s,
@@ -577,6 +668,7 @@ def schema_to_deployment(s: DeploymentSchema) -> Deployment:
         gang_scheduling_config=s.gang_scheduling_config,
         deployment_actors=s.deployment_actors,
         rolling_update_percentage=s.rolling_update_percentage,
+        max_surge_percent=s.max_surge_percent,
     )
     deployment_config.user_configured_option_names = (
         s._get_user_configured_option_names()

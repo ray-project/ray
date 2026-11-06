@@ -5,7 +5,7 @@ import pyarrow as pa
 import pytest
 
 import ray
-from ray.data._internal.execution.interfaces import RefBundle
+from ray.data._internal.execution.interfaces import BlockEntry, RefBundle
 from ray.data._internal.execution.interfaces.op_runtime_metrics import (
     OpRuntimeMetrics,
 )
@@ -15,48 +15,126 @@ from ray.data._internal.execution.interfaces.physical_operator import (
 from ray.data._internal.util import KiB
 from ray.data.block import BlockExecStats, BlockMetadata, TaskExecWorkerStats
 from ray.data.context import DataContext
+from ray.data.exceptions import LineageReconstructionError
 
 
-def test_average_max_uss_per_task():
-    # No tasks submitted yet.
-    metrics = OpRuntimeMetrics(MagicMock())
-    assert metrics.average_max_uss_per_task is None
+def test_max_uss_bytes_distribution():
+    op = MagicMock()
+    op.data_context.enable_get_object_locations_for_metrics = False
+    metrics = OpRuntimeMetrics(op)
+    assert metrics.max_uss_bytes.num_samples == 0
+    assert metrics.max_uss_bytes.mean == 0
+    assert metrics.max_uss_bytes.max is None
 
-    def create_bundle(uss_bytes: int):
-        block = ray.put(pa.Table.from_pydict({}))
-        stats = BlockExecStats(
-            max_uss_bytes=uss_bytes,
-            wall_time_s=0,
-            block_ser_time_s=0,
-        )
-        metadata = BlockMetadata(
-            num_rows=0,
-            size_bytes=0,
-            input_files=None,
-            exec_stats=stats,
-        )
-        return RefBundle([(block, metadata)], owns_blocks=False, schema=None)
+    input_bundle = RefBundle([], owns_blocks=False, schema=None)
 
-    # Submit two tasks.
-    bundle = create_bundle(uss_bytes=0)
-    metrics.on_task_submitted(0, bundle)
-    metrics.on_task_submitted(1, bundle)
-    assert metrics.average_max_uss_per_task is None
+    # Submit and finish first task with USS of 100 bytes.
+    metrics.on_task_submitted(0, input_bundle)
+    metrics.on_task_finished(
+        0,
+        None,
+        TaskExecWorkerStats(task_wall_time_s=1.0, max_uss_bytes=100),
+        TaskExecDriverStats(task_output_backpressure_s=0),
+    )
+    assert metrics.max_uss_bytes.num_samples == 1
+    assert metrics.max_uss_bytes.mean == 100
+    assert metrics.max_uss_bytes.max == 100
 
-    # Generate one output for the first task.
-    bundle = create_bundle(uss_bytes=1)
-    metrics.on_task_output_generated(0, bundle)
-    assert metrics.average_max_uss_per_task == 1
+    # Submit and finish second task with USS of 300 bytes.
+    metrics.on_task_submitted(1, input_bundle)
+    metrics.on_task_finished(
+        1,
+        None,
+        TaskExecWorkerStats(task_wall_time_s=1.0, max_uss_bytes=300),
+        TaskExecDriverStats(task_output_backpressure_s=0),
+    )
+    assert metrics.max_uss_bytes.num_samples == 2
+    assert metrics.max_uss_bytes.mean == 200  # (100 + 300) / 2
+    assert metrics.max_uss_bytes.max == 300
 
-    # Generate one output for the second task.
-    bundle = create_bundle(uss_bytes=3)
-    metrics.on_task_output_generated(0, bundle)
-    assert metrics.average_max_uss_per_task == 2  # (1 + 3) / 2 = 2
+
+@pytest.mark.parametrize(
+    "exception,expected",
+    [
+        (ray.exceptions.ObjectLostError("ab", None, ""), True),
+        (ray.exceptions.OwnerDiedError("ab", None, ""), True),
+        (ray.exceptions.ObjectReconstructionFailedError("ab", None, ""), True),
+        (
+            ray.exceptions.RayTaskError(
+                "fn", "tb", ray.exceptions.ObjectLostError("ab", None, "")
+            ),
+            True,
+        ),
+        (ValueError("boom"), False),
+        (ray.exceptions.RayTaskError("fn", "tb", ValueError("boom")), False),
+        (
+            LineageReconstructionError(
+                ray.exceptions.ObjectLostError("ab", None, ""), "failed"
+            ),
+            True,
+        ),
+    ],
+)
+def test_num_tasks_failed_object_lost(exception, expected):
+    op = MagicMock()
+    op.data_context.enable_get_object_locations_for_metrics = False
+    metrics = OpRuntimeMetrics(op)
+    input_bundle = RefBundle([], owns_blocks=False, schema=None)
+
+    metrics.on_task_submitted(0, input_bundle)
+    metrics.on_task_finished(0, exception, None, None)
+
+    assert metrics.num_tasks_failed == 1
+    assert metrics.num_tasks_failed_object_lost == int(expected)
+
+
+def test_aborted_task_not_counted_as_finished():
+    """An aborted task releases its running-task bookkeeping without adding
+    to the finished-task totals, which its replacement counts instead."""
+    op = MagicMock()
+    op.data_context.enable_get_object_locations_for_metrics = False
+    metrics = OpRuntimeMetrics(op)
+    block_meta = BlockMetadata(
+        num_rows=1, size_bytes=10, exec_stats=None, input_files=None
+    )
+    inputs = RefBundle(
+        [BlockEntry(ray.ObjectRef.from_random(), block_meta)],
+        owns_blocks=False,
+        schema=None,
+    )
+
+    output_meta = BlockMetadata(
+        num_rows=1,
+        size_bytes=10,
+        exec_stats=BlockExecStats(
+            wall_time_s=1.0, block_ser_time_s=0.1, node_id="node"
+        ),
+        input_files=None,
+    )
+    output = RefBundle(
+        [BlockEntry(ray.ObjectRef.from_random(), output_meta)],
+        owns_blocks=False,
+        schema=None,
+    )
+
+    metrics.on_task_submitted(0, inputs)
+    metrics.on_task_output_generated(0, output)
+    metrics.on_task_aborted(0)
+
+    assert metrics.num_tasks_running == 0
+    assert metrics.obj_store_mem_pending_task_inputs == 0
+    assert metrics.num_tasks_finished == 0
+    assert metrics.num_tasks_failed == 0
+    assert metrics.num_outputs_of_finished_tasks == 0
+    assert metrics.task_completion_time_s == 0
+    assert metrics._op_task_duration_stats.num_samples == 0
 
 
 def test_task_completion_time_histogram():
     """Test task completion time histogram bucket assignment and counting."""
-    metrics = OpRuntimeMetrics(MagicMock())
+    op = MagicMock()
+    op.data_context.enable_get_object_locations_for_metrics = False
+    metrics = OpRuntimeMetrics(op)
 
     # Test different completion times
     # Buckets: [0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 7.5, 10.0, 15.0, 20.0, 25.0, 50.0, 75.0, 100.0, 150.0, 500.0, 1000.0, 2500.0, 5000.0]
@@ -98,7 +176,9 @@ def test_block_completion_time_histogram():
 
     Block completion time = (cum_block_gen_time_s + cum_block_ser_time_s) / num_outputs
     """
-    metrics = OpRuntimeMetrics(MagicMock())
+    op = MagicMock()
+    op.data_context.enable_get_object_locations_for_metrics = False
+    metrics = OpRuntimeMetrics(op)
 
     # Test different block generation scenarios
     # Buckets: [0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 7.5, 10.0, 15.0, 20.0, 25.0, 50.0, 75.0, 100.0, 150.0, 500.0, 1000.0, 2500.0, 5000.0]
@@ -170,7 +250,6 @@ def test_task_completion_time_excl_backpressure(mock_perf_counter):
         stats = BlockExecStats(
             wall_time_s=gen_time_s,
             block_ser_time_s=ser_time_s,
-            max_uss_bytes=0,
         )
         metadata = BlockMetadata(
             num_rows=1,
@@ -178,7 +257,7 @@ def test_task_completion_time_excl_backpressure(mock_perf_counter):
             input_files=None,
             exec_stats=stats,
         )
-        return RefBundle([(block, metadata)], owns_blocks=False, schema=None)
+        return RefBundle([BlockEntry(block, metadata)], owns_blocks=False, schema=None)
 
     total_gen_ser = 0
     cumulative_scheduling_time_s = 0.0
@@ -279,12 +358,13 @@ def test_task_completion_time_excl_backpressure(mock_perf_counter):
 
 def test_block_size_bytes_histogram():
     """Test block size bytes histogram bucket assignment and counting."""
-    metrics = OpRuntimeMetrics(MagicMock())
+    op = MagicMock()
+    op.data_context.enable_get_object_locations_for_metrics = False
+    metrics = OpRuntimeMetrics(op)
 
     def create_bundle_with_size(size_bytes):
         block = ray.put(pa.Table.from_pydict({}))
         stats = BlockExecStats(
-            max_uss_bytes=0,
             wall_time_s=0,
             block_ser_time_s=0,
         )
@@ -294,7 +374,7 @@ def test_block_size_bytes_histogram():
             input_files=None,
             exec_stats=stats,
         )
-        return RefBundle([(block, metadata)], owns_blocks=False, schema=None)
+        return RefBundle([BlockEntry(block, metadata)], owns_blocks=False, schema=None)
 
     # Test different block sizes
     # Buckets: [1KB, 8KB, 64KB, 128KB, 256KB, 512KB, 1MB, 8MB, 64MB, 128MB, 256MB, 512MB, 1GB, 4GB, 16GB, 64GB, 128GB, 256GB, 512GB, 1024GB, 4096GB]
@@ -328,12 +408,13 @@ def test_block_size_bytes_histogram():
 
 def test_block_size_rows_histogram():
     """Test block size rows histogram bucket assignment and counting."""
-    metrics = OpRuntimeMetrics(MagicMock())
+    op = MagicMock()
+    op.data_context.enable_get_object_locations_for_metrics = False
+    metrics = OpRuntimeMetrics(op)
 
     def create_bundle_with_rows(num_rows):
         block = ray.put(pa.Table.from_pydict({}))
         stats = BlockExecStats(
-            max_uss_bytes=0,
             wall_time_s=0,
             block_ser_time_s=0,
         )
@@ -343,7 +424,7 @@ def test_block_size_rows_histogram():
             input_files=None,
             exec_stats=stats,
         )
-        return RefBundle([(block, metadata)], owns_blocks=False, schema=None)
+        return RefBundle([BlockEntry(block, metadata)], owns_blocks=False, schema=None)
 
     # Test different row counts
     # Buckets: [1, 5, 10, 25, 50, 100, 250, 500, 1000, 2500, 5000, 10000, 25000, 50000, 100000, 250000, 500000, 1000000, 2500000, 5000000, 10000000]
@@ -489,6 +570,61 @@ def test_obj_store_mem_estimation(
     assert (
         actual == expected
     ), f"Expected {test_property} to be {expected}, got {actual}"
+
+
+def _metrics_for_one_output(**phases):
+    """An `OpRuntimeMetrics` fed one output block with the given phase times."""
+    op = MagicMock()
+    op.data_context.enable_get_object_locations_for_metrics = False
+    metrics = OpRuntimeMetrics(op)
+
+    stats = BlockExecStats(
+        wall_time_s=1.0,
+        block_ser_time_s=0.0,
+        block_transform_time_s=0.5,
+        **phases,
+    )
+    metadata = BlockMetadata(
+        num_rows=1, size_bytes=0, input_files=None, exec_stats=stats
+    )
+    output = RefBundle(
+        [BlockEntry(ray.put(pa.Table.from_pydict({})), metadata)],
+        owns_blocks=False,
+        schema=None,
+    )
+
+    metrics.on_task_submitted(0, RefBundle([], owns_blocks=False, schema=None))
+    metrics.on_task_output_generated(0, output)
+    return metrics
+
+
+def test_phase_metrics_stay_none_when_unmeasured():
+    """A chain timed only as a whole must not export three zeros.
+
+    A row transform reports no phase breakdown unless
+    `DataContext.accurate_map_phase_timing` is set. Summing those `None`s as
+    zero would put three zeros beside a non-zero `block_transform_time_s`,
+    which a dashboard can't tell from "these phases took no time".
+    """
+    metrics = _metrics_for_one_output()
+
+    assert metrics.block_transform_time_s == pytest.approx(0.5)
+    assert metrics.input_prep_time_s is None
+    assert metrics.function_body_time_s is None
+    assert metrics.output_build_time_s is None
+
+
+def test_phase_metrics_accumulate_when_measured():
+    """The `None` default must not swallow a measured phase."""
+    metrics = _metrics_for_one_output(
+        input_prep_time_s=0.1,
+        function_body_time_s=0.3,
+        output_build_time_s=0.1,
+    )
+
+    assert metrics.input_prep_time_s == pytest.approx(0.1)
+    assert metrics.function_body_time_s == pytest.approx(0.3)
+    assert metrics.output_build_time_s == pytest.approx(0.1)
 
 
 if __name__ == "__main__":

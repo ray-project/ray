@@ -19,11 +19,12 @@ class DeploymentInfo:
         actor_name: Optional[str] = None,
         version: Optional[str] = None,
         end_time_ms: Optional[int] = None,
-        route_prefix: str = None,
+        route_prefix: Optional[str] = None,
         ingress: bool = False,
         ingress_request_router: bool = False,
         target_capacity: Optional[float] = None,
         target_capacity_direction: Optional[TargetCapacityDirection] = None,
+        router_application: bool = False,
     ):
         self.deployment_config = deployment_config
         self.replica_config = replica_config
@@ -41,6 +42,7 @@ class DeploymentInfo:
         self.route_prefix = route_prefix
         self.ingress = ingress
         self.ingress_request_router = ingress_request_router
+        self.router_application = router_application
 
         self.target_capacity = target_capacity
         self.target_capacity_direction = target_capacity_direction
@@ -51,15 +53,16 @@ class DeploymentInfo:
         return clean_dict
 
     def __setstate__(self, d: Dict[Any, Any]) -> None:
+        d.setdefault("router_application", False)
         self.__dict__ = d
         self._cached_actor_def = None
 
     def update(
         self,
-        deployment_config: DeploymentConfig = None,
-        replica_config: ReplicaConfig = None,
-        version: str = None,
-        route_prefix: str = None,
+        deployment_config: Optional[DeploymentConfig] = None,
+        replica_config: Optional[ReplicaConfig] = None,
+        version: Optional[str] = None,
+        route_prefix: Optional[str] = None,
     ) -> "DeploymentInfo":
         return DeploymentInfo(
             deployment_config=deployment_config or self.deployment_config,
@@ -74,6 +77,7 @@ class DeploymentInfo:
             ingress_request_router=self.ingress_request_router,
             target_capacity=self.target_capacity,
             target_capacity_direction=self.target_capacity_direction,
+            router_application=self.router_application,
         )
 
     def set_target_capacity(
@@ -147,12 +151,13 @@ class DeploymentInfo:
             "target_capacity": target_capacity,
             "target_capacity_direction": target_capacity_direction,
             "ingress_request_router": proto.ingress_request_router,
+            "router_application": proto.router_application,
         }
 
         return cls(**data)
 
     def to_proto(self):
-        data = {
+        data: Dict[str, Any] = {
             "start_time_ms": self.start_time_ms,
             "actor_name": self.actor_name,
             "version": self.version,
@@ -171,6 +176,7 @@ class DeploymentInfo:
         else:
             data["target_capacity_direction"] = self.target_capacity_direction.name
         data["ingress_request_router"] = self.ingress_request_router
+        data["router_application"] = self.router_application
         return DeploymentInfoProto(**data)
 
     def to_dict(self):

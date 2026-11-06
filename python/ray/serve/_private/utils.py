@@ -13,16 +13,16 @@ import zlib
 from decimal import ROUND_HALF_UP, Decimal
 from enum import Enum
 from functools import wraps
-from typing import Any, Callable, Dict, List, Optional, Set, TypeVar, Union
+from typing import Any, Callable, Dict, List, Optional, Set, TypeVar, Union, cast
 
-import requests
+import requests  # type: ignore[import-untyped]
 
 import ray
 import ray.util.serialization_addons
 from ray import cloudpickle
 from ray._common.constants import HEAD_NODE_RESOURCE_NAME
 from ray._common.utils import get_random_alphanumeric_string, import_attr
-from ray._raylet import MessagePackSerializer
+from ray._raylet import MessagePackSerializer  # type: ignore[attr-defined]
 from ray.actor import ActorHandle
 from ray.serve._private.common import DeploymentID, RequestMetadata, ServeComponentType
 from ray.serve._private.constants import (
@@ -37,16 +37,88 @@ from ray.util.serialization import StandaloneSerializationContext
 try:
     import pandas as pd
 except ImportError:
-    pd = None
+    pd = cast(Any, None)
 
 try:
     import numpy as np
 except ImportError:
-    np = None
+    np = cast(Any, None)
 
 FILE_NAME_REGEX = r"[^\x20-\x7E]|[<>:\"/\\|?*]"
 
 MESSAGE_PACK_OFFSET = 9
+
+# Attribute set on functions/methods decorated with `@serve.multiplexed`. The
+# `__serve_multiplex_wrapper` is only created lazily on the first call, so this
+# marker is used to detect multiplexing statically (e.g. at replica startup)
+# without invoking user code.
+MULTIPLEXED_FUNCTION_MARKER_ATTR = "_serve_multiplexed_function"
+
+
+def _callable_uses_multiplexing(callable_obj: Any) -> bool:
+    """Whether `callable_obj` is or defines an `@serve.multiplexed` function.
+
+    Accepts a standalone function, a class, or a class instance, so it can be used
+    both at build time (where the deployment's `func_or_class` is available) and at
+    runtime (where an initialized instance is available).
+
+    For an instance it also inspects instance attributes, so multiplexing that is
+    wired up dynamically at init time (e.g. ``self._load_model =
+    serve.multiplexed(...)(fn)``) is detected. This case can only be caught at
+    runtime, since it is not visible on the class statically.
+    """
+    # Static: a plain `getattr` on a `DeploymentHandle` runs `__getattr__`, which
+    # eagerly initializes its Router. `is True` guards against truthy impostors.
+    def _has_marker(obj: Any) -> bool:
+        try:
+            return (
+                inspect.getattr_static(obj, MULTIPLEXED_FUNCTION_MARKER_ATTR, False)
+                is True
+            )
+        except Exception:
+            return False
+
+    # Standalone function deployment decorated with `@serve.multiplexed`.
+    if _has_marker(callable_obj):
+        return True
+
+    # A class (or instance of one) with a method decorated with `@serve.multiplexed`.
+    klass = callable_obj if isinstance(callable_obj, type) else type(callable_obj)
+    for base in klass.__mro__:
+        for attr in base.__dict__.values():
+            if _has_marker(attr):
+                return True
+
+    # An instance that stored a multiplexed wrapper as an instance attribute.
+    if not isinstance(callable_obj, type):
+        # `getattr` falls back to `__getattr__` on a `__slots__` class;
+        # `getattr_static` returns the descriptor rather than the instance mapping.
+        try:
+            instance_vars = object.__getattribute__(callable_obj, "__dict__")
+        except AttributeError:
+            instance_vars = {}
+        for attr in instance_vars.values():
+            if _has_marker(attr):
+                return True
+
+    return False
+
+
+# Set by `serve._router_application`.
+ROUTER_APPLICATION_MARKER_ATTR = "_serve_router_application"
+
+
+def _is_router_application_class(obj: Any) -> bool:
+    """Whether `obj` is a class marked with `@serve._router_application`."""
+    if not isinstance(obj, type):
+        return False
+    # Walks the MRO, so the marker survives `@serve.ingress`'s wrapper subclass.
+    try:
+        return (
+            inspect.getattr_static(obj, ROUTER_APPLICATION_MARKER_ATTR, False) is True
+        )
+    except Exception:
+        return False
 
 
 def asyncio_grpc_exception_handler(loop, context):
@@ -243,11 +315,72 @@ def copy_class_metadata(wrapper_cls, target_cls) -> None:
     wrapper_cls.__wrapped__ = target_cls
 
 
+def _register_thread_lock_serializer(serialization_context):
+    """Make threading locks cloudpickle-serializable.
+
+    FastAPI >= 0.137 embeds a threading.Lock in the ASGI app object, which cloudpickle
+    cannot serialize ("cannot pickle '_thread.lock' object"). serve.ingress(app) pickles
+    the app to freeze it (and again to ship it to replicas), so both fail. A lock carries
+    no transferable state and the app is frozen/shipped before it serves any request, so
+    reconstruct a fresh, unlocked lock on deserialization.
+    """
+    import threading
+
+    for lock_factory in (threading.Lock, threading.RLock):
+        serialization_context._register_cloudpickle_serializer(
+            type(lock_factory()),
+            custom_serializer=lambda lock: None,
+            custom_deserializer=lambda _serialized, factory=lock_factory: factory(),
+        )
+
+
+def _register_pydantic_mock_serializer(serialization_context):
+    """Restore pydantic's MockValSer (an unbuilt model's placeholder) from its slots.
+
+    Its __getattr__ reads a slot that is still unset mid-unpickle, so unpickling recursed.
+    """
+    try:
+        from pydantic import BaseModel
+        from pydantic._internal._mock_val_ser import MockValSer
+    except ImportError:
+        return
+
+    # Nested so cloudpickle ships it by value and loading never imports ray.serve.
+    def restore(mock, state):
+        for name, value in state.items():
+            object.__setattr__(mock, name, value)
+        # cloudpickle restores a by-value model onto a built, field-less skeleton and
+        # omits its `__pydantic_complete__ = False` (BaseModel's object); undo both.
+        for cell in getattr(state["_attempt_rebuild"], "__closure__", None) or ():
+            owner = cell.cell_contents
+            if isinstance(owner, type) and issubclass(owner, BaseModel):
+                owner.__pydantic_complete__ = False
+                if "__pydantic_core_schema__" in owner.__dict__:
+                    del owner.__pydantic_core_schema__
+
+    serialization_context._register_cloudpickle_reducer(
+        MockValSer,
+        lambda mock: (
+            object.__new__,
+            (MockValSer,),
+            {name: getattr(mock, name) for name in MockValSer.__slots__},
+            None,
+            None,
+            restore,
+        ),
+    )
+
+
+# Serve pickles user code in many places, some before Ray starts, so register on import.
+_register_pydantic_mock_serializer(StandaloneSerializationContext())
+
+
 def ensure_serialization_context():
     """Ensure the serialization addons on registered, even when Ray has not
     been started."""
     ctx = StandaloneSerializationContext()
     ray.util.serialization_addons.apply(ctx)
+    _register_thread_lock_serializer(ctx)
 
 
 def msgpack_serialize(obj):
@@ -280,8 +413,7 @@ def merge_dict(dict1, dict2):
 
 
 def parse_import_path(import_path: str):
-    """
-    Takes in an import_path of form:
+    """Takes in an import_path of form:
 
     [subdirectory 1].[subdir 2]...[subdir n].[file name].[attribute name]
 
@@ -317,7 +449,8 @@ def override_runtime_envs_except_env_vars(parent_env: Dict, child_env: Dict) -> 
         parent_env: The environment to inherit settings from.
         child_env: The environment with override settings.
 
-    Returns: A new dictionary containing the merged runtime_env settings.
+    Returns:
+        A new dictionary containing the merged runtime_env settings.
 
     Raises:
         TypeError: If a dictionary is not passed in for parent_env or child_env.
@@ -376,6 +509,13 @@ def require_packages(packages: List[str]):
         >>> func() # doctest: +SKIP
         ImportError: func requires ["numpy", "package_a"] but
         ["package_a"] are not available, please pip install them.
+
+    Args:
+        packages: The list of package names that must be importable when the
+            decorated function is invoked.
+
+    Returns:
+        A decorator that wraps the target function with the package check.
     """
 
     def decorator(func):
@@ -460,11 +600,12 @@ def extract_self_if_method_call(args: List[Any], func: Callable) -> Optional[obj
     robust solution to this I was able to find. It would also be preferable
     to do this check when the decorator runs, rather than when the method is.
 
-    Returns the `self` object if it's a method call, else None.
-
     Arguments:
         args: arguments to the function/method call.
         func: the unbound function that was called.
+
+    Returns:
+        The ``self`` object if it's a method call, else ``None``.
     """
     if len(args) > 0:
         method = getattr(args[0], func.__name__, False)
@@ -559,8 +700,7 @@ def get_all_live_placement_group_names() -> List[str]:
 
 
 def get_active_placement_group_ids() -> Set[str]:
-    """
-    Retrieve the set of placement group IDs referenced by alive Serve actors.
+    """Retrieve the set of placement group IDs referenced by alive Serve actors.
 
     Returns:
         The set of placement group IDs referenced by alive Serve actors.
@@ -717,9 +857,12 @@ async def resolve_deployment_response(obj: Any, request_metadata: RequestMetadat
         raise GENERATOR_COMPOSITION_NOT_SUPPORTED_ERROR
     elif isinstance(obj, DeploymentResponse):
         if request_metadata._by_reference and obj.by_reference:
-            # If sending requests by reference, launch async task to
-            # convert DeploymentResponse to an object ref
-            return asyncio.create_task(obj._to_object_ref())
+
+            # Peek, then wait for presence only. Downstream fetches the value.
+            async def to_ready_ref():
+                return await (await obj._to_object_ref())._ready()
+
+            return asyncio.create_task(to_ready_ref())
         else:
             # Otherwise, resolve DeploymentResponse directly to result
             return asyncio.create_task(await_deployment_response(obj))

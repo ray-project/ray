@@ -1,4 +1,5 @@
 import io
+from unittest.mock import MagicMock, patch
 
 import pandas as pd
 import pyarrow as pa
@@ -6,7 +7,23 @@ import pytest
 from PIL import Image
 
 import ray
+from ray.data._internal.planner.download_partition_actor import (
+    PartitionActor,
+    _ExactDownloadPartitioner,
+)
+from ray.data._internal.planner.plan_download_op import split_download_uri_blocks
+from ray.data._internal.util import MiB
 from ray.data.expressions import DownloadExpr, col, download
+
+_TARGET_BLOCK_SIZE = 128 * MiB
+
+
+def _make_partition_actor(uri_columns=None, target_block_size=_TARGET_BLOCK_SIZE):
+    ctx = MagicMock()
+    ctx.target_max_block_size = target_block_size
+    ctx.target_min_block_size = 1 * MiB
+    ctx.retried_io_errors = ()
+    return PartitionActor(uri_columns or ["uri"], ctx)
 
 
 class TestDownloadExpressionStructure:
@@ -422,6 +439,218 @@ class TestDownloadExpressionIntegration:
         assert len(results) == 1
         assert results[0]["decoded_text"] == "Hello, World!"
         assert results[0]["raw_bytes"] == test_content
+
+
+class TestDownloadPartitionActorExactPartitioning:
+    def test_uri_blocks_are_sharded_by_row_count_before_partition_actors(self):
+        block = pa.table({"uri": [f"s3://bucket/file_{i}" for i in range(25)]})
+
+        out = list(
+            split_download_uri_blocks(
+                iter([block]),
+                None,
+                max_rows_per_block=10,
+            )
+        )
+
+        assert [partition.num_rows for partition in out] == [10, 10, 5]
+
+    def test_fetches_all_uris_in_input_block(self):
+        actor = _make_partition_actor()
+        block = pa.table({"uri": [f"file_{i}.bin" for i in range(100)]})
+
+        with patch.object(
+            actor._size_provider,
+            "get_file_sizes",
+            side_effect=lambda uris: [1 * MiB] * len(uris),
+        ) as get_file_sizes:
+            out = list(actor(block))
+
+        assert len(get_file_sizes.call_args_list) == 1
+        assert get_file_sizes.call_args.args[0] == block.column("uri").to_pylist()
+        assert [partition.num_rows for partition in out] == [50, 50]
+
+    def test_partitions_by_exact_sizes(self):
+        actor = _make_partition_actor(target_block_size=10 * MiB)
+        block = pa.table({"uri": [f"file_{i}.bin" for i in range(4)]})
+
+        with patch.object(
+            actor._size_provider,
+            "get_file_sizes",
+            return_value=[4 * MiB, 4 * MiB, 4 * MiB, 4 * MiB],
+        ):
+            out = list(actor(block))
+
+        assert [partition.num_rows for partition in out] == [2, 2]
+
+    def test_multiple_uri_columns_use_combined_exact_row_size(self):
+        actor = _make_partition_actor(["left_uri", "right_uri"], 10 * MiB)
+        block = pa.table(
+            {
+                "left_uri": [f"left_{i}.bin" for i in range(3)],
+                "right_uri": [f"right_{i}.bin" for i in range(3)],
+            }
+        )
+
+        def _get_file_sizes(uris):
+            if uris[0].startswith("left_"):
+                return [3 * MiB] * len(uris)
+            return [4 * MiB] * len(uris)
+
+        with patch.object(
+            actor._size_provider, "get_file_sizes", side_effect=_get_file_sizes
+        ):
+            out = list(actor(block))
+
+        assert [partition.num_rows for partition in out] == [1, 1, 1]
+
+    def test_round_robin_bucketing_spreads_rows_after_min_size(self):
+        size_provider = MagicMock()
+        size_provider.get_file_sizes.return_value = [1 * MiB] * 5
+        partitioner = _ExactDownloadPartitioner(
+            ["uri"],
+            3 * MiB,
+            size_provider,
+            target_min_nbytes=1 * MiB,
+            num_buckets=2,
+        )
+        block = pa.table({"uri": [f"file_{i}.bin" for i in range(5)]})
+
+        out = list(partitioner.partition(block))
+
+        assert [partition.column("uri").to_pylist() for partition in out] == [
+            ["file_0.bin", "file_2.bin", "file_4.bin"],
+            ["file_1.bin", "file_3.bin"],
+        ]
+
+
+def _start_flaky_http_server(get_statuses, content=b"image bytes"):
+    """Loopback HTTP server for ``download()`` tests.
+
+    ``HEAD`` always succeeds with the content length, so the partition actor
+    learns the size. Each ``GET`` answers the next status in ``get_statuses``;
+    the last one repeats. Returns ``(server, port, served)`` where ``served``
+    records every GET status sent.
+    """
+    from http.server import BaseHTTPRequestHandler, HTTPServer
+    from threading import Thread
+
+    served = []
+
+    class _Handler(BaseHTTPRequestHandler):
+        def do_HEAD(self):
+            self.send_response(200)
+            self.send_header("Content-Length", str(len(content)))
+            self.end_headers()
+
+        def do_GET(self):
+            status = get_statuses[min(len(served), len(get_statuses) - 1)]
+            served.append(status)
+            body = content if status == 200 else b""
+            self.send_response(status)
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
+        def log_message(self, format, *args):
+            pass
+
+    server = HTTPServer(("127.0.0.1", 0), _Handler)
+    Thread(target=server.serve_forever, daemon=True).start()
+    return server, server.server_address[1], served
+
+
+# obstore itself does not retry under this budget, so every transient error
+# surfaces to Ray Data's own retry machinery immediately.
+_TINY_RETRY_BUDGET = {
+    "RAY_DATA_OBSTORE_RETRY_MAX_RETRIES": "0",
+    "RAY_DATA_OBSTORE_RETRY_INIT_BACKOFF_MS": "1",
+    "RAY_DATA_OBSTORE_RETRY_MAX_BACKOFF_MS": "2",
+    "RAY_DATA_OBSTORE_RETRY_TIMEOUT_S": "5",
+    # Keep the block-level re-fetch (default 2 attempts) but don't wait.
+    "RAY_DATA_DOWNLOAD_RETRY_BACKOFF_MS": "0",
+}
+
+
+class TestDownloadTransientFailures:
+    """A download that fails after its retries fails the task.
+
+    Before, the row silently became ``None`` bytes and blew up downstream
+    (``PIL.UnidentifiedImageError`` in ``read_from_uris_fixed_size``).
+    """
+
+    @pytest.fixture
+    def tiny_retry_cluster(self, shutdown_only):
+        # The env vars must reach the worker processes, so they go through
+        # runtime_env rather than monkeypatch. Earlier tests in this module
+        # may have auto-started a cluster without it.
+        ray.shutdown()
+        ray.init(num_cpus=2, runtime_env={"env_vars": _TINY_RETRY_BUDGET})
+        ctx = ray.data.DataContext.get_current()
+        saved = (ctx.max_errored_blocks, ctx.retried_map_errors, ctx.max_map_retries)
+        yield ctx
+        ctx.max_errored_blocks, ctx.retried_map_errors, ctx.max_map_retries = saved
+
+    @pytest.fixture
+    def flaky_server(self):
+        servers = []
+
+        def start(get_statuses):
+            server, port, served = _start_flaky_http_server(get_statuses)
+            servers.append(server)
+            return port, served
+
+        yield start
+        for server in servers:
+            server.shutdown()
+
+    def test_aborts_by_default(self, tiny_retry_cluster, flaky_server):
+        pytest.importorskip("obstore")
+        port, _ = flaky_server([503])
+        ds = ray.data.from_items([{"uri": f"http://127.0.0.1:{port}/a.bin"}])
+        ds = ds.with_column("bytes", download("uri"))
+        with pytest.raises(Exception, match="Failed to download"):
+            ds.take_all()
+
+    def test_tolerated_with_max_errored_blocks(
+        self, tiny_retry_cluster, flaky_server, tmp_path
+    ):
+        pytest.importorskip("obstore")
+        (tmp_path / "ok.bin").write_bytes(b"fine")
+        port, _ = flaky_server([503])
+        tiny_retry_cluster.max_errored_blocks = -1
+        ds = ray.data.from_items(
+            [
+                {"uri": f"file://{tmp_path}/ok.bin"},
+                {"uri": f"http://127.0.0.1:{port}/a.bin"},
+            ],
+            override_num_blocks=2,
+        )
+        ds = ds.with_column("bytes", download("uri"))
+        # The block with the failing URI is dropped; the other one survives.
+        assert [row["bytes"] for row in ds.take_all()] == [b"fine"]
+
+    def test_retried_with_map_retries(self, tiny_retry_cluster, flaky_server):
+        pytest.importorskip("obstore")
+        port, served = flaky_server([503, 503, 200])
+        tiny_retry_cluster.retried_map_errors = ["DownloadError"]
+        tiny_retry_cluster.max_map_retries = 2
+        ds = ray.data.from_items([{"uri": f"http://127.0.0.1:{port}/a.bin"}])
+        ds = ds.with_column("bytes", download("uri"))
+        assert [row["bytes"] for row in ds.take_all()] == [b"image bytes"]
+        assert served == [503, 503, 200]
+
+    def test_transient_failure_recovers_without_settings(
+        self, tiny_retry_cluster, flaky_server
+    ):
+        # One transient failure is re-fetched inside the task by default; no
+        # DataContext retry settings are needed.
+        pytest.importorskip("obstore")
+        port, served = flaky_server([503, 200])
+        ds = ray.data.from_items([{"uri": f"http://127.0.0.1:{port}/a.bin"}])
+        ds = ds.with_column("bytes", download("uri"))
+        assert [row["bytes"] for row in ds.take_all()] == [b"image bytes"]
+        assert served == [503, 200]
 
 
 if __name__ == "__main__":

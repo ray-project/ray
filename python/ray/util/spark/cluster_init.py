@@ -44,7 +44,7 @@ from ray._common.network_utils import (
     parse_address,
 )
 from ray._common.utils import load_class
-from ray.autoscaler._private.spark.node_provider import HEAD_NODE_ID
+from ray.autoscaler._private.spark.node_provider import HEAD_NODE_ID, HEAD_NODE_TYPE
 from ray.util.annotations import DeveloperAPI, PublicAPI
 
 _logger = logging.getLogger("ray.util.spark")
@@ -57,6 +57,14 @@ MAX_NUM_WORKER_NODES = -1
 
 RAY_ON_SPARK_COLLECT_LOG_TO_PATH = "RAY_ON_SPARK_COLLECT_LOG_TO_PATH"
 RAY_ON_SPARK_START_RAY_PARENT_PID = "RAY_ON_SPARK_START_RAY_PARENT_PID"
+RAY_ENABLE_AUTOSCALER_V2 = "RAY_enable_autoscaler_v2"
+
+
+def _is_autoscaler_v2_enabled(ray_node_custom_env):
+    return ray_node_custom_env.get(RAY_ENABLE_AUTOSCALER_V2, "").lower() in (
+        "true",
+        "1",
+    )
 
 
 def _check_system_environment():
@@ -74,8 +82,7 @@ def _check_system_environment():
 
 
 class RayClusterOnSpark:
-    """
-    This class is the type of instance returned by the `_setup_ray_cluster` interface.
+    """This class is the type of instance returned by the `_setup_ray_cluster` interface.
     Its main functionality is to:
     Connect to, disconnect from, and shutdown the Ray cluster running on Apache Spark.
     Serve as a Python context manager for the `RayClusterOnSpark` instance.
@@ -234,9 +241,7 @@ class RayClusterOnSpark:
         self.ray_ctx = None
 
     def shutdown(self):
-        """
-        Shutdown the ray cluster created by the `setup_ray_cluster` API.
-        """
+        """Shutdown the ray cluster created by the `setup_ray_cluster` API."""
         import fcntl
 
         if not self.is_shutdown:
@@ -293,8 +298,7 @@ _RAY_CONNECT_CLUSTER_POLL_PROGRESS_TIMEOUT = 120
 
 
 def _preallocate_ray_worker_port_range():
-    """
-    If we start multiple ray workers on a machine concurrently, some ray worker
+    """If we start multiple ray workers on a machine concurrently, some ray worker
     processes might fail due to ray port conflicts, this is because race condition
     on getting free port and opening the free port.
     To address the issue, this function use an exclusive file lock to delay the
@@ -489,8 +493,7 @@ def _setup_ray_cluster(
     autoscale_idle_timeout_minutes: float,
     is_global: bool,
 ) -> Type[RayClusterOnSpark]:
-    """
-    The public API `ray.util.spark.setup_ray_cluster` does some argument
+    """The public API `ray.util.spark.setup_ray_cluster` does some argument
     validation and then pass validated arguments to this interface.
     and it returns a `RayClusterOnSpark` instance.
 
@@ -629,7 +632,10 @@ def _setup_ray_cluster(
         _start_spark_job_server,
     )
 
-    ray_node_custom_env = start_hook.custom_environment_variables()
+    ray_node_custom_env = {
+        **start_hook.custom_environment_variables(),
+        RAY_ENABLE_AUTOSCALER_V2: os.environ.get(RAY_ENABLE_AUTOSCALER_V2, "0"),
+    }
     spark_job_server = _start_spark_job_server(
         ray_head_ip, spark_job_server_port, spark, ray_node_custom_env
     )
@@ -1240,8 +1246,7 @@ def setup_ray_cluster(
     autoscale_idle_timeout_minutes: Optional[float] = 1.0,
     **kwargs,
 ) -> Tuple[str, str]:
-    """
-    Set up a ray cluster on the spark cluster by starting a ray head node in the
+    """Set up a ray cluster on the spark cluster by starting a ray head node in the
     spark application's driver side node.
     After creating the head node, a background spark job is created that
     generates an instance of `RayClusterOnSpark` that contains configuration for the
@@ -1252,6 +1257,9 @@ def setup_ray_cluster(
     `ray.util.spark.shutdown_ray_cluster()`.
     Note: If the active ray cluster haven't shut down, you cannot create a new ray
     cluster.
+    Ray on Spark uses Autoscaler V1 by default. Set the environment variable
+    ``RAY_enable_autoscaler_v2=1`` before calling this function to enable
+    Autoscaler V2.
 
     Args:
         max_worker_nodes: This argument represents maximum ray worker nodes to start
@@ -1351,6 +1359,9 @@ def setup_ray_cluster(
             or referenced objects (either in-memory or spilled to disk). This parameter
             does not affect the head node.
             Default value is 1.0, minimum value is 0
+        **kwargs: Additional keyword arguments forwarded to
+            ``_setup_ray_cluster_internal`` for advanced/experimental options.
+
     Returns:
         returns a tuple of (address, remote_connection_address)
         "address" is in format of "<ray_head_node_ip>:<port>"
@@ -1406,8 +1417,7 @@ def setup_global_ray_cluster(
     autoscale_upscaling_speed: Optional[float] = 1.0,
     autoscale_idle_timeout_minutes: Optional[float] = 1.0,
 ):
-    """
-    Set up a global mode cluster.
+    """Set up a global mode cluster.
     The global Ray on spark cluster means:
     - You can only create one active global Ray on spark cluster at a time.
     On databricks cluster, the global Ray cluster can be used by all users,
@@ -1433,6 +1443,51 @@ def setup_global_ray_cluster(
     `setup_global_ray_cluster` call terminates.
     If "is_blocking" is False,
     once Ray cluster setup completes, return immediately.
+
+    Args:
+        max_worker_nodes: The maximum number of Ray worker nodes to start. Set
+            it to ``ray.util.spark.MAX_NUM_WORKER_NODES`` to use all available
+            resources of the Spark application.
+        is_blocking: If True, block until the call is interrupted, then shut
+            down the cluster. If False, return once the cluster is set up.
+        min_worker_nodes: The minimum number of worker nodes. If None or equal
+            to ``max_worker_nodes``, autoscaling is disabled.
+        num_cpus_worker_node: The number of CPUs available to each Ray worker
+            node. See ``setup_ray_cluster`` for the default.
+        num_cpus_head_node: The number of CPUs available to the Ray head node.
+            Defaults to the number of CPU cores on the Spark driver node.
+        num_gpus_worker_node: The number of GPUs available to each Ray worker
+            node. See ``setup_ray_cluster`` for the default.
+        num_gpus_head_node: The number of GPUs available to the Ray head node.
+            Defaults to the number of GPUs on the Spark driver node.
+        memory_worker_node: The heap memory for each Ray worker node, passed as
+            ``--memory`` to ``ray start``.
+        memory_head_node: The heap memory for the Ray head node, passed as
+            ``--memory`` to ``ray start``.
+        object_store_memory_worker_node: The object store memory for each Ray
+            worker node. See ``setup_ray_cluster`` for the default and cap.
+        object_store_memory_head_node: The object store memory for the Ray head
+            node. See ``setup_ray_cluster`` for the default and cap.
+        head_node_options: Extra ``ray start`` options for the head node, with
+            keys in ``foo_bar`` form and None as the value of a flag option.
+        worker_node_options: Extra ``ray start`` options for the worker nodes,
+            with keys in ``foo_bar`` form and None as the value of a flag
+            option.
+        strict_mode: If True, raise an exception when the Spark cluster lacks
+            the resources for the requested allocation. If False, log a warning.
+        collect_log_to_path: If set, the path to collect the Ray node logs to
+            after the nodes terminate.
+        autoscale_upscaling_speed: The number of nodes allowed to be pending as
+            a multiple of the current number of nodes, when autoscaling is
+            enabled.
+        autoscale_idle_timeout_minutes: The number of minutes a worker node must
+            be idle before the autoscaler removes it, when autoscaling is
+            enabled.
+
+    Returns:
+        If ``is_blocking`` is False, a tuple of ``(address,
+        remote_connection_address)``, as ``setup_ray_cluster`` returns.
+        Otherwise None, once the cluster shuts down.
     """
 
     cluster_address = _setup_ray_cluster_internal(
@@ -1489,6 +1544,7 @@ def _start_ray_worker_nodes(
     worker_node_options,
     collect_log_to_path,
     node_id,
+    node_type,
 ):
     # NB:
     # In order to start ray worker nodes on spark cluster worker machines,
@@ -1551,6 +1607,13 @@ def _start_ray_worker_nodes(
             "RAY_ENABLE_WINDOWS_OR_OSX_CLUSTER": "1",
             **ray_node_custom_env,
         }
+        if _is_autoscaler_v2_enabled(ray_node_custom_env):
+            ray_worker_node_extra_envs.update(
+                {
+                    "RAY_CLOUD_INSTANCE_ID": str(node_id),
+                    "RAY_NODE_TYPE_NAME": node_type,
+                }
+            )
 
         if num_gpus_per_node > 0:
             task_resources = context.resources()
@@ -1615,6 +1678,7 @@ def _start_ray_worker_nodes(
                 ),
                 json={
                     "spark_job_group_id": spark_job_group_id,
+                    "node_id": node_id,
                 },
             )
 
@@ -1699,9 +1763,7 @@ def _start_ray_worker_nodes(
 
 @PublicAPI
 def shutdown_ray_cluster() -> None:
-    """
-    Shut down the active ray cluster.
-    """
+    """Shut down the active ray cluster."""
     global _active_ray_cluster
 
     with _active_ray_cluster_rwlock:
@@ -1732,6 +1794,12 @@ class AutoscalingCluster:
         Args:
             head_resources: resources of the head node, including CPU.
             worker_node_types: autoscaler node types config for worker nodes.
+            extra_provider_config: extra fields merged into the autoscaler
+                ``provider`` config.
+            upscaling_speed: maximum allowed in-flight upscaling as a
+                multiple of the current cluster size.
+            idle_timeout_minutes: minutes an idle worker node must remain
+                idle before the autoscaler removes it.
         """
         self._head_resources = head_resources.copy()
         self._head_resources["NODE_ID_AS_RESOURCE"] = HEAD_NODE_ID
@@ -1862,6 +1930,13 @@ class AutoscalingCluster:
             RAY_ON_SPARK_START_RAY_PARENT_PID: str(os.getpid()),
             **ray_node_custom_env,
         }
+        if _is_autoscaler_v2_enabled(ray_node_custom_env):
+            extra_env.update(
+                {
+                    "RAY_CLOUD_INSTANCE_ID": str(HEAD_NODE_ID),
+                    "RAY_NODE_TYPE_NAME": HEAD_NODE_TYPE,
+                }
+            )
 
         self.ray_head_node_cmd = ray_head_node_cmd
 

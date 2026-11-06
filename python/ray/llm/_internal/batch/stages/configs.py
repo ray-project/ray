@@ -47,10 +47,6 @@ class DetokenizeStageConfig(_StageConfigBase):
     )
 
 
-class PrepareImageStageConfig(_StageConfigBase):
-    pass
-
-
 class PrepareMultimodalStageConfig(_StageConfigBase):
     model_config_kwargs: Optional[Dict[str, Any]] = Field(
         default=None,

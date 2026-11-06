@@ -1315,6 +1315,58 @@ def test_actor_generic_call(ray_start_regular_shared):
     assert ray.get(actor.__ray_call__.remote(lambda self, x: x * 2, x=2)) == 4
 
 
+def test_ray_call_with_state_access(ray_start_regular_shared):
+    """Test that __ray_call__ can read and mutate actor state via closure."""
+
+    @ray.remote
+    class Store:
+        def __init__(self):
+            self.data = {}
+            self.counter = 0
+
+        def increment(self):
+            self.counter += 1
+
+    actor = Store.remote()
+    ray.get(actor.increment.remote())
+    ray.get(actor.increment.remote())
+
+    # Read state via closure
+    count = ray.get(actor.__ray_call__.remote(lambda self: self.counter))
+    assert count == 2
+
+    # Mutate state via closure
+    ray.get(actor.__ray_call__.remote(lambda self: self.data.update({"key": "value"})))
+    result = ray.get(actor.__ray_call__.remote(lambda self: self.data))
+    assert result == {"key": "value"}
+
+
+def test_ray_call_with_extra_args(ray_start_regular_shared):
+    """Test that __ray_call__ correctly forwards *args and **kwargs to fn."""
+
+    @ray.remote
+    class Calculator:
+        def __init__(self):
+            self.base = 10
+
+    actor = Calculator.remote()
+
+    # Test *args forwarding
+    result = ray.get(
+        actor.__ray_call__.remote(lambda self, x, y: self.base + x + y, 1, 2)
+    )
+    assert result == 13  # 10 + 1 + 2
+
+    # Test **kwargs forwarding
+    result = ray.get(
+        actor.__ray_call__.remote(
+            lambda self, multiplier=1: self.base * multiplier,
+            multiplier=3,
+        )
+    )
+    assert result == 30  # 10 * 3
+
+
 def test_return_actor_handle_from_actor(ray_start_regular_shared):
     @ray.remote
     class Inner:

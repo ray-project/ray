@@ -15,21 +15,24 @@ _last_logged = 0.0
 
 
 @DeveloperAPI
-def log_once(key):
+def log_once(key: str) -> bool:
     """Returns True if this is the "first" call for a given key.
 
     Various logging settings can adjust the definition of "first".
 
-    Example:
+    Args:
+        key: A unique identifier for the call site.
 
-        .. testcode::
+    Returns:
+        True if this is the first call for ``key`` (subject to the current
+        ``log_once`` settings), False otherwise.
 
-            import logging
-            from ray.util.debug import log_once
-
-            logger = logging.getLogger(__name__)
-            if log_once("some_key"):
-                logger.info("Some verbose logging statement")
+    Examples:
+        >>> import logging
+        >>> from ray.util.debug import log_once
+        >>> logger = logging.getLogger(__name__)
+        >>> if log_once("some_key"):
+        ...     logger.info("Some verbose logging statement")
     """
 
     global _last_logged

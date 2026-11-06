@@ -18,7 +18,6 @@
 #include <future>
 #include <string>
 
-#include "gtest/gtest.h"
 #include "ray/asio/asio_util.h"
 #include "ray/common/id.h"
 #include "ray/common/placement_group.h"
@@ -202,8 +201,7 @@ void FillResourcesData(
     const absl::flat_hash_map<std::string, double> &available_resources,
     const absl::flat_hash_map<std::string, double> &total_resources,
     int64_t idle_ms = 0,
-    bool is_draining = false,
-    int64_t draining_deadline_timestamp_ms = -1);
+    bool is_draining = false);
 
 void FillResourcesData(rpc::ResourcesData &data,
                        const std::string &node_id,

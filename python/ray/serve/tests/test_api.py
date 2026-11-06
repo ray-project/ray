@@ -16,6 +16,7 @@ from ray.serve._private.api import call_user_app_builder_with_args_if_necessary
 from ray.serve._private.common import DeploymentID
 from ray.serve._private.constants import (
     DEFAULT_MAX_ONGOING_REQUESTS,
+    RAY_SERVE_ENABLE_HA_PROXY,
     SERVE_DEFAULT_APP_NAME,
 )
 from ray.serve._private.request_router.common import (
@@ -115,6 +116,75 @@ def test_ingress_async_init(serve_instance):
     resp = httpx.get(f"{get_application_url()}/check")
     assert resp.status_code == 200
     assert resp.json() == "initialized"
+
+
+def test_ingress_sync_init_subclass_raises():
+    """Subclassing a @serve.ingress class with a sync __init__ must fail loudly.
+
+    The parent __init__ is async, so a sync `super().__init__(...)` call from
+    a subclass would silently drop the returned coroutine and leave the
+    replica uninitialized (e.g. `_serve_asgi_lifespan` never set), surfacing
+    later as a cryptic AttributeError at runtime. We reject the bad pattern
+    at class-definition time with a clear migration message instead.
+    """
+    app = FastAPI()
+
+    class BaseIngress:
+        pass
+
+    WrappedIngress = serve.ingress(app)(BaseIngress)
+
+    with pytest.raises(TypeError, match="async def"):
+
+        class ExtendedIngress(WrappedIngress):
+            def __init__(self, *args, **kwargs):
+                super().__init__(*args, **kwargs)
+
+
+def test_ingress_sync_init_via_mixin_subclass_raises():
+    """A sync __init__ inherited from a mixin earlier in the MRO must also raise.
+
+    `class Sub(SyncMixin, WrappedIngress)` doesn't define `__init__` on
+    `Sub` itself, but the resolved `Sub.__init__` is the sync mixin's, which
+    would still silently drop the wrapper's async coroutine. The check must
+    use MRO resolution, not just the subclass `__dict__`.
+    """
+    app = FastAPI()
+
+    class BaseIngress:
+        pass
+
+    WrappedIngress = serve.ingress(app)(BaseIngress)
+
+    class SyncMixin:
+        def __init__(self, *args, **kwargs):
+            super().__init__(*args, **kwargs)
+
+    with pytest.raises(TypeError, match="async def"):
+
+        class ExtendedIngress(SyncMixin, WrappedIngress):
+            pass
+
+
+def test_ingress_async_init_subclass_allowed():
+    """Subclassing a @serve.ingress class with an async __init__ is allowed."""
+    app = FastAPI()
+
+    class BaseIngress:
+        pass
+
+    WrappedIngress = serve.ingress(app)(BaseIngress)
+
+    class ExtendedIngress(WrappedIngress):
+        async def __init__(self, *args, **kwargs):
+            await super().__init__(*args, **kwargs)
+
+    # No __init__ defined on subclass is also allowed (inherits parent's async).
+    class InheritingIngress(WrappedIngress):
+        pass
+
+    assert ExtendedIngress is not None
+    assert InheritingIngress is not None
 
 
 class FakeRequestRouter(RequestRouter):
@@ -453,8 +523,7 @@ def test_deploy_application_basic(serve_instance):
     url = f"{get_application_url(app_name='app_g')}"
     assert httpx.get(url).text == "got g"
 
-    # Test function deployment with app name and route_prefix set in deployment
-    # decorator
+    # Test function deployment with app name and route_prefix
     h_handle = serve.run(h.bind(), name="app_h", route_prefix="/my_prefix")
     assert h_handle.remote().result() == "got h"
     url = f"{get_application_url(app_name='app_h')}"
@@ -1254,6 +1323,13 @@ def test_max_ongoing_requests_none(serve_instance):
     assert get_max_ongoing_requests() == 12
 
 
+@pytest.mark.skipif(
+    RAY_SERVE_ENABLE_HA_PROXY,
+    reason=(
+        "Custom ingress request routers are currently only available with Ray "
+        "Serve LLM and RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING."
+    ),
+)
 def test_deploy_app_with_custom_request_router(serve_instance):
     """Test deploying an app with a custom request router configured in the
     deployment decorator."""
@@ -1273,6 +1349,13 @@ class AppWithCustomRequestRouterAndKwargs:
         return "Hello, world!"
 
 
+@pytest.mark.skipif(
+    RAY_SERVE_ENABLE_HA_PROXY,
+    reason=(
+        "Custom ingress request routers are currently only available with Ray "
+        "Serve LLM and RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING."
+    ),
+)
 def test_custom_request_router_kwargs(serve_instance):
     """Check that custom kwargs can be passed to the request router."""
 
@@ -1280,18 +1363,23 @@ def test_custom_request_router_kwargs(serve_instance):
     assert handle.remote().result() == "Hello, world!"
 
 
-def test_backoff_params_imperative(serve_instance):
+def test_backoff_params_imperative(serve_instance, monkeypatch):
     """Check that custom initial_backoff_s is actually applied during retries.
 
     Deploys with max_ongoing_requests=1 and a large initial_backoff_s. Sends a
     blocking request to fill the replica, then sends a second request that enters
-    backoff. Verifies the second request takes at least initial_backoff_s to
-    complete (proving the backoff sleep was applied).
+    backoff. Records the backoff the router computes instead of timing the
+    request, so the check does not depend on the OS clock.
     """
-    import time
-
     custom_initial_backoff_s = 3.0
     signal = SignalActor.remote()
+    backoffs_s = []
+    compute_backoff_s = RequestRouter._compute_backoff_s
+
+    def record_backoff_s(self, attempt: int) -> float:
+        backoff_s = compute_backoff_s(self, attempt)
+        backoffs_s.append(backoff_s)
+        return backoff_s
 
     @serve.deployment(
         max_ongoing_requests=1,
@@ -1320,33 +1408,24 @@ def test_backoff_params_imperative(serve_instance):
     blocking_ref = handle.remote(block=True)
 
     # Wait for the blocking request to be processing.
-    time.sleep(0.5)
+    wait_for_condition(lambda: ray.get(signal.cur_num_waiters.remote()) == 1)
 
     # Send a second request — the router's queue length probe will find the
     # replica at capacity and enter the backoff loop.
-    start = time.monotonic()
+    monkeypatch.setattr(RequestRouter, "_compute_backoff_s", record_backoff_s)
     second_ref = handle.remote(block=False)
 
-    # Unblock the first request while the backoff sleep is in progress.
-    # The router exhausts locality probes then sleeps for initial_backoff_s;
-    # we wait 1s (< 3s) so the signal arrives during the sleep.
-    time.sleep(1)
+    # Unblock the first request once the second has started its backoff.
+    wait_for_condition(lambda: len(backoffs_s) > 0)
     ray.get(signal.send.remote())
 
     # Wait for both requests to complete.
     blocking_ref.result()
     second_ref.result()
-    elapsed = time.monotonic() - start
 
-    # With initial_backoff_s=3.0 and max_backoff_s=3.0, every backoff sleep
-    # is exactly 3.0s (min(3.0 * 2.0^attempt, 3.0) = 3.0 for all attempts).
-    # A lower bound of 3.0s proves the backoff sleep was applied.
-    # An upper bound of 5.0s proves only ONE sleep occurred (two would be ≥6s),
-    # confirming it was the initial backoff (attempt 0).
-    assert custom_initial_backoff_s <= elapsed < 5.0, (
-        f"Expected [{custom_initial_backoff_s}, 5.0)s due to a single backoff sleep, "
-        f"but request completed in {elapsed:.2f}s"
-    )
+    # Attempt 0 backs off for initial_backoff_s, so a router still on the
+    # default config would record 0.025s here.
+    assert backoffs_s[0] == custom_initial_backoff_s
 
 
 def test_overloaded_app_builder_signatures():

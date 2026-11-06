@@ -1,3 +1,9 @@
+---
+myst:
+  html_meta:
+    description: "Collect and monitor Ray cluster metrics in Prometheus format, configure Prometheus scraping, and integrate Grafana for system and application-level metrics."
+---
+
 (collect-metrics)=
 # Collecting and monitoring metrics
 Metrics are useful for monitoring and troubleshooting Ray applications and Clusters. For example, you may want to access a node's metrics if it terminates unexpectedly.
@@ -7,7 +13,7 @@ Ray records and emits time-series metrics using the [Prometheus format](https://
 For Kubernetes users, see {ref}`Using Prometheus and Grafana <kuberay-prometheus-grafana>` with KubeRay.
 
 ## System and application metrics
-Ray exports metrics if you use `ray[default]` or {ref}`other installation commands <installation>` that include Dashboard component. Dashboard agent process is responsible for aggregating and reporting metrics to the endpoints for Prometheus to scrape.
+Ray exports metrics if you use `ray[default]` or {ref}`other installation commands <installation>` that include the dashboard component. The dashboard agent process is responsible for aggregating and reporting metrics to the endpoints for Prometheus to scrape.
 
 **System metrics**: Ray exports a number of system metrics. View {ref}`system metrics <system-metrics>` for more details about the emitted metrics.
 
@@ -53,6 +59,8 @@ ts=2024-01-12T00:47:29.761Z caller=manager.go:1012 level=info component="rule ma
 
 Now you can access Ray metrics from the default Prometheus URL, http://localhost:9090.
 
+With token authentication on, `ray metrics launch-prometheus` configures Prometheus to send the token. See {ref}`Scrape metrics with token authentication <metrics-token-auth>`.
+
 To demonstrate that Prometheus is scraping metrics from Ray, run the following command:
 
 ```shell
@@ -65,7 +73,7 @@ Then go to the Prometheus UI and run the following query:
 ray_dashboard_api_requests_count_requests_total
 ```
 
-You can then see the number of requests to the Ray Dashboard API over time.
+You can then see the number of requests to the Ray dashboard API over time.
 
 To stop Prometheus, run the following commands:
 
@@ -129,8 +137,7 @@ For a production environment, view [Prometheus documentation](https://prometheus
 
 ### Troubleshooting
 #### Using Ray configurations in Prometheus with Homebrew on macOS X
-Homebrew installs Prometheus as a service that is automatically launched for you.
-To configure these services, you cannot simply pass in the config files as command line arguments.
+Homebrew installs Prometheus as a service that is automatically launched for you. To configure these services, you cannot simply pass in the config files as command line arguments.
 
 Instead, change the --config-file line in `/usr/local/etc/prometheus.args` to read `--config.file /tmp/ray/session_latest/metrics/prometheus/prometheus.yml`.
 
@@ -142,8 +149,7 @@ You may receive the following error:
 
 ![trust error](https://raw.githubusercontent.com/ray-project/Images/master/docs/troubleshooting/prometheus-trusted-developer.png)
 
-When downloading binaries from the internet, macOS requires that the binary be signed by a trusted developer ID.
-Many developers are not on macOS's trusted list. Users can manually override this requirement.
+When downloading binaries from the internet, macOS requires that the binary be signed by a trusted developer ID. Many developers are not on macOS's trusted list. Users can manually override this requirement.
 
 See [these instructions](https://support.apple.com/guide/mac-help/open-a-mac-app-from-an-unidentified-developer-mh40616/mac) for how to override the restriction and install or run the application.
 
@@ -154,15 +160,13 @@ To fix this issue, employ an automated shell script for seamlessly transferring 
 
 (scrape-metrics)=
 ## Scraping metrics
-Ray runs a metrics agent per node to export system and application metrics. Each metrics agent collects metrics from the local
-node and exposes them in a Prometheus format. You can then scrape each endpoint to access the metrics.
+Ray runs a metrics agent per node to export system and application metrics. Each metrics agent collects metrics from the local node and exposes them in a Prometheus format. You can then scrape each endpoint to access the metrics.
 
 To scrape the endpoints, we need to ensure service discovery, which allows Prometheus to find the metrics agents' endpoints on each node.
 
 ### Auto-discovering metrics endpoints
 
-You can allow Prometheus to dynamically find the endpoints to scrape by using Prometheus' [file based service discovery](https://prometheus.io/docs/guides/file-sd/#installing-configuring-and-running-prometheus).
-Use auto-discovery to export Prometheus metrics when using the Ray {ref}`cluster launcher <vm-cluster-quick-start>`, as node IP addresses can often change as the cluster scales up and down.
+You can allow Prometheus to dynamically find the endpoints to scrape by using Prometheus' [file based service discovery](https://prometheus.io/docs/guides/file-sd/#installing-configuring-and-running-prometheus). Use auto-discovery to export Prometheus metrics when using the Ray {ref}`cluster launcher <vm-cluster-quick-start>`, as node IP addresses can often change as the cluster scales up and down.
 
 Ray auto-generates a Prometheus [service discovery file](https://prometheus.io/docs/guides/file-sd/#installing-configuring-and-running-prometheus) on the head node to facilitate metrics agents' service discovery. This function allows you to scrape all metrics in the cluster without knowing their IPs. The following information guides you on the setup.
 
@@ -199,15 +203,41 @@ scrape_configs:
   http_sd_configs:
   - url: 'http://<RayHeadnodeAddress>:<DashboardPort>/api/prometheus/sd'
     refresh_interval: 60s
+    authorization:
+      type: Bearer
+      credentials_file: <path to the token file>
 ```
 
-- `<DashboardPort>` is `8265` by default. See [Configuring and Managing Ray Dashboard](https://docs.ray.io/en/latest/cluster/configure-manage-dashboard.html) for more details.
+- `<DashboardPort>` is `8265` by default. See [Configuring and managing Ray dashboard](configure-manage-dashboard.md) for more details.
 - The endpoint returns a JSON list of targets for Prometheus metrics. When no targets are available, it returns `[]`.
+- With {ref}`token authentication <token-auth>` on, the endpoint requires the token. Prometheus sends the discovery request with its own HTTP client, so the `authorization` block inside `http_sd_configs` doesn't cover the scrapes. Also add one to the scrape job, as described in {ref}`Scrape metrics with token authentication <metrics-token-auth>`.
+
+(metrics-token-auth)=
+
+### Scrape metrics with token authentication
+
+With {ref}`token authentication <token-auth>` on, which is the default starting in Ray 2.61, Ray's metrics endpoints reject any scrape that doesn't carry the cluster's token. The Prometheus Targets page then shows the Ray targets as down with `401 Unauthorized` for a missing token, or `403 Forbidden` for a wrong one.
+
+`ray metrics launch-prometheus` needs no change when it runs where the token is. It fails if it finds no token. When `RAY_AUTH_TOKEN` is set, it writes the token into its own config with file mode `0600`. Otherwise, the config reads the token file at `RAY_AUTH_TOKEN_PATH` or `~/.ray/auth_token`. The config is `ray_prometheus.yml` in the Prometheus directory it downloads, such as `./prometheus-<version>.linux-amd64/`.
+
+If you run your own Prometheus, including one that uses the config Ray generates at `/tmp/ray/session_latest/metrics/prometheus/prometheus.yml`, copy the token file to the Prometheus host and add an `authorization` block to the `ray` scrape job:
+
+```yaml
+scrape_configs:
+- job_name: 'ray'
+  authorization:
+    type: Bearer
+    credentials_file: <path to the token file>
+  file_sd_configs:
+  - files:
+    - '/tmp/ray/prom_metrics_service_discovery.json'
+```
+
+To serve the metrics endpoints without the token while token authentication still protects everything else, set `RAY_AUTH_SKIP_METRICS=1` on every node before `ray start`. Scrapers then need no token, and `ray metrics launch-prometheus` writes no `authorization` block. With `RAY_AUTH_MODE=disabled`, scrapers need no token either.
 
 ### Manually discovering metrics endpoints
 
-If you know the IP addresses of the nodes in your Ray Cluster, you can configure Prometheus to read metrics from a static list of endpoints.
-Set a fixed port that Ray should use to export metrics. If you're using the VM Cluster Launcher, pass ``--metrics-export-port=<port>`` to ``ray start``.  If you're using KubeRay, specify ``rayStartParams.metrics-export-port`` in the RayCluster configuration file. You must specify the port on all nodes in the cluster.
+If you know the IP addresses of the nodes in your Ray Cluster, you can configure Prometheus to read metrics from a static list of endpoints. Set a fixed port that Ray should use to export metrics. If you're using the VM Cluster Launcher, pass ``--metrics-export-port=<port>`` to ``ray start``.  If you're using KubeRay, specify ``rayStartParams.metrics-export-port`` in the RayCluster configuration file. You must specify the port on all nodes in the cluster.
 
 If you do not know the IP addresses of the nodes in your Ray Cluster, you can also programmatically discover the endpoints by reading the Ray Cluster information. The following example uses a Python script and the {py:obj}`ray.nodes` API to find the metrics agents' URLs, by combining the ``NodeManagerAddress`` with the ``MetricsExportPort``.
 
@@ -262,7 +292,7 @@ If you need to process and export metrics into other storage or management syste
 To visualize and monitor collected metrics, there are 3 common paths:
 
 1. **Simplest**: Use Grafana with Ray-provided configurations, which include default Grafana dashboards showing some of the most valuable metrics for debugging Ray applications.
-2. **Recommended**: Use Ray Dashboard which embeds Grafana visualizations and look at metrics together with logs, Job info and so on in a single pane of glass.
+2. **Recommended**: Use Ray dashboard which embeds Grafana visualizations and look at metrics together with logs, Job info and so on in a single pane of glass.
 3. **Manual**: Set up Grafana or other tools like CloudWatch, Cloud Monitoring, and Datadog from scratch.
 
 Here are some instructions for each of the paths:
@@ -290,8 +320,7 @@ Go to the location of the binary and run Grafana using the built-in configuratio
 ./bin/grafana-server --config /tmp/ray/session_latest/metrics/grafana/grafana.ini web
 ```
 
-Access Grafana using the default grafana URL, `http://localhost:3000`.
-See the default dashboard by going to dashboards -> manage -> Ray -> Default Dashboard. The same {ref}`metric graphs <system-metrics>` are accessible in {ref}`Ray Dashboard <observability-getting-started>` after you integrate Grafana with Ray Dashboard.
+Access Grafana using the default grafana URL, `http://localhost:3000`. See the default dashboard by going to dashboards -> manage -> Ray -> Default Dashboard. The same {ref}`metric graphs <system-metrics>` are accessible in {ref}`Ray dashboard <observability-getting-started>` after you integrate Grafana with Ray dashboard.
 
 ```{admonition} Note
 :class: note
@@ -301,18 +330,15 @@ If this is your first time using Grafana, login with the username: `admin` and p
 
 ![grafana login](images/graphs.png)
 
-**Troubleshooting**
-***Using Ray configurations in Grafana with Homebrew on macOS X***
+**Troubleshooting** ***Using Ray configurations in Grafana with Homebrew on macOS X***
 
-Homebrew installs Grafana as a service that is automatically launched for you.
-Therefore, to configure these services, you cannot simply pass in the config files as command line arguments.
+Homebrew installs Grafana as a service that is automatically launched for you. Therefore, to configure these services, you cannot simply pass in the config files as command line arguments.
 
-Instead, update the `/usr/local/etc/grafana/grafana.ini` file so that it matches the contents of `/tmp/ray/session_latest/metrics/grafana/grafana.ini`.
+Instead, update the `$(brew --prefix)/etc/grafana/grafana.ini` file so that it matches the contents of `/tmp/ray/session_latest/metrics/grafana/grafana.ini`. The Homebrew prefix depends on the platform. It's `/usr/local` on Intel Macs and `/opt/homebrew` on Apple silicon.
 
 You can then start or restart the services with `brew services start grafana` and `brew services start prometheus`.
 
-***Loading Ray Grafana configurations with Docker Compose***
-In the Ray container, the symbolic link "/tmp/ray/session_latest/metrics" points to the latest active Ray session. However, Docker does not support the mounting of symbolic links on shared volumes and you may fail to load the Grafana configuration files and default dashboards.
+***Loading Ray Grafana configurations with Docker Compose*** In the Ray container, the symbolic link "/tmp/ray/session_latest/metrics" points to the latest active Ray session. However, Docker does not support the mounting of symbolic links on shared volumes and you may fail to load the Grafana configuration files and default dashboards.
 
 To fix this issue, employ an automated shell script for seamlessly transferring the necessary Grafana configurations and dashboards from the Ray container to a shared volume. To ensure a proper setup, mount the shared volume on the respective path for the container, which contains the recommended configurations and default dashboards to initiate Grafana servers.
 
@@ -329,10 +355,10 @@ If Grafana reports that the datasource is not found, [add a datasource variable]
 
 
 
-### Recommended: Use Ray Dashboard with embedded Grafana visualizations
+### Recommended: Use Ray dashboard with embedded Grafana visualizations
 1. Follow the instructions above to set up Grafana with Ray-provided visualizations
-2. View {ref}`configuring and managing Ray Dashboard <embed-grafana-in-dashboard>` for how to embed Grafana visualizations into Dashboard
-3. View {ref}`Dashboard's metrics view<dash-metrics-view>` for how to inspect the metrics in Ray Dashboard.
+2. View {ref}`configuring and managing Ray dashboard <embed-grafana-in-dashboard>` for how to embed Grafana visualizations into the dashboard
+3. View {ref}`Dashboard's metrics view<dash-metrics-view>` for how to inspect the metrics in Ray dashboard.
 
 
 ### Manual: Set up Grafana, or other tools like CloudWatch, Cloud Monitoring and Datadog from scratch

@@ -128,10 +128,13 @@ def _get_visible_accelerator_ids_per_worker(
     All workers on a node should have the same set of visible accelerators,
     which is the union of accelerator ids of the workers.
 
-    Returns:
-        visible_accelerator_ids_per_worker: A list of comma-separated accelerator ID
-            strings. This list is the same length as the number of workers.
+    Args:
+        worker_metadatas: The actor metadata for each worker.
+        accelerator_name: The name of the accelerator resource to inspect.
 
+    Returns:
+        A list of comma-separated accelerator ID strings. This list is the
+        same length as the number of workers.
     """
     for metadata in worker_metadatas:
         if accelerator_name not in metadata.accelerator_ids:
