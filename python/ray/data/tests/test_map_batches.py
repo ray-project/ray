@@ -479,6 +479,62 @@ def test_map_batches_batch_mutation(
     assert [row["id"] for row in ds.iter_rows()] == list(range(1, num_rows + 1))
 
 
+@pytest.mark.parametrize("kind", ["scalar", "fixed", "variable"])
+def test_map_batches_chunked_batch_mutation(ray_start_regular_shared, kind):
+    from ray.data._internal.tensor_extensions.arrow import (
+        ArrowTensorArray,
+        ArrowVariableShapedTensorArray,
+    )
+
+    arrays = []
+    for start in (0, 4, 8):
+        if kind == "scalar":
+            array = pa.array(np.arange(start, start + 4))
+        elif kind == "fixed":
+            array = ArrowTensorArray.from_numpy(
+                np.repeat(np.arange(start, start + 4)[:, None], 3, axis=1)
+            )
+        else:
+            array = ArrowVariableShapedTensorArray.from_numpy(
+                [np.full(i % 3 + 1, i) for i in range(start, start + 4)]
+            )
+        arrays.append(array)
+    table = pa.table({"id": np.arange(12), "value": pa.chunked_array(arrays)})
+    source = ray.data.from_arrow(table)
+    assert ray.get(source.to_arrow_refs()[0])["value"].num_chunks == 3
+
+    def mutate(batch):
+        if kind == "variable":
+            for row in batch["value"]:
+                row += 100
+        else:
+            batch["value"] += 100
+        return batch
+
+    result = source.map_batches(
+        mutate, batch_size=3, batch_format="numpy", zero_copy_batch=False
+    )
+    for row in result.take_all():
+        np.testing.assert_array_equal(row["value"], row["id"] + 100)
+    for row in source.take_all():
+        np.testing.assert_array_equal(row["value"], row["id"])
+
+
+def test_map_batches_preserves_chunked_batch_views(ray_start_regular_shared):
+    table = pa.concat_tables(
+        [pa.table({"value": list(range(i, i + 4))}) for i in (0, 4, 8)]
+    )
+    source = ray.data.from_arrow(table)
+
+    def inspect_batch(batch):
+        return {"chunks": [batch["value"].num_chunks]}
+
+    result = source.map_batches(
+        inspect_batch, batch_size=5, batch_format="pyarrow", zero_copy_batch=True
+    )
+    assert [row["chunks"] for row in result.take_all()] == [2, 2, 1]
+
+
 @pytest.mark.parametrize(
     "num_rows,num_blocks,batch_size",
     [

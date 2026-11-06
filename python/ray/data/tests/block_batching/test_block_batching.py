@@ -89,6 +89,39 @@ class TestBatchBlocks:
         assert batches[0]["foo"] == [0, 2, 4]
         assert batches[1]["foo"] == [6, 8, 10]
 
+    @pytest.mark.parametrize("batch_format", ["numpy", "pandas", "pyarrow"])
+    @pytest.mark.parametrize("ensure_copy", [False, True])
+    @pytest.mark.parametrize("drop_last", [False, True])
+    def test_chunked_blocks(self, batch_format, ensure_copy, drop_last):
+        source = pa.concat_tables(list(block_generator(num_rows=3, num_blocks=4)))
+        batches = list(
+            batch_blocks(
+                iter([source.slice(0, 1), source]),
+                batch_size=5,
+                batch_format=batch_format,
+                ensure_copy=ensure_copy,
+                drop_last=drop_last,
+            )
+        )
+        expected = [0] + list(range(12))
+        if drop_last:
+            expected = expected[:10]
+        actual = []
+        for batch in batches:
+            if batch_format == "numpy":
+                actual.extend(batch["foo"].tolist())
+                if ensure_copy:
+                    assert batch["foo"].flags.writeable
+                    batch["foo"][:] = -1
+            elif batch_format == "pandas":
+                actual.extend(batch["foo"].tolist())
+                if ensure_copy:
+                    batch.loc[:, "foo"] = -1
+            else:
+                actual.extend(batch["foo"].to_pylist())
+        assert actual == expected
+        assert source["foo"].to_pylist() == list(range(12))
+
 
 if __name__ == "__main__":
     import sys

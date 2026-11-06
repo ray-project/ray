@@ -1,6 +1,7 @@
 import copy
 import logging
 import warnings
+from collections import deque
 from dataclasses import dataclass, field
 from typing import Dict, Optional, Set, Tuple
 
@@ -9,6 +10,10 @@ import pyarrow as pa
 
 from ray.data._internal.arrow_block import ArrowBlockAccessor
 from ray.data._internal.arrow_ops import transform_pyarrow
+from ray.data._internal.block_batching.arrow_block_cursor import (
+    ArrowBlockCursor,
+    create_arrow_block_cursor,
+)
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
 from ray.data._internal.execution.util import memory_string
 from ray.data._internal.tensor_extensions.chunked_tensor_take import (
@@ -197,15 +202,56 @@ class BatcherInterface:
         raise NotImplementedError()
 
 
+class _BufferedBlock:
+    """One input block with staged views and a committed row offset."""
+
+    def __init__(
+        self,
+        block: Block,
+        accessor: BlockAccessor,
+        batch_size: Optional[int],
+    ):
+        # Reuse the decoded accessor for IPC byte inputs when batching.
+        self._block = block if batch_size is None else accessor.to_block()
+        self._accessor = accessor
+        self._num_rows = accessor.num_rows()
+        self._offset = 0
+        self._batch_size = batch_size
+        self._prepared = False
+        self._cursor: Optional[ArrowBlockCursor] = None
+
+    @property
+    def remaining_rows(self) -> int:
+        return self._num_rows - self._offset
+
+    def peek(self, num_rows: int) -> Block:
+        assert 0 < num_rows <= self.remaining_rows
+        if not self._prepared:
+            if (
+                self._batch_size is not None
+                and self._num_rows > self._batch_size
+                and isinstance(self._accessor, ArrowBlockAccessor)
+            ):
+                table = self._accessor.to_arrow()
+                if any(column.num_chunks > 1 for column in table.columns):
+                    self._cursor = create_arrow_block_cursor(table)
+            self._prepared = True
+        if self._cursor is not None:
+            return self._cursor.peek(num_rows)
+        if self._offset == 0 and num_rows == self._num_rows:
+            return self._block
+        return self._accessor.slice(self._offset, self._offset + num_rows, copy=False)
+
+    def advance(self, num_rows: int) -> None:
+        if self._cursor is not None:
+            self._cursor.advance(num_rows)
+        self._offset += num_rows
+
+
 class Batcher(BatcherInterface):
     """Chunks blocks into batches."""
 
-    # Implementation Note: When there are multiple batches per block, this batcher will
-    # slice off and return each batch and add the remaining block back to the buffer
-    # instead of optimally slicing and returning all batches from the block at once.
-    # This will result in extra (and nested) block slicing. However, since slices are
-    # zero-copy views, we sacrifice what should be a small performance hit for better
-    # readability.
+    # Stage forward-only views; commit consumption only after output succeeds.
 
     def __init__(self, batch_size: Optional[int], ensure_copy: bool = False):
         """Construct a batcher that yields batches of batch_sizes rows.
@@ -216,12 +262,12 @@ class Batcher(BatcherInterface):
                 blocks (not zero-copy views).
         """
         self._batch_size = batch_size
-        self._buffer = []
+        self._buffer: deque[_BufferedBlock] = deque()
         self._buffer_size = 0
         self._done_adding = False
         self._ensure_copy = ensure_copy
 
-    def add(self, block: Block):
+    def add(self, block: Block) -> None:
         """Add a block to the block buffer.
 
         Note empty block is not added to buffer.
@@ -229,9 +275,11 @@ class Batcher(BatcherInterface):
         Args:
             block: Block to add to the block buffer.
         """
-        if BlockAccessor.for_block(block).num_rows() > 0:
-            self._buffer.append(block)
-            self._buffer_size += BlockAccessor.for_block(block).num_rows()
+        accessor = BlockAccessor.for_block(block)
+        if accessor.num_rows() > 0:
+            buffered = _BufferedBlock(block, accessor, self._batch_size)
+            self._buffer.append(buffered)
+            self._buffer_size += buffered.remaining_rows
 
     def done_adding(self) -> bool:
         """Indicate to the batcher that no more blocks will be added to the batcher."""
@@ -258,53 +306,39 @@ class Batcher(BatcherInterface):
         # If no batch size, short-circuit.
         if self._batch_size is None:
             assert len(self._buffer) == 1
-            block = self._buffer[0]
+            block = self._buffer[0].peek(self._buffer_size)
             if needs_copy:
-                # Copy block if needing to ensure fresh batch copy.
-                block = BlockAccessor.for_block(block)
-                block = block.slice(0, block.num_rows(), copy=True)
-            self._buffer = []
+                accessor = BlockAccessor.for_block(block)
+                block = accessor.slice(0, accessor.num_rows(), copy=True)
+            self._buffer.clear()
             self._buffer_size = 0
             return block
         output = DelegatingBlockBuilder()
-        leftover = []
-        needed = self._batch_size
-        for block in self._buffer:
-            accessor = BlockAccessor.for_block(block)
-            if needed <= 0:
-                # We already have a full batch, so add this block to
-                # the leftovers.
-                leftover.append(block)
-            elif accessor.num_rows() <= needed:
-                output.add_block(accessor.to_block())
-                needed -= accessor.num_rows()
-            else:
-                # Try de-fragmenting table in case its columns
-                # have too many chunks (potentially hindering performance of
-                # subsequent slicing operation)
-                if isinstance(accessor, ArrowBlockAccessor):
-                    accessor = BlockAccessor.for_block(
-                        transform_pyarrow.try_combine_chunked_columns(
-                            accessor.to_block(), min_chunks_to_combine=1
-                        )
-                    )
+        rows_to_take = min(self._batch_size, self._buffer_size)
+        needed = rows_to_take
+        selected = []
+        for buffered in self._buffer:
+            num_rows = min(needed, buffered.remaining_rows)
+            output.add_block(buffered.peek(num_rows))
+            selected.append((buffered, num_rows))
+            needed -= num_rows
+            if needed == 0:
+                break
+        assert needed == 0
 
-                # We only need part of the block to fill out a batch.
-                output.add_block(accessor.slice(0, needed, copy=False))
-                # Add the rest of the block to the leftovers.
-                leftover.append(accessor.slice(needed, accessor.num_rows(), copy=False))
-                needed = 0
-
-        # Move the leftovers into the block buffer so they're the first
-        # blocks consumed on the next batch extraction.
-        self._buffer = leftover
-        self._buffer_size -= self._batch_size
         needs_copy = needs_copy and not output.will_build_yield_copy()
         batch = output.build()
         if needs_copy:
-            # Need to ensure that the batch is a fresh copy.
-            batch = BlockAccessor.for_block(batch)
-            batch = batch.slice(0, batch.num_rows(), copy=True)
+            accessor = BlockAccessor.for_block(batch)
+            batch = accessor.slice(0, accessor.num_rows(), copy=True)
+
+        # Commit only after all staging, construction, and copies succeed.
+        for buffered, num_rows in selected:
+            buffered.advance(num_rows)
+            if buffered.remaining_rows == 0:
+                consumed = self._buffer.popleft()
+                assert consumed is buffered
+        self._buffer_size -= rows_to_take
         return batch
 
 

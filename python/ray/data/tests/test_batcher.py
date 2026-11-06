@@ -1,3 +1,5 @@
+import subprocess
+import sys
 import time
 
 import numpy as np
@@ -14,9 +16,15 @@ from ray.data._internal.batcher import (
     Batcher,
     ShufflingBatcher,
 )
+from ray.data._internal.block_batching.arrow_block_cursor import (
+    _AlignedArrowBlockCursor,
+)
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
 from ray.data._internal.tensor_extensions import chunked_tensor_take
-from ray.data._internal.tensor_extensions.arrow import ArrowTensorArray
+from ray.data._internal.tensor_extensions.arrow import (
+    ArrowTensorArray,
+    ArrowVariableShapedTensorArray,
+)
 from ray.data.block import BlockAccessor
 
 
@@ -48,6 +56,273 @@ def test_batching_arrow_ipc_bytes(ensure_copy, max_chunksize, prefix_rows):
         [2, 2, 1] if prefix_rows == 0 else [2, 2, 2]
     )
     assert pa.concat_tables(batches).equals(expected)
+
+
+@pytest.mark.parametrize("ensure_copy", [False, True])
+@pytest.mark.parametrize("chunk_size,batch_size", [(4096, 256), (4, 3)])
+def test_batcher_reuses_source_buffers(
+    monkeypatch, ensure_copy, chunk_size, batch_size
+):
+    source = pa.concat_tables(
+        [
+            pa.table({"value": np.arange(i, i + chunk_size)})
+            for i in range(0, 3 * chunk_size, chunk_size)
+        ]
+    )
+    source_buffers = {chunk.buffers()[1].address for chunk in source["value"].chunks}
+    combine = batcher_module.transform_pyarrow.combine_chunked_array
+
+    def combine_batch_only(column, *args, **kwargs):
+        # Writable batches may copy their own payload, but neither mode should
+        # combine the entire source or the unconsumed part of it.
+        assert len(column) <= batch_size
+        return combine(column, *args, **kwargs)
+
+    monkeypatch.setattr(
+        batcher_module.transform_pyarrow, "combine_chunked_array", combine_batch_only
+    )
+    batcher = Batcher(batch_size=batch_size, ensure_copy=ensure_copy)
+    batcher.add(source)
+    batcher.done_adding()
+
+    batches = []
+    while batcher.has_any():
+        batch = batcher.next_batch()
+        for chunk in batch["value"].chunks:
+            assert (chunk.buffers()[1].address in source_buffers) == (not ensure_copy)
+        batches.append(batch)
+    assert pa.concat_tables(batches).equals(source)
+    assert batcher._buffer_size == 0
+
+
+@pytest.mark.parametrize("variable", [False, True])
+def test_batcher_tensor_copy_contains_only_batch_payload(variable):
+    values = [
+        np.full((64 if variable and i % 2 == 0 else 128, 128), i, dtype=np.float32)
+        for i in range(64)
+    ]
+    tensor_array = ArrowVariableShapedTensorArray if variable else ArrowTensorArray
+    chunks = [
+        tensor_array.from_numpy(
+            values[start : start + 32]
+            if variable
+            else np.stack(values[start : start + 32])
+        )
+        for start in (0, 32)
+    ]
+    source = pa.table({"tensor": pa.chunked_array(chunks)}).slice(1, 62)
+    batcher = Batcher(batch_size=2, ensure_copy=True)
+    batcher.add(source)
+    batch = batcher.next_batch()
+    payload_bytes = sum(row.nbytes for row in values[1:3])
+    # Protective copying must sever the large source buffers, including sliced
+    # tensor storage. Offset/shape metadata is small compared with this payload.
+    assert batch["tensor"].chunk(0).storage.get_total_buffer_size() < 2 * payload_bytes
+    actual = ArrowBlockAccessor(batch).to_numpy()["tensor"]
+    for row, expected in zip(actual, values[1:3]):
+        np.testing.assert_array_equal(row, expected)
+
+
+@pytest.mark.parametrize("num_chunks", [16, 1024])
+def test_batcher_reads_only_needed_pieces(monkeypatch, num_chunks):
+    source = pa.concat_tables(
+        [pa.table({"value": [2 * i, 2 * i + 1]}) for i in range(num_chunks)]
+    )
+    original = batcher_module.create_arrow_block_cursor
+    pieces_read = []
+
+    def record_cursor(table):
+        cursor = original(table)
+        assert isinstance(cursor, _AlignedArrowBlockCursor)
+        reader = cursor._reader
+
+        class RecordingReader:
+            def read_next_batch(self):
+                piece = reader.read_next_batch()
+                pieces_read.append(piece.num_rows)
+                return piece
+
+        monkeypatch.setattr(cursor, "_reader", RecordingReader())
+        return cursor
+
+    monkeypatch.setattr(batcher_module, "create_arrow_block_cursor", record_cursor)
+    batcher = Batcher(batch_size=1)
+    batcher.add(source)
+    assert not pieces_read
+    assert batcher.next_batch()["value"].to_pylist() == [0]
+    assert len(pieces_read) == 1
+    assert batcher.next_batch()["value"].to_pylist() == [1]
+    assert len(pieces_read) == 1
+    assert batcher.next_batch()["value"].to_pylist() == [2]
+    assert len(pieces_read) == 2
+
+
+@pytest.mark.parametrize(
+    "kind", ["scalar", "nested", "dictionary", "fixed", "variable"]
+)
+@pytest.mark.parametrize("batch_size", [1, 3, 8, 20])
+@pytest.mark.parametrize("ensure_copy", [False, True])
+@pytest.mark.parametrize("aligned", [False, True])
+def test_batcher_chunk_boundaries(kind, batch_size, ensure_copy, aligned):
+    if kind == "scalar":
+        values = pa.array([None if i % 4 == 0 else str(i) for i in range(12)])
+    elif kind == "nested":
+        values = pa.array([None if i % 4 == 0 else [i, i + 1] for i in range(12)])
+    elif kind == "dictionary":
+        values = pa.array([str(i % 3) for i in range(12)]).dictionary_encode()
+    elif kind == "fixed":
+        values = ArrowTensorArray.from_numpy(np.arange(72).reshape(12, 2, 3))
+    else:
+        values = ArrowVariableShapedTensorArray.from_numpy(
+            [np.full((i % 3 + 1, 3), i) for i in range(12)]
+        )
+    # Include empty chunks, sliced storage, and boundaries that differ by column.
+    cuts = [0, 0, 4, 4, 8, 12, 12]
+    column = pa.chunked_array([values.slice(a, b - a) for a, b in zip(cuts, cuts[1:])])
+    ids = pa.array(range(12))
+    id_cuts = cuts if aligned else [0, 3, 12]
+    schema = pa.schema(
+        [
+            pa.field("id", pa.int64(), metadata={b"field": b"value"}),
+            pa.field("value", column.type),
+        ],
+        metadata={b"table": b"value"},
+    )
+    source = pa.Table.from_arrays(
+        [
+            pa.chunked_array(
+                [ids.slice(a, b - a) for a, b in zip(id_cuts, id_cuts[1:])]
+            ),
+            column,
+        ],
+        schema=schema,
+    ).slice(1, 10)
+    prefix = source.slice(0, 1)
+    batcher = Batcher(batch_size, ensure_copy=ensure_copy)
+    batcher.add(prefix)
+    batcher.add(source.slice(0, 0))
+    batcher.add(source)
+    batcher.done_adding()
+    batches = []
+    while batcher.has_any():
+        batches.append(batcher.next_batch())
+    assert [batch.num_rows for batch in batches] == (
+        [batch_size] * (11 // batch_size)
+        + ([11 % batch_size] if 11 % batch_size else [])
+    )
+    assert pa.concat_tables(batches).equals(
+        pa.concat_tables([prefix, source]), check_metadata=True
+    )
+    assert batcher._buffer_size == 0
+
+
+@pytest.mark.parametrize("failure", ["build", "copy"])
+@pytest.mark.parametrize("aligned", [False, True])
+def test_batcher_retries_failed_batch(monkeypatch, failure, aligned):
+    values = pa.array(range(11))
+    other = pa.array(range(100, 111))
+    cuts = [0, 2, 4, 6, 8, 10, 11]
+    other_cuts = cuts if aligned else [0, 1, 5, 7, 10, 11]
+    source = pa.table(
+        {
+            "value": pa.chunked_array(
+                [values.slice(a, b - a) for a, b in zip(cuts, cuts[1:])]
+            ),
+            "other": pa.chunked_array(
+                [other.slice(a, b - a) for a, b in zip(other_cuts, other_cuts[1:])]
+            ),
+        }
+    )
+    batcher = Batcher(batch_size=4, ensure_copy=True)
+    batcher.add(source.slice(0, 6))
+    batcher.add(source.slice(6))
+    assert batcher.next_batch().equals(source.slice(0, 4))
+
+    def fail(*args, **kwargs):
+        raise RuntimeError("batch failed")
+
+    with monkeypatch.context() as patch:
+        if failure == "build":
+            patch.setattr(DelegatingBlockBuilder, "build", fail)
+        else:
+            original_slice = ArrowBlockAccessor.slice
+
+            def fail_copy(self, start, end, copy=False):
+                if copy:
+                    fail()
+                return original_slice(self, start, end, copy=copy)
+
+            patch.setattr(ArrowBlockAccessor, "slice", fail_copy)
+        with pytest.raises(RuntimeError, match="batch failed"):
+            batcher.next_batch()
+    assert batcher._buffer_size == 7
+    assert batcher.next_batch().equals(source.slice(4, 4))
+    batcher.done_adding()
+    assert batcher.next_batch().equals(source.slice(8))
+    assert not batcher.has_any()
+
+
+def test_batcher_retries_failed_unbatched_copy(monkeypatch):
+    source = gen_block(3)
+    batcher = Batcher(batch_size=None, ensure_copy=True)
+    batcher.add(source)
+    with monkeypatch.context() as patch:
+        patch.setattr(ArrowBlockAccessor, "slice", lambda *a, **k: 1 / 0)
+        with pytest.raises(ZeroDivisionError):
+            batcher.next_batch()
+    assert batcher.next_batch().equals(source)
+    assert not batcher.has_any()
+
+
+def test_batcher_retries_failed_preparation(monkeypatch):
+    source = pa.concat_tables([gen_block(4), gen_block(4)])
+    batcher = Batcher(batch_size=3)
+    batcher.add(source)
+
+    def fail(*args, **kwargs):
+        raise RuntimeError("preparation failed")
+
+    with monkeypatch.context() as patch:
+        patch.setattr(batcher_module, "create_arrow_block_cursor", fail)
+        with pytest.raises(RuntimeError, match="preparation failed"):
+            batcher.next_batch()
+    batcher.done_adding()
+    batches = []
+    while batcher.has_any():
+        batches.append(batcher.next_batch())
+    assert [len(batch) for batch in batches] == [3, 3, 2]
+    assert pa.concat_tables(batches).equals(source)
+
+
+@pytest.mark.parametrize("python_flags", [[], ["-O"]], ids=["normal", "optimized"])
+def test_batcher_releases_consumed_block(python_flags):
+    subprocess.check_call(
+        [
+            sys.executable,
+            *python_flags,
+            "-c",
+            """
+import gc
+import weakref
+import numpy as np
+import pyarrow as pa
+from ray.data._internal.batcher import Batcher
+
+values = np.arange(8)
+source = pa.table({"value": pa.chunked_array([pa.array(values[:4]), pa.array(values[4:])])})
+source_ref, values_ref = weakref.ref(source), weakref.ref(values)
+batcher = Batcher(batch_size=4, ensure_copy=True)
+batcher.add(source)
+batcher.add(pa.table({"value": list(range(8))}))
+del source, values
+batcher.next_batch()
+batcher.next_batch()
+gc.collect()
+if source_ref() is not None or values_ref() is not None:
+    raise RuntimeError("Consumed source retained with Python optimization enabled")
+""",
+        ]
+    )
 
 
 def test_shuffling_batcher():
