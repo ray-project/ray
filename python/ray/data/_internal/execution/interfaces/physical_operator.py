@@ -648,6 +648,7 @@ class PhysicalOperator(Operator):
         data_context: DataContext,
         target_max_block_size_override: Optional[int] = None,
         num_output_splits: int = 1,
+        blocking_materializing: bool = False,
     ):
         self._name = name
         self._input_dependencies = input_dependencies
@@ -676,6 +677,7 @@ class PhysicalOperator(Operator):
         self._started = False
         self._shutdown = False
         self._lineage_tracker: Optional["LineageTracker"] = None
+        self._blocking_materializing = blocking_materializing
         self._in_task_submission_backpressure = False
         self._task_submission_backpressure_policy: Optional[str] = None
         self._in_task_output_backpressure = False
@@ -1111,6 +1113,13 @@ class PhysicalOperator(Operator):
         these operators should not be throttled based on resource usage.
         """
         return False
+
+    @property
+    def is_blocking_materializing(self) -> bool:
+        """True if no downstream operator can start until this one has
+        completed, i.e. its whole output must exist before any of it is usable.
+        """
+        return self._blocking_materializing
 
     def shutdown(self, timer: Timer, force: bool = False) -> None:
         """Abort execution and release all resources used by this operator.
