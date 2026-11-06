@@ -1,5 +1,6 @@
 import copy
 import logging
+import math
 from typing import Dict, List, Optional, Tuple
 
 import ray
@@ -356,12 +357,13 @@ class ZOOptSearch(Searcher):
                     if quantize and quantize > 1 and quantize == int(quantize):
                         # ZOOpt cannot step through a range, so list the
                         # multiples of `q` that Tune samples. The upper bound
-                        # is inclusive for `q > 1`. `q` may arrive as `2.0`.
+                        # is inclusive for `q > 1`. `q` and the bounds may
+                        # arrive as floats such as `2.0` or `1e3`.
                         q = int(quantize)
-                        lower = -(-domain.lower // q) * q
+                        lower = -(-math.ceil(domain.lower) // q) * q
                         return (
                             ValueType.GRID,
-                            list(range(lower, domain.upper + 1, q)),
+                            list(range(lower, math.floor(domain.upper) + 1, q)),
                         )
                     return (ValueType.DISCRETE, [domain.lower, domain.upper - 1], True)
 

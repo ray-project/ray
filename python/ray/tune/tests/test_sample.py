@@ -1641,8 +1641,10 @@ class SearchSpaceTest(unittest.TestCase):
             tune.qrandint(-7, 12, 4),
             tune.qrandint(0, 100, 10),
             tune.qrandint(0, 10, 2.0),
+            tune.qrandint(0, 1e2, 25),
         ):
             expected = set(domain.sample(size=2000))
+            grid = ZOOptSearch.convert_search_space({"a": domain})["a"][1]
             values = set()
             for _ in range(5):
                 searcher = ZOOptSearch(
@@ -1657,6 +1659,7 @@ class SearchSpaceTest(unittest.TestCase):
                     values.add(config["a"])
                     n += 1
             with self.subTest(expected=sorted(expected)):
+                self.assertEqual(grid, sorted(expected))
                 self.assertTrue(values)
                 self.assertLessEqual(values, expected)
 
