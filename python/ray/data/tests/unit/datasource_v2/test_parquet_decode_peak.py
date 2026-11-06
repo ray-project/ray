@@ -8,11 +8,6 @@ import numpy as np
 import pytest
 from packaging.version import parse as parse_version
 
-from ray.data._internal.datasource_v2.formats.parquet.parquet_decode_peak import (
-    _nested,
-    estimate_row_group_peak,
-)
-
 pa = pytest.importorskip("pyarrow")
 pds = pytest.importorskip("pyarrow.dataset")
 pq = pytest.importorskip("pyarrow.parquet")
@@ -94,16 +89,6 @@ _CASES = {
         )
     ),
     "strings": _case(pa.table({"a": _strings(N // 4)})),
-    # PyArrow miscounts DELTA_BYTE_ARRAY SizeStatistics, so the decoded size is
-    # a crude bound here, and the peak inherits it.
-    "delta-byte-array": _case(
-        pa.table({"a": _strings(N)}),
-        write_kwargs={
-            "use_dictionary": False,
-            "column_encoding": {"a": "DELTA_BYTE_ARRAY"},
-        },
-        high=20,
-    ),
     # The int64 column is read first, so PyArrow reserves it for the list's values.
     "column-after-list-reserve": _case(
         pa.table(
@@ -126,11 +111,6 @@ def test_estimate_bounds_measured_peak(tmp_path, label):
     (estimate,) = _sizes(path, projected_cols=columns, format_kwargs=format_kwargs)
     ratio = estimate / _peak(path=path, columns=columns, **format_kwargs)
     assert 0.95 <= ratio <= high, ratio
-
-
-def test_a_canonical_extension_casts_as_its_storage():
-    """A fixed-shape tensor column, a fixed-size list on disk, copies per piece."""
-    assert _nested(pa.fixed_shape_tensor(pa.float32(), [2, 2]))
 
 
 # Rows per file here: enough for several row groups.
@@ -174,29 +154,28 @@ def test_a_failed_footer_read_still_bounds_the_peak(
     assert 0.95 <= estimate / _peak(path=path) <= high
 
 
-def test_unmodelled_schema_falls_back_to_ten_times_uncompressed(tmp_path, monkeypatch):
-    """Without leaf profiles, 10 times the uncompressed size stands in for the
-    decode's buffers, under the same peak formula."""
+@pytest.mark.parametrize("unmodelled", ["file", "delta-byte-array-leaf"])
+def test_unmodelled_row_groups_charge_a_read_task_budget(
+    tmp_path, monkeypatch, unmodelled
+):
+    """A file, or a leaf like DELTA_BYTE_ARRAY strings without trusted sizes, that
+    the estimator doesn't model costs each row group a read task's budget, once."""
     import ray.data._internal.datasource_v2.formats.parquet.footer_reader as reader
 
     path = tmp_path / "f.parquet"
-    pq.write_table(_mixed(), path, row_group_size=M // 4)
-    monkeypatch.setattr(reader, "build_leaf_profiles", lambda **kwargs: None)
-    metadata = pq.read_metadata(str(path))
-    expected = []
-    for rg_idx in range(metadata.num_row_groups):
-        row_group = metadata.row_group(rg_idx)
-        leaves = range(row_group.num_columns)
-        uncompressed = sum(row_group.column(j).total_uncompressed_size for j in leaves)
-        peak = estimate_row_group_peak(
-            row_group=row_group,
-            leaf_indices=leaves,
-            row_group_work=10 * uncompressed,
-            file_size=os.path.getsize(path),
-        )
-        expected.append(peak)
-
-    assert _sizes(path) == expected
+    write_kwargs = {}
+    if unmodelled == "file":
+        monkeypatch.setattr(reader, "build_leaf_profiles", lambda **kwargs: None)
+    else:
+        write_kwargs = {
+            "use_dictionary": False,
+            "column_encoding": {"s": "DELTA_BYTE_ARRAY"},
+        }
+    pq.write_table(_mixed(), path, row_group_size=M // 4, **write_kwargs)
+    budget = 64 << 20
+    sizes = _sizes(path, read_task_bytes=budget)
+    assert len(sizes) == 4
+    assert all(budget < size < budget + (1 << 20) for size in sizes), sizes
 
 
 def test_pinned_schema_adds_the_cast_and_the_added_columns(tmp_path):

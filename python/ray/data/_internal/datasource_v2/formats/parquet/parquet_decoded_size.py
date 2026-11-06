@@ -3,13 +3,13 @@
 The Arrow schema is walked into one chain of arrays per Parquet leaf: its structs
 and lists, then the leaf. Each array is sized from the footer's counts as validity
 bitmap plus offsets plus values: exact with SizeStatistics, a bound without.
-Schemas it doesn't model, views and dictionaries among them, give ``None``.
+Leaves it doesn't model, views and dictionaries among them, get no profile.
 """
 
 from __future__ import annotations
 
 import math
-from typing import Any, Iterable, Iterator, Mapping, NamedTuple, Sequence
+from typing import Any, Iterable, Mapping, NamedTuple, Sequence
 
 import pyarrow as pa
 from pyarrow.parquet import (
@@ -34,6 +34,7 @@ _FIXED_SIZE_LIST = "fixed_size_list"
 _FIXED_WIDTH = "fixed_width"
 _BOOLEAN = "boolean"
 _NULL = "null"  # Arrow's null type allocates no buffers.
+_UNSUPPORTED = "unsupported"  # A view, a dictionary, a union: not modelled.
 # String and binary leaves, which only BYTE_ARRAY values decode to.
 _BINARY = "binary"
 
@@ -66,8 +67,6 @@ class _ArrowNode(NamedTuple):
     width: int = 0
     # A bitmap even when null-free: a zero-copy read keeps the one it decoded.
     keeps_bitmap: bool = False
-    # A leaf's Arrow type, an extension type's storage type; ``None`` above it.
-    arrow_type: pa.DataType | None = None
 
 
 class LeafProfile(NamedTuple):
@@ -79,15 +78,6 @@ class LeafProfile(NamedTuple):
     max_repetition_level: int
     # The writer counts every DELTA_BYTE_ARRAY value in SizeStatistics bytes.
     counts_delta_byte_array: bool = False
-    # The column's leaves and :func:`cast_slot_bytes`, when the pin casts it so
-    # its leaves can't follow, which leaves them walked as stored.
-    unmapped_cast: tuple[tuple[int, ...], int] | None = None
-    # The pin casts its values to text, which replaces them.
-    cast_to_text: bool = False
-
-
-class _UnsupportedLayout(Exception):
-    """An Arrow type this module cannot size, which sends the file to fallback."""
 
 
 class _Position(NamedTuple):
@@ -110,16 +100,13 @@ def _leaf_layout(arrow_type: pa.DataType) -> tuple[str, int]:
         return _BOOLEAN, 0
     if detect_string_type(arrow_type):
         return _BINARY, _offset_width(arrow_type)
-    if pa.types.is_dictionary(arrow_type):
-        # Dictionaries, like views, fall back rather than be sized.
-        raise _UnsupportedLayout(arrow_type)
     try:
         bit_width = arrow_type.bit_width
     except ValueError:
         # No fixed width: a view, a union, a list view.
-        raise _UnsupportedLayout(arrow_type) from None
-    if bit_width % 8:
-        raise _UnsupportedLayout(arrow_type)
+        return _UNSUPPORTED, 0
+    if pa.types.is_dictionary(arrow_type) or bit_width % 8:
+        return _UNSUPPORTED, 0
     return _FIXED_WIDTH, bit_width // 8
 
 
@@ -210,7 +197,6 @@ class _SchemaWalk:
                 def_level=def_level,
                 width=width,
                 keeps_bitmap=_is_zero_copy_type(arrow_type),
-                arrow_type=arrow_type,
             )
             self.leaves.append((chain + (leaf,), pos.depth))
             return
@@ -249,17 +235,12 @@ class _SchemaWalk:
         )
 
 
-def _walk(arrow_schema: pa.Schema) -> _SchemaWalk | None:
-    """Walk ``arrow_schema`` into leaf chains, or ``None`` if it can't be sized."""
+def _walk(arrow_schema: pa.Schema) -> _SchemaWalk:
+    """Walk ``arrow_schema`` into leaf chains."""
     walk = _SchemaWalk()
     top = _Position(depth=0, parent_def=0, slot_depth=0, slot_def=0, scale=1)
-    try:
-        for field in arrow_schema:
-            walk.visit(
-                arrow_type=field.type, nullable=field.nullable, pos=top, chain=()
-            )
-    except _UnsupportedLayout:
-        return None
+    for field in arrow_schema:
+        walk.visit(arrow_type=field.type, nullable=field.nullable, pos=top, chain=())
     return walk
 
 
@@ -277,61 +258,56 @@ def build_leaf_profiles(
     pinned_schema: pa.Schema | None = None,
     format_kwargs: Mapping[str, Any] | None = None,
     file_metadata: FileMetaData | None = None,
-) -> list[LeafProfile] | None:
-    """One :class:`LeafProfile` per leaf, in row group column order.
+) -> list[LeafProfile | None] | None:
+    """One :class:`LeafProfile` per leaf, in row group column order, ``None`` for a
+    leaf this module doesn't model.
 
     Args:
         parquet_schema: The file's schema.
         pinned_schema: The schema the read casts every batch to, if any.
         format_kwargs: The read's ``ParquetFileFormat`` kwargs.
-        file_metadata: The file's footer: its writer and stored Arrow schema.
+        file_metadata: The file's footer, for its writer.
 
     Returns:
-        The profiles, or ``None`` for a schema this module doesn't model.
+        The profiles, or ``None`` for a file this module doesn't model at all.
     """
     format_kwargs = format_kwargs or {}
-    if format_kwargs.get("dictionary_columns"):
-        # Strings read as dictionaries fall back, as a dictionary type does.
+    # Rare reads: the reader drops these options when it casts to the schema.
+    if format_kwargs.get("dictionary_columns") or detect_binary_or_list_type(
+        format_kwargs
+    ):
         return None
     try:
         arrow_schema = parquet_schema.to_arrow_schema()
     except (pa.ArrowException, ValueError, TypeError):
         return None
-    stored = _walk(arrow_schema)
-    if stored is None or len(stored.leaves) != len(parquet_schema):
+    walk = _walk(arrow_schema)
+    if len(walk.leaves) != len(parquet_schema):
         return None
     writer = "" if file_metadata is None else file_metadata.created_by or ""
     # Arrow C++ writers leave out of a DELTA_BYTE_ARRAY chunk's count each value
     # equal to, or a prefix of, the one before: 1,000 copies of an 8-byte string
     # report 8 bytes, where arrow-rs reports 8,000.
     counts_delta = writer != "" and not writer.startswith("parquet-cpp")
-    if pinned_schema is None and detect_binary_or_list_type(format_kwargs):
-        stores = file_metadata is not None and b"ARROW:schema" in (
-            file_metadata.metadata or {}
-        )
-        pinned_schema = type_option_schema(
-            arrow_schema=arrow_schema,
-            format_kwargs=format_kwargs,
-            stores_arrow_schema=stores,
-        )
-    walk, unmapped, to_text = stored, {}, set()
+    unmapped: set[int] = set()
     if pinned_schema is not None:
-        pinned = _pinned_walk(
+        walk, unmapped = _pinned_walk(
             arrow_schema=arrow_schema,
             pinned_schema=pinned_schema,
             parquet_schema=parquet_schema,
-            file_metadata=file_metadata,
         )
-        if pinned is None:
-            return None
-        walk, unmapped, to_text = pinned
 
-    profiles: list[LeafProfile] = []
+    profiles: list[LeafProfile | None] = []
     for leaf_idx, (chain, max_repetition_level) in enumerate(walk.leaves):
         column = parquet_schema.column(leaf_idx)
         leaf = chain[-1]
-        if not _matches(leaf=leaf, rep=max_repetition_level, column=column):
-            return None
+        if (
+            leaf_idx in unmapped
+            or leaf.kind == _UNSUPPORTED
+            or not _matches(leaf=leaf, rep=max_repetition_level, column=column)
+        ):
+            profiles.append(None)
+            continue
         if leaf.keeps_bitmap and column.physical_type not in _ZERO_COPY_PHYSICAL_TYPES:
             leaf = leaf._replace(keeps_bitmap=False)
         profiles.append(
@@ -340,8 +316,6 @@ def build_leaf_profiles(
                 max_definition_level=column.max_definition_level,
                 max_repetition_level=max_repetition_level,
                 counts_delta_byte_array=counts_delta,
-                unmapped_cast=unmapped.get(leaf_idx),
-                cast_to_text=leaf_idx in to_text,
             )
         )
     return profiles
@@ -408,10 +382,13 @@ class LeafChunk:
             ):
                 self._null_count = statistics.null_count
 
-    @property
-    def type(self) -> pa.DataType:
-        """The leaf array's Arrow type; an extension type's storage type."""
-        return self.profile.nodes[-1].arrow_type
+    def modelled(self) -> bool:
+        """False for DELTA_BYTE_ARRAY strings without SizeStatistics bytes to trust."""
+        return not (
+            self.profile.nodes[-1].kind == _BINARY
+            and self.size_statistics_bytes is None
+            and detect_delta_byte_array(self.chunk)
+        )
 
     def levels_known(self) -> bool:
         """Whether every slot and null count is exact, not a bound."""
@@ -507,33 +484,33 @@ def _bitmap_size(length: int) -> int:
 
 def leaf_chunks(
     row_group: RowGroupMetaData,
-    leaf_profiles: Sequence[LeafProfile],
+    leaf_profiles: Sequence[LeafProfile | None],
     leaf_indices: Iterable[int],
     size_stats: Sequence[LeafSizeStats | None] | None,
     dictionary_pages: Mapping[int, DictionaryPage] | None = None,
 ) -> list[LeafChunk]:
-    """A :class:`LeafChunk` for each of ``leaf_indices`` in ``row_group``."""
+    """A :class:`LeafChunk` for each of ``leaf_indices`` in ``row_group`` this module
+    models: fewer than asked for means a leaf needs the caller's fallback."""
     pages, stats = dictionary_pages or {}, size_stats or ()
-    return [
+    chunks = [
         LeafChunk(
             index=leaf_idx,
-            profile=leaf_profiles[leaf_idx],
+            profile=profile,
             chunk=row_group.column(leaf_idx),
             stats=stats[leaf_idx] if leaf_idx < len(stats) else None,
             num_rows=row_group.num_rows,
             dictionary_page=pages.get(leaf_idx),
         )
         for leaf_idx in leaf_indices
+        if (profile := leaf_profiles[leaf_idx]) is not None
     ]
+    return [leaf for leaf in chunks if leaf.modelled()]
 
 
 # The estimate.
 class Read(NamedTuple):
     """What a read task does besides decoding the file's columns."""
 
-    # The ``ParquetFileFormat`` kwargs it passes, so an option the reader drops
-    # never reaches here.
-    format_kwargs: Mapping[str, Any]
     # Bytes per row of the columns Ray appends, and once per row group on top.
     added_row_bytes: float = 0
     added_row_group_bytes: int = 0
@@ -549,11 +526,7 @@ def estimate_row_group(
         # Counted from the leaf's levels, so a bound wherever those are.
         ancestors = estimate_ancestors(leaf=leaf, counted=counted)
         size += ancestors if leaf.levels_known() else shave_bound(ancestors)
-        # Text a cast writes replaces the leaf: :func:`estimate_unmapped_casts`.
-        if not leaf.profile.cast_to_text:
-            size += estimate_leaf(leaf)
-    if detect_unmapped_casts(leaves):
-        size += shave_bound(estimate_unmapped_casts(leaves))
+        size += estimate_leaf(leaf)
     if detect_added_columns(read):
         size += estimate_added_columns(row_group=row_group, read=read)
     return size
@@ -601,53 +574,10 @@ def _array_bytes(node: _ArrowNode, leaf: LeafChunk) -> int:
     return size
 
 
-# The ``binary_type`` / ``list_type`` read options: wider string, binary or list
-# arrays, which the leaf profiles walk (:func:`type_option_schema`).
+# The ``binary_type`` / ``list_type`` read options, for wider strings or lists.
 def detect_binary_or_list_type(format_kwargs: Mapping[str, Any]) -> bool:
     large_list = format_kwargs.get("list_type") not in (None, pa.ListType)
     return format_kwargs.get("binary_type") not in (None, pa.binary()) or large_list
-
-
-def type_option_schema(
-    arrow_schema: pa.Schema, format_kwargs: Mapping[str, Any], stores_arrow_schema: bool
-) -> pa.Schema:
-    """The schema a read with ``binary_type`` or ``list_type`` returns: without a
-    stored Arrow schema, as Spark writes, every string, binary and list changes."""
-    binary_type = format_kwargs.get("binary_type") or pa.binary()
-    large_list = format_kwargs.get("list_type") not in (None, pa.ListType)
-
-    def text(arrow_type: pa.DataType) -> pa.DataType:
-        string = arrow_type in (pa.string(), pa.large_string(), pa.string_view())
-        if pa.types.is_binary_view(binary_type):
-            return pa.string_view() if string else pa.binary_view()
-        if pa.types.is_large_binary(binary_type):
-            return pa.large_string() if string else pa.large_binary()
-        return arrow_type
-
-    def retype(arrow_type: pa.DataType) -> pa.DataType:
-        if not stores_arrow_schema and (
-            pa.types.is_string(arrow_type) or pa.types.is_binary(arrow_type)
-        ):
-            return text(arrow_type)
-        if pa.types.is_struct(arrow_type):
-            return pa.struct([f.with_type(retype(f.type)) for f in arrow_type])
-        if pa.types.is_map(arrow_type):
-            key, item = arrow_type.key_field, arrow_type.item_field
-            return pa.map_(
-                key.with_type(retype(key.type)), item.with_type(retype(item.type))
-            )
-        if _is_list(arrow_type):
-            value = arrow_type.value_field.with_type(retype(arrow_type.value_type))
-            if pa.types.is_large_list(arrow_type) or (
-                large_list and not stores_arrow_schema
-            ):
-                return pa.large_list(value)
-            if pa.types.is_fixed_size_list(arrow_type):
-                return pa.list_(value, arrow_type.list_size)
-            return pa.list_(value)
-        return arrow_type
-
-    return pa.schema([f.with_type(retype(f.type)) for f in arrow_schema])
 
 
 # Plain string and binary leaves.
@@ -688,30 +618,17 @@ def _string_bytes(leaf: LeafChunk) -> tuple[int, bool]:
     """The value bytes, and whether they are the upper bound from plain pages."""
     if leaf.size_statistics_bytes is not None:
         return leaf.size_statistics_bytes, False
-    if detect_delta_byte_array(leaf.chunk):
-        return estimate_delta_byte_array(leaf.chunk), False
     if detect_dictionary_indexed(leaf.chunk):
         return estimate_dictionary_indexed(leaf), False
     fewest_values = leaf.fewest_values()
     return estimate_plain_bytes(chunk=leaf.chunk, fewest_values=fewest_values), True
 
 
-# Any DELTA_BYTE_ARRAY page without SizeStatistics bytes to trust: none written,
-# as by Spark 3.5, or PyArrow's.
+# Any DELTA_BYTE_ARRAY page. Without SizeStatistics bytes to trust (none written,
+# as by Spark 3.5, or PyArrow's) its strings aren't modelled: prefixes shared
+# across sorted runs can decode to 76 times the chunk.
 def detect_delta_byte_array(chunk: ColumnChunkMetaData) -> bool:
     return "DELTA_BYTE_ARRAY" in chunk.encodings
-
-
-# Above the most any measured column decoded to: values in sorted runs, at 76
-# times their chunk's uncompressed bytes, which 64 would have put under.
-_DELTA_BYTE_ARRAY_EXPANSION = 128
-
-
-def estimate_delta_byte_array(chunk: ColumnChunkMetaData) -> int:
-    """A guess: the values at 128 times the chunk's uncompressed bytes. Under for
-    long sorted runs: a million rows of 2 KB URLs, each repeated 1,000 times."""
-    expansion = min(chunk.num_values, _DELTA_BYTE_ARRAY_EXPANSION)
-    return expansion * chunk.total_uncompressed_size
 
 
 # Data pages that index a dictionary page, without SizeStatistics bytes.
@@ -783,22 +700,16 @@ def pinned_type(field: pa.Field, pinned_schema: pa.Schema | None) -> pa.DataType
 
 
 def _pinned_walk(
-    arrow_schema: pa.Schema,
-    pinned_schema: pa.Schema,
-    parquet_schema: ParquetSchema,
-    file_metadata: FileMetaData | None,
-) -> tuple[_SchemaWalk, dict[int, tuple[tuple[int, ...], int]], set[int]] | None:
-    """The pinned walk, each leaf's unmapped cast, and the leaves cast to text;
-    ``None`` when a pin is a type the walk can't size, such as a view."""
-    unmapped: dict[int, tuple[tuple[int, ...], int]] = {}
-    to_text: set[int] = set()
+    arrow_schema: pa.Schema, pinned_schema: pa.Schema, parquet_schema: ParquetSchema
+) -> tuple[_SchemaWalk, set[int]]:
+    """The pinned walk, and the leaves of columns whose cast changes their shape:
+    a struct that gained a field, a nested field made nullable, numbers cast to
+    text. Those are walked as stored and left unmodelled."""
+    unmapped: set[int] = set()
     fields, start = [], 0
     for field in arrow_schema:
-        field_walk = _walk(pa.schema([field]))
-        # The whole schema walked, so each of its fields does.
-        assert field_walk is not None
-        end = start + len(field_walk.leaves)
-        leaves = tuple(range(start, end))
+        end = start + len(_walk(pa.schema([field])).leaves)
+        leaves = range(start, end)
         # An all-null column keeps its type: its nulls count as an added column.
         arrow_type = (
             None
@@ -806,29 +717,15 @@ def _pinned_walk(
             else pinned_type(field=field, pinned_schema=pinned_schema)
         )
         pinned = field if arrow_type is None else field.with_type(arrow_type)
-        pinned_walk = None if pinned is field else _walk(pa.schema([pinned]))
-        if pinned is not field and pinned_walk is None:
-            return None
-        if pinned_walk is not None and not _cast_maps(
-            walk=pinned_walk, columns=[parquet_schema.column(j) for j in leaves]
+        if pinned is not field and not _cast_maps(
+            walk=_walk(pa.schema([pinned])),
+            columns=[parquet_schema.column(j) for j in leaves],
         ):
-            slot_bytes = cast_slot_bytes(
-                file_type=field.type,
-                pinned_type=pinned.type,
-                leaves=leaves,
-                file_metadata=file_metadata,
-            )
-            unmapped.update(dict.fromkeys(leaves, (leaves, slot_bytes)))
-            texts = text_cast_leaves(file_type=field.type, pinned_type=pinned.type)
-            if len(texts) == len(leaves):
-                to_text.update(j for j, text in zip(leaves, texts) if text)
+            unmapped.update(leaves)
             pinned = field
         fields.append(pinned)
         start = end
-    walk = _walk(pa.schema(fields))
-    # Each field is the stored one or a pin :func:`_cast_maps` walked.
-    assert walk is not None
-    return walk, unmapped, to_text
+    return _walk(pa.schema(fields)), unmapped
 
 
 def _cast_maps(walk: _SchemaWalk, columns: Sequence[ColumnSchema]) -> bool:
@@ -839,180 +736,9 @@ def _cast_maps(walk: _SchemaWalk, columns: Sequence[ColumnSchema]) -> bool:
     )
 
 
-# A pinned column whose leaves the cast doesn't keep one for one: a struct that
-# gained a field, a nested field made nullable, numbers cast to text, plain
-# strings cast to a dictionary.
-def detect_unmapped_casts(leaves: Sequence[LeafChunk]) -> bool:
-    return any(leaf.profile.unmapped_cast for leaf in leaves)
-
-
-def estimate_unmapped_casts(leaves: Sequence[LeafChunk]) -> int:
-    """A crude bound: :func:`cast_slot_bytes` for each value of the longest leaf."""
-    chosen = {leaf.index: leaf.chunk for leaf in leaves}
-    casts = {
-        leaf.profile.unmapped_cast
-        for leaf in leaves
-        if leaf.profile.unmapped_cast is not None
-    }
-    return sum(
-        max(chosen[j].num_values for j in cast_leaves if j in chosen) * slot_bytes
-        for cast_leaves, slot_bytes in casts
-    )
-
-
-def cast_slot_bytes(
-    file_type: pa.DataType,
-    pinned_type: pa.DataType,
-    leaves: Sequence[int | None] = (),
-    file_metadata: FileMetaData | None = None,
-) -> int:
-    """Bytes per element of every array of ``pinned_type``, summed. Text the cast
-    writes counts at its longest: from the leaf's min and max
-    (:func:`statistics_text_bytes`), else the type's (:func:`_text_bytes`)."""
-    texts = text_cast_leaves(file_type=file_type, pinned_type=pinned_type)
-    if len(leaves) != len(texts) or file_metadata is None:
-        leaves = (None,) * len(texts)
-    text_bytes = 0
-    for (_, stored), text, leaf_idx in zip(_leaf_types(file_type), texts, leaves):
-        if not text:
-            continue
-        recorded = None
-        if leaf_idx is not None and file_metadata is not None:
-            row_groups = range(file_metadata.num_row_groups)
-            chunks = [file_metadata.row_group(i).column(leaf_idx) for i in row_groups]
-            recorded = statistics_text_bytes(arrow_type=stored, chunks=chunks)
-        longest = _text_bytes(stored) if recorded is None else recorded
-        text_bytes = max(text_bytes, longest)
-    return _row_bytes(arrow_type=pinned_type, text_bytes=text_bytes)
-
-
-def statistics_text_bytes(
-    arrow_type: pa.DataType, chunks: Sequence[ColumnChunkMetaData]
-) -> int | None:
-    """The longest text an integer or decimal leaf casts to, from its min and max:
-    ids 0 to 49,999 write 5 bytes, not 20. ``None`` when a chunk lacks them."""
-    decimal = pa.types.is_decimal(arrow_type) and arrow_type.scale >= 0
-    if not (pa.types.is_integer(arrow_type) or decimal) or not chunks:
-        return None
-    longest = 0
-    try:
-        for chunk in chunks:
-            statistics = chunk.statistics
-            if statistics is None or not statistics.has_min_max:
-                return None
-            for value in (statistics.min, statistics.max):
-                if value is None:
-                    return None
-                if decimal:
-                    # "-0.05": the unscaled digits, at least one before the point.
-                    scale = arrow_type.scale
-                    unscaled = int(value.scaleb(scale))
-                    width = max(len(str(abs(unscaled))), scale + 1) + (scale > 0)
-                    longest = max(longest, (unscaled < 0) + width)
-                else:
-                    longest = max(longest, len(str(value)))
-    except (AttributeError, TypeError, ValueError):
-        return None
-    return longest
-
-
-def text_cast_leaves(
-    file_type: pa.DataType, pinned_type: pa.DataType
-) -> tuple[bool, ...]:
-    """For each of ``file_type``'s leaves, whether the cast makes its values text."""
-    pinned = dict(_leaf_types(pinned_type))
-    return tuple(
-        _is_text(pinned.get(path, pa.null()))
-        and not (_is_text(stored) or pa.types.is_null(stored))
-        for path, stored in _leaf_types(file_type)
-    )
-
-
-# Digits after the seconds' point, and the point, for each time unit.
-_FRACTION_BYTES = {"s": 0, "ms": 4, "us": 7, "ns": 10}
-# What :func:`_text_bytes` gives a type it has no width for, such as an interval
-# or a decimal with a negative scale ("-9.9999E+6" for a decimal(5, -2)).
-_CAST_TEXT_BYTES = 80
-
-
-def _text_bytes(arrow_type: pa.DataType) -> int:
-    """The longest text PyArrow's cast writes for one value of ``arrow_type``."""
-    if pa.types.is_boolean(arrow_type):
-        return 5  # "false"
-    if pa.types.is_signed_integer(arrow_type):
-        return len(str(-(2 ** (arrow_type.bit_width - 1))))  # "-128"
-    if pa.types.is_unsigned_integer(arrow_type):
-        return len(str(2**arrow_type.bit_width - 1))  # "255"
-    if pa.types.is_floating(arrow_type):
-        # "-0.0000075447247": 9 significant digits for a float, 17 otherwise.
-        return 17 if arrow_type.bit_width == 32 else 25
-    if pa.types.is_decimal(arrow_type) and arrow_type.scale >= 0:
-        # "-0.99999" for a decimal(5, 5), "-0.0000099999" for a decimal(5, 10).
-        return max(arrow_type.precision, arrow_type.scale) + 3
-    if pa.types.is_date(arrow_type):
-        return 10  # "2024-01-31"
-    if pa.types.is_timestamp(arrow_type):
-        # "2024-01-31 23:59:59.999999", then "Z" or "+0530" with a time zone.
-        tz_bytes = 5 if arrow_type.tz else 0
-        return 19 + _FRACTION_BYTES[arrow_type.unit] + tz_bytes
-    if pa.types.is_time(arrow_type):
-        return 8 + _FRACTION_BYTES[arrow_type.unit]  # "23:59:59.999"
-    if pa.types.is_duration(arrow_type):
-        return 20  # the count of units, an int64
-    return _CAST_TEXT_BYTES
-
-
 def _is_text(arrow_type: pa.DataType) -> bool:
     view = pa.types.is_string_view(arrow_type) or pa.types.is_binary_view(arrow_type)
     return detect_string_type(arrow_type) or view
-
-
-def _leaf_types(
-    arrow_type: pa.DataType, path: tuple[str, ...] = ()
-) -> Iterator[tuple[tuple[str, ...], pa.DataType]]:
-    """``(path, type)`` of each leaf by field names, ``[]`` for list elements."""
-    if isinstance(arrow_type, pa.BaseExtensionType):
-        arrow_type = arrow_type.storage_type
-    if pa.types.is_struct(arrow_type):
-        for field in arrow_type:
-            yield from _leaf_types(arrow_type=field.type, path=path + (field.name,))
-    elif pa.types.is_map(arrow_type):
-        yield from _leaf_types(
-            arrow_type=arrow_type.key_type, path=path + ("[]", "key")
-        )
-        yield from _leaf_types(
-            arrow_type=arrow_type.item_type, path=path + ("[]", "value")
-        )
-    elif _is_list(arrow_type):
-        yield from _leaf_types(arrow_type=arrow_type.value_type, path=path + ("[]",))
-    else:
-        yield path, arrow_type
-
-
-def _row_bytes(arrow_type: pa.DataType, text_bytes: int) -> int:
-    """Bytes per element of ``arrow_type``'s array and each array below it."""
-    if isinstance(arrow_type, pa.BaseExtensionType):
-        arrow_type = arrow_type.storage_type
-
-    def below(child_type: pa.DataType) -> int:
-        return _row_bytes(arrow_type=child_type, text_bytes=text_bytes)
-
-    # A bitmap byte, then a list's 8-byte offset, the values, and the children.
-    if pa.types.is_null(arrow_type):
-        return 0
-    if pa.types.is_struct(arrow_type):
-        return 1 + sum(below(field.type) for field in arrow_type)
-    if pa.types.is_fixed_size_list(arrow_type):
-        return 1 + arrow_type.list_size * below(arrow_type.value_type)
-    if pa.types.is_map(arrow_type):
-        entry = pa.struct([arrow_type.key_field, arrow_type.item_field])
-        return 1 + 8 + below(entry)
-    if _is_list(arrow_type):
-        return 1 + 8 + below(arrow_type.value_type)
-    try:
-        return 1 + math.ceil(arrow_type.bit_width / 8)
-    except ValueError:
-        return 1 + _offset_width(arrow_type) + text_bytes
 
 
 # Columns Ray adds after decoding: the file's path, Hive partition values, a row
