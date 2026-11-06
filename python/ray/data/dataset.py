@@ -3566,7 +3566,8 @@ class Dataset:
 
         Raises:
             ValueError: If the length of ``weights`` doesn't match the
-                number of datasets.
+                number of datasets, or if any weight is not positive and
+                finite.
         """
         datasets = [self] + list(other)
 
