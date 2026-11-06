@@ -708,8 +708,12 @@ class OptunaSearch(Searcher):
                             "Optuna does not support both quantization and "
                             "sampling from LogUniform. Dropped quantization."
                         )
+                    # Upper bound is inclusive for quantization with q > 1 and
+                    # exclusive otherwise
                     return ot.distributions.IntDistribution(
-                        domain.lower, domain.upper - 1, log=True
+                        domain.lower,
+                        domain.upper - (0 if quantize and quantize > 1 else 1),
+                        log=True,
                     )
                 elif isinstance(sampler, Uniform):
                     # Upper bound should be inclusive for quantization and
