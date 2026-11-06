@@ -27,6 +27,11 @@ py_library(
     deps = ["//python/ray/tests:conftest"],
 )
 
+py_library(
+    name = "datasource_v2_unit_conftest",
+    srcs = ["tests/unit/datasource_v2/conftest.py"],
+)
+
 py_test_module_list(
     size = "small",
     files = glob(["tests/unit/**/test_*.py"]),
@@ -36,6 +41,7 @@ py_test_module_list(
     ],
     deps = [
         ":conftest",
+        ":datasource_v2_unit_conftest",
         "//:ray_lib",
     ],
 )
