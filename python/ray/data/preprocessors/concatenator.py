@@ -138,8 +138,11 @@ class Concatenator(SerializablePreprocessorBase):
             else:
                 logger.warning(message)
 
-    def _stack_columns(self, df: pd.DataFrame, dtype=None) -> np.ndarray:
-        """Stack ``self._columns`` into one 2-D array, one column at a time.
+    def _stack_columns(
+        self, df: pd.DataFrame, columns: Optional[List[str]] = None, dtype=None
+    ) -> np.ndarray:
+        """Stack ``columns`` (defaulting to ``self._columns``) into one 2-D array,
+        one column at a time.
 
         ``df[self._columns].to_numpy()`` cannot be used here. For a selection of
         more than one Arrow-backed column it returns ``dtype=object`` -- an array
@@ -153,14 +156,19 @@ class Concatenator(SerializablePreprocessorBase):
         ``float64`` and using ``np.nan`` if it contains nulls, exactly as a
         NumPy-backed column would.
         """
-        columns = [df[column].to_numpy(dtype=dtype) for column in self._columns]
-        return np.column_stack(columns)
+        target_columns = self._columns if columns is None else columns
+        stacked = [df[column].to_numpy(dtype=dtype) for column in target_columns]
+        return np.column_stack(stacked)
 
     def _transform_pandas(self, df: pd.DataFrame):
         self._validate(df)
 
+        present_columns = [col for col in self._columns if col in df.columns]
+        if not present_columns:
+            return df
+
         if self._flatten:
-            concatenated = self._stack_columns(df)
+            concatenated = self._stack_columns(df, columns=present_columns)
             concatenated = [
                 np.concatenate(
                     [
@@ -173,9 +181,11 @@ class Concatenator(SerializablePreprocessorBase):
                 for row in concatenated
             ]
         else:
-            concatenated = self._stack_columns(df, dtype=self._dtype)
+            concatenated = self._stack_columns(
+                df, columns=present_columns, dtype=self._dtype
+            )
 
-        df = df.drop(columns=self._columns)
+        df = df.drop(columns=present_columns)
         # Use a Pandas Series for column assignment to get more consistent
         # behavior across Pandas versions.
         df.loc[:, self._output_column_name] = pd.Series(list(concatenated))
