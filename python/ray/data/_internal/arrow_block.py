@@ -683,6 +683,10 @@ class ArrowBlockColumnAccessor(BlockColumnAccessor):
         if is_boolean_arrow_type(column.type):
             # Treat booleans as 0/1: `subtract` has no boolean kernel.
             column = pac.cast(column, pyarrow.float64())
+        elif pyarrow.types.is_integer(column.type):
+            # Subtracting the float mean casts integers to float64 with a checked
+            # cast, which rejects values beyond 2**53. Cast without the check.
+            column = pac.cast(column, pyarrow.float64(), safe=False)
 
         res = pac.sum(pac.power(pac.subtract(column, mean), 2), skip_nulls=ignore_nulls)
         return res.as_py() if as_py else res

@@ -135,6 +135,16 @@ class TestArrowBlockColumnAccessor:
         assert accessor.to_pylist() == arr.to_pylist()
 
 
+@pytest.mark.parametrize("dtype", [pa.int64(), pa.uint64()])
+def test_sum_of_squared_diffs_from_mean_large_integers(dtype):
+    # Integers beyond 2**53 cannot be cast to float64 with a checked cast.
+    values = [2**53 + 2, None, 2**53 + 6]
+    accessor = ArrowBlockColumnAccessor(pa.chunked_array([values], type=dtype))
+    result = accessor.sum_of_squared_diffs_from_mean(ignore_nulls=True)
+
+    assert result == 8.0
+
+
 @pytest.mark.parametrize(
     "input_,expected_output",
     [
