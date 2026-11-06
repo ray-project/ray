@@ -875,7 +875,7 @@ For a trusted, row-producing SQL query, pass `query` and an explicit `pyarrow.Sc
 Query reads require an explicit Arrow schema. DataSourceV2 planning needs it on the driver before the read worker executes the query. See [issue #66840](https://github.com/ray-project/ray/issues/66840) for optional schema inference from the same query execution.
 :::
 
-Non-nullable fields reject null rows. Table reads support scalar boolean values, numbers, strings, binary values, dates, timestamps, and decimals. Hive `TIMESTAMP` maps to `pa.timestamp("us")` without a time zone; Impyla truncates sub-microsecond precision. Complex types are unsupported.
+In the default `read_mode="hs2"`, non-nullable fields reject null rows. Table reads support scalar boolean values, numbers, strings, binary values, dates, timestamps, and decimals. Hive `TIMESTAMP` maps to `pa.timestamp("us")` without a time zone; `impyla` truncates sub-microsecond precision. Complex types are unsupported in this mode.
 
 Because table reads use `SELECT *`, an unsupported column type prevents reading the whole table. Use `query=` to select supported columns and provide a matching schema.
 
@@ -942,7 +942,23 @@ The example uses the binary HiveServer2 protocol. Each read runs at most one dat
 The reader attempts to cancel the HiveServer2 operation and close its cursor and connection when reading ends. Closing a Dataset iterator can force Ray to stop the read worker before Python cleanup runs. Immediate operation cancellation or explicit connection cleanup isn't guaranteed.
 :::
 
-Compared with {func}`~ray.data.read_sql`, `read_hive` fetches results in batches and maps HiveServer2 metadata to Arrow types with schema validation. `read_sql` uses `fetchall()` within each read task and infers Arrow types from Python row values. `read_hive` also provides table identifier validation, table schema lookup, and HiveServer2 operation cancellation.
+Compared with {func}`~ray.data.read_sql`, the default HS2 mode fetches results in batches and maps HiveServer2 metadata to Arrow types with schema validation. `read_sql` uses `fetchall()` within each read task and infers Arrow types from Python row values. `read_hive` also provides table identifier validation, table schema lookup, and HiveServer2 operation cancellation.
+
+(native-hive-file-reads)=
+#### Native Hive file reads
+
+Use `read_mode="direct"` to read supported Parquet or ORC Hive tables without partitions using native Ray Data readers. Both managed and external tables are eligible. The driver gets metadata through HiveServer2. Workers read storage directly. Queries, partitions, transactional tables, custom SerDes, and Iceberg/Delta/Hudi tables aren't supported.
+
+Driver and workers need independent storage access. Pass a configured PyArrow `filesystem` when needed. See {func}`~ray.data.read_hive` for client requirements, column mapping, type compatibility, and schema-checking costs.
+
+```python
+dataset = ray.data.read_hive(
+    "analytics.events",
+    connection_factory=create_connection,
+    read_mode="direct",
+    override_num_blocks=8,
+)
+```
 
 (reading_sql)=
 (reading-sql-databases)=
