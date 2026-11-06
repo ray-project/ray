@@ -49,6 +49,7 @@ from typing import (
 import ray
 from ray._private.ray_constants import env_float
 from ray.exceptions import GetTimeoutError
+from ray.train.health import NodeProbe, ProbeResult, WorkerProbe
 from ray.train.v2._internal.constants import (
     DEFAULT_NCCL_RAS_ACTION,
     DEFAULT_NCCL_RAS_CONFIRM_DURATION_S,
@@ -147,7 +148,10 @@ def parse_ras_addr(addr: str) -> Tuple[str, int]:
 
 
 def run_ncclras(
-    binary_path: str, timeout_s: float, fmt: str = "json"
+    binary_path: str,
+    timeout_s: float,
+    fmt: str = "json",
+    ras_addr: Optional[str] = None,
 ) -> Dict[str, Any]:
     """Run ``ncclras`` on a worker and return its output.
 
@@ -157,6 +161,8 @@ def run_ncclras(
         fmt: ``ncclras`` output format. ``"json"`` (machine-parsed by the
             poller) or ``"text"`` (``ncclras``'s human-readable report, logged
             at hang time).
+        ras_addr: The ``NCCL_RAS_ADDR`` to query. Defaults to this process's
+            ``NCCL_RAS_ADDR``.
 
     Returns:
         A dict ``{"ok": bool, ...}``. On success ``stdout`` holds the raw
@@ -166,7 +172,7 @@ def run_ncclras(
     cmd = [binary_path, "-f", fmt, "-t", str(int(timeout_s))]
     # Only override the address when the user set NCCL's variable; otherwise
     # let `ncclras` use its own built-in default.
-    ras_addr = os.environ.get(NCCL_RAS_ADDR_ENV_VAR)
+    ras_addr = ras_addr or os.environ.get(NCCL_RAS_ADDR_ENV_VAR)
     if ras_addr:
         host, port = parse_ras_addr(ras_addr)
         cmd += ["-h", host, "-p", str(port)]
@@ -428,6 +434,31 @@ class RASQueryError(Exception):
         self.fatal = fatal
 
 
+def ras_query_error(result: Dict[str, Any], binary_path: str) -> RASQueryError:
+    """Turn a failed ``run_ncclras()`` result into a :class:`RASQueryError`.
+
+    Args:
+        result: What ``run_ncclras()`` returned, with ``ok`` false.
+        binary_path: Path to the ``ncclras`` client binary.
+
+    Returns:
+        The error, ``fatal`` for a missing binary or one too old for ``-f``.
+    """
+    reason = result["reason"]
+    if reason == "binary_not_found":
+        return RASQueryError(
+            reason, f"binary {binary_path!r} not found on the worker.", fatal=True
+        )
+    if reason == "unsupported_f_option":
+        return RASQueryError(
+            reason,
+            f"binary {binary_path!r} rejected the `-f` format flag, "
+            "which requires NCCL 2.28+",
+            fatal=True,
+        )
+    return RASQueryError(reason, stderr=result.get("stderr"))
+
+
 class RASPoller:
     """Fetches RAS reports from the worker group on a background thread.
 
@@ -573,21 +604,7 @@ class RASPoller:
             raise RASQueryError("query_error", str(e))
 
         if not result["ok"]:
-            reason = result["reason"]
-            if reason == "binary_not_found":
-                raise RASQueryError(
-                    reason,
-                    f"binary {self._binary_path!r} not found on the worker.",
-                    fatal=True,
-                )
-            if reason == "unsupported_f_option":
-                raise RASQueryError(
-                    reason,
-                    f"binary {self._binary_path!r} rejected the `-f` format flag, "
-                    "which requires NCCL 2.28+",
-                    fatal=True,
-                )
-            raise RASQueryError(reason, stderr=result.get("stderr"))
+            raise ras_query_error(result, self._binary_path)
 
         if fmt == "json":
             logger.debug("`ncclras` json output: %s", result["stdout"])
@@ -913,6 +930,72 @@ def dump_flight_recorder() -> DiagnosticResult:
         return DiagnosticResult(error=e)
 
     return DiagnosticResult(value=trace_json)
+
+
+def _to_probe_result(diagnostic: DiagnosticResult) -> ProbeResult:
+    """Turn a diagnostic's result into a ``ProbeResult`` with its output."""
+    if diagnostic.error is not None:
+        return ProbeResult(error=diagnostic.error)
+    return ProbeResult(detail=str(diagnostic.value))
+
+
+class NCCLRASProbe(NodeProbe):
+    """Queries NCCL RAS on its node with ``ncclras -f json``. Every node sees
+    the whole RAS mesh. After a fatal error, such as a missing binary, it
+    returns that error without querying again.
+
+    Args:
+        ras_addr: The workers' ``NCCL_RAS_ADDR``, if set. Defaults to this
+            process's.
+    """
+
+    fmt = "json"
+
+    def __init__(self, ras_addr: Optional[str] = None):
+        self._binary_path = "ncclras"
+        self._ras_addr = ras_addr or os.environ.get(NCCL_RAS_ADDR_ENV_VAR)
+        self._fatal_error: Optional[RASQueryError] = None
+
+    def poll(self) -> ProbeResult:
+        if self._fatal_error is not None:
+            return ProbeResult(error=self._fatal_error)
+        result = run_ncclras(
+            self._binary_path, _NCCL_RAS_QUERY_TIMEOUT_S, self.fmt, self._ras_addr
+        )
+        if result["ok"]:
+            return ProbeResult(detail=result["stdout"])
+        error = ras_query_error(result, self._binary_path)
+        if error.fatal:
+            self._fatal_error = error
+        return ProbeResult(error=error)
+
+
+class NCCLRASTextProbe(NCCLRASProbe):
+    """Queries NCCL RAS on its node for its human-readable report, with
+    ``ncclras -f text``."""
+
+    fmt = "text"
+
+
+class NvidiaSmiProbe(NodeProbe):
+    """Snapshots the node's GPUs with ``nvidia-smi -q``."""
+
+    def poll(self) -> ProbeResult:
+        return _to_probe_result(run_nvidia_smi(_NVIDIA_SMI_TIMEOUT_S - 1))
+
+
+class FlightRecorderProbe(WorkerProbe):
+    """Dumps the worker's PyTorch Flight Recorder buffer."""
+
+    def poll(self) -> ProbeResult:
+        return _to_probe_result(dump_flight_recorder())
+
+
+class StackTraceProbe(WorkerProbe):
+    """Dumps the worker's native and Python stacks."""
+
+    def poll(self) -> ProbeResult:
+        return ProbeResult(detail=dump_stack_trace(_STACK_DUMP_TIMEOUT_S - 1))
 
 
 class NCCLRASCallback(WorkerGroupCallback, ControllerCallback):
