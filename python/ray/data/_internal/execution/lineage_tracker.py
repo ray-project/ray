@@ -98,6 +98,26 @@ class TaskNode:
     # reconstruction can resubmit it. ``None`` for every non-seed task.
     seed_input: Optional["RefBundle"] = None
 
+    # --- Garbage collection state (see ``LineageTracker._collect``). ---
+
+    # Whether this task's outputs are durable, so nothing downstream ever needs
+    # them reconstructed.
+    is_durable: bool = False
+    # Number of outputs the task produced, known once an attempt completes. None
+    # until then, so a node that never completed is never collected.
+    num_outputs: Optional[int] = None
+    # Attempts submitted and not yet completed or failed, counted once per
+    # reconstruction plan the attempt serves. A node is never collected while an
+    # attempt is running, since the attempt still reports outputs against it.
+    num_running_attempts: int = 0
+    # Indices of this task's outputs whose consumer has been collected. The
+    # consumer is gone from ``child_tasks``, but its rows are durable in a sink.
+    released_output_indices: Set[OutputIndex] = field(default_factory=set)
+    # IDs of this task's output blocks that have an entry in the tracker's block
+    # map. The node owns those entries: resolving a block removes its entry, and
+    # removing the node removes the rest (see ``LineageTracker._remove_task_node``).
+    output_block_ids: Set[BlockId] = field(default_factory=set)
+
     def __repr__(self) -> str:
         parent_ids = [task.lineage_task_id for task in self.parent_tasks]
         child_ids = [task.lineage_task_id for task in self.child_tasks]
@@ -106,7 +126,9 @@ class TaskNode:
             f"parent_tasks={parent_ids!r}, child_tasks={child_ids!r}, "
             f"child_task_block_dependencies={self.child_task_block_dependencies!r}, "
             f"plan_to_child_block_lineages={self.plan_to_child_block_lineages!r}, "
-            f"num_queued_outputs={self.num_queued_outputs!r})"
+            f"num_queued_outputs={self.num_queued_outputs!r}, "
+            f"is_durable={self.is_durable!r}, num_outputs={self.num_outputs!r}, "
+            f"num_running_attempts={self.num_running_attempts!r})"
         )
 
     def __eq__(self, other: object) -> bool:
@@ -136,11 +158,25 @@ class LineageTracker:
         """Record which task produced a block, so that whichever task later
         consumes it can fetch the dependency easily with the block ID.
 
+        The entry belongs to the producing task's node. It is removed when a task
+        consuming the block resolves it, or else with the node.
+
         Args:
             lineage_task_id: The ID of the data task that produced the block.
             block_id: Opaque ID of the produced block, unique per block.
             output_index: The index of this output within the producing task.
+
+        Raises:
+            ValueError: If the task is not registered.
+                Invariant: a task is registered before it produces outputs.
         """
+        task_node = self._lineage_task_id_to_task_node.get(lineage_task_id)
+        if task_node is None:
+            raise ValueError(
+                f"Expected task {lineage_task_id} to be registered before "
+                "recording its output but was not."
+            )
+        task_node.output_block_ids.add(block_id)
         self._block_id_to_parent_output[block_id] = ParentBlockOutput(
             parent_lineage_task_id=lineage_task_id, output_index=output_index
         )
@@ -224,18 +260,19 @@ class LineageTracker:
 
         Note:
             Entries are consumed since a block is only ever dispatched to one
-            task (except for outputs from the final operator, which must be explicitly GC'd as there is no consumer)
-            That keeps this bounded by the number of blocks in flight
-            rather than growing for the lifetime of the dataset.
-            TODO(ayushkum): figure out the GC for the final operator's outputs.
+            task.
         """
-        resolved = (
-            self._block_id_to_parent_output.pop(block_id, None)
-            for block_id in block_ids
-        )
-        return [
-            parent_output for parent_output in resolved if parent_output is not None
-        ]
+        dependencies = []
+        for block_id in block_ids:
+            parent_output = self._block_id_to_parent_output.pop(block_id, None)
+            if parent_output is None:
+                continue
+            # The producer owns the entry, so it is registered.
+            self._lineage_task_id_to_task_node[
+                parent_output.parent_lineage_task_id
+            ].output_block_ids.remove(block_id)
+            dependencies.append(parent_output)
+        return dependencies
 
     def register_task_submission(
         self,
@@ -245,7 +282,8 @@ class LineageTracker:
     ) -> None:
         """Register a newly submitted task with the lineage graph.
 
-        Repeated registration of the same lineage task ID is ignored.
+        Repeated registration of the same lineage task ID only records another
+        running attempt; the node and its edges are left as they are.
 
         Args:
             lineage_task_id: The ID of the data task that was submitted.
@@ -361,6 +399,7 @@ class LineageTracker:
                 lineage_task_id,
                 dependencies,
             )
+            re_executed_task_node.num_running_attempts += 1
             return
 
         task_node = TaskNode(
@@ -370,6 +409,7 @@ class LineageTracker:
             child_task_block_dependencies={},
             plan_to_child_block_lineages={},
             ordered_parent_block_dependencies=list(dependencies),
+            num_running_attempts=1,
         )
         self._lineage_task_id_to_task_node[lineage_task_id] = task_node
 
@@ -383,9 +423,16 @@ class LineageTracker:
     def register_task_complete(
         self,
         lineage_task_id: LineageTaskId,
+        num_outputs: int,
         reconstruction_plan_id: Optional[ReconstructionPlanId] = None,
     ) -> None:
         """Update the task state for the given data task to completed.
+
+        Called once per reconstruction plan the completed attempt serves. If the
+        completion leaves the task collectible (see ``_is_garbage_collectible``), the task
+        and any ancestors that thereby become collectible too are garbage
+        collected. Completion alone never makes a task's outputs durable; see
+        ``try_garbage_collect_lineage``.
 
         Note:
             Completing a task does not remove anything from its plan set. Plan set entries are
@@ -394,6 +441,8 @@ class LineageTracker:
 
         Args:
             lineage_task_id: The ID of the data task that was completed.
+            num_outputs: How many outputs the attempt produced, so the tracker
+                can tell when every output has been consumed.
             reconstruction_plan_id: The reconstruction plan ID of the reconstruction attempt if the task is a
                 re-execution. If not provided, the task is assumed to be a fresh
                 attempt.
@@ -410,6 +459,45 @@ class LineageTracker:
                 "completion but was not."
             )
         logger.debug("Registering task complete for task %s", lineage_task_id)
+        self._finish_attempt(task_node)
+        # A re-execution splits its output the same way as the first attempt,
+        # but keep the largest count seen to stay conservative.
+        task_node.num_outputs = max(task_node.num_outputs or 0, num_outputs)
+        self._collect(task_node)
+
+    def try_garbage_collect_lineage(self, lineage_task_id: LineageTaskId) -> bool:
+        """Mark a task's outputs as durable and garbage collect its lineage.
+
+        Call this once a completed task's outputs can never be lost again, for
+        example after a write task has written its rows to a sink.
+
+        The task is only collected once it is collectible (see ``_is_garbage_collectible``).
+        If it is not yet, for example because another attempt is still running,
+        it stays marked as durable and is dropped once that last guard clears.
+
+        Args:
+            lineage_task_id: The ID of the data task whose outputs are now durable
+                and is ready to try to start garbage collecting from.
+
+        Returns:
+            Whether the task was collected by this call.
+
+        Raises:
+            ValueError: If the task is not registered.
+                Invariant: the task must be registered, and not yet collected,
+                when its outputs become durable. A task with no outputs is
+                collected at its completion, so call this before completing it.
+        """
+        task_node = self._lineage_task_id_to_task_node.get(lineage_task_id)
+        if task_node is None:
+            raise ValueError(
+                f"Expected task {lineage_task_id} to be registered before "
+                "garbage collecting its lineage but was not."
+            )
+        logger.debug("Marking outputs of task %s as durable", lineage_task_id)
+        task_node.is_durable = True
+        self._collect(task_node)
+        return lineage_task_id not in self._lineage_task_id_to_task_node
 
     def register_task_failed(
         self,
@@ -446,6 +534,7 @@ class LineageTracker:
             lineage_task_id,
             reconstruction_plan_id,
         )
+        self._finish_attempt(task_node)
 
         seed_task_ids: Set[LineageTaskId] = set()
         # Maps a task's lineage task ID to the IDs of the children it has already
@@ -704,3 +793,99 @@ class LineageTracker:
         # An output no earlier attempt queued has never been downstream, so the
         # target must queue it.
         return _log_and_return(ObjectReuseStatus.OBJECT_NEW)
+
+    def _finish_attempt(self, task_node: TaskNode) -> None:
+        """Mark an attempt running the given task node as finished.
+
+        Args:
+            task_node: The task node whose attempt has finished.
+
+        Raises:
+            ValueError: If the task node has no running attempt.
+                Invariant: every submission reaches exactly one terminal state,
+                completed or failed, so an attempt is never finished twice.
+        """
+        if task_node.num_running_attempts <= 0:
+            raise ValueError(
+                f"Expected task {task_node.lineage_task_id} to have a running "
+                "attempt when finishing one but it had none. Was the attempt "
+                "already completed or failed?"
+            )
+        task_node.num_running_attempts -= 1
+
+    def _is_garbage_collectible(self, task_node: TaskNode) -> bool:
+        """Whether nothing can ever need this task re-executed again.
+
+        A node is garbage collectible if the following holds:
+
+        - The task has completed
+        - Everything it produced is durable: either its outputs were marked durable
+          (``try_garbage_collect_lineage``), or they have each been consumed by a
+          task that was itself collected (no more child dependencies).
+        - no running attempt, since one would still register outputs and
+          completion against this node;
+        - no plan set, since one means a reconstruction still expects this task
+          to re-run (a seed reconstruction task may be queued for it).
+
+        Args:
+            task_node: The task node to check for garbage collectibility.
+
+        Returns:
+            Whether the task node is garbage collectible.
+        """
+        if task_node.num_outputs is None:
+            # Never completed.
+            return False
+        if task_node.num_running_attempts > 0:
+            return False
+        if task_node.plan_to_child_block_lineages:
+            return False
+        if task_node.child_tasks:
+            return False
+        if task_node.is_durable:
+            return True
+        return all(
+            output_index in task_node.released_output_indices
+            for output_index in range(task_node.num_outputs)
+        )
+
+    def _collect(self, task_node: TaskNode) -> None:
+        """Drop ``task_node`` from the graph if collectible, then its ancestors.
+
+        Args:
+            task_node: The task node to collect if collectible.
+        """
+        pending = [task_node]
+        while pending:
+            node = pending.pop()
+            # A diamond can queue one parent twice; the second visit finds it gone.
+            if self._lineage_task_id_to_task_node.get(node.lineage_task_id) is not node:
+                continue
+            if not self._is_garbage_collectible(node):
+                continue
+            self._remove_task_node(node)
+            logger.debug("Collected lineage of task %s", node.lineage_task_id)
+            pending.extend(node.parent_tasks)
+            node.parent_tasks = []
+
+    def _remove_task_node(self, task_node: TaskNode) -> None:
+        """Remove ``task_node`` and every piece of state the tracker keeps for it.
+
+        Args:
+            task_node: The task node to remove from the graph.
+        """
+        del self._lineage_task_id_to_task_node[task_node.lineage_task_id]
+
+        for block_id in task_node.output_block_ids:
+            del self._block_id_to_parent_output[block_id]
+        task_node.output_block_ids.clear()
+
+        for parent_task_node in task_node.parent_tasks:
+            parent_task_node.released_output_indices.update(
+                parent_task_node.child_task_block_dependencies.pop(
+                    task_node.lineage_task_id
+                )
+            )
+            parent_task_node.child_tasks.remove(task_node)
+
+        task_node.seed_input = None
