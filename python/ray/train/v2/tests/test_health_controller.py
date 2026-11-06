@@ -46,11 +46,15 @@ pytestmark = pytest.mark.usefixtures("mock_runtime_context")
 class FakeHealthManager:
     """Returns the queued decisions, and records the started on-demand checks."""
 
+    worker_probes = []
+
     def __init__(self, inflight_checks):
         self.decisions = []
         self.on_demand_checks = []
+        self.worker_statuses = None
 
-    def evaluate(self):
+    def evaluate(self, worker_statuses):
+        self.worker_statuses = worker_statuses
         return self.decisions.pop(0) if self.decisions else Noop()
 
     def start_on_demand_checks(self, checks):
@@ -207,7 +211,7 @@ def test_health_callback_resets_each_attempt():
     callback = HealthCallback(health_manager, preflight_checks=[])
     worker_group = _worker_group("b", "a", "b")
     callback.after_worker_group_start(worker_group)
-    health_manager.reset.assert_called_once_with(["a", "b"])
+    health_manager.reset.assert_called_once_with(["a", "b"], worker_group)
     health_manager.start_on_demand_checks.assert_not_called()
 
     callback.before_worker_group_shutdown(worker_group)
@@ -274,6 +278,27 @@ def test_checks_for_the_next_start_run_once_with_the_preflight_checks():
 
     callback.after_worker_group_start(_worker_group("a"))
     health_manager.start_and_evaluate_on_demand_checks.assert_called_with([preflight])
+
+
+def test_health_callback_gives_each_worker_the_worker_probes():
+    health_manager = MagicMock(worker_probes=["probe"])
+    callback = HealthCallback(health_manager, preflight_checks=[])
+    workers = [MagicMock(), MagicMock()]
+    assert callback.before_init_train_context(workers) == {
+        "worker_probes": [["probe"], ["probe"]]
+    }
+
+    health_manager.worker_probes = []
+    assert callback.before_init_train_context(workers) == {}
+
+
+def test_the_health_checks_get_the_worker_group_poll():
+    controller, _ = _running_controller(MockFailurePolicy(None))
+    _step(controller)
+    worker_group_status = controller.get_worker_group().poll_status()
+    assert controller._health_manager.worker_statuses == (
+        worker_group_status.worker_statuses
+    )
 
 
 def test_user_callbacks_get_the_health_decision():

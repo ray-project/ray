@@ -426,6 +426,32 @@ def test_start_and_evaluate_on_demand_checks_waits_for_their_decision():
     assert manager._node_monitor_group.poll_probe_results.call_count == 2
 
 
+def test_on_demand_worker_probes_run_on_the_worker_group(fake_node_id):
+    evaluator = Always(Noop())
+    manager = HealthManager([])
+    _fake_temps(manager, [])
+    worker_group = mock.Mock()
+    step_time = ProbeResult(metrics={"step_time_s": 1.0})
+    worker_group.poll_probe_results.side_effect = [None, {"StepTime": {0: step_time}}]
+    manager.reset(["n1"], worker_group)
+    probe = StepTime()
+    manager.start_on_demand_checks(
+        [
+            HealthCheck(
+                probe_creator=lambda: [probe, Temp()],
+                evaluator_creator=lambda: [evaluator],
+            )
+        ],
+        timeout=10,
+    )
+    worker_group.poll_probes_async.assert_called_once_with([probe], timeout_s=10)
+
+    assert manager.evaluate_on_demand_checks() is None
+    assert manager.evaluate_on_demand_checks() == Noop()
+    (state,) = evaluator.seen
+    assert state.probe_results["StepTime"] == {0: step_time}
+
+
 def test_on_demand_checks_decide_noop_before_any_start():
     assert HealthManager([]).evaluate_on_demand_checks() == Noop()
 

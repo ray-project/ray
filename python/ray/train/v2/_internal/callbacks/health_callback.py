@@ -1,4 +1,4 @@
-from typing import TYPE_CHECKING, List
+from typing import TYPE_CHECKING, Any, Dict, List
 
 from ray.train.health import Evict, HealthCheck, Reattempt
 from ray.train.v2._internal.execution.callback import WorkerGroupCallback
@@ -7,15 +7,17 @@ from ray.train.v2.api.exceptions import HealthCheckError
 if TYPE_CHECKING:
     from ray.train.health._internal.manager import HealthManager
     from ray.train.v2._internal.execution.worker_group import (
+        Worker,
         WorkerGroup,
         WorkerGroupContext,
     )
 
 
 class HealthCallback(WorkerGroupCallback):
-    """Runs a ``HealthManager``'s checks on each attempt's worker group: runs
-    the pre-flight checks as its workers start, and monitors the attempt's
-    nodes while they run.
+    """Runs a ``HealthManager``'s checks on each attempt's worker group: gives
+    each worker the in-flight WorkerProbes to sample, runs the pre-flight
+    checks as the workers start, and monitors the attempt's nodes while they
+    run.
 
     Args:
         health_manager: The run's ``HealthManager``. The ``TrainController``
@@ -42,6 +44,14 @@ class HealthCallback(WorkerGroupCallback):
         """
         self._next_start_checks.extend(checks)
 
+    def before_init_train_context(
+        self, workers: List["Worker"]
+    ) -> Dict[str, List[Any]]:
+        worker_probes = self._health_manager.worker_probes
+        if not worker_probes:
+            return {}
+        return {"worker_probes": [worker_probes] * len(workers)}
+
     def after_worker_group_start(self, worker_group: "WorkerGroup") -> None:
         """Reset the ``HealthManager`` for the attempt, and run its pre-flight
         checks on demand. Training starts once the checks that stop the
@@ -55,7 +65,7 @@ class HealthCallback(WorkerGroupCallback):
                 ``Reattempt`` or ``Evict``, which keeps training from starting.
         """
         node_ids = {worker.metadata.node_id for worker in worker_group.get_workers()}
-        self._health_manager.reset(sorted(node_ids))
+        self._health_manager.reset(sorted(node_ids), worker_group)
 
         checks = self._preflight_checks + self._next_start_checks
         self._next_start_checks = []
