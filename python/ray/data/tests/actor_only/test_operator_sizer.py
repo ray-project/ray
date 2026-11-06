@@ -95,7 +95,7 @@ from ray.data._internal.experimental.execution.sizer.tick import (
     committed_by_node,
 )
 from ray.data._internal.logical.operators.write_operator import Write
-from ray.data._internal.util import MiB
+from ray.data._internal.util import GiB, MiB
 from ray.data.context import DataContext
 from ray.util.scheduling_strategies import (
     In,
@@ -622,6 +622,35 @@ def test_warmup_latches_off_on_critical_op_first_output():
     assert ctx is not None and not ctx.warmup
     # The first warm tick holds sizes; the warm arms need a signal to act on.
     assert sizer._per_op_how_many(ctx).request == {}
+
+
+def test_warmup_times_out_when_a_critical_op_never_produces(caplog, propagate_logs):
+    # A critical op that never gets an actor (say, starved by a memory
+    # reservation) must not hold the sizer in warmup forever: after the
+    # timeout it moves to the warm phase, and says which op it gave up on.
+    ops, topo = _linear_pipeline(running=1)
+    clock = _FakeClock()
+    ticker = SizingTicker(
+        OpProfiles(topo),
+        cadence_s=SIZER_CADENCE_S,
+        clock=clock,
+        warmup_timeout_s=10 * SIZER_CADENCE_S,
+    )
+
+    def in_warmup_after_tick() -> bool:
+        clock.advance(SIZER_CADENCE_S)
+        ctx = ticker.next_tick(_single_node())
+        assert ctx is not None
+        return ctx.warmup
+
+    # The timeout counts from the first tick.
+    assert all(in_warmup_after_tick() for _ in range(10))
+    with caplog.at_level(logging.WARNING):
+        assert not in_warmup_after_tick()
+    assert any(
+        "warmup timed out" in r.getMessage() and ops["infer"].name in r.getMessage()
+        for r in caplog.records
+    )
 
 
 def test_initial_sizing_request_creates_untargeted_in_scarcity_order():
@@ -1916,13 +1945,24 @@ def test_next_and_prev_actor_pool_ops_look_through_non_pool_ops():
 # --- ordering and the tick snapshot -------------------------------------------
 
 
-def _feat(i, selector=False, pg=False, gpu=False, fixed=False, eligible=None):
+def _feat(
+    i,
+    selector=False,
+    pg=False,
+    gpu=False,
+    fixed=False,
+    large_memory=False,
+    below_min=False,
+    eligible=0,
+):
     return OpOrderingSignals(
         topo_index=i,
         has_placement_group=pg,
         has_label_selector=selector,
         is_gpu=gpu,
         is_fixed_concurrency=fixed,
+        is_large_memory=large_memory,
+        below_min_size=below_min,
         num_schedulable_nodes=eligible,
     )
 
@@ -1930,18 +1970,44 @@ def _feat(i, selector=False, pg=False, gpu=False, fixed=False, eligible=None):
 @pytest.mark.parametrize(
     "feats,expected",
     [
-        # pg(tier 0) < embed(tier 1, selector) < gpu(tier 2) <
-        # write(tier 4, sink-most) < read(tier 4).
+        # pg(tier 0) < embed(tier 1, selector) < gpu(tier 2) < fixed(tier 3)
+        # < decode(tier 4, large memory) < write(tier 5, sink-most) < read.
         pytest.param(
             {
                 "read": _feat(0),
-                "embed": _feat(1, selector=True, gpu=True),
-                "write": _feat(2),
-                "pg": _feat(3, pg=True),
-                "gpu": _feat(4, gpu=True),
+                "decode": _feat(1, large_memory=True),
+                "embed": _feat(2, selector=True, gpu=True),
+                "fixed": _feat(3, fixed=True),
+                "write": _feat(4),
+                "pg": _feat(5, pg=True),
+                "gpu": _feat(6, gpu=True),
             },
-            ["pg", "embed", "gpu", "write", "read"],
+            ["pg", "embed", "gpu", "fixed", "decode", "write", "read"],
             id="tiers",
+        ),
+        # Below min_size goes ahead of placement groups; within it, ops keep
+        # their tier order.
+        pytest.param(
+            {
+                "pg": _feat(0, pg=True),
+                "gpu": _feat(1, gpu=True),
+                "starved_gpu": _feat(2, gpu=True, below_min=True),
+                "starved_cpu": _feat(3, below_min=True),
+            },
+            ["starved_gpu", "starved_cpu", "pg", "gpu"],
+            id="below-min-size-first",
+        ),
+        # Initial sizing: every op is below min. A labeled op still goes ahead
+        # of a sink-most unconstrained op, which would otherwise take its nodes.
+        pytest.param(
+            {
+                "read": _feat(0, below_min=True),
+                "labeled": _feat(1, selector=True, fixed=True, below_min=True),
+                "hog": _feat(2, below_min=True),
+                "write": _feat(3, below_min=True),
+            },
+            ["labeled", "write", "hog", "read"],
+            id="all-below-min-keeps-tiers",
         ),
         pytest.param(
             {"a": _feat(0, gpu=True), "b": _feat(1, gpu=True)},
@@ -1959,17 +2025,6 @@ def _feat(i, selector=False, pg=False, gpu=False, fixed=False, eligible=None):
             ["pin", "pool", "in_ab"],
             id="specificity-within-label-tier",
         ),
-        # Unknown eligibility sorts after known counts; sink-most breaks the
-        # tie among unknowns.
-        pytest.param(
-            {
-                "known": _feat(0, selector=True, eligible=3),
-                "unknown_a": _feat(1, selector=True),
-                "unknown_b": _feat(2, selector=True),
-            },
-            ["known", "unknown_b", "unknown_a"],
-            id="unknown-specificity-sorts-last-in-tier",
-        ),
         # Specificity only breaks ties WITHIN a tier.
         pytest.param(
             {
@@ -1984,6 +2039,25 @@ def _feat(i, selector=False, pg=False, gpu=False, fixed=False, eligible=None):
 )
 def test_scarcity_first_ordering(feats, expected):
     assert ScarcityFirstOrdering().order(feats) == expected
+
+
+@pytest.mark.parametrize(
+    "pool_kwargs,large_memory,below_min",
+    [
+        # Default reservation is 4 GiB per CPU less the system's share: not large.
+        pytest.param(dict(cpu=1, memory=3 * GiB), False, False, id="default-memory"),
+        pytest.param(dict(cpu=1, memory=8 * GiB), True, False, id="large-memory"),
+        pytest.param(dict(cpu=2, memory=8 * GiB), False, False, id="4gib-per-cpu"),
+        pytest.param(dict(cpu=1, running=1), False, True, id="below-min"),
+    ],
+)
+def test_ordering_signals_from_operator(pool_kwargs, large_memory, below_min):
+    kwargs = dict(min_size=2, max_size=10, running=2)
+    kwargs.update(pool_kwargs)
+    op = _FakeOp("op", _FakePool(**kwargs))
+    signals = OpOrderingSignals.from_operator(op, topo_index=0)
+    assert signals.is_large_memory == large_memory
+    assert signals.below_min_size == below_min
 
 
 def test_ordered_ops_use_snapshot_eligibility_for_specificity():
@@ -2135,10 +2209,10 @@ def test_compute_nodes_to_reclaim_nets_out_draining_actors(draining_cpu, expecte
         assert reclaim["n1"].cpu == expected_over
 
 
-def test_capacity_transfer_claim_is_not_read_as_an_overage():
-    """A transfer targets the recipient's pendings into the slots its donors
-    are vacating. While the donors drain, both count as committed; netting out
-    the draining donors keeps the claim from being reclaimed (cancelled)."""
+def test_replacements_for_draining_actors_are_not_read_as_an_overage():
+    """Draining actors and the pendings that replace them both count as
+    committed until the drain finishes; netting out the draining ones keeps the
+    replacements from being reclaimed (cancelled)."""
     donor = _FakeOp(
         "donor",
         _FakePool(min_size=1, max_size=10, cpu=1),

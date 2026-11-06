@@ -135,7 +135,7 @@ def build_and_run_pipeline(
     ds = ds.map_batches(
         FakeGPUInference,
         batch_size=gpu_batch_size,
-        num_cpus=0,
+        num_cpus=1,
         num_gpus=1,
         concurrency=gpu_concurrency,
     )

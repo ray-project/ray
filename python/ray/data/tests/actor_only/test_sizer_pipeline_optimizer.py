@@ -6,6 +6,7 @@ from typing import Any, Dict, cast
 
 import pytest
 
+from ray.data._internal.execution.execution_flags import SIZER_TRANSFER_TIMEOUT_S
 from ray.data._internal.execution.interfaces import ExecutionResources
 from ray.data._internal.experimental.execution.operators.actor_pool_models import (
     ScaleUpRequest,
@@ -19,8 +20,10 @@ from ray.data._internal.experimental.execution.sizer.actor_placement_strategy im
 )
 from ray.data._internal.experimental.execution.sizer.models import OpShortfall
 from ray.data._internal.experimental.execution.sizer.optimizer.capacity_transfer import (  # noqa: E501
+    THRASH_WINDOW_S,
     CapacityTransfer,
     DonorCapacity,
+    RecentTransfer,
     TransferInFlight,
     VictimCandidate,
     _plan_node,
@@ -298,6 +301,15 @@ def _granted(requests: list) -> list:
     ]
 
 
+def _owed(state) -> dict:
+    """Recipient -> actors an open transfer still owes it (a transfer places
+    its recipient only once the donors' capacity is free)."""
+    return {
+        recipient: sum(transfer.owed_by_node.values())
+        for recipient, transfer in state.in_flight.items()
+    }
+
+
 def _donors(requests: list) -> set:
     return {
         op for placed in requests for op, req in placed.request.items() if req.delta < 0
@@ -347,21 +359,17 @@ def test_capacity_transfer_does_not_reuse_donor_capacity_across_recipients():
         productive_tasks_signal={donor: _signal(1)},
     )
 
-    requests = rule.apply(ctx, rule.new_state())
+    state = rule.new_state()
+    requests = rule.apply(ctx, state)
 
     donor_downscales = sum(
         -placed.request[donor].delta
         for placed in requests
         if donor in placed.request and placed.request[donor].delta < 0
     )
-    recipient_upscales = sum(
-        placed.request[op].delta
-        for placed in requests
-        for op in (r1, r2)
-        if op in placed.request
-    )
     assert donor_downscales == 1
-    assert recipient_upscales == 1
+    assert sum(_owed(state).values()) == 1
+    assert not _granted(requests)  # placed once the donor's capacity frees
 
 
 def test_capacity_transfer_debits_the_free_capacity_it_claims():
@@ -378,7 +386,9 @@ def test_capacity_transfer_debits_the_free_capacity_it_claims():
         shortfalls={recipient: _shortfall(1)},
         productive_tasks_signal={donor: _signal(1)},
     )
-    assert _granted(rule.apply(ctx, rule.new_state())) == [recipient]
+    state = rule.new_state()
+    rule.apply(ctx, state)
+    assert _owed(state) == {recipient: 1}
     assert ctx.free["node"].cpu == 0
 
 
@@ -456,7 +466,9 @@ def test_capacity_transfer_serves_real_asks_before_silent_wants():
         productive_tasks_signal={donor: _signal(1)},
     )
 
-    assert _granted(rule.apply(ctx, rule.new_state())) == [real_op]
+    state = rule.new_state()
+    rule.apply(ctx, state)
+    assert _owed(state) == {real_op: 1}
 
 
 def test_feeder_with_short_consumer_donates_instead_of_competing():
@@ -476,9 +488,10 @@ def test_feeder_with_short_consumer_donates_instead_of_competing():
         productive_tasks_signal={feeder: _signal(1)},
     )
 
-    requests = rule.apply(ctx, rule.new_state())
+    state = rule.new_state()
+    requests = rule.apply(ctx, state)
 
-    assert _granted(requests) == [consumer]
+    assert _owed(state) == {consumer: 1}
     assert _donors(requests) == {feeder}
 
 
@@ -643,6 +656,89 @@ def test_transfer_lands_only_if_its_claimed_actors_are_running(lost, expected):
     assert metrics.actions[-1] == (rule.name, "recipient", expected)
 
 
+def _transfer_tick(rule, state, *, free_cpu, **ctx_kwargs):
+    """One optimizer tick for ``rule``: advance, then apply."""
+    ctx = _ctx(free={"node": ExecutionResources(cpu=free_cpu)}, **ctx_kwargs)
+    rule.advance(ctx, state)
+    return ctx, rule.apply(ctx, state)
+
+
+def test_capacity_transfer_places_the_recipient_once_donor_capacity_frees():
+    """Firing downscales the donor only. The recipient is placed on a later
+    tick, once the donor's slot is actually free, so the dataset never asks
+    for more than its slice; until then the node's partial free capacity is
+    held for it, so nothing else in the sizer spends it."""
+    donor = _donor_op()
+    recipient = _op("recipient")
+    metrics = _Metrics()
+    rule = _transfer_rule(metrics=metrics)
+    state = rule.new_state()
+    short = dict(
+        non_pg_ops=[donor, recipient],
+        shortfall_streak={recipient: _bool_streak(True)},
+        shortfalls={recipient: _shortfall(1)},
+        productive_tasks_signal={donor: _signal(1)},
+    )
+
+    # Fire: 0.5 CPU free, the donor's 1 CPU actor makes room for one actor.
+    ctx, requests = _transfer_tick(rule, state, free_cpu=0.5, **short)
+    assert _donors(requests) == {donor} and not _granted(requests)
+    assert _owed(state) == {recipient: 1}
+    assert ctx.free["node"].cpu == 0  # the partial 0.5 CPU is held
+
+    # The donor is still draining: still nothing to place, and the 0.5 CPU
+    # stays held rather than handed to another rule or the per-op passes.
+    ctx, requests = _transfer_tick(rule, state, free_cpu=0.5)
+    assert requests == [] and ctx.free["node"].cpu == 0
+
+    # The donor died: its slot is free, so the recipient is placed there.
+    ctx, requests = _transfer_tick(rule, state, free_cpu=1.5)
+    assert _granted(requests) == [recipient]
+    (placed,) = requests
+    assert placed.request[recipient].nodes == ("node",)
+    assert _owed(state) == {recipient: 0}
+    assert ctx.free["node"].cpu == 0.5  # only what it took is held
+
+    # Its pending is recorded as the transfer's; once it is running, landed.
+    recipient._pool.pending_ids = {"node": ["new-actor"]}
+    _transfer_tick(rule, state, free_cpu=0.5)
+    assert state.in_flight[recipient].claimed_ids == ("new-actor",)
+    recipient._pool.pending_ids = {}
+    _transfer_tick(rule, state, free_cpu=0.5)
+    assert not state.in_flight
+    assert metrics.actions[-1] == (rule.name, "recipient", "landed")
+
+
+def test_capacity_transfer_times_out_while_still_owed():
+    # A donor that never frees its slot leaves the recipient owed: after the
+    # timeout the transfer closes as timed out and stops holding capacity.
+    donor = _donor_op()
+    recipient = _op("recipient")
+    metrics = _Metrics()
+    rule = _transfer_rule(metrics=metrics)
+    state = rule.new_state()
+    rule.apply(
+        _ctx(
+            free={"node": ExecutionResources(cpu=0.5)},
+            non_pg_ops=[donor, recipient],
+            shortfall_streak={recipient: _bool_streak(True)},
+            shortfalls={recipient: _shortfall(1)},
+            productive_tasks_signal={donor: _signal(1)},
+        ),
+        state,
+    )
+
+    late = _ctx(
+        free={"node": ExecutionResources(cpu=0.5)},
+        now=1000.0 + SIZER_TRANSFER_TIMEOUT_S + 1,
+    )
+    rule.advance(late, state)
+
+    assert not state.in_flight
+    assert metrics.actions[-1] == (rule.name, "recipient", "timeout")
+    assert late.free["node"].cpu == 0.5  # no longer held
+
+
 def test_transfer_whose_recipient_never_grew_closes_as_lost():
     # The recipient's upscale was refused, so no actor appeared after the
     # transfer fired: the donors gave up actors for nothing, which must not be
@@ -662,6 +758,77 @@ def test_transfer_whose_recipient_never_grew_closes_as_lost():
 
     assert not state.in_flight
     assert metrics.actions[-1] == (rule.name, "recipient", "lost")
+
+
+@pytest.mark.parametrize(
+    "closed_t, now, refused",
+    [
+        # Closed just now: moving the capacity straight back is thrashing.
+        (1000.0, 1001.0, True),
+        # The window has passed: the earlier transfer may have been wrong, so
+        # it can be undone.
+        (1000.0, 1000.0 + THRASH_WINDOW_S + 1, False),
+        # Still in flight: nothing can be judged yet, however long ago it fired.
+        (None, 1000.0 + THRASH_WINDOW_S + 1, True),
+    ],
+)
+def test_capacity_transfer_refuses_undoing_a_transfer_only_within_the_window(
+    closed_t, now, refused
+):
+    # An earlier transfer moved capacity from ``op`` to ``donor``; now ``op`` is
+    # short and ``donor`` has surplus, so this transfer would move it back.
+    op = _op("op")
+    donor = _donor_op()
+    metrics = _Metrics()
+    rule = _transfer_rule(metrics=metrics)
+    state = rule.new_state()
+    state.recent_transfers.append(
+        RecentTransfer(recipient=donor, donors=frozenset({op}), closed_t=closed_t)
+    )
+
+    requests = rule.apply(
+        _ctx(
+            now=now,
+            non_pg_ops=[donor, op],
+            shortfall_streak={op: _bool_streak(True)},
+            shortfalls={op: _shortfall(1)},
+            productive_tasks_signal={donor: _signal(1)},
+        ),
+        state,
+    )
+
+    if refused:
+        assert requests == []
+        assert (rule.name, "thrashing") in metrics.refusals
+    else:
+        assert _donors(requests) == {donor}
+        assert _owed(state) == {op: 1}
+
+
+def test_closing_a_transfer_starts_its_thrash_window():
+    donor = _donor_op()
+    recipient = _op("recipient")
+    rule = _transfer_rule()
+    state = rule.new_state()
+    rule.apply(
+        _ctx(
+            non_pg_ops=[donor, recipient],
+            shortfall_streak={recipient: _bool_streak(True)},
+            shortfalls={recipient: _shortfall(1)},
+            productive_tasks_signal={donor: _signal(1)},
+        ),
+        state,
+    )
+    (record,) = state.recent_transfers
+    assert record.closed_t is None
+
+    # Nothing owed or pending any more: the transfer closes (as lost, since
+    # no actor was claimed) and stamps the close time.
+    state.in_flight[recipient].owed_by_node = {}
+    rule.advance(_ctx(now=1500.0), state)
+
+    assert not state.in_flight
+    assert record.closed_t == 1500.0
 
 
 # --- SilentBottleneckGrant -----------------------------------------------------

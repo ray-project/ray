@@ -77,6 +77,9 @@ class ExperimentalStreamingExecutor(StreamingExecutor):
     # through it; ``bootstrap`` hands the same instance to the sizer.
     _resource_reporter: Optional[ActorOnlyResourceReporter] = None
     _actor_only_metrics: Optional[ActorOnlyMetrics] = None
+    # Set (under ``_shutdown_lock``) by the one shutdown call that runs the
+    # final metrics flush and bank finalize.
+    _finalize_claimed: bool = False
 
     @override
     def _create_cluster_autoscaler(self) -> ClusterAutoscaler:
@@ -236,11 +239,18 @@ class ExperimentalStreamingExecutor(StreamingExecutor):
 
     @override
     def shutdown(self, force: bool, exception: Optional[Exception] = None):
-        should_finalize = (
-            self._topology is not None
-            and self._execution_started
-            and not self._shutdown
-        )
+        # Several threads can call shutdown at once (every split consumer of a
+        # streaming_split does), so exactly one of them must claim the final
+        # flush + finalize. Otherwise one thread's finalize clears the bank
+        # while another is mid-flush, and the flush reads half-cleared stats.
+        with self._shutdown_lock:
+            should_finalize = (
+                self._topology is not None
+                and self._execution_started
+                and not self._finalize_claimed
+            )
+            if should_finalize:
+                self._finalize_claimed = True
         try:
             return super().shutdown(force, exception)
         finally:
