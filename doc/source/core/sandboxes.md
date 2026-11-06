@@ -451,6 +451,49 @@ A sandbox doesn't outlive the Ray worker that creates it. When the worker exits 
 
 See [GPU access](#gpu-access) above for giving each sandbox in a pool like this its own GPU.
 
+### Keep sandboxes booted with a warm pool
+
+Creating a sandbox boots gVisor. A boot takes a fraction of a second, and longer when many sandboxes start at once. If you know the configurations your workload creates, pass them to `SandboxRuntime` as warm-pool profiles. The runtime boots each profile's sandboxes ahead of time, and a `create` call whose arguments match a profile takes one of them immediately:
+
+```python
+import ray
+from ray.experimental.sandbox.runtime import SandboxRuntime
+
+PROFILE = {"image": "python:3.12-slim", "cpu": 0.25, "workdir": "/workspace"}
+
+@ray.remote
+class SandboxWorker:
+    def __init__(self, pool_size: int = 16):
+        self.runtime = SandboxRuntime(warm_pool=[{**PROFILE, "size": pool_size}])
+
+    def ready(self, timeout_seconds: float = 300) -> bool:
+        return self.runtime.wait_for_warm_pool(timeout_seconds)
+
+    def run(self, command: str, env: dict) -> str:
+        # Matches the profile, so it takes a booted sandbox.
+        instance_id = self.runtime.create(**PROFILE, env=env)
+        try:
+            return self.runtime.exec(instance_id, command).stdout
+        finally:
+            self.runtime.delete(instance_id)
+
+    def close(self):
+        self.runtime.close()
+
+worker = SandboxWorker.remote()
+ray.get(worker.ready.remote())
+print(ray.get(worker.run.remote("echo $TASK", {"TASK": "warm"})))
+ray.get(worker.close.remote())
+```
+
+A profile is the keyword arguments of `create` plus a `size`, the number of sandboxes the profile keeps.
+
+A sandbox that a `create` call takes still counts toward the size until it's deleted, whether by `delete`, by its TTL, or by a checkpoint that stops it. Only then does the runtime boot a new one in its place. As a result, a pool never holds more sandboxes than its size. A `create` call that finds no booted sandbox boots one as usual, outside the pool.
+
+Everything fixed at boot must match the profile: image, CPU, memory, disk, workdir, network, DNS, egress allowlist, capabilities, shell, GPUs, mounts, `oom_score_adj`, `readonly`, and `rootless`. The call's `env`, `ttl_seconds`, and `timeout_seconds` don't need to match. A sandbox taken from the pool runs every command with the call's `env` on top of the profile's, and its TTL starts at the `create` call. A `create` call that matches no profile boots a sandbox as usual.
+
+Call `close` to delete the sandboxes the pool still holds.
+
 ### Checkpoint and restore sandboxes
 
 Ray Sandboxes support checkpointing and restoration, which enables two distinct use cases in agentic AI and reinforcement learning:

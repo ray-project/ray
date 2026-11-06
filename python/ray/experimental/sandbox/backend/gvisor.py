@@ -1,4 +1,5 @@
 import collections
+import dataclasses
 import fcntl
 import functools
 import glob
@@ -1310,6 +1311,27 @@ class GVisorSandboxBackend(BaseSandboxBackend):
         gid = group or login_gid
         return uid if gid is None else f"{uid}:{gid}"
 
+    def assign_config(self, sandbox_id: str, config: SandboxConfig) -> None:
+        """Hand a booted sandbox to a create that boots the same way.
+
+        A warm pool boots sandboxes before the creates they serve, with its
+        profile's env. The sandbox's stored config becomes the create's, with
+        the create's env on top of the boot's, so ``get_config``, checkpoints,
+        and commands all see one config. The boot's env is already in the
+        sandbox's OCI spec, so each command gets the create's env passed in.
+
+        Args:
+            sandbox_id: The booted sandbox.
+            config: The create's config, whose boot-time fields match the
+                sandbox's.
+        """
+        meta = self._get_metadata_or_raise(sandbox_id)
+        booted: SandboxConfig = meta["config"]
+        meta["config"] = dataclasses.replace(
+            config, env={**(booted.env or {}), **(config.env or {})}
+        )
+        meta["assigned_env"] = dict(config.env or {})
+
     def exec_command(
         self,
         sandbox_id: str,
@@ -1323,6 +1345,11 @@ class GVisorSandboxBackend(BaseSandboxBackend):
         """Execute a process inside the running gVisor sandbox instance via runsc exec."""
         meta = self._get_metadata_or_raise(sandbox_id)
         config: SandboxConfig = meta["config"]
+        # A sandbox booted before its create (see assign_config) runs every
+        # command with the create's env. The command's own env wins.
+        assigned_env = meta.get("assigned_env")
+        if assigned_env:
+            env = {**assigned_env, **(env or {})}
 
         exec_env = {}
         if env:
