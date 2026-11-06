@@ -45,16 +45,19 @@ class _AbstractKBinsDiscretizer(SerializablePreprocessorBase):
                 else:
                     labels = False
 
-            df[out_col] = pd.cut(
-                series,
-                bins[col] if is_bins_dict else bins,
-                right=self.right,
-                labels=labels,
-                ordered=ordered,
-                retbins=False,
-                include_lowest=self.include_lowest,
-                duplicates=self.duplicates,
-            )
+            col_bins = bins[col] if is_bins_dict else bins
+            cut_kwargs = {
+                "right": self.right,
+                "labels": labels,
+                "ordered": ordered,
+                "retbins": False,
+                "include_lowest": self.include_lowest,
+                "duplicates": self.duplicates,
+            }
+            if isinstance(series, pd.DataFrame):
+                df[out_col] = series.apply(pd.cut, axis=0, bins=col_bins, **cut_kwargs)
+            else:
+                df[out_col] = pd.cut(series, col_bins, **cut_kwargs)
         return df
 
     def _validate_bins_columns(self):

@@ -368,6 +368,20 @@ def test_kbins_discretizer_transform_pandas_overlapping_output_columns():
     assert list(overlap_out["C"]) == [0, 1, 1]
 
 
+def test_kbins_discretizer_transform_pandas_duplicate_column_labels():
+    df = pd.DataFrame(
+        [[0.5, 1.5], [2.5, 0.5]],
+        columns=["A", "A"],
+    )
+    discretizer = CustomKBinsDiscretizer(
+        columns=["A"],
+        bins={"A": [0, 1, 2, 3]},
+    )
+    out = discretizer.transform_batch(df)
+    assert out.values.tolist() == [[0, 1], [2, 0]]
+    assert df.values.tolist() == [[0.5, 1.5], [2.5, 0.5]]
+
+
 if __name__ == "__main__":
     import sys
 
