@@ -232,44 +232,52 @@ def get_visible_accelerator_ids() -> Mapping[str, Optional[List[str]]]:
     }
 
 
-def set_omp_num_threads_if_unset() -> bool:
-    """Set the OMP_NUM_THREADS to default to num cpus assigned to the worker
+def set_num_threads_env_vars_if_unset() -> List[str]:
+    """Default the num threads env vars to the num cpus assigned to the worker.
 
-    This function sets the environment variable OMP_NUM_THREADS for the worker,
-    if the env is not previously set and it's running in worker (WORKER_MODE).
+    The env vars come from `ray_constants.get_num_threads_env_vars()`, which
+    defaults to OMP_NUM_THREADS. This function only sets the ones that aren't
+    already set, and only when it's running in a worker (WORKER_MODE).
 
-    Returns True if OMP_NUM_THREADS is set in this function.
-
+    Returns:
+        The names of the env vars set by this function, so the caller can unset
+        them after a normal task, since task workers may be reused.
     """
-    num_threads_from_env = os.environ.get("OMP_NUM_THREADS")
-    if num_threads_from_env is not None:
-        # No ops if it's set
-        return False
+    unset_env_vars = [
+        name
+        for name in ray_constants.get_num_threads_env_vars()
+        if os.environ.get(name) is None
+    ]
+    if not unset_env_vars:
+        # No ops if they're all set
+        return []
 
     # If unset, try setting the correct CPU count assigned.
     runtime_ctx = ray.get_runtime_context()
     if runtime_ctx.worker.mode != ray._private.worker.WORKER_MODE:
         # Non worker mode, no ops.
-        return False
+        return []
 
     num_assigned_cpus = runtime_ctx.get_assigned_resources().get("CPU")
 
     if num_assigned_cpus is None:
         # This is an actor task w/o any num_cpus specified, set it to 1
         logger.debug(
-            "[ray] Forcing OMP_NUM_THREADS=1 to avoid performance "
-            "degradation with many workers (issue #6998). You can override this "
-            "by explicitly setting OMP_NUM_THREADS, or changing num_cpus."
+            "[ray] Forcing %s to 1 to avoid performance degradation with many "
+            "workers (issue #6998). You can override this by explicitly setting "
+            "them, or changing num_cpus.",
+            ", ".join(unset_env_vars),
         )
         num_assigned_cpus = 1
 
     import math
 
-    # For num_cpu < 1: Set to 1.
+    # For num_cpu < 1: Set to 1. Rayon treats 0 as "use every core".
     # For num_cpus >= 1: Set to the floor of the actual assigned cpus.
-    omp_num_threads = max(math.floor(num_assigned_cpus), 1)
-    os.environ["OMP_NUM_THREADS"] = str(omp_num_threads)
-    return True
+    num_threads = str(max(math.floor(num_assigned_cpus), 1))
+    for name in unset_env_vars:
+        os.environ[name] = num_threads
+    return unset_env_vars
 
 
 def set_visible_accelerator_ids() -> Mapping[str, Optional[str]]:
@@ -291,18 +299,25 @@ def set_visible_accelerator_ids() -> Mapping[str, Optional[str]]:
         # If no accelerator ids are set, skip overriding the environment variable.
         if not override_on_zero and len(accelerator_ids) == 0:
             continue
-        env_var = ray._private.accelerators.get_accelerator_manager_for_resource(
-            resource_name
-        ).get_visible_accelerator_ids_env_var()
+        accelerator_manager = (
+            ray._private.accelerators.get_accelerator_manager_for_resource(
+                resource_name
+            )
+        )
+        env_var = accelerator_manager.get_visible_accelerator_ids_env_var()
         # Some accelerator families (e.g. Apple Silicon MPS) have no visible-devices
         # env var: there is only ever one device (id "0"), so there is nothing to
         # select, override, or reset. Skip env var handling for them.
         if env_var is None:
             continue
-        original_visible_accelerator_env_vars[env_var] = os.environ.get(env_var, None)
-        ray._private.accelerators.get_accelerator_manager_for_resource(
-            resource_name
-        ).set_current_process_visible_accelerator_ids(accelerator_ids)
+        env_before = dict(os.environ)
+        original_visible_accelerator_env_vars[env_var] = env_before.get(env_var)
+        accelerator_manager.set_current_process_visible_accelerator_ids(accelerator_ids)
+        # Also save any other env vars the manager changed so the post-task
+        # reset restores the worker's full environment.
+        for key in env_before.keys() | os.environ.keys():
+            if env_before.get(key) != os.environ.get(key):
+                original_visible_accelerator_env_vars[key] = env_before.get(key)
     return original_visible_accelerator_env_vars
 
 

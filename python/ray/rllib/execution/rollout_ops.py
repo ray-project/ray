@@ -62,25 +62,21 @@ def synchronous_parallel_sample(
         The list of collected sample batch types or episode types (one for each parallel
         rollout worker in the given `worker_set`).
 
-    .. testcode::
-
-        # Define an RLlib Algorithm.
-        from ray.rllib.algorithms.ppo import PPO, PPOConfig
-        config = (
-            PPOConfig()
-            .environment("CartPole-v1")
-        )
-        algorithm = config.build()
-        # 2 remote EnvRunners (num_env_runners=2):
-        episodes = synchronous_parallel_sample(
-            worker_set=algorithm.env_runner_group,
-            _uses_new_env_runners=True,
-            concat=False,
-        )
-        print(len(episodes))
-
-    .. testoutput::
-
+    Examples:
+        >>> # Define an RLlib Algorithm.
+        >>> from ray.rllib.algorithms.ppo import PPO, PPOConfig
+        >>> config = (
+        ...     PPOConfig()
+        ...     .environment("CartPole-v1")
+        ... )
+        >>> algorithm = config.build()
+        >>> # 2 remote EnvRunners (num_env_runners=2):
+        >>> episodes = synchronous_parallel_sample(
+        ...     worker_set=algorithm.env_runner_group,
+        ...     _uses_new_env_runners=True,
+        ...     concat=False,
+        ... )
+        >>> print(len(episodes))
         2
     """
     # Only allow one of `max_agent_steps` or `max_env_steps` to be defined.
