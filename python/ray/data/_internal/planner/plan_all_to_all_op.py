@@ -35,6 +35,7 @@ from ray.data._internal.execution.operators.shuffle_operators.sort_sampling_oper
     SortSamplingOp,
 )
 from ray.data._internal.execution.operators.shuffle_operators.sort_shuffle_map_operator import (  # noqa: E501
+    DiskSortShuffleMapOp,
     SortShuffleMapOp,
 )
 from ray.data._internal.execution.operators.sort_shuffle import make_sort_reduce_fn
@@ -236,15 +237,18 @@ def _plan_sort_v2(
             name=f"SortSample(partitions={num_partitions})",
         )
 
-    map_op = SortShuffleMapOp(
+    _, reduce_cls, prefix = _select_shuffle_v2_op_classes(data_context)
+    map_cls = DiskSortShuffleMapOp if prefix == "Disk" else SortShuffleMapOp
+
+    map_op = map_cls(
         map_input_op,
         data_context,
         num_partitions=num_partitions,
         sort_key=sort_key,
         map_runtime_env=_SHUFFLE_MAP_RUNTIME_ENV,
-        name=f"SortShuffleMap(partitions={num_partitions})",
+        name=f"{prefix}SortShuffleMap(partitions={num_partitions})",
     )
-    return ShuffleReduceOp(
+    return reduce_cls(
         map_op,
         data_context,
         num_partitions=num_partitions,
@@ -254,7 +258,7 @@ def _plan_sort_v2(
         preserve_partition_order=True,
         peak_memory_multiplier=_SORT_REDUCE_PEAK_MEMORY_MULTIPLIER,
         reduce_ray_remote_args=logical_op.ray_remote_args,
-        name=f"SortShuffleReduce(partitions={num_partitions})",
+        name=f"{prefix}SortShuffleReduce(partitions={num_partitions})",
     )
 
 

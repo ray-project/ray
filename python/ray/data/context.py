@@ -914,10 +914,10 @@ class DataContext:
             at the cost of more, smaller intermediate shard objects. Set to
             ``0`` to disable batching, processing each input bundle
             individually. Defaults to 1GiB.
-        use_disk_based_hash_shuffle: Whether ``repartition()`` with keys or shuffle,
-            aggregations, and joins under the ``SHUFFLE_V2`` strategy use the
-            disk-based (file-transport) shuffle instead of the object
-            store. Defaults to the ``RAY_DATA_ENABLE_DISK_SHUFFLE``
+        use_disk_based_hash_shuffle: Whether ``sort()``, ``repartition()`` with
+            keys or shuffle, aggregations, and joins under the ``SHUFFLE_V2``
+            strategy use the disk-based (file-transport) shuffle instead of
+            the object store. Defaults to the ``RAY_DATA_ENABLE_DISK_SHUFFLE``
             environment variable (``False`` when unset). Deprecated
             aliases: ``use_external_hash_shuffle`` and the
             ``RAY_DATA_ENABLE_EXTERNAL_SHUFFLE`` environment variable.
@@ -1078,7 +1078,7 @@ class DataContext:
     hash_aggregate_operator_actor_num_cpus_override: float = None
 
     # Whether to use the on-disk (file-transport) path for SHUFFLE_V2
-    # hash-shuffle operations (keyed repartition, aggregations, joins).
+    # shuffle operations (sort, keyed repartition, aggregations, joins).
     # When False, use the object-store path.
     use_disk_based_hash_shuffle: bool = DEFAULT_ENABLE_DISK_SHUFFLE
 
