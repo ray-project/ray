@@ -2515,6 +2515,21 @@ def read_csv(
 ) -> Dataset:
     """Creates a :class:`~ray.data.Dataset` from CSV files.
 
+    Note:
+        The DataSourceV2 reader is selected through the ``use_datasource_v2``
+        setting of :class:`~ray.data.context.DataContext`. It splits each large
+        uncompressed file into byte ranges read by separate tasks, unless
+        ``parse_options.newlines_in_values`` is set, ``read_options`` skips
+        rows, or the encoding isn't UTF-8. The pieces of a split file are named
+        from the schema of up to 16 sampled files, so every split file must
+        list the same columns in the same order. Column types are inferred per
+        piece. ``arrow_open_stream_args``, and CSV options other than
+        ``read_options``, ``parse_options`` and ``convert_options``, use the V1
+        reader. To use the V1 reader everywhere, set
+        ``ray.data.DataContext.get_current().use_datasource_v2 = False``, or
+        ``RAY_DATA_USE_DATASOURCE_V2=0`` in the environment before importing
+        Ray.
+
     Examples:
         Read a file in remote storage.
 
@@ -2646,6 +2661,42 @@ def read_csv(
     Returns:
         :class:`~ray.data.Dataset` producing records read from the specified paths.
     """
+    from ray.data._internal.datasource_v2.formats.csv.csv_datasource_v2 import (
+        CSV_V2_ARGS,
+        CsvDatasourceV2,
+    )
+
+    if (
+        DataContext.get_current().use_datasource_v2
+        and not arrow_open_stream_args
+        and set(arrow_csv_args) <= CSV_V2_ARGS
+    ):
+        datasource_v2 = CsvDatasourceV2(
+            paths=paths if isinstance(paths, list) else [paths],
+            arrow_csv_args=arrow_csv_args,
+            filesystem=filesystem,
+            partitioning=partitioning,
+            file_extensions=file_extensions,
+            ignore_missing_paths=ignore_missing_paths,
+            include_paths=include_paths,
+            shuffle=shuffle,
+        )
+        return _read_datasource_v2(
+            datasource_v2,
+            parallelism=_get_num_output_blocks(parallelism, override_num_blocks),
+            num_cpus=num_cpus,
+            num_gpus=num_gpus,
+            memory=memory,
+            ray_remote_args=ray_remote_args,
+            label_selector=label_selector,
+            fallback_strategy=fallback_strategy,
+            max_calls=max_calls,
+            resources=resources,
+            accelerator_type=accelerator_type,
+            runtime_env=runtime_env,
+            concurrency=concurrency,
+            partition_filter=partition_filter,
+        )
 
     datasource = CSVDatasource(
         paths,
