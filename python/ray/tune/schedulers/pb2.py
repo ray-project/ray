@@ -229,8 +229,9 @@ def _explore(
             ):
                 # Round first, as casting to an integer type truncates.
                 value = round(value)
-            new_config[col] = type_(value)
-            values.append(type_(value))
+            casted_value = type_(value)
+            new_config[col] = casted_value
+            values.append(casted_value)
 
         new_T = df[df["Trial"] == str(base)].iloc[-1, :]["Time"]
         new_Reward = df[df["Trial"] == str(base)].iloc[-1, :].Reward
