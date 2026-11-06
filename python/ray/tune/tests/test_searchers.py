@@ -911,6 +911,28 @@ class OptunaNestedPointsToEvaluateTest(unittest.TestCase):
             _flatten_point({"a": {"b": 1}, "m": {"n": 2}}, {"a/b": 0, "m": 0}),
             {"a/b": 1, "m": {"n": 2}},
         )
+        # The check uses the full "/"-joined name, not just the last key.
+        self.assertEqual(
+            _flatten_point({"a": {"m": {"n": 2}}}, {"a/m": 0}), {"a/m": {"n": 2}}
+        )
+
+    def testDefineByRunPointsAreNotFlattened(self):
+        """Points for a define-by-run space are used as given."""
+        pytest.importorskip("optuna")
+        from ray.tune.search.optuna import OptunaSearch
+
+        def define_search_space(trial):
+            trial.suggest_categorical("model", [{"n": 1}, {"n": 2}])
+
+        point = {"model": {"n": 2}}
+        searcher = OptunaSearch(
+            define_search_space,
+            metric="loss",
+            mode="min",
+            seed=1,
+            points_to_evaluate=[point],
+        )
+        self.assertEqual(searcher.suggest("t0"), point)
 
 
 if __name__ == "__main__":
