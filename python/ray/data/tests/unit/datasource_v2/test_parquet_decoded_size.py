@@ -14,8 +14,8 @@ import pytest
 from packaging.version import parse as parse_version
 
 from ray.data._internal.datasource_v2.formats.parquet.parquet_decoded_size import (
+    _UNSUPPORTED,
     _leaf_layout,
-    _UnsupportedLayout,
     build_leaf_profiles,
     dictionary_page_read_size,
     estimate_row_group,
@@ -68,8 +68,7 @@ def _allocated(path, columns=None):
 
 def _read_size_statistics(metadata):
     """Each leaf's ``SizeStatistics``, as the footer reader reads them."""
-    stats = read_footer_stats(metadata)
-    return None if stats is None else stats.size_statistics
+    return read_footer_stats(metadata)
 
 
 def _no_size_statistics(metadata):
@@ -82,7 +81,7 @@ def _estimate(
     size_statistics=_read_size_statistics,
     read_pages=True,
 ):
-    """The estimate over ``path``'s row groups, read as the footer reader does."""
+    """The estimate over ``path``'s modelled leaves, read as the footer reader does."""
     metadata = pq.read_metadata(str(path))
     profiles = build_leaf_profiles(
         parquet_schema=metadata.schema, file_metadata=metadata
@@ -98,8 +97,10 @@ def _estimate(
             for leaf_idx in range(row_group.num_columns) if read_pages else ():
                 chunk = row_group.column(leaf_idx)
                 leaf_stats = None if rg_stats is None else rg_stats[leaf_idx]
+                profile = profiles[leaf_idx]
+                assert profile is not None
                 nbytes = dictionary_page_read_size(
-                    profile=profiles[leaf_idx], chunk=chunk, stats=leaf_stats
+                    profile=profile, chunk=chunk, stats=leaf_stats
                 )
                 if nbytes:
                     f.seek(chunk.dictionary_page_offset)
@@ -287,8 +288,9 @@ def test_partial_size_statistics(tmp_path):
     )
 
 
-def test_delta_byte_array_is_a_guess(tmp_path):
-    """DELTA_BYTE_ARRAY values are a guess; the int64 beside them stays exact."""
+def test_delta_byte_array_without_sizes_is_unmodelled(tmp_path):
+    """DELTA_BYTE_ARRAY strings without trusted bytes, which parquet-cpp never
+    writes, are left to the caller; the int64 beside them stays exact."""
     table = pa.table(
         {
             "i": pa.array(np.arange(N, dtype="int64")),
@@ -301,12 +303,7 @@ def test_delta_byte_array_is_a_guess(tmp_path):
         use_dictionary=False,
         column_encoding={"s": "DELTA_BYTE_ARRAY"},
     )
-    strings = pq.read_metadata(str(path)).row_group(0).column(1)
-    expected = (
-        _allocated(path, columns=["i"])
-        + 4 * (N + 1)
-        + 128 * strings.total_uncompressed_size
-    )
+    expected = _allocated(path, columns=["i"])
 
     assert _estimate(path) == expected
     assert _estimate(path, size_statistics=_no_size_statistics) == expected
@@ -320,10 +317,9 @@ def test_delta_byte_array_is_a_guess(tmp_path):
         pa.dictionary(pa.int32(), pa.string()),
     ],
 )
-def test_unmodeled_arrow_type_is_rejected(arrow_type):
-    """A layout this module can't size raises, which sends the file to fallback."""
-    with pytest.raises(_UnsupportedLayout):
-        _leaf_layout(arrow_type)
+def test_unmodeled_arrow_type_is_unsupported(arrow_type):
+    """A layout this module can't size, which leaves the leaf to the caller."""
+    assert _leaf_layout(arrow_type)[0] == _UNSUPPORTED
 
 
 if __name__ == "__main__":
