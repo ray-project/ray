@@ -476,7 +476,7 @@ class FooterReader:
                 )
                 if derived is not None:
                     pruning_filter = derived.to_pyarrow()
-            except (pa.ArrowException, ValueError, TypeError, OverflowError) as e:
+            except Exception as e:
                 logger.debug(
                     "Could not derive a Parquet statistics predicate: %s",
                     e,
