@@ -1474,6 +1474,16 @@ def test_worker_group_state_replace_workers_preserves_order_and_supports_fallbac
     # Original state workers list must remain unchanged
     assert state.workers == workers
 
+    # If a reconstructed equality copy replaces workers[4] first and then the
+    # original workers[4] reference is also passed in old_workers, the fallback
+    # path must evict id(workers[4]) from worker_id_to_idx so the already-replaced
+    # slot is not silently overwritten.
+    with pytest.raises(ValueError):
+        state.replace_workers(
+            old_workers=[old_worker_4_copy, workers[4]],
+            new_workers=[replacement_4, replacement_1],
+        )
+
 
 if __name__ == "__main__":
     import sys

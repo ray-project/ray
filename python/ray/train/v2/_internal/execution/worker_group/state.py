@@ -72,6 +72,7 @@ class WorkerGroupState:
             idx = worker_id_to_idx.pop(id(old_w), None)
             if idx is None:
                 idx = current_workers.index(old_w)
+                worker_id_to_idx.pop(id(current_workers[idx]), None)
             current_workers[idx] = new_w
         return WorkerGroupState(
             start_time=self.start_time,
