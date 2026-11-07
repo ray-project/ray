@@ -135,9 +135,7 @@ class RecordingKVTokenTracker(KVTokenTracker):
         self._requests = OrderedDict()
         self._outstanding_effective_prefill_tokens = 0
         self._active_decode_requests = 0
-        self._autoscaling_metrics_sink = None
-        self._autoscaling_publish_defer_depth = 0
-        self._autoscaling_publish_dirty = False
+        self._autoscaling_metrics_callback = None
         self._request_ids_by_worker = {}
         self._completed_request_ids = OrderedDict()
         self._pending_tasks = set()
@@ -191,9 +189,7 @@ class LocalKVTokenTracker(KVTokenTracker):
         self._requests = OrderedDict()
         self._outstanding_effective_prefill_tokens = 0
         self._active_decode_requests = 0
-        self._autoscaling_metrics_sink = None
-        self._autoscaling_publish_defer_depth = 0
-        self._autoscaling_publish_dirty = False
+        self._autoscaling_metrics_callback = None
         self._request_ids_by_worker = {}
         self._completed_request_ids = OrderedDict()
         self._pending_tasks = set()
@@ -766,7 +762,7 @@ async def test_autoscaling_snapshot_tracks_request_phases():
     actor = LocalKVTokenTracker(block_size=16)
     actor._svc.effective_prefill_tokens = 3
     published = []
-    actor.set_autoscaling_metrics_sink(published.append)
+    actor.set_autoscaling_metrics_callback(published.append)
     assert published[-1] == {
         OUTSTANDING_EFFECTIVE_PREFILL_TOKENS: 0,
         ACTIVE_DECODE_REQUESTS: 0,
@@ -800,10 +796,10 @@ async def test_autoscaling_snapshot_tracks_request_phases():
 
 
 @pytest.mark.asyncio
-async def test_autoscaling_snapshot_publishes_once_per_lifecycle_batch():
+async def test_autoscaling_snapshot_publishes_for_each_lifecycle_change():
     actor = LocalKVTokenTracker(block_size=16)
     published = []
-    actor.set_autoscaling_metrics_sink(published.append)
+    actor.set_autoscaling_metrics_callback(published.append)
     await reserve(actor, "batched", 1, list(range(20)))
 
     before_batch = len(published)
@@ -814,7 +810,11 @@ async def test_autoscaling_snapshot_publishes_once_per_lifecycle_batch():
         ]
     )
 
-    assert len(published) == before_batch + 1
+    assert len(published) == before_batch + 2
+    assert published[before_batch] == {
+        OUTSTANDING_EFFECTIVE_PREFILL_TOKENS: 0,
+        ACTIVE_DECODE_REQUESTS: 1,
+    }
     assert published[-1] == {
         OUTSTANDING_EFFECTIVE_PREFILL_TOKENS: 0,
         ACTIVE_DECODE_REQUESTS: 0,

@@ -73,8 +73,6 @@ class RequestLifecycle:
 
     worker_id: int
     prompt_tokens: int = 0
-    # Prompt tokens that were not credited as a cache hit when this request
-    # was selected. This is the prefill work exposed in workload snapshots.
     effective_prefill_tokens: int = 0
     # Client-provided output-length estimate (``sampling_params.max_tokens``);
     # weights each decode block's load by how much generation remains.
@@ -230,15 +228,12 @@ class KVTokenTracker:
         #   3. In-flight request set: Free reservation exactly once.
         # Ordered oldest-first so the TTL sweep pops stale entries off the front.
         self._requests: "OrderedDict[str, RequestLifecycle]" = OrderedDict()
-        # Workload snapshot state is maintained incrementally rather than by
-        # scanning all live requests on each metrics collection interval.
+        # Current workload snapshot, used by the autoscaler.
         self._outstanding_effective_prefill_tokens = 0
         self._active_decode_requests = 0
-        self._autoscaling_metrics_sink: Optional[
+        self._autoscaling_metrics_callback: Optional[
             Callable[[Dict[str, int]], None]
         ] = None
-        self._autoscaling_publish_defer_depth = 0
-        self._autoscaling_publish_dirty = False
         # Reverse index of in-flight request ids per worker, kept in lockstep with
         # _requests, so remove_worker is O(k) in the worker's requests, not O(N).
         self._request_ids_by_worker: Dict[int, Set[str]] = {}
@@ -357,11 +352,11 @@ class KVTokenTracker:
         except Exception:
             logger.exception("Failed to apply a peer load reservation.")
 
-    def set_autoscaling_metrics_sink(
-        self, sink: Callable[[Dict[str, int]], None]
+    def set_autoscaling_metrics_callback(
+        self, callback: Callable[[Dict[str, int]], None]
     ) -> None:
-        """Set the local sink for router-owned autoscaling metrics."""
-        self._autoscaling_metrics_sink = sink
+        """Set the local callback for router-owned autoscaling metrics."""
+        self._autoscaling_metrics_callback = callback
         self._publish_autoscaling_snapshot()
 
     def _get_autoscaling_snapshot(self) -> Dict[str, int]:
@@ -373,23 +368,8 @@ class KVTokenTracker:
         }
 
     def _publish_autoscaling_snapshot(self) -> None:
-        if self._autoscaling_publish_defer_depth > 0:
-            self._autoscaling_publish_dirty = True
-            return
-        if self._autoscaling_metrics_sink is not None:
-            self._autoscaling_metrics_sink(self._get_autoscaling_snapshot())
-
-    def _defer_autoscaling_snapshot(self) -> None:
-        self._autoscaling_publish_defer_depth += 1
-
-    def _flush_autoscaling_snapshot(self) -> None:
-        self._autoscaling_publish_defer_depth -= 1
-        if (
-            self._autoscaling_publish_defer_depth == 0
-            and self._autoscaling_publish_dirty
-        ):
-            self._autoscaling_publish_dirty = False
-            self._publish_autoscaling_snapshot()
+        if self._autoscaling_metrics_callback is not None:
+            self._autoscaling_metrics_callback(self._get_autoscaling_snapshot())
 
     def _create_selection_service(self) -> None:
         """Create the router-local Dynamo selection service for this deployment."""
@@ -727,22 +707,18 @@ class KVTokenTracker:
         if self._svc is None:
             return
 
-        self._defer_autoscaling_snapshot()
-        try:
-            for hook_name, args in events:
-                if hook_name not in LIFECYCLE_HOOKS:
-                    logger.warning("Ignoring unknown lifecycle hook %s", hook_name)
-                    continue
-                try:
-                    await getattr(self, hook_name)(*args)
-                except Exception:
-                    # One hook raising must not abort the batch and drop other events.
-                    logger.exception(
-                        "KV lifecycle hook %s failed; skipping it and continuing.",
-                        hook_name,
-                    )
-        finally:
-            self._flush_autoscaling_snapshot()
+        for hook_name, args in events:
+            if hook_name not in LIFECYCLE_HOOKS:
+                logger.warning("Ignoring unknown lifecycle hook %s", hook_name)
+                continue
+            try:
+                await getattr(self, hook_name)(*args)
+            except Exception:
+                # One hook raising must not abort the batch and drop other events.
+                logger.exception(
+                    "KV lifecycle hook %s failed; skipping it and continuing.",
+                    hook_name,
+                )
 
     async def on_prefill_complete(self, request_id: str) -> None:
         """Record a request's prefill -> decode transition, dropping its prefill
