@@ -281,7 +281,11 @@ def _read_keeps_order() -> bool:
 
 
 def _rows_by_file(manifest: FileManifest) -> Iterator[_FileRows]:
-    """The manifest's rows grouped by file, in listing order."""
+    """The manifest's rows grouped by file, in listing order.
+
+    A listing manifest holds one listed file, so a path listed twice arrives as
+    two manifests and its copies stay apart.
+    """
     block = manifest.as_block()
     assert isinstance(block, pa.Table)
     records: List[Optional[bytes]] = (
