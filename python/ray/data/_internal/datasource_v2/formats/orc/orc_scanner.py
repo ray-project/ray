@@ -1,5 +1,5 @@
 from dataclasses import dataclass, replace
-from typing import Optional, Tuple
+from typing import Optional
 
 import pyarrow as pa
 from typing_extensions import override
@@ -13,15 +13,9 @@ from ray.data._internal.datasource_v2.common.file_pruners import (
 from ray.data._internal.datasource_v2.common.file_reader import (
     FileFormat,
 )
-from ray.data._internal.datasource_v2.common.pushdown_utils import (
-    _split_predicate_by_columns,
-    combine_predicates,
-)
+from ray.data._internal.datasource_v2.common.pushdown_utils import combine_predicates
 from ray.data._internal.datasource_v2.formats.orc.orc_file_reader import OrcFileReader
 from ray.data._internal.datasource_v2.interfaces.file_pruner import FilePruner
-from ray.data._internal.datasource_v2.interfaces.synthesized_columns import (
-    SynthesizedColumn,
-)
 from ray.data._internal.planner.plan_expression.expression_visitors import (
     get_column_references,
 )
@@ -60,7 +54,6 @@ class OrcScanner(ArrowFileScanner):
     handling while reusing the shared ``ArrowFileScanner`` pushdowns.
     """
 
-    synthesized_columns: Tuple[SynthesizedColumn, ...] = ()
     target_block_size: Optional[int] = None
 
     @override
@@ -113,25 +106,6 @@ class OrcScanner(ArrowFileScanner):
             assert index >= 0, f"Column {name} not found in schema"
             fields.append(self.schema.field(index))
         return pa.schema(fields)
-
-    @override
-    def push_filters(
-        self, predicate: Expr
-    ) -> Tuple["ArrowFileScanner", Optional[Expr]]:
-        """Keep predicates on post-read synthesized columns above the read."""
-        if self.partitioning is not None:
-            # Synthesized columns are added after scanning, so their filters
-            # stay above the read.
-            synthesized = {column.name for column in self.synthesized_columns}
-            split = _split_predicate_by_columns(predicate, synthesized)
-            residual = combine_predicates(
-                split.partition_predicate, split.residual_predicate
-            )
-            if split.data_predicate is None:
-                return self, residual
-            scanner, _ = super().push_filters(split.data_predicate)
-            return scanner, residual
-        return super().push_filters(predicate)
 
     def create_reader(self) -> OrcFileReader:
         """Create a reader with this scanner's projection and filters."""

@@ -1,5 +1,5 @@
 from dataclasses import dataclass, field
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Dict, Optional
 
 import pyarrow as pa
 
@@ -9,9 +9,6 @@ from ray.data._internal.datasource_v2.formats.parquet.parquet_file_reader import
 )
 from ray.data._internal.datasource_v2.formats.parquet.parquet_utils import (
     check_for_legacy_tensor_type,
-)
-from ray.data._internal.datasource_v2.interfaces.synthesized_columns import (
-    SynthesizedColumn,
 )
 from ray.util.annotations import DeveloperAPI
 
@@ -28,10 +25,6 @@ class ParquetScanner(ArrowFileScanner):
     """
 
     target_block_size: Optional[int] = None
-    # Columns the reader appends to every batch instead of reading them
-    # (``PathColumn`` for ``include_paths``, ``RowHashColumn`` for
-    # ``include_row_hash``).
-    synthesized_columns: Tuple[SynthesizedColumn, ...] = ()
     # Extra kwargs forwarded to ``pds.ParquetFileFormat(**kwargs)`` inside
     # the per-task ``ParquetFileReader`` (e.g. ``coerce_int96_timestamp_unit``,
     # ``pre_buffer``, ``dictionary_columns``). Carries the deprecated
