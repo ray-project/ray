@@ -116,7 +116,11 @@ def _get_basic_autoscaling_config() -> dict:
             # Same as "small-group" with a TPU resource entry added
             # and modified max_workers and node_config.
             "tpu-group": {
-                "labels": {},
+                "labels": {
+                    "ray.io/accelerator-type": "TPU-V4",
+                    "ray.io/tpu-topology": "2x2x2",
+                    "ray.io/tpu-pod-type": "v4-16",
+                },
                 "max_workers": 8,
                 "min_workers": 0,
                 "node_config": {},
@@ -229,6 +233,12 @@ def _get_ray_cr_with_top_level_labels() -> dict:
     cr = get_basic_ray_cr()
     # This top-level structured labels take priority.
     cr["spec"]["workerGroupSpecs"][0]["labels"] = {"instance-type": "mx5"}
+    # Top-level labels are merged over, and override, labels derived from the
+    # TPU nodeSelector.
+    cr["spec"]["workerGroupSpecs"][2]["labels"] = {
+        "ray.io/market-type": "spot",
+        "ray.io/tpu-pod-type": "v4-16-custom",
+    }
 
     # rayStartParams labels field should be ignored.
     cr["spec"]["workerGroupSpecs"][0]["rayStartParams"]["labels"] = "instance-type=n2"
@@ -238,6 +248,9 @@ def _get_ray_cr_with_top_level_labels() -> dict:
 def _get_autoscaling_config_with_top_level_labels() -> dict:
     config = _get_basic_autoscaling_config()
     config["available_node_types"]["small-group"]["labels"] = {"instance-type": "mx5"}
+    config["available_node_types"]["tpu-group"]["labels"].update(
+        {"ray.io/market-type": "spot", "ray.io/tpu-pod-type": "v4-16-custom"}
+    )
     return config
 
 
@@ -407,6 +420,13 @@ def _get_autoscaling_config_with_v7x() -> dict[str, Any]:
     config = _get_basic_autoscaling_config()
     config["available_node_types"]["tpu-group"]["resources"]["TPU-v7x-16-head"] = 1
     config["available_node_types"]["tpu-group"]["resources"].pop("TPU-v4-16-head", None)
+    config["available_node_types"]["tpu-group"]["labels"].update(
+        {
+            "ray.io/accelerator-type": "TPU-V7X",
+            "ray.io/tpu-topology": "2x2x2",
+            "ray.io/tpu-pod-type": "v7x-16",
+        }
+    )
     return config
 
 
@@ -430,6 +450,13 @@ def _get_autoscaling_config_with_v5litepod() -> dict[str, Any]:
     config = _get_basic_autoscaling_config()
     config["available_node_types"]["tpu-group"]["resources"]["TPU-v5litepod-8-head"] = 1
     config["available_node_types"]["tpu-group"]["resources"].pop("TPU-v4-16-head", None)
+    config["available_node_types"]["tpu-group"]["labels"].update(
+        {
+            "ray.io/accelerator-type": "TPU-V5LITEPOD",
+            "ray.io/tpu-topology": "2x4",
+            "ray.io/tpu-pod-type": "v5litepod-8",
+        }
+    )
     return config
 
 
@@ -732,6 +759,18 @@ TPU_TYPES_DATA = (
             "v7x-16",
             id="tpu-v7x-test",
         ),
+        pytest.param(
+            "tpu-v6e-slice",
+            "4x",
+            None,
+            id="tpu-malformed-topology",
+        ),
+        pytest.param(
+            "tpu-v6e-slice",
+            "2x2x2",
+            None,
+            id="tpu-mismatched-generation-topology",
+        ),
     ]
 )
 
@@ -939,6 +978,22 @@ def test_get_ray_resources_from_group_spec(
     expected_resources: Dict[str, Any],
 ):
     assert _get_ray_resources_from_group_spec(group_spec, is_head) == expected_resources
+
+
+@pytest.mark.skipif(platform.system() == "Windows", reason="Not relevant.")
+def test_get_ray_resources_malformed_tpu_topology_skips_head_resource():
+    group_spec = copy.deepcopy(get_basic_ray_cr()["spec"]["workerGroupSpecs"][2])
+    group_spec["template"]["spec"]["nodeSelector"] = {
+        "cloud.google.com/gke-tpu-accelerator": "tpu-v6e-slice",
+        "cloud.google.com/gke-tpu-topology": "4x",
+    }
+    assert _get_ray_resources_from_group_spec(group_spec, False) == {
+        "CPU": 1,
+        "memory": 536870912,
+        "Custom2": 5,
+        "Custom3": 1,
+        "TPU": 4,
+    }
 
 
 @pytest.mark.skipif(platform.system() == "Windows", reason="Not relevant.")

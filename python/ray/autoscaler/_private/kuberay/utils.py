@@ -4,20 +4,14 @@ from decimal import Decimal, InvalidOperation
 from typing import Optional, Union
 
 from ray._private.accelerators.tpu import (
-    get_num_chips_from_topology,
-    get_tpu_cores_per_chip,
+    GKE_TPU_ACCELERATOR_TO_GENERATION,
+    TPUAcceleratorManager,
+    infer_tpu_pod_type_from_topology,
 )
 
 # Mapping used to get generation for TPU-{accelerator}-head resource
 # https://cloud.google.com/kubernetes-engine/docs/how-to/tpus#run
-gke_tpu_accelerator_to_generation = {
-    "tpu-v4-podslice": "v4",
-    "tpu-v5-lite-device": "v5litepod",
-    "tpu-v5-lite-podslice": "v5litepod",
-    "tpu-v5p-slice": "v5p",
-    "tpu-v6e-slice": "v6e",
-    "tpu7x": "v7x",
-}
+gke_tpu_accelerator_to_generation = GKE_TPU_ACCELERATOR_TO_GENERATION
 
 
 def parse_quantity(quantity: Union[str, int, float, Decimal]) -> Decimal:
@@ -104,9 +98,9 @@ def tpu_node_selectors_to_type(topology: str, accelerator: str) -> Optional[str]
     """
     if topology and accelerator:
         generation = gke_tpu_accelerator_to_generation.get(accelerator)
-        if not generation:
-            return None
-        num_chips = get_num_chips_from_topology(topology)
-        num_cores = num_chips * get_tpu_cores_per_chip(generation)
-        return f"{generation}-{num_cores}"
+        normalized_topology = topology.strip().lower()
+        if generation and TPUAcceleratorManager.is_valid_tpu_accelerator_topology(
+            generation, normalized_topology
+        ):
+            return infer_tpu_pod_type_from_topology(normalized_topology, generation)
     return None

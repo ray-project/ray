@@ -1,9 +1,10 @@
+import copy
 import os
 import sys
 import time
 
 # coding: utf-8
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Sequence, Tuple, Union
 from unittest.mock import patch
 
 import pytest
@@ -31,13 +32,22 @@ from ray.autoscaler.v2.schema import (
 from ray.autoscaler.v2.tests.util import MockEventLogger, make_autoscaler_instance
 from ray.autoscaler.v2.utils import ResourceRequestUtil
 from ray.core.generated.autoscaler_pb2 import (
+    BundleSelector,
     ClusterResourceConstraint,
     GangResourceRequest,
+    LocalityConstraint,
+    LocalityRequirement,
     NodeState,
     NodeStatus,
     ResourceRequest,
+    ResourceRequestByCount,
 )
-from ray.core.generated.common_pb2 import LabelSelectorOperator
+from ray.core.generated.common_pb2 import (
+    LabelSelector,
+    LabelSelectorConstraint,
+    LabelSelectorOperator,
+    PlacementStrategy,
+)
 from ray.core.generated.instance_manager_pb2 import (
     Instance,
     NodeKind,
@@ -2422,7 +2432,31 @@ def test_node_schedule_label_selector_score(source):
     ]
     assert try_schedule_ls({"CPU": 1}, labels, label_selector_1) == (
         [],
-        (1, True, 1, 1.0, 1.0),
+        (1 / 3, True, 1, 1.0, 1.0),
+    )
+
+    # Matching the second selector (index 1 of 3) yields normalized score 2/3.
+    assert try_schedule_ls(
+        {"CPU": 1}, {"ray.io/accelerator-type": "B200"}, label_selector_1
+    ) == (
+        [],
+        (2 / 3, True, 1, 1.0, 1.0),
+    )
+
+    # Matching the first selector (index 0) always yields normalized score 1.0,
+    # regardless of how many fallback selectors follow.
+    assert try_schedule_ls(
+        {"CPU": 1}, {"ray.io/accelerator-type": "TPU-v6e"}, label_selector_1
+    ) == (
+        [],
+        (1.0, True, 1, 1.0, 1.0),
+    )
+    single_selector = [
+        [("ray.io/accelerator-type", LabelSelectorOperator.LABEL_OPERATOR_IN, ["A100"])]
+    ]
+    assert try_schedule_ls({"CPU": 1}, labels, single_selector) == (
+        [],
+        (1.0, True, 1, 1.0, 1.0),
     )
 
     # 2) A non‑matching label selector should be infeasible
@@ -2433,6 +2467,32 @@ def test_node_schedule_label_selector_score(source):
         [{"CPU": 1.0}],
         (0, True, 0, 0.0, 0.0),
     )
+
+    # 3) Requests scheduled in an earlier pass must not contaminate the
+    # matches_labels score of requests scheduled in a subsequent pass.
+    cfg = NodeTypeConfig(
+        name="type_1",
+        resources={"CPU": 2},
+        min_worker_nodes=0,
+        max_worker_nodes=1,
+        labels=labels,
+    )
+    node = SchedulingNode.from_node_config(
+        node_config=cfg,
+        status=SchedulingNodeStatus.SCHEDULABLE,
+        node_kind=NodeKind.WORKER,
+    )
+    req_primary = ResourceRequestUtil.make({"CPU": 1}, label_selectors=single_selector)
+    infeasible, score_1 = node.try_schedule([req_primary], source)
+    assert infeasible == []
+    assert score_1[0] == 1.0
+
+    req_fallback = ResourceRequestUtil.make(
+        {"CPU": 1}, label_selectors=label_selector_1
+    )
+    infeasible, score_2 = node.try_schedule([req_fallback], source)
+    assert infeasible == []
+    assert score_2[0] == 1 / 3
 
 
 def test_get_nodes_packing_heuristic():
@@ -4262,6 +4322,1734 @@ class TestSchedulerPerformanceOptimizations:
         assert len(reply.infeasible_resource_requests) == 3
 
 
+def _make_locality_gang_request(
+    bundles: List[Dict[str, float]],
+    bundle_labels: Union[Dict[str, str], List[Dict[str, str]]],
+    locality_label: str,
+    pinned_domain: Optional[str] = None,
+) -> GangResourceRequest:
+    per_bundle_labels = (
+        bundle_labels
+        if isinstance(bundle_labels, list)
+        else [bundle_labels] * len(bundles)
+    )
+    requests = [
+        ResourceRequestUtil.make(
+            bundle,
+            label_selectors=[
+                [
+                    (k, LabelSelectorOperator.LABEL_OPERATOR_IN, [v])
+                    for k, v in labels.items()
+                ]
+            ]
+            if labels
+            else None,
+        )
+        for bundle, labels in zip(bundles, per_bundle_labels)
+    ]
+    locality_req = LocalityRequirement(
+        locality_constraint=LocalityConstraint(
+            label_name=locality_label,
+            placement_strategy=PlacementStrategy.STRICT_PACK,
+        )
+    )
+    if pinned_domain is not None:
+        locality_req.label_selector.CopyFrom(
+            LabelSelector(
+                label_constraints=[
+                    LabelSelectorConstraint(
+                        label_key=locality_label,
+                        operator=LabelSelectorOperator.LABEL_OPERATOR_IN,
+                        label_values=[pinned_domain],
+                    )
+                ]
+            )
+        )
+    # GCS fills the legacy `requests` field and `bundle_selectors` identically.
+    return GangResourceRequest(
+        requests=requests,
+        bundle_selectors=[
+            BundleSelector(
+                resource_requests=requests,
+                locality_requirement=locality_req,
+            )
+        ],
+    )
+
+
+def _make_running_domain_node(
+    node_type: str,
+    instance_id: str,
+    total_resources: Dict[str, float],
+    labels: Dict[str, str],
+    used: Optional[Dict[str, float]] = None,
+) -> AutoscalerInstance:
+    used = used or {}
+    return make_autoscaler_instance(
+        im_instance=Instance(
+            instance_type=node_type,
+            status=Instance.RAY_RUNNING,
+            instance_id=instance_id,
+            node_id=instance_id.encode(),
+        ),
+        ray_node=NodeState(
+            node_id=instance_id.encode(),
+            ray_node_type_name=node_type,
+            total_resources=total_resources,
+            available_resources={
+                k: v - used.get(k, 0) for k, v in total_resources.items()
+            },
+            labels=labels,
+            status=NodeStatus.RUNNING,
+        ),
+        cloud_instance_id=f"cloud-{instance_id}",
+    )
+
+
+def _make_pending_instance(node_type: str, instance_id: str) -> AutoscalerInstance:
+    return make_autoscaler_instance(
+        im_instance=Instance(
+            instance_type=node_type, status=Instance.REQUESTED, instance_id=instance_id
+        )
+    )
+
+
+def _schedule_gangs(
+    node_type_configs: Dict[NodeType, NodeTypeConfig],
+    gangs: List[GangResourceRequest],
+    instances: Optional[List[AutoscalerInstance]] = None,
+    availabilities: Optional[Dict[NodeType, float]] = None,
+) -> Tuple[Dict[NodeType, int], int]:
+    """Return nodes to launch by type and the infeasible gang count."""
+    reply = ResourceDemandScheduler(event_logger).schedule(
+        SchedulingRequest(
+            disable_launch_config_check=True,
+            node_type_configs=node_type_configs,
+            current_instances=instances or [],
+            gang_resource_requests=gangs,
+            cloud_resource_availabilities=availabilities or {},
+        )
+    )
+    to_launch, _ = _launch_and_terminate(reply)
+    return to_launch, len(reply.infeasible_gang_resource_requests)
+
+
+TPU_LABELS = {
+    "ray.io/accelerator-type": "TPU-V6E",
+    "ray.io/tpu-topology": "4x4",
+    "ray.io/tpu-pod-type": "v6e-16",
+}
+
+
+def _tpu_config(
+    name: str = "tpu_4x4",
+    min_workers: int = 0,
+    max_workers: int = 16,
+    resources: Optional[Dict[str, float]] = None,
+    labels: Optional[Dict[str, str]] = None,
+) -> NodeTypeConfig:
+    return NodeTypeConfig(
+        name=name,
+        resources=resources or {"CPU": 4, "TPU": 4},
+        labels=labels if labels is not None else TPU_LABELS,
+        min_worker_nodes=min_workers,
+        max_worker_nodes=max_workers,
+    )
+
+
+TPU_CONFIGS = {"tpu_4x4": _tpu_config()}
+TPU_SINGLE_CONFIG = _tpu_config(
+    "tpu_single",
+    max_workers=4,
+    resources={"CPU": 4, "TPU": 8},
+    labels={
+        "ray.io/accelerator-type": "TPU-V6E",
+        "ray.io/tpu-topology": "2x4",
+        "ray.io/tpu-pod-type": "v6e-8",
+    },
+)
+
+
+def _tpu_gang(
+    worker_ids: Optional[Sequence[Optional[int]]] = (0, 1, 2, 3),
+    bundle: Optional[Dict[str, float]] = None,
+    pod_type: Optional[str] = "v6e-16",
+    pinned_domain: Optional[str] = None,
+) -> GangResourceRequest:
+    return _make_locality_gang_request(
+        bundles=[bundle or {"CPU": 1, "TPU": 4}] * len(worker_ids),
+        bundle_labels=[
+            {
+                **({"ray.io/tpu-pod-type": pod_type} if pod_type else {}),
+                **({"ray.io/tpu-worker-id": str(w)} if w is not None else {}),
+            }
+            for w in worker_ids
+        ],
+        locality_label="ray.io/tpu-slice-name",
+        pinned_domain=pinned_domain,
+    )
+
+
+def _tpu_host(
+    instance_id: str,
+    slice_name: str,
+    used: Optional[Dict[str, float]] = None,
+    worker_id: int = 0,
+    **extra_resources: float,
+) -> AutoscalerInstance:
+    return _make_running_domain_node(
+        "tpu_4x4",
+        instance_id,
+        {"CPU": 4, "TPU": 4, **extra_resources},
+        {
+            **TPU_LABELS,
+            "ray.io/tpu-slice-name": slice_name,
+            "ray.io/tpu-worker-id": str(worker_id),
+        },
+        used,
+    )
+
+
+def _booting_slice(idx: int) -> List[AutoscalerInstance]:
+    in_use = {"CPU": 1, "object_store_memory": 100}
+    return [
+        _tpu_host(
+            f"s{idx}-w0",
+            f"slice-{idx}",
+            in_use,
+            worker_id=0,
+            object_store_memory=1000,
+            **{f"slice-{idx}": 1},
+        ),
+        _tpu_host(
+            f"s{idx}-w1", f"slice-{idx}", in_use, worker_id=1, object_store_memory=1000
+        ),
+        _make_pending_instance("tpu_4x4", f"s{idx}-p2"),
+        _make_pending_instance("tpu_4x4", f"s{idx}-p3"),
+    ]
+
+
+def test_gang_locality_requirement_tpu_slices():
+    """STRICT_PACK on ray.io/tpu-slice-name for 4-host v6e-16 slices."""
+    gang = _tpu_gang()
+
+    # Scale from zero: one whole 4-host slice per gang.
+    assert _schedule_gangs(TPU_CONFIGS, [gang]) == ({"tpu_4x4": 4}, 0)
+    assert _schedule_gangs(TPU_CONFIGS, [gang] * 2) == ({"tpu_4x4": 8}, 0)
+
+    # Staggered boot: pair registered hosts with pending siblings even when
+    # CPU or object store resources are in use, or when extra pending hosts exist.
+    slice_0, slice_1 = _booting_slice(0), _booting_slice(1)
+    assert _schedule_gangs(TPU_CONFIGS, [gang], slice_0) == ({}, 0)
+    assert _schedule_gangs(TPU_CONFIGS, [gang] * 2, slice_0) == ({"tpu_4x4": 4}, 0)
+    assert _schedule_gangs(TPU_CONFIGS, [gang] * 2, slice_0 + slice_1) == ({}, 0)
+    assert _schedule_gangs(
+        TPU_CONFIGS,
+        [_tpu_gang(pinned_domain="slice-0")],
+        slice_0 + [_make_pending_instance("tpu_4x4", f"p{w}") for w in range(2)],
+    ) == ({}, 0)
+
+    # Do not attach a new replica's pending hosts to an already complete slice.
+    part_busy = [
+        _tpu_host(f"s0-w{w}", "slice-0", {"TPU": 4} if w == 0 else None, worker_id=w)
+        for w in range(4)
+    ] + [_make_pending_instance("tpu_4x4", f"p{w}") for w in range(4)]
+    assert _schedule_gangs(TPU_CONFIGS, [gang] * 2, part_busy) == ({"tpu_4x4": 4}, 0)
+
+    # Per-chip bundles: a slice with one busy chip cannot host a full-slice gang.
+    per_chip = _tpu_gang(worker_ids=[i // 4 for i in range(16)], bundle={"TPU": 1})
+    one_chip_busy = [
+        _tpu_host(f"s0-w{w}", "slice-0", {"TPU": 1} if w == 0 else None, worker_id=w)
+        for w in range(4)
+    ] + [_make_pending_instance("tpu_4x4", f"p{w}") for w in range(4)]
+    assert _schedule_gangs(TPU_CONFIGS, [per_chip] * 2, one_chip_busy) == (
+        {"tpu_4x4": 4},
+        0,
+    )
+
+    # Sub-host bundles pinned across 4 worker IDs still launch all 4 hosts.
+    two_chips_per_host = _tpu_gang(
+        worker_ids=[i // 2 for i in range(8)], bundle={"TPU": 1}
+    )
+    assert _schedule_gangs(TPU_CONFIGS, [two_chips_per_host]) == ({"tpu_4x4": 4}, 0)
+
+    # Complementary 2-host subslice gangs share a single 4-host replica.
+    subslice_01, subslice_23 = _tpu_gang((0, 1)), _tpu_gang((2, 3))
+    assert _schedule_gangs(TPU_CONFIGS, [subslice_01]) == ({"tpu_4x4": 4}, 0)
+    assert _schedule_gangs(TPU_CONFIGS, [subslice_01, subslice_23]) == (
+        {"tpu_4x4": 4},
+        0,
+    )
+
+    # Reuse the 4-host replica launched by min_worker_nodes=4; max_worker_nodes
+    # caps never launch a partial replica.
+    min_worker_configs = {"tpu_4x4": _tpu_config(min_workers=4)}
+    assert _schedule_gangs(min_worker_configs, [gang]) == ({"tpu_4x4": 4}, 0)
+    assert _schedule_gangs(min_worker_configs, [gang] * 2) == ({"tpu_4x4": 8}, 0)
+    assert _schedule_gangs({"tpu_4x4": _tpu_config(max_workers=6)}, [gang] * 2) == (
+        {"tpu_4x4": 4},
+        1,
+    )
+
+    # Complete idle booting slices or whole pending replicas before degraded
+    # busy slices (even when multiple degraded busy slices sum to a replica size).
+    degraded_busy_0 = [
+        _tpu_host("s0-w0", "slice-0", {"TPU": 4}, worker_id=0),
+        _tpu_host("s0-w1", "slice-0", worker_id=1),
+    ]
+    degraded_busy_1 = [
+        _tpu_host("s1-w0", "slice-1", {"TPU": 4}, worker_id=0),
+        _tpu_host("s1-w1", "slice-1", worker_id=1),
+    ]
+    pending_4 = [_make_pending_instance("tpu_4x4", f"p{w}") for w in range(4)]
+    assert _schedule_gangs(TPU_CONFIGS, [gang], degraded_busy_0 + pending_4) == ({}, 0)
+    assert _schedule_gangs(
+        TPU_CONFIGS, [gang], degraded_busy_0 + degraded_busy_1 + pending_4
+    ) == ({}, 0)
+    degraded_busy_plus_booting_idle = degraded_busy_0 + [
+        _tpu_host("s1-w0", "slice-1", {"CPU": 1}, worker_id=0),
+        _tpu_host("s1-w1", "slice-1", {"CPU": 1}, worker_id=1),
+        _make_pending_instance("tpu_4x4", "p0"),
+        _make_pending_instance("tpu_4x4", "p1"),
+    ]
+    assert _schedule_gangs(TPU_CONFIGS, [gang], degraded_busy_plus_booting_idle) == (
+        {},
+        0,
+    )
+
+    # Reject out-of-bounds or over-capacity worker ID demands without blocking
+    # subsequent feasible gangs.
+    out_of_bounds_wid = _tpu_gang(range(5))
+    duplicate_wid = _tpu_gang((0, 0))
+    assert _schedule_gangs(TPU_CONFIGS, [out_of_bounds_wid, gang]) == (
+        {"tpu_4x4": 4},
+        1,
+    )
+    assert _schedule_gangs(TPU_CONFIGS, [duplicate_wid]) == ({}, 1)
+    assert _schedule_gangs(
+        TPU_CONFIGS,
+        [duplicate_wid],
+        [
+            _tpu_host("s0-w0", "slice-0", worker_id=0),
+            _make_pending_instance("tpu_4x4", "p1"),
+        ],
+    ) == ({}, 1)
+
+    # Fragmented or fully busy slices: never split across slices; launch a new replica.
+    fragmented = [
+        _tpu_host(
+            f"s{s}-w{w}", f"slice-{s}", {"TPU": 4} if w == 0 else None, worker_id=w
+        )
+        for s in (0, 1)
+        for w in range(4)
+    ]
+    busy = [
+        _tpu_host(f"s{s}-w{w}", f"slice-{s}", {"TPU": 4}, worker_id=w)
+        for s in range(3)
+        for w in range(4)
+    ]
+    assert _schedule_gangs(TPU_CONFIGS, [gang], fragmented) == ({"tpu_4x4": 4}, 0)
+    assert _schedule_gangs(TPU_CONFIGS, [gang], busy) == ({"tpu_4x4": 4}, 0)
+
+    # Schedule domain-pinned rescheduling gangs onto their target slice or its
+    # booting replacement hosts before unpinned gangs.
+    degraded = [_tpu_host("s0-w0", "slice-0", {"TPU": 4}, worker_id=0)]
+    assert _schedule_gangs(
+        TPU_CONFIGS, [_tpu_gang((0,), pinned_domain="slice-0")], degraded
+    ) == ({}, 1)
+    assert _schedule_gangs(
+        TPU_CONFIGS,
+        [_tpu_gang((2, 3), pinned_domain="slice-0")],
+        [
+            _tpu_host("s0-w0", "slice-0", {"TPU": 4}, worker_id=0),
+            _tpu_host("s0-w1", "slice-0", {"TPU": 4}, worker_id=1),
+            _make_pending_instance("tpu_4x4", "p2"),
+            _make_pending_instance("tpu_4x4", "p3"),
+        ],
+    ) == ({}, 0)
+    idle_slice_0 = [_tpu_host(f"s0-w{w}", "slice-0", worker_id=w) for w in range(4)]
+    assert _schedule_gangs(
+        TPU_CONFIGS, [gang, _tpu_gang(pinned_domain="slice-0")], idle_slice_0
+    ) == ({"tpu_4x4": 4}, 0)
+
+    # A leftover TO_LAUNCH node or pinned gang on another TPU node type neither
+    # blocks launching a 1-host slice nor regroups `tpu_4x4` pending hosts.
+    mixed_tpu_configs = {
+        "tpu_4x4": _tpu_config(min_workers=1),
+        "tpu_single": TPU_SINGLE_CONFIG,
+    }
+    single_host_gang = _tpu_gang((None,), bundle={"CPU": 1, "TPU": 8}, pod_type="v6e-8")
+    assert _schedule_gangs(mixed_tpu_configs, [single_host_gang]) == (
+        {"tpu_4x4": 1, "tpu_single": 1},
+        0,
+    )
+    pinned_single_gang = _tpu_gang(
+        (None,),
+        bundle={"CPU": 1, "TPU": 8},
+        pod_type="v6e-8",
+        pinned_domain="single-0",
+    )
+    assert _schedule_gangs(
+        {**TPU_CONFIGS, "tpu_single": TPU_SINGLE_CONFIG},
+        [pinned_single_gang, gang],
+        [
+            _make_running_domain_node(
+                "tpu_single",
+                "single-0-w0",
+                {"CPU": 4, "TPU": 8},
+                {
+                    **TPU_SINGLE_CONFIG.labels,
+                    "ray.io/tpu-slice-name": "single-0",
+                    "ray.io/tpu-worker-id": "0",
+                },
+            ),
+            *degraded_busy_plus_booting_idle,
+        ],
+    ) == ({}, 0)
+
+    # Single-host TPU node types are 1-host slices and cannot be combined to
+    # satisfy a multi-host slice gang.
+    three_host_gang = _tpu_gang((None,) * 3, pod_type=None)
+    assert _schedule_gangs(
+        {**TPU_CONFIGS, "tpu_single": TPU_SINGLE_CONFIG}, [three_host_gang]
+    ) == ({"tpu_4x4": 4}, 0)
+    assert _schedule_gangs({"tpu_single": TPU_SINGLE_CONFIG}, [three_host_gang]) == (
+        {},
+        1,
+    )
+    assert _schedule_gangs(
+        {"tpu_single": TPU_SINGLE_CONFIG},
+        [_tpu_gang((0,), bundle={"CPU": 1, "TPU": 8}, pod_type="v6e-8")],
+    ) == ({"tpu_single": 1}, 0)
+
+    # Slice-packed gangs never schedule onto or launch non-TPU node types.
+    cpu_and_tpu = {
+        **TPU_CONFIGS,
+        "cpu": _tpu_config("cpu", max_workers=8, resources={"CPU": 8}, labels={}),
+    }
+    cpu_slice_gang = _tpu_gang((None,) * 4, bundle={"CPU": 1}, pod_type=None)
+    assert _schedule_gangs(cpu_and_tpu, [cpu_slice_gang]) == ({"tpu_4x4": 4}, 0)
+    assert _schedule_gangs(
+        cpu_and_tpu,
+        [cpu_slice_gang],
+        [_make_running_domain_node("cpu", "cpu-0", {"CPU": 8}, {})],
+    ) == ({"tpu_4x4": 4}, 0)
+
+    # A slice gang outranks a node-level STRICT_PACK gang, so the latter does
+    # not fragment an idle slice.
+    affinity = ResourceRequestUtil.PlacementConstraintType.AFFINITY
+    pack_2 = GangResourceRequest(
+        requests=[ResourceRequestUtil.make({"CPU": 2}, [(affinity, "pg", "")])] * 2
+    )
+    assert _schedule_gangs(cpu_and_tpu, [pack_2, gang], idle_slice_0) == (
+        {"cpu": 1},
+        0,
+    )
+
+    # Cloud resource availability tie-breaks equal-priority multi-host node types.
+    spot_and_ondemand = {
+        "tpu_spot": _tpu_config("tpu_spot"),
+        "tpu_ondemand": _tpu_config("tpu_ondemand"),
+    }
+    assert _schedule_gangs(
+        spot_and_ondemand,
+        [gang],
+        availabilities={"tpu_spot": 0.0, "tpu_ondemand": 1.0},
+    ) == ({"tpu_ondemand": 4}, 0)
+
+    # Unchosen speculative slice grouping never leaks across gangs or node types,
+    # even when a 4-chip single-host gang has identical per-host resource shape.
+    tpu_v6e4 = _tpu_config(
+        "tpu_v6e4",
+        max_workers=4,
+        labels={
+            "ray.io/accelerator-type": "TPU-V6E",
+            "ray.io/tpu-topology": "2x2",
+            "ray.io/tpu-pod-type": "v6e-4",
+        },
+    )
+    pinned_v6e4 = _tpu_gang(
+        (None,),
+        bundle={"CPU": 4, "TPU": 4},
+        pod_type="v6e-4",
+        pinned_domain="v6e4-0",
+    )
+    assert _schedule_gangs(
+        {**TPU_CONFIGS, "tpu_v6e4": tpu_v6e4},
+        [pinned_v6e4, gang],
+        [
+            _make_running_domain_node(
+                "tpu_v6e4",
+                "v6e4-0-w0",
+                {"CPU": 4, "TPU": 4},
+                {
+                    **tpu_v6e4.labels,
+                    "ray.io/tpu-slice-name": "v6e4-0",
+                    "ray.io/tpu-worker-id": "0",
+                },
+            ),
+            *degraded_busy_plus_booting_idle,
+        ],
+    ) == ({}, 0)
+    heavy_gang = _tpu_gang(
+        worker_ids=[i // 2 for i in range(8)], bundle={"CPU": 2, "TPU": 2}
+    )
+    assert _schedule_gangs(
+        TPU_CONFIGS, [heavy_gang, gang], degraded_busy_plus_booting_idle
+    ) == ({"tpu_4x4": 4}, 0)
+
+    # Pending domain ids stay unique across gangs, and Pass 2 keeps smaller
+    # gangs on smaller pending replicas instead of reshuffling by priority.
+    two_host_configs = {
+        "tpu_4x4": NodeTypeConfig(
+            name="tpu_4x4",
+            resources={"CPU": 4, "TPU": 4},
+            labels=TPU_LABELS,
+            min_worker_nodes=0,
+            max_worker_nodes=8,
+            priority=10,
+        ),
+        "tpu_2x4": _tpu_config(
+            "tpu_2x4", max_workers=4, labels=TPU_SINGLE_CONFIG.labels
+        ),
+    }
+    small_slice_gang = _tpu_gang((None,) * 4, bundle={"TPU": 1}, pod_type=None)
+    assert _schedule_gangs(
+        two_host_configs,
+        [
+            small_slice_gang,
+            _tpu_gang((None,) * 3, pod_type=None),
+            _tpu_gang((None,) * 2, pod_type=None),
+        ],
+    ) == ({"tpu_2x4": 4, "tpu_4x4": 4}, 0)
+    assert _schedule_gangs(
+        two_host_configs,
+        [small_slice_gang, _tpu_gang((None,) * 3, pod_type=None)],
+        [_make_pending_instance("tpu_2x4", f"p2-{w}") for w in range(2)]
+        + [_make_pending_instance("tpu_4x4", f"p4-{w}") for w in range(4)],
+    ) == ({}, 0)
+
+    # Sub-host per-worker idleness depends on per-node bundle multiplicity, so
+    # 1 CPU/bundle across w0..w3 fits on 3 free CPUs while 4 bundles on w0 launches.
+    assert _schedule_gangs(
+        TPU_CONFIGS,
+        [_tpu_gang((0, 1, 2, 3), bundle={"CPU": 1, "TPU": 1})],
+        slice_0,
+    ) == ({}, 0)
+    assert _schedule_gangs(
+        TPU_CONFIGS,
+        [_tpu_gang((0, 0, 0, 0), bundle={"CPU": 1, "TPU": 1})],
+        slice_0,
+    ) == ({"tpu_4x4": 4}, 0)
+
+    # Two pinned degraded slices pair strictly with their own replacement pods
+    # rather than pooling 4 pending pods into an unpinned new replica, and
+    # NOT_IN locality constraints skip excluded slices and their backfill pods.
+    assert _schedule_gangs(
+        TPU_CONFIGS,
+        [
+            _tpu_gang((2, 3), pinned_domain="slice-0"),
+            _tpu_gang((2, 3), pinned_domain="slice-1"),
+        ],
+        degraded_busy_0 + degraded_busy_1 + pending_4,
+    ) == ({}, 0)
+    not_slice_0 = _tpu_gang()
+    not_slice_0.bundle_selectors[
+        0
+    ].locality_requirement.label_selector.label_constraints.append(
+        LabelSelectorConstraint(
+            label_key="ray.io/tpu-slice-name",
+            operator=LabelSelectorOperator.LABEL_OPERATOR_NOT_IN,
+            label_values=["slice-0"],
+        )
+    )
+    assert _schedule_gangs(TPU_CONFIGS, [not_slice_0], idle_slice_0) == (
+        {"tpu_4x4": 4},
+        0,
+    )
+    assert _schedule_gangs(
+        TPU_CONFIGS,
+        [not_slice_0, _tpu_gang((2, 3), pinned_domain="slice-0")],
+        slice_0 + slice_1,
+    ) == ({}, 0)
+
+
+def test_multihost_tpu_whole_replica_launch_and_termination():
+    """KubeRay multi-host TPU worker groups launch and terminate whole slices."""
+    # Plain tasks, STRICT_SPREAD PGs, cluster constraints, and IPPR resize specs
+    # launch whole 4-host replicas and pack onto sibling hosts without partial slices.
+    anti = ResourceRequestUtil.PlacementConstraintType.ANTI_AFFINITY
+    tpu_task = ResourceRequestByCount(
+        request=ResourceRequestUtil.make({"TPU": 4}), count=1
+    )
+    cpu_and_tpu = {
+        **TPU_CONFIGS,
+        "cpu": _tpu_config("cpu", max_workers=8, resources={"CPU": 8}, labels={}),
+    }
+    capped_reply = ResourceDemandScheduler(event_logger).schedule(
+        SchedulingRequest(
+            disable_launch_config_check=True,
+            node_type_configs=cpu_and_tpu,
+            max_num_nodes=6,
+            resource_requests=[
+                ResourceRequestByCount(
+                    request=ResourceRequestUtil.make({"TPU": 4}), count=5
+                ),
+                ResourceRequestByCount(
+                    request=ResourceRequestUtil.make({"CPU": 8}), count=2
+                ),
+            ],
+        )
+    )
+    assert _launch_and_terminate(capped_reply) == ({"tpu_4x4": 4, "cpu": 2}, [])
+    assert len(capped_reply.infeasible_resource_requests) == 1
+    spread_4 = GangResourceRequest(
+        requests=[
+            ResourceRequestUtil.make({"TPU": 4}, [(anti, "sp", "1")]) for _ in range(4)
+        ]
+    )
+    assert _schedule_gangs(TPU_CONFIGS, [spread_4]) == ({"tpu_4x4": 4}, 0)
+    shared_reply = ResourceDemandScheduler(event_logger).schedule(
+        SchedulingRequest(
+            disable_launch_config_check=True,
+            node_type_configs=TPU_CONFIGS,
+            gang_resource_requests=[_tpu_gang()],
+            cluster_resource_constraints=[
+                ClusterResourceConstraint(resource_requests=[tpu_task])
+            ],
+        )
+    )
+    assert _launch_and_terminate(shared_reply) == ({"tpu_4x4": 4}, [])
+    ippr_spec = IPPRGroupSpec(
+        min_cpu=4, max_cpu=8, min_memory=1000, max_memory=2000, resize_timeout=60
+    )
+    ippr_tpu = ResourceDemandScheduler(event_logger).schedule(
+        SchedulingRequest(
+            disable_launch_config_check=True,
+            node_type_configs=TPU_CONFIGS,
+            gang_resource_requests=[_tpu_gang(bundle={"CPU": 8, "TPU": 4})],
+            ippr_specs=IPPRSpecs(groups={"tpu_4x4": ippr_spec}),
+        )
+    )
+    assert _launch_and_terminate(ippr_tpu) == ({"tpu_4x4": 4}, [])
+    assert len(ippr_tpu.infeasible_gang_resource_requests) == 0
+
+    def _idle_host(
+        iid: str, slice_name: str, w: int, idle_ms: int, used_tpu: float = 0
+    ):
+        inst = _tpu_host(iid, slice_name, {"TPU": used_tpu} if used_tpu else None, w)
+        inst.ray_node.idle_duration_ms = idle_ms
+        return inst
+
+    # Idle termination and max_worker_nodes both delete complete idle slice-0 whole
+    # while sparing idle siblings w2, w3 of slice-1 hosting an active 2x4 subslice.
+    idle_plus_subslice = [
+        _idle_host(f"s0-w{w}", "slice-0", w, 90_000) for w in range(4)
+    ] + [
+        _idle_host(
+            f"s1-w{w}",
+            "slice-1",
+            w,
+            0 if w < 2 else 90_000,
+            used_tpu=4 if w < 2 else 0,
+        )
+        for w in range(4)
+    ]
+    idle_reply = ResourceDemandScheduler(event_logger).schedule(
+        SchedulingRequest(
+            disable_launch_config_check=True,
+            node_type_configs=TPU_CONFIGS,
+            current_instances=idle_plus_subslice,
+            idle_timeout_s=60.0,
+        )
+    )
+    assert {(t.instance_id, t.cause) for t in idle_reply.to_terminate} == {
+        (f"s0-w{w}", TerminationRequest.Cause.IDLE) for w in range(4)
+    }
+    max4_reply = ResourceDemandScheduler(event_logger).schedule(
+        SchedulingRequest(
+            disable_launch_config_check=True,
+            node_type_configs={"tpu_4x4": _tpu_config(max_workers=4)},
+            current_instances=idle_plus_subslice,
+        )
+    )
+    assert {(t.instance_id, t.cause) for t in max4_reply.to_terminate} == {
+        (f"s0-w{w}", TerminationRequest.Cause.MAX_NUM_NODE_PER_TYPE) for w in range(4)
+    }
+
+    # Synthetic slice labels placed on ALLOCATED siblings during scheduling do not
+    # disguise an active staggered-boot slice as fully registered during idle cleanup;
+    # once only idle ALLOCATED pods remain, they scale down as a whole 4-pod slice.
+    alloc_8 = [
+        make_autoscaler_instance(
+            im_instance=Instance(
+                instance_type="tpu_4x4", status=Instance.ALLOCATED, instance_id=f"p{i}"
+            )
+        )
+        for i in range(8)
+    ]
+    sched = ResourceDemandScheduler(event_logger)
+    sched._pending_unneeded_since_s["tpu_4x4"] = [0.0] * 6
+    ambiguous = sched.schedule(
+        SchedulingRequest(
+            disable_launch_config_check=True,
+            node_type_configs=TPU_CONFIGS,
+            current_instances=alloc_8[:6]
+            + [
+                _idle_host("s2-w0", "slice-2", 0, 75_000),
+                _idle_host("s2-w1", "slice-2", 1, 10_000),
+            ],
+            gang_resource_requests=[_tpu_gang((0,))],
+            idle_timeout_s=60.0,
+            pending_idle_timeout_s=30.0,
+        )
+    )
+    assert _launch_and_terminate(ambiguous) == ({}, [])
+    sched._pending_unneeded_since_s["tpu_4x4"] = [0.0] * 4
+    idle_alloc = sched.schedule(
+        SchedulingRequest(
+            disable_launch_config_check=True,
+            node_type_configs=TPU_CONFIGS,
+            current_instances=alloc_8[:4],
+            pending_idle_timeout_s=30.0,
+        )
+    )
+    assert {(t.instance_id, t.cause) for t in idle_alloc.to_terminate} == {
+        (f"p{i}", TerminationRequest.Cause.IDLE) for i in range(4)
+    }
+
+    # Pinned RESCHEDULING subslice gangs preserve idle sibling hosts both before
+    # KubeRay creates the backfill pod and while QUEUED replicas coexist;
+    # TPU-*-head resources stay limited to replica host 0 across launches, and
+    # cross-gang fallback selectors on shared pending pods do not distort scoring.
+    idle_sibs = [_idle_host(f"r0-w{w}", "rep-0", w, 90_000) for w in (1, 2, 3)]
+    resched_w0 = _tpu_gang((0,), pinned_domain="rep-0")
+    pre_bf = ResourceDemandScheduler(event_logger).schedule(
+        SchedulingRequest(
+            disable_launch_config_check=True,
+            node_type_configs=TPU_CONFIGS,
+            current_instances=idle_sibs,
+            gang_resource_requests=[resched_w0],
+            idle_timeout_s=60.0,
+        )
+    )
+    assert (
+        pre_bf.to_terminate == [] and len(pre_bf.infeasible_gang_resource_requests) == 1
+    )
+    sched._pending_unneeded_since_s["tpu_4x4"] = [0.0, 0.0]
+    post_bf = sched.schedule(
+        SchedulingRequest(
+            disable_launch_config_check=True,
+            node_type_configs=TPU_CONFIGS,
+            current_instances=[
+                make_autoscaler_instance(
+                    im_instance=Instance(
+                        instance_type="tpu_4x4",
+                        status=Instance.QUEUED,
+                        instance_id=f"q{i}",
+                    )
+                )
+                for i in range(4)
+            ]
+            + idle_sibs
+            + alloc_8[:1],
+            gang_resource_requests=[resched_w0, _tpu_gang((0, 1))],
+            idle_timeout_s=60.0,
+            pending_idle_timeout_s=30.0,
+        )
+    )
+    assert _launch_and_terminate(post_bf) == ({}, [])
+    assert len(post_bf.infeasible_gang_resource_requests) == 0
+
+    head_cfgs = {
+        "tpu_4x4": _tpu_config(
+            resources={"CPU": 4, "TPU": 4, "TPU-v6e-16-head": 1},
+        )
+    }
+    head_reply = ResourceDemandScheduler(event_logger).schedule(
+        SchedulingRequest(
+            disable_launch_config_check=True,
+            node_type_configs=head_cfgs,
+            resource_requests=[
+                ResourceRequestByCount(
+                    request=ResourceRequestUtil.make({"TPU-v6e-16-head": 1}), count=4
+                )
+            ],
+        )
+    )
+    assert _launch_and_terminate(head_reply) == ({"tpu_4x4": 16}, [])
+
+    min_head_cfgs = {
+        "tpu_4x4": _tpu_config(
+            min_workers=4,
+            max_workers=16,
+            resources={"CPU": 4, "TPU": 4, "TPU-v6e-16-head": 1},
+        )
+    }
+    min_head_reply = ResourceDemandScheduler(event_logger).schedule(
+        SchedulingRequest(
+            disable_launch_config_check=True,
+            node_type_configs=min_head_cfgs,
+            resource_requests=[
+                ResourceRequestByCount(
+                    request=ResourceRequestUtil.make({"TPU-v6e-16-head": 1}), count=4
+                )
+            ],
+        )
+    )
+    assert _launch_and_terminate(min_head_reply) == ({"tpu_4x4": 16}, [])
+
+    cosched_head_req = ResourceRequestUtil.make(
+        {"CPU": 1, "TPU": 1, "TPU-v6e-16-head": 1}
+    )
+    cosched_reply = ResourceDemandScheduler(event_logger).schedule(
+        SchedulingRequest(
+            disable_launch_config_check=True,
+            node_type_configs={
+                "tpu_4x4": _tpu_config(
+                    max_workers=4,
+                    resources={"CPU": 4, "TPU": 4, "TPU-v6e-16-head": 1},
+                )
+            },
+            gang_resource_requests=[
+                GangResourceRequest(
+                    requests=[
+                        ResourceRequestUtil.make(
+                            {"CPU": 1, "TPU": 1}, [(anti, "s1", "1")]
+                        )
+                    ]
+                    * 2
+                ),
+                GangResourceRequest(
+                    requests=[cosched_head_req],
+                    bundle_selectors=[
+                        BundleSelector(
+                            resource_requests=[cosched_head_req],
+                            locality_requirement=LocalityRequirement(
+                                locality_constraint=LocalityConstraint(
+                                    label_name="ray.io/tpu-slice-name",
+                                    placement_strategy=PlacementStrategy.STRICT_PACK,
+                                )
+                            ),
+                        )
+                    ],
+                ),
+            ],
+        )
+    )
+    assert not cosched_reply.infeasible_gang_resource_requests
+    assert _launch_and_terminate(cosched_reply) == ({"tpu_4x4": 4}, [])
+
+    queued_sched = ResourceDemandScheduler(event_logger)
+    queued_sched._pending_unneeded_since_s["tpu_4x4"] = [0.0] * 16
+    queued_head_reply = queued_sched.schedule(
+        SchedulingRequest(
+            disable_launch_config_check=True,
+            node_type_configs=head_cfgs,
+            pending_idle_timeout_s=10.0,
+            current_instances=[
+                make_autoscaler_instance(
+                    im_instance=Instance(
+                        instance_type="tpu_4x4",
+                        status=Instance.QUEUED,
+                        instance_id=f"q-{i}",
+                    )
+                )
+                for i in range(16)
+            ],
+            resource_requests=[
+                ResourceRequestByCount(
+                    request=ResourceRequestUtil.make({"TPU-v6e-16-head": 1}), count=3
+                )
+            ],
+        )
+    )
+    assert len(queued_head_reply.to_terminate) == 4
+
+    in_op = LabelSelectorOperator.LABEL_OPERATOR_IN
+    not_in = LabelSelectorOperator.LABEL_OPERATOR_NOT_IN
+    spread_notin = GangResourceRequest(
+        requests=[
+            ResourceRequestUtil.make(
+                {"TPU": 1},
+                [(anti, "g1", "1")],
+                label_selectors=[
+                    [("ray.io/tpu-worker-id", not_in, ["0"])],
+                    [("zone", in_op, ["none"])],
+                    [("ray.io/accelerator-type", in_op, ["TPU-V6E"])],
+                ],
+            )
+        ]
+        * 5
+    )
+    loc_ca = ResourceRequestUtil.make(
+        {"TPU": 2},
+        label_selectors=[
+            [("ray.io/tpu-worker-id", in_op, ["0"]), ("zone", in_op, ["ca"])],
+            [("ray.io/tpu-worker-id", in_op, ["0"]), ("zone", in_op, ["tx"])],
+        ],
+    )
+    loc_ca_gang = GangResourceRequest(
+        requests=[loc_ca],
+        bundle_selectors=[
+            BundleSelector(
+                resource_requests=[loc_ca],
+                locality_requirement=LocalityRequirement(
+                    locality_constraint=LocalityConstraint(
+                        label_name="ray.io/tpu-slice-name",
+                        placement_strategy=PlacementStrategy.STRICT_PACK,
+                    )
+                ),
+            )
+        ],
+    )
+    tx_ca_cfgs = {
+        "ca": NodeTypeConfig(
+            name="ca",
+            resources={"CPU": 4, "TPU": 4},
+            labels={**TPU_LABELS, "zone": "ca"},
+            min_worker_nodes=0,
+            max_worker_nodes=8,
+            priority=10,
+        ),
+        "tx": _tpu_config("tx", labels={**TPU_LABELS, "zone": "tx"}),
+    }
+    cross_ctx = ResourceDemandScheduler.ScheduleContext.from_schedule_request(
+        SchedulingRequest(
+            disable_launch_config_check=True,
+            node_type_configs=tx_ca_cfgs,
+            current_instances=[
+                _make_pending_instance(nt, f"{nt}-{i}")
+                for nt in ("tx", "ca")
+                for i in range(4)
+            ],
+            gang_resource_requests=[spread_notin, loc_ca_gang],
+        )
+    )
+    assert not ResourceDemandScheduler._sched_gang_resource_requests(
+        cross_ctx, [spread_notin, loc_ca_gang]
+    )
+    assert [
+        n.node_type
+        for n in cross_ctx.get_nodes()
+        if any(
+            r.resources_bundle.get("TPU") == 2
+            for r in n.sched_requests[ResourceRequestSource.PENDING_DEMAND]
+        )
+    ] == ["ca"]
+
+
+def test_multihost_tpu_pending_slot_normalization_and_atomic_caps():
+    """Pending TPU host slots, worker-id launches, staggered sub-slice backfill,
+    max-node termination, and constraint-backed QUEUED cleanup stay slice-exact."""
+    in_op = LabelSelectorOperator.LABEL_OPERATOR_IN
+    not_in = LabelSelectorOperator.LABEL_OPERATOR_NOT_IN
+    head_res = {"CPU": 4, "TPU": 4, "TPU-v6e-16-head": 1}
+
+    def _pending(iid: str, status=Instance.ALLOCATED, nt: str = "tpu_4x4"):
+        return make_autoscaler_instance(
+            im_instance=Instance(instance_type=nt, status=status, instance_id=iid)
+        )
+
+    def _idle_host(
+        iid: str, slice_name: str, w: int, idle_ms: int, used_tpu: float = 0
+    ):
+        inst = _tpu_host(
+            iid,
+            slice_name,
+            {"TPU": used_tpu} if used_tpu else None,
+            w,
+            **({"TPU-v6e-16-head": 1} if w == 0 else {}),
+        )
+        inst.ray_node.idle_duration_ms = idle_ms
+        return inst
+
+    # 1. Pending TPU pods normalize to 1 head per 4-host replica during min_worker
+    # refill and non-locality head scheduling (no 4x head inflation).
+    min8_cfgs = {
+        "tpu_4x4": _tpu_config(min_workers=8, max_workers=24, resources=head_res)
+    }
+    booting_4 = [_pending(f"p{i}") for i in range(4)]
+    min8_idle = ResourceDemandScheduler(event_logger).schedule(
+        SchedulingRequest(
+            disable_launch_config_check=True,
+            node_type_configs=min8_cfgs,
+            current_instances=booting_4,
+        )
+    )
+    assert _launch_and_terminate(min8_idle) == ({"tpu_4x4": 4}, [])
+    assert min8_idle.cluster_resources["TPU-v6e-16-head"] == 2.0
+
+    min8_five_heads = ResourceDemandScheduler(event_logger).schedule(
+        SchedulingRequest(
+            disable_launch_config_check=True,
+            node_type_configs=min8_cfgs,
+            current_instances=booting_4,
+            resource_requests=[
+                ResourceRequestByCount(
+                    request=ResourceRequestUtil.make({"TPU-v6e-16-head": 1}), count=5
+                )
+            ],
+        )
+    )
+    assert _launch_and_terminate(min8_five_heads) == ({"tpu_4x4": 16}, [])
+    assert min8_five_heads.cluster_resources["TPU-v6e-16-head"] == 5.0
+
+    nonloc_four_heads = ResourceDemandScheduler(event_logger).schedule(
+        SchedulingRequest(
+            disable_launch_config_check=True,
+            node_type_configs={
+                "tpu_4x4": _tpu_config(max_workers=24, resources=head_res)
+            },
+            current_instances=booting_4,
+            resource_requests=[
+                ResourceRequestByCount(
+                    request=ResourceRequestUtil.make({"TPU-v6e-16-head": 1}), count=4
+                )
+            ],
+        )
+    )
+    assert _launch_and_terminate(nonloc_four_heads) == ({"tpu_4x4": 12}, [])
+    assert nonloc_four_heads.cluster_resources["TPU-v6e-16-head"] == 4.0
+
+    # 2. `reserve_tpu_slice` PG (head=1 + worker-id=0, no locality_requirement)
+    # scales from zero, and non-locality worker-id IN/NOT_IN launch exact slots
+    # on multi-host slices while rejecting NOT_IN ["0"] on single-host TPUs.
+    reserve_bundle = ResourceRequestUtil.make(
+        {"TPU-v6e-16-head": 1},
+        label_selectors=[
+            [
+                ("ray.io/tpu-worker-id", in_op, ["0"]),
+                ("ray.io/tpu-pod-type", in_op, ["v6e-16"]),
+            ]
+        ],
+    )
+    reserve_reply = ResourceDemandScheduler(event_logger).schedule(
+        SchedulingRequest(
+            disable_launch_config_check=True,
+            node_type_configs={
+                "tpu_4x4": _tpu_config(max_workers=8, resources=head_res)
+            },
+            gang_resource_requests=[GangResourceRequest(requests=[reserve_bundle])],
+        )
+    )
+    assert _launch_and_terminate(reserve_reply) == ({"tpu_4x4": 4}, [])
+    assert not reserve_reply.infeasible_gang_resource_requests
+    assert reserve_reply.cluster_resources["TPU-v6e-16-head"] == 1.0
+
+    single_notin = ResourceDemandScheduler(event_logger).schedule(
+        SchedulingRequest(
+            disable_launch_config_check=True,
+            node_type_configs={"tpu_single": TPU_SINGLE_CONFIG},
+            resource_requests=[
+                ResourceRequestByCount(
+                    request=ResourceRequestUtil.make(
+                        {"TPU": 4},
+                        label_selectors=[[("ray.io/tpu-worker-id", not_in, ["0"])]],
+                    ),
+                    count=2,
+                )
+            ],
+        )
+    )
+    assert _launch_and_terminate(single_notin) == ({}, [])
+    assert len(single_notin.infeasible_resource_requests) == 2
+
+    wid2_reply = ResourceDemandScheduler(event_logger).schedule(
+        SchedulingRequest(
+            disable_launch_config_check=True,
+            node_type_configs={
+                "tpu_4x4": _tpu_config(max_workers=8, resources=head_res)
+            },
+            resource_requests=[
+                ResourceRequestByCount(
+                    request=ResourceRequestUtil.make(
+                        {"TPU": 4},
+                        label_selectors=[[("ray.io/tpu-worker-id", in_op, ["2"])]],
+                    ),
+                    count=2,
+                )
+            ],
+        )
+    )
+    assert _launch_and_terminate(wid2_reply) == ({"tpu_4x4": 8}, [])
+    assert not wid2_reply.infeasible_resource_requests
+    assert wid2_reply.cluster_resources["TPU-v6e-16-head"] == 2.0
+
+    notin0_reply = ResourceDemandScheduler(event_logger).schedule(
+        SchedulingRequest(
+            disable_launch_config_check=True,
+            node_type_configs={
+                "tpu_4x4": _tpu_config(max_workers=8, resources=head_res)
+            },
+            resource_requests=[
+                ResourceRequestByCount(
+                    request=ResourceRequestUtil.make(
+                        {"TPU": 4},
+                        label_selectors=[[("ray.io/tpu-worker-id", not_in, ["0"])]],
+                    ),
+                    count=3,
+                )
+            ],
+        )
+    )
+    assert _launch_and_terminate(notin0_reply) == ({"tpu_4x4": 4}, [])
+    assert not notin0_reply.infeasible_resource_requests
+    assert notin0_reply.cluster_resources["TPU-v6e-16-head"] == 1.0
+
+    # 3. Staggered-boot sub-slices complete partially busy slices before grouping
+    # backfill pods into a phantom extra slice, and roll back cleanly when a slice's
+    # target worker IDs are already occupied.
+    staggered_3_slices = [
+        _idle_host("s0-w0", "slice-0", 0, 0, used_tpu=4),
+        _idle_host("s0-w1", "slice-0", 1, 0, used_tpu=4),
+        _idle_host("s0-w2", "slice-0", 2, 0),
+        _idle_host("s1-w1", "slice-1", 1, 0, used_tpu=4),
+        _idle_host("s1-w2", "slice-1", 2, 0, used_tpu=4),
+        _idle_host("s2-w1", "slice-2", 1, 0, used_tpu=4),
+        _idle_host("s2-w2", "slice-2", 2, 0, used_tpu=4),
+        _idle_host("s2-w3", "slice-2", 3, 0),
+        *[_pending(f"bf{i}") for i in range(4)],
+    ]
+    sub_any_2 = _tpu_gang((None, None))
+    assert _schedule_gangs(TPU_CONFIGS, [sub_any_2] * 3, staggered_3_slices) == ({}, 0)
+
+    wid01_blocked_plus_fresh = [
+        _idle_host("s0-w0", "slice-0", 0, 0, used_tpu=4),
+        _idle_host("s0-w1", "slice-0", 1, 0, used_tpu=4),
+        _idle_host("s1-w0", "slice-1", 0, 0, used_tpu=4),
+        _idle_host("s1-w1", "slice-1", 1, 0, used_tpu=4),
+        *[_pending(f"fr{i}") for i in range(4)],
+    ]
+    assert _schedule_gangs(
+        TPU_CONFIGS, [_tpu_gang((0, 1))], wid01_blocked_plus_fresh
+    ) == ({}, 0)
+
+    # 4. Slice-atomic max-worker and global max-node termination never split an
+    # idle slice, never steal pods from a complete booting replica onto an idle
+    # degraded slice, and drop QUEUED placeholders before RAY_INSTALLING pods.
+    active_3_plus_idle_4 = [
+        _idle_host(f"a{w}", "slice-a", w, 0, used_tpu=4) for w in range(3)
+    ] + [_idle_host(f"b{w}", "slice-b", w, 60_000) for w in range(4)]
+    per_type_cap = ResourceDemandScheduler(event_logger).schedule(
+        SchedulingRequest(
+            disable_launch_config_check=True,
+            node_type_configs={"tpu_4x4": _tpu_config(max_workers=4)},
+            current_instances=active_3_plus_idle_4,
+        )
+    )
+    assert {t.instance_id for t in per_type_cap.to_terminate} == {
+        f"b{w}" for w in range(4)
+    }
+
+    non_mult_cap = ResourceDemandScheduler(event_logger).schedule(
+        SchedulingRequest(
+            disable_launch_config_check=True,
+            node_type_configs={"tpu_4x4": _tpu_config(max_workers=6)},
+            current_instances=[
+                _idle_host(f"a{w}", "slice-a", w, 0, used_tpu=4) for w in range(4)
+            ]
+            + [_idle_host(f"b{w}", "slice-b", w, 60_000) for w in range(4)],
+        )
+    )
+    assert {t.instance_id for t in non_mult_cap.to_terminate} == {
+        f"b{w}" for w in range(4)
+    }
+
+    cpu_busy = [
+        _make_running_domain_node("cpu", f"c{i}", {"CPU": 8}, {}, used={"CPU": 8})
+        for i in range(4)
+    ]
+    global_cap = ResourceDemandScheduler(event_logger).schedule(
+        SchedulingRequest(
+            disable_launch_config_check=True,
+            node_type_configs={
+                "tpu_4x4": _tpu_config(max_workers=8),
+                "cpu": _tpu_config(
+                    "cpu", max_workers=8, resources={"CPU": 8}, labels={}
+                ),
+            },
+            max_num_nodes=6,
+            current_instances=[
+                _idle_host(f"b{w}", "slice-b", w, 60_000) for w in range(4)
+            ]
+            + cpu_busy,
+        )
+    )
+    assert {(t.instance_id, t.cause) for t in global_cap.to_terminate} == {
+        (f"b{w}", TerminationRequest.Cause.MAX_NUM_NODES) for w in range(4)
+    }
+
+    idle_degraded_plus_booting = [
+        _idle_host(f"a{w}", "slice-a", w, 90_000) for w in range(3)
+    ] + [_pending(f"p{i}", Instance.ALLOCATED) for i in range(4)]
+    for cap in (4, 3):
+        no_collateral = ResourceDemandScheduler(event_logger).schedule(
+            SchedulingRequest(
+                disable_launch_config_check=True,
+                node_type_configs={"tpu_4x4": _tpu_config(max_workers=cap)},
+                current_instances=idle_degraded_plus_booting,
+            )
+        )
+        assert {t.instance_id for t in no_collateral.to_terminate} == {
+            f"p{i}" for i in range(4)
+        }
+
+    mixed_pending_cap = ResourceDemandScheduler(event_logger).schedule(
+        SchedulingRequest(
+            disable_launch_config_check=True,
+            node_type_configs={
+                "tpu_4x4": _tpu_config(max_workers=16, resources=head_res)
+            },
+            max_num_nodes=4,
+            current_instances=[
+                _pending(f"ri{i}", Instance.RAY_INSTALLING) for i in range(4)
+            ]
+            + [_pending(f"q{i}", Instance.QUEUED) for i in range(4)],
+        )
+    )
+    assert {t.instance_id for t in mixed_pending_cap.to_terminate} == {
+        f"q{i}" for i in range(4)
+    }
+    assert mixed_pending_cap.cluster_resources["TPU-v6e-16-head"] == 1.0
+
+    # 5. Pending idle termination keeps whole QUEUED replicas required by
+    # ClusterResourceConstraint or worker-id selectors, packs co-located slot-0
+    # sub-host requests onto 1 replica, and avoids cross-replica splits on
+    # multiple opaque ALLOCATED replicas when min_worker_nodes > 0.
+    queued_16 = [_pending(f"q-{i}", Instance.QUEUED) for i in range(16)]
+    crc_sched = ResourceDemandScheduler(event_logger)
+    crc_sched._pending_unneeded_since_s["tpu_4x4"] = [0.0] * 16
+    crc_reply = crc_sched.schedule(
+        SchedulingRequest(
+            disable_launch_config_check=True,
+            node_type_configs={
+                "tpu_4x4": _tpu_config(max_workers=16, resources=head_res)
+            },
+            pending_idle_timeout_s=10.0,
+            current_instances=queued_16,
+            cluster_resource_constraints=[
+                ClusterResourceConstraint(
+                    resource_requests=[
+                        ResourceRequestByCount(
+                            request=ResourceRequestUtil.make({"TPU-v6e-16-head": 1}),
+                            count=3,
+                        )
+                    ]
+                )
+            ],
+        )
+    )
+    assert len(crc_reply.to_terminate) == 4
+    assert crc_reply.cluster_resources["TPU-v6e-16-head"] == 3.0
+
+    wid0_sched = ResourceDemandScheduler(event_logger)
+    wid0_sched._pending_unneeded_since_s["tpu_4x4"] = [0.0] * 16
+    wid0_reply = wid0_sched.schedule(
+        SchedulingRequest(
+            disable_launch_config_check=True,
+            node_type_configs={
+                "tpu_4x4": _tpu_config(max_workers=16, resources=head_res)
+            },
+            pending_idle_timeout_s=10.0,
+            current_instances=queued_16,
+            resource_requests=[
+                ResourceRequestByCount(
+                    request=ResourceRequestUtil.make(
+                        {"TPU": 4},
+                        label_selectors=[[("ray.io/tpu-worker-id", in_op, ["0"])]],
+                    ),
+                    count=3,
+                )
+            ],
+        )
+    )
+    assert len(wid0_reply.to_terminate) == 4
+
+    copack_sched = ResourceDemandScheduler(event_logger)
+    copack_sched._pending_unneeded_since_s["tpu_4x4"] = [0.0] * 16
+    copack_reply = copack_sched.schedule(
+        SchedulingRequest(
+            disable_launch_config_check=True,
+            node_type_configs={
+                "tpu_4x4": _tpu_config(max_workers=16, resources=head_res)
+            },
+            pending_idle_timeout_s=10.0,
+            current_instances=queued_16,
+            resource_requests=[
+                ResourceRequestByCount(
+                    request=ResourceRequestUtil.make(
+                        {"TPU": 1},
+                        label_selectors=[[("ray.io/tpu-worker-id", in_op, ["0"])]],
+                    ),
+                    count=4,
+                )
+            ],
+        )
+    )
+    assert len(copack_reply.to_terminate) == 12
+
+    alloc8_insts = [_pending(f"ap-{i}", Instance.ALLOCATED) for i in range(8)]
+    opaque_min_sched = ResourceDemandScheduler(event_logger)
+    opaque_min_sched._pending_unneeded_since_s["tpu_4x4"] = [0.0] * 8
+    opaque_min = opaque_min_sched.schedule(
+        SchedulingRequest(
+            disable_launch_config_check=True,
+            node_type_configs={"tpu_4x4": _tpu_config(min_workers=4, max_workers=16)},
+            pending_idle_timeout_s=10.0,
+            current_instances=alloc8_insts,
+        )
+    )
+    assert opaque_min.to_terminate == []
+
+    opaque_zero_sched = ResourceDemandScheduler(event_logger)
+    opaque_zero_sched._pending_unneeded_since_s["tpu_4x4"] = [0.0] * 8
+    opaque_zero = opaque_zero_sched.schedule(
+        SchedulingRequest(
+            disable_launch_config_check=True,
+            node_type_configs={"tpu_4x4": _tpu_config(min_workers=0, max_workers=16)},
+            pending_idle_timeout_s=10.0,
+            current_instances=alloc8_insts,
+        )
+    )
+    assert len(opaque_zero.to_terminate) == 8
+
+
+GPU_LABELS = {"ray.io/accelerator-type": "GB200"}
+
+
+def _gpu_config(
+    name: str, rack: Optional[str] = None, min_workers: int = 0
+) -> NodeTypeConfig:
+    return NodeTypeConfig(
+        name=name,
+        resources={"CPU": 8, "GPU": 4},
+        labels={**GPU_LABELS, **({"ray.io/gpu-domain": rack} if rack else {})},
+        min_worker_nodes=min_workers,
+        max_worker_nodes=8,
+    )
+
+
+def _gpu_gang(
+    num_bundles: int = 2, pinned_domain: Optional[str] = None
+) -> GangResourceRequest:
+    return _make_locality_gang_request(
+        bundles=[{"CPU": 1, "GPU": 4}] * num_bundles,
+        bundle_labels=GPU_LABELS,
+        locality_label="ray.io/gpu-domain",
+        pinned_domain=pinned_domain,
+    )
+
+
+def _gpu_node(
+    node_type: str,
+    instance_id: str,
+    rack: Optional[str] = None,
+    used: Optional[Dict[str, float]] = None,
+) -> AutoscalerInstance:
+    return _make_running_domain_node(
+        node_type,
+        instance_id,
+        {"CPU": 8, "GPU": 4},
+        {**GPU_LABELS, **({"ray.io/gpu-domain": rack} if rack else {})},
+        used,
+    )
+
+
+def test_gang_locality_requirement_gpu_domains():
+    """STRICT_PACK on ray.io/gpu-domain with dynamic and static per-rack domains."""
+    # Dynamic racks: do not split a gang across partially used racks or place
+    # it on a running node that registered without a rack label.
+    dynamic = {"gb200": _gpu_config("gb200")}
+    assert _schedule_gangs(
+        dynamic,
+        [_gpu_gang(), _gpu_gang(num_bundles=1)],
+        [_gpu_node("gb200", "unlabeled-0")],
+    ) == ({"gb200": 3}, 0)
+    fragmented = [
+        _gpu_node("gb200", f"r{r}-n{n}", f"rack-{r}", {"GPU": 4 * n})
+        for r in (0, 1)
+        for n in (0, 1)
+    ]
+    assert _schedule_gangs(dynamic, [_gpu_gang()], fragmented) == ({"gb200": 2}, 0)
+
+    # Isolate newly launched nodes per gang so a second gang is not split
+    # across the first gang's spare capacity and a third node.
+    half_node_gang = _make_locality_gang_request(
+        bundles=[{"GPU": 2}] * 3,
+        bundle_labels=GPU_LABELS,
+        locality_label="ray.io/gpu-domain",
+    )
+    assert _schedule_gangs(dynamic, [half_node_gang] * 2) == ({"gb200": 4}, 0)
+
+    # Static racks: prefer the rack requiring the fewest new node launches,
+    # tie-break by node-type availability, and honor explicit rack pinning.
+    racks = {
+        "gb200_rack_a": _gpu_config("gb200_rack_a", "rack-a"),
+        "gb200_rack_b": _gpu_config("gb200_rack_b", "rack-b"),
+    }
+    rack_b_node = _gpu_node("gb200_rack_b", "rb-0", "rack-b")
+    assert _schedule_gangs(racks, [_gpu_gang()], [rack_b_node]) == (
+        {"gb200_rack_b": 1},
+        0,
+    )
+    assert _schedule_gangs(
+        racks,
+        [_gpu_gang()],
+        availabilities={"gb200_rack_a": 0.0, "gb200_rack_b": 1.0},
+    ) == ({"gb200_rack_b": 2}, 0)
+    pinned_a = _make_locality_gang_request(
+        bundles=[{"CPU": 1, "GPU": 4}],
+        bundle_labels={},
+        locality_label="ray.io/gpu-domain",
+        pinned_domain="rack-a",
+    )
+    assert _schedule_gangs(racks, [pinned_a], [rack_b_node]) == (
+        {"gb200_rack_a": 1},
+        0,
+    )
+
+    # Pairing a booting dynamic rack with its pending sibling preserves static
+    # rack labels on unrelated min-worker nodes, releases unused pending
+    # siblings for later gangs, and skips busy or degraded pinned racks.
+    mixed = {
+        "gb200": _gpu_config("gb200"),
+        "gb200_rack_b": _gpu_config("gb200_rack_b", "rack-b", min_workers=1),
+    }
+    booting = [
+        _gpu_node("gb200", "r0-n0", "rack-0", {"CPU": 1}),
+        _make_pending_instance("gb200", "r0-n1"),
+    ]
+    pinned_b = _gpu_gang(num_bundles=1, pinned_domain="rack-b")
+    assert _schedule_gangs(mixed, [_gpu_gang(), pinned_b], booting) == (
+        {"gb200_rack_b": 1},
+        0,
+    )
+    assert _schedule_gangs(
+        dynamic,
+        [_gpu_gang()] * 2,
+        booting + [_make_pending_instance("gb200", "r0-n2")],
+    ) == ({"gb200": 1}, 0)
+    assert _schedule_gangs(
+        dynamic,
+        [_gpu_gang()],
+        [
+            _gpu_node("gb200", "r0-n0", "rack-0", {"GPU": 4}),
+            _make_pending_instance("gb200", "p0"),
+        ],
+    ) == ({"gb200": 1}, 0)
+    assert _schedule_gangs(
+        dynamic,
+        [_gpu_gang(pinned_domain="rack-0")],
+        [_gpu_node("gb200", "r0-n0", "rack-0")],
+    ) == ({}, 1)
+
+    # Dynamic domains stay within a single node type rather than spanning
+    # disjoint worker groups, and Pass 2 stays at zero launches while booting.
+    spot_and_od = {
+        "gb200_spot": NodeTypeConfig(
+            name="gb200_spot",
+            resources={"CPU": 8, "GPU": 4},
+            labels=GPU_LABELS,
+            min_worker_nodes=0,
+            max_worker_nodes=1,
+            priority=10,
+        ),
+        "gb200_od": NodeTypeConfig(
+            name="gb200_od",
+            resources={"CPU": 8, "GPU": 4},
+            labels=GPU_LABELS,
+            min_worker_nodes=0,
+            max_worker_nodes=4,
+            priority=1,
+        ),
+    }
+    assert _schedule_gangs(spot_and_od, [_gpu_gang()]) == ({"gb200_od": 2}, 0)
+    assert _schedule_gangs(
+        spot_and_od,
+        [_gpu_gang()],
+        [
+            _gpu_node("gb200_od", "od-0", "rack-0"),
+            _make_pending_instance("gb200_od", "od-1"),
+        ],
+    ) == ({}, 0)
+
+    # Pass 2 packs gangs onto the fewest pending pods across heterogeneous node
+    # types, and prefers a fully running rack over one needing a pending pod.
+    hetero_gpu = {
+        "gpu_2": NodeTypeConfig(
+            name="gpu_2",
+            resources={"CPU": 8, "GPU": 2},
+            labels=GPU_LABELS,
+            min_worker_nodes=0,
+            max_worker_nodes=5,
+            priority=10,
+        ),
+        "gpu_4": NodeTypeConfig(
+            name="gpu_4",
+            resources={"CPU": 8, "GPU": 4},
+            labels=GPU_LABELS,
+            min_worker_nodes=0,
+            max_worker_nodes=2,
+            priority=5,
+        ),
+    }
+    hetero_gangs = [
+        _make_locality_gang_request(
+            [{"CPU": 2, "GPU": 2}] * n, GPU_LABELS, "ray.io/gpu-domain"
+        )
+        for n in (2, 3, 4)
+    ]
+    assert _schedule_gangs(hetero_gpu, hetero_gangs) == ({"gpu_2": 5, "gpu_4": 2}, 0)
+    assert _schedule_gangs(
+        hetero_gpu,
+        hetero_gangs,
+        [_make_pending_instance("gpu_2", f"g2-{i}") for i in range(5)]
+        + [_make_pending_instance("gpu_4", f"g4-{i}") for i in range(2)],
+    ) == ({}, 0)
+    assert _schedule_gangs(
+        dynamic,
+        [_gpu_gang(), _gpu_gang(num_bundles=1, pinned_domain="rack-0")],
+        booting
+        + [
+            _gpu_node("gb200", "r1-n0", "rack-1"),
+            _gpu_node("gb200", "r1-n1", "rack-1"),
+        ],
+    ) == ({}, 0)
+
+    # IPPR rollback on unresized pending pods preserves pending domain stamps.
+    ippr_spec = IPPRGroupSpec(
+        min_cpu=8, max_cpu=16, min_memory=1000, max_memory=2000, resize_timeout=60
+    )
+    ippr_reply = ResourceDemandScheduler(event_logger).schedule(
+        SchedulingRequest(
+            disable_launch_config_check=True,
+            node_type_configs=dynamic,
+            current_instances=[
+                make_autoscaler_instance(
+                    im_instance=Instance(
+                        instance_type="gb200",
+                        status=Instance.ALLOCATED,
+                        instance_id=f"p{i}",
+                    ),
+                    cloud_instance_id=f"pod-{i}",
+                )
+                for i in (0, 1)
+            ],
+            gang_resource_requests=[half_node_gang] * 2,
+            ippr_specs=IPPRSpecs(groups={"gb200": ippr_spec}),
+            ippr_statuses={
+                f"pod-{i}": IPPRStatus(
+                    cloud_instance_id=f"pod-{i}",
+                    spec=ippr_spec,
+                    current_cpu=8,
+                    current_memory=1000,
+                    desired_cpu=8,
+                    desired_memory=1000,
+                )
+                for i in (0, 1)
+            },
+        )
+    )
+    assert _launch_and_terminate(ippr_reply)[0] == {"gb200": 2}
+    assert len(ippr_reply.infeasible_gang_resource_requests) == 0
+
+    # Equal-launch candidates tie-break static vs dynamic node types by rank,
+    # skip TO_TERMINATE nodes, reject contradictory pins, and support fallback
+    # label selector tiers within a single domain.
+    static_vs_dyn = {
+        "gb200_static": _gpu_config("gb200_static", "rack-a"),
+        "gb200_dyn": NodeTypeConfig(
+            name="gb200_dyn",
+            resources={"CPU": 8, "GPU": 4},
+            labels=GPU_LABELS,
+            min_worker_nodes=0,
+            max_worker_nodes=8,
+            priority=10,
+        ),
+    }
+    assert _schedule_gangs(
+        static_vs_dyn,
+        [_gpu_gang()],
+        availabilities={"gb200_static": 0.0, "gb200_dyn": 1.0},
+    ) == ({"gb200_dyn": 2}, 0)
+    capped_racks = {
+        "gb200_rack_a": NodeTypeConfig(
+            name="gb200_rack_a",
+            resources={"CPU": 8, "GPU": 4},
+            labels={**GPU_LABELS, "ray.io/gpu-domain": "rack-a"},
+            min_worker_nodes=0,
+            max_worker_nodes=0,
+        ),
+        "gb200_rack_b": _gpu_config("gb200_rack_b", "rack-b"),
+    }
+    assert _schedule_gangs(
+        capped_racks,
+        [_gpu_gang()],
+        [_gpu_node("gb200_rack_a", f"ra-{i}", "rack-a") for i in (0, 1)],
+    ) == ({"gb200_rack_b": 2}, 0)
+    contradictory = _gpu_gang(pinned_domain="rack-a")
+    contradictory.bundle_selectors[
+        0
+    ].locality_requirement.label_selector.label_constraints.append(
+        LabelSelectorConstraint(
+            label_key="ray.io/gpu-domain",
+            operator=LabelSelectorOperator.LABEL_OPERATOR_IN,
+            label_values=["rack-b"],
+        )
+    )
+    assert _schedule_gangs(racks, [contradictory], [rack_b_node]) == ({}, 1)
+
+    in_op = LabelSelectorOperator.LABEL_OPERATOR_IN
+    sel_a = [
+        [("zone", in_op, ["ca"])],
+        [("zone", in_op, ["tx"])],
+        [("zone", in_op, ["ny"])],
+    ]
+    sel_b = [[("zone", in_op, ["ny"])], [("zone", in_op, ["tx"])]]
+    tiered_reqs = [
+        ResourceRequestUtil.make({"GPU": 1}, label_selectors=s)
+        for s in (sel_a, sel_b, sel_a)
+    ]
+    tiered_gang = GangResourceRequest(
+        requests=tiered_reqs,
+        bundle_selectors=[
+            BundleSelector(
+                resource_requests=tiered_reqs,
+                locality_requirement=LocalityRequirement(
+                    locality_constraint=LocalityConstraint(
+                        label_name="ray.io/gpu-domain",
+                        placement_strategy=PlacementStrategy.STRICT_PACK,
+                    )
+                ),
+            )
+        ],
+    )
+    tiered_cfgs = {
+        "ny": NodeTypeConfig(
+            name="ny",
+            resources={"GPU": 2},
+            labels={"zone": "ny", "ray.io/gpu-domain": "rack-0"},
+            min_worker_nodes=0,
+            max_worker_nodes=4,
+        ),
+        "tx": NodeTypeConfig(
+            name="tx",
+            resources={"GPU": 1},
+            labels={"zone": "tx", "ray.io/gpu-domain": "rack-0"},
+            min_worker_nodes=0,
+            max_worker_nodes=4,
+        ),
+    }
+    assert _schedule_gangs(
+        tiered_cfgs,
+        [tiered_gang],
+        [
+            _make_running_domain_node(
+                "ny", "n-ny", {"GPU": 2}, {"zone": "ny", "ray.io/gpu-domain": "rack-0"}
+            ),
+            _make_running_domain_node(
+                "tx", "n-tx", {"GPU": 1}, {"zone": "tx", "ray.io/gpu-domain": "rack-0"}
+            ),
+        ],
+    ) == ({}, 0)
+
+    # Fallback label tiers compare across distinct domains, preserve Pass-2 zero
+    # launches when fallback nodes boot first, and tie-break equal launches by
+    # fewest pending pods consumed.
+    cross_reqs = [
+        ResourceRequestUtil.make(
+            {"GPU": 4},
+            label_selectors=[[("zone", in_op, ["ca"])], [("zone", in_op, ["tx"])]],
+        )
+    ] * 2
+    cross_gang = GangResourceRequest(
+        requests=cross_reqs,
+        bundle_selectors=[
+            BundleSelector(
+                resource_requests=cross_reqs,
+                locality_requirement=LocalityRequirement(
+                    locality_constraint=LocalityConstraint(
+                        label_name="ray.io/gpu-domain",
+                        placement_strategy=PlacementStrategy.STRICT_PACK,
+                    )
+                ),
+            )
+        ],
+    )
+    zone_racks = {
+        "tx": NodeTypeConfig(
+            name="tx",
+            resources={"GPU": 4},
+            labels={"zone": "tx", "ray.io/gpu-domain": "rack-a"},
+            min_worker_nodes=0,
+            max_worker_nodes=4,
+            priority=10,
+        ),
+        "ca": NodeTypeConfig(
+            name="ca",
+            resources={"GPU": 4},
+            labels={"zone": "ca", "ray.io/gpu-domain": "rack-z"},
+            min_worker_nodes=0,
+            max_worker_nodes=4,
+        ),
+    }
+    tx_running = [
+        _make_running_domain_node("tx", f"tx-{i}", {"GPU": 4}, zone_racks["tx"].labels)
+        for i in (0, 1)
+    ]
+    assert _schedule_gangs(zone_racks, [cross_gang], tx_running) == ({}, 0)
+    ca_reply = ResourceDemandScheduler(event_logger).schedule(
+        SchedulingRequest(
+            disable_launch_config_check=True,
+            node_type_configs=zone_racks,
+            current_instances=tx_running
+            + [
+                _make_running_domain_node(
+                    "ca",
+                    "ca-0",
+                    {"GPU": 4},
+                    zone_racks["ca"].labels,
+                )
+            ],
+            gang_resource_requests=[cross_gang],
+            idle_timeout_s=60.0,
+        )
+    )
+    for node in tx_running:
+        node.ray_node.idle_duration_ms = 90_000
+    ca_running_reply = ResourceDemandScheduler(event_logger).schedule(
+        SchedulingRequest(
+            disable_launch_config_check=True,
+            node_type_configs=zone_racks,
+            current_instances=tx_running
+            + [
+                _make_running_domain_node(
+                    "ca", f"ca-{i}", {"GPU": 4}, zone_racks["ca"].labels
+                )
+                for i in (0, 1)
+            ],
+            gang_resource_requests=[cross_gang],
+            idle_timeout_s=60.0,
+        )
+    )
+    assert _launch_and_terminate(ca_reply) == ({}, [])
+    assert {(t.instance_id, t.cause) for t in ca_running_reply.to_terminate} == {
+        ("tx-0", TerminationRequest.Cause.IDLE),
+        ("tx-1", TerminationRequest.Cause.IDLE),
+    }
+    assert _schedule_gangs(
+        racks,
+        [_gpu_gang(num_bundles=3)],
+        [
+            _gpu_node("gb200_rack_a", "ra-0", "rack-a"),
+            _gpu_node("gb200_rack_a", "ra-1", "rack-a"),
+            _gpu_node("gb200_rack_b", "rb-0", "rack-b"),
+            _make_pending_instance("gb200_rack_b", "rb-p1"),
+        ],
+    ) == ({"gb200_rack_a": 1}, 0)
+
+
 class TestPrecomputeSerializeKeys:
     """Tests for precomputed shape_keys optimization in try_schedule."""
 
@@ -4431,6 +6219,736 @@ class TestPrecomputeSerializeKeys:
         to_launch, _ = _launch_and_terminate(reply)
         # Existing node handles 2, remaining 8 need 8/4 = 2 new nodes.
         assert to_launch == {"type_1": 2}
+
+
+_A_THEN_B = [
+    [("accel", LabelSelectorOperator.LABEL_OPERATOR_IN, ["A"])],
+    [("accel", LabelSelectorOperator.LABEL_OPERATOR_IN, ["B"])],
+]
+_B_THEN_A = _A_THEN_B[::-1]
+
+
+def _accel_node_types(cpu: int, max_type_b: int = 10) -> Dict[NodeType, NodeTypeConfig]:
+    return {
+        f"type_{accel.lower()}": NodeTypeConfig(
+            name=f"type_{accel.lower()}",
+            resources={"CPU": cpu},
+            min_worker_nodes=0,
+            max_worker_nodes=max_type_b if accel == "B" else 10,
+            labels={"accel": accel},
+        )
+        for accel in ("A", "B")
+    }
+
+
+@pytest.mark.parametrize(
+    "node_cpu,max_type_b,max_num_nodes,request_cpus,expected_launch",
+    [
+        # One 2-CPU node fits both requests via fallback, but each request still
+        # gets its primary node type.
+        (2, 10, None, [1], {"type_a": 1, "type_b": 1}),
+        # type_b unavailable: fall back and bin-pack onto the launched type_a node.
+        (2, 0, None, [1], {"type_a": 1}),
+        # max_num_nodes reached: same fallback onto the launched type_a node.
+        (2, 10, 1, [1], {"type_a": 1}),
+        # Interleaved sizes: smaller requests pack onto their primary launched node.
+        (4, 10, None, [2, 1], {"type_a": 1, "type_b": 1}),
+    ],
+)
+def test_label_selector_fallback_new_nodes(
+    node_cpu, max_type_b, max_num_nodes, request_cpus, expected_launch
+):
+    requests = [
+        ResourceRequestUtil.make({"CPU": cpu}, label_selectors=selectors)
+        for cpu in request_cpus
+        for selectors in (_A_THEN_B, _B_THEN_A)
+    ]
+    reply = ResourceDemandScheduler(event_logger).schedule(
+        sched_request(
+            node_type_configs=_accel_node_types(node_cpu, max_type_b),
+            resource_requests=requests,
+            max_num_nodes=max_num_nodes,
+        )
+    )
+    assert _launch_and_terminate(reply)[0] == expected_launch
+    assert not reply.infeasible_resource_requests
+
+
+def test_label_selector_fallback_existing_nodes():
+    """Each request lands on its running primary node, so neither node is idle."""
+    instances = [
+        make_autoscaler_instance(
+            ray_node=NodeState(
+                ray_node_type_name=f"type_{accel.lower()}",
+                available_resources={"CPU": 2},
+                total_resources={"CPU": 2},
+                labels={"accel": accel},
+                idle_duration_ms=10,
+                node_id=f"r-{accel}".encode(),
+            ),
+            im_instance=Instance(
+                instance_type=f"type_{accel.lower()}",
+                status=Instance.RAY_RUNNING,
+                instance_id=f"i-{accel}",
+                node_id=f"r-{accel}",
+            ),
+            cloud_instance_id=f"c-{accel}",
+        )
+        for accel in ("A", "B")
+    ]
+    reply = ResourceDemandScheduler(event_logger).schedule(
+        sched_request(
+            node_type_configs=_accel_node_types(2),
+            resource_requests=[
+                ResourceRequestUtil.make({"CPU": 1}, label_selectors=s)
+                for s in (_A_THEN_B, _B_THEN_A)
+            ],
+            instances=instances,
+            idle_timeout_s=0,
+        )
+    )
+    assert _launch_and_terminate(reply) == ({}, [])
+    assert not reply.infeasible_resource_requests
+
+
+def test_ippr_resized_node_hosts_deferred_requests():
+    """A pod resized in place for a primary-selector request stays an IPPR
+    candidate, so requests it deferred in that pass reuse it instead of
+    launching a new node."""
+    spec = IPPRGroupSpec(
+        min_cpu=1,
+        max_cpu=4,
+        min_memory=1024**3,
+        max_memory=8 * 1024**3,
+        resize_timeout=60,
+    )
+    node_type_configs = {
+        accel: NodeTypeConfig(
+            name=accel,
+            resources={"CPU": 1, **({"special": 2} if accel == "A" else {})},
+            min_worker_nodes=0,
+            max_worker_nodes=10,
+            labels={"accel": accel},
+        )
+        for accel in ("A", "B")
+    }
+    instances = [
+        make_autoscaler_instance(
+            ray_node=NodeState(
+                ray_node_type_name=accel,
+                available_resources={"CPU": 0, **extra},
+                total_resources={"CPU": 1, **extra},
+                labels={"accel": accel},
+                node_id=f"r-{accel}".encode(),
+            ),
+            im_instance=Instance(
+                instance_type=accel,
+                status=Instance.RAY_RUNNING,
+                instance_id=f"i-{accel}",
+                node_id=f"r-{accel}",
+            ),
+            cloud_instance_id=f"pod-{accel}",
+        )
+        for accel, extra in (("A", {"special": 2}), ("B", {}))
+    ]
+    in_op = LabelSelectorOperator.LABEL_OPERATOR_IN
+    selector = lambda accel: [("accel", in_op, [accel])]  # noqa: E731
+    reply = ResourceDemandScheduler(event_logger).schedule(
+        sched_request(
+            node_type_configs=node_type_configs,
+            resource_requests=[
+                # pod-A wins the first pass (2 matching resource types) and defers
+                # the fallback request and the unlabeled request.
+                ResourceRequestUtil.make(
+                    {"CPU": 2, "special": 1}, label_selectors=[selector("A")]
+                ),
+                # Lands on its primary pod-B in the second pass.
+                ResourceRequestUtil.make(
+                    {"CPU": 1}, label_selectors=[selector("B"), selector("A")]
+                ),
+                # Only pod-A has `special`, so it needs pod-A to stay a candidate.
+                ResourceRequestUtil.make({"CPU": 1, "special": 1}),
+            ],
+            instances=instances,
+            ippr_specs=IPPRSpecs(groups={"A": spec, "B": spec}),
+            ippr_statuses={
+                f"pod-{accel}": IPPRStatus(
+                    cloud_instance_id=f"pod-{accel}",
+                    spec=spec,
+                    current_cpu=1,
+                    current_memory=1024**3,
+                    desired_cpu=1,
+                    desired_memory=1024**3,
+                )
+                for accel in ("A", "B")
+            },
+        )
+    )
+    assert sorted((s.cloud_instance_id, s.desired_cpu) for s in reply.to_ippr) == [
+        ("pod-A", 4),
+        ("pod-B", 4),
+    ]
+    assert reply.to_launch == []
+    assert not reply.infeasible_resource_requests
+
+
+@pytest.mark.parametrize("max_num_nodes", [1, 2, None])
+@pytest.mark.parametrize(
+    "l_labels,r2_selectors",
+    [
+        # Cross-selector bin-packing: R1 requires x=1 and R2 requires y=1, both
+        # satisfied at primary priority by node type L.
+        (
+            {"x": "1", "y": "1"},
+            [[("y", LabelSelectorOperator.LABEL_OPERATOR_IN, ["1"])]],
+        ),
+        # Cross-tier bin-packing when R2's preferred selector (y=1) is only on an
+        # undersized node type (Tiny_Y: 0.5 CPU), so x=1 is the best feasible match.
+        (
+            {"x": "1"},
+            [
+                [("y", LabelSelectorOperator.LABEL_OPERATOR_IN, ["1"])],
+                [("x", LabelSelectorOperator.LABEL_OPERATOR_IN, ["1"])],
+            ],
+        ),
+        # Unlabeled request co-packing: R2 has no label selectors and fills L
+        # alongside R1 in the same pass instead of losing to smaller node type S.
+        (
+            {"x": "1"},
+            [],
+        ),
+    ],
+)
+def test_label_selector_cross_selector_bin_packing(
+    max_num_nodes, l_labels, r2_selectors
+):
+    """Requests with different, fallback, or empty label selectors pack onto a shared
+    node type L instead of greedily picking a smaller single-request node type S."""
+    node_type_configs = {
+        "Tiny_Y": NodeTypeConfig(
+            name="Tiny_Y",
+            resources={"CPU": 0.5},
+            min_worker_nodes=0,
+            max_worker_nodes=10,
+            labels={"y": "1"},
+        ),
+        "S": NodeTypeConfig(
+            name="S",
+            resources={"CPU": 2},
+            min_worker_nodes=0,
+            max_worker_nodes=10,
+            labels={"x": "1"},
+        ),
+        "L": NodeTypeConfig(
+            name="L",
+            resources={"CPU": 3},
+            min_worker_nodes=0,
+            max_worker_nodes=10,
+            labels=l_labels,
+        ),
+    }
+    requests = [
+        ResourceRequestUtil.make(
+            {"CPU": 2},
+            label_selectors=[[("x", LabelSelectorOperator.LABEL_OPERATOR_IN, ["1"])]],
+        ),
+        ResourceRequestUtil.make({"CPU": 1}, label_selectors=r2_selectors),
+    ]
+    reply = ResourceDemandScheduler(event_logger).schedule(
+        sched_request(
+            node_type_configs=node_type_configs,
+            resource_requests=requests,
+            max_num_nodes=max_num_nodes,
+        )
+    )
+    assert _launch_and_terminate(reply)[0] == {"L": 1}
+    assert not reply.infeasible_resource_requests
+
+
+def test_label_selector_dynamic_depletion_and_fallback_reservation():
+    """Verify (1) exhausting a primary node type promotes fallback matches on the
+    next pass, and (2) unlabeled requests do not steal capacity from deferred
+    fallback requests."""
+    in_op = LabelSelectorOperator.LABEL_OPERATOR_IN
+    scheduler = ResourceDemandScheduler(event_logger)
+
+    # 1. Once Y (max_worker_nodes=1) is consumed by R0 ([y=1]), R2 ([y=1, x=1])
+    # can no longer schedule on Y and co-packs with R1 ([x=1]) on L.
+    reply = scheduler.schedule(
+        sched_request(
+            node_type_configs={
+                "Y": NodeTypeConfig(
+                    name="Y",
+                    resources={"CPU": 4},
+                    min_worker_nodes=0,
+                    max_worker_nodes=1,
+                    labels={"y": "1"},
+                ),
+                "S": NodeTypeConfig(
+                    name="S",
+                    resources={"CPU": 2},
+                    min_worker_nodes=0,
+                    max_worker_nodes=10,
+                    labels={"x": "1"},
+                ),
+                "L": NodeTypeConfig(
+                    name="L",
+                    resources={"CPU": 3},
+                    min_worker_nodes=0,
+                    max_worker_nodes=10,
+                    labels={"x": "1"},
+                ),
+            },
+            resource_requests=[
+                ResourceRequestUtil.make(
+                    {"CPU": 4}, label_selectors=[[("y", in_op, ["1"])]]
+                ),
+                ResourceRequestUtil.make(
+                    {"CPU": 2}, label_selectors=[[("x", in_op, ["1"])]]
+                ),
+                ResourceRequestUtil.make(
+                    {"CPU": 1},
+                    label_selectors=[[("y", in_op, ["1"])], [("x", in_op, ["1"])]],
+                ),
+            ],
+            max_num_nodes=2,
+        )
+    )
+    assert _launch_and_terminate(reply)[0] == {"Y": 1, "L": 1}
+    assert not reply.infeasible_resource_requests
+
+    # 2. When B (4 CPU) schedules R_B (2 CPU, [B]) and defers R_CB (2 CPU, [C, B]),
+    # an unlabeled request R_u (2 CPU, []) must not jump over R_CB and steal B's
+    # remaining 2 CPUs.
+    reply = scheduler.schedule(
+        sched_request(
+            node_type_configs={
+                "B": NodeTypeConfig(
+                    name="B",
+                    resources={"CPU": 4},
+                    min_worker_nodes=0,
+                    max_worker_nodes=1,
+                    labels={"accel": "B"},
+                ),
+                "C": NodeTypeConfig(
+                    name="C",
+                    resources={"CPU": 2},
+                    min_worker_nodes=0,
+                    max_worker_nodes=1,
+                    labels={"accel": "C"},
+                ),
+                "U": NodeTypeConfig(
+                    name="U",
+                    resources={"CPU": 2},
+                    min_worker_nodes=0,
+                    max_worker_nodes=1,
+                    labels={},
+                ),
+            },
+            resource_requests=[
+                ResourceRequestUtil.make(
+                    {"CPU": 2}, label_selectors=[[("accel", in_op, ["C"])]]
+                ),
+                ResourceRequestUtil.make(
+                    {"CPU": 2}, label_selectors=[[("accel", in_op, ["B"])]]
+                ),
+                ResourceRequestUtil.make(
+                    {"CPU": 2},
+                    label_selectors=[
+                        [("accel", in_op, ["C"])],
+                        [("accel", in_op, ["B"])],
+                    ],
+                ),
+                ResourceRequestUtil.make({"CPU": 2}),
+            ],
+        )
+    )
+    assert _launch_and_terminate(reply)[0] == {"B": 1, "C": 1, "U": 1}
+    assert not reply.infeasible_resource_requests
+
+
+def test_label_selector_with_dynamic_anti_affinity_labels():
+    """Verify label selectors that read anti-affinity labels neither double-schedule
+    cached nodes nor corrupt pre-mutation NOT_IN or newly unlocked IN label scores."""
+    cfg = NodeTypeConfig(
+        name="t", resources={"CPU": 4}, min_worker_nodes=0, max_worker_nodes=2
+    )
+    instances = [
+        make_autoscaler_instance(
+            ray_node=NodeState(
+                ray_node_type_name="t",
+                available_resources={"CPU": cpu},
+                total_resources={"CPU": cpu},
+                node_id=f"r{i}".encode(),
+                labels=labels,
+            ),
+            im_instance=Instance(
+                instance_type="t",
+                status=Instance.RAY_RUNNING,
+                instance_id=f"i{i}",
+                node_id=f"r{i}",
+            ),
+            cloud_instance_id=f"c{i}",
+        )
+        for i, (cpu, labels) in enumerate(
+            [(1, {"req": "true", "pg": "1"}), (4, {"req": "true"})]
+        )
+    ]
+    anti = [(ResourceRequestUtil.PlacementConstraintType.ANTI_AFFINITY, "pg", "1")]
+    req_b = ResourceRequestUtil.make(
+        {"CPU": 1},
+        constraints=anti,
+        label_selectors=[[("req", LabelSelectorOperator.LABEL_OPERATOR_IN, ["true"])]],
+    )
+    req_a = ResourceRequestUtil.make(
+        {"CPU": 1},
+        label_selectors=[[("pg", LabelSelectorOperator.LABEL_OPERATOR_IN, ["1"])]],
+    )
+    ctx = ResourceDemandScheduler.ScheduleContext(
+        nodes=[SchedulingNode.new(inst, {"t": cfg}, True) for inst in instances],
+        node_type_configs={"t": cfg},
+        cloud_resource_availabilities={},
+        recoverable_resource_availabilities={},
+        disable_launch_config_check=True,
+        max_num_nodes=2,
+    )
+    nodes, infeasible = ResourceDemandScheduler._try_schedule(
+        ctx, [req_b, req_a], ResourceRequestSource.PENDING_DEMAND
+    )
+    assert not infeasible
+    assert (
+        sum(
+            len(n.get_sched_requests(ResourceRequestSource.PENDING_DEMAND))
+            for n in nodes
+        )
+        == 2
+    )
+
+    node = SchedulingNode.from_node_config(
+        cfg, status=SchedulingNodeStatus.TO_LAUNCH, node_kind=NodeKind.WORKER
+    )
+    remaining, score = node.try_schedule(
+        [
+            ResourceRequestUtil.make(
+                {"CPU": 1},
+                constraints=anti,
+                label_selectors=[
+                    [("pg", LabelSelectorOperator.LABEL_OPERATOR_NOT_IN, ["1"])]
+                ],
+            )
+        ],
+        ResourceRequestSource.PENDING_DEMAND,
+    )
+    assert not remaining and score[0] == 1.0
+
+    # An unlabeled anti-affinity request that adds pg=1 unlocks requests that
+    # select pg=1 on the same node within one _try_schedule call.
+    req_b_unlabeled = ResourceRequestUtil.make({"CPU": 1}, constraints=anti)
+    ctx_unlabeled = ResourceDemandScheduler.ScheduleContext(
+        nodes=[
+            SchedulingNode.from_node_config(
+                cfg, status=SchedulingNodeStatus.SCHEDULABLE, node_kind=NodeKind.WORKER
+            )
+        ],
+        node_type_configs={"t": cfg},
+        cloud_resource_availabilities={},
+        recoverable_resource_availabilities={},
+        disable_launch_config_check=True,
+        max_num_nodes=1,
+    )
+    nodes, infeasible = ResourceDemandScheduler._try_schedule(
+        ctx_unlabeled,
+        [req_a, req_b_unlabeled, req_a],
+        ResourceRequestSource.PENDING_DEMAND,
+    )
+    assert not infeasible
+    assert [
+        len(n.get_sched_requests(ResourceRequestSource.PENDING_DEMAND)) for n in nodes
+    ] == [3]
+
+
+@pytest.mark.parametrize("mode", ["pinned", "slice", "spread", "co_pack", "fallback"])
+def test_label_selector_attempt_cache_linear_deepcopy(mode, monkeypatch):
+    """Scheduling N label-constrained bundles across N candidate nodes performs O(N)
+    SchedulingNode deepcopies instead of O(N^2), including STRICT_SPREAD anti-affinity,
+    unlabeled co-packing, and distinct fallback pools."""
+    in_op = LabelSelectorOperator.LABEL_OPERATOR_IN
+    num_hosts = 64
+    cfg = NodeTypeConfig(
+        name="tpu",
+        resources={"CPU": 8, "TPU": 4},
+        min_worker_nodes=0,
+        max_worker_nodes=num_hosts * 2,
+    )
+    nodes = []
+    for i in range(num_hosts):
+        node = SchedulingNode.from_node_config(
+            cfg, status=SchedulingNodeStatus.SCHEDULABLE, node_kind=NodeKind.WORKER
+        )
+        node.labels = {
+            "ray.io/tpu-worker-id": str(i),
+            "ray.io/tpu-slice-name": "slice-0",
+        }
+        nodes.append(node)
+    if mode == "fallback":
+        for i in range(num_hosts):
+            fb = SchedulingNode.from_node_config(
+                cfg, status=SchedulingNodeStatus.SCHEDULABLE, node_kind=NodeKind.WORKER
+            )
+            fb.labels = {
+                "ray.io/tpu-worker-id": str(i),
+                "ray.io/tpu-slice-name": "slice-1",
+            }
+            nodes.append(fb)
+
+    pinned = mode in ("pinned", "fallback")
+    constraints = (
+        [(ResourceRequestUtil.PlacementConstraintType.ANTI_AFFINITY, "_PG_1", "")]
+        if mode == "spread"
+        else []
+    )
+    if pinned:
+        requests = [
+            ResourceRequestUtil.make(
+                {"TPU": 4},
+                label_selectors=[
+                    [
+                        ("ray.io/tpu-slice-name", in_op, ["slice-0"]),
+                        ("ray.io/tpu-worker-id", in_op, [str(i)]),
+                    ],
+                    *(
+                        [[("ray.io/tpu-slice-name", in_op, ["slice-1"])]]
+                        if mode == "fallback"
+                        else []
+                    ),
+                ],
+            )
+            for i in range(num_hosts)
+        ]
+    else:
+        requests = [
+            ResourceRequestUtil.make(
+                {"TPU": 4},
+                constraints=constraints,
+                label_selectors=[[("ray.io/tpu-slice-name", in_op, ["slice-0"])]],
+            )
+        ] * num_hosts + (
+            [ResourceRequestUtil.make({"CPU": 8})] * num_hosts
+            if mode == "co_pack"
+            else []
+        )
+    ctx = ResourceDemandScheduler.ScheduleContext(
+        nodes=nodes,
+        node_type_configs={"tpu": cfg},
+        cloud_resource_availabilities={},
+        recoverable_resource_availabilities={},
+        disable_launch_config_check=True,
+    )
+
+    deepcopy_count = 0
+    real_deepcopy = copy.deepcopy
+
+    def counting_deepcopy(obj, memo=None):
+        nonlocal deepcopy_count
+        if isinstance(obj, SchedulingNode):
+            deepcopy_count += 1
+        return real_deepcopy(obj, memo)
+
+    monkeypatch.setattr(copy, "deepcopy", counting_deepcopy)
+    out_nodes, infeasible = ResourceDemandScheduler._try_schedule(
+        ctx, requests, ResourceRequestSource.PENDING_DEMAND
+    )
+    assert not infeasible
+    expected_per_primary = 2 if mode == "co_pack" else 1
+    scheduled_counts = sorted(
+        len(n.get_sched_requests(ResourceRequestSource.PENDING_DEMAND))
+        for n in out_nodes
+    )
+    expected_counts = ([0] * num_hosts if mode == "fallback" else []) + [
+        expected_per_primary
+    ] * num_hosts
+    assert scheduled_counts == expected_counts
+    assert deepcopy_count == num_hosts
+
+
+def test_label_selector_attempt_cache_prefix_and_tier_invalidation():
+    """Verify the attempt cache invalidates whenever a node's accepted top-tier
+    prefix, blocking fallback tier, or unlabeled tier prefix shifts across passes."""
+    in_op = LabelSelectorOperator.LABEL_OPERATOR_IN
+    notin_op = LabelSelectorOperator.LABEL_OPERATOR_NOT_IN
+    scheduler = ResourceDemandScheduler(event_logger)
+
+    def running_inst(nid, ntype, total_cpu, avail_cpu, labels):
+        return make_autoscaler_instance(
+            ray_node=NodeState(
+                ray_node_type_name=ntype,
+                available_resources={"CPU": avail_cpu},
+                total_resources={"CPU": total_cpu},
+                node_id=nid.encode(),
+                labels=labels,
+            ),
+            im_instance=Instance(
+                instance_type=ntype,
+                status=Instance.RAY_RUNNING,
+                instance_id=f"i-{nid}",
+                node_id=nid,
+            ),
+            cloud_instance_id=f"c-{nid}",
+        )
+
+    # 1. Interleaved gang [A, B, A]: n2 (x=1, y=1, 1 CPU) caches scheduling A on pass 1
+    # after n1 (x=1, 3 total / 1 avail CPU) wins A; pass 2 must re-simulate n2 on [B, A]
+    # so n2 takes B and n3 (x=1, 1 CPU) takes the remaining A without spurious scale-up.
+    gang_cfgs = {
+        "nx": NodeTypeConfig(
+            name="nx",
+            resources={"CPU": 3},
+            min_worker_nodes=0,
+            max_worker_nodes=1,
+            labels={"x": "1"},
+        ),
+        "nxy": NodeTypeConfig(
+            name="nxy",
+            resources={"CPU": 1},
+            min_worker_nodes=0,
+            max_worker_nodes=1,
+            labels={"x": "1", "y": "1"},
+        ),
+        "nx1": NodeTypeConfig(
+            name="nx1",
+            resources={"CPU": 1},
+            min_worker_nodes=0,
+            max_worker_nodes=1,
+            labels={"x": "1"},
+        ),
+        "ny_extra": NodeTypeConfig(
+            name="ny_extra",
+            resources={"CPU": 1},
+            min_worker_nodes=0,
+            max_worker_nodes=5,
+            labels={"y": "1"},
+        ),
+    }
+    req_x = ResourceRequestUtil.make(
+        {"CPU": 1}, label_selectors=[[("x", in_op, ["1"])]]
+    )
+    req_y = ResourceRequestUtil.make(
+        {"CPU": 1}, label_selectors=[[("y", in_op, ["1"])]]
+    )
+    for max_num_nodes in (None, 3):
+        reply = scheduler.schedule(
+            sched_request(
+                node_type_configs=gang_cfgs,
+                instances=[
+                    running_inst("n1", "nx", 3, 1, {"x": "1"}),
+                    running_inst("n2", "nxy", 1, 1, {"x": "1", "y": "1"}),
+                    running_inst("n3", "nx1", 1, 1, {"x": "1"}),
+                ],
+                gang_resource_requests=[[req_x, req_y, req_x]],
+                max_num_nodes=max_num_nodes,
+            )
+        )
+        assert _launch_and_terminate(reply)[0] == {}
+        assert not reply.infeasible_gang_resource_requests
+
+    # 2. Prefix multiplicity shift [S0, S0, S1, S1, S0] and cross-tier blocker removal:
+    # verify cached multi-pass _sched_best_node matches uncached simulation exactly.
+    s0 = ResourceRequestUtil.make(
+        {"CPU": 1}, label_selectors=[[("y", notin_op, ["0"])]]
+    )
+    s1 = ResourceRequestUtil.make(
+        {"CPU": 1},
+        label_selectors=[
+            [("y", notin_op, ["0"]), ("z", notin_op, ["1"])],
+            [("y", notin_op, ["1"]), ("z", notin_op, ["1"])],
+        ],
+    )
+    u0 = ResourceRequestUtil.make({"CPU": 1})
+    scenarios = [
+        # Consuming one front S0 turns [S0, S0, S1, S1, S0] into [S0, S1, S1, S0]:
+        # total count(S0) is still 2 and unique/run-length order still starts with
+        # (S0, S1), yet p1 (2 CPU, y=1) must switch from [S0, S0] to [S0, S1] so p2
+        # (y=0) takes the second S1 and p3 (y=1, z=1) takes the trailing S0.
+        (
+            [
+                ("p0", 4, 1, {"y": "1", "z": "1"}),
+                ("p1", 2, 2, {"y": "1"}),
+                ("p2", 1, 1, {"y": "0"}),
+                ("p3", 1, 1, {"y": "1", "z": "1"}),
+            ],
+            [s0, s0, s1, s1, s0],
+        ),
+        # Consuming a fallback blocker on b0 frees spare capacity on primary node b1
+        # so b1 co-packs the unlabeled request u0 positioned earlier in `requests`.
+        (
+            [
+                ("b0", 4, 1, {"x": "0"}),
+                ("b1", 2, 2, {"x": "1"}),
+            ],
+            [
+                u0,
+                ResourceRequestUtil.make(
+                    {"CPU": 1}, label_selectors=[[("x", in_op, ["1"])]]
+                ),
+                ResourceRequestUtil.make(
+                    {"CPU": 1},
+                    label_selectors=[
+                        [("x", in_op, ["0"])],
+                        [("x", in_op, ["1"])],
+                    ],
+                ),
+            ],
+        ),
+    ]
+    for node_specs, reqs in scenarios:
+        cfgs = {
+            nid: NodeTypeConfig(
+                name=nid,
+                resources={"CPU": tot},
+                min_worker_nodes=0,
+                max_worker_nodes=1,
+                labels=lbls,
+            )
+            for nid, tot, _, lbls in node_specs
+        }
+        base_nodes = [
+            SchedulingNode.new(running_inst(nid, nid, tot, av, lbls), cfgs, True)
+            for nid, tot, av, lbls in node_specs
+        ]
+
+        def run_passes(use_cache):
+            ns = copy.deepcopy(base_nodes)
+            rs = list(reqs)
+            attempts = {} if use_cache else None
+            placements = []
+            while rs and ns:
+                best, rs, ns = ResourceDemandScheduler._sched_best_node(
+                    rs, ns, ResourceRequestSource.PENDING_DEMAND, {}, {}, None, attempts
+                )
+                if best is None:
+                    break
+                placements.append(
+                    (
+                        best.ray_node_id,
+                        [
+                            r.SerializeToString(deterministic=True)
+                            for r in best.get_sched_requests(
+                                ResourceRequestSource.PENDING_DEMAND
+                            )
+                        ],
+                    )
+                )
+                if any(
+                    best._can_schedule_one(r, ResourceRequestSource.PENDING_DEMAND)
+                    for r in rs
+                ):
+                    ns.append(best)
+            return placements, [r.SerializeToString(deterministic=True) for r in rs]
+
+        cached = run_passes(True)
+        uncached = run_passes(False)
+        assert cached == uncached
+        assert not cached[1]
 
 
 if __name__ == "__main__":

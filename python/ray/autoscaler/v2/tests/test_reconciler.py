@@ -11,7 +11,11 @@ from unittest.mock import MagicMock
 import pytest
 
 from ray._common.utils import binary_to_hex
-from ray.autoscaler.v2.instance_manager.config import InstanceReconcileConfig, Provider
+from ray.autoscaler.v2.instance_manager.config import (
+    InstanceReconcileConfig,
+    NodeTypeConfig,
+    Provider,
+)
 from ray.autoscaler.v2.instance_manager.instance_manager import InstanceManager
 from ray.autoscaler.v2.instance_manager.instance_storage import InstanceStorage
 from ray.autoscaler.v2.instance_manager.node_provider import (  # noqa
@@ -2509,6 +2513,184 @@ class TestReconciler:
 
         assert instances["i-0"].status == Instance.TERMINATING
         assert instances["i-1"].status == Instance.TERMINATING
+
+    @staticmethod
+    def test_multihost_tpu_launch_batching():
+        """Multi-host TPU groups launch whole replicas so KubeRay floor-division
+        (`num_workers // numOfHosts`) never deadlocks or strands REQUESTED nodes."""
+
+        def _tpu_nt_cfg(name: str, topology: str, pod_type: str, max_w: int):
+            return NodeTypeConfig(
+                name=name,
+                resources={"CPU": 8, "TPU": 4, f"TPU-{pod_type}-head": 1},
+                labels={
+                    "ray.io/accelerator-type": "TPU-V6E",
+                    "ray.io/tpu-topology": topology,
+                    "ray.io/tpu-pod-type": pod_type,
+                },
+                min_worker_nodes=0,
+                max_worker_nodes=max_w,
+            )
+
+        def _run_launch_tick(
+            node_type_configs,
+            queued_ids_by_type,
+            requested_ids_by_type=None,
+            upscaling_speed=1.0,
+            max_concurrent_launches=10,
+        ):
+            storage = InstanceStorage(
+                cluster_id="tpu_launch_test", storage=InMemoryStorage()
+            )
+            sub = MockSubscriber()
+            im = InstanceManager(
+                instance_storage=storage, instance_status_update_subscribers=[sub]
+            )
+            t = 1
+            for nt, ids in queued_ids_by_type.items():
+                for iid in ids:
+                    TestReconciler._add_instances(
+                        storage,
+                        [
+                            create_instance(
+                                iid,
+                                status=Instance.QUEUED,
+                                instance_type=nt,
+                                status_times=[(Instance.QUEUED, t)],
+                            )
+                        ],
+                    )
+                    t += 1
+            for nt, ids in (requested_ids_by_type or {}).items():
+                for iid in ids:
+                    TestReconciler._add_instances(
+                        storage,
+                        [
+                            create_instance(
+                                iid,
+                                status=Instance.REQUESTED,
+                                instance_type=nt,
+                                launch_request_id="in-flight",
+                                status_times=[(Instance.REQUESTED, time.time_ns())],
+                            )
+                        ],
+                    )
+            Reconciler.reconcile(
+                instance_manager=im,
+                scheduler=MockScheduler(),
+                cloud_provider=MagicMock(),
+                cloud_resource_monitor=CloudResourceMonitor(),
+                ray_cluster_resource_state=ClusterResourceState(),
+                non_terminated_cloud_instances={},
+                cloud_provider_errors=[],
+                ray_install_errors=[],
+                autoscaling_config=MockAutoscalingConfig(
+                    configs={
+                        "node_type_configs": node_type_configs,
+                        "upscaling_speed": upscaling_speed,
+                        "max_concurrent_launches": max_concurrent_launches,
+                    }
+                ),
+            )
+            instances, _ = storage.get_instances()
+            return storage, im, sub, instances
+
+        v6e_64 = {"tpu64": _tpu_nt_cfg("tpu64", "8x8", "v6e-64", 32)}
+        v6e_16 = {"tpu16": _tpu_nt_cfg("tpu16", "4x4", "v6e-16", 16)}
+
+        # 16-host v6e-64 slice exceeds default max_concurrent_launches=10: launches
+        # one whole 16-host slice when no launches are currently REQUESTED.
+        _, _, sub, _ = _run_launch_tick(v6e_64, {"tpu64": [f"q{i}" for i in range(16)]})
+        assert [e.instance_id for e in sub.events] == [f"q{i}" for i in range(16)]
+
+        # Negative bounds: max_concurrent_launches=0 launches 0; in-flight REQUESTED
+        # instances leaving < 16 slots wait rather than stranding fractional nodes.
+        _, _, sub0, _ = _run_launch_tick(
+            v6e_64,
+            {"tpu64": [f"q{i}" for i in range(16)]},
+            max_concurrent_launches=0,
+        )
+        assert sub0.events == []
+        _, _, sub_wait, _ = _run_launch_tick(
+            {
+                **v6e_64,
+                "cpu": NodeTypeConfig(
+                    name="cpu",
+                    resources={"CPU": 4},
+                    min_worker_nodes=0,
+                    max_worker_nodes=8,
+                ),
+            },
+            {"tpu64": [f"q{i}" for i in range(16)]},
+            requested_ids_by_type={"cpu": [f"r{i}" for i in range(4)]},
+        )
+        assert sub_wait.events == []
+
+        # 3 x v6e-16 (12 QUEUED) with max_concurrent_launches=10: Tick 1 launches 8
+        # (2 whole replicas, 0 fractional REQUESTED), leaving 4 QUEUED for Tick 2.
+        storage, im, sub1, instances = _run_launch_tick(
+            v6e_16,
+            {"tpu16": [f"q{i}" for i in range(12)]},
+            upscaling_speed=1000.0,
+            max_concurrent_launches=10,
+        )
+        assert len(sub1.events) == 8
+        assert sum(i.status == Instance.QUEUED for i in instances.values()) == 4
+        # Once the 8 REQUESTED pods transition to ALLOCATED on KubeRay, Tick 2
+        # launches the remaining 4-host slice cleanly.
+        cloud_8 = {}
+        for idx, e in enumerate(sub1.events):
+            cid = f"pod-{idx}"
+            cloud_8[cid] = CloudInstance(cid, "tpu16", True, NodeKind.WORKER)
+        sub1.clear()
+        Reconciler.reconcile(
+            instance_manager=im,
+            scheduler=MockScheduler(),
+            cloud_provider=MagicMock(),
+            cloud_resource_monitor=CloudResourceMonitor(),
+            ray_cluster_resource_state=ClusterResourceState(),
+            non_terminated_cloud_instances=cloud_8,
+            cloud_provider_errors=[],
+            ray_install_errors=[],
+            autoscaling_config=MockAutoscalingConfig(
+                configs={
+                    "node_type_configs": v6e_16,
+                    "upscaling_speed": 1000.0,
+                    "max_concurrent_launches": 10,
+                }
+            ),
+        )
+        instances2, _ = storage.get_instances()
+        assert sum(i.status == Instance.ALLOCATED for i in instances2.values()) == 8
+        assert sum(i.status == Instance.REQUESTED for i in instances2.values()) == 4
+        assert sum(i.status == Instance.QUEUED for i in instances2.values()) == 0
+
+        # Conservative mode (upscaling_speed=0) launches a full 4-host slice, not 1.
+        _, _, sub_cons, _ = _run_launch_tick(
+            v6e_16,
+            {"tpu16": [f"q{i}" for i in range(4)]},
+            upscaling_speed=0.0,
+            max_concurrent_launches=10,
+        )
+        assert len(sub_cons.events) == 4
+
+        # Non-multiple backfill remainder (1 missing host + 1 new 4-host replica = 5)
+        # preserves the 1-host backfill under tight cap and all 5 under ample cap.
+        _, _, sub_bf1, _ = _run_launch_tick(
+            v6e_16,
+            {"tpu16": [f"q{i}" for i in range(5)]},
+            requested_ids_by_type={"tpu16": ["r0"]},
+            upscaling_speed=10.0,
+            max_concurrent_launches=4,
+        )
+        assert [e.instance_id for e in sub_bf1.events] == ["q0"]
+        _, _, sub_bf5, _ = _run_launch_tick(
+            v6e_16,
+            {"tpu16": [f"q{i}" for i in range(5)]},
+            upscaling_speed=10.0,
+            max_concurrent_launches=10,
+        )
+        assert len(sub_bf5.events) == 5
 
 
 if __name__ == "__main__":

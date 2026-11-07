@@ -6,6 +6,7 @@ from collections import defaultdict
 from typing import Dict, List, Optional, Set, Tuple
 
 from ray._common.utils import binary_to_hex
+from ray._private.accelerators.tpu import TPUAcceleratorManager
 from ray.autoscaler.v2.instance_manager.cloud_providers.kuberay.cloud_provider import (
     KubeRayProvider,
 )
@@ -13,6 +14,7 @@ from ray.autoscaler.v2.instance_manager.common import InstanceUtil
 from ray.autoscaler.v2.instance_manager.config import (
     AutoscalingConfig,
     InstanceReconcileConfig,
+    NodeTypeConfig,
     Provider,
 )
 from ray.autoscaler.v2.instance_manager.instance_manager import InstanceManager
@@ -910,12 +912,26 @@ class Reconciler:
             # No QUEUED instances
             return
 
+        node_type_configs = autoscaling_config.get_node_type_configs() or {}
+        replica_sizes = {
+            node_type: size
+            for node_type, cfg in node_type_configs.items()
+            if isinstance(cfg, NodeTypeConfig)
+            and (
+                size := TPUAcceleratorManager.get_node_group_num_hosts(
+                    cfg.labels, cfg.resources
+                )
+            )
+            is not None
+            and size > 1
+        }
         to_launch = Reconciler._compute_to_launch(
             queued_instances,
             requested_instances,
             running_instances,
             autoscaling_config.get_upscaling_speed(),
             autoscaling_config.get_max_concurrent_launches(),
+            replica_sizes=replica_sizes,
         )
 
         # Transition the instances to REQUESTED for instance launcher to
@@ -951,6 +967,7 @@ class Reconciler:
         running_instances: List[IMInstance],
         upscaling_speed: float,
         max_concurrent_launches: int,
+        replica_sizes: Optional[Dict[NodeType, int]] = None,
     ) -> Dict[NodeType, List[IMInstance]]:
         def _group_by_type(instances):
             instances_by_type = defaultdict(list)
@@ -978,22 +995,39 @@ class Reconciler:
             running_instances_for_type = running_instances_by_type.get(
                 instance_type, []
             )
+            size = (replica_sizes or {}).get(instance_type, 1)
 
             # Enforce the max allowed pending nodes based on current running nodes
             num_desired_to_upscale = max(
                 1,
                 math.ceil(upscaling_speed * max(len(running_instances_for_type), 1)),
             )
-
             # Enforce global limit, at most we can launch `max_concurrent_launches`
-            num_to_launch = min(
-                max_concurrent_launches - total_num_requested_to_launch,
-                num_desired_to_upscale,
-            )
+            available = max_concurrent_launches - total_num_requested_to_launch
+            if size > 1:
+                num_desired_to_upscale = max(
+                    size, ((num_desired_to_upscale + size - 1) // size) * size
+                )
+                if total_num_requested_to_launch == 0 and max_concurrent_launches > 0:
+                    # Allow at least one whole multi-host slice when numOfHosts
+                    # exceeds max_concurrent_launches (e.g. v6e-64 has 16 hosts).
+                    available = max(available, size)
 
             # Cap both ends 0 <= num_to_launch <= num_queued
-            num_to_launch = max(0, num_to_launch)
-            num_to_launch = min(len(queued_instances_for_type), num_to_launch)
+            num_to_launch = min(
+                len(queued_instances_for_type),
+                max(0, min(available, num_desired_to_upscale)),
+            )
+            if size > 1 and 0 < num_to_launch < len(queued_instances_for_type):
+                # KubeRay computes replicas via num_workers // numOfHosts; preserve
+                # any non-multiple backfill remainder plus whole replicas so partial
+                # batches never strand REQUESTED instances.
+                backfill = len(queued_instances_for_type) % size
+                num_to_launch = (
+                    backfill + ((num_to_launch - backfill) // size) * size
+                    if num_to_launch >= backfill
+                    else 0
+                )
 
             to_launch = sorted(queued_instances_for_type, key=_sort_by_earliest_queued)[
                 :num_to_launch
