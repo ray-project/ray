@@ -39,7 +39,7 @@ from ray.data._internal.execution.interfaces.ref_bundle import BlockEntry, RefBu
 from ray.data._internal.execution.interfaces.task_context import TaskContext
 from ray.data._internal.execution.operators.actor_pool_map_operator import (
     ActorPoolMapOperator,
-    _actor_task_retried_exceptions,
+    _actor_task_rerun_policy,
     _ActorPool,
     _MapWorker,
 )
@@ -1978,17 +1978,17 @@ def test_merge_ray_remote_args_op_wins_on_collision(restore_data_context):
 
 
 @pytest.mark.parametrize(
-    "actor_args, expected",
+    "actor_args, reruns",
     [
         # By default the operator gives actors unlimited task retries.
-        ({}, [ValueError]),
+        ({}, True),
         # With ``max_restarts=0`` it leaves ``max_task_retries`` at Ray's 0.
         ({"max_restarts": 0}, False),
         ({"max_task_retries": 0}, False),
     ],
 )
-def test_actor_task_retried_exceptions_follow_max_task_retries(
-    restore_data_context, actor_args, expected
+def test_actor_task_rerun_policy_follows_max_task_retries(
+    restore_data_context, actor_args, reruns
 ):
     """An actor task counts as rerun on ``actor_task_retry_on_errors`` only when
     its actor's ``max_task_retries`` lets Ray rerun it, so a task that won't
@@ -2000,12 +2000,9 @@ def test_actor_task_retried_exceptions_follow_max_task_retries(
         None, context
     )
 
-    retried = _actor_task_retried_exceptions(task_args, actor_args)
+    policy = _actor_task_rerun_policy(task_args, actor_args)
 
-    if expected is False:
-        assert retried is False
-    else:
-        assert ValueError in retried
+    assert policy.may_rerun(ValueError("bad input")) is reruns
 
 
 if __name__ == "__main__":

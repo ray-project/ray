@@ -19,7 +19,10 @@ from typing import (
 
 from ray._common.utils import env_integer
 from ray.data._internal.block_batching.block_batching import batch_blocks
-from ray.data._internal.execution.interfaces.task_context import TaskContext
+from ray.data._internal.execution.interfaces.task_context import (
+    RerunPolicy,
+    TaskContext,
+)
 from ray.data._internal.output_buffer import BlockOutputBuffer, OutputBlockSizeOption
 from ray.data.block import (
     BatchFormat,
@@ -763,6 +766,13 @@ class BatchMapTransformFn(MapTransformFn):
         self._target_batch_size_bytes = target_batch_size_bytes
 
     def _pre_process(self, blocks: Iterable[Block]) -> Iterable[MapTransformFnData]:
+        # An upstream stage of a fused task may raise an error the task skips.
+        # The batcher then sees the end of its input, so the rows it holds come
+        # out as a short batch before the error is raised.
+        input_blocks = _InputEndingAtSkippedError(blocks)
+        return _ErrorRaisedAtEnd(self._batches(input_blocks), input_blocks)
+
+    def _batches(self, blocks: Iterable[Block]) -> Iterable[MapTransformFnData]:
         # TODO make batch-udf zero-copy by default
         if self._batch_size == "auto":
             batch_size, blocks = _compute_auto_batch_size(
@@ -839,7 +849,7 @@ class _BlockShapingIterator(Iterator[Block]):
 
     When the results raise an error the job skips, the rows already buffered
     come out as a last block before the error, so the skipped task keeps the
-    output it produced (see ``_emit_rows_before_error``).
+    output it produced (see ``_should_emit_buffered_rows``).
     """
 
     def __init__(
@@ -888,66 +898,76 @@ class _BlockShapingIterator(Iterator[Block]):
             except Exception as e:
                 if not self._buffer.has_buffered_rows():
                     raise
-                if not _emit_rows_before_error(e):
+                if not _should_emit_buffered_rows(e):
                     raise
                 self._error = e
                 self._buffer.finalize()
                 self._finalized = True
 
 
-def _emit_rows_before_error(error: Exception) -> bool:
+def _should_emit_buffered_rows(error: Exception) -> bool:
     """Whether a map task that raised ``error`` first emits its buffered rows.
 
     Only when the job skips the error (``DataContext.max_errored_blocks`` is not
-    0) and the task cannot run again. A rerun produces its blocks from the start
-    and skips as many as were already emitted, so a last block cut short at the
-    error would hide rows of the rerun's block in its place. ``_map_task``
-    reruns on an error that ``retried_map_errors`` matches while it has attempts
-    left. Ray reruns a task, while its retries allow, on an error its
-    ``retry_exceptions`` names. Ray Data adds ``RaySystemError`` to them, and
-    for an actor task they come from ``actor_task_retry_on_errors``.
+    0) and the task does not run again. A rerun produces its blocks from the
+    start and skips as many as were already emitted, so a last block cut short
+    at the error would hide rows of the rerun's block in its place. The task's
+    ``RerunPolicy`` says when it runs again.
     """
     from ray.data.context import DataContext
 
-    may_rerun = _map_task_reruns_on(error) or _ray_reruns_on(error)
-    return DataContext.get_current().max_errored_blocks != 0 and not may_rerun
-
-
-def _ray_reruns_on(error: Exception) -> bool:
-    """Whether Ray reruns the running task on ``error``.
-
-    Checks ``error`` and its causes against the task's ``retry_exceptions``, so
-    an error a transform wraps still counts.
-    """
-    task_context = TaskContext.get_current()
-    retried = task_context.ray_retried_exceptions if task_context else False
-    if isinstance(retried, bool):
-        return retried
-    cause: Optional[BaseException] = error
-    while cause is not None:
-        if isinstance(cause, tuple(retried)):
-            return True
-        cause = cause.__cause__
-    return False
-
-
-def _map_task_reruns_on(error: Exception) -> bool:
-    """Whether ``_map_task`` reruns the running attempt on ``error``.
-
-    It does while attempts are left and the error's message, with its causes,
-    matches a ``retried_map_errors`` pattern, as ``iterate_with_retry`` checks
-    it. ``None`` patterns match any error.
-    """
-    from ray._common.retry import format_exception, matches_error
-
-    task_context = TaskContext.get_current()
-    if task_context is None or task_context.map_retries_left <= 0:
+    if DataContext.get_current().max_errored_blocks == 0:
         return False
-    patterns = task_context.map_retried_errors
-    if patterns is None:
-        return True
-    text = format_exception(error, include_cause=True)
-    return any(matches_error(pattern, text) for pattern in patterns)
+    task_context = TaskContext.get_current()
+    policy = task_context.rerun_policy if task_context else RerunPolicy()
+    return not policy.may_rerun(error)
+
+
+class _InputEndingAtSkippedError(Iterator[Any]):
+    """Input that ends where an upstream stage raises an error the task skips.
+
+    The error is held, so a stage that buffers this input, such as a batcher,
+    hands on the rows it holds as at the end of its input.
+    ``_ErrorRaisedAtEnd`` then raises the held error.
+    """
+
+    def __init__(self, items: Iterable[Any]):
+        self._items = iter(items)
+        self.error: Optional[Exception] = None
+
+    def __iter__(self) -> "_InputEndingAtSkippedError":
+        return self
+
+    def __next__(self) -> Any:
+        try:
+            return next(self._items)
+        except StopIteration:
+            raise
+        except Exception as e:
+            if not _should_emit_buffered_rows(e):
+                raise
+            self.error = e
+        raise StopIteration
+
+
+class _ErrorRaisedAtEnd(Iterator[Any]):
+    """Passes ``items`` through, then raises the error ``source`` held, if any."""
+
+    def __init__(self, items: Iterable[Any], source: _InputEndingAtSkippedError):
+        self._items = iter(items)
+        self._source = source
+
+    def __iter__(self) -> "_ErrorRaisedAtEnd":
+        return self
+
+    def __next__(self) -> Any:
+        try:
+            return next(self._items)
+        except StopIteration:
+            if self._source.error is None:
+                raise
+        error, self._source.error = self._source.error, None
+        raise error
 
 
 class _RowBasedIterator(Iterator[Row]):

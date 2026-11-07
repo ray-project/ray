@@ -860,9 +860,12 @@ class DataContext:
         max_errored_blocks: Max number of blocks that are allowed to have errors,
             unlimited if negative. This option allows application-level exceptions in
             block processing tasks. These exceptions may be caused by UDFs (e.g., due to
-            corrupted data samples) or IO errors. Data in the failed blocks are dropped.
-            This option can be useful to prevent a long-running job from failing due to
-            a small number of bad blocks.
+            corrupted data samples) or IO errors. A failed map task keeps the rows it
+            produced before the error and drops the rest of its input. While the
+            task can still be rerun (``retried_map_errors``, or Ray's ``max_retries``
+            with ``retry_exceptions``), a failed attempt emits no rows, so the rerun
+            produces each row once. This option can be useful to prevent a
+            long-running job from failing due to a small number of bad blocks.
         log_internal_stack_trace: Whether to write the full Ray Data/Ray Core
             internal code stack frames to the Ray Data log file when logging a
             user-code error. These internal frames are always omitted from

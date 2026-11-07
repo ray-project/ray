@@ -1,7 +1,18 @@
 import contextlib
+import dataclasses
 import threading
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any, Dict, Iterator, List, Optional, Union
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Dict,
+    Iterator,
+    Optional,
+    Sequence,
+    Tuple,
+    Type,
+    Union,
+)
 
 if TYPE_CHECKING:
     from ray.data._internal.execution.operators.map_transformer import MapTransformer
@@ -9,6 +20,78 @@ if TYPE_CHECKING:
 
 
 _thread_local = threading.local()
+
+
+@dataclass(frozen=True)
+class RerunPolicy:
+    """The errors on which a map task runs again after it raises.
+
+    A rerun produces the task's blocks from the start, so a task emits the rows
+    it buffered before an error the job skips only when no rerun follows. The
+    default reruns on any error: a task emits partial output only when its
+    operator states how Ray retries it.
+    """
+
+    # Whether Ray reruns the task on any error, and otherwise the exception
+    # types it reruns on, matched against the error and its causes.
+    ray_reruns_any_error: bool = True
+    ray_retried_types: Tuple[Type[BaseException], ...] = ()
+
+    # How many more attempts ``_map_task`` makes, and the ``retried_map_errors``
+    # patterns it makes them on. ``None`` matches any error, as for
+    # ``iterate_with_retry``.
+    map_attempts_left: int = 0
+    map_retried_patterns: Optional[Tuple[str, ...]] = ()
+
+    @classmethod
+    def from_retry_exceptions(
+        cls, retry_exceptions: Union[bool, Sequence[Type[BaseException]]]
+    ) -> "RerunPolicy":
+        """The policy of a task Ray reruns on ``retry_exceptions``.
+
+        ``retry_exceptions`` takes the form of the remote arg: ``True`` for any
+        error, ``False`` for none, or a list of exception types.
+        """
+        if isinstance(retry_exceptions, bool):
+            return cls(ray_reruns_any_error=retry_exceptions)
+        return cls(
+            ray_reruns_any_error=False, ray_retried_types=tuple(retry_exceptions)
+        )
+
+    def with_map_retries(
+        self, attempts_left: int, patterns: Optional[Sequence[str]]
+    ) -> "RerunPolicy":
+        """This policy for an attempt of ``_map_task`` with ``attempts_left``."""
+        return dataclasses.replace(
+            self,
+            map_attempts_left=attempts_left,
+            map_retried_patterns=None if patterns is None else tuple(patterns),
+        )
+
+    def may_rerun(self, error: Exception) -> bool:
+        """Whether Ray or ``_map_task`` runs the task again after ``error``."""
+        return self._ray_reruns_on(error) or self._map_task_reruns_on(error)
+
+    def _ray_reruns_on(self, error: Exception) -> bool:
+        if self.ray_reruns_any_error:
+            return True
+        # A transform may wrap the error, so its causes count too.
+        cause: Optional[BaseException] = error
+        while cause is not None:
+            if isinstance(cause, self.ray_retried_types):
+                return True
+            cause = cause.__cause__
+        return False
+
+    def _map_task_reruns_on(self, error: Exception) -> bool:
+        # Matched as ``_map_task`` matches it: the message with its causes.
+        from ray._common.retry import format_exception
+        from ray.data._internal.util import is_retryable_error
+
+        if self.map_attempts_left <= 0:
+            return False
+        error_str = format_exception(error, include_cause=True)
+        return is_retryable_error(error_str, self.map_retried_patterns)
 
 
 @dataclass
@@ -47,15 +130,9 @@ class TaskContext:
     # Override of the target max-block-size for the task
     target_max_block_size_override: Optional[int] = None
 
-    # The exceptions Ray reruns this task on: its ``retry_exceptions`` remote
-    # arg, or ``False`` when ``max_retries`` is 0. ``True`` means any exception.
-    ray_retried_exceptions: Union[bool, List[type]] = False
-
-    # Set by ``_map_task`` for each attempt: how many more times it reruns the
-    # transform, and the ``retried_map_errors`` patterns it reruns on (``None``
-    # means any error).
-    map_retries_left: int = 0
-    map_retried_errors: Optional[List[str]] = field(default_factory=list)
+    # The errors on which this task runs again. A map operator sets Ray's part
+    # and ``_map_task`` its own part for each attempt.
+    rerun_policy: RerunPolicy = field(default_factory=RerunPolicy)
 
     # Additional keyword arguments passed to the task.
     kwargs: Dict[str, Any] = field(default_factory=dict)

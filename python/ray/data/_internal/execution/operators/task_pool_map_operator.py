@@ -1,6 +1,6 @@
 import copy
 import warnings
-from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Tuple, Union
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Tuple
 
 if TYPE_CHECKING:
     import pyarrow as pa
@@ -19,6 +19,7 @@ from ray.data._internal.execution.interfaces import (
     TaskContext,
     task_resource_dict,
 )
+from ray.data._internal.execution.interfaces.task_context import RerunPolicy
 from ray.data._internal.execution.operators.map_operator import (
     MapOperator,
     _map_task,
@@ -192,7 +193,7 @@ class TaskPoolMapOperator(MapOperator, ReportsExtraResourceUsage):
             task_idx=self._next_data_task_idx,
             op_name=self.name,
             target_max_block_size_override=self.target_max_block_size_override,
-            ray_retried_exceptions=_ray_retried_exceptions(dynamic_ray_remote_args),
+            rerun_policy=_task_rerun_policy(dynamic_ray_remote_args),
         )
         dynamic_ray_remote_args["name"] = self.name
         logical_usage = ExecutionResources.from_resource_dict(dynamic_ray_remote_args)
@@ -337,17 +338,17 @@ class TaskPoolMapOperator(MapOperator, ReportsExtraResourceUsage):
             )
 
 
-def _ray_retried_exceptions(ray_remote_args: Dict[str, Any]) -> Union[bool, List[type]]:
-    """The exceptions Ray reruns a task with ``ray_remote_args`` on.
+def _task_rerun_policy(ray_remote_args: Dict[str, Any]) -> RerunPolicy:
+    """The errors on which Ray reruns a task with ``ray_remote_args``.
 
     ``cached_remote_fn`` defaults ``max_retries`` to -1 (unlimited); with 0, Ray
     reruns on nothing. Otherwise it also reruns on ``RaySystemError``, which
     ``cached_remote_fn`` adds to ``retry_exceptions``.
     """
     if ray_remote_args.get("max_retries", -1) == 0:
-        return False
+        return RerunPolicy.from_retry_exceptions(False)
     retried = ray_remote_args.get("retry_exceptions", False)
     # A copy, since adding ``RaySystemError`` appends to a list in place.
     args = {"retry_exceptions": list(retried) if isinstance(retried, list) else retried}
     _add_system_error_to_retry_exceptions(args)
-    return args["retry_exceptions"]
+    return RerunPolicy.from_retry_exceptions(args["retry_exceptions"])
