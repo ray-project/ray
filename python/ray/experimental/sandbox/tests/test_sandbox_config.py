@@ -280,5 +280,20 @@ def test_parse_memory_bytes():
         parse_memory_bytes("invalid_format")
 
 
+def test_default_public_dns_reads_the_node_override(monkeypatch):
+    from ray.experimental.sandbox.config import DEFAULT_PUBLIC_DNS, default_public_dns
+
+    monkeypatch.delenv("RAY_SANDBOX_DEFAULT_DNS", raising=False)
+    assert default_public_dns() == DEFAULT_PUBLIC_DNS
+    monkeypatch.setenv("RAY_SANDBOX_DEFAULT_DNS", "  ")
+    assert default_public_dns() == DEFAULT_PUBLIC_DNS
+    monkeypatch.setenv("RAY_SANDBOX_DEFAULT_DNS", "10.43.0.10,fd00::53")
+    assert default_public_dns() == ("10.43.0.10", "fd00::53")
+    # A typo fails every public create rather than leaving DNS broken.
+    monkeypatch.setenv("RAY_SANDBOX_DEFAULT_DNS", "10.43.0.10,dns.internal")
+    with pytest.raises(ValueError, match="dns.internal"):
+        default_public_dns()
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))

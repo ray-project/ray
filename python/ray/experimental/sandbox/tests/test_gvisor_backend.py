@@ -1780,6 +1780,8 @@ def test_render_egress_ruleset_empty_allowlist_keeps_only_dns():
 def test_write_egress_ruleset_defaults_to_public_dns_and_adds_the_guard(
     tmp_path, monkeypatch
 ):
+    # The built-in resolvers, whatever this node sets.
+    monkeypatch.delenv("RAY_SANDBOX_DEFAULT_DNS", raising=False)
     monkeypatch.setenv("KUBERNETES_SERVICE_HOST", "10.96.0.1")
     path = _write_egress_ruleset(str(tmp_path), ["10.0.0.0/8"], None)
     assert path == str(tmp_path / "egress.nft")
@@ -1791,6 +1793,17 @@ def test_write_egress_ruleset_defaults_to_public_dns_and_adds_the_guard(
     assert "10.96.0.1/32" in always_denied and always_denied.endswith(" drop")
     # Written atomically: no temp file remains.
     assert [p.name for p in tmp_path.iterdir()] == ["egress.nft"]
+
+
+def test_write_egress_ruleset_allows_the_node_default_resolvers(tmp_path, monkeypatch):
+    """The egress filter lets DNS reach the resolvers RAY_SANDBOX_DEFAULT_DNS
+    names, and no longer the public ones."""
+    monkeypatch.setenv("RAY_SANDBOX_DEFAULT_DNS", "103.247.36.36")
+    _write_egress_ruleset(str(tmp_path), ["internet"], None)
+    text = (tmp_path / "egress.nft").read_text()
+    assert "ip daddr 103.247.36.36 udp dport 53 accept" in text
+    for server in DEFAULT_PUBLIC_DNS:
+        assert f"ip daddr {server} udp dport 53 accept" not in text
 
 
 def test_write_egress_ruleset_writes_nothing_with_a_bad_denylist(tmp_path, monkeypatch):
