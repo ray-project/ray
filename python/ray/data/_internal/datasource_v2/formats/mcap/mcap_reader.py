@@ -23,7 +23,17 @@ import itertools
 import logging
 from dataclasses import dataclass
 from functools import partial
-from typing import TYPE_CHECKING, Any, Iterator, List, Optional, Sequence, Set
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Dict,
+    Iterator,
+    List,
+    Optional,
+    Sequence,
+    Set,
+    Tuple,
+)
 
 import pyarrow as pa
 from pyarrow.fs import FileSystem, LocalFileSystem
@@ -35,6 +45,7 @@ from ray.data._internal.datasource_v2.formats.mcap.mcap_chunks import (
 )
 from ray.data._internal.datasource_v2.formats.mcap.mcap_io import (
     buffered,
+    is_corrupt_data_error,
     parse_summary_records,
     read_summary_from,
 )
@@ -60,6 +71,7 @@ from ray.util.annotations import DeveloperAPI
 from ray.util.debug import log_once
 
 if TYPE_CHECKING:
+    from mcap.records import ChunkIndex
     from mcap.summary import Summary
 
 logger = logging.getLogger(__name__)
@@ -129,39 +141,90 @@ class MCAPReader(Reader[FileManifest]):
         Each row is read on its own, in manifest order, so a path listed twice
         is read twice. With ``limit``, reading stops at that many rows: no later
         message is added to a table and no later chunk or file is read.
+
+        When ``DataContext.max_errored_blocks`` lets errors be skipped, a
+        corrupt chunk costs only itself: the reader skips it and reads the
+        file's other chunks. A file whose data does not decode as a whole does
+        not stop the task's other files. Once they are read, one error names
+        every file and chunk that is corrupt, so the task counts once against
+        the budget. Any other error, such as a failed read, raises at once, so
+        the task's retry settings see it. Without skipping, the first failure
+        fails the task at once.
         """
         from ray.data.context import DataContext
 
         if len(input_split) == 0:
             return
-        retried_io_errors = DataContext.get_current().retried_io_errors
+        skip_corrupt = DataContext.get_current().max_errored_blocks != 0
         remaining = self._limit
+        failures: List[Tuple[str, Exception]] = []
         for owned in _owned_files(input_split):
             if remaining is not None and remaining <= 0:
-                return
-            tables = iterate_with_retry(
-                partial(self._read_file, owned, remaining),
-                f"read MCAP file {owned.path}",
-                match=retried_io_errors,
-            )
-            for table in tables:
+                break
+            for table in self._read_owned_file(
+                owned, remaining, skip_corrupt, failures
+            ):
                 if remaining is not None:
                     remaining -= table.num_rows
                 yield table
+        if failures:
+            raise _read_error(failures)
+
+    def _read_owned_file(
+        self,
+        owned: "_OwnedFile",
+        limit: Optional[int],
+        skip_corrupt: bool,
+        failures: List[Tuple[str, Exception]],
+    ) -> Iterator[pa.Table]:
+        """Yield the tables of one file, retrying as ``retried_io_errors`` allows.
+
+        With ``skip_corrupt``, the file's corrupt data is appended to
+        ``failures`` rather than raised: its skipped chunks, or its own error
+        when it does not decode as a whole (``is_corrupt_data_error``).
+        """
+        from ray.data.context import DataContext
+
+        # The chunks skipped as corrupt, by offset. Each attempt starts it
+        # afresh, so it holds the last attempt's.
+        corrupt: Optional[Dict[int, Exception]] = {} if skip_corrupt else None
+        tables = iterate_with_retry(
+            partial(self._read_file, owned, limit, corrupt),
+            f"read MCAP file {owned.path}",
+            match=DataContext.get_current().retried_io_errors,
+        )
+        try:
+            yield from tables
+        except Exception as e:
+            if not skip_corrupt or not is_corrupt_data_error(e):
+                raise
+            failures.append((owned.path, e))
+            return
+        if corrupt:
+            failures.append((owned.path, _corrupt_chunks_error(owned.path, corrupt)))
 
     # -- one file ----------------------------------------------------------
 
     def _read_file(
-        self, owned: "_OwnedFile", limit: Optional[int]
+        self,
+        owned: "_OwnedFile",
+        limit: Optional[int],
+        corrupt: Optional[Dict[int, Exception]] = None,
     ) -> Iterator[pa.Table]:
         """Yield the tables of one file, limited to the chunks it owns.
 
         ``owned.offsets`` is ``None`` for a whole-file row, which means every
         chunk. A file without a chunk index is scanned linearly, through a read
         buffer of ``DataContext.streaming_read_buffer_size`` bytes. At most
-        ``limit`` rows are yielded.
+        ``limit`` rows are yielded. With ``corrupt``, a chunk that cannot be
+        decoded is recorded there by offset and skipped; a scanned file has no
+        chunk boundaries to skip to, so it still fails whole. A retry reads the
+        file from its start, so ``corrupt`` is cleared first.
         """
         from ray.data.context import DataContext
+
+        if corrupt is not None:
+            corrupt.clear()
 
         path, offsets = owned.path, owned.offsets
         filesystem = self._filesystem or LocalFileSystem()
@@ -183,7 +246,14 @@ class MCAPReader(Reader[FileManifest]):
                 )
             else:
                 messages = self._message_reader.iter_chunks(
-                    f, path, summary, offsets, file_summary
+                    f,
+                    path,
+                    summary,
+                    offsets,
+                    file_summary,
+                    on_corrupt=None
+                    if corrupt is None
+                    else partial(_record_corrupt_chunk, corrupt),
                 )
             yield from self._tables(itertools.islice(messages, limit), path, offsets)
 
@@ -320,6 +390,50 @@ class MCAPReader(Reader[FileManifest]):
             if idx != -1 and self._schema.field(idx).type != pa.string():
                 array = array.cast(self._schema.field(idx).type)
         return array
+
+
+def _record_corrupt_chunk(
+    corrupt: Dict[int, Exception], chunk_index: "ChunkIndex", error: Exception
+) -> None:
+    """Keep the first error of each chunk a read skips as corrupt."""
+    corrupt.setdefault(chunk_index.chunk_start_offset, error)
+
+
+def _corrupt_chunks_error(path: str, corrupt: Dict[int, Exception]) -> ValueError:
+    """The error for the chunks of ``path`` that a read skipped as corrupt."""
+    offsets = sorted(corrupt)
+    first = corrupt[offsets[0]]
+    where = "chunk at byte offset" if len(offsets) == 1 else "chunks at byte offsets"
+    error = ValueError(
+        f"Skipped {len(offsets)} corrupt {where} "
+        f"{', '.join(str(offset) for offset in offsets)} of MCAP file {path!r}: "
+        f"{type(first).__name__}: {_first_line(first)}"
+    )
+    error.__cause__ = first
+    return error
+
+
+def _read_error(failures: List[Tuple[str, Exception]]) -> Exception:
+    """The error for the files whose data a task found corrupt.
+
+    A single failure is its own error, whose message already names the file.
+    Several become one ``ValueError`` naming each file, caused by the first.
+    Every failure is corruption, so no rerun would read any of them.
+    """
+    if len(failures) == 1:
+        return failures[0][1]
+    lines = [f"{path}: {type(e).__name__}: {_first_line(e)}" for path, e in failures]
+    error = ValueError(
+        f"{len(failures)} MCAP files of this read task could not be read in full:\n"
+        + "\n".join(lines)
+    )
+    error.__cause__ = failures[0][1]
+    return error
+
+
+def _first_line(error: Exception) -> str:
+    """The first non-empty line of ``error``'s message."""
+    return next((line for line in str(error).splitlines() if line.strip()), "")
 
 
 @dataclass(frozen=True)

@@ -9,7 +9,7 @@ chunk.
 """
 
 import heapq
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -25,6 +25,8 @@ from typing import (
 
 from ray.data._internal.datasource_v2.formats.mcap.mcap_io import (
     ChunkReads,
+    OnCorrupt,
+    is_corrupt_data_error,
     read_chunk,
     read_chunks,
 )
@@ -35,7 +37,7 @@ from ray.data._internal.datasource_v2.formats.mcap.mcap_summary import (
 )
 
 if TYPE_CHECKING:
-    from mcap.records import Channel, Chunk, ChunkIndex, Message, Schema
+    from mcap.records import Channel, Chunk, ChunkIndex, McapRecord, Message, Schema
     from mcap.summary import Summary
 
 # One selected message as the reader sees it: its schema (``None`` for a
@@ -62,26 +64,48 @@ class _Declared:
     a channel declared only in an earlier chunk serves the later ones.
     ``scanned`` holds the offsets of the chunks already read back for records.
     ``file_summary`` returns the file's whole summary, whose chunk indexes say
-    where to read back.
+    where to read back. With ``skip_corrupt``, a chunk read back that does not
+    decode is skipped and its offset kept in ``undecodable``.
     """
 
     channels: Dict[int, "Channel"]
     schemas: Dict[int, "Schema"]
     scanned: Set[int]
     file_summary: Callable[[], "Summary"]
+    skip_corrupt: bool = False
+    undecodable: List[int] = field(default_factory=list)
+
+    def undecodable_note(self) -> str:
+        """A sentence naming the chunks read back that did not decode, if any."""
+        if not self.undecodable:
+            return ""
+        offsets = ", ".join(str(offset) for offset in self.undecodable)
+        if len(self.undecodable) == 1:
+            return f" The chunk at byte offset {offsets}, read back for it, is corrupt."
+        return f" The chunks at byte offsets {offsets}, read back for it, are corrupt."
 
 
 def _scan_declarations(f: Any, chunk_index: "ChunkIndex", declared: _Declared) -> None:
     """Add the channel and schema records of one chunk to ``declared``.
 
     A record already in ``declared`` is not replaced. The chunk is marked as
-    scanned.
+    scanned. With ``declared.skip_corrupt``, a chunk that does not decode adds
+    nothing and is noted in ``declared.undecodable``, so the walk goes on to the
+    next earlier chunk. It is not reported as skipped: the task that owns it
+    does that. Any other error, and every error without ``skip_corrupt``, raises.
     """
     from mcap.records import Channel, Schema
     from mcap.stream_reader import breakup_chunk
 
     declared.scanned.add(chunk_index.chunk_start_offset)
-    for record in breakup_chunk(read_chunk(f, chunk_index)):
+    try:
+        records = breakup_chunk(read_chunk(f, chunk_index))
+    except Exception as e:
+        if not declared.skip_corrupt or not is_corrupt_data_error(e):
+            raise
+        declared.undecodable.append(chunk_index.chunk_start_offset)
+        return
+    for record in records:
         if isinstance(record, Channel):
             declared.channels.setdefault(record.id, record)
         elif isinstance(record, Schema):
@@ -113,6 +137,7 @@ class SelectedMessageReader:
         summary: "Summary",
         offsets: Optional[Set[int]],
         file_summary: Optional[Callable[[], "Summary"]] = None,
+        on_corrupt: Optional[OnCorrupt] = None,
     ) -> Iterator[_Selected]:
         """Yield the selected messages of the owned chunks of an indexed file.
 
@@ -120,6 +145,10 @@ class SelectedMessageReader:
         ``log_time_order``. ``summary`` may index only the owned chunks, as a
         read task's summary does (``mcap_task_summary``). Then ``file_summary``
         returns the whole summary, which reading back a declaration needs.
+
+        With ``on_corrupt``, a chunk that cannot be decoded is handed to it and
+        skipped, so the file's other chunks are still read. An error reading
+        ``f`` still raises.
         """
         selected = self._selection.selected_channel_ids(
             summary.channels, summary.schemas
@@ -134,15 +163,17 @@ class SelectedMessageReader:
             dict(summary.schemas),
             set(),
             file_summary or (lambda: summary),
+            skip_corrupt=on_corrupt is not None,
         )
         if not self._log_time_order:
-            for chunk_index, chunk in read_chunks(f, chunk_indexes, self._chunk_reads):
-                yield from self._chunk_messages(
-                    f, path, summary, chunk_index, chunk, selected, declared
+            chunks = read_chunks(f, chunk_indexes, self._chunk_reads, on_corrupt)
+            for chunk_index, chunk in chunks:
+                yield from self._decoded_messages(
+                    f, path, summary, chunk_index, chunk, selected, declared, on_corrupt
                 )
             return
         yield from self._merge_chunks_by_log_time(
-            f, path, summary, chunk_indexes, selected, declared
+            f, path, summary, chunk_indexes, selected, declared, on_corrupt
         )
 
     def candidate_chunks(
@@ -176,6 +207,7 @@ class SelectedMessageReader:
         chunk_indexes: List["ChunkIndex"],
         selected: Set[int],
         declared: _Declared,
+        on_corrupt: Optional[OnCorrupt],
     ) -> Iterator[_Selected]:
         """Yield the selected messages of the chunks in log-time order.
 
@@ -194,14 +226,14 @@ class SelectedMessageReader:
         heapq.heapify(heap)
         # Chunks leave the heap in ``_merge_order``, so they are read in it.
         chunks = read_chunks(
-            f, sorted(chunk_indexes, key=_merge_order), self._chunk_reads
+            f, sorted(chunk_indexes, key=_merge_order), self._chunk_reads, on_corrupt
         )
         while heap:
             _, kind, offset, _, item = heapq.heappop(heap)
             if kind == 0:
                 chunk_index, chunk = next(chunks)
                 assert chunk_index.chunk_start_offset == offset
-                for index, selected_message in self._chunk_messages(
+                for index, selected_message in self._decoded_messages(
                     f,
                     path,
                     summary,
@@ -209,6 +241,7 @@ class SelectedMessageReader:
                     chunk,
                     selected,
                     declared,
+                    on_corrupt,
                     with_index=True,
                 ):
                     heapq.heappush(
@@ -224,18 +257,53 @@ class SelectedMessageReader:
             else:
                 yield item
 
+    def _decoded_messages(
+        self,
+        f: Any,
+        path: str,
+        summary: "Summary",
+        chunk_index: "ChunkIndex",
+        chunk: Optional["Chunk"],
+        selected: Set[int],
+        declared: "_Declared",
+        on_corrupt: Optional[OnCorrupt],
+        with_index: bool = False,
+    ) -> Iterator[Any]:
+        """Decode ``chunk`` and yield ``_chunk_messages`` of its records.
+
+        ``chunk`` is ``None`` when its record did not parse, which
+        ``read_chunks`` has already handed to ``on_corrupt``. A chunk that does
+        not decompress or parse (``is_corrupt_data_error``) goes to
+        ``on_corrupt`` and yields nothing. Without ``on_corrupt`` it raises, as
+        does any error after the chunk is decoded.
+        """
+        from mcap.stream_reader import breakup_chunk
+
+        if chunk is None:
+            return
+        try:
+            records = breakup_chunk(chunk)
+        except Exception as e:
+            if on_corrupt is None or not is_corrupt_data_error(e):
+                raise
+            on_corrupt(chunk_index, e)
+            return
+        yield from self._chunk_messages(
+            f, path, summary, chunk_index, records, selected, declared, with_index
+        )
+
     def _chunk_messages(
         self,
         f: Any,
         path: str,
         summary: "Summary",
         chunk_index: "ChunkIndex",
-        chunk: "Chunk",
+        records: List["McapRecord"],
         selected: Set[int],
         declared: "_Declared",
         with_index: bool = False,
     ) -> Iterator[Any]:
-        """Decompress one chunk and yield its selected messages in file order.
+        """Yield the selected messages of one decoded chunk, in file order.
 
         Channel and schema records inside the chunk take precedence over the
         summary's. ``row_id`` counts every message record of the chunk, so it
@@ -243,10 +311,9 @@ class SelectedMessageReader:
         yielded as ``(index in chunk, message)``.
         """
         from mcap.records import Channel, Message, Schema
-        from mcap.stream_reader import breakup_chunk
 
         index = -1
-        for record in breakup_chunk(chunk):
+        for record in records:
             if isinstance(record, Message):
                 index += 1
                 channel, schema = self._channel_and_schema(
@@ -286,16 +353,24 @@ class SelectedMessageReader:
             raise ValueError(
                 f"MCAP file {path!r} has a message on channel "
                 f"{message.channel_id}, which neither the summary nor any "
-                "chunk up to this one declares."
+                f"chunk up to this one declares.{declared.undecodable_note()}"
             )
-        if channel.schema_id and channel.schema_id not in declared.schemas:
+        if not channel.schema_id:
+            return channel, None
+        if channel.schema_id not in declared.schemas:
             # The schema record may be only in an earlier chunk
             # (``repeat_schemas=False``). ``message_types`` and the schema
             # columns need it.
             self._find_in_earlier_chunks(
                 f, chunk_index, declared, schema_id=channel.schema_id
             )
-        schema = declared.schemas.get(channel.schema_id) if channel.schema_id else None
+        schema = declared.schemas.get(channel.schema_id)
+        if schema is None:
+            raise ValueError(
+                f"MCAP file {path!r} has channel {channel.topic!r} with schema "
+                f"{channel.schema_id}, which neither the summary nor any chunk "
+                f"up to this one declares.{declared.undecodable_note()}"
+            )
         return channel, schema
 
     def _channel_is_selected(
