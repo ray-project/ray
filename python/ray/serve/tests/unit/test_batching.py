@@ -155,9 +155,11 @@ async def test_batch_size_one_long_timeout(use_class):
 @pytest.mark.parametrize("use_class", [True, False])
 async def test_batch_size_multiple_zero_timeout(use_class):
     block_execution_event = asyncio.Event()
+    batch_started_event = asyncio.Event()
 
     @serve.batch(max_batch_size=2, batch_wait_timeout_s=0)
     async def zero_timeout(requests):
+        batch_started_event.set()
         await block_execution_event.wait()
         if "raise" in requests:
             _ = 1 / 0
@@ -166,6 +168,7 @@ async def test_batch_size_multiple_zero_timeout(use_class):
     class ZeroTimeout:
         @serve.batch(max_batch_size=2, batch_wait_timeout_s=0)
         async def zero_timeout(self, requests):
+            batch_started_event.set()
             await block_execution_event.wait()
             if "raise" in requests:
                 _ = 1 / 0
@@ -184,14 +187,16 @@ async def test_batch_size_multiple_zero_timeout(use_class):
     with pytest.raises(ZeroDivisionError):
         await call("raise")
     block_execution_event.clear()
+    batch_started_event.clear()
 
     # Check that 2 requests will be executed together if available.
     # The first should cause a size-one batch to be executed, then
     # the next two should be executed together (signaled by both
     # having the exception).
     t1 = get_or_create_event_loop().create_task(call("hi1"))
-    with pytest.raises(asyncio.TimeoutError):
-        await asyncio.wait_for(asyncio.shield(t1), timeout=0.001)
+    # Wait for t1's batch to start, so t2 and t3 can't join it. A short
+    # timeout can't stand in for this: on Windows it fires on the next loop tick.
+    await batch_started_event.wait()
 
     t2 = get_or_create_event_loop().create_task(call("hi2"))
     t3 = get_or_create_event_loop().create_task(call("raise"))
