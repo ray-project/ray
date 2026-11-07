@@ -171,9 +171,11 @@ async def test_batch_size_one_long_timeout(use_class):
 @pytest.mark.parametrize("use_class", [True, False])
 async def test_batch_size_multiple_zero_timeout(use_class):
     block_execution_event = asyncio.Event()
+    batch_started_event = asyncio.Event()
 
     @serve.batch(max_batch_size=2, batch_wait_timeout_s=0)
     async def zero_timeout(requests):
+        batch_started_event.set()
         await block_execution_event.wait()
         if "raise" in requests:
             _ = 1 / 0
@@ -182,6 +184,7 @@ async def test_batch_size_multiple_zero_timeout(use_class):
     class ZeroTimeout:
         @serve.batch(max_batch_size=2, batch_wait_timeout_s=0)
         async def zero_timeout(self, requests):
+            batch_started_event.set()
             await block_execution_event.wait()
             if "raise" in requests:
                 _ = 1 / 0
@@ -200,14 +203,16 @@ async def test_batch_size_multiple_zero_timeout(use_class):
     with pytest.raises(ZeroDivisionError):
         await call("raise")
     block_execution_event.clear()
+    batch_started_event.clear()
 
     # Check that 2 requests will be executed together if available.
     # The first should cause a size-one batch to be executed, then
     # the next two should be executed together (signaled by both
     # having the exception).
     t1 = get_or_create_event_loop().create_task(call("hi1"))
-    with pytest.raises(asyncio.TimeoutError):
-        await asyncio.wait_for(asyncio.shield(t1), timeout=0.001)
+    # Wait for t1's batch to start, so t2 and t3 can't join it. A short
+    # timeout can't stand in for this: on Windows it fires on the next loop tick.
+    await batch_started_event.wait()
 
     t2 = get_or_create_event_loop().create_task(call("hi2"))
     t3 = get_or_create_event_loop().create_task(call("raise"))
@@ -324,6 +329,59 @@ async def test_batch_size_multiple_long_timeout(use_class):
 
 
 @pytest.mark.asyncio
+async def test_requests_arriving_while_batches_run_form_one_batch():
+    # While every max_concurrent_batches permit is in use, requests that arrive
+    # must wait in the queue and then go out as one batch, not as one batch
+    # each that waits for a permit.
+    batch_sizes = []
+    release = asyncio.Event()
+
+    @serve.batch(max_batch_size=10, batch_wait_timeout_s=0.01, max_concurrent_batches=1)
+    async def func(requests):
+        batch_sizes.append(len(requests))
+        await release.wait()
+        return requests
+
+    first = get_or_create_event_loop().create_task(func(0))
+    while not batch_sizes:
+        await asyncio.sleep(0.01)
+    rest = []
+    for i in range(1, 6):
+        rest.append(get_or_create_event_loop().create_task(func(i)))
+        # Longer than batch_wait_timeout_s, so each request could close a batch.
+        await asyncio.sleep(0.05)
+
+    release.set()
+    assert await asyncio.gather(first, *rest) == [0, 1, 2, 3, 4, 5]
+    assert batch_sizes == [1, 5]
+
+
+@pytest.mark.asyncio
+async def test_batch_timeout_counts_time_waiting_for_a_permit():
+    # A request that already waited longer than batch_wait_timeout_s for a
+    # permit goes out as soon as the permit is free, without a second wait.
+    batch_start_times = []
+    release = asyncio.Event()
+
+    @serve.batch(max_batch_size=10, batch_wait_timeout_s=1.0, max_concurrent_batches=1)
+    async def func(requests):
+        batch_start_times.append(time.time())
+        await release.wait()
+        return requests
+
+    first = get_or_create_event_loop().create_task(func(0))
+    while not batch_start_times:
+        await asyncio.sleep(0.01)
+    second = get_or_create_event_loop().create_task(func(1))
+    await asyncio.sleep(1.2)
+
+    release_time = time.time()
+    release.set()
+    assert await asyncio.gather(first, second) == [0, 1]
+    assert batch_start_times[1] - release_time < 0.5
+
+
+@pytest.mark.asyncio
 async def test_multiplexed_batches_fill_per_model_id():
     batch_records = []
 
@@ -353,43 +411,46 @@ async def test_multiplexed_batches_fill_per_model_id():
 
 
 @pytest.mark.asyncio
-async def test_multiplexed_batch_queues_share_max_concurrent_batches():
-    running_batches = 0
-    max_running_batches = 0
+async def test_multiplexed_batch_queues_limit_concurrency_per_model():
+    started = []
     finish_batches_event = asyncio.Event()
 
     async def blocked_batch(requests):
-        nonlocal running_batches, max_running_batches
-
-        running_batches += 1
-        max_running_batches = max(max_running_batches, running_batches)
+        started.extend(requests)
         await finish_batches_event.wait()
-        running_batches -= 1
         return requests
 
     wrapper = _LazyBatchQueueWrapper(
         max_batch_size=1,
         batch_wait_timeout_s=0,
-        max_concurrent_batches=2,
+        max_concurrent_batches=1,
         handle_batch_func=blocked_batch,
     )
 
     futures = []
-    for model_id in ["model-a", "model-b", "model-c"]:
-        request = _make_single_request(blocked_batch, model_id, model_id)
+    for model_id, payload in [
+        ("model-a", "a-0"),
+        ("model-a", "a-1"),
+        ("model-b", "b-0"),
+    ]:
+        request = _make_single_request(blocked_batch, payload, model_id)
         wrapper.get_queue(model_id).put(request)
         futures.append(request.future)
 
-    # The third model's batch is blocked on the shared semaphore.
+    # model-b's batch runs alongside model-a's, while model-a's second batch
+    # waits for model-a's only permit.
     await async_wait_for_condition(
-        lambda: running_batches == 2 and bool(wrapper.semaphore._waiters),
-        retry_interval_ms=1,
+        lambda: sorted(started) == ["a-0", "b-0"], retry_interval_ms=1
     )
-    assert not futures[2].done()
+    model_a_queue = wrapper.get_queue("model-a")
+    await async_wait_for_condition(
+        lambda: bool(model_a_queue.semaphore._waiters), retry_interval_ms=1
+    )
+    assert not futures[1].done()
+    assert model_a_queue.queue.qsize() == 1
 
     finish_batches_event.set()
-    assert await asyncio.gather(*futures) == ["model-a", "model-b", "model-c"]
-    assert max_running_batches == 2
+    assert await asyncio.gather(*futures) == ["a-0", "a-1", "b-0"]
 
 
 @pytest.mark.asyncio
@@ -402,10 +463,11 @@ async def test_accumulating_multiplexed_batch_queue_not_cleaned_up():
         await finish_batch_event.wait()
         return requests
 
+    # Two permits, so the next batch starts filling while the first one runs.
     wrapper = _LazyBatchQueueWrapper(
         max_batch_size=2,
         batch_wait_timeout_s=1000,
-        max_concurrent_batches=1,
+        max_concurrent_batches=2,
         handle_batch_func=blocked_batch,
     )
     model_queue = wrapper.get_queue("model-a")
@@ -421,7 +483,10 @@ async def test_accumulating_multiplexed_batch_queue_not_cleaned_up():
     # The third request is dequeued into a batch that is still filling when
     # the first batch completes, so the queue must not be removed.
     model_queue.put(requests[2])
-    await async_wait_for_condition(model_queue.queue.empty, retry_interval_ms=1)
+    await async_wait_for_condition(
+        lambda: model_queue.queue.empty() and bool(model_queue._current_batch),
+        retry_interval_ms=1,
+    )
     finish_batch_event.set()
     assert await asyncio.gather(*futures[:2]) == ["request-0", "request-1"]
     await async_wait_for_condition(lambda: not model_queue.tasks, retry_interval_ms=1)
@@ -435,34 +500,22 @@ async def test_accumulating_multiplexed_batch_queue_not_cleaned_up():
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("waiting_for_semaphore", [False, True])
-async def test_cancelled_batch_queue_sets_dequeued_request_exceptions(
-    waiting_for_semaphore,
-):
+async def test_cancelled_batch_queue_while_filling_sets_dequeued_request_exceptions():
     async def no_op(requests):
         return requests
 
-    semaphore = asyncio.Semaphore(1)
-    if waiting_for_semaphore:
-        await semaphore.acquire()
-
     queue = _BatchQueue(
         max_batch_size=2,
-        batch_wait_timeout_s=0 if waiting_for_semaphore else 1000,
+        batch_wait_timeout_s=1000,
         max_concurrent_batches=1,
         handle_batch_func=no_op,
-        semaphore=semaphore,
     )
     request = _make_single_request(no_op, "request")
     queue.put(request)
 
-    # Cancel once the request is dequeued into a batch that is either still
-    # filling or waiting on the semaphore.
+    # Cancel once the request is dequeued into a batch that is still filling.
     await async_wait_for_condition(
-        lambda: bool(
-            semaphore._waiters if waiting_for_semaphore else queue._current_batch
-        ),
-        retry_interval_ms=1,
+        lambda: bool(queue._current_batch), retry_interval_ms=1
     )
     queue.shutdown()
     with pytest.raises(asyncio.CancelledError):
@@ -470,6 +523,38 @@ async def test_cancelled_batch_queue_sets_dequeued_request_exceptions(
 
     with pytest.raises(asyncio.CancelledError):
         request.future.result()
+    # The permit taken for the batch is released.
+    assert queue.semaphore._value == 1
+
+
+@pytest.mark.asyncio
+async def test_cancelled_batch_queue_while_waiting_for_permit_keeps_request_queued():
+    async def no_op(requests):
+        return requests
+
+    queue = _BatchQueue(
+        max_batch_size=2,
+        batch_wait_timeout_s=0,
+        max_concurrent_batches=1,
+        handle_batch_func=no_op,
+    )
+    # Hold the only permit so the batching loop blocks before forming a batch.
+    await queue.semaphore.acquire()
+    request = _make_single_request(no_op, "request")
+    queue.put(request)
+
+    await async_wait_for_condition(
+        lambda: bool(queue.semaphore._waiters), retry_interval_ms=1
+    )
+    queue.shutdown()
+    with pytest.raises(asyncio.CancelledError):
+        await queue._handle_batch_task
+
+    # The request was never dequeued, and cancelling the wait for a permit
+    # doesn't release one.
+    assert queue.queue.qsize() == 1
+    assert not request.future.done()
+    assert queue.semaphore._value == 0
 
 
 @pytest.mark.asyncio

@@ -3,7 +3,7 @@ import io
 import logging
 import time
 from collections import deque
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from functools import partial, wraps
 from inspect import Parameter, isasyncgenfunction, iscoroutinefunction
 from typing import (
@@ -63,6 +63,7 @@ class _SingleRequest:
     future: asyncio.Future
     request_context: serve.context._RequestContext
     trace_context: Optional[Any]
+    enqueue_time: float = field(default_factory=time.time)
 
 
 @dataclass
@@ -154,7 +155,6 @@ class _BatchQueue:
         max_concurrent_batches: int,
         handle_batch_func: Optional[Callable] = None,
         batch_size_fn: Optional[Callable[[List], int]] = None,
-        semaphore: Optional[asyncio.Semaphore] = None,
         on_idle: Optional[Callable[["_BatchQueue"], None]] = None,
         queue_length_fn: Optional[Callable[[], int]] = None,
     ) -> None:
@@ -182,8 +182,6 @@ class _BatchQueue:
                 representing the batch size. This is useful for batching based
                 on custom metrics such as total nodes in graphs, total tokens
                 in sequences, etc.
-            semaphore: optional semaphore shared with other queues to limit
-                concurrent batches across them. If None, a new one is created.
             on_idle: optional callback invoked with this queue when it has no
                 queued, pending, or running requests.
             queue_length_fn: optional function returning the value to report
@@ -194,7 +192,7 @@ class _BatchQueue:
         self.batch_wait_timeout_s = batch_wait_timeout_s
         self.max_concurrent_batches = max_concurrent_batches
         self.batch_size_fn = batch_size_fn
-        self.semaphore = semaphore or asyncio.Semaphore(max_concurrent_batches)
+        self.semaphore = asyncio.Semaphore(max_concurrent_batches)
         self._on_idle = on_idle
         self._queue_length_fn = queue_length_fn or self.queue.qsize
         self.requests_available_event = asyncio.Event()
@@ -324,8 +322,11 @@ class _BatchQueue:
 
         batch.append(first_item)
 
-        # Wait self.timeout_s seconds for new queue arrivals.
+        # Wait self.timeout_s seconds for new queue arrivals, counted from when
+        # the first request arrived. It may have waited in the queue for a
+        # permit, and that time counts toward the timeout.
         batch_start_time = time.time()
+        timeout_start_time = min(first_item.enqueue_time, batch_start_time)
         while True:
             # Record queue length metric.
             self._batch_queue_length_gauge.set(
@@ -333,7 +334,7 @@ class _BatchQueue:
             )
 
             remaining_batch_time_s = max(
-                batch_wait_timeout_s - (time.time() - batch_start_time), 0
+                batch_wait_timeout_s - (time.time() - timeout_start_time), 0
             )
             try:
                 # Wait for new arrivals.
@@ -388,7 +389,7 @@ class _BatchQueue:
 
             current_batch_size = self._compute_batch_size(batch)
             if (
-                time.time() - batch_start_time >= batch_wait_timeout_s
+                time.time() - timeout_start_time >= batch_wait_timeout_s
                 or current_batch_size >= max_batch_size
             ):
                 break
@@ -485,19 +486,23 @@ class _BatchQueue:
         # So we unset the request context so the current context is not inherited by the task, _process_batch.
         serve.context._unset_request_context()
         while not self._loop.is_closed():
+            # NOTE: this semaphore caps the number of concurrent batches specified by `max_concurrent_batches`
+            # Take the permit before forming the batch, so requests that arrive
+            # while every permit is in use join one batch instead of each
+            # waiting for a permit in a batch of its own.
+            await self.semaphore.acquire()
             try:
                 batch, _ = await self.wait_for_batch()
-                # NOTE: this semaphore caps the number of concurrent batches specified by `max_concurrent_batches`
-                await self.semaphore.acquire()
-            except asyncio.CancelledError as e:
-                for request in self._current_batch:
-                    _set_exception_if_not_done(request.future, e)
+                # The permit is released in _handle_completed_task.
+                task = asyncio.create_task(self._process_batch_inner(func, batch))
+            except BaseException as e:
+                self.semaphore.release()
+                if isinstance(e, asyncio.CancelledError):
+                    for request in self._current_batch:
+                        _set_exception_if_not_done(request.future, e)
                 raise
             finally:
                 self._current_batch = []
-
-            promise = self._process_batch_inner(func, batch)
-            task = asyncio.create_task(promise)
             self.tasks.add(task)
             self.curr_iteration_start_times[task] = time.time()
             task.add_done_callback(self._handle_completed_task)
@@ -649,7 +654,6 @@ class _LazyBatchQueueWrapper:
         self.max_concurrent_batches = max_concurrent_batches
         self.handle_batch_func = handle_batch_func
         self.batch_size_fn = batch_size_fn
-        self.semaphore = asyncio.Semaphore(max_concurrent_batches)
 
     @property
     def queue(self) -> _BatchQueue:
@@ -669,7 +673,6 @@ class _LazyBatchQueueWrapper:
                 self.max_concurrent_batches,
                 self.handle_batch_func,
                 self.batch_size_fn,
-                semaphore=self.semaphore,
                 # The default queue is kept for the lifetime of the wrapper.
                 on_idle=partial(self._remove_idle_queue, queue_key)
                 if queue_key

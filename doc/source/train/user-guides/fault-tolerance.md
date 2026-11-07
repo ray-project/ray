@@ -296,9 +296,9 @@ To migrate from the old `<Framework>Trainer.restore` API to the new pattern, do 
 1. If you use Ray 2.50 or earlier, enable the environment variable `RAY_TRAIN_V2_ENABLED=1`.
 1. Replace `<Framework>Trainer.restore` with the regular `<Framework>Trainer` constructor, and pass the same `storage_path` and `name` as the previous run.
 
-### `<Framework>Trainer(restore_from_checkpoint)` API deprecation
+### `<Framework>Trainer(resume_from_checkpoint)` API deprecation
 
-The `<Framework>Trainer(restore_from_checkpoint)` API is deprecated as of Ray 2.43 and will be removed in a future release.
+The `<Framework>Trainer(resume_from_checkpoint)` API is deprecated as of Ray 2.43 and will be removed in a future release.
 
 #### Motivation
 

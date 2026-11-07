@@ -6,6 +6,9 @@ import json
 import mmap
 import os
 import re
+import shutil
+import signal
+import subprocess
 import sys
 import tarfile
 import threading
@@ -25,6 +28,7 @@ from ray.experimental.sandbox._internal.image_utils import (
     extract_tar_layer,
     get_platform_arch,
     get_registry_auth_headers,
+    image_cache_name,
     parse_image_ref,
     pull_and_extract_container_image,
     sanitize_image_name,
@@ -68,6 +72,93 @@ def test_sanitize_image_name():
         sanitize_image_name("")
     with pytest.raises(ValueError, match="cannot be safely sanitized"):
         sanitize_image_name("...")
+
+
+def test_image_cache_name_normalizes_registry_spellings():
+    spellings = (
+        "python:3.12-slim",
+        "library/python:3.12-slim",
+        "docker.io/library/python:3.12-slim",
+        "index.docker.io/library/python:3.12-slim",
+        "registry-1.docker.io/library/python:3.12-slim",
+        "Docker.io/python:3.12-slim",
+    )
+    # The normalized reference made safe for a file name, then its hash.
+    assert {image_cache_name(s) for s in spellings} == {
+        "docker.io_library_python_3.12-slim-ea59dc550ffd7fa7"
+    }
+    assert image_cache_name("busybox") == image_cache_name("busybox:latest")
+    assert image_cache_name("GHCR.io/org/repo:1.0") == image_cache_name(
+        "ghcr.io/org/repo:1.0"
+    )
+    assert image_cache_name("ghcr.io/org/repo:1.0").startswith("ghcr.io_org_repo_1.0-")
+    assert image_cache_name("quay.io/coreos/etcd@sha256:abcd").startswith(
+        "quay.io_coreos_etcd_sha256_abcd-"
+    )
+    assert image_cache_name("localhost:5000/app").startswith(
+        "localhost_5000_app_latest-"
+    )
+    # Local archives keep their file name.
+    assert (
+        image_cache_name("/tmp/ray/sandbox/images/ubuntu_22.04.tar") == "ubuntu_22.04"
+    )
+
+
+def test_image_cache_name_keeps_references_apart():
+    sha = "0" * 64
+    # Each pair looks the same once "/", ":" and "@" become "_".
+    for a, b in (
+        (f"repo@sha256:{sha}", f"repo:sha256_{sha}"),
+        ("ghcr.io/a/b_c:1", "ghcr.io/a/b/c:1"),
+        ("ghcr.io/a/b:c_1", "ghcr.io/a/b_c:1"),
+        ("localhost:5000/app", "localhost/5000_app"),
+    ):
+        assert image_cache_name(a) != image_cache_name(b)
+    # A long reference gets a name that leaves room for the ``.tmp.<uuid>``
+    # directory a pull stages it in, and the cut keeps names apart.
+    repo = "registry.example.com/" + "/".join(f"team{i}" for i in range(40))
+    names = {image_cache_name(f"{repo}@sha256:{c * 64}") for c in "01"}
+    assert len(names) == 2
+    assert all(len(f"{name}.tmp.{'0' * 32}") <= 255 for name in names)
+
+
+def _fake_registry(monkeypatch):
+    """Pulls write the reference they were given into the image instead of
+    fetching it. Returns the list of references pulled."""
+    pulled = []
+
+    def extract(image, rootfs_dir, *args):
+        pulled.append(image)
+        with open(os.path.join(rootfs_dir, "ref"), "w", encoding="utf-8") as f:
+            f.write(image)
+        return {}
+
+    monkeypatch.setattr(image_utils, "_extract_image_layers", extract)
+    return pulled
+
+
+def test_pull_reuses_the_cache_entry_of_another_spelling(tmp_path, monkeypatch):
+    pulled = _fake_registry(monkeypatch)
+    images_dir = str(tmp_path / "images")
+    first = pull_and_extract_container_image("busybox", images_dir=images_dir)
+    for spelling in ("busybox:latest", "docker.io/library/busybox:latest"):
+        assert (
+            pull_and_extract_container_image(spelling, images_dir=images_dir) == first
+        )
+    assert pulled == ["busybox"]
+    entries = [
+        d for d in os.listdir(images_dir) if os.path.isdir(os.path.join(images_dir, d))
+    ]
+    assert entries == [os.path.basename(first)]
+
+
+def test_pull_keeps_a_digest_and_a_lookalike_tag_apart(tmp_path, monkeypatch):
+    """A tag spelled like a digest isn't served the digest's image."""
+    _fake_registry(monkeypatch)
+    images_dir = str(tmp_path / "images")
+    for image in (f"repo@sha256:{'0' * 64}", f"repo:sha256_{'0' * 64}"):
+        image_dir = pull_and_extract_container_image(image, images_dir=images_dir)
+        assert _image_file(image_dir, "ref") == image.encode()
 
 
 def test_parse_image_ref():
@@ -156,6 +247,14 @@ def test_parse_image_ref():
         "library/ubuntu",
         "sha256:12345",
     )
+    # Host names are case-insensitive; tags are not.
+    assert parse_image_ref("Docker.io/python:3.12-slim") == (
+        "registry-1.docker.io",
+        "library/python",
+        "3.12-slim",
+    )
+    assert parse_image_ref("GHCR.io/org/repo:V1") == ("ghcr.io", "org/repo", "V1")
+    assert parse_image_ref("LocalHost/app") == ("localhost", "app", "latest")
 
 
 def test_get_platform_arch():
@@ -305,6 +404,145 @@ def test_image_cache_min_free_bytes_default_and_env(tmp_path, monkeypatch):
     )
 
 
+def _renamed_for_deletion(image_dir):
+    """Names of the image cache's directories renamed for deletion."""
+    images_dir = os.path.dirname(image_dir)
+    return [n for n in os.listdir(images_dir) if n.startswith(".deleting.")]
+
+
+def test_eviction_crash_leaves_no_partial_image(tmp_path, monkeypatch):
+    """Eviction moves an image aside before deleting it, so a crash midway
+    leaves nothing under the image's name, and the next pull sweeps up
+    what's left, with eviction disabled too."""
+    local_tar = tmp_path / "sample.tar"
+    _write_sample_tar(local_tar)
+    images_dir = tmp_path / "images"
+    image_dir = pull_and_extract_container_image(
+        str(local_tar), images_dir=str(images_dir)
+    )
+
+    def crash(path, ignore_errors=False):
+        raise RuntimeError("worker killed")
+
+    with monkeypatch.context() as m:
+        m.setattr(shutil, "rmtree", crash)
+        with pytest.raises(RuntimeError):
+            image_utils.evict_least_recently_used_images(str(images_dir), 0)
+    assert not os.path.exists(image_dir)
+    stale = _renamed_for_deletion(image_dir)
+    assert len(stale) == 1
+
+    # Eviction doesn't take what's left for a cached image.
+    image_utils.evict_least_recently_used_images(str(images_dir), 0)
+    assert _renamed_for_deletion(image_dir) == stale
+    assert not os.path.exists(images_dir / f"{stale[0]}.lock")
+
+    monkeypatch.setenv("RAY_SANDBOX_IMAGE_CACHE_MAX_BYTES", "0")
+    monkeypatch.setenv("RAY_SANDBOX_IMAGE_CACHE_MIN_FREE_BYTES", "0")
+    pull_and_extract_container_image(str(local_tar), images_dir=str(images_dir))
+    assert os.path.isdir(image_dir)
+    assert _renamed_for_deletion(image_dir) == []
+
+
+def test_eviction_takes_an_image_with_a_long_name(tmp_path):
+    """An image whose cache name is as long as a pull allows can still be
+    renamed for deletion, so eviction takes it."""
+    local_tar = tmp_path / f"{'a' * 215}.tar"
+    _write_sample_tar(local_tar)
+    images_dir = tmp_path / "images"
+    image_dir = pull_and_extract_container_image(
+        str(local_tar), images_dir=str(images_dir)
+    )
+
+    image_utils.evict_least_recently_used_images(str(images_dir), 0)
+    assert not os.path.exists(image_dir)
+
+
+def test_eviction_takes_an_image_whose_name_ends_in_tar(tmp_path):
+    """An archive named foo.tar.tar caches as foo.tar, which eviction still
+    takes for a cached image."""
+    local_tar = tmp_path / "sample.tar.tar"
+    _write_sample_tar(local_tar)
+    images_dir = tmp_path / "images"
+    image_dir = pull_and_extract_container_image(
+        str(local_tar), images_dir=str(images_dir)
+    )
+    assert os.path.basename(image_dir) == "sample.tar"
+
+    image_utils.evict_least_recently_used_images(str(images_dir), 0)
+    assert not os.path.exists(image_dir)
+
+
+def test_eviction_counts_an_image_evicted_concurrently(tmp_path, monkeypatch):
+    """An image another pull evicted since the scan counts as evicted, so
+    eviction doesn't evict another image in its place."""
+    images_dir = tmp_path / "images"
+    image_dirs = []
+    for name in ("older", "newer"):
+        local_tar = tmp_path / f"{name}.tar"
+        _write_sample_tar(local_tar)
+        image_dirs.append(
+            pull_and_extract_container_image(str(local_tar), images_dir=str(images_dir))
+        )
+    older, newer = image_dirs
+    marker = os.path.join(older, ".extracted")
+    os.utime(marker, (1, 1))
+
+    has_users = image_utils._has_users
+
+    def evicted_by_another_pull(image_dir):
+        if image_dir == older and os.path.isdir(older):
+            shutil.rmtree(older, ignore_errors=True)
+        return has_users(image_dir)
+
+    monkeypatch.setattr(image_utils, "_has_users", evicted_by_another_pull)
+    image_utils.evict_least_recently_used_images(
+        str(images_dir), image_utils._dir_size_bytes(newer)
+    )
+    assert not os.path.exists(older)
+    assert os.path.isdir(newer)
+
+
+def test_repull_crash_keeps_the_new_image(tmp_path, monkeypatch):
+    """A re-pull moves the old image aside and puts the new one in its place
+    before deleting the old one, so a crash during the delete leaves the new
+    image under its name. The next pull reuses it and sweeps up what's left,
+    with eviction disabled too."""
+    local_tar = tmp_path / "sample.tar"
+    _write_sample_tar(local_tar)
+    images_dir = tmp_path / "images"
+    image_dir = pull_and_extract_container_image(
+        str(local_tar), images_dir=str(images_dir)
+    )
+    marker = os.path.join(image_dir, ".extracted")
+    # Force a re-pull.
+    stale = os.path.getmtime(local_tar) - 10
+    os.utime(marker, (stale, stale))
+
+    rmtree = shutil.rmtree
+
+    def crash_deleting_the_old_image(path, ignore_errors=False):
+        if ".deleting." in path:
+            raise RuntimeError("worker killed")
+        rmtree(path, ignore_errors=ignore_errors)
+
+    with monkeypatch.context() as m:
+        m.setattr(shutil, "rmtree", crash_deleting_the_old_image)
+        with pytest.raises(RuntimeError):
+            pull_and_extract_container_image(str(local_tar), images_dir=str(images_dir))
+    assert os.path.isdir(image_dir)
+    new_marker_mtime = os.path.getmtime(marker)
+    assert new_marker_mtime > stale
+    assert len(_renamed_for_deletion(image_dir)) == 1
+
+    monkeypatch.setenv("RAY_SANDBOX_IMAGE_CACHE_MAX_BYTES", "0")
+    monkeypatch.setenv("RAY_SANDBOX_IMAGE_CACHE_MIN_FREE_BYTES", "0")
+    pull_and_extract_container_image(str(local_tar), images_dir=str(images_dir))
+    assert os.path.isdir(image_dir)
+    assert os.path.getmtime(marker) == new_marker_mtime
+    assert _renamed_for_deletion(image_dir) == []
+
+
 def test_image_cache_max_bytes_default_and_env(tmp_path, monkeypatch):
     import shutil
 
@@ -440,7 +678,7 @@ def test_pull_and_extract_remote_image(tmp_path, fake_docker_hub):
     # Only the image is cached: no extracted tree, and no archive doubling
     # its footprint.
     assert not os.path.exists(os.path.join(image_dir, "rootfs"))
-    assert not os.path.exists(str(images_dir / "busybox_latest.tar"))
+    assert not os.path.exists(image_dir + ".tar")
 
 
 def test_pull_and_extract_docker_io_prefixed_image(tmp_path, fake_docker_hub):
@@ -703,6 +941,8 @@ def test_pull_builds_erofs_image_with_recorded_owners(tmp_path, fake_mkfs_erofs)
     assert not os.path.exists(os.path.join(image_dir, "rootfs"))
     args = (bin_dir / "mkfs.args").read_text().split()
     assert args[:3] == ["--tar=f", f"-b{mmap.PAGESIZE}", "-E^inline_data"]
+    # The tar streams in on stdin: the image path is the last argument.
+    assert len(args) == 4 and args[3].endswith(image_utils.ROOTFS_IMAGE)
     marker = open(os.path.join(image_dir, ".extracted"), encoding="utf-8").read()
     assert marker == expected_extract_marker()
     # The fake image *is* the flattened tar: check the owners it carries.
@@ -714,6 +954,139 @@ def test_pull_builds_erofs_image_with_recorded_owners(tmp_path, fake_mkfs_erofs)
     # runsc's mount points, which an immutable image cannot grow on demand.
     for mountpoint in ("proc", "sys", "dev", "dev/pts", "dev/shm", "run", "tmp"):
         assert owners[mountpoint] == (0, 0)
+
+
+def _tar_members(path):
+    """Each member of a tar as (name, type, mode, owner, mtime, link, sha256)."""
+    with tarfile.open(path) as tar:
+        return [
+            (
+                m.name,
+                m.type,
+                m.mode,
+                (m.uid, m.gid),
+                m.mtime,
+                m.linkname,
+                hashlib.sha256(tar.extractfile(m).read()).hexdigest()
+                if m.isreg()
+                else None,
+            )
+            for m in tar.getmembers()
+        ]
+
+
+def _put_mkfs_on_path(bin_dir, body, monkeypatch):
+    """A mkfs.erofs first on PATH that advertises --tar, then runs ``body``."""
+    bin_dir.mkdir()
+    script = bin_dir / "mkfs.erofs"
+    script.write_text(
+        "#!/bin/sh\n"
+        'if [ "$1" = "--help" ]; then echo "  --tar=MODE  build from tarball"; exit 0; fi\n'
+        + body
+    )
+    script.chmod(0o755)
+    monkeypatch.setenv("PATH", f"{bin_dir}:{os.environ.get('PATH', '')}")
+    image_utils.mkfs_erofs_path.cache_clear()
+
+
+def test_build_erofs_image_streams_the_tree_and_frees_it(tmp_path):
+    """mkfs.erofs reads the same tar the tree used to be packed into, and
+    each file leaves the tree once it's in the stream, except hard links."""
+    tree = tmp_path / "rootfs"
+    (tree / "etc").mkdir(parents=True)
+    (tree / "etc" / "passwd").write_bytes(b"root:x:0:0::/root:/bin/sh\n")
+    (tree / "usr" / "bin").mkdir(parents=True)
+    # Larger than a pipe holds, so the stream has to wait on mkfs.erofs.
+    (tree / "usr" / "bin" / "tool").write_bytes(os.urandom(3 << 20))
+    (tree / "usr" / "bin" / "tool").chmod(0o755)
+    os.link(tree / "usr" / "bin" / "tool", tree / "usr" / "bin" / "tool-alias")
+    (tree / "usr" / "bin" / "sh").symlink_to("tool")
+    (tree / "empty").mkdir()
+    # A read-only directory, as images ship them: its mode must reach the
+    # image unchanged, and its file must still go.
+    (tree / "ro").mkdir()
+    (tree / "ro" / "data").write_bytes(b"read-only dir")
+    (tree / "ro").chmod(0o555)
+    ownership = {"etc/passwd": (0, 0), "usr/bin/tool": (38, 38)}
+    # The tar the build used to write before running mkfs.erofs.
+    expected = tmp_path / "expected.tar"
+    with tarfile.open(expected, "w") as tar:
+        tar.add(tree, arcname=".", filter=_owner_filter(ownership))
+
+    image = tmp_path / "rootfs.erofs"
+    image_utils.build_erofs_image(str(tree), ownership, str(image))
+
+    # The fake mkfs.erofs writes what it read on stdin.
+    assert _tar_members(image) == _tar_members(expected)
+    assert not (tree / "etc" / "passwd").exists()
+    assert (tree / "usr" / "bin" / "tool").exists()
+    assert (tree / "usr" / "bin" / "tool-alias").exists()
+    assert (tree / "usr" / "bin" / "sh").is_symlink()
+    assert (tree / "empty").is_dir()
+    assert not (tree / "ro" / "data").exists()
+
+
+def test_build_erofs_image_reports_mkfs_failure(tmp_path, monkeypatch):
+    """A mkfs.erofs that exits before reading the tar fails the build with
+    its message instead of leaving the writer blocked."""
+    _put_mkfs_on_path(
+        tmp_path / "failing-bin",
+        'echo "mkfs.erofs: No space left on device" >&2\nexit 1\n',
+        monkeypatch,
+    )
+    tree = tmp_path / "rootfs"
+    tree.mkdir()
+    (tree / "big").write_bytes(os.urandom(4 << 20))
+
+    with pytest.raises(SandboxCreationError, match="No space left on device"):
+        image_utils.build_erofs_image(str(tree), {}, str(tmp_path / "rootfs.erofs"))
+    image_utils.mkfs_erofs_path.cache_clear()
+
+
+def test_build_erofs_image_stops_mkfs_when_reading_the_tree_fails(
+    tmp_path, monkeypatch
+):
+    """If reading the tree fails, mkfs.erofs is killed and reaped before the
+    error propagates, so it can't keep writing into a directory the caller
+    is about to delete."""
+    tree = tmp_path / "rootfs"
+    tree.mkdir()
+    (tree / "f").write_bytes(b"x")
+
+    def failing_filter(ownership):
+        def _filter(ti):
+            raise OSError("read error")
+
+        return _filter
+
+    builds = []
+    real_popen = subprocess.Popen
+
+    def recording_popen(args, *rest, **kwargs):
+        proc = real_popen(args, *rest, **kwargs)
+        if "--tar=f" in args:
+            builds.append(proc)
+        return proc
+
+    monkeypatch.setattr(image_utils, "_owner_filter", failing_filter)
+    monkeypatch.setattr(image_utils.subprocess, "Popen", recording_popen)
+    with pytest.raises(OSError, match="read error"):
+        image_utils.build_erofs_image(str(tree), {}, str(tmp_path / "rootfs.erofs"))
+
+    # The fake mkfs.erofs waits on stdin forever unless killed.
+    assert len(builds) == 1 and builds[0].returncode == -signal.SIGKILL
+
+
+def test_erofs_superblock_fingerprint(tmp_path):
+    image = tmp_path / "rootfs.erofs"
+    image.write_bytes(b"\0" * 1024 + b"A" * 128 + b"B" * 100)
+    first = image_utils.erofs_superblock_fingerprint(str(image))
+    # Bytes outside the superblock don't count.
+    image.write_bytes(b"\1" * 1024 + b"A" * 128 + b"C" * 100)
+    assert image_utils.erofs_superblock_fingerprint(str(image)) == first
+    image.write_bytes(b"\0" * 1024 + b"A" * 127 + b"X")
+    assert image_utils.erofs_superblock_fingerprint(str(image)) != first
+    assert image_utils.erofs_superblock_fingerprint(str(tmp_path / "none")) is None
 
 
 def test_resolve_in_root(tmp_path):

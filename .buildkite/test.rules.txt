@@ -86,9 +86,9 @@ doc/source/ray-contribute/doc_code/*.md
 # when it runs, and a page with no target selects nothing. A page rename, a
 # move, or a page gaining a runnable example needs no edit to this file.
 #
-# The cost: rayci marks a step's dependencies before Buildkite evaluates the
-# step's `if:` label guard, so every match also builds the opt-in step's images,
-# from cache, even when the step itself is skipped.
+# Without the label, the docs-example-test rule in .buildkite/docs.labels.yaml
+# skips the opt-in step before rayci marks its dependencies, so a match builds
+# none of its images.
 #
 # The API reference rules above still claim their pages first. The prose skip
 # rule below still skips prose everywhere else in the repository.
@@ -218,6 +218,16 @@ python/deplocks/ci/macos_depset_py*
 @ macos_wheels python_dependencies
 ;
 
+# The "docstring-only" label's examples environment, the docstringbuild image.
+# Its lock and input feed only that label-gated image: no Ray wheel or image,
+# and not the Sphinx docbuild image, so a change can't affect the API checks
+# either. Emit just `deplock_check` for the raydepsets --check job. Must precede
+# the docs rule below and the general python/requirements/ rule.
+python/deplocks/docs/docstring_examples_*.lock
+python/requirements/doc/docstring-examples-requirements.txt
+@ deplock_check
+;
+
 # Short-circuit deps handling for docs-specific. These pin the resolved Sphinx
 # and autodoc/autosummary versions the docbuild image installs, so a lock
 # change can alter stub generation and therefore what the API-consistency
@@ -291,9 +301,27 @@ python/ray/experimental/sandbox/
 @ core_python sandbox_tests
 ;
 
+# NVIDIA CDI spec generation backing ray.experimental.sandbox's GPU
+# support. These files live outside python/ray/experimental/sandbox/, so
+# the sandbox rule above doesn't reach them, and the broad python/ rule
+# below doesn't emit sandbox_tests. A change to the NVIDIA spec
+# generator would otherwise get no sandbox coverage.
+#
+# First match wins, so this rule has to repeat the python/ rule's tag set
+# rather than fall through to it. python/ray/_private/accelerators/ is
+# shared infrastructure the library suites depend on, and dropping those
+# tags here would silently narrow coverage for data/train/serve.
+python/ray/_private/accelerators/accelerator.py
+python/ray/_private/accelerators/nvidia_gpu.py
+python/ray/tests/accelerators/test_nvidia_gpu.py
+@ core_python ml tune train data serve
+@ core_python dashboard linux_wheels macos_wheels java
+@ sandbox_tests
+;
+
 python/
 # Run library tests on core Python code change.
-@ core_python llm ml tune train data serve
+@ core_python ml tune train data serve
 # Python changes might impact cross language stack in Java.
 # Java also depends on Python CLI to manage processes.
 @ core_python dashboard linux_wheels macos_wheels java
@@ -427,6 +455,7 @@ doc/update_cache_env.py
 doc/rtd_doctor.py
 doc/test_no_new_rst.py
 doc/test_prose_doctest_targets.py
+doc/test_doc_assets.py
 doc/test_llms_txt.py
 .vale.ini
 .vale/
@@ -550,15 +579,6 @@ doc/source/_intersphinx/
 @ doc
 ;
 
-# The notebook authoring boilerplate. Sphinx never reads it:
-# `_templates/template.ipynb` is a file contributors copy, not a page, nothing
-# includes it, and it backs no bazel target. So the catch-all was starting the
-# core docs example step for a file that step cannot run and the build does not
-# read.
-doc/source/_templates/
-# pass
-;
-
 # Test harness and target definitions outside the library dirs above keep the
 # core docs example step as their default owner. These aren't doc assets, so
 # they run tests without the opt-in label.
@@ -585,6 +605,8 @@ doc/*.ipynb
 
 ci/docker/doctest.build.Dockerfile
 ci/docker/doctest.build.wanda.yaml
+ci/docker/docstring.build.Dockerfile
+ci/docker/docstring.build.wanda.yaml
 # pass
 ;
 
@@ -654,6 +676,11 @@ ci/ray_ci/windows/
 # routed to 'doc_api' alone by the rule near the top of this file.
 ci/ray_ci/doc/
 @ doc_api tools
+;
+
+# Service runners must exercise their integration suite as well as CI unit tests.
+ci/ray_ci/data/
+@ data tools
 ;
 
 ci/pipeline/

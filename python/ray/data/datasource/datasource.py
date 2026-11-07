@@ -195,16 +195,14 @@ class Datasource(_DatasourceProjectionPushdownMixin, _DatasourcePredicatePushdow
 
     @Deprecated
     def create_reader(self, **read_args) -> "Reader":
-        """
-        Deprecated: Implement :meth:`~ray.data.Datasource.get_read_tasks` and
+        """Deprecated: Implement :meth:`~ray.data.Datasource.get_read_tasks` and
         :meth:`~ray.data.Datasource.estimate_inmemory_data_size` instead.
         """
         return _LegacyDatasourceReader(self, **read_args)
 
     @Deprecated
     def prepare_read(self, parallelism: int, **read_args) -> List["ReadTask"]:
-        """
-        Deprecated: Implement :meth:`~ray.data.Datasource.get_read_tasks` and
+        """Deprecated: Implement :meth:`~ray.data.Datasource.get_read_tasks` and
         :meth:`~ray.data.Datasource.estimate_inmemory_data_size` instead.
         """
         raise NotImplementedError
@@ -212,6 +210,10 @@ class Datasource(_DatasourceProjectionPushdownMixin, _DatasourcePredicatePushdow
     def get_name(self) -> str:
         """Return a human-readable name for this datasource.
         This will be used as the names of the read tasks.
+
+        Returns:
+            The datasource name. The default implementation returns the class name
+            without its ``Datasource`` suffix.
         """
         name = type(self).__name__
         datasource_suffix = "Datasource"
@@ -223,6 +225,9 @@ class Datasource(_DatasourceProjectionPushdownMixin, _DatasourcePredicatePushdow
         """Return an estimate of the in-memory data size, or None if unknown.
 
         Note that the in-memory data size may be larger than the on-disk data size.
+
+        Returns:
+            The estimated in-memory size in bytes, or ``None`` if it's unknown.
         """
         raise NotImplementedError
 
