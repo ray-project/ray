@@ -1,4 +1,4 @@
-"""Tests for the footer reader.
+"""Tests for reading SizeStatistics from the footer.
 
 A desynced cursor returns wrong numbers rather than raising, so hand-built payloads
 pin each skip width PyArrow footers never exercise.
