@@ -460,6 +460,27 @@ DEFAULT_DOWNSTREAM_CAPACITY_BACKPRESSURE_RATIO: float = env_float(
 )
 
 
+# How long an operator's output has to stay stalled -- not being read while the
+# operator still has tasks in flight -- before `ActorPoolDrainPolicy` withholds
+# new inputs from it, so those tasks can complete and its actors go idle. `None`
+# (the default) disables the policy.
+DEFAULT_ACTOR_POOL_DRAIN_WINDOW_S: Optional[float] = env_float(
+    "RAY_DATA_ACTOR_POOL_DRAIN_WINDOW_S", None
+)
+
+# Share of the observation window spent stalled above which `ActorPoolDrainPolicy`
+# starts withholding new inputs from an operator, and the share below which it
+# feeds the operator again. The band in between is hysteresis: within it the
+# policy keeps whatever state it is in, which is what absorbs the flicker of the
+# raw backpressure signal.
+DEFAULT_ACTOR_POOL_DRAIN_STALL_RATIO: float = env_float(
+    "RAY_DATA_ACTOR_POOL_DRAIN_STALL_RATIO", 0.8
+)
+DEFAULT_ACTOR_POOL_DRAIN_RESUME_RATIO: float = env_float(
+    "RAY_DATA_ACTOR_POOL_DRAIN_RESUME_RATIO", 0.2
+)
+
+
 @DeveloperAPI
 @dataclass
 class IcebergConfig:
@@ -954,6 +975,22 @@ class DataContext:
         downstream_capacity_backpressure_ratio: Ratio for downstream capacity
             backpressure control. A higher ratio causes backpressure to kick-in
             later. If `None`, this backpressure policy is disabled.
+        actor_pool_drain_window_s: How long (in seconds) of history
+            `ActorPoolDrainPolicy` looks at: an operator's output has to go unread
+            for `actor_pool_drain_stall_ratio` of that window, while the operator
+            still has tasks in flight, before new inputs are withheld from it, so
+            those tasks can complete, its actors go idle and the actor autoscaler
+            can reclaim them. If `None`, the policy is disabled. The same window
+            is used to decide when to stop withholding.
+        actor_pool_drain_stall_ratio: Share of `actor_pool_drain_window_s` in
+            which an operator's output was not being read, above which
+            `ActorPoolDrainPolicy` starts withholding new inputs from it. Together
+            with `actor_pool_drain_resume_ratio` it forms the hysteresis band that
+            keeps the policy from flapping on a flickering signal.
+        actor_pool_drain_resume_ratio: Share of `actor_pool_drain_window_s` below
+            which an operator counts as having recovered -- its output is being
+            read again -- so `ActorPoolDrainPolicy` stops withholding. Must be
+            lower than `actor_pool_drain_stall_ratio`.
         enable_dynamic_output_queue_size_backpressure: Whether to cap the concurrency
             of an operator based on its and downstream operators' queue size.
         enable_lineage_reconstruction_resource_accounting: Whether to count the
@@ -1190,6 +1227,12 @@ class DataContext:
     downstream_capacity_backpressure_ratio: Optional[
         float
     ] = DEFAULT_DOWNSTREAM_CAPACITY_BACKPRESSURE_RATIO
+
+    actor_pool_drain_window_s: Optional[float] = DEFAULT_ACTOR_POOL_DRAIN_WINDOW_S
+
+    actor_pool_drain_stall_ratio: float = DEFAULT_ACTOR_POOL_DRAIN_STALL_RATIO
+
+    actor_pool_drain_resume_ratio: float = DEFAULT_ACTOR_POOL_DRAIN_RESUME_RATIO
 
     enable_dynamic_output_queue_size_backpressure: bool = (
         DEFAULT_ENABLE_DYNAMIC_OUTPUT_QUEUE_SIZE_BACKPRESSURE

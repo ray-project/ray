@@ -1,4 +1,5 @@
 import time
+from typing import Dict, List, Tuple
 from unittest.mock import patch
 
 import numpy as np
@@ -7,8 +8,14 @@ import pytest
 
 import ray
 from ray._private.internal_api import memory_summary
+from ray.data._internal.execution.backpressure_policy.actor_pool_drain_policy import (
+    ActorPoolDrainPolicy,
+)
 from ray.data._internal.execution.backpressure_policy.downstream_capacity_backpressure_policy import (
     DownstreamCapacityBackpressurePolicy,
+)
+from ray.data._internal.execution.operators.actor_pool_map_operator import (
+    _ActorPool,
 )
 from ray.data._internal.execution.util import memory_string
 from ray.data._internal.util import MiB
@@ -374,6 +381,267 @@ def test_streaming_backpressure_e2e(
     # If backpressure is not working right, we will spill.
     meminfo = memory_summary(ctx.address_info["address"], stats_only=True)
     assert "Spilled" not in meminfo, meminfo
+
+
+# === Actor pool drain (state machine covered by test_actor_pool_drain_policy.py) ===
+
+# About 20 bottleneck batches (20s per test): enough time for the 2s drain window
+# to engage and for the pool to be reclaimed, without the 50-batch, 50s-per-test
+# cost of the original repro.
+DRAIN_NUM_ROWS = 40_000
+DRAIN_BATCH_SIZE = 2_000
+# Small on purpose: this budget is what makes output backpressure engage.
+DRAIN_OBJECT_STORE_BUDGET = 60 * 1024**2
+# Deliberately more than the two actors the pipeline needs to run: with a wider
+# budget the upstream pool grows past its floor, so the drain has several actors
+# to reclaim and the walk-down is exercised end to end. At a budget of 4 the pool
+# only ever reaches 2 against a min_size of 1, leaving exactly one actor to
+# reclaim -- an assertion that then rests on a margin of one.
+#
+# CPUs rather than GPUs: the resource is only a budget that lets the pool grow,
+# and nothing here depends on accelerators. Keeping it CPU-only means the drain
+# path is covered on CPU-only CI instead of being skipped wherever there is no
+# GPU.
+DRAIN_NUM_CPUS = 12
+# Reason `DefaultActorAutoscaler` attaches to the scale-down it issues for a
+# draining operator. Used to tell a drain removal apart from the other paths that
+# also shrink the pool -- notably "consumed all inputs", which fires at teardown
+# whether or not the drain did anything.
+DRAIN_REASON = "draining a stalled actor pool"
+
+
+def _tune_context_for_drain(ctx):
+    ctx.max_tasks_in_flight_per_actor = 4
+    ctx.downstream_capacity_backpressure_ratio = 0.5
+    ctx.execution_options.resource_limits = ctx.execution_options.resource_limits.copy(
+        object_store_memory=DRAIN_OBJECT_STORE_BUDGET
+    )
+
+
+class _DrainObservation:
+    """What a drain run did, sampled on the scheduling thread.
+
+    ``ActorPoolDrainPolicy.can_add_input`` is consulted for every operator on
+    every scheduling iteration, so spying on it gives a race-free view of which
+    operators were withheld from, without a sampling thread of its own. The
+    scale-down side is observed on ``_ActorPool.scale`` instead, where the
+    *result* of each request is visible -- which is what shows whether an actor
+    was actually handed back.
+    """
+
+    def __init__(self):
+        # Ops the policy withheld from, in the order they first got withheld.
+        self.withheld: List[str] = []
+        # op name -> call index at which it was first withheld.
+        self.first_withheld_at: Dict[str, int] = {}
+        # (op name, delta, force, reason) for every request the autoscaler made.
+        self.scale_requests: List[Tuple[str, int, bool, str]] = []
+        # id(pool) -> owning op name. `_ActorPool` has no back-reference to the
+        # operator that owns it, so the owning op is learned from the policy spy
+        # (which is handed the operator) and used to attribute `scale` calls.
+        self.pool_owner: Dict[int, str] = {}
+        # (op name, size before, requested delta, result, size after) for drain
+        # requests that were actually executed. `result` is what `_ActorPool.scale`
+        # returned: negative means actors were really released, 0 means the request
+        # was refused or found nothing to release.
+        self.drain_results: List[Tuple[str, int, int, int, int]] = []
+        self._calls = 0
+
+    def forced_drain_requests(self) -> List[Tuple[str, int, bool, str]]:
+        return [
+            request
+            for request in self.scale_requests
+            if request[2] and request[3] == DRAIN_REASON
+        ]
+
+    def executed_drain_removals(self) -> List[Tuple[str, int, int, int, int]]:
+        """Drain requests that really removed at least one actor.
+
+        A request being *issued* proves nothing -- the pool refuses it when no
+        actor is idle, and returns 0. Only a negative result shows an actor was
+        handed back.
+        """
+        return [record for record in self.drain_results if record[3] < 0]
+
+
+def _run_stalled_pipeline():
+    """Run a fast upstream into a slow bottleneck, returning (rows, observation).
+
+    The UDFs are nested so they get cloudpickled by value and the test module
+    does not have to be importable in the workers.
+    """
+
+    class Upstream:
+        def __call__(self, batch):
+            time.sleep(0.01)
+            ids = list(batch["id"])
+            per = max(1, len(ids) // 4)
+            payload = b"\0" * (512 * 1024 // per)
+            for i in range(0, len(ids), per):
+                # The last chunk may have fewer than `per` rows when a batch
+                # crosses a block boundary, so size the payload from the actual
+                # chunk length instead of hard-coding `per`.
+                chunk = ids[i : i + per]
+                yield {"id": chunk, "data": [payload] * len(chunk)}
+
+    class Bottleneck:
+        """The slow stage that sets the throughput."""
+
+        def __call__(self, batch):
+            time.sleep(1.0)
+            return batch
+
+    obs = _DrainObservation()
+    original_can_add_input = ActorPoolDrainPolicy.can_add_input
+    original_scale = _ActorPool.scale
+
+    def _spy_can_add_input(self, op):
+        result = original_can_add_input(self, op)
+        obs._calls += 1
+        name = str(op)
+        # Learn which operator owns each pool, so `scale` calls can be attributed
+        # without `_ActorPool` holding an operator reference.
+        for pool in op.get_autoscaling_actor_pools():
+            obs.pool_owner[id(pool)] = name
+        if not result and name not in obs.first_withheld_at:
+            obs.withheld.append(name)
+            obs.first_withheld_at[name] = obs._calls
+        return result
+
+    def _spy_scale(self, req):
+        owner = obs.pool_owner.get(id(self), self.map_worker_cls_name)
+        before = self.current_size()
+        result = original_scale(self, req)
+        obs.scale_requests.append((owner, req.delta, req.force, req.reason))
+        if req.reason == DRAIN_REASON:
+            obs.drain_results.append(
+                (owner, before, req.delta, result, self.current_size())
+            )
+        return result
+
+    ds = (
+        ray.data.range(DRAIN_NUM_ROWS, override_num_blocks=50).map_batches(
+            Upstream, batch_size=DRAIN_BATCH_SIZE, num_cpus=1
+        )
+        # Pinned to a single actor on purpose: this stage has to *be* the
+        # throughput ceiling, or the upstream never stalls and there is nothing
+        # to drain. Under GPUs that fell out of GPU scarcity; on CPUs both pools
+        # would simply grow in parallel and the upstream would keep up, so the
+        # constraint is made explicit instead of implied by the resource budget.
+        .map_batches(
+            Bottleneck,
+            batch_size=DRAIN_BATCH_SIZE,
+            compute=ray.data.ActorPoolStrategy(size=1),
+            num_cpus=1,
+        )
+    )
+    with patch.object(
+        ActorPoolDrainPolicy, "can_add_input", _spy_can_add_input
+    ), patch.object(_ActorPool, "scale", _spy_scale):
+        rows = sum(
+            len(b["id"])
+            for b in ds.iter_batches(batch_size=DRAIN_BATCH_SIZE, prefetch_batches=1)
+        )
+    return rows, obs
+
+
+@pytest.mark.timeout(300)
+def test_actor_pool_drain_disabled_by_default(
+    shutdown_only, restore_data_context  # noqa: F811
+):
+    """With the default config the policy must never withhold a task."""
+    ray.init(
+        num_cpus=DRAIN_NUM_CPUS,
+        object_store_memory=2 * 1024**3,
+        include_dashboard=False,
+    )
+
+    ctx = ray.data.DataContext.get_current()
+    assert ctx.actor_pool_drain_window_s is None
+    _tune_context_for_drain(ctx)
+
+    rows, obs = _run_stalled_pipeline()
+
+    assert rows == DRAIN_NUM_ROWS
+    assert not obs.withheld, "policy withheld a task while disabled"
+    assert (
+        not obs.forced_drain_requests()
+    ), "the autoscaler force-shrank a pool while the policy was disabled"
+    assert (
+        not obs.executed_drain_removals()
+    ), "the autoscaler released actors for a drain while the policy was disabled"
+
+
+@pytest.mark.timeout(300)
+def test_actor_pool_drain_engages(shutdown_only, restore_data_context):  # noqa: F811
+    """The policy must withhold tasks from the stalled upstream, the autoscaler
+    must turn that into a forced scale-down, the pool must actually shrink, and
+    the pipeline must still run to completion.
+
+    Asserting only that `can_add_input` returned False would prove the policy
+    fires but not that anything came of it -- and the point of the change is the
+    actors that get handed back.
+    """
+    ray.init(
+        num_cpus=DRAIN_NUM_CPUS,
+        object_store_memory=2 * 1024**3,
+        include_dashboard=False,
+    )
+
+    ctx = ray.data.DataContext.get_current()
+    # Opt in, with a short window so the test does not have to wait.
+    ctx.actor_pool_drain_window_s = 2.0
+    _tune_context_for_drain(ctx)
+
+    rows, obs = _run_stalled_pipeline()
+
+    assert rows == DRAIN_NUM_ROWS
+    assert obs.withheld, "policy never withheld a task from a stalled op"
+
+    # The policy only sets a flag; the drain branch in `DefaultActorAutoscaler`
+    # is what turns it into a scale-down request, bypassing the debounce. Without
+    # this link the withholding buys nothing.
+    assert obs.forced_drain_requests(), (
+        "policy withheld inputs but the autoscaler never issued a forced drain "
+        f"downscale; requests seen: {obs.scale_requests}"
+    )
+
+    # ... and the request has to reclaim an actor. This is the payoff the commit
+    # claims, and it is what the e2e test used to leave unverified.
+    #
+    # Two things make this discriminating, and both are load-bearing:
+    #
+    #   * Only an *executed* removal counts. `_ActorPool.scale` returns 0 when it
+    #     finds no idle actor, so a request on its own proves nothing.
+    #   * The removal has to be attributed by reason. Teardown shrinks the pool
+    #     through "consumed all inputs", which happens whether or not the drain
+    #     did anything, so a plain "the pool got smaller" check passes even when
+    #     every drain request is ignored.
+    drained = obs.withheld[0]
+    removals = [
+        record for record in obs.executed_drain_removals() if record[0] == drained
+    ]
+    assert removals, (
+        f"{drained} was drained (first withheld at call "
+        f"{obs.first_withheld_at[drained]}) but none of the "
+        f"{len(obs.drain_results)} drain request(s) released an actor; "
+        "last few seen (op, size before, delta, result, size after): "
+        f"{obs.drain_results[-3:]}"
+    )
+    _, before, delta, result, after = removals[0]
+    assert delta < 0, f"a drain removal must be a downscale, got delta={delta}"
+    assert after == before + result, (
+        f"drain request {delta} on {drained} reported result {result} but the pool "
+        f"went {before} -> {after}; the reported release did not match the change"
+    )
+    assert after < before, f"{drained} did not shrink on its drain removal"
+
+    # Deliberately NOT asserted: that the downstream pool grows. Measured against
+    # a drain-disabled baseline, the bottleneck reaches its peak in both configs
+    # (it only gets there at teardown), so such an assertion passes either way and
+    # would not test this change. The attributed removal above is what
+    # discriminates; the baseline's own teardown shrink is exactly why an
+    # unattributed pool-size check does not.
 
 
 if __name__ == "__main__":
