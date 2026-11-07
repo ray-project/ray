@@ -576,6 +576,14 @@ class DeploymentResponse(_DeploymentResponseBase[R]):
 
         If `timeout_s` is provided and the result is not available before the timeout,
         a `TimeoutError` is raised.
+
+        Args:
+            timeout_s: Seconds to wait for the result. Waits indefinitely if None.
+            _skip_asyncio_check: Internal. Skip the check that raises when
+                called from an asyncio event loop.
+
+        Returns:
+            The result of the handle call.
         """
 
         if not _skip_asyncio_check and is_running_in_asyncio_loop():
@@ -750,6 +758,13 @@ class DeploymentResponseGenerator(_DeploymentResponseBase[R]):
           - Inside a deployment: use `async for`
 
         Always raises `TypeError`.
+
+        Args:
+            timeout_s: Unused.
+            _skip_asyncio_check: Unused.
+
+        Returns:
+            Never returns.
         """
         raise TypeError(
             "`DeploymentResponseGenerator` doesn't support `.result()`. "

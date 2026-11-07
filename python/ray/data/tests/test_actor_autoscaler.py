@@ -53,6 +53,7 @@ def test_actor_pool_scaling():
         current_size=MagicMock(return_value=10),
         num_active_actors=MagicMock(return_value=10),
         num_running_actors=MagicMock(return_value=10),
+        num_restarting_actors=MagicMock(return_value=0),
         num_pending_actors=MagicMock(return_value=0),
         num_tasks_in_flight=MagicMock(return_value=15),
         per_actor_resource_usage=MagicMock(return_value=ExecutionResources(cpu=1)),
@@ -122,14 +123,49 @@ def test_actor_pool_scaling():
             delta=0, expected_reason="utilization of 0.9 w/in limits [0.5, 1.0]"
         )
 
-    # Should be no-op since there are pending actors (no downscaling while pending)
+    # Pending actors don't pin an under-utilized pool (released first by the pool).
     with patch(actor_pool, "num_pending_actors", 1):
         with patch(actor_pool, "num_tasks_in_flight", 4):
             assert actor_pool.get_pool_util() == 0.4
             assert_autoscaling_action(
-                delta=0,
-                expected_reason="no downscaling while actors are pending",
+                delta=-1,
+                expected_reason="utilization of 0.4 <= 0.5",
             )
+
+    # Pending actors are kept while the running actors are saturated: they carry
+    # the resource requests the cluster autoscaler needs to add nodes.
+    with patch(actor_pool, "current_size", 10):
+        with patch(actor_pool, "num_running_actors", 8):
+            with patch(actor_pool, "num_pending_actors", 2):
+                with patch(actor_pool, "num_tasks_in_flight", 5):
+                    assert actor_pool.get_pool_util() == 0.5
+                    assert_autoscaling_action(
+                        delta=0,
+                        expected_reason=(
+                            "no downscaling while pending actors are needed"
+                        ),
+                    )
+
+    # Once the running actors have spare capacity, pending actors can be released.
+    with patch(actor_pool, "current_size", 10):
+        with patch(actor_pool, "num_running_actors", 8):
+            with patch(actor_pool, "num_pending_actors", 2):
+                with patch(actor_pool, "num_tasks_in_flight", 3):
+                    assert actor_pool.get_pool_util() == 0.3
+                    assert_autoscaling_action(
+                        delta=-1,
+                        expected_reason="utilization of 0.3 <= 0.5",
+                    )
+
+    # Don't shrink a pool that is entirely restarting (eg a restart storm).
+    with patch(actor_pool, "num_running_actors", 8):
+        with patch(actor_pool, "num_restarting_actors", 8):
+            with patch(actor_pool, "num_pending_actors", 2):
+                with patch(actor_pool, "num_tasks_in_flight", 4):
+                    assert_autoscaling_action(
+                        delta=0,
+                        expected_reason="no downscaling while all actors are restarting",
+                    )
 
     # Should be no-op since we have reached the max size (ie could not scale
     # up even though utilization > threshold)

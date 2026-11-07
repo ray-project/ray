@@ -87,6 +87,12 @@ class ReplicaID:
         object.__setattr__(self, "deployment_id", state["deployment_id"])
 
     def to_full_id_str(self) -> str:
+        """Format this replica ID as a full ID string.
+
+        Returns:
+            ``SERVE_REPLICA::`` followed by the app name, deployment name, and
+            unique ID, joined by ``#``. The app name is omitted when it's empty.
+        """
         s = f"{self.deployment_id.name}#{self.unique_id}"
         if self.deployment_id.app_name:
             s = f"{self.deployment_id.app_name}#{s}"
@@ -95,10 +101,31 @@ class ReplicaID:
 
     @staticmethod
     def is_full_id_str(s: str) -> bool:
+        """Check whether a string is a full replica ID string.
+
+        Args:
+            s: The string to check.
+
+        Returns:
+            True if ``s`` starts with the ``SERVE_REPLICA::`` prefix.
+        """
         return s.startswith(REPLICA_ID_FULL_ID_STR_PREFIX)
 
     @classmethod
     def from_full_id_str(cls, s: str):
+        """Parse a full ID string into a replica ID.
+
+        The inverse of ``to_full_id_str``.
+
+        Args:
+            s: A full replica ID string.
+
+        Returns:
+            The parsed replica ID.
+
+        Raises:
+            ValueError: If ``s`` doesn't have two or three ``#``-delimited fields.
+        """
         assert cls.is_full_id_str(s)
 
         parsed = s[len(REPLICA_ID_FULL_ID_STR_PREFIX) :].split("#")

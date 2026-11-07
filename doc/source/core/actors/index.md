@@ -179,7 +179,7 @@ assert(*object_ref.Get() == 1);
 :::
 ::::
 
-Methods on different actors execute in parallel, and methods on the same actor execute serially in the order you call them. Methods on the same actor share state with one another, as the following example shows.
+Methods on different actors execute in parallel, and methods on the same actor execute serially or concurrently, depending on the actor type. See {ref}`actor-task-order` for details. Methods on the same actor share state with one another, as the following example shows.
 
 :::{note}
 Actor state is per actor instance. Each actor runs in its own process, so class variables and static fields aren't shared across actor instances. Mutations to class-level state stay local to that actor process. To share mutable state across actors, store it in another actor and pass that actor's handle to the code that needs it. See {doc}`../patterns/global-variables` for an anti-pattern and a replacement pattern.
@@ -491,7 +491,7 @@ By default, Ray traces the execution of actor tasks, reporting task status event
 
 To disable task event reporting for an actor, set the `enable_task_events` option to `False` in {func}`ray.remote() <ray.remote>` and {meth}`.options() <ray.actor.ActorClass.options>`. This setting reduces task execution overhead by reducing the amount of data Ray sends to the Ray dashboard.
 
-To disable task event reporting for individual actor methods, set the `enable_task_events` option to `False` in {func}`ray.remote() <ray.remote>` and {meth}`.options() <ray.remote_function.RemoteFunction.options>` on the actor method. Method settings override the actor setting:
+To disable task event reporting for individual actor methods, set the `enable_task_events` option to `False` in {func}`@ray.method <ray.method>` decorator, or in {meth}`.options() <ray.actor.ActorMethod.options>` on a single method call. Method settings override the actor setting:
 
 ```{literalinclude} ../doc_code/actors.py
 :language: python
