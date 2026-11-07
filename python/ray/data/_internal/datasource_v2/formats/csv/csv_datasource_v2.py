@@ -18,11 +18,13 @@ from ray.data._internal.datasource_v2.common.file_reader import (
 from ray.data._internal.datasource_v2.common.line_chunkable_datasource_v2 import (
     LineChunkableDatasourceV2,
 )
+from ray.data._internal.datasource_v2.common.line_chunkable_file_reader import (
+    read_snappy_buffer,
+)
 from ray.data._internal.datasource_v2.formats.csv.csv_file_reader import (
     CsvFileReader,
     csv_file_format,
     invalid_csv_error,
-    read_snappy_buffer,
 )
 from ray.data._internal.datasource_v2.interfaces.synthesized_columns import (
     SynthesizedColumn,

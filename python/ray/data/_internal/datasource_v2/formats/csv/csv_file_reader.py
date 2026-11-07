@@ -1,7 +1,7 @@
 """``FileReader`` for CSV on DataSource V2, splitting large files at newlines."""
 
 import copy
-from typing import TYPE_CHECKING, Any, Iterator, List
+from typing import Any, Iterator, List
 
 import pyarrow as pa
 import pyarrow.csv as pcsv
@@ -11,13 +11,10 @@ from typing_extensions import override
 from ray.data._internal.datasource_v2.common.file_reader import FileFormat
 from ray.data._internal.datasource_v2.common.line_chunkable_file_reader import (
     LineChunkableFileReader,
+    read_snappy_buffer,
 )
 from ray.data._internal.datasource_v2.interfaces.read_units import ReadUnitFragment
 from ray.data._internal.util import infer_compression
-from ray.data.datasource.file_based_datasource import _decompress_snappy
-
-if TYPE_CHECKING:
-    from pyarrow.fs import FileSystem
 
 
 def csv_file_format(
@@ -40,12 +37,6 @@ def invalid_csv_error(path: str) -> ValueError:
         "file with 'partition_filter' field. See read_csv() documentation for "
         "more details."
     )
-
-
-def read_snappy_buffer(path: str, filesystem: "FileSystem") -> pa.Buffer:
-    """Return a whole Snappy file decompressed, since pyarrow can't read it."""
-    with filesystem.open_input_stream(path, compression=None) as file:
-        return pa.py_buffer(_decompress_snappy(file, filesystem).getbuffer())
 
 
 class CsvFileReader(LineChunkableFileReader):
