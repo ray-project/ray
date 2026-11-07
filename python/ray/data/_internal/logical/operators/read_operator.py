@@ -535,7 +535,7 @@ class ListFiles(LogicalOperator, SourceOperator):
     def output_data(self) -> Optional[list]:
         return None
 
-    def infer_schema(self) -> "pa.Schema":
+    def infer_schema(self) -> Optional["pa.Schema"]:
         # ``FileManifest`` columns are fixed: __path, __file_size.
         import pyarrow as pa
 
@@ -544,6 +544,9 @@ class ListFiles(LogicalOperator, SourceOperator):
             PATH_COLUMN_NAME,
         )
 
+        if self.prelisted_file_infos is not None:
+            # Listing output depends on the indexer, not the prelisted input.
+            return None
         return pa.schema(
             [
                 pa.field(PATH_COLUMN_NAME, pa.string()),

@@ -11,6 +11,9 @@ import pyarrow.fs as pafs
 from pyarrow.parquet import ColumnSchema, ParquetSchema, RowGroupMetaData
 
 import ray
+from ray.data._internal.datasource_v2.common.file_metadata import (
+    get_cached_file_metadata,
+)
 from ray.data._internal.datasource_v2.formats.parquet.parquet_file_chunking_utils import (
     _row_group_unit_id,
 )
@@ -283,12 +286,23 @@ class FooterReader:
 
     def _read_and_chunk(self, file: FileInfo) -> ChunkedFile:
         path = file.path
-        # The listing's size spares the open a request for it (a HEAD on S3).
-        fragment = self.file_format.make_fragment(
-            path,
-            filesystem=filesystem_for_sized_opens(self.filesystem),
-            file_size=file.size,
+        cached = (
+            get_cached_file_metadata(file, self.filesystem, self.retried_io_errors)
+            if file.metadata is not None and file.metadata.parquet_footer is not None
+            else None
         )
+        if cached is not None and cached.parquet_footer is not None:
+            # Only metadata operations may use this source: data offsets still
+            # point into the original file, not the metadata-only buffer.
+            fragment = self.file_format.make_fragment(
+                pa.py_buffer(cached.parquet_footer)
+            )
+        else:
+            fragment = self.file_format.make_fragment(
+                path,
+                filesystem=filesystem_for_sized_opens(self.filesystem),
+                file_size=file.size,
+            )
         # ``make_fragment`` is lazy, so this property is the footer read itself
         # (and caches it on the fragment). It raises on a truncated, non-Parquet,
         # or since-deleted file -- terminal conditions that must fail the read
@@ -323,14 +337,15 @@ class FooterReader:
             # the listing stop early and the resumed job return too few rows.
             fragment = fragment.subset(row_group_ids=unprocessed_rg_ids)
 
-        if self.filter is not None and filter_leaves.all_filter_columns_found:
+        predicate = self.filter
+        if predicate is not None and filter_leaves.all_filter_columns_found:
             # Predicate pushdown: drop row groups whose Parquet statistics
             # contradict the filter, so we never emit chunks the reader would
             # skip anyway. Each returned fragment views a single surviving group.
             # Fail closed on any split error -- keep every group -- so a type
             # mismatch or similar cannot abort the rest of the read_footers batch.
             surviving: list[int] | None = self._try_split_by_row_group(
-                fragment, self.filter, path
+                fragment, predicate, path
             )
             rg_indices: Iterable[int] = (
                 unprocessed_rg_ids if surviving is None else surviving
@@ -341,7 +356,7 @@ class FooterReader:
             # out. For those, num_rows is an exact survivor count and can drive
             # the limit push-down. Any failure defaults to "not fully matched",
             # which is always safe (falls back to the post-filter stop).
-            not_fully_ids = self._try_split_by_row_group(fragment, ~self.filter, path)
+            not_fully_ids = self._try_split_by_row_group(fragment, ~predicate, path)
             not_fully = set(rg_indices) if not_fully_ids is None else set(not_fully_ids)
             # The negation test alone is not sufficient: ``~filter`` can prune a
             # group that still holds a row the filter does not return, and then
@@ -355,7 +370,7 @@ class FooterReader:
                 and self._rg_can_fully_match(metadata.row_group(i), filter_leaves)
                 for i in rg_indices
             }
-        elif self.filter is not None:
+        elif predicate is not None:
             # A predicate column is absent from this file's schema. PyArrow's
             # split_by_row_group raises ArrowInvalid ("No match for FieldRef.Name")
             # in that case, which would abort the whole read_footers batch.
@@ -382,7 +397,10 @@ class FooterReader:
         # coalesce_bytes == 0) so only a handful of descriptors per file reach the
         # driver's bin-packer instead of one per physical row group.
         row_groups = coalesce_row_groups(per_rg, self.coalesce_bytes)
-        return ChunkedFile(file=file, row_groups=row_groups)
+        # Don't send the cached footer back in the actor's chunk descriptors.
+        return ChunkedFile(
+            file=FileInfo(path=file.path, size=file.size), row_groups=row_groups
+        )
 
     @ray.method(num_returns="streaming")
     def read_footers(
