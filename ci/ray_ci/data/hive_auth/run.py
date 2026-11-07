@@ -205,6 +205,7 @@ def main(argv=None):
     parser.add_argument("--profile-timeout", type=int, default=1200)
     parser.add_argument("--cleanup-timeout", type=int, default=60)
     args = parser.parse_args(argv)
+    args.log_dir = args.log_dir.resolve()
     if len(args.profiles) != len(set(args.profiles)):
         raise ValueError("Select each profile only once")
     if min(args.readiness_timeout, args.profile_timeout, args.cleanup_timeout) <= 0:

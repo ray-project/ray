@@ -4,6 +4,7 @@ import os
 import signal
 import subprocess
 import sys
+from pathlib import Path
 from types import SimpleNamespace
 from xml.etree.ElementTree import Element, SubElement, tostring
 
@@ -179,6 +180,38 @@ def test_real_pytest_status(tmp_path, source, code):
     except run.CommandFailed as exc:
         actual = exc.code
     assert actual == code, log.read_text()
+
+
+@pytest.mark.parametrize("relative", [True, False], ids=["relative", "absolute"])
+def test_log_dir_uses_callers_working_directory(tmp_path, monkeypatch, relative):
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(run, "wait_for_probe", lambda *args: None)
+    expected = tmp_path.resolve() / "logs" / "GT" / "artifacts"
+    copied = []
+
+    def command(args, log, *, env, timeout, check=True):
+        if log.stem == "copy":
+            destination = Path(args[-1])
+            copied.append(destination)
+            results(destination / "results.xml", env["HIVE_AUTH_PROFILE"])
+        return 0
+
+    monkeypatch.setattr(run, "command", command)
+    log_dir = "logs" if relative else str(tmp_path / "logs")
+    assert (
+        run.main(
+            [
+                "--runtime-image",
+                "prepared:fixed",
+                "--profiles",
+                "GT",
+                "--log-dir",
+                log_dir,
+            ]
+        )
+        == 0
+    )
+    assert copied == [expected]
 
 
 def test_timeout_stops_child_group(tmp_path, monkeypatch):
