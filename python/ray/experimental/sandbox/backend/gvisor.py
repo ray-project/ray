@@ -2110,7 +2110,15 @@ class GVisorSandboxBackend(BaseSandboxBackend):
 
     @staticmethod
     def _wrap_workload(meta, args):
-        return wrap_command(args, meta.get("cgroup"), meta["config"].oom_score_adj)
+        """Give a `runsc exec` the sandbox's OOM score, without its cgroup.
+
+        The command runs in the sandbox's Sentry, which is already in the
+        sandbox's cgroup, and `runsc exec` only relays it. Joining the cgroup
+        per call meant a cgroup migration, which takes a global lock and waits
+        for an RCU grace period: on a 352-thread host, exec went from 3 ms to
+        49 ms and every sandbox's execs queued on it.
+        """
+        return wrap_command(args, oom_score_adj=meta["config"].oom_score_adj)
 
     def _delete_container_state(self, config: SandboxConfig, sandbox_id: str) -> None:
         """Best-effort ``runsc delete -force`` for teardown paths.

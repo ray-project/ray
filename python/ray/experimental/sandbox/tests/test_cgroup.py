@@ -291,7 +291,10 @@ def test_backend_applies_oom_priority_to_start_exec_and_file_io(
         assert len(commands) == 4
         for command in commands:
             assert command[command.index("--oom-score-adj") + 1] == "0"
-            assert command[3] == (str(shared / sandbox_id) if limited else "")
+        # Only the launch joins the sandbox's cgroup. exec and file I/O run in
+        # its Sentry, which is in the cgroup already.
+        assert commands[0][3] == (str(shared / sandbox_id) if limited else "")
+        assert [command[3] for command in commands[1:]] == ["", "", ""]
     finally:
         backend.delete_sandbox(sandbox_id)
 

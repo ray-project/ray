@@ -3300,5 +3300,58 @@ def test_resolve_exec_user(monkeypatch):
         backend._resolve_exec_user("sb-1", "postfix")
 
 
+@pytest.mark.parametrize("oom_score_adj", [None, 0])
+def test_commands_in_a_limited_sandbox_skip_the_cgroup_join(
+    tmp_path, monkeypatch, oom_score_adj
+):
+    """exec, write_file and read_file never join the sandbox's cgroup: the
+    command runs in the Sentry, which is in the sandbox's cgroup already, and
+    joining the cgroup per call cost a cgroup migration (tens of ms on big
+    hosts). A sandbox's OOM score still applies to them."""
+
+    class _Cgroup:
+        path = tmp_path / "ray-sandbox-000000000001"
+        affinity = [0, 1]
+
+        def wrap(self, command):
+            raise AssertionError("commands must not join the sandbox cgroup")
+
+    backend = GVisorSandboxBackend(image_manager=_RecordingImageManager())
+    backend._sandbox_metadata["sb-1"] = {
+        "config": GVisorSandboxConfig(
+            image="busybox:latest", memory="64Mi", oom_score_adj=oom_score_adj
+        ),
+        "root_dir": str(tmp_path),
+        "cwd": "/",
+        "cgroup": _Cgroup(),
+        "status": SandboxStatus.RUNNING,
+    }
+    launched = []
+
+    class _Done:
+        returncode = 0
+
+        def __init__(self, args, **kwargs):
+            launched.append(args)
+
+        def communicate(self, input=None, timeout=None):
+            return b"", b""
+
+    monkeypatch.setattr(gvisor.subprocess, "Popen", _Done)
+    backend.exec_command("sb-1", ["true"])
+    backend.write_file("sb-1", "/tmp/x", b"x")
+    backend.read_file("sb-1", "/tmp/x")
+    assert len(launched) == 3
+    for args in launched:
+        assert str(_Cgroup.path) not in args
+        assert "--cpus" not in args
+        if oom_score_adj is None:
+            assert args[0] == "runsc"
+        else:
+            # The launcher, with no cgroup to join, only sets the OOM score.
+            assert args[3] == ""
+            assert args[4:7] == ["--oom-score-adj", "0", "runsc"]
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))
