@@ -1,16 +1,20 @@
-"""Video planning: which topics of a sample read with ``video`` are decoded.
+"""Video planning: the checks and decoded topics of a read with ``video``.
 
-``VideoPlanner`` reads the first message of each selected channel in the first
-``PLANNED_FILES`` sampled files, and in each later sampled file whose summary
-records a named topic that no file read so far records. ``decoded_topics``
-names the topics that get ``frames:`` columns: the listed ``video_topics`` and
-the sampled video topics. A sampled video topic needs a codec and its decoder::
+``VideoPlanner`` reads the first in-range message of each selected channel in
+the first ``PLANNED_FILES`` sampled files, and in each later sampled file whose
+summary records a named topic that no file read so far records. For
+``message`` rows, ``check_message_topics`` requires every such channel to be
+decodable video; the ``frame`` column's type follows from ``resize`` alone
+(``decoded_frame_type``). For a sample read, ``decoded_topics`` names the
+topics that get ``frames:`` columns: the listed ``video_topics`` and the
+sampled video topics. A sampled video channel needs a codec and its decoder::
 
-    first message of each selected channel in the sample
-      not video?              -> not decoded
+    first in-range message of each selected channel in the sample
+      not video?              -> message rows: fail, naming the topic and
+                                 video_topics; sample rows: not decoded
       no codec found?         -> fail
       decoder not installed?  -> fail (Pillow for JPEG/PNG, av for the rest)
-    decoded_topics: video_topics + the sampled video topics
+    decoded_topics (sample rows): video_topics + the sampled video topics
 
 A known video topic in none of the sampled files is not decoded, and the read
 warns when it meets one (``mcap_decoded_samples.warn_undecoded_video``).
@@ -47,6 +51,7 @@ from ray.data._internal.datasource_v2.formats.mcap.mcap_video import (
     VideoCodec,
     channel_codec,
     is_video_channel,
+    require_video_channel,
 )
 from ray.data._internal.util import _check_import
 
@@ -75,11 +80,10 @@ class _UnreadableRecords(Exception):
 
 
 class VideoPlanner:
-    """Plans the decoded topics of a sample read with ``video`` from its sampled
-    files.
+    """Plans the decoded topics of a read with ``video`` from its sampled files.
 
     Args:
-        selection: The read's topic filter.
+        selection: The read's topic, schema and time filters.
         filesystem: The filesystem the files are on.
         video_topics: The topics ``read_mcap(video_topics=...)`` lists.
         owner: The object a missing decoder's ``ImportError`` names: the
@@ -100,26 +104,56 @@ class VideoPlanner:
         # The readable sampled files' summaries, read once each.
         self._summaries: Dict[str, Optional["Summary"]] = {}
 
+    def check_message_topics(self, sampled_paths: Sequence[str]) -> None:
+        """Check that every selected channel of the sample is decodable video,
+        for ``message`` rows.
+
+        Fails at the first one that is not, naming its topic, or that has no
+        codec or no importable decoder.
+        """
+        for path in self._planned_files(sampled_paths):
+            self._unless_unreadable(path, self._file_message_topics)
+
+    def _file_message_topics(self, path: str) -> List[str]:
+        """The selected topics of one sampled file, each checked to be video."""
+        topics = []
+        for channel, schema, message in self._first_messages(path):
+            schema_name = schema.name if schema else None
+            require_video_channel(channel.topic, schema_name, self._video_topics, path)
+            self._decodable_codec(path, channel, schema, message)
+            topics.append(channel.topic)
+        return topics
+
     def decoded_topics(self, sampled_paths: Sequence[str]) -> Tuple[str, ...]:
         """The topics a decoded sample row gets frame columns for, sorted.
 
         They are the listed ``video_topics`` and the video topics of the sample
         files. Planning fails if one of the latter has no codec that its
-        ``format`` or bytes name, or no importable decoder. Past the first
-        ``PLANNED_FILES``, a file is read only if its summary records a named
-        topic that none read before does; the search ends once each is found.
+        ``format`` or bytes name, or no importable decoder.
         """
         topics = set(self._video_topics)
+        for path in self._planned_files(sampled_paths):
+            topics.update(self._unless_unreadable(path, self._file_video_topics))
+        return tuple(sorted(topics))
+
+    def _planned_files(self, sampled_paths: Sequence[str]) -> Iterator[str]:
+        """The readable sampled files to plan, each once.
+
+        They are the first ``PLANNED_FILES``, then each whose summary records a
+        named topic that none before records. The search ends once each named
+        topic is found.
+        """
         unfound = set(self._selection.topics or ())
-        for i, path in enumerate(self._readable(sampled_paths)):
+        # A manifest of chunks can name one file many times.
+        files = list(dict.fromkeys(sampled_paths))
+        for i, path in enumerate(self._readable(files)):
             if i >= PLANNED_FILES and not unfound:
-                break
+                return
             recorded = self._recorded_topics(path)
             if i >= PLANNED_FILES and not (recorded & unfound):
                 continue
-            topics.update(self._unless_unreadable(path, self._file_video_topics))
+            yield path
             unfound -= recorded
-        return tuple(sorted(topics))
 
     def _recorded_topics(self, path: str) -> Set[str]:
         """The topics the file's summary records, or none without a summary."""
