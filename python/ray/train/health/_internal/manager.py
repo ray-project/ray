@@ -188,14 +188,20 @@ class HealthManager:
 
         Returns:
             The health decision to carry out, or ``None`` while the checks run.
+            ``Noop()`` if no on-demand check is running.
         """
+        if not self._on_demand_evaluators:
+            return Noop()
         status = self._node_monitor_group.poll_probe_results()
         if status is None:
             return None
         evaluators, self._on_demand_evaluators = self._on_demand_evaluators, []
-        return self._decide(
+        decision = self._decide(
             evaluators, _to_health_state(status, self._on_demand_probes)
         )
+        if isinstance(decision, Noop):
+            logger.info("The on-demand health checks found nothing to act on.")
+        return decision
 
     def _poll_latest_status(self, timeout: float) -> None:
         """Poll the latest status of each ``NodeMonitor``. A monitor keeps its
