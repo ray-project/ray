@@ -45,12 +45,14 @@ from ray.data._internal.logical.operators import (
     RandomShuffle,
     Repartition,
     Sort,
+    TopN,
 )
 from ray.data._internal.planner.aggregate import generate_aggregate_fn
 from ray.data._internal.planner.random_shuffle import generate_random_shuffle_fn
 from ray.data._internal.planner.randomize_blocks import generate_randomize_blocks_fn
 from ray.data._internal.planner.repartition import generate_repartition_fn
 from ray.data._internal.planner.sort import generate_sort_fn
+from ray.data._internal.planner.top_n import plan_top_n_op
 from ray.data.context import DataContext, ShuffleStrategy
 
 logger = logging.getLogger(__name__)
@@ -455,6 +457,15 @@ def plan_all_to_all_op(
             data_context,
             debug_limit_shuffle_execution_to_num_blocks,
         )
+
+    elif isinstance(op, TopN):
+        if data_context.shuffle_strategy != ShuffleStrategy.SHUFFLE_V2:
+            raise ValueError(
+                "TopN is only supported with "
+                "`DataContext.shuffle_strategy=SHUFFLE_V2` "
+                f"(got {data_context.shuffle_strategy})."
+            )
+        return plan_top_n_op(op, data_context, input_physical_dag)
 
     elif isinstance(op, Sort):
         if data_context.shuffle_strategy == ShuffleStrategy.SHUFFLE_V2:

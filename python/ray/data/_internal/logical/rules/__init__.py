@@ -19,6 +19,7 @@ from .set_read_parallelism import (
     SetReadParallelismRule,
     compute_additional_split_factor,
 )
+from .top_n_rewrite import TopNRewriteRule
 
 __all__ = [
     "BindGeneratedIdColumn",
@@ -35,6 +36,7 @@ __all__ = [
     "ProjectionPushdown",
     "PushdownCountFiles",
     "SetReadParallelismRule",
+    "TopNRewriteRule",
     "are_remote_args_compatible",
     "compute_additional_split_factor",
 ]

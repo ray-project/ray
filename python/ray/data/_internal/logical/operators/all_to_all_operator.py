@@ -24,6 +24,7 @@ __all__ = [
     "RandomizeBlocks",
     "Repartition",
     "Sort",
+    "TopN",
 ]
 
 
@@ -213,6 +214,34 @@ class Sort(
     def predicate_passthrough_behavior(self) -> PredicatePassThroughBehavior:
         # Sort doesn't affect filtering correctness
         return PredicatePassThroughBehavior.PASSTHROUGH
+
+
+@dataclass(frozen=True, repr=False, eq=False)
+class TopN(
+    AbstractAllToAll,
+    LogicalOperatorPreservesSchema,
+):
+    """Logical operator for selecting the first rows of a global sort."""
+
+    sort_key: SortKey
+    limit: int
+    ray_remote_args: Dict[str, Any] = field(default_factory=dict)
+    sub_progress_bar_names: Optional[List[str]] = None
+    input_dependencies: List[LogicalOperator] = field(repr=False, kw_only=True)
+
+    def __post_init__(self):
+        assert len(self.input_dependencies) == 1, len(self.input_dependencies)
+        object.__setattr__(self, "_name", f"limit={self.limit}")
+
+    def infer_metadata(self) -> "BlockMetadata":
+        input_metadata = self.input_dependencies[0].infer_metadata()
+        input_rows = input_metadata.num_rows
+        return BlockMetadata(
+            num_rows=min(input_rows, self.limit) if input_rows is not None else None,
+            size_bytes=None,
+            input_files=input_metadata.input_files,
+            exec_stats=None,
+        )
 
 
 @dataclass(frozen=True, repr=False, eq=False)
