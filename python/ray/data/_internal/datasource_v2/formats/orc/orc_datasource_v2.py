@@ -3,11 +3,14 @@
 from __future__ import annotations
 
 import copy
+import logging
+from concurrent.futures import ThreadPoolExecutor
 from typing import TYPE_CHECKING, List, Literal, Optional, Union
 
 import pyarrow as pa
 from typing_extensions import override
 
+from ray._common.utils import env_integer
 from ray.data._internal.datasource_v2.common.file_reader import FileFormat
 from ray.data._internal.datasource_v2.common.non_sampling_file_indexer import (
     NonSamplingFileIndexer,
@@ -22,7 +25,7 @@ from ray.data._internal.datasource_v2.common.size_estimators import (
     SamplingInMemorySizeEstimator,
 )
 from ray.data._internal.datasource_v2.common.synthesized_columns import PathColumn
-from ray.data._internal.datasource_v2.formats.orc.orc_file_reader import OrcFileReader
+from ray.data._internal.datasource_v2.formats.orc.orc_file_indexer import OrcFileIndexer
 from ray.data._internal.datasource_v2.formats.orc.orc_scanner import OrcScanner
 from ray.data._internal.datasource_v2.interfaces.datasource_v2 import (
     DatasourceCategory,
@@ -34,7 +37,12 @@ from ray.data._internal.datasource_v2.interfaces.file_partitioner import (
     FilePartitioner,
     PartitionHints,
 )
-from ray.data._internal.util import _is_local_scheme, _normalize_paths_to_strings
+from ray.data._internal.util import (
+    MiB,
+    _is_local_scheme,
+    _normalize_paths_to_strings,
+    unify_schemas_with_validation,
+)
 from ray.data.context import DataContext
 from ray.data.datasource.file_based_datasource import FileShuffleConfig
 from ray.data.datasource.partitioning import (
@@ -44,6 +52,8 @@ from ray.data.datasource.partitioning import (
 )
 from ray.data.datasource.path_util import _resolve_paths_and_filesystem
 from ray.util.annotations import DeveloperAPI
+
+logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from pyarrow.fs import FileSystem
@@ -55,14 +65,14 @@ class OrcDatasourceV2(FileDataSourceV2):
 
     def __init__(
         self,
-        paths: List[str],
+        paths: list[str],
         *,
-        filesystem: Optional["FileSystem"] = None,
-        partitioning: Optional[Partitioning] = None,
-        file_extensions: Optional[List[str]] = None,
+        filesystem: FileSystem | None = None,
+        partitioning: Partitioning | None = None,
+        file_extensions: list[str] | None = None,
         ignore_missing_paths: bool = False,
         include_paths: bool = False,
-        shuffle: Optional[Union[Literal["files"], FileShuffleConfig]] = None,
+        shuffle: Literal["files"] | FileShuffleConfig | None = None,
     ):
         super().__init__(name="OrcV2", category=DatasourceCategory.FILE_BASED)
         self._supports_distributed_reads = not _is_local_scheme(paths)
@@ -82,7 +92,7 @@ class OrcDatasourceV2(FileDataSourceV2):
 
     @property
     @override
-    def paths(self) -> List[str]:
+    def paths(self) -> list[str]:
         return self._paths
 
     @property
@@ -98,26 +108,46 @@ class OrcDatasourceV2(FileDataSourceV2):
 
     @property
     @override
-    def file_extensions(self) -> Optional[List[str]]:
+    def file_extensions(self) -> list[str] | None:
         return self._file_extensions
 
     @property
     @override
-    def shuffle(self) -> Optional[Union[Literal["files"], FileShuffleConfig]]:
+    def shuffle(self) -> Literal["files"] | FileShuffleConfig | None:
         return self._shuffle
 
     @override
     def _get_file_indexer(self) -> FileIndexer:
-        return NonSamplingFileIndexer(ignore_missing_paths=self._ignore_missing_paths)
+        # ORC V2 listing reads each file's footer to discover how many
+        # stripes it contains and emits one manifest row per stripe (or
+        # one whole-file row for single-stripe files). This lets the
+        # partitioner bin-pack stripes across files so large multi-stripe
+        # ORC files can be read by multiple Ray tasks.
+        return OrcFileIndexer(ignore_missing_paths=self._ignore_missing_paths)
 
     @override
-    def get_file_partitioner(
-        self, *, hints: Optional[PartitionHints] = None
-    ) -> Optional[FilePartitioner]:
-        if hints is None:
-            return None
-        reader = OrcFileReader(format=FileFormat.ORC, filesystem=self._filesystem)
-        return RoundRobinPartitioner(SamplingInMemorySizeEstimator(reader), hints=hints)
+    def get_file_partitioner(self, **kwargs):
+        # Listing rows carry per-stripe FileChunk stats, so bin-pack them
+        # into read units instead of size-estimating whole files. We ignore
+        # ``hints`` and size from stripe metadata directly, matching
+        # Parquet's ``FooterFileIndexer`` / ``OnlineBinPacker`` pairing.
+        from ray.data._internal.datasource_v2.common.online_bin_packer import (
+            OnlineBinPacker,
+        )
+
+        max_bin_bytes = env_integer("RAY_DATA_ORC_BIN_PACKING_BYTES", 128 * MiB)
+        max_shared_open_bins = env_integer(
+            "RAY_DATA_ORC_BIN_PACKING_MAX_SHARED_OPEN_BINS", 16
+        )
+        logger.debug(
+            "ORC OnlineBinPacker(max_bin_bytes=%d, max_shared_open_bins=%d)",
+            max_bin_bytes,
+            max_shared_open_bins,
+        )
+        return OnlineBinPacker(
+            max_bin_bytes=max_bin_bytes,
+            max_shared_open_bins=max_shared_open_bins,
+        )
 
     @property
     @override
@@ -125,13 +155,16 @@ class OrcDatasourceV2(FileDataSourceV2):
         return True
 
     @override
-    def infer_schema(self, sample: Optional[FileManifest]) -> pa.Schema:
-        import pyarrow.orc as orc
+    def infer_schema(self, sample: FileManifest | None) -> pa.Schema:
+        from pyarrow import orc
 
         assert sample is not None
         if len(sample) == 0:
             return pa.schema([])
-        sample_paths = sample.paths.tolist()
+        # After stripe splitting, the same path can appear once per stripe
+        # in the manifest. Deduplicate so we only open each file once for
+        # schema inference (and stay within the 16-worker thread pool).
+        sample_paths = list(dict.fromkeys(sample.paths.tolist()))
         filesystem = self._filesystem
 
         def _read_schema(path: str) -> pa.Schema:
@@ -170,9 +203,7 @@ class OrcDatasourceV2(FileDataSourceV2):
         return schema
 
     @override
-    def resolve_partitioning(
-        self, sample: Optional[FileManifest]
-    ) -> Optional[Partitioning]:
+    def resolve_partitioning(self, sample: FileManifest | None) -> Partitioning | None:
         if self._partitioning is None or sample is None or len(sample) == 0:
             return copy.deepcopy(self._partitioning)
         if self._partitioning.field_names:
@@ -194,7 +225,7 @@ class OrcDatasourceV2(FileDataSourceV2):
     def create_scanner(
         self,
         schema: pa.Schema,
-        filesystem: Optional["FileSystem"] = None,
+        filesystem: FileSystem | None = None,
         **options,
     ) -> OrcScanner:
         return OrcScanner(
