@@ -6,7 +6,10 @@ import pytest
 
 import ray
 from ray._common.utils import RESOURCE_CONSTRAINT_PREFIX
-from ray._private.accelerators import IntelGPUAcceleratorManager as Accelerator
+from ray._private.accelerators import (
+    IntelGPUAcceleratorManager as Accelerator,
+    intel_gpu,
+)
 from ray._private.test_utils import mock_accelerator_detection
 from ray.util.accelerators import INTEL_MAX_1100, INTEL_MAX_1550
 
@@ -36,8 +39,13 @@ def test_visible_intel_gpu_ids(shutdown_only, clean_accelerator_env):
 
 
 def test_visible_intel_gpu_type(shutdown_only, clean_accelerator_env):
-    with mock_accelerator_detection(Accelerator, num_accelerators=4), patch.object(
-        Accelerator, "get_current_node_accelerator_type", return_value=INTEL_MAX_1550
+    with (
+        mock_accelerator_detection(Accelerator, num_accelerators=4),
+        patch.object(
+            Accelerator,
+            "get_current_node_accelerator_type",
+            return_value=INTEL_MAX_1550,
+        ),
     ):
         os.environ["ONEAPI_DEVICE_SELECTOR"] = "level_zero:0,1,2"
         ray.init()
@@ -47,44 +55,134 @@ def test_visible_intel_gpu_type(shutdown_only, clean_accelerator_env):
         )
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="Not supported mock on Windows")
-@pytest.mark.skipif(
-    sys.version_info >= (3, 12),
-    reason="Not passing on Python 3.12. Being followed up by external contributors.",
-)
 def test_get_current_node_num_accelerators():
-    old_dpctl = None
-    if "dpctl" in sys.modules:
-        old_dpctl = sys.modules["dpctl"]
+    with patch(
+        "ray._private.accelerators.intel_gpu._get_level_zero_gpu_names",
+        return_value=["Intel(R) Data Center GPU Max 1550"] * 6,
+    ):
+        assert Accelerator.get_current_node_num_accelerators() == 6
 
-    sys.modules["dpctl"] = __import__("mock_dpctl_1")
-    assert Accelerator.get_current_node_num_accelerators() == 6
-
-    sys.modules["dpctl"] = __import__("mock_dpctl_2")
-    assert Accelerator.get_current_node_num_accelerators() == 4
-
-    if old_dpctl is not None:
-        sys.modules["dpctl"] = old_dpctl
+    with patch(
+        "ray._private.accelerators.intel_gpu._get_level_zero_gpu_names",
+        return_value=["Intel(R) Data Center GPU Max 1100"] * 4,
+    ):
+        assert Accelerator.get_current_node_num_accelerators() == 4
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="Not supported mock on Windows")
-@pytest.mark.skipif(
-    sys.version_info >= (3, 12),
-    reason="Not passing on Python 3.12. Being followed up by external contributors.",
+def test_get_current_node_num_accelerators_no_gpu():
+    with (
+        patch(
+            "ray._private.accelerators.intel_gpu._get_level_zero_gpu_names",
+            return_value=[],
+        ),
+        patch(
+            "ray._private.accelerators.intel_gpu._get_dpctl_gpu_names",
+            return_value=[],
+        ),
+    ):
+        assert Accelerator.get_current_node_num_accelerators() == 0
+
+    with (
+        patch(
+            "ray._private.accelerators.intel_gpu._get_level_zero_gpu_names",
+            side_effect=OSError,
+        ),
+        patch(
+            "ray._private.accelerators.intel_gpu._get_dpctl_gpu_names",
+            side_effect=RuntimeError,
+        ),
+    ):
+        assert Accelerator.get_current_node_num_accelerators() == 0
+
+
+def test_dpctl_fallback_when_level_zero_finds_no_gpu():
+    name = "Intel(R) Data Center GPU Max 1550"
+    for level_zero in (
+        patch(
+            "ray._private.accelerators.intel_gpu._get_level_zero_gpu_names",
+            return_value=[],
+        ),
+        patch(
+            "ray._private.accelerators.intel_gpu._get_level_zero_gpu_names",
+            side_effect=OSError,
+        ),
+    ):
+        with (
+            level_zero,
+            patch(
+                "ray._private.accelerators.intel_gpu._get_dpctl_gpu_names",
+                return_value=[name] * 2,
+            ),
+        ):
+            assert Accelerator.get_current_node_num_accelerators() == 2
+            assert Accelerator.get_current_node_accelerator_type() == INTEL_MAX_1550
+
+
+def test_level_zero_preferred_over_dpctl():
+    with (
+        patch(
+            "ray._private.accelerators.intel_gpu._get_level_zero_gpu_names",
+            return_value=["Intel(R) Data Center GPU Max 1550"] * 4,
+        ),
+        patch(
+            "ray._private.accelerators.intel_gpu._get_dpctl_gpu_names"
+        ) as dpctl_names,
+    ):
+        assert Accelerator.get_current_node_num_accelerators() == 4
+        dpctl_names.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    "platform,expected", [("win32", "ze_loader.dll"), ("linux", "libze_loader.so.1")]
 )
+def test_level_zero_loader_default_name(platform, expected):
+    tried = []
+
+    def fake_cdll(name):
+        tried.append(name)
+        raise OSError
+
+    with (
+        patch.object(intel_gpu.sys, "platform", platform),
+        patch.object(intel_gpu.ctypes, "CDLL", fake_cdll),
+        patch.object(intel_gpu.ctypes.util, "find_library", return_value=None),
+    ):
+        assert intel_gpu._load_level_zero_loader() is None
+    assert tried == [expected]
+
+
 def test_get_current_node_accelerator_type():
-    old_dpctl = None
-    if "dpctl" in sys.modules:
-        old_dpctl = sys.modules["dpctl"]
+    with patch(
+        "ray._private.accelerators.intel_gpu._get_level_zero_gpu_names",
+        return_value=["Intel(R) Data Center GPU Max 1550"],
+    ):
+        assert Accelerator.get_current_node_accelerator_type() == INTEL_MAX_1550
 
-    sys.modules["dpctl"] = __import__("mock_dpctl_1")
-    assert Accelerator.get_current_node_accelerator_type() == INTEL_MAX_1550
+    with patch(
+        "ray._private.accelerators.intel_gpu._get_level_zero_gpu_names",
+        return_value=["Intel(R) Data Center GPU Max 1100"],
+    ):
+        assert Accelerator.get_current_node_accelerator_type() == INTEL_MAX_1100
 
-    sys.modules["dpctl"] = __import__("mock_dpctl_2")
-    assert Accelerator.get_current_node_accelerator_type() == INTEL_MAX_1100
+    with (
+        patch(
+            "ray._private.accelerators.intel_gpu._get_level_zero_gpu_names",
+            return_value=[],
+        ),
+        patch(
+            "ray._private.accelerators.intel_gpu._get_dpctl_gpu_names",
+            return_value=[],
+        ),
+    ):
+        assert Accelerator.get_current_node_accelerator_type() is None
 
-    if old_dpctl is not None:
-        sys.modules["dpctl"] = old_dpctl
+
+def test_get_level_zero_gpu_names_without_loader():
+    with patch(
+        "ray._private.accelerators.intel_gpu._load_level_zero_loader",
+        return_value=None,
+    ):
+        assert intel_gpu._get_level_zero_gpu_names() == []
 
 
 def test_intel_gpu_accelerator_manager_api():
