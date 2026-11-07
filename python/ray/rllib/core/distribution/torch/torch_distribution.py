@@ -99,9 +99,11 @@ class TorchCategorical(TorchDistribution):
     relative probability vectors.
 
     Examples:
-        >>> m = TorchCategorical(torch.tensor([ 0.25, 0.25, 0.25, 0.25 ]))  # doctest: +SKIP_EXAMPLE
+        >>> m = TorchCategorical(  # doctest: +SKIP_EXAMPLE
+        ...     probs=torch.tensor([0.25, 0.25, 0.25, 0.25])
+        ... )
         >>> m.sample(sample_shape=(2,))  # equal probability of 0, 1, 2, 3
-        tensor([3, 4])
+        tensor([3, 2])
 
     Args:
         logits: Event log probabilities (unnormalized)
@@ -172,17 +174,11 @@ class TorchDiagGaussian(TorchDistribution):
         >>> loc, scale = torch.tensor([0.0, 0.0]), torch.tensor([1.0, 1.0])  # doctest: +SKIP_EXAMPLE
         >>> m = TorchDiagGaussian(loc=loc, scale=scale)
         >>> m.sample(sample_shape=(2,))  # 2d normal dist with loc=0 and scale=1
-        tensor([[ 0.1046, -0.6120], [ 0.234, 0.556]])
-
-        >>> # scale is None
-        >>> m = TorchDiagGaussian(loc=torch.tensor([0.0, 1.0]))
-        >>> m.sample(sample_shape=(2,))  # normally distributed with loc=0 and scale=1
-        tensor([0.1046, 0.6120])
-
+        tensor([[ 1.7168, -0.0290],
+                [-0.6550, -1.5413]])
 
     Args:
-        loc: mean of the distribution (often referred to as mu). If scale is None, the
-            second half of the `loc` will be used as the log of scale.
+        loc: mean of the distribution (often referred to as mu).
         scale: standard deviation of the distribution (often referred to as sigma).
             Has to be positive.
     """
@@ -359,9 +355,10 @@ class TorchDeterministic(Distribution):
     Note: entropy is always zero, ang logp and kl are not implemented.
 
     Examples:
-        >>> m = TorchDeterministic(loc=torch.tensor([0.0, 0.0]))  # doctest: +SKIP_EXAMPLE
+        >>> m = TorchDeterministic(loc=torch.tensor([0.0, 0.0]))
         >>> m.sample(sample_shape=(2,))
-        tensor([[ 0.0, 0.0], [ 0.0, 0.0]])
+        tensor([[0., 0.],
+                [0., 0.]])
 
     Args:
         loc: the determinsitic value to return

@@ -303,7 +303,6 @@ class RLModule(Checkpointable, abc.ABC):
         ...     DefaultPPOTorchRLModule
         ... )
         >>> from ray.rllib.algorithms.ppo.ppo_catalog import PPOCatalog
-        >>> from ray.rllib.core.rl_module.rl_module import RLModuleSpec
         >>> from ray.rllib.core.rl_module.default_model_config import DefaultModelConfig
         >>> import gymnasium as gym
         >>> import torch
@@ -331,18 +330,13 @@ class RLModule(Checkpointable, abc.ABC):
 
         Example for training:
 
-        >>> from ray.rllib.algorithms.ppo.torch.ppo_torch_rl_module import (
-        ...     PPOTorchRLModule
-        ... )
-        >>> from ray.rllib.algorithms.ppo.ppo_catalog import PPOCatalog
-        >>> from ray.rllib.core.rl_module.rl_module import RLModuleSpec
-        >>> from ray.rllib.core.rl_module.default_model_config import DefaultModelConfig
-        >>> import gymnasium as gym
-        >>> import torch
         >>> from ray.rllib.algorithms.ppo.torch.default_ppo_torch_rl_module import (
         ...     DefaultPPOTorchRLModule
         ... )
         >>> from ray.rllib.algorithms.ppo.ppo_catalog import PPOCatalog
+        >>> from ray.rllib.core.rl_module.default_model_config import DefaultModelConfig
+        >>> import gymnasium as gym
+        >>> import torch
         >>> env = gym.make("CartPole-v1")
         >>> # Create an instance of the default RLModule used by PPO.
         >>> module = DefaultPPOTorchRLModule(
@@ -351,6 +345,7 @@ class RLModule(Checkpointable, abc.ABC):
         ...     model_config=DefaultModelConfig(fcnet_hiddens=[128, 128]),
         ...     catalog_class=PPOCatalog,
         ... )
+        >>> obs, info = env.reset()
         >>> fwd_ins = {"obs": torch.Tensor([obs])}
         >>> fwd_outputs = module.forward_train(fwd_ins)
         >>> # loss = compute_loss(fwd_outputs, fwd_ins)
@@ -358,18 +353,13 @@ class RLModule(Checkpointable, abc.ABC):
 
         Example for inference:
 
-        >>> from ray.rllib.algorithms.ppo.torch.ppo_torch_rl_module import (
-        ...     PPOTorchRLModule
-        ... )
-        >>> from ray.rllib.algorithms.ppo.ppo_catalog import PPOCatalog
-        >>> from ray.rllib.core.rl_module.rl_module import RLModuleSpec
-        >>> from ray.rllib.core.rl_module.default_model_config import DefaultModelConfig
-        >>> import gymnasium as gym
-        >>> import torch
         >>> from ray.rllib.algorithms.ppo.torch.default_ppo_torch_rl_module import (
         ...     DefaultPPOTorchRLModule
         ... )
         >>> from ray.rllib.algorithms.ppo.ppo_catalog import PPOCatalog
+        >>> from ray.rllib.core.rl_module.default_model_config import DefaultModelConfig
+        >>> import gymnasium as gym
+        >>> import torch
         >>> env = gym.make("CartPole-v1")
         >>> # Create an instance of the default RLModule used by PPO.
         >>> module = DefaultPPOTorchRLModule(
@@ -378,6 +368,9 @@ class RLModule(Checkpointable, abc.ABC):
         ...     model_config=DefaultModelConfig(fcnet_hiddens=[128, 128]),
         ...     catalog_class=PPOCatalog,
         ... )
+        >>> action_dist_class = module.get_inference_action_dist_cls()
+        >>> obs, info = env.reset()
+        >>> terminated = False
         >>> while not terminated:
         ...     fwd_ins = {"obs": torch.Tensor([obs])}
         ...     fwd_outputs = module.forward_inference(fwd_ins)
