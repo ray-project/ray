@@ -162,6 +162,38 @@ def write_mcap_without_summary_schemas(path, b_declared_in_chunk_1=False):
         writer.finish()
 
 
+UNDECLARED_CHANNEL = 99  # the channel id ``write_undeclared_channel`` never declares
+
+
+def write_undeclared_channel(path):
+    """Write one chunk that holds a message on ``/a``, then a message on channel
+    ``UNDECLARED_CHANNEL``, which no record of the file declares.
+
+    The chunk decodes, but the reader cannot place its second message.
+    """
+    from mcap.writer import CompressionType, IndexType, Writer
+
+    with open(path, "wb") as stream:
+        writer = Writer(
+            stream, compression=CompressionType.ZSTD, index_types=IndexType.ALL
+        )
+        writer.start(profile="", library="ray-test")
+        schema_id = writer.register_schema(
+            name="test_schema", encoding="jsonschema", data=b'{"type": "object"}'
+        )
+        channel_id = writer.register_channel(
+            schema_id=schema_id, topic="/a", message_encoding="json"
+        )
+        for i, channel in enumerate([channel_id, UNDECLARED_CHANNEL]):
+            writer.add_message(
+                channel_id=channel,
+                log_time=BASE_TIME + i * STEP,
+                publish_time=BASE_TIME + i * STEP,
+                data=json.dumps({"seq": i}).encode(),
+            )
+        writer.finish()
+
+
 MIXED_TOPICS = ("/a", "/b", "/raw", "/ü")  # channels of ``write_mixed_channels``
 SHARED_SCHEMA = b"float64 x\n" * 30  # the definition /a and /b both use
 
