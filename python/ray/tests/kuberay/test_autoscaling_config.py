@@ -759,6 +759,18 @@ TPU_TYPES_DATA = (
             "v7x-16",
             id="tpu-v7x-test",
         ),
+        pytest.param(
+            "tpu-v6e-slice",
+            "4x",
+            None,
+            id="tpu-malformed-topology",
+        ),
+        pytest.param(
+            "tpu-v6e-slice",
+            "2x2x2",
+            None,
+            id="tpu-mismatched-generation-topology",
+        ),
     ]
 )
 
@@ -966,6 +978,22 @@ def test_get_ray_resources_from_group_spec(
     expected_resources: Dict[str, Any],
 ):
     assert _get_ray_resources_from_group_spec(group_spec, is_head) == expected_resources
+
+
+@pytest.mark.skipif(platform.system() == "Windows", reason="Not relevant.")
+def test_get_ray_resources_malformed_tpu_topology_skips_head_resource():
+    group_spec = copy.deepcopy(get_basic_ray_cr()["spec"]["workerGroupSpecs"][2])
+    group_spec["template"]["spec"]["nodeSelector"] = {
+        "cloud.google.com/gke-tpu-accelerator": "tpu-v6e-slice",
+        "cloud.google.com/gke-tpu-topology": "4x",
+    }
+    assert _get_ray_resources_from_group_spec(group_spec, False) == {
+        "CPU": 1,
+        "memory": 536870912,
+        "Custom2": 5,
+        "Custom3": 1,
+        "TPU": 4,
+    }
 
 
 @pytest.mark.skipif(platform.system() == "Windows", reason="Not relevant.")

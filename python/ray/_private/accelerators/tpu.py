@@ -1095,14 +1095,28 @@ class TPUAcceleratorManager(AcceleratorManager):
         """Return the number of hosts in a TPU slice from node-group labels and
         resources (disambiguating 4-chip vs 8-chip 2x4 hosts via resources["TPU"]),
         or None if the node group is not a TPU slice."""
-        topology = labels.get(ray._raylet.RAY_NODE_TPU_TOPOLOGY_KEY)
-        generation = normalize_tpu_accelerator_type(
-            labels.get(ray._raylet.RAY_NODE_ACCELERATOR_TYPE_KEY)
-            or labels.get(ray._raylet.RAY_NODE_TPU_POD_TYPE_KEY)
-        ).split("-")[0]
-        if not topology or not TPUAcceleratorManager.is_valid_tpu_accelerator_topology(
-            generation, topology
-        ):
+        topology = (
+            (labels.get(ray._raylet.RAY_NODE_TPU_TOPOLOGY_KEY) or "").strip().lower()
+        )
+        if not topology:
+            return None
+        generation = next(
+            (
+                gen
+                for key in (
+                    ray._raylet.RAY_NODE_ACCELERATOR_TYPE_KEY,
+                    ray._raylet.RAY_NODE_TPU_POD_TYPE_KEY,
+                )
+                if (
+                    gen := normalize_tpu_accelerator_type(labels.get(key)).split("-")[0]
+                )
+                and TPUAcceleratorManager.is_valid_tpu_accelerator_topology(
+                    gen, topology
+                )
+            ),
+            None,
+        )
+        if not generation:
             return None
         chips_per_host = get_chips_per_host(topology, generation)
         # A single-host v5e/v6e topology may also be split across 4-chip hosts,

@@ -5239,6 +5239,382 @@ def test_multihost_tpu_whole_replica_launch_and_termination():
     ] == ["ca"]
 
 
+def test_multihost_tpu_pending_slot_normalization_and_atomic_caps():
+    """Pending TPU host slots, worker-id launches, staggered sub-slice backfill,
+    max-node termination, and constraint-backed QUEUED cleanup stay slice-exact."""
+    in_op = LabelSelectorOperator.LABEL_OPERATOR_IN
+    not_in = LabelSelectorOperator.LABEL_OPERATOR_NOT_IN
+    head_res = {"CPU": 4, "TPU": 4, "TPU-v6e-16-head": 1}
+
+    def _pending(iid: str, status=Instance.ALLOCATED, nt: str = "tpu_4x4"):
+        return make_autoscaler_instance(
+            im_instance=Instance(instance_type=nt, status=status, instance_id=iid)
+        )
+
+    def _idle_host(
+        iid: str, slice_name: str, w: int, idle_ms: int, used_tpu: float = 0
+    ):
+        inst = _tpu_host(
+            iid,
+            slice_name,
+            {"TPU": used_tpu} if used_tpu else None,
+            w,
+            **({"TPU-v6e-16-head": 1} if w == 0 else {}),
+        )
+        inst.ray_node.idle_duration_ms = idle_ms
+        return inst
+
+    # 1. Pending TPU pods normalize to 1 head per 4-host replica during min_worker
+    # refill and non-locality head scheduling (no 4x head inflation).
+    min8_cfgs = {
+        "tpu_4x4": _tpu_config(min_workers=8, max_workers=24, resources=head_res)
+    }
+    booting_4 = [_pending(f"p{i}") for i in range(4)]
+    min8_idle = ResourceDemandScheduler(event_logger).schedule(
+        SchedulingRequest(
+            disable_launch_config_check=True,
+            node_type_configs=min8_cfgs,
+            current_instances=booting_4,
+        )
+    )
+    assert _launch_and_terminate(min8_idle) == ({"tpu_4x4": 4}, [])
+    assert min8_idle.cluster_resources["TPU-v6e-16-head"] == 2.0
+
+    min8_five_heads = ResourceDemandScheduler(event_logger).schedule(
+        SchedulingRequest(
+            disable_launch_config_check=True,
+            node_type_configs=min8_cfgs,
+            current_instances=booting_4,
+            resource_requests=[
+                ResourceRequestByCount(
+                    request=ResourceRequestUtil.make({"TPU-v6e-16-head": 1}), count=5
+                )
+            ],
+        )
+    )
+    assert _launch_and_terminate(min8_five_heads) == ({"tpu_4x4": 16}, [])
+    assert min8_five_heads.cluster_resources["TPU-v6e-16-head"] == 5.0
+
+    nonloc_four_heads = ResourceDemandScheduler(event_logger).schedule(
+        SchedulingRequest(
+            disable_launch_config_check=True,
+            node_type_configs={
+                "tpu_4x4": _tpu_config(max_workers=24, resources=head_res)
+            },
+            current_instances=booting_4,
+            resource_requests=[
+                ResourceRequestByCount(
+                    request=ResourceRequestUtil.make({"TPU-v6e-16-head": 1}), count=4
+                )
+            ],
+        )
+    )
+    assert _launch_and_terminate(nonloc_four_heads) == ({"tpu_4x4": 12}, [])
+    assert nonloc_four_heads.cluster_resources["TPU-v6e-16-head"] == 4.0
+
+    # 2. `reserve_tpu_slice` PG (head=1 + worker-id=0, no locality_requirement)
+    # scales from zero, and non-locality worker-id IN/NOT_IN launch exact slots
+    # on multi-host slices while rejecting NOT_IN ["0"] on single-host TPUs.
+    reserve_bundle = ResourceRequestUtil.make(
+        {"TPU-v6e-16-head": 1},
+        label_selectors=[
+            [
+                ("ray.io/tpu-worker-id", in_op, ["0"]),
+                ("ray.io/tpu-pod-type", in_op, ["v6e-16"]),
+            ]
+        ],
+    )
+    reserve_reply = ResourceDemandScheduler(event_logger).schedule(
+        SchedulingRequest(
+            disable_launch_config_check=True,
+            node_type_configs={
+                "tpu_4x4": _tpu_config(max_workers=8, resources=head_res)
+            },
+            gang_resource_requests=[GangResourceRequest(requests=[reserve_bundle])],
+        )
+    )
+    assert _launch_and_terminate(reserve_reply) == ({"tpu_4x4": 4}, [])
+    assert not reserve_reply.infeasible_gang_resource_requests
+    assert reserve_reply.cluster_resources["TPU-v6e-16-head"] == 1.0
+
+    single_notin = ResourceDemandScheduler(event_logger).schedule(
+        SchedulingRequest(
+            disable_launch_config_check=True,
+            node_type_configs={"tpu_single": TPU_SINGLE_CONFIG},
+            resource_requests=[
+                ResourceRequestByCount(
+                    request=ResourceRequestUtil.make(
+                        {"TPU": 4},
+                        label_selectors=[[("ray.io/tpu-worker-id", not_in, ["0"])]],
+                    ),
+                    count=2,
+                )
+            ],
+        )
+    )
+    assert _launch_and_terminate(single_notin) == ({}, [])
+    assert len(single_notin.infeasible_resource_requests) == 2
+
+    wid2_reply = ResourceDemandScheduler(event_logger).schedule(
+        SchedulingRequest(
+            disable_launch_config_check=True,
+            node_type_configs={
+                "tpu_4x4": _tpu_config(max_workers=8, resources=head_res)
+            },
+            resource_requests=[
+                ResourceRequestByCount(
+                    request=ResourceRequestUtil.make(
+                        {"TPU": 4},
+                        label_selectors=[[("ray.io/tpu-worker-id", in_op, ["2"])]],
+                    ),
+                    count=2,
+                )
+            ],
+        )
+    )
+    assert _launch_and_terminate(wid2_reply) == ({"tpu_4x4": 8}, [])
+    assert not wid2_reply.infeasible_resource_requests
+    assert wid2_reply.cluster_resources["TPU-v6e-16-head"] == 2.0
+
+    notin0_reply = ResourceDemandScheduler(event_logger).schedule(
+        SchedulingRequest(
+            disable_launch_config_check=True,
+            node_type_configs={
+                "tpu_4x4": _tpu_config(max_workers=8, resources=head_res)
+            },
+            resource_requests=[
+                ResourceRequestByCount(
+                    request=ResourceRequestUtil.make(
+                        {"TPU": 4},
+                        label_selectors=[[("ray.io/tpu-worker-id", not_in, ["0"])]],
+                    ),
+                    count=3,
+                )
+            ],
+        )
+    )
+    assert _launch_and_terminate(notin0_reply) == ({"tpu_4x4": 4}, [])
+    assert not notin0_reply.infeasible_resource_requests
+    assert notin0_reply.cluster_resources["TPU-v6e-16-head"] == 1.0
+
+    # 3. Staggered-boot sub-slices complete partially busy slices before grouping
+    # backfill pods into a phantom extra slice, and roll back cleanly when a slice's
+    # target worker IDs are already occupied.
+    staggered_3_slices = [
+        _idle_host("s0-w0", "slice-0", 0, 0, used_tpu=4),
+        _idle_host("s0-w1", "slice-0", 1, 0, used_tpu=4),
+        _idle_host("s0-w2", "slice-0", 2, 0),
+        _idle_host("s1-w1", "slice-1", 1, 0, used_tpu=4),
+        _idle_host("s1-w2", "slice-1", 2, 0, used_tpu=4),
+        _idle_host("s2-w1", "slice-2", 1, 0, used_tpu=4),
+        _idle_host("s2-w2", "slice-2", 2, 0, used_tpu=4),
+        _idle_host("s2-w3", "slice-2", 3, 0),
+        *[_pending(f"bf{i}") for i in range(4)],
+    ]
+    sub_any_2 = _tpu_gang((None, None))
+    assert _schedule_gangs(TPU_CONFIGS, [sub_any_2] * 3, staggered_3_slices) == ({}, 0)
+
+    wid01_blocked_plus_fresh = [
+        _idle_host("s0-w0", "slice-0", 0, 0, used_tpu=4),
+        _idle_host("s0-w1", "slice-0", 1, 0, used_tpu=4),
+        _idle_host("s1-w0", "slice-1", 0, 0, used_tpu=4),
+        _idle_host("s1-w1", "slice-1", 1, 0, used_tpu=4),
+        *[_pending(f"fr{i}") for i in range(4)],
+    ]
+    assert _schedule_gangs(
+        TPU_CONFIGS, [_tpu_gang((0, 1))], wid01_blocked_plus_fresh
+    ) == ({}, 0)
+
+    # 4. Slice-atomic max-worker and global max-node termination never split an
+    # idle slice, never steal pods from a complete booting replica onto an idle
+    # degraded slice, and drop QUEUED placeholders before RAY_INSTALLING pods.
+    active_3_plus_idle_4 = [
+        _idle_host(f"a{w}", "slice-a", w, 0, used_tpu=4) for w in range(3)
+    ] + [_idle_host(f"b{w}", "slice-b", w, 60_000) for w in range(4)]
+    per_type_cap = ResourceDemandScheduler(event_logger).schedule(
+        SchedulingRequest(
+            disable_launch_config_check=True,
+            node_type_configs={"tpu_4x4": _tpu_config(max_workers=4)},
+            current_instances=active_3_plus_idle_4,
+        )
+    )
+    assert {t.instance_id for t in per_type_cap.to_terminate} == {
+        f"b{w}" for w in range(4)
+    }
+
+    non_mult_cap = ResourceDemandScheduler(event_logger).schedule(
+        SchedulingRequest(
+            disable_launch_config_check=True,
+            node_type_configs={"tpu_4x4": _tpu_config(max_workers=6)},
+            current_instances=[
+                _idle_host(f"a{w}", "slice-a", w, 0, used_tpu=4) for w in range(4)
+            ]
+            + [_idle_host(f"b{w}", "slice-b", w, 60_000) for w in range(4)],
+        )
+    )
+    assert {t.instance_id for t in non_mult_cap.to_terminate} == {
+        f"b{w}" for w in range(4)
+    }
+
+    cpu_busy = [
+        _make_running_domain_node("cpu", f"c{i}", {"CPU": 8}, {}, used={"CPU": 8})
+        for i in range(4)
+    ]
+    global_cap = ResourceDemandScheduler(event_logger).schedule(
+        SchedulingRequest(
+            disable_launch_config_check=True,
+            node_type_configs={
+                "tpu_4x4": _tpu_config(max_workers=8),
+                "cpu": _tpu_config(
+                    "cpu", max_workers=8, resources={"CPU": 8}, labels={}
+                ),
+            },
+            max_num_nodes=6,
+            current_instances=[
+                _idle_host(f"b{w}", "slice-b", w, 60_000) for w in range(4)
+            ]
+            + cpu_busy,
+        )
+    )
+    assert {(t.instance_id, t.cause) for t in global_cap.to_terminate} == {
+        (f"b{w}", TerminationRequest.Cause.MAX_NUM_NODES) for w in range(4)
+    }
+
+    idle_degraded_plus_booting = [
+        _idle_host(f"a{w}", "slice-a", w, 90_000) for w in range(3)
+    ] + [_pending(f"p{i}", Instance.ALLOCATED) for i in range(4)]
+    for cap in (4, 3):
+        no_collateral = ResourceDemandScheduler(event_logger).schedule(
+            SchedulingRequest(
+                disable_launch_config_check=True,
+                node_type_configs={"tpu_4x4": _tpu_config(max_workers=cap)},
+                current_instances=idle_degraded_plus_booting,
+            )
+        )
+        assert {t.instance_id for t in no_collateral.to_terminate} == {
+            f"p{i}" for i in range(4)
+        }
+
+    mixed_pending_cap = ResourceDemandScheduler(event_logger).schedule(
+        SchedulingRequest(
+            disable_launch_config_check=True,
+            node_type_configs={
+                "tpu_4x4": _tpu_config(max_workers=16, resources=head_res)
+            },
+            max_num_nodes=4,
+            current_instances=[
+                _pending(f"ri{i}", Instance.RAY_INSTALLING) for i in range(4)
+            ]
+            + [_pending(f"q{i}", Instance.QUEUED) for i in range(4)],
+        )
+    )
+    assert {t.instance_id for t in mixed_pending_cap.to_terminate} == {
+        f"q{i}" for i in range(4)
+    }
+    assert mixed_pending_cap.cluster_resources["TPU-v6e-16-head"] == 1.0
+
+    # 5. Pending idle termination keeps whole QUEUED replicas required by
+    # ClusterResourceConstraint or worker-id selectors, packs co-located slot-0
+    # sub-host requests onto 1 replica, and avoids cross-replica splits on
+    # multiple opaque ALLOCATED replicas when min_worker_nodes > 0.
+    queued_16 = [_pending(f"q-{i}", Instance.QUEUED) for i in range(16)]
+    crc_sched = ResourceDemandScheduler(event_logger)
+    crc_sched._pending_unneeded_since_s["tpu_4x4"] = [0.0] * 16
+    crc_reply = crc_sched.schedule(
+        SchedulingRequest(
+            disable_launch_config_check=True,
+            node_type_configs={
+                "tpu_4x4": _tpu_config(max_workers=16, resources=head_res)
+            },
+            pending_idle_timeout_s=10.0,
+            current_instances=queued_16,
+            cluster_resource_constraints=[
+                ClusterResourceConstraint(
+                    resource_requests=[
+                        ResourceRequestByCount(
+                            request=ResourceRequestUtil.make({"TPU-v6e-16-head": 1}),
+                            count=3,
+                        )
+                    ]
+                )
+            ],
+        )
+    )
+    assert len(crc_reply.to_terminate) == 4
+    assert crc_reply.cluster_resources["TPU-v6e-16-head"] == 3.0
+
+    wid0_sched = ResourceDemandScheduler(event_logger)
+    wid0_sched._pending_unneeded_since_s["tpu_4x4"] = [0.0] * 16
+    wid0_reply = wid0_sched.schedule(
+        SchedulingRequest(
+            disable_launch_config_check=True,
+            node_type_configs={
+                "tpu_4x4": _tpu_config(max_workers=16, resources=head_res)
+            },
+            pending_idle_timeout_s=10.0,
+            current_instances=queued_16,
+            resource_requests=[
+                ResourceRequestByCount(
+                    request=ResourceRequestUtil.make(
+                        {"TPU": 4},
+                        label_selectors=[[("ray.io/tpu-worker-id", in_op, ["0"])]],
+                    ),
+                    count=3,
+                )
+            ],
+        )
+    )
+    assert len(wid0_reply.to_terminate) == 4
+
+    copack_sched = ResourceDemandScheduler(event_logger)
+    copack_sched._pending_unneeded_since_s["tpu_4x4"] = [0.0] * 16
+    copack_reply = copack_sched.schedule(
+        SchedulingRequest(
+            disable_launch_config_check=True,
+            node_type_configs={
+                "tpu_4x4": _tpu_config(max_workers=16, resources=head_res)
+            },
+            pending_idle_timeout_s=10.0,
+            current_instances=queued_16,
+            resource_requests=[
+                ResourceRequestByCount(
+                    request=ResourceRequestUtil.make(
+                        {"TPU": 1},
+                        label_selectors=[[("ray.io/tpu-worker-id", in_op, ["0"])]],
+                    ),
+                    count=4,
+                )
+            ],
+        )
+    )
+    assert len(copack_reply.to_terminate) == 12
+
+    alloc8_insts = [_pending(f"ap-{i}", Instance.ALLOCATED) for i in range(8)]
+    opaque_min_sched = ResourceDemandScheduler(event_logger)
+    opaque_min_sched._pending_unneeded_since_s["tpu_4x4"] = [0.0] * 8
+    opaque_min = opaque_min_sched.schedule(
+        SchedulingRequest(
+            disable_launch_config_check=True,
+            node_type_configs={"tpu_4x4": _tpu_config(min_workers=4, max_workers=16)},
+            pending_idle_timeout_s=10.0,
+            current_instances=alloc8_insts,
+        )
+    )
+    assert opaque_min.to_terminate == []
+
+    opaque_zero_sched = ResourceDemandScheduler(event_logger)
+    opaque_zero_sched._pending_unneeded_since_s["tpu_4x4"] = [0.0] * 8
+    opaque_zero = opaque_zero_sched.schedule(
+        SchedulingRequest(
+            disable_launch_config_check=True,
+            node_type_configs={"tpu_4x4": _tpu_config(min_workers=0, max_workers=16)},
+            pending_idle_timeout_s=10.0,
+            current_instances=alloc8_insts,
+        )
+    )
+    assert len(opaque_zero.to_terminate) == 8
+
+
 GPU_LABELS = {"ray.io/accelerator-type": "GB200"}
 
 

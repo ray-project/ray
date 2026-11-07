@@ -891,6 +891,26 @@ def test_get_node_group_accelerator_labels(node_selector, expected_labels):
             id="pod-type-fallback",
         ),
         pytest.param(
+            {
+                "ray.io/accelerator-type": "CUSTOM-V6E",
+                "ray.io/tpu-pod-type": "v6e-16",
+                "ray.io/tpu-topology": "4x4",
+            },
+            {"TPU": 4},
+            4,
+            id="custom-accelerator-type-with-valid-pod-type",
+        ),
+        pytest.param(
+            {
+                "ray.io/accelerator-type": "CUSTOM-ACCEL",
+                "ray.io/tpu-pod-type": "custom-16",
+                "ray.io/tpu-topology": "4x4",
+            },
+            {"TPU": 4},
+            None,
+            id="custom-accelerator-and-pod-type-non-tpu",
+        ),
+        pytest.param(
             {"ray.io/accelerator-type": "TPU-V6E", "ray.io/tpu-topology": "2x4"},
             {"TPU": 8},
             1,
