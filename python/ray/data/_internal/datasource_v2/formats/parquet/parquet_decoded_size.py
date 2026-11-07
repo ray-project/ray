@@ -8,7 +8,8 @@ layout it doesn't model (views and dictionaries among them), is left to the call
 
 from __future__ import annotations
 
-from typing import Any, Iterable, NamedTuple, Sequence
+import math
+from typing import Any, Iterable, Mapping, NamedTuple, Sequence
 
 import pyarrow as pa
 from pyarrow.parquet import (
@@ -251,18 +252,29 @@ def _matches(leaf: _ArrowNode, rep: int, column: ColumnSchema) -> bool:
 
 
 def build_leaf_profiles(
-    parquet_schema: ParquetSchema, file_metadata: FileMetaData | None = None
+    parquet_schema: ParquetSchema,
+    pinned_schema: pa.Schema | None = None,
+    format_kwargs: Mapping[str, Any] | None = None,
+    file_metadata: FileMetaData | None = None,
 ) -> list[LeafProfile | None] | None:
     """One :class:`LeafProfile` per leaf, in row group column order, ``None`` for a
     leaf this module doesn't model.
 
     Args:
         parquet_schema: The file's schema.
+        pinned_schema: The schema the read casts every batch to, if any.
+        format_kwargs: The read's ``ParquetFileFormat`` kwargs.
         file_metadata: The file's footer, for its writer.
 
     Returns:
         The profiles, or ``None`` for a file this module doesn't model at all.
     """
+    format_kwargs = format_kwargs or {}
+    # Rare reads: the reader drops these options when it casts to the schema.
+    if format_kwargs.get("dictionary_columns") or detect_binary_or_list_type(
+        format_kwargs
+    ):
+        return None
     try:
         arrow_schema = parquet_schema.to_arrow_schema()
     except (pa.ArrowException, ValueError, TypeError):
@@ -275,13 +287,22 @@ def build_leaf_profiles(
     # equal to, or a prefix of, the one before: 1,000 copies of an 8-byte string
     # report 8 bytes, where arrow-rs reports 8,000.
     counts_delta = writer != "" and not writer.startswith("parquet-cpp")
+    unmapped: set[int] = set()
+    if pinned_schema is not None:
+        walk, unmapped = _pinned_walk(
+            arrow_schema=arrow_schema,
+            pinned_schema=pinned_schema,
+            parquet_schema=parquet_schema,
+        )
 
     profiles: list[LeafProfile | None] = []
     for leaf_idx, (chain, max_repetition_level) in enumerate(walk.leaves):
         column = parquet_schema.column(leaf_idx)
         leaf = chain[-1]
-        if leaf.kind == _UNSUPPORTED or not _matches(
-            leaf=leaf, rep=max_repetition_level, column=column
+        if (
+            leaf_idx in unmapped
+            or leaf.kind == _UNSUPPORTED
+            or not _matches(leaf=leaf, rep=max_repetition_level, column=column)
         ):
             profiles.append(None)
             continue
@@ -441,13 +462,25 @@ def leaf_chunks(
 
 
 # The estimate.
-def estimate_row_group(leaves: Sequence[LeafChunk]) -> int:
-    """Decoded bytes of ``leaves``, chunks of one row group."""
+class Read(NamedTuple):
+    """What a read task does besides decoding the file's columns."""
+
+    # Bytes per row of the columns Ray appends, and once per row group on top.
+    added_row_bytes: float = 0
+    added_row_group_bytes: int = 0
+
+
+def estimate_row_group(
+    row_group: RowGroupMetaData, leaves: Sequence[LeafChunk], read: Read
+) -> int:
+    """Decoded bytes of ``leaves``, chunks of ``row_group``."""
     size = 0
     counted: set[int] = set()
     for leaf in leaves:
         size += estimate_ancestors(leaf=leaf, counted=counted)
         size += estimate_leaf(leaf)
+    if detect_added_columns(read):
+        size += estimate_added_columns(row_group=row_group, read=read)
     return size
 
 
@@ -491,6 +524,12 @@ def _array_bytes(node: _ArrowNode, leaf: LeafChunk) -> int:
     return size
 
 
+# The ``binary_type`` / ``list_type`` read options, for wider strings or lists.
+def detect_binary_or_list_type(format_kwargs: Mapping[str, Any]) -> bool:
+    large_list = format_kwargs.get("list_type") not in (None, pa.ListType)
+    return format_kwargs.get("binary_type") not in (None, pa.binary()) or large_list
+
+
 # Plain string and binary leaves.
 def detect_string_type(arrow_type: pa.DataType) -> bool:
     return (
@@ -527,3 +566,138 @@ def estimate_string_bytes(leaf: LeafChunk) -> int:
 # Any DELTA_BYTE_ARRAY page.
 def detect_delta_byte_array(chunk: ColumnChunkMetaData) -> bool:
     return "DELTA_BYTE_ARRAY" in chunk.encodings
+
+
+# Ray's schema pin: every batch is cast to the dataset schema, unless that holds
+# an extension type (``readers.file_reader.casts_to_schema``).
+def pinned_type(field: pa.Field, pinned_schema: pa.Schema | None) -> pa.DataType | None:
+    """The type the pin casts a file column to, or ``None`` if it keeps its own."""
+    if pinned_schema is None:
+        return None
+    idx = pinned_schema.get_field_index(field.name)
+    if idx < 0 or pinned_schema.field(idx).type == field.type:
+        return None
+    return pinned_schema.field(idx).type
+
+
+def _pinned_walk(
+    arrow_schema: pa.Schema, pinned_schema: pa.Schema, parquet_schema: ParquetSchema
+) -> tuple[_SchemaWalk, set[int]]:
+    """The pinned walk, and the leaves of columns whose cast changes their shape:
+    a struct that gained a field, a nested field made nullable, numbers cast to
+    text. Those are walked as stored and left unmodelled."""
+    unmapped: set[int] = set()
+    fields, start = [], 0
+    for field in arrow_schema:
+        end = start + len(_walk(pa.schema([field])).leaves)
+        leaves = range(start, end)
+        # An all-null column keeps its type: its nulls count as an added column.
+        arrow_type = (
+            None
+            if pa.types.is_null(field.type)
+            else pinned_type(field=field, pinned_schema=pinned_schema)
+        )
+        pinned = field if arrow_type is None else field.with_type(arrow_type)
+        if pinned is not field and not _cast_maps(
+            walk=_walk(pa.schema([pinned])),
+            columns=[parquet_schema.column(j) for j in leaves],
+        ):
+            unmapped.update(leaves)
+            pinned = field
+        fields.append(pinned)
+        start = end
+    return _walk(pa.schema(fields)), unmapped
+
+
+def _cast_maps(walk: _SchemaWalk, columns: Sequence[ColumnSchema]) -> bool:
+    """Whether a column's leaves follow its pinned walk one for one."""
+    return len(walk.leaves) == len(columns) and all(
+        _matches(leaf=chain[-1], rep=rep, column=column)
+        for (chain, rep), column in zip(walk.leaves, columns)
+    )
+
+
+def _is_text(arrow_type: pa.DataType) -> bool:
+    view = pa.types.is_string_view(arrow_type) or pa.types.is_binary_view(arrow_type)
+    return detect_string_type(arrow_type) or view
+
+
+# Columns Ray adds after decoding: the file's path, Hive partition values, a row
+# hash, a checkpoint ID, and every dataset column the file lacks, filled with
+# nulls by the pin.
+def detect_added_columns(read: Read) -> bool:
+    return read.added_row_bytes > 0 or read.added_row_group_bytes > 0
+
+
+def estimate_added_columns(row_group: RowGroupMetaData, read: Read) -> int:
+    """Bytes of the columns Ray appends to one row group."""
+    per_row = math.ceil(row_group.num_rows * read.added_row_bytes)
+    return per_row + read.added_row_group_bytes
+
+
+# Bytes an added array takes once per row group: its bitmap's last byte and the
+# offset past its last element.
+_ADDED_ROW_GROUP_BYTES = 9
+
+
+def added_bytes(added: Sequence[pa.Field], path: str) -> tuple[float, int]:
+    """Bytes per row of the ``added`` columns, and bytes once per row group. Only
+    the path and the Hive values cut from it hold text: ``year=2024/`` gives
+    ``year`` 4 bytes a row."""
+    path_bytes = len(path.encode())
+    partitions = dict(part.split("=", 1) for part in path.split("/") if "=" in part)
+    per_row, per_row_group = 0.0, 0
+    for field in added:
+        if field.name == "path":
+            text_bytes = path_bytes
+        else:
+            text_bytes = len(partitions.get(field.name, "").encode())
+        row, once = _added_array_bytes(
+            arrow_type=field.type, text_bytes=text_bytes, path_bytes=path_bytes
+        )
+        per_row += row
+        per_row_group += once
+    return per_row, per_row_group
+
+
+def _added_array_bytes(
+    arrow_type: pa.DataType, text_bytes: int, path_bytes: int
+) -> tuple[float, int]:
+    """Bytes per element of an added array and its children, and once per row group."""
+    if isinstance(arrow_type, pa.BaseExtensionType):
+        arrow_type = arrow_type.storage_type
+    if pa.types.is_null(arrow_type):
+        return 0, 0
+
+    def below(child_type: pa.DataType, child_text: int) -> tuple[float, int]:
+        return _added_array_bytes(
+            arrow_type=child_type, text_bytes=child_text, path_bytes=path_bytes
+        )
+
+    row, once = 1 / 8, _ADDED_ROW_GROUP_BYTES
+    if pa.types.is_struct(arrow_type):
+        for field in arrow_type:
+            child_row, child_once = below(field.type, text_bytes)
+            row, once = row + child_row, once + child_once
+    elif pa.types.is_fixed_size_list(arrow_type):
+        child_row, child_once = below(arrow_type.value_type, text_bytes)
+        row, once = row + arrow_type.list_size * child_row, once + child_once
+    elif pa.types.is_map(arrow_type):
+        entry = pa.struct([arrow_type.key_field, arrow_type.item_field])
+        row, once = row + 4, once + below(entry, 0)[1]
+    elif _is_list(arrow_type):
+        row += 8 if pa.types.is_large_list(arrow_type) else 4
+        once += below(arrow_type.value_type, 0)[1]
+    elif pa.types.is_dictionary(arrow_type):
+        row += arrow_type.index_type.bit_width / 8
+        value_row, value_once = below(arrow_type.value_type, path_bytes)
+        once += math.ceil(value_row) + value_once
+    elif _is_text(arrow_type):
+        row += _offset_width(arrow_type) + text_bytes
+    else:
+        try:
+            row += arrow_type.bit_width / 8
+        except ValueError:
+            # No fixed width, as a list view or a union: a crude 16 bytes a row.
+            row += 16
+    return row, once
