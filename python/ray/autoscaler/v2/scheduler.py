@@ -7,7 +7,7 @@ from abc import ABC, abstractmethod
 from collections import Counter, defaultdict
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Callable, Dict, Iterable, List, Optional, Tuple
+from typing import Callable, Dict, Iterable, List, Optional, Set, Tuple
 
 from ray._private.accelerators.tpu import TPUAcceleratorManager
 from ray._private.protobuf_compat import message_to_dict
@@ -68,9 +68,6 @@ _LABEL_OPERATOR_NOT_IN = LabelSelectorOperator.LABEL_OPERATOR_NOT_IN
 # pass. They never leave the scheduler: nodes report their real domain labels
 # when they register.
 _PENDING_DOMAIN_PREFIX = "__pending_domain_"
-# Sentinel domain for running nodes that registered without the locality label,
-# so a `NOT_IN` constraint over existing domains also excludes them.
-_EXCLUDED_DOMAIN = "__excluded_domain__"
 
 
 @dataclass
@@ -962,6 +959,12 @@ class ResourceDemandScheduler(IResourceScheduler):
         Instance.ALLOCATED,
         Instance.RAY_INSTALLING,
     )
+    _PENDING_PROGRESSION = {
+        Instance.RAY_INSTALLING: 0,
+        Instance.ALLOCATED: 1,
+        Instance.REQUESTED: 2,
+        Instance.QUEUED: 3,
+    }
 
     def __init__(self, event_logger: Optional[AutoscalerEventLogger] = None):
         self._event_logger = event_logger
@@ -1023,6 +1026,7 @@ class ResourceDemandScheduler(IResourceScheduler):
             idle_timeout_s: Optional[float] = None,
             ippr_specs: Optional[IPPRSpecs] = None,
             pending_idle_timeout_s: Optional[float] = None,
+            pinned_tpu_slices: Optional[Set[str]] = None,
         ):
             self._nodes = nodes
             self._node_type_configs = node_type_configs
@@ -1041,6 +1045,82 @@ class ResourceDemandScheduler(IResourceScheduler):
             # Issues unique pending locality domain ids for the whole scheduling
             # pass; shallow copies of the context share the iterator.
             self._pending_domain_ids = itertools.count()
+            self._pinned_tpu_slices: Set[str] = set(pinned_tpu_slices or ())
+            self._tpu_replica_sizes: Dict[NodeType, int] = {
+                nt: size
+                for nt, cfg in node_type_configs.items()
+                if (
+                    size := TPUAcceleratorManager.get_node_group_num_hosts(
+                        cfg.labels, self._launch_resources(cfg, ippr_specs)
+                    )
+                )
+                is not None
+            }
+
+        @staticmethod
+        def _launch_resources(
+            cfg: NodeTypeConfig, ippr_specs: Optional[IPPRSpecs]
+        ) -> Dict[str, float]:
+            resources = dict(cfg.resources)
+            if ippr_specs and cfg.name in ippr_specs.groups:
+                group = ippr_specs.groups[cfg.name]
+                resources["CPU"] = float(max(group.max_cpu, resources.get("CPU", 0)))
+                resources["memory"] = float(
+                    max(group.max_memory, resources.get("memory", 0))
+                )
+            return resources
+
+        @staticmethod
+        def has_tpu_head_resource(resources: Dict[str, float]) -> bool:
+            """Return True if `resources` contains a `TPU-*-head` worker-0 marker."""
+            return any(
+                k.startswith("TPU-") and k.endswith("-head") and v > 0
+                for k, v in resources.items()
+            )
+
+        @staticmethod
+        def strip_tpu_head_resources(node: SchedulingNode) -> None:
+            """Remove `TPU-*-head` resources present only on replica worker 0."""
+            for key in [
+                k
+                for k in node.total_resources
+                if k.startswith("TPU-") and k.endswith("-head")
+            ]:
+                node.total_resources.pop(key, None)
+                for avail in node.available_resources_for_sched.values():
+                    avail.pop(key, None)
+
+        def make_to_launch_node(
+            self, node_type: NodeType, host_index: int = 0
+        ) -> SchedulingNode:
+            """Create a WORKER TO_LAUNCH node applying any IPPR max caps."""
+            cfg = self._node_type_configs[node_type]
+            node = SchedulingNode.from_node_config(
+                cfg,
+                status=SchedulingNodeStatus.TO_LAUNCH,
+                node_kind=NodeKind.WORKER,
+            )
+            if self._ippr_specs and node_type in self._ippr_specs.groups:
+                capped = self._launch_resources(cfg, self._ippr_specs)
+                node.update_total_resources(
+                    {"CPU": capped["CPU"], "memory": capped["memory"]}
+                )
+            if host_index > 0:
+                self.strip_tpu_head_resources(node)
+            return node
+
+        def get_tpu_replica_sizes(
+            self, multihost_only: bool = False
+        ) -> Dict[NodeType, int]:
+            if multihost_only:
+                return {nt: s for nt, s in self._tpu_replica_sizes.items() if s > 1}
+            return dict(self._tpu_replica_sizes)
+
+        def get_pinned_tpu_slices(self) -> Set[str]:
+            return set(self._pinned_tpu_slices)
+
+        def set_pinned_tpu_slices(self, slices: Set[str]) -> None:
+            self._pinned_tpu_slices = set(slices)
 
         @classmethod
         def from_schedule_request(
@@ -1093,6 +1173,9 @@ class ResourceDemandScheduler(IResourceScheduler):
                 idle_timeout_s=req.idle_timeout_s,
                 pending_idle_timeout_s=req.pending_idle_timeout_s,
                 ippr_specs=req.ippr_specs,
+                pinned_tpu_slices=ResourceDemandScheduler._pinned_tpu_slices(
+                    req.gang_resource_requests
+                ),
             )
 
         @staticmethod
@@ -1296,6 +1379,9 @@ class ResourceDemandScheduler(IResourceScheduler):
                 ctx, request.gang_resource_requests
             )
         )
+        ctx.set_pinned_tpu_slices(
+            ResourceDemandScheduler._pinned_tpu_slices(infeasible_gang_requests)
+        )
 
         # Schedule the tasks/actor resource requests
         infeasible_requests = ResourceDemandScheduler._sched_resource_requests(
@@ -1358,6 +1444,7 @@ class ResourceDemandScheduler(IResourceScheduler):
             else:
                 non_terminating_nodes_by_type[node.node_type].append(node)
 
+        replica_sizes = ctx.get_tpu_replica_sizes(multihost_only=True)
         # Step 1. Enforce the max number of workers for each node type.
         for node_type in non_terminating_nodes_by_type.keys():
             non_terminate_nodes_of_type = non_terminating_nodes_by_type[node_type]
@@ -1378,6 +1465,8 @@ class ResourceDemandScheduler(IResourceScheduler):
                 num_extra_nodes,
                 TerminationRequest.Cause.MAX_NUM_NODE_PER_TYPE,
                 max_num_nodes_per_type=num_max_nodes_per_type,
+                replica_sizes=replica_sizes,
+                pinned_tpu_slices=ctx.get_pinned_tpu_slices(),
             )
 
             non_terminating_nodes_by_type[node_type] = remained_nodes
@@ -1435,6 +1524,8 @@ class ResourceDemandScheduler(IResourceScheduler):
             num_to_terminate,
             TerminationRequest.Cause.MAX_NUM_NODES,
             max_num_nodes=num_max_nodes,
+            replica_sizes=ctx.get_tpu_replica_sizes(multihost_only=True),
+            pinned_tpu_slices=ctx.get_pinned_tpu_slices(),
         )
 
         assert len(to_terminate_nodes) == num_to_terminate, (
@@ -1461,6 +1552,8 @@ class ResourceDemandScheduler(IResourceScheduler):
         cause: TerminationRequest.Cause,
         max_num_nodes: Optional[int] = None,
         max_num_nodes_per_type: Optional[int] = None,
+        replica_sizes: Optional[Dict[NodeType, int]] = None,
+        pinned_tpu_slices: Optional[Set[str]] = None,
     ) -> Tuple[List[SchedulingNode], List[SchedulingNode]]:
         """Select 'num_to_terminate' of nodes to be terminated
         from the 'nodes' list. It should never select a head node.
@@ -1477,23 +1570,30 @@ class ResourceDemandScheduler(IResourceScheduler):
             max_num_nodes_per_type: The max number of nodes for each node type.
                 Only used when the cause is
                 TerminationRequest.Cause.MAX_NUM_NODE_PER_TYPE.
+            replica_sizes: Host count per replica for multi-host TPU node types,
+                so idle/pending slices are terminated whole before active ones.
+            pinned_tpu_slices: TPU slice names currently pinned by rescheduling
+                gang requests, preserved ahead of unpinned idle slices.
 
         Returns:
             A tuple of:
                 - The terminated nodes.
                 - The remained nodes.
         """
-
-        # Sort the nodes for termination.
-        nodes.sort(key=ResourceDemandScheduler._sort_nodes_for_termination)
-
-        # Remove the head node from the list.
+        # Remove the head node before grouping/sorting worker termination units.
         head_node = None
         for i, node in enumerate(nodes):
             if node.node_kind == NodeKind.HEAD:
-                # Remove the head node from the list.
                 head_node = nodes.pop(i)
                 break
+
+        if replica_sizes and any(n.node_type in replica_sizes for n in nodes):
+            unit_keys = ResourceDemandScheduler._tpu_slice_termination_keys(
+                nodes, replica_sizes, pinned_tpu_slices or set()
+            )
+            nodes.sort(key=lambda n: unit_keys[id(n)])
+        else:
+            nodes.sort(key=ResourceDemandScheduler._sort_nodes_for_termination)
 
         terminated_nodes, remained_nodes = (
             nodes[:num_to_terminate],
@@ -1572,8 +1672,16 @@ class ResourceDemandScheduler(IResourceScheduler):
     ) -> None:
         """Enforce the minimal count of nodes for each worker node type."""
 
-        # Count the existing nodes by type
+        # Count the existing nodes and worker-0 head markers by type.
         count_by_node_type = ctx.get_cluster_shape()
+        replica_sizes = ctx.get_tpu_replica_sizes(multihost_only=True)
+        existing_nodes = ctx.get_nodes()
+        heads_by_type: Counter = Counter(
+            n.node_type
+            for n in existing_nodes
+            if n.status != SchedulingNodeStatus.TO_TERMINATE
+            and ctx.has_tpu_head_resource(n.total_resources)
+        )
 
         new_nodes = []
         # Launch new nodes to satisfy min count for each node type.
@@ -1588,19 +1696,26 @@ class ResourceDemandScheduler(IResourceScheduler):
                     f"Adding {min_count - cur_count} nodes to satisfy min count for "
                     f"node type: {node_type}."
                 )
-                new_nodes.extend(
-                    SchedulingNode.from_node_config(
-                        copy.deepcopy(node_type_config),
-                        status=SchedulingNodeStatus.TO_LAUNCH,
-                        node_kind=NodeKind.WORKER,
+                size = replica_sizes.get(node_type)
+                missing_heads = (
+                    max(
+                        (min_count + size - 1) // size - heads_by_type[node_type],
+                        0,
                     )
-                    for _ in range(min_count - cur_count)
+                    if size is not None
+                    else min_count - cur_count
+                )
+                new_nodes.extend(
+                    ctx.make_to_launch_node(
+                        node_type, host_index=0 if i < missing_heads else 1
+                    )
+                    for i in range(min_count - cur_count)
                 )
         # NOTE: we assume the aggregated number of min workers across all node types
         # should not exceed any globally enforced max_num_nodes
 
         # Add the new nodes to the existing nodes and update the context.
-        ctx.update(new_nodes + ctx.get_nodes())
+        ctx.update(new_nodes + existing_nodes)
 
     @staticmethod
     def _enforce_resource_constraints(
@@ -1757,18 +1872,66 @@ class ResourceDemandScheduler(IResourceScheduler):
         return infeasible_gang_requests
 
     @staticmethod
+    def _max_bundles_per_node(requests: List[ResourceRequest]) -> int:
+        """Return an upper bound on how many of `requests` can share one node."""
+        if not requests:
+            return 0
+        anti_sets = [
+            {
+                (c.anti_affinity.label_name, c.anti_affinity.label_value)
+                for c in r.placement_constraints
+                if c.HasField("anti_affinity")
+            }
+            for r in requests
+        ]
+        if set.intersection(*anti_sets):
+            return 1
+        unpinned = 0
+        by_wid: Counter = Counter()
+        for r in requests:
+            wids: Optional[Set[str]] = None
+            if r.label_selectors:
+                tier_wids = []
+                for sel in r.label_selectors:
+                    in_c = [
+                        set(c.label_values)
+                        for c in sel.label_constraints
+                        if c.label_key == RAY_NODE_TPU_WORKER_ID_KEY
+                        and c.operator == _LABEL_OPERATOR_IN
+                    ]
+                    if not in_c:
+                        tier_wids = []
+                        break
+                    tier_wids.append(set.intersection(*in_c))
+                if tier_wids:
+                    wids = set.union(*tier_wids)
+            if wids is None:
+                unpinned += 1
+            else:
+                for w in wids:
+                    by_wid[w] += 1
+        return unpinned + max(by_wid.values(), default=0)
+
+    @staticmethod
     def _is_domain_idle(
-        domain_nodes: List[SchedulingNode], shapes: List[Dict[str, float]]
+        domain_nodes: List[SchedulingNode],
+        shapes: List[Dict[str, float]],
+        max_bundles_per_node: int,
     ) -> bool:
-        """Return whether every node in `domain_nodes` has its full capacity for
-        each request shape in `shapes`."""
+        """Return whether every node in `domain_nodes` retains its needed capacity
+        for each request shape in `shapes`."""
+        if max_bundles_per_node <= 0:
+            return False
 
         def _capacity(resources: Dict[str, float]) -> List[float]:
             return [
                 min(
-                    resources.get(k, 0) // v
-                    for k, v in shape.items()
-                    if not k.startswith(IMPLICIT_RESOURCE_PREFIX)
+                    max_bundles_per_node,
+                    *(
+                        resources.get(k, 0) // v
+                        for k, v in shape.items()
+                        if not k.startswith(IMPLICIT_RESOURCE_PREFIX)
+                    ),
                 )
                 for shape in shapes
                 if any(not k.startswith(IMPLICIT_RESOURCE_PREFIX) for k in shape)
@@ -1784,22 +1947,40 @@ class ResourceDemandScheduler(IResourceScheduler):
         )
 
     @staticmethod
+    def _is_running_node(node: SchedulingNode) -> bool:
+        return bool(node.ray_node_id) or node.im_instance_status == Instance.RAY_RUNNING
+
+    @staticmethod
     def _materialize_pending_replicas(
         replica_sizes: Dict[NodeType, int],
         all_nodes: List[SchedulingNode],
         nodes_by_domain: Dict[str, List[SchedulingNode]],
         locality_label: str,
         shapes: List[Dict[str, float]],
+        max_bundles_per_node: int,
         new_domain: Callable[[], str],
-    ) -> None:
-        """Assign domain and worker ID labels to unregistered replica hosts in
-        place.
+        pinned_domains: Optional[Set[str]] = None,
+        excluded_domains: Set[str] = frozenset(),
+    ) -> Dict[str, Tuple[List[SchedulingNode], List[SchedulingNode]]]:
+        """Group domain nodes with labeled copies of unregistered replica hosts.
 
-        KubeRay creates a replica's `size` pods together and backfills the hosts
-        a replica is still missing, so pending hosts first complete idle
-        registering slices, then form whole new replicas, and any remainder
-        completes busy slices.
+        Returns `{domain_val: (candidate_nodes, original_nodes)}` without
+        mutating `all_nodes`, so speculative labels on unchosen slices never
+        leak to later gangs. KubeRay creates a replica's `size` pods together
+        and backfills missing hosts, so pending hosts complete eligible idle
+        registering slices first, then form whole new replicas when unpinned,
+        and any remainder completes eligible busy slices.
         """
+        domains: Dict[str, Tuple[List[SchedulingNode], List[SchedulingNode]]] = {
+            d: (list(nodes), list(nodes)) for d, nodes in nodes_by_domain.items()
+        }
+        has_head = ResourceDemandScheduler.ScheduleContext.has_tpu_head_resource
+
+        def _prog(node: SchedulingNode) -> int:
+            return ResourceDemandScheduler._PENDING_PROGRESSION.get(
+                node.im_instance_status, 4
+            )
+
         for node_type, size in replica_sizes.items():
             pending = sorted(
                 (
@@ -1807,16 +1988,18 @@ class ResourceDemandScheduler(IResourceScheduler):
                     for n in all_nodes
                     if n.node_type == node_type
                     and n.status != SchedulingNodeStatus.TO_TERMINATE
-                    and not n.ray_node_id
+                    and not ResourceDemandScheduler._is_running_node(n)
                     and not n.labels.get(locality_label)
                 ),
-                key=lambda n: len(
-                    n.get_sched_requests(ResourceRequestSource.PENDING_DEMAND)
+                key=lambda n: (
+                    _prog(n),
+                    len(n.get_sched_requests(ResourceRequestSource.PENDING_DEMAND)),
+                    not has_head(n.total_resources),
                 ),
             )
 
             def _fill(domain_val: str) -> None:
-                domain_nodes = nodes_by_domain[domain_val]
+                domain_nodes, originals = domains.setdefault(domain_val, ([], []))
                 present = {
                     n.labels.get(RAY_NODE_TPU_WORKER_ID_KEY) for n in domain_nodes
                 }
@@ -1825,30 +2008,53 @@ class ResourceDemandScheduler(IResourceScheduler):
                         return
                     if str(host_index) in present:
                         continue
-                    node = pending.pop(0)
-                    node.labels[locality_label] = domain_val
-                    node.labels[RAY_NODE_TPU_WORKER_ID_KEY] = str(host_index)
-                    domain_nodes.append(node)
+                    top_prog = _prog(pending[0])
+                    want_head = host_index == 0
+                    idx = next(
+                        (
+                            i
+                            for i, n in enumerate(pending)
+                            if _prog(n) == top_prog
+                            and has_head(n.total_resources) == want_head
+                        ),
+                        0,
+                    )
+                    raw = pending.pop(idx)
+                    stamped = copy.deepcopy(raw)
+                    stamped.labels[locality_label] = domain_val
+                    stamped.labels[RAY_NODE_TPU_WORKER_ID_KEY] = str(host_index)
+                    if host_index > 0:
+                        ResourceDemandScheduler.ScheduleContext.strip_tpu_head_resources(
+                            stamped
+                        )
+                    domain_nodes.append(stamped)
+                    originals.append(raw)
 
-            # Registering slices closest to completion first. Refilling a slice
-            # is a no-op once its worker IDs are all present.
+            # Registering slices closest to completion first, skipping slices
+            # outside pinned/allowed domains so their backfill pods stay free.
             registering = sorted(
                 (
                     d
-                    for d, nodes in nodes_by_domain.items()
-                    if nodes[0].node_type == node_type
+                    for d, (nodes, _) in domains.items()
+                    if d not in excluded_domains
+                    and (pinned_domains is None or d in pinned_domains)
+                    and nodes[0].node_type == node_type
                     and len(nodes) < size
-                    and any(n.ray_node_id for n in nodes)
+                    and any(ResourceDemandScheduler._is_running_node(n) for n in nodes)
                 ),
-                key=lambda d: (size - len(nodes_by_domain[d]), d),
+                key=lambda d: (size - len(domains[d][0]), d),
             )
             for d in registering:
-                if ResourceDemandScheduler._is_domain_idle(nodes_by_domain[d], shapes):
+                if ResourceDemandScheduler._is_domain_idle(
+                    domains[d][0], shapes, max_bundles_per_node
+                ):
                     _fill(d)
-            while len(pending) >= size:
-                _fill(new_domain())
+            if pinned_domains is None:
+                while len(pending) >= size:
+                    _fill(new_domain())
             for d in registering:
                 _fill(d)
+        return domains
 
     @staticmethod
     def _add_label_constraints_to_requests(
@@ -1873,6 +2079,7 @@ class ResourceDemandScheduler(IResourceScheduler):
         ctx: "ResourceDemandScheduler.ScheduleContext",
         all_nodes: List[SchedulingNode],
         domain_nodes: List[SchedulingNode],
+        originals: List[SchedulingNode],
         pending_siblings: List[SchedulingNode],
         requests: List[ResourceRequest],
         locality_label: str,
@@ -1886,7 +2093,7 @@ class ResourceDemandScheduler(IResourceScheduler):
             requests,
             ResourceRequestSource.PENDING_DEMAND,
         )
-        replaced = domain_nodes
+        replaced = originals
         if infeasible and pending_siblings and len(infeasible) < len(requests):
             siblings = copy.deepcopy(pending_siblings)
             for n in siblings:
@@ -1897,15 +2104,55 @@ class ResourceDemandScheduler(IResourceScheduler):
                 ResourceRequestSource.PENDING_DEMAND,
             )
             for n in scheduled:
-                if not n.ray_node_id and not n.get_sched_requests(
-                    ResourceRequestSource.PENDING_DEMAND
-                ):
+                if not ResourceDemandScheduler._is_running_node(
+                    n
+                ) and not n.get_sched_requests(ResourceRequestSource.PENDING_DEMAND):
                     n.labels.pop(locality_label, None)
-            replaced = domain_nodes + pending_siblings
+            replaced = originals + pending_siblings
         if infeasible:
             return None
         replaced_ids = {id(n) for n in replaced}
         return [n for n in all_nodes if id(n) not in replaced_ids] + scheduled
+
+    @staticmethod
+    def _locality_domain_filters(
+        locality_req, locality_label: str
+    ) -> Tuple[Optional[Set[str]], Set[str]]:
+        """Return `(pinned_domains, excluded_domains)` from `locality_req`."""
+        pinned = [
+            set(c.label_values)
+            for c in locality_req.label_selector.label_constraints
+            if c.label_key == locality_label and c.operator == _LABEL_OPERATOR_IN
+        ]
+        excluded = {
+            v
+            for c in locality_req.label_selector.label_constraints
+            if c.label_key == locality_label and c.operator == _LABEL_OPERATOR_NOT_IN
+            for v in c.label_values
+        }
+        return (set.intersection(*pinned) - excluded if pinned else None), excluded
+
+    @staticmethod
+    def _pinned_tpu_slices(gang_requests: List[GangResourceRequest]) -> Set[str]:
+        slices: Set[str] = set()
+        for req in gang_requests:
+            if not (
+                req.bundle_selectors
+                and req.bundle_selectors[0].HasField("locality_requirement")
+            ):
+                continue
+            loc = req.bundle_selectors[0].locality_requirement
+            if (
+                loc.locality_constraint.placement_strategy
+                == PlacementStrategy.STRICT_PACK
+                and loc.locality_constraint.label_name == RAY_NODE_TPU_SLICE_NAME_KEY
+            ):
+                pinned, _ = ResourceDemandScheduler._locality_domain_filters(
+                    loc, RAY_NODE_TPU_SLICE_NAME_KEY
+                )
+                if pinned:
+                    slices.update(pinned)
+        return slices
 
     @staticmethod
     def _try_schedule_gang(
@@ -1941,7 +2188,8 @@ class ResourceDemandScheduler(IResourceScheduler):
         requests = ResourceRequestUtil.combine_requests_with_affinity(requests)
 
         if (
-            locality_req is None
+            not requests
+            or locality_req is None
             or locality_req.locality_constraint.placement_strategy
             != PlacementStrategy.STRICT_PACK
         ):
@@ -1952,30 +2200,33 @@ class ResourceDemandScheduler(IResourceScheduler):
         locality_label = locality_req.locality_constraint.label_name
         # A rescheduling gang is pinned to the domain it was placed in, so only
         # those domains are candidates.
-        pinned_domains = {
-            v
-            for c in locality_req.label_selector.label_constraints
-            if c.label_key == locality_label and c.operator == _LABEL_OPERATOR_IN
-            for v in c.label_values
-        }
+        pinned_opt, excluded_domains = ResourceDemandScheduler._locality_domain_filters(
+            locality_req, locality_label
+        )
+        pinned = pinned_opt is not None
+        pinned_domains = pinned_opt or set()
         if locality_req.label_selector.label_constraints:
             requests = ResourceDemandScheduler._add_label_constraints_to_requests(
                 requests, locality_req.label_selector.label_constraints
             )
 
         all_nodes = ctx.get_nodes()
+        if pinned and not pinned_domains:
+            return all_nodes, requests
         node_type_configs = ctx.get_node_type_configs()
         shapes = _collect_unique_resource_shapes(requests)
+        max_bundles_per_node = ResourceDemandScheduler._max_bundles_per_node(requests)
         # TPU slices are provisioned as whole replicas of `size` hosts. Only node
         # types whose hosts fit a bundle take part, so idleness and pending host
         # grouping are judged against shapes their hosts can run.
         replica_sizes: Dict[NodeType, int] = {}
         if locality_label == RAY_NODE_TPU_SLICE_NAME_KEY:
-            for node_type, cfg in node_type_configs.items():
-                size = TPUAcceleratorManager.get_node_group_num_hosts(
-                    cfg.labels, cfg.resources
+            ippr_specs = ctx.get_ippr_specs()
+            for node_type, size in ctx.get_tpu_replica_sizes().items():
+                launch_res = ResourceDemandScheduler.ScheduleContext._launch_resources(
+                    node_type_configs[node_type], ippr_specs
                 )
-                if size is not None and _can_fit_any_request(cfg.resources, shapes):
+                if _can_fit_any_request(launch_res, shapes):
                     replica_sizes[node_type] = size
         nodes_by_domain: Dict[str, List[SchedulingNode]] = defaultdict(list)
         for node in all_nodes:
@@ -2010,20 +2261,23 @@ class ResourceDemandScheduler(IResourceScheduler):
                     domain_available[k] += v
             return _fits(domain_available, total_demand)
 
-        # Label unregistered replica hosts and build one candidate new replica
-        # per launchable TPU node type.
-        ResourceDemandScheduler._materialize_pending_replicas(
+        # Group unregistered replica hosts with registering or pending slices
+        # and build one candidate new replica per launchable TPU node type.
+        domains = ResourceDemandScheduler._materialize_pending_replicas(
             replica_sizes,
             all_nodes,
             nodes_by_domain,
             locality_label,
             shapes,
+            max_bundles_per_node,
             _new_pending_domain,
+            pinned_domains if pinned else None,
+            excluded_domains,
         )
         gang_ctx = copy.copy(ctx)
         gang_ctx.update(all_nodes)
-        candidate_domains = nodes_by_domain.keys() | static_domains
-        if pinned_domains:
+        candidate_domains = (domains.keys() | static_domains) - excluded_domains
+        if pinned:
             candidate_domains &= pinned_domains
         node_type_available = gang_ctx.get_node_type_available()
         max_num_nodes = gang_ctx.get_max_num_nodes()
@@ -2040,14 +2294,21 @@ class ResourceDemandScheduler(IResourceScheduler):
             )
 
         def _domain_rank(domain_val: str) -> Tuple:
-            """Domains with running nodes first, then by their best node type."""
-            node_types = {n.node_type for n in nodes_by_domain.get(domain_val, [])} | {
+            """Domains with running nodes first, then pending instances, then
+            best node type."""
+            domain_nodes = domains[domain_val][0] if domain_val in domains else []
+            node_types = {n.node_type for n in domain_nodes} | {
                 nt
                 for nt, cfg in node_type_configs.items()
                 if cfg.labels.get(locality_label) == domain_val
             }
             return (
-                not any(n.ray_node_id for n in nodes_by_domain.get(domain_val, [])),
+                not any(
+                    ResourceDemandScheduler._is_running_node(n) for n in domain_nodes
+                ),
+                not any(
+                    n.status == SchedulingNodeStatus.SCHEDULABLE for n in domain_nodes
+                ),
                 tuple(-x for x in max(map(_node_type_rank, node_types))),
                 domain_val,
             )
@@ -2060,7 +2321,7 @@ class ResourceDemandScheduler(IResourceScheduler):
             if (
                 n.node_type not in replica_sizes
                 and n.status == SchedulingNodeStatus.SCHEDULABLE
-                and not n.ray_node_id
+                and not ResourceDemandScheduler._is_running_node(n)
                 and not n.labels.get(locality_label)
                 and not n.get_sched_requests(ResourceRequestSource.PENDING_DEMAND)
             ):
@@ -2068,7 +2329,7 @@ class ResourceDemandScheduler(IResourceScheduler):
         # A pinned gang cannot land in a new domain.
         new_replicas: List[Tuple[str, List[SchedulingNode]]] = []
         for node_type in sorted(
-            replica_sizes if not pinned_domains else [],
+            replica_sizes if not pinned else [],
             key=_node_type_rank,
             reverse=True,
         ):
@@ -2077,30 +2338,124 @@ class ResourceDemandScheduler(IResourceScheduler):
                 max_num_nodes is not None and len(all_nodes) + size > max_num_nodes
             ):
                 continue
-            cfg = node_type_configs[node_type]
             domain_val = _new_pending_domain()
             replica_nodes = []
             for host_index in range(size):
-                node = SchedulingNode.from_node_config(
-                    cfg,
-                    status=SchedulingNodeStatus.TO_LAUNCH,
-                    node_kind=NodeKind.WORKER,
-                )
+                node = gang_ctx.make_to_launch_node(node_type, host_index=host_index)
                 node.labels[locality_label] = domain_val
                 node.labels[RAY_NODE_TPU_WORKER_ID_KEY] = str(host_index)
                 replica_nodes.append(node)
             new_replicas.append((domain_val, replica_nodes))
 
+        def _node_label_score(node: SchedulingNode) -> float:
+            return sum(
+                node._satisfies_label_constraints([r])
+                for r in node.get_sched_requests(ResourceRequestSource.PENDING_DEMAND)
+                if len(r.label_selectors) > 1
+            )
+
+        max_label_score = sum(1.0 for r in requests if len(r.label_selectors) > 1)
+        orig_to_launch = Counter(
+            n.node_type for n in all_nodes if n.status == SchedulingNodeStatus.TO_LAUNCH
+        )
+        orig_used_pending = sum(
+            not ResourceDemandScheduler._is_running_node(n)
+            and bool(n.get_sched_requests(ResourceRequestSource.PENDING_DEMAND))
+            for n in all_nodes
+        )
+        best: Optional[Tuple[Tuple, List[SchedulingNode]]] = None
+
+        def _consider(
+            nodes: List[SchedulingNode], target_domain: str, prior_score: float = 0.0
+        ) -> bool:
+            """Update `best` with `nodes`; return True when a running domain
+            satisfies all primary label tiers with zero new or pending nodes."""
+            nonlocal best
+            domain_nodes = [
+                n
+                for n in nodes
+                if n.labels.get(locality_label) == target_domain
+                and n.status != SchedulingNodeStatus.TO_TERMINATE
+            ]
+            num_to_launch = len(nodes) - len(all_nodes)
+            used_pending = (
+                sum(
+                    not ResourceDemandScheduler._is_running_node(n)
+                    and bool(n.get_sched_requests(ResourceRequestSource.PENDING_DEMAND))
+                    for n in nodes
+                )
+                - orig_used_pending
+            )
+            label_score = (
+                round(sum(map(_node_label_score, domain_nodes)) - prior_score, 9)
+                if max_label_score
+                else 0.0
+            )
+            has_running = any(
+                ResourceDemandScheduler._is_running_node(n) for n in domain_nodes
+            )
+            has_booting = any(
+                n.status == SchedulingNodeStatus.SCHEDULABLE
+                and not ResourceDemandScheduler._is_running_node(n)
+                for n in domain_nodes
+            )
+            launch_neg_rank = (0.0, 0, 0.0)
+            if num_to_launch > 0:
+                launched = (
+                    Counter(
+                        n.node_type
+                        for n in nodes
+                        if n.status == SchedulingNodeStatus.TO_LAUNCH
+                    )
+                    - orig_to_launch
+                )
+                launch_neg_rank = tuple(-x for x in min(map(_node_type_rank, launched)))
+            non_running_span = (
+                0
+                if num_to_launch > 0 or target_domain in static_domains
+                else sum(
+                    not ResourceDemandScheduler._is_running_node(n)
+                    for n in domain_nodes
+                )
+            )
+            used_types = {
+                n.node_type
+                for n in domain_nodes
+                if n.get_sched_requests(ResourceRequestSource.PENDING_DEMAND)
+            } or {n.node_type for n in domain_nodes}
+            used_neg_rank = tuple(-x for x in max(map(_node_type_rank, used_types)))
+            key = (
+                num_to_launch,
+                -label_score,
+                launch_neg_rank,
+                not has_running,
+                used_pending,
+                not has_booting,
+                non_running_span,
+                used_neg_rank,
+            )
+            if best is None or key < best[0]:
+                best = (key, nodes)
+            return (
+                num_to_launch == 0
+                and used_pending == 0
+                and has_running
+                and label_score == max_label_score
+            )
+
         # Try existing or static domains first, then candidate new replicas.
-        best_with_launch: Optional[Tuple[int, List[SchedulingNode]]] = None
         for domain_val, replica in [(d, []) for d in existing_domains] + new_replicas:
             if domain_val not in static_domains:
-                domain_nodes = replica or nodes_by_domain[domain_val]
+                domain_nodes, originals = (
+                    (replica, []) if replica else domains[domain_val]
+                )
                 # Booting siblings may join an idle dynamic domain.
                 pending_siblings = (
                     unlabeled_pending_by_type[domain_nodes[0].node_type]
                     if domain_nodes[0].node_type in unlabeled_pending_by_type
-                    and ResourceDemandScheduler._is_domain_idle(domain_nodes, shapes)
+                    and ResourceDemandScheduler._is_domain_idle(
+                        domain_nodes, shapes, max_bundles_per_node
+                    )
                     else []
                 )
                 # Skip domains that lack capacity before running bin-packing. Every
@@ -2108,16 +2463,32 @@ class ResourceDemandScheduler(IResourceScheduler):
                 # `_schedule_in_domain` cannot launch, so no constraint is needed.
                 if not _can_domain_host_gang(domain_nodes + pending_siblings):
                     continue
+                prior_score = (
+                    sum(map(_node_label_score, domain_nodes))
+                    if max_label_score
+                    else 0.0
+                )
                 nodes = ResourceDemandScheduler._schedule_in_domain(
                     gang_ctx,
                     all_nodes,
                     domain_nodes,
+                    originals,
                     pending_siblings,
                     requests,
                     locality_label,
                     domain_val,
                 )
             else:
+                prior_score = (
+                    sum(
+                        _node_label_score(n)
+                        for n in all_nodes
+                        if n.labels.get(locality_label) == domain_val
+                        and n.status != SchedulingNodeStatus.TO_TERMINATE
+                    )
+                    if max_label_score
+                    else 0.0
+                )
                 domain_requests = (
                     ResourceDemandScheduler._add_label_constraints_to_requests(
                         requests,
@@ -2136,64 +2507,54 @@ class ResourceDemandScheduler(IResourceScheduler):
                 if infeasible:
                     nodes = None
 
-            if nodes is not None:
-                num_to_launch = len(nodes) - len(all_nodes)
-                if num_to_launch == 0:
-                    return nodes, []
-                if best_with_launch is None or num_to_launch < best_with_launch[0]:
-                    best_with_launch = (num_to_launch, nodes)
+            if nodes is not None and _consider(nodes, domain_val, prior_score):
+                return best[1], []
 
-        # TPU slices are always provisioned as whole replicas above, and a pinned
-        # gang cannot land in a new domain.
-        if locality_label == RAY_NODE_TPU_SLICE_NAME_KEY or pinned_domains:
-            if best_with_launch is not None:
-                return best_with_launch[1], []
-            return all_nodes, requests
-
-        # Otherwise schedule onto pending or new nodes outside existing domains,
+        # Dynamic non-TPU node types form a pending domain within one node type,
         # excluding running nodes that registered without `locality_label`.
-        pending_domain = _new_pending_domain()
-        for n in all_nodes:
-            if not n.labels.get(locality_label) and n.ray_node_id:
-                n.labels[locality_label] = _EXCLUDED_DOMAIN
-        new_domain_requests = (
-            ResourceDemandScheduler._add_label_constraints_to_requests(
-                requests,
-                [
-                    LabelSelectorConstraint(
-                        label_key=locality_label,
-                        operator=_LABEL_OPERATOR_NOT_IN,
-                        label_values=existing_domains + [_EXCLUDED_DOMAIN],
-                    )
-                ],
-            )
-        )
-        scheduled_req_ids = {id(r) for r in new_domain_requests}
-        nodes, infeasible = ResourceDemandScheduler._try_schedule(
-            gang_ctx, new_domain_requests, ResourceRequestSource.PENDING_DEMAND
-        )
-        for n in all_nodes:
-            if n.labels.get(locality_label) == _EXCLUDED_DOMAIN:
-                del n.labels[locality_label]
-        for n in nodes:
-            if n.labels.get(locality_label) == _EXCLUDED_DOMAIN:
-                del n.labels[locality_label]
-            elif (
-                not infeasible
-                and not n.ray_node_id
-                and any(
-                    id(r) in scheduled_req_ids
-                    for r in n.get_sched_requests(ResourceRequestSource.PENDING_DEMAND)
-                )
+        if locality_label != RAY_NODE_TPU_SLICE_NAME_KEY and not pinned:
+            for node_type in sorted(
+                (
+                    nt
+                    for nt, cfg in node_type_configs.items()
+                    if not cfg.labels.get(locality_label)
+                ),
+                key=_node_type_rank,
+                reverse=True,
             ):
-                n.labels[locality_label] = pending_domain
-        if not infeasible:
-            num_to_launch = len(nodes) - len(all_nodes)
-            if best_with_launch is None or num_to_launch < best_with_launch[0]:
-                return nodes, []
-        if best_with_launch is not None:
-            return best_with_launch[1], []
-        return nodes, infeasible
+                pool = [
+                    n
+                    for n in all_nodes
+                    if n.node_type == node_type
+                    and n.status != SchedulingNodeStatus.TO_TERMINATE
+                    and not ResourceDemandScheduler._is_running_node(n)
+                    and not n.labels.get(locality_label)
+                    and not n.get_sched_requests(ResourceRequestSource.PENDING_DEMAND)
+                ]
+                avail = node_type_available.get(node_type, 0)
+                if not pool and avail <= 0:
+                    continue
+                nt_ctx = gang_ctx.restricted_to(pool)
+                if avail > 0:
+                    nt_ctx._node_type_available = {node_type: avail}
+                if max_num_nodes is not None:
+                    nt_ctx._max_num_nodes = max_num_nodes - (len(all_nodes) - len(pool))
+                scheduled, infeasible = ResourceDemandScheduler._try_schedule(
+                    nt_ctx, requests, ResourceRequestSource.PENDING_DEMAND
+                )
+                if infeasible:
+                    continue
+                pending_domain = _new_pending_domain()
+                for n in scheduled:
+                    if n.get_sched_requests(ResourceRequestSource.PENDING_DEMAND):
+                        n.labels[locality_label] = pending_domain
+                pool_ids = {id(n) for n in pool}
+                nodes = [n for n in all_nodes if id(n) not in pool_ids] + scheduled
+                _consider(nodes, pending_domain)
+
+        if best is not None:
+            return best[1], []
+        return all_nodes, requests
 
     @staticmethod
     def _try_schedule(
@@ -2285,7 +2646,7 @@ class ResourceDemandScheduler(IResourceScheduler):
         exhausted_nodes = []
         schedulable_nodes = []
         for node in existing_nodes:
-            if (
+            if node.status == SchedulingNodeStatus.TO_TERMINATE or (
                 node.im_instance_status == Instance.RAY_RUNNING
                 and not _can_fit_any_request(
                     node.get_available_resources(resource_request_source),
@@ -2358,7 +2719,11 @@ class ResourceDemandScheduler(IResourceScheduler):
         ippr_candidates = []
 
         for node in existing_nodes:
-            if node.ippr_status is not None and node.ippr_status.can_resize_up():
+            if (
+                node.status != SchedulingNodeStatus.TO_TERMINATE
+                and node.ippr_status is not None
+                and node.ippr_status.can_resize_up()
+            ):
                 ippr_candidates.append(node)
             else:
                 target_nodes.append(node)
@@ -2414,51 +2779,36 @@ class ResourceDemandScheduler(IResourceScheduler):
             for node in ippr_candidates
         )
 
-        ippr_specs = ctx.get_ippr_specs()
-
-        def _to_launch_node_with_ippr_caps(node_type: NodeType) -> SchedulingNode:
-            node = SchedulingNode.from_node_config(
-                ctx.get_node_type_configs()[node_type],
-                status=SchedulingNodeStatus.TO_LAUNCH,
-                node_kind=NodeKind.WORKER,
-            )
-            # If the new node can be resized, consider its maximum IPPR capacity.
-            if ippr_specs and node_type in ippr_specs.groups:
-                group = ippr_specs.groups[node_type]
-                node.update_total_resources(
-                    {
-                        "CPU": float(
-                            max(group.max_cpu, node.total_resources.get("CPU", 0))
-                        ),
-                        "memory": float(
-                            max(group.max_memory, node.total_resources.get("memory", 0))
-                        ),
-                    }
-                )
-            return node
-
-        # Try scheduling resource requests with new nodes.
-        node_pools = [
-            _to_launch_node_with_ippr_caps(node_type)
-            for node_type, num_available in node_type_available.items()
-            if num_available > 0
-        ]
-        # New nodes that may still host lower label selector tiers.
-        launched_nodes = []
+        # Try scheduling resource requests with new nodes. Multi-host TPU groups
+        # scale only in whole `size`-host replicas (`replicas * numOfHosts`).
+        replica_sizes = ctx.get_tpu_replica_sizes(multihost_only=True)
         max_num_nodes = ctx.get_max_num_nodes()
+
+        def _can_launch(node_type: NodeType, cur_num_nodes: int) -> bool:
+            size = replica_sizes.get(node_type, 1)
+            return node_type_available.get(node_type, 0) >= size and (
+                max_num_nodes is None or cur_num_nodes + size <= max_num_nodes
+            )
+
+        node_pools = [
+            ctx.make_to_launch_node(node_type)
+            for node_type in node_type_available
+            if _can_launch(node_type, len(target_nodes))
+        ]
+        # New nodes that may still host requests or lower label selector tiers.
+        launched_nodes = []
         attempts = {} if static_labels else None
 
         while len(requests_to_sched) > 0:
             num_nodes = len(target_nodes) + len(launched_nodes)
-            can_launch_new = max_num_nodes is None or num_nodes < max_num_nodes
-            fresh_nodes = node_pools if can_launch_new else []
+            node_pools = [n for n in node_pools if _can_launch(n.node_type, num_nodes)]
             (
                 best_node,
                 requests_to_sched,
                 remaining,
             ) = ResourceDemandScheduler._sched_best_node(
                 requests_to_sched,
-                launched_nodes + fresh_nodes,
+                launched_nodes + node_pools,
                 resource_request_source,
                 ctx.get_cloud_resource_availabilities(),
                 ctx.get_recoverable_resource_availabilities(),
@@ -2466,30 +2816,33 @@ class ResourceDemandScheduler(IResourceScheduler):
                 attempts,
             )
             if best_node is None:
-                if not can_launch_new:
+                if max_num_nodes is not None and num_nodes >= max_num_nodes:
                     logger.debug(
                         "Max number of nodes reached: {}, "
                         "cannot launch more nodes.".format(max_num_nodes)
                     )
                 break
 
-            fresh_ids = {id(n) for n in fresh_nodes}
+            fresh_ids = {id(n) for n in node_pools}
             launched_nodes = [n for n in remaining if id(n) not in fresh_ids]
             remaining_fresh = [n for n in remaining if id(n) in fresh_ids]
-            if len(remaining_fresh) < len(fresh_nodes):
-                # Update the node pool if a node with the same node type of the
-                # added node can be launched.
-                node_type_available[best_node.node_type] -= 1
-                if node_type_available[best_node.node_type] > 0:
-                    remaining_fresh.append(
-                        _to_launch_node_with_ippr_caps(best_node.node_type)
-                    )
+            new_siblings: List[SchedulingNode] = []
+            if len(remaining_fresh) < len(node_pools):
+                size = replica_sizes.get(best_node.node_type, 1)
+                node_type_available[best_node.node_type] -= size
+                new_siblings = [
+                    ctx.make_to_launch_node(best_node.node_type, host_index=h)
+                    for h in range(1, size)
+                ]
+                if node_type_available[best_node.node_type] >= size:
+                    remaining_fresh.append(ctx.make_to_launch_node(best_node.node_type))
                 node_pools = remaining_fresh
 
             if _can_host_more(best_node):
                 launched_nodes.append(best_node)
             else:
                 target_nodes.append(best_node)
+            launched_nodes.extend(new_siblings)
 
         target_nodes.extend(launched_nodes)
 
@@ -2921,111 +3274,292 @@ class ResourceDemandScheduler(IResourceScheduler):
                 since_s.pop(0)
 
     @staticmethod
+    def _tpu_slice_termination_keys(
+        nodes: List[SchedulingNode],
+        replica_sizes: Dict[NodeType, int],
+        pinned_tpu_slices: Set[str],
+    ) -> Dict[int, Tuple]:
+        """Score nodes so multi-host TPU slices terminate whole before active ones."""
+        base = dict(
+            zip(
+                map(id, nodes),
+                map(ResourceDemandScheduler._sort_nodes_for_termination, nodes),
+            )
+        )
+        keys: Dict[int, Tuple] = {}
+        by_type: Dict[NodeType, List[SchedulingNode]] = defaultdict(list)
+        for n in nodes:
+            if n.node_type in replica_sizes:
+                by_type[n.node_type].append(n)
+            else:
+                keys[id(n)] = (base[id(n)], ("", 0), base[id(n)])
+
+        def _slice_rank(slice_name: str, slice_nodes: List[SchedulingNode]) -> Tuple:
+            worst = max(base[id(m)] for m in slice_nodes)
+            return (
+                max(worst, (True, 0, 0.0)) if slice_name in pinned_tpu_slices else worst
+            )
+
+        uid = itertools.count()
+        for node_type, type_nodes in by_type.items():
+            size = replica_sizes[node_type]
+            by_slice: Dict[str, List[SchedulingNode]] = defaultdict(list)
+            unlabeled: List[SchedulingNode] = []
+            for n in type_nodes:
+                slice_name = n.labels.get(RAY_NODE_TPU_SLICE_NAME_KEY)
+                if slice_name and ResourceDemandScheduler._is_running_node(n):
+                    by_slice[slice_name].append(n)
+                else:
+                    unlabeled.append(n)
+            unlabeled.sort(key=lambda n: base[id(n)])
+            units: List[Tuple[Tuple[str, int], List[SchedulingNode]]] = []
+            # Attach most-recent pending siblings to active/incomplete slices first
+            # so backfill pods inherit their slice's active rank.
+            for s, s_nodes in sorted(
+                by_slice.items(),
+                key=lambda item: _slice_rank(item[0], item[1]),
+                reverse=True,
+            ):
+                missing = max(size - len(s_nodes), 0)
+                paired = [unlabeled.pop() for _ in range(min(missing, len(unlabeled)))]
+                units.append(((s, 0), s_nodes + paired))
+            # Group remaining unlabeled pods into `size`-host replicas from the back
+            # (keeping active replicas intact and putting excess idle ones at front).
+            while unlabeled:
+                chunk = unlabeled[-size:]
+                del unlabeled[-size:]
+                units.append((("", next(uid)), chunk))
+            for tag, unit in units:
+                worst = _slice_rank(tag[0], unit)
+                for m in unit:
+                    keys[id(m)] = (worst, tag, base[id(m)])
+        return keys
+
+    @staticmethod
+    def _idle_timeout_for_node(
+        node: SchedulingNode,
+        ctx: "ResourceDemandScheduler.ScheduleContext",
+        node_type_configs: Dict[NodeType, NodeTypeConfig],
+    ) -> Optional[float]:
+        """Return `node`'s expired idle timeout in seconds, or None if not eligible."""
+        s_to_ms = 1000
+        if (
+            node.status != SchedulingNodeStatus.SCHEDULABLE
+            or node.node_kind == NodeKind.HEAD
+        ):
+            return None
+        if (
+            node.im_instance_status
+            in ResourceDemandScheduler.PENDING_TERMINABLE_STATUSES
+        ):
+            idle_timeout_s = ctx.get_pending_idle_timeout_s()
+        else:
+            idle_timeout_s = ctx.get_idle_timeout_s()
+            cfg = node_type_configs.get(node.node_type)
+            if cfg is not None and cfg.idle_timeout_s is not None:
+                idle_timeout_s = cfg.idle_timeout_s
+        if idle_timeout_s is None or node.idle_duration_ms <= idle_timeout_s * s_to_ms:
+            return None
+        if node.sched_requests[ResourceRequestSource.PENDING_DEMAND]:
+            logger.debug(
+                "Node {} (idle for {} secs) is needed by the pending requests, "
+                "skip idle termination.".format(
+                    node.ray_node_id, node.idle_duration_ms / s_to_ms
+                )
+            )
+            return None
+        if node.sched_requests[ResourceRequestSource.CLUSTER_RESOURCE_CONSTRAINT]:
+            logger.debug(
+                "Node {} (idle for {} secs) is needed by the cluster resource "
+                "constraints, skip idle termination.".format(
+                    node.ray_node_id, node.idle_duration_ms / s_to_ms
+                )
+            )
+            return None
+        return idle_timeout_s
+
+    @staticmethod
     def _enforce_idle_termination(
         ctx: "ResourceDemandScheduler.ScheduleContext",
     ) -> None:
         """Enforce the idle termination for the nodes that are not needed by the cluster
         resource constraints and idle for too long.
 
-        Args:
-            ctx: The schedule context.
+        Multi-host TPU slices (`numOfHosts > 1`) terminate only as whole idle
+        replicas so KubeRay never tears down an active sub-slice or booting slice.
         """
         count_by_node_type = ctx.get_cluster_shape()
         node_type_configs = ctx.get_node_type_configs()
+        replica_sizes = ctx.get_tpu_replica_sizes(multihost_only=True)
+        pinned_tpu_slices = ctx.get_pinned_tpu_slices()
         terminate_nodes_by_type: Dict[NodeType, int] = defaultdict(int)
-
         nodes = ctx.get_nodes()
         s_to_ms = 1000
-        # Visit the nodes in termination preference order, i.e. pending nodes and
-        # nodes idle for longer first, so that the nodes kept for min_worker_nodes
-        # are the most useful ones.
-        for node in sorted(
-            nodes, key=ResourceDemandScheduler._sort_nodes_for_termination
-        ):
-            if node.status != SchedulingNodeStatus.SCHEDULABLE:
-                # We don't need to care about the non-running nodes.
-                continue
 
-            if node.node_kind == NodeKind.HEAD:
-                # The head node is not subject to idle termination.
-                continue
+        idle_timeouts: Dict[int, float] = {}
+        for n in nodes:
+            timeout_s = ResourceDemandScheduler._idle_timeout_for_node(
+                n, ctx, node_type_configs
+            )
+            if timeout_s is not None:
+                idle_timeouts[id(n)] = timeout_s
+        units: List[List[SchedulingNode]] = [
+            [n]
+            for n in nodes
+            if n.node_type not in replica_sizes and id(n) in idle_timeouts
+        ]
+        for node_type, size in replica_sizes.items():
+            by_slice: Dict[str, List[SchedulingNode]] = defaultdict(list)
+            queued: List[SchedulingNode] = []
+            unlabeled_pods: List[SchedulingNode] = []
+            for n in nodes:
+                if (
+                    n.node_type != node_type
+                    or n.status == SchedulingNodeStatus.TO_TERMINATE
+                    or n.node_kind == NodeKind.HEAD
+                ):
+                    continue
+                slice_name = n.labels.get(RAY_NODE_TPU_SLICE_NAME_KEY)
+                if slice_name and ResourceDemandScheduler._is_running_node(n):
+                    by_slice[slice_name].append(n)
+                elif n.im_instance_status == Instance.QUEUED:
+                    queued.append(n)
+                else:
+                    unlabeled_pods.append(n)
 
-            node_type = node.node_type
-            if (
-                node.im_instance_status
-                in ResourceDemandScheduler.PENDING_TERMINABLE_STATUSES
-            ):
-                # Pending nodes have their own idle timeout.
-                idle_timeout_s = ctx.get_pending_idle_timeout_s()
-            else:
-                idle_timeout_s = ctx.get_idle_timeout_s()
-                # Override the scheduler idle_timeout_s if set for this node_type.
-                if node_type in node_type_configs:
-                    if node_type_configs[node_type].idle_timeout_s is not None:
-                        idle_timeout_s = node_type_configs[node_type].idle_timeout_s
-            if idle_timeout_s is None:
-                # No idle timeout is set, skip the idle termination.
-                continue
+            active_slices = pinned_tpu_slices | {
+                slice_name
+                for n in nodes
+                if n.node_type == node_type
+                and n.status != SchedulingNodeStatus.TO_TERMINATE
+                and n.node_kind != NodeKind.HEAD
+                and id(n) not in idle_timeouts
+                and (slice_name := n.labels.get(RAY_NODE_TPU_SLICE_NAME_KEY))
+            }
 
-            if node.idle_duration_ms <= idle_timeout_s * s_to_ms:
-                # The node is not idle for too long, skip it.
-                continue
+            def _is_active_queued(node: SchedulingNode) -> bool:
+                return (
+                    id(node) not in idle_timeouts
+                    or node.labels.get(RAY_NODE_TPU_SLICE_NAME_KEY) in active_slices
+                )
 
-            if node.sched_requests[ResourceRequestSource.PENDING_DEMAND]:
-                # The node is needed by the pending requests.
-                # Skip it.
-                logger.debug(
-                    "Node {} (idle for {} secs) is needed by the pending requests, "
-                    "skip idle termination.".format(
-                        node.ray_node_id, node.idle_duration_ms / s_to_ms
+            # Cancel expired QUEUED instances only in whole `size`-node replicas,
+            # keeping stamped slice siblings and one full replica per head demand.
+            queued.sort(
+                key=lambda n: (
+                    _is_active_queued(n),
+                    ResourceDemandScheduler._sort_nodes_for_termination(n),
+                )
+            )
+            active_q = sum(map(_is_active_queued, queued))
+            head_q = sum(
+                any(
+                    ctx.has_tpu_head_resource(req.resources_bundle)
+                    for req in n.get_sched_requests(
+                        ResourceRequestSource.PENDING_DEMAND
                     )
                 )
-                continue
-
-            if node.sched_requests[ResourceRequestSource.CLUSTER_RESOURCE_CONSTRAINT]:
-                # The node is needed by the resource constraints.
-                # Skip it.
-                logger.debug(
-                    "Node {} (idle for {} secs) is needed by the cluster resource "
-                    "constraints, skip idle termination.".format(
-                        node.ray_node_id, node.idle_duration_ms / s_to_ms
-                    )
+                for n in queued
+            )
+            needed_q = max((active_q + size - 1) // size, head_q) * size
+            free_q = len(queued) - needed_q
+            for i in range(0, max(free_q - size + 1, 0), size):
+                units.append(queued[i : i + size])
+            incomplete: List[List[SchedulingNode]] = []
+            has_active_incomplete = False
+            for s, s_nodes in sorted(by_slice.items()):
+                all_idle = s not in active_slices and all(
+                    id(n) in idle_timeouts for n in s_nodes
                 )
+                if len(s_nodes) >= size:
+                    if all_idle:
+                        units.append(s_nodes)
+                elif all_idle:
+                    incomplete.append(s_nodes)
+                else:
+                    has_active_incomplete = True
+
+            # Unregistered K8s pods carry an opaque replica grouping in KubeRay,
+            # so only terminate them when no active incomplete or unlabeled replica
+            # could own one of the same `ALLOCATED`/`RAY_INSTALLING` pods.
+            has_active_unlabeled_pod = any(
+                id(n) not in idle_timeouts for n in unlabeled_pods
+            )
+            if has_active_incomplete or has_active_unlabeled_pod:
+                if not unlabeled_pods and not queued:
+                    # No unregistered siblings exist anywhere; idle degraded slices
+                    # have only registered pods and can scale down safely.
+                    units.extend(incomplete)
                 continue
 
-            # Honor the min_worker_nodes setting for the node type.
-            min_count = 0
-            if node_type in node_type_configs:
-                min_count = node_type_configs[node_type].min_worker_nodes
-            if (
+            unlabeled_pods.sort(key=ResourceDemandScheduler._sort_nodes_for_termination)
+            incomplete.sort(
+                key=lambda s_nodes: (
+                    size - len(s_nodes),
+                    -min(n.idle_duration_ms for n in s_nodes),
+                )
+            )
+            for s_nodes in incomplete:
+                need = size - len(s_nodes)
+                if not unlabeled_pods and not queued:
+                    units.append(s_nodes)
+                elif len(unlabeled_pods) >= need:
+                    paired, unlabeled_pods = (
+                        unlabeled_pods[:need],
+                        unlabeled_pods[need:],
+                    )
+                    units.append(s_nodes + paired)
+            for i in range(0, len(unlabeled_pods) - size + 1, size):
+                units.append(unlabeled_pods[i : i + size])
+
+        # Visit pending and longest-idle units first so min_worker_nodes keeps
+        # the freshest complete slices and running nodes.
+        units.sort(
+            key=lambda u: (
+                any(len(n.ray_node_id) > 0 for n in u),
+                -min(n.idle_duration_ms for n in u),
+            )
+        )
+        for unit in units:
+            node_type = unit[0].node_type
+            min_count = (
+                node_type_configs[node_type].min_worker_nodes
+                if node_type in node_type_configs
+                else 0
+            )
+            remaining = (
                 count_by_node_type.get(node_type, 0)
                 - terminate_nodes_by_type[node_type]
-                <= min_count
-            ):
-                logger.info(
-                    "Node {} (idle for {} secs) belongs to node_type {} and is "
-                    "required by min_worker_nodes, skipping idle termination.".format(
-                        node.ray_node_id, node.idle_duration_ms / s_to_ms, node_type
+            )
+            if remaining - len(unit) < min_count:
+                for node in unit:
+                    logger.info(
+                        "Node {} (idle for {} secs) belongs to node_type {} and is "
+                        "required by min_worker_nodes, skipping idle termination.".format(
+                            node.ray_node_id, node.idle_duration_ms / s_to_ms, node_type
+                        )
                     )
-                )
                 continue
 
-            terminate_nodes_by_type[node.node_type] += 1
-            # The node is idle for too long, terminate it.
-            node.status = SchedulingNodeStatus.TO_TERMINATE
-            node.termination_request = TerminationRequest(
-                id=str(uuid.uuid4()),
-                instance_id=node.im_instance_id,
-                ray_node_id=node.ray_node_id,
-                cause=TerminationRequest.Cause.IDLE,
-                instance_type=node.node_type,
-                instance_status=node.im_instance_status,
-                idle_duration_ms=node.idle_duration_ms,
-                details=(
-                    f"{'idle' if node.ray_node_id else 'pending and not needed'} "
-                    f"for {node.idle_duration_ms/s_to_ms} secs > "
-                    f"timeout={idle_timeout_s} secs"
-                ),
-            )
+            terminate_nodes_by_type[node_type] += len(unit)
+            for node in sorted(
+                unit, key=ResourceDemandScheduler._sort_nodes_for_termination
+            ):
+                idle_timeout_s = idle_timeouts[id(node)]
+                node.status = SchedulingNodeStatus.TO_TERMINATE
+                node.termination_request = TerminationRequest(
+                    id=str(uuid.uuid4()),
+                    instance_id=node.im_instance_id,
+                    ray_node_id=node.ray_node_id,
+                    cause=TerminationRequest.Cause.IDLE,
+                    instance_type=node.node_type,
+                    instance_status=node.im_instance_status,
+                    idle_duration_ms=node.idle_duration_ms,
+                    details=(
+                        f"{'idle' if node.ray_node_id else 'pending and not needed'} "
+                        f"for {node.idle_duration_ms/s_to_ms} secs > "
+                        f"timeout={idle_timeout_s} secs"
+                    ),
+                )
 
         ctx.update(nodes)
