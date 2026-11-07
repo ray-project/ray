@@ -140,9 +140,8 @@ def estimate_leaf_work(
     # A list's offsets for every slot reserved, past what its ancestors keep.
     list_offsets = repeated * max(_list_offset_width(leaf) * reserved - ancestors, 0)
     if chunk.physical_type == "BYTE_ARRAY":
-        # Without a header, each dictionary entry is at least its 4-byte length.
-        header = leaf.dictionary_page
-        entries = dictionary // 4 if header is None else header.num_values
+        # Each dictionary entry is at least its 4-byte length.
+        entries = dictionary // 4
         # The dictionary, and parquet-cpp's 16-byte length and pointer per entry.
         kept += dictionary + 16 * entries
         # Offsets reserved past the slots used: 4 bytes, 8 for a large string, 4
@@ -202,12 +201,10 @@ def estimate_cast(
 
 
 def _dictionary_bytes(leaf: LeafChunk) -> int:
-    """The dictionary page's uncompressed bytes: from its header, else its gap."""
+    """The dictionary page's uncompressed bytes, from its gap."""
     chunk = leaf.chunk
     if not chunk.has_dictionary_page:
         return 0
-    if leaf.dictionary_page is not None:
-        return leaf.dictionary_page.uncompressed_page_size
     # The bytes before the first data page at the chunk's ratio, never below
     # them, since a page that doesn't compress is stored as is.
     gap = chunk.data_page_offset - (chunk.dictionary_page_offset or 0)

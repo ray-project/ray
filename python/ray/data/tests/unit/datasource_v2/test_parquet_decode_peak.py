@@ -10,11 +10,9 @@ from ray.data._internal.datasource_v2.formats.parquet.parquet_decode_peak import
 )
 from ray.data._internal.datasource_v2.formats.parquet.parquet_decoded_size import (
     build_leaf_profiles,
-    dictionary_page_read_size,
     leaf_chunks,
 )
 from ray.data._internal.datasource_v2.formats.parquet.parquet_size_statistics import (
-    read_dictionary_page,
     read_footer_stats,
 )
 
@@ -68,28 +66,11 @@ def _estimate(path, columns=None, **format_kwargs):
     assert profiles is not None
     row_group = metadata.row_group(0)
     stats = read_footer_stats(metadata)
-    rg_stats = None if stats is None else stats[0]
-    pages = {}
-    with open(path, "rb") as f:
-        for leaf_idx in range(row_group.num_columns):
-            chunk = row_group.column(leaf_idx)
-            leaf_stats = None if rg_stats is None else rg_stats[leaf_idx]
-            profile = profiles[leaf_idx]
-            assert profile is not None
-            nbytes = dictionary_page_read_size(
-                profile=profile, chunk=chunk, stats=leaf_stats
-            )
-            if nbytes:
-                f.seek(chunk.dictionary_page_offset)
-                page = read_dictionary_page(f.read(nbytes))
-                assert page is not None
-                pages[leaf_idx] = page
     chunks = leaf_chunks(
         row_group=row_group,
         leaf_profiles=profiles,
         leaf_indices=range(row_group.num_columns),
-        size_stats=rg_stats,
-        dictionary_pages=pages,
+        size_stats=None if stats is None else stats[0],
     )
     leaves = {leaf.index: leaf for leaf in chunks}
     schema_columns = [metadata.schema.column(j) for j in range(metadata.num_columns)]
