@@ -69,6 +69,11 @@ class _CheckpointManager:
         # even if it's not in the top K checkpoints, based on score.
         self._latest_checkpoint_result: Optional[_TrainingResult] = None
 
+        # Cache of flattened metrics per training result.
+        # Stores the metric for each Checkpoint to avoid
+        # recomputing it on every iteration when sorting checkpoints.
+        self._flat_metrics_pre_computed: Dict[Checkpoint, Any] = {}
+
         if (
             self._checkpoint_config.num_to_keep is not None
             and self._checkpoint_config.num_to_keep <= 0
@@ -97,10 +102,20 @@ class _CheckpointManager:
         self._latest_checkpoint_result = checkpoint_result
 
         score_attr = self._checkpoint_config.checkpoint_score_attribute
-        if ray_constants.env_bool(TUNE_ONLY_STORE_CHECKPOINT_SCORE_ATTRIBUTE, False):
+
+        only_store_score_attr = ray_constants.env_bool(
+            TUNE_ONLY_STORE_CHECKPOINT_SCORE_ATTRIBUTE, False
+        )
+        flat_metrics = (
+            flatten_dict(checkpoint_result.metrics)
+            if only_store_score_attr or score_attr is not None
+            else {}
+        )
+
+        if only_store_score_attr:
             metrics = (
-                {score_attr: checkpoint_result.metrics[score_attr]}
-                if score_attr in checkpoint_result.metrics
+                {score_attr: flat_metrics[score_attr]}
+                if score_attr in flat_metrics
                 else {}
             )
             checkpoint_result = _TrainingResult(
@@ -108,13 +123,18 @@ class _CheckpointManager:
                 metrics=metrics,
             )
 
-        if score_attr is not None and score_attr in checkpoint_result.metrics:
+        if score_attr is not None and score_attr in flat_metrics:
+            self._flat_metrics_pre_computed[
+                checkpoint_result.checkpoint
+            ] = flat_metrics[score_attr]
             # If we're ordering by a score, insert the checkpoint
             # so that the list remains sorted.
             _insert_into_sorted_list(
                 self._checkpoint_results,
                 checkpoint_result,
-                key=self._get_checkpoint_score,
+                key=lambda c: self._get_checkpoint_score(
+                    c, self._flat_metrics_pre_computed.get(c.checkpoint, None)
+                ),
             )
         else:
             # If no metric is provided, just append (ordering by time of registration).
@@ -139,9 +159,12 @@ class _CheckpointManager:
                 checkpoint = checkpoint_result.checkpoint
                 logger.debug("Deleting checkpoint: %s", checkpoint)
                 _delete_fs_path(fs=checkpoint.filesystem, fs_path=checkpoint.path)
+                self._flat_metrics_pre_computed.pop(checkpoint_result.checkpoint, None)
 
     def _get_checkpoint_score(
-        self, checkpoint: _TrainingResult
+        self,
+        checkpoint: _TrainingResult,
+        score: Optional[Any] = None,
     ) -> Tuple[bool, numbers.Number]:
         """Get the score for a checkpoint, according to checkpoint config.
 
@@ -150,6 +173,7 @@ class _CheckpointManager:
 
         Args:
             checkpoint: The training result whose metrics should be scored.
+            score: Optionally, the precomputed score for the checkpoint.
 
         Returns:
             Tuple: A tuple of (not_is_nan: bool, score: numbers.Number).
@@ -157,11 +181,14 @@ class _CheckpointManager:
         """
         checkpoint_score_attribute = self._checkpoint_config.checkpoint_score_attribute
         if checkpoint_score_attribute:
-            flat_metrics = flatten_dict(checkpoint.metrics)
             try:
-                checkpoint_result = flat_metrics[checkpoint_score_attribute]
+                checkpoint_result = (
+                    score
+                    if score is not None
+                    else flatten_dict(checkpoint.metrics)[checkpoint_score_attribute]
+                )
             except KeyError:
-                valid_keys = list(flat_metrics.keys())
+                valid_keys = list(flatten_dict(checkpoint.metrics).keys())
                 logger.error(
                     f"Result dict has no key: {checkpoint_score_attribute}. "
                     f"checkpoint_score_attr must be set to a key in the "
