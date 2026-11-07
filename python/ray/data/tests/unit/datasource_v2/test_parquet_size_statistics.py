@@ -1,4 +1,4 @@
-"""Tests for the footer and dictionary page header reader.
+"""Tests for the footer reader.
 
 A desynced cursor returns wrong numbers rather than raising, so hand-built payloads
 pin each skip width PyArrow footers never exercise.
@@ -35,13 +35,6 @@ def _write_dictionary(tmp_path, **write_kwargs):
     table = pa.table({"a": pa.array([_DISTINCT[i % 100] for i in range(N)])})
     pq.write_table(table, path, **write_kwargs)
     return path
-
-
-def _dictionary_page_header_bytes(path, offset=None):
-    chunk = pq.read_metadata(str(path)).row_group(0).column(0)
-    with open(path, "rb") as f:
-        f.seek(chunk.dictionary_page_offset if offset is None else offset)
-        return f.read(pss.DICTIONARY_PAGE_HEADER_READ_BYTES)
 
 
 def _walk(buf):
@@ -215,30 +208,6 @@ def test_truncated_footer_gives_none(tmp_path, monkeypatch):
     assert read_footer_stats(metadata) is None
 
 
-@pytest.mark.parametrize("checksum", [False, True])
-def test_dictionary_page_header_matches_the_values(tmp_path, checksum):
-    """One entry per distinct value, each PLAIN behind a 4-byte length, though
-    the page is compressed; a page checksum is skipped."""
-    path = _write_dictionary(tmp_path, write_page_checksum=checksum)
-
-    assert pss.read_dictionary_page(
-        _dictionary_page_header_bytes(path)
-    ) == pss.DictionaryPage(
-        num_values=100, uncompressed_page_size=sum(4 + len(v) for v in _DISTINCT)
-    )
-
-
-def test_not_a_dictionary_page_header_gives_none(tmp_path):
-    path = _write_dictionary(tmp_path)
-    raw = _dictionary_page_header_bytes(path)
-    chunk = pq.read_metadata(str(path)).row_group(0).column(0)
-    data_page = _dictionary_page_header_bytes(path, chunk.data_page_offset)
-
-    for cut in range(10):
-        assert pss.read_dictionary_page(raw[:cut]) is None
-    assert pss.read_dictionary_page(data_page) is None
-
-
 @pytest.mark.parametrize(
     "payload",
     [
@@ -251,8 +220,11 @@ def test_not_a_dictionary_page_header_gives_none(tmp_path):
     ],
     ids=["count-past-the-buffer", "nested-structs"],
 )
-def test_corrupt_header_gives_none(payload):
-    assert pss.read_dictionary_page(bytes(payload)) is None
+def test_corrupt_footer_gives_none(tmp_path, monkeypatch, payload):
+    metadata = pq.read_metadata(str(_write_dictionary(tmp_path)))
+    buf = memoryview(bytes(payload)).cast("B")
+    monkeypatch.setattr(pss, "footer_bytes", lambda md: buf)
+    assert read_footer_stats(metadata) is None
 
 
 if __name__ == "__main__":
