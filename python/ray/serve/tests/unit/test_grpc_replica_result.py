@@ -245,42 +245,15 @@ class TestSeparateLoop:
         wait_for_condition(replica_result._call.is_empty, retry_interval_ms=10)
         assert [r async for r in replica_result] == [1, 2, 3, 4]
 
-    @pytest.mark.asyncio
-    async def test_streaming_transport_error_after_buffered_results(
-        self, create_asyncio_event_loop_in_thread
-    ):
-        """Results buffered before a stream failure are returned before the error."""
-        loop, _ = create_asyncio_event_loop_in_thread
-
+    def _make_failed_streaming_request(self, loop, transport_error):
+        # Wait until the stream, including its failure, has been consumed with
+        # results still buffered.
         fut = asyncio.run_coroutine_threadsafe(
             self.make_fake_streaming_request(
                 [1, 2, 3],
                 loop,
                 on_separate_loop=True,
-                transport_error=RuntimeError("stream broke"),
-            ),
-            loop=loop,
-        )
-        replica_result = fut.result()
-
-        # Wait until the whole stream, including the error, has been buffered.
-        wait_for_condition(replica_result._consume_task.done, retry_interval_ms=10)
-
-        results = []
-        with pytest.raises(RuntimeError, match="stream broke"):
-            async for r in replica_result:
-                results.append(r)
-        assert results == [1, 2, 3]
-
-    def _make_cancelled_streaming_request(self, loop):
-        # A locally cancelled gRPC call raises `asyncio.CancelledError` from the
-        # stream. Wait until it has been consumed with results still buffered.
-        fut = asyncio.run_coroutine_threadsafe(
-            self.make_fake_streaming_request(
-                [1, 2, 3],
-                loop,
-                on_separate_loop=True,
-                transport_error=asyncio.CancelledError(),
+                transport_error=transport_error,
             ),
             loop=loop,
         )
@@ -288,12 +261,31 @@ class TestSeparateLoop:
         wait_for_condition(replica_result._consume_task.done, retry_interval_ms=10)
         return replica_result
 
+    @pytest.mark.asyncio
+    async def test_streaming_transport_error_after_buffered_results(
+        self, create_asyncio_event_loop_in_thread
+    ):
+        """Results buffered before a stream failure are returned before the error."""
+        loop, _ = create_asyncio_event_loop_in_thread
+        replica_result = self._make_failed_streaming_request(
+            loop, RuntimeError("stream broke")
+        )
+
+        results = []
+        with pytest.raises(RuntimeError, match="stream broke"):
+            async for r in replica_result:
+                results.append(r)
+        assert results == [1, 2, 3]
+
     def test_streaming_cancelled_discards_buffered_results_sync(
         self, create_asyncio_event_loop_in_thread
     ):
         """Cancellation raises immediately instead of returning buffered results."""
         loop, _ = create_asyncio_event_loop_in_thread
-        replica_result = self._make_cancelled_streaming_request(loop)
+        # A locally cancelled gRPC call raises `asyncio.CancelledError`.
+        replica_result = self._make_failed_streaming_request(
+            loop, asyncio.CancelledError()
+        )
 
         for _ in range(3):
             with pytest.raises(RequestCancelledError):
@@ -305,7 +297,9 @@ class TestSeparateLoop:
     ):
         """Cancellation raises immediately instead of returning buffered results."""
         loop, _ = create_asyncio_event_loop_in_thread
-        replica_result = self._make_cancelled_streaming_request(loop)
+        replica_result = self._make_failed_streaming_request(
+            loop, asyncio.CancelledError()
+        )
 
         for _ in range(3):
             with pytest.raises(asyncio.CancelledError):
