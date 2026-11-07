@@ -1551,7 +1551,7 @@ class ActorReplicaWrapper:
         """
         if self._ready_obj_ref is None:
             return True, None
-        if not check_obj_ref_ready_nowait(self._ready_obj_ref):
+        if not check_obj_ref_ready_nowait(self._ready_obj_ref):  # type: ignore[arg-type]
             return False, None
         try:
             ray.get(self._ready_obj_ref)
