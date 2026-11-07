@@ -164,6 +164,13 @@ def _derived_statistics_predicate(expr: Expr, schema: pa.Schema) -> Expr | None:
     ):
         idx = schema.get_field_index(expr.left.name)
         if idx >= 0 and not pa.types.is_floating(schema.field(idx).type):
+            # PyArrow is_in can match nulls when the value set contains None.
+            if (
+                expr.op == Operation.IN
+                and isinstance(expr.right.value, list)
+                and all(value is not None for value in expr.right.value)
+            ):
+                return expr
             return expr | expr.left.is_null()
 
     if (
