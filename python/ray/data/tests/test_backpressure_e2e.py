@@ -7,9 +7,13 @@ import pytest
 
 import ray
 from ray._private.internal_api import memory_summary
+from ray.data._internal.execution.backpressure_policy import (
+    ENABLED_BACKPRESSURE_POLICIES_CONFIG_KEY,
+)
 from ray.data._internal.execution.backpressure_policy.downstream_capacity_backpressure_policy import (
     DownstreamCapacityBackpressurePolicy,
 )
+from ray.data._internal.execution.execution_callback import ExecutionCallback
 from ray.data._internal.execution.util import memory_string
 from ray.data._internal.util import MiB
 from ray.data.block import BlockMetadata
@@ -226,6 +230,105 @@ def test_no_deadlock_when_downstream_capacity_policy_zeros_limit(
     ):
         # Without the escape hatch firing, this would hang.
         assert len(ds.take_all()) == num_blocks
+
+
+def test_backpressure_when_downstream_capacity_is_zero(
+    shutdown_only, restore_data_context  # noqa: F811
+):
+    """Zero downstream capacity with queued output applies backpressure without deadlock.
+
+    Regression test for https://github.com/ray-project/ray/issues/67340. The
+    actor's slow ``__init__`` keeps downstream capacity at zero while the
+    producer has output queued. Without backpressure the producer fills the
+    shared object-store budget; with it, the queue stays within one block of
+    the budget and the pipeline still drains every row.
+    """
+    object_store_memory = 200 * MiB
+    ray.init(num_cpus=4, object_store_memory=object_store_memory)
+
+    block_size = 10 * MiB
+    num_blocks = 20
+    # Leave half of the object store for the producer's output queue, so the
+    # utilization gate opens before the store is exhausted.
+    output_budget = object_store_memory // 2
+
+    ctx = ray.data.DataContext.get_current()
+    # Isolate this policy so ResourceBudget doesn't mask the regression by
+    # capping the queue at its own reservation.
+    ctx.set_config(
+        ENABLED_BACKPRESSURE_POLICIES_CONFIG_KEY,
+        [DownstreamCapacityBackpressurePolicy],
+    )
+    ctx.target_max_block_size = block_size
+    ctx.execution_options.resource_limits = ctx.execution_options.resource_limits.copy(
+        object_store_memory=output_budget
+    )
+
+    def producer(batch):
+        # Pace production so the policy can react before the queue is drained.
+        time.sleep(0.25)
+        return {
+            "id": batch["id"],
+            "data": [np.zeros(block_size, dtype=np.uint8)] * len(batch["id"]),
+        }
+
+    class SlowInitActor:
+        def __init__(self):
+            # Keep downstream capacity at zero while the producer builds a queue.
+            time.sleep(5)
+
+        def __call__(self, batch):
+            return batch
+
+    peak_producer_outqueue_bytes = 0
+    producer_metrics_seen = 0
+
+    class TrackProducerOutqueue(ExecutionCallback):
+        def on_execution_step(self, executor):
+            nonlocal peak_producer_outqueue_bytes, producer_metrics_seen
+            policy = next(
+                p
+                for p in executor._backpressure_policies
+                if isinstance(p, DownstreamCapacityBackpressurePolicy)
+            )
+            for op, state in executor._topology.items():
+                if "producer" not in op.name:
+                    continue
+                # Only measure while the pressure this PR targets is in effect.
+                # A finished producer is no longer backpressured, so its
+                # remaining queue can be handed off in one burst.
+                if op.has_execution_finished():
+                    continue
+                if policy._get_downstream_capacity_size_bytes(op) != 0:
+                    continue
+                producer_metrics_seen += 1
+                peak_producer_outqueue_bytes = max(
+                    peak_producer_outqueue_bytes, state.output_queue_bytes()
+                )
+
+    # Register the callback before creating the dataset, since datasets snapshot
+    # the DataContext at creation time.
+    ctx.custom_execution_callback_classes.append(TrackProducerOutqueue)
+
+    ds = ray.data.range(num_blocks, override_num_blocks=num_blocks)
+    # Mismatched CPU requests prevent the producer from being fused into the
+    # actor, so its output queues while the downstream actor is initializing.
+    ds = ds.map_batches(producer, batch_size=None, num_cpus=0.5)
+    ds = ds.map_batches(
+        SlowInitActor,
+        batch_size=None,
+        num_cpus=1,
+        compute=ray.data.ActorPoolStrategy(size=1),
+    )
+
+    assert len(ds.take_all()) == num_blocks
+    assert producer_metrics_seen > 0
+    # Backpressure is evaluated between task submissions, so one block can be
+    # admitted after the utilization gate opens. Allow that single block of
+    # overshoot; without the fix the queue grows to fill the whole store.
+    assert (
+        peak_producer_outqueue_bytes < output_budget + block_size
+    ), peak_producer_outqueue_bytes
 
 
 def test_no_deadlock_with_preserve_order(

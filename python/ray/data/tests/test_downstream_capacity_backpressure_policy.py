@@ -192,7 +192,10 @@ class TestDownstreamCapacityBackpressurePolicy:
         rm.get_op_outputs_object_store_usage_with_downstream.return_value = (
             outputs_usage
         )
+        # Bytes in this operator's output queue, used by _get_output_pressure.
+        rm.get_mem_op_outputs.return_value = outputs_usage
         rm.get_external_consumer_bytes.return_value = external_bytes
+        rm.has_external_consumer = external_bytes > 0
         return rm
 
     def _set_utilized_budget_fraction(self, rm, fraction):
@@ -224,6 +227,9 @@ class TestDownstreamCapacityBackpressurePolicy:
             )
 
         if downstream_capacity == 0:
+            has_downstream = bool(op.output_dependencies) or rm.has_external_consumer
+            if has_downstream and output_size > 0:
+                return float("inf")
             return 0
         return (output_size / downstream_capacity) - 1
 
@@ -441,25 +447,95 @@ class TestDownstreamCapacityBackpressurePolicy:
         )
         assert policy.can_add_input(op) is True
 
-    def test_no_backpressure_zero_downstream_capacity(self):
-        """Test backpressure skipped when downstream capacity is zero."""
+    @pytest.mark.parametrize(
+        (
+            "queued_output_bytes",
+            "utilization_offset",
+            "expected_pressure",
+            "expected_backpressure",
+        ),
+        [
+            # Queued output with a starved downstream is infinite pressure, but
+            # the utilization gate still suppresses backpressure below the threshold.
+            pytest.param(
+                500, -0.05, float("inf"), False, id="queued-output-low-utilization"
+            ),
+            # Regression test for https://github.com/ray-project/ray/issues/67340:
+            # without this, the producer is admitted until it fills the shared
+            # object-store budget.
+            pytest.param(
+                500, 0.05, float("inf"), True, id="queued-output-high-utilization"
+            ),
+            # Nothing queued and nothing in flight: nothing to pace against.
+            pytest.param(0, 0.05, 0, False, id="empty-output-high-utilization"),
+        ],
+    )
+    def test_zero_downstream_capacity(
+        self,
+        queued_output_bytes,
+        utilization_offset,
+        expected_pressure,
+        expected_backpressure,
+    ):
+        """Test pressure and the utilization gate when downstream capacity is zero."""
         op, op_state = self._mock_task_pool_map_operator()
-        downstream_op, downstream_op_state = self._mock_operator()
+        downstream_op, downstream_op_state = self._mock_operator(
+            obj_store_mem_pending_task_inputs=0
+        )
         op.output_dependencies = [downstream_op]
         topology = {op: op_state, downstream_op: downstream_op_state}
-        context = self._create_context()
-        rm = self._mock_resource_manager(internal_usage=0, outputs_usage=500)
+        context = self._create_context(backpressure_ratio=2.0)
+        rm = self._mock_resource_manager(
+            internal_usage=0, outputs_usage=queued_output_bytes
+        )
 
-        # Low utilized budget fraction = skip backpressure
         threshold = (
             DownstreamCapacityBackpressurePolicy.OBJECT_STORE_BUDGET_UTIL_THRESHOLD
         )
-        self._set_utilized_budget_fraction(rm, threshold - 0.05)  # 0.45
+        self._set_utilized_budget_fraction(rm, threshold + utilization_offset)
 
         policy = self._create_policy(
             topology, data_context=context, resource_manager=rm
         )
-        assert policy.can_add_input(op) is True
+
+        assert policy._get_downstream_capacity_size_bytes(op) == 0
+        assert policy._get_output_pressure(op) == expected_pressure
+        assert policy.can_add_input(op) is not expected_backpressure
+        assert policy.max_task_output_bytes_to_read(op) == (
+            0 if expected_backpressure else None
+        )
+
+    def test_backpressure_zero_downstream_capacity_terminal_op_with_queued_output(
+        self,
+    ):
+        """Backpressure applies to terminal operators with an external consumer.
+
+        A terminal operator has no output dependencies, so its downstream
+        capacity comes from the external consumer. When the consumer has no
+        bytes in flight but the operator already has output queued, the ratio
+        is effectively infinite.
+        """
+        op, op_state = self._mock_task_pool_map_operator()
+        op.output_dependencies = []  # terminal operator
+        topology = {op: op_state}
+        context = self._create_context(backpressure_ratio=2.0)
+        rm = self._mock_resource_manager(external_bytes=0)
+        rm.has_external_consumer = True
+        rm.get_mem_op_outputs.return_value = 500
+
+        threshold = (
+            DownstreamCapacityBackpressurePolicy.OBJECT_STORE_BUDGET_UTIL_THRESHOLD
+        )
+        self._set_utilized_budget_fraction(rm, threshold + 0.05)
+
+        policy = self._create_policy(
+            topology, data_context=context, resource_manager=rm
+        )
+
+        assert policy._get_downstream_capacity_size_bytes(op) == 0
+        assert policy._get_output_pressure(op) == float("inf")
+        assert policy.can_add_input(op) is False
+        assert policy.max_task_output_bytes_to_read(op) == 0
 
     @pytest.mark.parametrize(
         "external_bytes, expected_pressure, expected_can_add_input",
