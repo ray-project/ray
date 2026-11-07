@@ -138,8 +138,12 @@ def _shuffle_map_task(
         )
 
     ipc_write_options = _ipc_write_options(compression)
+    schema_block = next(
+        (b for b in shard_source_blocks if BlockAccessor.for_block(b).num_rows()),
+        shard_source_blocks[0],
+    )
     output_schema = TableBlockAccessor.try_convert_block_type(
-        shard_source_blocks[0], block_type=BlockType.ARROW
+        schema_block, block_type=BlockType.ARROW
     ).schema
     empty_shard = _encode_partition_ipc(output_schema.empty_table(), ipc_write_options)
 

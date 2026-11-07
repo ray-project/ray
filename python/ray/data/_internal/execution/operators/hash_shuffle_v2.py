@@ -1,7 +1,8 @@
-from typing import Dict, Iterable, List
+from typing import Dict, Iterable, List, Optional
 
 import pyarrow as pa
 
+from ray.data._internal.arrow_ops import transform_pyarrow
 from ray.data._internal.arrow_ops.transform_pyarrow import hash_partition
 from ray.data._internal.execution.operators.shuffle_operators.shuffle_tasks import (
     PartitionFn,
@@ -11,10 +12,39 @@ from ray.data._internal.execution.operators.shuffle_operators.shuffle_tasks impo
 _SHUFFLE_MAP_RUNTIME_ENV = {"env_vars": {"POLARS_MAX_THREADS": "1"}}
 
 
-def _make_hash_partition_fn(key_columns: List[str], num_partitions: int) -> PartitionFn:
+def _validate_repartition_schema(
+    schema: pa.Schema,
+    key_columns: List[str],
+    expected: Optional[pa.Schema],
+) -> pa.Schema:
+    if expected is not None:
+        if any(
+            schema.field(key).type != expected.field(key).type for key in key_columns
+        ):
+            raise ValueError(
+                "Hash repartition requires identical key types across blocks; "
+                "cast key columns to a common type before repartitioning."
+            )
+        if {f.name: f.type for f in schema} != {f.name: f.type for f in expected}:
+            raise ValueError(
+                "Repartition requires matching column names and types across blocks; "
+                "normalize schemas before repartitioning."
+            )
+    return schema
+
+
+def _make_hash_partition_fn(
+    key_columns: List[str], num_partitions: int, *, validate_schema: bool = False
+) -> PartitionFn:
     """Return a partition function that hash-partitions by key_columns."""
+    input_schema: Optional[pa.Schema] = None
 
     def _partition(block: pa.Table) -> Dict[int, pa.Table]:
+        nonlocal input_schema
+        if validate_schema and block.num_rows:
+            input_schema = _validate_repartition_schema(
+                block.schema, key_columns, input_schema
+            )
         return hash_partition(
             block, hash_cols=key_columns, num_partitions=num_partitions
         )
@@ -50,7 +80,7 @@ def _concat_reduce(
     tables = tables_by_input[0]
     if not tables:
         return
-    yield pa.concat_tables(tables) if len(tables) > 1 else tables[0]
+    yield transform_pyarrow.concat(tables, preserve_order=True)
 
 
 def _sort_reduce(key_columns: List[str]) -> ReduceFn:
@@ -65,7 +95,10 @@ def _sort_reduce(key_columns: List[str]) -> ReduceFn:
         tables = tables_by_input[0]
         if not tables:
             return
-        combined = pa.concat_tables(tables) if len(tables) > 1 else tables[0]
-        yield combined.sort_by([(k, "ascending") for k in key_columns])
+        combined = transform_pyarrow.concat(tables, preserve_order=True)
+        if combined.num_rows == 0:
+            yield combined
+        else:
+            yield combined.sort_by([(k, "ascending") for k in key_columns])
 
     return _reduce

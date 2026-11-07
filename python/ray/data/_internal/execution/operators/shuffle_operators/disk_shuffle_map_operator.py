@@ -25,6 +25,9 @@ from ray.data._internal.execution.interfaces.physical_operator import (
 from ray.data._internal.execution.operators.base_physical_operator import (
     InternalQueueOperatorMixin,
 )
+from ray.data._internal.execution.operators.hash_shuffle_v2 import (
+    _validate_repartition_schema,
+)
 from ray.data._internal.execution.operators.shuffle_operators.disk_shuffle_tasks import (  # noqa: E501
     BlockTransformer,
     PartitionFn,
@@ -67,6 +70,7 @@ class DiskHashShuffleMapOp(InternalQueueOperatorMixin, PhysicalOperator):
         *,
         num_partitions: int,
         partition_fn: PartitionFn,
+        key_columns: Optional[List[str]] = None,
         block_transformer: Optional[BlockTransformer] = None,
         map_runtime_env: Optional[Dict[str, Any]] = None,
         map_cpus: float = _DEFAULT_SHUFFLE_MAP_TASK_NUM_CPUS,
@@ -80,6 +84,8 @@ class DiskHashShuffleMapOp(InternalQueueOperatorMixin, PhysicalOperator):
 
         self._num_partitions: int = num_partitions
         self._partition_fn: PartitionFn = partition_fn
+        self._key_columns = key_columns
+        self._input_schema = None
         self._block_transformer: Optional[BlockTransformer] = block_transformer
 
         # -- Map task config -------------------------------------------------
@@ -143,9 +149,9 @@ class DiskHashShuffleMapOp(InternalQueueOperatorMixin, PhysicalOperator):
         # points at that single ref (O(1) per-reducer arg serialization).
         self._completed_handle_refs: List[ObjectRef] = []
         self._shared_handles_ref: Optional[ObjectRef] = None
-        # First non-None schema seen; propagated onto every wrapper so
-        # downstream ops (fusion, empty-partition fast path) don't see None.
+        # Prefer a non-empty mapper's schema for empty output partitions.
         self._output_schema: Optional["pa.Schema"] = None
+        self._has_nonempty_schema = False
 
     @property
     def _input_queues(self) -> List[BaseBundleQueue]:
@@ -297,6 +303,10 @@ class DiskHashShuffleMapOp(InternalQueueOperatorMixin, PhysicalOperator):
         # do not gate rows on nbytes (a null-typed table can have rows with
         # nbytes == 0).
         rows = handle.get("num_rows")
+        if self._key_columns is not None and rows is not None and rows.any():
+            self._input_schema = _validate_repartition_schema(
+                handle["schema"], self._key_columns, self._input_schema
+            )
         if rows is not None:
             for pid in range(rows.shape[0]):
                 n = int(rows[pid])
@@ -308,8 +318,12 @@ class DiskHashShuffleMapOp(InternalQueueOperatorMixin, PhysicalOperator):
                 n = int(dec[pid])
                 if n:
                     self._partition_bytes[pid] += n
-        if self._output_schema is None:
+        has_rows = rows is not None and rows.any()
+        if self._output_schema is None or (has_rows and not self._has_nonempty_schema):
             self._output_schema = handle.get("schema")
+            self._has_nonempty_schema = bool(
+                has_rows and self._output_schema is not None
+            )
 
         exec_stats = handle.get("exec_stats") or BlockExecStats.builder().build(
             block_ser_time_s=0.0

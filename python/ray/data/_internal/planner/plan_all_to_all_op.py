@@ -121,7 +121,9 @@ def _plan_hash_shuffle_repartition_v2(
         logical_op.num_outputs or data_context.default_hash_shuffle_parallelism
     )
 
-    partition_fn = _make_hash_partition_fn(key_list, target_num_partitions)
+    partition_fn = _make_hash_partition_fn(
+        key_list, target_num_partitions, validate_schema=True
+    )
     reduce_fn = _sort_reduce(key_list) if logical_op.sort else _concat_reduce
     peak_memory_multiplier = (
         _SORT_REDUCE_PEAK_MEMORY_MULTIPLIER
@@ -136,6 +138,7 @@ def _plan_hash_shuffle_repartition_v2(
         data_context,
         num_partitions=target_num_partitions,
         partition_fn=partition_fn,
+        key_columns=key_list,
         map_runtime_env=_SHUFFLE_MAP_RUNTIME_ENV,
         name=(
             f"{prefix}HashShuffleMap(keys={tuple(key_list)}, "
