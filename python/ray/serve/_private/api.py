@@ -77,6 +77,13 @@ def _check_http_options(
             )
 
 
+def _init_ray_if_needed() -> None:
+    """Initialize Ray in this process if needed, joining or starting a cluster."""
+    ray._private.worker.global_worker._filter_logs_by_job = False
+    if not ray.is_initialized():
+        ray.init(namespace=SERVE_NAMESPACE)
+
+
 def _create_controller_and_proxy_refs(
     http_options: Union[None, dict, HTTPOptions],
     grpc_options: Union[None, dict, gRPCOptions],
@@ -104,10 +111,7 @@ def _create_controller_and_proxy_refs(
     (callers coerce eagerly so a bad value raises locally, not from a task).
     """
 
-    # Initialize ray if needed.
-    ray._private.worker.global_worker._filter_logs_by_job = False
-    if not ray.is_initialized():
-        ray.init(namespace=SERVE_NAMESPACE)
+    _init_ray_if_needed()
 
     # Legacy http proxy actor check
     http_deprecated_args = ["http_host", "http_port", "http_middlewares"]
@@ -194,6 +198,9 @@ async def serve_start_async(
             _check_http_options(client, http_options)
         return client
 
+    # Start Ray on this thread, not the worker thread below: Ray's local processes
+    # die when the thread that spawned them exits (PR_SET_PDEATHSIG).
+    _init_ray_if_needed()
     # Run the blocking controller-creation helper in a worker thread so its
     # ray.get(controller.get_proxies.remote()) does not stall this event loop.
     # serve_start_async exists (vs serve_start) precisely to keep long-lived
