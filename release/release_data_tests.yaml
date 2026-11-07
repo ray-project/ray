@@ -1183,7 +1183,7 @@
 # Fake GPU on 20 CPU nodes, since lineage reconstruction doesn't depend on real
 # GPUs and 100 GPU nodes are costly and hard to provision.
 - name: image_embedding_from_uris_fake_gpu_lineage_reconstruction_chaos
-  python: "3.10"
+  python: "3.11"
   frequency: manual
   group: data-batch-inference
 
@@ -1191,6 +1191,7 @@
     anyscale_sdk_2026: true
     cluster_compute: image_embedding_from_uris/fake_gpu_small_cluster_compute.yaml
     byod:
+      python_depset: torch_cu128_data_image_embedding_py3.11.lock
       runtime_env:
         # Merged over the DEFAULTS. Chaos kills nodes on purpose, so dead nodes
         # and the workers that die with them are expected.
