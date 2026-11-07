@@ -1238,36 +1238,48 @@ class WorkerGroup(ExecutionGroup):
             workers = WorkerGroup._sort_workers_by_gpu_id_grouped_by_node(workers)
 
         # Group workers by local world i.e. (node) or (node, replica group).
-        local_world_to_workers = collections.defaultdict(list)
+        local_world_sizes: Dict[Any, int] = collections.defaultdict(int)
+        local_ranks: List[int] = []
+        node_ranks: List[int] = []
         if replica_group_size is not None:
-            # Use OrderedDict for OrderedSet
-            group_to_node_ips = collections.defaultdict(collections.OrderedDict)
+            group_to_node_ranks: Dict[int, Dict[str, int]] = collections.defaultdict(
+                dict
+            )
             for idx, worker in enumerate(workers):
                 group_idx = idx // replica_group_size
-                key = (worker.metadata.node_ip, group_idx)
-                local_world_to_workers[key].append(worker)
-                group_to_node_ips[group_idx][worker.metadata.node_ip] = 0  # dummy value
+                node_ip = worker.metadata.node_ip
+                key = (node_ip, group_idx)
+                local_ranks.append(local_world_sizes[key])
+                local_world_sizes[key] += 1
+                node_ip_to_rank = group_to_node_ranks[group_idx]
+                node_ranks.append(
+                    node_ip_to_rank.setdefault(node_ip, len(node_ip_to_rank))
+                )
         else:
+            node_ip_to_rank: Dict[str, int] = {}
             for worker in workers:
-                local_world_to_workers[worker.metadata.node_ip].append(worker)
-            node_ips = list(local_world_to_workers.keys())
+                node_ip = worker.metadata.node_ip
+                local_ranks.append(local_world_sizes[node_ip])
+                local_world_sizes[node_ip] += 1
+                node_ranks.append(
+                    node_ip_to_rank.setdefault(node_ip, len(node_ip_to_rank))
+                )
 
+        effective_world_size = (
+            world_size if world_size is not None else len(workers)
+        )
         for world_rank, worker in enumerate(workers):
             if replica_group_size is not None:
-                group_idx = world_rank // replica_group_size
-                key = (worker.metadata.node_ip, group_idx)
-                node_ips = list(group_to_node_ips[group_idx].keys())
+                key = (worker.metadata.node_ip, world_rank // replica_group_size)
             else:
                 key = worker.metadata.node_ip
-            peers = local_world_to_workers[key]
-            distributed_context = DistributedContext(
-                local_rank=peers.index(worker),
-                local_world_size=len(peers),
+            worker.distributed_context = DistributedContext(
+                local_rank=local_ranks[world_rank],
+                local_world_size=local_world_sizes[key],
                 world_rank=starting_world_rank + world_rank,
-                world_size=world_size if world_size is not None else len(workers),
-                node_rank=node_ips.index(worker.metadata.node_ip),
+                world_size=effective_world_size,
+                node_rank=node_ranks[world_rank],
             )
-            worker.distributed_context = distributed_context
 
         return workers
 

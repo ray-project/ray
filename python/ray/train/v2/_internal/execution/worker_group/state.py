@@ -67,8 +67,11 @@ class WorkerGroupState:
     ) -> "WorkerGroupState":
         """Return a new WorkerGroupState with old_workers replaced by new_workers."""
         current_workers = list(self.workers)
+        worker_id_to_idx = {id(w): i for i, w in enumerate(current_workers)}
         for old_w, new_w in zip(old_workers, new_workers):
-            idx = current_workers.index(old_w)
+            idx = worker_id_to_idx.pop(id(old_w), None)
+            if idx is None:
+                idx = current_workers.index(old_w)
             current_workers[idx] = new_w
         return WorkerGroupState(
             start_time=self.start_time,

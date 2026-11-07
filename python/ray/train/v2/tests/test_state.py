@@ -1420,6 +1420,61 @@ def test_train_run_schema_sanitizes_all_validated_fields():
     assert rs["run_config"]["storage_filesystem"] == "LocalFileSystem"
 
 
+def test_worker_group_state_replace_workers_preserves_order_and_supports_fallback():
+    """Verify WorkerGroupState.replace_workers replaces by identity in O(1) and
+    falls back to value equality when a reconstructed Worker copy is passed."""
+    from ray.train.v2._internal.execution.worker_group.state import WorkerGroupState
+    from ray.train.v2._internal.execution.worker_group.worker import (
+        ActorMetadata,
+        Worker,
+    )
+
+    def make_worker(rank: int) -> Worker:
+        return Worker(
+            actor=MagicMock(name=f"actor_{rank}"),
+            metadata=ActorMetadata(
+                node_id=f"node_{rank // 2}",
+                node_ip=f"10.0.0.{rank // 2}",
+                hostname=f"host_{rank // 2}",
+                accelerator_ids={"GPU": [str(rank % 2)]},
+                pid=1000 + rank,
+            ),
+            resources={"GPU": 1.0},
+        )
+
+    workers = [make_worker(i) for i in range(6)]
+    state = WorkerGroupState(
+        start_time=1.0,
+        placement_group_handle=MagicMock(),
+        workers=workers,
+        sync_actor=MagicMock(),
+    )
+
+    replacement_1 = make_worker(101)
+    replacement_4 = make_worker(104)
+    # Pass an identical-value copy for worker 4 to exercise the equality fallback
+    old_worker_4_copy = Worker(
+        actor=workers[4].actor,
+        metadata=workers[4].metadata,
+        resources=workers[4].resources,
+    )
+
+    new_state = state.replace_workers(
+        old_workers=[workers[1], old_worker_4_copy],
+        new_workers=[replacement_1, replacement_4],
+    )
+    assert new_state.workers == [
+        workers[0],
+        replacement_1,
+        workers[2],
+        workers[3],
+        replacement_4,
+        workers[5],
+    ]
+    # Original state workers list must remain unchanged
+    assert state.workers == workers
+
+
 if __name__ == "__main__":
     import sys
 
