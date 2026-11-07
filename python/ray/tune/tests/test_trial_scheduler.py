@@ -30,7 +30,7 @@ from ray.tune.schedulers import (
     PopulationBasedTraining,
     TrialScheduler,
 )
-from ray.tune.schedulers.pbt import PopulationBasedTrainingReplay, _explore
+from ray.tune.schedulers.pbt import PopulationBasedTrainingReplay, _PBTTrialState, _explore
 from ray.tune.schedulers.util import (
     _set_search_properties_backwards_compatible,
 )
@@ -1805,6 +1805,18 @@ class PopulationBasedTestingSuite(unittest.TestCase):
         # Replay must schedule the config change at the logged clone iteration.
         replay = PopulationBasedTrainingReplay(policy_path)
         self.assertEqual(replay._policy[0][0], clone_iter)
+
+        # None last_result must not AttributeError (recovery / init edge cases).
+        empty_state = _PBTTrialState(trials[0])
+        empty_clone = _PBTTrialState(trials[1])
+        self.assertIsNone(empty_state.last_result)
+        self.assertIsNone(empty_clone.last_result)
+        pbt._log_config_on_step(
+            empty_state, empty_clone, trials[0], trials[1], dict(trials[0].config)
+        )
+        rows_after = [json.loads(line) for line in open(policy_path)]
+        self.assertEqual(rows_after[-1][2], 0)
+        self.assertEqual(rows_after[-1][3], 0)
 
     def testReplay(self):
         # Returns unique increasing parameter mutations
