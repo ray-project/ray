@@ -1314,6 +1314,11 @@ def concat(
     if len(blocks) == 1:
         return blocks[0]
 
+    # Fast path: skip schema unification when all input schemas match.
+    first_schema = blocks[0].schema
+    if all(block.schema == first_schema for block in blocks):
+        return pa.concat_tables(blocks)
+
     # If the result contains pyarrow schemas, unify them
     schemas_to_unify = [b.schema for b in blocks]
     try:
