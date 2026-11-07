@@ -37,6 +37,7 @@ from ray.data.tests.unit.datasource_v2.mcap_testing import (
     MIXED_TOPICS,
     SHARED_SCHEMA,
     STEP,
+    UNDECLARED_CHANNEL,
     SeekLog,
     as_read_task,
     chunks_read,
@@ -56,6 +57,7 @@ from ray.data.tests.unit.datasource_v2.mcap_testing import (
     write_mcap,
     write_mcap_without_summary_schemas,
     write_mixed_channels,
+    write_undeclared_channel,
 )
 
 pytestmark = pytest.mark.skipif(
@@ -163,7 +165,7 @@ def read_one_task(paths, max_errored_blocks=1, **options):
     datasource = MCAPDatasourceV2(paths, include_paths=True, **options)
     # preserve_order keeps the files in the order given; the listing threads
     # otherwise finish in any order.
-    task = FileManifest.concat(list_manifests(datasource, preserve_order=True))
+    task = as_read_task(*list_manifests(datasource, preserve_order=True))
     tables = []
     with pytest.raises(Exception) as error:
         for table in scanner_for(datasource).create_reader().read(task):
@@ -312,9 +314,9 @@ def test_a_corrupt_chunk_read_back_for_a_schema_costs_only_itself(tmp_path):
     write_mcap_without_summary_schemas(clean, b_declared_in_chunk_1=True)
     path = write_corrupt_chunk(os.path.join(tmp_path, "bad.mcap"), clean, 0)
     summary = summary_of(path)
-    # The task owns chunks 3 to 5. Chunk 3 (/b) reads back through chunk 0,
+    # The task owns the /b chunks 3 and 5. Chunk 3 reads back through chunk 0,
     # which is corrupt, to chunk 1, which declares other_schema.
-    owned = {c.chunk_start_offset for c in summary.chunk_indexes[3:]}
+    owned = {summary.chunk_indexes[i].chunk_start_offset for i in (3, 5)}
     reader = SelectedMessageReader(MCAPSelection(), log_time_order=False)
     reported = []
 
@@ -325,8 +327,94 @@ def test_a_corrupt_chunk_read_back_for_a_schema_costs_only_itself(tmp_path):
             )
         )
 
-    assert [channel.topic for _, channel, _, _ in selected] == ["/b", "/a", "/b"]
+    assert [channel.topic for _, channel, _, _ in selected] == ["/b", "/b"]
+    assert all(schema and schema.name == "other_schema" for schema, *_ in selected)
     assert reported == []
+
+
+def read_all_chunks(path, owned_from, on_corrupt):
+    """The selected messages of chunks ``owned_from`` onward of the MCAP file
+    ``path``, read with ``on_corrupt`` as one task reads them."""
+    summary = summary_of(path)
+    owned = {c.chunk_start_offset for c in summary.chunk_indexes[owned_from:]}
+    reader = SelectedMessageReader(MCAPSelection(), log_time_order=False)
+    with open(path, "rb") as f:
+        return list(reader.iter_chunks(f, path, summary, owned, on_corrupt=on_corrupt))
+
+
+def test_a_schema_only_a_corrupt_chunk_declares_fails_an_unskipped_read(tmp_path):
+    """Without ``on_corrupt``, a task that reads back for a schema only a corrupt
+    chunk declares raises that chunk's decoding error rather than yield rows
+    without their schema."""
+    clean = os.path.join(tmp_path, "clean.mcap")
+    write_mcap_without_summary_schemas(clean)
+    path = write_corrupt_chunk(os.path.join(tmp_path, "bad.mcap"), clean, 0)
+
+    # Chunk 0 alone declares both schemas; the task owns chunks 2 to 5.
+    with pytest.raises(Exception) as error:
+        read_all_chunks(path, owned_from=2, on_corrupt=None)
+
+    assert type(error.value).__name__ == "ZstdError"
+
+
+def test_a_schema_only_a_corrupt_chunk_declares_fails_a_skipping_read(tmp_path):
+    """With ``on_corrupt``, a task whose schema only a corrupt earlier chunk
+    declares raises an error naming that chunk. Neither chunk is reported as
+    corrupt by this task: the owner of the corrupt one reports it."""
+    clean = os.path.join(tmp_path, "clean.mcap")
+    write_mcap_without_summary_schemas(clean)
+    path = write_corrupt_chunk(os.path.join(tmp_path, "bad.mcap"), clean, 0)
+    reported = []
+
+    with pytest.raises(ValueError) as error:
+        read_all_chunks(path, owned_from=2, on_corrupt=lambda c, e: reported.append(c))
+
+    assert "neither the summary nor any chunk up to this one declares" in str(
+        error.value
+    )
+    assert (
+        f"chunk at byte offset {chunk_offset(path, 0)}, read back for it, is corrupt"
+        in str(error.value)
+    )
+    assert reported == []
+
+
+def test_a_message_on_an_undeclared_channel_is_not_skipped_as_corrupt(tmp_path):
+    """A chunk that decodes but holds a message on a channel nothing declares
+    raises that error even when corrupt chunks are skipped, rather than being
+    reported as a corrupt chunk."""
+    path = os.path.join(tmp_path, "undeclared.mcap")
+    write_undeclared_channel(path)
+    reported = []
+
+    with pytest.raises(ValueError, match=f"on channel {UNDECLARED_CHANNEL}, which"):
+        read_all_chunks(path, owned_from=0, on_corrupt=lambda c, e: reported.append(c))
+
+    assert reported == []
+
+
+def test_an_error_reading_a_file_raises_before_skipped_corrupt_chunks(
+    tmp_path, monkeypatch, restore_max_errored_blocks
+):
+    """When errors are skipped, a task whose first file has a corrupt chunk and
+    whose second file fails to read raises the read's ``OSError`` at once, so
+    the task's retry settings see it, rather than one error for both files."""
+    from ray.data._internal.datasource_v2.formats.mcap.mcap_reader import MCAPReader
+
+    a, b, c = write_task_files(tmp_path, bad={"a.mcap"})
+    real_read_file = MCAPReader._read_file
+
+    def read_file(self, owned, *args):
+        if owned.path == b:
+            raise OSError("disk unplugged")
+        return real_read_file(self, owned, *args)
+
+    monkeypatch.setattr(MCAPReader, "_read_file", read_file)
+
+    tables, error = read_one_task([a, b, c])
+
+    assert isinstance(error, OSError)
+    assert rows_of(tables) == file_rows(a, skipped={CORRUPT_CHUNK})
 
 
 def test_a_retried_read_reports_only_its_own_corrupt_chunks(
