@@ -1,5 +1,7 @@
+import gc
 import sys
 import uuid
+import weakref
 from typing import Any, Dict, List
 from unittest.mock import MagicMock, call
 
@@ -22,6 +24,7 @@ class MockTaskProcessorAdapter(TaskProcessorAdapter):
         self._config = config
         self._start_consumer_received: bool = False
         self._stop_consumer_received: bool = False
+        self._stop_consumer_timeout = None
         self.register_task_handle_mock = MagicMock()
 
     def initialize(self, consumer_concurrency: int = 3):
@@ -43,6 +46,7 @@ class MockTaskProcessorAdapter(TaskProcessorAdapter):
 
     def stop_consumer(self, timeout: float = 10.0):
         self._stop_consumer_received = True
+        self._stop_consumer_timeout = timeout
 
     def cancel_task_sync(self, task_id) -> bool:
         pass
@@ -279,6 +283,111 @@ class TestTaskConsumerDecorator:
             @task_consumer
             class MyConsumer:
                 pass
+
+    @pytest.mark.parametrize("timeout_s", [None, 0.0, 123.0])
+    def test_graceful_shutdown_forwards_timeout(self, config, timeout_s):
+        @task_consumer(task_processor_config=config)
+        class MyConsumer:
+            pass
+
+        instance = MyConsumer()
+        instance.initialize_callable(1)
+        instance._adapter.stop_consumer = MagicMock(
+            wraps=instance._adapter.stop_consumer
+        )
+
+        instance._serve_graceful_shutdown(timeout_s=timeout_s)
+
+        assert instance._adapter._stop_consumer_received
+        if timeout_s is None:
+            instance._adapter.stop_consumer.assert_called_once_with()
+            assert instance._adapter._stop_consumer_timeout == 10.0
+        else:
+            instance._adapter.stop_consumer.assert_called_once_with(timeout=timeout_s)
+            assert instance._adapter._stop_consumer_timeout == timeout_s
+
+    def test_graceful_shutdown_only_called_once(self, config):
+        destructor = MagicMock()
+
+        @task_consumer(task_processor_config=config)
+        class MyConsumer:
+            def __del__(self):
+                destructor()
+
+        instance = MyConsumer()
+        instance.initialize_callable(1)
+        stop_consumer = instance._adapter.stop_consumer = MagicMock()
+        instance_ref = weakref.ref(instance)
+
+        instance._serve_graceful_shutdown(timeout_s=0.0)
+        instance._serve_graceful_shutdown(timeout_s=123.0)
+        instance.__del__()
+        del instance
+        gc.collect()
+
+        assert instance_ref() is None
+        stop_consumer.assert_called_once_with(timeout=0.0)
+        destructor.assert_called_once_with()
+
+    @pytest.mark.parametrize("failure_stage", ["constructor", "adapter"])
+    def test_graceful_shutdown_after_initialization_failure(
+        self, config, monkeypatch, failure_stage
+    ):
+        destructor = MagicMock()
+        monkeypatch.setattr(
+            MockTaskProcessorAdapter,
+            "initialize",
+            MagicMock(side_effect=RuntimeError("initialization failed")),
+        )
+
+        @task_consumer(task_processor_config=config)
+        class MyConsumer:
+            def __init__(self):
+                if failure_stage == "constructor":
+                    raise RuntimeError("initialization failed")
+
+            def __del__(self):
+                destructor()
+
+        # Serve retains the instance before running the constructor.
+        instance = MyConsumer.__new__(MyConsumer)
+        with pytest.raises(RuntimeError, match="initialization failed"):
+            instance.__init__()
+            instance.initialize_callable(1)
+
+        assert not hasattr(instance, "_adapter")
+        instance._serve_graceful_shutdown()
+        instance.__del__()
+        destructor.assert_called_once_with()
+
+    @pytest.mark.parametrize("failure_stage", ["stop", "destructor"])
+    def test_graceful_shutdown_cleanup_error(self, config, failure_stage):
+        destructor = MagicMock(
+            side_effect=RuntimeError("cleanup failed")
+            if failure_stage == "destructor"
+            else None
+        )
+
+        @task_consumer(task_processor_config=config)
+        class MyConsumer:
+            def __del__(self):
+                destructor()
+
+        instance = MyConsumer()
+        instance.initialize_callable(1)
+        stop_consumer = instance._adapter.stop_consumer = MagicMock(
+            side_effect=RuntimeError("cleanup failed")
+            if failure_stage == "stop"
+            else None
+        )
+
+        with pytest.raises(RuntimeError, match="cleanup failed"):
+            instance._serve_graceful_shutdown(timeout_s=123.0)
+
+        instance._serve_graceful_shutdown()
+        instance.__del__()
+        stop_consumer.assert_called_once_with(timeout=123.0)
+        destructor.assert_called_once_with()
 
 
 def test_default_deployment_name_stays_same_with_task_consumer(config):
