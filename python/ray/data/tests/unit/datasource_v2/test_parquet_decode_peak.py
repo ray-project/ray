@@ -1,7 +1,6 @@
 """Tests for the Parquet decode-peak estimate, against PyArrow's measured peak,
 through the footer reader that sizes read tasks by it."""
 
-import math
 import os
 
 import numpy as np
@@ -126,44 +125,19 @@ def _mixed():
     )
 
 
-@requires_pyarrow_23
 @pytest.mark.parametrize(
-    "failure, high", [("unwalkable", 3), ("page-read-fails", math.inf)]
+    "unmodelled", ["file", "strings-without-size-statistics", "delta-byte-array-leaf"]
 )
-def test_a_failed_footer_read_still_bounds_the_peak(
-    tmp_path, monkeypatch, failure, high
-):
-    """Without the footer walk the strings fall back to bounds; without the
-    dictionary page headers too, to each value as long as the chunk."""
-    import ray.data._internal.datasource_v2.formats.parquet.footer_reader as reader
-
-    path = tmp_path / "f.parquet"
-    table = pa.table(
-        {"i": pa.array(np.arange(N, dtype="int64")), "s": _strings(N // 4)}
-    )
-    pq.write_table(table, path, row_group_size=N)
-    monkeypatch.setattr(reader, "read_footer_stats", lambda metadata: None)
-    if failure == "page-read-fails":
-
-        def unreadable(buf):
-            raise OSError("unreadable")
-
-        monkeypatch.setattr(reader, "read_dictionary_page", unreadable)
-
-    (estimate,) = _sizes(path)
-    assert 0.95 <= estimate / _peak(path=path) <= high
-
-
-@pytest.mark.parametrize("unmodelled", ["file", "delta-byte-array-leaf"])
 def test_unmodelled_row_groups_charge_a_flat_cost(tmp_path, monkeypatch, unmodelled):
-    """A file, or a leaf like DELTA_BYTE_ARRAY strings without trusted sizes, that
-    the estimator doesn't model costs each row group a flat charge, once."""
+    """A file, or a leaf without exact counts, costs each row group a flat charge, once."""
     import ray.data._internal.datasource_v2.formats.parquet.footer_reader as reader
 
     path = tmp_path / "f.parquet"
     write_kwargs = {}
     if unmodelled == "file":
         monkeypatch.setattr(reader, "build_leaf_profiles", lambda **kwargs: None)
+    elif unmodelled == "strings-without-size-statistics":
+        monkeypatch.setattr(reader, "read_footer_stats", lambda metadata: None)
     else:
         write_kwargs = {
             "use_dictionary": False,

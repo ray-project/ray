@@ -1,8 +1,7 @@
 from __future__ import annotations
 
-import functools
 import logging
-from concurrent.futures import Future, ThreadPoolExecutor, as_completed, wait
+from concurrent.futures import Future, ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, AbstractSet, Iterable, Iterator, NamedTuple, Tuple
 
@@ -19,12 +18,10 @@ from ray.data._internal.datasource_v2.formats.parquet.parquet_decode_peak import
     estimate_row_group_work,
 )
 from ray.data._internal.datasource_v2.formats.parquet.parquet_decoded_size import (
-    _BINARY,
     LeafProfile,
     Read,
     added_bytes,
     build_leaf_profiles,
-    dictionary_page_read_size,
     estimate_added_columns,
     leaf_chunks,
 )
@@ -35,9 +32,7 @@ from ray.data._internal.datasource_v2.formats.parquet.parquet_row_group_coalesci
     coalesce_row_groups,
 )
 from ray.data._internal.datasource_v2.formats.parquet.parquet_size_statistics import (
-    DictionaryPage,
     LeafSizeStats,
-    read_dictionary_page,
     read_footer_stats,
 )
 from ray.data._internal.datasource_v2.interfaces.file_indexer import FileInfo
@@ -54,9 +49,6 @@ if TYPE_CHECKING:
     from ray.data.expressions import Expr
 
 logger = logging.getLogger(__name__)
-
-# Dictionary pages by row group index, then by leaf index.
-_DictionaryPages = dict[int, dict[int, DictionaryPage]]
 
 
 @dataclass(frozen=True)
@@ -189,8 +181,6 @@ class FooterReader:
         )
         self.filesystem = filesystem
         self.pool = ThreadPoolExecutor(max_workers=io_concurrency)
-        # Dictionary page reads, apart from ``self.pool``, whose threads wait on them.
-        self.page_pool = ThreadPoolExecutor(max_workers=io_concurrency)
         # Match Arrow's process-wide pools to the actor's IO concurrency so
         # nested S3/footer work isn't bottlenecked on the default 8 threads.
         pa.set_io_thread_count(io_concurrency)
@@ -319,7 +309,6 @@ class FooterReader:
         row_group: RowGroupMetaData,
         sizing: _FileSizing,
         size_stats: list[LeafSizeStats | None] | None,
-        dictionary_pages: dict[int, DictionaryPage] | None,
     ) -> int:
         """PyArrow's estimated peak bytes decoding ``row_group`` as a read task does,
         leaning high: a read task over its budget is what runs a node out of memory."""
@@ -332,7 +321,6 @@ class FooterReader:
                 leaf_profiles=sizing.profiles,
                 leaf_indices=sizing.leaf_indices,
                 size_stats=size_stats,
-                dictionary_pages=dictionary_pages,
             )
             leaves = {leaf.index: leaf for leaf in chunks}
             work = estimate_row_group_work(
@@ -354,7 +342,6 @@ class FooterReader:
                         leaf_profiles=sizing.cast_profiles or [],
                         leaf_indices=indices,
                         size_stats=size_stats,
-                        dictionary_pages=dictionary_pages,
                     )
                     for name, indices in sizing.cast_leaves.items()
                 }
@@ -370,8 +357,9 @@ class FooterReader:
                     read=sizing.read,
                 )
             if not modelled:
-                # A leaf or cast the estimator doesn't model, such as a view, a
-                # dictionary or a struct gaining a field: charged once.
+                # A leaf or cast the estimator doesn't model, such as a string
+                # without SizeStatistics, a view, a dictionary or a struct gaining
+                # a field: charged once.
                 work += _UNMODELLED_BYTES
         return estimate_row_group_peak(
             row_group=row_group,
@@ -464,85 +452,6 @@ class FooterReader:
                 exc_info=True,
             )
             return None
-
-    def _read_dictionary_pages(
-        self,
-        path: str,
-        metadata: FileMetaData,
-        rg_indices: Iterable[int],
-        leaf_indices: list[int],
-        leaf_profiles: list[LeafProfile | None],
-        size_stats: list[list[LeafSizeStats | None]] | None,
-    ) -> _DictionaryPages:
-        """The dictionary page headers the estimator asks for, read concurrently. A
-        failed read loses only its page, which only loosens a bound."""
-        pages: _DictionaryPages = {}
-        # Only a string leaf without SizeStatistics bytes can want its page, so
-        # the rest skip building their chunk's metadata.
-        text_leaves = {
-            j: profile
-            for j in leaf_indices
-            if (profile := leaf_profiles[j]) is not None
-            and profile.nodes[-1].kind == _BINARY
-        }
-        if not text_leaves:
-            return pages
-        wanted = []
-        for rg_idx in rg_indices:
-            row_group = metadata.row_group(rg_idx)
-            rg_stats = None if size_stats is None else size_stats[rg_idx]
-            for leaf_idx, profile in text_leaves.items():
-                stats = None if rg_stats is None else rg_stats[leaf_idx]
-                if (
-                    stats is not None
-                    and stats.unencoded_byte_array_data_bytes is not None
-                ):
-                    continue
-                chunk = row_group.column(leaf_idx)
-                nbytes = dictionary_page_read_size(
-                    profile=profile, chunk=chunk, stats=stats
-                )
-                if nbytes:
-                    wanted.append(
-                        (rg_idx, leaf_idx, chunk.dictionary_page_offset, nbytes)
-                    )
-        if not wanted:
-            return pages
-        try:
-            with call_with_retry(
-                lambda: self.filesystem.open_input_file(path),
-                description=f"open {path} for dictionary pages",
-                match=self.retried_io_errors,
-            ) as f:
-
-                def read(offset: int, nbytes: int) -> DictionaryPage | None:
-                    buf = call_with_retry(
-                        functools.partial(f.read_at, nbytes, offset),
-                        description=f"read a dictionary page of {path}",
-                        match=self.retried_io_errors,
-                    )
-                    return read_dictionary_page(buf)
-
-                futures = [
-                    self.page_pool.submit(read, offset, nbytes)
-                    for _, _, offset, nbytes in wanted
-                ]
-                # Every read ends before the file closes.
-                wait(futures)
-        except Exception as e:
-            logger.debug(
-                "Error opening %s for dictionary pages: %s", path, e, exc_info=True
-            )
-            return pages
-        for (rg_idx, leaf_idx, _, _), future in zip(wanted, futures):
-            try:
-                page = future.result()
-            except Exception as e:
-                logger.debug("Error reading a dictionary page: %s for file %s", e, path)
-                continue
-            if page is not None:
-                pages.setdefault(rg_idx, {})[leaf_idx] = page
-        return pages
 
     def _added_bytes(
         self, file_schema: pa.Schema | None, path: str
@@ -647,23 +556,12 @@ class FooterReader:
             # footer, so skip it when every row group was pruned.
             size_stats = read_footer_stats(metadata)
             sizing = self._file_sizing(file=file, fragment=fragment, metadata=metadata)
-            dictionary_pages: _DictionaryPages = {}
-            if sizing.profiles is not None:
-                dictionary_pages = self._read_dictionary_pages(
-                    path=path,
-                    metadata=metadata,
-                    rg_indices=rg_indices,
-                    leaf_indices=sizing.leaf_indices,
-                    leaf_profiles=sizing.profiles,
-                    size_stats=size_stats,
-                )
             for rg_idx in rg_indices:
                 row_group = metadata.row_group(rg_idx)
                 peak = self._row_group_peak(
                     row_group=row_group,
                     sizing=sizing,
                     size_stats=None if size_stats is None else size_stats[rg_idx],
-                    dictionary_pages=dictionary_pages.get(rg_idx),
                 )
                 per_rg.append(
                     FileChunk(
