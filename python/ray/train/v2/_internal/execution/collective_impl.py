@@ -14,9 +14,7 @@ logger = logging.getLogger(__name__)
 
 
 def barrier() -> None:
-    """
-    Create a barrier across all training workers.
-    """
+    """Create a barrier across all training workers."""
     train_context = get_train_context()
     sync_actor = train_context.get_synchronization_actor()
     return ray.get(

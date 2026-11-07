@@ -6,5 +6,7 @@
 
 idna>=3.15
 aiohttp>=3.14.4
+brotli>=1.2.1
 certifi>=2026.10.19
 virtualenv>=21.14.12
+multidict>=6.9.1

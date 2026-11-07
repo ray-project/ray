@@ -135,9 +135,7 @@ class SessionFileHandler(logging.Handler):
 
 
 class LoggingManager:
-    """
-    A utility class for managing the logging configuration of Ray Train.
-    """
+    """A utility class for managing the logging configuration of Ray Train."""
 
     @staticmethod
     def _get_base_logger_config_dict(
@@ -274,17 +272,14 @@ class LoggingManager:
 
     @staticmethod
     def configure_controller_logger(context: TrainRunContext) -> None:
-        """
-        Configure the logger on the controller process, which is the `ray.train` logger.
-        """
+        """Configure the logger on the controller process, which is the `ray.train` logger."""
         config = LoggingManager._get_controller_logger_config_dict(context)
         logging.config.dictConfig(config)
         # TODO: Return the controller log file path.
 
     @staticmethod
     def configure_worker_logger(context: TrainContext) -> None:
-        """
-        Configure the loggers on the worker process, which contains the
+        """Configure the loggers on the worker process, which contains the
         `ray.train` logger and the root logger.
         """
         config = LoggingManager._get_worker_logger_config_dict(context)
@@ -309,9 +304,7 @@ class LoggingManager:
 
 
 def get_train_application_controller_log_path() -> Optional[str]:
-    """
-    Return the path to the file train application controller log file.
-    """
+    """Return the path to the file train application controller log file."""
     # TODO: This is a temporary solution. We should return the log file path in
     # the `configure_controller_logger` function.
     logger = logging.getLogger("ray.train")
@@ -325,9 +318,7 @@ def get_train_application_controller_log_path() -> Optional[str]:
 
 
 def get_train_application_worker_log_path() -> Optional[str]:
-    """
-    Return the path to the file train application worker log file.
-    """
+    """Return the path to the file train application worker log file."""
     # TODO: This is a temporary solution. We should return the log file path in
     # the `configure_worker_logger` function.
     logger = logging.getLogger("ray.train")

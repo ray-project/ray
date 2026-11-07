@@ -43,7 +43,7 @@ from ray.data._internal.datasource_v2.interfaces.file_manifest import FileChunk
 from ray.data._internal.planner.plan_expression.expression_visitors import (
     get_column_references,
 )
-from ray.data._internal.util import call_with_retry
+from ray.data._internal.util import call_with_retry, filesystem_for_sized_opens
 from ray.data.datasource.partitioning import Partitioning
 
 if TYPE_CHECKING:
@@ -293,16 +293,17 @@ class FooterReader:
                     is True
                 )
         physical = split.data_predicate
-        if physical is not None and self.logical_schema is not None:
+        logical_schema = self.logical_schema
+        if physical is not None and logical_schema is not None:
             physical_schema = schema.to_arrow_schema()
             unsafe = {
                 name
                 for name in get_column_references(physical)
                 if physical_schema.get_field_index(name) != -1
                 and (
-                    self.logical_schema.get_field_index(name) == -1
+                    logical_schema.get_field_index(name) == -1
                     or physical_schema.field(name).type
-                    != self.logical_schema.field(name).type
+                    != logical_schema.field(name).type
                 )
             }
             if unsafe:
@@ -379,7 +380,12 @@ class FooterReader:
 
     def _read_and_chunk(self, file: FileInfo) -> ChunkedFile:
         path = file.path
-        fragment = self.file_format.make_fragment(path, filesystem=self.filesystem)
+        # The listing's size spares the open a request for it (a HEAD on S3).
+        fragment = self.file_format.make_fragment(
+            path,
+            filesystem=filesystem_for_sized_opens(self.filesystem),
+            file_size=file.size,
+        )
         # ``make_fragment`` is lazy, so this property is the footer read itself
         # (and caches it on the fragment). It raises on a truncated, non-Parquet,
         # or since-deleted file -- terminal conditions that must fail the read

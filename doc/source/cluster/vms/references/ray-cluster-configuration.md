@@ -16,6 +16,7 @@ The cluster configuration is defined within a YAML file that will be used by the
 .. parsed-literal::
 
    :ref:`cluster_name <cluster-configuration-cluster-name>`: str
+   :ref:`auth_mode <cluster-configuration-auth-mode>`: str
    :ref:`max_workers <cluster-configuration-max-workers>`: int
    :ref:`upscaling_speed <cluster-configuration-upscaling-speed>`: float
    :ref:`idle_timeout_minutes <cluster-configuration-idle-timeout-minutes>`: int
@@ -400,6 +401,17 @@ The name of the cluster. This is the namespace of the cluster.
 * **Type:** String
 * **Default:** "default"
 * **Pattern:** `[a-zA-Z0-9_]+`
+
+(cluster-configuration-auth-mode)=
+
+### `auth_mode`
+
+Ray's {ref}`authentication mode <token-auth>` on every node, either `token` or `disabled`. Unless this is `disabled`, `ray up` ships this machine's auth token to the head node, which ships it to every worker node it launches. When you set this key, `ray up` sets `RAY_AUTH_MODE` to its value in every node's start commands. Set the mode with this key, not with `RAY_AUTH_MODE` in start commands or Docker `run_options`.
+
+* **Required:** No
+* **Importance:** High
+* **Type:** String
+* **Default:** `token`
 
 (cluster-configuration-max-workers)=
 

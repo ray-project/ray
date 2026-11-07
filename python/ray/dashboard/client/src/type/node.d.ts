@@ -10,6 +10,7 @@ export type NodeDetail = {
   cpus?: number[]; // Logic CPU Count, Physical CPU Count
   mem?: number[]; // total memory, free memory, memory used ratio
   gpus?: GPUStats[]; // GPU stats fetched from node, 1 entry per GPU
+  npus?: NPUStats[]; // Ascend NPU stats fetched from node, 1 entry per device
   tpus?: TPUStats[]; // TPU stats fetched from node, 1 entry per TPU
   bootTime: number; // start time
   loadAvg: number[][]; // recent 1，5，15 minitues system load，load per cpu http://man7.org/linux/man-pages/man3/getloadavg.3.html
@@ -73,6 +74,26 @@ export type GPUStats = {
   powerMw?: number;
   /** Temperature in Celsius (e.g. NVIDIA) */
   temperatureC?: number;
+};
+
+export type ProcessNPUUsage = {
+  pid: number;
+  npuMemoryUsage: number; // in bytes
+};
+
+export type NPUStats = {
+  index: number;
+  cardId: number;
+  deviceId: number;
+  physicalId?: number;
+  name: string;
+  utilizationAicore?: number;
+  memoryUsed?: number; // in bytes
+  memoryTotal?: number; // in bytes
+  healthStatus?: number; // 0-3 DCMI severity, 4 means missing
+  powerMw?: number;
+  temperatureC?: number;
+  processesPids?: ProcessNPUUsage[];
 };
 
 export type ProcessTPUUsage = {

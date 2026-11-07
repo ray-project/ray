@@ -32,267 +32,242 @@ class FlattenObservations(ConnectorV2):
         before stacking them into the batch.
 
 
-    .. testcode::
-
-        import gymnasium as gym
-        import numpy as np
-
-        from ray.rllib.connectors.env_to_module import FlattenObservations
-        from ray.rllib.env.single_agent_episode import SingleAgentEpisode
-        from ray.rllib.utils.test_utils import check
-
-        # Some arbitrarily nested, complex observation space.
-        obs_space = gym.spaces.Dict({
-            "a": gym.spaces.Box(-10.0, 10.0, (), np.float32),
-            "b": gym.spaces.Tuple([
-                gym.spaces.Discrete(2),
-                gym.spaces.Box(-1.0, 1.0, (2, 1), np.float32),
-            ]),
-            "c": gym.spaces.MultiDiscrete([2, 3]),
-        })
-        act_space = gym.spaces.Discrete(2)
-
-        # Two example episodes, both with initial (reset) observations coming from the
-        # above defined observation space.
-        episode_1 = SingleAgentEpisode(
-            observations=[
-                {
-                    "a": np.array(-10.0, np.float32),
-                    "b": (1, np.array([[-1.0], [-1.0]], np.float32)),
-                    "c": np.array([0, 2]),
-                },
-            ],
-        )
-        episode_2 = SingleAgentEpisode(
-            observations=[
-                {
-                    "a": np.array(10.0, np.float32),
-                    "b": (0, np.array([[1.0], [1.0]], np.float32)),
-                    "c": np.array([1, 1]),
-                },
-            ],
-        )
-
-        # Construct our connector piece.
-        connector = FlattenObservations(obs_space, act_space)
-
-        # Call our connector piece with the example data.
-        output_batch = connector(
-            rl_module=None,  # This connector works without an RLModule.
-            batch={},  # This connector does not alter the input batch.
-            episodes=[episode_1, episode_2],
-            explore=True,
-            shared_data={},
-        )
-
-        # The connector does not alter the data and acts as pure pass-through.
-        check(output_batch, {})
-
-        # The connector has flattened each item in the episodes to a 1D tensor.
-        check(
-            episode_1.get_observations(0),
-            #         box()  disc(2).  box(2, 1).  multidisc(2, 3)........
-            np.array([-10.0, 0.0, 1.0, -1.0, -1.0, 1.0, 0.0, 0.0, 0.0, 1.0]),
-        )
-        check(
-            episode_2.get_observations(0),
-            #         box()  disc(2).  box(2, 1).  multidisc(2, 3)........
-            np.array([10.0, 1.0, 0.0, 1.0, 1.0, 0.0, 1.0, 0.0, 1.0, 0.0]),
-        )
-
-        # Two example episodes, both with initial (reset) observations coming from the
-        # above defined observation space.
-        episode_1 = SingleAgentEpisode(
-            observations=[
-                {
-                    "a": np.array(-10.0, np.float32),
-                    "b": (1, np.array([[-1.0], [-1.0]], np.float32)),
-                    "c": np.array([0, 2]),
-                },
-            ],
-        )
-        episode_2 = SingleAgentEpisode(
-            observations=[
-                {
-                    "a": np.array(10.0, np.float32),
-                    "b": (0, np.array([[1.0], [1.0]], np.float32)),
-                    "c": np.array([1, 1]),
-                },
-            ],
-        )
-
-        # Construct our connector piece and remove in it the "a" (Box()) key-value
-        # pair from the dictionary observations.
-        connector = FlattenObservations(obs_space, act_space, keys_to_remove=["a"])
-
-        # Call our connector piece with the example data.
-        output_batch = connector(
-            rl_module=None,  # This connector works without an RLModule.
-            batch={},  # This connector does not alter the input batch.
-            episodes=[episode_1, episode_2],
-            explore=True,
-            shared_data={},
-        )
-
-        # The connector has flattened each item in the episodes to a 1D tensor
-        # and removed the "a" (Box()) key-value pair.
-        check(
-            episode_1.get_observations(0),
-            #         disc(2).  box(2, 1).  multidisc(2, 3)........
-            np.array([0.0, 1.0, -1.0, -1.0, 1.0, 0.0, 0.0, 0.0, 1.0]),
-        )
-        check(
-            episode_2.get_observations(0),
-            #         disc(2).  box(2, 1).  multidisc(2, 3)........
-            np.array([1.0, 0.0, 1.0, 1.0, 0.0, 1.0, 0.0, 1.0, 0.0]),
-        )
-
-        # Use the connector in a learner pipeline. Note, we need here two
-        # observations in the episode because the agent has to have stepped
-        # at least once.
-        episode_1 = SingleAgentEpisode(
-            observations=[
-                {
-                    "a": np.array(-10.0, np.float32),
-                    "b": (1, np.array([[-1.0], [-1.0]], np.float32)),
-                    "c": np.array([0, 2]),
-                },
-                {
-                    "a": np.array(-10.0, np.float32),
-                    "b": (1, np.array([[-1.0], [-1.0]], np.float32)),
-                    "c": np.array([0, 2]),
-                },
-            ],
-            actions=[1],
-            rewards=[0],
-            # Set the length of the lookback buffer to 0 to read the data as
-            # from an actual step.
-            len_lookback_buffer=0,
-        )
-        episode_2 = SingleAgentEpisode(
-            observations=[
-                {
-                    "a": np.array(10.0, np.float32),
-                    "b": (0, np.array([[1.0], [1.0]], np.float32)),
-                    "c": np.array([1, 1]),
-                },
-                {
-                    "a": np.array(10.0, np.float32),
-                    "b": (0, np.array([[1.0], [1.0]], np.float32)),
-                    "c": np.array([1, 1]),
-                },
-
-            ],
-            actions=[1],
-            rewards=[0],
-            # Set the length of the lookback buffer to 0 to read the data as
-            # from an actual step.
-            len_lookback_buffer=0,
-        )
-
-        # Construct our connector piece for a learner pipeline and remove the
-        # "a" (Box()) key-value pair.
-        connector = FlattenObservations(
-            obs_space,
-            act_space,
-            as_learner_connector=True,
-            keys_to_remove=["a"]
-        )
-
-        # Call our connector piece with the example data.
-        output_batch = connector(
-            rl_module=None,  # This connector works without an RLModule.
-            batch={},  # This connector does not alter the input batch.
-            episodes=[episode_1, episode_2],
-            explore=True,
-            shared_data={},
-        )
-
-        check(list(output_batch.keys()), ["obs"])
-        check(list(output_batch["obs"].keys()), [(episode_1.id_,), (episode_2.id_,)])
-
-        check(
-            output_batch["obs"][(episode_1.id_,)][0][0],
-            np.array([0.0, 1.0, -1.0, -1.0, 1.0, 0.0, 0.0, 0.0, 1.0]),
-        )
-        check(
-            output_batch["obs"][(episode_2.id_,)][0][0],
-            np.array([1.0, 0.0, 1.0, 1.0, 0.0, 1.0, 0.0, 1.0, 0.0]),
-        )
-
-        # Multi-agent example: Use the connector with a multi-agent observation space.
-        # The observation space must be a Dict with agent IDs as top-level keys.
-        from ray.rllib.env.multi_agent_episode import MultiAgentEpisode
-
-        # Define a per-agent observation space.
-        per_agent_obs_space = gym.spaces.Dict({
-            "a": gym.spaces.Box(-10.0, 10.0, (), np.float32),
-            "b": gym.spaces.Tuple([
-                gym.spaces.Discrete(2),
-                gym.spaces.Box(-1.0, 1.0, (2, 1), np.float32),
-            ]),
-            "c": gym.spaces.MultiDiscrete([2, 3]),
-        })
-
-        # Create a multi-agent observation space with agent IDs as keys.
-        multi_agent_obs_space = gym.spaces.Dict({
-            "agent_1": per_agent_obs_space,
-            "agent_2": per_agent_obs_space,
-        })
-
-        # Create a multi-agent episode with observations for both agents.
-        # Agent IDs are inferred from the keys in the observations dict.
-        ma_episode = MultiAgentEpisode(
-            observations=[
-                {
-                    "agent_1": {
-                        "a": np.array(-10.0, np.float32),
-                        "b": (1, np.array([[-1.0], [-1.0]], np.float32)),
-                        "c": np.array([0, 2]),
-                    },
-                    "agent_2": {
-                        "a": np.array(10.0, np.float32),
-                        "b": (0, np.array([[1.0], [1.0]], np.float32)),
-                        "c": np.array([1, 1]),
-                    },
-                },
-            ],
-        )
-
-        # Construct the connector for multi-agent, flattening only agent_1's observations.
-        # Note: If agent_ids is None (the default), all agents' observations are flattened.
-        connector = FlattenObservations(
-            multi_agent_obs_space,
-            act_space,
-            multi_agent=True,
-            agent_ids=["agent_1"],
-        )
-
-        # Call the connector.
-        output_batch = connector(
-            rl_module=None,
-            batch={},
-            episodes=[ma_episode],
-            explore=True,
-            shared_data={},
-        )
-
-        # agent_1's observation is flattened.
-        check(
-            ma_episode.agent_episodes["agent_1"].get_observations(0),
-            #         box()  disc(2).  box(2, 1).  multidisc(2, 3)........
-            np.array([-10.0, 0.0, 1.0, -1.0, -1.0, 1.0, 0.0, 0.0, 0.0, 1.0]),
-        )
-
-        # agent_2's observation is unchanged (not in agent_ids).
-        check(
-            ma_episode.agent_episodes["agent_2"].get_observations(0),
-            {
-                "a": np.array(10.0, np.float32),
-                "b": (0, np.array([[1.0], [1.0]], np.float32)),
-                "c": np.array([1, 1]),
-            },
-        )
+    Examples:
+        >>> import gymnasium as gym
+        >>> import numpy as np
+        >>> from ray.rllib.connectors.env_to_module import FlattenObservations
+        >>> from ray.rllib.env.single_agent_episode import SingleAgentEpisode
+        >>> from ray.rllib.utils.test_utils import check
+        >>> # Some arbitrarily nested, complex observation space.
+        >>> obs_space = gym.spaces.Dict({
+        ...     "a": gym.spaces.Box(-10.0, 10.0, (), np.float32),
+        ...     "b": gym.spaces.Tuple([
+        ...         gym.spaces.Discrete(2),
+        ...         gym.spaces.Box(-1.0, 1.0, (2, 1), np.float32),
+        ...     ]),
+        ...     "c": gym.spaces.MultiDiscrete([2, 3]),
+        ... })
+        >>> act_space = gym.spaces.Discrete(2)
+        >>> # Two example episodes, both with initial (reset) observations coming from the
+        >>> # above defined observation space.
+        >>> episode_1 = SingleAgentEpisode(
+        ...     observations=[
+        ...         {
+        ...             "a": np.array(-10.0, np.float32),
+        ...             "b": (1, np.array([[-1.0], [-1.0]], np.float32)),
+        ...             "c": np.array([0, 2]),
+        ...         },
+        ...     ],
+        ... )
+        >>> episode_2 = SingleAgentEpisode(
+        ...     observations=[
+        ...         {
+        ...             "a": np.array(10.0, np.float32),
+        ...             "b": (0, np.array([[1.0], [1.0]], np.float32)),
+        ...             "c": np.array([1, 1]),
+        ...         },
+        ...     ],
+        ... )
+        >>> # Construct our connector piece.
+        >>> connector = FlattenObservations(obs_space, act_space)
+        >>> # Call our connector piece with the example data.
+        >>> output_batch = connector(
+        ...     rl_module=None,  # This connector works without an RLModule.
+        ...     batch={},  # This connector does not alter the input batch.
+        ...     episodes=[episode_1, episode_2],
+        ...     explore=True,
+        ...     shared_data={},
+        ... )
+        >>> # The connector does not alter the data and acts as pure pass-through.
+        >>> check(output_batch, {})
+        >>> # The connector has flattened each item in the episodes to a 1D tensor.
+        >>> check(
+        ...     episode_1.get_observations(0),
+        ...     #         box()  disc(2).  box(2, 1).  multidisc(2, 3)........
+        ...     np.array([-10.0, 0.0, 1.0, -1.0, -1.0, 1.0, 0.0, 0.0, 0.0, 1.0]),
+        ... )
+        >>> check(
+        ...     episode_2.get_observations(0),
+        ...     #         box()  disc(2).  box(2, 1).  multidisc(2, 3)........
+        ...     np.array([10.0, 1.0, 0.0, 1.0, 1.0, 0.0, 1.0, 0.0, 1.0, 0.0]),
+        ... )
+        >>> # Two example episodes, both with initial (reset) observations coming from the
+        >>> # above defined observation space.
+        >>> episode_1 = SingleAgentEpisode(
+        ...     observations=[
+        ...         {
+        ...             "a": np.array(-10.0, np.float32),
+        ...             "b": (1, np.array([[-1.0], [-1.0]], np.float32)),
+        ...             "c": np.array([0, 2]),
+        ...         },
+        ...     ],
+        ... )
+        >>> episode_2 = SingleAgentEpisode(
+        ...     observations=[
+        ...         {
+        ...             "a": np.array(10.0, np.float32),
+        ...             "b": (0, np.array([[1.0], [1.0]], np.float32)),
+        ...             "c": np.array([1, 1]),
+        ...         },
+        ...     ],
+        ... )
+        >>> # Construct our connector piece and remove in it the "a" (Box()) key-value
+        >>> # pair from the dictionary observations.
+        >>> connector = FlattenObservations(obs_space, act_space, keys_to_remove=["a"])
+        >>> # Call our connector piece with the example data.
+        >>> output_batch = connector(
+        ...     rl_module=None,  # This connector works without an RLModule.
+        ...     batch={},  # This connector does not alter the input batch.
+        ...     episodes=[episode_1, episode_2],
+        ...     explore=True,
+        ...     shared_data={},
+        ... )
+        >>> # The connector has flattened each item in the episodes to a 1D tensor
+        >>> # and removed the "a" (Box()) key-value pair.
+        >>> check(
+        ...     episode_1.get_observations(0),
+        ...     #         disc(2).  box(2, 1).  multidisc(2, 3)........
+        ...     np.array([0.0, 1.0, -1.0, -1.0, 1.0, 0.0, 0.0, 0.0, 1.0]),
+        ... )
+        >>> check(
+        ...     episode_2.get_observations(0),
+        ...     #         disc(2).  box(2, 1).  multidisc(2, 3)........
+        ...     np.array([1.0, 0.0, 1.0, 1.0, 0.0, 1.0, 0.0, 1.0, 0.0]),
+        ... )
+        >>> # Use the connector in a learner pipeline. Note, we need here two
+        >>> # observations in the episode because the agent has to have stepped
+        >>> # at least once.
+        >>> episode_1 = SingleAgentEpisode(
+        ...     observations=[
+        ...         {
+        ...             "a": np.array(-10.0, np.float32),
+        ...             "b": (1, np.array([[-1.0], [-1.0]], np.float32)),
+        ...             "c": np.array([0, 2]),
+        ...         },
+        ...         {
+        ...             "a": np.array(-10.0, np.float32),
+        ...             "b": (1, np.array([[-1.0], [-1.0]], np.float32)),
+        ...             "c": np.array([0, 2]),
+        ...         },
+        ...     ],
+        ...     actions=[1],
+        ...     rewards=[0],
+        ...     # Set the length of the lookback buffer to 0 to read the data as
+        ...     # from an actual step.
+        ...     len_lookback_buffer=0,
+        ... )
+        >>> episode_2 = SingleAgentEpisode(
+        ...     observations=[
+        ...         {
+        ...             "a": np.array(10.0, np.float32),
+        ...             "b": (0, np.array([[1.0], [1.0]], np.float32)),
+        ...             "c": np.array([1, 1]),
+        ...         },
+        ...         {
+        ...             "a": np.array(10.0, np.float32),
+        ...             "b": (0, np.array([[1.0], [1.0]], np.float32)),
+        ...             "c": np.array([1, 1]),
+        ...         },
+        ...
+        ...     ],
+        ...     actions=[1],
+        ...     rewards=[0],
+        ...     # Set the length of the lookback buffer to 0 to read the data as
+        ...     # from an actual step.
+        ...     len_lookback_buffer=0,
+        ... )
+        >>> # Construct our connector piece for a learner pipeline and remove the
+        >>> # "a" (Box()) key-value pair.
+        >>> connector = FlattenObservations(
+        ...     obs_space,
+        ...     act_space,
+        ...     as_learner_connector=True,
+        ...     keys_to_remove=["a"]
+        ... )
+        >>> # Call our connector piece with the example data.
+        >>> output_batch = connector(
+        ...     rl_module=None,  # This connector works without an RLModule.
+        ...     batch={},  # This connector does not alter the input batch.
+        ...     episodes=[episode_1, episode_2],
+        ...     explore=True,
+        ...     shared_data={},
+        ... )
+        >>> check(list(output_batch.keys()), ["obs"])
+        >>> check(list(output_batch["obs"].keys()), [(episode_1.id_,), (episode_2.id_,)])
+        >>> check(
+        ...     output_batch["obs"][(episode_1.id_,)][0][0],
+        ...     np.array([0.0, 1.0, -1.0, -1.0, 1.0, 0.0, 0.0, 0.0, 1.0]),
+        ... )
+        >>> check(
+        ...     output_batch["obs"][(episode_2.id_,)][0][0],
+        ...     np.array([1.0, 0.0, 1.0, 1.0, 0.0, 1.0, 0.0, 1.0, 0.0]),
+        ... )
+        >>> # Multi-agent example: Use the connector with a multi-agent observation space.
+        >>> # The observation space must be a Dict with agent IDs as top-level keys.
+        >>> from ray.rllib.env.multi_agent_episode import MultiAgentEpisode
+        >>> # Define a per-agent observation space.
+        >>> per_agent_obs_space = gym.spaces.Dict({
+        ...     "a": gym.spaces.Box(-10.0, 10.0, (), np.float32),
+        ...     "b": gym.spaces.Tuple([
+        ...         gym.spaces.Discrete(2),
+        ...         gym.spaces.Box(-1.0, 1.0, (2, 1), np.float32),
+        ...     ]),
+        ...     "c": gym.spaces.MultiDiscrete([2, 3]),
+        ... })
+        >>> # Create a multi-agent observation space with agent IDs as keys.
+        >>> multi_agent_obs_space = gym.spaces.Dict({
+        ...     "agent_1": per_agent_obs_space,
+        ...     "agent_2": per_agent_obs_space,
+        ... })
+        >>> # Create a multi-agent episode with observations for both agents.
+        >>> # Agent IDs are inferred from the keys in the observations dict.
+        >>> ma_episode = MultiAgentEpisode(
+        ...     observations=[
+        ...         {
+        ...             "agent_1": {
+        ...                 "a": np.array(-10.0, np.float32),
+        ...                 "b": (1, np.array([[-1.0], [-1.0]], np.float32)),
+        ...                 "c": np.array([0, 2]),
+        ...             },
+        ...             "agent_2": {
+        ...                 "a": np.array(10.0, np.float32),
+        ...                 "b": (0, np.array([[1.0], [1.0]], np.float32)),
+        ...                 "c": np.array([1, 1]),
+        ...             },
+        ...         },
+        ...     ],
+        ... )
+        >>> # Construct the connector for multi-agent, flattening only agent_1's observations.
+        >>> # Note: If agent_ids is None (the default), all agents' observations are flattened.
+        >>> connector = FlattenObservations(
+        ...     multi_agent_obs_space,
+        ...     act_space,
+        ...     multi_agent=True,
+        ...     agent_ids=["agent_1"],
+        ... )
+        >>> # Call the connector.
+        >>> output_batch = connector(
+        ...     rl_module=None,
+        ...     batch={},
+        ...     episodes=[ma_episode],
+        ...     explore=True,
+        ...     shared_data={},
+        ... )
+        >>> # agent_1's observation is flattened.
+        >>> check(
+        ...     ma_episode.agent_episodes["agent_1"].get_observations(0),
+        ...     #         box()  disc(2).  box(2, 1).  multidisc(2, 3)........
+        ...     np.array([-10.0, 0.0, 1.0, -1.0, -1.0, 1.0, 0.0, 0.0, 0.0, 1.0]),
+        ... )
+        >>> # agent_2's observation is unchanged (not in agent_ids).
+        >>> check(
+        ...     ma_episode.agent_episodes["agent_2"].get_observations(0),
+        ...     {
+        ...         "a": np.array(10.0, np.float32),
+        ...         "b": (0, np.array([[1.0], [1.0]], np.float32)),
+        ...         "c": np.array([1, 1]),
+        ...     },
+        ... )
     """
 
     @override(ConnectorV2)
