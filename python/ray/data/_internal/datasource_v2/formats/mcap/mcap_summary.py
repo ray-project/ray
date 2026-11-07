@@ -23,6 +23,7 @@ from typing import (
     Iterator,
     List,
     Optional,
+    Set,
     Tuple,
     TypeVar,
 )
@@ -158,6 +159,25 @@ def _read_concurrently(
                 yield pending.popleft()
         while pending:
             yield pending.popleft()
+
+
+def topic_chunks(summary: "Summary", channel_ids: Set[int]) -> List["ChunkIndex"]:
+    """The chunks that may hold a topic whose channels are ``channel_ids``.
+
+    A chunk may hold it when its message indexes name one of those channels, or
+    name none. A summary that lists no channel cannot tell, so every chunk may.
+    One that lists others but none of the topic's says the file lacks the topic.
+    """
+    if not summary.channels:
+        return list(summary.chunk_indexes)
+    if not channel_ids:
+        return []
+    return [
+        c
+        for c in summary.chunk_indexes
+        if not c.message_index_offsets
+        or not channel_ids.isdisjoint(c.message_index_offsets)
+    ]
 
 
 def chunk_unit_id(path: str, chunk_start_offset: int) -> str:
