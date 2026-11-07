@@ -84,6 +84,8 @@ class ClusterSizeBasedLeaseRequestRateLimiter : public LeaseRequestRateLimiter {
   // Tracked by ID because the initial node snapshot also reports nodes that were
   // already dead, which were never counted as alive.
   absl::flat_hash_set<NodeID> alive_nodes_ ABSL_GUARDED_BY(mu_);
+  // Size of alive_nodes_, so the getter on the submission path doesn't take mu_.
+  std::atomic<size_t> num_alive_nodes_;
 };
 
 // This class is thread-safe.

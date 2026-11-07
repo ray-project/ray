@@ -828,12 +828,11 @@ bool NormalTaskSubmitter::QueueGeneratorForResubmit(const TaskSpecification &spe
 
 ClusterSizeBasedLeaseRequestRateLimiter::ClusterSizeBasedLeaseRequestRateLimiter(
     size_t min_concurrent_lease_limit)
-    : min_concurrent_lease_cap_(min_concurrent_lease_limit) {}
+    : min_concurrent_lease_cap_(min_concurrent_lease_limit), num_alive_nodes_(0) {}
 
 size_t ClusterSizeBasedLeaseRequestRateLimiter::
     GetMaxPendingLeaseRequestsPerSchedulingCategory() {
-  absl::MutexLock lock(&mu_);
-  return std::max<size_t>(min_concurrent_lease_cap_, alive_nodes_.size());
+  return std::max<size_t>(min_concurrent_lease_cap_, num_alive_nodes_.load());
 }
 
 void ClusterSizeBasedLeaseRequestRateLimiter::OnNodeChanges(
@@ -845,7 +844,8 @@ void ClusterSizeBasedLeaseRequestRateLimiter::OnNodeChanges(
   } else {
     alive_nodes_.insert(node_id);
   }
-  RAY_LOG_EVERY_MS(INFO, 60000) << "Number of alive nodes:" << alive_nodes_.size();
+  num_alive_nodes_ = alive_nodes_.size();
+  RAY_LOG_EVERY_MS(INFO, 60000) << "Number of alive nodes:" << num_alive_nodes_.load();
 }
 
 }  // namespace core
