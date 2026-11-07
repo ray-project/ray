@@ -5,7 +5,11 @@ from typing import List
 import pytest
 
 from ray.train import Checkpoint, CheckpointConfig
-from ray.train._internal.checkpoint_manager import _CheckpointManager, _TrainingResult
+from ray.train._internal.checkpoint_manager import (
+    _CheckpointManager,
+    _insert_into_sorted_list,
+    _TrainingResult,
+)
 from ray.train.constants import TUNE_ONLY_STORE_CHECKPOINT_SCORE_ATTRIBUTE
 
 
@@ -231,6 +235,26 @@ def test_only_store_score_attr(has_score_attr, checkpoint_paths, monkeypatch):
         assert manager.best_checkpoint_results[1].checkpoint.path == checkpoint_paths[1]
         assert manager.best_checkpoint_results[2].metrics == {}
         assert manager.best_checkpoint_results[2].checkpoint.path == checkpoint_paths[2]
+
+
+def test_insert_into_sorted_list_tie_breaking(checkpoint_paths):
+    results = []
+    ckpts = [Checkpoint.from_directory(p) for p in checkpoint_paths[:4]]
+    r0 = _TrainingResult(checkpoint=ckpts[0], metrics={"score": 1.0})
+    r1 = _TrainingResult(checkpoint=ckpts[1], metrics={"score": 2.0})
+    r2 = _TrainingResult(checkpoint=ckpts[2], metrics={"score": 1.0})
+    r3 = _TrainingResult(checkpoint=ckpts[3], metrics={"score": 1.0})
+    report_index = {ckpts[0]: 0, ckpts[1]: 1, ckpts[2]: 3, ckpts[3]: 2}
+
+    for r in (r0, r1, r2, r3):
+        _insert_into_sorted_list(
+            results,
+            r,
+            key=lambda x: x.metrics["score"],
+            checkpoint_to_report_index=report_index,
+        )
+
+    assert [r.checkpoint for r in results] == [ckpts[0], ckpts[3], ckpts[2], ckpts[1]]
 
 
 if __name__ == "__main__":
