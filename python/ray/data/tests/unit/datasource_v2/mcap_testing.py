@@ -18,11 +18,16 @@ from ray.data._internal.datasource_v2.common.listing_utils import (
     partition_files,
     sample_files,
 )
+from ray.data._internal.datasource_v2.common.online_bin_packer import OnlineBinPacker
 from ray.data._internal.datasource_v2.formats.mcap.mcap_chunks import (
     SelectedMessageReader,
 )
 from ray.data._internal.datasource_v2.formats.mcap.mcap_options import MCAPSelection
 from ray.data._internal.datasource_v2.formats.mcap.mcap_summary import read_summary
+from ray.data._internal.datasource_v2.formats.mcap.mcap_task_summary import (
+    TASK_SUMMARY_COLUMN,
+    TaskSummaryPartitioner,
+)
 from ray.data._internal.datasource_v2.interfaces.file_manifest import FileManifest
 
 BASE_TIME = 1_000_000_000  # log time of the first message, in nanoseconds
@@ -221,6 +226,23 @@ def pack(datasource, paths: Optional[List[str]] = None, **kwargs) -> List[FileMa
     ]
 
 
+# A read-task budget no test file reaches, so packing never splits a listing.
+_ONE_TASK_BYTES = 2**62
+
+
+def as_read_task(*listings: FileManifest) -> FileManifest:
+    """Pack listing rows into one read task: one row per listed file, with the
+    summary records the reader needs."""
+    packer = OnlineBinPacker(_ONE_TASK_BYTES, requires_global_input=False)
+    blocks = [listing.as_block() for listing in listings]
+    (task,) = partition_files(
+        blocks,
+        None,  # pyrefly: ignore[bad-argument-type]  (TaskContext unused)
+        TaskSummaryPartitioner(packer),
+    )
+    return FileManifest(task)
+
+
 def infer_schema(datasource) -> pa.Schema:
     """Plan the read schema from the files planning samples."""
     indexer = datasource._get_file_indexer()
@@ -234,10 +256,18 @@ def scanner_for(datasource):
 
 
 def read_all(datasource, *manifests, scanner=None) -> pa.Table:
-    """Read ``manifests`` into one table, with ``scanner`` or the planned one."""
+    """Read ``manifests`` into one table, with ``scanner`` or the planned one.
+
+    A packed read task is read as given. A listing manifest, which carries no
+    task summaries, is first packed into one read task (``as_read_task``).
+    """
     scanner = scanner or scanner_for(datasource)
     reader = scanner.create_reader()
-    tables = [table for manifest in manifests for table in reader.read(manifest)]
+    tasks = [
+        m if TASK_SUMMARY_COLUMN in m.as_block().column_names else as_read_task(m)
+        for m in manifests
+    ]
+    tables = [table for task in tasks for table in reader.read(task)]
     assert tables, "expected at least one table"
     return pa.concat_tables(tables)
 

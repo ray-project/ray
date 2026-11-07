@@ -34,6 +34,7 @@ from ray.data._internal.datasource_v2.formats.mcap.mcap_task_summary import (
     task_summaries,
 )
 from ray.data._internal.datasource_v2.interfaces.file_manifest import FileManifest
+from ray.data.context import DataContext
 from ray.data.tests.unit.datasource_v2.mcap_testing import (
     BASE_TIME,
     CHUNKED_FILE_MESSAGES,
@@ -124,8 +125,11 @@ def without_message_index_offsets(chunk_indexes):
 
 
 def without_task_summaries(task: FileManifest) -> FileManifest:
-    """``task`` as a reader that reads each summary from the file sees it."""
-    return FileManifest(table_of(task).drop([TASK_SUMMARY_COLUMN]))
+    """``task`` with null records, so the reader reads each summary from the file."""
+    block = table_of(task)
+    nulls = pa.nulls(len(task), type=block.schema.field(TASK_SUMMARY_COLUMN).type)
+    index = block.column_names.index(TASK_SUMMARY_COLUMN)
+    return FileManifest(block.set_column(index, TASK_SUMMARY_COLUMN, nulls))
 
 
 def read_tasks(scanner, tasks: List[FileManifest]) -> pa.Table:
@@ -356,20 +360,28 @@ def test_unreadable_file_still_fails_its_task_naming_it(tmp_path, chunked_file):
         read_tasks(scanner, [task])
 
 
-def test_a_file_named_by_two_rows_reads_its_summary_from_the_file(chunked_file):
-    """Two rows naming one file in one task, as a path listed twice can give, make
-    the reader read that file's summary instead of joining the rows' records."""
-    datasource = MCAPDatasourceV2([chunked_file])
-    (task,) = pack(datasource)
-    block = table_of(task)
-    twice = FileManifest(pa.concat_tables([block, block]))
+@pytest.mark.parametrize("keep_order", [False, True])
+@pytest.mark.parametrize("bin_bytes", [ONE_CHUNK_PER_TASK, None])
+def test_a_path_listed_twice_is_read_twice(
+    chunked_file, monkeypatch, bin_bytes, keep_order
+):
+    """A path listed twice is read twice, as Parquet reads it, whether its copies
+    share a read task or not. Every packed row carries its own records."""
+    options = DataContext.get_current().execution_options
+    monkeypatch.setattr(options, "preserve_order", keep_order)
+    set_task_budget(monkeypatch, bin_bytes)
+    datasource = MCAPDatasourceV2([chunked_file, chunked_file])
+    tasks = pack(datasource)
 
-    (owned,) = mcap_reader._owned_files(twice)
+    table = read_tasks(scanner_for(datasource), tasks)
 
-    assert owned.summary_records is None
-    assert owned.offsets == {
-        c.chunk_start_offset for c in summary_of(chunked_file).chunk_indexes
-    }
+    seqs = [data["seq"] for data in table.column("data").to_pylist()]
+    one_copy = list(range(CHUNKED_FILE_MESSAGES))
+    assert all(records is not None for t in tasks for records in task_summaries(t))
+    if keep_order:
+        assert seqs == one_copy + one_copy
+    else:
+        assert sorted(seqs) == sorted(one_copy + one_copy)
 
 
 # Files held after each file is added: with a task per chunk every row is packed

@@ -12,7 +12,7 @@ A row has the columns of ``message_schema``. Its optional ``row_id`` is a
 deterministic name for the message, built from the file path, the chunk's byte
 offset and the message's position in the chunk.
 
-This module groups the manifest by file and finishes every table with its
+This module reads the manifest row by row and finishes every table with its
 partition and synthesized columns. The other modules read and build the rows:
 
 - ``mcap_chunks`` reads the selected messages of a file.
@@ -23,7 +23,7 @@ import itertools
 import logging
 from dataclasses import dataclass
 from functools import partial
-from typing import TYPE_CHECKING, Any, Dict, Iterator, List, Optional, Sequence, Set
+from typing import TYPE_CHECKING, Any, Iterator, List, Optional, Sequence, Set
 
 import pyarrow as pa
 from pyarrow.fs import FileSystem, LocalFileSystem
@@ -126,9 +126,9 @@ class MCAPReader(Reader[FileManifest]):
     def read(self, input_split: FileManifest) -> Iterator[pa.Table]:
         """Read the files and chunks named by ``input_split``.
 
-        All rows that name one file are read together. Files come out in
-        manifest order. With ``limit``, reading stops at that many rows: no
-        later message is added to a table and no later chunk or file is read.
+        Each row is read on its own, in manifest order, so a path listed twice
+        is read twice. With ``limit``, reading stops at that many rows: no later
+        message is added to a table and no later chunk or file is read.
         """
         from ray.data.context import DataContext
 
@@ -167,6 +167,8 @@ class MCAPReader(Reader[FileManifest]):
         filesystem = self._filesystem or LocalFileSystem()
         with filesystem.open_input_file(path) as f:
             if owned.summary_records is None:
+                # The listing could not read this summary. Reading it here fails
+                # the task with the file's own error.
                 summary = read_summary_from(f, path)
                 file_summary = None
             else:
@@ -196,7 +198,7 @@ class MCAPReader(Reader[FileManifest]):
         first message is the next one needed.
         """
         # Every table reports one read unit: the file for a whole-file read, else
-        # the task's first chunk. Listing excludes read units chunk by chunk
+        # the row's first chunk. Listing excludes read units chunk by chunk
         # (``excluded_read_unit_ids``), so handing this unit back would skip only
         # that first chunk. Nothing hands units back yet: a ``row_id`` checkpoint
         # filters rows by id instead.
@@ -322,43 +324,30 @@ class MCAPReader(Reader[FileManifest]):
 
 @dataclass(frozen=True)
 class _OwnedFile:
-    """What one read task reads of one file."""
+    """What one manifest row reads of one file."""
 
     path: str
     # Byte offsets of the owned chunks; ``None`` for the whole file.
     offsets: Optional[Set[int]]
-    # The summary records the task needs (``mcap_task_summary``); ``None`` to
-    # read the summary from the file.
+    # The summary records the row needs (``mcap_task_summary``); ``None`` for a
+    # file whose summary the listing could not read.
     summary_records: Optional[bytes]
 
 
 def _owned_files(manifest: FileManifest) -> List[_OwnedFile]:
-    """Group a manifest's rows by file, in manifest order.
+    """One ``_OwnedFile`` per manifest row, in manifest order.
 
-    A row with chunk metadata contributes its ``unit_ids``, the chunk byte
-    offsets. A row that names no chunk means the whole file (see
-    ``mcap_file_indexer``), which wins over any offsets listed for the same path.
-    A file named by more than one row reads its summary from the file.
+    A row with chunk metadata owns its ``unit_ids``, the chunk byte offsets. A
+    row that names no chunk means the whole file (see ``mcap_file_indexer``).
     """
-    offsets_by_path: Dict[str, Optional[Set[int]]] = {}
-    records_by_path: Dict[str, Optional[bytes]] = {}
+    owned = []
     rows = zip(manifest.paths, manifest.file_chunk_metadatas, task_summaries(manifest))
     for path, metadata, records in rows:
-        path = str(path)
-        records_by_path[path] = None if path in records_by_path else records
         unit_ids = None if metadata is None else metadata.get("unit_ids")
-        if unit_ids is None or len(unit_ids) == 0:
-            offsets_by_path[path] = None
-            continue
-        offsets = {int(i) for i in unit_ids}
-        current = offsets_by_path.get(path, offsets)
-        if current is not None:
-            current.update(offsets)
-        offsets_by_path[path] = current
-    return [
-        _OwnedFile(path, offsets, records_by_path[path])
-        for path, offsets in offsets_by_path.items()
-    ]
+        whole_file = unit_ids is None or len(unit_ids) == 0
+        offsets = None if whole_file else {int(i) for i in unit_ids}
+        owned.append(_OwnedFile(str(path), offsets, records))
+    return owned
 
 
 class _FileSummary:

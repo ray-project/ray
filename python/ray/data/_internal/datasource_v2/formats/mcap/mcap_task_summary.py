@@ -20,8 +20,9 @@ A carried ``ChunkIndex`` record leaves out its ``message_index_offsets``. The
 reader uses them only to pick the chunks that may hold a selected channel, and
 the listing has already picked the task's chunks with the same selection.
 
-``MCAPReader`` parses that column (``task_summaries``). A null, or a manifest
-packed some other way, makes the reader read the summary from the file.
+``MCAPReader`` parses that column (``task_summaries``). A null, carried by a
+file the listing could not read, makes the reader read the summary from the
+file, which fails the task with the file's own error.
 """
 
 from dataclasses import dataclass, field
@@ -126,13 +127,15 @@ def with_listing_records(
 def task_summaries(manifest: FileManifest) -> List[Optional[bytes]]:
     """Per row of a packed manifest, the summary records its read task needs.
 
-    ``None`` where the row has none, so the reader reads the file's summary.
+    ``None`` for a file whose summary the listing could not read.
     """
     import zstandard
 
     block = _table(manifest)
-    if TASK_SUMMARY_COLUMN not in block.column_names:
-        return [None] * len(manifest)
+    assert TASK_SUMMARY_COLUMN in block.column_names, (
+        f"An MCAP read task's manifest has no {TASK_SUMMARY_COLUMN!r} column. "
+        "Pack the listing rows with TaskSummaryPartitioner."
+    )
     return [
         None if records is None else zstandard.decompress(records)
         for records in block.column(TASK_SUMMARY_COLUMN).to_pylist()
@@ -195,12 +198,16 @@ class TaskSummaryPartitioner(FilePartitioner):
     def _hold_records(self, manifest: FileManifest) -> None:
         """Keep the records of ``manifest``'s rows until they are packed."""
         block = _table(manifest)
-        if FILE_RECORDS_COLUMN not in block.column_names:
-            return
+        assert FILE_RECORDS_COLUMN in block.column_names, (
+            f"MCAP listing rows have no {FILE_RECORDS_COLUMN!r} column. List "
+            "the files with MCAPSummaryIndexer."
+        )
         file_records = block.column(FILE_RECORDS_COLUMN)
         chunk_indexes = block.column(CHUNK_INDEX_COLUMN).to_pylist()
         rows = zip(manifest.paths, manifest.file_chunk_metadatas, chunk_indexes)
         for i, (path, metadata, chunk_index) in enumerate(rows):
+            # A path listed twice shares one entry: its copies carry the same
+            # records, and every row of both counts toward the release.
             held = self._held.get(str(path))
             if held is None:
                 # A dictionary value: one copy per file, not per row.
@@ -219,9 +226,7 @@ class TaskSummaryPartitioner(FilePartitioner):
         A packed row unites the listing rows of one file in one task: one per
         chunk it names, or one whole-file row.
         """
-        held = self._held.get(path)
-        if held is None:
-            return None
+        held = self._held[path]
         units = list(metadata["unit_ids"]) if metadata is not None else []
         held.unpacked_rows -= max(1, len(units))
         if held.unpacked_rows <= 0:
