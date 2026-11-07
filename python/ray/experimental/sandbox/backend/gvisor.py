@@ -210,6 +210,13 @@ class _RestoreImage(NamedTuple):
     direct: bool = False
 
 
+# Extra global runsc flags for every sandbox on this node, such as
+# "--platform=kvm" on bare-metal hosts with /dev/kvm, where gVisor's KVM
+# platform makes system calls several times cheaper than the default
+# systrap platform.
+_RUNSC_FLAGS_ENV = "RAY_SANDBOX_RUNSC_FLAGS"
+
+
 def _runsc_args(rootless: bool, ignore_cgroups: bool) -> List[str]:
     """runsc and the global flags that its run/exec/kill/delete share."""
     args = ["runsc"]
@@ -217,6 +224,7 @@ def _runsc_args(rootless: bool, ignore_cgroups: bool) -> List[str]:
         args.append("--rootless")
     if ignore_cgroups:
         args.append("--ignore-cgroups")
+    args.extend(shlex.split(os.environ.get(_RUNSC_FLAGS_ENV, "")))
     args.extend(["--root", _RUNSC_ROOT])
     return args
 

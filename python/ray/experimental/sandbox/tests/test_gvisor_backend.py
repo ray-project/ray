@@ -3300,5 +3300,26 @@ def test_resolve_exec_user(monkeypatch):
         backend._resolve_exec_user("sb-1", "postfix")
 
 
+def test_runsc_flags_from_the_node_reach_every_runsc_call(monkeypatch):
+    """RAY_SANDBOX_RUNSC_FLAGS adds global flags (such as a platform) to the
+    runsc invocations that start, exec into and stop sandboxes."""
+    monkeypatch.setenv("RAY_SANDBOX_RUNSC_FLAGS", "--platform=kvm  --debug-log=/tmp/x/")
+    assert gvisor._runsc_args(rootless=True, ignore_cgroups=True) == [
+        "runsc",
+        "--rootless",
+        "--ignore-cgroups",
+        "--platform=kvm",
+        "--debug-log=/tmp/x/",
+        "--root",
+        "/tmp/runsc",
+    ]
+    monkeypatch.delenv("RAY_SANDBOX_RUNSC_FLAGS")
+    assert gvisor._runsc_args(rootless=False, ignore_cgroups=False) == [
+        "runsc",
+        "--root",
+        "/tmp/runsc",
+    ]
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))
