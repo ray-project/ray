@@ -1,10 +1,10 @@
 """Read the Parquet fields that PyArrow's Python bindings don't expose.
 
 :func:`read_footer_stats` reads each leaf's ``SizeStatistics`` from the footer bytes
-``FileMetaData`` already holds, decoding Thrift's compact protocol by hand. A leaf is a column of primitive
-values: a struct column of two fields is two. The footer walk takes about 7
-microseconds per row group per leaf (Apple M5) and its result holds about 190 bytes
-each.
+``FileMetaData`` already holds, decoding Thrift's compact protocol by hand. A leaf is
+a column of primitive values: a struct column of two fields is two. The footer walk
+takes about 7 microseconds per row group per leaf (Apple M5) and its result holds
+about 190 bytes each.
 """
 
 from __future__ import annotations

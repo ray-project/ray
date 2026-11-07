@@ -321,7 +321,7 @@ def build_leaf_profiles(
 
 # One chunk's counts.
 class LeafChunk:
-    """One leaf's chunk in a row group, counted from SizeStatistics."""
+    """One leaf's chunk in a row group, with its counts from the footer."""
 
     def __init__(
         self,
@@ -492,8 +492,7 @@ def estimate_leaf(leaf: LeafChunk) -> int:
     return estimate_fixed_width(leaf)
 
 
-# Fixed-width, boolean and null leaves, and the arrays above every leaf: exact
-# once the counts are.
+# Fixed-width, boolean and null leaves, and the arrays above every leaf.
 def estimate_fixed_width(leaf: LeafChunk) -> int:
     """Decoded bytes of a fixed-width, boolean or null leaf."""
     return _array_bytes(node=leaf.profile.nodes[-1], leaf=leaf)
@@ -541,7 +540,7 @@ def detect_string_type(arrow_type: pa.DataType) -> bool:
 
 
 def estimate_string_type(leaf: LeafChunk, string_bytes: int) -> int:
-    """An offset per slot, plus one, and the values' bytes: exact once they are."""
+    """An offset per slot, plus one, and the values' bytes."""
     offsets = leaf.profile.nodes[-1].width * (leaf.slots() + 1)
     return leaf.bitmap() + offsets + string_bytes
 
