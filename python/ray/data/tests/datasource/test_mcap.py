@@ -350,6 +350,30 @@ def test_read_mcap_override_num_blocks(
     assert warned == datasource_v2
 
 
+def test_read_mcap_warning_names_parallelism(
+    ray_start_regular_shared, tmp_path, datasource_v2, caplog
+):
+    """The V2 datasource's warning names ``parallelism`` when that is the argument
+    given, rather than ``override_num_blocks``.
+    """
+    path = os.path.join(tmp_path, "parallelism_test.mcap")
+    create_test_mcap_file(
+        path, [{"topic": "/test", "data": {"seq": 0}, "log_time": 1000000000}]
+    )
+
+    read_api_logger = logging.getLogger("ray.data.read_api")
+    read_api_logger.addHandler(caplog.handler)
+    try:
+        ray.data.read_mcap(path, parallelism=2)
+    finally:
+        read_api_logger.removeHandler(caplog.handler)
+
+    messages = [record.message for record in caplog.records]
+    warned = any("ignores `parallelism`" in m for m in messages)
+    assert warned == datasource_v2
+    assert not any("ignores `override_num_blocks`" in m for m in messages)
+
+
 def test_read_mcap_file_extensions(ray_start_regular_shared, tmp_path):
     """Test file extension filtering."""
     # Create MCAP file
