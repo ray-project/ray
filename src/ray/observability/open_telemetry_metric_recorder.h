@@ -33,6 +33,11 @@
 #include "ray/common/ray_config.h"
 
 namespace ray {
+namespace stats {
+// Test fixture that reads back recorded histograms; see friend declaration below.
+class BucketHistogramMetricTest;
+}  // namespace stats
+
 namespace observability {
 
 // OpenTelemetryMetricRecorder is a singleton class that initializes the OpenTelemetry
@@ -134,6 +139,10 @@ class OpenTelemetryMetricRecorder {
           opentelemetry::nostd::unique_ptr<
               opentelemetry::metrics::SynchronousInstrument>>>
       registered_instruments_;
+  // Map of histogram metric names to the bucket boundaries they were first registered
+  // with. Used to warn when the same name is registered again with different
+  // boundaries, since those later boundaries are ignored.
+  absl::flat_hash_map<std::string, std::vector<double>> histogram_boundaries_;
   // List of gauge callback names. We store the names so they can be passed by reference
   // to gauge callbacks, allowing the callbacks to report metric values associated with
   // the name when invoked.
@@ -168,6 +177,7 @@ class OpenTelemetryMetricRecorder {
   friend class MetricTest;
   friend class OpenTelemetryMetricRecorderTest;
   friend class OpenTelemetryMetricRecorderTest_TestGaugeMetric_Test;
+  friend class ::ray::stats::BucketHistogramMetricTest;
 };
 }  // namespace observability
 }  // namespace ray
