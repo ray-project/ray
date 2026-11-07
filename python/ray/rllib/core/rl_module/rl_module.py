@@ -294,115 +294,99 @@ class RLModule(Checkpointable, abc.ABC):
     Subclasses should call `super().__init__(observation_space=.., action_space=..,
     inference_only=.., learner_only=.., model_config={..})` in their __init__ methods.
 
-    Here is the pseudocode for how the forward methods are called:
+    Examples:
+        Here is the pseudocode for how the forward methods are called:
 
-    Example for creating a (inference-only) sampling loop:
+        Example for creating a (inference-only) sampling loop:
 
-    .. testcode::
-
-        from ray.rllib.algorithms.ppo.torch.default_ppo_torch_rl_module import (
-            DefaultPPOTorchRLModule
-        )
-        from ray.rllib.algorithms.ppo.ppo_catalog import PPOCatalog
-        from ray.rllib.core.rl_module.rl_module import RLModuleSpec
-        from ray.rllib.core.rl_module.default_model_config import DefaultModelConfig
-        import gymnasium as gym
-        import torch
-
-        env = gym.make("CartPole-v1")
-
-        # Create an instance of the default RLModule used by PPO.
-        module = DefaultPPOTorchRLModule(
-            observation_space=env.observation_space,
-            action_space=env.action_space,
-            model_config=DefaultModelConfig(fcnet_hiddens=[128, 128]),
-            catalog_class=PPOCatalog,
-        )
-        action_dist_class = module.get_inference_action_dist_cls()
-        obs, info = env.reset()
-        terminated = False
-
-        while not terminated:
-            fwd_ins = {"obs": torch.Tensor([obs])}
-            fwd_outputs = module.forward_exploration(fwd_ins)
-            # This can be either deterministic or stochastic distribution.
-            action_dist = action_dist_class.from_logits(
-                fwd_outputs["action_dist_inputs"]
-            )
-            action = action_dist.sample()[0].numpy()
-            obs, reward, terminated, truncated, info = env.step(action)
+        >>> from ray.rllib.algorithms.ppo.torch.default_ppo_torch_rl_module import (
+        ...     DefaultPPOTorchRLModule
+        ... )
+        >>> from ray.rllib.algorithms.ppo.ppo_catalog import PPOCatalog
+        >>> from ray.rllib.core.rl_module.rl_module import RLModuleSpec
+        >>> from ray.rllib.core.rl_module.default_model_config import DefaultModelConfig
+        >>> import gymnasium as gym
+        >>> import torch
+        >>> env = gym.make("CartPole-v1")
+        >>> # Create an instance of the default RLModule used by PPO.
+        >>> module = DefaultPPOTorchRLModule(
+        ...     observation_space=env.observation_space,
+        ...     action_space=env.action_space,
+        ...     model_config=DefaultModelConfig(fcnet_hiddens=[128, 128]),
+        ...     catalog_class=PPOCatalog,
+        ... )
+        >>> action_dist_class = module.get_inference_action_dist_cls()
+        >>> obs, info = env.reset()
+        >>> terminated = False
+        >>> while not terminated:
+        ...     fwd_ins = {"obs": torch.Tensor([obs])}
+        ...     fwd_outputs = module.forward_exploration(fwd_ins)
+        ...     # This can be either deterministic or stochastic distribution.
+        ...     action_dist = action_dist_class.from_logits(
+        ...         fwd_outputs["action_dist_inputs"]
+        ...     )
+        ...     action = action_dist.sample()[0].numpy()
+        ...     obs, reward, terminated, truncated, info = env.step(action)
 
 
-    Example for training:
+        Example for training:
 
-    .. testcode::
+        >>> from ray.rllib.algorithms.ppo.torch.ppo_torch_rl_module import (
+        ...     PPOTorchRLModule
+        ... )
+        >>> from ray.rllib.algorithms.ppo.ppo_catalog import PPOCatalog
+        >>> from ray.rllib.core.rl_module.rl_module import RLModuleSpec
+        >>> from ray.rllib.core.rl_module.default_model_config import DefaultModelConfig
+        >>> import gymnasium as gym
+        >>> import torch
+        >>> from ray.rllib.algorithms.ppo.torch.default_ppo_torch_rl_module import (
+        ...     DefaultPPOTorchRLModule
+        ... )
+        >>> from ray.rllib.algorithms.ppo.ppo_catalog import PPOCatalog
+        >>> env = gym.make("CartPole-v1")
+        >>> # Create an instance of the default RLModule used by PPO.
+        >>> module = DefaultPPOTorchRLModule(
+        ...     observation_space=env.observation_space,
+        ...     action_space=env.action_space,
+        ...     model_config=DefaultModelConfig(fcnet_hiddens=[128, 128]),
+        ...     catalog_class=PPOCatalog,
+        ... )
+        >>> fwd_ins = {"obs": torch.Tensor([obs])}
+        >>> fwd_outputs = module.forward_train(fwd_ins)
+        >>> # loss = compute_loss(fwd_outputs, fwd_ins)
+        >>> # update_params(module, loss)
 
-        from ray.rllib.algorithms.ppo.torch.ppo_torch_rl_module import (
-            PPOTorchRLModule
-        )
-        from ray.rllib.algorithms.ppo.ppo_catalog import PPOCatalog
-        from ray.rllib.core.rl_module.rl_module import RLModuleSpec
-        from ray.rllib.core.rl_module.default_model_config import DefaultModelConfig
-        import gymnasium as gym
-        import torch
+        Example for inference:
 
-        from ray.rllib.algorithms.ppo.torch.default_ppo_torch_rl_module import (
-            DefaultPPOTorchRLModule
-        )
-        from ray.rllib.algorithms.ppo.ppo_catalog import PPOCatalog
-
-        env = gym.make("CartPole-v1")
-
-        # Create an instance of the default RLModule used by PPO.
-        module = DefaultPPOTorchRLModule(
-            observation_space=env.observation_space,
-            action_space=env.action_space,
-            model_config=DefaultModelConfig(fcnet_hiddens=[128, 128]),
-            catalog_class=PPOCatalog,
-        )
-
-        fwd_ins = {"obs": torch.Tensor([obs])}
-        fwd_outputs = module.forward_train(fwd_ins)
-        # loss = compute_loss(fwd_outputs, fwd_ins)
-        # update_params(module, loss)
-
-    Example for inference:
-
-    .. testcode::
-
-        from ray.rllib.algorithms.ppo.torch.ppo_torch_rl_module import (
-            PPOTorchRLModule
-        )
-        from ray.rllib.algorithms.ppo.ppo_catalog import PPOCatalog
-        from ray.rllib.core.rl_module.rl_module import RLModuleSpec
-        from ray.rllib.core.rl_module.default_model_config import DefaultModelConfig
-        import gymnasium as gym
-        import torch
-
-        from ray.rllib.algorithms.ppo.torch.default_ppo_torch_rl_module import (
-            DefaultPPOTorchRLModule
-        )
-        from ray.rllib.algorithms.ppo.ppo_catalog import PPOCatalog
-
-        env = gym.make("CartPole-v1")
-
-        # Create an instance of the default RLModule used by PPO.
-        module = DefaultPPOTorchRLModule(
-            observation_space=env.observation_space,
-            action_space=env.action_space,
-            model_config=DefaultModelConfig(fcnet_hiddens=[128, 128]),
-            catalog_class=PPOCatalog,
-        )
-
-        while not terminated:
-            fwd_ins = {"obs": torch.Tensor([obs])}
-            fwd_outputs = module.forward_inference(fwd_ins)
-            # this can be either deterministic or stochastic distribution
-            action_dist = action_dist_class.from_logits(
-                fwd_outputs["action_dist_inputs"]
-            )
-            action = action_dist.sample()[0].numpy()
-            obs, reward, terminated, truncated, info = env.step(action)
+        >>> from ray.rllib.algorithms.ppo.torch.ppo_torch_rl_module import (
+        ...     PPOTorchRLModule
+        ... )
+        >>> from ray.rllib.algorithms.ppo.ppo_catalog import PPOCatalog
+        >>> from ray.rllib.core.rl_module.rl_module import RLModuleSpec
+        >>> from ray.rllib.core.rl_module.default_model_config import DefaultModelConfig
+        >>> import gymnasium as gym
+        >>> import torch
+        >>> from ray.rllib.algorithms.ppo.torch.default_ppo_torch_rl_module import (
+        ...     DefaultPPOTorchRLModule
+        ... )
+        >>> from ray.rllib.algorithms.ppo.ppo_catalog import PPOCatalog
+        >>> env = gym.make("CartPole-v1")
+        >>> # Create an instance of the default RLModule used by PPO.
+        >>> module = DefaultPPOTorchRLModule(
+        ...     observation_space=env.observation_space,
+        ...     action_space=env.action_space,
+        ...     model_config=DefaultModelConfig(fcnet_hiddens=[128, 128]),
+        ...     catalog_class=PPOCatalog,
+        ... )
+        >>> while not terminated:
+        ...     fwd_ins = {"obs": torch.Tensor([obs])}
+        ...     fwd_outputs = module.forward_inference(fwd_ins)
+        ...     # this can be either deterministic or stochastic distribution
+        ...     action_dist = action_dist_class.from_logits(
+        ...         fwd_outputs["action_dist_inputs"]
+        ...     )
+        ...     action = action_dist.sample()[0].numpy()
+        ...     obs, reward, terminated, truncated, info = env.step(action)
 
 
     Args:
