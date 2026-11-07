@@ -1243,7 +1243,7 @@ def concat(
 
     # Fast path: skip schema unification when all input schemas match.
     first_schema = blocks[0].schema
-    if all(block.schema == first_schema for block in blocks[1:]):
+    if all(block.schema == first_schema for block in blocks):
         return pa.concat_tables(blocks)
 
     # If the result contains pyarrow schemas, unify them
