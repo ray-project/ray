@@ -163,6 +163,14 @@ class CheckpointManager(_CheckpointManager, ReportCallback, WorkerGroupCallback)
             checkpoint_result.checkpoint
         ] = self._current_report_index
 
+        # Mark the checkpoint as pending before scoring it, so a score attribute
+        # that only the validation function produces isn't reported as missing.
+        if training_report.validation:
+            self._pending_training_results[checkpoint_result.checkpoint] = (
+                checkpoint_result,
+                training_report.validation,
+            )
+
         if self._checkpoint_config.checkpoint_score_attribute is not None:
             # If we're ordering by a score, insert the checkpoint
             # so that the list remains sorted.
@@ -175,12 +183,6 @@ class CheckpointManager(_CheckpointManager, ReportCallback, WorkerGroupCallback)
         else:
             # If no metric is provided, just append (ordering by time of registration).
             self._checkpoint_results.append(checkpoint_result)
-
-        if training_report.validation:
-            self._pending_training_results[checkpoint_result.checkpoint] = (
-                checkpoint_result,
-                training_report.validation,
-            )
 
         self._current_report_index += 1
 
@@ -240,6 +242,19 @@ class CheckpointManager(_CheckpointManager, ReportCallback, WorkerGroupCallback)
         self._save_state_and_delete_old_checkpoints()
         self._notify()
 
+    def _log_missing_score_attribute(
+        self, checkpoint_result: _TrainingResult, valid_keys: List[str]
+    ):
+        # Skip checkpoints with validation that is pending, failed or timed out.
+        checkpoint = checkpoint_result.checkpoint
+        if (
+            checkpoint in self._pending_training_results
+            or checkpoint in self._failed_validation_checkpoints
+            or checkpoint in self._timed_out_validation_checkpoints
+        ):
+            return
+        super()._log_missing_score_attribute(checkpoint_result, valid_keys)
+
     def get_pending_training_results(
         self,
     ) -> Dict[Checkpoint, Tuple[_TrainingResult, Union[bool, ValidationTaskConfig]]]:
@@ -290,6 +305,9 @@ class CheckpointManager(_CheckpointManager, ReportCallback, WorkerGroupCallback)
                     checkpoint_result.checkpoint
                 )
                 self._failed_validation_checkpoints.discard(
+                    checkpoint_result.checkpoint
+                )
+                self._checkpoints_missing_score_logged.discard(
                     checkpoint_result.checkpoint
                 )
 

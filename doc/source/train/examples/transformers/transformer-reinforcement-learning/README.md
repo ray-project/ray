@@ -206,7 +206,7 @@ With your `train_func` complete, you can now instantiate the `TorchTrainer`. Asi
 
 The `CheckpointConfig` controls how Ray Train saves and selects checkpoints during training:
 
-- **`num_to_keep=1`** — Ray Train retains only the single best checkpoint on disk, saving storage.
+- **`num_to_keep=1`** — Ray Train retains only the single best checkpoint on disk, plus the latest checkpoint if it isn't the best, saving storage.
 - **`checkpoint_score_attribute="reward"`** — Ray Train ranks checkpoints by the `"reward"` metric, which is the mean reward across the batch as reported by `RayTrainReportCallback`.
 - **`checkpoint_score_order="max"`** — higher reward is better, so Ray Train keeps the checkpoint with the highest reward seen across all training steps.
 

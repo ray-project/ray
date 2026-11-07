@@ -1,3 +1,4 @@
+import logging
 import random
 from pathlib import Path
 from typing import List
@@ -158,6 +159,67 @@ def test_keep_latest_checkpoint(checkpoint_paths):
     # The original 2 checkpoints should still exist
     assert Path(checkpoint_paths[0]).exists()
     assert Path(checkpoint_paths[1]).exists()
+
+
+@pytest.mark.parametrize("order", ["min", "max"])
+def test_checkpoint_without_score_ranks_worst(order, checkpoint_paths):
+    """A checkpoint without the score attribute ranks below every scored
+    checkpoint in either order."""
+    manager = _CheckpointManager(
+        checkpoint_config=CheckpointConfig(
+            num_to_keep=2,
+            checkpoint_score_attribute="score",
+            checkpoint_score_order=order,
+        )
+    )
+
+    # The best scores are 1 and 3 in "min" order, -1 and -3 in "max" order.
+    sign = 1 if order == "min" else -1
+    scores = [5, None, 3, 4, 1]
+    for i, score in enumerate(scores):
+        metrics = {"iter": i} if score is None else {"iter": i, "score": sign * score}
+        manager.register_checkpoint(
+            _TrainingResult(
+                checkpoint=Checkpoint.from_directory(checkpoint_paths[i]),
+                metrics=metrics,
+            )
+        )
+
+    assert [
+        tracked_checkpoint.metrics["iter"]
+        for tracked_checkpoint in manager.best_checkpoint_results
+    ] == [2, 4]
+    assert not Path(checkpoint_paths[1]).exists()
+    assert Path(checkpoint_paths[2]).exists()
+    assert Path(checkpoint_paths[4]).exists()
+
+
+def test_missing_score_attribute_logged_once_per_checkpoint(
+    checkpoint_paths, caplog, propagate_logs
+):
+    """The score is computed on every comparison during a sorted insert, so a
+    checkpoint without the score attribute must not be logged on each one."""
+    manager = _CheckpointManager(
+        checkpoint_config=CheckpointConfig(checkpoint_score_attribute="score")
+    )
+    scores = [None, 1, None, 2, 3, 4]
+    with caplog.at_level(
+        logging.ERROR, logger="ray.train._internal.checkpoint_manager"
+    ):
+        for i, score in enumerate(scores):
+            metrics = {} if score is None else {"score": score}
+            manager.register_checkpoint(
+                _TrainingResult(
+                    checkpoint=Checkpoint.from_directory(checkpoint_paths[i]),
+                    metrics=metrics,
+                )
+            )
+    missing_score_errors = [
+        r
+        for r in caplog.records
+        if "missing the checkpoint_score_attribute key (score)" in r.message
+    ]
+    assert len(missing_score_errors) == scores.count(None)
 
 
 @pytest.mark.parametrize(
