@@ -22,6 +22,7 @@ from ray.llm._internal.batch.processor.base import (
 from ray.llm._internal.batch.processor.utils import (
     build_cpu_stage_map_kwargs,
     get_value_or_fallback,
+    resolve_tokenize_add_special_tokens,
 )
 from ray.llm._internal.batch.stages.configs import (
     ChatTemplateStageConfig,
@@ -163,6 +164,9 @@ def build_sglang_engine_processor(
                 fn_constructor_kwargs=dict(
                     model=tokenize_stage_cfg.model_source,
                     trust_remote_code=trust_remote_code,
+                    add_special_tokens=resolve_tokenize_add_special_tokens(
+                        tokenize_stage_cfg, chat_template_stage_cfg
+                    ),
                 ),
                 map_batches_kwargs=build_cpu_stage_map_kwargs(tokenize_stage_cfg),
             )

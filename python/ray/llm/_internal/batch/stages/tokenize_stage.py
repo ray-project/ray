@@ -20,6 +20,7 @@ class TokenizeUDF(StatefulStageUDF):
         expected_input_keys: List[str],
         model: str,
         trust_remote_code: bool = False,
+        add_special_tokens: bool = True,
     ):
         """Initialize the TokenizeUDF.
 
@@ -28,6 +29,9 @@ class TokenizeUDF(StatefulStageUDF):
             expected_input_keys: The expected input keys of the stage.
             model: The model to use for tokenization.
             trust_remote_code: Whether to trust remote code when loading the model.
+            add_special_tokens: Whether the tokenizer adds special tokens such as
+                BOS. Set it to False when the prompt was rendered by a chat
+                template, which already contains these tokens.
         """
         from transformers import AutoTokenizer
 
@@ -51,6 +55,7 @@ class TokenizeUDF(StatefulStageUDF):
                 trust_remote_code=trust_remote_code,
             )
         )
+        self.add_special_tokens = add_special_tokens
 
     async def udf(self, batch: List[Dict[str, Any]]) -> AsyncIterator[Dict[str, Any]]:
         """Tokenize the given batch.
@@ -63,7 +68,10 @@ class TokenizeUDF(StatefulStageUDF):
         """
         for row, prompt_token_ids in zip(
             batch,
-            self.tokenizer([row["prompt"] for row in batch])["input_ids"],
+            self.tokenizer(
+                [row["prompt"] for row in batch],
+                add_special_tokens=self.add_special_tokens,
+            )["input_ids"],
         ):
             yield {
                 self.IDX_IN_BATCH_COLUMN: row[self.IDX_IN_BATCH_COLUMN],

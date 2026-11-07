@@ -14,7 +14,7 @@ def mock_tokenizer_setup():
         "ray.llm._internal.batch.stages.tokenize_stage.get_cached_tokenizer"
     ) as mock_get_tokenizer, patch("transformers.AutoTokenizer") as mock_auto_tokenizer:
         mock_tokenizer = MagicMock()
-        mock_tokenizer.side_effect = lambda texts: {
+        mock_tokenizer.side_effect = lambda texts, **kwargs: {
             "input_ids": [[1, 2, 3] for _ in texts]
         }
         mock_get_tokenizer.return_value = mock_tokenizer
@@ -44,6 +44,38 @@ async def test_tokenize_udf_basic(mock_tokenizer_setup):
     assert all(
         original["prompt"] == result["prompt"]
         for original, result in zip(batch, results)
+    )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "udf_kwargs, expected_add_special_tokens",
+    [
+        ({}, True),
+        ({"add_special_tokens": True}, True),
+        ({"add_special_tokens": False}, False),
+    ],
+    ids=["default", "explicit_true", "explicit_false"],
+)
+async def test_tokenize_udf_add_special_tokens(
+    mock_tokenizer_setup, udf_kwargs, expected_add_special_tokens
+):
+    """The add_special_tokens setting is forwarded to the tokenizer call."""
+    mock_tokenizer = mock_tokenizer_setup
+
+    udf = TokenizeUDF(
+        data_column="__data",
+        model="test-model",
+        expected_input_keys=["prompt"],
+        **udf_kwargs,
+    )
+    batch = {"__data": [{"prompt": "Hello"}, {"prompt": "World"}]}
+
+    async for _ in udf(batch):
+        pass
+
+    mock_tokenizer.assert_called_once_with(
+        ["Hello", "World"], add_special_tokens=expected_add_special_tokens
     )
 
 
