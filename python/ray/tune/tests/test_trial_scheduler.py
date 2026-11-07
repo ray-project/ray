@@ -30,7 +30,7 @@ from ray.tune.schedulers import (
     PopulationBasedTraining,
     TrialScheduler,
 )
-from ray.tune.schedulers.pbt import PopulationBasedTrainingReplay, _explore
+from ray.tune.schedulers.pbt import PopulationBasedTrainingReplay, _PBTTrialState, _explore
 from ray.tune.schedulers.util import (
     _set_search_properties_backwards_compatible,
 )
@@ -1698,8 +1698,11 @@ class PopulationBasedTestingSuite(unittest.TestCase):
             self.assertIsInstance(policy[3], int)
             self.assertIn(policy[0], ["0tag", "2tag", "3tag", "4tag"])
             self.assertIn(policy[1], ["0tag", "2tag", "3tag", "4tag"])
-            self.assertIn(policy[2], [0, 2, 3, 4])
-            self.assertIn(policy[3], [0, 2, 3, 4])
+            # Iterations come from PBT trial state (current result / clone
+            # checkpoint), not Trial.last_result which lags or may have
+            # continued past the restored checkpoint.
+            self.assertEqual(policy[2], 20)
+            self.assertEqual(policy[3], 10)
             for i in [4, 5]:
                 self.assertIsInstance(policy[i], dict)
                 for key in ["const_factor", "int_factor", "float_factor", "id_factor"]:
@@ -1713,6 +1716,7 @@ class PopulationBasedTestingSuite(unittest.TestCase):
 
         pbt, runner = self.basicSetup(log_config=True)
         trials = runner.get_trials()
+        # Deliberately stale Trial.last_result values. Logging must ignore these.
         for i, trial in enumerate(trials):
             trial.run_metadata.last_result = {TRAINING_ITERATION: i}
         self.on_trial_result(pbt, runner, trials[0], result(15, -100))
@@ -1737,8 +1741,9 @@ class PopulationBasedTestingSuite(unittest.TestCase):
             self.assertIsInstance(policy[3], int)
             self.assertIn(policy[0], ["0tag", "1tag"])
             self.assertIn(policy[1], ["3tag", "4tag"])
-            self.assertIn(policy[2], [0, 1])
-            self.assertIn(policy[3], [3, 4])
+            # Synch exploit fires after every trial reports iteration 10.
+            self.assertEqual(policy[2], 10)
+            self.assertEqual(policy[3], 10)
             for i in [4, 5]:
                 self.assertIsInstance(policy[i], dict)
                 for key in ["const_factor", "int_factor", "float_factor", "id_factor"]:
@@ -1752,6 +1757,7 @@ class PopulationBasedTestingSuite(unittest.TestCase):
 
         pbt, runner = self.basicSetup(log_config=True, synch=True, step_once=False)
         trials = runner.get_trials()
+        # Deliberately stale Trial.last_result values. Logging must ignore these.
         for i, trial in enumerate(trials):
             trial.run_metadata.last_result = {TRAINING_ITERATION: i}
             self.on_trial_result(pbt, runner, trials[i], result(10, i))
@@ -1767,6 +1773,50 @@ class PopulationBasedTestingSuite(unittest.TestCase):
             ).readlines()
             for line in raw_policy:
                 check_policy(json.loads(line))
+
+
+    def testLogConfigUsesPBTTrialStateNotTrialLastResult(self):
+        """Policy rows must use PBT trial_state iterations (issue #67932).
+
+        Trial.last_result lags until after on_trial_result returns, and the clone
+        may have trained past the checkpoint that _exploit restores. Replay reads
+        the logged clone iteration as the config switch step, so those values
+        have to come from trial_state / new_state (paired with the checkpoint).
+        """
+        pbt, runner = self.basicSetup(log_config=True, step_once=True)
+        trials = runner.get_trials()
+        # Poison Trial.last_result with values that must not appear in the log.
+        for i, trial in enumerate(trials):
+            trial.run_metadata.last_result = {TRAINING_ITERATION: 1000 + i}
+
+        self.on_trial_result(pbt, runner, trials[0], result(20, -100))
+        policy_path = os.path.join(
+            self.storage.experiment_driver_staging_path, "pbt_policy_0.txt"
+        )
+        self.assertTrue(os.path.exists(policy_path))
+        rows = [json.loads(line) for line in open(policy_path)]
+        self.assertEqual(len(rows), 1)
+        target_iter, clone_iter = rows[0][2], rows[0][3]
+        self.assertEqual(target_iter, 20)
+        self.assertEqual(clone_iter, 10)
+        self.assertNotIn(target_iter, [1000, 1001, 1002, 1003, 1004])
+        self.assertNotIn(clone_iter, [1000, 1001, 1002, 1003, 1004])
+
+        # Replay must schedule the config change at the logged clone iteration.
+        replay = PopulationBasedTrainingReplay(policy_path)
+        self.assertEqual(replay._policy[0][0], clone_iter)
+
+        # None last_result must not AttributeError (recovery / init edge cases).
+        empty_state = _PBTTrialState(trials[0])
+        empty_clone = _PBTTrialState(trials[1])
+        self.assertIsNone(empty_state.last_result)
+        self.assertIsNone(empty_clone.last_result)
+        pbt._log_config_on_step(
+            empty_state, empty_clone, trials[0], trials[1], dict(trials[0].config)
+        )
+        rows_after = [json.loads(line) for line in open(policy_path)]
+        self.assertEqual(rows_after[-1][2], 0)
+        self.assertEqual(rows_after[-1][3], 0)
 
     def testReplay(self):
         # Returns unique increasing parameter mutations
