@@ -3643,15 +3643,20 @@ def read_mcap(
         include_row_id = True
     if ctx.use_datasource_v2:
         from ray.data._internal.datasource_v2.formats.mcap.mcap_datasource_v2 import (
+            _BIN_PACKING_BYTES,
             MCAPDatasourceV2,
         )
 
         num_blocks = _get_num_output_blocks(parallelism, override_num_blocks)
         if num_blocks != -1:
+            given = (
+                "parallelism" if override_num_blocks is None else "override_num_blocks"
+            )
             logger.warning(
-                "`read_mcap` ignores `override_num_blocks` with the V2 datasource. "
-                "It sizes each read task by bytes instead, about 128 MiB by "
-                "default (RAY_DATA_MCAP_BIN_PACKING_BYTES)."
+                f"`read_mcap` ignores `{given}` with the V2 datasource. It sizes "
+                f"each read task by bytes instead, about "
+                f"{_BIN_PACKING_BYTES / 2**20:g} MiB "
+                "(RAY_DATA_MCAP_BIN_PACKING_BYTES)."
             )
         datasource_v2 = MCAPDatasourceV2(
             paths=paths if isinstance(paths, list) else [paths],
