@@ -6,6 +6,7 @@ registration, ``KVAwareRouter`` binding to it, and the
 import asyncio
 import sys
 from typing import List
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -128,6 +129,30 @@ def test_router_degrades_without_tracker():
     router._deployment_id = "dep"
     router.initialize_state()
     assert router._kv_token_tracker is None
+
+
+@pytest.mark.asyncio
+async def test_llm_router_connects_autoscaling_metrics_callback(monkeypatch):
+    """The ingress forwards tracker snapshots into its deployment handle."""
+    tracker = MagicMock()
+
+    def start_kv_token_tracking(router, _llm_config, _server):
+        router._kv_token_tracker = tracker
+
+    async def skip_tokenizer_init(_func, *_args):
+        return object()
+
+    monkeypatch.setattr(LLMRouter, "_start_kv_token_tracking", start_kv_token_tracking)
+    monkeypatch.setattr(asyncio, "to_thread", skip_tokenizer_init)
+
+    server = MagicMock()
+    router = LLMRouter.__new__(LLMRouter)
+    await router.__init__(server, _llm_config())
+
+    server._init.assert_called_once_with()
+    tracker.set_autoscaling_metrics_callback.assert_called_once_with(
+        server._set_router_autoscaling_metrics
+    )
 
 
 def _worker_load(tracker: KVTokenTracker, worker_id: int, field: str) -> int:
