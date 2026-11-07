@@ -438,6 +438,8 @@ class FuseOperators(Rule):
                 fused_output_map_target_max_block_size_override=(
                     down_op.target_max_block_size_override
                 ),
+                # Keep the broadcast-join link to the upstream map operators.
+                decision=up_op._decision,
             )
         else:  # object-store ShuffleReduceOp (may be multi-input for Join)
             fused_op = ShuffleReduceOp(

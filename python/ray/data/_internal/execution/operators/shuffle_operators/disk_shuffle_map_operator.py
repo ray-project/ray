@@ -1,8 +1,10 @@
+import dataclasses
 import functools
 import logging
 import os
 import secrets
 import tempfile
+import time
 import typing
 from collections import defaultdict
 from typing import Any, Dict, List, Optional, Tuple
@@ -24,6 +26,10 @@ from ray.data._internal.execution.interfaces.physical_operator import (
 )
 from ray.data._internal.execution.operators.base_physical_operator import (
     InternalQueueOperatorMixin,
+)
+from ray.data._internal.execution.operators.join import (
+    BuildSide,
+    _BroadcastDecision,
 )
 from ray.data._internal.execution.operators.shuffle_operators.disk_shuffle_tasks import (  # noqa: E501
     BlockTransformer,
@@ -55,6 +61,23 @@ def _make_mapper_sentinel(mapper_id: int) -> Tuple[str, ...]:
     return (f"{_MAPPER_ID_SENTINEL}{mapper_id}",)
 
 
+def _stamp_partition_id(bundle: RefBundle, partition_id: int) -> RefBundle:
+    """Return a copy of ``bundle`` whose first entry's ``input_files`` carries
+    the partition-id sentinel the reduce operator reads back with
+    ``extract_partition_id``. Block refs are untouched."""
+    stamped = []
+    for i, entry in enumerate(bundle.blocks):
+        meta = entry.metadata
+        if i == 0:
+            meta = dataclasses.replace(
+                meta, input_files=make_partition_sentinel(partition_id)
+            )
+        stamped.append(BlockEntry(ref=entry.ref, metadata=meta))
+    return RefBundle(
+        tuple(stamped), schema=bundle.schema, owns_blocks=bundle.owns_blocks
+    )
+
+
 class DiskHashShuffleMapOp(InternalQueueOperatorMixin, PhysicalOperator):
     """Disk-shuffle map operator. See module docstring."""
 
@@ -71,6 +94,8 @@ class DiskHashShuffleMapOp(InternalQueueOperatorMixin, PhysicalOperator):
         map_runtime_env: Optional[Dict[str, Any]] = None,
         map_cpus: float = _DEFAULT_SHUFFLE_MAP_TASK_NUM_CPUS,
         name: str = "DiskHashShuffleMap",
+        side: Optional[BuildSide] = None,
+        decision: Optional[_BroadcastDecision] = None,
     ):
         super().__init__(
             name=name,
@@ -102,11 +127,34 @@ class DiskHashShuffleMapOp(InternalQueueOperatorMixin, PhysicalOperator):
         self._map_resource_usage = ExecutionResources.zero()
 
         # -- Output queue  ---------------------------------------------------
-        # Populated at ``all_inputs_done`` with N partition-wrapper bundles
-        # (one per partition_id), each sharing ``_shared_handles_ref`` plus
-        # a distinct partition_id sentinel in metadata.
+        # Shuffle: populated at ``all_inputs_done`` with N partition-wrapper
+        # bundles (one per partition_id), each sharing ``_shared_handles_ref``
+        # plus a distinct partition_id sentinel in metadata.
+        # Broadcast: real-data bundles, stamped a distinct partition_id the same way.
         self._output_queue: FIFOBundleQueue = FIFOBundleQueue()
+        # True once this operator has nothing left to emit (shuffle wrappers,
+        # the build bundle, or the last stream bundle).
         self._partition_bundles_emitted: bool = False
+
+        # -- Broadcast join --------------------------------------------------
+        # ``side`` is the join side this operator feeds; ``decision`` is shared
+        # with the other map operator and the reduce operator. Both are None
+        # for every non-join shuffle, which then never holds input back.
+        # Until ``decision.build_side`` leaves UNDECIDED, input stays in the
+        # merge buffer (never flushed) and this side's bytes are compared
+        # against the threshold. Once decided, this operator is one of:
+        #   NONE        -> plain shuffle map, the merge buffer flushes as usual;
+        #   == _side    -> build side: all input is emitted as one bundle;
+        #   != _side    -> stream side: each bundle is emitted as it arrives.
+        assert (side is None) == (decision is None), (side, decision)
+        self._side: Optional[BuildSide] = side
+        self._decision: _BroadcastDecision = decision or _BroadcastDecision(set())
+        self._broadcast_threshold_bytes: int = (
+            data_context.broadcast_join_threshold_bytes
+        )
+        self._decision_timeout_s: float = data_context.broadcast_join_decision_timeout_s
+        self._first_input_at: Optional[float] = None
+        self._next_stream_partition_id: int = 0
 
         # -- Stats -----------------------------------------------------------
         self._total_input_bytes: int = 0
@@ -158,7 +206,20 @@ class DiskHashShuffleMapOp(InternalQueueOperatorMixin, PhysicalOperator):
     def _add_input_inner(self, refs: RefBundle, input_index: int) -> None:
         assert input_index == 0
 
-        if self._input_batch_bytes > 0:
+        build_side = self._decision.build_side
+        if build_side not in (BuildSide.UNDECIDED, BuildSide.NONE):
+            # The build side is chosen only from its own all_inputs_done, so it
+            # never receives input afterwards; any input here is the stream side.
+            assert build_side is not self._side
+            self._emit_stream_bundle(refs)
+            return
+
+        if build_side is BuildSide.UNDECIDED and self._first_input_at is None:
+            self._first_input_at = time.monotonic()
+
+        # Undecided input always goes through the merge buffer so it can be
+        # held back, even when batching is disabled.
+        if self._input_batch_bytes > 0 or build_side is BuildSide.UNDECIDED:
             preferred_locs = refs.get_preferred_object_locations()
             node_id = (
                 max(preferred_locs, key=lambda n: preferred_locs[n])
@@ -172,8 +233,14 @@ class DiskHashShuffleMapOp(InternalQueueOperatorMixin, PhysicalOperator):
                 )
             self._merge_buffer_bundles_by_node[node_id].append(refs)
 
-            if self._merge_buffer_bytes_by_node[node_id] >= self._input_batch_bytes:
-                self._flush_merge_buffer(node_id)
+            if (
+                build_side is BuildSide.UNDECIDED
+                and sum(self._merge_buffer_bytes_by_node.values())
+                >= self._broadcast_threshold_bytes
+            ):
+                self._decision.exceed_threshold(self._side)
+            # NONE: size-based flush of the merge buffer. UNDECIDED: no-op.
+            self._on_decided()
         else:
             self._submit_shuffle_map_task(
                 list(refs.block_refs),
@@ -183,9 +250,85 @@ class DiskHashShuffleMapOp(InternalQueueOperatorMixin, PhysicalOperator):
 
     def all_inputs_done(self) -> None:
         super().all_inputs_done()
+        if self._decision.build_side is BuildSide.UNDECIDED:
+            self._decision.choose_build(self._side)
+        # Still UNDECIDED (this side cannot build and the other side is still
+        # reading): hold the buffer; refresh_state() flushes it once decided.
+        self._on_decided()
+
+    def refresh_state(self) -> None:
+        if (
+            self._decision.build_side is BuildSide.UNDECIDED
+            and self._first_input_at is not None
+            and time.monotonic() - self._first_input_at > self._decision_timeout_s
+        ):
+            self._decision.demote()
+        self._on_decided()
+
+    def _on_decided(self) -> None:
+        """Move the merge buffer along according to the decision.
+
+        Idempotent: every branch is a no-op once the buffer is empty, so this
+        is safe to call from every entry point and every scheduling iteration.
+        """
+        build_side = self._decision.build_side
+        if build_side is BuildSide.UNDECIDED:
+            return
+        if build_side is BuildSide.NONE:
+            if self._inputs_complete:
+                self._flush_all_and_emit_partition_bundles()
+            else:
+                for node_id in list(self._merge_buffer_refs_by_node):
+                    if (
+                        self._merge_buffer_bytes_by_node[node_id]
+                        >= self._input_batch_bytes
+                    ):
+                        self._flush_merge_buffer(node_id)
+        elif build_side is self._side:
+            if self._inputs_complete:
+                self._emit_build_bundle()
+        else:
+            for bundles in self._merge_buffer_bundles_by_node.values():
+                for refs in bundles:
+                    self._emit_stream_bundle(refs)
+            self._clear_merge_buffer()
+            if self._inputs_complete:
+                self._partition_bundles_emitted = True
+
+    def _flush_all_and_emit_partition_bundles(self) -> None:
         for node_id in list(self._merge_buffer_refs_by_node.keys()):
             self._flush_merge_buffer(node_id)
         self._maybe_emit_partition_bundles()
+
+    def _clear_merge_buffer(self) -> None:
+        self._merge_buffer_refs_by_node.clear()
+        self._merge_buffer_bundles_by_node.clear()
+        self._merge_buffer_bytes_by_node.clear()
+
+    def _emit_stream_bundle(self, refs: RefBundle) -> None:
+        """Stream side: one input bundle -> one join task downstream."""
+        if not refs.block_refs:
+            refs.destroy_if_owned()  # nothing to join, and no block to stamp
+            return
+        stamped = _stamp_partition_id(refs, self._next_stream_partition_id)
+        self._next_stream_partition_id += 1
+        self._output_queue.add(stamped)
+        self._metrics.on_output_queued(stamped)
+
+    def _emit_build_bundle(self) -> None:
+        """Build side: everything buffered -> one bundle with partition id 0."""
+        if self._partition_bundles_emitted:
+            return
+        self._partition_bundles_emitted = True
+        merged = RefBundle.merge_ref_bundles(
+            b
+            for bundles in self._merge_buffer_bundles_by_node.values()
+            for b in bundles
+        )
+        self._clear_merge_buffer()
+        stamped = _stamp_partition_id(merged, 0)
+        self._output_queue.add(stamped)
+        self._metrics.on_output_queued(stamped)
 
     def _flush_merge_buffer(self, node_id: str) -> None:
         block_refs = self._merge_buffer_refs_by_node.pop(node_id, [])
