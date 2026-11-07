@@ -5,6 +5,7 @@ import queue
 import threading
 import time
 from typing import (
+    TYPE_CHECKING,
     Any,
     Callable,
     Generator,
@@ -33,6 +34,9 @@ from ray.data._internal.block_batching.interfaces import (
 from ray.data._internal.stats import DatasetStats, TimeSpan, _maybe_time
 from ray.data.block import Block, BlockAccessor, DataBatch
 from ray.types import ObjectRef
+
+if TYPE_CHECKING:
+    import numpy as np
 
 logger = logging.getLogger(__name__)
 
@@ -397,11 +401,28 @@ def _copy_batch(batch: "DataBatch") -> "DataBatch":
         # Return a dictionary with the same keys (column names) and values (column numpy arrays),
         # with the values copied
         return {
-            k: v.copy() if isinstance(v, np.ndarray) else v for k, v in batch.items()
+            k: _copy_ndarray(v) if isinstance(v, np.ndarray) else v
+            for k, v in batch.items()
         }
     elif isinstance(batch, np.ndarray):
-        return batch.copy()
+        return _copy_ndarray(batch)
     return batch
+
+
+def _copy_ndarray(array: "np.ndarray") -> "np.ndarray":
+    """Copy an ndarray, including the ndarrays held by an object array.
+
+    List and variable-shaped tensor columns become object arrays whose elements
+    are read-only views, so ``ndarray.copy()`` alone leaves them read-only.
+    """
+    import numpy as np
+
+    copied = array.copy()
+    if copied.dtype == object:
+        for index, element in np.ndenumerate(copied):
+            if isinstance(element, np.ndarray):
+                copied[index] = _copy_ndarray(element)
+    return copied
 
 
 def format_batches(
