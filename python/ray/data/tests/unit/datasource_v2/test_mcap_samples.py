@@ -6,14 +6,18 @@ held in a list, a 10 Hz topic logged at every tenth of a second.
 
 from fractions import Fraction
 
+import pyarrow as pa
 import pytest
 
 from ray.data._internal.datasource_v2.formats.mcap.mcap_samples import (
     SampleTimes,
     SortedTimes,
     TopicPlan,
+    check_samples_schema,
     resolve_slots,
     resolve_steps,
+    sample_manifest,
+    sample_row_schema,
 )
 from ray.data._internal.datasource_v2.formats.mcap.mcap_topic_spec import TopicSpec
 from ray.data.datasource.mcap import match, steps
@@ -570,6 +574,146 @@ def test_all_in_step_reaches_back_to_the_first_slot():
         17 * TENTH + 1,
         20 * TENTH,
     )
+
+
+# -- the samples dataset and the row layout -----------------------------------
+
+SAMPLES_SCHEMA = pa.schema(
+    [
+        ("sample_id", pa.string()),
+        ("files", pa.list_(pa.string())),
+        ("clip_start", pa.int64()),
+        ("clip_end", pa.int64()),
+        ("anchor", pa.int64()),
+        ("instruction", pa.string()),
+    ]
+)
+
+
+@pytest.mark.parametrize(
+    "change, error",
+    [
+        (lambda s: s.remove(s.get_field_index("clip_end")), "lacks the columns"),
+        (lambda s: s.set(1, pa.field("files", pa.string())), "list of paths"),
+        (lambda s: s.set(2, pa.field("clip_start", pa.float64())), "integer"),
+        (lambda s: s.append(pa.field("valid:/cam", pa.bool_())), "the read adds"),
+        (lambda s: s.append(pa.field("__path", pa.string())), "the read adds"),
+    ],
+)
+def test_check_samples_schema(change, error):
+    """A samples dataset needs its files and clip columns with their types, and
+    no column the read adds."""
+    check_samples_schema(SAMPLES_SCHEMA, ["/cam"])
+
+    with pytest.raises(ValueError, match=error):
+        check_samples_schema(change(SAMPLES_SCHEMA), ["/cam"])
+
+
+def test_check_samples_schema_needs_an_anchor_only_when_a_topic_measures_from_it():
+    """Without an ``anchor`` column, a read whose topics all measure from the
+    clip passes, and one with a topic that measures from the anchor fails,
+    naming the topic."""
+    no_anchor = SAMPLES_SCHEMA.remove(SAMPLES_SCHEMA.get_field_index("anchor"))
+
+    check_samples_schema(no_anchor, ["/cam"], anchor_topics=[])
+    with pytest.raises(ValueError, match=r"topics \['/cam'\] measure from it"):
+        check_samples_schema(no_anchor, ["/cam"], anchor_topics=["/cam"])
+
+
+def samples_batch(**changes):
+    """Two valid samples as a batch of the samples dataset, with ``changes``
+    replacing whole columns."""
+    columns = {
+        "sample_id": ["a", "b"],
+        "files": [["x.mcap"], ["y.mcap"]],
+        "clip_start": [0, 10],
+        "clip_end": [100, 20],
+        "anchor": [5, 15],
+    }
+    columns.update(changes)
+    return pa.table(columns)
+
+
+def test_sample_manifest_names_each_samples_file():
+    """Each sample becomes a manifest row: its file as the path, no size and no
+    chunks, with its own columns kept."""
+    manifest = sample_manifest(samples_batch())
+
+    assert manifest.column("__path").to_pylist() == ["x.mcap", "y.mcap"]
+    assert manifest.column("__file_size").null_count == 2
+    assert manifest.column("__file_chunk_metadata").null_count == 2
+    assert manifest.column("sample_id").to_pylist() == ["a", "b"]
+
+
+@pytest.mark.parametrize(
+    "changes, error, message",
+    [
+        ({"files": [["x.mcap"], ["y.mcap", "z.mcap"]]}, NotImplementedError, "2 files"),
+        ({"files": [["x.mcap"], []]}, ValueError, "Sample 'b' lists no file"),
+        (
+            {"anchor": [5, 20]},
+            ValueError,
+            r"Sample 'b' has clip \[10, 20\) and anchor 20",
+        ),
+        ({"clip_end": [0, 20]}, ValueError, "Sample 'a' has clip"),
+        ({"clip_start": [0, None]}, ValueError, "Sample 'b' has clip"),
+    ],
+)
+def test_sample_manifest_rejects_bad_samples(changes, error, message):
+    """A sample must list exactly one file, and its anchor must lie inside a
+    clip that is not empty. The error names the first bad sample."""
+    with pytest.raises(error, match=message):
+        sample_manifest(samples_batch(**changes))
+
+
+def test_sample_manifest_without_anchors():
+    """A sample may have no anchor when no topic measures from it, whether the
+    column is missing or the value is null. When a topic does, a null anchor
+    fails, naming the sample."""
+    without_column = samples_batch().drop(["anchor"])
+    with_null = samples_batch(anchor=[5, None])
+
+    assert sample_manifest(without_column, needs_anchor=False).num_rows == 2
+    assert sample_manifest(with_null, needs_anchor=False).num_rows == 2
+    with pytest.raises(ValueError, match="Sample 'b' has no anchor"):
+        sample_manifest(with_null, needs_anchor=True)
+
+
+def test_sample_row_schema():
+    """A row keeps the samples' columns, then each topic's in the order given:
+    the payloads, log times and validity of its steps."""
+    plans = [
+        TopicPlan.from_spec("/cam", TopicSpec(steps.before(frames=4, fps=10))),
+        TopicPlan.from_spec("/joints", TopicSpec(steps.every(before_s=0.5))),
+    ]
+
+    schema = sample_row_schema(SAMPLES_SCHEMA, plans)
+
+    assert schema.names == SAMPLES_SCHEMA.names + [
+        "data:/cam",
+        "times:/cam",
+        "valid:/cam",
+        "data:/joints",
+        "times:/joints",
+        "valid:/joints",
+    ]
+    assert schema.field("data:/joints").type == pa.list_(pa.large_binary())
+    assert schema.field("times:/cam").type == pa.list_(pa.int64())
+    assert schema.field("valid:/joints").type == pa.list_(pa.bool_())
+
+
+def test_sample_row_schema_nests_all_in_step_topics():
+    """With ``match.all_in_step``, a step's payloads and log times are lists of
+    its slot's messages; its validity stays one flag per step."""
+    plan = TopicPlan.from_spec(
+        "/lidar", TopicSpec(steps.before(0.5, fps=10), match.all_in_step())
+    )
+
+    schema = sample_row_schema(SAMPLES_SCHEMA, [plan])
+
+    assert schema.field("data:/lidar").type == pa.list_(pa.list_(pa.large_binary()))
+    assert schema.field("times:/lidar").type == pa.list_(pa.list_(pa.int64()))
+    assert schema.field("valid:/lidar").type == pa.list_(pa.bool_())
 
 
 if __name__ == "__main__":
