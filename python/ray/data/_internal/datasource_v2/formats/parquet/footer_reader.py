@@ -106,28 +106,40 @@ def _derived_statistics_predicate(expr: Expr, schema: pa.Schema) -> Expr | None:
         and expr.op in (Operation.GE, Operation.GT)
         and isinstance(expr.left, BinaryExpr)
         and expr.left.op == Operation.ADD
-        and isinstance(expr.left.left, ColumnExpr)
-        and isinstance(expr.left.right, LiteralExpr)
         and isinstance(expr.right, LiteralExpr)
     ):
-        offset = expr.left.right.value
-        target = expr.right.value
-        column = expr.left.left
-        idx = schema.get_field_index(column.name)
-
-        # Positive integer addition cannot turn a value below this bound
-        # into a match, even if addition overflows at the upper end.
-        if (
-            idx >= 0
-            and pa.types.is_signed_integer(schema.field(idx).type)
-            and type(offset) is int
-            and 0 < offset < 2**63
-            and type(target) is int
-            and -(2**63) <= target < 2**63
+        addition = expr.left
+        column: ColumnExpr | None = None
+        literal: LiteralExpr | None = None
+        if isinstance(addition.left, ColumnExpr) and isinstance(
+            addition.right, LiteralExpr
         ):
-            bound = target - offset
-            if -(2**63) <= bound < 2**63:
-                return column >= bound if expr.op == Operation.GE else column > bound
+            column, literal = addition.left, addition.right
+        elif isinstance(addition.left, LiteralExpr) and isinstance(
+            addition.right, ColumnExpr
+        ):
+            column, literal = addition.right, addition.left
+
+        if column is not None and literal is not None:
+            offset = literal.value
+            target = expr.right.value
+            idx = schema.get_field_index(column.name)
+
+            # Positive integer addition cannot turn a value below this bound
+            # into a match, even if addition overflows at the upper end.
+            if (
+                idx >= 0
+                and pa.types.is_signed_integer(schema.field(idx).type)
+                and type(offset) is int
+                and 0 < offset < 2**63
+                and type(target) is int
+                and -(2**63) <= target < 2**63
+            ):
+                bound = target - offset
+                if -(2**63) <= bound < 2**63:
+                    if expr.op == Operation.GE:
+                        return column >= bound
+                    return column > bound
 
     if (
         isinstance(expr, PyArrowComputeUDFExpr)

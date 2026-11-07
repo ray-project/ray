@@ -720,7 +720,11 @@ class TestReadFootersBatching:
 
 @pytest.mark.parametrize(
     "predicate",
-    [(col("x") + 1) >= 76, col("s").str.starts_with("s08")],
+    [
+        pytest.param((col("x") + 1) >= 76, id="column-plus-literal"),
+        pytest.param((1 + col("x")) >= 76, id="literal-plus-column"),
+        pytest.param(col("s").str.starts_with("s08"), id="prefix"),
+    ],
 )
 def test_derived_predicate_prunes_row_groups(tmp_path, predicate):
     table = pa.table(
@@ -739,6 +743,7 @@ def test_derived_predicate_prunes_row_groups(tmp_path, predicate):
     "predicate, expected_groups",
     [
         pytest.param((col("x") + 1) > 76, [3], id="strict-comparison"),
+        pytest.param((1 + col("x")) > 76, [3], id="reverse-strict-comparison"),
         pytest.param((col("x") + 1) >= 1000, [], id="no-matches"),
         pytest.param(col("s").str.starts_with("s07"), [2, 3], id="spanning-prefix"),
         pytest.param(col("s").str.starts_with("z"), [], id="missing-prefix"),
@@ -783,6 +788,9 @@ def test_derived_predicate_preserves_matching_rows(
         (pa.int64(), (col("x") + -1) >= 76),
         (pa.int64(), (col("x") + 1.0) >= 76),
         (pa.int64(), (col("x") + 1) >= 2**63),
+        (pa.uint64(), (1 + col("x")) >= 76),
+        (pa.int64(), (-1 + col("x")) >= 76),
+        (pa.int64(), (1 + col("x")) >= 2**63),
     ],
 )
 def test_derived_predicate_skips_unsafe_arithmetic(column_type, predicate):
