@@ -1,8 +1,7 @@
 """Unit tests for :class:`ParquetDatasourceV2`.
 
 These tests exercise schema inference, scanner/estimator creation, and
-include-paths schema augmentation against a local tmpdir — they do not
-spin up Ray.
+include-paths schema augmentation against a local tmpdir.
 """
 
 import os
@@ -515,6 +514,62 @@ def test_create_scanner_propagates_include_row_hash(tmp_path):
     scanner = datasource.create_scanner(schema)
 
     assert scanner.synthesized_columns == (RowHashColumn(),)
+
+
+@pytest.mark.parametrize("fallback", [False, True])
+def test_missing_partition_column_without_projection(
+    ray_start_regular_shared, tmp_path, fallback
+):
+    import ray
+
+    root = tmp_path / "root.parquet"
+    partition = tmp_path / "year=2024" / "data.parquet"
+    partition.parent.mkdir()
+    pq.write_table(pa.table({"id": [1]}), root)
+    pq.write_table(pa.table({"id": [2]}), partition)
+
+    @ray.remote
+    def read_files(paths, force_fallback):
+        import os
+        from unittest.mock import patch
+
+        import pyarrow as pa
+
+        from ray.data._internal.datasource_v2.formats.parquet import parquet_file_reader
+        from ray.data._internal.datasource_v2.formats.parquet.parquet_file_reader import (
+            ParquetFileReader,
+        )
+        from ray.data._internal.datasource_v2.interfaces.file_manifest import (
+            FileManifest,
+        )
+        from ray.data.datasource.partitioning import Partitioning, PartitionStyle
+
+        with patch.object(
+            parquet_file_reader,
+            "_needs_nested_type_fallback",
+            return_value=force_fallback,
+        ):
+            reader = ParquetFileReader(
+                schema=pa.schema([("id", pa.int64()), ("year", pa.int64())]),
+                partitioning=Partitioning(
+                    PartitionStyle.HIVE,
+                    field_names=["year"],
+                    field_types={"year": int},
+                ),
+            )
+            manifest = FileManifest.construct_manifest(
+                paths=paths,
+                sizes=[os.path.getsize(path) for path in paths],
+                chunk_metadatas=[None] * len(paths),
+            )
+            return list(reader.read(manifest))
+
+    tables = ray.get(read_files.remote([str(root), str(partition)], fallback))
+    rows = sorted(
+        (row for table in tables for row in table.to_pylist()), key=lambda r: r["id"]
+    )
+    assert rows == [{"id": 1, "year": None}, {"id": 2, "year": 2024}]
+    assert all(table.schema.field("year").type == pa.int64() for table in tables)
 
 
 def test_nested_fallback_handles_schema_evolution(tmp_path, monkeypatch):
