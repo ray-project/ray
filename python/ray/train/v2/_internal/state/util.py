@@ -9,6 +9,7 @@ from ray.train.v2._internal.state.schema import (
     ExecutionOptions as ExecutionOptionsSchema,
     RunAttemptStatus,
     RunStatus,
+    SplitConfig as SplitConfigSchema,
     TrainRun,
     TrainRunAttempt,
 )
@@ -70,8 +71,22 @@ def construct_data_config(data_config: DataConfig) -> DataConfigSchema:
     elif user_execution_options is not None:
         default_options = user_execution_options
 
+    dataset_split_configs = {
+        ds_name: SplitConfigSchema(
+            equal=split_config.equal,
+            enable_shard_locality=(
+                data_config._enable_shard_locality
+                if split_config.enable_shard_locality is None
+                else split_config.enable_shard_locality
+            ),
+        )
+        for ds_name, split_config in data_config._dataset_split_configs.items()
+    }
+
     return DataConfigSchema(
         datasets_to_split=data_config._datasets_to_split,
+        unequal_split_datasets=data_config._unequal_split_datasets,
+        dataset_split_configs=dataset_split_configs,
         data_execution_options=DataExecutionOptions(
             default=execution_options_to_model(default_options),
             per_dataset_execution_options=per_dataset_execution_options,
