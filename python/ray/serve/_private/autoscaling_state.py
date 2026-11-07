@@ -22,6 +22,7 @@ import numpy as np
 from ray.serve._private import autoscaling_metrics_merge
 from ray.serve._private.autoscaling_metrics_codec import FlatHandleReport
 from ray.serve._private.common import (
+    QUEUED_REQUESTS_KEY,
     RUNNING_REQUESTS_KEY,
     ApplicationName,
     DeploymentHandleSource,
@@ -31,6 +32,7 @@ from ray.serve._private.common import (
     ReplicaMetricReport,
     TargetCapacityDirection,
     TimeSeries,
+    TimeStampedValue,
 )
 from ray.serve._private.constants import (
     RAY_SERVE_MIN_HANDLE_METRICS_TIMEOUT_S,
@@ -151,6 +153,7 @@ class ColumnarHandleReport:
     queued: MetricSamples
     running: MetricSamples
     running_keys: List[str]
+    router_metrics: Dict[str, MetricSamples]
 
     @property
     def total_requests(self) -> float:
@@ -257,6 +260,18 @@ def _running_samples(payload: FlatHandleReport) -> Tuple[MetricSamples, List[str
         ),
         keys,
     )
+
+
+def _router_metric_samples(payload: FlatHandleReport) -> Dict[str, MetricSamples]:
+    """Return router-owned metrics as zero-copy sample views."""
+    result: Dict[str, MetricSamples] = {}
+    for metric_index, start, length in payload["router_entries"]:
+        name = payload["router_metric_names"][int(metric_index)]
+        a, b = int(start), int(start + length)
+        result[name] = MetricSamples(
+            payload["router_ts"][a:b], payload["router_val"][a:b]
+        )
+    return result
 
 
 def _log_dropped_handle(
@@ -607,6 +622,7 @@ class DeploymentAutoscalingState:
                 queued=MetricSamples(payload["q_ts"], payload["q_val"]),
                 running=running,
                 running_keys=running_keys,
+                router_metrics=_router_metric_samples(payload),
             )
         )
 
@@ -726,6 +742,7 @@ class DeploymentAutoscalingState:
             total_queued_requests=self._get_queued_requests,
             aggregated_metrics=self._get_aggregated_custom_metrics,
             raw_metrics=self._get_raw_custom_metrics,
+            raw_router_metrics=self._get_raw_router_metrics,
             last_scale_up_time=self._last_scale_up_time,
             last_scale_down_time=self._last_scale_down_time,
         )
@@ -1034,6 +1051,35 @@ class DeploymentAutoscalingState:
             for metric_name, timeseries in replica_metric_report.metrics.items():
                 # Extract values from TimeStampedValue list
                 raw_metrics[metric_name][replica_id] = timeseries
+
+        return dict(raw_metrics)
+
+    def _get_raw_router_metrics(self) -> Dict[str, Dict[str, TimeSeries]]:
+        """Extract router-owned metric series, keyed by metric and handle ID."""
+        raw_metrics: Dict[str, Dict[str, TimeSeries]] = defaultdict(dict)
+
+        for handle_id, object_report in self._handle_store.objects.items():
+            router_metrics = getattr(
+                object_report,
+                "router_metrics",
+                {QUEUED_REQUESTS_KEY: object_report.queued_requests},
+            )
+            for metric_name, timeseries in router_metrics.items():
+                raw_metrics[metric_name][handle_id] = timeseries
+
+        for handle_id, columnar_report in self._handle_store.columnar.items():
+            raw_metrics[QUEUED_REQUESTS_KEY][handle_id] = [
+                TimeStampedValue(float(timestamp), float(value))
+                for timestamp, value in zip(
+                    columnar_report.queued.timestamps,
+                    columnar_report.queued.values,
+                )
+            ]
+            for metric_name, samples in columnar_report.router_metrics.items():
+                raw_metrics[metric_name][handle_id] = [
+                    TimeStampedValue(float(timestamp), float(value))
+                    for timestamp, value in zip(samples.timestamps, samples.values)
+                ]
 
         return dict(raw_metrics)
 
