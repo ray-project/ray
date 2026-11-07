@@ -1,5 +1,6 @@
 import logging
 import sys
+import unittest.mock as mock
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Tuple, Type
 
@@ -11,6 +12,7 @@ from pydantic import BaseModel, ValidationError
 
 import ray
 from ray.tests.pydantic_module import User, app, closure, user
+from ray.util import serialization_addons
 
 BASE_MODELS = [BaseModel]
 BASE_MODEL_AND_ERRORS = [(BaseModel, ValidationError)]
@@ -238,6 +240,33 @@ def test_validation_error(
     assert isinstance(exc_info.value.cause, ValidationError)
 
     caplog.clear()
+
+
+def test_pydantic_v1_model_field_serializer_is_registered():
+    from pydantic.v1 import BaseModel as V1BaseModel
+    from pydantic.v1.fields import ModelField
+
+    class Model(V1BaseModel):
+        names: List[str] = []
+
+    context = mock.MagicMock()
+    serialization_addons.apply(context)
+
+    registrations = [
+        call.kwargs
+        for call in context._register_cloudpickle_serializer.call_args_list
+        if call.args[0] is ModelField
+    ]
+    assert len(registrations) == 1
+
+    field = Model.__fields__["names"]
+    restored = registrations[0]["custom_deserializer"](
+        registrations[0]["custom_serializer"](field)
+    )
+    assert isinstance(restored, ModelField)
+    assert restored.name == field.name
+    assert restored.outer_type_ == field.outer_type_
+    assert restored.default == field.default
 
 
 if __name__ == "__main__":

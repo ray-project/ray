@@ -4,7 +4,55 @@ site packages.
 
 import sys
 
+import packaging.version
+
 from ray.util.annotations import DeveloperAPI
+
+
+@DeveloperAPI
+def register_pydantic_serializers(serialization_context):
+    try:
+        import pydantic
+    except ImportError:
+        # Pydantic is not part of the minimal Ray installation.
+        return
+
+    if not hasattr(pydantic, "__version__") or packaging.version.parse(
+        pydantic.__version__
+    ) < packaging.version.parse("2.0"):
+        raise ImportError(
+            "Pydantic v1 is no longer supported in Ray. Please upgrade to "
+            "`pydantic>=2`."
+        )
+
+    try:
+        from pydantic.v1.fields import ModelField
+    except ImportError:
+        return
+
+    # Pydantic's Cython validators are not serializable.
+    # https://github.com/cloudpipe/cloudpickle/issues/408
+    #
+    # Pydantic 2 still ships this compatibility ModelField, so keep its serializer
+    # for code that uses `pydantic.v1` models.
+    serialization_context._register_cloudpickle_serializer(
+        ModelField,
+        custom_serializer=lambda o: {
+            "name": o.name,
+            # outer_type_ is the original type for ModelFields,
+            # while type_ can be updated later with the nested type
+            # like int for List[int].
+            "type_": o.outer_type_,
+            "class_validators": o.class_validators,
+            "model_config": o.model_config,
+            "default": o.default,
+            "default_factory": o.default_factory,
+            "required": o.required,
+            "alias": o.alias,
+            "field_info": o.field_info,
+        },
+        custom_deserializer=lambda kwargs: ModelField(**kwargs),
+    )
 
 
 @DeveloperAPI
@@ -25,8 +73,6 @@ def register_starlette_serializer(serialization_context):
 
 @DeveloperAPI
 def apply(serialization_context):
-    from ray._common.pydantic_compat import register_pydantic_serializers
-
     register_pydantic_serializers(serialization_context)
     register_starlette_serializer(serialization_context)
 

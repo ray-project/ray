@@ -3,9 +3,8 @@ from collections.abc import Mapping
 from enum import Enum
 from typing import Any, Dict, List, Literal, Optional, Tuple, Union
 
-from pydantic import field_validator
+from pydantic import BaseModel, Field, field_validator
 
-from ray._common.pydantic_compat import BaseModel, Field
 from ray.dashboard.modules.job.pydantic_models import JobDetails
 from ray.train.v2._internal.util import TrainingFramework
 from ray.util.annotations import DeveloperAPI
