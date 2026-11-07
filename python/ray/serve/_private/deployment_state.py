@@ -1549,10 +1549,12 @@ class ActorReplicaWrapper:
             done: whether the call finished.
             error_msg: the error if the call raised, else None.
         """
-        if not check_obj_ref_ready_nowait(self._ready_obj_ref):  # type: ignore[arg-type]
+        if self._ready_obj_ref is None:
+            return True, None
+        if not check_obj_ref_ready_nowait(self._ready_obj_ref):
             return False, None
         try:
-            ray.get(self._ready_obj_ref)  # type: ignore[arg-type]
+            ray.get(self._ready_obj_ref)
         except RayTaskError as e:
             return True, str(e.as_instanceof_cause())
         except Exception as e:
