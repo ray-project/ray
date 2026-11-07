@@ -116,6 +116,38 @@ def test_error_custom(ray_start_4_cpus, resource_manager_cls):
     assert stats["exception"] == 1
 
 
+def test_pending_actors_fifo_deque_and_schedule_actor_tasks_validation():
+    """Verify pending actors use a FIFO deque and schedule_actor_tasks raises ValueError on length mismatch."""
+    from collections import deque
+    from unittest.mock import MagicMock
+
+    resource_manager = MagicMock()
+    resource_manager.has_resources_ready.return_value = False
+    actor_manager = RayActorManager(resource_manager=resource_manager)
+
+    req = ResourceRequest([{"CPU": 1}])
+    a1 = actor_manager.add_actor(cls=Actor, kwargs={}, resource_request=req)
+    a2 = actor_manager.add_actor(cls=Actor, kwargs={}, resource_request=req)
+    a3 = actor_manager.add_actor(cls=Actor, kwargs={}, resource_request=req)
+
+    pending = actor_manager._resource_request_to_pending_actors[req]
+    assert isinstance(pending, deque)
+    assert list(pending) == [a1, a2, a3]
+
+    # Removing a middle pending actor preserves FIFO order of remaining actors
+    assert actor_manager.remove_actor(a2) is False
+    assert list(pending) == [a1, a3]
+
+    # Mismatched args list with kwargs=None raises ValueError (not TypeError from len(None))
+    with pytest.raises(ValueError, match=r"len\(args\)=1"):
+        actor_manager.schedule_actor_tasks([a1, a3], "foo", args=[(1,)])
+
+    # Mismatched kwargs list with args=None raises ValueError (not TypeError from len(None))
+    with pytest.raises(ValueError, match=r"len\(kwargs\)=1"):
+        actor_manager.schedule_actor_tasks([a1, a3], "foo", kwargs=[{"val": 1}])
+
+
+
 if __name__ == "__main__":
     import sys
 

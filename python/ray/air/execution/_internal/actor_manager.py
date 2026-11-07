@@ -2,8 +2,8 @@ import logging
 import random
 import time
 import uuid
-from collections import Counter, defaultdict
-from typing import Any, Callable, Dict, List, Optional, Set, Tuple, Type, Union
+from collections import Counter, defaultdict, deque
+from typing import Any, Callable, Deque, Dict, List, Optional, Set, Tuple, Type, Union
 
 import ray
 from ray.air.execution._internal.event_manager import RayEventManager
@@ -113,12 +113,12 @@ class RayActorManager:
         # Pending actors.
         # We use three dicts for actors that are requested but not yet started.
 
-        # This dict keeps a list of actors associated with each resource request.
+        # This dict keeps a FIFO queue of actors associated with each resource request.
         # We use this to start actors in the correct order when their resources
         # become available.
         self._resource_request_to_pending_actors: Dict[
-            ResourceRequest, List[TrackedActor]
-        ] = defaultdict(list)
+            ResourceRequest, Deque[TrackedActor]
+        ] = defaultdict(deque)
 
         # This dict stores the actor class, kwargs, and resource request of
         # pending actors. Once the resources are available, we start the remote
@@ -343,7 +343,7 @@ class RayActorManager:
                 ]
                 assert candidate_actors
 
-                tracked_actor = candidate_actors.pop(0)
+                tracked_actor = candidate_actors.popleft()
 
                 # Get actor class and arguments
                 actor_cls, kwargs, _ = self._pending_actors_to_attrs.pop(tracked_actor)
@@ -845,7 +845,7 @@ class RayActorManager:
             if len(tracked_actors) != len(args):
                 raise ValueError(
                     f"Length of args must be the same as tracked_actors "
-                    f"list. Got `len(kwargs)={len(kwargs)}` and "
+                    f"list. Got `len(args)={len(args)}` and "
                     f"`len(tracked_actors)={len(tracked_actors)}"
                 )
             args_list = args
@@ -856,7 +856,7 @@ class RayActorManager:
             if len(tracked_actors) != len(kwargs):
                 raise ValueError(
                     f"Length of kwargs must be the same as tracked_actors "
-                    f"list. Got `len(args)={len(args)}` and "
+                    f"list. Got `len(kwargs)={len(kwargs)}` and "
                     f"`len(tracked_actors)={len(tracked_actors)}"
                 )
             kwargs_list = kwargs
