@@ -101,6 +101,26 @@ def _derived_statistics_predicate(expr: Expr, schema: pa.Schema) -> Expr | None:
         PyArrowComputeUDFExpr,
     )
 
+    if isinstance(expr, BinaryExpr) and expr.op in (
+        Operation.AND,
+        Operation.OR,
+    ):
+        left = _derived_statistics_predicate(expr.left, schema)
+        right = _derived_statistics_predicate(expr.right, schema)
+
+        if expr.op == Operation.AND:
+            if left is None:
+                return right
+            if right is None:
+                return left
+            return left & right
+
+        # Both branches must be represented for OR.
+        # Otherwise we could drop rows matching the other branch.
+        if left is not None and right is not None:
+            return left | right
+        return None
+
     if (
         isinstance(expr, BinaryExpr)
         and expr.op in (Operation.GE, Operation.GT)

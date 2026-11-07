@@ -724,6 +724,23 @@ class TestReadFootersBatching:
         pytest.param((col("x") + 1) >= 76, id="column-plus-literal"),
         pytest.param((1 + col("x")) >= 76, id="literal-plus-column"),
         pytest.param(col("s").str.starts_with("s08"), id="prefix"),
+        pytest.param(
+            ((col("x") + 1) >= 76) & (col("s") != "ignore"),
+            id="compound-and-left",
+        ),
+        pytest.param(
+            (col("s") != "ignore") & ((col("x") + 1) >= 76),
+            id="compound-and-right",
+        ),
+        pytest.param(
+            ((col("x") + 1) >= 76) & col("s").str.starts_with("s08"),
+            id="compound-and-both-derived",
+        ),
+        pytest.param(
+            (((col("x") + 1) >= 76) | (col("s") != "ignore"))
+            & col("s").str.starts_with("s08"),
+            id="compound-nested-fallback",
+        ),
     ],
 )
 def test_derived_predicate_prunes_row_groups(tmp_path, predicate):
@@ -744,6 +761,22 @@ def test_derived_predicate_prunes_row_groups(tmp_path, predicate):
     [
         pytest.param((col("x") + 1) > 76, [3], id="strict-comparison"),
         pytest.param((1 + col("x")) > 76, [3], id="reverse-strict-comparison"),
+        pytest.param(
+            ((col("x") + 1) >= 76) | col("s").str.starts_with("s01"),
+            [0, 3],
+            id="compound-or-both-derived",
+        ),
+        pytest.param(
+            ((col("x") + 1) >= 76) | (col("s") != "ignore"),
+            [0, 1, 2, 3],
+            id="compound-or-unsafe-fallback",
+        ),
+        pytest.param(
+            (((col("x") + 1) >= 76) | col("s").str.starts_with("s01"))
+            & ((1 + col("x")) >= 1),
+            [0, 3],
+            id="compound-nested-derived",
+        ),
         pytest.param((col("x") + 1) >= 1000, [], id="no-matches"),
         pytest.param(col("s").str.starts_with("s07"), [2, 3], id="spanning-prefix"),
         pytest.param(col("s").str.starts_with("z"), [], id="missing-prefix"),
