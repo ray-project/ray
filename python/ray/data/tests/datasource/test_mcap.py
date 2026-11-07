@@ -1460,6 +1460,202 @@ def test_read_mcap_decode_samples_reports_a_null_file(
         ds.materialize()
 
 
+def _optimized(ds):
+    from ray.data._internal.logical.optimizers import LogicalOptimizer
+
+    return LogicalOptimizer().optimize(ds._logical_plan).dag
+
+
+def _walk(op):
+    yield op
+    for child in op.input_dependencies:
+        yield from _walk(child)
+
+
+def test_read_mcap_filter_pushdown(ray_start_regular_shared, tmp_path, datasource_v2):
+    """``ds.filter`` on ``topic`` or ``log_time`` folds into the read.
+
+    On V2 the ``Filter`` leaves the plan and ``ListFiles`` gets the predicate,
+    while a conjunct on another column keeps a ``Filter``. Rows are the same on
+    both paths.
+    """
+    from ray.data._internal.logical.operators import ListFiles
+    from ray.data._internal.logical.operators.map_operator import Filter
+    from ray.data.expressions import col
+
+    path = os.path.join(tmp_path, "chunked.mcap")
+    _write_chunked_mcap(path, 9)
+    base = 1_000_000_000
+
+    ds = ray.data.read_mcap(path).filter(
+        expr=(col("topic") == "/a") & (col("log_time") < base + 4_000_000)
+    )
+    rows = ds.take_all()
+    assert [row["data"]["seq"] for row in rows] == [0, 3]
+    if datasource_v2:
+        plan = list(_walk(_optimized(ds)))
+        assert not any(isinstance(op, Filter) for op in plan)
+        (list_files,) = [op for op in plan if isinstance(op, ListFiles)]
+        assert list_files.predicate is not None
+
+    mixed = ray.data.read_mcap(path).filter(
+        expr=(col("topic") == "/b") & (col("sequence") >= 0)
+    )
+    assert sorted(row["data"]["seq"] for row in mixed.take_all()) == [1, 4, 7]
+    if datasource_v2:
+        plan = list(_walk(_optimized(mixed)))
+        (filter_op,) = [op for op in plan if isinstance(op, Filter)]
+        assert "sequence" in str(filter_op.predicate_expr)
+
+
+def test_read_mcap_count_from_statistics(
+    ray_start_regular_shared, tmp_path, datasource_v2
+):
+    """``count()`` under a topic selection is answered from the summaries."""
+    from ray.data._internal.logical.interfaces import LogicalPlan
+    from ray.data._internal.logical.operators.count_operator import Count
+    from ray.data._internal.logical.operators.map_operator import MapBatches, Project
+    from ray.data._internal.logical.optimizers import LogicalOptimizer
+    from ray.data.expressions import col
+
+    paths = []
+    for i in range(2):
+        path = os.path.join(tmp_path, f"f{i}.mcap")
+        _write_chunked_mcap(path, 6)
+        paths.append(path)
+
+    def optimized_count_plan(ds):
+        count = Count(
+            input_dependencies=[
+                Project(exprs=[], input_dependencies=[ds._logical_plan.dag])
+            ]
+        )
+        return LogicalOptimizer().optimize(LogicalPlan(count, ds.context)).dag
+
+    ds = ray.data.read_mcap(paths, topics=["/a"])
+    assert ds.count() == 4
+    pushed = ray.data.read_mcap(paths).filter(expr=col("topic").is_in(["/a", "/b"]))
+    assert pushed.count() == 8
+    if datasource_v2:
+        assert isinstance(optimized_count_plan(ds), MapBatches)
+        assert isinstance(optimized_count_plan(pushed), MapBatches)
+
+    # A time range has to be read.
+    ranged = ray.data.read_mcap(paths, time_range=(1_000_000_000, 1_002_000_000))
+    assert ranged.count() == 4
+    if datasource_v2:
+        assert not isinstance(optimized_count_plan(ranged), MapBatches)
+
+
+def _write_records_mcap(path, i):
+    """Write run ``i``: a ``recorder`` metadata record, one message on ``/t``,
+    and the attachment ``calib{i}.yaml`` logged at ``1_000 + i``."""
+    from mcap.writer import CompressionType, Writer
+
+    with open(path, "wb") as stream:
+        writer = Writer(stream, chunk_size=1, compression=CompressionType.ZSTD)
+        writer.start(profile="", library="ray-test")
+        writer.add_metadata("recorder", {"version": "1.2", "run": str(i)})
+        schema_id = writer.register_schema(
+            name="test_schema", encoding="jsonschema", data=b"{}"
+        )
+        channel = writer.register_channel(
+            schema_id=schema_id, topic="/t", message_encoding="json"
+        )
+        writer.add_message(
+            channel_id=channel, log_time=1_000, publish_time=1_000, data=b"{}"
+        )
+        writer.add_attachment(
+            create_time=900,
+            log_time=1_000 + i,
+            name=f"calib{i}.yaml",
+            media_type="text/yaml",
+            data=f"fx: {i}\n".encode(),
+        )
+        writer.finish()
+    return path
+
+
+def test_read_mcap_attachment_and_metadata_granularity(
+    ray_start_regular_shared, tmp_path, datasource_v2
+):
+    """Attachment and Metadata records come out one per row, counted from statistics."""
+    paths = [
+        _write_records_mcap(os.path.join(tmp_path, f"run{i}.mcap"), i) for i in range(2)
+    ]
+
+    if not datasource_v2:
+        with pytest.raises(NotImplementedError, match="read_granularity"):
+            ray.data.read_mcap(paths, read_granularity="attachment")
+        return
+
+    attachments = ray.data.read_mcap(
+        paths, read_granularity="attachment", include_row_id=True
+    )
+    assert attachments.schema().names == [
+        "path",
+        "row_id",
+        "name",
+        "media_type",
+        "log_time",
+        "create_time",
+        "data",
+    ]
+    rows = sorted(attachments.take_all(), key=lambda row: row["name"])
+    assert [row["name"] for row in rows] == ["calib0.yaml", "calib1.yaml"]
+    assert [row["data"] for row in rows] == [b"fx: 0\n", b"fx: 1\n"]
+    assert attachments.count() == 2
+    assert (
+        ray.data.read_mcap(
+            paths, read_granularity="attachment", time_range=(1_001, 1_002)
+        ).count()
+        == 1
+    )
+
+    metadata = ray.data.read_mcap(paths, read_granularity="metadata")
+    rows = sorted(metadata.take_all(), key=lambda row: row["path"])
+    assert [dict(row["metadata"])["run"] for row in rows] == ["0", "1"]
+    assert metadata.count() == 2
+    with pytest.raises(ValueError, match="do not apply"):
+        ray.data.read_mcap(paths, read_granularity="metadata", topics=["/t"])
+
+
+@pytest.mark.parametrize("granularity", ["message", "attachment"])
+def test_read_mcap_count_matches_a_read_that_skips_corrupt_parts(
+    ray_start_regular_shared, tmp_path, datasource_v2, granularity
+):
+    """With ``max_errored_blocks=-1``, a read skips a corrupt chunk or a file with
+    a corrupt attachment that the summaries still count, and ``count()`` gives
+    the number of rows the read returns."""
+    if not datasource_v2:
+        pytest.skip("only the V2 datasource counts from the summaries")
+    from ray.data.tests.unit.datasource_v2.mcap_testing import (
+        CHUNKED_FILE_MESSAGES,
+        round_robin_messages,
+        write_corrupt_attachment,
+        write_corrupt_chunk,
+        write_mcap,
+    )
+
+    good = os.path.join(tmp_path, "good.mcap")
+    if granularity == "message":
+        write_mcap(good, round_robin_messages(CHUNKED_FILE_MESSAGES))
+        write_corrupt_chunk(os.path.join(tmp_path, "bad.mcap"), good, 1)
+        expected = 2 * CHUNKED_FILE_MESSAGES - 1
+    else:
+        _write_records_mcap(good, 0)
+        bad = _write_records_mcap(os.path.join(tmp_path, "bad.mcap"), 1)
+        write_corrupt_attachment(bad, 0)
+        expected = 1
+    ray.data.DataContext.get_current().max_errored_blocks = -1
+    ds = ray.data.read_mcap(str(tmp_path), read_granularity=granularity)
+
+    rows = ds.take_all()
+    count = ds.count()
+
+    assert count == len(rows) == expected
+
+
 if __name__ == "__main__":
     import sys
 
