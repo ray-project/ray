@@ -44,15 +44,28 @@ def _prometheus_headers() -> Dict[str, str]:
     return headers or {}
 
 
-def query_prometheus_counter(promql: str) -> Optional[int]:
-    """Instant-query a cumulative Prometheus counter and return its cluster-wide
-    integer value.
+# Label that tags each query's result with its key in the combined query sent
+# by ``query_prometheus_counters``.
+_METRIC_KEY_LABEL = "ray_data_usage_metric"
 
-    Returns 0 when no series matched: Ray only creates a counter's series on its
-    first event, so a missing series means no events yet. Returns None on any
-    failure (Prometheus unreachable, non-200, malformed response), as usage
-    collection is best effort.
+
+def query_prometheus_counters(queries: Dict[str, str]) -> Dict[str, Optional[int]]:
+    """Instant-query several cumulative Prometheus counters in one request and
+    return each one's cluster-wide integer value, keyed like ``queries``.
+
+    The queries are sent unchanged, joined with ``or``. Each one is wrapped in
+    ``label_replace`` to tag its result with its key, so every query must return
+    series without that label (such as a ``sum(...)``).
+
+    A counter is 0 when no series matched its query: Ray only creates a
+    counter's series on its first event, so a missing series means no events
+    yet. Every counter is None on any failure (Prometheus unreachable, non-200,
+    malformed response), as usage collection is best effort.
     """
+    promql = " or ".join(
+        f'label_replace({query}, "{_METRIC_KEY_LABEL}", "{key}", "", "")'
+        for key, query in queries.items()
+    )
     try:
         resp = requests.get(
             f"{_prometheus_host()}/api/v1/query",
@@ -64,14 +77,16 @@ def query_prometheus_counter(promql: str) -> Optional[int]:
             logger.debug(
                 "Prometheus counter query %r returned %d", promql, resp.status_code
             )
-            return None
-        results = resp.json()["data"]["result"]
-        return int(sum(float(r["value"][1]) for r in results))
+            return dict.fromkeys(queries)
+        totals = dict.fromkeys(queries, 0.0)
+        for r in resp.json()["data"]["result"]:
+            totals[r["metric"][_METRIC_KEY_LABEL]] += float(r["value"][1])
+        return {key: int(total) for key, total in totals.items()}
     except (requests.RequestException, ValueError, KeyError, IndexError, TypeError):
         # RequestException: unreachable/timeout/non-HTTP error; the rest:
         # unexpected/empty response shape. Best-effort — return None on any.
-        logger.debug("Failed to query Prometheus counter %r", promql, exc_info=True)
-        return None
+        logger.debug("Failed to query Prometheus counters %r", promql, exc_info=True)
+        return dict.fromkeys(queries)
 
 
 def compute_delta(start: Optional[int], end: Optional[int]) -> Optional[int]:

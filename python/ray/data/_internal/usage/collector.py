@@ -22,7 +22,7 @@ from ray._private.worker import global_worker
 from ray.data._internal.logical.interfaces import LogicalOperator
 from ray.data._internal.logical.operators import MapBatches
 from ray.data._internal.usage.actor import get_or_create_usage_collection_actor
-from ray.data._internal.usage.util import anonymize_op_name, query_prometheus_counter
+from ray.data._internal.usage.util import anonymize_op_name, query_prometheus_counters
 from ray.data.block import VALID_BATCH_FORMATS, _apply_batch_format
 
 if TYPE_CHECKING:
@@ -208,26 +208,6 @@ def cluster_metrics_collection_disabled() -> bool:
     return os.environ.get("RAY_DATA_USAGE_CLUSTER_METRICS_DISABLED") == "1"
 
 
-def cluster_spilled_bytes() -> Optional[int]:
-    """Cluster-wide cumulative spilled bytes from Prometheus, scoped to this
-    session. None if the query failed.
-    """
-    return query_prometheus_counter(
-        _session_scoped_metric_query(
-            _SPILLED_BYTES_METRIC, _session_name(), {"State": "Spilled"}
-        )
-    )
-
-
-def cluster_dead_node_count() -> Optional[int]:
-    """Cluster-wide cumulative node failures from Prometheus, scoped to this
-    session. None if the query failed.
-    """
-    return query_prometheus_counter(
-        _session_scoped_metric_query(_NODE_FAILURE_METRIC, _session_name())
-    )
-
-
 def _session_name() -> Optional[str]:
     """This Ray session's name, used to scope Prometheus queries to this
     cluster. None if Ray isn't connected (before init / after shutdown).
@@ -258,42 +238,41 @@ def _session_scoped_metric_query(
     return f"sum({selector})"
 
 
-def cluster_oom_kills() -> Optional[int]:
-    """Cluster-wide cumulative OOM (memory-manager) worker evictions from
-    Prometheus, scoped to this session. None if the query failed.
+def collect_cluster_metrics() -> Dict[str, Optional[int]]:
+    """Cluster-wide cumulative value of every cluster metric, keyed by metric
+    name, read from Prometheus in a single request and scoped to this session.
+    Every metric is None if the request failed.
     """
-    return query_prometheus_counter(
-        _session_scoped_metric_query(_OOM_KILL_METRIC, _session_name())
-    )
+    return query_prometheus_counters(_cluster_metric_queries())
 
 
-def cluster_unexpected_worker_kills() -> Optional[int]:
-    """Cluster-wide cumulative unexpected (system-error) worker failures from
-    Prometheus, scoped to this session. None if the query failed.
-    """
-    return query_prometheus_counter(
-        _session_scoped_metric_query(_UNEXPECTED_WORKER_KILL_METRIC, _session_name())
-    )
-
-
-def cluster_object_reconstruction_attempts() -> Optional[int]:
-    """Cluster-wide cumulative lineage reconstruction attempts for lost objects
-    from Prometheus, scoped to this session. None if the query failed.
-    """
-    return query_prometheus_counter(
-        _session_scoped_metric_query(
-            _OBJECT_RECOVERY_ATTEMPTS_METRIC, _session_name(), {"Type": "Reconstruct"}
-        )
-    )
-
-
-def cluster_task_retries() -> Optional[int]:
-    """Cluster-wide cumulative task retries from Prometheus, scoped to this
-    session. None if the query failed.
-    """
-    return query_prometheus_counter(
-        _session_scoped_metric_query(_TASK_RETRY_SUBMISSIONS_METRIC, _session_name())
-    )
+def _cluster_metric_queries() -> Dict[str, str]:
+    """The PromQL for each cluster metric, keyed by metric name."""
+    session_name = _session_name()
+    return {
+        # Spilled bytes.
+        METRIC_BYTES_SPILLED: _session_scoped_metric_query(
+            _SPILLED_BYTES_METRIC, session_name, {"State": "Spilled"}
+        ),
+        # Node failures.
+        METRIC_NODE_DEATHS: _session_scoped_metric_query(
+            _NODE_FAILURE_METRIC, session_name
+        ),
+        # OOM (memory-manager) worker evictions.
+        METRIC_OOM_KILLS: _session_scoped_metric_query(_OOM_KILL_METRIC, session_name),
+        # Unexpected (system-error) worker failures.
+        METRIC_UNEXPECTED_WORKER_KILLS: _session_scoped_metric_query(
+            _UNEXPECTED_WORKER_KILL_METRIC, session_name
+        ),
+        # Lineage reconstruction attempts for lost objects.
+        METRIC_OBJECT_RECONSTRUCTION_ATTEMPTS: _session_scoped_metric_query(
+            _OBJECT_RECOVERY_ATTEMPTS_METRIC, session_name, {"Type": "Reconstruct"}
+        ),
+        # Task retries.
+        METRIC_TASK_RETRIES: _session_scoped_metric_query(
+            _TASK_RETRY_SUBMISSIONS_METRIC, session_name
+        ),
+    }
 
 
 def record_usage_info(info: UsageInfo) -> None:
