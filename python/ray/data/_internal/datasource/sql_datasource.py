@@ -152,6 +152,10 @@ class SQLDatasource(Datasource):
 
         # Check if sharding is supported by the database first
         # If not, fall back to reading all data in a single task without counting rows
+        if parallelism <= 1:
+            metadata = BlockMetadata(None, None, None, None)
+            return [ReadTask(fallback_read_fn, metadata)]
+
         if not self.supports_sharding(parallelism):
             logger.info(
                 "Sharding is not supported. "
