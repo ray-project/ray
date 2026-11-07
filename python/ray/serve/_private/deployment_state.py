@@ -1542,6 +1542,25 @@ class ActorReplicaWrapper:
         self._rank = rank
         return updating
 
+    def check_reconfigure_done(self) -> Tuple[bool, Optional[str]]:
+        """Non-blocking check of the `reconfigure` call started by `reconfigure()`.
+
+        Returns:
+            done: whether the call finished.
+            error_msg: the error if the call raised, else None.
+        """
+        if self._ready_obj_ref is None:
+            return True, None
+        if not check_obj_ref_ready_nowait(self._ready_obj_ref):  # type: ignore[arg-type]
+            return False, None
+        try:
+            ray.get(self._ready_obj_ref)
+        except RayTaskError as e:
+            return True, str(e.as_instanceof_cause())
+        except Exception as e:
+            return True, repr(e)
+        return True, None
+
     def recover(self, ingress: bool = False, scheduling_constraints: str = "") -> bool:
         """Recover replica version from a live replica actor.
 
@@ -2409,6 +2428,10 @@ class DeploymentReplica:
         updating = self._actor.reconfigure(version, rank=rank)
         self.update_actor_details(version=version.version_id)
         return updating
+
+    def check_reconfigure_done(self) -> Tuple[bool, Optional[str]]:
+        """Non-blocking check of the `reconfigure` call started by `reconfigure()`."""
+        return self._actor.check_reconfigure_done()
 
     def recover(self, deployment_info: DeploymentInfo) -> bool:
         """Recover states in DeploymentReplica instance by fetching running actor
@@ -3392,6 +3415,9 @@ class DeploymentState:
             fail_on_rank_error=RAY_SERVE_FAIL_ON_RANK_ERROR
         )
         self._last_rank_membership_ids: Optional[Set[str]] = None
+        # Replicas with a rank-change reconfigure in flight, mapped to whether the
+        # slow-reconfigure warning was logged. See _check_pending_rank_reconfigures.
+        self._pending_rank_reconfigures: Dict[ReplicaID, bool] = {}
 
         self.replica_average_ongoing_requests: Dict[str, float] = {}
 
@@ -5314,6 +5340,56 @@ class DeploymentState:
 
         return slow_replicas
 
+    def _check_pending_rank_reconfigures(self) -> None:
+        """Observe the rank-change reconfigures started by
+        `_reconfigure_replicas_with_new_ranks`.
+
+        Those replicas stay RUNNING, so `_check_startup_replicas` never sees the
+        result. Record the reconfigure latency on success, and log failures and
+        slow reconfigures. A failed replica is not replaced: a replacement can
+        start while the failed one still holds its rank, get renumbered in turn
+        and fail again, churning replicas forever.
+        """
+        if not self._pending_rank_reconfigures:
+            return
+
+        for replica_id, warned_slow in list(self._pending_rank_reconfigures.items()):
+            replica = self._replicas.get_by_id(replica_id)
+            if (
+                replica is None
+                or replica.actor_details.state not in self._BROADCAST_STATES
+            ):
+                # Stopped, or moved to UPDATING whose own check now observes the
+                # in-flight reconfigure.
+                del self._pending_rank_reconfigures[replica_id]
+                continue
+
+            done, error_msg = replica.check_reconfigure_done()
+            if done:
+                del self._pending_rank_reconfigures[replica_id]
+                if error_msg is not None:
+                    logger.error(
+                        f"{replica_id} failed to reconfigure with its new rank "
+                        f"{replica.rank}. Until it restarts, the replica's context "
+                        f"may report its previous rank. Error:\n{error_msg}"
+                    )
+                elif replica.reconfigure_start_time is not None:
+                    self.replica_reconfigure_latency_histogram.observe(
+                        (time.time() - replica.reconfigure_start_time) * 1000
+                    )
+            elif (
+                not warned_slow
+                and replica.reconfigure_start_time is not None
+                and time.time() - replica.reconfigure_start_time
+                > SLOW_STARTUP_WARNING_S
+            ):
+                self._pending_rank_reconfigures[replica_id] = True
+                logger.warning(
+                    f"{replica_id} has not finished reconfiguring with its new "
+                    f"rank after {SLOW_STARTUP_WARNING_S}s. The replica's "
+                    "`reconfigure` method may be hanging."
+                )
+
     def _mark_rolling_update_failed_if_needed(self) -> None:
         """Mark threshold-reaching rolling updates for checkpointing."""
         if (
@@ -5901,6 +5977,7 @@ class DeploymentState:
         # if we delay the rank reassignment, the rank system will be in an invalid state
         # for a longer period of time. Abrar made this decision because he is not confident
         # about how rollouts work in the deployment state machine.
+        self._check_pending_rank_reconfigures()
         self._maybe_check_rank_consistency()
 
     def _maybe_check_rank_consistency(self) -> None:
@@ -6169,12 +6246,19 @@ class DeploymentState:
 
             # Use reconfigure() to update rank
             # World size is calculated automatically from deployment config
-            _ = replica.reconfigure(
+            updating = replica.reconfigure(
                 # The target version is set for deployed target states.
                 # pyrefly: ignore[bad-argument-type]
                 self._target_state.version,  # type: ignore[arg-type]
                 rank=new_rank,
             )
+            # Unlike a config update, the replica stays RUNNING: rank changes are
+            # not throttled, so moving replicas to UPDATING could pull every
+            # replica out of routing at once. _check_pending_rank_reconfigures
+            # observes the result instead. An UPDATING replica's result is
+            # already observed by _check_startup_replicas.
+            if updating and replica.actor_details.state in self._BROADCAST_STATES:
+                self._pending_rank_reconfigures[replica.replica_id] = False
             updated_count += 1
 
         logger.debug(
