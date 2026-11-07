@@ -846,7 +846,7 @@ class RayActorManager:
                 raise ValueError(
                     f"Length of args must be the same as tracked_actors "
                     f"list. Got `len(args)={len(args)}` and "
-                    f"`len(tracked_actors)={len(tracked_actors)}"
+                    f"`len(tracked_actors)={len(tracked_actors)}`"
                 )
             args_list = args
 
@@ -857,7 +857,7 @@ class RayActorManager:
                 raise ValueError(
                     f"Length of kwargs must be the same as tracked_actors "
                     f"list. Got `len(kwargs)={len(kwargs)}` and "
-                    f"`len(tracked_actors)={len(tracked_actors)}"
+                    f"`len(tracked_actors)={len(tracked_actors)}`"
                 )
             kwargs_list = kwargs
 
