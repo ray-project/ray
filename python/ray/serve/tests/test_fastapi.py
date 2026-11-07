@@ -1,6 +1,7 @@
 import inspect
 import tempfile
 import time
+from contextlib import asynccontextmanager
 from typing import Any, List, Optional
 
 import httpx
@@ -429,6 +430,27 @@ def test_fastapi_lifespan_startup_failure_crashes_actor(serve_instance):
 
     with pytest.raises(RuntimeError):
         serve.run(A.bind())
+
+
+def test_fastapi_lifespan_state_in_request(serve_instance):
+    @asynccontextmanager
+    async def lifespan(app):
+        yield {"greeting": "hello"}
+
+    app = FastAPI(lifespan=lifespan)
+
+    @app.get("/")
+    def root(request: Request):
+        return request.state.greeting
+
+    @serve.deployment
+    @serve.ingress(app)
+    class A:
+        pass
+
+    serve.run(A.bind())
+    url = get_application_url("HTTP")
+    assert httpx.get(url).json() == "hello"
 
 
 def test_fastapi_duplicate_routes(serve_instance):
