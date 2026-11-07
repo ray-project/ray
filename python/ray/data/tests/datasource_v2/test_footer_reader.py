@@ -723,10 +723,12 @@ class TestReadFootersBatching:
     [(col("x") + 1) >= 76, col("s").str.starts_with("s08")],
 )
 def test_derived_predicate_prunes_row_groups(tmp_path, predicate):
-    table = pa.table({
-        "x": list(range(100)),
-        "s": [f"s{i:03d}" for i in range(100)],
-    })
+    table = pa.table(
+        {
+            "x": list(range(100)),
+            "s": [f"s{i:03d}" for i in range(100)],
+        }
+    )
     path, size = _write(tmp_path / "data.parquet", table, row_group_size=25)
     chunks = _reader(filter_expr=predicate)._read_and_chunk(FileInfo(path, size))
 
@@ -738,9 +740,7 @@ def test_derived_predicate_prunes_row_groups(tmp_path, predicate):
     [
         pytest.param((col("x") + 1) > 76, [3], id="strict-comparison"),
         pytest.param((col("x") + 1) >= 1000, [], id="no-matches"),
-        pytest.param(
-            col("s").str.starts_with("s07"), [2, 3], id="spanning-prefix"
-        ),
+        pytest.param(col("s").str.starts_with("s07"), [2, 3], id="spanning-prefix"),
         pytest.param(col("s").str.starts_with("z"), [], id="missing-prefix"),
         pytest.param(
             col("s").str.starts_with(""),
@@ -752,10 +752,12 @@ def test_derived_predicate_prunes_row_groups(tmp_path, predicate):
 def test_derived_predicate_preserves_matching_rows(
     tmp_path, predicate, expected_groups
 ):
-    table = pa.table({
-        "x": list(range(100)),
-        "s": [f"s{i:03d}" for i in range(100)],
-    })
+    table = pa.table(
+        {
+            "x": list(range(100)),
+            "s": [f"s{i:03d}" for i in range(100)],
+        }
+    )
     path, size = _write(tmp_path / "data.parquet", table, row_group_size=25)
     chunks = _reader(filter_expr=predicate)._read_and_chunk(FileInfo(path, size))
 
@@ -763,14 +765,12 @@ def test_derived_predicate_preserves_matching_rows(
     assert selected == expected_groups
 
     parquet_file = pq.ParquetFile(path)
-    required = {
-        index
-        for index in range(parquet_file.num_row_groups)
-        if parquet_file.read_row_group(index)
-        .filter(predicate.to_pyarrow())
-        .num_rows
-        > 0
-    }
+    required = set()
+    arrow_predicate = predicate.to_pyarrow()
+    for index in range(parquet_file.num_row_groups):
+        table = parquet_file.read_row_group(index)
+        if table.filter(arrow_predicate).num_rows:
+            required.add(index)
     assert required.issubset(selected)
 
 
@@ -790,9 +790,8 @@ def test_derived_predicate_skips_unsafe_arithmetic(column_type, predicate):
         _derived_statistics_predicate,
     )
 
-    assert _derived_statistics_predicate(
-        predicate, pa.schema([("x", column_type)])
-    ) is None
+    derived = _derived_statistics_predicate(predicate, pa.schema([("x", column_type)]))
+    assert derived is None
 
 
 def test_derived_predicate_unicode_prefix(tmp_path):
@@ -804,7 +803,14 @@ def test_derived_predicate_unicode_prefix(tmp_path):
     )
     predicate = col("s").str.starts_with("é")
     chunks = _reader(filter_expr=predicate)._read_and_chunk(FileInfo(path, size))
-    assert [rg.unit_ids[0] for rg in chunks.row_groups] == [1]
+    selected = [rg.unit_ids[0] for rg in chunks.row_groups]
+    assert 1 in selected
+
+    parquet_file = pq.ParquetFile(path)
+    selected_tables = [parquet_file.read_row_group(i) for i in selected]
+    actual = pa.concat_tables(selected_tables).filter(predicate.to_pyarrow())
+    expected = pa.table({"s": values}).filter(predicate.to_pyarrow())
+    assert actual.equals(expected)
 
 
 def test_derived_predicate_with_nulls(tmp_path):
@@ -823,17 +829,13 @@ def test_derived_predicate_with_nulls(tmp_path):
     assert actual.equals(expected)
 
 
-def test_derived_predicate_failure_falls_back_to_original(
-    four_row_groups, monkeypatch
-):
+def test_derived_predicate_failure_falls_back_to_original(four_row_groups, monkeypatch):
     from ray.data._internal.datasource_v2.formats.parquet import footer_reader
 
     def fail_to_derive(*args):
         raise ValueError("Unsupported schema")
 
-    monkeypatch.setattr(
-        footer_reader, "_derived_statistics_predicate", fail_to_derive
-    )
+    monkeypatch.setattr(footer_reader, "_derived_statistics_predicate", fail_to_derive)
 
     path, size = four_row_groups
     predicate = col("id") >= 50
