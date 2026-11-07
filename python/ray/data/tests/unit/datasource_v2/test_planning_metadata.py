@@ -27,6 +27,7 @@ from ray.data._internal.datasource_v2.formats.parquet.parquet_file_reader import
 from ray.data._internal.datasource_v2.interfaces.file_indexer import FileInfo
 from ray.data._internal.datasource_v2.interfaces.file_manifest import (
     FILE_METADATA_TYPE,
+    FILE_SIZE_COLUMN_NAME,
     FileManifest,
     FileMetadata,
 )
@@ -105,8 +106,9 @@ def test_same_open_counts_and_footer_roundtrip(tmp_path, case, miss):
     name = "ORC" if case == "ORC" else "Parquet"
     result, sample, fs, raw = _plan(tmp_path, name, case)
     assert result.schema.names == ["id", "empty_only", "late", "timestamp"]
-    assert result.metadata is not None
-    values = [FileMetadata.from_metadata(v) for v in result.metadata.to_pylist()]
+    metadata = result.metadata
+    assert metadata is not None
+    values = [FileMetadata.from_metadata(v) for v in metadata.to_pylist()]
     assert [v.num_rows for v in values] == [0, 3]
     assert len(raw.opens) == 2
     cached = [replace(v, num_rows=999, mtime_ns=0) for v in values] if miss else values
@@ -146,13 +148,33 @@ def test_same_open_counts_and_footer_roundtrip(tmp_path, case, miss):
             file = FileInfo(path, sample.file_sizes[-1])
             expected = footer._read_and_chunk(file)
             opens = len(raw.opens)
-            actual = footer._read_and_chunk(replace(file, metadata=values[-1]))
+            actual = footer._read_and_chunk(replace(file, metadata=cached[-1]))
             assert actual == expected
             if case in {"nan", "null", "no_statistics"}:
                 assert all(not group.fully_matched for group in actual.row_groups)
-            assert len(raw.opens) == opens
+            assert len(raw.opens) == opens + int(miss)
+            if case == "Parquet":
+                unknown = footer._read_and_chunk(
+                    replace(file, size=None, metadata=cached[-1])
+                )
+                assert unknown.row_groups == expected.row_groups
+                assert len(raw.opens) == opens + int(miss) + 1
         finally:
             footer.pool.shutdown()
+        if case == "Parquet":
+            block = manifest.as_block()
+            assert isinstance(block, pa.Table)
+            block = block.slice(1, 1)
+            unknown_size = FileManifest(
+                block.set_column(
+                    block.schema.get_field_index(FILE_SIZE_COLUMN_NAME),
+                    FILE_SIZE_COLUMN_NAME,
+                    pa.array([None], type=pa.int64()),
+                )
+            )
+            opens = len(raw.opens)
+            assert [v.num_rows for v in reader.read_metadata(unknown_size)] == [3]
+            assert len(raw.opens) == opens + 1
     else:
         assert all(v.parquet_footer is None for v in values)
         assert not OrcFileReader(format=FileFormat.ORC).available_metadata()
@@ -182,7 +204,8 @@ def test_payload_budgets_and_large_batches(
     monkeypatch.setattr(ctx, "full_schema_inference_batch_size", batch)
     result, _, _, _ = _plan(tmp_path)
     assert result.schema.names == ["id", "empty_only", "late", "timestamp"]
-    chunks = result.metadata.chunks if result.metadata is not None else []
+    metadata = result.metadata
+    chunks = metadata.chunks if metadata is not None else []
     used = 0
     admitted = 0
     for chunk in chunks:
@@ -316,9 +339,11 @@ def test_completed_batches_release_credit_and_keep_candidate_positions(monkeypat
         ray_remote_args={},
         supports_distributed_reads=True,
     )
-    assert result is not None and result.metadata is not None
+    assert result is not None
+    metadata = result.metadata
+    assert metadata is not None
     assert result.schema.names == ["head", "tail"]
-    assert [v["num_rows"] for v in result.metadata.to_pylist()] == list(map(int, paths))
+    assert [v["num_rows"] for v in metadata.to_pylist()] == list(map(int, paths))
     assert (state["submitted"], state["reserved"], decode.call_count) == (6, 0, 2)
 
 

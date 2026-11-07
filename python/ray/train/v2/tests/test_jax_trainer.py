@@ -144,6 +144,7 @@ def train_func():
     devices = jax.devices()
     node_labels = ray.get_runtime_context().get_node_labels()
     slice_name = node_labels.get("ray.io/tpu-slice-name")
+    tpu_worker_id = node_labels.get("ray.io/tpu-worker-id")
     current_ip = ray.util.get_node_ip_address()
 
     megascale_vars = {
@@ -159,6 +160,7 @@ def train_func():
         {
             "worker_id": rank,
             "slice_name": slice_name,
+            "tpu_worker_id": tpu_worker_id,
             "node_ip": current_ip,
             "devices": [str(d) for d in devices],
             **megascale_vars,
@@ -278,6 +280,10 @@ def test_tpu_single_slice_multi_host(ray_tpu_multi_host, tmp_path):
     assert len(slices_used) == 1, "Expected workers to be scheduled to 1 slice."
     assert next(iter(slices_used)) in ("slice-A", "slice-B")
 
+    # Within each slice, hosts receive contiguous ranks in TPU_WORKER_ID order.
+    for r in reports:
+        assert int(r["tpu_worker_id"]) == r["worker_id"] % 2
+
     # Validate we do not automatically set megascale vars for single-slice.
     for r in reports:
         assert r.get("MEGASCALE_SLICE_ID") is None
@@ -324,6 +330,10 @@ def test_tpu_multi_slice_multi_host(ray_tpu_multi_host, tmp_path):
     assert len(slices_used) == 2, "Expected workers to schedule across 2 slices."
     assert "slice-A" in slices_used
     assert "slice-B" in slices_used
+
+    # Within each slice, hosts receive contiguous ranks in TPU_WORKER_ID order.
+    for r in reports:
+        assert int(r["tpu_worker_id"]) == r["worker_id"] % 2
 
     # Verify megascale coordinator address set to IP of worker 0.
     worker_0_report = next(r for r in reports if r["worker_id"] == 0)
@@ -469,6 +479,10 @@ def test_multi_slice_manual_resources(ray_tpu_multi_host, tmp_path):
     assert len(slices_used) == 2, "Expected workers to span 2 slices."
     assert "slice-A" in slices_used
     assert "slice-B" in slices_used
+
+    # Within each slice, each host's 4 workers receive contiguous ranks in TPU_WORKER_ID order.
+    for r in reports:
+        assert int(r["tpu_worker_id"]) == (r["worker_id"] // 4) % 2
 
     # Verify megascale coordinator address set to IP of worker 0.
     worker_0_report = next(r for r in reports if r["worker_id"] == 0)

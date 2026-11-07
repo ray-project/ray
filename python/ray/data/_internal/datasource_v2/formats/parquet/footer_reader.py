@@ -28,7 +28,7 @@ from ray.data._internal.datasource_v2.interfaces.file_manifest import FileChunk
 from ray.data._internal.planner.plan_expression.expression_visitors import (
     get_column_references,
 )
-from ray.data._internal.util import call_with_retry
+from ray.data._internal.util import call_with_retry, filesystem_for_sized_opens
 
 if TYPE_CHECKING:
     import pyarrow.compute as pc
@@ -298,7 +298,11 @@ class FooterReader:
                 pa.py_buffer(cached.parquet_footer)
             )
         else:
-            fragment = self.file_format.make_fragment(path, filesystem=self.filesystem)
+            fragment = self.file_format.make_fragment(
+                path,
+                filesystem=filesystem_for_sized_opens(self.filesystem),
+                file_size=file.size,
+            )
         # ``make_fragment`` is lazy, so this property is the footer read itself
         # (and caches it on the fragment). It raises on a truncated, non-Parquet,
         # or since-deleted file -- terminal conditions that must fail the read
@@ -333,14 +337,15 @@ class FooterReader:
             # the listing stop early and the resumed job return too few rows.
             fragment = fragment.subset(row_group_ids=unprocessed_rg_ids)
 
-        if self.filter is not None and filter_leaves.all_filter_columns_found:
+        predicate = self.filter
+        if predicate is not None and filter_leaves.all_filter_columns_found:
             # Predicate pushdown: drop row groups whose Parquet statistics
             # contradict the filter, so we never emit chunks the reader would
             # skip anyway. Each returned fragment views a single surviving group.
             # Fail closed on any split error -- keep every group -- so a type
             # mismatch or similar cannot abort the rest of the read_footers batch.
             surviving: list[int] | None = self._try_split_by_row_group(
-                fragment, self.filter, path
+                fragment, predicate, path
             )
             rg_indices: Iterable[int] = (
                 unprocessed_rg_ids if surviving is None else surviving
@@ -351,7 +356,7 @@ class FooterReader:
             # out. For those, num_rows is an exact survivor count and can drive
             # the limit push-down. Any failure defaults to "not fully matched",
             # which is always safe (falls back to the post-filter stop).
-            not_fully_ids = self._try_split_by_row_group(fragment, ~self.filter, path)
+            not_fully_ids = self._try_split_by_row_group(fragment, ~predicate, path)
             not_fully = set(rg_indices) if not_fully_ids is None else set(not_fully_ids)
             # The negation test alone is not sufficient: ``~filter`` can prune a
             # group that still holds a row the filter does not return, and then
@@ -365,7 +370,7 @@ class FooterReader:
                 and self._rg_can_fully_match(metadata.row_group(i), filter_leaves)
                 for i in rg_indices
             }
-        elif self.filter is not None:
+        elif predicate is not None:
             # A predicate column is absent from this file's schema. PyArrow's
             # split_by_row_group raises ArrowInvalid ("No match for FieldRef.Name")
             # in that case, which would abort the whole read_footers batch.

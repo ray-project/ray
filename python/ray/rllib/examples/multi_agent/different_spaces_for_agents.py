@@ -1,5 +1,4 @@
-"""
-Example showing how to create a multi-agent env, in which the different agents
+"""Example showing how to create a multi-agent env, in which the different agents
 have different observation and action spaces.
 
 These spaces do NOT necessarily have to be specified manually by the user. Instead,

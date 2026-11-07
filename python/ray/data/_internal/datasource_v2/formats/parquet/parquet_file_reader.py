@@ -382,8 +382,9 @@ class ParquetFileReader(FileReader, SupportsMetadata):
         Paths are deduped by :meth:`FileReader.read` before the dataset is
         built, so the dataset has exactly one fragment per file. The
         per-row chunk metadata drives the fan-out here, not the dataset
-        itself — multiple manifest rows can share a single path with
-        different row-group sets.
+        itself — multiple manifest rows can share a single path, either
+        with different row-group sets (chunking) or repeating the same
+        ones (the user listed the file more than once); each row is read.
         """
         path_to_fragment = {
             fragment.path: fragment for fragment in dataset.get_fragments()
@@ -395,7 +396,9 @@ class ParquetFileReader(FileReader, SupportsMetadata):
             c.requires_read_unit_boundaries for c in self._synthesized_columns
         )
         fragments: List[ReadUnitFragment] = []
-        for path, chunk_metadata in zip(manifest.paths, manifest.file_chunk_metadatas):
+        for path, file_size, chunk_metadata in zip(
+            manifest.paths, manifest.known_file_sizes, manifest.file_chunk_metadatas
+        ):
             fragment: pds.ParquetFileFragment = path_to_fragment[path]
             if chunk_metadata is None:
                 num_rows = None
@@ -418,6 +421,7 @@ class ParquetFileReader(FileReader, SupportsMetadata):
                         fragment,
                         chunk_metadata["unit_ids"],
                         per_row_group_offsets=per_row_group_offsets,
+                        file_size=file_size,
                     )
                 )
         return fragments
@@ -665,10 +669,10 @@ class ParquetFileReader(FileReader, SupportsMetadata):
             get_cached_file_metadata,
         )
         from ray.data._internal.datasource_v2.interfaces.file_indexer import FileInfo
-        from ray.data._internal.util import call_with_retry
+        from ray.data._internal.util import call_with_retry, filesystem_for_sized_opens
         from ray.data.context import DataContext
 
-        filesystem = self._filesystem or LocalFileSystem()
+        filesystem = filesystem_for_sized_opens(self._filesystem or LocalFileSystem())
         retried_io_errors = DataContext.get_current().retried_io_errors
 
         def _num_rows(file: FileInfo) -> int:
@@ -676,10 +680,15 @@ class ParquetFileReader(FileReader, SupportsMetadata):
             if cached is not None and cached.num_rows is not None:
                 return cached.num_rows
             path = file.path
+            # A fragment, unlike ``pq.read_metadata``, takes the listing's
+            # size, which spares the open a request for it (a HEAD on S3).
+            fragment = pds.ParquetFileFormat().make_fragment(
+                path, filesystem=filesystem, file_size=file.size
+            )
             # Getting the footer requires network calls, so it may fail with
             # transient errors; retry them.
             metadata = call_with_retry(
-                lambda: pq.read_metadata(path, filesystem=filesystem),
+                lambda: fragment.metadata,
                 description=f"read Parquet footer for {path}",
                 match=retried_io_errors,
             )
@@ -689,7 +698,7 @@ class ParquetFileReader(FileReader, SupportsMetadata):
         files = [
             FileInfo(str(path), size, metadata=metadata)
             for path, size, metadata in zip(
-                file_manifest.paths, file_manifest.file_sizes, metadatas
+                file_manifest.paths, file_manifest.known_file_sizes, metadatas
             )
         ]
         with ThreadPoolExecutor() as executor:

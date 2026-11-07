@@ -21,6 +21,7 @@ from ray.data._internal.cluster_autoscaler.rate_based_cluster_autoscaler import 
 from ray.data._internal.cluster_autoscaler.resource_utilization_gauge import (
     ClusterUtil,
     ResourceUtilizationGauge,
+    RollingLogicalUtilizationGauge,
 )
 from ray.data._internal.execution.interfaces import PhysicalOperator
 from ray.data._internal.execution.interfaces.execution_options import (
@@ -36,16 +37,24 @@ from ray.data.tests.conftest import propagate_logs  # noqa
 
 
 class StubUtilizationGauge(ResourceUtilizationGauge):
-    def __init__(self, utilization: Optional[ClusterUtil] = None):
+    def __init__(
+        self,
+        utilization: Optional[ClusterUtil] = None,
+        blocked_on_consumer: bool = False,
+    ):
         if utilization is None:
             utilization = ClusterUtil(cpu=1, gpu=1, object_store_memory=1, memory=1)
         self._utilization = utilization
+        self._blocked_on_consumer = blocked_on_consumer
 
     def observe(self):
         pass
 
     def get(self):
         return self._utilization
+
+    def is_blocked_on_consumer(self):
+        return self._blocked_on_consumer
 
 
 @dataclass(frozen=True)
@@ -807,6 +816,50 @@ def test_high_utilization_after_release_rearms_grace_window():
     current_time["t"] = 315.0
     assert autoscaler.try_trigger_scaling() == []
     assert autoscaler.get_total_resources() == ExecutionResources.zero()
+
+
+@pytest.mark.parametrize("blocked", [False, True])
+def test_no_scale_up_while_blocked_on_consumer(blocked):
+    autoscaler = RateBasedClusterAutoscaler(
+        ops=[_make_fake_op()],
+        execution_id="test_blocked_on_consumer",
+        utility_calculator=StubUtilizationGauge(blocked_on_consumer=blocked),
+        autoscaling_coordinator=FakeAutoscalingCoordinator(),
+        min_gap_between_autoscaling_requests_s=0,
+    )
+
+    request = autoscaler.try_trigger_scaling()
+
+    # Utilization is high, so it scales up unless the consumer is the bottleneck.
+    assert bool(request) == (not blocked)
+
+
+@pytest.mark.parametrize(
+    "blocked_readings, enabled, expected",
+    [
+        # Blocked in most readings.
+        ([True, True, False], True, True),
+        # Blocked in fewer than half of the readings.
+        ([True, False, False], True, False),
+        # The kill switch is off.
+        ([True, True, True], False, False),
+    ],
+)
+def test_gauge_tracks_blocked_on_consumer(blocked_readings, enabled, expected):
+    resource_manager = MagicMock()
+    resource_manager.get_global_limits.return_value = ExecutionResources(cpu=8)
+    resource_manager.get_global_usage.return_value = ExecutionResources(cpu=8)
+    resource_manager.is_blocked_on_consumer.side_effect = blocked_readings
+
+    gauge = RollingLogicalUtilizationGauge(
+        resource_manager, skip_scale_up_when_blocked_on_consumer=enabled
+    )
+    for _ in blocked_readings:
+        gauge.observe()
+
+    assert gauge.is_blocked_on_consumer() == expected
+    # Utilization isn't affected.
+    assert gauge.get().cpu == pytest.approx(1.0)
 
 
 if __name__ == "__main__":

@@ -3,6 +3,7 @@ import math
 from dataclasses import dataclass
 from typing import Optional
 
+from ray._common.utils import env_bool
 from ray.data._internal.average_calculator import TimeWindowAverageCalculator
 from ray.data._internal.execution.resource_manager import ResourceManager
 from ray.util.metrics import Gauge
@@ -36,10 +37,20 @@ class ResourceUtilizationGauge(abc.ABC):
         """Get the resource cluster utilization."""
         ...
 
+    def is_blocked_on_consumer(self) -> bool:
+        """Whether the dataset has mostly been waiting on a slow consumer."""
+        ...
+
 
 class RollingLogicalUtilizationGauge(ResourceUtilizationGauge):
     # Default time window in seconds to calculate the average of cluster utilization.
     DEFAULT_CLUSTER_UTIL_AVG_WINDOW_S: int = 10
+
+    # Don't scale up while the dataset is blocked on a slow consumer. More nodes
+    # won't speed up the consumer.
+    SKIP_SCALE_UP_WHEN_BLOCKED_ON_CONSUMER: bool = env_bool(
+        "RAY_DATA_SKIP_SCALE_UP_WHEN_BLOCKED_ON_CONSUMER", True
+    )
 
     def __init__(
         self,
@@ -47,9 +58,15 @@ class RollingLogicalUtilizationGauge(ResourceUtilizationGauge):
         *,
         cluster_util_avg_window_s: float = DEFAULT_CLUSTER_UTIL_AVG_WINDOW_S,
         execution_id: Optional[str] = None,
+        skip_scale_up_when_blocked_on_consumer: bool = (
+            SKIP_SCALE_UP_WHEN_BLOCKED_ON_CONSUMER
+        ),
     ):
         self._resource_manager = resource_manager
         self._execution_id = execution_id
+        self._skip_scale_up_when_blocked_on_consumer = (
+            skip_scale_up_when_blocked_on_consumer
+        )
 
         self._cluster_cpu_util_calculator = TimeWindowAverageCalculator(
             cluster_util_avg_window_s
@@ -61,6 +78,9 @@ class RollingLogicalUtilizationGauge(ResourceUtilizationGauge):
             cluster_util_avg_window_s
         )
         self._cluster_obj_mem_util_calculator = TimeWindowAverageCalculator(
+            cluster_util_avg_window_s
+        )
+        self._blocked_on_consumer_calculator = TimeWindowAverageCalculator(
             cluster_util_avg_window_s
         )
 
@@ -115,6 +135,11 @@ class RollingLogicalUtilizationGauge(ResourceUtilizationGauge):
         self._cluster_mem_util_calculator.report(mem_util)
         self._cluster_obj_mem_util_calculator.report(obj_store_mem_util)
 
+        if self._skip_scale_up_when_blocked_on_consumer:
+            self._blocked_on_consumer_calculator.report(
+                float(self._resource_manager.is_blocked_on_consumer())
+            )
+
         if self._execution_id is not None:
             tags = {"dataset": self._execution_id}
             if self._cluster_cpu_utilization_gauge is not None:
@@ -139,3 +164,11 @@ class RollingLogicalUtilizationGauge(ResourceUtilizationGauge):
                 0, self._cluster_obj_mem_util_calculator.get_average() or 0
             ),
         )
+
+    def is_blocked_on_consumer(self) -> bool:
+        """Whether the dataset was blocked on its consumer for most of the window.
+
+        One reading isn't enough: the last op unblocks briefly whenever the consumer
+        reads a batch.
+        """
+        return (self._blocked_on_consumer_calculator.get_average() or 0) >= 0.5
