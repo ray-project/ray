@@ -13,6 +13,10 @@ local function first_header(hdrs, name)
     return nil
 end
 
+local SESSION_HEADER_KEY = (SESSION_HEADER:lower():gsub("-", "_"))
+
+-- Matches the header like http_util._matches_session_id_header: ignoring case
+-- and treating "-" and "_" as the same.
 local function session_id_from(hdrs)
     if SESSION_HEADER == "" or not hdrs then
         return nil
@@ -24,6 +28,14 @@ local function session_id_from(hdrs)
             alt = SESSION_HEADER:gsub("_", "-")
         end
         entry = hdrs[alt]
+    end
+    if not entry then
+        for name, values in pairs(hdrs) do
+            if (name:lower():gsub("-", "_")) == SESSION_HEADER_KEY then
+                entry = values
+                break
+            end
+        end
     end
     if entry then
         return entry[0]
@@ -41,7 +53,13 @@ end
 local function call_router(server, request)
     local sock = core.tcp()
     sock:settimeout(ROUTER_REQUEST_TIMEOUT_S)
-    if not sock:connect(server.host, server.port) then
+    local connected
+    if server.port then
+        connected = sock:connect(server.host, server.port)
+    else
+        connected = sock:connect(server.host)
+    end
+    if not connected then
         return nil, "router_unreachable"
     end
     local req = "POST " .. (request.path or "/internal/route") .. " HTTP/1.0\r\n"

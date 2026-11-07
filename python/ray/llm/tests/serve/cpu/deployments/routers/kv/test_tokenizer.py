@@ -1,5 +1,6 @@
 import copy
 import json
+import os
 import sys
 from typing import Any, Dict
 from unittest.mock import AsyncMock, MagicMock
@@ -7,8 +8,10 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 from fastapi import HTTPException
 from starlette.datastructures import Headers
+from transformers import AutoTokenizer
 from vllm.entrypoints.openai.chat_completion.protocol import ChatCompletionRequest
 from vllm.entrypoints.openai.completion.protocol import CompletionRequest
+from vllm.tokenizers.fastokens import apply_fastokens_patch
 
 from ray.llm._internal.serve.core.configs.llm_config import LLMConfig
 from ray.llm._internal.serve.core.ingress.builder import (
@@ -434,26 +437,87 @@ class TestPreRoutingTokenization:
             (RoundRobinRouter, False),
         ],
     )
-    def test_enabled_only_for_kv_aware_router(self, request_router_class, expected):
+    def test_enabled_only_for_kv_aware_router(
+        self, request_router_class, expected, monkeypatch
+    ):
+        monkeypatch.delenv("FASTOKENS_SEGMENT_CACHE", raising=False)
         app = _build_llm_app(request_router_class)
         init_kwargs = _router_init_kwargs(app)
         # A non-None llm_config is the sole signal for pre-routing tokenization;
         # it must be bound exactly when the router is KV-aware.
         assert (init_kwargs["llm_config"] is not None) is expected
+        if expected:
+            env_vars = _router_ray_actor_options(app)["runtime_env"]["env_vars"]
+            assert env_vars["FASTOKENS_SEGMENT_CACHE"] == "1024"
+            assert "VLLM_USE_FASTOKENS" not in env_vars
 
-    def test_runtime_env_reaches_tokenizing_router(self):
-        app = _build_llm_app(
-            KVAwareRouter,
-            runtime_env={"env_vars": {"VLLM_USE_FASTOKENS": "1", "EXTRA_VAR": "value"}},
-        )
+    @pytest.mark.parametrize(
+        "inherited_cache_mib, configured_cache_mib, expected_cache_mib",
+        [("32", None, "32"), ("128", "0", "0"), ("128", "64", "64")],
+        ids=["inherited", "disabled", "configured"],
+    )
+    def test_runtime_env_reaches_tokenizing_router(
+        self, monkeypatch, inherited_cache_mib, configured_cache_mib, expected_cache_mib
+    ):
+        monkeypatch.setenv("FASTOKENS_SEGMENT_CACHE", inherited_cache_mib)
+        model_env = {"VLLM_USE_FASTOKENS": "1", "EXTRA_VAR": "value"}
+        if configured_cache_mib is not None:
+            model_env["FASTOKENS_SEGMENT_CACHE"] = configured_cache_mib
+        app = _build_llm_app(KVAwareRouter, runtime_env={"env_vars": model_env})
         runtime_env = _router_ray_actor_options(app)["runtime_env"]
         llm_config = _router_init_kwargs(app)["llm_config"]
-        for name, value in llm_config.runtime_env["env_vars"].items():
+        assert (
+            llm_config.runtime_env["env_vars"].get("FASTOKENS_SEGMENT_CACHE")
+            == configured_cache_mib
+        )
+        for name, value in model_env.items():
             assert runtime_env["env_vars"][name] == value
+        assert runtime_env["env_vars"]["FASTOKENS_SEGMENT_CACHE"] == expected_cache_mib
         assert (
             runtime_env["env_vars"]["RAY_SERVE_RUN_USER_CODE_IN_SEPARATE_THREAD"] == "0"
         )
         assert runtime_env["env_vars"]["RAY_SERVE_RUN_ROUTER_IN_SEPARATE_LOOP"] == "0"
+
+
+def test_native_cache_reuses_multiturn_prefix(monkeypatch):
+    fastokens = pytest.importorskip("fastokens")
+    monkeypatch.setenv("FASTOKENS_SEGMENT_CACHE", "1")
+    model = os.environ.get("RAY_TOKEN_CACHE_TEST_MODEL", "Qwen/Qwen3-0.6B")
+    fastokens.unpatch_transformers()
+    reference = AutoTokenizer.from_pretrained(model)
+    apply_fastokens_patch()
+    try:
+        tokenizer = AutoTokenizer.from_pretrained(model)
+        backend = tokenizer.backend_tokenizer
+        if not hasattr(backend, "segment_cache_stats"):
+            pytest.skip("fastokens does not provide the native segment cache API")
+        assert backend.segment_cache_stats()["max_bytes"] == 1 << 20
+
+        context = "shared reference material " * 50
+        prefix = (
+            "<|im_start|>system\n" + context + "<|im_end|>\n"
+            "<|im_start|>user\nFirst question.<|im_end|>\n"
+            "<|im_start|>assistant\n"
+        )
+        followup = (
+            prefix + "First answer.<|im_end|>\n"
+            "<|im_start|>user\nFollow-up question.<|im_end|>\n"
+            "<|im_start|>assistant\n"
+        )
+        kwargs = {"add_special_tokens": False}
+        assert (
+            tokenizer(prefix, **kwargs)["input_ids"]
+            == reference(prefix, **kwargs)["input_ids"]
+        )
+        before = backend.segment_cache_stats()
+        assert (
+            tokenizer(followup, **kwargs)["input_ids"]
+            == reference(followup, **kwargs)["input_ids"]
+        )
+        after = backend.segment_cache_stats()
+        assert after["hit_bytes"] - before["hit_bytes"] >= len(context)
+    finally:
+        fastokens.unpatch_transformers()
 
 
 if __name__ == "__main__":
