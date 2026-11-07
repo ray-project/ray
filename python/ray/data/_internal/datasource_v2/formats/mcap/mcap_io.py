@@ -120,6 +120,33 @@ def plan_chunk_reads(
 OnCorrupt = Callable[["ChunkIndex", Exception], None]
 
 
+def is_corrupt_data_error(error: BaseException) -> bool:
+    """Whether ``error`` says MCAP bytes do not decode, rather than that a read
+    failed or the reader has a bug.
+
+    Parsing a malformed record raises an mcap ``McapError``, ``struct.error`` or
+    a ``ValueError`` such as ``UnicodeDecodeError``. Decompressing raises
+    ``zstandard.ZstdError``, or for lz4 a ``RuntimeError`` whose message starts
+    with ``LZ4F_``. An ``OSError`` and a missing codec
+    (``UnsupportedCompressionError``) are not corruption.
+    """
+    import struct
+
+    from mcap.exceptions import McapError, UnsupportedCompressionError
+
+    if isinstance(error, (OSError, UnsupportedCompressionError)):
+        return False
+    if isinstance(error, (McapError, struct.error, ValueError)):
+        return True
+    if type(error) is RuntimeError:
+        return str(error).startswith("LZ4F_")
+    try:
+        import zstandard
+    except ImportError:
+        return False
+    return isinstance(error, zstandard.ZstdError)
+
+
 def read_chunks(
     f: Any,
     chunk_indexes: Iterable["ChunkIndex"],
@@ -267,11 +294,12 @@ def _parse_chunk_or_report(
     on_corrupt: Optional[OnCorrupt],
 ) -> Optional["Chunk"]:
     """``_parse_chunk``, or ``None`` after handing a corrupt record to
-    ``on_corrupt``. Without ``on_corrupt`` the error raises."""
+    ``on_corrupt``. Without ``on_corrupt``, or for an error that is not
+    corruption (``is_corrupt_data_error``), the error raises."""
     try:
         return _parse_chunk(stream, position)
-    except Exception as e:  # noqa: BLE001 - any parse failure is a corrupt record
-        if on_corrupt is None:
+    except Exception as e:
+        if on_corrupt is None or not is_corrupt_data_error(e):
             raise
         on_corrupt(chunk_index, e)
         return None
