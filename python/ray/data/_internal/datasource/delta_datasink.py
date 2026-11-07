@@ -27,7 +27,7 @@ from ray.util.annotations import DeveloperAPI
 if TYPE_CHECKING:
     import pyarrow as pa
     import pyarrow.fs as pafs
-    from deltalake import DeltaTable
+    from deltalake import DeltaTable, Metadata
     from deltalake.transaction import AddAction
 
     from ray.data.catalog import Catalog
@@ -325,31 +325,32 @@ class DeltaDatasink(Datasink[DeltaWriteResult]):
 
         from deltalake import DeltaTable
 
-        def _read_existing_partition_by() -> Optional[List[str]]:
-            """The table's partition columns, or None if it doesn't exist yet."""
+        def _read_existing_metadata() -> Optional["Metadata"]:
+            """The table's metadata, or None if it doesn't exist yet."""
             if not DeltaTable.is_deltatable(
                 self._path, storage_options=self._storage_options
             ):
                 return None
-            return list(
-                DeltaTable(self._path, storage_options=self._storage_options)
-                .metadata()
-                .partition_columns
-            )
+            return DeltaTable(
+                self._path, storage_options=self._storage_options
+            ).metadata()
 
         # Retried and credential-refreshed like the commit's own calls in
         # ``on_write_complete``: these are the same kind of driver-side Delta
         # log reads, so an expired token or a throttled request here would
         # otherwise fail the whole job before any refresh could happen. The
-        # validation below stays outside the retry -- a partition mismatch is a
-        # logical error that must not be retried.
-        existing_partition_by = self._with_retry(
-            _read_existing_partition_by,
-            description=f"read partition columns of Delta table '{self._path}'",
+        # validation below stays outside the retry -- a column-mapped table or
+        # a partition mismatch is a logical error that must not be retried.
+        existing_metadata = self._with_retry(
+            _read_existing_metadata,
+            description=f"read metadata of Delta table '{self._path}'",
             refresh=self._refresh_driver_filesystem,
         )
-        if existing_partition_by is None:
+        if existing_metadata is None:
             return
+
+        _raise_if_column_mapped(existing_metadata, self._path)
+        existing_partition_by = list(existing_metadata.partition_columns)
 
         if not self._partition_by:
             self._partition_by = existing_partition_by
@@ -454,6 +455,9 @@ class DeltaDatasink(Datasink[DeltaWriteResult]):
             # boundary.
             def _commit(schema: "pa.Schema" = schema) -> None:
                 dt = DeltaTable(self._path, storage_options=self._storage_options)
+                # Checked again here because ``on_write_start`` doesn't run
+                # for an empty dataset, and the table may have changed since.
+                _raise_if_column_mapped(dt.metadata(), self._path)
                 if delta_mode == "append":
                     dt = self._reconcile_schema_with_existing_table(schema, dt)
                 dt.create_write_transaction(
@@ -885,6 +889,29 @@ class DeltaDatasink(Datasink[DeltaWriteResult]):
             # A worker that can't rebuild its filesystem with different
             # credentials gains nothing from retrying an auth error.
             retry_auth_errors=self._worker_retry_can_change_credentials(),
+        )
+
+
+def _raise_if_column_mapped(metadata: "Metadata", path: str) -> None:
+    """Refuse to write to a table that uses column mapping.
+
+    The data files of a column-mapped table store their columns under
+    physical names (such as ``col-<uuid>``) or field ids, which only the log
+    maps to the table's column names. This datasink writes files with the
+    column names themselves, so engines that apply the mapping would read
+    every written column as null. deltalake 1.5.0 refuses such a commit, but
+    later versions (such as 1.6.6) accept it.
+    """
+    mode = metadata.configuration.get("delta.columnMapping.mode", "none")
+    if mode.lower() != "none":
+        raise NotImplementedError(
+            f"Cannot write to Delta table '{path}': it uses column mapping "
+            f"(`delta.columnMapping.mode` is {mode!r}), which "
+            "`Dataset.write_delta` doesn't support yet. Its data files must "
+            "store columns under physical names that only the Delta log maps "
+            "to the table's column names, so files written with the column "
+            "names would read back as nulls. Follow "
+            "https://github.com/ray-project/ray/issues/64854 for support."
         )
 
 
