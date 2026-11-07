@@ -360,7 +360,7 @@ def main(args: argparse.Namespace):
         from verify_output import verify
 
         print(f"Verifying sink {WRITE_PATH}")
-        if verify(WRITE_PATH, expect_rows_missing_ok=False) != 0:
+        if verify(WRITE_PATH) != 0:
             raise RuntimeError(
                 f"Output verification failed for {WRITE_PATH}; see the checks above."
             )

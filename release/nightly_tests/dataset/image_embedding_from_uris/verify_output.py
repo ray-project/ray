@@ -105,7 +105,7 @@ def load_keys(path: str, columns: List[str]):
     return table
 
 
-def verify(path: str, expect_rows_missing_ok: bool) -> int:
+def verify(path: str) -> int:
     report = Report()
     table = load_keys(path, KEY_COLUMNS)
 
@@ -153,7 +153,7 @@ def verify(path: str, expect_rows_missing_ok: bool) -> int:
     missing = np.setdiff1d(expected_serials, present, assume_unique=True)
     unexpected = np.setdiff1d(present, expected_serials, assume_unique=True)
     report.check(
-        len(missing) == 0 or expect_rows_missing_ok,
+        len(missing) == 0,
         "every input row reached the sink",
         f"{len(missing):,} of {n_inputs:,} input rows absent: {_fmt(missing)}",
     )
@@ -293,17 +293,9 @@ def main() -> int:
         metavar="N",
         help="Also read the embedding payload from N output files and sanity-check it.",
     )
-    parser.add_argument(
-        "--allow-missing-rows",
-        action="store_true",
-        help=(
-            "Report absent input rows without failing. Use when the run's filter is "
-            "expected to drop rows; it does not for the stock workload."
-        ),
-    )
     args = parser.parse_args()
 
-    status = verify(args.path, args.allow_missing_rows)
+    status = verify(args.path)
     if args.sample_embeddings:
         status |= sample_embeddings(args.path, args.sample_embeddings)
     return status
