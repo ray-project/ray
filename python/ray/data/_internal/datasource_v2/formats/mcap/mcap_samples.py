@@ -1,26 +1,67 @@
-"""Training samples: the samples dataset a sample read takes, and its checks.
+"""Training samples: which message fills each step of a sample row.
 
 ``read_mcap(samples=...)`` reads one row per sample. A sample names its file,
 a clip ``[clip_start, clip_end)`` and, when a topic measures from it, an
-``anchor`` inside the clip, in nanoseconds of log time. ``check_samples_schema``
-checks the dataset's columns when the read is planned. ``sample_manifest``
-checks each sample as the read maps it to a manifest row. A bad sample fails
-its batch, naming it, or costs only its own row when the job skips errors.
+``anchor`` inside the clip, in nanoseconds of log time. Each topic's
+``TopicSpec`` places its steps before or after a reference point, or inside the
+clip (``mcap_topic_spec``). This module turns the two into the message that
+fills each step, and lays out a sample row's columns. It does no I/O:
+``resolve_steps`` asks a ``TopicTimes`` for the topic's messages, and the
+reader answers from the chunks it reads (``mcap_sample_rows``).
+
+Time steps (``steps.before``, ``steps.after``) are fixed times counted from the
+anchor. Each step takes the message logged nearest to it inside the clip, the
+earlier one on a tie (``match.nearest``). A before-window takes only messages
+logged up to the anchor, and an after-window only messages logged after it, so
+no step looks past the anchor from its side (m is a message)::
+
+    clip                        [---------------------------------------------)
+    messages                     m   m   m   m   m   m   m   m   m   m   m   m
+    anchor                                                 A
+    steps.before(0.3, fps=10)                      s0  s1  s2
+    steps.after(0.2, fps=10)                                   s0  s1
+
+A window measured from the clip's first or last nanosecond (``at=``) is
+resolved the same way, with that point in the anchor's place. Clip steps
+(``steps.across``, ``steps.at``) take the nearest message anywhere in the clip.
+
+With ``match.all_in_step``, each step takes every message of its slot instead,
+from just after the previous step up to and including it::
+
+    messages                     m m m m   m   m m m m m   m m m m m
+    steps.before(0.3, fps=10)                      s0      s1      s2 = A
+    slots                                   (------](------](------]
+
+A step with no such message, such as one past the clip's edge, is padded:
+``"edge"`` repeats a message from the window's own side of the anchor,
+``"zeros"`` leaves it empty, and ``"raise"`` fails the read.
 """
 
+import bisect
 from dataclasses import dataclass
+from fractions import Fraction
 from typing import (
     TYPE_CHECKING,
     Callable,
+    Generic,
     Iterator,
     List,
     Optional,
+    Protocol,
     Sequence,
     Tuple,
+    TypeVar,
 )
 
 import pyarrow as pa
 
+from ray.data._internal.datasource_v2.formats.mcap.mcap_topic_spec import (
+    AllInStep,
+    Backward,
+    ClipSteps,
+    TimeSteps,
+    TopicSpec,
+)
 from ray.data._internal.datasource_v2.interfaces.file_manifest import (
     FILE_CHUNK_METADATA_COLUMN_NAME,
     FILE_SIZE_COLUMN_NAME,
@@ -47,6 +88,717 @@ DATA_PREFIX = "data:"
 TIMES_PREFIX = "times:"
 IS_PAD_PREFIX = "is_pad:"
 TOPIC_PREFIXES: Tuple[str, ...] = (DATA_PREFIX, TIMES_PREFIX, IS_PAD_PREFIX)
+
+_NS_PER_S = 1_000_000_000
+# The latest log time a sample row's int64 ``times:`` column holds: the edge of
+# a recording that a topic read ``within="recording"`` may reach.
+_MAX_LOG_TIME = 2**63 - 1
+
+M = TypeVar("M")
+M_co = TypeVar("M_co", covariant=True)
+
+
+class TopicTimes(Protocol[M_co]):
+    """One topic's messages in one recording, by log time.
+
+    ``resolve_steps`` asks for the messages it needs through these methods.
+    Each returns ``(log_time, message)`` pairs in log-time order, with messages
+    of equal log time in the order they were recorded. Bounds are inclusive.
+    """
+
+    def last_in(self, low: int, high: int, count: int) -> List[Tuple[int, M_co]]:
+        """The last ``count`` messages logged in ``[low, high]``, or all of them
+        if there are fewer."""
+        ...
+
+    def first_in(self, low: int, high: int, count: int) -> List[Tuple[int, M_co]]:
+        """The first ``count`` messages logged in ``[low, high]``, or all of
+        them if there are fewer."""
+        ...
+
+    def all_in(self, low: int, high: int) -> List[Tuple[int, M_co]]:
+        """Every message logged in ``[low, high]``."""
+        ...
+
+
+class SortedTimes(Generic[M]):
+    """A ``TopicTimes`` over messages held in a list, sorted by log time."""
+
+    def __init__(self, timed: Sequence[Tuple[int, M]]):
+        self._timed = list(timed)
+        self._times = [time for time, _ in self._timed]
+
+    def _span(self, low: int, high: int) -> Tuple[int, int]:
+        return (
+            bisect.bisect_left(self._times, low),
+            bisect.bisect_right(self._times, high),
+        )
+
+    def last_in(self, low: int, high: int, count: int) -> List[Tuple[int, M]]:
+        start, end = self._span(low, high)
+        return self._timed[max(start, end - count) : end]
+
+    def first_in(self, low: int, high: int, count: int) -> List[Tuple[int, M]]:
+        start, end = self._span(low, high)
+        return self._timed[start : min(end, start + count)]
+
+    def all_in(self, low: int, high: int) -> List[Tuple[int, M]]:
+        start, end = self._span(low, high)
+        return self._timed[start:end]
+
+
+@dataclass(frozen=True)
+class SampleTimes:
+    """A sample's clip ``[clip_start, clip_end)`` and its anchor, in log-time ns.
+
+    A sample without an anchor holds ``clip_start`` in its place. Only topics
+    that do not measure from the anchor read it.
+    """
+
+    clip_start: int
+    clip_end: int
+    anchor: int
+
+    @property
+    def clip_last(self) -> int:
+        """The clip's last nanosecond: ``clip_end`` is exclusive."""
+        return self.clip_end - 1
+
+    def point(self, name: str) -> int:
+        """The log time of ``"anchor"``, ``"clip_start"`` or ``"clip_end"``,
+        the last of which is the clip's last nanosecond."""
+        if name == "clip_start":
+            return self.clip_start
+        if name == "clip_end":
+            return self.clip_last
+        return self.anchor
+
+
+def sample_anchors(table: pa.Table) -> List[int]:
+    """Each sample's anchor, or its ``clip_start`` when it has none."""
+    starts = table.column(CLIP_START_COLUMN).to_pylist()
+    if ANCHOR_COLUMN not in table.column_names:
+        return list(starts)
+    anchors = table.column(ANCHOR_COLUMN).to_pylist()
+    return [start if a is None else a for start, a in zip(starts, anchors)]
+
+
+@dataclass(frozen=True)
+class TopicPlan:
+    """One topic's ``TopicSpec`` in the terms its steps are resolved in.
+
+    A window's steps lie on one side of a reference point, ``at``. Clip steps
+    (``clip=True``) lie inside the clip instead: ``num_steps`` spread across
+    it, one every ``1/fps``, one at ``point``, or, with none of these, every
+    message of the clip.
+
+    Attributes:
+        topic: The topic name.
+        before: Whether a window ends at its reference point rather than
+            starting after it.
+        pad: How a step with no message is filled (``TopicSpec.pad``).
+        num_steps: The fixed number of steps, or ``None`` when it varies.
+        fps: Steps per second of time steps, or ``None`` for message steps.
+        span_ns: The horizon of ``steps.every``, in nanoseconds.
+        at: A window's reference point: ``"anchor"``, ``"clip_start"`` or
+            ``"clip_end"``.
+        clip: Whether the steps lie inside the clip rather than around a point.
+        point: The point of ``steps.at``, or ``None``.
+        backward: Whether a time step takes the last message at or before it
+            (``match.backward``) rather than the nearest.
+        within_recording: Whether the steps may reach past the clip, up to the
+            recording's edges (``within="recording"``).
+        all_in_step: Whether each time step takes every message of its slot
+            (``match.all_in_step``) rather than the nearest one.
+    """
+
+    topic: str
+    before: bool
+    pad: str
+    num_steps: Optional[int]
+    fps: Optional[Fraction] = None
+    span_ns: Optional[int] = None
+    at: str = "anchor"
+    clip: bool = False
+    point: Optional[str] = None
+    backward: bool = False
+    within_recording: bool = False
+    all_in_step: bool = False
+
+    @classmethod
+    def from_spec(cls, topic: str, spec: TopicSpec) -> "TopicPlan":
+        steps = spec.steps
+        backward = isinstance(spec.match, Backward)
+        if isinstance(steps, ClipSteps):
+            count = 1 if steps.point is not None else steps.count
+            return cls(
+                topic,
+                True,
+                spec.pad,
+                num_steps=count,
+                fps=steps.fps,
+                clip=True,
+                point=steps.point,
+                backward=backward,
+            )
+        if not isinstance(steps, TimeSteps) and steps.whole_clip:
+            return cls(topic, True, spec.pad, num_steps=None, clip=True)
+        common = dict(
+            topic=topic,
+            before=steps.side == "before",
+            pad=spec.pad,
+            at=steps.at,
+            within_recording=steps.within == "recording",
+        )
+        if isinstance(steps, TimeSteps):
+            return cls(
+                num_steps=steps.count,
+                fps=steps.fps,
+                backward=backward,
+                all_in_step=isinstance(spec.match, AllInStep),
+                **common,
+            )
+        if steps.count is not None:
+            return cls(num_steps=steps.count, **common)
+        return cls(num_steps=None, span_ns=steps.span_ns, **common)
+
+    def measured(self, sample: SampleTimes) -> SampleTimes:
+        """``sample`` with this window's reference point in the anchor's place."""
+        if self.clip or self.at == "anchor":
+            return sample
+        return SampleTimes(sample.clip_start, sample.clip_end, sample.point(self.at))
+
+    def clip_step_times(self, sample: SampleTimes) -> List[int]:
+        """The log time of each clip step, in order: ``num_steps`` evenly spaced
+        from the clip's first nanosecond to its last, one every ``1/fps`` from
+        its first, or the one ``point``."""
+        if self.point is not None:
+            return [sample.point(self.point)]
+        start, last = sample.clip_start, sample.clip_last
+        if self.fps is not None:
+            steps = []
+            k = 0
+            while start + self.step_offset_ns(k) <= last:
+                steps.append(start + self.step_offset_ns(k))
+                k += 1
+            return steps
+        assert self.num_steps is not None
+        if self.num_steps == 1:
+            return [start]
+        span = last - start
+        return [
+            start + round(Fraction(i * span, self.num_steps - 1))
+            for i in range(self.num_steps)
+        ]
+
+    def bounds(self, sample: SampleTimes) -> Tuple[int, int]:
+        """The first and last log time the topic may take a message from: the
+        clip's, or the recording's with ``within="recording"``. Clip steps
+        always stay in the clip."""
+        if self.within_recording and not self.clip:
+            return 0, _MAX_LOG_TIME
+        return sample.clip_start, sample.clip_last
+
+    def step_offset_ns(self, k: int) -> int:
+        """How far step ``k`` lies from the anchor, rounded to the nanosecond."""
+        assert self.fps is not None
+        return round(Fraction(k * _NS_PER_S) / self.fps)
+
+    def step_times(self, anchor: int) -> List[int]:
+        """The log time of each step of a window with ``fps``, in order.
+
+        A before-window's last step is the anchor. An after-window's first step
+        is one step after it.
+        """
+        assert self.num_steps is not None and self.fps is not None
+        n = self.num_steps
+        if self.before:
+            return [anchor - self.step_offset_ns(n - 1 - i) for i in range(n)]
+        return [anchor + self.step_offset_ns(i + 1) for i in range(n)]
+
+    def slot_bounds(self, anchor: int) -> List[int]:
+        """The bounds of the slots of ``match.all_in_step``: step ``k``'s slot
+        is ``(bounds[k], bounds[k + 1]]``.
+
+        The first slot reaches one step period before the first step: for a
+        before-window that is ``n`` steps before the anchor, and for an
+        after-window the anchor itself, so no slot crosses the anchor.
+        """
+        assert self.num_steps is not None and self.fps is not None
+        n = self.num_steps
+        if self.before:
+            return [anchor - self.step_offset_ns(n - i) for i in range(n + 1)]
+        return [anchor + self.step_offset_ns(i) for i in range(n + 1)]
+
+    def reach(self, sample: SampleTimes) -> Tuple[int, int]:
+        """The span of log time within ``bounds`` that the window's steps fall in.
+
+        For time steps it runs from the first step to the last, or from the
+        first slot's start with ``match.all_in_step``, and for ``steps.every``
+        over its horizon. ``steps.last`` and ``steps.next`` reach as far back
+        or on as the recording needs, so only the reference point's side of
+        them is known here. Clip steps reach the whole clip, and ``steps.at``
+        its one point. The reader reads the chunks over this span first, and
+        reads on as the steps need.
+        """
+        if self.clip:
+            if self.point is not None:
+                t = sample.point(self.point)
+                return t, t
+            return sample.clip_start, sample.clip_last
+        sample = self.measured(sample)
+        anchor = sample.anchor
+        first, last = self.bounds(sample)
+        if self.before:
+            if self.fps is not None and self.all_in_step:
+                low = self.slot_bounds(anchor)[0] + 1
+            elif self.fps is not None:
+                assert self.num_steps is not None
+                low = anchor - self.step_offset_ns(self.num_steps - 1)
+            elif self.span_ns is not None:
+                low = anchor - self.span_ns + 1
+            else:
+                low = anchor
+            return max(low, first), anchor
+        if self.fps is not None:
+            assert self.num_steps is not None
+            high = anchor + self.step_offset_ns(self.num_steps)
+        elif self.span_ns is not None:
+            high = anchor + self.span_ns
+        else:
+            high = anchor + 1
+        return min(anchor + 1, last), min(high, last)
+
+
+@dataclass(frozen=True)
+class Step(Generic[M]):
+    """One step of a topic's window in a sample row.
+
+    Attributes:
+        message: What fills the step: the message the step takes, the message
+            ``"edge"`` padding repeats, or ``None`` for an empty step.
+        time: The log time of ``message``. An empty step has its own time with
+            ``fps``, and otherwise the edge of the topic's ``bounds`` on the
+            window's side.
+        is_pad: Whether the step is padded, having taken no message of its
+            own.
+    """
+
+    message: Optional[M]
+    time: int
+    is_pad: bool
+
+
+@dataclass(frozen=True)
+class SlotStep(Generic[M]):
+    """One step of ``match.all_in_step``: every message logged in its slot.
+
+    Attributes:
+        messages: The messages, in log-time order; for an empty slot, the ones
+            ``"edge"`` padding repeats, or none.
+        times: Their log times.
+        is_pad: Whether the step is padded, its slot having held no message
+            of its own.
+    """
+
+    messages: List[M]
+    times: List[int]
+    is_pad: bool
+
+
+@dataclass(frozen=True)
+class _Slot(Generic[M]):
+    """A step before padding: its time, and the message it took, if any.
+
+    ``outside`` marks a step that lies outside the clip.
+    """
+
+    time: int
+    taken: Optional[Tuple[int, M]]
+    outside: bool = False
+
+
+def resolve_steps(
+    plan: TopicPlan, times: TopicTimes[M], sample: SampleTimes, where: str
+) -> List[Step[M]]:
+    """The steps of one topic's window for one sample, padded.
+
+    ``where`` names the sample in the error that ``pad="raise"`` raises when a
+    step has no message. ``steps.every`` has no fixed steps: it holds every
+    message within its horizon and inside the clip. A plan with
+    ``match.all_in_step`` goes to ``resolve_slots`` instead.
+    """
+    assert not plan.all_in_step
+    if plan.clip:
+        if plan.num_steps is None and plan.fps is None:
+            all_in = times.all_in(sample.clip_start, sample.clip_last)
+            return [Step(m, time, False) for time, m in all_in]
+        slots = _clip_slots(plan, times, sample)
+        return _padded(plan, slots, times, sample, where)
+    sample = plan.measured(sample)
+    if plan.num_steps is None:
+        return _variable_steps(plan, times, sample, where)
+    if plan.fps is not None:
+        slots = _timed_slots(plan, times, sample)
+    else:
+        slots = _counted_slots(plan, times, sample)
+    return _padded(plan, slots, times, sample, where)
+
+
+def resolve_slots(
+    plan: TopicPlan, times: TopicTimes[M], sample: SampleTimes, where: str
+) -> List[SlotStep[M]]:
+    """The steps of ``match.all_in_step`` for one sample, padded.
+
+    Each step takes every message logged in its slot, within the topic's
+    ``bounds``. An empty slot is padded as ``plan.pad`` says: ``"edge"``
+    repeats the nearest slot that held messages, the earlier one on a tie, or
+    the message ``_slot_edge`` finds when none did. ``"zeros"`` leaves it
+    empty, and ``"raise"`` fails the read naming the sample.
+    """
+    assert plan.all_in_step
+    sample = plan.measured(sample)
+    first_time, last_time = plan.bounds(sample)
+    bounds = plan.slot_bounds(sample.anchor)
+    filled: List[List[Tuple[int, M]]] = []
+    for low, high in zip(bounds, bounds[1:]):
+        low, high = max(low + 1, first_time), min(high, last_time)
+        filled.append(times.all_in(low, high) if low <= high else [])
+    real = [i for i, slot in enumerate(filled) if slot]
+    if len(real) < len(filled) and plan.pad == "raise":
+        raise ValueError(
+            f"{where}: {len(filled) - len(real)} of {len(filled)} steps of topic "
+            f"{plan.topic!r} hold no message in {_region(plan, sample)}, and its "
+            "pad is 'raise'. Use pad='edge' or pad='zeros' to pad such steps."
+        )
+    edge: List[Tuple[int, M]] = []
+    if not real and plan.pad == "edge":
+        edge = _slot_edge(plan, times, sample)
+    steps: List[SlotStep[M]] = []
+    for i, slot in enumerate(filled):
+        is_pad = not slot
+        if is_pad and plan.pad == "edge":
+            slot = filled[_nearest_index(real, i)] if real else edge
+        steps.append(SlotStep([m for _, m in slot], [t for t, _ in slot], is_pad))
+    return steps
+
+
+def _slot_edge(
+    plan: TopicPlan, times: TopicTimes[M], sample: SampleTimes
+) -> List[Tuple[int, M]]:
+    """The message ``"edge"`` repeats when every slot of ``match.all_in_step``
+    is empty: the one nearest the window on its side of the anchor.
+
+    No slot holds a message, so for a before-window the last message up to the
+    anchor lies before the first slot, and for an after-window the first one
+    after the anchor lies past the last slot.
+    """
+    low, high = _window_side(plan, sample)
+    if plan.before:
+        return times.last_in(low, high, 1)
+    return times.first_in(low, high, 1)
+
+
+def _timed_slots(
+    plan: TopicPlan, times: TopicTimes[M], sample: SampleTimes
+) -> List[_Slot[M]]:
+    """The steps of a window with ``fps``, each with the message it takes.
+
+    Each step within the topic's ``bounds`` takes the message logged nearest
+    to it, the earlier one on a tie, from the window's side of the anchor. Log
+    times jitter, so a step meant to fall on a frame lands just before or
+    after it; the nearest message is still that frame. With ``backward``, a
+    step takes the last message logged at or before it instead. The messages
+    are asked for once: the last one at or before the first step, every one up
+    to the last step, and, for nearest, the first one after it.
+    """
+    step_times = plan.step_times(sample.anchor)
+    first_time, last_time = plan.bounds(sample)
+    if plan.before:
+        low, high = first_time, sample.anchor
+    else:
+        low, high = sample.anchor + 1, last_time
+    return _matched_slots(
+        step_times, low, high, (first_time, last_time), times, plan.backward
+    )
+
+
+def _clip_slots(
+    plan: TopicPlan, times: TopicTimes[M], sample: SampleTimes
+) -> List[_Slot[M]]:
+    """The clip steps of ``steps.across`` or ``steps.at``, each filled as
+    ``match`` says from anywhere in the clip."""
+    step_times = plan.clip_step_times(sample)
+    clip = (sample.clip_start, sample.clip_last)
+    return _matched_slots(step_times, *clip, clip, times, plan.backward)
+
+
+def _matched_slots(
+    step_times: List[int],
+    low: int,
+    high: int,
+    bounds: Tuple[int, int],
+    times: TopicTimes[M],
+    backward: bool,
+) -> List[_Slot[M]]:
+    """Each step with the message it takes from ``[low, high]``: the nearest,
+    or with ``backward`` the last at or before it. A step outside ``bounds``
+    takes none.
+    """
+    first_time, last_time = bounds
+    inside = [t for t in step_times if first_time <= t <= last_time]
+    timed: List[Tuple[int, M]] = []
+    if inside:
+        first, last = inside[0], inside[-1]
+        timed = times.last_in(low, first, 1)
+        if first < last:
+            timed += times.all_in(first + 1, last)
+        if last < high and not backward:
+            timed += times.first_in(last + 1, high, 1)
+    known = [time for time, _ in timed]
+    pick = _backward if backward else _nearest
+    slots: List[_Slot[M]] = []
+    for t in step_times:
+        if not first_time <= t <= last_time:
+            slots.append(_Slot(t, None, outside=True))
+        else:
+            slots.append(_Slot(t, pick(timed, known, t)))
+    return slots
+
+
+def _nearest(
+    timed: List[Tuple[int, M]], known: List[int], t: int
+) -> Optional[Tuple[int, M]]:
+    """The message of ``timed`` logged nearest to ``t``, the earlier on a tie.
+
+    ``known`` holds the log times of ``timed``, in order.
+    """
+    after = bisect.bisect_right(known, t)
+    candidates = [i for i in (after - 1, after) if 0 <= i < len(known)]
+    if not candidates:
+        return None
+    return timed[min(candidates, key=lambda i: (abs(known[i] - t), known[i]))]
+
+
+def _backward(
+    timed: List[Tuple[int, M]], known: List[int], t: int
+) -> Optional[Tuple[int, M]]:
+    """The last message of ``timed`` logged at or before ``t``.
+
+    ``known`` holds the log times of ``timed``, in order. Of messages with equal
+    log times, the last recorded is taken.
+    """
+    at_or_before = bisect.bisect_right(known, t) - 1
+    return timed[at_or_before] if at_or_before >= 0 else None
+
+
+def _counted_slots(
+    plan: TopicPlan, times: TopicTimes[M], sample: SampleTimes
+) -> List[_Slot[M]]:
+    """The steps of ``steps.last`` or ``steps.next``: that many recorded
+    messages next to the anchor, within the topic's ``bounds``.
+
+    A before-window takes the last messages logged at or before the anchor,
+    an after-window the first logged after it. The steps the bounds cannot
+    fill lie past their last message on that side, and take the edge of the
+    bounds as their time.
+    """
+    assert plan.num_steps is not None
+    count = plan.num_steps
+    first_time, last_time = plan.bounds(sample)
+    if plan.before:
+        taken = times.last_in(first_time, sample.anchor, count)
+        missing = [_Slot(first_time, None) for _ in range(count - len(taken))]
+        return missing + [_Slot(time, (time, m)) for time, m in taken]
+    taken = times.first_in(sample.anchor + 1, last_time, count)
+    missing = [_Slot(last_time, None) for _ in range(count - len(taken))]
+    return [_Slot(time, (time, m)) for time, m in taken] + missing
+
+
+def _padded(
+    plan: TopicPlan,
+    slots: List[_Slot[M]],
+    times: TopicTimes[M],
+    sample: SampleTimes,
+    where: str,
+) -> List[Step[M]]:
+    """The steps, with those that took no message filled as ``plan.pad`` says.
+
+    ``"edge"`` repeats a message from the window's own side only
+    (``_edge_message``). A step with none to repeat stays empty.
+    """
+    real = [i for i, slot in enumerate(slots) if slot.taken is not None]
+    if len(real) < len(slots) and plan.pad == "raise":
+        raise ValueError(_unfilled_message(plan, slots, times, sample, where))
+    edge: Optional[Tuple[int, M]] = None
+    if not real and plan.pad == "edge":
+        edge = _clip_edge(plan, times, sample)
+    steps: List[Step[M]] = []
+    for i, slot in enumerate(slots):
+        if slot.taken is not None:
+            steps.append(Step(slot.taken[1], slot.taken[0], False))
+            continue
+        repeated = None
+        if plan.pad == "edge":
+            repeated = _edge_message(plan, slots, real, i, edge)
+        if repeated is None:
+            steps.append(Step(None, slot.time, True))
+        else:
+            steps.append(Step(repeated[1], repeated[0], True))
+    return steps
+
+
+def _edge_message(
+    plan: TopicPlan,
+    slots: List[_Slot[M]],
+    real: List[int],
+    i: int,
+    edge: Optional[Tuple[int, M]],
+) -> Optional[Tuple[int, M]]:
+    """The message ``"edge"`` repeats in step ``i``, which took none.
+
+    It is the message of the nearest step that took one, the earlier on a tie,
+    or ``edge`` when no step did. With ``backward``, it comes only from an
+    earlier step, or is an ``edge`` logged at or before step ``i``, so no step
+    holds a message logged after its own time.
+    """
+    if plan.backward:
+        earlier = [j for j in real if j < i]
+        if earlier:
+            return slots[earlier[-1]].taken
+        if edge is not None and edge[0] <= slots[i].time:
+            return edge
+        return None
+    if real:
+        return slots[_nearest_index(real, i)].taken
+    return edge
+
+
+def _nearest_index(real: List[int], i: int) -> int:
+    """The index in ``real`` nearest to ``i``, the earlier on a tie."""
+    return min(real, key=lambda j: (abs(j - i), j))
+
+
+def _clip_edge(
+    plan: TopicPlan, times: TopicTimes[M], sample: SampleTimes
+) -> Optional[Tuple[int, M]]:
+    """The message ``"edge"`` repeats in a window of ``resolve_steps`` where no
+    step took one.
+
+    It lies on the window's side of the anchor, within the topic's ``bounds``:
+    the first message up to the anchor for a before-window, and the last after
+    it for an after-window. Of the steps ``resolve_steps`` pads, only an
+    after-window's steps past the clip's end can repeat it.
+    """
+    low, high = _window_side(plan, sample)
+    if plan.clip or plan.before:
+        found = times.first_in(low, high, 1)
+    else:
+        found = times.last_in(low, high, 1)
+    return found[0] if found else None
+
+
+def _window_side(plan: TopicPlan, sample: SampleTimes) -> Tuple[int, int]:
+    """Where a window's steps may take messages, within the topic's ``bounds``:
+    up to the anchor for a before-window, after it for an after-window, and
+    the whole clip for clip steps."""
+    first_time, last_time = plan.bounds(sample)
+    if plan.clip:
+        return first_time, last_time
+    if plan.before:
+        return first_time, sample.anchor
+    return sample.anchor + 1, last_time
+
+
+def _variable_steps(
+    plan: TopicPlan, times: TopicTimes[M], sample: SampleTimes, where: str
+) -> List[Step[M]]:
+    """Every message of ``steps.every``'s window, within the topic's ``bounds``.
+
+    A before-window holds ``(anchor - span, anchor]``, an after-window
+    ``(anchor, anchor + span]``. One that reaches past the clip fails the read
+    with ``pad="raise"``, and is cut at the clip's edge otherwise. With
+    ``within="recording"`` it is cut at the recording's edges only.
+    """
+    assert plan.span_ns is not None
+    anchor = sample.anchor
+    first_time, last_time = plan.bounds(sample)
+    if plan.before:
+        low, high = anchor - plan.span_ns + 1, anchor
+        past = first_time - low
+    else:
+        low, high = anchor + 1, anchor + plan.span_ns
+        past = high - last_time
+    if past > 0 and plan.pad == "raise":
+        region = _region(plan, sample)
+        reach = (
+            f"before {region} starts" if plan.before else f"past the end of {region}"
+        )
+        raise ValueError(
+            f"{where}: the window of topic {plan.topic!r} reaches "
+            f"{past / _NS_PER_S:g} s {reach}, and its pad is 'raise'. Use "
+            "pad='edge' or pad='zeros' to cut it at the edge."
+        )
+    low, high = max(low, first_time), min(high, last_time)
+    if low > high:
+        return []
+    return [Step(m, time, False) for time, m in times.all_in(low, high)]
+
+
+def _unfilled_message(
+    plan: TopicPlan,
+    slots: Sequence[_Slot],
+    times: TopicTimes,
+    sample: SampleTimes,
+    where: str,
+) -> str:
+    """The error for a window with steps that took no message, under ``"raise"``."""
+    empty = [slot for slot in slots if slot.taken is None]
+    outside = [slot.time for slot in empty if slot.outside]
+    first_time, last_time = plan.bounds(sample)
+    name = "recording" if plan.within_recording else "clip"
+    found = len(slots) - len(empty)
+    if plan.backward and not outside and times.first_in(*_window_side(plan, sample), 1):
+        # ``backward()`` fills steps from the first message on, so the steps
+        # without one all come before it.
+        steps = f"first {len(empty)} steps" if found else "last step"
+        reason = (
+            f"The first message on the topic in the {name} is logged after the "
+            f"{steps}, and match.backward() takes only a message at or before "
+            "each step."
+        )
+    elif plan.clip:
+        reason = "No message on the topic is logged in the clip."
+    elif outside:
+        if plan.before:
+            past = first_time - min(outside)
+            reason = (
+                f"The window reaches {past / _NS_PER_S:g} s before the {name} starts."
+            )
+        else:
+            past = max(outside) - last_time
+            reason = f"The window reaches {past / _NS_PER_S:g} s past the {name}'s end."
+    elif plan.fps is None:
+        side = "up to" if plan.before else "after"
+        reason = (
+            f"The {name} holds only {found} messages on the topic {side} the anchor."
+        )
+    else:
+        side = "up to" if plan.before else "after"
+        reason = f"No message on the topic is logged in the {name} {side} the anchor."
+    return (
+        f"{where}: {len(empty)} of {len(slots)} steps of topic {plan.topic!r} have "
+        f"no message in {_region(plan, sample)}, and its pad is 'raise'. {reason} "
+        "Use pad='edge' or pad='zeros' to pad such steps."
+    )
+
+
+def _region(plan: TopicPlan, sample: SampleTimes) -> str:
+    """How an error names where the topic may take messages."""
+    if plan.within_recording:
+        return "the recording"
+    return f"the clip [{sample.clip_start}, {sample.clip_end})"
+
 
 # -- the samples dataset and the row layout ---------------------------------
 
@@ -286,3 +1038,40 @@ def check_samples_schema(
 def topic_column_names(topic: str) -> List[str]:
     """Every name a sample row may give one topic's columns."""
     return [f"{prefix}{topic}" for prefix in TOPIC_PREFIXES]
+
+
+def topic_fields(plan: TopicPlan) -> List[pa.Field]:
+    """A topic's columns in a sample row, one list entry per step.
+
+    ``data:<topic>`` holds each step's payload, empty for a step that
+    ``"zeros"`` pads. ``times:<topic>`` holds each step's log time and
+    ``is_pad:<topic>`` whether the step is padded, having taken no message of
+    its own. With
+    ``match.all_in_step``, a step's ``data:`` and ``times:`` entries are lists
+    of every message of its slot.
+    """
+    topic = plan.topic
+    if plan.all_in_step:
+        return [
+            pa.field(f"{DATA_PREFIX}{topic}", pa.list_(pa.list_(pa.large_binary()))),
+            pa.field(f"{TIMES_PREFIX}{topic}", pa.list_(pa.list_(pa.int64()))),
+            pa.field(f"{IS_PAD_PREFIX}{topic}", pa.list_(pa.bool_())),
+        ]
+    return [
+        pa.field(f"{DATA_PREFIX}{topic}", pa.list_(pa.large_binary())),
+        pa.field(f"{TIMES_PREFIX}{topic}", pa.list_(pa.int64())),
+        pa.field(f"{IS_PAD_PREFIX}{topic}", pa.list_(pa.bool_())),
+    ]
+
+
+def sample_row_schema(
+    samples_schema: pa.Schema, plans: Sequence[TopicPlan]
+) -> pa.Schema:
+    """The schema of sample rows: the samples' own columns, then each topic's.
+
+    Topics come in the order ``read_mcap(topics=...)`` gives them.
+    """
+    fields = list(samples_schema)
+    for plan in plans:
+        fields += topic_fields(plan)
+    return pa.schema(fields)
