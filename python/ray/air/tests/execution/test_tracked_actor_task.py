@@ -139,11 +139,15 @@ def test_pending_actors_fifo_deque_and_schedule_actor_tasks_validation():
     assert list(pending) == [a1, a3]
 
     # Mismatched args list with kwargs=None raises ValueError (not TypeError from len(None))
-    with pytest.raises(ValueError, match=r"len\(args\)=1"):
+    with pytest.raises(
+        ValueError, match=r"`len\(args\)=1` and `len\(tracked_actors\)=2`"
+    ):
         actor_manager.schedule_actor_tasks([a1, a3], "foo", args=[(1,)])
 
     # Mismatched kwargs list with args=None raises ValueError (not TypeError from len(None))
-    with pytest.raises(ValueError, match=r"len\(kwargs\)=1"):
+    with pytest.raises(
+        ValueError, match=r"`len\(kwargs\)=1` and `len\(tracked_actors\)=2`"
+    ):
         actor_manager.schedule_actor_tasks([a1, a3], "foo", kwargs=[{"val": 1}])
 
 
