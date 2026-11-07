@@ -6,22 +6,7 @@ set -euo pipefail
 
 PYTHON_VERSION=3.10
 
-echo "--- Build image"
-bazel run //ci/ray_ci:build_in_docker -- docker \
-    --python-version "$PYTHON_VERSION" \
-    --platform cpu --canonical-tag kuberay-test
-docker tag rayproject/ray:kuberay-test ray-ci:kuberay-test
-
-echo "--- Setup k8s environment"
-bash ci/k8s/prep-k8s-environment.sh
-kind load docker-image ray-ci:kuberay-test
-
-# The following is essentially running
-# python python/ray/tests/kuberay/setup/setup_kuberay.py
-
-bash python/ray/autoscaler/kuberay/init-config.sh
-kubectl create namespace kuberay-system
-kubectl create -k python/ray/autoscaler/kuberay/config/default
+bash ci/k8s/setup-kuberay.sh "$PYTHON_VERSION"
 
 echo "--- Test ray cluster creation"
 kubectl apply -f python/ray/tests/kuberay/setup/raycluster_test.yaml
