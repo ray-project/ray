@@ -80,7 +80,10 @@ class ClusterSizeBasedLeaseRequestRateLimiter : public LeaseRequestRateLimiter {
 
  private:
   const size_t min_concurrent_lease_cap_;
-  std::atomic<size_t> num_alive_nodes_;
+  absl::Mutex mu_;
+  // Tracked by ID because the initial node snapshot also reports nodes that were
+  // already dead, which were never counted as alive.
+  absl::flat_hash_set<NodeID> alive_nodes_ ABSL_GUARDED_BY(mu_);
 };
 
 // This class is thread-safe.
