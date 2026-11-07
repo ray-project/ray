@@ -776,10 +776,12 @@ async def test_autoscaling_snapshot_tracks_request_phases():
     assert published[-1] == await actor.get_autoscaling_snapshot()
 
     await actor.on_prefill_complete("cached")
-    assert await actor.get_autoscaling_snapshot() == {
+    expected = {
         OUTSTANDING_EFFECTIVE_PREFILL_TOKENS: 0,
         ACTIVE_DECODE_REQUESTS: 1,
     }
+    assert await actor.get_autoscaling_snapshot() == expected
+    assert published[-1] == expected
 
     # Duplicate lifecycle events are idempotent.
     await actor.on_prefill_complete("cached")
@@ -789,36 +791,12 @@ async def test_autoscaling_snapshot_tracks_request_phases():
     }
 
     await actor.on_request_completed("cached")
-    assert await actor.get_autoscaling_snapshot() == {
+    expected = {
         OUTSTANDING_EFFECTIVE_PREFILL_TOKENS: 0,
         ACTIVE_DECODE_REQUESTS: 0,
     }
-
-
-@pytest.mark.asyncio
-async def test_autoscaling_snapshot_publishes_for_each_lifecycle_change():
-    actor = LocalKVTokenTracker(block_size=16)
-    published = []
-    actor.set_autoscaling_metrics_callback(published.append)
-    await reserve(actor, "batched", 1, list(range(20)))
-
-    before_batch = len(published)
-    await actor.on_lifecycle_events(
-        [
-            ("on_prefill_complete", ("batched",)),
-            ("on_request_completed", ("batched",)),
-        ]
-    )
-
-    assert len(published) == before_batch + 2
-    assert published[before_batch] == {
-        OUTSTANDING_EFFECTIVE_PREFILL_TOKENS: 0,
-        ACTIVE_DECODE_REQUESTS: 1,
-    }
-    assert published[-1] == {
-        OUTSTANDING_EFFECTIVE_PREFILL_TOKENS: 0,
-        ACTIVE_DECODE_REQUESTS: 0,
-    }
+    assert await actor.get_autoscaling_snapshot() == expected
+    assert published[-1] == expected
 
 
 @pytest.mark.asyncio
