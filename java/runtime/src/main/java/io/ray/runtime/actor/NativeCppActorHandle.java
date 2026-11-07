@@ -10,7 +10,11 @@ import java.io.ObjectInput;
 public class NativeCppActorHandle extends NativeActorHandle implements CppActorHandle {
 
   NativeCppActorHandle(byte[] actorId) {
-    super(actorId, Language.CPP);
+    this(actorId, false);
+  }
+
+  NativeCppActorHandle(byte[] actorId, boolean weakRef) {
+    super(actorId, Language.CPP, weakRef);
   }
 
   /** Required by FST. */
