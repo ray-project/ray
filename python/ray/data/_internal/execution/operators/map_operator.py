@@ -984,8 +984,9 @@ def _map_task(
             # Tell the transform whether this attempt can still be rerun, so it
             # knows whether to emit its buffered rows before an error.
             attempts_started += 1
-            ctx.map_retries_left = max_attempts - attempts_started
-            ctx.map_retried_errors = to_match
+            ctx.rerun_policy = ctx.rerun_policy.with_map_retries(
+                max_attempts - attempts_started, to_match
+            )
             # Clear any per-task custom stats before each attempt (the reporter
             # is reused across retries of this task), so a prior attempt's stats
             # can't leak into this one. A producing transform repopulates it

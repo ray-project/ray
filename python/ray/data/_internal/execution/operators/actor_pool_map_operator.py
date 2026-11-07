@@ -53,6 +53,7 @@ from ray.data._internal.execution.interfaces import (
     ReportsExtraResourceUsage,
     TaskContext,
 )
+from ray.data._internal.execution.interfaces.task_context import RerunPolicy
 from ray.data._internal.execution.node_trackers.actor_location import (
     ActorLocationTracker,
     get_or_create_actor_location_tracker,
@@ -92,10 +93,10 @@ def get_map_worker_cls_name(op_name: str) -> str:
     return f"MapWorker({op_name})"
 
 
-def _actor_task_retried_exceptions(
+def _actor_task_rerun_policy(
     task_args: Dict[str, Any], actor_args: Dict[str, Any]
-) -> Union[bool, List[type]]:
-    """The exceptions Ray reruns an actor task on.
+) -> RerunPolicy:
+    """The errors on which Ray reruns an actor task.
 
     Ray reruns an actor task only while ``max_task_retries`` allows it. The task
     option overrides the actor's, and Ray defaults it to 0, as it stays when
@@ -105,8 +106,8 @@ def _actor_task_retried_exceptions(
         "max_task_retries", actor_args.get("max_task_retries", 0)
     )
     if max_task_retries == 0:
-        return False
-    return task_args.get("retry_exceptions", False)
+        return RerunPolicy.from_retry_exceptions(False)
+    return RerunPolicy.from_retry_exceptions(task_args.get("retry_exceptions", False))
 
 
 class ActorPoolMapOperator(MapOperator, ReportsExtraResourceUsage):
@@ -491,7 +492,7 @@ class ActorPoolMapOperator(MapOperator, ReportsExtraResourceUsage):
                 task_idx=self._next_data_task_idx,
                 op_name=self.name,
                 target_max_block_size_override=self.target_max_block_size_override,
-                ray_retried_exceptions=_actor_task_retried_exceptions(
+                rerun_policy=_actor_task_rerun_policy(
                     actor_task_args, self._ray_remote_args
                 ),
             )
