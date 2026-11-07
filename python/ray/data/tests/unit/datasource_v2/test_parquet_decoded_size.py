@@ -1,11 +1,9 @@
 """Tests for the Parquet decoded-size estimate, against what a real decode allocates.
 
-One case per code path: exact with ``SizeStatistics``, and each bound or guess held
-to its documented range.
+Every leaf it sizes must come out exact; a leaf without exact counts falls back.
 """
 
 import datetime
-import math
 from decimal import Decimal
 from types import SimpleNamespace
 
@@ -17,13 +15,11 @@ from ray.data._internal.datasource_v2.formats.parquet.parquet_decoded_size impor
     _UNSUPPORTED,
     _leaf_layout,
     build_leaf_profiles,
-    dictionary_page_read_size,
     estimate_row_group,
     leaf_chunks,
 )
 from ray.data._internal.datasource_v2.formats.parquet.parquet_size_statistics import (
     LeafSizeStats,
-    read_dictionary_page,
     read_footer_stats,
 )
 
@@ -76,11 +72,7 @@ def _no_size_statistics(metadata):
     return None
 
 
-def _estimate(
-    path,
-    size_statistics=_read_size_statistics,
-    read_pages=True,
-):
+def _estimate(path, size_statistics=_read_size_statistics):
     """The estimate over ``path``'s modelled leaves, read as the footer reader does."""
     metadata = pq.read_metadata(str(path))
     profiles = build_leaf_profiles(
@@ -89,53 +81,20 @@ def _estimate(
     assert profiles is not None
     stats = size_statistics(metadata)
     total = 0
-    with open(path, "rb") as f:
-        for rg_idx in range(metadata.num_row_groups):
-            row_group = metadata.row_group(rg_idx)
-            rg_stats = None if stats is None else stats[rg_idx]
-            pages = {}
-            for leaf_idx in range(row_group.num_columns) if read_pages else ():
-                chunk = row_group.column(leaf_idx)
-                leaf_stats = None if rg_stats is None else rg_stats[leaf_idx]
-                profile = profiles[leaf_idx]
-                assert profile is not None
-                nbytes = dictionary_page_read_size(
-                    profile=profile, chunk=chunk, stats=leaf_stats
-                )
-                if nbytes:
-                    f.seek(chunk.dictionary_page_offset)
-                    page = read_dictionary_page(f.read(nbytes))
-                    assert page is not None
-                    pages[leaf_idx] = page
-            leaves = leaf_chunks(
-                row_group=row_group,
-                leaf_profiles=profiles,
-                leaf_indices=range(metadata.num_columns),
-                size_stats=rg_stats,
-                dictionary_pages=pages,
-            )
-            total += estimate_row_group(leaves=leaves)
+    for rg_idx in range(metadata.num_row_groups):
+        leaves = leaf_chunks(
+            row_group=metadata.row_group(rg_idx),
+            leaf_profiles=profiles,
+            leaf_indices=range(metadata.num_columns),
+            size_stats=None if stats is None else stats[rg_idx],
+        )
+        total += estimate_row_group(leaves=leaves)
     return total
 
 
-def _case(
-    label,
-    table,
-    low=1.0,
-    high=1.0,
-    stats=True,
-    pages=True,
-    write=None,
-):
-    """A ``_CASES`` row: the estimate over PyArrow's bytes lies in ``[low, high]``."""
-    case = SimpleNamespace(
-        table=table,
-        low=low,
-        high=high,
-        stats=stats,
-        pages=pages,
-        write=write or {},
-    )
+def _case(label, table, stats=True, write=None):
+    """A ``_CASES`` row, whose estimate must equal what PyArrow allocates."""
+    case = SimpleNamespace(table=table, stats=stats, write=write or {})
     return pytest.param(case, id=label, marks=[requires_pyarrow_23] if stats else [])
 
 
@@ -166,9 +125,6 @@ def _tensor_table():
     from ray.data.extensions.tensor_extension import ArrowTensorArray
 
     return pa.table({"a": ArrowTensorArray.from_numpy(np.zeros((N, 4), np.float32))})
-
-
-_HIGH_CARDINALITY = _table([f"{i:012d}" for i in range(N)])
 
 
 _CASES = [
@@ -205,31 +161,12 @@ _CASES = [
         _case(f"type-{arrow_type}", _table(values * (N // 2), arrow_type))
         for arrow_type, values in _MORE_FIXED_WIDTH_TYPES
     ),
-    # Bounds and guesses. An upper bound some column meets exactly is shaved to
-    # 0.95 of itself, so 0.95 is a bound's floor.
+    # Without SizeStatistics a flat fixed-width leaf stays exact: the footer's
+    # null count sizes its bitmap.
     _case(
-        "strings-with-nulls-without-size-statistics",
-        _table([None if i % 3 == 0 else f"v{i % 4}" for i in range(N)]),
-        low=0.95,
-        high=1.5,
+        "ints-with-nulls-without-size-statistics",
+        _table([None if i % 3 == 0 else i for i in range(N)], pa.int64()),
         stats=False,
-    ),
-    # PLAIN pages: every value's bytes, less a 4-byte length each.
-    _case(
-        "plain-strings",
-        _HIGH_CARDINALITY,
-        low=0.95,
-        stats=False,
-        write={"use_dictionary": False},
-    ),
-    # Dictionary-indexed without the page header: each value as long as the chunk.
-    _case(
-        "dictionary-page-header-unread",
-        _HIGH_CARDINALITY,
-        low=100,
-        high=math.inf,
-        stats=False,
-        pages=False,
     ),
 ]
 
@@ -240,11 +177,25 @@ def test_estimate_against_pyarrow(tmp_path, case):
     estimate = _estimate(
         path,
         size_statistics=_read_size_statistics if case.stats else _no_size_statistics,
-        read_pages=case.pages,
     )
-    allocated = _allocated(path)
 
-    assert case.low <= estimate / allocated <= case.high
+    assert estimate == _allocated(path)
+
+
+def test_inexact_leaves_without_size_statistics_fall_back(tmp_path):
+    """Without SizeStatistics, string and list leaves fall back; the int64 stays exact."""
+    table = pa.table(
+        {
+            "i": pa.array(np.arange(N, dtype="int64")),
+            "s": pa.array([f"v{i}" for i in range(N)]),
+            "l": pa.array([[i] * (i % 3) for i in range(N)]),
+        }
+    )
+    path = _write(table, tmp_path / "f.parquet")
+
+    assert _estimate(path, size_statistics=_no_size_statistics) == _allocated(
+        path, columns=["i"]
+    )
 
 
 def _with(stats_for_leaf_0):
@@ -283,9 +234,7 @@ def test_partial_size_statistics(tmp_path):
         )
     )
     assert _estimate(ints, size_statistics=histogram_only) == N * 8 + N // 8
-    assert _estimate(lists, size_statistics=_with(off_by_one)) == _estimate(
-        lists, size_statistics=_no_size_statistics
-    )
+    assert _estimate(lists, size_statistics=_with(off_by_one)) == 0
 
 
 def test_delta_byte_array_without_sizes_is_unmodelled(tmp_path):
