@@ -374,6 +374,31 @@ def test_read_mcap_warning_names_parallelism(
     assert not any("ignores `override_num_blocks`" in m for m in messages)
 
 
+def test_read_mcap_passes_memory_to_the_v2_datasource(
+    ray_start_regular_shared, simple_mcap_file, datasource_v2, monkeypatch
+):
+    """``memory``, or else ``ray_remote_args["memory"]``, reaches the V2 datasource,
+    so its memory warning knows what each read task reserves."""
+    if not datasource_v2:
+        pytest.skip("Only the V2 datasource takes the reservation.")
+    seen = []
+    original_init = mcap_datasource_v2.MCAPDatasourceV2.__init__
+
+    def record_reservation(self, *args, **kwargs):
+        seen.append(kwargs.get("read_task_memory"))
+        original_init(self, *args, **kwargs)
+
+    monkeypatch.setattr(
+        mcap_datasource_v2.MCAPDatasourceV2, "__init__", record_reservation
+    )
+
+    ray.data.read_mcap(simple_mcap_file, memory=2 * 1024**3)
+    ray.data.read_mcap(simple_mcap_file, ray_remote_args={"memory": 1024**3})
+    ray.data.read_mcap(simple_mcap_file)
+
+    assert seen == [2 * 1024**3, 1024**3, None]
+
+
 def test_read_mcap_file_extensions(ray_start_regular_shared, tmp_path):
     """Test file extension filtering."""
     # Create MCAP file
@@ -591,8 +616,8 @@ def test_read_mcap_preserve_order_keeps_split_files_in_log_time_order(
     """With ``preserve_order``, each file comes out in ``log_time`` order from
     start to end, and the files follow each other in the order they are passed.
 
-    On V2 the budget fits two or three chunks, so an unordered read would split
-    every file. An ordered read keeps each file in one task instead.
+    On V2 each file is split across several read tasks, and each path is listed
+    by a listing task of its own.
     """
     num_files, num_messages = 3, 12
     paths = [os.path.join(tmp_path, f"f{i}.mcap") for i in range(num_files)]
@@ -600,6 +625,7 @@ def test_read_mcap_preserve_order_keeps_split_files_in_log_time_order(
         _write_chunked_mcap(path, num_messages)
     ray.data.DataContext.get_current().execution_options.preserve_order = True
     if datasource_v2:
+        # Room for two or three chunks per task, so every file needs several.
         budget = int(2.5 * _heaviest_chunk(paths[0], include_paths=True))
         monkeypatch.setattr(mcap_datasource_v2, "_BIN_PACKING_BYTES", budget)
 
@@ -612,7 +638,7 @@ def test_read_mcap_preserve_order_keeps_split_files_in_log_time_order(
         for j in range(num_messages)
     ]
     if datasource_v2:
-        assert ds.num_blocks() == num_files
+        assert ds.num_blocks() >= 3 * num_files
 
 
 def test_read_mcap_preserve_order_keeps_files_of_mixed_size_in_listing_order(
@@ -660,7 +686,9 @@ def test_read_mcap_include_row_id(
     assert len(by_id) == 12
 
     monkeypatch.setattr(mcap_datasource_v2, "_BIN_PACKING_BYTES", 1)
-    resplit = ray.data.read_mcap(paths, include_row_id=True)
+    resplit = ray.data.read_mcap(paths, include_row_id=True).materialize()
+    # The read really is split: a task per chunk, not one per file.
+    assert resplit.num_blocks() > len(paths)
     assert {row["row_id"]: row["log_time"] for row in resplit.take_all()} == by_id
 
     # The topic filter drops rows but does not change the ids of the rows it keeps.
