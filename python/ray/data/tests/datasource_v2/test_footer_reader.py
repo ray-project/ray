@@ -996,6 +996,59 @@ def test_derived_skips_float_membership(predicate):
     )
 
 
+@pytest.mark.parametrize(
+    "membership, needs_null_guard, null_matches",
+    [
+        pytest.param(col("v").is_in([0]), False, False, id="in-no-null"),
+        pytest.param(col("v").is_in([None, 0]), True, True, id="in-with-null"),
+        pytest.param(col("v").not_in([0]), True, True, id="not-in"),
+    ],
+)
+def test_derived_membership_null_safety(
+    tmp_path, membership, needs_null_guard, null_matches
+):
+    from ray.data._internal.datasource_v2.formats.parquet.footer_reader import (
+        _derived_statistics_predicate,
+    )
+
+    table = pa.table(
+        {
+            "x": list(range(100)),
+            "v": pa.array(
+                [None] * 25 + [0] * 25 + [1] * 25 + [2] * 25,
+                type=pa.int64(),
+            ),
+        }
+    )
+
+    derived = _derived_statistics_predicate(membership, table.schema)
+    assert derived is not None
+    expected_bound = membership | col("v").is_null() if needs_null_guard else membership
+    assert derived.structurally_equals(expected_bound)
+
+    predicate = ((col("x") + 1) >= 76) | membership
+    path, size = _write(tmp_path / "membership-null.parquet", table, row_group_size=25)
+
+    chunks = _reader(filter_expr=predicate)._read_and_chunk(FileInfo(path, size))
+    selected = [rg.unit_ids[0] for rg in chunks.row_groups]
+
+    parquet_file = pq.ParquetFile(path)
+    required = {
+        i
+        for i in range(parquet_file.num_row_groups)
+        if parquet_file.read_row_group(i).filter(predicate.to_pyarrow()).num_rows
+    }
+    assert required.issubset(set(selected))
+
+    actual = pa.concat_tables(
+        [parquet_file.read_row_group(i) for i in selected]
+    ).filter(predicate.to_pyarrow())
+    expected = table.filter(predicate.to_pyarrow())
+
+    assert (0 in expected["x"].to_pylist()) == null_matches
+    assert actual["x"].to_pylist() == expected["x"].to_pylist()
+
+
 def test_derived_predicate_unicode_prefix(tmp_path):
     values = ["aa", "bb", "é", "élan", "ê", "zz"]
     path, size = _write(
