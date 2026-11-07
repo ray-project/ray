@@ -1,5 +1,6 @@
 import json
 import os
+import random
 from dataclasses import fields
 from decimal import Decimal
 from pathlib import Path
@@ -18,6 +19,36 @@ from ray.data._internal.object_extensions.arrow import ArrowPythonObjectType
 from ray.data._internal.util import rows_same
 from ray.data.block import BlockAccessor
 from ray.data.expressions import col
+
+
+@pytest.mark.parametrize("codec", ["uncompressed", "zlib", "snappy", "lz4", "zstd"])
+@pytest.mark.parametrize("mode", ["off", "file", "stripe"])
+def test_orc_statistics_public_pipeline(
+    ray_start_regular_shared, tmp_path, monkeypatch, codec, mode
+):
+    from ray.data.context import DataContext
+
+    context = DataContext.get_current()
+    monkeypatch.setattr(context, "use_datasource_v2", True)
+    monkeypatch.setattr(context, "orc_statistics_pruning", mode)
+    rng = random.Random(66995)
+    table = pa.table(
+        {"id": range(4096), "payload": [rng.randbytes(128) for _ in range(4096)]}
+    )
+    path = tmp_path / "data.orc"
+    orc.write_table(
+        table, str(path), compression=codec, stripe_size=8192, batch_size=256
+    )
+    assert orc.ORCFile(str(path)).nstripes > 1
+    predicate = (col("id") >= 3500) & (col("id") < 3800)
+    rows = (
+        ray.data.read_orc(str(path), override_num_blocks=1)
+        .filter(expr=predicate)
+        .select_columns(["payload"])
+        .limit(73)
+        .take_all()
+    )
+    assert rows == table.slice(3500, 73).select(["payload"]).to_pylist()
 
 
 @pytest.fixture(params=[False, True], ids=["v1", "v2"])
