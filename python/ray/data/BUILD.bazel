@@ -949,9 +949,9 @@ py_test(
 )
 
 py_test(
-    name = "test_broadcast_join_task",
+    name = "test_broadcast_join",
     size = "medium",
-    srcs = ["tests/test_broadcast_join_task.py"],
+    srcs = ["tests/test_broadcast_join.py"],
     tags = [
         "exclusive",
         "team:data",
