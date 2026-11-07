@@ -1,3 +1,4 @@
+import asyncio
 import logging
 import os
 import sys
@@ -9,8 +10,13 @@ import pytest
 
 from ray._private.authentication_test_utils import reset_auth_token_state
 from ray._private.runtime_env.context import RuntimeEnvContext, expand_run_option
-from ray._private.runtime_env.image_uri import _modify_context_impl
+from ray._private.runtime_env.image_uri import (
+    ContainerPlugin,
+    ImageURIPlugin,
+    _modify_context_impl,
+)
 from ray.core.generated.common_pb2 import Language
+from ray.runtime_env import RuntimeEnv
 
 TOKEN = "secret-token-value"
 
@@ -45,26 +51,29 @@ def _launch(
 ) -> Tuple[List[str], Dict[str, str]]:
     """Returns the argv and env the worker launcher would be exec'd with."""
     context = context or RuntimeEnvContext()
-    _modify_context_impl(
-        "fake-image",
-        "/fake/default_worker.py",
-        run_options or [],
-        context,
-        logging.getLogger(__name__),
-        ray_tmp_dir,
-    )
+    # These command-building tests exercise setup on a Linux worker node.
+    with mock.patch("ray._private.runtime_env.image_uri.sys.platform", "linux"):
+        _modify_context_impl(
+            "fake-image",
+            "/fake/default_worker.py",
+            run_options or [],
+            context,
+            logging.getLogger(__name__),
+            ray_tmp_dir,
+        )
 
     # The worker launcher gets the context through serialize()/deserialize().
     context = RuntimeEnvContext.deserialize(context.serialize())
 
-    def fake_execvpe(file: str, args: List[str], env: Dict[str, str]) -> NoReturn:
-        raise _Exec(args, env)
+    def fake_container_launch(address, options, entrypoint, env) -> NoReturn:
+        raise _Exec(["podman", "create", *options, *entrypoint], env)
 
     def shell_launch(*args: Any, **kwargs: Any) -> NoReturn:
         raise AssertionError("container worker launched through a shell")
 
-    with mock.patch.dict(os.environ), mock.patch.object(
-        os, "execvpe", fake_execvpe
+    with mock.patch.dict(os.environ), mock.patch(
+        "ray._private.runtime_env.container_launch.run_worker_container",
+        fake_container_launch,
     ), mock.patch.object(os, "execvp", shell_launch), mock.patch(
         "subprocess.Popen", shell_launch
     ):
@@ -184,7 +193,7 @@ def test_log_omits_env_var_values(auth_env, caplog):
     with caplog.at_level(logging.INFO):
         _launch(context, run_options=["--label=x=$HOME"])
 
-    assert "podman run" in caplog.text
+    assert "podman create" in caplog.text
     assert "--label=x=$HOME" in caplog.text
     assert "fake-image" in caplog.text
     assert "user-secret" not in caplog.text
@@ -240,7 +249,9 @@ def test_expand_run_option_rejects_malformed(run_option):
 
 def test_malformed_run_option_fails_setup(auth_env):
     # Fails in runtime env setup, before any worker launch is attempted.
-    with pytest.raises(ValueError, match="Unsupported expansion"):
+    with mock.patch(
+        "ray._private.runtime_env.image_uri.sys.platform", "linux"
+    ), pytest.raises(ValueError, match="Unsupported expansion"):
         _modify_context_impl(
             "fake-image",
             "/fake/default_worker.py",
@@ -328,6 +339,91 @@ def test_launch_runs_without_shell_and_keeps_job_env_in_container(auth_env):
         "fake-image",
         "/fake/default_worker.py",
     ]
+    assert "--restart=no" in argv
+
+
+def test_container_restart_cannot_outlive_raylet_launch(auth_env):
+    argv, _ = _launch(run_options=["--restart=always"])
+    assert argv.index("--restart=always") < argv.index("--restart=no")
+
+
+@pytest.mark.parametrize("platform", ["darwin", "win32"])
+@pytest.mark.parametrize("plugin_cls", [ImageURIPlugin, ContainerPlugin])
+def test_container_setup_rejects_unsupported_worker_node(
+    platform, plugin_cls, tmp_path
+):
+    # The driver may use a non-Linux platform to target Linux Ray nodes.
+    runtime_env = RuntimeEnv(
+        **{
+            plugin_cls.name: "fake-image"
+            if plugin_cls is ImageURIPlugin
+            else {"image": "fake-image"}
+        }
+    )
+    plugin = plugin_cls(str(tmp_path))
+
+    async def run():
+        with mock.patch(
+            "ray._private.runtime_env.image_uri.sys.platform", platform
+        ), mock.patch("asyncio.create_subprocess_exec") as create_process:
+            with pytest.raises(RuntimeError, match="require a Linux Ray node"):
+                await plugin.create(
+                    None, runtime_env, RuntimeEnvContext(), logging.getLogger(__name__)
+                )
+            create_process.assert_not_called()
+
+    asyncio.run(run())
+
+
+@pytest.mark.parametrize("platform", ["darwin", "win32"])
+def test_cached_container_context_rejects_unsupported_worker_node(platform):
+    context = RuntimeEnvContext()
+    with mock.patch(
+        "ray._private.runtime_env.image_uri.sys.platform", platform
+    ), pytest.raises(RuntimeError, match="require a Linux Ray node"):
+        _modify_context_impl(
+            "fake-image",
+            "/fake/worker.py",
+            [],
+            context,
+            logging.getLogger(__name__),
+            "/tmp/ray",
+        )
+    assert not context.container
+
+
+@pytest.mark.parametrize("operation", ["Register", "Create", "Stop"])
+def test_container_rpc_fails_when_manager_is_unavailable(auth_env, operation):
+    from aiohttp import web
+    from aiohttp.test_utils import TestClient, TestServer
+
+    from ray._private.runtime_env.agent.runtime_env_agent import RuntimeEnvAgent
+    from ray.core.generated import runtime_env_agent_pb2 as protocol
+
+    async def run():
+        agent = RuntimeEnvAgent.__new__(RuntimeEnvAgent)
+        agent._worker_container_manager = None
+        app = web.Application()
+        agent.add_container_routes(app)
+        async with TestClient(TestServer(app)) as client:
+            request = getattr(protocol, operation + "WorkerContainerRequest")()
+            response = await asyncio.wait_for(
+                client.post(
+                    "/" + operation.lower() + "_worker_container",
+                    data=request.SerializeToString(),
+                ),
+                timeout=1,
+            )
+            assert response.status == 200
+            reply = getattr(protocol, operation + "WorkerContainerReply").FromString(
+                await response.read()
+            )
+            assert reply.status == protocol.AGENT_RPC_STATUS_FAILED
+            assert "require a Linux Ray node" in reply.error_message
+            if operation == "Stop":
+                assert not reply.accepted
+
+    asyncio.run(run())
 
 
 if __name__ == "__main__":

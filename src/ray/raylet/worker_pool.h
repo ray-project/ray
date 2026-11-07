@@ -482,6 +482,8 @@ class WorkerPool : public WorkerPoolInterface {
   };
 
   /// Some basic information about the worker process.
+  bool container_cleanup_failed_ = false;
+
   struct WorkerProcessInfo {
     /// Whether this worker is pending registration or is started.
     bool is_pending_registration = true;
@@ -497,6 +499,11 @@ class WorkerPool : public WorkerPoolInterface {
     std::vector<std::string> dynamic_options;
     /// The duration to keep the newly created worker alive before it's assigned a lease.
     std::optional<absl::Duration> worker_startup_keep_alive_duration;
+    /// Cancelled launches retain their fence, but do not count toward startup quota.
+    bool has_container = false;
+    bool cleanup_requested = false;
+    int64_t container_deadline_ms = 0;
+    JobID job_id = JobID::Nil();
   };
 
   /// An internal data structure that maintains the pool state per language.
@@ -680,6 +687,11 @@ class WorkerPool : public WorkerPoolInterface {
       std::optional<absl::Duration> worker_startup_keep_alive_duration);
 
   void RemoveWorkerProcess(State &state, const WorkerID &worker_id);
+
+  /// @brief Fence a cancelled launch, release startup quota, and transfer cleanup.
+  /// @param language Worker pool containing the launch.
+  /// @param worker_id Stable launch identity, including before registration.
+  void StopWorkerContainer(const Language &language, const WorkerID &worker_id);
 
   /// Increase worker OOM scores to avoid raylet crashes from heap memory
   /// pressure.

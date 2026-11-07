@@ -16,10 +16,12 @@
 #include <boost/asio/ip/tcp.hpp>
 #include <boost/beast.hpp>
 #include <boost/beast/http.hpp>
+#include <chrono>
 #include <cstdlib>
 #include <functional>
 #include <iostream>
 #include <memory>
+#include <optional>
 #include <queue>
 #include <string>
 #include <utility>
@@ -53,6 +55,7 @@ struct Request {
   std::string body;
   std::function<void(std::string)> succ_callback;
   std::function<void(ray::Status)> fail_callback;
+  std::optional<std::chrono::steady_clock::time_point> deadline = std::nullopt;
 };
 
 //------------------------------------------------------------------------------
@@ -64,8 +67,8 @@ struct Request {
 // Hard coded behavior:
 // - version is HTTP/1.1.
 // - content type is "application/octet-stream".
-// - connection has infinite timeout (This is because runtime env agent can
-// work for a long time.)
+// - runtime-env setup requests have no timeout; container control requests have
+//   an absolute deadline covering queueing, DNS, connection, and response.
 //
 // Error handling: (return means invoking the fail_callback with the error)
 // - on_resolve and on_connect failures return NotFound.
@@ -110,6 +113,21 @@ class Connection : public std::enable_shared_from_this<Connection> {
     finished_callback_ = std::move(finished_callback);
     // Only a socket that already survived one request may be silently retried.
     may_retry_ = connected_;
+    deadline_timer_.cancel();
+    if (request_.deadline) {
+      if (std::chrono::steady_clock::now() >= *request_.deadline) {
+        Failed(ray::Status::IOError("Container control request deadline exceeded"));
+        return;
+      }
+      deadline_timer_.expires_at(*request_.deadline);
+      deadline_timer_.async_wait([self = shared_from_this()](beast::error_code ec) {
+        if (!ec) {
+          self->may_retry_ = false;
+          self->resolver_.cancel();
+          self->Close();
+        }
+      });
+    }
 
     req_ = {};
     req_.method(request_.method);
@@ -137,7 +155,11 @@ class Connection : public std::enable_shared_from_this<Connection> {
 
  private:
   explicit Connection(net::io_context &ioc, std::string_view host, std::string_view port)
-      : resolver_(ioc), stream_(ioc), host_(std::string(host)), port_(std::string(port)) {
+      : resolver_(ioc),
+        stream_(ioc),
+        deadline_timer_(ioc),
+        host_(std::string(host)),
+        port_(std::string(port)) {
     stream_.expires_never();
   }
 
@@ -188,6 +210,7 @@ class Connection : public std::enable_shared_from_this<Connection> {
   // first lets a callback that issues the next request reuse this very connection
   // instead of opening another one.
   void Finish(bool reusable, std::function<void()> deliver_outcome) {
+    deadline_timer_.cancel();
     auto self = shared_from_this();
     auto finished = std::move(finished_callback_);
     finished(self, reusable);
@@ -283,6 +306,7 @@ class Connection : public std::enable_shared_from_this<Connection> {
 
   tcp::resolver resolver_;
   beast::tcp_stream stream_;
+  net::steady_timer deadline_timer_;
   std::string host_;
   std::string port_;
   bool connected_ = false;
@@ -308,11 +332,13 @@ class ConnectionPool {
   ConnectionPool(net::io_context &ioc,
                  std::string_view host,
                  std::string_view port,
-                 size_t max_concurrency)
+                 size_t max_concurrency,
+                 size_t max_pending = 0)
       : ioc_(ioc),
         host_(std::string(host)),
         port_(std::string(port)),
-        max_concurrency_(max_concurrency) {}
+        max_concurrency_(max_concurrency),
+        max_pending_(max_pending) {}
 
   void enqueue(Request request) {
     if (!idle_connections_.empty()) {
@@ -321,6 +347,8 @@ class ConnectionPool {
       dispatch(std::move(connection), std::move(request));
     } else if (connections_.size() < max_concurrency_) {
       dispatch(create_connection(), std::move(request));
+    } else if (max_pending_ && pending_requests_.size() >= max_pending_) {
+      request.fail_callback(ray::Status::IOError("Container control queue is full"));
     } else {
       pending_requests_.emplace(std::move(request));
     }
@@ -364,6 +392,7 @@ class ConnectionPool {
   const std::string host_;
   const std::string port_;
   const size_t max_concurrency_;
+  const size_t max_pending_;
   absl::flat_hash_set<std::shared_ptr<Connection>> connections_;
   std::vector<std::shared_ptr<Connection>> idle_connections_;
   std::queue<Request> pending_requests_;
@@ -384,9 +413,20 @@ class HttpRuntimeEnvAgentClient : public RuntimeEnvAgentClient {
                             ClockInterface &clock,
                             uint32_t agent_register_timeout_ms,
                             uint32_t agent_manager_retry_interval_ms,
+                            int container_port,
                             uint32_t session_pool_size = 10)
       : connection_pool_(
             io_context, address, absl::StrFormat("%d", port), session_pool_size),
+        container_register_pool_(io_context,
+                                 "127.0.0.1",
+                                 absl::StrFormat("%d", container_port),
+                                 session_pool_size,
+                                 128),
+        container_stop_pool_(io_context,
+                             "127.0.0.1",
+                             absl::StrFormat("%d", container_port),
+                             session_pool_size,
+                             128),
         address_(address),
         port_str_(absl::StrFormat("%d", port)),
         delay_executor_(delay_executor),
@@ -597,7 +637,83 @@ class HttpRuntimeEnvAgentClient : public RuntimeEnvAgentClient {
   }
 
  private:
+  void RegisterWorkerContainer(const WorkerID &worker_id,
+                               const NodeID &node_id,
+                               const JobID &job_id,
+                               int64_t expires_at_ms,
+                               std::function<void(bool)> callback) override {
+    rpc::RegisterWorkerContainerRequest request;
+    SetContainerLaunch(request.mutable_launch(), worker_id, node_id, job_id);
+    request.mutable_launch()->set_expires_at_ms(expires_at_ms);
+    SendContainerRequest<rpc::RegisterWorkerContainerReply>(
+        container_register_pool_,
+        "/register_worker_container",
+        request.SerializeAsString(),
+        std::move(callback),
+        [](const auto &reply) { return reply.status() == rpc::AGENT_RPC_STATUS_OK; });
+  }
+
+  void StopWorkerContainer(const WorkerID &worker_id,
+                           const NodeID &node_id,
+                           const JobID &job_id,
+                           int64_t expires_at_ms,
+                           std::function<void(bool)> callback) override {
+    rpc::StopWorkerContainerRequest request;
+    SetContainerLaunch(request.mutable_launch(), worker_id, node_id, job_id);
+    request.mutable_launch()->set_expires_at_ms(expires_at_ms);
+    SendContainerRequest<rpc::StopWorkerContainerReply>(
+        container_stop_pool_,
+        "/stop_worker_container",
+        request.SerializeAsString(),
+        std::move(callback),
+        [](const auto &reply) {
+          return reply.status() == rpc::AGENT_RPC_STATUS_OK && reply.accepted();
+        });
+  }
+
+  static void SetContainerLaunch(rpc::WorkerContainerLaunch *launch,
+                                 const WorkerID &worker_id,
+                                 const NodeID &node_id,
+                                 const JobID &job_id) {
+    launch->set_launch_id(worker_id.Hex());
+    launch->set_session_id(node_id.Hex());
+    launch->set_job_id(job_id.Hex());
+  }
+
+  template <typename Reply>
+  void SendContainerRequest(ConnectionPool &pool,
+                            const std::string &path,
+                            const std::string &payload,
+                            std::function<void(bool)> callback,
+                            std::function<bool(const Reply &)> successful) {
+    const auto deadline = std::chrono::steady_clock::now() +
+                          std::chrono::milliseconds(agent_register_timeout_ms_);
+    RetryInvokeOnNotFoundWithDeadline<Reply>(
+        [&pool, path, payload, deadline](SuccCallback<Reply> succeed, FailCallback fail) {
+          pool.enqueue(
+              Request{http::verb::post,
+                      path,
+                      payload,
+                      [succeed, fail](std::string body) {
+                        Reply reply;
+                        if (reply.ParseFromString(body)) {
+                          succeed(std::move(reply));
+                        } else {
+                          fail(Status::IOError("Invalid container lifecycle reply"));
+                        }
+                      },
+                      fail,
+                      deadline});
+        },
+        [callback, successful](Reply reply) { callback(successful(reply)); },
+        [callback](const Status &) { callback(false); },
+        clock_.SteadyNowMillis() + agent_register_timeout_ms_);
+  }
+
   ConnectionPool connection_pool_;
+  // Cancellation cannot queue launch grants or ordinary runtime-env setup.
+  ConnectionPool container_register_pool_;
+  ConnectionPool container_stop_pool_;
 
   const std::string address_;
   const std::string port_str_;
@@ -618,14 +734,16 @@ std::unique_ptr<RuntimeEnvAgentClient> RuntimeEnvAgentClient::Create(
         std::function<void()>, uint32_t delay_ms)> delay_executor,
     ClockInterface &clock,
     uint32_t agent_register_timeout_ms,
-    uint32_t agent_manager_retry_interval_ms) {
+    uint32_t agent_manager_retry_interval_ms,
+    int container_port) {
   return std::make_unique<HttpRuntimeEnvAgentClient>(io_context,
                                                      address,
                                                      port,
                                                      delay_executor,
                                                      clock,
                                                      agent_register_timeout_ms,
-                                                     agent_manager_retry_interval_ms);
+                                                     agent_manager_retry_interval_ms,
+                                                     container_port);
 }
 
 }  // namespace raylet

@@ -2,6 +2,7 @@ import asyncio
 import logging
 import logging.handlers
 import os
+import sys
 import time
 import traceback
 from collections import defaultdict
@@ -33,6 +34,7 @@ from ray._private.runtime_env.py_modules import PyModulesPlugin
 from ray._private.runtime_env.redaction import redact_serialized_runtime_env
 from ray._private.runtime_env.rocprof_sys import RocProfSysPlugin
 from ray._private.runtime_env.uv import UvPlugin
+from ray._private.runtime_env.worker_container_manager import WorkerContainerManager
 from ray._private.runtime_env.working_dir import WorkingDirPlugin
 from ray._raylet import GcsClient
 from ray.core.generated import runtime_env_agent_pb2
@@ -337,6 +339,7 @@ class RuntimeEnvAgent:
         temp_dir: str,
         address: str,
         runtime_env_agent_port: int,
+        node_id: str = "",
     ):
         """Initialize the runtime env agent.
 
@@ -349,6 +352,7 @@ class RuntimeEnvAgent:
             address: IP address that the agent is listening on, used for logging.
             runtime_env_agent_port: Port that the agent is listening on, used for
                 logging.
+            node_id: Raylet session identity for container ownership and recovery.
         """
         super().__init__()
 
@@ -392,12 +396,31 @@ class RuntimeEnvAgent:
         self._working_dir_plugin = WorkingDirPlugin(
             self._runtime_env_dir, self._gcs_client
         )
+        self._container_session = node_id
+        self._worker_container_manager = (
+            WorkerContainerManager(
+                os.path.join(temp_dir, "worker_containers"),
+                operation_timeout=float(
+                    os.environ.get("RAY_WORKER_CONTAINER_OPERATION_TIMEOUT_S", "30")
+                ),
+                cleanup_attempts=int(
+                    os.environ.get("RAY_WORKER_CONTAINER_CLEANUP_ATTEMPTS", "3")
+                ),
+                max_pending=int(
+                    os.environ.get("RAY_WORKER_CONTAINER_MAX_PENDING", "4096")
+                ),
+            )
+            if sys.platform == "linux"
+            else None
+        )
         self._container_plugin = ContainerPlugin(temp_dir)
         # TODO(jonathan-anyscale): change the plugin to ProfilerPlugin
         # and unify with nsight and other profilers.
         self._nsight_plugin = NsightPlugin(self._runtime_env_dir)
         self._rocprof_sys_plugin = RocProfSysPlugin(self._runtime_env_dir)
         self._image_uri_plugin = get_image_uri_plugin_cls()(temp_dir)
+        for plugin in (self._container_plugin, self._image_uri_plugin):
+            plugin.container_manager_address = None
 
         # TODO(architkulkarni): "base plugins" and third-party plugins should all go
         # through the same code path.  We should never need to refer to
@@ -435,6 +458,108 @@ class RuntimeEnvAgent:
         except Exception as e:
             self._logger.warning(f"Failed to get node IP address, using fallback: {e}")
             self._node_prefix = "[Node unknown] "
+
+    def add_container_routes(self, app):
+        from aiohttp import web
+
+        def handler(request_type, method):
+            async def handle(request):
+                message = request_type()
+                message.ParseFromString(await request.read())
+                reply = await method(message)
+                return web.Response(
+                    body=reply.SerializeToString(),
+                    content_type="application/octet-stream",
+                )
+
+            return handle
+
+        for path, request_type, method in (
+            (
+                "register_worker_container",
+                runtime_env_agent_pb2.RegisterWorkerContainerRequest,
+                self.RegisterWorkerContainer,
+            ),
+            (
+                "create_worker_container",
+                runtime_env_agent_pb2.CreateWorkerContainerRequest,
+                self.CreateWorkerContainer,
+            ),
+            (
+                "stop_worker_container",
+                runtime_env_agent_pb2.StopWorkerContainerRequest,
+                self.StopWorkerContainer,
+            ),
+        ):
+            app.router.add_post("/" + path, handler(request_type, method))
+
+    def _get_worker_container_manager(self):
+        if self._worker_container_manager is None:
+            raise RuntimeError(
+                "Podman runtime env worker containers require a Linux Ray node"
+            )
+        return self._worker_container_manager
+
+    async def RegisterWorkerContainer(self, request):
+        try:
+            launch = {
+                "launch_id": request.launch.launch_id,
+                "session_id": request.launch.session_id,
+                "job_id": request.launch.job_id,
+                "expires_at_ms": request.launch.expires_at_ms,
+            }
+            self._get_worker_container_manager().register(launch)
+            return runtime_env_agent_pb2.RegisterWorkerContainerReply(
+                status=runtime_env_agent_pb2.AGENT_RPC_STATUS_OK
+            )
+        except (OSError, RuntimeError) as error:
+            return runtime_env_agent_pb2.RegisterWorkerContainerReply(
+                status=runtime_env_agent_pb2.AGENT_RPC_STATUS_FAILED,
+                error_message=str(error),
+            )
+
+    async def CreateWorkerContainer(self, request):
+        try:
+            cid = await self._get_worker_container_manager().create_registered(
+                {
+                    "launch_id": request.launch.launch_id,
+                    "session_id": request.launch.session_id,
+                    "job_id": request.launch.job_id,
+                    "expires_at_ms": request.launch.expires_at_ms,
+                },
+                list(request.options),
+                list(request.entrypoint),
+                dict(request.environment),
+                request.working_directory or None,
+            )
+            return runtime_env_agent_pb2.CreateWorkerContainerReply(
+                status=runtime_env_agent_pb2.AGENT_RPC_STATUS_OK, container_id=cid
+            )
+        except (OSError, RuntimeError, asyncio.TimeoutError) as error:
+            return runtime_env_agent_pb2.CreateWorkerContainerReply(
+                status=runtime_env_agent_pb2.AGENT_RPC_STATUS_FAILED,
+                error_message=str(error),
+            )
+
+    async def StopWorkerContainer(self, request):
+        try:
+            accepted = self._get_worker_container_manager().stop(
+                {
+                    "launch_id": request.launch.launch_id,
+                    "session_id": request.launch.session_id,
+                    "job_id": request.launch.job_id,
+                    "expires_at_ms": request.launch.expires_at_ms,
+                }
+            )
+            return runtime_env_agent_pb2.StopWorkerContainerReply(
+                status=runtime_env_agent_pb2.AGENT_RPC_STATUS_OK, accepted=accepted
+            )
+        except (OSError, RuntimeError) as error:
+            return runtime_env_agent_pb2.StopWorkerContainerReply(
+                status=runtime_env_agent_pb2.AGENT_RPC_STATUS_FAILED,
+                accepted=False,
+                error_message=str(error),
+            )
 
     def uris_parser(self, runtime_env: RuntimeEnv):
         result = list()
@@ -616,6 +741,8 @@ class RuntimeEnvAgent:
         try:
             serialized_env = request.serialized_runtime_env
             runtime_env = RuntimeEnv.deserialize(serialized_env)
+            if runtime_env.image_uri() or runtime_env.has_py_container():
+                self._get_worker_container_manager().check_admission()
         except Exception as e:
             self._logger.exception(
                 f"[Increase] Failed to parse runtime env: {redacted_serialized_env}"

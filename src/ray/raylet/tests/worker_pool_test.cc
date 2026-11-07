@@ -131,6 +131,34 @@ static int GetReferenceCount(const std::string &serialized_runtime_env) {
 
 class FakeRuntimeEnvAgentClient : public RuntimeEnvAgentClient {
  public:
+  bool auto_complete_container_cleanup = true;
+  std::vector<WorkerID> container_launches;
+  std::vector<std::function<void(bool)>> container_cleanup_callbacks;
+  std::function<void()> on_container_cleanup;
+  std::string serialized_runtime_env_context = R"({"dummy":"dummy"})";
+
+  void RegisterWorkerContainer(const WorkerID &worker_id,
+                               const NodeID &,
+                               const JobID &,
+                               int64_t,
+                               std::function<void(bool)> callback) override {
+    container_launches.push_back(worker_id);
+    callback(true);
+  }
+
+  void StopWorkerContainer(const WorkerID &,
+                           const NodeID &,
+                           const JobID &,
+                           int64_t,
+                           std::function<void(bool)> callback) override {
+    if (auto_complete_container_cleanup) {
+      callback(true);
+    } else {
+      container_cleanup_callbacks.push_back(std::move(callback));
+      if (on_container_cleanup) on_container_cleanup();
+    }
+  }
+
   void GetOrCreateRuntimeEnv(const JobID &job_id,
                              const std::string &serialized_runtime_env,
                              const rpc::RuntimeEnvConfig &runtime_env_config,
@@ -145,7 +173,7 @@ class FakeRuntimeEnvAgentClient : public RuntimeEnvAgentClient {
       } else {
         runtime_env_reference[serialized_runtime_env] += 1;
       }
-      callback(true, R"({"dummy":"dummy"})", "");
+      callback(true, serialized_runtime_env_context, "");
     }
   };
 
@@ -2750,6 +2778,141 @@ TEST_F(WorkerPoolPortRangeTest, AssignsUniquePortsFromTheConfiguredRange) {
     ASSERT_TRUE(assigned_ports.insert(port).second)
         << "Port " << port << " was assigned to two workers.";
   }
+}
+
+TEST_F(WorkerPoolTest, ContainerCleanupDoesNotHoldStartupQuota) {
+  auto agent = std::make_unique<FakeRuntimeEnvAgentClient>();
+  auto *agent_ptr = agent.get();
+  agent_ptr->auto_complete_container_cleanup = false;
+  std::promise<void> all_pending;
+  agent_ptr->on_container_cleanup = [&]() {
+    if (agent_ptr->container_cleanup_callbacks.size() == MAXIMUM_STARTUP_CONCURRENCY) {
+      all_pending.set_value();
+    }
+  };
+  auto sync = [&](std::function<void()> step) {
+    std::promise<void> done;
+    io_service_.post(
+        [&done, step]() {
+          step();
+          done.set_value();
+        },
+        "ContainerLifecycleTest");
+    done.get_future().get();
+  };
+  const std::string context = R"({"container":{"image":"test-image"}})";
+  WorkerID first_id;
+  sync([&]() {
+    worker_pool_->SetRuntimeEnvAgentClient(std::move(agent));
+    worker_pool_->HandleJobStarted(JOB_ID, rpc::JobConfig());
+    RayConfig::instance().initialize(R"({"worker_register_timeout_seconds":0})");
+    for (int i = 0; i < MAXIMUM_STARTUP_CONCURRENCY; ++i) {
+      PopWorkerStatus status = PopWorkerStatus::OK;
+      auto [proc, worker_id] = worker_pool_->StartWorkerProcess(
+          Language::PYTHON, rpc::WorkerType::WORKER, JOB_ID, &status, {}, 0, context);
+      ASSERT_EQ(status, PopWorkerStatus::OK);
+      if (i == 0) first_id = worker_id;
+    }
+    RayConfig::instance().initialize(R"({"worker_register_timeout_seconds":60})");
+  });
+  ASSERT_EQ(all_pending.get_future().wait_for(std::chrono::seconds(5)),
+            std::future_status::ready);
+  sync([&]() {
+    EXPECT_EQ(worker_pool_->NumWorkersStarting(), 0);
+    auto late_worker = worker_pool_->CreateWorker(first_id, nullptr, Language::PYTHON);
+    EXPECT_FALSE(worker_pool_->RegisterWorker(late_worker, 123, [](Status, int) {}).ok());
+    PopWorkerStatus status = PopWorkerStatus::OK;
+    auto [ordinary, ordinary_id] = worker_pool_->StartWorkerProcess(
+        Language::PYTHON, rpc::WorkerType::WORKER, JOB_ID, &status);
+    EXPECT_EQ(status, PopWorkerStatus::OK);
+    EXPECT_TRUE(ordinary.IsValid());
+    // A failed cancellation disables only future container launches.
+    agent_ptr->container_cleanup_callbacks.front()(false);
+  });
+  sync([&]() {
+    PopWorkerStatus status = PopWorkerStatus::OK;
+    worker_pool_->StartWorkerProcess(
+        Language::PYTHON, rpc::WorkerType::WORKER, JOB_ID, &status, {}, 0, context);
+    EXPECT_EQ(status, PopWorkerStatus::RuntimeEnvCreationFailed);
+    status = PopWorkerStatus::OK;
+    worker_pool_->StartWorkerProcess(
+        Language::PYTHON, rpc::WorkerType::WORKER, JOB_ID, &status);
+    EXPECT_EQ(status, PopWorkerStatus::OK);
+    EXPECT_EQ(worker_pool_->NumWorkersStarting(), 2);
+    EXPECT_EQ(agent_ptr->container_cleanup_callbacks.size(), MAXIMUM_STARTUP_CONCURRENCY);
+  });
+}
+
+TEST_F(WorkerPoolTest, CancelledContainerCannotAnnounceLateWorkerPort) {
+  auto agent = std::make_unique<FakeRuntimeEnvAgentClient>();
+  auto *agent_ptr = agent.get();
+  agent_ptr->auto_complete_container_cleanup = false;
+  std::promise<void> pending;
+  agent_ptr->on_container_cleanup = [&]() { pending.set_value(); };
+  auto sync = [&](std::function<void()> step) {
+    std::promise<void> done;
+    io_service_.post(
+        [&done, step]() {
+          step();
+          done.set_value();
+        },
+        "ContainerLifecycleTest");
+    done.get_future().get();
+  };
+  std::shared_ptr<WorkerInterface> worker;
+  sync([&]() {
+    worker_pool_->SetRuntimeEnvAgentClient(std::move(agent));
+    worker_pool_->HandleJobStarted(JOB_ID, rpc::JobConfig());
+    RayConfig::instance().initialize(R"({"worker_register_timeout_seconds":0})");
+    PopWorkerStatus status = PopWorkerStatus::OK;
+    auto [proc, worker_id] =
+        worker_pool_->StartWorkerProcess(Language::PYTHON,
+                                         rpc::WorkerType::WORKER,
+                                         JOB_ID,
+                                         &status,
+                                         {},
+                                         0,
+                                         R"({"container":{"image":"test-image"}})");
+    worker = worker_pool_->CreateWorker(worker_id, nullptr, Language::PYTHON);
+    EXPECT_TRUE(
+        worker_pool_->RegisterWorker(worker, proc.GetId(), [](Status, int) {}).ok());
+    RayConfig::instance().initialize(R"({"worker_register_timeout_seconds":60})");
+  });
+  ASSERT_EQ(pending.get_future().wait_for(std::chrono::seconds(5)),
+            std::future_status::ready);
+  sync([&]() {
+    EXPECT_TRUE(worker->IsDead());
+    worker_pool_->OnWorkerStarted(worker);
+    EXPECT_EQ(worker_pool_->NumWorkersStarting(), 0);
+    worker_pool_->DisconnectWorker(worker, rpc::WorkerExitType::SYSTEM_ERROR);
+    EXPECT_EQ(agent_ptr->container_cleanup_callbacks.size(), 1);
+    agent_ptr->container_cleanup_callbacks.front()(true);
+  });
+  sync([&]() { EXPECT_EQ(worker_pool_->NumWorkersStarting(), 0); });
+}
+
+TEST_F(WorkerPoolTest, RegisteredContainerExitKeepsExistingRetentionPolicy) {
+  auto agent = std::make_unique<FakeRuntimeEnvAgentClient>();
+  auto *agent_ptr = agent.get();
+  agent_ptr->auto_complete_container_cleanup = false;
+  worker_pool_->SetRuntimeEnvAgentClient(std::move(agent));
+  worker_pool_->HandleJobStarted(JOB_ID, rpc::JobConfig());
+  PopWorkerStatus status = PopWorkerStatus::OK;
+  auto [proc, worker_id] =
+      worker_pool_->StartWorkerProcess(Language::PYTHON,
+                                       rpc::WorkerType::WORKER,
+                                       JOB_ID,
+                                       &status,
+                                       {},
+                                       0,
+                                       R"({"container":{"image":"test-image"}})");
+  auto worker = worker_pool_->CreateWorker(worker_id, nullptr, Language::PYTHON);
+  ASSERT_TRUE(
+      worker_pool_->RegisterWorker(worker, proc.GetId(), [](Status, int) {}).ok());
+  worker_pool_->OnWorkerStarted(worker);
+  worker_pool_->DisconnectWorker(worker, rpc::WorkerExitType::INTENDED_USER_EXIT);
+  EXPECT_TRUE(agent_ptr->container_cleanup_callbacks.empty());
+  EXPECT_EQ(worker_pool_->NumWorkersStarting(), 0);
 }
 
 }  // namespace ray::raylet

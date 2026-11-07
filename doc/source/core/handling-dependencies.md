@@ -590,8 +590,15 @@ The `runtime_env` is a Python dictionary or a {class}`ray.runtime_env.RuntimeEnv
 
   - Install Podman and make sure the `podman` command is on the `PATH` of the Ray process, including the raylet and runtime environment subprocesses.
   - Configure rootful Podman. Ray requires this mode because it uses the host network, PID, and IPC namespaces for worker containers.
-  - If Ray runs as a non-root user, configure a `podman` wrapper that invokes rootful Podman with narrowly scoped `sudo` permission and removes the rootless-only `--userns=keep-id` argument. The wrapper must preserve all other arguments exactly.
+  - If Ray runs as a non-root user, configure a `podman` wrapper that invokes rootful Podman with narrowly scoped `sudo` permission and removes the rootless-only `--userns=keep-id` argument. The wrapper must preserve all other arguments exactly. It must also preserve inherited file descriptors so an in-flight creator retains the session ownership lock until it exits.
   - Allow outbound network access from the worker so Podman can pull the requested image.
+  - Give each worker container its own cgroup and ensure that Podman can terminate all processes in it. Worker containers share the host PID namespace, so killing the main process alone doesn't guarantee cleanup of child processes. Configurations without a container cgroup aren't supported.
+
+  Podman worker containers require Linux Ray nodes. Drivers can run on other supported platforms. Container control requests use a separate loopback listener on each node.
+
+  A worker registration timeout releases its startup slot and cancels its container launch. The runtime environment agent handles cleanup in the background. If cleanup exhausts its retries, the node rejects further container launches and logs an error in `runtime_env_agent.log`. Ordinary workers can still start. When a new raylet starts, the agent also removes containers from confirmed dead local raylet sessions after their creators have exited.
+
+  To change cleanup limits, set `RAY_WORKER_CONTAINER_OPERATION_TIMEOUT_S`, `RAY_WORKER_CONTAINER_CLEANUP_ATTEMPTS`, or `RAY_WORKER_CONTAINER_MAX_PENDING` on each node before starting Ray. The defaults are 30 seconds per operation, three cleanup attempts, and 4096 retained launch records. Launch records expire at the registration deadline. Records for failed cleanups remain available until the raylet exits.
 
 - `config` (dict | {class}`ray.runtime_env.RuntimeEnvConfig <ray.runtime_env.RuntimeEnvConfig>`): Configuration for the runtime environment, as either a dict or a `RuntimeEnvConfig`. It supports the following fields:
 

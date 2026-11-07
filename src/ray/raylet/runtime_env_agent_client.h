@@ -57,7 +57,8 @@ class RuntimeEnvAgentClient {
       uint32_t agent_register_timeout_ms =
           RayConfig::instance().agent_register_timeout_ms(),
       uint32_t agent_manager_retry_interval_ms =
-          RayConfig::instance().agent_manager_retry_interval_ms());
+          RayConfig::instance().agent_manager_retry_interval_ms(),
+      int container_port = 0);
 
   virtual ~RuntimeEnvAgentClient() = default;
 
@@ -80,6 +81,30 @@ class RuntimeEnvAgentClient {
   virtual void DeleteRuntimeEnvIfPossible(
       const std::string &serialized_runtime_env,
       DeleteRuntimeEnvIfPossibleCallback callback) = 0;
+
+  /// @brief Idempotently authorize a container launch before shim creation.
+  /// @param worker_id Stable launch identity; retries must reuse this ID.
+  /// @param node_id Raylet session that owns the launch.
+  /// @param job_id Job that owns the worker.
+  /// @param expires_at_ms Raylet-issued launch deadline, shared with the shim.
+  /// @param callback True if ownership is recorded; cancellation stays in force.
+  virtual void RegisterWorkerContainer(const WorkerID &worker_id,
+                                       const NodeID &node_id,
+                                       const JobID &job_id,
+                                       int64_t expires_at_ms,
+                                       std::function<void(bool)> callback) = 0;
+
+  /// @brief Transfer cancellation/cleanup to the agent without holding startup quota.
+  /// @param worker_id Stable launch identity; retries must reuse this ID.
+  /// @param node_id Raylet session that owns the launch.
+  /// @param job_id Job that owns the worker.
+  /// @param expires_at_ms Raylet-issued launch deadline, shared with the shim.
+  /// @param callback True means the agent accepted cancellation, not physical removal.
+  virtual void StopWorkerContainer(const WorkerID &worker_id,
+                                   const NodeID &node_id,
+                                   const JobID &job_id,
+                                   int64_t expires_at_ms,
+                                   std::function<void(bool)> callback) = 0;
 
   // NOTE: The service has another method `GetRuntimeEnvsInfo` but nobody in raylet uses
   // it.
