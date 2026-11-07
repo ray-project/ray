@@ -120,8 +120,9 @@ void MutableObjectProvider::HandleRegisterMutableObject(
   RegisterReaderChannel(reader_object_id);
 }
 
-void MutableObjectProvider::HandlePushMutableObject(
+Status MutableObjectProvider::HandlePushMutableObject(
     const rpc::PushMutableObjectRequest &request, rpc::PushMutableObjectReply *reply) {
+  reply->set_done(false);
   LocalReaderInfo info;
   const ObjectID writer_object_id = ObjectID::FromBinary(request.writer_object_id());
   {
@@ -130,6 +131,17 @@ void MutableObjectProvider::HandlePushMutableObject(
     RAY_CHECK(it != remote_writer_object_to_local_reader_.end());
     info = it->second;
   }
+  auto clear_written_so_far = [this, &writer_object_id]() {
+    absl::MutexLock guard(&written_so_far_lock_);
+    written_so_far_.erase(writer_object_id);
+  };
+  Status channel_status =
+      object_manager_->GetChannelStatus(info.local_object_id, /*is_reader=*/true);
+  if (!channel_status.ok()) {
+    clear_written_so_far();
+    return channel_status;
+  }
+
   size_t total_data_size = request.total_data_size();
   size_t total_metadata_size = request.total_metadata_size();
 
@@ -151,17 +163,23 @@ void MutableObjectProvider::HandlePushMutableObject(
   if (tmp_written_so_far == 0u) {
     // We set `metadata` to nullptr since the metadata is at the end of the object, which
     // we will not have until the last chunk is received.
-    RAY_CHECK_OK(object_manager_->WriteAcquire(info.local_object_id,
-                                               total_data_size,
-                                               /*metadata=*/nullptr,
-                                               total_metadata_size,
-                                               info.num_readers,
-                                               object_backing_store));
+    Status status = object_manager_->WriteAcquire(info.local_object_id,
+                                                  total_data_size,
+                                                  /*metadata=*/nullptr,
+                                                  total_metadata_size,
+                                                  info.num_readers,
+                                                  object_backing_store);
+    if (!status.ok()) {
+      clear_written_so_far();
+      return status;
+    }
   } else {
-    RAY_CHECK_OK(object_manager_->GetObjectBackingStore(info.local_object_id,
-                                                        total_data_size,
-                                                        total_metadata_size,
-                                                        object_backing_store));
+    Status status = object_manager_->GetObjectBackingStore(
+        info.local_object_id, total_data_size, total_metadata_size, object_backing_store);
+    if (!status.ok()) {
+      clear_written_so_far();
+      return status;
+    }
   }
   RAY_CHECK(object_backing_store);
 
@@ -174,11 +192,16 @@ void MutableObjectProvider::HandlePushMutableObject(
            request.metadata().data(),
            total_metadata_size);
     // The entire object has been written, so call `WriteRelease()`.
-    RAY_CHECK_OK(object_manager_->WriteRelease(info.local_object_id));
+    Status status = object_manager_->WriteRelease(info.local_object_id);
+    if (!status.ok()) {
+      clear_written_so_far();
+      return status;
+    }
     reply->set_done(true);
   } else {
     reply->set_done(false);
   }
+  return Status::OK();
 }
 
 Status MutableObjectProvider::WriteAcquire(const ObjectID &object_id,
@@ -248,7 +271,12 @@ void MutableObjectProvider::PollWriterClosure(
   RAY_CHECK(object->GetData());
   RAY_CHECK(object->GetMetadata());
 
-  std::shared_ptr<size_t> num_replied = std::make_shared<size_t>(0);
+  struct PushCompletionState {
+    absl::Mutex mutex;
+    size_t num_replied ABSL_GUARDED_BY(mutex) = 0;
+    bool failed ABSL_GUARDED_BY(mutex) = false;
+  };
+  auto completion_state = std::make_shared<PushCompletionState>();
   for (const auto &reader : *remote_readers) {
     reader->PushMutableObject(
         writer_object_id,
@@ -256,16 +284,35 @@ void MutableObjectProvider::PollWriterClosure(
         object->GetMetadata()->Size(),
         object->GetData()->Data(),
         object->GetMetadata()->Data(),
-        [this, &io_context, writer_object_id, remote_readers, num_replied](
+        [this, &io_context, writer_object_id, remote_readers, completion_state](
             const Status &push_object_status, const rpc::PushMutableObjectReply &reply) {
-          *num_replied += 1;
           if (!push_object_status.ok()) {
             RAY_LOG(ERROR)
                 << "Failed to transfer object to a remote node for an object id "
-                << writer_object_id << ". It can cause hang.";
+                << writer_object_id << ": " << push_object_status;
           }
 
-          if (*num_replied == remote_readers->size()) {
+          bool close_writer = false;
+          bool continue_polling = false;
+          {
+            absl::MutexLock guard(&completion_state->mutex);
+            ++completion_state->num_replied;
+            if (!push_object_status.ok() && !completion_state->failed) {
+              completion_state->failed = true;
+              close_writer = true;
+            }
+            continue_polling = completion_state->num_replied == remote_readers->size() &&
+                               !completion_state->failed;
+          }
+          if (close_writer) {
+            // TODO(pzhu): Add failure recovery and retries for remote push failures.
+            Status close_status = object_manager_->SetError(writer_object_id);
+            if (!close_status.ok()) {
+              RAY_LOG(ERROR) << "Failed to close mutable object channel "
+                             << writer_object_id
+                             << " after a remote push failure: " << close_status;
+            }
+          } else if (continue_polling) {
             io_context.post(
                 [this, &io_context, writer_object_id, remote_readers]() {
                   PollWriterClosure(io_context, writer_object_id, remote_readers);
