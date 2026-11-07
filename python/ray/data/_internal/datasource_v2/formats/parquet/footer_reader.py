@@ -89,6 +89,82 @@ class _FilterLeaves(NamedTuple):
     has_float_leaf: bool = False
 
 
+def _derived_statistics_predicate(expr: Expr, schema: pa.Schema) -> Expr | None:
+    """Return a necessary condition that Parquet statistics can evaluate."""
+    import pyarrow.compute as pc
+
+    from ray.data.expressions import (
+        BinaryExpr,
+        ColumnExpr,
+        LiteralExpr,
+        Operation,
+        PyArrowComputeUDFExpr,
+    )
+
+    if (
+        isinstance(expr, BinaryExpr)
+        and expr.op in (Operation.GE, Operation.GT)
+        and isinstance(expr.left, BinaryExpr)
+        and expr.left.op == Operation.ADD
+        and isinstance(expr.left.left, ColumnExpr)
+        and isinstance(expr.left.right, LiteralExpr)
+        and isinstance(expr.right, LiteralExpr)
+    ):
+        offset = expr.left.right.value
+        target = expr.right.value
+        column = expr.left.left
+        idx = schema.get_field_index(column.name)
+
+        # Positive integer addition cannot turn a value below this bound
+        # into a match, even if addition overflows at the upper end.
+        if (
+            idx >= 0
+            and pa.types.is_signed_integer(schema.field(idx).type)
+            and type(offset) is int
+            and 0 < offset < 2**63
+            and type(target) is int
+            and -(2**63) <= target < 2**63
+        ):
+            bound = target - offset
+            if -(2**63) <= bound < 2**63:
+                return column >= bound if expr.op == Operation.GE else column > bound
+
+    if (
+        isinstance(expr, PyArrowComputeUDFExpr)
+        and expr.pc_func is pc.starts_with
+        and len(expr.args) == 1
+        and isinstance(expr.args[0], ColumnExpr)
+        and len(expr.pc_positional) == 1
+        and not expr.pc_kwargs
+    ):
+        column = expr.args[0]
+        prefix = expr.pc_positional[0]
+        idx = schema.get_field_index(column.name)
+
+        if (
+            idx >= 0
+            and (
+                pa.types.is_string(schema.field(idx).type)
+                or pa.types.is_large_string(schema.field(idx).type)
+            )
+            and isinstance(prefix, str)
+            and prefix
+            and not any(0xD800 <= ord(ch) <= 0xDFFF for ch in prefix)
+        ):
+            lower = column >= prefix
+            last = ord(prefix[-1])
+
+            # When no valid next character exists, the lower bound alone
+            # is still safe.
+            if last in (0xD7FF, 0x10FFFF):
+                return lower
+
+            upper = prefix[:-1] + chr(last + 1)
+            return lower & (column < upper)
+
+    return None
+
+
 class FooterReader:
     """Reads Parquet footers and chunks files into row-group runs.
 
@@ -127,6 +203,7 @@ class FooterReader:
         )
         self.filesystem = filesystem
         self.pool = ThreadPoolExecutor(max_workers=io_concurrency)
+        self.filter_expr = filter_expr
         # Match Arrow's process-wide pools to the actor's IO concurrency so
         # nested S3/footer work isn't bottlenecked on the default 8 threads.
         pa.set_io_thread_count(io_concurrency)
@@ -303,6 +380,20 @@ class FooterReader:
         # single schema, so resolve them once rather than rescanning every leaf
         # for each group. The read-column lookup reads leaf paths off row group 0,
         # which a file with no row groups has none of; it sizes nothing either way.
+        pruning_filter = self.filter
+        if self.filter_expr is not None:
+            try:
+                derived = _derived_statistics_predicate(
+                    self.filter_expr, metadata.schema.to_arrow_schema()
+                )
+                if derived is not None:
+                    pruning_filter = derived.to_pyarrow()
+            except (pa.ArrowException, ValueError, TypeError, OverflowError) as e:
+                logger.debug(
+                    "Could not derive a Parquet statistics predicate: %s",
+                    e,
+                    exc_info=True,
+                )
         filter_leaves = self._locate_filter_columns(metadata.schema)
         leaf_indices = (
             self._read_leaf_indices(metadata.row_group(0))
@@ -330,7 +421,7 @@ class FooterReader:
             # Fail closed on any split error -- keep every group -- so a type
             # mismatch or similar cannot abort the rest of the read_footers batch.
             surviving: list[int] | None = self._try_split_by_row_group(
-                fragment, self.filter, path
+                fragment, pruning_filter, path
             )
             rg_indices: Iterable[int] = (
                 unprocessed_rg_ids if surviving is None else surviving
