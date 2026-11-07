@@ -223,8 +223,16 @@ class MessageQueue(Send):
         self._closed = True
         self._new_message_event.set()
 
-    def set_error(self, e: BaseException):
+    def set_error(self, e: BaseException, *, discard_messages: bool = False):
+        """Set an error to be raised once all queued messages are consumed.
+
+        If `discard_messages` is True, queued messages are dropped so the error
+        is raised immediately. Wakes up any pending `get_one_message` call.
+        """
+        if discard_messages:
+            self._message_queue.clear()
         self._error = e
+        self._new_message_event.set()
 
     def put_nowait(self, message: Message):
         self._message_queue.append(message)
@@ -282,19 +290,22 @@ class MessageQueue(Send):
                 the queue and an error has been set.
         """
 
-        if self._error:
-            raise self._error
-
         await self._new_message_event.wait()
 
         if len(self._message_queue) > 0:
             msg = self._message_queue.popleft()
 
-            if len(self._message_queue) == 0 and not self._closed:
+            # Keep the event set once closed or errored so that subsequent
+            # calls return immediately instead of blocking forever.
+            if (
+                len(self._message_queue) == 0
+                and not self._closed
+                and self._error is None
+            ):
                 self._new_message_event.clear()
 
             return msg
-        elif len(self._message_queue) == 0 and self._error:
+        elif len(self._message_queue) == 0 and self._error is not None:
             raise self._error
         elif len(self._message_queue) == 0 and self._closed:
             raise StopAsyncIteration
