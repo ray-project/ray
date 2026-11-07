@@ -329,6 +329,7 @@ class ImageMountMode(enum.Enum):
             except SandboxCreationError as err:
                 mounted, error = False, str(err)
             if mounted:
+                logger.info("Overlayfs sandboxes use image mount mode %s", mode.value)
                 return mode
             failures.append(f"{mode.value}: {error}")
         raise SandboxCreationError(
