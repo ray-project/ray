@@ -1,5 +1,6 @@
 import importlib.util
 import json
+import logging
 import os
 import re
 
@@ -316,9 +317,12 @@ def test_read_mcap_nonexistent_file(ray_start_regular_shared):
 
 @pytest.mark.parametrize("override_num_blocks", [1, 2])
 def test_read_mcap_override_num_blocks(
-    ray_start_regular_shared, tmp_path, override_num_blocks
+    ray_start_regular_shared, tmp_path, override_num_blocks, datasource_v2, caplog
 ):
-    """Test override_num_blocks parameter."""
+    """A read with ``override_num_blocks`` still returns every row.
+
+    The V2 datasource sizes read tasks by bytes, so it ignores the setting and warns.
+    """
     path = os.path.join(tmp_path, "blocks_test.mcap")
     messages = [
         {
@@ -330,12 +334,44 @@ def test_read_mcap_override_num_blocks(
     ]
     create_test_mcap_file(path, messages)
 
-    ds = ray.data.read_mcap(path, override_num_blocks=override_num_blocks)
+    # Ray's loggers do not propagate to the root logger caplog listens on.
+    read_api_logger = logging.getLogger("ray.data.read_api")
+    read_api_logger.addHandler(caplog.handler)
+    try:
+        ds = ray.data.read_mcap(path, override_num_blocks=override_num_blocks)
+    finally:
+        read_api_logger.removeHandler(caplog.handler)
 
-    # Should still read all the data
     assert ds.count() == 3
-    rows = ds.take_all()
-    assert len(rows) == 3
+    assert len(ds.take_all()) == 3
+    warned = any(
+        "ignores `override_num_blocks`" in record.message for record in caplog.records
+    )
+    assert warned == datasource_v2
+
+
+def test_read_mcap_warning_names_parallelism(
+    ray_start_regular_shared, tmp_path, datasource_v2, caplog
+):
+    """The V2 datasource's warning names ``parallelism`` when that is the argument
+    given, rather than ``override_num_blocks``.
+    """
+    path = os.path.join(tmp_path, "parallelism_test.mcap")
+    create_test_mcap_file(
+        path, [{"topic": "/test", "data": {"seq": 0}, "log_time": 1000000000}]
+    )
+
+    read_api_logger = logging.getLogger("ray.data.read_api")
+    read_api_logger.addHandler(caplog.handler)
+    try:
+        ray.data.read_mcap(path, parallelism=2)
+    finally:
+        read_api_logger.removeHandler(caplog.handler)
+
+    messages = [record.message for record in caplog.records]
+    warned = any("ignores `parallelism`" in m for m in messages)
+    assert warned == datasource_v2
+    assert not any("ignores `override_num_blocks`" in m for m in messages)
 
 
 def test_read_mcap_file_extensions(ray_start_regular_shared, tmp_path):
@@ -646,6 +682,48 @@ def test_read_mcap_checkpoint_config_turns_on_row_id(
         id_column="row_id", checkpoint_path="/tmp/ray_data_mcap_ckpt_unused"
     )
     assert "row_id" in ray.data.read_mcap(simple_mcap_file).schema().names
+
+
+def test_read_mcap_v1_refuses_a_row_id_checkpoint(
+    ray_start_regular_shared, simple_mcap_file, datasource_v2
+):
+    """A checkpoint keyed on ``row_id`` needs the column, which only the V2
+    datasource builds. On the V1 legacy design ``read_mcap`` refuses it at once,
+    instead of reading without the ids the checkpoint needs."""
+    from ray.data.checkpoint import CheckpointConfig
+
+    if datasource_v2:
+        pytest.skip("V2 turns row_id on")
+    ctx = ray.data.DataContext.get_current()
+    ctx.checkpoint_config = CheckpointConfig(
+        id_column="row_id", checkpoint_path="/tmp/ray_data_mcap_ckpt_unused"
+    )
+
+    with pytest.raises(NotImplementedError, match="checkpoint keyed on `row_id`"):
+        ray.data.read_mcap(simple_mcap_file)
+
+
+@pytest.mark.parametrize("name", ["row_id", "uid"])
+def test_read_mcap_refuses_generated_id_column(
+    ray_start_regular_shared, simple_mcap_file, name
+):
+    """A checkpoint config that asks for generated ids fails at ``read_mcap``.
+
+    Only ``read_parquet`` builds generated ids. The name ``row_id`` must not turn
+    on MCAP's own ``row_id`` column instead.
+    """
+    from ray.data.checkpoint import CheckpointConfig
+    from ray.data.checkpoint.interfaces import InvalidCheckpointingConfig
+
+    ctx = ray.data.DataContext.get_current()
+    ctx.checkpoint_config = CheckpointConfig(
+        generated_id_column=name, checkpoint_path="/tmp/ray_data_mcap_ckpt_unused"
+    )
+
+    with pytest.raises(
+        InvalidCheckpointingConfig, match="works only with `read_parquet`"
+    ):
+        ray.data.read_mcap(simple_mcap_file)
 
 
 def test_read_mcap_v2_schema_matches_rows(

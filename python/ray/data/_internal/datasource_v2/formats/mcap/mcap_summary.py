@@ -46,8 +46,9 @@ _T = TypeVar("_T")
 _R = TypeVar("_R")
 
 # Peak memory of reading a chunk, as a multiple of the bytes its rows take as
-# tables: the table being built plus the chunk being decompressed. Reads of one
-# 128 MiB bin peaked at 1.08 to 1.16 times their tables.
+# tables: the table being built, the chunk being decompressed and the ranged
+# read that fetched it (``mcap_io.ChunkReads``). Reads of one 128 MiB table
+# peaked at 1.14 to 1.20 times their tables.
 _READ_PEAK_FACTOR = 1.2
 
 # A ``MessageIndex`` record after a chunk: opcode (1), length (8), channel id
@@ -55,10 +56,11 @@ _READ_PEAK_FACTOR = 1.2
 _MESSAGE_INDEX_HEADER_BYTES = 15
 _MESSAGE_INDEX_ENTRY_BYTES = 16
 
-# Summaries read concurrently within one listing task. A summary read is a few
-# small ranged requests, so it is latency-bound on remote storage.
+# Summaries read concurrently within one listing task. A summary read is an
+# open and one to three small ranged reads, so a listing waits on request
+# latency. Up to twice this many read summaries are held at once.
 _DEFAULT_SUMMARY_IO_CONCURRENCY = env_integer(
-    "RAY_DATA_MCAP_SUMMARY_IO_CONCURRENCY", 16
+    "RAY_DATA_MCAP_SUMMARY_IO_CONCURRENCY", 32
 )
 
 
