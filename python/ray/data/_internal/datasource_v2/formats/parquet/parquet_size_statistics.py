@@ -1,8 +1,7 @@
 """Read the Parquet fields that PyArrow's Python bindings don't expose.
 
 :func:`read_footer_stats` reads each leaf's ``SizeStatistics`` from the footer bytes
-``FileMetaData`` already holds, and :func:`read_dictionary_page` a dictionary page's
-header, decoding Thrift's compact protocol by hand. A leaf is a column of primitive
+``FileMetaData`` already holds, decoding Thrift's compact protocol by hand. A leaf is a column of primitive
 values: a struct column of two fields is two. The footer walk takes about 7
 microseconds per row group per leaf (Apple M5) and its result holds about 190 bytes
 each.
@@ -21,7 +20,7 @@ logger = logging.getLogger(__name__)
 if TYPE_CHECKING:
     from pyarrow.parquet import FileMetaData
 
-# Thrift's compact protocol, which Parquet footers and page headers are written in:
+# Thrift's compact protocol, which Parquet footers are written in:
 # https://github.com/apache/thrift/blob/master/doc/specs/thrift-compact-protocol.md
 
 # Type ids, and what follows a field header of each type.
@@ -63,11 +62,6 @@ _COLUMN_META_SIZE_STATISTICS = 16  # ColumnMetaData.size_statistics
 _SIZE_STATS_UNENCODED_BYTES = 1  # SizeStatistics.unencoded_byte_array_data_bytes
 _SIZE_STATS_REPETITION_HISTOGRAM = 2  # SizeStatistics.repetition_level_histogram
 _SIZE_STATS_DEFINITION_HISTOGRAM = 3  # SizeStatistics.definition_level_histogram
-_PAGE_HEADER_TYPE = 1  # PageHeader.type, a PageType
-_PAGE_HEADER_UNCOMPRESSED_SIZE = 2  # PageHeader.uncompressed_page_size
-_PAGE_HEADER_DICTIONARY_PAGE_HEADER = 7  # PageHeader.dictionary_page_header
-_DICTIONARY_PAGE_HEADER_NUM_VALUES = 1  # DictionaryPageHeader.num_values
-_DICTIONARY_PAGE = 2  # PageType.DICTIONARY_PAGE
 
 
 class LeafSizeStats(NamedTuple):
@@ -76,13 +70,6 @@ class LeafSizeStats(NamedTuple):
     unencoded_byte_array_data_bytes: Optional[int]
     repetition_level_histogram: Tuple[int, ...]
     definition_level_histogram: Tuple[int, ...]
-
-
-class DictionaryPage(NamedTuple):
-    """A dictionary page's header: its entries and its uncompressed bytes."""
-
-    num_values: int
-    uncompressed_page_size: int
 
 
 @dataclass(slots=True)
@@ -410,46 +397,3 @@ def read_footer_stats(
     if any(len(columns) != num_columns for columns in row_groups):
         return None
     return row_groups
-
-
-# Enough for a dictionary page's header, which takes about 35 bytes.
-DICTIONARY_PAGE_HEADER_READ_BYTES = 64
-
-
-def read_dictionary_page(buf: Union[bytes, memoryview]) -> Optional[DictionaryPage]:
-    """The dictionary page header ``buf`` starts with, or ``None`` if it doesn't
-    start with a whole one."""
-    reader = _CompactReader(buf)
-    page_type = uncompressed = num_values = None
-    try:
-        for field in reader._fields():
-            if field.id == _PAGE_HEADER_TYPE and field.type == _I32:
-                page_type = reader._zigzag()
-            elif field.id == _PAGE_HEADER_UNCOMPRESSED_SIZE and field.type == _I32:
-                uncompressed = reader._zigzag()
-            elif (
-                field.id == _PAGE_HEADER_DICTIONARY_PAGE_HEADER
-                and field.type == _STRUCT
-            ):
-                for sub in reader._fields():
-                    if (
-                        sub.id == _DICTIONARY_PAGE_HEADER_NUM_VALUES
-                        and sub.type == _I32
-                    ):
-                        num_values = reader._zigzag()
-                    else:
-                        reader._skip(sub.type)
-            else:
-                reader._skip(field.type)
-    except (IndexError, RecursionError, _ThriftDesync):
-        # RecursionError: structs nested deeper than the stack allows.
-        return None
-    if (
-        page_type != _DICTIONARY_PAGE
-        or uncompressed is None
-        or num_values is None
-        or num_values < 0
-        or uncompressed < 0
-    ):
-        return None
-    return DictionaryPage(num_values, uncompressed)
