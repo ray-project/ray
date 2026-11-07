@@ -148,7 +148,7 @@ Status LeaderElector::TryAcquireOrRenew(
 
   if (success) {
     // Lock successfully acquired or renewed.
-    auto now_steady = std::chrono::steady_clock::now().time_since_epoch();
+    auto now_steady = SteadyNow().time_since_epoch();
     {
       std::scoped_lock lock(mutex_);
       last_successful_renew_steady_ns_ =
@@ -282,7 +282,7 @@ void LeaderElector::WatchdogLoop() {
 
     // Capture current steady clock next. This order guarantees that last_renew_ns
     // is always <= now_steady_ns, preventing negative elapsed time calculations.
-    auto now_steady = std::chrono::steady_clock::now().time_since_epoch();
+    auto now_steady = SteadyNow().time_since_epoch();
     int64_t now_steady_ns =
         std::chrono::duration_cast<std::chrono::nanoseconds>(now_steady).count();
 
@@ -291,24 +291,31 @@ void LeaderElector::WatchdogLoop() {
 
     // 3. If the elapsed time has breached the renew deadline, step GCS down immediately!
     if (remaining_ms <= 0) {
-      RAY_LOG(ERROR) << "WATCHDOG: GCS leader lease renewal deadline exceeded ("
-                     << elapsed_ms / 1000.0 << "s > " << config_.renew_deadline_seconds
-                     << "s). Stepping down immediately!";
       bool was_leading = false;
       {
         // Acquire mutex_ to prevent a lost wake-up race condition with the
         // election thread waiting on election_cv_.
         std::scoped_lock lock(mutex_);
-        if (is_leading_) {
+        // A newer publication invalidates this expiry decision. Let the next loop
+        // iteration recalculate from the current renewal timestamp.
+        if (is_leading_ && last_successful_renew_steady_ns_ == last_renew_ns) {
           is_leading_ = false;
           was_leading = true;
         }
+      }
+      if (was_leading) {
+        RAY_LOG(ERROR) << "WATCHDOG: GCS leader lease renewal deadline exceeded ("
+                       << elapsed_ms / 1000.0 << "s > " << config_.renew_deadline_seconds
+                       << "s). Stepping down immediately!";
       }
       election_cv_.notify_all();
       if (was_leading && config_.on_stopped_leading) {
         // Note: In GCS, this callback is bound to immediately suicide-terminate the
         // GCS process (RAY_LOG(FATAL)) to prevent split-brain zombie writes to Redis.
         config_.on_stopped_leading();
+      }
+      if (after_watchdog_expiry_check_for_testing_) {
+        after_watchdog_expiry_check_for_testing_();
       }
       continue;
     }
