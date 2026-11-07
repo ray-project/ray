@@ -8,7 +8,8 @@ what the client saw during every window.
 
 Run it with kubectl pointing at an empty default namespace of a Kubernetes
 cluster that has the KubeRay operator and the ray-ci:kuberay-test image.
-ci/k8s/run-serve-ha-test.sh sets one up in kind.
+ci/k8s/run-serve-ha-test.sh sets one up in kind. It deletes everything it
+deployed when it exits.
 """
 
 import collections
@@ -51,11 +52,15 @@ def log(message: str):
     print(f"[{time.strftime('%H:%M:%S')}] {message}", flush=True)
 
 
-def kubectl(*args: str, stdin: Optional[str] = None) -> str:
+def kubectl(*args: str, stdin: Optional[str] = None, timeout_s: int = 60) -> str:
     command = f"kubectl {' '.join(args)}"
     try:
         result = subprocess.run(
-            ["kubectl", *args], input=stdin, capture_output=True, text=True, timeout=60
+            ["kubectl", *args],
+            input=stdin,
+            capture_output=True,
+            text=True,
+            timeout=timeout_s,
         )
     except subprocess.TimeoutExpired:
         raise RuntimeError(f"`{command}` timed out.")
@@ -393,6 +398,33 @@ def dump_diagnostics():
             print(e, flush=True)
 
 
+def cleanup():
+    """Deletes everything deploy() created.
+
+    Each delete runs in the foreground, so it returns only once what the object
+    owns, such as the RayService's RayCluster and Redis' Pod, is gone too. The
+    RayService goes first: KubeRay keeps its RayCluster until a Job has deleted
+    its GCS state from Redis, and that Job needs Redis and the Secret.
+    """
+    log("Deleting what the test deployed.")
+    for args in [
+        ["pod/" + CLIENT, "rayservice/" + NAME],
+        ["-f", str(HERE / "serve_ha.yaml")],
+        ["secret/" + NAME, f"configmap/{NAME}-scripts"],
+    ]:
+        try:
+            kubectl(
+                "delete",
+                *args,
+                "--cascade=foreground",
+                "--ignore-not-found",
+                "--timeout=5m",
+                timeout_s=330,
+            )
+        except RuntimeError as e:
+            print(e, flush=True)
+
+
 def main():
     try:
         check(run())
@@ -400,6 +432,8 @@ def main():
         dump_diagnostics()
         print("+++ serve_ha.py failed", flush=True)
         raise
+    finally:
+        cleanup()
 
 
 if __name__ == "__main__":
