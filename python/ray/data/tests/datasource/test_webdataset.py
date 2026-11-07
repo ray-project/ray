@@ -90,6 +90,110 @@ def test_webdataset_expand_json(
     assert [1, 2] == record[0]["a"]
 
 
+def test_webdataset_expand_json_edge_cases(ray_start_2_cpus, tmp_path):
+    import json
+    import pyarrow.fs
+
+    from ray.data._internal.datasource.webdataset_datasource import WebDatasetDatasource
+
+    path = os.path.join(tmp_path, "edge_000000.tar")
+    with TarWriter(path) as tf:
+        # Sample 0: JSON contains a key ("txt") colliding with an existing sample
+        # key, a single-element list, and a scalar.
+        tf.write("0.txt", b"original_txt")
+        tf.write(
+            "0.json",
+            json.dumps(
+                {"txt": "json_txt", "single_list": ["only_one"], "count": 42}
+            ).encode("utf-8"),
+        )
+        # Sample 1: Heterogeneous sample without a .json entry when expand_json=True.
+        tf.write("1.txt", b"second_txt")
+
+    ds = ray.data.read_webdataset(
+        paths=[str(tmp_path)], override_num_blocks=1, expand_json=True
+    )
+    records = sorted(ds.take_all(), key=lambda r: r["__key__"])
+    assert len(records) == 2
+    assert records[0]["txt"] == "original_txt"
+    assert list(records[0]["single_list"]) == ["only_one"]
+    assert records[0]["count"] == 42
+    assert records[1]["txt"] == "second_txt"
+
+    non_dict_path = os.path.join(tmp_path, "non_dict.tar")
+    with TarWriter(non_dict_path) as tf:
+        tf.write("0.json", json.dumps(["not", "a", "dict"]).encode("utf-8"))
+
+    datasource = WebDatasetDatasource(
+        paths=[str(non_dict_path)], decoder=None, expand_json=True
+    )
+    local_fs = pyarrow.fs.LocalFileSystem()
+    with local_fs.open_input_stream(str(non_dict_path)) as stream:
+        with pytest.raises(TypeError, match="Expected a JSON object"):
+            list(datasource._read_stream(stream, str(non_dict_path)))
+
+
+def test_webdataset_preserves_single_element_list_without_expand_json(
+    ray_start_2_cpus, tmp_path
+):
+    import json
+
+    path = os.path.join(tmp_path, "list_000000.tar")
+    with TarWriter(path) as tf:
+        tf.write("0.json", json.dumps(["only_item"]).encode("utf-8"))
+        tf.write("1.json", json.dumps(["first", "second"]).encode("utf-8"))
+
+    ds = ray.data.read_webdataset(
+        paths=[str(tmp_path)], override_num_blocks=1, expand_json=False
+    )
+    records = sorted(ds.take_all(), key=lambda r: r["__key__"])
+    assert list(records[0]["json"]) == ["only_item"]
+    assert list(records[1]["json"]) == ["first", "second"]
+
+
+def test_webdataset_duplicate_suffix_without_url_meta():
+    from ray.data._internal.datasource.webdataset_datasource import _group_by_keys
+
+    data = [
+        {"fname": "001.txt", "data": b"a"},
+        {"fname": "001.txt", "data": b"b"},
+    ]
+    with pytest.raises(ValueError, match="duplicate file name in tar file"):
+        list(_group_by_keys(data))
+
+
+def test_default_encoder_decoder_jpeg_and_case_insensitive():
+    import numpy as np
+
+    from ray.data._internal.datasource.webdataset_datasource import (
+        _default_decoder,
+        _default_encoder,
+    )
+
+    img = np.zeros((8, 8, 3), dtype=np.uint8)
+    encoded = _default_encoder(
+        {
+            "__key__": "0001",
+            "jpeg": img,
+            "PHOTO.JPG": img,
+            "note.text": "hello",
+            "UPPER.TXT": "world",
+        }
+    )
+    assert isinstance(encoded["jpeg"], bytes)
+    assert isinstance(encoded["PHOTO.JPG"], bytes)
+    assert encoded["note.text"] == b"hello"
+    assert encoded["UPPER.TXT"] == b"world"
+
+    decoded = _default_decoder(encoded)
+    assert isinstance(decoded["jpeg"], np.ndarray)
+    assert decoded["jpeg"].shape == (8, 8, 3)
+    assert isinstance(decoded["PHOTO.JPG"], np.ndarray)
+    assert decoded["PHOTO.JPG"].shape == (8, 8, 3)
+    assert decoded["note.text"] == "hello"
+    assert decoded["UPPER.TXT"] == "world"
+
+
 def test_webdataset_suffixes(ray_start_2_cpus, tmp_path):
     path = os.path.join(tmp_path, "bar_000000.tar")
     with TarWriter(path) as tf:
