@@ -1,6 +1,16 @@
 import warnings
 from functools import partial
-from typing import TYPE_CHECKING, Callable, Dict, List, Optional, Tuple, Type, TypeVar
+from typing import (
+    TYPE_CHECKING,
+    Callable,
+    Dict,
+    List,
+    Optional,
+    Set,
+    Tuple,
+    Type,
+    TypeVar,
+)
 
 if TYPE_CHECKING:
     import pyarrow.fs
@@ -62,6 +72,7 @@ from ray.data._internal.planner.checkpoint import (
     plan_read_files_op_with_checkpoint_filter,
     plan_read_files_op_with_done_rows,
     plan_read_op_with_checkpoint_filter,
+    plan_with_checkpoint_filter_on_input,
     plan_write_op_with_checkpoint_writer,
 )
 from ray.data._internal.planner.plan_all_to_all_op import (
@@ -283,6 +294,11 @@ class Planner:
     def __init__(self):
         self._supports_checkpointing = False
         self._plan_fns_for_checkpointing = {}
+        # The ops that get a checkpoint filter, by ``id``: on each path from
+        # the sink, the first read or the rebundle of its input
+        # (``_find_checkpoint_filter_sites``). A read further up, such as one
+        # that lists the inputs of another read, has rows without the id column.
+        self._checkpoint_filter_sites: Set[int] = set()
 
     def plan(
         self, logical_plan: LogicalPlan
@@ -301,6 +317,9 @@ class Planner:
                     logical_plan, checkpoint_config.generated_id_column
                 )
             self._supports_checkpointing = True
+            self._checkpoint_filter_sites = self._find_checkpoint_filter_sites(
+                logical_plan.dag
+            )
             data_file_dir, data_file_fs = self._get_data_file_info(logical_plan)
 
             checkpoint_callback = self._create_checkpoint_callback(
@@ -349,7 +368,7 @@ class Planner:
         return physical_plan, callbacks
 
     def get_plan_fn(self, logical_op: LogicalOperator) -> PlanLogicalOpFn:
-        if self._supports_checkpointing:
+        if self._supports_checkpointing and self._gets_checkpoint_plan(logical_op):
             assert self._plan_fns_for_checkpointing
             plan_fn = find_plan_fn(logical_op, self._plan_fns_for_checkpointing)
             if plan_fn is not None:
@@ -547,9 +566,51 @@ class Planner:
                 data_file_dir,
                 data_file_filesystem,
             ),
+            StreamingRepartition: partial(
+                plan_with_checkpoint_filter_on_input,
+                plan_streaming_repartition_op,
+                data_file_dir,
+                data_file_filesystem,
+            ),
             Write: plan_write_op_with_checkpoint_writer,
         }
         return plan_fns
+
+    def _gets_checkpoint_plan(self, logical_op: LogicalOperator) -> bool:
+        """Whether ``logical_op`` is planned with its checkpointing plan function.
+
+        A read or a ``StreamingRepartition`` is, but only where the checkpoint
+        filter goes (``_find_checkpoint_filter_sites``).
+        """
+        if isinstance(logical_op, (*self._CHECKPOINT_FILTER_OPS, StreamingRepartition)):
+            return id(logical_op) in self._checkpoint_filter_sites
+        return True
+
+    def _find_checkpoint_filter_sites(self, root: LogicalOperator) -> Set[int]:
+        """The ``id`` of each op that gets the checkpoint filter.
+
+        On each path from ``root`` it is the first read. A read that filters its
+        input (``ReadFiles.checkpoint_on_input``) hands the filter down past the
+        ``StreamingRepartition`` ops that cut that input into read tasks, so they
+        cut only unfinished rows.
+        """
+        found: Set[int] = set()
+        pending = [root]
+        while pending:
+            op = pending.pop()
+            if not isinstance(op, self._CHECKPOINT_FILTER_OPS):
+                pending.extend(op.input_dependencies)
+                continue
+            site = op
+            while (
+                isinstance(op, ReadFiles)
+                and op.checkpoint_on_input
+                and len(site.input_dependencies) == 1
+                and isinstance(site.input_dependencies[0], StreamingRepartition)
+            ):
+                site = site.input_dependencies[0]
+            found.add(id(site))
+        return found
 
     def _check_supports_checkpointing(self, logical_plan: LogicalPlan) -> bool:
         """Check if the logical plan supports checkpointing.
