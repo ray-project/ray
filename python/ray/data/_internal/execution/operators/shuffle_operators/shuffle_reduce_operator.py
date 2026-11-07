@@ -33,6 +33,7 @@ from ray.data._internal.execution.operators.shuffle_operators.shuffle_tasks impo
     ReduceFn,
     _shuffle_reduce_task,
 )
+from ray.data._internal.execution.util import merge_label_selector
 from ray.data.block import BlockAccessor, BlockStats, TaskExecWorkerStats, to_stats
 from ray.data.context import DataContext
 
@@ -185,6 +186,11 @@ class ShuffleReduceOp(PhysicalOperator):
             remote_args["runtime_env"] = _merged_reduce_runtime_env(user_runtime_env)
         remote_args["name"] = self.name
         remote_args["num_returns"] = "streaming"
+
+        remote_args = merge_label_selector(
+            remote_args, self.data_context.execution_options.label_selector
+        )
+
         return remote_args
 
     def _add_input_inner(self, refs: RefBundle, input_index: int) -> None:

@@ -28,6 +28,7 @@ from ray.data._internal.execution.operators.shuffle_operators.shuffle_tasks impo
     PartitionFn,
     _shuffle_map_task,
 )
+from ray.data._internal.execution.util import merge_label_selector
 from ray.data.block import Block, BlockMetadata, BlockStats
 from ray.data.context import DataContext
 from ray.types import ObjectRef
@@ -223,6 +224,10 @@ class ShuffleMapOp(InternalQueueOperatorMixin, PhysicalOperator):
             )
         if self._map_runtime_env is not None:
             ray_options["runtime_env"] = self._map_runtime_env
+
+        ray_options = merge_label_selector(
+            ray_options, self.data_context.execution_options.label_selector
+        )
 
         map_refs = _shuffle_map_task.options(**ray_options).remote(
             *block_refs,
