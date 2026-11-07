@@ -777,6 +777,31 @@ def test_derived_predicate_prunes_row_groups(tmp_path, predicate):
             [0, 3],
             id="compound-nested-derived",
         ),
+        pytest.param(
+            ((col("x") + 1) >= 76) & (col("x") < 20),
+            [],
+            id="mixed-and-disjoint",
+        ),
+        pytest.param(
+            (col("x") < 20) & ((col("x") + 1) >= 76),
+            [],
+            id="mixed-and-reversed",
+        ),
+        pytest.param(
+            ((col("x") + 1) >= 76) | (col("x") < 10),
+            [0, 3],
+            id="mixed-or",
+        ),
+        pytest.param(
+            (col("x") < 10) | ((col("x") + 1) >= 76),
+            [0, 3],
+            id="mixed-or-reversed",
+        ),
+        pytest.param(
+            (((col("x") + 1) >= 76) | (col("x") < 10)) & (col("x") < 50),
+            [0],
+            id="mixed-nested",
+        ),
         pytest.param((col("x") + 1) >= 1000, [], id="no-matches"),
         pytest.param(col("s").str.starts_with("s07"), [2, 3], id="spanning-prefix"),
         pytest.param(col("s").str.starts_with("z"), [], id="missing-prefix"),
@@ -824,6 +849,11 @@ def test_derived_predicate_preserves_matching_rows(
         (pa.uint64(), (1 + col("x")) >= 76),
         (pa.int64(), (-1 + col("x")) >= 76),
         (pa.int64(), (1 + col("x")) >= 2**63),
+        (pa.int8(), (col("x") + 1) >= 128),
+        (pa.int8(), (col("x") + 128) >= 76),
+        (pa.int16(), (col("x") + 1) >= 2**15),
+        (pa.int32(), (col("x") + 1) >= 2**31),
+        (pa.int32(), (1 + col("x")) >= 2**31),
     ],
 )
 def test_derived_predicate_skips_unsafe_arithmetic(column_type, predicate):
@@ -833,6 +863,26 @@ def test_derived_predicate_skips_unsafe_arithmetic(column_type, predicate):
 
     derived = _derived_statistics_predicate(predicate, pa.schema([("x", column_type)]))
     assert derived is None
+
+
+@pytest.mark.parametrize(
+    "column_type",
+    [pa.int8(), pa.int16(), pa.int32(), pa.int64()],
+)
+def test_derived_predicate_signed_integer_widths(column_type):
+    from ray.data._internal.datasource_v2.formats.parquet.footer_reader import (
+        _derived_statistics_predicate,
+    )
+
+    predicate = (col("x") + 1) >= 76
+    table = pa.table({"x": pa.array([0, 74, 75, 76, 100], type=column_type)})
+
+    derived = _derived_statistics_predicate(predicate, table.schema)
+    assert derived is not None
+
+    expected = table.filter(predicate.to_pyarrow())
+    actual = table.filter(derived.to_pyarrow())
+    assert actual.equals(expected)
 
 
 def test_derived_predicate_unicode_prefix(tmp_path):
