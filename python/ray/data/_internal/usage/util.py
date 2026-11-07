@@ -22,7 +22,7 @@ _recorded_operators = dict()
 _recorded_operators_lock = threading.Lock()
 
 # Bounded timeout for the Prometheus counter HTTP queries.
-_PROMETHEUS_QUERY_TIMEOUT_S = 0.25
+_PROMETHEUS_QUERY_TIMEOUT_S = 2
 
 
 def _prometheus_host() -> str:
