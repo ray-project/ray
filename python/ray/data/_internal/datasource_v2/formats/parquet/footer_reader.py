@@ -380,7 +380,8 @@ class FooterReader:
         # single schema, so resolve them once rather than rescanning every leaf
         # for each group. The read-column lookup reads leaf paths off row group 0,
         # which a file with no row groups has none of; it sizes nothing either way.
-        pruning_filter = self.filter
+        original_filter = self.filter
+        pruning_filter = original_filter
         if self.filter_expr is not None:
             try:
                 derived = _derived_statistics_predicate(
@@ -414,7 +415,7 @@ class FooterReader:
             # the listing stop early and the resumed job return too few rows.
             fragment = fragment.subset(row_group_ids=unprocessed_rg_ids)
 
-        if self.filter is not None and filter_leaves.all_filter_columns_found:
+        if original_filter is not None and filter_leaves.all_filter_columns_found:
             # Predicate pushdown: drop row groups whose Parquet statistics
             # contradict the filter, so we never emit chunks the reader would
             # skip anyway. Each returned fragment views a single surviving group.
@@ -432,7 +433,9 @@ class FooterReader:
             # out. For those, num_rows is an exact survivor count and can drive
             # the limit push-down. Any failure defaults to "not fully matched",
             # which is always safe (falls back to the post-filter stop).
-            not_fully_ids = self._try_split_by_row_group(fragment, ~self.filter, path)
+            not_fully_ids = self._try_split_by_row_group(
+                fragment, ~original_filter, path
+            )
             not_fully = set(rg_indices) if not_fully_ids is None else set(not_fully_ids)
             # The negation test alone is not sufficient: ``~filter`` can prune a
             # group that still holds a row the filter does not return, and then
@@ -446,7 +449,7 @@ class FooterReader:
                 and self._rg_can_fully_match(metadata.row_group(i), filter_leaves)
                 for i in rg_indices
             }
-        elif self.filter is not None:
+        elif original_filter is not None:
             # A predicate column is absent from this file's schema. PyArrow's
             # split_by_row_group raises ArrowInvalid ("No match for FieldRef.Name")
             # in that case, which would abort the whole read_footers batch.
