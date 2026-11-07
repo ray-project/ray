@@ -14,6 +14,7 @@ from typing import (
     List,
     Optional,
     Tuple,
+    Union,
 )
 
 import ray
@@ -285,6 +286,11 @@ class LocalRouter(Router):
 
     def running_replicas_populated(self) -> bool:
         return True
+
+    def set_router_autoscaling_metrics(
+        self, metrics_dict: Dict[str, Union[int, float]]
+    ) -> None:
+        """No-op because local testing mode does not run Serve autoscaling."""
 
     def _resolve_deployment_responses(
         self, request_args: Tuple[Any], request_kwargs: Dict[str, Any]
