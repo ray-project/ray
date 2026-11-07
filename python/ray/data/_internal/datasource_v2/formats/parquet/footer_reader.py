@@ -121,6 +121,22 @@ def _derived_statistics_predicate(expr: Expr, schema: pa.Schema) -> Expr | None:
             return left | right
         return None
 
+    # Keep simple comparisons that Parquet statistics already understand.
+    if isinstance(expr, BinaryExpr) and expr.op in (
+        Operation.EQ,
+        Operation.NE,
+        Operation.LT,
+        Operation.LE,
+        Operation.GT,
+        Operation.GE,
+    ):
+        if (
+            isinstance(expr.left, ColumnExpr) and isinstance(expr.right, LiteralExpr)
+        ) or (
+            isinstance(expr.left, LiteralExpr) and isinstance(expr.right, ColumnExpr)
+        ):
+            return expr
+
     if (
         isinstance(expr, BinaryExpr)
         and expr.op in (Operation.GE, Operation.GT)
@@ -147,19 +163,22 @@ def _derived_statistics_predicate(expr: Expr, schema: pa.Schema) -> Expr | None:
 
             # Positive integer addition cannot turn a value below this bound
             # into a match, even if addition overflows at the upper end.
-            if (
-                idx >= 0
-                and pa.types.is_signed_integer(schema.field(idx).type)
-                and type(offset) is int
-                and 0 < offset < 2**63
-                and type(target) is int
-                and -(2**63) <= target < 2**63
-            ):
-                bound = target - offset
-                if -(2**63) <= bound < 2**63:
-                    if expr.op == Operation.GE:
-                        return column >= bound
-                    return column > bound
+            if idx >= 0 and pa.types.is_signed_integer(schema.field(idx).type):
+                bit_width = schema.field(idx).type.bit_width
+                min_value = -(1 << (bit_width - 1))
+                max_value = (1 << (bit_width - 1)) - 1
+
+                if (
+                    type(offset) is int
+                    and 0 < offset <= max_value
+                    and type(target) is int
+                    and min_value <= target <= max_value
+                ):
+                    bound = target - offset
+                    if min_value <= bound <= max_value:
+                        if expr.op == Operation.GE:
+                            return column >= bound
+                        return column > bound
 
     if (
         isinstance(expr, PyArrowComputeUDFExpr)
