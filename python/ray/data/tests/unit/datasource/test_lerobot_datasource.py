@@ -7,7 +7,9 @@ import pyarrow.parquet as pq
 import pytest
 
 from ray.data._internal.datasource.lerobot_datasource import (
+    _decode_video_delta,
     _LeRobotRoot,
+    _prepare_delta_segment,
     _raise_on_pickle_object_meta_parquet,
     _read_lerobot_segment,
 )
@@ -155,6 +157,203 @@ def test_raise_on_pickle_object_meta_parquet_allows_clean(tmp_path):
     empty = tmp_path / "empty_meta"
     empty.mkdir()
     _raise_on_pickle_object_meta_parquet(str(empty), "s3://bucket/ds")
+
+
+def test_prepare_delta_segment_and_read_segment_vectorized(tmp_path):
+    """Verify vectorized delta segment preparation, batch assembly, and contiguity check."""
+    import numpy as np
+
+    shard = tmp_path / "shard.parquet"
+    cols = {
+        "index": pa.array([10, 11, 12, 13, 14], pa.int64()),
+        "episode_index": pa.array([2, 2, 2, 3, 3], pa.int64()),
+        "frame_index": pa.array([0, 1, 2, 0, 1], pa.int64()),
+        "timestamp": pa.array([0.0, 0.1, 0.2, 0.0, 0.1], pa.float64()),
+        "task_index": pa.array([0, 0, 0, 1, 1], pa.int64()),
+        "state": pa.array([1.0, 2.0, 3.0, 4.0, 5.0], pa.float32()),
+    }
+    full = pa.table(cols)
+    pq.write_table(full, shard)
+
+    ep_slice = pa.table(
+        {
+            "episode_index": pa.array([2, 3], pa.int64()),
+            "_global_from_index": pa.array([10, 13], pa.int64()),
+            "_global_to_index": pa.array([13, 15], pa.int64()),
+        }
+    )
+
+    root = _make_root(tmp_path)._replace(
+        tasks_dict={0: "pick", 1: "place"},
+        total_frames=5,
+        delta_steps={"state": [-1, 0, 1]},
+    )
+
+    seg = _prepare_delta_segment(root, full, ep_slice)
+    assert isinstance(seg.global_idx, np.ndarray)
+    assert isinstance(seg.episode_index_col, np.ndarray)
+    assert isinstance(seg.row_from, np.ndarray)
+    assert isinstance(seg.row_to, np.ndarray)
+    np.testing.assert_array_equal(seg.global_idx, np.array([10, 11, 12, 13, 14]))
+    np.testing.assert_array_equal(seg.episode_index_col, np.array([2, 2, 2, 3, 3]))
+    np.testing.assert_array_equal(seg.row_from, np.array([10, 10, 10, 13, 13]))
+    np.testing.assert_array_equal(seg.row_to, np.array([13, 13, 13, 15, 15]))
+
+    tables = list(
+        _read_lerobot_segment(
+            root, 10, 15, 0, [str(shard)], ep_slice, max_block_bytes=128
+        )
+    )
+    combined = pa.concat_tables(tables)
+    assert combined.num_rows == 5
+    assert combined.column("task").to_pylist() == [
+        "pick",
+        "pick",
+        "pick",
+        "place",
+        "place",
+    ]
+    state_windows = np.stack(
+        combined.column("state").combine_chunks().to_numpy(zero_copy_only=False)
+    )
+    pad_masks = np.stack(
+        combined.column("state_is_pad").combine_chunks().to_numpy(zero_copy_only=False)
+    )
+    # Episode 2 spans [10, 13): states [1.0, 2.0, 3.0]
+    # Episode 3 spans [13, 15): states [4.0, 5.0]
+    expected_state_windows = np.array(
+        [
+            [1.0, 1.0, 2.0],  # anchor 10: step -1 clamped to 10 (padded)
+            [1.0, 2.0, 3.0],  # anchor 11: in-bounds
+            [2.0, 3.0, 3.0],  # anchor 12: step +1 clamped to 12 (padded)
+            [4.0, 4.0, 5.0],  # anchor 13: step -1 clamped to 13 (padded)
+            [4.0, 5.0, 5.0],  # anchor 14: step +1 clamped to 14 (padded)
+        ],
+        dtype=np.float32,
+    )
+    expected_pad_masks = np.array(
+        [
+            [True, False, False],
+            [False, False, False],
+            [False, False, True],
+            [True, False, False],
+            [False, False, True],
+        ],
+        dtype=bool,
+    )
+    np.testing.assert_array_equal(state_windows, expected_state_windows)
+    np.testing.assert_array_equal(pad_masks, expected_pad_masks)
+
+
+def test_prepare_delta_segment_rejects_interior_index_gap(tmp_path):
+    """Interior gaps/duplicates with matching first/last index must be rejected."""
+    root = _make_root(tmp_path)._replace(delta_steps={"state": [-1, 0, 1]})
+    # First=0, last=3, len=4 -> len == last - first + 1, but interior has duplicate 1 and gap at 2.
+    full = pa.table(
+        {
+            "index": pa.array([0, 1, 1, 3], pa.int64()),
+            "episode_index": pa.array([0, 0, 0, 0], pa.int64()),
+            "state": pa.array([1.0, 2.0, 3.0, 4.0], pa.float32()),
+        }
+    )
+    ep_slice = pa.table(
+        {
+            "episode_index": pa.array([0], pa.int64()),
+            "_global_from_index": pa.array([0], pa.int64()),
+            "_global_to_index": pa.array([4], pa.int64()),
+        }
+    )
+    with pytest.raises(RuntimeError, match="contiguous whole-episode"):
+        _prepare_delta_segment(root, full, ep_slice)
+
+
+def test_prepare_delta_segment_rejects_duplicate_episode_index(tmp_path):
+    """Duplicate episode_index rows in ep_slice must raise ValueError."""
+    root = _make_root(tmp_path)._replace(delta_steps={"state": [-1, 0, 1]})
+    full = pa.table(
+        {
+            "index": pa.array([0, 1, 2, 3], pa.int64()),
+            "episode_index": pa.array([0, 0, 1, 1], pa.int64()),
+            "state": pa.array([1.0, 2.0, 3.0, 4.0], pa.float32()),
+        }
+    )
+    ep_slice = pa.table(
+        {
+            "episode_index": pa.array([0, 1, 1], pa.int64()),
+            "_global_from_index": pa.array([0, 2, 99], pa.int64()),
+            "_global_to_index": pa.array([2, 4, 101], pa.int64()),
+        }
+    )
+    with pytest.raises(ValueError, match="duplicate episode_index"):
+        _prepare_delta_segment(root, full, ep_slice)
+
+
+def test_decode_video_delta_vectorized(tmp_path, monkeypatch):
+    """Verify _decode_video_delta resolves clamped timestamps and pads across anchors in one pass."""
+    import numpy as np
+
+    calls = []
+    delta_target_calls = []
+    orig_delta_targets = _decode_video_delta.__globals__["_delta_targets"]
+
+    def spy_delta_targets(global_idx, row_from, row_to, steps):
+        delta_target_calls.append(np.asarray(global_idx))
+        return orig_delta_targets(global_idx, row_from, row_to, steps)
+
+    def fake_decode_frames_by_file(root, vk, file_requests, tolerance_s, cache):
+        calls.append(file_requests)
+        out = {}
+        for (_chunk, _fi), reqs in file_requests.items():
+            for slot, ts in reqs:
+                frame = np.full((2, 2, 3), int(round(ts * 10)), dtype=np.uint8)
+                out[slot] = frame
+        return out
+
+    monkeypatch.setitem(
+        _decode_video_delta.__globals__,
+        "_delta_targets",
+        spy_delta_targets,
+    )
+    monkeypatch.setitem(
+        _decode_video_delta.__globals__,
+        "_decode_frames_by_file",
+        fake_decode_frames_by_file,
+    )
+    root = _make_root(tmp_path)._replace(fps=10)
+    video_meta = {"cam": {0: (0, 0, 1.0)}}
+    stacked, pads = _decode_video_delta(
+        root=root,
+        anchors=range(0, 3),
+        global_idx=[10, 11, 12],
+        row_from=[10, 10, 10],
+        row_to=[13, 13, 13],
+        episode_index_col=[0, 0, 0],
+        video_meta=video_meta,
+        vk="cam",
+        steps=[-1, 0, 1],
+        tolerance_s=0.05,
+        cache=None,
+    )
+    # _delta_targets must be invoked once across all anchors rather than per anchor.
+    assert len(delta_target_calls) == 1
+    np.testing.assert_array_equal(delta_target_calls[0], np.array([10, 11, 12]))
+
+    expected_windows = [
+        np.stack(
+            [np.full((2, 2, 3), v, dtype=np.uint8) for v in window_vals], axis=0
+        )
+        for window_vals in ([10, 10, 11], [10, 11, 12], [11, 12, 12])
+    ]
+    expected_pads = [
+        np.array([True, False, False], dtype=bool),
+        np.array([False, False, False], dtype=bool),
+        np.array([False, False, True], dtype=bool),
+    ]
+    assert len(stacked) == 3
+    for actual_win, expected_win in zip(stacked, expected_windows):
+        np.testing.assert_array_equal(actual_win, expected_win)
+    for actual_pad, expected_pad in zip(pads, expected_pads):
+        np.testing.assert_array_equal(actual_pad, expected_pad)
 
 
 if __name__ == "__main__":
