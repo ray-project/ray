@@ -1,4 +1,5 @@
 import asyncio
+import inspect
 import logging
 import random
 import time
@@ -48,6 +49,22 @@ logger = logging.getLogger(SERVE_LOGGER_NAME)
 
 
 def _ensure_connected(f: Callable) -> Callable:
+    """Raise if the client has been shut down before running `f`.
+
+    Coroutine functions get a coroutine wrapper so they stay detectable with
+    `inspect.iscoroutinefunction` and raise when awaited, like any other error
+    from the coroutine, rather than at call time.
+    """
+    if inspect.iscoroutinefunction(f):
+
+        @wraps(f)
+        async def check_async(self, *args, **kwargs):
+            if self._shutdown:
+                raise RayServeException("Client has already been shut down.")
+            return await f(self, *args, **kwargs)
+
+        return check_async
+
     @wraps(f)
     def check(self, *args, **kwargs):
         if self._shutdown:
@@ -562,13 +579,63 @@ class ServeControllerClient:
         """
         deployment_id = DeploymentID(name=deployment_name, app_name=app_name)
         cache_key = (deployment_name, app_name, check_exists)
-        if cache_key in self.handle_cache:
-            return self.handle_cache[cache_key]
+        if (cached_handle := self.handle_cache.get(cache_key)) is not None:
+            return cached_handle
 
         if check_exists:
             all_deployments = ray.get(self._controller.list_deployment_ids.remote())
             if deployment_id not in all_deployments:
                 raise KeyError(f"{deployment_id} does not exist.")
+
+        return self._get_or_create_cached_handle(deployment_name, app_name, cache_key)
+
+    @_ensure_connected
+    async def get_handle_async(
+        self,
+        deployment_name: str,
+        app_name: str = SERVE_DEFAULT_APP_NAME,
+        check_exists: bool = True,
+    ) -> DeploymentHandle:
+        """Construct a handle for the specified deployment asynchronously.
+
+        Same as `get_handle`, but awaits the controller instead of blocking
+        the calling thread.
+
+        Args:
+            deployment_name: Deployment name.
+            app_name: Application name.
+            check_exists: If False, then Serve won't check the deployment
+                is registered. True by default.
+
+        Returns:
+            DeploymentHandle
+        """
+        deployment_id = DeploymentID(name=deployment_name, app_name=app_name)
+        cache_key = (deployment_name, app_name, check_exists)
+        if (cached_handle := self.handle_cache.get(cache_key)) is not None:
+            return cached_handle
+
+        if check_exists:
+            all_deployments = await self._controller.list_deployment_ids.remote()
+            if deployment_id not in all_deployments:
+                raise KeyError(f"{deployment_id} does not exist.")
+
+        return self._get_or_create_cached_handle(deployment_name, app_name, cache_key)
+
+    def _get_or_create_cached_handle(
+        self,
+        deployment_name: str,
+        app_name: str,
+        cache_key: Tuple[str, str, bool],
+    ) -> DeploymentHandle:
+        """Return the cached handle for `cache_key`, creating it on a miss.
+
+        Re-checks the cache because `get_handle_async` awaits the controller
+        between its first cache check and this call, so a concurrent caller
+        may have cached a handle for the same key in the meantime.
+        """
+        if (cached_handle := self.handle_cache.get(cache_key)) is not None:
+            return cached_handle
 
         handle: DeploymentHandle = DeploymentHandle(deployment_name, app_name)
         self.handle_cache[cache_key] = handle
