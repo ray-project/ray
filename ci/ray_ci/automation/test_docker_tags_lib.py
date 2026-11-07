@@ -503,7 +503,7 @@ def test_backup_release_tags(
         (
             "test",
             "ray",
-            ["3.10"],
+            ["3.10", "3.12"],
             ["cpu", "tpu"],
             ["x86_64", "aarch64"],
             [
@@ -516,6 +516,11 @@ def test_backup_release_tags(
                 "test-py310-cpu",
                 "test-py310-cpu-aarch64",
                 "test-py310-tpu",
+                "test-py312",
+                "test-py312-aarch64",
+                "test-py312-cpu",
+                "test-py312-cpu-aarch64",
+                "test-py312-tpu",
                 "test-tpu",
             ],
         ),

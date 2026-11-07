@@ -1,3 +1,4 @@
+--extra-index-url https://download.pytorch.org/whl/cpu
 --extra-index-url https://storage.googleapis.com/libtpu-releases/index.html
 
 absl-py==2.4.0 \

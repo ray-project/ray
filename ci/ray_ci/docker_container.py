@@ -3,7 +3,11 @@ from datetime import datetime
 from enum import Enum
 from typing import Dict, List
 
-from ci.ray_ci.configs import DEFAULT_ARCHITECTURE, DEFAULT_PYTHON_TAG_VERSION
+from ci.ray_ci.configs import (
+    DEFAULT_ARCHITECTURE,
+    DEFAULT_PYTHON_TAG_VERSION,
+    DEFAULT_TPU_PYTHON_TAG_VERSION,
+)
 from ci.ray_ci.linux_container import LinuxContainer
 from ci.ray_ci.supported_images import (
     get_architectures,
@@ -170,8 +174,13 @@ class DockerContainer(LinuxContainer):
                 # no tag is alias to gpu for ray-ml image
                 platforms.append("")
 
+        default_python_version = (
+            DEFAULT_TPU_PYTHON_TAG_VERSION
+            if self.platform == "tpu"
+            else DEFAULT_PYTHON_TAG_VERSION
+        )
         py_versions = [self._get_python_version_tag()]
-        if self.python_version == DEFAULT_PYTHON_TAG_VERSION:
+        if self.python_version == default_python_version:
             py_versions.append("")
 
         variation = ""

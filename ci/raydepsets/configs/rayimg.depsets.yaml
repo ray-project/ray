@@ -260,6 +260,7 @@ depsets:
       - --unsafe-package ray
       - --python-version=${PYTHON_VERSION}
       - --python-platform=x86_64-manylinux_2_31
+      - --index https://download.pytorch.org/whl/cpu
       - --index https://storage.googleapis.com/libtpu-releases/index.html
     build_arg_sets:
       - py310
