@@ -1,6 +1,6 @@
 import logging
 from abc import ABC, abstractmethod
-from typing import List, Optional
+from typing import List, Optional, Tuple
 
 from ray.autoscaler.v2.instance_manager.common import InstanceUtil
 from ray.autoscaler.v2.instance_manager.instance_storage import InstanceStorage
@@ -27,8 +27,7 @@ class InstanceUpdatedSubscriber(ABC):
 
 
 class InstanceManager:
-    """
-    See `InstanceManagerService` in instance_manager.proto
+    """See `InstanceManagerService` in instance_manager.proto
 
     This handles updates to an instance, or inserts a new instance if
     it's an insert update. We should only be inserting new instances
@@ -55,8 +54,7 @@ class InstanceManager:
     def update_instance_manager_state(
         self, request: UpdateInstanceManagerStateRequest
     ) -> UpdateInstanceManagerStateReply:
-        """
-        Updates the instance manager state.
+        """Updates the instance manager state.
 
         If there's any failure, no updates would be made and the reply
         would contain the latest version of the instance manager state,
@@ -130,8 +128,7 @@ class InstanceManager:
     def get_instance_manager_state(
         self, request: GetInstanceManagerStateRequest
     ) -> GetInstanceManagerStateReply:
-        """
-        Gets the instance manager state.
+        """Gets the instance manager state.
 
         Args:
             request: The request to get the instance manager state.
@@ -147,6 +144,28 @@ class InstanceManager:
 
         return reply
 
+    def delete_instances(
+        self, instance_ids: List[str], expected_storage_version: Optional[int] = None
+    ) -> Tuple[bool, int]:
+        """Delete instance records from the storage.
+
+        Used to reclaim terminal (TERMINATED) records that no status transition
+        removes. Subscribers are intentionally not notified: these records carry
+        no outgoing transition, so there is no InstanceUpdateEvent to emit.
+
+        Args:
+            instance_ids: The instance ids to delete.
+            expected_storage_version: If set, the delete is applied only when the
+                storage is still at this version (optimistic concurrency).
+
+        Returns:
+            A (success, version) tuple. success is False on a version mismatch.
+        """
+        return self._instance_storage.batch_delete_instances(
+            instance_ids=instance_ids,
+            expected_storage_version=expected_storage_version,
+        )
+
     #########################################
     # Private methods
     #########################################
@@ -155,8 +174,7 @@ class InstanceManager:
     def _get_update_im_state_reply(
         status_code: StatusCode, version: int, error_message: str = ""
     ) -> UpdateInstanceManagerStateReply:
-        """
-        Returns a UpdateInstanceManagerStateReply with the given status code and
+        """Returns a UpdateInstanceManagerStateReply with the given status code and
         version.
 
         Args:
@@ -176,8 +194,7 @@ class InstanceManager:
 
     @staticmethod
     def _apply_update(instance: Instance, update: InstanceUpdateEvent):
-        """
-        Apply status specific update to the instance.
+        """Apply status specific update to the instance.
 
         Args:
             instance: The instance to update.
@@ -216,9 +233,7 @@ class InstanceManager:
 
     @staticmethod
     def _create_instance(update: InstanceUpdateEvent) -> Instance:
-        """
-        Create a new instance from the given update.
-        """
+        """Create a new instance from the given update."""
 
         assert update.upsert, "upsert must be true for creating new instance."
 
@@ -250,8 +265,7 @@ class InstanceManager:
 
     @staticmethod
     def _update_instance(instance: Instance, update: InstanceUpdateEvent) -> Instance:
-        """
-        Update the instance with the given update.
+        """Update the instance with the given update.
 
         Args:
             instance: The instance to update.

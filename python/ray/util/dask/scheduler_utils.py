@@ -1,6 +1,6 @@
-"""
-The following is adapted from Dask release 2021.03.1:
-    https://github.com/dask/dask/blob/2021.03.1/dask/local.py
+"""Local scheduler utilities adapted from Dask release 2021.03.1.
+
+Source: https://github.com/dask/dask/blob/2021.03.1/dask/local.py
 """
 
 import os
@@ -159,8 +159,7 @@ DEBUG = False
 def finish_task(
     dsk, key, state, results, sortkey, delete=True, release_data=release_data
 ):
-    """
-    Update execution state after a task finishes
+    """Update execution state after a task finishes
     Mutates.  This should run atomically (with a lock).
     """
     for dep in sorted(state["dependents"][key], key=sortkey, reverse=True):

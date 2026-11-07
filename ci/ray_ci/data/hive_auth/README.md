@@ -2,6 +2,10 @@
 
 Run these explicit security tests from a Ray checkout with Docker and Compose:
 
+The default image targets Linux amd64. For Linux arm64, add
+`--build-arg RAY_IMAGE=rayproject/ray:nightly.261107.891a5a-py312-aarch64@sha256:dc22d8d1dea7bd1d5ad77507a20ecf1496140e28c7c82a10f897359b95c4ec24`
+to the `docker build` command.
+
 ```bash
 docker build -t ray-hive-auth-runtime:local \
   -f ci/ray_ci/data/hive_auth/Dockerfile .
@@ -14,7 +18,9 @@ The prepared image is reused by isolated KDC, driver and worker containers;
 HiveServer2 uses Hive 4.2.0. The runner executes each selected profile once,
 without internal retries. Use a new log directory for each invocation. Select
 one profile with `--profiles G` for diagnosis. These tests aren't automatically
-added to premerge and don't provide a Buildkite manual-trigger switch.
+added to premerge and don't provide a Buildkite manual-trigger switch. The
+isolated Compose cluster disables Ray token authentication; Hive authentication
+and TLS are configured separately for each profile.
 
 | Profile | Server and client | Cases |
 | --- | --- | --- |
@@ -30,10 +36,11 @@ worker-table failure cases are outside this matrix. Data is loaded only in
 HS2; clients still read it through HS2. The exact JUnit case list rejects
 missing, duplicate, extra, failed or skipped cases.
 
-The default runtime uses Ray 2.59.0/Python 3.12 and the standalone Linux/Python
-3.12 client/test dependency lock. Clients link the read-only checkout's Data
-and test packages into that Core environment. Record image identities and
-actual runtime versions with results. See the [configuration guide](../../../../doc/source/data/loading-data.md#configure-authentication-and-tls)
+The default runtime uses Ray 3.0.0.dev0 at commit `891a5a8` with Python 3.12
+and the standalone Linux/Python 3.12 client/test dependency lock. Clients link
+the read-only checkout's Data and test packages into that Core environment.
+Record image identities and actual runtime versions with results. See the
+[configuration guide](../../../../doc/source/data/loading-data.md#configure-authentication-and-tls)
 for dependencies, per-node credentials and certificate requirements.
 
 Artifacts retain stage/service logs, JUnit and connection summaries. Only the

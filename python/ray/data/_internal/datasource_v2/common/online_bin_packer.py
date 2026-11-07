@@ -283,6 +283,38 @@ def _bin_items(manifest: FileManifest) -> List[BinItem]:
     return items
 
 
+def _group_disjoint_runs(runs: List[FileChunk]) -> List[List[FileChunk]]:
+    """Group ``runs`` of one file so no two runs in a group share a unit id.
+
+    First fit: each run joins the first group whose unit ids it doesn't
+    collide with, else opens a new group. E.g. a file listed twice, each
+    copy split into runs {0,1} and {2}::
+
+        runs in:  {0,1}    {2}   {0,1}    {2}
+                    |        |     |        |
+        group 1:  {0,1} + {2}     |        |      -> one row, units 0,1,2
+        group 2:   (ids collide) {0,1} + {2}      -> one row, units 0,1,2
+
+    A unit id that appears in N runs lands in exactly N groups, so reading
+    every group's union scans it exactly N times — which copy of a
+    duplicated file a run came from doesn't matter, the copies are the
+    same bytes.
+    """
+    id_sets: List[set] = []
+    groups: List[List[FileChunk]] = []
+    for run in runs:
+        ids = set(run.unit_ids)
+        for seen, group in zip(id_sets, groups):
+            if seen.isdisjoint(ids):
+                seen.update(ids)
+                group.append(run)
+                break
+        else:
+            id_sets.append(ids)
+            groups.append([run])
+    return groups
+
+
 class OnlineBinPacker(FilePartitioner):
     """Streaming coloured bin packer over listing rows.
 
@@ -292,8 +324,13 @@ class OnlineBinPacker(FilePartitioner):
     :meth:`has_partition` / :meth:`next_partition` as they become available;
     call :meth:`finalize` once all input is added to flush the still-open bins.
 
-    Packs globally -- one pool of open bins keyed by file -- so it needs every
-    listing row, hence ``requires_global_input``.
+    By default it packs globally, with one pool of open bins keyed by file, so
+    it needs every listing row (``requires_global_input=True``). With
+    ``requires_global_input=False`` each listing task packs only its own shard
+    of files, and ``partition_files`` flushes the open bins when the task ends.
+    Listing then runs as parallel tasks, at the cost of at most one under-filled
+    bin per shard. A file's rows never cross shards, because shards split the
+    path list.
     """
 
     def __init__(
@@ -302,15 +339,25 @@ class OnlineBinPacker(FilePartitioner):
         *,
         max_shared_open_bins: int = 16,
         split_coalesced: bool = False,
+        isolate_heavy_files: bool = True,
+        requires_global_input: bool = True,
     ):
         # ``max_bin_bytes`` doubles as the "file turns heavy" isolate threshold.
         self._cap = max_bin_bytes
+        # Whether the planner must feed every listing row to one instance
+        # (global packing) or may run one instance per listing shard.
+        self._requires_global_input = requires_global_input
         # When True, a multi-unit run that does not fit whole is split at unit
         # boundaries to fill residual bin space instead of opening a fresh bin.
         # Single units stay atomic, so with coalescing off (every run is one
         # unit) this is a no-op and the packer behaves exactly as when the flag
         # is False.
         self._split_coalesced = split_coalesced
+        # When False, every item goes to the shared (mixed-file) pool. Used for
+        # row-group shuffle: its input interleaves runs from many files, and the
+        # heavy pool seals its bin on every file switch, which would shred that
+        # input into one-run bins and undo the shuffle's cross-file mixing.
+        self._isolate_heavy_files = isolate_heavy_files
 
         self._seen_bytes_by_path: dict = {}  # running w(f) per file
         self._output: Deque[Bin] = deque()  # sealed bins awaiting drain
@@ -321,7 +368,7 @@ class OnlineBinPacker(FilePartitioner):
 
     @property
     def requires_global_input(self) -> bool:
-        return True
+        return self._requires_global_input
 
     # === Feeding ===
 
@@ -349,7 +396,7 @@ class OnlineBinPacker(FilePartitioner):
             # bin. A splittable oversized run instead falls through and is cut into
             # bin-sized pieces by the placers.
             self._output.append(Bin((item,), item_bytes))
-        elif seen_bytes < self._cap:
+        elif seen_bytes < self._cap or not self._isolate_heavy_files:
             # Prefer keeping a light item whole; fall back to splitting it across
             # the shared bins. This also lets a first, splittable oversized
             # coalesced run fill residual shared-bin space. (With splitting off
@@ -406,9 +453,15 @@ class OnlineBinPacker(FilePartitioner):
     @staticmethod
     def _bin_to_manifest(bin_: Bin) -> FileManifest:
         # A whole-file item is one manifest row with no chunk metadata, as it
-        # came in. A file's runs cover disjoint unit ranges, so union them into
-        # one row per distinct file. Every row keeps the on-disk file size the
-        # listing gave it; a run's bytes live in its chunk metadata.
+        # came in; items repeating a path stay separate rows, one per listed
+        # copy. A file's runs are unioned into one row per group of
+        # pairwise-disjoint unit ranges: runs of a file listed once never
+        # overlap, so they collapse to a single row, while a file the user
+        # listed N times carries each unit id N times across its runs and
+        # gets one row per copy — unioning those would silently drop the
+        # repeats (the reader scans each row's unit set once). Every row
+        # keeps the on-disk file size the listing gave it; a run's bytes
+        # live in its chunk metadata.
         files: List[FileInfo] = []
         chunk_metadatas: List[Optional[ChunkMetadata]] = []
         runs_by_file: Dict[FileInfo, List[FileChunk]] = defaultdict(list)
@@ -420,14 +473,17 @@ class OnlineBinPacker(FilePartitioner):
                 runs_by_file[item.file].append(item.run)
 
         for file, runs in runs_by_file.items():
-            merged = FileChunk(
-                unit_ids=tuple(sorted(i for run in runs for i in run.unit_ids)),
-                num_rows=sum(run.num_rows for run in runs),
-                size_bytes=sum(run.size_bytes for run in runs),
-                fully_matched=all(run.fully_matched for run in runs),
-            )
-            files.append(file)
-            chunk_metadatas.append(merged.to_metadata())
+            for disjoint_runs in _group_disjoint_runs(runs):
+                merged = FileChunk(
+                    unit_ids=tuple(
+                        sorted(i for run in disjoint_runs for i in run.unit_ids)
+                    ),
+                    num_rows=sum(run.num_rows for run in disjoint_runs),
+                    size_bytes=sum(run.size_bytes for run in disjoint_runs),
+                    fully_matched=all(run.fully_matched for run in disjoint_runs),
+                )
+                files.append(file)
+                chunk_metadatas.append(merged.to_metadata())
         sizes: List[int] = []
         for file in files:
             assert file.size is not None

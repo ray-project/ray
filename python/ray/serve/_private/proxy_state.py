@@ -773,9 +773,7 @@ class ProxyStateManager:
         )
 
     def get_fallback_proxy_targets(self) -> Dict[RequestProtocol, Target]:
-        """
-        Return the protocol specific fallback targets available.
-        """
+        """Return the protocol specific fallback targets available."""
         state = self._fallback_proxy_state
         if not state or state.status != ProxyStatus.HEALTHY:
             return {}

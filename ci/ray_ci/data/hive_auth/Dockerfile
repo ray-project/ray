@@ -1,5 +1,5 @@
 # syntax=docker/dockerfile:1
-ARG RAY_IMAGE=rayproject/ray:2.59.0-py312
+ARG RAY_IMAGE=rayproject/ray:nightly.261107.891a5a-py312@sha256:fe766d202eb5543b6a473ce026efb8001ec2046a33cc8bffe8fe6dbfb1118bbc
 FROM ${RAY_IMAGE}
 
 USER root

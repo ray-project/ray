@@ -43,6 +43,7 @@ services:
       HIVE_AUTH_PROFILE: ${HIVE_AUTH_PROFILE}
       HIVE_AUTH_EVENTS: /events
       HIVE_TEST_PASSWORD: ${HIVE_AUTH_PLACEHOLDER:?Set a generated NONE placeholder}
+      RAY_AUTH_MODE: disabled
     depends_on:
       kdc:
         condition: service_healthy

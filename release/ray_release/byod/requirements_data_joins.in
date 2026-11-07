@@ -1,0 +1,3 @@
+# Layered on the ray-torch image for the data joins and TPC-H benchmarks.
+# Dataset.join needs polars, which ray-torch doesn't ship.
+polars

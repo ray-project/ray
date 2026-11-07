@@ -48,6 +48,16 @@ def test_prometheus_authorization_config_empty_when_auth_disabled(
     assert get_prometheus_authorization_config() == ""
 
 
+@pytest.mark.parametrize("auth_mode", ["token", "disabled"])
+def test_prometheus_authorization_config_empty_when_metrics_auth_skipped(
+    auth_env, monkeypatch, auth_mode
+):
+    monkeypatch.setenv("RAY_AUTH_SKIP_METRICS", "1")
+    monkeypatch.setenv("RAY_AUTH_MODE", auth_mode)
+    reset_auth_token_state()
+    assert get_prometheus_authorization_config() == ""
+
+
 def test_prometheus_authorization_config_uses_token_path_env(
     auth_env, monkeypatch, tmp_path
 ):
@@ -156,8 +166,13 @@ def test_prometheus_authorization_config_survives_quotes(
     assert ray_job["authorization"] == expected
 
 
-def test_launch_prometheus_exits_before_download_without_token(auth_env, monkeypatch):
-    _enable_token_auth(monkeypatch)
+# None leaves RAY_AUTH_MODE unset, which means token mode.
+@pytest.mark.parametrize("auth_mode", ["token", None])
+def test_launch_prometheus_exits_before_download_without_token(
+    auth_env, monkeypatch, auth_mode
+):
+    if auth_mode:
+        _enable_token_auth(monkeypatch)
 
     def fail_download(*args, **kwargs):
         raise AssertionError("downloaded Prometheus without a token")
@@ -169,24 +184,6 @@ def test_launch_prometheus_exits_before_download_without_token(auth_env, monkeyp
     with pytest.raises(SystemExit) as exit_info:
         install_and_start_prometheus.main()
     assert exit_info.value.code == 1
-
-
-@pytest.mark.parametrize("auth_mode", [None, "disabled"])
-def test_launch_prometheus_warns_when_no_token_found(
-    auth_env, monkeypatch, caplog, auth_mode
-):
-    if auth_mode:
-        monkeypatch.setenv("RAY_AUTH_MODE", auth_mode)
-    reset_auth_token_state()
-    monkeypatch.setattr(
-        install_and_start_prometheus, "download_prometheus", lambda: (False, "")
-    )
-
-    with pytest.raises(SystemExit):
-        install_and_start_prometheus.main()
-
-    # An explicit opt-out is intended, so only the unset mode warns.
-    assert ("401" in caplog.text) == (auth_mode is None)
 
 
 def test_launch_prometheus_exits_cleanly_when_config_write_fails(
@@ -250,7 +247,13 @@ def test_download_prometheus(os_type, architecture, monkeypatch):
     assert downloaded
 
 
+def _write_default_token(auth_env):
+    auth_env.parent.mkdir(parents=True)
+    auth_env.write_text("a" * 64)
+
+
 def test_e2e(auth_env, capsys):
+    _write_default_token(auth_env)
     install_and_start_prometheus.main()
     captured = capsys.readouterr()
     assert "Prometheus is running" in captured.out
@@ -261,6 +264,7 @@ def test_e2e(auth_env, capsys):
 
 
 def test_shutdown_prometheus(auth_env):
+    _write_default_token(auth_env)
     install_and_start_prometheus.main()
     runner = CliRunner()
     # Sleep for a few seconds to make sure Prometheus is running
@@ -307,7 +311,7 @@ def test_dashboard_prometheus_config_has_no_authorization_block(auth_env, monkey
 DISCOVERY_FILE_PATH = "/tmp/ray/prom_metrics_service_discovery.json"
 
 
-@pytest.mark.parametrize("token_source", ["file", "env"])
+@pytest.mark.parametrize("token_source", ["file", "env", "env_skip_metrics"])
 def test_launch_prometheus_scrapes_token_auth_cluster(
     auth_env, monkeypatch, capsys, token_source
 ):
@@ -320,6 +324,8 @@ def test_launch_prometheus_scrapes_token_auth_cluster(
         monkeypatch.setenv("RAY_AUTH_TOKEN_PATH", str(token_file))
     else:
         monkeypatch.setenv("RAY_AUTH_TOKEN", token)
+    if token_source == "env_skip_metrics":
+        monkeypatch.setenv("RAY_AUTH_SKIP_METRICS", "1")
     _enable_token_auth(monkeypatch)
 
     cluster = Cluster()
@@ -356,6 +362,9 @@ def test_launch_prometheus_scrapes_token_auth_cluster(
             (config,) = written_configs
             assert config.stat().st_mode & 0o777 == 0o600
             assert f"credentials: '{token}'" in config.read_text()
+        if token_source == "env_skip_metrics":
+            # No authorization block, so Prometheus runs the bundled config as is.
+            assert written_configs == []
 
         def all_targets_up():
             try:

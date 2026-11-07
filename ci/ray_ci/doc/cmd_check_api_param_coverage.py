@@ -208,9 +208,8 @@ def _parse_args(argv: Optional[List[str]] = None) -> argparse.Namespace:
         "--blocking",
         action="store_true",
         help=(
-            "Exit non-zero on violations. Off by default (warn only) so the "
-            "false-positive rate can be confirmed before the check becomes "
-            "required."
+            "Exit non-zero on violations. Off by default (warn only); CI "
+            "passes it, so the check is required."
         ),
     )
     return parser.parse_args(argv)
