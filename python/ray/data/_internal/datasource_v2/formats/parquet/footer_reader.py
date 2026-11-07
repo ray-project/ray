@@ -99,6 +99,7 @@ def _derived_statistics_predicate(expr: Expr, schema: pa.Schema) -> Expr | None:
         LiteralExpr,
         Operation,
         PyArrowComputeUDFExpr,
+        UnaryExpr,
     )
 
     if isinstance(expr, BinaryExpr) and expr.op in (
@@ -121,7 +122,7 @@ def _derived_statistics_predicate(expr: Expr, schema: pa.Schema) -> Expr | None:
             return left | right
         return None
 
-    # Keep simple comparisons that Parquet statistics already understand.
+    # Retain comparisons that are safe for Parquet statistics pruning.
     if isinstance(expr, BinaryExpr) and expr.op in (
         Operation.EQ,
         Operation.NE,
@@ -130,12 +131,40 @@ def _derived_statistics_predicate(expr: Expr, schema: pa.Schema) -> Expr | None:
         Operation.GT,
         Operation.GE,
     ):
-        if (
-            isinstance(expr.left, ColumnExpr) and isinstance(expr.right, LiteralExpr)
-        ) or (
-            isinstance(expr.left, LiteralExpr) and isinstance(expr.right, ColumnExpr)
-        ):
+        column = None
+        if isinstance(expr.left, ColumnExpr) and isinstance(expr.right, LiteralExpr):
+            column = expr.left
+        elif isinstance(expr.left, LiteralExpr) and isinstance(expr.right, ColumnExpr):
+            column = expr.right
+
+        if column is not None:
+            idx = schema.get_field_index(column.name)
+            if (
+                expr.op == Operation.NE
+                and idx >= 0
+                and pa.types.is_floating(schema.field(idx).type)
+            ):
+                # Parquet min/max omit NaNs, although they may satisfy !=.
+                return column.is_not_null()
             return expr
+
+    if isinstance(expr, UnaryExpr) and expr.op in (
+        Operation.IS_NULL,
+        Operation.IS_NOT_NULL,
+    ):
+        if isinstance(expr.operand, ColumnExpr):
+            return expr
+
+    # Keep a conservative null-inclusive membership bound.
+    if (
+        isinstance(expr, BinaryExpr)
+        and expr.op in (Operation.IN, Operation.NOT_IN)
+        and isinstance(expr.left, ColumnExpr)
+        and isinstance(expr.right, LiteralExpr)
+    ):
+        idx = schema.get_field_index(expr.left.name)
+        if idx >= 0 and not pa.types.is_floating(schema.field(idx).type):
+            return expr | expr.left.is_null()
 
     if (
         isinstance(expr, BinaryExpr)
