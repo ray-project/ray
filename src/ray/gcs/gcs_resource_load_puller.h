@@ -14,6 +14,9 @@
 
 #pragma once
 
+#include <boost/asio/steady_timer.hpp>
+#include <chrono>
+#include <cstddef>
 #include <functional>
 #include <vector>
 
@@ -27,8 +30,11 @@ namespace ray {
 namespace gcs {
 
 /// Pulls every raylet's pending resource requests (autoscaler bookkeeping) on
-/// a dedicated io_context, and posts each reply back to the main io_context,
-/// where the consumers live.
+/// a dedicated io_context, and posts the replies back in batches to the main
+/// io_context, where the consumers live. A batch is posted once it holds
+/// gcs_resource_load_apply_batch_size replies, or
+/// gcs_resource_load_apply_batch_delay_milliseconds after its first reply
+/// arrived, whichever comes first.
 class GcsResourceLoadPuller {
  public:
   GcsResourceLoadPuller(instrumented_io_context &pull_io_context,
@@ -39,10 +45,23 @@ class GcsResourceLoadPuller {
   void Pull(std::vector<rpc::Address> raylet_addresses);
 
  private:
+  void OnResourceLoadReply(rpc::ResourcesData resources);
+
+  /// Posts the pending batch, if any, to the main io_context.
+  void Flush();
+
   instrumented_io_context &pull_io_context_;
   instrumented_io_context &main_io_context_;
   rpc::RayletClientPool &raylet_client_pool_;
+  const size_t max_batch_size_;
+  const std::chrono::milliseconds batch_delay_;
   std::function<void(rpc::ResourcesData)> apply_on_main_;
+  /// Replies waiting to be posted. Only touched on the pull thread.
+  std::vector<rpc::ResourcesData> pending_batch_;
+  /// Bounds how long a reply waits in pending_batch_. A size flush leaves it
+  /// armed, and the replies that arrive before it fires go out with it.
+  boost::asio::steady_timer flush_timer_;
+  bool flush_timer_armed_ = false;
   /// Node ids from the last Pull(), diffed against the next snapshot to remove
   /// dead raylets' pooled clients.
   absl::flat_hash_set<NodeID> pulled_node_ids_;
