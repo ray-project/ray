@@ -2,8 +2,8 @@
 
 The Arrow schema is walked into one chain of arrays per Parquet leaf: its structs
 and lists, then the leaf. Each array is sized from the footer's counts as validity
-bitmap plus offsets plus values: exact with SizeStatistics, a bound without.
-Leaves it doesn't model, views and dictionaries among them, get no profile.
+bitmap plus offsets plus values, exactly. A leaf whose counts aren't exact, or whose
+layout it doesn't model (views and dictionaries among them), is left to the caller.
 """
 
 from __future__ import annotations
@@ -21,8 +21,6 @@ from pyarrow.parquet import (
 )
 
 from ray.data._internal.datasource_v2.formats.parquet.parquet_size_statistics import (
-    DICTIONARY_PAGE_HEADER_READ_BYTES,
-    DictionaryPage,
     LeafSizeStats,
 )
 
@@ -321,23 +319,9 @@ def build_leaf_profiles(
     return profiles
 
 
-def dictionary_page_read_size(
-    profile: LeafProfile, chunk: ColumnChunkMetaData, stats: LeafSizeStats | None
-) -> int:
-    """Bytes of this chunk's dictionary page header to read, or 0 if not needed."""
-    if (
-        profile.nodes[-1].kind == _BINARY
-        and detect_dictionary_indexed(chunk)
-        and not detect_delta_byte_array(chunk)
-        and (stats is None or stats.unencoded_byte_array_data_bytes is None)
-    ):
-        return DICTIONARY_PAGE_HEADER_READ_BYTES
-    return 0
-
-
 # One chunk's counts.
 class LeafChunk:
-    """One leaf's chunk in a row group: exact counts from SizeStatistics, else bounds."""
+    """One leaf's chunk in a row group, counted from SizeStatistics."""
 
     def __init__(
         self,
@@ -346,14 +330,11 @@ class LeafChunk:
         chunk: ColumnChunkMetaData,
         stats: LeafSizeStats | None,
         num_rows: int,
-        dictionary_page: DictionaryPage | None = None,
     ):
         self.index = index
         self.profile = profile
         self.chunk = chunk
         self.num_rows = num_rows
-        # The header :func:`dictionary_page_read_size` asks for, if it does.
-        self.dictionary_page = dictionary_page
         self._max_def = profile.max_definition_level
         self._max_rep = profile.max_repetition_level
         # Below a struct, list or map.
@@ -383,15 +364,15 @@ class LeafChunk:
                 self._null_count = statistics.null_count
 
     def modelled(self) -> bool:
-        """False for DELTA_BYTE_ARRAY strings without SizeStatistics bytes to trust."""
-        return not (
-            self.profile.nodes[-1].kind == _BINARY
-            and self.size_statistics_bytes is None
-            and detect_delta_byte_array(self.chunk)
+        """Whether every count is exact; a string leaf needs SizeStatistics bytes."""
+        strings_known = (
+            self.profile.nodes[-1].kind != _BINARY
+            or self.size_statistics_bytes is not None
         )
+        return strings_known and self.levels_known()
 
     def levels_known(self) -> bool:
-        """Whether every slot and null count is exact, not a bound."""
+        """Whether every slot and null count is exact."""
         repetition = bool(self._repetition) or self._max_rep <= 1
         definition = (
             bool(self._definition)
@@ -401,11 +382,11 @@ class LeafChunk:
         return repetition and definition
 
     def slots(self, node: _ArrowNode | None = None) -> int:
-        """An array's length, the leaf's by default; a bound when a count is unknown."""
+        """An array's length, the leaf's by default."""
         node = self.profile.nodes[-1] if node is None else node
         if node.slot_depth == 0:
             return self.num_rows * node.scale
-        opened = self._opened(node.slot_depth) - (self._below(node.slot_def) or 0)
+        opened = self._opened(node.slot_depth) - self._below(node.slot_def)
         return opened * node.scale
 
     def bitmap(self, node: _ArrowNode | None = None) -> int:
@@ -413,22 +394,12 @@ class LeafChunk:
         node = self.profile.nodes[-1] if node is None else node
         if not node.nullable or node.kind == _NULL:
             return 0
-        # Unknown counts as present: undersizing is what overfills a read task.
         if (
             not node.keeps_bitmap
             and self._nulls(slot_def=node.slot_def, def_level=node.def_level) == 0
         ):
             return 0
         return _bitmap_size(self.slots(node))
-
-    def values(self) -> int:
-        """Non-null leaf values, or every level entry when that is unknown."""
-        return self.chunk.num_values - (self._below(self._max_def) or 0)
-
-    def fewest_values(self) -> int:
-        """Non-null leaf values, or none when that is unknown."""
-        below = self._below(self._max_def)
-        return 0 if below is None else self.chunk.num_values - below
 
     def _histograms_agree(self, stats: LeafSizeStats) -> bool:
         """Whether the writer's histograms fit the footer's own counts."""
@@ -451,31 +422,16 @@ class LeafChunk:
             return sum(self._repetition[: depth + 1])
         return self.chunk.num_values
 
-    def _below(self, def_level: int) -> int | None:
-        """Entries under definition level ``def_level``, or ``None`` if unknown."""
+    def _below(self, def_level: int) -> int:
+        """Entries under definition level ``def_level``."""
         if self._definition:
             return sum(self._definition[:def_level])
-        # The null count stands in, and can run low inside a list.
-        if def_level <= 0 or self._null_count == 0:
-            return 0
-        if def_level >= self._max_def:
-            return self._null_count
-        return None
+        # A flat leaf, whose one level below the max the null count holds.
+        return 0 if def_level <= 0 else self._null_count or 0
 
-    def _nulls(self, slot_def: int, def_level: int) -> int | None:
+    def _nulls(self, slot_def: int, def_level: int) -> int:
         """Slots that exist but are null (level in ``[slot_def, def_level)``)."""
-        if self._nested and not self._definition:
-            # PyArrow writes a null count of 0 for some nested leaves under null
-            # ancestors (from an Arrow dictionary, or with a nullable struct
-            # below the list), so only the histogram can rule nulls out there.
-            return None
-        below = self._below(def_level)
-        if below == 0:
-            return 0
-        above = self._below(slot_def)
-        if below is None or above is None:
-            return None
-        return below - above
+        return self._below(def_level) - self._below(slot_def)
 
 
 def _bitmap_size(length: int) -> int:
@@ -487,11 +443,10 @@ def leaf_chunks(
     leaf_profiles: Sequence[LeafProfile | None],
     leaf_indices: Iterable[int],
     size_stats: Sequence[LeafSizeStats | None] | None,
-    dictionary_pages: Mapping[int, DictionaryPage] | None = None,
 ) -> list[LeafChunk]:
     """A :class:`LeafChunk` for each of ``leaf_indices`` in ``row_group`` this module
     models: fewer than asked for means a leaf needs the caller's fallback."""
-    pages, stats = dictionary_pages or {}, size_stats or ()
+    stats = size_stats or ()
     chunks = [
         LeafChunk(
             index=leaf_idx,
@@ -499,7 +454,6 @@ def leaf_chunks(
             chunk=row_group.column(leaf_idx),
             stats=stats[leaf_idx] if leaf_idx < len(stats) else None,
             num_rows=row_group.num_rows,
-            dictionary_page=pages.get(leaf_idx),
         )
         for leaf_idx in leaf_indices
         if (profile := leaf_profiles[leaf_idx]) is not None
@@ -523,9 +477,7 @@ def estimate_row_group(
     size = 0
     counted: set[int] = set()
     for leaf in leaves:
-        # Counted from the leaf's levels, so a bound wherever those are.
-        ancestors = estimate_ancestors(leaf=leaf, counted=counted)
-        size += ancestors if leaf.levels_known() else shave_bound(ancestors)
+        size += estimate_ancestors(leaf=leaf, counted=counted)
         size += estimate_leaf(leaf)
     if detect_added_columns(read):
         size += estimate_added_columns(row_group=row_group, read=read)
@@ -533,13 +485,11 @@ def estimate_row_group(
 
 
 def estimate_leaf(leaf: LeafChunk) -> int:
-    """Decoded bytes of one chunk's leaf array, shaved where they are a bound."""
+    """Decoded bytes of one chunk's leaf array."""
     if leaf.profile.nodes[-1].kind == _BINARY:
-        string_bytes, bound = _string_bytes(leaf)
-        size = estimate_string_type(leaf=leaf, string_bytes=string_bytes)
-    else:
-        size, bound = estimate_fixed_width(leaf), False
-    return shave_bound(size) if bound or not leaf.levels_known() else size
+        string_bytes = estimate_string_bytes(leaf)
+        return estimate_string_type(leaf=leaf, string_bytes=string_bytes)
+    return estimate_fixed_width(leaf)
 
 
 # Fixed-width, boolean and null leaves, and the arrays above every leaf: exact
@@ -605,86 +555,17 @@ def _offset_width(arrow_type: pa.DataType) -> int:
     return 16
 
 
-_DICTIONARY_ENCODINGS = frozenset({"RLE_DICTIONARY", "PLAIN_DICTIONARY"})
-
-
 # Where a string leaf's bytes come from.
 def estimate_string_bytes(leaf: LeafChunk) -> int:
     """A BYTE_ARRAY chunk's value bytes, without their length prefixes."""
-    return _string_bytes(leaf)[0]
+    # ``LeafChunk.modelled`` keeps only string leaves with these bytes.
+    assert leaf.size_statistics_bytes is not None
+    return leaf.size_statistics_bytes
 
 
-def _string_bytes(leaf: LeafChunk) -> tuple[int, bool]:
-    """The value bytes, and whether they are the upper bound from plain pages."""
-    if leaf.size_statistics_bytes is not None:
-        return leaf.size_statistics_bytes, False
-    if detect_dictionary_indexed(leaf.chunk):
-        return estimate_dictionary_indexed(leaf), False
-    fewest_values = leaf.fewest_values()
-    return estimate_plain_bytes(chunk=leaf.chunk, fewest_values=fewest_values), True
-
-
-# Any DELTA_BYTE_ARRAY page. Without SizeStatistics bytes to trust (none written,
-# as by Spark 3.5, or PyArrow's) its strings aren't modelled: prefixes shared
-# across sorted runs can decode to 76 times the chunk.
+# Any DELTA_BYTE_ARRAY page.
 def detect_delta_byte_array(chunk: ColumnChunkMetaData) -> bool:
     return "DELTA_BYTE_ARRAY" in chunk.encodings
-
-
-# Data pages that index a dictionary page, without SizeStatistics bytes.
-def detect_dictionary_indexed(chunk: ColumnChunkMetaData) -> bool:
-    # A format 1.0 file names its dictionary page PLAIN_DICTIONARY too, so a
-    # page no data page uses lands here as well.
-    return chunk.has_dictionary_page and not _DICTIONARY_ENCODINGS.isdisjoint(
-        chunk.encodings
-    )
-
-
-# The rows' values can run longer than the dictionary's entries on average; 1.2
-# measured a median of 1.15 to 1.18 times the decoded size.
-_DICTIONARY_MEAN_FACTOR = 1.2
-
-
-def estimate_dictionary_indexed(leaf: LeafChunk) -> int:
-    """A guess: every value at 1.2 times the dictionary's mean length. Under when
-    the common values are longer: "COMPLETED_SUCCESSFULLY" in 97% of rows beside
-    "OK" comes out at half. Without the header, a crude bound."""
-    page = leaf.dictionary_page
-    if page is None:
-        # No mean: every value as long as the chunk.
-        return (leaf.slots() + 1) * leaf.chunk.total_uncompressed_size
-    entries = page.num_values
-    mean = max(page.uncompressed_page_size - 4 * entries, 0) / max(entries, 1)
-    # The footer's null count can be wrong (Polars gives each page the chunk's),
-    # so the values are no fewer than the data pages hold indices for.
-    values = max(leaf.values(), _indexed_values(leaf=leaf, page=page))
-    at_mean = math.ceil(_DICTIONARY_MEAN_FACTOR * mean * values)
-    # A writer that gave up on the dictionary wrote the rest as PLAIN values.
-    plain = estimate_plain_bytes(chunk=leaf.chunk, fewest_values=leaf.fewest_values())
-    return max(at_mean, plain)
-
-
-def _indexed_values(leaf: LeafChunk, page: DictionaryPage) -> int:
-    """The values the data pages hold at least an index each for."""
-    chunk, profile = leaf.chunk, leaf.profile
-    # The data pages' bytes, less the dictionary page and the bit-packed levels.
-    level_bits = (
-        profile.max_definition_level.bit_length()
-        + profile.max_repetition_level.bit_length()
-    )
-    data = chunk.total_uncompressed_size - page.uncompressed_page_size
-    data -= math.ceil(chunk.num_values * level_bits / 8)
-    # RLE runs only shrink indices, and page headers add a little. A PLAIN
-    # fallback's values would count many times, so it stops at the chunk's.
-    index_bits = max(page.num_values - 1, 1).bit_length()
-    return min(chunk.num_values, max(data, 0) * 8 // index_bits)
-
-
-# Every value in PLAIN or DELTA_LENGTH_BYTE_ARRAY pages.
-def estimate_plain_bytes(chunk: ColumnChunkMetaData, fewest_values: int) -> int:
-    """An upper bound: those pages hold every value's bytes, uncompressed."""
-    prefix = 0 if "DELTA_LENGTH_BYTE_ARRAY" in chunk.encodings else 4
-    return max(chunk.total_uncompressed_size - prefix * fewest_values, 0)
 
 
 # Ray's schema pin: every batch is cast to the dataset schema, unless that holds
@@ -820,13 +701,3 @@ def _added_array_bytes(
             # No fixed width, as a list view or a union: a crude 16 bytes a row.
             row += 16
     return row, once
-
-
-# Some column meets each bound exactly (no nulls, every value long and distinct):
-# 0.95 puts that column 5% under and every other column nearer.
-_BOUND_FACTOR = 0.95
-
-
-def shave_bound(size: int) -> int:
-    """Scale an upper bound by 0.95; a column that meets it exactly lands at 0.95."""
-    return math.ceil(_BOUND_FACTOR * size)
