@@ -471,6 +471,14 @@ std::vector<std::string> TaskSpecification::DynamicWorkerOptions() const {
       message_->actor_creation_task_spec().dynamic_worker_options());
 }
 
+std::vector<std::string> TaskSpecification::RestartOnExceptionPatterns() const {
+  if (!IsActorCreationTask()) {
+    return {};
+  }
+  return VectorFromProtobuf(
+      message_->actor_creation_task_spec().restart_on_exception_patterns());
+}
+
 absl::flat_hash_map<std::string, std::string> TaskSpecification::GetLabels() const {
   return MapFromProtobuf(message_->labels());
 }
