@@ -176,10 +176,47 @@ class SelectedMessageReader:
             f, path, summary, chunk_indexes, selected, declared, on_corrupt
         )
 
+    def iter_chunk_messages(
+        self,
+        f: Any,
+        path: str,
+        summary: "Summary",
+        chunk_indexes: List["ChunkIndex"],
+        file_summary: Optional[Callable[[], "Summary"]] = None,
+        *,
+        selected: Optional[Set[int]] = None,
+    ) -> Iterator[Tuple["ChunkIndex", List[_Selected]]]:
+        """Yield each chunk with its selected messages, in file order.
+
+        Unlike ``iter_chunks``, a chunk's messages come together, so a caller
+        can keep or drop whole chunks. Chunks close together in the file still
+        share a ranged read. A chunk that cannot be decoded raises.
+        """
+        if selected is None:
+            selected = self._selection.selected_channel_ids(
+                summary.channels, summary.schemas
+            )
+        declared = _Declared(
+            dict(summary.channels),
+            dict(summary.schemas),
+            set(),
+            file_summary or (lambda: summary),
+        )
+        ordered = sorted(chunk_indexes, key=lambda c: c.chunk_start_offset)
+        for chunk_index, chunk in read_chunks(f, ordered, self._chunk_reads):
+            messages = self._decoded_messages(
+                f, path, summary, chunk_index, chunk, selected, declared, None
+            )
+            yield chunk_index, list(messages)
+
     def candidate_chunks(
         self, summary: "Summary", selected: Set[int]
     ) -> List["ChunkIndex"]:
-        """The file's chunks that may hold a selected message, in file order."""
+        """The file's chunks that may hold a selected message, in file order.
+
+        The indexer lists exactly these, so the indexer and the reader agree
+        on which chunks a selection reads.
+        """
         # A summary that repeats no channel record says nothing about which
         # chunk holds a selected message. Every chunk in the time range is read,
         # and the channels declared inside them are filtered as they appear.
@@ -459,7 +496,12 @@ class SelectedMessageReader:
                 break
 
     def iter_unindexed(
-        self, f: Any, path: str, limit: Optional[int] = None
+        self,
+        f: Any,
+        path: str,
+        limit: Optional[int] = None,
+        *,
+        log_time_order: Optional[bool] = None,
     ) -> Iterator[_Selected]:
         """Yield the selected messages of a file without a chunk index.
 
@@ -467,11 +509,16 @@ class SelectedMessageReader:
         can only be ordered whole, so its selected messages are held in memory
         and sorted by log time. The sort is stable: equal log times keep file
         order. With ``limit``, only the ``limit`` earliest are held.
+
+        ``log_time_order`` overrides the reader's setting. Sample rows stream
+        the file once in file order and keep what their steps need.
         """
+        if log_time_order is None:
+            log_time_order = self._log_time_order
         scanned: Iterable[_Scanned] = self._scan_unindexed(f, path)
-        if self._log_time_order and limit is not None:
+        if log_time_order and limit is not None:
             scanned = heapq.nsmallest(limit, scanned, key=_log_time)
-        elif self._log_time_order:
+        elif log_time_order:
             scanned = sorted(scanned, key=_log_time)
         for schema, channel, message, ordinal in scanned:
             yield schema, channel, message, unindexed_message_row_id(path, ordinal)
