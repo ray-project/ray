@@ -712,7 +712,7 @@ class TrainController:
                 )
 
             if self._health_manager is not None:
-                health_decision = self._evaluate_health_checks()
+                health_decision = self._evaluate_health_checks(worker_group_status)
                 if not isinstance(health_decision, Noop):
                     health_result = self._execute_health_decision(health_decision)
                     if health_result:
@@ -754,16 +754,23 @@ class TrainController:
         else:
             raise ValueError(f"Unexpected controller state: {controller_state}")
 
-    def _evaluate_health_checks(self) -> HealthDecision:
-        """Evaluate the in-flight checks, and the checks of a running
-        ``Diagnose`` once they are back. While those run, a new ``Diagnose`` is
-        dropped.
+    def _evaluate_health_checks(
+        self, worker_group_status: WorkerGroupPollStatus
+    ) -> HealthDecision:
+        """Evaluate the in-flight checks, and the on-demand checks once they are
+        back. While those run, a new ``Diagnose`` is dropped.
+
+        Args:
+            worker_group_status: The worker group's latest poll, with each
+                worker's ``WorkerProbe`` results and health report.
 
         Returns:
             The health decision to carry out. ``Noop()`` if there is nothing to
             do.
         """
-        inflight_decision = self._health_manager.evaluate_inflight_checks()
+        inflight_decision = self._health_manager.evaluate_inflight_checks(
+            worker_group_status.worker_statuses
+        )
         diagnosis_decision = self._health_manager.evaluate_on_demand_checks()
         if diagnosis_decision is None:
             if isinstance(inflight_decision, Diagnose):
