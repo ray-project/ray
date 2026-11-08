@@ -1271,23 +1271,47 @@ def _passthrough_decorator(func):
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("num_outer_decorators", [1, 2])
-async def test_batch_method_wrapped_by_other_decorators(num_outer_decorators):
+@pytest.mark.parametrize("use_gen", [False, True])
+async def test_batch_method_wrapped_by_other_decorators(num_outer_decorators, use_gen):
     """`self` must still be detected when another decorator wraps `@serve.batch`."""
 
-    class Handler:
-        def __init__(self, tag: str):
-            self.tag = tag
+    if use_gen:
 
-        @serve.batch(max_batch_size=2, batch_wait_timeout_s=1000)
-        async def method(self, requests):
-            return [f"{self.tag}:{request}" for request in requests]
+        class Handler:
+            def __init__(self, tag: str):
+                self.tag = tag
+
+            @serve.batch(max_batch_size=2, batch_wait_timeout_s=1000)
+            async def method(self, requests):
+                yield [f"{self.tag}:{request}" for request in requests]
+
+        passthrough_decorator = _passthrough_gen_decorator
+    else:
+
+        class Handler:
+            def __init__(self, tag: str):
+                self.tag = tag
+
+            @serve.batch(max_batch_size=2, batch_wait_timeout_s=1000)
+            async def method(self, requests):
+                return [f"{self.tag}:{request}" for request in requests]
+
+        passthrough_decorator = _passthrough_decorator
 
     for _ in range(num_outer_decorators):
-        Handler.method = _passthrough_decorator(Handler.method)
+        Handler.method = passthrough_decorator(Handler.method)
 
     handler = Handler("a")
-    results = await asyncio.gather(handler.method("x"), handler.method("y"))
-    assert results == ["a:x", "a:y"]
+    if use_gen:
+
+        async def collect(request):
+            return [item async for item in handler.method(request)]
+
+        results = await asyncio.gather(collect("x"), collect("y"))
+        assert results == [["a:x"], ["a:y"]]
+    else:
+        results = await asyncio.gather(handler.method("x"), handler.method("y"))
+        assert results == ["a:x", "a:y"]
 
 
 def _passthrough_gen_decorator(func):
@@ -1302,30 +1326,18 @@ def _passthrough_gen_decorator(func):
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("num_outer_decorators", [1, 2])
-async def test_batch_generator_method_wrapped_by_other_decorators(
-    num_outer_decorators,
-):
-    """Same as above for a streaming batched method."""
+async def test_batch_method_with_inner_decorator():
+    """A decorator below `@serve.batch` must keep working."""
 
     class Handler:
-        def __init__(self, tag: str):
-            self.tag = tag
-
         @serve.batch(max_batch_size=2, batch_wait_timeout_s=1000)
+        @_passthrough_decorator
         async def method(self, requests):
-            yield [f"{self.tag}:{request}" for request in requests]
+            return requests
 
-    for _ in range(num_outer_decorators):
-        Handler.method = _passthrough_gen_decorator(Handler.method)
-
-    handler = Handler("a")
-
-    async def collect(request):
-        return [item async for item in handler.method(request)]
-
-    results = await asyncio.gather(collect("x"), collect("y"))
-    assert results == [["a:x"], ["a:y"]]
+    handler = Handler()
+    results = await asyncio.gather(handler.method("x"), handler.method("y"))
+    assert results == ["x", "y"]
 
 
 if __name__ == "__main__":

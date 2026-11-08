@@ -558,7 +558,9 @@ def extract_self_if_method_call(args: List[Any], func: Callable) -> Optional[obj
         method = getattr(args[0], func.__name__, None)
         if method and method is not func:
             try:
-                unwrapped = inspect.unwrap(method, stop=lambda f: f is func)
+                unwrapped = inspect.unwrap(
+                    method, stop=lambda f: f is func or not callable(f)
+                )
             except ValueError:
                 # A `__wrapped__` cycle (or an implausibly long chain) is not a match.
                 return None
