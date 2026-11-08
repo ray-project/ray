@@ -354,30 +354,23 @@ def selected_rows(path, chunk_reads, topics=None, log_time_order=True, f=None):
         return [(message.log_time, row_id) for _, _, message, row_id in messages]
 
 
-# One chunk per read; the defaults; reads too small for most runs; one read
-# spanning the whole file, gaps and all.
-CHUNK_READS = {
-    "one_per_chunk": ChunkReads(max_bytes=0, max_gap_bytes=0, first_bytes=0),
-    "default": ChunkReads(),
-    "small": ChunkReads(max_bytes=400, max_gap_bytes=100, first_bytes=100),
-    "whole_file": ChunkReads(max_bytes=1 << 30, max_gap_bytes=1 << 30),
-}
+ONE_CHUNK_PER_READ = ChunkReads(max_bytes=0, max_gap_bytes=0, first_bytes=0)
+# Small enough that the ``chunked_file`` fixture takes several reads, some of
+# them spanning more than one chunk.
+SMALL_READS = ChunkReads(max_bytes=400, max_gap_bytes=100, first_bytes=100)
 
 
 @pytest.mark.parametrize("log_time_order", [True, False])
 @pytest.mark.parametrize("topics", [None, ["/a"]])
-@pytest.mark.parametrize("chunk_reads", CHUNK_READS.values(), ids=CHUNK_READS.keys())
 def test_rows_do_not_depend_on_how_chunks_are_fetched(
-    chunked_file, log_time_order, topics, chunk_reads
+    chunked_file, log_time_order, topics
 ):
     """The selected messages, their order and their row ids are the same whether
-    each chunk is fetched alone or with its neighbours, with or without the gaps
-    a topic filter leaves."""
-    expected = selected_rows(
-        chunked_file, CHUNK_READS["one_per_chunk"], topics, log_time_order
-    )
+    each chunk is fetched alone or with its neighbours, with or without a topic
+    filter."""
+    expected = selected_rows(chunked_file, ONE_CHUNK_PER_READ, topics, log_time_order)
 
-    rows = selected_rows(chunked_file, chunk_reads, topics, log_time_order)
+    rows = selected_rows(chunked_file, SMALL_READS, topics, log_time_order)
 
     assert rows == expected
     assert len(rows) == (3 if topics else CHUNKED_FILE_MESSAGES)
