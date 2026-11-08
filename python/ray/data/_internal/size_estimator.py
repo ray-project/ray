@@ -32,13 +32,14 @@ class SizeEstimator:
             for i in range(min(10 - self._count, len(block))):
                 self._running_mean.add(self._real_size(block[i]), weight=1)
         if self._count < 100:
-            for i in range(
-                10 - (self._count % 10), min(100 - self._count, len(block)), 10
-            ):
+            start_count = max(self._count, 10)
+            first_idx = start_count + (10 - start_count % 10) - self._count - 1
+            for i in range(first_idx, min(100 - self._count, len(block)), 10):
                 self._running_mean.add(self._real_size(block[i]), weight=10)
-        if (len(block) + (self._count % 100)) // 100 > 1:
-            for i in range(100 - (self._count % 100), len(block), 100):
-                self._running_mean.add(self._real_size(block[i]), weight=100)
+        start_count = max(self._count, 100)
+        first_idx = start_count + (100 - start_count % 100) - self._count - 1
+        for i in range(first_idx, len(block), 100):
+            self._running_mean.add(self._real_size(block[i]), weight=100)
         self._count += len(block)
 
     def size_bytes(self) -> int:
