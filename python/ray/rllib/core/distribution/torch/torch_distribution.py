@@ -302,7 +302,14 @@ class TorchSquashedGaussian(TorchDistribution):
         jacobian = 2.0 * (
             math.log(2.0) - unsquashed - nn.functional.softplus(-2.0 * unsquashed)
         )
-        return logp - jacobian.sum(-1)
+        low = torch.as_tensor(
+            self.low, dtype=unsquashed.dtype, device=unsquashed.device
+        )
+        high = torch.as_tensor(
+            self.high, dtype=unsquashed.dtype, device=unsquashed.device
+        )
+        log_scale = torch.log((high - low) / 2).expand_as(unsquashed).sum(-1)
+        return logp - jacobian.sum(-1) - log_scale
 
     @override(TorchDistribution)
     def rsample_and_logp(self, *, sample_shape=None):
@@ -362,7 +369,7 @@ class TorchSquashedGaussian(TorchDistribution):
         return cls(loc=loc, scale=scale, low=low, high=high, **kwargs)
 
     def to_deterministic(self) -> Distribution:
-        return TorchDeterministic(loc=self.loc)
+        return TorchDeterministic(loc=self._squash(self._dist.loc))
 
 
 @DeveloperAPI
