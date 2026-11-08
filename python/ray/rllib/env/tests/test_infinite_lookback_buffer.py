@@ -1,4 +1,5 @@
 import unittest
+import warnings
 
 import gymnasium as gym
 import numpy as np
@@ -597,6 +598,43 @@ class TestInfiniteLookbackBuffer(unittest.TestCase):
         # Actual buffer has been changed by our set above.
         check(buffer.data[2], self.buffer_1)
         check(buffer.data[3], self.buffer_3)
+
+    def test_set_finalized_with_complex_space(self):
+        """Tests setting data in a finalized buffer using a complex space."""
+        buffer = InfiniteLookbackBuffer(
+            data=[self.buffer_0, self.buffer_0, self.buffer_0, self.buffer_0],
+            lookback=1,
+            space=self.space,
+        )
+        buffer.finalize()
+
+        # Via an int index.
+        buffer.set(self.buffer_1, at_indices=0)
+        check(buffer.get(0), self.buffer_1)
+        # Via a slice.
+        buffer.set(batch([self.buffer_2, self.buffer_3]), at_indices=slice(1, 3))
+        check(buffer.get(1), self.buffer_2)
+        check(buffer.get(2), self.buffer_3)
+        # Lookback buffer (untouched).
+        check(buffer.get(-1, neg_index_as_lookback=True), self.buffer_0)
+
+    def test_set_finalized_with_scalar_box_space(self):
+        """Tests setting numpy scalars (e.g. rewards) in a finalized buffer."""
+        buffer = InfiniteLookbackBuffer(
+            data=[0.0, 1.0, 2.0],
+            lookback=0,
+            space=gym.spaces.Box(float("-inf"), float("inf"), (), np.float32),
+        )
+        buffer.finalize()
+
+        # Setting must not trigger gymnasium's "Casting input x to numpy array."
+        # warning (from `Box.contains`) for numpy scalars or python floats.
+        with warnings.catch_warnings():
+            warnings.simplefilter("error")
+            buffer.set(buffer.get(0) + np.float32(0.5), at_indices=0)
+            buffer.set(10.0, at_indices=1)
+            buffer.set(np.array([20.0, 30.0]), at_indices=slice(1, 3))
+        check(buffer.get(slice(None)), [0.5, 20.0, 30.0])
 
 
 @pytest.mark.parametrize(

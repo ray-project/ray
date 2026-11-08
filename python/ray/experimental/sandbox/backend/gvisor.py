@@ -34,6 +34,7 @@ from ray.experimental.sandbox._internal import cdi, egress_guard, overlayfs
 from ray.experimental.sandbox._internal.cgroup import (
     SandboxCgroup,
     SandboxCgroupManager,
+    wrap_command,
 )
 from ray.experimental.sandbox._internal.image_utils import (
     ROOTFS_IMAGE,
@@ -969,8 +970,7 @@ class GVisorSandboxBackend(BaseSandboxBackend):
             gpu_run_args=gpu_run_args,
             rootfs_overlay=rootfs_overlay,
         )
-        if cgroup is not None:
-            run_args = cgroup.wrap(run_args)
+        run_args = wrap_command(run_args, cgroup, config.oom_score_adj)
 
         stderr_log_path = os.path.join(root_dir, "runsc.stderr.log")
         stderr_file = open(stderr_log_path, "w+", encoding="utf-8")
@@ -1319,6 +1319,7 @@ class GVisorSandboxBackend(BaseSandboxBackend):
         env: Optional[Dict[str, str]] = None,
         shell: Optional[str] = None,
         user: Optional[str] = None,
+        combine_output: bool = False,
     ) -> ExecResult:
         """Execute a process inside the running gVisor sandbox instance via runsc exec."""
         meta = self._get_metadata_or_raise(sandbox_id)
@@ -1354,7 +1355,7 @@ class GVisorSandboxBackend(BaseSandboxBackend):
                 runsc_args,
                 stdin=subprocess.DEVNULL,
                 stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
+                stderr=subprocess.STDOUT if combine_output else subprocess.PIPE,
             )
             try:
                 stdout, stderr = proc.communicate(timeout=timeout)
@@ -1368,7 +1369,8 @@ class GVisorSandboxBackend(BaseSandboxBackend):
                 except subprocess.TimeoutExpired:
                     # A process that escaped the kill still holds the pipes.
                     proc.stdout.close()
-                    proc.stderr.close()
+                    if proc.stderr is not None:
+                        proc.stderr.close()
                     proc.wait()
                 raise SandboxTimeoutError(
                     f"gVisor exec command timed out after {timeout} seconds."
@@ -1387,9 +1389,10 @@ class GVisorSandboxBackend(BaseSandboxBackend):
         # strictly would fail the whole exec.
         return ExecResult(
             exit_code=proc.returncode,
-            stdout=stdout.decode("utf-8", errors="replace"),
-            stderr=stderr.decode("utf-8", errors="replace"),
+            stdout="" if combine_output else stdout.decode("utf-8", errors="replace"),
+            stderr="" if combine_output else stderr.decode("utf-8", errors="replace"),
             duration_seconds=time.time() - start_time,
+            output=stdout if combine_output else None,
         )
 
     def _kill_exec(self, config: SandboxConfig, sandbox_id: str, pid_file: str) -> None:
@@ -1453,18 +1456,28 @@ class GVisorSandboxBackend(BaseSandboxBackend):
         content: Union[str, bytes],
         append: bool = False,
     ) -> None:
-        """Write (or append) content to a file inside the sandbox."""
-        meta = self._get_metadata_or_raise(sandbox_id)
-        config: SandboxConfig = meta["config"]
+        """Write content while preserving existing file permissions and symlinks.
 
-        runsc_args = self._runsc_base_args(config)
-        exec_cwd = meta["cwd"]
-        runsc_args.extend(
-            [
-                "exec",
-                "-cwd",
-                exec_cwd,
+        Non-append writes use tee when possible. The shell fallback creates
+        missing parent directories and handles images without tee.
+        """
+        meta = self._get_metadata_or_raise(sandbox_id)
+        content_bytes = content.encode("utf-8") if isinstance(content, str) else content
+        if not append:
+            # Make a filename of "-" unambiguous across tee versions.
+            destination = "./-" if path == "-" else path
+            returncode, _ = self._write_with(
                 sandbox_id,
+                meta,
+                ["tee", "--", destination],
+                content_bytes,
+            )
+            if returncode == 0:
+                return
+        returncode, stderr = self._write_with(
+            sandbox_id,
+            meta,
+            [
                 "/bin/sh",
                 "-c",
                 (
@@ -1474,23 +1487,31 @@ class GVisorSandboxBackend(BaseSandboxBackend):
                 ),
                 "--",
                 path,
-            ]
+            ],
+            content_bytes,
         )
+        if returncode != 0:
+            raise SandboxError(
+                f"Failed to write file '{path}': {stderr.decode('utf-8', errors='replace')}"
+            )
 
-        content_bytes = content.encode("utf-8") if isinstance(content, str) else content
+    def _write_with(
+        self, sandbox_id: str, meta: Dict, command: List[str], content: bytes
+    ) -> Tuple[int, bytes]:
+        """Run a sandbox command with content on stdin; return status and stderr."""
+        config: SandboxConfig = meta["config"]
+        runsc_args = self._runsc_base_args(config)
+        runsc_args.extend(["exec", "-cwd", meta["cwd"], sandbox_id, *command])
         runsc_args = self._wrap_workload(meta, runsc_args)
 
         proc = subprocess.Popen(
             runsc_args,
             stdin=subprocess.PIPE,
-            stdout=subprocess.PIPE,
+            stdout=subprocess.DEVNULL,
             stderr=subprocess.PIPE,
         )
-        _, stderr_str = proc.communicate(input=content_bytes)
-        if proc.returncode != 0:
-            raise SandboxError(
-                f"Failed to write file '{path}': {stderr_str.decode('utf-8', errors='replace')}"
-            )
+        _, stderr = proc.communicate(input=content)
+        return proc.returncode, stderr
 
     def read_file(self, sandbox_id: str, path: str) -> bytes:
         """Read binary content from a file inside the local gVisor sandbox directory."""
@@ -2089,8 +2110,7 @@ class GVisorSandboxBackend(BaseSandboxBackend):
 
     @staticmethod
     def _wrap_workload(meta, args):
-        cgroup = meta.get("cgroup")
-        return cgroup.wrap(args) if cgroup is not None else args
+        return wrap_command(args, meta.get("cgroup"), meta["config"].oom_score_adj)
 
     def _delete_container_state(self, config: SandboxConfig, sandbox_id: str) -> None:
         """Best-effort ``runsc delete -force`` for teardown paths.

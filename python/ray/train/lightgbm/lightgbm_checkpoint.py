@@ -41,7 +41,7 @@ class LightGBMCheckpoint(FrameworkCheckpoint):
             >>> from ray.train.lightgbm import LightGBMCheckpoint
             >>> train_X = np.array([[1, 2], [3, 4]])
             >>> train_y = np.array([0, 1])
-            >>> model = lightgbm.LGBMClassifier().fit(train_X, train_y)
+            >>> model = lightgbm.LGBMClassifier(verbose=-1).fit(train_X, train_y)
             >>> checkpoint = LightGBMCheckpoint.from_model(model.booster_)
 
         Args:

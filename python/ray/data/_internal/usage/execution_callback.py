@@ -132,9 +132,11 @@ class UsageCallback(ExecutionCallback):
     def on_collection_start(self, executor: "StreamingExecutor") -> None:
         """Called once before execution starts. Records start timing and captures
         this execution's baseline as a copy of the poller's latest snapshot
-        (None if no poll has completed yet)."""
+        (None if no poll has completed yet). The poller isn't started when
+        cluster metrics collection is disabled."""
         self._started_at = time.time()
-        self._baseline_snapshot = get_poller().latest_snapshot()
+        if not collector.cluster_metrics_collection_disabled():
+            self._baseline_snapshot = get_poller().latest_snapshot()
 
     def on_collection_end(
         self, executor: "StreamingExecutor", error: Optional[Exception]
@@ -175,7 +177,10 @@ class UsageCallback(ExecutionCallback):
         """Compute delta for each metric between the poller's latest snapshot and the
         the current execution's baseline snapshot. When no poll had completed by the time the
         execution started (baseline recorded as None), fall back to the first snapshot the
-        poller took."""
+        poller took. Returns no deltas when cluster metrics collection is
+        disabled, so the cluster metric fields are recorded as None."""
+        if collector.cluster_metrics_collection_disabled():
+            return {}
         poller = get_poller()
         baseline_snapshot = self._baseline_snapshot
         if baseline_snapshot is None:

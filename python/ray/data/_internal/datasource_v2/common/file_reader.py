@@ -4,7 +4,7 @@ from typing import Any, Iterator, List, Optional, Sequence, Set, Tuple
 
 import pyarrow as pa
 import pyarrow.dataset as pds
-from pyarrow.fs import FileSystem, LocalFileSystem
+from pyarrow.fs import FileInfo, FileSystem, FileType, LocalFileSystem
 
 from ray._common.utils import env_integer
 from ray.data._internal.arrow_block import _BATCH_SIZE_PRESERVING_STUB_COL_NAME
@@ -24,7 +24,11 @@ from ray.data._internal.datasource_v2.interfaces.synthesized_columns import (
     ReadUnitPosition,
     SynthesizedColumn,
 )
-from ray.data._internal.util import iterate_with_retry, make_async_gen
+from ray.data._internal.util import (
+    filesystem_for_sized_opens,
+    iterate_with_retry,
+    make_async_gen,
+)
 from ray.data.context import DataContext
 from ray.data.datasource.partitioning import (
     Partitioning,
@@ -202,8 +206,16 @@ class FileReader(Reader[FileManifest]):
         # once; pyarrow only needs one fragment per file, and
         # ``_get_fragments_to_read`` fans out per manifest row from that
         # fragment, so repeated rows are each still read.
-        paths = list(dict.fromkeys(list(input_split.paths)))
-        filesystem = self._filesystem or LocalFileSystem()
+        #
+        # Each file carries its on-disk size from the listing, so pyarrow
+        # opens it without first asking the filesystem for the size (an
+        # extra HEAD request per open on S3).
+        file_sizes = dict(zip(input_split.paths, input_split.known_file_sizes))
+        files = [
+            FileInfo(path, FileType.File, size=size)
+            for path, size in file_sizes.items()
+        ]
+        filesystem = filesystem_for_sized_opens(self._filesystem or LocalFileSystem())
         # Build a ``pds.Dataset`` over *all* manifest paths so pyarrow's
         # listing + column metadata is shared, but then iterate its
         # fragments one at a time. ``dataset.scanner(fragments=...)``
@@ -213,7 +225,7 @@ class FileReader(Reader[FileManifest]):
         # fragment scanners let pyarrow use the native per-file type,
         # and downstream concat handles unification.
         dataset = pds.dataset(
-            source=paths,
+            source=files,
             format=self._make_format(),
             filesystem=filesystem,
             schema=self._file_dataset_schema,
@@ -485,7 +497,11 @@ class FileReader(Reader[FileManifest]):
             # Post-filter cursor: rows already yielded from this unit.
             rows_before = 0
             for table in iterate_with_retry(
-                partial(self._iter_fragment_tables, fragment, scanner_kwargs),
+                partial(
+                    self._iter_unit_tables,
+                    fragment_to_read=fragment_to_read,
+                    scanner_kwargs=scanner_kwargs,
+                ),
                 f"read fragment {fragment.path}",
                 match=ctx.retried_io_errors,
             ):
@@ -496,6 +512,28 @@ class FileReader(Reader[FileManifest]):
                         unit_start_row=fragment_to_read.unit_start_row,
                     )
                     rows_before += table.num_rows
+
+    def _iter_unit_tables(
+        self,
+        fragment_to_read: ReadUnitFragment,
+        scanner_kwargs: dict,
+    ) -> Iterator[pa.Table]:
+        """Yield Arrow tables for one read unit.
+
+        The default scans ``fragment_to_read.fragment`` through
+        :meth:`_iter_fragment_tables`.
+
+        Override this when building the unit's fragment needs IO, such as
+        downloading a CSV byte range. It runs inside the retry loop and the
+        scan threads, so that IO is retried and parallel. Your implementation
+        should:
+
+            1. Read what ``fragment_to_read.unit`` names.
+            2. Yield its tables with ``scanner_kwargs`` applied.
+        """
+        yield from self._iter_fragment_tables(
+            fragment=fragment_to_read.fragment, scanner_kwargs=scanner_kwargs
+        )
 
     def _iter_fragment_tables(
         self,
