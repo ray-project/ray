@@ -1,3 +1,4 @@
+import datetime
 import gzip
 import json
 import os
@@ -286,6 +287,86 @@ def test_json_write(
     )
 
     assert rows_same(input_df, output_df)
+
+
+@pytest.mark.parametrize("block_format", ["arrow", "pandas"])
+@pytest.mark.parametrize(
+    "pandas_json_args, expected_ts, expected_td",
+    [({}, 1704110400000, 90000), ({"date_unit": "s"}, 1704110400, 90)],
+)
+def test_json_write_non_nanosecond_temporal_columns(
+    ray_start_regular_shared,
+    tmp_path,
+    block_format,
+    pandas_json_args,
+    expected_ts,
+    expected_td,
+):
+    # Regression test for https://github.com/ray-project/ray/issues/42920.
+    ts = datetime.datetime(2024, 1, 1, 12)
+    td = datetime.timedelta(seconds=90)
+    units = ["s", "ms", "us", "ns"]
+    table = pa.table(
+        {
+            **{f"ts_{u}": pa.array([ts, None], pa.timestamp(u)) for u in units},
+            # The sub-millisecond part is truncated, as pandas does.
+            "ts_us_submillis": pa.array(
+                [ts + datetime.timedelta(microseconds=500), None], pa.timestamp("us")
+            ),
+            "ts_us_utc": pa.array([ts, None], pa.timestamp("us", tz="UTC")),
+            **{f"td_{u}": pa.array([td, None], pa.duration(u)) for u in units},
+        }
+    )
+    block = table if block_format == "arrow" else table.to_pandas()
+
+    ray.data.from_blocks([block]).write_json(tmp_path, **pandas_json_args)
+
+    [filename] = os.listdir(tmp_path)
+    with open(os.path.join(tmp_path, filename)) as f:
+        rows = [json.loads(line) for line in f]
+    expected = {
+        name: expected_ts if name.startswith("ts_") else expected_td
+        for name in table.column_names
+    }
+    assert rows == [expected, dict.fromkeys(table.column_names)]
+
+
+@pytest.mark.parametrize("block_format", ["arrow", "pandas"])
+@pytest.mark.parametrize(
+    "pandas_json_args, expected",
+    [
+        ({}, {"ts": 253402214400000, "td": 90000}),
+        (
+            {"date_format": "iso"},
+            {"ts": "9999-12-31T00:00:00.000", "td": "P0DT0H1M30S"},
+        ),
+        # orient="table" writes ISO dates by default.
+        (
+            {"orient": "table", "lines": False},
+            {"ts": "9999-12-31T00:00:00.000", "td": "P0DT0H1M30S"},
+        ),
+    ],
+)
+def test_json_write_date_outside_nanosecond_range(
+    ray_start_regular_shared, tmp_path, block_format, pandas_json_args, expected
+):
+    # 9999-12-31 can't be stored in nanoseconds, so it must be written without
+    # converting the column to nanoseconds.
+    table = pa.table(
+        {
+            "ts": pa.array([datetime.datetime(9999, 12, 31)], pa.timestamp("us")),
+            "td": pa.array([datetime.timedelta(seconds=90)], pa.duration("s")),
+        }
+    )
+    block = table if block_format == "arrow" else table.to_pandas()
+
+    ray.data.from_blocks([block]).write_json(tmp_path, **pandas_json_args)
+
+    [filename] = os.listdir(tmp_path)
+    with open(os.path.join(tmp_path, filename)) as f:
+        written = json.loads(f.read())
+    [row] = written["data"] if "data" in written else [written]
+    assert {"ts": row["ts"], "td": row["td"]} == expected
 
 
 @pytest.mark.parametrize("override_num_blocks", [None, 2])
