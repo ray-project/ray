@@ -81,6 +81,10 @@ class ServeControllerClient:
     ):
         self._controller: Any = controller
         self._shutdown = False
+        # Set when a shutdown starts, before the cached handles are cleared, so
+        # an async handle getter that resumes mid-shutdown can't re-populate the
+        # cache with a handle that nothing will ever shut down.
+        self._is_shutting_down = False
         self._http_config: HTTPOptions = ray.get(
             self._controller.get_http_config.remote()
         )
@@ -132,6 +136,7 @@ class ServeControllerClient:
         Shuts down all processes and deletes all state associated with the
         instance.
         """
+        self._is_shutting_down = True
         self.shutdown_cached_handles()
 
         if ray.is_initialized() and not self._shutdown:
@@ -153,6 +158,7 @@ class ServeControllerClient:
         Shuts down all processes and deletes all state associated with the
         instance.
         """
+        self._is_shutting_down = True
         await self.shutdown_cached_handles_async()
 
         if ray.is_initialized() and not self._shutdown:
@@ -630,10 +636,15 @@ class ServeControllerClient:
     ) -> DeploymentHandle:
         """Return the cached handle for `cache_key`, creating it on a miss.
 
-        Re-checks the cache because `get_handle_async` awaits the controller
-        between its first cache check and this call, so a concurrent caller
-        may have cached a handle for the same key in the meantime.
+        Raises `RayServeException` once the client has started shutting down.
+        Re-checks the shutdown state and the cache because the async getters
+        await the controller before this call, so a concurrent caller may have
+        started shutting down the client or cached a handle for the same key in
+        the meantime.
         """
+        if self._is_shutting_down:
+            raise RayServeException("Client is shutting down.")
+
         if (cached_handle := self.handle_cache.get(cache_key)) is not None:
             return cached_handle
 

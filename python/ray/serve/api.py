@@ -1334,15 +1334,25 @@ async def get_app_handle_async(name: str) -> DeploymentHandle:
         RayServeException: If no Serve controller is running, or if the
             application does not exist.
 
-    .. code-block:: python
+    .. testcode::
 
             from ray import serve
+
+            @serve.deployment
+            def f(val: int) -> int:
+                return val * 2
 
             @serve.deployment
             class Caller:
                 async def __call__(self, val: int) -> int:
                     handle = await serve.get_app_handle_async("my_app")
                     return await handle.remote(val)
+
+            serve.run(f.bind(), name="my_app", route_prefix="/f")
+            handle = serve.run(Caller.bind(), name="caller_app", route_prefix="/caller")
+            assert handle.remote(3).result() == 6
+
+            serve.shutdown()
     """
 
     client = _get_global_client()
@@ -1527,9 +1537,14 @@ async def get_deployment_handle_async(
             name is specified.
         KeyError: If the deployment does not exist.
 
-    .. code-block:: python
+    .. testcode::
 
             from ray import serve
+
+            @serve.deployment
+            class Multiplier:
+                def __call__(self, val: int) -> int:
+                    return val * 2
 
             @serve.deployment
             class Caller:
@@ -1538,6 +1553,12 @@ async def get_deployment_handle_async(
                         "Multiplier", app_name="math_app"
                     )
                     return await handle.remote(val)
+
+            serve.run(Multiplier.bind(), name="math_app", route_prefix="/math")
+            handle = serve.run(Caller.bind(), name="caller_app", route_prefix="/caller")
+            assert handle.remote(5).result() == 10
+
+            serve.shutdown()
     """
 
     client = _get_global_client()
