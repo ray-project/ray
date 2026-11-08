@@ -272,5 +272,42 @@ def test_arrow_block_concat():
     assert concatenated.select(["a", "s", "b"]) == expected
 
 
+def test_table_block_builder_compaction_row_and_size_accounting(monkeypatch):
+    import ray.data._internal.table_block as table_block_mod
+
+    monkeypatch.setattr(table_block_mod, "MAX_UNCOMPACTED_SIZE_BYTES", 1)
+
+    builder = ArrowBlockBuilder()
+    builder.add({"a": 1, "b": "hello"})
+    assert builder._num_compactions == 1
+    assert builder._num_uncompacted_rows == 0
+    assert builder._uncompacted_size.size_bytes() == 0
+    assert builder.num_rows() == 1
+
+    builder.add({"a": 2, "b": "world"})
+    assert builder._num_compactions == 2
+    assert builder._num_uncompacted_rows == 0
+    assert builder._uncompacted_size.size_bytes() == 0
+    assert builder.num_rows() == 2
+
+    built = builder.build()
+    assert built.num_rows == 2
+    assert built.to_pydict() == {"a": [1, 2], "b": ["hello", "world"]}
+    assert builder.get_estimated_memory_usage() == ArrowBlockAccessor.for_block(built).size_bytes()
+
+
+def test_table_block_builder_interleaved_add_and_add_block_preserves_order():
+    builder = ArrowBlockBuilder()
+    builder.add({"a": 1})
+    builder.add({"a": 2})
+    builder.add_block(pa.Table.from_pydict({"a": [3, 4]}))
+    builder.add({"a": 5})
+
+    assert builder.num_rows() == 5
+    built = builder.build()
+    assert built.num_rows == 5
+    assert built.to_pydict() == {"a": [1, 2, 3, 4, 5]}
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))
