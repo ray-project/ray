@@ -8513,6 +8513,26 @@ class TestDeploymentRankManagerIntegrationE2E:
         assert ds.curr_status_info.status == DeploymentStatus.HEALTHY
         assert ds._replica_failure_count == 0
 
+    def test_rank_reconfigure_superseded_by_config_update(
+        self, mock_deployment_state_manager
+    ):
+        """A config update takes over observing the replica's reconfigure."""
+        create_dsm, _, _, _ = mock_deployment_state_manager
+        dsm, ds, reassigned_id = self._recover_with_rank_gap(create_dsm)
+
+        info_2, _ = deployment_info(num_replicas=2, version="1", user_config={"a": 1})
+        dsm.deploy(TEST_DEPLOYMENT_ID, info_2)
+        for _ in range(6):
+            dsm.update()
+            for r in ds._replicas.get([ReplicaState.UPDATING]):
+                if r.replica_id != reassigned_id:
+                    r._actor.set_ready()
+            replica = ds._replicas.get_by_id(reassigned_id)
+            if replica.actor_details.state == ReplicaState.UPDATING:
+                break
+        assert replica.actor_details.state == ReplicaState.UPDATING
+        assert reassigned_id not in ds._pending_rank_reconfigures
+
     def test_rank_consistency_during_version_rollout(
         self, mock_deployment_state_manager
     ):

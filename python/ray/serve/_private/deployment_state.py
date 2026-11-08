@@ -4528,6 +4528,9 @@ class DeploymentState:
                     rank=current_rank,
                 )
                 if actor_updating:
+                    # This reconfigure replaces the in-flight one, and the
+                    # UPDATING check observes it.
+                    self._pending_rank_reconfigures.pop(replica.replica_id, None)
                     self._replicas.add(ReplicaState.UPDATING, replica)
                 else:
                     self._replicas.add(ReplicaState.RUNNING, replica)
