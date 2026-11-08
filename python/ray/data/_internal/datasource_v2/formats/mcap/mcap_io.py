@@ -33,7 +33,6 @@ _SUMMARY_TAIL_BYTES = 64 * KiB
 _MAGIC = b"\x89MCAP0\r\n"
 # A footer record is the opcode, an 8-byte length and 20 bytes of fields:
 # ``summary_start`` (8), ``summary_offset_start`` (8) and ``summary_crc`` (4).
-_FOOTER_OPCODE = 0x02
 _FOOTER_BYTES = 1 + 8 + 20
 _RECORD_PREFIX_BYTES = 1 + 8  # opcode and record length
 
@@ -84,10 +83,12 @@ def summary_records(section: memoryview) -> Iterator[Tuple[int, memoryview]]:
     ``record`` is the whole raw record: opcode, length and body. The framing is
     not checked here, so split only a section that parsed.
     """
+    from mcap.opcode import Opcode
+
     position = 0
     while position < len(section):
         opcode = section[position]
-        if opcode == _FOOTER_OPCODE:
+        if opcode == Opcode.FOOTER:
             return
         length = int.from_bytes(section[position + 1 : position + 9], "little")
         end = position + _RECORD_PREFIX_BYTES + length
@@ -135,13 +136,15 @@ def _summary_start(tail: bytes, size: int, path: str) -> int:
     ``tail`` is the last bytes of the file, which is ``size`` bytes long: they
     must end with the footer record and then the magic bytes.
     """
+    from mcap.opcode import Opcode
+
     footer_start = len(tail) - len(_MAGIC) - _FOOTER_BYTES
     footer = tail[max(0, footer_start) : len(tail) - len(_MAGIC)]
     length = int.from_bytes(footer[1:9], "little")
     if (
         footer_start < 0
         or not tail.endswith(_MAGIC)
-        or footer[0] != _FOOTER_OPCODE
+        or footer[0] != Opcode.FOOTER
         or length != _FOOTER_BYTES - _RECORD_PREFIX_BYTES
     ):
         raise ValueError(

@@ -5,8 +5,8 @@ the schemas and channels, one ``ChunkIndex`` per chunk (byte offset, sizes,
 log-time bounds, channels) and a ``Statistics`` record (message counts, time
 bounds). Reading it takes one to three ranged reads (``mcap_io``), so a read can
 be planned without reading any message. ``read_summaries`` reads the summaries
-of many files concurrently, with retries. The listing reads them with
-``read_listed_summaries``, which keeps each raw section for the read tasks.
+of many files concurrently, with retries, and keeps each raw section for the
+listing to hand on to read tasks (``ListedSummary``).
 
 Format specification: https://mcap.dev/spec
 """
@@ -43,7 +43,6 @@ if TYPE_CHECKING:
     from mcap.summary import Summary
 
 _T = TypeVar("_T")
-_R = TypeVar("_R")
 
 # Peak memory of reading a chunk, as a multiple of the bytes its rows take as
 # tables: the table being built plus the chunk being decompressed. Reads of one
@@ -64,7 +63,7 @@ _DEFAULT_SUMMARY_IO_CONCURRENCY = env_integer(
 
 @dataclass(frozen=True)
 class ListedSummary:
-    """A file's summary as the listing reads it: parsed, and as raw records.
+    """A file's summary as ``read_summaries`` reads it: parsed, and as raw records.
 
     ``section`` is the raw summary section, from which the listing copies the
     records each read task needs into the manifest (``mcap_task_summary``).
@@ -92,15 +91,12 @@ def read_listed_summary(filesystem: FileSystem, path: str) -> Optional[ListedSum
     return ListedSummary(parse_summary_records(section, path), section)
 
 
-def _read_with_retry(
-    read: Callable[["FileSystem", str], _R],
-    filesystem: "FileSystem",
-    path: str,
-    retried_io_errors: List[str],
-) -> _R:
+def _read_summary_with_retry(
+    filesystem: "FileSystem", path: str, retried_io_errors: List[str]
+) -> Optional[ListedSummary]:
     """Read one file's summary, retrying errors that match ``retried_io_errors``."""
     return call_with_retry(
-        lambda: read(filesystem, path),
+        lambda: read_listed_summary(filesystem, path),
         description=f"read MCAP summary for {path}",
         match=retried_io_errors,
     )
@@ -111,36 +107,13 @@ def read_summaries(
     items: Iterable[_T],
     path: Callable[[_T], str],
     io_concurrency: int = _DEFAULT_SUMMARY_IO_CONCURRENCY,
-) -> Iterator[Tuple[_T, "Future[Optional[Summary]]"]]:
+) -> Iterator[Tuple[_T, "Future[Optional[ListedSummary]]"]]:
     """Read the summaries of ``items`` several at a time, yielding them in order.
 
     Each item comes with its pending read, so the caller decides what a failed
     read means. A bounded window of in-flight reads keeps memory flat for a long
     listing.
     """
-    return _read_concurrently(read_summary, filesystem, items, path, io_concurrency)
-
-
-def read_listed_summaries(
-    filesystem: "FileSystem",
-    items: Iterable[_T],
-    path: Callable[[_T], str],
-    io_concurrency: int = _DEFAULT_SUMMARY_IO_CONCURRENCY,
-) -> Iterator[Tuple[_T, "Future[Optional[ListedSummary]]"]]:
-    """``read_summaries``, keeping each raw section (``read_listed_summary``)."""
-    return _read_concurrently(
-        read_listed_summary, filesystem, items, path, io_concurrency
-    )
-
-
-def _read_concurrently(
-    read: Callable[["FileSystem", str], _R],
-    filesystem: "FileSystem",
-    items: Iterable[_T],
-    path: Callable[[_T], str],
-    io_concurrency: int,
-) -> Iterator[Tuple[_T, "Future[_R]"]]:
-    """Run ``read`` on the path of each item, in a bounded window, in order."""
     from ray.data.context import DataContext
 
     retried_io_errors = DataContext.get_current().retried_io_errors
@@ -149,7 +122,7 @@ def _read_concurrently(
     with ThreadPoolExecutor(max_workers=max(1, io_concurrency)) as pool:
         for item in items:
             summary_read = pool.submit(
-                _read_with_retry, read, filesystem, path(item), retried_io_errors
+                _read_summary_with_retry, filesystem, path(item), retried_io_errors
             )
             pending.append((item, summary_read))
             if len(pending) >= window:

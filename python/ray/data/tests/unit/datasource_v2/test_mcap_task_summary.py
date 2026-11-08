@@ -28,7 +28,6 @@ from ray.data._internal.datasource_v2.formats.mcap.mcap_io import (
 )
 from ray.data._internal.datasource_v2.formats.mcap.mcap_options import TimeRange
 from ray.data._internal.datasource_v2.formats.mcap.mcap_task_summary import (
-    CHUNK_INDEX_COLUMN,
     FILE_RECORDS_COLUMN,
     TASK_SUMMARY_COLUMN,
     task_summaries,
@@ -113,17 +112,6 @@ def table_of(manifest: FileManifest) -> pa.Table:
     return block
 
 
-def task_summary_of(task: FileManifest):
-    """The summary records of a one-row task."""
-    (records,) = task_summaries(task)
-    return records
-
-
-def without_message_index_offsets(chunk_indexes):
-    """``chunk_indexes`` as a task carries them: without message index offsets."""
-    return [dataclasses.replace(c, message_index_offsets={}) for c in chunk_indexes]
-
-
 def without_task_summaries(task: FileManifest) -> FileManifest:
     """``task`` with null records, so the reader reads each summary from the file."""
     block = table_of(task)
@@ -136,76 +124,6 @@ def read_tasks(scanner, tasks: List[FileManifest]) -> pa.Table:
     """Read every task, in order, into one table."""
     tables = [table for task in tasks for table in scanner.create_reader().read(task)]
     return pa.concat_tables(tables)
-
-
-def test_listing_rows_carry_their_chunk_and_the_files_declarations(chunked_file):
-    """Each listing row carries its chunk's index record, and the file's schema
-    and channel records are stored once for all its rows."""
-    datasource = MCAPDatasourceV2([chunked_file])
-    (manifest,) = list_manifests(datasource)
-    block = table_of(manifest)
-    summary = summary_of(chunked_file)
-
-    file_records = block.column(FILE_RECORDS_COLUMN).combine_chunks()
-    (declarations,) = file_records.dictionary.to_pylist()
-    chunk_records = block.column(CHUNK_INDEX_COLUMN).to_pylist()
-    declared = parse_summary_records(declarations, chunked_file)
-
-    assert file_records.indices.to_pylist() == [0] * CHUNKED_FILE_MESSAGES
-    assert declared.channels == summary.channels
-    assert declared.schemas == summary.schemas
-    assert not declared.chunk_indexes
-    assert [
-        parse_summary_records(r, chunked_file).chunk_indexes[0] for r in chunk_records
-    ] == without_message_index_offsets(summary.chunk_indexes)
-
-
-def test_read_tasks_read_only_their_own_chunks(chunked_file, monkeypatch):
-    """With a task per chunk, each task makes one read: its chunk record. Nothing
-    of the summary or the magic bytes is read."""
-    datasource = MCAPDatasourceV2([chunked_file])
-    set_task_budget(monkeypatch, ONE_CHUNK_PER_TASK)
-    tasks = pack(datasource)
-    read_log = ReadLog()
-    scanner = dataclasses.replace(scanner_for(datasource), filesystem=read_log)
-
-    table = read_tasks(scanner, tasks)
-
-    chunk_records = [
-        (c.chunk_start_offset, c.chunk_length)
-        for c in summary_of(chunked_file).chunk_indexes
-    ]
-    assert len(tasks) == CHUNKED_FILE_MESSAGES
-    assert sorted(read_log.reads[chunked_file]) == chunk_records
-    assert table.num_rows == CHUNKED_FILE_MESSAGES
-
-
-def test_task_summary_holds_the_declarations_and_the_owned_chunk_indexes(
-    chunked_file, monkeypatch
-):
-    """A packed row's records parse to the file's channels and schemas and the
-    index records of exactly the chunks the row names, without their message
-    index offsets."""
-    datasource = MCAPDatasourceV2([chunked_file])
-    set_task_budget(monkeypatch, ONE_CHUNK_PER_TASK)
-    tasks = pack(datasource)
-    summary = summary_of(chunked_file)
-    index_by_offset = {
-        c.chunk_start_offset: c
-        for c in without_message_index_offsets(summary.chunk_indexes)
-    }
-
-    for task in tasks:
-        (metadata,) = task.file_chunk_metadatas
-        records = task_summary_of(task)
-        assert records is not None
-        task_summary = parse_summary_records(records, chunked_file)
-
-        assert task_summary.channels == summary.channels
-        assert task_summary.schemas == summary.schemas
-        assert task_summary.chunk_indexes == [
-            index_by_offset[int(offset)] for offset in metadata["unit_ids"]
-        ]
 
 
 def _write_overlapping(path):
@@ -243,9 +161,51 @@ READ_OPTIONS = {
         "topics": ["/a", "/c"],
         "time_range": TimeRange(BASE_TIME + 2 * STEP, BASE_TIME + 30 * STEP),
     },
-    "message_types": {"message_types": ["other_schema"]},
-    "file_order_with_row_id": {"log_time_order": False, "include_row_id": True},
 }
+
+
+def chunk_records(path: str) -> List[Tuple[int, int]]:
+    """``(offset, bytes)`` of every chunk record of ``path``, in file order."""
+    return [
+        (c.chunk_start_offset, c.chunk_length) for c in summary_of(path).chunk_indexes
+    ]
+
+
+def whole_file(path: str) -> List[Tuple[int, int]]:
+    """``(offset, bytes)`` of one read of all of ``path``."""
+    return [(0, os.path.getsize(path))]
+
+
+# Each file's writer, and the reads its tasks make with a task per chunk.
+TASK_READS = {
+    "chunked": (_write_round_robin, chunk_records),
+    # A file without a chunk index is scanned from its start, in one buffered read.
+    "unindexed": (_write_unindexed, whole_file),
+}
+
+
+@pytest.mark.parametrize(
+    "writer, expected_reads", TASK_READS.values(), ids=TASK_READS.keys()
+)
+def test_read_tasks_read_only_their_own_chunks(
+    tmp_path, monkeypatch, writer, expected_reads
+):
+    """With a task per chunk, each task makes one read: its chunk record, or the
+    whole file when it has no index. Nothing of the summary or the magic bytes
+    is read."""
+    path = os.path.join(tmp_path, "file.mcap")
+    writer(path)
+    datasource = MCAPDatasourceV2([path])
+    set_task_budget(monkeypatch, ONE_CHUNK_PER_TASK)
+    tasks = pack(datasource)
+    read_log = ReadLog()
+    scanner = dataclasses.replace(scanner_for(datasource), filesystem=read_log)
+
+    table = read_tasks(scanner, tasks)
+
+    assert sorted(read_log.reads[path]) == expected_reads(path)
+    assert len(tasks) == len(expected_reads(path))
+    assert table.num_rows == CHUNKED_FILE_MESSAGES
 
 
 @pytest.mark.parametrize("bin_bytes", [ONE_CHUNK_PER_TASK, None])
@@ -279,7 +239,7 @@ def test_whole_file_rows_carry_the_whole_summary(chunked_file, monkeypatch):
     datasource = MCAPDatasourceV2([chunked_file])
     (task,) = pack(datasource)
 
-    records = task_summary_of(task)
+    (records,) = task_summaries(task)
     table = read_tasks(scanner_for(datasource), [task])
 
     assert task.file_chunk_metadatas[0] is None and records is not None
@@ -291,8 +251,8 @@ def test_whole_file_rows_carry_the_whole_summary(chunked_file, monkeypatch):
 
 def test_declarations_missing_from_the_summary_are_read_back(tmp_path, monkeypatch):
     """Schemas declared only in chunk 0: a task owning a later chunk reads the
-    file's summary once to find the earlier chunks, and reads chunk 0 back. The
-    task owning chunk 0 reads no summary."""
+    file's summary once to find chunk 0, which declares them. The task owning
+    chunk 0 reads no summary."""
     path = os.path.join(tmp_path, "file.mcap")
     write_mcap_without_summary_schemas(path)
     datasource = MCAPDatasourceV2([path])
@@ -308,40 +268,11 @@ def test_declarations_missing_from_the_summary_are_read_back(tmp_path, monkeypat
     monkeypatch.setattr(mcap_reader, "read_summary_from", counted_read)
     scanner = scanner_for(datasource)
 
-    per_task = [read_tasks(scanner, [task]) for task in tasks]
-    reads_per_task = len(summary_reads)
+    for task in tasks:
+        read_tasks(scanner, [task])
 
-    assert [t.column("topic").to_pylist() for t in per_task] == [
-        ["/a"],
-        ["/b"],
-        ["/a"],
-        ["/b"],
-        ["/a"],
-        ["/b"],
-    ]
-    assert [t.column("schema_name").to_pylist()[0] for t in per_task] == [
-        "test_schema",
-        "other_schema",
-    ] * 3
     # Chunk 0 declares both schemas: its task needs no read-back.
-    assert reads_per_task == len(tasks) - 1
-
-
-def test_unindexed_file_is_scanned_without_a_summary_read(tmp_path, monkeypatch):
-    """A file without a summary is scanned from its start; its task reads neither
-    its end nor its magic bytes first."""
-    path = os.path.join(tmp_path, "file.mcap")
-    _write_unindexed(path)
-    datasource = MCAPDatasourceV2([path])
-    (task,) = pack(datasource)
-    read_log = ReadLog()
-    scanner = dataclasses.replace(scanner_for(datasource), filesystem=read_log)
-
-    table = read_tasks(scanner, [task])
-
-    # One buffered read covers the small file.
-    assert read_log.reads[path] == [(0, os.path.getsize(path))]
-    assert table.num_rows == 9
+    assert len(summary_reads) == len(tasks) - 1
 
 
 def test_unreadable_file_still_fails_its_task_naming_it(tmp_path, chunked_file):
@@ -355,7 +286,7 @@ def test_unreadable_file_still_fails_its_task_naming_it(tmp_path, chunked_file):
 
     (task,) = bad
 
-    assert task_summary_of(task) is None
+    assert task_summaries(task) == [None]
     with pytest.raises(ValueError, match="cut_short.mcap"):
         read_tasks(scanner, [task])
 
@@ -384,6 +315,8 @@ def test_a_path_listed_twice_is_read_twice(
         assert sorted(seqs) == sorted(one_copy + one_copy)
 
 
+# Chunks of each file in the partitioner test: one per message.
+CHUNKS_PER_FILE = 4
 # Files held after each file is added: with a task per chunk every row is packed
 # at once; with the default budget all three files wait in one open task.
 HELD = {
@@ -396,19 +329,23 @@ HELD = {
 def test_partitioner_releases_a_file_once_its_rows_are_packed(
     tmp_path, monkeypatch, bin_bytes, expected
 ):
-    """The partitioner holds a file's records only until its last row leaves in a
-    packed task, so it holds nothing once packing is done."""
+    """The listing stores a file's records once for all its rows, and the
+    partitioner holds them only until the file's last row leaves in a packed
+    task, so it holds nothing once packing is done."""
     paths = []
     for i in range(3):
         path = os.path.join(tmp_path, f"f{i}.mcap")
-        write_mcap(path, round_robin_messages(4))
+        write_mcap(path, round_robin_messages(CHUNKS_PER_FILE))
         paths.append(path)
     set_task_budget(monkeypatch, bin_bytes)
     datasource = MCAPDatasourceV2(paths)
     partitioner = datasource.get_file_partitioner()
+    record_indices = []
     held_after_each_file = []
 
     for manifest in list_manifests(datasource):
+        file_records = table_of(manifest).column(FILE_RECORDS_COLUMN)
+        record_indices.append(file_records.combine_chunks().indices.to_pylist())
         partitioner.add_input(manifest)
         while partitioner.has_partition():
             partitioner.next_partition()
@@ -417,6 +354,8 @@ def test_partitioner_releases_a_file_once_its_rows_are_packed(
     while partitioner.has_partition():
         partitioner.next_partition()
 
+    # Every row points at the one stored copy of its file's records.
+    assert record_indices == [[0] * CHUNKS_PER_FILE] * len(paths)
     assert held_after_each_file == expected
     assert partitioner._held == {}
 

@@ -45,7 +45,7 @@ from ray.data._internal.datasource_v2.formats.mcap.mcap_summary import (
     ListedSummary,
     chunk_run,
     chunk_unit_id,
-    read_listed_summaries,
+    read_summaries,
 )
 from ray.data._internal.datasource_v2.formats.mcap.mcap_task_summary import (
     split_section,
@@ -158,7 +158,7 @@ class MCAPSummaryIndexer(NonSamplingFileIndexer):
         Listing order decides how the partitioner groups chunks into tasks, so
         it must not depend on which read finishes first.
         """
-        return read_listed_summaries(
+        return read_summaries(
             filesystem, file_infos, lambda info: info.path, self._io_concurrency
         )
 
@@ -210,9 +210,7 @@ class MCAPSummaryIndexer(NonSamplingFileIndexer):
             manifest = FileManifest.construct_manifest(
                 paths=[path], sizes=[file_info.size], chunk_metadatas=[None]
             )
-            records = (
-                b"" if listed is None else split_section(listed.section).everything
-            )
+            records = b"" if listed is None else bytes(listed.section)
             return with_listing_records(manifest, records, [None])
 
         selected = self._selection.selected_channel_ids(

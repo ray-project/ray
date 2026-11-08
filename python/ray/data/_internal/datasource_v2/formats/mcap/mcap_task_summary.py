@@ -8,17 +8,12 @@ whole summary. They stay MCAP records, in two steps:
 1. ``MCAPSummaryIndexer`` adds two columns to its listing rows
    (``with_listing_records``): each chunk row's ``ChunkIndex`` record, and the
    file's records, stored once per file. For a chunk row those are the file's
-   schema and channel records. A whole-file row carries every record of the
-   summary, or none when the file has no summary. An unreadable file carries
-   null.
+   schema and channel records. A whole-file row carries the raw summary section,
+   or no records when the file has no summary. An unreadable file carries null.
 2. ``TaskSummaryPartitioner`` packs the rows with ``OnlineBinPacker``, which
    keeps only paths, sizes and chunk metadata. To each packed row it adds the
    file's records followed by the index records of the chunks the row names,
    compressed with zstd (``TASK_SUMMARY_COLUMN``).
-
-A carried ``ChunkIndex`` record leaves out its ``message_index_offsets``. The
-reader uses them only to pick the chunks that may hold a selected channel, and
-the listing has already picked the task's chunks with the same selection.
 
 ``MCAPReader`` parses that column (``task_summaries``). A null, carried by a
 file the listing could not read, makes the reader read the summary from the
@@ -30,7 +25,10 @@ from typing import Any, Dict, List, Mapping, Optional, Sequence
 
 import pyarrow as pa
 
-from ray.data._internal.datasource_v2.formats.mcap.mcap_io import summary_records
+from ray.data._internal.datasource_v2.formats.mcap.mcap_io import (
+    _RECORD_PREFIX_BYTES,
+    summary_records,
+)
 from ray.data._internal.datasource_v2.interfaces.file_manifest import FileManifest
 from ray.data._internal.datasource_v2.interfaces.file_partitioner import (
     FilePartitioner,
@@ -44,58 +42,38 @@ TASK_SUMMARY_COLUMN = "__mcap_task_summary"
 
 _FILE_RECORDS_TYPE = pa.dictionary(pa.int32(), pa.binary())
 
-_SCHEMA_OPCODE = 0x03
-_CHANNEL_OPCODE = 0x04
-_CHUNK_INDEX_OPCODE = 0x08
-# A ``ChunkIndex`` record: the opcode (1 byte) and the record length (8), the
-# chunk's two log times (8 each), its start offset (8) and length (8), then
-# ``message_index_offsets`` as a byte count (4) and 10 bytes per channel.
-_RECORD_PREFIX_BYTES = 1 + 8
+# A ``ChunkIndex`` record starts with the opcode and the record length, then the
+# chunk's two log times (8 bytes each) and its start offset (8).
 _CHUNK_START_OFFSET_AT = _RECORD_PREFIX_BYTES + 16
-_MESSAGE_INDEX_OFFSETS_AT = _RECORD_PREFIX_BYTES + 32
 
 
 @dataclass(frozen=True)
 class SectionRecords:
-    """The raw records of one summary section that read tasks may need."""
+    """The raw records of a summary section that chunk rows carry."""
 
-    # Every record before the footer, for a file read whole.
-    everything: bytes
     # The schema and channel records.
     declarations: bytes
-    # Each ``ChunkIndex`` record without its message index offsets, by its
-    # chunk's start offset.
+    # Each ``ChunkIndex`` record, by its chunk's start offset.
     chunk_indexes: Mapping[int, bytes]
 
 
 def split_section(section: memoryview) -> SectionRecords:
-    """Split a summary section into the records read tasks may need."""
-    everything: List[memoryview] = []
+    """Split a summary section into the records that chunk rows carry."""
+    from mcap.opcode import Opcode
+
     declarations: List[memoryview] = []
     chunk_indexes: Dict[int, bytes] = {}
     for opcode, record in summary_records(section):
-        everything.append(record)
-        if opcode in (_SCHEMA_OPCODE, _CHANNEL_OPCODE):
+        if opcode in (Opcode.SCHEMA, Opcode.CHANNEL):
             declarations.append(record)
-        elif opcode == _CHUNK_INDEX_OPCODE:
+        elif opcode == Opcode.CHUNK_INDEX:
             at = _CHUNK_START_OFFSET_AT
             offset = int.from_bytes(record[at : at + 8], "little")
-            chunk_indexes[offset] = _without_message_index_offsets(record)
+            chunk_indexes[offset] = bytes(record)
     return SectionRecords(
-        everything=b"".join(everything),
         declarations=b"".join(declarations),
         chunk_indexes=chunk_indexes,
     )
-
-
-def _without_message_index_offsets(record: memoryview) -> bytes:
-    """A ``ChunkIndex`` record with its ``message_index_offsets`` left empty."""
-    at = _MESSAGE_INDEX_OFFSETS_AT
-    map_bytes = int.from_bytes(record[at : at + 4], "little")
-    body = b"".join(
-        [record[_RECORD_PREFIX_BYTES:at], bytes(4), record[at + 4 + map_bytes :]]
-    )
-    return b"".join([record[:1], len(body).to_bytes(8, "little"), body])
 
 
 def with_listing_records(
