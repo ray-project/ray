@@ -331,7 +331,9 @@ PROXY_DRAIN_CHECK_PERIOD_S = 5
 
 #: Number of times in a row that a replica must fail the health check before
 #: being marked unhealthy.
-REPLICA_HEALTH_CHECK_UNHEALTHY_THRESHOLD = 3
+REPLICA_HEALTH_CHECK_UNHEALTHY_THRESHOLD = get_env_int_positive(
+    "RAY_SERVE_REPLICA_HEALTH_CHECK_UNHEALTHY_THRESHOLD", 3
+)
 
 # Watchdog that detects a wedged user code event loop when user code runs in a
 # separate thread (RAY_SERVE_RUN_USER_CODE_IN_SEPARATE_THREAD=1) and no user-defined
@@ -364,7 +366,7 @@ DEPLOYMENT_ACTOR_HEALTH_CHECK_TIMEOUT_S = get_env_float_positive(
 )
 DEPLOYMENT_ACTOR_HEALTH_CHECK_UNHEALTHY_THRESHOLD = get_env_int_positive(
     "RAY_SERVE_DEPLOYMENT_ACTOR_HEALTH_CHECK_UNHEALTHY_THRESHOLD",
-    REPLICA_HEALTH_CHECK_UNHEALTHY_THRESHOLD,
+    3,
 )
 
 # The time in seconds that the Serve client waits before rechecking deployment state
