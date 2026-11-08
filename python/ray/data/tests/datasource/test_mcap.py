@@ -10,6 +10,13 @@ import pytest
 
 import ray
 from ray.data._internal.datasource_v2.formats.mcap import mcap_datasource_v2
+from ray.data._internal.datasource_v2.formats.mcap.mcap_file_cuts import (
+    OrderedFileCutter,
+)
+from ray.data._internal.datasource_v2.formats.mcap.mcap_task_summary import (
+    TaskSummaryPartitioner,
+)
+from ray.data._internal.logical.operators.read_operator import ListFiles
 from ray.data.datasource.path_util import _unwrap_protocol
 from ray.data.tests.conftest import *  # noqa
 from ray.tests.conftest import *  # noqa
@@ -356,29 +363,33 @@ def test_read_mcap_override_num_blocks(
     assert not any(f"ignores `{other}`" in m for m in warnings)
 
 
-def test_read_mcap_passes_memory_to_the_v2_datasource(
-    ray_start_regular_shared, simple_mcap_file, datasource_v2, monkeypatch
+@pytest.mark.parametrize(
+    "read_args, reserved",
+    [
+        ({"memory": 2 * 1024**3}, 2 * 1024**3),
+        ({"ray_remote_args": {"memory": 1024**3}}, 1024**3),
+        ({}, None),
+    ],
+    ids=["memory", "ray_remote_args", "unset"],
+)
+def test_read_mcap_hands_memory_to_the_file_cutter(
+    ray_start_regular_shared, simple_mcap_file, datasource_v2, read_args, reserved
 ):
-    """``memory``, or else ``ray_remote_args["memory"]``, reaches the V2 datasource,
-    so its memory warning knows what each read task reserves."""
+    """``memory``, or else ``ray_remote_args["memory"]``, reaches the V2 file
+    cutter, so its memory warning knows what each read task reserves."""
     if not datasource_v2:
         pytest.skip("Only the V2 datasource takes the reservation.")
-    seen = []
-    original_init = mcap_datasource_v2.MCAPDatasourceV2.__init__
 
-    def record_reservation(self, *args, **kwargs):
-        seen.append(kwargs.get("read_task_memory"))
-        original_init(self, *args, **kwargs)
+    ds = ray.data.read_mcap(simple_mcap_file, **read_args)
 
-    monkeypatch.setattr(
-        mcap_datasource_v2.MCAPDatasourceV2, "__init__", record_reservation
-    )
-
-    ray.data.read_mcap(simple_mcap_file, memory=2 * 1024**3)
-    ray.data.read_mcap(simple_mcap_file, ray_remote_args={"memory": 1024**3})
-    ray.data.read_mcap(simple_mcap_file)
-
-    assert seen == [2 * 1024**3, 1024**3, None]
+    # The plan keeps the datasource's partitioner, not the datasource.
+    list_files_op = ds._logical_plan.dag.input_dependencies[0]
+    assert isinstance(list_files_op, ListFiles)
+    partitioner = list_files_op.file_partitioner
+    assert isinstance(partitioner, TaskSummaryPartitioner)
+    cutter = partitioner._packer
+    assert isinstance(cutter, OrderedFileCutter)
+    assert cutter._reserved_memory == reserved
 
 
 def test_read_mcap_file_extensions(ray_start_regular_shared, tmp_path):
