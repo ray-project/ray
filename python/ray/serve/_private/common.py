@@ -1036,7 +1036,7 @@ TimeSeries = List[TimeStampedValue]
 
 @dataclass
 class HandleMetricReport:
-    """Report from a deployment handle on queued and ongoing requests.
+    """Autoscaling metrics owned or collected by a deployment handle.
 
     Args:
         deployment_id: The deployment ID of the deployment handle.

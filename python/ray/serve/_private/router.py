@@ -336,8 +336,8 @@ class RouterMetricsManager:
                 self._add_autoscaling_metrics_point()
                 self.push_autoscaling_metrics_to_controller()
 
-            # Record number of queued + ongoing requests at regular
-            # intervals into the in-memory metrics store
+            # Record autoscaling metrics owned or collected by this handle at
+            # regular intervals.
             record_interval_s = (
                 autoscaling_config.look_back_period_s
                 * RAY_SERVE_AUTOSCALING_METRIC_RECORD_INTERVAL_FACTOR
@@ -454,7 +454,7 @@ class RouterMetricsManager:
         )
 
     def push_autoscaling_metrics_to_controller(self):
-        """Pushes queued and running request metrics to the controller.
+        """Push autoscaling metrics owned or collected by this handle.
 
         These metrics are used by the controller for autoscaling.
         If a previous push is already in flight, skips this push (will try again next interval).
@@ -480,9 +480,9 @@ class RouterMetricsManager:
             )
 
     def _add_autoscaling_metrics_point(self):
-        """Adds metrics point for queued and running requests at replicas.
+        """Sample autoscaling metrics owned or collected by this handle.
 
-        Also prunes keys in the in memory metrics store with outdated datapoints.
+        Also prunes outdated datapoints from the in-memory metrics stores.
 
         ┌─────────────────────────────────────────────────────────────────┐
         │  Handle-based metrics collection                                │
@@ -507,7 +507,8 @@ class RouterMetricsManager:
         :::{note}
         The long-term plan is to deprecate handle-based metrics collection in favor of
         replica-based collection. Replica-based collection will become the default in a
-        future release. Queued requests will be continues to be tracked at the handle.
+        future release. Queued requests and router-owned metrics will continue to be
+        tracked at the handle.
         :::
         """
 
