@@ -93,6 +93,27 @@ def split_and_zero_pad(
         data as `item_list`, but split into sub-chunks of size `max_seq_len`.
         The last item in the returned list may be zero-padded, if necessary.
     """
+    # Bulk episode extraction commonly produces one BatchedNdArray. Pad it once
+    # instead of repeatedly slicing and concatenating every max_seq_len chunk.
+    if (
+        len(item_list) == 1
+        and max_seq_len > 0
+        and isinstance(item_list[0], BatchedNdArray)
+        and len(item_list[0]) > 0
+    ):
+        item = item_list[0]
+        num_rows, remainder = divmod(len(item), max_seq_len)
+        if remainder:
+            num_rows += 1
+            padded = np.zeros(
+                (num_rows * max_seq_len, *item.shape[1:]),
+                dtype=item.dtype,
+            )
+            padded[: len(item)] = item
+        else:
+            padded = np.array(item, copy=True, subok=False)
+        return list(padded.reshape((num_rows, max_seq_len, *item.shape[1:])))
+
     zero_element = tree.map_structure(
         lambda s: np.zeros_like([s[0]] if isinstance(s, BatchedNdArray) else s),
         item_list[0],
