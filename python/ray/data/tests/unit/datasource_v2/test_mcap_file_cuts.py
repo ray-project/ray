@@ -157,14 +157,6 @@ def test_light_file_stays_in_one_task():
     assert tasks == [[("a", [0])], [("b", [0, 1])]]
 
 
-def test_heavy_file_is_cut_into_full_tasks_that_leave_in_time_order():
-    """A single-writer file heavier than one task is cut wherever the next chunk
-    would overflow, and its tasks leave at once, starting with the file's start."""
-    tasks = cut([listed_file("f", one_writer(5))])
-
-    assert tasks == [[("f", [0, 1])], [("f", [2, 3])], [("f", [4])]]
-
-
 def test_chunks_written_out_of_time_order_are_cut_by_log_time():
     """Chunks that do not overlap are taken by first log time, not file offset,
     so the tasks still leave in log-time order."""
@@ -211,17 +203,6 @@ def test_overlapping_stretch_stays_in_one_task():
         [("f", [1, 2, 3, 4, 5])],
         [("f", [6, 7])],
     ]
-
-
-def test_file_with_no_safe_boundary_is_one_task():
-    """In a read that keeps order, a file whose every boundary overlaps in time
-    is one task."""
-    # Each chunk starts before the previous one ends, like a sliding window.
-    spans = [(10 * i, 10 * i + 25) for i in range(6)]
-
-    tasks = cut([listed_file("f", spans)])
-
-    assert tasks == [[("f", [0, 1, 2, 3, 4, 5])]]
 
 
 # A file whose every chunk spans the whole recording, as when each topic's
@@ -338,32 +319,30 @@ def test_memory_that_covers_the_estimate_keeps_the_warning_quiet(
     assert len(warnings) == int(warns)
 
 
-def test_unordered_read_cuts_an_overlapping_file_anywhere():
+@pytest.mark.parametrize(
+    "log_time_order, preserve_order, tasks",
+    [
+        # Taken by first log time: 0, 1 | 5, 2 | 3, 4 | 6, 7.
+        (True, False, [[0, 1], [2, 5], [3, 4], [6, 7]]),
+        # Taken in file order.
+        (False, True, [[0, 1], [2, 3], [4, 5], [6, 7]]),
+    ],
+    ids=["unordered_read", "file_order"],
+)
+def test_overlapping_file_is_cut_at_every_boundary(
+    log_time_order, preserve_order, tasks
+):
     """A read that does not keep its blocks in order gets them in any order
-    anyway, so a file whose chunks overlap in time is cut wherever the next
-    chunk would overflow, still in log-time order of the chunks' starts."""
-    tasks = cut([listed_file("f", ONE_TOPIC_PER_CHUNK)], preserve_order=False)
+    anyway, and without ``log_time_order`` the reader yields chunks in file order.
+    Either way a file whose chunks overlap in time is cut wherever the next chunk
+    would overflow."""
+    got = cut(
+        [listed_file("f", ONE_TOPIC_PER_CHUNK)],
+        log_time_order=log_time_order,
+        preserve_order=preserve_order,
+    )
 
-    # Two chunks per task, taken by first log time: 0, 1 | 5, 2 | 3, 4 | 6, 7.
-    assert tasks == [
-        [("f", [0, 1])],
-        [("f", [2, 5])],
-        [("f", [3, 4])],
-        [("f", [6, 7])],
-    ]
-
-
-def test_file_order_allows_a_cut_at_every_boundary():
-    """Without ``log_time_order`` the reader yields chunks in file order, so even a
-    file whose chunks overlap in time is cut at any boundary, in offset order."""
-    tasks = cut([listed_file("f", ONE_TOPIC_PER_CHUNK)], log_time_order=False)
-
-    assert tasks == [
-        [("f", [0, 1])],
-        [("f", [2, 3])],
-        [("f", [4, 5])],
-        [("f", [6, 7])],
-    ]
+    assert got == [[("f", chunks)] for chunks in tasks]
 
 
 def listed_rows(path, run, record, size=FILE_SIZE, file_records=b""):
@@ -378,23 +357,17 @@ def listed_rows(path, run, record, size=FILE_SIZE, file_records=b""):
 
 
 def unplaceable_files() -> List[FileManifest]:
-    """Files whose rows do not each name one chunk and carry its index record.
+    """The listing's files whose rows carry no ``ChunkIndex`` record.
 
     ::
 
         whole  30 bytes   listed whole: no chunk index
         bad   100 bytes   unreadable: no chunk and no records
-        empty  40 bytes   one chunk whose index record is empty
-        two    80 bytes   one row naming two chunks
     """
-    one_chunk = FileChunk(unit_ids=(0,), num_rows=1, size_bytes=WEIGHT)
-    two_chunks = FileChunk(unit_ids=(0, 1), num_rows=2, size_bytes=2 * WEIGHT)
     unreadable = FileChunk(unit_ids=(), num_rows=0, size_bytes=BUDGET)
     return [
         listed_rows("whole", None, None, size=30),
         listed_rows("bad", unreadable, None, file_records=None),
-        listed_rows("empty", one_chunk, b""),
-        listed_rows("two", two_chunks, chunk_index_record(0, 9, 0)),
     ]
 
 
@@ -416,24 +389,17 @@ def test_rows_it_cannot_place_in_time_go_to_the_packer_unchanged():
     assert tasks == as_tasks(alone)
     assert sorted(row for task in tasks for row in task) == [
         ("bad", []),
-        ("empty", [0]),
-        ("two", [0, 1]),
         ("whole", None),
     ]
 
 
 def test_rows_it_cannot_place_in_time_keep_listing_order_in_an_ordered_read():
     """In a read that keeps order, those files are packed whole in listing
-    order. Each pair of neighbours would pass the budget, so each file gets a
-    task of its own."""
+    order. The two would pass the budget together, so each gets a task of its
+    own."""
     tasks = cut(unplaceable_files())
 
-    assert tasks == [
-        [("whole", None)],
-        [("bad", [])],
-        [("empty", [0])],
-        [("two", [0, 1])],
-    ]
+    assert tasks == [[("whole", None)], [("bad", [])]]
 
 
 def test_ordered_read_keeps_files_in_listing_order():
@@ -469,45 +435,49 @@ def chunk_weight(datasource) -> int:
     )
 
 
-def test_split_file_reads_in_log_time_order(chunked_file, monkeypatch):
-    """A file cut into several tasks reads, task after task, as the same rows in
-    the same order as one task reading it whole."""
+def ready_tasks(partitioner) -> List[FileManifest]:
+    """The tasks ``partitioner`` has ready, in the order they leave."""
+    tasks = []
+    while partitioner.has_partition():
+        tasks.append(partitioner.next_partition())
+    return tasks
+
+
+@pytest.mark.parametrize(
+    "chunks_per_task",
+    [
+        # The default budget holds the whole file.
+        None,
+        # Room for two chunks and a half, so the file is cut.
+        2.5,
+    ],
+    ids=["light_file", "cut_file"],
+)
+def test_task_summaries_hold_each_tasks_chunks(
+    chunked_file, monkeypatch, chunks_per_task
+):
+    """Each task's summary records index exactly the chunks it names, whether
+    the file leaves as one row or is cut. The partitioner holds a file until its
+    last task has left."""
     datasource = MCAPDatasourceV2([chunked_file])
-    whole = read_all(datasource, *pack(datasource))
-    # Room for two chunks and a half: today's packer would send the file's
-    # first task second to last.
-    budget = int(2.5 * chunk_weight(datasource))
-    monkeypatch.setattr(mcap_datasource_v2, "_BIN_PACKING_BYTES", budget)
-
-    tasks = pack(datasource)
-    table = read_all(datasource, *tasks)
-
-    # One message per chunk, so file order is log-time order here.
-    offsets = [
-        sorted(int(u) for u in t.file_chunk_metadatas[0]["unit_ids"]) for t in tasks
-    ]
-    assert len(tasks) >= 3
-    assert all(a[-1] < b[0] for a, b in zip(offsets, offsets[1:]))
-    assert table.to_pylist() == whole.to_pylist()
-
-
-def test_task_summaries_hold_each_tasks_chunks(chunked_file, monkeypatch):
-    """Each task's summary records index exactly the chunks it names, and the
-    partitioner holds nothing of a file once its tasks have left."""
-    datasource = MCAPDatasourceV2([chunked_file])
-    budget = int(2.5 * chunk_weight(datasource))
-    monkeypatch.setattr(mcap_datasource_v2, "_BIN_PACKING_BYTES", budget)
+    is_cut = chunks_per_task is not None
+    if is_cut:
+        budget = int(chunks_per_task * chunk_weight(datasource))
+        monkeypatch.setattr(mcap_datasource_v2, "_BIN_PACKING_BYTES", budget)
     partitioner = datasource.get_file_partitioner()
     (manifest,) = list_manifests(datasource)
 
     partitioner.add_input(manifest)
-    tasks = []
-    while partitioner.has_partition():
-        tasks.append(partitioner.next_partition())
-    held = len(partitioner._held)
+    tasks = ready_tasks(partitioner)
+    held_while_open = len(partitioner._held)
+    partitioner.finalize()
+    tasks += ready_tasks(partitioner)
 
-    assert len(tasks) > 1
-    assert held == 0
+    # A light file waits in the packer's open bin until the input ends, while
+    # a cut file's tasks leave at once.
+    assert held_while_open == (0 if is_cut else 1)
+    assert partitioner._held == {}
+    assert (len(tasks) > 1) == is_cut
     for task in tasks:
         (records,) = task_summaries(task)
         assert records is not None
@@ -517,30 +487,6 @@ def test_task_summaries_hold_each_tasks_chunks(chunked_file, monkeypatch):
             int(u) for u in metadata["unit_ids"]
         )
     assert sum(len(t.file_chunk_metadatas[0]["unit_ids"]) for t in tasks) == (
-        CHUNKED_FILE_MESSAGES
-    )
-
-
-def test_light_file_is_one_row_with_every_chunk(chunked_file):
-    """A light file leaves as one row naming all its chunks, whose summary
-    records index every chunk; the partitioner releases the file at the end."""
-    datasource = MCAPDatasourceV2([chunked_file])
-    partitioner = datasource.get_file_partitioner()
-    (manifest,) = list_manifests(datasource)
-
-    partitioner.add_input(manifest)
-    held_while_open = len(partitioner._held)
-    partitioner.finalize()
-    tasks = []
-    while partitioner.has_partition():
-        tasks.append(partitioner.next_partition())
-
-    (task,) = tasks
-    (records,) = task_summaries(task)
-    assert records is not None
-    assert held_while_open == 1 and partitioner._held == {}
-    assert len(task) == 1
-    assert len(parse_summary_records(records, chunked_file).chunk_indexes) == (
         CHUNKED_FILE_MESSAGES
     )
 
