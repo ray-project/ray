@@ -357,7 +357,6 @@ class KVTokenTracker:
     ) -> None:
         """Set the local callback for router-owned autoscaling metrics."""
         self._autoscaling_metrics_callback = callback
-        self._publish_autoscaling_snapshot()
 
     def _get_autoscaling_snapshot(self) -> Dict[str, int]:
         return {

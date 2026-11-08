@@ -763,10 +763,7 @@ async def test_autoscaling_snapshot_tracks_request_phases():
     actor._svc.effective_prefill_tokens = 3
     published = []
     actor.set_autoscaling_metrics_callback(published.append)
-    assert published[-1] == {
-        OUTSTANDING_EFFECTIVE_PREFILL_TOKENS: 0,
-        ACTIVE_DECODE_REQUESTS: 0,
-    }
+    assert published == []
 
     await reserve(actor, "cached", 1, list(range(20)))
     assert await actor.get_autoscaling_snapshot() == {
