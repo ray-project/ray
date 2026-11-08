@@ -4,13 +4,34 @@ import logging
 import os
 import tempfile
 from contextlib import asynccontextmanager
-from typing import List, Optional, Tuple
+from typing import Dict, List, Mapping, Optional, Tuple
 
 from ray._private.runtime_env import virtualenv_utils
 from ray._private.runtime_env.utils import check_output_cmd
 
 INTERNAL_PIP_FILENAME = "ray_runtime_env_internal_pip_requirements.txt"
 MAX_INTERNAL_PIP_FILENAME_TRIES = 100
+
+_INSTALL_ENV_VAR_PREFIXES = ("PIP_", "UV_", "GIT_", "SSL_CERT_")
+_INSTALL_ENV_VAR_NAMES = ("REQUESTS_CA_BUNDLE", "CURL_CA_BUNDLE")
+
+
+def get_install_env_vars(runtime_env: Mapping) -> Dict[str, str]:
+    """Return the runtime env's env_vars that change what pip or uv installs.
+
+    The install runs with the runtime env's env_vars, so these must be part of
+    the shared environment's cache key. Otherwise a job that installs from a
+    different index, proxy or CA would populate an environment reused by jobs
+    that did not ask for it.
+    """
+    env_vars = runtime_env.get("env_vars") or {}
+    return {
+        name: value
+        for name, value in env_vars.items()
+        if name.upper().startswith(_INSTALL_ENV_VAR_PREFIXES)
+        or name.upper().endswith("_PROXY")
+        or name.upper() in _INSTALL_ENV_VAR_NAMES
+    }
 
 
 def gen_requirements_txt(requirements_file: str, pip_packages: List[str]):

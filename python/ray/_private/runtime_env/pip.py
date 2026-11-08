@@ -40,7 +40,7 @@ def _parse_requirements_file(file_path: str) -> List[str]:
     return packages
 
 
-def _get_pip_hash(pip_dict: Dict) -> str:
+def _get_pip_hash(pip_dict: Dict, env_vars: Optional[Dict[str, str]] = None) -> str:
     pip_dict_copy = pip_dict.copy()
     # Using a list as a stack for iterative processing to handle nested requirements.
     # Each item is a tuple (package_spec, parent_dir), where parent_dir is the directory
@@ -99,7 +99,11 @@ def _get_pip_hash(pip_dict: Dict) -> str:
                 [(p, file_dir) for p in reversed(packages_from_file)]
             )
     pip_dict_copy["packages"] = expanded_packages
-    serialized_pip_spec = json.dumps(pip_dict_copy, sort_keys=True)
+    hash_input = pip_dict_copy
+    if env_vars:
+        # Keep existing cache keys unchanged when no env var affects install.
+        hash_input = {"pip": pip_dict_copy, "env_vars": env_vars}
+    serialized_pip_spec = json.dumps(hash_input, sort_keys=True)
     hash_val = hashlib.sha1(serialized_pip_spec.encode("utf-8")).hexdigest()
     return hash_val
 
@@ -108,10 +112,13 @@ def get_uri(runtime_env: Dict) -> Optional[str]:
     """Return `"pip://<hashed_dependencies>"`, or None if no GC required."""
     pip = runtime_env.get("pip")
     if pip is not None:
+        env_vars = dependency_utils.get_install_env_vars(runtime_env)
         if isinstance(pip, dict):
-            uri = "pip://" + _get_pip_hash(pip_dict=pip)
+            uri = "pip://" + _get_pip_hash(pip_dict=pip, env_vars=env_vars)
         elif isinstance(pip, list):
-            uri = "pip://" + _get_pip_hash(pip_dict=dict(packages=pip))
+            uri = "pip://" + _get_pip_hash(
+                pip_dict=dict(packages=pip), env_vars=env_vars
+            )
         else:
             raise TypeError(
                 "pip field received by RuntimeEnvAgent must be "
