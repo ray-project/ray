@@ -413,12 +413,17 @@ steps:
     instance_type: medium
     soft_fail: true
     commands:
-      - export WHEEL_URL="https://files.pythonhosted.org/packages/93/f1/9108c4f878e3cacb767b7dfbbc3a26537c79ab516d2530b9f63b558ba4bb/ray-2.44.1-cp310-cp310-manylinux2014_x86_64.whl"
-      - export CPP_WHEEL_URL="https://files.pythonhosted.org/packages/d3/cf/ef6d5a9a688001f73e4749c48f840455ecec11acde982eb70f387b0dc445/ray_cpp-2.44.1-cp310-cp310-manylinux2014_x86_64.whl"
-      - bash build-docker.sh --progress-plain
+      # Build the image from this build's own py3.10 wheel, so the wheel matches
+      # the branch's requirements_compiled.txt constraints.
+      - bazel run //ci/ray_ci/automation:extract_wanda_artifact --
+        --wanda-image-name=ray-wheel-py3.10
+        --file-glob='ray-*.whl'
+        --output-dir=.whl
+      - WHEEL_URL="$$(ls "$$PWD"/.whl/ray-*.whl)" CPP_WHEEL_URL="" bash build-docker.sh --progress-plain
       - docker run -ti --rm rayproject/ray:dev python -c "import ray; print(ray.__version__)"
     depends_on:
       - forge
+      - ray-wheel-build(python=3.10)
 
   - label: ":tapioca: smoke test build-image.sh --help"
     tags:
