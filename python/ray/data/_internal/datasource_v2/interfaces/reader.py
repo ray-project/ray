@@ -28,7 +28,9 @@ class Reader(ABC, Generic[InputSplit]):
         Implement this directly when ``FileReader`` does not decode your
         format or the source is not files at all. Your implementation should:
 
-            1. Open each entry of ``input_split`` and decode it.
+            1. Open and decode data entries of ``input_split``. A supported
+               schema-only control entry instead uses the paired reader's
+               certified layout to produce an empty table without opening it.
             2. Apply every pushdown this reader was configured with.
             3. Call ``raise_on_pickle_object_columns`` on each table built
                from external input, then yield it.

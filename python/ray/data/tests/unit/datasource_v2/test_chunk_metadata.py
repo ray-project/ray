@@ -16,6 +16,7 @@ def test_file_chunk_defaults():
         "num_rows": 5,
         "size_bytes": 10,
         "fully_matched": True,
+        "schema_only": False,
         "unit_sizes": (),
         "unit_rows": (),
     }

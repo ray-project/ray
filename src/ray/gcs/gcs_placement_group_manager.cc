@@ -235,6 +235,11 @@ void GcsPlacementGroupManager::OnPlacementGroupCreationFailed(
       // priority than trying to place other placement groups.
       stats->set_scheduling_state(rpc::PlacementGroupStats::FAILED_TO_COMMIT_RESOURCES);
       AddToPendingQueue(std::move(placement_group), /*rank=*/0);
+      // Return without posting another scheduling pass. Retrying right away
+      // could cause a retry storm, so the retry is only on the next
+      // Tick() or the next event trigger.
+      MarkSchedulingDone();
+      return;
     } else if (state == rpc::PlacementGroupTableData::PENDING) {
       stats->set_scheduling_state(rpc::PlacementGroupStats::NO_RESOURCES);
       AddToPendingQueue(std::move(placement_group), std::nullopt, backoff);

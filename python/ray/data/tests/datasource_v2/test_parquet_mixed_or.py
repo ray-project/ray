@@ -105,63 +105,6 @@ def test_mixed_or_partition_literal_boundaries(
         ray.shutdown()
 
 
-@pytest.mark.parametrize(
-    "kind",
-    [
-        "payload_bad_int",
-        "payload_valid_int",
-        "payload_bad_utf8",
-        "payload_projection",
-        "other_partition_bad_int",
-        "other_partition_valid_int",
-    ],
-)
-def test_mixed_or_preserves_other_field_conversions(
-    tmp_path, kind, restore_data_context
-):
-    ray.init(num_cpus=2, include_dashboard=False, object_store_memory=256 * 1024 * 1024)
-    try:
-        ray.data.DataContext.get_current().use_datasource_v2 = True
-        folder = tmp_path / "year=2020"
-        names = ["year"]
-        fields = [("id", pa.int64()), ("year", pa.string())]
-        table = pa.table({"id": [10, 11, 12, 13]})
-        if kind.startswith("other_partition"):
-            folder = folder / ("month=abc" if kind.endswith("bad_int") else "month=7")
-            names.append("month")
-            fields.append(("month", pa.int64()))
-        else:
-            values = (
-                [b"\xff"] * 4
-                if kind.endswith("bad_utf8")
-                else (["123"] * 4 if kind.endswith("valid_int") else ["abc"] * 4)
-            )
-            table = table.append_column("payload", pa.array(values))
-            fields.append(
-                ("payload", pa.string() if kind.endswith("bad_utf8") else pa.int64())
-            )
-        folder.mkdir(parents=True)
-        path = folder / "part.parquet"
-        pq.write_table(table, path, row_group_size=2)
-        ds = ray.data.read_parquet(
-            [str(path)],
-            schema=pa.schema(fields),
-            partitioning=Partitioning(
-                PartitionStyle.HIVE, base_dir=str(tmp_path), field_names=names
-            ),
-            override_num_blocks=1,
-        ).filter(expr=(col("year") == "2023") | (col("id") < 0))
-        if kind == "payload_projection":
-            ds = ds.select_columns(["id"])
-        if "bad" in kind or kind == "payload_projection":
-            with pytest.raises(pa.ArrowInvalid):
-                ds.take_all()
-        else:
-            assert ds.take_all() == []
-    finally:
-        ray.shutdown()
-
-
 @pytest.mark.parametrize("limit_first", [True, False])
 def test_mixed_or_respects_limit_order(tmp_path, limit_first, restore_data_context):
     ray.init(num_cpus=2, include_dashboard=False, object_store_memory=256 * 1024 * 1024)
@@ -199,9 +142,20 @@ def test_mixed_or_respects_limit_order(tmp_path, limit_first, restore_data_conte
 
 @pytest.mark.parametrize("hint_first", [False, True])
 @pytest.mark.parametrize("partial", [False, True])
-def test_mixed_or_preserves_pushed_predicate_errors(
-    tmp_path, hint_first, partial, restore_data_context
+@pytest.mark.parametrize("enabled", [False, True])
+def test_mixed_or_skips_errors_only_in_pruned_groups(
+    tmp_path, hint_first, partial, restore_data_context, monkeypatch, enabled
 ):
+    if not enabled:
+        from ray.data._internal.datasource_v2.formats.parquet.footer_file_indexer import (
+            FooterFileIndexer,
+        )
+
+        monkeypatch.setattr(
+            FooterFileIndexer,
+            "with_residual_pruning",
+            lambda self, *args: self.without_residual_pruning(),
+        )
     ray.init(num_cpus=2, include_dashboard=False, object_store_memory=256 * 1024 * 1024)
     try:
         ray.data.DataContext.get_current().use_datasource_v2 = True
@@ -222,8 +176,15 @@ def test_mixed_or_preserves_pushed_predicate_errors(
         )
         for expr in [hint, existing] if hint_first else [existing, hint]:
             ds = ds.filter(expr=expr)
-        with pytest.raises(pa.ArrowInvalid, match="divide by zero"):
-            ds.take_all()
+        if enabled:
+            result = ds.materialize()
+            assert sorted(row["id"] for row in result.take_all()) == (
+                [12, 13] if partial else []
+            )
+            assert result.schema() is not None
+        else:
+            with pytest.raises(pa.ArrowInvalid, match="divide by zero"):
+                ds.take_all()
     finally:
         ray.shutdown()
 
@@ -300,9 +261,20 @@ def test_integer_partition_range_public_operations(
 
 
 @pytest.mark.parametrize("hint_first", [False, True])
-def test_integer_partition_range_preserves_reader_error(
-    tmp_path, hint_first, restore_data_context
+@pytest.mark.parametrize("enabled", [False, True])
+def test_integer_partition_range_skips_errors_only_in_pruned_groups(
+    tmp_path, hint_first, restore_data_context, monkeypatch, enabled
 ):
+    if not enabled:
+        from ray.data._internal.datasource_v2.formats.parquet.footer_file_indexer import (
+            FooterFileIndexer,
+        )
+
+        monkeypatch.setattr(
+            FooterFileIndexer,
+            "with_residual_pruning",
+            lambda self, *args: self.without_residual_pruning(),
+        )
     ray.init(num_cpus=2, include_dashboard=False, object_store_memory=256 * 1024 * 1024)
     try:
         ray.data.DataContext.get_current().use_datasource_v2 = True
@@ -321,8 +293,13 @@ def test_integer_partition_range_preserves_reader_error(
         existing = (col("id") / (col("id") - 10)) > 0
         for expr in [hint, existing] if hint_first else [existing, hint]:
             ds = ds.filter(expr=expr)
-        with pytest.raises(pa.ArrowInvalid, match="divide by zero"):
-            ds.take_all()
+        if enabled:
+            result = ds.materialize()
+            assert sorted(row["id"] for row in result.take_all()) == [12, 13]
+            assert result.schema().base_schema.field("year").type == pa.int8()
+        else:
+            with pytest.raises(pa.ArrowInvalid, match="divide by zero"):
+                ds.take_all()
     finally:
         ray.shutdown()
 

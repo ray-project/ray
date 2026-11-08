@@ -6,12 +6,19 @@ has to remember to keep the two operators in sync.
 """
 
 from dataclasses import replace
+from typing import TYPE_CHECKING, Optional, Tuple
 
 from ray.data._internal.datasource_v2.common.pushdown_utils import (
     derive_list_files_pushdown,
 )
 from ray.data._internal.logical.interfaces import LogicalOperator, LogicalPlan, Rule
+from ray.data._internal.logical.operators.map_operator import Filter
 from ray.data._internal.logical.operators.read_operator import ListFiles, ReadFiles
+
+if TYPE_CHECKING:
+    from ray.data.context import DataContext
+    from ray.data.expressions import Expr
+
 
 __all__ = [
     "DeriveListFilesPushdown",
@@ -26,6 +33,7 @@ class DeriveListFilesPushdown(Rule):
     derives that state from the scanner once, after the optimize loop, instead
     of having every pushdown rule mirror onto ``ListFiles``. Non-``ReadFiles``
     consumers (e.g. after ``PushdownCountFiles``) clear the constraints.
+    A separate residual hint is backed by the retained Filter, never exact count.
 
     The limit is never derived onto a ``ListFiles`` that shuffles row groups
     (``FileShuffleConfig.small_chunks_shuffle``): the shuffle runs on the listed
@@ -78,9 +86,66 @@ class DeriveListFilesPushdown(Rule):
                 return node
             return node._with_new_input_dependencies(new_inputs)
 
-        dag = plan.dag._apply_transform(transform)
+        def clear_listing_hint(node: LogicalOperator) -> LogicalOperator:
+            if not isinstance(node, ListFiles):
+                return node
+            indexer = node.file_indexer.without_residual_pruning()
+            if indexer is node.file_indexer:
+                return node
+            return replace(node, file_indexer=indexer)
 
-        return LogicalPlan(dag=dag, context=plan.context)
+        # Clear every source before any future eligibility early return. This
+        # includes bare ListFiles and sources whose ReadFiles disappeared.
+        # Clearing clones capable indexers, never shared configurations.
+        dag = plan.dag._apply_transform(clear_listing_hint)
+        dag = dag._apply_transform(transform)
+
+        def configure(node: LogicalOperator) -> LogicalOperator:
+            candidate = _residual_listing_candidate(node, plan.context)
+            if candidate is None:
+                return node
+            read, listing, residual = candidate
+            indexer = listing.file_indexer.with_residual_pruning(read.scanner, residual)
+            if indexer is listing.file_indexer:
+                return node
+            configured = replace(listing, file_indexer=indexer)
+            read = read._with_new_input_dependencies([configured])
+            return node._with_new_input_dependencies([read])
+
+        return LogicalPlan(dag=configure(dag), context=plan.context)
+
+
+def _residual_listing_candidate(
+    dag: LogicalOperator, context: "DataContext"
+) -> Optional[Tuple[ReadFiles, ListFiles, "Expr"]]:
+    """Match the supported row-query shape without changing its operators."""
+    # Query-level restrictions: other roots and execution semantics decline.
+    if (
+        type(dag) is not Filter
+        or len(dag.input_dependencies) != 1
+        or context.execution_options.preserve_order
+        or context.max_errored_blocks != 0
+        or context.checkpoint_config is not None
+    ):
+        return None
+    read = dag.input_dependencies[0]
+    if (
+        type(read) is not ReadFiles
+        or read.block_udf is not None
+        or len(read.input_dependencies) != 1
+    ):
+        return None
+    listing = read.input_dependencies[0]
+    if (
+        type(listing) is not ListFiles
+        or listing.limit is not None
+        or listing.shuffle_config_factory() is not None
+    ):
+        return None
+    residual = dag.predicate_expr
+    if residual is None:
+        return None
+    return read, listing, residual
 
 
 def _shuffles_row_groups(list_files: ListFiles) -> bool:

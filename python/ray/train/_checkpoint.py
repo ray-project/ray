@@ -267,7 +267,14 @@ class Checkpoint(metaclass=_CheckpointMetaClass):
         changing any data within it, as it may be deleted when exiting the context.
 
         Examples:
-            >>> with checkpoint.as_directory() as checkpoint_dir:  # doctest: +SKIP_EXAMPLE
+            >>> from pathlib import Path
+            >>> import tempfile
+            >>> from ray.train import Checkpoint
+            >>> temp_dir = tempfile.mkdtemp()
+            >>> (Path(temp_dir) / "example.txt").write_text("example checkpoint data")
+            23
+            >>> checkpoint = Checkpoint.from_directory(temp_dir)
+            >>> with checkpoint.as_directory() as checkpoint_dir:
             ...     # Do some read-only processing of files within checkpoint_dir
             ...     pass
             >>> # At this point, if a temporary directory was created, it will have

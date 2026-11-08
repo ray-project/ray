@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import copy
 import logging
 from collections import deque
 from typing import TYPE_CHECKING, AbstractSet, Deque, Iterable, Iterator, List, Optional
@@ -31,8 +32,12 @@ if TYPE_CHECKING:
     from ray.data._internal.datasource_v2.formats.parquet.footer_reader import (
         FooterReader,
     )
+    from ray.data._internal.datasource_v2.formats.parquet.listing_pruning import (
+        ListingPruningHint,
+    )
     from ray.data._internal.datasource_v2.interfaces.file_indexer import FileInfo
     from ray.data._internal.datasource_v2.interfaces.file_pruner import FilePruner
+    from ray.data._internal.datasource_v2.interfaces.scanner import Scanner
     from ray.data.block import BlockColumn
     from ray.data.datasource.file_based_datasource import FileShuffleConfig
     from ray.data.expressions import Expr
@@ -76,6 +81,25 @@ def _chunked_file_to_manifest(chunked_file: ChunkedFile) -> FileManifest:
         paths=[chunked_file.file.path] * n,
         sizes=[chunked_file.file.size] * n,
         chunk_metadatas=[run.to_metadata() for run in chunked_file.row_groups],
+    )
+
+
+def _schema_only_manifest(file: FileInfo) -> FileManifest:
+    """Request an empty block from the paired reader without reading this file."""
+    from ray.data._internal.datasource_v2.interfaces.file_manifest import FileChunk
+
+    assert file.size is not None
+    marker = FileChunk(
+        unit_ids=(),
+        num_rows=0,
+        size_bytes=0,
+        fully_matched=False,
+        schema_only=True,
+    )
+    return FileManifest.construct_manifest(
+        paths=[file.path],
+        sizes=[file.size],
+        chunk_metadatas=[marker.to_metadata()],
     )
 
 
@@ -157,6 +181,7 @@ class FooterFileIndexer(NonSamplingFileIndexer):
             num_workers=num_workers,
             max_paths_per_output=max_paths_per_output,
         )
+        self._listing_hint: Optional[ListingPruningHint] = None
         self._coalesce_bytes = coalesce_bytes
         # Coalesce target used instead of ``coalesce_bytes`` (when larger) for a
         # row-group shuffle, so the shuffle unit is a ~chunk-sized run rather
@@ -201,6 +226,47 @@ class FooterFileIndexer(NonSamplingFileIndexer):
         self._max_inflight_batches = (
             _inflight if _inflight is not None else self._num_actors * 2
         )
+
+    def without_residual_pruning(self) -> "FooterFileIndexer":
+        if type(self) is not FooterFileIndexer:
+            return self
+        return self.with_listing_hint(None)
+
+    def with_residual_pruning(
+        self, scanner: "Scanner", residual: "Expr"
+    ) -> "FooterFileIndexer":
+        from ray.data._internal.datasource_v2.formats.parquet.listing_pruning import (
+            ListingPruningHint,
+        )
+        from ray.data._internal.datasource_v2.formats.parquet.parquet_scanner import (
+            ParquetScanner,
+        )
+
+        # The adapter owns the scanner/indexer pairing and format-specific
+        # admission. A subclass must explicitly establish its own semantics.
+        if (
+            type(self) is not FooterFileIndexer
+            or type(scanner) is not ParquetScanner
+            or scanner.limit is not None
+        ):
+            return self
+        context = scanner.listing_pruning_context()
+        if context is None:
+            return self
+        hint = ListingPruningHint.from_residual(context, residual)
+        return self.with_listing_hint(hint) if hint is not None else self
+
+    def with_listing_hint(
+        self, hint: Optional["ListingPruningHint"]
+    ) -> "FooterFileIndexer":
+        # A subclass must make its own explicit semantic admission decision.
+        if type(self) is not FooterFileIndexer:
+            return self
+        if self._listing_hint is hint:
+            return self
+        configured = copy.copy(self)
+        configured._listing_hint = hint
+        return configured
 
     def list_files(
         self,
@@ -299,6 +365,14 @@ class FooterFileIndexer(NonSamplingFileIndexer):
                 projected_columns,
                 coalesce_bytes,
                 excluded_read_unit_ids=excluded_read_unit_ids,
+                listing_hint=(
+                    self._listing_hint
+                    if not preserve_order
+                    and limit is None
+                    and shuffle_config is None
+                    and not excluded_read_unit_ids
+                    else None
+                ),
             )
             for _ in range(self._num_actors)
         ]
@@ -341,6 +415,9 @@ class FooterFileIndexer(NonSamplingFileIndexer):
         pending: Deque[ray.ObjectRefGenerator] = deque()
         batch_no = 0
         delivered_fully_matched_rows = 0
+        # One control entry per shard, not one per excluded file. Each footer
+        # still runs and must certify the same pinned output layout first.
+        empty_layout = None
 
         def dispatch_next() -> bool:
             nonlocal batch_no
@@ -369,7 +446,17 @@ class FooterFileIndexer(NonSamplingFileIndexer):
             gen = pending.popleft()
             for ref in gen:  # blocks until this generator's next result lands
                 for chunked_file in ray.get(ref):
-                    yield _chunked_file_to_manifest(chunked_file)
+                    if chunked_file.schema_only_layout is not None:
+                        if empty_layout is not None:
+                            if empty_layout != chunked_file.schema_only_layout:
+                                raise ValueError(
+                                    "Conflicting schema-only layouts in one listing shard"
+                                )
+                        else:
+                            empty_layout = chunked_file.schema_only_layout
+                            yield _schema_only_manifest(chunked_file.file)
+                    if chunked_file.row_groups:
+                        yield _chunked_file_to_manifest(chunked_file)
                     if limit is not None:
                         # Count only fully-matched (exact-survivor) rows so
                         # stopping can never under-deliver under a filter.

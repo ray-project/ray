@@ -1,10 +1,10 @@
 from enum import Enum
 from functools import cached_property, partial
-from typing import Any, Iterator, List, Optional, Sequence, Set, Tuple
+from typing import Any, Iterable, Iterator, List, Optional, Sequence, Set, Tuple
 
 import pyarrow as pa
 import pyarrow.dataset as pds
-from pyarrow.fs import FileSystem, LocalFileSystem
+from pyarrow.fs import FileInfo, FileSystem, FileType, LocalFileSystem
 
 from ray._common.utils import env_integer
 from ray.data._internal.arrow_block import _BATCH_SIZE_PRESERVING_STUB_COL_NAME
@@ -14,7 +14,10 @@ from ray.data._internal.datasource_v2.common.synthesized_columns import (  # noq
     # Re-exported: the legacy ``ParquetDatasource`` imports it from here.
     _compute_row_hashes,
 )
-from ray.data._internal.datasource_v2.interfaces.file_manifest import FileManifest
+from ray.data._internal.datasource_v2.interfaces.file_manifest import (
+    FileChunk,
+    FileManifest,
+)
 from ray.data._internal.datasource_v2.interfaces.read_units import (
     ReadUnit,
     ReadUnitFragment,
@@ -24,7 +27,11 @@ from ray.data._internal.datasource_v2.interfaces.synthesized_columns import (
     ReadUnitPosition,
     SynthesizedColumn,
 )
-from ray.data._internal.util import iterate_with_retry, make_async_gen
+from ray.data._internal.util import (
+    filesystem_for_sized_opens,
+    iterate_with_retry,
+    make_async_gen,
+)
 from ray.data.context import DataContext
 from ray.data.datasource.partitioning import (
     Partitioning,
@@ -56,6 +63,24 @@ class FileFormat(str, Enum):
     JSON = "json"
     ARROW = "arrow"
     IPC = "ipc"
+
+
+def _resolve_file_dataset_schema(
+    schema: pa.Schema,
+    partition_column_names: Iterable[str],
+    synthesized_column_names: Iterable[str],
+) -> Optional[pa.Schema]:
+    """Strip derived fields after the caller has admitted the schema.
+
+    The reader rejects absent/extension schemas before accessing name properties;
+    listing admission validates its primitive schema before calling this helper.
+    """
+    partition_keys = set(partition_column_names)
+    synthesized = set(synthesized_column_names)
+    fields = [
+        f for f in schema if f.name not in partition_keys and f.name not in synthesized
+    ]
+    return pa.schema(fields) if fields else None
 
 
 @DeveloperAPI
@@ -151,22 +176,23 @@ class FileReader(Reader[FileManifest]):
         match an on-disk column of the same name; stripping it keeps pyarrow
         from attempting that cast.
         """
-        if self._schema is None:
+        schema = self._schema
+        if schema is None:
             return None
-        if any(isinstance(f.type, pa.ExtensionType) for f in self._schema):
+        if any(isinstance(f.type, pa.ExtensionType) for f in schema):
             return None
         partition_keys = (
             set(self._partition_parser._scheme.field_names or [])
             if self._partition_parser is not None
             else set()
         )
-        synthesized = {c.name for c in self._synthesized_columns}
-        fields = [
-            f
-            for f in self._schema
-            if f.name not in partition_keys and f.name not in synthesized
-        ]
-        return pa.schema(fields) if fields else None
+        # Keep the early guards above: name properties must not be touched
+        # when the original reader would have declined the schema pin.
+        return _resolve_file_dataset_schema(
+            schema,
+            partition_keys,
+            (c.name for c in self._synthesized_columns),
+        )
 
     def _broadcast_partition_value(
         self, name: str, value: Any, num_rows: int
@@ -181,11 +207,63 @@ class FileReader(Reader[FileManifest]):
         """
         return _broadcast_partition_value(name, value, num_rows, self._schema)
 
+    def _add_partition_columns(
+        self, table: pa.Table, source: str, columns_to_synthesize: Optional[Set[str]]
+    ) -> pa.Table:
+        # Build the list of (name, value) pairs to synthesize from
+        # the fragment path: hive partitions.
+        derived_items: List[Tuple[str, Any]] = []
+        if self._partition_parser is not None:
+            derived_items.extend(self._partition_parser(source).items())
+
+        for name, value in derived_items:
+            if columns_to_synthesize is not None and name not in columns_to_synthesize:
+                continue
+            if name in table.column_names:
+                # When the caller schema names a partition key, pyarrow
+                # expects it in every file and fills it with nulls when
+                # absent (the hive-typical case). Drop that placeholder
+                # so the path-derived value below replaces it.
+                table = table.drop([name])
+            table = table.append_column(
+                name,
+                self._broadcast_partition_value(name, value, table.num_rows),
+            )
+
+        return table
+
+    def _project_output(self, table: pa.Table) -> pa.Table:
+        if self._columns is not None:
+            # Project/reorder to the caller's requested column order;
+            # drop any that weren't produced (matches V1's lenient
+            # behavior). Always select — an empty projection must
+            # narrow the table to zero columns so the stub-column
+            # guard below handles row preservation.
+            produced = set(table.column_names)
+            projected = [c for c in self._columns if c in produced]
+            table = table.select(projected)
+
+        return table
+
+    def _schema_only_table(self, source: str) -> pa.Table:
+        # The indexer certifies the physical pin and all partition values before
+        # emitting this entry. Unsupported reader layouts must not invent data.
+        schema = self._file_dataset_schema
+        if schema is None or self._synthesized_columns or self._limit is not None:
+            raise ValueError("Reader cannot materialize schema-only input")
+        table = schema.empty_table()
+        columns = None if self._columns is None else set(self._columns)
+        table = self._add_partition_columns(table, source, columns)
+        return self._project_output(table)
+
     def read(self, input_split: FileManifest) -> Iterator[pa.Table]:
         """Read data from the input bucket and yield Arrow tables.
 
         This method is called on workers to perform the actual read operation.
-        It should respect all pushdowns configured on this reader.
+        It should respect all pushdowns configured on this reader. Schema-only
+        entries use this reader's fixed schema, partition layout and projection
+        to emit an empty table before any Dataset or file is opened. Their
+        producer must certify compatibility with this reader configuration.
 
         Args:
             input_split: Work unit describing what data to read.
@@ -196,14 +274,36 @@ class FileReader(Reader[FileManifest]):
         if len(input_split) == 0:
             return
 
+        ordinary = []
+        for index, metadata in enumerate(input_split.file_chunk_metadatas):
+            chunk = FileChunk.from_metadata(metadata) if metadata is not None else None
+            if chunk is not None and chunk.schema_only:
+                table = self._schema_only_table(input_split.paths[index])
+                self._on_batch_read(table)
+                yield table
+            else:
+                ordinary.append(index)
+        if not ordinary:
+            return
+        if len(ordinary) != len(input_split):
+            input_split = FileManifest(input_split.as_block().take(ordinary))
+
         # Dedupe paths before handing them to pyarrow. A manifest can carry
         # multiple rows per file — chunking emits one row per row-group
         # slice, and a user may deliberately list the same file more than
         # once; pyarrow only needs one fragment per file, and
         # ``_get_fragments_to_read`` fans out per manifest row from that
         # fragment, so repeated rows are each still read.
-        paths = list(dict.fromkeys(list(input_split.paths)))
-        filesystem = self._filesystem or LocalFileSystem()
+        #
+        # Each file carries its on-disk size from the listing, so pyarrow
+        # opens it without first asking the filesystem for the size (an
+        # extra HEAD request per open on S3).
+        file_sizes = dict(zip(input_split.paths, input_split.known_file_sizes))
+        files = [
+            FileInfo(path, FileType.File, size=size)
+            for path, size in file_sizes.items()
+        ]
+        filesystem = filesystem_for_sized_opens(self._filesystem or LocalFileSystem())
         # Build a ``pds.Dataset`` over *all* manifest paths so pyarrow's
         # listing + column metadata is shared, but then iterate its
         # fragments one at a time. ``dataset.scanner(fragments=...)``
@@ -213,7 +313,7 @@ class FileReader(Reader[FileManifest]):
         # fragment scanners let pyarrow use the native per-file type,
         # and downstream concat handles unification.
         dataset = pds.dataset(
-            source=paths,
+            source=files,
             format=self._make_format(),
             filesystem=filesystem,
             schema=self._file_dataset_schema,
@@ -255,30 +355,9 @@ class FileReader(Reader[FileManifest]):
                 if len(table) > self._limit - rows_read:
                     table = table.slice(0, self._limit - rows_read)
 
-            # Build the list of (name, value) pairs to synthesize from
-            # the fragment path: hive partitions.
-            derived_items: List[Tuple[str, Any]] = []
-            if self._partition_parser is not None:
-                derived_items.extend(
-                    self._partition_parser(position.unit.source).items()
-                )
-
-            for name, value in derived_items:
-                if (
-                    columns_to_synthesize is not None
-                    and name not in columns_to_synthesize
-                ):
-                    continue
-                if name in table.column_names:
-                    # When the caller schema names a partition key, pyarrow
-                    # expects it in every file and fills it with nulls when
-                    # absent (the hive-typical case). Drop that placeholder
-                    # so the path-derived value below replaces it.
-                    table = table.drop([name])
-                table = table.append_column(
-                    name,
-                    self._broadcast_partition_value(name, value, table.num_rows),
-                )
+            table = self._add_partition_columns(
+                table, position.unit.source, columns_to_synthesize
+            )
 
             # Skip a synthesized column when projection pushdown has narrowed
             # ``columns`` to exclude it — the projection below would just
@@ -295,15 +374,7 @@ class FileReader(Reader[FileManifest]):
                     column.name, column.compute(position, table.num_rows)
                 )
 
-            if self._columns is not None:
-                # Project/reorder to the caller's requested column order;
-                # drop any that weren't produced (matches V1's lenient
-                # behavior). Always select — an empty projection must
-                # narrow the table to zero columns so the stub-column
-                # guard below handles row preservation.
-                produced = set(table.column_names)
-                projected = [c for c in self._columns if c in produced]
-                table = table.select(projected)
+            table = self._project_output(table)
 
             if table.num_columns == 0 and table.num_rows > 0:
                 # Guards against ``pa.concat_tables`` collapsing rows

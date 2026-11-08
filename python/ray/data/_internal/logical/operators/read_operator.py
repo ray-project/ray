@@ -441,30 +441,6 @@ class ReadFiles(
         split = _split_predicate_by_columns(predicate_expr, partition_cols)
 
         if split.data_predicate is None and split.partition_predicate is None:
-            # A block transform can fail even when it leaves these columns
-            # unchanged. Keep mixed OR above every such transform.
-            if self.block_udf is not None:
-                return self
-            from ray.data._internal.datasource_v2.formats.parquet.mixed_or_pruning import (
-                split_mixed_or,
-            )
-            from ray.data._internal.datasource_v2.formats.parquet.parquet_scanner import (
-                ParquetScanner,
-            )
-
-            # Delta and other subclasses can have different partition semantics.
-            if (
-                type(self.scanner) is ParquetScanner
-                and self.scanner.limit is None
-                and split_mixed_or(predicate_expr, partition_cols)
-            ):
-                if self.scanner.mixed_pruning_predicate is not None:
-                    return self
-                hinted = replace(self.scanner, mixed_pruning_predicate=predicate_expr)
-                return Filter(
-                    predicate_expr=predicate_expr,
-                    input_dependencies=[replace(self, scanner=hinted)],
-                )
             # Entire predicate is residual (e.g. a single mixed-column
             # ``OR``); nothing safe to push. Returning ``self`` tells
             # ``PredicatePushdown`` to keep the ``Filter`` above us.

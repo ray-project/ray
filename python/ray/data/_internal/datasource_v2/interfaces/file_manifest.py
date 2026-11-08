@@ -1,4 +1,4 @@
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
 from functools import cached_property
 from typing import Any, Dict, List, Mapping, Optional, Tuple
 
@@ -43,7 +43,25 @@ class FileChunk:
     unit_sizes: Tuple[int, ...] = ()
     unit_rows: Tuple[int, ...] = ()
 
+    # A schema-only entry requests an empty block from its source-scoped reader;
+    # it does not carry a schema and must not be reused with another reader.
+    # The real source path determines partition layout, never a sentinel file.
+    schema_only: bool = field(default=False, kw_only=True)
+
     def __post_init__(self):
+        if type(self.schema_only) is not bool:
+            raise ValueError("schema_only must be a boolean")
+        if self.schema_only and (
+            self.unit_ids
+            or self.num_rows != 0
+            or self.size_bytes != 0
+            or self.fully_matched
+            or self.unit_sizes
+            or self.unit_rows
+        ):
+            raise ValueError(
+                "Schema-only entries cannot carry data units or row counts"
+            )
         for name in ("unit_sizes", "unit_rows"):
             breakdown = getattr(self, name)
             assert not breakdown or len(breakdown) == len(self.unit_ids), (
@@ -57,7 +75,13 @@ class FileChunk:
     @classmethod
     def from_metadata(cls, metadata: Mapping[str, Any]) -> "FileChunk":
         # Values come back from the manifest block as lists and numpy scalars.
+        schema_only = metadata.get("schema_only", False)
+        if schema_only is None:
+            schema_only = False  # Legacy rows in a mixed Arrow struct column.
+        if not isinstance(schema_only, (bool, np.bool_)):
+            raise ValueError("Invalid schema-only manifest flag")
         return cls(
+            schema_only=bool(schema_only),
             unit_ids=tuple(metadata["unit_ids"]),
             num_rows=int(metadata["num_rows"]),
             size_bytes=int(metadata["size_bytes"]),
@@ -88,7 +112,9 @@ class FileManifest:
     narrows it to a run of read units. For unchunked files (whole-file reads),
     the chunk-metadata entry is ``None`` and ``file_sizes`` equals the on-disk
     file size. For chunked files, multiple rows can share the same path but
-    carry different chunk metadata.
+    carry different chunk metadata while retaining the on-disk file size.
+    A schema-only row also retains that size; its zero ``FileChunk.size_bytes``
+    is the read budget. The paired reader supplies the certified output layout.
     """
 
     def __init__(self, block: Block):
@@ -126,6 +152,18 @@ class FileManifest:
     @cached_property
     def file_sizes(self) -> np.ndarray:
         return BlockColumnAccessor.for_column(self._file_sizes).to_numpy()
+
+    @cached_property
+    def known_file_sizes(self) -> List[Optional[int]]:
+        """``file_sizes`` as ints, with ``None`` where the listing had no size.
+
+        A missing size reads back from ``file_sizes`` as ``NaN`` or ``None``,
+        depending on the column's type.
+        """
+        return [
+            None if size is None or np.isnan(size) else int(size)
+            for size in self.file_sizes
+        ]
 
     @cached_property
     def file_chunk_metadatas(self) -> np.ndarray:

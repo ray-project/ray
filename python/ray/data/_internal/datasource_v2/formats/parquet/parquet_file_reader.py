@@ -226,7 +226,6 @@ class ParquetFileReader(FileReader, SupportsMetadata):
         synthesized_columns: Sequence[SynthesizedColumn] = (),
         schema: Optional[pa.Schema] = None,
         parquet_format_kwargs: Optional[Dict[str, Any]] = None,
-        mixed_pruning_predicate: Optional[Expr] = None,
     ):
         """Initialize the Parquet reader.
 
@@ -254,8 +253,6 @@ class ParquetFileReader(FileReader, SupportsMetadata):
                 ``coerce_int96_timestamp_unit``, ``pre_buffer``,
                 ``dictionary_columns``). Used to forward the deprecated
                 ``dataset_kwargs`` arg on the V2 path.
-            mixed_pruning_predicate: Optional mixed OR hint for row-group pruning.
-                The complete predicate must still be enforced by a logical Filter.
         """
         super().__init__(
             format=FileFormat.PARQUET,
@@ -270,8 +267,6 @@ class ParquetFileReader(FileReader, SupportsMetadata):
             schema=schema,
         )
         self._explicit_batch_size = batch_size
-        self._mixed_pruning_predicate = mixed_pruning_predicate
-        self._mixed_subset_enabled = False
         self._target_block_size = target_block_size
         self._parquet_format_kwargs: Dict[str, Any] = parquet_format_kwargs or {}
         self._sampled_batch_size: int | object = (
@@ -401,7 +396,9 @@ class ParquetFileReader(FileReader, SupportsMetadata):
             c.requires_read_unit_boundaries for c in self._synthesized_columns
         )
         fragments: List[ReadUnitFragment] = []
-        for path, chunk_metadata in zip(manifest.paths, manifest.file_chunk_metadatas):
+        for path, file_size, chunk_metadata in zip(
+            manifest.paths, manifest.known_file_sizes, manifest.file_chunk_metadatas
+        ):
             fragment: pds.ParquetFileFragment = path_to_fragment[path]
             if chunk_metadata is None:
                 num_rows = None
@@ -424,31 +421,9 @@ class ParquetFileReader(FileReader, SupportsMetadata):
                         fragment,
                         chunk_metadata["unit_ids"],
                         per_row_group_offsets=per_row_group_offsets,
+                        file_size=file_size,
                     )
                 )
-        self._mixed_subset_enabled = False
-        if (
-            self._mixed_pruning_predicate is not None
-            # A separately pushed predicate may raise during evaluation. Do not
-            # let this additional hint skip that evaluation, in either order.
-            and self._predicate is None
-            and not self._synthesized_columns
-            and self._limit is None
-        ):
-            from ray.data._internal.datasource_v2.formats.parquet.mixed_or_pruning import (
-                specialize_fragment,
-            )
-
-            self._mixed_subset_enabled = bool(fragments) and all(
-                specialize_fragment(
-                    self._mixed_pruning_predicate,
-                    self._partition_parser,
-                    self._schema,
-                    item.fragment,
-                    self._columns,
-                )[0]
-                for item in fragments
-            )
         return fragments
 
     @override
@@ -457,23 +432,6 @@ class ParquetFileReader(FileReader, SupportsMetadata):
         fragment: pds.Fragment,
         scanner_kwargs: dict,
     ) -> "Iterator[pa.Table]":
-        if self._mixed_subset_enabled and self._mixed_pruning_predicate is not None:
-            from ray.data._internal.datasource_v2.formats.parquet.mixed_or_pruning import (
-                specialize_fragment,
-            )
-
-            safe, hint = specialize_fragment(
-                self._mixed_pruning_predicate,
-                self._partition_parser,
-                self._schema,
-                fragment,
-                self._columns,
-            )
-            if safe and hint is not None:
-                try:
-                    fragment = fragment.subset(filter=hint)
-                except (pa.ArrowException, OSError, ValueError, TypeError):
-                    pass
         for table in self._iter_fragment_tables_without_pickle_check(
             fragment, scanner_kwargs
         ):
@@ -707,17 +665,22 @@ class ParquetFileReader(FileReader, SupportsMetadata):
         """
         from pyarrow.fs import LocalFileSystem
 
-        from ray.data._internal.util import call_with_retry
+        from ray.data._internal.util import call_with_retry, filesystem_for_sized_opens
         from ray.data.context import DataContext
 
-        filesystem = self._filesystem or LocalFileSystem()
+        filesystem = filesystem_for_sized_opens(self._filesystem or LocalFileSystem())
         retried_io_errors = DataContext.get_current().retried_io_errors
 
-        def _num_rows(path: str) -> int:
+        def _num_rows(path: str, file_size: Optional[int]) -> int:
+            # A fragment, unlike ``pq.read_metadata``, takes the listing's
+            # size, which spares the open a request for it (a HEAD on S3).
+            fragment = pds.ParquetFileFormat().make_fragment(
+                path, filesystem=filesystem, file_size=file_size
+            )
             # Getting the footer requires network calls, so it may fail with
             # transient errors; retry them.
             metadata = call_with_retry(
-                lambda: pq.read_metadata(path, filesystem=filesystem),
+                lambda: fragment.metadata,
                 description=f"read Parquet footer for {path}",
                 match=retried_io_errors,
             )
@@ -725,7 +688,9 @@ class ParquetFileReader(FileReader, SupportsMetadata):
 
         paths = [str(p) for p in file_manifest.paths]
         with ThreadPoolExecutor() as executor:
-            for num_rows in executor.map(_num_rows, paths):
+            for num_rows in executor.map(
+                _num_rows, paths, file_manifest.known_file_sizes
+            ):
                 yield BlockMetadata(
                     num_rows=num_rows,
                     size_bytes=None,
