@@ -1,3 +1,6 @@
+.. meta::
+   :description: API reference for the RLlib Algorithm class: setup, training steps, evaluation, checkpointing, multi-agent policy management, and custom subclasses.
+
 .. _algorithm-reference-docs:
 
 Algorithms
