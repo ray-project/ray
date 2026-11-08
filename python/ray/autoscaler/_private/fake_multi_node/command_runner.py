@@ -2,6 +2,7 @@ import os
 import subprocess
 from typing import Dict, List, Tuple
 
+from ray.autoscaler._private.auth_token import AUTH_TOKEN_REMOTE_PATH
 from ray.autoscaler._private.docker import with_docker_exec
 from ray.autoscaler.command_runner import CommandRunnerInterface
 
@@ -20,6 +21,8 @@ class FakeDockerCommandRunner(CommandRunnerInterface):
     def __init__(self, docker_config, **common_args):
         self.container_name = docker_config["container_name"]
         self.docker_config = docker_config
+        provider = common_args.get("provider")
+        self._auth_token_volume_mounted = bool(provider and provider.mounts_auth_token)
         self.home_dir = None
         self.initialized = False
         # Optionally use 'podman' instead of 'docker'
@@ -65,6 +68,9 @@ class FakeDockerCommandRunner(CommandRunnerInterface):
         self._run_shell(f"docker cp {self.container_name}:{docker_dir} {target}")
 
     def run_rsync_up(self, source, target, options=None):
+        if target == AUTH_TOKEN_REMOTE_PATH and self._auth_token_volume_mounted:
+            # `docker cp` can't overwrite the provider's read-only token volume.
+            return
         docker_dir = os.path.dirname(self._docker_expand_user(target))
         self.run(cmd=f"mkdir -p {docker_dir}")
 
