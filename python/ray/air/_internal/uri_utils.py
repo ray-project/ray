@@ -61,7 +61,7 @@ class URI:
             A new URI with the subpath stripped from the end.
         """
         assert str(self._path).endswith(str(subpath)), (self._path, subpath)
-        stripped_path = str(self._path).replace(str(subpath), "")
+        stripped_path = str(self._path).removesuffix(str(subpath))
         return URI(self._get_str_representation(self._parsed, stripped_path))
 
     @property
@@ -70,7 +70,7 @@ class URI:
 
     @property
     def parent(self) -> "URI":
-        assert self._path.parent != ".", f"{str(self)} has no valid parent URI"
+        assert self._path.parent != Path("."), f"{str(self)} has no valid parent URI"
         return URI(self._get_str_representation(self._parsed, self._path.parent))
 
     @property
