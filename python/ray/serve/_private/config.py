@@ -521,7 +521,7 @@ class DeploymentConfig(BaseModel):
             if not data["autoscaling_config"].get("downscaling_factor"):
                 data["autoscaling_config"]["downscaling_factor"] = None
             if not data["autoscaling_config"].get("target_ongoing_requests"):
-                data["autoscaling_config"]["target_ongoing_requests"] = None
+                data["autoscaling_config"].pop("target_ongoing_requests", None)
             if not data["autoscaling_config"].get("aggregation_function"):
                 data["autoscaling_config"][
                     "aggregation_function"

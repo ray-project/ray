@@ -27,6 +27,11 @@ py_library(
     deps = ["//python/ray/tests:conftest"],
 )
 
+py_library(
+    name = "datasource_v2_unit_conftest",
+    srcs = ["tests/unit/datasource_v2/conftest.py"],
+)
+
 py_test_module_list(
     size = "small",
     files = glob(["tests/unit/**/test_*.py"]),
@@ -36,6 +41,7 @@ py_test_module_list(
     ],
     deps = [
         ":conftest",
+        ":datasource_v2_unit_conftest",
         "//:ray_lib",
     ],
 )
@@ -104,6 +110,29 @@ py_test_module_list(
         ":conftest",
         "//:ray_lib",
     ],
+)
+
+# Tests for the actor-only backend (RAY_DATA_ACTOR_ONLY_BACKEND=1).
+py_test_module_list(
+    size = "small",
+    env = {
+        "RAY_DATA_ACTOR_ONLY_BACKEND": "1",
+    },
+    files = glob(["tests/actor_only/test_*.py"]),
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":actor_only_conftest",
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_library(
+    name = "actor_only_conftest",
+    srcs = ["tests/actor_only/conftest.py"],
 )
 
 py_test(
@@ -234,11 +263,12 @@ py_test(
 
 py_test(
     name = "test_hive_integration",
-    size = "medium",
+    size = "large",
     srcs = ["tests/datasource/test_hive_integration.py"],
     tags = [
+        "data_integration",
         "exclusive",
-        "manual",
+        "hive_integration",
         "team:data",
     ],
     deps = [
@@ -553,6 +583,20 @@ py_test(
     name = "test_random_e2e",
     size = "large",
     srcs = ["tests/test_random_e2e.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
+    name = "test_shuffle_batches",
+    size = "medium",
+    srcs = ["tests/test_shuffle_batches.py"],
     tags = [
         "exclusive",
         "team:data",
