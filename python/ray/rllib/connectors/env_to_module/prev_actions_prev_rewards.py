@@ -159,12 +159,25 @@ class PrevActionsPrevRewards(ConnectorV2):
         return batch
 
     def _convert_individual_space(self, obs_space, act_space):
+        # Discrete and MultiDiscrete actions are one-hot'd, all other actions are
+        # flattened. Episodes store the module's actions before clipping or
+        # unsquashing, so non-binary values may lie outside the action space's
+        # bounds.
+        if isinstance(
+            act_space,
+            (gym.spaces.Discrete, gym.spaces.MultiDiscrete, gym.spaces.MultiBinary),
+        ):
+            low, high = 0.0, 1.0
+        else:
+            low, high = float("-inf"), float("inf")
         return gym.spaces.Dict(
             {
                 self.ORIG_OBS_KEY: obs_space,
-                # Currently only works for Discrete action spaces.
                 self.PREV_ACTIONS_KEY: Box(
-                    0.0, 1.0, (act_space.n * self.n_prev_actions,), np.float32
+                    low,
+                    high,
+                    (gym.spaces.flatdim(act_space) * self.n_prev_actions,),
+                    np.float32,
                 ),
                 self.PREV_REWARDS_KEY: Box(
                     float("-inf"),
