@@ -27,6 +27,7 @@
 #include "ray/observability/ray_task_event_recorder.h"
 #include "ray/rpc/event_aggregator_client.h"
 #include "ray/util/clock.h"
+#include "ray/util/joinable_thread.h"
 #include "ray/util/mutex_protected.h"
 
 namespace ray {
@@ -228,6 +229,9 @@ class CoreWorkerProcessImpl {
   std::unique_ptr<ray::stats::Count> object_recovery_attempts_counter_;
   std::unique_ptr<ray::stats::Count> task_retry_submissions_counter_;
   std::unique_ptr<ray::stats::PercentileMetric> scheduler_placement_time_percentile_ms_;
+
+  boost::asio::io_context metric_context_;
+  ray::JoinableThread metric_thread_;
 };
 }  // namespace core
 }  // namespace ray

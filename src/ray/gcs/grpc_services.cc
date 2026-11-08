@@ -24,7 +24,8 @@ void ActorInfoGrpcService::InitServerCallFactories(
     std::vector<std::unique_ptr<ServerCallFactory>> *server_call_factories,
     const ClusterID &cluster_id,
     std::shared_ptr<const AuthenticationToken> auth_token,
-    GrpcServerMetrics &server_metrics) {
+    GrpcServerMetrics &server_metrics,
+    boost::asio::io_context &metric_context) {
   /// The register & create actor RPCs take a long time, so we shouldn't limit their
   /// concurrency to avoid distributed deadlock.
   RPC_SERVICE_HANDLER(ActorInfoGcsService, RegisterActor, -1)
@@ -46,7 +47,8 @@ void NodeInfoGrpcService::InitServerCallFactories(
     std::vector<std::unique_ptr<ServerCallFactory>> *server_call_factories,
     const ClusterID &cluster_id,
     std::shared_ptr<const AuthenticationToken> auth_token,
-    GrpcServerMetrics &server_metrics) {
+    GrpcServerMetrics &server_metrics,
+    boost::asio::io_context &metric_context) {
   // We only allow one cluster ID in the lifetime of a client.
   // So, if a client connects, it should not have a pre-existing different ID.
   RPC_SERVICE_HANDLER_CUSTOM_AUTH(NodeInfoGcsService,
@@ -68,7 +70,8 @@ void NodeResourceInfoGrpcService::InitServerCallFactories(
     std::vector<std::unique_ptr<ServerCallFactory>> *server_call_factories,
     const ClusterID &cluster_id,
     std::shared_ptr<const AuthenticationToken> auth_token,
-    GrpcServerMetrics &server_metrics) {
+    GrpcServerMetrics &server_metrics,
+    boost::asio::io_context &metric_context) {
   RPC_SERVICE_HANDLER(
       NodeResourceInfoGcsService, GetAllAvailableResources, max_active_rpcs_per_handler_)
   RPC_SERVICE_HANDLER(
@@ -84,7 +87,8 @@ void ControlPlanePubSubGrpcService::InitServerCallFactories(
     std::vector<std::unique_ptr<ServerCallFactory>> *server_call_factories,
     const ClusterID &cluster_id,
     std::shared_ptr<const AuthenticationToken> auth_token,
-    GrpcServerMetrics &server_metrics) {
+    GrpcServerMetrics &server_metrics,
+    boost::asio::io_context &metric_context) {
   RPC_SERVICE_HANDLER(
       ControlPlanePubSubGcsService, GcsPublish, max_active_rpcs_per_handler_);
   RPC_SERVICE_HANDLER(
@@ -99,7 +103,8 @@ void ObservabilityPubSubGrpcService::InitServerCallFactories(
     std::vector<std::unique_ptr<ServerCallFactory>> *server_call_factories,
     const ClusterID &cluster_id,
     std::shared_ptr<const AuthenticationToken> auth_token,
-    GrpcServerMetrics &server_metrics) {
+    GrpcServerMetrics &server_metrics,
+    boost::asio::io_context &metric_context) {
   RPC_SERVICE_HANDLER(
       ObservabilityPubSubService, GcsPublish, max_active_rpcs_per_handler_);
   RPC_SERVICE_HANDLER(
@@ -116,7 +121,8 @@ void JobInfoGrpcService::InitServerCallFactories(
     std::vector<std::unique_ptr<ServerCallFactory>> *server_call_factories,
     const ClusterID &cluster_id,
     std::shared_ptr<const AuthenticationToken> auth_token,
-    GrpcServerMetrics &server_metrics) {
+    GrpcServerMetrics &server_metrics,
+    boost::asio::io_context &metric_context) {
   RPC_SERVICE_HANDLER(JobInfoGcsService, AddJob, max_active_rpcs_per_handler_)
   RPC_SERVICE_HANDLER(JobInfoGcsService, MarkJobFinished, max_active_rpcs_per_handler_)
   RPC_SERVICE_HANDLER(JobInfoGcsService, GetAllJobInfo, max_active_rpcs_per_handler_)
@@ -128,7 +134,8 @@ void RuntimeEnvGrpcService::InitServerCallFactories(
     std::vector<std::unique_ptr<ServerCallFactory>> *server_call_factories,
     const ClusterID &cluster_id,
     std::shared_ptr<const AuthenticationToken> auth_token,
-    GrpcServerMetrics &server_metrics) {
+    GrpcServerMetrics &server_metrics,
+    boost::asio::io_context &metric_context) {
   RPC_SERVICE_HANDLER(
       RuntimeEnvGcsService, PinRuntimeEnvURI, max_active_rpcs_per_handler_)
 }
@@ -138,7 +145,8 @@ void WorkerInfoGrpcService::InitServerCallFactories(
     std::vector<std::unique_ptr<ServerCallFactory>> *server_call_factories,
     const ClusterID &cluster_id,
     std::shared_ptr<const AuthenticationToken> auth_token,
-    GrpcServerMetrics &server_metrics) {
+    GrpcServerMetrics &server_metrics,
+    boost::asio::io_context &metric_context) {
   RPC_SERVICE_HANDLER(
       WorkerInfoGcsService, ReportWorkerFailure, max_active_rpcs_per_handler_)
   RPC_SERVICE_HANDLER(WorkerInfoGcsService, GetWorkerInfo, max_active_rpcs_per_handler_)
@@ -156,7 +164,8 @@ void InternalKVGrpcService::InitServerCallFactories(
     std::vector<std::unique_ptr<ServerCallFactory>> *server_call_factories,
     const ClusterID &cluster_id,
     std::shared_ptr<const AuthenticationToken> auth_token,
-    GrpcServerMetrics &server_metrics) {
+    GrpcServerMetrics &server_metrics,
+    boost::asio::io_context &metric_context) {
   RPC_SERVICE_HANDLER(InternalKVGcsService, InternalKVGet, max_active_rpcs_per_handler_)
   RPC_SERVICE_HANDLER(
       InternalKVGcsService, InternalKVMultiGet, max_active_rpcs_per_handler_)
@@ -174,7 +183,8 @@ void TaskInfoGrpcService::InitServerCallFactories(
     std::vector<std::unique_ptr<ServerCallFactory>> *server_call_factories,
     const ClusterID &cluster_id,
     std::shared_ptr<const AuthenticationToken> auth_token,
-    GrpcServerMetrics &server_metrics) {
+    GrpcServerMetrics &server_metrics,
+    boost::asio::io_context &metric_context) {
   RPC_SERVICE_HANDLER(TaskInfoGcsService, AddTaskEventData, max_active_rpcs_per_handler_)
   RPC_SERVICE_HANDLER(TaskInfoGcsService, GetTaskEvents, max_active_rpcs_per_handler_)
 }
@@ -184,7 +194,8 @@ void PlacementGroupInfoGrpcService::InitServerCallFactories(
     std::vector<std::unique_ptr<ServerCallFactory>> *server_call_factories,
     const ClusterID &cluster_id,
     std::shared_ptr<const AuthenticationToken> auth_token,
-    GrpcServerMetrics &server_metrics) {
+    GrpcServerMetrics &server_metrics,
+    boost::asio::io_context &metric_context) {
   RPC_SERVICE_HANDLER(
       PlacementGroupInfoGcsService, CreatePlacementGroup, max_active_rpcs_per_handler_)
   RPC_SERVICE_HANDLER(
@@ -210,7 +221,8 @@ void AutoscalerStateGrpcService::InitServerCallFactories(
     std::vector<std::unique_ptr<ServerCallFactory>> *server_call_factories,
     const ClusterID &cluster_id,
     std::shared_ptr<const AuthenticationToken> auth_token,
-    GrpcServerMetrics &server_metrics) {
+    GrpcServerMetrics &server_metrics,
+    boost::asio::io_context &metric_context) {
   RPC_SERVICE_HANDLER(
       AutoscalerStateService, GetClusterResourceState, max_active_rpcs_per_handler_)
   RPC_SERVICE_HANDLER(
@@ -237,7 +249,8 @@ void RayEventExportGrpcService::InitServerCallFactories(
     std::vector<std::unique_ptr<ServerCallFactory>> *server_call_factories,
     const ClusterID &cluster_id,
     std::shared_ptr<const AuthenticationToken> auth_token,
-    GrpcServerMetrics &server_metrics) {
+    GrpcServerMetrics &server_metrics,
+    boost::asio::io_context &metric_context) {
   RPC_SERVICE_HANDLER(RayEventExportGcsService, AddEvents, max_active_rpcs_per_handler_)
 }
 

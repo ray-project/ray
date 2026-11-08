@@ -78,7 +78,8 @@ ObjectManager::ObjectManager(
         const std::string &address,
         const int port,
         rpc::ClientCallManager &client_call_manager)> object_manager_client_factory,
-    instrumented_io_context &rpc_service)
+    instrumented_io_context &rpc_service,
+    boost::asio::io_context &metric_context)
     : main_service_(&main_service),
       self_node_id_(self_node_id),
       config_(config),
@@ -91,6 +92,7 @@ ObjectManager::ObjectManager(
       object_manager_server_("ObjectManager",
                              config_.object_manager_port,
                              IsLocalhost(config_.object_manager_address),
+                             metric_context,
                              config_.rpc_service_threads_number),
       client_call_manager_(main_service,
                            /*record_stats=*/true,
