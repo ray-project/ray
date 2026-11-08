@@ -1049,6 +1049,197 @@ def test_derived_membership_null_safety(
     assert actual["x"].to_pylist() == expected["x"].to_pylist()
 
 
+@pytest.mark.parametrize(
+    "column_type",
+    [
+        pa.int8(),
+        pa.int16(),
+        pa.int32(),
+        pa.int64(),
+        pa.uint8(),
+        pa.uint16(),
+        pa.uint32(),
+    ],
+)
+@pytest.mark.parametrize("offset", [1, 2, 75])
+@pytest.mark.parametrize("strict", [False, True])
+@pytest.mark.parametrize("reverse_add", [False, True])
+def test_derived_integer_arithmetic_bound_safety(
+    tmp_path, column_type, offset, strict, reverse_add
+):
+    from ray.data._internal.datasource_v2.formats.parquet.footer_reader import (
+        _derived_statistics_predicate,
+    )
+
+    bits = column_type.bit_width
+    if pa.types.is_signed_integer(column_type):
+        minimum = -(1 << (bits - 1))
+        maximum = (1 << (bits - 1)) - 1
+    else:
+        minimum = 0
+        maximum = (1 << bits) - 1
+
+    values = [
+        None,
+        minimum,
+        0,
+        1,
+        74,
+        75,
+        76,
+        77,
+        maximum - 1,
+        maximum,
+    ]
+    table = pa.table(
+        {
+            "x": pa.array(values, type=column_type),
+        }
+    )
+
+    addition = offset + col("x") if reverse_add else col("x") + offset
+    predicate = addition > 76 if strict else addition >= 76
+
+    derived = _derived_statistics_predicate(predicate, table.schema)
+    assert derived is not None
+
+    original_rows = table.filter(predicate.to_pyarrow())["x"].to_pylist()
+    bound_rows = table.filter(derived.to_pyarrow())["x"].to_pylist()
+    assert set(original_rows).issubset(set(bound_rows))
+
+    path, size = _write(
+        tmp_path / "integer-boundary.parquet",
+        table,
+        row_group_size=2,
+    )
+    chunks = _reader(filter_expr=predicate)._read_and_chunk(FileInfo(path, size))
+    selected = [rg.unit_ids[0] for rg in chunks.row_groups]
+    parquet_file = pq.ParquetFile(path)
+
+    required = {
+        i
+        for i in range(parquet_file.num_row_groups)
+        if parquet_file.read_row_group(i).filter(predicate.to_pyarrow()).num_rows
+    }
+    assert required.issubset(set(selected))
+
+    selected_tables = [parquet_file.read_row_group(i) for i in selected]
+    actual = (
+        pa.concat_tables(selected_tables).filter(predicate.to_pyarrow())
+        if selected_tables
+        else table.slice(0, 0)
+    )
+    expected = table.filter(predicate.to_pyarrow())
+    assert actual["x"].to_pylist() == expected["x"].to_pylist()
+
+    for rg in chunks.row_groups:
+        if rg.fully_matched:
+            group = parquet_file.read_row_group(rg.unit_ids[0])
+            assert group.filter(predicate.to_pyarrow()).num_rows == group.num_rows
+
+
+@pytest.mark.parametrize(
+    "column_type, offset, target",
+    [
+        (pa.uint8(), 0, 76),
+        (pa.uint8(), -1, 76),
+        (pa.uint8(), True, 76),
+        (pa.uint8(), 1.0, 76),
+        (pa.uint8(), 256, 76),
+        (pa.uint8(), 1, 256),
+        (pa.uint16(), 65536, 76),
+        (pa.uint32(), 1, 2**32),
+    ],
+)
+def test_derived_unsigned_arithmetic_rejects_unsafe_bounds(column_type, offset, target):
+    from ray.data._internal.datasource_v2.formats.parquet.footer_reader import (
+        _derived_statistics_predicate,
+    )
+
+    expr = (col("x") + offset) >= target
+    schema = pa.schema([("x", column_type)])
+    assert _derived_statistics_predicate(expr, schema) is None
+
+
+@pytest.mark.parametrize(
+    "predicate",
+    [
+        ~(col("f") == 1.0),
+        ~(col("f") >= 1.0),
+        ~col("f").is_in([1.0]),
+    ],
+)
+def test_unsupported_float_negation_preserves_nan_rows(tmp_path, predicate):
+    values = [1.0] * 24 + [float("nan")] + [2.0] * 25 + [None] * 25 + [1.0] * 25
+    table = pa.table(
+        {
+            "x": list(range(100)),
+            "f": pa.array(values, type=pa.float64()),
+        }
+    )
+
+    path, size = _write(
+        tmp_path / "float-negation.parquet",
+        table,
+        row_group_size=25,
+    )
+    chunks = _reader(filter_expr=predicate)._read_and_chunk(FileInfo(path, size))
+    selected = [rg.unit_ids[0] for rg in chunks.row_groups]
+    parquet_file = pq.ParquetFile(path)
+
+    selected_tables = [parquet_file.read_row_group(i) for i in selected]
+    actual = (
+        pa.concat_tables(selected_tables).filter(predicate.to_pyarrow())
+        if selected_tables
+        else table.slice(0, 0)
+    )
+    expected = table.filter(predicate.to_pyarrow())
+
+    assert 24 in expected["x"].to_pylist()
+    assert actual["x"].to_pylist() == expected["x"].to_pylist()
+
+
+@pytest.mark.parametrize(
+    "prefix",
+    ["a\0", "\ud7ff", "\uffff", "\U0010ffff"],
+)
+def test_derived_unicode_prefix_boundaries(tmp_path, prefix):
+    values = [
+        "a",
+        "a\0",
+        "a\0x",
+        "\ud7ff",
+        "\ud7ffx",
+        "\ue000",
+        "\uffff",
+        "\uffffx",
+        "\U00010000",
+        "\U0010ffff",
+        "\U0010ffffx",
+        None,
+        "",
+    ]
+    table = pa.table({"s": values})
+    path, size = _write(
+        tmp_path / "unicode-boundary.parquet",
+        table,
+        row_group_size=2,
+    )
+    predicate = col("s").str.starts_with(prefix)
+    chunks = _reader(filter_expr=predicate)._read_and_chunk(FileInfo(path, size))
+    parquet_file = pq.ParquetFile(path)
+    selected = [rg.unit_ids[0] for rg in chunks.row_groups]
+
+    selected_tables = [parquet_file.read_row_group(i) for i in selected]
+    actual = (
+        pa.concat_tables(selected_tables).filter(predicate.to_pyarrow())
+        if selected_tables
+        else table.slice(0, 0)
+    )
+    expected = table.filter(predicate.to_pyarrow())
+    assert actual["s"].to_pylist() == expected["s"].to_pylist()
+
+
 def test_derived_predicate_unicode_prefix(tmp_path):
     values = ["aa", "bb", "é", "élan", "ê", "zz"]
     path, size = _write(
@@ -1084,13 +1275,35 @@ def test_derived_predicate_with_nulls(tmp_path):
     assert actual.equals(expected)
 
 
-def test_derived_predicate_failure_falls_back_to_original(four_row_groups, monkeypatch):
+@pytest.mark.parametrize(
+    "error_type",
+    [ValueError, AttributeError, KeyError, IndexError, RuntimeError],
+)
+@pytest.mark.parametrize("stage", ["derivation", "conversion"])
+def test_derived_predicate_failure_falls_back_to_original(
+    four_row_groups, monkeypatch, error_type, stage
+):
     from ray.data._internal.datasource_v2.formats.parquet import footer_reader
 
-    def fail_to_derive(*args):
-        raise ValueError("Unsupported schema")
+    if stage == "derivation":
 
-    monkeypatch.setattr(footer_reader, "_derived_statistics_predicate", fail_to_derive)
+        def fail_to_derive(*args):
+            raise error_type("Injected derivation failure")
+
+        monkeypatch.setattr(
+            footer_reader, "_derived_statistics_predicate", fail_to_derive
+        )
+    else:
+
+        class BrokenExpression:
+            def to_pyarrow(self):
+                raise error_type("Injected conversion failure")
+
+        monkeypatch.setattr(
+            footer_reader,
+            "_derived_statistics_predicate",
+            lambda *args: BrokenExpression(),
+        )
 
     path, size = four_row_groups
     predicate = col("id") >= 50
