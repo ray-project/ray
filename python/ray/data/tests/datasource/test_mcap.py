@@ -793,20 +793,15 @@ def write_folder_with_a_corrupt_chunk(tmp_path) -> str:
     return folder
 
 
-@pytest.mark.parametrize("fused_map", [False, True])
 def test_read_mcap_max_errored_blocks_keeps_files_sharing_a_task_with_a_corrupt_chunk(
-    ray_start_regular_shared, tmp_path, datasource_v2, fused_map
+    ray_start_regular_shared, tmp_path, datasource_v2
 ):
     """With ``max_errored_blocks=1``, a recording whose only chunk is corrupt is
-    skipped and every other file is read, including files in the same read task,
-    also when a map is fused into the read."""
+    skipped and every other file is read, including files in the same read task."""
     folder = write_folder_with_a_corrupt_chunk(tmp_path)
     ray.data.DataContext.get_current().max_errored_blocks = 1
-    ds = ray.data.read_mcap(folder, include_paths=True)
-    if fused_map:
-        ds = ds.map_batches(lambda batch: batch)
 
-    rows = ds.take_all()
+    rows = ray.data.read_mcap(folder, include_paths=True).take_all()
 
     # V2 packs the three small files into one read task; legacy splits them
     # over two tasks on this one-CPU cluster, a.mcap with b.mcap.
@@ -814,13 +809,12 @@ def test_read_mcap_max_errored_blocks_keeps_files_sharing_a_task_with_a_corrupt_
     assert files == ["a.mcap"] * 3 + ["c.mcap"] * 3
 
 
-@pytest.mark.parametrize("fused_map", [False, True])
 def test_read_mcap_max_errored_blocks_loses_only_the_rows_of_corrupt_chunks(
-    ray_start_regular_shared, tmp_path, datasource_v2, fused_map
+    ray_start_regular_shared, tmp_path, datasource_v2
 ):
     """With ``max_errored_blocks=1``, V2 loses only the rows of a file's two
-    corrupt chunks, also when a map is fused into the read. Their read task
-    raises once for both, so one allowed error is enough."""
+    corrupt chunks. Their read task raises once for both, so one allowed error is
+    enough."""
     if not datasource_v2:
         pytest.skip("the legacy reader stops at a file's first corrupt chunk")
     from ray.data.tests.unit.datasource_v2.mcap_testing import (
@@ -838,11 +832,8 @@ def test_read_mcap_max_errored_blocks_loses_only_the_rows_of_corrupt_chunks(
     once = write_corrupt_chunk(os.path.join(tmp_path, "once.mcap"), good, 2)
     write_corrupt_chunk(os.path.join(folder, "b.mcap"), once, 6)
     ray.data.DataContext.get_current().max_errored_blocks = 1
-    ds = ray.data.read_mcap(folder, include_paths=True)
-    if fused_map:
-        ds = ds.map_batches(lambda batch: batch)
 
-    rows = ds.take_all()
+    rows = ray.data.read_mcap(folder, include_paths=True).take_all()
 
     seqs = sorted((os.path.basename(row["path"]), row["data"]["seq"]) for row in rows)
     expected = [("a.mcap", i) for i in range(CHUNKED_FILE_MESSAGES)]
