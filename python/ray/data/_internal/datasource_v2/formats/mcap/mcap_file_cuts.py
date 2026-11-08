@@ -9,10 +9,9 @@ before ``OnlineBinPacker`` packs anything:
 - A heavy file is cut here, and its tasks leave at once, in order. A task
   closes at the last allowed boundary before the chunk that would take it past
   the budget. Without one, it runs on to the next allowed boundary.
-- A file the cutter cannot place in time goes to the packer unchanged. Each of
-  its rows must name one chunk and carry that chunk's ``ChunkIndex`` record, so a
-  file listed whole, an unreadable file and rows without such a record pass
-  through as listed.
+- A file the cutter cannot place in time goes to the packer unchanged. Those
+  are a file listed whole and an unreadable file, whose rows carry no
+  ``ChunkIndex`` record.
 
 When the read keeps its blocks in order
 (``DataContext.execution_options.preserve_order``), the cutter packs light
@@ -288,11 +287,7 @@ def _rows_by_file(manifest: FileManifest) -> Iterator[_FileRows]:
     """
     block = manifest.as_block()
     assert isinstance(block, pa.Table)
-    records: List[Optional[bytes]] = (
-        block.column(CHUNK_INDEX_COLUMN).to_pylist()
-        if CHUNK_INDEX_COLUMN in block.column_names
-        else [None] * len(manifest)
-    )
+    records: List[Optional[bytes]] = block.column(CHUNK_INDEX_COLUMN).to_pylist()
     rows_by_path: Dict[str, List[int]] = {}
     for i, path in enumerate(manifest.paths):
         rows_by_path.setdefault(str(path), []).append(i)
@@ -310,14 +305,14 @@ def _chunks(
 ) -> List[_Chunk]:
     """The chunks that ``rows`` name, or none when a row cannot be placed in time.
 
-    A row is placed in time when it names one chunk and carries that chunk's
-    ``ChunkIndex`` record (see the module docstring).
+    A row is placed in time when it carries its chunk's ``ChunkIndex`` record
+    (see the module docstring).
     """
     chunks = []
     for i in rows:
         metadata = manifest.file_chunk_metadatas[i]
         times = chunk_log_times(records[i])
-        if metadata is None or len(metadata["unit_ids"]) != 1 or times is None:
+        if metadata is None or times is None:
             return []
         chunks.append(_Chunk(FileChunk.from_metadata(metadata), *times))
     return chunks
