@@ -306,8 +306,11 @@ class _ModelMultiplexWrapper:
         if hasattr(model, "__del__"):
             try:
                 if not inspect.iscoroutinefunction(model.__del__):
-                    await asyncio.get_running_loop().run_in_executor(
-                        None, model.__del__
+                    # Shield the call so that cancelling the request does not
+                    # cancel a `__del__` still queued in the executor, which
+                    # the swap below would then keep from ever running.
+                    await asyncio.shield(
+                        asyncio.get_running_loop().run_in_executor(None, model.__del__)
                     )
                 else:
                     await model.__del__()
