@@ -5,6 +5,7 @@ from concurrent.futures import Future, ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, AbstractSet, Iterable, Iterator, NamedTuple, Tuple
 
+import numpy as np
 import pyarrow as pa
 import pyarrow.dataset as pds
 import pyarrow.fs as pafs
@@ -219,16 +220,23 @@ def _derived_statistics_predicate(expr: Expr, schema: pa.Schema) -> Expr | None:
                     max_value = (1 << bit_width) - 1
 
                 if (
-                    type(offset) is int
-                    and 0 < offset <= max_value
-                    and type(target) is int
-                    and min_value <= target <= max_value
+                    isinstance(offset, (int, np.integer))
+                    and not isinstance(offset, (bool, np.bool_))
+                    and isinstance(target, (int, np.integer))
+                    and not isinstance(target, (bool, np.bool_))
                 ):
-                    bound = target - offset
-                    if min_value <= bound <= max_value:
-                        if expr.op == Operation.GE:
-                            return column >= bound
-                        return column > bound
+                    # Python ints avoid overflow in NumPy scalar subtraction.
+                    offset_val = int(offset)
+                    target_val = int(target)
+                    if (
+                        0 < offset_val <= max_value
+                        and min_value <= target_val <= max_value
+                    ):
+                        bound = target_val - offset_val
+                        if min_value <= bound <= max_value:
+                            if expr.op == Operation.GE:
+                                return column >= bound
+                            return column > bound
 
     if (
         isinstance(expr, PyArrowComputeUDFExpr)
