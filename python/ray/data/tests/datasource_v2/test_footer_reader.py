@@ -6,6 +6,7 @@ these drive it directly against local Parquet fixtures. No Ray cluster needed.
 
 import time
 
+import numpy as np
 import pyarrow as pa
 import pyarrow.parquet as pq
 import pytest
@@ -1238,6 +1239,84 @@ def test_derived_unicode_prefix_boundaries(tmp_path, prefix):
     )
     expected = table.filter(predicate.to_pyarrow())
     assert actual["s"].to_pylist() == expected["s"].to_pylist()
+
+
+@pytest.mark.parametrize(
+    "column_type",
+    [pa.int8(), pa.int32(), pa.uint8(), pa.uint32()],
+)
+@pytest.mark.parametrize(
+    "offset",
+    [np.int8(1), np.int16(2), np.int64(75), np.uint32(75)],
+)
+@pytest.mark.parametrize("target", [np.int32(76), np.int64(76)])
+def test_derived_numpy_integer_pruning(tmp_path, column_type, offset, target):
+    from ray.data._internal.datasource_v2.formats.parquet.footer_reader import (
+        _derived_statistics_predicate,
+    )
+
+    bits = column_type.bit_width
+    if pa.types.is_signed_integer(column_type):
+        minimum = -(1 << (bits - 1))
+        maximum = (1 << (bits - 1)) - 1
+    else:
+        minimum = 0
+        maximum = (1 << bits) - 1
+
+    values = [
+        None,
+        minimum,
+        0,
+        1,
+        74,
+        75,
+        76,
+        77,
+        maximum - 1,
+        maximum,
+    ]
+    table = pa.table({"x": pa.array(values, type=column_type)})
+
+    predicate = (col("x") + offset) >= target
+    derived = _derived_statistics_predicate(predicate, table.schema)
+    assert derived is not None
+
+    expected = table.filter(predicate.to_pyarrow())
+    candidates = table.filter(derived.to_pyarrow())
+    assert set(expected["x"].to_pylist()).issubset(set(candidates["x"].to_pylist()))
+
+    path, size = _write(tmp_path / "numpy-integer.parquet", table, row_group_size=2)
+    chunks = _reader(filter_expr=predicate)._read_and_chunk(FileInfo(path, size))
+    selected = [rg.unit_ids[0] for rg in chunks.row_groups]
+
+    parquet_file = pq.ParquetFile(path)
+    required = {
+        i
+        for i in range(parquet_file.num_row_groups)
+        if parquet_file.read_row_group(i).filter(predicate.to_pyarrow()).num_rows
+    }
+    assert required.issubset(set(selected))
+
+
+@pytest.mark.parametrize(
+    "column_type,offset,target",
+    [
+        (pa.int8(), np.int8(127), np.int8(-127)),
+        (pa.uint8(), np.uint8(255), np.uint8(1)),
+        (pa.uint8(), np.bool_(True), np.uint8(76)),
+        (pa.uint8(), np.uint8(1), np.bool_(True)),
+        (pa.uint32(), np.uint64(2**63), np.uint64(76)),
+        (pa.uint32(), np.int64(-1), np.int64(76)),
+    ],
+)
+def test_derived_numpy_integer_rejects_unsafe_bounds(column_type, offset, target):
+    from ray.data._internal.datasource_v2.formats.parquet.footer_reader import (
+        _derived_statistics_predicate,
+    )
+
+    predicate = (col("x") + offset) >= target
+    schema = pa.schema([("x", column_type)])
+    assert _derived_statistics_predicate(predicate, schema) is None
 
 
 def test_derived_predicate_unicode_prefix(tmp_path):
