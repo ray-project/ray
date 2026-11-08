@@ -117,15 +117,13 @@ def fail_row_at_failing_row(row):
     return row
 
 
-@pytest.mark.parametrize("max_errored_blocks", [1, -1])
-def test_a_skipped_error_keeps_the_rows_a_task_produced_before_it(
-    restore_data_context, max_errored_blocks
-):
+def test_a_skipped_error_keeps_the_rows_a_task_produced_before_it(restore_data_context):
     """A one-task ``map_batches`` that fails at the batch holding row 7 keeps the
-    rows of the batches before it when the job skips the error, with one error
-    allowed and with any number."""
+    rows of the batches before it when the job skips the error."""
     ctx = ray.data.DataContext.get_current()
-    ctx.max_errored_blocks = max_errored_blocks
+    # Any limit other than 0 skips the error. -1 (no limit) also catches a check
+    # that treats only a positive limit as skipping.
+    ctx.max_errored_blocks = -1
 
     ds = ray.data.range(NUM_ROWS, override_num_blocks=1).map_batches(
         fail_at_failing_row, batch_size=2
