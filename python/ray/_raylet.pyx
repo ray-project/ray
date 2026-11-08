@@ -3097,7 +3097,9 @@ cdef void get_py_stack(c_string* stack_out) nogil:
             if filename.endswith("_private/worker.py"):
                 if frame.f_code.co_name == "put":
                     msg_frames = ["(put object) "]
-            elif filename.endswith("_private/workers/default_worker.py"):
+            elif filename.endswith("_private/workers/default_worker.py") or (
+                filename.endswith("_private/workers/fork_server.py")
+            ):
                 pass
             elif filename.endswith("ray/remote_function.py"):
                 # TODO(ekl) distinguish between task return objects and

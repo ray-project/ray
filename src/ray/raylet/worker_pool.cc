@@ -18,6 +18,7 @@
 #include <sys/socket.h>
 #include <sys/stat.h>
 #include <sys/time.h>
+#include <sys/uio.h>
 #include <sys/un.h>
 #include <time.h>
 #include <unistd.h>
@@ -25,6 +26,7 @@
 
 #include <algorithm>
 #include <boost/date_time/posix_time/posix_time.hpp>
+#include <cstring>
 #include <deque>
 #include <fstream>
 #include <iostream>
@@ -227,6 +229,18 @@ WorkerPool::~WorkerPool() {
   }
 }
 
+namespace {
+
+bool IsBootPythonWorkerPrestartDisabled() {
+#ifdef __linux__
+  return RayConfig::instance().enable_worker_fork_server();
+#else
+  return false;
+#endif
+}
+
+}  // namespace
+
 void WorkerPool::Start() {
   if (RayConfig::instance().kill_idle_workers_interval_ms() > 0) {
     periodical_runner_->RunFnPeriodically(
@@ -235,7 +249,8 @@ void WorkerPool::Start() {
         "RayletWorkerPool.deadline_timer.kill_idle_workers");
   }
 
-  if (RayConfig::instance().enable_worker_prestart()) {
+  if (RayConfig::instance().enable_worker_prestart() &&
+      !IsBootPythonWorkerPrestartDisabled()) {
     rpc::LeaseSpec rpc_lease_spec;
     rpc_lease_spec.set_language(Language::PYTHON);
     rpc_lease_spec.mutable_runtime_env_info()->set_serialized_runtime_env("{}");
@@ -293,16 +308,18 @@ const ProcessInterface &WorkerPool::AddWorkerProcess(
     SteadyTimePoint start,
     const rpc::RuntimeEnvInfo &runtime_env_info,
     const std::vector<std::string> &dynamic_options,
-    std::optional<absl::Duration> worker_startup_keep_alive_duration) {
-  auto [it, _] = state.worker_processes.emplace(
-      worker_id,
-      WorkerProcessInfo{/*is_pending_registration=*/true,
-                        worker_type,
-                        std::move(proc),
-                        start,
-                        runtime_env_info,
-                        dynamic_options,
-                        worker_startup_keep_alive_duration});
+    std::optional<absl::Duration> worker_startup_keep_alive_duration,
+    bool started_via_fork_server) {
+  auto [it, _] =
+      state.worker_processes.emplace(worker_id,
+                                     WorkerProcessInfo{/*is_pending_registration=*/true,
+                                                       worker_type,
+                                                       std::move(proc),
+                                                       start,
+                                                       runtime_env_info,
+                                                       dynamic_options,
+                                                       worker_startup_keep_alive_duration,
+                                                       started_via_fork_server});
   return *it->second.proc;
 }
 
@@ -573,15 +590,34 @@ std::tuple<const ProcessInterface &, WorkerID> WorkerPool::StartWorkerProcess(
 
   SteadyTimePoint start = clock_.SteadyNow();
   // Start a process and measure the startup time.
+  bool attempted_fork_server_socket = false;
   std::unique_ptr<ProcessInterface> proc =
       TryStartProcessViaForkServer(language,
+                                   worker_type,
                                    worker_command_args,
                                    env,
                                    worker_id,
                                    dynamic_options,
                                    serialized_runtime_env_context,
-                                   runtime_env_info);
+                                   runtime_env_info,
+                                   &attempted_fork_server_socket);
+  const bool started_via_fork_server = (proc != nullptr);
   if (!proc) {
+    if (attempted_fork_server_socket) {
+      // Mint a fresh WorkerID when falling back after a fork-server socket attempt so a
+      // delayed child from a timed-out request can never register under the same ID.
+      worker_id = WorkerID::FromRandom();
+      std::tie(worker_command_args, env) =
+          BuildProcessCommandArgs(language,
+                                  job_config,
+                                  worker_type,
+                                  job_id,
+                                  worker_id,
+                                  dynamic_options,
+                                  runtime_env_hash,
+                                  serialized_runtime_env_context,
+                                  state);
+    }
     proc = StartProcess(worker_command_args, env, worker_id);
   }
   worker_pool_metrics_.num_workers_started_sum.Record(1);
@@ -599,7 +635,8 @@ std::tuple<const ProcessInterface &, WorkerID> WorkerPool::StartWorkerProcess(
                        start,
                        runtime_env_info,
                        dynamic_options,
-                       worker_startup_keep_alive_duration);
+                       worker_startup_keep_alive_duration,
+                       started_via_fork_server);
   if (IsIOWorkerType(worker_type)) {
     auto &io_worker_state = GetIOWorkerStateFromWorkerType(worker_type, state);
     io_worker_state.num_starting_io_workers++;
@@ -736,17 +773,20 @@ void WorkerPool::MonitorPopWorkerRequestForRegistration(
 
 std::unique_ptr<ProcessInterface> WorkerPool::TryStartProcessViaForkServer(
     const Language &language,
+    const rpc::WorkerType worker_type,
     const std::vector<std::string> &worker_command_args,
     const ProcessEnvironment &env,
     const WorkerID &worker_id,
     const std::vector<std::string> &dynamic_options,
     const std::string &serialized_runtime_env_context,
-    const rpc::RuntimeEnvInfo &runtime_env_info) {
+    const rpc::RuntimeEnvInfo &runtime_env_info,
+    bool *attempted_socket) {
 #if defined(_WIN32)
   return nullptr;
 #else
   if (!RayConfig::instance().enable_worker_fork_server() ||
-      language != Language::PYTHON || !dynamic_options.empty()) {
+      language != Language::PYTHON || worker_type != rpc::WorkerType::WORKER ||
+      !dynamic_options.empty()) {
     return nullptr;
   }
 
@@ -802,8 +842,7 @@ std::unique_ptr<ProcessInterface> WorkerPool::TryStartProcessViaForkServer(
     }
   } else if (IsRuntimeEnvEmpty(runtime_env_info.serialized_runtime_env()) &&
              !temp_dir.empty() && !session_name.empty()) {
-    fork_server_socket_path =
-        temp_dir + "/" + session_name + "/sockets/fork_server_default.sock";
+    fork_server_socket_path = temp_dir + "/" + session_name + "/sockets/fs_0";
   }
 
   if (fork_server_socket_path.empty()) {
@@ -827,36 +866,55 @@ std::unique_ptr<ProcessInterface> WorkerPool::TryStartProcessViaForkServer(
   const uint64_t cur_ino = has_live_sock ? static_cast<uint64_t>(sock_st.st_ino) : 0;
 
   constexpr int64_t kUnhealthySocketCooldownMs = 5000;
+  constexpr int kMaxConsecutiveTimeoutsBeforeCooldown = 3;
   const int64_t now_steady_ms = current_time_ms();
   auto unhealthy_it = unhealthy_fork_server_sockets_.find(fork_server_socket_path);
   if (unhealthy_it != unhealthy_fork_server_sockets_.end()) {
-    if (now_steady_ms < unhealthy_it->second.until_ms &&
-        unhealthy_it->second.st_dev == cur_dev &&
-        unhealthy_it->second.st_ino == cur_ino) {
-      worker_pool_metrics_.num_worker_fork_server_fallbacks_sum.Record(1);
-      return nullptr;
+    if (unhealthy_it->second.st_dev != cur_dev ||
+        unhealthy_it->second.st_ino != cur_ino) {
+      unhealthy_fork_server_sockets_.erase(unhealthy_it);
+    } else if (unhealthy_it->second.until_ms > 0) {
+      if (now_steady_ms < unhealthy_it->second.until_ms) {
+        worker_pool_metrics_.num_worker_fork_server_fallbacks_sum.Record(1);
+        return nullptr;
+      }
+      unhealthy_fork_server_sockets_.erase(unhealthy_it);
     }
-    unhealthy_fork_server_sockets_.erase(unhealthy_it);
   }
   if (!has_live_sock) {
     unhealthy_fork_server_sockets_[fork_server_socket_path] =
-        UnhealthyForkServerSocket{now_steady_ms + kUnhealthySocketCooldownMs, 0, 0};
+        UnhealthyForkServerSocket{now_steady_ms + kUnhealthySocketCooldownMs, 0, 0, 0};
     worker_pool_metrics_.num_worker_fork_server_fallbacks_sum.Record(1);
     return nullptr;
   }
 
-  auto mark_socket_unhealthy_and_fallback = [&]() -> std::unique_ptr<ProcessInterface> {
+  auto record_failure_and_fallback =
+      [&](bool is_timeout) -> std::unique_ptr<ProcessInterface> {
     struct stat post_st = {};
     const bool still_exists =
         stat(fork_server_socket_path.c_str(), &post_st) == 0 && S_ISSOCK(post_st.st_mode);
-    // Record (0, 0) if the socket was unlinked on crash so missing-socket checks cool
-    // down while any newly published socket inode replaces it immediately; otherwise
-    // record pre-connect (cur_dev, cur_ino) so an os.replace() during timeout is never
-    // poisoned.
-    unhealthy_fork_server_sockets_[fork_server_socket_path] =
-        UnhealthyForkServerSocket{current_time_ms() + kUnhealthySocketCooldownMs,
-                                  still_exists ? cur_dev : 0,
-                                  still_exists ? cur_ino : 0};
+    const int64_t fail_ms = current_time_ms();
+    if (!still_exists) {
+      // Record (0, 0) if the socket was unlinked on crash so missing-socket checks cool
+      // down while any newly published socket inode replaces it immediately.
+      unhealthy_fork_server_sockets_[fork_server_socket_path] =
+          UnhealthyForkServerSocket{fail_ms + kUnhealthySocketCooldownMs, 0, 0, 0};
+    } else if (is_timeout) {
+      // Use pre-connect (cur_dev, cur_ino) so an atomic os.replace() published during
+      // the timeout is never poisoned, and only trigger the 5 s cooldown after 3
+      // consecutive timeouts on the same inode.
+      auto &entry = unhealthy_fork_server_sockets_[fork_server_socket_path];
+      if (entry.st_dev != cur_dev || entry.st_ino != cur_ino) {
+        entry = UnhealthyForkServerSocket{0, cur_dev, cur_ino, 0};
+      }
+      entry.consecutive_timeouts++;
+      if (entry.consecutive_timeouts >= kMaxConsecutiveTimeoutsBeforeCooldown) {
+        entry.until_ms = fail_ms + kUnhealthySocketCooldownMs;
+      }
+    } else {
+      unhealthy_fork_server_sockets_[fork_server_socket_path] = UnhealthyForkServerSocket{
+          fail_ms + kUnhealthySocketCooldownMs, cur_dev, cur_ino, 0};
+    }
     worker_pool_metrics_.num_worker_fork_server_fallbacks_sum.Record(1);
     return nullptr;
   };
@@ -868,6 +926,9 @@ std::unique_ptr<ProcessInterface> WorkerPool::TryStartProcessViaForkServer(
   int sock_fd = socket(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC, 0);
 #else
   int sock_fd = socket(AF_UNIX, SOCK_STREAM, 0);
+  if (sock_fd >= 0) {
+    SetFdCloseOnExec(sock_fd);
+  }
 #endif
   if (sock_fd < 0) {
     worker_pool_metrics_.num_worker_fork_server_fallbacks_sum.Record(1);
@@ -880,27 +941,25 @@ std::unique_ptr<ProcessInterface> WorkerPool::TryStartProcessViaForkServer(
   setsockopt(sock_fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
   setsockopt(sock_fd, SOL_SOCKET, SO_SNDTIMEO, &tv, sizeof(tv));
 
+  if (attempted_socket != nullptr) {
+    *attempted_socket = true;
+  }
+
   if (connect(sock_fd, reinterpret_cast<struct sockaddr *>(&addr), sizeof(addr)) == -1) {
     const int connect_errno = errno;
     RAY_LOG(WARNING).WithField(worker_id)
         << "Failed to connect to fork server at " << fork_server_socket_path << ": "
         << strerror(connect_errno) << "; falling back to execvpe.";
     close(sock_fd);
-    return mark_socket_unhealthy_and_fallback();
+    return record_failure_and_fallback(connect_errno == EAGAIN ||
+                                       connect_errno == EWOULDBLOCK ||
+                                       connect_errno == ETIMEDOUT);
   }
 
-  // Use POSIX CLOCK_MONOTONIC so C++ Raylet and Python fork_server.py compare against
-  // the identical kernel monotonic epoch unaffected by NTP wall-clock jumps.
-  struct timespec mono_ts = {};
-  clock_gettime(CLOCK_MONOTONIC, &mono_ts);
-  const int64_t deadline_ms = static_cast<int64_t>(mono_ts.tv_sec) * 1000 +
-                              static_cast<int64_t>(mono_ts.tv_nsec) / 1000000 +
-                              timeout_ms;
-  nlohmann::json req = {{"args", worker_args},
-                        {"env", env},
-                        {"runtime_env_vars", runtime_env_vars},
-                        {"deadline_ms", deadline_ms}};
-  std::string payload = req.dump() + "\n";
+  nlohmann::json req = {
+      {"args", worker_args}, {"env", env}, {"runtime_env_vars", runtime_env_vars}};
+  std::string payload =
+      req.dump(-1, ' ', false, nlohmann::json::error_handler_t::replace) + "\n";
 
   size_t total_sent = 0;
   while (total_sent < payload.size()) {
@@ -910,20 +969,61 @@ std::unique_ptr<ProcessInterface> WorkerPool::TryStartProcessViaForkServer(
       if (errno == EINTR) {
         continue;
       }
+      const int write_errno = errno;
       close(sock_fd);
-      return mark_socket_unhealthy_and_fallback();
+      return record_failure_and_fallback(write_errno == EAGAIN ||
+                                         write_errno == EWOULDBLOCK);
     }
     total_sent += static_cast<size_t>(sent);
   }
 
   std::string response;
-  char buf[256];
+  int lifetime_fd = -1;
+  bool io_timed_out = false;
   while (response.find('\n') == std::string::npos && response.size() < 4096) {
-    ssize_t n = read(sock_fd, buf, sizeof(buf));
+    char buf[256];
+    struct iovec iov = {buf, sizeof(buf)};
+    alignas(struct cmsghdr) char cmsg_buf[CMSG_SPACE(sizeof(int) * 4)] = {};
+    struct msghdr msg = {};
+    msg.msg_iov = &iov;
+    msg.msg_iovlen = 1;
+    msg.msg_control = cmsg_buf;
+    msg.msg_controllen = sizeof(cmsg_buf);
+    int recv_flags = 0;
+#ifdef MSG_CMSG_CLOEXEC
+    recv_flags |= MSG_CMSG_CLOEXEC;
+#endif
+    ssize_t n = recvmsg(sock_fd, &msg, recv_flags);
     if (n < 0 && errno == EINTR) {
       continue;
     }
-    if (n <= 0) {
+    for (struct cmsghdr *cmsg = CMSG_FIRSTHDR(&msg); cmsg != nullptr;
+         cmsg = CMSG_NXTHDR(&msg, cmsg)) {
+      if (cmsg->cmsg_level == SOL_SOCKET && cmsg->cmsg_type == SCM_RIGHTS &&
+          cmsg->cmsg_len >= CMSG_LEN(sizeof(int))) {
+        const size_t num_fds = (cmsg->cmsg_len - CMSG_LEN(0)) / sizeof(int);
+        int recv_fds[4];
+        const size_t copy_n = std::min<size_t>(num_fds, 4);
+        std::memcpy(recv_fds, CMSG_DATA(cmsg), copy_n * sizeof(int));
+        for (size_t i = 0; i < copy_n; ++i) {
+          if (recv_fds[i] < 0) {
+            continue;
+          }
+          if (lifetime_fd == -1 && !(msg.msg_flags & MSG_CTRUNC)) {
+            lifetime_fd = recv_fds[i];
+          } else {
+            close(recv_fds[i]);
+          }
+        }
+      }
+    }
+    if (n < 0) {
+      if (errno == EAGAIN || errno == EWOULDBLOCK) {
+        io_timed_out = true;
+      }
+      break;
+    }
+    if (n == 0) {
       break;
     }
     response.append(buf, static_cast<size_t>(n));
@@ -935,13 +1035,17 @@ std::unique_ptr<ProcessInterface> WorkerPool::TryStartProcessViaForkServer(
                              resp_json["pid"].is_number_integer()
                          ? resp_json["pid"].get<pid_t>()
                          : -1;
-  if (forked_pid <= 0) {
+  if (forked_pid <= 0 || lifetime_fd < 0) {
+    if (lifetime_fd >= 0) {
+      close(lifetime_fd);
+    }
     RAY_LOG(WARNING).WithField(worker_id)
-        << "Invalid response from fork server at " << fork_server_socket_path << ": "
-        << response << "; falling back to execvpe.";
-    return mark_socket_unhealthy_and_fallback();
+        << "Invalid or timed-out response from fork server at " << fork_server_socket_path
+        << ": " << response << "; falling back to execvpe.";
+    return record_failure_and_fallback(io_timed_out && response.empty());
   }
 
+  unhealthy_fork_server_sockets_.erase(fork_server_socket_path);
 #ifdef __linux__
   // Fork servers run inside the user/workers cgroup when resource isolation is active,
   // so forked children inherit user/workers directly without per-worker cgroup writes.
@@ -950,7 +1054,7 @@ std::unique_ptr<ProcessInterface> WorkerPool::TryStartProcessViaForkServer(
 #endif
   worker_pool_metrics_.num_workers_forked_from_server_sum.Record(1);
 
-  return std::make_unique<Process>(forked_pid);
+  return std::make_unique<Process>(forked_pid, lifetime_fd);
 #endif
 }
 
@@ -1082,7 +1186,8 @@ void WorkerPool::HandleJobStarted(const JobID &job_id, const rpc::JobConfig &job
             RAY_LOG(WARNING) << "[Eagerly] Couldn't create a runtime environment for job "
                              << job_id << ". Error message: " << setup_error_message;
           }
-        });
+        },
+        /*source_process=*/"raylet_eager_install");
   }
 }
 
@@ -1095,7 +1200,8 @@ void WorkerPool::HandleJobFinished(const JobID &job_id) {
   // Check eager install here because we only add URI reference when runtime
   // env install really happens.
   if (NeedToEagerInstallRuntimeEnv(*job_config)) {
-    DeleteRuntimeEnvIfPossible(job_config->runtime_env_info().serialized_runtime_env());
+    DeleteRuntimeEnvIfPossible(job_config->runtime_env_info().serialized_runtime_env(),
+                               /*source_process=*/"raylet_eager_install");
   }
   finished_jobs_.insert(job_id);
 }
@@ -1122,7 +1228,21 @@ Status WorkerPool::RegisterWorker(const std::shared_ptr<WorkerInterface> &worker
     return status;
   }
 
-  std::unique_ptr<ProcessInterface> process = std::make_unique<Process>(pid);
+  auto &starting_process_info = it->second;
+  std::unique_ptr<ProcessInterface> process;
+#if !defined(_WIN32)
+  if (const auto *started_proc =
+          dynamic_cast<const Process *>(starting_process_info.proc.get());
+      started_proc != nullptr && started_proc->GetId() == pid) {
+    int dup_fd = started_proc->DupLifetimeFd();
+    if (dup_fd >= 0) {
+      process = std::make_unique<Process>(pid, dup_fd);
+    }
+  }
+#endif
+  if (!process) {
+    process = std::make_unique<Process>(pid);
+  }
   worker->SetProcess(std::move(process));
 #if !defined(_WIN32)
   // Save the worker's actual PGID at registration for safe cleanup later.
@@ -1134,7 +1254,8 @@ Status WorkerPool::RegisterWorker(const std::shared_ptr<WorkerInterface> &worker
   if (pgid != -1) {
     if (pgid == pid) {
       worker->SetSavedProcessGroupId(pgid);
-    } else {
+    } else if (RayConfig::instance().process_group_cleanup_enabled() ||
+               starting_process_info.started_via_fork_server) {
       RAY_LOG(WARNING) << "Worker " << pid << " pgid (" << pgid
                        << ") != pid; skipping SetSavedProcessGroupId to avoid "
                        << "signaling parent process group.";
@@ -1153,7 +1274,6 @@ Status WorkerPool::RegisterWorker(const std::shared_ptr<WorkerInterface> &worker
     send_reply_callback(status, /*port=*/0);
     return status;
   }
-  auto &starting_process_info = it->second;
   int64_t duration_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
                             clock_.SteadyNow() - starting_process_info.start_time)
                             .count();
@@ -1208,8 +1328,9 @@ void WorkerPool::OnWorkerStarted(const std::shared_ptr<WorkerInterface> &worker)
 }
 
 void WorkerPool::ExecuteOnPrestartWorkersStarted(std::function<void()> callback) {
-  bool prestart = RayConfig::instance().prestart_worker_first_driver() ||
-                  RayConfig::instance().enable_worker_prestart();
+  bool prestart = !IsBootPythonWorkerPrestartDisabled() &&
+                  (RayConfig::instance().prestart_worker_first_driver() ||
+                   RayConfig::instance().enable_worker_prestart());
   if (first_job_registered_ ||
       first_job_registered_python_worker_count_ >=  // Don't wait if prestart is completed
           first_job_driver_wait_num_python_workers_ ||
@@ -1248,7 +1369,8 @@ Status WorkerPool::RegisterDriver(const std::shared_ptr<WorkerInterface> &driver
   if (driver->GetLanguage() == Language::JAVA) {
     send_reply_callback(Status::OK(), port);
   } else {
-    if (!first_job_registered_ && RayConfig::instance().prestart_worker_first_driver() &&
+    if (!first_job_registered_ && !IsBootPythonWorkerPrestartDisabled() &&
+        RayConfig::instance().prestart_worker_first_driver() &&
         !RayConfig::instance().enable_worker_prestart()) {
       RAY_LOG(DEBUG) << "PrestartDefaultCpuWorkers " << num_prestart_python_workers;
       rpc::LeaseSpec rpc_lease_spec;
@@ -1878,7 +2000,7 @@ void WorkerPool::PrestartWorkersInternal(const LeaseSpecification &lease_spec,
                            << setup_error_message;
             return;
           }
-          PopWorkerStatus status;
+          PopWorkerStatus status = PopWorkerStatus::OK;
           StartWorkerProcess(lease_spec.GetLanguage(),
                              rpc::WorkerType::WORKER,
                              lease_spec.JobId(),
@@ -1887,6 +2009,9 @@ void WorkerPool::PrestartWorkersInternal(const LeaseSpecification &lease_spec,
                              lease_spec.GetRuntimeEnvHash(),
                              serialized_runtime_env_context,
                              lease_spec.RuntimeEnvInfo());
+          if (status != PopWorkerStatus::OK) {
+            DeleteRuntimeEnvIfPossible(lease_spec.SerializedRuntimeEnv());
+          }
         });
   }
 }
@@ -1895,8 +2020,10 @@ void WorkerPool::DisconnectWorker(const std::shared_ptr<WorkerInterface> &worker
                                   rpc::WorkerExitType disconnect_type) {
   MarkPortAsFree(worker->AssignedPort());
   auto &state = GetStateForLanguage(worker->GetLanguage());
+  bool started_via_fork_server = false;
   auto it = state.worker_processes.find(worker->WorkerId());
   if (it != state.worker_processes.end()) {
+    started_via_fork_server = it->second.started_via_fork_server;
     const auto serialized_runtime_env =
         it->second.runtime_env_info.serialized_runtime_env();
     if (it->second.is_pending_registration) {
@@ -1915,7 +2042,7 @@ void WorkerPool::DisconnectWorker(const std::shared_ptr<WorkerInterface> &worker
     RemoveWorkerProcess(state, worker->WorkerId());
   }
 #ifdef __linux__
-  if (worker->GetProcess().IsValid()) {
+  if (started_via_fork_server && worker->GetProcess().IsValid()) {
     KnownChildrenTracker::instance().RemoveKnownChild(worker->GetProcess().GetId());
   }
 #endif
@@ -2159,7 +2286,8 @@ WorkerPool::IOWorkerState &WorkerPool::GetIOWorkerStateFromWorkerType(
 void WorkerPool::GetOrCreateRuntimeEnv(const std::string &serialized_runtime_env,
                                        const rpc::RuntimeEnvConfig &runtime_env_config,
                                        const JobID &job_id,
-                                       const GetOrCreateRuntimeEnvCallback &callback) {
+                                       const GetOrCreateRuntimeEnvCallback &callback,
+                                       const std::string &source_process) {
   RAY_LOG(DEBUG) << "GetOrCreateRuntimeEnv for job " << job_id << " with runtime_env "
                  << serialized_runtime_env;
   runtime_env_agent_client_->GetOrCreateRuntimeEnv(
@@ -2181,19 +2309,23 @@ void WorkerPool::GetOrCreateRuntimeEnv(const std::string &serialized_runtime_env
                    /*serialized_runtime_env_context=*/"",
                    /*setup_error_message=*/setup_error_message);
         }
-      });
+      },
+      source_process);
 }
 
-void WorkerPool::DeleteRuntimeEnvIfPossible(const std::string &serialized_runtime_env) {
+void WorkerPool::DeleteRuntimeEnvIfPossible(const std::string &serialized_runtime_env,
+                                            const std::string &source_process) {
   RAY_LOG(DEBUG) << "DeleteRuntimeEnvIfPossible " << serialized_runtime_env;
   if (!IsRuntimeEnvEmpty(serialized_runtime_env)) {
     runtime_env_agent_client_->DeleteRuntimeEnvIfPossible(
-        serialized_runtime_env, [serialized_runtime_env](bool successful) {
+        serialized_runtime_env,
+        [serialized_runtime_env](bool successful) {
           if (!successful) {
             RAY_LOG(ERROR) << "Delete runtime env failed";
             RAY_LOG(DEBUG) << "Runtime env: " << serialized_runtime_env;
           }
-        });
+        },
+        source_process);
   }
 }
 

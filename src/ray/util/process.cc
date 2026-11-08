@@ -129,6 +129,30 @@ Process::Process(pid_t pid) : pid_(pid), fd_(-1) {
   }
 }
 
+#ifndef _WIN32
+Process::Process(pid_t pid, int lifetime_pipe_fd)
+    : pid_(pid), fd_(static_cast<intptr_t>(lifetime_pipe_fd)) {
+  RAY_CHECK(pid_ > 0 && lifetime_pipe_fd >= 0) << absl::StrFormat(
+      "Invalid Process(pid=%d, lifetime_pipe_fd=%d)", pid_, lifetime_pipe_fd);
+  SetFdCloseOnExec(lifetime_pipe_fd);
+}
+
+int Process::DupLifetimeFd() const {
+  if (fd_ == -1) {
+    return -1;
+  }
+#ifdef F_DUPFD_CLOEXEC
+  return fcntl(static_cast<int>(fd_), F_DUPFD_CLOEXEC, 0);
+#else
+  int dup_fd = dup(static_cast<int>(fd_));
+  if (dup_fd >= 0) {
+    SetFdCloseOnExec(dup_fd);
+  }
+  return dup_fd;
+#endif
+}
+#endif
+
 Process::Process(const char *argv[],
                  std::error_code &ec,
                  bool decouple,
@@ -476,8 +500,8 @@ int Process::Wait() const {
         // We have a pipe, so wait for its other end to close, to detect process death.
         unsigned char buf[1 << 8];
         ptrdiff_t r;
-        while ((r = read(fd_, buf, sizeof(buf))) > 0) {
-          // Keep reading until socket terminates
+        while ((r = read(fd_, buf, sizeof(buf))) > 0 || (r == -1 && errno == EINTR)) {
+          // Keep reading until pipe EOF.
         }
         status = r == -1 ? -1 : 0;
       } else if (waitpid(pid_, &status, 0) == -1) {
@@ -500,6 +524,18 @@ int Process::Wait() const {
 
 bool Process::IsAlive() const {
   if (IsValid()) {
+#ifndef _WIN32
+    if (fd_ != -1) {
+      pollfd pfd = {static_cast<int>(fd_), POLLHUP};
+      int r;
+      do {
+        r = poll(&pfd, 1, 0);
+      } while (r == -1 && errno == EINTR);
+      if (r == 1 && (pfd.revents & (POLLHUP | POLLERR | POLLNVAL))) {
+        return false;
+      }
+    }
+#endif
     return IsProcessAlive(pid_);
   }
   return false;
@@ -523,8 +559,16 @@ void Process::Kill() {
         }
       }
 #else
-      pollfd pfd = {static_cast<int>(fd_), POLLHUP};
-      if (fd_ != -1 && poll(&pfd, 1, 0) == 1 && (pfd.revents & POLLHUP)) {
+      bool already_dead = false;
+      if (fd_ != -1) {
+        pollfd pfd = {static_cast<int>(fd_), POLLHUP};
+        int r;
+        do {
+          r = poll(&pfd, 1, 0);
+        } while (r == -1 && errno == EINTR);
+        already_dead = (r == 1 && (pfd.revents & (POLLHUP | POLLERR | POLLNVAL)));
+      }
+      if (already_dead) {
         // The process has already died; don't attempt to kill its PID again.
       } else if (kill(pid_, SIGKILL) != 0) {
         error = std::error_code(errno, std::system_category());

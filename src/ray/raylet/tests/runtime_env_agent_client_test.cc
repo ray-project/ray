@@ -239,6 +239,7 @@ TEST(RuntimeEnvAgentClientTest, GetOrCreateRuntimeEnvOK) {
         ASSERT_EQ(req.job_id(), "7b000000");  // Hex 7B == Int 123
         ASSERT_EQ(req.runtime_env_config().setup_timeout_seconds(), 12);
         ASSERT_EQ(req.serialized_runtime_env(), "serialized_runtime_env");
+        ASSERT_EQ(req.source_process(), "raylet");
         ASSERT_EQ(request.find(http::field::authorization), request.end());
 
         rpc::GetOrCreateRuntimeEnvReply reply;

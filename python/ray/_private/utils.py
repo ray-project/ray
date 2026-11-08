@@ -13,15 +13,18 @@ import sys
 import threading
 import time
 from collections import defaultdict
+from importlib.metadata import entry_points
 from pathlib import Path
 from subprocess import list2cmdline
 from typing import (
     TYPE_CHECKING,
+    Any,
     Callable,
     Dict,
     List,
     Mapping,
     Optional,
+    Set,
     Tuple,
     Union,
 )
@@ -234,43 +237,88 @@ def get_visible_accelerator_ids() -> Mapping[str, Optional[List[str]]]:
     }
 
 
-_openblas_set_num_threads_fns: Optional[List[Callable[[int], None]]] = None
+_blas_set_num_threads_fns: Dict[str, List[Callable[[int], None]]] = {}
+_scanned_blas_so_paths: Set[str] = set()
+_last_blas_scan_modules_marker: Optional[Tuple[int, Optional[str]]] = None
+_pending_torch_device_backend_autoload: bool = False
+_deferred_torch_device_backend_eps: Optional[Tuple[Any, ...]] = None
+
+
+def cache_torch_device_backend_entrypoints() -> None:
+    """Pre-discover torch.backends entry points before fork without loading drivers."""
+    global _deferred_torch_device_backend_eps
+    _deferred_torch_device_backend_eps = tuple(entry_points(group="torch.backends"))
+
+
+def _bind_so_thread_setters(so_path: str) -> List[Callable[[int], None]]:
+    name = os.path.basename(so_path).lower()
+    symbol_groups: List[Tuple[str, ...]] = []
+    if "openblas" in name:
+        symbol_groups.append(
+            (
+                "scipy_openblas_set_num_threads64_",
+                "scipy_openblas_set_num_threads",
+                "openblas_set_num_threads64_",
+                "openblas_set_num_threads",
+            )
+        )
+    if "mkl_rt" in name:
+        symbol_groups.append(("MKL_Set_Num_Threads",))
+    if any(tok in name for tok in ("libgomp", "libomp", "libiomp5")):
+        symbol_groups.append(("omp_set_num_threads",))
+    if not symbol_groups:
+        return []
+
+    mode = getattr(os, "RTLD_NOLOAD", 0) | getattr(os, "RTLD_LOCAL", 0)
+    lib = ctypes.CDLL(so_path, mode=mode)
+    fns: List[Callable[[int], None]] = []
+    for candidates in symbol_groups:
+        for sym in candidates:
+            fn = getattr(lib, sym, None)
+            if fn is not None:
+                fn.argtypes = [ctypes.c_int]
+                fn.restype = None
+                fns.append(fn)
+                break
+    return fns
 
 
 def set_blas_and_torch_num_threads(num_threads: int) -> None:
-    """Reconfigure in-memory thread pools for pre-imported PyTorch and OpenBLAS."""
+    """Reconfigure in-memory thread pools for loaded PyTorch, OpenBLAS, MKL, and OpenMP."""
     if num_threads <= 0:
         return
     if "torch" in sys.modules:
         with contextlib.suppress(Exception):
             sys.modules["torch"].set_num_threads(num_threads)
-    if "numpy" in sys.modules and sys.platform.startswith("linux"):
-        global _openblas_set_num_threads_fns
-        if _openblas_set_num_threads_fns is None:
-            fns: List[Callable[[int], None]] = []
+    if sys.platform.startswith("linux"):
+        global _last_blas_scan_modules_marker
+        marker = (len(sys.modules), next(reversed(sys.modules), None))
+        if marker != _last_blas_scan_modules_marker:
+            _last_blas_scan_modules_marker = marker
             with contextlib.suppress(Exception):
-                so_paths = {
-                    line.split()[-1]
-                    for line in Path("/proc/self/maps").read_text().splitlines()
-                    if ".so" in line and "openblas" in line.lower()
-                }
-                for so_path in sorted(so_paths):
-                    lib = ctypes.CDLL(so_path)
-                    for sym in (
-                        "scipy_openblas_set_num_threads64_",
-                        "scipy_openblas_set_num_threads",
-                        "openblas_set_num_threads64_",
-                        "openblas_set_num_threads",
-                    ):
-                        fn = getattr(lib, sym, None)
-                        if fn is not None:
-                            fn.argtypes = [ctypes.c_int]
-                            fns.append(fn)
-                            break
-            _openblas_set_num_threads_fns = fns
-        for fn in _openblas_set_num_threads_fns:
-            with contextlib.suppress(Exception):
-                fn(num_threads)
+                with open(
+                    "/proc/self/maps", "r", encoding="utf-8", errors="replace"
+                ) as f:
+                    for line in f:
+                        parts = line.split(None, 5)
+                        if len(parts) < 6:
+                            continue
+                        so_path = parts[5].strip()
+                        if (
+                            ".so" not in so_path
+                            or so_path in _scanned_blas_so_paths
+                            or so_path.endswith(" (deleted)")
+                        ):
+                            continue
+                        _scanned_blas_so_paths.add(so_path)
+                        with contextlib.suppress(Exception):
+                            bound = _bind_so_thread_setters(so_path)
+                            if bound:
+                                _blas_set_num_threads_fns[so_path] = bound
+        for fns in _blas_set_num_threads_fns.values():
+            for fn in fns:
+                with contextlib.suppress(Exception):
+                    fn(num_threads)
 
 
 def set_omp_num_threads_if_unset() -> bool:
@@ -345,6 +393,24 @@ def set_visible_accelerator_ids() -> Mapping[str, Optional[str]]:
         ray._private.accelerators.get_accelerator_manager_for_resource(
             resource_name
         ).set_current_process_visible_accelerator_ids(accelerator_ids)
+    global _pending_torch_device_backend_autoload
+    if _pending_torch_device_backend_autoload:
+        _pending_torch_device_backend_autoload = False
+        if _deferred_torch_device_backend_eps is not None:
+            for backend_ep in _deferred_torch_device_backend_eps:
+                try:
+                    backend_ep.load()()
+                except Exception as err:
+                    raise RuntimeError(
+                        f"Failed to load the backend extension: {backend_ep.name}. "
+                        "You can disable extension auto-loading with "
+                        "TORCH_DEVICE_BACKEND_AUTOLOAD=0."
+                    ) from err
+        else:
+            torch_mod = sys.modules.get("torch")
+            autoload_fn = getattr(torch_mod, "_import_device_backends", None)
+            if autoload_fn is not None:
+                autoload_fn()
     return original_visible_accelerator_env_vars
 
 

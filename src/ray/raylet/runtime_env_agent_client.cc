@@ -458,13 +458,15 @@ class HttpRuntimeEnvAgentClient : public RuntimeEnvAgentClient {
   void GetOrCreateRuntimeEnv(const JobID &job_id,
                              const std::string &serialized_runtime_env,
                              const rpc::RuntimeEnvConfig &runtime_env_config,
-                             GetOrCreateRuntimeEnvCallback callback) override {
+                             GetOrCreateRuntimeEnvCallback callback,
+                             const std::string &source_process = "raylet") override {
     RetryInvokeOnNotFoundWithDeadline<rpc::GetOrCreateRuntimeEnvReply>(
         [=](SuccCallback<rpc::GetOrCreateRuntimeEnvReply> succ_callback,
             FailCallback fail_callback) {
           return TryGetOrCreateRuntimeEnv(job_id,
                                           serialized_runtime_env,
                                           runtime_env_config,
+                                          source_process,
                                           succ_callback,
                                           fail_callback);
         },
@@ -510,12 +512,14 @@ class HttpRuntimeEnvAgentClient : public RuntimeEnvAgentClient {
       const JobID &job_id,
       const std::string &serialized_runtime_env,
       const rpc::RuntimeEnvConfig &runtime_env_config,
+      const std::string &source_process,
       std::function<void(rpc::GetOrCreateRuntimeEnvReply)> succ_callback,
       std::function<void(ray::Status)> fail_callback) {
     rpc::GetOrCreateRuntimeEnvRequest request;
     request.set_job_id(job_id.Hex());
     request.set_serialized_runtime_env(serialized_runtime_env);
     request.mutable_runtime_env_config()->CopyFrom(runtime_env_config);
+    request.set_source_process(source_process);
     std::string payload = request.SerializeAsString();
 
     connection_pool_.enqueue(Request{http::verb::post,
@@ -538,12 +542,15 @@ class HttpRuntimeEnvAgentClient : public RuntimeEnvAgentClient {
   // POST /delete_runtime_env_if_possible
   // Body = proto rpc::DeleteRuntimeEnvIfPossibleRequest
   void DeleteRuntimeEnvIfPossible(const std::string &serialized_runtime_env,
-                                  DeleteRuntimeEnvIfPossibleCallback callback) override {
+                                  DeleteRuntimeEnvIfPossibleCallback callback,
+                                  const std::string &source_process = "raylet") override {
     RetryInvokeOnNotFoundWithDeadline<rpc::DeleteRuntimeEnvIfPossibleReply>(
         [=](SuccCallback<rpc::DeleteRuntimeEnvIfPossibleReply> succ_callback,
             FailCallback fail_callback) {
-          return TryDeleteRuntimeEnvIfPossible(
-              serialized_runtime_env, std::move(succ_callback), std::move(fail_callback));
+          return TryDeleteRuntimeEnvIfPossible(serialized_runtime_env,
+                                               source_process,
+                                               std::move(succ_callback),
+                                               std::move(fail_callback));
         },
         /*succ_callback=*/
         [=](rpc::DeleteRuntimeEnvIfPossibleReply reply) {
@@ -574,11 +581,12 @@ class HttpRuntimeEnvAgentClient : public RuntimeEnvAgentClient {
   // or invokes `fail_callback` on network error or protobuf deserialization error.
   void TryDeleteRuntimeEnvIfPossible(
       const std::string &serialized_runtime_env,
+      const std::string &source_process,
       std::function<void(rpc::DeleteRuntimeEnvIfPossibleReply)> succ_callback,
       std::function<void(ray::Status)> fail_callback) {
     rpc::DeleteRuntimeEnvIfPossibleRequest request;
     request.set_serialized_runtime_env(serialized_runtime_env);
-    request.set_source_process("raylet");
+    request.set_source_process(source_process);
     std::string payload = request.SerializeAsString();
 
     connection_pool_.enqueue(

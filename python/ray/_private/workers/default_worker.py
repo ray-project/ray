@@ -6,14 +6,11 @@ import sys
 import time
 
 import ray
+import ray._common.ray_constants as common_ray_constants
 import ray._private.node
 import ray._private.ray_constants as ray_constants
 import ray._private.utils
 import ray.actor
-from ray._common.ray_constants import (
-    LOGGING_ROTATE_BACKUP_COUNT,
-    LOGGING_ROTATE_BYTES,
-)
 from ray._private.async_compat import try_install_uvloop
 from ray._private.parameter import RayParams
 from ray._private.ray_logging import get_worker_log_file_name
@@ -79,7 +76,7 @@ parser.add_argument(
     "--logging-level",
     required=False,
     type=str,
-    default=ray_constants.LOGGER_LEVEL,
+    default=None,
     choices=ray_constants.LOGGER_LEVEL_CHOICES,
     help=ray_constants.LOGGER_LEVEL_HELP,
 )
@@ -87,7 +84,7 @@ parser.add_argument(
     "--logging-format",
     required=False,
     type=str,
-    default=ray_constants.LOGGER_FORMAT,
+    default=None,
     help=ray_constants.LOGGER_FORMAT_HELP,
 )
 parser.add_argument(
@@ -134,18 +131,18 @@ parser.add_argument(
     "--logging-rotate-bytes",
     required=False,
     type=int,
-    default=LOGGING_ROTATE_BYTES,
+    default=None,
     help="Specify the max bytes for rotating "
     "log file, default is "
-    f"{LOGGING_ROTATE_BYTES} bytes.",
+    f"{common_ray_constants.LOGGING_ROTATE_BYTES} bytes.",
 )
 parser.add_argument(
     "--logging-rotate-backup-count",
     required=False,
     type=int,
-    default=LOGGING_ROTATE_BACKUP_COUNT,
+    default=None,
     help="Specify the backup count of rotated log file, default is "
-    f"{LOGGING_ROTATE_BACKUP_COUNT}.",
+    f"{common_ray_constants.LOGGING_ROTATE_BACKUP_COUNT}.",
 )
 parser.add_argument(
     "--runtime-env-hash",
@@ -203,7 +200,23 @@ parser.add_argument(
 
 def initialize_default_worker():
     args = parser.parse_args()
-    ray._private.ray_logging.setup_logger(args.logging_level, args.logging_format)
+    logging_level = (
+        args.logging_level
+        if args.logging_level is not None
+        else ray_constants.LOGGER_LEVEL
+    )
+    logging_format = (
+        args.logging_format
+        if args.logging_format is not None
+        else ray_constants.LOGGER_FORMAT
+    )
+    if args.logging_rotate_bytes is None:
+        args.logging_rotate_bytes = common_ray_constants.LOGGING_ROTATE_BYTES
+    if args.logging_rotate_backup_count is None:
+        args.logging_rotate_backup_count = (
+            common_ray_constants.LOGGING_ROTATE_BACKUP_COUNT
+        )
+    ray._private.ray_logging.setup_logger(logging_level, logging_format)
     worker_launched_time_ms = time.time_ns() // 1e6
     if args.worker_type == "WORKER":
         mode = ray.WORKER_MODE

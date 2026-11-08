@@ -18,6 +18,7 @@
 #include <boost/bind/bind.hpp>
 #include <cctype>
 #include <cerrno>
+#include <chrono>
 #include <csignal>
 #include <cstddef>
 #include <cstdint>
@@ -25,6 +26,7 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <thread>
 #include <tuple>
 #include <unordered_set>
 #include <utility>
@@ -3041,6 +3043,49 @@ void NodeManager::Stop() {
   object_manager_.Stop();
   dashboard_agent_manager_.reset();
   runtime_env_agent_manager_.reset();
+#ifdef __linux__
+  // Wait briefly for fork_server.py children in workers_cgroup to observe lifeline EOF
+  // and exit so cgroup teardown never races with a shutting-down fork server.
+  if (RayConfig::instance().enable_worker_fork_server() && cgroup_manager_ != nullptr) {
+    const std::string procs_path =
+        cgroup_manager_->GetWorkersCgroupPath() + "/cgroup.procs";
+    const auto deadline =
+        std::chrono::steady_clock::now() + std::chrono::milliseconds(200);
+    while (true) {
+      std::ifstream procs_file(procs_path);
+      if (!procs_file.is_open()) {
+        break;
+      }
+      std::vector<pid_t> fs_pids;
+      pid_t cgroup_pid = 0;
+      while (procs_file >> cgroup_pid) {
+        if (cgroup_pid <= 0) {
+          continue;
+        }
+        std::ifstream cmd_file("/proc/" + std::to_string(cgroup_pid) + "/cmdline",
+                               std::ios::binary);
+        if (!cmd_file.is_open()) {
+          continue;
+        }
+        std::string cmdline((std::istreambuf_iterator<char>(cmd_file)),
+                            std::istreambuf_iterator<char>());
+        if (cmdline.find("fork_server.py") != std::string::npos) {
+          fs_pids.push_back(cgroup_pid);
+        }
+      }
+      if (fs_pids.empty()) {
+        break;
+      }
+      if (std::chrono::steady_clock::now() >= deadline) {
+        for (pid_t fs_pid : fs_pids) {
+          kill(fs_pid, SIGKILL);
+        }
+        break;
+      }
+      std::this_thread::sleep_for(std::chrono::milliseconds(5));
+    }
+  }
+#endif
   acceptor_.close();
 }
 

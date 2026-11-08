@@ -2196,5 +2196,119 @@ async def test_fork_server_metrics_and_discovery(tmp_path) -> None:
         fake_agent.stdout.close()
 
 
+@pytest.mark.skipif(sys.platform != "linux", reason="smaps_rollup is Linux-only.")
+@pytest.mark.asyncio
+async def test_fork_server_worker_smaps_rollup_uss_excludes_cow_shared_dirty(
+    tmp_path,
+) -> None:
+    """Verify ReporterAgent reads /proc/<pid>/smaps_rollup Private_Clean+Private_Dirty
+    when fork server mode is active so forked PyTorch/CoW workers report true ~5-30 MiB
+    USS instead of ~180+ MiB RSS, while default clusters skip smaps_rollup reads."""
+    fork_script = (
+        "import os, sys, time\n"
+        "import setproctitle\n"
+        "try:\n"
+        "    import torch  # pre-fork ~180 MiB CoW anonymous + file mappings\n"
+        "except ImportError:\n"
+        "    pass\n"
+        "_cow_buf = bytearray(96 * 1024 * 1024)\n"
+        "for _off in range(0, len(_cow_buf), 4096):\n"
+        "    _cow_buf[_off] = 1\n"
+        "r_fd, w_fd = os.pipe()\n"
+        "pid = os.fork()\n"
+        "if pid == 0:\n"
+        "    os.close(r_fd)\n"
+        "    setproctitle.setproctitle('ray::CoWForkedActor')\n"
+        "    _ = _cow_buf[0] + _cow_buf[-4096]\n"
+        "    os.write(w_fd, b'1')\n"
+        "    os.close(w_fd)\n"
+        "    time.sleep(60)\n"
+        "    os._exit(0)\n"
+        "os.close(w_fd)\n"
+        "os.read(r_fd, 1)\n"
+        "os.close(r_fd)\n"
+        "print(os.getpid(), pid, flush=True)\n"
+        "time.sleep(60)\n"
+    )
+    agent_script = (
+        "import subprocess, sys, time\n"
+        f"fs = subprocess.Popen([sys.executable, '-c', {fork_script!r}, "
+        "'/path/to/fork_server.py', '--socket-path=/tmp/fs_0'], "
+        "stdout=subprocess.PIPE, text=True)\n"
+        "print(fs.stdout.readline().strip(), flush=True)\n"
+        "time.sleep(60)\n"
+    )
+    fake_agent = subprocess.Popen(
+        [sys.executable, "-c", agent_script],
+        stdout=subprocess.PIPE,
+        text=True,
+    )
+    pids_to_kill = [fake_agent.pid]
+    try:
+        fs_pid, worker_pid = [
+            int(x) for x in fake_agent.stdout.readline().strip().split()
+        ]
+        pids_to_kill.extend([fs_pid, worker_pid])
+
+        # Confirm naive rss - shared includes the 96+ MiB Shared_Dirty CoW heap.
+        mem = psutil.Process(worker_pid).memory_info()
+        naive_uss_bytes = mem.rss - mem.shared
+        assert naive_uss_bytes >= 96 * 1024 * 1024
+
+        reporter, _ = _make_reporter_agent_and_capture(tmp_path)
+
+        async def _fake_worker_pids():
+            return [worker_pid]
+
+        async def _no_agent_pids():
+            return []
+
+        async def _fake_agent_pids():
+            return [fake_agent.pid]
+
+        # Default cluster with zero fork servers must NOT read /proc/<pid>/smaps_rollup
+        # on every ray::* worker scrape.
+        reporter._async_get_worker_pids_from_raylet = _fake_worker_pids
+        reporter._async_get_agent_pids_from_raylet = _no_agent_pids
+        default_workers = await reporter._async_get_workers_and_agents()
+        assert len(default_workers) == 1
+        assert "uss_bytes" not in default_workers[0]
+
+        # Once a fork server is active, smaps_rollup populates accurate Private_Clean+Private_Dirty.
+        reporter._async_get_agent_pids_from_raylet = _fake_agent_pids
+
+        workers = await reporter._async_get_workers_and_agents()
+        stats = copy.deepcopy(STATS_TEMPLATE)
+        stats["workers"] = workers
+        records = reporter._to_records(stats, {})
+
+        by_metric = {
+            (r.gauge.name, r.tags.get("Component")): r.value
+            for r in records
+            if r.tags.get("Component")
+            in ("ray::CoWForkedActor", FORK_SERVER_COMPONENT_NAME)
+        }
+        worker_rss = by_metric[("component_rss_bytes", "ray::CoWForkedActor")]
+        worker_uss = by_metric[("component_uss_bytes", "ray::CoWForkedActor")]
+        fs_rss = by_metric[("component_rss_bytes", FORK_SERVER_COMPONENT_NAME)]
+        fs_uss = by_metric[("component_uss_bytes", FORK_SERVER_COMPONENT_NAME)]
+
+        assert worker_rss >= 96 * 1024 * 1024
+        # Forked child's true Private_Clean+Private_Dirty is < 25 MiB (not ~100-320 MiB),
+        # and the parent fork server excludes the 96 MiB Shared_Dirty CoW buffer from USS.
+        assert 0 < worker_uss < 25 * 1024 * 1024, (worker_uss, worker_rss)
+        assert worker_uss < 0.2 * naive_uss_bytes
+        assert fs_rss >= 96 * 1024 * 1024
+        assert 0 < fs_uss <= fs_rss - 96 * 1024 * 1024, (fs_uss, fs_rss)
+    finally:
+        for pid in reversed(pids_to_kill):
+            try:
+                psutil.Process(pid).kill()
+            except psutil.NoSuchProcess:
+                pass
+        fake_agent.wait(timeout=5)
+        fake_agent.stdout.close()
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))

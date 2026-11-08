@@ -82,6 +82,20 @@ class Process : public ProcessInterface {
    */
   explicit Process(pid_t pid);
 
+#ifndef _WIN32
+  /**
+   * @brief Creates a process object tracked by an uninherited lifetime pipe FD.
+   * Closing the peer write end on process death delivers POLLHUP/EOF immediately
+   * without PID-recycle races. Takes ownership of lifetime_pipe_fd and sets FD_CLOEXEC.
+   */
+  Process(pid_t pid, int lifetime_pipe_fd);
+
+  /**
+   * @brief Duplicates the owned lifetime pipe FD with FD_CLOEXEC, or returns -1 if none.
+   */
+  int DupLifetimeFd() const;
+#endif
+
   Process(Process &&other);
   Process &operator=(Process &&other);
   Process(const Process &other) = delete;

@@ -629,6 +629,11 @@ int main(int argc, char *argv[]) {
     node_manager_config.num_workers_soft_limit =
         RayConfig::instance().num_workers_soft_limit();
     node_manager_config.num_prestart_python_workers = num_prestart_python_workers;
+#ifdef __linux__
+    if (RayConfig::instance().enable_worker_fork_server()) {
+      node_manager_config.num_prestart_python_workers = 0;
+    }
+#endif
     node_manager_config.maximum_startup_concurrency = maximum_startup_concurrency;
     node_manager_config.runtime_env_agent_port = runtime_env_agent_port;
     node_manager_config.metrics_agent_port = metrics_agent_port;

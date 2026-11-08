@@ -166,6 +166,25 @@ def _get_fork_server_processes(agents: dict, generate_proc_key) -> dict:
     return fork_servers
 
 
+def _read_linux_smaps_rollup_uss_bytes(pid: int) -> Optional[int]:
+    """Return Private_Clean + Private_Dirty in bytes from /proc/<pid>/smaps_rollup."""
+    if not sys.platform.startswith("linux"):
+        return None
+    try:
+        private_kb = 0
+        seen = 0
+        with open(f"/proc/{pid}/smaps_rollup", "r", encoding="utf-8") as f:
+            for line in f:
+                if line.startswith(("Private_Clean:", "Private_Dirty:")):
+                    private_kb += int(line.split()[1])
+                    seen += 1
+                    if seen == 2:
+                        return private_kb * 1024
+    except (OSError, ValueError, IndexError):
+        return None
+    return private_kb * 1024 if seen else None
+
+
 # A list of gauges to record and export metrics.
 METRICS_GAUGES = {
     # CPU metrics
@@ -1243,12 +1262,20 @@ class ReporterAgent(
 
                     # Get basic process info
                     worker_info = _process_as_dict(w)
+                    cmdline = worker_info.get("cmdline") or []
                     if key in fork_servers:
-                        cmdline = worker_info.get("cmdline") or []
-                        worker_info["cmdline"] = [
-                            FORK_SERVER_COMPONENT_NAME,
-                            *cmdline[1:],
-                        ]
+                        cmdline = [FORK_SERVER_COMPONENT_NAME, *cmdline[1:]]
+                        worker_info["cmdline"] = cmdline
+                    if key in fork_servers or (
+                        (self._fork_server_metric_active or bool(fork_servers))
+                        and cmdline
+                        and cmdline[0].startswith("ray::")
+                    ):
+                        uss_bytes = _read_linux_smaps_rollup_uss_bytes(
+                            worker_info["pid"]
+                        )
+                        if uss_bytes is not None:
+                            worker_info["uss_bytes"] = uss_bytes
 
                     # Add GPU information if available
                     worker_pid = worker_info["pid"]
@@ -1497,8 +1524,11 @@ class ReporterAgent(
                 total_rss_bytes += float(memory_info.rss)
                 if hasattr(memory_info, "shared"):
                     total_shm_bytes += float(memory_info.shared)
+            uss_override = stat.get("uss_bytes")
             mem_full_info = stat.get("memory_full_info")
-            if mem_full_info is not None:
+            if uss_override is not None:
+                total_uss_bytes += float(uss_override)
+            elif mem_full_info is not None:
                 # For Mac OS X, directly get USS metric from memory_full_info
                 total_uss_bytes += float(mem_full_info.uss)
             elif memory_info is not None:

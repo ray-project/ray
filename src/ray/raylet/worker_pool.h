@@ -462,12 +462,14 @@ class WorkerPool : public WorkerPoolInterface {
   /// falls back to spawning a new process via StartProcess (execvpe).
   std::unique_ptr<ProcessInterface> TryStartProcessViaForkServer(
       const Language &language,
+      rpc::WorkerType worker_type,
       const std::vector<std::string> &worker_command_args,
       const ProcessEnvironment &env,
       const WorkerID &worker_id,
       const std::vector<std::string> &dynamic_options,
       const std::string &serialized_runtime_env_context,
-      const rpc::RuntimeEnvInfo &runtime_env_info);
+      const rpc::RuntimeEnvInfo &runtime_env_info,
+      bool *attempted_socket = nullptr);
 
   /// Push a warning message to user if worker pool is getting too big.
   virtual void WarnAboutSize();
@@ -510,6 +512,8 @@ class WorkerPool : public WorkerPoolInterface {
     std::vector<std::string> dynamic_options;
     /// The duration to keep the newly created worker alive before it's assigned a lease.
     std::optional<absl::Duration> worker_startup_keep_alive_duration;
+    /// True if this worker process was spawned via fork_server.py rather than execvpe.
+    bool started_via_fork_server = false;
   };
 
   /// An internal data structure that maintains the pool state per language.
@@ -677,10 +681,12 @@ class WorkerPool : public WorkerPoolInterface {
   void GetOrCreateRuntimeEnv(const std::string &serialized_runtime_env,
                              const rpc::RuntimeEnvConfig &runtime_env_config,
                              const JobID &job_id,
-                             const GetOrCreateRuntimeEnvCallback &callback);
+                             const GetOrCreateRuntimeEnvCallback &callback,
+                             const std::string &source_process = "raylet");
 
   /// Delete runtime env asynchronously by runtime env agent.
-  void DeleteRuntimeEnvIfPossible(const std::string &serialized_runtime_env);
+  void DeleteRuntimeEnvIfPossible(const std::string &serialized_runtime_env,
+                                  const std::string &source_process = "raylet");
 
   const ProcessInterface &AddWorkerProcess(
       State &state,
@@ -690,7 +696,8 @@ class WorkerPool : public WorkerPoolInterface {
       SteadyTimePoint start,
       const rpc::RuntimeEnvInfo &runtime_env_info,
       const std::vector<std::string> &dynamic_options,
-      std::optional<absl::Duration> worker_startup_keep_alive_duration);
+      std::optional<absl::Duration> worker_startup_keep_alive_duration,
+      bool started_via_fork_server = false);
 
   void RemoveWorkerProcess(State &state, const WorkerID &worker_id);
 
@@ -773,6 +780,7 @@ class WorkerPool : public WorkerPoolInterface {
     int64_t until_ms = 0;
     uint64_t st_dev = 0;
     uint64_t st_ino = 0;
+    int consecutive_timeouts = 0;
   };
 
   /// Map of fork server socket paths that failed or timed out to the steady-clock
