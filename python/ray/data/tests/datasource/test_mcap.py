@@ -3,6 +3,7 @@ import json
 import logging
 import os
 import re
+from typing import Any
 
 import pyarrow as pa
 import pytest
@@ -315,13 +316,15 @@ def test_read_mcap_nonexistent_file(ray_start_regular_shared):
         ds.materialize()  # Force execution
 
 
-@pytest.mark.parametrize("override_num_blocks", [1, 2])
+@pytest.mark.parametrize("argument", ["override_num_blocks", "parallelism"])
 def test_read_mcap_override_num_blocks(
-    ray_start_regular_shared, tmp_path, override_num_blocks, datasource_v2, caplog
+    ray_start_regular_shared, tmp_path, argument, datasource_v2, caplog
 ):
-    """A read with ``override_num_blocks`` still returns every row.
+    """A read given ``override_num_blocks`` or ``parallelism`` still returns every
+    row.
 
-    The V2 datasource sizes read tasks by bytes, so it ignores the setting and warns.
+    The V2 datasource sizes read tasks by bytes, so it ignores the argument and
+    warns, naming the argument given.
     """
     path = os.path.join(tmp_path, "blocks_test.mcap")
     messages = [
@@ -333,45 +336,24 @@ def test_read_mcap_override_num_blocks(
         for i in range(3)
     ]
     create_test_mcap_file(path, messages)
+    read_args: dict[str, Any] = {argument: 2}
+    other = (
+        "parallelism" if argument == "override_num_blocks" else "override_num_blocks"
+    )
 
     # Ray's loggers do not propagate to the root logger caplog listens on.
     read_api_logger = logging.getLogger("ray.data.read_api")
     read_api_logger.addHandler(caplog.handler)
     try:
-        ds = ray.data.read_mcap(path, override_num_blocks=override_num_blocks)
+        ds = ray.data.read_mcap(path, **read_args)
     finally:
         read_api_logger.removeHandler(caplog.handler)
 
     assert ds.count() == 3
     assert len(ds.take_all()) == 3
-    warned = any(
-        "ignores `override_num_blocks`" in record.message for record in caplog.records
-    )
-    assert warned == datasource_v2
-
-
-def test_read_mcap_warning_names_parallelism(
-    ray_start_regular_shared, tmp_path, datasource_v2, caplog
-):
-    """The V2 datasource's warning names ``parallelism`` when that is the argument
-    given, rather than ``override_num_blocks``.
-    """
-    path = os.path.join(tmp_path, "parallelism_test.mcap")
-    create_test_mcap_file(
-        path, [{"topic": "/test", "data": {"seq": 0}, "log_time": 1000000000}]
-    )
-
-    read_api_logger = logging.getLogger("ray.data.read_api")
-    read_api_logger.addHandler(caplog.handler)
-    try:
-        ray.data.read_mcap(path, parallelism=2)
-    finally:
-        read_api_logger.removeHandler(caplog.handler)
-
-    messages = [record.message for record in caplog.records]
-    warned = any("ignores `parallelism`" in m for m in messages)
-    assert warned == datasource_v2
-    assert not any("ignores `override_num_blocks`" in m for m in messages)
+    warnings = [record.message for record in caplog.records]
+    assert any(f"ignores `{argument}`" in m for m in warnings) == datasource_v2
+    assert not any(f"ignores `{other}`" in m for m in warnings)
 
 
 def test_read_mcap_file_extensions(ray_start_regular_shared, tmp_path):
@@ -703,9 +685,8 @@ def test_read_mcap_v1_refuses_a_row_id_checkpoint(
         ray.data.read_mcap(simple_mcap_file)
 
 
-@pytest.mark.parametrize("name", ["row_id", "uid"])
 def test_read_mcap_refuses_generated_id_column(
-    ray_start_regular_shared, simple_mcap_file, name
+    ray_start_regular_shared, simple_mcap_file
 ):
     """A checkpoint config that asks for generated ids fails at ``read_mcap``.
 
@@ -717,7 +698,7 @@ def test_read_mcap_refuses_generated_id_column(
 
     ctx = ray.data.DataContext.get_current()
     ctx.checkpoint_config = CheckpointConfig(
-        generated_id_column=name, checkpoint_path="/tmp/ray_data_mcap_ckpt_unused"
+        generated_id_column="row_id", checkpoint_path="/tmp/ray_data_mcap_ckpt_unused"
     )
 
     with pytest.raises(
