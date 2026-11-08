@@ -5,6 +5,7 @@ import logging
 import re
 import subprocess
 import sys
+import threading
 import time
 import types
 from dataclasses import dataclass
@@ -1385,6 +1386,11 @@ def test_escalation_absent_in_observe_mode(monkeypatch, caplog, propagate_logs):
 # ---------------------------------------------------------------------------
 
 
+# Named like Ray Train's worker thread (``ThreadRunner``) so the test reads
+# like a real dump.
+TRAINING_THREAD_NAME = "TrainingThread(train_func)"
+
+
 def fake_subprocess_run(monkeypatch, **run_result):
     """Script ``subprocess.run`` for the worker-side tools, recording each call.
 
@@ -1460,6 +1466,180 @@ def test_dump_stack_trace_falls_back_to_python(
 
     assert f"py-spy unavailable: {expected_reason}" in trace
     assert "test_dump_stack_trace_falls_back_to_python" in trace
+
+
+PY_SPY_PERMISSION_DENIED = (
+    "Permission Denied: Try running again with elevated permissions by going "
+    "'sudo env \"PATH=$PATH\" !!'"
+)
+SUDO_CHECK_CMD = ["sudo", "-n", "true"]
+NATIVE_STACK = "native stack"
+
+
+@pytest.fixture(autouse=True)
+def unanswered_sudo_check():
+    """Every test starts with the passwordless-sudo check not yet run."""
+    monkeypatch_sudo = nccl_ras._passwordless_sudo
+    nccl_ras._passwordless_sudo = None
+    yield
+    nccl_ras._passwordless_sudo = monkeypatch_sudo
+
+
+def fake_py_spy_runs(monkeypatch, unprivileged, sudo_check=None, sudo_retry=None):
+    """Script ``subprocess.run`` for the three commands of a stack dump.
+
+    ``sudo -n true`` gets ``sudo_check``, any other ``sudo`` command gets
+    ``sudo_retry`` and the plain py-spy call gets ``unprivileged``; each is a
+    ``(returncode, stdout, stderr)`` triple. Returns the recorded commands.
+    """
+    calls = []
+
+    def fake_run(cmd, **kwargs):
+        calls.append(cmd)
+        if cmd == SUDO_CHECK_CMD:
+            result = sudo_check
+        elif cmd[0] == "sudo":
+            result = sudo_retry
+        else:
+            result = unprivileged
+        returncode, stdout, stderr = result
+        return subprocess.CompletedProcess(cmd, returncode, stdout, stderr)
+
+    monkeypatch.setattr(nccl_ras.subprocess, "run", fake_run)
+    return calls
+
+
+def test_dump_stack_trace_does_not_consult_sudo_when_py_spy_succeeds(monkeypatch):
+    """The unprivileged dump works, so the sudo check never runs and the dump is
+    returned as is."""
+    calls = fake_py_spy_runs(monkeypatch, unprivileged=(0, NATIVE_STACK, ""))
+
+    trace = dump_stack_trace(25.0)
+
+    assert trace == NATIVE_STACK
+    assert len(calls) == 1
+    assert SUDO_CHECK_CMD not in calls
+
+
+def test_dump_stack_trace_retries_with_sudo_when_ptrace_is_denied(monkeypatch):
+    """py-spy is denied ptrace but passwordless sudo works, so the dump is
+    retried as ``sudo -n env PATH=... py-spy ...`` and that dump is returned."""
+    monkeypatch.setenv("PATH", "/opt/bin")
+    calls = fake_py_spy_runs(
+        monkeypatch,
+        unprivileged=(1, "", PY_SPY_PERMISSION_DENIED),
+        sudo_check=(0, "", ""),
+        sudo_retry=(0, NATIVE_STACK, ""),
+    )
+
+    trace = dump_stack_trace(25.0)
+
+    assert trace == NATIVE_STACK
+    py_spy_cmd, sudo_check_cmd, sudo_retry_cmd = calls
+    assert sudo_check_cmd == SUDO_CHECK_CMD
+    assert sudo_retry_cmd == ["sudo", "-n", "env", "PATH=/opt/bin"] + py_spy_cmd
+
+
+def test_dump_stack_trace_falls_back_to_python_without_passwordless_sudo(
+    monkeypatch,
+):
+    """py-spy is denied ptrace and sudo needs a password, so the Python-only
+    dump is returned with py-spy's own error message."""
+    calls = fake_py_spy_runs(
+        monkeypatch,
+        unprivileged=(1, "", PY_SPY_PERMISSION_DENIED),
+        sudo_check=(1, "", "sudo: a password is required"),
+    )
+
+    trace = dump_stack_trace(25.0)
+
+    assert f"py-spy unavailable: {PY_SPY_PERMISSION_DENIED}; Python-only" in trace
+    assert "test_dump_stack_trace_falls_back_to_python_without" in trace
+    assert calls[1:] == [SUDO_CHECK_CMD]
+
+
+def test_dump_stack_trace_checks_sudo_once_per_process(monkeypatch):
+    """A hung worker may dump more than once, so the second dump reuses the
+    answer of the first sudo check instead of running it again."""
+    calls = fake_py_spy_runs(
+        monkeypatch,
+        unprivileged=(1, "", PY_SPY_PERMISSION_DENIED),
+        sudo_check=(0, "", ""),
+        sudo_retry=(0, NATIVE_STACK, ""),
+    )
+
+    dump_stack_trace(25.0)
+    dump_stack_trace(25.0)
+
+    assert calls.count(SUDO_CHECK_CMD) == 1
+
+
+def test_dump_stack_trace_keeps_the_sudo_retry_inside_the_budget(monkeypatch):
+    """The unprivileged py-spy eats most of the budget before it is denied, so
+    the sudo check and retry get only what is left and the dump still returns
+    inside the caller's timeout."""
+    BUDGET_S = 20.0
+    FIRST_ATTEMPT_S = 16.0
+    clock = [0.0]
+    timeouts = []
+
+    def fake_run(cmd, **kwargs):
+        timeouts.append(kwargs["timeout"])
+        if cmd[0] == "py-spy":
+            clock[0] += FIRST_ATTEMPT_S
+            return subprocess.CompletedProcess(cmd, 1, "", PY_SPY_PERMISSION_DENIED)
+        return subprocess.CompletedProcess(cmd, 0, NATIVE_STACK, "")
+
+    monkeypatch.setattr(nccl_ras.subprocess, "run", fake_run)
+    monkeypatch.setattr(nccl_ras.time, "monotonic", lambda: clock[0])
+
+    trace = dump_stack_trace(BUDGET_S)
+
+    assert trace == NATIVE_STACK
+    first_timeout, sudo_check_timeout, sudo_retry_timeout = timeouts
+    assert first_timeout == BUDGET_S
+    assert sudo_check_timeout == BUDGET_S - FIRST_ATTEMPT_S
+    assert sudo_retry_timeout == BUDGET_S - FIRST_ATTEMPT_S
+
+
+def test_dump_stack_trace_skips_sudo_when_the_budget_is_spent(monkeypatch):
+    """The unprivileged py-spy times out, which uses the whole budget, so sudo
+    is never consulted and the Python-only dump comes back right away."""
+    BUDGET_S = 20.0
+    clock = [0.0]
+    calls = []
+
+    def fake_run(cmd, **kwargs):
+        calls.append(cmd)
+        clock[0] += BUDGET_S
+        raise subprocess.TimeoutExpired(cmd, kwargs["timeout"])
+
+    monkeypatch.setattr(nccl_ras.subprocess, "run", fake_run)
+    monkeypatch.setattr(nccl_ras.time, "monotonic", lambda: clock[0])
+
+    trace = dump_stack_trace(BUDGET_S)
+
+    assert "py-spy unavailable: py-spy timed out; Python-only" in trace
+    assert len(calls) == 1
+
+
+def test_python_fallback_names_each_thread(monkeypatch):
+    """py-spy is refused, so the Python-only dump is all the reader gets. Each
+    thread header carries the thread's name next to its ident."""
+    fake_subprocess_run(monkeypatch, returncode=1)
+    stop = threading.Event()
+    worker = threading.Thread(target=stop.wait, name=TRAINING_THREAD_NAME)
+    worker.start()
+
+    try:
+        trace = dump_stack_trace(25.0)
+    finally:
+        stop.set()
+        worker.join()
+
+    main = threading.main_thread()
+    assert f"# Thread {worker.ident} ({TRAINING_THREAD_NAME})" in trace
+    assert f"# Thread {main.ident} ({main.name})" in trace
 
 
 def test_nvidia_smi_returns_the_report(monkeypatch):

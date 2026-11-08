@@ -27,6 +27,12 @@ else
 fi
 
 ray stop --force
+# `ray start --head` never creates a token. Keep this one in memory rather than
+# in ~/.ray/auth_token, and out of the `set -x` trace.
+set +x
+RAY_AUTH_TOKEN="$(python3 -c "import secrets; print(secrets.token_hex(32))")"
+export RAY_AUTH_TOKEN CYPRESS_RAY_AUTH_TOKEN="$RAY_AUTH_TOKEN"
+set -x
 ray start --head --dashboard-port=8653 --dashboard-host=0.0.0.0
 
 sleep 5 # Wait for Ray dashboard to become ready

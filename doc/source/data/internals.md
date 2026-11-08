@@ -295,6 +295,68 @@ Choosing the best operator to assign inputs to is one of the most important deci
 
 If multiple operators are viable, the executor chooses the operator with the smallest out queue.
 
+(batch_iteration)=
+
+### How does Ray Data iterate over data?
+
+While the sections above describe how Ray Data produces blocks, this section describes how Ray Data's iteration APIs consume them, including {meth}`~ray.data.DataIterator.iter_batches`, {meth}`~ray.data.DataIterator.iter_torch_batches`, {meth}`~ray.data.DataIterator.iter_rows`, and {meth}`~ray.data.DataIterator.to_tf`. Each of these APIs uses the pipelining mechanism described below to prepare, process, and finalize batches for your code to consume. Understanding this mechanism helps you identify data ingest bottlenecks in workloads such as model training.
+
+```{image} ./batch-iteration-threads.svg
+:alt: Timeline of a user thread, an outer iteration thread, and two worker threads overlapping as three batches are prepared, processed, and finalized.
+:width: 900
+:align: center
+```
+
+The diagram above shows the pipelining mechanism for `iter_batches`. Data iteration runs in the same process as your code. It spawns an outer iteration thread, which hands complete batches to the user thread, and a pool of worker threads that parallelize batch processing, such as running your `collate_fn`. These threads process batches in a streaming fashion while the user thread consumes completed batches. The diagram shows two worker threads, but the number varies. Ray Data sets it to `min(4, prefetch_batches)`.
+
+Each batch is prepared, processed, and finalized before the user thread receives it. The following table describes each step.
+
+```{list-table}
+:header-rows: 1
+:widths: 15 45 40
+
+* - Step
+  - Pipeline stages, in order
+  - Where it runs
+* - prepare
+  - production wait, data transfer, batching
+  - Worker threads, one at a time, because a lock guards this step.
+* - process
+  - format, collate
+  - Worker threads, in parallel.
+* - finalize
+  - finalize
+  - The outer iteration thread, one batch at a time.
+```
+
+Each step covers one or more pipeline stages. The following table describes what each stage does.
+
+```{list-table}
+:header-rows: 1
+:widths: 20 80
+
+* - Stage
+  - What happens
+* - Production wait
+  - Waiting for the upstream pipeline to hand over the next blocks. For a plain iterator, this means waiting on the streaming executor's out queue. For an iterator from {meth}`~ray.data.Dataset.streaming_split`, it also includes a round trip to the `SplitCoordinator` actor that assigns blocks to each split.
+* - Data transfer
+  - Resolving the block references with `ray.get()`, including fetching any blocks that live in another node's object store.
+* - Batching
+  - Slicing and concatenating blocks into batches of `batch_size` rows, including the local shuffle buffer if you set `local_shuffle_buffer_size`.
+* - Format
+  - Converting each batch to the requested `batch_format`, such as NumPy or pandas.
+* - Collate
+  - Running your `collate_fn`.
+* - Finalize
+  - Running the finalize function. Only {meth}`~ray.data.DataIterator.iter_torch_batches` sets one, which moves the batch to the target device.
+```
+
+When data loading latency matters, such as in model training, knowing these stages and the parameters that control them, such as `prefetch_batches` and `batch_size`, helps you reduce the time the user thread waits for the next batch.
+
+:::{note}
+If you use Ray Train, see {ref}`Debug data loading bottlenecks <train-debugging-data-loading-bottlenecks>` to find which stage slows down training.
+:::
+
 ## How does Ray Data schedule tasks?
 
 Ray Data uses Ray Core for execution. The following list summarizes the {ref}`scheduling strategy <ray-scheduling-strategies>` for Ray Data:

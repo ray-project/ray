@@ -88,8 +88,7 @@ def compute_additional_split_factor(
 
 
 class SetReadParallelismRule(Rule):
-    """
-    This rule sets the read op's task parallelism based on the target block
+    """This rule sets the read op's task parallelism based on the target block
     size, the requested parallelism, the number of read files, and the
     available resources in the cluster.
 

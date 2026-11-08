@@ -173,17 +173,15 @@ class ReportCheckpointCallback(RayReportCallback):
         Metrics are always reported with checkpoints, even if the event isn't specified
         in ``report_metrics_on``.
 
-    Example:
-        .. testcode:: python
-
-            ############# Using it in TrainSession ###############
-            from ray.air.integrations.keras import ReportCheckpointCallback
-            def train_loop_per_worker():
-                strategy = tf.distribute.MultiWorkerMirroredStrategy()
-                with strategy.scope():
-                    model = build_model()
-
-                model.fit(dataset_shard, callbacks=[ReportCheckpointCallback()])
+    Examples:
+        >>> ############# Using it in TrainSession ###############
+        >>> from ray.air.integrations.keras import ReportCheckpointCallback
+        >>> def train_loop_per_worker():
+        ...     strategy = tf.distribute.MultiWorkerMirroredStrategy()
+        ...     with strategy.scope():
+        ...         model = build_model()
+        ...
+        ...     model.fit(dataset_shard, callbacks=[ReportCheckpointCallback()])
 
     Args:
         metrics: Metrics to report. If this is a list, each item describes

@@ -57,8 +57,7 @@ logger = logging.getLogger(__name__)
 
 
 class Reconciler:
-    """
-    A singleton class that reconciles the instance states of the instance manager
+    """A singleton class that reconciles the instance states of the instance manager
     for autoscaler.
 
     """
@@ -78,8 +77,7 @@ class Reconciler:
         metrics_reporter: Optional[AutoscalerMetricsReporter] = None,
         _logger: Optional[logging.Logger] = None,
     ) -> AutoscalingState:
-        """
-        The reconcile method computes InstanceUpdateEvents for the instance manager
+        """The reconcile method computes InstanceUpdateEvents for the instance manager
         by:
 
         1. Reconciling the instance manager's instances with external states like
@@ -163,8 +161,7 @@ class Reconciler:
         ray_stop_errors: List[RayStopError],
         autoscaling_config: AutoscalingConfig,
     ):
-        """
-        Reconcile the instance states of the instance manager from external states like
+        """Reconcile the instance states of the instance manager from external states like
         the cloud provider's, the ray cluster's states, the ray installer's results,
         etc.
 
@@ -254,8 +251,7 @@ class Reconciler:
         autoscaling_config: AutoscalingConfig,
         _logger: Optional[logging.Logger] = None,
     ):
-        """
-        Step the reconciler to the next state by computing instance status transitions
+        """Step the reconciler to the next state by computing instance status transitions
         that are needed and updating the instance manager's state.
 
         Specifically, we will:
@@ -334,6 +330,17 @@ class Reconciler:
             instance_manager=instance_manager,
             autoscaling_state=autoscaling_state,
             autoscaling_config=autoscaling_config,
+        )
+
+        # Reclaim long-TERMINATED instance records last, so this cycle's
+        # _fill_autoscaling_state still reports instances terminated earlier in
+        # the same cycle. TERMINATED is terminal and nothing else deletes these
+        # records, so without this the storage scanned every cycle grows without
+        # bound on churning clusters and the autoscaler eventually OOMs.
+        Reconciler._gc_terminated_instances(
+            instance_manager=instance_manager,
+            reconcile_config=autoscaling_config.get_instance_reconcile_config(),
+            ray_nodes=ray_cluster_resource_state.node_states,
         )
 
     #######################################################
@@ -428,8 +435,7 @@ class Reconciler:
         launch_errors: Dict[Tuple[str, NodeType], LaunchNodeError],
         remaining_launch_failures: Dict[Tuple[str, NodeType], int],
     ) -> Optional[IMInstanceUpdateEvent]:
-        """
-        Allocate, or fail the cloud instance allocation for the instance.
+        """Allocate, or fail the cloud instance allocation for the instance.
 
         Args:
             im_instance: The instance to allocate or fail.
@@ -491,8 +497,7 @@ class Reconciler:
         ray_stop_errors: List[RayStopError],
         ray_nodes: List[NodeState],
     ):
-        """
-        The instance requested to stop ray, but failed to stop/drain the ray node.
+        """The instance requested to stop ray, but failed to stop/drain the ray node.
         E.g. connection errors, idle termination drain rejected by the node.
 
         We will transition the instance back to RAY_RUNNING.
@@ -579,8 +584,7 @@ class Reconciler:
         instance_manager: InstanceManager,
         non_terminated_cloud_instances: Dict[CloudInstanceId, CloudInstance],
     ):
-        """
-        For any IM (instance manager) instance with a cloud node id, if the mapped
+        """For any IM (instance manager) instance with a cloud node id, if the mapped
         cloud instance is no longer running, transition the instance to TERMINATED.
 
         Args:
@@ -620,8 +624,7 @@ class Reconciler:
         instance_manager: InstanceManager,
         cloud_provider_errors: List[CloudInstanceProviderError],
     ):
-        """
-        If any TERMINATING instances have termination errors, transition the instance to
+        """If any TERMINATING instances have termination errors, transition the instance to
         TERMINATION_FAILED.
 
         We will retry the termination for the TERMINATION_FAILED instances in the next
@@ -703,13 +706,79 @@ class Reconciler:
         ), f"Failed to update instance manager: {reply}"
 
     @staticmethod
+    def _gc_terminated_instances(
+        instance_manager: InstanceManager,
+        reconcile_config: InstanceReconcileConfig,
+        ray_nodes: List[NodeState],
+    ) -> None:
+        """Delete terminal instance records retained past the GC window.
+
+        TERMINATED and ALLOCATION_FAILED are both terminal statuses (no outgoing
+        transitions) and no other reconcile step removes these records, so the
+        instance storage—read in full every cycle and serialized into
+        AutoscalingState—otherwise grows without bound on instance-churning
+        clusters until the autoscaler OOMs. Records are kept for
+        ``terminated_instance_gc_retention_s`` after they enter their terminal
+        status so a just-terminated instance stays reportable for at least one
+        more cycle before being reclaimed.
+
+        A record whose ``node_id`` is still present in the GCS node snapshot is
+        kept regardless of age: its ``node_id`` is what makes
+        ``_handle_extra_cloud_instances_from_ray_nodes`` treat the ray node as
+        managed, so deleting it while GCS still references the node would
+        resurrect it as a spurious ALLOCATED instance. (Only TERMINATED records
+        that once reached ALLOCATED carry a node_id; ALLOCATION_FAILED is
+        reached from REQUESTED and never has one.)
+        """
+        retention_s = reconcile_config.terminated_instance_gc_retention_s
+        if retention_s < 0:
+            # Negative retention disables GC (escape hatch for debugging).
+            return
+
+        terminal_statuses = (IMInstance.TERMINATED, IMInstance.ALLOCATION_FAILED)
+        instances, version = Reconciler._get_im_instances(instance_manager)
+        live_ray_node_ids = {binary_to_hex(n.node_id) for n in ray_nodes}
+        now_ns = time.time_ns()
+        retention_ns = retention_s * 1_000_000_000
+        to_delete: List[str] = []
+        for instance in instances:
+            if instance.status not in terminal_statuses:
+                continue
+            # Keep records GCS still references, else they get resurrected as
+            # ALLOCATED by _handle_extra_cloud_instances_from_ray_nodes.
+            if instance.node_id and instance.node_id in live_ray_node_ids:
+                continue
+            terminal_times = InstanceUtil.get_status_transition_times_ns(
+                instance, instance.status
+            )
+            if not terminal_times:
+                continue
+            if now_ns - max(terminal_times) >= retention_ns:
+                to_delete.append(instance.instance_id)
+
+        if not to_delete:
+            return
+
+        success, _ = instance_manager.delete_instances(
+            instance_ids=to_delete,
+            expected_storage_version=version,
+        )
+        # A version mismatch means another write landed first; the records are
+        # still terminal and will be retried next cycle, so this is not fatal.
+        if not success:
+            logger.debug(
+                "Deferred GC of %d terminal instances due to storage version "
+                "mismatch; will retry next reconcile.",
+                len(to_delete),
+            )
+
+    @staticmethod
     def _handle_ray_status_transition(
         instance_manager: InstanceManager,
         ray_nodes: List[NodeState],
         autoscaling_config: AutoscalingConfig,
     ):
-        """
-        Handle the ray status transition for the instance manager.
+        """Handle the ray status transition for the instance manager.
 
         If a new ray node running on the instance, transition it to RAY_RUNNING.
         If a ray node stopped, transition it to RAY_STOPPED.
@@ -787,8 +856,7 @@ class Reconciler:
     def _reconciled_im_status_from_ray_status(
         ray_status: NodeStatus, cur_im_status: IMInstance.InstanceStatus
     ) -> "IMInstance.InstanceStatus":
-        """
-        Reconcile the instance status from the ray node status.
+        """Reconcile the instance status from the ray node status.
         Args:
             ray_status: the current ray node status.
             cur_im_status: the current IM instance status.
@@ -941,8 +1009,7 @@ class Reconciler:
         instance_manager: InstanceManager,
         ray_nodes: List[NodeState],
     ) -> None:
-        """
-        Reconcile IM instances that still point at ray nodes missing from GCS.
+        """Reconcile IM instances that still point at ray nodes missing from GCS.
 
         GCS is the source of truth for Ray node liveness. A worker instance in
         RAY_RUNNING / RAY_STOP_REQUESTED / RAY_STOPPING with a node_id should
@@ -1001,8 +1068,7 @@ class Reconciler:
         reconcile_config: InstanceReconcileConfig,
         _logger: logging.Logger,
     ):
-        """
-        Handle stuck instances with timeouts.
+        """Handle stuck instances with timeouts.
 
         Instances could be stuck in the following status and needs to be updated:
             - REQUESTED: cloud provider is slow/fails to launch instances.
@@ -1158,8 +1224,7 @@ class Reconciler:
 
     @staticmethod
     def _is_head_node_running(instance_manager: InstanceManager) -> bool:
-        """
-        Check if the head node is running and ready.
+        """Check if the head node is running and ready.
 
         If we scale up the cluster before head node is running,
         it would cause issues when launching the worker nodes.
@@ -1195,8 +1260,7 @@ class Reconciler:
         autoscaling_config: AutoscalingConfig,
         cloud_provider: ICloudInstanceProvider,
     ) -> None:
-        """
-        Scale the cluster based on the resource state and the resource scheduler's
+        """Scale the cluster based on the resource state and the resource scheduler's
         decision:
 
         - It launches new instances if needed.
@@ -1351,8 +1415,7 @@ class Reconciler:
 
     @staticmethod
     def _terminate_instances(instance_manager: InstanceManager):
-        """
-        Terminate instances with the below statuses:
+        """Terminate instances with the below statuses:
             - RAY_STOPPED: ray was stopped on the cloud instance.
             - ALLOCATION_TIMEOUT: cloud provider timed out to allocate a running cloud instance.
             - RAY_INSTALL_FAILED: ray installation failed on the cloud instance,
@@ -1419,8 +1482,7 @@ class Reconciler:
         instance_manager: InstanceManager,
         non_terminated_cloud_instances: Dict[CloudInstanceId, CloudInstance],
     ) -> None:
-        """
-        Install ray on the allocated instances when it's ready (cloud instance
+        """Install ray on the allocated instances when it's ready (cloud instance
         should be running)
 
         This is needed if ray installation needs to be performed by
@@ -1567,8 +1629,7 @@ class Reconciler:
     def _handle_stuck_requested_instance(
         instance: IMInstance, timeout_s: int, max_num_retry_request_to_allocate: int
     ) -> Optional[IMInstanceUpdateEvent]:
-        """
-        Fail the cloud instance allocation if it's stuck in the REQUESTED state.
+        """Fail the cloud instance allocation if it's stuck in the REQUESTED state.
 
         Args:
             instance: The instance to handle.
@@ -1617,8 +1678,7 @@ class Reconciler:
         new_status: IMInstance.InstanceStatus,
         **update_kwargs: Dict,
     ) -> Optional[IMInstanceUpdateEvent]:
-        """
-        Fail the instance if it's stuck in the status for too long.
+        """Fail the instance if it's stuck in the status for too long.
 
         Args:
             instance: The instance to handle.
@@ -1650,8 +1710,7 @@ class Reconciler:
         non_terminated_cloud_instances: Dict[CloudInstanceId, CloudInstance],
         ray_nodes: List[NodeState],
     ):
-        """
-        For extra cloud instances (i.e. cloud instances that are non terminated as
+        """For extra cloud instances (i.e. cloud instances that are non terminated as
         returned by cloud provider, but not managed by the instance manager), we
         will create new IM instances with ALLOCATED status.
 
@@ -1688,8 +1747,7 @@ class Reconciler:
         instance_manager: InstanceManager,
         non_terminated_cloud_instances: Dict[CloudInstanceId, CloudInstance],
     ):
-        """
-        For extra cloud instances that are not managed by the instance manager but
+        """For extra cloud instances that are not managed by the instance manager but
         are running in the cloud provider, we will create new IM instances with
         ALLOCATED status.
 
@@ -1732,8 +1790,7 @@ class Reconciler:
     def _handle_extra_cloud_instances_from_ray_nodes(
         instance_manager: InstanceManager, ray_nodes: List[NodeState]
     ):
-        """
-        For extra cloud instances reported by Ray but not managed by the instance
+        """For extra cloud instances reported by Ray but not managed by the instance
         manager, we will create new IM instances with ALLOCATED status.
 
         Args:

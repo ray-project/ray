@@ -6,24 +6,24 @@ myst:
 
 (tune-guides)=
 
-# User Guides
+# User guides
 
 ```{toctree}
 :maxdepth: 2
 
-Running Basic Experiments <tune-run>
+Running basic experiments <tune-run>
 tune-output
-Setting Trial Resources <tune-resources>
-Using Search Spaces <tune-search-spaces>
+Setting trial resources <tune-resources>
+Using search spaces <tune-search-spaces>
 tune-stopping
 tune-trial-checkpoints
 tune-storage
 tune-fault-tolerance
-Using Callbacks and Metrics <tune-metrics>
+Using callbacks and metrics <tune-metrics>
 tune-get-data-in-and-out
 ../examples/tune-analyze-results
 ../examples/pbt-guide
-Deploying Tune in the Cloud <tune-distributed>
-Tune Architecture <tune-lifecycle>
-Scalability Benchmarks <tune-scalability>
+Deploying Tune in the cloud <tune-distributed>
+Tune architecture <tune-lifecycle>
+Scalability benchmarks <tune-scalability>
 ```
