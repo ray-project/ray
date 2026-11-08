@@ -50,51 +50,34 @@ def get_device() -> torch.device:
     superset of the `ray.get_gpu_ids()`.
 
     Examples:
-
         Example: Launched 2 workers on the current node, each with 1 GPU
 
-        .. testcode::
-            :skipif: True
-
-            os.environ["CUDA_VISIBLE_DEVICES"] = "2,3"
-            ray.get_gpu_ids() == [2]
-            torch.cuda.is_available() == True
-            get_device() == torch.device("cuda:0")
+        >>> os.environ["CUDA_VISIBLE_DEVICES"] = "2,3"  # doctest: +SKIP_EXAMPLE
+        >>> ray.get_gpu_ids() == [2]
+        >>> torch.cuda.is_available() == True
+        >>> get_device() == torch.device("cuda:0")
 
         Example: Launched 4 workers on the current node, each with 1 GPU
 
-        .. testcode::
-            :skipif: True
-
-            os.environ["CUDA_VISIBLE_DEVICES"] = "0,1,2,3"
-            ray.get_gpu_ids() == [2]
-            torch.cuda.is_available() == True
-            get_device() == torch.device("cuda:2")
+        >>> os.environ["CUDA_VISIBLE_DEVICES"] = "0,1,2,3"
+        >>> ray.get_gpu_ids() == [2]
+        >>> torch.cuda.is_available() == True
+        >>> get_device() == torch.device("cuda:2")
 
         Example: Launched 2 workers on the current node, each with 2 GPUs
 
-        .. testcode::
-            :skipif: True
-
-            os.environ["CUDA_VISIBLE_DEVICES"] = "0,1,2,3"
-            ray.get_gpu_ids() == [2,3]
-            torch.cuda.is_available() == True
-            get_device() == torch.device("cuda:2")
-
+        >>> os.environ["CUDA_VISIBLE_DEVICES"] = "0,1,2,3"
+        >>> ray.get_gpu_ids() == [2,3]
+        >>> torch.cuda.is_available() == True
+        >>> get_device() == torch.device("cuda:2")
 
         You can move a model to device by:
 
-        .. testcode::
-            :skipif: True
-
-            model.to(ray.train.torch.get_device())
+        >>> model.to(ray.train.torch.get_device())
 
         Instead of manually checking the device type:
 
-        .. testcode::
-            :skipif: True
-
-            model.to("cuda" if torch.cuda.is_available() else "cpu")
+        >>> model.to("cuda" if torch.cuda.is_available() else "cpu")
 
     Returns:
         The torch device for the current worker.
@@ -114,36 +97,26 @@ def get_devices() -> List[torch.device]:
 
 
     Examples:
-
         Example: Launched 2 workers on the current node, each with 1 GPU
 
-        .. testcode::
-            :skipif: True
-
-            os.environ["CUDA_VISIBLE_DEVICES"] == "2,3"
-            ray.get_gpu_ids() == [2]
-            torch.cuda.is_available() == True
-            get_devices() == [torch.device("cuda:0")]
+        >>> os.environ["CUDA_VISIBLE_DEVICES"] = "2,3"  # doctest: +SKIP_EXAMPLE
+        >>> ray.get_gpu_ids() == [2]
+        >>> torch.cuda.is_available() == True
+        >>> get_devices() == [torch.device("cuda:0")]
 
         Example: Launched 4 workers on the current node, each with 1 GPU
 
-        .. testcode::
-            :skipif: True
-
-            os.environ["CUDA_VISIBLE_DEVICES"] == "0,1,2,3"
-            ray.get_gpu_ids() == [2]
-            torch.cuda.is_available() == True
-            get_devices() == [torch.device("cuda:2")]
+        >>> os.environ["CUDA_VISIBLE_DEVICES"] = "0,1,2,3"
+        >>> ray.get_gpu_ids() == [2]
+        >>> torch.cuda.is_available() == True
+        >>> get_devices() == [torch.device("cuda:2")]
 
         Example: Launched 2 workers on the current node, each with 2 GPUs
 
-        .. testcode::
-            :skipif: True
-
-            os.environ["CUDA_VISIBLE_DEVICES"] == "0,1,2,3"
-            ray.get_gpu_ids() == [2,3]
-            torch.cuda.is_available() == True
-            get_devices() == [torch.device("cuda:2"), torch.device("cuda:3")]
+        >>> os.environ["CUDA_VISIBLE_DEVICES"] = "0,1,2,3"
+        >>> ray.get_gpu_ids() == [2,3]
+        >>> torch.cuda.is_available() == True
+        >>> get_devices() == [torch.device("cuda:2"), torch.device("cuda:3")]
 
     Returns:
         A list of torch devices for the current worker.
@@ -226,29 +199,22 @@ def prepare_data_loader(
         Otherwise, the same ordering will be always used.
         See: https://docs.pytorch.org/docs/stable/data.html#torch.utils.data.distributed.DistributedSampler  # noqa: E501
 
-    Example:
-
-    .. testcode:
-        :skipif: True
-
-        import torch
-
-        import ray.train.torch
-
-        train_dataloader = torch.utils.data.DataLoader(
-            ..., batch_size=..., shuffle=True
-        )
-        train_dataloader = ray.train.torch.prepare_data_loader(train_loader)
-
-        for epoch in range(10):
-            if ray.train.get_context().get_world_size() > 1:
-                # Required for the distributed sampler to shuffle properly across epochs
-                train_dataloader.sampler.set_epoch(epoch)
-
-            for X, y in train_loader:
-                # No need to move data to GPU, this is done by `prepare_data_loader`!
-                # X, y = X.to("cuda"), y.to("cuda")
-                ...
+    Examples:
+        >>> import torch  # doctest: +SKIP_EXAMPLE
+        >>> import ray.train.torch
+        >>> train_dataloader = torch.utils.data.DataLoader(
+        ...     ..., batch_size=..., shuffle=True
+        ... )
+        >>> train_dataloader = ray.train.torch.prepare_data_loader(train_dataloader)
+        >>> for epoch in range(10):
+        ...     if ray.train.get_context().get_world_size() > 1:
+        ...         # Required for the distributed sampler to shuffle properly across epochs
+        ...         train_dataloader.sampler.set_epoch(epoch)
+        ...
+        ...     for X, y in train_dataloader:
+        ...         # No need to move data to GPU, this is done by `prepare_data_loader`!
+        ...         # X, y = X.to("cuda"), y.to("cuda")
+        ...         ...
 
     Args:
         data_loader: The DataLoader to prepare.

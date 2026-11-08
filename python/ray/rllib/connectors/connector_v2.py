@@ -133,43 +133,38 @@ class ConnectorV2(Checkpointable, abc.ABC):
         knows how the input spaces through its individual ConnectorV2 pieces are being
         transformed.
 
-        .. testcode::
-
-            from gymnasium.spaces import Box, Discrete
-            import numpy as np
-
-            from ray.rllib.connectors.connector_v2 import ConnectorV2
-            from ray.rllib.utils.numpy import one_hot
-            from ray.rllib.utils.test_utils import check
-
-            class OneHotConnector(ConnectorV2):
-                def recompute_output_observation_space(
-                    self,
-                    input_observation_space,
-                    input_action_space,
-                ):
-                    return Box(0.0, 1.0, (input_observation_space.n,), np.float32)
-
-                def __call__(
-                    self,
-                    *,
-                    rl_module,
-                    batch,
-                    episodes,
-                    explore=None,
-                    shared_data=None,
-                    metrics=None,
-                    **kwargs,
-                ):
-                    assert "obs" in batch
-                    batch["obs"] = one_hot(batch["obs"])
-                    return batch
-
-            connector = OneHotConnector(input_observation_space=Discrete(2))
-            batch = {"obs": np.array([1, 0, 0], np.int32)}
-            output = connector(rl_module=None, batch=batch, episodes=None)
-
-            check(output, {"obs": np.array([[0.0, 1.0], [1.0, 0.0], [1.0, 0.0]])})
+        Examples:
+            >>> from gymnasium.spaces import Box, Discrete
+            >>> import numpy as np
+            >>> from ray.rllib.connectors.connector_v2 import ConnectorV2
+            >>> from ray.rllib.utils.numpy import one_hot
+            >>> from ray.rllib.utils.test_utils import check
+            >>> class OneHotConnector(ConnectorV2):
+            ...     def recompute_output_observation_space(
+            ...         self,
+            ...         input_observation_space,
+            ...         input_action_space,
+            ...     ):
+            ...         return Box(0.0, 1.0, (input_observation_space.n,), np.float32)
+            ...
+            ...     def __call__(
+            ...         self,
+            ...         *,
+            ...         rl_module,
+            ...         batch,
+            ...         episodes,
+            ...         explore=None,
+            ...         shared_data=None,
+            ...         metrics=None,
+            ...         **kwargs,
+            ...     ):
+            ...         assert "obs" in batch
+            ...         batch["obs"] = one_hot(batch["obs"])
+            ...         return batch
+            >>> connector = OneHotConnector(input_observation_space=Discrete(2))
+            >>> batch = {"obs": np.array([1, 0, 0], np.int32)}
+            >>> output = connector(rl_module=None, batch=batch, episodes=None)
+            >>> check(output, {"obs": np.array([[0.0, 1.0], [1.0, 0.0], [1.0, 0.0]])})
 
         If this ConnectorV2 does not change the observation space in any way, leave
         this parent method implementation untouched.
@@ -392,81 +387,77 @@ class ConnectorV2(Checkpointable, abc.ABC):
 
         See the these examples here for clarification of these three cases:
 
-        .. testcode::
-
-            from ray.rllib.connectors.connector_v2 import ConnectorV2
-            from ray.rllib.env.multi_agent_episode import MultiAgentEpisode
-            from ray.rllib.env.single_agent_episode import SingleAgentEpisode
-            from ray.rllib.utils.test_utils import check
-
-            # 1) Simple case (no episodes provided) -> Store data in a list directly
-            # under `column`:
-            batch = {}
-            ConnectorV2.add_batch_item(batch, "test_col", item_to_add=5)
-            ConnectorV2.add_batch_item(batch, "test_col", item_to_add=6)
-            check(batch, {"test_col": [5, 6]})
-            ConnectorV2.add_batch_item(batch, "test_col_2", item_to_add=-10)
-            check(batch, {
-                "test_col": [5, 6],
-                "test_col_2": [-10],
-            })
-
-            # 2) Single-agent case (SingleAgentEpisode provided) -> Store data in a list
-            # under the keys: `column` -> `(<eps_id>,)` -> [...]:
-            batch = {}
-            episode = SingleAgentEpisode(
-                id_="SA-EPS0",
-                observations=[0, 1, 2, 3],
-                actions=[1, 2, 3],
-                rewards=[1.0, 2.0, 3.0],
-            )
-            ConnectorV2.add_batch_item(batch, "test_col", 5, episode)
-            ConnectorV2.add_batch_item(batch, "test_col", 6, episode)
-            ConnectorV2.add_batch_item(batch, "test_col_2", -10, episode)
-            check(batch, {
-                "test_col": {("SA-EPS0",): [5, 6]},
-                "test_col_2": {("SA-EPS0",): [-10]},
-            })
-
-            # 3) Multi-agent case (SingleAgentEpisode provided that has `agent_id` and
-            # `module_id` information) -> Store data in a list under the keys:
-            # `column` -> `(<episodeID>,<AgentID>,<ModuleID>)` -> [...]:
-            batch = {}
-            ma_episode = MultiAgentEpisode(
-                id_="MA-EPS1",
-                observations=[
-                    {"ag0": 0, "ag1": 1}, {"ag0": 2, "ag1": 4}
-                ],
-                actions=[{"ag0": 0, "ag1": 1}],
-                rewards=[{"ag0": -0.1, "ag1": -0.2}],
-                # ag0 maps to mod0, ag1 maps to mod1, etc..
-                agent_to_module_mapping_fn=lambda aid, eps: f"mod{aid[2:]}",
-            )
-            ConnectorV2.add_batch_item(
-                batch,
-                "test_col",
-                item_to_add=5,
-                single_agent_episode=ma_episode.agent_episodes["ag0"],
-            )
-            ConnectorV2.add_batch_item(
-                batch,
-                "test_col",
-                item_to_add=6,
-                single_agent_episode=ma_episode.agent_episodes["ag0"],
-            )
-            ConnectorV2.add_batch_item(
-                batch,
-                "test_col_2",
-                item_to_add=10,
-                single_agent_episode=ma_episode.agent_episodes["ag1"],
-            )
-            check(
-                batch,
-                {
-                    "test_col": {("MA-EPS1", "ag0", "mod0"): [5, 6]},
-                    "test_col_2": {("MA-EPS1", "ag1", "mod1"): [10]},
-                },
-            )
+        Examples:
+            >>> from ray.rllib.connectors.connector_v2 import ConnectorV2
+            >>> from ray.rllib.env.multi_agent_episode import MultiAgentEpisode
+            >>> from ray.rllib.env.single_agent_episode import SingleAgentEpisode
+            >>> from ray.rllib.utils.test_utils import check
+            >>> # 1) Simple case (no episodes provided) -> Store data in a list directly
+            >>> # under `column`:
+            >>> batch = {}
+            >>> ConnectorV2.add_batch_item(batch, "test_col", item_to_add=5)
+            >>> ConnectorV2.add_batch_item(batch, "test_col", item_to_add=6)
+            >>> check(batch, {"test_col": [5, 6]})
+            >>> ConnectorV2.add_batch_item(batch, "test_col_2", item_to_add=-10)
+            >>> check(batch, {
+            ...     "test_col": [5, 6],
+            ...     "test_col_2": [-10],
+            ... })
+            >>> # 2) Single-agent case (SingleAgentEpisode provided) -> Store data in a list
+            >>> # under the keys: `column` -> `(<eps_id>,)` -> [...]:
+            >>> batch = {}
+            >>> episode = SingleAgentEpisode(
+            ...     id_="SA-EPS0",
+            ...     observations=[0, 1, 2, 3],
+            ...     actions=[1, 2, 3],
+            ...     rewards=[1.0, 2.0, 3.0],
+            ... )
+            >>> ConnectorV2.add_batch_item(batch, "test_col", 5, episode)
+            >>> ConnectorV2.add_batch_item(batch, "test_col", 6, episode)
+            >>> ConnectorV2.add_batch_item(batch, "test_col_2", -10, episode)
+            >>> check(batch, {
+            ...     "test_col": {("SA-EPS0",): [5, 6]},
+            ...     "test_col_2": {("SA-EPS0",): [-10]},
+            ... })
+            >>> # 3) Multi-agent case (SingleAgentEpisode provided that has `agent_id` and
+            >>> # `module_id` information) -> Store data in a list under the keys:
+            >>> # `column` -> `(<episodeID>,<AgentID>,<ModuleID>)` -> [...]:
+            >>> batch = {}
+            >>> ma_episode = MultiAgentEpisode(
+            ...     id_="MA-EPS1",
+            ...     observations=[
+            ...         {"ag0": 0, "ag1": 1}, {"ag0": 2, "ag1": 4}
+            ...     ],
+            ...     actions=[{"ag0": 0, "ag1": 1}],
+            ...     rewards=[{"ag0": -0.1, "ag1": -0.2}],
+            ...     # ag0 maps to mod0, ag1 maps to mod1, etc..
+            ...     agent_to_module_mapping_fn=lambda aid, eps: f"mod{aid[2:]}",
+            ... )
+            >>> ConnectorV2.add_batch_item(
+            ...     batch,
+            ...     "test_col",
+            ...     item_to_add=5,
+            ...     single_agent_episode=ma_episode.agent_episodes["ag0"],
+            ... )
+            >>> ConnectorV2.add_batch_item(
+            ...     batch,
+            ...     "test_col",
+            ...     item_to_add=6,
+            ...     single_agent_episode=ma_episode.agent_episodes["ag0"],
+            ... )
+            >>> ConnectorV2.add_batch_item(
+            ...     batch,
+            ...     "test_col_2",
+            ...     item_to_add=10,
+            ...     single_agent_episode=ma_episode.agent_episodes["ag1"],
+            ... )
+            >>> check(
+            ...     batch,
+            ...     {
+            ...         "test_col": {("MA-EPS1", "ag0", "mod0"): [5, 6]},
+            ...         "test_col_2": {("MA-EPS1", "ag1", "mod1"): [10]},
+            ...     },
+            ... )
 
         Args:
             batch: The batch to store `item_to_add` in.
@@ -549,116 +540,111 @@ class ConnectorV2(Checkpointable, abc.ABC):
         If `single_agent_episode` is not provided, will append `items_to_add` to a list
         directly under `column`.
 
-        .. testcode::
-
-            import numpy as np
-
-            from ray.rllib.connectors.connector_v2 import ConnectorV2
-            from ray.rllib.env.multi_agent_episode import MultiAgentEpisode
-            from ray.rllib.env.single_agent_episode import SingleAgentEpisode
-            from ray.rllib.utils.test_utils import check
-
-            # Simple case (no episodes provided) -> Store data in a list directly under
-            # `column`:
-            batch = {}
-            ConnectorV2.add_n_batch_items(
-                batch,
-                "test_col",
-                # List of (complex) structs.
-                [{"a": np.array(3), "b": 4}, {"a": np.array(5), "b": 6}],
-                num_items=2,
-            )
-            check(
-                batch["test_col"],
-                [{"a": np.array(3), "b": 4}, {"a": np.array(5), "b": 6}],
-            )
-            # In a new column (test_col_2), store some already batched items.
-            # This way, you may avoid having to disassemble an already batched item
-            # (e.g. a numpy array of shape (10, 2)) into its individual items (e.g.
-            # split the array into a list of len=10) and then adding these individually.
-            # The performance gains may be quite large when providing already batched
-            # items (such as numpy arrays with a batch dim):
-            ConnectorV2.add_n_batch_items(
-                batch,
-                "test_col_2",
-                # One (complex) already batched struct.
-                {"a": np.array([3, 5]), "b": np.array([4, 6])},
-                num_items=2,
-            )
-            # Add more already batched items (this time with a different batch size)
-            ConnectorV2.add_n_batch_items(
-                batch,
-                "test_col_2",
-                {"a": np.array([7, 7, 7]), "b": np.array([8, 8, 8])},
-                num_items=3,  # <- in this case, this must be the batch size
-            )
-            check(
-                batch["test_col_2"],
-                [
-                    {"a": np.array([3, 5]), "b": np.array([4, 6])},
-                    {"a": np.array([7, 7, 7]), "b": np.array([8, 8, 8])},
-                ],
-            )
-
-            # Single-agent case (SingleAgentEpisode provided) -> Store data in a list
-            # under the keys: `column` -> `(<eps_id>,)`:
-            batch = {}
-            episode = SingleAgentEpisode(
-                id_="SA-EPS0",
-                observations=[0, 1, 2, 3],
-                actions=[1, 2, 3],
-                rewards=[1.0, 2.0, 3.0],
-            )
-            ConnectorV2.add_n_batch_items(
-                batch=batch,
-                column="test_col",
-                items_to_add=[5, 6, 7],
-                num_items=3,
-                single_agent_episode=episode,
-            )
-            check(batch, {
-                "test_col": {("SA-EPS0",): [5, 6, 7]},
-            })
-
-            # Multi-agent case (SingleAgentEpisode provided that has `agent_id` and
-            # `module_id` information) -> Store data in a list under the keys:
-            # `column` -> `(<episodeID>,<AgentID>,<ModuleID>)`:
-            batch = {}
-            ma_episode = MultiAgentEpisode(
-                id_="MA-EPS1",
-                observations=[
-                    {"ag0": 0, "ag1": 1}, {"ag0": 2, "ag1": 4}
-                ],
-                actions=[{"ag0": 0, "ag1": 1}],
-                rewards=[{"ag0": -0.1, "ag1": -0.2}],
-                # ag0 maps to mod0, ag1 maps to mod1, etc..
-                agent_to_module_mapping_fn=lambda aid, eps: f"mod{aid[2:]}",
-            )
-            ConnectorV2.add_batch_item(
-                batch,
-                "test_col",
-                item_to_add=5,
-                single_agent_episode=ma_episode.agent_episodes["ag0"],
-            )
-            ConnectorV2.add_batch_item(
-                batch,
-                "test_col",
-                item_to_add=6,
-                single_agent_episode=ma_episode.agent_episodes["ag0"],
-            )
-            ConnectorV2.add_batch_item(
-                batch,
-                "test_col_2",
-                item_to_add=10,
-                single_agent_episode=ma_episode.agent_episodes["ag1"],
-            )
-            check(
-                batch,
-                {
-                    "test_col": {("MA-EPS1", "ag0", "mod0"): [5, 6]},
-                    "test_col_2": {("MA-EPS1", "ag1", "mod1"): [10]},
-                },
-            )
+        Examples:
+            >>> import numpy as np
+            >>> from ray.rllib.connectors.connector_v2 import ConnectorV2
+            >>> from ray.rllib.env.multi_agent_episode import MultiAgentEpisode
+            >>> from ray.rllib.env.single_agent_episode import SingleAgentEpisode
+            >>> from ray.rllib.utils.test_utils import check
+            >>> # Simple case (no episodes provided) -> Store data in a list directly under
+            >>> # `column`:
+            >>> batch = {}
+            >>> ConnectorV2.add_n_batch_items(
+            ...     batch,
+            ...     "test_col",
+            ...     # List of (complex) structs.
+            ...     [{"a": np.array(3), "b": 4}, {"a": np.array(5), "b": 6}],
+            ...     num_items=2,
+            ... )
+            >>> check(
+            ...     batch["test_col"],
+            ...     [{"a": np.array(3), "b": 4}, {"a": np.array(5), "b": 6}],
+            ... )
+            >>> # In a new column (test_col_2), store some already batched items.
+            >>> # This way, you may avoid having to disassemble an already batched item
+            >>> # (e.g. a numpy array of shape (10, 2)) into its individual items (e.g.
+            >>> # split the array into a list of len=10) and then adding these individually.
+            >>> # The performance gains may be quite large when providing already batched
+            >>> # items (such as numpy arrays with a batch dim):
+            >>> ConnectorV2.add_n_batch_items(
+            ...     batch,
+            ...     "test_col_2",
+            ...     # One (complex) already batched struct.
+            ...     {"a": np.array([3, 5]), "b": np.array([4, 6])},
+            ...     num_items=2,
+            ... )
+            >>> # Add more already batched items (this time with a different batch size)
+            >>> ConnectorV2.add_n_batch_items(
+            ...     batch,
+            ...     "test_col_2",
+            ...     {"a": np.array([7, 7, 7]), "b": np.array([8, 8, 8])},
+            ...     num_items=3,  # <- in this case, this must be the batch size
+            ... )
+            >>> check(
+            ...     batch["test_col_2"],
+            ...     [
+            ...         {"a": np.array([3, 5]), "b": np.array([4, 6])},
+            ...         {"a": np.array([7, 7, 7]), "b": np.array([8, 8, 8])},
+            ...     ],
+            ... )
+            >>> # Single-agent case (SingleAgentEpisode provided) -> Store data in a list
+            >>> # under the keys: `column` -> `(<eps_id>,)`:
+            >>> batch = {}
+            >>> episode = SingleAgentEpisode(
+            ...     id_="SA-EPS0",
+            ...     observations=[0, 1, 2, 3],
+            ...     actions=[1, 2, 3],
+            ...     rewards=[1.0, 2.0, 3.0],
+            ... )
+            >>> ConnectorV2.add_n_batch_items(
+            ...     batch=batch,
+            ...     column="test_col",
+            ...     items_to_add=[5, 6, 7],
+            ...     num_items=3,
+            ...     single_agent_episode=episode,
+            ... )
+            >>> check(batch, {
+            ...     "test_col": {("SA-EPS0",): [5, 6, 7]},
+            ... })
+            >>> # Multi-agent case (SingleAgentEpisode provided that has `agent_id` and
+            >>> # `module_id` information) -> Store data in a list under the keys:
+            >>> # `column` -> `(<episodeID>,<AgentID>,<ModuleID>)`:
+            >>> batch = {}
+            >>> ma_episode = MultiAgentEpisode(
+            ...     id_="MA-EPS1",
+            ...     observations=[
+            ...         {"ag0": 0, "ag1": 1}, {"ag0": 2, "ag1": 4}
+            ...     ],
+            ...     actions=[{"ag0": 0, "ag1": 1}],
+            ...     rewards=[{"ag0": -0.1, "ag1": -0.2}],
+            ...     # ag0 maps to mod0, ag1 maps to mod1, etc..
+            ...     agent_to_module_mapping_fn=lambda aid, eps: f"mod{aid[2:]}",
+            ... )
+            >>> ConnectorV2.add_batch_item(
+            ...     batch,
+            ...     "test_col",
+            ...     item_to_add=5,
+            ...     single_agent_episode=ma_episode.agent_episodes["ag0"],
+            ... )
+            >>> ConnectorV2.add_batch_item(
+            ...     batch,
+            ...     "test_col",
+            ...     item_to_add=6,
+            ...     single_agent_episode=ma_episode.agent_episodes["ag0"],
+            ... )
+            >>> ConnectorV2.add_batch_item(
+            ...     batch,
+            ...     "test_col_2",
+            ...     item_to_add=10,
+            ...     single_agent_episode=ma_episode.agent_episodes["ag1"],
+            ... )
+            >>> check(
+            ...     batch,
+            ...     {
+            ...         "test_col": {("MA-EPS1", "ag0", "mod0"): [5, 6]},
+            ...         "test_col_2": {("MA-EPS1", "ag1", "mod1"): [10]},
+            ...     },
+            ... )
 
         Args:
             batch: The batch to store n `items_to_add` in.
@@ -761,82 +747,77 @@ class ConnectorV2(Checkpointable, abc.ABC):
                 item.
             func: The function to call on each item or tuple of item(s).
 
-        .. testcode::
-
-            from ray.rllib.connectors.connector_v2 import ConnectorV2
-            from ray.rllib.utils.test_utils import check
-
-            # Simple case: Batch items are in lists directly under their column names.
-            batch = {
-                "col1": [0, 1, 2, 3],
-                "col2": [0, -1, -2, -3],
-            }
-            # Increase all ints by 1.
-            ConnectorV2.foreach_batch_item_change_in_place(
-                batch=batch,
-                column="col1",
-                func=lambda item, *args: item + 1,
-            )
-            check(batch["col1"], [1, 2, 3, 4])
-
-            # Further increase all ints by 1 in col1 and flip sign in col2.
-            ConnectorV2.foreach_batch_item_change_in_place(
-                batch=batch,
-                column=["col1", "col2"],
-                func=(lambda items, *args: (items[0] + 1, -items[1])),
-            )
-            check(batch["col1"], [2, 3, 4, 5])
-            check(batch["col2"], [0, 1, 2, 3])
-
-            # Single-agent case: Batch items are in lists under (eps_id,)-keys in a dict
-            # under their column names.
-            batch = {
-                "col1": {
-                    ("eps1",): [0, 1, 2, 3],
-                    ("eps2",): [400, 500, 600],
-                },
-            }
-            # Increase all ints of eps1 by 1 and divide all ints of eps2 by 100.
-            ConnectorV2.foreach_batch_item_change_in_place(
-                batch=batch,
-                column="col1",
-                func=lambda item, eps_id, *args: (
-                    item + 1 if eps_id == "eps1" else item / 100
-                ),
-            )
-            check(batch["col1"], {
-                ("eps1",): [1, 2, 3, 4],
-                ("eps2",): [4, 5, 6],
-            })
-
-            # Multi-agent case: Batch items are in lists under
-            # (eps_id, agent_id, module_id)-keys in a dict
-            # under their column names.
-            batch = {
-                "col1": {
-                    ("eps1", "ag1", "mod1"): [1, 2, 3, 4],
-                    ("eps2", "ag1", "mod2"): [400, 500, 600],
-                    ("eps2", "ag2", "mod3"): [-1, -2, -3, -4, -5],
-                },
-            }
-            # Decrease all ints of "eps1" by 1, divide all ints of "mod2" by 100, and
-            # flip sign of all ints of "ag2".
-            ConnectorV2.foreach_batch_item_change_in_place(
-                batch=batch,
-                column="col1",
-                func=lambda item, eps_id, ag_id, mod_id: (
-                    item - 1
-                    if eps_id == "eps1"
-                    else item / 100
-                    if mod_id == "mod2"
-                    else -item
-                ),
-            )
-            check(batch["col1"], {
-                ("eps1", "ag1", "mod1"): [0, 1, 2, 3],
-                ("eps2", "ag1", "mod2"): [4, 5, 6],
-                ("eps2", "ag2", "mod3"): [1, 2, 3, 4, 5],
-            })
+        Examples:
+            >>> from ray.rllib.connectors.connector_v2 import ConnectorV2
+            >>> from ray.rllib.utils.test_utils import check
+            >>> # Simple case: Batch items are in lists directly under their column names.
+            >>> batch = {
+            ...     "col1": [0, 1, 2, 3],
+            ...     "col2": [0, -1, -2, -3],
+            ... }
+            >>> # Increase all ints by 1.
+            >>> ConnectorV2.foreach_batch_item_change_in_place(
+            ...     batch=batch,
+            ...     column="col1",
+            ...     func=lambda item, *args: item + 1,
+            ... )
+            >>> check(batch["col1"], [1, 2, 3, 4])
+            >>> # Further increase all ints by 1 in col1 and flip sign in col2.
+            >>> ConnectorV2.foreach_batch_item_change_in_place(
+            ...     batch=batch,
+            ...     column=["col1", "col2"],
+            ...     func=(lambda items, *args: (items[0] + 1, -items[1])),
+            ... )
+            >>> check(batch["col1"], [2, 3, 4, 5])
+            >>> check(batch["col2"], [0, 1, 2, 3])
+            >>> # Single-agent case: Batch items are in lists under (eps_id,)-keys in a dict
+            >>> # under their column names.
+            >>> batch = {
+            ...     "col1": {
+            ...         ("eps1",): [0, 1, 2, 3],
+            ...         ("eps2",): [400, 500, 600],
+            ...     },
+            ... }
+            >>> # Increase all ints of eps1 by 1 and divide all ints of eps2 by 100.
+            >>> ConnectorV2.foreach_batch_item_change_in_place(
+            ...     batch=batch,
+            ...     column="col1",
+            ...     func=lambda item, eps_id, *args: (
+            ...         item + 1 if eps_id == "eps1" else item / 100
+            ...     ),
+            ... )
+            >>> check(batch["col1"], {
+            ...     ("eps1",): [1, 2, 3, 4],
+            ...     ("eps2",): [4, 5, 6],
+            ... })
+            >>> # Multi-agent case: Batch items are in lists under
+            >>> # (eps_id, agent_id, module_id)-keys in a dict
+            >>> # under their column names.
+            >>> batch = {
+            ...     "col1": {
+            ...         ("eps1", "ag1", "mod1"): [1, 2, 3, 4],
+            ...         ("eps2", "ag1", "mod2"): [400, 500, 600],
+            ...         ("eps2", "ag2", "mod3"): [-1, -2, -3, -4, -5],
+            ...     },
+            ... }
+            >>> # Decrease all ints of "eps1" by 1, divide all ints of "mod2" by 100, and
+            >>> # flip sign of all ints of "ag2".
+            >>> ConnectorV2.foreach_batch_item_change_in_place(
+            ...     batch=batch,
+            ...     column="col1",
+            ...     func=lambda item, eps_id, ag_id, mod_id: (
+            ...         item - 1
+            ...         if eps_id == "eps1"
+            ...         else item / 100
+            ...         if mod_id == "mod2"
+            ...         else -item
+            ...     ),
+            ... )
+            >>> check(batch["col1"], {
+            ...     ("eps1", "ag1", "mod1"): [0, 1, 2, 3],
+            ...     ("eps2", "ag1", "mod2"): [4, 5, 6],
+            ...     ("eps2", "ag2", "mod3"): [1, 2, 3, 4, 5],
+            ... })
         """
         data_to_process = [batch.get(c) for c in force_list(column)]
         single_col = isinstance(column, str)
@@ -897,22 +878,20 @@ class ConnectorV2(Checkpointable, abc.ABC):
         will have these two reversed and thus map ModuleIDs to dicts mapping column
         names to data items.
 
-        .. testcode::
-
-            from ray.rllib.utils.test_utils import check
-
-            batch = {
-                "obs": {"module_0": [1, 2, 3]},
-                "actions": {"module_0": [4, 5, 6], "module_1": [7]},
-            }
-            switched_batch = ConnectorV2.switch_batch_from_column_to_module_ids(batch)
-            check(
-                switched_batch,
-                {
-                    "module_0": {"obs": [1, 2, 3], "actions": [4, 5, 6]},
-                    "module_1": {"actions": [7]},
-                },
-            )
+        Examples:
+            >>> from ray.rllib.utils.test_utils import check
+            >>> batch = {
+            ...     "obs": {"module_0": [1, 2, 3]},
+            ...     "actions": {"module_0": [4, 5, 6], "module_1": [7]},
+            ... }
+            >>> switched_batch = ConnectorV2.switch_batch_from_column_to_module_ids(batch)
+            >>> check(
+            ...     switched_batch,
+            ...     {
+            ...         "module_0": {"obs": [1, 2, 3], "actions": [4, 5, 6]},
+            ...         "module_1": {"actions": [7]},
+            ...     },
+            ... )
 
         Args:
             batch: The batch to switch from being column name based (then ModuleIDs)

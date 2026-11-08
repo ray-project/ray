@@ -1,0 +1,15 @@
+load("@rules_python//python:defs.bzl", "py_test")
+load("//bazel:ci_require.bzl", "ci_require")
+
+py_test(
+    name = "test_run_hive_integration",
+    size = "small",
+    srcs = ["test_run_hive_integration.py"],
+    data = ["run_hive_integration.sh"],
+    exec_compatible_with = ["//bazel:py3"],
+    tags = [
+        "ci_unit",
+        "team:ci",
+    ],
+    deps = [ci_require("pytest")],
+)

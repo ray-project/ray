@@ -18,7 +18,10 @@ import pytest
 from starlette.datastructures import Headers
 from transformers import AutoTokenizer
 from vllm.entrypoints.anthropic.protocol import AnthropicMessagesRequest
-from vllm.entrypoints.anthropic.serving import AnthropicServingMessages
+from vllm.entrypoints.anthropic.serving import (
+    AnthropicServingMessages,
+    DisabledThinkingEffortResolver,
+)
 from vllm.renderers.inputs.preprocess import extract_prompt_components
 
 from ray.llm._internal.serve.core.configs.llm_config import LLMConfig
@@ -173,6 +176,28 @@ class TestChatExactness:
         expected = _hf_chat_ids(hf_tokenizer, messages, enable_thinking=False)
         assert ids == expected
         assert ids != _hf_chat_ids(hf_tokenizer, messages)
+
+    async def test_reasoning_effort_map_is_applied(self, hf_tokenizer):
+        """Forwarded prompt tokens replace the engine's chat rendering, so the
+        router must apply the deployment's reasoning_effort_map like vLLM does."""
+        tokenizer = _build_tokenizer(
+            # Print the effort so a rewrite is visible in the rendered prompt.
+            chat_template="{{ reasoning_effort }}" + hf_tokenizer.chat_template,
+            reasoning_effort_map={"medium": "low"},
+        )
+
+        async def tokenize(effort):
+            return await tokenizer.tokenize(
+                {
+                    "model": "test-model",
+                    "messages": [{"role": "user", "content": "2+2?"}],
+                    "reasoning_effort": effort,
+                },
+                request_path="/v1/chat/completions",
+            )
+
+        assert await tokenize("medium") == await tokenize("low")
+        assert await tokenize("medium") != await tokenize("high")
 
     async def test_untrusted_request_chat_template_is_refused(self, tokenizer):
         """/tokenize refuses request-supplied chat templates unless the server
@@ -329,22 +354,24 @@ class TestAnthropicMessagesExactness:
             + hf_tokenizer.chat_template,
             anthropic_disabled_thinking_effort=effort,
         )
-        # Compute the expected effort with the native serving helper rather
-        # than copying the router's result.
-        serving = AnthropicServingMessages.__new__(AnthropicServingMessages)
-        serving.model_config = tokenizer._model_config
-        serving.online_renderer = tokenizer._renderer
-        serving._disabled_thinking_effort = None if effort == "auto" else effort
-        engine_effort = await serving._get_disabled_thinking_effort()
-        assert engine_effort == expected_effort
         body = {
             "model": "test-model",
             "max_tokens": 16,
             "messages": [{"role": "user", "content": "Hi."}],
             "thinking": {"type": "disabled"},
         }
+        anthropic_request = AnthropicMessagesRequest.model_validate(body)
+        # Compute the expected effort with the native serving resolver rather
+        # than copying the router's result.
+        engine_effort = await DisabledThinkingEffortResolver(
+            tokenizer._renderer, effort
+        ).resolve_for(anthropic_request)
+        assert engine_effort == expected_effort
+        serving = AnthropicServingMessages.__new__(AnthropicServingMessages)
+        serving.model_config = tokenizer._model_config
+        serving.online_renderer = tokenizer._renderer
         chat_request = serving.to_chat_completion_request(
-            AnthropicMessagesRequest.model_validate(body),
+            anthropic_request,
             disabled_thinking_effort=engine_effort,
         )
         _, (prompt,) = await serving.online_renderer.render_chat(chat_request)
@@ -450,13 +477,15 @@ class TestAnthropicMessagesExactness:
                 anthropic_tokenizer._renderer
             )
         )
+        serving.disabled_thinking_effort_resolver = DisabledThinkingEffortResolver(
+            anthropic_tokenizer._renderer
+        )
         if disabled_thinking:
-            serving.model_config = anthropic_tokenizer._model_config
-            serving.online_renderer = anthropic_tokenizer._renderer
-            serving._disabled_thinking_effort = None
             # Exclude effort-probe renders from the count below, which checks
             # whether staged token IDs avoid rendering the actual request.
-            await serving._get_disabled_thinking_effort()
+            await serving.disabled_thinking_effort_resolver.resolve_for(
+                AnthropicMessagesRequest.model_validate(body)
+            )
 
         render = AsyncMock(
             wraps=anthropic_tokenizer._renderer.renderer.render_chat_async
