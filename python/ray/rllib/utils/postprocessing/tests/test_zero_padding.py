@@ -3,7 +3,7 @@ import unittest
 import numpy as np
 
 from ray.rllib.utils.postprocessing.zero_padding import split_and_zero_pad
-from ray.rllib.utils.spaces.space_utils import BatchedNdArray
+from ray.rllib.utils.spaces.space_utils import BatchedNdArray, batch
 
 
 class TestZeroPadding(unittest.TestCase):
@@ -33,6 +33,10 @@ class TestZeroPadding(unittest.TestCase):
                     np.testing.assert_array_equal(actual_chunk, expected_chunk)
                     self.assertEqual(actual_chunk.dtype, values.dtype)
                     self.assertFalse(np.shares_memory(actual_chunk, item))
+                np.testing.assert_array_equal(
+                    batch(actual, individual_items_already_have_batch_dim="auto"),
+                    np.stack(expected),
+                )
 
     def test_multiple_batched_arrays(self):
         actual = split_and_zero_pad(
