@@ -199,10 +199,24 @@ def _derived_statistics_predicate(expr: Expr, schema: pa.Schema) -> Expr | None:
 
             # Positive integer addition cannot turn a value below this bound
             # into a match, even if addition overflows at the upper end.
-            if idx >= 0 and pa.types.is_signed_integer(schema.field(idx).type):
-                bit_width = schema.field(idx).type.bit_width
-                min_value = -(1 << (bit_width - 1))
-                max_value = (1 << (bit_width - 1)) - 1
+            value_type = schema.field(idx).type if idx >= 0 else None
+
+            # Mixed signed/unsigned kernels can narrow uint64 to int64.
+            # Keep uint64 conservative until its cast semantics are modeled.
+            if value_type is not None and (
+                pa.types.is_signed_integer(value_type)
+                or (
+                    pa.types.is_unsigned_integer(value_type)
+                    and value_type.bit_width < 64
+                )
+            ):
+                bit_width = value_type.bit_width
+                if pa.types.is_signed_integer(value_type):
+                    min_value = -(1 << (bit_width - 1))
+                    max_value = (1 << (bit_width - 1)) - 1
+                else:
+                    min_value = 0
+                    max_value = (1 << bit_width) - 1
 
                 if (
                     type(offset) is int
@@ -469,6 +483,7 @@ class FooterReader:
         # which a file with no row groups has none of; it sizes nothing either way.
         original_filter = self.filter
         pruning_filter = original_filter
+        derived_filter_applied = False
         if self.filter_expr is not None:
             try:
                 derived = _derived_statistics_predicate(
@@ -476,6 +491,7 @@ class FooterReader:
                 )
                 if derived is not None:
                     pruning_filter = derived.to_pyarrow()
+                    derived_filter_applied = True
             except Exception as e:
                 logger.debug(
                     "Could not derive a Parquet statistics predicate: %s",
@@ -508,8 +524,12 @@ class FooterReader:
             # skip anyway. Each returned fragment views a single surviving group.
             # Fail closed on any split error -- keep every group -- so a type
             # mismatch or similar cannot abort the rest of the read_footers batch.
-            surviving: list[int] | None = self._try_split_by_row_group(
-                fragment, pruning_filter, path
+            # Unsupported float predicates, including negations, can
+            # match NaNs that Parquet min/max statistics do not record.
+            surviving: list[int] | None = (
+                None
+                if filter_leaves.has_float_leaf and not derived_filter_applied
+                else self._try_split_by_row_group(fragment, pruning_filter, path)
             )
             rg_indices: Iterable[int] = (
                 unprocessed_rg_ids if surviving is None else surviving
