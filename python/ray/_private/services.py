@@ -890,6 +890,7 @@ def start_ray_process(
     stdout_file: Optional[IO[AnyStr]] = None,
     stderr_file: Optional[IO[AnyStr]] = None,
     pipe_stdin: bool = False,
+    avoid_preexec_fn: bool = False,
 ):
     """Start one of the Ray processes.
 
@@ -921,6 +922,7 @@ def start_ray_process(
             no redirection should happen, then this should be None.
         pipe_stdin: If true, subprocess.PIPE will be passed to the process as
             stdin.
+        avoid_preexec_fn: If true, start the process without a preexec_fn
 
     Returns:
         Information about the process that was started including a handle to
@@ -1033,6 +1035,11 @@ def start_ray_process(
         # version, and tmux 2.1)
         command = ["tmux", "new-session", "-d", f"{' '.join(command)}"]
 
+    avoid_preexec_fn = avoid_preexec_fn and sys.platform != "win32"
+    assert not (
+        avoid_preexec_fn and fate_share
+    ), "kernel-level fate-sharing is set up in preexec_fn"
+
     if fate_share:
         assert ray._private.utils.detect_fate_sharing_support(), (
             "kernel-level fate-sharing must only be specified if "
@@ -1064,16 +1071,24 @@ def start_ray_process(
                 f"got {total_chrs}"
             )
 
-    process = ConsolePopen(
-        command,
-        env=modified_env,
-        cwd=cwd,
-        stdout=stdout_file,
-        stderr=stderr_file,
-        stdin=subprocess.PIPE if pipe_stdin else None,
-        preexec_fn=preexec_fn if sys.platform != "win32" else None,
-        creationflags=CREATE_SUSPENDED if win32_fate_sharing else 0,
-    )
+    if avoid_preexec_fn:
+        old_sigmask = signal.pthread_sigmask(signal.SIG_BLOCK, {signal.SIGINT})
+    try:
+        process = ConsolePopen(
+            command,
+            env=modified_env,
+            cwd=cwd,
+            stdout=stdout_file,
+            stderr=stderr_file,
+            stdin=subprocess.PIPE if pipe_stdin else None,
+            preexec_fn=preexec_fn
+            if sys.platform != "win32" and not avoid_preexec_fn
+            else None,
+            creationflags=CREATE_SUSPENDED if win32_fate_sharing else 0,
+        )
+    finally:
+        if avoid_preexec_fn:
+            signal.pthread_sigmask(signal.SIG_SETMASK, old_sigmask)
 
     if win32_fate_sharing:
         try:
@@ -2515,13 +2530,25 @@ def start_ray_client_server(
     if node_id:
         command.append(f"--node-id={node_id}")
 
+    # Specific servers are spawned by the proxier, a multi-threaded gRPC
+    # server. A preexec_fn would run Python code in a forked copy of the
+    # proxier, which can crash on gRPC state that other threads were in the
+    # middle of changing. Without the preexec_fn there is no kernel
+    # fate-sharing; instead the server exits when the proxier dies and its end
+    # of the stdin pipe closes.
+    avoid_preexec_fn = server_type == "specific-server" and sys.platform != "win32"
+    if avoid_preexec_fn:
+        command.append("--exit-on-stdin-eof")
+
     process_info = start_ray_process(
         command,
         ray_constants.PROCESS_TYPE_RAY_CLIENT_SERVER,
         stdout_file=stdout_file,
         stderr_file=stderr_file,
-        fate_share=fate_share,
+        fate_share=fate_share and not avoid_preexec_fn,
         env_updates=env_updates,
+        pipe_stdin=avoid_preexec_fn,
+        avoid_preexec_fn=avoid_preexec_fn,
     )
     return process_info
 

@@ -1,6 +1,7 @@
 import json
 import os
 import random
+import signal
 import sys
 import time
 from glob import glob
@@ -80,6 +81,30 @@ def test_proxy_manager_lifecycle(shutdown_only):
 
     assert len(pm._free_ports) == 2
     assert pm._get_unused_port() == free_ports[1]
+
+
+@pytest.mark.skipif(sys.platform != "linux", reason="Reads the signal mask from /proc.")
+def test_specific_server_spawned_without_fork(shutdown_only):
+    """
+    Specific servers are spawned without a preexec_fn so that the
+    multi-threaded proxier does not fork. Check that the server still blocks
+    SIGINT and that it exits once its stdin pipe from the proxier closes, which
+    is what happens when the proxier dies.
+    """
+    pm, _ = start_ray_and_proxy_manager(n_ports=1)
+    client = "client1"
+
+    pm.create_specific_server(client)
+    assert pm.start_specific_server(client, JobConfig())
+    grpc.channel_ready_future(pm.get_channel(client)).result(timeout=5)
+    process = pm._get_server_for_client(client).process_handle_future.result().process
+
+    with open(f"/proc/{process.pid}/status") as f:
+        sig_blk = next(line for line in f if line.startswith("SigBlk:"))
+    assert int(sig_blk.split()[1], 16) & (1 << (signal.SIGINT - 1))
+
+    process.stdin.close()
+    process.wait(10)
 
 
 @pytest.mark.skipif(

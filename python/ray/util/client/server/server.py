@@ -8,6 +8,7 @@ import math
 import os
 import pickle
 import queue
+import sys
 import threading
 import time
 from collections import defaultdict
@@ -858,6 +859,17 @@ def try_create_gcs_client(address: Optional[str]) -> Optional[GcsClient]:
     return GcsClient(address=address)
 
 
+def _exit_on_stdin_eof():
+    """Exits once stdin hits EOF, i.e. the parent died.
+
+    Exits immediately, like the kernel fate-sharing it replaces, since a
+    graceful shutdown can hang when the rest of the cluster is gone too.
+    """
+    sys.stdin.buffer.read()
+    logger.info("stdin closed, exiting because the parent process exited.")
+    os._exit(1)
+
+
 def main():
     import argparse
 
@@ -898,6 +910,12 @@ def main():
         default=None,
         help="The hex ID of this node.",
     )
+    parser.add_argument(
+        "--exit-on-stdin-eof",
+        action="store_true",
+        help="Shut down when stdin is closed. The parent passes a pipe as stdin "
+        "so that this server exits when the parent dies.",
+    )
     args, _ = parser.parse_known_args()
     redis_password = os.environ.get(ray_constants.RAY_REDIS_PASSWORD_ENV)
     setup_logger(ray_constants.LOGGER_LEVEL, ray_constants.LOGGER_FORMAT)
@@ -921,6 +939,9 @@ def main():
         )
     else:
         server = serve(args.host, args.port, ray_connect_handler)
+
+    if args.exit_on_stdin_eof:
+        threading.Thread(target=_exit_on_stdin_eof, daemon=True).start()
 
     try:
         idle_checks_remaining = TIMEOUT_FOR_SPECIFIC_SERVER_S
