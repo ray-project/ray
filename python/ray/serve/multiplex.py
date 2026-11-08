@@ -51,6 +51,15 @@ def _subclass_without_del(cls: type) -> type:
     return subclass
 
 
+def _log_del_failure(model_id: str, future: asyncio.Future) -> None:
+    """Log an exception raised by a model's `__del__` that nothing awaited."""
+    if not future.cancelled() and future.exception() is not None:
+        logger.error(
+            f"Failed to unload model '{model_id}' after the request was cancelled.",
+            exc_info=future.exception(),
+        )
+
+
 def _skip_del_on_collection(model: Any) -> None:
     """Keep Python from calling `model.__del__` again when `model` is collected.
 
@@ -309,9 +318,18 @@ class _ModelMultiplexWrapper:
                     # Shield the call so that cancelling the request does not
                     # cancel a `__del__` still queued in the executor, which
                     # the swap below would then keep from ever running.
-                    await asyncio.shield(
-                        asyncio.get_running_loop().run_in_executor(None, model.__del__)
+                    del_future = asyncio.get_running_loop().run_in_executor(
+                        None, model.__del__
                     )
+                    try:
+                        await asyncio.shield(del_future)
+                    except asyncio.CancelledError:
+                        # Nothing awaits `__del__` after the cancellation, so
+                        # log its failure here.
+                        del_future.add_done_callback(
+                            lambda future: _log_del_failure(model_id, future)
+                        )
+                        raise
                 else:
                     await model.__del__()
             finally:

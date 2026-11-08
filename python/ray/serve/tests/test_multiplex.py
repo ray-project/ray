@@ -15,6 +15,7 @@ import ray
 from ray import serve
 from ray._common.test_utils import SignalActor, wait_for_condition
 from ray._common.utils import get_or_create_event_loop
+from ray.serve import multiplex
 from ray.serve._private.common import DeploymentID, ReplicaID
 from ray.serve._private.config import DeploymentConfig
 from ray.serve._private.constants import SERVE_MULTIPLEXED_MODEL_ID
@@ -264,6 +265,64 @@ class TestMultiplexWrapper:
         # Make the call that Python makes when it collects the model.
         type(model).__del__(model)
         assert calls == ["1"]
+
+    async def test_unload_model_logs_del_failure_after_cancel(
+        self, start_serve_with_context, monkeypatch
+    ):
+        """A sync __del__ that fails after its eviction was cancelled is logged."""
+
+        class MyModel:
+            def __init__(self, model_id):
+                self.model_id = model_id
+
+            def __del__(self):
+                raise RuntimeError(f"cannot release {self.model_id}")
+
+        errors = []
+        monkeypatch.setattr(
+            multiplex.logger,
+            "error",
+            lambda msg, exc_info=None: errors.append((msg, exc_info)),
+        )
+        multiplexer = await _single_model_multiplexer(MyModel)
+        await multiplexer.load_model("1")
+
+        loop = asyncio.get_running_loop()
+        executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
+        run_in_executor = loop.run_in_executor
+        monkeypatch.setattr(
+            loop,
+            "run_in_executor",
+            lambda _, func, *args: run_in_executor(executor, func, *args),
+        )
+        release = threading.Event()
+        executor.submit(release.wait)
+
+        try:
+            load_task = asyncio.create_task(multiplexer.load_model("2"))
+            for _ in range(100):
+                if "1" not in multiplexer.models:
+                    break
+                await asyncio.sleep(0.01)
+            assert "1" not in multiplexer.models
+            load_task.cancel()
+            with pytest.raises(asyncio.CancelledError):
+                await load_task
+        finally:
+            release.set()
+            executor.shutdown(wait=True)
+        # Let the loop run the done callback of the executor future.
+        for _ in range(100):
+            if errors:
+                break
+            await asyncio.sleep(0.01)
+        await asyncio.sleep(0.1)
+
+        assert len(errors) == 1
+        msg, exc = errors[0]
+        assert "'1'" in msg
+        assert isinstance(exc, RuntimeError)
+        assert str(exc) == "cannot release 1"
 
     async def test_unload_model_awaits_async_del_once(self, start_serve_with_context):
         """An async __del__ is awaited once and not called again on collection."""
