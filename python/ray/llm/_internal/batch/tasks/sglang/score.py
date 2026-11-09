@@ -1,0 +1,554 @@
+"""The score task for SGLang."""
+
+import inspect
+import logging
+from typing import TYPE_CHECKING, Any, Dict, Iterable, List, Optional
+
+import numpy as np
+from pydantic import BaseModel, Field, StrictInt, model_validator
+
+from ray.llm._internal.batch.constants import SGLANG_MIS_DELIMITER_TOKEN_ID
+from ray.llm._internal.batch.processor.utils import build_cpu_stage_map_kwargs
+from ray.llm._internal.batch.stages.base import StatefulStage
+from ray.llm._internal.batch.stages.common import (
+    maybe_convert_ndarray_to_list,
+    to_token_id_list,
+)
+from ray.llm._internal.batch.stages.configs import (
+    TokenizerStageConfig,
+    resolve_stage_config,
+)
+from ray.llm._internal.batch.tasks.sglang.base import _SGLangTask
+from ray.llm._internal.common.base_pydantic import BaseModelExtended
+
+if TYPE_CHECKING:
+    import torch
+
+    from ray.llm._internal.batch.processor.sglang_engine_proc import (
+        SGLangEngineProcessorConfig,
+    )
+
+logger = logging.getLogger(__name__)
+
+# Options given as marker text. They're resolved to token IDs on the driver,
+# and aren't passed to `Engine.async_score`.
+_MARKER_OPTIONS = ("embed_override_token", "score_extraction_token")
+
+# Options passed to `Engine.async_score` as is.
+_ASYNC_SCORE_OPTIONS = (
+    "label_token_ids",
+    "apply_softmax",
+    "item_first",
+    "embed_override_token_id",
+)
+
+# Keyword arguments of `Engine.async_score` that the score task always passes.
+_REQUIRED_ASYNC_SCORE_KWARGS = (
+    "query",
+    "items",
+    "label_token_ids",
+    "apply_softmax",
+    "item_first",
+    "embed_override_token_id",
+    "query_embed_overrides",
+    "item_embed_overrides",
+)
+
+
+class SGLangScoreOptions(BaseModelExtended):
+    """The `task_kwargs` of the score task."""
+
+    label_token_ids: Optional[List[StrictInt]] = Field(
+        default=None,
+        description="Token IDs whose probabilities form each item's score. "
+        "Required for generative (CausalLM) models.",
+    )
+    apply_softmax: bool = Field(
+        default=False,
+        description="Whether to softmax-normalize the scores over label_token_ids.",
+    )
+    item_first: bool = Field(
+        default=False,
+        description="Whether to put each item before the query instead of after.",
+    )
+    embed_override_token: Optional[str] = Field(
+        default=None,
+        description="Marker text whose positions are replaced by the "
+        "'query_embed_overrides'/'item_embed_overrides' vectors. Must tokenize "
+        "to a single token.",
+    )
+    embed_override_token_id: Optional[StrictInt] = Field(
+        default=None,
+        description="Token ID of the embedding marker. Alternative to "
+        "embed_override_token; if both are set, the text must resolve to this ID.",
+    )
+    score_extraction_token: Optional[str] = Field(
+        default=None,
+        description="Token text at whose every occurrence in an item the score "
+        "is read (setwise scoring). Each item then gets one score list per "
+        "occurrence. Must tokenize to a single token.",
+    )
+    score_extraction_token_id: Optional[StrictInt] = Field(
+        default=None,
+        description="Token ID of the score extraction token. Alternative to "
+        "score_extraction_token; if both are set, the text must resolve to this ID.",
+    )
+
+    @model_validator(mode="after")
+    def _validate(self) -> "SGLangScoreOptions":
+        if self.label_token_ids is not None and not self.label_token_ids:
+            raise ValueError("'label_token_ids' must not be empty.")
+        return self
+
+
+class SGLangScoreRequest(BaseModel):
+    """A score request to the SGLang engine: one query and its items."""
+
+    query_token_ids: List[int]
+    # One token ID list per item.
+    item_token_ids: List[List[int]]
+    # A list of [1, hidden_dim] tensors, one per marker in the query.
+    query_embed_overrides: Optional[List[Any]] = None
+    # One entry per item: a list of [1, hidden_dim] tensors, or None.
+    item_embed_overrides: Optional[List[Optional[List[Any]]]] = None
+
+    class Config:
+        arbitrary_types_allowed = True
+
+
+class _SGLangScoreTask(_SGLangTask):
+    """Scores a query against its items with `Engine.async_score`."""
+
+    required_input_keys = {
+        "query_token_ids": "The query token IDs (List[int]).",
+        "item_token_ids": "The token IDs of each item (List[List[int]]).",
+    }
+    optional_input_keys = {
+        "query_embed_overrides": "Embedding overrides for the query "
+        "markers, shaped [num_markers, hidden_dim].",
+        "item_embed_overrides": "Embedding overrides for each item's "
+        "markers (one entry or None per item).",
+    }
+    # There is no chat to template and nothing to detokenize.
+    unsupported_stages = ("chat_template_stage", "detokenize_stage")
+    # The score task always passes token IDs to the engine.
+    forced_engine_kwargs = {"skip_tokenizer_init": True}
+    options_model = SGLangScoreOptions
+
+    @classmethod
+    def prepare_config(
+        cls, config: "SGLangEngineProcessorConfig"
+    ) -> "SGLangEngineProcessorConfig":
+        misplaced = sorted(
+            set(config.engine_kwargs) & set(SGLangScoreOptions.model_fields)
+        )
+        if misplaced:
+            raise ValueError(f"Move {misplaced} from engine_kwargs to task_kwargs.")
+        config = super().prepare_config(config)
+        tokenize_stage_cfg = resolve_stage_config(
+            config.tokenize_stage,
+            TokenizerStageConfig,
+            {"model_source": config.model_source},
+        )
+        _validate_score_config(config, tokenize_stage_cfg.enabled)
+        # Marker text is resolved here, so the engine only sees token IDs.
+        task_kwargs = dict(config.task_kwargs)
+        task_kwargs.update(
+            _resolve_marker_token_ids(config, tokenize_stage_cfg.model_source)
+        )
+        return config.model_copy(update={"task_kwargs": task_kwargs})
+
+    @classmethod
+    def build_tokenize_stage(
+        cls,
+        config: "SGLangEngineProcessorConfig",
+        stage_cfg: TokenizerStageConfig,
+        add_special_tokens: bool = True,
+    ) -> StatefulStage:
+        from ray.llm._internal.batch.stages import SGLangScoreTokenizeStage
+
+        kwargs = dict(
+            model=stage_cfg.model_source,
+            trust_remote_code=config.engine_kwargs.get("trust_remote_code", False),
+            add_special_tokens=add_special_tokens,
+        )
+        for name in _MARKER_OPTIONS:
+            for key in (name, f"{name}_id"):
+                if config.task_kwargs.get(key) is not None:
+                    kwargs[key] = config.task_kwargs[key]
+        return SGLangScoreTokenizeStage(
+            fn_constructor_kwargs=kwargs,
+            map_batches_kwargs=build_cpu_stage_map_kwargs(stage_cfg),
+        )
+
+    @classmethod
+    def validate_model(cls, config: "SGLangEngineProcessorConfig", hf_config: Any):
+        if hf_config is None:
+            logger.warning(
+                "Couldn't load the model config, so the score task_kwargs "
+                "token IDs aren't checked against the model."
+            )
+            return
+        _validate_score_token_ids(config.task_kwargs, hf_config)
+
+    def __init__(self, engine_kwargs: Dict[str, Any], **task_kwargs: Any):
+        super().__init__(engine_kwargs, **task_kwargs)
+        options = SGLangScoreOptions(**task_kwargs)
+        self.score_kwargs = {key: getattr(options, key) for key in _ASYNC_SCORE_OPTIONS}
+        # Passed only when set, so plain scoring works on SGLang versions
+        # without the argument.
+        if options.score_extraction_token_id is not None:
+            self.score_kwargs[
+                "score_extraction_token_id"
+            ] = options.score_extraction_token_id
+
+        import sglang
+
+        # Checked before the engine is created, so no weights are loaded first.
+        _check_sglang_supports_score(sglang.Engine, self.score_kwargs)
+
+    def prepare_request(
+        self, row: Dict[str, Any], params: Optional[Dict[str, Any]]
+    ) -> SGLangScoreRequest:
+        query_token_ids = to_token_id_list(row["query_token_ids"], "query_token_ids")
+        items = maybe_convert_ndarray_to_list(row["item_token_ids"])
+        if not isinstance(items, list) or not items:
+            raise ValueError("'item_token_ids' must be a non-empty list of lists.")
+        item_token_ids = [to_token_id_list(item, "item_token_ids") for item in items]
+
+        extraction_token_id = self.score_kwargs.get("score_extraction_token_id")
+        if extraction_token_id in query_token_ids:
+            raise ValueError(
+                "The query must not contain the score extraction token "
+                f"(token ID {extraction_token_id}); only items can."
+            )
+
+        # Overrides are popped so the large vectors aren't carried to the output.
+        query_embed_overrides = _convert_to_embed_override_tensors(
+            row.pop("query_embed_overrides", None)
+        )
+        item_embed_overrides = None
+        raw_item_embeds = row.pop("item_embed_overrides", None)
+        if raw_item_embeds is not None:
+            converted = [
+                _convert_to_embed_override_tensors(entry) for entry in raw_item_embeds
+            ]
+            if len(converted) != len(item_token_ids):
+                raise ValueError(
+                    f"'item_embed_overrides' has {len(converted)} entries for "
+                    f"{len(item_token_ids)} items."
+                )
+            # A row without overrides still has the column (all None) because
+            # Ray Data columns are schema-uniform.
+            if any(entry is not None for entry in converted):
+                item_embed_overrides = converted
+
+        if query_embed_overrides is not None or item_embed_overrides is not None:
+            if self.score_kwargs.get("embed_override_token_id") is None:
+                raise ValueError(
+                    "Embedding overrides require 'embed_override_token' or "
+                    "'embed_override_token_id' in task_kwargs."
+                )
+            if self.score_kwargs.get("item_first"):
+                raise ValueError("'item_first' can't be used with embedding overrides.")
+
+        return SGLangScoreRequest(
+            query_token_ids=query_token_ids,
+            item_token_ids=item_token_ids,
+            query_embed_overrides=query_embed_overrides,
+            item_embed_overrides=item_embed_overrides,
+        )
+
+    async def run(self, engine: Any, request: SGLangScoreRequest) -> Dict[str, Any]:
+        # `async_score`, because the synchronous `score` runs its own event
+        # loop and would deadlock inside this one.
+        result = await engine.async_score(
+            query=request.query_token_ids,
+            items=request.item_token_ids,
+            query_embed_overrides=request.query_embed_overrides,
+            item_embed_overrides=request.item_embed_overrides,
+            **self.score_kwargs,
+        )
+
+        scores = getattr(result, "scores", None)
+        if scores is None or len(scores) != len(request.item_token_ids):
+            raise RuntimeError(
+                f"[SGLang] Expected {len(request.item_token_ids)} score lists, got "
+                f"{None if scores is None else len(scores)}. Please report this "
+                "issue to the Ray team."
+            )
+        extraction_token_id = self.score_kwargs.get("score_extraction_token_id")
+        if extraction_token_id is None:
+            item_scores = [list(entry) for entry in scores]
+        else:
+            item_scores = _extracted_item_scores(
+                scores, request.item_token_ids, extraction_token_id
+            )
+        return {
+            "scores": item_scores,
+            "num_input_tokens": getattr(result, "prompt_tokens", 0) or 0,
+        }
+
+
+def _validate_score_config(
+    config: "SGLangEngineProcessorConfig", tokenize: bool
+) -> None:
+    """Check score settings that would otherwise fail later on the workers.
+
+    Args:
+        config: The processor config, with validated `task_kwargs`.
+        tokenize: Whether the score tokenize stage is enabled.
+    """
+    options = config.task_kwargs
+    engine_kwargs = config.engine_kwargs
+    if options["item_first"] and engine_kwargs.get("enable_mis"):
+        raise ValueError("'item_first' can't be used with 'enable_mis'.")
+    if options["item_first"] and tokenize:
+        raise ValueError(
+            "'item_first' isn't supported with the score tokenize stage. Set "
+            "tokenize_stage=False and pass token IDs."
+        )
+    if (
+        options["score_extraction_token"] is None
+        and options["score_extraction_token_id"] is None
+    ):
+        return
+
+    # SGLang checks these too, but only once a row reaches a worker.
+    if options["item_first"]:
+        raise ValueError("'item_first' can't be used with score extraction.")
+    if engine_kwargs.get("allow_auto_truncate"):
+        raise ValueError(
+            "'allow_auto_truncate' can't be used with score extraction: "
+            "truncation would drop extraction positions."
+        )
+    # SGLang sets both itself when enable_mis is on.
+    if not engine_kwargs.get("enable_mis") and (
+        engine_kwargs.get("disable_radix_cache") is not True
+        or engine_kwargs.get("chunked_prefill_size") != -1
+    ):
+        raise ValueError(
+            "Score extraction without 'enable_mis' requires "
+            "engine_kwargs disable_radix_cache=True and chunked_prefill_size=-1, "
+            "because the extraction positions index the full prompt."
+        )
+
+
+def _resolve_marker_token_ids(
+    config: "SGLangEngineProcessorConfig", tokenizer_source: str
+) -> Dict[str, Optional[int]]:
+    """Return the embedding marker and score extraction token IDs.
+
+    Marker text is resolved with the tokenizer, loaded only if needed.
+
+    Args:
+        config: The processor config, with validated `task_kwargs`.
+        tokenizer_source: The model source to load the tokenizer from.
+
+    Returns:
+        `embed_override_token_id` and `score_extraction_token_id`, each None
+        if not configured.
+    """
+    from ray.llm._internal.batch.stages.sglang_score_tokenize_stage import (
+        resolve_marker_token,
+    )
+    from ray.llm._internal.batch.utils import load_tokenizer
+
+    options = config.task_kwargs
+    tokenizer = None
+    token_ids = {}
+    for name in _MARKER_OPTIONS:
+        token = options[name]
+        token_id = options[f"{name}_id"]
+        if token is not None:
+            if tokenizer is None:
+                try:
+                    tokenizer = load_tokenizer(
+                        tokenizer_source,
+                        config.engine_kwargs.get("trust_remote_code", False),
+                    )
+                except Exception as e:
+                    raise RuntimeError(
+                        f"Failed to load the tokenizer from {tokenizer_source!r} "
+                        f"on the driver to resolve '{name}'. Set '{name}_id' "
+                        "instead to skip loading it on the driver."
+                    ) from e
+            resolved_id = resolve_marker_token(tokenizer, token, name)
+            if token_id is not None and token_id != resolved_id:
+                raise ValueError(
+                    f"'{name}' {token!r} resolves to token ID {resolved_id}, "
+                    f"but '{name}_id' is {token_id}."
+                )
+            token_id = resolved_id
+        if token_id == SGLANG_MIS_DELIMITER_TOKEN_ID and config.engine_kwargs.get(
+            "enable_mis"
+        ):
+            raise ValueError(
+                f"'{name}' resolves to token ID {token_id}, which multi-item "
+                "scoring uses as its delimiter. Use a different token."
+            )
+        token_ids[f"{name}_id"] = token_id
+
+    embed_id = token_ids["embed_override_token_id"]
+    if embed_id is not None and embed_id == token_ids["score_extraction_token_id"]:
+        raise ValueError(
+            "The embedding marker and the score extraction token are both "
+            f"token ID {embed_id}. Use different tokens."
+        )
+    return token_ids
+
+
+def _validate_score_token_ids(options: Dict[str, Any], hf_config: Any) -> None:
+    """Check the score token IDs against the model.
+
+    The engine runs with skip_tokenizer_init, so it doesn't range-check them.
+
+    Args:
+        options: The prepared `task_kwargs`.
+        hf_config: The model's Hugging Face config, or None if unavailable.
+    """
+    architectures = getattr(hf_config, "architectures", None) or []
+    if options["label_token_ids"] is None and any(
+        arch.endswith("ForCausalLM") for arch in architectures
+    ):
+        raise ValueError(
+            f"task_kwargs['label_token_ids'] is required for {architectures[0]}."
+        )
+    vocab_size = getattr(hf_config, "vocab_size", None)
+    if not isinstance(vocab_size, int) or vocab_size <= 0:
+        return
+    for name, token_ids in (
+        ("label_token_ids", options["label_token_ids"] or []),
+        ("embed_override_token_id", [options["embed_override_token_id"]]),
+        ("score_extraction_token_id", [options["score_extraction_token_id"]]),
+    ):
+        out_of_range = [
+            t for t in token_ids if t is not None and not 0 <= t < vocab_size
+        ]
+        if out_of_range:
+            raise ValueError(
+                f"'{name}' {out_of_range} are outside the model "
+                f"vocabulary (size {vocab_size})."
+            )
+
+
+def _check_sglang_supports_score(
+    engine_cls: Any, score_kwargs: Iterable[str] = ()
+) -> None:
+    """Raise if the installed SGLang's `Engine.async_score` is missing or too old.
+
+    Args:
+        engine_cls: The `sglang.Engine` class.
+        score_kwargs: The `async_score` arguments the run passes besides the
+            always-required ones, such as `score_extraction_token_id`.
+    """
+    async_score = getattr(engine_cls, "async_score", None)
+    if async_score is None:
+        raise ImportError(
+            "task_type='score' requires `sglang.Engine.async_score`. "
+            "Please upgrade SGLang."
+        )
+    try:
+        params = inspect.signature(async_score).parameters
+    except (TypeError, ValueError):
+        return
+    if any(p.kind is inspect.Parameter.VAR_KEYWORD for p in params.values()):
+        return
+    required = dict.fromkeys([*_REQUIRED_ASYNC_SCORE_KWARGS, *score_kwargs])
+    missing = [name for name in required if name not in params]
+    if missing:
+        raise ImportError(
+            f"task_type='score' requires `sglang.Engine.async_score` to accept "
+            f"{missing}. Please upgrade SGLang."
+        )
+
+
+def _extracted_item_scores(
+    scores: List[Any], item_token_ids: List[List[int]], extraction_token_id: int
+) -> List[List[List[float]]]:
+    """Return one score list per extraction token in each item.
+
+    Raises if an item's score count differs from its extraction tokens, since
+    callers match scores to tokens by position.
+    """
+    item_scores = []
+    for index, (matrix, item) in enumerate(zip(scores, item_token_ids)):
+        rows = [list(row) for row in matrix]
+        expected = item.count(extraction_token_id)
+        if len(rows) != expected:
+            raise RuntimeError(
+                f"[SGLang] Expected {expected} score lists for item {index}, one "
+                f"per score extraction token, got {len(rows)}. Please report "
+                "this issue to the Ray team."
+            )
+        item_scores.append(rows)
+    return item_scores
+
+
+def _convert_to_embed_override_tensors(
+    embeds: Any,
+) -> Optional[List["torch.Tensor"]]:
+    """Convert embedding overrides into the per-position tensors SGLang expects.
+
+    Args:
+        embeds: The overrides for one sequence: `None`, or an array, list, or
+            tensor shaped `[num_overrides, hidden_dim]` or `[hidden_dim]`.
+
+    Returns:
+        A list of `[1, hidden_dim]` tensors, or `None` if there are no overrides.
+    """
+    if embeds is None:
+        return None
+
+    tensor = _to_stacked_tensor(embeds)
+    if tensor is None or tensor.numel() == 0:
+        return None
+
+    if tensor.ndim == 1:
+        tensor = tensor.unsqueeze(0)
+    elif tensor.ndim != 2:
+        raise ValueError(
+            "Embedding overrides must be shaped [num_overrides, hidden_dim], "
+            f"got {tuple(tensor.shape)}."
+        )
+    return [row.unsqueeze(0) for row in tensor]
+
+
+def _to_stacked_tensor(embeds: Any) -> Optional["torch.Tensor"]:
+    """Stack embedding overrides into one tensor.
+
+    Torch tensors are stacked with `torch.stack` because numpy has no bfloat16
+    dtype; everything else goes through `np.asarray`.
+    """
+    import torch
+
+    if isinstance(embeds, torch.Tensor):
+        return embeds
+
+    if isinstance(embeds, (list, tuple, np.ndarray)):
+        entries = list(embeds)
+        if entries and all(isinstance(entry, torch.Tensor) for entry in entries):
+            return _stack_tensor_entries(entries)
+
+    array = np.asarray(embeds)
+    if array.size == 0:
+        return None
+    if array.dtype == object:
+        # Ray Data stores a nested list column as an object ndarray of ndarrays.
+        return _stack_tensor_entries(
+            [torch.as_tensor(np.asarray(entry)) for entry in array]
+        )
+    return torch.as_tensor(array)
+
+
+def _stack_tensor_entries(entries: List["torch.Tensor"]) -> "torch.Tensor":
+    """`torch.stack` that raises `ValueError` on mismatched shapes."""
+    import torch
+
+    try:
+        return torch.stack(entries)
+    except RuntimeError as e:
+        shapes = [tuple(entry.shape) for entry in entries]
+        raise ValueError(
+            f"Embedding overrides must all have the same shape, got {shapes}."
+        ) from e

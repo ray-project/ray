@@ -109,6 +109,17 @@ class _SGLangTask:
             map_batches_kwargs=build_cpu_stage_map_kwargs(stage_cfg),
         )
 
+    @classmethod
+    def validate_model(
+        cls, config: "SGLangEngineProcessorConfig", hf_config: Any
+    ) -> None:
+        """Check the prepared config against the model. By default, a no-op.
+
+        Args:
+            config: The config returned by `prepare_config`.
+            hf_config: The model's Hugging Face config, or None if unavailable.
+        """
+
     def __init__(self, engine_kwargs: Dict[str, Any], **task_kwargs: Any):
         """Set up the task in the engine stage.
 

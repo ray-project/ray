@@ -10,6 +10,40 @@ AnyTokenizer = Union["PreTrainedTokenizer", "PreTrainedTokenizerFast", Any]
 logger = logging.getLogger(__name__)
 
 
+def load_tokenizer(model: str, trust_remote_code: bool = False) -> AnyTokenizer:
+    """Download the tokenizer files for `model` and load the tokenizer.
+
+    Args:
+        model: The model source.
+        trust_remote_code: Whether to trust remote code when loading.
+
+    Returns:
+        The Hugging Face tokenizer.
+    """
+    from transformers import AutoTokenizer
+
+    from ray.llm._internal.common.utils.download_utils import (
+        NodeModelDownloadable,
+        download_model_files,
+    )
+
+    # Use EXCLUDE_SAFETENSORS for trust_remote_code models to ensure
+    # Python config files are downloaded.
+    model_path = download_model_files(
+        model_id=model,
+        mirror_config=None,
+        download_model=(
+            NodeModelDownloadable.EXCLUDE_SAFETENSORS
+            if trust_remote_code
+            else NodeModelDownloadable.TOKENIZER_ONLY
+        ),
+        download_extra_files=False,
+    )
+    return AutoTokenizer.from_pretrained(
+        model_path, trust_remote_code=trust_remote_code
+    )
+
+
 def get_cached_tokenizer(tokenizer: AnyTokenizer) -> AnyTokenizer:
     """Get tokenizer with cached properties.
     This will patch the tokenizer object in place.
