@@ -6423,6 +6423,12 @@ def read_delta(
     - Column statistics from the Delta log for row-group pruning
     - Authentication via ``storage_options``
 
+    .. note::
+
+        Tables with column mapping (``delta.columnMapping.mode`` set to
+        ``name`` or ``id``) aren't supported yet, and ``read_delta`` raises
+        ``NotImplementedError`` for them.
+
     Examples:
 
         Read a local Delta table:
@@ -6560,6 +6566,24 @@ def read_delta(
             filesystem = pafs.SubTreeFileSystem(normalized_path, resolved.filesystem)
 
     dt = DeltaTable(path, version=version, storage_options=storage_options)
+    # The data files of a column-mapped table name their columns with physical
+    # names (such as ``col-<uuid>``) that only the log maps to the table's
+    # column names. ``to_pyarrow_dataset`` doesn't apply that mapping, and some
+    # deltalake versions (1.6.4 to 1.6.6) don't reject the table either, so the
+    # columns read back as nulls. Check the table property rather than the
+    # protocol: reader 2 / writer 5 tables declare no reader features.
+    column_mapping_mode = (dt.metadata().configuration or {}).get(
+        "delta.columnMapping.mode"
+    ) or "none"
+    if column_mapping_mode.lower() != "none":
+        raise NotImplementedError(
+            "This Delta table uses column mapping (`delta.columnMapping.mode` is "
+            f"{column_mapping_mode!r}), which `ray.data.read_delta` doesn't "
+            "support yet. Its data files store columns under physical names that "
+            "only the Delta log maps to the table's column names, so reading "
+            "them would return nulls or wrong columns. Follow "
+            "https://github.com/ray-project/ray/issues/64854 for support."
+        )
     try:
         pa_dataset = dt.to_pyarrow_dataset(filesystem=filesystem)
     except Exception as e:
