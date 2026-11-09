@@ -211,12 +211,17 @@ def test_read_footers_actor_returns_all_file_chunks_after_actor_death(footer_par
     # ``ActorProxy`` stubs don't model the built-in ``__ray_call__``.
     # pyrefly: ignore[missing-attribute]
     pid: int = ray.get(actor.__ray_call__.remote(lambda self: os.getpid()))
-    os.kill(pid, signal.SIGKILL)
 
-    chunked_files = []
-    # Streaming ``@ray.method``; stub types ``.remote`` as ``ObjectRef``.
-    # pyrefly: ignore[not-iterable]
-    for ref in actor.read_footers.remote(file_infos):
+    # Backpressure keeps the generator at most one batch ahead of the caller, so
+    # it can't finish before the kill. The actor dies after the caller consumed
+    # the first batch, and the retry must not repeat it.
+    # pyrefly: ignore[missing-attribute]
+    gen = actor.read_footers.options(_generator_backpressure_num_objects=1).remote(
+        file_infos
+    )
+    chunked_files = list(ray.get(next(gen)))
+    os.kill(pid, signal.SIGKILL)
+    for ref in gen:
         chunked_files.extend(ray.get(ref))
 
     assert [chunked.file.path for chunked in chunked_files] == paths
