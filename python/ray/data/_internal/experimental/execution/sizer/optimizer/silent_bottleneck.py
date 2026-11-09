@@ -3,10 +3,14 @@
 from __future__ import annotations
 
 import logging
+import math
 from typing import TYPE_CHECKING, List, Optional
 
 from typing_extensions import override
 
+from ray.data._internal.execution.execution_flags import (
+    SIZER_SILENT_BOTTLENECK_BUSY_FRACTION,
+)
 from ray.data._internal.experimental.execution.operators.actor_pool_models import (
     ScaleUpRequest,
 )
@@ -108,7 +112,7 @@ class SilentBottleneckGrant(OptimizationRule[None]):
     def is_silent_bottleneck(
         cls, op: "ExperimentalActorPoolMapOperator", ctx: OptimizationContext
     ) -> bool:
-        """A silent bottleneck, held for the whole signal window: every actor
+        """A silent bottleneck, held for the whole signal window: most actors
         busy, output backpressured, and every next actor-pool op keeping up.
 
         Also used by CapacityTransfer, which never takes actors from such an
@@ -118,25 +122,28 @@ class SilentBottleneckGrant(OptimizationRule[None]):
         consumers = ctx.next_ops.get(op, ())
         return (
             bool(consumers)
-            and cls._every_actor_busy(op, ctx)
+            and cls._most_actors_busy(op, ctx)
             and cls._is_backpressured(op, ctx)
             and all(cls._keeps_up(consumer, ctx) for consumer in consumers)
         )
 
     @staticmethod
-    def _every_actor_busy(
+    def _most_actors_busy(
         op: "ExperimentalActorPoolMapOperator", ctx: OptimizationContext
     ) -> bool:
-        """At every sample, tasks in flight >= actors, i.e. about one task per
-        actor.
+        """At every sample, tasks in flight cover most actors
+        (``SIZER_SILENT_BOTTLENECK_BUSY_FRACTION``).
 
-        We don't require every concurrency slot to be full. A backpressured
-        actor gets no new tasks until its outputs are consumed, so its slots
-        keep emptying and refilling, even when it is the bottleneck.
+        We don't require every actor, let alone every concurrency slot, to be
+        busy. Some actors are always between tasks even when the op is the
+        bottleneck: a task needs a full input bundle, and a slow upstream
+        leaves less than one queued.
         """
         busy = ctx.busy_tasks_signal.get(op)
         fewest_tasks = busy.minimum() if busy is not None else None
-        return fewest_tasks is not None and fewest_tasks >= op.actor_pool.serving_size()
+        return fewest_tasks is not None and fewest_tasks >= math.ceil(
+            SIZER_SILENT_BOTTLENECK_BUSY_FRACTION * op.actor_pool.serving_size()
+        )
 
     @staticmethod
     def _is_backpressured(
