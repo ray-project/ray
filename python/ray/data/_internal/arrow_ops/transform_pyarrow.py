@@ -656,10 +656,11 @@ def unify_schemas(
     # Deduplicate schemas. Calling this before PyArrow's unify_schemas is more efficient (100x faster).
 
     # Remove metadata for hashability
-    schema_to_compare = schemas[0].remove_metadata()
+    schema_to_compare = schemas[0]
     schemas_to_unify = [schemas[0]]
+
     for schema in schemas[1:]:
-        if not schema.remove_metadata().equals(schema_to_compare):
+        if not schema.equals(schema_to_compare, check_metadata=False):
             schemas_to_unify.append(schema)
 
     pyarrow_exception = None
@@ -1266,10 +1267,6 @@ def concat(
             matched_blocks.append(block)
         else:
             mismatched_blocks.append(block)
-
-    # Fast path: all blocks already share the unified schema.
-    if len(matched_blocks) == len(blocks):
-        return pa.concat_tables(blocks)
 
     if preserve_order is None:
         preserve_order = DataContext.get_current().execution_options.preserve_order
