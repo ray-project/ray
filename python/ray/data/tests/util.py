@@ -112,6 +112,12 @@ def fetcher_has_pending_work(fetcher: ThreadedMetadataFetcher) -> bool:
     return any(fetcher._fifos.values()) or bool(fetcher._drained_tasks)
 
 
+def emit_and_fire_done_callbacks(fetcher: ThreadedMetadataFetcher) -> list:
+    """Run both of a fetcher's executor-thread steps and return their combined
+    failures, without routing them in between (tests that don't reconstruct)."""
+    return fetcher.emit_ready() + fetcher.fire_done_callbacks()
+
+
 def run_op_tasks_sync(op: PhysicalOperator, only_existing=False):
     """Run tasks of a PhysicalOperator synchronously.
 
