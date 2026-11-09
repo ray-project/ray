@@ -215,6 +215,25 @@ def test_gvisor_backend_invalid_image():
         backend.create_sandbox(config)
 
 
+def test_create_times_out_when_runsc_state_hangs(monkeypatch):
+    """A `runsc state` call that never returns can't hold a create past its
+    deadline: the create times out as it would for a slow boot."""
+    real_run = subprocess.run
+
+    def run(args, *rest, **kwargs):
+        if "state" in args:
+            raise subprocess.TimeoutExpired(args, kwargs.get("timeout"))
+        return real_run(args, *rest, **kwargs)
+
+    monkeypatch.setattr("ray.experimental.sandbox.backend.gvisor.subprocess.run", run)
+    backend = GVisorSandboxBackend()
+    config = GVisorSandboxConfig(
+        image="busybox:latest", shell="/bin/sh", timeout_seconds=2
+    )
+    with pytest.raises(SandboxTimeoutError):
+        backend.create_sandbox(config)
+
+
 def test_gvisor_backend_container_image_overlay_isolation():
     backend = GVisorSandboxBackend()
     cfg1 = GVisorSandboxConfig(
@@ -813,7 +832,14 @@ def test_build_run_command_has_no_overlay_flag():
     never from a runsc --overlay2 flag."""
     cmd = _run_argv("none")
     assert not any(a.startswith("--overlay2") for a in cmd)
-    assert cmd[-4:] == ["run", "--bundle", "/tmp/rd", "sb-1"]
+    assert cmd[-6:] == [
+        "run",
+        "--pid-file",
+        "/tmp/rd/sandbox.pid",
+        "--bundle",
+        "/tmp/rd",
+        "sb-1",
+    ]
 
 
 def _owned_busybox_tar(tar_path: str) -> None:
@@ -982,7 +1008,9 @@ def test_build_run_command_public_wraps_with_slirp4netns():
         "setpriv --pdeathsig KILL -- "
         "unshare --user --map-root-user --net --fork --kill-child "
     )
-    assert script.endswith("run --bundle /tmp/rd sb-1 & wait $!")
+    assert script.endswith(
+        "run --pid-file /tmp/rd/sandbox.pid --bundle /tmp/rd sb-1 & wait $!"
+    )
     for fragment in (
         "/tmp/rd/netns.pid",
         # slirp4netns stays in the foreground under the launch shell, and
@@ -1040,7 +1068,14 @@ def test_build_run_command_other_modes_exec_runsc(network, rootless):
     assert cmd[:5] == ["sh", "-c", "trap '' INT QUIT; exec \"$@\"", "sh", "runsc"]
     assert "slirp4netns" not in cmd
     assert cmd[cmd.index("--network") + 1] == network
-    assert cmd[-4:] == ["run", "--bundle", "/tmp/rd", "sb-1"]
+    assert cmd[-6:] == [
+        "run",
+        "--pid-file",
+        "/tmp/rd/sandbox.pid",
+        "--bundle",
+        "/tmp/rd",
+        "sb-1",
+    ]
 
 
 _ID_MAPS = overlayfs.IdMaps(
@@ -1123,7 +1158,14 @@ def test_build_run_command_overlayfs_sandbox_wraps_runsc_in_mount_namespace(
     assert runsc[0] == "runsc"
     assert runsc[runsc.index("--overlay2") + 1] == "root:dir=/tmp/rd/runsc-overlay2"
     assert runsc[runsc.index("--network") + 1] == network
-    assert runsc[-4:] == ["run", "--bundle", "/tmp/rd", "sb-1"]
+    assert runsc[-6:] == [
+        "run",
+        "--pid-file",
+        "/tmp/rd/sandbox.pid",
+        "--bundle",
+        "/tmp/rd",
+        "sb-1",
+    ]
 
 
 @pytest.mark.parametrize("in_userns", [True, False])

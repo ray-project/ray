@@ -102,6 +102,15 @@ _CPUS_LOCK_FILE = "cpus.lock"
 # overlay state.
 _RAY_SANDBOX_DIR = "/tmp/ray/sandbox"
 
+# `runsc run --pid-file` (and `runsc restore`) writes this file once the
+# container exists. The start loop stats it every _START_POLL_SECONDS and
+# asks `runsc state` (a Go process per call) whether the container runs only
+# after that, every _STATE_POLL_SECONDS: a create returns soon after its boot
+# without spending the CPU a burst of boots needs on `runsc state` processes.
+_PID_FILE = "sandbox.pid"
+_START_POLL_SECONDS = 0.01
+_STATE_POLL_SECONDS = 0.05
+
 # network="public" gives each sandbox a private user+network namespace pair
 # bridged by slirp4netns user-mode networking, the rootless-container shape:
 # a holder process (`unshare --user --map-root-user --net`) pins the
@@ -995,10 +1004,13 @@ class GVisorSandboxBackend(BaseSandboxBackend):
             raise
         start_time = time.time()
         timeout = config.timeout_seconds
+        pid_file = os.path.join(root_dir, _PID_FILE)
         action = "restore" if restore is not None else "start"
-        # A restore is expected to come up in milliseconds, so poll it more
-        # often than a cold boot.
-        poll_interval = 0.01 if restore is not None else 0.1
+        # A restore is expected to come up in milliseconds, so once its pid
+        # file exists, poll `runsc state` as often as for the file itself.
+        state_poll_seconds = (
+            _START_POLL_SECONDS if restore is not None else _STATE_POLL_SECONDS
+        )
 
         def stderr_text() -> str:
             stderr_file.seek(0)
@@ -1011,9 +1023,23 @@ class GVisorSandboxBackend(BaseSandboxBackend):
                         f"gVisor container failed to {action}: {stderr_text()}"
                     )
 
-                state_args = self._runsc_base_args(config) + ["state", sandbox_id]
-                res = subprocess.run(state_args, capture_output=True, text=True)
-                if res.returncode == 0:
+                delay = _START_POLL_SECONDS
+                res = None
+                if os.path.exists(pid_file):
+                    state_args = self._runsc_base_args(config) + ["state", sandbox_id]
+                    try:
+                        # A wedged runsc mustn't hold the create past its
+                        # deadline, which the check below then enforces.
+                        res = subprocess.run(
+                            state_args,
+                            capture_output=True,
+                            text=True,
+                            timeout=max(1.0, timeout - (time.time() - start_time)),
+                        )
+                    except subprocess.TimeoutExpired:
+                        res = None
+                    delay = state_poll_seconds
+                if res is not None and res.returncode == 0:
                     try:
                         state_data = json.loads(res.stdout)
                     except ValueError:
@@ -1042,7 +1068,7 @@ class GVisorSandboxBackend(BaseSandboxBackend):
                         f"gVisor container '{sandbox_id}' failed to reach 'running' state within {timeout} seconds."
                     )
 
-                time.sleep(poll_interval)
+                time.sleep(delay)
         except Exception:
             # Delete runsc's container state, then stop the launch process
             # and everything it started.
@@ -1875,10 +1901,10 @@ class GVisorSandboxBackend(BaseSandboxBackend):
         """
         config: SandboxConfig = meta["config"]
         root_dir = meta["root_dir"]
-        # The launch script waits for these to be written; stale copies from
-        # the previous launch would let it go on before the new holder and
-        # slirp4netns are up.
-        for name in ("netns.pid", "slirp4netns.ready"):
+        # The launch script waits for these to be written, and the start loop
+        # for the pid file; stale copies from the previous launch would let
+        # them go on before the new holder, slirp4netns and container are up.
+        for name in ("netns.pid", "slirp4netns.ready", _PID_FILE):
             try:
                 os.remove(os.path.join(root_dir, name))
             except FileNotFoundError:
@@ -2250,11 +2276,24 @@ class GVisorSandboxBackend(BaseSandboxBackend):
             if disk_bytes > 0:
                 overlay2 += f",size={disk_bytes}"
             args.extend(["--overlay2", overlay2])
+        # Both commands write the pid file once the container exists, which
+        # tells the start loop when to begin asking `runsc state`.
+        pid_file = os.path.join(root_dir, _PID_FILE)
         if restore is None:
-            args.extend(["run", "--bundle", root_dir, sandbox_id])
+            args.extend(
+                ["run", "--pid-file", pid_file, "--bundle", root_dir, sandbox_id]
+            )
         else:
             args.extend(
-                ["restore", "--bundle", root_dir, "--image-path", restore.image_path]
+                [
+                    "restore",
+                    "--pid-file",
+                    pid_file,
+                    "--bundle",
+                    root_dir,
+                    "--image-path",
+                    restore.image_path,
+                ]
             )
             if restore.background:
                 args.append("--background")
@@ -2330,9 +2369,11 @@ class GVisorSandboxBackend(BaseSandboxBackend):
                 f"{unshare} bash -c 'echo $$ > {netns_pidfile}; exec sleep infinity' & "
                 "HOLDER=$!; "
                 # Stop waiting as soon as the holder dies, and refuse an
-                # empty NSPID (which would resolve to /proc//ns/net).
-                f"for i in $(seq 1 100); do [ -s {netns_pidfile} ] && break; "
-                "kill -0 $HOLDER 2>/dev/null || break; sleep 0.1; done; "
+                # empty NSPID (which would resolve to /proc//ns/net). Both
+                # waits check every 10 ms for up to 10 s: the holder and
+                # slirp4netns are up within tens of milliseconds.
+                f"for i in $(seq 1 1000); do [ -s {netns_pidfile} ] && break; "
+                "kill -0 $HOLDER 2>/dev/null || break; sleep 0.01; done; "
                 f"NSPID=$(cat {netns_pidfile} 2>/dev/null); "
                 '[ -n "$NSPID" ] || { echo "netns holder failed to start" >&2; exit 1; }; '
                 # slirp4netns attaches from the pod side and stays in the
@@ -2341,8 +2382,8 @@ class GVisorSandboxBackend(BaseSandboxBackend):
                 # that is the go signal.
                 f"setpriv --pdeathsig KILL -- {slirp} 3>{ready_file} & "
                 "SLIRP=$!; "
-                f"for i in $(seq 1 100); do [ -s {ready_file} ] && break; "
-                "kill -0 $SLIRP 2>/dev/null || break; sleep 0.1; done; "
+                f"for i in $(seq 1 1000); do [ -s {ready_file} ] && break; "
+                "kill -0 $SLIRP 2>/dev/null || break; sleep 0.01; done; "
                 f'[ -s {ready_file} ] || {{ echo "slirp4netns failed to start" >&2; exit 1; }}; '
                 # The egress ruleset goes in after the tap exists and
                 # before anything runs behind it; a failed install aborts
