@@ -49,7 +49,7 @@ class GeneralAdvantageEstimation(ConnectorV2):
         *,
         gamma: float,
         lambda_: float,
-        value_function_context: Callable[[], ContextManager] = nullcontext,
+        value_function_context: Optional[Callable[[], ContextManager]] = None,
     ):
         """Initializes a GeneralAdvantageEstimation instance.
 
