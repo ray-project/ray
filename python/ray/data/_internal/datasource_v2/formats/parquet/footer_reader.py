@@ -122,6 +122,7 @@ def _unmodelled_bytes(row_group: RowGroupMetaData, leaf_indices: list[int]) -> i
     )
     return max(_UNMODELLED_MIN_BYTES, _UNMODELLED_RATIO * uncompressed)
 
+
 # Half floats are the odd one out: they ride on FIXED_LEN_BYTE_ARRAY, which
 # also carries decimals and UUIDs, so they are only identifiable by logical type.
 _FLOAT_PHYSICAL_TYPES = frozenset({"FLOAT", "DOUBLE"})
@@ -294,7 +295,7 @@ class FooterReader:
                     file_metadata=metadata,
                 )
                 if cast_profiles is None:
-                    # A cast the estimator doesn't model: the whole file falls back.
+                    # A cast the estimator doesn't model: charge every leaf as unmodelled.
                     profiles = None
         added_row_bytes, added_row_group_bytes = self._added_bytes(
             file_schema=file_schema, path=path
