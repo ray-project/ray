@@ -423,16 +423,37 @@ def test_validate_gpu_ids_rejects_empty_ray_assignment():
 @pytest.mark.parametrize(
     "mig_id",
     [
+        "0:0",
         "MIG-0c2a3b1e-5a1d-5b9f-8f1e-3f3d2c1b0a99",
         "MIG-GPU-59142f9d-294d-3af7-1629-8578cba42589/1/0",
     ],
 )
-def test_validate_gpu_ids_rejects_mig_devices(mig_id):
-    """gVisor doesn't support MIG, so a MIG device fails up front with a clear
-    error, even when Ray assigned it, rather than later inside gVisor."""
+def test_validate_gpu_ids_accepts_assigned_mig_devices(mig_id):
     with patch("ray.get_gpu_ids", return_value=[mig_id]):
-        with pytest.raises(ValueError, match="are MIG devices"):
-            GVisorSandboxBackend._validate_gpu_ids([mig_id])
+        GVisorSandboxBackend._validate_gpu_ids([mig_id])
+
+
+@pytest.mark.parametrize("mig_id", ["0:0", "0:1"])
+def test_validate_gpu_ids_accepts_mig_on_assigned_gpu(mig_id):
+    with patch("ray.get_gpu_ids", return_value=["0"]):
+        GVisorSandboxBackend._validate_gpu_ids([mig_id])
+
+
+@pytest.mark.parametrize(
+    "assigned,requested",
+    [
+        (["0"], "1:0"),
+        (["0:0"], "0:1"),
+        (["0:0"], "0"),
+        (["0"], "0:"),
+        (["0"], "0:1:2"),
+        (["0"], "0:invalid"),
+    ],
+)
+def test_validate_gpu_ids_rejects_unassigned_or_malformed_mig(assigned, requested):
+    with patch("ray.get_gpu_ids", return_value=assigned):
+        with pytest.raises(ValueError, match="are not among the GPUs"):
+            GVisorSandboxBackend._validate_gpu_ids([requested])
 
 
 def test_validate_gpu_ids_propagates_ray_get_gpu_ids_errors():

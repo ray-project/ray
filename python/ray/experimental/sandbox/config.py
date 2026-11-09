@@ -333,12 +333,13 @@ class SandboxConfig:
             directory on the node instead of the workdir's host directory.
             In-memory mounts such as /dev/shm count toward the sandbox's
             memory instead.
-        gpu_ids: GPU ids or UUIDs, in the format ``ray.get_gpu_ids()`` uses,
-            to expose inside the sandbox through CDI. None (default) gives no
-            GPU access. Every id must be one Ray assigned the calling actor or
-            task, so request GPUs with ``num_gpus``. The backend checks this
-            against ``ray.get_gpu_ids()`` when it creates the sandbox. Integer
-            ids are stored as strings.
+        gpu_ids: GPU or MIG ids or UUIDs, in the format ``ray.get_gpu_ids()``
+            uses, to expose inside the sandbox through CDI. None (default)
+            gives no GPU access. Every id must be one Ray assigned the calling
+            actor or task, or a numeric CDI MIG selector ``"<gpu>:<n>"`` of an
+            assigned parent GPU. Request GPUs with ``num_gpus``. The backend
+            checks this against ``ray.get_gpu_ids()`` when it creates the
+            sandbox. Integer ids are stored as strings.
         mounts: Host paths to show inside a gVisor sandbox, read-only, as
             {sandbox path: host path}. Files added under a mounted host
             directory later appear inside the sandbox too, so one sandbox can

@@ -217,7 +217,6 @@ Ray always parses `nvidia-ctk cdi generate`'s stdout, so it clears `NVIDIA_CTK_C
 :::{note}
 * `nvidia-container-toolkit-base` must be version 1.20.1 or later.
 * gVisor is only supported on NVIDIA driver versions it explicitly recognizes; check yours with `runsc nvproxy list-supported-drivers`.
-* MIG isn't supported, since gVisor itself doesn't support it.
 * The worker's user must be able to read and write the GPU device nodes, such as `/dev/nvidiactl`, which Ray opens to detect GPUs and to generate the CDI spec. NVIDIA's default mode, `0666`, allows this. If the driver restricts them to a group, through `NVreg_DeviceFileMode` and `NVreg_DeviceFileGID`, add the worker's user to that group.
 :::
 
@@ -415,6 +414,10 @@ ray.get(pool.close.remote())
 ```
 
 Ray validates `SandboxRuntime.create()`'s `gpu_ids` the same way as a `Sandbox`'s assigned GPUs. A sandbox can only access GPUs Ray assigned to the calling actor or task, and sandbox creation fails if Ray assigned it none.
+
+To expose a Multi-Instance GPU (MIG) instance, pass its assigned ID or UUID in `gpu_ids`. If Ray assigned the parent GPU, you can also select an instance with its numeric CDI device name, such as `"0:1"`. The sandbox receives that instance rather than the whole GPU. Assignment of one MIG instance doesn't grant access to its siblings or parent GPU.
+
+Concurrent GPU sandbox creations in a worker process share one CDI spec generation. Other callers wait for that result rather than launching additional `nvidia-ctk` processes.
 
 ### Manage sandboxes inside custom actors with SandboxRuntime
 

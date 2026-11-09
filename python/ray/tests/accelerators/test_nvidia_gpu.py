@@ -1,5 +1,8 @@
 import subprocess
 import sys
+import threading
+import time
+from concurrent.futures import ThreadPoolExecutor
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -107,9 +110,9 @@ def test_gpu_name_to_accelerator_type(name, expected):
 def reset_cdi_spec_cache():
     """generate_cdi_spec caches its result for the process lifetime; each
     test needs a fresh nvidia-ctk call rather than a prior test's cache."""
-    NvidiaGPUAcceleratorManager.generate_cdi_spec.cache_clear()
+    NvidiaGPUAcceleratorManager._generate_cdi_spec.cache_clear()
     yield
-    NvidiaGPUAcceleratorManager.generate_cdi_spec.cache_clear()
+    NvidiaGPUAcceleratorManager._generate_cdi_spec.cache_clear()
 
 
 _FAKE_VERSION_RESULT = MagicMock(
@@ -273,6 +276,33 @@ def test_generate_cdi_spec_caches_success():
         # One version check + one "cdi generate" for the first call; the
         # second call hits the cache and makes no calls.
         assert mock_run.call_count == 2
+
+
+def test_generate_cdi_spec_shares_concurrent_requests():
+    barrier = threading.Barrier(8)
+    fake_result = MagicMock(
+        returncode=0, stdout='{"kind": "nvidia.com/gpu", "devices": []}', stderr=""
+    )
+
+    def _run(args, **kwargs):
+        if "--version" in args:
+            return _FAKE_VERSION_RESULT
+        time.sleep(0.05)
+        return fake_result
+
+    def _generate():
+        barrier.wait(timeout=5)
+        return NvidiaGPUAcceleratorManager.generate_cdi_spec()
+
+    with patch("shutil.which", return_value="/usr/bin/nvidia-ctk"), patch(
+        "subprocess.run", side_effect=_run
+    ) as mock_run, ThreadPoolExecutor(max_workers=8) as executor:
+        futures = [executor.submit(_generate) for _ in range(8)]
+        results = [future.result(timeout=5) for future in futures]
+
+    assert all(result is results[0] for result in results)
+    assert results[0] == {"kind": "nvidia.com/gpu", "devices": []}
+    assert mock_run.call_count == 2
 
 
 def test_generate_cdi_spec_does_not_cache_failure():

@@ -2588,17 +2588,8 @@ class GVisorSandboxBackend(BaseSandboxBackend):
     @staticmethod
     def _validate_gpu_ids(gpu_ids: List[str]) -> None:
         """Raise ValueError unless Ray assigned every id in ``gpu_ids`` to the
-        calling actor or task, per ``ray.get_gpu_ids()``, and none is a MIG
-        device, which gVisor's GPU passthrough doesn't support."""
-        # A MIG device's id starts with "MIG-". nvidia-ctk generates CDI
-        # devices under those ids too, so without this check, the sandbox
-        # would only fail later, inside gVisor, with an unclear error.
-        mig_ids = [g for g in gpu_ids if g.startswith("MIG-")]
-        if mig_ids:
-            raise ValueError(
-                f"gpu_ids {mig_ids} are MIG devices, which gVisor sandboxes "
-                "don't support. Give the sandbox whole GPUs instead."
-            )
+        calling actor or task, per ``ray.get_gpu_ids()``. A numeric CDI MIG
+        selector ``"<gpu>:<n>"`` is also valid if Ray assigned its parent GPU."""
         assigned_gpu_ids = [str(i) for i in ray.get_gpu_ids()]
         if not assigned_gpu_ids:
             raise ValueError(
@@ -2606,7 +2597,19 @@ class GVisorSandboxBackend(BaseSandboxBackend):
                 "GPUs for this actor or task. Request GPUs with num_gpus to "
                 "give a sandbox GPU access."
             )
-        unassigned = [g for g in gpu_ids if g not in assigned_gpu_ids]
+
+        def is_gpu_assigned(gpu_id: str) -> bool:
+            if gpu_id in assigned_gpu_ids:
+                return True
+            # CDI names numeric MIG instances as "<parent GPU>:<instance>".
+            if re.fullmatch(r"[0-9]+:[0-9]+", gpu_id) is None:
+                return False
+            # An assigned whole GPU grants access to its MIG instances,
+            # but an assigned MIG instance does not grant sibling access.
+            parent_gpu_id = gpu_id.split(":", 1)[0]
+            return parent_gpu_id in assigned_gpu_ids
+
+        unassigned = [g for g in gpu_ids if not is_gpu_assigned(g)]
         if unassigned:
             raise ValueError(
                 f"gpu_ids {unassigned} are not among the GPUs Ray assigned "

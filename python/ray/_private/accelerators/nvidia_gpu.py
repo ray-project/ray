@@ -5,12 +5,15 @@ import os
 import re
 import shutil
 import subprocess
+import threading
 from typing import Dict, List, Optional, Tuple
 
 from ray._private.accelerators.accelerator import AcceleratorManager
 from ray._private.ray_constants import env_bool
 
 logger = logging.getLogger(__name__)
+
+_CDI_SPEC_LOCK = threading.Lock()
 
 CUDA_VISIBLE_DEVICES_ENV_VAR = "CUDA_VISIBLE_DEVICES"
 NOSET_CUDA_VISIBLE_DEVICES_ENV_VAR = "RAY_EXPERIMENTAL_NOSET_CUDA_VISIBLE_DEVICES"
@@ -236,8 +239,14 @@ class NvidiaGPUAcceleratorManager(AcceleratorManager):
         return tuple(int(g) for g in match.groups())
 
     @staticmethod
-    @functools.lru_cache(maxsize=None)
     def generate_cdi_spec() -> Dict:
+        """Generate the CDI spec once per process, sharing concurrent requests."""
+        with _CDI_SPEC_LOCK:
+            return NvidiaGPUAcceleratorManager._generate_cdi_spec()
+
+    @staticmethod
+    @functools.lru_cache(maxsize=None)
+    def _generate_cdi_spec() -> Dict:
         """Generate and return a CDI (Container Device Interface) spec
         describing the node's NVIDIA GPUs, via the `nvidia-ctk` CLI (part
         of nvidia-container-toolkit-base).
