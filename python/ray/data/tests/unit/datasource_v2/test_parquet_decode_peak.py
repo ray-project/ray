@@ -188,6 +188,17 @@ def test_pinned_schema_adds_the_cast_and_the_added_columns(tmp_path):
         assert all(size > plain_size for size, plain_size in zip(sizes, plain))
 
 
+def test_dotted_column_beside_its_prefix_counts_once(tmp_path):
+    """A flat ``user.id`` beside ``user`` is sized once, as ``user_id`` would be."""
+    sizes = []
+    for second in ("user.id", "user_id"):
+        path = tmp_path / f"{second}.parquet"
+        values = pa.array(np.arange(M, dtype="int64"))
+        pq.write_table(pa.table({"user": values, second: values}), path)
+        sizes.append(_sizes(path))
+    assert sizes[0] == sizes[1]
+
+
 def _bin_totals(path, max_bin_bytes):
     """Each bin's bytes: footer read, estimate, coalescing and packing, without Ray."""
     from ray.data._internal.datasource_v2.common.online_bin_packer import (

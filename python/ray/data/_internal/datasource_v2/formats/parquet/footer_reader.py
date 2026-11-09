@@ -82,13 +82,14 @@ def _column_leaves(
     """Each of ``names`` the file has, in that order, as its leaf indices."""
     leaves: dict[str, list[int]] = {name: [] for name in names}
     for leaf_idx, column in enumerate(columns):
-        # A leaf belongs to its path and each dotted prefix of it, as in
-        # :func:`_get_prefix_matches`, looked up rather than compared to each name.
+        # A leaf belongs to the longest of its path's dotted prefixes in ``names``,
+        # once: a flat ``user.id`` beside a ``user`` column is ``user.id``'s alone.
         parts = column.path.split(".")
-        for end in range(1, len(parts) + 1):
+        for end in range(len(parts), 0, -1):
             indices = leaves.get(".".join(parts[:end]))
             if indices is not None:
                 indices.append(leaf_idx)
+                break
     return {name: indices for name, indices in leaves.items() if indices}
 
 
