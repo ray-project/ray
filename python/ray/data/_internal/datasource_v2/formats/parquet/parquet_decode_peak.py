@@ -1,9 +1,10 @@
 """Estimate PyArrow 24's peak memory decoding a Parquet row group, from its footer.
 
 The peak is the I/O (the footer read, ``pre_buffer``'s gaps and the compressed
-chunks), what every leaf keeps (levels, values, dictionary, decompression buffer),
-the decode-time temporaries of the largest column and most of the next, and a
-schema pin's cast. The rules are fitted to measured peaks and lean high.
+chunks), every column's decoded values, the buffers of the columns decoding at once
+(levels, values, dictionary, decompression buffer, temporaries), and a schema pin's
+cast. Each CPU thread decodes one column at a time, and a column's buffers are freed
+when it is read. The rules are fitted to measured peaks and lean high.
 """
 
 from typing import Mapping, Sequence, Set, Tuple
@@ -63,19 +64,21 @@ def estimate_row_group_work(
     column_leaves: Sequence[Sequence[int]],
     leaves: Mapping[int, LeafChunk],
     counted: Set[int],
+    decode_threads: int,
 ) -> int:
-    """What one row group's leaves keep, plus two columns' decode-time buffers:
-    ``column_leaves`` holds each column read, in ``columns=`` order, as its leaf
-    indices; ``leaves`` the unpinned leaves modelled; ``counted`` the ancestors sized."""
-    # Two zeros, so there is always a largest column and a next.
-    kept, temporaries = 0, [0, 0]
+    """One row group's decoded columns, plus the buffers of the ``decode_threads``
+    largest columns, or of every column if it is 0 or less: ``column_leaves`` holds
+    each column read, in ``columns=`` order, as its leaf indices; ``leaves`` the
+    unpinned leaves modelled; ``counted`` the ancestors sized."""
+    decoded, buffers = 0, []
     for position, leaf_indices in enumerate(column_leaves):
         # PyArrow 24 reserves the k-th column's leaves for as many slots as the
         # file's k-th *leaf* has values, whichever column that leaf is in.
         reserved = row_group.column(position).num_values
         # A column's leaves decode in turn: its peak is one leaf's temporaries
-        # over what that leaf and the ones before it keep.
-        column_kept = column_peak = 0
+        # over what that leaf and the ones before it keep. Once the column is
+        # read, only its decoded values stay.
+        column_kept = column_peak = column_decoded = 0
         for leaf_idx in leaf_indices:
             # A leaf the estimator doesn't model is charged by the caller.
             if (leaf := leaves.get(leaf_idx)) is None:
@@ -90,13 +93,13 @@ def estimate_row_group_work(
             )
             column_kept += ancestors + leaf_kept
             column_peak = max(column_peak, column_kept + leaf_temporary)
-        kept += column_kept
-        temporaries.append(column_peak - column_kept)
-    # Columns decode in parallel: the peaks fit the largest column's temporaries
-    # and 3/4 of the next one's (1/2 left 8 row groups under), or all of it when
-    # the two are within 10%.
-    second, first = sorted(temporaries)[-2:]
-    return kept + first + (second if 10 * second >= 9 * first else 3 * second // 4)
+            column_decoded += ancestors + estimate_leaf(leaf=leaf)
+        decoded += column_decoded
+        buffers.append(column_peak - column_decoded)
+    # Each CPU thread decodes one column at a time.
+    if decode_threads > 0:
+        buffers = sorted(buffers)[-decode_threads:]
+    return decoded + sum(buffers)
 
 
 def estimate_leaf_work(
@@ -106,7 +109,7 @@ def estimate_leaf_work(
     rows: int,
     ancestors: int = 0,
 ) -> Tuple[int, int]:
-    """One leaf's buffers: (kept until the row group is read, temporary)."""
+    """One leaf's buffers: (kept until its column is read, temporary)."""
     chunk = leaf.chunk
     levels = chunk.num_values
     # Buffers start at ``reserved`` slots and double to a power of two.

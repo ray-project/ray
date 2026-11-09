@@ -1,7 +1,10 @@
 """Tests for the Parquet decode-peak estimate, against PyArrow's measured peak,
 through the footer reader that sizes read tasks by it."""
 
+import json
 import os
+import subprocess
+import sys
 
 import numpy as np
 import pytest
@@ -19,30 +22,45 @@ requires_pyarrow_23 = pytest.mark.skipif(
 
 N = 200_000
 
+# One scan as a Ray read task runs it: ``threads`` CPU threads, 16 IO threads, V2's
+# scanner options, one batch. The default pool's peak counts the read buffers a
+# scanner's own pool misses; it can't be reset, hence a fresh process.
+_SCAN = """
+import json, sys
+import pyarrow as pa
+import pyarrow.dataset as pds
+from pyarrow.fs import LocalFileSystem
 
-def _peak(path, columns=None, **format_kwargs):
-    """PyArrow's peak bytes scanning ``path`` on one thread, as a Ray read task."""
-    from pyarrow.fs import LocalFileSystem
+path, columns, format_kwargs, threads = json.loads(sys.argv[1])
+pa.set_cpu_count(threads)
+pa.set_io_thread_count(16)
+pool = pa.default_memory_pool()
+base = pool.bytes_allocated()
+fragment = pds.ParquetFileFormat(**format_kwargs).make_fragment(
+    path, filesystem=LocalFileSystem()
+)
+scanner = fragment.scanner(
+    columns=columns,
+    batch_size=1 << 30,
+    batch_readahead=8,
+    fragment_readahead=1,
+    fragment_scan_options=pds.ParquetFragmentScanOptions(
+        use_buffered_stream=True, buffer_size=8 << 20
+    ),
+)
+scanned = list(scanner.to_batches())
+print(sum(piece.num_rows for piece in scanned), pool.max_memory() - base)
+"""
 
-    fragment = pds.ParquetFileFormat(**format_kwargs).make_fragment(
-        str(path), filesystem=LocalFileSystem()
+
+def _peak(path, columns=None, threads=1, **format_kwargs):
+    """PyArrow's peak bytes scanning ``path`` as a Ray read task."""
+    task = json.dumps([str(path), columns, format_kwargs, threads])
+    result = subprocess.run(
+        [sys.executable, "-c", _SCAN, task], capture_output=True, text=True, check=True
     )
-    pool = pa.proxy_memory_pool(pa.default_memory_pool())
-    scanner = fragment.scanner(
-        columns=columns,
-        batch_size=N,
-        use_threads=False,
-        memory_pool=pool,
-        fragment_readahead=1,
-        fragment_scan_options=pds.ParquetFragmentScanOptions(
-            use_buffered_stream=True, buffer_size=8 << 20
-        ),
-    )
-    scanned = list(scanner.to_batches())
-    assert sum(piece.num_rows for piece in scanned) == N
-    peak = pool.max_memory()
-    # Free what the pool allocated while the pool is still alive.
-    del scanned, scanner
+    rows, peak = map(int, result.stdout.split())
+    assert rows == N
     return peak
 
 
@@ -68,9 +86,15 @@ def _strings(distinct):
     return pa.array([f"value-{i % distinct:08d}" for i in range(N)])
 
 
-def _case(table, write_kwargs=None, format_kwargs=None, columns=None, high=3):
+def _lists():
+    return pa.array([[i, i + 1, i + 2] for i in range(N)])
+
+
+def _case(
+    table, write_kwargs=None, format_kwargs=None, columns=None, high=1.5, threads=1
+):
     """A ``_CASES`` entry; ``high`` caps the estimate over the measured peak."""
-    return table, write_kwargs or {}, format_kwargs or {}, columns, high
+    return table, write_kwargs or {}, format_kwargs or {}, columns, high, threads
 
 
 _CASES = {
@@ -90,25 +114,31 @@ _CASES = {
     "strings": _case(pa.table({"a": _strings(N // 4)})),
     # The int64 column is read first, so PyArrow reserves it for the list's values.
     "column-after-list-reserve": _case(
-        pa.table(
-            {
-                "l": pa.array([[i, i + 1, i + 2] for i in range(N)]),
-                "y": pa.array(np.arange(N, dtype="int64")),
-            }
-        ),
+        pa.table({"l": _lists(), "y": pa.array(np.arange(N, dtype="int64"))}),
         columns=["y", "l"],
+    ),
+    # One CPU thread frees each column's buffers before the next column decodes.
+    "similar-lists": _case(pa.table({f"l{i}": _lists() for i in range(8)})),
+    # Twelve decode all eight columns at once.
+    "similar-lists-on-12-threads": _case(
+        pa.table({f"l{i}": _lists() for i in range(8)}), threads=12
     ),
 }
 
 
 @requires_pyarrow_23
 @pytest.mark.parametrize("label", list(_CASES))
-def test_estimate_bounds_measured_peak(tmp_path, label):
-    table, write_kwargs, format_kwargs, columns, high = _CASES[label]
+def test_estimate_bounds_measured_peak(tmp_path, monkeypatch, label):
+    import ray.data._internal.datasource_v2.formats.parquet.footer_reader as reader
+
+    table, write_kwargs, format_kwargs, columns, high, threads = _CASES[label]
     path = tmp_path / f"{label}.parquet"
     pq.write_table(table, path, row_group_size=N, **write_kwargs)
+    monkeypatch.setattr(reader, "READER_CPU_COUNT", threads)
     (estimate,) = _sizes(path, projected_cols=columns, format_kwargs=format_kwargs)
-    ratio = estimate / _peak(path=path, columns=columns, **format_kwargs)
+    ratio = estimate / _peak(
+        path=path, columns=columns, threads=threads, **format_kwargs
+    )
     assert 0.95 <= ratio <= high, ratio
 
 
