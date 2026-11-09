@@ -1622,11 +1622,14 @@ def test_deployment_info_to_schema_omits_max_replicas_per_node_when_none():
 class TestTracingConfig:
     """Tests for the TracingConfig schema."""
 
-    def test_default_values(self):
+    _EXPORTER_ENV = "ray.serve.schema.RAY_SERVE_TRACING_EXPORTER_IMPORT_PATH"
+
+    def test_default_values(self, monkeypatch):
         """Test that default TracingConfig has sensible defaults."""
+        monkeypatch.setattr(self._EXPORTER_ENV, "")
         config = TracingConfig()
         assert config.enabled is False
-        assert config.exporter_import_path == ""
+        assert config.exporter_import_path == DEFAULT_TRACING_EXPORTER_IMPORT_PATH
         assert config.sampling_ratio == 0.01
 
     def test_enabled(self):
@@ -1667,30 +1670,43 @@ class TestTracingConfig:
         with pytest.raises(ValidationError):
             TracingConfig(enabled=True, unknown_field="value")
 
-    def test_enabled_with_empty_exporter(self):
-        """Enabled tracing with an empty exporter resolves to the default exporter."""
-        config = TracingConfig(enabled=True, exporter_import_path="")
-        assert config.exporter_import_path == DEFAULT_TRACING_EXPORTER_IMPORT_PATH
+    @pytest.mark.parametrize("enabled", [True, False])
+    @pytest.mark.parametrize(
+        "env_exporter,expected",
+        [
+            ("", DEFAULT_TRACING_EXPORTER_IMPORT_PATH),
+            ("my.mod:from_env", "my.mod:from_env"),
+        ],
+    )
+    def test_exporter_default(self, monkeypatch, enabled, env_exporter, expected):
+        """The exporter defaults to the env var, else the built-in exporter."""
+        monkeypatch.setattr(self._EXPORTER_ENV, env_exporter)
+        assert TracingConfig(enabled=enabled).exporter_import_path == expected
 
-    def test_unset_fields_re_resolve_in_another_env(self, monkeypatch):
-        """Unset fields stay unset so another process can re-resolve them.
+    def test_explicit_exporter_overrides_env(self, monkeypatch):
+        monkeypatch.setattr(self._EXPORTER_ENV, "my.mod:from_env")
+        config = TracingConfig(enabled=True, exporter_import_path="my.mod:create")
+        assert config.exporter_import_path == "my.mod:create"
 
-        The controller rebuilds a config from its explicitly-set fields to
-        resolve defaults from its own env; a filled-in default exporter must not
-        count as explicitly set.
-        """
-        config = TracingConfig(enabled=True)
-        assert config.model_fields_set == {"enabled"}
+    @pytest.mark.parametrize("enabled", [True, False])
+    def test_empty_exporter_rejected(self, enabled):
+        with pytest.raises(ValidationError, match="must not be empty"):
+            TracingConfig(enabled=enabled, exporter_import_path="")
 
-        env_var = "ray.serve.schema.RAY_SERVE_TRACING_EXPORTER_IMPORT_PATH"
-        monkeypatch.setattr(env_var, "")
-        partial = TracingConfig(sampling_ratio=0.5)
-        assert partial.enabled is False
-        monkeypatch.setattr(env_var, "my.mod:exp")
-        resolved = TracingConfig(**partial.model_dump(exclude_unset=True))
-        assert resolved.enabled is True
-        assert resolved.exporter_import_path == "my.mod:exp"
-        assert resolved.sampling_ratio == 0.5
+    def test_explicit_fields_resolve_in_another_env(self, monkeypatch):
+        """Only explicitly set fields cross to the controller, which resolves the
+        rest from its own env vars."""
+        monkeypatch.setattr(self._EXPORTER_ENV, "")
+        caller_config = TracingConfig(sampling_ratio=0.5)
+        assert caller_config.enabled is False
+        fields = caller_config.model_dump(exclude_unset=True)
+        assert fields == {"sampling_ratio": 0.5}
+
+        monkeypatch.setattr(self._EXPORTER_ENV, "my.mod:exp")
+        controller_config = TracingConfig(**fields)
+        assert controller_config.enabled is True
+        assert controller_config.exporter_import_path == "my.mod:exp"
+        assert controller_config.sampling_ratio == 0.5
 
 
 if __name__ == "__main__":

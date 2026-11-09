@@ -236,16 +236,24 @@ def tracing_decorator_factory(
 
 
 class InvalidTracingConfigError(ValueError):
-    """The tracing config is invalid, e.g. its exporter can't be imported."""
+    """The tracing config is invalid, e.g. its exporter can't be imported or
+    has an invalid signature."""
 
 
 def check_tracing_exporter_import_path(
     tracing_config: "TracingConfig",
 ) -> None:
-    """Check that the configured tracing exporter can be imported."""
+    """Check that the configured tracing exporter imports and has a valid signature.
+
+    The exporter isn't called, so a factory that raises when invoked is only
+    caught when a proxy or replica sets tracing up.
+    """
     if not tracing_config.enabled:
         return
-    import_attr(tracing_config.exporter_import_path)
+    exporter = import_attr(tracing_config.exporter_import_path)
+    # The built-in exporter takes the span file name; custom ones take nothing.
+    if tracing_config.exporter_import_path != DEFAULT_TRACING_EXPORTER_IMPORT_PATH:
+        _validate_tracing_exporter(exporter)
 
 
 def setup_tracing(

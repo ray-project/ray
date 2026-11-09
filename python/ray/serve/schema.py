@@ -238,9 +238,12 @@ class TracingConfig(BaseModel):
             # Enable tracing with default exporter
             serve.start(tracing_config=TracingConfig(enabled=True))
 
-    Unset fields default from the ``RAY_SERVE_TRACING_*`` environment variables
-    of the Serve controller (settable via
-    ``controller_options.runtime_env.env_vars``).
+    Tracing configuration is fixed when Serve starts. To change it, shut down
+    and restart Serve with the new config.
+
+    Fields you don't set default from the ``RAY_SERVE_TRACING_*`` environment
+    variables of the Serve controller, which can be set through
+    ``controller_options.runtime_env.env_vars``.
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -254,11 +257,14 @@ class TracingConfig(BaseModel):
         ),
     )
     exporter_import_path: str = Field(
-        default_factory=lambda: RAY_SERVE_TRACING_EXPORTER_IMPORT_PATH,
+        default_factory=lambda: (
+            RAY_SERVE_TRACING_EXPORTER_IMPORT_PATH
+            or DEFAULT_TRACING_EXPORTER_IMPORT_PATH
+        ),
         description=(
-            "Import path to a custom tracing exporter function. Defaults to the "
-            "RAY_SERVE_TRACING_EXPORTER_IMPORT_PATH environment variable. "
-            "If empty and tracing is enabled, the default file-based exporter is used."
+            "Import path to a tracing exporter function. Defaults to the "
+            "RAY_SERVE_TRACING_EXPORTER_IMPORT_PATH environment variable, or the "
+            "built-in file-based exporter if it isn't set. Must not be empty."
         ),
     )
     sampling_ratio: float = Field(
@@ -276,17 +282,12 @@ class TracingConfig(BaseModel):
             raise ValueError(f"sampling_ratio must be between 0.0 and 1.0, got {v}.")
         return v
 
-    @model_validator(mode="after")
-    def resolve_exporter_import_path(self) -> "TracingConfig":
-        # Enabled with no exporter path: use the default file exporter.
-        if self.enabled and not self.exporter_import_path:
-            was_set = "exporter_import_path" in self.model_fields_set
-            self.exporter_import_path = DEFAULT_TRACING_EXPORTER_IMPORT_PATH
-            # Keep a filled-in default "unset" so the controller can re-resolve
-            # it from its own env vars.
-            if not was_set:
-                self.model_fields_set.discard("exporter_import_path")
-        return self
+    @field_validator("exporter_import_path")
+    @classmethod
+    def validate_exporter_import_path(cls, v):
+        if not v:
+            raise ValueError("exporter_import_path must not be empty.")
+        return v
 
 
 @PublicAPI(stability="stable")

@@ -136,15 +136,6 @@ LOGGING_CONFIG_CHECKPOINT_KEY = "serve-logging-config-checkpoint"
 SHUTDOWN_IN_PROGRESS_KEY = "serve-shutdown-in-progress"
 
 
-def _resolve_tracing_config(tracing_config: TracingConfig) -> TracingConfig:
-    """Resolve unset tracing fields from this process's env vars.
-
-    The config may have been built in another process (the driver or the
-    dashboard), whose RAY_SERVE_TRACING_* env vars can differ from ours.
-    """
-    return TracingConfig(**tracing_config.model_dump(exclude_unset=True))
-
-
 class ServeController:
     """Responsible for managing the state of the serving system.
 
@@ -175,7 +166,7 @@ class ServeController:
         *,
         http_options: HTTPOptions,
         global_logging_config: LoggingConfig,
-        global_tracing_config: Optional[TracingConfig] = None,
+        tracing_config_fields: Optional[Dict[str, Any]] = None,
         grpc_options: Optional[gRPCOptions] = None,
         proxy_location: Optional[ProxyLocation] = None,
     ):
@@ -187,22 +178,19 @@ class ServeController:
             self._controller_node_id == get_head_node_id()
         ), "Controller must be on the head node."
 
-        # Tracing is set once, here, and survives recovery via the replayed
-        # constructor arg. Validate before writing any state: if __init__
-        # raises, Ray doesn't restart the actor and releases its name. On a
-        # restart, log instead so recovery isn't blocked.
-        self.global_tracing_config = (
-            TracingConfig()
-            if global_tracing_config is None
-            else _resolve_tracing_config(global_tracing_config)
-        )
+        # Tracing is set once, here, from the fields the user set explicitly;
+        # omitted fields default from this process's env vars. It survives
+        # recovery via the replayed constructor arg. Validate before writing any
+        # state: if __init__ raises, Ray doesn't restart the actor and releases
+        # its name. On a restart, log instead so recovery isn't blocked.
+        self.global_tracing_config = TracingConfig(**(tracing_config_fields or {}))
         try:
             check_tracing_exporter_import_path(self.global_tracing_config)
         except Exception as e:
             error = InvalidTracingConfigError(
-                "Invalid tracing config: could not import exporter_import_path "
+                "Invalid tracing config: exporter "
                 f"{self.global_tracing_config.exporter_import_path!r} "
-                f"({type(e).__name__}: {e})."
+                f"is unusable ({type(e).__name__}: {e})."
             )
             if not ray.get_runtime_context().was_current_actor_reconstructed:
                 raise error from e
@@ -386,16 +374,15 @@ class ServeController:
         """Return the global tracing config."""
         return self.global_tracing_config
 
-    def reconfigure_global_tracing_config(self, global_tracing_config: TracingConfig):
-        """Reject a change to the tracing config after startup.
+    def check_tracing_config(self, tracing_config_fields: Dict[str, Any]):
+        """Reject a tracing config that differs from the one Serve started with.
 
-        A no-op if it matches the config in effect. OpenTelemetry sets the
-        tracer provider once per process, so running components can't adopt a
-        new config.
+        Takes the caller's explicitly set fields and resolves omitted ones from
+        this process's env vars, as at startup, so equal requests compare
+        equal. OpenTelemetry sets the tracer provider once per process, so
+        running components can't adopt a new config.
         """
-        global_tracing_config = _resolve_tracing_config(global_tracing_config)
-
-        if global_tracing_config != self.global_tracing_config:
+        if TracingConfig(**tracing_config_fields) != self.global_tracing_config:
             raise ValueError(
                 "Tracing config cannot be changed after Serve has started; it "
                 "is an initialization-time setting. To change it, shut down and "
@@ -1316,9 +1303,12 @@ class ServeController:
             )
             return
 
-        # Check before mutating any state: rejects a tracing config change.
+        # Check before mutating any state: rejects a tracing config change. The
+        # incoming config was built elsewhere, so compare its explicit fields.
         if config.tracing_config is not None:
-            self.reconfigure_global_tracing_config(config.tracing_config)
+            self.check_tracing_config(
+                config.tracing_config.model_dump(exclude_unset=True)
+            )
 
         ServeUsageTag.API_VERSION.record("v2")
         if not deployment_time:

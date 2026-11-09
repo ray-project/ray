@@ -129,10 +129,12 @@ def test_deploy_config_tracing_config_rejected_on_running_cluster(
     with open(config_file_name, "w") as config_file:
         yaml.safe_dump(config, config_file)
 
-    with pytest.raises(subprocess.CalledProcessError):
+    with pytest.raises(subprocess.CalledProcessError) as exc:
         subprocess.check_output(
             ["serve", "deploy", config_file_name], stderr=subprocess.STDOUT
         )
+
+    assert b"Tracing config cannot be changed" in exc.value.output
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")

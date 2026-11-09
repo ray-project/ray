@@ -11,7 +11,7 @@ import shutil
 import socket
 import sys
 import time
-from typing import List
+from typing import Dict, List
 
 import httpx
 import pytest
@@ -805,6 +805,29 @@ def _span_file_contains(spans_dir: str, component: str, span_name: str) -> bool:
     return False
 
 
+def _span_file_sizes(spans_dir: str) -> Dict[str, int]:
+    """Return each span file's size, to later read only spans written after."""
+    if not os.path.isdir(spans_dir):
+        return {}
+    return {
+        fname: os.path.getsize(os.path.join(spans_dir, fname))
+        for fname in os.listdir(spans_dir)
+    }
+
+
+def _spans_written_since(spans_dir: str, sizes: Dict[str, int], component: str) -> str:
+    """Return span text written to ``component``'s files since ``sizes``."""
+    text = ""
+    if not os.path.isdir(spans_dir):
+        return text
+    for fname in os.listdir(spans_dir):
+        if component in fname:
+            with open(os.path.join(spans_dir, fname), "rb") as f:
+                f.seek(sizes.get(fname, 0))
+                text += f.read().decode(errors="replace")
+    return text
+
+
 @pytest.mark.skipif(
     _ALT_INGRESS_ENABLED,
     reason="Proxy does not emit request spans under HAProxy/direct ingress.",
@@ -881,6 +904,76 @@ def test_serve_tracing_config_survives_controller_recovery(ray_shutdown):
     assert ray.get(client._controller.get_tracing_config.remote()) == config
 
 
+@pytest.mark.skipif(
+    _ALT_INGRESS_ENABLED,
+    reason="Proxy does not emit request spans under HAProxy/direct ingress.",
+)
+def test_tracing_works_after_controller_recovery(ray_shutdown):
+    """A proxy and replica created after controller recovery still trace.
+
+    Only span text written after the restart counts, and the new app's
+    deployment name ties those spans to the new proxy and replica.
+    """
+    serve.start(
+        http_options=HTTPOptions(host="0.0.0.0"),
+        tracing_config=TracingConfig(enabled=True, sampling_ratio=1.0),
+    )
+    client = _get_global_client()
+    spans_dir = os.path.join(get_serve_logs_dir(), "spans")
+    try:
+
+        @serve.deployment
+        class Model:
+            def __call__(self, request):
+                return "hello"
+
+        serve.run(Model.bind(), name="before", route_prefix="/before")
+
+        pid = ray.get(client._controller.get_pid.remote())
+        ray.kill(client._controller, no_restart=False)
+        wait_for_condition(lambda: ray.get(client._controller.get_pid.remote()) != pid)
+
+        # The old proxy and replica get no requests from here on, and the old
+        # proxy is killed, so new span text comes from the new components.
+        sizes = _span_file_sizes(spans_dir)
+
+        # Replace the proxy; the recovered controller starts a new one.
+        (old_proxy,) = ray.get(client._controller.get_proxies.remote()).values()
+        old_proxy_id = old_proxy._actor_id
+        ray.kill(old_proxy, no_restart=True)
+
+        def proxy_replaced() -> bool:
+            proxies = ray.get(client._controller.get_proxies.remote()).values()
+            new_proxies = [p for p in proxies if p._actor_id != old_proxy_id]
+            if not new_proxies:
+                return False
+            ray.get(new_proxies[0].ready.remote(), timeout=10)
+            return True
+
+        wait_for_condition(proxy_replaced, timeout=120)
+
+        # A new app gets a new replica from the recovered controller.
+        serve.run(
+            Model.options(name="AfterModel").bind(),
+            name="after",
+            route_prefix="/after",
+        )
+        url = get_application_url("HTTP", app_name="after")
+
+        def new_components_traced() -> bool:
+            httpx.post(f"{url}/")
+            return "proxy_http_request AfterModel" in _spans_written_since(
+                spans_dir, sizes, "proxy"
+            ) and "replica_handle_request AfterModel" in _spans_written_since(
+                spans_dir, sizes, "replica"
+            )
+
+        wait_for_condition(new_components_traced, timeout=60)
+    finally:
+        serve.shutdown()
+        shutil.rmtree(spans_dir, ignore_errors=True)
+
+
 def test_deploy_tracing_to_running_untraced_serve_raises(ray_shutdown):
     """Adding tracing to an already-running Serve started without it raises.
 
@@ -906,7 +999,7 @@ def test_deploy_tracing_to_running_untraced_serve_raises(ray_shutdown):
     serve.shutdown()
 
 
-def test_reconfigure_tracing_config_at_runtime_raises(ray_shutdown):
+def test_check_tracing_config_rejects_runtime_change(ray_shutdown):
     """Changing the tracing config after Serve has started raises.
 
     Tracing is an init-time setting (delivered to proxies/replicas at startup),
@@ -918,11 +1011,15 @@ def test_reconfigure_tracing_config_at_runtime_raises(ray_shutdown):
 
     # A different config at runtime is rejected; re-applying the same config is a
     # no-op.
-    ray.get(client._controller.reconfigure_global_tracing_config.remote(config))
-    with pytest.raises(RayTaskError):
+    ray.get(
+        client._controller.check_tracing_config.remote(
+            config.model_dump(exclude_unset=True)
+        )
+    )
+    with pytest.raises(RayTaskError, match="Tracing config cannot be changed"):
         ray.get(
-            client._controller.reconfigure_global_tracing_config.remote(
-                TracingConfig(enabled=True, sampling_ratio=1.0)
+            client._controller.check_tracing_config.remote(
+                {"enabled": True, "sampling_ratio": 1.0}
             )
         )
     assert ray.get(client._controller.get_tracing_config.remote()) == config
@@ -945,17 +1042,31 @@ def test_serve_start_tracing_change_on_running_serve_raises(ray_shutdown):
     serve.shutdown()
 
 
-def test_serve_start_rejects_bad_exporter_import_path(ray_shutdown):
-    """An unimportable tracing exporter fails serve.start with a config error.
+def tracing_exporter_with_args(span_file):
+    """Importable exporter with an invalid signature (custom ones take no args)."""
+    return []
+
+
+@pytest.mark.parametrize(
+    "exporter_import_path",
+    [
+        # Can't be imported.
+        "serve_missing_tracing_exporter_mod:exp",
+        # Imports, but its signature is invalid for a custom exporter.
+        "ray.serve.tests.test_standalone:tracing_exporter_with_args",
+    ],
+)
+def test_serve_start_rejects_bad_exporter_import_path(
+    ray_shutdown, exporter_import_path
+):
+    """An unusable tracing exporter fails serve.start with a config error.
 
     The controller validates the exporter in its own env at startup and reports
     it as a ValueError (not an opaque actor-creation failure). The failed
     attempt must not leave a controller behind, so a corrected retry succeeds.
     """
-    bad_config = TracingConfig(
-        enabled=True, exporter_import_path="serve_missing_tracing_exporter_mod:exp"
-    )
-    with pytest.raises(ValueError, match="serve_missing_tracing_exporter_mod"):
+    bad_config = TracingConfig(enabled=True, exporter_import_path=exporter_import_path)
+    with pytest.raises(ValueError, match=exporter_import_path):
         serve.start(tracing_config=bad_config)
 
     # The half-created controller was cleaned up...
@@ -981,12 +1092,61 @@ def raising_tracing_exporter():
 def test_serve_start_fails_when_proxy_tracing_setup_fails(ray_shutdown):
     """An exporter that imports but raises fails proxy startup and serve.start.
 
-    The controller's import check passes; the proxy invokes the exporter in
-    setup_tracing, so its creation fails and serve.start's readiness wait raises.
+    The controller's exporter check passes (it doesn't call the exporter); the
+    proxy invokes it in setup_tracing, so its creation fails and serve.start's
+    readiness wait raises. The failed start must not leave a Serve instance a
+    retry could mistake for a healthy one, so retries need no serve.shutdown().
     """
     config = TracingConfig(enabled=True, exporter_import_path=_RAISING_EXPORTER_PATH)
-    with pytest.raises(ActorDiedError, match=_EXPORTER_SETUP_ERROR):
-        serve.start(tracing_config=config)
+    # The second attempt must fail again rather than reconnect and report
+    # success, so each failed start must leave no controller behind.
+    for _ in range(2):
+        with pytest.raises(ActorDiedError, match=_EXPORTER_SETUP_ERROR):
+            serve.start(tracing_config=config)
+        with pytest.raises(ValueError):
+            ray.get_actor(SERVE_CONTROLLER_NAME, namespace=SERVE_NAMESPACE)
+
+    # A working exporter then starts Serve.
+    try:
+        serve.start(
+            tracing_config=TracingConfig(
+                enabled=True, exporter_import_path=DEFAULT_TRACING_EXPORTER_IMPORT_PATH
+            )
+        )
+        client = _get_global_client()
+        tracing_config = ray.get(client._controller.get_tracing_config.remote())
+        assert tracing_config.enabled
+        assert (
+            tracing_config.exporter_import_path == DEFAULT_TRACING_EXPORTER_IMPORT_PATH
+        )
+    finally:
+        serve.shutdown()
+        shutil.rmtree(os.path.join(get_serve_logs_dir(), "spans"), ignore_errors=True)
+
+
+def test_serve_start_async_fails_when_proxy_tracing_setup_fails(ray_shutdown):
+    """The async startup path (used by serve deploy) handles the same failure."""
+    ray.init()
+    config = TracingConfig(enabled=True, exporter_import_path=_RAISING_EXPORTER_PATH)
+    for _ in range(2):
+        with pytest.raises(ActorDiedError, match=_EXPORTER_SETUP_ERROR):
+            asyncio.run(serve_start_async(global_tracing_config=config))
+        with pytest.raises(ValueError):
+            ray.get_actor(SERVE_CONTROLLER_NAME, namespace=SERVE_NAMESPACE)
+
+    try:
+        client = asyncio.run(
+            serve_start_async(
+                global_tracing_config=TracingConfig(
+                    enabled=True,
+                    exporter_import_path=DEFAULT_TRACING_EXPORTER_IMPORT_PATH,
+                )
+            )
+        )
+        assert ray.get(client._controller.get_tracing_config.remote()).enabled
+    finally:
+        serve.shutdown()
+        shutil.rmtree(os.path.join(get_serve_logs_dir(), "spans"), ignore_errors=True)
 
 
 def test_replica_tracing_setup_failure_fails_deployment(ray_shutdown):

@@ -12,7 +12,7 @@ import ray
 from ray import ObjectRef
 from ray._common.usage import usage_lib
 from ray.actor import ActorHandle
-from ray.exceptions import RayActorError
+from ray.exceptions import RayActorError, RayError, RayTaskError
 from ray.serve._private.client import ServeControllerClient
 from ray.serve._private.constants import (
     HTTP_PROXY_TIMEOUT,
@@ -79,22 +79,32 @@ def _check_http_options(
             )
 
 
-def _check_tracing_config(
+def _tracing_config_fields(
+    tracing_config: Union[None, dict, TracingConfig],
+) -> Optional[Dict[str, Any]]:
+    """Validate a tracing config and return only its explicitly set fields.
+
+    The controller builds the effective config from these, so omitted fields
+    default from its env vars rather than this process's.
+    """
+    if tracing_config is None:
+        return None
+    config = (
+        TracingConfig.model_validate(tracing_config)
+        if isinstance(tracing_config, dict)
+        else tracing_config
+    )
+    return config.model_dump(exclude_unset=True)
+
+
+def _check_tracing_config_unchanged(
     client: ServeControllerClient,
     tracing_config: Union[dict, TracingConfig],
 ) -> None:
-    """Reject a tracing config that differs from the running controller's.
-
-    Compared on the controller so unset fields resolve from its env vars.
-    """
-    new_tracing_config = (
-        tracing_config
-        if isinstance(tracing_config, TracingConfig)
-        else TracingConfig(**tracing_config)
-    )
+    """Reject a tracing config that differs from the running controller's."""
     ray.get(
-        client._controller.reconfigure_global_tracing_config.remote(  # type: ignore[attr-defined]
-            new_tracing_config
+        client._controller.check_tracing_config.remote(  # type: ignore[attr-defined]
+            _tracing_config_fields(tracing_config)
         )
     )
 
@@ -102,15 +112,32 @@ def _check_tracing_config(
 def _get_actor_init_error(error: RayActorError) -> Optional[BaseException]:
     """Return the exception raised by the actor's __init__, if any.
 
-    Ray raises ``ActorDiedError(RayTaskError)``; ``RayTaskError.args[2]`` is
-    the original exception.
+    Ray raises ``ActorDiedError(RayTaskError)`` for a constructor failure.
     """
-    if not error.actor_init_failed:
+    if not error.actor_init_failed or not error.args:
         return None
+    task_error = error.args[0]
+    return task_error.cause if isinstance(task_error, RayTaskError) else None
+
+
+def _shutdown_after_failed_start(controller: ActorHandle) -> None:
+    """Shut down a Serve instance this call created but failed to start.
+
+    Otherwise a later call would connect to it as if it were healthy. Cleanup
+    errors are logged so the caller still sees the original startup error.
+    """
     try:
-        return error.args[0].args[2]
-    except (AttributeError, IndexError):
-        return None
+        # Waits until the controller exits and releases its name, which
+        # surfaces as RayActorError.
+        ray.get(controller.graceful_shutdown.remote(), timeout=30)  # type: ignore[attr-defined]
+    except RayActorError:
+        return
+    except Exception:
+        logger.exception("Failed to shut down Serve after a failed start.")
+    try:
+        ray.kill(controller, no_restart=True)
+    except Exception:
+        logger.exception("Failed to kill the Serve controller after a failed start.")
 
 
 def _create_controller_and_proxy_refs(
@@ -169,16 +196,13 @@ def _create_controller_and_proxy_refs(
     elif isinstance(global_logging_config, dict):
         global_logging_config = LoggingConfig(**global_logging_config)
 
-    if isinstance(global_tracing_config, dict):
-        global_tracing_config = TracingConfig(**global_tracing_config)
-
     controller_impl = get_controller_impl(controller_options=controller_options)
     controller = controller_impl.remote(
         http_options=http_options,
         grpc_options=grpc_options,
         global_logging_config=global_logging_config,
         proxy_location=proxy_location,
-        global_tracing_config=global_tracing_config,
+        tracing_config_fields=_tracing_config_fields(global_tracing_config),
     )
 
     try:
@@ -238,7 +262,7 @@ async def serve_start_async(
         if global_tracing_config is not None:
             # Blocking RPC; keep it off the event loop.
             await asyncio.to_thread(
-                _check_tracing_config, client, global_tracing_config
+                _check_tracing_config_unchanged, client, global_tracing_config
             )
         return client
 
@@ -271,6 +295,10 @@ async def serve_start_async(
             raise TimeoutError(
                 f"HTTP proxies not available after {HTTP_PROXY_TIMEOUT}s."
             )
+        except RayError:
+            # A proxy failed to start, e.g. its tracing setup raised.
+            await asyncio.to_thread(_shutdown_after_failed_start, controller)
+            raise
 
     client = ServeControllerClient(controller)
     _set_global_client(client)
@@ -330,7 +358,8 @@ def serve_start(
             proxies/replicas in this Serve instance.
         global_tracing_config: Optional ``TracingConfig`` (or dict) applied as
             the default tracing configuration for the Serve controller and all
-            proxies/replicas in this Serve instance.
+            proxies/replicas in this Serve instance. Fixed when Serve starts;
+            changing it requires shutting down and restarting Serve.
         controller_options: Optional ``ControllerOptions`` (or dict) for the
             Serve controller actor. Currently only ``runtime_env.env_vars``
             is honored; see ``ray.serve.config.ControllerOptions``. Only
@@ -366,7 +395,7 @@ def serve_start(
         if http_options:
             _check_http_options(client, http_options)
         if global_tracing_config is not None:
-            _check_tracing_config(client, global_tracing_config)
+            _check_tracing_config_unchanged(client, global_tracing_config)
         return client
 
     controller, proxy_ready_refs = _create_controller_and_proxy_refs(
@@ -386,6 +415,10 @@ def serve_start(
             raise TimeoutError(
                 f"HTTP proxies not available after {HTTP_PROXY_TIMEOUT}s."
             )
+        except RayError:
+            # A proxy failed to start, e.g. its tracing setup raised.
+            _shutdown_after_failed_start(controller)
+            raise
 
     client = ServeControllerClient(controller)
     _set_global_client(client)

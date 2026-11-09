@@ -187,8 +187,17 @@ def test_put_bad_schema(ray_start_stop):
 @pytest.mark.skipif(
     sys.platform == "darwin" and not TEST_ON_DARWIN, reason="Flaky on OSX."
 )
-def test_put_bad_tracing_exporter(ray_start_stop):
-    """An unimportable tracing exporter fails the deploy with a 400.
+@pytest.mark.parametrize(
+    "exporter_import_path",
+    [
+        # Can't be imported.
+        "serve_missing_tracing_exporter_mod:exp",
+        # Imports, but takes arguments, which custom exporters can't.
+        "ray.serve.tests.test_standalone:tracing_exporter_with_args",
+    ],
+)
+def test_put_bad_tracing_exporter(ray_start_stop, exporter_import_path):
+    """An unusable tracing exporter fails the deploy with a 400.
 
     It's validated when the controller starts, in the controller's env. The
     failed start must not leave a controller behind, so a corrected deploy
@@ -197,7 +206,7 @@ def test_put_bad_tracing_exporter(ray_start_stop):
     config = {
         "tracing_config": {
             "enabled": True,
-            "exporter_import_path": "serve_missing_tracing_exporter_mod:exp",
+            "exporter_import_path": exporter_import_path,
         },
         "applications": [],
     }
@@ -205,7 +214,7 @@ def test_put_bad_tracing_exporter(ray_start_stop):
         "PUT", SERVE_HEAD_URL, json=config, timeout=60
     )
     assert put_response.status_code == 400
-    assert "serve_missing_tracing_exporter_mod" in put_response.text
+    assert exporter_import_path in put_response.text
 
     config["tracing_config"] = {"enabled": False}
     put_response = request_with_auth_token(

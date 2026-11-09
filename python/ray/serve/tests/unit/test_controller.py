@@ -1,9 +1,12 @@
+import asyncio
 import pickle
 from copy import deepcopy
+from unittest import mock
 
 import pytest
 
-from ray.exceptions import ActorDiedError, RayTaskError
+from ray.exceptions import ActorDiedError, GetTimeoutError, RayActorError, RayTaskError
+from ray.serve._private import api
 from ray.serve._private.api import _get_actor_init_error
 from ray.serve._private.common import TargetCapacityDirection
 from ray.serve._private.controller import (
@@ -721,7 +724,7 @@ class TestControllerHealthMetricsTracker:
 def test_get_actor_init_error():
     """Recover the exception raised by an actor's __init__ from its death error.
 
-    Pins the ActorDiedError(RayTaskError) -> RayTaskError.args[2] layout that
+    Pins the ActorDiedError(RayTaskError) -> RayTaskError.cause layout that
     serve.start relies on to surface an invalid tracing config cleanly,
     including after the pickling Ray does to ship the error to the caller.
     """
@@ -735,6 +738,96 @@ def test_get_actor_init_error():
 
     # A system-level death (not an __init__ failure) has no init error.
     assert _get_actor_init_error(ActorDiedError()) is None
+    # Nor does an init failure that doesn't carry a RayTaskError.
+    assert _get_actor_init_error(RayActorError(actor_init_failed=True)) is None
+
+
+@pytest.mark.parametrize(
+    "shutdown_error,expect_kill",
+    [
+        (ActorDiedError(), False),  # Controller exited: nothing left to do.
+        (GetTimeoutError(), True),  # Shutdown hung: kill so the name is freed.
+    ],
+)
+def test_shutdown_after_failed_start(shutdown_error, expect_kill):
+    controller = mock.MagicMock()
+    with mock.patch.object(
+        api.ray, "get", side_effect=shutdown_error
+    ), mock.patch.object(
+        api.ray, "kill", side_effect=RuntimeError("kill failed")
+    ) as kill:
+        # Never raises, so the caller's original startup error survives.
+        api._shutdown_after_failed_start(controller)
+    assert kill.called == expect_kill
+    if expect_kill:
+        kill.assert_called_once_with(controller, no_restart=True)
+
+
+def _proxy_startup_error(error_type):
+    cause = RuntimeError("exporter failed")
+    if error_type is RayTaskError:
+        # What ready() surfaces when the proxy's server fails to start.
+        return RayTaskError("ready", "tb", cause).as_instanceof_cause()
+    # What a proxy constructor failure (e.g. tracing setup) surfaces.
+    return ActorDiedError.from_task_error(RayTaskError("__init__", "tb", cause))
+
+
+@pytest.fixture
+def no_running_serve():
+    with mock.patch.object(
+        api, "_check_cached_client_alive", return_value=(None, None)
+    ), mock.patch.object(
+        api, "_get_global_client", side_effect=api.RayServeException()
+    ), mock.patch.object(
+        api, "_set_global_client"
+    ) as set_global_client, mock.patch.object(
+        api.usage_lib, "record_library_usage"
+    ):
+        yield set_global_client
+
+
+@pytest.mark.parametrize("use_async", [False, True])
+@pytest.mark.parametrize("error_type", [ActorDiedError, RayTaskError])
+def test_failed_proxy_start_shuts_down_new_controller(
+    no_running_serve, use_async, error_type
+):
+    """A proxy startup failure shuts down the controller this call created and
+    re-raises the original error, so a retry doesn't find a broken instance."""
+    controller = object()
+    error = _proxy_startup_error(error_type)
+
+    async def failing_ready():
+        raise error
+
+    refs = [failing_ready()] if use_async else ["ready_ref"]
+    with mock.patch.object(
+        api, "_create_controller_and_proxy_refs", return_value=(controller, refs)
+    ), mock.patch.object(api.ray, "get", side_effect=error), mock.patch.object(
+        api, "_shutdown_after_failed_start"
+    ) as cleanup:
+        with pytest.raises(type(error)) as exc:
+            if use_async:
+                asyncio.run(api.serve_start_async())
+            else:
+                api.serve_start()
+
+    assert exc.value is error
+    cleanup.assert_called_once_with(controller)
+    no_running_serve.assert_not_called()
+
+
+def test_proxy_start_timeout_keeps_controller(no_running_serve):
+    """A slow proxy may still become ready, so a timeout doesn't shut down."""
+    with mock.patch.object(
+        api, "_create_controller_and_proxy_refs", return_value=(object(), ["ref"])
+    ), mock.patch.object(
+        api.ray, "get", side_effect=GetTimeoutError()
+    ), mock.patch.object(
+        api, "_shutdown_after_failed_start"
+    ) as cleanup:
+        with pytest.raises(TimeoutError, match="HTTP proxies not available"):
+            api.serve_start()
+    cleanup.assert_not_called()
 
 
 if __name__ == "__main__":
