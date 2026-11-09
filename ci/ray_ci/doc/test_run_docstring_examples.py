@@ -404,12 +404,51 @@ def test_missing_library_never_matches_an_installed_library(monkeypatch):
     assert missing_library(ImportError("PyTorch was specified")) is None
 
 
-def _rllib_stub(name: str):
-    """Make an instance of a class shaped like one of RLlib's stand-ins."""
-    return type(name, (), {"__module__": "ray.rllib.utils.framework"})()
+# The stand-ins in ray/rllib/utils/framework.py, in the same shape: what
+# try_import_torch and try_import_tf return when the library isn't installed.
+_FAKE_FRAMEWORK = """
+class _TFStub:
+    def __init__(self):
+        self.keras = _KerasStub()
+
+class _KerasStub:
+    def __init__(self):
+        self.Model = _FakeTfClassStub
+
+class _FakeTfClassStub:
+    pass
+
+class _NNStub:
+    def __init__(self):
+        self.functional = None
+        self.Module = _FakeTorchClassStub
+        self.parallel = _ParallelStub()
+
+class _FakeTorchClassStub:
+    pass
+
+class _ParallelStub:
+    def __init__(self):
+        self.DataParallel = _FakeTorchClassStub
+
+def try_import_torch():
+    return None, _NNStub()
+
+def try_import_tf():
+    return None, _TFStub(), None
+"""
 
 
-def _attribute_error(code: str, namespace: dict) -> AttributeError:
+@pytest.fixture
+def rllib_framework(monkeypatch):
+    """Install a fake ray.rllib.utils.framework, as importing RLlib would."""
+    module = types.ModuleType("ray.rllib.utils.framework")
+    exec(_FAKE_FRAMEWORK, vars(module))
+    monkeypatch.setitem(sys.modules, "ray.rllib.utils.framework", module)
+    return module
+
+
+def _raised(code: str, namespace: dict) -> AttributeError:
     """Run code in namespace, as an example or RLlib module would, and return its error."""
     filename = f"<example {len(linecache.cache)}>"
     linecache.cache[filename] = (len(code), None, code.splitlines(True), filename)
@@ -420,30 +459,102 @@ def _attribute_error(code: str, namespace: dict) -> AttributeError:
     raise AssertionError("expected an AttributeError")
 
 
+def _rllib_namespace(framework, **names) -> dict:
+    """Globals of an RLlib module that called try_import_torch and try_import_tf."""
+    _, nn = framework.try_import_torch()
+    tf1, tf, tfv = framework.try_import_tf()
+    namespace = {"__name__": "ray.rllib.core", "nn": nn, "tf": tf, "tf1": tf1}
+    namespace.update(names)
+    return namespace
+
+
 @pytest.mark.parametrize(
-    "stub, library",
-    [("_TFStub", "tensorflow"), ("_NNStub", "torch"), ("_ParallelStub", "torch")],
+    "code, library",
+    [
+        # Raised as `tf.nn` or `nn.ReLU` in ray/rllib/models/utils.py.
+        ("tf.nn\n", "tensorflow"),
+        ("tf.keras.layers\n", "tensorflow"),
+        ("tf.keras.Model.fit\n", "tensorflow"),
+        ("nn.ReLU\n", "torch"),
+        ("nn.parallel.foo\n", "torch"),
+        ("nn.Module.forward\n", "torch"),
+    ],
 )
-def test_missing_library_from_an_rllib_stand_in(nothing_installed, stub, library):
-    # Raised as `tf.nn` or `nn.ReLU` in ray/rllib/models/utils.py.
-    obj = _rllib_stub(stub)
-    try:
-        _ = obj.anything
-    except AttributeError as e:
-        error = e
-    assert missing_library(error) == library
+def test_missing_library_from_an_rllib_stand_in(
+    nothing_installed, rllib_framework, code, library
+):
+    namespace = _rllib_namespace(rllib_framework)
+    assert missing_library(_raised(code, namespace)) == library
 
 
-def test_missing_library_from_an_rllib_local_set_to_none(nothing_installed):
+def test_missing_library_finds_stand_ins_by_what_rllib_returns(
+    nothing_installed, rllib_framework
+):
+    # A renamed or new stand-in needs no change to the runner.
+    exec(
+        "class _RenamedStub:\n"
+        "    pass\n"
+        "def try_import_torch():\n"
+        "    return None, _RenamedStub()\n",
+        vars(rllib_framework),
+    )
+    namespace = _rllib_namespace(rllib_framework)
+    assert missing_library(_raised("nn.ReLU\n", namespace)) == "torch"
+    # A framework class that try_import_torch no longer returns isn't one.
+    namespace["stale"] = rllib_framework._NNStub()
+    assert missing_library(_raised("stale.ReLU\n", namespace)) is None
+
+
+@pytest.mark.parametrize(
+    "code",
+    [
+        "nn.functional.softplus(1.0)\n",
+        "x = 1.0\ny = nn.functional.softplus(x)\n",
+        "F = nn.functional\nF.softplus(1.0)\n",
+    ],
+)
+def test_missing_library_from_nn_functional(nothing_installed, rllib_framework, code):
+    # _NNStub sets functional to None, so this raises on None, not on a stand-in.
+    namespace = _rllib_namespace(rllib_framework)
+    assert missing_library(_raised(code, namespace)) == "torch"
+
+
+@pytest.mark.parametrize(
+    "name, code, library",
+    [
+        ("torch", "torch.tensor([0.0])\n", "torch"),
+        ("_torch", "_torch.tensor([0.0])\n", "torch"),
+        ("tf", "tf.nn\n", "tensorflow"),
+        ("tf1", "tf1.placeholder\n", "tensorflow"),
+        ("tfv", "tfv.real\n", "tensorflow"),
+        ("tfp", "tfp.distributions.Normal\n", "tensorflow_probability"),
+        ("jax", "jax.numpy.ones(1)\n", "jax"),
+        ("flax", "flax.linen.Dense\n", "jax"),
+    ],
+)
+def test_missing_library_from_an_rllib_example_global_set_to_none(
+    nothing_installed, rllib_framework, name, code, library
+):
+    # Raised by an example that runs in a copy of an RLlib module's globals,
+    # where a try_import_* function set the name to None.
+    namespace = {"__name__": "ray.rllib.core.distribution", name: None}
+    assert missing_library(_raised(code, namespace)) == library
+
+
+def test_missing_library_from_an_rllib_local_set_to_none(
+    nothing_installed, rllib_framework
+):
     # Raised as `torch.device("cpu")` in get_device in ray/rllib/utils/framework.py,
     # which binds torch locally from try_import_torch.
     code = "def get_device():\n    torch = None\n    return torch.device('cpu')\n"
     namespace = {"__name__": "ray.rllib.utils.framework"}
-    error = _attribute_error(code + "get_device()\n", namespace)
+    error = _raised(code + "get_device()\n", namespace)
     assert missing_library(error) == "torch"
 
 
-def test_missing_library_from_an_rllib_closure_set_to_none(nothing_installed):
+def test_missing_library_from_an_rllib_closure_set_to_none(
+    nothing_installed, rllib_framework
+):
     # torch bound in an enclosing function is a free variable of the inner one,
     # so it's in the frame's f_locals but not in its co_varnames.
     code = (
@@ -454,33 +565,48 @@ def test_missing_library_from_an_rllib_closure_set_to_none(nothing_installed):
         "    return inner()\n"
     )
     namespace = {"__name__": "ray.rllib.utils.framework"}
-    error = _attribute_error(code + "outer()\n", namespace)
+    error = _raised(code + "outer()\n", namespace)
     assert missing_library(error) == "torch"
 
 
-def test_missing_library_from_an_rllib_example_global_set_to_none(nothing_installed):
-    # Raised by an example such as `torch.tensor([0.0])` that runs in a copy of
-    # an RLlib module's globals, where try_import_torch set torch to None.
-    namespace = {"__name__": "ray.rllib.core.distribution", "torch": None}
-    assert missing_library(_attribute_error("torch.tensor([0.0])\n", namespace)) == (
-        "torch"
-    )
-    namespace = {"__name__": "ray.rllib.models.utils", "tf": None}
-    assert missing_library(_attribute_error("tf.nn\n", namespace)) == "tensorflow"
+@pytest.mark.parametrize(
+    "code",
+    [
+        # A name that isn't a framework.
+        "model.forward()\n",
+        # A framework name that isn't the one the lookup failed on.
+        "x = torch\nmodel.forward()\n",
+        # The framework name only in a comment or a string on the failing line.
+        "model.forward()  # torch.forward\n",
+        "print('torch.forward', model.forward)\n",
+        # An attribute named like a framework, on another object.
+        "holder.torch.device\n",
+        # A chain that starts after a call.
+        "make().torch.device\n",
+    ],
+)
+def test_missing_library_ignores_other_attribute_errors(
+    nothing_installed, rllib_framework, code
+):
+    holder = types.SimpleNamespace(torch=None)
+    namespace = {
+        "__name__": "ray.rllib.core",
+        "torch": None,
+        "model": None,
+        "holder": holder,
+        "make": lambda: holder,
+    }
+    assert missing_library(_raised(code, namespace)) is None
 
 
-def test_missing_library_ignores_other_attribute_errors(nothing_installed):
-    # A plain bug on None: a name that isn't a framework, a framework name
-    # that isn't the one the lookup failed on, or code outside RLlib.
-    namespace = {"__name__": "ray.rllib.core", "model": None}
-    assert missing_library(_attribute_error("model.forward()\n", namespace)) is None
-    namespace = {"__name__": "ray.rllib.core", "torch": None, "model": None}
-    code = "x = torch\nmodel.forward()\n"
-    assert missing_library(_attribute_error(code, namespace)) is None
+def test_missing_library_ignores_code_outside_rllib(nothing_installed, rllib_framework):
     namespace = {"__name__": "ray.data.dataset", "torch": None}
-    assert missing_library(_attribute_error("torch.device()\n", namespace)) is None
-    # A stand-in-shaped class from any other module.
-    obj = type("_NNStub", (), {"__module__": "my.module"})()
+    assert missing_library(_raised("torch.device()\n", namespace)) is None
+
+
+def test_missing_library_ignores_stand_ins_without_rllib(nothing_installed):
+    # A class shaped like a stand-in, with RLlib never imported.
+    obj = type("_NNStub", (), {"__module__": "ray.rllib.utils.framework"})()
     try:
         _ = obj.ReLU
     except AttributeError as e:
@@ -488,10 +614,13 @@ def test_missing_library_ignores_other_attribute_errors(nothing_installed):
     assert missing_library(error) is None
 
 
-def test_missing_library_ignores_an_rllib_stand_in_when_installed(monkeypatch):
+def test_missing_library_ignores_an_rllib_stand_in_when_installed(
+    monkeypatch, rllib_framework
+):
     monkeypatch.setattr(runner, "_installed", lambda module: True)
-    namespace = {"__name__": "ray.rllib.core", "torch": None}
-    assert missing_library(_attribute_error("torch.tensor([0.0])\n", namespace)) is None
+    namespace = _rllib_namespace(rllib_framework, torch=None)
+    assert missing_library(_raised("torch.tensor([0.0])\n", namespace)) is None
+    assert missing_library(_raised("nn.ReLU\n", namespace)) is None
 
 
 _NEEDS_TORCH = '''def uses_torch():
