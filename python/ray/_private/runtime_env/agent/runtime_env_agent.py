@@ -56,7 +56,9 @@ default_logger = logging.getLogger(__name__)
 # better pluggability mechanism once available.
 SLEEP_FOR_TESTING_S = os.environ.get("RAY_RUNTIME_ENV_SLEEP_FOR_TESTING_S")
 
-_MAX_UNIX_SOCKET_PATH_BYTES = 104
+# Maximum UTF-8 byte length of a NUL-terminated Linux AF_UNIX sun_path (108 - 1),
+# matching ray._private.utils.validate_socket_filepath and worker_pool.cc.
+_MAX_UNIX_SOCKET_PATH_BYTES = 107
 
 _FORK_SERVER_ALLOWED_RUNTIME_ENV_KEYS: FrozenSet[str] = frozenset(
     {
@@ -615,7 +617,10 @@ class RuntimeEnvAgent:
 
         if self._enable_worker_fork_server:
             atexit.register(self._cleanup_fork_servers)
-            if self._max_active_fork_servers > 0:
+            if (
+                self._max_active_fork_servers > 0
+                and self._fork_server_socket_path(None) is not None
+            ):
                 loop = get_or_create_event_loop()
                 # Launch fs_0 non-blockingly and monitor readiness asynchronously so
                 # slow --worker-preload-modules imports never stall HTTP readiness.
@@ -777,14 +782,15 @@ class RuntimeEnvAgent:
         sock_path = os.path.join(
             self._sockets_dir, self._fork_server_socket_name(fs_key)
         )
-        if len(sock_path.encode("utf-8")) >= _MAX_UNIX_SOCKET_PATH_BYTES:
+        sock_len = len(sock_path.encode("utf-8"))
+        if sock_len > _MAX_UNIX_SOCKET_PATH_BYTES:
             if not self._socket_path_len_warned:
                 self._socket_path_len_warned = True
                 (logger or self._logger).warning(
-                    "Fork server AF_UNIX socket path %r (%d bytes) meets or exceeds "
+                    "Fork server AF_UNIX socket path %r (%d bytes) exceeds "
                     "the %d-byte limit; bypassing fork server (use a shorter --temp-dir).",
                     sock_path,
-                    len(sock_path.encode("utf-8")),
+                    sock_len,
                     _MAX_UNIX_SOCKET_PATH_BYTES,
                 )
             return None
@@ -1006,6 +1012,8 @@ class RuntimeEnvAgent:
                 await asyncio.sleep(backoff_s)
                 if self._shutting_down:
                     return
+            if self._fork_server_socket_path(None) is None:
+                return
             if not self._make_fork_server_slot(self._logger):
                 await asyncio.sleep(self._fork_server_monitor_interval_s)
                 continue

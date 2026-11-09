@@ -95,6 +95,39 @@ def _normalize_pythonpath(raw_pythonpath: str) -> str:
     )
 
 
+def _validate_fork_server_socket_path(socket_path: str) -> str:
+    if os.path.basename(socket_path) in ("", ".", ".."):
+        raise OSError(f"Invalid fork server socket path: {socket_path!r}")
+    norm_path = os.path.abspath(socket_path)
+    ray._private.utils.validate_socket_filepath(norm_path)
+    return norm_path
+
+
+def _bind_staging_unix_socket(
+    server_sock: socket.socket,
+    socket_dir: str,
+    tmp_name: str,
+    tmp_socket_path: str,
+) -> None:
+    try:
+        ray._private.utils.validate_socket_filepath(tmp_socket_path)
+    except OSError:
+        if not sys.platform.startswith("linux"):
+            raise
+        # socket_path fits sun_path (<= 107 bytes), while .f<pid> can exceed 107 bytes
+        # when len(socket_dir) is 98..105 bytes. Bind the same directory entry via a
+        # short /proc/self/fd/<dir_fd>/.f<pid> path and close dir_fd immediately.
+        dir_fd = os.open(socket_dir, os.O_RDONLY | os.O_DIRECTORY)
+        try:
+            proc_bind_path = f"/proc/self/fd/{dir_fd}/{tmp_name}"
+            ray._private.utils.validate_socket_filepath(proc_bind_path)
+            server_sock.bind(proc_bind_path)
+        finally:
+            os.close(dir_fd)
+        return
+    server_sock.bind(tmp_socket_path)
+
+
 class ForkServerProcess:
     """Manages a pre-initialized Python fork server process and its Unix socket."""
 
@@ -109,6 +142,7 @@ class ForkServerProcess:
         worker_stdout_fd: Optional[int] = None,
         worker_stderr_fd: Optional[int] = None,
     ):
+        socket_path = _validate_fork_server_socket_path(socket_path)
         self.socket_path = socket_path
         self.started_at = time.monotonic()
         self.ready_at: Optional[float] = None
@@ -282,7 +316,7 @@ class ForkServerProcess:
                 or "ForkServer refusing to start" in stripped
             ):
                 warnings_found.append(stripped)
-        return warnings_found
+        return list(dict.fromkeys(warnings_found))
 
     async def wait_ready(self, timeout_s: Optional[float] = None) -> None:
         if timeout_s is None:
@@ -330,6 +364,12 @@ class ForkServerProcess:
         Path(self.socket_path).unlink(missing_ok=True)
 
 
+def _emit_startup_warning(msg: str) -> None:
+    if logger.hasHandlers():
+        logger.warning(msg)
+    print(msg, file=sys.stderr, flush=True)
+
+
 def _preload_modules(preload_arg: str) -> None:
     """Import preloaded modules before fork().
 
@@ -346,9 +386,7 @@ def _preload_modules(preload_arg: str) -> None:
         try:
             importlib.import_module(mod)
         except Exception as e:
-            msg = f"ForkServer failed to preload module '{mod}': {e}"
-            logger.warning(msg)
-            print(msg, file=sys.stderr, flush=True)
+            _emit_startup_warning(f"ForkServer failed to preload module '{mod}': {e}")
 
 
 _RAYLET_INTERNAL_ENV_KEYS = frozenset(
@@ -621,6 +659,20 @@ def _run_fork_server(argv: Optional[List[str]] = None) -> Optional[ModuleType]:
         finally:
             os.close(devnull_fd)
 
+    for passed_fd in (args.worker_stdout_fd, args.worker_stderr_fd):
+        if passed_fd is not None and passed_fd > 2:
+            with suppress(OSError):
+                os.set_inheritable(passed_fd, False)
+
+    try:
+        socket_path = _validate_fork_server_socket_path(args.socket_path)
+    except OSError as e:
+        _emit_startup_warning(f"ForkServer refusing to start: {e}")
+        if lifeline_fd is not None:
+            with suppress(OSError):
+                os.close(lifeline_fd)
+        raise SystemExit(1)
+
     signal.signal(signal.SIGCHLD, signal.SIG_IGN)
     _register_lifetime_pipe_at_fork_once()
 
@@ -660,12 +712,10 @@ def _run_fork_server(argv: Optional[List[str]] = None) -> Optional[ModuleType]:
 
     torch_cuda = sys.modules.get("torch.cuda")
     if torch_cuda is not None and getattr(torch_cuda, "_initialized", False):
-        msg = (
+        _emit_startup_warning(
             "ForkServer refusing to start because a preloaded module initialized "
             "CUDA before fork(); falling back to spawning workers via execvpe."
         )
-        logger.warning(msg)
-        print(msg, file=sys.stderr, flush=True)
         if lifeline_fd is not None:
             with suppress(OSError):
                 os.close(lifeline_fd)
@@ -693,21 +743,13 @@ def _run_fork_server(argv: Optional[List[str]] = None) -> Optional[ModuleType]:
             os.close(lifeline_fd)
             return None
 
-    _redirect_post_preload_stdio(
-        args.logs_dir, args.worker_stdout_fd, args.worker_stderr_fd
-    )
-
-    socket_path = os.path.abspath(args.socket_path)
     socket_dir = os.path.dirname(socket_path)
-    os.makedirs(socket_dir, exist_ok=True)
     server_pid = os.getpid()
-    tmp_socket_path = os.path.join(socket_dir, f".f{server_pid}")
-    Path(tmp_socket_path).unlink(missing_ok=True)
-
-    server_sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-    wakeup_r, wakeup_w = os.pipe()
-    os.set_blocking(wakeup_r, False)
-    os.set_blocking(wakeup_w, False)
+    tmp_name = f".f{server_pid}"
+    tmp_socket_path = os.path.join(socket_dir, tmp_name)
+    server_sock: Optional[socket.socket] = None
+    wakeup_r: Optional[int] = None
+    wakeup_w: Optional[int] = None
     peer_poller = select.poll()
     published_stat: Optional[Tuple[int, int]] = None
     stop_requested = False
@@ -716,23 +758,47 @@ def _run_fork_server(argv: Optional[List[str]] = None) -> Optional[ModuleType]:
         nonlocal stop_requested
         stop_requested = True
 
-    signal.set_wakeup_fd(wakeup_w, warn_on_full_buffer=False)
-    signal.signal(signal.SIGTERM, _handle_sigterm)
-
     try:
-        server_sock.bind(tmp_socket_path)
-        os.chmod(tmp_socket_path, 0o600)
-        tmp_st = os.lstat(tmp_socket_path)
-        server_sock.listen(128)
-        server_sock.setblocking(False)
-        if stop_requested:
-            return None
-        if lifeline_fd is not None:
-            readable, _, _ = select.select([lifeline_fd], [], [], 0)
-            if readable and _is_lifeline_closed(lifeline_fd):
+        try:
+            os.makedirs(socket_dir, exist_ok=True)
+            if os.path.isdir(socket_path) and not os.path.islink(socket_path):
+                raise IsADirectoryError(
+                    f"Socket path points to an existing directory: {socket_path}"
+                )
+            Path(tmp_socket_path).unlink(missing_ok=True)
+
+            server_sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+            wakeup_r, wakeup_w = os.pipe()
+            os.set_blocking(wakeup_r, False)
+            os.set_blocking(wakeup_w, False)
+            signal.set_wakeup_fd(wakeup_w, warn_on_full_buffer=False)
+            signal.signal(signal.SIGTERM, _handle_sigterm)
+
+            _bind_staging_unix_socket(
+                server_sock, socket_dir, tmp_name, tmp_socket_path
+            )
+            os.chmod(tmp_socket_path, 0o600)
+            tmp_st = os.lstat(tmp_socket_path)
+            server_sock.listen(128)
+            server_sock.setblocking(False)
+            if stop_requested:
                 return None
-        os.replace(tmp_socket_path, socket_path)
-        published_stat = (tmp_st.st_dev, tmp_st.st_ino)
+            if lifeline_fd is not None:
+                readable, _, _ = select.select([lifeline_fd], [], [], 0)
+                if readable and _is_lifeline_closed(lifeline_fd):
+                    return None
+            _redirect_post_preload_stdio(
+                args.logs_dir, args.worker_stdout_fd, args.worker_stderr_fd
+            )
+            os.replace(tmp_socket_path, socket_path)
+            published_stat = (tmp_st.st_dev, tmp_st.st_ino)
+        except Exception as e:
+            _emit_startup_warning(
+                f"ForkServer refusing to start because socket setup failed for "
+                f"{socket_path!r}: {e}"
+            )
+            traceback.print_exc(file=sys.stderr)
+            raise SystemExit(1)
 
         watch_fds = [server_sock, wakeup_r]
         if lifeline_fd is not None:
@@ -871,13 +937,15 @@ def _run_fork_server(argv: Optional[List[str]] = None) -> Optional[ModuleType]:
         if os.getpid() == server_pid:
             with suppress(ValueError, OSError):
                 signal.set_wakeup_fd(-1)
-            with suppress(OSError):
-                server_sock.close()
+            if server_sock is not None:
+                with suppress(OSError):
+                    server_sock.close()
             for fd_to_close in (wakeup_r, wakeup_w, lifeline_fd):
                 if fd_to_close is not None:
                     with suppress(OSError):
                         os.close(fd_to_close)
-            Path(tmp_socket_path).unlink(missing_ok=True)
+            with suppress(OSError):
+                Path(tmp_socket_path).unlink(missing_ok=True)
             if published_stat is not None:
                 with suppress(OSError):
                     cur_st = os.lstat(socket_path)

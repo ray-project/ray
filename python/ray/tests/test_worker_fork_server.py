@@ -31,8 +31,11 @@ from ray._common.network_utils import build_address, find_free_port
 from ray._common.test_utils import fetch_prometheus, wait_for_condition
 from ray._private import ray_constants
 from ray._private.internal_api import memory_summary
+from ray._private.node import Node
+from ray._private.parameter import RayParams
 from ray._private.runtime_env.agent.runtime_env_agent import (
     _FORK_SERVER_ALLOWED_RUNTIME_ENV_KEYS,
+    _MAX_UNIX_SOCKET_PATH_BYTES,
     RuntimeEnvAgent,
     is_exec_bound_env_var,
 )
@@ -1589,7 +1592,7 @@ def test_fork_server_exec_bound_ld_library_path_tz_pythonpath_and_secret_isolati
     (pypath_dir / "wd_vs_pypath_mod.py").write_text("SOURCE = 'pythonpath'\n")
     (pypath_dir / "pypath_only_mod.py").write_text("SOURCE = 'pythonpath'\n")
 
-    # >= 36-char temp dir verifying fs_0 and 12-char fs_<9b64> stay well below 104 bytes.
+    # >= 36-char temp dir verifying fs_0 and 12-char fs_<9b64> stay below 107 bytes.
     long_temp_dir = tempfile.mkdtemp(prefix="/tmp/ray_long_tmpdir_fs_budget_")
     assert len(long_temp_dir) >= 35
     try:
@@ -1601,7 +1604,7 @@ def test_fork_server_exec_bound_ld_library_path_tz_pythonpath_and_secret_isolati
         )
         session_dir = ctx.address_info["session_dir"]
         default_sock = os.path.join(session_dir, "sockets", "fs_0")
-        assert len(default_sock.encode("utf-8")) < 104
+        assert len(default_sock.encode("utf-8")) <= _MAX_UNIX_SOCKET_PATH_BYTES
         wait_for_condition(
             lambda: default_sock in _find_fork_server_pids(session_dir), timeout=10
         )
@@ -1641,7 +1644,10 @@ def test_fork_server_exec_bound_ld_library_path_tz_pythonpath_and_secret_isolati
             for s, p in _find_fork_server_pids(session_dir).items()
             if p == r_na0["ppid"]
         ]
-        assert len(ld_socks) == 1 and len(ld_socks[0].encode("utf-8")) < 104
+        assert (
+            len(ld_socks) == 1
+            and len(ld_socks[0].encode("utf-8")) <= _MAX_UNIX_SOCKET_PATH_BYTES
+        )
         ray.kill(na0)
         ray.kill(na1)
 
@@ -2787,3 +2793,222 @@ def test_fork_server_pip_excludes_local_dev_wrapper_bypass_and_rjem_pin(
         wait_for_condition(lambda: not _pid_exists(wd_info["pid"]), timeout=10)
     finally:
         ray.shutdown()
+
+
+@pytest.mark.skipif(sys.platform != "linux", reason="ForkServer is Linux-only.")
+def test_fork_server_af_unix_107b_boundary_proc_fd_staging_and_bind_logging(
+    shutdown_only, tmp_path, monkeypatch
+):
+    """Verify exact 107-byte Linux AF_UNIX socket support (including /proc/self/fd
+    staging when .f<pid> exceeds 107 bytes), 108-byte and malformed path rejection
+    before module preload, pre-publish bind failure logging, and post-listen/pre-publish
+    stdio redirection."""
+    assert _MAX_UNIX_SOCKET_PATH_BYTES == 107
+    monkeypatch.delenv("RAY_ADDRESS", raising=False)
+    monkeypatch.setenv("RAY_AUTH_MODE", "disabled")
+
+    (tmp_path / "hold_child_107.py").write_text(
+        "import time\n"
+        "import ray._private.workers.default_worker as _dw\n"
+        "_dw.initialize_default_worker = lambda: time.sleep(300)\n"
+    )
+    marker = tmp_path / "preload_must_not_run.marker"
+    (tmp_path / "sentinel_preload.py").write_text(
+        f"import pathlib\npathlib.Path({str(marker)!r}).write_text('ran')\n"
+    )
+    ray_python = str(Path(ray.__file__).resolve().parents[1])
+    test_pypath = f"{tmp_path}{os.pathsep}{ray_python}"
+
+    short_root = Path(tempfile.mkdtemp(prefix="/tmp/rfs107_"))
+    short_socks = Path(tempfile.mkdtemp(prefix="/tmp/rss_"))
+    long_temp_dir: Optional[str] = None
+    try:
+        # (a) Exact 107-byte socket path in a 105-byte directory (".../x") forces
+        # len(tmp_socket_path) >= 109 > 107 for EVERY positive PID (including low
+        # container PIDs), exercising /proc/self/fd staging + real fork + stdio switch.
+        pad_105 = 105 - len(str(short_root)) - 1
+        assert pad_105 > 0
+        sdir_105 = short_root / ("d" * pad_105)
+        sock_107 = str(sdir_105 / "x")
+        assert len(str(sdir_105).encode("utf-8")) == 105
+        assert len(sock_107.encode("utf-8")) == 107
+
+        logs_107 = tmp_path / "logs_107"
+        logs_107.mkdir()
+        fs_107 = ForkServerProcess(
+            socket_path=sock_107,
+            preload_modules=["hold_child_107"],
+            context=RuntimeEnvContext(env_vars={"PYTHONPATH": test_pypath}),
+            logs_dir=str(logs_107),
+        )
+        child_pid = None
+        try:
+            asyncio.run(fs_107.wait_ready(timeout_s=15.0))
+            assert fs_107.is_alive()
+            assert fs_107.read_startup_warnings() == []
+            fs_fds = _proc_fd_map(fs_107.process.pid)
+            assert fs_fds["1"].endswith("raylet.out"), fs_fds
+            assert fs_fds["2"].endswith("raylet.err"), fs_fds
+            assert str(sdir_105) not in fs_fds.values(), fs_fds
+            child_pid = _send_raw_fork_request(sock_107)
+            wait_for_condition(lambda: _pid_exists(child_pid), timeout=5)
+        finally:
+            if child_pid is not None and _pid_exists(child_pid):
+                os.kill(child_pid, signal.SIGKILL)
+            fs_107.stop()
+        assert not os.path.exists(sock_107)
+
+        # (b) 108-byte and malformed paths fail closed in ForkServerProcess and CLI
+        # before importing any preloaded module.
+        sock_108 = sock_107 + "y"
+        assert len(sock_108.encode("utf-8")) == 108
+        for bad_sock in (sock_108, "", "/", f"{short_root}/", ".", ".."):
+            with pytest.raises(OSError):
+                ForkServerProcess(socket_path=bad_sock)
+
+        fs_script = str(
+            Path(ray.__file__).resolve().parent / "_private/workers/fork_server.py"
+        )
+        cli_env = dict(os.environ, PYTHONPATH=test_pypath)
+        cli_res = subprocess.run(
+            [
+                sys.executable,
+                fs_script,
+                f"--socket-path={sock_108}",
+                "--preload-modules=sentinel_preload",
+            ],
+            env=cli_env,
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        assert cli_res.returncode == 1
+        assert not marker.exists()
+        refusal_lines = [
+            ln
+            for ln in cli_res.stderr.splitlines()
+            if "ForkServer refusing to start:" in ln
+        ]
+        assert len(refusal_lines) == 1, cli_res.stderr
+
+        # (c) Post-preload socket setup failure (replacing socket_dir with a regular
+        # file fails deterministically even as root in CI and exercises ENOTDIR cleanup)
+        # logs diagnostic + traceback to fork_server_*.log and surfaces one warning.
+        bad_sock_dir = short_root / "file_not_dir"
+        bad_sock_dir.mkdir()
+        (tmp_path / "break_sockdir_mod.py").write_text(
+            f"import os, pathlib\n"
+            f"os.rmdir({str(bad_sock_dir)!r})\n"
+            f"pathlib.Path({str(bad_sock_dir)!r}).write_text('blocking_file')\n"
+        )
+        bind_err_log = tmp_path / "fork_server_bind_err.log"
+        fs_bad = ForkServerProcess(
+            socket_path=str(bad_sock_dir / "fs_bad"),
+            preload_modules=["break_sockdir_mod"],
+            context=RuntimeEnvContext(env_vars={"PYTHONPATH": test_pypath}),
+            logs_dir=str(logs_107),
+            setup_log_path=str(bind_err_log),
+        )
+        try:
+            with pytest.raises(
+                RuntimeError, match="ForkServer exited prematurely with code 1"
+            ):
+                asyncio.run(fs_bad.wait_ready(timeout_s=10.0))
+            warns = fs_bad.read_startup_warnings()
+            err_txt = bind_err_log.read_text()
+            assert len(warns) == 1, warns
+            assert (
+                "ForkServer refusing to start because socket setup failed" in warns[0]
+            )
+            assert "Traceback (most recent call last):" in err_txt, err_txt
+        finally:
+            if bad_sock_dir.is_file():
+                bad_sock_dir.unlink()
+            fs_bad.stop()
+
+        # (d) Live Ray Node with len(sockets_dir) in 101..102 so fs_0 is 106..107 bytes
+        # (previously rejected by 104-byte check, and requiring /proc/self/fd staging on
+        # 5..7-digit PID hosts) while 12-byte fs_<tag> exceeds 107 bytes and warns once.
+        pid_digits = len(str(os.getpid()))
+        temp_len = 102 - 44 - pid_digits
+        long_temp_dir = "/tmp/rfsn_" + ("r" * (temp_len - len("/tmp/rfsn_")))
+        os.makedirs(long_temp_dir, exist_ok=True)
+        node = Node(
+            RayParams(
+                num_cpus=2,
+                include_dashboard=False,
+                temp_dir=long_temp_dir,
+                plasma_store_socket_name=str(short_socks / "p.s"),
+                raylet_socket_name=str(short_socks / "r.s"),
+                _system_config={"enable_worker_fork_server": True},
+            ),
+            head=True,
+            shutdown_at_exit=False,
+            spawn_reaper=False,
+        )
+        try:
+            ray.init(address=node.address)
+            session_dir = node.get_session_dir_path()
+            fs0 = os.path.join(session_dir, "sockets", "fs_0")
+            assert 104 <= len(fs0.encode("utf-8")) <= 107, (len(fs0), fs0)
+            wait_for_condition(
+                lambda: os.path.exists(fs0)
+                and fs0 in _find_fork_server_pids(session_dir),
+                timeout=15,
+            )
+            default_fs_pid = _find_fork_server_pids(session_dir)[fs0]
+
+            @ray.remote
+            def worker_ppid():
+                return os.getppid()
+
+            assert ray.get(worker_ppid.remote()) == default_fs_pid
+            env_ppid = ray.get(
+                worker_ppid.options(runtime_env={"preload_modules": ["math"]}).remote()
+            )
+            assert env_ppid != default_fs_pid
+            assert ray.get(worker_ppid.remote()) == default_fs_pid
+
+            logs_dir = Path(session_dir) / "logs"
+            agent_txt = (logs_dir / "runtime_env_agent.log").read_text()
+            setup_txt = "\n".join(
+                p.read_text() for p in logs_dir.glob("runtime_env_setup-*.log")
+            )
+            assert "failed readiness" not in agent_txt
+            assert "failed 5 consecutive times" not in agent_txt
+            assert "exceeds the 107-byte limit" in setup_txt
+        finally:
+            ray.shutdown()
+            node.kill_all_processes(check_alive=False, allow_graceful=True)
+
+        # Verify RuntimeEnvAgent warns once and skips supervisor crash-loops when fs_0 > 107B.
+        warn_buf = io.StringIO()
+        agent_108 = RuntimeEnvAgent(
+            runtime_env_dir=str(tmp_path / "rt_108"),
+            logging_params={
+                "filename": "runtime_env_agent.log",
+                "log_dir": str(logs_107),
+                "logging_level": "INFO",
+                "logging_format": ray_constants.LOGGER_FORMAT,
+                "max_bytes": 1024 * 1024,
+                "backup_count": 1,
+            },
+            gcs_client=SimpleNamespace(),
+            temp_dir=str(tmp_path),
+            address="127.0.0.1",
+            runtime_env_agent_port=0,
+        )
+        agent_108._enable_worker_fork_server = True
+        agent_108._sockets_dir = str(sdir_105)  # join(105, "fs_0") == 110 > 107
+        agent_108._logger.addHandler(logging.StreamHandler(warn_buf))
+        try:
+            asyncio.run(agent_108._supervise_default_fork_server())
+            assert agent_108._fork_server_failures[None] == 0
+            assert warn_buf.getvalue().count("exceeds the 107-byte limit") == 1
+        finally:
+            agent_108._cleanup_fork_servers()
+    finally:
+        shutil.rmtree(short_root, ignore_errors=True)
+        shutil.rmtree(short_socks, ignore_errors=True)
+        if long_temp_dir is not None:
+            shutil.rmtree(long_temp_dir, ignore_errors=True)
