@@ -936,8 +936,7 @@ class SandboxRuntime:
                 **kwargs,
             )
         except BaseException:
-            if not leave_running:
-                self._release_if_stopped(instance_id)
+            self._forget_if_deleted(instance_id)
             raise
         if not leave_running:
             timer = self._ttl_timers.pop(instance_id, None)
@@ -951,21 +950,28 @@ class SandboxRuntime:
             return res["checkpoint_path"]
         return checkpoint_path or ""
 
-    def _release_if_stopped(self, instance_id: str) -> None:
-        """Free the warm-pool slot of a sandbox that a failed stop-checkpoint
-        ended anyway.
+    def _forget_if_deleted(self, instance_id: str) -> None:
+        """Cancel the TTL and free the warm-pool slot of a sandbox that a failed
+        checkpoint deleted anyway.
 
-        The checkpoint can fail after the backend deleted the sandbox, or
-        after it stopped the sandbox and couldn't restore it. A sandbox that
-        still runs keeps its slot until it's deleted.
+        A stop-checkpoint can fail after the backend deleted the sandbox. A
+        sandbox that a checkpoint stopped and couldn't restore is still
+        tracked: it holds its bundle, cgroup and image until it's deleted,
+        and so does its slot, as for any sandbox that dies.
         """
-        if self._warm is None:
-            return
         try:
-            stopped = self._backend.get_status(instance_id) == SandboxStatus.TERMINATED
+            deleted = (
+                self._backend.get_status(instance_id) == SandboxStatus.TERMINATED
+                and self._backend.get_termination_reason(instance_id) is None
+            )
         except Exception:
             return
-        if stopped:
+        if not deleted:
+            return
+        timer = self._ttl_timers.pop(instance_id, None)
+        if timer is not None:
+            timer.cancel()
+        if self._warm is not None:
             self._warm.release(instance_id)
 
     def restore(

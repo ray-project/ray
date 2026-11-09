@@ -716,40 +716,55 @@ def test_a_checkpoint_that_stops_a_pooled_sandbox_frees_its_slot():
     runtime.close()
 
 
-class _StopCheckpointFails(_CountingBackend):
-    """Fails every checkpoint, after deleting the sandbox or with it running."""
+class _CheckpointFails(_CountingBackend):
+    """Fails every checkpoint, leaving the sandbox deleted, stopped (but still
+    tracked), or running."""
 
-    def __init__(self, deletes_first):
+    def __init__(self, outcome):
         super().__init__()
-        self.deletes_first = deletes_first
+        self.outcome = outcome
+        self.stopped = set()
 
     def get_status(self, sandbox_id):
-        if sandbox_id in self.deleted:
+        if sandbox_id in self.deleted or sandbox_id in self.stopped:
             return SandboxStatus.TERMINATED
         return SandboxStatus.RUNNING
 
+    def get_termination_reason(self, sandbox_id):
+        if sandbox_id in self.stopped and sandbox_id not in self.deleted:
+            return "Sandbox runtime stopped unexpectedly"
+        return None
+
     def checkpoint_sandbox(self, sandbox_id, **kwargs):
-        if self.deletes_first:
+        if self.outcome == "deleted":
             self.delete_sandbox(sandbox_id)
+        elif self.outcome == "stopped":
+            self.stopped.add(sandbox_id)
         raise RuntimeError("checkpoint failed")
 
 
-@pytest.mark.parametrize("deletes_first", [True, False])
-def test_a_failed_stop_checkpoint_frees_the_slot_of_a_sandbox_it_ended(deletes_first):
-    """A stop-checkpoint that fails after the backend deleted the sandbox
-    frees its slot. One that fails with the sandbox still running leaves the
-    slot to the sandbox until it's deleted."""
+@pytest.mark.parametrize("outcome", ["deleted", "stopped", "running"])
+@pytest.mark.parametrize("leave_running", [False, True])
+def test_a_failed_checkpoint_frees_the_slot_only_of_a_deleted_sandbox(
+    outcome, leave_running
+):
+    """A checkpoint that fails after the backend deleted the sandbox frees its
+    slot. One that leaves the sandbox stopped, but still holding its bundle,
+    cgroup and image, or running, leaves the slot to it until it's deleted."""
     runtime = _pooled_runtime(
-        [{"image": "img", "size": 1}], backend=_StopCheckpointFails(deletes_first)
+        [{"image": "img", "size": 1}], backend=_CheckpointFails(outcome)
     )
-    instance_id = runtime.create(image="img", timeout_seconds=5)
+    instance_id = runtime.create(image="img", timeout_seconds=5, ttl_seconds=300)
     with pytest.raises(RuntimeError, match="checkpoint failed"):
         runtime.checkpoint(
-            instance_id, checkpoint_path="/tmp/ckpt", leave_running=False
+            instance_id, checkpoint_path="/tmp/ckpt", leave_running=leave_running
         )
-    if not deletes_first:
+    if outcome == "deleted":
+        assert instance_id not in runtime._ttl_timers
+    else:
         time.sleep(0.1)
         assert len(runtime._backend.configs) == 1
+        assert instance_id in runtime._ttl_timers
         runtime.delete(instance_id)
     assert _wait_until(lambda: len(runtime._backend.configs) == 2)
     assert runtime.wait_for_warm_pool(timeout_seconds=10)
