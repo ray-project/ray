@@ -154,7 +154,6 @@ void GcsResourceManager::UpdateResourceLoads(const rpc::ResourcesData &data) {
     // It will happen when the node has been deleted or hasn't been added.
     return;
   }
-  (*iter->second.mutable_resource_load()) = data.resource_load();
   (*iter->second.mutable_resource_load_by_shape()) = data.resource_load_by_shape();
 }
 

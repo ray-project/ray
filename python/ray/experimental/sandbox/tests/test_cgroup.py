@@ -12,7 +12,7 @@ from unittest.mock import Mock
 
 import pytest
 
-from ray.experimental.sandbox._internal import cgroup
+from ray.experimental.sandbox._internal import cgroup, cgroup_launcher
 from ray.experimental.sandbox.backend import gvisor
 from ray.experimental.sandbox.backend.gvisor import GVisorSandboxBackend
 from ray.experimental.sandbox.config import SandboxConfig
@@ -183,6 +183,117 @@ def test_launcher_joins_the_cgroup_and_restricts_cpus(tmp_path):
     assert affinity == str([cpu])
     # The launcher wrote its own PID, which exec kept for the command.
     assert (tmp_path / "cgroup.procs").read_text() == pid.strip()
+
+
+@pytest.mark.parametrize("limited", [False, True])
+def test_launcher_sets_oom_priority_before_exec(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, limited: bool
+) -> None:
+    score = tmp_path / "oom_score_adj"
+    score.write_text("-1000")
+    (tmp_path / "cgroup.procs").write_text("")
+    group = cgroup.SandboxCgroup(tmp_path, {}, [0, 1]) if limited else None
+    command = cgroup.wrap_command(["workload"], group, oom_score_adj=0)
+    original_open = open
+    affinity = Mock()
+
+    def open_score(path, *args, **kwargs):
+        return original_open(
+            score if path == "/proc/self/oom_score_adj" else path, *args, **kwargs
+        )
+
+    def execute(program, args):
+        assert score.read_text() == "0"
+        if limited:
+            assert (tmp_path / "cgroup.procs").read_text() == str(os.getpid())
+            affinity.assert_called_once_with(0, {0, 1})
+        else:
+            affinity.assert_not_called()
+
+    execute = Mock(side_effect=execute)
+    monkeypatch.setattr("builtins.open", open_score)
+    monkeypatch.setattr(sys, "argv", command[2:])
+    monkeypatch.setattr(os, "execvp", execute)
+    monkeypatch.setattr(os, "sched_setaffinity", affinity, raising=False)
+    cgroup_launcher.main()
+    execute.assert_called_once_with("workload", ["workload"])
+
+
+def test_launcher_does_not_execute_if_oom_priority_cannot_be_set(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    command = cgroup.wrap_command(["workload"], oom_score_adj=0)
+    execute = Mock()
+    monkeypatch.setattr(sys, "argv", command[2:])
+    monkeypatch.setattr(os, "execvp", execute)
+    monkeypatch.setattr(
+        "builtins.open", Mock(side_effect=PermissionError("OOM priority denied"))
+    )
+    with pytest.raises(PermissionError, match="OOM priority denied"):
+        cgroup_launcher.main()
+    execute.assert_not_called()
+
+
+@pytest.mark.skipif(sys.platform != "linux", reason="Needs Linux OOM scores")
+def test_launcher_changes_only_the_workloads_oom_priority() -> None:
+    score = Path("/proc/self/oom_score_adj")
+    parent_score = score.read_text()
+    command = cgroup.wrap_command(
+        [
+            sys.executable,
+            "-c",
+            "from pathlib import Path; "
+            "print(Path('/proc/self/oom_score_adj').read_text().strip())",
+        ],
+        oom_score_adj=1000,
+    )
+    result = subprocess.run(command, capture_output=True, text=True, check=True)
+    assert result.stdout.strip() == "1000"
+    assert score.read_text() == parent_score
+
+
+@pytest.mark.parametrize("limited", [False, True])
+def test_backend_applies_oom_priority_to_start_exec_and_file_io(
+    shared: Path,
+    bundles: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    limited: bool,
+) -> None:
+    images = Mock()
+    images.get_workdir.return_value = None
+    backend = GVisorSandboxBackend(image_manager=images)
+    monkeypatch.setattr(backend, "_prepare_bundle", lambda *args: None)
+    process = Mock(pid=12345, returncode=0)
+    process.poll.return_value = None
+    process.communicate.return_value = (b"output", b"")
+    commands = []
+
+    def popen(args, **kwargs):
+        commands.append(args)
+        if limited:
+            (Path(args[3]) / "cgroup.procs").write_text(str(process.pid))
+        return process
+
+    monkeypatch.setattr(subprocess, "Popen", popen)
+    monkeypatch.setattr(
+        subprocess,
+        "run",
+        lambda args, **kwargs: subprocess.CompletedProcess(
+            args, 0, stdout='{"status": "running"}'
+        ),
+    )
+    config = SandboxConfig("busybox", cpu=1 if limited else 0, oom_score_adj=0)
+    sandbox_id = backend.create_sandbox(config)
+    try:
+        backend.exec_command(sandbox_id, ["true"])
+        backend.write_file(sandbox_id, "/file", b"content")
+        assert backend.read_file(sandbox_id, "/file") == b"output"
+        assert len(commands) == 4
+        for command in commands:
+            assert command[command.index("--oom-score-adj") + 1] == "0"
+            assert command[3] == (str(shared / sandbox_id) if limited else "")
+    finally:
+        backend.delete_sandbox(sandbox_id)
 
 
 def test_only_live_owners_cpus_count(shared, bundles):

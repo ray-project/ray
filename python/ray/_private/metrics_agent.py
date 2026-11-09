@@ -97,8 +97,7 @@ Record = namedtuple("Record", ["gauge", "value", "tags"])
 
 
 def fix_grpc_metric(metric: Metric):
-    """
-    Fix the inbound `opencensus.proto.metrics.v1.Metric` protos to make it acceptable
+    """Fix the inbound `opencensus.proto.metrics.v1.Metric` protos to make it acceptable
     by opencensus.stats.DistributionAggregationData.
 
     - metric name: gRPC OpenCensus metrics have names with slashes and dots, e.g.
