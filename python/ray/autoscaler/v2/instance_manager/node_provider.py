@@ -63,6 +63,9 @@ class CloudInstance:
     # to handle cloud instances w/o request ids.
     # TODO: make this a required field.
     request_id: Optional[str] = None
+    # Optional provider-assigned identifier shared by instances provisioned and
+    # managed together as a single multi-worker replica.
+    replica_id: Optional[str] = None
 
 
 class CloudInstanceProviderError(Exception):

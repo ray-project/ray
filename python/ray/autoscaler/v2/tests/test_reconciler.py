@@ -5,6 +5,7 @@ import time
 
 # coding: utf-8
 from collections import defaultdict
+from typing import Optional
 from unittest import mock
 from unittest.mock import MagicMock
 
@@ -15,6 +16,7 @@ from ray.autoscaler.v2.instance_manager.config import (
     InstanceReconcileConfig,
     NodeTypeConfig,
     Provider,
+    WorkerReplicaConfig,
 )
 from ray.autoscaler.v2.instance_manager.instance_manager import InstanceManager
 from ray.autoscaler.v2.instance_manager.instance_storage import InstanceStorage
@@ -32,14 +34,20 @@ from ray.autoscaler.v2.instance_manager.subscribers.ray_stopper import RayStopEr
 from ray.autoscaler.v2.instance_manager.subscribers.threaded_ray_installer import (
     RayInstallError,
 )
-from ray.autoscaler.v2.scheduler import IResourceScheduler, SchedulingReply
+from ray.autoscaler.v2.scheduler import (
+    IResourceScheduler,
+    ResourceDemandScheduler,
+    SchedulingReply,
+)
 from ray.autoscaler.v2.tests.util import MockSubscriber, create_instance
+from ray.autoscaler.v2.utils import ResourceRequestUtil
 from ray.core.generated.autoscaler_pb2 import (
     ClusterResourceState,
     GangResourceRequest,
     NodeState,
     NodeStatus,
     ResourceRequest,
+    ResourceRequestByCount,
 )
 from ray.core.generated.instance_manager_pb2 import (
     Instance,
@@ -2515,21 +2523,33 @@ class TestReconciler:
         assert instances["i-1"].status == Instance.TERMINATING
 
     @staticmethod
-    def test_multihost_tpu_launch_batching():
-        """Multi-host TPU groups launch whole replicas so KubeRay floor-division
-        (`num_workers // numOfHosts`) never deadlocks or strands REQUESTED nodes."""
+    def test_multihost_replica_launch_batching():
+        """Multi-worker replica groups (`workers_per_replica > 1`) launch whole
+        replicas atomically without starving behind or blocking single-host types."""
 
-        def _tpu_nt_cfg(name: str, topology: str, pod_type: str, max_w: int):
+        def _replica_nt_cfg(
+            name: str,
+            max_w: int,
+            workers_per_replica: Optional[int],
+            resources: Optional[dict] = None,
+        ):
+            res = resources or {"CPU": 8, "GPU": 4}
+            head_keys = tuple(
+                sorted(k for k in res if k.startswith("TPU-") and k.endswith("-head"))
+            )
             return NodeTypeConfig(
                 name=name,
-                resources={"CPU": 8, "TPU": 4, f"TPU-{pod_type}-head": 1},
-                labels={
-                    "ray.io/accelerator-type": "TPU-V6E",
-                    "ray.io/tpu-topology": topology,
-                    "ray.io/tpu-pod-type": pod_type,
-                },
+                resources=res,
                 min_worker_nodes=0,
                 max_worker_nodes=max_w,
+                replica_config=(
+                    WorkerReplicaConfig(
+                        workers_per_replica=workers_per_replica,
+                        head_resources=head_keys,
+                    )
+                    if workers_per_replica is not None
+                    else None
+                ),
             )
 
         def _run_launch_tick(
@@ -2538,6 +2558,7 @@ class TestReconciler:
             requested_ids_by_type=None,
             upscaling_speed=1.0,
             max_concurrent_launches=10,
+            queued_items=None,
         ):
             storage = InstanceStorage(
                 cluster_id="tpu_launch_test", storage=InMemoryStorage()
@@ -2546,9 +2567,8 @@ class TestReconciler:
             im = InstanceManager(
                 instance_storage=storage, instance_status_update_subscribers=[sub]
             )
-            t = 1
-            for nt, ids in queued_ids_by_type.items():
-                for iid in ids:
+            if queued_items is not None:
+                for nt, iid, ts in queued_items:
                     TestReconciler._add_instances(
                         storage,
                         [
@@ -2556,11 +2576,26 @@ class TestReconciler:
                                 iid,
                                 status=Instance.QUEUED,
                                 instance_type=nt,
-                                status_times=[(Instance.QUEUED, t)],
+                                status_times=[(Instance.QUEUED, ts)],
                             )
                         ],
                     )
-                    t += 1
+            else:
+                t = 1
+                for nt, ids in queued_ids_by_type.items():
+                    for iid in ids:
+                        TestReconciler._add_instances(
+                            storage,
+                            [
+                                create_instance(
+                                    iid,
+                                    status=Instance.QUEUED,
+                                    instance_type=nt,
+                                    status_times=[(Instance.QUEUED, t)],
+                                )
+                            ],
+                        )
+                        t += 1
             for nt, ids in (requested_ids_by_type or {}).items():
                 for iid in ids:
                     TestReconciler._add_instances(
@@ -2595,36 +2630,171 @@ class TestReconciler:
             instances, _ = storage.get_instances()
             return storage, im, sub, instances
 
-        v6e_64 = {"tpu64": _tpu_nt_cfg("tpu64", "8x8", "v6e-64", 32)}
-        v6e_16 = {"tpu16": _tpu_nt_cfg("tpu16", "4x4", "v6e-16", 16)}
+        cpu_cfg = NodeTypeConfig(
+            name="cpu",
+            resources={"CPU": 4},
+            min_worker_nodes=0,
+            max_worker_nodes=8,
+        )
+        v6e_64 = {"tpu64": _replica_nt_cfg("tpu64", 32, 16)}
+        v6e_16 = {"tpu16": _replica_nt_cfg("tpu16", 16, 4)}
 
         # 16-host v6e-64 slice exceeds default max_concurrent_launches=10: launches
-        # one whole 16-host slice when no launches are currently REQUESTED.
+        # one whole 16-host slice when capacity remains and tpu64 has no in-flight
+        # REQUESTED pods, even when unrelated CPU launches are in flight.
         _, _, sub, _ = _run_launch_tick(v6e_64, {"tpu64": [f"q{i}" for i in range(16)]})
         assert [e.instance_id for e in sub.events] == [f"q{i}" for i in range(16)]
+        _, _, sub_with_cpu_req, _ = _run_launch_tick(
+            {**v6e_64, "cpu": cpu_cfg},
+            {"tpu64": [f"q{i}" for i in range(16)]},
+            requested_ids_by_type={"cpu": [f"r{i}" for i in range(4)]},
+        )
+        assert [e.instance_id for e in sub_with_cpu_req.events] == [
+            f"q{i}" for i in range(16)
+        ]
 
-        # Negative bounds: max_concurrent_launches=0 launches 0; in-flight REQUESTED
-        # instances leaving < 16 slots wait rather than stranding fractional nodes.
+        # Negative bounds: max_concurrent_launches=0, fully saturated cap (10/10),
+        # or an already in-flight tpu64 batch waits rather than stacking above cap.
         _, _, sub0, _ = _run_launch_tick(
             v6e_64,
             {"tpu64": [f"q{i}" for i in range(16)]},
             max_concurrent_launches=0,
         )
         assert sub0.events == []
-        _, _, sub_wait, _ = _run_launch_tick(
-            {
-                **v6e_64,
-                "cpu": NodeTypeConfig(
-                    name="cpu",
-                    resources={"CPU": 4},
-                    min_worker_nodes=0,
-                    max_worker_nodes=8,
-                ),
-            },
+        _, _, sub_sat, _ = _run_launch_tick(
+            {**v6e_64, "cpu": cpu_cfg},
             {"tpu64": [f"q{i}" for i in range(16)]},
-            requested_ids_by_type={"cpu": [f"r{i}" for i in range(4)]},
+            requested_ids_by_type={"cpu": [f"r{i}" for i in range(10)]},
         )
-        assert sub_wait.events == []
+        assert sub_sat.events == []
+        _, _, sub_same_type_inflight, _ = _run_launch_tick(
+            v6e_64,
+            {"tpu64": [f"q{i}" for i in range(16)]},
+            requested_ids_by_type={"tpu64": [f"r{i}" for i in range(4)]},
+        )
+        assert sub_same_type_inflight.events == []
+
+        # Cross-type FIFO order invariance: co-queued CPU + multi-host TPU produce
+        # identical launches regardless of storage iteration order, and later CPU
+        # arrivals never starve an earlier v6e-16 (4-host) slice behind 8 CPU pods.
+        t64_late = [("tpu64", f"t{i:02d}", 10 + i) for i in range(16)]
+        for items in ([("cpu", "c0", 1), *t64_late], [*t64_late, ("cpu", "c0", 1)]):
+            _, _, sub_co, _ = _run_launch_tick(
+                {**v6e_64, "cpu": cpu_cfg},
+                {},
+                upscaling_speed=100.0,
+                queued_items=items,
+            )
+            assert [e.instance_id for e in sub_co.events] == [
+                "c0",
+                *(f"t{i:02d}" for i in range(16)),
+            ]
+        t64_early = [("tpu64", f"t{i:02d}", 1 + i) for i in range(16)]
+        for items in ([("cpu", "c0", 50), *t64_early], [*t64_early, ("cpu", "c0", 50)]):
+            _, _, sub_tpu_first, _ = _run_launch_tick(
+                {**v6e_64, "cpu": cpu_cfg},
+                {},
+                upscaling_speed=100.0,
+                queued_items=items,
+            )
+            assert [e.instance_id for e in sub_tpu_first.events] == [
+                f"t{i:02d}" for i in range(16)
+            ]
+        t16_early = [("tpu16", f"t{i}", 10 + i) for i in range(4)]
+        cpu_late = [("cpu", f"cn{i}", 100 + i) for i in range(5)]
+        for items in ([*cpu_late, *t16_early], [*t16_early, *cpu_late]):
+            _, _, sub_livelock, _ = _run_launch_tick(
+                {**v6e_16, "cpu": cpu_cfg},
+                {},
+                requested_ids_by_type={"cpu": [f"cr{i}" for i in range(8)]},
+                upscaling_speed=100.0,
+                queued_items=items,
+            )
+            assert [e.instance_id for e in sub_livelock.events] == [
+                f"t{i}" for i in range(4)
+            ]
+
+        # Single-instance node types (`replica_config=None`, e.g. GCE TPU VMs)
+        # do not apply multi-host replica multiplication or rounding.
+        gcp_tpu = {
+            "gcp_v4_16": _replica_nt_cfg(
+                "gcp_v4_16",
+                1,
+                None,
+                resources={"CPU": 8, "TPU": 4, "TPU-v4-16-head": 1},
+            )
+        }
+        _, _, sub_gcp, _ = _run_launch_tick(
+            gcp_tpu,
+            {"gcp_v4_16": ["gcp-pod-0", "gcp-pod-1"]},
+            upscaling_speed=0.0,
+        )
+        assert [e.instance_id for e in sub_gcp.events] == ["gcp-pod-0"]
+
+        gcp_storage = InstanceStorage(
+            cluster_id="gcp_scale_test", storage=InMemoryStorage()
+        )
+        gcp_sub = MockSubscriber()
+        gcp_im = InstanceManager(
+            instance_storage=gcp_storage, instance_status_update_subscribers=[gcp_sub]
+        )
+        TestReconciler._add_instances(
+            gcp_storage,
+            [
+                create_instance(
+                    "head-0",
+                    status=Instance.RAY_RUNNING,
+                    instance_type="head",
+                    node_kind=NodeKind.HEAD,
+                    ray_node_id=b"h".ljust(28, b"\0").hex(),
+                )
+            ],
+        )
+        Reconciler.reconcile(
+            instance_manager=gcp_im,
+            scheduler=ResourceDemandScheduler(),
+            cloud_provider=MagicMock(),
+            cloud_resource_monitor=CloudResourceMonitor(),
+            ray_cluster_resource_state=ClusterResourceState(
+                node_states=[
+                    NodeState(
+                        node_id=b"h".ljust(28, b"\0"),
+                        ray_node_type_name="head",
+                        status=NodeStatus.RUNNING,
+                    )
+                ],
+                pending_resource_requests=[
+                    ResourceRequestByCount(
+                        request=ResourceRequestUtil.make({"TPU-v4-16-head": 1}),
+                        count=1,
+                    )
+                ],
+            ),
+            non_terminated_cloud_instances={},
+            cloud_provider_errors=[],
+            ray_install_errors=[],
+            autoscaling_config=MockAutoscalingConfig(
+                configs={
+                    "node_type_configs": {
+                        **gcp_tpu,
+                        "head": NodeTypeConfig(
+                            name="head",
+                            resources={},
+                            min_worker_nodes=0,
+                            max_worker_nodes=1,
+                        ),
+                    },
+                    "provider": Provider.GCP,
+                    "disable_launch_config_check": True,
+                }
+            ),
+        )
+        gcp_insts, _ = gcp_storage.get_instances()
+        assert [
+            (i.instance_type, i.status)
+            for i in gcp_insts.values()
+            if i.node_kind != NodeKind.HEAD
+        ] == [("gcp_v4_16", Instance.REQUESTED)]
 
         # 3 x v6e-16 (12 QUEUED) with max_concurrent_launches=10: Tick 1 launches 8
         # (2 whole replicas, 0 fractional REQUESTED), leaving 4 QUEUED for Tick 2.
@@ -2674,23 +2844,583 @@ class TestReconciler:
         )
         assert len(sub_cons.events) == 4
 
-        # Non-multiple backfill remainder (1 missing host + 1 new 4-host replica = 5)
-        # preserves the 1-host backfill under tight cap and all 5 under ample cap.
-        _, _, sub_bf1, _ = _run_launch_tick(
-            v6e_16,
-            {"tpu16": [f"q{i}" for i in range(5)]},
-            requested_ids_by_type={"tpu16": ["r0"]},
-            upscaling_speed=10.0,
-            max_concurrent_launches=4,
+        # Non-multiple QUEUED counts never split a multi-host replica or strand a
+        # fractional REQUESTED instance (repro3 Cases A, B, C, D, E, F, G).
+        def _q(iid, ts, nt="tpu16"):
+            return create_instance(
+                iid,
+                status=Instance.QUEUED,
+                instance_type=nt,
+                status_times=[(Instance.QUEUED, ts)],
+            )
+
+        r0_and_strays = [_q(f"r0-{i}", 1 + i) for i in range(4)] + [
+            _q(f"s-{i}", 10 + i) for i in range(2)
+        ]
+        for max_c in (100, 5):
+            assert [
+                i.instance_id
+                for i in Reconciler._compute_to_launch(
+                    r0_and_strays, [], [], 1.0, max_c, {"tpu16": 4}
+                )["tpu16"]
+            ] == [f"r0-{i}" for i in range(4)]
+        stray_first = [_q("stray", 1)] + [_q(f"r0-{i}", 5 + i) for i in range(4)]
+        assert (
+            len(
+                Reconciler._compute_to_launch(
+                    stray_first, [], [], 1.0, 4, {"tpu16": 4}
+                )["tpu16"]
+            )
+            == 4
         )
-        assert [e.instance_id for e in sub_bf1.events] == ["q0"]
-        _, _, sub_bf5, _ = _run_launch_tick(
-            v6e_16,
-            {"tpu16": [f"q{i}" for i in range(5)]},
-            upscaling_speed=10.0,
-            max_concurrent_launches=10,
+        req_old = create_instance(
+            "old",
+            status=Instance.REQUESTED,
+            instance_type="tpu16",
+            status_times=[(Instance.QUEUED, 1), (Instance.REQUESTED, 2)],
         )
-        assert len(sub_bf5.events) == 5
+        assert (
+            Reconciler._compute_to_launch(
+                r0_and_strays[:4], [req_old], [], 1.0, 2, {"tpu16": 4}
+            )
+            == {}
+        )
+        assert (
+            len(
+                Reconciler._compute_to_launch(
+                    r0_and_strays[:4], [], [], 1.0, 2, {"tpu16": 4}
+                )["tpu16"]
+            )
+            == 4
+        )
+        cpu_then_tpu = [_q(f"c{i}", 1 + i, "cpu") for i in range(4)] + [
+            _q(f"t{i}", 10 + i) for i in range(4)
+        ]
+        res_ct = Reconciler._compute_to_launch(
+            cpu_then_tpu, [], [], 4.0, 4, {"tpu16": 4}
+        )
+        assert [i.instance_id for i in res_ct["cpu"]] == [f"c{i}" for i in range(4)]
+        assert "tpu16" not in res_ct
+
+        # Solicited degraded-slice drain (repro7 A/B), mixed solicited+unsolicited
+        # replica completion (repro8), and bounded replica_id unsolicited-fault hold
+        # with warning logs (Probes 2/3 & repro7 C).
+        now_ns = 1_000 * s_to_ns
+        rep_cloud = {
+            "c-head": CloudInstance("c-head", "head", NodeKind.HEAD, True),
+            **{
+                f"c0-{i}": CloudInstance(
+                    f"c0-{i}", "tpu16", NodeKind.WORKER, True, replica_id="rep-0"
+                )
+                for i in range(4)
+            },
+            **{
+                f"c1-{i}": CloudInstance(
+                    f"c1-{i}", "tpu16", NodeKind.WORKER, True, replica_id="rep-1"
+                )
+                for i in range(4)
+            },
+            "c-legacy": CloudInstance("c-legacy", "tpu16", NodeKind.WORKER, True),
+        }
+        nt_cfgs = {
+            **v6e_16,
+            "head": NodeTypeConfig(
+                name="head", resources={}, min_worker_nodes=0, max_worker_nodes=1
+            ),
+        }
+
+        # (a) Solicited drain of degraded slice (3 RAY_RUNNING + 1 TERMINATED) plus
+        # solicited ALLOCATED termination while rep-1 is busy: drains/terminates
+        # immediately without bucket filtering or RAY_STOPPED detours.
+        s7_store = InstanceStorage(cluster_id="repro7a", storage=InMemoryStorage())
+        s7_im = InstanceManager(s7_store, instance_status_update_subscribers=[])
+        TestReconciler._add_instances(
+            s7_store,
+            [
+                create_instance(
+                    "head",
+                    status=Instance.RAY_RUNNING,
+                    instance_type="head",
+                    node_kind=NodeKind.HEAD,
+                    cloud_instance_id="c-head",
+                    ray_node_id=binary_to_hex(b"h"),
+                ),
+                *(
+                    create_instance(
+                        f"s0-{i}",
+                        status=Instance.RAY_RUNNING,
+                        instance_type="tpu16",
+                        cloud_instance_id=f"c0-{i}",
+                        ray_node_id=binary_to_hex(f"n0{i}".encode()),
+                    )
+                    for i in range(3)
+                ),
+                create_instance(
+                    "s0-3", status=Instance.TERMINATED, instance_type="tpu16"
+                ),
+                create_instance(
+                    "alloc-0",
+                    status=Instance.ALLOCATED,
+                    instance_type="tpu16",
+                    cloud_instance_id="c-legacy",
+                ),
+                *(
+                    create_instance(
+                        f"s1-{i}",
+                        status=Instance.RAY_RUNNING,
+                        instance_type="tpu16",
+                        cloud_instance_id=f"c1-{i}",
+                        ray_node_id=binary_to_hex(f"n1{i}".encode()),
+                    )
+                    for i in range(4)
+                ),
+            ],
+        )
+        ray_7 = [
+            NodeState(node_id=b"h", status=NodeStatus.RUNNING),
+            *(
+                NodeState(
+                    node_id=f"n0{i}".encode(),
+                    status=NodeStatus.IDLE,
+                    ray_node_type_name="tpu16",
+                )
+                for i in range(3)
+            ),
+            *(
+                NodeState(
+                    node_id=f"n1{i}".encode(),
+                    status=NodeStatus.RUNNING,
+                    ray_node_type_name="tpu16",
+                )
+                for i in range(4)
+            ),
+        ]
+        term_7 = [
+            *(
+                TerminationRequest(
+                    id=f"t{i}",
+                    instance_id=f"s0-{i}",
+                    ray_node_id=binary_to_hex(f"n0{i}".encode()),
+                    instance_type="tpu16",
+                    instance_status=Instance.RAY_RUNNING,
+                    cause=TerminationRequest.Cause.IDLE,
+                )
+                for i in range(3)
+            ),
+            TerminationRequest(
+                id="ta",
+                instance_id="alloc-0",
+                instance_type="tpu16",
+                instance_status=Instance.ALLOCATED,
+                cause=TerminationRequest.Cause.IDLE,
+            ),
+        ]
+        Reconciler.reconcile(
+            instance_manager=s7_im,
+            scheduler=MockScheduler(to_terminate=term_7),
+            cloud_provider=MagicMock(),
+            cloud_resource_monitor=CloudResourceMonitor(),
+            ray_cluster_resource_state=ClusterResourceState(node_states=ray_7),
+            non_terminated_cloud_instances={
+                k: v for k, v in rep_cloud.items() if k != "c0-3"
+            },
+            autoscaling_config=MockAutoscalingConfig(
+                configs={"node_type_configs": nt_cfgs}
+            ),
+        )
+        inst7, _ = s7_store.get_instances()
+        assert all(
+            inst7[f"s0-{i}"].status == Instance.RAY_STOP_REQUESTED for i in range(3)
+        )
+        assert inst7["alloc-0"].status == Instance.TERMINATING
+        assert all(inst7[f"s1-{i}"].status == Instance.RAY_RUNNING for i in range(4))
+
+        # (b) repro8: 3 solicited RAY_STOPPED + 1 unsolicited crashed RAY_STOPPED in
+        # rep-0 terminate cleanly in 1 tick while rep-1 remains RAY_RUNNING.
+        s8_store = InstanceStorage(cluster_id="repro8", storage=InMemoryStorage())
+        s8_sub = MockSubscriber()
+        s8_im = InstanceManager(s8_store, instance_status_update_subscribers=[s8_sub])
+        TestReconciler._add_instances(
+            s8_store,
+            [
+                *(
+                    create_instance(
+                        f"s0-{i}",
+                        status=Instance.RAY_STOPPED,
+                        instance_type="tpu16",
+                        cloud_instance_id=f"c0-{i}",
+                        status_times=[
+                            (Instance.RAY_STOP_REQUESTED, 1),
+                            (Instance.RAY_STOPPED, 2),
+                        ],
+                    )
+                    for i in range(3)
+                ),
+                create_instance(
+                    "s0-3",
+                    status=Instance.RAY_STOPPED,
+                    instance_type="tpu16",
+                    cloud_instance_id="c0-3",
+                    status_times=[(Instance.RAY_RUNNING, 1), (Instance.RAY_STOPPED, 2)],
+                ),
+                *(
+                    create_instance(
+                        f"s1-{i}",
+                        status=Instance.RAY_RUNNING,
+                        instance_type="tpu16",
+                        cloud_instance_id=f"c1-{i}",
+                    )
+                    for i in range(4)
+                ),
+            ],
+        )
+        s8_sub.clear()
+        Reconciler._terminate_instances(
+            s8_im,
+            autoscaling_config=MockAutoscalingConfig(
+                configs={"node_type_configs": v6e_16}
+            ),
+            non_terminated_cloud_instances=rep_cloud,
+        )
+        assert {e.instance_id for e in s8_sub.events} == {f"s0-{i}" for i in range(4)}
+
+        # (c) Partial-replica stops (both unsolicited single-pod faults and staggered/
+        # mid-recreation solicited non-OUTDATED stops) with an active same-replica_id
+        # sibling are held (INFO before transient_status_warn_interval_s, WARNING after)
+        # up to terminating_status_timeout_s, while OUTDATED stops, TERMINATION_FAILED,
+        # and unlabeled legacy pods terminate immediately.
+        v6e_16_hashed = {
+            "tpu16": NodeTypeConfig(
+                name="tpu16",
+                resources={"CPU": 4, "TPU": 4},
+                min_worker_nodes=0,
+                max_worker_nodes=16,
+                launch_config_hash="hash-v2",
+                replica_config=WorkerReplicaConfig(workers_per_replica=4),
+            )
+        }
+        s1_outdated = create_instance(
+            "s1-outdated",
+            status=Instance.RAY_STOPPED,
+            instance_type="tpu16",
+            cloud_instance_id="c1-3",
+            status_times=[
+                (Instance.RAY_STOP_REQUESTED, 1 * s_to_ns),
+                (Instance.RAY_STOPPED, now_ns),
+            ],
+        )
+        s1_outdated.launch_config_hash = "hash-v1"
+        s0_crash = create_instance(
+            "s0-crash",
+            status=Instance.RAY_STOPPED,
+            instance_type="tpu16",
+            cloud_instance_id="c0-1",
+            status_times=[
+                (Instance.RAY_STOP_REQUESTED, 1 * s_to_ns),
+                (Instance.RAY_RUNNING, 2 * s_to_ns),
+                (Instance.RAY_STOPPED, now_ns - 5 * s_to_ns),
+            ],
+        )
+        s0_crash.launch_config_hash = "hash-v1"
+        s1_sol = create_instance(
+            "s1-sol",
+            status=Instance.RAY_STOPPED,
+            instance_type="tpu16",
+            cloud_instance_id="c1-0",
+            status_times=[
+                (Instance.RAY_STOP_REQUESTED, 1 * s_to_ns),
+                (Instance.RAY_STOPPED, now_ns - 5 * s_to_ns),
+            ],
+        )
+        s1_sol.launch_config_hash = "hash-v2"
+        hold_store = InstanceStorage(cluster_id="hold_test", storage=InMemoryStorage())
+        hold_sub = MockSubscriber()
+        hold_im = InstanceManager(
+            hold_store, instance_status_update_subscribers=[hold_sub]
+        )
+        TestReconciler._add_instances(
+            hold_store,
+            [
+                create_instance(
+                    "s0-live",
+                    status=Instance.RAY_RUNNING,
+                    instance_type="tpu16",
+                    cloud_instance_id="c0-0",
+                ),
+                s0_crash,
+                create_instance(
+                    "s0-timeout",
+                    status=Instance.ALLOCATION_TIMEOUT,
+                    instance_type="tpu16",
+                    cloud_instance_id="c0-2",
+                    status_times=[(Instance.ALLOCATION_TIMEOUT, now_ns - 5 * s_to_ns)],
+                ),
+                create_instance(
+                    "s0-instfail",
+                    status=Instance.RAY_INSTALL_FAILED,
+                    instance_type="tpu16",
+                    cloud_instance_id="c0-3",
+                    status_times=[(Instance.RAY_INSTALL_FAILED, now_ns - 5 * s_to_ns)],
+                ),
+                s1_sol,
+                create_instance(
+                    "s1-live",
+                    status=Instance.RAY_RUNNING,
+                    instance_type="tpu16",
+                    cloud_instance_id="c1-1",
+                ),
+                create_instance(
+                    "s1-termfail",
+                    status=Instance.TERMINATION_FAILED,
+                    instance_type="tpu16",
+                    cloud_instance_id="c1-2",
+                    status_times=[(Instance.TERMINATION_FAILED, now_ns)],
+                ),
+                s1_outdated,
+                create_instance(
+                    "legacy-crash",
+                    status=Instance.RAY_STOPPED,
+                    instance_type="tpu16",
+                    cloud_instance_id="c-legacy",
+                    status_times=[(Instance.RAY_STOPPED, now_ns)],
+                ),
+            ],
+        )
+        rec_cfg = InstanceReconcileConfig(
+            terminating_status_timeout_s=30, transient_status_warn_interval_s=10
+        )
+        warn_log = MagicMock()
+        hold_sub.clear()
+        with mock.patch("time.time_ns", return_value=now_ns):
+            Reconciler._terminate_instances(
+                hold_im,
+                autoscaling_config=MockAutoscalingConfig(
+                    configs={"node_type_configs": v6e_16_hashed}
+                ),
+                non_terminated_cloud_instances=rep_cloud,
+                reconcile_config=rec_cfg,
+                _logger=warn_log,
+            )
+        assert {e.instance_id for e in hold_sub.events} == {
+            "s1-outdated",
+            "s1-termfail",
+            "legacy-crash",
+        }
+        assert warn_log.warning.call_count == 0
+        assert warn_log.info.call_count == 4
+
+        # After transient_status_warn_interval_s (15s > 10s, still <= 30s timeout),
+        # held instances stay held and escalate to WARNING.
+        warn_log.reset_mock()
+        hold_sub.clear()
+        with mock.patch("time.time_ns", return_value=now_ns + 10 * s_to_ns):
+            Reconciler._terminate_instances(
+                hold_im,
+                autoscaling_config=MockAutoscalingConfig(
+                    configs={"node_type_configs": v6e_16_hashed}
+                ),
+                non_terminated_cloud_instances=rep_cloud,
+                reconcile_config=rec_cfg,
+                _logger=warn_log,
+            )
+        assert hold_sub.events == []
+        assert warn_log.warning.call_count == 4
+
+        # Once terminating_status_timeout_s elapses (repro7 C), held zombies are
+        # released to TERMINATING with a WARNING log even though live siblings stay active.
+        warn_log.reset_mock()
+        hold_sub.clear()
+        with mock.patch("time.time_ns", return_value=now_ns + 30 * s_to_ns):
+            Reconciler._terminate_instances(
+                hold_im,
+                autoscaling_config=MockAutoscalingConfig(
+                    configs={"node_type_configs": v6e_16_hashed}
+                ),
+                non_terminated_cloud_instances=rep_cloud,
+                reconcile_config=rec_cfg,
+                _logger=warn_log,
+            )
+        assert {e.instance_id for e in hold_sub.events} == {
+            "s0-crash",
+            "s0-timeout",
+            "s0-instfail",
+            "s1-sol",
+        }
+        assert warn_log.warning.call_count == 4
+        hold_insts, _ = hold_store.get_instances()
+        assert hold_insts["s0-live"].status == Instance.RAY_RUNNING
+        assert hold_insts["s1-live"].status == Instance.RAY_RUNNING
+
+        # (d) _scale_cluster plumbs cloud_instance_replica_id so reshuffled booting
+        # slices drain as exact KubeRay replicas (B1b), and defers partial/in-flight
+        # booting replica scale-downs with one WARNING instead of pod churn (B1a).
+        head_cfg = NodeTypeConfig(
+            name="head", resources={"CPU": 1}, min_worker_nodes=0, max_worker_nodes=0
+        )
+        tpu_cap4 = {
+            "head": head_cfg,
+            "tpu16": NodeTypeConfig(
+                name="tpu16",
+                resources={"CPU": 4, "TPU": 4},
+                min_worker_nodes=0,
+                max_worker_nodes=4,
+                replica_config=WorkerReplicaConfig(workers_per_replica=4),
+            ),
+        }
+        b_store = InstanceStorage(cluster_id="b1_boot", storage=InMemoryStorage())
+        b_sub = MockSubscriber()
+        b_im = InstanceManager(b_store, instance_status_update_subscribers=[b_sub])
+        TestReconciler._add_instances(
+            b_store,
+            [
+                create_instance(
+                    "h",
+                    status=Instance.RAY_RUNNING,
+                    instance_type="head",
+                    cloud_instance_id="ch",
+                    ray_node_id=(b"h" * 28).hex(),
+                    node_kind=NodeKind.HEAD,
+                ),
+                *(
+                    create_instance(
+                        f"p{i}",
+                        status=(
+                            Instance.RAY_INSTALLING
+                            if i in (1, 6)
+                            else Instance.ALLOCATED
+                        ),
+                        instance_type="tpu16",
+                        cloud_instance_id=f"cp-{i}",
+                    )
+                    for i in range(8)
+                ),
+            ],
+        )
+        b_cloud = {
+            "ch": CloudInstance("ch", "head", NodeKind.HEAD, True),
+            **{
+                f"cp-{i}": CloudInstance(
+                    f"cp-{i}",
+                    "tpu16",
+                    NodeKind.WORKER,
+                    True,
+                    replica_id="G1" if i < 4 else "G2",
+                )
+                for i in range(8)
+            },
+        }
+        Reconciler._scale_cluster(
+            autoscaling_state=MagicMock(),
+            instance_manager=b_im,
+            cloud_resource_monitor=CloudResourceMonitor(),
+            ray_state=ClusterResourceState(
+                node_states=[NodeState(node_id=b"h" * 28, status=NodeStatus.RUNNING)]
+            ),
+            scheduler=ResourceDemandScheduler(),
+            autoscaling_config=MockAutoscalingConfig(
+                configs={
+                    "node_type_configs": tpu_cap4,
+                    "disable_launch_config_check": True,
+                }
+            ),
+            cloud_provider=MagicMock(),
+            non_terminated_cloud_instances=b_cloud,
+        )
+        term_boot = {
+            e.instance_id
+            for e in b_sub.events
+            if e.new_instance_status == Instance.TERMINATING
+        }
+        assert term_boot in (
+            {f"p{i}" for i in range(4)},
+            {f"p{i}" for i in range(4, 8)},
+        )
+
+        p_store = InstanceStorage(cluster_id="b1_part", storage=InMemoryStorage())
+        p_sub = MockSubscriber()
+        p_im = InstanceManager(p_store, instance_status_update_subscribers=[p_sub])
+        outdated_inst = create_instance(
+            "g2-outdated",
+            status=Instance.RAY_RUNNING,
+            instance_type="stale_tpu",
+            cloud_instance_id="cp-4",
+            ray_node_id=(b"o" * 28).hex(),
+        )
+        tpu_cap0 = {
+            "head": head_cfg,
+            "tpu16": NodeTypeConfig(
+                name="tpu16",
+                resources={"CPU": 4, "TPU": 4},
+                min_worker_nodes=0,
+                max_worker_nodes=0,
+                replica_config=WorkerReplicaConfig(workers_per_replica=4),
+            ),
+        }
+        TestReconciler._add_instances(
+            p_store,
+            [
+                create_instance(
+                    "h",
+                    status=Instance.RAY_RUNNING,
+                    instance_type="head",
+                    cloud_instance_id="ch",
+                    ray_node_id=(b"h" * 28).hex(),
+                    node_kind=NodeKind.HEAD,
+                ),
+                create_instance(
+                    "g1-0",
+                    status=Instance.ALLOCATED,
+                    instance_type="tpu16",
+                    cloud_instance_id="cp-0",
+                ),
+                create_instance(
+                    "g1-1",
+                    status=Instance.ALLOCATED,
+                    instance_type="tpu16",
+                    cloud_instance_id="cp-1",
+                ),
+                create_instance(
+                    "r-2", status=Instance.REQUESTED, instance_type="tpu16"
+                ),
+                create_instance(
+                    "r-3", status=Instance.REQUESTED, instance_type="tpu16"
+                ),
+                outdated_inst,
+            ],
+        )
+        part_log = MagicMock()
+        Reconciler._scale_cluster(
+            autoscaling_state=MagicMock(),
+            instance_manager=p_im,
+            cloud_resource_monitor=CloudResourceMonitor(),
+            ray_state=ClusterResourceState(
+                node_states=[
+                    NodeState(node_id=b"h" * 28, status=NodeStatus.RUNNING),
+                    NodeState(
+                        node_id=b"o" * 28,
+                        status=NodeStatus.RUNNING,
+                        ray_node_type_name="stale_tpu",
+                    ),
+                ]
+            ),
+            scheduler=ResourceDemandScheduler(),
+            autoscaling_config=MockAutoscalingConfig(
+                configs={"node_type_configs": tpu_cap0}
+            ),
+            cloud_provider=MagicMock(),
+            non_terminated_cloud_instances=b_cloud,
+            _logger=part_log,
+        )
+        # Only outdated g2-outdated drains; partial booting G1 + REQUESTED r-2/r-3 defer!
+        assert [(e.instance_id, e.new_instance_status) for e in p_sub.events] == [
+            ("g2-outdated", Instance.RAY_STOP_REQUESTED)
+        ]
+        assert any(
+            "partial replica or in-flight REQUESTED pods, waiting for remaining replica pods"
+            in str(c)
+            and "G1" in str(c)
+            for c in part_log.warning.call_args_list
+        )
 
 
 if __name__ == "__main__":

@@ -525,6 +525,10 @@ class AutoscalerInstance:
     #
     im_instance: Optional[Instance] = None
 
+    # Optional provider-assigned multi-worker replica group identifier for
+    # `cloud_instance_id`, allowing exact replica grouping before Ray registration.
+    cloud_instance_replica_id: Optional[str] = None
+
     # | cloud_instance_id | ray_node | im_instance |
     # |-------------------|----------|-------------|
     # | None              | None     | None        | Not possible.

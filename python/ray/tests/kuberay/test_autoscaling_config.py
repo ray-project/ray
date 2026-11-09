@@ -132,6 +132,12 @@ def _get_basic_autoscaling_config() -> dict:
                     "TPU": 4,
                     "TPU-v4-16-head": 1,
                 },
+                "replica_config": {
+                    "workers_per_replica": 2,
+                    "domain_label_key": "ray.io/tpu-slice-name",
+                    "worker_index_label_key": "ray.io/tpu-worker-id",
+                    "head_resources": ["TPU-v4-16-head"],
+                },
             },
         },
         "auth": {},
@@ -420,6 +426,9 @@ def _get_autoscaling_config_with_v7x() -> dict[str, Any]:
     config = _get_basic_autoscaling_config()
     config["available_node_types"]["tpu-group"]["resources"]["TPU-v7x-16-head"] = 1
     config["available_node_types"]["tpu-group"]["resources"].pop("TPU-v4-16-head", None)
+    config["available_node_types"]["tpu-group"]["replica_config"]["head_resources"] = [
+        "TPU-v7x-16-head"
+    ]
     config["available_node_types"]["tpu-group"]["labels"].update(
         {
             "ray.io/accelerator-type": "TPU-V7X",
@@ -450,6 +459,9 @@ def _get_autoscaling_config_with_v5litepod() -> dict[str, Any]:
     config = _get_basic_autoscaling_config()
     config["available_node_types"]["tpu-group"]["resources"]["TPU-v5litepod-8-head"] = 1
     config["available_node_types"]["tpu-group"]["resources"].pop("TPU-v4-16-head", None)
+    config["available_node_types"]["tpu-group"]["replica_config"]["head_resources"] = [
+        "TPU-v5litepod-8-head"
+    ]
     config["available_node_types"]["tpu-group"]["labels"].update(
         {
             "ray.io/accelerator-type": "TPU-V5LITEPOD",
@@ -1030,6 +1042,111 @@ def test_top_level_resources_override_warnings():
         # Assert that all expected calls were made, in any order.
         mock_logger.warning.assert_has_calls(expected_calls, any_order=True)
         assert mock_logger.warning.call_count == 4
+
+
+@pytest.mark.skipif(platform.system() == "Windows", reason="Not relevant.")
+def test_dynamic_slicing_and_multihost_replica_config():
+    """Verify GKE TPU Dynamic Slicing pod annotations, single-host TPU, multi-host
+    GPU `numOfHosts > 1`, and `AutoscalingConfig.get_node_type_configs` parsing."""
+    from ray.autoscaler.v2.instance_manager.config import (
+        AutoscalingConfig,
+        WorkerReplicaConfig,
+    )
+
+    cr = get_basic_ray_cr()
+    cr["metadata"]["namespace"] = "default"
+    # 1. Multi-host GPU worker group (`numOfHosts=4`): populates `workers_per_replica`
+    # with no synthetic Ray runtime domain/worker-index labels.
+    cr["spec"]["workerGroupSpecs"][1]["numOfHosts"] = 4
+    cr["spec"]["workerGroupSpecs"][1]["maxReplicas"] = 2
+
+    # 2. GKE TPU Dynamic Slicing worker group: topology lives on pod annotation
+    # `cloud.google.com/gke-tpu-slice-topology` without `gke-tpu-topology` selector.
+    tpu_ds = cr["spec"]["workerGroupSpecs"][2]
+    tpu_ds["template"]["spec"]["nodeSelector"] = {
+        "cloud.google.com/gke-tpu-accelerator": "tpu7x",
+    }
+    tpu_ds["template"].setdefault("metadata", {}).setdefault("annotations", {})[
+        "cloud.google.com/gke-tpu-slice-topology"
+    ] = "2x2x2"
+    tpu_ds["resources"] = {"TPU": "8"}
+    tpu_ds["numOfHosts"] = 2
+    tpu_ds["maxReplicas"] = 3
+
+    # 3. Dynamic Slicing overriding a larger shared pool selector (`4x4x4` -> `2x2x2`),
+    # plus a single-host TPU group (`numOfHosts=1`).
+    tpu_override = copy.deepcopy(tpu_ds)
+    tpu_override["groupName"] = "tpu-ds-override"
+    tpu_override["template"]["spec"]["nodeSelector"][
+        "cloud.google.com/gke-tpu-topology"
+    ] = "4x4x4"
+
+    tpu_single = copy.deepcopy(tpu_ds)
+    tpu_single["groupName"] = "tpu-single"
+    tpu_single["numOfHosts"] = 1
+    tpu_single["template"]["metadata"]["annotations"][
+        "cloud.google.com/gke-tpu-slice-topology"
+    ] = "2x2x1"
+    tpu_zero = copy.deepcopy(tpu_ds)
+    tpu_zero["groupName"] = "tpu-zero-hosts"
+    tpu_zero["numOfHosts"] = 0
+    tpu_zero["template"]["metadata"] = {}
+    tpu_zero["template"]["spec"]["nodeSelector"] = {
+        "cloud.google.com/gke-tpu-accelerator": "tpu7x",
+        "cloud.google.com/gke-tpu-slice-topology": "2x2x1",
+    }
+    cr["spec"]["workerGroupSpecs"].extend([tpu_override, tpu_single, tpu_zero])
+
+    derived = _derive_autoscaling_config_from_ray_cr(cr)
+    autoscaling_cfg = AutoscalingConfig(configs=derived)
+    nt_cfgs = autoscaling_cfg.get_node_type_configs()
+
+    assert nt_cfgs["headgroup"].replica_config is None
+    assert nt_cfgs["small-group"].replica_config is None
+    assert nt_cfgs["gpu-group"].max_worker_nodes == 8
+    assert nt_cfgs["gpu-group"].replica_config == WorkerReplicaConfig(
+        workers_per_replica=4,
+        domain_label_key=None,
+        worker_index_label_key=None,
+        head_resources=(),
+    )
+    for name in ("tpu-group", "tpu-ds-override"):
+        assert nt_cfgs[name].max_worker_nodes == 6
+        assert nt_cfgs[name].labels == {
+            "ray.io/accelerator-type": "TPU-V7X",
+            "ray.io/tpu-topology": "2x2x2",
+            "ray.io/tpu-pod-type": "v7x-16",
+        }
+        assert nt_cfgs[name].replica_config == WorkerReplicaConfig(
+            workers_per_replica=2,
+            domain_label_key="ray.io/tpu-slice-name",
+            worker_index_label_key="ray.io/tpu-worker-id",
+            head_resources=("TPU-v7x-16-head",),
+        )
+    for name in ("tpu-single", "tpu-zero-hosts"):
+        assert nt_cfgs[name].max_worker_nodes == 3
+        assert nt_cfgs[name].labels == {
+            "ray.io/accelerator-type": "TPU-V7X",
+            "ray.io/tpu-topology": "2x2x1",
+            "ray.io/tpu-pod-type": "v7x-8",
+        }
+        assert nt_cfgs[name].replica_config == WorkerReplicaConfig(
+            workers_per_replica=1,
+            domain_label_key="ray.io/tpu-slice-name",
+            worker_index_label_key="ray.io/tpu-worker-id",
+            head_resources=("TPU-v7x-8-head",),
+        )
+
+    for bad_val in (0, -1, True, 1.5):
+        with pytest.raises(ValueError, match="workers_per_replica must be an int >= 1"):
+            WorkerReplicaConfig(workers_per_replica=bad_val)
+
+    import jsonschema
+
+    bad_schema_cfg = copy.deepcopy(derived)
+    bad_schema_cfg["available_node_types"]["gpu-group"]["replica_config"]["extra"] = 1
+    with pytest.raises(jsonschema.ValidationError):
+        AutoscalingConfig(configs=bad_schema_cfg)
 
 
 if __name__ == "__main__":

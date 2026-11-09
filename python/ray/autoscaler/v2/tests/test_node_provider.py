@@ -27,6 +27,7 @@ from ray.autoscaler.v2.instance_manager.cloud_providers.kuberay.cloud_provider i
     IDLE_SUSPEND_KEY,
     IDLE_TERMINATION_CLEANUP_FINALIZER,
     IDLE_TERMINATION_OPTIONS_KEY,
+    KUBERAY_LABEL_KEY_REPLICA_NAME,
     KubeRayProvider,
 )
 from ray.autoscaler.v2.instance_manager.config import (
@@ -1224,6 +1225,181 @@ class KubeRayProviderIntegrationTest(unittest.TestCase):
                     "workersToDelete": pods_to_terminate,
                 },
             },
+        ]
+
+        # When minReplicas >= 1, deleting dead pods via workersToDelete never patches
+        # replicas below minReplicas (allowing KubeRay to recreate a healthy replica).
+        raycluster_min1 = get_basic_ray_cr()
+        raycluster_min1["spec"]["workerGroupSpecs"][0]["replicas"] = 2
+        raycluster_min1["spec"]["workerGroupSpecs"][2]["minReplicas"] = 1
+        raycluster_min1["spec"]["workerGroupSpecs"][2]["replicas"] = 1
+        mock_client_min1 = MockKubernetesHttpApiClient(
+            _get_test_yaml("podlist2.yaml"), raycluster_min1
+        )
+        provider_min1 = KubeRayProvider(
+            cluster_name="test",
+            provider_config={"namespace": "default", "head_node_type": "headgroup"},
+            gcs_client=MagicMock(),
+            k8s_api_client=mock_client_min1,
+        )
+        provider_min1._sync_with_api_server()
+        provider_min1.terminate(ids=pods_to_terminate, request_id="term-min1")
+        assert mock_client_min1.get_patches(
+            f"rayclusters/{provider_min1._cluster_name}"
+        ) == [
+            {
+                "op": "replace",
+                "path": "/spec/workerGroupSpecs/2/scaleStrategy",
+                "value": {"workersToDelete": pods_to_terminate},
+            }
+        ]
+
+    def test_multihost_replica_id_and_partial_replica_scaling(self):
+        """KubeRay v1.6+ `ray.io/worker-group-replica-name` populates
+        CloudInstance.replica_id and protects mid-boot/mid-recreation replicas
+        from integer truncation during scale-up, degraded scale-down, and
+        single-pod zombie eviction."""
+
+        def _pod(name: str, kind: str = "worker", group: str = "tpu-group", rep=None):
+            labels = {
+                "ray.io/cluster": "test",
+                "ray.io/node-type": kind,
+                "ray.io/group": group,
+            }
+            if rep is not None:
+                labels[KUBERAY_LABEL_KEY_REPLICA_NAME] = rep
+            return {
+                "metadata": {"name": name, "labels": labels},
+                "status": {"containerStatuses": [{"state": {"running": {}}}]},
+            }
+
+        def _run_provider(replicas: int, min_rep: int, pods: List[Dict[str, Any]]):
+            cr = get_basic_ray_cr()
+            cr["spec"]["workerGroupSpecs"] = [
+                {
+                    "groupName": "tpu-group",
+                    "replicas": replicas,
+                    "minReplicas": min_rep,
+                    "maxReplicas": 10,
+                    "numOfHosts": 4,
+                    "template": {"spec": {"containers": [{}]}},
+                }
+            ]
+            plist = {
+                "metadata": {"resourceVersion": "1"},
+                "items": [_pod("head-0", kind="head", group="headgroup", rep="ign")]
+                + pods,
+            }
+            client = MockKubernetesHttpApiClient(plist, cr)
+            prov = KubeRayProvider(
+                cluster_name="test",
+                provider_config={"namespace": "default", "head_node_type": "headgroup"},
+                gcs_client=MagicMock(),
+                k8s_api_client=client,
+            )
+            return prov, client
+
+        # 1. replica_id extracted for labeled workers; None for head, empty, or absent.
+        prov, client = _run_provider(
+            replicas=1,
+            min_rep=0,
+            pods=[
+                *(_pod(f"r0-{i}", rep="test-tpu-worker-abc") for i in range(4)),
+                _pod("r1-boot-0", rep="test-tpu-worker-def"),
+                _pod("empty-lbl", rep=""),
+            ],
+        )
+        nodes = prov.get_non_terminated()
+        assert nodes["head-0"].replica_id is None
+        assert nodes["r0-0"].replica_id == "test-tpu-worker-abc"
+        assert nodes["r1-boot-0"].replica_id == "test-tpu-worker-def"
+        assert nodes["empty-lbl"].replica_id is None
+
+        # 2. Scale down idle r0 (4 pods) while surviving r1 has only 1/4 pods booted
+        # (even with CR replicas lowered to 1): r1 is preserved (target_replicas == 1).
+        prov_sd, client_sd = _run_provider(
+            replicas=1,
+            min_rep=0,
+            pods=[*(_pod(f"r0-{i}", rep="rep-0") for i in range(4))]
+            + [_pod("r1-0", rep="rep-1")],
+        )
+        prov_sd.terminate(ids=[f"r0-{i}" for i in range(4)], request_id="sd-1")
+        assert client_sd.get_patches("rayclusters/test") == [
+            {
+                "op": "replace",
+                "path": "/spec/workerGroupSpecs/0/scaleStrategy",
+                "value": {"workersToDelete": [f"r0-{i}" for i in range(4)]},
+            }
+        ]
+
+        # 3. Scale down two degraded idle replicas (2 pods + 1 pod) while rep-2 has
+        # 2/4 pods mid-recreation (replicas=3 -> target_replicas=1).
+        prov_deg, client_deg = _run_provider(
+            replicas=3,
+            min_rep=0,
+            pods=[
+                _pod("r0-0", rep="rep-0"),
+                _pod("r0-1", rep="rep-0"),
+                _pod("r1-0", rep="rep-1"),
+                _pod("r2-0", rep="rep-2"),
+                _pod("r2-1", rep="rep-2"),
+            ],
+        )
+        prov_deg.terminate(ids=["r0-0", "r0-1", "r1-0"], request_id="sd-deg")
+        assert client_deg.get_patches("rayclusters/test") == [
+            {"op": "replace", "path": "/spec/workerGroupSpecs/0/replicas", "value": 1},
+            {
+                "op": "replace",
+                "path": "/spec/workerGroupSpecs/0/scaleStrategy",
+                "value": {"workersToDelete": ["r0-0", "r0-1", "r1-0"]},
+            },
+        ]
+
+        # 4. Fault/outdated evictions inside surviving replicas (even when >= numOfHosts
+        # pods are evicted across two replicas) keep replicas=2 so KubeRay heals each
+        # replica instead of shrinking a live slice (scale-downs never pass partial
+        # groups thanks to Reconciler._scale_cluster + cloud_instance_replica_id).
+        prov_z, client_z = _run_provider(
+            replicas=2,
+            min_rep=0,
+            pods=[*(_pod(f"r0-{i}", rep="rep-0") for i in range(4))]
+            + [*(_pod(f"r1-{i}", rep="rep-1") for i in range(4))],
+        )
+        prov_z.terminate(
+            ids=["r0-2", "r0-3", "r1-2", "r1-3"], request_id="evict-faulted-pods"
+        )
+        assert client_z.get_patches("rayclusters/test") == [
+            {
+                "op": "replace",
+                "path": "/spec/workerGroupSpecs/0/scaleStrategy",
+                "value": {"workersToDelete": ["r0-2", "r0-3", "r1-2", "r1-3"]},
+            }
+        ]
+
+        # 5. Scale up +4 workers while existing rep-0 has only 2/4 pods materialized
+        # and CR replicas=0 -> patches replicas=2 (preserving rep-0 + adding 1).
+        prov_up, client_up = _run_provider(
+            replicas=0,
+            min_rep=0,
+            pods=[_pod("r0-0", rep="rep-0"), _pod("r0-1", rep="rep-0")],
+        )
+        prov_up.launch(shape={"tpu-group": 4}, request_id="up-1")
+        assert client_up.get_patches("rayclusters/test") == [
+            {"op": "replace", "path": "/spec/workerGroupSpecs/0/replicas", "value": 2}
+        ]
+
+        # 6. Deleting unlabeled legacy pods when CR replicas was manually set to 0
+        # clamps desired workers to 0 cleanly rather than raising AssertionError.
+        prov_neg, client_neg = _run_provider(
+            replicas=0, min_rep=0, pods=[_pod("legacy-0", rep=None)]
+        )
+        prov_neg.terminate(ids=["legacy-0"], request_id="del-legacy")
+        assert client_neg.get_patches("rayclusters/test") == [
+            {
+                "op": "replace",
+                "path": "/spec/workerGroupSpecs/0/scaleStrategy",
+                "value": {"workersToDelete": ["legacy-0"]},
+            }
         ]
 
 

@@ -4,7 +4,7 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 import yaml
 
@@ -125,6 +125,30 @@ class InstanceReconcileConfig:
     )
 
 
+@dataclass(frozen=True)
+class WorkerReplicaConfig:
+    """Metadata for node types provisioned and terminated as multi-worker replicas."""
+
+    # Number of Ray worker nodes launched and terminated atomically per replica.
+    workers_per_replica: int = 1
+    # Runtime label key shared across all workers of a replica, if injected.
+    domain_label_key: Optional[str] = None
+    # Runtime label key stamped with "0"..str(workers_per_replica - 1), if injected.
+    worker_index_label_key: Optional[str] = None
+    # Resource keys in NodeTypeConfig.resources advertised only on worker index 0.
+    head_resources: Tuple[str, ...] = ()
+
+    def __post_init__(self):
+        if (
+            not isinstance(self.workers_per_replica, int)
+            or isinstance(self.workers_per_replica, bool)
+            or self.workers_per_replica < 1
+        ):
+            raise ValueError(
+                f"workers_per_replica must be an int >= 1, got {self.workers_per_replica!r}"
+            )
+
+
 @dataclass
 class NodeTypeConfig:
     """NodeTypeConfig is the helper class to provide node type specific configs.
@@ -150,10 +174,23 @@ class NodeTypeConfig:
     # config, and the node's config in the `AutoscalingConfig` for the node
     # type when launching the node. It's used to detect config changes.
     launch_config_hash: str = ""
+    # Optional multi-worker replica metadata for atomic replica scaling.
+    replica_config: Optional[WorkerReplicaConfig] = None
 
     def __post_init__(self):
         assert self.min_worker_nodes <= self.max_worker_nodes
         assert self.min_worker_nodes >= 0
+        if (
+            self.replica_config is not None
+            and self.replica_config.workers_per_replica > 1
+        ):
+            size = self.replica_config.workers_per_replica
+            if self.min_worker_nodes % size != 0 or self.max_worker_nodes % size != 0:
+                raise ValueError(
+                    f"min_worker_nodes ({self.min_worker_nodes}) and max_worker_nodes "
+                    f"({self.max_worker_nodes}) for node type {self.name!r} must be "
+                    f"multiples of workers_per_replica ({size})."
+                )
 
 
 class AutoscalingConfig:
@@ -355,6 +392,17 @@ class AutoscalingConfig:
             if head_node_type == node_type:
                 max_workers_nodes += 1
 
+            raw_replica = node_config.get("replica_config")
+            replica_config = (
+                WorkerReplicaConfig(
+                    workers_per_replica=raw_replica.get("workers_per_replica", 1),
+                    domain_label_key=raw_replica.get("domain_label_key"),
+                    worker_index_label_key=raw_replica.get("worker_index_label_key"),
+                    head_resources=tuple(raw_replica.get("head_resources") or ()),
+                )
+                if raw_replica is not None
+                else None
+            )
             node_type_configs[node_type] = NodeTypeConfig(
                 name=node_type,
                 min_worker_nodes=node_config.get("min_workers", 0),
@@ -364,6 +412,7 @@ class AutoscalingConfig:
                 resources=node_config.get("resources", {}),
                 labels=node_config.get("labels", {}),
                 launch_config_hash=launch_config_hash,
+                replica_config=replica_config,
             )
         return node_type_configs
 

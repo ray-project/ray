@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from typing import Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 # https://github.com/ray-project/ray/issues/54868
 # Ray no longer overrides accelerator ids environment variables when the number
@@ -172,6 +172,27 @@ class AcceleratorManager(ABC):
         Returns:
             A dictionary mapping accelerator-related label keys to values, or
             None if not applicable.
+        """
+        return None
+
+    @staticmethod
+    def get_node_group_replica_metadata(
+        resources: Dict[str, Any],
+        labels: Dict[str, str],
+    ) -> Optional[Dict[str, Any]]:
+        """Get runtime replica label and head-resource metadata for a node group.
+
+        Accelerators whose worker groups advertise per-replica domain labels,
+        per-worker index labels, or worker-0-only head resources at raylet
+        startup can return keys matching `WorkerReplicaConfig`
+        (`domain_label_key`, `worker_index_label_key`, `head_resources`).
+
+        Args:
+            resources: Per-node Ray resources derived for the node group.
+            labels: Static Ray node labels derived for the node group.
+
+        Returns:
+            Replica metadata dictionary, or None if not applicable.
         """
         return None
 

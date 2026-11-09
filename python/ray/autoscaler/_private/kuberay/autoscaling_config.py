@@ -10,6 +10,7 @@ import requests
 from ray._private.accelerators import get_all_accelerator_managers
 from ray._private.accelerators.tpu import (
     GKE_TPU_ACCELERATOR_LABEL,
+    GKE_TPU_SLICE_TOPOLOGY_ANNOTATION,
     GKE_TPU_TOPOLOGY_LABEL,
 )
 from ray._private.label_utils import (
@@ -202,12 +203,15 @@ def _node_type_from_group_spec(
 
     if is_head:
         # The head node type has no workers because the head is not a worker.
+        num_of_hosts = 1
         min_workers = max_workers = 0
     else:
         # `minReplicas` and `maxReplicas` are required fields for each workerGroupSpec.
         # numOfHosts specifies the number of workers per replica in KubeRay v1.1+.
-        min_workers = group_spec["minReplicas"] * group_spec.get("numOfHosts", 1)
-        max_workers = group_spec["maxReplicas"] * group_spec.get("numOfHosts", 1)
+        raw_num_hosts = group_spec.get("numOfHosts")
+        num_of_hosts = 1 if raw_num_hosts is None else max(1, int(raw_num_hosts))
+        min_workers = group_spec["minReplicas"] * num_of_hosts
+        max_workers = group_spec["maxReplicas"] * num_of_hosts
 
     resources = _get_ray_resources_from_group_spec(group_spec, is_head)
     labels = _get_labels_from_group_spec(group_spec, group_name)
@@ -222,6 +226,21 @@ def _node_type_from_group_spec(
         "labels": labels,
     }
 
+    if not is_head:
+        replica_meta: Dict[str, Any] = {}
+        for accelerator_manager in get_all_accelerator_managers():
+            meta = accelerator_manager.get_node_group_replica_metadata(
+                resources, labels
+            )
+            if meta:
+                replica_meta = meta
+                break
+        if replica_meta or num_of_hosts > 1:
+            node_type["replica_config"] = {
+                "workers_per_replica": num_of_hosts,
+                **replica_meta,
+            }
+
     idle_timeout_s = group_spec.get(IDLE_SECONDS_KEY)
     if idle_timeout_s is not None:
         node_type["idle_timeout_s"] = float(idle_timeout_s)
@@ -231,6 +250,25 @@ def _node_type_from_group_spec(
         node_type[PRIORITY_KEY] = int(priority)
 
     return node_type
+
+
+def _get_effective_node_selector(group_spec: Dict[str, Any]) -> Dict[str, str]:
+    """Returns pod nodeSelector merged with GKE TPU Dynamic Slicing topology, if set."""
+    template = group_spec.get("template") or {}
+    node_selector = dict((template.get("spec") or {}).get("nodeSelector") or {})
+    annotations = (template.get("metadata") or {}).get("annotations") or {}
+    slice_topology = (
+        annotations.get(GKE_TPU_SLICE_TOPOLOGY_ANNOTATION)
+        or (
+            node_selector.get(GKE_TPU_SLICE_TOPOLOGY_ANNOTATION)
+            if GKE_TPU_TOPOLOGY_LABEL not in node_selector
+            else None
+        )
+        or ""
+    ).strip()
+    if slice_topology:
+        node_selector[GKE_TPU_TOPOLOGY_LABEL] = slice_topology
+    return node_selector
 
 
 def _get_ray_resources_from_group_spec(
@@ -287,24 +325,21 @@ def _get_ray_resources_from_group_spec(
         resource labels on worker 0 of each replica:
             worker 0: resources = {"TPU": 4, "TPU-v4-16-head": 1}
         """
+        effective_selector = _get_effective_node_selector(group_spec)
         if (
-            "nodeSelector" in group_spec["template"]["spec"]
-            and GKE_TPU_TOPOLOGY_LABEL in group_spec["template"]["spec"]["nodeSelector"]
-            and GKE_TPU_ACCELERATOR_LABEL
-            in group_spec["template"]["spec"]["nodeSelector"]
+            GKE_TPU_TOPOLOGY_LABEL in effective_selector
+            and GKE_TPU_ACCELERATOR_LABEL in effective_selector
         ):
-            topology = group_spec["template"]["spec"]["nodeSelector"][
-                GKE_TPU_TOPOLOGY_LABEL
-            ]
-            accelerator = group_spec["template"]["spec"]["nodeSelector"][
-                GKE_TPU_ACCELERATOR_LABEL
-            ]
+            topology = effective_selector[GKE_TPU_TOPOLOGY_LABEL]
+            accelerator = effective_selector[GKE_TPU_ACCELERATOR_LABEL]
             accelerator_type = utils.tpu_node_selectors_to_type(topology, accelerator)
             if accelerator_type:
                 resources[f"TPU-{accelerator_type}-head"] = 1
         else:
             logger.error(
-                f"Pods using TPUs require both `{GKE_TPU_TOPOLOGY_LABEL}` and `{GKE_TPU_ACCELERATOR_LABEL}` node selectors. "
+                f"Pods using TPUs require `{GKE_TPU_ACCELERATOR_LABEL}` and either "
+                f"`{GKE_TPU_TOPOLOGY_LABEL}` node selector or "
+                f"`{GKE_TPU_SLICE_TOPOLOGY_ANNOTATION}` pod annotation. "
                 "See https://docs.ray.io/en/latest/kuberay/user-guides/tpu.html#configuring-kubernetes-pods-for-tpu-usage "
                 "and https://cloud.google.com/kubernetes-engine/docs/how-to/tpus."
             )
@@ -363,7 +398,7 @@ def _get_labels_from_group_spec(
         # Validate node labels follow expected Kubernetes label syntax.
         validate_node_label_syntax(labels_dict)
 
-    node_selector = group_spec["template"]["spec"].get("nodeSelector") or {}
+    node_selector = _get_effective_node_selector(group_spec)
     for accelerator_manager in get_all_accelerator_managers():
         accel_labels = accelerator_manager.get_node_group_accelerator_labels(
             node_selector
