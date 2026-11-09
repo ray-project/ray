@@ -108,9 +108,10 @@ class _CheckpointManager:
                 metrics=metrics,
             )
 
-        if score_attr is not None and score_attr in checkpoint_result.metrics:
+        if score_attr is not None:
             # If we're ordering by a score, insert the checkpoint
-            # so that the list remains sorted.
+            # so that the list remains sorted. A checkpoint without the
+            # score ranks worst (see `_get_checkpoint_score`).
             _insert_into_sorted_list(
                 self._checkpoint_results,
                 checkpoint_result,
