@@ -112,11 +112,11 @@ curl http://localhost:8000/v1/chat/completions \
   -d '{"model": "qwen3-0.6b", "messages": [{"role": "user", "content": "Hello!"}]}'
 ```
 
-Requests with the same session ID go to the same ingress replica, which can reuse tokenized conversation prefixes across turns.
+Session affinity works at two levels. At the ingress, HAProxy uses consistent hashing to send requests with the same session ID to the same ingress request router (`LLMRouter`). That router tokenizes requests and can reuse tokenized conversation prefixes across turns.
 
-The first request selects a model replica by estimated token load and KV cache overlap. Later turns stay on that model replica even when another has lower load or more cached tokens. After the session's idle timeout, or if the replica becomes unavailable or ineligible, the router selects again.
+Then, the router (`LLMRouter`) selects a model replica (`LLMServer`) for the first request by estimated token load and KV cache overlap. Later turns stay on that model replica even when another has lower load or more cached tokens. After the session's idle timeout, or if the model replica becomes unavailable or ineligible, the router selects again.
 
-Session pinning is enabled by default with a 30-minute idle timeout. Set `session_affinity_ttl_s` in seconds to change it:
+Session pinning to the model replica is enabled by default with a 30-minute idle timeout. Set `session_affinity_ttl_s` in seconds to change it:
 
 ```python
 request_router_config = RequestRouterConfig(
@@ -125,7 +125,7 @@ request_router_config = RequestRouterConfig(
 )
 ```
 
-Set it to `0` to disable pinning. Requests without `x-session-id` use token-load scoring and KV cache overlap.
+Set it to `0` to disable model replica pinning. Requests without `x-session-id` use token-load scoring and KV cache overlap.
 
 ### Tuning
 
@@ -134,14 +134,12 @@ Set these in the cluster environment:
 | Environment variable | Default | Effect |
 | --- | --- | --- |
 | `RAY_SERVE_INGRESS_ROUTER_REPLICAS_PER_NODE` | 1 | Ingress replicas per proxy node. Raise it when ingress tokenization and request scoring bound throughput. |
-| `RAY_SERVE_HAPROXY_INGRESS_REQUEST_ROUTER_WEIGHT` | 16 | Equal ingress replica weights for HAProxy's native consistent hashing (1–256). Higher values improve session distribution at the cost of memory. |
+| `RAY_SERVE_HAPROXY_INGRESS_REQUEST_ROUTER_WEIGHT` | 16 | Equal ingress replica weights for HAProxy's native consistent hashing. Higher values improve session distribution at the cost of memory. |
 | `RAY_SERVE_HAPROXY_RETRIES` | HAProxy default (3) | Retries for failed backend connections, including ingress replicas. |
 | `RAY_SERVE_LLM_ENABLE_DECODE_BLOCK_PROGRESS` | 0 | Report decode progress as the engine generates tokens, for more accurate load tracking on the ingress replica that selected the request. Other ingress replicas don't receive it. |
 | `RAY_SERVE_LLM_KV_TOKEN_STAGING_TTL_S` | 60 | How long a replica holds a staged prompt-token payload before eviction. |
 | `RAY_SERVE_LLM_KV_TOKEN_STAGING_MAX_ENTRIES` | 8192 | Staged payloads retained per engine replica. |
 | `RAY_SERVE_LLM_KV_TOKEN_STAGING_MAX_BYTES` | 1 GiB | Memory allocated for staged payloads per engine replica. |
-
-Use the same ingress replica weight on every proxy. Changing it can remap sessions. HAProxy health checks remove unavailable ingress replicas from session routing.
 
 Set these as `experimental_configs` keys on the `LLMConfig`:
 
@@ -211,7 +209,7 @@ The router scores requests using token IDs, so each request is tokenized at the 
 
 - **Tokenization is not repeated at the engine.** The ingress sends the tokenized prompt to the selected engine replica, avoiding duplicate tokenization. The tokens are sent over a separate channel and may arrive before the corresponding HTTP request, so the engine replica temporarily **stages** them until the request arrives. Delivery is best effort: if the token payload is missing or has expired, the engine simply tokenizes the prompt again. The `RAY_SERVE_LLM_KV_TOKEN_STAGING_*` variables control how long and how much token data each engine replica can stage.
 
-When vLLM uses fastokens, its native segment cache reuses tokenized conversation segments across turns and branches. Ray Serve LLM defaults `FASTOKENS_SEGMENT_CACHE` to `1024` MiB for the tokenizing router. This provides headroom for 32 concurrent conversations of about 500,000 tokens each. Capacity depends on the text size and segment boundaries. Override the budget in the `LLMConfig.runtime_env`:
+When vLLM uses fastokens, its native segment cache reuses tokenized conversation segments across turns and branches. Ray Serve LLM defaults `FASTOKENS_SEGMENT_CACHE` to `1024` MiB for `KVAwareRouter` Override the budget in the `LLMConfig.runtime_env`:
 
 ```yaml
 runtime_env:
