@@ -113,6 +113,11 @@ def _key_and_target_columns(
     return columns
 
 
+# Peak heap of a one-phase aggregation task per byte it outputs. The task reads
+# its input blocks zero-copy from the object store.
+COMPLETE_AGGREGATION_PEAK_MEMORY_MULTIPLIER = 8
+
+
 def _make_complete_aggregating_block_fn(
     key_columns: Tuple[str, ...],
     aggregation_fns: Tuple["AggregateFn", ...],

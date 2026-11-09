@@ -1,4 +1,5 @@
 from typing import Callable, List, Optional, Tuple
+from unittest.mock import MagicMock
 
 import numpy as np
 import pandas as pd
@@ -7,9 +8,14 @@ import pytest
 
 import ray
 from ray.data._internal.execution.interfaces import PhysicalOperator, TaskContext
+from ray.data._internal.execution.interfaces.op_runtime_metrics import (
+    OpRuntimeMetrics,
+)
 from ray.data._internal.execution.operators.hash_aggregate_v2 import (
+    COMPLETE_AGGREGATION_PEAK_MEMORY_MULTIPLIER,
     _make_complete_aggregating_block_fn,
 )
+from ray.data._internal.execution.operators.map_operator import MapOperator
 from ray.data._internal.logical import optimizers
 from ray.data._internal.logical.interfaces import (
     ClusteredDistribution,
@@ -481,6 +487,31 @@ def test_map_after_one_phase_aggregation(
 
     expected["lval2"] = expected["lval"] * 2
     _assert_same_rows(ds, expected, ["id"])
+
+
+@pytest.mark.parametrize(
+    "bytes_per_task, expected_memory",
+    [(1000, 1000 * COMPLETE_AGGREGATION_PEAK_MEMORY_MULTIPLIER), (None, None)],
+)
+def test_one_phase_aggregation_memory_request(
+    ray_start_regular_shared_2_cpus,
+    restore_data_context,
+    bytes_per_task: Optional[int],
+    expected_memory: Optional[int],
+):
+    """The request scales with a task's whole output; no estimate until a task
+    finishes."""
+    restore_data_context.shuffle_strategy = ShuffleStrategy.SHUFFLE_V2
+    ds, _ = _sum_every_column(_join(), ["id"])
+    aggregate = _physical_dag(ds)
+    assert isinstance(aggregate, MapOperator)
+    assert aggregate.name == "HashAggregate(key_columns=('id',), mode=complete)"
+    aggregate._metrics = MagicMock(
+        spec=OpRuntimeMetrics,
+        average_bytes_per_output=1,
+        average_bytes_outputs_per_task=bytes_per_task,
+    )
+    assert aggregate._get_dynamic_ray_remote_args().get("memory") == expected_memory
 
 
 def _filter_join_sum_add_column() -> Dataset:
