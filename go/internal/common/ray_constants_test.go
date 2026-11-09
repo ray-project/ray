@@ -42,6 +42,30 @@ func TestEnvInteger(t *testing.T) {
 	}
 }
 
+func TestEnvInt64(t *testing.T) {
+	// Default value when the variable is absent.
+	defaultVal := common.EnvInt64("NON_EXISTENT_KEY_INT64", 10737418240)
+	if defaultVal != 10737418240 {
+		t.Errorf("Expected default value 10737418240, got %d", defaultVal)
+	}
+
+	// Existing variable with a valid value.
+	os.Setenv("TEST_INT64_KEY", "9999999999")
+	defer os.Unsetenv("TEST_INT64_KEY")
+	val := common.EnvInt64("TEST_INT64_KEY", 42)
+	if val != 9999999999 {
+		t.Errorf("Expected 9999999999, got %d", val)
+	}
+
+	// Existing variable with an invalid (non-numeric) value.
+	os.Setenv("TEST_INT64_INVALID", "not_a_number")
+	defer os.Unsetenv("TEST_INT64_INVALID")
+	invalidVal := common.EnvInt64("TEST_INT64_INVALID", 42)
+	if invalidVal != 42 {
+		t.Errorf("Expected default 42 for invalid int64, got %d", invalidVal)
+	}
+}
+
 func TestEnvFloat(t *testing.T) {
 	defaultVal := common.EnvFloat("NON_EXISTENT_KEY_67890", 3.14)
 	if defaultVal != 3.14 {

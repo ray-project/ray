@@ -18,7 +18,9 @@ go_library(
     name = "gcs",
     srcs = [
         "client.go",
+        "dial.go",
         "doc.go",
+        "env.go",
         "interfaces.go",
         "options.go",
         "state.go",
@@ -29,6 +31,11 @@ go_library(
     deps = [
         "//go/pkg/ids",
         "//go/proto",
+        "@org_golang_google_grpc//:go_default_library",
+        "@org_golang_google_grpc//connectivity",
+        "@org_golang_google_grpc//credentials",
+        "@org_golang_google_grpc//credentials/insecure",
+        "@org_golang_google_grpc//metadata",
     ],
 )
 
@@ -37,6 +44,8 @@ go_test(
     name = "gcs_test",
     srcs = [
         "client_test.go",
+        "dial_test.go",
+        "env_test.go",
         "interfaces_test.go",
     ],
     embed = [":gcs"],

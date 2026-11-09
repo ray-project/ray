@@ -33,7 +33,8 @@ e2e/
 │       ├── BUILD.bazel
 │       └── main.go
 ├── test_go_call_python.py      # Python-side file for driver_call_python
-└── test_python_call_go.py  # Python -> Go call example (referenced by docs)
+├── test_python_call_go.py  # Python -> Go call example (referenced by docs)
+└── test_go_system_components.py  # Go dashboard + Go log monitor cluster-level integration test
 ```
 
 ## E2E cases
@@ -79,6 +80,7 @@ cd job_dir && ray job submit --working-dir . -- ./driver_app
 | `driver_gcs_client` | `//go/e2e/driver_gcs_client` | User-side GCSClient extension: `GetGCSClient()` + PG queries x3 (including by-name and REMOVED after removal) + InternalKV write/read-back round trip + Node/Actor queries (including ALIVE state filtering); local mode returns not-supported |
 | `driver_metrics` | `//go/e2e/driver_metrics` | User Metrics API: RegisterTagKey + Count/Gauge/Sum/Histogram register/Record/Unregister + handle rejection after unregister; local mode returns not-supported |
 | `zero_copy_benchmark` | `//go/e2e/zero_copy_benchmark` | Cross-process zero-copy Get performance benchmark (local/cross, 4MB/64MB) |
+| `test_go_system_components.py` | — (Python script, not a driver) | Go dashboard + Go log monitor cluster-level integration test: log monitor plugin-free / worker log tracking / LogBatch publishing to GCS end to end; dashboard core APIs / lazy plugin loading (maps=0 at startup, >0 after the first cross-language request) |
 
 ## userfuncs shared function package
 
@@ -87,6 +89,38 @@ drivers (9 of the 12 drivers), compiled to the `userfuncs.so` plugin that the
 Go worker loads. Those drivers point the plugin out through JobConfig's
 `code_search_path`, and the worker resolves function and actor descriptors
 from it.
+
+## Go dashboard / Go log monitor system-component integration test
+
+`test_go_system_components.py` covers the core flows of the migrated head-side
+Go system components on a local cluster:
+
+- **go log_monitor**: launched by the cluster; pure Go with no `go_runtime.so`
+  plugin mapped (maps=0); tracks worker log files (`log_monitor.log` gains
+  `Beginning to track file`); **LogBatch end-to-end publishing** (a Python
+  subscriber on the `RAY_LOG_CHANNEL` pubsub channel matches the emitted worker
+  lines, exercising the pure-Go `GcsPublish` path); no panic/fatal in the logs.
+- **go dashboard**: launched by the cluster; core APIs (`/api/version`,
+  `/api/jobs/`, `/api/v0/nodes`) return 200; **lazy plugin loading** (maps=0 at
+  startup with the default all-module config, maps>0 after the first
+  cross-language request to `/api/flow|serve|train`); cross-language module
+  routes are registered.
+
+Prerequisites: `bazel build //go/cmd/raygo` (the script resolves
+`RAYGO_EXECUTABLE` to the bazel-bin binary so the freshly built code is
+exercised, falling back to the packaged raygo otherwise). When the packaged
+`go_runtime.so` comes from a different tree, pin the matching runtime with
+`RAY_GO_RUNTIME_PATH=<repo>/bazel-bin/go/cmd/plugin/go_runtime.so` so the
+dashboard's lazy init and the Go worker load the same build.
+
+```bash
+python go/e2e/test_go_system_components.py                    # full run (ray stop + ray start)
+python go/e2e/test_go_system_components.py --component=log_monitor
+python go/e2e/test_go_system_components.py --component=dashboard
+python go/e2e/test_go_system_components.py --keep-cluster     # keep the cluster after the run
+python go/e2e/test_go_system_components.py --no-start         # reuse a running cluster
+RAYGO_E2E=1 python -m pytest go/e2e/test_go_system_components.py -v
+```
 
 ## Lockstep and the packaging hash gate
 
@@ -255,9 +289,10 @@ Each row is compared against the criterion its own source defines, and the runne
 
 These drivers are manual targets: build them with `bazel build //go/e2e/<target>`
 and run them against a real cluster via `ray job submit`. They are not wired
-into CI. The two pytest scripts (`test_go_call_python.py` and
-`test_python_call_go.py`) are manual real-machine lanes for
-cross-language verification.
+into CI. The pytest scripts (`test_go_call_python.py`,
+`test_python_call_go.py`, and `test_go_system_components.py`) are manual
+real-machine lanes; the first two cover cross-language verification and the
+third the head-side system components.
 
 On a shared or loaded cluster the poll-loop deadlines can flake even though the behavior under test is correct. Export `RAY_GO_E2E_TIMEOUT_SCALE` to scale every poll deadline in the six polling drivers (listed in [Run matrix and pass criterion](#run-matrix-and-pass-criterion)) — e.g. `RAY_GO_E2E_TIMEOUT_SCALE=3 ray job submit ...`, or `--timeout-scale 3` through the runner — instead of editing the per-driver constants; values below 1.0 are ignored so an assertion deadline is never shortened. `global_state_accessor_driver` keeps its own validated override `GSA_ACTOR_STATE_TIMEOUT` (seconds) for the actor-state probe.
 

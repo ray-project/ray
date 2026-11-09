@@ -40,7 +40,6 @@ go_library(
         "//go/pkg/log",
         "//go/pkg/log/logconfig",
         "//go/pkg/log/zap",
-        "//go/pkg/runtime/plugin",
         "@com_github_spf13_cobra//:cobra",
     ],
 )

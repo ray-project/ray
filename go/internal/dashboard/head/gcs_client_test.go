@@ -21,6 +21,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 
 	"github.com/ray-project/ray/go/proto"
@@ -378,5 +379,161 @@ func TestGCSClientOptionsFromEnv(t *testing.T) {
 				t.Fatalf("cluster id metadata = %q, want %q", got, "0123456789abcdef")
 			}
 		})
+	}
+}
+
+// prepareTokenEnv points HOME at an empty directory and clears the token
+// environment so a case only sees the variables it sets.
+func prepareTokenEnv(t *testing.T) {
+	t.Helper()
+	t.Setenv("HOME", t.TempDir())
+	for _, k := range []string{"RAY_AUTH_MODE", "RAY_AUTH_TOKEN", "RAY_AUTH_TOKEN_PATH"} {
+		t.Setenv(k, "")
+	}
+}
+
+// TestGCSClientOptionsFromEnvResolvedOnce pins that the environment is
+// consulted when GCSClientOptionsFromEnv assembles the options, not again
+// inside NewGCSClient: mutating the environment afterwards must not change the
+// client that is built.
+func TestGCSClientOptionsFromEnvResolvedOnce(t *testing.T) {
+	prepareTokenEnv(t)
+	t.Setenv("RAY_AUTH_MODE", "token")
+	t.Setenv("RAY_AUTH_TOKEN", "env-token")
+
+	opts := GCSClientOptionsFromEnv("0123456789abcdef")
+
+	// The token changes after assembly; the built client must keep the one
+	// resolved above, proving NewGCSClient does not re-read the environment.
+	t.Setenv("RAY_AUTH_TOKEN", "changed-token")
+
+	srv := newMockInternalKVServer()
+	addr, stop := startMockGCS(t, srv)
+	defer stop()
+
+	client, err := NewGCSClient(context.Background(), addr, opts...)
+	if err != nil {
+		t.Fatalf("NewGCSClient: %v", err)
+	}
+	defer client.Close()
+
+	if _, err := client.InternalKVGet(context.Background(), "ns", "k1"); err != nil {
+		t.Fatalf("InternalKVGet: %v", err)
+	}
+	if got := srv.gotToken(); got != "Bearer env-token" {
+		t.Fatalf("authorization metadata = %q, want %q", got, "Bearer env-token")
+	}
+}
+
+// TestNewGCSClientDoesNotConsultEnv pins that NewGCSClient takes explicit
+// options only: a token in the environment attaches only when
+// GCSClientOptionsFromEnv contributed it.
+func TestNewGCSClientDoesNotConsultEnv(t *testing.T) {
+	prepareTokenEnv(t)
+	t.Setenv("RAY_AUTH_MODE", "token")
+	t.Setenv("RAY_AUTH_TOKEN", "env-token")
+
+	srv := newMockInternalKVServer()
+	addr, stop := startMockGCS(t, srv)
+	defer stop()
+
+	client, err := NewGCSClient(context.Background(), addr, WithClusterID("0123456789abcdef"))
+	if err != nil {
+		t.Fatalf("NewGCSClient: %v", err)
+	}
+	defer client.Close()
+
+	if _, err := client.InternalKVGet(context.Background(), "ns", "k1"); err != nil {
+		t.Fatalf("InternalKVGet: %v", err)
+	}
+	if got := srv.gotToken(); got != "" {
+		t.Fatalf("authorization metadata = %q, want empty: NewGCSClient must not read the environment", got)
+	}
+}
+
+// TestWithTokenEmptyLeavesTheEnvToken pins Override semantics: an empty
+// explicit WithToken over an environment-resolved token is a no-op.
+func TestWithTokenEmptyLeavesTheEnvToken(t *testing.T) {
+	prepareTokenEnv(t)
+	t.Setenv("RAY_AUTH_MODE", "token")
+	t.Setenv("RAY_AUTH_TOKEN", "env-token")
+
+	opts := append(GCSClientOptionsFromEnv("0123456789abcdef"), WithToken(""))
+
+	srv := newMockInternalKVServer()
+	addr, stop := startMockGCS(t, srv)
+	defer stop()
+
+	client, err := NewGCSClient(context.Background(), addr, opts...)
+	if err != nil {
+		t.Fatalf("NewGCSClient: %v", err)
+	}
+	defer client.Close()
+
+	if _, err := client.InternalKVGet(context.Background(), "ns", "k1"); err != nil {
+		t.Fatalf("InternalKVGet: %v", err)
+	}
+	if got := srv.gotToken(); got != "Bearer env-token" {
+		t.Fatalf("authorization metadata = %q, want %q (empty explicit must not clobber)", got, "Bearer env-token")
+	}
+}
+
+// TestWithTokenExplicitOverridesEnv pins that a non-empty explicit token
+// layered after the environment-resolved one wins.
+func TestWithTokenExplicitOverridesEnv(t *testing.T) {
+	prepareTokenEnv(t)
+	t.Setenv("RAY_AUTH_MODE", "token")
+	t.Setenv("RAY_AUTH_TOKEN", "env-token")
+
+	opts := append(GCSClientOptionsFromEnv("0123456789abcdef"), WithToken("explicit-token"))
+
+	srv := newMockInternalKVServer()
+	addr, stop := startMockGCS(t, srv)
+	defer stop()
+
+	client, err := NewGCSClient(context.Background(), addr, opts...)
+	if err != nil {
+		t.Fatalf("NewGCSClient: %v", err)
+	}
+	defer client.Close()
+
+	if _, err := client.InternalKVGet(context.Background(), "ns", "k1"); err != nil {
+		t.Fatalf("InternalKVGet: %v", err)
+	}
+	if got := srv.gotToken(); got != "Bearer explicit-token" {
+		t.Fatalf("authorization metadata = %q, want %q (explicit overrides env)", got, "Bearer explicit-token")
+	}
+}
+
+// TestGCSClientDialsThroughThePlainTCPDialer pins that the plain-TCP dialer
+// reaches the built connection's dial path.
+func TestGCSClientDialsThroughThePlainTCPDialer(t *testing.T) {
+	var calls int32
+	prev := grpcDialer
+	grpcDialer = func(ctx context.Context, address string) (net.Conn, error) {
+		atomic.AddInt32(&calls, 1)
+		var d net.Dialer
+		return d.DialContext(ctx, "tcp", address)
+	}
+	t.Cleanup(func() { grpcDialer = prev })
+
+	srv := newMockInternalKVServer()
+	addr, stop := startMockGCS(t, srv)
+	defer stop()
+
+	client, err := NewGCSClient(context.Background(), addr, WithClusterID("0123456789abcdef"))
+	if err != nil {
+		t.Fatalf("NewGCSClient: %v", err)
+	}
+	defer client.Close()
+
+	if _, err := client.InternalKVGet(context.Background(), "ns", "k1"); err != nil {
+		t.Fatalf("InternalKVGet: %v", err)
+	}
+	if got := atomic.LoadInt32(&calls); got == 0 {
+		t.Fatal("the plain TCP dialer was not used to dial the GCS")
+	}
+	if got := srv.gotClusterID(); got != "0123456789abcdef" {
+		t.Fatalf("cluster id metadata = %q, want %q", got, "0123456789abcdef")
 	}
 }

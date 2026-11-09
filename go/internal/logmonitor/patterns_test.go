@@ -15,8 +15,11 @@
 package logmonitor
 
 import (
+	"os"
 	"path"
 	"path/filepath"
+	"reflect"
+	"sort"
 	"testing"
 )
 
@@ -79,6 +82,204 @@ func TestLogPatternsParity(t *testing.T) {
 	}
 	if len(want) != 0 {
 		t.Fatalf("missing patterns: %v", want)
+	}
+}
+
+func TestParseWorkerFilenamePIDRangeValidation(t *testing.T) {
+	tests := []struct {
+		name string
+		path string
+		ok   bool
+		pid  int
+	}{
+		{name: "pid zero", path: "worker-abc123-0", ok: false},
+		{name: "pid negative", path: "worker-abc123--5", ok: false},
+		{name: "pid equal upper bound", path: "worker-abc123-1000000", ok: false},
+		{name: "pid above upper bound", path: "worker-abc123-1000001", ok: false},
+		{name: "pid just below upper bound", path: "worker-abc123-999999", ok: true, pid: 999999},
+		{name: "pid in range", path: "worker-abc123-12345", ok: true, pid: 12345},
+		{name: "pid not numeric", path: "worker-abc123-abc", ok: false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, pid, ok := parseWorkerFilename(tt.path)
+			if ok != tt.ok {
+				t.Fatalf("parseWorkerFilename(%q) ok = %v, want %v", tt.path, ok, tt.ok)
+			}
+			if !ok {
+				return
+			}
+			if pid == nil || *pid != tt.pid {
+				t.Fatalf("parseWorkerFilename(%q) pid = %v, want %d", tt.path, pid, tt.pid)
+			}
+		})
+	}
+}
+
+func TestIsErrFile(t *testing.T) {
+	tests := []struct {
+		path string
+		want bool
+	}{
+		{path: "worker.err", want: true},
+		{path: "foo.xerr", want: false},
+		{path: "worker.out", want: false},
+		{path: "a/b/c.ERR", want: false},
+	}
+
+	for _, tt := range tests {
+		if got := isErrFile(tt.path); got != tt.want {
+			t.Fatalf("isErrFile(%q) = %v, want %v", tt.path, got, tt.want)
+		}
+	}
+}
+
+func TestReaddirPathsRecursive(t *testing.T) {
+	tests := []struct {
+		name     string
+		maxDepth int
+		setup    func(t *testing.T, dir string)
+		wantRel  []string
+		wantErr  bool
+	}{
+		{
+			name:     "nested directories",
+			maxDepth: 32,
+			setup: func(t *testing.T, dir string) {
+				if err := os.MkdirAll(filepath.Join(dir, "a", "b"), 0o755); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.WriteFile(filepath.Join(dir, "a", "b", "c.log"), []byte("x"), 0o644); err != nil {
+					t.Fatal(err)
+				}
+			},
+			wantRel: []string{filepath.Join("a", "b", "c.log")},
+		},
+		{
+			name:     "symlink to directory is descended",
+			maxDepth: 32,
+			setup: func(t *testing.T, dir string) {
+				target := filepath.Join(t.TempDir(), "target")
+				if err := os.MkdirAll(target, 0o755); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.WriteFile(filepath.Join(target, "t.log"), []byte("x"), 0o644); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.Symlink(target, filepath.Join(dir, "link")); err != nil {
+					t.Fatal(err)
+				}
+			},
+			wantRel: []string{filepath.Join("link", "t.log")},
+		},
+		{
+			name:     "broken symlink is skipped",
+			maxDepth: 32,
+			setup: func(t *testing.T, dir string) {
+				if err := os.Symlink(filepath.Join(dir, "missing"), filepath.Join(dir, "dangling")); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.WriteFile(filepath.Join(dir, "f.log"), []byte("x"), 0o644); err != nil {
+					t.Fatal(err)
+				}
+			},
+			wantRel: []string{"f.log"},
+		},
+		{
+			name:     "symlink loop does not hang",
+			maxDepth: 32,
+			setup: func(t *testing.T, dir string) {
+				if err := os.Symlink("ln2", filepath.Join(dir, "ln1")); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.Symlink("ln1", filepath.Join(dir, "ln2")); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.WriteFile(filepath.Join(dir, "f.log"), []byte("x"), 0o644); err != nil {
+					t.Fatal(err)
+				}
+			},
+			wantRel: []string{"f.log"},
+		},
+		{
+			name:     "regular files at one level",
+			maxDepth: 32,
+			setup: func(t *testing.T, dir string) {
+				for _, name := range []string{"a.log", "b.err", "c.out"} {
+					if err := os.WriteFile(filepath.Join(dir, name), []byte("x"), 0o644); err != nil {
+						t.Fatal(err)
+					}
+				}
+			},
+			wantRel: []string{"a.log", "b.err", "c.out"},
+		},
+		{
+			name:     "max depth one collects one level only",
+			maxDepth: 1,
+			setup: func(t *testing.T, dir string) {
+				for _, name := range []string{"a.log", "b.err"} {
+					if err := os.WriteFile(filepath.Join(dir, name), []byte("x"), 0o644); err != nil {
+						t.Fatal(err)
+					}
+				}
+				if err := os.MkdirAll(filepath.Join(dir, "sub", "sub2"), 0o755); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.WriteFile(filepath.Join(dir, "sub", "deep.log"), []byte("x"), 0o644); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.WriteFile(filepath.Join(dir, "sub", "sub2", "deeper.log"), []byte("x"), 0o644); err != nil {
+					t.Fatal(err)
+				}
+			},
+			wantRel: []string{"a.log", "b.err"},
+		},
+		{
+			name:     "max depth zero collects nothing",
+			maxDepth: 0,
+			setup: func(t *testing.T, dir string) {
+				if err := os.WriteFile(filepath.Join(dir, "a.log"), []byte("x"), 0o644); err != nil {
+					t.Fatal(err)
+				}
+			},
+			wantRel: []string{},
+		},
+		{
+			name:     "nonexistent directory returns error",
+			maxDepth: 32,
+			setup:    func(t *testing.T, dir string) {},
+			wantErr:  true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			dir := t.TempDir()
+			if tt.setup != nil {
+				tt.setup(t, dir)
+			}
+			if tt.wantErr {
+				_, err := readdirPathsRecursive(filepath.Join(dir, "missing"), tt.maxDepth)
+				if err == nil {
+					t.Fatal("readdirPathsRecursive() error = nil, want error")
+				}
+				return
+			}
+			got, err := readdirPathsRecursive(dir, tt.maxDepth)
+			if err != nil {
+				t.Fatalf("readdirPathsRecursive() error = %v", err)
+			}
+			want := make([]string, 0, len(tt.wantRel))
+			for _, rel := range tt.wantRel {
+				want = append(want, filepath.Join(dir, rel))
+			}
+			sort.Strings(got)
+			sort.Strings(want)
+			if !reflect.DeepEqual(got, want) {
+				t.Fatalf("readdirPathsRecursive(%q) = %v, want %v", dir, got, want)
+			}
+		})
 	}
 }
 

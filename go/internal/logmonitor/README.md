@@ -57,6 +57,13 @@ Current behavior:
 For source-tree validation, `RAYGO_EXECUTABLE` can be used to override the
 binary path that Python launches.
 
+The Go log monitor publishes log batches through a pure-Go gRPC GCS client
+(`go/internal/gcs/grpc`) instead of the cgo GCS client inside go_runtime.so.
+The log-monitor process therefore does not load the go_runtime.so plugin. Long
+lines (default cap 1 MiB, override `RAY_GO_LOG_MONITOR_MAX_LINE_BYTES`) are
+truncated; the Go soft memory limit defaults to 64 MiB (override
+`RAY_GO_LOG_MONITOR_MEMLIMIT`).
+
 ## Key Files
 
 - `monitor.go`

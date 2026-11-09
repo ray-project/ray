@@ -37,6 +37,7 @@ Behavior-to-test mapping:
 - Python component classification rules -> `TestClassifyComponentPIDParity`
 - Python discovery pattern set -> `TestLogPatternsParity`
 - Python incremental read and batch publish -> `TestCheckLogFilesAndPublishUpdatesParity`
+- Python access-violation suppression (prefix match plus skipped next line) -> `TestCheckLogFilesAndPublishUpdatesAccessViolation`, `TestPythonParityScenarios` (`access_violation_suppression`)
 - Python per-iteration line cap -> `TestMaxLinesPerReadParity`
 - Python actor/task/job prefix propagation -> `TestCheckLogFilesAndPublishUpdatesParity`
 - Python reopen after file replacement -> `TestReopenIfNecessaryAfterReplacementParity`

@@ -25,11 +25,19 @@ import (
 // EnvInteger reads an integer from an environment variable, returning the
 // default value if the variable is absent or cannot be parsed.
 func EnvInteger(key string, defaultVal int) int {
+	return int(EnvInt64(key, int64(defaultVal)))
+}
+
+// EnvInt64 reads a 64-bit integer from an environment variable, returning the
+// default value if the variable is absent or cannot be parsed.
+// It is intended for configuration values that may exceed the platform int
+// width (for example byte limits in the 10 GiB range).
+func EnvInt64(key string, defaultVal int64) int64 {
 	value, exists := os.LookupEnv(key)
 	if !exists {
 		return defaultVal
 	}
-	intVal, err := strconv.Atoi(value)
+	intVal, err := strconv.ParseInt(value, 10, 64)
 	if err != nil {
 		return defaultVal
 	}

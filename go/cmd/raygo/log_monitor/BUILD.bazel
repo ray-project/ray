@@ -22,13 +22,14 @@ go_library(
     importpath = "github.com/ray-project/ray/go/cmd/raygo/log_monitor",
     visibility = ["//visibility:public"],
     deps = [
+        "//go/internal/common",
+        "//go/internal/gcs/grpc",
         "//go/internal/logmonitor",
         "//go/pkg/gcs",
         "//go/pkg/ids",
         "//go/pkg/log/logconfig",
         "//go/pkg/log/lumberjack",
         "//go/pkg/log/zap",
-        "//go/pkg/runtime/plugin",
         "@com_github_spf13_cobra//:cobra",
     ],
 )
@@ -41,7 +42,6 @@ go_test(
         "//go/internal/logmonitor",
         "//go/pkg/gcs",
         "//go/pkg/log",
-        "//go/pkg/runtime/plugin",
         "@com_github_spf13_cobra//:cobra",
     ],
 )

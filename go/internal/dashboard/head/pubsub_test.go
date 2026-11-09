@@ -78,10 +78,12 @@ func TestSubscribeCommandEncoding(t *testing.T) {
 	}
 }
 
-// mockPubSubServer simulates the GCS InternalPubSub service, capturing the
+// mockPubSubServer simulates both GCS pubsub services the dashboard
+// subscribes through, capturing the
 // last received command batch and poll request and serving queued poll replies.
 type mockPubSubServer struct {
-	proto.UnimplementedInternalPubSubGcsServiceServer
+	proto.UnimplementedControlPlanePubSubGcsServiceServer
+	proto.UnimplementedObservabilityPubSubServiceServer
 	mu sync.Mutex
 	// batch is the last received command batch request.
 	batch *proto.GcsSubscriberCommandBatchRequest
@@ -92,6 +94,17 @@ type mockPubSubServer struct {
 	// pollQueue holds the pub messages returned by successive poll calls,
 	// consumed in FIFO order. A nil entry replies with no messages.
 	pollQueue [][]*proto.PubMessage
+}
+
+// GcsPublish and ReportJobError are spelled out because both embedded
+// Unimplemented servers provide them, which makes the promoted method
+// ambiguous and blocks both service registrations.
+func (s *mockPubSubServer) GcsPublish(ctx context.Context, req *proto.GcsPublishRequest) (*proto.GcsPublishReply, error) {
+	return &proto.GcsPublishReply{}, nil
+}
+
+func (s *mockPubSubServer) ReportJobError(ctx context.Context, req *proto.ReportJobErrorRequest) (*proto.ReportJobErrorReply, error) {
+	return &proto.ReportJobErrorReply{}, nil
 }
 
 func (s *mockPubSubServer) GcsSubscriberCommandBatch(ctx context.Context, req *proto.GcsSubscriberCommandBatchRequest) (*proto.GcsSubscriberCommandBatchReply, error) {
@@ -122,7 +135,8 @@ func startMockPubSub(t *testing.T, srv *mockPubSubServer) (*GCSClient, func()) {
 		t.Fatalf("listen: %v", err)
 	}
 	server := grpc.NewServer()
-	proto.RegisterInternalPubSubGcsServiceServer(server, srv)
+	proto.RegisterControlPlanePubSubGcsServiceServer(server, srv)
+	proto.RegisterObservabilityPubSubServiceServer(server, srv)
 	go func() {
 		_ = server.Serve(lis)
 	}()
@@ -459,5 +473,50 @@ func TestPollTransientErrorClassification(t *testing.T) {
 	}
 	if isTransientPollError(status.Error(codes.NotFound, "nope")) {
 		t.Fatal("not-found should not be a transient poll error")
+	}
+}
+
+// TestSubscriberUsesTheServiceThatServesItsChannel pins the split: the GCS
+// server registers pubsub RPCs on two services, and a subscriber that talks to
+// the wrong one gets Unimplemented. Node info and actor events belong to the
+// control plane service; log, error and resource usage belong to the
+// observability service (python/ray/_private/gcs_pubsub.py).
+func TestSubscriberUsesTheServiceThatServesItsChannel(t *testing.T) {
+	controlPlane := &mockPubSubServer{}
+	observability := &mockPubSubServer{}
+	lis, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("listen: %v", err)
+	}
+	server := grpc.NewServer()
+	proto.RegisterControlPlanePubSubGcsServiceServer(server, controlPlane)
+	proto.RegisterObservabilityPubSubServiceServer(server, observability)
+	go func() { _ = server.Serve(lis) }()
+	defer server.Stop()
+
+	client, err := NewGCSClient(context.Background(), lis.Addr().String())
+	if err != nil {
+		t.Fatalf("NewGCSClient: %v", err)
+	}
+	ctx := context.Background()
+	id := NewRandomSubscriberID()
+
+	nodeSub := NewSubscriber(client, proto.ChannelType_GCS_NODE_INFO_CHANNEL, id)
+	if err := nodeSub.Subscribe(ctx); err != nil {
+		t.Fatalf("subscribe node info: %v", err)
+	}
+	if controlPlane.batch == nil {
+		t.Fatal("a node info subscription must reach ControlPlanePubSubGcsService")
+	}
+	if observability.batch != nil {
+		t.Fatal("a node info subscription must not reach ObservabilityPubSubService")
+	}
+
+	usageSub := NewSubscriber(client, proto.ChannelType_RAY_NODE_RESOURCE_USAGE_CHANNEL, id)
+	if err := usageSub.Subscribe(ctx); err != nil {
+		t.Fatalf("subscribe resource usage: %v", err)
+	}
+	if observability.batch == nil {
+		t.Fatal("a resource usage subscription must reach ObservabilityPubSubService")
 	}
 }

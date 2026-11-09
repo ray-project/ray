@@ -56,5 +56,19 @@
       },
       { "kind": "drain" }
     ]
+  },
+  {
+    "name": "access_violation_suppression",
+    "files": [
+      {
+        "path": "worker-6df6d5dd-01000000-47660.out",
+        "contents": "before\nWindows fatal exception: access violation\nstack line after\nWindows fatal exception: access violation at 0x00007fff\nstack line two\nafter\n"
+      }
+    ],
+    "operations": [
+      { "kind": "scan" },
+      { "kind": "open" },
+      { "kind": "drain" }
+    ]
   }
 ]

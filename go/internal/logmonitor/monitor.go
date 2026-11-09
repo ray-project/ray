@@ -15,7 +15,6 @@
 package logmonitor
 
 import (
-	"bufio"
 	"context"
 	"fmt"
 	"io/fs"
@@ -38,11 +37,15 @@ type Monitor struct {
 	maxFilesOpen           int
 	manyFilesThreshold     int
 	nameUpdateInterval     time.Duration
-	maxLinesPerRead        int
+	numLinesToRead         int
+	maxLineSize            int
+	maxBatchBytes          int
 	runtimeEnvToDriver     bool
 	autoscalerV2Enabled    bool
 	lastFilenameUpdateTime time.Time
+	lastPublishErrLog      time.Time
 	isProcAlive            func(pid int) bool
+	gc                     *GarbageCollector
 	sleep                  func(time.Duration)
 }
 
@@ -51,6 +54,10 @@ type RuntimeConfig struct {
 	RuntimeEnvToDriver  bool
 	AutoscalerV2Enabled bool
 	MaxFilesOpen        int
+	MaxLineSize         int
+	ManyFilesThreshold  int
+	NumLinesToRead      int
+	NameUpdateInterval  time.Duration
 }
 
 func New(ip, logsDir string, publisher Publisher) (*Monitor, error) {
@@ -67,7 +74,7 @@ func New(ip, logsDir string, publisher Publisher) (*Monitor, error) {
 		return nil, fmt.Errorf("create old log directory: %w", err)
 	}
 
-	return &Monitor{
+	m := &Monitor{
 		ip:                 ip,
 		logsDir:            logsDir,
 		publisher:          publisher,
@@ -76,10 +83,14 @@ func New(ip, logsDir string, publisher Publisher) (*Monitor, error) {
 		maxFilesOpen:       defaultMaxFilesOpen,
 		manyFilesThreshold: defaultManyFilesThreshold,
 		nameUpdateInterval: defaultNameUpdateInterval,
-		maxLinesPerRead:    defaultMaxLinesPerRead,
+		numLinesToRead:     defaultNumLinesToRead,
+		maxLineSize:        defaultMaxLineSize,
+		maxBatchBytes:      defaultMaxBatchBytes,
 		isProcAlive:        defaultIsProcAlive,
 		sleep:              time.Sleep,
-	}, nil
+	}
+	m.gc = NewGarbageCollector(m.logsDir, m.isProcAlive, m.removeTrackedFile)
+	return m, nil
 }
 
 // NewWithConfig creates a Monitor with runtime configuration overrides.
@@ -90,6 +101,18 @@ func NewWithConfig(ip, logsDir string, publisher Publisher, cfg RuntimeConfig) (
 	}
 	if cfg.MaxFilesOpen > 0 {
 		m.maxFilesOpen = cfg.MaxFilesOpen
+	}
+	if cfg.MaxLineSize > 0 {
+		m.maxLineSize = cfg.MaxLineSize
+	}
+	if cfg.ManyFilesThreshold > 0 {
+		m.manyFilesThreshold = cfg.ManyFilesThreshold
+	}
+	if cfg.NumLinesToRead > 0 {
+		m.numLinesToRead = cfg.NumLinesToRead
+	}
+	if cfg.NameUpdateInterval > 0 {
+		m.nameUpdateInterval = cfg.NameUpdateInterval
 	}
 	m.runtimeEnvToDriver = cfg.RuntimeEnvToDriver
 	m.autoscalerV2Enabled = cfg.AutoscalerV2Enabled
@@ -123,6 +146,8 @@ func (m *Monitor) Run(ctx context.Context) error {
 		if err != nil {
 			return err
 		}
+		// GC is always created in New(), so no nil guard is needed.
+		m.gc.MaybeCollect()
 		if !published {
 			m.sleep(defaultIdleSleep)
 		}
@@ -261,6 +286,33 @@ func (m *Monitor) closeAllFiles() error {
 	return nil
 }
 
+// removeTrackedFile removes path from the tracking structures after the GC has
+// deleted the file on disk. It is only invoked by the GC's onFileDeleted
+// callback, which runs in the Run loop after publishing (never inside a range
+// loop over openFiles/closedFiles, so slice mutation here is safe).
+func (m *Monitor) removeTrackedFile(path string) {
+	delete(m.tracked, path)
+
+	for i := 0; i < len(m.openFiles); i++ {
+		if m.openFiles[i].filename != path {
+			continue
+		}
+		if m.openFiles[i].fileHandle != nil {
+			_ = m.openFiles[i].fileHandle.Close()
+		}
+		m.openFiles = append(m.openFiles[:i], m.openFiles[i+1:]...)
+		i--
+	}
+
+	for i := 0; i < len(m.closedFiles); i++ {
+		if m.closedFiles[i].filename != path {
+			continue
+		}
+		m.closedFiles = append(m.closedFiles[:i], m.closedFiles[i+1:]...)
+		i--
+	}
+}
+
 func (m *Monitor) writePythonStyleLog(line int, message string) {
 	logLine := fmt.Sprintf(
 		"%s\tINFO log_monitor.py:%d -- %s\n",
@@ -286,6 +338,7 @@ func pythonBool(v bool) string {
 
 func (m *Monitor) checkLogFilesAndPublishUpdates() (bool, error) {
 	anythingPublished := false
+	logger := log.WithName("logmonitor")
 
 	for _, fileInfo := range m.openFiles {
 		if err := fileInfo.reopenIfNecessary(); err != nil && !os.IsNotExist(err) {
@@ -293,6 +346,7 @@ func (m *Monitor) checkLogFilesAndPublishUpdates() (bool, error) {
 		}
 
 		pending := make([]string, 0, 16)
+		pendingBytes := 0
 		flush := func() error {
 			if len(pending) == 0 {
 				return nil
@@ -306,28 +360,45 @@ func (m *Monitor) checkLogFilesAndPublishUpdates() (bool, error) {
 				ActorName: fileInfo.actorName,
 				TaskName:  fileInfo.taskName,
 			}); err != nil {
-				anythingPublished = true
-				pending = pending[:0]
-				return nil
+				// Matches the Python log_monitor.py flush(): a failed publish
+				// still counts as "published" so the Run loop keeps polling
+				// (parity behavior, verified by the *Parity tests). The error
+				// itself is logged at most once per interval so a prolonged
+				// GCS outage does not flood log_monitor.log from every open
+				// file on every scan cycle.
+				if time.Since(m.lastPublishErrLog) >= publishErrorLogInterval {
+					logger.Error(err, "drop log batch after publish failure", "lines", len(pending))
+					m.lastPublishErrLog = time.Now()
+				}
 			}
 			anythingPublished = true
 			pending = pending[:0]
+			pendingBytes = 0
 			return nil
 		}
 
 		// The reader is persistent across polls: lines left in its buffer
-		// when maxLinesPerRead ends this poll stay available for the next
+		// when numLinesToRead ends this poll stay available for the next
 		// poll instead of being skipped.
-		if fileInfo.reader == nil {
-			fileInfo.reader = bufio.NewReader(fileInfo.fileHandle)
-		}
-		for i := 0; i < m.maxLinesPerRead; i++ {
-			line, err := fileInfo.reader.ReadString('\n')
-			if err != nil && line == "" {
+		reader := fileInfo.reader
+		truncatedLines := 0
+		for i := 0; i < m.numLinesToRead; i++ {
+			rawLine, truncated, err := readCappedLine(reader, m.maxLineSize)
+			if err != nil && len(rawLine) == 0 {
 				break
 			}
-			fileInfo.consumedBytes += int64(len(line))
-			line = strings.TrimRight(line, "\r\n")
+			if truncated {
+				truncatedLines++
+			}
+			// Replace invalid UTF-8 the way the Python monitor's
+			// decode("utf-8", "replace") does. Without this the raw bytes
+			// reach proto.LogBatch.Lines, whose proto3 marshal rejects
+			// invalid UTF-8 — and one bad byte would fail the whole batch
+			// (up to maxBatchBytes), not just its own line. Two ordinary
+			// ways to produce one: a truncated line cut mid-character by
+			// the byte-level cap, and a worker writing a partial multi-byte
+			// character at the end of the file.
+			line := strings.ToValidUTF8(strings.TrimRight(rawLine, "\r\n"), "�")
 			switch {
 			case strings.HasPrefix(line, logPrefixActorName):
 				if err := flush(); err != nil {
@@ -342,20 +413,48 @@ func (m *Monitor) checkLogFilesAndPublishUpdates() (bool, error) {
 				fileInfo.taskName = strings.TrimPrefix(line, logPrefixTaskName)
 			case strings.HasPrefix(line, logPrefixJobID):
 				fileInfo.jobID = strings.TrimPrefix(line, logPrefixJobID)
-			case line == windowsAccessViolationLine:
-				if skipped, _ := fileInfo.reader.ReadString('\n'); skipped != "" {
-					fileInfo.consumedBytes += int64(len(skipped))
-				}
+			case strings.HasPrefix(line, windowsAccessViolationLine):
+				_, _, _ = readCappedLine(reader, m.maxLineSize)
 			case line == "":
 				pending = append(pending, "")
+				pendingBytes++
 			default:
 				pending = append(pending, line)
+				pendingBytes += len(line) + 1
+			}
+			if pendingBytes >= m.maxBatchBytes {
+				if err := flush(); err != nil {
+					return false, err
+				}
 			}
 		}
 
-		fileInfo.filePosition = fileInfo.consumedBytes
+		// Record the exact consumed position: the OS offset minus bytes still
+		// buffered inside the reader. Reusing the reader makes this precise.
+		// A failed reopen leaves no handle when the file vanished between the
+		// stat and the open above; skip the update then so a later poll retries
+		// the open from the last recorded position instead of persisting a
+		// position derived from a nil handle.
+		if fileInfo.fileHandle != nil && reader != nil {
+			offset, _ := fileInfo.fileHandle.Seek(0, 1)
+			fileInfo.filePosition = offset - int64(reader.Buffered())
+			if fileInfo.filePosition < 0 {
+				// A transient Seek failure reports offset 0; clamp so a
+				// negative position can never reach openAtCurrentPosition's
+				// Seek and fail the whole monitor.
+				fileInfo.filePosition = 0
+			}
+		}
 		if err := flush(); err != nil {
 			return false, err
+		}
+		if truncatedLines > 0 {
+			// Aggregate per file per scan cycle so a file with many over-long
+			// lines logs once instead of flooding log_monitor.log per line.
+			logger.Info("truncated over-long log lines",
+				"file", fileInfo.filename,
+				"max_line_size", m.maxLineSize,
+				"count", truncatedLines)
 		}
 	}
 

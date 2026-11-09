@@ -41,7 +41,6 @@ import (
 	"github.com/ray-project/ray/go/pkg/log"
 	"github.com/ray-project/ray/go/pkg/log/logconfig"
 	"github.com/ray-project/ray/go/pkg/log/zap"
-	"github.com/ray-project/ray/go/pkg/runtime/plugin"
 	"github.com/spf13/cobra"
 )
 
@@ -152,13 +151,7 @@ func runDashboard(ctx context.Context) error {
 	if disableFrontend {
 		cfg.ServeFrontend = false
 	}
-	// A missing/invalid go_runtime.so is a deployment/build error and is
-	// fail-fast for every subcommand. This runs before setupLogging so the
-	// error is not mistaken for a runtime-init failure (which the dashboard
-	// degrades on below).
-	if err := plugin.CheckPluginLoadable(); err != nil {
-		return err
-	}
+	disabled := disabledModules()
 	// Apply the logging configuration (level, file output with rotation) and
 	// stdout/stderr redirection, aligned with the Python dashboard's
 	// setup_component_logger + redirect_stdout_stderr_if_needed. This must run
@@ -200,7 +193,6 @@ func runDashboard(ctx context.Context) error {
 	// listed in the RAY_DASHBOARD_DISABLED_MODULES env var (comma-separated)
 	// are never loaded, aligned with DashboardHeadModule.is_enabled in
 	// subprocesses/module.py.
-	disabled := disabledModules()
 	mods := []head.HeadModule{}
 	allMods := []head.HeadModule{
 		state.New(cfg, client),

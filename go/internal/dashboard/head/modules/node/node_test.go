@@ -36,7 +36,8 @@ import (
 type mockGCSServer struct {
 	proto.UnimplementedActorInfoGcsServiceServer
 	proto.UnimplementedNodeInfoGcsServiceServer
-	proto.UnimplementedInternalPubSubGcsServiceServer
+	proto.UnimplementedControlPlanePubSubGcsServiceServer
+	proto.UnimplementedObservabilityPubSubServiceServer
 
 	mu        sync.Mutex
 	nodeInfo  []*proto.GcsNodeInfo
@@ -59,6 +60,17 @@ func (s *mockGCSServer) GetAllNodeInfo(ctx context.Context, req *proto.GetAllNod
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return &proto.GetAllNodeInfoReply{NodeInfoList: s.nodeInfo, Total: int64(len(s.nodeInfo))}, nil
+}
+
+// GcsPublish and ReportJobError are spelled out because both embedded
+// Unimplemented servers provide them, which makes the promoted method
+// ambiguous and blocks both service registrations.
+func (s *mockGCSServer) GcsPublish(ctx context.Context, req *proto.GcsPublishRequest) (*proto.GcsPublishReply, error) {
+	return &proto.GcsPublishReply{}, nil
+}
+
+func (s *mockGCSServer) ReportJobError(ctx context.Context, req *proto.ReportJobErrorRequest) (*proto.ReportJobErrorReply, error) {
+	return &proto.ReportJobErrorReply{}, nil
 }
 
 func (s *mockGCSServer) GcsSubscriberCommandBatch(ctx context.Context, req *proto.GcsSubscriberCommandBatchRequest) (*proto.GcsSubscriberCommandBatchReply, error) {
@@ -108,7 +120,8 @@ func startMock(t *testing.T, mock *mockGCSServer) (*head.GCSClient, func()) {
 	srv := grpc.NewServer()
 	proto.RegisterActorInfoGcsServiceServer(srv, mock)
 	proto.RegisterNodeInfoGcsServiceServer(srv, mock)
-	proto.RegisterInternalPubSubGcsServiceServer(srv, mock)
+	proto.RegisterControlPlanePubSubGcsServiceServer(srv, mock)
+	proto.RegisterObservabilityPubSubServiceServer(srv, mock)
 	go func() { _ = srv.Serve(ln) }()
 	client, err := head.NewGCSClient(context.Background(), ln.Addr().String(), head.WithToken("test-token"))
 	if err != nil {

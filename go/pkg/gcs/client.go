@@ -29,6 +29,13 @@ var ErrNotImplemented = errors.New("not implemented")
 // that exists but holds an empty value).
 var ErrKeyNotFound = errors.New("key not found")
 
+// StatusNotFoundCode is ray::StatusCode::NotFound (src/ray/common/status.h),
+// which GCS encodes into reply.Status.Code through the GCS_RPC_SEND_REPLY
+// macro (src/ray/gcs/grpc_service_interfaces.h) while keeping the gRPC
+// transport OK. It is a cross-language protocol constant: keep it in sync
+// with the C++ enum.
+const StatusNotFoundCode = 17
+
 // Global singleton client.
 var (
 	clientInstance Client

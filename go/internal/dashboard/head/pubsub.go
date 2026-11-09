@@ -83,7 +83,7 @@ func (s *Subscriber) Subscribe(ctx context.Context) error {
 			},
 		}},
 	}
-	_, err := s.client.PubSub().GcsSubscriberCommandBatch(s.client.withClusterID(ctx), req)
+	_, err := s.client.PubSubFor(s.channel).GcsSubscriberCommandBatch(s.client.withClusterID(ctx), req)
 	return err
 }
 
@@ -100,7 +100,7 @@ func (s *Subscriber) Poll(ctx context.Context, timeout time.Duration) ([]*proto.
 		PublisherId:            s.publisherID,
 	}
 	s.mu.Unlock()
-	reply, err := s.client.PubSub().GcsSubscriberPoll(s.client.withClusterID(ctxTimeout), req)
+	reply, err := s.client.PubSubFor(s.channel).GcsSubscriberPoll(s.client.withClusterID(ctxTimeout), req)
 	if err != nil {
 		return nil, err
 	}
@@ -135,7 +135,7 @@ func (s *Subscriber) Unsubscribe(ctx context.Context) error {
 			},
 		}},
 	}
-	_, err := s.client.PubSub().GcsSubscriberCommandBatch(s.client.withClusterID(ctx), req)
+	_, err := s.client.PubSubFor(s.channel).GcsSubscriberCommandBatch(s.client.withClusterID(ctx), req)
 	return err
 }
 

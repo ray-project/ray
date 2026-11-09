@@ -20,47 +20,45 @@ package head
 import (
 	"context"
 	"fmt"
-	"net"
 	"os"
 	"os/user"
 	"path/filepath"
 	"strings"
-	"time"
 
+	"github.com/ray-project/ray/go/pkg/gcs"
 	"github.com/ray-project/ray/go/proto"
 	"google.golang.org/grpc"
-	"google.golang.org/grpc/credentials"
-	"google.golang.org/grpc/credentials/insecure"
-	"google.golang.org/grpc/metadata"
 )
 
-// grpcMaxMessageSize matches the C++ max_grpc_message_size default
-// (src/ray/common/ray_config_def.h) and the Python create_gcs_channel cap
-// (python/ray/_private/gcs_utils.py), both 512 MiB. Large queries such as
-// GetTaskEvents / GetAllActorInfo can exceed smaller limits.
-const grpcMaxMessageSize = 512 << 20
-
-// grpcDialConnectMs bounds the gRPC dial handshake, matching the connectMs
-// default in NewGCSClient.
-const grpcDialConnectMs = 10_000
+// grpcDialer is the plain-TCP dialer the head hands to gcs.DialGCS. It is a
+// package variable so tests can observe that the built connection dials
+// through it; see gcs.PlainTCPDialer for why grpc-go's default dialer cannot
+// be used.
+var grpcDialer = gcs.PlainTCPDialer
 
 // GRPCOption configures the GCS client connection.
 type GRPCOption func(*grpcClientConfig)
 
 // WithTLS configures mutual TLS using the given CA, client cert and key paths.
-// When caPath is empty an insecure (plaintext) connection is used.
+// Empty paths leave the corresponding previously resolved value untouched, so
+// an explicit option only overrides what the environment contributed when it
+// is non-empty. Use no WithTLS option for a plaintext connection.
 func WithTLS(caPath, certPath, keyPath string) GRPCOption {
 	return func(c *grpcClientConfig) {
-		c.caPath = caPath
-		c.certPath = certPath
-		c.keyPath = keyPath
+		c.opts = c.opts.Override(gcs.DialOptions{
+			CAFile:   caPath,
+			CertFile: certPath,
+			KeyFile:  keyPath,
+		})
 	}
 }
 
-// WithToken configures per-RPC bearer token authentication.
+// WithToken configures per-RPC bearer token authentication. An empty token
+// leaves a previously resolved token (for example one assembled from the
+// environment by GCSClientOptionsFromEnv) in place.
 func WithToken(token string) GRPCOption {
 	return func(c *grpcClientConfig) {
-		c.token = token
+		c.opts = c.opts.Override(gcs.DialOptions{Token: token})
 	}
 }
 
@@ -76,12 +74,10 @@ func WithClusterID(clusterIDHex string) GRPCOption {
 // RAY_* env reads of src/ray/rpc/authentication/ (RayConfig) and
 // k8s_constants.h kRaySaTokenPath.
 const (
-	authModeEnvVar          = "RAY_AUTH_MODE"
-	authTokenEnvVar         = "RAY_AUTH_TOKEN"
-	authTokenPathEnvVar     = "RAY_AUTH_TOKEN_PATH"
-	k8sTokenAuthEnvVar      = "RAY_ENABLE_K8S_TOKEN_AUTH"
-	k8sRaySATokenPath       = "/var/run/secrets/ray.io/serviceaccount/token"
-	defaultAuthTokenSubpath = ".ray/auth_token"
+	authModeEnvVar      = "RAY_AUTH_MODE"
+	authTokenEnvVar     = "RAY_AUTH_TOKEN"
+	authTokenPathEnvVar = "RAY_AUTH_TOKEN_PATH"
+	k8sTokenAuthEnvVar  = "RAY_ENABLE_K8S_TOKEN_AUTH"
 )
 
 // GCSClientOptionsFromEnv assembles the GCS client options from the process
@@ -99,6 +95,10 @@ const (
 // configured-but-unreadable token file falls through to the next source: the
 // client never sends a wrong token, and the head degrades on GCS rejections
 // instead of dying.
+//
+// This is the head's authentication decision point: NewGCSClient takes only
+// explicit options, so the environment is consulted exactly once here per
+// client build.
 func GCSClientOptionsFromEnv(clusterIDHex string) []GRPCOption {
 	opts := []GRPCOption{WithClusterID(clusterIDHex)}
 	if !strings.EqualFold(os.Getenv(authModeEnvVar), "token") {
@@ -112,22 +112,26 @@ func GCSClientOptionsFromEnv(clusterIDHex string) []GRPCOption {
 
 // authTokenFromEnv loads the authentication token with the C++
 // AuthenticationTokenLoader source precedence (see GCSClientOptionsFromEnv).
+// File reads go through gcs.ReadTokenFile, which matches the head's
+// readFirstLine contract (first non-empty trimmed line); a read error counts
+// as no token so resolution falls through to the next source.
 func authTokenFromEnv() string {
 	if tok := strings.TrimSpace(os.Getenv(authTokenEnvVar)); tok != "" {
 		return tok
 	}
 	if path := os.Getenv(authTokenPathEnvVar); path != "" {
-		if tok := readFirstLine(path); tok != "" {
+		if tok, err := gcs.ReadTokenFile(path); err == nil && tok != "" {
 			return tok
 		}
 	}
 	// RayConfig parses bool envs as lower(value) in {"true", "1"}.
 	if v := os.Getenv(k8sTokenAuthEnvVar); v == "1" || strings.EqualFold(v, "true") {
-		if tok := readFirstLine(k8sRaySATokenPath); tok != "" {
+		if tok, err := gcs.ReadTokenFile(gcs.RayServiceAccountTokenPath); err == nil && tok != "" {
 			return tok
 		}
 	}
-	return readFirstLine(defaultAuthTokenPath())
+	tok, _ := gcs.ReadTokenFile(defaultAuthTokenPath())
+	return tok
 }
 
 // defaultAuthTokenPath returns ~/.ray/auth_token, aligned with
@@ -135,7 +139,7 @@ func authTokenFromEnv() string {
 // user database when HOME is unset. The one deviation is logging, not path
 // resolution: the C++ loader warns ("Cannot determine home directory for
 // token storage") when no home resolves, while this code stays silent.
-// Either way an empty result makes readFirstLine find no token.
+// Either way an empty result makes the token read find no token.
 func defaultAuthTokenPath() string {
 	home := os.Getenv("HOME")
 	if home == "" {
@@ -146,16 +150,12 @@ func defaultAuthTokenPath() string {
 	if home == "" {
 		return ""
 	}
-	return filepath.Join(home, defaultAuthTokenSubpath)
+	return filepath.Join(home, gcs.DefaultAuthTokenPath)
 }
 
 type grpcClientConfig struct {
-	caPath    string
-	certPath  string
-	keyPath   string
-	token     string
+	opts      gcs.DialOptions
 	clusterID string
-	connectMs int
 }
 
 // GCSClient is a pure-Go gRPC client for the GCS service.
@@ -169,49 +169,35 @@ type GCSClient struct {
 	pg         proto.PlacementGroupInfoGcsServiceClient
 	task       proto.TaskInfoGcsServiceClient
 	kv         proto.InternalKVGcsServiceClient
-	pubsub     proto.InternalPubSubGcsServiceClient
-	runtimeEnv proto.RuntimeEnvGcsServiceClient
+	// The GCS server registers pubsub RPCs on two services, and a channel is
+	// served by exactly one of them: ControlPlanePubSubGcsService for the
+	// node/actor/job channels, ObservabilityPubSubService for the log, error
+	// and node-resource-usage channels (python/ray/_private/gcs_pubsub.py
+	// selects between them the same way). InternalPubSubGcsService exists only
+	// in the proto and is never registered, so subscribing through it fails
+	// with Unimplemented.
+	controlPlanePubSub  proto.ControlPlanePubSubGcsServiceClient
+	observabilityPubSub proto.ObservabilityPubSubServiceClient
+	runtimeEnv          proto.RuntimeEnvGcsServiceClient
 }
 
 // NewGCSClient establishes a connection to the GCS at address and initializes
 // all service clients. The address must be in host:port form.
+//
+// The dial is non-blocking: gcs.DialGCS starts the connection attempt and
+// returns without waiting for the channel to become Ready. TLS and bearer-token
+// authentication are explicit only; callers assemble them from the environment
+// with GCSClientOptionsFromEnv.
 func NewGCSClient(ctx context.Context, address string, opts ...GRPCOption) (*GCSClient, error) {
-	cfg := &grpcClientConfig{connectMs: 10_000}
+	cfg := &grpcClientConfig{}
 	for _, o := range opts {
 		o(cfg)
 	}
-	dialOpts := []grpc.DialOption{
-		// Dial the GCS address directly with a plain TCP dialer. grpc-go's
-		// default dialer fails to complete the HTTP/2 cleartext handshake with
-		// the Ray GCS server (the connection stalls in CONNECTING and RPCs fail
-		// with "waiting for new LB policy update"), whereas a plain net.Dial
-		// completes it. This was reproduced against a live GCS and verified in
-		// isolation, so force the direct TCP dialer here.
-		grpc.WithContextDialer(func(ctx context.Context, address string) (net.Conn, error) {
-			var d net.Dialer
-			return d.DialContext(ctx, "tcp", address)
-		}),
-		grpc.WithDefaultCallOptions(
-			grpc.MaxCallRecvMsgSize(grpcMaxMessageSize),
-			grpc.MaxCallSendMsgSize(grpcMaxMessageSize),
-		),
-	}
-	if cfg.caPath != "" {
-		creds, err := credentials.NewClientTLSFromFile(cfg.caPath, "")
-		if err != nil {
-			return nil, fmt.Errorf("load TLS creds: %w", err)
-		}
-		dialOpts = append(dialOpts, grpc.WithTransportCredentials(creds))
-	} else {
-		dialOpts = append(dialOpts, grpc.WithTransportCredentials(insecure.NewCredentials()))
-	}
-	// Bearer token authentication: inject authorization header per RPC.
-	if cfg.token != "" {
-		dialOpts = append(dialOpts, grpc.WithPerRPCCredentials(tokenCred{token: cfg.token}))
-	}
-	ctxTimeout, cancel := context.WithTimeout(ctx, time.Duration(cfg.connectMs)*time.Millisecond)
-	defer cancel()
-	conn, err := grpc.DialContext(ctxTimeout, address, dialOpts...)
+	dialOpts := cfg.opts
+	// Zero keeps the head's dial non-blocking (never a bounded wait on Ready).
+	dialOpts.ConnectTimeoutMs = 0
+	dialOpts.Dialer = grpcDialer
+	conn, err := gcs.DialGCS(ctx, address, dialOpts)
 	if err != nil {
 		return nil, fmt.Errorf("dial GCS %s: %w", address, err)
 	}
@@ -225,7 +211,8 @@ func NewGCSClient(ctx context.Context, address string, opts ...GRPCOption) (*GCS
 		pg:         proto.NewPlacementGroupInfoGcsServiceClient(conn),
 		task:       proto.NewTaskInfoGcsServiceClient(conn),
 		kv:         proto.NewInternalKVGcsServiceClient(conn),
-		pubsub:     proto.NewInternalPubSubGcsServiceClient(conn),
+		controlPlanePubSub:  proto.NewControlPlanePubSubGcsServiceClient(conn),
+		observabilityPubSub: proto.NewObservabilityPubSubServiceClient(conn),
 		runtimeEnv: proto.NewRuntimeEnvGcsServiceClient(conn),
 	}, nil
 }
@@ -233,10 +220,7 @@ func NewGCSClient(ctx context.Context, address string, opts ...GRPCOption) (*GCS
 // withClusterID injects the ray_cluster_id metadata, aligned with
 // src/ray/common/constants.h.
 func (c *GCSClient) withClusterID(ctx context.Context) context.Context {
-	if c.clusterID != "" {
-		return metadata.AppendToOutgoingContext(ctx, "ray_cluster_id", c.clusterID)
-	}
-	return ctx
+	return gcs.AppendClusterID(ctx, c.clusterID)
 }
 
 // GetAllActorInfo queries all actors, mirroring
@@ -267,18 +251,10 @@ func (c *GCSClient) CheckAlive(ctx context.Context, nodeIDs []string) (*proto.Ch
 // python/ray/util/state/state_manager.py. The returned conn must be closed by
 // the caller.
 func (c *GCSClient) NewNodeManagerClient(ctx context.Context, address string) (proto.NodeManagerServiceClient, *grpc.ClientConn, error) {
-	dialOpts := []grpc.DialOption{
-		grpc.WithDefaultCallOptions(
-			grpc.MaxCallRecvMsgSize(grpcMaxMessageSize),
-			grpc.MaxCallSendMsgSize(grpcMaxMessageSize),
-		),
-	}
 	// The raylet listens on a plaintext gRPC port (matching init_grpc_channel
-	// when RAY_USE_TLS is unset in the Python flow).
-	dialOpts = append(dialOpts, grpc.WithTransportCredentials(insecure.NewCredentials()))
-	ctxTimeout, cancel := context.WithTimeout(ctx, time.Duration(grpcDialConnectMs)*time.Millisecond)
-	defer cancel()
-	conn, err := grpc.DialContext(ctxTimeout, address, dialOpts...)
+	// when RAY_USE_TLS is unset in the Python flow). DialGCS applies the shared
+	// 512 MiB message cap; a zero ConnectTimeoutMs keeps the dial non-blocking.
+	conn, err := gcs.DialGCS(ctx, address, gcs.DialOptions{})
 	if err != nil {
 		return nil, nil, fmt.Errorf("dial raylet %s: %w", address, err)
 	}
@@ -305,10 +281,30 @@ func (c *GCSClient) GetTaskEvents(ctx context.Context, req *proto.GetTaskEventsR
 	return c.task.GetTaskEvents(c.withClusterID(ctx), req)
 }
 
-// PubSub returns the GCS internal pubsub service client, used by the
-// long-polling subscribers (go/internal/dashboard/head/pubsub.go).
-func (c *GCSClient) PubSub() proto.InternalPubSubGcsServiceClient {
-	return c.pubsub
+// pubSubClient is the subset of the two pubsub services the subscribers use.
+// Both services expose these RPCs with identical signatures; only the service
+// a channel is registered on differs.
+type pubSubClient interface {
+	GcsSubscriberPoll(ctx context.Context, in *proto.GcsSubscriberPollRequest, opts ...grpc.CallOption) (*proto.GcsSubscriberPollReply, error)
+	GcsSubscriberCommandBatch(ctx context.Context, in *proto.GcsSubscriberCommandBatchRequest, opts ...grpc.CallOption) (*proto.GcsSubscriberCommandBatchReply, error)
+}
+
+// observabilityPubSubChannels mirrors Python's _OBSERVABILITY_PUBSUB_CHANNELS:
+// the channels served by ObservabilityPubSubService. Everything else is served
+// by ControlPlanePubSubGcsService.
+var observabilityPubSubChannels = map[proto.ChannelType]bool{
+	proto.ChannelType_RAY_ERROR_INFO_CHANNEL:          true,
+	proto.ChannelType_RAY_LOG_CHANNEL:                 true,
+	proto.ChannelType_RAY_NODE_RESOURCE_USAGE_CHANNEL: true,
+}
+
+// PubSubFor returns the pubsub service client that serves channel. Subscribing
+// on the wrong one fails with Unimplemented.
+func (c *GCSClient) PubSubFor(channel proto.ChannelType) pubSubClient {
+	if observabilityPubSubChannels[channel] {
+		return c.observabilityPubSub
+	}
+	return c.controlPlanePubSub
 }
 
 // RuntimeEnv returns the GCS runtime env service client, used to pin
@@ -367,15 +363,6 @@ func (c *GCSClient) InternalKVDel(ctx context.Context, ns, key string, delByPref
 	}
 	return int(reply.DeletedNum), nil
 }
-
-// tokenCred implements credentials.PerRPCCredentials for bearer token auth.
-type tokenCred struct{ token string }
-
-func (t tokenCred) GetRequestMetadata(ctx context.Context, uri ...string) (map[string]string, error) {
-	return map[string]string{"authorization": "Bearer " + t.token}, nil
-}
-
-func (t tokenCred) RequireTransportSecurity() bool { return false }
 
 // Close closes the underlying gRPC connection.
 func (c *GCSClient) Close() error { return c.conn.Close() }

@@ -27,6 +27,11 @@ type ClientOptions struct {
 	ClusterID ids.ClusterID
 	// TimeoutMs is the connection timeout in milliseconds.
 	TimeoutMs int64
+	// DialOptions holds pre-resolved connection options (TLS/token). When nil,
+	// the client resolves them from the environment with DialOptionsFromEnv.
+	// Callers that retry should resolve once and pass the result here so token
+	// and TLS files are not re-read on every attempt.
+	DialOptions *DialOptions
 }
 
 // GlobalStateOptions holds the connection options for GlobalStateAccessor.
