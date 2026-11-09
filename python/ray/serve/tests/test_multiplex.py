@@ -67,6 +67,36 @@ async def _single_model_multiplexer(
     return multiplexer
 
 
+async def _cancel_eviction_while_del_queued(
+    multiplexer: _ModelMultiplexWrapper, monkeypatch
+) -> None:
+    """Cancel `load_model("2")` while the evicted model "1"'s `__del__` is queued."""
+    # Run __del__ on a one-worker executor that is busy, so it stays queued.
+    loop = asyncio.get_running_loop()
+    executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
+    run_in_executor = loop.run_in_executor
+    monkeypatch.setattr(
+        loop,
+        "run_in_executor",
+        lambda _, func, *args: run_in_executor(executor, func, *args),
+    )
+    release = threading.Event()
+    executor.submit(release.wait)
+    try:
+        load_task = asyncio.create_task(multiplexer.load_model("2"))
+        for _ in range(100):
+            if "1" not in multiplexer.models:
+                break
+            await asyncio.sleep(0.01)
+        assert "1" not in multiplexer.models
+        load_task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await load_task
+    finally:
+        release.set()
+        executor.shutdown(wait=True)
+
+
 @pytest.mark.asyncio
 class TestMultiplexWrapper:
     async def test_failed_to_get_replica_context(self):
@@ -234,32 +264,7 @@ class TestMultiplexWrapper:
 
         multiplexer = await _single_model_multiplexer(MyModel)
         model = await multiplexer.load_model("1")
-
-        # Run __del__ on a one-worker executor that is busy, so it stays queued.
-        loop = asyncio.get_running_loop()
-        executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
-        run_in_executor = loop.run_in_executor
-        monkeypatch.setattr(
-            loop,
-            "run_in_executor",
-            lambda _, func, *args: run_in_executor(executor, func, *args),
-        )
-        release = threading.Event()
-        executor.submit(release.wait)
-
-        try:
-            load_task = asyncio.create_task(multiplexer.load_model("2"))
-            for _ in range(100):
-                if "1" not in multiplexer.models:
-                    break
-                await asyncio.sleep(0.01)
-            assert "1" not in multiplexer.models
-            load_task.cancel()
-            with pytest.raises(asyncio.CancelledError):
-                await load_task
-        finally:
-            release.set()
-            executor.shutdown(wait=True)
+        await _cancel_eviction_while_del_queued(multiplexer, monkeypatch)
         assert calls == ["1"]
 
         # Make the call that Python makes when it collects the model.
@@ -286,31 +291,7 @@ class TestMultiplexWrapper:
         )
         multiplexer = await _single_model_multiplexer(MyModel)
         await multiplexer.load_model("1")
-
-        loop = asyncio.get_running_loop()
-        executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
-        run_in_executor = loop.run_in_executor
-        monkeypatch.setattr(
-            loop,
-            "run_in_executor",
-            lambda _, func, *args: run_in_executor(executor, func, *args),
-        )
-        release = threading.Event()
-        executor.submit(release.wait)
-
-        try:
-            load_task = asyncio.create_task(multiplexer.load_model("2"))
-            for _ in range(100):
-                if "1" not in multiplexer.models:
-                    break
-                await asyncio.sleep(0.01)
-            assert "1" not in multiplexer.models
-            load_task.cancel()
-            with pytest.raises(asyncio.CancelledError):
-                await load_task
-        finally:
-            release.set()
-            executor.shutdown(wait=True)
+        await _cancel_eviction_while_del_queued(multiplexer, monkeypatch)
         # Let the loop run the done callback of the executor future.
         for _ in range(100):
             if errors:
