@@ -311,6 +311,19 @@ def test_evaluate_waits_for_the_on_demand_checks_before_another_diagnose():
     assert manager.evaluate(timeout=0) == diagnose
 
 
+def test_evaluate_keeps_a_diagnose_that_stops_the_workers_while_others_run():
+    diagnose = Diagnose(reason="slow", checks=[HealthCheck(stop_workers=True)])
+    manager = HealthManager([_check(evaluators=[Always(diagnose)])])
+    _fake_temps(manager, [ProbeResult()])
+    manager.start_on_demand_checks(
+        [HealthCheck(evaluator_creator=lambda: [Always(Noop())])], timeout=10
+    )
+    manager._node_monitor_group.poll_probe_results = mock.Mock(return_value=None)
+
+    # It restarts the worker group rather than start more on-demand checks.
+    assert manager.evaluate(timeout=0) == diagnose
+
+
 def test_start_and_evaluate_on_demand_checks_waits_for_their_decision():
     manager = HealthManager([])
     _fake_temps(manager, [])

@@ -159,7 +159,8 @@ class HealthManager:
     ) -> HealthDecision:
         """Evaluate the on-demand checks once they are back, and the in-flight
         checks. While on-demand checks run, an in-flight ``Diagnose`` is
-        dropped rather than start more.
+        dropped rather than start more, unless a check stops the workers: that
+        ``Diagnose`` restarts the worker group instead.
 
         Args:
             timeout: Timeout in seconds to wait for the in-flight checks' latest
@@ -173,7 +174,9 @@ class HealthManager:
         inflight_decision = self.evaluate_inflight_checks(timeout=timeout)
         if on_demand_decision is None:
             on_demand_decision = Noop()
-            if isinstance(inflight_decision, Diagnose):
+            if isinstance(inflight_decision, Diagnose) and not any(
+                check.stop_workers for check in inflight_decision.checks
+            ):
                 inflight_decision = Noop()
         return merge_decisions([on_demand_decision, inflight_decision])
 
