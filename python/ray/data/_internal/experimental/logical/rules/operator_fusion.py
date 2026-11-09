@@ -26,7 +26,7 @@ from ray.data._internal.execution.operators.actor_pool_map_operator import (
 )
 from ray.data._internal.logical.operators.map_operator import AbstractUDFMap
 from ray.data._internal.logical.rules.operator_fusion import (
-    FuseOperators as _OSSFuseOperators,
+    FuseOperators as _BaseFuseOperator,
 )
 
 logger = logging.getLogger(__name__)
@@ -57,7 +57,7 @@ def _udf_is_async(fn) -> bool:
     return inspect.iscoroutinefunction(call) or inspect.isasyncgenfunction(call)
 
 
-class FuseOperators(_OSSFuseOperators):
+class FuseOperators(_BaseFuseOperator):
     """Actor-only-backend fusion rule. See module docstring."""
 
     @override

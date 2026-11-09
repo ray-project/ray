@@ -1,3 +1,4 @@
+import threading
 from typing import TYPE_CHECKING, List, Tuple
 
 from ray.data._internal.planner import create_planner
@@ -50,7 +51,7 @@ _PHYSICAL_RULESET = Ruleset(
 )
 
 
-_actor_only_rules_installed = False
+_actor_only_rules_lock = threading.Lock()
 
 
 def _maybe_install_actor_only_rules() -> None:
@@ -62,10 +63,6 @@ def _maybe_install_actor_only_rules() -> None:
     the physical ruleset. No-op otherwise, so the default ruleset above stays
     backend-agnostic.
     """
-    global _actor_only_rules_installed
-    if _actor_only_rules_installed:
-        return
-
     from ray.data._internal.execution.execution_flags import actor_only_backend_enabled
 
     if not actor_only_backend_enabled():
@@ -75,9 +72,11 @@ def _maybe_install_actor_only_rules() -> None:
         FuseOperators as ExperimentalFuseOperators,
     )
 
-    if FuseOperators in list(_PHYSICAL_RULESET):
-        _PHYSICAL_RULESET.replace(FuseOperators, ExperimentalFuseOperators)
-    _actor_only_rules_installed = True
+    # The check and the swap must run together: ``Ruleset.replace`` raises if
+    # another thread already swapped ``FuseOperators`` out.
+    with _actor_only_rules_lock:
+        if FuseOperators in list(_PHYSICAL_RULESET):
+            _PHYSICAL_RULESET.replace(FuseOperators, ExperimentalFuseOperators)
 
 
 @DeveloperAPI
