@@ -40,6 +40,9 @@ from ray.data._internal.datasource_v2.formats.mcap.mcap_message_rows import (
     MessageRowLayout,
 )
 from ray.data._internal.datasource_v2.formats.mcap.mcap_options import MCAPSelection
+from ray.data._internal.datasource_v2.formats.mcap.mcap_pushdown import (
+    narrow_selection,
+)
 from ray.data._internal.datasource_v2.formats.mcap.mcap_summary import (
     _DEFAULT_SUMMARY_IO_CONCURRENCY,
     ListedSummary,
@@ -131,9 +134,13 @@ class MCAPSummaryIndexer(NonSamplingFileIndexer):
         execution_idx: int = 0,
         excluded_read_unit_ids: Optional[AbstractSet[str]] = None,
     ) -> Iterable[FileManifest]:
-        # ``predicate``, ``limit`` and ``projected_columns`` are not used here:
-        # the scanner applies the limit per task, and the selection this indexer
-        # prunes on is fixed at construction.
+        # ``predicate`` holds the ``topic`` and ``log_time`` conjuncts the
+        # scanner folded into its selection. Folding them into the same base
+        # selection lets listing prune with the selection the reader applies.
+        # The scanner applies ``limit`` per task, and ``projected_columns`` is unused.
+        selection = self._selection
+        if predicate is not None:
+            selection = narrow_selection(self._selection, predicate).selection
         file_infos = self._iter_file_infos_for_list(
             paths,
             filesystem=filesystem,
@@ -151,7 +158,9 @@ class MCAPSummaryIndexer(NonSamplingFileIndexer):
             except Exception as e:  # noqa: BLE001 - the file's own read task fails
                 manifest = self._unreadable_file_manifest(file_info, e)
             else:
-                manifest = self._manifest_for_file(file_info, listed, excluded)
+                manifest = self._manifest_for_file(
+                    file_info, listed, excluded, selection
+                )
             if manifest is not None:
                 yield manifest
 
@@ -201,6 +210,7 @@ class MCAPSummaryIndexer(NonSamplingFileIndexer):
         file_info: FileInfo,
         listed: Optional[ListedSummary],
         excluded_read_unit_ids: AbstractSet[str],
+        selection: MCAPSelection,
     ) -> Optional[FileManifest]:
         """The listing rows of one file, or ``None`` when it cannot match.
 
@@ -222,10 +232,8 @@ class MCAPSummaryIndexer(NonSamplingFileIndexer):
             records = b"" if listed is None else bytes(listed.section)
             return with_listing_records(manifest, records, [None])
 
-        selected = self._selection.selected_channel_ids(
-            summary.channels, summary.schemas
-        )
-        if not self._selection.file_may_match(
+        selected = selection.selected_channel_ids(summary.channels, summary.schemas)
+        if not selection.file_may_match(
             summary.statistics, selected, has_channels=bool(summary.channels)
         ):
             logger.debug("Skipping %s: no chunk can match the selection", path)
@@ -234,7 +242,7 @@ class MCAPSummaryIndexer(NonSamplingFileIndexer):
         chunk_indexes = [
             chunk_index
             for chunk_index in summary.chunk_indexes
-            if self._selection.chunk_may_match(chunk_index, selected)
+            if selection.chunk_may_match(chunk_index, selected)
             and chunk_unit_id(path, chunk_index.chunk_start_offset)
             not in excluded_read_unit_ids
         ]
