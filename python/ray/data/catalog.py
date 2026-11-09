@@ -337,17 +337,12 @@ class DatabricksUnityCatalog(Catalog):
             filesystem = self._build_gcs_filesystem(
                 creds.gcp_oauth_token, creds.expiration_time
             )
-        elif creds.azure_user_delegation_sas is None:
-            raise ValueError(
-                "No known credential type found in Databricks UC response."
-            )
-
-        # Azure. Delta needs no filesystem -- the SAS travels in
-        # `storage_options` below, which deltalake's object_store reads and
-        # which pickles into the read tasks. Parquet is filesystem-only, so it
-        # needs an explicit `AzureFileSystem` carrying the SAS; that requires
-        # pyarrow >= 20, hence the check.
-        if creds.azure_user_delegation_sas is not None:
+        elif creds.azure_user_delegation_sas is not None:
+            # Delta needs no filesystem -- the SAS travels in `storage_options`,
+            # which deltalake's object_store reads and which pickles into the
+            # read tasks. Parquet is filesystem-only, so it needs an explicit
+            # `AzureFileSystem` carrying the SAS; that requires pyarrow >= 20,
+            # hence the check.
             storage_options = self._azure_storage_options(
                 creds.azure_user_delegation_sas
             )
@@ -366,6 +361,10 @@ class DatabricksUnityCatalog(Catalog):
                 # Same reasoning as `_rewrite_azure_blob_https_url` in
                 # `datasource/path_util.py`.
                 table_url = _azure_url_without_authority(table_url)
+        else:
+            raise ValueError(
+                "No known credential type found in Databricks UC response."
+            )
 
         return ResolvedSource(
             path=table_url,
@@ -500,14 +499,13 @@ class DatabricksUnityCatalog(Catalog):
         return {key: value for key, value in options.items() if value}
 
     def _build_s3_filesystem(self, aws: "AwsCredentials") -> "pyarrow.fs.FileSystem":
-        self._require_region()
         import pyarrow.fs as pafs
 
         return pafs.S3FileSystem(
             access_key=aws.access_key_id,
             secret_key=aws.secret_access_key,
             session_token=aws.session_token,
-            region=self.region,
+            region=self._require_region(),
         )
 
     @staticmethod

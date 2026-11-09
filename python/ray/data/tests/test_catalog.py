@@ -82,7 +82,8 @@ def uc_catalog():
 
 @pytest.fixture
 def isolated_env(monkeypatch):
-    """A private copy of ``os.environ``, and a ``ray.init`` that fails if called.
+    """A private copy of ``os.environ`` that must come back unchanged, and a
+    ``ray.init`` that fails if called.
 
     ``resolve()`` must neither write vended credentials to the environment nor
     start Ray: in the environment they override the instance role for every
@@ -93,7 +94,14 @@ def isolated_env(monkeypatch):
     monkeypatch.setattr(
         "ray.init", mock.Mock(side_effect=AssertionError("resolve() started Ray"))
     )
-    return os.environ
+
+    def snapshot():
+        # pytest itself updates PYTEST_CURRENT_TEST at each test phase.
+        return {k: v for k, v in os.environ.items() if k != "PYTEST_CURRENT_TEST"}
+
+    env_before = snapshot()
+    yield os.environ
+    assert snapshot() == env_before, "resolve() changed os.environ"
 
 
 # ---------------------------------------------------------------------------
@@ -137,48 +145,6 @@ def test_resolve_aws_requires_region(isolated_env, reader):
             catalog.resolve("main.sales.txns", reader=reader)
     finally:
         patcher.stop()
-
-
-def _azure_resp():
-    return GenerateTemporaryTableCredentialResponse(
-        url="abfss://c@acct.dfs.core.windows.net/path",
-        azure_user_delegation_sas=AzureUserDelegationSas(sas_token="sv=2021&sig=abc"),
-    )
-
-
-@pytest.mark.parametrize("mode", [CatalogAccessMode.READ, CatalogAccessMode.WRITE])
-@pytest.mark.parametrize(
-    "creds, storage_location, reader",
-    [
-        (AWS_RESP, None, ReaderFormat.DELTA),
-        (AWS_RESP, None, ReaderFormat.PARQUET),
-        (_azure_resp(), "abfss://c@acct.dfs.core.windows.net/path", ReaderFormat.DELTA),
-        ("gcp", "gs://bucket/path", ReaderFormat.PARQUET),
-    ],
-    ids=["aws-delta", "aws-parquet", "azure-delta", "gcp-parquet"],
-)
-def test_resolve_leaves_environment_and_ray_alone(
-    uc_catalog, isolated_env, creds, storage_location, reader, mode
-):
-    """Vended creds travel only in the returned filesystem / storage_options.
-
-    In ``os.environ`` (or a ``runtime_env`` set through ``ray.init``) they would
-    override the instance role for every other cloud access in the job, with a
-    short-lived credential scoped to one table, so writes to the user's own
-    buckets failed.
-    """
-    env_before = dict(isolated_env)
-    patcher = _mock_uc_sdk(
-        creds=_gcp_resp() if creds == "gcp" else creds,
-        storage_location=storage_location,
-    )
-    try:
-        resolved = uc_catalog.resolve("main.sales.txns", reader=reader, mode=mode)
-    finally:
-        patcher.stop()
-
-    assert dict(isolated_env) == env_before
-    assert resolved.filesystem is not None or resolved.storage_options
 
 
 def test_resolve_rejects_unknown_credential_type(uc_catalog, isolated_env):
