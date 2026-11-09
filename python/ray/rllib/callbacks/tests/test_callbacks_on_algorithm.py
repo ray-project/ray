@@ -1,9 +1,12 @@
+import contextlib
 import tempfile
 import time
 import unittest
+from unittest import mock
 
 import ray
 from ray import tune
+from ray.rllib.algorithms.algorithm import Algorithm
 from ray.rllib.algorithms.ppo import PPOConfig
 from ray.rllib.callbacks.callbacks import RLlibCallback
 from ray.rllib.examples.envs.classes.cartpole_crashing import CartPoleCrashing
@@ -36,6 +39,18 @@ class InitAndCheckpointRestoredCallbacks(RLlibCallback):
 
     def on_checkpoint_loaded(self, *, algorithm, **kwargs):
         self._on_checkpoint_loaded_was_called = True
+
+
+class OfflineEvalRunnersRecreatedCallback(RLlibCallback):
+    def on_offline_eval_runners_recreated(
+        self,
+        *,
+        algorithm,
+        offline_eval_runner_group,
+        offline_eval_runner_indices,
+        **kwargs,
+    ):
+        self.recreated = (offline_eval_runner_group, offline_eval_runner_indices)
 
 
 class TestCallbacks(unittest.TestCase):
@@ -86,6 +101,34 @@ class TestCallbacks(unittest.TestCase):
             # num_restored = algo.env_runner_group.restored_actors_history[id_]
             self.assertTrue(algo.metrics.peek(f"worker_{id_}_recreated") > 1)
         algo.stop()
+
+    def test_on_offline_eval_runners_recreated_callback(self):
+        # Run one offline evaluation on a stand-in algorithm whose offline
+        # evaluation runners report two restored runners. Both the callback
+        # object and the callable must receive the arguments that
+        # `RLlibCallback.on_offline_eval_runners_recreated` declares.
+        callback = OfflineEvalRunnersRecreatedCallback()
+        fn_calls = []
+
+        def on_offline_eval_runners_recreated(
+            *, algorithm, offline_eval_runner_group, offline_eval_runner_indices, **kw
+        ):
+            fn_calls.append(offline_eval_runner_indices)
+
+        algo = mock.MagicMock()
+        algo.callbacks = [callback]
+        algo.config.callbacks_on_offline_eval_runners_recreated = (
+            on_offline_eval_runners_recreated
+        )
+        algo.restore_offline_eval_runners.return_value = [1, 2]
+        algo.metrics.log_time.return_value = contextlib.nullcontext()
+        algo.evaluate_offline.return_value = {}
+
+        Algorithm._run_one_offline_evaluation(algo)
+
+        self.assertIs(callback.recreated[0], algo.offline_eval_runner_group)
+        self.assertEqual(callback.recreated[1], [1, 2])
+        self.assertEqual(fn_calls, [[1, 2]])
 
     def test_on_init_and_checkpoint_loaded(self):
         config = (

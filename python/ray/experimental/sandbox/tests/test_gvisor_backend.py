@@ -2742,10 +2742,11 @@ def private_bundles(tmp_path, monkeypatch):
     return tmp_path
 
 
-def test_a_command_its_sandboxs_oom_kill_ended_says_so(private_bundles):
+def test_a_command_its_sandboxs_oom_kill_ended_says_so(private_bundles, monkeypatch):
     """runsc only says that waiting for a command failed when an OOM kill
-    ends its sandbox; the command's stderr says why. A command that fails
-    for another reason gets nothing added."""
+    ends its sandbox; the command's stderr says why, or its output with
+    combine_output. A command that fails for another reason gets nothing
+    added."""
     (private_bundles / "runsc").write_text(
         "#!/bin/sh\necho 'waiting on pid 2: urpc method failed: EOF' >&2\nexit 128\n"
     )
@@ -2753,12 +2754,13 @@ def test_a_command_its_sandboxs_oom_kill_ended_says_so(private_bundles):
     class _Cgroup:
         reason = None
 
-        def wrap(self, args):
-            return args
-
         def termination_reason(self):
             return self.reason
 
+    # Run runsc straight, without the launcher that joins a real cgroup.
+    monkeypatch.setattr(
+        GVisorSandboxBackend, "_wrap_workload", staticmethod(lambda meta, args: args)
+    )
     backend = GVisorSandboxBackend(image_manager=_RecordingImageManager())
     cgroup = _Cgroup()
     sandbox_id = "ray-sandbox-00000000000a"
@@ -2772,12 +2774,16 @@ def test_a_command_its_sandboxs_oom_kill_ended_says_so(private_bundles):
     assert result.exit_code == 128
     assert result.stderr == "waiting on pid 2: urpc method failed: EOF\n"
     cgroup.reason = "Sandbox exceeded its enforced memory limit"
-    result = backend.exec_command(sandbox_id, ["true"])
-    assert result.stderr.splitlines() == [
+    said = [
         "waiting on pid 2: urpc method failed: EOF",
         "Sandbox exceeded its enforced memory limit (256Mi), so the kernel "
         "killed the sandbox and this command with it.",
     ]
+    result = backend.exec_command(sandbox_id, ["true"])
+    assert result.stderr.splitlines() == said
+    result = backend.exec_command(sandbox_id, ["true"], combine_output=True)
+    assert result.stderr == ""
+    assert result.output.decode().splitlines() == said
 
 
 @pytest.mark.parametrize(

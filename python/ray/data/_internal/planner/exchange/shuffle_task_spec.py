@@ -12,7 +12,6 @@ from ray.data.block import (
     Block,
     BlockAccessor,
     BlockExecStats,
-    BlockMetadata,
     BlockMetadataWithSchema,
 )
 from ray.data.context import MAX_SAFE_BLOCK_SIZE_FACTOR
@@ -141,12 +140,7 @@ class ShuffleTaskSpec(ExchangeTaskSpec):
                 random_seed if random_seed is not None else None
             )
             accessor = BlockAccessor.for_block(new_block)
-        new_metadata = BlockMetadata(
-            num_rows=accessor.num_rows(),
-            size_bytes=accessor.size_bytes(),
-            input_files=None,
-            exec_stats=stats.build(),
-        )
+        new_metadata = accessor.get_metadata(block_exec_stats=stats.build())
         from ray.data.block import BlockMetadataWithSchema
 
         meta_with_schema = BlockMetadataWithSchema.from_metadata(
