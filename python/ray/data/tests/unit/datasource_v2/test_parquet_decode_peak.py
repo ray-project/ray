@@ -128,8 +128,8 @@ def _mixed():
 @pytest.mark.parametrize(
     "unmodelled", ["file", "strings-without-size-statistics", "delta-byte-array-leaf"]
 )
-def test_unmodelled_row_groups_charge_a_flat_cost(tmp_path, monkeypatch, unmodelled):
-    """A file, or a leaf without exact counts, costs each row group a flat charge, once."""
+def test_small_unmodelled_row_groups_pay_the_floor(tmp_path, monkeypatch, unmodelled):
+    """A file, or a leaf without exact counts, costs each small row group the floor, once."""
     import ray.data._internal.datasource_v2.formats.parquet.footer_reader as reader
 
     path = tmp_path / "f.parquet"
@@ -144,10 +144,31 @@ def test_unmodelled_row_groups_charge_a_flat_cost(tmp_path, monkeypatch, unmodel
             "column_encoding": {"s": "DELTA_BYTE_ARRAY"},
         }
     pq.write_table(_mixed(), path, row_group_size=M // 4, **write_kwargs)
-    charge = reader._UNMODELLED_BYTES
+    charge = reader._UNMODELLED_MIN_BYTES
     sizes = _sizes(path)
     assert len(sizes) == 4
     assert all(charge < size < charge + (1 << 20) for size in sizes), sizes
+
+
+def test_large_unmodelled_leaves_pay_by_their_uncompressed_bytes(tmp_path, monkeypatch):
+    """Past the floor, the charge is a multiple of the unsized leaves' uncompressed
+    bytes; the sized ``int64`` column isn't in it."""
+    import ray.data._internal.datasource_v2.formats.parquet.footer_reader as reader
+
+    monkeypatch.setattr(reader, "read_footer_stats", lambda metadata: None)
+    path = tmp_path / "f.parquet"
+    table = pa.table(
+        {
+            "i": pa.array(np.arange(N, dtype="int64")),
+            "s": pa.array([f"distinct-value-{i:024d}" for i in range(N)]),
+        }
+    )
+    pq.write_table(table, path, row_group_size=N, use_dictionary=False)
+    strings = pq.read_metadata(path).row_group(0).column(1).total_uncompressed_size
+    charge = reader._UNMODELLED_RATIO * strings
+    assert charge > reader._UNMODELLED_MIN_BYTES
+    (size,) = _sizes(path)
+    assert charge < size < charge + (8 << 20), (size, charge)
 
 
 def test_pinned_schema_adds_the_cast_and_the_added_columns(tmp_path):

@@ -109,8 +109,18 @@ class _FileSizing(NamedTuple):
     read: Read  # the columns it appends
 
 
-# A row group's peak bytes for whatever in it the estimator doesn't model.
-_UNMODELLED_BYTES = 12 << 20
+# A row group's peak bytes for the leaves in it the estimator doesn't model: this
+# many times their uncompressed bytes, and never less than the floor.
+_UNMODELLED_RATIO = 4
+_UNMODELLED_MIN_BYTES = 12 << 20
+
+
+def _unmodelled_bytes(row_group: RowGroupMetaData, leaf_indices: list[int]) -> int:
+    """The charge for ``leaf_indices``, the leaves of ``row_group`` left unsized."""
+    uncompressed = sum(
+        row_group.column(leaf_idx).total_uncompressed_size for leaf_idx in leaf_indices
+    )
+    return max(_UNMODELLED_MIN_BYTES, _UNMODELLED_RATIO * uncompressed)
 
 # Half floats are the odd one out: they ride on FIXED_LEN_BYTE_ARRAY, which
 # also carries decimals and UUIDs, so they are only identifiable by logical type.
@@ -314,7 +324,8 @@ class FooterReader:
         leaning high: a read task over its budget is what runs a node out of memory."""
         if sizing.profiles is None:
             # A file the estimator doesn't model.
-            work = _UNMODELLED_BYTES
+            work = 0
+            unmodelled = list(sizing.leaf_indices)
         else:
             chunks = leaf_chunks(
                 row_group=row_group,
@@ -330,7 +341,7 @@ class FooterReader:
                 leaves=leaves,
                 counted=set(),
             )
-            modelled = len(chunks) == len(sizing.leaf_indices)
+            unmodelled = [j for j in sizing.leaf_indices if j not in leaves]
             if self.pinned_schema is None:
                 work += estimate_added_columns(row_group=row_group, read=sizing.read)
             else:
@@ -345,10 +356,9 @@ class FooterReader:
                     )
                     for name, indices in sizing.cast_leaves.items()
                 }
-                modelled = modelled and all(
-                    len(cast_leaves[name]) == len(indices)
-                    for name, indices in sizing.cast_leaves.items()
-                )
+                for name, indices in sizing.cast_leaves.items():
+                    cast = {leaf.index for leaf in cast_leaves[name]}
+                    unmodelled += [j for j in indices if j not in cast]
                 work += estimate_cast(
                     row_group=row_group,
                     column_leaves=cast_leaves,
@@ -356,11 +366,10 @@ class FooterReader:
                     pinned_schema=self.pinned_schema,
                     read=sizing.read,
                 )
-            if not modelled:
-                # A leaf or cast the estimator doesn't model, such as a string
-                # without SizeStatistics, a view, a dictionary or a struct gaining
-                # a field: charged once.
-                work += _UNMODELLED_BYTES
+        if unmodelled:
+            # A leaf or cast the estimator doesn't model, such as a string without
+            # SizeStatistics, a view, a dictionary or a struct gaining a field.
+            work += _unmodelled_bytes(row_group=row_group, leaf_indices=unmodelled)
         return estimate_row_group_peak(
             row_group=row_group,
             leaf_indices=sizing.leaf_indices,
