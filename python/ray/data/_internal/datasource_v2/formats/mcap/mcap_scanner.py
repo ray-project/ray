@@ -8,35 +8,48 @@ from pyarrow.fs import FileSystem
 from typing_extensions import override
 
 from ray.data._internal.datasource_v2.common.file_scanner import FileScanner
+from ray.data._internal.datasource_v2.common.pushdown_utils import combine_predicates
 from ray.data._internal.datasource_v2.formats.mcap.mcap_options import (
     DEFAULT_MAX_LEAD_IN_NS,
     MCAPSelection,
     VideoOptions,
 )
-from ray.data._internal.datasource_v2.formats.mcap.mcap_reader import MCAPReader
+from ray.data._internal.datasource_v2.formats.mcap.mcap_pushdown import (
+    narrow_selection,
+)
+from ray.data._internal.datasource_v2.formats.mcap.mcap_reader import (
+    MCAPReader,
+    read_skips_errors,
+)
 from ray.data._internal.datasource_v2.formats.mcap.mcap_sample_rows import (
     DEFAULT_MAX_ROW_BYTES,
 )
 from ray.data._internal.datasource_v2.formats.mcap.mcap_samples import TopicPlan
 from ray.data._internal.datasource_v2.interfaces.pushdown import (
     SupportsColumnPruning,
+    SupportsFilterPushdown,
     SupportsLimitPushdown,
 )
 from ray.data._internal.datasource_v2.interfaces.synthesized_columns import (
     SynthesizedColumn,
 )
+from ray.data.expressions import Expr
 from ray.util.annotations import DeveloperAPI
 
 
 @DeveloperAPI
 @dataclass(frozen=True)
-class MCAPScanner(FileScanner, SupportsColumnPruning, SupportsLimitPushdown):
+class MCAPScanner(
+    FileScanner, SupportsFilterPushdown, SupportsColumnPruning, SupportsLimitPushdown
+):
     """Scanner for MCAP files on Datasource V2.
 
     Holds the message selection from ``read_mcap`` and the pushdowns the
-    optimizer applies: column pruning and a per-task row limit. A pruned read
+    optimizer applies: column pruning, a per-task row limit and, for message
+    rows, filters on ``topic`` and ``log_time``. Those filters fold into the
+    selection, so listing prunes files and chunks with them. A pruned read
     neither builds nor JSON-decodes the columns it drops. Partition pruning
-    comes from :class:`FileScanner`. Other filters are not pushed down.
+    comes from :class:`FileScanner`.
 
     The planned ``schema`` fixes what ``data`` holds in every block: decoded
     JSON values when every selected channel of the sampled files is
@@ -62,6 +75,9 @@ class MCAPScanner(FileScanner, SupportsColumnPruning, SupportsLimitPushdown):
     video: Optional[VideoOptions] = None
     decoded_topics: Tuple[str, ...] = ()
     max_lead_in_ns: int = DEFAULT_MAX_LEAD_IN_NS
+    # The conjuncts :meth:`push_filters` folded into ``selection``. The planner
+    # hands them to the indexer, so listing prunes on the same selection.
+    predicate: Optional[Expr] = None
 
     def read_schema(self) -> pa.Schema:
         """Return the dataset schema after column pruning.
@@ -77,6 +93,52 @@ class MCAPScanner(FileScanner, SupportsColumnPruning, SupportsLimitPushdown):
             assert idx >= 0, f"Column {name} not found in schema"
             fields.append(self.schema.field(idx))
         return pa.schema(fields)
+
+    @override
+    def metadata_row_count_is_exact(self) -> bool:
+        """Whether ``count()`` can be answered from the summaries.
+
+        A summary's ``Statistics`` counts messages per channel, so a selection
+        by topic or message type is exact from metadata. It cannot say how
+        many messages fall inside a time range, and it does not count sample
+        rows. Decoded rows are frames, which ``fps`` thins and a decoder may
+        drop. A read that ``max_errored_blocks`` lets skip a corrupt chunk or
+        file returns fewer rows than the summaries count
+        (``read_skips_errors``).
+        """
+        if self.limit is not None or self.partition_predicate is not None:
+            return False
+        if read_skips_errors():
+            return False
+        if self.topic_plans or self.video is not None:
+            return False
+        return self.selection.time_range is None
+
+    @override
+    def push_filters(self, predicate: Expr) -> Tuple["MCAPScanner", Optional[Expr]]:
+        """Fold ``topic`` and ``log_time`` conjuncts into the selection.
+
+        Only message rows have both as columns. A sample row carries its
+        sample's columns and each topic's steps, so a sample read keeps the
+        whole predicate in the ``Filter`` above the read.
+        """
+        if self.topic_plans:
+            return self, predicate
+        narrowed = narrow_selection(self.selection, predicate)
+        if narrowed.pushed is None:
+            return self, predicate
+        return (
+            replace(
+                self,
+                selection=narrowed.selection,
+                predicate=combine_predicates(self.predicate, narrowed.pushed),
+            ),
+            narrowed.residual,
+        )
+
+    @override
+    def pushed_predicate(self) -> Optional[Expr]:
+        return self.predicate
 
     @override
     def prune_columns(self, columns: List[str]) -> "MCAPScanner":

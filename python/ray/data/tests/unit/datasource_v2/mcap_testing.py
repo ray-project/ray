@@ -6,14 +6,16 @@ Ray cluster. The writers import ``mcap`` when called, so the test modules still
 collect without it.
 """
 
+import dataclasses
 import io
 import json
 import re
 import shutil
 import struct
+import threading
 from collections import defaultdict
 from fractions import Fraction
-from typing import Any, Dict, Iterable, Iterator, List, Optional
+from typing import Any, Callable, Dict, Iterable, Iterator, List, Optional
 
 import pyarrow as pa
 from pyarrow.fs import LocalFileSystem
@@ -311,6 +313,18 @@ def scanner_for(datasource):
     return datasource.create_scanner(infer_schema(datasource), datasource.filesystem)
 
 
+def count_sample(datasource, filesystem=None) -> List[int]:
+    """The row counts ``read_metadata`` gives for the files planning samples,
+    listed once each, as the count pushdown lists them."""
+    sample = sample_files(
+        datasource._get_file_indexer(), datasource.paths, datasource.filesystem, []
+    )
+    scanner = scanner_for(datasource)
+    if filesystem is not None:
+        scanner = dataclasses.replace(scanner, filesystem=filesystem)
+    return [m.num_rows for m in scanner.create_reader().read_metadata(sample)]
+
+
 def read_all(datasource, *manifests, scanner=None) -> pa.Table:
     """Read ``manifests`` into one table, with ``scanner`` or the planned one.
 
@@ -410,6 +424,23 @@ def write_corrupt_chunk_header(path: str, source: str, index: int) -> str:
     return path
 
 
+def edit_summaries(monkeypatch, edit: Callable[[Any], None]) -> None:
+    """Pass every later summary read through ``edit``, which changes it in place.
+
+    Stands in for a writer whose summary leaves out some records.
+    """
+    from ray.data._internal.datasource_v2.formats.mcap import mcap_io
+
+    real_parse = mcap_io._collect_summary_records
+
+    def parse(section):
+        summary = real_parse(section)
+        edit(summary)
+        return summary
+
+    monkeypatch.setattr(mcap_io, "_collect_summary_records", parse)
+
+
 def without_summary_records(monkeypatch, *names: str) -> None:
     """Make every later summary read return the record maps ``names`` empty.
 
@@ -430,29 +461,42 @@ def without_summary_records(monkeypatch, *names: str) -> None:
 
 
 class SeekLog:
-    """A filesystem whose files record, per path, every offset they seek to."""
+    """A filesystem whose files record, per path, every offset they seek to and
+    how many reads they serve."""
 
     def __init__(self):
         self._filesystem = LocalFileSystem()
         self.seeks: Dict[str, List[int]] = defaultdict(list)
+        self.reads: Dict[str, int] = defaultdict(int)
 
     def open_input_file(self, path):
         return _SeekLoggingFile(
-            self._filesystem.open_input_file(path), self.seeks[path]
+            self._filesystem.open_input_file(path), self.seeks[path], self, path
         )
 
 
 class _SeekLoggingFile:
-    """A file that appends every absolute seek offset to ``seeks``."""
+    """A file that appends every absolute seek offset to ``seeks`` and counts
+    its reads in ``log.reads[path]``."""
 
-    def __init__(self, f, seeks: List[int]):
+    def __init__(self, f, seeks: List[int], log: SeekLog, path: str):
         self._f = f
         self._seeks = seeks
+        self._log = log
+        self._path = path
 
     def seek(self, offset, whence=0):
         if whence == 0:
             self._seeks.append(offset)
         return self._f.seek(offset, whence)
+
+    def read(self, *args):
+        self._log.reads[self._path] += 1
+        return self._f.read(*args)
+
+    def readinto(self, buffer):
+        self._log.reads[self._path] += 1
+        return self._f.readinto(buffer)
 
     def __getattr__(self, name):
         return getattr(self._f, name)
@@ -462,6 +506,53 @@ class _SeekLoggingFile:
 
     def __exit__(self, *exc_info):
         self._f.close()
+
+
+class OpenFilesLog:
+    """A filesystem that records the files it opens and the most open at once.
+
+    With ``together``, each open waits until that many files are open, so a
+    read that opens them one at a time fails instead of passing by chance.
+    """
+
+    def __init__(self, together: int = 0):
+        self._filesystem = LocalFileSystem()
+        self._barrier = threading.Barrier(together, timeout=10) if together else None
+        self._lock = threading.Lock()
+        self._open_now = 0
+        self.most_open = 0
+        self.opened: List[str] = []
+
+    def open_input_file(self, path):
+        with self._lock:
+            self._open_now += 1
+            self.most_open = max(self.most_open, self._open_now)
+            self.opened.append(path)
+        if self._barrier is not None:
+            self._barrier.wait()
+        return _LoggedFile(self._filesystem.open_input_file(path), self)
+
+    def closed(self):
+        with self._lock:
+            self._open_now -= 1
+
+
+class _LoggedFile:
+    """An open file that tells its ``OpenFilesLog`` when it closes."""
+
+    def __init__(self, f, log: OpenFilesLog):
+        self._f = f
+        self._log = log
+
+    def __getattr__(self, name):
+        return getattr(self._f, name)
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc_info):
+        self._f.close()
+        self._log.closed()
 
 
 def chunks_read(seek_log: SeekLog, path: str) -> List[int]:
