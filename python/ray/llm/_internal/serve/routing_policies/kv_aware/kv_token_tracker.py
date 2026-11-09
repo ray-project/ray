@@ -52,6 +52,74 @@ LIFECYCLE_HOOKS = frozenset(
 )
 
 
+class _PrefillDecay:
+    """Estimate remaining prefill with one shared FIFO service rate per worker.
+
+    Only positive contributions occupy the queues. Reaching estimated zero
+    doesn't finish the request or change its Dynamo reservation.
+    """
+
+    def __init__(self, tokens_per_second: float):
+        self._tokens_per_second = tokens_per_second
+        self._pending: Dict[int, OrderedDict[str, float]] = {}
+        self._last_updated: Dict[int, float] = {}
+        self._total_tokens = 0.0
+
+    def _advance(self, now: float) -> None:
+        for worker_id, pending in list(self._pending.items()):
+            budget = self._tokens_per_second * max(
+                0.0, now - self._last_updated[worker_id]
+            )
+            self._last_updated[worker_id] = now
+            while pending and budget > 0:
+                request_id, remaining = next(iter(pending.items()))
+                consumed = min(remaining, budget)
+                self._total_tokens -= consumed
+                budget -= consumed
+                if consumed == remaining:
+                    pending.popitem(last=False)
+                else:
+                    pending[request_id] = remaining - consumed
+            if not pending:
+                del self._pending[worker_id]
+                del self._last_updated[worker_id]
+        if not self._pending:
+            # Clear floating-point residue and discard unused idle capacity.
+            self._total_tokens = 0.0
+
+    def add(self, request_id: str, worker_id: int, tokens: int) -> None:
+        now = time.monotonic()
+        self._advance(now)
+        if tokens <= 0:
+            return
+        pending = self._pending.setdefault(worker_id, OrderedDict())
+        self._last_updated.setdefault(worker_id, now)
+        self._total_tokens -= pending.pop(request_id, 0.0)
+        pending[request_id] = float(tokens)
+        self._total_tokens += tokens
+
+    def remove(self, request_id: str, worker_id: int) -> None:
+        # Advance before removing: elapsed capacity belonged to the oldest
+        # request until its observed first token or abort arrived.
+        self._advance(time.monotonic())
+        pending = self._pending.get(worker_id)
+        if pending is not None:
+            self._total_tokens -= pending.pop(request_id, 0.0)
+            if not pending:
+                del self._pending[worker_id]
+                del self._last_updated[worker_id]
+        if not self._pending:
+            self._total_tokens = 0.0
+
+    def remaining_tokens(self) -> int:
+        self._advance(time.monotonic())
+        return math.ceil(max(0.0, self._total_tokens))
+
+    @property
+    def has_pending(self) -> bool:
+        return bool(self._pending)
+
+
 def get_worker_id(replica_unique_id: str) -> int:
     """Deterministically derive a Dynamo worker id from a replica's unique id."""
     return int.from_bytes(
@@ -204,7 +272,17 @@ class KVTokenTracker:
         indexer_threads: int = DEFAULT_KV_INDEXER_THREADS,
         serve_deployment_id: Optional[Any] = None,
         session_affinity_ttl_s: float = DEFAULT_SESSION_AFFINITY_TTL_S,
+        prefill_decay_tokens_per_second: float = 0.0,
     ):
+        if (
+            isinstance(prefill_decay_tokens_per_second, bool)
+            or not isinstance(prefill_decay_tokens_per_second, (int, float))
+            or not math.isfinite(prefill_decay_tokens_per_second)
+            or prefill_decay_tokens_per_second < 0
+        ):
+            raise ValueError(
+                "prefill_decay_tokens_per_second must be finite and non-negative."
+            )
         # The tracked LLMServer deployment id, passed in by the LLMRouter
         # that builds the tracker.
         self._serve_deployment_id = serve_deployment_id
@@ -230,6 +308,14 @@ class KVTokenTracker:
         self._requests: "OrderedDict[str, RequestLifecycle]" = OrderedDict()
         # Current workload snapshot, used by the autoscaler.
         self._outstanding_effective_prefill_tokens = 0
+        # Keep estimated remaining work separate from the original reservations
+        # so lifecycle and Dynamo accounting retain their exact token counts.
+        self._prefill_decay = (
+            _PrefillDecay(prefill_decay_tokens_per_second)
+            if prefill_decay_tokens_per_second > 0
+            else None
+        )
+        self._prefill_decay_timer: Optional[asyncio.TimerHandle] = None
         self._active_decode_requests = 0
         self._autoscaling_metrics_callback: Optional[
             Callable[[Dict[str, int]], None]
@@ -361,7 +447,9 @@ class KVTokenTracker:
     def _get_autoscaling_snapshot(self) -> Dict[str, int]:
         return {
             OUTSTANDING_EFFECTIVE_PREFILL_TOKENS: (
-                self._outstanding_effective_prefill_tokens
+                self._prefill_decay.remaining_tokens()
+                if self._prefill_decay is not None
+                else self._outstanding_effective_prefill_tokens
             ),
             ACTIVE_DECODE_REQUESTS: self._active_decode_requests,
         }
@@ -369,6 +457,28 @@ class KVTokenTracker:
     def _publish_autoscaling_snapshot(self) -> None:
         if self._autoscaling_metrics_callback is not None:
             self._autoscaling_metrics_callback(self._get_autoscaling_snapshot())
+        self._schedule_prefill_decay_snapshot()
+
+    def _schedule_prefill_decay_snapshot(self) -> None:
+        if self._prefill_decay is None:
+            return
+        if (
+            self._autoscaling_metrics_callback is None
+            or not self._prefill_decay.has_pending
+        ):
+            if self._prefill_decay_timer is not None:
+                self._prefill_decay_timer.cancel()
+                self._prefill_decay_timer = None
+        elif self._prefill_decay_timer is None:
+            # The metrics manager repeats the latest published value. Refresh
+            # it during long prefills even when no lifecycle event arrives.
+            self._prefill_decay_timer = asyncio.get_running_loop().call_later(
+                1.0, self._publish_prefill_decay_snapshot
+            )
+
+    def _publish_prefill_decay_snapshot(self) -> None:
+        self._prefill_decay_timer = None
+        self._publish_autoscaling_snapshot()
 
     def _create_selection_service(self) -> None:
         """Create the router-local Dynamo selection service for this deployment."""
@@ -510,7 +620,7 @@ class KVTokenTracker:
         for request_id in self._request_ids_by_worker.pop(worker_id, set()):
             state = self._requests.pop(request_id, None)
             if state is not None:
-                self._remove_autoscaling_load(state)
+                self._remove_autoscaling_load(request_id, state)
         self._publish_autoscaling_snapshot()
         if self._svc is None:
             return
@@ -678,7 +788,7 @@ class KVTokenTracker:
     ) -> None:
         old = self._requests.pop(request_id, None)
         if old is not None:
-            self._remove_autoscaling_load(old)
+            self._remove_autoscaling_load(request_id, old)
             self._untrack_worker_request(request_id, old.worker_id)
         self._completed_request_ids.pop(request_id, None)
         if self._block_size is None:
@@ -694,6 +804,8 @@ class KVTokenTracker:
             total_blocks=math.ceil(prompt_tokens / block_size),
         )
         self._outstanding_effective_prefill_tokens += effective_prefill_tokens
+        if self._prefill_decay is not None:
+            self._prefill_decay.add(request_id, worker_id, effective_prefill_tokens)
         self._request_ids_by_worker.setdefault(worker_id, set()).add(request_id)
 
     async def on_lifecycle_events(self, events: List[tuple]) -> None:
@@ -725,6 +837,8 @@ class KVTokenTracker:
         state = self._requests.get(request_id)
         if state is None or state.prefill_completed:
             return
+        if self._prefill_decay is not None:
+            self._prefill_decay.remove(request_id, state.worker_id)
         state.prefill_completed = True
         self._outstanding_effective_prefill_tokens -= state.effective_prefill_tokens
         self._active_decode_requests += 1
@@ -756,13 +870,17 @@ class KVTokenTracker:
         self._mark_request_completed(request_id)
         if state is None:
             return
-        self._remove_autoscaling_load(state)
+        self._remove_autoscaling_load(request_id, state)
         self._untrack_worker_request(request_id, state.worker_id)
         self._publish_autoscaling_snapshot()
         await self._svc.free_reservation(request_id)
 
-    def _remove_autoscaling_load(self, state: RequestLifecycle) -> None:
+    def _remove_autoscaling_load(
+        self, request_id: str, state: RequestLifecycle
+    ) -> None:
         """Remove one request's contribution from its current lifecycle phase."""
+        if self._prefill_decay is not None:
+            self._prefill_decay.remove(request_id, state.worker_id)
         if state.prefill_completed:
             self._active_decode_requests -= 1
         else:
@@ -803,7 +921,7 @@ class KVTokenTracker:
             if state.created_at > cutoff:
                 break
             self._requests.popitem(last=False)
-            self._remove_autoscaling_load(state)
+            self._remove_autoscaling_load(request_id, state)
             autoscaling_load_changed = True
             self._untrack_worker_request(request_id, state.worker_id)
             logger.warning(
@@ -866,6 +984,9 @@ def build_kv_token_tracker(
     tracker = KVTokenTracker(
         session_affinity_ttl_s=router_kwargs.get(
             "session_affinity_ttl_s", DEFAULT_SESSION_AFFINITY_TTL_S
+        ),
+        prefill_decay_tokens_per_second=router_kwargs.get(
+            "prefill_decay_tokens_per_second", 0.0
         ),
         indexer_threads=llm_config.experimental_configs.get(
             KV_INDEXER_THREADS_KEY, DEFAULT_KV_INDEXER_THREADS
