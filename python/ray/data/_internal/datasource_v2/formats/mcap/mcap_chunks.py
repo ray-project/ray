@@ -11,6 +11,7 @@ from dataclasses import dataclass
 from typing import (
     TYPE_CHECKING,
     Any,
+    Callable,
     Dict,
     Iterable,
     Iterator,
@@ -49,11 +50,14 @@ class _Declared:
     Starts as the summary's records and grows with those met inside chunks, so
     a channel declared only in an earlier chunk serves the later ones.
     ``scanned`` holds the offsets of the chunks already read back for records.
+    ``file_summary`` returns the file's whole summary, whose chunk indexes say
+    where to read back.
     """
 
     channels: Dict[int, "Channel"]
     schemas: Dict[int, "Schema"]
     scanned: Set[int]
+    file_summary: Callable[[], "Summary"]
 
 
 def _scan_declarations(f: Any, chunk_index: "ChunkIndex", declared: _Declared) -> None:
@@ -90,11 +94,14 @@ class SelectedMessageReader:
         path: str,
         summary: "Summary",
         offsets: Optional[Set[int]],
+        file_summary: Optional[Callable[[], "Summary"]] = None,
     ) -> Iterator[_Selected]:
         """Yield the selected messages of the owned chunks of an indexed file.
 
         Chunks are read in file order, or merged by log time with
-        ``log_time_order``.
+        ``log_time_order``. ``summary`` may index only the owned chunks, as a
+        read task's summary does (``mcap_task_summary``). Then ``file_summary``
+        returns the whole summary, which reading back a declaration needs.
         """
         selected = self._selection.selected_channel_ids(
             summary.channels, summary.schemas
@@ -104,7 +111,12 @@ class SelectedMessageReader:
             for c in self.candidate_chunks(summary, selected)
             if offsets is None or c.chunk_start_offset in offsets
         ]
-        declared = _Declared(dict(summary.channels), dict(summary.schemas), set())
+        declared = _Declared(
+            dict(summary.channels),
+            dict(summary.schemas),
+            set(),
+            file_summary or (lambda: summary),
+        )
         if not self._log_time_order:
             for chunk_index in chunk_indexes:
                 yield from self._read_chunk(
@@ -206,7 +218,7 @@ class SelectedMessageReader:
             if isinstance(record, Message):
                 index += 1
                 channel, schema = self._channel_and_schema(
-                    f, path, summary, chunk_index, declared, record
+                    f, path, chunk_index, declared, record
                 )
                 if not self._channel_is_selected(channel, schema, summary, selected):
                     continue
@@ -224,7 +236,6 @@ class SelectedMessageReader:
         self,
         f: Any,
         path: str,
-        summary: "Summary",
         chunk_index: "ChunkIndex",
         declared: _Declared,
         message: "Message",
@@ -236,7 +247,7 @@ class SelectedMessageReader:
         channel = declared.channels.get(message.channel_id)
         if channel is None:
             self._find_in_earlier_chunks(
-                f, summary, chunk_index, declared, channel_id=message.channel_id
+                f, chunk_index, declared, channel_id=message.channel_id
             )
             channel = declared.channels.get(message.channel_id)
         if channel is None:
@@ -250,7 +261,7 @@ class SelectedMessageReader:
             # (``repeat_schemas=False``). ``message_types`` and the schema
             # columns need it.
             self._find_in_earlier_chunks(
-                f, summary, chunk_index, declared, schema_id=channel.schema_id
+                f, chunk_index, declared, schema_id=channel.schema_id
             )
         schema = declared.schemas.get(channel.schema_id) if channel.schema_id else None
         return channel, schema
@@ -281,7 +292,6 @@ class SelectedMessageReader:
     def _find_in_earlier_chunks(
         self,
         f: Any,
-        summary: "Summary",
         chunk_index: "ChunkIndex",
         declared: "_Declared",
         *,
@@ -299,7 +309,7 @@ class SelectedMessageReader:
         earlier = sorted(
             (
                 c
-                for c in summary.chunk_indexes
+                for c in declared.file_summary().chunk_indexes
                 if c.chunk_start_offset < chunk_index.chunk_start_offset
                 and c.chunk_start_offset not in declared.scanned
             ),

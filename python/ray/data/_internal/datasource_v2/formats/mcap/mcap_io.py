@@ -5,8 +5,11 @@ read of a raw file is one request, so parsing a summary that way takes several
 requests per chunk it indexes. Here the bytes are fetched first and parsed in
 memory:
 
-- ``read_summary_from`` checks both magic bytes and the footer, then parses the
-  summary section, all in one to three ranged reads.
+- ``read_summary_section_from`` checks both magic bytes and the footer, then
+  returns the summary section, all in one to three ranged reads.
+  ``read_summary_from`` also parses it.
+- ``summary_records`` splits a section into its raw records, and
+  ``parse_summary_records`` parses records copied out of a section.
 - ``read_chunk`` fetches one chunk record in one ranged read.
 - ``buffered`` wraps a file for a linear scan, so it reads in large blocks.
 
@@ -14,7 +17,7 @@ Format specification: https://mcap.dev/spec
 """
 
 import io
-from typing import TYPE_CHECKING, Any, Optional
+from typing import TYPE_CHECKING, Any, Iterator, Optional, Tuple, Union
 
 from ray.data._internal.util import KiB
 
@@ -30,7 +33,6 @@ _SUMMARY_TAIL_BYTES = 64 * KiB
 _MAGIC = b"\x89MCAP0\r\n"
 # A footer record is the opcode, an 8-byte length and 20 bytes of fields:
 # ``summary_start`` (8), ``summary_offset_start`` (8) and ``summary_crc`` (4).
-_FOOTER_OPCODE = 0x02
 _FOOTER_BYTES = 1 + 8 + 20
 _RECORD_PREFIX_BYTES = 1 + 8  # opcode and record length
 
@@ -45,6 +47,16 @@ def read_summary_from(f: Any, path: str) -> Optional["Summary"]:
     like an MCAP file or its summary section does not parse, as in a truncated
     recording. Errors reading ``f`` propagate unchanged, so callers can retry
     them.
+    """
+    section = read_summary_section_from(f, path)
+    return None if section is None else _parse_summary(section, path)
+
+
+def read_summary_section_from(f: Any, path: str) -> Optional[memoryview]:
+    """Return the raw summary section of the open MCAP file ``f``, or ``None``.
+
+    The section runs from the first summary record through the footer. Raises
+    as ``read_summary_from`` does, except that the records are not parsed.
     """
     size = f.seek(0, io.SEEK_END)
     tail_start = max(0, size - _SUMMARY_TAIL_BYTES)
@@ -62,7 +74,35 @@ def read_summary_from(f: Any, path: str) -> Optional["Summary"]:
         tail = _read_range(f, summary_start, tail_start) + tail
         tail_start = summary_start
     end = len(tail) - len(_MAGIC)
-    return _parse_summary(memoryview(tail)[summary_start - tail_start : end], path)
+    return memoryview(tail)[summary_start - tail_start : end]
+
+
+def summary_records(section: memoryview) -> Iterator[Tuple[int, memoryview]]:
+    """Yield ``(opcode, record)`` for each record of ``section`` before its footer.
+
+    ``record`` is the whole raw record: opcode, length and body. The framing is
+    not checked here, so split only a section that parsed.
+    """
+    from mcap.opcode import Opcode
+
+    position = 0
+    while position < len(section):
+        opcode = section[position]
+        if opcode == Opcode.FOOTER:
+            return
+        length = int.from_bytes(section[position + 1 : position + 9], "little")
+        end = position + _RECORD_PREFIX_BYTES + length
+        yield opcode, section[position:end]
+        position = end
+
+
+def parse_summary_records(records: Union[bytes, memoryview], path: str) -> "Summary":
+    """Parse a summary section of ``path``, or records copied out of one.
+
+    Copied records are whole raw records, as ``summary_records`` yields them,
+    and end without a footer. Raises as ``read_summary_from`` does.
+    """
+    return _parse_summary(memoryview(records), path)
 
 
 def read_chunk(f: Any, chunk_index: "ChunkIndex") -> "Chunk":
@@ -96,13 +136,15 @@ def _summary_start(tail: bytes, size: int, path: str) -> int:
     ``tail`` is the last bytes of the file, which is ``size`` bytes long: they
     must end with the footer record and then the magic bytes.
     """
+    from mcap.opcode import Opcode
+
     footer_start = len(tail) - len(_MAGIC) - _FOOTER_BYTES
     footer = tail[max(0, footer_start) : len(tail) - len(_MAGIC)]
     length = int.from_bytes(footer[1:9], "little")
     if (
         footer_start < 0
         or not tail.endswith(_MAGIC)
-        or footer[0] != _FOOTER_OPCODE
+        or footer[0] != Opcode.FOOTER
         or length != _FOOTER_BYTES - _RECORD_PREFIX_BYTES
     ):
         raise ValueError(
@@ -119,7 +161,7 @@ def _summary_start(tail: bytes, size: int, path: str) -> int:
 
 
 def _parse_summary(section: memoryview, path: str) -> "Summary":
-    """Collect the records of a summary section, which runs up to the footer.
+    """Collect the records of a summary section, up to its footer or its end.
 
     Raises ``ValueError`` naming ``path`` when the section does not parse.
     """
@@ -147,7 +189,10 @@ def _collect_summary_records(section: memoryview) -> "Summary":
     from mcap.summary import Summary
 
     summary = Summary()
-    for record in StreamReader(io.BytesIO(section), skip_magic=True).records:
+    if not section:
+        return summary
+    stream = io.BytesIO(section)
+    for record in StreamReader(stream, skip_magic=True).records:
         if isinstance(record, Footer):
             break
         if isinstance(record, Statistics):
@@ -162,6 +207,10 @@ def _collect_summary_records(section: memoryview) -> "Summary":
             summary.attachment_indexes.append(record)
         elif isinstance(record, MetadataIndex):
             summary.metadata_indexes.append(record)
+        # Records copied out of a section end without a footer. The reader has
+        # consumed exactly the records yielded so far.
+        if stream.tell() == len(section):
+            break
     return summary
 
 
