@@ -22,7 +22,6 @@ import numpy as np
 from ray.serve._private import autoscaling_metrics_merge
 from ray.serve._private.autoscaling_metrics_codec import FlatHandleReport
 from ray.serve._private.common import (
-    QUEUED_REQUESTS_KEY,
     RUNNING_REQUESTS_KEY,
     ApplicationName,
     DeploymentHandleSource,
@@ -1059,22 +1058,11 @@ class DeploymentAutoscalingState:
         raw_metrics: Dict[str, Dict[str, TimeSeries]] = defaultdict(dict)
 
         for handle_id, object_report in self._handle_store.objects.items():
-            router_metrics = getattr(
-                object_report,
-                "router_metrics",
-                {QUEUED_REQUESTS_KEY: object_report.queued_requests},
-            )
+            router_metrics = getattr(object_report, "router_metrics", {})
             for metric_name, timeseries in router_metrics.items():
                 raw_metrics[metric_name][handle_id] = timeseries
 
         for handle_id, columnar_report in self._handle_store.columnar.items():
-            raw_metrics[QUEUED_REQUESTS_KEY][handle_id] = [
-                TimeStampedValue(float(timestamp), float(value))
-                for timestamp, value in zip(
-                    columnar_report.queued.timestamps,
-                    columnar_report.queued.values,
-                )
-            ]
             for metric_name, samples in columnar_report.router_metrics.items():
                 raw_metrics[metric_name][handle_id] = [
                     TimeStampedValue(float(timestamp), float(value))

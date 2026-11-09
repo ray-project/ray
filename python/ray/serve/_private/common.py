@@ -1054,8 +1054,7 @@ class HandleMetricReport:
             This is a list because we take multiple measurements over time.
         timestamp: The time at which this report was created.
         router_metrics: Metrics owned by this handle's router. Unlike ``metrics``,
-            these are not indexed by backend replica. The queued-request series is
-            always included under ``QUEUED_REQUESTS_KEY``.
+            these are not indexed by backend replica.
     """
 
     deployment_id: DeploymentID
@@ -1068,12 +1067,6 @@ class HandleMetricReport:
     ]  # replica key = ReplicaID.to_full_id_str()
     timestamp: float
     router_metrics: Dict[str, TimeSeries] = field(default_factory=dict)
-
-    def __post_init__(self) -> None:
-        # ``queued_requests`` predates generic router-owned autoscaling metrics.
-        # Keep the field for compatibility while also presenting it through the
-        # uniform router-metrics map.
-        self.router_metrics[QUEUED_REQUESTS_KEY] = self.queued_requests
 
     @property
     def total_requests(self) -> float:
