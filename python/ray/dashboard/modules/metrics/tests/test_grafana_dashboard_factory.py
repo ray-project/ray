@@ -8,6 +8,7 @@ from ray.dashboard.modules.metrics.grafana_dashboard_factory import (
     ANNOTATION_DATASOURCE_VARIABLE,
     ANNOTATION_SESSION_VARIABLE,
     ANNOTATION_STREAM_SELECTOR,
+    ANNOTATION_STREAM_SELECTOR_ENV_VAR,
     GRAFANA_DASHBOARD_GLOBAL_FILTERS_OVERRIDE_ENV_VAR_TEMPLATE,
     generate_train_grafana_dashboard,
 )
@@ -22,6 +23,7 @@ def enable_annotations(monkeypatch):
     # Off by default; see `test_annotations_are_off_by_default`.
     monkeypatch.setenv(ANNOTATIONS_ENABLED_ENV_VAR, "1")
     monkeypatch.delenv(GLOBAL_FILTERS_ENV_VAR, raising=False)
+    monkeypatch.delenv(ANNOTATION_STREAM_SELECTOR_ENV_VAR, raising=False)
 
 
 def generate_train_dashboard() -> dict:
@@ -116,14 +118,27 @@ def test_annotation_stream_selector_is_pinned():
     """Every query starts with the collector's `ray_annotations="true"` label.
 
     Spelled out rather than built from the constant: it's a contract with code
-    outside Ray, the collector config that attaches the label and Anyscale's
-    dashboard watcher, which matches on it to add its console toggle.
+    outside Ray, the collector config that attaches the label.
     """
     annotations = dashboard_annotations(generate_train_dashboard())
 
     assert annotations
     for annotation in annotations:
         assert annotation["expr"].startswith('{ray_annotations="true"} ')
+
+
+def test_annotation_stream_selector_override(monkeypatch):
+    """A platform can replace the stream selector in every query, e.g. to scope
+    a log backend shared between clusters by its own cluster label."""
+    selector = '{ray_annotations="true",cluster_id=~"$ClusterId"}'
+    monkeypatch.setenv(ANNOTATION_STREAM_SELECTOR_ENV_VAR, selector)
+
+    annotations = dashboard_annotations(generate_train_dashboard())
+
+    assert annotations
+    for annotation in annotations:
+        assert annotation["expr"].startswith(f"{selector} |= ")
+        assert annotation["target"]["expr"] == annotation["expr"]
 
 
 def test_annotations_preserve_go_template_braces():

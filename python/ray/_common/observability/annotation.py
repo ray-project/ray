@@ -30,7 +30,7 @@ _MAX_FIELD_LENGTH = 4096
 
 def _summarize_arrays(value: Any) -> Any:
     """``json.dumps`` fallback that summarizes arrays and tensors by shape only,
-    since formatting their data is slow and syncs a GPU tensor to the host.
+    since formatting their data is slow and can produce massive text strings.
 
     A scalar, such as a numpy scalar or a 0-d loss tensor, is rendered as its
     value instead.

@@ -45,17 +45,11 @@ GRAFANA_DASHBOARD_LOG_LINK_URL_ENV_VAR_TEMPLATE = "RAY_GRAFANA_{name}_LOG_LINK_U
 
 # The stream selector every annotation query starts with: the label a log
 # collector attaches to the annotation log stream. This is the contract between
-# Ray and the collector config, so changing it breaks it. Platforms that rewrite
-# the generated dashboards may also match on it, such as Anyscale, which swaps it
-# for a variable that lets its console turn the annotations off.
+# Ray and the collector config, so changing it breaks it.
 ANNOTATION_STREAM_SELECTOR = '{ray_annotations="true"}'
+ANNOTATION_STREAM_SELECTOR_ENV_VAR = "RAY_GRAFANA_ANNOTATION_STREAM_SELECTOR"
 
-# Each annotation line is an `AnnotationEvent` serialized to JSON. Every query
-# lifts the fields it filters on into a label of its own, rather than letting
-# the parser flatten the whole record: the query then carries no labels it does
-# not use, and does not depend on a collector adding any top-level fields of its
-# own (such as Vector's `file` and `host`) that could collide with them.
-#
+# Each annotation line is an `AnnotationEvent` serialized to JSON.
 # These are the fields every annotation record carries; an event-specific query
 # adds its own `| json` stage for its tags and fields.
 ANNOTATION_COMMON_LABELS = (
@@ -72,11 +66,8 @@ ANNOTATION_DATASOURCE = {
     "type": "loki",
     "uid": f"${{{ANNOTATION_DATASOURCE_VARIABLE}}}",
 }
-
-# Hidden template variable holding the sessions the annotation queries match: the
-# ones selected in `SessionName`, out of those Prometheus has for this dashboard's
-# global filters. `SessionName` itself can't be used, as its `All` value is `.*`,
-# which on a log backend shared between clusters matches every cluster's events.
+# Hidden template variable for selecting the session_name, otherwise, all
+# available sessions are queried.
 ANNOTATION_SESSION_VARIABLE = "AnnotationSessionName"
 
 # Grafana dashboard layout constants
@@ -281,19 +272,17 @@ def generate_annotation_session_variable(session_variable: dict) -> dict:
 def generate_annotation(annotation: GrafanaAnnotation) -> dict:
     """Expand a ``GrafanaAnnotation`` into the full Grafana annotation JSON.
 
-    Prepends the preamble common to every annotation query: the stream selector,
-    a line pre-filter, a ``| json`` stage for the fields every record carries,
-    and filters on the source and on the sessions in
-    ``ANNOTATION_SESSION_VARIABLE``.
-
     Args:
         annotation: The annotation to expand.
 
     Returns:
         The entry to append to the dashboard's ``annotations.list``.
     """
+    stream_selector = (
+        os.environ.get(ANNOTATION_STREAM_SELECTOR_ENV_VAR) or ANNOTATION_STREAM_SELECTOR
+    )
     expr = (
-        f"{ANNOTATION_STREAM_SELECTOR} |= {json.dumps(annotation.source)} "
+        f"{stream_selector} |= {json.dumps(annotation.source)} "
         f"| json {ANNOTATION_COMMON_LABELS} "
         f"| annotation_source={json.dumps(annotation.source)} "
         f'| session_name=~"${{{ANNOTATION_SESSION_VARIABLE}:regex}}" '
