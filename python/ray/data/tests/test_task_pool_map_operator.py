@@ -17,6 +17,7 @@ from ray.data._internal.execution.operators.task_pool_map_operator import (
 )
 from ray.data.block import Block, BlockMetadata
 from ray.types import ObjectRef
+from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 
 
 def test_min_max_resource_requirements(ray_start_regular_shared, restore_data_context):
@@ -246,7 +247,8 @@ def _memory_estimating_op(data_context, ray_remote_args=None, **kwargs):
 
 def test_memory_from_input_estimate(ray_start_regular_shared, restore_data_context):
     """A task asks for its input blocks' estimates summed, capped at the safe default,
-    in place of the default memory; a memory the caller set wins."""
+    in place of the default memory; a memory the caller set wins, and a task in a
+    placement group asks for none."""
     data_context = ray.data.DataContext.get_current()
 
     def memory(op, *estimates):
@@ -271,6 +273,14 @@ def test_memory_from_input_estimate(ray_start_regular_shared, restore_data_conte
         data_context, ray_remote_args={"num_cpus": 1, "memory": 7}
     )
     assert memory(op, 100) == 7
+
+    # A placement group's bundles may hold no memory to give.
+    in_group = {
+        "num_cpus": 1,
+        "scheduling_strategy": PlacementGroupSchedulingStrategy(None),
+    }
+    op = _memory_estimating_op(data_context, ray_remote_args=in_group)
+    assert memory(op, 100) is None
 
 
 if __name__ == "__main__":

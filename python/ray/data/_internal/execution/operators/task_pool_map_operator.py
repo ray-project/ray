@@ -29,6 +29,7 @@ from ray.data._internal.utils.cached_ray_internals import (
     get_local_ongoing_lineage_reconstruction_tasks,
 )
 from ray.data.context import DataContext
+from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 
 
 class TaskPoolMapOperator(MapOperator, ReportsExtraResourceUsage):
@@ -181,7 +182,16 @@ class TaskPoolMapOperator(MapOperator, ReportsExtraResourceUsage):
         self, input_bundle: Optional[RefBundle] = None
     ) -> Dict[str, Any]:
         ray_remote_args = super()._get_dynamic_ray_remote_args(input_bundle)
-        if self._memory_from_input_estimate and input_bundle is not None:
+        # A placement group's bundles may hold no memory, so a task asking for some
+        # would never schedule; ``ConfigureMapTaskMemoryRule`` skips them too.
+        in_placement_group = isinstance(
+            ray_remote_args.get("scheduling_strategy"), PlacementGroupSchedulingStrategy
+        )
+        if (
+            self._memory_from_input_estimate
+            and input_bundle is not None
+            and not in_placement_group
+        ):
             memory = self._input_memory_estimate(input_bundle)
             if memory is not None:
                 ray_remote_args["memory"] = memory
