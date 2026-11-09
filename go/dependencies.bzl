@@ -14,6 +14,12 @@ def gazelle_dependencies():
         version = "v0.0.0-20211218093645-b94a6e3cc137",
     )
     go_repository(
+        name = "com_github_antihax_optional",
+        importpath = "github.com/antihax/optional",
+        sum = "h1:xK2lYat7ZLaVVcIuj82J8kIro4V6kDe0AUDFboUCwcg=",
+        version = "v1.0.0",
+    )
+    go_repository(
         name = "com_github_aws_aws_sdk_go_v2",
         importpath = "github.com/aws/aws-sdk-go-v2",
         sum = "h1:frhcagrVNrzmT95RJImMHgabt99vkXGslubDaDagTk8=",
@@ -367,8 +373,8 @@ def gazelle_dependencies():
     go_repository(
         name = "com_github_grpc_ecosystem_grpc_gateway_v2",
         importpath = "github.com/grpc-ecosystem/grpc-gateway/v2",
-        sum = "h1:lLT7ZLSzGLI08vc9cpd+tYmNWjdKDqyr/2L+f6U12Fk=",
-        version = "v2.11.3",
+        sum = "h1:bkypFPDjIYGfCYD5mRBvpqxfYX1YCS1PXdKYWi8FsN0=",
+        version = "v2.20.0",
     )
     go_repository(
         name = "com_github_inconshreveable_mousetrap",
@@ -513,6 +519,12 @@ def gazelle_dependencies():
         importpath = "github.com/redis/go-redis/v9",
         sum = "h1:HHDteefn6ZkTtY5fGUE8tj8uy85AHk6zP7CpzIAM0y4=",
         version = "v9.6.1",
+    )
+    go_repository(
+        name = "com_github_rogpeppe_fastuuid",
+        importpath = "github.com/rogpeppe/fastuuid",
+        sum = "h1:Ppwyp6VYCF1nvBTXL3trRso7mXMlRrw9ooo375wvi2s=",
+        version = "v1.2.0",
     )
     go_repository(
         name = "com_github_rogpeppe_go_internal",
@@ -736,6 +748,12 @@ def gazelle_dependencies():
         importpath = "go.opentelemetry.io/otel/trace",
         sum = "h1:BkNrHpup+4k4w+ZZ86CZoHHEkohws8AY+WTX09nk+3A=",
         version = "v1.43.0",
+    )
+    go_repository(
+        name = "io_opentelemetry_go_proto_otlp",
+        importpath = "go.opentelemetry.io/proto/otlp",
+        sum = "h1:TrMUixzpM0yuc/znrFTP9MMRh8trP93mkCiDVeXrui0=",
+        version = "v1.3.1",
     )
     go_repository(
         name = "org_golang_google_api",

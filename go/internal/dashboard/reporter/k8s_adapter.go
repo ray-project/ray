@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"math"
 	"os"
+	"runtime"
 	"strconv"
 	"strings"
 )
@@ -12,18 +13,30 @@ import (
 // metrics. They are package-level so tests can construct an adapter with
 // overridden paths/readers without touching the host filesystem.
 const (
-	cgroupRoot = "/sys/fs/cgroup"
-	cpuUsageV1 = "/sys/fs/cgroup/cpuacct/cpuacct.usage"
-	cpuUsageV2 = "/sys/fs/cgroup/cpu.stat"
-	cpuQuota   = "/sys/fs/cgroup/cpu/cpu.cfs_quota_us"
-	cpuPeriod  = "/sys/fs/cgroup/cpu/cpu.cfs_period_us"
-	memUsageV1 = "/sys/fs/cgroup/memory/memory.usage_in_bytes"
-	memLimitV1 = "/sys/fs/cgroup/memory/memory.limit_in_bytes"
-	memUsageV2 = "/sys/fs/cgroup/memory.current"
-	memLimitV2 = "/sys/fs/cgroup/memory.max"
-	netDevPath = "/proc/net/dev"
+	cgroupRoot   = "/sys/fs/cgroup"
+	cpuUsageV1   = "/sys/fs/cgroup/cpuacct/cpuacct.usage"
+	cpuUsageV2   = "/sys/fs/cgroup/cpu.stat"
+	cpuQuota     = "/sys/fs/cgroup/cpu/cpu.cfs_quota_us"
+	cpuPeriod    = "/sys/fs/cgroup/cpu/cpu.cfs_period_us"
+	cpuMaxV2     = "/sys/fs/cgroup/cpu.max"
+	cpusetV1     = "/sys/fs/cgroup/cpuset/cpuset.cpus"
+	memUsageV1   = "/sys/fs/cgroup/memory/memory.usage_in_bytes"
+	memLimitV1   = "/sys/fs/cgroup/memory/memory.limit_in_bytes"
+	memUsageV2   = "/sys/fs/cgroup/memory.current"
+	memLimitV2   = "/sys/fs/cgroup/memory.max"
+	netDevPath   = "/proc/net/dev"
 	procStatPath = "/proc/stat"
-	k8sEnvVar  = "KUBERNETES_SERVICE_HOST"
+	// cpuOnlinePath lists the online CPUs (e.g. "0-111"), the source
+	// os.sysconf("SC_NPROCESSORS_ONLN") resolves to and therefore what
+	// psutil.cpu_count() reports.
+	cpuOnlinePath = "/sys/devices/system/cpu/online"
+	k8sEnvVar     = "KUBERNETES_SERVICE_HOST"
+	// k8sDiskUsageEnvVar re-enables real disk usage reporting inside a pod,
+	// mirroring Python ENABLE_K8S_DISK_USAGE.
+	k8sDiskUsageEnvVar = "RAY_DASHBOARD_ENABLE_K8S_DISK_USAGE"
+	// multiprocCPUEnvVar forces the plain logical CPU count, mirroring the
+	// Python RAY_USE_MULTIPROCESSING_CPU_COUNT escape hatch.
+	multiprocCPUEnvVar = "RAY_USE_MULTIPROCESSING_CPU_COUNT"
 )
 
 // readFileFn abstracts reading a whole file so tests can mock cgroup v1/v2 and
@@ -45,6 +58,8 @@ type K8sAdapter struct {
 	cpuUsageV2 string
 	cpuQuota   string
 	cpuPeriod  string
+	cpuMax     string
+	cpuset     string
 	memUsageV1 string
 	memLimitV1 string
 	memUsageV2 string
@@ -54,8 +69,11 @@ type K8sAdapter struct {
 	envLookup  func(string) (string, bool)
 	fileExists func(string) bool
 	readFile   readFileFn
-	lastCPU    int64
-	lastSet    bool
+	// numCPU returns multiprocessing.cpu_count()'s equivalent, injectable so
+	// tests can pin the logical count without depending on the test host.
+	numCPU  func() int
+	lastCPU int64
+	lastSet bool
 	// lastSystemTime tracks the last host system CPU time (in nanoseconds) read
 	// from /proc/stat, and lastSystemSet records whether it has been captured.
 	// They mirror Python k8s_utils.cpu_percent()'s last_system_usage so the CPU
@@ -64,6 +82,11 @@ type K8sAdapter struct {
 	lastSystemTime int64
 	lastSystemSet  bool
 	hostCPUs       int
+	// numCPUs caches the container's logical CPU count so repeated reads (every
+	// collect cycle calls get_num_cpus for cpus[0] and CPUPerc) do not re-walk
+	// the cgroup files.
+	numCPUsCache float64
+	numCPUsSet   bool
 }
 
 // NewK8sAdapter builds a K8sAdapter using the real environment and filesystem,
@@ -74,6 +97,8 @@ func NewK8sAdapter() *K8sAdapter {
 		cpuUsageV2: cpuUsageV2,
 		cpuQuota:   cpuQuota,
 		cpuPeriod:  cpuPeriod,
+		cpuMax:     cpuMaxV2,
+		cpuset:     cpusetV1,
 		memUsageV1: memUsageV1,
 		memLimitV1: memLimitV1,
 		memUsageV2: memUsageV2,
@@ -99,6 +124,16 @@ func (a *K8sAdapter) IsK8s() bool {
 	}
 	_, ok := a.envLookup(k8sEnvVar)
 	return ok
+}
+
+// K8sDiskUsageEnabled reports whether real disk usage should be reported inside
+// a pod, mirroring Python ENABLE_K8S_DISK_USAGE: the env var must equal "1".
+func (a *K8sAdapter) K8sDiskUsageEnabled() bool {
+	if a.envLookup == nil {
+		a.envLookup = os.LookupEnv
+	}
+	v, _ := a.envLookup(k8sDiskUsageEnvVar)
+	return v == "1"
 }
 
 // IsInContainer reports whether the process runs inside a container, detected
@@ -151,29 +186,191 @@ func (a *K8sAdapter) cpuUsageNanos() (int64, error) {
 	return usec * 1000, nil
 }
 
-// containerCPUCapacity returns the number of CPUs the container is limited to,
-// derived from cpu.cfs_quota_us / cpu.cfs_period_us. A negative quota (-1)
-// means unlimited; in that case the host CPU count from /proc/stat is used as
-// a fallback. At least 1 is always returned.
-func (a *K8sAdapter) containerCPUCapacity() int {
-	quota, err1 := a.readInt64(a.cpuQuota)
-	period, err2 := a.readInt64(a.cpuPeriod)
-	if err1 == nil && err2 == nil && period > 0 {
-		if quota > 0 {
-			cpus := int(quota / period)
-			if cpus > 0 {
-				return cpus
-			}
+// NumCPUs returns the number of CPUs available to the container, mirroring
+// Python ray._private.utils.get_num_cpus (with truncation, as the reporter
+// calls it): the plain logical CPU count, replaced by the cgroup-derived
+// docker count when that is set and differs. The result is truncated to an
+// integer and cached for the process lifetime.
+func (a *K8sAdapter) NumCPUs() float64 {
+	if a.numCPUsSet {
+		return a.numCPUsCache
+	}
+	a.numCPUsCache = a.computeNumCPUs()
+	a.numCPUsSet = true
+	return a.numCPUsCache
+}
+
+// computeNumCPUs is the uncached get_num_cpus body.
+func (a *K8sAdapter) computeNumCPUs() float64 {
+	logical := float64(a.logicalCPUs())
+	if a.envHas(multiprocCPUEnvVar) {
+		// RAY_USE_MULTIPROCESSING_CPU_COUNT=1 short-circuits the cgroup probe,
+		// mirroring Python's escape hatch for containers with a wrong cgroup.
+		return logical
+	}
+	docker := a.dockerCPUs()
+	if docker < 0 {
+		// dockerCPUs returns a negative sentinel when no cgroup limit applies.
+		return logical
+	}
+	if docker == logical {
+		return logical
+	}
+	// get_num_cpus truncates the fractional docker count by default.
+	return float64(int(docker))
+}
+
+// logicalCPUs returns multiprocessing.cpu_count(), the logical CPU count.
+func (a *K8sAdapter) logicalCPUs() int {
+	if a.numCPU != nil {
+		return a.numCPU()
+	}
+	if n, ok := onlineCPUs(a.readFileString); ok {
+		return n
+	}
+	return runtime.NumCPU()
+}
+
+// onlineCPUs returns the number of online CPUs parsed from
+// /sys/devices/system/cpu/online, mirroring psutil.cpu_count() (which resolves
+// os.sysconf("SC_NPROCESSORS_ONLN")). It is deliberately not runtime.NumCPU():
+// that reports the process's CPU affinity mask, so a process pinned with
+// taskset or constrained by cpuset would report a smaller count than Python.
+// The read is injectable so tests do not depend on the host topology.
+func onlineCPUs(read func(string) (string, error)) (int, bool) {
+	text, err := read(cpuOnlinePath)
+	if err != nil {
+		return 0, false
+	}
+	return parseCPUList(strings.TrimSpace(text))
+}
+
+// parseCPUList counts the CPUs in a Linux cpu list such as "0-3,8" (5 CPUs) or
+// "0-111" (112 CPUs), the format of both /sys/devices/system/cpu/online and the
+// cpuset controller's cpuset.cpus. An empty or malformed list yields ok=false.
+func parseCPUList(text string) (int, bool) {
+	if text == "" {
+		return 0, false
+	}
+	count := 0
+	for _, part := range strings.Split(text, ",") {
+		part = strings.TrimSpace(part)
+		if part == "" {
+			continue
+		}
+		lo, hi, isRange := strings.Cut(part, "-")
+		start, err := strconv.Atoi(strings.TrimSpace(lo))
+		if err != nil {
+			return 0, false
+		}
+		if !isRange {
+			count++
+			continue
+		}
+		end, err := strconv.Atoi(strings.TrimSpace(hi))
+		if err != nil || end < start {
+			return 0, false
+		}
+		count += end - start + 1
+	}
+	if count == 0 {
+		return 0, false
+	}
+	return count, true
+}
+
+// dockerCPUs mirrors Python _get_docker_cpus: the number of vCPUs the container
+// is limited to, the smaller of the CFS quota (cpu.cfs_quota_us/period, or
+// cpu.max on cgroup v2) and the cpuset cpu count. It returns -1 when neither
+// limit is set, matching the Python None result the caller maps back to the
+// bare logical count.
+func (a *K8sAdapter) dockerCPUs() float64 {
+	quota, haveQuota := a.cpuQuotaCPUs()
+	cpuset, haveCpuset := a.cpusetCPUs()
+	if haveQuota && haveCpuset {
+		return math.Min(quota, cpuset)
+	}
+	if haveQuota {
+		return quota
+	}
+	if haveCpuset {
+		return cpuset
+	}
+	return -1
+}
+
+// cpuQuotaCPUs returns the CFS quota expressed in CPUs. It reads
+// cpu.cfs_quota_us / cpu.cfs_period_us on cgroup v1 and falls back to the
+// "quota period" pair in cpu.max on cgroup v2. A negative or unset quota
+// reports false, and a zero quota is rounded up to 1, mirroring Python.
+func (a *K8sAdapter) cpuQuotaCPUs() (float64, bool) {
+	var quota, period float64
+	if q, e1 := a.readFloat64(a.cpuQuota); e1 == nil {
+		if p, e2 := a.readFloat64(a.cpuPeriod); e2 == nil {
+			quota, period = q, p
 		}
 	}
-	if a.hostCPUs > 0 {
-		return a.hostCPUs
+	if period == 0 {
+		// cgroup v2: cpu.max holds "<quota> <period>"; a quota of "max" means
+		// the CFS limit is unset.
+		if text, err := a.readFileString(a.cpuMax); err == nil {
+			fields := strings.Fields(text)
+			if len(fields) < 2 {
+				return 0, false
+			}
+			q, e1 := strconv.ParseFloat(fields[0], 64)
+			p, e2 := strconv.ParseFloat(fields[1], 64)
+			if e1 != nil || e2 != nil {
+				return 0, false
+			}
+			quota, period = q, p
+		}
 	}
-	if cpus := a.readHostNumCPUs(); cpus > 0 {
-		a.hostCPUs = cpus
-		return cpus
+	if period <= 0 {
+		return 0, false
 	}
-	return 1
+	cpus := quota / period
+	if cpus < 0 {
+		return 0, false
+	}
+	if cpus == 0 {
+		// Round up so a sub-CPU limit still reports one usable CPU.
+		cpus = 1
+	}
+	return cpus, true
+}
+
+// cpusetCPUs returns the number of CPUs in the cpuset controller's cpu list
+// (e.g. "0-3,8" -> 5), mirroring Python _get_docker_cpus's cpuset parsing.
+func (a *K8sAdapter) cpusetCPUs() (float64, bool) {
+	text, err := a.readFileString(a.cpuset)
+	if err != nil {
+		return 0, false
+	}
+	count, ok := parseCPUList(text)
+	if !ok {
+		return 0, false
+	}
+	return float64(count), true
+}
+
+// envHas reports whether an environment variable is present, regardless of
+// value, mirroring Python's `in os.environ` checks.
+func (a *K8sAdapter) envHas(key string) bool {
+	if a.envLookup == nil {
+		a.envLookup = os.LookupEnv
+	}
+	_, ok := a.envLookup(key)
+	return ok
+}
+
+// readFloat64 reads a file and parses its trimmed content as a float64.
+func (a *K8sAdapter) readFloat64(path string) (float64, error) {
+	text, err := a.readFileString(path)
+	if err != nil {
+		return 0, err
+	}
+	return strconv.ParseFloat(text, 64)
 }
 
 // readInt64 reads a file and parses its trimmed content as an int64.
@@ -288,7 +485,10 @@ func (a *K8sAdapter) CPUPerc() float64 {
 	if systemDelta <= 0 {
 		return 0
 	}
-	cpus := a.containerCPUCapacity()
+	// Python divides by get_num_cpus(), i.e. the container's logical CPU count
+	// as constrained by the cgroup quota/cpuset, so full use of a 2-CPU limit
+	// reads as 100% rather than 200%.
+	cpus := a.NumCPUs()
 	if cpus <= 0 {
 		return 0
 	}
@@ -305,13 +505,17 @@ func (a *K8sAdapter) CPUPerc() float64 {
 		}
 	}
 	if hostCPUs <= 0 {
-		// Host core count unavailable; skip normalization (equivalent to a
-		// single-core host) so the percentage stays well-defined.
+		// A real Linux host always reports per-core lines (cpu0..cpuN) in
+		// /proc/stat, so a zero count is unreachable outside synthetic inputs;
+		// treat it as a single-core host rather than dividing by zero.
 		hostCPUs = 1
 	}
 	// usageDelta over the elapsed per-core system window, normalized by CPU
 	// capacity, is the percentage of the container's CPU limit actually consumed.
-	percent := float64(usageDelta) / (float64(systemDelta) / float64(hostCPUs)) * 100 / float64(cpus)
+	percent := float64(usageDelta) / (float64(systemDelta) / float64(hostCPUs)) * 100 / cpus
+	// Python rounds to one decimal place with round(..., 1), which breaks ties
+	// to even; roundToDecimals reproduces that, unlike math.Round.
+	percent = roundToDecimals(percent, 1)
 	if percent < 0 {
 		percent = 0
 	}

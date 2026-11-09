@@ -93,24 +93,26 @@ func TestConstsChannel(t *testing.T) {
 
 func TestConstsComponentGaugeNames(t *testing.T) {
 	want := map[string]string{
-		"cpu":            "component_cpu_percentage",
-		"memSharedBytes": "component_mem_shared_bytes",
-		"rssMb":          "component_rss_mb",
-		"ussMb":          "component_uss_mb",
-		"pssMb":          "component_pss_mb",
-		"numFds":         "component_num_fds",
-		"gpuPercentage":  "component_gpu_percentage",
-		"gpuMemoryMb":    "component_gpu_memory_mb",
+		"cpu":           "component_cpu_percentage",
+		"sharedBytes":   "component_shared_bytes",
+		"rssMb":         "component_rss_mb",
+		"ussMb":         "component_uss_mb",
+		"rssBytes":      "component_rss_bytes",
+		"ussBytes":      "component_uss_bytes",
+		"numFds":        "component_num_fds",
+		"gpuPercentage": "component_gpu_percentage",
+		"gpuMemoryMb":   "component_gpu_memory_mb",
 	}
 	got := map[string]string{
-		"cpu":            ComponentGaugeCPUPercentage,
-		"memSharedBytes": ComponentGaugeMemSharedBytes,
-		"rssMb":          ComponentGaugeRSSMB,
-		"ussMb":          ComponentGaugeUSSMB,
-		"pssMb":          ComponentGaugePSSMB,
-		"numFds":         ComponentGaugeNumFDs,
-		"gpuPercentage":  ComponentGaugeGPUPercentage,
-		"gpuMemoryMb":    ComponentGaugeGPUMemoryMB,
+		"cpu":           ComponentGaugeCPUPercentage,
+		"sharedBytes":   ComponentGaugeSharedBytes,
+		"rssMb":         ComponentGaugeRSSMB,
+		"ussMb":         ComponentGaugeUSSMB,
+		"rssBytes":      ComponentGaugeRSSBytes,
+		"ussBytes":      ComponentGaugeUSSBytes,
+		"numFds":        ComponentGaugeNumFDs,
+		"gpuPercentage": ComponentGaugeGPUPercentage,
+		"gpuMemoryMb":   ComponentGaugeGPUMemoryMB,
 	}
 	for k, w := range want {
 		if got[k] != w {

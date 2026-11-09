@@ -2011,6 +2011,7 @@ def start_raylet(
         dashboard_agent_command = _build_go_dashboard_agent_command(
             node_id,
             node_ip_address,
+            metrics_export_port,
             metrics_agent_port,
             dashboard_agent_listen_port,
             plasma_store_name,
@@ -2480,6 +2481,7 @@ def build_go_runtime_env_agent_command(
 def _build_go_dashboard_agent_command(
     node_id: str,
     node_ip_address: str,
+    metrics_export_port: Optional[int],
     metrics_agent_port: Optional[int],
     dashboard_agent_listen_port: Optional[int],
     plasma_store_name: str,
@@ -2504,6 +2506,9 @@ def _build_go_dashboard_agent_command(
     Args:
         node_id: The hex ID of this node.
         node_ip_address: The IP address of this node.
+        metrics_export_port: The port where the agent exposes its Prometheus
+            metrics. The reporter's exporter binds it, and a non-positive value
+            leaves the exporter disabled.
         metrics_agent_port: The port of the metrics agent, passed as the
             agent's gRPC port.
         dashboard_agent_listen_port: The port at which the dashboard agent
@@ -2537,6 +2542,7 @@ def _build_go_dashboard_agent_command(
         "dashboard-agent",
         f"--node-id-hex={node_id}",
         f"--node-ip-address={node_ip_address}",
+        f"--metrics-export-port={metrics_export_port}",
         f"--grpc-port={metrics_agent_port}",
         f"--listen-port={dashboard_agent_listen_port}",
         "--node-manager-port=RAY_NODE_MANAGER_PORT_PLACEHOLDER",

@@ -43,21 +43,22 @@ const dashboardAgentLogFilename = "dashboard_agent.log"
 // through cmd.SetArgs.
 var (
 	// Required parameters.
-	nodeIPAddress   string
-	grpcPort        int
-	listenPort      int
-	nodeManagerPort string
-	gcsAddress      string
-	clusterIDHex    string
-	nodeIDHex       string
-	logDir          string
-	tempDir         string
-	sessionDir      string
-	sessionName     string
-	objectStoreName string
-	rayletName      string
-	stdoutFilepath  string
-	stderrFilepath  string
+	nodeIPAddress     string
+	metricsExportPort int
+	grpcPort          int
+	listenPort        int
+	nodeManagerPort   string
+	gcsAddress        string
+	clusterIDHex      string
+	nodeIDHex         string
+	logDir            string
+	tempDir           string
+	sessionDir        string
+	sessionName       string
+	objectStoreName   string
+	rayletName        string
+	stdoutFilepath    string
+	stderrFilepath    string
 
 	// Logging configuration.
 	loggingLevel             string
@@ -135,6 +136,10 @@ func init() {
 	DashboardAgentCmd.Flags().IntVar(&loggingRotateBackupCount, "logging-rotate-backup-count", 0, "Specify the backup count of rotated log file")
 
 	// Optional behavior flags.
+	// The export port is optional so a launcher that does not pass it still
+	// starts the agent with metrics disabled; a required flag would abort the
+	// launch instead.
+	DashboardAgentCmd.Flags().IntVar(&metricsExportPort, "metrics-export-port", 0, "The port to expose metrics through Prometheus.")
 	DashboardAgentCmd.Flags().BoolVar(&disableMetricsCollection, "disable-metrics-collection", false, "Disable metrics collection for this agent.")
 	DashboardAgentCmd.Flags().StringVar(&isHeadFlag, "is-head", "", "Whether this node is the head node (\"true\" or \"false\"). When set, it is used directly and GCS is not consulted.")
 
@@ -201,6 +206,7 @@ func buildConfig() (*agent.Config, error) {
 		GRPCPort:                  grpcPort,
 		ListenPort:                listenPort,
 		NodeManagerPort:           nodeManagerPortInt,
+		MetricsExportPort:         metricsExportPort,
 		MetricsCollectionDisabled: disableMetricsCollection,
 	}, nil
 }

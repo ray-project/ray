@@ -22,10 +22,10 @@ func newDoubleMetric(name, desc string, labelKeys []string, labelVals []string, 
 	}
 	return &proto.Metric{
 		MetricDescriptor: &proto.MetricDescriptor{
-			Name:      name,
+			Name:        name,
 			Description: desc,
-			Type:      proto.MetricDescriptor_GAUGE_DOUBLE,
-			LabelKeys: keys,
+			Type:        proto.MetricDescriptor_GAUGE_DOUBLE,
+			LabelKeys:   keys,
 		},
 		Timeseries: []*proto.TimeSeries{
 			{
@@ -74,7 +74,7 @@ func TestMetricsServiceExportDoubleGauge(t *testing.T) {
 	reg := prometheus.NewRegistry()
 	svc := NewMetricsService(reg)
 
-	err := svc.Export(context.Background(), []*proto.Metric{
+	err := svc.Export(context.Background(), nil, []*proto.Metric{
 		newDoubleMetric("node_cpu_utilization", "Total CPU usage on a ray node",
 			[]string{"ip", "Version", "SessionName", "IsHeadNode", "RayNodeType"},
 			[]string{"1.2.3.4", "2.53.0", "sess", "false", "worker"},
@@ -124,10 +124,10 @@ func TestMetricsServiceExportInt64Gauge(t *testing.T) {
 
 	m := &proto.Metric{
 		MetricDescriptor: &proto.MetricDescriptor{
-			Name: "node_cpu_count",
+			Name:        "node_cpu_count",
 			Description: "Total CPUs available on a ray node",
-			Type: proto.MetricDescriptor_GAUGE_INT64,
-			LabelKeys: []*proto.LabelKey{{Key: "ip"}},
+			Type:        proto.MetricDescriptor_GAUGE_INT64,
+			LabelKeys:   []*proto.LabelKey{{Key: "ip"}},
 		},
 		Timeseries: []*proto.TimeSeries{
 			{
@@ -137,7 +137,7 @@ func TestMetricsServiceExportInt64Gauge(t *testing.T) {
 		},
 	}
 
-	if err := svc.Export(context.Background(), []*proto.Metric{m}); err != nil {
+	if err := svc.Export(context.Background(), nil, []*proto.Metric{m}); err != nil {
 		t.Fatalf("Export error = %v", err)
 	}
 
@@ -158,7 +158,7 @@ func TestMetricsServiceExportReusesGaugeVec(t *testing.T) {
 	svc := NewMetricsService(reg)
 
 	for i := 0; i < 2; i++ {
-		if err := svc.Export(context.Background(), []*proto.Metric{
+		if err := svc.Export(context.Background(), nil, []*proto.Metric{
 			newDoubleMetric("node_mem_used", "Memory usage on a ray node",
 				[]string{"ip"}, []string{"1.1.1.1"}, float64(i+1)),
 		}); err != nil {
@@ -195,7 +195,7 @@ func TestMetricsServiceExportSkipsInvalidMetric(t *testing.T) {
 		Timeseries: []*proto.TimeSeries{{Points: []*proto.Point{}}},
 	}
 
-	err := svc.Export(context.Background(), []*proto.Metric{
+	err := svc.Export(context.Background(), nil, []*proto.Metric{
 		nil,
 		{},
 		unsupported,
@@ -220,7 +220,7 @@ func TestMetricsServiceCollect(t *testing.T) {
 	reg := prometheus.NewRegistry()
 	svc := NewMetricsService(reg)
 
-	if err := svc.Export(context.Background(), []*proto.Metric{
+	if err := svc.Export(context.Background(), nil, []*proto.Metric{
 		newDoubleMetric("node_network_sent", "Total bytes sent", []string{"ip"}, []string{"7.7.7.7"}, 55),
 	}); err != nil {
 		t.Fatalf("Export error = %v", err)
@@ -246,7 +246,7 @@ func TestMetricsServiceExportMetadata(t *testing.T) {
 	reg := prometheus.NewRegistry()
 	svc := NewMetricsService(reg)
 
-	if err := svc.Export(context.Background(), []*proto.Metric{
+	if err := svc.Export(context.Background(), nil, []*proto.Metric{
 		newDoubleMetric("component_cpu_percentage", "CPU percentage of the component",
 			[]string{"ip", "pid", "Version", "Component", "SessionName"},
 			[]string{"1.1.1.1", "123", "2.53.0", "agent", "sess"}, 12.3),
@@ -290,7 +290,7 @@ func TestMetricsServiceExportAlignsFilteredLabelKeys(t *testing.T) {
 			Points: []*proto.Point{{Value: &proto.Point_DoubleValue{DoubleValue: 7.5}}},
 		}},
 	}
-	if err := svc.Export(context.Background(), []*proto.Metric{m}); err != nil {
+	if err := svc.Export(context.Background(), nil, []*proto.Metric{m}); err != nil {
 		t.Fatalf("Export error = %v", err)
 	}
 
@@ -337,7 +337,7 @@ func TestMetricsServiceExportSkipsUnalignedSeries(t *testing.T) {
 	good := newDoubleMetric("node_disk_free", "Disk free on a ray node",
 		[]string{"ip"}, []string{"5.5.5.5"}, 100)
 
-	if err := svc.Export(context.Background(), []*proto.Metric{bad, good}); err != nil {
+	if err := svc.Export(context.Background(), nil, []*proto.Metric{bad, good}); err != nil {
 		t.Fatalf("Export error = %v", err)
 	}
 	names, err := gatherNames(reg)

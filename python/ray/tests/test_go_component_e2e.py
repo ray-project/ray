@@ -202,9 +202,11 @@ def test_go_dashboard_agent_runs_and_persists_ports(monkeypatch):
 
     The agent owns the port-discovery file protocol of
     go/internal/dashboard/agent/port_persistence.go: three
-    `{port_name}_{node_id_hex}` files in the session directory, with
-    metrics_export_port persisted as -1 because the Go agent does not export
-    metrics.
+    `{port_name}_{node_id_hex}` files in the session directory. The launcher
+    passes the configured export port, or 0 when the cluster configures none;
+    the agent treats 0 as "allocate one", so the file must carry the port it
+    bound either way, and match the configured port when there is one. Only a
+    disabled collection publishes the -1 "not in use" sentinel.
     """
     monkeypatch.setattr(ray_constants, "ENABLE_GO_DASHBOARD_AGENT", True)
     ctx = ray.init(address="local", num_cpus=1)
@@ -224,7 +226,15 @@ def test_go_dashboard_agent_runs_and_persists_ports(monkeypatch):
                 "dashboard_agent_listen_port",
             )
         }
-        assert ports["metrics_export_port"] == -1
+        configured = _cmdline_flag_value(proc.cmdline(), "--metrics-export-port")
+        assert configured is not None, proc.cmdline()
+        if int(configured) > 0:
+            assert ports["metrics_export_port"] == int(configured)
+        else:
+            # Zero means "allocate one", the value a cluster that configures no
+            # export port passes: the agent binds an ephemeral port and
+            # publishes what it bound.
+            assert ports["metrics_export_port"] > 0
         assert ports["metrics_agent_port"] > 0
         assert ports["dashboard_agent_listen_port"] > 0
     finally:

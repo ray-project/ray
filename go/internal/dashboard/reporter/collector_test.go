@@ -3,13 +3,17 @@ package reporter
 import (
 	"math"
 	"testing"
-	"time"
+
+	"github.com/ray-project/ray/go/internal/dashboard/agent"
 )
 
 type fakeSource struct {
 	cpuP        float64
 	cpus        []int
 	mem         MemInfo
+	hostMem     HostMemInfo
+	swap        SwapInfo
+	cgroupMem   CgroupMemInfo
 	shm         int64
 	shmOK       bool
 	disk        map[string]DiskInfo
@@ -34,7 +38,7 @@ func (f *fakeSource) cpuPercent() (float64, error) {
 	}
 	return f.cpuP, nil
 }
-func (f *fakeSource) resetCycleCache() {}
+func (f *fakeSource) beginCycle(now float64) {}
 func (f *fakeSource) cpuCounts() ([]int, error) {
 	if err := f.errs["cpus"]; err != nil {
 		return nil, err
@@ -47,6 +51,27 @@ func (f *fakeSource) memUsage() (MemInfo, error) {
 	}
 	return f.mem, nil
 }
+func (f *fakeSource) hostMemUsage() (HostMemInfo, error) {
+	if err := f.errs["host_mem"]; err != nil {
+		return HostMemInfo{}, err
+	}
+	return f.hostMem, nil
+}
+
+func (f *fakeSource) swapUsage() (SwapInfo, error) {
+	if err := f.errs["swap"]; err != nil {
+		return SwapInfo{}, err
+	}
+	return f.swap, nil
+}
+
+func (f *fakeSource) cgroupMemUsage() (CgroupMemInfo, error) {
+	if err := f.errs["cgroup_mem"]; err != nil {
+		return CgroupMemInfo{}, err
+	}
+	return f.cgroupMem, nil
+}
+
 func (f *fakeSource) shmUsage() (int64, bool, error) {
 	if err := f.errs["shm"]; err != nil {
 		return 0, false, err
@@ -205,13 +230,16 @@ func TestCollectorReturnsFullStatsMap(t *testing.T) {
 		}
 	}
 
-	now, ok := stats["now"].(int64)
+	// "now" is a POSIX timestamp in float seconds, mirroring the Python
+	// StatsPayload `now: float` field. It must not be truncated to a whole
+	// second: see TestCollectorNowKeepsFractionalSeconds.
+	now, ok := stats["now"].(float64)
 	if !ok {
-		t.Fatalf("now type = %T, want int64", stats["now"])
+		t.Fatalf("now type = %T, want float64", stats["now"])
 	}
-	cur := time.Now().Unix()
+	cur := posixTime()
 	if now < cur-5 || now > cur+5 {
-		t.Errorf("now = %d, outside reasonable window around %d (want epoch seconds)", now, cur)
+		t.Errorf("now = %v, outside reasonable window around %v (want epoch seconds)", now, cur)
 	}
 }
 
@@ -351,4 +379,48 @@ func equalIntSlice(got interface{}, want []int) bool {
 		}
 	}
 	return true
+}
+
+// TestCgroupMemUsageCapsTotalAtHostMemory verifies the container memory total is
+// a usable number on a host whose cgroup is unconstrained. cgroup v1 writes a
+// near-int64 value for an unlimited limit and cgroup v2 writes "max"; reporting
+// either verbatim would make every used/total ratio on a dashboard zero or
+// infinite. Python caps the limit at the system total and falls back to it when
+// there is no usable limit, which is what this asserts.
+func TestCgroupMemUsageCapsTotalAtHostMemory(t *testing.T) {
+	src := newSystemSource(agent.Config{})
+	info, err := src.cgroupMemUsage()
+	if err != nil {
+		t.Skipf("no cgroup memory controller on this host: %v", err)
+	}
+	host, err := src.hostMemUsage()
+	if err != nil {
+		t.Skipf("cannot read host memory: %v", err)
+	}
+	if info.Total <= 0 {
+		t.Errorf("cgroupMemUsage total = %d, want a positive total", info.Total)
+	}
+	if info.Total > host.Total {
+		t.Errorf("cgroupMemUsage total = %d, want at most the host total %d", info.Total, host.Total)
+	}
+	if info.Used > info.Total {
+		t.Errorf("cgroupMemUsage used = %d exceeds total = %d", info.Used, info.Total)
+	}
+}
+
+// TestSwapUsageIsCgroupScopedOrAbsent verifies the swap figure never mixes a host
+// value into a cgroup-scoped result and never reports more used than total.
+func TestSwapUsageIsCgroupScopedOrAbsent(t *testing.T) {
+	t.Setenv(countSwapInMemoryMonitorEnvVar, "true")
+	src := newSystemSource(agent.Config{})
+	info, err := src.swapUsage()
+	if err != nil {
+		t.Fatalf("swapUsage: %v", err)
+	}
+	if info.Used < 0 || info.Used > info.Total {
+		t.Errorf("swap used = %d total = %d, want 0 <= used <= total", info.Used, info.Total)
+	}
+	if info.Total > 0 && (info.Percent < 0 || info.Percent > 100) {
+		t.Errorf("swap percent = %v, want 0..100", info.Percent)
+	}
 }

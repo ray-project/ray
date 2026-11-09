@@ -1549,6 +1549,7 @@ def test_build_go_dashboard_agent_command_flags():
     command = ray._private.services._build_go_dashboard_agent_command(
         node_id="0" * 32,
         node_ip_address="127.0.0.1",
+        metrics_export_port=44217,
         metrics_agent_port=12345,
         dashboard_agent_listen_port=54321,
         plasma_store_name="/tmp/plasma",
@@ -1567,6 +1568,7 @@ def test_build_go_dashboard_agent_command_flags():
     assert command[1] == "dashboard-agent"
     for flag in (
         "--node-id-hex=",
+        "--metrics-export-port=44217",
         "--grpc-port=12345",
         "--listen-port=54321",
         "--gcs-address=127.0.0.1:6379",

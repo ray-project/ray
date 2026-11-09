@@ -5,6 +5,7 @@ import (
 	"sync"
 
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/ray-project/ray/go/pkg/log"
 	"github.com/ray-project/ray/go/proto"
 )
 
@@ -20,12 +21,16 @@ const metricNamespace = "ray"
 // metric proto already used by the reporter pipeline instead of the
 // OpenTelemetry OTLP proto.
 //
-// Conversion degrades gracefully: a malformed metric (nil descriptor, missing
-// name, unsupported point type) is skipped rather than failing the whole
-// batch or crashing.
+// The proxied metrics are kept per reporting component and rendered at scrape
+// time by openCensusProxyCollector, so a component that stops reporting stops
+// being exported and the per-worker series can be aggregated into node level
+// series. Conversion degrades gracefully: a malformed metric (nil descriptor,
+// missing name, unsupported point type) is skipped rather than failing the
+// whole batch or crashing.
 type MetricsService struct {
 	registry *prometheus.Registry
 	gauges   map[string]*prometheus.GaugeVec
+	proxy    *openCensusProxyCollector
 	mu       sync.Mutex
 }
 
@@ -33,9 +38,20 @@ type MetricsService struct {
 // on the given Prometheus registry. The registry is supplied by the module
 // assembly so the Prometheus exporter can scrape the same registry.
 func NewMetricsService(registry *prometheus.Registry) *MetricsService {
+	proxy := newOpenCensusProxyCollector(componentTimeout())
+	if registry != nil {
+		// A registration failure (a conflicting collector) is not fatal: the
+		// reporter's own gauges must keep being exported even when the proxied
+		// component metrics cannot be.
+		if err := registry.Register(proxy); err != nil {
+			log.Log.V(1).Info("failed to register the opencensus proxy collector, proxied metrics will not be exported",
+				"error", err.Error())
+		}
+	}
 	return &MetricsService{
 		registry: registry,
 		gauges:   make(map[string]*prometheus.GaugeVec),
+		proxy:    proxy,
 	}
 }
 
@@ -57,65 +73,46 @@ func (s *MetricsService) Describe(ch chan<- *prometheus.Desc) {
 	s.registry.Describe(ch)
 }
 
-// Export converts the given opencensus metrics into Prometheus gauges
-// registered on the module registry and sets their values. Invalid metrics are
-// skipped; the batch never fails on a single bad metric.
-func (s *MetricsService) Export(_ context.Context, metrics []*proto.Metric) error {
-	for _, metric := range metrics {
-		s.exportMetric(metric)
+// RecordGauge sets a single gauge value on the module registry, creating the
+// gauge on first use. It is the Go counterpart of the Python
+// MetricsAgent.record_and_export path the reporter agent uses for its own
+// process metrics. The label values are projected onto the gauge's declared
+// label keys, so a tag the gauge does not declare is ignored and a declared
+// label the record does not carry exports as an empty string -- exactly how the
+// opencensus TagMap of a Python record is rendered against the view's columns.
+func (s *MetricsService) RecordGauge(def gaugeDef, tags map[string]string, v float64) {
+	gauge := s.getOrCreateGauge(def.Name, def.Help, def.LabelNames)
+	if len(def.LabelNames) == 0 {
+		gauge.WithLabelValues().Set(v)
+		return
 	}
+	values := make([]string, len(def.LabelNames))
+	for i, name := range def.LabelNames {
+		values[i] = tags[name]
+	}
+	gauge.WithLabelValues(values...).Set(v)
+}
+
+// Export records the opencensus metrics reported by one component. workerID is
+// the reporting worker id carried by the request; it is empty for the metrics
+// pushed by the raylet or GCS, which are attributed to the global component.
+// A malformed worker id is reported to the caller, mirroring the Python agent
+// which lets the WorkerID constructor raise and drops the batch.
+func (s *MetricsService) Export(_ context.Context, workerID []byte, metrics []*proto.Metric) error {
+	workerIDHex, err := componentKeyFromWorkerID(workerID)
+	if err != nil {
+		return err
+	}
+	s.proxy.record(metrics, workerIDHex)
 	return nil
 }
 
-// exportMetric converts a single opencensus metric. Metrics that cannot be
-// converted are skipped silently.
-func (s *MetricsService) exportMetric(metric *proto.Metric) {
-	if metric == nil || metric.GetMetricDescriptor() == nil {
-		return
-	}
-	desc := metric.GetMetricDescriptor()
-	if desc.GetName() == "" {
-		return
-	}
-
-	// Keep the descriptor keys that carry a name and remember their indexes, so
-	// the series label values can be read at exactly those indexes. Dropping an
-	// empty key must drop the matching value too, or the values no longer line
-	// up with the gauge's label names and WithLabelValues panics.
-	keys := desc.GetLabelKeys()
-	labelNames := make([]string, 0, len(keys))
-	keptIndexes := make([]int, 0, len(keys))
-	for i, lk := range keys {
-		if lk != nil && lk.GetKey() != "" {
-			labelNames = append(labelNames, lk.GetKey())
-			keptIndexes = append(keptIndexes, i)
-		}
-	}
-
-	gauge := s.getOrCreateGauge(desc.GetName(), desc.GetDescription(), labelNames)
-
-	for _, ts := range metric.GetTimeseries() {
-		if ts == nil {
-			continue
-		}
-		labelValues, ok := labelValuesForKeys(ts, keptIndexes)
-		if !ok {
-			// The series does not carry a value for every retained key; skip it
-			// rather than mislabel or panic on a cardinality mismatch.
-			continue
-		}
-
-		for _, point := range ts.GetPoints() {
-			if point == nil {
-				continue
-			}
-			value, ok := pointValue(point)
-			if !ok {
-				continue
-			}
-			gauge.WithLabelValues(labelValues...).Set(value)
-		}
-	}
+// CleanStaleComponents drops the metrics of the components that stopped
+// reporting, mirroring MetricsAgent.clean_all_dead_worker_metrics. The reporter
+// calls it once per collection cycle so a dead worker's metrics stop being
+// exported.
+func (s *MetricsService) CleanStaleComponents() {
+	s.proxy.cleanStaleComponents()
 }
 
 // getOrCreateGauge returns the GaugeVec for the given metric name, creating
@@ -141,27 +138,6 @@ func (s *MetricsService) getOrCreateGauge(name, help string, labelNames []string
 		s.gauges[name] = gauge
 	}
 	return gauge
-}
-
-// labelValuesForKeys extracts the series label values at the retained key
-// indexes, so the result is aligned one-to-one with the gauge's label names
-// even when some descriptor keys were dropped. It returns false when the series
-// is missing a value for a retained key.
-func labelValuesForKeys(ts *proto.TimeSeries, keptIndexes []int) ([]string, bool) {
-	raw := ts.GetLabelValues()
-	values := make([]string, 0, len(keptIndexes))
-	for _, i := range keptIndexes {
-		if i >= len(raw) {
-			return nil, false
-		}
-		lv := raw[i]
-		if lv == nil || !lv.GetHasValue() {
-			values = append(values, "")
-		} else {
-			values = append(values, lv.GetValue())
-		}
-	}
-	return values, true
 }
 
 // pointValue extracts the numeric value of a point, returning false for point

@@ -20,7 +20,7 @@ func boolp(v bool) *bool    { return &v }
 // directory under dir, failing the test if construction fails.
 func newTestReporterService(t *testing.T, dir string) *ReporterService {
 	t.Helper()
-	s, err := NewReporterService(agent.Config{LogDir: dir})
+	s, err := NewReporterService(agent.Config{LogDir: dir, NodeIP: testNodeIP})
 	if err != nil {
 		t.Fatalf("NewReporterService(%q) error = %v", dir, err)
 	}
@@ -51,6 +51,8 @@ func TestReporterServiceImplementsInterface(t *testing.T) {
 }
 
 func TestReporterServiceGetTraceback(t *testing.T) {
+	stubPasswordlessSudo(t, false)
+	stubLookPath(t)
 	orig := runCommandDetail
 	defer func() { runCommandDetail = orig }()
 
@@ -95,6 +97,8 @@ func TestReporterServiceGetTraceback(t *testing.T) {
 }
 
 func TestReporterServiceCpuProfiling(t *testing.T) {
+	stubPasswordlessSudo(t, false)
+	stubLookPath(t)
 	orig := runCommandDetail
 	defer func() { runCommandDetail = orig }()
 
@@ -136,26 +140,53 @@ func TestReporterServiceCpuProfiling(t *testing.T) {
 }
 
 func TestReporterServiceGpuProfiling(t *testing.T) {
+	// This node has no GPUs, so the RPC must report the disabled diagnostic and
+	// name the configured node address.
+	stubGpuProfiling(t, false, "/usr/bin/dynolog", "/usr/bin/dyno", nil)
 	s := newTestReporterService(t, t.TempDir())
 	rep, err := s.GpuProfiling(context.Background(), &proto.GpuProfilingRequest{Pid: 5, NumIterations: u32p(10)})
 	if err != nil {
 		t.Fatalf("GpuProfiling: %v", err)
 	}
 	if rep.GetSuccess() {
-		t.Error("GpuProfiling success = true, want degraded (not supported)")
+		t.Error("GpuProfiling success = true, want degraded")
 	}
-	if !strings.Contains(rep.GetOutput(), "not supported") {
-		t.Errorf("GpuProfiling output = %q, want not-supported message", rep.GetOutput())
+	if !strings.Contains(rep.GetOutput(), "GPU profiling is not enabled on node "+testNodeIP) {
+		t.Errorf("GpuProfiling output = %q, want the disabled message naming %s", rep.GetOutput(), testNodeIP)
+	}
+}
+
+func TestReporterServiceGpuProfilingPropagatesNodeIP(t *testing.T) {
+	s, err := NewReporterService(agent.Config{LogDir: t.TempDir(), NodeIP: "192.168.9.9"})
+	if err != nil {
+		t.Fatalf("NewReporterService error = %v", err)
+	}
+	if s.profileManager.ipAddress != "192.168.9.9" {
+		t.Errorf("profileManager.ipAddress = %q, want %q", s.profileManager.ipAddress, "192.168.9.9")
+	}
+}
+
+func TestReporterServiceGpuProfilingNilRequest(t *testing.T) {
+	s := newTestReporterService(t, t.TempDir())
+	if _, err := s.GpuProfiling(context.Background(), nil); err == nil {
+		t.Error("GpuProfiling(nil) returned no error")
 	}
 }
 
 func TestReporterServiceMemoryProfiling(t *testing.T) {
+	stubPasswordlessSudo(t, false)
+	stubLookPath(t)
 	orig := runCommandDetail
 	origSleep := memoryProfileSleep
+	origSudo := canPasswordlessSudo
 	defer func() {
 		runCommandDetail = orig
 		memoryProfileSleep = origSleep
+		canPasswordlessSudo = origSudo
 	}()
+	// Pin the sudo answer so the counted commands are exactly the attach and
+	// the detach (the real probe would add its own command to the capture).
+	canPasswordlessSudo = func() bool { return false }
 	memoryProfileSleep = 0
 
 	dir := t.TempDir()
@@ -207,12 +238,18 @@ func TestReporterServiceMemoryProfiling(t *testing.T) {
 // observed; skipping the detach would leave sampling overhead on the target
 // process until it exits.
 func TestReporterServiceMemoryProfilingCancelDetaches(t *testing.T) {
+	stubLookPath(t)
 	orig := runCommandDetail
 	origSleep := memoryProfileSleep
+	origSudo := canPasswordlessSudo
 	defer func() {
 		runCommandDetail = orig
 		memoryProfileSleep = origSleep
+		canPasswordlessSudo = origSudo
 	}()
+	// Pin the sudo answer so the counted commands are exactly the attach and
+	// the detach (the real probe would add its own command to the capture).
+	canPasswordlessSudo = func() bool { return false }
 	// A non-zero sleep keeps the sampling timer pending so the pre-cancelled
 	// request context deterministically wins the select inside MemoryProfiling
 	// (with the collapsed zero sleep used above both select cases would be

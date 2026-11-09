@@ -204,11 +204,12 @@ func TestTPUCollectorAcceptsBothMetricNamings(t *testing.T) {
 	}
 }
 
-// TestTPUCollectorNoDoubleCountOnNodeVariant ensures that when the device
-// plugin emits both the plain metric and its "_node" variant for the same
-// accelerator, the utilization is overwritten rather than summed. Summing
-// would push the value past 100% (double counting) for a single field.
-func TestTPUCollectorNoDoubleCountOnNodeVariant(t *testing.T) {
+// TestTPUCollectorPrefersPlainOverNodeVariant pins the reconciliation of the
+// two namings. Python matches only the plain names, so for an accelerator that
+// reports both, the plain sample is the one Python would have used and Go must
+// agree. The two namings must also never be summed: that would double count a
+// device and could push a utilization past 100%.
+func TestTPUCollectorPrefersPlainOverNodeVariant(t *testing.T) {
 	body := []byte(
 		`tensorcore_utilization{accelerator_id="4804690994094478883-0",model="tpu-v6e-slice",tpu_topology="2x4"} 0.6` + "\n" +
 			`tensorcore_utilization_node{accelerator_id="4804690994094478883-0",model="tpu-v6e-slice",tpu_topology="2x4"} 0.8` + "\n" +
@@ -224,11 +225,105 @@ func TestTPUCollectorNoDoubleCountOnNodeVariant(t *testing.T) {
 	if len(tpus) != 1 {
 		t.Fatalf("Collect() returned %d TPUs, want 1", len(tpus))
 	}
-	if got := tpus[0].TensorcoreUtilization; got != 0.8 {
-		t.Errorf("TensorcoreUtilization = %v, want 0.8 (plain + _node must not sum to 1.4)", got)
+	// Python sees only the plain sample and reports 0.6. Summing would give
+	// 1.4, and letting the "_node" line win would give 0.8.
+	if got := tpus[0].TensorcoreUtilization; got != 0.6 {
+		t.Errorf("TensorcoreUtilization = %v, want 0.6 (the plain value Python would report)", got)
 	}
+	// HBM has no plain sample, so the "_node" variant is the only source and is
+	// used as a fallback. Python would report nothing here.
 	if got := tpus[0].HBMUtilization; got != 0.5 {
-		t.Errorf("HBMUtilization = %v, want 0.5", got)
+		t.Errorf("HBMUtilization = %v, want 0.5 (plain absent, so _node is the fallback)", got)
+	}
+}
+
+// TestTPUCollectorPlainPreferenceIsOrderIndependent is the reason the merge
+// keeps the two namings apart: with a single accumulator the last line would
+// win, so the result would depend on where the device plugin happened to place
+// the plain and "_node" samples in its /metrics output.
+func TestTPUCollectorPlainPreferenceIsOrderIndependent(t *testing.T) {
+	const accel = `{accelerator_id="4804690994094478883-0",model="tpu-v6e-slice",tpu_topology="2x4"}`
+	plainLine := "tensorcore_utilization" + accel + " 0.6\n"
+	nodeLine := "tensorcore_utilization_node" + accel + " 0.8\n"
+
+	for _, tc := range []struct {
+		name string
+		body string
+	}{
+		{"plain first", plainLine + nodeLine},
+		{"node first", nodeLine + plainLine},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			orig := getMetrics
+			getMetrics = fakeGetMetrics([]byte(tc.body), nil)
+			defer func() { getMetrics = orig }()
+
+			tpus := NewTPUCollectorWithEndpoint("127.0.0.1:8888").Collect()
+
+			if len(tpus) != 1 {
+				t.Fatalf("Collect() returned %d TPUs, want 1", len(tpus))
+			}
+			if got := tpus[0].TensorcoreUtilization; got != 0.6 {
+				t.Errorf("TensorcoreUtilization = %v, want 0.6 regardless of sample order", got)
+			}
+		})
+	}
+}
+
+// TestTPUCollectorSumsDuplicatePlainSamples mirrors the Python merge, which adds
+// repeated samples of the same field for one accelerator (+=) instead of letting
+// the last line win. Both implementations therefore report 0.55 here.
+func TestTPUCollectorSumsDuplicatePlainSamples(t *testing.T) {
+	const accel = `{accelerator_id="4804690994094478883-0",model="tpu-v6e-slice",tpu_topology="2x4"}`
+	body := []byte(
+		"tensorcore_utilization" + accel + " 0.2\n" +
+			"tensorcore_utilization" + accel + " 0.3\n" +
+			"memory_used" + accel + " 1000\n" +
+			"memory_used" + accel + " 500\n",
+	)
+	orig := getMetrics
+	getMetrics = fakeGetMetrics(body, nil)
+	defer func() { getMetrics = orig }()
+
+	tpus := NewTPUCollectorWithEndpoint("127.0.0.1:8888").Collect()
+
+	if len(tpus) != 1 {
+		t.Fatalf("Collect() returned %d TPUs, want 1", len(tpus))
+	}
+	if got := tpus[0].TensorcoreUtilization; got != 0.5 {
+		t.Errorf("TensorcoreUtilization = %v, want 0.5 (0.2 + 0.3, the Python += merge)", got)
+	}
+	if got := tpus[0].MemoryUsed; got != 1500 {
+		t.Errorf("MemoryUsed = %d, want 1500 (1000 + 500)", got)
+	}
+}
+
+// TestTPUCollectorNodeOnlyFallsBack documents the one place Go deliberately
+// exceeds Python: when the device plugin emits only the "_node" naming, Python
+// matches nothing and reports no TPUs at all, while Go recovers the data.
+func TestTPUCollectorNodeOnlyFallsBack(t *testing.T) {
+	const accel = `{accelerator_id="4804690994094478883-0",model="tpu-v6e-slice",tpu_topology="2x4"}`
+	body := []byte(
+		"tensorcore_utilization_node" + accel + " 0.8\n" +
+			"memory_bandwidth_utilization_node" + accel + " 0.5\n" +
+			"memory_used_node" + accel + " 1234\n",
+	)
+	orig := getMetrics
+	getMetrics = fakeGetMetrics(body, nil)
+	defer func() { getMetrics = orig }()
+
+	tpus := NewTPUCollectorWithEndpoint("127.0.0.1:8888").Collect()
+
+	if len(tpus) != 1 {
+		t.Fatalf("Collect() returned %d TPUs, want 1", len(tpus))
+	}
+	t0 := tpus[0]
+	if t0.TensorcoreUtilization != 0.8 || t0.HBMUtilization != 0.5 || t0.MemoryUsed != 1234 {
+		t.Errorf("node-only fallback = %+v, want tensorcore 0.8 / hbm 0.5 / memUsed 1234", t0)
+	}
+	// Identity fields must survive even though only the "_node" naming appeared.
+	if t0.Name != "4804690994094478883-0" || t0.TPUType != "tpu-v6e-slice" || t0.TPUTopology != "2x4" {
+		t.Errorf("identity fields = %q/%q/%q, want the labels of the _node sample", t0.Name, t0.TPUType, t0.TPUTopology)
 	}
 }
 

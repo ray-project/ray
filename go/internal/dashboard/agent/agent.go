@@ -71,6 +71,13 @@ type Module interface {
 	RegisterGRPC(s *grpc.Server) error
 }
 
+// metricsExporter is implemented by a module that serves a Prometheus endpoint,
+// so the agent can publish the port that endpoint actually bound instead of the
+// port it was asked for.
+type metricsExporter interface {
+	BoundMetricsExportPort() int
+}
+
 // Run owns the HTTP/gRPC server lifecycle: it builds both servers from the
 // registered modules, starts every module, publishes the agent address in GCS
 // InternalKV, then serves HTTP and gRPC until ctx is cancelled. An HTTP bind
@@ -86,7 +93,7 @@ func Run(ctx context.Context, cfg Config, mods []Module) error {
 		// Python keeps the agent alive with the HTTP service disabled in this
 		// case and does not publish its address, because every head-side
 		// consumer reaches the agent through that registration.
-		log.Log.Error(httpErr, "failed to start HTTP server; " +
+		log.Log.Error(httpErr, "failed to start HTTP server; "+
 			"the agent will stay alive but the HTTP service will be disabled")
 		httpSrv = nil
 	}
@@ -99,25 +106,51 @@ func Run(ctx context.Context, cfg Config, mods []Module) error {
 		return fmt.Errorf("create gRPC server: %w", err)
 	}
 
-	// Publish the bound ports before registering the agent: when a port is 0,
-	// raylet waits for these files before it registers this node in GCS, so
-	// writing them after registration would deadlock the startup.
 	grpcPort := listenerPort(grpcSrv.listener)
 	listenPort := -1
 	if httpSrv != nil {
 		listenPort = listenerPort(httpSrv.listener)
 	}
+
+	// Publish the two server ports before starting the modules: when a port is
+	// 0, raylet waits for these files before it registers this node in GCS, so
+	// writing them after registration would deadlock the startup, and writing
+	// them before the modules start means a module that fails cannot leave
+	// raylet waiting for them. The metrics export port is written once, below,
+	// because only the module that serves it knows the port it bound.
 	if err := persistAgentPorts(cfg, grpcPort, listenPort); err != nil {
 		shutdownServers(httpSrv, grpcSrv)
 		return fmt.Errorf("persist dashboard agent ports: %w", err)
 	}
 
 	// Start every module before serving so configuration or initialization
-	// errors surface before any traffic is accepted.
+	// errors surface before any traffic is accepted. The export port is
+	// published as soon as the module that serves it has started rather than
+	// after the last one: the raylet waits 15s for that file before it
+	// registers the node, so the wait must not depend on how long an unrelated
+	// module takes. A module whose bind failed reports -1, so the file never
+	// advertises an endpoint nothing answers on.
+	publishedExportPort := false
 	for _, m := range mods {
 		if err := m.Start(ctx); err != nil {
 			shutdownServers(httpSrv, grpcSrv)
 			return fmt.Errorf("start module: %w", err)
+		}
+		if e, ok := m.(metricsExporter); ok {
+			if err := persistMetricsExportPort(cfg, e.BoundMetricsExportPort()); err != nil {
+				shutdownServers(httpSrv, grpcSrv)
+				return fmt.Errorf("persist dashboard agent metrics export port: %w", err)
+			}
+			publishedExportPort = true
+		}
+	}
+	// The file has to exist even when nothing serves metrics, because the raylet
+	// waits for it before it registers the node: a configuration without a
+	// metrics module publishes the not-in-use sentinel rather than nothing.
+	if !publishedExportPort {
+		if err := persistMetricsExportPort(cfg, -1); err != nil {
+			shutdownServers(httpSrv, grpcSrv)
+			return fmt.Errorf("persist dashboard agent metrics export port: %w", err)
 		}
 	}
 

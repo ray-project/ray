@@ -12,10 +12,12 @@ import (
 )
 
 // effectiveMemoryProfileDuration clamps a client-supplied profile duration.
-// The proto field is uint32 and client-controlled, so zero and negative values
-// fall back to the default (a negative value would drive the wait timer with
-// a negative interval and fire immediately), and anything above the maximum
-// is capped.
+// The proto field is optional and client-controlled, so an absent or zero value
+// falls back to the default and anything above the maximum is capped. A
+// negative value is rejected by the proto's own unsigned type today; the guard
+// is kept because the helper is the one choke point every caller goes through,
+// and a negative duration would drive the wait timer with a negative interval
+// and fire immediately.
 func effectiveMemoryProfileDuration(seconds int64) int64 {
 	if seconds <= 0 {
 		return memoryProfileDefaultDurationSeconds
@@ -62,7 +64,7 @@ func NewReporterService(cfg agent.Config) (*ReporterService, error) {
 	if cfg.LogDir == "" {
 		return nil, status.Error(codes.InvalidArgument, "log directory must be configured")
 	}
-	manager, err := NewProfileManager(cfg.LogDir)
+	manager, err := NewProfileManager(cfg.LogDir, cfg.NodeIP)
 	if err != nil {
 		return nil, err
 	}
@@ -98,8 +100,10 @@ func (s *ReporterService) CpuProfiling(_ context.Context, req *proto.CpuProfilin
 	return &proto.CpuProfilingReply{Success: success, Output: output}, nil
 }
 
-// GpuProfiling is a degraded implementation: GPU profiling is not supported on
-// the Go side and always reports the not-supported message.
+// GpuProfiling reports why GPU profiling cannot serve the request. The Go
+// reporter does not implement the dynolog gputrace path, so it degrades, but
+// the node capability and process liveness diagnostics of the Python
+// GpuProfilingManager are preserved.
 func (s *ReporterService) GpuProfiling(_ context.Context, req *proto.GpuProfilingRequest) (*proto.GpuProfilingReply, error) {
 	if req == nil {
 		return nil, status.Error(codes.InvalidArgument, "request must not be nil")
@@ -161,11 +165,14 @@ func (s *ReporterService) HealthCheck(_ context.Context, _ *proto.HealthCheckReq
 }
 
 // ReportOCMetrics forwards the reported OpenCensus metrics to the MetricsService
-// for export as Prometheus gauges. When MetricsCollectionDisabled is set the
-// metrics are dropped and an acknowledgement is returned without forwarding,
-// mirroring the Python reporter_agent which returns early on
-// _metrics_collection_disabled. A nil request is rejected; a missing
-// MetricsService degrades to an acknowledgement without forwarding.
+// for export as Prometheus gauges, attributed to the reporting component. When
+// MetricsCollectionDisabled is set the metrics are dropped and an
+// acknowledgement is returned without forwarding, mirroring the Python
+// reporter_agent which returns early on _metrics_collection_disabled. A nil
+// request is rejected; a missing MetricsService degrades to an acknowledgement
+// without forwarding, and a failed export is logged and acknowledged rather than
+// failed, mirroring the Python agent which catches the export exception so a
+// bad report from one component cannot fail the RPC.
 func (s *ReporterService) ReportOCMetrics(ctx context.Context, req *proto.ReportOCMetricsRequest) (*proto.ReportOCMetricsReply, error) {
 	if req == nil {
 		return nil, status.Error(codes.InvalidArgument, "request must not be nil")
@@ -174,8 +181,8 @@ func (s *ReporterService) ReportOCMetrics(ctx context.Context, req *proto.Report
 		return &proto.ReportOCMetricsReply{}, nil
 	}
 	if s.metricsService != nil {
-		if err := s.metricsService.Export(ctx, req.GetMetrics()); err != nil {
-			return nil, err
+		if err := s.metricsService.Export(ctx, req.GetWorkerId(), req.GetMetrics()); err != nil {
+			log.Log.Error(err, "failed to export the reported opencensus metrics")
 		}
 	}
 	return &proto.ReportOCMetricsReply{}, nil

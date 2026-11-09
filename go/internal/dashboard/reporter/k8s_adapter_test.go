@@ -3,6 +3,7 @@ package reporter
 import (
 	"math"
 	"os"
+	"runtime"
 	"strconv"
 	"strings"
 	"testing"
@@ -31,6 +32,8 @@ func newTestAdapter(contents map[string]string, env func(string) (string, bool))
 		cpuUsageV2: cpuUsageV2,
 		cpuQuota:   cpuQuota,
 		cpuPeriod:  cpuPeriod,
+		cpuMax:     cpuMaxV2,
+		cpuset:     cpusetV1,
 		memUsageV1: memUsageV1,
 		memLimitV1: memLimitV1,
 		memUsageV2: memUsageV2,
@@ -126,9 +129,9 @@ func TestK8sAdapterCPUPercV2(t *testing.T) {
 		envLookup:  func(string) (string, bool) { return "", false },
 		fileExists: func(string) bool { return true },
 		readFile: fakeReadFile(map[string]string{
-			cpuUsageV2: "usage_usec 100000\nuser_usec 0\nsystem_usec 0\n",
-			cpuQuota:   "200000",
-			cpuPeriod:  "100000",
+			cpuUsageV2:   "usage_usec 100000\nuser_usec 0\nsystem_usec 0\n",
+			cpuQuota:     "200000",
+			cpuPeriod:    "100000",
 			procStatPath: "cpu  100000 0 0 0 0 0 0\n",
 		}, map[string]bool{cpuUsageV1: true}),
 	}
@@ -136,9 +139,9 @@ func TestK8sAdapterCPUPercV2(t *testing.T) {
 		t.Fatalf("CPUPerc() first call = %v, want 0", got)
 	}
 	a.readFile = fakeReadFile(map[string]string{
-		cpuUsageV2: "usage_usec 200000\nuser_usec 0\nsystem_usec 0\n",
-		cpuQuota:   "200000",
-		cpuPeriod:  "100000",
+		cpuUsageV2:   "usage_usec 200000\nuser_usec 0\nsystem_usec 0\n",
+		cpuQuota:     "200000",
+		cpuPeriod:    "100000",
 		procStatPath: "cpu  100010 0 0 0 0 0 0\n",
 	}, map[string]bool{cpuUsageV1: true})
 	if got := a.CPUPerc(); got != 50 {
@@ -339,29 +342,176 @@ func TestK8sAdapterNetworkStatsDegradesOnReadError(t *testing.T) {
 	}
 }
 
-// TestK8sAdapterContainerCPUCapacityUnlimitedQuotaFallbackHost verifies that
-// when the cgroup quota is unlimited (negative) or absent, the capacity falls
-// back to the host CPU count parsed from /proc/stat.
-func TestK8sAdapterContainerCPUCapacityUnlimitedQuotaFallbackHost(t *testing.T) {
+// TestK8sAdapterNumCPUsUnlimitedQuotaFallsBackToLogical verifies that when the
+// cgroup CPU quota is unlimited (negative, the cgroup v1 "no limit" sentinel)
+// and no cpuset is set, get_num_cpus() returns the plain logical CPU count,
+// mirroring Python _get_docker_cpus returning None in that case.
+func TestK8sAdapterNumCPUsUnlimitedQuotaFallsBackToLogical(t *testing.T) {
 	contents := map[string]string{
-		cpuQuota:     "-1",
-		cpuPeriod:    "100000",
-		procStatPath: "cpu  100000 0 0 0 0 0 0\n" +
-			"cpu0 1000 0 0 0 0 0 0\n" +
-			"cpu1 1000 0 0 0 0 0 0\n",
+		cpuQuota:  "-1",
+		cpuPeriod: "100000",
 	}
 	a := newTestAdapter(contents, func(string) (string, bool) { return "", false })
-	if got := a.containerCPUCapacity(); got != 2 {
-		t.Fatalf("containerCPUCapacity() = %d, want 2 (host CPUs from /proc/stat)", got)
+	a.numCPU = func() int { return 8 }
+	if got := a.NumCPUs(); got != 8 {
+		t.Fatalf("NumCPUs() = %v, want 8 (logical count when the quota is unlimited)", got)
 	}
 }
 
-// TestK8sAdapterContainerCPUCapacityFallbackOne verifies that when the quota is
-// unlimited and /proc/stat is unreadable, the capacity falls back to at least 1.
-func TestK8sAdapterContainerCPUCapacityFallbackOne(t *testing.T) {
-	a := newTestAdapter(nil, func(string) (string, bool) { return "", false })
-	if got := a.containerCPUCapacity(); got != 1 {
-		t.Fatalf("containerCPUCapacity() = %d, want 1 (fallback floor)", got)
+// TestK8sAdapterNumCPUsTruncatesFractionalQuota verifies that a sub-integer CPU
+// limit (quota/period = 2.5) is truncated to 2, mirroring Python get_num_cpus's
+// default truncate=True behavior.
+func TestK8sAdapterNumCPUsTruncatesFractionalQuota(t *testing.T) {
+	contents := map[string]string{
+		cpuQuota:  "250000",
+		cpuPeriod: "100000",
+	}
+	a := newTestAdapter(contents, func(string) (string, bool) { return "", false })
+	a.numCPU = func() int { return 64 }
+	if got := a.NumCPUs(); got != 2 {
+		t.Fatalf("NumCPUs() = %v, want 2 (2.5 truncated)", got)
+	}
+}
+
+// TestK8sAdapterNumCPUsMinOfQuotaAndCpuset verifies the Python rule that the
+// docker CPU count is the smaller of the CFS quota and the cpuset cpu count.
+func TestK8sAdapterNumCPUsMinOfQuotaAndCpuset(t *testing.T) {
+	contents := map[string]string{
+		cpuQuota:  "200000", // 2 CPUs
+		cpuPeriod: "100000",
+		cpusetV1:  "0-3,8", // 5 CPUs
+	}
+	a := newTestAdapter(contents, func(string) (string, bool) { return "", false })
+	a.numCPU = func() int { return 64 }
+	if got := a.NumCPUs(); got != 2 {
+		t.Fatalf("NumCPUs() = %v, want 2 (min of quota 2 and cpuset 5)", got)
+	}
+}
+
+// TestK8sAdapterNumCPUsCpusetOnly verifies that when only the cpuset controller
+// limits the container, its cpu count is used.
+func TestK8sAdapterNumCPUsCpusetOnly(t *testing.T) {
+	contents := map[string]string{cpusetV1: "0-3"}
+	a := newTestAdapter(contents, func(string) (string, bool) { return "", false })
+	a.numCPU = func() int { return 64 }
+	if got := a.NumCPUs(); got != 4 {
+		t.Fatalf("NumCPUs() = %v, want 4 (cpuset 0-3)", got)
+	}
+}
+
+// TestK8sAdapterNumCPUsMultiprocessingOverride verifies the
+// RAY_USE_MULTIPROCESSING_CPU_COUNT escape hatch short-circuits the cgroup
+// probe and reports the bare logical count, mirroring Python get_num_cpus.
+func TestK8sAdapterNumCPUsMultiprocessingOverride(t *testing.T) {
+	contents := map[string]string{
+		cpuQuota:  "200000",
+		cpuPeriod: "100000",
+	}
+	env := func(key string) (string, bool) {
+		if key == "RAY_USE_MULTIPROCESSING_CPU_COUNT" {
+			return "1", true
+		}
+		return "", false
+	}
+	a := newTestAdapter(contents, env)
+	a.numCPU = func() int { return 64 }
+	if got := a.NumCPUs(); got != 64 {
+		t.Fatalf("NumCPUs() = %v, want 64 (cgroup probe bypassed by env override)", got)
+	}
+}
+
+// TestK8sAdapterNumCPUsV2CpuMax verifies the cgroup v2 cpu.max parsing, where
+// the quota and period live in one "<quota> <period>" line.
+func TestK8sAdapterNumCPUsV2CpuMax(t *testing.T) {
+	contents := map[string]string{cpuMaxV2: "300000 100000"}
+	a := newTestAdapter(contents, func(string) (string, bool) { return "", false })
+	a.numCPU = func() int { return 64 }
+	if got := a.NumCPUs(); got != 3 {
+		t.Fatalf("NumCPUs() = %v, want 3 (cpu.max 300000/100000)", got)
+	}
+}
+
+// TestK8sAdapterNumCPUsV2CpuMaxUnset verifies that cpu.max's "max" quota (an
+// unset v2 limit) falls back to the logical CPU count rather than erroring.
+func TestK8sAdapterNumCPUsV2CpuMaxUnset(t *testing.T) {
+	contents := map[string]string{cpuMaxV2: "max 100000"}
+	a := newTestAdapter(contents, func(string) (string, bool) { return "", false })
+	a.numCPU = func() int { return 12 }
+	if got := a.NumCPUs(); got != 12 {
+		t.Fatalf("NumCPUs() = %v, want 12 (cpu.max quota is 'max', i.e. unset)", got)
+	}
+}
+
+// TestK8sAdapterNumCPUsDefaultsToOnlineCPUs verifies the logical baseline of
+// get_num_cpus is the ONLINE CPU count (psutil.cpu_count(), i.e.
+// os.sysconf("SC_NPROCESSORS_ONLN")), not runtime.NumCPU(), which reflects the
+// process's CPU affinity mask. The online list is read through the adapter's
+// own reader so the test host topology is irrelevant.
+func TestK8sAdapterNumCPUsDefaultsToOnlineCPUs(t *testing.T) {
+	contents := map[string]string{
+		cpuOnlinePath: "0-7",
+	}
+	a := newTestAdapter(contents, func(string) (string, bool) { return "", false })
+
+	if got := a.NumCPUs(); got != 8 {
+		t.Fatalf("NumCPUs() = %v, want 8 (online CPUs when no cgroup limit applies)", got)
+	}
+}
+
+// TestK8sAdapterNumCPUsFallsBackWhenOnlineUnreadable verifies the online count
+// degrades to runtime.NumCPU() when /sys/devices/system/cpu/online is
+// unreadable, instead of collapsing to zero.
+func TestK8sAdapterNumCPUsFallsBackWhenOnlineUnreadable(t *testing.T) {
+	a := newTestAdapter(map[string]string{}, func(string) (string, bool) { return "", false })
+
+	if got := a.NumCPUs(); got != float64(runtime.NumCPU()) {
+		t.Fatalf("NumCPUs() = %v, want %d (runtime.NumCPU fallback)", got, runtime.NumCPU())
+	}
+}
+
+// TestK8sAdapterNumCPUsMalformedCpusetIgnored verifies a readable but
+// unparseable cpuset list is rejected rather than treated as a 0-CPU limit:
+// accepting it would cap the container at zero CPUs and zero out the CPU
+// percentage normalization.
+func TestK8sAdapterNumCPUsMalformedCpusetIgnored(t *testing.T) {
+	contents := map[string]string{
+		cpuOnlinePath: "0-7",
+		cpusetV1:      "garbage",
+	}
+	a := newTestAdapter(contents, func(string) (string, bool) { return "", false })
+
+	if got := a.NumCPUs(); got != 8 {
+		t.Fatalf("NumCPUs() = %v, want 8 (malformed cpuset ignored, online count used)", got)
+	}
+}
+
+// TestParseCPUList covers the Linux cpu-list format shared by
+// /sys/devices/system/cpu/online and the cpuset controller.
+func TestParseCPUList(t *testing.T) {
+	cases := []struct {
+		name string
+		in   string
+		want int
+		ok   bool
+	}{
+		{"range", "0-111", 112, true},
+		{"single", "3", 1, true},
+		{"mixed", "0-3,8", 5, true},
+		{"scattered", "0,2,4", 3, true},
+		{"spaces", " 0-3 , 8 ", 5, true},
+		{"empty", "", 0, false},
+		{"malformed range", "3-1", 0, false},
+		{"non numeric", "x", 0, false},
+	}
+	for _, tc := range cases {
+		got, ok := parseCPUList(tc.in)
+		if ok != tc.ok {
+			t.Errorf("%s: parseCPUList(%q) ok = %v, want %v", tc.name, tc.in, ok, tc.ok)
+			continue
+		}
+		if tc.ok && got != tc.want {
+			t.Errorf("%s: parseCPUList(%q) = %d, want %d", tc.name, tc.in, got, tc.want)
+		}
 	}
 }
 

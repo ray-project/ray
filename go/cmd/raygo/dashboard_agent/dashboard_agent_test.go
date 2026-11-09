@@ -41,6 +41,7 @@ const (
 func testArgs(overrides map[string]string) []string {
 	base := map[string]string{
 		"node-ip-address":            "1.2.3.4",
+		"metrics-export-port":        "44217",
 		"grpc-port":                  "8888",
 		"listen-port":                "8080",
 		"node-manager-port":          "12345",
@@ -68,6 +69,35 @@ func testArgs(overrides map[string]string) []string {
 	return args
 }
 
+// TestMetricsExportPortIsOptional verifies the export port flag is optional, so
+// a launcher that does not pass it still starts the agent with metrics
+// disabled. Making it required would abort every launch from a caller that has
+// not been updated, which is the failure this test exists to prevent.
+func TestMetricsExportPortIsOptional(t *testing.T) {
+	all := testArgs(nil)
+	args := make([]string, 0, len(all))
+	for i := 0; i < len(all); i++ {
+		if all[i] == "--metrics-export-port" {
+			i++ // skip the flag and its value
+			continue
+		}
+		args = append(args, all[i])
+	}
+	// The flag binds a package-level variable, so a previous parse in this
+	// process would otherwise leave its value behind.
+	metricsExportPort = 0
+	if err := DashboardAgentCmd.ParseFlags(args); err != nil {
+		t.Fatalf("parse flags without --metrics-export-port: %v", err)
+	}
+	cfg, err := buildConfig()
+	if err != nil {
+		t.Fatalf("buildConfig: %v", err)
+	}
+	if cfg.MetricsExportPort != 0 {
+		t.Errorf("cfg.MetricsExportPort = %d, want 0 when the flag is absent", cfg.MetricsExportPort)
+	}
+}
+
 func TestBuildConfig(t *testing.T) {
 	if err := DashboardAgentCmd.ParseFlags(testArgs(nil)); err != nil {
 		t.Fatalf("parse flags: %v", err)
@@ -83,6 +113,9 @@ func TestBuildConfig(t *testing.T) {
 	}
 	if cfg.GRPCPort != 8888 {
 		t.Errorf("cfg.GRPCPort = %d, want %d", cfg.GRPCPort, 8888)
+	}
+	if cfg.MetricsExportPort != 44217 {
+		t.Errorf("cfg.MetricsExportPort = %d, want %d", cfg.MetricsExportPort, 44217)
 	}
 	if cfg.ListenPort != 8080 {
 		t.Errorf("cfg.ListenPort = %d, want %d", cfg.ListenPort, 8080)

@@ -33,19 +33,30 @@ const (
 // Component metric gauge names, aligned with the Python METRICS_GAUGES
 // definitions in reporter_agent.py.
 const (
-	ComponentGaugeCPUPercentage  = "component_cpu_percentage"
-	ComponentGaugeMemSharedBytes = "component_mem_shared_bytes"
-	ComponentGaugeRSSMB          = "component_rss_mb"
-	ComponentGaugeUSSMB          = "component_uss_mb"
-	ComponentGaugePSSMB          = "component_pss_mb"
-	ComponentGaugeNumFDs         = "component_num_fds"
-	ComponentGaugeGPUPercentage  = "component_gpu_percentage"
-	ComponentGaugeGPUMemoryMB    = "component_gpu_memory_mb"
+	ComponentGaugeCPUPercentage = "component_cpu_percentage"
+	ComponentGaugeSharedBytes   = "component_shared_bytes"
+	ComponentGaugeRSSMB         = "component_rss_mb"
+	ComponentGaugeUSSMB         = "component_uss_mb"
+	ComponentGaugeRSSBytes      = "component_rss_bytes"
+	ComponentGaugeUSSBytes      = "component_uss_bytes"
+	ComponentGaugeNumFDs        = "component_num_fds"
+	ComponentGaugeGPUPercentage = "component_gpu_percentage"
+	ComponentGaugeGPUMemoryMB   = "component_gpu_memory_mb"
 )
 
 // reporterUpdateIntervalEnv is the environment variable that overrides the
 // default reporting interval, aligned with Python env_integer.
 const reporterUpdateIntervalEnv = "REPORTER_UPDATE_INTERVAL_MS"
+
+// debugAutoscalingStatus is the GCS internal KV key holding the autoscaler debug
+// status, aligned with Python ray_constants.DEBUG_AUTOSCALING_STATUS. The head
+// node reporter reads it to publish the cluster-level gauges.
+const debugAutoscalingStatus = "__autoscaling_status"
+
+// gcsPIDKey is the GCS internal KV key holding the gcs_server pid, aligned with
+// Ray's kGcsPidKey (GCS_PID_KEY in Python). The head node reporter reads it to
+// locate the gcs_server process, mirroring the Python _get_gcs.
+const gcsPIDKey = "gcs_pid"
 
 // UpdateIntervalMs returns the reporting interval in milliseconds. It reads
 // the REPORTER_UPDATE_INTERVAL_MS environment variable and falls back to
