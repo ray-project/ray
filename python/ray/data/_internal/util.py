@@ -23,6 +23,7 @@ from typing import (
     Iterator,
     List,
     Optional,
+    Sequence,
     Tuple,
     TypeVar,
     Union,
@@ -1646,6 +1647,15 @@ def _annotate_exception_with_retry_context(
     return exc
 
 
+def is_retryable_error(error_str: str, match: Optional[Sequence[str]]) -> bool:
+    """Whether ``iterate_with_retry`` retries an error formatted as ``error_str``.
+
+    ``match`` holds patterns, each checked as a substring, then as a regex.
+    ``None`` retries any error.
+    """
+    return match is None or any(matches_error(pattern, error_str) for pattern in match)
+
+
 def iterate_with_retry(
     iterable_factory: Callable[[], Iterable],
     description: str,
@@ -1696,10 +1706,7 @@ def iterate_with_retry(
             return
         except Exception as e:
             error_str = format_exception(e, include_cause=unwrap_cause)
-            is_retryable = match is None or any(
-                matches_error(pattern, error_str) for pattern in match
-            )
-            if is_retryable and attempt + 1 < max_attempts:
+            if is_retryable_error(error_str, match) and attempt + 1 < max_attempts:
                 # Retry with binary expoential backoff with random jitter.
                 backoff = min((2 ** (attempt + 1)), max_backoff_s) * random.random()
                 total_backoff_s += backoff
