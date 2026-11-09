@@ -72,30 +72,35 @@ class MetricsPusher:
         """
 
         wait_for_stop_event = asyncio.create_task(self.stop_event.wait())
-        while True:
-            if wait_for_stop_event.done():
-                return
+        try:
+            while True:
+                if wait_for_stop_event.done():
+                    return
 
-            try:
-                task_func = self._tasks[name].task_func
-                # Check if the function is a coroutine function
-                if asyncio.iscoroutinefunction(task_func):
-                    await task_func()
-                else:
-                    task_func()
-            except Exception as e:
-                logger.exception(f"Failed to run metrics task '{name}': {e}")
+                try:
+                    task_func = self._tasks[name].task_func
+                    # Check if the function is a coroutine function
+                    if asyncio.iscoroutinefunction(task_func):
+                        await task_func()
+                    else:
+                        task_func()
+                except Exception as e:
+                    logger.exception(f"Failed to run metrics task '{name}': {e}")
 
-            sleep_task = asyncio.create_task(
-                self._async_sleep(self._tasks[name].interval_s)
-            )
-            await asyncio.wait(
-                [sleep_task, wait_for_stop_event],
-                return_when=asyncio.FIRST_COMPLETED,
-            )
-
-            if not sleep_task.done():
-                sleep_task.cancel()
+                sleep_task = asyncio.create_task(
+                    self._async_sleep(self._tasks[name].interval_s)
+                )
+                try:
+                    await asyncio.wait(
+                        [sleep_task, wait_for_stop_event],
+                        return_when=asyncio.FIRST_COMPLETED,
+                    )
+                finally:
+                    sleep_task.cancel()
+        finally:
+            # Make sure the waiter doesn't outlive this task, e.g. when this
+            # task is cancelled before `stop_event` is set.
+            wait_for_stop_event.cancel()
 
     def register_or_update_task(
         self,
@@ -131,10 +136,29 @@ class MetricsPusher:
 
         self.stop_event.set()
         if self._async_tasks:
-            await asyncio.wait(
+            _, pending = await asyncio.wait(
                 list(self._async_tasks.values()),
                 timeout=METRICS_PUSHER_GRACEFUL_SHUTDOWN_TIMEOUT_S,
             )
+            # Cancel tasks that didn't finish within the timeout (e.g., a
+            # hanging `task_func`) so they don't outlive the pusher.
+            for task in pending:
+                task.cancel()
+            if pending:
+                # Bounded so a task that ignores cancellation can't hang shutdown.
+                _, still_pending = await asyncio.wait(
+                    pending, timeout=METRICS_PUSHER_GRACEFUL_SHUTDOWN_TIMEOUT_S
+                )
+                if still_pending:
+                    names = [
+                        name
+                        for name, task in self._async_tasks.items()
+                        if task in still_pending
+                    ]
+                    logger.warning(
+                        f"Metrics tasks {names} did not exit after being cancelled "
+                        "during graceful shutdown."
+                    )
 
         self._tasks.clear()
         self._async_tasks.clear()
@@ -206,8 +230,7 @@ def time_weighted_average(
     window_end: Optional[float] = None,
     last_window_s: float = 1.0,
 ) -> Optional[float]:
-    """
-    Compute time-weighted average of a step function over a time interval.
+    """Compute time-weighted average of a step function over a time interval.
 
     This function uses a Cython-optimized implementation for improved performance.
 
@@ -260,8 +283,7 @@ def aggregate_timeseries(
 def merge_instantaneous_total(
     replicas_timeseries: List[TimeSeries],
 ) -> TimeSeries:
-    """
-    Merge multiple gauge time series (right-continuous, LOCF) into an
+    """Merge multiple gauge time series (right-continuous, LOCF) into an
     instantaneous total time series as a step function.
 
     This function uses a Cython-optimized implementation for 5-10x performance
@@ -301,9 +323,7 @@ def merge_instantaneous_total(
 def merge_timeseries_dicts(
     *timeseries_dicts: DefaultDict[Hashable, TimeSeries],
 ) -> Dict[Hashable, TimeSeries]:
-    """
-    Merge multiple time-series dictionaries using instantaneous merge approach.
-    """
+    """Merge multiple time-series dictionaries using instantaneous merge approach."""
     merged: DefaultDict[Hashable, List[TimeSeries]] = defaultdict(list)
 
     for ts_dict in timeseries_dicts:

@@ -330,8 +330,7 @@ class StateAPIManager:
             raise DataSourceUnavailable(GCS_QUERY_FAILURE_WARNING)
 
         def transform(reply) -> ListApiResponse:
-            """
-            Transforms from proto to dict, applies filters, sorts, and truncates.
+            """Transforms from proto to dict, applies filters, sorts, and truncates.
             This function is executed in a separate thread.
             """
             result = [

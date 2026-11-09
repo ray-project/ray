@@ -34,7 +34,7 @@ To understand the following content better, you should understand the difference
 
 * RayCluster configuration
   * `rayClusterSpec` - Defines the **RayCluster** custom resource to run the Ray job on.
-  * `clusterSelector` - Use existing **RayCluster** custom resources to run the Ray job instead of creating a new one. See [ray-job.use-existing-raycluster.yaml](https://github.com/ray-project/kuberay/blob/master/ray-operator/config/samples/ray-job.use-existing-raycluster.yaml) for example configurations.
+  * `clusterSelector` - Use existing **RayCluster** custom resources to run the Ray job instead of creating a new one. See [ray-job.use-existing-raycluster.yaml](https://github.com/kuberay-project/kuberay/blob/master/ray-operator/config/samples/ray-job.use-existing-raycluster.yaml) for example configurations.
 * Ray job configuration
   * `entrypoint` - The submitter runs `ray job submit --address ... --submission-id ... -- $entrypoint` to submit a Ray job to the RayCluster.
   * `runtimeEnvYAML` (Optional): A runtime environment that describes the dependencies the Ray job needs to run, including files, packages, environment variables, and more. Provide the configuration as a multi-line YAML string. Example:
@@ -64,7 +64,7 @@ To understand the following content better, you should understand the difference
     * `RAY_DASHBOARD_ADDRESS` - The KubeRay operator injects this environment variable to the submitter Pod. The value is `$HEAD_SERVICE:$DASHBOARD_PORT`.
     * `RAY_JOB_SUBMISSION_ID` - The KubeRay operator injects this environment variable to the submitter Pod. The value is the `RayJob.Status.JobId` of the RayJob.
     * Example: `ray job submit --address=http://$RAY_DASHBOARD_ADDRESS --submission-id=$RAY_JOB_SUBMISSION_ID ...`
-    * See [ray-job.sample.yaml](https://github.com/ray-project/kuberay/blob/master/ray-operator/config/samples/ray-job.sample.yaml) for more details.
+    * See [ray-job.sample.yaml](https://github.com/kuberay-project/kuberay/blob/master/ray-operator/config/samples/ray-job.sample.yaml) for more details.
   * `submitterConfig` (Optional): Additional configurations for the submitter. Used in `K8sJobMode` (always). `SidecarMode` also honors `backoffLimit` internally when `SidecarSubmitterRestart` is enabled, but the field currently can't be set via the RayJob custom resource for `SidecarMode`. See {ref}`kuberay-rayjob-sidecar-submitter-restart`.
     * `backoffLimit` (Optional, added in version 1.2.0): The number of retries before marking the submitter as failed. The default value is 2.
   * `SidecarSubmitterRestart` (alpha in v1.7, disabled by default): Lets the submitter container restart in place on transient failures, independent of the head Pod's pod-level `restartPolicy: Never`. Requires Kubernetes v1.35+ and Ray v2.54.0+. See {ref}`kuberay-rayjob-sidecar-submitter-restart` for the full walkthrough, restart/reattach behavior, and version-skew caveats.
@@ -82,7 +82,7 @@ To understand the following content better, you should understand the difference
       * `condition`: When to trigger the deletion, based on `jobStatus` (`SUCCEEDED` or `FAILED`) and an optional `ttlSeconds` delay.
       * This approach enables flexible, multi-stage cleanup strategies (e.g., delete workers immediately on success, then delete the cluster after 300 seconds).
       * Rules-based mode is incompatible with `shutdownAfterJobFinishes` and the global `ttlSecondsAfterFinished`. Use per-rule `condition.ttlSeconds` instead.
-      * See [ray-job.deletion-rules.yaml](https://github.com/ray-project/kuberay/blob/master/ray-operator/config/samples/ray-job.deletion-rules.yaml) for example configurations.
+      * See [ray-job.deletion-rules.yaml](https://github.com/kuberay-project/kuberay/blob/master/ray-operator/config/samples/ray-job.deletion-rules.yaml) for example configurations.
     * **Legacy** (Deprecated): Define both `onSuccess` and `onFailure` policies. This approach is deprecated and will be removed in v1.6.0. Migration to `deletionRules` is strongly encouraged.
       * Legacy mode can be combined with `shutdownAfterJobFinishes` and the global `ttlSecondsAfterFinished`.
     * For detailed API specifications, see the {ref}`KubeRay CRD API reference <kuberay-crd-api-reference>`.
@@ -103,7 +103,7 @@ Follow the [KubeRay Operator Installation](kuberay-operator-deploy) to install t
 ## Step 3: Install a RayJob
 
 ```sh
-kubectl apply -f https://raw.githubusercontent.com/ray-project/kuberay/v1.7.0/ray-operator/config/samples/ray-job.sample.yaml
+kubectl apply -f https://raw.githubusercontent.com/kuberay-project/kuberay/v1.7.0/ray-operator/config/samples/ray-job.sample.yaml
 ```
 
 ## Step 4: Verify the Kubernetes cluster status
@@ -168,13 +168,13 @@ The Python script `sample_code.py` used by `entrypoint` is a simple Ray script t
 ## Step 6: Delete the RayJob
 
 ```sh
-kubectl delete -f https://raw.githubusercontent.com/ray-project/kuberay/v1.7.0/ray-operator/config/samples/ray-job.sample.yaml
+kubectl delete -f https://raw.githubusercontent.com/kuberay-project/kuberay/v1.7.0/ray-operator/config/samples/ray-job.sample.yaml
 ```
 
 ## Step 7: Create a RayJob with `shutdownAfterJobFinishes` set to true
 
 ```sh
-kubectl apply -f https://raw.githubusercontent.com/ray-project/kuberay/v1.7.0/ray-operator/config/samples/ray-job.shutdown.yaml
+kubectl apply -f https://raw.githubusercontent.com/kuberay-project/kuberay/v1.7.0/ray-operator/config/samples/ray-job.shutdown.yaml
 ```
 
 The `ray-job.shutdown.yaml` defines a RayJob custom resource with `shutdownAfterJobFinishes: true` and `ttlSecondsAfterFinished: 10`. Hence, the KubeRay operator deletes the RayCluster 10 seconds after the Ray job finishes. Note that the submitter job isn't deleted because it contains the ray job logs and doesn't use any cluster resources once completed. In addition, the RayJob cleans up the submitter job when the RayJob is eventually deleted due to its owner reference back to the RayJob.
@@ -199,7 +199,7 @@ kubectl get raycluster
 
 ```sh
 # Step 10.1: Delete the RayJob
-kubectl delete -f https://raw.githubusercontent.com/ray-project/kuberay/v1.7.0/ray-operator/config/samples/ray-job.shutdown.yaml
+kubectl delete -f https://raw.githubusercontent.com/kuberay-project/kuberay/v1.7.0/ray-operator/config/samples/ray-job.shutdown.yaml
 
 # Step 10.2: Delete the KubeRay operator
 helm uninstall kuberay-operator

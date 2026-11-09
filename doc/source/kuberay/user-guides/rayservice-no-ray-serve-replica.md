@@ -30,7 +30,7 @@ Follow [this document](kuberay-operator-deploy) to install the latest stable Kub
 ## Step 3: Install a RayService
 
 ```sh
-curl -O https://raw.githubusercontent.com/ray-project/kuberay/master/ray-operator/config/samples/ray-service.no-ray-serve-replica.yaml
+curl -O https://raw.githubusercontent.com/kuberay-project/kuberay/master/ray-operator/config/samples/ray-service.no-ray-serve-replica.yaml
 kubectl apply -f ray-service.no-ray-serve-replica.yaml
 ```
 
@@ -46,7 +46,7 @@ serveConfigV2: |
       import_path: ray-operator.config.samples.ray-serve.single_deployment_dag:DagNode
       route_prefix: /basic
       runtime_env:
-        working_dir: "https://github.com/ray-project/kuberay/archive/master.zip"
+        working_dir: "https://github.com/kuberay-project/kuberay/archive/master.zip"
       deployments:
         - name: BaseService
           num_replicas: 1
@@ -57,7 +57,7 @@ serveConfigV2: |
 
 Look at the head Pod configuration `rayClusterConfig:headGroupSpec` embedded in the RayService YAML.  
 The configuration sets the CPU resources for the head Pod to 0 by passing the option `num-cpus: "0"` to `rayStartParams`. This setup avoids Ray Serve replicas running on the head Pod.
-See [rayStartParams](https://github.com/ray-project/kuberay/blob/master/docs/guidance/rayStartParams.md) for more details.  
+See [rayStartParams](https://github.com/kuberay-project/kuberay/blob/master/docs/guidance/rayStartParams.md) for more details.  
 ```sh
 headGroupSpec:
   rayStartParams:

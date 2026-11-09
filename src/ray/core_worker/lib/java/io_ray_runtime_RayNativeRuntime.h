@@ -44,12 +44,12 @@ JNIEXPORT void JNICALL Java_io_ray_runtime_RayNativeRuntime_nativeInitialize(JNI
 
 /*
  * Class:     io_ray_runtime_RayNativeRuntime
- * Method:    nativeMaybeEnableTokenAuthIfTokenAvailable
+ * Method:    nativeCreateTokenIfMissingForOwnCluster
  * Signature: ()V
  */
 JNIEXPORT void JNICALL
-Java_io_ray_runtime_RayNativeRuntime_nativeMaybeEnableTokenAuthIfTokenAvailable(JNIEnv *,
-                                                                                jclass);
+Java_io_ray_runtime_RayNativeRuntime_nativeCreateTokenIfMissingForOwnCluster(JNIEnv *,
+                                                                             jclass);
 
 /*
  * Class:     io_ray_runtime_RayNativeRuntime

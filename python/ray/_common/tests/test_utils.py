@@ -15,6 +15,7 @@ import pytest
 
 from ray._common.utils import (
     _BACKGROUND_TASKS,
+    add_exception_note,
     env_bool,
     get_cgroup_aware_swap_memory,
     get_or_create_event_loop,
@@ -54,6 +55,30 @@ class TestGetOrCreateEventLoop:
             warnings.simplefilter("error")
             loop = get_or_create_event_loop()
             assert loop is not None, "new event loop should be created."
+
+
+class TestAddExceptionNote:
+    """Tests for the add_exception_note utility function."""
+
+    @pytest.mark.skipif(sys.version_info < (3, 11), reason="add_note is Python 3.11+")
+    def test_note_survives_pickling(self):
+        import ray.cloudpickle as pickle
+
+        exc = OSError(2, "No such file or directory")
+        add_exception_note(exc, "some context")
+
+        rebuilt = pickle.loads(pickle.dumps(exc))
+        assert type(rebuilt) is type(exc)
+        assert str(rebuilt) == "[Errno 2] No such file or directory"
+        assert rebuilt.__notes__ == ["some context"]
+
+    @pytest.mark.skipif(sys.version_info >= (3, 11), reason="Python 3.10 only")
+    def test_noop_on_python_310(self):
+        exc = ValueError("boom")
+        add_exception_note(exc, "some context")
+
+        assert exc.args == ("boom",)
+        assert not hasattr(exc, "__notes__")
 
 
 class TestEnvBool:

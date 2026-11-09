@@ -1,0 +1,17 @@
+model_loading_config:
+  model_id: Qwen/Qwen3.5-0.8B
+
+placement_group_config:
+  bundles:
+    - GPU: 1
+    - GPU: 1
+  strategy: STRICT_PACK
+
+engine_kwargs:
+  language_model_only: true
+  default_chat_template_kwargs:
+    enable_thinking: false
+  max_model_len: 8192
+  tensor_parallel_size: 2
+  # NOTE: This is used for perf testing as well, so cuda graph must be enabled.
+  enforce_eager: false

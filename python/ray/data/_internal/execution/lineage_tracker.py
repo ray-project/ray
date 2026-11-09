@@ -26,8 +26,7 @@ BlockId = str
 
 
 class ObjectReuseStatus(Enum):
-    """
-    How an output block should be treated during a reconstruction attempt.
+    """How an output block should be treated during a reconstruction attempt.
 
     Attributes:
         OBJECT_PRUNED: The object should be ignored and garbage collected.
@@ -45,8 +44,7 @@ class ObjectReuseStatus(Enum):
 
 @dataclass(frozen=True)
 class ChildBlockDependency:
-    """
-    A tuple to associate a child task to the
+    """A tuple to associate a child task to the
     output index of the parent that the child task depends on.
     """
 
@@ -56,8 +54,7 @@ class ChildBlockDependency:
 
 @dataclass(frozen=True)
 class ParentBlockOutput:
-    """
-    A tuple to associate a parent task to
+    """A tuple to associate a parent task to
     one of its outputs indices.
     """
 
@@ -67,8 +64,7 @@ class ParentBlockOutput:
 
 @dataclass(eq=False, repr=False)
 class TaskNode:
-    """
-    A node within the lineage graph tracking the children and parents of a task.
+    """A node within the lineage graph tracking the children and parents of a task.
 
     Note:
         The lineage task ID represents the ID of the initial task execution. All
@@ -127,6 +123,9 @@ class LineageTracker:
         self._lineage_task_id_to_task_node: Dict[LineageTaskId, TaskNode] = {}
         # Mapping of block ID -> the parent task output (task ID, output index) that produced it.
         self._block_id_to_parent_output: Dict[BlockId, ParentBlockOutput] = {}
+        # Lost objects Ray Data tried to rebuild, counted like Ray Core's
+        # ``object_recovery_attempts{Type="Reconstruct"}``.
+        self.num_object_reconstruction_attempts = 0
 
     def register_block_output(
         self,
@@ -134,8 +133,7 @@ class LineageTracker:
         block_id: BlockId,
         output_index: OutputIndex,
     ) -> None:
-        """
-        Record which task produced a block, so that whichever task later
+        """Record which task produced a block, so that whichever task later
         consumes it can fetch the dependency easily with the block ID.
 
         Args:
@@ -153,8 +151,7 @@ class LineageTracker:
         output_index: OutputIndex,
         reconstruction_plan_id: Optional[ReconstructionPlanId] = None,
     ) -> None:
-        """
-        Unlike ``register_block_output``, which records every block a task
+        """Unlike ``register_block_output``, which records every block a task
         produces, this is only called for a block the operator adds to the operator's output queue.
         A block that is withheld or dropped is not queued.
 
@@ -212,8 +209,7 @@ class LineageTracker:
     def resolve_dependencies(
         self, block_ids: Iterable[BlockId]
     ) -> List[ParentBlockOutput]:
-        """
-        Resolve the (producing task logical ID, output index) pair each of the blocks corresponds to
+        """Resolve the (producing task logical ID, output index) pair each of the blocks corresponds to
         for a task that is being submitted.
 
         Blocks with no recorded producer are skipped: they were not produced by
@@ -247,8 +243,7 @@ class LineageTracker:
         dependencies: List[ParentBlockOutput],
         reconstruction_plan_id: Optional[ReconstructionPlanId] = None,
     ) -> None:
-        """
-        Register a newly submitted task with the lineage graph.
+        """Register a newly submitted task with the lineage graph.
 
         Repeated registration of the same lineage task ID is ignored.
 
@@ -390,8 +385,7 @@ class LineageTracker:
         lineage_task_id: LineageTaskId,
         reconstruction_plan_id: Optional[ReconstructionPlanId] = None,
     ) -> None:
-        """
-        Update the task state for the given data task to completed.
+        """Update the task state for the given data task to completed.
 
         Note:
             Completing a task does not remove anything from its plan set. Plan set entries are
@@ -422,8 +416,7 @@ class LineageTracker:
         lineage_task_id: LineageTaskId,
         reconstruction_plan_id: Optional[ReconstructionPlanId] = None,
     ) -> Tuple[List[LineageTaskId], ReconstructionPlanId]:
-        """
-        Mark a task as failed and begin reconstruction of it and its lineage.
+        """Mark a task as failed and begin reconstruction of it and its lineage.
 
         Args:
             lineage_task_id: The ID of the data task that failed.
@@ -522,8 +515,7 @@ class LineageTracker:
     def register_seed_input(
         self, seed_task_id: LineageTaskId, seed_input: "RefBundle"
     ) -> None:
-        """
-        Store the input of a seed task, so that lineage reconstruction can resubmit it when trying to reconstruct a lost block.
+        """Store the input of a seed task, so that lineage reconstruction can resubmit it when trying to reconstruct a lost block.
 
         Only call this for a seed task's first attempt.
 
@@ -550,8 +542,7 @@ class LineageTracker:
         task_node.seed_input = seed_input
 
     def get_seed_input(self, seed_task_id: LineageTaskId) -> "RefBundle":
-        """
-        Get the input retained for the given seed task.
+        """Get the input retained for the given seed task.
 
         Args:
             seed_task_id: The ID of a seed task, as returned by
@@ -582,8 +573,7 @@ class LineageTracker:
         lineage_task_id: LineageTaskId,
         reconstruction_plan_id: ReconstructionPlanId,
     ) -> Dict[LineageTaskId, List[ParentBlockOutput]]:
-        """
-        Get the children that must be reconstructed for the given data task.
+        """Get the children that must be reconstructed for the given data task.
 
         Children whose input this task already queued for the plan are not
         included.
@@ -640,8 +630,7 @@ class LineageTracker:
         output_index: OutputIndex,
         reconstruction_plan_id: ReconstructionPlanId,
     ) -> ObjectReuseStatus:
-        """
-        Get the reuse status of one output block of the given task.
+        """Get the reuse status of one output block of the given task.
 
         See :class:`ObjectReuseStatus` for the meaning of each status.
 
