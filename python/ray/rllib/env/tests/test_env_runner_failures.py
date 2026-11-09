@@ -204,13 +204,21 @@ def on_algorithm_init(algorithm, **kwargs):
 
 def _wait_for_restore(algo, group, *, healthy, restarts):
     def restored():
+        if (
+            group is algo.eval_env_runner_group
+            and group.num_remote_worker_restarts() < restarts
+        ):
+            # Parallel evaluation can finish before it fetches a failed sample.
+            group.fetch_ready_async_reqs()
         algo.restore_env_runners(group)
         return (
             group.num_healthy_remote_workers() == healthy
             and group.num_remote_worker_restarts() >= restarts
         )
 
-    wait_for_condition(restored, timeout=60, raise_exceptions=True)
+    wait_for_condition(
+        restored, timeout=60, retry_interval_ms=1000, raise_exceptions=True
+    )
 
 
 class TestEnvRunnerFailures(unittest.TestCase):
