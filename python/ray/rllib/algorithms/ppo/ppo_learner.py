@@ -1,4 +1,5 @@
 import abc
+from contextlib import nullcontext
 from typing import Any, Dict
 
 from ray.rllib.algorithms.ppo.ppo import (
@@ -70,9 +71,14 @@ class PPOLearner(Learner):
             # `forward_train` and `compute_losses`.
             self._learner_connector.append(
                 GeneralAdvantageEstimation(
-                    gamma=self.config.gamma, lambda_=self.config.lambda_
+                    gamma=self.config.gamma,
+                    lambda_=self.config.lambda_,
+                    value_function_context=self._gae_value_function_context(),
                 )
             )
+
+    def _gae_value_function_context(self):
+        return nullcontext
 
     @override(Learner)
     def remove_module(self, module_id: ModuleID, **kwargs):
