@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import logging
-from concurrent.futures import Future, ThreadPoolExecutor, as_completed
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, AbstractSet, Iterable, Iterator, NamedTuple, Tuple
 
@@ -390,7 +390,6 @@ class FooterReader:
         files: list[FileInfo],
         *,
         result_batch_size: int = 1,
-        preserve_order: bool = False,
     ) -> Iterator[list[ChunkedFile]]:
         """Read the footers of ``files`` concurrently, yielding ``ChunkedFile``.
 
@@ -402,22 +401,18 @@ class FooterReader:
         ``num_returns`` is fixed to ``"streaming"`` via ``@ray.method`` so
         results stream out as footers land.
 
-        ``preserve_order`` yields in ``files`` order rather than completion order.
-        The reads are all submitted up front either way, so this delays only the
+        Results are always yielded in ``files`` order, never completion order.
+        Ray Core retries this method when the actor dies (see
+        :data:`FooterReaderActor`) and matches the retry's results to the first
+        attempt's by position, so a run must yield the same file at each
+        position. The reads are all submitted up front, so this delays only the
         yield of a footer that landed behind a slower one, never the read itself.
         """
         futures = [self.pool.submit(self._read_and_chunk, file) for file in files]
-        # Completion order depends on IO timing, which decides how the driver's
-        # bin packer groups row groups into read tasks and -- under a pushed-down
-        # limit -- which files it reads before stopping. Walking ``futures``
-        # directly makes both a function of the listing order instead.
-        ordered: Iterable[Future[ChunkedFile]] = (
-            futures if preserve_order else as_completed(futures)
-        )
         buffer: list[ChunkedFile] = []
         total_row_groups = 0
-        for finished in ordered:
-            chunk = finished.result()
+        for future in futures:
+            chunk = future.result()
             if not chunk.row_groups:
                 # Only occurs if the file is empty or all row groups are filtered out.
                 continue
@@ -435,4 +430,6 @@ class FooterReader:
         )
 
 
-FooterReaderActor = ray.remote(FooterReader)
+# Restart a dead actor and retry its in-flight ``read_footers`` calls, so a
+# footer-reader process or node death doesn't fail the listing task.
+FooterReaderActor = ray.remote(max_restarts=-1, max_task_retries=-1)(FooterReader)

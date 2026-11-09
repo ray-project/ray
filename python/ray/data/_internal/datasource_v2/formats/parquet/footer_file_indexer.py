@@ -230,7 +230,6 @@ class FooterFileIndexer(NonSamplingFileIndexer):
         yield from self._process_file_infos(
             file_infos,
             filesystem=filesystem,
-            preserve_order=preserve_order,
             predicate=predicate,
             limit=limit,
             projected_columns=projected_columns,
@@ -263,7 +262,6 @@ class FooterFileIndexer(NonSamplingFileIndexer):
         yield from self._process_file_infos(
             file_infos,
             filesystem=filesystem,
-            preserve_order=preserve_order,
             predicate=predicate,
             limit=limit,
             projected_columns=projected_columns,
@@ -277,7 +275,6 @@ class FooterFileIndexer(NonSamplingFileIndexer):
         file_infos: Iterable[FileInfo],
         *,
         filesystem: Optional["FileSystem"],
-        preserve_order: bool,
         predicate: Optional["Expr"],
         limit: Optional[int],
         projected_columns: Optional[List[str]],
@@ -308,9 +305,7 @@ class FooterFileIndexer(NonSamplingFileIndexer):
             self._io_concurrency,
         )
         try:
-            manifests = self._read_footers(
-                actors, file_infos, limit, preserve_order=preserve_order
-            )
+            manifests = self._read_footers(actors, file_infos, limit)
             if shuffle_row_groups:
                 assert shuffle_config is not None
                 manifests = _shuffle_row_group_runs(
@@ -330,8 +325,6 @@ class FooterFileIndexer(NonSamplingFileIndexer):
         actors: List["ActorProxy[FooterReader]"],
         file_infos: "Iterable[FileInfo]",
         limit: Optional[int],
-        *,
-        preserve_order: bool = False,
     ) -> Iterator[FileManifest]:
         # Bound the number of in-flight footer batches so listing stays roughly
         # demand-driven (matters under a limit) and memory stays flat.
@@ -354,7 +347,6 @@ class FooterFileIndexer(NonSamplingFileIndexer):
             gen: ray.ObjectRefGenerator = actor.read_footers.remote(
                 batch,
                 result_batch_size=self._result_batch_size,  # pyrefly: ignore[unexpected-keyword]
-                preserve_order=preserve_order,  # pyrefly: ignore[unexpected-keyword]
             )
             pending.append(gen)
             batch_no += 1

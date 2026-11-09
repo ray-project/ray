@@ -689,10 +689,10 @@ class TestReadFootersBatching:
         # pyrefly: ignore[not-callable]
         assert list(_reader().read_footers([], result_batch_size=1)) == []
 
-    def test_preserve_order_yields_in_listing_order(self, three_files, monkeypatch):
+    def test_yields_in_listing_order(self, three_files, monkeypatch):
         # Enough concurrency for every read to be in flight at once, and delays
         # that shrink with position, so completion order is the reverse of the
-        # listing order and the default path could not yield listing order by luck.
+        # listing order and yielding in completion order would be caught.
         reader = FooterReader(
             filesystem=LocalFileSystem(), io_concurrency=len(three_files)
         )
@@ -710,7 +710,7 @@ class TestReadFootersBatching:
 
         batches = list(
             reader.read_footers(  # pyrefly: ignore[not-callable]
-                three_files, result_batch_size=1, preserve_order=True
+                three_files, result_batch_size=1
             )
         )
 
