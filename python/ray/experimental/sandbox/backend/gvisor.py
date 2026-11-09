@@ -20,6 +20,7 @@ from typing import (
     Any,
     Callable,
     Dict,
+    Iterable,
     List,
     NamedTuple,
     Optional,
@@ -592,9 +593,10 @@ def _owner_alive(owner: Any, seen: Optional[Dict[str, bool]] = None) -> bool:
     It is while a process holds its owner lock. Owner files may be writable
     by others, so the lock is only looked for in the owner-locks directory,
     and never followed or waited on, and an owner that can't be checked
-    counts as alive: reclaiming a bundle kills its sandbox. Once a dead
-    owner's lock is deleted (see ``_remove_dead_owner_locks``), the PID in
-    its name says whether the owner is gone.
+    counts as alive: reclaiming a bundle kills its sandbox. A dead owner's
+    lock stays while a bundle names it (see ``_remove_dead_owner_locks``).
+    If it's missing anyway, the PID in its name says whether the owner is
+    gone.
 
     Args:
         owner: The owner file's contents.
@@ -643,19 +645,24 @@ def _pid_running(pid: int) -> bool:
     return True
 
 
-def _remove_dead_owner_locks() -> None:
+def _remove_dead_owner_locks(keep: Iterable[str] = ()) -> None:
     """Delete the owner locks of the processes that are gone.
 
-    The owner files that still name one fall back on its PID (see
-    ``_owner_alive``), so this doesn't wait for their bundles to go.
+    Args:
+        keep: Locks to leave, because bundles still name them. A bundle
+            that a reclaim pass couldn't delete keeps its owner's lock, so
+            the next pass still finds the owner gone. Without the lock, it
+            would go by the PID in the lock's name, which another process
+            may have by then.
     """
     locks_dir = _owner_locks_dir()
     try:
         names = os.listdir(locks_dir)
     except OSError:
         return
+    keep = set(keep)
     for name in names:
-        if not _OWNER_LOCK_NAME.fullmatch(name):
+        if not _OWNER_LOCK_NAME.fullmatch(name) or name in keep:
             continue
         path = os.path.join(locks_dir, name)
         try:
@@ -669,6 +676,21 @@ def _remove_dead_owner_locks() -> None:
             pass  # Its owner is alive, or it's another user's.
         finally:
             os.close(fd)
+
+
+def _owner_locks_named() -> Set[str]:
+    """The owner locks that the bundles on this node name."""
+    names = set()
+    for root_dir in glob.glob(os.path.join(_RAY_SANDBOX_DIR, "ray-sandbox-*")):
+        try:
+            with open(os.path.join(root_dir, _OWNER_FILE), encoding="utf-8") as f:
+                owner = json.load(f)
+        except (OSError, ValueError):
+            continue
+        name = owner.get("owner_lock") if isinstance(owner, dict) else None
+        if isinstance(name, str):
+            names.add(name)
+    return names
 
 
 def _write_owner_file(root_dir: str, owner: Dict[str, Any]) -> None:
@@ -2579,7 +2601,7 @@ class GVisorSandboxBackend(BaseSandboxBackend):
                     reclaimed.append(sandbox_id)
             except Exception:
                 logger.exception("Failed to reclaim sandbox %s", sandbox_id)
-        _remove_dead_owner_locks()
+        _remove_dead_owner_locks(keep=_owner_locks_named())
         if reclaimed:
             logger.info("Reclaimed sandboxes whose owner is gone: %s", reclaimed)
         return reclaimed

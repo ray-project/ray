@@ -2905,6 +2905,33 @@ def test_an_owner_is_alive_while_its_process_runs(private_bundles):
     assert not gvisor._owner_alive({"image": "busybox:latest"})
 
 
+def test_a_dead_owners_lock_stays_while_a_bundle_names_it(
+    private_bundles, monkeypatch, orphan
+):
+    """A bundle that a pass couldn't reclaim keeps its dead owner's lock, so
+    the next pass still finds the owner gone after another process gets the
+    owner's PID. The lock goes once no bundle names it."""
+    root = Path(gvisor._RAY_SANDBOX_DIR, "ray-sandbox-00000000000f")
+    root.mkdir(parents=True)
+    backend = GVisorSandboxBackend(image_manager=_RecordingImageManager())
+    backend._own_bundle(GVisorSandboxConfig(image="busybox:latest"), str(root))
+    orphan(root)
+    lock = json.loads((root / ".owner").read_text())["owner_lock"]
+    remove = gvisor.SandboxCgroupManager.remove
+
+    def stuck(self, sandbox_id):
+        raise RuntimeError("the cgroup still has processes")
+
+    monkeypatch.setattr(gvisor.SandboxCgroupManager, "remove", stuck)
+    assert backend._reclaim_unowned_bundles() == []
+    assert lock in os.listdir(gvisor._owner_locks_dir())
+
+    monkeypatch.setattr(gvisor.SandboxCgroupManager, "remove", remove)
+    monkeypatch.setattr(gvisor, "_pid_running", lambda pid: True)
+    assert backend._reclaim_unowned_bundles() == ["ray-sandbox-00000000000f"]
+    assert lock not in os.listdir(gvisor._owner_locks_dir())
+
+
 def test_a_process_holds_one_descriptor_for_all_its_sandboxes(private_bundles):
     """Every bundle a process owns names the one lock that the process holds,
     so owning more sandboxes opens no more files: each runsc command that a
