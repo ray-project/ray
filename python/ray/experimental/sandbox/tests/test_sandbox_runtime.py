@@ -5,9 +5,12 @@ These pin that ``create()`` arguments actually reach the backend's
 shipped behind a green suite.
 """
 
+import asyncio
 import os
+import subprocess
 import sys
 import time
+from unittest.mock import Mock
 
 import pytest
 
@@ -32,8 +35,32 @@ class _FakeBackend:
     def delete_sandbox(self, sandbox_id):
         self.deleted.append(sandbox_id)
 
-    def exec_command(self, sandbox_id, command, timeout=None, cwd=None, env=None):
-        return ExecResult(exit_code=0, stdout="", stderr="", duration_seconds=0.0)
+    def exec_command(
+        self,
+        sandbox_id,
+        command,
+        timeout=None,
+        cwd=None,
+        env=None,
+        shell=None,
+        user=None,
+        combine_output=False,
+    ):
+        self.exec_options = {
+            "timeout": timeout,
+            "cwd": cwd,
+            "env": env,
+            "shell": shell,
+            "user": user,
+            "combine_output": combine_output,
+        }
+        return ExecResult(
+            exit_code=0,
+            stdout="",
+            stderr="",
+            duration_seconds=0.0,
+            output=b"\xff" if combine_output else None,
+        )
 
     def write_file(self, sandbox_id, path, content):
         pass
@@ -120,6 +147,104 @@ def test_create_forwards_config_fields_to_backend():
     assert config.readonly is False
     assert config.shell == "/bin/bash"
     assert config.oom_score_adj == 0
+
+
+def _fake_running_backend(tmp_path):
+    from ray.experimental.sandbox.backend.gvisor import GVisorSandboxBackend
+    from ray.experimental.sandbox.config import SandboxConfig
+
+    backend = GVisorSandboxBackend(image_manager=_FakeImageManager())
+    backend._sandbox_metadata["sandbox"] = {
+        "config": SandboxConfig(image="fake:latest"),
+        "root_dir": str(tmp_path),
+        "cwd": "/",
+        "status": SandboxStatus.RUNNING,
+    }
+    return backend
+
+
+@pytest.mark.parametrize("combine_output", [False, True])
+def test_gvisor_exec_binary_output(tmp_path, monkeypatch, combine_output: bool) -> None:
+    backend = _fake_running_backend(tmp_path)
+    popen = subprocess.Popen
+    commands = []
+    command = [
+        sys.executable,
+        "-c",
+        "import os; os.write(1, b'out\\x00\\xff'); "
+        "os.write(2, b'err\\xfe'); os.write(1, b'end'); os._exit(7)",
+    ]
+
+    def local_popen(args, **kwargs):
+        sandbox_command = args[args.index("sandbox") + 1 :]
+        commands.append(sandbox_command)
+        return popen(sandbox_command, **kwargs)
+
+    monkeypatch.setattr(subprocess, "Popen", local_popen)
+    result = backend.exec_command("sandbox", command, combine_output=combine_output)
+    assert commands == [command]
+    assert result.exit_code == 7
+    if combine_output:
+        assert result.output == b"out\x00\xfferr\xfeend"
+        assert result.stdout == result.stderr == ""
+    else:
+        assert result.output is None
+        assert result.stdout == "out\x00\ufffdend"
+        assert result.stderr == "err\ufffd"
+
+
+@pytest.mark.parametrize("combine_output", [False, True])
+@pytest.mark.parametrize("asynchronous", [False, True])
+def test_runtime_exec_forwards_combine_output(
+    combine_output: bool, asynchronous: bool
+) -> None:
+    runtime = _fake_runtime()
+    instance_id = runtime.create(image="fake:latest")
+    if asynchronous:
+        result = asyncio.run(
+            runtime.exec_async(instance_id, ["true"], combine_output=combine_output)
+        )
+    else:
+        result = runtime.exec(instance_id, ["true"], combine_output=combine_output)
+    assert runtime._backend.exec_options["combine_output"] is combine_output
+    assert result.output == (b"\xff" if combine_output else None)
+
+
+@pytest.mark.parametrize(
+    "append,tee_exit_code", [(False, 127), (False, 1), (False, None), (True, None)]
+)
+def test_gvisor_write_file_fallback_and_append(
+    tmp_path, monkeypatch, append: bool, tee_exit_code
+) -> None:
+    backend = _fake_running_backend(tmp_path)
+    popen = subprocess.Popen
+    commands = []
+    content = bytes(range(256)) * 4
+    path = tmp_path / "nested dir" / "quote' and $(not-a-command).bin"
+    if append:
+        path.parent.mkdir()
+    else:
+        assert not path.parent.exists()
+    if append:
+        path.write_bytes(b"existing\x00\xff")
+
+    def local_popen(args, **kwargs):
+        command = args[args.index("sandbox") + 1 :]
+        commands.append(command)
+        if command[0] == "tee" and tee_exit_code is not None:
+            process = Mock(returncode=tee_exit_code)
+            process.communicate.return_value = (None, b"tee unavailable")
+            return process
+        return popen(command, **kwargs)
+
+    monkeypatch.setattr(subprocess, "Popen", local_popen)
+    backend.write_file("sandbox", str(path), content, append=append)
+
+    assert path.read_bytes() == (b"existing\x00\xff" if append else b"") + content
+    assert len(commands) == (1 if append else 2)
+    if not append:
+        assert commands[0][0] == "tee"
+    assert commands[-1][:2] == ["/bin/sh", "-c"]
 
 
 def test_ttl_is_enforced_by_the_runtime():
