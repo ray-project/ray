@@ -53,7 +53,7 @@ from ray.data.block import (
 from ray.data.context import DataContext
 from ray.data.tests.conftest import *  # noqa: F401, F403
 from ray.data.tests.conftest import noop_counter
-from ray.data.tests.util import run_op_tasks_sync
+from ray.data.tests.util import emit_and_fire_done_callbacks, run_op_tasks_sync
 from ray.exceptions import RayTaskError
 from ray.tests.conftest import *  # noqa: F401, F403
 
@@ -1036,7 +1036,7 @@ def test_top_n_delayed_metadata_does_not_commit_or_resurrect_state(
 
         wait_for_condition(defer_output)
 
-        assert not fetcher.emit_ready_and_fire_done_callbacks()
+        assert not emit_and_fire_done_callbacks(fetcher)
 
         operator.refresh_state()
 
@@ -1053,7 +1053,7 @@ def test_top_n_delayed_metadata_does_not_commit_or_resurrect_state(
         release_metadata.set()
 
         def finish_fetch() -> bool:
-            assert not fetcher.emit_ready_and_fire_done_callbacks()
+            assert not emit_and_fire_done_callbacks(fetcher)
 
             task.on_data_ready(
                 max_to_read=TaskPullRequest.inf(), metadata_fetcher=fetcher

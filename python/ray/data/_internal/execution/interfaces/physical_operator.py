@@ -46,7 +46,7 @@ from ray.data.block import (
     TaskExecWorkerStats,
 )
 from ray.data.context import DataContext
-from ray.exceptions import ObjectLostError
+from ray.exceptions import ActorUnavailableError, ObjectLostError, RayActorError
 
 if TYPE_CHECKING:
     from ray.data._internal.execution.lineage_tracker import LineageTracker
@@ -214,6 +214,18 @@ class TaskGeneratorState(Enum):
     ACTIVE = auto()
     DRAINED = auto()
     FINISHED = auto()
+
+
+def is_data_lineage_recoverable_error(error: BaseException) -> bool:
+    """Whether Ray Data lineage reconstruction can recover from ``error``: a
+    lost object, or the death of the actor that was producing it (actors are
+    never restarted by Ray core under Data reconstruction). A temporarily
+    unavailable actor is neither: with ``max_task_retries=-1`` (the actor-only
+    default) core retries the task, and fails it with ``ActorDiedError`` once
+    the actor is declared dead, so a real death still lands here."""
+    if isinstance(error, ActorUnavailableError):
+        return False
+    return isinstance(error, (ObjectLostError, RayActorError))
 
 
 class DataOpTask(OpTask):
@@ -437,7 +449,10 @@ class DataOpTask(OpTask):
                         # still live to abort it deliberately. Any other error,
                         # including an untracked task's loss, drains the task so
                         # its outputs already in flight still land.
-                        if isinstance(ex, ObjectLostError) and self.is_lineage_tracked:
+                        if (
+                            self.is_lineage_tracked
+                            and is_data_lineage_recoverable_error(ex)
+                        ):
                             raise
                         self._task_error = ex
                         self._state = TaskGeneratorState.DRAINED
@@ -503,6 +518,11 @@ class DataOpTask(OpTask):
         None if untracked. Branch on ``is_lineage_tracked`` rather than on this.
         """
         return self._lineage_task_id
+
+    @property
+    def producer_id(self) -> str:
+        """The id of the operator that produced this task."""
+        return self._producer_id
 
     @property
     def is_lineage_tracked(self) -> bool:

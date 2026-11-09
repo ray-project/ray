@@ -39,6 +39,22 @@ BLOCK_SIZE_TO_OUTPUT_BYTES_RATIO: float = env_float(
     "RAY_DATA_BLOCK_SIZE_TO_OUTPUT_BYTES_RATIO", 0.25
 )
 
+# Whether an actor-only map task shrinks its target block size to fit the
+# actor's output budget (``budget * BLOCK_SIZE_TO_OUTPUT_BYTES_RATIO``). Off by
+# default: a lineage re-run may land on an actor with a different budget, cut
+# rows into different blocks, and break the positional "already delivered"
+# check, which duplicates or drops rows.
+BUDGET_BASED_BLOCK_SIZING: bool = env_bool(
+    "RAY_DATA_ACTOR_ONLY_BUDGET_BASED_BLOCK_SIZING", False
+)
+
+# How long the withheld-deadlock escape hatch waits for a deadlocked actor's
+# node peers to free output budget by draining, before it grants the actor
+# bytes nothing backs (which can spill). Seconds.
+WITHHELD_DEADLOCK_WAIT_MAX_S: float = env_float(
+    "RAY_DATA_WITHHELD_DEADLOCK_WAIT_MAX_S", 60.0
+)
+
 # Hard [min, max] bounds on the per-actor object-store output-bytes budget.
 PER_ACTOR_OBJECT_STORE_MIN_BYTES: int = env_integer(
     "RAY_DATA_PER_ACTOR_OBJECT_STORE_MIN_BYTES", 16 * MiB
