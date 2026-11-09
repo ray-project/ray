@@ -274,7 +274,8 @@ def get_all_reported_checkpoints(
         >>> trainer = TorchTrainer(
         ...     train_func, scaling_config=ray.train.ScalingConfig(num_workers=2)
         ... )
-        >>> trainer.fit()
+        >>> print("[ignore]"); trainer.fit()  # doctest: +ELLIPSIS
+        [ignore]...
 
     Args:
         consistency_mode: Read semantics for checkpoint retrieval during an ongoing run.
@@ -320,7 +321,8 @@ def get_dataset_shard(
         ...     scaling_config=ray.train.ScalingConfig(num_workers=2),
         ...     datasets={"train": train_dataset}
         ... )
-        >>> trainer.fit()
+        >>> print("[ignore]"); trainer.fit()  # doctest: +ELLIPSIS
+        [ignore]...
 
     Args:
         dataset_name: If a Dictionary of Datasets was passed to ``Trainer``, then
