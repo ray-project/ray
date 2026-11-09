@@ -9,6 +9,7 @@ import pytest
 
 from ray.data.checkpoint.generated_id import (
     _COMPACTED_CHECKPOINT_SCHEMA,
+    GENERATED_ID_COLUMN_TYPE,
     GeneratedIdCheckpoint,
     _build_generated_ids,
     _checkpoint_from_compacted,
@@ -82,6 +83,30 @@ def test_compact_ignores_row_ids_outside_the_row_group():
 
     assert compacted.to_pylist() == [
         {"unit_id": f"{PATH}#rg0", "partial_mask": [True, True, False, False]}
+    ]
+
+
+def test_compact_empty_ids():
+    compacted = _compact_file_ids(pa.array([], type=GENERATED_ID_COLUMN_TYPE))
+
+    assert len(compacted) == 0
+    assert compacted.schema == _COMPACTED_CHECKPOINT_SCHEMA
+
+
+def test_compact_handles_unsorted_and_interleaved_row_groups():
+    """Row groups committed out of order or across interleaved chunks must
+    still be compacted in sorted row-group order inside done and partial sets."""
+    compacted = _compact_file_ids(
+        _ids(
+            PATH,
+            [(2, [1]), (0, [2, 3]), (1, [0, 1]), (2, [3]), (0, [0, 1])],
+        )
+    )
+
+    assert compacted.to_pylist() == [
+        {"unit_id": f"{PATH}#rg0", "partial_mask": None},
+        {"unit_id": f"{PATH}#rg1", "partial_mask": [True, True, False, False]},
+        {"unit_id": f"{PATH}#rg2", "partial_mask": [False, True, False, True]},
     ]
 
 
