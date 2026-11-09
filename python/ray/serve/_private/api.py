@@ -120,24 +120,37 @@ def _get_actor_init_error(error: RayActorError) -> Optional[BaseException]:
     return task_error.cause if isinstance(task_error, RayTaskError) else None
 
 
+def _wait_for_controller_shutdown(controller: ActorHandle) -> bool:
+    """Shut down the controller and return whether it exited within 30s."""
+    try:
+        # Waits until the controller exits and releases its name, which
+        # surfaces as RayActorError.
+        ray.get(controller.graceful_shutdown.remote(), timeout=30)  # type: ignore[attr-defined]
+    except RayActorError:
+        return True
+    except Exception:
+        logger.exception("Failed to shut down Serve after a failed start.")
+    return False
+
+
 def _shutdown_after_failed_start(controller: ActorHandle) -> None:
     """Shut down a Serve instance this call created but failed to start.
 
     Otherwise a later call would connect to it as if it were healthy. Cleanup
     errors are logged so the caller still sees the original startup error.
     """
-    try:
-        # Waits until the controller exits and releases its name, which
-        # surfaces as RayActorError.
-        ray.get(controller.graceful_shutdown.remote(), timeout=30)  # type: ignore[attr-defined]
-    except RayActorError:
+    if _wait_for_controller_shutdown(controller):
         return
-    except Exception:
-        logger.exception("Failed to shut down Serve after a failed start.")
+    # Restart the controller instead of killing it for good. The restarted
+    # controller sees the persisted shutdown flag, finishes the shutdown and
+    # deletes the flag. Otherwise the flag would make the next controller
+    # shut itself down.
     try:
-        ray.kill(controller, no_restart=True)
+        ray.kill(controller, no_restart=False)
     except Exception:
-        logger.exception("Failed to kill the Serve controller after a failed start.")
+        logger.exception("Failed to restart the Serve controller after a failed start.")
+        return
+    _wait_for_controller_shutdown(controller)
 
 
 def _create_controller_and_proxy_refs(

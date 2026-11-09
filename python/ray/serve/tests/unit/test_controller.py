@@ -7,10 +7,11 @@ from unittest import mock
 import pytest
 
 from ray.exceptions import ActorDiedError, GetTimeoutError, RayActorError, RayTaskError
-from ray.serve._private import api
+from ray.serve._private import api, controller as controller_module
 from ray.serve._private.api import _get_actor_init_error
 from ray.serve._private.common import TargetCapacityDirection
 from ray.serve._private.controller import (
+    SHUTDOWN_IN_PROGRESS_KEY,
     ServeController,
     applications_match,
     calculate_target_capacity_direction,
@@ -745,24 +746,99 @@ def test_get_actor_init_error():
 
 
 @pytest.mark.parametrize(
-    "shutdown_error,expect_kill",
+    "shutdown_results,kill_error,expected_waits,expect_restart",
     [
-        (ActorDiedError(), False),  # Controller exited: nothing left to do.
-        (GetTimeoutError(), True),  # Shutdown hung: kill so the name is freed.
+        # Controller exited: nothing left to do.
+        ([ActorDiedError()], None, 1, False),
+        # Shutdown hung: restart the controller so it finishes, then wait again.
+        ([GetTimeoutError(), ActorDiedError()], None, 2, True),
+        # The restarted controller is still shutting down: leave it to finish.
+        ([GetTimeoutError(), GetTimeoutError()], None, 2, True),
+        # The restart failed: don't wait again.
+        ([GetTimeoutError()], RuntimeError("kill failed"), 1, True),
     ],
 )
-def test_shutdown_after_failed_start(shutdown_error, expect_kill):
+def test_shutdown_after_failed_start(
+    shutdown_results, kill_error, expected_waits, expect_restart
+):
     controller = mock.MagicMock()
     with mock.patch.object(
-        api.ray, "get", side_effect=shutdown_error
-    ), mock.patch.object(
-        api.ray, "kill", side_effect=RuntimeError("kill failed")
-    ) as kill:
+        api.ray, "get", side_effect=shutdown_results
+    ), mock.patch.object(api.ray, "kill", side_effect=kill_error) as kill:
         # Never raises, so the caller's original startup error survives.
         api._shutdown_after_failed_start(controller)
-    assert kill.called == expect_kill
-    if expect_kill:
-        kill.assert_called_once_with(controller, no_restart=True)
+    # Only the controller this call created is shut down.
+    assert controller.graceful_shutdown.remote.call_count == expected_waits
+    if expect_restart:
+        # Never killed for good, which would leave the shutdown flag behind.
+        kill.assert_called_once_with(controller, no_restart=False)
+    else:
+        kill.assert_not_called()
+
+
+class _FakeKVStore:
+    """Stands in for the GCS KV store, which outlives any one controller."""
+
+    def __init__(self):
+        self._data = {}
+
+    def get(self, key):
+        return self._data.get(key)
+
+    def put(self, key, value):
+        self._data[key] = value
+
+    def delete(self, key):
+        self._data.pop(key, None)
+
+
+def _controller_for_shutdown(kv_store, ready_for_shutdown):
+    """A stub with the state ServeController.shutdown() uses."""
+    state_manager = mock.MagicMock()
+    state_manager.is_ready_for_shutdown.return_value = ready_for_shutdown
+    controller = SimpleNamespace(
+        kv_store=kv_store,
+        # Set from the persisted flag, as ServeController.__init__ does.
+        _shutting_down=kv_store.get(SHUTDOWN_IN_PROGRESS_KEY) is not None,
+        _shutdown_flag_persisted=kv_store.get(SHUTDOWN_IN_PROGRESS_KEY) is not None,
+        _shutdown_start_time=None,
+        application_state_manager=state_manager,
+        deployment_state_manager=state_manager,
+        endpoint_state=state_manager,
+        proxy_state_manager=state_manager,
+        _kill_registered_cleanup_actors=lambda: None,
+    )
+    controller.config_checkpoint_deleted = lambda: (
+        ServeController.config_checkpoint_deleted(controller)
+    )
+    return controller
+
+
+def test_restarted_controller_clears_shutdown_flag():
+    """The shutdown flag lifecycle that _shutdown_after_failed_start relies on.
+
+    A controller that hangs mid-shutdown leaves the flag in the KV store. Killed
+    for good, it would stay there and the next controller would shut itself
+    down. Restarted, the controller finishes the shutdown and deletes the flag.
+    """
+    kv_store = _FakeKVStore()
+    hung = _controller_for_shutdown(kv_store, ready_for_shutdown=False)
+    asyncio.run(ServeController.graceful_shutdown(hung, wait=False))
+    with mock.patch.object(controller_module.ray, "kill") as kill, mock.patch.object(
+        controller_module.ray, "get_runtime_context"
+    ):
+        ServeController.shutdown(hung)
+        assert kv_store.get(SHUTDOWN_IN_PROGRESS_KEY) is not None
+        kill.assert_not_called()
+
+        restarted = _controller_for_shutdown(kv_store, ready_for_shutdown=True)
+        assert restarted._shutting_down
+        ServeController.shutdown(restarted)
+
+    assert kv_store.get(SHUTDOWN_IN_PROGRESS_KEY) is None
+    # The restarted controller exits for good, releasing the name for a retry.
+    assert kill.call_count == 1 and kill.call_args.kwargs == {"no_restart": True}
+    assert not _controller_for_shutdown(kv_store, True)._shutting_down
 
 
 def _proxy_startup_error(error_type):
