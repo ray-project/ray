@@ -19,6 +19,7 @@ drag along.
 
 from __future__ import annotations
 
+from collections import Counter
 from typing import TYPE_CHECKING, Dict, Iterator, List, Optional, Sequence
 
 import pyarrow as pa
@@ -90,14 +91,10 @@ def _child_names(fields: Dict[int, "NestedField"]) -> Dict[int, str]:
     The field's own name, which is what makes a manifest readable, unless two
     specs gave different fields the same name -- then the id disambiguates.
     """
-    collisions = {
-        name
-        for name in (field.name for field in fields.values())
-        if sum(1 for f in fields.values() if f.name == name) > 1
-    }
+    counts = Counter(field.name for field in fields.values())
     return {
         field_id: (
-            f"{field.name}__{field_id}" if field.name in collisions else field.name
+            f"{field.name}__{field_id}" if counts[field.name] > 1 else field.name
         )
         for field_id, field in fields.items()
     }
