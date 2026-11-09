@@ -540,6 +540,33 @@ def test_a_schema_only_a_corrupt_chunk_declares_fails_a_skipping_read(tmp_path):
     assert reported == []
 
 
+UNDECODABLE_SCHEMA_CHUNK = 1  # the only chunk that declares ``/b``'s schema
+
+
+def test_an_unselected_topic_whose_schema_is_corrupt_costs_no_rows(
+    tmp_path, restore_max_errored_blocks
+):
+    """When errors are skipped, a read of ``/a`` whose file declares the
+    unselected ``/b``'s schema only in a corrupt chunk yields every ``/a`` row.
+    It reports that chunk as skipped, not the missing schema."""
+    clean = os.path.join(tmp_path, "clean.mcap")
+    # Without message indexes, the read opens the /b chunks 3 and 5 too.
+    write_mcap_without_summary_schemas(
+        clean, b_declared_in_chunk_1=True, message_indexes=False
+    )
+    path = write_corrupt_chunk(
+        os.path.join(tmp_path, "bad.mcap"), clean, UNDECODABLE_SCHEMA_CHUNK
+    )
+
+    tables, error = read_one_task([path], topics=["/a"])
+
+    assert rows_of(tables) == [(path, seq) for seq in (0, 2, 4)]
+    assert str(error).startswith(
+        "Skipped 1 corrupt chunk at byte offset "
+        f"{chunk_offset(path, UNDECODABLE_SCHEMA_CHUNK)} of MCAP file {path!r}: "
+    )
+
+
 def test_a_message_on_an_undeclared_channel_is_not_skipped_as_corrupt(tmp_path):
     """A chunk that decodes but holds a message on a channel nothing declares
     raises that error even when corrupt chunks are skipped, rather than being
