@@ -16,9 +16,7 @@ _WIN32 = os.name == "nt"
 
 
 def get_conda_activate_commands(conda_env_name: str) -> List[str]:
-    """
-    Get a list of commands to run to silently activate the given conda env.
-    """
+    """Get a list of commands to run to silently activate the given conda env."""
     #  Checking for newer conda versions
     if not _WIN32 and ("CONDA_EXE" in os.environ or RAY_CONDA_HOME in os.environ):
         conda_path = get_conda_bin_executable("conda")
@@ -41,8 +39,7 @@ def get_conda_activate_commands(conda_env_name: str) -> List[str]:
 
 
 def get_conda_bin_executable(executable_name: str) -> str:
-    """
-    Return path to the specified executable, assumed to be discoverable within
+    """Return path to the specified executable, assumed to be discoverable within
     a conda installation.
 
     The conda home directory (expected to contain a 'bin' subdirectory on
@@ -89,8 +86,7 @@ def _get_conda_env_name(conda_env_path: str) -> str:
 def create_conda_env_if_needed(
     conda_yaml_file: str, prefix: str, logger: Optional[logging.Logger] = None
 ) -> None:
-    """
-    Given a conda YAML, creates a conda environment containing the required
+    """Given a conda YAML, creates a conda environment containing the required
     dependencies if such a conda environment doesn't already exist.
     Args:
         conda_yaml_file: The path to a conda `environment.yml` file.
@@ -163,9 +159,7 @@ def delete_conda_env(prefix: str, logger: Optional[logging.Logger] = None) -> bo
 
 
 def get_conda_env_list() -> list:
-    """
-    Get conda env list in full paths.
-    """
+    """Get conda env list in full paths."""
     conda_path = get_conda_bin_executable("conda")
     try:
         exec_cmd([conda_path, "--help"], throw_on_error=False)
@@ -177,8 +171,7 @@ def get_conda_env_list() -> list:
 
 
 def get_conda_info_json() -> dict:
-    """
-    Get `conda info --json` output.
+    """Get `conda info --json` output.
 
     Returns dict of conda info. See [1] for more details. We mostly care about these
     keys:
@@ -198,9 +191,7 @@ def get_conda_info_json() -> dict:
 
 
 def get_conda_envs(conda_info: dict) -> List[Tuple[str, str]]:
-    """
-    Gets the conda environments, as a list of (name, path) tuples.
-    """
+    """Gets the conda environments, as a list of (name, path) tuples."""
     prefix = conda_info["conda_prefix"]
     ret = []
     for env in conda_info["envs"]:
@@ -218,8 +209,7 @@ class ShellCommandException(Exception):
 def exec_cmd(
     cmd: List[str], throw_on_error: bool = True, logger: Optional[logging.Logger] = None
 ) -> Union[int, Tuple[int, str, str]]:
-    """
-    Runs a command as a child process.
+    """Runs a command as a child process.
 
     A convenience wrapper for running a command from a Python script.
 

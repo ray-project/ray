@@ -14,6 +14,8 @@ The Ray Train dashboard also shows a subset of Ray Core metrics that are useful 
 
 The dashboard's **Data Ingestion** row builds on {ref}`Ray Data metrics <monitoring-your-workload>` to show how much time each training worker spends waiting on data, broken down by data loading stage and by rank. For a step-by-step workflow that uses those panels to find data loading bottlenecks and stragglers, see {ref}`train-debugging-data-loading-bottlenecks`.
 
+Ray Train can also overlay annotations, such as controller state changes and `ray.train.report` calls, on the dashboard panels. Use {func}`ray.train.annotate` to add your own. Annotations are off by default. To turn them on, see {ref}`grafana-dashboard-annotations`.
+
 The following table lists the Prometheus metrics that Ray Train emits:
 
 ```{list-table} Ray Train metrics

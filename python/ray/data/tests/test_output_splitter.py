@@ -1,15 +1,19 @@
 import collections
 import itertools
 import random
+from dataclasses import replace
 from unittest.mock import patch
 
 import pytest
 
 import ray
-from ray.data._internal.execution.interfaces import ExecutionOptions
+from ray.data._internal.execution.interfaces import ExecutionOptions, RefBundle
 from ray.data._internal.execution.operators import output_splitter
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
-from ray.data._internal.execution.operators.output_splitter import OutputSplitter
+from ray.data._internal.execution.operators.output_splitter import (
+    OutputSplitter,
+    _split,
+)
 from ray.data._internal.execution.util import make_ref_bundles
 from ray.data.context import DataContext
 from ray.data.tests.conftest import noop_counter
@@ -278,6 +282,54 @@ def test_split_operator_with_locality(ray_start_regular_shared, equal, random_se
         f"Expected >=85% with locality-aware dispatching. "
         f"Hits: {locality_hits}/{total}"
     )
+
+
+def test_split_restamps_node_id_on_new_pieces(ray_start_regular_shared):
+    """Pieces created by a remote split live on the worker, not the source node.
+
+    Blocks handed through unchanged keep the source node_id: they are still
+    the original objects.
+    """
+    stale = "not-the-worker"
+    whole, sliced = make_ref_bundles([[0, 1], [2, 3, 4]])
+
+    def stamp(bundle):
+        return replace(
+            bundle,
+            blocks=tuple(
+                replace(entry, metadata=replace(entry.metadata, node_id=stale))
+                for entry in bundle.blocks
+            ),
+        )
+
+    whole, sliced = stamp(whole), stamp(sliced)
+    bundle = RefBundle(
+        blocks=whole.blocks + sliced.blocks,
+        owns_blocks=True,
+        schema=whole.schema,
+    )
+    # 2 rows of the first block, then 1 row sliced off the second.
+    left, right = _split(bundle, left_size=3)
+
+    assert left.blocks[0].ref == whole.blocks[0].ref
+    assert left.blocks[0].metadata.node_id == stale
+
+    worker = ray.get_runtime_context().get_node_id()
+    assert worker != stale
+    assert left.blocks[1].metadata.node_id == worker
+    assert right.blocks[0].metadata.node_id == worker
+    assert left.blocks[1].metadata.exec_stats is None
+    assert right.blocks[0].metadata.exec_stats is None
+    sliced_bytes = sliced.blocks[0].metadata.size_bytes
+    assert (
+        left.blocks[1].metadata.size_bytes + right.blocks[0].metadata.size_bytes
+        == sliced_bytes
+    )
+
+    assert left.num_rows() == 3
+    assert right.num_rows() == 2
+    assert list(ray.get(left.blocks[1].ref)["id"]) == [2]
+    assert list(ray.get(right.blocks[0].ref)["id"]) == [3, 4]
 
 
 def test_split_operator_warns_when_memory_constrained(ray_start_regular_shared):
