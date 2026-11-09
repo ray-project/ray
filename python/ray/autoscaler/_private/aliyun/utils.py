@@ -42,8 +42,7 @@ from aliyunsdkecs.request.v20140526.TagResourcesRequest import TagResourcesReque
 
 
 class AcsClient:
-    """
-    A wrapper around Aliyun SDK. We use this wrapper in aliyun node provider.
+    """A wrapper around Aliyun SDK. We use this wrapper in aliyun node provider.
 
     Parameters:
         access_key: The AccessKey ID of your aliyun account.
