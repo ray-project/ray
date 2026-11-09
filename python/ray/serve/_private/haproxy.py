@@ -193,8 +193,10 @@ def _routers_and_targets_by_backend(
     return routers, targets
 
 
-def _ingress_router_server_ids(servers: "List[ServerConfig]") -> Dict[str, int]:
+def _assign_ingress_router_server_ids(servers: "List[ServerConfig]") -> Dict[str, int]:
     """Assign deterministic server IDs for HAProxy's native hash ring."""
+    # HAProxy 2.8 uses numeric server IDs, not replica names, for ring positions.
+    # Its built-in hash functions hash request keys, not server names.
     ids = {}
     used = set()
     # HAProxy 2.8 scales server IDs by 4096 in its 32-bit ring hash.
@@ -864,6 +866,7 @@ class HAProxyConfig:
 
     @property
     def ingress_router_socket_path(self) -> str:
+        # Lua sends routing consultations here for HAProxy's native router selection.
         return str(Path(self.socket_path).with_suffix(".ir"))
 
     @property
@@ -1465,7 +1468,7 @@ class HAProxyApi(ProxyApi):
             )
             has_ingress_request_router = ingress_request_router_lua_path is not None
             ingress_router_server_ids = {
-                backend.name: _ingress_router_server_ids(
+                backend.name: _assign_ingress_router_server_ids(
                     backend.ingress_request_router_servers
                 )
                 for backend in http_backends
