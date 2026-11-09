@@ -2,7 +2,7 @@
 
 Active only when ``actor_only_backend_enabled()`` is true. Swapped into the physical
 ruleset in place of the default :class:`FuseOperators` by
-``ray.data._internal.logical.optimizers`` (see ``_maybe_install_actor_only_rules``).
+``ray.data._internal.logical.optimizers`` (see ``_sync_actor_only_rules``).
 
 Relative to the default fusion rule, this rule (all gating lives in :meth:`_can_fuse`, so it
 applies uniformly to the Map->Map, Map->AllToAll, and

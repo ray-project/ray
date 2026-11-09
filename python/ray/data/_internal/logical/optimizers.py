@@ -54,29 +54,31 @@ _PHYSICAL_RULESET = Ruleset(
 _actor_only_rules_lock = threading.Lock()
 
 
-def _maybe_install_actor_only_rules() -> None:
-    """Swap default optimization rules for their experimental actor-only overrides.
+def _sync_actor_only_rules() -> None:
+    """Match the physical ruleset to whether the actor-only backend is enabled.
 
     This is the ruleset-swap wiring seam for the actor-only backend: when
     ``actor_only_backend_enabled()`` is true, the experimental ``FuseOperators``
     (which additionally allows Actor->Actor fusion) replaces the default rule in
-    the physical ruleset. No-op otherwise, so the default ruleset above stays
-    backend-agnostic.
+    the physical ruleset; when it is false, the default rule is put back. The
+    flag is read on every call, so turning the backend off restores the
+    default ruleset.
     """
     from ray.data._internal.execution.execution_flags import actor_only_backend_enabled
-
-    if not actor_only_backend_enabled():
-        return
-
     from ray.data._internal.experimental.logical.rules.operator_fusion import (
         FuseOperators as ExperimentalFuseOperators,
     )
 
+    if actor_only_backend_enabled():
+        old, new = FuseOperators, ExperimentalFuseOperators
+    else:
+        old, new = ExperimentalFuseOperators, FuseOperators
+
     # The check and the swap must run together: ``Ruleset.replace`` raises if
-    # another thread already swapped ``FuseOperators`` out.
+    # another thread already swapped ``old`` out.
     with _actor_only_rules_lock:
-        if FuseOperators in list(_PHYSICAL_RULESET):
-            _PHYSICAL_RULESET.replace(FuseOperators, ExperimentalFuseOperators)
+        if old in list(_PHYSICAL_RULESET):
+            _PHYSICAL_RULESET.replace(old, new)
 
 
 @DeveloperAPI
@@ -86,7 +88,7 @@ def get_logical_ruleset() -> Ruleset:
 
 @DeveloperAPI
 def get_physical_ruleset() -> Ruleset:
-    _maybe_install_actor_only_rules()
+    _sync_actor_only_rules()
     return _PHYSICAL_RULESET
 
 
