@@ -92,6 +92,7 @@ def test_webdataset_expand_json(
 
 def test_webdataset_expand_json_edge_cases(ray_start_2_cpus, tmp_path):
     import json
+
     import pyarrow.fs
 
     from ray.data._internal.datasource.webdataset_datasource import WebDatasetDatasource
