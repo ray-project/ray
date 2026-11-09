@@ -173,7 +173,8 @@ class ObjectRecoveryManagerTestBase : public ::testing::Test {
               auto data =
                   RayObject(nullptr, meta_buffer, std::vector<rpc::ObjectReference>());
               memory_store_->Put(data, object_id, ref_counter_->HasReference(object_id));
-            }) {
+            },
+            object_recovery_attempts_counter_) {
     ref_counter_->SetReleaseLineageCallback(
         [](const ObjectID &, std::vector<ObjectID> *args) { return 0; });
   }
@@ -261,7 +262,14 @@ class ObjectRecoveryManagerTestBase : public ::testing::Test {
   std::shared_ptr<FakeRayletClientForTest> raylet_client_;
   std::shared_ptr<FakeTaskManager> task_manager_;
   std::shared_ptr<ReferenceCounterInterface> ref_counter_;
+  ray::observability::FakeCounter object_recovery_attempts_counter_;
   ObjectRecoveryManager manager_;
+
+  double RecordedAttempts(const std::string &type) const {
+    const auto tag_to_value = object_recovery_attempts_counter_.GetTagToValue();
+    auto it = tag_to_value.find({{"Type", type}});
+    return it == tag_to_value.end() ? 0 : it->second;
+  }
 };
 
 class ObjectRecoveryLineageDisabledTest : public ObjectRecoveryManagerTestBase {
@@ -350,6 +358,8 @@ TEST_F(ObjectRecoveryManagerTest, TestPinNewCopy) {
   ASSERT_EQ(raylet_client_->Flush(true), 1);
   ASSERT_TRUE(failed_reconstructions_.empty());
   ASSERT_EQ(task_manager_->num_tasks_resubmitted, 0);
+  ASSERT_EQ(RecordedAttempts("Pin"), 2);
+  ASSERT_EQ(RecordedAttempts("Reconstruct"), 0);
 }
 
 TEST_F(ObjectRecoveryManagerTest, TestReconstruction) {
@@ -369,6 +379,8 @@ TEST_F(ObjectRecoveryManagerTest, TestReconstruction) {
 
   ASSERT_TRUE(failed_reconstructions_.empty());
   ASSERT_EQ(task_manager_->num_tasks_resubmitted, 1);
+  ASSERT_EQ(RecordedAttempts("Pin"), 0);
+  ASSERT_EQ(RecordedAttempts("Reconstruct"), 1);
 }
 
 TEST_F(ObjectRecoveryManagerTest, TestReconstructionSuppression) {

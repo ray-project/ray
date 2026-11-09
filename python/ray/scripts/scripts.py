@@ -27,7 +27,6 @@ from ray._common.usage import usage_lib
 from ray._common.utils import load_class
 from ray._private.authentication.authentication_token_setup import (
     ensure_token_if_auth_enabled,
-    maybe_enable_token_auth_if_token_available,
 )
 from ray._private.internal_api import memory_summary
 from ray._private.label_utils import (
@@ -1066,9 +1065,24 @@ def start(
                     " flag of `ray start` command."
                 )
 
-        maybe_enable_token_auth_if_token_available()
+        from ray._raylet import (
+            AuthenticationMode,
+            AuthenticationTokenLoader,
+            get_authentication_mode,
+        )
 
-        # Ensure auth token is available if authentication mode is token
+        # has_token raises other auth errors, such as RAY_AUTH_TOKEN_PATH naming a
+        # missing file, unchanged.
+        if get_authentication_mode() == AuthenticationMode.TOKEN and not (
+            AuthenticationTokenLoader.instance().has_token(ignore_auth_mode=True)
+        ):
+            # Worker nodes of this cluster need the same token, so a token made
+            # here could only work for a single-node cluster.
+            cli_logger.abort(
+                "Token authentication is enabled but no authentication token was "
+                "found. Run `ray get-auth-token --generate` to create one, then put "
+                "that token on every node of the cluster before starting it."
+            )
         ensure_token_if_auth_enabled(system_config, create_token_if_missing=False)
 
         node = ray._private.node.Node(
@@ -2762,8 +2776,7 @@ def kuberay_autoscaler(
     help="Skip comparison of GCS version with local Ray version.",
 )
 def healthcheck(address, component, skip_version_check):
-    """
-    This is NOT a public API.
+    """This is NOT a public API.
 
     Health check a Ray or a specific component. Exit code 0 is healthy.
     """
@@ -2926,9 +2939,6 @@ def get_auth_token(generate):
 
     If --generate is specified, a new token is created and saved to ~/.ray/auth_token if one does not exist.
     """
-    from ray._private.authentication.authentication_token_setup import (
-        generate_and_save_token,
-    )
     from ray._raylet import (
         AuthenticationTokenLoader,
     )
@@ -2939,8 +2949,10 @@ def get_auth_token(generate):
     if not loader.has_token(ignore_auth_mode=True):
         if generate:
             click.echo("Generating new authentication token...", err=True)
-            generate_and_save_token()
-            loader.reset_cache()
+            try:
+                loader.create_token_if_missing()
+            except RuntimeError as e:
+                raise click.ClickException(str(e)) from e
         else:
             raise click.ClickException(
                 "No authentication token found. Use ray `get-auth-token --generate` to create one.",

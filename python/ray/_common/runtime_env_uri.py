@@ -70,8 +70,7 @@ def _is_path(path_or_uri: str) -> bool:
 
 
 def parse_uri(pkg_uri: str) -> Tuple[Protocol, str]:
-    """
-    Parse package uri into protocol and package name based on its format.
+    """Parse package uri into protocol and package name based on its format.
     Note that the output of this function is not for handling actual IO, it's
     only for setting up local directory folders by using package name as path.
 

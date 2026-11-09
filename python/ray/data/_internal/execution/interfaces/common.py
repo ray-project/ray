@@ -1,5 +1,6 @@
 import bisect
 import json
+from enum import Enum
 from typing import Dict, List, Tuple
 
 from ray.data._internal.util import GiB, KiB, MiB
@@ -7,6 +8,33 @@ from ray.util.metrics import Histogram
 
 # Node id string returned by `ray.get_runtime_context().get_node_id()`.
 NodeIdStr = str
+
+# Logical identifier of an actor (used in labels and actor-to-id maps).
+#
+# Ray Core actor IDs can't serve this purpose: actors are identified by labels,
+# labels must be set before creation, and the Core ID only exists afterwards.
+LogicalActorId = str
+
+
+class ActorStatus(str, Enum):
+    """Lifecycle state of an actor in a Ray Data actor pool.
+
+    TODO(Justin): Lives here for now because I need to break up the PRs
+    into tiny ones and resource_bank references this.
+    """
+
+    # Breakdown of alive states
+    PENDING = "pending"
+    IDLE = "idle"
+    ACTIVE = "active"
+
+    # Actor is restarting from some unexpected error
+    RESTARTING = "restarting"
+
+    # The actor is marked for graceful termination. Will wait for all
+    # tasks to complete before dropping the ref handle.
+    TERMINATING = "terminating"
+
 
 # Used for time-based histograms (e.g. task completion time, block completion time)
 histogram_buckets_s = [
@@ -83,8 +111,7 @@ histogram_bucket_rows = [
 
 
 class RuntimeMetricsHistogram:
-    """
-    Class that tracks a histogram of values.
+    """Class that tracks a histogram of values.
 
     Contains helper methods to record the values and apply those values to a `ray.util.metrics.Histogram` metric.
     """
@@ -104,8 +131,7 @@ class RuntimeMetricsHistogram:
         metric: Histogram,
         tags: Dict[str, str],
     ):
-        """
-        This method calculates the difference between the current bucket counts and the previous bucket counts,
+        """This method calculates the difference between the current bucket counts and the previous bucket counts,
         and applies those observations to the metric.
 
         This method stores the previous_bucket_counts in the metric as `last_applied_bucket_counts_for_tags`.
@@ -153,8 +179,7 @@ class RuntimeMetricsHistogram:
         return f"(samples: {total_samples}, avg: {average:.2f})"
 
     def _calculate_average_value(self) -> Tuple[int, float]:
-        """
-        Calculate the average value of all samples.
+        """Calculate the average value of all samples.
 
         Used to show a representative value for the histogram when
         printing the histogram as a string.

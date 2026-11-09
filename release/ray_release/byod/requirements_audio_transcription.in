@@ -1,0 +1,6 @@
+# Layered on the ray-torch image for the audio_transcription multimodal
+# benchmark. torch, transformers and numpy come from the image.
+accelerate
+soundfile
+# torchaudio declares no torch requirement; keep it on the image's torch release.
+torchaudio==2.10.*
