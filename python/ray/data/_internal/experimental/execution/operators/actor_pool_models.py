@@ -13,7 +13,7 @@ from __future__ import annotations
 import time
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Iterable, Optional, Tuple, Union
+from typing import Dict, Iterable, List, Optional, Tuple, Union
 
 from ray.core.generated import gcs_pb2
 from ray.data._internal.actor_autoscaler.autoscaling_actor_pool import (
@@ -175,6 +175,71 @@ class _DrainingActorInfo:
         self.reclaimable = self.reason.reclaimable
 
 
+class HeadroomReason(str, Enum):
+    """Why an escape hatch raised an actor's output caps."""
+
+    # Output backpressure deadlock: every actor is at its output cap and
+    # nothing downstream drains (``relieve_backpressure_deadlock``). Given back by
+    # ``release_backpressure_deadlock_headroom``.
+    BACKPRESSURE_DEADLOCK = "backpressure_deadlock"
+    # Withheld-output deadlock: an actor's budget is filled by lineage
+    # reconstruction outputs withheld until their plan's input set completes
+    # (``relieve_withheld_deadlock``). Given back once the actor holds no
+    # withheld outputs.
+    WITHHELD_DEADLOCK = "withheld_deadlock"
+
+
+class HeadroomFunding(str, Enum):
+    """How far ``grant_output_headroom`` goes to fund a grant."""
+
+    # The node's free object store and its peers' unused budget only: the
+    # grant stays within what the node already has. Nothing is granted when
+    # they fall short.
+    WITHIN_NODE_BUDGET = "within_node_budget"
+    # Backed bytes, then wait while the node's peers could free the rest by
+    # draining; the rest is granted unbacked only once they can't.
+    WAIT_FOR_PEERS = "wait_for_peers"
+    # Backed bytes, then the rest unbacked right away.
+    IMMEDIATE = "immediate"
+
+
+@dataclass
+class _HeadroomGrant:
+    """Extra output budget an escape hatch gave one actor.
+
+    The bytes come from free object store on the actor's node, reserved in
+    the ResourceBank so no other grant counts it again, then from unused budget
+    lent by other actors on the same node, whose caps went down by the same
+    amount so the node total doesn't change. If both together fall short, the
+    rest is granted unfunded (see ``grant_output_headroom`` for when). Giving
+    the grant back undoes all three.
+
+    A lender that leaves the pool can't be repaid, and the actor that replaces
+    it would start with a full budget, counting the lent bytes twice. So its
+    loans become orphaned, and the next actor to start on the node takes them
+    over as the lender, starting with that much less budget (but never less
+    than one block's worth, so it can still make progress).
+    """
+
+    reason: HeadroomReason
+    bytes_from_free_space: int = 0
+    # Lender actor id -> bytes lent.
+    bytes_by_lender: Dict[ActorId, int] = field(default_factory=dict)
+    bytes_unbacked: int = 0
+    # Lent by actors that left the pool, not yet taken over by a new one.
+    bytes_orphaned: int = 0
+    num_outputs: float = 0
+
+    @property
+    def num_bytes(self) -> int:
+        return (
+            self.bytes_from_free_space
+            + sum(self.bytes_by_lender.values())
+            + self.bytes_unbacked
+            + self.bytes_orphaned
+        )
+
+
 @dataclass
 class _ExperimentalActorState:
     """Actor state. Not to be confused with Ray Core actor state (ALIVE /
@@ -194,9 +259,9 @@ class _ExperimentalActorState:
     actor_location: NodeIdStr
 
     # Per-actor output backpressure limits. ``max_num_output_bytes`` is the
-    # live cap: it starts at ``default_max_num_output_bytes`` (below), is
-    # raised by ``upgrade_output_limit`` (the deadlock hatch) and restored to
-    # the default by ``reset_output_limit``.
+    # live cap: it starts at ``default_max_num_output_bytes`` (below), goes up
+    # by each escape-hatch grant in ``grants`` and down by what the actor lends
+    # (``lent_bytes``).
     max_num_outputs: float
     max_num_output_bytes: float
 
@@ -211,9 +276,14 @@ class _ExperimentalActorState:
 
     # Baseline output-bytes cap derived when the actor became ready: the
     # configured ``max_num_output_bytes_per_actor``, else the actor's share of
-    # its node's object store. ``reset_output_limit`` restores
+    # its node's object store. ``release_backpressure_deadlock_headroom`` restores
     # ``max_num_output_bytes`` to this once a raised cap is no longer needed.
     default_max_num_output_bytes: float = float("inf")
+
+    # Escape-hatch grants this actor holds (see ``_HeadroomGrant``).
+    grants: List[_HeadroomGrant] = field(default_factory=list)
+    # Output budget this actor has lent to other actors on its node.
+    lent_bytes: int = 0
 
 
 # Scheduling rank used by both the per-node (locality) heap and the global
