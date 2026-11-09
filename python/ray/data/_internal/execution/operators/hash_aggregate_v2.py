@@ -113,8 +113,12 @@ def _key_and_target_columns(
     return columns
 
 
-# Peak heap of a one-phase aggregation task per byte it outputs. The task reads
-# its input blocks zero-copy from the object store.
+# A one-phase aggregation task peaks at ~3-7x the bytes it outputs (measured).
+# Its input blocks are read zero-copy from the object store, so the heap is
+# Arrow's group_by working set (hash table, per-group accumulators, result
+# columns), which grows with the number of groups, i.e. with the output, not
+# the input. 8x leaves headroom. The generic map estimate (one output block)
+# under-requests it, overpacking tasks per node and risking OOM kills.
 COMPLETE_AGGREGATION_PEAK_MEMORY_MULTIPLIER = 8
 
 

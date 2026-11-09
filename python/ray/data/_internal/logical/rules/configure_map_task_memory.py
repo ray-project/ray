@@ -73,8 +73,9 @@ class ConfigureMapTaskMemoryRule(Rule, abc.ABC):
 
 class ConfigureMapTaskMemoryUsingOutputSize(ConfigureMapTaskMemoryRule):
     def estimate_per_task_memory_requirement(self, op: MapOperator) -> Optional[int]:
-        # A one-phase aggregation (the only map op from an Aggregate): its heap
-        # grows with its groups, so size by a task's whole output, not a block.
+        # A one-phase aggregation (the only map op built from an Aggregate):
+        # its heap grows with its groups, so size it by a task's whole output,
+        # not by one output block. See COMPLETE_AGGREGATION_PEAK_MEMORY_MULTIPLIER.
         if any(
             isinstance(logical_op, Aggregate) for logical_op in op._logical_operators
         ):
