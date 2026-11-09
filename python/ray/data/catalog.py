@@ -197,7 +197,17 @@ class Catalog(ABC):
         reader: ReaderFormat,
         mode: CatalogAccessMode = CatalogAccessMode.READ,
     ) -> ResolvedSource:
-        """Resolve ``table`` for the given ``reader`` and access ``mode``."""
+        """Resolve ``table`` for the given ``reader`` and access ``mode``.
+
+        Args:
+            table: The name of the table to resolve.
+            reader: The reader that asks for the table. It determines which fields of
+                the result are set.
+            mode: Whether to vend read or write credentials.
+
+        Returns:
+            The location and credentials that ``reader`` needs to access ``table``.
+        """
         ...
 
 
@@ -461,7 +471,15 @@ class DatabricksUnityCatalog(Catalog):
         """Best-effort format hint from table metadata or file extension.
 
         Calling this function will query DatabricksUnityCatalog to get the
-        relevant information."""
+        relevant information.
+
+        Args:
+            table: The full name of the Unity Catalog table.
+
+        Returns:
+            The inferred reader format, or ``None`` if neither the table metadata nor
+            the file extension identifies one.
+        """
         info = self._get_table_info(table)
         _, table_url = self._get_creds(info.table_id)
         return self._infer_format(info, table_url)

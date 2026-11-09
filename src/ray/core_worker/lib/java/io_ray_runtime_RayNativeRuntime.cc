@@ -375,12 +375,6 @@ JNIEXPORT void JNICALL Java_io_ray_runtime_RayNativeRuntime_nativeRunTaskExecuto
 }
 
 JNIEXPORT void JNICALL
-Java_io_ray_runtime_RayNativeRuntime_nativeMaybeEnableTokenAuthIfTokenAvailable(
-    JNIEnv *env, jclass) {
-  ray::rpc::MaybeEnableTokenAuthIfTokenAvailable();
-}
-
-JNIEXPORT void JNICALL
 Java_io_ray_runtime_RayNativeRuntime_nativeCreateTokenIfMissingForOwnCluster(JNIEnv *env,
                                                                              jclass) {
   const std::string error = ray::rpc::CreateTokenIfMissingForOwnCluster();

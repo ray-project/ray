@@ -8,7 +8,7 @@ froms:
 dockerfile: ci/docker/ray-wheel.Dockerfile
 srcs:
   - pyproject.toml
-  - README.rst
+  - README.md
   - ci/build/build-manylinux-wheel.sh
   - python/
 build_args:

@@ -5,14 +5,20 @@ import subprocess
 import sys
 import time
 from typing import Union
+from unittest.mock import MagicMock, patch
 
 import httpx
 import pytest
 import yaml
+from click.testing import CliRunner
 from pydantic import BaseModel
 
 from ray import serve
 from ray._common.test_utils import wait_for_condition
+from ray._private.authentication.http_token_authentication import (
+    get_auth_headers_if_auth_enabled,
+)
+from ray.serve import scripts as serve_scripts
 from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME
 from ray.serve._private.test_utils import get_application_url
 from ray.serve.handle import DeploymentHandle
@@ -146,6 +152,38 @@ k8sFNode = global_f.options(
 ).bind()
 
 
+def test_run_metrics_export_port():
+    """`serve run --metrics-export-port` forwards the port to `ray.init()`."""
+    with (
+        patch("ray.serve.scripts.ray.is_initialized", return_value=False),
+        patch("ray.serve.scripts.ray.init") as mock_ray_init,
+        patch("ray.serve.scripts.import_attr", return_value=MagicMock()),
+        patch(
+            "ray.serve.scripts._private_api."
+            "call_user_app_builder_with_args_if_necessary",
+            side_effect=lambda app, args: app,
+        ),
+        patch(
+            "ray.serve.scripts._private_api.serve_start",
+            return_value=MagicMock(),
+        ),
+        patch("ray.serve.scripts.serve.run"),
+    ):
+        result = CliRunner().invoke(
+            serve_scripts.run,
+            [
+                "--metrics-export-port",
+                "12345",
+                "--non-blocking",
+                "fake_module:app",
+            ],
+        )
+
+    assert result.exit_code == 0, result.output
+    mock_ray_init.assert_called_once()
+    assert mock_ray_init.call_args.kwargs["_metrics_export_port"] == 12345
+
+
 class TestRun:
     @pytest.mark.skipif(
         sys.platform == "win32", reason="File path incorrect on Windows."
@@ -169,7 +207,8 @@ class TestRun:
         def is_proxy_location_correct(expected_proxy_location: str) -> bool:
             try:
                 response = httpx.get(
-                    "http://localhost:8265/api/serve/applications/"
+                    "http://localhost:8265/api/serve/applications/",
+                    headers=get_auth_headers_if_auth_enabled({}),
                 ).text
                 response_json = json.loads(response)
                 print("response_json")
@@ -197,6 +236,12 @@ class TestRun:
         wait_for_condition(
             lambda: is_proxy_location_correct(expected_proxy_location=expected),
             timeout=15,
+        )
+        # The proxy location shows up while `serve run` is still starting up, where a
+        # SIGINT can land in an object finalizer that discards the KeyboardInterrupt
+        # and leaves `p.wait()` hanging. Interrupt it only once the app is RUNNING.
+        wait_for_condition(
+            check_app_running, app_name=SERVE_DEFAULT_APP_NAME, timeout=30
         )
         p.send_signal(signal.SIGINT)
         p.wait()
