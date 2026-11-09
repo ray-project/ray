@@ -4,7 +4,11 @@ from dataclasses import replace
 from typing import Any, Dict, List, Optional, Sequence, Set, Union
 
 import ray
-from ray.train.health._internal.constants import DEFAULT_NODE_MONITOR_POLL_TIMEOUT_S
+from ray.train.health._internal.constants import (
+    DEFAULT_NODE_MONITOR_POLL_TIMEOUT_S,
+    DEFAULT_ON_DEMAND_PROBE_POLL_INTERVAL_S,
+    DEFAULT_ON_DEMAND_PROBE_TIMEOUT_S,
+)
 from ray.train.health._internal.node_monitor import NodeMonitorStatus
 from ray.train.health._internal.node_monitor_group import (
     NodeMonitorGroup,
@@ -48,8 +52,7 @@ def merge_decisions(decisions: Sequence[HealthDecision]) -> HealthDecision:
         TypeError: If a decision is not a ``Noop``, ``Reattempt``, ``Evict`` or
             ``Diagnose``.
     """
-    # TODO: Add a field to Diagnose for checks that need the workers stopped,
-    # such as an all-reduce test, and rank those above Reattempt.
+    # TODO: Rank a Diagnose whose checks stop the workers above Reattempt.
     evicts, reattempts, diagnoses = [], [], []
     for decision in decisions:
         if isinstance(decision, Evict):
@@ -151,6 +154,29 @@ class HealthManager:
         """Stop monitoring."""
         self._node_monitor_group.shutdown()
 
+    def evaluate(
+        self, timeout: float = DEFAULT_NODE_MONITOR_POLL_TIMEOUT_S
+    ) -> HealthDecision:
+        """Evaluate the on-demand checks once they are back, and the in-flight
+        checks. While on-demand checks run, an in-flight ``Diagnose`` is
+        dropped rather than start more.
+
+        Args:
+            timeout: Timeout in seconds to wait for the in-flight checks' latest
+                results.
+
+        Returns:
+            The health decision to carry out. ``Noop()`` if there is nothing to
+            do.
+        """
+        on_demand_decision = self.evaluate_on_demand_checks()
+        inflight_decision = self.evaluate_inflight_checks(timeout=timeout)
+        if on_demand_decision is None:
+            on_demand_decision = Noop()
+            if isinstance(inflight_decision, Diagnose):
+                inflight_decision = Noop()
+        return merge_decisions([on_demand_decision, inflight_decision])
+
     def evaluate_inflight_checks(
         self, timeout: float = DEFAULT_NODE_MONITOR_POLL_TIMEOUT_S
     ) -> HealthDecision:
@@ -170,7 +196,9 @@ class HealthManager:
         return self._decide(self._inflight_evaluators, state)
 
     def start_on_demand_checks(
-        self, checks: Sequence[HealthCheck], timeout: float
+        self,
+        checks: Sequence[HealthCheck],
+        timeout: float = DEFAULT_ON_DEMAND_PROBE_TIMEOUT_S,
     ) -> None:
         """Start running on-demand checks once on the monitored nodes.
         ``evaluate_on_demand_checks()`` evaluates their results.
@@ -208,6 +236,30 @@ class HealthManager:
         )
         if isinstance(decision, Noop):
             logger.info("The on-demand health checks found nothing to act on.")
+        return decision
+
+    def start_and_evaluate_on_demand_checks(
+        self,
+        checks: Sequence[HealthCheck],
+        timeout: float = DEFAULT_ON_DEMAND_PROBE_TIMEOUT_S,
+    ) -> HealthDecision:
+        """Run on-demand checks once on the monitored nodes, and wait for their
+        decision: until their results are back, or the timeout passed.
+
+        Args:
+            checks: The checks, such as the pre-flight checks that stop the
+                workers.
+            timeout: Timeout in seconds for the nodes to answer.
+
+        Returns:
+            The health decision to carry out. ``Noop()`` if there is nothing to
+            do.
+        """
+        self.start_on_demand_checks(checks, timeout)
+        decision = self.evaluate_on_demand_checks()
+        while decision is None:
+            time.sleep(DEFAULT_ON_DEMAND_PROBE_POLL_INTERVAL_S)
+            decision = self.evaluate_on_demand_checks()
         return decision
 
     def _poll_node_monitor_group_status(self, timeout: float) -> None:

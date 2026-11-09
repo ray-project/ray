@@ -1,8 +1,8 @@
 from typing import TYPE_CHECKING, List
 
-from ray.train.health import HealthCheck
-from ray.train.health._internal.constants import DEFAULT_ON_DEMAND_PROBE_TIMEOUT_S
+from ray.train.health import Evict, HealthCheck, Reattempt
 from ray.train.v2._internal.execution.callback import WorkerGroupCallback
+from ray.train.v2.api.exceptions import HealthCheckError
 
 if TYPE_CHECKING:
     from ray.train.health._internal.manager import HealthManager
@@ -13,9 +13,9 @@ if TYPE_CHECKING:
 
 
 class HealthCallback(WorkerGroupCallback):
-    """Runs a ``HealthManager``'s checks on each attempt's worker group:
-    monitors the attempt's nodes while its workers run, and starts the
-    pre-flight checks on demand once they start.
+    """Runs a ``HealthManager``'s checks on each attempt's worker group: runs
+    the pre-flight checks as its workers start, and monitors the attempt's
+    nodes while they run.
 
     Args:
         health_manager: The run's ``HealthManager``.
@@ -27,14 +27,48 @@ class HealthCallback(WorkerGroupCallback):
     ):
         self._health_manager = health_manager
         self._preflight_checks = preflight_checks
+        # Checks to run once at the start of the next attempt only.
+        self._next_start_checks: List[HealthCheck] = []
 
-    def after_worker_group_start(self, worker_group: "WorkerGroup"):
+    def run_at_next_start(self, checks: List[HealthCheck]) -> None:
+        """Run some checks once at the start of the next attempt, with its
+        pre-flight checks.
+
+        Args:
+            checks: The checks, such as those of a ``Diagnose`` that stop the
+                workers.
+        """
+        self._next_start_checks.extend(checks)
+
+    def after_worker_group_start(self, worker_group: "WorkerGroup") -> None:
+        """Reset the ``HealthManager`` for the attempt, and run its pre-flight
+        checks on demand. Training starts once the checks that stop the
+        workers decide, alongside the other checks.
+
+        Args:
+            worker_group: The attempt's worker group.
+
+        Raises:
+            HealthCheckError: If the checks that stop the workers decide to
+                ``Reattempt`` or ``Evict``, which keeps training from starting.
+        """
         node_ids = {worker.metadata.node_id for worker in worker_group.get_workers()}
         self._health_manager.reset(sorted(node_ids))
-        if self._preflight_checks:
-            self._health_manager.start_on_demand_checks(
-                self._preflight_checks, timeout=DEFAULT_ON_DEMAND_PROBE_TIMEOUT_S
+
+        checks = self._preflight_checks + self._next_start_checks
+        self._next_start_checks = []
+        blocking_checks = [c for c in checks if c.stop_workers]
+        if blocking_checks:
+            decision = self._health_manager.start_and_evaluate_on_demand_checks(
+                blocking_checks
             )
+            if isinstance(decision, (Reattempt, Evict)):
+                self._health_manager.shutdown()
+                raise HealthCheckError(decision)
+
+        other_checks = [c for c in checks if not c.stop_workers]
+        if other_checks:
+            self._health_manager.start_on_demand_checks(other_checks)
 
     def before_worker_group_shutdown(self, worker_group: "WorkerGroup"):
         self._health_manager.shutdown()

@@ -133,6 +133,13 @@ def test_poll_interval_s_must_be_positive(poll_interval_s):
         PeriodicHealthCheck(poll_interval_s=poll_interval_s)
 
 
+def test_only_a_check_that_runs_once_can_stop_the_workers():
+    assert not HealthCheck().stop_workers
+    assert HealthCheck(stop_workers=True).stop_workers
+    with pytest.raises(ValueError):
+        PeriodicHealthCheck(poll_interval_s=1, stop_workers=True)
+
+
 def test_health_config_holds_its_checks():
     inflight = PeriodicHealthCheck(
         probe_creator=lambda: [HostTemp()],

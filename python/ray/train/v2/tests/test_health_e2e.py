@@ -97,6 +97,10 @@ class ProbeB(FlagProbe):
     flag = "issue_b"
 
 
+class ProbeC(FlagProbe):
+    flag = "issue_c"
+
+
 class DiagnosisProbe(NodeProbe):
     """Reports whether its node is the bad node."""
 
@@ -113,15 +117,16 @@ class EvictBadNodes(Evaluator):
         decision = Noop()
         if bad_nodes:
             decision = Evict(reason="bad node", target_nodes=bad_nodes)
-        _scenario().record.remote(("diagnosis", type(decision).__name__))
+        ray.get(_scenario().record.remote(("diagnosis", type(decision).__name__)))
         return decision
 
 
 class DiagnoseOnIssue(Evaluator):
     """Diagnoses when its probe starts to report an issue."""
 
-    def __init__(self, probe_name):
+    def __init__(self, probe_name, stop_workers=False):
         self._probe_name = probe_name
+        self._stop_workers = stop_workers
         self._had_issue = False
 
     def evaluate(self, state):
@@ -137,6 +142,7 @@ class DiagnoseOnIssue(Evaluator):
                 HealthCheck(
                     probe_creator=lambda: [DiagnosisProbe()],
                     evaluator_creator=lambda: [EvictBadNodes()],
+                    stop_workers=self._stop_workers,
                 )
             ],
         )
@@ -210,6 +216,48 @@ def test_diagnose_keeps_training_or_evicts(cluster):
     assert len(ray.get(scenario.get_node_ids.remote())) == 2
 
 
+def stop_workers_train_fn():
+    scenario = _scenario()
+    node_id = ray.get_runtime_context().get_node_id()
+    attempt = ray.get(scenario.start_attempt.remote(node_id))
+    ray.get(scenario.record.remote(("attempt", attempt)))
+    if attempt == 0:
+        # Probe C reports an issue, and its diagnosis stops the workers.
+        ray.get(scenario.set.remote(issue_c=True))
+        time.sleep(60)
+
+
+def test_a_diagnose_that_stops_the_workers_runs_before_training_resumes(cluster):
+    scenario = Scenario.options(name="scenario").remote()
+    trainer = DataParallelTrainer(
+        stop_workers_train_fn,
+        scaling_config=ray.train.ScalingConfig(num_workers=1),
+        run_config=ray.train.RunConfig(
+            failure_config=ray.train.FailureConfig(max_failures=0),
+            callbacks=[RecordHealthDecisions()],
+            health_config=HealthConfig(
+                inflight_checks=[
+                    PeriodicHealthCheck(
+                        probe_creator=lambda: [ProbeC()],
+                        evaluator_creator=lambda: [
+                            DiagnoseOnIssue("ProbeC", stop_workers=True)
+                        ],
+                        poll_interval_s=0.1,
+                    )
+                ]
+            ),
+        ),
+    )
+    trainer.fit()
+
+    assert ray.get(scenario.get_events.remote()) == [
+        ("attempt", 0),
+        ("decision", "Diagnose"),
+        ("diagnosis", "Noop"),
+        ("attempt", 1),
+    ]
+
+
 class PreflightProbe(NodeProbe):
     """Reports which pre-flight run this is."""
 
@@ -227,12 +275,10 @@ class EvictOnTheFirstPreflight(Evaluator):
 
 def preflight_train_fn():
     node_id = ray.get_runtime_context().get_node_id()
-    if ray.get(_scenario().start_attempt.remote(node_id)) == 0:
-        # Trains until the pre-flight checks' Evict restarts it.
-        time.sleep(60)
+    ray.get(_scenario().start_attempt.remote(node_id))
 
 
-def test_preflight_checks_can_evict(cluster):
+def test_preflight_checks_can_evict_before_training_starts(cluster):
     scenario = Scenario.options(name="scenario").remote()
     trainer = DataParallelTrainer(
         preflight_train_fn,
@@ -245,6 +291,7 @@ def test_preflight_checks_can_evict(cluster):
                     HealthCheck(
                         probe_creator=lambda: [PreflightProbe()],
                         evaluator_creator=lambda: [EvictOnTheFirstPreflight()],
+                        stop_workers=True,
                     )
                 ]
             ),
@@ -252,10 +299,10 @@ def test_preflight_checks_can_evict(cluster):
     )
     trainer.fit()
 
-    # The first attempt's pre-flight checks evicted its node, and the second
-    # attempt's found nothing to act on.
+    # The first attempt's pre-flight checks evicted its node before training
+    # started, and the second attempt's found nothing to act on.
     assert ray.get(scenario.get_events.remote()) == [("decision", "Evict")]
-    assert len(ray.get(scenario.get_node_ids.remote())) == 2
+    assert len(ray.get(scenario.get_node_ids.remote())) == 1
 
 
 if __name__ == "__main__":

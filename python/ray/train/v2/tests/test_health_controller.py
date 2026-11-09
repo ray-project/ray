@@ -13,14 +13,16 @@ from ray.train.health import (
     Noop,
     Reattempt,
 )
-from ray.train.health._internal import manager as manager_module
-from ray.train.health._internal.constants import DEFAULT_ON_DEMAND_PROBE_TIMEOUT_S
 from ray.train.v2._internal.callbacks.health_callback import HealthCallback
 from ray.train.v2._internal.callbacks.user_callback import UserCallbackHandler
 from ray.train.v2._internal.constants import HEALTH_CHECK_INTERVAL_S_ENV_VAR
 from ray.train.v2._internal.execution.callback import ControllerCallback
-from ray.train.v2._internal.execution.controller import TrainController
+from ray.train.v2._internal.execution.controller import (
+    TrainController,
+    controller as controller_module,
+)
 from ray.train.v2._internal.execution.controller.state import (
+    ReschedulingState,
     RestartingState,
     RunningState,
     SchedulingState,
@@ -42,22 +44,17 @@ pytestmark = pytest.mark.usefixtures("mock_runtime_context")
 
 
 class FakeHealthManager:
-    """Returns the queued in-flight and diagnosis decisions, and records the
-    started diagnoses."""
+    """Returns the queued decisions, and records the started on-demand checks."""
 
     def __init__(self, inflight_checks):
         self.decisions = []
-        self.diagnosis_decisions = []
-        self.diagnoses = []
+        self.on_demand_checks = []
 
-    def evaluate_inflight_checks(self):
+    def evaluate(self):
         return self.decisions.pop(0) if self.decisions else Noop()
 
-    def start_on_demand_checks(self, checks, timeout):
-        self.diagnoses.append(checks)
-
-    def evaluate_on_demand_checks(self):
-        return self.diagnosis_decisions.pop(0) if self.diagnosis_decisions else Noop()
+    def start_on_demand_checks(self, checks):
+        self.on_demand_checks.append(checks)
 
 
 class RecordingCallback(ControllerCallback):
@@ -71,7 +68,7 @@ class RecordingCallback(ControllerCallback):
 @pytest.fixture(autouse=True)
 def patch_controller(monkeypatch):
     monkeypatch.setattr(TrainController, "worker_group_cls", DummyWorkerGroup)
-    monkeypatch.setattr(manager_module, "HealthManager", FakeHealthManager)
+    monkeypatch.setattr(controller_module, "HealthManager", FakeHealthManager)
     monkeypatch.setenv(HEALTH_CHECK_INTERVAL_S_ENV_VAR, "0")
     ray.init()
     yield
@@ -82,7 +79,7 @@ def _step(controller):
     asyncio.run(controller._run_control_loop_iteration())
 
 
-def _running_controller(failure_policy):
+def _controller(failure_policy):
     scaling_policy = MockScalingPolicy(scaling_config=ScalingConfig())
     callback = RecordingCallback()
     controller = TrainController(
@@ -99,44 +96,41 @@ def _running_controller(failure_policy):
         scaling_policy.queue_recovery_decision(
             ResizeDecision(num_workers=2, resources_per_worker={})
         )
+    return controller, callback
+
+
+def _running_controller(failure_policy):
+    controller, callback = _controller(failure_policy)
     _step(controller)
     _step(controller)
     assert isinstance(controller.get_state(), RunningState)
     return controller, callback
 
 
-def test_diagnose_runs_its_checks_while_training_continues():
+def test_diagnose_starts_its_checks_while_training_continues():
     controller, callback = _running_controller(MockFailurePolicy(None))
-    health_manager = controller._health_manager
     check = HealthCheck()
-    health_manager.decisions = [
-        Diagnose(reason="slow", checks=[check]),
-        Diagnose(reason="slower", checks=[]),
-    ]
-    # Not started, then running, then back with nothing to act on.
-    health_manager.diagnosis_decisions = [Noop(), None, Noop()]
-
-    for _ in range(3):
-        _step(controller)
-        assert isinstance(controller.get_state(), RunningState)
-    assert health_manager.diagnoses == [[check]]
-    assert [d.reason for d in callback.decisions] == ["slow"]
-
-
-def test_a_diagnosis_can_evict():
-    controller, callback = _running_controller(MockFailurePolicy(None))
-    health_manager = controller._health_manager
-    health_manager.decisions = [Diagnose(reason="slow", checks=[])]
-    health_manager.diagnosis_decisions = [
-        Noop(),
-        Evict(reason="bad NIC", target_nodes=["n1"]),
-    ]
+    controller._health_manager.decisions = [Diagnose(reason="slow", checks=[check])]
 
     _step(controller)
     assert isinstance(controller.get_state(), RunningState)
+    assert controller._health_manager.on_demand_checks == [[check]]
+    assert [d.reason for d in callback.decisions] == ["slow"]
+
+
+def test_a_diagnose_that_stops_the_workers_restarts_outside_the_failure_policy():
+    failure_policy = MockFailurePolicy(None)
+    failure_policy.make_decision = MagicMock()
+    controller, callback = _running_controller(failure_policy)
+    checks = [HealthCheck(stop_workers=True), HealthCheck()]
+    controller._health_manager.decisions = [Diagnose(reason="slow", checks=checks)]
+
     _step(controller)
     assert isinstance(controller.get_state(), RestartingState)
-    assert [type(d) for d in callback.decisions] == [Diagnose, Evict]
+    failure_policy.make_decision.assert_not_called()
+    assert controller._health_manager.on_demand_checks == []
+    assert controller._health_callback._next_start_checks == checks
+    assert [type(d) for d in callback.decisions] == [Diagnose]
 
 
 def test_reattempt_goes_through_the_failure_policy():
@@ -174,27 +168,112 @@ def test_evict_restarts_outside_the_failure_policy():
     assert isinstance(controller.get_state(), RunningState)
 
 
-@pytest.mark.parametrize("preflight_checks", [[], [HealthCheck()]])
-def test_health_callback_resets_each_attempt_and_starts_its_preflight_checks(
-    preflight_checks,
+@pytest.mark.parametrize(
+    "decision, uses_retry_budget",
+    [(Evict(reason="bad GPU", target_nodes=["n1"]), False), (Reattempt(), True)],
+)
+def test_a_preflight_decision_keeps_training_from_starting(
+    monkeypatch, decision, uses_retry_budget
 ):
-    health_manager = MagicMock()
-    callback = HealthCallback(health_manager, preflight_checks)
+    failure_policy = MockFailurePolicy(None)
+    failure_policy.make_decision = MagicMock(return_value=FailureDecision.RETRY)
+    controller, callback = _controller(failure_policy)
+    _step(controller)
+    assert isinstance(controller.get_state(), SchedulingState)
+
+    monkeypatch.setattr(DummyWorkerGroup, "_start_failure", HealthCheckError(decision))
+    _step(controller)
+    assert isinstance(controller.get_state(), ReschedulingState)
+    assert failure_policy.make_decision.called == uses_retry_budget
+    assert callback.decisions == [decision]
+
+
+def _worker_group(*node_ids):
     worker_group = MagicMock()
     worker_group.get_workers.return_value = [
-        MagicMock(metadata=MagicMock(node_id=node_id)) for node_id in ("b", "a", "b")
+        MagicMock(metadata=MagicMock(node_id=node_id)) for node_id in node_ids
     ]
+    return worker_group
+
+
+def _health_manager(preflight_decision=None):
+    health_manager = MagicMock()
+    health_manager.start_and_evaluate_on_demand_checks.return_value = preflight_decision
+    return health_manager
+
+
+def test_health_callback_resets_each_attempt():
+    health_manager = _health_manager()
+    callback = HealthCallback(health_manager, preflight_checks=[])
+    worker_group = _worker_group("b", "a", "b")
     callback.after_worker_group_start(worker_group)
     health_manager.reset.assert_called_once_with(["a", "b"])
-    if preflight_checks:
-        health_manager.start_on_demand_checks.assert_called_once_with(
-            preflight_checks, timeout=DEFAULT_ON_DEMAND_PROBE_TIMEOUT_S
-        )
-    else:
-        health_manager.start_on_demand_checks.assert_not_called()
+    health_manager.start_on_demand_checks.assert_not_called()
 
     callback.before_worker_group_shutdown(worker_group)
     health_manager.shutdown.assert_called_once()
+
+
+@pytest.mark.parametrize(
+    "decision", [Noop(), Diagnose(reason="slow", checks=[])], ids=["noop", "diagnose"]
+)
+def test_training_starts_once_the_preflight_checks_that_stop_the_workers_decide(
+    decision,
+):
+    health_manager = _health_manager(decision)
+    blocking, other = HealthCheck(stop_workers=True), HealthCheck()
+    callback = HealthCallback(health_manager, preflight_checks=[other, blocking])
+
+    callback.after_worker_group_start(_worker_group("a"))
+    health_manager.start_and_evaluate_on_demand_checks.assert_called_once_with(
+        [blocking]
+    )
+    health_manager.start_on_demand_checks.assert_called_once_with([other])
+    health_manager.shutdown.assert_not_called()
+
+
+def test_preflight_checks_that_dont_stop_the_workers_run_alongside_training():
+    health_manager = _health_manager()
+    check = HealthCheck()
+    callback = HealthCallback(health_manager, preflight_checks=[check])
+
+    callback.after_worker_group_start(_worker_group("a"))
+    health_manager.start_on_demand_checks.assert_called_once_with([check])
+    health_manager.start_and_evaluate_on_demand_checks.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    "decision", [Reattempt(), Evict(reason="bad GPU", target_nodes=["a"])]
+)
+def test_preflight_checks_that_restart_keep_training_from_starting(decision):
+    health_manager = _health_manager(decision)
+    callback = HealthCallback(
+        health_manager,
+        preflight_checks=[HealthCheck(stop_workers=True), HealthCheck()],
+    )
+
+    with pytest.raises(HealthCheckError) as error:
+        callback.after_worker_group_start(_worker_group("a"))
+    assert error.value.decision == decision
+    health_manager.start_on_demand_checks.assert_not_called()
+    health_manager.shutdown.assert_called_once()
+
+
+def test_checks_for_the_next_start_run_once_with_the_preflight_checks():
+    health_manager = _health_manager(Noop())
+    preflight = HealthCheck(stop_workers=True)
+    blocking, other = HealthCheck(stop_workers=True), HealthCheck()
+    callback = HealthCallback(health_manager, preflight_checks=[preflight])
+    callback.run_at_next_start([blocking, other])
+
+    callback.after_worker_group_start(_worker_group("a"))
+    health_manager.start_and_evaluate_on_demand_checks.assert_called_once_with(
+        [preflight, blocking]
+    )
+    health_manager.start_on_demand_checks.assert_called_once_with([other])
+
+    callback.after_worker_group_start(_worker_group("a"))
+    health_manager.start_and_evaluate_on_demand_checks.assert_called_with([preflight])
 
 
 def test_user_callbacks_get_the_health_decision():

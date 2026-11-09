@@ -11,8 +11,8 @@ import ray
 import ray._private.ray_constants as ray_constants
 from ray.exceptions import AsyncioActorExit
 from ray.train.health import Diagnose, Evict, HealthDecision, Noop, Reattempt
-from ray.train.health._internal.constants import DEFAULT_ON_DEMAND_PROBE_TIMEOUT_S
-from ray.train.health._internal.manager import merge_decisions
+from ray.train.health._internal.manager import HealthManager
+from ray.train.v2._internal.callbacks.health_callback import HealthCallback
 from ray.train.v2._internal.constants import (
     DEFAULT_ENABLE_CONTROLLER_LOGGING,
     DEFAULT_ENABLE_PREEMPTION_WATCHER,
@@ -226,17 +226,14 @@ class TrainController:
             self._worker_group_callbacks_to_propagate.append(PreemptionCallback())
 
         self._health_manager = None
+        self._health_callback = None
         health_config = self._run_config.health_config
         if health_config is not None:
-            from ray.train.health._internal.manager import HealthManager
-            from ray.train.v2._internal.callbacks.health_callback import (
-                HealthCallback,
-            )
-
             self._health_manager = HealthManager(health_config.inflight_checks)
-            self._worker_group_callbacks_to_propagate.append(
-                HealthCallback(self._health_manager, health_config.preflight_checks)
+            self._health_callback = HealthCallback(
+                self._health_manager, health_config.preflight_checks
             )
+            self._worker_group_callbacks_to_propagate.append(self._health_callback)
 
         self._worker_group: Optional[WorkerGroup] = None
         self._state = InitializingState()
@@ -328,10 +325,14 @@ class TrainController:
             # Standard: full restart.
             if self._worker_group:
                 self._shutdown_worker_group()
-            self._start_worker_group(
-                num_workers=decision.num_workers,
-                resources_per_worker=decision.resources_per_worker,
-            )
+            try:
+                self._start_worker_group(
+                    num_workers=decision.num_workers,
+                    resources_per_worker=decision.resources_per_worker,
+                )
+            except HealthCheckError as e:
+                # The pre-flight checks kept training from starting.
+                return self._execute_health_decision(e.decision)
 
         return TrainControllerLoopIterationResult(
             run_attempt_id=self._get_run_attempt_id(),
@@ -712,7 +713,7 @@ class TrainController:
                 )
 
             if self._health_manager is not None:
-                health_decision = self._evaluate_health_checks()
+                health_decision = self._health_manager.evaluate()
                 if not isinstance(health_decision, Noop):
                     health_result = self._execute_health_decision(health_decision)
                     if health_result:
@@ -754,32 +755,19 @@ class TrainController:
         else:
             raise ValueError(f"Unexpected controller state: {controller_state}")
 
-    def _evaluate_health_checks(self) -> HealthDecision:
-        """Evaluate the in-flight checks, and the checks of a running
-        ``Diagnose`` once they are back. While those run, a new ``Diagnose`` is
-        dropped.
-
-        Returns:
-            The health decision to carry out. ``Noop()`` if there is nothing to
-            do.
-        """
-        inflight_decision = self._health_manager.evaluate_inflight_checks()
-        diagnosis_decision = self._health_manager.evaluate_on_demand_checks()
-        if diagnosis_decision is None:
-            if isinstance(inflight_decision, Diagnose):
-                return Noop()
-            return inflight_decision
-        return merge_decisions([inflight_decision, diagnosis_decision])
-
     def _execute_health_decision(
         self, decision: HealthDecision
     ) -> Optional[TrainControllerLoopIterationResult]:
-        """Act on a health decision about the running worker group.
+        """Act on a health decision about the worker group: a pre-flight one
+        while it starts, or one while it runs.
 
         A ``Reattempt`` restarts the worker group through the failure policy,
         like a worker error. An ``Evict`` restarts it outside the failure
         policy. A ``Diagnose`` starts its checks while training continues, and
-        a later ``_evaluate_health_checks()`` decides on their results.
+        a later ``HealthManager.evaluate()`` decides on their results. If a
+        check stops the workers, the ``Diagnose`` restarts the worker group
+        outside the failure policy instead, and the checks run at the start of
+        the next attempt, like pre-flight checks.
 
         Args:
             decision: The health decision, other than a ``Noop``.
@@ -791,14 +779,22 @@ class TrainController:
         if failure_result:
             return failure_result
 
-        if isinstance(decision, Diagnose):
-            logger.info("Diagnosing while training continues: %s", decision.reason)
-            self._health_manager.start_on_demand_checks(
-                decision.checks, timeout=DEFAULT_ON_DEMAND_PROBE_TIMEOUT_S
-            )
-            return None
-
         error = HealthCheckError(decision)
+        if isinstance(decision, Diagnose):
+            if not any(check.stop_workers for check in decision.checks):
+                logger.info("Diagnosing while training continues: %s", decision.reason)
+                self._health_manager.start_on_demand_checks(decision.checks)
+                return None
+            logger.warning(
+                "Restarting the worker group to diagnose: %s", decision.reason
+            )
+            self._health_callback.run_at_next_start(decision.checks)
+            return TrainControllerLoopIterationResult(
+                run_attempt_id=self._get_run_attempt_id(),
+                previous_state=self.get_state(),
+                next_state=self._get_retry_state(self.get_state(), error),
+            )
+
         if isinstance(decision, Reattempt):
             logger.warning("Reattempting: %s", decision.reason)
             failure_decision = self._failure_policy.make_decision(
@@ -816,7 +812,7 @@ class TrainController:
             return TrainControllerLoopIterationResult(
                 run_attempt_id=self._get_run_attempt_id(),
                 previous_state=self.get_state(),
-                next_state=RestartingState(training_failed_error=error),
+                next_state=self._get_retry_state(self.get_state(), error),
             )
         return None
 

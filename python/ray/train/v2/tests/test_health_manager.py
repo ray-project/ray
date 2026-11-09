@@ -291,6 +291,39 @@ def test_on_demand_checks_run_apart_from_the_inflight_checks():
     )
 
 
+def test_evaluate_waits_for_the_on_demand_checks_before_another_diagnose():
+    diagnose = _diagnose("slow")
+    manager = HealthManager([_check(evaluators=[Always(diagnose)])])
+    _fake_temps(manager, [ProbeResult()] * 3)
+    evict = Evict(reason="bad NIC", target_nodes=["n1"])
+    manager.start_on_demand_checks(
+        [HealthCheck(evaluator_creator=lambda: [Always(evict)])], timeout=10
+    )
+    manager._node_monitor_group.poll_probe_results = mock.Mock(
+        side_effect=[None, NodeMonitorGroupPollStatus(node_monitor_statuses={})]
+    )
+
+    # Running: the in-flight Diagnose is dropped.
+    assert manager.evaluate(timeout=0) == Noop()
+    # Back: their Evict beats the in-flight Diagnose.
+    assert manager.evaluate(timeout=0) == evict
+    # Done: the in-flight Diagnose goes through.
+    assert manager.evaluate(timeout=0) == diagnose
+
+
+def test_start_and_evaluate_on_demand_checks_waits_for_their_decision():
+    manager = HealthManager([])
+    _fake_temps(manager, [])
+    evict = Evict(reason="bad GPU", target_nodes=["n1"])
+    manager._node_monitor_group.poll_probe_results = mock.Mock(
+        side_effect=[None, NodeMonitorGroupPollStatus(node_monitor_statuses={})]
+    )
+
+    check = HealthCheck(evaluator_creator=lambda: [Always(evict)])
+    assert manager.start_and_evaluate_on_demand_checks([check]) == evict
+    assert manager._node_monitor_group.poll_probe_results.call_count == 2
+
+
 def test_on_demand_checks_decide_noop_before_any_start():
     assert HealthManager([]).evaluate_on_demand_checks() == Noop()
 

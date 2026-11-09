@@ -39,7 +39,8 @@ class HealthCheckError(WorkerGroupError):
     """Exception raised when a health check decides to restart the worker group.
 
     Args:
-        decision: The health decision, a ``Reattempt`` or an ``Evict``.
+        decision: The health decision: a ``Reattempt``, an ``Evict``, or a
+            ``Diagnose`` whose checks stop the workers.
     """
 
     def __init__(self, decision: HealthDecision):
