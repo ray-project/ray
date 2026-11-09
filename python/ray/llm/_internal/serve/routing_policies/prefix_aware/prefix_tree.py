@@ -110,7 +110,7 @@ class PrefixTree:
         """
         if b.startswith(a, b_start):
             return len(a)
-        return len(os.path.commonprefix([a, b[b_start:]]))
+        return len(os.path.commonprefix([a, b[b_start : b_start + len(a)]]))
 
     def _get_lru_chain(self, tenant: str) -> List[Node]:
         """Get the LRU chain for a given tenant by traversing from the root to the oldest node.
