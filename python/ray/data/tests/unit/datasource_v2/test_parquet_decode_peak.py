@@ -171,6 +171,41 @@ def test_large_unmodelled_leaves_pay_by_their_uncompressed_bytes(tmp_path, monke
     assert charge < size < charge + (8 << 20), (size, charge)
 
 
+def test_filtered_read_without_the_file_schema_sizes_every_column(
+    tmp_path, monkeypatch
+):
+    """When the file's Arrow schema can't be built, an unprojected read with a
+    filter still sizes every column it decodes, not just the filter's."""
+    import ray.data._internal.datasource_v2.formats.parquet.footer_reader as reader
+    from ray.data.expressions import col
+
+    class _NoSchema:
+        def __init__(self, fragment):
+            self._fragment = fragment
+
+        @property
+        def physical_schema(self):
+            raise pa.ArrowInvalid("unsupported type")
+
+    sizing = reader.FooterReader._file_sizing
+    monkeypatch.setattr(
+        reader.FooterReader,
+        "_file_sizing",
+        lambda self, file, fragment, metadata: sizing(
+            self, file=file, fragment=_NoSchema(fragment), metadata=metadata
+        ),
+    )
+    path = tmp_path / "f.parquet"
+    table = pa.table(
+        {
+            "i": pa.array(np.arange(N, dtype="int64")),
+            "s": pa.array([f"distinct-value-{i:024d}" for i in range(N)]),
+        }
+    )
+    pq.write_table(table, path, row_group_size=N, use_dictionary=False)
+    assert _sizes(path, filter_expr=col("i") > 0) == _sizes(path)
+
+
 def test_pinned_schema_adds_the_cast_and_the_added_columns(tmp_path):
     """A read schema the file's types differ from costs a cast; a column the
     file lacks is filled with nulls."""

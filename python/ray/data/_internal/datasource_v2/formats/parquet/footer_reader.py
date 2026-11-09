@@ -253,7 +253,11 @@ class FooterReader:
         file_names = [] if file_schema is None else list(file_schema.names)
         names: Iterable[str] | None = self.read_order
         if names is None:
-            names = dict.fromkeys([*self.filter_columns, *file_names])
+            # Every column, the predicate's first. Without the file's schema, no
+            # names: every leaf is sized below, not just the predicate's.
+            names = (
+                dict.fromkeys([*self.filter_columns, *file_names]) if file_names else []
+            )
         if file_schema is not None:
             # Only the file's columns: a missing ``sepal`` would match the leaf of
             # a flat ``sepal.length`` too, and size it twice.
