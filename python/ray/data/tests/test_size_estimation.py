@@ -118,8 +118,10 @@ def test_split_read_csv(ray_start_regular_shared, tmp_path):
     assert ds4._block_num_rows() == [1000]
 
 
-def test_split_read_parquet(ray_start_regular_shared, tmp_path):
+def test_split_read_parquet(ray_start_regular_shared, tmp_path, monkeypatch):
     ctx = ray.data.context.DataContext.get_current()
+    # One read task for the file, so this tests how its output splits into blocks.
+    monkeypatch.setenv("RAY_DATA_PARQUET_BIN_PACKING_BYTES", str(1 << 30))
 
     def gen(name):
         path = os.path.join(tmp_path, name)
