@@ -137,11 +137,24 @@ defaults
     load-server-state-from-file global
     {%- endif %}
     balance {{ config.balance_algorithm }}
+{%- if config.metrics_auth_required %}
+# Metrics need the token: the exporter and stats page listen only on a 0600
+# unix socket. HAProxyManager serves both on metrics_port behind the token check.
+listen internal_metrics
+    bind unix@{{ config.exporter_socket_path }} mode 600
+    mode http
+    http-request use-service prometheus-exporter if { path {{ config.metrics_uri }} }
+    stats enable
+    stats uri {{ config.stats_uri }}
+    stats refresh 1s
+    no log
+{%- else %}
 frontend prometheus
     bind :{{ config.metrics_port }}
     mode http
     http-request use-service prometheus-exporter if { path {{ config.metrics_uri }} }
     no log
+{%- endif %}
 frontend http_frontend
     bind {{ config.frontend_host }}:{{ config.frontend_port }}
     {%- if has_ingress_request_router or has_router_applications %}
@@ -487,9 +500,11 @@ backend {{ backend.name or 'unknown' }}
     {%- endif %}
 {%- endfor %}
 {%- endif %}
+{%- if not config.metrics_auth_required %}
 listen stats
   bind *:{{ config.stats_port }}
   stats enable
   stats uri {{ config.stats_uri }}
   stats refresh 1s
+{%- endif %}
 """

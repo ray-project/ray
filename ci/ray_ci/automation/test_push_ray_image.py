@@ -978,10 +978,10 @@ class TestPipFreezeArtifact:
         mock_copy.assert_called()
 
     @pytest.mark.parametrize(
-        ("branch", "rayci_schedule", "expect_cu133"),
+        ("branch", "rayci_schedule"),
         [
-            ("releases/2.56.0", "", False),
-            ("master", "nightly", True),
+            ("releases/2.61.0", ""),
+            ("master", "nightly"),
         ],
     )
     @mock.patch("ci.ray_ci.automation.push_ray_image._export_pip_freeze")
@@ -990,7 +990,7 @@ class TestPipFreezeArtifact:
     @mock.patch("ci.ray_ci.automation.push_ray_image._copy_image")
     @mock.patch("ci.ray_ci.automation.push_ray_image._image_exists")
     @mock.patch("ci.ray_ci.automation.push_ray_image.get_global_config")
-    def test_main_nightly_only_platform_skipped_on_release_branch(
+    def test_main_cu133_published_on_release_and_nightly(
         self,
         mock_config,
         mock_exists,
@@ -1000,7 +1000,6 @@ class TestPipFreezeArtifact:
         mock_export,
         branch,
         rayci_schedule,
-        expect_cu133,
     ):
         from click.testing import CliRunner
 
@@ -1042,7 +1041,7 @@ class TestPipFreezeArtifact:
         assert result.exit_code == 0, f"CLI failed: {result.output}"
         dests = [call.args[1] for call in mock_copy.call_args_list]
         assert any("-cu130" in d for d in dests)
-        assert any("-cu133" in d for d in dests) == expect_cu133
+        assert any("-cu133" in d for d in dests)
         # Real pushes, not a dry run, in both cases.
         assert not any(call.kwargs.get("dry_run") for call in mock_copy.call_args_list)
 

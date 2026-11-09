@@ -361,6 +361,7 @@ class DiskHashShuffleReduceOp(PhysicalOperator):
         exc: Optional[Exception],
         task_exec_stats: Optional[TaskExecWorkerStats],
         task_exec_driver_stats: Optional[TaskExecDriverStats],
+        aborted: bool,
     ) -> None:
         if partition_id not in self._shuffle_reduce_tasks:
             return

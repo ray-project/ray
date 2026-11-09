@@ -644,9 +644,17 @@ class TrainController:
         if isinstance(
             controller_state, (InitializingState, RestartingState, ReschedulingState)
         ):
-            return self._make_and_handle_scaling_decision_for_non_running_worker_group(
-                controller_state
+            result = (
+                self._make_and_handle_scaling_decision_for_non_running_worker_group(
+                    controller_state
+                )
             )
+            if result.next_state is controller_state:
+                # Nothing to start yet (e.g. an elastic run waiting for
+                # `min_workers` to fit). Sleep before asking again, which also
+                # yields the event loop so calls like `abort()` can reach this actor.
+                await asyncio.sleep(self._health_check_interval_s)
+            return result
         elif isinstance(controller_state, SchedulingState):
             assert isinstance(controller_state.scaling_decision, ResizeDecision)
             return self._execute_resize_decision(controller_state.scaling_decision)
@@ -915,6 +923,10 @@ class TrainController:
         except AsyncioActorExit:
             raise
         except Exception as e:
+            if self.get_state().is_terminal():
+                # `abort()` ran while `_step` was awaiting, so this error comes
+                # from the aborted worker group and isn't a training failure.
+                return
             # Preserve the original error type if it is already a
             # TrainingFailedError (e.g. WorkerGroupError); otherwise
             # wrap it in a ControllerError.
@@ -940,6 +952,10 @@ class TrainController:
                 self._state = ErroredState(training_failed_error=training_error)
                 return
 
+        if self.get_state().is_terminal():
+            # `abort()` ran while `_step` was awaiting. Don't overwrite its
+            # terminal state with the state this iteration computed.
+            return
         self._set_state(result.next_state)
 
     async def run(self):

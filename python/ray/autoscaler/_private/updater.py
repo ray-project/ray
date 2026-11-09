@@ -21,6 +21,7 @@ from ray.autoscaler._private.constants import (
 )
 from ray.autoscaler._private.event_system import CreateClusterEvent, global_event_system
 from ray.autoscaler._private.log_timer import LogTimer
+from ray.autoscaler._private.util import with_envs
 from ray.autoscaler.tags import (
     STATUS_SETTING_UP,
     STATUS_SYNCING_FILES,
@@ -68,6 +69,8 @@ class NodeUpdater:
         restart_only: Whether to skip setup commands & just restart ray
         for_recovery: True if updater is for a recovering node. Only used for
             metric tracking.
+        auth_mode: The cluster YAML's `auth_mode`. When given, the start
+            commands run with RAY_AUTH_MODE set to it.
     """
 
     def __init__(
@@ -93,6 +96,7 @@ class NodeUpdater:
         docker_config: Optional[Dict[str, Any]] = None,
         restart_only: bool = False,
         for_recovery: bool = False,
+        auth_mode: Optional[str] = None,
     ):
         self.log_prefix = "NodeUpdater: {}: ".format(node_id)
         # Three cases:
@@ -129,6 +133,10 @@ class NodeUpdater:
 
         self.initialization_commands = initialization_commands
         self.setup_commands = setup_commands
+        if auth_mode:
+            ray_start_commands = with_envs(
+                ray_start_commands, {"RAY_AUTH_MODE": auth_mode}
+            )
         self.ray_start_commands = ray_start_commands
         self.node_resources = node_resources
         self.node_labels = node_labels

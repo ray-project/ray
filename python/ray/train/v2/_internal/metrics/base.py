@@ -19,8 +19,7 @@ class Metric(ABC):
         description: str,
         base_tags: Dict[str, str],
     ):
-        """
-        Initialize a new metric.
+        """Initialize a new metric.
 
         Args:
             name: The name of the metric.

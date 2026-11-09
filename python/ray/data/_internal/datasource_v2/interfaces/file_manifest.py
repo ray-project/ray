@@ -24,7 +24,9 @@ class FileChunk:
     ``ReadUnit.index`` values. The Parquet footer reader builds one run per
     row group, coalescing merges neighbours, the manifest stores
     :meth:`to_metadata` in its chunk column, and ``OnlineBinPacker`` reads it
-    back, splits it at unit boundaries and emits one merged run per file. The
+    back, splits it at unit boundaries and emits one merged run per group of
+    pairwise-disjoint unit ids — a single run for a file listed once, one run
+    per copy when the user lists the same path repeatedly. The
     packer only sums ``size_bytes`` against its budget; the indexer decides
     what the number measures (Parquet records the projection-scoped
     uncompressed size from the footer).
@@ -124,6 +126,18 @@ class FileManifest:
     @cached_property
     def file_sizes(self) -> np.ndarray:
         return BlockColumnAccessor.for_column(self._file_sizes).to_numpy()
+
+    @cached_property
+    def known_file_sizes(self) -> List[Optional[int]]:
+        """``file_sizes`` as ints, with ``None`` where the listing had no size.
+
+        A missing size reads back from ``file_sizes`` as ``NaN`` or ``None``,
+        depending on the column's type.
+        """
+        return [
+            None if size is None or np.isnan(size) else int(size)
+            for size in self.file_sizes
+        ]
 
     @cached_property
     def file_chunk_metadatas(self) -> np.ndarray:
