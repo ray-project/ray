@@ -6472,9 +6472,9 @@ def read_delta(
     # deltalake versions (1.6.4 to 1.6.6) don't reject the table either, so the
     # columns read back as nulls. Check the table property rather than the
     # protocol: reader 2 / writer 5 tables declare no reader features.
-    column_mapping_mode = dt.metadata().configuration.get(
-        "delta.columnMapping.mode", "none"
-    )
+    column_mapping_mode = (dt.metadata().configuration or {}).get(
+        "delta.columnMapping.mode"
+    ) or "none"
     if column_mapping_mode.lower() != "none":
         raise NotImplementedError(
             "This Delta table uses column mapping (`delta.columnMapping.mode` is "

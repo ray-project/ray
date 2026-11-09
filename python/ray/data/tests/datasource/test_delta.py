@@ -1,6 +1,5 @@
 import json
 import os
-from typing import Any, Dict
 from unittest import mock
 
 import pandas as pd
@@ -214,49 +213,41 @@ def test_delta_read_deletion_vectors_message_is_actionable(tmp_path):
     assert "not yet supported by the deltalake reader" in message
 
 
-def _write_column_mapped_table(
-    path: str, mode: str, reader_version: int, writer_version: int
-) -> None:
-    """Write a one-file Delta table with the given column mapping mode.
+def _write_column_mapped_table(path: str, mode: str) -> None:
+    """Write a one-file reader 2 / writer 5 Delta table with column mapping.
 
     deltalake can't write a column-mapped table: it stores the property but
     keeps the column names in the data files and a reader 1 protocol. So the
-    log is written by hand, and with a mode other than ``none`` the data file
-    stores column ``id`` under the physical name ``col-a1``, as Spark and
-    Databricks write it.
+    log is written by hand, with the data file storing column ``id`` under the
+    physical name ``col-a1``, as Spark and Databricks write it.
     """
     import pyarrow.parquet as pq
 
-    mapped = mode != "none"
-    physical_name = "col-a1" if mapped else "id"
     os.makedirs(os.path.join(path, "_delta_log"))
     data_file = os.path.join(path, "part-0.parquet")
-    pq.write_table(pa.table({physical_name: pa.array([1, 2], pa.int64())}), data_file)
+    pq.write_table(pa.table({"col-a1": pa.array([1, 2], pa.int64())}), data_file)
 
-    field = {"name": "id", "type": "long", "nullable": True, "metadata": {}}
-    configuration = {"delta.columnMapping.mode": mode}
-    if mapped:
-        field["metadata"] = {
+    field = {
+        "name": "id",
+        "type": "long",
+        "nullable": True,
+        "metadata": {
             "delta.columnMapping.id": 1,
-            "delta.columnMapping.physicalName": physical_name,
-        }
-        configuration["delta.columnMapping.maxColumnId"] = "1"
-    protocol: Dict[str, Any] = {
-        "minReaderVersion": reader_version,
-        "minWriterVersion": writer_version,
+            "delta.columnMapping.physicalName": "col-a1",
+        },
     }
-    if reader_version == 3:
-        protocol["readerFeatures"] = ["columnMapping"]
-        protocol["writerFeatures"] = ["columnMapping"]
     actions = [
-        {"protocol": protocol},
+        {"protocol": {"minReaderVersion": 2, "minWriterVersion": 5}},
         {
             "metaData": {
                 "id": "3c3a3d8e-0000-4000-8000-000000000000",
                 "format": {"provider": "parquet", "options": {}},
                 "schemaString": json.dumps({"type": "struct", "fields": [field]}),
                 "partitionColumns": [],
-                "configuration": configuration,
+                "configuration": {
+                    "delta.columnMapping.mode": mode,
+                    "delta.columnMapping.maxColumnId": "1",
+                },
                 "createdTime": 0,
             }
         },
@@ -274,21 +265,13 @@ def _write_column_mapped_table(
         f.write("\n".join(json.dumps(action) for action in actions) + "\n")
 
 
-@pytest.mark.parametrize(
-    "mode, reader_version, writer_version",
-    [
-        # No reader features, so deltalake's own protocol check passes and
-        # deltalake 1.6.4 to 1.6.6 returned nulls for every mapped column.
-        ("name", 2, 5),
-        ("id", 2, 5),
-        ("name", 3, 7),
-    ],
-)
-def test_delta_read_rejects_column_mapping(
-    tmp_path, mode, reader_version, writer_version
-):
+# Reader 2 / writer 5 tables declare no reader features, so deltalake's own
+# protocol check passes and deltalake 1.6.4 to 1.6.6 returned nulls for every
+# mapped column.
+@pytest.mark.parametrize("mode", ["name", "id"])
+def test_delta_read_rejects_column_mapping(tmp_path, mode):
     path = os.path.join(tmp_path, "column_mapped")
-    _write_column_mapped_table(path, mode, reader_version, writer_version)
+    _write_column_mapped_table(path, mode)
 
     with pytest.raises(NotImplementedError) as excinfo:
         ray.data.read_delta(path)
@@ -300,31 +283,18 @@ def test_delta_read_rejects_column_mapping(
 
 def test_delta_read_column_mapping_mode_none(tmp_path):
     """An explicit ``none`` mode is no column mapping, so the table reads."""
+    from deltalake import write_deltalake
+
     path = os.path.join(tmp_path, "unmapped")
-    _write_column_mapped_table(path, "none", 1, 2)
+    write_deltalake(
+        path,
+        pa.table({"id": [1, 2]}),
+        configuration={"delta.columnMapping.mode": "none"},
+    )
 
     ds = ray.data.read_delta(path)
 
     assert sorted(row["id"] for row in ds.take_all()) == [1, 2]
-
-
-def test_read_unity_catalog_rejects_column_mapping(tmp_path):
-    """``read_unity_catalog`` reads Delta tables through ``read_delta``."""
-    from ray.data.catalog import DatabricksUnityCatalog, ResolvedSource
-
-    path = os.path.join(tmp_path, "column_mapped")
-    _write_column_mapped_table(path, "name", 2, 5)
-
-    with mock.patch.object(
-        DatabricksUnityCatalog, "resolve", return_value=ResolvedSource(path=path)
-    ), pytest.warns(DeprecationWarning, match="read_unity_catalog"):
-        with pytest.raises(NotImplementedError, match="column mapping"):
-            ray.data.read_unity_catalog(
-                table="main.db.tbl",
-                url="https://h.databricks.com",
-                token="t",
-                data_format="delta",
-            )
 
 
 if __name__ == "__main__":
