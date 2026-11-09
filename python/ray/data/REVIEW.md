@@ -18,7 +18,7 @@ Reserve Important for findings that would:
   per block or more).
 - Introduce a security issue (pickled object columns from external data,
   credentials in logs or error messages).
-- Incur deterimental amounts of serialization, network cost that would impact overall throughput
+- Incur detrimental amounts of serialization, network cost that would impact overall throughput
 
 Style, naming, and refactoring suggestions are Nit at most.
 
