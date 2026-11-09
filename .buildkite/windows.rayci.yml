@@ -84,11 +84,31 @@ steps:
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests/... core
         --build-name windowsbuild
         --operating-system windows
-        --except-tags no_windows
+        --except-tags no_windows,use_all_core_windows
         --test-env=CI="1"
         --test-env=RAY_CI_POST_WHEEL_TESTS="1"
         --test-env=USERPROFILE
         --workers "$${BUILDKITE_PARALLEL_JOB_COUNT}" --worker-id "$${BUILDKITE_PARALLEL_JOB}" --parallelism-per-worker 2
+    depends_on:
+      - windowsbuild
+      - block-windows-tests
+
+  - label: ":ray: core: :windows: enormous python tests"
+    tags:
+      - core_python
+      - windows
+    job_env: WINDOWS
+    instance_type: windows
+    commands:
+      - bash ci/ray_ci/windows/install_tools.sh
+      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests/... core
+        --build-name windowsbuild
+        --operating-system windows
+        --only-tags use_all_core_windows
+        --except-tags no_windows
+        --test-env=CI="1"
+        --test-env=RAY_CI_POST_WHEEL_TESTS="1"
+        --test-env=USERPROFILE
     depends_on:
       - windowsbuild
       - block-windows-tests

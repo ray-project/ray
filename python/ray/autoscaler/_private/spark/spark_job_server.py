@@ -159,8 +159,7 @@ class SparkJobServerRequestHandler(BaseHTTPRequestHandler):
 
 
 class SparkJobServer(ThreadingHTTPServer):
-    """
-    High level design:
+    """High level design:
 
     1. In Ray on spark autoscaling mode, How to start and terminate Ray worker node ?
 

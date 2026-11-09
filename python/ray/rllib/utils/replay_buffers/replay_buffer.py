@@ -76,47 +76,32 @@ class ReplayBuffer(ReplayBufferInterface, FaultAwareApply):
     they might not implement all storage_units.
 
     Examples:
-
-    .. testcode::
-
-        from ray.rllib.utils.replay_buffers.replay_buffer import ReplayBuffer
-        from ray.rllib.utils.replay_buffers.replay_buffer import StorageUnit
-        from ray.rllib.policy.sample_batch import SampleBatch
-
-        # Store any batch as a whole
-        buffer = ReplayBuffer(capacity=10, storage_unit=StorageUnit.FRAGMENTS)
-        buffer.add(SampleBatch({"a": [1], "b": [2, 3, 4]}))
-        buffer.sample(1)
-
-        # Store only complete episodes
-        buffer = ReplayBuffer(capacity=10,
-                                storage_unit=StorageUnit.EPISODES)
-        buffer.add(SampleBatch({"c": [1, 2, 3, 4],
-                                SampleBatch.T: [0, 1, 0, 1],
-                                SampleBatch.TERMINATEDS: [False, True, False, True],
-                                SampleBatch.EPS_ID: [0, 0, 1, 1]}))
-        buffer.sample(1)
-
-        # Store single timesteps
-        buffer = ReplayBuffer(capacity=2, storage_unit=StorageUnit.TIMESTEPS)
-        buffer.add(SampleBatch({"a": [1, 2], SampleBatch.T: [0, 1]}))
-        buffer.sample(1)
-
-        buffer.add(SampleBatch({"a": [3], SampleBatch.T: [2]}))
-        print(buffer._eviction_started)
-        buffer.sample(1)
-
-        buffer = ReplayBuffer(capacity=10, storage_unit=StorageUnit.SEQUENCES)
-        buffer.add(SampleBatch({"c": [1, 2, 3], SampleBatch.SEQ_LENS: [1, 2]}))
-        buffer.sample(1)
-
-    .. testoutput::
-
+        >>> from ray.rllib.utils.replay_buffers.replay_buffer import ReplayBuffer
+        >>> from ray.rllib.utils.replay_buffers.replay_buffer import StorageUnit
+        >>> from ray.rllib.policy.sample_batch import SampleBatch
+        >>> # Store any batch as a whole
+        >>> buffer = ReplayBuffer(capacity=10, storage_unit=StorageUnit.FRAGMENTS)
+        >>> buffer.add(SampleBatch({"a": [1], "b": [2, 3, 4]}))
+        >>> _ = buffer.sample(1)
+        >>> # Store only complete episodes
+        >>> buffer = ReplayBuffer(capacity=10,
+        ...                         storage_unit=StorageUnit.EPISODES)
+        >>> buffer.add(SampleBatch({"c": [1, 2, 3, 4],
+        ...                         SampleBatch.T: [0, 1, 0, 1],
+        ...                         SampleBatch.TERMINATEDS: [False, True, False, True],
+        ...                         SampleBatch.EPS_ID: [0, 0, 1, 1]}))
+        >>> _ = buffer.sample(1)
+        >>> # Store single timesteps
+        >>> buffer = ReplayBuffer(capacity=2, storage_unit=StorageUnit.TIMESTEPS)
+        >>> buffer.add(SampleBatch({"a": [1, 2], SampleBatch.T: [0, 1]}))
+        >>> _ = buffer.sample(1)
+        >>> buffer.add(SampleBatch({"a": [3], SampleBatch.T: [2]}))
+        >>> print(buffer._eviction_started)
         True
-
-    `True` is not the output of the above testcode, but an artifact of unexpected
-    behaviour of sphinx doctests.
-    (see https://github.com/ray-project/ray/pull/32477#discussion_r1106776101)
+        >>> _ = buffer.sample(1)
+        >>> buffer = ReplayBuffer(capacity=10, storage_unit=StorageUnit.SEQUENCES)
+        >>> buffer.add(SampleBatch({"c": [1, 2, 3], SampleBatch.SEQ_LENS: [1, 2]}))
+        >>> _ = buffer.sample(1)
     """
 
     def __init__(

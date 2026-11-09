@@ -17,7 +17,7 @@ from ray.data._internal.execution.interfaces.distribution_tracker import (
 )
 from ray.data._internal.execution.interfaces.ref_bundle import RefBundle
 from ray.data._internal.memory_tracing import trace_allocation
-from ray.data.block import BlockMetadata, TaskExecWorkerStats
+from ray.data.block import UNKNOWN_NODE_ID, TaskExecWorkerStats
 
 if TYPE_CHECKING:
     from ray.data._internal.execution.interfaces.physical_operator import (
@@ -36,8 +36,6 @@ _METRIC_FIELD_METRICS_ARGS_KEY = "__metric_metrics_args"
 _METRIC_FIELD_IS_MAP_ONLY_KEY = "__metric_is_map_only"
 
 _METRICS: List["MetricDefinition"] = []
-
-NODE_UNKNOWN = "unknown"
 
 
 class MetricsGroup(Enum):
@@ -143,11 +141,10 @@ class RunningTaskInfo:
     cum_block_gen_time_s: float
     cum_block_ser_time_s: float
     task_id: ray.TaskID
-    # Node IDs derived from the input blocks' exec_stats at task submission time.
+    # Node IDs derived from the input blocks' node_id at task submission time.
     # Used to determine cache hits: if the task's first output block was produced
     # on a node that already held an input block, it's a "cache hit" (the task
-    # ran where its data lived). For source operators (e.g., ReadRange), input
-    # blocks lack exec_stats, so input_node_ids will contain NODE_UNKNOWN and
+    # ran where its data lived).
     # all tasks will be classified as cache misses.
     input_node_ids: Set[str] = field(default_factory=set)
     last_updated: float = field(init=False, default_factory=lambda: time.perf_counter())
@@ -184,14 +181,6 @@ class OpRuntimesMetricsMeta(type):
                     map_only=value.metadata[_METRIC_FIELD_IS_MAP_ONLY_KEY],
                 )
                 _METRICS.append(metric)
-
-
-def node_id_from_block_metadata(meta: BlockMetadata) -> str:
-    if meta.exec_stats is not None and meta.exec_stats.node_id is not None:
-        node_id = meta.exec_stats.node_id
-    else:
-        node_id = NODE_UNKNOWN
-    return node_id
 
 
 def _is_object_lost_error(exception: BaseException) -> bool:
@@ -596,6 +585,20 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
         default=0,
         description="Byte size of used memory in object store.",
         metrics_group=MetricsGroup.OBJECT_STORE_MEMORY,
+    )
+    bytes_remote_inputs_read: int = metric_field(
+        default=0,
+        description="Cumulative input bytes this operator's actors read from a "
+        "node other than the actor's node (cross-node object transfer).",
+        metrics_group=MetricsGroup.OBJECT_STORE_MEMORY,
+        map_only=True,
+    )
+    num_remote_blocks_read: int = metric_field(
+        default=0,
+        description="Cumulative number of input blocks this operator's actors "
+        "read cross-node (from a node other than the actor's node).",
+        metrics_group=MetricsGroup.OBJECT_STORE_MEMORY,
+        map_only=True,
     )
 
     def __init__(self, op: "PhysicalOperator"):
@@ -1040,9 +1043,7 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
         self.bytes_inputs_of_submitted_tasks += inputs.size_bytes()
         self.rows_inputs_of_submitted_tasks += inputs.num_rows() or 0
         self._pending_task_inputs.add(inputs)
-        input_node_ids = {
-            node_id_from_block_metadata(entry.metadata) for entry in inputs.blocks
-        }
+        input_node_ids = {entry.metadata.node_id for entry in inputs.blocks}
         self._running_tasks[task_index] = RunningTaskInfo(
             inputs=inputs,
             num_outputs=0,
@@ -1120,7 +1121,7 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
 
             trace_allocation(block_ref, "operator_output")
 
-            output_node_id = node_id_from_block_metadata(meta)
+            output_node_id = meta.node_id
             if first_output_node_id is None:
                 first_output_node_id = output_node_id
 
@@ -1139,7 +1140,7 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
             # Classify the task as cache hit/miss based on first output block
             is_hit = (
                 first_output_node_id is not None
-                and first_output_node_id != NODE_UNKNOWN
+                and first_output_node_id != UNKNOWN_NODE_ID
                 and first_output_node_id in task_info.input_node_ids
             )
             task_info.is_task_locality_hit = is_hit
@@ -1154,7 +1155,7 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
         if self._per_node_metrics_enabled:
             for entry in output.blocks:
                 meta = entry.metadata
-                node_id = node_id_from_block_metadata(meta)
+                node_id = meta.node_id
                 node_metrics = self._per_node_metrics[node_id]
 
                 node_metrics.bytes_outputs_of_finished_tasks += meta.size_bytes
@@ -1276,11 +1277,11 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
             node_ids = set()
             for entry in inputs.blocks:
                 meta = entry.metadata
-                node_id = node_id_from_block_metadata(meta)
+                node_id = meta.node_id
                 node_metrics = self._per_node_metrics[node_id]
 
                 # Stats to update once per node id or if node id is unknown
-                if node_id not in node_ids or node_id == NODE_UNKNOWN:
+                if node_id not in node_ids or node_id == UNKNOWN_NODE_ID:
                     node_metrics.num_tasks_finished += 1
 
                 # Keep track of node ids to ensure we don't double count

@@ -56,8 +56,7 @@ class DataOrganizer:
     @classmethod
     @async_loop_forever(dashboard_consts.RAY_DASHBOARD_STATS_UPDATING_INTERVAL)
     async def organize(cls, thread_pool_executor):
-        """
-        Organizes data: read from (node_physical_stats, node_stats) and updates
+        """Organizes data: read from (node_physical_stats, node_stats) and updates
         (node_workers, node_worker_stats).
 
         This methods is not really async, but DataSource is not thread safe so we need

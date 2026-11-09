@@ -47,6 +47,11 @@ ip_head=$ip:$port
 export ip_head
 echo "IP Head: $ip_head"
 
+# Create the auth token once. Every node reads it from ~/.ray/auth_token,
+# so this assumes the home directory is shared across the job's nodes.
+# Discard stdout, which prints the token, to keep it out of the job's log.
+ray get-auth-token --generate > /dev/null
+
 echo "STARTING HEAD at $node_1"
 srun --nodes=1 --ntasks=1 -w "$node_1" \
   ray start --head --node-ip-address="$ip" --port=$port --redis-password="$redis_password" --block &
