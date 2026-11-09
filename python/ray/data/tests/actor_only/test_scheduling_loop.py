@@ -17,6 +17,9 @@ from ray.data._internal.execution.streaming_executor import (
     StreamingExecutor,
     get_streaming_executor_cls,
 )
+from ray.data._internal.experimental.execution.operators.actor_pool_map_operator import (  # noqa: E501
+    ExperimentalActorPoolMapOperator,
+)
 from ray.data._internal.experimental.execution.streaming_executor import (
     ExperimentalStreamingExecutor,
 )
@@ -195,6 +198,59 @@ def test_escape_hatch_sees_consumption_queued_this_step(monkeypatch):
     executor._maybe_run_escape_hatch()
 
     assert calls == ["drain", "hatch"]
+
+
+class _DrainingOp:
+    """An actor-pool op whose draining actors finish one per
+    ``process_draining_actors`` call."""
+
+    def __init__(self, num_draining: int):
+        self.op = MagicMock(spec=ExperimentalActorPoolMapOperator)
+        self.op.has_completed.return_value = False
+        self.num_draining = num_draining
+        self.num_process_calls = 0
+        pool = self.op.actor_pool
+        pool.process_draining_actors.side_effect = self._process
+        pool.num_draining_actors.side_effect = lambda: self.num_draining
+
+    def _process(self):
+        self.num_process_calls += 1
+        self.num_draining = max(0, self.num_draining - 1)
+
+
+def test_completed_op_keeps_releasing_draining_actors_until_none_left():
+    fake = _DrainingOp(num_draining=2)
+    topology: Any = {fake.op: MagicMock()}
+    release = ExperimentalStreamingExecutor._release_drained_actors_of_completed_ops
+
+    # Still running: its own refresh_state drains it.
+    release(topology)
+    assert fake.num_process_calls == 0
+
+    fake.op.has_completed.return_value = True
+    for _ in range(4):
+        release(topology)
+    # Two calls drain it; with nothing left draining it isn't processed again.
+    assert fake.num_process_calls == 2
+
+
+def test_actors_marked_draining_after_completion_are_released():
+    # The sizer marks a completed op's actors draining on a later tick, and
+    # lineage reconstruction can run a completed op again: either way they
+    # appear after the op completed, and must still be released.
+    fake = _DrainingOp(num_draining=0)
+    topology: Any = {fake.op: MagicMock()}
+    release = ExperimentalStreamingExecutor._release_drained_actors_of_completed_ops
+    fake.op.has_completed.return_value = True
+    release(topology)
+    assert fake.num_process_calls == 0
+
+    fake.num_draining = 3
+    for _ in range(3):
+        release(topology)
+
+    assert fake.num_draining == 0
+    assert fake.num_process_calls == 3
 
 
 if __name__ == "__main__":

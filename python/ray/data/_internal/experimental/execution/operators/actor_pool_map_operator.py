@@ -1682,6 +1682,29 @@ class ExperimentalActorPoolMapOperator(ActorPoolMapOperator):
                 blocked += 1
         return blocked, active
 
+    def productive_task_slots(self) -> int:
+        """Tasks that are running and able to emit, summed over serving actors.
+
+        Only ACTIVE actors count: IDLE ones have nothing in flight, and
+        DRAINING / RESTARTING ones are not serving. Each contributes its
+        in-flight tasks capped at its concurrency: tasks already sent to the
+        actor but queued behind those are waiting, not working. An
+        output-backpressured actor contributes nothing: its running tasks
+        can't emit their outputs, and the tasks queued behind them can't start
+        or move to another actor.
+        """
+        zeros = TaskPullRequest.zero()
+        conc = max(1, self.actor_pool.max_actor_concurrency())
+        slots = 0
+        for states in self.actor_pool.alive_actor_states_by_node().values():
+            for actor_id, state in states.items():
+                if state.status != ActorStatus.ACTIVE:
+                    continue
+                if not self._actor_pull_budget(actor_id).all_fields_gt(zeros):
+                    continue
+                slots += min(state.num_tasks_in_flight, conc)
+        return slots
+
     def output_backpressured_actors(self) -> Tuple[int, int]:
         """(blocked, running) ACTOR counts for output backpressure.
 
