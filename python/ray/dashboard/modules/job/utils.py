@@ -353,7 +353,7 @@ def fast_tail_last_n_lines(
             and newlines_found < num_lines + 1
             and bytes_read < max_bytes
         ):
-            read_size = min(block_size, position)
+            read_size = min(block_size, position, max_bytes - bytes_read)
             position -= read_size
             f.seek(position)
 
