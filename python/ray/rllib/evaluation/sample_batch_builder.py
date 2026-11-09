@@ -1,6 +1,6 @@
 import collections
 import logging
-from typing import TYPE_CHECKING, Any, Dict, List
+from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
 import numpy as np
 
@@ -15,6 +15,7 @@ from ray.util.debug import log_once
 
 if TYPE_CHECKING:
     from ray.rllib.callbacks.callbacks import RLlibCallback
+    from ray.rllib.evaluation.episode_v2 import EpisodeV2
 
 logger = logging.getLogger(__name__)
 
@@ -87,9 +88,9 @@ class MultiAgentSampleBatchBuilder:
         """Initialize a MultiAgentSampleBatchBuilder.
 
         Args:
-            policy_map (Dict[str,Policy]): Maps policy ids to policy instances.
-            clip_rewards (Union[bool,float]): Whether to clip rewards before
-                postprocessing (at +/-1.0) or the actual value to +/- clip.
+            policy_map: Maps policy ids to policy instances.
+            clip_rewards: Whether to clip rewards before postprocessing (at
+                +/-1.0) or the actual value to +/- clip.
             callbacks: RLlib callbacks.
         """
         if log_once("MultiAgentSampleBatchBuilder"):
@@ -134,7 +135,7 @@ class MultiAgentSampleBatchBuilder:
         Args:
             agent_id: Unique id for the agent we are adding values for.
             policy_id: Unique id for policy controlling the agent.
-            values: Row of values to add for this agent.
+            **values: Row of values to add for this agent.
         """
 
         if agent_id not in self.agent_builders:
@@ -147,15 +148,14 @@ class MultiAgentSampleBatchBuilder:
 
         self.agent_builders[agent_id].add_values(**values)
 
-    def postprocess_batch_so_far(self, episode=None) -> None:
+    def postprocess_batch_so_far(self, episode: Optional["EpisodeV2"] = None) -> None:
         """Apply policy postprocessors to any unprocessed rows.
 
         This pushes the postprocessed per-agent batches onto the per-policy
         builders, clearing per-agent state.
 
         Args:
-            episode (Optional[Episode]): The Episode object that
-                holds this MultiAgentBatchBuilder object.
+            episode: The episode that holds this MultiAgentBatchBuilder object.
         """
 
         # Materialize the batches so far.
@@ -240,19 +240,18 @@ class MultiAgentSampleBatchBuilder:
                     "to True. "
                 )
 
-    def build_and_reset(self, episode=None) -> MultiAgentBatch:
+    def build_and_reset(self, episode: Optional["EpisodeV2"] = None) -> MultiAgentBatch:
         """Returns the accumulated sample batches for each policy.
 
         Any unprocessed rows will be first postprocessed with a policy
         postprocessor. The internal state of this builder will be reset.
 
         Args:
-            episode (Optional[Episode]): The Episode object that
-                holds this MultiAgentBatchBuilder object or None.
+            episode: The episode that holds this MultiAgentBatchBuilder object
+                or None.
 
         Returns:
-            MultiAgentBatch: Returns the accumulated sample batches for each
-                policy.
+            The accumulated sample batches for each policy.
         """
 
         self.postprocess_batch_so_far(episode)

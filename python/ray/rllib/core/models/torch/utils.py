@@ -27,7 +27,7 @@ class Stride2D(nn.Module):
         M 0 N 0 O 0 P
     """
 
-    def __init__(self, width, height, stride_w, stride_h):
+    def __init__(self, width: int, height: int, stride_w: int, stride_h: int):
         """Initializes a Stride2D instance.
 
         Args:

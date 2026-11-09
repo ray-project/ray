@@ -24,7 +24,10 @@ from ray.data._internal.datasource_v2.interfaces.file_indexer import (
     FileIndexer,
     FileInfo,
 )
-from ray.data._internal.datasource_v2.interfaces.file_manifest import FileManifest
+from ray.data._internal.datasource_v2.interfaces.file_manifest import (
+    ChunkMetadata,
+    FileManifest,
+)
 from ray.data._internal.datasource_v2.interfaces.file_pruner import FilePruner
 from ray.data._internal.dynamic_work_queue import parallel_process_work_stealing
 from ray.data.block import BlockColumn
@@ -159,8 +162,19 @@ class NonSamplingFileIndexer(FileIndexer):
         execution_idx: int = 0,
         excluded_read_unit_ids: Optional[AbstractSet[str]] = None,
     ) -> Iterable[FileManifest]:
-        # This per-file listing path ignores predicate/limit/projected_columns;
-        # they're consumed by metadata-aware indexers (e.g. the footer indexer).
+        """Emit one manifest row per file, with ``__file_chunk_metadata`` unset.
+
+        Override this when the file format has some form of horizontal
+        partitioning, like row groups or stripes. Your implementation should:
+
+            1. Take the file paths from :meth:`list_file_infos`.
+            2. Read each file's metadata and drop the pieces that
+               ``predicate`` rules out or ``excluded_read_unit_ids`` names.
+            3. Emit one ``FileChunk`` row per run of remaining pieces.
+
+        ``FooterFileIndexer`` is the Parquet example. This default ignores
+        ``predicate``, ``limit`` and ``projected_columns``.
+        """
         # ``list_file_infos`` already skips zero-size files and applies pruners,
         # so this method only batches them into manifests, one row per file.
         # Shuffle, when requested, happens after path discovery and before the
@@ -174,6 +188,29 @@ class NonSamplingFileIndexer(FileIndexer):
             execution_idx=execution_idx,
             excluded_read_unit_ids=excluded_read_unit_ids,
         )
+        yield from self._process_file_infos_to_manifests(file_infos)
+
+    def list_files_from_file_infos(
+        self,
+        file_infos: Iterable[FileInfo],
+        *,
+        filesystem: Optional["FileSystem"],
+        preserve_order: bool = False,
+        predicate: Optional["Expr"] = None,
+        limit: Optional[int] = None,
+        projected_columns: Optional[List[str]] = None,
+        shuffle_config: Optional["FileShuffleConfig"] = None,
+        execution_idx: int = 0,
+        excluded_read_unit_ids: Optional[AbstractSet[str]] = None,
+    ) -> Iterable[FileManifest]:
+        if excluded_read_unit_ids:
+            file_infos = (
+                info for info in file_infos if info.path not in excluded_read_unit_ids
+            )
+        if shuffle_config is not None:
+            file_infos = _shuffle_file_infos(
+                list(file_infos), seed=shuffle_config.get_seed(execution_idx)
+            )
         yield from self._process_file_infos_to_manifests(file_infos)
 
     def _iter_file_infos_for_list(
@@ -377,39 +414,61 @@ class NonSamplingFileIndexer(FileIndexer):
     ) -> Iterable[FileManifest]:
         # ``file_infos`` are already filtered (zero-size skipped, pruners applied)
         # by ``list_file_infos``; this method only batches them into manifests,
-        # one row per file. Indexers that read a file in parts (the Parquet
-        # footer indexer) override ``list_files`` instead.
+        # one row per entry of ``_chunk_metadatas_of_file``. Indexers that read
+        # a file to split it (the Parquet footer indexer) override
+        # ``list_files`` instead.
         running_paths: List[str] = []
         running_file_sizes: List[int] = []
+        running_chunk_metadatas: List[Optional[ChunkMetadata]] = []
         manifests_count = 0
         files_count = 0
 
         for file_info in file_infos:
             # ``list_file_infos`` already dropped zero/None-size files.
             assert file_info.size is not None
-            running_paths.append(file_info.path)
-            running_file_sizes.append(file_info.size)
             files_count += 1
+            for chunk_metadata in self._chunk_metadatas_of_file(file_info):
+                running_paths.append(file_info.path)
+                running_file_sizes.append(file_info.size)
+                running_chunk_metadatas.append(chunk_metadata)
 
-            if len(running_paths) >= self._max_paths_per_output:
-                manifests_count += 1
-                yield FileManifest.construct_manifest(
-                    paths=running_paths,
-                    sizes=running_file_sizes,
-                    chunk_metadatas=[None] * len(running_paths),
-                )
-                running_paths = []
-                running_file_sizes = []
+                if len(running_paths) >= self._max_paths_per_output:
+                    manifests_count += 1
+                    yield FileManifest.construct_manifest(
+                        paths=running_paths,
+                        sizes=running_file_sizes,
+                        chunk_metadatas=running_chunk_metadatas,
+                    )
+                    running_paths = []
+                    running_file_sizes = []
+                    running_chunk_metadatas = []
 
         if running_paths:
             manifests_count += 1
             yield FileManifest.construct_manifest(
                 paths=running_paths,
                 sizes=running_file_sizes,
-                chunk_metadatas=[None] * len(running_paths),
+                chunk_metadatas=running_chunk_metadatas,
             )
 
         logger.debug(
             f"Listing files: constructed {manifests_count} manifests "
             f"with {files_count} files"
         )
+
+    def _chunk_metadatas_of_file(
+        self, file_info: FileInfo
+    ) -> List[Optional[ChunkMetadata]]:
+        """Return the chunk metadata of each manifest row for one file.
+
+        The default lists every file as one row; ``None`` means the whole
+        file. Override it to split a file into several rows using only its
+        ``FileInfo``.
+
+        Args:
+            file_info: The file, with its size already known to be positive.
+
+        Returns:
+            One entry per manifest row for this file, in read order.
+        """
+        return [None]

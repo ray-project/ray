@@ -40,8 +40,8 @@ class OffPolicyEstimator(OfflineEvaluator):
             epsilon_greedy: The probability by which we act acording to a fully random
                 policy during deployment. With 1-epsilon_greedy we act according the target
                 policy.
-            # TODO (kourosh): convert the input parameters to a config dict.
         """
+        # TODO (kourosh): convert the input parameters to a config dict.
         super().__init__(policy)
         self.gamma = gamma
         self.epsilon_greedy = epsilon_greedy
@@ -51,7 +51,7 @@ class OffPolicyEstimator(OfflineEvaluator):
         """Returns off-policy estimates for the given one episode.
 
         Args:
-            batch: The episode to calculate the off-policy estimates (OPE) on. The
+            episode: The episode to calculate the off-policy estimates (OPE) on. The
                 episode must be a sample batch type that contains the fields "obs",
                 "actions", and "action_prob" and it needs to represent a
                 complete trajectory.
@@ -110,6 +110,9 @@ class OffPolicyEstimator(OfflineEvaluator):
         Args:
             all_episodes: The list of episodes in the original batch. Each element is a
                 sample batch type that is a single episode.
+
+        Returns:
+            The (possibly modified) list of episodes to run the estimation on.
         """
 
         return all_episodes
@@ -137,7 +140,7 @@ class OffPolicyEstimator(OfflineEvaluator):
         Args:
             batch: The batch to calculate the off-policy estimates (OPE) on. The
                 batch must contain the fields "obs", "actions", and "action_prob".
-                split_batch_by_episode: Whether to split the batch by episode.
+            split_batch_by_episode: Whether to split the batch by episode.
 
         Returns:
             The off-policy estimates (OPE) calculated on the given batch. The returned

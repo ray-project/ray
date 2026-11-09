@@ -248,6 +248,7 @@ class TorchPolicyV2(Policy):
             model: Underlying model.
             obs_batch: Observation tensor batch.
             state_batches: Action sampling state batch.
+            **kwargs: Forward compatibility placeholder.
 
         Returns:
             Sampled action
@@ -272,6 +273,7 @@ class TorchPolicyV2(Policy):
             model: Underlying model.
             obs_batch: Observation tensor batch.
             state_batches: Action sampling state batch.
+            **kwargs: Forward compatibility placeholder.
 
         Returns:
             Distribution input.
@@ -384,7 +386,7 @@ class TorchPolicyV2(Policy):
         self,
         sample_batch: SampleBatch,
         other_agent_batches: Optional[Dict[Any, SampleBatch]] = None,
-        episode=None,
+        episode: Optional[Any] = None,
     ) -> SampleBatch:
         """Postprocesses a trajectory and returns the processed trajectory.
 
@@ -398,10 +400,10 @@ class TorchPolicyV2(Policy):
 
         Args:
             sample_batch: The SampleBatch to postprocess.
-            other_agent_batches (Optional[Dict[PolicyID, SampleBatch]]): Optional
+            other_agent_batches: Optional
                 dict of AgentIDs mapping to other agents' trajectory data (from the
                 same episode). NOTE: The other agents use the same policy.
-            episode (Optional[Episode]): Optional multi-agent episode
+            episode: Optional multi-agent episode
                 object in which the agents operated.
 
         Returns:
@@ -1030,9 +1032,25 @@ class TorchPolicyV2(Policy):
 
     @with_lock
     def _compute_action_helper(
-        self, input_dict, state_batches, seq_lens, explore, timestep
+        self,
+        input_dict: SampleBatch,
+        state_batches: List[TensorType],
+        seq_lens: Optional[TensorType],
+        explore: Optional[bool],
+        timestep: Optional[int],
     ):
         """Shared forward pass logic (w/ and w/o trajectory view API).
+
+        Args:
+            input_dict: The input tensor dict (already converted to torch tensors)
+                to compute actions for.
+            state_batches: List of RNN state input tensors (empty for non-RNNs).
+            seq_lens: Optional tensor holding the sequence lengths of `input_dict`
+                (only used for RNNs).
+            explore: Whether to sample actions from the action distribution (as
+                opposed to acting greedily). If None, use `self.config["explore"]`.
+            timestep: The current (sampling) timestep to pass to the Exploration
+                component. If None, use `self.global_timestep`.
 
         Returns:
             A tuple consisting of a) actions, b) state_out, c) extra_fetches.

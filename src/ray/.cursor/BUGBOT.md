@@ -6,7 +6,7 @@
 
 > ⚠️ This PR modifies one or more \`.proto\` files.
 > Please review the RPC fault-tolerance & idempotency standards guide here:
-> https://github.com/ray-project/ray/tree/master/doc/source/ray-core/internals/rpc-fault-tolerance.md
+> https://github.com/ray-project/ray/tree/master/doc/source/core/internals/rpc-fault-tolerance.md
 
 - If no `.proto` files are changed, do not post this message.
 

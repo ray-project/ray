@@ -79,18 +79,16 @@ class ModelV2:
             List of np.array (for tf) or Tensor (for torch) objects containing the
             initial hidden state of an RNN, if applicable.
 
-        .. testcode::
-            :skipif: True
-
-            import numpy as np
-            from ray.rllib.models.modelv2 import ModelV2
-            class MyModel(ModelV2):
-                # ...
-                def get_initial_state(self):
-                    return [
-                        np.zeros(self.cell_size, np.float32),
-                        np.zeros(self.cell_size, np.float32),
-                    ]
+        Examples:
+            >>> import numpy as np
+            >>> from ray.rllib.models.modelv2 import ModelV2
+            >>> class MyModel(ModelV2):
+            ...     # ...
+            ...     def get_initial_state(self):
+            ...         return [
+            ...             np.zeros(self.cell_size, np.float32),
+            ...             np.zeros(self.cell_size, np.float32),
+            ...         ]
         """
         return []
 
@@ -125,17 +123,15 @@ class ModelV2:
             A tuple consisting of the model output tensor of size
             [BATCH, num_outputs] and the list of new RNN state(s) if any.
 
-        .. testcode::
-            :skipif: True
-
-            import numpy as np
-            from ray.rllib.models.modelv2 import ModelV2
-            class MyModel(ModelV2):
-                # ...
-                def forward(self, input_dict, state, seq_lens):
-                    model_out, self._value_out = self.base_model(
-                        input_dict["obs"])
-                    return model_out, state
+        Examples:
+            >>> import numpy as np
+            >>> from ray.rllib.models.modelv2 import ModelV2
+            >>> class MyModel(ModelV2):
+            ...     # ...
+            ...     def forward(self, input_dict, state, seq_lens):
+            ...         model_out, self._value_out = self.base_model(
+            ...             input_dict["obs"])
+            ...         return model_out, state
         """
         raise NotImplementedError
 
@@ -388,6 +384,11 @@ def _unpack_obs(obs: TensorType, space: Space, tensorlib: Any = tf) -> TensorStr
             the Box was nested under two Repeated spaces.
         space: The original space prior to flattening
         tensorlib: The library used to unflatten (reshape) the array/tensor
+
+    Returns:
+        The unflattened observation, matching the structure of `space`: a dict
+        for Dict spaces, a tuple for Tuple spaces, a `RepeatedValues` object for
+        Repeated spaces, and the (unchanged) input tensor otherwise.
     """
 
     if isinstance(space, (gym.spaces.Dict, gym.spaces.Tuple, Repeated)):

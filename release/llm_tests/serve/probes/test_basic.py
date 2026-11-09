@@ -106,8 +106,8 @@ async def test_completions_request_stopping(
 
     if max_tokens == 1:
         assert (
-            finish_reason == "length"
-        ), f"{model=}, {stream=}, {chat=}, {params=}, {response.response=}, {max_tokens=} != 1"
+            completion_tokens == 1
+        ), f"{model=}, {stream=}, {chat=}, {params=}, {response.response=}, {completion_tokens=} != 1"
 
     assert (
         finish_reason

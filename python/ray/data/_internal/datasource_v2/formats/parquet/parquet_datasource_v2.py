@@ -17,6 +17,9 @@ import pyarrow as pa
 from typing_extensions import override
 
 from ray._common.utils import env_bool, env_integer
+from ray.data._internal.datasource_v2.common.schema_inference import (
+    infer_schema_from_files,
+)
 from ray.data._internal.datasource_v2.common.synthesized_columns import (
     PathColumn,
     RowHashColumn,
@@ -36,7 +39,13 @@ from ray.data._internal.datasource_v2.interfaces.file_manifest import FileManife
 from ray.data._internal.datasource_v2.interfaces.synthesized_columns import (
     SynthesizedColumn,
 )
-from ray.data._internal.util import _is_local_scheme
+from ray.data._internal.util import (
+    RetryingPyFileSystem,
+    _is_local_scheme,
+    _normalize_paths_to_strings,
+    call_with_retry,
+    filesystem_for_sized_opens,
+)
 from ray.data.context import DataContext
 from ray.data.datasource.partitioning import (
     Partitioning,
@@ -62,7 +71,7 @@ class ParquetDatasourceV2(FileDataSourceV2):
     Listing is delegated to :class:`NonSamplingFileIndexer` driven by the
     ``ListFiles`` logical op; scanning and reading are delegated to
     :class:`ParquetScanner` and :class:`ParquetFileReader`. Schema
-    inference reads the first file's footer only and augments with
+    inference merges the supplied file sample's footers and augments with
     partition/path columns as configured.
     """
 
@@ -94,7 +103,17 @@ class ParquetDatasourceV2(FileDataSourceV2):
             paths, filesystem
         )
         self._paths: List[str] = resolved_paths
-        self._filesystem = resolved_filesystem
+        # The resolved paths above lose their URI scheme; lineage tracking
+        # reads the caller's paths through ``source_paths``.
+        self._source_paths: List[str] = _normalize_paths_to_strings(paths)
+        # Retry ``DataContext.retried_io_errors`` on every filesystem call --
+        # listing, schema inference and reads -- as V1's ``ParquetDatasource``
+        # does. Without this, the driver-side listing and footer reads fail on
+        # the first transient error.
+        self._filesystem = RetryingPyFileSystem.wrap(
+            resolved_filesystem,
+            retryable_errors=DataContext.get_current().retried_io_errors,
+        )
         self._partitioning = partitioning
         self._file_extensions = (
             list(file_extensions) if file_extensions is not None else None
@@ -149,6 +168,10 @@ class ParquetDatasourceV2(FileDataSourceV2):
         return self._paths
 
     @property
+    def source_paths(self) -> List[str]:
+        return self._source_paths
+
+    @property
     def filesystem(self) -> "FileSystem":
         return self._filesystem
 
@@ -186,6 +209,9 @@ class ParquetDatasourceV2(FileDataSourceV2):
             ignore_missing_paths=self._ignore_missing_paths,
             skip_paths=self._skip_paths,
             coalesce_bytes=env_integer("RAY_DATA_PARQUET_FOOTER_COALESCE_BYTES", 0),
+            small_shuffle_chunk_size=(
+                DataContext.get_current().small_shuffle_chunk_size
+            ),
         )
 
     def get_file_partitioner(self, **kwargs):
@@ -201,17 +227,30 @@ class ParquetDatasourceV2(FileDataSourceV2):
             "RAY_DATA_PARQUET_BIN_PACKING_MAX_SHARED_OPEN_BINS", 16
         )
         split_coalesced = env_bool("RAY_DATA_PARQUET_FOOTER_SPLIT_COALESCED", False)
+        # A row-group shuffle feeds runs from many files interleaved; per-file
+        # heavy bins would split them back apart, so pack everything shared.
+        isolate_heavy_files = not self._is_row_group_shuffle()
         logger.debug(
             "OnlineBinPacker(max_bin_bytes=%d, max_shared_open_bins=%d, "
-            "split_coalesced=%s)",
+            "split_coalesced=%s, isolate_heavy_files=%s)",
             max_bin_bytes,
             max_shared_open_bins,
             split_coalesced,
+            isolate_heavy_files,
         )
         return OnlineBinPacker(
             max_bin_bytes=max_bin_bytes,
             max_shared_open_bins=max_shared_open_bins,
             split_coalesced=split_coalesced,
+            isolate_heavy_files=isolate_heavy_files,
+        )
+
+    def _is_row_group_shuffle(self) -> bool:
+        from ray.data.datasource.file_based_datasource import FileShuffleConfig
+
+        return (
+            isinstance(self._shuffle, FileShuffleConfig)
+            and self._shuffle.small_chunks_shuffle
         )
 
     @override
@@ -269,11 +308,8 @@ class ParquetDatasourceV2(FileDataSourceV2):
         ``Partitioning`` can flow through ``_read_datasource_v2`` into
         :meth:`create_scanner` without side effects.
         """
-        from concurrent.futures import ThreadPoolExecutor
-
+        import pyarrow.dataset as pds
         import pyarrow.parquet as pq
-
-        from ray.data._internal.util import unify_schemas_with_validation
 
         # See ``resolve_partitioning``: ``None`` is reachable only for a
         # source that answers ``schema_needs_file_sample`` False.
@@ -295,11 +331,11 @@ class ParquetDatasourceV2(FileDataSourceV2):
         # schema's field order follows the first schema's and
         # ``sample_paths[0]`` drives partition discovery below.
         #
-        # NOTE: ``pq.read_schema`` only accepts a ``filesystem=`` kwarg in
-        # recent pyarrow releases; older wheels in CI don't have it. Open
-        # the file through the configured filesystem and hand the file
-        # handle to ``read_schema`` for cross-version compatibility.
-        filesystem = self._filesystem
+        # With a filesystem, the footer is read through a fragment rather
+        # than ``pq.read_schema``: a fragment takes the listing's file size,
+        # which spares the open a request for it (a HEAD on S3).
+        filesystem = filesystem_for_sized_opens(self._filesystem)
+        file_sizes = dict(zip(sample_paths, sample.known_file_sizes))
 
         if self._user_schema is not None:
             # Caller pinned the schema — skip footer reads. Partition/path
@@ -311,15 +347,20 @@ class ParquetDatasourceV2(FileDataSourceV2):
             def _read_schema(path: str):
                 if filesystem is None:
                     return pq.read_schema(path)
-                with filesystem.open_input_file(path) as handle:
-                    return pq.read_schema(handle)
+                fragment = pds.ParquetFileFormat().make_fragment(
+                    path, filesystem=filesystem, file_size=file_sizes[path]
+                )
+                # ``make_fragment`` is lazy, so this is the footer read itself.
+                metadata = call_with_retry(
+                    lambda: fragment.metadata,
+                    description=f"read Parquet footer for {path}",
+                    match=DataContext.get_current().retried_io_errors,
+                )
+                return metadata.schema.to_arrow_schema()
 
-            with ThreadPoolExecutor(max_workers=min(len(sample_paths), 16)) as executor:
-                per_file_schemas = list(executor.map(_read_schema, sample_paths))
-            schema = (
-                unify_schemas_with_validation(per_file_schemas) or per_file_schemas[0]
+            schema = infer_schema_from_files(
+                sample_paths, _read_schema, format_name="Parquet"
             )
-            assert isinstance(schema, pa.Schema)
 
         resolved_partitioning = self.resolve_partitioning(sample)
         if resolved_partitioning is not None:

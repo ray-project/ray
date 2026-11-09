@@ -21,7 +21,6 @@
 #include <utility>
 #include <vector>
 
-#include "gmock/gmock.h"
 #include "gtest/gtest.h"
 #include "ray/asio/instrumented_io_context.h"
 #include "ray/common/status.h"
@@ -32,10 +31,7 @@
 
 namespace ray {
 
-using ::testing::_;
-using ::testing::Return;
-
-class MockWorkerClient : public rpc::FakeCoreWorkerClient {
+class FakeWorkerClient : public rpc::FakeCoreWorkerClient {
  public:
   void UpdateObjectLocationBatch(
       rpc::UpdateObjectLocationBatchRequest &&request,
@@ -92,7 +88,7 @@ class MockWorkerClient : public rpc::FakeCoreWorkerClient {
   int batch_sent = 0;
 };
 
-class MockGcsClientNodeAccessor : public gcs::NodeInfoAccessor {
+class FakeGcsClientNodeAccessor : public gcs::NodeInfoAccessor {
  public:
   bool IsNodeDead(const NodeID &node_id) const override { return false; }
 };
@@ -117,10 +113,10 @@ class CapturingSubscriber : public pubsub::FakeSubscriber {
   absl::flat_hash_map<std::string, pubsub::SubscriptionFailureCallback> failure_callbacks;
 };
 
-class MockGcsClient : public gcs::GcsClient {
+class FakeGcsClientForTest : public gcs::GcsClient {
  public:
-  MockGcsClient(gcs::GcsClientOptions options,
-                std::unique_ptr<MockGcsClientNodeAccessor> node_info_accessor)
+  FakeGcsClientForTest(gcs::GcsClientOptions options,
+                       std::unique_ptr<FakeGcsClientNodeAccessor> node_info_accessor)
       : gcs::GcsClient(options) {
     node_accessor_ = std::move(node_info_accessor);
   }
@@ -145,15 +141,15 @@ class OwnershipBasedObjectDirectoryTest : public ::testing::Test {
                  ClusterID::Nil(),
                  /*allow_cluster_id_nil=*/true,
                  /*fetch_cluster_id_if_nil=*/false),
-        gcs_client_mock_(
-            new MockGcsClient(options_, std::make_unique<MockGcsClientNodeAccessor>())),
+        gcs_client_fake_(new FakeGcsClientForTest(
+            options_, std::make_unique<FakeGcsClientNodeAccessor>())),
         subscriber_(std::make_shared<CapturingSubscriber>()),
-        owner_client(std::make_shared<MockWorkerClient>()),
+        owner_client(std::make_shared<FakeWorkerClient>()),
         client_pool([&](const rpc::Address &addr) { return owner_client; }) {
     RayConfig::instance().initialize(R"({"max_object_report_batch_size": 20})");
     obod_ = std::make_unique<OwnershipBasedObjectDirectory>(
         io_service_,
-        *gcs_client_mock_,
+        *gcs_client_fake_,
         subscriber_.get(),
         &client_pool,
         [this](const ObjectID &object_id, const rpc::ErrorType &error_type) {
@@ -220,9 +216,9 @@ class OwnershipBasedObjectDirectoryTest : public ::testing::Test {
   int64_t max_batch_size = 20;
   instrumented_io_context io_service_;
   gcs::GcsClientOptions options_;
-  std::shared_ptr<gcs::GcsClient> gcs_client_mock_;
+  std::shared_ptr<gcs::GcsClient> gcs_client_fake_;
   std::shared_ptr<CapturingSubscriber> subscriber_;
-  std::shared_ptr<MockWorkerClient> owner_client;
+  std::shared_ptr<FakeWorkerClient> owner_client;
   rpc::CoreWorkerClientPool client_pool;
   std::unique_ptr<OwnershipBasedObjectDirectory> obod_;
   std::unordered_set<ObjectID> used_ids_;

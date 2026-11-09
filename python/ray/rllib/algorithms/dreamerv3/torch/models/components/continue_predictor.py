@@ -1,5 +1,4 @@
-"""
-[1] Mastering Diverse Domains through World Models - 2023
+"""[1] Mastering Diverse Domains through World Models - 2023
 D. Hafner, J. Pasukonis, J. Ba, T. Lillicrap
 https://arxiv.org/pdf/2301.04104v1.pdf
 """
@@ -37,7 +36,12 @@ class ContinuePredictor(nn.Module):
             output_layer_size=1,
         )
 
-    def forward(self, h, z, return_distribution=False):
+    def forward(
+        self,
+        h: "torch.Tensor",
+        z: "torch.Tensor",
+        return_distribution: bool = False,
+    ):
         """Performs a forward pass through the continue predictor.
 
         Args:
@@ -46,6 +50,11 @@ class ContinuePredictor(nn.Module):
                 observation input. [B, num_categoricals, num_classes].
             return_distribution: Whether to return (as a second tuple item) the
                 Bernoulli distribution object created by the underlying MLP.
+
+        Returns:
+            The predicted continue flags of shape (B,) (the mode of the Bernoulli
+            distribution). If `return_distribution` is True, a tuple of these flags
+            and the Bernoulli distribution object.
         """
         z_shape = z.size()
         z = z.view(z_shape[0], -1)

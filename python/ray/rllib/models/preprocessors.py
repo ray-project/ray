@@ -30,6 +30,13 @@ class Preprocessor:
     """
 
     def __init__(self, obs_space: gym.Space, options: dict = None):
+        """Initializes a Preprocessor instance.
+
+        Args:
+            obs_space: The observation space to preprocess observations for.
+            options: Optional model config dict. If None or empty, RLlib's
+                `MODEL_DEFAULTS` are used.
+        """
         _legacy_patch_shapes(obs_space)
         self._obs_space = obs_space
         if not options:
@@ -167,23 +174,14 @@ class AtariRamPreprocessor(Preprocessor):
 class OneHotPreprocessor(Preprocessor):
     """One-hot preprocessor for Discrete and MultiDiscrete spaces.
 
-    .. testcode::
-        :skipif: True
-
-        self.transform(Discrete(3).sample())
-
-    .. testoutput::
-
-        np.array([0.0, 1.0, 0.0])
-
-    .. testcode::
-        :skipif: True
-
-        self.transform(MultiDiscrete([2, 3]).sample())
-
-    .. testoutput::
-
-        np.array([0.0, 1.0, 0.0, 0.0, 1.0])
+    Examples:
+        >>> import numpy as np
+        >>> from gymnasium.spaces import Discrete, MultiDiscrete
+        >>> from ray.rllib.models.preprocessors import OneHotPreprocessor
+        >>> OneHotPreprocessor(Discrete(3)).transform(1)
+        array([0., 1., 0.], dtype=float32)
+        >>> OneHotPreprocessor(MultiDiscrete([2, 3])).transform(np.array([1, 2]))
+        array([0., 1., 0., 0., 1.], dtype=float32)
     """
 
     @override(Preprocessor)

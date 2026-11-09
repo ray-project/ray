@@ -258,11 +258,19 @@ class ArrowConversionError(Exception):
 
 
 @DeveloperAPI
+class ArrowSchemaUnificationError(ArrowConversionError):
+    """Error raised when block schemas can't be unified into one schema."""
+
+    # The message lists every conflicting column and its types, so it is
+    # never truncated.
+    MAX_DATA_STR_LEN = float("inf")
+
+
+@DeveloperAPI
 def pyarrow_table_from_pydict(
     pydict: Dict[str, Union[List[Any], pa.Array]],
 ) -> pa.Table:
-    """
-    Convert a Python dictionary to a pyarrow Table.
+    """Convert a Python dictionary to a pyarrow Table.
 
     Args:
         pydict: A dictionary mapping column names to column values.
@@ -297,8 +305,14 @@ def convert_to_pyarrow_array(
         # Since Arrow does NOT support tensors (aka multidimensional arrays) natively,
         # we have to make sure that we handle this case utilizing `ArrowTensorArray`
         # extension type
-        if len(column_values) > 0 and _should_convert_to_tensor(
-            column_values, column_name
+        # Empty multidimensional arrays still carry tensor shape and dtype.
+        if (
+            len(column_values) == 0
+            and hasattr(column_values, "ndim")
+            and column_values.ndim > 1
+        ) or (
+            len(column_values) > 0
+            and _should_convert_to_tensor(column_values, column_name)
         ):
             from ray.data.extensions.tensor_extension import ArrowTensorArray
 
@@ -581,8 +595,7 @@ def get_arrow_extension_variable_shape_tensor_types():
 class _BaseFixedShapeArrowTensorType(
     ArrowExtensionSerializeDeserializeCache, pa.ExtensionType
 ):
-    """
-    Arrow ExtensionType for an array of fixed-shaped, homogeneous-typed
+    """Arrow ExtensionType for an array of fixed-shaped, homogeneous-typed
     tensors.
 
     This is the Arrow side of TensorDtype.
@@ -599,9 +612,7 @@ class _BaseFixedShapeArrowTensorType(
 
     @property
     def shape(self) -> Tuple[int, ...]:
-        """
-        Shape of contained tensors.
-        """
+        """Shape of contained tensors."""
         return self._shape
 
     @property
@@ -610,8 +621,7 @@ class _BaseFixedShapeArrowTensorType(
         return self.storage_type.value_type
 
     def to_pandas_dtype(self):
-        """
-        Convert Arrow extension type to corresponding Pandas dtype.
+        """Convert Arrow extension type to corresponding Pandas dtype.
 
         Returns:
             An instance of pd.api.extensions.ExtensionDtype.
@@ -637,8 +647,7 @@ class _BaseFixedShapeArrowTensorType(
             )
 
     def __arrow_ext_class__(self):
-        """
-        ExtensionArray subclass with custom logic for this array of tensors
+        """ExtensionArray subclass with custom logic for this array of tensors
         type.
 
         Returns:
@@ -647,15 +656,11 @@ class _BaseFixedShapeArrowTensorType(
         return ArrowTensorArray
 
     def __arrow_ext_scalar_class__(self):
-        """
-        ExtensionScalar subclass with custom logic for this array of tensors type.
-        """
+        """ExtensionScalar subclass with custom logic for this array of tensors type."""
         return ArrowTensorScalar
 
     def _extension_scalar_to_ndarray(self, scalar: "pa.ExtensionScalar") -> np.ndarray:
-        """
-        Convert an ExtensionScalar to a tensor element.
-        """
+        """Convert an ExtensionScalar to a tensor element."""
         return fixed_shape_extension_scalar_to_ndarray(scalar)
 
     def __str__(self) -> str:
@@ -683,9 +688,7 @@ class _BaseFixedShapeArrowTensorType(
 def fixed_shape_extension_scalar_to_ndarray(
     scalar: "pa.ExtensionScalar",
 ) -> np.ndarray:
-    """
-    Convert an ExtensionScalar to a tensor element.
-    """
+    """Convert an ExtensionScalar to a tensor element."""
     # Handle None/null values
     if scalar.value is None:
         return None
@@ -708,8 +711,7 @@ class ArrowTensorType(_BaseFixedShapeArrowTensorType):
     OFFSET_DTYPE = pa.int32()
 
     def __init__(self, shape: Tuple[int, ...], dtype: pa.DataType):
-        """
-        Construct the Arrow extension type for array of fixed-shaped tensors.
+        """Construct the Arrow extension type for array of fixed-shaped tensors.
 
         Args:
             shape: Shape of contained tensors.
@@ -735,8 +737,7 @@ class ArrowTensorTypeV2(_BaseFixedShapeArrowTensorType):
     OFFSET_DTYPE = pa.int64()
 
     def __init__(self, shape: Tuple[int, ...], dtype: pa.DataType):
-        """
-        Construct the Arrow extension type for array of fixed-shaped tensors.
+        """Construct the Arrow extension type for array of fixed-shaped tensors.
 
         Args:
             shape: Shape of contained tensors.
@@ -760,8 +761,7 @@ def create_arrow_fixed_shape_tensor_type(
     shape: Tuple[int, ...],
     dtype: pa.DataType,
 ) -> pa.ExtensionType:
-    """
-    Factory method to create an Arrow tensor type.
+    """Factory method to create an Arrow tensor type.
 
     Args:
         shape: Shape of the tensor.
@@ -820,13 +820,17 @@ class ArrowTensorScalar(pa.ExtensionScalar):
 
     # This function exists to mimic pyarrow's native fixed shaped tensors.
     def to_numpy(self) -> np.ndarray:
+        """Convert this scalar to a NumPy array.
+
+        Returns:
+            The tensor as a NumPy array.
+        """
         return np.array(self)
 
 
 @PublicAPI(stability="beta")
 class ArrowTensorArray(pa.ExtensionArray):
-    """
-    An array of fixed-shape, homogeneous-typed tensors.
+    """An array of fixed-shape, homogeneous-typed tensors.
 
     This is the Arrow side of TensorArray.
 
@@ -841,8 +845,7 @@ class ArrowTensorArray(pa.ExtensionArray):
         *,
         column_name: Optional[str] = None,
     ) -> Union["ArrowTensorArray", "ArrowVariableShapedTensorArray"]:
-        """
-        Convert an ndarray or an iterable of ndarrays to an array of homogeneous-typed
+        """Convert an ndarray or an iterable of ndarrays to an array of homogeneous-typed
         tensors. If given fixed-shape tensor elements, this will return an
         ``ArrowTensorArray``; if given variable-shape tensor elements, this will return
         an ``ArrowVariableShapedTensorArray``.
@@ -862,7 +865,10 @@ class ArrowTensorArray(pa.ExtensionArray):
         if not isinstance(arr, np.ndarray) and isinstance(arr, Iterable):
             arr = list(arr)
 
-        if isinstance(arr, (list, tuple)) and arr and isinstance(arr[0], np.ndarray):
+        if isinstance(arr, (list, tuple)) and arr and any(v is None for v in arr):
+            # A None element is a null row; keep it next to the tensors.
+            arr = create_ragged_ndarray(arr)
+        elif isinstance(arr, (list, tuple)) and arr and isinstance(arr[0], np.ndarray):
             # Stack ndarrays and pass through to ndarray handling logic below.
             try:
                 arr = np.stack(arr, axis=0)
@@ -880,6 +886,11 @@ class ArrowTensorArray(pa.ExtensionArray):
             raise ValueError(
                 f"Must give ndarray or iterable of ndarrays, got {type(arr)} {arr}"
             )
+
+        is_null = _null_row_mask(arr)
+        if is_null is not None:
+            tensors = cls.from_numpy(arr[~is_null], column_name=column_name)
+            return _with_null_rows(tensors, is_null)
 
         try:
             timestamp_dtype = _try_infer_pa_timestamp_type(arr)
@@ -1002,8 +1013,7 @@ class ArrowTensorArray(pa.ExtensionArray):
         return pa_tensor_type_.wrap_array(storage)
 
     def to_numpy(self, zero_copy_only: bool = True):
-        """
-        Convert the entire array of tensors into a single ndarray.
+        """Convert the entire array of tensors into a single ndarray.
 
         Args:
             zero_copy_only: If True, an exception will be raised if the
@@ -1013,8 +1023,11 @@ class ArrowTensorArray(pa.ExtensionArray):
                 zero-copy isn't enforced even if this argument is true.
 
         Returns:
-            A single ndarray representing the entire array of tensors.
+            A single ndarray representing the entire array of tensors, or one
+            ndarray per row with ``None`` for each null row.
         """
+        if self.null_count > 0:
+            return self._to_numpy_with_null_rows()
 
         # Buffers layout: [None, offset_buffer, None, data_buffer]
         buffers = self.buffers()
@@ -1036,10 +1049,10 @@ class ArrowTensorArray(pa.ExtensionArray):
             # offsets.
             buffer_item_width = value_type.bit_width // 8
 
-        # Number of items per inner ndarray.
-        num_items_per_element = np.prod(shape) if shape else 1
-        # Base offset into data buffer, e.g. due to zero-copy slice.
-        buffer_offset = self.offset * num_items_per_element
+        # Base offset into data buffer. The first list offset is absolute into
+        # the child array, so it also covers a slice taken after a null row,
+        # which has no values and so breaks the uniform spacing of the offsets.
+        buffer_offset = int(self.storage.offsets[0].as_py())
         # Offset of array data in buffer.
         offset = buffer_item_width * buffer_offset
         # Update the shape for ndarray
@@ -1079,15 +1092,60 @@ class ArrowTensorArray(pa.ExtensionArray):
 
         return np.ndarray(shape, dtype=ext_dtype, buffer=data_buffer, offset=offset)
 
+    def _to_numpy_with_null_rows(self) -> np.ndarray:
+        """One ndarray view per row and ``None`` for each null row.
+
+        A dense ``(num_rows, *shape)`` ndarray gives every row a tensor, so it
+        cannot say that a row is missing. A column with a null row therefore
+        comes back as an object ndarray of per-row views and ``None``.
+        """
+        storage = self.storage
+        # `offsets` is absolute into the child array, which slicing leaves whole.
+        offsets = np.asarray(storage.offsets)
+        is_valid = np.asarray(self.is_valid())
+        value_type = storage.type.value_type
+        data_buffer = storage.buffers()[3]
+        shape = self.type.shape
+
+        return create_ragged_ndarray(
+            [
+                _to_ndarray_helper(shape, value_type, int(offsets[i]), data_buffer)
+                if is_valid[i]
+                else None
+                for i in range(len(self))
+            ]
+        )
+
     def to_numpy_ndarray(self, zero_copy_only: bool = True):
+        """Convert the entire array of tensors into a single ndarray.
+
+        This is the same as :meth:`to_numpy`.
+
+        Args:
+            zero_copy_only: Passed to :meth:`to_numpy`, which currently ignores it.
+
+        Returns:
+            A single ndarray representing the entire array of tensors.
+        """
         return self.to_numpy(zero_copy_only=zero_copy_only)
 
     def to_var_shaped_tensor_array(
         self,
         ndim: int,
     ) -> "ArrowVariableShapedTensorArray":
-        """
-        Convert this tensor array to a variable-shaped tensor array.
+        """Convert this tensor array to a variable-shaped tensor array.
+
+        Args:
+            ndim: The number of dimensions of the target tensor type. Must be at
+                least the number of dimensions of this array's tensors. Shapes with
+                fewer dimensions are padded with singleton axes.
+
+        Returns:
+            The variable-shaped tensor array.
+
+        Raises:
+            ValueError: If ``ndim`` is less than the number of dimensions of this
+                array's tensors.
         """
 
         shape = self.type.shape
@@ -1102,6 +1160,12 @@ class ArrowTensorArray(pa.ExtensionArray):
         #       For (deprecated) ``ArrowTensorType`` we fallback to converting to Numpy,
         #       and reconstructing.
         if not isinstance(self.type, ArrowTensorTypeV2):
+            if self.null_count == len(self):
+                # Only null rows, so there is no tensor to convert.
+                return pa.nulls(
+                    len(self),
+                    type=ArrowVariableShapedTensorType(self.type.value_type, ndim),
+                )
             return ArrowVariableShapedTensorArray.from_numpy(self.to_numpy())
 
         # Pad target shape with singleton axis to match target number of
@@ -1114,9 +1178,12 @@ class ArrowTensorArray(pa.ExtensionArray):
             type=ArrowVariableShapedTensorArray.SHAPES_ARRAY_TYPE,
         ).fill_null(target_shape)
 
+        # The list storage keeps its null rows; the struct needs its own mask
+        # for them, or they read as valid rows over a neighbour's data.
         storage = pa.StructArray.from_arrays(
             [self.storage, shape_array],
             ["data", "shape"],
+            mask=self.is_null(),
         )
 
         target_type = ArrowVariableShapedTensorType(
@@ -1132,8 +1199,7 @@ class ArrowTensorArray(pa.ExtensionArray):
 class ArrowVariableShapedTensorType(
     ArrowExtensionSerializeDeserializeCache, pa.ExtensionType
 ):
-    """
-    Arrow ExtensionType for an array of heterogeneous-shaped, homogeneous-typed
+    """Arrow ExtensionType for an array of heterogeneous-shaped, homogeneous-typed
     tensors.
 
     This is the Arrow side of ``TensorDtype`` for tensor elements with different shapes.
@@ -1150,8 +1216,7 @@ class ArrowVariableShapedTensorType(
     OFFSET_DTYPE = pa.int64()
 
     def __init__(self, dtype: pa.DataType, ndim: int):
-        """
-        Construct the Arrow extension type for array of heterogeneous-shaped tensors.
+        """Construct the Arrow extension type for array of heterogeneous-shaped tensors.
 
         Args:
             dtype: pyarrow dtype of tensor elements.
@@ -1166,8 +1231,7 @@ class ArrowVariableShapedTensorType(
         )
 
     def to_pandas_dtype(self):
-        """
-        Convert Arrow extension type to corresponding Pandas dtype.
+        """Convert Arrow extension type to corresponding Pandas dtype.
 
         Returns:
             An instance of pd.api.extensions.ExtensionDtype.
@@ -1186,6 +1250,11 @@ class ArrowVariableShapedTensorType(
 
     @property
     def shape(self) -> Tuple[None, ...]:
+        """The shape of the tensors, with ``None`` for every dimension.
+
+        The tuple has one ``None`` per dimension because the size of each dimension
+        varies between tensors.
+        """
         return (None,) * self.ndim
 
     @property
@@ -1220,8 +1289,7 @@ class ArrowVariableShapedTensorType(
         return cls(value_type, ndim)
 
     def __arrow_ext_class__(self):
-        """
-        ExtensionArray subclass with custom logic for this array of tensors
+        """ExtensionArray subclass with custom logic for this array of tensors
         type.
 
         Returns:
@@ -1230,9 +1298,7 @@ class ArrowVariableShapedTensorType(
         return ArrowVariableShapedTensorArray
 
     def __arrow_ext_scalar_class__(self):
-        """
-        ExtensionScalar subclass with custom logic for this array of tensors type.
-        """
+        """ExtensionScalar subclass with custom logic for this array of tensors type."""
         return ArrowTensorScalar
 
     def __str__(self) -> str:
@@ -1259,9 +1325,7 @@ class ArrowVariableShapedTensorType(
         return hash((self.extension_name, self.value_type))
 
     def _extension_scalar_to_ndarray(self, scalar: "pa.ExtensionScalar") -> np.ndarray:
-        """
-        Convert an ExtensionScalar to a tensor element.
-        """
+        """Convert an ExtensionScalar to a tensor element."""
 
         # Handle None/null values
         if scalar.value is None:
@@ -1280,8 +1344,7 @@ class ArrowVariableShapedTensorType(
 
 @PublicAPI(stability="alpha")
 class ArrowVariableShapedTensorArray(pa.ExtensionArray):
-    """
-    An array of heterogeneous-shaped, homogeneous-typed tensors.
+    """An array of heterogeneous-shaped, homogeneous-typed tensors.
 
     This is the Arrow side of TensorArray for tensor elements that have differing
     shapes. Note that this extension only supports non-ragged tensor elements; i.e.,
@@ -1300,8 +1363,7 @@ class ArrowVariableShapedTensorArray(pa.ExtensionArray):
         cls,
         arr: Union[np.ndarray, List[np.ndarray], Tuple[np.ndarray]],
     ) -> "ArrowVariableShapedTensorArray":
-        """
-        Convert an ndarray or an iterable of heterogeneous-shaped ndarrays to an array
+        """Convert an ndarray or an iterable of heterogeneous-shaped ndarrays to an array
         of heterogeneous-shaped, homogeneous-typed tensors.
 
         Args:
@@ -1329,6 +1391,12 @@ class ArrowVariableShapedTensorArray(pa.ExtensionArray):
         if len(arr) == 0:
             # Empty ragged tensor arrays are not supported.
             raise ValueError("Creating empty ragged tensor arrays is not supported.")
+
+        if isinstance(arr, (list, tuple)):
+            arr = create_ragged_ndarray(arr)
+        is_null = _null_row_mask(arr)
+        if is_null is not None:
+            return _with_null_rows(cls.from_numpy(arr[~is_null]), is_null)
 
         # Ravel provided tensors to combine into contigous block
         ndim, raveled, shapes, sizes = _ravel_tensors(arr)
@@ -1386,8 +1454,7 @@ class ArrowVariableShapedTensorArray(pa.ExtensionArray):
         return type_.wrap_array(storage)
 
     def to_numpy(self, zero_copy_only: bool = True):
-        """
-        Convert the entire array of tensors into a single ndarray.
+        """Convert the entire array of tensors into a single ndarray.
 
         Args:
             zero_copy_only: If True, an exception will be raised if the conversion to a
@@ -1396,7 +1463,7 @@ class ArrowVariableShapedTensorArray(pa.ExtensionArray):
                 ignored, so zero-copy isn't enforced even if this argument is true.
 
         Returns:
-            A single ndarray representing the entire array of tensors.
+            One ndarray per row, with ``None`` for each null row.
         """
 
         data_array = self.storage.field("data")
@@ -1407,11 +1474,22 @@ class ArrowVariableShapedTensorArray(pa.ExtensionArray):
 
         shapes = shapes_array.to_pylist()
         offsets = data_array.offsets.to_pylist()
+        # A row is null at the struct level, or in either child: the children
+        # do not inherit the struct's validity, and a null child slot would
+        # otherwise read as a row over a neighbour's bytes.
+        is_valid = [
+            struct_valid and data_valid and shape is not None
+            for struct_valid, data_valid, shape in zip(
+                self.is_valid().to_pylist(), data_array.is_valid().to_pylist(), shapes
+            )
+        ]
 
         return create_ragged_ndarray(
             [
                 _to_ndarray_helper(shape, data_value_type, offset, data_array_buffer)
-                for shape, offset in zip(shapes, offsets)
+                if valid
+                else None
+                for shape, offset, valid in zip(shapes, offsets, is_valid)
             ]
         )
 
@@ -1439,6 +1517,20 @@ class ArrowVariableShapedTensorArray(pa.ExtensionArray):
         )
 
     def to_var_shaped_tensor_array(self, ndim: int) -> "ArrowVariableShapedTensorArray":
+        """Convert this array to a variable-shaped tensor array.
+
+        Args:
+            ndim: The number of dimensions of the target tensor type. Must be at
+                least this array's number of dimensions. Shapes with fewer dimensions
+                are padded with singleton axes.
+
+        Returns:
+            This array if ``ndim`` already matches, otherwise a new array with
+            ``ndim`` dimensions.
+
+        Raises:
+            ValueError: If ``ndim`` is less than this array's number of dimensions.
+        """
         if ndim == self.type.ndim:
             return self
         elif ndim < self.type.ndim:
@@ -1471,6 +1563,30 @@ def _pad_shape_with_singleton_axes(
     assert ndim >= len(shape)
 
     return (1,) * (ndim - len(shape)) + shape
+
+
+def _null_row_mask(arr: np.ndarray) -> Optional[np.ndarray]:
+    """A mask of the ``None`` elements of an object ndarray of tensors.
+
+    Returns ``None`` when there is no ``None`` element, and also when every
+    element is ``None``, since then there is no tensor to take the type from.
+    """
+    if arr.dtype.type is not np.object_ or len(arr) == 0:
+        return None
+    is_null = np.fromiter((v is None for v in arr), dtype=bool, count=len(arr))
+    if not is_null.any() or is_null.all():
+        return None
+    return is_null
+
+
+def _with_null_rows(
+    tensors: Union["ArrowTensorArray", "ArrowVariableShapedTensorArray"],
+    is_null: np.ndarray,
+) -> Union["ArrowTensorArray", "ArrowVariableShapedTensorArray"]:
+    """Spreads the rows of ``tensors`` over the ``False`` slots of ``is_null``
+    and puts a null row in each ``True`` slot."""
+    positions = np.cumsum(~is_null) - 1
+    return tensors.take(pa.array(positions, mask=is_null))
 
 
 def _ravel_tensors(
@@ -1585,19 +1701,29 @@ def unify_tensor_arrays(
 ) -> List[ArrowTensorArray | ArrowVariableShapedTensorArray | FixedShapeTensorArray]:
     supported_tensor_types = get_arrow_extension_tensor_types()
 
-    # Derive number of distinct tensor types
+    # Derive number of distinct tensor types. A null-typed array holds no
+    # tensors and becomes null rows of whichever type the others unify to.
     distinct_types_ = set()
 
     for arr in arrs:
         if isinstance(arr.type, supported_tensor_types):
             distinct_types_.add(arr.type)
-        else:
+        elif not pa.types.is_null(arr.type):
             raise ValueError(
                 f"Trying to unify unsupported tensor type: {arr.type} (supported types: {supported_tensor_types})"
             )
 
+    if not distinct_types_:
+        raise ValueError("Trying to unify tensor arrays that hold no tensor type")
+
     if len(distinct_types_) == 1:
-        return arrs
+        unified_tensor_type = next(iter(distinct_types_))
+        return [
+            pa.nulls(len(arr), type=unified_tensor_type)
+            if pa.types.is_null(arr.type)
+            else arr
+            for arr in arrs
+        ]
 
     # Verify provided tensor arrays could be unified
     #
@@ -1609,9 +1735,15 @@ def unify_tensor_arrays(
 
     unified_arrs = []
     for arr in arrs:
-        if _is_native_tensor_type(arr.type):
+        if pa.types.is_null(arr.type) or arr.null_count == len(arr):
+            # A null-typed array, or a tensor array of only null rows, holds
+            # no tensor to convert.
+            arr = pa.nulls(len(arr), type=unified_tensor_type)
+        elif _is_native_tensor_type(arr.type):
             # Might be not be performant
-            arr = ArrowVariableShapedTensorArray.from_numpy(arr.to_numpy_ndarray())
+            arr = ArrowVariableShapedTensorArray.from_numpy(
+                native_tensor_array_to_numpy(arr)
+            )
         else:
             arr = arr.to_var_shaped_tensor_array(ndim=unified_tensor_type.ndim)
         unified_arrs.append(arr)
@@ -1623,8 +1755,7 @@ def concat_tensor_arrays(
     arrays: List[Union["ArrowTensorArray", "ArrowVariableShapedTensorArray"]],
     ensure_copy: bool = False,
 ) -> Union["ArrowTensorArray", "ArrowVariableShapedTensorArray"]:
-    """
-    Concatenates multiple tensor arrays.
+    """Concatenates multiple tensor arrays.
 
     NOTE: If one or more of the tensor arrays are variable-shaped and/or any
     of the tensor arrays have a different shape than the others, a variable-shaped
@@ -1735,6 +1866,33 @@ def _get_root_base(a: np.ndarray) -> np.ndarray:
 def _get_buffer_address(arr: np.ndarray) -> int:
     """Get the address of the buffer underlying the provided NumPy ndarray."""
     return arr.__array_interface__["data"][0]
+
+
+def native_tensor_array_to_numpy(array: "FixedShapeTensorArray") -> np.ndarray:
+    """``array.to_numpy_ndarray()``, with ``None`` for each null row.
+
+    Before pyarrow 26 the conversion reads a null row from its slot in the
+    fixed-size storage, usually zeros; pyarrow 26 rejects an array with nulls
+    outright. So the conversion runs on the storage without its validity
+    bitmap, and the null rows are replaced afterwards.
+    """
+    if array.null_count == 0:
+        return array.to_numpy_ndarray()
+    storage = array.storage
+    without_bitmap = pa.Array.from_buffers(
+        storage.type,
+        len(storage),
+        [None],
+        offset=storage.offset,
+        children=[storage.values],
+    )
+    dense = pa.ExtensionArray.from_storage(
+        array.type, without_bitmap
+    ).to_numpy_ndarray()
+    is_valid = np.asarray(array.is_valid())
+    return create_ragged_ndarray(
+        [dense[i] if is_valid[i] else None for i in range(len(array))]
+    )
 
 
 def tensor_array_to_numpy(array: "pa.Array") -> np.ndarray:

@@ -1,7 +1,7 @@
 ---
 myst:
   html_meta:
-    description: "Shuffle Ray Data at different granularities: file order, local buffer shuffle, map_batches shuffle, block order, and global per-epoch shuffle."
+    description: "Shuffle Ray Data at different granularities: file order, local buffer shuffle, shuffle_batches, block order, and global per-epoch shuffle."
 ---
 
 (shuffling_data)=
@@ -58,58 +58,67 @@ for batch in ds.iter_batches(
 ```
 
 :::{tip}
-If throughput drops when you use `local_shuffle_buffer_size`, check the total time spent in batch creation. In the `ds.stats()` output, find `In batch formatting` under `Batch iteration time breakdown`. If this time is much larger than the time spent in other steps, decrease `local_shuffle_buffer_size`, or turn off the local shuffle buffer and only {ref}`shuffle the ordering of files <shuffling_file_order>`.
+If throughput drops when you use `local_shuffle_buffer_size`, check the total time spent in batch creation. In the `ds.stats()` output, find `In batch formatting` under `Batch iteration time breakdown`. If this time is much larger than the time spent in other steps, decrease `local_shuffle_buffer_size`, or turn off the local shuffle buffer and only {ref}`shuffle the ordering of files <shuffling_file_order>`. If local shuffling is a bottleneck, try {ref}`parallel batch shuffling <shuffle_batches_shuffle>` to move shuffle work out of the iterator.
 :::
 
 (map_batches_shuffle)=
+(shuffle_batches_shuffle)=
 
-### Shuffle rows with `map_batches`
+### Shuffle rows with `shuffle_batches`
 
-To shuffle data as a separate stage, use {meth}`~ray.data.Dataset.map_batches` with a shuffle function that randomly permutes the rows within each batch. This approach has the following advantages over local buffer shuffle:
+Use {meth}`~ray.data.Dataset.shuffle_batches` to randomly permute rows within batches using parallel Ray Data tasks. This approach has the following advantages over local buffer shuffle:
 
-- It decouples shuffling from the iterator. The shuffle runs as a separate Ray Data operator that doesn't block downstream CPU or GPU processing.
-- Ray Data's resource management automatically schedules shuffle tasks based on the available CPU and memory in the cluster, which avoids resource contention.
-- The shuffle work can run in parallel across multiple machines, so this approach scales better for large datasets.
+- It moves shuffle work out of the consumer's iterator, so Ray Data can overlap it with downstream processing.
+- Ray Data schedules shuffle tasks according to the available CPU and memory resources.
+- Shuffle tasks can run in parallel across multiple machines.
 
-The `batch_size` parameter controls the shuffle window. A larger value shuffles more rows together for better randomness, but it requires more memory.
+The `batch_size` parameter controls which rows can mix:
 
-:::{important}
-To avoid out-of-memory errors, always set the `memory` parameter when you use large batch sizes. Estimate the value as `batch_size * row_bytes`.
-:::
+- With `batch_size=None`, the default, shuffle each input block independently. The input block sizes determine the shuffle scope.
+- With `batch_size=W`, shuffle target-sized batches that can span input blocks. Each task's final batch can be smaller than `W`, including in the middle of the dataset.
+
+For example, with four input blocks of five rows each and `batch_size=8`, two tasks can each receive two blocks. Each task forms an eight-row batch spanning both blocks, followed by a two-row tail, producing shuffle batches of `[8, 2, 8, 2]` rows. The batch size you choose when iterating controls consumer batches separately.
+
+A downstream {meth}`~ray.data.Dataset.limit` can run before shuffling to reduce the input. This can shorten shuffle batches, and the result can differ from a prefix of the unlimited shuffle.
 
 ```{testcode}
-import numpy as np
-import pyarrow as pa
 import ray
 
-def random_shuffle(batch: pa.Table) -> pa.Table:
-    indices = np.random.permutation(len(batch))
-    return batch.take(indices)
+ds = ray.data.range(1000, override_num_blocks=10)
+# Preserve upstream order for reproducible windows and output.
+ds.context.execution_options.preserve_order = True
 
-row_bytes = 4096
-shuffle_memory = int(2**30)  # 1 GB shuffle window
-batch_size = int(shuffle_memory / row_bytes)
+# Shuffle each input block independently.
+block_shuffled = ds.shuffle_batches(seed=42)
+block_shuffled.take(10)
 
-ds = ray.data.range(1000)
-ds = ds.map_batches(
-    random_shuffle,
-    batch_size=batch_size,
-    batch_format="pyarrow",
-    memory=shuffle_memory,
-)
-ds.take(10)
+# Shuffle target-sized batches, allowing smaller task-tail batches.
+batch_shuffled = ds.shuffle_batches(batch_size=256, seed=42)
+batch_shuffled.take(10)
+```
+
+To require exact consecutive windows, first use {meth}`~ray.data.Dataset.repartition` to construct blocks of the requested size, then shuffle each resulting block independently:
+
+```{testcode}
+# Construct 256-row windows, except for the final remainder.
+exact_shuffled = ds.repartition(
+    target_num_rows_per_block=256, strict=True
+).shuffle_batches(batch_size=None, seed=42)
+exact_shuffled.take(10)
 ```
 
 :::{tip}
-Combine `map_batches` shuffle with {ref}`file order shuffling <shuffling_file_order>` for additional randomness. File order shuffling randomizes which files Ray Data reads first, while `map_batches` shuffle randomizes rows within each shuffle window.
+Combine `shuffle_batches` with {ref}`file order shuffling <shuffling_file_order>` for additional randomness. File order shuffling randomizes which files Ray Data reads first, while `shuffle_batches` randomizes rows within each batch.
 :::
+
+Eligible chunked tensor columns use Ray's optimized row selection for fixed-shaped and variable-shaped tensors, avoiding concatenation of the entire tensor column before gathering rows. Other inputs use existing fallback paths.
 
 (map_batches_vs_local_shuffle)=
 (comparing-local-buffer-shuffle-and-map_batches-shuffle)=
 
-#### How does local buffer shuffle compare to `map_batches` shuffle?
+#### How does parallel shuffling affect training throughput?
 
-The following benchmark compares steady-state training throughput for local buffer shuffle and `map_batches` shuffle on a synthetic workload. The workload uses `ray.data.range_tensor` with about 4 KB per row, four GPU workers, a batch size of 4096, and 200 steps with 100 warmup steps.
+Moving shuffle work from each consumer's local buffer into parallel Ray Data tasks can improve throughput when iterator-local shuffling is a bottleneck. The following benchmark compares steady-state training throughput on a synthetic workload with about 4 KB per row, four GPU workers, a batch size of 4096, and 200 steps with 100 warmup steps. The parallel implementation used a `map_batches` function with PyArrow row selection. These figures measure that implementation, rather than `shuffle_batches`.
 
 :::{list-table} Local buffer shuffle versus `map_batches` shuffle
 :header-rows: 1
@@ -140,6 +149,8 @@ The following benchmark compares steady-state training throughput for local buff
   - 1,588,428
   - 90%
 :::
+
+A separate CPU ingestion benchmark measured 2.26–3.18× the throughput of a parallel shuffle baseline using PyArrow row selection, with model computation excluded. The combined end-to-end training improvement hasn't been measured, so don't multiply the gains from offloading shuffle and optimized row selection to predict training speedup.
 
 (randomizing-block-order)=
 
@@ -195,7 +206,10 @@ The following example hash shuffles rows based on the `id` column:
 ```{testcode}
 import ray
 
+ds = ray.data.range(1000)
+
 hash_shuffled_ds = ds.repartition(keys="id", num_blocks=200)
+hash_shuffled_ds.materialize()
 ```
 
 :::{tip}

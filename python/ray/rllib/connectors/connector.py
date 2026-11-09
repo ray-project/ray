@@ -1,5 +1,4 @@
-"""This file defines base types and common structures for RLlib connectors.
-"""
+"""This file defines base types and common structures for RLlib connectors."""
 
 import abc
 import logging
@@ -46,11 +45,15 @@ class ConnectorContext:
         """Construct a ConnectorContext instance.
 
         Args:
+            config: The algorithm config dict of the policy this context belongs to.
             initial_states: States that are used for constructing
                 the initial input dict for RNN models. [] if a model is not recurrent.
-            action_space_struct: a policy's action space, in python
-                data format. E.g., python dict instead of DictSpace, python tuple
-                instead of TupleSpace.
+            observation_space: The observation space of the policy.
+            action_space: The action space of the policy.
+            view_requirements: The view requirements of the policy, mapping column
+                names to their `ViewRequirement` definitions.
+            is_policy_recurrent: Whether the policy this context belongs to is
+                recurrent.
         """
         self.config = config or {}
         self.initial_states = initial_states or []
@@ -148,74 +151,66 @@ class AgentConnector(Connector):
 
     AgentConnectorDataTypes can be used to specify arbitrary type of env data,
 
-    Example:
-
+    Examples:
         Represent a list of agent data from one env step() call.
 
-        .. testcode::
-
-            import numpy as np
-            ac = AgentConnectorDataType(
-                env_id="env_1",
-                agent_id=None,
-                data={
-                    "agent_1": np.array([1, 2, 3]),
-                    "agent_2": np.array([4, 5, 6]),
-                }
-            )
+        >>> import numpy as np
+        >>> ac = AgentConnectorDataType(
+        ...     env_id="env_1",
+        ...     agent_id=None,
+        ...     data={
+        ...         "agent_1": np.array([1, 2, 3]),
+        ...         "agent_2": np.array([4, 5, 6]),
+        ...     }
+        ... )
 
         Or a single agent data ready to be preprocessed.
 
-        .. testcode::
-
-            ac = AgentConnectorDataType(
-                env_id="env_1",
-                agent_id="agent_1",
-                data=np.array([1, 2, 3]),
-            )
+        >>> ac = AgentConnectorDataType(
+        ...     env_id="env_1",
+        ...     agent_id="agent_1",
+        ...     data=np.array([1, 2, 3]),
+        ... )
 
         We can also adapt a simple stateless function into an agent connector by
         using register_lambda_agent_connector:
 
-        .. testcode::
-
-            import numpy as np
-            from ray.rllib.connectors.agent.lambdas import (
-                register_lambda_agent_connector
-            )
-            TimesTwoAgentConnector = register_lambda_agent_connector(
-                "TimesTwoAgentConnector", lambda data: data * 2
-            )
-
-            # More complicated agent connectors can be implemented by extending this
-            # AgentConnector class:
-
-            class FrameSkippingAgentConnector(AgentConnector):
-                def __init__(self, n):
-                    self._n = n
-                    self._frame_count = default_dict(str, default_dict(str, int))
-
-                def reset(self, env_id: str):
-                    del self._frame_count[env_id]
-
-                def __call__(
-                    self, ac_data: List[AgentConnectorDataType]
-                ) -> List[AgentConnectorDataType]:
-                    ret = []
-                    for d in ac_data:
-                        assert d.env_id and d.agent_id, "Skipping works per agent!"
-
-                        count = self._frame_count[ac_data.env_id][ac_data.agent_id]
-                        self._frame_count[ac_data.env_id][ac_data.agent_id] = (
-                            count + 1
-                        )
-
-                        if count % self._n == 0:
-                            ret.append(d)
-                    return ret
+        >>> import numpy as np
+        >>> from ray.rllib.connectors.agent.lambdas import (
+        ...     register_lambda_agent_connector
+        ... )
+        >>> TimesTwoAgentConnector = register_lambda_agent_connector(
+        ...     "TimesTwoAgentConnector", lambda data: data * 2
+        ... )
+        >>> # More complicated agent connectors can be implemented by extending this
+        >>> # AgentConnector class:
+        >>> from collections import defaultdict
+        >>> class FrameSkippingAgentConnector(AgentConnector):
+        ...     def __init__(self, n):
+        ...         self._n = n
+        ...         self._frame_count = defaultdict(lambda: defaultdict(int))
+        ...
+        ...     def reset(self, env_id: str):
+        ...         self._frame_count.pop(env_id, None)
+        ...
+        ...     def __call__(
+        ...         self, ac_data: List[AgentConnectorDataType]
+        ...     ) -> List[AgentConnectorDataType]:
+        ...         ret = []
+        ...         for d in ac_data:
+        ...             assert d.env_id and d.agent_id, "Skipping works per agent!"
+        ...
+        ...             count = self._frame_count[d.env_id][d.agent_id]
+        ...             self._frame_count[d.env_id][d.agent_id] = (
+        ...                 count + 1
+        ...             )
+        ...
+        ...             if count % self._n == 0:
+        ...                 ret.append(d)
+        ...         return ret
 
     As shown, an agent connector may choose to emit an empty list to stop input
-    observations from being further prosessed.
+    observations from being further processed.
     """
 
     def reset(self, env_id: str):
@@ -236,7 +231,6 @@ class AgentConnector(Connector):
         forward pass.
 
         Args:
-            ctx: Context for running this connector call.
             output: Env and agent IDs, plus data output from policy forward pass.
         """
         pass
@@ -247,7 +241,7 @@ class AgentConnector(Connector):
         """Transform a list of data items from env before they reach policy.
 
         Args:
-            ac_data: List of env and agent IDs, plus arbitrary data items from
+            acd_list: List of env and agent IDs, plus arbitrary data items from
                 an environment or upstream agent connectors.
 
         Returns:
@@ -268,7 +262,7 @@ class AgentConnector(Connector):
         """Transform a single agent connector data item.
 
         Args:
-            data: Env and agent IDs, plus arbitrary data item from a single agent
+            ac_data: Env and agent IDs, plus arbitrary data item from a single agent
                 of an environment.
 
         Returns:
@@ -289,19 +283,17 @@ class ActionConnector(Connector):
     Any functions that operate directly on PolicyOutputType can be easily adapted
     into an ActionConnector by using register_lambda_action_connector.
 
-    Example:
-
-    .. testcode::
-
-        from ray.rllib.connectors.action.lambdas import (
-            register_lambda_action_connector
-        )
-        ZeroActionConnector = register_lambda_action_connector(
-            "ZeroActionsConnector",
-            lambda actions, states, fetches: (
-                np.zeros_like(actions), states, fetches
-            )
-        )
+    Examples:
+        >>> import numpy as np
+        >>> from ray.rllib.connectors.action.lambdas import (
+        ...     register_lambda_action_connector
+        ... )
+        >>> ZeroActionConnector = register_lambda_action_connector(
+        ...     "ZeroActionsConnector",
+        ...     lambda actions, states, fetches: (
+        ...         np.zeros_like(actions), states, fetches
+        ...     )
+        ... )
 
     More complicated action connectors can also be implemented by sub-classing
     this ActionConnector class.
@@ -449,7 +441,8 @@ class ConnectorPipeline(abc.ABC):
         Args:
             key: The key to index by
 
-        Returns: The Connector at index `key`.
+        Returns:
+            The list of Connectors in this pipeline matching `key`.
         """
         # In case key is a class
         if not isinstance(key, str):

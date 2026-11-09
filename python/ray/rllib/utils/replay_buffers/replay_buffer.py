@@ -76,47 +76,32 @@ class ReplayBuffer(ReplayBufferInterface, FaultAwareApply):
     they might not implement all storage_units.
 
     Examples:
-
-    .. testcode::
-
-        from ray.rllib.utils.replay_buffers.replay_buffer import ReplayBuffer
-        from ray.rllib.utils.replay_buffers.replay_buffer import StorageUnit
-        from ray.rllib.policy.sample_batch import SampleBatch
-
-        # Store any batch as a whole
-        buffer = ReplayBuffer(capacity=10, storage_unit=StorageUnit.FRAGMENTS)
-        buffer.add(SampleBatch({"a": [1], "b": [2, 3, 4]}))
-        buffer.sample(1)
-
-        # Store only complete episodes
-        buffer = ReplayBuffer(capacity=10,
-                                storage_unit=StorageUnit.EPISODES)
-        buffer.add(SampleBatch({"c": [1, 2, 3, 4],
-                                SampleBatch.T: [0, 1, 0, 1],
-                                SampleBatch.TERMINATEDS: [False, True, False, True],
-                                SampleBatch.EPS_ID: [0, 0, 1, 1]}))
-        buffer.sample(1)
-
-        # Store single timesteps
-        buffer = ReplayBuffer(capacity=2, storage_unit=StorageUnit.TIMESTEPS)
-        buffer.add(SampleBatch({"a": [1, 2], SampleBatch.T: [0, 1]}))
-        buffer.sample(1)
-
-        buffer.add(SampleBatch({"a": [3], SampleBatch.T: [2]}))
-        print(buffer._eviction_started)
-        buffer.sample(1)
-
-        buffer = ReplayBuffer(capacity=10, storage_unit=StorageUnit.SEQUENCES)
-        buffer.add(SampleBatch({"c": [1, 2, 3], SampleBatch.SEQ_LENS: [1, 2]}))
-        buffer.sample(1)
-
-    .. testoutput::
-
+        >>> from ray.rllib.utils.replay_buffers.replay_buffer import ReplayBuffer
+        >>> from ray.rllib.utils.replay_buffers.replay_buffer import StorageUnit
+        >>> from ray.rllib.policy.sample_batch import SampleBatch
+        >>> # Store any batch as a whole
+        >>> buffer = ReplayBuffer(capacity=10, storage_unit=StorageUnit.FRAGMENTS)
+        >>> buffer.add(SampleBatch({"a": [1], "b": [2, 3, 4]}))
+        >>> _ = buffer.sample(1)
+        >>> # Store only complete episodes
+        >>> buffer = ReplayBuffer(capacity=10,
+        ...                         storage_unit=StorageUnit.EPISODES)
+        >>> buffer.add(SampleBatch({"c": [1, 2, 3, 4],
+        ...                         SampleBatch.T: [0, 1, 0, 1],
+        ...                         SampleBatch.TERMINATEDS: [False, True, False, True],
+        ...                         SampleBatch.EPS_ID: [0, 0, 1, 1]}))
+        >>> _ = buffer.sample(1)
+        >>> # Store single timesteps
+        >>> buffer = ReplayBuffer(capacity=2, storage_unit=StorageUnit.TIMESTEPS)
+        >>> buffer.add(SampleBatch({"a": [1, 2], SampleBatch.T: [0, 1]}))
+        >>> _ = buffer.sample(1)
+        >>> buffer.add(SampleBatch({"a": [3], SampleBatch.T: [2]}))
+        >>> print(buffer._eviction_started)
         True
-
-    `True` is not the output of the above testcode, but an artifact of unexpected
-    behaviour of sphinx doctests.
-    (see https://github.com/ray-project/ray/pull/32477#discussion_r1106776101)
+        >>> _ = buffer.sample(1)
+        >>> buffer = ReplayBuffer(capacity=10, storage_unit=StorageUnit.SEQUENCES)
+        >>> buffer.add(SampleBatch({"c": [1, 2, 3], SampleBatch.SEQ_LENS: [1, 2]}))
+        >>> _ = buffer.sample(1)
     """
 
     def __init__(
@@ -133,7 +118,7 @@ class ReplayBuffer(ReplayBufferInterface, FaultAwareApply):
                 dropped to make space for new ones.
             storage_unit: If not a StorageUnit, either 'timesteps', 'sequences' or
                 'episodes'. Specifies how experiences are stored.
-            ``**kwargs``: Forward compatibility kwargs.
+            **kwargs: Forward compatibility kwargs.
         """
 
         if storage_unit in ["timesteps", StorageUnit.TIMESTEPS]:
@@ -199,7 +184,7 @@ class ReplayBuffer(ReplayBufferInterface, FaultAwareApply):
 
         Args:
             batch: The batch to add.
-            ``**kwargs``: Forward compatibility kwargs.
+            **kwargs: Forward compatibility kwargs.
         """
         if not batch.count > 0:
             return
@@ -251,7 +236,7 @@ class ReplayBuffer(ReplayBufferInterface, FaultAwareApply):
 
         Args:
             item: The batch to be added.
-            ``**kwargs``: Forward compatibility kwargs.
+            **kwargs: Forward compatibility kwargs.
         """
         self._num_timesteps_added += item.count
         self._num_timesteps_added_wrap += item.count
@@ -305,7 +290,7 @@ class ReplayBuffer(ReplayBufferInterface, FaultAwareApply):
 
         Args:
             num_items: Number of items to sample from this buffer.
-            ``**kwargs``: Forward compatibility kwargs.
+            **kwargs: Forward compatibility kwargs.
 
         Returns:
             Concatenated batch of items.

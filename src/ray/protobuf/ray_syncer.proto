@@ -15,6 +15,9 @@
 syntax = "proto3";
 package ray.rpc.syncer;
 
+// A newer message for the same (node_id, message_type) replaces an older one still
+// waiting in the send or receive buffer, so a message type must either carry the
+// node's full state (RESOURCE_VIEW) or be idempotent (COMMANDS).
 enum MessageType {
   RESOURCE_VIEW = 0;
   COMMANDS = 1;

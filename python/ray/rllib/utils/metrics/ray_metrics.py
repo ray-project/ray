@@ -42,6 +42,9 @@ class TimerAndPrometheusLogger:
 
     Elapsed time is automatically logged to the provided Prometheus Histogram.
 
+    Args:
+        histogram: The Prometheus Histogram to observe the elapsed time with.
+
     Example:
         with TimerAndPrometheusLogger(Histogram):
             learner.update()

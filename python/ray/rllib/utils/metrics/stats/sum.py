@@ -31,7 +31,9 @@ class SumStats(SeriesStats):
         """Initializes a SumStats instance.
 
         Args:
-            throughput: If True, track a throughput estimate based on the time between consecutive calls to reduce().
+            with_throughput: If True, track a throughput estimate based on the time
+                between consecutive calls to reduce().
+            **kwargs: Keyword arguments forwarded to `SeriesStats.__init__`.
         """
         super().__init__(**kwargs)
 

@@ -51,6 +51,9 @@ class GaussianNoise(Exploration):
         """Initializes a GaussianNoise instance.
 
         Args:
+            action_space: The gym action space used by the environment.
+            framework: One of None, "tf", "torch".
+            model: The policy's model.
             random_timesteps: The number of timesteps for which to act
                 completely randomly. Only after this number of timesteps, the
                 `self.scale` annealing process will start (see below).
@@ -65,6 +68,7 @@ class GaussianNoise(Exploration):
                 `random_timesteps` steps).
             scale_schedule: An optional Schedule object
                 to use (instead of constructing one from the given parameters).
+            **kwargs: Forwarded to the parent `Exploration` constructor.
         """
         assert framework is not None
         super().__init__(action_space, model=model, framework=framework, **kwargs)
@@ -225,8 +229,13 @@ class GaussianNoise(Exploration):
     def get_state(self, sess: Optional["tf.Session"] = None):
         """Returns the current scale value.
 
+        Args:
+            sess: An optional tf Session object to use for fetching the
+                current state ops.
+
         Returns:
-            Union[float,tf.Tensor[float]]: The current scale value.
+            A dict with the keys "cur_scale" and "last_timestep", holding the
+            current scale value and the current timestep, respectively.
         """
         if sess:
             return sess.run(self._tf_state_op)

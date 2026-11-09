@@ -59,71 +59,59 @@ class MultiAgentPrioritizedEpisodeReplayBuffer(
     then updating the priorities would not work because the buffer caches the last
     sampled timestep indices).
 
-    .. testcode::
-
-        import gymnasium as gym
-
-        from ray.rllib.env.multi_agent_episode import MultiAgentEpisode
-        from ray.rllib.examples.envs.classes.multi_agent import MultiAgentCartPole
-        from ray.rllib.utils.replay_buffers import (
-            MultiAgentPrioritizedEpisodeReplayBuffer,
-        )
-
-
-        # Create the environment.
-        env = MultiAgentCartPole({"num_agents": 2})
-
-        # Set up the loop variables
-        agent_ids = env.agents
-        agent_ids.append("__all__")
-        terminateds = {aid: False for aid in agent_ids}
-        truncateds = {aid: False for aid in agent_ids}
-        num_timesteps = 10000
-        episodes = []
-
-        # Initialize the first episode entries.
-        eps = MultiAgentEpisode()
-        obs, infos = env.reset()
-        eps.add_env_reset(observations=obs, infos=infos)
-
-        # Sample 10,000 env timesteps.
-        for i in range(num_timesteps):
-            # If terminated we create a new episode.
-            if eps.is_done:
-                episodes.append(eps.to_numpy())
-                eps = MultiAgentEpisode()
-                terminateds = {aid: False for aid in agent_ids}
-                truncateds = {aid: False for aid in agent_ids}
-                obs, infos = env.reset()
-                eps.add_env_reset(observations=obs, infos=infos)
-
-            # Sample a random action for all agents that should step in the episode
-            # next.
-            actions = {
-                aid: env.get_action_space(aid).sample()
-                for aid in eps.get_agents_to_act()
-            }
-            obs, rewards, terminateds, truncateds, infos = env.step(actions)
-            eps.add_env_step(
-                obs,
-                actions,
-                rewards,
-                infos,
-                terminateds=terminateds,
-                truncateds=truncateds
-            )
-
-        # Add the last (truncated) episode to the list of episodes.
-        if not eps.is_done:
-            episodes.append(eps)
-
-        # Create the buffer.
-        buffer = MultiAgentPrioritizedEpisodeReplayBuffer()
-        # Add the list of episodes sampled.
-        buffer.add(episodes)
-
-        # Pull a sample from the buffer using an `n-step` of 3.
-        sample = buffer.sample(num_items=256, gamma=0.95, n_step=3, beta=0.5)
+    Examples:
+        >>> import gymnasium as gym
+        >>> from ray.rllib.env.multi_agent_episode import MultiAgentEpisode
+        >>> from ray.rllib.examples.envs.classes.multi_agent import MultiAgentCartPole
+        >>> from ray.rllib.utils.replay_buffers import (
+        ...     MultiAgentPrioritizedEpisodeReplayBuffer,
+        ... )
+        >>> # Create the environment.
+        >>> env = MultiAgentCartPole({"num_agents": 2})
+        >>> # Set up the loop variables
+        >>> agent_ids = list(env.agents) + ["__all__"]
+        >>> terminateds = {aid: False for aid in agent_ids}
+        >>> truncateds = {aid: False for aid in agent_ids}
+        >>> num_timesteps = 10000
+        >>> episodes = []
+        >>> # Initialize the first episode entries.
+        >>> eps = MultiAgentEpisode()
+        >>> obs, infos = env.reset()
+        >>> eps.add_env_reset(observations=obs, infos=infos)
+        >>> # Sample 10,000 env timesteps.
+        >>> for i in range(num_timesteps):
+        ...     # If terminated we create a new episode.
+        ...     if eps.is_done:
+        ...         episodes.append(eps.to_numpy())
+        ...         eps = MultiAgentEpisode()
+        ...         terminateds = {aid: False for aid in agent_ids}
+        ...         truncateds = {aid: False for aid in agent_ids}
+        ...         obs, infos = env.reset()
+        ...         eps.add_env_reset(observations=obs, infos=infos)
+        ...
+        ...     # Sample a random action for all agents that should step in the episode
+        ...     # next.
+        ...     actions = {
+        ...         aid: env.get_action_space(aid).sample()
+        ...         for aid in eps.get_agents_to_act()
+        ...     }
+        ...     obs, rewards, terminateds, truncateds, infos = env.step(actions)
+        ...     eps.add_env_step(
+        ...         obs,
+        ...         actions,
+        ...         rewards,
+        ...         infos,
+        ...         terminateds=terminateds,
+        ...         truncateds=truncateds
+        ...     )
+        >>> # Add the last episode, which the loop hasn't added yet.
+        >>> episodes.append(eps)
+        >>> # Create the buffer.
+        >>> buffer = MultiAgentPrioritizedEpisodeReplayBuffer()
+        >>> # Add the list of episodes sampled.
+        >>> buffer.add(episodes)
+        >>> # Pull a sample from the buffer using an `n-step` of 3.
+        >>> sample = buffer.sample(num_items=256, gamma=0.95, n_step=3, beta=0.5)
     """
 
     def __init__(
@@ -146,6 +134,9 @@ class MultiAgentPrioritizedEpisodeReplayBuffer(
                 `sample()`.
             alpha: The amount of prioritization to be used: `alpha=1.0` means full
                 prioritization, `alpha=0.0` means no prioritization.
+            metrics_num_episodes_for_smoothing: The number of episodes to use for
+                smoothing (windowed averaging) of this buffer's metrics.
+            **kwargs: Forward compatibility kwargs. Passed on to the super classes.
         """
         # Initialize the parents.
         MultiAgentEpisodeReplayBuffer.__init__(
@@ -527,6 +518,7 @@ class MultiAgentPrioritizedEpisodeReplayBuffer(
             beta: The exponent of the importance sampling weight (see Schaul et
                 al. (2016)). A `beta=0.0` does not correct for the bias introduced
                 by prioritized replay and `beta=1.0` fully corrects for it.
+            **kwargs: Forward compatibility kwargs. Ignored by this buffer.
 
         Returns:
             A list of 1-step long single-agent episodes containing all basic episode
@@ -585,6 +577,8 @@ class MultiAgentPrioritizedEpisodeReplayBuffer(
         Args:
             priorities: Numpy array containing the new priorities to be used
                 in sampling for the items in the last sampled batch.
+            module_id: The module ID whose last sampled indices the `priorities`
+                belong to.
         """
 
         assert len(priorities) == len(self._module_to_last_sampled_indices[module_id])
@@ -692,8 +686,14 @@ class MultiAgentPrioritizedEpisodeReplayBuffer(
         """Adds the module indices for new episode chunks.
 
         Args:
-            multi_agent_episode: The multi-agent episode to add the module indices for.
-            episode_idx: The index of the episode in the `self.episodes`.
+            ma_episode: The multi-agent episode to add the module indices for.
+            ma_episode_idx: The index of the episode in the `self.episodes`.
+            ma_episode_exists: Whether `ma_episode` is already in this buffer (with a
+                predecessor chunk to which we'll concatenate `ma_episode` later).
+            weight: The initial priority weight(s) to assign to the new indices.
+                Either a single weight for all modules or a mapping from module ID
+                to weight. Modules missing from the mapping use their current
+                maximum priority.
         """
         existing_ma_episode = None
         if ma_episode_exists:
@@ -739,7 +739,7 @@ class MultiAgentPrioritizedEpisodeReplayBuffer(
             )
 
     @override(PrioritizedEpisodeReplayBuffer)
-    def _get_free_node_and_assign(self, sample_index, weight: float = 1.0) -> int:
+    def _get_free_node_and_assign(self, sample_index: int, weight: float = 1.0) -> int:
         """Gets the next free node in the segment trees.
 
         In addition the initial priorities for a new transition are added
@@ -769,7 +769,7 @@ class MultiAgentPrioritizedEpisodeReplayBuffer(
         return idx
 
     def _get_free_node_per_module_and_assign(
-        self, module_id: ModuleID, sample_index, weight: float = 1.0
+        self, module_id: ModuleID, sample_index: int, weight: float = 1.0
     ) -> int:
         """Gets the next free node in the segment trees.
 
@@ -778,6 +778,7 @@ class MultiAgentPrioritizedEpisodeReplayBuffer(
         index mapping.
 
         Args:
+            module_id: The module ID whose segment trees to draw the free node from.
             sample_index: The index of the sample in the `self._indices` list.
             weight: The initial priority weight to be used in sampling for
                 the item at index `sample_index`.

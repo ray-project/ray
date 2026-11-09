@@ -1,3 +1,5 @@
+from typing import Dict, Optional
+
 import gymnasium as gym
 
 from ray.rllib.utils.annotations import PublicAPI
@@ -13,7 +15,19 @@ class FlexDict(gym.spaces.Dict):
     See also: documentation for gym.spaces.Dict
     """
 
-    def __init__(self, spaces=None, **spaces_kwargs):
+    def __init__(
+        self,
+        spaces: Optional[Dict[str, gym.spaces.Space]] = None,
+        **spaces_kwargs: gym.spaces.Space,
+    ):
+        """Initializes a FlexDict instance.
+
+        Args:
+            spaces: Dict mapping keys to the sub-spaces of this Dict space. Mutually
+                exclusive with `spaces_kwargs`.
+            **spaces_kwargs: Alternative way of providing the sub-spaces, in which
+                each keyword argument name is a key of this Dict space.
+        """
         err = "Use either Dict(spaces=dict(...)) or Dict(foo=x, bar=z)"
         assert (spaces is None) or (not spaces_kwargs), err
 
@@ -25,11 +39,17 @@ class FlexDict(gym.spaces.Dict):
 
         super().__init__(spaces=spaces)
 
-    def assertSpace(self, space):
+    def assertSpace(self, space: gym.Space) -> None:
+        """Asserts that `space` is a `gym.spaces.Space`.
+
+        Args:
+            space: The value to check.
+        """
         err = "Values of the dict should be instances of gym.Space"
         assert issubclass(type(space), gym.spaces.Space), err
 
     def sample(self):
+        """Returns a dict with a random sample from each sub-space."""
         return {k: space.sample() for k, space in self.spaces.items()}
 
     def __getitem__(self, key):

@@ -29,6 +29,7 @@
 #include "ray/object_manager/common.h"
 #include "ray/object_manager/object_buffer_pool.h"
 #include "ray/object_manager/object_directory.h"
+#include "ray/object_manager/object_manager_interface.h"
 #include "ray/object_manager/pull_manager.h"
 #include "ray/object_manager/push_manager.h"
 #include "ray/object_manager_rpc_client/object_manager_client_interface.h"
@@ -95,42 +96,6 @@ class ObjectStoreRunner {
 
  private:
   std::thread store_thread_;
-};
-
-class ObjectManagerInterface {
- public:
-  virtual uint64_t Pull(const std::vector<rpc::ObjectReference> &object_refs,
-                        BundlePriority prio,
-                        const TaskMetricsKey &task_key) = 0;
-  virtual void CancelPull(uint64_t request_id) = 0;
-  /// Mark the specified object as failed with the given error type.
-  ///
-  /// \param object_id The object id to store error message into.
-  /// \param error_type The type of the error that caused this task to fail.
-  virtual void MarkObjectFailed(const ObjectID &object_id, rpc::ErrorType error_type) = 0;
-  virtual bool PullRequestActiveOrWaitingForMetadata(uint64_t request_id) const = 0;
-  virtual int64_t PullManagerNumInactivePullsByTaskName(
-      const TaskMetricsKey &task_key) const = 0;
-  virtual int GetServerPort() const = 0;
-  virtual void FreeObjects(const std::vector<ObjectID> &object_ids) = 0;
-  virtual void HandleNodeRemoved(const NodeID &node_id) = 0;
-  virtual std::vector<ObjectID> GetLocalObjectsOwnedBy(
-      const WorkerID &worker_id) const = 0;
-  virtual std::vector<ObjectID> GetLocalObjectsOwnedByOwnersOn(
-      const NodeID &node_id) const = 0;
-  virtual bool IsPlasmaObjectSpillable(const ObjectID &object_id) = 0;
-  virtual int64_t GetUsedMemory() const = 0;
-  virtual bool PullManagerHasPullsQueued() const = 0;
-  virtual int64_t GetMemoryCapacity() const = 0;
-  virtual std::string DebugString() const = 0;
-  virtual void FillObjectStoreStats(rpc::GetNodeStatsReply *repOly) const = 0;
-  virtual double GetUsedMemoryPercentage() const = 0;
-  virtual void Stop() = 0;
-  virtual void RecordMetrics() = 0;
-  virtual void HandleObjectAdded(const ObjectInfo &object_info) = 0;
-  virtual void HandleObjectDeleted(const ObjectID &object_id) = 0;
-
-  virtual ~ObjectManagerInterface() = default;
 };
 
 // TODO(hme): Add success/failure callbacks for push and pull.

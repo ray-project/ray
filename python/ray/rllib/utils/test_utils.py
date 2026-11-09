@@ -38,12 +38,13 @@ from ray.rllib.utils.metrics import (
     EVALUATION_RESULTS,
     NUM_ENV_STEPS_TRAINED,
 )
-from ray.rllib.utils.typing import ResultDict
+from ray.rllib.utils.typing import ResultDict, SampleBatchType
 from ray.tune.result import TRAINING_ITERATION
 
 if TYPE_CHECKING:
     from ray.rllib.algorithms import Algorithm, AlgorithmConfig
     from ray.rllib.offline.dataset_reader import DatasetReader
+    from ray.rllib.policy import Policy
 
 jax, _ = try_import_jax()
 tf1, tf, tfv = try_import_tf()
@@ -85,7 +86,14 @@ def run_rllib_example_script_experiment(*args, **kwargs):
     return run_rllib_example_script_experiment(*args, **kwargs)
 
 
-def check(x, y, decimals=5, atol=None, rtol=None, false=False):
+def check(
+    x: Any,
+    y: Any,
+    decimals: int = 5,
+    atol: Optional[float] = None,
+    rtol: Optional[float] = None,
+    false: bool = False,
+) -> None:
     """
     Checks two structures (dict, tuple, list,
     np.array, float, int, etc..) for (almost) numeric identity.
@@ -230,8 +238,10 @@ def check(x, y, decimals=5, atol=None, rtol=None, false=False):
 
 
 def check_compute_single_action(
-    algorithm, include_state=False, include_prev_action_reward=False
-):
+    algorithm: "Algorithm",
+    include_state: bool = False,
+    include_prev_action_reward: bool = False,
+) -> None:
     """Tests different combinations of args for algorithm.compute_single_action.
 
     Args:
@@ -428,7 +438,9 @@ def check_compute_single_action(
                             )
 
 
-def check_inference_w_connectors(policy, env_name, max_steps: int = 100):
+def check_inference_w_connectors(
+    policy: "Policy", env_name: str, max_steps: int = 100
+) -> None:
     """Checks whether the given policy can infer actions from an env with connectors.
 
     Args:
@@ -477,20 +489,22 @@ def check_learning_achieved(
     evaluation: Optional[bool] = None,
     metric: str = f"{ENV_RUNNER_RESULTS}/episode_return_mean",
 ):
-    """Throws an error if `min_reward` is not reached within tune_results.
+    """Throws an error if `min_value` is not reached within tune_results.
 
     Checks the last iteration found in tune_results for its
-    "episode_return_mean" value and compares it to `min_reward`.
+    "episode_return_mean" value and compares it to `min_value`.
 
     Args:
         tune_results: The tune.Tuner().fit() returned results object.
-        min_reward: The min reward that must be reached.
+        min_value: The min value that `metric` must reach.
         evaluation: If True, use `evaluation/env_runners/[metric]`, if False, use
             `env_runners/[metric]`, if None, use evaluation sampler results if
             available otherwise, use train sampler results.
+        metric: The metric key (within the results dict) to check against
+            `min_value`.
 
     Raises:
-        ValueError: If `min_reward` not reached.
+        ValueError: If `min_value` not reached.
     """
     # Get maximum value of `metrics` over all trials
     # (check if at least one trial achieved some learning, not just the final one).
@@ -636,6 +650,9 @@ def check_train_results(train_results: ResultDict):
     Args:
         train_results: The train results dict to check.
 
+    Returns:
+        The (unaltered) `train_results` dict.
+
     Raises:
         AssertionError: If `train_results` doesn't have the proper structure or
             data in it.
@@ -733,7 +750,7 @@ def check_train_results(train_results: ResultDict):
     return train_results
 
 
-def check_same_batch(batch1, batch2) -> None:
+def check_same_batch(batch1: SampleBatchType, batch2: SampleBatchType) -> None:
     """Check if both batches are (almost) identical.
 
     For MultiAgentBatches, the step count and individual policy's
@@ -838,7 +855,7 @@ def check_reproducibilty(
         None
 
     Raises:
-        It raises an AssertionError if the algorithm is not reproducible.
+        AssertionError: If the algorithm is not reproducible.
     """
     from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
     from ray.rllib.utils.metrics.learner_info import LEARNER_INFO

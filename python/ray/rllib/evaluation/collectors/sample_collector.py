@@ -9,6 +9,7 @@ from ray.rllib.utils.typing import AgentID, EnvID, EpisodeID, PolicyID, TensorTy
 
 if TYPE_CHECKING:
     from ray.rllib.callbacks.callbacks import RLlibCallback
+    from ray.rllib.evaluation.episode_v2 import EpisodeV2
 
 logger = logging.getLogger(__name__)
 
@@ -40,13 +41,17 @@ class SampleCollector(metaclass=ABCMeta):
 
         Args:
             policy_map: Maps policy ids to policy instances.
-            clip_rewards (Union[bool, float]): Whether to clip rewards before
+            clip_rewards: Whether to clip rewards before
                 postprocessing (at +/-1.0) or the actual value to +/- clip.
             callbacks: RLlib callbacks.
             multiple_episodes_in_batch: Whether it's allowed to pack
                 multiple episodes into the same built batch.
-            rollout_fragment_length: The
-
+            rollout_fragment_length: The number of steps (counted by
+                `count_steps_by`) to collect before a batch is built and
+                returned.
+            count_steps_by: One of "env_steps" (default) or "agent_steps".
+                Determines whether `rollout_fragment_length` is counted in
+                env steps or in individual agent steps.
         """
 
         self.policy_map = policy_map
@@ -60,7 +65,7 @@ class SampleCollector(metaclass=ABCMeta):
     def add_init_obs(
         self,
         *,
-        episode,
+        episode: "EpisodeV2",
         agent_id: AgentID,
         policy_id: PolicyID,
         init_obs: TensorType,
@@ -81,31 +86,27 @@ class SampleCollector(metaclass=ABCMeta):
                 are adding an Agent's initial observation.
             agent_id: Unique id for the agent we are adding
                 values for.
-            env_id: The environment index (in a vectorized setup).
             policy_id: Unique id for policy controlling the agent.
-            init_obs: Initial observation (after env.reset()).
             init_obs: Initial observation (after env.reset()).
             init_infos: Initial infos dict (after env.reset()).
             t: The time step (episode length - 1). The initial obs has
                 ts=-1(!), then an action/reward/next-obs at t=0, etc..
 
-        .. testcode::
-            :skipif: True
-
-            obs, infos = env.reset()
-            collector.add_init_obs(
-                episode=my_episode,
-                agent_id=0,
-                policy_id="pol0",
-                t=-1,
-                init_obs=obs,
-                init_infos=infos,
-            )
-            obs, r, terminated, truncated, info = env.step(action)
-            collector.add_action_reward_next_obs(12345, 0, "pol0", False, {
-                "action": action, "obs": obs, "reward": r, "terminated": terminated,
-                "truncated": truncated, "info": info
-            })
+        Examples:
+            >>> obs, infos = env.reset()  # doctest: +SKIP_EXAMPLE
+            >>> collector.add_init_obs(
+            ...     episode=my_episode,
+            ...     agent_id=0,
+            ...     policy_id="pol0",
+            ...     t=-1,
+            ...     init_obs=obs,
+            ...     init_infos=infos,
+            ... )
+            >>> obs, r, terminated, truncated, info = env.step(action)
+            >>> collector.add_action_reward_next_obs(12345, 0, 0, "pol0", False, {
+            ...     "action": action, "obs": obs, "reward": r, "terminated": terminated,
+            ...     "truncated": truncated, "info": info
+            ... })
         """
         raise NotImplementedError
 
@@ -135,31 +136,32 @@ class SampleCollector(metaclass=ABCMeta):
             policy_id: Unique id for policy controlling the agent.
             agent_done: Whether the given agent is done (terminated or truncated) with
                 its trajectory (the multi-agent episode may still be ongoing).
-            values (Dict[str, TensorType]): Row of values to add for this
+            values: Row of values to add for this
                 agent. This row must contain the keys SampleBatch.ACTION,
                 REWARD, NEW_OBS, TERMINATED, and TRUNCATED.
 
-        .. testcode::
-            :skipif: True
-
-            obs, info = env.reset()
-            collector.add_init_obs(12345, 0, "pol0", obs)
-            obs, r, terminated, truncated, info = env.step(action)
-            collector.add_action_reward_next_obs(
-                12345,
-                0,
-                "pol0",
-                agent_done=False,
-                values={
-                    "action": action, "obs": obs, "reward": r,
-                    "terminated": terminated, "truncated": truncated
-                },
-            )
+        Examples:
+            >>> obs, info = env.reset()  # doctest: +SKIP_EXAMPLE
+            >>> collector.add_init_obs(
+            ...     episode=my_episode, agent_id=0, policy_id="pol0", init_obs=obs
+            ... )
+            >>> obs, r, terminated, truncated, info = env.step(action)
+            >>> collector.add_action_reward_next_obs(
+            ...     12345,
+            ...     0,
+            ...     0,
+            ...     "pol0",
+            ...     agent_done=False,
+            ...     values={
+            ...         "action": action, "obs": obs, "reward": r,
+            ...         "terminated": terminated, "truncated": truncated
+            ...     },
+            ... )
         """
         raise NotImplementedError
 
     @abstractmethod
-    def episode_step(self, episode) -> None:
+    def episode_step(self, episode: "EpisodeV2") -> None:
         """Increases the episode step counter (across all agents) by one.
 
         Args:
@@ -222,24 +224,22 @@ class SampleCollector(metaclass=ABCMeta):
             Dict[str, TensorType]: The input_dict to be passed into the ModelV2
                 for inference/training.
 
-        .. testcode::
-            :skipif: True
-
-            obs, r, terminated, truncated, info = env.step(action)
-            collector.add_action_reward_next_obs(12345, 0, "pol0", False, {
-                "action": action, "obs": obs, "reward": r,
-                "terminated": terminated, "truncated", truncated
-            })
-            input_dict = collector.get_inference_input_dict(policy.model)
-            action = policy.compute_actions_from_input_dict(input_dict)
-            # repeat
+        Examples:
+            >>> obs, r, terminated, truncated, info = env.step(action)  # doctest: +SKIP_EXAMPLE
+            >>> collector.add_action_reward_next_obs(12345, 0, 0, "pol0", False, {
+            ...     "action": action, "obs": obs, "reward": r,
+            ...     "terminated": terminated, "truncated": truncated
+            ... })
+            >>> input_dict = collector.get_inference_input_dict("pol0")
+            >>> action = policy.compute_actions_from_input_dict(input_dict)
+            >>> # repeat
         """
         raise NotImplementedError
 
     @abstractmethod
     def postprocess_episode(
         self,
-        episode,
+        episode: "EpisodeV2",
         is_done: bool = False,
         check_dones: bool = False,
         build: bool = False,

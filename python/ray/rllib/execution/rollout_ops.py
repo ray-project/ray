@@ -41,8 +41,6 @@ def synchronous_parallel_sample(
 
     Args:
         worker_set: The EnvRunnerGroup to use for sampling.
-        remote_fn: If provided, use `worker.apply.remote(remote_fn)` instead
-            of `worker.sample.remote()` to generate the requests.
         max_agent_steps: Optional number of agent steps to be included in the
             final batch or list of episodes.
         max_env_steps: Optional number of environment steps to be included in the
@@ -53,32 +51,32 @@ def synchronous_parallel_sample(
         sample_timeout_s: The timeout in sec to use on the `foreach_env_runner` call.
             After this time, the call will return with a result (or not if all
             EnvRunners are stalling). If None, will block indefinitely and not timeout.
+        random_actions: Whether the EnvRunners should sample using random actions
+            (instead of the RLModule's/Policy's forward pass).
         _uses_new_env_runners: Whether the new `EnvRunner API` is used. In this case
             episodes instead of `SampleBatch` objects are returned.
+        _return_metrics: Whether to also return the metrics (stats dicts) collected
+            from the EnvRunners alongside the sampled data.
 
     Returns:
         The list of collected sample batch types or episode types (one for each parallel
         rollout worker in the given `worker_set`).
 
-    .. testcode::
-
-        # Define an RLlib Algorithm.
-        from ray.rllib.algorithms.ppo import PPO, PPOConfig
-        config = (
-            PPOConfig()
-            .environment("CartPole-v1")
-        )
-        algorithm = config.build()
-        # 2 remote EnvRunners (num_env_runners=2):
-        episodes = synchronous_parallel_sample(
-            worker_set=algorithm.env_runner_group,
-            _uses_new_env_runners=True,
-            concat=False,
-        )
-        print(len(episodes))
-
-    .. testoutput::
-
+    Examples:
+        >>> # Define an RLlib Algorithm.
+        >>> from ray.rllib.algorithms.ppo import PPO, PPOConfig
+        >>> config = (
+        ...     PPOConfig()
+        ...     .environment("CartPole-v1")
+        ... )
+        >>> algorithm = config.build()
+        >>> # 2 remote EnvRunners (num_env_runners=2):
+        >>> episodes = synchronous_parallel_sample(
+        ...     worker_set=algorithm.env_runner_group,
+        ...     _uses_new_env_runners=True,
+        ...     concat=False,
+        ... )
+        >>> print(len(episodes))
         2
     """
     # Only allow one of `max_agent_steps` or `max_env_steps` to be defined.

@@ -143,13 +143,26 @@ class SACTorchModel(TorchModelV2, nn.Module):
         """
         return input_dict["obs"], state
 
-    def build_policy_model(self, obs_space, num_outputs, policy_model_config, name):
+    def build_policy_model(
+        self,
+        obs_space: gym.spaces.Space,
+        num_outputs: int,
+        policy_model_config: ModelConfigDict,
+        name: str,
+    ) -> TorchModelV2:
         """Builds the policy model used by this SAC.
 
         Override this method in a sub-class of SACTFModel to implement your
         own policy net. Alternatively, simply set `custom_model` within the
         top level SAC `policy_model` config key to make this default
         implementation of `build_policy_model` use your custom policy network.
+
+        Args:
+            obs_space: The observation space of the policy sub-model.
+            num_outputs: The number of output nodes of the policy sub-model
+                (the number of action distribution inputs).
+            policy_model_config: The config dict for the policy sub-model.
+            name: The name under which to register the policy sub-model.
 
         Returns:
             TorchModelV2: The TorchModelV2 policy sub-model.
@@ -164,13 +177,30 @@ class SACTorchModel(TorchModelV2, nn.Module):
         )
         return model
 
-    def build_q_model(self, obs_space, action_space, num_outputs, q_model_config, name):
+    def build_q_model(
+        self,
+        obs_space: gym.spaces.Space,
+        action_space: gym.spaces.Space,
+        num_outputs: int,
+        q_model_config: ModelConfigDict,
+        name: str,
+    ) -> TorchModelV2:
         """Builds one of the (twin) Q-nets used by this SAC.
 
         Override this method in a sub-class of SACTFModel to implement your
         own Q-nets. Alternatively, simply set `custom_model` within the
         top level SAC `q_model_config` config key to make this default implementation
         of `build_q_model` use your custom Q-nets.
+
+        Args:
+            obs_space: The observation space of the Q-net sub-model.
+            action_space: The action space of the Q-net sub-model. In the
+                continuous case, actions are concatenated to the observations
+                to form the Q-net's input space.
+            num_outputs: The number of output nodes of the Q-net sub-model (1
+                in the continuous case, the number of discrete actions else).
+            q_model_config: The config dict for the Q-net sub-model.
+            name: The name under which to register the Q-net sub-model.
 
         Returns:
             TorchModelV2: The TorchModelV2 Q-net sub-model.
@@ -211,9 +241,9 @@ class SACTorchModel(TorchModelV2, nn.Module):
         Args:
             model_out: Feature outputs from the model layers
                 (result of doing `self.__call__(obs)`).
-            actions (Optional[TensorType]): Continuous action batch to return
-                Q-values for. Shape: [BATCH_SIZE, action_dim]. If None
-                (discrete action case), return Q-values for all actions.
+            actions: Continuous action batch to return Q-values for.
+                Shape: [BATCH_SIZE, action_dim]. If None (discrete action
+                case), return Q-values for all actions.
 
         Returns:
             TensorType: Q-values tensor of shape [BATCH_SIZE, 1].
@@ -230,7 +260,7 @@ class SACTorchModel(TorchModelV2, nn.Module):
         Args:
             model_out: Feature outputs from the model layers
                 (result of doing `self.__call__(obs)`).
-            actions (Optional[Tensor]): Actions to return the Q-values for.
+            actions: Actions to return the Q-values for.
                 Shape: [BATCH_SIZE, action_dim]. If None (discrete action
                 case), return Q-values for all actions.
 
@@ -282,7 +312,7 @@ class SACTorchModel(TorchModelV2, nn.Module):
         Args:
             model_out: Feature outputs from the model layers
                 (result of doing `model(obs)`).
-            state_in List(TensorType): State input for recurrent cells
+            state_in: State input for recurrent cells.
             seq_lens: Sequence lengths of input- and state
                 sequences
 

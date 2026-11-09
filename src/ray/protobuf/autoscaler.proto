@@ -17,6 +17,7 @@ syntax = "proto3";
 package ray.rpc.autoscaler;
 
 import "src/ray/protobuf/common.proto";
+import "src/ray/protobuf/gcs.proto";
 
 // ============= Cluster Resources ====================
 //
@@ -244,6 +245,12 @@ message ClusterResourceState {
   repeated ClusterResourceConstraint cluster_resource_constraints = 6;
   // The current Ray session name.
   string cluster_session_name = 7;
+  // TODO: remove once the v1 autoscaler is retired.
+  // Raw placement group load, kept alongside `pending_gang_resource_requests`
+  // (which is derived from this) so that the v1 autoscaler can consume the
+  // same PlacementGroupTableData shape it previously got from
+  // GcsResourceManager::HandleGetAllResourceUsage.
+  ray.rpc.PlacementGroupLoad placement_group_load = 8;
 }
 
 message GetClusterResourceStateReply {

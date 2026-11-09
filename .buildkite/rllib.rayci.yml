@@ -133,7 +133,6 @@ steps:
     depends_on: rllibgpubuild
 
   - label: ":brain: rllib: docs example tests"
-    if: '!(build.pull_request.labels includes "docs-go")'
     tags:
       - rllib_directly
       - rllib_doc

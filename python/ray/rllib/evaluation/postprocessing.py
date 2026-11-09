@@ -1,4 +1,4 @@
-from typing import Dict, Optional
+from typing import TYPE_CHECKING, Dict, Optional
 
 import numpy as np
 
@@ -7,6 +7,9 @@ from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import DeveloperAPI, OldAPIStack
 from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.typing import AgentID, TensorType
+
+if TYPE_CHECKING:
+    from ray.rllib.evaluation.episode_v2 import EpisodeV2
 
 
 @DeveloperAPI
@@ -155,7 +158,7 @@ def compute_gae_for_sample_batch(
     policy: Policy,
     sample_batch: SampleBatch,
     other_agent_batches: Optional[Dict[AgentID, SampleBatch]] = None,
-    episode=None,
+    episode: Optional["EpisodeV2"] = None,
 ) -> SampleBatch:
     """Adds GAE (generalized advantage estimations) to a trajectory.
 
@@ -304,25 +307,23 @@ def discount_cumsum(x: np.ndarray, gamma: float) -> np.ndarray:
     reversed(y)[t] - discount*reversed(y)[t-1] = reversed(x)[t]
 
     Args:
+        x: The sequence of rewards to compute the discounted cumulative sums
+            for.
         gamma: The discount factor gamma.
 
     Returns:
         The sequence containing the discounted cumulative sums
         for each individual reward in `x` till the end of the trajectory.
 
-     .. testcode::
-        :skipif: True
-
-        x = np.array([0.0, 1.0, 2.0, 3.0])
-        gamma = 0.9
-        discount_cumsum(x, gamma)
-
-    .. testoutput::
-
-        array([0.0 + 0.9*1.0 + 0.9^2*2.0 + 0.9^3*3.0,
-               1.0 + 0.9*2.0 + 0.9^2*3.0,
-               2.0 + 0.9*3.0,
-               3.0])
+    Examples:
+        >>> import numpy as np
+        >>> from ray.rllib.evaluation.postprocessing import discount_cumsum
+        >>> x = np.array([0.0, 1.0, 2.0, 3.0])
+        >>> gamma = 0.9
+        >>> # Entry t is x[t] + gamma * x[t+1] + gamma^2 * x[t+2] + ...
+        >>> # For example, entry 2 is 2.0 + 0.9 * 3.0 = 4.7.
+        >>> discount_cumsum(x, gamma)
+        array([4.707, 5.23 , 4.7  , 3.   ])
     """
     # Import scipy here to avoid import error when framework is tensorflow.
     import scipy

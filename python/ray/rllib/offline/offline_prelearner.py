@@ -63,6 +63,8 @@ def _validate_deprecated_map_args(
 
     Args:
         kwargs: The kwargs for the map function to check for deprecated args
+        config: The `AlgorithmConfig` to fall back on for any deprecated arg that
+            is not passed in via `kwargs`
 
     Returns:
         The validated arguments
@@ -116,6 +118,15 @@ class OfflinePreLearner:
 
     OfflinePreLearner can be overridden to implement custom logic and passed into
     `AlgorithmConfig.offline(prelearner_class)`.
+
+    Args:
+        config: The AlgorithmConfig to build the RLModule and the Learner
+            connector pipeline from.
+        spaces: The observation and action space to build the Learner connector
+            pipeline with.
+        module_state: The RLModule state to set on the newly built RLModule.
+        **kwargs: Deprecated. A `module_spec` keyword argument is still accepted,
+            with a deprecation warning, in place of `config.rl_module_spec`.
     """
 
     default_prelearner_buffer_class = EpisodeReplayBuffer

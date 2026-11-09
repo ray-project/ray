@@ -3,7 +3,7 @@ import itertools
 import sys
 from functools import partial
 from numbers import Number
-from typing import Dict, Iterator, List, Optional, Set, Union
+from typing import Any, Dict, Iterator, List, Optional, Set, Union
 
 import numpy as np
 import tree  # pip install dm_tree
@@ -155,24 +155,28 @@ class SampleBatch(dict):
     CUR_OBS = "obs"
 
     @PublicAPI
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args: Any, **kwargs: Any):
         """Constructs a sample batch (same params as dict constructor).
 
         Note: All args and those kwargs not listed below will be passed
         as-is to the parent dict constructor.
 
         Args:
-            _time_major: Whether data in this sample batch
-                is time-major. This is False by default and only relevant
-                if the data contains sequences.
-            _max_seq_len: The max sequence chunk length
-                if the data contains sequences.
-            _zero_padded: Whether the data in this batch
-                contains sequences AND these sequences are right-zero-padded
-                according to the `_max_seq_len` setting.
-            _is_training: Whether this batch is used for
-                training. If False, batch may be used for e.g. action
-                computations (inference).
+            *args: Positional args passed as-is to the parent dict constructor.
+            **kwargs: Column data passed as-is to the parent dict constructor,
+                except for the following, which configure this batch:
+                `_time_major`: Whether data in this sample batch is time-major.
+                This is False by default and only relevant if the data contains
+                sequences.
+                `_max_seq_len`: The max sequence chunk length if the data
+                contains sequences.
+                `_zero_padded`: Whether the data in this batch contains sequences
+                AND these sequences are right-zero-padded according to the
+                `_max_seq_len` setting.
+                `_is_training`: Whether this batch is used for training. If False,
+                batch may be used for e.g. action computations (inference).
+                `_num_grad_updates`: The weighted average number of gradient
+                updates performed on the policy/ies used to collect this batch.
         """
 
         if SampleBatch.DONES in kwargs:
@@ -274,6 +278,9 @@ class SampleBatch(dict):
         """Returns the same as len(self) (number of steps in this batch).
 
         To make this compatible with `MultiAgentBatch.agent_steps()`.
+
+        Returns:
+            The number of steps in this batch.
         """
         return len(self)
 
@@ -282,6 +289,9 @@ class SampleBatch(dict):
         """Returns the same as len(self) (number of steps in this batch).
 
         To make this compatible with `MultiAgentBatch.env_steps()`.
+
+        Returns:
+            The number of steps in this batch.
         """
         return len(self)
 
@@ -328,18 +338,13 @@ class SampleBatch(dict):
         Returns:
             The new SampleBatch, resulting from concating `other` to `self`.
 
-        .. testcode::
-            :skipif: True
-
-            import numpy as np
-            from ray.rllib.policy.sample_batch import SampleBatch
-            b1 = SampleBatch({"a": np.array([1, 2])})
-            b2 = SampleBatch({"a": np.array([3, 4, 5])})
-            print(b1.concat(b2))
-
-        .. testoutput::
-
-            {"a": np.array([1, 2, 3, 4, 5])}
+        Examples:
+            >>> import numpy as np
+            >>> from ray.rllib.policy.sample_batch import SampleBatch
+            >>> b1 = SampleBatch({"a": np.array([1, 2])})
+            >>> b2 = SampleBatch({"a": np.array([3, 4, 5])})
+            >>> print(b1.concat(b2)["a"])
+            [1 2 3 4 5]
         """
         return concat_samples([self, other])
 
@@ -380,25 +385,21 @@ class SampleBatch(dict):
         Note that if `seq_lens` is set in self, we set it to 1 in the rows.
 
         Yields:
-            The column values of the row in this iteration.
+            Dict[str, TensorType]: The column values of the row in this
+            iteration.
 
-        .. testcode::
-            :skipif: True
-
-            from ray.rllib.policy.sample_batch import SampleBatch
-            batch = SampleBatch({
-               "a": [1, 2, 3],
-               "b": [4, 5, 6],
-               "seq_lens": [1, 2]
-            })
-            for row in batch.rows():
-                print(row)
-
-        .. testoutput::
-
-            {"a": 1, "b": 4, "seq_lens": 1}
-            {"a": 2, "b": 5, "seq_lens": 1}
-            {"a": 3, "b": 6, "seq_lens": 1}
+        Examples:
+            >>> from ray.rllib.policy.sample_batch import SampleBatch
+            >>> batch = SampleBatch({
+            ...    "a": [1, 2, 3],
+            ...    "b": [4, 5, 6],
+            ...    "seq_lens": [1, 2]
+            ... })
+            >>> for row in batch.rows():
+            ...     print({k: int(v) for k, v in row.items()})
+            {'a': 1, 'b': 4, 'seq_lens': 1}
+            {'a': 2, 'b': 5, 'seq_lens': 1}
+            {'a': 3, 'b': 6, 'seq_lens': 1}
         """
 
         seq_lens = None if self.get(SampleBatch.SEQ_LENS, 1) is None else 1
@@ -422,16 +423,11 @@ class SampleBatch(dict):
             The list of data items ordered by the order of column
             names in `keys`.
 
-        .. testcode::
-            :skipif: True
-
-            from ray.rllib.policy.sample_batch import SampleBatch
-            batch = SampleBatch({"a": [1], "b": [2], "c": [3]})
-            print(batch.columns(["a", "b"]))
-
-        .. testoutput::
-
-            [[1], [2]]
+        Examples:
+            >>> from ray.rllib.policy.sample_batch import SampleBatch
+            >>> batch = SampleBatch({"a": [1], "b": [2], "c": [3]})
+            >>> print(batch.columns(["a", "b"]))
+            [array([1]), array([2])]
         """
 
         # TODO: (sven) Make this work for nested data as well.
@@ -450,16 +446,13 @@ class SampleBatch(dict):
         Raises:
             ValueError: If self[SampleBatch.SEQ_LENS] is defined.
 
-        .. testcode::
-            :skipif: True
-
-            from ray.rllib.policy.sample_batch import SampleBatch
-            batch = SampleBatch({"a": [1, 2, 3, 4]})
-            print(batch.shuffle())
-
-        .. testoutput::
-
-            {"a": [4, 1, 3, 2]}
+        Examples:
+            >>> import numpy as np
+            >>> from ray.rllib.policy.sample_batch import SampleBatch
+            >>> np.random.seed(0)
+            >>> batch = SampleBatch({"a": [1, 2, 3, 4]})
+            >>> print(batch.shuffle()["a"])
+            [3 4 2 1]
         """
         has_time_rank = self.get(SampleBatch.SEQ_LENS) is not None
 
@@ -508,38 +501,30 @@ class SampleBatch(dict):
         Raises:
             KeyError: If the `eps_id` AND `dones` columns are not present.
 
-        .. testcode::
-            :skipif: True
+        Examples:
+            >>> from ray.rllib.policy.sample_batch import SampleBatch
+            >>> # "eps_id" is present
+            >>> batch = SampleBatch(
+            ...     {"a": [1, 2, 3], "eps_id": [0, 0, 1]})
+            >>> print([b["a"] for b in batch.split_by_episode()])
+            [array([1, 2]), array([3])]
 
-            from ray.rllib.policy.sample_batch import SampleBatch
-            # "eps_id" is present
-            batch = SampleBatch(
-                {"a": [1, 2, 3], "eps_id": [0, 0, 1]})
-            print(batch.split_by_episode())
+            >>> # "eps_id" not present, split by "terminateds" instead
+            >>> batch = SampleBatch(
+            ...     {"a": [1, 2, 3, 4, 5], "terminateds": [0, 0, 1, 0, 1]})
+            >>> print([b["a"] for b in batch.split_by_episode()])
+            [array([1, 2, 3]), array([4, 5])]
 
-            # "eps_id" not present, split by "dones" instead
-            batch = SampleBatch(
-                {"a": [1, 2, 3, 4, 5], "dones": [0, 0, 1, 0, 1]})
-            print(batch.split_by_episode())
+            >>> # The last episode is appended even if it does not end with done
+            >>> batch = SampleBatch(
+            ...     {"a": [1, 2, 3, 4, 5], "terminateds": [0, 0, 1, 0, 0]})
+            >>> print([b["a"] for b in batch.split_by_episode()])
+            [array([1, 2, 3]), array([4, 5])]
 
-            # The last episode is appended even if it does not end with done
-            batch = SampleBatch(
-                {"a": [1, 2, 3, 4, 5], "dones": [0, 0, 1, 0, 0]})
-            print(batch.split_by_episode())
-
-            batch = SampleBatch(
-                {"a": [1, 2, 3, 4, 5], "dones": [0, 0, 0, 0, 0]})
-            print(batch.split_by_episode())
-
-
-        .. testoutput::
-
-            [{"a": [1, 2], "eps_id": [0, 0]}, {"a": [3], "eps_id": [1]}]
-            [{"a": [1, 2, 3], "dones": [0, 0, 1]}, {"a": [4, 5], "dones": [0, 1]}]
-            [{"a": [1, 2, 3], "dones": [0, 0, 1]}, {"a": [4, 5], "dones": [0, 0]}]
-            [{"a": [1, 2, 3, 4, 5], "dones": [0, 0, 0, 0, 0]}]
-
-
+            >>> batch = SampleBatch(
+            ...     {"a": [1, 2, 3, 4, 5], "terminateds": [0, 0, 0, 0, 0]})
+            >>> print([b["a"] for b in batch.split_by_episode()])
+            [array([1, 2, 3, 4, 5])]
         """
 
         assert key is None or key in [SampleBatch.EPS_ID, SampleBatch.DONES], (
@@ -609,13 +594,21 @@ class SampleBatch(dict):
         return slices
 
     def slice(
-        self, start: int, end: int, state_start=None, state_end=None
+        self,
+        start: int,
+        end: int,
+        state_start: Optional[int] = None,
+        state_end: Optional[int] = None,
     ) -> "SampleBatch":
         """Returns a slice of the row data of this batch (w/o copying).
 
         Args:
             start: Starting index. If < 0, will left-zero-pad.
             end: Ending index.
+            state_start: Optional starting index into the `state_in_?` columns
+                and `seq_lens`. If provided, `state_end` must be provided, too.
+            state_end: Optional ending index into the `state_in_?` columns and
+                `seq_lens`.
 
         Returns:
             A new SampleBatch, which has a slice of this batch's data.
@@ -823,25 +816,22 @@ class SampleBatch(dict):
         Raises:
             ValueError: If self[SampleBatch.SEQ_LENS] is None (not defined).
 
-        .. testcode::
-            :skipif: True
+        Examples:
+            >>> from ray.rllib.policy.sample_batch import SampleBatch
+            >>> batch = SampleBatch(
+            ...     {"a": [1, 2, 3], "seq_lens": [1, 2]})
+            >>> print(batch.right_zero_pad(max_seq_len=4)["a"])
+            [1 0 0 0 2 3 0 0]
 
-            from ray.rllib.policy.sample_batch import SampleBatch
-            batch = SampleBatch(
-                {"a": [1, 2, 3], "seq_lens": [1, 2]})
-            print(batch.right_zero_pad(max_seq_len=4))
-
-            batch = SampleBatch({"a": [1, 2, 3],
-                                 "state_in_0": [1.0, 3.0],
-                                 "seq_lens": [1, 2]})
-            print(batch.right_zero_pad(max_seq_len=5))
-
-        .. testoutput::
-
-            {"a": [1, 0, 0, 0, 2, 3, 0, 0], "seq_lens": [1, 2]}
-            {"a": [1, 0, 0, 0, 0, 2, 3, 0, 0, 0],
-             "state_in_0": [1.0, 3.0],  # <- all state-ins remain as-is
-             "seq_lens": [1, 2]}
+            >>> batch = SampleBatch({"a": [1, 2, 3],
+            ...                      "state_in_0": [1.0, 3.0],
+            ...                      "seq_lens": [1, 2]})
+            >>> batch = batch.right_zero_pad(max_seq_len=5)
+            >>> print(batch["a"])
+            [1 0 0 0 0 2 3 0 0 0]
+            >>> # All state-ins remain as-is.
+            >>> print(batch["state_in_0"])
+            [1. 3.]
 
         """
         seq_lens = self.get(SampleBatch.SEQ_LENS)
@@ -928,8 +918,16 @@ class SampleBatch(dict):
             for v in tree.flatten(self)
         )
 
-    def get(self, key, default=None):
-        """Returns one column (by key) from the data or a default value."""
+    def get(self, key: str, default: Any = None) -> Any:
+        """Returns one column (by key) from the data or a default value.
+
+        Args:
+            key: The column to return.
+            default: The value to return if the column doesn't exist.
+
+        Returns:
+            The column under `key`, or `default` if there's none.
+        """
         try:
             return self.__getitem__(key)
         except KeyError:
@@ -941,7 +939,7 @@ class SampleBatch(dict):
 
         Note, if `module_id` is not provided uses `DEFAULT_POLICY`_ID`.
 
-        Args;
+        Args:
             module_id: An optional module ID. If `None` the `DEFAULT_POLICY_ID`
                 is used.
 
@@ -990,7 +988,7 @@ class SampleBatch(dict):
         return value
 
     @PublicAPI
-    def __setitem__(self, key, item) -> None:
+    def __setitem__(self, key: str, item: TensorType) -> None:
         """Inserts (overrides) an entire column (by key) in the data buffer.
 
         Args:
@@ -1030,6 +1028,11 @@ class SampleBatch(dict):
 
     @property
     def is_training(self):
+        """Whether this SampleBatch is used for training.
+
+        Set with `set_training()`. If a get interceptor is set and the flag is a
+        bool, returns the intercepted value.
+        """
         if self.get_interceptor is not None and isinstance(self._is_training, bool):
             if "_is_training" not in self.intercepted_values:
                 self.intercepted_values["_is_training"] = self.get_interceptor(
@@ -1039,7 +1042,12 @@ class SampleBatch(dict):
         return self._is_training
 
     def set_training(self, training: Union[bool, "tf1.placeholder"] = True):
-        """Sets the `is_training` flag for this SampleBatch."""
+        """Sets the `is_training` flag for this SampleBatch.
+
+        Args:
+            training: The value to set the flag to, either a bool or a TensorFlow
+                placeholder.
+        """
         self._is_training = training
         self.intercepted_values.pop("_is_training", None)
 
@@ -1416,6 +1424,13 @@ class MultiAgentBatch:
         This method is used to implement "lockstep" replay mode. Note that this
         method does not guarantee each batch contains only data from a single
         unroll. Batches might contain data from multiple different envs.
+
+        Args:
+            k: The number of env timesteps per batch. The last batch can hold
+                fewer.
+
+        Returns:
+            The list of MultiAgentBatches, ordered by episode ID and timestep.
         """
         from ray.rllib.evaluation.sample_batch_builder import SampleBatchBuilder
 
@@ -1528,7 +1543,8 @@ class MultiAgentBatch:
 
     @PublicAPI
     def size_bytes(self) -> int:
-        """
+        """Returns the sum of the byte sizes of all policy batches.
+
         Returns:
             The overall size in bytes of all policy batches (all columns).
         """
@@ -1607,31 +1623,31 @@ def concat_samples(samples: List[SampleBatchType]) -> SampleBatchType:
     Returns:
         A new (concatenated) SampleBatch or MultiAgentBatch.
 
-    .. testcode::
-        :skipif: True
+    Examples:
+        >>> import numpy as np
+        >>> from ray.rllib.policy.sample_batch import (
+        ...     MultiAgentBatch,
+        ...     SampleBatch,
+        ...     concat_samples,
+        ... )
+        >>> b1 = SampleBatch({"a": np.array([1, 2]),
+        ...                   "b": np.array([10, 11])})
+        >>> b2 = SampleBatch({"a": np.array([3]),
+        ...                   "b": np.array([12])})
+        >>> print(dict(concat_samples([b1, b2])))
+        {'a': array([1, 2, 3]), 'b': array([10, 11, 12])}
 
-        import numpy as np
-        from ray.rllib.policy.sample_batch import SampleBatch
-        b1 = SampleBatch({"a": np.array([1, 2]),
-                          "b": np.array([10, 11])})
-        b2 = SampleBatch({"a": np.array([3]),
-                          "b": np.array([12])})
-        print(concat_samples([b1, b2]))
-
-
-        c1 = MultiAgentBatch({'default_policy': {
-                                        "a": np.array([1, 2]),
-                                        "b": np.array([10, 11])
-                                        }}, env_steps=2)
-        c2 = SampleBatch({"a": np.array([3]),
-                          "b": np.array([12])})
-        print(concat_samples([b1, b2]))
-
-    .. testoutput::
-
-        {"a": np.array([1, 2, 3]), "b": np.array([10, 11, 12])}
-        MultiAgentBatch = {'default_policy': {"a": np.array([1, 2, 3]),
-                                              "b": np.array([10, 11, 12])}}
+        >>> c1 = MultiAgentBatch({'default_policy': SampleBatch({
+        ...                                 "a": np.array([1, 2]),
+        ...                                 "b": np.array([10, 11])
+        ...                                 })}, env_steps=2)
+        >>> c2 = SampleBatch({"a": np.array([3]),
+        ...                   "b": np.array([12])})
+        >>> ma_batch = concat_samples([c1, c2])
+        >>> print(ma_batch)
+        MultiAgentBatch({'default_policy': SampleBatch(3: ['a', 'b'])}, env_steps=3)
+        >>> print(dict(ma_batch.policy_batches["default_policy"]))
+        {'a': array([1, 2, 3]), 'b': array([10, 11, 12])}
 
     """
 
@@ -1736,23 +1752,24 @@ def concat_samples_into_ma_batch(samples: List[SampleBatchType]) -> "MultiAgentB
     Returns:
         A new (concatenated) MultiAgentBatch.
 
-    .. testcode::
-        :skipif: True
-
-        import numpy as np
-        from ray.rllib.policy.sample_batch import SampleBatch
-        b1 = MultiAgentBatch({'default_policy': {
-                                        "a": np.array([1, 2]),
-                                        "b": np.array([10, 11])
-                                        }}, env_steps=2)
-        b2 = SampleBatch({"a": np.array([3]),
-                          "b": np.array([12])})
-        print(concat_samples([b1, b2]))
-
-    .. testoutput::
-
-        {'default_policy': {"a": np.array([1, 2, 3]),
-                            "b": np.array([10, 11, 12])}}
+    Examples:
+        >>> import numpy as np
+        >>> from ray.rllib.policy.sample_batch import (
+        ...     MultiAgentBatch,
+        ...     SampleBatch,
+        ...     concat_samples_into_ma_batch,
+        ... )
+        >>> b1 = MultiAgentBatch({'default_policy': SampleBatch({
+        ...                                 "a": np.array([1, 2]),
+        ...                                 "b": np.array([10, 11])
+        ...                                 })}, env_steps=2)
+        >>> b2 = SampleBatch({"a": np.array([3]),
+        ...                   "b": np.array([12])})
+        >>> ma_batch = concat_samples_into_ma_batch([b1, b2])
+        >>> print(ma_batch)
+        MultiAgentBatch({'default_policy': SampleBatch(3: ['a', 'b'])}, env_steps=3)
+        >>> print(dict(ma_batch.policy_batches["default_policy"]))
+        {'a': array([1, 2, 3]), 'b': array([10, 11, 12])}
 
     """
 
@@ -1785,13 +1802,19 @@ def concat_samples_into_ma_batch(samples: List[SampleBatchType]) -> "MultiAgentB
     return MultiAgentBatch(out, env_steps)
 
 
-def _concat_values(*values, time_major=None) -> TensorType:
+def _concat_values(
+    *values: TensorType, time_major: Optional[bool] = None
+) -> TensorType:
     """Concatenates a list of values.
 
     Args:
-        values: The values to concatenate.
+        *values: The values to concatenate.
         time_major: Whether to concatenate along the first axis
             (time_major=False) or the second axis (time_major=True).
+
+    Returns:
+        The concatenated values, as a torch/tf tensor, a numpy array, or a list,
+        depending on the type of the given `values`.
     """
     if torch and torch.is_tensor(values[0]):
         return torch.cat(values, dim=1 if time_major else 0)
@@ -1819,11 +1842,11 @@ def convert_ma_batch_to_sample_batch(batch: SampleBatchType) -> SampleBatch:
         batch: The SampleBatchType to convert.
 
     Returns:
-        batch: the converted SampleBatch
+        The converted SampleBatch.
 
     Raises:
-        ValueError if the MultiAgentBatch has more than one policy_id
-        or if the policy_id is not `DEFAULT_POLICY_ID`
+        ValueError: If the MultiAgentBatch has more than one policy_id
+            or if the policy_id is not `DEFAULT_POLICY_ID`.
     """
     if isinstance(batch, MultiAgentBatch):
         policy_keys = batch.policy_batches.keys()

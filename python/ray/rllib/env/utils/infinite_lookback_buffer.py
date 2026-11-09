@@ -212,6 +212,11 @@ class InfiniteLookbackBuffer:
             _add_last_ts_value: Whether to add the value of this arg to the end of
                 the internal `self.data` buffer (just for the duration of this get
                 operation, not permanently).
+
+        Returns:
+            The data found at the given `indices`. A single item, if `indices` is an
+            int, otherwise a batch of items (a list, if this buffer has not been
+            finalized yet, else a - possibly complex - struct of np.ndarrays).
         """
         if indices is None:
             data = self._get_all_data(
@@ -306,7 +311,7 @@ class InfiniteLookbackBuffer:
 
     def set(
         self,
-        new_data,
+        new_data: Any,
         *,
         at_indices: Optional[Union[int, slice, List[int]]] = None,
         neg_index_as_lookback: bool = False,
@@ -542,8 +547,6 @@ class InfiniteLookbackBuffer:
             if self.finalized:
 
                 def __set(s, n):
-                    if self.space:
-                        assert self.space.contains(n[0])
                     assert len(s[slice_]) == len(n)
                     s[slice_] = n
 
@@ -648,8 +651,6 @@ class InfiniteLookbackBuffer:
             if self.finalized:
 
                 def __set(s, n):
-                    if self.space:
-                        assert self.space.contains(n), n
                     s[actual_idx] = n
 
                 tree.map_structure(__set, self.data, new_data)

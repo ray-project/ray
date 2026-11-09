@@ -137,6 +137,7 @@ class ActionMaskingTorchRLModule(ActionMaskingRLModule, PPOTorchRLModule):
 
         Args:
             batch: A dictionary containing tensors (at least `Columns.OBS`)
+            **kwargs: Additional keyword arguments (unused).
 
         Returns:
             A tuple with the action mask tensor and the modified batch containing
@@ -178,7 +179,7 @@ class ActionMaskingTorchRLModule(ActionMaskingRLModule, PPOTorchRLModule):
         # Return the batch with the masked action logits.
         return batch
 
-    def _check_batch(self, batch: Dict[str, TensorType]) -> Optional[ValueError]:
+    def _check_batch(self, batch: Dict[str, TensorType]) -> None:
         """Assert that the batch includes action mask and observations.
 
         Args:
@@ -186,8 +187,8 @@ class ActionMaskingTorchRLModule(ActionMaskingRLModule, PPOTorchRLModule):
                 checked.
 
         Raises:
-            `ValueError` if the column `Columns.OBS`  does not contain observations
-                and action mask.
+            ValueError: If the column `Columns.OBS` does not contain observations
+                and an action mask.
         """
         if not self._checked_observations:
             if "action_mask" not in batch[Columns.OBS]:

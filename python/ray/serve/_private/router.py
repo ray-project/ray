@@ -955,12 +955,12 @@ class AsyncioRouter:
         if isinstance(result, ActorDiedError):
             return result
 
-        if isinstance(result, RayTaskError) and isinstance(
-            getattr(result, "cause", None), ActorDiedError
-        ):
-            # RayTaskError wrapping ActorDiedError (e.g., from failed object ref
-            # resolution in chained deployment calls).
-            return result.cause
+        if isinstance(result, RayTaskError):
+            cause = getattr(result, "cause", None)
+            if isinstance(cause, ActorDiedError):
+                # RayTaskError wrapping ActorDiedError (e.g., from failed object ref
+                # resolution in chained deployment calls).
+                return cause
 
         return None
 
@@ -1316,6 +1316,19 @@ class AsyncioRouter:
                 finally:
                     await candidates.aclose()
                 slot_token = None
+                # Pick-only callers send the request themselves (e.g. the
+                # direct-streaming LLM ingress router through HAProxy), so this
+                # pick is the routing decision. Report it so stateful policies
+                # (e.g. PrefixCacheAffinityRouter) can update their state.
+                try:
+                    self._active_request_router.on_request_routed(
+                        pr, replica.replica_id, None
+                    )
+                except Exception:
+                    logger.warning(
+                        "on_request_routed failed for pick-only selection; continuing.",
+                        exc_info=True,
+                    )
 
             selection = ReplicaSelection(
                 replica_id=replica.replica_id.unique_id,

@@ -89,7 +89,7 @@ class DefaultDQNRLModule(RLModule, InferenceOnlyAPI, TargetNetworkAPI, QNetAPI):
         Args:
             batch: The batch received in the forward pass.
 
-        Results:
+        Returns:
             A dictionary containing the target Q-value predictions ("qf_preds")
             and in case of distributional Q-learning in addition to the target
             Q-value predictions ("qf_preds") the support atoms ("atoms"), the target
@@ -116,7 +116,7 @@ class DefaultDQNRLModule(RLModule, InferenceOnlyAPI, TargetNetworkAPI, QNetAPI):
         Args:
             batch: The batch received in the forward pass.
 
-        Results:
+        Returns:
             A dictionary containing the Q-value predictions ("qf_preds")
             and in case of distributional Q-learning - in addition to the Q-value
             predictions ("qf_preds") - the support atoms ("atoms"), the Q-logits

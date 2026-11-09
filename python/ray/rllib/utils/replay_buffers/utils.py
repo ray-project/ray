@@ -180,7 +180,7 @@ def sample_min_n_steps_from_buffer(
 
     Args:
         replay_buffer: The replay buffer to sample from
-        num_timesteps: The number of timesteps to sample
+        min_steps: The minimum number of timesteps to sample
         count_by_agent_steps: Whether to count agent steps or env steps
 
     Returns:
@@ -423,13 +423,11 @@ def patch_buffer_with_fake_sampling_method(
     ):
         fake_sample_output = SampleBatch(fake_sample_output).as_multi_agent()
 
-    def fake_sample(_: Any = None, **kwargs) -> Optional[SampleBatchType]:
+    def fake_sample(_: Any = None, **kwargs: Any) -> Optional[SampleBatchType]:
         """Always returns a predefined batch.
 
         Args:
-            _: dummy arg to match signature of sample() method
-            __: dummy arg to match signature of sample() method
-            ``**kwargs``: dummy args to match signature of sample() method
+            **kwargs: dummy args to match signature of sample() method
 
         Returns:
             Predefined MultiAgentBatch fake_sample_output

@@ -14,26 +14,28 @@
 
 #include "ray/core_worker_rpc_client/core_worker_client_pool.h"
 
+#include <deque>
+#include <functional>
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
 
-#include "gmock/gmock.h"
+#include "absl/container/flat_hash_map.h"
 #include "gtest/gtest.h"
-#include "mock/ray/raylet_client/raylet_client.h"
 #include "ray/core_worker_rpc_client/fake_core_worker_client.h"
+#include "ray/gcs_rpc_client/accessor.h"
+#include "ray/gcs_rpc_client/gcs_client.h"
+#include "ray/raylet_rpc_client/fake_raylet_client.h"
+#include "ray/raylet_rpc_client/raylet_client_pool.h"
 
 namespace ray {
 namespace rpc {
 
-using ::testing::_;
-using ::testing::Invoke;
-using ::testing::Return;
-
-class MockCoreWorkerClient : public rpc::FakeCoreWorkerClient {
+class FakeCoreWorkerClientForTest : public rpc::FakeCoreWorkerClient {
  public:
-  explicit MockCoreWorkerClient(
+  explicit FakeCoreWorkerClientForTest(
       std::function<void()> unavailable_timeout_callback = nullptr)
       : unavailable_timeout_callback_(std::move(unavailable_timeout_callback)) {}
 
@@ -69,8 +71,9 @@ void AssertID(WorkerID worker_id, CoreWorkerClientPool &client_pool, bool contai
 TEST(CoreWorkerClientPoolTest, TestGC) {
   // Test to make sure idle clients are removed eventually.
 
-  CoreWorkerClientPool client_pool(
-      [&](const rpc::Address &addr) { return std::make_shared<MockCoreWorkerClient>(); });
+  CoreWorkerClientPool client_pool([&](const rpc::Address &addr) {
+    return std::make_shared<FakeCoreWorkerClientForTest>();
+  });
 
   rpc::Address address1 = CreateRandomAddress("1");
   rpc::Address address2 = CreateRandomAddress("2");
@@ -85,59 +88,83 @@ TEST(CoreWorkerClientPoolTest, TestGC) {
   AssertID(worker_id1, client_pool, true);
   client2 = client_pool.GetOrConnect(address2);
   AssertID(worker_id2, client_pool, true);
-  dynamic_cast<MockCoreWorkerClient *>(client1.get())->is_idle_after_rpcs = true;
+  dynamic_cast<FakeCoreWorkerClientForTest *>(client1.get())->is_idle_after_rpcs = true;
   // Client 1 will be removed since it's idle.
   client_pool.GetOrConnect(address2);
   AssertID(worker_id2, client_pool, true);
   AssertID(worker_id1, client_pool, false);
 }
 
-class MockGcsClientNodeAccessor : public gcs::NodeInfoAccessor {
+// Hand-written fake node accessor. GetNodeAddressAndLiveness and
+// AsyncGetAllNodeAddressAndLiveness serve queued responses (keyed by node id) in
+// call order and record the calls for tests to assert on.
+class FakeGcsClientNodeAccessor : public gcs::NodeInfoAccessor {
  public:
-  explicit MockGcsClientNodeAccessor(bool is_subscribed_to_node_change)
+  explicit FakeGcsClientNodeAccessor(bool is_subscribed_to_node_change)
       : gcs::NodeInfoAccessor(nullptr),
         is_subscribed_to_node_change_(is_subscribed_to_node_change) {}
 
   bool IsSubscribedToNodeChange() const override { return is_subscribed_to_node_change_; }
 
-  MOCK_METHOD(std::optional<rpc::GcsNodeAddressAndLiveness>,
-              GetNodeAddressAndLiveness,
-              (const NodeID &, bool),
-              (const, override));
+  std::optional<rpc::GcsNodeAddressAndLiveness> GetNodeAddressAndLiveness(
+      const NodeID &node_id, bool filter_dead_nodes) const override {
+    get_node_address_and_liveness_calls.push_back(node_id);
+    auto it = get_node_address_and_liveness_responses.find(node_id);
+    RAY_CHECK(it != get_node_address_and_liveness_responses.end() && !it->second.empty());
+    auto response = it->second.front();
+    it->second.pop_front();
+    return response;
+  }
 
-  MOCK_METHOD(
-      void,
-      AsyncGetAll,
-      ((const rpc::OptionalItemCallback<std::pair<std::vector<rpc::GcsNodeInfo>, int64_t>>
-            &callback),
-       int64_t timeout_ms,
-       const std::optional<rpc::GcsNodeInfo::GcsNodeState> &state_filter,
-       const std::vector<rpc::GetAllNodeInfoRequest::NodeSelector> &node_selectors,
-       const std::optional<int64_t> &limit),
-      (const, override));
+  void AsyncGetAllNodeAddressAndLiveness(
+      const rpc::MultiItemCallback<rpc::GcsNodeAddressAndLiveness> &callback,
+      int64_t timeout_ms,
+      const std::vector<NodeID> &node_ids) override {
+    async_get_all_calls.push_back(node_ids);
+    RAY_CHECK_EQ(node_ids.size(), static_cast<size_t>(1));
+    auto it = async_get_all_responses.find(node_ids[0]);
+    RAY_CHECK(it != async_get_all_responses.end() && !it->second.empty());
+    auto response = it->second.front();
+    it->second.pop_front();
+    callback(Status::OK(), std::move(response));
+  }
 
-  MOCK_METHOD(void,
-              AsyncGetAllNodeAddressAndLiveness,
-              (const rpc::MultiItemCallback<rpc::GcsNodeAddressAndLiveness> &,
-               int64_t,
-               const std::vector<NodeID> &),
-              (override));
+  // Returns true when every queued response has been consumed.
+  bool AllResponsesConsumed() const {
+    for (const auto &entry : get_node_address_and_liveness_responses) {
+      if (!entry.second.empty()) {
+        return false;
+      }
+    }
+    for (const auto &entry : async_get_all_responses) {
+      if (!entry.second.empty()) {
+        return false;
+      }
+    }
+    return true;
+  }
 
- private:
   bool is_subscribed_to_node_change_;
+  mutable absl::flat_hash_map<NodeID,
+                              std::deque<std::optional<rpc::GcsNodeAddressAndLiveness>>>
+      get_node_address_and_liveness_responses;
+  mutable std::vector<NodeID> get_node_address_and_liveness_calls;
+  absl::flat_hash_map<NodeID, std::deque<std::vector<rpc::GcsNodeAddressAndLiveness>>>
+      async_get_all_responses;
+  std::vector<std::vector<NodeID>> async_get_all_calls;
 };
 
-class MockGcsClient : public gcs::GcsClient {
+class FakeGcsClient : public gcs::GcsClient {
  public:
-  explicit MockGcsClient(bool is_subscribed_to_node_change,
+  explicit FakeGcsClient(bool is_subscribed_to_node_change,
                          gcs::GcsClientOptions &options)
       : GcsClient(options) {
     this->node_accessor_ =
-        std::make_unique<MockGcsClientNodeAccessor>(is_subscribed_to_node_change);
+        std::make_unique<FakeGcsClientNodeAccessor>(is_subscribed_to_node_change);
   }
 
-  MockGcsClientNodeAccessor &MockNodeAccessor() {
-    return dynamic_cast<MockGcsClientNodeAccessor &>(*this->node_accessor_);
+  FakeGcsClientNodeAccessor &FakeNodeAccessor() {
+    return static_cast<FakeGcsClientNodeAccessor &>(*this->node_accessor_);
   }
 };
 
@@ -151,12 +178,11 @@ class DefaultUnavailableTimeoutCallbackTest : public ::testing::TestWithParam<bo
                 /*allow_cluster_id_nil=*/true,
                 /*fetch_cluster_id_if_nil=*/false),
         gcs_client_(is_subscribed_to_node_change_, options),
-        raylet_client_pool_(std::make_unique<RayletClientPool>([](const rpc::Address &) {
-          return std::make_shared<MockRayletClientInterface>();
-        })),
+        raylet_client_pool_(std::make_unique<RayletClientPool>(
+            [](const rpc::Address &) { return std::make_shared<FakeRayletClient>(); })),
         client_pool_(
             std::make_unique<CoreWorkerClientPool>([this](const rpc::Address &addr) {
-              return std::make_shared<MockCoreWorkerClient>(
+              return std::make_shared<FakeCoreWorkerClientForTest>(
                   CoreWorkerClientPool::GetDefaultUnavailableTimeoutCallback(
                       &this->gcs_client_,
                       this->client_pool_.get(),
@@ -166,7 +192,7 @@ class DefaultUnavailableTimeoutCallbackTest : public ::testing::TestWithParam<bo
 
   bool is_subscribed_to_node_change_;
   gcs::GcsClientOptions options;
-  MockGcsClient gcs_client_;
+  FakeGcsClient gcs_client_;
   std::unique_ptr<RayletClientPool> raylet_client_pool_;
   std::unique_ptr<CoreWorkerClientPool> client_pool_;
 };
@@ -181,26 +207,16 @@ TEST_P(DefaultUnavailableTimeoutCallbackTest, NodeDeath) {
   // 1. Subscriber cache and GCS don't know about node. Means the node is dead and the GCS
   //    had to discard to keep its cache size in check, should disconnect.
 
-  auto &mock_node_accessor = gcs_client_.MockNodeAccessor();
-  auto invoke_with_node_info_vector =
-      [](std::vector<rpc::GcsNodeAddressAndLiveness> node_info_vector) {
-        return Invoke(
-            [node_info_vector](
-                const rpc::MultiItemCallback<rpc::GcsNodeAddressAndLiveness> &callback,
-                int64_t,
-                const std::vector<NodeID> &) {
-              callback(Status::OK(), node_info_vector);
-            });
-      };
+  auto &fake_node_accessor = gcs_client_.FakeNodeAccessor();
 
   auto worker_1_address = CreateRandomAddress("1");
   auto worker_2_address = CreateRandomAddress("2");
   auto worker_id1 = WorkerID::FromBinary(worker_1_address.worker_id());
   auto worker_id2 = WorkerID::FromBinary(worker_2_address.worker_id());
-  auto worker_1_client = dynamic_cast<MockCoreWorkerClient *>(
+  auto worker_1_client = dynamic_cast<FakeCoreWorkerClientForTest *>(
       client_pool_->GetOrConnect(worker_1_address).get());
   AssertID(worker_id1, *client_pool_, true);
-  auto worker_2_client = dynamic_cast<MockCoreWorkerClient *>(
+  auto worker_2_client = dynamic_cast<FakeCoreWorkerClientForTest *>(
       client_pool_->GetOrConnect(worker_2_address).get());
   AssertID(worker_id2, *client_pool_, true);
 
@@ -212,47 +228,28 @@ TEST_P(DefaultUnavailableTimeoutCallbackTest, NodeDeath) {
   rpc::GcsNodeAddressAndLiveness node_info_dead;
   node_info_dead.set_state(rpc::GcsNodeInfo::DEAD);
   if (is_subscribed_to_node_change_) {
-    EXPECT_CALL(mock_node_accessor,
-                GetNodeAddressAndLiveness(worker_1_node_id, /*filter_dead_nodes=*/false))
-        .WillOnce(Return(std::nullopt))
-        .WillOnce(Return(node_info_alive))
-        .WillOnce(Return(node_info_dead));
-    EXPECT_CALL(
-        mock_node_accessor,
-        AsyncGetAllNodeAddressAndLiveness(_, _, std::vector<NodeID>{worker_1_node_id}))
-        .WillOnce(invoke_with_node_info_vector({node_info_alive}));
-    EXPECT_CALL(mock_node_accessor,
-                GetNodeAddressAndLiveness(worker_2_node_id, /*filter_dead_nodes=*/false))
-        .WillOnce(Return(std::nullopt));
-    EXPECT_CALL(
-        mock_node_accessor,
-        AsyncGetAllNodeAddressAndLiveness(_, _, std::vector<NodeID>{worker_2_node_id}))
-        .WillOnce(invoke_with_node_info_vector({}));
+    fake_node_accessor.get_node_address_and_liveness_responses[worker_1_node_id] = {
+        std::nullopt, node_info_alive, node_info_dead};
+    fake_node_accessor.async_get_all_responses[worker_1_node_id] = {{node_info_alive}};
+    fake_node_accessor.get_node_address_and_liveness_responses[worker_2_node_id] = {
+        std::nullopt};
+    fake_node_accessor.async_get_all_responses[worker_2_node_id] = {{}};
   } else {
-    EXPECT_CALL(
-        mock_node_accessor,
-        AsyncGetAllNodeAddressAndLiveness(_, _, std::vector<NodeID>{worker_1_node_id}))
-        .WillOnce(invoke_with_node_info_vector({node_info_alive}))
-        .WillOnce(invoke_with_node_info_vector({node_info_alive}))
-        .WillOnce(invoke_with_node_info_vector({node_info_dead}));
-    EXPECT_CALL(
-        mock_node_accessor,
-        AsyncGetAllNodeAddressAndLiveness(_, _, std::vector<NodeID>{worker_2_node_id}))
-        .WillOnce(invoke_with_node_info_vector({}));
+    fake_node_accessor.async_get_all_responses[worker_1_node_id] = {
+        {node_info_alive}, {node_info_alive}, {node_info_dead}};
+    fake_node_accessor.async_get_all_responses[worker_2_node_id] = {{}};
   }
 
-  auto raylet_client = std::dynamic_pointer_cast<MockRayletClientInterface>(
+  auto raylet_client = std::dynamic_pointer_cast<FakeRayletClient>(
       raylet_client_pool_->GetOrConnectByAddress(worker_1_address));
   // Worker is alive when node is alive.
-  EXPECT_CALL(*raylet_client, IsLocalWorkerDead(_, _))
-      .Times(2)
-      .WillRepeatedly(
-          Invoke([](const WorkerID &,
-                    const rpc::ClientCallback<rpc::IsLocalWorkerDeadReply> &callback) {
-            rpc::IsLocalWorkerDeadReply reply;
-            reply.set_is_dead(false);
-            callback(Status::OK(), std::move(reply));
-          }));
+  raylet_client->is_local_worker_dead_hook =
+      [](const WorkerID &,
+         const rpc::ClientCallback<rpc::IsLocalWorkerDeadReply> &callback) {
+        rpc::IsLocalWorkerDeadReply reply;
+        reply.set_is_dead(false);
+        callback(Status::OK(), std::move(reply));
+      };
 
   worker_1_client->unavailable_timeout_callback_();
   AssertID(worker_id1, *client_pool_, true);
@@ -262,6 +259,10 @@ TEST_P(DefaultUnavailableTimeoutCallbackTest, NodeDeath) {
   AssertID(worker_id1, *client_pool_, false);
   worker_2_client->unavailable_timeout_callback_();
   AssertID(worker_id2, *client_pool_, false);
+
+  // Worker is alive on both node-alive checks (calls 1 and 2 for worker_1).
+  EXPECT_EQ(raylet_client->num_is_local_worker_dead_requests, 2);
+  EXPECT_TRUE(fake_node_accessor.AllResponsesConsumed());
 }
 
 TEST_P(DefaultUnavailableTimeoutCallbackTest, WorkerDeath) {
@@ -271,52 +272,43 @@ TEST_P(DefaultUnavailableTimeoutCallbackTest, WorkerDeath) {
 
   auto worker_address = CreateRandomAddress("1");
   auto worker_id = WorkerID::FromBinary(worker_address.worker_id());
-  auto core_worker_client = dynamic_cast<MockCoreWorkerClient *>(
+  auto worker_node_id = NodeID::FromBinary(worker_address.node_id());
+  auto core_worker_client = dynamic_cast<FakeCoreWorkerClientForTest *>(
       client_pool_->GetOrConnect(worker_address).get());
   AssertID(worker_id, *client_pool_, true);
 
+  auto &fake_node_accessor = gcs_client_.FakeNodeAccessor();
   rpc::GcsNodeAddressAndLiveness node_info_alive;
   node_info_alive.set_state(rpc::GcsNodeInfo::ALIVE);
   if (is_subscribed_to_node_change_) {
-    EXPECT_CALL(gcs_client_.MockNodeAccessor(),
-                GetNodeAddressAndLiveness(_, /*filter_dead_nodes=*/false))
-        .Times(2)
-        .WillRepeatedly(Return(node_info_alive));
+    fake_node_accessor.get_node_address_and_liveness_responses[worker_node_id] = {
+        node_info_alive, node_info_alive};
   } else {
-    EXPECT_CALL(gcs_client_.MockNodeAccessor(),
-                AsyncGetAllNodeAddressAndLiveness(_, _, _))
-        .Times(2)
-        .WillRepeatedly(Invoke(
-            [&](const rpc::MultiItemCallback<rpc::GcsNodeAddressAndLiveness> &callback,
-                int64_t,
-                const std::vector<NodeID> &) {
-              callback(Status::OK(), {node_info_alive});
-            }));
+    fake_node_accessor.async_get_all_responses[worker_node_id] = {{node_info_alive},
+                                                                  {node_info_alive}};
   }
 
-  auto raylet_client = std::dynamic_pointer_cast<MockRayletClientInterface>(
+  auto raylet_client = std::dynamic_pointer_cast<FakeRayletClient>(
       raylet_client_pool_->GetOrConnectByAddress(worker_address));
-  EXPECT_CALL(*raylet_client, IsLocalWorkerDead(_, _))
-      .WillOnce(
-          Invoke([](const WorkerID &,
-                    const rpc::ClientCallback<rpc::IsLocalWorkerDeadReply> &callback) {
-            rpc::IsLocalWorkerDeadReply reply;
-            reply.set_is_dead(false);
-            callback(Status::OK(), std::move(reply));
-          }))
-      .WillOnce(
-          Invoke([](const WorkerID &,
-                    const rpc::ClientCallback<rpc::IsLocalWorkerDeadReply> &callback) {
-            rpc::IsLocalWorkerDeadReply reply;
-            reply.set_is_dead(true);
-            callback(Status::OK(), std::move(reply));
-          }));
+  // Worker is alive on the first check and dead on the second.
+  raylet_client->is_local_worker_dead_hook =
+      [call_count = 0](
+          const WorkerID &,
+          const rpc::ClientCallback<rpc::IsLocalWorkerDeadReply> &callback) mutable {
+        rpc::IsLocalWorkerDeadReply reply;
+        reply.set_is_dead(call_count >= 1);
+        ++call_count;
+        callback(Status::OK(), std::move(reply));
+      };
 
   // Disconnects the second time.
   core_worker_client->unavailable_timeout_callback_();
   AssertID(worker_id, *client_pool_, true);
   core_worker_client->unavailable_timeout_callback_();
   AssertID(worker_id, *client_pool_, false);
+
+  EXPECT_EQ(raylet_client->num_is_local_worker_dead_requests, 2);
+  EXPECT_TRUE(fake_node_accessor.AllResponsesConsumed());
 }
 
 INSTANTIATE_TEST_SUITE_P(IsSubscribedToNodeChange,

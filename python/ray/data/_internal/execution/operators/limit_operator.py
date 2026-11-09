@@ -3,13 +3,11 @@ from dataclasses import replace
 from typing import Deque, List, Optional, Tuple
 
 import ray
+from ray.data._internal.execution.execution_flags import actor_only_backend_enabled
 from ray.data._internal.execution.interfaces import (
     BlockEntry,
     PhysicalOperator,
     RefBundle,
-)
-from ray.data._internal.execution.operators.base_physical_operator import (
-    OneToOneOperator,
 )
 from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data._internal.stats import StatsDict
@@ -18,7 +16,7 @@ from ray.data.context import DataContext
 from ray.types import ObjectRef
 
 
-class LimitOperator(OneToOneOperator):
+class LimitOperator(PhysicalOperator):
     """Physical operator for limit."""
 
     def __init__(
@@ -33,7 +31,7 @@ class LimitOperator(OneToOneOperator):
         self._name = f"limit={limit}"
         self._output_blocks_stats: List[BlockStats] = []
         self._cur_output_bundles = 0
-        super().__init__(self._name, input_op, data_context)
+        super().__init__(self._name, [input_op], data_context)
         if self._limit <= 0:
             self.mark_execution_finished()
 
@@ -63,10 +61,22 @@ class LimitOperator(OneToOneOperator):
                     block = BlockAccessor.for_block(block).slice(
                         0, num_rows, copy=False
                     )
+                    # The slice is a NEW object living on whichever node ran
+                    # this task, and it was not produced by the upstream
+                    # actor. Restamping both keeps object-store accounting
+                    # from charging it to the wrong node, and from attributing
+                    # it to an actor that never produced it.
+                    exec_stats = metadata.exec_stats
                     metadata = replace(
                         metadata,
                         num_rows=num_rows,
                         size_bytes=BlockAccessor.for_block(block).size_bytes(),
+                        node_id=ray.get_runtime_context().get_node_id(),
+                        exec_stats=(
+                            replace(exec_stats, actor_id=None)
+                            if exec_stats is not None
+                            else None
+                        ),
                     )
                     return block, metadata
 
@@ -74,19 +84,30 @@ class LimitOperator(OneToOneOperator):
                 label_selector = self.data_context.execution_options.label_selector
                 if label_selector:
                     slice_task = slice_task.options(label_selector=label_selector)
-                block, metadata_ref = slice_task.remote(
+                sliced_block, sliced_metadata_ref = slice_task.remote(
                     block,
                     metadata,
                     self._limit - self._consumed_rows,
                 )
-                out_blocks.append(block)
-                metadata = ray.get(metadata_ref)
+                out_blocks.append(sliced_block)
+                sliced_metadata = ray.get(sliced_metadata_ref)
+                if actor_only_backend_enabled():
+                    # Sliced blocks are new ObjectRefs; register them so the
+                    # bank's withdraw on consumption matches an on_new_output.
+                    assert self._resource_bank is not None
+                    self._resource_bank.on_new_output(
+                        op=self,
+                        ref=sliced_block,
+                        bm=sliced_metadata,
+                    )
+                    # Now remove the old block from tracking
+                    self._resource_bank.on_block_consumed(input_ref=block)
                 # Slicing creates a new block; register it for memory tracking.
                 self._block_ref_counter.on_block_produced(
-                    block, metadata.size_bytes or 0, self.id
+                    sliced_block, sliced_metadata.size_bytes or 0, self.id
                 )
-                out_metadata.append(metadata)
-                self._output_blocks_stats.append(metadata.to_stats())
+                out_metadata.append(sliced_metadata)
+                self._output_blocks_stats.append(sliced_metadata.to_stats())
                 self._consumed_rows = self._limit
                 break
         self._cur_output_bundles += 1

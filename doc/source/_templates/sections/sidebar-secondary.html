@@ -1,0 +1,13 @@
+{#- Override of pydata-sphinx-theme 0.18.0 sections/sidebar-secondary.html. Re-sync on theme upgrades.
+    Change: the secondary sidebar wrapper is a labeled <nav>, not a <div>.
+    Why: Read the Docs serves docs.ray.io through Cloudflare, which converts pages to Markdown for clients
+    that send `Accept: text/markdown`, such as coding agents. The converter drops <header>, <footer>, and <nav>
+    but keeps <div> and <aside>, so site chrome in a <div> leaks into the Markdown as page content. -#}
+{% if secondary_sidebar_items -%}
+<nav class="sidebar-secondary-items sidebar-secondary__inner" aria-label="{{ _('Page tools') }}">
+{# Note: secondary_sidebar_items is set by set_secondary_sidebar_items() in utils.py #}
+{% for toc_item in secondary_sidebar_items %}
+  <div class="sidebar-secondary-item">{% include toc_item %}</div>
+{% endfor %}
+</nav>
+{%- endif %}

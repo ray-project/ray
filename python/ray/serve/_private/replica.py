@@ -70,9 +70,11 @@ from ray.serve._private.common import (
 )
 from ray.serve._private.config import DeploymentConfig
 from ray.serve._private.constants import (
+    DRAIN_WAITING_LOG_INTERVAL_S,
     GRPC_CONTEXT_ARG_NAME,
     HEALTH_CHECK_METHOD,
     HEALTHY_MESSAGE,
+    MIN_GRACEFUL_SHUTDOWN_WAIT_LOOP_S,
     RAY_SERVE_AUTOSCALING_METRIC_RECORD_INTERVAL_FACTOR,
     RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE,
     RAY_SERVE_DIRECT_INGRESS_MIN_DRAINING_PERIOD_S,
@@ -1180,8 +1182,8 @@ class Replica:
         self._rank: Optional[ReplicaRank] = None
 
         # gRPC server for inter-deployment communication. Created via the shared
-        # helper so Ray's authentication interceptor is attached when token auth
-        # is enabled; without it this server would accept unauthenticated calls.
+        # helper so Ray's authentication interceptor is attached; without it this
+        # server would accept unauthenticated calls when token auth is enabled.
         self._server = create_grpc_server_with_interceptors(
             asynchronous=True,
             options=[
@@ -2084,8 +2086,12 @@ class Replica:
                 this when the caller already waited out the draining period, so
                 an idle replica does not spend another wait loop here.
         """
-        wait_loop_period_s = self._deployment_config.graceful_shutdown_wait_loop_s
+        wait_loop_period_s = max(
+            self._deployment_config.graceful_shutdown_wait_loop_s,
+            MIN_GRACEFUL_SHUTDOWN_WAIT_LOOP_S,
+        )
         deadline = time.monotonic() + min_draining_period_s
+        last_log_time = None
         skip_sleep = check_immediately
         while True:
             if skip_sleep:
@@ -2094,14 +2100,22 @@ class Replica:
                 await asyncio.sleep(wait_loop_period_s)
 
             num_ongoing_requests = self.get_num_ongoing_requests()
-            min_period_remaining_s = deadline - time.monotonic()
+            now = time.monotonic()
+            min_period_remaining_s = deadline - now
             if num_ongoing_requests > 0 or min_period_remaining_s > 0:
-                logger.info(
-                    f"Waiting for an additional {wait_loop_period_s}s to shut down: "
-                    f"{num_ongoing_requests} ongoing requests, "
-                    f"{max(0.0, min_period_remaining_s):.1f}s minimum draining "
-                    f"period remaining."
-                )
+                # A short wait loop checks many times per second; log at most
+                # once per interval so the replica's log isn't flooded.
+                if (
+                    last_log_time is None
+                    or now - last_log_time >= DRAIN_WAITING_LOG_INTERVAL_S
+                ):
+                    last_log_time = now
+                    logger.info(
+                        f"Waiting for an additional {wait_loop_period_s}s to shut "
+                        f"down: {num_ongoing_requests} ongoing requests, "
+                        f"{max(0.0, min_period_remaining_s):.1f}s minimum draining "
+                        f"period remaining."
+                    )
             else:
                 logger.info(
                     "Drained ongoing requests; shutting down servers.",
