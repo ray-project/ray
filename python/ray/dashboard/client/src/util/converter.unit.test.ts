@@ -37,4 +37,18 @@ describe("memoryConverter", () => {
   test.each(table)("$name", ({ input, expected }) => {
     expect(memoryConverter(input)).toEqual(expected);
   });
+
+  describe("edge cases", () => {
+    test("returns '-' for null", () => {
+      expect(memoryConverter(null)).toEqual("-");
+    });
+
+    test("returns '-' for undefined", () => {
+      expect(memoryConverter(undefined)).toEqual("-");
+    });
+
+    test("returns '-' for NaN", () => {
+      expect(memoryConverter(NaN)).toEqual("-");
+    });
+  });
 });
