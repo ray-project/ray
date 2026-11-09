@@ -841,6 +841,42 @@ def test_read_mcap_max_errored_blocks_loses_only_the_rows_of_corrupt_chunks(
     assert seqs == expected
 
 
+def test_read_mcap_max_errored_blocks_loses_only_a_message_that_is_not_json(
+    ray_start_regular_shared, tmp_path, datasource_v2
+):
+    """With ``max_errored_blocks=1``, V2 loses only the row of a message whose
+    payload is not valid JSON and keeps the rest of its file. With
+    ``max_errored_blocks=0``, the read fails naming the message's ``row_id``."""
+    if not datasource_v2:
+        pytest.skip("the legacy reader keeps a payload that is not JSON as bytes")
+    from ray.data._internal.datasource_v2.formats.mcap.mcap_summary import (
+        message_row_id,
+    )
+    from ray.data.tests.unit.datasource_v2.mcap_testing import (
+        CHUNKED_FILE_MESSAGES,
+        summary_of,
+        write_invalid_json,
+    )
+
+    bad = 4
+    # One message per chunk, so ``bad`` is the only message of chunk ``bad``.
+    path = write_invalid_json(os.path.join(tmp_path, "bad.mcap"), bad={bad})
+    bad_offset = summary_of(path).chunk_indexes[bad].chunk_start_offset
+    ctx = ray.data.DataContext.get_current()
+
+    ctx.max_errored_blocks = 1
+    rows = ray.data.read_mcap(path).take_all()
+
+    seqs = sorted(row["data"]["seq"] for row in rows)
+    assert seqs == [i for i in range(CHUNKED_FILE_MESSAGES) if i != bad]
+
+    ctx.max_errored_blocks = 0
+    with pytest.raises(Exception) as error:
+        ray.data.read_mcap(path).take_all()
+
+    assert message_row_id(path, bad_offset, 0) in str(error.value)
+
+
 def test_read_mcap_lists_files_in_parallel(
     ray_start_regular_shared, tmp_path, datasource_v2
 ):

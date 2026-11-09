@@ -21,7 +21,7 @@ partition and synthesized columns. The other modules read and build the rows:
 
 import itertools
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from functools import partial
 from typing import (
     TYPE_CHECKING,
@@ -50,6 +50,7 @@ from ray.data._internal.datasource_v2.formats.mcap.mcap_io import (
     read_summary_from,
 )
 from ray.data._internal.datasource_v2.formats.mcap.mcap_message_rows import (
+    InvalidJsonPayload,
     _MessageTableBuilder,
 )
 from ray.data._internal.datasource_v2.formats.mcap.mcap_options import MCAPSelection
@@ -144,12 +145,13 @@ class MCAPReader(Reader[FileManifest]):
 
         When ``DataContext.max_errored_blocks`` lets errors be skipped, a
         corrupt chunk costs only itself: the reader skips it and reads the
-        file's other chunks. A file whose data does not decode as a whole does
-        not stop the task's other files. Once they are read, one error names
-        every file and chunk that is corrupt, so the task counts once against
-        the budget. Any other error, such as a failed read, raises at once, so
-        the task's retry settings see it. Without skipping, the first failure
-        fails the task at once.
+        file's other chunks. A message whose payload is not valid JSON likewise
+        costs only its own row. A file whose data does not decode as a whole
+        does not stop the task's other files. Once they are read, one error
+        names every file, chunk and message skipped, so the task counts once
+        against the budget. Any other error, such as a failed read, raises at
+        once, so the task's retry settings see it. Without skipping, the first
+        failure fails the task at once.
         """
         from ray.data.context import DataContext
 
@@ -180,16 +182,17 @@ class MCAPReader(Reader[FileManifest]):
         """Yield the tables of one file, retrying as ``retried_io_errors`` allows.
 
         With ``skip_corrupt``, the file's corrupt data is appended to
-        ``failures`` rather than raised: its skipped chunks, or its own error
-        when it does not decode as a whole (``is_corrupt_data_error``).
+        ``failures`` rather than raised: its skipped chunks and messages, or
+        its own error when it does not decode as a whole
+        (``is_corrupt_data_error``).
         """
         from ray.data.context import DataContext
 
-        # The chunks skipped as corrupt, by offset. Each attempt starts it
-        # afresh, so it holds the last attempt's.
-        corrupt: Optional[Dict[int, Exception]] = {} if skip_corrupt else None
+        # What the read skips. Each attempt starts it afresh, so it holds the
+        # last attempt's.
+        skipped = _SkippedData() if skip_corrupt else None
         tables = iterate_with_retry(
-            partial(self._read_file, owned, limit, corrupt),
+            partial(self._read_file, owned, limit, skipped),
             f"read MCAP file {owned.path}",
             match=DataContext.get_current().retried_io_errors,
         )
@@ -200,8 +203,8 @@ class MCAPReader(Reader[FileManifest]):
                 raise
             failures.append((owned.path, e))
             return
-        if corrupt:
-            failures.append((owned.path, _corrupt_chunks_error(owned.path, corrupt)))
+        if skipped is not None and (skipped.chunks or skipped.num_messages):
+            failures.append((owned.path, _skipped_data_error(owned.path, skipped)))
 
     # -- one file ----------------------------------------------------------
 
@@ -209,22 +212,23 @@ class MCAPReader(Reader[FileManifest]):
         self,
         owned: "_OwnedFile",
         limit: Optional[int],
-        corrupt: Optional[Dict[int, Exception]] = None,
+        skipped: Optional["_SkippedData"] = None,
     ) -> Iterator[pa.Table]:
         """Yield the tables of one file, limited to the chunks it owns.
 
         ``owned.offsets`` is ``None`` for a whole-file row, which means every
         chunk. A file without a chunk index is scanned linearly, through a read
         buffer of ``DataContext.streaming_read_buffer_size`` bytes. At most
-        ``limit`` rows are yielded. With ``corrupt``, a chunk that cannot be
-        decoded is recorded there by offset and skipped; a scanned file has no
-        chunk boundaries to skip to, so it still fails whole. A retry reads the
-        file from its start, so ``corrupt`` is cleared first.
+        ``limit`` messages are read, a skipped one included. With ``skipped``, a
+        chunk that cannot be decoded and a message that is not valid JSON are
+        recorded there and skipped; a scanned file has no chunk boundaries to
+        skip to, so a corrupt chunk still fails it whole. A retry reads the
+        file from its start, so ``skipped`` is cleared first.
         """
         from ray.data.context import DataContext
 
-        if corrupt is not None:
-            corrupt.clear()
+        if skipped is not None:
+            skipped.clear()
 
         path, offsets = owned.path, owned.offsets
         filesystem = self._filesystem or LocalFileSystem()
@@ -252,20 +256,27 @@ class MCAPReader(Reader[FileManifest]):
                     offsets,
                     file_summary,
                     on_corrupt=None
-                    if corrupt is None
-                    else partial(_record_corrupt_chunk, corrupt),
+                    if skipped is None
+                    else partial(_record_corrupt_chunk, skipped.chunks),
                 )
-            yield from self._tables(itertools.islice(messages, limit), path, offsets)
+            yield from self._tables(
+                itertools.islice(messages, limit), path, offsets, skipped
+            )
 
     # -- rows to tables ----------------------------------------------------
 
     def _tables(
-        self, messages: Iterator[_Selected], path: str, offsets: Optional[Set[int]]
+        self,
+        messages: Iterator[_Selected],
+        path: str,
+        offsets: Optional[Set[int]],
+        skipped: Optional["_SkippedData"] = None,
     ) -> Iterator[pa.Table]:
         """Build tables of about ``target_block_size`` bytes from the messages.
 
         Messages are pulled one at a time, so a chunk is read only once its
-        first message is the next one needed.
+        first message is the next one needed. With ``skipped``, a message that
+        is not valid JSON is recorded there instead of becoming a row.
         """
         # Every table reports one read unit: the file for a whole-file read, else
         # the row's first chunk. Listing excludes read units chunk by chunk
@@ -286,7 +297,8 @@ class MCAPReader(Reader[FileManifest]):
         )
         rows_before = 0
         for selected in messages:
-            builder.add(selected)
+            if not _add_message(builder, selected, skipped):
+                continue
             if (
                 self._target_block_size is not None
                 and builder.estimated_bytes >= self._target_block_size
@@ -392,6 +404,62 @@ class MCAPReader(Reader[FileManifest]):
         return array
 
 
+@dataclass(frozen=True)
+class _SkippedMessage:
+    """A message whose payload is not valid JSON, and the error it raised."""
+
+    row_id: str
+    error: Exception
+
+
+@dataclass
+class _SkippedData:
+    """What a read of one file skipped.
+
+    Every corrupt chunk is kept, with its first error. Messages that are not
+    valid JSON are counted and only the first is kept, so a file of such
+    messages costs constant memory.
+    """
+
+    # Corrupt chunks, by byte offset.
+    chunks: Dict[int, Exception] = field(default_factory=dict)
+    num_messages: int = 0
+    first_message: Optional[_SkippedMessage] = None
+
+    def record_message(self, row_id: str, error: Exception) -> None:
+        """Count a skipped message, keeping it if it is the first."""
+        if self.first_message is None:
+            self.first_message = _SkippedMessage(row_id, error)
+        self.num_messages += 1
+
+    def clear(self) -> None:
+        """Forget what was skipped, for a read that starts the file over."""
+        self.chunks.clear()
+        self.num_messages = 0
+        self.first_message = None
+
+
+def _add_message(
+    builder: _MessageTableBuilder,
+    selected: _Selected,
+    skipped: Optional[_SkippedData],
+) -> bool:
+    """Add one message to ``builder`` and return whether it became a row.
+
+    With ``skipped``, a message whose payload is not valid JSON is recorded
+    there rather than raised.
+    """
+    try:
+        builder.add(selected)
+    except InvalidJsonPayload as e:
+        if skipped is None:
+            raise
+        _, _, _, row_id = selected
+        skipped.record_message(row_id, e)
+        return False
+    return True
+
+
 def _record_corrupt_chunk(
     corrupt: Dict[int, Exception], chunk_index: "ChunkIndex", error: Exception
 ) -> None:
@@ -399,14 +467,33 @@ def _record_corrupt_chunk(
     corrupt.setdefault(chunk_index.chunk_start_offset, error)
 
 
-def _corrupt_chunks_error(path: str, corrupt: Dict[int, Exception]) -> ValueError:
-    """The error for the chunks of ``path`` that a read skipped as corrupt."""
-    offsets = sorted(corrupt)
-    first = corrupt[offsets[0]]
-    where = "chunk at byte offset" if len(offsets) == 1 else "chunks at byte offsets"
+def _skipped_data_error(path: str, skipped: _SkippedData) -> ValueError:
+    """The error for the chunks and messages of ``path`` that a read skipped.
+
+    It names every chunk and the first message, and quotes the first error:
+    the first chunk's, or the first message's when no chunk was skipped.
+    """
+    offsets = sorted(skipped.chunks)
+    parts = []
+    if offsets:
+        where = (
+            "chunk at byte offset" if len(offsets) == 1 else "chunks at byte offsets"
+        )
+        listed = ", ".join(str(offset) for offset in offsets)
+        parts.append(f"{len(offsets)} corrupt {where} {listed}")
+    message = skipped.first_message
+    if message is not None:
+        count = skipped.num_messages
+        what = "message that is" if count == 1 else "messages that are"
+        which = "row id" if count == 1 else "first: row id"
+        parts.append(f"{count} {what} not valid JSON ({which} {message.row_id})")
+    if offsets:
+        first = skipped.chunks[offsets[0]]
+    else:
+        assert message is not None
+        first = message.error
     error = ValueError(
-        f"Skipped {len(offsets)} corrupt {where} "
-        f"{', '.join(str(offset) for offset in offsets)} of MCAP file {path!r}: "
+        f"Skipped {' and '.join(parts)} of MCAP file {path!r}: "
         f"{type(first).__name__}: {_first_line(first)}"
     )
     error.__cause__ = first
