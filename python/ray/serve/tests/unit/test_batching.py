@@ -155,9 +155,11 @@ async def test_batch_size_one_long_timeout(use_class):
 @pytest.mark.parametrize("use_class", [True, False])
 async def test_batch_size_multiple_zero_timeout(use_class):
     block_execution_event = asyncio.Event()
+    batch_started_event = asyncio.Event()
 
     @serve.batch(max_batch_size=2, batch_wait_timeout_s=0)
     async def zero_timeout(requests):
+        batch_started_event.set()
         await block_execution_event.wait()
         if "raise" in requests:
             _ = 1 / 0
@@ -166,6 +168,7 @@ async def test_batch_size_multiple_zero_timeout(use_class):
     class ZeroTimeout:
         @serve.batch(max_batch_size=2, batch_wait_timeout_s=0)
         async def zero_timeout(self, requests):
+            batch_started_event.set()
             await block_execution_event.wait()
             if "raise" in requests:
                 _ = 1 / 0
@@ -184,14 +187,16 @@ async def test_batch_size_multiple_zero_timeout(use_class):
     with pytest.raises(ZeroDivisionError):
         await call("raise")
     block_execution_event.clear()
+    batch_started_event.clear()
 
     # Check that 2 requests will be executed together if available.
     # The first should cause a size-one batch to be executed, then
     # the next two should be executed together (signaled by both
     # having the exception).
     t1 = get_or_create_event_loop().create_task(call("hi1"))
-    with pytest.raises(asyncio.TimeoutError):
-        await asyncio.wait_for(asyncio.shield(t1), timeout=0.001)
+    # Wait for t1's batch to start, so t2 and t3 can't join it. A short
+    # timeout can't stand in for this: on Windows it fires on the next loop tick.
+    await batch_started_event.wait()
 
     t2 = get_or_create_event_loop().create_task(call("hi2"))
     t3 = get_or_create_event_loop().create_task(call("raise"))
@@ -305,6 +310,59 @@ async def test_batch_size_multiple_long_timeout(use_class):
         t2.result()
     with pytest.raises(ZeroDivisionError):
         t3.result()
+
+
+@pytest.mark.asyncio
+async def test_requests_arriving_while_batches_run_form_one_batch():
+    # While every max_concurrent_batches permit is in use, requests that arrive
+    # must wait in the queue and then go out as one batch, not as one batch
+    # each that waits for a permit.
+    batch_sizes = []
+    release = asyncio.Event()
+
+    @serve.batch(max_batch_size=10, batch_wait_timeout_s=0.01, max_concurrent_batches=1)
+    async def func(requests):
+        batch_sizes.append(len(requests))
+        await release.wait()
+        return requests
+
+    first = get_or_create_event_loop().create_task(func(0))
+    while not batch_sizes:
+        await asyncio.sleep(0.01)
+    rest = []
+    for i in range(1, 6):
+        rest.append(get_or_create_event_loop().create_task(func(i)))
+        # Longer than batch_wait_timeout_s, so each request could close a batch.
+        await asyncio.sleep(0.05)
+
+    release.set()
+    assert await asyncio.gather(first, *rest) == [0, 1, 2, 3, 4, 5]
+    assert batch_sizes == [1, 5]
+
+
+@pytest.mark.asyncio
+async def test_batch_timeout_counts_time_waiting_for_a_permit():
+    # A request that already waited longer than batch_wait_timeout_s for a
+    # permit goes out as soon as the permit is free, without a second wait.
+    batch_start_times = []
+    release = asyncio.Event()
+
+    @serve.batch(max_batch_size=10, batch_wait_timeout_s=1.0, max_concurrent_batches=1)
+    async def func(requests):
+        batch_start_times.append(time.time())
+        await release.wait()
+        return requests
+
+    first = get_or_create_event_loop().create_task(func(0))
+    while not batch_start_times:
+        await asyncio.sleep(0.01)
+    second = get_or_create_event_loop().create_task(func(1))
+    await asyncio.sleep(1.2)
+
+    release_time = time.time()
+    release.set()
+    assert await asyncio.gather(first, second) == [0, 1]
+    assert batch_start_times[1] - release_time < 0.5
 
 
 @pytest.mark.asyncio

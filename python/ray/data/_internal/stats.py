@@ -34,7 +34,6 @@ from ray.data._internal.execution.interfaces.distribution_tracker import (
 )
 from ray.data._internal.execution.interfaces.execution_options import safe_round
 from ray.data._internal.execution.interfaces.op_runtime_metrics import (
-    NODE_UNKNOWN,
     MetricDefinition,
     MetricsGroup,
     MetricsType,
@@ -48,7 +47,7 @@ from ray.data._internal.metadata_exporter import (
     get_dataset_metadata_exporter,
 )
 from ray.data._internal.util import capfirst
-from ray.data.block import BlockStats
+from ray.data.block import UNKNOWN_NODE_ID, BlockStats
 from ray.data.context import DataContext
 from ray.util.annotations import DeveloperAPI
 from ray.util.metrics import Counter, Gauge, Histogram, Metric
@@ -824,7 +823,7 @@ class _StatsActor:
                     # only needs to be done up to once per loop
                     self._rebuild_ray_nodes_cache()
 
-                node_ip = self._ray_nodes_cache.get(node_id, NODE_UNKNOWN)
+                node_ip = self._ray_nodes_cache.get(node_id, UNKNOWN_NODE_ID)
 
                 tags = self._create_tags(dataset_tag=dataset_tag, node_ip_tag=node_ip)
                 for metric_name, metric_value in node_metrics.items():
@@ -1830,7 +1829,7 @@ class OperatorStatsSummary:
                         stage_time_accs.append(_StatsAccumulator())
                     for acc, seconds in zip(stage_time_accs, es.stage_time_s):
                         acc.add(seconds)
-                tasks_per_node[es.node_id].add(es.task_idx)
+                tasks_per_node[block_meta.node_id].add(es.task_idx)
                 if es.start_unix_time_s is not None and es.wall_time_s is not None:
                     earliest_start_time = min(earliest_start_time, es.start_unix_time_s)
                     latest_end_time = max(

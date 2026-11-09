@@ -31,25 +31,25 @@ logger = logging.getLogger(__name__)
 class SACConfig(AlgorithmConfig):
     """Defines a configuration class from which an SAC Algorithm can be built.
 
-    .. testcode::
-
-        config = (
-            SACConfig()
-            .environment("Pendulum-v1")
-            .env_runners(num_env_runners=1)
-            .training(
-                gamma=0.9,
-                actor_lr=0.001,
-                critic_lr=0.002,
-                train_batch_size_per_learner=32,
-            )
-        )
-        # Build the SAC algo object from the config and run 1 training iteration.
-        algo = config.build()
-        algo.train()
+    Examples:
+        >>> config = (
+        ...     SACConfig()
+        ...     .environment("Pendulum-v1")
+        ...     .env_runners(num_env_runners=1)
+        ...     .training(
+        ...         gamma=0.9,
+        ...         actor_lr=0.001,
+        ...         critic_lr=0.002,
+        ...         train_batch_size_per_learner=32,
+        ...     )
+        ... )
+        >>> # Build the SAC algo object from the config and run 1 training iteration.
+        >>> algo = config.build()
+        >>> _ = algo.train()
     """
 
     def __init__(self, algo_class=None):
+        """Initializes a SACConfig instance."""
         self.exploration_config = {
             # The Exploration class to use. In the simplest case, this is the name
             # (str) of any class present in the `rllib.utils.exploration` package.
