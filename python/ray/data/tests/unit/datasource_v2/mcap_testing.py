@@ -325,21 +325,42 @@ def count_sample(datasource, filesystem=None) -> List[int]:
     return [m.num_rows for m in scanner.create_reader().read_metadata(sample)]
 
 
+def as_task(manifest: FileManifest) -> FileManifest:
+    """``manifest`` as a read task: a packed task as given, a listing manifest,
+    which carries no task summaries, packed into one (``as_read_task``)."""
+    if TASK_SUMMARY_COLUMN in manifest.as_block().column_names:
+        return manifest
+    return as_read_task(manifest)
+
+
 def read_all(datasource, *manifests, scanner=None) -> pa.Table:
     """Read ``manifests`` into one table, with ``scanner`` or the planned one.
 
-    A packed read task is read as given. A listing manifest, which carries no
-    task summaries, is first packed into one read task (``as_read_task``).
+    Each manifest is read as a task (``as_task``).
     """
     scanner = scanner or scanner_for(datasource)
     reader = scanner.create_reader()
-    tasks = [
-        m if TASK_SUMMARY_COLUMN in m.as_block().column_names else as_read_task(m)
-        for m in manifests
-    ]
-    tables = [table for task in tasks for table in reader.read(task)]
+    tables = [table for m in manifests for table in reader.read(as_task(m))]
     assert tables, "expected at least one table"
     return pa.concat_tables(tables)
+
+
+def read_rows(datasource, manifests, columns=None) -> List[Dict[str, Any]]:
+    """Read ``manifests`` with the planned scanner into row dicts.
+
+    ``columns`` prunes the read, as a projection does. Each manifest is read as
+    a task (``as_task``). Every table must match the read schema.
+    """
+    scanner = scanner_for(datasource)
+    if columns is not None:
+        scanner = scanner.prune_columns(columns)
+    reader = scanner.create_reader()
+    rows: List[Dict[str, Any]] = []
+    for manifest in manifests:
+        for table in reader.read(as_task(manifest)):
+            assert table.schema.equals(scanner.read_schema()), table.schema
+            rows.extend(table.to_pylist())
+    return rows
 
 
 def selected_messages(path: str):
@@ -398,6 +419,18 @@ def write_invalid_json(path: str, bad: Iterable[int], **options: Any) -> str:
         messages[seq]["data"] = NOT_JSON
     write_mcap(path, messages, **options)
     return path
+
+
+def write_corrupt_attachment(path: str, index: int) -> None:
+    """Zero the opcode of attachment ``index`` in the MCAP file at ``path``.
+
+    The summary still indexes the record, so the file is listed as usual, but
+    reading that attachment fails.
+    """
+    offset = summary_of(path).attachment_indexes[index].offset
+    with open(path, "r+b") as f:
+        f.seek(offset)
+        f.write(bytes(1))
 
 
 # Where a chunk record's compression name starts: after the opcode (1 byte),

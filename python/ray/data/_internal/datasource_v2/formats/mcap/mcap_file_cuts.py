@@ -95,6 +95,10 @@ class OrderedFileCutter(FilePartitioner):
     heavy files' tasks bypass it. See the module docstring for where a heavy
     file is cut. ``reserved_memory`` is the
     memory each read task reserves (``read_mcap(memory=...)``), if the read sets it.
+    With ``records``, each row is one Attachment or Metadata record. A light
+    file's records go to one task as one run, so the task opens the file once.
+    A heavy file's records are spread over tasks, in listing order when the
+    read keeps order.
     """
 
     def __init__(
@@ -104,8 +108,10 @@ class OrderedFileCutter(FilePartitioner):
         budget: int,
         log_time_order: bool,
         reserved_memory: Optional[float] = None,
+        records: bool = False,
     ):
         self._packer = packer
+        self._records = records
         self._budget = budget
         self._log_time_order = log_time_order
         self._reserved_memory = reserved_memory
@@ -141,6 +147,9 @@ class OrderedFileCutter(FilePartitioner):
 
     def _place(self, file_rows: _FileRows) -> None:
         """Pack one file with others, or cut it into tasks of its own."""
+        if self._records:
+            self._place_records(file_rows)
+            return
         if not file_rows.chunks:
             self._pack(file_rows.rows)
             return
@@ -156,6 +165,22 @@ class OrderedFileCutter(FilePartitioner):
         self._ordered.seal()
         for task in tasks:
             self._ordered.tasks.append(_task_manifest(file_rows, task))
+
+    def _place_records(self, file_rows: _FileRows) -> None:
+        """Pack a light file's records as one run, and spread a heavy file's.
+
+        A file listed whole, or unreadable, passes through as listed.
+        """
+        runs = _record_runs(file_rows.rows)
+        if runs and sum(run.size_bytes for run in runs) <= self._budget:
+            self._pack(_merged_manifest(file_rows, runs))
+        elif self._keeps_order:
+            block = file_rows.rows.as_block()
+            assert isinstance(block, pa.Table)
+            for i in range(block.num_rows):
+                self._ordered.add(FileManifest(block.slice(i, 1)))
+        else:
+            self._packer.add_input(file_rows.rows)
 
     def _pack(self, rows: FileManifest) -> None:
         """Pack ``rows`` with other files, in listing order if the read keeps order."""
@@ -319,15 +344,29 @@ def _chunks(
     return chunks
 
 
-def _task_manifest(file_rows: _FileRows, chunks: Sequence[_Chunk]) -> FileManifest:
-    """One row naming ``chunks`` of the file, as the packer emits its rows.
+def _record_runs(rows: FileManifest) -> List[FileChunk]:
+    """The record runs of a file's rows, or none when a row names no record."""
+    runs = []
+    for metadata in rows.file_chunk_metadatas:
+        if metadata is None or len(metadata["unit_ids"]) != 1:
+            return []
+        runs.append(FileChunk.from_metadata(metadata))
+    return runs
 
-    The packer keeps a run of several chunks whole, since MCAP's packer splits
-    no run (``split_coalesced`` is off).
+
+def _task_manifest(file_rows: _FileRows, chunks: Sequence[_Chunk]) -> FileManifest:
+    """One row naming ``chunks`` of the file (``_merged_manifest``)."""
+    return _merged_manifest(file_rows, [chunk.run for chunk in chunks])
+
+
+def _merged_manifest(file_rows: _FileRows, runs: Sequence[FileChunk]) -> FileManifest:
+    """One row naming the units of ``runs``, as the packer emits its rows.
+
+    The packer keeps a run of several chunks or records whole, since MCAP's
+    packer splits no run (``split_coalesced`` is off).
     """
-    runs = [chunk.run for chunk in chunks]
     run = FileChunk(
-        unit_ids=tuple(sorted(chunk.offset for chunk in chunks)),
+        unit_ids=tuple(sorted(u for r in runs for u in r.unit_ids)),
         num_rows=sum(r.num_rows for r in runs),
         size_bytes=sum(r.size_bytes for r in runs),
         fully_matched=all(r.fully_matched for r in runs),
