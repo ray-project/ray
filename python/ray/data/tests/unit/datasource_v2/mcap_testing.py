@@ -111,7 +111,9 @@ def mixed_encoding_messages(n=6):
     return messages
 
 
-def write_mcap_without_summary_schemas(path, b_declared_in_chunk_1=False):
+def write_mcap_without_summary_schemas(
+    path, b_declared_in_chunk_1=False, message_indexes=True
+):
     """Write two JSON channels with two schemas, one message per chunk.
 
     The schema records are written only inside the chunks
@@ -122,7 +124,8 @@ def write_mcap_without_summary_schemas(path, b_declared_in_chunk_1=False):
         topic   /a  /b  /a  /b  /a  /b
 
     Both schemas are declared in chunk 0, or with ``b_declared_in_chunk_1``,
-    ``other_schema`` only in chunk 1.
+    ``other_schema`` only in chunk 1. Without ``message_indexes``, the chunk
+    indexes do not say which channels a chunk holds, so a read opens every chunk.
     """
     from mcap.writer import CompressionType, IndexType, Writer
 
@@ -131,7 +134,7 @@ def write_mcap_without_summary_schemas(path, b_declared_in_chunk_1=False):
             stream,
             chunk_size=1,
             compression=CompressionType.ZSTD,
-            index_types=IndexType.ALL,
+            index_types=IndexType.ALL if message_indexes else IndexType.CHUNK,
             repeat_schemas=False,
         )
         writer.start(profile="", library="ray-test")

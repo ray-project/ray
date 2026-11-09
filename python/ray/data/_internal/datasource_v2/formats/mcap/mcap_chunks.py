@@ -316,12 +316,15 @@ class SelectedMessageReader:
         for record in records:
             if isinstance(record, Message):
                 index += 1
-                channel, schema = self._channel_and_schema(
-                    f, path, chunk_index, declared, record
-                )
-                if not self._channel_is_selected(channel, schema, summary, selected):
+                channel = self._declared_channel(f, path, chunk_index, declared, record)
+                # Only a message that may be read needs its schema, so one the
+                # topic or time filters drop never fails on a missing schema.
+                if self._rejected_without_schema(channel, summary, selected):
                     continue
                 if not self._selection.in_time_range(record.log_time):
+                    continue
+                schema = self._declared_schema(f, path, chunk_index, declared, channel)
+                if not self._channel_is_selected(channel, schema, summary, selected):
                     continue
                 row_id = message_row_id(path, chunk_index.chunk_start_offset, index)
                 item = (schema, channel, record, row_id)
@@ -331,17 +334,17 @@ class SelectedMessageReader:
             elif isinstance(record, Schema):
                 declared.schemas[record.id] = record
 
-    def _channel_and_schema(
+    def _declared_channel(
         self,
         f: Any,
         path: str,
         chunk_index: "ChunkIndex",
         declared: _Declared,
         message: "Message",
-    ) -> Tuple["Channel", Optional["Schema"]]:
-        """Look up the channel and schema of ``message``.
+    ) -> "Channel":
+        """Look up the channel of ``message``.
 
-        A record not met yet is read back from the earlier chunks of the file.
+        A channel not met yet is read back from the earlier chunks of the file.
         """
         channel = declared.channels.get(message.channel_id)
         if channel is None:
@@ -355,8 +358,22 @@ class SelectedMessageReader:
                 f"{message.channel_id}, which neither the summary nor any "
                 f"chunk up to this one declares.{declared.undecodable_note()}"
             )
+        return channel
+
+    def _declared_schema(
+        self,
+        f: Any,
+        path: str,
+        chunk_index: "ChunkIndex",
+        declared: _Declared,
+        channel: "Channel",
+    ) -> Optional["Schema"]:
+        """Look up the schema of ``channel``, or ``None`` if it has none.
+
+        A schema not met yet is read back from the earlier chunks of the file.
+        """
         if not channel.schema_id:
-            return channel, None
+            return None
         if channel.schema_id not in declared.schemas:
             # The schema record may be only in an earlier chunk
             # (``repeat_schemas=False``). ``message_types`` and the schema
@@ -371,7 +388,19 @@ class SelectedMessageReader:
                 f"{channel.schema_id}, which neither the summary nor any chunk "
                 f"up to this one declares.{declared.undecodable_note()}"
             )
-        return channel, schema
+        return schema
+
+    def _rejected_without_schema(
+        self, channel: "Channel", summary: "Summary", selected: Set[int]
+    ) -> bool:
+        """Whether messages on ``channel`` fail the selection whatever its schema.
+
+        That is the case for a channel the summary lists but ``selected``
+        leaves out, and for a channel whose topic is not selected.
+        """
+        if channel.id in summary.channels and channel.id not in selected:
+            return True
+        return not self._selection.accepts_channel(channel, None)
 
     def _channel_is_selected(
         self,
