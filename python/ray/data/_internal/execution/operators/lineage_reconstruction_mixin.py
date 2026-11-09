@@ -1,4 +1,5 @@
 import abc
+import itertools
 import logging
 from dataclasses import replace
 from typing import Any, Dict, FrozenSet, Iterable, Iterator, List, Optional, Set, Tuple
@@ -16,6 +17,8 @@ from ray.data._internal.execution.lineage_tracker import (
 from ray.data._internal.execution.operators.base_physical_operator import (
     InternalQueueOperatorMixin,
 )
+from ray.data.block import Block
+from ray.types import ObjectRef
 
 logger = logging.getLogger(__name__)
 
@@ -50,6 +53,12 @@ class LineageReconstructionMixin(InternalQueueOperatorMixin, abc.ABC):
         # A plan that traces back to a queued seed is batched here instead of
         # re-injecting the seed.
         self._batched_plans: Dict[LineageTaskId, Set[ReconstructionPlanId]] = {}
+        # Mapping of child lineage task ID -> refs of the input bundle this
+        # operator released for that child's reconstruction task. Plans that
+        # share a parent re-run withhold the same ref, so when a later plan
+        # joins the queued task, its popped refs can already be in that queued
+        # input: they are still needed, not dropped.
+        self._queued_child_input_refs: Dict[LineageTaskId, Set[str]] = {}
         super().__init__(*args, **kwargs)
 
     @abc.abstractmethod
@@ -365,10 +374,16 @@ class LineageReconstructionMixin(InternalQueueOperatorMixin, abc.ABC):
                     del self._reconstruction_outputs[reconstruction_plan_id]
             # If the child reconstruction task is already queued, batch these plans into
             # it instead of queueing it again. The queued input holds the same
-            # rows, so these blocks are dropped.
+            # rows, so these blocks are dropped -- except the ones that are the
+            # very refs in that queued input, which stay live.
             consumer = self._consumer_of(child_task_id)
             if consumer.join_queued_reconstruction_task(child_task_id, ready_plan_ids):
+                self._drop_withheld_outputs(
+                    blocks_per_plan,
+                    queued=self._queued_child_input_refs.get(child_task_id, set()),
+                )
                 continue
+            self._drop_withheld_outputs(blocks_per_plan[1:], kept=blocks_per_plan[0])
             # Create a complete RefBundle containing all reconstruction blocks withheld for a child reconstruction task,
             # stamp it with the child reconstruction task's lineage task ID and every plan it serves.
             inputs = replace(
@@ -379,8 +394,54 @@ class LineageReconstructionMixin(InternalQueueOperatorMixin, abc.ABC):
                 ),
             )
             consumer._queue_reconstruction_task(child_task_id)
+            self._queued_child_input_refs[child_task_id] = {
+                ref.hex()  # pyrefly: ignore[missing-attribute]
+                for ref in inputs.block_refs
+            }
             # Add to the output queue of the current task
             self._enqueue_reconstruction_output(inputs, task_index)
+
+    def _drop_withheld_outputs(
+        self,
+        blocks_per_plan: List[List[RefBundle]],
+        kept: Optional[List[RefBundle]] = None,
+        queued: Optional[Set[str]] = None,
+    ) -> None:
+        """Report popped withheld outputs that no consumer will read: not in
+        ``kept`` (the bundle being released) and not still withheld by another
+        plan. Popped refs that are in ``queued`` (an input already released to a
+        queued child task) are still needed: they are reported released, not
+        dropped."""
+        live = {
+            ref.hex()  # pyrefly: ignore[missing-attribute]
+            for bundle in itertools.chain(
+                kept or [], self._iter_reconstruction_outputs()
+            )
+            for ref in bundle.block_refs
+        }
+        dropped: Dict[str, ObjectRef[Block]] = {}
+        released: Dict[str, ObjectRef[Block]] = {}
+        for bundles in blocks_per_plan:
+            for bundle in bundles:
+                for ref in bundle.block_refs:
+                    key = ref.hex()  # pyrefly: ignore[missing-attribute]
+                    if key in live:
+                        continue
+                    if queued and key in queued:
+                        released[key] = ref
+                    else:
+                        dropped[key] = ref
+        if released:
+            self._on_withheld_outputs_released(list(released.values()))
+        if dropped:
+            self._on_withheld_outputs_dropped(list(dropped.values()))
+
+    def _on_withheld_outputs_dropped(self, refs: List[ObjectRef[Block]]) -> None:
+        """Hook: withheld output ``refs`` were dropped without being released."""
+
+    def _on_withheld_outputs_released(self, refs: List[ObjectRef[Block]]) -> None:
+        """Hook: withheld output ``refs`` are no longer withheld by any plan and
+        are already in an input released to a queued child task."""
 
     def _iter_reconstruction_outputs(self) -> Iterator[RefBundle]:
         """The re-produced outputs withheld for child reconstruction tasks not yet ready."""
@@ -400,3 +461,4 @@ class LineageReconstructionMixin(InternalQueueOperatorMixin, abc.ABC):
         super().clear_internal_output_queue()
         self._reconstruction_outputs.clear()
         self._batched_plans.clear()
+        self._queued_child_input_refs.clear()

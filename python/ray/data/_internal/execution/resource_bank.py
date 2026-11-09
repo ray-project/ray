@@ -120,6 +120,9 @@ class UniqueBlockMetadata:
     op: PhysicalOperator
     bm: BlockMetadata
     task_id: ray.TaskID | None = None
+    # Held back by Ray Data lineage reconstruction until the child task's whole
+    # input set is re-produced (see ``ResourceBank.on_output_withheld``).
+    withheld_for_reconstruction: bool = False
 
 
 @dataclass(kw_only=True, slots=True, repr=False, eq=False)
@@ -228,6 +231,12 @@ class LiveObjStore:
     num_pulled_output_bytes: int = 0
     num_pulled_output_rows: int = 0
 
+    # The part of the pulled outputs withheld by lineage reconstruction: no
+    # consumer can drain them until their child's whole input set is back.
+    num_withheld_output_blocks: int = 0
+    num_withheld_output_bytes: int = 0
+    num_withheld_output_rows: int = 0
+
     def on_input_submitted(
         self,
         *,
@@ -266,6 +275,9 @@ class LiveObjStore:
         self.num_pulled_output_blocks += other.num_pulled_output_blocks
         self.num_pulled_output_bytes += other.num_pulled_output_bytes
         self.num_pulled_output_rows += other.num_pulled_output_rows
+        self.num_withheld_output_blocks += other.num_withheld_output_blocks
+        self.num_withheld_output_bytes += other.num_withheld_output_bytes
+        self.num_withheld_output_rows += other.num_withheld_output_rows
 
     def subtract(self, other: "LiveObjStore") -> None:
         """Subtract in place"""
@@ -277,6 +289,16 @@ class LiveObjStore:
         self.num_pulled_output_blocks -= other.num_pulled_output_blocks
         self.num_pulled_output_bytes -= other.num_pulled_output_bytes
         self.num_pulled_output_rows -= other.num_pulled_output_rows
+        self.num_withheld_output_blocks -= other.num_withheld_output_blocks
+        self.num_withheld_output_bytes -= other.num_withheld_output_bytes
+        self.num_withheld_output_rows -= other.num_withheld_output_rows
+
+    def charge_withheld_block(self, *, bm: BlockMetadata, delta: int) -> None:
+        """Charge (``delta=1``) or uncharge (``delta=-1``) one pulled output to
+        the withheld counts. It stays counted as pulled either way."""
+        self.num_withheld_output_blocks += delta
+        self.num_withheld_output_bytes += delta * (bm.size_bytes or 0)
+        self.num_withheld_output_rows += delta * (bm.num_rows or 0)
 
     def on_output_consumed(
         self,
@@ -311,6 +333,12 @@ class LiveObjStore:
             + other.num_prebuffered_output_rows,
             num_input_blocks=self.num_input_blocks + other.num_input_blocks,
             num_input_bytes=self.num_input_bytes + other.num_input_bytes,
+            num_withheld_output_blocks=self.num_withheld_output_blocks
+            + other.num_withheld_output_blocks,
+            num_withheld_output_bytes=self.num_withheld_output_bytes
+            + other.num_withheld_output_bytes,
+            num_withheld_output_rows=self.num_withheld_output_rows
+            + other.num_withheld_output_rows,
         )
 
     def clone(self) -> "LiveObjStore":
@@ -413,6 +441,9 @@ class ActorInfo:
         self.live.num_pulled_output_blocks = 0
         self.live.num_pulled_output_bytes = 0
         self.live.num_pulled_output_rows = 0
+        self.live.num_withheld_output_blocks = 0
+        self.live.num_withheld_output_bytes = 0
+        self.live.num_withheld_output_rows = 0
 
     def prebuffered_obj_store_estimate(self) -> LiveObjStore:
         """The estimated object store contribution of this actor's
@@ -562,6 +593,20 @@ class ActorRegistry(TracksObjStore):
             task_info.completed or task_info.actor_id is None
         ):
             self.task_info_map.pop(task_info.task_id, None)
+
+    def charge_withheld_block(
+        self, *, bm: BlockMetadata, task_id: ray.TaskID | None, delta: int
+    ) -> None:
+        task_info = self.get_task_info(task_id=task_id)
+        if task_info is None:
+            return
+        actor_info = self._actor_for_task(task_info=task_info)
+        if actor_info is None:
+            return
+        if delta < 0 and actor_info.live.num_withheld_output_blocks == 0:
+            # `to_downscaled` already dropped this actor's outputs.
+            return
+        actor_info.live.charge_withheld_block(bm=bm, delta=delta)
 
     def get_task_info(self, *, task_id: ray.TaskID | None) -> TaskInfo | None:
         if task_id is None:
@@ -943,6 +988,25 @@ class ClusterStats:
                     actor_id=actor_id, actor_info=actor_info, op_stats=op_stats
                 )
 
+    def charge_withheld_block(
+        self,
+        *,
+        bm: BlockMetadata,
+        op: PhysicalOperator,
+        task_id: ray.TaskID | None,
+        delta: int,
+    ) -> None:
+        node_id = bm.node_id
+        for scope in (
+            self.per_operator.get(op),
+            self.per_node.get(node_id),
+            self.per_op_node.get((op, node_id)),
+        ):
+            if scope is None:
+                continue
+            scope.live.charge_withheld_block(bm=bm, delta=delta)
+            scope.actors.charge_withheld_block(bm=bm, task_id=task_id, delta=delta)
+
     def on_deregister_actor(self, *, actor_id: ActorId):
         """Mark the actor into the deregistered state. However, we may continue
         to track the downscaled actor, because its outputs may still be alive. In this
@@ -1029,6 +1093,21 @@ class ResourceBankBase(ABC):
     def drain_consumed_blocks(self) -> None:
         raise NotImplementedError
 
+    def on_output_withheld(self, *, ref: ObjectRef[Block]) -> None:
+        raise NotImplementedError
+
+    def reserve_headroom(self, *, node_id: NodeIdStr, num_bytes: int) -> int:
+        raise NotImplementedError
+
+    def release_headroom(self, *, node_id: NodeIdStr, num_bytes: int) -> None:
+        raise NotImplementedError
+
+    def free_object_store_bytes(self, *, node_id: NodeIdStr) -> float:
+        raise NotImplementedError
+
+    def on_output_released(self, *, ref: ObjectRef[Block]) -> None:
+        raise NotImplementedError
+
     def deregister_actor(self, *, actor_id: ActorId) -> None:
         raise NotImplementedError
 
@@ -1092,6 +1171,9 @@ class ResourceBank(ResourceBankBase):
         # To have 1 source of truth of the shape of the cluster, we set this value
         # at the start of each scheduling loop.
         self._node_view: Optional[Dict[NodeIdStr, ExecutionResources]] = None
+        # Object-store bytes escape hatches have granted from each node's free
+        # space and not yet given back (see ``free_object_store_bytes``).
+        self._reserved_headroom_bytes: Dict[NodeIdStr, int] = {}
 
     @override
     def maybe_register_actor(
@@ -1210,11 +1292,92 @@ class ResourceBank(ResourceBankBase):
         for ref_key in refs:
             self._apply_consumed_ref(ref_key=ref_key)
 
+    @override
+    def on_output_withheld(self, *, ref: ObjectRef[Block]) -> None:
+        """Mark an already-registered output as withheld by lineage
+        reconstruction. It stays counted as pulled (the bytes are still in the
+        object store), and is also counted as withheld, so callers can tell
+        output a consumer can drain from output that waits on its siblings."""
+        if not actor_only_backend_enabled():
+            raise NotImplementedError
+        self._set_withheld(ref_key=ref.hex(), withheld=True)  # pyrefly: ignore
+
+    @override
+    def reserve_headroom(self, *, node_id: NodeIdStr, num_bytes: int) -> int:
+        """Set aside up to ``num_bytes`` of ``node_id``'s free object store for
+        an escape-hatch grant, so later grants don't count it as free again.
+        Capped at the node's free bytes, so reservations never exceed the
+        object store. Returns the bytes reserved."""
+        if not actor_only_backend_enabled():
+            raise NotImplementedError
+        free = max(0, int(self.free_object_store_bytes(node_id=node_id)))
+        reserved = max(0, min(num_bytes, free))
+        if reserved < num_bytes:
+            logger.warning(
+                "Headroom reservation on node %s capped at its free object store: "
+                "asked for %d bytes, reserved %d.",
+                node_id,
+                num_bytes,
+                reserved,
+            )
+        if reserved:
+            self._reserved_headroom_bytes[node_id] = (
+                self._reserved_headroom_bytes.get(node_id, 0) + reserved
+            )
+        return reserved
+
+    @override
+    def release_headroom(self, *, node_id: NodeIdStr, num_bytes: int) -> None:
+        if not actor_only_backend_enabled():
+            raise NotImplementedError
+        remaining = self._reserved_headroom_bytes.get(node_id, 0) - num_bytes
+        if remaining > 0:
+            self._reserved_headroom_bytes[node_id] = remaining
+        else:
+            self._reserved_headroom_bytes.pop(node_id, None)
+
+    @override
+    def free_object_store_bytes(self, *, node_id: NodeIdStr) -> float:
+        """Object store on ``node_id`` that neither holds Data blocks (pulled,
+        prebuffered, or task inputs) nor is reserved by an escape hatch."""
+        if not actor_only_backend_enabled():
+            raise NotImplementedError
+        usage = self.live_object_store(node_id=node_id)
+        return (
+            self.node_capacity(node_id=node_id).object_store_memory
+            - usage.num_pulled_output_bytes
+            - usage.num_prebuffered_output_bytes
+            - usage.num_input_bytes
+            - self._reserved_headroom_bytes.get(node_id, 0)
+        )
+
+    @override
+    def on_output_released(self, *, ref: ObjectRef[Block]) -> None:
+        """Clear the withheld mark: the child's input set is complete and the
+        block is queued for it."""
+        if not actor_only_backend_enabled():
+            raise NotImplementedError
+        self._set_withheld(ref_key=ref.hex(), withheld=False)  # pyrefly: ignore
+
+    def _set_withheld(self, *, ref_key: str, withheld: bool) -> None:
+        unique_bm = self.live_block_refs.get(ref_key)
+        if unique_bm is None or unique_bm.withheld_for_reconstruction == withheld:
+            return
+        unique_bm.withheld_for_reconstruction = withheld
+        self.stats.charge_withheld_block(
+            bm=unique_bm.bm,
+            op=unique_bm.op,
+            task_id=unique_bm.task_id,
+            delta=1 if withheld else -1,
+        )
+
     def _apply_consumed_ref(self, *, ref_key: str) -> None:
         """Subtract one tracked ref. Unknown or already-dropped refs do nothing."""
-        unique_bm = self.live_block_refs.pop(ref_key, None)
+        unique_bm = self.live_block_refs.get(ref_key)
         if unique_bm is None:
             return
+        self._set_withheld(ref_key=ref_key, withheld=False)
+        del self.live_block_refs[ref_key]
         self.stats.on_block_consumed(
             bm=unique_bm.bm,
             op=unique_bm.op,
@@ -1367,6 +1530,7 @@ class ResourceBank(ResourceBankBase):
         # all tracked stats and refs regardless of which operators are passed in.
         self.stats.clear()
         self.live_block_refs = {}
+        self._reserved_headroom_bytes = {}
         # Drop any reports that arrived after the drain above (e.g. a straggler
         # consumer); they reference now-released refs and would otherwise
         # accumulate unbounded across executions.

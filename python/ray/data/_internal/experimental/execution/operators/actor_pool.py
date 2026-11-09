@@ -15,7 +15,7 @@
   pulled; the bytes budget is derived per node from object-store capacity,
   clamped into
   [``PER_ACTOR_OBJECT_STORE_MIN_BYTES``, ``PER_ACTOR_OBJECT_STORE_MAX_BYTES``],
-  and can be raised at runtime by ``upgrade_output_limit`` -- the deadlock
+  and can be raised at runtime by ``grant_backpressure_deadlock_headroom`` -- the deadlock
   hatch when every task is blocked on output budget.
 
   the resource bank is in charge of tracking per-actor object store budgets, but
@@ -41,6 +41,7 @@ import math
 import time
 from collections import Counter, defaultdict
 from typing import (
+    AbstractSet,
     Callable,
     DefaultDict,
     Dict,
@@ -63,6 +64,7 @@ from ray.data._internal.actor_autoscaler.autoscaling_actor_pool import (
 )
 from ray.data._internal.execution.execution_flags import (
     BLOCK_SIZE_TO_OUTPUT_BYTES_RATIO,
+    BUDGET_BASED_BLOCK_SIZING,
     DRAIN_STALL_WARN_S,
     OBJECT_STORE_OUTPUT_FRACTION,
     PENDING_ACTOR_EXPIRY_S,
@@ -87,11 +89,14 @@ from ray.data._internal.experimental.execution.actor_only_op_metrics import (
 from ray.data._internal.experimental.execution.operators.actor_pool_models import (
     _ACTOR_STATE_DEAD,
     DrainReason,
+    HeadroomFunding,
+    HeadroomReason,
     ScaleDownRequest,
     ScaleUpRequest,
     _DrainingActorInfo,
     _ExperimentalActorRank,
     _ExperimentalActorState,
+    _HeadroomGrant,
     _PendingActorInfo,
 )
 from ray.data._internal.util import MiB
@@ -122,6 +127,7 @@ class _ExperimentalActorPool(AutoscalingActorPool):
         config: AutoscalingActorConfig,
         map_worker_cls_name: str = "MapWorker",
         debounce_period_s: int = _ACTOR_POOL_SCALE_DOWN_DEBOUNCE_PERIOD_S,
+        target_block_size_fn: Callable[[], Optional[int]] = lambda: None,
     ):
         """Initialize the actor pool.
 
@@ -136,6 +142,9 @@ class _ExperimentalActorPool(AutoscalingActorPool):
                 purposes.
             debounce_period_s: Debounce period for scaling down after scaling
                 up.
+            target_block_size_fn: The operator's configured target block
+                size, or None if unknown. Sizes the adoption floor and the
+                bytes-per-output estimate (see ``block_bytes``).
         """
         super().__init__(config=config)
         # Actor-only metrics the pool records drain outcomes on, injected by
@@ -146,6 +155,7 @@ class _ExperimentalActorPool(AutoscalingActorPool):
         self._create_actor_fn = create_actor_fn
         self._map_worker_cls_name = map_worker_cls_name
         self._debounce_period_s = debounce_period_s
+        self._target_block_size_fn = target_block_size_fn
         # Timestamp of the last scale up action; drives the downscale debounce.
         self._last_upscaled_at: Optional[float] = None
         self._last_downscaling_debounce_warning_ts: Optional[float] = None
@@ -485,6 +495,7 @@ class _ExperimentalActorPool(AutoscalingActorPool):
             self._rollback_failed_pending(actor, pending_target_node)
             raise
         self._register_running_actor(actor, state, pending_target_node)
+        self._adopt_orphaned_loans(state)
         return actor
 
     @override
@@ -987,6 +998,14 @@ class _ExperimentalActorPool(AutoscalingActorPool):
         # Update cached statistics before removing the actor
         actor_state = self._running_actors[actor]
 
+        # Give back escape-hatch grants: free the node reservation and restore
+        # any lenders. Loans this actor made are orphaned, for the next actor
+        # on the node to take over.
+        for grant in actor_state.grants:
+            self._return_grant(actor_state.actor_location, grant)
+        actor_state.grants = []
+        self._orphan_loans(actor_state)
+
         # Update total tasks in flight
         self._total_num_tasks_in_flight -= actor_state.num_tasks_in_flight
 
@@ -1454,33 +1473,30 @@ class _ExperimentalActorPool(AutoscalingActorPool):
             )
         return default_max_num_output_bytes
 
-    def reset_output_limit(self):
-        default_max_outputs = safe_or(
-            self._config.max_num_outputs_per_actor, float("inf")
-        )
-        for state in self._running_actors.values():
-            # Restore each actor's derived (or configured) output-bytes budget,
-            # not an unbounded default -- otherwise the block-size sizing in
-            # _create_task_context sees an infinite limit.
-            state.max_num_output_bytes = state.default_max_num_output_bytes
-            state.max_num_outputs = default_max_outputs
+    def release_backpressure_deadlock_headroom(self):
+        """Give back every grant the output-limit hatch made. Withheld-output
+        grants stay: they are given back once their actor's withheld outputs
+        are released (``release_output_headroom``)."""
+        for actor_id in list(self._id_to_actor):
+            self.release_output_headroom(
+                actor_id, reason_filter=HeadroomReason.BACKPRESSURE_DEADLOCK
+            )
 
-    def upgrade_output_limit(
+    def grant_backpressure_deadlock_headroom(
         self, node_id: NodeIdStr, delta_bytes: int, delta_outputs: int = 1
-    ):
+    ) -> bool:
         """Raise output bp caps on the most-constrained actor on ``node_id``.
 
         Picks the actor on the given node with the lowest current
-        ``(max_num_output_bytes, max_num_outputs)`` tuple and bumps both
-        of its caps in place on the ``_ExperimentalActorState`` (which is the
-        same object held in ``_running_actors``, so no second write is
-        needed). The caller has already chosen ``node_id`` based on
-        cluster-wide signals; we only need to fan that decision out to a
-        specific actor.
+        ``(max_num_output_bytes, max_num_outputs)`` tuple and grants it
+        ``delta_bytes`` / ``delta_outputs`` (see ``grant_output_headroom``).
+        The caller has already chosen ``node_id`` based on cluster-wide
+        signals; we only need to fan that decision out to a specific actor.
+        Returns whether any bytes were granted.
         """
         node_states = self._node_to_actor_states.get(node_id)
         assert node_states, (
-            f"upgrade_output_limit called for node={node_id} with no "
+            f"grant_backpressure_deadlock_headroom called for node={node_id} with no "
             f"running actors; pool has nodes={list(self._node_to_actor_states)}"
         )
 
@@ -1494,21 +1510,267 @@ class _ExperimentalActorPool(AutoscalingActorPool):
             candidate_states,
             key=lambda s: (s.max_num_output_bytes, s.max_num_outputs),
         )
-        best_state.max_num_output_bytes += delta_bytes
-        best_state.max_num_outputs += delta_outputs
-        # NOTE: ``inf + delta`` is still ``inf`` -- the unset dimension
-        # stays unset after the bump, which is fine: the tuple key above
-        # will still discriminate via the finite dimension on the next call.
-
-        actor = self._id_to_actor[best_state.actor_id]
-        logger.debug(
-            f"\nname={self._map_worker_cls_name} ({self.get_actor_info()})\n"
-            f"Increasing the capacity for actor={actor} "
-            f"located on {node_id} by {memory_string(delta_bytes)} / "
-            f"{delta_outputs} output,\n"
-            f"new limit is {memory_string(best_state.max_num_output_bytes)} / "
-            f"{best_state.max_num_outputs} outputs\n"
+        return (
+            self.grant_output_headroom(
+                best_state.actor_id,
+                reason=HeadroomReason.BACKPRESSURE_DEADLOCK,
+                num_bytes=delta_bytes,
+                num_outputs=delta_outputs,
+            )
+            > 0
         )
+
+    def grant_output_headroom(
+        self,
+        actor_id: ActorId,
+        *,
+        reason: HeadroomReason,
+        num_bytes: int,
+        num_outputs: float,
+        funding: HeadroomFunding = HeadroomFunding.IMMEDIATE,
+        stuck_peer_ids: AbstractSet[ActorId] = frozenset(),
+        pinned_bytes_by_peer: Optional[Mapping[ActorId, int]] = None,
+    ) -> int:
+        """Raise ``actor_id``'s output caps by ``num_bytes``, raising its node's
+        total only as a last resort.
+
+        The bytes come from, in order:
+
+        1. the node's free object store, reserved in the ResourceBank;
+        2. unused budget of the other live actors on the same node, whose caps
+           go down by what they lend: draining peers first, then the most
+           unused;
+        3. unfunded bytes on top of the node's total (may spill).
+
+        Step 3 depends on ``funding``:
+
+        - WITHIN_NODE_BUDGET: never. If steps 1 and 2 fall short, nothing is
+          granted.
+        - WAIT_FOR_PEERS: only once the node's peers can't free what is still
+          missing by draining; until then nothing is granted and the caller
+          retries later. Peers in ``stuck_peer_ids`` never free budget by
+          waiting, and neither do the ``pinned_bytes_by_peer`` of the others
+          (withheld blocks of plans that won't complete), so those don't
+          count.
+        - IMMEDIATE: right away. The caller is breaking a deadlock, and a
+          spill beats a stuck pipeline.
+
+        The grant is kept until ``release_output_headroom`` (or the actor's
+        release) gives it back. Returns the bytes granted.
+        """
+        actor = self._id_to_actor.get(actor_id)
+        if actor is None:
+            return 0
+        state = self._running_actors[actor]
+        node_id = state.actor_location
+
+        free = int(
+            max(0.0, self.resource_bank.free_object_store_bytes(node_id=node_id))
+        )
+        granted_bytes_from_free_space = min(free, num_bytes)
+        shortfall = num_bytes - granted_bytes_from_free_space
+        lenders = [
+            lender
+            for lender in self._node_to_actor_states.get(node_id, {}).values()
+            if lender.actor_id != actor_id
+            and math.isfinite(lender.max_num_output_bytes)
+        ]
+        unused_by_lender: Dict[ActorId, int] = {}
+        for lender in lenders:
+            lender_live = self.resource_bank.live_object_store(actor_id=lender.actor_id)
+            unused_by_lender[lender.actor_id] = int(
+                lender.max_num_output_bytes
+                - lender_live.num_pulled_output_bytes
+                - lender_live.num_prebuffered_output_bytes
+            )
+        # Draining peers lend first: their budget is leaving the node anyway,
+        # so the loan costs nothing that stays. Then the most unused, so a
+        # grant touches as few peers as it can.
+        lenders.sort(
+            key=lambda lender: (
+                lender.status is not ActorStatus.DRAINING,
+                -unused_by_lender[lender.actor_id],
+                lender.actor_id,
+            )
+        )
+        granted_bytes_by_lender: Dict[ActorId, int] = {}
+        # What the peers could lend once their outputs are consumed, beyond
+        # what they lend now. Pinned bytes never free up by waiting.
+        pinned_bytes_by_peer = pinned_bytes_by_peer or {}
+        lendable_bytes_after_drain = 0
+        for lender in lenders:
+            loan = min(max(0, unused_by_lender[lender.actor_id]), shortfall)
+            if loan > 0:
+                granted_bytes_by_lender[lender.actor_id] = loan
+                shortfall -= loan
+            if lender.actor_id not in stuck_peer_ids:
+                lendable_bytes_after_drain += max(
+                    0,
+                    int(lender.max_num_output_bytes)
+                    - pinned_bytes_by_peer.get(lender.actor_id, 0)
+                    - loan,
+                )
+
+        if shortfall > 0:
+            if funding is HeadroomFunding.WITHIN_NODE_BUDGET:
+                return 0
+            if (
+                funding is HeadroomFunding.WAIT_FOR_PEERS
+                and lendable_bytes_after_drain >= shortfall
+            ):
+                return 0
+
+        granted_bytes_unbacked = max(0, shortfall)
+        grant = _HeadroomGrant(
+            reason=reason,
+            bytes_from_free_space=granted_bytes_from_free_space,
+            bytes_by_lender=granted_bytes_by_lender,
+            bytes_unbacked=granted_bytes_unbacked,
+            num_outputs=num_outputs,
+        )
+        if grant.num_bytes == 0:
+            return 0
+        if granted_bytes_from_free_space:
+            reserved = self.resource_bank.reserve_headroom(
+                node_id=node_id, num_bytes=granted_bytes_from_free_space
+            )
+            # Sized from ``free_object_store_bytes`` above, in the same tick.
+            assert reserved == granted_bytes_from_free_space, (
+                reserved,
+                granted_bytes_from_free_space,
+            )
+        for lender in lenders:
+            loan = granted_bytes_by_lender.get(lender.actor_id, 0)
+            lender.max_num_output_bytes -= loan
+            lender.lent_bytes += loan
+        state.max_num_output_bytes += grant.num_bytes
+        state.max_num_outputs += num_outputs
+        state.grants.append(grant)
+        if self._metrics is not None:
+            self._metrics.record_headroom_grant(
+                self._op_tag,
+                reason.value,
+                bytes_from_free_space=granted_bytes_from_free_space,
+                bytes_by_lender=sum(granted_bytes_by_lender.values()),
+                bytes_unbacked=granted_bytes_unbacked,
+            )
+        logger.debug(
+            "%s: %s grant of %s (free space %s, lent %s, unbacked %s) to "
+            "actor %s on %s; new limit %s / %s outputs",
+            self._map_worker_cls_name,
+            reason.value,
+            memory_string(grant.num_bytes),
+            memory_string(granted_bytes_from_free_space),
+            memory_string(sum(granted_bytes_by_lender.values())),
+            memory_string(granted_bytes_unbacked),
+            actor_id,
+            node_id,
+            memory_string(state.max_num_output_bytes),
+            state.max_num_outputs,
+        )
+        return grant.num_bytes
+
+    def release_output_headroom(
+        self, actor_id: ActorId, *, reason_filter: Optional[HeadroomReason] = None
+    ) -> None:
+        """Give back ``actor_id``'s grants (only those for ``reason_filter``,
+        if given): lower its caps, release the node reservation, and restore
+        each lender that is still alive."""
+        actor = self._id_to_actor.get(actor_id)
+        if actor is None:
+            return
+        state = self._running_actors[actor]
+        grants_to_keep = []
+        for grant in state.grants:
+            if reason_filter is not None and grant.reason is not reason_filter:
+                grants_to_keep.append(grant)
+                continue
+            state.max_num_output_bytes -= grant.num_bytes
+            state.max_num_outputs -= grant.num_outputs
+            self._return_grant(state.actor_location, grant)
+        state.grants = grants_to_keep
+
+    def actor_node(self, actor_id: ActorId) -> Optional[NodeIdStr]:
+        """Node of a running actor, or None if it was released."""
+        actor = self._id_to_actor.get(actor_id)
+        if actor is None:
+            return None
+        return self._running_actors[actor].actor_location
+
+    def holds_headroom(self, actor_id: ActorId, reason: HeadroomReason) -> bool:
+        actor = self._id_to_actor.get(actor_id)
+        if actor is None:
+            return False
+        return any(g.reason is reason for g in self._running_actors[actor].grants)
+
+    def _orphan_loans(self, lender: _ExperimentalActorState) -> None:
+        """Move what ``lender`` lent into its borrowers' orphaned bytes: it
+        can't be repaid, and the borrowers' blocks may already be using it."""
+        if lender.lent_bytes <= 0:
+            return
+        orphaned = 0
+        for borrower in self._node_to_actor_states.get(
+            lender.actor_location, {}
+        ).values():
+            for grant in borrower.grants:
+                loan = grant.bytes_by_lender.pop(lender.actor_id, 0)
+                grant.bytes_orphaned += loan
+                orphaned += loan
+        lender.lent_bytes = 0
+        if orphaned and self._metrics is not None:
+            self._metrics.record_loan_orphaned(self._op_tag, orphaned)
+
+    def _adopt_orphaned_loans(self, state: _ExperimentalActorState) -> None:
+        """Make a new actor the lender of its node's orphaned loans, lowering
+        its budget by what it takes over, so the node's total stays what it
+        was before the old lender left. It keeps room for one block (capped at
+        its whole budget), so it can always make progress; what that leaves
+        stays orphaned for the next arrival. Given back with the grant as
+        usual."""
+        floor = int(
+            min(
+                state.default_max_num_output_bytes,
+                self.block_bytes(state.default_max_num_output_bytes),
+            )
+        )
+        available = int(state.max_num_output_bytes) - floor
+        adopted = 0
+        for borrower_id, borrower in sorted(
+            self._node_to_actor_states.get(state.actor_location, {}).items()
+        ):
+            if available <= 0:
+                break
+            if borrower_id == state.actor_id:
+                continue
+            for grant in borrower.grants:
+                take = min(grant.bytes_orphaned, available)
+                if take <= 0:
+                    continue
+                grant.bytes_orphaned -= take
+                grant.bytes_by_lender[state.actor_id] = (
+                    grant.bytes_by_lender.get(state.actor_id, 0) + take
+                )
+                state.max_num_output_bytes -= take
+                state.lent_bytes += take
+                available -= take
+                adopted += take
+        if adopted and self._metrics is not None:
+            self._metrics.record_loan_adopted(self._op_tag, adopted)
+
+    def _return_grant(self, node_id: NodeIdStr, grant: _HeadroomGrant) -> None:
+        if grant.bytes_from_free_space:
+            self.resource_bank.release_headroom(
+                node_id=node_id, num_bytes=grant.bytes_from_free_space
+            )
+        for lender_id, loan in grant.bytes_by_lender.items():
+            lender_actor = self._id_to_actor.get(lender_id)
+            if lender_actor is None:
+                # Unreachable: a leaving lender's loans are orphaned
+                # (``_orphan_loans``). Defensive only.
+                continue
+            lender = self._running_actors[lender_actor]
+            lender.max_num_output_bytes += loan
+            lender.lent_bytes -= loan
 
     def output_bytes_limit(self, actor_id: ActorId) -> float:
         actor = self._id_to_actor.get(actor_id)
@@ -1530,15 +1792,30 @@ class _ExperimentalActorPool(AutoscalingActorPool):
             state.max_num_output_bytes for state in self._running_actors.values()
         )
 
+    def block_bytes(self, output_limit: float) -> float:
+        """Expected size of one output block from an actor whose output
+        budget is ``output_limit``.
+
+        Blocks are cut at the operator's target block size, or at
+        ``output_limit * BLOCK_SIZE_TO_OUTPUT_BYTES_RATIO`` if that is smaller
+        and ``BUDGET_BASED_BLOCK_SIZING`` is on. With no known target, the
+        budget-derived size is the best guess.
+        """
+        budget_based = output_limit * BLOCK_SIZE_TO_OUTPUT_BYTES_RATIO
+        target = self._target_block_size_fn()
+        if target is None:
+            return budget_based
+        if BUDGET_BASED_BLOCK_SIZING:
+            return min(budget_based, target)
+        return target
+
     def estimate_bytes_per_output(self, node_id: NodeIdStr) -> float | None:
         """Estimated bytes per output block for the actors on ``node_id``, or
         None if none of them has a finite output-bytes budget.
 
-        This is a prediction, not a measurement: the mean per-actor
-        ``max_num_output_bytes`` scaled by ``BLOCK_SIZE_TO_OUTPUT_BYTES_RATIO``
-        (the per-actor target block size), matching how ``_create_task_context``
-        sizes output blocks. The budget is derived per node (a CPU share of
-        that node's object store), so the estimate is scoped to one node.
+        This is a prediction, not a measurement: the mean ``block_bytes`` over
+        the node's actors. Budgets are derived per node (a CPU share of that
+        node's object store), so the estimate is scoped to one node.
         """
         total: float = 0.0
         count: int = 0
@@ -1549,11 +1826,11 @@ class _ExperimentalActorPool(AutoscalingActorPool):
                 # carries no block-size information, so skip it rather than
                 # poison the mean.
                 continue
-            total += limit
+            total += self.block_bytes(limit)
             count += 1
         if count == 0:
             return None
-        return total * BLOCK_SIZE_TO_OUTPUT_BYTES_RATIO / count
+        return total / count
 
     def output_count_limit(self, actor_id: ActorId) -> float:
         actor = self._id_to_actor.get(actor_id)

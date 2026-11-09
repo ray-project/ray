@@ -457,7 +457,7 @@ def _run_to_completion(
 
 @pytest.mark.parametrize("child_submitted_first", [False, True])
 def test_shared_child_is_batched_until_it_is_submitted(
-    ray_start_regular_shared, child_submitted_first  # noqa: F405
+    ray_start_regular_shared, child_submitted_first, monkeypatch  # noqa: F405
 ):
     """A child reads from two seeds, and two leaves under it are lost.
 
@@ -470,10 +470,18 @@ def test_shared_child_is_batched_until_it_is_submitted(
     input completes, the second plan is batched into it and the child runs once for
     both plans. If it was already submitted, the second plan releases the child again
     on its own.
+
+    Either way, the first seed's re-run output is shared by both plans and is in
+    the child's queued input, so it is never reported dropped: an operator that
+    tracks block memory (the actor-only backend) must keep charging it until the
+    child consumes it.
     """
     from ray.data._internal.execution.util import make_ref_bundles
 
     producer, consumer, seed_input, tracker = _seed_and_consumer_ops()
+    dropped, released = [], []
+    monkeypatch.setattr(producer, "_on_withheld_outputs_dropped", dropped.extend)
+    monkeypatch.setattr(producer, "_on_withheld_outputs_released", released.extend)
 
     # First run: two seeds feed one child, which fans two blocks out to two leaves.
     seed_task_ids = [producer._lineage_task_id_for(index) for index in range(2)]
@@ -551,6 +559,11 @@ def test_shared_child_is_batched_until_it_is_submitted(
         assert consumer._batched_plans == {child_task_id: {plan_b}}
         consumer._submit_data_task(MagicMock(), released_a)
         expected_plan_ids = [sorted([plan_a, plan_b])]
+        # The shared block is in the queued input: released, not dropped. The
+        # second plan's own re-run of the second seed is unused.
+        assert released == first_seed.block_refs
+        assert dropped == second_seed_b.block_refs
+    assert not set(first_seed.block_refs) & set(dropped)
     assert consumer._batched_plans == {}
     assert (
         sorted(
@@ -909,7 +922,7 @@ def test_mark_aborted_fires_the_done_callback_exactly_once():
 
 
 def test_a_drained_task_aborted_before_its_done_callback_fires_it_once():
-    """``_fire_done_callbacks`` must skip a drained task that was since aborted."""
+    """``fire_done_callbacks`` must skip a drained task that was since aborted."""
     from ray.data._internal.execution.metadata_fetcher import ThreadedMetadataFetcher
 
     calls = []
@@ -921,10 +934,94 @@ def test_a_drained_task_aborted_before_its_done_callback_fires_it_once():
     error = ObjectLostError(ray.ObjectRef.nil().hex(), None, "injected by test")
     task.mark_aborted(error)
 
-    fetcher._fire_done_callbacks()
+    fetcher.fire_done_callbacks()
 
     assert calls == [error]
     assert task not in fetcher._drained_tasks
+
+
+def _route_lost_fetches(monkeypatch, *, drained: bool, num_lost: int):
+    """Defer ``num_lost`` pairs of one tracked task whose metadata fetches all
+    fail with ``ObjectLostError``, route them through
+    ``route_metadata_fetch_failures`` with ``max_errored_blocks=0``, and return
+    the done-callback calls and the tasks reconstruction was started for.
+
+    The reconstruction itself is stubbed to abort the task, as the real one
+    does, so the test stays off a live cluster."""
+    from ray.data._internal.execution.interfaces.physical_operator import (
+        DeferredEmit,
+        TaskGeneratorState,
+    )
+    from ray.data._internal.execution.metadata_fetcher import ThreadedMetadataFetcher
+    from ray.data._internal.execution.streaming_executor_state import (
+        route_metadata_fetch_failures,
+    )
+
+    calls = []
+    task = _abortable_task(
+        lambda exc, worker_stats, driver_stats, aborted: calls.append(exc)
+    )
+    if drained:
+        task._state = TaskGeneratorState.DRAINED
+    error = ObjectLostError(ray.ObjectRef.nil().hex(), None, "injected by test")
+
+    fetcher = ThreadedMetadataFetcher()
+    meta_refs = [MagicMock() for _ in range(num_lost)]
+    fetcher._pending_deferred = [
+        DeferredEmit(task=task, block_ref=MagicMock(), meta_ref=ref)
+        for ref in meta_refs
+    ]
+    fetcher.submit("op", [task])
+    with fetcher._results_lock:
+        for ref in meta_refs:
+            fetcher._results[ref] = error
+
+    reconstructed = []
+
+    def reconstruct(topology, lineage_tracker, state, lost_task, lost_error):
+        reconstructed.append(lost_task)
+        lost_task.mark_aborted(lost_error)
+
+    monkeypatch.setattr(
+        "ray.data._internal.execution.streaming_executor_state."
+        "_reconstruct_lost_object",
+        reconstruct,
+    )
+    op = MagicMock()
+    op.id = task.producer_id
+    op_state = MagicMock()
+    op_state.op = op
+
+    num_errored_blocks = route_metadata_fetch_failures(
+        topology={op: op_state},
+        lineage_tracker=MagicMock(),
+        metadata_fetcher=fetcher,
+        max_errored_blocks=0,
+        num_errored_blocks=0,
+    )
+    assert num_errored_blocks == 0
+    return calls, reconstructed, error, task
+
+
+def test_failed_fetch_of_a_drained_task_is_reconstructed(monkeypatch):
+    """A drained task whose last metadata fetch was lost is reconstructed, not
+    marked done first and its loss counted as an errored block."""
+    calls, reconstructed, error, task = _route_lost_fetches(
+        monkeypatch, drained=True, num_lost=1
+    )
+    assert reconstructed == [task]
+    # Fired once, by the abort; never by a `mark_done` with no error.
+    assert calls == [error]
+
+
+def test_several_failed_fetches_of_one_task_reconstruct_it_once(monkeypatch):
+    """Two lost fetches of one task in a single pass start one reconstruction,
+    which re-produces all of its outputs; the second loss is not counted."""
+    calls, reconstructed, error, task = _route_lost_fetches(
+        monkeypatch, drained=False, num_lost=2
+    )
+    assert reconstructed == [task]
+    assert calls == [error]
 
 
 @pytest.mark.parametrize(
@@ -1068,6 +1165,7 @@ def test_reconstruction_error_wraps_object_lost_error():
     reconstruction_error = raised.value
 
     assert isinstance(reconstruction_error, ObjectLostError)
+    assert isinstance(reconstruction_error, LineageReconstructionError)
     assert reconstruction_error.lost_error is object_lost_error
     assert reconstruction_error.__cause__ is object_lost_error
     for field in ("object_ref_hex", "owner_address", "call_site"):

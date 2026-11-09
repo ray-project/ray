@@ -45,14 +45,16 @@ class ExecutionTimeoutError(Exception):
 @DeveloperAPI
 class LineageReconstructionError(ObjectLostError):
     """Represents an error that occurred during lineage reconstruction triggered
-    by an ``ObjectLostError``.
+    by an ``ObjectLostError`` (or the death of the actor producing the object).
     Subclasses ``ObjectLostError`` so callers catching the original loss still
     catch it. The message carries both the cause for the object loss and the cause
     of the lineage reconstruction failure."""
 
-    def __init__(self, lost_error: ObjectLostError, reason: str):
+    def __init__(self, lost_error: Exception, reason: str):
         super().__init__(
-            lost_error.object_ref_hex, lost_error.owner_address, lost_error.call_site
+            getattr(lost_error, "object_ref_hex", ""),
+            getattr(lost_error, "owner_address", None),
+            getattr(lost_error, "call_site", ""),
         )
         self.lost_error = lost_error
         self.reason = reason

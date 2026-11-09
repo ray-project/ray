@@ -119,14 +119,12 @@ def _log_ray_data_env_vars() -> None:
         logger.debug("No RAY_DATA environment variables set.")
 
 
-def _disable_data_reconstruction_if_unsupported(
-    dag: PhysicalOperator, options: ExecutionOptions, dataset_id: str
-) -> bool:
-    """Whether Ray Data lineage reconstruction must be disabled for this plan.
+def _reconstruction_unsupported_reason(
+    dag: PhysicalOperator, options: ExecutionOptions
+) -> Optional[str]:
+    """Why Ray Data lineage reconstruction can't run this plan, or ``None``.
 
     Only plans made entirely of map operators fed by a source are supported.
-    Warns once per dataset when disabling, since Ray Core lineage reconstruction
-    is also off for this job and a lost object will fail the dataset.
 
     A map operator whose bundler slices blocks (strict streaming repartition) is
     not supported either: it splits one block across several tasks, but the
@@ -136,6 +134,28 @@ def _disable_data_reconstruction_if_unsupported(
     ``preserve_order`` is not supported either. A reconstruction attempt is
     submitted under a fresh task index, so the ordered output queue would emit
     the re-produced rows after every task submitted before it.
+    """
+    if options.preserve_order:
+        return "it runs with preserve_order=True"
+    for op in dag.post_order_iter():
+        if isinstance(op, InputDataBuffer):
+            continue
+        if isinstance(op, MapOperator) and not isinstance(
+            op._block_ref_bundler._strategy, ExactMultipleSize
+        ):
+            continue
+        return f"it contains operator {op.name!r}"
+    return None
+
+
+def _disable_data_reconstruction_if_unsupported(
+    dag: PhysicalOperator, options: ExecutionOptions, dataset_id: str
+) -> bool:
+    """Whether Ray Data lineage reconstruction must be disabled for this plan
+    (see ``_reconstruction_unsupported_reason``).
+
+    Warns once per dataset when disabling, since Ray Core lineage reconstruction
+    is also off for this job and a lost object will fail the dataset.
 
     Args:
         dag: The physical plan's output operator.
@@ -146,33 +166,17 @@ def _disable_data_reconstruction_if_unsupported(
         True if the plan contains an operator reconstruction does not support,
         or requires ordered output.
     """
-    if options.preserve_order:
-        if log_once(f"ray_data_reconstruction_unsupported_{dataset_id}"):
-            logger.warning(
-                f"Ray Data lineage reconstruction is disabled for dataset "
-                f"{dataset_id}: it runs with preserve_order=True, which "
-                "reconstruction doesn't support. Ray Core lineage reconstruction "
-                "is also disabled for this job, so a lost object will fail the "
-                "dataset."
-            )
-        return True
-    for op in dag.post_order_iter():
-        if isinstance(op, InputDataBuffer):
-            continue
-        if isinstance(op, MapOperator) and not isinstance(
-            op._block_ref_bundler._strategy, ExactMultipleSize
-        ):
-            continue
-        if log_once(f"ray_data_reconstruction_unsupported_{dataset_id}"):
-            logger.warning(
-                f"Ray Data lineage reconstruction is disabled for dataset "
-                f"{dataset_id}: it contains operator {op.name!r}, which "
-                "reconstruction doesn't support. Ray Core lineage reconstruction "
-                "is also disabled for this job, so a lost object will fail the "
-                "dataset."
-            )
-        return True
-    return False
+    reason = _reconstruction_unsupported_reason(dag, options)
+    if reason is None:
+        return False
+    if log_once(f"ray_data_reconstruction_unsupported_{dataset_id}"):
+        logger.warning(
+            f"Ray Data lineage reconstruction is disabled for dataset "
+            f"{dataset_id}: {reason}, which reconstruction doesn't support. Ray "
+            "Core lineage reconstruction is also disabled for this job, so a lost "
+            "object will fail the dataset."
+        )
+    return True
 
 
 class StreamingExecutor(Executor, threading.Thread):
@@ -340,6 +344,22 @@ class StreamingExecutor(Executor, threading.Thread):
             )
 
             validate_actor_only_supported_topology(self._topology, self._options)
+            # Actors are never restarted, so only Ray Data lineage
+            # reconstruction can recover a lost actor or node. Without it the
+            # dataset still runs, but the first such loss fails it. A plan
+            # reconstruction doesn't support (split, union, mix, limit) also
+            # runs without it; `_disable_data_reconstruction_if_unsupported`
+            # already warned.
+            if not self._data_context.enable_ray_data_reconstruction and log_once(
+                f"ray_data_actor_only_without_reconstruction_{self._dataset_id}"
+            ):
+                logger.warning(
+                    f"Dataset {self._dataset_id} runs on the actor-only backend "
+                    "without Ray Data lineage reconstruction. Its actors are never "
+                    "restarted, so losing an actor or node fails the dataset. To "
+                    "recover from such losses, start Ray with ray.init(job_config="
+                    "JobConfig(_disable_job_level_lineage_reconstruction=True))."
+                )
         else:
             # Actor-only operators switch their DataContext to grouped
             # block + metadata yields. If the same context later runs with the

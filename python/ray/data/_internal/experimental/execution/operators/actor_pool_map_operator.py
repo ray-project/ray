@@ -34,12 +34,14 @@ import types
 from collections import Counter, defaultdict
 from typing import (
     TYPE_CHECKING,
+    AbstractSet,
     Any,
     DefaultDict,
     Dict,
     List,
     NoReturn,
     Optional,
+    Set,
     Tuple,
 )
 
@@ -58,10 +60,12 @@ from ray.data._internal.execution.block_ref_counter import BlockRefCounter
 from ray.data._internal.execution.bundle_queue import BaseBundleQueue
 from ray.data._internal.execution.execution_flags import (
     BLOCK_SIZE_TO_OUTPUT_BYTES_RATIO,
+    BUDGET_BASED_BLOCK_SIZING,
     CORE_ACTOR_BACKPRESSURE_NUM_OBJECTS_PER_YIELD,
     PER_ACTOR_INPUT_BACKPRESSURE_LIMIT,
     PER_ACTOR_OUTPUT_BACKPRESSURE_LIMIT,
     PER_ACTOR_OUTPUT_BYTES_BACKPRESSURE_LIMIT,
+    WITHHELD_DEADLOCK_WAIT_MAX_S,
 )
 from ray.data._internal.execution.interfaces import (
     ExecutionOptions,
@@ -92,11 +96,22 @@ from ray.data._internal.experimental.execution.operators.actor_pool import (
     _ExperimentalActorPool,
     _NodeAwareExperimentalActorPool,
 )
+from ray.data._internal.experimental.execution.operators.actor_pool_models import (
+    HeadroomFunding,
+    HeadroomReason,
+)
 from ray.data._internal.experimental.execution.operators.placement_constraints import (
     PlacementConstraint,
 )
+from ray.data._internal.experimental.execution.withheld_deadlock import (
+    ActorWaits,
+    PlanWaits,
+    WithheldDeadlock,
+    find_withheld_deadlock,
+)
 from ray.data._internal.util import MiB
 from ray.data.context import DataContext
+from ray.data.exceptions import LineageReconstructionError
 from ray.exceptions import ActorUnavailableError, GetTimeoutError, RayActorError
 from ray.util.debug import log_once
 from ray.util.scheduling_strategies import (
@@ -106,7 +121,13 @@ from ray.util.scheduling_strategies import (
 )
 
 if TYPE_CHECKING:
-    from ray.data._internal.execution.lineage_tracker import LineageTracker
+    from ray.data._internal.execution.lineage_tracker import (
+        LineageTaskId,
+        LineageTracker,
+        ParentBlockOutput,
+        ReconstructionPlanId,
+    )
+    from ray.types import ObjectRef as BlockRef
 
 logger = logging.getLogger(__name__)
 
@@ -115,9 +136,9 @@ logger = logging.getLogger(__name__)
 # regular caller -- the executor or sizer -- is keeping it fresh).
 _OUTPUT_BACKPRESSURE_CACHE_TTL_S = 1.0
 
-# Floor on how much ``upgrade_output_limit`` raises an actor's output-bytes cap
+# Floor on how much ``relieve_backpressure_deadlock`` raises an actor's output-bytes cap
 # per call, so a tiny mean block size still makes progress.
-_MIN_OUTPUT_LIMIT_UPGRADE_BYTES = MiB
+_MIN_BACKPRESSURE_DEADLOCK_GRANT_BYTES = MiB
 
 # Wait budget for a pool's initial actors when ``wait_for_min_actors_s`` is unset:
 #   budget = min(BASE + PER_ACTOR * num_actors, MAX)
@@ -144,6 +165,11 @@ _IGNORED_SCHEDULING_STRATEGIES = frozenset({"DEFAULT", "SPREAD"})
 # node pin.
 # pyrefly: ignore[missing-attribute]  # Cython module attribute.
 _NODE_ID_LABEL_KEY: str = ray._raylet.RAY_NODE_ID_KEY
+
+
+def _ref_hex(ref: BlockRef) -> str:
+    # pyrefly: ignore[missing-attribute]  # ``ray.types`` alias lacks ``hex``.
+    return ref.hex()
 
 
 def wait_for_min_actors_budget_s(num_actors: int) -> float:
@@ -254,6 +280,12 @@ class ExperimentalActorPoolMapOperator(ActorPoolMapOperator):
         # progress-bar path (see ``cached_output_backpressured_actors``).
         self._output_backpressured_actors_cache: Tuple[int, int] = (0, 0)
         self._output_backpressured_actors_cache_ts: float = float("-inf")
+        # Withheld reconstruction output (ref hex) -> the actor it is charged
+        # to, for the withheld-deadlock check.
+        self._withheld_producer: Dict[str, ActorId] = {}
+        # Deadlocked actors waiting for node peers to free output budget, by
+        # when each first waited (see ``relieve_withheld_deadlock``).
+        self._withheld_wait_started: Dict[ActorId, float] = {}
         # Parsed once on first use: constraints are fixed for the op's lifetime.
         self._placement_constraint: Optional[PlacementConstraint] = None
 
@@ -409,6 +441,15 @@ class ExperimentalActorPoolMapOperator(ActorPoolMapOperator):
             create_actor_fn=self._start_actor,
             config=config,
             map_worker_cls_name=self._map_worker_cls_name,
+            target_block_size_fn=self._target_block_size,
+        )
+
+    def _target_block_size(self) -> Optional[int]:
+        """The block size tasks cut at unless their actor's budget lowers it:
+        the operator's override, else the DataContext's (None: unchopped)."""
+        return (
+            self.target_max_block_size_override
+            or self.data_context.target_max_block_size
         )
 
     @override
@@ -422,6 +463,18 @@ class ExperimentalActorPoolMapOperator(ActorPoolMapOperator):
         assert (
             resource_bank is not None
         ), "The streaming executor provides the ResourceBank via start()"
+        if (
+            BUDGET_BASED_BLOCK_SIZING
+            and lineage_tracker is not None
+            and log_once("actor_only_budget_block_sizing_with_lineage")
+        ):
+            logger.warning(
+                "RAY_DATA_ACTOR_ONLY_BUDGET_BASED_BLOCK_SIZING is set while "
+                "lineage reconstruction is enabled. A reconstructed task may "
+                "cut its rows into different blocks than the original task, "
+                "which can duplicate or drop rows during recovery. Unset it "
+                "to keep block sizes stable across re-runs."
+            )
         self.actor_pool.set_resource_bank(resource_bank)
         super().start(
             options, block_ref_counter, lineage_tracker, resource_bank=resource_bank
@@ -681,6 +734,64 @@ class ExperimentalActorPoolMapOperator(ActorPoolMapOperator):
         # draining actors' outputs first.
         return {"key": self._actor_id_for_task(task_index)}
 
+    @override
+    def _on_output_withheld(
+        self, task_index: int, output: RefBundle, displaced: Optional[RefBundle]
+    ) -> None:
+        """Charge a withheld reconstruction output to its producing actor like
+        any pulled output, and mark it withheld so the escape hatch can tell it
+        apart from output a consumer can drain. A displaced copy is dropped
+        unless another plan still withholds it."""
+        ray_task_id = self._task_ray_id[task_index]
+        actor_id = self._actor_id_for_task(task_index)
+        for entry in output.blocks:
+            self.resource_bank.on_new_output(
+                op=self, ref=entry.ref, bm=entry.metadata, task_id=ray_task_id
+            )
+            self.resource_bank.on_output_withheld(ref=entry.ref)
+            self._withheld_producer[_ref_hex(entry.ref)] = actor_id
+        if displaced is not None and displaced is not output:
+            self._drop_withheld_outputs([[displaced]])
+
+    @override
+    def _on_withheld_outputs_dropped(self, refs: List["BlockRef"]) -> None:
+        for ref in refs:
+            self.resource_bank.on_block_consumed(input_ref=ref)
+            self._withheld_producer.pop(_ref_hex(ref), None)
+
+    @override
+    def _on_withheld_outputs_released(self, refs: List["BlockRef"]) -> None:
+        # Still charged (the queued child input holds them), just no longer
+        # withheld: the child's consumption uncharges them later.
+        for ref in refs:
+            self.resource_bank.on_output_released(ref=ref)
+            self._withheld_producer.pop(_ref_hex(ref), None)
+
+    @override
+    def _enqueue_reconstruction_output(self, bundle: RefBundle, task_index: int):
+        # A plan whose input set is not complete yet may still withhold the
+        # same block; it stays withheld until that plan releases it too.
+        still_withheld = {
+            _ref_hex(ref)
+            for held in self._iter_reconstruction_outputs()
+            for ref in held.block_refs
+        }
+        for entry in bundle.blocks:
+            if _ref_hex(entry.ref) in still_withheld:
+                continue
+            self.resource_bank.on_output_released(ref=entry.ref)
+            self._withheld_producer.pop(_ref_hex(entry.ref), None)
+        super()._enqueue_reconstruction_output(bundle, task_index)
+
+    @override
+    def clear_internal_output_queue(self) -> None:
+        # Withheld outputs are dropped with the queue; stop charging them.
+        for bundle in self._iter_reconstruction_outputs():
+            for entry in bundle.blocks:
+                self.resource_bank.on_block_consumed(input_ref=entry.ref)
+        self._withheld_producer.clear()
+        super().clear_internal_output_queue()
+
     def _actor_id_for_task(self, task_index: int) -> ActorId:
         """The actor running ``task_index``, from the ResourceBank's task ->
         actor binding. Valid while the task is live: outputs are enqueued before
@@ -902,27 +1013,32 @@ class ExperimentalActorPoolMapOperator(ActorPoolMapOperator):
 
     @override
     def _create_task_context(self, actor: ActorHandle) -> TaskContext:
-        """Build TaskContext, sizing blocks from this actor's output budget.
+        """Build TaskContext, optionally sizing blocks from the actor's budget.
 
-        Skips the bytes-based override when the map transformer sizes by row
-        count or has block shaping disabled (e.g. StreamingRepartition) -- those
-        transforms reject ``target_max_block_size`` overrides.
+        Budget-based sizing is off unless ``BUDGET_BASED_BLOCK_SIZING`` is
+        set: lineage reconstruction matches re-run outputs to delivered ones by
+        position, so a re-run must cut blocks exactly like the original task,
+        and the actor's budget can differ between the two runs.
+
+        It is also skipped when the map transformer sizes by row count or has
+        block shaping disabled (e.g. StreamingRepartition) -- those transforms
+        reject ``target_max_block_size`` overrides.
         """
-        # Ops that size by rows / disable shaping cannot accept a bytes override.
-        last_transform = self.get_map_transformer().get_transform_fns()[-1]
-        block_opt = last_transform.output_block_size_option
-        can_override_block_size = block_opt is None or (
-            not block_opt.disable_block_shaping
-            and block_opt.target_num_rows_per_block is None
-        )
+        can_override_block_size = False
+        if BUDGET_BASED_BLOCK_SIZING:
+            # Ops that size by rows / disable shaping cannot accept a bytes
+            # override.
+            last_transform = self.get_map_transformer().get_transform_fns()[-1]
+            block_opt = last_transform.output_block_size_option
+            can_override_block_size = block_opt is None or (
+                not block_opt.disable_block_shaping
+                and block_opt.target_num_rows_per_block is None
+            )
 
         if not can_override_block_size:
             target_max_block_size = self.target_max_block_size_override
         else:
-            target_max_block_size = (
-                self.target_max_block_size_override
-                or self.data_context.target_max_block_size
-            )
+            target_max_block_size = self._target_block_size()
             # None means the user disabled chopping -- leave blocks whole.
             if target_max_block_size is not None:
                 output_limit = self.actor_pool.output_bytes_limit(
@@ -1127,6 +1243,10 @@ class ExperimentalActorPoolMapOperator(ActorPoolMapOperator):
         ray_task_id = self._task_ray_id.pop(task_index)
 
         self.resource_bank.on_task_completed(op=self, task_id=ray_task_id)
+        if isinstance(exception, LineageReconstructionError):
+            # Reconstruction couldn't start and aborted the task with this
+            # wrapper; the actor's death is the wrapped error.
+            exception = exception.lost_error
         if isinstance(exception, RayActorError) and not isinstance(
             exception, ActorUnavailableError
         ):
@@ -1157,19 +1277,21 @@ class ExperimentalActorPoolMapOperator(ActorPoolMapOperator):
         so the output queue serves the draining set as of this refresh."""
         info = self.get_actor_info()
         if info.pending > 0:
-            self.actor_pool.reset_output_limit()
+            self.actor_pool.release_backpressure_deadlock_headroom()
         result = super().refresh_state()
         self._sync_draining_priorities()
         return result
 
-    def upgrade_output_limit(self) -> bool:
+    def relieve_backpressure_deadlock(self) -> bool:
         """In the scenario that
             - the upstream operator cannot produce more outputs (output
               backpressured), and
             - the downstream operator cannot launch a task due to some
               requirement (like batch_size),
         we increase the output limit for an actor whose node has the most
-        available object store. We increase it by one block.
+        free object store, by one block. The bytes come from that node's free
+        store (reserved) or, if it has none, from other actors on the node
+        (see ``grant_output_headroom``). Returns whether anything was granted.
         """
 
         # Prefer nodes that currently host in-flight work: upgrading an idle
@@ -1178,45 +1300,276 @@ class ExperimentalActorPoolMapOperator(ActorPoolMapOperator):
         if not pool_nodes:
             return False
 
-        most_free_obj_store: float = float("-inf")
-        best_node: NodeIdStr | None = None
-
-        for node_id in pool_nodes:
-            obj_store_usage = self.resource_bank.live_object_store(node_id=node_id)
-            obj_store_limit = self.resource_bank.node_capacity(
+        best_node = max(
+            pool_nodes,
+            key=lambda node_id: self.resource_bank.free_object_store_bytes(
                 node_id=node_id
-            ).object_store_memory
-            obj_store_free = (
-                obj_store_limit
-                - obj_store_usage.num_pulled_output_bytes
-                - obj_store_usage.num_prebuffered_output_bytes
-                - obj_store_usage.num_input_bytes
-            )
-
-            if obj_store_free > most_free_obj_store:
-                most_free_obj_store = obj_store_free
-                best_node = node_id
-
-        assert best_node is not None
-        # Block size is derived per node (a CPU share of that node's object
-        # store), so size the extra block from the chosen node only: its
-        # observed mean output first, then the pool's per-node estimate.
-        mean_output_bytes = (
-            self.resource_bank.cumulative_object_store(
-                op=self, node_id=best_node
-            ).output_bytes.mean
-            or self.actor_pool.estimate_bytes_per_output(node_id=best_node)
-            or DEFAULT_BYTES_PER_OUTPUT
+            ),
         )
         delta_bytes = max(
-            _MIN_OUTPUT_LIMIT_UPGRADE_BYTES, int(math.ceil(mean_output_bytes))
+            _MIN_BACKPRESSURE_DEADLOCK_GRANT_BYTES,
+            int(math.ceil(self._mean_output_bytes(best_node))),
         )
-        self.actor_pool.upgrade_output_limit(
+        granted = self.actor_pool.grant_backpressure_deadlock_headroom(
             node_id=best_node,
             delta_bytes=delta_bytes,
             delta_outputs=1,
         )
-        return True
+        if granted and (metrics := self._actor_only_metrics) is not None:
+            assert self._metrics_op_tag is not None
+            metrics.record_backpressure_deadlock_grant(self._metrics_op_tag)
+        return granted
+
+    def _mean_output_bytes(self, node_id: NodeIdStr) -> float:
+        """Expected size of one output block on ``node_id``. Block size is
+        derived per node (a CPU share of that node's object store): the node's
+        observed mean output first, then the pool's per-node estimate."""
+        return (
+            self.resource_bank.cumulative_object_store(
+                op=self, node_id=node_id
+            ).output_bytes.mean
+            or self.actor_pool.estimate_bytes_per_output(node_id=node_id)
+            or DEFAULT_BYTES_PER_OUTPUT
+        )
+
+    def _is_stuck_on_withheld(self, actor_id: ActorId) -> bool:
+        """Whether ``actor_id``'s pull budget is exhausted and stays so after
+        all its drainable outputs are consumed: what is left (withheld plus
+        prebuffered) fills its whole cap."""
+        budget = self._actor_pull_budget(actor_id)
+        if budget.bytes_to_read > 0 and budget.blocks_to_read > 0:
+            return False
+        live = self.resource_bank.live_object_store(actor_id=actor_id)
+        if live.num_withheld_output_blocks == 0:
+            return False
+        return (
+            self.max_output_bytes_for_actor(actor_id=actor_id)
+            - live.num_withheld_output_bytes
+            - live.num_prebuffered_output_bytes
+            <= 0
+            or self.max_outputs_for_actor(actor_id=actor_id)
+            - live.num_withheld_output_blocks
+            - live.num_prebuffered_output_blocks
+            <= 0
+        )
+
+    def withheld_deadlock(self) -> WithheldDeadlock:
+        """The actors deadlocked on withheld reconstruction outputs, and
+        whom to unblock (see ``find_withheld_deadlock``)."""
+        if not any(self._reconstruction_outputs.values()):
+            return WithheldDeadlock()
+        withheld_plans: DefaultDict[ActorId, Set[ReconstructionPlanId]] = defaultdict(
+            set
+        )
+        for plan_id, held in self._reconstruction_outputs.items():
+            for bundle in held.values():
+                for entry in bundle.blocks:
+                    # Every withheld block has a producer: recorded in
+                    # ``_on_output_withheld`` when the block is withheld, and
+                    # dropped when the block is released.
+                    producer = self._withheld_producer[_ref_hex(entry.ref)]
+                    withheld_plans[producer].add(plan_id)
+
+        tasks_in_flight: Counter = Counter()
+        running_by_plan: DefaultDict[ReconstructionPlanId, Set[ActorId]] = defaultdict(
+            set
+        )
+        running_lineage_ids: DefaultDict[
+            ReconstructionPlanId, Set[LineageTaskId]
+        ] = defaultdict(set)
+        for task_index, task in self._data_tasks.items():
+            actor_id = self.resource_bank.get_actor_id_from_task_id(
+                op=self, task_id=self._task_ray_id.get(task_index)
+            )
+            if actor_id is None:
+                continue
+            tasks_in_flight[actor_id] += 1
+            for plan_id in task.reconstruction_plan_ids:
+                running_by_plan[plan_id].add(actor_id)
+                if task.lineage_task_id is not None:
+                    running_lineage_ids[plan_id].add(task.lineage_task_id)
+
+        actors = [
+            ActorWaits(
+                actor_id=actor_id,
+                stuck=self._is_stuck_on_withheld(actor_id),
+                withheld_plans=frozenset(withheld_plans.get(actor_id, ())),
+                num_tasks_in_flight=tasks_in_flight[actor_id],
+            )
+            for actor_id in self.actor_pool.running_actor_ids()
+        ]
+        plans = [
+            PlanWaits(
+                plan_id=plan_id,
+                running_actor_ids=frozenset(running_by_plan.get(plan_id, ())),
+                has_unstarted_tasks=bool(
+                    self._missing_parent_tasks(plan_id, held)
+                    - running_lineage_ids.get(plan_id, set())
+                ),
+            )
+            for plan_id, held in self._reconstruction_outputs.items()
+            if held
+        ]
+        return find_withheld_deadlock(
+            actors,
+            plans,
+            has_free_task_slot=self.actor_pool.select_actors() is not None,
+        )
+
+    def _missing_parent_tasks(
+        self, plan_id: ReconstructionPlanId, held: Dict[ParentBlockOutput, RefBundle]
+    ) -> Set[LineageTaskId]:
+        """Lineage ids of this operator's tasks whose outputs ``plan_id``'s
+        pending children still need."""
+        lineage_tracker = self._lineage_tracker
+        if lineage_tracker is None:
+            return set()
+        missing: Set[LineageTaskId] = set()
+        for parent_id in {slot.parent_lineage_task_id for slot in held}:
+            children = lineage_tracker.get_pending_children(parent_id, plan_id)
+            for slots in children.values():
+                missing.update(
+                    slot.parent_lineage_task_id for slot in slots if slot not in held
+                )
+        return missing
+
+    def _withheld_bytes_by_producer(
+        self, plan_ids: AbstractSet[str]
+    ) -> Dict[ActorId, int]:
+        """Bytes each actor holds withheld for ``plan_ids``. A block withheld
+        under several of them counts once."""
+        seen: Set[str] = set()
+        bytes_by_producer: DefaultDict[ActorId, int] = defaultdict(int)
+        for plan_id in plan_ids:
+            for bundle in self._reconstruction_outputs.get(plan_id, {}).values():
+                for entry in bundle.blocks:
+                    key = _ref_hex(entry.ref)
+                    producer = self._withheld_producer.get(key)
+                    if producer is None or key in seen:
+                        continue
+                    seen.add(key)
+                    bytes_by_producer[producer] += entry.metadata.size_bytes or 0
+        return dict(bytes_by_producer)
+
+    def _release_stale_withheld_grants(self) -> None:
+        """Give back withheld-deadlock grants whose actor no longer holds
+        withheld outputs."""
+        for actor_id in self.actor_pool.running_actor_ids():
+            if not self.actor_pool.holds_headroom(
+                actor_id, HeadroomReason.WITHHELD_DEADLOCK
+            ):
+                continue
+            live = self.resource_bank.live_object_store(actor_id=actor_id)
+            if live.num_withheld_output_blocks == 0:
+                self.actor_pool.release_output_headroom(
+                    actor_id, reason_filter=HeadroomReason.WITHHELD_DEADLOCK
+                )
+
+    def _grant_withheld_headroom(
+        self,
+        actor_id: ActorId,
+        *,
+        funding: HeadroomFunding,
+        deadlock: WithheldDeadlock,
+        pinned_bytes_by_peer: Dict[ActorId, int],
+    ) -> int:
+        """Ask the pool for room for one more block past what ``actor_id``
+        can't drain. Returns the bytes granted."""
+        node_id = self.actor_pool.actor_node(actor_id)
+        assert node_id is not None
+        live = self.resource_bank.live_object_store(actor_id=actor_id)
+        stuck_bytes = (
+            live.num_withheld_output_bytes
+            + live.num_prebuffered_output_bytes
+            - self.max_output_bytes_for_actor(actor_id=actor_id)
+        )
+        stuck_blocks = (
+            live.num_withheld_output_blocks
+            + live.num_prebuffered_output_blocks
+            - self.max_outputs_for_actor(actor_id=actor_id)
+        )
+        return self.actor_pool.grant_output_headroom(
+            actor_id,
+            reason=HeadroomReason.WITHHELD_DEADLOCK,
+            num_bytes=int(
+                math.ceil(max(0.0, stuck_bytes) + self._mean_output_bytes(node_id))
+            ),
+            num_outputs=max(0.0, stuck_blocks) + 1,
+            funding=funding,
+            stuck_peer_ids=deadlock.deadlocked,
+            pinned_bytes_by_peer=pinned_bytes_by_peer,
+        )
+
+    def relieve_withheld_deadlock(self) -> bool:
+        """Give back withheld-output grants whose actor no longer holds
+        withheld outputs, then, if actors are deadlocked on withheld outputs,
+        give one target room for one more block past what it can't drain.
+
+        Two rounds, one grant per pass. First, any target whose grant fits
+        within the node's budget (free store plus peers' unused budget): a
+        cheap grant can complete a plan and unpin a peer's bytes for the next
+        pass, so it goes before anyone oversubscribes. Otherwise, in rank order, a target is granted
+        unbacked bytes only once its node peers can't free the rest by
+        draining, or it has waited ``WITHHELD_DEADLOCK_WAIT_MAX_S`` for them
+        to. Returns whether anything was granted.
+        """
+        self._release_stale_withheld_grants()
+        deadlock = self.withheld_deadlock()
+        # A wait clock runs only while its actor stays deadlocked.
+        for actor_id in list(self._withheld_wait_started):
+            if actor_id not in deadlock.deadlocked:
+                del self._withheld_wait_started[actor_id]
+        if not deadlock.targets:
+            return False
+        pinned_bytes_by_peer = self._withheld_bytes_by_producer(deadlock.stalled_plans)
+        now = time.perf_counter()
+        metrics = self._actor_only_metrics
+        for within_node_budget in (True, False):
+            for actor_id in deadlock.targets:
+                waited_s = 0.0
+                if within_node_budget:
+                    funding = HeadroomFunding.WITHIN_NODE_BUDGET
+                else:
+                    started = self._withheld_wait_started.setdefault(actor_id, now)
+                    waited_s = now - started
+                    funding = (
+                        HeadroomFunding.IMMEDIATE
+                        if waited_s >= WITHHELD_DEADLOCK_WAIT_MAX_S
+                        else HeadroomFunding.WAIT_FOR_PEERS
+                    )
+                granted = self._grant_withheld_headroom(
+                    actor_id,
+                    funding=funding,
+                    deadlock=deadlock,
+                    pinned_bytes_by_peer=pinned_bytes_by_peer,
+                )
+                if granted <= 0:
+                    if (
+                        funding is HeadroomFunding.WAIT_FOR_PEERS
+                        and metrics is not None
+                    ):
+                        assert self._metrics_op_tag is not None
+                        metrics.record_withheld_deadlock_wait(self._metrics_op_tag)
+                    continue
+                self._withheld_wait_started.pop(actor_id, None)
+                if metrics is not None:
+                    assert self._metrics_op_tag is not None
+                    metrics.record_withheld_deadlock_grant(self._metrics_op_tag)
+                logger.info(
+                    "%s: %d actor(s) deadlocked on withheld reconstruction "
+                    "outputs; granted actor %s %s (%s%s).",
+                    self.name,
+                    len(deadlock.deadlocked),
+                    actor_id,
+                    memory_string(granted),
+                    funding.value,
+                    f" after waiting {waited_s:.0f}s for its node peers"
+                    if funding is HeadroomFunding.IMMEDIATE
+                    else "",
+                )
+                # One grant per pass; the next pass re-checks.
+                return True
+        return False
 
     def task_pull_request(self, task_idx: int) -> TaskPullRequest:
         """Return how many bytes to pull from streaming generators."""
