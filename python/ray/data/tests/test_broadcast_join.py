@@ -332,6 +332,44 @@ def test_held_input_is_flushed_in_batches_after_fallback(
     assert len(left_map_tasks) == 4
 
 
+@pytest.mark.parametrize(
+    "large_args_threshold,expected_strategy",
+    [(0, "DEFAULT"), (None, "SPREAD")],
+    ids=["large_stream_bundle", "small_stream_bundle"],
+)
+def test_broadcast_task_scheduling_follows_large_args_rule(
+    ray_start_regular_shared_2_cpus,
+    disk_shuffle_v2,
+    make_left_right,
+    large_args_threshold,
+    expected_strategy,
+):
+    """Broadcast join tasks schedule like map tasks: a stream bundle above
+    large_args_threshold gets the locality-aware strategy, a smaller one keeps
+    SPREAD."""
+    if large_args_threshold is not None:
+        disk_shuffle_v2.large_args_threshold = large_args_threshold
+
+    left, right = make_left_right()
+    # Spy on _track_task to read each task's remote_args.
+    with mock.patch.object(
+        DiskHashShuffleReduceOp,
+        "_track_task",
+        autospec=True,
+        side_effect=DiskHashShuffleReduceOp._track_task,
+    ) as track:
+        joined = left.join(right, "inner", on=("id",), num_partitions=4)
+        _assert_join_result(joined, left, right, "inner")
+
+    # Both sides are under the broadcast threshold, so every task is a
+    # broadcast join task.
+    strategies = set()
+    for call in track.call_args_list:
+        _, _, _, remote_args = call.args
+        strategies.add(remote_args["scheduling_strategy"])
+    assert strategies == {expected_strategy}
+
+
 if __name__ == "__main__":
     import sys
 

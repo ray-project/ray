@@ -272,6 +272,15 @@ class DiskHashShuffleReduceOp(PhysicalOperator):
             if estimated_bytes > 0
             else 0
         )
+        # Same scheduling rule as MapOperator: a large stream bundle uses the
+        # locality-aware strategy, a small one keeps SPREAD for load balancing.
+        if (
+            "scheduling_strategy" not in self._reduce_ray_remote_args
+            and stream.size_bytes() > self.data_context.large_args_threshold
+        ):
+            remote_args[
+                "scheduling_strategy"
+            ] = self.data_context.scheduling_strategy_large_args
         block_gen = _broadcast_join_task.options(**remote_args).remote(
             *stream.block_refs,  # pyrefly: ignore[bad-argument-type]
             *build.block_refs,  # pyrefly: ignore[bad-argument-type]
