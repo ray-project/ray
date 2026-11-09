@@ -7,9 +7,7 @@ from ray.dashboard.modules.job.utils import fast_tail_last_n_lines, file_tail_it
 
 
 class JobLogStorageClient:
-    """
-    Disk storage for stdout / stderr of driver script logs.
-    """
+    """Disk storage for stdout / stderr of driver script logs."""
 
     # Number of last N lines to put in job message upon failure.
     NUM_LOG_LINES_ON_ERROR = 10
@@ -47,9 +45,9 @@ class JobLogStorageClient:
         )
 
     def get_log_file_path(self, job_id: str) -> Tuple[str, str]:
-        """
-        Get the file path to the logs of a given job. Example:
-            /tmp/ray/session_date/logs/job-driver-{job_id}.log
+        """Get the file path to the logs of a given job.
+
+        For example, ``/tmp/ray/session_date/logs/job-driver-{job_id}.log``.
         """
         return os.path.join(
             ray._private.worker._global_node.get_logs_dir_path(),

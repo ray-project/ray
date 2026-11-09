@@ -59,6 +59,8 @@ ts=2024-01-12T00:47:29.761Z caller=manager.go:1012 level=info component="rule ma
 
 Now you can access Ray metrics from the default Prometheus URL, http://localhost:9090.
 
+With token authentication on, `ray metrics launch-prometheus` configures Prometheus to send the token. See {ref}`Scrape metrics with token authentication <metrics-token-auth>`.
+
 To demonstrate that Prometheus is scraping metrics from Ray, run the following command:
 
 ```shell
@@ -201,10 +203,37 @@ scrape_configs:
   http_sd_configs:
   - url: 'http://<RayHeadnodeAddress>:<DashboardPort>/api/prometheus/sd'
     refresh_interval: 60s
+    authorization:
+      type: Bearer
+      credentials_file: <path to the token file>
 ```
 
 - `<DashboardPort>` is `8265` by default. See [Configuring and managing Ray dashboard](configure-manage-dashboard.md) for more details.
 - The endpoint returns a JSON list of targets for Prometheus metrics. When no targets are available, it returns `[]`.
+- With {ref}`token authentication <token-auth>` on, the endpoint requires the token. Prometheus sends the discovery request with its own HTTP client, so the `authorization` block inside `http_sd_configs` doesn't cover the scrapes. Also add one to the scrape job, as described in {ref}`Scrape metrics with token authentication <metrics-token-auth>`.
+
+(metrics-token-auth)=
+
+### Scrape metrics with token authentication
+
+With {ref}`token authentication <token-auth>` on, which is the default starting in Ray 2.61, Ray's metrics endpoints reject any scrape that doesn't carry the cluster's token. The Prometheus Targets page then shows the Ray targets as down with `401 Unauthorized` for a missing token, or `403 Forbidden` for a wrong one.
+
+`ray metrics launch-prometheus` needs no change when it runs where the token is. It fails if it finds no token. When `RAY_AUTH_TOKEN` is set, it writes the token into its own config with file mode `0600`. Otherwise, the config reads the token file at `RAY_AUTH_TOKEN_PATH` or `~/.ray/auth_token`. The config is `ray_prometheus.yml` in the Prometheus directory it downloads, such as `./prometheus-<version>.linux-amd64/`.
+
+If you run your own Prometheus, including one that uses the config Ray generates at `/tmp/ray/session_latest/metrics/prometheus/prometheus.yml`, copy the token file to the Prometheus host and add an `authorization` block to the `ray` scrape job:
+
+```yaml
+scrape_configs:
+- job_name: 'ray'
+  authorization:
+    type: Bearer
+    credentials_file: <path to the token file>
+  file_sd_configs:
+  - files:
+    - '/tmp/ray/prom_metrics_service_discovery.json'
+```
+
+To serve the metrics endpoints without the token while token authentication still protects everything else, set `RAY_AUTH_SKIP_METRICS=1` on every node before `ray start`. Scrapers then need no token, and `ray metrics launch-prometheus` writes no `authorization` block. With `RAY_AUTH_MODE=disabled`, scrapers need no token either.
 
 ### Manually discovering metrics endpoints
 
@@ -305,7 +334,7 @@ If this is your first time using Grafana, login with the username: `admin` and p
 
 Homebrew installs Grafana as a service that is automatically launched for you. Therefore, to configure these services, you cannot simply pass in the config files as command line arguments.
 
-Instead, update the `/usr/local/etc/grafana/grafana.ini` file so that it matches the contents of `/tmp/ray/session_latest/metrics/grafana/grafana.ini`.
+Instead, update the `$(brew --prefix)/etc/grafana/grafana.ini` file so that it matches the contents of `/tmp/ray/session_latest/metrics/grafana/grafana.ini`. The Homebrew prefix depends on the platform. It's `/usr/local` on Intel Macs and `/opt/homebrew` on Apple silicon.
 
 You can then start or restart the services with `brew services start grafana` and `brew services start prometheus`.
 

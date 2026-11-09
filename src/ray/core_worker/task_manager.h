@@ -319,6 +319,7 @@ class TaskManager : public TaskManagerInterface {
       std::shared_ptr<gcs::GcsClient> gcs_client,
       ray::observability::MetricInterface &task_by_state_counter,
       ray::observability::MetricInterface &total_lineage_bytes_gauge,
+      ray::observability::MetricInterface &task_retry_submissions_counter,
       FreeActorObjectCallback free_actor_object_callback,
       SetDirectTransportMetadata set_direct_transport_metadata,
       FreeObjectOnNodesCallback free_stale_unconsumed_generator_objects_async,
@@ -336,6 +337,7 @@ class TaskManager : public TaskManagerInterface {
         gcs_client_(std::move(gcs_client)),
         task_by_state_counter_(task_by_state_counter),
         total_lineage_bytes_gauge_(total_lineage_bytes_gauge),
+        task_retry_submissions_counter_(task_retry_submissions_counter),
         free_actor_object_callback_(std::move(free_actor_object_callback)),
         set_direct_transport_metadata_(std::move(set_direct_transport_metadata)),
         free_stale_unconsumed_generator_objects_async_(
@@ -735,6 +737,16 @@ class TaskManager : public TaskManagerInterface {
    */
   void RecordTaskState(const std::tuple<std::string, rpc::TaskStatus, bool> &key,
                        int64_t value) ABSL_EXCLUSIVE_LOCKS_REQUIRED(&mu_);
+
+  /**
+   * Records one resubmission of a task this worker owns.
+   *
+   * \param spec The spec of the task being resubmitted.
+   * \param reason The rpc::ErrorType name of the failed attempt, or
+   * LINEAGE_RECONSTRUCTION when the task re-runs to recover a lost object.
+   */
+  void RecordTaskRetrySubmission(const TaskSpecification &spec,
+                                 const std::string &reason);
 
   struct TaskEntry {
     TaskEntry(TaskSpecification spec,
@@ -1183,6 +1195,9 @@ class TaskManager : public TaskManagerInterface {
   /// Metric to track the total amount of memory used to store task specs for lineage
   /// reconstruction.
   observability::MetricInterface &total_lineage_bytes_gauge_;
+
+  /// Counts task resubmissions, tagged by Reason and Name.
+  observability::MetricInterface &task_retry_submissions_counter_;
 
   /// Callback to free GPU object from the in-actor RDT store.
   FreeActorObjectCallback free_actor_object_callback_;
