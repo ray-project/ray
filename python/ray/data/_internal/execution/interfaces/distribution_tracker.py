@@ -12,6 +12,7 @@ except ImportError:
 class DistributionStats(TypedDict):
     """Statistics calculated by a ``DistributionTracker``."""
 
+    sum: float
     num_samples: int
     mean: float
     variance: float
@@ -41,9 +42,11 @@ class DistributionTracker:
         self._min = float("inf")
         self._max = float("-inf")
         self._sketch = kll_doubles_sketch(200) if _DATASKETCHES_AVAILABLE else None
+        self._sum = 0.0
 
     def add_sample(self, value: float) -> None:
         self._count += 1
+        self._sum += value
 
         delta = value - self._mean
         self._mean += delta / self._count
@@ -68,6 +71,7 @@ class DistributionTracker:
             # Merging an accumulator into itself would double its samples
             # (count, m2, and the sketch), so treat it as a no-op.
             return
+        self._sum += other.sum
         if other._count == 0:
             return
         if self._count == 0:
@@ -153,8 +157,13 @@ class DistributionTracker:
     def p99(self) -> Optional[float]:
         return self._quantile(0.99)
 
+    @property
+    def sum(self) -> float:
+        return self._sum
+
     def as_dict(self) -> DistributionStats:
         return {
+            "sum": self.sum,
             "num_samples": self.num_samples,
             "mean": self.mean,
             "variance": self.variance,

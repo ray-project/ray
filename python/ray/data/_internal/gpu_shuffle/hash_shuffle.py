@@ -43,6 +43,7 @@ if typing.TYPE_CHECKING:
     from ray.data._internal.execution.block_ref_counter import BlockRefCounter
     from ray.data._internal.execution.interfaces.physical_operator import ActorPoolInfo
     from ray.data._internal.execution.lineage_tracker import LineageTracker
+    from ray.data._internal.execution.resource_bank import ResourceBankBase
     from ray.data._internal.progress.base_progress import BaseProgressBar
 
 logger = logging.getLogger(__name__)
@@ -496,8 +497,11 @@ class GPUShuffleOperator(PhysicalOperator, SubProgressBarMixin):
         options: ExecutionOptions,
         block_ref_counter: "BlockRefCounter",
         lineage_tracker: Optional["LineageTracker"] = None,
+        resource_bank: Optional["ResourceBankBase"] = None,
     ) -> None:
-        super().start(options, block_ref_counter, lineage_tracker)
+        super().start(
+            options, block_ref_counter, lineage_tracker, resource_bank=resource_bank
+        )
         self._rank_pool.start()
 
     def _add_input_inner(self, bundle: RefBundle, input_index: int) -> None:

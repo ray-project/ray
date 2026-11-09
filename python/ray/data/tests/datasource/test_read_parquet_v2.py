@@ -85,6 +85,24 @@ def test_read_parquet_builds_list_files_read_files_chain(tmp_path, restore_ctx):
     assert "b" in schema.names
 
 
+@pytest.mark.parametrize("as_list", [False, True])
+def test_read_parquet_list_files_keeps_caller_source_paths(
+    tmp_path, restore_ctx, as_list
+):
+    # Lineage tracking reads ``ListFiles.source_paths``. ``paths`` holds the
+    # resolved paths, which lose the URI scheme.
+    _write(tmp_path / "data.parquet", pa.table({"a": [1, 2, 3]}))
+    uri = f"file://{tmp_path}"
+
+    restore_ctx.use_datasource_v2 = True
+    ds = ray.data.read_parquet([uri] if as_list else uri)
+
+    list_files_op = ds._logical_plan.dag.input_dependencies[0]
+    assert isinstance(list_files_op, ListFiles)
+    assert list_files_op.paths == [str(tmp_path)]
+    assert list_files_op.source_paths == [uri]
+
+
 def test_read_parquet_tracks_tensor_columns_for_predicate_pushdown(
     tmp_path, restore_ctx
 ):
@@ -421,6 +439,22 @@ def test_read_parquet_v1_empty_skip_paths_is_noop(tmp_path, restore_ctx):
 
     ds = ray.data.read_parquet([str(a)], skip_paths=[])
     assert _rows(ds) == [1, 2]
+
+
+def test_read_parquet_v2_reads_duplicated_paths(tmp_path, restore_ctx):
+    # ``read_parquet([path] * k)`` deliberately multiplies the data; every
+    # copy must be read (DATA-3723 regression: the bin packer unioned the
+    # copies' row-group runs into one, silently dropping the repeats).
+    # Several row groups so the footer indexer emits chunked runs, and a
+    # small file so all copies pack into the same bin.
+    table = pa.table({"x": list(range(1000))})
+    path = tmp_path / "data.parquet"
+    pq.write_table(table, path, row_group_size=100)
+
+    restore_ctx.use_datasource_v2 = True
+    ds = ray.data.read_parquet([str(path)] * 3)
+    assert sorted(r["x"] for r in ds.take_all()) == sorted(list(range(1000)) * 3)
+    assert ds.count() == 3 * 1000
 
 
 def test_read_parquet_v2_uses_footer_indexer_with_bin_packer(tmp_path, restore_ctx):

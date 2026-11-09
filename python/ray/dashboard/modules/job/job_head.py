@@ -70,8 +70,7 @@ class RayActivityStatus(str, enum.Enum):
 
 
 class RayActivityResponse(BaseModel, extra=Extra.allow):
-    """
-    Pydantic model used to inform if a particular Ray component can be considered
+    """Pydantic model used to inform if a particular Ray component can be considered
     active, and metadata about observation.
     """
 
@@ -264,8 +263,7 @@ class JobHead(SubprocessModule):
     async def get_target_agent(
         self, timeout_s: float = WAIT_AVAILABLE_AGENT_TIMEOUT
     ) -> JobAgentSubmissionClient:
-        """
-        Get a `JobAgentSubmissionClient`, which is a client for interacting with jobs
+        """Get a `JobAgentSubmissionClient`, which is a client for interacting with jobs
         via an agent process.
 
         Args:
@@ -324,8 +322,7 @@ class JobHead(SubprocessModule):
         )
 
     async def _fetch_agent_info(self, target_node_id: NodeID) -> Tuple[str, int, int]:
-        """
-        Fetches agent info by the Node ID. May raise exception if there's network error or the
+        """Fetches agent info by the Node ID. May raise exception if there's network error or the
         agent info is not found.
 
         Returns: (ip, http_port, grpc_port)

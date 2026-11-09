@@ -24,6 +24,7 @@ import numpy as np
 import pyarrow as pa
 
 import ray
+from ray.data._internal.execution.interfaces.common import LogicalActorId
 from ray.data._internal.util import _check_pyarrow_version, _truncated_repr
 from ray.data.context import DataContext
 from ray.types import ObjectRef
@@ -129,6 +130,8 @@ BlockPartitionMetadata = List["BlockMetadata"]
 
 VALID_BATCH_FORMATS = ["pandas", "pyarrow", "numpy", "cudf", None]
 DEFAULT_BATCH_FORMAT = "numpy"
+# Sentinel used when BlockStats/BlockMetadata is constructed before Ray init.
+UNKNOWN_NODE_ID = "unknown"
 
 
 def _is_cudf_dataframe(obj: Any) -> bool:
@@ -231,10 +234,9 @@ class BlockExecStats:
     # to individual tasks in per-task statistics.
     task_idx: Optional[int] = None
 
-    # Ray node ID of the worker that produced this block.
-    node_id: str = field(
-        default_factory=lambda: ray.runtime_context.get_runtime_context().get_node_id()
-    )
+    # Logical id of the actor that produced this block, for operators that run
+    # on an actor pool. ``None`` for task-based operators.
+    actor_id: Optional[LogicalActorId] = None
 
     # `time.perf_counter()` reading on the producing worker when block
     # generation started. Monotonic with an undefined, per-machine reference
@@ -329,6 +331,15 @@ class BlockStats:
     # Overall task execution stats (reported from the worker).
     task_exec_stats: Optional[TaskExecWorkerStats] = field(default=None)
 
+    # Ray node ID of the worker/driver that produced this block.
+    node_id: str = field(
+        default_factory=lambda: (
+            ray.get_runtime_context().get_node_id()
+            if ray.is_initialized()
+            else UNKNOWN_NODE_ID
+        )
+    )
+
     def __post_init__(self):
         if self.size_bytes is not None:
             # Require size_bytes to be int, ray.util.metrics objects
@@ -368,6 +379,14 @@ class BlockMetadata(BlockStats):
             **{key: self.__getattribute__(key) for key in _BLOCK_STATS_FIELD_NAMES}
         )
 
+    # NOTE: `exec_stats` is optional, so each accessor below reports `None`
+    # rather than raising when a block carries no execution stats.
+    def get_task_index(self) -> Optional[int]:
+        return self.exec_stats.task_idx if self.exec_stats is not None else None
+
+    def get_actor_id(self) -> Optional[LogicalActorId]:
+        return self.exec_stats.actor_id if self.exec_stats is not None else None
+
 
 @functools.lru_cache(maxsize=128)
 def _read_arrow_schema_cached(schema_bytes: bytes) -> "pa.Schema":
@@ -396,6 +415,7 @@ class BlockMetadataWithSchema(BlockMetadata):
             task_exec_stats=metadata.task_exec_stats,
             input_files=metadata.input_files,
             consumer_memory_bytes=metadata.consumer_memory_bytes,
+            node_id=metadata.node_id,
             schema=schema,
         )
 
@@ -424,6 +444,7 @@ class BlockMetadataWithSchema(BlockMetadata):
             input_files=self.input_files,
             task_exec_stats=self.task_exec_stats,
             consumer_memory_bytes=self.consumer_memory_bytes,
+            node_id=self.node_id,
         )
 
     def __getstate__(self) -> Dict[str, Any]:
@@ -485,7 +506,7 @@ class BlockAccessor:
         """
         raise NotImplementedError
 
-    def take(self, indices: List[int]) -> Block:
+    def take(self, indices: Union[List[int], np.ndarray]) -> Block:
         """Return a new block containing the provided row indices.
 
         Args:

@@ -134,6 +134,55 @@ def test_packer_covers_every_unit_exactly_once(split_coalesced: bool) -> None:
     assert len(pairs) == len(set(pairs))  # no duplicates
 
 
+def _rows(manifest: FileManifest) -> list[tuple[str, Optional[list[int]]]]:
+    """A manifest's rows as ``(path, sorted unit ids)``; ``None`` = whole file."""
+    return [
+        (str(path), None if meta is None else sorted(meta["unit_ids"]))
+        for path, meta in zip(manifest.paths, manifest.file_chunk_metadatas)
+    ]
+
+
+def test_duplicated_file_keeps_one_row_per_copy() -> None:
+    # The same path listed twice (``read_parquet([p, p])``): both copies land
+    # in one bin, but their runs overlap, so the bin keeps one row per copy
+    # instead of unioning them into one — the reader scans each row, so no
+    # copy is silently dropped.
+    packer = OnlineBinPacker(max_bin_bytes=1000)
+    packer.add_input(_units("a", [10, 10]))
+    packer.add_input(_units("a", [10, 10]))
+    packer.finalize()
+
+    manifest = packer.next_partition()
+    assert not packer.has_partition()
+    assert _rows(manifest) == [("a", [0, 1]), ("a", [0, 1])]
+
+
+@pytest.mark.parametrize("split_coalesced", [False, True])
+def test_packer_preserves_unit_multiplicity_of_duplicated_files(
+    split_coalesced: bool,
+) -> None:
+    # A file listed k times must have every unit id covered exactly k times
+    # across all manifest rows, with no id repeated inside a row: the reader
+    # scans a row's unit ids once, so an id duplicated within a row is a
+    # silently dropped copy. The copies are small enough that several land in
+    # the same bin, where unioning a file's runs into one row would do
+    # exactly that.
+    packer = OnlineBinPacker(max_bin_bytes=100, split_coalesced=split_coalesced)
+    for manifest in [_units("a", [10, 10])] * 3 + [_units("b", [10, 10, 10])] * 2:
+        packer.add_input(manifest)
+    packer.finalize()
+
+    pairs = []
+    while packer.has_partition():
+        for path, ids in _rows(packer.next_partition()):
+            assert ids is None or len(ids) == len(set(ids)), (path, ids)
+            pairs.extend((path, i) for i in ids or ())
+    expected = sorted(
+        [("a", i) for i in range(2)] * 3 + [("b", i) for i in range(3)] * 2
+    )
+    assert sorted(pairs) == expected
+
+
 def test_split_coalesced_is_noop_without_coalescing() -> None:
     # With every run a single unit, the split flag must not change the packing.
     files = [_units("a", [40] * 3), _units("b", [40] * 2)]
@@ -283,6 +332,101 @@ def test_bin_with_whole_file_requests_nothing() -> None:
         paths=["w"], sizes=[40], chunk_metadatas=[None]
     )
     assert _pack([whole], max_bin_bytes=100, per_bin=_consumer_memory_bytes) == [None]
+
+
+def _with_extra(manifest: FileManifest, values: list[str]) -> FileManifest:
+    """``manifest`` plus a source-specific column, one value per row."""
+    import pyarrow as pa
+
+    block = manifest.as_block()
+    assert isinstance(block, pa.Table)
+    return FileManifest(block.append_column("__src", pa.array(values)))
+
+
+def test_source_columns_survive_packing() -> None:
+    """A source's own manifest columns reach the bin, aligned with their rows.
+
+    Iceberg puts each file's delete files and partition values in columns like
+    these; losing them in the packer would lose the read.
+    """
+    packer = OnlineBinPacker(100)
+    packer.add_input(
+        _with_extra(
+            FileManifest.construct_manifest(
+                paths=["a", "b"], sizes=[40, 40], chunk_metadatas=[None, None]
+            ),
+            ["a-state", "b-state"],
+        )
+    )
+    packer.finalize()
+
+    bins = []
+    while packer.has_partition():
+        bins.append(packer.next_partition())
+
+    paths = [str(path) for manifest in bins for path in manifest.paths]
+    state = [
+        value for manifest in bins for value in manifest.as_block()["__src"].to_pylist()
+    ]
+    assert dict(zip(paths, state)) == {"a": "a-state", "b": "b-state"}
+
+
+def test_source_columns_survive_a_split_run() -> None:
+    """Splitting a file's run at unit boundaries copies its columns to each piece."""
+    packer = OnlineBinPacker(100, split_coalesced=True)
+    packer.add_input(
+        _with_extra(
+            _file(
+                "f",
+                300,
+                [_run((0, 1, 2), 300, unit_sizes=(100, 100, 100), unit_rows=(1, 1, 1))],
+            ),
+            ["f-state"],
+        )
+    )
+    packer.finalize()
+
+    bins = []
+    while packer.has_partition():
+        bins.append(packer.next_partition())
+
+    assert len(bins) == 3
+    for manifest in bins:
+        assert manifest.as_block()["__src"].to_pylist() == ["f-state"]
+
+
+def test_bin_spanning_two_inputs_keeps_source_columns() -> None:
+    """A bin holding rows from two ``add_input`` calls keeps each row's columns."""
+    packer = OnlineBinPacker(100)
+    for path in ["a", "b"]:
+        packer.add_input(
+            _with_extra(
+                FileManifest.construct_manifest(
+                    paths=[path], sizes=[40], chunk_metadatas=[None]
+                ),
+                [f"{path}-state"],
+            )
+        )
+    packer.finalize()
+
+    manifest = packer.next_partition()
+    assert not packer.has_partition()
+    assert list(manifest.paths) == ["a", "b"]
+    column = manifest.as_block()["__src"]
+    assert column.to_pylist() == ["a-state", "b-state"]
+    assert column.num_chunks == 1
+
+
+def test_manifest_without_source_columns_is_unchanged() -> None:
+    """The common case: three required columns in, three out."""
+    packer = OnlineBinPacker(100)
+    packer.add_input(
+        FileManifest.construct_manifest(paths=["a"], sizes=[40], chunk_metadatas=[None])
+    )
+    packer.finalize()
+
+    manifest = packer.next_partition()
+    assert manifest.extra_columns is None
 
 
 if __name__ == "__main__":

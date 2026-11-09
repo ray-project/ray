@@ -47,8 +47,7 @@ def parse_runtime_env_args(
     runtime_env_json: Optional[str] = None,
     working_dir: Optional[str] = None,
 ):
-    """
-    Generates a runtime_env dictionary using `runtime_env`, `runtime_env_json`,
+    """Generates a runtime_env dictionary using `runtime_env`, `runtime_env_json`,
     and `working_dir` CLI options. Only one of `runtime_env` or
     `runtime_env_json` may be defined. `working_dir` overwrites the
     `working_dir` from any other option.

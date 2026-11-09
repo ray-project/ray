@@ -14,10 +14,18 @@ _TRAIN_V2_TEST_ENV_TF = {
     "TF_USE_LEGACY_KERAS": "1",
 }
 
+# Don't forward worker logs to the driver: doctest captures driver stdout, so a
+# worker line such as a Gloo connection message fails whichever example is
+# running when it arrives.
+_TRAIN_V2_DOCTEST_ENV = dict(
+    _TRAIN_V2_TEST_ENV_TF,
+    RAY_LOG_TO_DRIVER = "0",
+)
+
 doctest(
     name = "py_doctest[train_v2]",
     size = "large",
-    env = _TRAIN_V2_TEST_ENV_TF,
+    env = _TRAIN_V2_DOCTEST_ENV,
     files = glob(
         ["**/*.py"],
         exclude = [
@@ -249,6 +257,23 @@ py_test(
     srcs = ["tests/test_controller_callback_behaviour.py"],
     env = _TRAIN_V2_TEST_ENV,
     tags = [
+        "exclusive",
+        "team:ml",
+        "train_v2",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
+    name = "test_dataset_checkpointing",
+    size = "large",
+    srcs = ["tests/test_dataset_checkpointing.py"],
+    env = _TRAIN_V2_TEST_ENV,
+    tags = [
+        "data_integration",
         "exclusive",
         "team:ml",
         "train_v2",
@@ -871,6 +896,22 @@ py_test(
         "exclusive",
         "team:ml",
         "train_v2_gpu",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
+    name = "test_train_annotations",
+    size = "small",
+    srcs = ["tests/test_train_annotations.py"],
+    env = {"RAY_TRAIN_V2_ENABLED": "1"},
+    tags = [
+        "exclusive",
+        "team:ml",
+        "train_v2",
     ],
     deps = [
         ":conftest",
