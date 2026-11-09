@@ -171,6 +171,19 @@ def test_large_unmodelled_leaves_pay_by_their_uncompressed_bytes(tmp_path, monke
     assert charge < size < charge + (8 << 20), (size, charge)
 
 
+def test_unmodelled_file_counts_the_added_columns(tmp_path, monkeypatch):
+    """A file the estimator doesn't model still pays for a column Ray fills."""
+    import ray.data._internal.datasource_v2.formats.parquet.footer_reader as reader
+
+    monkeypatch.setattr(reader, "build_leaf_profiles", lambda **kwargs: None)
+    path = tmp_path / "f.parquet"
+    table = _mixed()
+    pq.write_table(table, path, row_group_size=M // 4)
+    filled = table.schema.append(pa.field("notes", pa.string()))
+    plain = _sizes(path, read_schema=table.schema)
+    assert all(a > b for a, b in zip(_sizes(path, read_schema=filled), plain))
+
+
 def test_filtered_read_without_the_file_schema_sizes_every_column(
     tmp_path, monkeypatch
 ):

@@ -329,8 +329,8 @@ class FooterReader:
         """PyArrow's estimated peak bytes decoding ``row_group`` as a read task does,
         leaning high: a read task over its budget is what runs a node out of memory."""
         if sizing.profiles is None:
-            # A file the estimator doesn't model.
-            work = 0
+            # A file the estimator doesn't model; the columns Ray appends still count.
+            work = estimate_added_columns(row_group=row_group, read=sizing.read)
             unmodelled = list(sizing.leaf_indices)
         else:
             chunks = leaf_chunks(
