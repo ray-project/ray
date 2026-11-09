@@ -97,17 +97,20 @@ class PrefixTree:
         self._eviction_stop_event: threading.Event = threading.Event()
 
     @staticmethod
-    def _shared_prefix_count(a: str, b: str) -> int:
+    def _shared_prefix_count(a: str, b: str, b_start: int = 0) -> int:
         """Count the number of shared characters at the beginning of two strings.
 
         Args:
             a: First string
             b: Second string
+            b_start: Index in ``b`` at which to start comparing
 
         Returns:
             Number of matching characters at the beginning
         """
-        return len(os.path.commonprefix([a, b]))
+        if b.startswith(a, b_start):
+            return len(a)
+        return len(os.path.commonprefix([a, b[b_start:]]))
 
     def _get_lru_chain(self, tenant: str) -> List[Node]:
         """Get the LRU chain for a given tenant by traversing from the root to the oldest node.
@@ -289,12 +292,11 @@ class PrefixTree:
                     break
 
                 first_char: str = text[i]
-                curr_text: str = text[i:]
 
                 if first_char not in curr_node.edge_label_to_child:
                     # No match, create new node. Don't update new node as "visited" by tenant yet; it will be done at the beginning of the next iteration.
-                    # e.g. curr_node.edge_label_to_child = {}, curr_text = "hello" -> curr_node.edge_label_to_child = {"h": Node("hello")}
-                    new_node: Node = Node(text=curr_text, parent=curr_node)
+                    # e.g. text[i:] = "hello" creates {"h": Node("hello")}.
+                    new_node: Node = Node(text=text[i:], parent=curr_node)
                     curr_node.edge_label_to_child[first_char] = new_node
                     # Add the node to the back of the LRU list; it will be moved to the front in the next iteration.
                     self._insert_node_into_linked_list(
@@ -304,7 +306,7 @@ class PrefixTree:
                 # Match found, check if we need to split
                 matched_node: Node = curr_node.edge_label_to_child[first_char]
                 shared_count: int = self._shared_prefix_count(
-                    matched_node.text, curr_text
+                    matched_node.text, text, i
                 )
                 if shared_count < len(matched_node.text):
                     # Partial match, split node at matched point
@@ -395,7 +397,6 @@ class PrefixTree:
 
             while i < text_len:
                 first_char: str = text[i]
-                curr_text: str = text[i:]
 
                 if first_char in curr_node.edge_label_to_child:
                     matched_node: Node = curr_node.edge_label_to_child[first_char]
@@ -408,7 +409,7 @@ class PrefixTree:
                         break
 
                     shared_count: int = self._shared_prefix_count(
-                        matched_node.text, curr_text
+                        matched_node.text, text, i
                     )
                     i += shared_count
                     curr_node = matched_node
