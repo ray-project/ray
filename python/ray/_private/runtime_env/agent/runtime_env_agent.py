@@ -64,6 +64,7 @@ _FORK_SERVER_ALLOWED_RUNTIME_ENV_KEYS: FrozenSet[str] = frozenset(
         "config",
         "preload_modules",
         "working_dir",
+        "excludes",
         "py_modules",
         "pip",
         "uv",
@@ -99,6 +100,7 @@ _EXEC_BOUND_ENV_VARS_EXACT: FrozenSet[str] = frozenset(
         "GLIBC_TUNABLES",
         "JE_MALLOC_CONF",
         "JE_ARROW_MALLOC_CONF",
+        "_RJEM_MALLOC_CONF",
         "ASAN_OPTIONS",
         "TSAN_OPTIONS",
         "UBSAN_OPTIONS",
@@ -508,6 +510,7 @@ class RuntimeEnvAgent:
         self._raylet_env_refs: Dict[str, int] = defaultdict(int)
         self._serialized_env_to_fs_key: Dict[str, str] = {}
         self._fs_key_to_uris: Dict[str, Set[str]] = {}
+        self._fork_server_bypass_logged: Set[str] = set()
         self._max_active_fork_servers = max(
             0, int(os.environ.get("RAY_max_active_fork_servers", "32"))
         )
@@ -655,11 +658,14 @@ class RuntimeEnvAgent:
             logger.warning("%s", warning_line)
 
     def _should_start_fork_server(
-        self, runtime_env: RuntimeEnv, context: RuntimeEnvContext
+        self,
+        runtime_env: RuntimeEnv,
+        context: RuntimeEnvContext,
+        logger: Optional[logging.Logger] = None,
     ) -> bool:
         if not self._enable_worker_fork_server:
             return False
-        env_keys = set(runtime_env.keys())
+        env_keys = set(runtime_env.keys()) - RuntimeEnv.extensions_fields
         if not (env_keys <= _FORK_SERVER_ALLOWED_RUNTIME_ENV_KEYS):
             return False
         if self._custom_plugin_names and (env_keys & self._custom_plugin_names):
@@ -675,9 +681,16 @@ class RuntimeEnvAgent:
         user_py_exec = runtime_env.get("py_executable")
         if isinstance(user_py_exec, str) and user_py_exec.strip():
             try:
-                if len(shlex.split(user_py_exec)) != 1:
-                    return False
+                is_multi_arg = len(shlex.split(user_py_exec)) != 1
             except ValueError:
+                is_multi_arg = True
+            if is_multi_arg:
+                if logger is not None:
+                    logger.info(
+                        "Bypassing worker fork server because runtime_env "
+                        "py_executable %r is a multi-argument wrapper command.",
+                        user_py_exec,
+                    )
                 return False
         return True
 
@@ -1043,7 +1056,13 @@ class RuntimeEnvAgent:
         logger: logging.Logger,
         setup_deadline: Optional[float] = None,
     ) -> Optional[str]:
-        if not self._should_start_fork_server(runtime_env, context):
+        bypass_logger = (
+            None if serialized_env in self._fork_server_bypass_logged else logger
+        )
+        if not self._should_start_fork_server(
+            runtime_env, context, logger=bypass_logger
+        ):
+            self._fork_server_bypass_logged.add(serialized_env)
             self._serialized_env_to_fs_key.pop(serialized_env, None)
             return None
 
@@ -1210,6 +1229,7 @@ class RuntimeEnvAgent:
             _, server = self._fork_servers.popitem()
             server.stop()
         self._fs_key_to_uris.clear()
+        self._fork_server_bypass_logged.clear()
 
     def uris_parser(self, runtime_env: RuntimeEnv):
         result = list()
@@ -1227,6 +1247,7 @@ class RuntimeEnvAgent:
     def unused_runtime_env_processor(self, unused_runtime_env: str) -> None:
         def delete_runtime_env():
             del self._env_cache[unused_runtime_env]
+            self._fork_server_bypass_logged.discard(unused_runtime_env)
             if self._raylet_env_refs.get(unused_runtime_env, 0) <= 0:
                 self._serialized_env_to_fs_key.pop(unused_runtime_env, None)
             self._logger.info(

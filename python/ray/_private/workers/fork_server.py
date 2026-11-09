@@ -632,6 +632,7 @@ def _run_fork_server(argv: Optional[List[str]] = None) -> Optional[ModuleType]:
         "OPENBLAS_NUM_THREADS": os.environ.get("OPENBLAS_NUM_THREADS"),
         "MKL_NUM_THREADS": os.environ.get("MKL_NUM_THREADS"),
         "JE_ARROW_MALLOC_CONF": os.environ.get("JE_ARROW_MALLOC_CONF"),
+        "_RJEM_MALLOC_CONF": os.environ.get("_RJEM_MALLOC_CONF"),
         "PYTORCH_NVML_BASED_CUDA_CHECK": os.environ.get(
             "PYTORCH_NVML_BASED_CUDA_CHECK"
         ),
@@ -643,6 +644,7 @@ def _run_fork_server(argv: Optional[List[str]] = None) -> Optional[ModuleType]:
     os.environ["OPENBLAS_NUM_THREADS"] = "1"
     os.environ["MKL_NUM_THREADS"] = "1"
     os.environ.setdefault("JE_ARROW_MALLOC_CONF", "background_thread:false")
+    os.environ.setdefault("_RJEM_MALLOC_CONF", "background_thread:false")
     os.environ["PYTORCH_NVML_BASED_CUDA_CHECK"] = "1"
     os.environ["TORCH_DEVICE_BACKEND_AUTOLOAD"] = "0"
 

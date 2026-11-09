@@ -1,6 +1,9 @@
 import asyncio
 import ctypes
 import gc
+import importlib
+import importlib.util
+import io
 import json
 import logging
 import os
@@ -29,6 +32,7 @@ from ray._common.test_utils import fetch_prometheus, wait_for_condition
 from ray._private import ray_constants
 from ray._private.internal_api import memory_summary
 from ray._private.runtime_env.agent.runtime_env_agent import (
+    _FORK_SERVER_ALLOWED_RUNTIME_ENV_KEYS,
     RuntimeEnvAgent,
     is_exec_bound_env_var,
 )
@@ -46,6 +50,8 @@ try:
     HAS_SCIPY = True
 except ImportError:
     HAS_SCIPY = False
+
+HAS_POLARS = importlib.util.find_spec("polars") is not None
 
 try:
     import torch
@@ -1542,6 +1548,9 @@ def test_fork_server_exec_bound_ld_library_path_tz_pythonpath_and_secret_isolati
     assert is_exec_bound_env_var("LD_PRELOAD")
     assert is_exec_bound_env_var("PYTHONHASHSEED")
     assert is_exec_bound_env_var("GLIBC_TUNABLES")
+    assert is_exec_bound_env_var("JE_MALLOC_CONF")
+    assert is_exec_bound_env_var("JE_ARROW_MALLOC_CONF")
+    assert is_exec_bound_env_var("_RJEM_MALLOC_CONF")
     assert is_exec_bound_env_var("GOMP_CPU_AFFINITY")
     assert is_exec_bound_env_var("OMP_WAIT_POLICY")
     assert is_exec_bound_env_var("KMP_AFFINITY")
@@ -1930,13 +1939,80 @@ async def test_fork_server_uv_cache_key_uricache_eviction_cwd_and_source_process
         await _delete(env_sym)
         await _delete(env_sym)
 
-        # 4. Plugin allowlist & multi-token profiler py_executable bypass fork server cleanly.
-        ctx_prof = await _create({"py_executable": f"{sys.executable} -O"})
-        assert ctx_prof.fork_server_socket_path is None
-        await _delete({"py_executable": f"{sys.executable} -O"})
-        assert not agent._should_start_fork_server(
-            RuntimeEnv(_validate=False, nsight="default"), RuntimeEnvContext()
+        # 4. Exhaustive RuntimeEnv.known_fields partition, conda/_ray_commit/excludes
+        # allowlist acceptance, custom/excluded plugin rejection, and wrapper logging.
+        excluded_builtin_keys = {
+            "container",
+            "image_uri",
+            "_nsight",
+            "_rocprof_sys",
+            "java_jars",
+        }
+        assert _FORK_SERVER_ALLOWED_RUNTIME_ENV_KEYS.isdisjoint(
+            RuntimeEnv.extensions_fields
         )
+        assert _FORK_SERVER_ALLOWED_RUNTIME_ENV_KEYS.isdisjoint(excluded_builtin_keys)
+        assert (
+            _FORK_SERVER_ALLOWED_RUNTIME_ENV_KEYS
+            | RuntimeEnv.extensions_fields
+            | excluded_builtin_keys
+        ) == RuntimeEnv.known_fields
+
+        conda_rt = RuntimeEnv(conda="my_test_conda_env", _validate=True)
+        assert "_ray_commit" in conda_rt
+        assert agent._should_start_fork_server(conda_rt, RuntimeEnvContext())
+        assert agent._should_start_fork_server(
+            RuntimeEnv(
+                _validate=False,
+                conda="my_test_conda_env",
+                _ray_commit="deadbeef",
+                _ray_release="2.0.0",
+                _inject_current_ray=True,
+            ),
+            RuntimeEnvContext(),
+        )
+        assert agent._should_start_fork_server(
+            RuntimeEnv(working_dir="local:///tmp", excludes=["*.tmp"]),
+            RuntimeEnvContext(),
+        )
+
+        for unsupported_rt in (
+            RuntimeEnv(_validate=False, java_jars=["s3://bucket/app.jar"]),
+            RuntimeEnv(container={"image": "anyscale/ray:latest"}),
+            RuntimeEnv(image_uri="rayproject/ray:latest"),
+            RuntimeEnv(nsight="default"),
+            RuntimeEnv(rocprof_sys="default"),
+            RuntimeEnv(_validate=False, custom_third_party_plugin={"enabled": True}),
+        ):
+            assert not agent._should_start_fork_server(
+                unsupported_rt, RuntimeEnvContext()
+            ), unsupported_rt
+
+        wrapper_exec = f"{sys.executable} -O"
+        ctx_prof = await _create({"py_executable": wrapper_exec})
+        assert ctx_prof.fork_server_socket_path is None
+        ctx_prof_cached = await _create({"py_executable": wrapper_exec})
+        assert ctx_prof_cached.fork_server_socket_path is None
+        setup_log_text = (logs_dir / "runtime_env_setup-01000000.log").read_text()
+        assert (
+            setup_log_text.count(
+                f"Bypassing worker fork server because runtime_env py_executable "
+                f"{wrapper_exec!r} is a multi-argument wrapper command."
+            )
+            == 1
+        )
+        await _delete({"py_executable": wrapper_exec})
+        await _delete({"py_executable": wrapper_exec})
+
+        buf = io.StringIO()
+        probe_logger = logging.Logger("bypass_probe")
+        probe_logger.addHandler(logging.StreamHandler(buf))
+        assert not agent._should_start_fork_server(
+            RuntimeEnv(py_executable=f"{sys.executable} 'unclosed"),
+            RuntimeEnvContext(),
+            logger=probe_logger,
+        )
+        assert "is a multi-argument wrapper command." in buf.getvalue()
     finally:
         agent._cleanup_fork_servers()
 
@@ -2451,3 +2527,263 @@ def test_clamped_ready_timeout_preserves_default_120s_cap(monkeypatch):
 
     assert RuntimeEnvAgent._fork_server_setup_deadline(now, None) is None
     assert RuntimeEnvAgent._clamped_ready_timeout_s(None) == pytest.approx(2.5)
+
+
+@pytest.mark.skipif(sys.platform != "linux", reason="ForkServer is Linux-only.")
+def test_fork_server_pip_excludes_local_dev_wrapper_bypass_and_rjem_pin(
+    ray_start_cluster, monkeypatch, tmp_path
+):
+    """Verify pip (_ray_commit), working_dir + excludes, and RAY_RUNTIME_ENV_LOCAL_DEV_MODE
+    (_inject_current_ray) spawn dedicated fork servers; multi-arg py_executable logs and
+    falls back cleanly via execvpe; and _RJEM_MALLOC_CONF keeps Rust jemalloc preloads
+    (e.g. polars) single-threaded pre-fork while restoring/unsetting cleanly post-fork."""
+    monkeypatch.delenv("RAY_RUNTIME_ENV_LOCAL_DEV_MODE", raising=False)
+    monkeypatch.delenv("_RJEM_MALLOC_CONF", raising=False)
+    monkeypatch.delenv("JE_ARROW_MALLOC_CONF", raising=False)
+
+    tests_dir = Path(__file__).resolve().parent
+    local_wheel = tests_dir / "pip_install_test-0.5-py3-none-any.whl"
+    assert local_wheel.is_file(), f"Missing hermetic test wheel: {local_wheel}"
+
+    wdir = tmp_path / "wd_with_excludes"
+    wdir.mkdir()
+    (wdir / "kept.txt").write_text("kept_payload")
+    (wdir / "ignored.tmp").write_text("excluded_payload")
+    (wdir / "wd_excl_mod.py").write_text("import os\nPRELOAD_PID = os.getpid()\n")
+
+    dev_dir = tmp_path / "local_dev_pymod"
+    dev_dir.mkdir()
+    (dev_dir / "dev_inject_mod.py").write_text("import os\nPRELOAD_PID = os.getpid()\n")
+
+    rjem_dir = tmp_path / "rjem_pymod"
+    rjem_dir.mkdir()
+    (rjem_dir / "rjem_probe_mod.py").write_text(
+        "import os\n"
+        "PRELOAD_RJEM = os.environ.get('_RJEM_MALLOC_CONF')\n"
+        "PRELOAD_JE_ARROW = os.environ.get('JE_ARROW_MALLOC_CONF')\n"
+    )
+
+    cluster = ray_start_cluster
+    cluster.add_node(
+        num_cpus=2,
+        _system_config={"enable_worker_fork_server": True},
+    )
+    ctx = ray.init(address=cluster.address)
+    session_dir = ctx.address_info["session_dir"]
+    logs_dir = Path(session_dir) / "logs"
+    default_sock = os.path.join(session_dir, "sockets", "fs_0")
+    wait_for_condition(
+        lambda: os.path.exists(default_sock)
+        and default_sock in _find_fork_server_pids(session_dir),
+        timeout=15,
+    )
+    default_fs_pid = _find_fork_server_pids(session_dir)[default_sock]
+
+    # (a.1) Hermetic offline `pip` runtime_env carries auto-injected `_ray_commit` and
+    # spawns a dedicated `sockets/fs_<hash>` fork server running the virtualenv Python.
+    pip_spec = {
+        "packages": ["pip-install-test==0.5"],
+        "pip_install_options": [
+            "--no-index",
+            f"--find-links={tests_dir}",
+            "--no-deps",
+            "--no-cache-dir",
+            "--disable-pip-version-check",
+        ],
+    }
+    pip_rt = RuntimeEnv(pip=pip_spec)
+    assert "_ray_commit" in pip_rt
+
+    @ray.remote(num_cpus=0, runtime_env=pip_rt)
+    class PipForkActor:
+        def inspect(self):
+            mod = importlib.import_module("pip_install_test")
+            return {
+                "pid": os.getpid(),
+                "ppid": os.getppid(),
+                "exe": sys.executable,
+                "mod_file": os.path.realpath(mod.__file__),
+            }
+
+    pip_actor = PipForkActor.remote()
+    pip_info = ray.get(pip_actor.inspect.remote())
+    fs_by_sock = _find_fork_server_pids(session_dir)
+    pip_socks = [s for s, p in fs_by_sock.items() if p == pip_info["ppid"]]
+    assert len(pip_socks) == 1
+    assert pip_socks[0] != default_sock
+    assert os.path.basename(pip_socks[0]).startswith("fs_")
+    assert pip_info["ppid"] != default_fs_pid
+    assert pip_info["exe"] != sys.executable
+    assert "virtualenv" in pip_info["mod_file"]
+    ray.kill(pip_actor)
+    wait_for_condition(lambda: not _pid_exists(pip_info["pid"]), timeout=10)
+
+    # (a.2) `RAY_RUNTIME_ENV_LOCAL_DEV_MODE=1` injects `_inject_current_ray=True` and still forks.
+    monkeypatch.setenv("RAY_RUNTIME_ENV_LOCAL_DEV_MODE", "1")
+    dev_rt = RuntimeEnv(
+        py_modules=[f"local://{dev_dir}"],
+        preload_modules=["dev_inject_mod"],
+    )
+    assert dev_rt.get("_inject_current_ray") is True
+
+    @ray.remote(num_cpus=0, runtime_env=dev_rt)
+    class LocalDevForkActor:
+        def inspect(self):
+            mod = importlib.import_module("dev_inject_mod")
+            return os.getpid(), os.getppid(), mod.PRELOAD_PID
+
+    dev_actor = LocalDevForkActor.remote()
+    dev_pid, dev_ppid, dev_preload_pid = ray.get(dev_actor.inspect.remote())
+    dev_socks = [
+        s for s, p in _find_fork_server_pids(session_dir).items() if p == dev_ppid
+    ]
+    assert len(dev_socks) == 1 and dev_socks[0] != default_sock
+    assert dev_preload_pid == dev_ppid
+    ray.kill(dev_actor)
+    wait_for_condition(lambda: not _pid_exists(dev_pid), timeout=10)
+    monkeypatch.delenv("RAY_RUNTIME_ENV_LOCAL_DEV_MODE", raising=False)
+
+    # (b) Multi-argument `py_executable` falls back cleanly via execvpe and logs once in setup log.
+    wrapper_cmd = f"{sys.executable} -u"
+
+    @ray.remote(num_cpus=0, runtime_env={"py_executable": wrapper_cmd})
+    class WrapperExecActor:
+        def inspect(self):
+            return {
+                "pid": os.getpid(),
+                "ppid": os.getppid(),
+                "stdout_line_buffering": getattr(sys.stdout, "line_buffering", None),
+                "raw_stdout_type": type(
+                    getattr(sys.__stdout__, "buffer", sys.__stdout__)
+                ).__name__,
+            }
+
+    wrap_a1 = WrapperExecActor.remote()
+    wrap_a2 = WrapperExecActor.remote()
+    w1, w2 = ray.get([wrap_a1.inspect.remote(), wrap_a2.inspect.remote()])
+    live_fs_pids = set(_find_fork_server_pids(session_dir).values())
+    assert w1["ppid"] not in live_fs_pids
+    assert w2["ppid"] not in live_fs_pids
+    # Under `python -u`, sys.__stdout__.buffer wraps raw FileIO directly without BufferedWriter.
+    assert w1["raw_stdout_type"] == "FileIO"
+    ray.kill(wrap_a1)
+    ray.kill(wrap_a2)
+
+    expected_msg = (
+        f"Bypassing worker fork server because runtime_env py_executable "
+        f"{wrapper_cmd!r} is a multi-argument wrapper command."
+    )
+
+    def _wrapper_logged_once() -> bool:
+        combined = "\n".join(
+            p.read_text(errors="replace")
+            for p in logs_dir.glob("runtime_env_setup-*.log")
+        )
+        return combined.count(expected_msg) == 1
+
+    wait_for_condition(_wrapper_logged_once, timeout=5)
+
+    # (c) `_RJEM_MALLOC_CONF` is pinned pre-fork (keeping `polars` single-threaded in the
+    # fork server when installed), unset post-fork by default, and preserved when overridden.
+    rjem_preloads = ["rjem_probe_mod"] + (["polars"] if HAS_POLARS else [])
+
+    @ray.remote(
+        num_cpus=0,
+        runtime_env={
+            "py_modules": [f"local://{rjem_dir}"],
+            "preload_modules": rjem_preloads,
+        },
+    )
+    class RjemPinActor:
+        def inspect(self):
+            probe = importlib.import_module("rjem_probe_mod")
+            child_rjem = os.environ.get("_RJEM_MALLOC_CONF")
+            child_je_arrow = os.environ.get("JE_ARROW_MALLOC_CONF")
+            polars_preloaded = "polars" in sys.modules
+            polars_sum = None
+            if HAS_POLARS:
+                pl = importlib.import_module("polars")
+                polars_sum = int(
+                    pl.DataFrame({"x": [1, 2, 3, 4]}).select(pl.col("x").sum()).item()
+                )
+            return {
+                "pid": os.getpid(),
+                "ppid": os.getppid(),
+                "preload_rjem": probe.PRELOAD_RJEM,
+                "preload_je_arrow": probe.PRELOAD_JE_ARROW,
+                "child_rjem": child_rjem,
+                "child_je_arrow": child_je_arrow,
+                "polars_preloaded": polars_preloaded,
+                "polars_sum": polars_sum,
+            }
+
+    rjem_actor = RjemPinActor.remote()
+    rjem_info = ray.get(rjem_actor.inspect.remote())
+    rjem_fs_pid = rjem_info["ppid"]
+    assert rjem_fs_pid != default_fs_pid
+    assert rjem_fs_pid in _find_fork_server_pids(session_dir).values()
+    assert len(os.listdir(f"/proc/{rjem_fs_pid}/task")) == 1
+    assert "Threads:\t1\n" in Path(f"/proc/{rjem_fs_pid}/status").read_text()
+    assert rjem_info["preload_rjem"] == "background_thread:false"
+    assert rjem_info["preload_je_arrow"] == "background_thread:false"
+    assert rjem_info["child_rjem"] is None
+    assert rjem_info["child_je_arrow"] is None
+    if HAS_POLARS:
+        assert rjem_info["polars_preloaded"] is True
+        assert rjem_info["polars_sum"] == 10
+
+    rjem_override_actor = RjemPinActor.options(
+        runtime_env={
+            "py_modules": [f"local://{rjem_dir}"],
+            "preload_modules": ["rjem_probe_mod"],
+            "env_vars": {"_RJEM_MALLOC_CONF": "dirty_decay_ms:5000"},
+        }
+    ).remote()
+    rjem_override = ray.get(rjem_override_actor.inspect.remote())
+    assert rjem_override["ppid"] not in (default_fs_pid, rjem_fs_pid)
+    assert rjem_override["ppid"] in _find_fork_server_pids(session_dir).values()
+    assert rjem_override["preload_rjem"] == "dirty_decay_ms:5000"
+    assert rjem_override["child_rjem"] == "dirty_decay_ms:5000"
+    ray.kill(rjem_actor)
+    ray.kill(rjem_override_actor)
+    ray.shutdown()
+
+    # (a.3) Job-level `working_dir` + `excludes` uploads filtered package, hits
+    # raylet_eager_install -> raylet cache path, and forks from dedicated `sockets/fs_<hash>`.
+    wd_rt = {
+        "working_dir": str(wdir),
+        "excludes": ["*.tmp"],
+        "preload_modules": ["wd_excl_mod"],
+    }
+    assert "excludes" in RuntimeEnv(**wd_rt)
+    ray.init(address=cluster.address, runtime_env=wd_rt)
+    try:
+
+        @ray.remote(num_cpus=0)
+        class ExcludesForkActor:
+            def inspect(self):
+                mod = importlib.import_module("wd_excl_mod")
+                return {
+                    "pid": os.getpid(),
+                    "ppid": os.getppid(),
+                    "preload_pid": mod.PRELOAD_PID,
+                    "has_kept": Path("kept.txt").is_file(),
+                    "has_ignored": Path("ignored.tmp").exists(),
+                }
+
+        wd_actor = ExcludesForkActor.remote()
+        wd_info = ray.get(wd_actor.inspect.remote())
+        wd_socks = [
+            s
+            for s, p in _find_fork_server_pids(session_dir).items()
+            if p == wd_info["ppid"]
+        ]
+        assert len(wd_socks) == 1 and wd_socks[0] != default_sock
+        assert os.path.basename(wd_socks[0]).startswith("fs_")
+        assert wd_info["preload_pid"] == wd_info["ppid"]
+        assert wd_info["has_kept"] is True
+        assert wd_info["has_ignored"] is False
+        ray.kill(wd_actor)
+        wait_for_condition(lambda: not _pid_exists(wd_info["pid"]), timeout=10)
+    finally:
+        ray.shutdown()
