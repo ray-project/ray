@@ -10,14 +10,17 @@ time.
 
 A message row has the columns of ``message_schema``. Its optional ``row_id``
 is a deterministic name for the message, built from the file path, the chunk's
-byte offset and the message's position in the chunk. A sample read's manifest
-rows are samples instead, and each becomes one row of each topic's steps.
+byte offset and the message's position in the chunk. At ``attachment`` and
+``metadata`` granularity a row is one record of that kind. A sample read's
+manifest rows are samples instead, and each becomes one row of each topic's
+steps.
 
 This module reads the manifest row by row and finishes every table with its
 partition and synthesized columns. The other modules read and build the rows:
 
 - ``mcap_chunks`` reads the selected messages of a file.
 - ``mcap_message_rows`` builds message rows.
+- ``mcap_records`` builds attachment and metadata rows.
 - ``mcap_sample_rows`` builds sample rows, with the step rules of
   ``mcap_samples``. With ``video``, ``mcap_decoded_samples`` decodes their
   camera frames, with ``mcap_decode``.
@@ -62,8 +65,15 @@ from ray.data._internal.datasource_v2.formats.mcap.mcap_message_rows import (
 )
 from ray.data._internal.datasource_v2.formats.mcap.mcap_options import (
     DEFAULT_MAX_LEAD_IN_NS,
+    MESSAGE_GRANULARITY,
     MCAPSelection,
     VideoOptions,
+)
+from ray.data._internal.datasource_v2.formats.mcap.mcap_records import (
+    RECORD_KINDS,
+    RecordRows,
+    RecordSettings,
+    count_records,
 )
 from ray.data._internal.datasource_v2.formats.mcap.mcap_sample_rows import (
     DEFAULT_MAX_ROW_BYTES,
@@ -89,7 +99,12 @@ from ray.data._internal.datasource_v2.interfaces.synthesized_columns import (
     SynthesizedColumn,
 )
 from ray.data._internal.object_extensions.arrow import raise_on_pickle_object_columns
-from ray.data._internal.util import MiB, call_with_retry, iterate_with_retry
+from ray.data._internal.util import (
+    MiB,
+    call_with_retry,
+    iterate_with_retry,
+    make_async_gen,
+)
 from ray.data.block import BlockMetadata
 from ray.data.datasource.partitioning import Partitioning, PathPartitionParser
 from ray.util.annotations import DeveloperAPI
@@ -106,6 +121,11 @@ logger = logging.getLogger(__name__)
 # On S3, a decoding task peaked at 1,616 MiB with 16 MiB reads and at 1,156 MiB
 # with 4 MiB reads, in the same time.
 _DECODING_CHUNK_READ_BYTES = min(ChunkReads().max_bytes, 4 * MiB)
+
+# Record files a read task reads at once. A file's records take small requests
+# in a row (open, then a read per record), so a task of small files waits on
+# request latency, not on the CPU.
+_RECORD_FILES_IN_FLIGHT = env_integer("RAY_DATA_MCAP_RECORD_FILES_IN_FLIGHT", 16)
 
 
 def read_skips_errors() -> bool:
@@ -140,6 +160,7 @@ class MCAPReader(Reader[FileManifest], SupportsMetadata):
         self,
         *,
         selection: MCAPSelection,
+        granularity: str = MESSAGE_GRANULARITY,
         include_metadata: bool = True,
         include_row_id: bool = False,
         log_time_order: bool = True,
@@ -162,6 +183,8 @@ class MCAPReader(Reader[FileManifest], SupportsMetadata):
 
         Args:
             selection: Which messages to keep.
+            granularity: What one row of a read of paths is: ``message``,
+                ``attachment`` or ``metadata``.
             include_metadata: Whether to emit the channel and schema columns.
             include_row_id: Whether to emit ``row_id``.
             log_time_order: Whether each file's messages come out in ascending
@@ -194,6 +217,17 @@ class MCAPReader(Reader[FileManifest], SupportsMetadata):
         self._message_reader = SelectedMessageReader(selection, log_time_order)
         self._selection = selection
         self._video = video
+        self._record_kind = RECORD_KINDS.get(granularity)
+        self._record_rows: Optional[RecordRows] = None
+        if self._record_kind is not None:
+            self._record_rows = RecordRows(
+                RecordSettings(
+                    kind=self._record_kind,
+                    selection=selection,
+                    include_row_id=include_row_id,
+                    target_block_size=target_block_size,
+                )
+            )
         self._decode_json = decode_json
         self._include_metadata = include_metadata
         self._include_row_id = include_row_id
@@ -232,30 +266,51 @@ class MCAPReader(Reader[FileManifest], SupportsMetadata):
         self._sample_paths = SamplePaths(filesystem)
 
     def read(self, input_split: FileManifest) -> Iterator[pa.Table]:
-        """Read the files and chunks named by ``input_split``.
+        """Read the files and chunks (or records) named by ``input_split``.
 
         Each row is read on its own, in manifest order, so a path listed twice
-        is read twice. With ``limit``, reading stops at that many rows: no later
-        message is added to a table and no later chunk or file is read. A sample
-        read reads only as many samples as the limit leaves.
+        is read twice, though a task's record files are read several at a time
+        (``_RECORD_FILES_IN_FLIGHT``). With ``limit``, reading stops at that
+        many rows: no later message is added to a table and no later chunk or
+        file is read. A sample read reads only as many samples as the limit
+        leaves. Record rows come a table at a time, so the table that reaches
+        the limit is cut.
 
         When ``DataContext.max_errored_blocks`` lets errors be skipped, a
         corrupt chunk costs only itself: the reader skips it and reads the
-        file's other chunks, but in a sample read it fails the file. A message
-        whose payload is not valid JSON likewise costs only its own row. A file
+        file's other chunks, but in a sample read it fails the file. An indexed
+        attachment or metadata record that does not decode, and a message whose
+        payload is not valid JSON, likewise cost only their own rows. A file
         whose other data does not decode does not stop the task's other files,
         and a message read keeps the file's rows before the failure. Once they
-        are read, one error names what was skipped (``_skipped_data_error``),
-        so the task counts once against the budget. Any other error, such as a
-        failed read, raises at once, so the task's retry settings see it.
-        Without skipping, the first failure fails the task at once.
+        are read, one error names every file, chunk, record and message
+        skipped, so the task counts once against the budget. Any other error,
+        such as a failed read, raises at once, so the task's retry settings see
+        it. Without skipping, the first failure fails the task at once.
         """
         if len(input_split) == 0:
             return
+        file_reads = self._file_reads(input_split)
+        failures: List[Tuple[str, Exception]] = []
+        if self._reads_records_ahead(file_reads):
+            yield from self._read_records_ahead(file_reads, failures)
+        else:
+            yield from self._read_files_in_turn(file_reads, failures)
+        if failures:
+            raise _read_error(failures)
+
+    def _read_files_in_turn(
+        self,
+        file_reads: List[Tuple[str, Callable[..., Iterator[pa.Table]]]],
+        failures: List[Tuple[str, Exception]],
+    ) -> Iterator[pa.Table]:
+        """Yield each file's tables, one file at a time, within ``limit``.
+
+        Corrupt data that ``read_skips_errors`` lets pass goes to ``failures``.
+        """
         skip_corrupt = read_skips_errors()
         remaining = self._limit
-        failures: List[Tuple[str, Exception]] = []
-        for path, read_file in self._file_reads(input_split):
+        for path, read_file in file_reads:
             if remaining is not None and remaining <= 0:
                 break
             for table in self._read_one_file(
@@ -264,8 +319,6 @@ class MCAPReader(Reader[FileManifest], SupportsMetadata):
                 if remaining is not None:
                     remaining -= table.num_rows
                 yield table
-        if failures:
-            raise _read_error(failures)
 
     def _read_one_file(
         self,
@@ -299,7 +352,7 @@ class MCAPReader(Reader[FileManifest], SupportsMetadata):
                 raise
             failures.append((path, e))
             return
-        if skipped is not None and (skipped.chunks.offsets or skipped.num_messages):
+        if skipped is not None and not skipped.is_empty():
             failures.append((path, _skipped_data_error(path, skipped)))
 
     # -- metadata ----------------------------------------------------------
@@ -310,10 +363,11 @@ class MCAPReader(Reader[FileManifest], SupportsMetadata):
         count, in order. A path listed twice is counted twice, as ``read``
         reads it twice.
 
-        ``Statistics`` counts messages per channel, so no payload is read. A
-        file whose summary cannot answer is counted by reading it as ``read``
-        does. The files are counted at the same time, and a count that fails
-        with an error in ``DataContext.retried_io_errors`` is retried.
+        ``Statistics`` counts messages per channel, and the record index the
+        attachment and metadata records, so no payload is read. A file whose
+        summary cannot answer is counted by reading it as ``read`` does. The
+        files are counted at the same time, and a count that fails with an
+        error in ``DataContext.retried_io_errors`` is retried.
         """
         from ray.data.context import DataContext
 
@@ -341,6 +395,8 @@ class MCAPReader(Reader[FileManifest], SupportsMetadata):
         filesystem = self._filesystem or LocalFileSystem()
         with filesystem.open_input_file(path) as f:
             summary = read_summary_from(f, path)
+            if self._record_kind is not None:
+                return count_records(f, summary, self._record_kind)
             if (
                 summary is not None
                 and summary.statistics is not None
@@ -397,11 +453,14 @@ class MCAPReader(Reader[FileManifest], SupportsMetadata):
     @override
     def available_metadata(self) -> Set[MetadataType]:
         # A read that skips what it cannot read returns fewer rows than the
-        # summaries count. Statistics count messages, not the messages in a
-        # time range. A sample row is not one message, so nothing counts it. A
+        # summaries count. Statistics count records, not the records in a time
+        # range. Metadata records carry no time, so a time range does not change
+        # their count. A sample row is not one record, so nothing counts it. A
         # decoded read emits frames, which ``fps`` thins and a decoder may drop.
         if read_skips_errors():
             return set()
+        if self._record_kind is not None and not self._record_kind.timed:
+            return {MetadataType.NUM_ROWS}
         if (
             self._sample_rows is not None
             or self._selection.time_range is not None
@@ -413,6 +472,65 @@ class MCAPReader(Reader[FileManifest], SupportsMetadata):
     @override
     def get_target_metadata_batch_size(self) -> Optional[int]:
         return self._COUNT_ROWS_BATCH_SIZE
+
+    def _reads_records_ahead(
+        self, file_reads: List[Tuple[str, Callable[..., Iterator[pa.Table]]]]
+    ) -> bool:
+        """Whether ``read`` reads several files of the task at a time.
+
+        It does for record rows of several files without a limit. A read with
+        a limit may need only its first file. The packer bounds the records of
+        a task with several files, so a few files' tables held at once stay
+        within its budget.
+        """
+        return (
+            self._record_rows is not None
+            and len(file_reads) > 1
+            and self._limit is None
+        )
+
+    def _read_records_ahead(
+        self,
+        file_reads: List[Tuple[str, Callable[..., Iterator[pa.Table]]]],
+        failures: List[Tuple[str, Exception]],
+    ) -> Iterator[pa.Table]:
+        """Yield each file's record tables in order, reading up to
+        ``_RECORD_FILES_IN_FLIGHT`` files at a time.
+
+        When ``read_skips_errors``, a corrupt record costs only itself and a
+        file whose data is corrupt does not stop the others: their errors go
+        to ``failures``. Any other error raises.
+        Closing this generator stops the read-ahead threads once their running
+        reads finish.
+        """
+        from ray.data.context import DataContext
+
+        retried_io_errors = DataContext.get_current().retried_io_errors
+        skips_errors = read_skips_errors()
+        read_file = partial(
+            _read_whole_file,
+            retried_io_errors=retried_io_errors,
+            skip_corrupt=skips_errors,
+        )
+        files = make_async_gen(
+            iter(file_reads),
+            lambda reads: map(read_file, reads),
+            preserve_ordering=True,
+            num_workers=max(1, min(_RECORD_FILES_IN_FLIGHT, len(file_reads))),
+        )
+        try:
+            for file in files:
+                if file.error is None:
+                    yield from file.tables
+                    if file.skipped is not None and not file.skipped.is_empty():
+                        error = _skipped_data_error(file.path, file.skipped)
+                        failures.append((file.path, error))
+                elif skips_errors and is_corrupt_data_error(file.error):
+                    failures.append((file.path, file.error))
+                else:
+                    raise file.error
+        finally:
+            files.close()
 
     def _file_reads(
         self, manifest: FileManifest
@@ -442,11 +560,11 @@ class MCAPReader(Reader[FileManifest], SupportsMetadata):
         chunk. A file without a chunk index is scanned linearly, through a read
         buffer of ``DataContext.streaming_read_buffer_size`` bytes. At most
         ``limit`` rows are built. With ``skipped``, a chunk that cannot be
-        decoded and a message that is not valid JSON are recorded there and
-        skipped, and a skipped message does not count against ``limit``. A
-        scanned file has no chunk boundaries to skip to, so a corrupt chunk
-        still fails it whole. A retry reads the file from its start, so
-        ``skipped`` is cleared first.
+        decoded, an indexed record that does not decode and a message that is
+        not valid JSON are recorded there and skipped, and a skipped message
+        does not count against ``limit``. A scanned file has no chunk
+        boundaries to skip to, so a corrupt chunk still fails it whole. A retry
+        reads the file from its start, so ``skipped`` is cleared first.
         """
         from ray.data.context import DataContext
 
@@ -466,6 +584,23 @@ class MCAPReader(Reader[FileManifest], SupportsMetadata):
                 # copy indexes only the owned chunks.
                 summary = parse_summary_records(owned.summary_records, path)
                 file_summary = None if offsets is None else _FileSummary(f, path)
+            if self._record_rows is not None:
+                assert self._record_kind is not None
+                # Records need no chunk index. Their index records, carried or
+                # read from the summary, give their lengths.
+                unit = _read_unit(path, offsets, self._record_kind.unit_id)
+                yield from _within_limit(
+                    self._record_rows.tables(
+                        f,
+                        path,
+                        offsets,
+                        summary,
+                        lambda table: self._finish(table, path, unit, 0),
+                        on_corrupt=None if skipped is None else skipped.skip_record,
+                    ),
+                    limit,
+                )
+                return
             if summary is None or not summary.chunk_indexes:
                 buffer_size = DataContext.get_current().streaming_read_buffer_size
                 # A skipped message leaves its place in the limit to the next
@@ -532,15 +667,7 @@ class MCAPReader(Reader[FileManifest], SupportsMetadata):
         built before it, so what the file keeps does not depend on the block
         size.
         """
-        # Every table reports one read unit: the file for a whole-file read, else
-        # the row's first chunk. Listing excludes read units chunk by chunk
-        # (``excluded_read_unit_ids``), so handing this unit back would skip only
-        # that first chunk. Nothing hands units back yet: a ``row_id`` checkpoint
-        # filters rows by id instead.
-        if offsets is None:
-            unit = ReadUnit(id=path, source=path, count=1)
-        else:
-            unit = ReadUnit(id=chunk_unit_id(path, min(offsets)), source=path)
+        unit = _read_unit(path, offsets)
         wanted = set(self._columns) if self._columns is not None else None
         builder = _MessageTableBuilder(
             columns=wanted,
@@ -692,7 +819,7 @@ class _CorruptOffsets:
 
     Only the error at the lowest offset is kept. An error's traceback holds the
     bytes that failed to parse, so keeping every error would hold every
-    corrupt chunk until the file is done.
+    corrupt chunk or record until the file is done.
     """
 
     offsets: Set[int] = field(default_factory=set)
@@ -711,14 +838,20 @@ class _CorruptOffsets:
 class _SkippedData:
     """What a read of one file skipped.
 
-    Every corrupt chunk is named by its offset, and one error is kept for them
-    all. Messages that are not valid JSON are counted and only the first is
-    kept.
+    Every corrupt chunk and attachment or metadata record is named by its
+    offset, and one error is kept for each kind. Messages that are not valid
+    JSON are counted and only the first is kept.
     """
 
     chunks: _CorruptOffsets = field(default_factory=_CorruptOffsets)
+    # Corrupt attachment or metadata records.
+    records: _CorruptOffsets = field(default_factory=_CorruptOffsets)
     num_messages: int = 0
     first_message: Optional[_SkippedMessage] = None
+
+    def skip_record(self, offset: int, error: Exception) -> None:
+        """Record an attachment or metadata record skipped as corrupt."""
+        self.records.add(offset, error)
 
     def record_message(self, row_id: str, error: Exception) -> None:
         """Count a skipped message, keeping it if it is the first."""
@@ -726,9 +859,14 @@ class _SkippedData:
             self.first_message = _SkippedMessage(row_id, error)
         self.num_messages += 1
 
+    def is_empty(self) -> bool:
+        """Whether the read skipped nothing."""
+        return not (self.chunks.offsets or self.records.offsets or self.num_messages)
+
     def clear(self) -> None:
         """Forget what was skipped, for a read that starts the file over."""
         self.chunks = _CorruptOffsets()
+        self.records = _CorruptOffsets()
         self.num_messages = 0
         self.first_message = None
 
@@ -754,6 +892,80 @@ def _add_message(
     return True
 
 
+def _read_unit(
+    path: str,
+    offsets: Optional[Set[int]],
+    unit_id: Callable[[str, int], str] = chunk_unit_id,
+) -> ReadUnit:
+    """The read unit every table of a task's file reports.
+
+    It is the file for a whole-file read, else the row's first chunk or
+    record, which ``unit_id`` names. Listing excludes read units one by one
+    (``excluded_read_unit_ids``), so handing this unit back would skip only
+    that first chunk or record. Only a ``generated_id_column`` checkpoint
+    hands units back, and ``read_mcap`` refuses it. A ``row_id`` checkpoint
+    filters rows by id instead.
+    """
+    if offsets is None:
+        return ReadUnit(id=path, source=path, count=1)
+    return ReadUnit(id=unit_id(path, min(offsets)), source=path)
+
+
+@dataclass(frozen=True)
+class _FileTables:
+    """The record tables of one file read ahead, or the error that failed it."""
+
+    path: str
+    tables: List[pa.Table]
+    error: Optional[Exception] = None
+    # The corrupt records the read skipped; ``None`` when it skips nothing.
+    skipped: Optional[_SkippedData] = None
+
+
+def _read_whole_file(
+    file_read: Tuple[str, Callable[..., Iterator[pa.Table]]],
+    retried_io_errors: List[str],
+    skip_corrupt: bool,
+) -> _FileTables:
+    """Read all of one file's tables, retrying ``retried_io_errors``.
+
+    A failure is returned rather than raised, so the files after it are read.
+    With ``skip_corrupt``, a corrupt record is skipped and kept in ``skipped``.
+    """
+    path, read = file_read
+    skipped = _SkippedData() if skip_corrupt else None
+    try:
+        tables = list(
+            iterate_with_retry(
+                partial(read, None, skipped),
+                f"read MCAP file {path}",
+                match=retried_io_errors,
+            )
+        )
+    except Exception as e:  # noqa: BLE001 - ``read`` decides whether to raise
+        return _FileTables(path, [], e)
+    return _FileTables(path, tables, skipped=skipped)
+
+
+def _within_limit(
+    tables: Iterator[pa.Table], limit: Optional[int]
+) -> Iterator[pa.Table]:
+    """``tables``, cut to hold at most ``limit`` rows in all.
+
+    Record rows are built a table at a time, so the table that reaches the
+    limit is cut here, and no later table is built.
+    """
+    if limit is None:
+        yield from tables
+        return
+    for table in tables:
+        if table.num_rows >= limit:
+            yield table.slice(0, limit)
+            return
+        limit -= table.num_rows
+        yield table
+
+
 def _record_corrupt_chunk(
     corrupt: _CorruptOffsets, chunk_index: "ChunkIndex", error: Exception
 ) -> None:
@@ -762,37 +974,43 @@ def _record_corrupt_chunk(
 
 
 def _skipped_data_error(path: str, skipped: _SkippedData) -> ValueError:
-    """The error for the chunks and messages of ``path`` that a read skipped.
+    """The error for the chunks, records and messages of ``path`` that a read
+    skipped.
 
-    It names every chunk and the first message, and quotes the first error:
-    the first chunk's, or the first message's when no chunk was skipped.
+    It names every chunk and record and the first message, and quotes the
+    first error: the first chunk's, else the first record's, else the first
+    message's.
     """
-    offsets = sorted(skipped.chunks.offsets)
-    parts = []
-    if offsets:
-        where = (
-            "chunk at byte offset" if len(offsets) == 1 else "chunks at byte offsets"
-        )
-        listed = ", ".join(str(offset) for offset in offsets)
-        parts.append(f"{len(offsets)} corrupt {where} {listed}")
+    parts: List[str] = []
+    errors: List[Exception] = []
+    for what, corrupt in (("chunk", skipped.chunks), ("record", skipped.records)):
+        if corrupt.error is not None:
+            parts.append(_corrupt_offsets(what, corrupt))
+            errors.append(corrupt.error)
     message = skipped.first_message
     if message is not None:
         count = skipped.num_messages
         what = "message that is" if count == 1 else "messages that are"
         which = "row id" if count == 1 else "first: row id"
         parts.append(f"{count} {what} not valid JSON ({which} {message.row_id})")
-    if offsets:
-        first = skipped.chunks.error
-        assert first is not None
-    else:
-        assert message is not None
-        first = message.error
+        errors.append(message.error)
+    first = errors[0]
     error = ValueError(
         f"Skipped {' and '.join(parts)} of MCAP file {path!r}: "
         f"{type(first).__name__}: {_first_line(first)}"
     )
     error.__cause__ = first
     return error
+
+
+def _corrupt_offsets(what: str, corrupt: _CorruptOffsets) -> str:
+    """Name the corrupt ``what``, a chunk or a record, by their byte offsets."""
+    offsets = sorted(corrupt.offsets)
+    where = (
+        f"{what} at byte offset" if len(offsets) == 1 else f"{what}s at byte offsets"
+    )
+    listed = ", ".join(str(offset) for offset in offsets)
+    return f"{len(offsets)} corrupt {where} {listed}"
 
 
 def _read_error(failures: List[Tuple[str, Exception]]) -> Exception:

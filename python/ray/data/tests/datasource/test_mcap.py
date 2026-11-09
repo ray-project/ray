@@ -1042,6 +1042,7 @@ def test_read_mcap_samples_rejects_every_option_of_a_read_of_paths(
         "time_range": (0, 1),
         "message_types": ["m"],
         "log_time_order": False,
+        "read_granularity": "attachment",
         "include_row_id": True,
         "partition_filter": PathPartitionFilter.of(lambda partitions: True),
         "partitioning": Partitioning(PartitionStyle.HIVE),
@@ -1624,27 +1625,111 @@ def test_read_mcap_count_from_statistics(
         assert not isinstance(optimized_count_plan(ranged), MapBatches)
 
 
-def test_read_mcap_count_matches_a_read_that_skips_corrupt_parts(
+def _write_records_mcap(path, i):
+    """Write run ``i``: a ``recorder`` metadata record, one message on ``/t``,
+    and the attachment ``calib{i}.yaml`` logged at ``1_000 + i``."""
+    from mcap.writer import CompressionType, Writer
+
+    with open(path, "wb") as stream:
+        writer = Writer(stream, chunk_size=1, compression=CompressionType.ZSTD)
+        writer.start(profile="", library="ray-test")
+        writer.add_metadata("recorder", {"version": "1.2", "run": str(i)})
+        schema_id = writer.register_schema(
+            name="test_schema", encoding="jsonschema", data=b"{}"
+        )
+        channel = writer.register_channel(
+            schema_id=schema_id, topic="/t", message_encoding="json"
+        )
+        writer.add_message(
+            channel_id=channel, log_time=1_000, publish_time=1_000, data=b"{}"
+        )
+        writer.add_attachment(
+            create_time=900,
+            log_time=1_000 + i,
+            name=f"calib{i}.yaml",
+            media_type="text/yaml",
+            data=f"fx: {i}\n".encode(),
+        )
+        writer.finish()
+    return path
+
+
+def test_read_mcap_attachment_and_metadata_granularity(
     ray_start_regular_shared, tmp_path, datasource_v2
 ):
-    """With ``max_errored_blocks=-1``, a read skips a corrupt chunk that the
-    summaries still count, and ``count()`` gives the number of rows the read
-    returns."""
+    """Attachment and Metadata records come out one per row, counted from statistics."""
+    paths = [
+        _write_records_mcap(os.path.join(tmp_path, f"run{i}.mcap"), i) for i in range(2)
+    ]
+
+    if not datasource_v2:
+        with pytest.raises(NotImplementedError, match="read_granularity"):
+            ray.data.read_mcap(paths, read_granularity="attachment")
+        return
+
+    # Each count runs on a fresh dataset: after a read, ``count()`` returns the
+    # read's row count without counting.
+    assert ray.data.read_mcap(paths, read_granularity="attachment").count() == 2
+    assert (
+        ray.data.read_mcap(
+            paths, read_granularity="attachment", time_range=(1_001, 1_002)
+        ).count()
+        == 1
+    )
+    assert ray.data.read_mcap(paths, read_granularity="metadata").count() == 2
+
+    attachments = ray.data.read_mcap(
+        paths, read_granularity="attachment", include_row_id=True
+    )
+    assert attachments.schema().names == [
+        "path",
+        "row_id",
+        "name",
+        "media_type",
+        "log_time",
+        "create_time",
+        "data",
+    ]
+    rows = sorted(attachments.take_all(), key=lambda row: row["name"])
+    assert [row["name"] for row in rows] == ["calib0.yaml", "calib1.yaml"]
+    assert [row["data"] for row in rows] == [b"fx: 0\n", b"fx: 1\n"]
+
+    metadata = ray.data.read_mcap(paths, read_granularity="metadata")
+    rows = sorted(metadata.take_all(), key=lambda row: row["path"])
+    assert [dict(row["metadata"])["run"] for row in rows] == ["0", "1"]
+    with pytest.raises(ValueError, match="do not apply"):
+        ray.data.read_mcap(paths, read_granularity="metadata", topics=["/t"])
+
+
+@pytest.mark.parametrize("granularity", ["message", "attachment"])
+def test_read_mcap_count_matches_a_read_that_skips_corrupt_parts(
+    ray_start_regular_shared, tmp_path, datasource_v2, granularity
+):
+    """With ``max_errored_blocks=-1``, a read skips a corrupt chunk or attachment
+    that the summaries still count, and ``count()`` gives the number of rows the
+    read returns."""
     if not datasource_v2:
         pytest.skip("only the V2 datasource counts from the summaries")
     from ray.data.tests.unit.datasource_v2.mcap_testing import (
         CHUNKED_FILE_MESSAGES,
         round_robin_messages,
+        write_corrupt_attachment,
         write_corrupt_chunk,
         write_mcap,
     )
 
     good = os.path.join(tmp_path, "good.mcap")
-    write_mcap(good, round_robin_messages(CHUNKED_FILE_MESSAGES))
-    write_corrupt_chunk(os.path.join(tmp_path, "bad.mcap"), good, 1)
-    expected = 2 * CHUNKED_FILE_MESSAGES - 1
+    if granularity == "message":
+        write_mcap(good, round_robin_messages(CHUNKED_FILE_MESSAGES))
+        write_corrupt_chunk(os.path.join(tmp_path, "bad.mcap"), good, 1)
+        expected = 2 * CHUNKED_FILE_MESSAGES - 1
+    else:
+        _write_records_mcap(good, 0)
+        bad = _write_records_mcap(os.path.join(tmp_path, "bad.mcap"), 1)
+        write_corrupt_attachment(bad, 0)
+        expected = 1
     ray.data.DataContext.get_current().max_errored_blocks = -1
-    ds = ray.data.read_mcap(str(tmp_path))
+    ds = ray.data.read_mcap(str(tmp_path), read_granularity=granularity)
 
     # Counted first: after a read, ``count()`` returns the read's row count.
     count = ds.count()

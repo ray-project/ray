@@ -11,6 +11,8 @@ from ray.data._internal.datasource_v2.common.file_scanner import FileScanner
 from ray.data._internal.datasource_v2.common.pushdown_utils import combine_predicates
 from ray.data._internal.datasource_v2.formats.mcap.mcap_options import (
     DEFAULT_MAX_LEAD_IN_NS,
+    MESSAGE_GRANULARITY,
+    METADATA_GRANULARITY,
     MCAPSelection,
     VideoOptions,
 )
@@ -44,9 +46,9 @@ class MCAPScanner(
 ):
     """Scanner for MCAP files on Datasource V2.
 
-    Holds the message selection from ``read_mcap`` and the pushdowns the
-    optimizer applies: column pruning, a per-task row limit and, for message
-    rows, filters on ``topic`` and ``log_time``. Those filters fold into the
+    Holds the message selection and row granularity from ``read_mcap`` and the
+    pushdowns the optimizer applies: column pruning, a per-task row limit and,
+    for message rows, filters on ``topic`` and ``log_time``. Those filters fold into the
     selection, so listing prunes files and chunks with them. A pruned read
     neither builds nor JSON-decodes the columns it drops. Partition pruning
     comes from :class:`FileScanner`.
@@ -61,6 +63,7 @@ class MCAPScanner(
 
     schema: pa.Schema
     selection: MCAPSelection = MCAPSelection()
+    granularity: str = MESSAGE_GRANULARITY
     include_metadata: bool = True
     include_row_id: bool = False
     log_time_order: bool = True
@@ -99,12 +102,12 @@ class MCAPScanner(
         """Whether ``count()`` can be answered from the summaries.
 
         A summary's ``Statistics`` counts messages per channel, so a selection
-        by topic or message type is exact from metadata. It cannot say how
-        many messages fall inside a time range, and it does not count sample
-        rows. Decoded rows are frames, which ``fps`` thins and a decoder may
-        drop. A read that ``max_errored_blocks`` lets skip a corrupt chunk or
-        file returns fewer rows than the summaries count
-        (``read_skips_errors``).
+        by topic or message type is exact from metadata. It also counts
+        attachments and metadata records. It cannot say how many records fall
+        inside a time range, and it does not count sample rows. Decoded rows
+        are frames, which ``fps`` thins and a decoder may drop. A read that
+        ``max_errored_blocks`` lets skip a corrupt chunk or file returns fewer
+        rows than the summaries count (``read_skips_errors``).
         """
         if self.limit is not None or self.partition_predicate is not None:
             return False
@@ -112,6 +115,8 @@ class MCAPScanner(
             return False
         if self.topic_plans or self.video is not None:
             return False
+        if self.granularity == METADATA_GRANULARITY:
+            return True
         return self.selection.time_range is None
 
     @override
@@ -119,10 +124,10 @@ class MCAPScanner(
         """Fold ``topic`` and ``log_time`` conjuncts into the selection.
 
         Only message rows have both as columns. A sample row carries its
-        sample's columns and each topic's steps, so a sample read keeps the
-        whole predicate in the ``Filter`` above the read.
+        sample's columns and each topic's steps, and a record row has no topic,
+        so those reads keep the whole predicate in the ``Filter`` above the read.
         """
-        if self.topic_plans:
+        if self.topic_plans or self.granularity != MESSAGE_GRANULARITY:
             return self, predicate
         narrowed = narrow_selection(self.selection, predicate)
         if narrowed.pushed is None:
@@ -172,6 +177,7 @@ class MCAPScanner(
     def create_reader(self) -> MCAPReader:
         return MCAPReader(
             selection=self.selection,
+            granularity=self.granularity,
             include_metadata=self.include_metadata,
             include_row_id=self.include_row_id,
             log_time_order=self.log_time_order,
