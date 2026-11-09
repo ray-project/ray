@@ -1,0 +1,41 @@
+extends: substitution
+message: "Use '%s' instead of '%s'."
+link: 'https://docs.ray.io/en/latest/ray-contribute/writing-style.html#ray-serve-docs-style'
+level: warning
+ignorecase: false
+# Ray Serve terminology. The concept names follow doc/source/serve/key-concepts.md:
+# deployment, replica, application, ingress deployment, and `DeploymentHandle`. General
+# prose rules live in the shared Ray/ style package.
+#
+# Terms whose only wrong form is a casing variant, such as `Pydantic` and `Starlette`,
+# live in config/vocabularies/Serve/accept.txt instead of here. The accept list drives
+# `Vale.Terms`, so a swap would alert twice.
+#
+# `vocab: false` so an accept-list entry can't silently shadow a swap. Vocabularies are
+# registered globally, so an entry another library adds would reach these swaps too.
+# See .vale/styles/KubeRay/Terms.yml.
+vocab: false
+# `action: replace` makes Vale's JSON output carry the replacement text, so a tool
+# can apply these swaps from Vale's own alerts. Every swap here must be safe to
+# apply without judgment. A swap that needs a human decision belongs in a rule
+# without the action, such as Serve/Capitalization.yml or Serve/Usage.yml.
+action:
+  name: replace
+swap:
+  # The product name. KubeRay/Terms.yml carries the same swap, but each style is
+  # path-scoped, so the two never fire on the same page.
+  'Ray serve': Ray Serve
+  RayServe: Ray Serve
+  # key-concepts.md calls the unit of upgrade an "application".
+  'Serve apps': Serve applications
+  'Serve app': Serve application
+  # "KV" is an abbreviation and keeps its capitals. "Cache" is a generic noun. The
+  # hyphenated `KV-cache` is in Serve/Usage.yml, because a compound modifier can take
+  # the hyphen.
+  'kv cache': KV cache
+  'kv-cache': KV cache
+  'KV Cache': KV cache
+  # The LLM landing page, the architecture page, and the serving_patterns/prefill-decode
+  # path all hyphenate the pattern name.
+  'Prefill/decode disaggregation': Prefill-decode disaggregation
+  'prefill/decode disaggregation': prefill-decode disaggregation
