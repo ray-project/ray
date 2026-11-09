@@ -937,14 +937,18 @@ def test_tracing_works_after_controller_recovery(ray_shutdown):
         # proxy is killed, so new span text comes from the new components.
         sizes = _span_file_sizes(spans_dir)
 
-        # Replace the proxy; the recovered controller starts a new one.
-        (old_proxy,) = ray.get(client._controller.get_proxies.remote()).values()
+        # Replace the proxy; the recovered controller starts a new one. It
+        # lists the existing proxy only after its first control loop runs.
+        def get_proxies() -> list:
+            return list(ray.get(client._controller.get_proxies.remote()).values())
+
+        wait_for_condition(lambda: len(get_proxies()) == 1)
+        (old_proxy,) = get_proxies()
         old_proxy_id = old_proxy._actor_id
         ray.kill(old_proxy, no_restart=True)
 
         def proxy_replaced() -> bool:
-            proxies = ray.get(client._controller.get_proxies.remote()).values()
-            new_proxies = [p for p in proxies if p._actor_id != old_proxy_id]
+            new_proxies = [p for p in get_proxies() if p._actor_id != old_proxy_id]
             if not new_proxies:
                 return False
             ray.get(new_proxies[0].ready.remote(), timeout=10)
