@@ -259,22 +259,29 @@ def cutter_warnings(caplog):
         cuts_logger.removeHandler(caplog.handler)
 
 
-@pytest.mark.parametrize("spans", [ALL_OVERLAPPING, TIED_AT_TEN])
-def test_ordered_task_that_holds_many_budgets_warns_once(caplog, spans):
+# Three chunks of 40 bytes over the same log times: a merge of 120 bytes,
+# just past one 100-byte task.
+THREE_OVERLAPPING = [(0, 99)] * 3
+
+
+@pytest.mark.parametrize("spans", [ALL_OVERLAPPING, TIED_AT_TEN, THREE_OVERLAPPING])
+def test_ordered_task_that_holds_more_than_its_budget_warns_once(caplog, spans):
     """In a read that keeps order, a file with no clean cut is one task whose
-    merge holds every chunk at once. Past four budgets that warns once per
-    process, naming the first such file."""
+    merge holds every chunk at once. Past one budget that warns once per
+    process, naming the first such file and the memory to reserve."""
     files = [listed_file("first.mcap", spans), listed_file("second.mcap", spans)]
 
     with cutter_warnings(caplog) as warnings:
         tasks = cut(files)
 
-    assert tasks == [
-        [("first.mcap", list(range(11)))],
-        [("second.mcap", list(range(11)))],
-    ]
+    every_chunk = list(range(len(spans)))
+    assert tasks == [[("first.mcap", every_chunk)], [("second.mcap", every_chunk)]]
     assert len(warnings) == 1
-    assert "A read task of first.mcap holds about" in warnings[0].getMessage()
+    message = warnings[0].getMessage()
+    assert "an ordered read task of first.mcap will hold about" in message
+    # The held bytes, rounded up to a whole MiB.
+    assert "memory=1048576)" in message
+    assert "log_time_order=False" in message
 
 
 @pytest.mark.parametrize(
@@ -288,10 +295,10 @@ def test_ordered_task_that_holds_many_budgets_warns_once(caplog, spans):
         ([(0, 99)], 5 * BUDGET, True),
     ],
 )
-def test_no_warning_unless_overlap_holds_many_budgets(
+def test_no_warning_unless_overlap_holds_more_than_a_budget(
     caplog, spans, weight, preserve_order
 ):
-    """Tasks whose overlapping chunks hold at most four budgets at once log
+    """Tasks whose overlapping chunks hold at most one budget at once log
     nothing."""
     with cutter_warnings(caplog) as warnings:
         cut([listed_file("f", spans, weight)], preserve_order=preserve_order)
