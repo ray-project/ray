@@ -145,7 +145,7 @@ def _encode_handle(rep: HandleMetricReport) -> bytes:
             np.array(router_entries, dtype="<i8")
             if router_entries
             else np.zeros((0, 3), "<i8")
-        ).reshape(-1, 3),
+        ),
         "router_ts": np.array(router_ts, dtype="<f8"),
         "router_val": np.array(router_val, dtype="<f8"),
     }
