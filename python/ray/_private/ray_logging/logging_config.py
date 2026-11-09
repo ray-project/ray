@@ -124,55 +124,40 @@ LoggingConfig.__doc__ = """
     root logger of the driver process and all Ray tasks and actor processes that belong
     to the job.
 
-    Examples: 1. Configure the logging to use TEXT encoding.
-        .. testcode::
+    Examples:
+        1. Configure the logging to use TEXT encoding.
 
-            import ray
-            import logging
+        >>> import ray  # doctest: +SKIP_EXAMPLE
+        >>> import logging
+        >>> ray.init(
+        ...     logging_config=ray.LoggingConfig(encoding="TEXT", log_level="INFO", additional_log_standard_attrs=['name'])
+        ... )
+        >>> @ray.remote
+        ... def f():
+        ...     logger = logging.getLogger(__name__)
+        ...     logger.info("This is a Ray task")
+        >>> ray.get(f.remote())
+        2025-02-12 12:25:16,836 INFO test-log-config.py:11 -- This is a Ray task name=__main__ job_id=01000000 worker_id=51188d9448be4664bf2ea26ac410b67acaaa970c4f31c5ad3ae776a5 node_id=f683dfbffe2c69984859bc19c26b77eaf3866c458884c49d115fdcd4 task_id=c8ef45ccd0112571ffffffffffffffffffffffff01000000 task_name=f task_func_name=test-log-config.f timestamp_ns=1739391916836884000
+        >>> ray.shutdown()
 
-            ray.init(
-                logging_config=ray.LoggingConfig(encoding="TEXT", log_level="INFO", additional_log_standard_attrs=['name'])
-            )
+        2. Configure the logging to use JSON encoding.
 
-            @ray.remote
-            def f():
-                logger = logging.getLogger(__name__)
-                logger.info("This is a Ray task")
-
-            ray.get(f.remote())
-            ray.shutdown()
-
-        .. testoutput::
-            :options: +MOCK
-
-            2025-02-12 12:25:16,836 INFO test-log-config.py:11 -- This is a Ray task name=__main__ job_id=01000000 worker_id=51188d9448be4664bf2ea26ac410b67acaaa970c4f31c5ad3ae776a5 node_id=f683dfbffe2c69984859bc19c26b77eaf3866c458884c49d115fdcd4 task_id=c8ef45ccd0112571ffffffffffffffffffffffff01000000 task_name=f task_func_name=test-log-config.f timestamp_ns=1739391916836884000
-
-    2. Configure the logging to use JSON encoding.
-        .. testcode::
-
-            import ray
-            import logging
-
-            ray.init(
-                logging_config=ray.LoggingConfig(encoding="JSON", log_level="INFO", additional_log_standard_attrs=['name'])
-            )
-
-            @ray.remote
-            def f():
-                logger = logging.getLogger(__name__)
-                logger.info("This is a Ray task")
-
-            ray.get(f.remote())
-            ray.shutdown()
-
-        .. testoutput::
-            :options: +MOCK
-
-            {"asctime": "2025-02-12 12:25:48,766", "levelname": "INFO", "message": "This is a Ray task", "filename": "test-log-config.py", "lineno": 11, "name": "__main__", "job_id": "01000000", "worker_id": "6d307578014873fcdada0fa22ea6d49e0fb1f78960e69d61dfe41f5a", "node_id": "69e3a5e68bdc7eb8ac9abb3155326ee3cc9fc63ea1be04d11c0d93c7", "task_id": "c8ef45ccd0112571ffffffffffffffffffffffff01000000", "task_name": "f", "task_func_name": "test-log-config.f", "timestamp_ns": 1739391948766949000}
+        >>> import ray
+        >>> import logging
+        >>> ray.init(
+        ...     logging_config=ray.LoggingConfig(encoding="JSON", log_level="INFO", additional_log_standard_attrs=['name'])
+        ... )
+        >>> @ray.remote
+        ... def f():
+        ...     logger = logging.getLogger(__name__)
+        ...     logger.info("This is a Ray task")
+        >>> ray.get(f.remote())
+        {"asctime": "2025-02-12 12:25:48,766", "levelname": "INFO", "message": "This is a Ray task", "filename": "test-log-config.py", "lineno": 11, "name": "__main__", "job_id": "01000000", "worker_id": "6d307578014873fcdada0fa22ea6d49e0fb1f78960e69d61dfe41f5a", "node_id": "69e3a5e68bdc7eb8ac9abb3155326ee3cc9fc63ea1be04d11c0d93c7", "task_id": "c8ef45ccd0112571ffffffffffffffffffffffff01000000", "task_name": "f", "task_func_name": "test-log-config.f", "timestamp_ns": 1739391948766949000}
+        >>> ray.shutdown()
 
     Args:
         encoding: Encoding type for the logs. The valid values are
-            {list(_logging_configurator.get_supported_encodings())}
+            ``"TEXT"`` and ``"JSON"``.
         log_level: Log level for the logs. Defaults to 'INFO'. You can set
             it to 'DEBUG' to receive more detailed debug logs.
         additional_log_standard_attrs: List of additional standard python logger attributes to
