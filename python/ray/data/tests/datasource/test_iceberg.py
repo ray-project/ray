@@ -3332,6 +3332,10 @@ class TestIcebergDatasourceV2:
         data_file.spec_id = spec_id
         return FileScanTask(data_file)
 
+    @pytest.mark.skipif(
+        get_pyarrow_version() < parse_version("18.0.0"),
+        reason="PyIceberg maps a UUID column to pa.uuid(), added in pyarrow 18",
+    )
     def test_partition_column_is_typed_and_lossless(self):
         """Partition values survive as Iceberg's own internal representations.
 
