@@ -163,16 +163,22 @@ def corrupt_in_place(path, index, corrupt=write_corrupt_chunk):
 def read_one_task(paths, max_errored_blocks=1, **options):
     """Read ``paths`` as one read task under ``max_errored_blocks``, with the
     datasource ``options``; return the tables it yields and its error."""
+    datasource = MCAPDatasourceV2(paths, include_paths=True, **options)
+    return read_task_with(scanner_for(datasource), datasource, max_errored_blocks)
+
+
+def read_task_with(scanner, datasource, max_errored_blocks=1):
+    """Read the files of ``datasource`` as one read task with ``scanner``, under
+    ``max_errored_blocks``; return the tables it yields and its error."""
     from ray.data.context import DataContext
 
     DataContext.get_current().max_errored_blocks = max_errored_blocks
-    datasource = MCAPDatasourceV2(paths, include_paths=True, **options)
     # preserve_order keeps the files in the order given; the listing threads
     # otherwise finish in any order.
     task = as_read_task(*list_manifests(datasource, preserve_order=True))
     tables = []
     with pytest.raises(Exception) as error:
-        for table in scanner_for(datasource).create_reader().read(task):
+        for table in scanner.create_reader().read(task):
             tables.append(table)
     return tables, error.value
 
@@ -344,6 +350,61 @@ def test_a_message_that_is_not_json_fails_its_task_when_errors_are_not_skipped(
     assert rows_of(tables) == file_rows(a)
     assert isinstance(error, InvalidJsonPayload)
     assert str(error).startswith(f"{message_row_id_of(b, BAD_JSON, False)}: ")
+
+
+LIMIT = 4  # rows a limited read asks for
+
+
+@pytest.mark.parametrize("log_time_order", [True, False])
+@pytest.mark.parametrize("index", [True, False], ids=["indexed", "unindexed"])
+def test_a_skipped_message_does_not_count_against_the_limit(
+    tmp_path, index, log_time_order, restore_max_errored_blocks
+):
+    """When errors can be skipped, a limited read of a file whose first two
+    messages are not valid JSON still yields ``LIMIT`` rows, the next ones in
+    the file, with and without a chunk index, in log-time and in file order."""
+    path = write_invalid_json(os.path.join(tmp_path, "b.mcap"), bad={0, 1}, index=index)
+    datasource = MCAPDatasourceV2(
+        [path], include_paths=True, log_time_order=log_time_order
+    )
+
+    tables, error = read_task_with(
+        scanner_for(datasource).push_limit(LIMIT), datasource
+    )
+
+    assert rows_of(tables) == [(path, seq) for seq in range(2, 2 + LIMIT)]
+    assert str(error).startswith("Skipped 2 messages that are not valid JSON")
+
+
+LATE_CDR = 5  # the message on a CDR-encoded topic, after five JSON messages
+
+
+@pytest.mark.parametrize(
+    "target_block_size", [None, 1], ids=["one_block", "block_per_row"]
+)
+def test_a_file_that_fails_mid_way_keeps_the_rows_before_the_failure(
+    tmp_path, target_block_size, restore_max_errored_blocks
+):
+    """When errors can be skipped, a file that message ``LATE_CDR`` fails keeps
+    the rows before it, whether they share one block or fill one each. The
+    task then raises the file's error."""
+    planned_on = os.path.join(tmp_path, "json.mcap")
+    write_mcap(planned_on, round_robin_messages(3))
+    path = os.path.join(tmp_path, "late_cdr.mcap")
+    messages = round_robin_messages(LATE_CDR + 1)
+    messages[LATE_CDR].update(topic="/cdr", data=b"\x00\x01")
+    write_mcap(path, messages, encodings={"/cdr": "cdr"})
+    # Planned on a JSON-only file, so the read decodes JSON and the CDR
+    # message fails it.
+    planned = MCAPDatasourceV2([planned_on], include_paths=True)
+    scanner = dataclasses.replace(
+        scanner_for(planned), target_block_size=target_block_size
+    )
+
+    tables, error = read_task_with(scanner, MCAPDatasourceV2([path]))
+
+    assert rows_of(tables) == [(path, seq) for seq in range(LATE_CDR)]
+    assert "topic '/cdr' is 'cdr'-encoded" in str(error)
 
 
 def test_a_task_names_every_file_it_could_not_read_in_full(
