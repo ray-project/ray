@@ -149,8 +149,12 @@ def estimate_leaf_work(
         node = leaf.profile.nodes[-1]
         width = node.width if node.kind == _BINARY else 4
         temporary += width * max(capacity - leaf.slots(), 0)
-        # The builder's copy of the values.
-        temporary += estimate_string_bytes(leaf=leaf)
+        # The builder's copy of the values; a decimal without SizeStatistics
+        # bytes at most its width each.
+        if node.kind == _BINARY or leaf.size_statistics_bytes is not None:
+            temporary += estimate_string_bytes(leaf=leaf)
+        else:
+            temporary += node.width * leaf.slots()
         # A string list's offsets are held alongside the builder: both count.
         return kept, temporary + list_offsets
     # Fixed width: the dictionary, then values and validity at capacity.
