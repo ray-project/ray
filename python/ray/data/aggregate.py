@@ -935,7 +935,9 @@ class Std(AggregateFnV2[List[Union[int, float]], float]):
             # If sum is null (e.g., ignore_nulls=False and a null was encountered),
             # return as is to prevent type conversions.
             return sum_
-        mean = sum_ / count
+        # Take the mean from the block rather than `sum_ / count`: an integer
+        # sum can overflow and wrap around.
+        mean = block_acc.mean(self._target_col_name, self._ignore_nulls)
         M2 = block_acc.sum_of_squared_diffs_from_mean(
             self._target_col_name, self._ignore_nulls, mean
         )

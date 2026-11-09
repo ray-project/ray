@@ -244,6 +244,26 @@ def test_std_large_integers(ray_start_regular_shared_2_cpus, dtype, num_blocks):
     assert ds.groupby("k").std("A").take_all() == [{"k": 0, "std(A)": expected}]
 
 
+def test_std_integer_sum_overflow(
+    ray_start_regular_shared_2_cpus, configure_shuffle_method
+):
+    # Nanosecond timestamps: the int64 sum of six of them passes 2**63. Blocks
+    # of different sizes keep the error in the block means from cancelling out.
+    values = [1_700_000_000_000_000_000 + i * 10**9 for i in range(8)]
+    ds = ray.data.from_arrow(
+        [
+            pa.table({"k": [0] * 6, "A": values[:6]}),
+            pa.table({"k": [0] * 2, "A": values[6:]}),
+        ]
+    )
+    expected = np.std(values, ddof=1)
+
+    assert ds.std("A") == pytest.approx(expected)
+    assert ds.groupby("k").std("A").take_all() == [
+        {"k": 0, "std(A)": pytest.approx(expected)}
+    ]
+
+
 def test_global_aggregation_over_empty_dataset(ray_start_regular_shared_2_cpus):
     """A global aggregation over zero rows still has exactly one group.
 
