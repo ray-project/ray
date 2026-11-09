@@ -305,6 +305,28 @@ def test_dictionaries_and_type_options_fall_back(
     assert profiles == expected
 
 
+def test_pinned_struct_with_reordered_fields_is_unmodelled(tmp_path):
+    """The cast matches struct fields by name: reordered, the pinned types don't
+    line up with the stored leaves, so those leaves fall back."""
+    a, b = pa.field("a", pa.list_(pa.int64())), pa.field("b", pa.list_(pa.int32()))
+    path = _write(
+        pa.table({"s": pa.array([{"a": [1, 2, 3], "b": [4]}] * N, pa.struct([a, b]))}),
+        tmp_path / "f.parquet",
+    )
+    metadata = pq.read_metadata(str(path))
+
+    def profiles(*fields):
+        return build_leaf_profiles(
+            parquet_schema=metadata.schema,
+            pinned_schema=pa.schema([pa.field("s", pa.struct(list(fields)))]),
+            file_metadata=metadata,
+        )
+
+    widened = pa.field("b", pa.list_(pa.int64()))
+    assert all(profile is not None for profile in profiles(a, widened))
+    assert profiles(widened, a) == [None, None]
+
+
 def test_added_columns_are_bounded(tmp_path):
     """The path, a Hive value cut from it, and a column the pin fills with nulls."""
     path = str(tmp_path / "year=2024" / "f.parquet")
