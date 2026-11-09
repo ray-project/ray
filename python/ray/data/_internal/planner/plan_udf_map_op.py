@@ -129,10 +129,8 @@ class _MapActorContext:
         thread.start()
         self.udf_map_asyncio_loop = loop
         self.udf_map_asyncio_thread = thread
-        # Advances async batch UDFs' input iterators off the event loop (see
-        # `advance_input_in_executor`). A single worker serializes batch
-        # formatting across all tasks running on this actor, so at most one
-        # batch is being formatted at a time.
+        # Advances async batch UDFs' input iterators off the event loop. One
+        # worker, so at most one batch per actor is formatted at a time.
         self.udf_map_input_executor = ThreadPoolExecutor(
             max_workers=1, thread_name_prefix="ray_data_async_udf_input"
         )
@@ -806,10 +804,8 @@ def _generate_transform_fn_for_async_map(
         max_concurrency: Max number of concurrent UDF calls per transform.
         is_flat_map: Whether a coroutine UDF returns a sequence of items.
         advance_input_in_executor: Whether to advance the input iterator in the
-            actor's input executor instead of on the event loop. Worth it when
-            producing an input item is expensive (formatting a batch); for cheap
-            items (rows), the round trip to the executor costs more than the
-            advance itself.
+            actor's input executor instead of on the event loop. Pays off for
+            batches; for rows the round trip costs more than the advance.
 
     Returns:
         A transform producing the UDF's outputs in input order.
@@ -844,8 +840,7 @@ def _generate_transform_fn_for_async_map(
     #   - Order of the items (rows/batches) produced by this method
     #     *must be* deterministic (though is not guaranteed to be specified
     #     if max_concurrency > 1)
-    #   - Producing an expensive input item (a formatted batch) must not block the
-    #     event loop, which is shared by every async UDF call running on the actor
+    #   - Formatting an input batch must not block the actor's shared event loop
     #
     # To achieve that, algorithm applying async UDF to elements of the provided sequence
     # is structured like following:
@@ -856,12 +851,9 @@ def _generate_transform_fn_for_async_map(
     #   - Scheduling stage aim to schedule and run no more than `max_concurrency` tasks
     #     at any given moment
     #
-    #   - With `advance_input_in_executor` (batch UDFs), scheduling stage advances
-    #     the input iterator in the actor's input executor rather than on the event
-    #     loop, since that is where blocks get formatted into batches (e.g.
-    #     unpickling Python-object columns), which can take seconds. No more than
-    #     one advance is in flight at any given moment, since the iterator is not
-    #     thread-safe (which also keeps items in input order)
+    #   - With `advance_input_in_executor`, scheduling stage advances the input
+    #     iterator (which formats batches) in the actor's input executor, one
+    #     advance at a time since the iterator isn't thread-safe
     #
     #   - Once task completes it's added into task completion queue for its results to be
     #     subsequently reported with deterministic ordering). Task completion queue is
@@ -901,8 +893,7 @@ def _generate_transform_fn_for_async_map(
                 while not completed_scheduling:
                     task, idx = await completed_tasks_queue.get()
 
-                    # NOTE: Scheduling stage forwards any `BaseException` (e.g.
-                    #       `asyncio.CancelledError`), not just an `Exception`
+                    # NOTE: Not just `Exception`: a `CancelledError` is forwarded too
                     if isinstance(task, BaseException):
                         raise task
                     elif task is _SENTINEL:
@@ -940,24 +931,16 @@ def _generate_transform_fn_for_async_map(
 
         cur_task_map: Dict[asyncio.Task, int] = dict()
         consumed = False
-        # Pending advance of the input iterator, if any
+        # Pending advance of the input iterator in the executor, if any
         next_input: Optional[asyncio.Future] = None
 
         sentinel = _SENTINEL
         enumerated_it = enumerate(it)
 
         def _advance_input() -> asyncio.Future:
-            # NOTE: Resolves to the next `(idx, item)` pair, or `_SENTINEL` once
-            #       the iterator is exhausted (`StopIteration` can't be set on a
-            #       future)
-            if input_executor is None:
-                future = loop.create_future()
-                future.set_result(next(enumerated_it, _SENTINEL))
-                return future
-
-            # NOTE: `next` runs in a copy of this task's context, as
-            #       `asyncio.to_thread` does, so the iterator observes the same
-            #       context variables as the UDF calls it feeds
+            # NOTE: Resolves to `_SENTINEL` once exhausted (`StopIteration` can't
+            #       be set on a future), running `next` in a copy of this task's
+            #       context as `asyncio.to_thread` does
             return loop.run_in_executor(
                 input_executor,
                 functools.partial(
@@ -979,20 +962,17 @@ def _generate_transform_fn_for_async_map(
 
         try:
             while True:
-                # NOTE: Inline advances resolve immediately, so all free slots get
-                #       filled here; an advance in the executor is awaited below
-                #       along with the running tasks
+                # NOTE: Inline advances fill all free slots here; an advance in
+                #       the executor is awaited below along with the running tasks
                 while (
                     next_input is None
                     and not consumed
                     and len(cur_task_map) < max_concurrency
                 ):
-                    next_input = _advance_input()
-                    if not next_input.done():
-                        break
-
-                    consumed = _launch_udf(next_input.result())
-                    next_input = None
+                    if input_executor is None:
+                        consumed = _launch_udf(next(enumerated_it, _SENTINEL))
+                    else:
+                        next_input = _advance_input()
 
                 # Check if any running tasks (or pending input) remaining
                 if next_input is None and not cur_task_map:
@@ -1008,8 +988,7 @@ def _generate_transform_fn_for_async_map(
 
                 if next_input in done:
                     done.remove(next_input)
-                    # NOTE: Re-raises the iterator's exception (if any) with
-                    #       its original traceback
+                    # NOTE: Re-raises the iterator's error with its traceback
                     consumed = _launch_udf(next_input.result())
                     next_input = None
 
@@ -1029,9 +1008,8 @@ def _generate_transform_fn_for_async_map(
                 if not cur_task.done():
                     cur_task.cancel()
 
-            # NOTE: Tasks still in flight (e.g. when the input iterator fails
-            #       while UDFs are running) are only reported via the sentinel,
-            #       so wait for their cancellation and drop them
+            # NOTE: In-flight tasks (e.g. the iterator failed while UDFs ran) are
+            #       reported only via the sentinel, so await and drop them
             cancelled_tasks = list(cur_task_map.keys())
             cur_task_map.clear()
             await asyncio.gather(*cancelled_tasks, return_exceptions=True)
@@ -1039,10 +1017,11 @@ def _generate_transform_fn_for_async_map(
             sentinel = e
         finally:
             if next_input is not None:
-                # NOTE: Don't send the sentinel while the input iterator is still
-                #       being advanced in the executor: once the consumer sees
-                #       it, the iterator may be closed, which raises while it's
-                #       executing. Its item (or exception) is discarded
+                # NOTE: Don't send the sentinel mid-advance: the consumer may then
+                #       close the iterator, which raises while it's executing
+                # NOTE: Not `await next_input`: re-raising a failed advance replaces
+                #       its traceback, and awaiting would cancel the future on a
+                #       second cancellation while `next` keeps running
                 await asyncio.wait([next_input])
                 if not next_input.cancelled():
                     next_input.exception()

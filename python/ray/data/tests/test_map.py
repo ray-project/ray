@@ -1452,9 +1452,8 @@ class TestGenerateTransformFnForAsyncMap:
     ):
         """Test that formatting the next batch doesn't block the event loop.
 
-        The second batch is only produced once the UDF call for the first one
-        ran, which can only happen if the event loop stays free while the
-        batch iterator is advanced.
+        The second batch waits for the first UDF call, which can only run while
+        the loop is free.
         """
         first_call_ran = threading.Event()
         advancing_threads = []
@@ -1553,8 +1552,7 @@ class TestGenerateTransformFnForAsyncMap:
         )
         outputs = transform_fn(input_iter(), Mock())
 
-        # The first output is reported while the second advance is still
-        # blocked, i.e. after the scheduler has seen a slot free up
+        # Reported while the second advance blocks, so a slot has freed up
         first = next(outputs)
         release.set()
 
@@ -1683,8 +1681,7 @@ class TestGenerateTransformFnForAsyncMap:
             assert advancing.wait(timeout=30)
 
             async def _cancel_transform():
-                # Cancel the scheduling coroutine only (not `_reorder`, which is
-                # nested inside it)
+                # Only the scheduling coroutine, not its nested `_reorder`
                 for task in asyncio.all_tasks():
                     if task.get_coro().__qualname__.endswith("._execute_transform"):
                         task.cancel()
