@@ -361,6 +361,38 @@ class VariantGeneratorTest(unittest.TestCase):
         else:
             raise
 
+    def testVariantAndTrialIteratorDeque(self):
+        from collections import deque
+        from ray.tune.search.basic_variant import _TrialIterator, _VariantIterator
+
+        variant_iter = _VariantIterator(
+            iter([({}, {"a": 1}), ({}, {"a": 2})]), lazy_eval=False
+        )
+        self.assertIsInstance(variant_iter.iterable, deque)
+        # Verify backwards compatibility if restored from a legacy checkpoint with a list.
+        variant_iter.iterable = list(variant_iter.iterable)
+        self.assertEqual(next(variant_iter), ({}, {"a": 1}))
+        self.assertIsInstance(variant_iter.iterable, deque)
+        self.assertEqual(next(variant_iter), ({}, {"a": 2}))
+        self.assertFalse(variant_iter.has_next())
+
+        points = [{"a": 10}, {"a": 20}]
+        trial_iter = _TrialIterator(
+            uuid_prefix="test_",
+            num_samples=2,
+            unresolved_spec={"run": MOCK_TRAINABLE_NAME, "config": {"a": 0}},
+            points_to_evaluate=points,
+            lazy_eval=False,
+        )
+        self.assertIsInstance(trial_iter.points_to_evaluate, deque)
+        # Verify legacy list checkpoint state works and caller's list is not mutated.
+        trial_iter.points_to_evaluate = list(trial_iter.points_to_evaluate)
+        t1 = next(trial_iter)
+        self.assertIsInstance(trial_iter.points_to_evaluate, deque)
+        t2 = next(trial_iter)
+        self.assertEqual([t1.config["a"], t2.config["a"]], [10, 20])
+        self.assertEqual(points, [{"a": 10}, {"a": 20}])
+
 
 if __name__ == "__main__":
     import sys
