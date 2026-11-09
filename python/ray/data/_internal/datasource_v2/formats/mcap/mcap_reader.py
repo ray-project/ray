@@ -24,6 +24,7 @@ partition and synthesized columns. The other modules read and build the rows:
 """
 
 import logging
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field, replace
 from functools import partial
 from typing import (
@@ -41,7 +42,9 @@ from typing import (
 
 import pyarrow as pa
 from pyarrow.fs import FileSystem, LocalFileSystem
+from typing_extensions import override
 
+from ray._common.utils import env_integer
 from ray.data._internal.arrow_block import _BATCH_SIZE_PRESERVING_STUB_COL_NAME
 from ray.data._internal.datasource_v2.formats.mcap.mcap_chunks import (
     SelectedMessageReader,
@@ -78,12 +81,17 @@ from ray.data._internal.datasource_v2.formats.mcap.mcap_task_summary import (
 from ray.data._internal.datasource_v2.interfaces.file_manifest import FileManifest
 from ray.data._internal.datasource_v2.interfaces.read_units import ReadUnit
 from ray.data._internal.datasource_v2.interfaces.reader import Reader
+from ray.data._internal.datasource_v2.interfaces.supports_metadata import (
+    MetadataType,
+    SupportsMetadata,
+)
 from ray.data._internal.datasource_v2.interfaces.synthesized_columns import (
     ReadUnitPosition,
     SynthesizedColumn,
 )
 from ray.data._internal.object_extensions.arrow import raise_on_pickle_object_columns
-from ray.data._internal.util import MiB, iterate_with_retry
+from ray.data._internal.util import MiB, call_with_retry, iterate_with_retry
+from ray.data.block import BlockMetadata
 from ray.data.datasource.partitioning import Partitioning, PathPartitionParser
 from ray.util.annotations import DeveloperAPI
 from ray.util.debug import log_once
@@ -101,13 +109,33 @@ logger = logging.getLogger(__name__)
 _DECODING_CHUNK_READ_BYTES = min(ChunkReads().max_bytes, 4 * MiB)
 
 
+def read_skips_errors() -> bool:
+    """Whether ``DataContext.max_errored_blocks`` lets a read skip what it
+    cannot read and keep the rest of the file or task.
+
+    A read then returns fewer rows than the summaries count, so ``count()``
+    reads rather than summing them.
+    """
+    from ray.data.context import DataContext
+
+    return DataContext.get_current().max_errored_blocks != 0
+
+
 @DeveloperAPI
-class MCAPReader(Reader[FileManifest]):
+class MCAPReader(Reader[FileManifest], SupportsMetadata):
     """Reads the chunks of MCAP files a manifest assigns to one task.
 
     Created by ``MCAPScanner.create_reader`` with every pushdown applied:
     the message selection, the projected columns and the per-task row limit.
+    Also answers ``count()`` from the summaries (:meth:`read_metadata`) when
+    the selection can be counted there.
     """
+
+    # Files per count task. A count reads little of each file and waits on
+    # request latency, so a task counts several, reading them at the same time.
+    _COUNT_ROWS_BATCH_SIZE = env_integer(
+        "RAY_DATA_MCAP_READER_COUNT_ROWS_BATCH_SIZE", 16
+    )
 
     def __init__(
         self,
@@ -165,6 +193,8 @@ class MCAPReader(Reader[FileManifest]):
                 (``RAY_DATA_MCAP_MAX_LEAD_IN_S``).
         """
         self._message_reader = SelectedMessageReader(selection, log_time_order)
+        self._selection = selection
+        self._video = video
         self._decode_json = decode_json
         self._include_metadata = include_metadata
         self._include_row_id = include_row_id
@@ -222,11 +252,9 @@ class MCAPReader(Reader[FileManifest]):
         task's retry settings see it. Without skipping, the first failure
         fails the task at once.
         """
-        from ray.data.context import DataContext
-
         if len(input_split) == 0:
             return
-        skip_corrupt = DataContext.get_current().max_errored_blocks != 0
+        skip_corrupt = read_skips_errors()
         remaining = self._limit
         failures: List[Tuple[str, Exception]] = []
         for path, read_file in self._file_reads(input_split):
@@ -277,6 +305,118 @@ class MCAPReader(Reader[FileManifest]):
             skipped.chunks or skipped.num_messages or skipped.num_samples
         ):
             failures.append((path, _skipped_data_error(path, skipped)))
+
+    # -- metadata ----------------------------------------------------------
+
+    @override
+    def read_metadata(self, file_manifest: FileManifest) -> Iterator[BlockMetadata]:
+        """Yield one ``BlockMetadata`` per manifest row with its file's row
+        count, in order. A path listed twice is counted twice, as ``read``
+        reads it twice.
+
+        ``Statistics`` counts messages per channel, so no payload is read. A
+        file whose summary cannot answer is counted by reading it as ``read``
+        does. The files are counted at the same time, and a count that fails
+        with an error in ``DataContext.retried_io_errors`` is retried.
+        """
+        from ray.data.context import DataContext
+
+        retried_io_errors = DataContext.get_current().retried_io_errors
+
+        def count_rows(path: str) -> int:
+            return call_with_retry(
+                partial(self._count_rows, path),
+                description=f"count the rows of MCAP file {path}",
+                match=retried_io_errors,
+            )
+
+        paths = [str(p) for p in file_manifest.paths]
+        with ThreadPoolExecutor() as executor:
+            for path, num_rows in zip(paths, executor.map(count_rows, paths)):
+                yield BlockMetadata(
+                    num_rows=num_rows,
+                    size_bytes=None,
+                    exec_stats=None,
+                    input_files=(path,),
+                )
+
+    def _count_rows(self, path: str) -> int:
+        """Count the rows a read of one whole file yields."""
+        filesystem = self._filesystem or LocalFileSystem()
+        with filesystem.open_input_file(path) as f:
+            summary = read_summary_from(f, path)
+            if (
+                summary is not None
+                and summary.statistics is not None
+                and self._channel_counts_complete(summary)
+                and self._selection.schemas_settle(summary.channels, summary.schemas)
+            ):
+                selected = self._selection.selected_channel_ids(
+                    summary.channels, summary.schemas
+                )
+                counts = summary.statistics.channel_message_counts
+                return sum(counts.get(cid, 0) for cid in selected)
+            # The summary cannot answer: no statistics, per-channel counts that
+            # miss messages, or a channel or schema record declared only inside
+            # a chunk. Count by reading.
+            return self._count_by_reading(f, path, summary)
+
+    def _count_by_reading(self, f: Any, path: str, summary: Optional["Summary"]) -> int:
+        """Count the selected messages of one file by reading what ``read`` reads.
+
+        An indexed file is counted over the chunks a read reads, so a chunk that
+        names only channels the summary omits is skipped here too. A count needs
+        no order, so the messages stream in file order, unsorted. A file without a chunk index is
+        scanned through a read buffer of
+        ``DataContext.streaming_read_buffer_size`` bytes, as ``read`` scans it.
+        """
+        from ray.data.context import DataContext
+
+        if summary is None or not summary.chunk_indexes:
+            buffer_size = DataContext.get_current().streaming_read_buffer_size
+            messages = self._message_reader.iter_unindexed(
+                buffered(f, buffer_size), path, log_time_order=False
+            )
+        else:
+            messages = self._message_reader.iter_chunks(
+                f, path, summary, None, log_time_order=False
+            )
+        return sum(1 for _ in messages)
+
+    @staticmethod
+    def _channel_counts_complete(summary: "Summary") -> bool:
+        """Whether the per-channel counts cover every message of the file.
+
+        An empty map means the counts are not available. A map that does not
+        add up to ``message_count``, or that counts a channel the summary does
+        not list, cannot be summed for a selection.
+        """
+        statistics = summary.statistics
+        assert statistics is not None
+        counts = statistics.channel_message_counts
+        return set(counts) <= set(summary.channels) and (
+            sum(counts.values()) == statistics.message_count
+        )
+
+    @override
+    def available_metadata(self) -> Set[MetadataType]:
+        # A read that skips what it cannot read returns fewer rows than the
+        # summaries count. Statistics count messages, not the messages in a
+        # time range. A sample row is not one message, so nothing counts it. A
+        # decoded read emits frames, which ``fps`` thins and a decoder may drop.
+        if read_skips_errors():
+            return set()
+        if (
+            self._sample_rows is not None
+            or self._selection.time_range is not None
+            or self._video is not None
+        ):
+            return set()
+        return {MetadataType.NUM_ROWS}
+
+    @override
+    def get_target_metadata_batch_size(self) -> Optional[int]:
+        return self._COUNT_ROWS_BATCH_SIZE
 
     def _file_reads(
         self, manifest: FileManifest

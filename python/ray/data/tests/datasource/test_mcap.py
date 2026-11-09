@@ -1575,6 +1575,135 @@ def test_read_mcap_samples_reserve_the_frame_budget(
     assert read_op.ray_remote_args.get("memory") == reserved
 
 
+def _optimized(ds):
+    from ray.data._internal.logical.optimizers import LogicalOptimizer
+
+    return LogicalOptimizer().optimize(ds._logical_plan).dag
+
+
+def _walk(op):
+    yield op
+    for child in op.input_dependencies:
+        yield from _walk(child)
+
+
+def test_read_mcap_filter_pushdown(ray_start_regular_shared, tmp_path, datasource_v2):
+    """``ds.filter`` on ``topic`` or ``log_time`` folds into the read.
+
+    On V2 the ``Filter`` leaves the plan and ``ListFiles`` gets the predicate,
+    while a conjunct on another column keeps a ``Filter``. Rows are the same on
+    both paths.
+    """
+    from ray.data._internal.logical.operators import ListFiles
+    from ray.data._internal.logical.operators.map_operator import Filter
+    from ray.data.expressions import col
+
+    path = os.path.join(tmp_path, "chunked.mcap")
+    _write_chunked_mcap(path, 9)
+    base = 1_000_000_000
+
+    ds = ray.data.read_mcap(path).filter(
+        expr=(col("topic") == "/a") & (col("log_time") < base + 4_000_000)
+    )
+    rows = ds.take_all()
+    assert [row["data"]["seq"] for row in rows] == [0, 3]
+    if datasource_v2:
+        plan = list(_walk(_optimized(ds)))
+        assert not any(isinstance(op, Filter) for op in plan)
+        (list_files,) = [op for op in plan if isinstance(op, ListFiles)]
+        assert list_files.predicate is not None
+
+    mixed = ray.data.read_mcap(path).filter(
+        expr=(col("topic") == "/b") & (col("sequence") >= 0)
+    )
+    assert sorted(row["data"]["seq"] for row in mixed.take_all()) == [1, 4, 7]
+    if datasource_v2:
+        plan = list(_walk(_optimized(mixed)))
+        (filter_op,) = [op for op in plan if isinstance(op, Filter)]
+        assert "sequence" in str(filter_op.predicate_expr)
+
+
+def test_read_mcap_count_from_statistics(
+    ray_start_regular_shared, tmp_path, datasource_v2
+):
+    """``count()`` under a topic selection is answered from the summaries."""
+    from ray.data._internal.logical.interfaces import LogicalPlan
+    from ray.data._internal.logical.operators.count_operator import Count
+    from ray.data._internal.logical.operators.map_operator import MapBatches, Project
+    from ray.data._internal.logical.optimizers import LogicalOptimizer
+    from ray.data.expressions import col
+
+    paths = []
+    for i in range(2):
+        path = os.path.join(tmp_path, f"f{i}.mcap")
+        _write_chunked_mcap(path, 6)
+        paths.append(path)
+
+    def optimized_count_plan(ds):
+        count = Count(
+            input_dependencies=[
+                Project(exprs=[], input_dependencies=[ds._logical_plan.dag])
+            ]
+        )
+        return LogicalOptimizer().optimize(LogicalPlan(count, ds.context)).dag
+
+    ds = ray.data.read_mcap(paths, topics=["/a"])
+    assert ds.count() == 4
+    pushed = ray.data.read_mcap(paths).filter(expr=col("topic").is_in(["/a", "/b"]))
+    assert pushed.count() == 8
+    if datasource_v2:
+        assert isinstance(optimized_count_plan(ds), MapBatches)
+        assert isinstance(optimized_count_plan(pushed), MapBatches)
+
+    # A time range has to be read.
+    ranged = ray.data.read_mcap(paths, time_range=(1_000_000_000, 1_002_000_000))
+    assert ranged.count() == 4
+    if datasource_v2:
+        assert not isinstance(optimized_count_plan(ranged), MapBatches)
+
+
+def test_read_mcap_count_matches_a_read_that_skips_corrupt_parts(
+    ray_start_regular_shared, tmp_path, datasource_v2
+):
+    """With ``max_errored_blocks=-1``, a read skips a corrupt chunk that the
+    summaries still count, and ``count()`` gives the number of rows the read
+    returns."""
+    if not datasource_v2:
+        pytest.skip("only the V2 datasource counts from the summaries")
+    from ray.data.tests.unit.datasource_v2.mcap_testing import (
+        CHUNKED_FILE_MESSAGES,
+        round_robin_messages,
+        write_corrupt_chunk,
+        write_mcap,
+    )
+
+    good = os.path.join(tmp_path, "good.mcap")
+    write_mcap(good, round_robin_messages(CHUNKED_FILE_MESSAGES))
+    write_corrupt_chunk(os.path.join(tmp_path, "bad.mcap"), good, 1)
+    expected = 2 * CHUNKED_FILE_MESSAGES - 1
+    ray.data.DataContext.get_current().max_errored_blocks = -1
+    ds = ray.data.read_mcap(str(tmp_path))
+
+    # Counted first: after a read, ``count()`` returns the read's row count.
+    count = ds.count()
+    rows = ds.take_all()
+
+    assert count == len(rows) == expected
+
+
+def test_read_mcap_count_includes_a_repeated_path(
+    ray_start_regular_shared, tmp_path, datasource_v2
+):
+    """A path listed twice is read twice, so ``count()`` counts its rows twice."""
+    path = os.path.join(tmp_path, "chunked.mcap")
+    _write_chunked_mcap(path, 6)
+
+    count = ray.data.read_mcap([path, path]).count()
+    rows = ray.data.read_mcap([path, path]).take_all()
+
+    assert count == len(rows) == 12
+
+
 if __name__ == "__main__":
     import sys
 
