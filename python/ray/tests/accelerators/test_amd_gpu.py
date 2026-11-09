@@ -37,6 +37,32 @@ def test_visible_amd_gpu_type_bad_device_id():
         assert AMDGPUAcceleratorManager.get_current_node_accelerator_type() is None
 
 
+def test_get_amd_device_ids_shuts_down_smi_and_resolves_hex_ids():
+    import ray._private.thirdparty.pyamdsmi as pyamdsmi
+
+    with patch.object(pyamdsmi, "smi_initialize") as mock_init, patch.object(
+        pyamdsmi, "smi_get_device_count", return_value=2
+    ), patch.object(
+        pyamdsmi,
+        "smi_get_device_id",
+        side_effect=lambda i: 0x679A if i == 0 else 0x679B,
+    ), patch.object(
+        pyamdsmi, "smi_shutdown"
+    ) as mock_shutdown:
+        assert AMDGPUAcceleratorManager._get_amd_device_ids() == [
+            "0x679a",
+            "0x679b",
+        ]
+        mock_init.assert_called_once()
+        mock_shutdown.assert_called_once()
+
+        assert (
+            AMDGPUAcceleratorManager.get_current_node_accelerator_type()
+            == "AMD-Radeon-HD-7900"
+        )
+        assert mock_shutdown.call_count == 2
+
+
 def test_get_current_process_visible_accelerator_ids(monkeypatch):
     monkeypatch.setenv("HIP_VISIBLE_DEVICES", "0,1,2")
     assert AMDGPUAcceleratorManager.get_current_process_visible_accelerator_ids() == [
