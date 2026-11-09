@@ -10,7 +10,20 @@ budget is too small to even cover the producer's already-prebuffered outputs.
 Both are deadlocks that no amount of waiting fixes; the hatch raises exactly one
 operator's output limit by one block's worth and lets the loop retry.
 
-The executor calls ``relieve_output_limit_deadlock`` on an adaptive interval
+Lineage reconstruction adds a third: a re-made block is withheld until its
+child's whole input set is back, charged to the actor that made it. If that
+fills the actor's budget before the set is complete, the actor stops and the set
+may never complete. ``relieve_withheld_deadlock`` runs first: only when actors
+are provably deadlocked (see ``withheld_deadlock``) does it give room to the
+one the others wait on.
+
+Extra budget comes first from the node's free object store (reserved so no
+other grant counts it again), then from other actors on the node, which lend
+unused budget. Only when both fall short does a grant raise the node's total
+past what it holds, accepting a spill over a stuck pipeline (see
+``_ExperimentalActorPool.grant_output_headroom``).
+
+The executor calls ``relieve_output_deadlock`` on an adaptive interval
 (backing off while nothing is stuck, tightening after a hit) so the scan stays
 cheap.
 """
@@ -28,14 +41,19 @@ from ray.data._internal.experimental.execution.operators.actor_pool_map_operator
     ExperimentalActorPoolMapOperator,
 )
 
-__all__ = ["relieve_output_limit_deadlock", "num_rows_required"]
+__all__ = ["relieve_output_deadlock", "num_rows_required"]
 
 
-def relieve_output_limit_deadlock(
+def relieve_output_deadlock(
     *, output_operator: PhysicalOperator, resource_bank: ResourceBankBase
 ) -> Optional[PhysicalOperator]:
-    """Find an output-backpressured producer that cannot be relieved by waiting
-    and raise its output limit. Returns the upgraded operator, or ``None``.
+    """Break one deadlock that waiting can't resolve by raising an operator's
+    output limit. Returns the relieved operator, or ``None``.
+
+    Withheld-output deadlocks are checked first (``relieve_withheld_deadlock``).
+    Otherwise this looks for a backpressure deadlock: an output-backpressured
+    producer that cannot be relieved by waiting (``relieve_backpressure_deadlock``).
+    Each operator records its own grant metric, by deadlock kind.
 
     Data flows producer -> consumer, so this walks upstream (DFS) from the
     output operator. Only an ``ExperimentalActorPoolMapOperator`` can be
@@ -48,8 +66,8 @@ def relieve_output_limit_deadlock(
     (b) the producer lacks budget even for its prebuffered outputs (a low
         object-store stall).
 
-    At most one operator is upgraded per call; ``upgrade_output_limit`` itself
-    is debounced, so the upgrade is only "spent" on a call that took effect.
+    At most one operator is relieved per call; ``relieve_backpressure_deadlock``
+    itself is debounced, so a grant is only "spent" on a call that took effect.
     """
     # Stack entries: (op, downstream_rows_needed, downstream_has_active_tasks).
     # downstream_rows_needed: output rows ``op`` must supply before the data
@@ -57,6 +75,14 @@ def relieve_output_limit_deadlock(
     #   ``num_output_splits`` rows to dispatch a balanced split).
     # downstream_has_active_tasks: a downstream task-launcher has tasks in
     #   flight that will consume refs and thereby free the producer's budget.
+    for op in output_operator.post_order_iter():
+        if (
+            isinstance(op, ExperimentalActorPoolMapOperator)
+            and not op.has_completed()
+            and op.relieve_withheld_deadlock()
+        ):
+            return op
+
     stack: List[Tuple[PhysicalOperator, int, bool]] = [(output_operator, 0, False)]
     while stack:
         curr_op, downstream_rows_needed, downstream_has_active_tasks = stack.pop()
@@ -66,16 +92,19 @@ def relieve_output_limit_deadlock(
         if isinstance(curr_op, ExperimentalActorPoolMapOperator):
             in_output_backpressure = curr_op.is_output_backpressured()
             # The producer's OWN output store holds the refs its consumer waits
-            # on, so that is where starvation is measured.
-            pulled_output_rows = resource_bank.live_object_store(
-                op=curr_op
-            ).num_pulled_output_rows
+            # on, so that is where starvation is measured. Withheld rows are
+            # pulled but not queued, so the consumer can't count on them.
+            producer_live = resource_bank.live_object_store(op=curr_op)
+            pulled_output_rows = (
+                producer_live.num_pulled_output_rows
+                - producer_live.num_withheld_output_rows
+            )
             consumer_starved = pulled_output_rows < downstream_rows_needed
             if in_output_backpressure and (
                 (consumer_starved and not downstream_has_active_tasks)
                 or not curr_op.has_enough_budget_for_prebuffered_outputs()
             ):
-                if curr_op.upgrade_output_limit():
+                if curr_op.relieve_backpressure_deadlock():
                     return curr_op
 
             # A task-launcher drains its producer: its producer only needs to

@@ -77,7 +77,10 @@ from ray.data.block import BlockAccessor, BlockMetadataWithSchema, TaskExecWorke
 from ray.data.context import EXECUTION_CALLBACKS_ENV_VAR, DataContext
 from ray.data.tests.conftest import *  # noqa
 from ray.data.tests.conftest import noop_counter
-from ray.data.tests.util import fetcher_has_pending_work
+from ray.data.tests.util import (
+    emit_and_fire_done_callbacks,
+    fetcher_has_pending_work,
+)
 from ray.exceptions import GetTimeoutError
 
 
@@ -217,7 +220,7 @@ def _process_completed_tasks_threaded(
         while fetcher_has_pending_work(fetcher):
             if time.time() >= deadline:
                 raise TimeoutError("threaded metadata fetch did not finish within 30s")
-            fetcher.emit_ready_and_fire_done_callbacks()
+            emit_and_fire_done_callbacks(fetcher)
             time.sleep(0.005)
         return result
     finally:
@@ -227,7 +230,7 @@ def _process_completed_tasks_threaded(
 def test_process_completed_tasks_threaded(ray_start_regular_shared):
     """End-to-end check of the threaded mode through ``process_completed_tasks``:
     pulled pairs are deferred, fetched on the background thread, and emitted
-    (per-op order) by ``emit_ready_and_fire_done_callbacks`` — yielding the same outputs as the
+    (per-op order) by ``emit_ready`` / ``fire_done_callbacks`` — yielding the same outputs as the
     inline mode."""
     inputs = make_ref_bundles([[x] for x in range(20)])
     o1 = InputDataBuffer(DataContext.get_current(), inputs)
@@ -1719,7 +1722,7 @@ class TestDataOpTask:
         with fetcher._results_lock:
             for d, meta_bytes in zip(deferred, ray.get([d.meta_ref for d in deferred])):
                 fetcher._results[d.meta_ref] = meta_bytes
-        fetcher.emit_ready_and_fire_done_callbacks()
+        emit_and_fire_done_callbacks(fetcher)
         assert len(outputs) == len(deferred)
         assert task._last_block_meta is not None
 
@@ -1772,7 +1775,7 @@ class TestDataOpTask:
 
             deadline = time.time() + 30
             while len(outputs) < 4 and time.time() < deadline:
-                fetcher.emit_ready_and_fire_done_callbacks()
+                emit_and_fire_done_callbacks(fetcher)
                 time.sleep(0.01)
         finally:
             fetcher.stop()
@@ -1824,14 +1827,14 @@ class TestDataOpTask:
         # Only the LATER pair's metadata is available: it must be held.
         with fetcher._results_lock:
             fetcher._results[second.meta_ref] = meta_bytes_second
-        fetcher.emit_ready_and_fire_done_callbacks()
+        emit_and_fire_done_callbacks(fetcher)
         assert outputs == []
         assert not task.has_finished
 
         # Once the EARLIER pair's metadata arrives, both emit, in yield order.
         with fetcher._results_lock:
             fetcher._results[first.meta_ref] = meta_bytes_first
-        fetcher.emit_ready_and_fire_done_callbacks()
+        emit_and_fire_done_callbacks(fetcher)
         assert [b.size_bytes() for b in outputs] == [108, 208]
         assert task.has_finished
 
@@ -1873,10 +1876,11 @@ class TestDataOpTask:
             fetcher._results[first.meta_ref] = good_bytes
             fetcher._results[second.meta_ref] = boom
 
-        failures = fetcher.emit_ready_and_fire_done_callbacks()
+        failures = emit_and_fire_done_callbacks(fetcher)
 
-        # The error is surfaced (not raised), tagged with the operator name.
-        assert failures == [("Map(fn)", boom)]
+        # The error is surfaced (not raised), tagged with its task.
+        assert failures == [(task, boom)]
+        assert task.operator_name == "Map(fn)"
         # The good block still emitted; the failed one was dropped.
         assert len(outputs) == 1
         assert outputs[0].size_bytes() == 108
@@ -1887,7 +1891,7 @@ class TestDataOpTask:
 
     def test_threaded_marks_drained_task_finished(self, ray_start_regular_shared):
         """A drained task registered via ``submit`` is NOT finished until
-        ``emit_ready_and_fire_done_callbacks`` has emitted all of its pairs;
+        ``emit_ready`` / ``fire_done_callbacks`` has emitted all of its pairs;
         then the done-callback fires exactly once and the task is FINISHED."""
         gen = create_stub_streaming_gen(block_nbytes=[100])
         done: list = []
@@ -1913,14 +1917,14 @@ class TestDataOpTask:
 
             fetcher.submit("op", [task])
             # Completion is postponed: the done-callback only fires from
-            # emit_ready_and_fire_done_callbacks on this thread, so the task
+            # emit_ready / fire_done_callbacks on this thread, so the task
             # can't be finished yet.
             assert not task.has_finished
             assert done == []
 
             deadline = time.time() + 30
             while fetcher_has_pending_work(fetcher) and time.time() < deadline:
-                fetcher.emit_ready_and_fire_done_callbacks()
+                emit_and_fire_done_callbacks(fetcher)
                 time.sleep(0.01)
         finally:
             fetcher.stop()
@@ -1928,7 +1932,7 @@ class TestDataOpTask:
         assert task.has_finished
         assert len(done) == 1
         # The task was deregistered; a later call must not re-fire.
-        fetcher.emit_ready_and_fire_done_callbacks()
+        emit_and_fire_done_callbacks(fetcher)
         assert len(done) == 1
 
     def test_threaded_fetch_falls_back_to_per_ref_get(self):

@@ -83,10 +83,21 @@ class MetadataFetcher(ABC):
         """Hand the operator's deferred pairs off for processing, and record
         any end-of-stream/failed tasks whose completion is postponed."""
 
-    def emit_ready_and_fire_done_callbacks(self) -> List[Tuple[str, BaseException]]:
-        """Run once at the end of ``process_completed_tasks``. Returns
-        ``(operator_name, exception)`` for each block-level fetch failure, for
-        the caller's ``max_errored_blocks`` accounting. Default: nothing to do."""
+    def emit_ready(self) -> List[Tuple[DataOpTask, BaseException]]:
+        """Emit the deferred pairs whose metadata is ready. Returns
+        ``(task, exception)`` for each block-level fetch failure, for the
+        caller to reconstruct or count against ``max_errored_blocks``.
+        Default: nothing to do."""
+        return []
+
+    def fire_done_callbacks(self) -> List[Tuple[DataOpTask, BaseException]]:
+        """Fire the postponed done-callbacks of drained tasks whose pairs have
+        all emitted. Returns ``(task, exception)`` for each failed task.
+        Default: nothing to do.
+
+        Call after routing ``emit_ready``'s failures: a drained task whose last
+        fetch failed must be reconstructed while it is still live, not marked
+        done here first."""
         return []
 
 
@@ -163,7 +174,7 @@ class ThreadedMetadataFetcher(MetadataFetcher):
                                                                 + ray.get
                                                                    |
                             _results  <----- fetched bytes --------+
-        emit_ready_and_fire_done_callbacks():
+        emit_ready():
             _fifos[op]:  head [d0] -> [d1] -> [d2] tail   (append = yield order)
                               |
                               `- emit front-first while its bytes are in
@@ -311,19 +322,14 @@ class ThreadedMetadataFetcher(MetadataFetcher):
             if task.is_drained():
                 self._drained_tasks.add(task)
 
-    def emit_ready_and_fire_done_callbacks(self) -> List[Tuple[str, BaseException]]:
-        """Emit whatever's ready (per-op order) then fire postponed done
-        callbacks. Returns ``(operator_name, exception)`` for each pair whose
-        metadata fetch failed, for the caller's ``max_errored_blocks``
-        accounting. Must run on the executor thread."""
-        return self._emit_ready() + self._fire_done_callbacks()
-
-    def _emit_ready(self) -> List[Tuple[str, BaseException]]:
+    def emit_ready(self) -> List[Tuple[DataOpTask, BaseException]]:
+        """Emit whatever's ready, in per-op order. Must run on the executor
+        thread."""
         # Emit every pair whose metadata is now available, in per-op append
         # order. A failed fetch is accounted as emitted (so the task can still
         # complete) but its block is dropped and the error is surfaced to the
         # caller rather than raised.
-        failures: List[Tuple[str, BaseException]] = []
+        failures: List[Tuple[DataOpTask, BaseException]] = []
         for fifo in self._fifos.values():
             while fifo:
                 d = fifo[0]
@@ -347,7 +353,7 @@ class ThreadedMetadataFetcher(MetadataFetcher):
                     # per-task accounting that no longer exists.
                     continue
                 if isinstance(result, BaseException):
-                    failures.append((d.task.operator_name, result))
+                    failures.append((d.task, result))
                     continue
                 try:
                     d.task.produce_block(d.block_ref, result)
@@ -356,16 +362,17 @@ class ThreadedMetadataFetcher(MetadataFetcher):
                     # (e.g. ``pickle.loads`` raising on a corrupt object). Treat
                     # it as a block-level error and route it through the same
                     # accounting, rather than letting it escape.
-                    failures.append((d.task.operator_name, e))
+                    failures.append((d.task, e))
         return failures
 
-    def _fire_done_callbacks(self) -> List[Tuple[str, BaseException]]:
+    def fire_done_callbacks(self) -> List[Tuple[DataOpTask, BaseException]]:
+        """Fire postponed done-callbacks. Must run on the executor thread."""
         # Fire postponed done-callbacks for drained tasks whose pairs have all
         # emitted. A failed task fires with its error, which is also surfaced for
         # ``max_errored_blocks`` accounting.
         if not self._drained_tasks:
             return []
-        failures: List[Tuple[str, BaseException]] = []
+        failures: List[Tuple[DataOpTask, BaseException]] = []
         # A task aborted after draining has already fired its done-callback;
         # `mark_done` here would fire it twice and double-release its resources.
         to_mark_done = [
@@ -375,7 +382,7 @@ class ThreadedMetadataFetcher(MetadataFetcher):
         ]
         for task in to_mark_done:
             if task.task_error is not None:
-                failures.append((task.operator_name, task.task_error))
+                failures.append((task, task.task_error))
             task.mark_done()
         # Drop everything now complete: the tasks just finished above, plus any that
         # may have been aborted by the executor due to object loss while they waited
@@ -430,7 +437,7 @@ class ThreadedMetadataFetcher(MetadataFetcher):
            per-ref gets to isolate the failure and keep the rest.
         4. Return the refs to retry next pass: the not-yet-local ones, plus any
            that raced out of the local store. A ref that resolved to an error is
-           published as that exception for ``_emit_ready`` to surface.
+           published as that exception for ``emit_ready`` to surface.
         """
         ready, not_ready = self._wait_for_objects(
             pending,
