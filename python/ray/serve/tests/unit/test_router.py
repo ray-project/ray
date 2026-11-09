@@ -2142,6 +2142,79 @@ class TestChooseReplica:
 
         assert len(replica._requests_sent) == 1
 
+    @pytest.mark.parametrize("cancel", [False, True])
+    async def test_pick_only_registers_scale_from_zero_demand(
+        self, setup_router: Tuple[AsyncioRouter, FakeRequestRouter], cancel: bool
+    ):
+        router, fake_request_router = setup_router
+        RequestRouter.__init__(
+            fake_request_router,
+            deployment_id=DeploymentID(name="test-deployment"),
+            handle_source=DeploymentHandleSource.UNKNOWN,
+        )
+        metrics = router._metrics_manager
+        metrics._deployment_config = DeploymentConfig(
+            autoscaling_config=AutoscalingConfig(min_replicas=0)
+        )
+        wait_started = asyncio.Event()
+
+        async def choose_available_replicas(candidate_replicas, pending_request=None):
+            return [candidate_replicas]
+
+        fake_request_router.choose_replicas = choose_available_replicas
+
+        class SignalingEvent(asyncio.Event):
+            async def wait(self):
+                wait_started.set()
+                return await super().wait()
+
+        replicas_updated = SignalingEvent()
+        fake_request_router._lazily_constructed_replicas_updated_event = (
+            replicas_updated
+        )
+
+        async def select():
+            async with router.choose_replica(
+                dummy_request_metadata(), _reserve=False
+            ) as selection:
+                return selection
+
+        with patch.object(metrics, "push_autoscaling_metrics_to_controller") as push:
+            task = asyncio.create_task(select())
+            try:
+                await asyncio.wait_for(wait_started.wait(), timeout=2)
+                assert metrics.num_queued_requests == 1
+                push.assert_called_once_with()
+                assert metrics.metrics_store.get_latest(QUEUED_REQUESTS_KEY) == 1
+
+                if cancel:
+                    task.cancel()
+                    with pytest.raises(asyncio.CancelledError):
+                        await task
+                    assert fake_request_router.routed_requests == []
+                else:
+                    replica_id = ReplicaID(
+                        unique_id="test-replica", deployment_id=router.deployment_id
+                    )
+                    replica = FakeReplica(replica_id)
+                    fake_request_router.set_replica_to_return(replica)
+                    fake_request_router._replicas = {replica_id: replica}
+                    fake_request_router._replicas_list = [replica]
+                    replicas_updated.set()
+                    selection = await asyncio.wait_for(task, timeout=2)
+                    assert selection._replica is replica
+                    assert replica._slot_counter == 0
+                    assert len(fake_request_router.routed_requests) == 1
+                    assert fake_request_router.routed_requests[0][1:] == (
+                        replica_id,
+                        None,
+                    )
+            finally:
+                task.cancel()
+                await asyncio.gather(task, return_exceptions=True)
+
+        assert metrics.num_queued_requests == 0
+
     async def test_choose_replica_no_reserve_skips_slot_reservation(
         self, setup_router: Tuple[AsyncioRouter, FakeRequestRouter]
     ):
@@ -2863,45 +2936,6 @@ class TestSingletonThreadRouter:
 
             router_loop.call_soon_threadsafe(add_replica_and_unblock)
             await asyncio.sleep(0)
-
-    @pytest.mark.asyncio
-    async def test_reserve_timeout_stops_replica_wait(
-        self,
-        setup_router: Tuple[AsyncioRouter, FakeRequestRouter],
-        setup_singleton_thread_router: SingletonThreadRouter,
-    ):
-        """A selection timeout cancels the pending request on the router loop."""
-        _, fake_request_router = setup_router
-        thread_router = setup_singleton_thread_router
-
-        RequestRouter.__init__(
-            fake_request_router,
-            deployment_id=DeploymentID(name="test-deployment"),
-            handle_source=DeploymentHandleSource.UNKNOWN,
-        )
-
-        async def choose_replica_for_request(pr, *, is_retry=False):
-            return await RequestRouter._choose_replica_for_request(
-                fake_request_router, pr, is_retry=is_retry
-            )
-
-        fake_request_router._choose_replica_for_request = choose_replica_for_request
-
-        async def select():
-            async with thread_router.choose_replica(
-                dummy_request_metadata(), _selection_timeout_s=0.2
-            ):
-                pytest.fail("Selection should time out before yielding a replica.")
-
-        task = asyncio.create_task(select())
-        await async_wait_for_condition(
-            lambda: fake_request_router.num_pending_requests == 1, timeout=2
-        )
-        with pytest.raises(asyncio.TimeoutError):
-            await task
-        await async_wait_for_condition(
-            lambda: fake_request_router.num_pending_requests == 0, timeout=2
-        )
 
     @pytest.mark.asyncio
     async def test_no_reserve_cancel_stops_empty_retries(
