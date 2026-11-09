@@ -22,7 +22,7 @@ file, which fails the task with the file's own error.
 """
 
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple
+from typing import Any, Dict, List, Mapping, Optional, Sequence
 
 import pyarrow as pa
 
@@ -45,7 +45,7 @@ _FILE_RECORDS_TYPE = pa.dictionary(pa.int32(), pa.binary())
 
 # A ``ChunkIndex`` record starts with the opcode and the record length, then the
 # chunk's two log times (8 bytes each) and its start offset (8).
-_LOG_TIMES_AT = _RECORD_PREFIX_BYTES
+_START_TIME_AT = _RECORD_PREFIX_BYTES
 _CHUNK_START_OFFSET_AT = _RECORD_PREFIX_BYTES + 16
 
 
@@ -78,21 +78,18 @@ def split_section(section: memoryview) -> SectionRecords:
     )
 
 
-def chunk_log_times(record: Optional[bytes]) -> Optional[Tuple[int, int]]:
-    """The first and last log time in a chunk, read from its ``ChunkIndex`` record.
+def chunk_start_time(record: Optional[bytes]) -> Optional[int]:
+    """The first log time in a chunk, read from its ``ChunkIndex`` record.
 
     ``None`` when ``record`` is not a ``ChunkIndex`` record, such as the empty or
     missing record of a listing row that names no chunk.
     """
     from mcap.opcode import Opcode
 
-    at = _LOG_TIMES_AT
-    if not record or record[0] != Opcode.CHUNK_INDEX or len(record) < at + 16:
+    at = _START_TIME_AT
+    if not record or record[0] != Opcode.CHUNK_INDEX or len(record) < at + 8:
         return None
-    return (
-        int.from_bytes(record[at : at + 8], "little"),
-        int.from_bytes(record[at + 8 : at + 16], "little"),
-    )
+    return int.from_bytes(record[at : at + 8], "little")
 
 
 def with_listing_records(

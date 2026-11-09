@@ -10,13 +10,6 @@ import pytest
 
 import ray
 from ray.data._internal.datasource_v2.formats.mcap import mcap_datasource_v2
-from ray.data._internal.datasource_v2.formats.mcap.mcap_file_cuts import (
-    OrderedFileCutter,
-)
-from ray.data._internal.datasource_v2.formats.mcap.mcap_task_summary import (
-    TaskSummaryPartitioner,
-)
-from ray.data._internal.logical.operators.read_operator import ListFiles
 from ray.data.datasource.path_util import _unwrap_protocol
 from ray.data.tests.conftest import *  # noqa
 from ray.tests.conftest import *  # noqa
@@ -363,35 +356,6 @@ def test_read_mcap_override_num_blocks(
     assert not any(f"ignores `{other}`" in m for m in warnings)
 
 
-@pytest.mark.parametrize(
-    "read_args, reserved",
-    [
-        ({"memory": 2 * 1024**3}, 2 * 1024**3),
-        ({"ray_remote_args": {"memory": 1024**3}}, 1024**3),
-        ({}, None),
-    ],
-    ids=["memory", "ray_remote_args", "unset"],
-)
-def test_read_mcap_hands_memory_to_the_file_cutter(
-    ray_start_regular_shared, simple_mcap_file, datasource_v2, read_args, reserved
-):
-    """``memory``, or else ``ray_remote_args["memory"]``, reaches the V2 file
-    cutter, so its memory warning knows what each read task reserves."""
-    if not datasource_v2:
-        pytest.skip("Only the V2 datasource takes the reservation.")
-
-    ds = ray.data.read_mcap(simple_mcap_file, **read_args)
-
-    # The plan keeps the datasource's partitioner, not the datasource.
-    list_files_op = ds._logical_plan.dag.input_dependencies[0]
-    assert isinstance(list_files_op, ListFiles)
-    partitioner = list_files_op.file_partitioner
-    assert isinstance(partitioner, TaskSummaryPartitioner)
-    cutter = partitioner._packer
-    assert isinstance(cutter, OrderedFileCutter)
-    assert cutter._reserved_memory == reserved
-
-
 def test_read_mcap_file_extensions(ray_start_regular_shared, tmp_path):
     """Test file extension filtering."""
     # Create MCAP file
@@ -609,8 +573,8 @@ def test_read_mcap_preserve_order_keeps_split_files_in_log_time_order(
     """With ``preserve_order``, each file comes out in ``log_time`` order from
     start to end, and the files follow each other in the order they are passed.
 
-    On V2 each file is split across several read tasks, and each path is listed
-    by a listing task of its own.
+    On V2 the budget fits two or three chunks, so an unordered read would split
+    every file. An ordered read keeps each file in one task instead.
     """
     num_files, num_messages = 3, 12
     paths = [os.path.join(tmp_path, f"f{i}.mcap") for i in range(num_files)]
@@ -618,7 +582,6 @@ def test_read_mcap_preserve_order_keeps_split_files_in_log_time_order(
         _write_chunked_mcap(path, num_messages)
     ray.data.DataContext.get_current().execution_options.preserve_order = True
     if datasource_v2:
-        # Room for two or three chunks per task, so every file needs several.
         budget = int(2.5 * _heaviest_chunk(paths[0], include_paths=True))
         monkeypatch.setattr(mcap_datasource_v2, "_BIN_PACKING_BYTES", budget)
 
@@ -631,7 +594,7 @@ def test_read_mcap_preserve_order_keeps_split_files_in_log_time_order(
         for j in range(num_messages)
     ]
     if datasource_v2:
-        assert ds.num_blocks() >= 3 * num_files
+        assert ds.num_blocks() == num_files
 
 
 def test_read_mcap_preserve_order_keeps_files_of_mixed_size_in_listing_order(
