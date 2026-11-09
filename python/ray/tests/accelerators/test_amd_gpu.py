@@ -60,6 +60,7 @@ def test_get_amd_device_ids_shuts_down_smi_and_resolves_hex_ids():
             AMDGPUAcceleratorManager.get_current_node_accelerator_type()
             == "AMD-Radeon-HD-7900"
         )
+        assert mock_init.call_count == 2
         assert mock_shutdown.call_count == 2
 
 
