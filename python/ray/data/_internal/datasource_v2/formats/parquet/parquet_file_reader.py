@@ -36,6 +36,7 @@ from ray.data._internal.datasource_v2.formats.parquet.parquet_size_estimator imp
     PARQUET_ENCODING_RATIO_ESTIMATE_DEFAULT,
 )
 from ray.data._internal.datasource_v2.formats.parquet.parquet_utils import (
+    READER_CPU_COUNT,
     _get_safe_batch_size_for_nested_types,
     _needs_nested_type_fallback,
     _resolve_leaf_column_indices,
@@ -75,10 +76,8 @@ _PARQUET_FRAGMENT_BUFFER_SIZE = env_integer(
 # Arrow process-wide IO / CPU thread pools for the read task. Arrow's default
 # (~num cores, 8 IO threads) throttles the concurrent column/range fetches a
 # Parquet scan issues against S3, especially for row-group-scoped fragments.
-# The CPU pool is capped at 1 because each read task holds one Ray CPU; a
-# larger pool oversubscribes the node when many read tasks run concurrently.
+# The CPU pool's size, ``READER_CPU_COUNT``, is in ``parquet_utils``.
 _READER_IO_THREAD_COUNT = env_integer("RAY_DATA_PARQUET_READER_IO_THREAD_COUNT", 16)
-_READER_CPU_COUNT = env_integer("RAY_DATA_PARQUET_READER_CPU_COUNT", 1)
 
 # ``ParquetFileFormat`` options that only change the Arrow types of a read.
 _TYPE_OPTIONS = ("dictionary_columns", "binary_type", "list_type")
@@ -282,8 +281,8 @@ class ParquetFileReader(FileReader, SupportsMetadata):
         # of being capped at Arrow's small default.
         if _READER_IO_THREAD_COUNT > 0:
             pa.set_io_thread_count(_READER_IO_THREAD_COUNT)
-        if _READER_CPU_COUNT > 0:
-            pa.set_cpu_count(_READER_CPU_COUNT)
+        if READER_CPU_COUNT > 0:
+            pa.set_cpu_count(READER_CPU_COUNT)
 
     @override
     def _make_format(self) -> pds.ParquetFileFormat:

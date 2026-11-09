@@ -13,6 +13,7 @@ from typing import TYPE_CHECKING, List, Optional
 
 import pyarrow as pa
 
+from ray._common.utils import env_integer
 from ray.data._internal.util import GiB
 
 if TYPE_CHECKING:
@@ -25,6 +26,12 @@ PARQUET_FILE_EXTENSIONS: List[str] = ["parquet"]
 # Arrow's nested type chunking limit
 # See: https://github.com/apache/arrow/issues/21526 (ARROW-5030)
 _ARROW_CHUNK_LIMIT = 2 * GiB
+
+# PyArrow's CPU pool in a read task, set by ``ParquetFileReader`` and used by the
+# footer reader to size the decode peak; 0 or less leaves PyArrow's default. Capped
+# at 1 because each read task holds one Ray CPU; a larger pool oversubscribes the
+# node when many read tasks run concurrently.
+READER_CPU_COUNT = env_integer("RAY_DATA_PARQUET_READER_CPU_COUNT", 1)
 
 
 def check_for_legacy_tensor_type(schema: pa.Schema) -> None:

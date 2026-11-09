@@ -35,6 +35,9 @@ from ray.data._internal.datasource_v2.formats.parquet.parquet_size_statistics im
     LeafSizeStats,
     read_footer_stats,
 )
+from ray.data._internal.datasource_v2.formats.parquet.parquet_utils import (
+    READER_CPU_COUNT,
+)
 from ray.data._internal.datasource_v2.interfaces.file_indexer import FileInfo
 from ray.data._internal.datasource_v2.interfaces.file_manifest import FileChunk
 from ray.data._internal.planner.plan_expression.expression_visitors import (
@@ -346,6 +349,7 @@ class FooterReader:
                 column_leaves=sizing.column_leaves,
                 leaves=leaves,
                 counted=set(),
+                decode_threads=READER_CPU_COUNT,
             )
             unmodelled = [j for j in sizing.leaf_indices if j not in leaves]
             if self.pinned_schema is None:
