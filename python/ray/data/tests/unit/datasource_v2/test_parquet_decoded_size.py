@@ -323,7 +323,8 @@ def test_pinned_struct_with_reordered_fields_is_unmodelled(tmp_path):
         )
 
     widened = pa.field("b", pa.list_(pa.int64()))
-    assert all(profile is not None for profile in profiles(a, widened))
+    mapped = profiles(a, widened)
+    assert mapped is not None and None not in mapped
     assert profiles(widened, a) == [None, None]
 
 
