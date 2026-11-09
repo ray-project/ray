@@ -47,6 +47,7 @@ from ray.exceptions import ObjectLostError
 if TYPE_CHECKING:
     from ray.data._internal.execution.lineage_tracker import LineageTracker
     from ray.data._internal.execution.metadata_fetcher import MetadataFetcher
+    from ray.data._internal.execution.resource_bank import ResourceBankBase
     from ray.data.block import BlockMetadataWithSchema
 
 logger = logging.getLogger(__name__)
@@ -676,6 +677,7 @@ class PhysicalOperator(Operator):
         self._started = False
         self._shutdown = False
         self._lineage_tracker: Optional["LineageTracker"] = None
+        self._resource_bank: Optional["ResourceBankBase"] = None
         self._in_task_submission_backpressure = False
         self._task_submission_backpressure_policy: Optional[str] = None
         self._in_task_output_backpressure = False
@@ -795,6 +797,7 @@ class PhysicalOperator(Operator):
         # The transformed node should have a distinct identity and metrics owner.
         target._id = str(uuid.uuid4())
         target._metrics = OpRuntimeMetrics(target)
+        target._resource_bank = None
         # The copied node belongs to a new transformed DAG. Reverse edges are
         # rewired by parents, so avoid carrying stale downstream references.
         target._output_dependencies = []
@@ -993,6 +996,7 @@ class PhysicalOperator(Operator):
         options: ExecutionOptions,
         block_ref_counter: BlockRefCounter,
         lineage_tracker: Optional["LineageTracker"] = None,
+        resource_bank: Optional["ResourceBankBase"] = None,
     ) -> None:
         """Called by the executor when execution starts for an operator.
 
@@ -1002,9 +1006,11 @@ class PhysicalOperator(Operator):
                 object-store memory.
             lineage_tracker: The executor-wide lineage metadata tracker, which
                 helps trigger lineage reconstruction on object loss.
+            resource_bank: Optional per-executor ResourceBankBase instance.
         """
         self._block_ref_counter = block_ref_counter
         self._lineage_tracker = lineage_tracker
+        self._resource_bank = resource_bank
         self._started = True
 
     def can_add_input(self) -> bool:

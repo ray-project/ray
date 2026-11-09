@@ -104,8 +104,7 @@ class Checkpointable(abc.ABC):
 
         The state of the implementing class is always saved in the following format:
 
-        .. testcode::
-            :skipif: True
+        .. code-block:: text
 
             path/
                 [component1]/
@@ -348,8 +347,7 @@ class Checkpointable(abc.ABC):
         The given `path` should have the following structure and contain the following
         files:
 
-        .. testcode::
-            :skipif: True
+        .. code-block:: text
 
             path/
                 [component1]/

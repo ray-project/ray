@@ -32,6 +32,7 @@ from ray._common import ray_constants
 from ray._common.utils import Timer, TimerBase
 from ray.actor import ActorHandle
 from ray.exceptions import (
+    ActorUnavailableError,
     RayActorError,
     RayError,
     RayTaskError,
@@ -57,7 +58,11 @@ from ray.serve._private.common import (
     RequestRoutingInfo,
     RunningReplicaInfo,
 )
-from ray.serve._private.config import DeploymentConfig, GangSchedulingConfig
+from ray.serve._private.config import (
+    DeploymentConfig,
+    GangSchedulingConfig,
+    ReplicaConfig,
+)
 from ray.serve._private.constants import (
     CONTROL_LOOP_INTERVAL_S,
     CONTROLLER_HEALTH_CHECK_RECONCILIATION_FRACTION,
@@ -317,6 +322,8 @@ class DeploymentActorWrapper:
             try:
                 ray.get(self._health_check_ref)
                 return ReplicaHealthCheckResponse.SUCCEEDED
+            except ActorUnavailableError:
+                return ReplicaHealthCheckResponse.ACTOR_UNAVAILABLE
             except RayActorError:
                 return ReplicaHealthCheckResponse.ACTOR_CRASHED
             except RayError as e:
@@ -381,6 +388,26 @@ class DeploymentActorWrapper:
                     "marking unhealthy."
                 )
                 self._healthy = False
+        elif response is ReplicaHealthCheckResponse.ACTOR_UNAVAILABLE:
+            self._consecutive_health_check_failures += 1
+            if (
+                self._consecutive_health_check_failures
+                >= DEPLOYMENT_ACTOR_HEALTH_CHECK_UNHEALTHY_THRESHOLD
+            ):
+                logger.warning(
+                    f"Deployment actor '{self._config.name}' ({self._deployment_id}) "
+                    "is temporarily unavailable after "
+                    f"{self._consecutive_health_check_failures} consecutive failed "
+                    "health checks, marking it unhealthy."
+                )
+                self._healthy = False
+            else:
+                logger.warning(
+                    f"Deployment actor '{self._config.name}' ({self._deployment_id}) "
+                    "is temporarily unavailable "
+                    f"({self._consecutive_health_check_failures}/"
+                    f"{DEPLOYMENT_ACTOR_HEALTH_CHECK_UNHEALTHY_THRESHOLD}); will retry."
+                )
         elif response is ReplicaHealthCheckResponse.ACTOR_CRASHED:
             logger.warning(
                 f"Deployment actor '{self._config.name}' ({self._deployment_id}) "
@@ -553,6 +580,7 @@ class ReplicaHealthCheckResponse(Enum):
     SUCCEEDED = 2
     APP_FAILURE = 3
     ACTOR_CRASHED = 4
+    ACTOR_UNAVAILABLE = 5
 
 
 @dataclass
@@ -870,6 +898,7 @@ class PushedHealthTracker:
             in (
                 ReplicaHealthCheckResponse.SUCCEEDED,
                 ReplicaHealthCheckResponse.APP_FAILURE,
+                ReplicaHealthCheckResponse.ACTOR_UNAVAILABLE,
             )
             and probe_started_at < self._applied_push_received_at
         ):
@@ -902,6 +931,48 @@ class PushedHealthTracker:
             ReplicaHealthCheckResponse.APP_FAILURE,
             self._mirror_failures(pushed, probed_failures),
         )
+
+
+def format_scheduling_constraints(replica_config: ReplicaConfig) -> str:
+    """Describe the node label constraints a replica must be scheduled against.
+
+    A replica whose label selector matches no node stays pending while the
+    resources in the slow-startup warning look plentiful, so the warning names
+    the selectors as well. For a placement-group deployment they live on the
+    bundles, otherwise in the actor options.
+
+    Args:
+        replica_config: The replica config to read the selectors from.
+
+    Returns:
+        A sentence naming the selectors, or "" when none are set.
+    """
+    if replica_config.placement_group_bundles:
+        label_selector = replica_config.placement_group_bundle_label_selector
+        fallback_strategy = replica_config.placement_group_fallback_strategy
+        selector_noun = "Required bundle label selectors"
+    else:
+        actor_options = replica_config.ray_actor_options or {}
+        label_selector = actor_options.get("label_selector")
+        fallback_strategy = actor_options.get("fallback_strategy")
+        selector_noun = "Required node label selector"
+
+    sentences = []
+    if label_selector:
+        sentences.append(f"{selector_noun}: {json.dumps(label_selector)}.")
+    # Fallbacks are tried when the selector above matches no node, so a replica
+    # that is still pending did not match them either.
+    fallback_selectors = [
+        option.get("label_selector")
+        for option in fallback_strategy or []
+        if option.get("label_selector")
+    ]
+    if fallback_selectors:
+        sentences.append(
+            "No node matched the fallback label selectors either: "
+            f"{json.dumps(fallback_selectors)}."
+        )
+    return " ".join(sentences)
 
 
 class ActorReplicaWrapper:
@@ -937,6 +1008,7 @@ class ActorReplicaWrapper:
         self._unrecoverable: bool = False
 
         self._actor_resources: Optional[Dict[str, float]] = None
+        self._scheduling_constraints: str = ""
         # If the replica is being started, this will be the true version
         # If the replica is being recovered, this will be the target
         # version, which may be inconsistent with the actual replica
@@ -1267,6 +1339,9 @@ class ActorReplicaWrapper:
         """
         self._assign_rank_callback = assign_rank_callback
         self._actor_resources = deployment_info.replica_config.resource_dict
+        self._scheduling_constraints = format_scheduling_constraints(
+            deployment_info.replica_config
+        )
         self._ingress = deployment_info.ingress
         self._gang_placement_group = gang_placement_group
         self._gang_pg_index = gang_pg_index
@@ -1467,7 +1542,7 @@ class ActorReplicaWrapper:
         self._rank = rank
         return updating
 
-    def recover(self, ingress: bool = False) -> bool:
+    def recover(self, ingress: bool = False, scheduling_constraints: str = "") -> bool:
         """Recover replica version from a live replica actor.
 
         When controller dies, the deployment state loses the info on the version that's
@@ -1482,6 +1557,8 @@ class ActorReplicaWrapper:
 
         Args:
             ingress: Whether this replica is an ingress replica.
+            scheduling_constraints: The replica's scheduling constraints, as
+                formatted by `format_scheduling_constraints`.
 
         Returns:
             False if the replica actor is no longer alive; the caller drops
@@ -1492,6 +1569,7 @@ class ActorReplicaWrapper:
         """
         logger.info(f"Recovering {self.replica_id}.")
         self._ingress = ingress
+        self._scheduling_constraints = scheduling_constraints
         try:
             self._actor_handle = ray.get_actor(
                 self._actor_name, namespace=SERVE_NAMESPACE
@@ -1735,6 +1813,9 @@ class ActorReplicaWrapper:
     def actor_resources(self) -> Optional[Dict[str, float]]:
         return self._actor_resources
 
+    def scheduling_constraints(self) -> str:
+        return self._scheduling_constraints
+
     @property
     def available_resources(self) -> Dict[str, float]:
         # pyrefly: ignore[bad-return]
@@ -1835,6 +1916,8 @@ class ActorReplicaWrapper:
             - APP_FAILURE if the active health check failed (or didn't return
               before the timeout).
             - ACTOR_CRASHED if the underlying actor crashed.
+            - ACTOR_UNAVAILABLE if the underlying actor is temporarily unavailable
+              and may recover (e.g. a transient network partition).
         """
         # Reset the last health check status for this check cycle.
         # We do this because _resolve_active_probe is being called in a loop,
@@ -1857,6 +1940,10 @@ class ActorReplicaWrapper:
                 self._last_health_check_failed = False
                 # Health check succeeded without exception.
                 response = ReplicaHealthCheckResponse.SUCCEEDED
+            except ActorUnavailableError:
+                # Communication failed without confirmed actor death at the caller.
+                response = ReplicaHealthCheckResponse.ACTOR_UNAVAILABLE
+                self._last_health_check_failed = True
             except RayActorError:
                 # Health check failed due to actor crashing.
                 response = ReplicaHealthCheckResponse.ACTOR_CRASHED
@@ -2020,6 +2107,24 @@ class ActorReplicaWrapper:
                     "times in a row, marking it unhealthy."
                 )
                 self._healthy = False
+        elif response is ReplicaHealthCheckResponse.ACTOR_UNAVAILABLE:
+            self._consecutive_health_check_failures += 1
+            if (
+                self._consecutive_health_check_failures
+                >= REPLICA_HEALTH_CHECK_UNHEALTHY_THRESHOLD
+            ):
+                logger.warning(
+                    f"Actor for {self._replica_id} is temporarily unavailable after "
+                    f"{self._consecutive_health_check_failures} consecutive failed "
+                    "health checks, marking it unhealthy."
+                )
+                self._healthy = False
+            else:
+                logger.warning(
+                    f"Actor for {self._replica_id} is temporarily unavailable "
+                    f"({self._consecutive_health_check_failures}/"
+                    f"{REPLICA_HEALTH_CHECK_UNHEALTHY_THRESHOLD}); will retry."
+                )
         elif response is ReplicaHealthCheckResponse.ACTOR_CRASHED:
             # Actor crashed, mark the replica unhealthy immediately.
             logger.warning(
@@ -2317,7 +2422,12 @@ class DeploymentReplica:
             False if the replica actor is no longer alive.
         """
         # If replica is no longer alive
-        if not self._actor.recover(ingress=deployment_info.ingress):
+        if not self._actor.recover(
+            ingress=deployment_info.ingress,
+            scheduling_constraints=format_scheduling_constraints(
+                deployment_info.replica_config
+            ),
+        ):
             return False
 
         self._start_time = time.time()
@@ -2461,6 +2571,15 @@ class DeploymentReplica:
         # Use .model_copy(update=...) instead of .model_dump() + reconstruction
         # to avoid full Pydantic serialization and validation on every update.
         self._actor_details = self._actor_details.model_copy(update=kwargs)
+
+    def scheduling_constraints(self) -> str:
+        """Returns the label selectors this replica waits on, as a sentence.
+
+        Empty when the replica has no label selector or its actor is gone.
+        """
+        if self._actor is None:
+            return ""
+        return self._actor.scheduling_constraints()
 
     def resource_requirements(self) -> Tuple[str, str]:
         """Returns required and currently available resources.
@@ -5907,14 +6026,29 @@ class DeploymentState:
 
             if len(pending_allocation) > 0:
                 required, available = pending_allocation[0].resource_requirements()
+                scheduling_constraints = pending_allocation[0].scheduling_constraints()
+                if scheduling_constraints:
+                    # The resources below can look plentiful when no node matches
+                    # the label selector, so name the selector as the likely cause.
+                    likely_causes = (
+                        "This may be due to waiting for the cluster to auto-scale, "
+                        "for a runtime environment to be installed, or for a node "
+                        "matching the replica's label selector to become available. "
+                    )
+                    scheduling_constraints += " "
+                else:
+                    likely_causes = (
+                        "This may be due to waiting for the cluster to auto-scale or "
+                        "for a runtime environment to be installed. "
+                    )
                 message = (
                     f"Deployment '{self.deployment_name}' in application "
                     f"'{self.app_name}' has {len(pending_allocation)} replicas that "
                     f"have taken more than {SLOW_STARTUP_WARNING_S}s to be scheduled. "
-                    "This may be due to waiting for the cluster to auto-scale or for a "
-                    "runtime environment to be installed. "
+                    f"{likely_causes}"
                     f"Resources required for each replica: {required}, "
                     f"total resources available: {available}. "
+                    f"{scheduling_constraints}"
                     "Use `ray status` for more details."
                 )
                 logger.warning(message)
