@@ -349,11 +349,9 @@ def fast_tail_last_n_lines(
         # or enough bytes to cover max_chars characters.
         # We may need one more newline to capture the content before the first newline.
         while (
-            position > 0
-            and newlines_found < num_lines + 1
-            and bytes_read < max_bytes
+            position > 0 and newlines_found < num_lines + 1 and bytes_read < max_bytes
         ):
-            read_size = min(block_size, position)
+            read_size = min(block_size, position, max_bytes - bytes_read)
             position -= read_size
             f.seek(position)
 
