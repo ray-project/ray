@@ -583,8 +583,8 @@ def _pinned_walk(
     arrow_schema: pa.Schema, pinned_schema: pa.Schema, parquet_schema: ParquetSchema
 ) -> tuple[_SchemaWalk, set[int]]:
     """The pinned walk, and the leaves of columns whose cast changes their shape:
-    a struct that gained a field, a nested field made nullable, numbers cast to
-    text. Those are walked as stored and left unmodelled."""
+    a struct that gained or reordered fields, a nested field made nullable,
+    numbers cast to text. Those are walked as stored and left unmodelled."""
     unmapped: set[int] = set()
     fields, start = [], 0
     for field in arrow_schema:
@@ -597,15 +597,32 @@ def _pinned_walk(
             else pinned_type(field=field, pinned_schema=pinned_schema)
         )
         pinned = field if arrow_type is None else field.with_type(arrow_type)
-        if pinned is not field and not _cast_maps(
-            walk=_walk(pa.schema([pinned])),
-            columns=[parquet_schema.column(j) for j in leaves],
+        # The cast matches struct fields by name, the walk by position.
+        if pinned is not field and (
+            _struct_names(pinned.type) != _struct_names(field.type)
+            or not _cast_maps(
+                walk=_walk(pa.schema([pinned])),
+                columns=[parquet_schema.column(j) for j in leaves],
+            )
         ):
             unmapped.update(leaves)
             pinned = field
         fields.append(pinned)
         start = end
     return _walk(pa.schema(fields)), unmapped
+
+
+def _struct_names(arrow_type: pa.DataType) -> tuple:
+    """Every struct's field names in ``arrow_type``, nested, in their order."""
+    if isinstance(arrow_type, pa.BaseExtensionType):
+        arrow_type = arrow_type.storage_type
+    if pa.types.is_struct(arrow_type):
+        return tuple((field.name, _struct_names(field.type)) for field in arrow_type)
+    if pa.types.is_map(arrow_type):
+        return (_struct_names(arrow_type.key_type), _struct_names(arrow_type.item_type))
+    if _is_list(arrow_type):
+        return (_struct_names(arrow_type.value_type),)
+    return ()
 
 
 def _cast_maps(walk: _SchemaWalk, columns: Sequence[ColumnSchema]) -> bool:
