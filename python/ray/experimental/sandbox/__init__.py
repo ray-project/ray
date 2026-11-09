@@ -136,6 +136,7 @@ def create(
     actor_opts["scheduling_strategy"] = image_scheduling_strategy(
         image,
         num_cpus=actor_opts.get("num_cpus"),
+        num_gpus=actor_opts.get("num_gpus"),
         memory=actor_opts.get("memory"),
         resources=resources,
     )

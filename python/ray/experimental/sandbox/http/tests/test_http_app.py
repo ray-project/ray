@@ -990,14 +990,14 @@ def test_resolver_prefers_the_node_the_image_maps_to(
     resolver = RayActorHandleResolver(SandboxAPISettings())
     resolver.create(
         "sb-1",
-        {"num_cpus": 2, "memory": 1 << 30, "resources": {"gvisor": 1}},
+        {"num_cpus": 2, "num_gpus": 1, "memory": 1 << 30, "resources": {"gvisor": 1}},
         {"spec": {"image": "python:3.12-slim"}},
         get_if_exists=False,
     )
     assert options[0]["scheduling_strategy"] == (
         "strategy",
         "python:3.12-slim",
-        {"num_cpus": 2, "memory": 1 << 30, "resources": {"gvisor": 1}},
+        {"num_cpus": 2, "num_gpus": 1, "memory": 1 << 30, "resources": {"gvisor": 1}},
     )
     assert options[0]["resources"] == {"gvisor": 1}
 

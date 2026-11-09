@@ -47,6 +47,11 @@ def test_an_image_maps_to_one_fitting_node_however_spelled(fake_nodes):
     assert {s.node_id for s in strategies} == {"aa" * 28}
     assert all(s.soft and s._spill_on_unavailable for s in strategies)
     assert image_scheduling_strategy("python:3.12-slim", num_cpus=16) is None
+    # A GPU sandbox maps only to a node with GPUs.
+    fake_nodes.append(_node("ab" * 28, CPU=8.0, GPU=1.0))
+    assert (
+        image_scheduling_strategy("python:3.12-slim", num_gpus=1).node_id == "ab" * 28
+    )
 
 
 def test_images_spread_over_nodes_and_few_move_when_a_node_joins(fake_nodes):
@@ -114,12 +119,12 @@ def test_create_prefers_the_node_the_image_maps_to(monkeypatch):
         lambda image, **demand: ("strategy", image, demand),
     )
     sandbox_module.create(
-        "python:3.12-slim", cpu=2, memory="1Gi", resources={"gvisor": 1}
+        "python:3.12-slim", cpu=2, memory="1Gi", resources={"gvisor": 1}, num_gpus=1
     )
     assert options["scheduling_strategy"] == (
         "strategy",
         "python:3.12-slim",
-        {"num_cpus": 2, "memory": 1 << 30, "resources": {"gvisor": 1}},
+        {"num_cpus": 2, "num_gpus": 1, "memory": 1 << 30, "resources": {"gvisor": 1}},
     )
 
 

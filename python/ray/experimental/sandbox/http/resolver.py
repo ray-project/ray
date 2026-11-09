@@ -143,6 +143,7 @@ class RayActorHandleResolver:
                 scheduling_strategy=image_scheduling_strategy(
                     image,
                     num_cpus=actor_options.get("num_cpus"),
+                    num_gpus=actor_options.get("num_gpus"),
                     memory=actor_options.get("memory"),
                     resources=actor_options.get("resources"),
                 )
