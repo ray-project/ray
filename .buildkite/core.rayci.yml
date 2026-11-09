@@ -213,7 +213,7 @@ steps:
     instance_type: large
     commands:
       # doc tests
-      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/... //doc/... core
+      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/... //doc/... //:python_ray_doctest core
         --only-tags doctest
         --python-version 3.10 --build-name corebuild-py3.10
         --parallelism-per-worker 3
