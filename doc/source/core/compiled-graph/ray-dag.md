@@ -39,7 +39,7 @@ To execute any IR node directly as the root of the DAG, call `dag_node.execute()
 
 ::::{tab-set}
 :::{tab-item} Python
-```{literalinclude} ./doc_code/ray-dag.py
+```{literalinclude} ../doc_code/ray-dag.py
 :language: python
 :start-after: __dag_tasks_begin__
 :end-before: __dag_tasks_end__
@@ -56,7 +56,7 @@ You can combine IR nodes generated from functions, classes, and class methods to
 
 ::::{tab-set}
 :::{tab-item} Python
-```{literalinclude} ./doc_code/ray-dag.py
+```{literalinclude} ../doc_code/ray-dag.py
 :language: python
 :start-after: __dag_actors_begin__
 :end-before: __dag_actors_end__
@@ -72,7 +72,7 @@ You can combine IR nodes generated from functions, classes, and class methods to
 
 ::::{tab-set}
 :::{tab-item} Python
-```{literalinclude} ./doc_code/ray-dag.py
+```{literalinclude} ../doc_code/ray-dag.py
 :language: python
 :start-after: __dag_input_node_begin__
 :end-before: __dag_input_node_end__
@@ -88,7 +88,7 @@ Use `MultiOutputNode` when a DAG has more than one output. `dag_node.execute()` 
 
 ::::{tab-set}
 :::{tab-item} Python
-```{literalinclude} ./doc_code/ray-dag.py
+```{literalinclude} ../doc_code/ray-dag.py
 :language: python
 :start-after: __dag_multi_output_node_begin__
 :end-before: __dag_multi_output_node_end__
@@ -104,7 +104,7 @@ To keep your actors alive after the DAG finishes, create them with `Actor.remote
 
 ::::{tab-set}
 :::{tab-item} Python
-```{literalinclude} ./doc_code/ray-dag.py
+```{literalinclude} ../doc_code/ray-dag.py
 :language: python
 :start-after: __dag_actor_reuse_begin__
 :end-before: __dag_actor_reuse_end__
@@ -117,5 +117,5 @@ To keep your actors alive after the DAG finishes, create them with `Actor.remote
 
 For more application patterns and examples, see the following resources from other Ray libraries built on top of the Ray DAG API:
 
-- [Ray Serve: Deploy compositions of models](../serve/model-composition.md)
-- [Visualization of Ray Compiled Graph](compiled-graph/profiling.md#visualization)
+- [Ray Serve: Deploy compositions of models](../../serve/model-composition.md)
+- [Visualization of Ray Compiled Graph](profiling.md#visualization)
