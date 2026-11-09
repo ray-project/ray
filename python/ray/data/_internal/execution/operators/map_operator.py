@@ -34,6 +34,7 @@ if TYPE_CHECKING:
 
     from ray.data._internal.execution.block_ref_counter import BlockRefCounter
     from ray.data._internal.execution.lineage_tracker import LineageTracker
+    from ray.data._internal.execution.resource_bank import ResourceBankBase
 
 import ray
 from ray import ObjectRef
@@ -502,8 +503,11 @@ class MapOperator(LineageReconstructionMixin, PhysicalOperator, ABC):
         options: "ExecutionOptions",
         block_ref_counter: "BlockRefCounter",
         lineage_tracker: Optional["LineageTracker"] = None,
+        resource_bank: Optional["ResourceBankBase"] = None,
     ):
-        super().start(options, block_ref_counter, lineage_tracker)
+        super().start(
+            options, block_ref_counter, lineage_tracker, resource_bank=resource_bank
+        )
         # Create output queue with desired ordering semantics.
         if options.preserve_order:
             self._output_queue = ReorderingBundleQueue()

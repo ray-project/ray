@@ -2,6 +2,7 @@ import logging
 import os
 import sys
 import threading
+import time
 import uuid
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
@@ -13,6 +14,7 @@ import ray
 from ray._common.retry import retry
 from ray._common.utils import env_float
 from ray.actor import ActorHandle
+from ray.train.health.probe import ProbeResult
 from ray.train.v2._internal.constants import (
     AWS_RETRYABLE_TOKENS,
     CHECKPOINT_UPLOAD_WARN_INTERVAL_S_ENV_VAR,
@@ -138,10 +140,17 @@ class TrainContext:
     report_call_index: int = 0
     # Identifies which collective a call to the `SynchronizationActor` belongs to.
     collective_seq: int = 0
+    # The thread launcher that runs the latest on-demand probes.
+    on_demand_probe_runner: Optional["ThreadRunner"] = None
     report_order_condition: threading.Condition = threading.Condition()
     checkpoint_upload_threadpool: ThreadPoolExecutor = ThreadPoolExecutor(
         max_workers=MAX_CHECKPOINT_UPLOAD_THREADS
     )
+    # The worker health sent on each status poll: the latest reading of each
+    # sampled WorkerProbe, and the latest health.report().
+    health_lock: threading.Lock = field(default_factory=threading.Lock)
+    probe_results: Dict[str, ProbeResult] = field(default_factory=dict)
+    health_report: Optional[ProbeResult] = None
 
     def __post_init__(self):
         # Ray train initializes worker with current report index
@@ -205,6 +214,29 @@ class TrainContext:
                 timeout_s,
             )
         )
+
+    def report_health(self, metrics: Dict[str, float], step: Optional[int]) -> None:
+        """Replace this worker's latest health report.
+
+        Args:
+            metrics: The metrics to report.
+            step: The step they belong to.
+
+        Raises:
+            ValueError: If the metrics contain Torch tensors.
+        """
+        if "torch" in sys.modules:
+            from ray.air._internal.torch_utils import contains_tensor
+
+            if contains_tensor(metrics):
+                raise ValueError(
+                    "Passing Torch tensors as health metrics is not supported, "
+                    "since they fail to deserialize. Convert them to Python "
+                    "numbers first, for example with `.item()`."
+                )
+        report = ProbeResult(metrics=metrics, timestamp_s=time.time(), step=step)
+        with self.health_lock:
+            self.health_report = report
 
     def get_dataset_shard(self, dataset_info: "DatasetShardMetadata") -> "DataIterator":
         """Returns the :class:`ray.data.DataIterator` shard for this worker.
