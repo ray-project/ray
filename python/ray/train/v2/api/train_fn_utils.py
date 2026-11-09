@@ -1,7 +1,19 @@
-from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Union
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Callable,
+    Dict,
+    List,
+    Literal,
+    Optional,
+    Union,
+    get_args,
+)
 
 from ray._common.usage.usage_lib import TagKey, record_extra_usage_tag
+from ray.train.v2._internal.constants import TRAIN_ANNOTATION_RAY_TRAIN_ANNOTATE
 from ray.train.v2._internal.data_integration.interfaces import DatasetShardMetadata
+from ray.train.v2._internal.execution.context import get_train_context
 from ray.train.v2._internal.execution.train_fn_utils import get_train_fn_utils
 from ray.train.v2._internal.util import requires_train_worker
 from ray.train.v2.api.context import TrainContext
@@ -10,13 +22,16 @@ from ray.train.v2.api.report_config import (
     CheckpointUploadMode,
 )
 from ray.train.v2.api.validation_config import ValidationTaskConfig
-from ray.util.annotations import PublicAPI
+from ray.util.annotations import DeveloperAPI, PublicAPI
 
 if TYPE_CHECKING:
     from ray.data import DataIterator
     from ray.train import Checkpoint
     from ray.train.v2.api.preemption import PreemptionInfo
     from ray.train.v2.api.reported_checkpoint import ReportedCheckpoint
+
+AnnotationSeverity = Literal["info", "warning", "error"]
+_ANNOTATION_SEVERITIES = get_args(AnnotationSeverity)
 
 
 @PublicAPI(stability="stable")
@@ -29,7 +44,7 @@ def report(
     delete_local_checkpoint_after_upload: Optional[bool] = None,
     checkpoint_upload_fn: Optional[Callable[["Checkpoint", str], "Checkpoint"]] = None,
     validation: Union[bool, ValidationTaskConfig] = False,
-):
+) -> None:
     """Save a checkpoint of the training state so that training can recover from failures.
 
     The checkpoint is :ref:`persisted to storage <persistent-storage-guide>`.
@@ -343,4 +358,85 @@ def get_dataset_shard(
             world_rank=train_fn_utils.get_context().get_world_rank(),
             state_dict=state_dict,
         )
+    )
+
+
+@DeveloperAPI
+@requires_train_worker(raise_in_tune_session=True)
+def annotate(
+    message: str,
+    severity: AnnotationSeverity = "info",
+    rank_zero_only: bool = True,
+    **fields: Any,
+) -> None:
+    """Emit a custom annotation that Grafana can visualize.
+
+    Use this to mark a moment of interest on the same timeline as your training
+    metrics, such as an evaluation completing, a learning-rate change, or a
+    phase transition. Annotations are off by default, so this does nothing
+    unless the cluster operator sets ``RAY_ANNOTATIONS_ENABLED=1`` and ships
+    the annotation log lines to Loki. See
+    :ref:`Overlay event annotations on the dashboards
+    <grafana-dashboard-annotations>`.
+
+    You control what the dashboard tooltip shows. Grafana shows the ``message``
+    as the annotation text, and shows any ``**fields`` together as a single JSON
+    tag. All custom annotations share one dashboard layer, because Ray emits
+    them under a fixed internal event name, and ``severity`` colors them.
+
+    Example:
+
+        >>> import ray.train  # doctest: +SKIP
+        >>> def train_func(config):  # doctest: +SKIP
+        ...    for epoch in range(config["num_epochs"]):
+        ...        # Do training...
+        ...        ray.train.annotate(
+        ...            message=f"Finished epoch {epoch}",
+        ...            epoch=epoch,
+        ...            loss=loss,
+        ...        )
+
+    Args:
+        message: Human-readable description of the event. Grafana shows it as
+            the annotation text and tooltip. Ray emits it as the ``message``
+            field.
+        severity: One of ``"info"``, ``"warning"`` or ``"error"``. Defaults to
+            ``"info"``. It selects which of the Train dashboard's custom
+            annotation layers the event shows under, and so its color.
+        rank_zero_only: If ``True``, the default, only the rank 0 worker emits
+            the annotation, producing a single point on the dashboard. If
+            ``False``, every worker emits its own annotation and carries
+            ``ray_train_worker_world_rank`` for LogQL to distinguish ranks.
+        **fields: Arbitrary additional key-value pairs to include in the emitted
+            JSON payload, such as ``epoch=3`` or ``loss=0.1``. Ray serializes
+            them together into a single JSON string under the ``custom_fields``
+            key, so the dashboard annotation displays them as one JSON tag.
+            Because ``custom_fields`` parses as a single string label, LogQL
+            can't filter on individual keys within it. Filter on ``severity``,
+            or on the run and rank tags, instead.
+    """
+    # Raised on every rank, whether or not annotations are enabled: an invalid
+    # severity matches none of the dashboard layers, so it would never show.
+    if severity not in _ANNOTATION_SEVERITIES:
+        raise ValueError(
+            f"Invalid annotation severity {severity!r}. Expected one of "
+            f"{', '.join(repr(s) for s in _ANNOTATION_SEVERITIES)}."
+        )
+
+    try:
+        train_context = get_train_context()
+    except Exception:
+        # No worker train context (e.g. local mode), not an annotation failure
+        return
+
+    if rank_zero_only and train_context.get_world_rank() != 0:
+        return
+
+    train_context.annotation_emitter.emit(
+        event=TRAIN_ANNOTATION_RAY_TRAIN_ANNOTATE,
+        message=message,
+        severity=severity,
+        # Serialized into a single field rather than one per key, so that the
+        # dashboard can show them as one tag without knowing their names.
+        **({"custom_fields": fields} if fields else {}),
     )
