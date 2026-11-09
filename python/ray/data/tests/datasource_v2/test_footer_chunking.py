@@ -249,6 +249,8 @@ def test_retry_after_actor_death_delivers_each_file_once(tmp_path, shutdown_only
 
         FooterReader._read_and_chunk = delayed_read_and_chunk
 
+    # Earlier tests in this module auto-start Ray without the setup hook.
+    ray.shutdown()
     ray.init(
         num_cpus=2,
         runtime_env={
