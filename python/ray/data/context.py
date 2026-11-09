@@ -167,7 +167,7 @@ DEFAULT_BROADCAST_JOIN_THRESHOLD_BYTES = env_integer(
 )
 
 DEFAULT_BROADCAST_JOIN_DECISION_TIMEOUT_S = env_float(
-    "RAY_DATA_BROADCAST_JOIN_DECISION_TIMEOUT_S", 30.0
+    "RAY_DATA_BROADCAST_JOIN_DECISION_TIMEOUT_S", 10.0
 )
 
 
@@ -944,11 +944,12 @@ class DataContext:
             ``RAY_DATA_BROADCAST_JOIN_THRESHOLD_BYTES`` environment variable
             (10 MiB when unset, same as Spark's
             ``spark.sql.autoBroadcastJoinThreshold``).
-        broadcast_join_decision_timeout_s: How long a join side may buffer its
-            input while waiting for the broadcast decision, measured from its
-            first input bundle. On timeout the join falls back to the shuffle
-            join. Defaults to the ``RAY_DATA_BROADCAST_JOIN_DECISION_TIMEOUT_S``
-            environment variable (30 seconds when unset).
+        broadcast_join_decision_timeout_s: Once one side of a join has exceeded
+            ``broadcast_join_threshold_bytes``, how long the join keeps waiting
+            for the other side to finish under it before falling back to the
+            shuffle join. Defaults to
+            the ``RAY_DATA_BROADCAST_JOIN_DECISION_TIMEOUT_S`` environment
+            variable (10 seconds when unset).
         max_hash_shuffle_aggregators: Maximum number of aggregating actors that can be
             provisioned for hash-shuffle aggregations.
         min_hash_shuffle_aggregator_wait_time_in_s: Minimum time to wait for hash

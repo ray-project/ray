@@ -8,6 +8,7 @@ the input arrival order controlled, checking both the result and which path
 
 import pickle
 import time
+from typing import Any, List
 from unittest import mock
 
 import pandas as pd
@@ -59,13 +60,13 @@ def _run_task(stream_blocks, build_blocks, build_side, join_type, **kwargs):
             **kwargs,
         },
     )
-    objs = [ray.get(ref) for ref in gen]
-    blocks, metas = objs[0::2], objs[1::2]
+    objs: List[Any] = [ray.get(ref) for ref in gen]
+    blocks: List[pa.Table] = objs[0::2]
+    metas: List[bytes] = objs[1::2]
     # Every metadata entry must deserialize to what the executor expects.
     for meta in metas:
         assert isinstance(pickle.loads(meta), BlockMetadataWithSchema)
-    table = pa.concat_tables(blocks) if blocks else None
-    return table, metas
+    return pa.concat_tables(blocks), metas
 
 
 def _expected(left, right, how):
@@ -281,8 +282,8 @@ def test_timeout_demotes_to_shuffle(
     patch_submit_tasks,
     make_left_right,
 ):
-    # Left (~3 KiB) exceeds the threshold, so the decision has to wait for the
-    # slow right side. Set a short timeout that fires before right finishes.
+    # Left (~3 KiB) exceeds the threshold on its first bundle, which starts the
+    # timeout clock; the slow right side cannot finish before it fires.
     disk_shuffle_v2.broadcast_join_threshold_bytes = 1024
     disk_shuffle_v2.broadcast_join_decision_timeout_s = 0.1
 

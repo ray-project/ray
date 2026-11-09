@@ -1,8 +1,20 @@
 import logging
 import math
+import time
 from dataclasses import dataclass
 from enum import Enum
-from typing import TYPE_CHECKING, Any, Dict, Iterator, List, Optional, Set, Tuple, Type
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Callable,
+    Dict,
+    Iterator,
+    List,
+    Optional,
+    Set,
+    Tuple,
+    Type,
+)
 
 from ray.data._internal.arrow_block import ArrowBlockAccessor
 from ray.data._internal.arrow_ops.transform_pyarrow import (
@@ -654,20 +666,43 @@ class _BroadcastDecision:
     ``UNDECIDED`` it does not change.
     """
 
-    def __init__(self, can_build: Set[BuildSide]):
+    def __init__(
+        self,
+        can_build: Set[BuildSide],
+        *,
+        timeout_s: float = float("inf"),
+        clock: Callable[[], float] = time.monotonic,
+    ):
         self._can_build: Set[BuildSide] = set(can_build)
         self.build_side: BuildSide = (
             BuildSide.UNDECIDED if self._can_build else BuildSide.NONE
         )
+        self._timeout_s = timeout_s
+        self._clock = clock
+        # Set by the first exceed_threshold call.
+        self._deadline: float = float("inf")
 
     def exceed_threshold(self, side: BuildSide) -> None:
         """Remove ``side`` from _can_build as it exceed the size threshold.
 
-        When no side is left, fall back to the shuffle join.
+        The first call starts the timeout clock. When no side is left, fall
+        back to the shuffle join.
         """
+        if self._deadline == float("inf"):
+            self._deadline = self._clock() + self._timeout_s
         self._can_build.discard(side)
         if not self._can_build and self.build_side is BuildSide.UNDECIDED:
             self.build_side = BuildSide.NONE
+
+    def on_tick(self) -> None:
+        """Fall back to the shuffle join once a side has waited ``timeout_s``.
+
+        Called by the map operators on every scheduling iteration. The clock
+        starts when the first side crosses the threshold and begins holding its
+        input for the other side.
+        """
+        if self.build_side is BuildSide.UNDECIDED and self._clock() > self._deadline:
+            self.demote()
 
     def choose_build(self, side: BuildSide) -> None:
         """Pick ``side`` as the build side: it finished under the threshold.
@@ -679,10 +714,7 @@ class _BroadcastDecision:
             self.build_side = side
 
     def demote(self) -> None:
-        """Give up on broadcasting and fall back to the shuffle join.
-
-        Called by a map operator that timed out waiting for the decision.
-        """
+        """Give up on broadcasting and fall back to the shuffle join."""
         if self.build_side is BuildSide.UNDECIDED:
             self.build_side = BuildSide.NONE
 

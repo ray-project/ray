@@ -4,7 +4,6 @@ import logging
 import os
 import secrets
 import tempfile
-import time
 import typing
 from collections import defaultdict
 from typing import Any, Dict, List, Optional, Tuple
@@ -152,8 +151,6 @@ class DiskHashShuffleMapOp(InternalQueueOperatorMixin, PhysicalOperator):
         self._broadcast_threshold_bytes: int = (
             data_context.broadcast_join_threshold_bytes
         )
-        self._decision_timeout_s: float = data_context.broadcast_join_decision_timeout_s
-        self._first_input_at: Optional[float] = None
         self._next_stream_partition_id: int = 0
 
         # -- Stats -----------------------------------------------------------
@@ -214,9 +211,6 @@ class DiskHashShuffleMapOp(InternalQueueOperatorMixin, PhysicalOperator):
             self._emit_stream_bundle(refs)
             return
 
-        if build_side is BuildSide.UNDECIDED and self._first_input_at is None:
-            self._first_input_at = time.monotonic()
-
         # Undecided input always goes through the merge buffer so it can be
         # held back, even when batching is disabled.
         if self._input_batch_bytes > 0 or build_side is BuildSide.UNDECIDED:
@@ -257,12 +251,7 @@ class DiskHashShuffleMapOp(InternalQueueOperatorMixin, PhysicalOperator):
         self._on_decided()
 
     def refresh_state(self) -> None:
-        if (
-            self._decision.build_side is BuildSide.UNDECIDED
-            and self._first_input_at is not None
-            and time.monotonic() - self._first_input_at > self._decision_timeout_s
-        ):
-            self._decision.demote()
+        self._decision.on_tick()  # may fall back to shuffle on timeout
         self._on_decided()
 
     def _on_decided(self) -> None:

@@ -76,6 +76,46 @@ class TestDemote:
         assert decision.build_side is NONE
 
 
+class TestOnTick:
+    """The timeout clock starts at the first exceed_threshold call."""
+
+    def _decision(self, now):
+        return _BroadcastDecision({LEFT, RIGHT}, timeout_s=10, clock=lambda: now[0])
+
+    def test_no_timeout_before_a_side_exceeds_threshold(self):
+        now = [0.0]
+        decision = self._decision(now)
+        now[0] = 100.0
+        decision.on_tick()
+        assert decision.build_side is UNDECIDED
+
+    def test_keeps_waiting_within_timeout(self):
+        now = [0.0]
+        decision = self._decision(now)
+        decision.exceed_threshold(LEFT)
+        now[0] = 9.0
+        decision.on_tick()
+        assert decision.build_side is UNDECIDED
+
+    def test_falls_back_to_shuffle_after_timeout(self):
+        now = [0.0]
+        decision = self._decision(now)
+        decision.exceed_threshold(LEFT)
+        now[0] = 11.0
+        decision.on_tick()
+        assert decision.build_side is NONE
+
+    def test_other_side_finishing_within_timeout_is_broadcast(self):
+        now = [0.0]
+        decision = self._decision(now)
+        decision.exceed_threshold(LEFT)
+        now[0] = 9.0
+        decision.choose_build(RIGHT)
+        now[0] = 11.0
+        decision.on_tick()
+        assert decision.build_side is RIGHT
+
+
 if __name__ == "__main__":
     import sys
 

@@ -1,6 +1,16 @@
 import warnings
 from functools import partial
-from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Tuple, Type, TypeVar
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Callable,
+    Dict,
+    List,
+    Optional,
+    Tuple,
+    Type,
+    TypeVar,
+)
 
 if TYPE_CHECKING:
     import pyarrow.fs
@@ -185,7 +195,9 @@ def _plan_join_shuffle_v2(
             if data_context.enable_broadcast_join
             else set()
         )
-        decision = _BroadcastDecision(can_build)
+        decision = _BroadcastDecision(
+            can_build, timeout_s=data_context.broadcast_join_decision_timeout_s
+        )
         left_map_kwargs = dict(side=BuildSide.BUILD_LEFT, decision=decision)
         right_map_kwargs = dict(side=BuildSide.BUILD_RIGHT, decision=decision)
         reduce_kwargs = dict(
