@@ -1,5 +1,7 @@
 import os
 import sys
+from types import SimpleNamespace
+from unittest.mock import patch
 
 import pytest
 
@@ -11,6 +13,7 @@ from ray.train.v2._internal.constants import (
     is_v2_enabled,
 )
 from ray.train.v2.jax import JaxTrainer
+from ray.train.v2.jax.config import _setup_jax_distributed_environment
 
 assert is_v2_enabled()
 
@@ -144,6 +147,7 @@ def train_func():
     devices = jax.devices()
     node_labels = ray.get_runtime_context().get_node_labels()
     slice_name = node_labels.get("ray.io/tpu-slice-name")
+    tpu_worker_id = node_labels.get("ray.io/tpu-worker-id")
     current_ip = ray.util.get_node_ip_address()
 
     megascale_vars = {
@@ -159,6 +163,7 @@ def train_func():
         {
             "worker_id": rank,
             "slice_name": slice_name,
+            "tpu_worker_id": tpu_worker_id,
             "node_ip": current_ip,
             "devices": [str(d) for d in devices],
             **megascale_vars,
@@ -278,6 +283,10 @@ def test_tpu_single_slice_multi_host(ray_tpu_multi_host, tmp_path):
     assert len(slices_used) == 1, "Expected workers to be scheduled to 1 slice."
     assert next(iter(slices_used)) in ("slice-A", "slice-B")
 
+    # Within each slice, hosts receive contiguous ranks in TPU_WORKER_ID order.
+    for r in reports:
+        assert int(r["tpu_worker_id"]) == r["worker_id"] % 2
+
     # Validate we do not automatically set megascale vars for single-slice.
     for r in reports:
         assert r.get("MEGASCALE_SLICE_ID") is None
@@ -324,6 +333,10 @@ def test_tpu_multi_slice_multi_host(ray_tpu_multi_host, tmp_path):
     assert len(slices_used) == 2, "Expected workers to schedule across 2 slices."
     assert "slice-A" in slices_used
     assert "slice-B" in slices_used
+
+    # Within each slice, hosts receive contiguous ranks in TPU_WORKER_ID order.
+    for r in reports:
+        assert int(r["tpu_worker_id"]) == r["worker_id"] % 2
 
     # Verify megascale coordinator address set to IP of worker 0.
     worker_0_report = next(r for r in reports if r["worker_id"] == 0)
@@ -469,6 +482,10 @@ def test_multi_slice_manual_resources(ray_tpu_multi_host, tmp_path):
     assert len(slices_used) == 2, "Expected workers to span 2 slices."
     assert "slice-A" in slices_used
     assert "slice-B" in slices_used
+
+    # Within each slice, each host's 4 workers receive contiguous ranks in TPU_WORKER_ID order.
+    for r in reports:
+        assert int(r["tpu_worker_id"]) == (r["worker_id"] // 4) % 2
 
     # Verify megascale coordinator address set to IP of worker 0.
     worker_0_report = next(r for r in reports if r["worker_id"] == 0)
@@ -983,6 +1000,41 @@ def test_single_host_data_iterator_collate_fn(ray_tpu_single_host, tmp_path):
         assert len(r["batches"]) == 2
         for batch_shape in r["batches"]:
             assert batch_shape == (16, 2)
+
+
+@pytest.mark.parametrize(
+    "use_tpu, jax_platforms, expected_events",
+    [
+        (True, "", ["wait_vfio", "jax_init"]),
+        (False, "cpu", ["jax_init"]),
+    ],
+)
+def test_setup_jax_distributed_waits_for_tpu_vfio_ready(
+    monkeypatch, use_tpu, jax_platforms, expected_events
+):
+    """Verifies TPU setup waits for worker VFIO release before jax.distributed.initialize."""
+    events = []
+    fake_jax = SimpleNamespace(
+        distributed=SimpleNamespace(
+            initialize=lambda *args, **kwargs: events.append("jax_init")
+        )
+    )
+    monkeypatch.setenv("JAX_PLATFORMS", jax_platforms)
+    monkeypatch.setitem(sys.modules, "jax", fake_jax)
+
+    with patch(
+        "ray.train.v2.jax.config.wait_for_tpu_vfio_ready",
+        side_effect=lambda: events.append("wait_vfio"),
+    ):
+        _setup_jax_distributed_environment(
+            master_addr_with_port="127.0.0.1:1234",
+            num_workers=2,
+            index=0,
+            use_tpu=use_tpu,
+            use_gpu=False,
+            resources_per_worker={"TPU": 4} if use_tpu else {"CPU": 1},
+        )
+    assert events == expected_events
 
 
 if __name__ == "__main__":

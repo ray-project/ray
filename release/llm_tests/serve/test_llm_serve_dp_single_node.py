@@ -37,6 +37,7 @@ def is_default_app_running():
         return False
 
 
+@pytest.mark.requires_4GPU
 def test_llm_serve_data_parallelism_multi_group_single_node():
     """Two KV-aware DP gangs bind their event and replay sockets on one node."""
     deployment_name = "DPServer:microsoft--Phi-tiny-MoE-instruct"

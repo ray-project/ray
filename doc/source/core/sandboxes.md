@@ -43,10 +43,11 @@ Ray Sandboxes need the following on every Ray node that runs a sandbox:
 * **Overlayfs root filesystems**: Ray boots some sandboxes from a kernel overlayfs over their cached EROFS image, based on each sandbox's final OCI spec. Every worker needs `unshare`, `mount`, `mountpoint`, `flock`, and `setpriv` from util-linux for this. Workers without mount privileges also need `erofsfuse`, and so do workers with them whose kernel lacks the `erofs` driver or free loop devices. Workers without mount privileges that run as a user other than root need the `uidmap` package too. For details, see [Overlayfs root filesystems](#overlayfs-root-filesystems).
 * **slirp4netns (`network="public"` only)**: The [slirp4netns](https://github.com/rootless-containers/slirp4netns) binary on the `$PATH`, plus `/dev/net/tun` in the worker's environment. slirp4netns bridges each sandbox's private network namespace to the node. The `nsenter` and `setpriv` commands from util-linux 2.33 or later, which Ubuntu 20.04 and later include, must also be on the `$PATH`.
 * **nftables (`network="public"` only)**: The `nft` binary on the `$PATH`. The node's kernel also needs `nf_tables` built in or loaded as a module. Ray filters each `public` sandbox's outbound traffic with an nftables ruleset, so creating a `public` sandbox fails without them. To check a node, see [Troubleshooting](#troubleshooting).
+* **NVIDIA Container Toolkit (GPU sandboxes only)**: `nvidia-container-toolkit-base` 1.20.1 or later on GPU worker nodes. It provides `nvidia-ctk`, which Ray runs to generate a CDI spec for the node's GPUs, and `nvidia-cdi-hook`, which runs the hooks in that spec. See [GPU access](#gpu-access) for the rest of the GPU requirements.
 
 To install `runsc` on a Linux worker node, see the [gVisor installation guide](https://gvisor.dev/docs/user_guide/install/). gVisor's prebuilt `runsc` only supports 4 KiB pages, so on nodes whose kernel uses 64 KiB pages, build it from source with `--define=pagesize=64k`. `slirp4netns` ships as a package on Debian, Ubuntu, and Fedora, or as a [static build](https://github.com/rootless-containers/slirp4netns/releases) for x86_64 and aarch64. Distributions package `nft` as `nftables`, so on Debian and Ubuntu, run `apt-get install nftables`. On Ubuntu 24.04 or Debian 13 with a kernel page size of 4 KiB, install the `erofs-utils` and `erofsfuse` packages from the distribution's repositories. On Ubuntu 22.04, the `erofs-utils` package is too old, so you need to build a release from the [erofs-utils repository](https://github.com/erofs/erofs-utils) instead. Install `autoconf`, `automake`, `libtool`, `pkg-config`, `liblz4-dev`, `uuid-dev`, and `libfuse3-dev`, then run `./autogen.sh && ./configure --enable-fuse && make && make install`. The resulting `erofsfuse` also needs the FUSE runtime library, `libfuse3-3` on Ubuntu 22.04. On nodes whose kernel uses 64 KiB pages, you need to build from source in all cases (regardless of distribution). Follow the instructions above, but additionally pass `MAX_BLOCK_SIZE=65536` to `./configure`. This is required because `runsc` only accepts EROFS images whose block size is a multiple of the node's page size, and distro packages build with 4 KiB blocks. Workers that run as a user other than root without mount privileges also need the `uidmap` package, as [Overlayfs root filesystems](#overlayfs-root-filesystems) describes.
 
-The following Dockerfiles add everything sandboxes need to a Ray image, including the tools that overlayfs root filesystems need. Pick the tab that matches your nodes' kernel page size. To check it, run `getconf PAGESIZE` on a node, which prints `4096` for 4 KiB pages and `65536` for 64 KiB pages. Each Dockerfile builds its tools in a separate stage, so the build tools stay out of the final image.
+The following Dockerfiles add everything sandboxes need to a Ray image, including the tools that overlayfs root filesystems need and the NVIDIA Container Toolkit that GPU sandboxes need. Pick the tab that matches your nodes' kernel page size. To check it, run `getconf PAGESIZE` on a node, which prints `4096` for 4 KiB pages and `65536` for 64 KiB pages. Each Dockerfile builds its tools in a separate stage, so the build tools stay out of the final image.
 
 ::::{tab-set}
 
@@ -57,6 +58,7 @@ This Dockerfile downloads gVisor's prebuilt `runsc`, which supports 4 KiB pages,
 ARG GVISOR_VERSION=20260921.0
 ARG SLIRP4NETNS_VERSION=1.3.5
 ARG EROFS_UTILS_VERSION=1.9.4
+ARG NVIDIA_CONTAINER_TOOLKIT_VERSION=1.20.1
 
 FROM rayproject/ray:latest AS build
 ARG GVISOR_VERSION
@@ -89,15 +91,30 @@ RUN curl -fsSL "https://github.com/erofs/erofs-utils/archive/refs/tags/v${EROFS_
     && make install
 
 FROM rayproject/ray:latest
+ARG NVIDIA_CONTAINER_TOOLKIT_VERSION
 COPY --from=build /out/bin/ /usr/local/bin/
 
 # Install libfuse3 for erofsfuse, newuidmap and newgidmap from uidmap to map
 # the Ray user's subordinate ids on workers without mount privileges, and
 # nftables for network="public".
 USER root
+
 RUN apt-get update \
     && apt-get install -y --no-install-recommends libfuse3-3 nftables uidmap \
     && rm -rf /var/lib/apt/lists/*
+
+# nvidia-container-toolkit-base, for GPU sandboxes. Drop this step for a CPU-only image.
+# This stage downloads with wget, which the base image has, since it has no curl.
+RUN wget -qO- https://nvidia.github.io/libnvidia-container/gpgkey \
+        | gpg --dearmor -o /usr/share/keyrings/nvidia-container-toolkit-keyring.gpg \
+    && wget -qO- https://nvidia.github.io/libnvidia-container/stable/deb/nvidia-container-toolkit.list \
+        | sed 's#deb https://#deb [signed-by=/usr/share/keyrings/nvidia-container-toolkit-keyring.gpg] https://#' \
+        > /etc/apt/sources.list.d/nvidia-container-toolkit.list \
+    && apt-get update \
+    && apt-get install -y --no-install-recommends \
+        nvidia-container-toolkit-base="${NVIDIA_CONTAINER_TOOLKIT_VERSION}-1" \
+    && rm -rf /var/lib/apt/lists/*
+
 USER ray
 ```
 :::
@@ -109,6 +126,7 @@ This Dockerfile builds both `runsc` and erofs-utils from source. gVisor's prebui
 ARG GVISOR_VERSION=20260921.0
 ARG SLIRP4NETNS_VERSION=1.3.5
 ARG EROFS_UTILS_VERSION=1.9.4
+ARG NVIDIA_CONTAINER_TOOLKIT_VERSION=1.20.1
 ARG PAGE_SIZE=65536
 
 FROM rayproject/ray:latest AS build
@@ -152,20 +170,58 @@ RUN curl -fsSL "https://github.com/erofs/erofs-utils/archive/refs/tags/v${EROFS_
     && make install
 
 FROM rayproject/ray:latest
+ARG NVIDIA_CONTAINER_TOOLKIT_VERSION
 COPY --from=build /out/bin/ /usr/local/bin/
 
 # Install libfuse3 for erofsfuse, newuidmap and newgidmap from uidmap to map
 # the Ray user's subordinate ids on workers without mount privileges, and
 # nftables for network="public".
 USER root
+
 RUN apt-get update \
     && apt-get install -y --no-install-recommends libfuse3-3 nftables uidmap \
     && rm -rf /var/lib/apt/lists/*
+
+# nvidia-container-toolkit-base, for GPU sandboxes. Drop this step for a CPU-only image.
+# This stage downloads with wget, which the base image has, since it has no curl.
+RUN wget -qO- https://nvidia.github.io/libnvidia-container/gpgkey \
+        | gpg --dearmor -o /usr/share/keyrings/nvidia-container-toolkit-keyring.gpg \
+    && wget -qO- https://nvidia.github.io/libnvidia-container/stable/deb/nvidia-container-toolkit.list \
+        | sed 's#deb https://#deb [signed-by=/usr/share/keyrings/nvidia-container-toolkit-keyring.gpg] https://#' \
+        > /etc/apt/sources.list.d/nvidia-container-toolkit.list \
+    && apt-get update \
+    && apt-get install -y --no-install-recommends \
+        nvidia-container-toolkit-base="${NVIDIA_CONTAINER_TOOLKIT_VERSION}-1" \
+    && rm -rf /var/lib/apt/lists/*
+
 USER ray
 ```
 :::
 
 ::::
+
+As mentioned above, GPU sandboxes need `nvidia-container-toolkit-base` on every GPU worker node. This package provides `nvidia-ctk`, which Ray uses to generate a [CDI](https://github.com/cncf-tags/container-device-interface) spec, and `nvidia-cdi-hook`, which runs the hooks in that spec. Each worker process runs `nvidia-ctk cdi generate` once, when it creates its first GPU sandbox, and reuses the result. Both Dockerfiles install it; for a node that isn't Debian-based, see the [NVIDIA Container Toolkit installation guide](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html), which covers the other package managers.
+
+`nvidia-container-toolkit-base` installs a file at `/etc/nvidia-container-toolkit/nvidia-cdi-refresh.env` to customize the environment variables `nvidia-ctk cdi generate` uses to generate its CDI spec. This file uses the [systemd `EnvironmentFile=` format](https://www.freedesktop.org/software/systemd/man/latest/systemd.exec.html#EnvironmentFile=). Each line is a plain `KEY=value` pair, and a line starting with `#` or `;` is a comment. For example, GKE nodes need `NVIDIA_CTK_DRIVER_ROOT` set there because their NVIDIA driver installer DaemonSet places driver libraries under `/usr/local/nvidia` instead of `/`. They also need `NVIDIA_CTK_DEV_ROOT` set to `/`, because `nvidia-ctk cdi generate` otherwise assumes device nodes live under the driver root too. Ray reads this file, if it exists, when it generates the spec. To use a different file, set `NVIDIA_CTK_ENV_PATH` in the worker's environment. Changes to the file, the driver, or the toolkit take effect in new worker processes.
+
+```bash
+# /etc/nvidia-container-toolkit/nvidia-cdi-refresh.env
+NVIDIA_CTK_DRIVER_ROOT=/usr/local/nvidia
+NVIDIA_CTK_DEV_ROOT=/
+```
+
+:::{note}
+Ray always parses `nvidia-ctk cdi generate`'s stdout, so it clears `NVIDIA_CTK_CDI_OUTPUT_FILE_PATH` after reading this file even if you set it there.
+:::
+
+:::{note}
+* `nvidia-container-toolkit-base` must be version 1.20.1 or later.
+* gVisor is only supported on NVIDIA driver versions it explicitly recognizes; check yours with `runsc nvproxy list-supported-drivers`.
+* MIG isn't supported, since gVisor itself doesn't support it.
+* The worker's user must be able to read and write the GPU device nodes, such as `/dev/nvidiactl`, which Ray opens to detect GPUs and to generate the CDI spec. NVIDIA's default mode, `0666`, allows this. If the driver restricts them to a group, through `NVreg_DeviceFileMode` and `NVreg_DeviceFileGID`, add the worker's user to that group.
+:::
+
+See [GPU access](#gpu-access).
 
 ### Overlayfs root filesystems
 
@@ -176,6 +232,14 @@ The first case is a spec with `prestart`, `createRuntime`, or `createContainer` 
 The second case is a read-only sandbox whose mounts need mount points the image might lack, such as an explicit `workdir` or the libraries a CDI spec mounts. runsc creates those mount points in the overlayfs root filesystem, and the sandbox still sees a read-only root.
 
 Any sandbox can end up in one of these cases, so every node that runs sandboxes needs to install the necessary tools to support overlayfs root filesystems. A worker with mount privileges mounts them directly, with the kernel's `erofs` driver on a loop device, or with `erofsfuse` if that fails. A worker without them mounts them with `erofsfuse` in a new user namespace for each sandbox, which needs Linux 5.11 or later. A worker running as root maps every id to itself in that namespace, so files keep their owners from the image. A worker running as any other user needs subordinate uids and gids for the Ray user to keep them, at least 65536 of each. Ray maps them with `newuidmap` and `newgidmap` from the `uidmap` package.
+
+If neither kernel EROFS nor FUSE is available, Ray uses an **extracted-rootfs
+fallback**: `fsck.erofs` extracts the cached EROFS image once into a shared lower
+directory, rather than mounting the image. Extraction is locked and
+published atomically. Each sandbox bind-mounts that directory read-only inside its
+own mount namespace and uses a private writable overlay above it. CDI hooks and
+container writes never modify the shared image or lower directory. This needs
+overlayfs and namespace permissions, but not `/dev/fuse` or the kernel EROFS driver.
 
 On a worker that can't mount an overlayfs root filesystem, a sandbox with such hooks fails to start, and a read-only sandbox with missing mount points runs on gVisor's private writable overlay instead, with a warning. For how to fix this, see [Troubleshooting](#troubleshooting).
 
@@ -304,6 +368,62 @@ ray.get(sandbox_actor.delete.remote())
 
 When a command runs past its `timeout`, Ray kills it and every process it started, and `exec` raises `SandboxTimeoutError`. Only a daemon keeps running: a process that left the command's session with `setsid` and whose parent has exited. Output bytes that aren't valid UTF-8 come back as U+FFFD replacement characters.
 
+### GPU access
+
+Because `Sandbox` is a standard Ray actor, you can request GPUs with `num_gpus` the same way you would for any other actor. Unlike `cpu` and `memory`, however, there is no way to further limit the number of GPUs seen by a sandbox once the actor is scheduled. Sandbox support for GPUs requires `nvidia-container-toolkit-base` on the node (see [Requirements](#requirements)) and gVisor `release-20260520.0` or newer, the first release that runs the `createContainer` hooks in a GPU's CDI spec. A gVisor built from source needs a checkout from at least that release.
+
+Sandbox GPU ids number GPUs in NVML's order, which is PCI bus order. CUDA numbers them fastest first by default, so on nodes with mixed GPU models, set `CUDA_DEVICE_ORDER=PCI_BUS_ID` in the Ray node's environment so that other workloads number GPUs the same way.
+
+```python
+import ray
+from ray.experimental.sandbox import Sandbox
+
+ray.init()
+
+sandbox_actor = Sandbox.options(num_gpus=1).remote(
+    image="nvidia/cuda:12.4.0-base-ubuntu22.04",
+)
+
+result = ray.get(sandbox_actor.exec.remote("nvidia-smi"))
+print(result.stdout)
+
+ray.get(sandbox_actor.delete.remote())
+```
+
+You can also create a GPU enabled sandbox inside a pre-existing actor using `SandboxRuntime.create()`. Instead of passing `num_gpus`, you pass a `gpu_ids` field to specify which of the GPUs that have been granted to the surrounding actor should be isolated inside the sandbox. This allows a single actor with multiple GPUs to manage several sandboxes, each pinned to a different GPU.
+
+```python
+import ray
+from ray.experimental.sandbox.runtime import SandboxRuntime
+
+@ray.remote(num_gpus=2)
+class GpuSandboxPool:
+    def __init__(self, image: str):
+        self.runtime = SandboxRuntime()
+        self.sandboxes = {
+            gpu_id: self.runtime.create(image=image, gpu_ids=[gpu_id])
+            for gpu_id in [str(i) for i in ray.get_gpu_ids()]
+        }
+
+    def gpu_ids(self):
+        return list(self.sandboxes)
+
+    def exec_on(self, gpu_id: str, command: str):
+        return self.runtime.exec(self.sandboxes[gpu_id], command)
+
+    def close(self):
+        for sandbox_id in self.sandboxes.values():
+            self.runtime.delete(sandbox_id)
+
+pool = GpuSandboxPool.remote(image="nvidia/cuda:12.4.0-base-ubuntu22.04")
+gpu_id = ray.get(pool.gpu_ids.remote())[0]
+result = ray.get(pool.exec_on.remote(gpu_id, "nvidia-smi"))
+print(result.stdout)
+ray.get(pool.close.remote())
+```
+
+Ray validates `SandboxRuntime.create()`'s `gpu_ids` the same way as a `Sandbox`'s assigned GPUs. A sandbox can only access GPUs Ray assigned to the calling actor or task, and sandbox creation fails if Ray assigned it none.
+
 ### Manage sandboxes inside custom actors with SandboxRuntime
 
 If you're building custom RL environment actors or specialized rollout workers, embed `SandboxRuntime` directly inside your custom actors for fine-grained sandbox lifecycle control:
@@ -336,6 +456,8 @@ ray.get(pool.close.remote())
 ```
 
 A sandbox doesn't outlive the Ray worker that creates it. When the worker exits or crashes, Ray stops the processes the worker started, and the sandbox with them, so an actor that dies without deleting its sandboxes doesn't leak their CPU and memory. Sandbox creation on the node then deletes what they left on disk, in the background and at most once a minute per process: runsc's state, the writable overlay, and the image cache's record that the sandbox uses the image. A sandbox created outside a Ray worker, such as by a driver script, keeps running after its creator exits until that cleanup stops it, so delete those explicitly.
+
+See [GPU access](#gpu-access) above for giving each sandbox in a pool like this its own GPU.
 
 ### Checkpoint and restore sandboxes
 
@@ -402,12 +524,21 @@ res = ray.get(resumed_sb.exec.remote("cat /workspace/state.txt"))
 :::{note}
 * **Rootless mode:** gVisor's checkpoint and restore mechanism requires `rootless=False` and `SYS_PTRACE` capabilities inside worker containers to dump process memory maps and namespaces.
 * **Node-local storage:** A checkpoint only resides on the worker node that took it, such as under `/tmp/ray` or on a local NVMe SSD. `sandbox.restore()` pins the restored actor to that node with Ray's `NodeAffinitySchedulingStrategy`, and reserves the checkpointed sandbox's CPU and memory unless you override them.
-* **Overrides on restore:** `sandbox.restore()` accepts `cpu`, `memory`, `env`, `dns`, and `cidr_allowlist` overrides. The saved state depends on `image`, `network`, `readonly`, `capabilities`, `disk`, and, on a read-only root filesystem, `workdir`, so restore raises an error if you pass a different value for any of them. A sandbox created with an `_oci_spec_transform_fn` must be restored with the same function, because the checkpoint can't save it.
+* **Overrides on restore:** `sandbox.restore()` accepts `cpu`, `memory`, `env`, `dns`, and `cidr_allowlist` overrides. The saved state depends on `image`, `network`, `readonly`, `capabilities`, `disk`, `mounts`, and, on a read-only root filesystem, `workdir`, so restore raises an error if you pass a different value for any of them. A sandbox created with an `_oci_spec_transform_fn` must be restored with the same function, because the checkpoint can't save it.
 * **Egress allowlist:** a checkpoint saves the allowlist in force when it's taken, including changes from `set_egress_allowlist()`.
 * **Checkpoint path:** `checkpoint()` replaces an earlier checkpoint at the same path, but refuses a non-empty directory that doesn't hold one.
 * **Image builds:** gVisor restores only onto the same build of the sandbox's image. If the image was evicted from the cache and rebuilt, or its tag moved, since the checkpoint, restore fails with an error that says so.
 * **Compression:** `checkpoint(compression="flate-best-speed")` writes a smaller checkpoint. gVisor loads guest memory in the background only from uncompressed checkpoints, so a sandbox restored from a compressed one starts after all of its memory is loaded.
 :::
+
+### Share host files read-only
+
+`mounts` maps sandbox paths to host paths, for example
+`mounts={"/data": "/srv/inbox/sandbox-1"}`. gVisor mounts each one read-only, so code in
+the sandbox can read the files but can't change them. Files that appear under a mounted
+host directory after the sandbox starts show up inside it too. You can hand a running
+sandbox its inputs by hardlinking them in from a cache. Give each sandbox its own
+directory to avoid exposing another sandbox's inputs.
 
 ### Pass custom OCI configurations to gVisor
 
