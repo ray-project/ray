@@ -6,7 +6,7 @@ import threading
 from contextlib import asynccontextmanager
 from types import SimpleNamespace
 from typing import Dict, List, Optional
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from starlette.datastructures import Headers
@@ -21,13 +21,20 @@ from ray.llm._internal.serve.core.ingress import (
     router_application as router_application_module,
 )
 from ray.llm._internal.serve.core.ingress.router_application import RouterApplication
+from ray.llm._internal.serve.routing_policies.kv_aware.constants import (
+    KV_TOKEN_KEY_HEADER,
+    KV_TOKEN_METADATA_KEY,
+    REQUEST_TOKEN_IDS_KWARG,
+)
 from ray.serve._private.constants import (
+    RAY_SERVE_INGRESS_REQUEST_ROUTER_OPT_HEADERS_FIELD,
     SERVE_INGRESS_ROUTER_REQUEST_PATH_HEADER,
     SERVE_ROUTER_APPLICATION_DIRECT_RESPONSE_HEADER,
     SERVE_ROUTER_APPLICATION_ORIGINAL_METHOD_HEADER,
     SERVE_SESSION_ID,
 )
 from ray.serve.exceptions import DeploymentUnavailableError, RayServeException
+from ray.serve.llm.request_router import KVAwareRouter
 
 MODEL_APPS = {
     "model-a": "llm-model-a",
@@ -66,6 +73,7 @@ class FakeHandle:
         # Raised by the pick-only (`_reserve=False`) path only.
         self.pick_only_error: Optional[Exception] = None
         self.delay_s = 0.0
+        self.routing_stats = {}
 
     def _init(self):
         self.initialized = True
@@ -93,7 +101,11 @@ class FakeHandle:
             raise self.error
         replica_id = MagicMock()
         replica_id.to_full_id_str.return_value = self.replica_id
-        yield MagicMock(_replica=SimpleNamespace(replica_id=replica_id))
+        yield MagicMock(
+            _replica=SimpleNamespace(
+                replica_id=replica_id, routing_stats=self.routing_stats
+            )
+        )
 
 
 @pytest.fixture(autouse=True)
@@ -385,6 +397,46 @@ class TestRoutingDecision:
             patcher.stop()
 
     @pytest.mark.asyncio
+    async def test_kv_aware_selection_forwards_prompt_tokens(self):
+        router, handles, patcher = _new_router()
+        try:
+            tokenizer = MagicMock()
+            tokenizer.tokenize = AsyncMock(return_value=[1, 2, 3])
+            router._tokenizers["model-a"] = asyncio.create_task(
+                asyncio.sleep(0, result=tokenizer)
+            )
+            router._token_sender = MagicMock()
+            router._token_sender.push.return_value = True
+            await asyncio.gather(*router._handles.values())
+            handle = handles["llm-model-a"]
+            handle.routing_stats = {
+                KV_TOKEN_METADATA_KEY: {"endpoint": "tcp://127.0.0.1:1234"}
+            }
+
+            decision = await _chat(
+                router,
+                {
+                    "model": "model-a",
+                    "messages": [{"role": "user", "content": "hello"}],
+                },
+            )
+
+            assert handle.calls[-1]["kwargs"] == {
+                "_reserve": False,
+                REQUEST_TOKEN_IDS_KWARG: [1, 2, 3],
+            }
+            token_key = decision[RAY_SERVE_INGRESS_REQUEST_ROUTER_OPT_HEADERS_FIELD][
+                KV_TOKEN_KEY_HEADER
+            ]
+            router._token_sender.push.assert_called_once()
+            assert router._token_sender.push.call_args.args[:2] == (
+                "tcp://127.0.0.1:1234",
+                token_key,
+            )
+        finally:
+            patcher.stop()
+
+    @pytest.mark.asyncio
     async def test_resolves_handles_at_startup_and_reuses_them(self):
         router, handles, patcher = _new_router()
         try:
@@ -672,6 +724,65 @@ def test_deployment_options_keep_router_available():
     expected_options["ray_actor_options"]["runtime_env"] = get_llm_serve_runtime_env()
 
     assert RouterApplication.get_deployment_options() == expected_options
+
+
+@pytest.fixture
+def kv_aware_configs():
+    configs = _llm_configs()
+    for config in configs:
+        config.deployment_config = {
+            "request_router_config": {"request_router_class": KVAwareRouter}
+        }
+    return configs
+
+
+@pytest.mark.parametrize("runtime_env", [None, {}, {"env_vars": None}])
+def test_deployment_options_allow_null_runtime_env_vars(kv_aware_configs, runtime_env):
+    config = kv_aware_configs[0]
+    config.runtime_env = runtime_env
+
+    options = RouterApplication.get_deployment_options([config])
+
+    assert options["ray_actor_options"]["runtime_env"] == get_llm_serve_runtime_env()
+
+
+@pytest.mark.parametrize(
+    "model_env_vars, expected_env_vars",
+    [
+        ([{"CACHE_A": "a"}, {"CACHE_B": "b"}], {"CACHE_A": "a", "CACHE_B": "b"}),
+        ([{"SHARED": "same"}, {"SHARED": "same"}], {"SHARED": "same"}),
+        (
+            [
+                {"VLLM_API_KEY": "model-a-key", "CACHE_A": "a"},
+                {"VLLM_API_KEY": "model-b-key", "CACHE_B": "b"},
+            ],
+            {"CACHE_A": "a", "CACHE_B": "b"},
+        ),
+    ],
+)
+def test_deployment_options_merge_kv_runtime_env_vars(
+    kv_aware_configs, model_env_vars, expected_env_vars
+):
+    configs = kv_aware_configs
+    for config, env_vars in zip(configs, model_env_vars):
+        config.runtime_env = {"env_vars": env_vars}
+    original_runtime_envs = copy.deepcopy([config.runtime_env for config in configs])
+
+    options = RouterApplication.get_deployment_options(configs)
+
+    assert options["ray_actor_options"]["runtime_env"] == get_llm_serve_runtime_env(
+        {"env_vars": expected_env_vars}
+    )
+    assert [config.runtime_env for config in configs] == original_runtime_envs
+
+
+def test_deployment_options_reject_conflicting_kv_runtime_env_vars(kv_aware_configs):
+    configs = kv_aware_configs
+    configs[0].runtime_env = {"env_vars": {"SHARED": "a"}}
+    configs[1].runtime_env = {"env_vars": {"SHARED": "b"}}
+
+    with pytest.raises(ValueError, match="must agree on runtime env var SHARED"):
+        RouterApplication.get_deployment_options(configs)
 
 
 if __name__ == "__main__":
