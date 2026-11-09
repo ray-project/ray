@@ -823,9 +823,7 @@ class _ActorMethodMetadata:
         self._tensor_transport = tensor_transport
 
     def bind(self, actor_handle: "ActorHandle") -> "ActorMethod":
-        """
-        Produce a bound ActorMethod that holds a strong reference to actor_handle.
-        """
+        """Produce a bound ActorMethod that holds a strong reference to actor_handle."""
         return ActorMethod(
             actor_handle,
             self._method_name,
@@ -921,6 +919,10 @@ class ActorMethod:
         self._tensor_transport = tensor_transport
 
     def __call__(self, *args, **kwargs):
+        """Raise a TypeError, because actor methods can't be called directly.
+
+        Call ``.remote()`` on the method instead.
+        """
         raise TypeError(
             "Actor methods cannot be called directly. Instead "
             f"of running 'object.{self._method_name}()', try "
@@ -929,8 +931,7 @@ class ActorMethod:
 
     @DeveloperAPI
     def bind(self, *args, **kwargs):
-        """
-        Bind arguments to the actor method for Ray DAG building.
+        """Bind arguments to the actor method for Ray DAG building.
 
         This method generates and returns an intermediate representation (IR)
         node that indicates the actor method will be called with the given
@@ -942,6 +943,7 @@ class ActorMethod:
         return self._bind(args, kwargs)
 
     def remote(self, *args, **kwargs):
+        """Call this actor method remotely with the given arguments."""
         return self._remote(args, kwargs)
 
     def options(self, **options: Any):
@@ -1507,6 +1509,8 @@ class _ActorClassMetadata:
 
 @PublicAPI
 class ActorClassInheritanceException(TypeError):
+    """Raised when a class tries to inherit from an actor class."""
+
     pass
 
 
@@ -1863,8 +1867,7 @@ class ActorClass(Generic[T]):
 
             @DeveloperAPI
             def bind(self, *args, **kwargs):
-                """
-                For Ray DAG building that creates static graph from decorated
+                """For Ray DAG building that creates static graph from decorated
                 class or functions.
                 """
                 from ray.dag.class_node import ClassNode
@@ -2259,8 +2262,7 @@ class ActorClass(Generic[T]):
 
     @DeveloperAPI
     def bind(self, *args, **kwargs):
-        """
-        For Ray DAG building that creates static graph from decorated
+        """For Ray DAG building that creates static graph from decorated
         class or functions.
         """
         from ray.dag.class_node import ClassNode

@@ -11,6 +11,7 @@ from typing import (
     Any,
     Callable,
     Dict,
+    FrozenSet,
     Iterator,
     List,
     Optional,
@@ -46,6 +47,7 @@ from ray.exceptions import ObjectLostError
 if TYPE_CHECKING:
     from ray.data._internal.execution.lineage_tracker import LineageTracker
     from ray.data._internal.execution.metadata_fetcher import MetadataFetcher
+    from ray.data._internal.execution.resource_bank import ResourceBankBase
     from ray.data.block import BlockMetadataWithSchema
 
 logger = logging.getLogger(__name__)
@@ -181,7 +183,7 @@ class DataOpTask(OpTask):
         task_resource_bundle: Optional[ExecutionResources] = None,
         operator_name: str = "Unknown",
         lineage_task_id: Optional[str] = None,
-        reconstruction_plan_id: Optional[str] = None,
+        reconstruction_plan_ids: FrozenSet[str] = frozenset(),
     ):
         """Create a DataOpTask
         Args:
@@ -206,9 +208,9 @@ class DataOpTask(OpTask):
                 Used for logging the operator name in warnings/errors.
             lineage_task_id: Logical Ray Data ID of this task, stable across lineage
                 reconstruction attempts.
-            reconstruction_plan_id: The reconstruction plan this attempt serves; ``None`` for a
-                fresh attempt. Carried here because the output and completion
-                callbacks need it after submission.
+            reconstruction_plan_ids: The reconstruction plans this attempt serves; empty
+                for a fresh attempt. Carried here because the output and completion
+                callbacks need them after submission.
         """
         super().__init__(task_index, task_resource_bundle)
         # TODO(hchen): Right now, the streaming generator is required to yield a Block
@@ -225,7 +227,7 @@ class DataOpTask(OpTask):
         self._block_ref_counter: BlockRefCounter = block_ref_counter
         self._producer_id: str = producer_id
         self._lineage_task_id = lineage_task_id
-        self._reconstruction_plan_id: Optional[str] = reconstruction_plan_id
+        self._reconstruction_plan_ids: FrozenSet[str] = reconstruction_plan_ids
 
         # If the generator hasn't produced block metadata yet, or if the block metadata
         # object isn't available after we get a reference, we need store the pending
@@ -449,9 +451,9 @@ class DataOpTask(OpTask):
         return self._lineage_task_id is not None
 
     @property
-    def reconstruction_plan_id(self) -> Optional[str]:
-        """The reconstruction plan this attempt serves; ``None`` if fresh."""
-        return self._reconstruction_plan_id
+    def reconstruction_plan_ids(self) -> FrozenSet[str]:
+        """The reconstruction plans this attempt serves; empty if fresh."""
+        return self._reconstruction_plan_ids
 
     @property
     def has_finished(self) -> bool:
@@ -675,6 +677,7 @@ class PhysicalOperator(Operator):
         self._started = False
         self._shutdown = False
         self._lineage_tracker: Optional["LineageTracker"] = None
+        self._resource_bank: Optional["ResourceBankBase"] = None
         self._in_task_submission_backpressure = False
         self._task_submission_backpressure_policy: Optional[str] = None
         self._in_task_output_backpressure = False
@@ -794,6 +797,7 @@ class PhysicalOperator(Operator):
         # The transformed node should have a distinct identity and metrics owner.
         target._id = str(uuid.uuid4())
         target._metrics = OpRuntimeMetrics(target)
+        target._resource_bank = None
         # The copied node belongs to a new transformed DAG. Reverse edges are
         # rewired by parents, so avoid carrying stale downstream references.
         target._output_dependencies = []
@@ -825,8 +829,7 @@ class PhysicalOperator(Operator):
 
     @property
     def target_max_block_size_override(self) -> Optional[int]:
-        """
-        Target max block size output by this operator. If this returns None,
+        """Target max block size output by this operator. If this returns None,
         then the default from DataContext should be used.
         """
         if self._output_block_size_option_override is None:
@@ -993,6 +996,7 @@ class PhysicalOperator(Operator):
         options: ExecutionOptions,
         block_ref_counter: BlockRefCounter,
         lineage_tracker: Optional["LineageTracker"] = None,
+        resource_bank: Optional["ResourceBankBase"] = None,
     ) -> None:
         """Called by the executor when execution starts for an operator.
 
@@ -1002,9 +1006,11 @@ class PhysicalOperator(Operator):
                 object-store memory.
             lineage_tracker: The executor-wide lineage metadata tracker, which
                 helps trigger lineage reconstruction on object loss.
+            resource_bank: Optional per-executor ResourceBankBase instance.
         """
         self._block_ref_counter = block_ref_counter
         self._lineage_tracker = lineage_tracker
+        self._resource_bank = resource_bank
         self._started = True
 
     def can_add_input(self) -> bool:
