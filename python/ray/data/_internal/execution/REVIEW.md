@@ -9,7 +9,7 @@ in addition to `python/ray/data/REVIEW.md`.
 Important findings here are ones that can hang the executor, mis-account
 resources, leak object store memory, or silently drop/duplicate bundles.
 Operator-local refactors and naming are Nit at most.
-Ensure that the streaming executor loop is not slow since that would result in a reduction of overall throughput since it will schedule fewer tasks
+Ensure that the streaming executor loop is not slow, as a slow loop reduces overall throughput by scheduling fewer tasks
 
 ## Always check
 
