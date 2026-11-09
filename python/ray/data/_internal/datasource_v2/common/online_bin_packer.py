@@ -8,6 +8,7 @@ from typing import Deque, Dict, List, Optional, Tuple
 
 import pyarrow as pa
 
+from ray.data._internal.arrow_ops import transform_pyarrow
 from ray.data._internal.datasource_v2.interfaces.file_indexer import FileInfo
 from ray.data._internal.datasource_v2.interfaces.file_manifest import (
     ChunkMetadata,
@@ -540,4 +541,4 @@ def _concat_extra_columns(per_row: List[Optional[pa.Table]]) -> Optional[pa.Tabl
     )
     # Each row arrived as its own one-row slice; merge them into one chunk per
     # column, since Ray serializes a column chunk by chunk.
-    return pa.concat_tables(present).combine_chunks()
+    return transform_pyarrow.concat(present).combine_chunks()
