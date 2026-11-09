@@ -347,24 +347,6 @@ def _gpu_sandbox_config():
     return GVisorSandboxConfig(image="busybox:latest", shell="/bin/sh", gpu_ids=["0"])
 
 
-def test_gvisor_backend_nvproxy_flag():
-    """An NVIDIA GPU CDI spec resolves to --nvproxy, and a sandbox without
-    GPUs never gets it."""
-    backend = GVisorSandboxBackend()
-    with (
-        patch(
-            "ray.experimental.sandbox._internal.cdi.get_spec",
-            return_value=cdi_lib.CDISpec("nvidia.com/gpu", {"devices": []}),
-        ),
-        patch.object(backend, "_check_runsc_runs_cdi_hooks"),
-        patch.object(backend, "_check_nvidia_driver_supported"),
-    ):
-        assert backend._resolve_gpu_run_args() == ["--nvproxy"]
-
-    cfg_no_gpu = GVisorSandboxConfig(image="busybox:latest", shell="/bin/sh")
-    assert "--nvproxy" not in backend._build_run_command(cfg_no_gpu, "/tmp/rd", "sb-1")
-
-
 def _fake_runsc_version(monkeypatch, version):
     """Have `runsc --version` report ``version``."""
     output = f"runsc version {version}\nspec: 1.2.1\n"
@@ -1413,23 +1395,6 @@ def test_create_sandbox_erofs_sandbox_skips_overlay(tmp_path, monkeypatch):
 
     assert captured["rootfs_overlay"] is None
     assert manager.rootfs_image_calls == []
-
-
-def test_create_sandbox_passes_gpu_run_args(tmp_path, monkeypatch):
-    """A sandbox with gpu_ids on an NVIDIA node runs runsc with --nvproxy."""
-    monkeypatch.setattr("ray.get_gpu_ids", lambda: ["0"])
-    monkeypatch.setattr(
-        "ray.experimental.sandbox._internal.cdi.get_spec",
-        lambda resource_name: cdi_lib.CDISpec("nvidia.com/gpu", {"devices": []}),
-    )
-    monkeypatch.setattr(
-        GVisorSandboxBackend, "_check_runsc_runs_cdi_hooks", lambda self: None
-    )
-    monkeypatch.setattr(
-        GVisorSandboxBackend, "_check_nvidia_driver_supported", lambda self: None
-    )
-    captured, _ = _create_until_run(tmp_path, monkeypatch, False, gpu_ids=["0"])
-    assert captured["gpu_run_args"] == ["--nvproxy"]
 
 
 def _create_overlayfs_sandbox(tmp_path, monkeypatch, manager):

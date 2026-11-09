@@ -416,6 +416,8 @@ ray.get(pool.close.remote())
 
 Ray validates `SandboxRuntime.create()`'s `gpu_ids` the same way as a `Sandbox`'s assigned GPUs. A sandbox can only access GPUs Ray assigned to the calling actor or task, and sandbox creation fails if Ray assigned it none.
 
+To request NVIDIA profiling capabilities, pass `env={"NVIDIA_DRIVER_CAPABILITIES": "compute,utility,profiling"}` when you create the GPU sandbox. Ray forwards this value to runsc's `--nvproxy-allowed-driver-capabilities` flag. Without an explicit request, gVisor uses `compute,utility`. The image's environment cannot raise the allowed capabilities.
+
 ### Manage sandboxes inside custom actors with SandboxRuntime
 
 If you're building custom RL environment actors or specialized rollout workers, embed `SandboxRuntime` directly inside your custom actors for fine-grained sandbox lifecycle control:
