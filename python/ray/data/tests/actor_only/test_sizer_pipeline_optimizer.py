@@ -27,6 +27,8 @@ from ray.data._internal.experimental.execution.sizer.optimizer.capacity_transfer
     TransferInFlight,
     VictimCandidate,
     _plan_node,
+    assess_donor,
+    plan_transfer,
 )
 from ray.data._internal.experimental.execution.sizer.optimizer.context import (
     OptimizationContext,
@@ -88,6 +90,7 @@ class _Pool:
         in_flight=0,
         concurrency=1,
         cpu=1,
+        gpu=0,
         pending_ids=None,
         lost_ids=(),
         running_ids=(),
@@ -97,7 +100,7 @@ class _Pool:
         self._pending = pending
         self._in_flight = in_flight
         self._concurrency = concurrency
-        self._per_actor = ExecutionResources(cpu=cpu)
+        self._per_actor = ExecutionResources(cpu=cpu, gpu=gpu)
         # Actors the pool is waiting on, per target node; a transfer stays in
         # flight while its claimed ids are still in here.
         self.pending_ids = dict(pending_ids or {})
@@ -323,10 +326,11 @@ def _bottleneck_ctx(
     free_cpu: float = 10,
     consumer_busy=None,
     consumer_unblocked=None,
+    bottleneck_busy=2,
 ) -> OptimizationContext:
     """The SilentBottleneckGrant scenario: a busy, backpressured ``bottleneck``
     feeding an idle-queued ``consumer``, with a growth delta of 2."""
-    busy_tasks_signal = {bottleneck: _signal(2)}
+    busy_tasks_signal = {bottleneck: _signal(bottleneck_busy)}
     if consumer_busy is not None:
         busy_tasks_signal[consumer] = _signal(consumer_busy)
     kwargs = dict(
@@ -685,6 +689,52 @@ def test_plan_node_skips_victims_that_free_nothing_the_recipient_lacks():
     assert [victim.actor_id for victim in plan.victims] == ["g0"]
 
 
+@pytest.mark.parametrize("pending,expected", [(0, 2), (2, None)])
+def test_donor_protects_starting_actors(pending, expected):
+    # 9 actors, 7 doing work. Without pending actors the 2 idle ones are
+    # surplus; if those 2 are still starting, the window can't judge them.
+    op = _op("op", pool=_Pool(current=9, pending=pending))
+    donor = assess_donor(op, _ctx(productive_tasks_signal={op: _signal(7)}))
+    assert (donor.removable if donor else None) == expected
+
+
+def _idle_donor(name, node, actor_id, per_actor):
+    return DonorCapacity(
+        op=_op(name, pool=_Pool(gpu=per_actor.gpu)),
+        view=_view(
+            victim_ids_by_node={node: [actor_id]},
+            victim_drain_cost_by_node={node: [(0, 0)]},
+        ),
+        per_actor=per_actor,
+        removable=1,
+    )
+
+
+@pytest.mark.parametrize("cpu_donor_available", [True, False])
+def test_cpu_recipient_takes_gpu_actors_only_as_last_resort(cpu_donor_available):
+    # The GPU donor sits on the node the recipient ranks first, yet a CPU-only
+    # donor elsewhere is preferred; without one, the GPU actor is taken.
+    gpu_donor = _idle_donor("gpu_donor", "gpu_node", "g0", ExecutionResources(1, 1))
+    donors = [gpu_donor]
+    if cpu_donor_available:
+        donors.append(_idle_donor("cpu_donor", "cpu_node", "c0", ExecutionResources(1)))
+    plan, _ = plan_transfer(
+        _op("recipient"),
+        ExecutionResources(cpu=1),
+        want=1,
+        nodes=["gpu_node", "cpu_node"],
+        free={
+            "gpu_node": ExecutionResources(cpu=0, gpu=0),
+            "cpu_node": ExecutionResources(cpu=0),
+        },
+        donors=donors,
+        node_rank={"gpu_node": (0,), "cpu_node": (1,)},
+    )
+    assert plan is not None
+    victims = [victim.actor_id for node_plan in plan for victim in node_plan.victims]
+    assert victims == (["c0"] if cpu_donor_available else ["g0"])
+
+
 @pytest.mark.parametrize(
     "lost,expected", [(False, "landed"), (True, "lost")], ids=["started", "cancelled"]
 )
@@ -970,6 +1020,20 @@ def test_silent_bottleneck_busy_gate_needs_one_task_per_actor_not_full_slots():
     )
     assert len(requests) == 1
     assert requests[0].request[bottleneck].delta == 2
+
+
+@pytest.mark.parametrize("fewest_tasks,granted", [(6, True), (5, False)])
+def test_silent_bottleneck_busy_gate_is_a_fraction_of_actors(fewest_tasks, granted):
+    # Some actors are always between tasks, waiting for a full input bundle,
+    # even when the op is the bottleneck: 6 of 10 busy at every sample is
+    # enough.
+    consumer = _op("consumer", pool=_Pool(current=2))  # terminal
+    bottleneck = _op(
+        "bottleneck", pool=_Pool(current=10), output_dependencies=[consumer]
+    )
+    rule = _grant_rule()
+    ctx = _bottleneck_ctx(bottleneck, consumer, bottleneck_busy=fewest_tasks)
+    assert bool(rule.apply(ctx, rule.new_state())) == granted
 
 
 @pytest.mark.parametrize(
