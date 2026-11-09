@@ -2220,3 +2220,234 @@ def test_fork_server_accelerator_safety_and_scipy_32bit_openblas(
         pid_c, ppid_c, libs_1c = ray.get(import_scipy_one_cpu.remote())
         assert pid_c == pid_a and ppid_c == default_fs_pid
         assert all(v == 1 for v in libs_1c.values()), libs_1c
+
+
+@pytest.mark.skipif(sys.platform != "linux", reason="ForkServer is Linux-only.")
+def test_fork_server_worker_process_setup_hook(shutdown_only, tmp_path):
+    """Verify callable and module-string worker_process_setup_hook run post-fork via
+    the default (fs_0) and per-runtime_env fork servers without falling back to exec."""
+    pkg_dir = tmp_path / "hook_pkg"
+    pkg_dir.mkdir()
+    (pkg_dir / "__init__.py").write_text(
+        "import os\n"
+        "def run_string_hook():\n"
+        "    os.environ['__RAY_TEST_STRING_HOOK_PID'] = str(os.getpid())\n"
+    )
+
+    def callable_setup_hook():
+        _os = __import__("os")
+        _os.environ["__RAY_TEST_CALLABLE_HOOK_PID"] = str(_os.getpid())
+
+    metrics_port = find_free_port()
+    ctx = ray.init(
+        num_cpus=2,
+        include_dashboard=False,
+        runtime_env={"worker_process_setup_hook": callable_setup_hook},
+        _metrics_export_port=metrics_port,
+        _system_config={
+            "enable_worker_fork_server": True,
+            "metrics_report_interval_ms": 200,
+        },
+    )
+    session_dir = ctx.address_info["session_dir"]
+    default_sock = os.path.join(session_dir, "sockets", "fs_0")
+    wait_for_condition(
+        lambda: os.path.exists(default_sock)
+        and default_sock in _find_fork_server_pids(session_dir),
+        timeout=15,
+    )
+    default_fs_pid = _find_fork_server_pids(session_dir)[default_sock]
+    prom_addr = build_address(ctx.address_info["node_ip_address"], metrics_port)
+
+    # 1. Job-level callable hook with no exec-bound fields reuses warm default fs_0.
+    @ray.remote
+    def check_callable():
+        return (
+            os.environ.get("__RAY_TEST_CALLABLE_HOOK_PID"),
+            os.getppid(),
+            os.getpid(),
+        )
+
+    hook_pid_1, ppid_1, pid_1 = ray.get(check_callable.remote())
+    assert ppid_1 == default_fs_pid
+    assert hook_pid_1 == str(pid_1)
+
+    def _has_fork_without_fallback(addr: str) -> bool:
+        try:
+            _, _, samples = fetch_prometheus([addr])
+        except Exception:
+            return False
+        forked = sum(
+            s.value
+            for s in samples
+            if s.name.startswith("ray_internal_num_processes_forked_from_server")
+            and not s.name.endswith("_created")
+        )
+        fallbacks = sum(
+            s.value
+            for s in samples
+            if s.name.startswith("ray_internal_num_fork_server_fallbacks")
+            and not s.name.endswith("_created")
+        )
+        return forked >= 1 and fallbacks == 0
+
+    wait_for_condition(lambda: _has_fork_without_fallback(prom_addr), timeout=10)
+    ray.shutdown()
+
+    metrics_port_2 = find_free_port()
+    ctx2 = ray.init(
+        num_cpus=2,
+        include_dashboard=False,
+        runtime_env={
+            "worker_process_setup_hook": "hook_pkg.run_string_hook",
+            "py_modules": [f"local://{tmp_path}"],
+        },
+        _metrics_export_port=metrics_port_2,
+        _system_config={
+            "enable_worker_fork_server": True,
+            "metrics_report_interval_ms": 200,
+        },
+    )
+    session_dir_2 = ctx2.address_info["session_dir"]
+    default_sock_2 = os.path.join(session_dir_2, "sockets", "fs_0")
+    wait_for_condition(
+        lambda: os.path.exists(default_sock_2)
+        and default_sock_2 in _find_fork_server_pids(session_dir_2),
+        timeout=15,
+    )
+    default_fs_pid_2 = _find_fork_server_pids(session_dir_2)[default_sock_2]
+    prom_addr_2 = build_address(ctx2.address_info["node_ip_address"], metrics_port_2)
+
+    @ray.remote
+    def check_string():
+        return (
+            os.environ.get("__RAY_TEST_STRING_HOOK_PID"),
+            os.getppid(),
+            os.getpid(),
+        )
+
+    hook_pid_2, ppid_2, pid_2 = ray.get(check_string.remote())
+    fs_pids_2 = _find_fork_server_pids(session_dir_2)
+    per_env_pids_2 = {pid for sock, pid in fs_pids_2.items() if sock != default_sock_2}
+    assert ppid_2 != default_fs_pid_2
+    assert ppid_2 in per_env_pids_2
+    assert hook_pid_2 == str(pid_2)
+    wait_for_condition(lambda: _has_fork_without_fallback(prom_addr_2), timeout=10)
+
+
+@pytest.mark.skipif(sys.platform != "linux", reason="ForkServer is Linux-only.")
+def test_fork_server_setup_timeout_clamping_and_fallback(shutdown_only, tmp_path):
+    """Verify finite setup_timeout_seconds clamps cold ForkServer wait_ready (including
+    SIGTERM-ignoring preloads) so tasks fall back cleanly to execvpe without failing
+    GetOrCreateRuntimeEnv, while warm fs_0 continues serving tight timeouts."""
+    slow_root = tmp_path / "slow_root"
+    slow_pkg = slow_root / "slow_mod"
+    slow_pkg.mkdir(parents=True)
+    (slow_pkg / "__init__.py").write_text(
+        "import signal\n"
+        "import time\n"
+        "signal.signal(signal.SIGTERM, signal.SIG_IGN)\n"
+        "time.sleep(10.0)\n"
+    )
+    slow_1s_root = tmp_path / "slow_1s_root"
+    slow_1s_pkg = slow_1s_root / "slow_1s_mod"
+    slow_1s_pkg.mkdir(parents=True)
+    (slow_1s_pkg / "__init__.py").write_text("import time\ntime.sleep(5.0)\n")
+
+    ctx = ray.init(
+        num_cpus=2,
+        include_dashboard=False,
+        _system_config={"enable_worker_fork_server": True},
+    )
+    session_dir = ctx.address_info["session_dir"]
+    default_sock = os.path.join(session_dir, "sockets", "fs_0")
+    wait_for_condition(
+        lambda: os.path.exists(default_sock)
+        and default_sock in _find_fork_server_pids(session_dir),
+        timeout=15,
+    )
+    default_fs_pid = _find_fork_server_pids(session_dir)[default_sock]
+
+    # 1. Tight setup_timeout_seconds=1 still uses already-warm fs_0 immediately.
+    @ray.remote(runtime_env={"config": {"setup_timeout_seconds": 1}})
+    def check_warm_default():
+        return os.getppid()
+
+    assert ray.get(check_warm_default.remote()) == default_fs_pid
+
+    # 2. Cold preload ignoring SIGTERM clamps wait_ready + stop() inside 3s budget
+    # and falls back to execvpe (where preload_modules is not auto-imported).
+    @ray.remote(
+        runtime_env={
+            "py_modules": [f"local://{slow_root}"],
+            "preload_modules": ["slow_mod"],
+            "config": {"setup_timeout_seconds": 3},
+        }
+    )
+    def check_clamped_fallback():
+        return "slow_mod" in sys.modules, os.getppid()
+
+    t0 = time.monotonic()
+    preloaded_3s, ppid_3s = ray.get(check_clamped_fallback.remote())
+    elapsed_3s = time.monotonic() - t0
+    assert preloaded_3s is False
+    assert ppid_3s != default_fs_pid
+    assert ppid_3s not in _find_fork_server_pids(session_dir).values()
+    assert 1.0 <= elapsed_3s < 8.0
+
+    # 3. Cold preload with setup_timeout_seconds=1 skips cold fork server immediately.
+    @ray.remote(
+        runtime_env={
+            "py_modules": [f"local://{slow_1s_root}"],
+            "preload_modules": ["slow_1s_mod"],
+            "config": {"setup_timeout_seconds": 1},
+        }
+    )
+    def check_tight_1s_skip():
+        return "slow_1s_mod" in sys.modules, os.getppid()
+
+    preloaded_1s, ppid_1s = ray.get(check_tight_1s_skip.remote())
+    assert preloaded_1s is False
+    assert ppid_1s not in _find_fork_server_pids(session_dir).values()
+
+    # Ensure no per-env fork server leaked from the timed-out startup, and setup logs
+    # record both the clamped wait_ready fallback and the tight-budget skip.
+    wait_for_condition(
+        lambda: set(_find_fork_server_pids(session_dir).keys()) == {default_sock},
+        timeout=5,
+    )
+    logs_dir = Path(session_dir) / "logs"
+
+    def _check_setup_logs():
+        combined = "\n".join(
+            p.read_text(errors="replace")
+            for p in logs_dir.glob("runtime_env*.log")
+            if p.is_file()
+        )
+        return (
+            "Failed to wait for fork server, falling back to exec" in combined
+            and "Skipping cold fork server start" in combined
+        )
+
+    wait_for_condition(_check_setup_logs, timeout=10)
+
+
+def test_clamped_ready_timeout_preserves_default_120s_cap(monkeypatch):
+    """Verify default 600s setup_timeout_seconds does not raise wait_ready above
+    RAY_fork_server_ready_timeout_s (default 120s)."""
+    now = time.monotonic()
+    deadline_600 = RuntimeEnvAgent._fork_server_setup_deadline(now, 600)
+    clamped_default = RuntimeEnvAgent._clamped_ready_timeout_s(deadline_600)
+    assert 119.0 <= clamped_default <= 120.0
+
+    monkeypatch.setenv("RAY_fork_server_ready_timeout_s", "2.5")
+    assert RuntimeEnvAgent._clamped_ready_timeout_s(deadline_600) == pytest.approx(
+        2.5, abs=0.2
+    )
+
+    deadline_3 = RuntimeEnvAgent._fork_server_setup_deadline(time.monotonic(), 3)
+    clamped_3 = RuntimeEnvAgent._clamped_ready_timeout_s(deadline_3)
+    assert 1.0 < clamped_3 <= 1.5
+
+    assert RuntimeEnvAgent._fork_server_setup_deadline(now, None) is None
+    assert RuntimeEnvAgent._clamped_ready_timeout_s(None) == pytest.approx(2.5)

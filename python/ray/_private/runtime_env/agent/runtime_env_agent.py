@@ -69,6 +69,7 @@ _FORK_SERVER_ALLOWED_RUNTIME_ENV_KEYS: FrozenSet[str] = frozenset(
         "uv",
         "conda",
         "py_executable",
+        "worker_process_setup_hook",
     }
 )
 
@@ -725,7 +726,6 @@ class RuntimeEnvAgent:
             and not pip_env_sig
             and py_exec == sys.executable
             and not context.command_prefix
-            and not context.java_jars
             and not fs_env_vars
             and not preload_modules
         ):
@@ -737,7 +737,6 @@ class RuntimeEnvAgent:
                 "pip_env": pip_env_sig,
                 "py_executable": py_exec,
                 "command_prefix": list(context.command_prefix),
-                "java_jars": list(context.java_jars),
                 "env_vars": fs_env_vars,
                 "preload_modules": preload_modules,
             },
@@ -749,7 +748,6 @@ class RuntimeEnvAgent:
             env_vars=fs_env_vars,
             py_executable=py_exec,
             override_worker_entrypoint=context.override_worker_entrypoint,
-            java_jars=list(context.java_jars),
         )
         return fs_key, fs_context, set(uris_list)
 
@@ -1017,12 +1015,33 @@ class RuntimeEnvAgent:
         while len(self._idle_fork_servers) > self._fork_server_max_idle_envs:
             self._evict_idle_fork_server(next(iter(self._idle_fork_servers)))
 
+    @staticmethod
+    def _fork_server_setup_deadline(
+        setup_start: float, setup_timeout_seconds: Optional[int]
+    ) -> Optional[float]:
+        if setup_timeout_seconds is None or setup_timeout_seconds <= 0:
+            return None
+        # Reserve 1.5s below setup_timeout_seconds for ForkServerProcess.stop()
+        # (up to 1.0s SIGTERM-to-SIGKILL grace) and context serialization so slow
+        # preloads fall back cleanly to execvpe before asyncio.wait_for cancels setup.
+        return setup_start + setup_timeout_seconds - 1.5
+
+    @staticmethod
+    def _clamped_ready_timeout_s(setup_deadline: Optional[float]) -> float:
+        default_timeout_s = float(
+            os.environ.get("RAY_fork_server_ready_timeout_s", "120.0")
+        )
+        if setup_deadline is None:
+            return default_timeout_s
+        return min(default_timeout_s, setup_deadline - time.monotonic())
+
     async def _resolve_fork_server_socket(
         self,
         serialized_env: str,
         runtime_env: RuntimeEnv,
         context: RuntimeEnvContext,
         logger: logging.Logger,
+        setup_deadline: Optional[float] = None,
     ) -> Optional[str]:
         if not self._should_start_fork_server(runtime_env, context):
             self._serialized_env_to_fs_key.pop(serialized_env, None)
@@ -1037,8 +1056,11 @@ class RuntimeEnvAgent:
             if server is None or not server.is_alive():
                 return None
             if server.ready_at is None and not os.path.exists(server.socket_path):
+                wait_s = self._clamped_ready_timeout_s(setup_deadline)
+                if wait_s <= 0:
+                    return None
                 try:
-                    await server.wait_ready()
+                    await server.wait_ready(timeout_s=wait_s)
                     self._emit_fork_server_startup_warnings(server, self._logger)
                 except Exception:
                     self._emit_fork_server_startup_warnings(server, self._logger)
@@ -1047,7 +1069,26 @@ class RuntimeEnvAgent:
 
         self._serialized_env_to_fs_key[serialized_env] = fs_key
         self._cancel_idle_timer(fs_key)
-        async with self._fork_server_locks[fs_key]:
+        lock = self._fork_server_locks[fs_key]
+        if setup_deadline is not None and lock.locked():
+            rem = setup_deadline - time.monotonic()
+            if rem <= 0:
+                if not self._has_active_fork_server_refs(fs_key):
+                    self._on_fork_server_became_idle(fs_key)
+                return None
+            try:
+                await asyncio.wait_for(lock.acquire(), timeout=rem)
+            except asyncio.TimeoutError:
+                if not self._has_active_fork_server_refs(fs_key):
+                    self._on_fork_server_became_idle(fs_key)
+                logger.warning(
+                    "Timed out waiting for fork server lock within setup_timeout_seconds; "
+                    "falling back to exec."
+                )
+                return None
+        else:
+            await lock.acquire()
+        try:
             self._cancel_idle_timer(fs_key)
             server = self._fork_servers.get(fs_key)
             if server is not None:
@@ -1077,6 +1118,15 @@ class RuntimeEnvAgent:
                     server = None
 
             if server is None:
+                wait_s = self._clamped_ready_timeout_s(setup_deadline)
+                if wait_s <= 0:
+                    logger.warning(
+                        "Skipping cold fork server start: insufficient "
+                        "setup_timeout_seconds budget remaining; falling back to exec."
+                    )
+                    if not self._has_active_fork_server_refs(fs_key):
+                        self._on_fork_server_became_idle(fs_key)
+                    return None
                 if (
                     not self._has_active_fork_server_refs(fs_key)
                     or self._fork_server_failures[fs_key]
@@ -1095,8 +1145,9 @@ class RuntimeEnvAgent:
                     if self._fork_server_socket_path(fs_key, logger) is not None:
                         self._record_fork_server_failure(fs_key, logger)
                     return None
+                wait_s = self._clamped_ready_timeout_s(setup_deadline)
                 try:
-                    await server.wait_ready()
+                    await server.wait_ready(timeout_s=max(0.0, wait_s))
                 except BaseException as e:
                     self._emit_fork_server_startup_warnings(server, logger)
                     was_stopped = server._stopped
@@ -1131,6 +1182,8 @@ class RuntimeEnvAgent:
                 if fs_key not in self._fork_servers:
                     return None
             return server.socket_path
+        finally:
+            lock.release()
 
     def _evict_idle_fork_server(self, fs_key: str) -> None:
         self._cancel_idle_timer(fs_key)
@@ -1207,7 +1260,11 @@ class RuntimeEnvAgent:
             serialized_env: str,
             runtime_env: RuntimeEnv,
             runtime_env_config: RuntimeEnvConfig,
+            setup_timeout_seconds: Optional[int],
         ) -> Tuple[RuntimeEnvContext, Optional[str]]:
+            setup_deadline = self._fork_server_setup_deadline(
+                time.monotonic(), setup_timeout_seconds
+            )
             log_files = runtime_env_config.get("log_files", [])
             # Use a separate logger scoped to this setup. Its file handles are
             # released when the setup exits (on success, failure, timeout, and
@@ -1262,7 +1319,11 @@ class RuntimeEnvAgent:
                 socket_path = None
                 if is_raylet_worker_request and self._enable_worker_fork_server:
                     socket_path = await self._resolve_fork_server_socket(
-                        serialized_env, runtime_env, context, per_job_logger
+                        serialized_env,
+                        runtime_env,
+                        context,
+                        per_job_logger,
+                        setup_deadline=setup_deadline,
                     )
 
                 return context, socket_path
@@ -1292,7 +1353,10 @@ class RuntimeEnvAgent:
 
                 try:
                     runtime_env_setup_task = _setup_runtime_env(
-                        serialized_env, runtime_env, runtime_env_config
+                        serialized_env,
+                        runtime_env,
+                        runtime_env_config,
+                        setup_timeout_seconds,
                     )
                     runtime_env_context, socket_path = await asyncio.wait_for(
                         runtime_env_setup_task, timeout=setup_timeout_seconds
@@ -1384,6 +1448,14 @@ class RuntimeEnvAgent:
                         runtime_env_config = RuntimeEnvConfig.from_proto(
                             request.runtime_env_config
                         )
+                        cache_timeout_s = (
+                            None
+                            if runtime_env_config["setup_timeout_seconds"] == -1
+                            else runtime_env_config["setup_timeout_seconds"]
+                        )
+                        cache_deadline = self._fork_server_setup_deadline(
+                            time.monotonic(), cache_timeout_s
+                        )
                         log_files = runtime_env_config.get("log_files", [])
                         with self._setup_logger_factory.setup_logger(
                             request.job_id.decode(), log_files
@@ -1394,6 +1466,7 @@ class RuntimeEnvAgent:
                                     runtime_env,
                                     cached_ctx,
                                     per_job_logger,
+                                    setup_deadline=cache_deadline,
                                 )
                             )
                         if cached_ctx.fork_server_socket_path is not None:
