@@ -77,7 +77,7 @@ class GeneralAdvantageEstimation(ConnectorV2):
         super().__init__(input_observation_space, input_action_space)
         self.gamma = gamma
         self.lambda_ = lambda_
-        self._value_function_context = value_function_context
+        self._value_function_context = value_function_context or nullcontext
 
         # Internal numpy-to-tensor connector to translate GAE results (advantages and
         # vf targets) into tensors.
