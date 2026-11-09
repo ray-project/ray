@@ -134,6 +134,8 @@ class RecordingKVTokenTracker(KVTokenTracker):
         self._replica_id_by_worker = {}
         self._requests = OrderedDict()
         self._outstanding_effective_prefill_tokens = 0
+        self._prefill_decay = None
+        self._prefill_decay_timer = None
         self._active_decode_requests = 0
         self._autoscaling_metrics_callback = None
         self._request_ids_by_worker = {}
@@ -188,6 +190,8 @@ class LocalKVTokenTracker(KVTokenTracker):
         self._replica_id_by_worker = {}
         self._requests = OrderedDict()
         self._outstanding_effective_prefill_tokens = 0
+        self._prefill_decay = None
+        self._prefill_decay_timer = None
         self._active_decode_requests = 0
         self._autoscaling_metrics_callback = None
         self._request_ids_by_worker = {}

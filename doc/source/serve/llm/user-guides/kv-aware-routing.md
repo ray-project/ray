@@ -127,6 +127,24 @@ Set it to `0` to disable pinning. Requests without `x-session-id` use token-load
 
 ### Tuning
 
+To estimate remaining prefill work for token autoscaling, set
+`prefill_decay_tokens_per_second` in `request_router_kwargs`:
+
+```python
+request_router_config = RequestRouterConfig(
+    request_router_class=KVAwareRouter,
+    request_router_kwargs={"prefill_decay_tokens_per_second": 15000},
+)
+```
+
+Each engine replica gets one shared decay budget. The router subtracts estimated
+work from its oldest outstanding prefill first and refreshes the autoscaling
+metric every second. The first output token or request completion clears any
+remaining estimate. This setting affects the autoscaling metric, not Dynamo's
+routing load. The default is `0`, which disables estimated decay. Set a rate
+appropriate for your model and hardware. The example uses 15,000 uncached tokens
+per second per replica.
+
 Set these in the cluster environment:
 
 | Environment variable | Default | Effect |

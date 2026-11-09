@@ -39,8 +39,16 @@ def reset_process_global():
 class _SpyTracker:
     """Records constructor kwargs; skips the real selection service + LongPoll."""
 
-    def __init__(self, *, indexer_threads, serve_deployment_id, session_affinity_ttl_s):
+    def __init__(
+        self,
+        *,
+        indexer_threads,
+        serve_deployment_id,
+        session_affinity_ttl_s,
+        prefill_decay_tokens_per_second,
+    ):
         self.session_affinity_ttl_s = session_affinity_ttl_s
+        self.prefill_decay_tokens_per_second = prefill_decay_tokens_per_second
         self.indexer_threads = indexer_threads
         self.serve_deployment_id = serve_deployment_id
 
@@ -89,6 +97,7 @@ def test_build_registers_tracker(monkeypatch):
     assert get_kv_token_tracker() is tracker
     assert tracker.serve_deployment_id == "dep-id"
     assert tracker.session_affinity_ttl_s == 1800
+    assert tracker.prefill_decay_tokens_per_second == 0
 
 
 def test_indexer_threads_from_config(monkeypatch):
@@ -96,6 +105,21 @@ def test_indexer_threads_from_config(monkeypatch):
     monkeypatch.setattr(kv_token_tracker, "KVTokenTracker", _SpyTracker)
     tracker = build_kv_token_tracker(_llm_config({"KV_INDEXER_THREADS": 8}), "dep-id")
     assert tracker.indexer_threads == 8
+
+
+@pytest.mark.parametrize("as_object", [False, True])
+def test_prefill_decay_config(monkeypatch, as_object):
+    monkeypatch.setattr(kv_token_tracker, "KVTokenTracker", _SpyTracker)
+    config = _llm_config()
+    router_config = {
+        "request_router_class": KVAwareRouter,
+        "request_router_kwargs": {"prefill_decay_tokens_per_second": 15000},
+    }
+    config.deployment_config["request_router_config"] = (
+        RequestRouterConfig(**router_config) if as_object else router_config
+    )
+    tracker = build_kv_token_tracker(config, "dep-id")
+    assert tracker.prefill_decay_tokens_per_second == 15000
 
 
 @pytest.mark.parametrize("ttl_s,as_object", [(60.0, False), (0, True)])
