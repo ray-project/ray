@@ -8,6 +8,7 @@ import dataclasses
 import importlib.util
 import json
 import os
+import re
 import time
 
 import pyarrow as pa
@@ -22,6 +23,7 @@ from ray.data._internal.datasource_v2.formats.mcap.mcap_datasource_v2 import (
 )
 from ray.data._internal.datasource_v2.formats.mcap.mcap_io import ChunkReads
 from ray.data._internal.datasource_v2.formats.mcap.mcap_message_rows import (
+    InvalidJsonPayload,
     _MessageTableBuilder,
     message_schema,
 )
@@ -30,6 +32,7 @@ from ray.data._internal.datasource_v2.formats.mcap.mcap_options import (
     MCAPSelection,
 )
 from ray.data._internal.datasource_v2.formats.mcap.mcap_scanner import MCAPScanner
+from ray.data._internal.datasource_v2.formats.mcap.mcap_summary import message_row_id
 from ray.data._internal.datasource_v2.interfaces.file_manifest import FileManifest
 from ray.data.tests.unit.datasource_v2.mcap_testing import (
     BASE_TIME,
@@ -54,6 +57,7 @@ from ray.data.tests.unit.datasource_v2.mcap_testing import (
     write_corrupt_chunk,
     write_corrupt_chunk_header,
     write_cut_short,
+    write_invalid_json,
     write_mcap,
     write_mcap_without_summary_schemas,
     write_mixed_channels,
@@ -244,6 +248,102 @@ def test_one_error_names_every_corrupt_chunk_of_a_file(
         f"Skipped 2 corrupt chunks at byte offsets {chunk_offset(b, 2)}, "
         f"{chunk_offset(b, 6)} of MCAP file {b!r}: "
     )
+
+
+BAD_JSON = 4  # the message whose payload is not valid JSON
+
+
+def message_row_id_of(path, seq, one_chunk):
+    """The ``row_id`` of message ``seq`` of a file of ``write_invalid_json``,
+    written with one chunk per message or with every message in one chunk."""
+    if one_chunk:
+        return message_row_id(path, chunk_offset(path, 0), seq)
+    return message_row_id(path, chunk_offset(path, seq), 0)
+
+
+@pytest.mark.parametrize("log_time_order", [True, False])
+@pytest.mark.parametrize("one_chunk", [False, True], ids=["own_chunk", "mid_chunk"])
+def test_a_message_that_is_not_json_costs_only_its_own_row(
+    tmp_path, one_chunk, log_time_order, restore_max_errored_blocks
+):
+    """When errors can be skipped, a message that is not valid JSON in the middle
+    file costs only its own row, whether it fills a chunk or sits between good
+    messages of one chunk. The kept rows' columns line up, and the task then
+    raises naming the message."""
+    a, b, c = write_task_files(tmp_path, bad=set())
+    # A chunk size past the file's size puts every message in one chunk.
+    write_invalid_json(b, bad={BAD_JSON}, chunk_size=1 << 20 if one_chunk else 1)
+
+    tables, error = read_one_task(
+        [a, b, c], log_time_order=log_time_order, include_row_id=True
+    )
+
+    assert rows_of(tables) == file_rows(a) + file_rows(b, {BAD_JSON}) + file_rows(c)
+    rows = [row for table in tables for row in table.to_pylist() if row["path"] == b]
+    seqs = [row["data"]["seq"] for row in rows]
+    assert [row["log_time"] for row in rows] == [BASE_TIME + s * STEP for s in seqs]
+    expected_ids = [message_row_id_of(b, s, one_chunk) for s in seqs]
+    assert [row[ROW_ID_COLUMN] for row in rows] == expected_ids
+    row_id = message_row_id_of(b, BAD_JSON, one_chunk)
+    assert str(error).startswith(
+        f"Skipped 1 message that is not valid JSON (row id {row_id}) of MCAP file "
+        f"{b!r}: InvalidJsonPayload: {row_id}: message on JSON-encoded topic"
+    )
+
+
+def test_one_error_names_the_corrupt_chunks_and_the_messages_that_are_not_json(
+    tmp_path, restore_max_errored_blocks
+):
+    """A file with a corrupt chunk and two messages that are not valid JSON loses
+    only those three rows, and one error names the chunk, counts the messages
+    and names the first of them, with the chunk's error."""
+    a, b, c = write_task_files(tmp_path, bad=set())
+    write_invalid_json(b, bad={5, 6})
+    corrupt_in_place(b, 2)
+
+    tables, error = read_one_task([a, b, c])
+
+    assert rows_of(tables) == file_rows(a) + file_rows(b, {2, 5, 6}) + file_rows(c)
+    first_row_id = message_row_id_of(b, 5, False)
+    assert str(error).startswith(
+        f"Skipped 1 corrupt chunk at byte offset {chunk_offset(b, 2)} and "
+        f"2 messages that are not valid JSON (first: row id {first_row_id}) of "
+        f"MCAP file {b!r}: ZstdError: "
+    )
+
+
+def test_a_file_of_messages_that_are_not_json_is_counted_not_listed(
+    tmp_path, restore_max_errored_blocks
+):
+    """A file whose every message is not valid JSON loses all its rows, and its
+    error counts the messages and quotes only the first one's error."""
+    a, b, c = write_task_files(tmp_path, bad=set())
+    write_invalid_json(b, bad=range(CHUNKED_FILE_MESSAGES))
+
+    tables, error = read_one_task([a, b, c])
+
+    assert rows_of(tables) == file_rows(a) + file_rows(c)
+    first_row_id = message_row_id_of(b, 0, False)
+    assert str(error).startswith(
+        f"Skipped {CHUNKED_FILE_MESSAGES} messages that are not valid JSON "
+        f"(first: row id {first_row_id}) of MCAP file {b!r}: "
+        f"InvalidJsonPayload: {first_row_id}: "
+    )
+
+
+def test_a_message_that_is_not_json_fails_its_task_when_errors_are_not_skipped(
+    tmp_path, restore_max_errored_blocks
+):
+    """With ``max_errored_blocks=0``, a message that is not valid JSON fails the
+    task at once, with an error that names the message."""
+    a, b, c = write_task_files(tmp_path, bad=set())
+    write_invalid_json(b, bad={BAD_JSON})
+
+    tables, error = read_one_task([a, b, c], max_errored_blocks=0)
+
+    assert rows_of(tables) == file_rows(a)
+    assert isinstance(error, InvalidJsonPayload)
+    assert str(error).startswith(f"{message_row_id_of(b, BAD_JSON, False)}: ")
 
 
 def test_a_task_names_every_file_it_could_not_read_in_full(
@@ -1100,6 +1200,29 @@ def test_build_empties_the_builder(chunked_file):
     assert second.num_rows == CHUNKED_FILE_MESSAGES - 4
     expected_ids = [row_id for _, _, _, row_id in messages[4:]]
     assert second.column(ROW_ID_COLUMN).to_pylist() == expected_ids
+
+
+def test_a_payload_that_is_not_json_leaves_the_builder_unchanged(tmp_path):
+    """Adding a message whose payload is not valid JSON raises
+    ``InvalidJsonPayload`` before the builder changes, so the rows added around
+    it build into a consistent table."""
+    path = write_invalid_json(os.path.join(tmp_path, "bad.mcap"), bad={1})
+    builder = _MessageTableBuilder(
+        columns=None, include_metadata=True, include_row_id=True, decode_json=True
+    )
+    good, bad, *_ = selected_messages(path)
+    builder.add(good)
+    before = (builder.num_rows, builder.estimated_bytes)
+
+    with pytest.raises(
+        InvalidJsonPayload, match=re.escape(bad[3]) + ": .* not valid JSON"
+    ):
+        builder.add(bad)
+
+    assert (builder.num_rows, builder.estimated_bytes) == before
+    table = builder.build()
+    assert table.column(ROW_ID_COLUMN).to_pylist() == [good[3]]
+    assert table.column("log_time").to_pylist() == [BASE_TIME]
 
 
 def test_payload_buffer_starts_a_chunk_before_its_offsets_overflow(monkeypatch):
