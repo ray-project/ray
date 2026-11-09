@@ -157,6 +157,8 @@ async def test_score_wrapper_rejects_invalid_token_ids(score_engine, overrides, 
 async def test_score_wrapper_embed_overrides(score_engine):
     wrapper = _score_wrapper(embed_override_token_id=42)
     row = _score_row(
+        query_token_ids=[1, 42, 2, 42],
+        item_token_ids=[[4], [5, 42]],
         query_embed_overrides=np.ones((2, 4), dtype=np.float32),
         item_embed_overrides=np.array(
             [None, np.zeros((1, 4), dtype=np.float32)], dtype=object
@@ -183,7 +185,9 @@ async def test_score_wrapper_ragged_item_overrides(score_engine):
     item_embeds[0] = np.ones((2, 4), dtype=np.float32)
     item_embeds[1] = np.zeros((1, 4), dtype=np.float32)
 
-    await wrapper.generate_async(_score_row(item_embed_overrides=item_embeds))
+    await wrapper.generate_async(
+        _score_row(item_token_ids=[[42, 4, 42], [42]], item_embed_overrides=item_embeds)
+    )
 
     item_overrides = score_engine.async_score.call_args.kwargs["item_embed_overrides"]
     assert [len(entry) for entry in item_overrides] == [2, 1]
@@ -210,6 +214,19 @@ async def test_score_wrapper_all_none_item_overrides(score_engine):
             {"embed_override_token_id": 42},
             {"item_embed_overrides": [[[0.1, 0.2]]]},
             "1 entries for 2 items",
+        ),
+        (
+            {"embed_override_token_id": 42},
+            {"query_token_ids": [1, 42, 42], "query_embed_overrides": [[0.1, 0.2]]},
+            "query has 2 embedding markers .* but 1 override vectors",
+        ),
+        (
+            {"embed_override_token_id": 42},
+            {
+                "item_token_ids": [[4, 42], [5]],
+                "item_embed_overrides": [None, [[0.1, 0.2]]],
+            },
+            "item 0 has 1 embedding markers .* but 0 override vectors",
         ),
     ],
 )

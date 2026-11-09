@@ -251,6 +251,19 @@ class _SGLangScoreTask(_SGLangTask):
                 )
             if self.score_kwargs.get("item_first"):
                 raise ValueError("'item_first' can't be used with embedding overrides.")
+            marker_id = self.score_kwargs["embed_override_token_id"]
+            # Every marker needs exactly one vector; a missing one would leave
+            # the marker's own embedding in place and silently change scores.
+            _check_override_count(
+                "query", query_token_ids, query_embed_overrides, marker_id
+            )
+            for index, token_ids in enumerate(item_token_ids):
+                _check_override_count(
+                    f"item {index}",
+                    token_ids,
+                    item_embed_overrides[index] if item_embed_overrides else None,
+                    marker_id,
+                )
 
         return SGLangScoreRequest(
             query_token_ids=query_token_ids,
@@ -288,6 +301,22 @@ class _SGLangScoreTask(_SGLangTask):
             "scores": item_scores,
             "num_input_tokens": getattr(result, "prompt_tokens", 0) or 0,
         }
+
+
+def _check_override_count(
+    name: str,
+    token_ids: List[int],
+    overrides: Optional[List["torch.Tensor"]],
+    marker_id: int,
+) -> None:
+    """Raise if the override vectors don't match the marker count one to one."""
+    num_markers = token_ids.count(marker_id)
+    num_vectors = len(overrides) if overrides is not None else 0
+    if num_markers != num_vectors:
+        raise ValueError(
+            f"The {name} has {num_markers} embedding markers (token ID "
+            f"{marker_id}) but {num_vectors} override vectors."
+        )
 
 
 def _validate_score_config(

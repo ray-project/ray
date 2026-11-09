@@ -396,7 +396,7 @@ To replace token embeddings with precomputed vectors, such as user or item featu
 2. Set `task_kwargs["embed_override_token"]` to the marker. The processor resolves it to a token ID when you build it.
 3. Add a `query_embed_overrides` or `item_embed_overrides` column. Shape each override as `[num_markers, hidden_dim]`; for `item_embed_overrides`, provide one entry, or `None`, per item.
 
-The engine replaces the embedding at each marker position with the next vector from the override column. Marker text is resolved to a token ID by loading the tokenizer on the driver. If you already know the marker's token ID, or the driver can't load the tokenizer (for example, a gated model whose credentials only the workers have), set `embed_override_token_id` instead.
+The engine replaces the embedding at each marker position with the next vector from the override column. The query and each item must have exactly one vector per marker, or the row fails. Marker text is resolved to a token ID by loading the tokenizer on the driver. If you already know the marker's token ID, or the driver can't load the tokenizer (for example, a gated model whose credentials only the workers have), set `embed_override_token_id` instead.
 
 ### Score several positions in an item
 
