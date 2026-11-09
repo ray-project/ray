@@ -38,6 +38,7 @@ allows a cut.
 """
 
 import logging
+import math
 from collections import deque
 from dataclasses import dataclass
 from typing import Deque, Dict, Iterator, List, Optional, Sequence
@@ -338,18 +339,13 @@ def _task_manifest(file_rows: _FileRows, chunks: Sequence[_Chunk]) -> FileManife
     )
 
 
-# An ordered task whose log-time merge would hold more than this many read-task
-# budgets of overlapping chunks at once logs a warning.
-_MERGE_WARNING_BUDGETS = 4
-
-
 def _warn_if_merge_holds_much(
     path: str,
     tasks: Sequence[Sequence[_Chunk]],
     budget: int,
     reserved_memory: Optional[float],
 ) -> None:
-    """Warn once per process when a task of ``path`` holds many budgets at once.
+    """Warn once per process when a task of ``path`` holds more than its budget.
 
     In a read that keeps order, overlapping chunks share a task, and the task's
     log-time merge holds every chunk that overlaps the current log time
@@ -358,21 +354,22 @@ def _warn_if_merge_holds_much(
     already reserves at least what the merge would hold.
     """
     held = max(_merge_held_bytes(task) for task in tasks)
-    if held <= _MERGE_WARNING_BUDGETS * budget:
+    if held <= budget:
         return
     if reserved_memory is not None and reserved_memory >= held:
         return
     if log_once("read_mcap_merge_holds_much"):
         logger.warning(
-            "A read task of %s holds about %.0f MiB of messages at once, against "
-            "the %.0f MiB a read task is sized for. The file's chunks overlap in "
-            "time and the read keeps order (`preserve_order`), so the task can't "
-            "be cut smaller. If read tasks run out of memory, reserve at least that "
-            "much for each with `read_mcap(..., memory=...)`, or read without "
-            "`preserve_order` so the file can be split.",
+            "read_mcap: an ordered read task of %s will hold about %.0f MiB of "
+            "messages at once, above the %.0f MiB a read task is sized for, "
+            "because the file's chunks overlap in log time and can't be cut "
+            "apart. To avoid running out of memory, pass "
+            "`read_mcap(..., memory=%d)`. If the order the messages were written "
+            "in is enough, pass `log_time_order=False` instead.",
             path,
             held / MiB,
             budget / MiB,
+            math.ceil(held / MiB) * MiB,
         )
 
 
