@@ -44,7 +44,8 @@ def write_mcap(
     index=True,
     encodings=None,
 ):
-    """Write ``messages`` (dicts with topic, log_time, data) to ``path``.
+    """Write ``messages`` (dicts with topic, log_time, data, and optionally
+    publish_time and sequence) to ``path``.
 
     The default ``chunk_size=1`` closes a chunk after every message, so N
     messages make N chunks, each a possible split point. ``encodings``
@@ -84,6 +85,7 @@ def write_mcap(
                 log_time=message["log_time"],
                 publish_time=message.get("publish_time", message["log_time"]),
                 data=data,
+                sequence=message.get("sequence", 0),
             )
         writer.finish()
 

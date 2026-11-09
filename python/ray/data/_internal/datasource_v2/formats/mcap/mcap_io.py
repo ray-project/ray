@@ -5,9 +5,9 @@ read of a raw file is one request, so parsing a summary that way takes several
 requests per chunk it indexes. Here the bytes are fetched first and parsed in
 memory:
 
-- ``read_summary_section_from`` checks both magic bytes and the footer, then
-  returns the summary section, all in one to three ranged reads.
-  ``read_summary_from`` also parses it.
+- ``read_tail`` checks the magic bytes and footer, which give the summary
+  section's exact length; ``read_section`` returns the section, reading more
+  only when it starts before the tail. ``read_summary_from`` also parses it.
 - ``summary_records`` splits a section into its raw records, and
   ``parse_summary_records`` parses records copied out of a section.
 - ``read_chunks`` fetches chunk records that lie close together in one ranged
@@ -139,33 +139,70 @@ def read_summary_from(f: Any, path: str) -> Optional["Summary"]:
     recording. Errors reading ``f`` propagate unchanged, so callers can retry
     them.
     """
-    section = read_summary_section_from(f, path)
+    section = read_section(f, read_tail(f, path))
     return None if section is None else _parse_summary(section, path)
 
 
-def read_summary_section_from(f: Any, path: str) -> Optional[memoryview]:
-    """Return the raw summary section of the open MCAP file ``f``, or ``None``.
+@dataclass(frozen=True)
+class SummaryTail:
+    """The checked last bytes of an MCAP file, which locate its summary section.
 
-    The section runs from the first summary record through the footer. Raises
-    as ``read_summary_from`` does, except that the records are not parsed.
+    Attributes:
+        path: The file the bytes come from.
+        start: Offset of ``data`` in the file.
+        data: The file's last ``_SUMMARY_TAIL_BYTES`` bytes, or all of a smaller file.
+        summary_start: Offset of the summary section; 0 when there is none.
+    """
+
+    path: str
+    start: int
+    data: bytes
+    summary_start: int
+
+    @property
+    def section_bytes(self) -> int:
+        """The summary section's exact length, footer included; 0 if it has none."""
+        if self.summary_start == 0:
+            return 0
+        return self.start + len(self.data) - len(_MAGIC) - self.summary_start
+
+    @property
+    def holds_section(self) -> bool:
+        """Whether ``data`` holds the whole summary section, or there is none."""
+        return self.summary_start == 0 or self.summary_start >= self.start
+
+
+def read_tail(f: Any, path: str) -> SummaryTail:
+    """Read the tail of the open MCAP file ``f``, checking magic bytes and footer.
+
+    Raises as ``read_summary_from`` does, except that no record is parsed.
     """
     size = f.seek(0, io.SEEK_END)
-    tail_start = max(0, size - _SUMMARY_TAIL_BYTES)
-    tail = _read_range(f, tail_start, size)
-    head = tail if tail_start == 0 else _read_range(f, 0, len(_MAGIC))
+    start = max(0, size - _SUMMARY_TAIL_BYTES)
+    data = _read_range(f, start, size)
+    head = data if start == 0 else _read_range(f, 0, len(_MAGIC))
     if not head.startswith(_MAGIC):
         raise ValueError(
             f"{path!r} is not an MCAP file: it does not start with the MCAP "
             "magic bytes."
         )
-    summary_start = _summary_start(tail, size, path)
-    if summary_start == 0:
+    return SummaryTail(path, start, data, _summary_start(data, size, path))
+
+
+def read_section(f: Any, tail: SummaryTail) -> Optional[memoryview]:
+    """Return the raw summary section that ``tail`` locates, or ``None``.
+
+    The section runs through the footer. ``f`` is read only for the part
+    before the tail, and may be ``None`` when ``tail.holds_section``.
+    """
+    if tail.summary_start == 0:
         return None
-    if summary_start < tail_start:
-        tail = _read_range(f, summary_start, tail_start) + tail
-        tail_start = summary_start
-    end = len(tail) - len(_MAGIC)
-    return memoryview(tail)[summary_start - tail_start : end]
+    data, start = tail.data, tail.start
+    if not tail.holds_section:
+        data = _read_range(f, tail.summary_start, start) + data
+        start = tail.summary_start
+    end = len(data) - len(_MAGIC)
+    return memoryview(data)[tail.summary_start - start : end]
 
 
 def summary_records(section: memoryview) -> Iterator[Tuple[int, memoryview]]:
