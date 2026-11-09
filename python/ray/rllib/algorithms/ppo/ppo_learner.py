@@ -77,7 +77,7 @@ class PPOLearner(Learner):
             )
 
     def _gae_value_function_context(self):
-        return nullcontext
+        return None
 
     @override(Learner)
     def remove_module(self, module_id: ModuleID, **kwargs):
