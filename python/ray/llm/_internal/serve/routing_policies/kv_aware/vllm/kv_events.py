@@ -21,9 +21,7 @@ logger = logging.getLogger(SERVE_LOGGER_NAME)
 
 
 def configure_kv_events_for_kv_routing(llm_config: LLMConfig) -> None:
-    """
-    Enable engine KV-cache events for a KV-aware-routed deployment.
-    """
+    """Enable engine KV-cache events for a KV-aware-routed deployment."""
     engine_kwargs = llm_config.engine_kwargs
     if engine_kwargs.get("enable_prefix_caching") is False:
         logger.warning(
@@ -83,7 +81,7 @@ def assign_replica_kv_events_endpoint(llm_config: LLMConfig) -> None:
 
     Replicas of a deployment share one ``engine_kwargs``, so colocated
     replicas would otherwise bind the same ZMQ port. Offsets the configured
-    base port by the replica's rank.
+    base port so the engine binds at base + node-local replica rank.
     """
     if not is_kv_aware(llm_config):
         return
@@ -93,12 +91,10 @@ def assign_replica_kv_events_endpoint(llm_config: LLMConfig) -> None:
     updated = dict(kv_events_config)
     endpoint = updated.pop("endpoint")
     replay_endpoint = updated.pop("replay_endpoint")
-    # With data parallelism the engine offsets ports by dp_rank under ZmqEventPublisher;
-    # otherwise offset by the replica's node-local rank so colocated replicas don't collide.
-    if llm_config.engine_kwargs.get("data_parallel_rank") is not None:
-        offset = 0
-    else:
-        offset = _get_replica_rank()
+    # vllm.distributed.kv_events.ZmqEventPublisher adds dp_rank itself. Subtract it here so the
+    # final port uses the node-local replica rank, even when multiple DP groups share a node.
+    dp_rank = llm_config.engine_kwargs.get("data_parallel_rank") or 0
+    offset = _get_replica_rank() - dp_rank
     updated["endpoint"] = _get_offset_endpoint_port(endpoint, offset)
     updated["replay_endpoint"] = _get_offset_endpoint_port(replay_endpoint, offset)
     llm_config.update_engine_kwargs(kv_events_config=updated)
@@ -117,6 +113,27 @@ def resolve_kv_event_source_endpoint(llm_config: LLMConfig) -> Optional[str]:
     if kv_events_config is None:
         return None
     return _get_node_routable_endpoint(llm_config, kv_events_config["endpoint"])
+
+
+def resolve_kv_event_block_size(vllm_config: Any) -> int:
+    """Token span of the KV blocks the engine hashes and publishes.
+
+    The KV router must register this span, or it drops the engine's KV
+    events. Under decode context parallelism (DCP) it is
+    ``block_size * decode_context_parallel_size``, not the per-rank
+    ``cache_config.block_size``.
+
+    Uses the engine-reported ``cache_config.effective_attention_block_size``
+    when available, else ``block_size * decode_context_parallel_size``.
+    """
+    cache_config = vllm_config.cache_config
+    effective_block_size = getattr(cache_config, "effective_attention_block_size", None)
+    if effective_block_size:
+        return effective_block_size
+    dcp_size = (
+        getattr(vllm_config.parallel_config, "decode_context_parallel_size", 1) or 1
+    )
+    return cache_config.block_size * dcp_size
 
 
 def get_kv_event_routing_stats(

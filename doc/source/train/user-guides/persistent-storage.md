@@ -36,9 +36,7 @@ To use cloud object storage, set {class}`RunConfig(storage_path) <ray.train.RunC
 :::{tab-item} AWS S3
 Specify a URI with the `s3://` scheme. Ray Train uses PyArrow's default {class}`S3FileSystem <pyarrow.fs.S3FileSystem>` for upload and download.
 
-```{testcode}
-:skipif: True
-
+```python
 from ray import train
 from ray.train.torch import TorchTrainer
 
@@ -55,9 +53,7 @@ trainer = TorchTrainer(
 :::{tab-item} Google Cloud Storage
 Specify a URI with the `gs://` scheme. Ray Train uses PyArrow's default {class}`GcsFileSystem <pyarrow.fs.GcsFileSystem>` for upload and download.
 
-```{testcode}
-:skipif: True
-
+```python
 from ray import train
 from ray.train.torch import TorchTrainer
 
@@ -74,9 +70,7 @@ trainer = TorchTrainer(
 :::{tab-item} Azure Blob Storage
 Ray Train uses `pyarrow.fs` for storage I/O, so wrap `adlfs.AzureBlobFileSystem` in a `pyarrow.fs.PyFileSystem` and pass it as {class}`RunConfig(storage_filesystem) <ray.train.RunConfig>`. Use the `abfss://` scheme, which enforces TLS, for the URI:
 
-```{testcode}
-:skipif: True
-
+```python
 import adlfs
 from pyarrow.fs import FSSpecHandler, PyFileSystem
 from ray import train
@@ -114,9 +108,7 @@ Specify the shared storage location as the {class}`RunConfig(storage_path) <ray.
 :::{tab-item} Mounted filesystem
 Mount the filesystem on every node in the cluster, then point `storage_path` at the mount. This approach works for Amazon EFS, Google Cloud Filestore, Azure Files, and NFS.
 
-```{testcode}
-:skipif: True
-
+```python
 from ray import train
 from ray.train.torch import TorchTrainer
 
@@ -135,9 +127,7 @@ trainer = TorchTrainer(
 ::::{tab-item} HDFS
 Specify a fully qualified `hdfs://` URI.
 
-```{testcode}
-:skipif: True
-
+```python
 from ray import train
 from ray.train.torch import TorchTrainer
 
@@ -170,9 +160,7 @@ How Ray Train uses local storage depends on whether your cluster has one node or
 If you run an experiment on a single node, such as a laptop, Ray Train uses the local filesystem as the storage location for checkpoints and other artifacts. By default, Ray Train saves results to `~/ray_results` in a subdirectory with a unique, auto-generated name. To customize this location, set `storage_path` and `name` in {class}`~ray.train.RunConfig`.
 
 
-```{testcode}
-:skipif: True
-
+```python
 from ray import train
 from ray.train.torch import TorchTrainer
 
@@ -222,9 +210,7 @@ When you provide a custom filesystem, set the associated `storage_path` to a qua
 For example, if you provide a custom S3 filesystem for `s3://bucket-name/sub-path/`, set `storage_path` to `bucket-name/sub-path/`, with the `s3://` stripped. The following example shows this usage.
 :::
 
-```{testcode}
-:skipif: True
-
+```python
 import pyarrow.fs
 
 from ray import train
@@ -253,9 +239,7 @@ trainer = TorchTrainer(
 
 To use any of these implementations, wrap the `fsspec` filesystem with a `pyarrow.fs` utility:
 
-```{testcode}
-:skipif: True
-
+```python
 # Make sure to install: `pip install -U s3fs`
 import s3fs
 import pyarrow.fs
@@ -285,9 +269,7 @@ See the API references for the `pyarrow.fs` wrapper utilities:
 
 For S3-compatible stores such as [Backblaze B2](https://www.backblaze.com/cloud-storage) or [MinIO](https://min.io/), follow the {ref}`preceding custom filesystem examples <custom-storage-filesystem>`, or pass the endpoint as a query parameter in the `storage_path` URI:
 
-```{testcode}
-:skipif: True
-
+```python
 from ray import train
 from ray.train.torch import TorchTrainer
 
@@ -316,9 +298,7 @@ The preceding sections cover how to configure the storage location for Ray Train
 This example includes checkpointing, which {ref}`train-checkpointing` covers in detail.
 :::
 
-```{testcode}
-:skipif: True
-
+```python
 import os
 import tempfile
 
@@ -363,9 +343,7 @@ Ray Train persists the following files to storage:
 
 The {class}`~ray.train.Result` and {class}`~ray.train.Checkpoint` objects that `trainer.fit` returns are the easiest way to access the data in these files:
 
-```{testcode}
-:skipif: True
-
+```python
 result.filesystem, result.path
 # S3FileSystem, "bucket-name/sub-path/unique-run-id"
 
@@ -481,9 +459,7 @@ Ray Train syncs the artifacts that *every worker* saves to storage. If multiple 
 
 As a best practice, write artifacts from only a single worker unless you need artifacts from multiple workers.
 
-```{testcode}
-:skipif: True
-
+```python
 from ray import train
 
 if train.get_context().get_world_rank() == 0:

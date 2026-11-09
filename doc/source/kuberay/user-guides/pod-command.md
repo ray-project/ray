@@ -42,7 +42,7 @@ spec:
           ...
 ```
 
-The preceding example YAML is a part of [ray-cluster.overwrite-command.yaml](https://github.com/ray-project/kuberay/blob/master/ray-operator/config/samples/ray-cluster.overwrite-command.yaml).
+The preceding example YAML is a part of [ray-cluster.overwrite-command.yaml](https://github.com/kuberay-project/kuberay/blob/master/ray-operator/config/samples/ray-cluster.overwrite-command.yaml).
 
 * `metadata.annotations.ray.io/overwrite-container-cmd: "true"`: This annotation tells KubeRay to respect the container `command` and `args` as provided by the users, without including any generated command. Refer to Part 2 for the default behavior if you set the annotation to "false" or don't set it at all.
 
@@ -70,7 +70,7 @@ Args:
 If you only want to execute commands before the generated command, you don't need to set the annotation `ray.io/overwrite-container-cmd: "true"`. Some users employ this method to set up environment variables used by `ray start`.
 
 ```yaml
-# https://github.com/ray-project/kuberay/ray-operator/config/samples/ray-cluster.head-command.yaml
+# https://github.com/kuberay-project/kuberay/blob/master/ray-operator/config/samples/ray-cluster.head-command.yaml
     #pod template
     template:
       spec:
@@ -97,7 +97,7 @@ If you only want to execute commands before the generated command, you don't nee
     # Prerequisite: There is a KubeRay operator in the Kubernetes cluster.
 
     # Create a RayCluster
-    kubectl apply -f https://raw.githubusercontent.com/ray-project/kuberay/master/ray-operator/config/samples/ray-cluster.head-command.yaml
+    kubectl apply -f https://raw.githubusercontent.com/kuberay-project/kuberay/master/ray-operator/config/samples/ray-cluster.head-command.yaml
 
     # Check ${RAYCLUSTER_HEAD_POD}
     kubectl get pod -l ray.io/node-type=head

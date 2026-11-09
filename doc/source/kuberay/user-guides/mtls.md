@@ -91,7 +91,7 @@ spec:
 Or apply this upstream sample directly:
 
 ```bash
-kubectl apply -f https://raw.githubusercontent.com/ray-project/kuberay/master/ray-operator/config/samples/ray-cluster.mtls.yaml
+kubectl apply -f https://raw.githubusercontent.com/kuberay-project/kuberay/master/ray-operator/config/samples/ray-cluster.mtls.yaml
 ```
 
 ## What the operator creates
@@ -178,4 +178,4 @@ spec:
     mode: DenyAllIngress
 ```
 
-`spec.networkPolicy` also requires the `RayClusterNetworkPolicy` feature gate on the operator. See the [KubeRay API reference](https://ray-project.github.io/kuberay/reference/api/#networkpolicyconfig) for `NetworkPolicyConfig` field details.
+`spec.networkPolicy` also requires the `RayClusterNetworkPolicy` feature gate on the operator. See the [KubeRay API reference](https://kuberay-project.github.io/kuberay/reference/api/#networkpolicyconfig) for `NetworkPolicyConfig` field details.

@@ -21,6 +21,7 @@ from ray._common.utils import import_attr
 from ray.autoscaler._private.cli_logger import cli_logger
 from ray.dashboard.modules.dashboard_sdk import parse_runtime_env_args
 from ray.dashboard.modules.serve.sdk import ServeSubmissionClient
+from ray.exceptions import AuthenticationError
 from ray.serve._private import api as _private_api
 from ray.serve._private.build_app import BuiltApplication, build_app
 from ray.serve._private.constants import (
@@ -62,8 +63,7 @@ RAY_DASHBOARD_ADDRESS_HELP_STR = (
 
 # See https://stackoverflow.com/a/33300001/11162437
 def str_presenter(dumper: yaml.Dumper, data):
-    """
-    A custom representer to write multi-line strings in block notation using a literal
+    """A custom representer to write multi-line strings in block notation using a literal
     style.
 
     Ensures strings with newline characters print correctly.
@@ -96,8 +96,7 @@ def remove_ansi_escape_sequences(input: str):
 
 
 def process_dict_for_yaml_dump(data):
-    """
-    Removes ANSI escape sequences recursively for all strings in dict.
+    """Removes ANSI escape sequences recursively for all strings in dict.
 
     We often need to use yaml.dump() to print dictionaries that contain exception
     tracebacks, which can contain ANSI escape sequences that color printed text. However
@@ -417,6 +416,15 @@ def deploy(
     help=RAY_INIT_ADDRESS_HELP_STR,
 )
 @click.option(
+    "--metrics-export-port",
+    type=int,
+    default=None,
+    help=(
+        "The port to use to expose Ray metrics through a Prometheus endpoint. "
+        "Only applies when `serve run` starts a new local Ray cluster."
+    ),
+)
+@click.option(
     "--blocking/--non-blocking",
     default=True,
     help=(
@@ -465,6 +473,7 @@ def run(
     working_dir: str,
     app_dir: str,
     address: str,
+    metrics_export_port: Optional[int],
     blocking: bool,
     reload: bool,
     route_prefix: str,
@@ -505,7 +514,10 @@ def run(
     if not ray.is_initialized():
         # Setting the runtime_env here will set defaults for the deployments.
         ray.init(
-            address=address, namespace=SERVE_NAMESPACE, runtime_env=final_runtime_env
+            address=address,
+            namespace=SERVE_NAMESPACE,
+            runtime_env=final_runtime_env,
+            _metrics_export_port=metrics_export_port,
         )
     elif (
         address is not None
@@ -809,6 +821,9 @@ def controller_health(address: str, output_json: bool):
                 address=address,
                 namespace=SERVE_NAMESPACE,
             )
+        except AuthenticationError:
+            # A ConnectionError subclass; keep its fix text instead of "not running".
+            raise
         except ConnectionError:
             cli_logger.error(
                 f"Could not connect to Ray cluster at address '{address}'. "

@@ -9,7 +9,7 @@ myst:
 # Serve a StableDiffusion text-to-image model on Kubernetes
 
 > **Note:** The Python files for the Ray Serve application and its client are in the [ray-project/serve_config_examples](https://github.com/ray-project/serve_config_examples) repository
-and [the Ray documentation](https://docs.ray.io/en/latest/serve/tutorials/stable-diffusion.html).
+and [the Ray documentation](../../serve/tutorials/stable-diffusion.md).
 
 ## Step 1: Create a Kubernetes cluster with GPUs
 
@@ -22,7 +22,7 @@ Follow [this document](kuberay-operator-deploy) to install the latest stable Kub
 ## Step 3: Install a RayService
 
 ```sh
-kubectl apply -f https://raw.githubusercontent.com/ray-project/kuberay/master/ray-operator/config/samples/ray-service.stable-diffusion.yaml
+kubectl apply -f https://raw.githubusercontent.com/kuberay-project/kuberay/master/ray-operator/config/samples/ray-service.stable-diffusion.yaml
 ```
 
 This RayService configuration contains some important settings:
@@ -78,4 +78,4 @@ python stable_diffusion_req.py
 # Check output.png
 ```
 
-* You can refer to the document ["Serving a Stable Diffusion Model"](https://docs.ray.io/en/latest/serve/tutorials/stable-diffusion.html) for an example output image.
+* You can refer to the document ["Serving a Stable Diffusion Model"](../../serve/tutorials/stable-diffusion.md) for an example output image.

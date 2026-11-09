@@ -18,6 +18,8 @@
 # Read the docs build itself is a separate system and is not configured here.
 group: doc
 steps:
+  # The image builds carry `oss`, like the doc steps that run in them, so a
+  # pipeline that skips `oss` doesn't build images that nothing will use.
   - name: docbuild
     label: "wanda: docbuild-py{{matrix}}"
     wanda: ci/docker/doc.build.wanda.yaml
@@ -30,7 +32,9 @@ steps:
     env:
       PYTHON: "{{matrix}}"
       REQUIREMENTS_FILE: "python/deplocks/docs/docbuild_depset_py{{matrix}}.lock"
-    tags: cibase
+    tags:
+      - oss
+      - cibase
 
   - name: docgpubuild
     label: "wanda: docgpubuild-py3.10"
@@ -38,7 +42,9 @@ steps:
     depends_on: oss-ci-base_gpu-multipy(python=3.10)
     env:
       PYTHON: "3.10"
-    tags: cibase
+    tags:
+      - oss
+      - cibase
 
   - label: ":book: doc: build"
     key: doc_build

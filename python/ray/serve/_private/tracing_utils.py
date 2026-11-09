@@ -155,8 +155,7 @@ class BatchTraceContextManager:
 def tracing_decorator_factory(
     trace_name: str, span_kind: Optional[Any] = None
 ) -> Callable:
-    """
-    Factory function to create a tracing decorator for instrumenting functions/methods
+    """Factory function to create a tracing decorator for instrumenting functions/methods
     with distributed tracing.
 
     Args:
@@ -263,8 +262,7 @@ def setup_tracing(
     *,
     tracing_config: "TracingConfig",
 ) -> bool:
-    """
-    Set up tracing for a specific Serve component.
+    """Set up tracing for a specific Serve component.
 
     Args:
         component_name: The name of the component.
@@ -394,8 +392,7 @@ def set_rpc_span_attributes(
     status_code: Optional[str] = None,
     service: Optional[str] = None,
 ):
-    """
-    Use this function to set attributes for RPC spans.
+    """Use this function to set attributes for RPC spans.
     Only include attributes that are in the OpenTelemetry
     RPC span attributes spec https://opentelemetry.io/docs/specs/semconv/attributes-registry/rpc/.
     """
@@ -415,8 +412,7 @@ def set_http_span_attributes(
     status_code: Optional[str] = None,
     route: Optional[str] = None,
 ):
-    """
-    Use this function to set attributes for HTTP spans.
+    """Use this function to set attributes for HTTP spans.
     Only include attributes that are in the OpenTelemetry
     HTTP span attributes spec https://opentelemetry.io/docs/specs/semconv/attributes-registry/http/.
     """

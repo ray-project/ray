@@ -183,6 +183,9 @@ class LocalLeaseManager : public LocalLeaseManagerInterface {
     return num_unschedulable_lease_spilled_;
   }
 
+  /// Bytes currently pinned as granted-lease arguments. For tests / debug.
+  size_t GetPinnedLeaseArgumentsBytes() const { return pinned_lease_arguments_bytes_; }
+
   bool IsLeaseQueued(const SchedulingClass &scheduling_class,
                      const LeaseID &lease_id) const override;
 
@@ -221,10 +224,12 @@ class LocalLeaseManager : public LocalLeaseManagerInterface {
   /// Helper method when the current node does not have the available resources to run a
   /// lease.
   ///
-  /// \returns true if the lease was spilled. The lease may not be spilled if the
-  /// spillback policy specifies the local node (which may happen if no other nodes have
-  /// the requested resources available).
-  bool TrySpillback(const std::shared_ptr<internal::Work> &work, bool &is_infeasible);
+  /// \returns the scheduler's answer; the lease was spilled iff it picked another node.
+  /// The lease may not be spilled if the spillback policy specifies the local node (which
+  /// may happen if no other nodes have the requested resources available).
+  NodeSchedulingResult TrySpillback(const std::shared_ptr<internal::Work> &work);
+
+  bool PickedOtherNode(const NodeSchedulingResult &result) const;
 
   // Try to spill waiting leases to a remote node, starting from the end of the
   // queue.

@@ -219,7 +219,7 @@ First, see the memory usage of an `allocate_memory` task. The total is 18GB. At 
 
 Each task uses about 18GB / 15 == 1.2 GB. To reduce the parallelism:
 
-- [Limit the max number of running tasks](https://docs.ray.io/en/latest/ray-core/patterns/limit-running-tasks.html).
+- [Limit the max number of running tasks](../../../core/patterns/limit-running-tasks.md).
 - Increase the `num_cpus` options for {func}`ray.remote`. Modern hardware typically has 4GB of memory per CPU, so you can choose the CPU requirements accordingly. This example specifies 1 CPU per `allocate_memory` Task. Doubling the CPU requirements, runs only half(7) of the Tasks at the same time, and memory usage doesn't exceed 9GB.
 
 (troubleshooting-out-of-memory-profile)=

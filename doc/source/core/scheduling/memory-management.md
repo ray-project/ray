@@ -32,7 +32,7 @@ Application memory
 : Your application uses this memory. It includes the following:
 
   - **Worker heap**: memory that your application uses, for example in Python code or TensorFlow. The best measure of worker heap is the *resident set size (RSS)* of your application minus its *shared memory usage (SHR)* in commands such as `top`. Subtract SHR because the OS reports object store shared memory as shared with each worker. If you don't subtract SHR, you double count memory usage.
-  - **Object store memory**: memory used when your application creates objects in the object store through `ray.put` and when it returns values from remote functions. Objects are reference counted and evicted when they fall out of scope. An object store server runs on each node. By default, when starting an instance, Ray reserves 30% of available memory. Control the size of the object store with [--object-store-memory](https://docs.ray.io/en/master/cluster/cli.html#cmdoption-ray-start-object-store-memory). On Linux, Ray allocates this memory in `/dev/shm`, which is shared memory, by default. On macOS, Ray uses `/tmp` on disk, which can affect performance compared to Linux. Because larger object stores degrade performance on macOS, Ray limits the default object store size there to 2 GiB. If you request a larger object store, Ray raises an error unless you set `RAY_ENABLE_MAC_LARGE_OBJECT_STORE=1`. Ray {ref}`spills objects to disk <object-spilling>` if the object store fills up. See {ref}`object-store-memory-size` for how Ray sizes the object store by default and how to change it.
+  - **Object store memory**: memory used when your application creates objects in the object store through `ray.put` and when it returns values from remote functions. Objects are reference counted and evicted when they fall out of scope. An object store server runs on each node. By default, when starting an instance, Ray reserves 30% of available memory. Control the size of the object store with {ref}`--object-store-memory <ray-start-doc>`. On Linux, Ray allocates this memory in `/dev/shm`, which is shared memory, by default. On macOS, Ray uses `/tmp` on disk, which can affect performance compared to Linux. Because larger object stores degrade performance on macOS, Ray limits the default object store size there to 2 GiB. If you request a larger object store, Ray raises an error unless you set `RAY_ENABLE_MAC_LARGE_OBJECT_STORE=1`. Ray {ref}`spills objects to disk <object-spilling>` if the object store fills up. See {ref}`object-store-memory-size` for how Ray sizes the object store by default and how to change it.
   - **Object store shared memory**: memory used when your application reads objects through `ray.get`. If an object is already on the node, reading it doesn't cause additional allocations, so many actors and tasks can share large objects efficiently.
 
 ### `ObjectRef` reference counting
@@ -276,16 +276,16 @@ By default, Ray doesn't take the potential memory usage of a task or actor into 
 Specifying a memory requirement doesn't limit memory usage. Ray uses the requirement only for admission control during scheduling, similar to how CPU scheduling works in Ray. Make sure the task doesn't use more memory than it requests.
 :::
 
-To tell the Ray scheduler a task or actor requires a certain amount of available memory to run, set the `memory` argument. The Ray scheduler then reserves the specified amount of available memory during scheduling, similar to how it handles CPU and GPU resources:
+To tell the Ray scheduler a task or actor requires a certain amount of available memory to run, set the `memory` argument in bytes. The Ray scheduler then reserves the specified amount of available memory during scheduling, similar to how it handles CPU and GPU resources:
 
 ```{testcode}
-# reserve 500MiB of available memory to place this task
+# Reserve 500 MiB of available memory to place this task.
 @ray.remote(memory=500 * 1024 * 1024)
 def some_function(x):
     pass
 
-# reserve 2.5GiB of available memory to place this actor
-@ray.remote(memory=2500 * 1024 * 1024)
+# Reserve 2.5 GiB of available memory to place this actor.
+@ray.remote(memory=2560 * 1024 * 1024)
 class SomeActor:
     def __init__(self, a, b):
         pass
@@ -294,11 +294,11 @@ class SomeActor:
 The preceding example sets the memory quota statically in the decorator. To set it dynamically at runtime, use `.options()`:
 
 ```{testcode}
-# override the memory quota to 100MiB when submitting the task
+# Override the memory quota to 100 MiB when submitting the task.
 some_function.options(memory=100 * 1024 * 1024).remote(x=1)
 
-# override the memory quota to 1GiB when creating the actor
-SomeActor.options(memory=1000 * 1024 * 1024).remote(a=1, b=2)
+# Override the memory quota to 1 GiB when creating the actor.
+SomeActor.options(memory=1024 * 1024 * 1024).remote(a=1, b=2)
 ```
 
 ### Questions or issues?

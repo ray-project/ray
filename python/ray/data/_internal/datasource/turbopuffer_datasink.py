@@ -1,5 +1,4 @@
-"""
-TurbopufferDatasink - Ray Data datasink for Turbopuffer vector database
+"""TurbopufferDatasink - Ray Data datasink for Turbopuffer vector database
 
 Implementation following the pattern of MongoDatasink and Daft's Turbopuffer sink.
 
@@ -84,50 +83,39 @@ class TurbopufferDatasink(Datasink):
     Examples:
         Write to a single namespace using a region:
 
-        .. testcode::
-           :skipif: True
-
-           import ray
-           from ray.data._internal.datasource.turbopuffer_datasink import (
-               TurbopufferDatasink,
-           )
-
-           ds = ray.data.range(100)
-           ds = ds.map_batches(lambda batch: {"id": batch["id"], "vector": ...})
-
-           ds.write_datasink(
-               TurbopufferDatasink(
-                   namespace="my-namespace",
-                   api_key="<YOUR_API_KEY>",
-                   region="gcp-us-central1",
-               )
-           )
+        >>> import ray  # doctest: +SKIP_EXAMPLE
+        >>> from ray.data._internal.datasource.turbopuffer_datasink import (
+        ...     TurbopufferDatasink,
+        ... )
+        >>> ds = ray.data.range(100)
+        >>> ds = ds.map_batches(lambda batch: {"id": batch["id"], "vector": ...})
+        >>> ds.write_datasink(
+        ...     TurbopufferDatasink(
+        ...         namespace="my-namespace",
+        ...         api_key="<YOUR_API_KEY>",
+        ...         region="gcp-us-central1",
+        ...     )
+        ... )
 
         Write using a base URL instead of a region:
 
-        .. testcode::
-           :skipif: True
-
-           ds.write_datasink(
-               TurbopufferDatasink(
-                   namespace="my-namespace",
-                   api_key="<YOUR_API_KEY>",
-                   base_url="https://gcp-us-central1.turbopuffer.com",
-               )
-           )
+        >>> ds.write_datasink(
+        ...     TurbopufferDatasink(
+        ...         namespace="my-namespace",
+        ...         api_key="<YOUR_API_KEY>",
+        ...         base_url="https://gcp-us-central1.turbopuffer.com",
+        ...     )
+        ... )
 
         Write to multiple namespaces driven by a column:
 
-        .. testcode::
-           :skipif: True
-
-           ds.write_datasink(
-               TurbopufferDatasink(
-                   namespace_column="tenant",
-                   api_key="<YOUR_API_KEY>",
-                   region="gcp-us-central1",
-               )
-           )
+        >>> ds.write_datasink(
+        ...     TurbopufferDatasink(
+        ...         namespace_column="tenant",
+        ...         api_key="<YOUR_API_KEY>",
+        ...         region="gcp-us-central1",
+        ...     )
+        ... )
     """
 
     def __init__(
@@ -232,8 +220,7 @@ class TurbopufferDatasink(Datasink):
         blocks: Iterable[Block],
         ctx: TaskContext,
     ) -> None:
-        """
-        Write blocks to Turbopuffer in a streaming fashion.
+        """Write blocks to Turbopuffer in a streaming fashion.
 
         For memory efficiency, blocks are processed one at a time rather than
         concatenating all blocks into a single large table. This follows the
@@ -276,8 +263,7 @@ class TurbopufferDatasink(Datasink):
         target_column: str,
         column_type: str,
     ) -> pa.Table:
-        """
-        Rename a column in the table if it differs from the target name.
+        """Rename a column in the table if it differs from the target name.
 
         Args:
             table: The Arrow table to modify.
@@ -311,8 +297,7 @@ class TurbopufferDatasink(Datasink):
         )
 
     def _prepare_arrow_table(self, table: pa.Table) -> pa.Table:
-        """
-        Prepare Arrow table for Turbopuffer write.
+        """Prepare Arrow table for Turbopuffer write.
 
         1. Rename ID column to "id" if needed
         2. Rename vector column to "vector" if needed

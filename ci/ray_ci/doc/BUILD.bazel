@@ -39,6 +39,20 @@ py_binary(
     deps = [":doc_example_targets"],
 )
 
+# Scope guard for the `docstring-only` label. Standard library only, so it
+# runs in the lint step without a Bazel build.
+py_library(
+    name = "check_docstring_only",
+    srcs = ["check_docstring_only.py"],
+)
+
+# Runs the >>> docstring examples in changed modules for the `docstring-only`
+# label. Standard library only; the CI step runs it in the library's image.
+py_library(
+    name = "run_docstring_examples",
+    srcs = ["run_docstring_examples.py"],
+)
+
 py_library(
     name = "doc",
     srcs = glob(
@@ -46,6 +60,8 @@ py_library(
         exclude = [
             "test_*.py",
             "cmd_*.py",
+            "check_docstring_only.py",
+            "run_docstring_examples.py",
             "doc_example_targets.py",
         ],
     ),
@@ -185,6 +201,36 @@ py_test(
     ],
     deps = [
         ":doc_example_targets",
+        ci_require("pytest"),
+    ],
+)
+
+py_test(
+    name = "test_check_docstring_only",
+    size = "small",
+    srcs = ["test_check_docstring_only.py"],
+    exec_compatible_with = ["//bazel:py3"],
+    tags = [
+        "ci_unit",
+        "team:ci",
+    ],
+    deps = [
+        ":check_docstring_only",
+        ci_require("pytest"),
+    ],
+)
+
+py_test(
+    name = "test_run_docstring_examples",
+    size = "small",
+    srcs = ["test_run_docstring_examples.py"],
+    exec_compatible_with = ["//bazel:py3"],
+    tags = [
+        "ci_unit",
+        "team:ci",
+    ],
+    deps = [
+        ":run_docstring_examples",
         ci_require("pytest"),
     ],
 )

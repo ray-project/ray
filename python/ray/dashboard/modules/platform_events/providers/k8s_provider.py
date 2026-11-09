@@ -34,8 +34,7 @@ KUBERAY_LABEL_KEY_CLUSTER = "ray.io/cluster"
 
 
 class KubernetesEventProvider(PlatformEventProvider):
-    """
-    Kubernetes-specific implementation of PlatformEventProvider.
+    """Kubernetes-specific implementation of PlatformEventProvider.
 
     Watches the Kubernetes Event API for events related to the active RayCluster
     and its parent owners (such as RayJob or RayService). It parses raw K8s event

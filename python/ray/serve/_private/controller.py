@@ -82,6 +82,10 @@ from ray.serve._private.long_poll import KeyType, LongPollHost, LongPollNamespac
 from ray.serve._private.node_port_manager import NodePortManager
 from ray.serve._private.proxy import ProxyActor
 from ray.serve._private.proxy_state import ProxyStateManager
+from ray.serve._private.routing_config import (
+    RoutingConfigSnapshot,
+    RoutingConfigVersion,
+)
 from ray.serve._private.storage.kv_store import RayInternalKVStore
 from ray.serve._private.tracing_utils import (
     InvalidTracingConfigError,
@@ -134,6 +138,8 @@ _CRASH_AFTER_CHECKPOINT_PROBABILITY = 0
 CONFIG_CHECKPOINT_KEY = "serve-app-config-checkpoint"
 LOGGING_CONFIG_CHECKPOINT_KEY = "serve-logging-config-checkpoint"
 SHUTDOWN_IN_PROGRESS_KEY = "serve-shutdown-in-progress"
+# Retained across Serve shutdowns so generations are not reused within a cluster.
+ROUTING_CONFIG_GENERATION_KEY = "serve-routing-config-generation"
 
 
 class ServeController:
@@ -200,6 +206,12 @@ class ServeController:
         self.gcs_client = GcsClient(address=ray.get_runtime_context().gcs_address)
         kv_store_namespace = f"ray-serve-{self.ray_worker_namespace}"
         self.kv_store = RayInternalKVStore(kv_store_namespace, self.gcs_client)
+        self._routing_config_generation = self._get_next_routing_config_generation()
+        self._routing_config_sequence = 0
+        self._routing_config_version = RoutingConfigVersion(
+            generation=self._routing_config_generation,
+            sequence=self._routing_config_sequence,
+        )
 
         self.long_poll_host = LongPollHost()
         self.done_recovering_event = asyncio.Event()
@@ -341,6 +353,7 @@ class ServeController:
         # The target capacity percentage for all deployments across the cluster.
         self._target_capacity: Optional[float] = None
         self._target_capacity_direction: Optional[TargetCapacityDirection] = None
+        self._applied_config_id: Optional[str] = None
         self._recover_state_from_checkpoint()
 
         # Nodes where proxy actors should run.
@@ -838,7 +851,17 @@ class ServeController:
             # control loop retries the reconcile next tick instead of skipping it.
             self._last_ingress_membership_version = version
 
-    def broadcast_target_groups_if_changed(self) -> None:
+    def _get_next_routing_config_generation(self) -> int:
+        """Persist and return the generation for this controller process."""
+        checkpoint = self.kv_store.get(ROUTING_CONFIG_GENERATION_KEY)
+        generation = int(checkpoint) + 1 if checkpoint is not None else 1
+        self.kv_store.put(
+            ROUTING_CONFIG_GENERATION_KEY,
+            str(generation).encode(),
+        )
+        return generation
+
+    def broadcast_target_groups_if_changed(self) -> RoutingConfigVersion:
         """Broadcast target groups over long poll if they have changed.
 
         Keeps an in-memory record of the last target groups that were broadcast
@@ -850,12 +873,34 @@ class ServeController:
 
         # Check if target groups have changed by comparing the objects directly
         if self._last_broadcasted_target_groups == target_groups:
-            return
+            return self._routing_config_version
+
+        self._routing_config_sequence += 1
+        routing_config_version = RoutingConfigVersion(
+            generation=self._routing_config_generation,
+            sequence=self._routing_config_sequence,
+        )
 
         self.long_poll_host.notify_changed(
-            {LongPollNamespace.TARGET_GROUPS: target_groups}
+            {
+                LongPollNamespace.TARGET_GROUPS: RoutingConfigSnapshot(
+                    target_groups=target_groups,
+                    version=routing_config_version,
+                )
+            }
         )
         self._last_broadcasted_target_groups = target_groups
+        self._routing_config_version = routing_config_version
+        return routing_config_version
+
+    async def get_routing_config_version(self) -> RoutingConfigVersion:
+        """Return the version containing the controller's current routing state.
+
+        Broadcast before returning so the version is guaranteed to cover target
+        groups generated from the latest reconciled application state.
+        """
+        await self.done_recovering_event.wait()
+        return self.broadcast_target_groups_if_changed()
 
     def broadcast_fallback_targets_if_changed(self) -> None:
         """Broadcast the fallback targets over long poll if they have changed."""
@@ -975,6 +1020,8 @@ class ServeController:
                 target_capacity,
                 target_capacity_direction,
                 config_checkpoints_dict,
+                # Checkpoints written before `config_id` existed have four fields.
+                *extra,
             ) = pickle.loads(checkpoint)
 
             return (
@@ -982,6 +1029,7 @@ class ServeController:
                 ServeDeploySchema(
                     applications=list(config_checkpoints_dict.values()),
                     target_capacity=target_capacity,
+                    config_id=extra[0] if extra else None,
                 ),
                 target_capacity_direction,
             )
@@ -1212,8 +1260,7 @@ class ServeController:
         name_to_deployment_args_list: Dict[str, List[bytes]],
         name_to_application_args: Dict[str, bytes],
     ) -> None:
-        """
-        Takes in a list of dictionaries that contain deployment arguments.
+        """Takes in a list of dictionaries that contain deployment arguments.
         If same app name deployed, old application will be overwritten.
 
         Args:
@@ -1247,6 +1294,7 @@ class ServeController:
                         "ingress": args.ingress,
                         "ingress_request_router": args.ingress_request_router,
                         "uses_multiplexing": args.uses_multiplexing,
+                        "router_application": args.router_application,
                         "route_prefix": (
                             args.route_prefix if args.HasField("route_prefix") else None
                         ),
@@ -1272,8 +1320,7 @@ class ServeController:
         deployment_args_list: List[bytes],
         application_args: bytes,
     ) -> None:
-        """
-        Deploy a single application
+        """Deploy a single application
         (as deploy_applications(), but it only takes a single name and deployment args).
         This primarily exists as a shim to avoid
         changing Java code in https://github.com/ray-project/ray/pull/49168,
@@ -1329,6 +1376,7 @@ class ServeController:
             self._target_capacity_direction,
         )
         self._target_capacity = config.target_capacity
+        self._applied_config_id = config.config_id
 
         for app_config in config.applications:
             # If the application logging config is not set, use the global logging
@@ -1347,6 +1395,7 @@ class ServeController:
                     self._target_capacity,
                     self._target_capacity_direction,
                     new_config_checkpoint,
+                    config.config_id,
                 )
             ),
         )
@@ -1540,6 +1589,7 @@ class ServeController:
             controller_health_metrics=self._health_metrics_tracker.collect_metrics(),
             # Set this explicitly so exclude_unset includes it in the response.
             restores_unset_config_options=True,
+            applied_config_id=self._applied_config_id,
         )._get_user_facing_json_serializable_dict(exclude_unset=True)
 
     def _get_proxy_target_groups(self) -> List[TargetGroup]:
@@ -1694,8 +1744,7 @@ class ServeController:
     def _get_target_groups_for_app(
         self, app_name: str, route_prefix: str
     ) -> List[TargetGroup]:
-        """
-        Create HTTP and gRPC target groups for a specific application.
+        """Create HTTP and gRPC target groups for a specific application.
 
         This function can return empty list if there are no running replicas.
         Or replicas have not fully initialized yet, where their ports are not
@@ -1715,6 +1764,9 @@ class ServeController:
         # tag per-request ingress metrics with it (matching the Python proxy).
         ingress_deployment_name = (
             self.application_state_manager.get_ingress_deployment_name(app_name) or ""
+        )
+        is_router_application = self.application_state_manager.is_router_application(
+            app_name
         )
 
         # Get running replicas for the ingress deployment
@@ -1753,6 +1805,7 @@ class ServeController:
                     ingress_request_router_targets=ingress_request_router_targets,
                     ingress_router_fallback=ingress_router_fallback,
                     ingress_deployment_name=ingress_deployment_name,
+                    is_router_application=is_router_application,
                 )
             )
 
@@ -1778,8 +1831,7 @@ class ServeController:
     def _get_target_groups_for_app_with_no_running_replicas(
         self, route_prefix: str, app_name: str
     ) -> List[TargetGroup]:
-        """
-        For applications that have no running replicas, we return target groups
+        """For applications that have no running replicas, we return target groups
         for proxy. This will allow applications to be discoverable via the
         proxy in situations where their replicas have scaled down to 0.
         """
@@ -1787,6 +1839,10 @@ class ServeController:
         # tag per-request ingress metrics with it (matching the Python proxy).
         ingress_deployment_name = (
             self.application_state_manager.get_ingress_deployment_name(app_name) or ""
+        )
+        # Needed at zero replicas too, else clients receive the router's decisions.
+        is_router_application = self.application_state_manager.is_router_application(
+            app_name
         )
 
         if self._ha_proxy_enabled:
@@ -1810,6 +1866,7 @@ class ServeController:
                     app_name=app_name,
                     ingress_request_router_targets=[],
                     ingress_deployment_name=ingress_deployment_name,
+                    is_router_application=is_router_application,
                 )
             )
         if include_grpc:
@@ -1923,7 +1980,7 @@ class ServeController:
         if checkpoint is None:
             return {}
 
-        _, _, _, config_checkpoints_dict = pickle.loads(checkpoint)
+        _, _, _, config_checkpoints_dict, *_ = pickle.loads(checkpoint)
         return {
             app: ServeApplicationSchema.model_validate(config)
             for app, config in config_checkpoints_dict.items()

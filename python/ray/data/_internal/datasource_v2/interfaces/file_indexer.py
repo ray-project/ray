@@ -121,6 +121,30 @@ class FileIndexer(ABC):
         """
         ...
 
+    def list_files_from_file_infos(
+        self,
+        file_infos: Iterable["FileInfo"],
+        *,
+        filesystem: Optional["FileSystem"],
+        preserve_order: bool = False,
+        predicate: Optional["Expr"] = None,
+        limit: Optional[int] = None,
+        projected_columns: Optional[List[str]] = None,
+        shuffle_config: Optional["FileShuffleConfig"] = None,
+        execution_idx: int = 0,
+        excluded_read_unit_ids: Optional[AbstractSet[str]] = None,
+    ) -> Iterable[FileManifest]:
+        """Process a previously discovered, filtered stream of file infos.
+
+        File-based indexers can implement this to reuse one planning-time
+        listing during execution. The input keeps discovery order; a file shuffle
+        may reorder it, while ``preserve_order`` governs metadata result order.
+        Metadata-backed indexers need not support it.
+        """
+        raise NotImplementedError(
+            f"{type(self).__name__} cannot process prelisted file infos"
+        )
+
 
 @dataclass(frozen=True)
 class FileInfo:

@@ -1,6 +1,7 @@
 import asyncio
 import pickle
 from copy import deepcopy
+from types import SimpleNamespace
 from unittest import mock
 
 import pytest
@@ -10,6 +11,7 @@ from ray.serve._private import api
 from ray.serve._private.api import _get_actor_init_error
 from ray.serve._private.common import TargetCapacityDirection
 from ray.serve._private.controller import (
+    ServeController,
     applications_match,
     calculate_target_capacity_direction,
 )
@@ -828,6 +830,30 @@ def test_proxy_start_timeout_keeps_controller(no_running_serve):
         with pytest.raises(TimeoutError, match="HTTP proxies not available"):
             api.serve_start()
     cleanup.assert_not_called()
+
+
+class TestConfigCheckpoint:
+    def _read(self, checkpoint):
+        return ServeController._read_config_checkpoint(
+            SimpleNamespace(kv_store=SimpleNamespace(get=lambda _key: checkpoint))
+        )
+
+    def test_reads_checkpoint_written_before_config_id(self):
+        """Four-field checkpoints from older controllers still load."""
+        app = {"name": "a", "import_path": "fake.a"}
+        legacy = pickle.dumps((1.0, None, TargetCapacityDirection.UP, {"a": app}))
+        deployment_time, config, direction = self._read(legacy)
+        assert deployment_time == 1.0
+        assert direction == TargetCapacityDirection.UP
+        assert [a.name for a in config.applications] == ["a"]
+        assert config.config_id is None
+
+    def test_reads_config_id(self):
+        app = {"name": "a", "import_path": "fake.a"}
+        current = pickle.dumps((1.0, None, None, {"a": app}, "c1"))
+        _, config, _ = self._read(current)
+        assert config.config_id == "c1"
+        assert self._read(None) == (0.0, None, None)
 
 
 if __name__ == "__main__":
