@@ -2,7 +2,7 @@
 This file serves as a documentation example and CI test for data parallel + prefill-decode disaggregation.
 
 Structure:
-1. Monkeypatch setup: Ensures serve.run is non-blocking and removes accelerator requirements for CI testing.
+1. Monkeypatch setup: Ensures serve.run is non-blocking.
 2. Docs example (between __dp_pd_example_start/end__): Embedded in Sphinx docs via literalinclude.
 3. Test validation (deployment status polling + cleanup)
 """
@@ -11,7 +11,6 @@ import time
 from ray import serve
 from ray.serve.schema import ApplicationStatus
 from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME
-from ray.serve import llm
 
 # Check if NIXL is available (required for NixlConnector)
 try:
@@ -27,7 +26,6 @@ if not NIXL_AVAILABLE:
     )
 
 _original_serve_run = serve.run
-_original_build_dp_deployment = llm.build_dp_deployment
 
 
 def _non_blocking_serve_run(app, **kwargs):
@@ -36,15 +34,7 @@ def _non_blocking_serve_run(app, **kwargs):
     return _original_serve_run(app, **kwargs)
 
 
-def _testing_build_dp_deployment(llm_config, **kwargs):
-    """Removes accelerator requirements for testing"""
-    if llm_config.accelerator_type is not None:
-        llm_config.accelerator_type = None
-    return _original_build_dp_deployment(llm_config, **kwargs)
-
-
 serve.run = _non_blocking_serve_run
-llm.build_dp_deployment = _testing_build_dp_deployment
 
 # __dp_pd_example_start__
 from ray import serve

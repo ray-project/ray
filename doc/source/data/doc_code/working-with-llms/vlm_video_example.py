@@ -43,7 +43,7 @@ from ray.data.llm import (
 video_processor_config = vLLMEngineProcessorConfig(
     model_source="Qwen/Qwen3-VL-4B-Instruct",
     engine_kwargs=dict(
-        tensor_parallel_size=4,
+        tensor_parallel_size=1,
         pipeline_parallel_size=1,
         trust_remote_code=True,
         limit_mm_per_prompt={"video": 1},
@@ -56,7 +56,6 @@ video_processor_config = vLLMEngineProcessorConfig(
         },
     ),
     batch_size=1,
-    accelerator_type="L4",
     concurrency=1,
     prepare_multimodal_stage={
         "enabled": True,
@@ -176,7 +175,7 @@ def create_vlm_video_config():
     return vLLMEngineProcessorConfig(
         model_source="Qwen/Qwen3-VL-4B-Instruct",
         engine_kwargs=dict(
-            tensor_parallel_size=4,
+            tensor_parallel_size=1,
             pipeline_parallel_size=1,
             trust_remote_code=True,
             limit_mm_per_prompt={"video": 1},
