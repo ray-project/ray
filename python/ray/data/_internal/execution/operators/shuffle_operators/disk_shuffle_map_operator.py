@@ -232,6 +232,7 @@ class DiskHashShuffleMapOp(InternalQueueOperatorMixin, PhysicalOperator):
                 and sum(self._merge_buffer_bytes_by_node.values())
                 >= self._broadcast_threshold_bytes
             ):
+                assert self._side is not None  # UNDECIDED implies a side
                 self._decision.exceed_threshold(self._side)
             # NONE: size-based flush of the merge buffer. UNDECIDED: no-op.
             self._on_decided()
@@ -245,6 +246,7 @@ class DiskHashShuffleMapOp(InternalQueueOperatorMixin, PhysicalOperator):
     def all_inputs_done(self) -> None:
         super().all_inputs_done()
         if self._decision.build_side is BuildSide.UNDECIDED:
+            assert self._side is not None  # UNDECIDED implies a side
             self._decision.choose_build(self._side)
         # Still UNDECIDED (this side cannot build and the other side is still
         # reading): hold the buffer; refresh_state() flushes it once decided.
@@ -320,9 +322,42 @@ class DiskHashShuffleMapOp(InternalQueueOperatorMixin, PhysicalOperator):
         self._metrics.on_output_queued(stamped)
 
     def _flush_merge_buffer(self, node_id: str) -> None:
-        block_refs = self._merge_buffer_refs_by_node.pop(node_id, [])
+        self._merge_buffer_refs_by_node.pop(node_id, None)
+        self._merge_buffer_bytes_by_node.pop(node_id, None)
         bundles = self._merge_buffer_bundles_by_node.pop(node_id, [])
-        estimated_bytes = self._merge_buffer_bytes_by_node.pop(node_id, 0)
+        target_node_id = node_id if node_id != "unknown" else None
+        # A buffer held while the broadcast decision was pending can be over
+        # _input_batch_bytes. Split it so each map task stays the same size as
+        # on the streaming path, where this yields a single group.
+        group: List[RefBundle] = []
+        group_bytes = 0
+        for bundle in bundles:
+            group.append(bundle)
+            group_bytes += sum(m.size_bytes or 0 for m in bundle.metadata)
+            if group_bytes >= self._input_batch_bytes:
+                self._submit_merged_bundles(group, group_bytes, target_node_id)
+                group, group_bytes = [], 0
+        if not group:
+            return
+        if self._inputs_complete:
+            # Submit all remaining buffers if inputs completed
+            self._submit_merged_bundles(group, group_bytes, target_node_id)
+        else:
+            # A partial batch keeps waiting for more input, as on the
+            # streaming path.
+            self._merge_buffer_bundles_by_node[node_id] = group
+            self._merge_buffer_refs_by_node[node_id] = [
+                ref for bundle in group for ref in bundle.block_refs
+            ]
+            self._merge_buffer_bytes_by_node[node_id] = group_bytes
+
+    def _submit_merged_bundles(
+        self,
+        bundles: List[RefBundle],
+        estimated_bytes: int,
+        target_node_id: Optional[str],
+    ) -> None:
+        block_refs = [ref for bundle in bundles for ref in bundle.block_refs]
         if not block_refs:
             for bundle in bundles:
                 bundle.destroy_if_owned()
@@ -331,7 +366,7 @@ class DiskHashShuffleMapOp(InternalQueueOperatorMixin, PhysicalOperator):
             block_refs,
             bundles,
             estimated_bytes=estimated_bytes,
-            target_node_id=node_id if node_id != "unknown" else None,
+            target_node_id=target_node_id,
         )
 
     def _submit_shuffle_map_task(

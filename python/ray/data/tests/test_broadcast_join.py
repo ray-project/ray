@@ -25,6 +25,9 @@ from ray.data._internal.execution.operators.map_transformer import (
     BlockMapTransformFn,
     MapTransformer,
 )
+from ray.data._internal.execution.operators.shuffle_operators.disk_shuffle_map_operator import (  # noqa: E501
+    DiskHashShuffleMapOp,
+)
 from ray.data._internal.execution.operators.shuffle_operators.disk_shuffle_reduce_operator import (  # noqa: E501
     DiskHashShuffleReduceOp,
 )
@@ -294,6 +297,39 @@ def test_timeout_demotes_to_shuffle(
     broadcast, shuffle = patch_submit_tasks
     # The join fell back to the shuffle path.
     assert shuffle.call_count > 0 and broadcast.call_count == 0
+
+
+def test_held_input_is_flushed_in_batches_after_fallback(
+    ray_start_regular_shared_2_cpus,
+    disk_shuffle_v2,
+    make_left_right,
+):
+    """Input held while undecided is flushed as batch-sized map tasks, not
+    as one task per node."""
+    # Left (~3 KiB, 4 bundles) exceeds the threshold and finishes reading long
+    # before the timeout, so all of it is held when the join falls back.
+    # With shuffle_input_batch_bytes=0 every bundle is its own batch.
+    disk_shuffle_v2.broadcast_join_threshold_bytes = 1024
+    disk_shuffle_v2.broadcast_join_decision_timeout_s = 1
+
+    left, right = make_left_right()
+    # Spy on map task submissions so we can count the tasks from the left map op.
+    with mock.patch.object(
+        DiskHashShuffleMapOp,
+        "_submit_shuffle_map_task",
+        autospec=True,
+        side_effect=DiskHashShuffleMapOp._submit_shuffle_map_task,
+    ) as submit_map:
+        joined = left.join(_slow(right), "inner", on=("id",), num_partitions=4)
+        _assert_join_result(joined, left, right, "inner")
+
+    left_map_tasks = [
+        call
+        for call in submit_map.call_args_list
+        if call.args[0]._side is BuildSide.BUILD_LEFT
+    ]
+    # One map task per left bundle, should get 4 tasks as left has 4 bundles.
+    assert len(left_map_tasks) == 4
 
 
 if __name__ == "__main__":
