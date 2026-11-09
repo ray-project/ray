@@ -470,14 +470,15 @@ def test_count_retries_a_transient_error(chunked_file, monkeypatch):
     assert flaky.opens == 2
 
 
+@pytest.mark.parametrize("granularity", ["message", "attachment", "metadata"])
 def test_count_reads_when_errors_can_be_skipped(
-    chunked_file, restore_max_errored_blocks
+    chunked_file, restore_max_errored_blocks, granularity
 ):
     """With ``max_errored_blocks`` set, a read keeps a file's other rows past a
     corrupt part that the summaries still count, so ``count()`` reads instead."""
     from ray.data.context import DataContext
 
-    datasource = MCAPDatasourceV2([chunked_file])
+    datasource = MCAPDatasourceV2([chunked_file], read_granularity=granularity)
     scanner = scanner_for(datasource)
     assert scanner.metadata_row_count_is_exact()
 
