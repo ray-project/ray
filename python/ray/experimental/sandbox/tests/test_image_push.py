@@ -2,6 +2,7 @@ import gzip
 import hashlib
 import io
 import json
+import sys
 import tarfile
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -15,6 +16,12 @@ from ray.experimental.sandbox._internal.image_utils import (
     extract_tar_layer,
     image_cache_name,
 )
+from ray.experimental.sandbox.exceptions import SandboxError
+
+
+@pytest.fixture(scope="session", autouse=True)
+def ensure_runsc() -> None:
+    """Registry push and layer tests never start gVisor."""
 
 
 def _digest(data: bytes) -> str:
@@ -203,3 +210,126 @@ def test_push_image_mounts_or_uploads_base_and_preserves_config(
     assert scopes[0] == ["repository:target:pull,push", "repository:source:pull"]
     assert len(calls) == (0 if mount or cached else 1)
     assert json.loads((image_dir / ".image_config.json").read_text()) == config
+
+
+@pytest.mark.parametrize("manifest", [None, {}, {"config": None}, {"config": []}])
+def test_push_rejects_invalid_config_descriptor_before_registry_requests(
+    tmp_path, monkeypatch, manifest
+):
+    base = "registry.example/source:old"
+    image_dir = tmp_path / image_cache_name(base)
+    image_dir.mkdir()
+    (image_dir / ".manifest.json").write_text(json.dumps(manifest))
+    (image_dir / ".image_config.json").write_text("{}")
+    monkeypatch.setattr(
+        image_push,
+        "get_registry_auth_headers",
+        lambda *args, **kwargs: pytest.fail("Registry contacted for invalid manifest"),
+    )
+    with pytest.raises(SandboxError, match="requires a config descriptor object"):
+        image_push.push_image(
+            base, "registry.example/target:new", [], None, str(tmp_path), 5
+        )
+
+
+@pytest.mark.parametrize("config_present", [False, True])
+def test_commit_env_with_missing_or_null_image_config(config_present):
+    config = {"config": None} if config_present else {}
+    committed = json.loads(image_push._commit_config(config, [], {"A": "new"}))
+    assert committed["config"] == {"Env": ["A=new"]}
+
+
+@pytest.mark.parametrize("image_config", [[], "invalid"])
+def test_commit_env_rejects_non_object_image_config(image_config):
+    with pytest.raises(SandboxError, match="config field must be an object or null"):
+        image_push._commit_config({"config": image_config}, [], {"A": "new"})
+
+
+@pytest.mark.parametrize("status", [400, 401, 500])
+def test_mount_authentication_and_unexpected_errors_remain_terminal(
+    monkeypatch, status
+):
+    import requests
+
+    repository = image_push._Repository("registry.example", "target", "Bearer test", 5)
+
+    def send(request, **kwargs):
+        response = requests.Response()
+        response.request = request
+        response.status_code = status
+        response._content = b"denied"
+        response._content_consumed = True
+        return response
+
+    monkeypatch.setattr(repository._session, "send", send)
+    try:
+        with pytest.raises(SandboxError, match=f"failed: {status}"):
+            repository.mount("sha256:test", "source")
+    finally:
+        repository.close()
+
+
+@pytest.mark.parametrize(
+    "location, registry_origin, status",
+    [
+        ("https://registry.example:443/upload", True, 201),
+        ("https://storage.example/upload?signature=test", False, 201),
+        ("https://registry.example:444/upload", False, 201),
+        ("http://registry.example/upload", False, 201),
+        ("https://storage.example/upload?signature=test", False, 401),
+    ],
+)
+@pytest.mark.parametrize("auth", [None, "Bearer test"])
+def test_upload_location_keeps_auth_only_on_registry_origin(
+    monkeypatch, location, registry_origin, status, auth
+):
+    import requests
+
+    repository = image_push._Repository("registry.example", "target", auth, 5)
+    calls = []
+
+    def send(request, **kwargs):
+        calls.append(request)
+        response = requests.Response()
+        response.request = request
+        response._content = b"denied" if status == 401 else b""
+        response._content_consumed = True
+        response.status_code = (
+            404
+            if request.method == "HEAD"
+            else 202
+            if request.method == "POST"
+            else status
+        )
+        response.headers["Location"] = location
+        response.headers["WWW-Authenticate"] = 'Basic realm="storage"'
+        return response
+
+    monkeypatch.setattr(repository._session, "send", send)
+    monkeypatch.setattr(
+        requests.sessions,
+        "get_netrc_auth",
+        lambda url: ("netrc-user", "netrc-password")
+        if not registry_origin and url.startswith(location)
+        else None,
+    )
+    monkeypatch.setattr(
+        repository, "_authenticate", lambda challenge: pytest.fail("Storage auth retry")
+    )
+    try:
+        if status == 401:
+            with pytest.raises(SandboxError, match="Registry PUT .* failed: 401"):
+                repository.upload("sha256:test", b"layer")
+        else:
+            repository.upload("sha256:test", b"layer")
+    finally:
+        repository.close()
+    assert [request.method for request in calls] == ["HEAD", "POST", "PUT"]
+    assert all(request.headers.get("Authorization") == auth for request in calls[:2])
+    assert calls[2].headers.get("Authorization") == (auth if registry_origin else None)
+    assert calls[2].headers["Content-Type"] == "application/octet-stream"
+    assert calls[2].body == b"layer"
+
+
+if __name__ == "__main__":
+    sys.exit(pytest.main(["-v", __file__]))

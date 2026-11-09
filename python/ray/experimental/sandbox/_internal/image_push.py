@@ -13,15 +13,19 @@ import dataclasses
 import datetime
 import gzip
 import hashlib
+import io
 import json
+import logging
 import os
 import tarfile
+import threading
 import urllib.parse
 from typing import BinaryIO, Dict, List, Optional, Tuple, Union
 
 import requests
 import requests.adapters
 
+from ray.experimental.sandbox._internal.docker_config import registry_credentials
 from ray.experimental.sandbox._internal.image_utils import (
     _USER_AGENT,
     _download_blobs,
@@ -32,6 +36,8 @@ from ray.experimental.sandbox._internal.image_utils import (
     registry_base_url,
 )
 from ray.experimental.sandbox.exceptions import SandboxError
+
+logger = logging.getLogger(__name__)
 
 _OPAQUE_XATTR = "SCHILY.xattr.trusted.overlay.opaque"
 _OVERLAY_XATTR_PREFIX = "SCHILY.xattr.trusted.overlay."
@@ -70,6 +76,9 @@ class _Sha256Writer:
         self.sha256.update(data)
         self.size += len(data)
         return len(data)
+
+    def tell(self) -> int:
+        return self.size
 
     def flush(self) -> None:
         self._target.flush()
@@ -114,7 +123,7 @@ def build_layers(rootfs_tar: str, directory: str) -> List[Layer]:
                 )
                 raw = _Sha256Writer(out)
                 dst = stack.enter_context(
-                    tarfile.open(fileobj=raw, mode="w|", format=tarfile.PAX_FORMAT)
+                    tarfile.open(fileobj=raw, mode="w", format=tarfile.PAX_FORMAT)
                 )
             opaque = member.pax_headers.get(_OPAQUE_XATTR) == "y"
             member.pax_headers = {
@@ -133,7 +142,7 @@ def build_layers(rootfs_tar: str, directory: str) -> List[Layer]:
                 if opaque and member.isdir():
                     name = os.path.join(member.name.rstrip("/"), ".wh..wh..opq")
                     dst.addfile(_marker(name, member))
-            if dst.offset >= part_bytes and len(parts) < _MAX_PARTS - 1:
+            if raw.size >= part_bytes and len(parts) < _MAX_PARTS - 1:
                 close()
                 dst = None
         if dst is not None or not parts:
@@ -143,7 +152,7 @@ def build_layers(rootfs_tar: str, directory: str) -> List[Layer]:
                 )
                 raw = _Sha256Writer(out)
                 dst = stack.enter_context(
-                    tarfile.open(fileobj=raw, mode="w|", format=tarfile.PAX_FORMAT)
+                    tarfile.open(fileobj=raw, mode="w", format=tarfile.PAX_FORMAT)
                 )
             close()
     os.remove(rootfs_tar)
@@ -200,7 +209,7 @@ def push_image(
     ).get("Authorization")
 
     with contextlib.closing(
-        _Repository(registry, repo, auth, timeout_seconds)
+        _Repository(registry, repo, auth, timeout_seconds, scopes=scopes)
     ) as dst, concurrent.futures.ThreadPoolExecutor(_PARALLELISM) as pool:
         uploads = [
             pool.submit(dst.upload, layer.digest, open(layer.path, "rb"))
@@ -261,6 +270,11 @@ def _load_base(images_dir: str, base_image: str) -> Tuple[Dict, Dict]:
             "config is missing or invalid. Re-pull it into a fresh cache and "
             "recreate the sandbox before committing."
         ) from err
+    if not isinstance(manifest, dict) or not isinstance(manifest.get("config"), dict):
+        raise SandboxError(
+            f"Cannot commit base image '{base_image}': "
+            "cached manifest requires a config descriptor object."
+        )
     return manifest, config
 
 
@@ -276,7 +290,11 @@ def _commit_config(
         {"created": now, "created_by": "ray sandbox commit"} for _ in layers
     )
     if env:
-        image_config = config.setdefault("config", {})
+        image_config = config.get("config")
+        if image_config is None:
+            image_config = config["config"] = {}
+        elif not isinstance(image_config, dict):
+            raise SandboxError("Base image config field must be an object or null")
         merged = dict(
             e.split("=", 1) for e in image_config.get("Env") or [] if "=" in e
         )
@@ -311,13 +329,33 @@ def _commit_manifest(
     return json.dumps(new_manifest, separators=(",", ":")).encode()
 
 
+def _url_origin(url: str) -> Tuple[str, Optional[str], Optional[int]]:
+    parsed = urllib.parse.urlsplit(url)
+    return (
+        parsed.scheme,
+        parsed.hostname,
+        parsed.port
+        if parsed.port is not None
+        else {"http": 80, "https": 443}.get(parsed.scheme),
+    )
+
+
 class _Repository:
     """Blob and manifest uploads to one registry repository."""
 
     def __init__(
-        self, registry: str, repo: str, auth: Optional[str], timeout_seconds: float
+        self,
+        registry: str,
+        repo: str,
+        auth: Optional[str],
+        timeout_seconds: float,
+        scopes: Optional[List[str]] = None,
     ):
+        self._registry = registry
+        self._scopes = scopes or [f"repository:{repo}:pull,push"]
+        self._auth_lock = threading.Lock()
         self._url = f"{registry_base_url(registry)}/v2/{repo}"
+        self._origin = _url_origin(self._url)
         self._timeout = timeout_seconds
         # Reuses connections: far from the registry, a TLS handshake costs more
         # than most requests.
@@ -336,7 +374,33 @@ class _Repository:
         self, method: str, path: str, ok: Tuple[int, ...] = (), **kwargs
     ) -> requests.Response:
         url = f"{self._url}{path}" if path.startswith("/") else path
+        registry_request = _url_origin(url) == self._origin
+        if not registry_request:
+            # Suppress both session credentials and automatic netrc auth.
+            kwargs["headers"] = dict(kwargs.get("headers") or {}, Authorization=None)
+            kwargs["auth"] = lambda request: request
+        body = kwargs.get("data")
+        position = body.tell() if isinstance(body, io.IOBase) else None
         response = self._session.request(method, url, timeout=self._timeout, **kwargs)
+        if (
+            response.status_code == 401
+            and registry_request
+            and _url_origin(response.request.url) == self._origin
+            and not response.request.headers.get("Authorization")
+        ):
+            response.close()
+            # Parallel anonymous requests share one credential lookup. A
+            # rejection of an authenticated request is final.
+            with self._auth_lock:
+                if "Authorization" not in self._session.headers:
+                    self._session.headers["Authorization"] = self._authenticate(
+                        response.headers.get("WWW-Authenticate", "")
+                    )
+            if position is not None:
+                body.seek(position)
+            response = self._session.request(
+                method, url, timeout=self._timeout, **kwargs
+            )
         if response.status_code >= 400 and response.status_code not in ok:
             raise SandboxError(
                 f"Registry {method} {url.split('?')[0]} failed: "
@@ -344,12 +408,67 @@ class _Repository:
             )
         return response
 
+    def _authenticate(self, challenge: str) -> str:
+        scheme, _, parameters = challenge.partition(" ")
+        creds = registry_credentials(self._registry, self._timeout)
+        if creds is not None and creds.registry_token:
+            return f"Bearer {creds.registry_token}"
+        if scheme.lower() == "basic" and creds is not None and creds.username:
+            return creds.basic_authorization()
+        parameters = requests.utils.parse_dict_header(parameters)
+        realm = parameters.get("realm")
+        if scheme.lower() != "bearer" or not realm:
+            raise SandboxError(f"Cannot authenticate push to '{self._registry}'")
+        params: Dict[str, Union[str, List[str]]] = {"scope": self._scopes}
+        if parameters.get("service"):
+            params["service"] = parameters["service"]
+        if creds is not None and creds.identity_token:
+            response = requests.post(
+                realm,
+                data=dict(
+                    params,
+                    grant_type="refresh_token",
+                    refresh_token=creds.identity_token,
+                    client_id="ray-sandbox",
+                ),
+                headers={"User-Agent": _USER_AGENT},
+                timeout=self._timeout,
+            )
+        else:
+            response = requests.get(
+                realm,
+                params=params,
+                auth=(creds.username, creds.password)
+                if creds is not None and creds.username
+                else None,
+                headers={"User-Agent": _USER_AGENT},
+                timeout=self._timeout,
+            )
+        with response:
+            if response.status_code >= 400:
+                raise SandboxError(
+                    f"Push token request failed: HTTP {response.status_code}"
+                )
+            data = response.json()
+        token = data.get("token") or data.get("access_token")
+        if not token:
+            raise SandboxError("Push token response contains no token")
+        return f"Bearer {token}"
+
     def has_blob(self, digest: str) -> bool:
         return self._send("HEAD", f"/blobs/{digest}", ok=(404,)).status_code != 404
 
     def mount(self, digest: str, from_repo: str) -> bool:
         query = urllib.parse.urlencode({"mount": digest, "from": from_repo})
-        return self._send("POST", f"/blobs/uploads/?{query}").status_code == 201
+        response = self._send("POST", f"/blobs/uploads/?{query}", ok=(403, 404, 405))
+        if response.status_code >= 400:
+            logger.warning(
+                "Registry mount from %s to %s failed (HTTP %s); falling back to upload",
+                from_repo,
+                self._url,
+                response.status_code,
+            )
+        return response.status_code == 201
 
     def upload(self, digest: str, body: Union[bytes, BinaryIO]) -> None:
         """Upload ``body`` unless the repository has it; close a file body."""
