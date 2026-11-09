@@ -8,7 +8,7 @@ operators, optimizer rules), in addition to `python/ray/data/REVIEW.md`.
 Important findings are semantic ones: an optimizer rule that changes query
 results, drops an operator's options, or mis-orders operators.
 
-Readability, correctness of the optimizer rule is quite important
+Readability and correctness of the optimizer rules are highly important.
 
 ## Always check
 
