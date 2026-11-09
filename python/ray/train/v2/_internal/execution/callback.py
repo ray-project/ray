@@ -201,8 +201,7 @@ class ReportCallback(RayTrainCallback):
 
 @DeveloperAPI
 class WorkerCallback(RayTrainCallback):
-    """
-    Callbacks that are hooked to the worker event.
+    """Callbacks that are hooked to the worker event.
 
     These callbacks are created on the train driver process and then
     copied and passed to all the workers.
@@ -219,8 +218,7 @@ class WorkerCallback(RayTrainCallback):
 
 @DeveloperAPI
 class TrainContextCallback(RayTrainCallback):
-    """
-    Callbacks that are hooked to the train context event.
+    """Callbacks that are hooked to the train context event.
 
     These callbacks are created on the train driver process and then
     copied and passed to all the workers.

@@ -39,16 +39,14 @@ class ExternalEnv(threading.Thread):
 
     This env is thread-safe, but individual episodes must be executed serially.
 
-    .. testcode::
-        :skipif: True
-
-        from ray.tune import register_env
-        from ray.rllib.algorithms.dqn import DQN
-        YourExternalEnv = ...
-        register_env("my_env", lambda config: YourExternalEnv(config))
-        algo = DQN(env="my_env")
-        while True:
-            print(algo.train())
+    Examples:
+        >>> from ray.tune import register_env  # doctest: +SKIP_EXAMPLE
+        >>> from ray.rllib.algorithms.dqn import DQN
+        >>> YourExternalEnv = ...
+        >>> register_env("my_env", lambda config: YourExternalEnv(config))
+        >>> algo = DQN(env="my_env")
+        >>> while True:
+        ...     print(algo.train())
     """
 
     def __init__(

@@ -17,47 +17,63 @@ from ray.rllib.utils.typing import LearningRateOrSchedule, RLModuleSpecType
 class IQLConfig(MARWILConfig):
     """Defines a configuration class from which a new IQL Algorithm can be built
 
-    .. testcode::
-        :skipif: True
+    Examples:
+        >>> from pathlib import Path  # doctest: +SKIP_EXAMPLE
+        >>> import gymnasium as gym
+        >>> from ray.rllib.algorithms.iql import IQLConfig
+        >>> # Get the path to the Pendulum data in the rllib folder.
+        >>> base_path = Path(__file__).parents[2]
+        >>> data_path = base_path / "offline/tests/data/pendulum/pendulum-v1_enormous"
+        >>> config = IQLConfig().training(actor_lr=0.00001, gamma=0.99)
+        >>> # Set the observation and action spaces of the data.
+        >>> env = gym.make("Pendulum-v1")
+        >>> config = config.environment(
+        ...     observation_space=env.observation_space,
+        ...     action_space=env.action_space,
+        ... )
+        >>> config = config.offline_data(
+        ...     input_=[data_path.as_posix()],
+        ...     # Run exactly one update per training iteration.
+        ...     dataset_num_iters_per_learner=1,
+        ... )
+        >>> # Build an Algorithm object from the config and run 1 training iteration.
+        >>> algo = config.build()
+        >>> _ = algo.train()
 
-        from ray.rllib.algorithms.iql import IQLConfig
-        # Run this from the ray directory root.
-        config = IQLConfig().training(actor_lr=0.00001, gamma=0.99)
-        config = config.offline_data(
-            input_="./rllib/offline/tests/data/pendulum/pendulum-v1_enormous")
-
-        # Build an Algorithm object from the config and run 1 training iteration.
-        algo = config.build()
-        algo.train()
-
-    .. testcode::
-        :skipif: True
-
-        from ray.rllib.algorithms.iql import IQLConfig
-        from ray import tune
-        config = IQLConfig()
-        # Print out some default values.
-        print(config.beta)
-        # Update the config object.
-        config.training(
-            lr=tune.grid_search([0.001, 0.0001]), beta=0.75
-        )
-        # Set the config object's data path.
-        # Run this from the ray directory root.
-        config.offline_data(
-            input_="./rllib/offline/tests/data/pendulum/pendulum-v1_enormous"
-        )
-        # Set the config object's env, used for evaluation.
-        config.environment(env="Pendulum-v1")
-        # Use to_dict() to get the old-style python config dict
-        # when running with tune.
-        tune.Tuner(
-            "IQL",
-            param_space=config.to_dict(),
-        ).fit()
+        >>> from ray.rllib.algorithms.iql import IQLConfig
+        >>> from ray import tune
+        >>> config = IQLConfig()
+        >>> # Print out some default values.
+        >>> print(config.beta)
+        0.1
+        >>> # Update the config object.
+        >>> _ = config.training(
+        ...     lr=tune.grid_search([0.001, 0.0001]), beta=0.75
+        ... )
+        >>> # Set the config object's data path.
+        >>> _ = config.offline_data(
+        ...     input_=[data_path.as_posix()],
+        ...     dataset_num_iters_per_learner=1,
+        ... )
+        >>> # Set the observation and action spaces of the data.
+        >>> _ = config.environment(
+        ...     observation_space=env.observation_space,
+        ...     action_space=env.action_space,
+        ... )
+        >>> # Use to_dict() to get the old-style python config dict
+        >>> # when running with tune.
+        >>> print("[ignore]"); results = tune.Tuner(
+        ...     "IQL",
+        ...     param_space=config.to_dict(),
+        ...     run_config=tune.RunConfig(stop={"training_iteration": 1}),
+        ... ).fit()  # doctest: +ELLIPSIS
+        [ignore]...
+        >>> results.num_errors
+        0
     """
 
     def __init__(self, algo_class=None):
+        """Initializes a IQLConfig instance."""
         super().__init__(algo_class=algo_class or IQL)
 
         # fmt: off

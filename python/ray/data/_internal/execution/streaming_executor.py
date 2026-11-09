@@ -19,6 +19,7 @@ from ray.data._internal.execution.block_ref_counter import BlockRefCounter
 from ray.data._internal.execution.bundle_queue import ExactMultipleSize
 from ray.data._internal.execution.dataset_state import DatasetState
 from ray.data._internal.execution.execution_callback import ExecutionCallback
+from ray.data._internal.execution.execution_flags import actor_only_backend_enabled
 from ray.data._internal.execution.interfaces import (
     ExecutionOptions,
     Executor,
@@ -35,6 +36,7 @@ from ray.data._internal.execution.operators.base_physical_operator import (
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
 from ray.data._internal.execution.operators.map_operator import MapOperator
 from ray.data._internal.execution.operators.output_splitter import OutputSplitter
+from ray.data._internal.execution.resource_bank import ResourceBank, ResourceBankBase
 from ray.data._internal.execution.resource_manager import (
     ResourceManager,
 )
@@ -202,6 +204,12 @@ class StreamingExecutor(Executor, threading.Thread):
         self._output_node: Optional[Tuple[PhysicalOperator, OpState]] = None
         self._backpressure_policies: List[BackpressurePolicy] = []
         self._op_schema: Dict[PhysicalOperator, Schema] = {}
+        self._lineage_tracker: Optional[LineageTracker] = None
+        # Live object-store accounting. Only the actor-only backend feeds it, so
+        # it stays None (and every ResourceBank method is unreachable) otherwise.
+        self._resource_bank: Optional[ResourceBankBase] = (
+            ResourceBank() if actor_only_backend_enabled() else None
+        )
 
         self._dataset_id = dataset_id
         # Set by IssueDetectionExecutionCallback when issue detection is registered;
@@ -244,6 +252,12 @@ class StreamingExecutor(Executor, threading.Thread):
     def issue_detector_manager(self) -> Optional["IssueDetectorManager"]:
         """The issue detector manager, or None if issue detection isn't registered."""
         return self._issue_detector_manager
+
+    @property
+    def ray_data_reconstruction_enabled(self) -> bool:
+        """Whether this execution runs Ray Data lineage reconstruction: the
+        context requested it and the DAG supports it. False before ``execute``."""
+        return self._lineage_tracker is not None
 
     def execute(
         self,
@@ -302,7 +316,11 @@ class StreamingExecutor(Executor, threading.Thread):
             self._lineage_tracker = LineageTracker()
         self._block_ref_counter = BlockRefCounter()
         self._topology = build_streaming_topology(
-            dag, self._options, self._block_ref_counter, self._lineage_tracker
+            dag,
+            self._options,
+            self._block_ref_counter,
+            self._lineage_tracker,
+            resource_bank=self._resource_bank,
         )
 
         self._resource_manager = ResourceManager(

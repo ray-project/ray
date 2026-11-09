@@ -1,9 +1,10 @@
 from collections import deque
-from typing import Optional, Union
+from typing import Any, Dict, Iterator, Optional, SupportsFloat, Tuple, Type, Union
 
 import gymnasium as gym
 import numpy as np
 from gymnasium import spaces
+from gymnasium.core import ActType, ObsType
 
 from ray.rllib.utils.annotations import PublicAPI
 from ray.rllib.utils.images import resize, rgb2gray
@@ -36,8 +37,20 @@ def is_atari(env: Union[gym.Env, str]) -> bool:
 
 
 @PublicAPI
-def get_wrapper_by_cls(env, cls):
-    """Returns the gym env wrapper of the given class, or None."""
+def get_wrapper_by_cls(env: gym.Env, cls: Type[gym.Wrapper]) -> Optional[gym.Env]:
+    """Returns the gym env wrapper of the given class, or None.
+
+    Walks the chain of `gym.Wrapper` objects from `env` inward, following each
+    wrapper's `env` attribute.
+
+    Args:
+        env: The outermost env or wrapper to start the search from.
+        cls: The wrapper class to look for.
+
+    Returns:
+        The first env in the chain that's an instance of `cls`, or None if no env
+        in the chain is.
+    """
     currentenv = env
     while True:
         if isinstance(currentenv, cls):
@@ -50,25 +63,59 @@ def get_wrapper_by_cls(env, cls):
 
 @PublicAPI
 class ClipRewardEnv(gym.RewardWrapper):
-    def __init__(self, env):
+    """Clips each reward to -1.0, 0.0, or 1.0 by its sign.
+
+    Args:
+        env: The env to wrap.
+    """
+
+    def __init__(self, env: gym.Env):
         gym.RewardWrapper.__init__(self, env)
 
-    def reward(self, reward):
-        """Bin reward to {+1, 0, -1} by its sign."""
+    def reward(self, reward: SupportsFloat) -> float:
+        """Bin reward to {+1, 0, -1} by its sign.
+
+        Args:
+            reward: The reward from the wrapped env.
+
+        Returns:
+            The sign of `reward`, computed with `np.sign`.
+        """
         return np.sign(reward)
 
 
 @PublicAPI
 class EpisodicLifeEnv(gym.Wrapper):
-    def __init__(self, env):
-        """Make end-of-life == end-of-episode, but only reset on true game over.
-        Done by DeepMind for the DQN and co. since it helps value estimation.
-        """
+    """Make end-of-life == end-of-episode, but only reset on true game over.
+
+    Done by DeepMind for the DQN and co. since it helps value estimation. The
+    wrapped env must be an Atari env that exposes `unwrapped.ale.lives()`.
+
+    Args:
+        env: The Atari env to wrap.
+    """
+
+    def __init__(self, env: gym.Env):
         gym.Wrapper.__init__(self, env)
         self.lives = 0
         self.was_real_terminated = True
 
-    def step(self, action):
+    def step(
+        self, action: ActType
+    ) -> Tuple[ObsType, SupportsFloat, bool, bool, Dict[str, Any]]:
+        """Steps the env and reports a lost life as a terminated episode.
+
+        If the number of lives drops and is still greater than 0, `terminated` is
+        True. The wrapper records the env's own `terminated` flag, so that
+        `reset()` only resets the env on a true game over.
+
+        Args:
+            action: The action to pass to the wrapped env.
+
+        Returns:
+            The observation, reward, terminated, truncated, and info from the
+            wrapped env's `step()`, with `terminated` set to True on a lost life.
+        """
         obs, reward, terminated, truncated, info = self.env.step(action)
         self.was_real_terminated = terminated
         # check current lives, make loss of life terminal,
@@ -82,10 +129,18 @@ class EpisodicLifeEnv(gym.Wrapper):
         self.lives = lives
         return obs, reward, terminated, truncated, info
 
-    def reset(self, **kwargs):
+    def reset(self, **kwargs: Any) -> Tuple[ObsType, Dict[str, Any]]:
         """Reset only when lives are exhausted.
+
         This way all states are still reachable even though lives are episodic,
-        and the learner need not know about any of this behind-the-scenes.
+        and the learner need not know about any of this behind-the-scenes. After a
+        lost life, this takes a no-op step with action 0 instead of resetting.
+
+        Args:
+            **kwargs: Keyword arguments to pass to the wrapped env's `reset()`.
+
+        Returns:
+            The observation and info from the reset, or from the no-op step.
         """
         if self.was_real_terminated:
             obs, info = self.env.reset(**kwargs)
@@ -98,15 +153,31 @@ class EpisodicLifeEnv(gym.Wrapper):
 
 @PublicAPI
 class FireResetEnv(gym.Wrapper):
-    def __init__(self, env):
-        """Take action on reset.
+    """Take action on reset.
 
-        For environments that are fixed until firing."""
+    For environments that are fixed until firing. The wrapped env's action 1 must
+    be "FIRE", and it must have at least 3 actions.
+
+    Args:
+        env: The Atari env to wrap.
+    """
+
+    def __init__(self, env: gym.Env):
         gym.Wrapper.__init__(self, env)
         assert env.unwrapped.get_action_meanings()[1] == "FIRE"
         assert len(env.unwrapped.get_action_meanings()) >= 3
 
-    def reset(self, **kwargs):
+    def reset(self, **kwargs: Any) -> Tuple[ObsType, Dict[str, Any]]:
+        """Resets the env, then takes action 1 and then action 2.
+
+        If either step ends the episode, resets the env again.
+
+        Args:
+            **kwargs: Keyword arguments to pass to the wrapped env's `reset()`.
+
+        Returns:
+            The observation and info from the step with action 2.
+        """
         self.env.reset(**kwargs)
         obs, _, terminated, truncated, _ = self.env.step(1)
         if terminated or truncated:
@@ -116,14 +187,35 @@ class FireResetEnv(gym.Wrapper):
             self.env.reset(**kwargs)
         return obs, info
 
-    def step(self, ac):
+    def step(
+        self, ac: ActType
+    ) -> Tuple[ObsType, SupportsFloat, bool, bool, Dict[str, Any]]:
+        """Steps the wrapped env with the given action.
+
+        Args:
+            ac: The action to pass to the wrapped env.
+
+        Returns:
+            The observation, reward, terminated, truncated, and info from the
+            wrapped env's `step()`.
+        """
         return self.env.step(ac)
 
 
 @PublicAPI
 class FrameStack(gym.Wrapper):
-    def __init__(self, env, k):
-        """Stack k last frames."""
+    """Stack k last frames.
+
+    Concatenates the last `k` observations along the last axis, so an
+    observation of shape `(height, width, channels)` becomes
+    `(height, width, channels * k)`.
+
+    Args:
+        env: The env to wrap. Its observations must have three dimensions.
+        k: The number of frames to stack.
+    """
+
+    def __init__(self, env: gym.Env, k: int):
         gym.Wrapper.__init__(self, env)
         self.k = k
         self.frames = deque([], maxlen=k)
@@ -135,13 +227,36 @@ class FrameStack(gym.Wrapper):
             dtype=env.observation_space.dtype,
         )
 
-    def reset(self, *, seed=None, options=None):
+    def reset(
+        self, *, seed: Optional[int] = None, options: Optional[dict] = None
+    ) -> Tuple[np.ndarray, Dict[str, Any]]:
+        """Resets the env and fills the frame stack with the reset observation.
+
+        Args:
+            seed: The seed to pass to the wrapped env's `reset()`.
+            options: The options to pass to the wrapped env's `reset()`.
+
+        Returns:
+            The stacked observation, made of `k` copies of the reset
+            observation, and the info from the reset.
+        """
         ob, infos = self.env.reset(seed=seed, options=options)
         for _ in range(self.k):
             self.frames.append(ob)
         return self._get_ob(), infos
 
-    def step(self, action):
+    def step(
+        self, action: ActType
+    ) -> Tuple[np.ndarray, SupportsFloat, bool, bool, Dict[str, Any]]:
+        """Steps the env and adds the new observation to the frame stack.
+
+        Args:
+            action: The action to pass to the wrapped env.
+
+        Returns:
+            The stacked observation, and the reward, terminated, truncated, and
+            info from the wrapped env's `step()`.
+        """
         ob, reward, terminated, truncated, info = self.env.step(action)
         self.frames.append(ob)
         return self._get_ob(), reward, terminated, truncated, info
@@ -153,8 +268,17 @@ class FrameStack(gym.Wrapper):
 
 @PublicAPI
 class FrameStackTrajectoryView(gym.ObservationWrapper):
-    def __init__(self, env):
-        """No stacking. Trajectory View API takes care of this."""
+    """No stacking. Trajectory View API takes care of this.
+
+    Drops the channel axis of single-channel observations, so an observation of
+    shape `(height, width, 1)` becomes `(height, width)`.
+
+    Args:
+        env: The env to wrap. Its observations must have shape
+            `(height, width, 1)`.
+    """
+
+    def __init__(self, env: gym.Env):
         gym.Wrapper.__init__(self, env)
         shp = env.observation_space.shape
         assert shp[2] == 1
@@ -162,14 +286,28 @@ class FrameStackTrajectoryView(gym.ObservationWrapper):
             low=0, high=255, shape=(shp[0], shp[1]), dtype=env.observation_space.dtype
         )
 
-    def observation(self, observation):
+    def observation(self, observation: np.ndarray) -> np.ndarray:
+        """Removes the last axis of the observation.
+
+        Args:
+            observation: The observation from the wrapped env.
+
+        Returns:
+            The observation without its last axis.
+        """
         return np.squeeze(observation, axis=-1)
 
 
 @PublicAPI
 class MaxAndSkipEnv(gym.Wrapper):
-    def __init__(self, env, skip=4):
-        """Return only every `skip`-th frame"""
+    """Return only every `skip`-th frame.
+
+    Args:
+        env: The env to wrap.
+        skip: The number of env steps to repeat each action for.
+    """
+
+    def __init__(self, env: gym.Env, skip: int = 4):
         gym.Wrapper.__init__(self, env)
         # most recent raw observations (for max pooling across time steps)
         self._obs_buffer = np.zeros(
@@ -177,8 +315,20 @@ class MaxAndSkipEnv(gym.Wrapper):
         )
         self._skip = skip
 
-    def step(self, action):
-        """Repeat action, sum reward, and max over last observations."""
+    def step(
+        self, action: ActType
+    ) -> Tuple[np.ndarray, float, bool, bool, Dict[str, Any]]:
+        """Repeat action, sum reward, and max over last observations.
+
+        Repeats the action for `skip` env steps, or until the episode ends.
+
+        Args:
+            action: The action to pass to the wrapped env on each step.
+
+        Returns:
+            The element-wise maximum of the last two observations, the sum of the
+            rewards, and the terminated, truncated, and info from the last step.
+        """
         total_reward = 0.0
         terminated = truncated = info = None
         for i in range(self._skip):
@@ -196,14 +346,29 @@ class MaxAndSkipEnv(gym.Wrapper):
 
         return max_frame, total_reward, terminated, truncated, info
 
-    def reset(self, **kwargs):
+    def reset(self, **kwargs: Any) -> Tuple[ObsType, Dict[str, Any]]:
+        """Resets the wrapped env.
+
+        Args:
+            **kwargs: Keyword arguments to pass to the wrapped env's `reset()`.
+
+        Returns:
+            The observation and info from the wrapped env's `reset()`.
+        """
         return self.env.reset(**kwargs)
 
 
 @PublicAPI
 class MonitorEnv(gym.Wrapper):
-    def __init__(self, env=None):
-        """Record episodes stats prior to EpisodicLifeEnv, etc."""
+    """Record episodes stats prior to EpisodicLifeEnv, etc.
+
+    Tracks the return and length of each episode and the total number of steps.
+
+    Args:
+        env: The env to wrap.
+    """
+
+    def __init__(self, env: Optional[gym.Env] = None):
         gym.Wrapper.__init__(self, env)
         self._current_reward = None
         self._num_steps = None
@@ -213,7 +378,15 @@ class MonitorEnv(gym.Wrapper):
         self._num_episodes = 0
         self._num_returned = 0
 
-    def reset(self, **kwargs):
+    def reset(self, **kwargs: Any) -> Tuple[ObsType, Dict[str, Any]]:
+        """Resets the env and records the stats of the episode that just ended.
+
+        Args:
+            **kwargs: Keyword arguments to pass to the wrapped env's `reset()`.
+
+        Returns:
+            The observation and info from the wrapped env's `reset()`.
+        """
         obs, info = self.env.reset(**kwargs)
 
         if self._total_steps is None:
@@ -229,23 +402,55 @@ class MonitorEnv(gym.Wrapper):
 
         return obs, info
 
-    def step(self, action):
+    def step(
+        self, action: ActType
+    ) -> Tuple[ObsType, SupportsFloat, bool, bool, Dict[str, Any]]:
+        """Steps the env and adds the reward and step to the episode stats.
+
+        Args:
+            action: The action to pass to the wrapped env.
+
+        Returns:
+            The observation, reward, terminated, truncated, and info from the
+            wrapped env's `step()`.
+        """
         obs, rew, terminated, truncated, info = self.env.step(action)
         self._current_reward += rew
         self._num_steps += 1
         self._total_steps += 1
         return obs, rew, terminated, truncated, info
 
-    def get_episode_rewards(self):
+    def get_episode_rewards(self) -> list:
+        """Returns the list of returns of all episodes recorded so far.
+
+        Returns:
+            The sum of rewards of each episode that a `reset()` call ended.
+        """
         return self._episode_rewards
 
-    def get_episode_lengths(self):
+    def get_episode_lengths(self) -> list:
+        """Returns the list of lengths of all episodes recorded so far.
+
+        Returns:
+            The number of steps of each episode that a `reset()` call ended.
+        """
         return self._episode_lengths
 
-    def get_total_steps(self):
+    def get_total_steps(self) -> Optional[int]:
+        """Returns the total number of env steps taken.
+
+        Returns:
+            The total number of env steps, or None before the first `reset()`.
+        """
         return self._total_steps
 
-    def next_episode_results(self):
+    def next_episode_results(self) -> Iterator[Tuple[float, int]]:
+        """Yields the results of the episodes not yet returned by this method.
+
+        Yields:
+            Tuple[float, int]: The return and length of each recorded episode not
+            yet yielded.
+        """
         for i in range(self._num_returned, len(self._episode_rewards)):
             yield (self._episode_rewards[i], self._episode_lengths[i])
         self._num_returned = len(self._episode_rewards)
@@ -253,18 +458,34 @@ class MonitorEnv(gym.Wrapper):
 
 @PublicAPI
 class NoopResetEnv(gym.Wrapper):
-    def __init__(self, env, noop_max=30):
-        """Sample initial states by taking random number of no-ops on reset.
-        No-op is assumed to be action 0.
-        """
+    """Sample initial states by taking random number of no-ops on reset.
+
+    No-op is assumed to be action 0. The wrapped env's action 0 must be "NOOP".
+
+    Args:
+        env: The Atari env to wrap.
+        noop_max: The maximum number of no-op steps to take on reset.
+    """
+
+    def __init__(self, env: gym.Env, noop_max: int = 30):
         gym.Wrapper.__init__(self, env)
         self.noop_max = noop_max
         self.override_num_noops = None
         self.noop_action = 0
         assert env.unwrapped.get_action_meanings()[0] == "NOOP"
 
-    def reset(self, **kwargs):
-        """Do no-op action for a number of steps in [1, noop_max]."""
+    def reset(self, **kwargs: Any) -> Tuple[ObsType, Dict[str, Any]]:
+        """Do no-op action for a number of steps in [1, noop_max].
+
+        If a no-op step ends the episode, resets the env again.
+
+        Args:
+            **kwargs: Keyword arguments to pass to the wrapped env's `reset()`.
+
+        Returns:
+            The observation and info from the last no-op step, or from the last
+            reset if that came after it.
+        """
         self.env.reset(**kwargs)
         if self.override_num_noops is not None:
             noops = self.override_num_noops
@@ -284,12 +505,29 @@ class NoopResetEnv(gym.Wrapper):
                 obs, info = self.env.reset(**kwargs)
         return obs, info
 
-    def step(self, ac):
+    def step(
+        self, ac: ActType
+    ) -> Tuple[ObsType, SupportsFloat, bool, bool, Dict[str, Any]]:
+        """Steps the wrapped env with the given action.
+
+        Args:
+            ac: The action to pass to the wrapped env.
+
+        Returns:
+            The observation, reward, terminated, truncated, and info from the
+            wrapped env's `step()`.
+        """
         return self.env.step(ac)
 
 
 @PublicAPI
 class NormalizedImageEnv(gym.ObservationWrapper):
+    """Rescales image observations from [0, 255] to about [-1.0, 1.0].
+
+    Sets the observation space to a float32 `Box` from -1.0 to 1.0 with the
+    wrapped env's observation shape.
+    """
+
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.observation_space = gym.spaces.Box(
@@ -301,14 +539,30 @@ class NormalizedImageEnv(gym.ObservationWrapper):
 
     # Divide by scale and center around 0.0, such that observations are in the range
     # of -1.0 and 1.0.
-    def observation(self, observation):
+    def observation(self, observation: np.ndarray) -> np.ndarray:
+        """Divides the observation by 128.0 and subtracts 1.0.
+
+        Args:
+            observation: The image observation from the wrapped env.
+
+        Returns:
+            The rescaled observation as float32.
+        """
         return (observation.astype(np.float32) / 128.0) - 1.0
 
 
 @PublicAPI
 class GrayScaleAndResize(gym.ObservationWrapper):
-    def __init__(self, env, dim, grayscale: bool = True):
-        """Warp frames to the specified size (dim x dim)."""
+    """Warp frames to the specified size (dim x dim).
+
+    Args:
+        env: The env to wrap. Its observations must be RGB images.
+        dim: The height and width to resize observations to.
+        grayscale: Whether to also convert observations to grayscale, with a
+            single channel.
+    """
+
+    def __init__(self, env: gym.Env, dim: int, grayscale: bool = True):
         gym.ObservationWrapper.__init__(self, env)
         self.width = dim
         self.height = dim
@@ -320,7 +574,16 @@ class GrayScaleAndResize(gym.ObservationWrapper):
             dtype=np.uint8,
         )
 
-    def observation(self, frame):
+    def observation(self, frame: np.ndarray) -> np.ndarray:
+        """Resizes the frame, and converts it to grayscale if `grayscale` is set.
+
+        Args:
+            frame: The RGB image observation from the wrapped env.
+
+        Returns:
+            The resized frame, of shape `(dim, dim, 1)` if `grayscale` is set and
+            `(dim, dim, 3)` otherwise.
+        """
         if self.grayscale:
             frame = rgb2gray(frame)
             frame = resize(frame, height=self.height, width=self.width)

@@ -341,7 +341,7 @@ print(ray.get([use_gpu.remote(), use_gpu.remote()]))
 
 
 @pytest.mark.skipif(external_redis_test_enabled(), reason="Only valid in non redis env")
-def test_redis_not_available(monkeypatch, call_ray_stop_only):
+def test_redis_not_available(monkeypatch, call_ray_stop_only, create_auth_token):
     monkeypatch.setenv("RAY_redis_db_connect_retries", "5")
     monkeypatch.setenv("RAY_REDIS_ADDRESS", "localhost:12345")
 

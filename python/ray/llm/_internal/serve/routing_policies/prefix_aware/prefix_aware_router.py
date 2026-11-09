@@ -291,8 +291,7 @@ class PrefixCacheAffinityRouter(LocalityMixin, MultiplexMixin, RequestRouter):
         pending_request: Optional[PendingRequest],
         candidate_replicas: List[RunningReplica],
     ) -> List[List[RunningReplica]]:
-        """
-        Returns a set of candidate replicas, of which the one with the smallest replica queue will be chosen.
+        """Returns a set of candidate replicas, of which the one with the smallest replica queue will be chosen.
         0. Default: same as pow 2 request router, return 2 replicas at random.
         1. If load is balanced, choose replica(s) with highest prefix match rate. If highest hit rate is below 10% or no match found, use replicas with smallest KV cache usage.
         2. If load is imbalanced, use default.
