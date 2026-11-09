@@ -171,6 +171,54 @@ def test_large_unmodelled_leaves_pay_by_their_uncompressed_bytes(tmp_path, monke
     assert charge < size < charge + (8 << 20), (size, charge)
 
 
+def test_unmodelled_file_counts_the_added_columns(tmp_path, monkeypatch):
+    """A file the estimator doesn't model still pays for a column Ray fills."""
+    import ray.data._internal.datasource_v2.formats.parquet.footer_reader as reader
+
+    monkeypatch.setattr(reader, "build_leaf_profiles", lambda **kwargs: None)
+    path = tmp_path / "f.parquet"
+    table = _mixed()
+    pq.write_table(table, path, row_group_size=M // 4)
+    filled = table.schema.append(pa.field("notes", pa.string()))
+    plain = _sizes(path, read_schema=table.schema)
+    assert all(a > b for a, b in zip(_sizes(path, read_schema=filled), plain))
+
+
+def test_filtered_read_without_the_file_schema_sizes_every_column(
+    tmp_path, monkeypatch
+):
+    """When the file's Arrow schema can't be built, an unprojected read with a
+    filter still sizes every column it decodes, not just the filter's."""
+    import ray.data._internal.datasource_v2.formats.parquet.footer_reader as reader
+    from ray.data.expressions import col
+
+    class _NoSchema:
+        def __init__(self, fragment):
+            self._fragment = fragment
+
+        @property
+        def physical_schema(self):
+            raise pa.ArrowInvalid("unsupported type")
+
+    sizing = reader.FooterReader._file_sizing
+    monkeypatch.setattr(
+        reader.FooterReader,
+        "_file_sizing",
+        lambda self, file, fragment, metadata: sizing(
+            self, file=file, fragment=_NoSchema(fragment), metadata=metadata
+        ),
+    )
+    path = tmp_path / "f.parquet"
+    table = pa.table(
+        {
+            "i": pa.array(np.arange(N, dtype="int64")),
+            "s": pa.array([f"distinct-value-{i:024d}" for i in range(N)]),
+        }
+    )
+    pq.write_table(table, path, row_group_size=N, use_dictionary=False)
+    assert _sizes(path, filter_expr=col("i") > 0) == _sizes(path)
+
+
 def test_pinned_schema_adds_the_cast_and_the_added_columns(tmp_path):
     """A read schema the file's types differ from costs a cast; a column the
     file lacks is filled with nulls."""
@@ -186,6 +234,17 @@ def test_pinned_schema_adds_the_cast_and_the_added_columns(tmp_path):
         sizes = _sizes(path, read_schema=read_schema)
         assert len(sizes) == len(plain) == 2
         assert all(size > plain_size for size, plain_size in zip(sizes, plain))
+
+
+def test_dotted_column_beside_its_prefix_counts_once(tmp_path):
+    """A flat ``user.id`` beside ``user`` is sized once, as ``user_id`` would be."""
+    sizes = []
+    for second in ("user.id", "user_id"):
+        path = tmp_path / f"{second}.parquet"
+        values = pa.array(np.arange(M, dtype="int64"))
+        pq.write_table(pa.table({"user": values, second: values}), path)
+        sizes.append(_sizes(path))
+    assert sizes[0] == sizes[1]
 
 
 def _bin_totals(path, max_bin_bytes):

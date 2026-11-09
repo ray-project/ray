@@ -82,13 +82,14 @@ def _column_leaves(
     """Each of ``names`` the file has, in that order, as its leaf indices."""
     leaves: dict[str, list[int]] = {name: [] for name in names}
     for leaf_idx, column in enumerate(columns):
-        # A leaf belongs to its path and each dotted prefix of it, as in
-        # :func:`_get_prefix_matches`, looked up rather than compared to each name.
+        # A leaf belongs to the longest of its path's dotted prefixes in ``names``,
+        # once: a flat ``user.id`` beside a ``user`` column is ``user.id``'s alone.
         parts = column.path.split(".")
-        for end in range(1, len(parts) + 1):
+        for end in range(len(parts), 0, -1):
             indices = leaves.get(".".join(parts[:end]))
             if indices is not None:
                 indices.append(leaf_idx)
+                break
     return {name: indices for name, indices in leaves.items() if indices}
 
 
@@ -252,7 +253,11 @@ class FooterReader:
         file_names = [] if file_schema is None else list(file_schema.names)
         names: Iterable[str] | None = self.read_order
         if names is None:
-            names = dict.fromkeys([*self.filter_columns, *file_names])
+            # Every column, the predicate's first. Without the file's schema, no
+            # names: every leaf is sized below, not just the predicate's.
+            names = (
+                dict.fromkeys([*self.filter_columns, *file_names]) if file_names else []
+            )
         if file_schema is not None:
             # Only the file's columns: a missing ``sepal`` would match the leaf of
             # a flat ``sepal.length`` too, and size it twice.
@@ -324,8 +329,8 @@ class FooterReader:
         """PyArrow's estimated peak bytes decoding ``row_group`` as a read task does,
         leaning high: a read task over its budget is what runs a node out of memory."""
         if sizing.profiles is None:
-            # A file the estimator doesn't model.
-            work = 0
+            # A file the estimator doesn't model; the columns Ray appends still count.
+            work = estimate_added_columns(row_group=row_group, read=sizing.read)
             unmodelled = list(sizing.leaf_indices)
         else:
             chunks = leaf_chunks(
