@@ -635,6 +635,7 @@ py_test_module_list(
 py_test_module_list(
     size = "large",
     files = [
+        "rdt/test_nixl_agent_lock.py",
         "rdt/test_nixl_backend_selection.py",
         "rdt/test_nixl_memory_pool.py",
         "rdt/test_rdt_custom.py",
@@ -704,6 +705,23 @@ py_test_module_list(
     tags = [
         "exclusive",
         "small_size_python_tests",
+        "team:core",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
+    name = "test_autoscaler_fake_docker_auth_token",
+    size = "large",
+    srcs = ["test_autoscaler_fake_docker_auth_token.py"],
+    tags = [
+        "custom_setup",
+        "exclusive",
+        "ha_integration",
+        "no_windows",
         "team:core",
     ],
     deps = [
@@ -785,6 +803,7 @@ py_test_module_list(
     size = "medium",
     files = [
         "test_autoscaler.py",
+        "test_autoscaler_auth_token.py",
         "test_symmetric_run.py",
     ],
     tags = [
@@ -915,7 +934,6 @@ py_test_module_list(
         "test_failure_2.py",
         "test_generators.py",
         "test_global_state.py",
-        "test_multi_node.py",
         "test_object_manager_fault_tolerance.py",
         "test_placement_group_3.py",
         "test_placement_group_5.py",
@@ -943,6 +961,25 @@ py_test_module_list(
         "exclusive",
         "large_size_python_tests_shard_0",
         "team:core",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+# use_all_core_windows: Windows CI runs these on their own instance with no other
+# test containers alongside.
+py_test_module_list(
+    size = "large",
+    files = [
+        "test_multi_node.py",
+    ],
+    tags = [
+        "exclusive",
+        "large_size_python_tests_shard_0",
+        "team:core",
+        "use_all_core_windows",
     ],
     deps = [
         ":conftest",

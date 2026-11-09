@@ -175,9 +175,7 @@ Ray Compiled Graph natively supports passing `torch.Tensors` between actors that
 
 In Ray Core, if you try to pass a CPU tensor from the driver, the GPU actor receives a CPU tensor:
 
-```{testcode}
-:skipif: True
-
+```python
 # This will fail because the driver passes a CPU copy of the tensor,
 # and the GPU actor also receives a CPU copy.
 ray.get(actor.process.remote(torch.zeros(10)))

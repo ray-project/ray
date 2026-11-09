@@ -12,9 +12,7 @@ Most experiment tracking libraries work out of the box with Ray Train. This guid
 
 The following code skeleton shows how to call a native experiment tracking library inside Ray Train:
 
-```{testcode}
-:skipif: True
-
+```python
 from ray.train.torch import TorchTrainer
 from ray.train import ScalingConfig
 
@@ -34,9 +32,7 @@ The following examples use Weights & Biases (W&B) and MLflow, but you can adapt 
 
 ::::{tab-set}
 :::{tab-item} W&B
-```{testcode}
-:skipif: True
-
+```python
 import ray
 from ray import train
 import wandb
@@ -73,9 +69,7 @@ def train_func():
 :::
 
 :::{tab-item} MLflow
-```{testcode}
-:skipif: True
-
+```python
 from ray import train
 import mlflow
 
@@ -107,9 +101,7 @@ def train_func(config):
 :::{tip}
 A major difference between distributed and non-distributed training is that in distributed training, multiple processes run in parallel, and in some setups they produce the same results. If all of them report results to the tracking backend, you might get duplicated results. To avoid this, apply logging logic to only the rank 0 worker with {meth}`ray.train.get_context().get_world_rank() <ray.train.context.TrainContext.get_world_rank>`.
 
-```{testcode}
-:skipif: True
-
+```python
 from ray import train
 def train_func():
     ...
@@ -138,18 +130,14 @@ W&B offers both *online* and *offline* modes.
 
 In *online* mode, you log to W&B's tracking service, so set the credentials inside {ref}`train_func<train-overview-training-function>`. For details, see {ref}`Set up credentials<set-up-credentials>`.
 
-```{testcode}
-:skipif: True
-
+```python
 # This is equivalent to `os.environ["WANDB_API_KEY"] = "your_api_key"`
 wandb.login(key="your_api_key")
 ```
 
 In *offline* mode, you log to a local file system, so point the offline directory to a shared storage path that all nodes can write to. For details, see {ref}`Set up a shared file system<set-up-shared-file-system>`.
 
-```{testcode}
-:skipif: True
-
+```python
 os.environ["WANDB_MODE"] = "offline"
 wandb.init(dir="some_shared_storage_path/wandb")
 ```
@@ -160,18 +148,14 @@ MLflow offers both *local* and *remote* modes. In remote mode, you can log to a 
 
 In *local* mode, you log to a local file system, so point the tracking URI to a shared storage path that all nodes can write to. For details, see {ref}`Set up a shared file system<set-up-shared-file-system>`.
 
-```{testcode}
-:skipif: True
-
+```python
 mlflow.set_tracking_uri(uri="file://some_shared_storage_path/mlruns")
 mlflow.start_run()
 ```
 
 In *remote* mode with Databricks hosting, make sure that all nodes can access the Databricks configuration file. For details, see {ref}`Set up credentials<set-up-credentials>`.
 
-```{testcode}
-:skipif: True
-
+```python
 # The MLflow client looks for a Databricks config file
 # at the location specified by `os.environ["DATABRICKS_CONFIG_FILE"]`.
 os.environ["DATABRICKS_CONFIG_FILE"] = config["databricks_config_file"]
@@ -189,9 +173,7 @@ See each tracking library's API documentation for how to set up credentials. Thi
 
 The simplest way to pass an environment variable credential to training workers is through {ref}`runtime environments <runtime-environments>`. Initialize Ray with the following code:
 
-```{testcode}
-:skipif: True
-
+```python
 import ray
 # This makes sure that training workers have the same env var set
 ray.init(runtime_env={"env_vars": {"SOME_API_KEY": "your_api_key"}})
@@ -234,27 +216,21 @@ This step ensures that the tracking library syncs all logs to the tracking servi
 
 ::::{tab-set}
 :::{tab-item} W&B
-```{testcode}
-:skipif: True
-
+```python
 # https://docs.wandb.ai/ref/python/finish
 wandb.finish()
 ```
 :::
 
 :::{tab-item} MLflow
-```{testcode}
-:skipif: True
-
+```python
 # https://mlflow.org/docs/1.2.0/python_api/mlflow.html
 mlflow.end_run()
 ```
 :::
 
 :::{tab-item} Comet
-```{testcode}
-:skipif: True
-
+```python
 # https://www.comet.com/docs/v2/api-and-sdk/python-sdk/reference/Experiment/#experimentend
 Experiment.end()
 ```

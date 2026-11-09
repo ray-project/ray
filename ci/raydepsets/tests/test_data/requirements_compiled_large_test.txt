@@ -44,9 +44,9 @@ cachetools==5.3.3 \
     --hash=sha256:ba800f6e8b4048becb089eadd35a0a71c79c3d82c9cfe3a9d8b67a90d97f4b5a
     # via
     #   google-auth
-certifi==2025.1.31 \
-    --hash=sha256:3d5da6925056f6f18f119200434f4bfa01a57ce7e0a8d331441e68d8c9e227e2 \
-    --hash=sha256:3f2c14e06c9ed2f4a422c71b16f37bfa8a453ade8bf011aee76cf3db0ed138c4
+certifi==2026.10.19 \
+    --hash=sha256:035c1e85572b141bf1c3a3eff0e33a8eb74917522f2559075ff8d2fea780a1ae \
+    --hash=sha256:42d35340cc5b9ba78e818ddbff0c5b1c2b779de448a340fd1b989f5fa8670e1b
     # via
     #   requests
 charset-normalizer==3.4.1 \

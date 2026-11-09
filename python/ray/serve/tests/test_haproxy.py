@@ -20,6 +20,19 @@ from ray._common.test_utils import (
     SignalActor,
     wait_for_condition,
 )
+from ray._private.authentication.authentication_token_generator import (
+    generate_new_authentication_token,
+)
+from ray._private.authentication.http_token_authentication import (
+    get_auth_headers_if_auth_enabled,
+)
+from ray._private.authentication_test_utils import (
+    authentication_env_guard,
+    clear_auth_token_sources,
+    reset_auth_token_state,
+    set_auth_mode,
+    set_env_auth_token,
+)
 from ray.actor import ActorHandle
 from ray.cluster_utils import Cluster
 from ray.serve._private.build_app import CUSTOM_INGRESS_REQUEST_ROUTER_UNSUPPORTED_ERROR
@@ -28,7 +41,9 @@ from ray.serve._private.constants import (
     RAY_SERVE_DIRECT_INGRESS_MAX_HTTP_PORT,
     RAY_SERVE_DIRECT_INGRESS_MIN_HTTP_PORT,
     RAY_SERVE_ENABLE_HA_PROXY,
+    SERVE_INGRESS_ROUTER_REQUEST_PATH_HEADER,
     SERVE_NAMESPACE,
+    SERVE_ROUTER_APPLICATION_ORIGINAL_METHOD_HEADER,
     SERVE_SESSION_ID,
 )
 from ray.serve._private.haproxy import HAProxyManager
@@ -719,7 +734,10 @@ def test_haproxy_metrics(ray_shutdown):
 
     def metrics_show_2xx_response():
         assert httpx.get("http://localhost:8000/").text == "hello1"
-        resp = httpx.get("http://localhost:9101/metrics")
+        resp = httpx.get(
+            "http://localhost:9101/metrics",
+            headers=get_auth_headers_if_auth_enabled({}),
+        )
         assert resp.status_code == 200
         last_metrics[0] = resp.text
         for line in resp.text.splitlines():
@@ -736,6 +754,138 @@ def test_haproxy_metrics(ray_shutdown):
         raise
 
     serve.shutdown()
+
+
+@pytest.fixture
+def serve_with_auth(request, monkeypatch):
+    """Start Ray and Serve with the auth setup named by the param: "token",
+    "skip_metrics" (token auth plus RAY_AUTH_SKIP_METRICS=1) or "disabled".
+    Yields the token."""
+    token = generate_new_authentication_token()
+    with authentication_env_guard():
+        if request.param == "disabled":
+            set_auth_mode("disabled")
+            clear_auth_token_sources(remove_default=True)
+        else:
+            set_auth_mode("token")
+            set_env_auth_token(token)
+        if request.param == "skip_metrics":
+            # Set before ray.init so every Ray process inherits it.
+            monkeypatch.setenv("RAY_AUTH_SKIP_METRICS", "1")
+        reset_auth_token_state()
+        try:
+            ray.init(num_cpus=4)
+            serve.start()
+
+            @serve.deployment
+            def hello(_):
+                return "hello"
+
+            serve.run(hello.bind())
+            yield token
+        finally:
+            if ray.is_initialized():
+                serve.shutdown()
+                ray.shutdown()
+            reset_auth_token_state()
+
+
+def _get_haproxy_endpoint(port: int, path: str, **kwargs) -> requests.Response:
+    return requests.get(f"http://127.0.0.1:{port}{path}", timeout=5, **kwargs)
+
+
+def _haproxy_exporter_up(**kwargs) -> bool:
+    """Whether :9101/metrics returns HAProxy's own exporter output."""
+    resp = _get_haproxy_endpoint(9101, "/metrics", **kwargs)
+    return b"haproxy_process_" in resp.content
+
+
+@pytest.mark.parametrize("serve_with_auth", ["token"], indirect=True)
+def test_haproxy_metrics_and_stats_require_token(serve_with_auth):
+    """With token auth on, HAProxy's exporter and stats page answer on the
+    metrics port only with the token, and nothing listens on the stats port."""
+    token = serve_with_auth
+    accepted_forms = [
+        {"headers": {"Authorization": f"Bearer {token}"}},
+        {"headers": {"X-Ray-Authorization": f"Bearer {token}"}},
+        {"cookies": {"ray-authentication-token": token}},
+    ]
+    wait_for_condition(_haproxy_exporter_up, timeout=30, **accepted_forms[0])
+
+    missing = _get_haproxy_endpoint(9101, "/metrics")
+    assert missing.status_code == 401
+    assert missing.headers["WWW-Authenticate"] == "Bearer"
+    wrong = _get_haproxy_endpoint(
+        9101, "/metrics", headers={"Authorization": "Bearer " + "0" * 64}
+    )
+    assert wrong.status_code == 403
+    for form in accepted_forms:
+        assert _get_haproxy_endpoint(9101, "/metrics", **form).status_code == 200
+
+    assert _get_haproxy_endpoint(9101, "/stats").status_code == 401
+    stats = _get_haproxy_endpoint(9101, "/stats;csv", **accepted_forms[0])
+    assert stats.status_code == 200
+    assert stats.text.startswith("# pxname")
+    with pytest.raises(requests.ConnectionError):
+        _get_haproxy_endpoint(8404, "/stats")
+
+
+@pytest.mark.parametrize("serve_with_auth", ["skip_metrics", "disabled"], indirect=True)
+def test_haproxy_metrics_and_stats_open_without_token(serve_with_auth):
+    """With RAY_AUTH_SKIP_METRICS=1 or auth disabled, HAProxy serves the
+    exporter and stats page itself, as before, and needs no token."""
+    wait_for_condition(_haproxy_exporter_up, timeout=30)
+    assert _get_haproxy_endpoint(8404, "/stats").status_code == 200
+
+
+def test_haproxy_metrics_token_auth_with_colocated_reuse_port_proxies(monkeypatch):
+    """With SERVE_SOCKET_REUSE_PORT_ENABLED=1, co-located EveryNode proxies
+    share the metrics port. In token mode each HAProxyManager's metrics server
+    must share it too, or the second manager fails to bind."""
+    # Set before the nodes start so every Ray process inherits it.
+    monkeypatch.setenv("SERVE_SOCKET_REUSE_PORT_ENABLED", "1")
+    token = generate_new_authentication_token()
+    with authentication_env_guard():
+        set_auth_mode("token")
+        set_env_auth_token(token)
+        reset_auth_token_state()
+        cluster = Cluster()
+        try:
+            head_node = cluster.add_node(num_cpus=0)
+            cluster.add_node(num_cpus=1)
+            cluster.wait_for_nodes()
+            ray.init(address=head_node.address)
+            serve.start(http_options={"location": "EveryNode"})
+
+            @serve.deployment
+            def hello(_):
+                return "hello"
+
+            serve.run(hello.bind())
+            client = _get_global_client()
+
+            def both_proxies_healthy() -> bool:
+                details = ServeInstanceDetails(
+                    **ray.get(client._controller.get_serve_instance_details.remote())
+                )
+                return len(details.proxies) == 2 and all(
+                    proxy.status == ProxyStatus.HEALTHY
+                    for proxy in details.proxies.values()
+                )
+
+            wait_for_condition(both_proxies_healthy, timeout=60)
+            wait_for_condition(
+                _haproxy_exporter_up,
+                timeout=30,
+                headers={"Authorization": f"Bearer {token}"},
+            )
+            assert _get_haproxy_endpoint(9101, "/metrics").status_code == 401
+        finally:
+            if ray.is_initialized():
+                serve.shutdown()
+                ray.shutdown()
+            cluster.shutdown()
+            reset_auth_token_state()
 
 
 def test_haproxy_safe_name():
@@ -1246,12 +1396,10 @@ def test_multiplexed_routing_retry(shutdown_ray):
 
     server = ModelServer.bind()
     serve.run(server._with_ingress_request_router(IngressRouter.bind(server)))
-    # Wait for HAProxy to install the ingress router before exercising model
-    # selection. Readiness requests do not touch multiplexed routing state.
-    wait_for_condition(
-        lambda: httpx.post("http://localhost:8000/ready").text == "ready",
-        timeout=30,
-    )
+    # Blocking serve.run() guarantees that the ingress request router is installed.
+    response = httpx.post("http://localhost:8000/ready")
+    assert response.status_code == 200, response.text
+    assert response.text == "ready"
     serve.get_deployment_handle(
         "IngressRouter", app_name="default"
     ).enable_multiplexing.remote().result()
@@ -1321,7 +1469,6 @@ def test_pick_only_routing_calls_on_request_routed(shutdown_ray):
 
 
 def test_serve_run_rejects_custom_ingress_request_router(ray_shutdown):
-    """serve.run rejects a custom router on the ingress under HAProxy."""
     ray.init(num_cpus=8)
     serve.start(http_options=dict(port=8003))
 
@@ -1339,8 +1486,7 @@ def test_serve_run_rejects_custom_ingress_request_router(ray_shutdown):
 
 
 def test_deploy_config_rejects_custom_ingress_request_router(ray_shutdown):
-    """A config override that sets a custom router on the ingress fails to deploy
-    under HAProxy."""
+    """A config override cannot silently bypass the ingress request router."""
     ray.init(num_cpus=8)
     serve.start(http_options=dict(port=8003))
     client = _get_global_client()
@@ -1373,6 +1519,108 @@ def test_deploy_config_rejects_custom_ingress_request_router(ray_shutdown):
         return True
 
     wait_for_condition(deploy_failed)
+
+
+def test_router_application_dispatches_across_applications(ray_shutdown):
+    """A router app picks sibling-app replicas; HAProxy sends requests there."""
+    from fastapi.responses import JSONResponse
+
+    ray.init(num_cpus=8)
+    serve.start()
+
+    def make_backend_app():
+        api = FastAPI()
+
+        @serve.deployment(num_replicas=2)
+        @serve.ingress(api)
+        class Backend:
+            @api.api_route("/{path:path}", methods=["GET", "POST"])
+            async def handle(self, path: str, request: Request):
+                return {
+                    "replica_id": serve.get_replica_context().replica_id.to_full_id_str(),
+                    "request_id": request.headers.get("x-request-id"),
+                    "path": request.url.path,
+                }
+
+        return Backend.bind()
+
+    router_api = FastAPI()
+
+    @serve.deployment
+    @serve._router_application
+    @serve.ingress(router_api)
+    class Router:
+        def __init__(self):
+            self._decisions = {}
+
+        async def _decide(self, app_name: str, request: Request):
+            handle = serve.get_deployment_handle("Backend", app_name=app_name)
+            async with handle.choose_replica(_reserve=False) as selection:
+                replica_id = selection._replica.replica_id.to_full_id_str()
+            self._decisions[request.headers["x-request-id"]] = replica_id
+            return {"application": app_name, "replica_id": replica_id}
+
+        @router_api.post("/internal/route")
+        async def route(self, request: Request):
+            method = request.headers[SERVE_ROUTER_APPLICATION_ORIGINAL_METHOD_HEADER]
+            request_target = request.headers[SERVE_INGRESS_ROUTER_REQUEST_PATH_HEADER]
+            path = request_target.partition("?")[0]
+            if method == "GET" and path == "/v1/models":
+                return await self._decide("control", request)
+
+            model = (await request.json()).get("model")
+            if model not in ("model-a", "model-b"):
+                return JSONResponse({"error": "unknown model"}, status_code=404)
+            return await self._decide(model, request)
+
+        def get_decisions(self):
+            return self._decisions
+
+    serve.run(make_backend_app(), name="model-a", route_prefix="/v1/model-a")
+    serve.run(make_backend_app(), name="model-b", route_prefix="/v1/model-b")
+    serve.run(make_backend_app(), name="control", route_prefix="/v1/control")
+    router_handle = serve.run(Router.bind(), name="router", route_prefix="/llm")
+
+    def chat(model, request_id):
+        return httpx.post(
+            "http://localhost:8000/llm/v1/chat/completions",
+            json={"model": model},
+            headers={"x-request-id": request_id},
+            timeout=10,
+        )
+
+    wait_for_condition(lambda: chat("model-a", "warmup").status_code == 200)
+
+    served = {}
+    for i in range(8):
+        model = ["model-a", "model-b"][i % 2]
+        resp = chat(model, f"req-{i}")
+        assert resp.status_code == 200, resp.text
+        body = resp.json()
+        assert body["request_id"] == f"req-{i}"
+        assert body["path"] == f"/v1/{model}/v1/chat/completions"
+        assert f"::{model}#Backend#" in body["replica_id"]
+        served[f"req-{i}"] = body["replica_id"]
+    resp = httpx.get(
+        "http://localhost:8000/llm/v1/models", headers={"x-request-id": "models"}
+    )
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["path"] == "/v1/control/v1/models"
+    assert "::control#Backend#" in resp.json()["replica_id"]
+
+    # Each response came from the replica the router chose.
+    decisions = router_handle.get_decisions.remote().result()
+    assert {k: decisions[k] for k in served} == served
+
+    resp = chat("model-c", "req-unknown")
+    assert resp.status_code == 404
+    assert resp.json() == {"error": "unknown model"}
+
+    # Direct application routes are unchanged.
+    resp = httpx.post("http://localhost:8000/v1/model-a/v1/chat/completions")
+    assert "::model-a#Backend#" in resp.json()["replica_id"]
+
+    serve.shutdown()
 
 
 if __name__ == "__main__":

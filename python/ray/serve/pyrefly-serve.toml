@@ -8,6 +8,7 @@
 project-includes = [
     "_private/**/*.py",
     "handle.py",
+    "tests/typing_files/check_deployment_typing.py",
     "tests/typing_files/check_handle_typing.py",
 ]
 project-excludes = [

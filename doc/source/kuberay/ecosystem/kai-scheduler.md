@@ -57,7 +57,7 @@ helm upgrade -i kai-scheduler oci://ghcr.io/nvidia/kai-scheduler/kai-scheduler -
 
 ## Step 1: Install the KubeRay operator with KAI Scheduler as the batch scheduler
 
-Follow the official KubeRay operator [installation documentation](https://docs.ray.io/en/master/cluster/kubernetes/getting-started/kuberay-operator-installation.html#kuberay-operator-installation) and add the following configuration to enable KAI Scheduler integration:
+Follow the official KubeRay operator [installation documentation](../getting-started/operator-installation.md) and add the following configuration to enable KAI Scheduler integration:
 
 ```bash
 --set batchScheduler.name=kai-scheduler
@@ -115,7 +115,7 @@ Note: To make this demo easier to follow, it combined these queue definitions wi
 
 ## Step 3: Gang scheduling with KAI Scheduler
 
-The key pattern is to add the queue label to your RayCluster. [Here's a basic example](https://github.com/ray-project/kuberay/blob/master/ray-operator/config/samples/ray-cluster.kai-scheduler.yaml) from the KubeRay repository:
+The key pattern is to add the queue label to your RayCluster. [Here's a basic example](https://github.com/kuberay-project/kuberay/blob/master/ray-operator/config/samples/ray-cluster.kai-scheduler.yaml) from the KubeRay repository:
 
 ```yaml
 metadata:
@@ -127,7 +127,7 @@ metadata:
 Apply this RayCluster with queues:
 
 ```bash
-curl -LO https://raw.githubusercontent.com/ray-project/kuberay/master/ray-operator/config/samples/ray-cluster.kai-scheduler.yaml
+curl -LO https://raw.githubusercontent.com/kuberay-project/kuberay/master/ray-operator/config/samples/ray-cluster.kai-scheduler.yaml
 
 kubectl apply -f ray-cluster.kai-scheduler.yaml
 
@@ -181,10 +181,10 @@ See the [documentation](https://github.com/NVIDIA/KAI-Scheduler/tree/main/docs/p
 
 ## Step 4: Submitting Ray workers with GPU sharing 
 
-This example creates two workers that share a single GPU, 0.5 each with time-slicing, within a RayCluster. See the [YAML file](https://github.com/ray-project/kuberay/blob/master/ray-operator/config/samples/ray-cluster.kai-gpu-sharing.yaml)):
+This example creates two workers that share a single GPU, 0.5 each with time-slicing, within a RayCluster. See the [YAML file](https://github.com/kuberay-project/kuberay/blob/master/ray-operator/config/samples/ray-cluster.kai-gpu-sharing.yaml).
 
 ```bash
-curl -LO https://raw.githubusercontent.com/ray-project/kuberay/master/ray-operator/config/samples/ray-cluster.kai-gpu-sharing.yaml
+curl -LO https://raw.githubusercontent.com/kuberay-project/kuberay/master/ray-operator/config/samples/ray-cluster.kai-gpu-sharing.yaml
 
 kubectl apply -f ray-cluster.kai-gpu-sharing.yaml
 

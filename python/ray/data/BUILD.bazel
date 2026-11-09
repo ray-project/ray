@@ -27,6 +27,11 @@ py_library(
     deps = ["//python/ray/tests:conftest"],
 )
 
+py_library(
+    name = "datasource_v2_unit_conftest",
+    srcs = ["tests/unit/datasource_v2/conftest.py"],
+)
+
 py_test_module_list(
     size = "small",
     files = glob(["tests/unit/**/test_*.py"]),
@@ -36,6 +41,7 @@ py_test_module_list(
     ],
     deps = [
         ":conftest",
+        ":datasource_v2_unit_conftest",
         "//:ray_lib",
     ],
 )
@@ -104,6 +110,29 @@ py_test_module_list(
         ":conftest",
         "//:ray_lib",
     ],
+)
+
+# Tests for the actor-only backend (RAY_DATA_ACTOR_ONLY_BACKEND=1).
+py_test_module_list(
+    size = "small",
+    env = {
+        "RAY_DATA_ACTOR_ONLY_BACKEND": "1",
+    },
+    files = glob(["tests/actor_only/test_*.py"]),
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":actor_only_conftest",
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_library(
+    name = "actor_only_conftest",
+    srcs = ["tests/actor_only/conftest.py"],
 )
 
 py_test(
@@ -182,6 +211,64 @@ py_test(
     srcs = ["tests/datasource/test_sql.py"],
     tags = [
         "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
+    name = "test_hive",
+    size = "small",
+    srcs = ["tests/datasource/test_hive.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
+    name = "test_hive_no_replay",
+    size = "medium",
+    srcs = ["tests/datasource/test_hive_no_replay.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
+    name = "test_hive_lifecycle",
+    size = "medium",
+    srcs = ["tests/datasource/test_hive_lifecycle.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
+    name = "test_hive_integration",
+    size = "large",
+    srcs = ["tests/datasource/test_hive_integration.py"],
+    tags = [
+        "data_integration",
+        "exclusive",
+        "hive_integration",
         "team:data",
     ],
     deps = [
@@ -496,6 +583,20 @@ py_test(
     name = "test_random_e2e",
     size = "large",
     srcs = ["tests/test_random_e2e.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
+    name = "test_shuffle_batches",
+    size = "medium",
+    srcs = ["tests/test_shuffle_batches.py"],
     tags = [
         "exclusive",
         "team:data",
@@ -1102,7 +1203,7 @@ py_test(
 
 py_test(
     name = "test_orc",
-    size = "small",
+    size = "medium",
     srcs = ["tests/datasource/test_orc.py"],
     tags = [
         "exclusive",
@@ -1158,7 +1259,7 @@ py_test(
 
 py_test(
     name = "test_read_parquet_v2",
-    size = "small",
+    size = "medium",
     srcs = ["tests/datasource/test_read_parquet_v2.py"],
     tags = [
         "exclusive",
@@ -1372,7 +1473,7 @@ py_test(
 
 py_test(
     name = "test_torch_tensor_utils",
-    size = "small",
+    size = "medium",
     srcs = ["tests/test_torch_tensor_utils.py"],
     tags = [
         "exclusive",
@@ -1795,9 +1896,12 @@ py_test(
     ],
 )
 
+# Several distributed sorts plus hundreds of serial ray.get calls. Passing
+# runs land at 36-59s, so the small-test default of 60s times out under load.
 py_test(
     name = "test_random_access",
     size = "small",
+    timeout = "moderate",
     srcs = ["tests/test_random_access.py"],
     tags = [
         "exclusive",
@@ -1888,6 +1992,34 @@ py_test(
     tags = [
         "data_non_parallel",
         "data_non_parallel_postmerge_only",
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
+    name = "test_push_split_coordinator",
+    size = "large",
+    srcs = ["tests/test_push_split_coordinator.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
+    name = "test_push_split_iterator",
+    size = "large",
+    srcs = ["tests/test_push_split_iterator.py"],
+    tags = [
         "exclusive",
         "team:data",
     ],
@@ -2418,7 +2550,7 @@ py_test(
 
 py_test(
     name = "test_download_expression",
-    size = "small",
+    size = "medium",
     srcs = ["tests/test_download_expression.py"],
     tags = [
         "exclusive",

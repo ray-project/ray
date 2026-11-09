@@ -183,6 +183,33 @@ class RayReportCallback:
 class RayTrainReportCallback(RayReportCallback):
     """Creates a callback that reports metrics and checkpoints model.
 
+    Examples:
+        Reporting checkpoints and metrics to Ray Tune when running many
+        independent LightGBM trials (without data parallelism within a trial).
+
+        >>> import lightgbm  # doctest: +SKIP_EXAMPLE
+        >>> from ray.train.lightgbm import RayTrainReportCallback
+        >>> config = {
+        ...     # ...
+        ...     "metric": ["binary_logloss", "binary_error"],
+        ... }
+        >>> # Report only log loss to Tune after each validation epoch.
+        >>> bst = lightgbm.train(
+        ...     ...,
+        ...     callbacks=[
+        ...         RayTrainReportCallback(
+        ...             metrics={"loss": "eval-binary_logloss"}, frequency=1
+        ...         )
+        ...     ],
+        ... )
+
+        Loading a model from a checkpoint reported by this callback.
+
+        >>> from ray.train.lightgbm import RayTrainReportCallback
+        >>> # Get a `Checkpoint` object that is saved by the callback during training.
+        >>> result = trainer.fit()
+        >>> booster = RayTrainReportCallback.get_model(result.checkpoint)
+
     Args:
         metrics: Metrics to report. If this is a list,
             each item should be a metric key reported by LightGBM,
@@ -197,46 +224,6 @@ class RayTrainReportCallback(RayReportCallback):
         results_postprocessing_fn: An optional Callable that takes in
             the metrics dict that will be reported (after it has been flattened)
             and returns a modified dict.
-
-    Examples
-    --------
-
-    Reporting checkpoints and metrics to Ray Tune when running many
-    independent LightGBM trials (without data parallelism within a trial).
-
-    .. testcode::
-        :skipif: True
-
-        import lightgbm
-
-        from ray.train.lightgbm import RayTrainReportCallback
-
-        config = {
-            # ...
-            "metric": ["binary_logloss", "binary_error"],
-        }
-
-        # Report only log loss to Tune after each validation epoch.
-        bst = lightgbm.train(
-            ...,
-            callbacks=[
-                RayTrainReportCallback(
-                    metrics={"loss": "eval-binary_logloss"}, frequency=1
-                )
-            ],
-        )
-
-    Loading a model from a checkpoint reported by this callback.
-
-    .. testcode::
-        :skipif: True
-
-        from ray.train.lightgbm import RayTrainReportCallback
-
-        # Get a `Checkpoint` object that is saved by the callback during training.
-        result = trainer.fit()
-        booster = RayTrainReportCallback.get_model(result.checkpoint)
-
     """
 
     @contextmanager

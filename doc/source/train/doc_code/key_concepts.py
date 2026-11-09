@@ -86,19 +86,19 @@ with result.checkpoint.as_directory() as tmpdir:
     ...
 # __result_checkpoint_end__
 
-# __result_best_checkpoint_start__
-# Print available checkpoints
-for checkpoint, metrics in result.best_checkpoints:
-    print("Loss", metrics["loss"], "checkpoint", checkpoint)
-
-# Get checkpoint with minimal loss
-best_checkpoint = min(
-    result.best_checkpoints, key=lambda checkpoint: checkpoint[1]["loss"]
-)[0]
+# __result_get_best_checkpoint_start__
+# Get the checkpoint with the lowest loss
+best_checkpoint = result.get_best_checkpoint(metric="loss", mode="min")
 
 with best_checkpoint.as_directory() as tmpdir:
     # Load model from directory
     ...
+# __result_get_best_checkpoint_end__
+
+# __result_best_checkpoint_start__
+# Print all saved checkpoints and their metrics
+for checkpoint, metrics in result.best_checkpoints:
+    print("Loss", metrics["loss"], "checkpoint", checkpoint)
 # __result_best_checkpoint_end__
 
 import pyarrow

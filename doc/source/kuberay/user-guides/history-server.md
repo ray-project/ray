@@ -102,17 +102,17 @@ KubeRay publishes prebuilt container images for the History Server and the colle
 * **History Server**: `quay.io/kuberay/historyserver:nightly`
 * **Collector**: `quay.io/kuberay/collector:nightly`
 
-To build the images from source and push them to your own registry, see [the image build and push guide](https://github.com/ray-project/kuberay/blob/master/historyserver/docs/image-build-push-guide.md).
+To build the images from source and push them to your own registry, see [the image build and push guide](https://github.com/kuberay-project/kuberay/blob/master/historyserver/docs/image-build-push-guide.md).
 
 ## Deploy the History Server
 
-Using the example provided [here](https://raw.githubusercontent.com/ray-project/kuberay/refs/heads/master/historyserver/config/historyserver-gcs.yaml), deploy a History Server that connects to Google Cloud Storage:
+Using the example provided [here](https://raw.githubusercontent.com/kuberay-project/kuberay/refs/heads/master/historyserver/config/historyserver-gcs.yaml), deploy a History Server that connects to Google Cloud Storage:
 
 ```sh
 export GCS_BUCKET=<GCS_BUCKET>
 export HISTORY_SERVER_IMAGE=quay.io/kuberay/historyserver:nightly
 
-curl https://raw.githubusercontent.com/ray-project/kuberay/refs/heads/master/historyserver/config/historyserver-gcs.yaml | envsubst | kubectl apply -f -
+curl https://raw.githubusercontent.com/kuberay-project/kuberay/refs/heads/master/historyserver/config/historyserver-gcs.yaml | envsubst | kubectl apply -f -
 ```
 
 ### History Server configuration
@@ -161,7 +161,7 @@ Configure the History Server with the following environment variables and comman
 * - 
   - `--use-auth-token-mode`
   - `false`
-  - Enable Ray dashboard token authentication mode for proxying to live RayClusters that have auth enabled. This flag only has an effect when `--enable-live-clusters` is enabled. When enabled, the History Server reads each cluster's auth token from its Kubernetes Secret and injects it as an `x-ray-authorization` header on proxied requests, stripping any client-supplied value. This requires extra RBAC to read those Secrets. See [`service_account_auth_token_mode.yaml`](https://github.com/ray-project/kuberay/blob/master/historyserver/config/service_account_auth_token_mode.yaml). Kubernetes-delegated token auth (`enableK8sTokenAuth`) isn't supported.
+  - Enable Ray dashboard token authentication mode for proxying to live RayClusters that have auth enabled. This flag only has an effect when `--enable-live-clusters` is enabled. When enabled, the History Server reads each cluster's auth token from its Kubernetes Secret and injects it as an `x-ray-authorization` header on proxied requests, stripping any client-supplied value. This requires extra RBAC to read those Secrets. See [`service_account_auth_token_mode.yaml`](https://github.com/kuberay-project/kuberay/blob/master/historyserver/config/service_account_auth_token_mode.yaml). Kubernetes-delegated token auth (`enableK8sTokenAuth`) isn't supported.
 * - 
   - `--kube-api-qps`
   - `100`
@@ -200,14 +200,14 @@ The History Server does not authenticate its own callers, and a client-supplied 
 
 The collector runs on every RayCluster Pod, where it collects logs and events and exports them to object storage.
 
-Create a RayJob with the collector sidecar using the [`rayjob-gcs.yaml` example manifest](https://raw.githubusercontent.com/ray-project/kuberay/refs/heads/master/historyserver/config/rayjob-gcs.yaml):
+Create a RayJob with the collector sidecar using the [`rayjob-gcs.yaml` example manifest](https://raw.githubusercontent.com/kuberay-project/kuberay/refs/heads/master/historyserver/config/rayjob-gcs.yaml):
 
 ```sh
 export GCS_BUCKET=<GCS_BUCKET>
 export COLLECTOR_IMAGE=quay.io/kuberay/collector:nightly
 export RAY_JOB=rayjob-historyserver-gcs
 
-curl https://raw.githubusercontent.com/ray-project/kuberay/refs/heads/master/historyserver/config/rayjob-gcs.yaml | envsubst | kubectl apply -n ${NAMESPACE} -f -
+curl https://raw.githubusercontent.com/kuberay-project/kuberay/refs/heads/master/historyserver/config/rayjob-gcs.yaml | envsubst | kubectl apply -n ${NAMESPACE} -f -
 ```
 
 ### Environment variables in the example manifest

@@ -17,6 +17,7 @@
 #include <functional>
 #include <memory>
 #include <optional>
+#include <vector>
 
 #include "ray/ray_syncer/ray_syncer.h"
 #include "ray/ray_syncer/ray_syncer_bidi_reactor_base.h"
@@ -41,15 +42,18 @@ class FakeReporterInterface : public ReporterInterface {
   }
 };
 
-// Receiver whose ConsumeSyncMessage behavior is injected via a callback.
+// Receiver whose ConsumeSyncMessages behavior is injected via a callback.
 class FakeReceiverInterface : public ReceiverInterface {
  public:
-  std::function<void(std::shared_ptr<const RaySyncMessage> message)>
-      consume_sync_message_fn;
+  std::function<void(MessageType message_type,
+                     std::vector<std::shared_ptr<const RaySyncMessage>> messages)>
+      consume_sync_messages_fn;
 
-  void ConsumeSyncMessage(std::shared_ptr<const RaySyncMessage> message) override {
-    if (consume_sync_message_fn) {
-      consume_sync_message_fn(std::move(message));
+  void ConsumeSyncMessages(
+      MessageType message_type,
+      std::vector<std::shared_ptr<const RaySyncMessage>> messages) override {
+    if (consume_sync_messages_fn) {
+      consume_sync_messages_fn(message_type, std::move(messages));
     }
   }
 };

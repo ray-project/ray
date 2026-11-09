@@ -10,6 +10,20 @@ http_archive(
     ],
 )
 
+# bazel_skylib is declared up front, before anything loads from it. The first
+# declaration of a repo wins: the maybe() calls in py_repositories(),
+# rules_java_dependencies() and protobuf_deps() skip theirs, and a later plain
+# http_archive is ignored once the repo has been loaded. Without this,
+# rules_python 0.40.0 pulls bazel_skylib 1.3.0, too old for protobuf 29 (it
+# needs paths.is_normalized() from skylib 1.7.0).
+http_archive(
+    name = "bazel_skylib",
+    sha256 = "bc283cdfcd526a52c3201279cda4bc298652efa898b10b4db0837dc51652756f",
+    urls = [
+        "https://github.com/bazelbuild/bazel-skylib/releases/download/1.7.1/bazel-skylib-1.7.1.tar.gz",
+    ],
+)
+
 http_archive(
     name = "rules_java",
     sha256 = "302bcd9592377bf9befc8e41aa97ec02df12813d47af9979e4764f3ffdcc5da8",
