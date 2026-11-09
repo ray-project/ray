@@ -109,8 +109,8 @@ def test_setup_sets_client_env():
     assert looked_up == [("ModelExpressServer", "mx")]
     assert env["MX_SERVER_ADDRESS"] == MX_ADDRESS
     # MX adds each worker's GPU index to the bases.
-    assert env["MX_METADATA_PORT"] == "15555"
-    assert env["MX_WORKER_GRPC_PORT"] == "16555"
+    assert env["MX_METADATA_PORT"] == "21555"
+    assert env["MX_WORKER_GRPC_PORT"] == "22555"
     # Copied to every vLLM worker, which can be on other nodes; MX detects it.
     assert "MX_WORKER_HOST" not in env
     assert env["MX_MODEL_NAME_OVERRIDE"] == "Qwen/Qwen3-0.6B"
@@ -183,8 +183,8 @@ def test_mx_server_envs():
     with patch.dict("os.environ", {}, clear=True):
         assert mx_envs.get_mx_server_binary() == "/usr/local/bin/modelexpress-server"
         assert mx_envs.get_mx_app_name() == "mx"
-        assert mx_envs.get_mx_metadata_port_base() == 15555
-        assert mx_envs.get_mx_worker_grpc_port_base() == 16555
+        assert mx_envs.get_mx_metadata_port_base() == 21555
+        assert mx_envs.get_mx_worker_grpc_port_base() == 22555
         assert mx_envs.get_mx_server_port() == 8931
         assert importlib.reload(mx_envs).MX_SERVER_HEALTH_CHECK_PERIOD_S == 10
     with patch.dict(
