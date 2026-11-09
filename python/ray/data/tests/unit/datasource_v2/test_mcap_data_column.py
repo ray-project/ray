@@ -51,6 +51,7 @@ pytestmark = pytest.mark.skipif(
 )
 
 ONLY_A = MCAPSelection.create(["/a"], None, None)
+SUMMARY_BUDGET_BYTES = 128 * 2**20  # the default read task budget
 
 
 def write_channel(
@@ -111,6 +112,7 @@ def infer(
         filesystem or LocalFileSystem(),
         paths[:sampled],
         lambda: iter(paths),
+        SUMMARY_BUDGET_BYTES,
     )
 
 
@@ -229,9 +231,10 @@ def test_walk_skips_unreadable_files_and_stops_at_its_cap(tmp_path, monkeypatch)
         raise AssertionError("listed although the sample types data")
 
     sampled = paths[4:]
-    assert infer_data_type(ONLY_A, LocalFileSystem(), sampled, no_listing) == struct_of(
-        "walked"
+    planned = infer_data_type(
+        ONLY_A, LocalFileSystem(), sampled, no_listing, SUMMARY_BUDGET_BYTES
     )
+    assert planned == struct_of("walked")
 
 
 def test_unreadable_sampled_file_is_skipped(tmp_path):
