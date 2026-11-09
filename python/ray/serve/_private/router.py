@@ -561,13 +561,10 @@ class RouterMetricsManager:
             },
             timestamp=timestamp,
             router_metrics={
-                ROUTER_QUEUED_REQUESTS_KEY: queued_requests,
-                **{
-                    metric_name: self._router_metrics_store.data.get(
-                        metric_name, [TimeStampedValue(timestamp, value)]
-                    )
-                    for metric_name, value in self._latest_custom_router_metrics.items()
-                },
+                metric_name: self._router_metrics_store.data.get(
+                    metric_name, [TimeStampedValue(timestamp, value)]
+                )
+                for metric_name, value in self._latest_custom_router_metrics.items()
             },
         )
 

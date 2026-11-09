@@ -22,7 +22,6 @@ from ray.serve._private import (
 )
 from ray.serve._private.autoscaling_state import DeploymentAutoscalingState
 from ray.serve._private.common import (
-    QUEUED_REQUESTS_KEY,
     RUNNING_REQUESTS_KEY,
     DeploymentHandleSource,
     DeploymentID,
@@ -258,7 +257,6 @@ def test_encode_decode_round_trip_preserves_every_series():
     assert got_router == {
         metric: [(p.timestamp, p.value) for p in series]
         for metric, series in rep.router_metrics.items()
-        if metric != QUEUED_REQUESTS_KEY
     }
 
 
@@ -275,7 +273,6 @@ def test_context_exposes_raw_router_metrics_by_handle(columnar):
 
     raw = state.get_autoscaling_context(1).raw_router_metrics
     assert raw is not None
-    assert raw[QUEUED_REQUESTS_KEY][report.handle_id] == report.queued_requests
     for metric_name in (
         "outstanding_effective_prefill_tokens",
         "active_decode_requests",

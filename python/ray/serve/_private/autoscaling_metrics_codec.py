@@ -19,7 +19,6 @@ from typing import Any, Dict, List, TypedDict
 import numpy as np
 
 from ray.serve._private.common import (
-    QUEUED_REQUESTS_KEY,
     RUNNING_REQUESTS_KEY,
     DeploymentID,
     HandleMetricReport,
@@ -125,9 +124,7 @@ def _encode_handle(rep: HandleMetricReport) -> bytes:
         off += n
     q_ts = [p.timestamp for p in rep.queued_requests]
     q_val = [p.value for p in rep.queued_requests]
-    router_metric_names = [
-        name for name in rep.router_metrics if name != QUEUED_REQUESTS_KEY
-    ]
+    router_metric_names = list(rep.router_metrics)
     router_entries, router_series = [], []
     router_off = 0
     for i, name in enumerate(router_metric_names):
