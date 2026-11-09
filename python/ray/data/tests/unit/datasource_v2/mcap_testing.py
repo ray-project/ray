@@ -9,7 +9,7 @@ collect without it.
 import json
 import shutil
 from collections import defaultdict
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Iterable, List, Optional
 
 import pyarrow as pa
 from pyarrow.fs import LocalFileSystem
@@ -356,6 +356,22 @@ def write_corrupt_chunk(path: str, source: str, index: int) -> str:
     with open(path, "r+b") as f:
         f.seek(start)
         f.write(bytes(chunk.compressed_size))
+    return path
+
+
+NOT_JSON = b"not json"  # a payload on a JSON-encoded topic that does not decode
+
+
+def write_invalid_json(path: str, bad: Iterable[int], **options: Any) -> str:
+    """Write ``CHUNKED_FILE_MESSAGES`` ``round_robin_messages`` to ``path``, with
+    the payloads of the messages whose ``seq`` is in ``bad`` set to ``NOT_JSON``.
+
+    ``options`` go to ``write_mcap``; by default each message is its own chunk.
+    """
+    messages = round_robin_messages(CHUNKED_FILE_MESSAGES)
+    for seq in bad:
+        messages[seq]["data"] = NOT_JSON
+    write_mcap(path, messages, **options)
     return path
 
 
