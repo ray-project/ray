@@ -22,6 +22,7 @@ The `ray.serve.exceptions` module defines the errors Serve raises to callers and
    serve.exceptions.BackPressureError
    serve.exceptions.RayServeException
    serve.exceptions.RequestCancelledError
+   serve.exceptions.RequestRoutingTimeoutError
    serve.exceptions.gRPCStatusError
    serve.exceptions.DeploymentUnavailableError
    serve.exceptions.ReplicaUnavailableError

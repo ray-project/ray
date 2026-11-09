@@ -98,6 +98,25 @@ Ray Serve allows you to fine-tune the backoff behavior of the request router, wh
 - `RAY_SERVE_ROUTER_RETRY_BACKOFF_MULTIPLIER`: The multiplier applied to the backoff time after each retry. Default is `2`.
 - `RAY_SERVE_ROUTER_RETRY_MAX_BACKOFF_S`: The maximum backoff time (in seconds) between retries. Default is `0.5`.
 
+### Set a timeout for choosing a replica
+
+By default, a request waits in the router until a replica accepts it. If no replica becomes available, for example because a deployment scaled to zero can't schedule a new replica, the request waits indefinitely. Set `request_routing_timeout_s` in the deployment's `request_router_config` to bound this wait:
+
+```python
+from ray import serve
+from ray.serve.config import RequestRouterConfig
+
+@serve.deployment(
+    request_router_config=RequestRouterConfig(request_routing_timeout_s=10),
+)
+class Model:
+    ...
+```
+
+A request that isn't assigned to a replica within the timeout fails with a `RequestRoutingTimeoutError`, a subclass of `TimeoutError`. The HTTP proxy returns status 408 and the gRPC proxy returns `DEADLINE_EXCEEDED`. The deadline starts at the request's first routing attempt, after its arguments resolve. Retries after a replica rejects the request don't restart it. Time spent waiting for a replica to accept the request or reserve a slot counts toward the deadline, but the timeout doesn't interrupt that wait. The timeout doesn't cover the time the replica takes to process the request. Unlike `request_timeout_s`, it also applies to `DeploymentHandle` calls.
+
+With [HAProxy load balancing](serve-haproxy), requests to the ingress deployment wait in HAProxy's queue, not in a Serve request router, so `request_routing_timeout_s` doesn't bound that wait. It still applies to `DeploymentHandle` calls between deployments.
+
 ### Set timeouts while probing replicas for queue length
 
 Ray Serve's request router probes replicas for their queue lengths to make intelligent load balancing decisions. You can tune the following environment variables to optimize this behavior for your workload:

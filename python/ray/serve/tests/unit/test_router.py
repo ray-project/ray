@@ -43,6 +43,9 @@ from ray.serve._private.request_router import (
     RunningReplica,
 )
 from ray.serve._private.request_router.common import ReplicaQueueLengthCache
+from ray.serve._private.request_router.pow_2_router import (
+    PowerOfTwoChoicesRequestRouter,
+)
 from ray.serve._private.request_router.replica_wrapper import ReplicaSelection
 from ray.serve._private.router import (
     QUEUED_REQUESTS_KEY,
@@ -51,7 +54,13 @@ from ray.serve._private.router import (
     RouterMetricsManager,
     SingletonThreadRouter,
 )
-from ray.serve._private.test_utils import FakeCounter, FakeGauge, MockTimer
+from ray.serve._private.test_utils import (
+    FAKE_REPLICA_DEFAULT_MAX_ONGOING_REQUESTS,
+    FakeCounter,
+    FakeGauge,
+    FakeRunningReplica,
+    MockTimer,
+)
 from ray.serve._private.utils import (
     Semaphore,
     decompress_metric_report,
@@ -62,7 +71,10 @@ from ray.serve.exceptions import (
     BackPressureError,
     DeploymentUnavailableError,
     ReplicaUnavailableError,
+    RequestRoutingTimeoutError,
 )
+from ray.serve.experimental.capacity_queue_router import CapacityQueueRouter
+from ray.serve.handle import DeploymentResponse
 
 
 class FakeReplicaResult(ReplicaResult):
@@ -371,9 +383,16 @@ async def setup_router(request) -> Tuple[AsyncioRouter, FakeRequestRouter]:
     if not hasattr(request, "param"):
         request.param = {}
 
-    fake_request_router = FakeRequestRouter(
-        request.param.get("enable_queue_len_cache", False)
-    )
+    if "request_router_cls" in request.param:
+        # A real request router, for tests that need its pending queues.
+        fake_request_router = request.param["request_router_cls"](
+            deployment_id=DeploymentID(name="test-deployment"),
+            handle_source=DeploymentHandleSource.UNKNOWN,
+        )
+    else:
+        fake_request_router = FakeRequestRouter(
+            request.param.get("enable_queue_len_cache", False)
+        )
     router = AsyncioRouter(
         # TODO(edoakes): refactor to make a better fake controller or not depend on it.
         controller_handle=Mock(),
@@ -2406,6 +2425,42 @@ class TestRouterMetricsManager:
         assert metrics_manager.should_send_scaled_to_zero_optimized_push(0)
 
     @pytest.mark.asyncio
+    @patch("ray.serve._private.router.RAY_SERVE_COLUMNAR_AUTOSCALING_METRICS", False)
+    async def test_scaled_to_zero_push_includes_queued_request(self):
+        """The push reports the queued request even if the metrics store already
+        holds older samples, since the request may time out before the next one."""
+        mock_controller_handle = Mock()
+        metrics_manager = RouterMetricsManager(
+            DeploymentID(name="a", app_name="b"),
+            "random",
+            "random_actor",
+            DeploymentHandleSource.UNKNOWN,
+            mock_controller_handle,
+            FakeCounter(
+                tag_keys=("deployment", "route", "application", "handle", "actor_id")
+            ),
+            FakeGauge(tag_keys=("deployment", "application", "handle", "actor_id")),
+            FakeGauge(tag_keys=("deployment", "application", "handle", "actor_id")),
+            event_loop=asyncio.get_event_loop(),
+        )
+        metrics_manager._deployment_config = DeploymentConfig(
+            autoscaling_config=AutoscalingConfig()
+        )
+        # A sample recorded while nothing was queued.
+        metrics_manager._add_autoscaling_metrics_point()
+
+        with metrics_manager.wrap_queued_request(is_retry=False, num_curr_replicas=0):
+            pass
+
+        (
+            payload,
+        ) = mock_controller_handle.record_autoscaling_metrics_from_handle.remote.call_args[
+            0
+        ]
+        report = decompress_metric_report(payload)
+        assert report.queued_requests[-1].value == 1
+
+    @pytest.mark.asyncio
     @pytest.mark.parametrize("columnar", [True, False])
     @patch(
         "ray.serve._private.router.RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE", "1"
@@ -3211,6 +3266,7 @@ class TestAsyncioRouterBackoffConfig:
                 initial_backoff_s=custom_initial_backoff,
                 backoff_multiplier=custom_multiplier,
                 max_backoff_s=custom_max_backoff,
+                request_routing_timeout_s=1.5,
             )
         )
 
@@ -3226,6 +3282,242 @@ class TestAsyncioRouterBackoffConfig:
         assert fake_request_router.initial_backoff_s == custom_initial_backoff
         assert fake_request_router.backoff_multiplier == custom_multiplier
         assert fake_request_router.max_backoff_s == custom_max_backoff
+        assert router._request_routing_timeout_s == 1.5
+
+
+def _routing_timeout_config(timeout_s: float) -> DeploymentConfig:
+    return DeploymentConfig.from_default(
+        request_router_config=RequestRouterConfig(request_routing_timeout_s=timeout_s)
+    )
+
+
+@pytest.mark.asyncio
+class TestRequestRoutingTimeout:
+    @pytest.mark.parametrize(
+        "setup_router",
+        [
+            {"request_router_cls": PowerOfTwoChoicesRequestRouter},
+            {"request_router_cls": CapacityQueueRouter},
+        ],
+        indirect=True,
+    )
+    async def test_no_replicas(self, setup_router: Tuple[AsyncioRouter, RequestRouter]):
+        """A request fails once the timeout expires and leaves no queue entry."""
+        router, request_router = setup_router
+        router.update_deployment_config(_routing_timeout_config(0.05))
+
+        with pytest.raises(RequestRoutingTimeoutError, match="within 0.05s"):
+            await asyncio.wait_for(
+                router.assign_request(dummy_request_metadata()), timeout=5
+            )
+
+        assert request_router.num_pending_requests == 0
+        assert len(request_router._pending_requests_to_route) == 0
+
+    @pytest.mark.parametrize(
+        "setup_router",
+        [{"request_router_cls": PowerOfTwoChoicesRequestRouter}],
+        indirect=True,
+    )
+    async def test_replicas_at_capacity_stops_routing_task(
+        self, setup_router: Tuple[AsyncioRouter, RequestRouter]
+    ):
+        """A request that times out while its replica is full stops its routing
+        task."""
+        router, request_router = setup_router
+        replica = FakeRunningReplica("r1")
+        replica.set_queue_len_response(FAKE_REPLICA_DEFAULT_MAX_ONGOING_REQUESTS)
+        request_router.update_replicas([replica])
+        router.update_deployment_config(_routing_timeout_config(0.05))
+
+        with pytest.raises(RequestRoutingTimeoutError):
+            await asyncio.wait_for(
+                router.assign_request(dummy_request_metadata()), timeout=5
+            )
+
+        await async_wait_for_condition(
+            lambda: request_router.curr_num_routing_tasks == 0, retry_interval_ms=1
+        )
+        assert request_router.num_pending_requests == 0
+
+    @pytest.mark.parametrize(
+        "setup_router",
+        [{"request_router_cls": PowerOfTwoChoicesRequestRouter}],
+        indirect=True,
+    )
+    async def test_drops_request_queued_behind_pending_one(
+        self, setup_router: Tuple[AsyncioRouter, RequestRouter]
+    ):
+        """A timed-out request queued behind a still-pending one is dropped."""
+        router, request_router = setup_router
+        loop = get_or_create_event_loop()
+
+        # Head request assigned before the timeout was set: it waits indefinitely.
+        head_task = loop.create_task(
+            router.assign_request(
+                RequestMetadata(request_id="head", internal_request_id="head")
+            )
+        )
+        await async_wait_for_condition(
+            lambda: request_router.num_pending_requests == 1, retry_interval_ms=1
+        )
+
+        router.update_deployment_config(_routing_timeout_config(0.05))
+        with pytest.raises(RequestRoutingTimeoutError):
+            await asyncio.wait_for(
+                router.assign_request(dummy_request_metadata()), timeout=5
+            )
+
+        for queue in (
+            request_router._pending_requests_to_fulfill,
+            request_router._pending_requests_to_route,
+        ):
+            assert [pr.metadata.request_id for pr in queue] == ["head"]
+
+        head_task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await head_task
+
+    @pytest.mark.parametrize(
+        "setup_router",
+        [{"request_router_cls": PowerOfTwoChoicesRequestRouter}],
+        indirect=True,
+    )
+    async def test_drops_every_copy_of_requeued_request(
+        self, setup_router: Tuple[AsyncioRouter, RequestRouter]
+    ):
+        """A rejected request is re-queued while its earlier entry is still there;
+        removing it must drop both copies."""
+        _, request_router = setup_router
+        timed_out = PendingRequest(
+            args=[], kwargs={}, metadata=dummy_request_metadata()
+        )
+        other = PendingRequest(args=[], kwargs={}, metadata=dummy_request_metadata())
+        for queue in (
+            request_router._pending_requests_to_fulfill,
+            request_router._pending_requests_to_route,
+        ):
+            queue.extend([timed_out, other, timed_out])
+
+        request_router._remove_pending_request_from_queues(timed_out)
+
+        for queue in (
+            request_router._pending_requests_to_fulfill,
+            request_router._pending_requests_to_route,
+        ):
+            assert list(queue) == [other]
+
+    @pytest.mark.parametrize(
+        "setup_router",
+        [{"enable_strict_max_ongoing_requests": True}],
+        indirect=True,
+    )
+    async def test_retry_keeps_deadline(
+        self, setup_router: Tuple[AsyncioRouter, FakeRequestRouter]
+    ):
+        """A retry after a replica rejects the request doesn't restart the timer."""
+        router, fake_request_router = setup_router
+        # FakeRequestRouter skips the base setup; the timeout drops the request
+        # from the base class's pending queues.
+        RequestRouter.__init__(
+            fake_request_router,
+            deployment_id=DeploymentID(name="test-deployment"),
+            handle_source=DeploymentHandleSource.UNKNOWN,
+        )
+        router.update_deployment_config(_routing_timeout_config(0.5))
+
+        replica = FakeReplica(
+            ReplicaID(
+                unique_id="test-replica-1", deployment_id=DeploymentID(name="test")
+            ),
+            queue_len_info=ReplicaQueueLengthInfo(
+                accepted=False, num_ongoing_requests=10
+            ),
+        )
+        fake_request_router.set_replica_to_return(replica)
+        fake_request_router.set_replica_to_return_on_retry(replica)
+        fake_request_router.set_should_block_requests(True)
+
+        task = get_or_create_event_loop().create_task(
+            router.assign_request(dummy_request_metadata())
+        )
+        # The first attempt uses most of the timeout, then the replica rejects.
+        await asyncio.sleep(0.3)
+        fake_request_router.unblock_requests(1)
+
+        # Past the deadline, but before a timer restarted by the retry expires.
+        await asyncio.sleep(0.3)
+        assert task.done()
+        with pytest.raises(RequestRoutingTimeoutError):
+            await task
+
+    async def test_choose_replica_without_reservation(
+        self, setup_router: Tuple[AsyncioRouter, FakeRequestRouter]
+    ):
+        """Pick-only selection honors the timeout while it waits for replicas."""
+        router, fake_request_router = setup_router
+        # FakeRequestRouter skips the base setup; use it to exercise the real
+        # no-replica wait loop.
+        RequestRouter.__init__(
+            fake_request_router,
+            deployment_id=DeploymentID(name="test-deployment"),
+            handle_source=DeploymentHandleSource.UNKNOWN,
+        )
+
+        async def choose_available_replicas(candidate_replicas, pending_request=None):
+            return [candidate_replicas]
+
+        fake_request_router.choose_replicas = choose_available_replicas
+        router.update_deployment_config(_routing_timeout_config(0.05))
+
+        async def pick():
+            async with router.choose_replica(dummy_request_metadata(), _reserve=False):
+                pytest.fail("No replica should be selected.")
+
+        with pytest.raises(RequestRoutingTimeoutError):
+            await asyncio.wait_for(pick(), timeout=5)
+
+    async def test_request_router_timeout_error_propagates(
+        self, setup_router: Tuple[AsyncioRouter, FakeRequestRouter]
+    ):
+        """A `TimeoutError` the request router raises before the deadline isn't
+        reported as a routing timeout."""
+        router, fake_request_router = setup_router
+        # FakeRequestRouter skips the base setup; the timeout drops the request
+        # from the base class's pending queues.
+        RequestRouter.__init__(
+            fake_request_router,
+            deployment_id=DeploymentID(name="test-deployment"),
+            handle_source=DeploymentHandleSource.UNKNOWN,
+        )
+        replica = FakeReplica(
+            ReplicaID(
+                unique_id="test-replica-1", deployment_id=DeploymentID(name="test")
+            )
+        )
+        fake_request_router._replicas_list = [replica]
+        fake_request_router._replicas = {replica.replica_id: replica}
+
+        async def choose_replicas(candidate_replicas, pending_request=None):
+            raise TimeoutError("Request router timed out.")
+
+        fake_request_router.choose_replicas = choose_replicas
+        router.update_deployment_config(_routing_timeout_config(5))
+
+        with pytest.raises(TimeoutError, match="Request router timed out.") as exc_info:
+            async with router.choose_replica(dummy_request_metadata(), _reserve=False):
+                pytest.fail("No replica should be selected.")
+        assert not isinstance(exc_info.value, RequestRoutingTimeoutError)
+
+
+def test_sync_result_keeps_routing_timeout_error():
+    """`result()` doesn't rewrite a routing timeout as its own timeout."""
+    future = concurrent.futures.Future()
+    future.set_exception(RequestRoutingTimeoutError("Request wasn't assigned."))
+    response = DeploymentResponse(future, dummy_request_metadata())
+
+    with pytest.raises(RequestRoutingTimeoutError, match="wasn't assigned"):
+        response.result()
 
 
 class TestOnRequestCompleted:

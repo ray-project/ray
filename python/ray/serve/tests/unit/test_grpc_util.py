@@ -11,6 +11,7 @@ from grpc.aio._server import Server
 from grpc_reflection.v1alpha import reflection
 
 from ray import cloudpickle
+from ray.exceptions import RayTaskError
 from ray.serve._private.default_impl import add_grpc_address
 from ray.serve._private.grpc_util import (
     GRPC_MAX_STATUS_DETAILS_LENGTH,
@@ -22,7 +23,11 @@ from ray.serve._private.grpc_util import (
 )
 from ray.serve._private.proxy_request_response import gRPCStreamingType
 from ray.serve._private.test_utils import FakeGrpcContext
-from ray.serve.exceptions import BackPressureError, gRPCStatusError
+from ray.serve.exceptions import (
+    BackPressureError,
+    RequestRoutingTimeoutError,
+    gRPCStatusError,
+)
 from ray.serve.generated.serve_pb2_grpc import add_RayServeAPIServiceServicer_to_server
 from ray.serve.grpc_util import RayServegRPCContext
 
@@ -325,6 +330,28 @@ def test_get_grpc_response_status_backpressure_error():
     assert status.code == grpc.StatusCode.RESOURCE_EXHAUSTED
     assert status.is_error is True
     assert status.message == backpressure_error.message
+
+
+@pytest.mark.parametrize("wrapped", [False, True])
+def test_get_grpc_response_status_request_routing_timeout_error(wrapped):
+    """Test that the message doesn't quote the proxy's request_timeout_s."""
+    exc = RequestRoutingTimeoutError("Request wasn't assigned within 0.5s.")
+    if wrapped:
+        # A nested handle call that timed out inside a replica.
+        exc = RayTaskError(
+            function_name="test_func",
+            traceback_str="Traceback (most recent call last):\n",
+            cause=exc,
+            pid=12345,
+        ).as_instanceof_cause()
+
+    status = get_grpc_response_status(
+        exc=exc, request_timeout_s=30.0, request_id="test_request_123"
+    )
+
+    assert status.code == grpc.StatusCode.DEADLINE_EXCEEDED
+    assert status.is_error is True
+    assert status.message == "Request wasn't assigned within 0.5s."
 
 
 def test_get_grpc_response_status_grpc_status_error():
