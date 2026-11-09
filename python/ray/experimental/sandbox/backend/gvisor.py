@@ -2646,6 +2646,7 @@ class GVisorSandboxBackend(BaseSandboxBackend):
                 timeout=10,
                 text=True,
                 check=True,
+                env=runsc_env(),
             )
         except (subprocess.CalledProcessError, subprocess.TimeoutExpired, OSError) as e:
             raise SandboxCreationError(
@@ -2697,6 +2698,7 @@ class GVisorSandboxBackend(BaseSandboxBackend):
                 timeout=10,
                 text=True,
                 check=True,
+                env=runsc_env(),
             )
         except (subprocess.CalledProcessError, subprocess.TimeoutExpired, OSError) as e:
             stderr = getattr(e, "stderr", None)

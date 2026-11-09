@@ -380,6 +380,25 @@ def test_runsc_built_from_source_is_accepted_with_a_warning(monkeypatch, sandbox
     assert "release-20260520.0 or newer" in sandbox_log.text
 
 
+def test_gpu_checks_run_runsc_with_runsc_env(monkeypatch):
+    """The runsc calls that check GPU support get runsc_env()'s GOMAXPROCS,
+    like every other runsc call."""
+    monkeypatch.delenv("GOMAXPROCS", raising=False)
+    envs = []
+
+    def run(args, **kwargs):
+        envs.append(kwargs.get("env") or {})
+        if "--version" in args:
+            return subprocess.CompletedProcess(args, 0, "runsc version x\n", "")
+        return subprocess.CompletedProcess(args, 0, "580.126.20\n", "")
+
+    monkeypatch.setattr(gvisor.subprocess, "run", run)
+    backend = GVisorSandboxBackend()
+    backend._check_runsc_runs_cdi_hooks()
+    assert backend._list_nvproxy_supported_drivers() == {"580.126.20"}
+    assert [env.get("GOMAXPROCS") for env in envs] == ["2", "2"]
+
+
 def test_validate_gpu_ids_accepts_subset_of_ray_assignment():
     with patch("ray.get_gpu_ids", return_value=["0", "1"]):
         GVisorSandboxBackend._validate_gpu_ids(["0"])
