@@ -298,6 +298,34 @@ class TestFastTailLastNLines:
         assert out.endswith("\n")
         assert "R" * 100 in out  # sampling check for last line content
 
+    def test_sparse_large_file_without_newlines_bounded_by_max_chars(self, tmp):
+        """Simulate ~8 GiB sparse file with carriage-return progress output (no \\n)
+        and verify fast_tail_last_n_lines stops once max_chars is satisfied instead
+        of reading the entire file backwards.
+        """
+        size_8g = 8 * 1024 * 1024 * 1024
+        tail = ("progress 50%\r" * 2000) + ("Z" * 25000)
+        tail_bytes = tail.encode("utf-8")
+
+        with open(tmp, "wb") as f:
+            f.seek(size_8g - len(tail_bytes))
+            f.write(tail_bytes)
+            f.flush()
+
+        out = fast_tail_last_n_lines(tmp, num_lines=10, max_chars=20000)
+        assert out == "Z" * 20000
+
+    def test_multibyte_utf8_without_newlines_max_chars(self, tmp):
+        """Verify 4-byte UTF-8 characters across small block boundaries preserve
+        exact max_chars characters when no newlines are present.
+        """
+        content = "🚀" * 500
+        with open(tmp, "w", encoding="utf-8") as f:
+            f.write(content)
+
+        out = fast_tail_last_n_lines(tmp, num_lines=10, max_chars=123, block_size=17)
+        assert out == "🚀" * 123
+
 
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))
