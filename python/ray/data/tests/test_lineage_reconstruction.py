@@ -42,11 +42,6 @@ reconstruction_enabled = pytest.mark.parametrize(
 )
 
 
-# ---------------------------------------------------------------------------
-# Operator tests
-# ---------------------------------------------------------------------------
-
-
 def _nodes(tracker):
     return tracker._lineage_task_id_to_task_node
 
