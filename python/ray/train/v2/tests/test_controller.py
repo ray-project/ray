@@ -895,6 +895,14 @@ async def test_resize_and_fail_with_replica_groups():
     await controller._run_control_loop_iteration()
     assert isinstance(controller.get_state(), RestartingState)
 
+    # Partial replacement is impossible when all replica groups failed, so the
+    # failed worker group must be shut down immediately even on NoopDecision.
+    scaling_policy.queue_recovery_decision(NoopDecision())
+    await controller._run_control_loop_iteration()
+    assert isinstance(controller.get_state(), RestartingState)
+    assert not worker_group_after_case3.has_started()
+    assert controller.get_worker_group() is None
+
     scaling_policy.queue_recovery_decision(
         ResizeDecision(num_workers=6, resources_per_worker={})
     )

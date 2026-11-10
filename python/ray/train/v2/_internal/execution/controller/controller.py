@@ -273,6 +273,19 @@ class TrainController:
             )
         return None
 
+    def _can_partially_replace_replica_groups(self) -> bool:
+        """Whether the active worker group has a subset of failing replica groups
+        eligible for in-place replacement instead of a full worker group restart."""
+        if not self._manages_replica_groups or not self._worker_group:
+            return False
+        poll_status = self._worker_group.get_latest_poll_status()
+        if poll_status is None:
+            return False
+        failing_rgs = poll_status.failing_replica_group_indices
+        return (
+            bool(failing_rgs) and failing_rgs != poll_status.all_replica_group_indices
+        )
+
     def _execute_resize_decision(
         self, decision: ResizeDecision
     ) -> TrainControllerLoopIterationResult:
@@ -290,23 +303,13 @@ class TrainController:
         current_num_workers = (
             len(self._worker_group.get_workers()) if self._worker_group else 0
         )
-        poll_status = (
-            self._worker_group.get_latest_poll_status() if self._worker_group else None
-        )
-        failing_rgs = (
-            poll_status.failing_replica_group_indices if poll_status else set()
-        )
-        all_rgs = poll_status.all_replica_group_indices if poll_status else set()
         if (
-            self._manages_replica_groups
-            and bool(failing_rgs)
-            and failing_rgs != all_rgs
-            and self._worker_group
+            self._can_partially_replace_replica_groups()
             # TODO: relax this after integrating replica groups with elastic training.
             and decision.num_workers == current_num_workers
         ):
             # Torchft: replace only failing replica groups.
-            self._replace_bad_workers(poll_status)
+            self._replace_bad_workers(self._worker_group.get_latest_poll_status())
         else:
             # Standard: full restart.
             if self._worker_group:
@@ -605,8 +608,8 @@ class TrainController:
         for a non-running worker group.
 
         This method handles the complete flow of:
-        1. Shutting down the non-running worker group if it still exists (unless the
-           backend manages replica groups, which may perform partial replacement).
+        1. Shutting down the non-running worker group if it still exists (unless a
+           subset of replica groups can be replaced in place).
         2. Getting a scaling decision for a non-running worker group
         3. Determining the next state based on the decision type
         4. Creating and returning the iteration result
@@ -617,7 +620,7 @@ class TrainController:
         Returns:
             TrainControllerLoopIterationResult with the appropriate next state
         """
-        if self._worker_group and not self._manages_replica_groups:
+        if self._worker_group and not self._can_partially_replace_replica_groups():
             self._shutdown_worker_group()
 
         scaling_decision = (

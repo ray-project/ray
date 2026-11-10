@@ -25,10 +25,12 @@ class BackendSetupCallback(ReplicaGroupCallback, WorkerGroupCallback):
 
     def before_worker_group_shutdown(self, worker_group: WorkerGroup):
         poll_status = worker_group.get_latest_poll_status()
-        if poll_status and poll_status.errors:
+        if poll_status and (poll_status.errors or not poll_status.finished):
             logger.debug(
                 "Skipping graceful backend shutdown because the worker group "
-                "reported worker errors."
+                "did not finish cleanly (errors=%s, finished=%s).",
+                bool(poll_status.errors),
+                poll_status.finished,
             )
             return
         self.before_execution_group_shutdown(worker_group)
