@@ -10,7 +10,7 @@ myst:
 
 ## Prerequisites
 
-* This feature requires KubeRay version 1.8.0 or newer, and it's in alpha testing.
+* This feature requires KubeRay version 1.6.0 or newer, and it's in alpha testing. KubeRay 1.8.0 uses a new `jobTemplate` format. See the note in [How to Configure a RayCronJob](#how-to-configure-a-raycronjob).
 * A running Kubernetes cluster.
 * The KubeRay operator installed and running in your cluster.
 
