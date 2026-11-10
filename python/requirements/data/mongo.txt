@@ -1,2 +1,4 @@
 pymongoarrow==1.7.2
 pymongo>=4.4
+# The Data integration image also runs the HiveServer2 suite.
+impyla==0.23.0

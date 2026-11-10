@@ -19,6 +19,7 @@ from ray.data._internal.execution.bundle_queue import (
     ThreadSafeBundleQueue,
     create_bundle_queue,
 )
+from ray.data._internal.execution.execution_flags import actor_only_backend_enabled
 from ray.data._internal.execution.interfaces import (
     ExecutionOptions,
     PhysicalOperator,
@@ -52,6 +53,7 @@ from ray.exceptions import ObjectLostError, UserCodeException
 if TYPE_CHECKING:
     from ray.data._internal.execution.lineage_tracker import LineageTracker
     from ray.data._internal.execution.metadata_fetcher import MetadataFetcher
+    from ray.data._internal.execution.resource_bank import ResourceBankBase
     from ray.data.block import Schema
 
 logger = logging.getLogger(__name__)
@@ -396,10 +398,12 @@ class OpState:
         self._schema: Optional["Schema"] = None
         self._warned_on_schema_divergence: bool = False
         # Tracks consumers blocked in get_output_blocking().
-        # Used to detect consumer starvation. Guarded by
-        # _waiting_consumers_lock since += is not atomic.
+        # Used to detect consumer starvation.
+        # _output_lock guards all fields mutated concurrently by consumer
+        # threads (num_waiting_consumers, outqueue metrics) since += / -=
+        # are not atomic.
         self._num_waiting_consumers: int = 0
-        self._waiting_consumers_lock = threading.Lock()
+        self._output_lock = threading.Lock()
 
     @property
     def num_waiting_consumers(self) -> int:
@@ -558,21 +562,28 @@ class OpState:
                     raise StopIteration()
                 ref = self.output_queue.pop(output_split_idx)
                 if ref is not None:
-                    # Update outqueue metrics when blocks are removed from
-                    # this operator's outqueue.
+                    # Update outqueue metrics and ResourceBank under the same
+                    # lock: multiple consumer threads call get_output_blocking()
+                    # concurrently so -= and ResourceBank dict mutations are
+                    # not atomic without it.
                     # TODO: Abstract queue-releated metrics to queue.
-                    self.op.metrics.num_external_outqueue_blocks -= len(ref.blocks)
-                    self.op.metrics.num_external_outqueue_bytes -= ref.size_bytes()
+                    with self._output_lock:
+                        self.op.metrics.num_external_outqueue_blocks -= len(ref.blocks)
+                        self.op.metrics.num_external_outqueue_bytes -= ref.size_bytes()
+                        if actor_only_backend_enabled():
+                            assert self.op._resource_bank is not None
+                            for br in ref.block_refs:
+                                self.op._resource_bank.on_block_consumed(input_ref=br)
                     return ref
                 if not starving:
                     # Queue is empty — mark this consumer as starving.
-                    with self._waiting_consumers_lock:
+                    with self._output_lock:
                         self._num_waiting_consumers += 1
                     starving = True
                 time.sleep(0.01)
         finally:
             if starving:
-                with self._waiting_consumers_lock:
+                with self._output_lock:
                     self._num_waiting_consumers -= 1
 
     def input_queue_bytes(self) -> int:
@@ -601,6 +612,7 @@ def build_streaming_topology(
     options: ExecutionOptions,
     block_ref_counter: BlockRefCounter,
     lineage_tracker: Optional["LineageTracker"] = None,
+    resource_bank: Optional["ResourceBankBase"] = None,
 ) -> Topology:
     """Instantiate the streaming operator state topology for the given DAG.
 
@@ -616,6 +628,8 @@ def build_streaming_topology(
         lineage_tracker: Optional tracker for experimental lineage reconstruction.
             Attached to every operator so they can record task lineage as they
             execute. ``None`` disables tracking.
+        resource_bank: Optional per-executor ResourceBankBase for actor-only
+            accounting.
 
     Returns:
         The topology dict holding the streaming execution state.
@@ -637,7 +651,9 @@ def build_streaming_topology(
         # Create state.
         op_state = OpState(op, inqueues)
         topology[op] = op_state
-        op.start(options, block_ref_counter, lineage_tracker)
+        op.start(
+            options, block_ref_counter, lineage_tracker, resource_bank=resource_bank
+        )
         return op_state
 
     setup_state(dag)
