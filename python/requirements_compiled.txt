@@ -270,7 +270,9 @@ braceexpand==0.1.7
 bracex==2.6
     # via wcmatch
 brotli==1.2.1
-    # via gradio
+    # via
+    #   -r python/requirements/security-requirements.txt
+    #   gradio
 cachetools==5.5.2
     # via
     #   aim
