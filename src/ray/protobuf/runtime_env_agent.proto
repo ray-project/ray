@@ -77,8 +77,9 @@ message WorkerContainerLaunch {
   string launch_id = 1;
   string session_id = 2;
   string job_id = 3;
-  // CLOCK_MONOTONIC deadline in milliseconds, issued by raylet. Expired grants/creates are rejected,
-  // allowing cancellation fences to be reclaimed without resurrecting a launch.
+  // CLOCK_MONOTONIC deadline in milliseconds, issued by raylet. Expired grants/creates
+  // are rejected, allowing cancellation fences to be reclaimed without resurrecting a
+  // launch.
   int64 deadline_ms = 4;
 }
 

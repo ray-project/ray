@@ -1023,7 +1023,7 @@ TEST(RuntimeEnvAgentClientTest, ContainerEndpointIsDiscoveredFromRuntimeEnvReply
                                         NodeID::FromRandom(),
                                         JobID::FromInt(1),
                                         123456,
-                                        [&](bool ok) { granted = ok; });
+                                        [&](bool registered) { granted = registered; });
       });
   ioc.run();
   EXPECT_TRUE(granted);
@@ -1093,7 +1093,7 @@ TEST(RuntimeEnvAgentClientTest, ContainerCleanupDoesNotBlockRuntimeEnvRequests) 
 }
 
 TEST(RuntimeEnvAgentClientTest, HungStopsCannotBlockGrantsAndHaveRealDeadlines) {
-  Clock clock;
+  Clock real_clock;
   const int port = GetFreePort();
   std::vector<std::shared_ptr<HttpConnection>> pending;
   HttpServerThread server(AsyncHandler([&](std::shared_ptr<HttpConnection> conn) {
@@ -1119,7 +1119,7 @@ TEST(RuntimeEnvAgentClientTest, HungStopsCannotBlockGrantsAndHaveRealDeadlines) 
   server.start();
   instrumented_io_context ioc;
   auto client = raylet::RuntimeEnvAgentClient::Create(
-      ioc, "127.0.0.1", port, delay_after(ioc), clock, 1000, 10, port);
+      ioc, "127.0.0.1", port, delay_after(ioc), real_clock, 1000, 10, port);
   int stops = 0;
   bool granted = false;
   bool setup = false;

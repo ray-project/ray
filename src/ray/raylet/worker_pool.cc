@@ -345,9 +345,9 @@ void WorkerPool::SendStopWorkerContainer(State &state,
           it->second.cleanup_retry_timer = execute_after(
               *io_service_,
               [this, &state, worker_id]() {
-                auto it = state.worker_processes.find(worker_id);
-                if (it == state.worker_processes.end()) return;
-                SendStopWorkerContainer(state, worker_id, it->second);
+                auto retry_it = state.worker_processes.find(worker_id);
+                if (retry_it == state.worker_processes.end()) return;
+                SendStopWorkerContainer(state, worker_id, retry_it->second);
               },
               std::chrono::milliseconds(
                   RayConfig::instance().agent_manager_retry_interval_ms()));
@@ -658,12 +658,12 @@ std::tuple<const ProcessInterface &, WorkerID> WorkerPool::StartWorkerProcess(
           if (!registered) {
             io_service_->post(
                 [this, language, worker_id]() {
-                  auto &state = GetStateForLanguage(language);
-                  auto it = state.worker_processes.find(worker_id);
-                  if (it != state.worker_processes.end() &&
+                  auto &callback_state = GetStateForLanguage(language);
+                  auto it = callback_state.worker_processes.find(worker_id);
+                  if (it != callback_state.worker_processes.end() &&
                       it->second.is_pending_registration) {
                     if (it->second.proc->IsAlive()) it->second.proc->Kill();
-                    StopWorkerContainer(language, worker_id, state, it->second);
+                    StopWorkerContainer(language, worker_id, callback_state, it->second);
                   }
                 },
                 "WorkerPool.ContainerRegistrationFailed");
