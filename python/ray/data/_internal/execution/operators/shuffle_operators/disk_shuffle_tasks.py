@@ -34,6 +34,7 @@ from ray.data._internal.execution.operators.shuffle_operators.disk_shuffle_runti
     _group_by_server,
     _handles_to_sources,
     _is_disk_exhausted,
+    _order_tables_by_source,
     _PartitionWriter,
     _PwriteSink,
     _read_ipc,
@@ -355,11 +356,6 @@ def _disk_shuffle_reduce_task(
 
         groups_by_input = [_group_by_server(srcs) for srcs in sources_by_input]
         flat_groups = [group for groups in groups_by_input for group in groups]
-        group_input_idx = [
-            input_idx
-            for input_idx, groups in enumerate(groups_by_input)
-            for _ in groups
-        ]
 
         try:
             # Fetch each source region in parallel, pwrite at pre-assigned offsets
@@ -368,8 +364,8 @@ def _disk_shuffle_reduce_task(
             total_size, base_offsets, node_sizes = _compute_prefetch_layout(flat_groups)
 
             # One slot per fetch group: regions decode as they land but are
-            # concatenated in group order, so the reduce input does not depend
-            # on fetch timing (reproducible seeds, retry-safe generator replay).
+            # reassembled in map task order below, so the reduce input depends on
+            # neither fetch timing nor map task placement.
             tables_by_group: List[List[pa.Table]] = [[] for _ in flat_groups]
             output_buffer: Optional[BlockOutputBuffer] = None
             # Codec from data_context.shuffle_compression (same field the map used).
@@ -464,11 +460,14 @@ def _disk_shuffle_reduce_task(
                             if size > 0:
                                 _decode_region(base, size, tables_by_group[group_idx])
 
-                    accum_tables_by_input: List[List[pa.Table]] = [
-                        [] for _ in range(num_inputs)
-                    ]
-                    for group_idx, tables in enumerate(tables_by_group):
-                        accum_tables_by_input[group_input_idx[group_idx]].extend(tables)
+                    accum_tables_by_input: List[List[pa.Table]] = []
+                    start = 0
+                    for groups in groups_by_input:
+                        end = start + len(groups)
+                        accum_tables_by_input.append(
+                            _order_tables_by_source(groups, tables_by_group[start:end])
+                        )
+                        start = end
                     if any(accum_tables_by_input):
                         yield from _flush(accum_tables_by_input)
                     if output_buffer is not None:
