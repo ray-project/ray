@@ -240,10 +240,10 @@ def test_reset_drops_the_results_and_resets_the_evaluators(fake_node_id):
     manager = HealthManager([_check(evaluators=[evaluator])])
     _fake_temps(manager, [ProbeResult(timestamp_s=1.0)])
     manager.evaluate_inflight_checks(timeout=0)
-    assert manager._latest_status.node_monitor_statuses
+    assert manager._last_node_monitor_group_status.node_monitor_statuses
 
     manager.reset([])
-    assert manager._latest_status.node_monitor_statuses == {}
+    assert manager._last_node_monitor_group_status.node_monitor_statuses == {}
     assert evaluator.resets == 1
 
 

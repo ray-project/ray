@@ -103,8 +103,11 @@ class HealthManager:
         ]
         self._inflight_probes = [p.probe for p in inflight_probes]
         self._node_monitor_group = NodeMonitorGroup(inflight_probes)
-        # The latest status of each NodeMonitor of the in-flight probes.
-        self._latest_status = NodeMonitorGroupPollStatus(node_monitor_statuses={})
+        # The last status of each NodeMonitor of the in-flight probes, merged
+        # over the polls.
+        self._last_node_monitor_group_status = NodeMonitorGroupPollStatus(
+            node_monitor_statuses={}
+        )
         # The probes and evaluators of the on-demand checks that are running.
         self._on_demand_probes: List[Probe] = []
         self._on_demand_evaluators: List[Evaluator] = []
@@ -125,7 +128,9 @@ class HealthManager:
         Args:
             node_ids: The nodes the attempt's workers run on.
         """
-        self._latest_status = NodeMonitorGroupPollStatus(node_monitor_statuses={})
+        self._last_node_monitor_group_status = NodeMonitorGroupPollStatus(
+            node_monitor_statuses={}
+        )
         self._on_demand_evaluators = []
         self._node_monitor_group.shutdown()
         self._node_monitor_group.start_worker_node_monitors(node_ids)
@@ -158,8 +163,10 @@ class HealthManager:
             The health decision to carry out. ``Noop()`` if there is nothing to
             do.
         """
-        self._poll_latest_status(timeout)
-        state = _to_health_state(self._latest_status, self._inflight_probes)
+        self._poll_node_monitor_group_status(timeout)
+        state = _to_health_state(
+            self._last_node_monitor_group_status, self._inflight_probes
+        )
         return self._decide(self._inflight_evaluators, state)
 
     def start_on_demand_checks(
@@ -197,21 +204,22 @@ class HealthManager:
             evaluators, _to_health_state(status, self._on_demand_probes)
         )
 
-    def _poll_latest_status(self, timeout: float) -> None:
-        """Poll the latest status of each ``NodeMonitor``. A monitor keeps its
-        latest results while its poll hangs. A worker node's monitor that
-        failed stops, with its results, until the next ``reset()``.
+    def _poll_node_monitor_group_status(self, timeout: float) -> None:
+        """Poll each ``NodeMonitor``, and merge its new status into its last
+        one. A monitor keeps its last results while its poll hangs. A worker
+        node's monitor that failed stops, with its results, until the next
+        ``reset()``.
 
         Args:
             timeout: Timeout in seconds to wait for the ``NodeMonitor``\\ s.
         """
-        status = self._node_monitor_group.poll_status(timeout)
-        latest = self._latest_status
+        new_status = self._node_monitor_group.poll_status(timeout)
+        last_status = self._last_node_monitor_group_status
         node_monitor_statuses: Dict[NodeIdStr, NodeMonitorStatus] = {}
-        for node_id, node_monitor_status in status.node_monitor_statuses.items():
+        for node_id, node_monitor_status in new_status.node_monitor_statuses.items():
             if node_monitor_status.monitor_error is None:
                 node_monitor_statuses[node_id] = _merge(
-                    latest.node_monitor_statuses.get(node_id, NodeMonitorStatus()),
+                    last_status.node_monitor_statuses.get(node_id, NodeMonitorStatus()),
                     node_monitor_status,
                 )
                 continue
@@ -221,11 +229,11 @@ class HealthManager:
                 node_monitor_status.monitor_error,
             )
             self._node_monitor_group.shutdown_worker_node_monitors([node_id])
-        self._latest_status = NodeMonitorGroupPollStatus(
+        self._last_node_monitor_group_status = NodeMonitorGroupPollStatus(
             node_monitor_statuses=node_monitor_statuses,
             controller_node_monitor_status=_merge(
-                latest.controller_node_monitor_status,
-                status.controller_node_monitor_status,
+                last_status.controller_node_monitor_status,
+                new_status.controller_node_monitor_status,
             ),
         )
 
@@ -287,14 +295,14 @@ class HealthManager:
         return Noop()
 
 
-def _merge(latest: NodeMonitorStatus, status: NodeMonitorStatus) -> NodeMonitorStatus:
-    """Merge a monitor's new status into its latest one, which keeps the
+def _merge(last: NodeMonitorStatus, new: NodeMonitorStatus) -> NodeMonitorStatus:
+    """Merge a monitor's new status into its last one, which keeps the
     results of the probes the new one has none for, such as while a poll
     hangs. The error is the new status's: a monitor that fails reports its
     error on every poll, and one that answers again has none."""
     return NodeMonitorStatus(
-        probe_results={**latest.probe_results, **status.probe_results},
-        monitor_error=status.monitor_error,
+        probe_results={**last.probe_results, **new.probe_results},
+        monitor_error=new.monitor_error,
     )
 
 
