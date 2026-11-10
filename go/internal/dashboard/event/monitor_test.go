@@ -21,7 +21,6 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
-	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -314,7 +313,7 @@ func TestMonitorEventsDeliversNewLines(t *testing.T) {
 	queue := make(chan []string, eventAgentCacheSize)
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan error, 1)
-	go func() { done <- monitorEvents(ctx, dir, queue, nil) }()
+	go func() { done <- monitorEvents(ctx, dir, queue) }()
 
 	var wg sync.WaitGroup
 	wg.Add(1)
@@ -378,13 +377,13 @@ func TestMonitorEventsDeliversNewLines(t *testing.T) {
 	}
 }
 
-// TestMonitorEventsDropsBatchesWhenQueueFull checks that a full queue drops
-// and counts batches instead of blocking, so monitoring stays decoupled from a
-// slow or hung report loop.
-func TestMonitorEventsDropsBatchesWhenQueueFull(t *testing.T) {
+// TestMonitorEventsBlocksWhenQueueFull checks that a full queue blocks the
+// monitor (mirroring Python's asyncio.Queue.put in event_agent.py, which never
+// drops events) instead of dropping batches, and that once a consumer drains
+// the queue every batch is delivered.
+func TestMonitorEventsBlocksWhenQueueFull(t *testing.T) {
 	dir := t.TempDir()
-	queue := make(chan []string, 2) // tiny queue so most batches are dropped
-	var dropped atomic.Int64
+	queue := make(chan []string, 2) // tiny queue so the monitor blocks
 
 	const files = 10
 	for i := 0; i < files; i++ {
@@ -396,19 +395,44 @@ func TestMonitorEventsDropsBatchesWhenQueueFull(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	done := make(chan error, 1)
-	go func() { done <- monitorEvents(ctx, dir, queue, &dropped) }()
+	go func() { done <- monitorEvents(ctx, dir, queue) }()
 
-	// The queue holds two batches; the remaining eight must be dropped and
-	// counted rather than blocking the scan.
+	// Wait until the queue is full.
 	deadline := time.Now().Add(10 * time.Second)
-	for time.Now().Before(deadline) {
-		if got := dropped.Load(); got >= files-2 {
-			break
-		}
+	for len(queue) < cap(queue) && time.Now().Before(deadline) {
 		time.Sleep(20 * time.Millisecond)
 	}
-	if got := dropped.Load(); got != files-2 {
-		t.Errorf("dropped = %d, want %d", got, files-2)
+	if len(queue) != cap(queue) {
+		t.Fatalf("queue holds %d batches, want the full capacity %d", len(queue), cap(queue))
+	}
+
+	// The producer must block instead of dropping: after the scan had ample
+	// time to read every file, the queue still holds exactly its capacity and
+	// the monitor has not returned.
+	time.Sleep(500 * time.Millisecond)
+	if got := len(queue); got != cap(queue) {
+		t.Fatalf("queue holds %d batches after the scan, want %d (batches were dropped)", got, cap(queue))
+	}
+	select {
+	case err := <-done:
+		t.Fatalf("monitorEvents returned while the queue was full: %v", err)
+	default:
+	}
+
+	// Draining must release the producer; every batch is delivered, none
+	// dropped.
+	var delivered int
+	timeout := time.After(10 * time.Second)
+	for delivered < files {
+		select {
+		case <-queue:
+			delivered++
+		case <-timeout:
+			t.Fatalf("delivered %d of %d batches; events were dropped", delivered, files)
+		}
+	}
+	if delivered != files {
+		t.Errorf("delivered = %d, want %d", delivered, files)
 	}
 
 	cancel()
@@ -416,5 +440,41 @@ func TestMonitorEventsDropsBatchesWhenQueueFull(t *testing.T) {
 	case <-done:
 	case <-time.After(2 * time.Second):
 		t.Fatal("monitorEvents did not return after cancellation")
+	}
+}
+
+// TestMonitorEventsUnblocksOnShutdownWhenQueueFull checks the block is
+// interruptible: with the queue full and the producer blocked, cancelling the
+// context must make monitorEvents return instead of hanging forever.
+func TestMonitorEventsUnblocksOnShutdownWhenQueueFull(t *testing.T) {
+	dir := t.TempDir()
+	queue := make(chan []string, 1) // tiny queue so the monitor blocks
+
+	const files = 5
+	for i := 0; i < files; i++ {
+		if err := os.WriteFile(filepath.Join(dir, fmt.Sprintf("event_COMMON_%d.log", i)), []byte("line\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() { done <- monitorEvents(ctx, dir, queue) }()
+
+	// Wait until the queue is full and the producer is blocked on it.
+	deadline := time.Now().Add(10 * time.Second)
+	for len(queue) < cap(queue) && time.Now().Before(deadline) {
+		time.Sleep(20 * time.Millisecond)
+	}
+	if len(queue) != cap(queue) {
+		t.Fatalf("queue holds %d batches, want the full capacity %d", len(queue), cap(queue))
+	}
+	time.Sleep(100 * time.Millisecond)
+
+	cancel()
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("monitorEvents did not return after cancellation while blocked on a full queue")
 	}
 }

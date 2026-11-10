@@ -345,6 +345,9 @@ func (m *stateMockClient) IsClosed() bool { return m.closed }
 func (m *stateMockClient) ListJobs(ctx context.Context) ([]*proto.JobTableData, error) {
 	return m.listJobs, nil
 }
+func (m *stateMockClient) ListJobsWithFilter(ctx context.Context, jobOrSubmissionID string, skipSubmissionJobInfoField, skipIsRunningTasksField bool) ([]*proto.JobTableData, error) {
+	return m.listJobs, nil
+}
 func (m *stateMockClient) NextJobID(ctx context.Context) (ids.JobID, error) {
 	return m.nextJobID, nil
 }

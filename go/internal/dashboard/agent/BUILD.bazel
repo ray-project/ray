@@ -8,10 +8,13 @@ go_library(
         "grpc_server.go",
         "http_server.go",
         "port_persistence.go",
+        "router.go",
     ],
     importpath = "github.com/ray-project/ray/go/internal/dashboard/agent",
     visibility = ["//go:__subpackages__"],
     deps = [
+        "//go/internal/common",
+        "//go/internal/dashboard/auth",
         "//go/pkg/gcs",
         "//go/pkg/ids",
         "//go/pkg/log",
@@ -23,9 +26,17 @@ go_library(
 
 go_test(
     name = "agent_test",
-    srcs = ["agent_test.go"],
+    srcs = [
+        "agent_test.go",
+        "export_test.go",
+        "job_routes_test.go",
+        "log_routes_test.go",
+    ],
     embed = [":agent"],
     deps = [
+        "//go/internal/common",
+        "//go/internal/dashboard/agent/job",
+        "//go/internal/dashboard/log",
         "//go/pkg/gcs",
         "//go/pkg/ids",
         "//go/proto",

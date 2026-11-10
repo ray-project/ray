@@ -17,13 +17,13 @@ package job
 import (
 	"context"
 	"encoding/hex"
-	"encoding/json"
 	"fmt"
 	"sort"
 	"strconv"
 	"strings"
 
 	"github.com/ray-project/ray/go/internal/dashboard/head"
+	"github.com/ray-project/ray/go/internal/dashboard/jobutil"
 	"github.com/ray-project/ray/go/proto"
 )
 
@@ -39,18 +39,6 @@ func buildAddress(host string, port int) string {
 
 // ptrString returns a pointer to a copy of s.
 func ptrString(s string) *string { return &s }
-
-// runtimeEnvToDict converts the serialized runtime_env JSON string into the
-// dict form exposed by RuntimeEnv.to_dict() (python/ray/runtime_env/
-// runtime_env.py). An empty serialized env yields an empty dict.
-func runtimeEnvToDict(serialized string) map[string]interface{} {
-	out := map[string]interface{}{}
-	if serialized == "" {
-		return out
-	}
-	_ = json.Unmarshal([]byte(serialized), &out)
-	return out
-}
 
 // getDriverJobs queries all driver jobs and returns (driverJobs, submissionDrivers),
 // aligned with get_driver_jobs in job/utils.py.
@@ -92,7 +80,7 @@ func GetDriverJobs(ctx context.Context, client *head.GCSClient, jobOrSubmissionI
 		if submissionID == "" {
 			driver := &DriverInfo{
 				ID:            jobID,
-				NodeIPAddress: driverIP(entry),
+				NodeIPAddress: jobutil.DriverIP(entry),
 				PID:           strconv.FormatInt(entry.DriverPid, 10),
 			}
 			status := JobStatusRunning
@@ -107,19 +95,19 @@ func GetDriverJobs(ctx context.Context, client *head.GCSClient, jobOrSubmissionI
 			}
 			jobs[jobID] = &JobDetails{
 				Type:       JobTypeDriver,
-				JobID:      ptrString(jobID),
+				JobID:      jobutil.PtrString(jobID),
 				Status:     status,
 				Entrypoint: entry.Entrypoint,
-				StartTime:  int64Ptr(int64(entry.StartTime)),
-				EndTime:    int64Ptr(int64(entry.EndTime)),
+				StartTime:  jobutil.Int64Ptr(int64(entry.StartTime)),
+				EndTime:    jobutil.Int64Ptr(int64(entry.EndTime)),
 				Metadata:   metadata,
-				RuntimeEnv: runtimeEnvToDict(runtimeEnvSerialized(entry)),
+				RuntimeEnv: jobutil.RuntimeEnvToDict(jobutil.RuntimeEnvSerialized(entry)),
 				DriverInfo: driver,
 			}
 		} else {
 			submissionDrivers[submissionID] = &DriverInfo{
 				ID:            jobID,
-				NodeIPAddress: driverIP(entry),
+				NodeIPAddress: jobutil.DriverIP(entry),
 				PID:           strconv.FormatInt(entry.DriverPid, 10),
 			}
 		}
@@ -129,27 +117,6 @@ func GetDriverJobs(ctx context.Context, client *head.GCSClient, jobOrSubmissionI
 
 // boolPtr returns a pointer to a copy of b.
 func boolPtr(b bool) *bool { return &b }
-
-// int64Ptr returns a pointer to a copy of v.
-func int64Ptr(v int64) *int64 { return &v }
-
-// driverIP returns the driver node IP address, preferring the structured
-// driver_address field (aligned with the Python driver_address.ip_address).
-func driverIP(entry *proto.JobTableData) string {
-	if entry.DriverAddress != nil && entry.DriverAddress.IpAddress != "" {
-		return entry.DriverAddress.IpAddress
-	}
-	return entry.DriverIpAddress
-}
-
-// runtimeEnvSerialized extracts the serialized runtime env from the job
-// config, handling a nil RuntimeEnvInfo.
-func runtimeEnvSerialized(entry *proto.JobTableData) string {
-	if entry.Config == nil || entry.Config.RuntimeEnvInfo == nil {
-		return ""
-	}
-	return entry.Config.RuntimeEnvInfo.SerializedRuntimeEnv
-}
 
 // findJobByIDs finds a job by either its job id or its submission id, aligned
 // with find_job_by_ids in job/utils.py. It first tries the job id (driver
@@ -192,12 +159,12 @@ func findJobByIDs(ctx context.Context, client *head.GCSClient, infoClient *JobIn
 func SubmissionJobDetails(submissionID string, info *JobInfo, driver *DriverInfo) *JobDetails {
 	var jobID *string
 	if driver != nil {
-		jobID = ptrString(driver.ID)
+		jobID = jobutil.PtrString(driver.ID)
 	}
 	return &JobDetails{
 		Type:                   JobTypeSubmission,
 		JobID:                  jobID,
-		SubmissionID:           ptrString(submissionID),
+		SubmissionID:           jobutil.PtrString(submissionID),
 		DriverInfo:             driver,
 		Status:                 info.Status,
 		Entrypoint:             info.Entrypoint,
@@ -206,23 +173,11 @@ func SubmissionJobDetails(submissionID string, info *JobInfo, driver *DriverInfo
 		StartTime:              info.StartTime,
 		EndTime:                info.EndTime,
 		Metadata:               info.Metadata,
-		RuntimeEnv:             runtimeEnvFromJSON(info.RuntimeEnvJSON),
+		RuntimeEnv:             jobutil.RuntimeEnvFromJSON(info.RuntimeEnvJSON),
 		DriverAgentHTTPAddress: info.DriverAgentHTTPAddress,
 		DriverNodeID:           info.DriverNodeID,
 		DriverExitCode:         info.DriverExitCode,
 	}
-}
-
-// runtimeEnvFromJSON converts the runtime_env_json string stored in the KV
-// into a dict, aligned with JobInfo.from_json(): when the stored info has no
-// runtime_env_json field the runtime_env stays None, otherwise it is parsed.
-func runtimeEnvFromJSON(serialized *string) map[string]interface{} {
-	if serialized == nil {
-		return nil
-	}
-	out := map[string]interface{}{}
-	_ = json.Unmarshal([]byte(*serialized), &out)
-	return out
 }
 
 // BuildListJobsDetails queries all driver and submission jobs and returns them

@@ -101,16 +101,22 @@ type JobInfo struct {
 }
 
 // JobSubmitRequest mirrors the Python JobSubmitRequest dataclass.
+//
+// EntrypointLabelSelector is present only so the head can reject it: the Go
+// agent cannot honor a label selector (it pins the supervisor with a node
+// affinity strategy), and a typed decode that silently dropped the field would
+// accept a request whose scheduling constraint never took effect.
 type JobSubmitRequest struct {
-	Entrypoint          string                 `json:"entrypoint"`
-	SubmissionID        *string                `json:"submission_id"`
-	JobID               *string                `json:"job_id"`
-	RuntimeEnv          map[string]interface{} `json:"runtime_env"`
-	Metadata            map[string]string      `json:"metadata"`
-	EntrypointNumCPUs   *float64               `json:"entrypoint_num_cpus"`
-	EntrypointNumGPUs   *float64               `json:"entrypoint_num_gpus"`
-	EntrypointMemory    *uint64                `json:"entrypoint_memory"`
-	EntrypointResources map[string]float64     `json:"entrypoint_resources"`
+	Entrypoint              string                 `json:"entrypoint"`
+	SubmissionID            *string                `json:"submission_id"`
+	JobID                   *string                `json:"job_id"`
+	RuntimeEnv              map[string]interface{} `json:"runtime_env"`
+	Metadata                map[string]string      `json:"metadata"`
+	EntrypointNumCPUs       *float64               `json:"entrypoint_num_cpus"`
+	EntrypointNumGPUs       *float64               `json:"entrypoint_num_gpus"`
+	EntrypointMemory        *uint64                `json:"entrypoint_memory"`
+	EntrypointResources     map[string]float64     `json:"entrypoint_resources"`
+	EntrypointLabelSelector map[string]string      `json:"entrypoint_label_selector"`
 }
 
 // JobSubmitResponse mirrors the Python JobSubmitResponse dataclass.

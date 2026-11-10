@@ -178,9 +178,14 @@ func (s *stateCgoClient) GetAllJobInfo(skipSubmissionJobInfoField, skipIsRunning
 	var cCount C.int
 	var empty bool
 
+	// GetAllJobInfo has no job filter, so the C bridge receives an empty id.
+	cJobOrSubmissionID := C.CString("")
+	defer C.free(unsafe.Pointer(cJobOrSubmissionID))
+
 	err := cc.withPtr(func(ptr *C.CGcsClient) error {
-		ok := C.ray_gcs_client_jobs_get_all_job_info(
+		ok := jobsGetAllJobInfoC(
 			ptr,
+			cJobOrSubmissionID,
 			skipSubmission,
 			skipRunningTasks,
 			&cSerialized,

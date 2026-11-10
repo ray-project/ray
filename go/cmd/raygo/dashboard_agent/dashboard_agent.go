@@ -17,12 +17,15 @@ package dashboard_agent
 import (
 	"context"
 	"fmt"
+	"math/rand"
+	"os"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/ray-project/ray/go/internal/common"
 	"github.com/ray-project/ray/go/internal/dashboard/agent"
+	dashboardjob "github.com/ray-project/ray/go/internal/dashboard/agent/job"
 	dashboardevent "github.com/ray-project/ray/go/internal/dashboard/event"
 	"github.com/ray-project/ray/go/internal/dashboard/healthz"
 	dashboardlog "github.com/ray-project/ray/go/internal/dashboard/log"
@@ -94,9 +97,6 @@ var DashboardAgentCmd = &cobra.Command{
 	Long: `Ray Dashboard Agent runs on every node and hosts dashboard modules
 (healthz, log, event, aggregator, reporter, job) behind an HTTP/gRPC server.`,
 	PreRunE: func(cmd *cobra.Command, args []string) error {
-		if minimal {
-			return fmt.Errorf("dashboard agent --minimal not supported yet")
-		}
 		if !isValidLogLevel(loggingLevel) {
 			return fmt.Errorf("invalid logging-level %q, must be one of: %v", loggingLevel, common.LoggerLevelChoices)
 		}
@@ -114,11 +114,11 @@ func init() {
 	// Required parameters.
 	DashboardAgentCmd.Flags().StringVar(&nodeIPAddress, "node-ip-address", "", "the IP address of this node.")
 	DashboardAgentCmd.Flags().IntVar(&grpcPort, "grpc-port", 0, "The port on which the dashboard agent gRPC server listens.")
-	DashboardAgentCmd.Flags().IntVar(&listenPort, "listen-port", 0, "The port on which the dashboard agent HTTP server listens.")
+	DashboardAgentCmd.Flags().IntVar(&listenPort, "listen-port", common.DEFAULT_DASHBOARD_AGENT_LISTEN_PORT, "Port for HTTP server to listen on")
 	DashboardAgentCmd.Flags().StringVar(&nodeManagerPort, "node-manager-port", "", "The port of the node manager on this node, or the raylet placeholder literal.")
 	DashboardAgentCmd.Flags().StringVar(&gcsAddress, "gcs-address", "", "The address (ip:port) of GCS.")
 	DashboardAgentCmd.Flags().StringVar(&clusterIDHex, "cluster-id-hex", "", "The cluster id in hex.")
-	DashboardAgentCmd.Flags().StringVar(&nodeIDHex, "node-id-hex", "", "The node id in hex; defaults to a freshly generated id if empty.")
+	DashboardAgentCmd.Flags().StringVar(&nodeIDHex, "node-id-hex", "", "The node id in hex. Defaults to the RAY_NODE_ID environment variable the raylet sets.")
 	DashboardAgentCmd.Flags().StringVar(&logDir, "log-dir", "", "Specify the path of log directory.")
 	DashboardAgentCmd.Flags().StringVar(&tempDir, "temp-dir", "", "Specify the path of the temporary directory used by Ray process.")
 	DashboardAgentCmd.Flags().StringVar(&sessionDir, "session-dir", "", "Specify the path of the session directory of the current Ray runtime.")
@@ -143,24 +143,22 @@ func init() {
 	DashboardAgentCmd.Flags().BoolVar(&disableMetricsCollection, "disable-metrics-collection", false, "Disable metrics collection for this agent.")
 	DashboardAgentCmd.Flags().StringVar(&isHeadFlag, "is-head", "", "Whether this node is the head node (\"true\" or \"false\"). When set, it is used directly and GCS is not consulted.")
 
-	// Reserved flags.
-	DashboardAgentCmd.Flags().BoolVar(&minimal, "minimal", false, "Run a minimal dashboard agent (not supported yet).")
+	// Feature flags.
+	DashboardAgentCmd.Flags().BoolVar(&minimal, "minimal", false, "Minimal agent only contains a subset of features that don't require the additional dependencies of a full ray[default] install.")
 
 	// Required flags.
 	DashboardAgentCmd.MarkFlagRequired("node-ip-address")
 	DashboardAgentCmd.MarkFlagRequired("grpc-port")
-	DashboardAgentCmd.MarkFlagRequired("listen-port")
 	DashboardAgentCmd.MarkFlagRequired("node-manager-port")
 	DashboardAgentCmd.MarkFlagRequired("gcs-address")
 	DashboardAgentCmd.MarkFlagRequired("cluster-id-hex")
 	DashboardAgentCmd.MarkFlagRequired("log-dir")
 	DashboardAgentCmd.MarkFlagRequired("temp-dir")
 	DashboardAgentCmd.MarkFlagRequired("session-dir")
-	DashboardAgentCmd.MarkFlagRequired("session-name")
 	DashboardAgentCmd.MarkFlagRequired("object-store-name")
 	DashboardAgentCmd.MarkFlagRequired("raylet-name")
-	DashboardAgentCmd.MarkFlagRequired("stdout-filepath")
-	DashboardAgentCmd.MarkFlagRequired("stderr-filepath")
+	DashboardAgentCmd.MarkFlagRequired("logging-rotate-bytes")
+	DashboardAgentCmd.MarkFlagRequired("logging-rotate-backup-count")
 }
 
 // GetDashboardAgentCmd returns the dashboard-agent subcommand for registration
@@ -173,16 +171,13 @@ func GetDashboardAgentCmd() *cobra.Command {
 func buildConfig() (*agent.Config, error) {
 	clusterID, err := ids.ClusterIDFromHex(clusterIDHex)
 	if err != nil {
-		return nil, fmt.Errorf("failed to parse cluster id from hex: %w", err)
+		return nil, fmt.Errorf("failed to parse cluster id from hex %q: expected %d hex chars, got %d: %w",
+			clusterIDHex, 2*ids.UniqueIDSize, len(clusterIDHex), err)
 	}
 
-	nodeID := ids.NewNodeID()
-	if nodeIDHex != "" {
-		parsed, err := ids.NodeIDFromHex(nodeIDHex)
-		if err != nil {
-			return nil, fmt.Errorf("failed to parse node id from hex: %w", err)
-		}
-		nodeID = parsed
+	nodeID, err := resolveNodeID()
+	if err != nil {
+		return nil, err
 	}
 
 	// raylet passes the literal RAY_NODE_MANAGER_PORT_PLACEHOLDER string in
@@ -208,7 +203,34 @@ func buildConfig() (*agent.Config, error) {
 		NodeManagerPort:           nodeManagerPortInt,
 		MetricsExportPort:         metricsExportPort,
 		MetricsCollectionDisabled: disableMetricsCollection,
+		Minimal:                   minimal,
 	}, nil
+}
+
+// resolveNodeID resolves this node's id from --node-id-hex, falling back to the
+// RAY_NODE_ID environment variable the raylet exports, mirroring the Python
+// agent (dashboard/agent.py reads only RAY_NODE_ID). A random id is a last
+// resort for standalone runs and requires an explicit --is-head: a freshly
+// minted id never appears in the GCS node table, so the is_head lookup cannot
+// resolve it and determineIsHead fails startup after its retries.
+func resolveNodeID() (ids.NodeID, error) {
+	hexStr := nodeIDHex
+	source := "--node-id-hex"
+	if hexStr == "" {
+		hexStr = os.Getenv("RAY_NODE_ID")
+		source = "RAY_NODE_ID"
+	}
+	if hexStr == "" {
+		log.Log.Info("node id is not set; generating a random node id whose is_head cannot be derived from GCS",
+			"hint", "pass --node-id-hex or set RAY_NODE_ID")
+		return ids.NewNodeID(), nil
+	}
+	nodeID, err := ids.NodeIDFromHex(hexStr)
+	if err != nil {
+		return ids.NilNodeID(), fmt.Errorf("failed to parse node id from hex %q (from %s): expected %d hex chars, got %d: %w",
+			hexStr, source, 2*ids.UniqueIDSize, len(hexStr), err)
+	}
+	return nodeID, nil
 }
 
 // is_head lookup retry parameters, mirroring the Python agent's
@@ -220,6 +242,13 @@ const (
 	isHeadRetryAttempts = 30
 	isHeadRetryInterval = time.Second
 )
+
+// isHeadRetryDelay returns the retry interval scaled by a random factor in
+// [0.8, 1.2], so agents that start together do not poll GCS in lockstep.
+func isHeadRetryDelay(interval time.Duration) time.Duration {
+	const jitterMin, jitterMax = 0.8, 1.2
+	return time.Duration(float64(interval) * (jitterMin + rand.Float64()*(jitterMax-jitterMin)))
+}
 
 // resolveIsHead reports whether this node is the head node by looking up its
 // own node info in GCS, mirroring the Python agent
@@ -256,7 +285,7 @@ func resolveIsHeadRetry(ctx context.Context, gcsClient gcs.Client, nodeID ids.No
 			select {
 			case <-ctx.Done():
 				return false, lastErr
-			case <-time.After(interval):
+			case <-time.After(isHeadRetryDelay(interval)):
 			}
 		}
 	}
@@ -312,15 +341,15 @@ func runDashboardAgent(ctx context.Context) error {
 		return err
 	}
 
-	clusterID, err := ids.ClusterIDFromHex(clusterIDHex)
+	cfg, err := buildConfig()
 	if err != nil {
-		return fmt.Errorf("failed to parse cluster id from hex: %w", err)
+		return err
 	}
 
 	// 10s connect timeout mirrors the Python dashboard agent defaults.
 	gcsClient, err := loadGCSClientFn(gcs.ClientOptions{
 		Address:   gcsAddress,
-		ClusterID: clusterID,
+		ClusterID: cfg.ClusterID,
 		TimeoutMs: 10_000,
 	})
 	if err != nil {
@@ -328,10 +357,6 @@ func runDashboardAgent(ctx context.Context) error {
 	}
 	defer gcsClient.Close()
 
-	cfg, err := buildConfig()
-	if err != nil {
-		return err
-	}
 	cfg.GCS = gcsClient
 
 	isHead, err := determineIsHead(ctx, gcsClient, cfg.NodeID, isHeadFlag)
@@ -358,6 +383,11 @@ func runDashboardAgent(ctx context.Context) error {
 // module verifies its log directory up front, so a misconfigured --log-dir
 // surfaces before any server starts.
 func buildModules(cfg agent.Config) ([]agent.Module, error) {
+	// A minimal agent loads no module: Python's --minimal skips
+	// _init_non_minimal entirely (agent.py:94-95).
+	if cfg.Minimal {
+		return nil, nil
+	}
 	logAgent, err := dashboardlog.New(cfg)
 	if err != nil {
 		return nil, fmt.Errorf("create log module: %w", err)
@@ -374,7 +404,11 @@ func buildModules(cfg agent.Config) ([]agent.Module, error) {
 	if err != nil {
 		return nil, fmt.Errorf("create reporter module: %w", err)
 	}
-	return []agent.Module{logAgent, healthzAgent, eventAgent, reporterAgent}, nil
+	jobAgent, err := dashboardjob.New(cfg)
+	if err != nil {
+		return nil, fmt.Errorf("create job module: %w", err)
+	}
+	return []agent.Module{logAgent, healthzAgent, eventAgent, reporterAgent, jobAgent}, nil
 }
 
 // isValidLogLevel reports whether level is one of common.LoggerLevelChoices.

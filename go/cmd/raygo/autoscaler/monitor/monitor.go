@@ -129,7 +129,12 @@ func runMonitor(cmd *cobra.Command, args []string) (err error) {
 		return fmt.Errorf("failed to parse monitor config: %w", err)
 	}
 
-	// Set up the logging system.
+	// Set up the logging system. WithStderrOutput mirrors every level to the
+	// process's stderr as well (Debug/Info via the stdout core, Warn/Error via
+	// the stderr core), so the autoscaler's runtime log is visible via
+	// `kubectl logs -c autoscaler` (mirroring the Python run_autoscaler
+	// _setup_logging stderr handler). This applies both when a logs dir is
+	// configured and when the logger falls back to console output.
 	if err = logconfig.NewLogOption(
 		logconfig.WithLoggingLevel(config.LoggingLevel),
 		logconfig.WithLoggingFormat(config.LoggingFormat),
@@ -139,6 +144,7 @@ func runMonitor(cmd *cobra.Command, args []string) (err error) {
 		logconfig.WithLoggingRotateBackupCount(config.LoggingRotateBackupCount),
 		logconfig.WithStdoutFilepath(config.StdoutFilepath),
 		logconfig.WithStderrFilepath(config.StderrFilepath),
+		logconfig.WithStderrOutput(),
 	).SetupComponentLogger(); err != nil {
 		v2.CustomErrorHook(err)
 		return err

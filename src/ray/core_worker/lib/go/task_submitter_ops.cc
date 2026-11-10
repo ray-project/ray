@@ -313,8 +313,16 @@ ray::core::ActorCreationOptions TaskSubmitterOperations::BuildActorOptions(
   // placement_group_scheduling_strategy when the actor is bound to a placement
   // group and a default strategy otherwise. Previously this was hardcoded to
   // the default strategy, silently dropping PG-bound actors to arbitrary nodes.
-  ray::rpc::SchedulingStrategy scheduling_strategy =
-      BuildSchedulingStrategy(options.placement_group_id_hex, options.bundle_index);
+  // A node-affinity binding (head-node pinning for the job driver) takes
+  // precedence over the placement group / default scheduler when set.
+  ray::rpc::SchedulingStrategy scheduling_strategy;
+  if (!options.node_affinity_node_id_hex.empty()) {
+    scheduling_strategy = BuildNodeAffinitySchedulingStrategy(
+        options.node_affinity_node_id_hex, options.node_affinity_soft);
+  } else {
+    scheduling_strategy =
+        BuildSchedulingStrategy(options.placement_group_id_hex, options.bundle_index);
+  }
 
   // Add default CPU=1 if no resources are specified, matching Python's behavior
   // for autoscaler compatibility (it triggers pending lease reporting). The
@@ -403,6 +411,21 @@ ray::rpc::SchedulingStrategy TaskSubmitterOperations::BuildSchedulingStrategy(
     scheduling_strategy.mutable_default_scheduling_strategy();
   }
 
+  return scheduling_strategy;
+}
+
+ray::rpc::SchedulingStrategy TaskSubmitterOperations::BuildNodeAffinitySchedulingStrategy(
+    const std::string &node_id_hex, bool soft) const {
+  ray::rpc::SchedulingStrategy scheduling_strategy;
+  if (!node_id_hex.empty()) {
+    std::string node_id_binary = HexToBinary(node_id_hex);
+    ray::NodeID node_id = ray::NodeID::FromBinary(node_id_binary);
+    scheduling_strategy.mutable_node_affinity_scheduling_strategy()->set_node_id(
+        node_id.Binary());
+    scheduling_strategy.mutable_node_affinity_scheduling_strategy()->set_soft(soft);
+  } else {
+    scheduling_strategy.mutable_default_scheduling_strategy();
+  }
   return scheduling_strategy;
 }
 

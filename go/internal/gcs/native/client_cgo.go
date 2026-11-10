@@ -828,21 +828,61 @@ func (c *cgoClient) GetJobInfo(ctx context.Context, jobID ids.JobID) (*proto.Job
 	return &result, nil
 }
 
+// jobsGetAllJobInfoC calls the C bridge that lists jobs. It is a package-level
+// variable so unit tests can substitute a fake and assert the forwarded filter
+// arguments without a live GCS. Tests in this package that override it must not
+// call t.Parallel, and must restore the original with t.Cleanup.
+var jobsGetAllJobInfoC = func(ptr *C.CGcsClient,
+	jobOrSubmissionID *C.char,
+	skipSubmissionField C.int,
+	skipRunningTasksField C.int,
+	serializedOut ***C.char,
+	sizesOut **C.int,
+	countOut *C.int,
+	errorOut **C.char) C.int {
+	return C.ray_gcs_client_jobs_get_all_job_info(
+		ptr,
+		jobOrSubmissionID,
+		skipSubmissionField,
+		skipRunningTasksField,
+		serializedOut,
+		sizesOut,
+		countOut,
+		errorOut,
+	)
+}
+
 // ListJobs lists all jobs.
 func (c *cgoClient) ListJobs(ctx context.Context) ([]*proto.JobTableData, error) {
+	return c.ListJobsWithFilter(ctx, "", false, false)
+}
+
+// ListJobsWithFilter lists jobs optionally filtered server-side by job id or
+// submission id, skipping the heavy JobSubmissionInfo / IsRunningTasks fields
+// when requested. An empty jobOrSubmissionID returns all jobs.
+func (c *cgoClient) ListJobsWithFilter(ctx context.Context, jobOrSubmissionID string, skipSubmissionJobInfoField, skipIsRunningTasksField bool) ([]*proto.JobTableData, error) {
 	var cErr *C.char
 	var cSerialized **C.char
 	var cSizes *C.int
 	var cCount C.int
 	var empty bool
 
-	// Fetch the full info by default (do not skip fields).
-	skipSubmission := C.int(0)
-	skipRunningTasks := C.int(0)
+	cJobOrSubmissionID := C.CString(jobOrSubmissionID)
+	defer C.free(unsafe.Pointer(cJobOrSubmissionID))
+
+	var skipSubmission C.int
+	if skipSubmissionJobInfoField {
+		skipSubmission = 1
+	}
+	var skipRunningTasks C.int
+	if skipIsRunningTasksField {
+		skipRunningTasks = 1
+	}
 
 	err := c.withPtr(func(ptr *C.CGcsClient) error {
-		ok := C.ray_gcs_client_jobs_get_all_job_info(
+		ok := jobsGetAllJobInfoC(
 			ptr,
+			cJobOrSubmissionID,
 			skipSubmission,
 			skipRunningTasks,
 			&cSerialized,

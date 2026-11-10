@@ -31,9 +31,13 @@ go_library(
 
 go_test(
     name = "logconfig_test",
-    srcs = ["logconfig_test.go"],
+    srcs = [
+        "logconfig_paths_test.go",
+        "logconfig_test.go",
+    ],
+    embed = [":logconfig"],
     deps = [
-        ":logconfig",
+        "//go/pkg/log/lumberjack",
         "@com_github_stretchr_testify//assert",
     ],
 )

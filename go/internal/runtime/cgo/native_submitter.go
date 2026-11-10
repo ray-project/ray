@@ -432,6 +432,18 @@ func convertActorCreationOptionsToC(opts *submitter.ActorCreationOptions, actorD
 		cOpts.bundle_index = C.int(opts.PlacementGroup.BundleIndex)
 	}
 
+	// Convert node affinity (head-node pinning for the job driver), mirroring
+	// the placement-group conversion above. The node ID is a hex string
+	// consumed by CNativeTaskSubmitter_CreateActor -> BuildActorOptions ->
+	// BuildNodeAffinitySchedulingStrategy.
+	if opts.NodeAffinity != nil {
+		if opts.NodeAffinity.NodeID != "" {
+			cOpts.node_affinity_node_id = C.CString(opts.NodeAffinity.NodeID)
+			cOpts.node_affinity_node_id_size = C.int(len(opts.NodeAffinity.NodeID))
+		}
+		cOpts.node_affinity_soft = C.bool(opts.NodeAffinity.Soft)
+	}
+
 	if opts.Name != "" {
 		cOpts.name = C.CString(opts.Name)
 	}
@@ -456,15 +468,29 @@ func convertActorCreationOptionsToC(opts *submitter.ActorCreationOptions, actorD
 		cOpts.max_task_retries = C.int(opts.MaxTaskRetries)
 	}
 
-	// max_concurrency: 0 means "use the default" (1 = serialized), -1 means
-	// unlimited, and values >= 1 pass through directly. The builder default is
-	// already 1; 0 only occurs from a zero-value struct and must also resolve
-	// to the serialized default (not unlimited) to avoid silent data races.
+	// max_concurrency: 0 means "use the default", -1 means unlimited, and
+	// values >= 1 pass through directly. For a synchronous actor the default
+	// is 1 (serialized) to avoid silent data races; a 0 only occurs from a
+	// zero-value struct.
+	//
+	// For an async actor with an unset max_concurrency we mirror Python's
+	// actor.py default (DEFAULT_MAX_CONCURRENCY_ASYNC = 1000) instead of 1.
+	// An async actor with max_concurrency=1 serializes its async methods: the
+	// worker's fiber rate limiter admits a single task at a time, so a
+	// long-running async method (e.g. JobSupervisor.run) keeps a queued method
+	// (e.g. JobSupervisor.stop) from ever being admitted. Python
+	// defaults async actors to 1000 so such methods can interleave on the
+	// asyncio event loop.
 	switch {
 	case opts.MaxConcurrency > 0:
 		cOpts.max_concurrency = C.int(opts.MaxConcurrency)
 	case opts.MaxConcurrency < 0:
 		cOpts.max_concurrency = -1
+	case opts.IsAsync:
+		// defaultAsyncMaxConcurrency matches Python's
+		// ray_constants.DEFAULT_MAX_CONCURRENCY_ASYNC.
+		const defaultAsyncMaxConcurrency = 1000
+		cOpts.max_concurrency = defaultAsyncMaxConcurrency
 	default:
 		cOpts.max_concurrency = 1
 	}
@@ -493,11 +519,13 @@ func convertActorCreationOptionsToC(opts *submitter.ActorCreationOptions, actorD
 	if len(actorDesc) >= 3 {
 		prefix[0], prefix[1], prefix[2] = actorDesc[0], actorDesc[1], actorDesc[2]
 	}
-	// MaxCalls <= 0 (0 or -1) resolves to the actor's effective max_concurrency,
-	// mirroring local_mode's CreateActor (task_submitter.go) so cluster and local
-	// behave identically. A non-positive actor max_concurrency falls back to 1
-	// (serialized); a concurrency group has no "unlimited" mode (its C++
-	// max_concurrency is a positive uint32), matching Java.
+	// MaxCalls <= 0 (0 or -1) resolves to the actor's effective max_concurrency.
+	// A non-positive actor max_concurrency falls back to 1 (serialized); a
+	// concurrency group has no "unlimited" mode (its C++ max_concurrency is a
+	// positive uint32), matching Java. This deliberately diverges from
+	// local_mode's CreateActor (task_submitter.go) for an async actor with an
+	// unset max_concurrency: local mode resolves that actor to 1000, while this
+	// group fallback stays 1, kept identical to the reference implementation.
 	groupMaxCallsFallback := 1
 	if opts.MaxConcurrency > 0 {
 		groupMaxCallsFallback = opts.MaxConcurrency
@@ -595,6 +623,9 @@ func freeActorCreationOptions(opts *C.CActorCreationOptions) {
 	}
 	if opts.placement_group_id != nil {
 		C.free(unsafe.Pointer(opts.placement_group_id))
+	}
+	if opts.node_affinity_node_id != nil {
+		C.free(unsafe.Pointer(opts.node_affinity_node_id))
 	}
 	// Free concurrency group flat arrays: each group's descriptor array
 	// (per-method inner 4-element arrays), then the per-group outer arrays.

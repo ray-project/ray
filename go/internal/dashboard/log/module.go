@@ -21,7 +21,6 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
-	"strings"
 	"time"
 
 	"github.com/ray-project/ray/go/internal/dashboard/agent"
@@ -78,22 +77,23 @@ func (a *LogAgentModule) RegisterGRPC(s *grpc.Server) error {
 	return nil
 }
 
-// RegisterHTTP registers the static /logs/ file browser served by the agent's
+// RegisterHTTP registers the static /logs file browser served by the agent's
 // HTTP server, mirroring Python's LogAgent.__init__ in log_agent.py:247-248.
+// Both the bare prefix and the subtree are registered so a request for /logs
+// without the trailing slash is served instead of redirected, and the routes
+// are method-scoped so the aiohttp router answers a non-GET with its 405.
 func (a *LogAgentModule) RegisterHTTP(mux *http.ServeMux) error {
-	mux.HandleFunc("/logs/", a.handleLogs)
+	mux.HandleFunc("GET "+StaticPrefix, a.handleLogs)
+	mux.HandleFunc("GET "+StaticPrefix+"/", a.handleLogs)
 	return nil
 }
 
 // ListLogs returns all entries in the active Ray logs directory matching the
 // requested glob filter, as paths relative to the log directory. Directories
 // are given a trailing slash so callers can distinguish them from files. It
-// mirrors LogAgentV1Grpc.ListLogs in log_agent.py:280-297.
-//
-// NOTE: Go's filepath.Glob, like Python's pathlib glob without recursive
-// mode, does not treat ** as a path-spanning wildcard; a pattern such as
-// "**/*.err" only matches one level deep. Current callers use flat filters
-// (e.g. "*", "*worker*"), so this is not a practical gap.
+// mirrors LogAgentV1Grpc.ListLogs in log_agent.py:280-297. A "**" segment in
+// the filter spans directories recursively, matching Python's
+// pathlib.Path.glob.
 func (a *LogAgentModule) ListLogs(ctx context.Context, req *proto.ListLogsRequest) (*proto.ListLogsReply, error) {
 	if req == nil {
 		return nil, status.Error(codes.InvalidArgument, "request is nil")
@@ -104,9 +104,14 @@ func (a *LogAgentModule) ListLogs(ctx context.Context, req *proto.ListLogsReques
 			"could not find log dir at path: %s. It is unexpected. Please report an issue to Ray Github.",
 			a.logDir))
 	}
-	matches, err := filepath.Glob(filepath.Join(a.logDir, req.GlobFilter))
+	if req.GlobFilter != "" && !safeGlobFilter(req.GlobFilter) {
+		return nil, status.Error(codes.InvalidArgument, fmt.Sprintf(
+			"Invalid glob filter: %s. It must be a relative path and cannot contain '..'.",
+			req.GlobFilter))
+	}
+	matches, err := globLogFiles(a.logDir, req.GlobFilter)
 	if err != nil {
-		return nil, status.Error(codes.InvalidArgument, "invalid glob filter: "+err.Error())
+		return nil, status.Error(codes.Unknown, err.Error())
 	}
 	logFiles := make([]string, 0, len(matches))
 	for _, m := range matches {
@@ -122,23 +127,6 @@ func (a *LogAgentModule) ListLogs(ctx context.Context, req *proto.ListLogsReques
 		logFiles = append(logFiles, rel+suffix)
 	}
 	return &proto.ListLogsReply{LogFiles: logFiles}, nil
-}
-
-// handleLogs serves files and directory listings under /logs/ from the module
-// log directory, refusing anything that escapes it. This mirrors Python's
-// LogAgent.routes.static("/logs", ...) in log_agent.py:248.
-func (a *LogAgentModule) handleLogs(w http.ResponseWriter, r *http.Request) {
-	name := strings.TrimPrefix(r.URL.Path, "/logs/")
-	resolved, err := resolveLogPath(a.logDir, name)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
-	}
-	if _, err := os.Stat(resolved); err != nil {
-		http.NotFound(w, r)
-		return
-	}
-	http.ServeFile(w, r, resolved)
 }
 
 // These stream parameters mirror the constants in log_agent.py. blockSize is
@@ -173,7 +161,7 @@ func (a *LogAgentModule) StreamLog(req *proto.StreamLogRequest, stream LogServic
 	}
 	f, err := os.Open(filename)
 	if err != nil {
-		return streamLogError(stream, err)
+		return status.Error(codes.Unknown, err.Error())
 	}
 	defer f.Close()
 
@@ -245,6 +233,12 @@ func streamLogInChunk(
 	if _, err := f.Seek(startOffset, io.SeekStart); err != nil {
 		return err
 	}
+	// Python passes end_offset - cur_offset straight to file.read, which
+	// raises ValueError for a negative length; the servicer reports that as
+	// UNKNOWN.
+	if endOffset != -1 && endOffset < startOffset {
+		return status.Error(codes.Unknown, "read length must be non-negative or -1")
+	}
 	curOffset := startOffset
 	buf := make([]byte, blockSize)
 	for {
@@ -253,7 +247,7 @@ func streamLogInChunk(
 		}
 		toRead := blockSize
 		if endOffset != -1 {
-			toRead = max(0, min(endOffset-curOffset, blockSize))
+			toRead = min(endOffset-curOffset, blockSize)
 			if toRead == 0 {
 				return nil
 			}

@@ -137,6 +137,7 @@ int ray_gcs_client_nodes_get_node_to_connect(CGcsClient *client,
 
 // Jobs
 int ray_gcs_client_jobs_get_all_job_info(CGcsClient *client,
+                                         const char *job_or_submission_id,
                                          int skip_submission_field,
                                          int skip_running_tasks_field,
                                          char ***serialized_out,

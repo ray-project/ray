@@ -543,6 +543,31 @@ func TestSubmitJobTypeValidation(t *testing.T) {
 	}
 }
 
+// TestSubmitJobRejectsEntrypointLabelSelector verifies a selector the agent
+// cannot honor is refused at the head with 400 rather than forwarded without
+// effect: the agent pins the supervisor with a node affinity strategy, so a
+// silently dropped selector would leave the caller with a submitted job whose
+// scheduling constraint was never applied.
+func TestSubmitJobRejectsEntrypointLabelSelector(t *testing.T) {
+	mock := newMockGCS()
+	j, stop := newJobHead(t, mock)
+	defer stop()
+	rr := serve(t, j, "POST", "/api/jobs/", `{"entrypoint":"x","entrypoint_label_selector":{"pool":"gpu"}}`)
+	if rr.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400", rr.Code)
+	}
+	if !strings.Contains(rr.Body.String(), "entrypoint_label_selector") {
+		t.Fatalf("body = %q, want it to name the unsupported field", rr.Body.String())
+	}
+
+	// An empty selector means "none" to the Python agent and must not be
+	// rejected here.
+	rr = serve(t, j, "POST", "/api/jobs/", `{"entrypoint":"x","entrypoint_label_selector":{}}`)
+	if rr.Code == http.StatusBadRequest {
+		t.Fatalf("an empty selector must not be rejected: body = %q", rr.Body.String())
+	}
+}
+
 func TestStopDeleteGetLogsRoutes(t *testing.T) {
 	mock := newMockGCS()
 	// Driver jobs + submission driver + KV job info for sub_1.

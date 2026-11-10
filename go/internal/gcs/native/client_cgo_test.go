@@ -18,6 +18,7 @@ package native
 
 /*
 #include <stdlib.h>
+#include "ray/core_worker/lib/go/gcs_client_bridge.h"
 */
 import "C"
 
@@ -32,6 +33,7 @@ import (
 	"github.com/ray-project/ray/go/pkg/gcs"
 	"github.com/ray-project/ray/go/pkg/ids"
 	"github.com/ray-project/ray/go/proto"
+	protolib "google.golang.org/protobuf/proto"
 )
 
 // Cases that call ConnectClient with a reachable address are absent on purpose:
@@ -207,6 +209,100 @@ func errorFromNullCheck() ([]byte, error) {
 	return nil, fmt.Errorf("received null data pointer")
 }
 
+// Test_ListJobsWithFilter_forwardsFilterArgs verifies that ListJobsWithFilter
+// forwards the job-or-submission id and both skip flags to the C bridge, that an
+// empty id reaches C as an empty string, and that ListJobs delegates with no
+// filter and no field skipping. It also pins the non-empty return shape: a
+// serialized JobTableData returned by the bridge is unpacked into one job.
+func Test_ListJobsWithFilter_forwardsFilterArgs(t *testing.T) {
+	type cCall struct {
+		jobOrSubmissionID string
+		skipSubmission    C.int
+		skipRunningTasks  C.int
+	}
+
+	jobID, err := ids.JobIDFromHex("01000000")
+	if err != nil {
+		t.Fatalf("JobIDFromHex failed: %v", err)
+	}
+	payload, err := protolib.Marshal(&proto.JobTableData{JobId: jobID.Binary()})
+	if err != nil {
+		t.Fatalf("marshal JobTableData failed: %v", err)
+	}
+
+	var calls []cCall
+	orig := jobsGetAllJobInfoC
+	t.Cleanup(func() { jobsGetAllJobInfoC = orig })
+	jobsGetAllJobInfoC = func(_ *C.CGcsClient,
+		jobOrSubmissionID *C.char,
+		skipSubmissionField C.int,
+		skipRunningTasksField C.int,
+		serializedOut ***C.char,
+		sizesOut **C.int,
+		countOut *C.int,
+		errorOut **C.char) C.int {
+		calls = append(calls, cCall{
+			jobOrSubmissionID: C.GoString(jobOrSubmissionID),
+			skipSubmission:    skipSubmissionField,
+			skipRunningTasks:  skipRunningTasksField,
+		})
+		if C.GoString(jobOrSubmissionID) == "" {
+			*serializedOut = nil
+			*countOut = 0
+			return 0
+		}
+		// Mimic the C bridge for the filtered call: one serialized JobTableData,
+		// with the outer array, the sizes array and the element all C-allocated so
+		// the production unpacking path owns and frees them.
+		cArray := (**C.char)(C.malloc(C.size_t(unsafe.Sizeof(uintptr(0)))))
+		unsafe.Slice(cArray, 1)[0] = (*C.char)(C.CBytes(payload))
+		cSizes := (*C.int)(C.malloc(C.size_t(unsafe.Sizeof(C.int(0)))))
+		unsafe.Slice(cSizes, 1)[0] = C.int(len(payload))
+		*serializedOut = cArray
+		*sizesOut = cSizes
+		*countOut = 1
+		return 1
+	}
+
+	client := &cgoClient{ptr: (*C.CGcsClient)(unsafe.Pointer(new(byte)))}
+	ctx := context.Background()
+
+	jobs, err := client.ListJobsWithFilter(ctx, "01000000", true, false)
+	if err != nil {
+		t.Fatalf("ListJobsWithFilter returned error: %v", err)
+	}
+	if len(jobs) != 1 {
+		t.Fatalf("expected 1 job from the filtered call, got %d", len(jobs))
+	}
+	gotID, err := ids.JobIDFromBinary(jobs[0].GetJobId())
+	if err != nil {
+		t.Fatalf("returned job id has invalid length: %v", err)
+	}
+	if gotID != jobID {
+		t.Errorf("expected job id %s, got %s", jobID.Hex(), gotID.Hex())
+	}
+	if _, err := client.ListJobsWithFilter(ctx, "", false, true); err != nil {
+		t.Fatalf("ListJobsWithFilter with empty id returned error: %v", err)
+	}
+	if _, err := client.ListJobs(ctx); err != nil {
+		t.Fatalf("ListJobs returned error: %v", err)
+	}
+
+	want := []cCall{
+		{jobOrSubmissionID: "01000000", skipSubmission: 1, skipRunningTasks: 0},
+		{jobOrSubmissionID: "", skipSubmission: 0, skipRunningTasks: 1},
+		{jobOrSubmissionID: "", skipSubmission: 0, skipRunningTasks: 0},
+	}
+	if len(calls) != len(want) {
+		t.Fatalf("expected %d C calls, got %d", len(want), len(calls))
+	}
+	for i, call := range calls {
+		if call != want[i] {
+			t.Errorf("call %d: expected %+v, got %+v", i, want[i], call)
+		}
+	}
+}
+
 // mockGcsClient is a gcs.Client implementation used by the tests that do not
 // need a live GCS connection.
 type mockGcsClient struct {
@@ -273,6 +369,10 @@ func (m *mockGcsClient) GetJobInfo(ctx context.Context, jobID ids.JobID) (*proto
 	return nil, gcs.ErrNotImplemented
 }
 func (m *mockGcsClient) ListJobs(ctx context.Context) ([]*proto.JobTableData, error) {
+	return nil, gcs.ErrNotImplemented
+}
+
+func (m *mockGcsClient) ListJobsWithFilter(ctx context.Context, jobOrSubmissionID string, skipSubmissionJobInfoField, skipIsRunningTasksField bool) ([]*proto.JobTableData, error) {
 	return nil, gcs.ErrNotImplemented
 }
 func (m *mockGcsClient) NextJobID(ctx context.Context) (ids.JobID, error) {

@@ -284,6 +284,14 @@ func (h *JobHead) handleSubmitJob(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "entrypoint must be provided", http.StatusBadRequest)
 		return
 	}
+	if len(req.EntrypointLabelSelector) > 0 {
+		// The agent cannot express a label selector, so it rejects the field;
+		// rejecting it here keeps the error at the layer the caller talks to and
+		// keeps the request from being half-applied on its way down.
+		log.Log.Info("job submit rejected: entrypoint_label_selector is unsupported")
+		http.Error(w, "entrypoint_label_selector is not supported by the Go job agent", http.StatusBadRequest)
+		return
+	}
 	agent, err := h.getHeadNodeAgent(r.Context())
 	if err != nil {
 		log.Log.Error(err, "no available agent to submit job")

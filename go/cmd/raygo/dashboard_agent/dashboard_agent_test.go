@@ -17,11 +17,14 @@ package dashboard_agent
 import (
 	"context"
 	"errors"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/ray-project/ray/go/internal/common"
 	"github.com/ray-project/ray/go/internal/dashboard/agent"
+	dashboardjob "github.com/ray-project/ray/go/internal/dashboard/agent/job"
 	dashboardevent "github.com/ray-project/ray/go/internal/dashboard/event"
 	"github.com/ray-project/ray/go/internal/dashboard/healthz"
 	dashboardlog "github.com/ray-project/ray/go/internal/dashboard/log"
@@ -29,6 +32,7 @@ import (
 	"github.com/ray-project/ray/go/pkg/gcs"
 	"github.com/ray-project/ray/go/pkg/ids"
 	"github.com/ray-project/ray/go/proto"
+	"github.com/spf13/cobra"
 )
 
 const (
@@ -40,24 +44,26 @@ const (
 // testArgs returns the required CLI flags with a value override hook.
 func testArgs(overrides map[string]string) []string {
 	base := map[string]string{
-		"node-ip-address":            "1.2.3.4",
-		"metrics-export-port":        "44217",
-		"grpc-port":                  "8888",
-		"listen-port":                "8080",
-		"node-manager-port":          "12345",
-		"gcs-address":                "127.0.0.1:6379",
-		"cluster-id-hex":             testClusterIDHex,
-		"node-id-hex":                testNodeIDHex,
-		"log-dir":                    "/tmp/ray/logs",
-		"temp-dir":                   "/tmp/ray",
-		"session-dir":                "/tmp/ray/session",
-		"session-name":               "session_2026_08_24",
-		"object-store-name":          "object_store",
-		"raylet-name":                "raylet_1",
-		"stdout-filepath":            "/tmp/ray/agent.out",
-		"stderr-filepath":            "/tmp/ray/agent.err",
-		"logging-level":              "debug",
-		"disable-metrics-collection": "true",
+		"node-ip-address":             "1.2.3.4",
+		"metrics-export-port":         "44217",
+		"grpc-port":                   "8888",
+		"listen-port":                 "8080",
+		"node-manager-port":           "12345",
+		"gcs-address":                 "127.0.0.1:6379",
+		"cluster-id-hex":              testClusterIDHex,
+		"node-id-hex":                 testNodeIDHex,
+		"log-dir":                     "/tmp/ray/logs",
+		"temp-dir":                    "/tmp/ray",
+		"session-dir":                 "/tmp/ray/session",
+		"session-name":                "session_2026_08_24",
+		"object-store-name":           "object_store",
+		"raylet-name":                 "raylet_1",
+		"stdout-filepath":             "/tmp/ray/agent.out",
+		"stderr-filepath":             "/tmp/ray/agent.err",
+		"logging-level":               "debug",
+		"logging-rotate-bytes":        "104857600",
+		"logging-rotate-backup-count": "5",
+		"disable-metrics-collection":  "true",
 	}
 	for k, v := range overrides {
 		base[k] = v
@@ -182,6 +188,202 @@ func TestBuildConfigInvalidNodeIDHex(t *testing.T) {
 	}
 }
 
+func TestBuildConfigInvalidClusterIDHexReportsLength(t *testing.T) {
+	args := testArgs(map[string]string{"cluster-id-hex": "nothex"})
+	if err := DashboardAgentCmd.ParseFlags(args); err != nil {
+		t.Fatalf("parse flags: %v", err)
+	}
+	_, err := buildConfig()
+	if err == nil {
+		t.Fatal("buildConfig() = nil error, want error for invalid cluster id hex")
+	}
+	// The error must state the expected and actual length, which is what makes
+	// a truncated cluster id diagnosable.
+	if !strings.Contains(err.Error(), "expected 56 hex chars, got 6") {
+		t.Errorf("error %q does not report expected/actual hex length", err)
+	}
+}
+
+// TestResolveNodeIDFromEnv covers the Python-parity path: the raylet exports
+// the node id in RAY_NODE_ID and the Python agent reads only that variable
+// (dashboard/agent.py:70). The Go agent prefers the explicit flag, which the
+// raygo launcher always passes.
+func TestResolveNodeIDFromEnv(t *testing.T) {
+	origNodeIDHex := nodeIDHex
+	t.Cleanup(func() { nodeIDHex = origNodeIDHex })
+
+	t.Run("RAY_NODE_ID is used when the flag is empty", func(t *testing.T) {
+		t.Setenv("RAY_NODE_ID", testNodeIDHex)
+		nodeIDHex = ""
+		nodeID, err := resolveNodeID()
+		if err != nil {
+			t.Fatalf("resolveNodeID: %v", err)
+		}
+		if nodeID.Hex() != testNodeIDHex {
+			t.Errorf("node id = %q, want %q", nodeID.Hex(), testNodeIDHex)
+		}
+	})
+
+	t.Run("the flag wins over RAY_NODE_ID", func(t *testing.T) {
+		t.Setenv("RAY_NODE_ID", "ffffffffffffffffffffffffffffffffffffffffffffffffffffffff")
+		nodeIDHex = testNodeIDHex
+		nodeID, err := resolveNodeID()
+		if err != nil {
+			t.Fatalf("resolveNodeID: %v", err)
+		}
+		if nodeID.Hex() != testNodeIDHex {
+			t.Errorf("node id = %q, want the flag value %q", nodeID.Hex(), testNodeIDHex)
+		}
+	})
+
+	t.Run("neither source set generates a random node id", func(t *testing.T) {
+		t.Setenv("RAY_NODE_ID", "")
+		nodeIDHex = ""
+		nodeID, err := resolveNodeID()
+		if err != nil {
+			t.Fatalf("resolveNodeID: %v", err)
+		}
+		if nodeID.Hex() == ids.NilNodeID().Hex() {
+			t.Error("resolveNodeID() returned the nil node id, want a freshly generated one")
+		}
+	})
+
+	t.Run("invalid RAY_NODE_ID names its source", func(t *testing.T) {
+		t.Setenv("RAY_NODE_ID", "tooshort")
+		nodeIDHex = ""
+		_, err := resolveNodeID()
+		if err == nil {
+			t.Fatal("resolveNodeID() = nil error, want error for invalid RAY_NODE_ID")
+		}
+		if !strings.Contains(err.Error(), "RAY_NODE_ID") {
+			t.Errorf("error %q does not name RAY_NODE_ID as the source", err)
+		}
+		if !strings.Contains(err.Error(), "expected 56 hex chars, got 8") {
+			t.Errorf("error %q does not report expected/actual hex length", err)
+		}
+	})
+}
+
+// TestMinimalModeLoadsNoModules mirrors Python's --minimal behavior: the agent
+// skips _init_non_minimal, so no module is loaded or served (agent.py:94-95).
+func TestMinimalModeLoadsNoModules(t *testing.T) {
+	mods, err := buildModules(agent.Config{Minimal: true, LogDir: t.TempDir()})
+	if err != nil {
+		t.Fatalf("buildModules(minimal): %v", err)
+	}
+	if len(mods) != 0 {
+		t.Errorf("buildModules(minimal) returned %d modules, want 0", len(mods))
+	}
+}
+
+// TestRunDashboardAgentMinimalSkipsModules verifies the --minimal flag reaches
+// the agent config and that no module is handed to the runner, matching the
+// Python agent's _init_non_minimal skip.
+func TestRunDashboardAgentMinimalSkipsModules(t *testing.T) {
+	origMinimal := minimal
+	origIsHead := isHeadFlag
+	t.Cleanup(func() {
+		minimal = origMinimal
+		isHeadFlag = origIsHead
+	})
+
+	args := append(testArgs(map[string]string{"log-dir": t.TempDir(), "is-head": "true"}), "--minimal")
+	if err := DashboardAgentCmd.ParseFlags(args); err != nil {
+		t.Fatalf("parse flags: %v", err)
+	}
+
+	origLoad := loadGCSClientFn
+	loadGCSClientFn = func(gcs.ClientOptions) (gcs.Client, error) {
+		return &rejectGetAllGCS{t: t}, nil
+	}
+	defer func() { loadGCSClientFn = origLoad }()
+
+	origValidate := validatePluginLoadableFn
+	validatePluginLoadableFn = func() error { return nil }
+	defer func() { validatePluginLoadableFn = origValidate }()
+
+	var got agent.Config
+	var gotMods []agent.Module
+	origRun := runAgentFn
+	runAgentFn = func(_ context.Context, cfg agent.Config, mods []agent.Module) error {
+		got = cfg
+		gotMods = mods
+		return nil
+	}
+	defer func() { runAgentFn = origRun }()
+
+	if err := runDashboardAgent(context.Background()); err != nil {
+		t.Fatalf("runDashboardAgent: %v", err)
+	}
+	if !got.Minimal {
+		t.Error("cfg.Minimal = false, want true for --minimal")
+	}
+	if len(gotMods) != 0 {
+		t.Errorf("runDashboardAgent passed %d modules in minimal mode, want 0", len(gotMods))
+	}
+}
+
+// TestListenPortDefaultsToAgentPort verifies the HTTP listen port is optional
+// and defaults to the shared dashboard agent port, so a launcher that omits
+// the flag still starts the agent on the port the head side expects.
+func TestListenPortDefaultsToAgentPort(t *testing.T) {
+	flag := DashboardAgentCmd.Flags().Lookup("listen-port")
+	if flag == nil {
+		t.Fatal("flag \"listen-port\" is not registered")
+	}
+	want := strconv.Itoa(common.DEFAULT_DASHBOARD_AGENT_LISTEN_PORT)
+	if flag.DefValue != want {
+		t.Errorf("--listen-port default = %q, want the shared agent port %q",
+			flag.DefValue, want)
+	}
+}
+
+// TestFlagRequiredness pins which flags the raygo launcher must pass. The
+// log-rotation limits are required because the agent always redirects its
+// logs; the session name and the stdout/stderr targets are optional so a
+// caller that does not redirect output keeps working.
+func TestFlagRequiredness(t *testing.T) {
+	required := []string{
+		"node-ip-address",
+		"grpc-port",
+		"node-manager-port",
+		"gcs-address",
+		"cluster-id-hex",
+		"log-dir",
+		"temp-dir",
+		"session-dir",
+		"object-store-name",
+		"raylet-name",
+		"logging-rotate-bytes",
+		"logging-rotate-backup-count",
+	}
+	optional := []string{
+		"listen-port",
+		"session-name",
+		"stdout-filepath",
+		"stderr-filepath",
+		"metrics-export-port",
+	}
+	for _, name := range required {
+		flag := DashboardAgentCmd.Flags().Lookup(name)
+		if flag == nil {
+			t.Fatalf("flag %q is not registered", name)
+		}
+		if _, ok := flag.Annotations[cobra.BashCompOneRequiredFlag]; !ok {
+			t.Errorf("flag %q is not marked required", name)
+		}
+	}
+	for _, name := range optional {
+		flag := DashboardAgentCmd.Flags().Lookup(name)
+		if flag == nil {
+			t.Fatalf("flag %q is not registered", name)
+		}
+		if _, ok := flag.Annotations[cobra.BashCompOneRequiredFlag]; ok {
+			t.Errorf("flag %q is marked required, want optional", name)
+		}
+	}
+}
+
 func TestPreRunERejectsBadLoggingLevel(t *testing.T) {
 	args := testArgs(map[string]string{"logging-level": "bogus"})
 	if err := DashboardAgentCmd.ParseFlags(args); err != nil {
@@ -231,13 +433,13 @@ func (f *buildModulesFakeGCS) GetAll(_ context.Context, nodeIDs []ids.NodeID) (m
 // serving.
 func TestBuildModules(t *testing.T) {
 	fakeGCS := &buildModulesFakeGCS{}
-	t.Run("returns log, healthz, event and reporter modules", func(t *testing.T) {
+	t.Run("returns log, healthz, event, reporter and job modules", func(t *testing.T) {
 		mods, err := buildModules(agent.Config{LogDir: t.TempDir(), GCS: fakeGCS})
 		if err != nil {
 			t.Fatalf("buildModules: %v", err)
 		}
-		if len(mods) != 4 {
-			t.Fatalf("buildModules returned %d modules, want 4", len(mods))
+		if len(mods) != 5 {
+			t.Fatalf("buildModules returned %d modules, want 5", len(mods))
 		}
 		if _, ok := mods[0].(*dashboardlog.LogAgentModule); !ok {
 			t.Errorf("module[0] type = %T, want *log.LogAgentModule", mods[0])
@@ -250,6 +452,9 @@ func TestBuildModules(t *testing.T) {
 		}
 		if _, ok := mods[3].(*dashboardreporter.ReporterModule); !ok {
 			t.Errorf("module[3] type = %T, want *reporter.ReporterModule", mods[3])
+		}
+		if _, ok := mods[4].(*dashboardjob.JobAgent); !ok {
+			t.Errorf("module[4] type = %T, want *job.JobAgent", mods[4])
 		}
 	})
 
@@ -317,6 +522,24 @@ func TestResolveIsHead(t *testing.T) {
 			t.Error("resolveIsHeadRetry = false, want true once the lookup succeeds")
 		}
 	})
+}
+
+// TestIsHeadRetryDelayIsJittered verifies the retry backoff is randomized
+// within [0.8, 1.2] of the base interval so co-launched agents do not poll GCS
+// in lockstep.
+func TestIsHeadRetryDelayIsJittered(t *testing.T) {
+	const interval = 100 * time.Millisecond
+	seen := map[time.Duration]bool{}
+	for i := 0; i < 200; i++ {
+		delay := isHeadRetryDelay(interval)
+		if delay < 80*time.Millisecond || delay > 120*time.Millisecond {
+			t.Fatalf("isHeadRetryDelay(%v) = %v, want a delay within [80ms, 120ms]", interval, delay)
+		}
+		seen[delay] = true
+	}
+	if len(seen) == 1 {
+		t.Error("isHeadRetryDelay returned the same delay every time, want a randomized backoff")
+	}
 }
 
 func TestRunDashboardAgentConnectsThroughPluginSeam(t *testing.T) {

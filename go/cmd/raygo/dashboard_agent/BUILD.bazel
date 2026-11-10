@@ -8,6 +8,7 @@ go_library(
     deps = [
         "//go/internal/common",
         "//go/internal/dashboard/agent",
+        "//go/internal/dashboard/agent/job",
         "//go/internal/dashboard/event",
         "//go/internal/dashboard/healthz",
         "//go/internal/dashboard/log",
@@ -26,7 +27,9 @@ go_test(
     srcs = ["dashboard_agent_test.go"],
     embed = [":dashboard_agent"],
     deps = [
+        "//go/internal/common",
         "//go/internal/dashboard/agent",
+        "//go/internal/dashboard/agent/job",
         "//go/internal/dashboard/event",
         "//go/internal/dashboard/healthz",
         "//go/internal/dashboard/log",
@@ -34,5 +37,6 @@ go_test(
         "//go/pkg/gcs",
         "//go/pkg/ids",
         "//go/proto",
+        "@com_github_spf13_cobra//:cobra",
     ],
 )

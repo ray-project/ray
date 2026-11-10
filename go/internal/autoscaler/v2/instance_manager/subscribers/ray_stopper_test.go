@@ -115,6 +115,9 @@ func (f *fakeGcsClientForRayStopper) GetJobInfo(ctx context.Context, jobID ids.J
 func (f *fakeGcsClientForRayStopper) ListJobs(ctx context.Context) ([]*proto.JobTableData, error) {
 	return nil, gcs.ErrNotImplemented
 }
+func (f *fakeGcsClientForRayStopper) ListJobsWithFilter(ctx context.Context, jobOrSubmissionID string, skipSubmissionJobInfoField, skipIsRunningTasksField bool) ([]*proto.JobTableData, error) {
+	return nil, gcs.ErrNotImplemented
+}
 func (f *fakeGcsClientForRayStopper) NextJobID(ctx context.Context) (ids.JobID, error) {
 	return ids.JobID{}, gcs.ErrNotImplemented
 }

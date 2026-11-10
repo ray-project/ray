@@ -30,8 +30,9 @@ import (
 )
 
 // EventAgent is the dashboard event module. It implements the agent.Module
-// contract and owns the monitor and report loops (monitor.go/report.go) and the
-// internal states endpoint.
+// contract and owns the monitor and report loops (monitor.go/report.go) plus an
+// internal states accessor. It serves no HTTP routes, matching the Python
+// EventAgent.
 type EventAgent struct {
 	// eventDir is <log_dir>/events, the directory monitored for event logs.
 	eventDir string
@@ -45,14 +46,12 @@ type EventAgent struct {
 	totalEventReported atomic.Int64
 	// totalRequestSent is the cumulative number of report requests sent.
 	totalRequestSent atomic.Int64
-	// droppedBatches is the cumulative number of event batches dropped because
-	// the report queue was full (see monitorEvents). It keeps monitoring
-	// decoupled from a slow or hung report loop.
-	droppedBatches atomic.Int64
 	// moduleStarted records when the module was created.
 	moduleStarted time.Time
 
-	// dashboardHTTPAddress is lazily resolved on first use and never changed.
+	// dashboardHTTPAddress is lazily resolved on first use. Once resolved it is
+	// cached until a report fails, which invalidates it (see reportBatch) so the
+	// next attempt re-reads the address from GCS.
 	dashboardHTTPAddress atomic.Value
 	// addressResolved reports whether dashboardHTTPAddress has been set.
 	addressResolved atomic.Bool
@@ -93,7 +92,7 @@ func (e *EventAgent) Start(ctx context.Context) error {
 		"report_interval_seconds", eventAgentReportIntervalSeconds())
 
 	go func() {
-		if err := monitorEvents(ctx, e.eventDir, e.queue, &e.droppedBatches); err != nil && !errors.Is(err, context.Canceled) {
+		if err := monitorEvents(ctx, e.eventDir, e.queue); err != nil && !errors.Is(err, context.Canceled) {
 			log.Log.Error(err, "event monitor loop stopped", "event_dir", e.eventDir)
 		}
 	}()
@@ -109,8 +108,8 @@ func (e *EventAgent) Start(ctx context.Context) error {
 // either.
 func (e *EventAgent) RegisterGRPC(*grpc.Server) error { return nil }
 
-// RegisterHTTP registers the internal states endpoint.
-func (e *EventAgent) RegisterHTTP(mux *http.ServeMux) error {
-	mux.HandleFunc("/api/event_internal_states", e.handleInternalStates)
-	return nil
-}
+// RegisterHTTP registers no routes: the Python EventAgent exposes no HTTP API
+// (its get_internal_states is an internal accessor only), so neither does the Go
+// agent. The module reports events to the dashboard head over HTTP and has
+// nothing to serve.
+func (e *EventAgent) RegisterHTTP(*http.ServeMux) error { return nil }

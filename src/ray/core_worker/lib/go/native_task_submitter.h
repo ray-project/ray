@@ -55,9 +55,13 @@ typedef struct {
                                    // "0102030405060708090a0b0c0d0e0f101112")
   int placement_group_id_size;     // Size of placement group ID hex string in bytes
   int bundle_index;                // Bundle index within placement group (-1 if not used)
-  int is_detached;                 // Whether the actor is detached (lifetime)
-  int is_asyncio;                  // Whether to use async direct call mode
-  int max_pending_calls;           // Maximum pending calls (-1 = unlimited)
+  // NodeAffinity fields (mirror the placement-group pattern; empty id when unused)
+  const char *node_affinity_node_id;  // Target node ID as hex string (head-node pinning)
+  int node_affinity_node_id_size;     // Size of node id hex string in bytes
+  bool node_affinity_soft;            // Soft affinity (spill if target unavailable)
+  int is_detached;                    // Whether the actor is detached (lifetime)
+  int is_asyncio;                     // Whether to use async direct call mode
+  int max_pending_calls;              // Maximum pending calls (-1 = unlimited)
   // Concurrency groups (flat arrays). cg_count=0 means no groups.
   const char **cg_names;    // [cg_count] group names
   int *cg_max_concurrency;  // [cg_count] max calls per group

@@ -620,6 +620,48 @@ TEST(TaskSubmitterOperationsBuildActorOptionsTest, NoPlacementGroupUsesDefault) 
   EXPECT_FALSE(built.scheduling_strategy.has_placement_group_scheduling_strategy());
 }
 
+// TestTaskSubmitterOperationsBuildActorOptionsTest_NodeAffinity verifies that a
+// node-affinity bound actor (head-node pinning for the job driver) produces a
+// node_affinity_scheduling_strategy in the built ActorCreationOptions.
+TEST(TaskSubmitterOperationsBuildActorOptionsTest, NodeAffinity) {
+  ray::go::ActorCreateOptions options;
+  // A 28-byte NodeID as a 56-char hex string.
+  const std::string node_id_hex =
+      "0123456789abcdef0123456789abcdef0123456789abcdef01234567";
+  options.node_affinity_node_id_hex = node_id_hex;
+  options.node_affinity_soft = true;
+
+  auto &ops = ray::go::TaskSubmitterOperations::GetInstance();
+  ray::core::ActorCreationOptions built = ops.BuildActorOptions(options);
+
+  ASSERT_TRUE(built.scheduling_strategy.has_node_affinity_scheduling_strategy());
+  const auto &na_strategy = built.scheduling_strategy.node_affinity_scheduling_strategy();
+  EXPECT_EQ(na_strategy.node_id(), ray::NodeID::FromHex(node_id_hex).Binary());
+  EXPECT_TRUE(na_strategy.soft());
+}
+
+// TestTaskSubmitterOperationsBuildActorOptionsTest_NodeAffinityTakesPrecedence
+// verifies that when both a node affinity and a placement group are set, the
+// node affinity wins (it is the more specific pin for head-node placement).
+TEST(TaskSubmitterOperationsBuildActorOptionsTest, NodeAffinityTakesPrecedence) {
+  ray::go::ActorCreateOptions options;
+  options.placement_group_id_hex = "0102030405060708090a0b0c0d0e0f101112";
+  options.bundle_index = 1;
+  options.node_affinity_node_id_hex =
+      "0123456789abcdef0123456789abcdef0123456789abcdef01234567";
+
+  auto &ops = ray::go::TaskSubmitterOperations::GetInstance();
+  ray::core::ActorCreationOptions built = ops.BuildActorOptions(options);
+
+  ASSERT_TRUE(built.scheduling_strategy.has_node_affinity_scheduling_strategy());
+  const auto &na_strategy = built.scheduling_strategy.node_affinity_scheduling_strategy();
+  EXPECT_EQ(na_strategy.node_id(),
+            ray::NodeID::FromHex(options.node_affinity_node_id_hex).Binary());
+  EXPECT_FALSE(na_strategy.soft());
+  EXPECT_FALSE(built.scheduling_strategy.has_placement_group_scheduling_strategy());
+  EXPECT_FALSE(built.scheduling_strategy.has_default_scheduling_strategy());
+}
+
 // ============================================================================
 // MapConcurrencyGroupsFromC Tests
 //

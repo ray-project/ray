@@ -219,6 +219,12 @@ extern "C" CByteArray *CNativeTaskSubmitter_CreateActor(
                 options->placement_group_id, options->placement_group_id_size);
             actor_options.bundle_index = options->bundle_index;
           }
+          if (options->node_affinity_node_id != nullptr &&
+              options->node_affinity_node_id_size > 0) {
+            actor_options.node_affinity_node_id_hex = std::string(
+                options->node_affinity_node_id, options->node_affinity_node_id_size);
+            actor_options.node_affinity_soft = options->node_affinity_soft;
+          }
           actor_options.is_detached = options->is_detached == 1;
           actor_options.is_asyncio = options->is_asyncio == 1;
           actor_options.max_pending_calls = options->max_pending_calls;

@@ -286,6 +286,10 @@ func (m *mockGCSClient) ListJobs(ctx context.Context) ([]*proto.JobTableData, er
 	return nil, gcs.ErrNotImplemented
 }
 
+func (m *mockGCSClient) ListJobsWithFilter(ctx context.Context, jobOrSubmissionID string, skipSubmissionJobInfoField, skipIsRunningTasksField bool) ([]*proto.JobTableData, error) {
+	return nil, gcs.ErrNotImplemented
+}
+
 func (m *mockGCSClient) NextJobID(ctx context.Context) (ids.JobID, error) {
 	return ids.NilJobID(), gcs.ErrNotImplemented
 }

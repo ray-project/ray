@@ -99,6 +99,10 @@ struct ActorCreateOptions {
   // "no placement group", mirroring TaskSubmitOptions for tasks.
   std::string placement_group_id_hex;
   int bundle_index = -1;
+  // Node affinity binding (hex node id + soft flag). Empty id means "no
+  // affinity", mirroring placement_group_id_hex / bundle_index above.
+  std::string node_affinity_node_id_hex;
+  bool node_affinity_soft = false;
   bool is_detached = false;        // whether detached (lifetime=DETACHED)
   bool is_asyncio = false;         // whether async direct call
   int32_t max_pending_calls = -1;  // max pending calls (-1 unlimited)
@@ -281,6 +285,12 @@ class TaskSubmitterOperations {
    */
   ray::rpc::SchedulingStrategy BuildSchedulingStrategy(const std::string &pg_id_hex,
                                                        int bundle_index) const;
+
+  /**
+   * @brief Build a node-affinity SchedulingStrategy pinning to a node
+   */
+  ray::rpc::SchedulingStrategy BuildNodeAffinitySchedulingStrategy(
+      const std::string &node_id_hex, bool soft) const;
 
   /**
    * @brief Get CoreWorker from provider

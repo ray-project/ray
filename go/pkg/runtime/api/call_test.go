@@ -18,6 +18,7 @@ import (
 	"testing"
 
 	"github.com/ray-project/ray/go/pkg/ids"
+	"github.com/ray-project/ray/go/pkg/runtime/object"
 	"github.com/ray-project/ray/go/pkg/runtime/submitter"
 )
 
@@ -75,6 +76,114 @@ func TestTaskCaller_WithPlacementGroup(t *testing.T) {
 	}
 	if caller.options.PlacementGroup.BundleIndex != 2 {
 		t.Fatalf("options.PlacementGroup.BundleIndex = %d, want 2", caller.options.PlacementGroup.BundleIndex)
+	}
+}
+
+// TestWrapPythonArgsStampsCrossLanguageMetadata verifies that a value argument
+// routed through the Python wrapping path carries cross-language metadata so
+// the Python worker knows it must deserialize it as a cross-language value,
+// while the Go-native path keeps the Go metadata untouched.
+func TestWrapPythonArgsStampsCrossLanguageMetadata(t *testing.T) {
+	// The api test binary has no real serializer registered; the minimal test
+	// serializer mimics the Go metadata type for plain values. Restore the nil
+	// default afterwards so sibling tests are unaffected.
+	object.SetSerializer(testSerializer{})
+	defer object.SetSerializer(nil)
+
+	args := wrapPythonArgs([]interface{}{42})
+	if len(args) != 2 {
+		t.Fatalf("wrapPythonArgs returned %d args, want 2 (dummy marker + value)", len(args))
+	}
+
+	marker := args[0]
+	if !marker.IsPassByValue() || marker.Data == nil {
+		t.Fatal("dummy marker should be passed by value")
+	}
+	if got := string(marker.Data.Metadata); got != object.MetadataTypeRaw {
+		t.Errorf("dummy marker metadata = %q, want %q", got, object.MetadataTypeRaw)
+	}
+
+	value := args[1]
+	if !value.IsPassByValue() || value.Data == nil {
+		t.Fatal("wrapped python arg should be passed by value")
+	}
+	if got := string(value.Data.Metadata); got != object.MetadataTypeCrossLanguage {
+		t.Errorf("wrapped python arg metadata = %q, want %q", got, object.MetadataTypeCrossLanguage)
+	}
+
+	// The typed Go-native path must keep its own metadata type.
+	goArgs := convertArgs(42)
+	if len(goArgs) != 1 {
+		t.Fatalf("convertArgs returned %d args, want 1", len(goArgs))
+	}
+	if got := string(goArgs[0].Data.Metadata); got != object.MetadataTypeGo {
+		t.Errorf("go-native arg metadata = %q, want %q", got, object.MetadataTypeGo)
+	}
+
+	// Pass-by-reference arguments carry no serialized data, so they must keep
+	// their non-XLANG shape: by-ref routing only, no metadata stamp.
+	ref := &ObjectRef[[]byte]{} // zero ObjectID is fine: only by-ref routing is asserted
+	refArgs := wrapPythonArgs([]interface{}{ref})
+	if len(refArgs) != 2 {
+		t.Fatalf("wrapPythonArgs returned %d args, want 2 (dummy marker + ref)", len(refArgs))
+	}
+	refArg := refArgs[1]
+	if refArg.IsPassByValue() {
+		t.Error("wrapped python object-ref arg routed by value, want by-ref")
+	}
+	if refArg.ObjectRef == nil {
+		t.Fatal("wrapped python object-ref arg is missing its object reference")
+	}
+	if refArg.Data != nil {
+		t.Errorf("wrapped python object-ref arg carries serialized data %q, want none", refArg.Data.Data)
+	}
+}
+
+// TestPythonActorCreatorBuilders pins the options recorded by the cross-language
+// actor builder methods: detached lifetime, async mode, and head-node affinity
+// are all required by the dashboard agent job module's supervisor actors.
+func TestPythonActorCreatorBuilders(t *testing.T) {
+	creator := RemotePythonActor("m", "C").
+		WithLifetime(submitter.ActorLifetimeDetached).
+		WithAsync(true).
+		WithNodeAffinity("abc", false)
+	if creator.err != nil {
+		t.Fatalf("RemotePythonActor returned error: %v", creator.err)
+	}
+	if creator.options.Lifetime != submitter.ActorLifetimeDetached {
+		t.Errorf("Lifetime = %v, want Detached", creator.options.Lifetime)
+	}
+	if !creator.options.IsAsync {
+		t.Error("IsAsync = false, want true")
+	}
+	if creator.options.NodeAffinity == nil {
+		t.Fatal("NodeAffinity = nil after WithNodeAffinity")
+	}
+	if creator.options.NodeAffinity.NodeID != "abc" {
+		t.Errorf("NodeAffinity.NodeID = %q, want %q", creator.options.NodeAffinity.NodeID, "abc")
+	}
+	if creator.options.NodeAffinity.Soft {
+		t.Error("NodeAffinity.Soft = true, want false")
+	}
+}
+
+// TestPythonActorTaskCallerWithMaxRetries pins the retry option used by the
+// supervisor ping, which must retry until the actor is reachable.
+func TestPythonActorTaskCallerWithMaxRetries(t *testing.T) {
+	handle := &PythonActorHandle{
+		baseActorHandle: baseActorHandle{nativeHandle: object.NewNativeActorHandle(ids.NilActorID(), object.LanguagePython)},
+		moduleName:      "m",
+		className:       "C",
+	}
+	caller := ActorTask[struct{}](handle, "ping").WithMaxRetries(-1)
+	if caller.err != nil {
+		t.Fatalf("ActorTask returned error: %v", caller.err)
+	}
+	if caller.options.RetryPolicy == nil {
+		t.Fatal("RetryPolicy = nil after WithMaxRetries")
+	}
+	if caller.options.RetryPolicy.MaxRetries != -1 {
+		t.Errorf("RetryPolicy.MaxRetries = %d, want -1", caller.options.RetryPolicy.MaxRetries)
 	}
 }
 

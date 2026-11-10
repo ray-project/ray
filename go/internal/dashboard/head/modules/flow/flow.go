@@ -32,6 +32,7 @@ import (
 	"github.com/coder/websocket"
 	"github.com/ray-project/ray/go/internal/dashboard/head"
 	"github.com/ray-project/ray/go/internal/dashboard/head/modules/job"
+	"github.com/ray-project/ray/go/internal/dashboard/jobutil"
 	rayerrors "github.com/ray-project/ray/go/pkg/errors"
 	"github.com/ray-project/ray/go/pkg/log"
 	"github.com/ray-project/ray/go/pkg/runtime/api"
@@ -318,12 +319,12 @@ func getDriverJobs(ctx context.Context, client *head.GCSClient, jobOrSubmissionI
 func submissionJobDetails(submissionID string, info *job.JobInfo, driver *job.DriverInfo) *job.JobDetails {
 	var jobID *string
 	if driver != nil {
-		jobID = ptrString(driver.ID)
+		jobID = jobutil.PtrString(driver.ID)
 	}
 	return &job.JobDetails{
 		Type:                   job.JobTypeSubmission,
 		JobID:                  jobID,
-		SubmissionID:           ptrString(submissionID),
+		SubmissionID:           jobutil.PtrString(submissionID),
 		DriverInfo:             driver,
 		Status:                 info.Status,
 		Entrypoint:             info.Entrypoint,
@@ -332,26 +333,12 @@ func submissionJobDetails(submissionID string, info *job.JobInfo, driver *job.Dr
 		StartTime:              info.StartTime,
 		EndTime:                info.EndTime,
 		Metadata:               info.Metadata,
-		RuntimeEnv:             runtimeEnvFromJSON(info.RuntimeEnvJSON),
+		RuntimeEnv:             jobutil.RuntimeEnvFromJSON(info.RuntimeEnvJSON),
 		DriverAgentHTTPAddress: info.DriverAgentHTTPAddress,
 		DriverNodeID:           info.DriverNodeID,
 		DriverExitCode:         info.DriverExitCode,
 	}
 }
-
-// runtimeEnvFromJSON converts the runtime_env_json string stored in the KV
-// into a dict, aligned with JobInfo.from_json().
-func runtimeEnvFromJSON(serialized *string) map[string]interface{} {
-	if serialized == nil {
-		return nil
-	}
-	out := map[string]interface{}{}
-	_ = json.Unmarshal([]byte(*serialized), &out)
-	return out
-}
-
-// ptrString returns a pointer to a copy of s.
-func ptrString(s string) *string { return &s }
 
 // generateFlowJobID returns "flowsubmit_" + 16 secure random characters that
 // exclude the confusing I/l/O/o/0, aligned with generate_flow_job_id in
@@ -550,7 +537,7 @@ func (h *FlowHead) handleSubmitJob(w http.ResponseWriter, r *http.Request) {
 
 	jobSubmitRequest := &job.JobSubmitRequest{
 		Entrypoint:          buildJobEntrypoint(req.Entrypoint),
-		SubmissionID:        ptrString(flowSubmissionID),
+		SubmissionID:        jobutil.PtrString(flowSubmissionID),
 		RuntimeEnv:          req.RuntimeEnv,
 		Metadata:            metadata,
 		EntrypointNumCPUs:   req.EntrypointNumCPUs,
@@ -1100,7 +1087,7 @@ func strFromMap(m map[string]interface{}, key string) string {
 // optStrFromMap extracts an optional string field.
 func optStrFromMap(m map[string]interface{}, key string) *string {
 	if v, ok := m[key].(string); ok {
-		return ptrString(v)
+		return jobutil.PtrString(v)
 	}
 	return nil
 }

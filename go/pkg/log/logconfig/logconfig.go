@@ -74,6 +74,12 @@ type LogOption struct {
 
 	// StderrFilepath is the stderr output file path (optional).
 	StderrFilepath string
+
+	// WriteToStderr makes the component logger also write to the process's
+	// stderr in addition to any configured log file. Both the Debug/Info core
+	// and the Warn/Error core get the stderr marker, so every level is visible
+	// via `kubectl logs -c <container>`.
+	WriteToStderr bool
 }
 
 // Option modifies a LogOption.
@@ -140,6 +146,16 @@ func WithStderrFilepath(path string) Option {
 	}
 }
 
+// WithStderrOutput makes the component logger also write to the process's
+// stderr, in addition to any configured log file. This mirrors the Python
+// run_autoscaler._setup_logging stderr handler on top of the monitor.log file
+// handler, so the runtime log is visible via `kubectl logs -c autoscaler`.
+func WithStderrOutput() Option {
+	return func(c *LogOption) {
+		c.WriteToStderr = true
+	}
+}
+
 // NewLogOption creates and returns a new LogOption instance.
 func NewLogOption(opts ...Option) *LogOption {
 	// Apply defaults.
@@ -174,18 +190,11 @@ func ParseLogLevel(level string) (zapcore.Level, error) {
 	}
 }
 
-// SetupComponentLogger configures the component logging system.
-func (opt *LogOption) SetupComponentLogger() error {
-	// Parse the logging level.
-	loggingZapcoreLevel, err := ParseLogLevel(opt.LoggingLevel)
-	if err != nil {
-		return err
-	}
-
-	// Build the full log file path.
-	var logOutputPaths []string
-	var logErrorOutputPaths []string
-
+// outputPaths computes the output path lists for the Debug/Info (stdout) core
+// and the Warn/Error (stderr) core: the configured log file, the optional
+// stdout/stderr redirection files, and the stderr marker when stderr output is
+// requested.
+func (opt *LogOption) outputPaths() (logOutputPaths, logErrorOutputPaths []string) {
 	if opt.LogsDir != "" && opt.LoggingFilename != "" {
 		logFilePath := filepath.Join(opt.LogsDir, opt.LoggingFilename)
 		logOutputPaths = []string{logFilePath}
@@ -209,6 +218,13 @@ func (opt *LogOption) SetupComponentLogger() error {
 		}
 	}
 
+	// Mirror every level to the process's stderr when requested: both the
+	// Debug/Info core and the Warn/Error core get the stderr marker.
+	if opt.WriteToStderr {
+		logOutputPaths = append(logOutputPaths, lumberjack.StderrMarker)
+		logErrorOutputPaths = append(logErrorOutputPaths, lumberjack.StderrMarker)
+	}
+
 	// If no log file path is configured, fall back to the default output.
 	if len(logOutputPaths) == 0 {
 		logOutputPaths = []string{}
@@ -216,6 +232,19 @@ func (opt *LogOption) SetupComponentLogger() error {
 	if len(logErrorOutputPaths) == 0 {
 		logErrorOutputPaths = []string{}
 	}
+	return logOutputPaths, logErrorOutputPaths
+}
+
+// SetupComponentLogger configures the component logging system.
+func (opt *LogOption) SetupComponentLogger() error {
+	// Parse the logging level.
+	loggingZapcoreLevel, err := ParseLogLevel(opt.LoggingLevel)
+	if err != nil {
+		return err
+	}
+
+	// Build the full log file path.
+	logOutputPaths, logErrorOutputPaths := opt.outputPaths()
 
 	// Convert bytes to MB (lumberjack uses MB as its unit).
 	maxSizeMB := opt.LoggingRotateBytes / (1024 * 1024)

@@ -227,7 +227,19 @@ func (s *LocalModeTaskSubmitter) CreateActor(
 	actorID := ids.OfActorID(jobID, parentTaskID, rand.Uint64())
 	maxConcurrency := options.MaxConcurrency
 	if maxConcurrency <= 0 {
-		maxConcurrency = 1
+		// Both an unset value and -1 (documented unlimited) collapse to the
+		// numeric default here, because the actor concurrency-group manager
+		// cannot represent unlimited (see actor_concurrency_group.go). Match
+		// the native (cgo) backend and Python's DEFAULT_MAX_CONCURRENCY_ASYNC:
+		// an async actor resolves to 1000 so its methods can interleave on the
+		// asyncio event loop; a synchronous actor stays serialized at 1. This
+		// deliberate OSS-side consistency fix keeps local mode and the cgo
+		// backend resolving the same API input identically.
+		if options.IsAsync {
+			maxConcurrency = 1000
+		} else {
+			maxConcurrency = 1
+		}
 	}
 
 	// Create actor creation task spec

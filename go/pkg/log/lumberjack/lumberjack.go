@@ -22,10 +22,43 @@ import (
 	lumberjack "gopkg.in/natefinch/lumberjack.v2"
 )
 
+// Special path markers mapped to the process's standard streams. When a path
+// in the output list equals one of these, the corresponding os.Stdout/os.Stderr
+// is used instead of a file, so a component logger can write to a log file and
+// the pod's stdout/stderr at the same time.
+const (
+	StdoutMarker = "stdout"
+	StderrMarker = "stderr"
+)
+
+// streamWriteSyncer writes to an os.File standard stream and treats Sync as a
+// no-op: stdout/stderr are unbuffered at the process level and their fsync
+// returns EINVAL on Linux, which would otherwise surface as spurious log
+// errors.
+type streamWriteSyncer struct {
+	file *os.File
+}
+
+func (s *streamWriteSyncer) Write(p []byte) (int, error) {
+	return s.file.Write(p)
+}
+
+func (s *streamWriteSyncer) Sync() error {
+	return nil
+}
+
 func buildWriters(paths []string, opts *Options) []io.Writer {
 	writers := make([]io.Writer, 0, len(paths))
 	for _, path := range paths {
 		if path == "" {
+			continue
+		}
+		switch path {
+		case StdoutMarker:
+			writers = append(writers, os.Stdout)
+			continue
+		case StderrMarker:
+			writers = append(writers, os.Stderr)
 			continue
 		}
 		writers = append(writers, &lumberjack.Logger{
@@ -42,8 +75,25 @@ func buildWriters(paths []string, opts *Options) []io.Writer {
 
 func buildWriteSyncers(paths []string, opts *Options) []zapcore.WriteSyncer {
 	syncers := make([]zapcore.WriteSyncer, 0, len(paths))
-	for _, writer := range buildWriters(paths, opts) {
-		syncers = append(syncers, zapcore.Lock(zapcore.AddSync(writer)))
+	for _, path := range paths {
+		if path == "" {
+			continue
+		}
+		switch path {
+		case StdoutMarker:
+			syncers = append(syncers, zapcore.Lock(&streamWriteSyncer{file: os.Stdout}))
+		case StderrMarker:
+			syncers = append(syncers, zapcore.Lock(&streamWriteSyncer{file: os.Stderr}))
+		default:
+			syncers = append(syncers, zapcore.Lock(zapcore.AddSync(&lumberjack.Logger{
+				Filename:   path,
+				MaxSize:    opts.MaxSize,
+				MaxBackups: opts.MaxBackups,
+				MaxAge:     opts.MaxAge,
+				Compress:   opts.Compress,
+				LocalTime:  opts.LocalTime,
+			})))
+		}
 	}
 	return syncers
 }

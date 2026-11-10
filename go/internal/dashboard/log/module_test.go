@@ -213,6 +213,82 @@ func TestListLogs(t *testing.T) {
 			t.Errorf("LogFiles = %v, want empty", got)
 		}
 	})
+	t.Run("recursive double-star matches across levels", func(t *testing.T) {
+		rep, err := la.ListLogs(ctx, &proto.ListLogsRequest{GlobFilter: "**/*.log"})
+		if err != nil {
+			t.Fatalf("ListLogs: %v", err)
+		}
+		got := rep.GetLogFiles()
+		sort.Strings(got)
+		// "**/" must match the top level too (a.log) and recurse into sub/.
+		if !reflect.DeepEqual(got, []string{"a.log", "sub/c.log"}) {
+			t.Errorf("LogFiles = %v, want [a.log sub/c.log] for **/*.log", got)
+		}
+	})
+	t.Run("double-star matches everything recursively", func(t *testing.T) {
+		rep, err := la.ListLogs(ctx, &proto.ListLogsRequest{GlobFilter: "**"})
+		if err != nil {
+			t.Fatalf("ListLogs: %v", err)
+		}
+		got := rep.GetLogFiles()
+		sort.Strings(got)
+		want := []string{"a.log", "b.err", "emptydir/", "sub/", "sub/c.log", "sub/d.out"}
+		if !reflect.DeepEqual(got, want) {
+			t.Errorf("LogFiles = %v, want %v for **", got, want)
+		}
+	})
+	t.Run("absolute glob is rejected", func(t *testing.T) {
+		// LogAgentV1Grpc.ListLogs aborts with INVALID_ARGUMENT before globbing
+		// when the filter has an anchor (log_agent.py:296-303).
+		_, err := la.ListLogs(ctx, &proto.ListLogsRequest{GlobFilter: "/etc/passwd"})
+		if status.Code(err) != codes.InvalidArgument {
+			t.Errorf("ListLogs absolute glob error code = %v, want InvalidArgument", status.Code(err))
+		}
+		if want := "Invalid glob filter: /etc/passwd. It must be a relative path and cannot contain '..'."; status.Convert(err).Message() != want {
+			t.Errorf("ListLogs absolute glob message = %q, want %q", status.Convert(err).Message(), want)
+		}
+	})
+	t.Run("parent traversal glob is rejected", func(t *testing.T) {
+		_, err := la.ListLogs(ctx, &proto.ListLogsRequest{GlobFilter: "sub/../x"})
+		if status.Code(err) != codes.InvalidArgument {
+			t.Errorf("ListLogs traversal glob error code = %v, want InvalidArgument", status.Code(err))
+		}
+		if want := "Invalid glob filter: sub/../x. It must be a relative path and cannot contain '..'."; status.Convert(err).Message() != want {
+			t.Errorf("ListLogs traversal glob message = %q, want %q", status.Convert(err).Message(), want)
+		}
+	})
+}
+
+// TestGlobToRegex checks the regexp produced from a pathlib-style glob,
+// especially that a "**" segment spans directories without a trailing "/".
+func TestGlobToRegex(t *testing.T) {
+	cases := []struct {
+		pattern string
+		match   []string
+		noMatch []string
+	}{
+		{"**/*.log", []string{"a.log", "sub/c.log"}, []string{"a.err", "sub/d.out", "x/a.txt"}},
+		{"**", []string{"a.log", "sub/c.log"}, nil},
+		{"a/**/b", []string{"a/b", "a/x/b", "a/x/y/b"}, []string{"a/c"}},
+		{"sub/*", []string{"sub/c.log"}, []string{"a.log", "sub/x/y"}},
+	}
+	for _, tc := range cases {
+		re, err := globToRegex(tc.pattern)
+		if err != nil {
+			t.Errorf("globToRegex(%q): %v", tc.pattern, err)
+			continue
+		}
+		for _, p := range tc.match {
+			if !re.MatchString(p) {
+				t.Errorf("globToRegex(%q) does not match %q", tc.pattern, p)
+			}
+		}
+		for _, p := range tc.noMatch {
+			if re.MatchString(p) {
+				t.Errorf("globToRegex(%q) unexpectedly matches %q", tc.pattern, p)
+			}
+		}
+	}
 }
 
 func TestListLogsMissingDir(t *testing.T) {
@@ -223,11 +299,20 @@ func TestListLogsMissingDir(t *testing.T) {
 	}
 }
 
-func TestListLogsInvalidGlob(t *testing.T) {
-	la := &LogAgentModule{logDir: t.TempDir()}
-	_, err := la.ListLogs(context.Background(), &proto.ListLogsRequest{GlobFilter: "["})
-	if status.Code(err) != codes.InvalidArgument {
-		t.Errorf("ListLogs error code = %v, want InvalidArgument", status.Code(err))
+func TestListLogsUnterminatedBracketIsLiteral(t *testing.T) {
+	// fnmatch.translate treats an unterminated "[" as a literal bracket, so
+	// the pattern matches a file literally named "[" rather than erroring.
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "["), []byte("x"), 0o600); err != nil {
+		t.Fatalf("write file: %v", err)
+	}
+	la := &LogAgentModule{logDir: dir}
+	reply, err := la.ListLogs(context.Background(), &proto.ListLogsRequest{GlobFilter: "["})
+	if err != nil {
+		t.Fatalf("ListLogs: %v", err)
+	}
+	if len(reply.LogFiles) != 1 || reply.LogFiles[0] != "[" {
+		t.Errorf("LogFiles = %v, want [\"[\"]", reply.LogFiles)
 	}
 }
 
@@ -290,16 +375,37 @@ func TestHTTPServeLogs(t *testing.T) {
 			t.Errorf("status = %d, want 404", resp.StatusCode)
 		}
 	})
+	t.Run("no trailing slash is not redirected", func(t *testing.T) {
+		// The bare path is registered alongside the subtree so ServeMux serves
+		// it directly instead of answering with a 301 to "/logs/".
+		client := &http.Client{CheckRedirect: func(*http.Request, []*http.Request) error {
+			return http.ErrUseLastResponse
+		}}
+		resp, err := client.Get(srv.URL + "/logs")
+		if err != nil {
+			t.Fatalf("GET: %v", err)
+		}
+		defer resp.Body.Close()
+		if resp.StatusCode != http.StatusOK {
+			t.Errorf("status = %d, want 200", resp.StatusCode)
+		}
+		if loc := resp.Header.Get("Location"); loc != "" {
+			t.Errorf("Location = %q, want no redirect", loc)
+		}
+	})
 }
 
+// TestHTTPTraversalRejected checks that a name escaping the log directory is
+// refused. aiohttp answers a path that does not resolve inside the static
+// directory with its router-level "404: Not Found", not a 400.
 func TestHTTPTraversalRejected(t *testing.T) {
 	la := &LogAgentModule{logDir: t.TempDir()}
 	for _, name := range []string{"../secret", "sub/../../x", "/etc/passwd"} {
 		req := httptest.NewRequest(http.MethodGet, "http://agent/logs/"+name, nil)
 		rec := httptest.NewRecorder()
 		la.handleLogs(rec, req)
-		if rec.Code != http.StatusBadRequest {
-			t.Errorf("handleLogs(%q) status = %d, want 400", name, rec.Code)
+		if rec.Code != http.StatusNotFound {
+			t.Errorf("handleLogs(%q) status = %d, want 404", name, rec.Code)
 		}
 	}
 }
@@ -414,11 +520,15 @@ func TestStreamLog(t *testing.T) {
 		}
 	})
 
-	t.Run("start offset beyond content yields empty stream", func(t *testing.T) {
+	t.Run("start offset beyond content reports UNKNOWN like Python", func(t *testing.T) {
+		// With no explicit end_offset Python derives it from the file size, so
+		// a start past EOF makes to_read negative and file.read raises
+		// ValueError -> UNKNOWN.
 		s := &fakeStreamLogServer{ctx: context.Background()}
 		req := &proto.StreamLogRequest{LogFileName: "a.log", Lines: i32p(-1), StartOffset: i32p(1000)}
-		if err := la.StreamLog(req, s); err != nil {
-			t.Fatalf("StreamLog: %v", err)
+		err := la.StreamLog(req, s)
+		if status.Code(err) != codes.Unknown {
+			t.Fatalf("StreamLog err = %v, want code Unknown", err)
 		}
 		if got := s.received(); got != "" {
 			t.Errorf("data = %q, want empty", got)
@@ -433,6 +543,22 @@ func TestStreamLog(t *testing.T) {
 		}
 		if got := s.received(); got != "line1\n" {
 			t.Errorf("data = %q, want %q", got, "line1\n")
+		}
+	})
+
+	t.Run("end offset below start reports UNKNOWN like Python", func(t *testing.T) {
+		// Python computes to_read = end_offset - cur_offset and passes it to
+		// file.read, which raises ValueError for a negative length; the gRPC
+		// servicer surfaces that as UNKNOWN (log_agent.py:219-224).
+		s := &fakeStreamLogServer{ctx: context.Background()}
+		req := &proto.StreamLogRequest{LogFileName: "a.log", Lines: i32p(-1),
+			StartOffset: i32p(18), EndOffset: i32p(5)}
+		err := la.StreamLog(req, s)
+		if status.Code(err) != codes.Unknown {
+			t.Fatalf("StreamLog err = %v, want code Unknown", err)
+		}
+		if got := s.received(); got != "" {
+			t.Errorf("data = %q, want empty", got)
 		}
 	})
 

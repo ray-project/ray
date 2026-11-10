@@ -1,0 +1,57 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_library", "go_test")
+
+go_library(
+    name = "job",
+    srcs = [
+        "common.go",
+        "job_agent.go",
+        "job_events.go",
+        "job_log_storage_client.go",
+        "job_manager.go",
+        "job_supervisor.go",
+        "job_utils.go",
+    ],
+    importpath = "github.com/ray-project/ray/go/internal/dashboard/agent/job",
+    visibility = ["//go:__subpackages__"],
+    deps = [
+        "//go/internal/dashboard/agent",
+        "//go/internal/dashboard/jobutil",
+        "//go/internal/event",
+        "//go/pkg/gcs",
+        "//go/pkg/ids",
+        "//go/pkg/log",
+        "//go/pkg/options",
+        "//go/pkg/runtime/api",
+        "//go/pkg/runtime/object",
+        "//go/pkg/runtime/submitter",
+        "//go/proto",
+        "@com_github_coder_websocket//:websocket",
+        "@org_golang_google_grpc//:go_default_library",
+    ],
+)
+
+go_test(
+    name = "job_test",
+    srcs = [
+        "common_test.go",
+        "fake_gcs_test.go",
+        "job_agent_test.go",
+        "job_events_test.go",
+        "job_log_storage_client_test.go",
+        "job_manager_test.go",
+        "job_supervisor_test.go",
+        "job_utils_test.go",
+    ],
+    embed = [":job"],
+    deps = [
+        "//go/internal/dashboard/agent",
+        "//go/internal/dashboard/jobutil",
+        "//go/pkg/gcs",
+        "//go/pkg/ids",
+        "//go/pkg/runtime/object",
+        "//go/proto",
+        "@com_github_coder_websocket//:websocket",
+        "@com_github_stretchr_testify//assert",
+        "@com_github_stretchr_testify//require",
+    ],
+)

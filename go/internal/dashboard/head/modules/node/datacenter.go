@@ -28,11 +28,11 @@ import (
 	"github.com/ray-project/ray/go/internal/dashboard/head"
 	"github.com/ray-project/ray/go/pkg/log"
 	"github.com/ray-project/ray/go/proto"
-	goproto "google.golang.org/protobuf/proto"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/status"
+	goproto "google.golang.org/protobuf/proto"
 )
 
 // kvNamespaceJob is KV_NAMESPACE_JOB; kvHeadNodeIDKey is KV_HEAD_NODE_ID_KEY.
@@ -41,6 +41,13 @@ import (
 const (
 	kvNamespaceJob  = "job"
 	kvHeadNodeIDKey = "head_node_id"
+
+	// kvNamespaceDashboard is KV_NAMESPACE_DASHBOARD. The dashboard agent
+	// registers its address there under the two prefixes below (agent.go
+	// registerAgentToGCS) and the head removes them when the node dies.
+	kvNamespaceDashboard           = "dashboard"
+	dashboardAgentAddrNodeIDPrefix = "DASHBOARD_AGENT_ADDR_NODE_ID_PREFIX:"
+	dashboardAgentAddrIPPrefix     = "DASHBOARD_AGENT_ADDR_IP_PREFIX:"
 
 	// nodeStatsInterval is how often the per-node core worker stats are pulled
 	// from each raylet's NodeManager gRPC service. Matches Python
@@ -126,10 +133,13 @@ func (d *DataSource) Start(ctx context.Context) error {
 					if !ok {
 						return
 					}
+					nodeIDHex := hex.EncodeToString(n.NodeId)
 					d.mu.Lock()
-					d.nodes[hex.EncodeToString(n.NodeId)] = n
+					prev := d.nodes[nodeIDHex]
+					d.nodes[nodeIDHex] = n
 					d.mu.Unlock()
 					d.persistHeadNodeID(ctx, n)
+					d.removeAgentAddr(ctx, n, prev)
 				case err := <-errCh:
 					if status.Code(err) == codes.Unimplemented {
 						// GCS servers built without the pubsub service report
@@ -380,6 +390,45 @@ func (d *DataSource) persistHeadNodeID(ctx context.Context, n *proto.GcsNodeInfo
 	log.Log.Info("persisted head node id", "node_id", nodeIDHex)
 }
 
+// removeAgentAddr deletes a dead node's dashboard agent address entries from
+// the "dashboard" KV namespace, aligned with Python node_head._update_node
+// (which removes both keys on a DEAD update). Both keys are attempted even if
+// the first delete fails, because the entries are keyed by node id and by node
+// manager address, and either one left behind points consumers at a dead agent.
+// The node update is the published DEAD event, whose contact fields are empty
+// (the same GCS pattern as the actor-table updates); prev is the node's own
+// cached ALIVE entry, which carries the address the ip key was registered
+// under. When no address is available the ip key cannot match anything, so it
+// is skipped rather than issued as a bare-prefix no-op. The snapshot path has
+// no cached entry and passes nil, so a dead node only ever seen dead leaves
+// its ip key — the subscription path is the one that covers it.
+func (d *DataSource) removeAgentAddr(ctx context.Context, n, prev *proto.GcsNodeInfo) {
+	if d.client == nil || n.GetState() != proto.GcsNodeInfo_DEAD {
+		return
+	}
+	nodeIDHex := hex.EncodeToString(n.NodeId)
+	nodeIP := n.GetNodeManagerAddress()
+	if nodeIP == "" && prev != nil {
+		nodeIP = prev.GetNodeManagerAddress()
+	}
+	keys := []string{
+		dashboardAgentAddrNodeIDPrefix + nodeIDHex,
+	}
+	if nodeIP != "" {
+		keys = append(keys, dashboardAgentAddrIPPrefix+nodeIP)
+	}
+	for _, key := range keys {
+		deleted, err := d.client.InternalKVDel(ctx, kvNamespaceDashboard, key, false)
+		if err != nil {
+			log.Log.Error(err, "failed to remove dead node dashboard agent address",
+				"node_id", nodeIDHex, "key", key)
+			continue
+		}
+		log.Log.Info("removed dead node dashboard agent address",
+			"node_id", nodeIDHex, "key", key, "deleted", deleted)
+	}
+}
+
 // applyActorUpdate merges one actor-table update into the cache, aligned with
 // Python _process_updated_actor_table: for an actor already in the cache only
 // the state columns change (the GCS publishes ALIVE/DEAD updates with the
@@ -438,6 +487,7 @@ func (d *DataSource) initFromGCS(ctx context.Context) error {
 		// is already ALIVE when the subscription starts (no update event follows).
 		for _, n := range nodeReply.NodeInfoList {
 			d.persistHeadNodeID(ctx, n)
+			d.removeAgentAddr(ctx, n, nil)
 		}
 	}
 	actorReply, err := d.client.GetAllActorInfo(ctx, &proto.GetAllActorInfoRequest{})

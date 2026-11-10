@@ -36,6 +36,10 @@ type Config struct {
 	NodeID ids.NodeID
 	// IsHead indicates whether this agent runs on the head node.
 	IsHead bool
+	// Minimal disables both servers, mirroring the Python agent's --minimal
+	// mode, which skips _init_non_minimal and therefore leaves self.server and
+	// self.http_server as None in agent.py.
+	Minimal bool
 	// GCSAddress is the host:port of the GCS server.
 	GCSAddress string
 	// ClusterID identifies the cluster this agent belongs to.
@@ -60,6 +64,8 @@ type Config struct {
 	MetricsExportPort int
 	// MetricsCollectionDisabled disables metrics collection when true.
 	MetricsCollectionDisabled bool
+	// EventsExportAddr is the address events are exported to.
+	EventsExportAddr string
 	// HTTPClient is the shared HTTP client used by modules.
 	HTTPClient *http.Client
 }
@@ -88,6 +94,10 @@ type metricsExporter interface {
 // registration, mirroring Python agent.py, which does not fall back; a gRPC
 // bind failure remains fatal.
 func Run(ctx context.Context, cfg Config, mods []Module) error {
+	if cfg.Minimal {
+		return runMinimal(ctx, cfg, mods)
+	}
+
 	httpSrv, httpErr := newHTTPServer(cfg, mods)
 	if httpErr != nil {
 		// Python keeps the agent alive with the HTTP service disabled in this
@@ -182,6 +192,36 @@ func Run(ctx context.Context, cfg Config, mods []Module) error {
 		shutdownServers(httpSrv, grpcSrv)
 		return err
 	}
+}
+
+// runMinimal runs the agent without binding either server, mirroring the
+// Python agent's --minimal mode: _init_non_minimal is skipped, so no HTTP or
+// gRPC service exists (agent.py:94-105, 236-262).
+//
+// The two publication paths are deliberately opposite in minimal mode. The
+// port files raylet waits on are still written, each holding the not-in-use
+// sentinel: with a configured port of 0 raylet blocks until the file appears,
+// so omitting them would stall every node's registration for the full wait.
+// The GCS agent-address keys are not written at all, because there is no
+// server behind them — a reader that finds the key takes the agent as
+// reachable, and would dial the sentinel port.
+func runMinimal(ctx context.Context, cfg Config, mods []Module) error {
+	for _, m := range mods {
+		if err := m.Start(ctx); err != nil {
+			return fmt.Errorf("start module: %w", err)
+		}
+	}
+
+	if err := persistAgentPorts(cfg, -1, -1); err != nil {
+		return fmt.Errorf("persist dashboard agent ports: %w", err)
+	}
+	if err := persistMetricsExportPort(cfg, -1); err != nil {
+		return fmt.Errorf("persist dashboard agent metrics export port: %w", err)
+	}
+
+	<-ctx.Done()
+	log.Log.V(0).Info("dashboard agent shutting down")
+	return nil
 }
 
 // shutdownServers gracefully shuts down both servers, best-effort, and always

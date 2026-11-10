@@ -12,7 +12,9 @@ go_library(
     importpath = "github.com/ray-project/ray/go/internal/dashboard/head/modules/job",
     visibility = ["//go:__subpackages__"],
     deps = [
+        "//go/internal/dashboard/auth",
         "//go/internal/dashboard/head",
+        "//go/internal/dashboard/jobutil",
         "//go/pkg/log",
         "//go/pkg/version",
         "//go/proto",
@@ -22,9 +24,13 @@ go_library(
 
 go_test(
     name = "job_test",
-    srcs = ["job_test.go"],
+    srcs = [
+        "agent_client_test.go",
+        "job_test.go",
+    ],
     embed = [":job"],
     deps = [
+        "//go/internal/dashboard/auth",
         "//go/internal/dashboard/head",
         "//go/proto",
         "@com_github_coder_websocket//:websocket",

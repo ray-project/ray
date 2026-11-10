@@ -24,6 +24,7 @@ import (
 	"strings"
 
 	"github.com/coder/websocket"
+	"github.com/ray-project/ray/go/internal/dashboard/auth"
 )
 
 // JobAgentSubmissionClient forwards job submission requests to the JobAgent on
@@ -64,6 +65,13 @@ func (c *JobAgentSubmissionClient) doJSON(ctx context.Context, method, path stri
 	}
 	if body != nil {
 		req.Header.Set("Content-Type", "application/json; charset=utf-8")
+	}
+	// The agent enforces token auth on every job route. Mirror the Python
+	// client's _get_headers: attach the bearer token when token authentication
+	// is enabled, and leave the request unauthenticated when no token resolves
+	// (the agent's 401 then surfaces to the caller).
+	if token, ok := auth.RequestToken(); ok {
+		req.Header.Set(auth.AuthorizationHeaderName, auth.BearerPrefix+token)
 	}
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
@@ -127,7 +135,13 @@ func (c *JobAgentSubmissionClient) GetJobLogsInternal(ctx context.Context, submi
 // JobAgentSubmissionClient.tail_job_logs.
 func (c *JobAgentSubmissionClient) TailJobLogs(ctx context.Context, submissionID string) (<-chan string, func(), error) {
 	url := "ws" + strings.TrimPrefix(c.agentAddress, "http") + "/api/job_agent/jobs/" + submissionID + "/logs/tail"
-	conn, _, err := websocket.Dial(ctx, url, nil)
+	var opts *websocket.DialOptions
+	if token, ok := auth.RequestToken(); ok {
+		opts = &websocket.DialOptions{HTTPHeader: http.Header{
+			auth.AuthorizationHeaderName: []string{auth.BearerPrefix + token},
+		}}
+	}
+	conn, _, err := websocket.Dial(ctx, url, opts)
 	if err != nil {
 		return nil, nil, err
 	}

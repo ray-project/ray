@@ -231,3 +231,20 @@ func TestPlacementGroupCreationOptionsValidate(t *testing.T) {
 		})
 	}
 }
+
+// TestActorCreationOptionsNodeAffinity verifies the NodeAffinity field carries
+// the node id and soft flag through the actor creation options.
+func TestActorCreationOptionsNodeAffinity(t *testing.T) {
+	opts := &ActorCreationOptions{
+		NodeAffinity: &NodeAffinityOptions{NodeID: "abc", Soft: true},
+	}
+	if opts.NodeAffinity == nil {
+		t.Fatal("NodeAffinity = nil, want non-nil")
+	}
+	if opts.NodeAffinity.NodeID != "abc" {
+		t.Errorf("NodeAffinity.NodeID = %q, want %q", opts.NodeAffinity.NodeID, "abc")
+	}
+	if !opts.NodeAffinity.Soft {
+		t.Error("NodeAffinity.Soft = false, want true")
+	}
+}

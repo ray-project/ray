@@ -71,10 +71,12 @@ func (h *HealthzAgent) Start(context.Context) error { return nil }
 func (h *HealthzAgent) RegisterGRPC(*grpc.Server) error { return nil }
 
 // RegisterHTTP registers the two health check endpoints, mirroring the
-// @routes.get decorators in healthz_agent.py.
+// @routes.get decorators in healthz_agent.py. The routes are method-scoped so
+// the agent's aiohttp router answers another method with aiohttp's 405 rather
+// than routing the request to the handler.
 func (h *HealthzAgent) RegisterHTTP(mux *http.ServeMux) error {
-	mux.HandleFunc("/api/healthz", h.handleHealthz)
-	mux.HandleFunc("/api/local_raylet_healthz", h.handleLocalRayletHealthz)
+	mux.HandleFunc("GET /api/healthz", h.handleHealthz)
+	mux.HandleFunc("GET /api/local_raylet_healthz", h.handleLocalRayletHealthz)
 	return nil
 }
 

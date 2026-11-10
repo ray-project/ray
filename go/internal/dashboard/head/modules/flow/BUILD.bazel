@@ -8,6 +8,7 @@ go_library(
     deps = [
         "//go/internal/dashboard/head",
         "//go/internal/dashboard/head/modules/job",
+        "//go/internal/dashboard/jobutil",
         "//go/pkg/errors",
         "//go/pkg/log",
         "//go/pkg/runtime/api",
@@ -22,6 +23,7 @@ go_test(
     deps = [
         "//go/internal/dashboard/head",
         "//go/internal/dashboard/head/modules/job",
+        "//go/internal/dashboard/jobutil",
         "//go/pkg/errors",
         "//go/pkg/runtime/api",
         "//go/pkg/runtime/local",

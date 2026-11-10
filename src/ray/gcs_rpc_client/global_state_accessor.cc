@@ -68,15 +68,21 @@ void GlobalStateAccessor::Disconnect() {
 }
 
 std::vector<std::string> GlobalStateAccessor::GetAllJobInfo(
-    bool skip_submission_job_info_field, bool skip_is_running_tasks_field) {
+    bool skip_submission_job_info_field,
+    bool skip_is_running_tasks_field,
+    const std::string &job_or_submission_id) {
   // This method assumes GCS is HA and does not return any error. On GCS down, it
   // retries indefinitely.
   std::vector<std::string> job_table_data;
   std::promise<bool> promise;
   {
     absl::ReaderMutexLock lock(&mutex_);
+    std::optional<std::string> job_or_submission_id_opt;
+    if (!job_or_submission_id.empty()) {
+      job_or_submission_id_opt = job_or_submission_id;
+    }
     gcs_client_->Jobs().AsyncGetAll(
-        /*job_or_submission_id=*/std::nullopt,
+        job_or_submission_id_opt,
         skip_submission_job_info_field,
         skip_is_running_tasks_field,
         TransformForMultiItemCallback<rpc::JobTableData>(job_table_data, promise),

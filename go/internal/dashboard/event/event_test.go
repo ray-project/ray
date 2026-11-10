@@ -84,54 +84,50 @@ func serveInternalStates(t *testing.T, e *EventAgent, method string) *httptest.R
 	return rec
 }
 
-// TestInternalStatesEndpoint204 verifies the endpoint replies 204 No Content
-// before anything is reported.
-func TestInternalStatesEndpoint204(t *testing.T) {
+// TestInternalStatesEndpointNotRegistered verifies the Go agent exposes no
+// /api/event_internal_states route, aligning with the Python EventAgent, which
+// keeps get_internal_states as an internal accessor with no HTTP route. Before
+// this was aligned the Go agent answered 204/200 here while the Python agent
+// answered 404. The route is asserted through a plain http.ServeMux, whose
+// default for an unregistered path is 404 (production wraps the mux in
+// agent.aiohttpRouter, which answers "404: Not Found" for the same path).
+func TestInternalStatesEndpointNotRegistered(t *testing.T) {
 	rec := serveInternalStates(t, newEventAgent(t, &fakeGCS{}), http.MethodGet)
-	if rec.Code != http.StatusNoContent {
-		t.Fatalf("status = %d, want 204", rec.Code)
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("status = %d, want 404 (no route registered)", rec.Code)
 	}
 }
 
-// TestInternalStatesEndpoint200 verifies the endpoint replies 200 with the
-// documented JSON fields once a report succeeded.
-func TestInternalStatesEndpoint200(t *testing.T) {
+// TestInternalStatesAccessorStillWorks verifies the internal accessor is kept
+// and still reports the documented fields once a report succeeded, even though
+// nothing serves it over HTTP.
+func TestInternalStatesAccessorStillWorks(t *testing.T) {
 	rec := &headRecorder{}
 	srv := httptest.NewServer(rec.handler(0, 0))
 	defer srv.Close()
 	f := &fakeGCS{dashboardAddr: srv.URL}
 	e := newEventAgent(t, f)
 
-	// Report one event through the real report loop, then query the endpoint.
+	// Report one event through the real report loop, then read the state.
 	cancel, done := startReportLoop(t, e)
 	e.queue <- []string{`{"a":1}`}
 	waitReported(t, rec, 1)
 
-	resp := serveInternalStates(t, e, http.MethodGet)
-	if resp.Code != http.StatusOK {
-		t.Fatalf("status = %d, want 200", resp.Code)
-	}
-	if ct := resp.Header().Get("Content-Type"); ct != "application/json" {
-		t.Errorf("content-type = %q, want application/json", ct)
+	body, ok := e.getInternalStates()
+	if !ok {
+		t.Fatal("getInternalStates returned no content after a report")
 	}
 	var m map[string]interface{}
-	if err := json.Unmarshal(resp.Body.Bytes(), &m); err != nil {
-		t.Fatalf("response body is not valid JSON: %v", err)
+	if err := json.Unmarshal(body, &m); err != nil {
+		t.Fatalf("internal states are not valid JSON: %v", err)
 	}
 	for _, key := range []string{"total_events_reported", "Total_report_request", "queue_size", "total_uptime"} {
 		if _, ok := m[key]; !ok {
-			t.Errorf("response is missing field %q: %v", key, m)
+			t.Errorf("internal states are missing field %q: %v", key, m)
 		}
 	}
 
 	mustCancelReportLoop(t, cancel, done)
-}
-
-func TestInternalStatesMethodNotAllowed(t *testing.T) {
-	rec := serveInternalStates(t, newEventAgent(t, &fakeGCS{}), http.MethodPost)
-	if rec.Code != http.StatusMethodNotAllowed {
-		t.Fatalf("POST status = %d, want 405", rec.Code)
-	}
 }
 
 // compile-time check that EventAgent implements the module contract; the

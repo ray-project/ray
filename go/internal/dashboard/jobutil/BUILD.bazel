@@ -1,0 +1,21 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_library", "go_test")
+
+go_library(
+    name = "jobutil",
+    srcs = ["jobutil.go"],
+    importpath = "github.com/ray-project/ray/go/internal/dashboard/jobutil",
+    visibility = ["//go:__subpackages__"],
+    deps = [
+        "//go/proto",
+    ],
+)
+
+go_test(
+    name = "jobutil_test",
+    srcs = ["jobutil_test.go"],
+    embed = [":jobutil"],
+    deps = [
+        "//go/proto",
+        "@com_github_stretchr_testify//assert",
+    ],
+)

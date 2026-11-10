@@ -959,27 +959,6 @@ func withPathClean(next http.Handler) http.Handler {
 	})
 }
 
-// withBrowserPostPutBlock blocks POST/PUT requests from browsers except for
-// whitelisted paths and the flow insight endpoints (aligned with
-// browsers_no_post_put_middleware).
-func withBrowserPostPutBlock(whitelist map[string]bool, next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if whitelist[r.URL.Path] {
-			next.ServeHTTP(w, r)
-			return
-		}
-		if r.Method == http.MethodPost && strings.HasPrefix(r.URL.Path, "/insight/") {
-			next.ServeHTTP(w, r)
-			return
-		}
-		if (r.Method == http.MethodPost || r.Method == http.MethodPut) && isBrowserRequest(r) {
-			http.Error(w, "Method Not Allowed for browser traffic.", http.StatusMethodNotAllowed)
-			return
-		}
-		next.ServeHTTP(w, r)
-	})
-}
-
 // endpointNames maps a (method, URL pattern) to the Python handler function
 // name so the metrics endpoint label matches the Python metrics_middleware
 // output (http_server_head.py uses handler.__name__). The outer key is the Go
@@ -1317,30 +1296,4 @@ func withStaticCache(next http.Handler) http.Handler {
 		}
 		next.ServeHTTP(w, r)
 	})
-}
-
-// isBrowserRequest guesses whether a request came from a browser, aligned
-// with dashboard_optional_utils.is_browser_request: the User-Agent starts
-// with "Mozilla", any Sec-Fetch-* header is present, or any CORS header
-// (Referer/Origin/Access-Control-Request-*) is present.
-func isBrowserRequest(r *http.Request) bool {
-	ua := r.Header.Get("User-Agent")
-	if strings.HasPrefix(ua, "Mozilla") {
-		return true
-	}
-	for _, h := range []string{
-		"Referer",
-		"Origin",
-		"Sec-Fetch-Mode",
-		"Sec-Fetch-Dest",
-		"Sec-Fetch-Site",
-		"Sec-Fetch-User",
-		"Access-Control-Request-Method",
-		"Access-Control-Request-Headers",
-	} {
-		if r.Header.Get(h) != "" {
-			return true
-		}
-	}
-	return false
 }

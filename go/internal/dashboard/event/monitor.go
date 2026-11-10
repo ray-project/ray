@@ -17,13 +17,13 @@ package event
 import (
 	"bytes"
 	"context"
+	"errors"
 	"io"
 	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
-	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -262,11 +262,12 @@ func findNewline(f *os.File, start, limit int64, rem []byte) (int64, error) {
 // monitorEvents continuously scans eventDir for new event lines and delivers
 // them to queue. The first scan fires immediately, subsequent scans run on a
 // ticker; a scan error is logged and the loop keeps going. The loop ends when
-// ctx is cancelled or the queue cannot accept a batch because it is closed.
-// Delivery is non-blocking: when the queue is full a batch is dropped and
-// counted in droppedBatches (when non-nil) so a slow or hung report loop cannot
-// stall event collection.
-func monitorEvents(ctx context.Context, eventDir string, queue chan<- []string, droppedBatches *atomic.Int64) error {
+// ctx is cancelled.
+// Delivery blocks on a full queue (mirroring Python's asyncio.Queue.put in
+// event_agent.py, which never drops events): a slow report loop backs up event
+// collection rather than losing events, and the block is released by ctx
+// cancellation so shutdown never hangs.
+func monitorEvents(ctx context.Context, eventDir string, queue chan<- []string) error {
 	m := newMonitor(eventDir)
 	log.Log.Info("Monitor events logs modified after the start mtime",
 		"start_mtime", m.startMtime, "event_dir", eventDir)
@@ -286,22 +287,16 @@ func monitorEvents(ctx context.Context, eventDir string, queue chan<- []string, 
 			return nil
 		case <-ctx.Done():
 			return ctx.Err()
-		default:
-			// Queue full: drop the batch and keep scanning, decoupling
-			// monitoring from the report loop. Dropping is preferred over
-			// blocking so one hung dashboard cannot stall the whole event
-			// collection chain for minutes.
-			if droppedBatches != nil {
-				droppedBatches.Add(1)
-			}
-			log.Log.Error(nil, "Dropped event batch because the report queue is full",
-				"dropped_lines", len(lines))
-			return nil
 		}
 	}
 
 	for {
 		if err := m.scan(ctx, callback); err != nil {
+			// A scan interrupted by ctx cancellation is a normal shutdown (it
+			// is the path a blocked queue-full send takes), not an error.
+			if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+				return nil
+			}
 			log.Log.Error(err, "Error scanning event log files; continuing", "event_dir", eventDir)
 		}
 		select {
@@ -352,10 +347,17 @@ func (m *monitor) scan(ctx context.Context, callback func([]string) error) error
 	close(errCh)
 	var firstErr error
 	for err := range errCh {
-		if err != nil && firstErr == nil {
-			log.Log.Error(err, "Read event file failed")
-			firstErr = err
+		if err == nil || firstErr != nil {
+			continue
 		}
+		// A read interrupted by ctx cancellation (including a callback blocked
+		// on a full queue during shutdown) is a normal shutdown, not an error.
+		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+			log.Log.V(1).Info("Event file scan interrupted by shutdown", "event_dir", m.eventDir)
+			continue
+		}
+		log.Log.Error(err, "Read event file failed")
+		firstErr = err
 	}
 	return firstErr
 }

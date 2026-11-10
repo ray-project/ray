@@ -30,6 +30,7 @@ import (
 
 	"github.com/ray-project/ray/go/internal/common"
 	"github.com/ray-project/ray/go/internal/dashboard/agent"
+	"github.com/ray-project/ray/go/internal/dashboard/auth"
 	"github.com/ray-project/ray/go/pkg/gcs"
 )
 
@@ -104,12 +105,12 @@ func TestResolveDashboardAddressCached(t *testing.T) {
 	f := &fakeGCS{dashboardAddr: "http://127.0.0.1:8265"}
 	e := newEventAgent(t, f)
 
-	addr, err := e.resolveDashboardAddress(context.Background())
+	addr, err := e.resolveDashboardAddress(context.Background(), false)
 	if err != nil {
 		t.Fatalf("resolveDashboardAddress: %v", err)
 	}
 	callsAfterFirst := f.calls
-	addr2, err := e.resolveDashboardAddress(context.Background())
+	addr2, err := e.resolveDashboardAddress(context.Background(), false)
 	if err != nil {
 		t.Fatalf("second resolveDashboardAddress: %v", err)
 	}
@@ -118,6 +119,29 @@ func TestResolveDashboardAddressCached(t *testing.T) {
 	}
 	if f.calls != callsAfterFirst {
 		t.Errorf("GCS Get called %d times after cache, want 0 (address must be cached)", f.calls-callsAfterFirst)
+	}
+}
+
+// TestResolveDashboardAddressForceRefresh checks that forceRefresh bypasses the
+// cached address and re-reads it from GCS, so a report can reconnect after the
+// head moved.
+func TestResolveDashboardAddressForceRefresh(t *testing.T) {
+	f := &fakeGCS{dashboardAddr: "http://127.0.0.1:8265"}
+	e := newEventAgent(t, f)
+
+	if _, err := e.resolveDashboardAddress(context.Background(), false); err != nil {
+		t.Fatalf("resolveDashboardAddress: %v", err)
+	}
+	f.mu.Lock()
+	f.dashboardAddr = "http://127.0.0.1:9999"
+	f.mu.Unlock()
+
+	addr, err := e.resolveDashboardAddress(context.Background(), true)
+	if err != nil {
+		t.Fatalf("force refresh resolveDashboardAddress: %v", err)
+	}
+	if addr != "http://127.0.0.1:9999" {
+		t.Errorf("force refreshed address = %q, want %q", addr, "http://127.0.0.1:9999")
 	}
 }
 
@@ -130,7 +154,7 @@ func TestResolveDashboardAddressErrorRetries(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	result := make(chan error, 1)
-	go func() { _, err := e.resolveDashboardAddress(ctx); result <- err }()
+	go func() { _, err := e.resolveDashboardAddress(ctx, false); result <- err }()
 
 	select {
 	case <-result:
@@ -157,7 +181,7 @@ func TestResolveDashboardAddressNotSetThenAvailable(t *testing.T) {
 	defer cancel()
 	result := make(chan error, 1)
 	go func() {
-		addr, err := e.resolveDashboardAddress(ctx)
+		addr, err := e.resolveDashboardAddress(ctx, false)
 		if err != nil {
 			result <- err
 			return
@@ -303,7 +327,7 @@ func TestResolveDashboardAddressNormalizesBareHostPort(t *testing.T) {
 	f := &fakeGCS{dashboardAddr: "127.0.0.1:8265"}
 	e := newEventAgent(t, f)
 
-	addr, err := e.resolveDashboardAddress(context.Background())
+	addr, err := e.resolveDashboardAddress(context.Background(), false)
 	if err != nil {
 		t.Fatalf("resolveDashboardAddress: %v", err)
 	}
@@ -322,7 +346,7 @@ func TestResolveDashboardAddressKeepsScheme(t *testing.T) {
 	for _, want := range []string{"http://127.0.0.1:8265", "https://head.example:443"} {
 		f := &fakeGCS{dashboardAddr: want}
 		e := newEventAgent(t, f)
-		addr, err := e.resolveDashboardAddress(context.Background())
+		addr, err := e.resolveDashboardAddress(context.Background(), false)
 		if err != nil {
 			t.Fatalf("resolveDashboardAddress(%q): %v", want, err)
 		}
@@ -354,12 +378,64 @@ func TestReportEventsPostsToSchemeLessAddress(t *testing.T) {
 	}
 }
 
-// TestPostOnceSendsAuthHeader checks that when RAY_AUTH_MODE=token the report
-// POST carries the bearer token (Python get_auth_headers_if_auth_enabled).
+// TestPostOnceSendsAuthHeader checks that when token authentication is enabled
+// the report POST carries the bearer token (Python
+// get_auth_headers_if_auth_enabled), with the token resolved by the shared auth
+// package: RAY_AUTH_TOKEN in token mode, the Ray service-account token in k8s
+// mode, and the default ~/.ray/auth_token path.
 func TestPostOnceSendsAuthHeader(t *testing.T) {
-	t.Setenv("RAY_AUTH_MODE", "token")
-	t.Setenv("RAY_AUTH_TOKEN", "secret-token")
+	t.Run("token env", func(t *testing.T) {
+		t.Setenv("RAY_AUTH_MODE", "token")
+		t.Setenv("RAY_AUTH_TOKEN", "secret-token")
+		if got := postOnceAuthHeader(t); got != "Bearer secret-token" {
+			t.Errorf("Authorization header = %q, want %q", got, "Bearer secret-token")
+		}
+	})
 
+	t.Run("k8s service account token", func(t *testing.T) {
+		t.Setenv("RAY_AUTH_MODE", "k8s")
+		t.Setenv("RAY_AUTH_TOKEN", "")
+		t.Setenv("RAY_AUTH_TOKEN_PATH", "")
+		t.Setenv("RAY_ENABLE_K8S_TOKEN_AUTH", "1")
+		t.Setenv("HOME", t.TempDir())
+		path := filepath.Join(t.TempDir(), "sa-token")
+		if err := os.WriteFile(path, []byte("sa-token\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		oldPath := auth.RayServiceAccountTokenPath
+		auth.RayServiceAccountTokenPath = path
+		t.Cleanup(func() { auth.RayServiceAccountTokenPath = oldPath })
+
+		if got := postOnceAuthHeader(t); got != "Bearer sa-token" {
+			t.Errorf("Authorization header = %q, want %q", got, "Bearer sa-token")
+		}
+	})
+
+	t.Run("default token path", func(t *testing.T) {
+		t.Setenv("RAY_AUTH_MODE", "token")
+		t.Setenv("RAY_AUTH_TOKEN", "")
+		t.Setenv("RAY_AUTH_TOKEN_PATH", "")
+		t.Setenv("RAY_ENABLE_K8S_TOKEN_AUTH", "")
+		home := t.TempDir()
+		t.Setenv("HOME", home)
+		path := filepath.Join(home, ".ray", "auth_token")
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte("home-token\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+
+		if got := postOnceAuthHeader(t); got != "Bearer home-token" {
+			t.Errorf("Authorization header = %q, want %q", got, "Bearer home-token")
+		}
+	})
+}
+
+// postOnceAuthHeader posts one batch to a throwaway head and returns the
+// Authorization header the request carried.
+func postOnceAuthHeader(t *testing.T) string {
+	t.Helper()
 	var (
 		mu     sync.Mutex
 		header string
@@ -378,9 +454,7 @@ func TestPostOnceSendsAuthHeader(t *testing.T) {
 	}
 	mu.Lock()
 	defer mu.Unlock()
-	if header != "Bearer secret-token" {
-		t.Errorf("Authorization header = %q, want %q", header, "Bearer secret-token")
-	}
+	return header
 }
 
 // TestPostOnceNoAuthHeaderWhenDisabled checks that without RAY_AUTH_MODE=token
@@ -502,6 +576,53 @@ func TestReportEventsDropsBatchAfterRetries(t *testing.T) {
 		t.Errorf("totalEventReported = %d, want 1 (counted once on pickup)", e.totalEventReported.Load())
 	}
 	mustCancelReportLoop(t, cancel, done)
+}
+
+// TestReportBatchReResolvesAddressAfterFailure checks that a failed report
+// invalidates the cached dashboard address, so the next attempt re-resolves it
+// from GCS and reaches the head after it moved (INT report.go parity).
+func TestReportBatchReResolvesAddressAfterFailure(t *testing.T) {
+	// The stale head rejects the report and cancels the attempt context so the
+	// retry backoff stops immediately instead of retrying the dead address.
+	ctx, cancel := context.WithCancel(context.Background())
+	staleSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		cancel()
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer staleSrv.Close()
+
+	rec := &headRecorder{}
+	freshSrv := httptest.NewServer(rec.handler(0, 0))
+	defer freshSrv.Close()
+
+	f := &fakeGCS{dashboardAddr: staleSrv.URL}
+	e := newEventAgent(t, f)
+
+	e.queue <- []string{`{"a":1}`}
+	if err := e.reportBatch(ctx); err != nil {
+		t.Fatalf("reportBatch against the stale head: %v", err)
+	}
+	if e.addressResolved.Load() {
+		t.Fatal("cached address must be invalidated after a failed report")
+	}
+
+	// The head moved: the next attempt must re-resolve and reach the new head.
+	f.mu.Lock()
+	f.dashboardAddr = freshSrv.URL
+	f.mu.Unlock()
+	e.queue <- []string{`{"a":2}`}
+	if err := e.reportBatch(context.Background()); err != nil {
+		t.Fatalf("reportBatch against the fresh head: %v", err)
+	}
+	waitReported(t, rec, 1)
+
+	if got := e.totalRequestSent.Load(); got != 1 {
+		t.Errorf("totalRequestSent = %d, want 1 (only the fresh-head report succeeded)", got)
+	}
+	n, lines := rec.recorded()
+	if n != 1 || len(lines) != 1 || lines[0] != `{"a":2}` {
+		t.Errorf("fresh head received batches=%d lines=%v, want the second batch only", n, lines)
+	}
 }
 
 // TestRetryBackoffDelayCappedAndJittered checks that the retry backoff stays

@@ -125,6 +125,24 @@ func TestRegisterHTTPRoutes(t *testing.T) {
 	}
 }
 
+// TestRegisterHTTPIsMethodScoped verifies the health routes are registered for
+// GET only. The agent's aiohttp router relies on the mux reporting no route for
+// another method so it can answer aiohttp's 405 with an Allow header instead of
+// the handler being reached.
+func TestRegisterHTTPIsMethodScoped(t *testing.T) {
+	h := newAgent(t, false, &fakeGCS{alive: []bool{true}})
+	mux := http.NewServeMux()
+	if err := h.RegisterHTTP(mux); err != nil {
+		t.Fatalf("RegisterHTTP: %v", err)
+	}
+	for _, path := range []string{"/api/healthz", "/api/local_raylet_healthz"} {
+		req := httptest.NewRequest(http.MethodPost, path, nil)
+		if _, pattern := mux.Handler(req); pattern != "" {
+			t.Errorf("POST %s matched pattern %q, want no method match", path, pattern)
+		}
+	}
+}
+
 func TestCheckLocalRayletLiveness(t *testing.T) {
 	t.Run("NilNodeID", func(t *testing.T) {
 		h, err := New(agent.Config{NodeID: ids.NilNodeID(), GCS: &fakeGCS{alive: []bool{true}}})
@@ -276,9 +294,19 @@ func TestHealthzHeadGCSUnreachable(t *testing.T) {
 	}
 }
 
+// TestHealthzMethodNotAllowed checks the handler's defensive method guard,
+// which answers aiohttp's 405 envelope when it is reached directly. The route
+// is registered for GET only, so through the agent's aiohttp router a POST is
+// answered by the router with the same envelope (covered by the agent package).
 func TestHealthzMethodNotAllowed(t *testing.T) {
-	for _, path := range []string{"/api/healthz", "/api/local_raylet_healthz"} {
-		rec := serve(t, newAgent(t, false, &fakeGCS{alive: []bool{true}}), http.MethodPost, path)
+	h := newAgent(t, false, &fakeGCS{alive: []bool{true}})
+	handlers := map[string]http.HandlerFunc{
+		"/api/healthz":              h.handleHealthz,
+		"/api/local_raylet_healthz": h.handleLocalRayletHealthz,
+	}
+	for path, handler := range handlers {
+		rec := httptest.NewRecorder()
+		handler(rec, httptest.NewRequest(http.MethodPost, path, nil))
 		if rec.Code != http.StatusMethodNotAllowed {
 			t.Fatalf("POST %s status = %d, want 405", path, rec.Code)
 		}

@@ -19,6 +19,12 @@ func TestLogOption(t *testing.T) {
 		assert.Equal(t, 5, opt.LoggingRotateBackupCount)       // DefaultLoggingRotateBackupCount
 		assert.Equal(t, "", opt.StdoutFilepath)
 		assert.Equal(t, "", opt.StderrFilepath)
+		assert.Equal(t, false, opt.WriteToStderr)
+	})
+
+	t.Run("WithStderrOutput sets WriteToStderr", func(t *testing.T) {
+		opt := logconfig.NewLogOption(logconfig.WithStderrOutput())
+		assert.Equal(t, true, opt.WriteToStderr)
 	})
 
 	t.Run("WithLoggingLevel sets level", func(t *testing.T) {
@@ -198,6 +204,31 @@ func TestSetupComponentLogger(t *testing.T) {
 
 		err := opt.SetupComponentLogger()
 		assert.NoError(t, err)
+	})
+
+	t.Run("setup with stderr output succeeds", func(t *testing.T) {
+		tmpDir := t.TempDir()
+
+		opt := logconfig.NewLogOption(
+			logconfig.WithLogsDir(tmpDir),
+			logconfig.WithLoggingFilename("stderr_test.log"),
+			logconfig.WithStderrOutput(),
+		)
+
+		err := opt.SetupComponentLogger()
+		assert.NoError(t, err)
+		// The logger should write to both the log file and stderr.
+	})
+
+	t.Run("setup with stderr output and no logs dir succeeds", func(t *testing.T) {
+		opt := logconfig.NewLogOption(
+			logconfig.WithLoggingLevel("info"),
+			logconfig.WithStderrOutput(),
+		)
+
+		err := opt.SetupComponentLogger()
+		assert.NoError(t, err)
+		// The logger should fall back to the stderr marker for both cores.
 	})
 
 	t.Run("setup without logs dir uses default output", func(t *testing.T) {

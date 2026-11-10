@@ -66,6 +66,10 @@ type ActorInfoInterface interface {
 type JobInfoInterface interface {
 	GetJobInfo(ctx context.Context, jobID ids.JobID) (*proto.JobTableData, error)
 	ListJobs(ctx context.Context) ([]*proto.JobTableData, error)
+	// ListJobsWithFilter lists jobs optionally filtered by job id / submission id,
+	// skipping the JobSubmissionInfo / IsRunningTasks fields when requested.
+	// An empty jobOrSubmissionID returns all jobs.
+	ListJobsWithFilter(ctx context.Context, jobOrSubmissionID string, skipSubmissionJobInfoField, skipIsRunningTasksField bool) ([]*proto.JobTableData, error)
 	NextJobID(ctx context.Context) (ids.JobID, error)
 }
 

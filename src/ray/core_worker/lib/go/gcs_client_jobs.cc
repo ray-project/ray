@@ -31,6 +31,7 @@
 extern "C" {
 
 int ray_gcs_client_jobs_get_all_job_info(CGcsClient *client,
+                                         const char *job_or_submission_id,
                                          int skip_submission_field,
                                          int skip_running_tasks_field,
                                          char ***serialized_out,
@@ -44,8 +45,14 @@ int ray_gcs_client_jobs_get_all_job_info(CGcsClient *client,
   }
 
   try {
-    std::vector<std::string> all_job_info = client->global_state_accessor->GetAllJobInfo(
-        skip_submission_field != 0, skip_running_tasks_field != 0);
+    std::string job_or_submission_id_str;
+    if (job_or_submission_id != nullptr) {
+      job_or_submission_id_str = job_or_submission_id;
+    }
+    std::vector<std::string> all_job_info =
+        client->global_state_accessor->GetAllJobInfo(skip_submission_field != 0,
+                                                     skip_running_tasks_field != 0,
+                                                     job_or_submission_id_str);
 
     if (!allocate_serialized_array(all_job_info, serialized_out, sizes_out, count_out)) {
       set_error(error_out, "Failed to allocate memory for serialized array");
@@ -96,10 +103,13 @@ int ray_gcs_client_jobs_get_job_info(CGcsClient *client,
   }
 
   try {
-    std::vector<std::string> all_job_info =
-        client->global_state_accessor->GetAllJobInfo(false, false);
     std::string target_job_id(job_id_hex ? job_id_hex : "");
+    std::vector<std::string> all_job_info =
+        client->global_state_accessor->GetAllJobInfo(false, false, target_job_id);
 
+    // The server-side filter is a superset of the old client-side filter: it
+    // matches the job id or the submission id metadata. The job id comparison
+    // below remains authoritative, so the widened filter is result-neutral.
     for (const auto &serialized : all_job_info) {
       ray::rpc::JobTableData job_info;
       if (job_info.ParseFromString(serialized)) {

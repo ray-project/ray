@@ -350,6 +350,52 @@ func TestLocalModeActorTask_ConcurrencyGroupMaxCallsFallback(t *testing.T) {
 	taskSubmitter.Shutdown()
 }
 
+// TestLocalModeActorTask_MaxConcurrencyDefaults verifies that an unset
+// MaxConcurrency resolves like the native (cgo) backend: 1000 for an async
+// actor (Python's DEFAULT_MAX_CONCURRENCY_ASYNC, so async methods can
+// interleave on the event loop) and 1 (serialized) for a synchronous actor.
+// -1 (unlimited) also collapses to that numeric default because the
+// concurrency-group manager cannot represent unlimited. An explicit positive
+// value is left untouched.
+func TestLocalModeActorTask_MaxConcurrencyDefaults(t *testing.T) {
+	tests := []struct {
+		name           string
+		isAsync        bool
+		maxConcurrency int
+		want           int
+	}{
+		{"AsyncUnsetDefaultsToAsyncDefault", true, 0, 1000},
+		{"SyncUnsetDefaultsToSerialized", false, 0, 1},
+		{"AsyncUnlimited", true, -1, 1000},
+		{"SyncUnlimited", false, -1, 1},
+		{"AsyncExplicitValueUnchanged", true, 4, 4},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			objectStore := localstore.NewLocalModeObjectStore()
+			workerContext := NewLocalModeWorkerContext()
+			functionMgr := function.NewFunctionManager(nil)
+			actorMgr := NewActorConcurrencyGroupManager()
+			taskExecutor := NewLocalModeTaskExecutor(functionMgr, actorMgr, objectStore)
+			taskSubmitter := NewLocalModeTaskSubmitter(objectStore, workerContext, taskExecutor, functionMgr, actorMgr)
+
+			registerTestActorConstructor(t, taskExecutor)
+			initDesc := function.NewGoActorMethodDescriptorOrUnknown("github.com/ray-project/ray/go/internal/runtime/local_mode", "", "TestActor", function.ConstructorName)
+			actorID, err := taskSubmitter.CreateActor(initDesc, nil, &submitter.ActorCreationOptions{
+				IsAsync:        tc.isAsync,
+				MaxConcurrency: tc.maxConcurrency,
+			})
+			require.NoError(t, err)
+
+			defaultGroup := taskSubmitter.actorConcurrencyGroupMgr.GetGroup(actorID)
+			require.NotNil(t, defaultGroup)
+			assert.Equal(t, tc.want, defaultGroup.maxConcurrency)
+
+			taskSubmitter.Shutdown()
+		})
+	}
+}
+
 func TestLocalModeActorTask_SystemGroupAndUndeclaredGroup(t *testing.T) {
 	objectStore := localstore.NewLocalModeObjectStore()
 	workerContext := NewLocalModeWorkerContext()

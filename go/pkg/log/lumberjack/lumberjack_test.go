@@ -18,6 +18,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"go.uber.org/zap/zapcore"
@@ -217,6 +218,92 @@ func TestLockedWriteSyncer(t *testing.T) {
 	// Verify file was created
 	if _, err := os.Stat(logFile); os.IsNotExist(err) {
 		t.Error("log file was not created")
+	}
+}
+
+// TestBuildWritersStreamMarkers verifies that the stdout/stderr marker paths
+// map to the process standard streams instead of opening a log file.
+func TestBuildWritersStreamMarkers(t *testing.T) {
+	writers := buildWriters([]string{StdoutMarker, StderrMarker}, DefaultOptions())
+	if len(writers) != 2 {
+		t.Fatalf("buildWriters() = %d writers, want 2", len(writers))
+	}
+	if writers[0] != os.Stdout {
+		t.Errorf("buildWriters()[0] = %v, want os.Stdout", writers[0])
+	}
+	if writers[1] != os.Stderr {
+		t.Errorf("buildWriters()[1] = %v, want os.Stderr", writers[1])
+	}
+}
+
+// TestBuildWritersRealPathUsesLumberjack verifies that a real file path still
+// opens a rotating lumberjack writer instead of a standard stream.
+func TestBuildWritersRealPathUsesLumberjack(t *testing.T) {
+	logFile := filepath.Join(t.TempDir(), "real.log")
+	writers := buildWriters([]string{logFile}, DefaultOptions())
+	if len(writers) != 1 {
+		t.Fatalf("buildWriters() = %d writers, want 1", len(writers))
+	}
+	if _, ok := writers[0].(*lumberjack.Logger); !ok {
+		t.Errorf("buildWriters() for a real path = %T, want *lumberjack.Logger", writers[0])
+	}
+}
+
+// TestStreamWriteSyncerSyncIsNoOp verifies that Sync on a standard-stream
+// syncer is a no-op: fsync on stdout/stderr returns EINVAL on Linux, which
+// would otherwise surface as spurious log errors.
+func TestStreamWriteSyncerSyncIsNoOp(t *testing.T) {
+	f, err := os.CreateTemp(t.TempDir(), "stream")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer f.Close()
+
+	ws := &streamWriteSyncer{file: f}
+	if _, err := ws.Write([]byte("stream write\n")); err != nil {
+		t.Errorf("Write() error = %v", err)
+	}
+	if err := ws.Sync(); err != nil {
+		t.Errorf("Sync() error = %v, want nil", err)
+	}
+}
+
+// TestBuildWriteSyncersStreamMarkers verifies that the marker paths produce
+// write syncers that reach the process standard streams and whose Sync is a
+// no-op.
+func TestBuildWriteSyncersStreamMarkers(t *testing.T) {
+	origStderr := os.Stderr
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	os.Stderr = w
+	defer func() {
+		os.Stderr = origStderr
+		_ = r.Close()
+		_ = w.Close()
+	}()
+
+	syncers := buildWriteSyncers([]string{StderrMarker}, DefaultOptions())
+	if len(syncers) != 1 {
+		t.Fatalf("buildWriteSyncers() = %d syncers, want 1", len(syncers))
+	}
+	if _, err := syncers[0].Write([]byte("stderr marker\n")); err != nil {
+		t.Errorf("Write() error = %v", err)
+	}
+	if err := syncers[0].Sync(); err != nil {
+		t.Errorf("Sync() error = %v, want nil", err)
+	}
+
+	_ = w.Close()
+	os.Stderr = origStderr
+
+	out, err := io.ReadAll(r)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(out), "stderr marker") {
+		t.Errorf("stderr output = %q, want it to contain the marker record", string(out))
 	}
 }
 

@@ -174,6 +174,10 @@ func (m *MockGCSClient) ListJobs(ctx context.Context) ([]*proto.JobTableData, er
 	return nil, errors.New("ListJobs not implemented")
 }
 
+func (m *MockGCSClient) ListJobsWithFilter(ctx context.Context, jobOrSubmissionID string, skipSubmissionJobInfoField, skipIsRunningTasksField bool) ([]*proto.JobTableData, error) {
+	return m.ListJobs(ctx)
+}
+
 func (m *MockGCSClient) NextJobID(ctx context.Context) (ids.JobID, error) {
 	return ids.NilJobID(), errors.New("NextJobID not implemented")
 }

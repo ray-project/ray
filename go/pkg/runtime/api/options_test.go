@@ -182,3 +182,19 @@ func TestCallOptionsWithPlacementGroupSync(t *testing.T) {
 		t.Errorf("legacy PlacementGroupBundleIndex = %d, want 6 (kept in sync)", opts.PlacementGroupBundleIndex)
 	}
 }
+
+// TestActorOptionsWithNodeAffinity verifies WithNodeAffinity records the node
+// id and soft flag on the actor creation options.
+func TestActorOptionsWithNodeAffinity(t *testing.T) {
+	o := newActorOptions[*struct{}](nil)
+	o.WithNodeAffinity("abc", false)
+	if o.options.NodeAffinity == nil {
+		t.Fatal("NodeAffinity = nil after WithNodeAffinity")
+	}
+	if o.options.NodeAffinity.NodeID != "abc" {
+		t.Errorf("NodeAffinity.NodeID = %q, want %q", o.options.NodeAffinity.NodeID, "abc")
+	}
+	if o.options.NodeAffinity.Soft {
+		t.Error("NodeAffinity.Soft = true, want false")
+	}
+}

@@ -506,6 +506,24 @@ func (o *actorOptions[T]) WithPlacementGroup(group *PlacementGroup, bundleIndex 
 	return o.self
 }
 
+// WithNodeAffinity pins the actor to the given node.
+//
+// It is used for head-node pinning (e.g. a job driver that must run on the
+// head). The binding takes precedence over a placement group and the default
+// scheduling strategy when the actor is built.
+//
+// Parameters:
+//   - nodeID: The target node ID as a hex string.
+//   - soft: When true, the scheduler may spill to another node if the target
+//     node is unavailable. When false, the actor waits for the target node.
+//
+// Returns:
+//   - T: The same actor creator for chaining.
+func (o *actorOptions[T]) WithNodeAffinity(nodeID string, soft bool) T {
+	o.options.NodeAffinity = &submitter.NodeAffinityOptions{NodeID: nodeID, Soft: soft}
+	return o.self
+}
+
 // WithResources sets the resource requirements for the actor.
 //
 // Parameters:
@@ -763,7 +781,15 @@ func wrapPythonArgs(args []interface{}) []function.FunctionArg {
 	functionArgs := make([]function.FunctionArg, 0, len(args)*2)
 	for _, arg := range args {
 		functionArgs = append(functionArgs, function.NewFunctionArgByValue(pythonDummyType, pythonDummyRawMetadata))
-		functionArgs = append(functionArgs, convertArgToFunctionArg(arg))
+		fa := convertArgToFunctionArg(arg)
+		// Python's deserializer parses the metadata as an int; the Go-native
+		// "GO" format is unknown there and raises
+		// "Can't deserialize object: <ref>, metadata: GO", so value arguments
+		// must carry the cross-language metadata.
+		if fa.IsPassByValue() && fa.Data != nil {
+			fa.Data.Metadata = []byte(object.MetadataTypeCrossLanguage)
+		}
+		functionArgs = append(functionArgs, fa)
 	}
 	return functionArgs
 }
@@ -1074,6 +1100,44 @@ func (c *PythonActorCreator) WithMaxConcurrency(maxConcurrency int) *PythonActor
 	return c
 }
 
+// WithLifetime sets the actor lifetime (detached or non-detached).
+//
+// Parameters:
+//   - lifetime: The actor lifetime.
+//
+// Returns:
+//   - *PythonActorCreator: The same actor creator for chaining.
+func (c *PythonActorCreator) WithLifetime(lifetime submitter.ActorLifetime) *PythonActorCreator {
+	c.options.Lifetime = lifetime
+	return c
+}
+
+// WithAsync sets whether the Python actor uses async direct call mode.
+//
+// Parameters:
+//   - async: Whether the actor is async.
+//
+// Returns:
+//   - *PythonActorCreator: The same actor creator for chaining.
+func (c *PythonActorCreator) WithAsync(async bool) *PythonActorCreator {
+	c.options.IsAsync = async
+	return c
+}
+
+// WithNodeAffinity pins the Python actor to the given node.
+//
+// Parameters:
+//   - nodeID: The target node ID as a hex string.
+//   - soft: When true, the scheduler may spill to another node if the target
+//     node is unavailable.
+//
+// Returns:
+//   - *PythonActorCreator: The same actor creator for chaining.
+func (c *PythonActorCreator) WithNodeAffinity(nodeID string, soft bool) *PythonActorCreator {
+	c.options.NodeAffinity = &submitter.NodeAffinityOptions{NodeID: nodeID, Soft: soft}
+	return c
+}
+
 // Create creates the Python actor with the provided constructor arguments.
 //
 // Parameters:
@@ -1249,6 +1313,19 @@ func (c *PythonActorTaskCaller[T]) WithConcurrencyGroup(groupName string) *Pytho
 //   - *PythonActorTaskCaller[T]: The same caller for chaining
 func (c *PythonActorTaskCaller[T]) WithNumReturns(numReturns int) *PythonActorTaskCaller[T] {
 	c.numReturns = numReturns
+	return c
+}
+
+// WithMaxRetries sets the maximum number of retries for the Python actor
+// method call. -1 means unlimited retries.
+//
+// Parameters:
+//   - maxRetries: The maximum number of retries
+//
+// Returns:
+//   - *PythonActorTaskCaller[T]: The same caller for chaining
+func (c *PythonActorTaskCaller[T]) WithMaxRetries(maxRetries int) *PythonActorTaskCaller[T] {
+	c.options.RetryPolicy = &submitter.RetryPolicy{MaxRetries: maxRetries}
 	return c
 }
 

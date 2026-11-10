@@ -33,6 +33,7 @@ import (
 	"github.com/coder/websocket"
 	"github.com/ray-project/ray/go/internal/dashboard/head"
 	"github.com/ray-project/ray/go/internal/dashboard/head/modules/job"
+	"github.com/ray-project/ray/go/internal/dashboard/jobutil"
 	rayerrors "github.com/ray-project/ray/go/pkg/errors"
 	"github.com/ray-project/ray/go/pkg/runtime/api"
 	_ "github.com/ray-project/ray/go/pkg/runtime/local" // register the local-mode initializer
@@ -441,7 +442,7 @@ func TestStopDeleteGetLogsRoutes(t *testing.T) {
 	if _, err := j.info.PutInfo(context.Background(), "flowsubmit_abc", &job.JobInfo{
 		Status: job.JobStatusRunning, Entrypoint: "echo",
 		Metadata:               map[string]string{flowMetadataKey: flowMetadataValue},
-		DriverAgentHTTPAddress: ptrString("http://" + agent.Listener.Addr().String()),
+		DriverAgentHTTPAddress: jobutil.PtrString("http://" + agent.Listener.Addr().String()),
 	}, true); err != nil {
 		t.Fatal(err)
 	}
@@ -1038,8 +1039,8 @@ func TestTailFlowJobLogsWebSocket(t *testing.T) {
 	if _, err := j.info.PutInfo(context.Background(), "flowsubmit_ws", &job.JobInfo{
 		Status: job.JobStatusRunning, Entrypoint: "echo",
 		Metadata:               map[string]string{flowMetadataKey: flowMetadataValue},
-		DriverAgentHTTPAddress: ptrString("http://" + agentSrv.Listener.Addr().String()),
-		DriverNodeID:           ptrString("nodeX"),
+		DriverAgentHTTPAddress: jobutil.PtrString("http://" + agentSrv.Listener.Addr().String()),
+		DriverNodeID:           jobutil.PtrString("nodeX"),
 	}, true); err != nil {
 		t.Fatal(err)
 	}

@@ -18,9 +18,11 @@ import (
 	"context"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -38,10 +40,15 @@ type mockGCSServer struct {
 	proto.UnimplementedNodeInfoGcsServiceServer
 	proto.UnimplementedControlPlanePubSubGcsServiceServer
 	proto.UnimplementedObservabilityPubSubServiceServer
+	proto.UnimplementedInternalKVGcsServiceServer
 
 	mu        sync.Mutex
 	nodeInfo  []*proto.GcsNodeInfo
 	actorInfo []*proto.ActorTableData
+	// kvDelCalls records the namespace/key pair of every InternalKVDel call in
+	// call order; kvDelFail marks the pairs whose delete returns an error.
+	kvDelCalls []string
+	kvDelFail  map[string]bool
 	// subChannel maps subscriber id -> channel, learned from the subscribe
 	// command batches, so polls can be routed per channel.
 	subChannel map[string]proto.ChannelType
@@ -99,6 +106,26 @@ func (s *mockGCSServer) GcsSubscriberPoll(ctx context.Context, req *proto.GcsSub
 	return reply, nil
 }
 
+// InternalKVDel records the request and fails for the pairs listed in
+// kvDelFail, so the caller's "keep going after an error" path can be tested.
+func (s *mockGCSServer) InternalKVDel(ctx context.Context, req *proto.InternalKVDelRequest) (*proto.InternalKVDelReply, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	key := string(req.Namespace) + "/" + string(req.Key)
+	s.kvDelCalls = append(s.kvDelCalls, key)
+	if s.kvDelFail[key] {
+		return nil, errors.New("injected kv del failure")
+	}
+	return &proto.InternalKVDelReply{DeletedNum: 1}, nil
+}
+
+// delCalls returns a copy of the recorded InternalKVDel namespace/key pairs.
+func (s *mockGCSServer) delCalls() []string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return append([]string(nil), s.kvDelCalls...)
+}
+
 // enqueue sets the messages returned by the next poll of the given channel.
 func (s *mockGCSServer) enqueue(ch proto.ChannelType, msgs ...*proto.PubMessage) {
 	s.mu.Lock()
@@ -122,6 +149,7 @@ func startMock(t *testing.T, mock *mockGCSServer) (*head.GCSClient, func()) {
 	proto.RegisterNodeInfoGcsServiceServer(srv, mock)
 	proto.RegisterControlPlanePubSubGcsServiceServer(srv, mock)
 	proto.RegisterObservabilityPubSubServiceServer(srv, mock)
+	proto.RegisterInternalKVGcsServiceServer(srv, mock)
 	go func() { _ = srv.Serve(ln) }()
 	client, err := head.NewGCSClient(context.Background(), ln.Addr().String(), head.WithToken("test-token"))
 	if err != nil {
@@ -202,13 +230,16 @@ func TestDataSourceSubscriptionRefresh(t *testing.T) {
 		t.Fatalf("Start() = %v, want nil", err)
 	}
 
-	// A node update is polled and upserted into the cache.
+	// A node update is polled and upserted into the cache. The address the
+	// agent registers its ip key under travels in NodeManagerAddress; the
+	// DEAD update that follows drops the contact fields, and the cleanup
+	// falls back to this cached address.
 	nodeID := []byte{0x10}
 	mock.enqueue(proto.ChannelType_GCS_NODE_INFO_CHANNEL, &proto.PubMessage{
 		KeyId:      nodeID,
 		SequenceId: 1,
 		InnerMessage: &proto.PubMessage_NodeInfoMessage{
-			NodeInfoMessage: &proto.GcsNodeInfo{NodeId: nodeID, NodeManagerHostname: "node-b", State: proto.GcsNodeInfo_ALIVE},
+			NodeInfoMessage: &proto.GcsNodeInfo{NodeId: nodeID, NodeManagerHostname: "node-b", NodeManagerAddress: "10.0.0.10", State: proto.GcsNodeInfo_ALIVE},
 		},
 	})
 
@@ -234,6 +265,11 @@ func TestDataSourceSubscriptionRefresh(t *testing.T) {
 		return n != nil && n.State == proto.GcsNodeInfo_DEAD
 	}) {
 		t.Fatal("DEAD node was not retained in the cache")
+	}
+
+	// The dead node's dashboard agent addresses are removed from GCS KV.
+	if !waitFor(t, 3*time.Second, func() bool { return len(mock.delCalls()) == 2 }) {
+		t.Fatalf("dashboard agent address deletions = %v, want both keys", mock.delCalls())
 	}
 
 	// An actor update is upserted into the cache.
@@ -1192,5 +1228,128 @@ func TestApplyActorUpdateReplacesInsteadOfMutating(t *testing.T) {
 	d.applyActorUpdate(fresh)
 	if got := d.Actor(hex.EncodeToString(fresh.ActorId)); got != fresh {
 		t.Fatalf("new entry not inserted: got %+v", got)
+	}
+}
+
+func TestRemoveAgentAddrDeadNode(t *testing.T) {
+	mock := &mockGCSServer{}
+	client, stop := startMock(t, mock)
+	defer stop()
+
+	ds := NewDataSource(client, nil, nil, nil)
+	ds.removeAgentAddr(context.Background(), &proto.GcsNodeInfo{
+		NodeId:             []byte{0xab, 0xcd},
+		NodeManagerAddress: "1.2.3.4",
+		State:              proto.GcsNodeInfo_DEAD,
+	}, nil)
+
+	want := []string{
+		"dashboard/DASHBOARD_AGENT_ADDR_NODE_ID_PREFIX:abcd",
+		"dashboard/DASHBOARD_AGENT_ADDR_IP_PREFIX:1.2.3.4",
+	}
+	if got := mock.delCalls(); !slices.Equal(got, want) {
+		t.Fatalf("InternalKVDel calls = %v, want %v", got, want)
+	}
+}
+
+// A DEAD node update carries empty contact fields (the same GCS pattern as
+// the actor-table updates), so the ip key must be built from the address the
+// node last advertised while ALIVE.
+func TestRemoveAgentAddrUsesPreviousAddress(t *testing.T) {
+	mock := &mockGCSServer{}
+	client, stop := startMock(t, mock)
+	defer stop()
+
+	ds := NewDataSource(client, nil, nil, nil)
+	prev := &proto.GcsNodeInfo{
+		NodeId:             []byte{0xab, 0xcd},
+		NodeManagerAddress: "1.2.3.4",
+		State:              proto.GcsNodeInfo_ALIVE,
+	}
+	ds.removeAgentAddr(context.Background(), &proto.GcsNodeInfo{
+		NodeId: []byte{0xab, 0xcd},
+		State:  proto.GcsNodeInfo_DEAD,
+	}, prev)
+
+	want := []string{
+		"dashboard/DASHBOARD_AGENT_ADDR_NODE_ID_PREFIX:abcd",
+		"dashboard/DASHBOARD_AGENT_ADDR_IP_PREFIX:1.2.3.4",
+	}
+	if got := mock.delCalls(); !slices.Equal(got, want) {
+		t.Fatalf("InternalKVDel calls = %v, want %v", got, want)
+	}
+}
+
+func TestRemoveAgentAddrNonDeadNode(t *testing.T) {
+	mock := &mockGCSServer{}
+	client, stop := startMock(t, mock)
+	defer stop()
+
+	ds := NewDataSource(client, nil, nil, nil)
+	ds.removeAgentAddr(context.Background(), &proto.GcsNodeInfo{
+		NodeId:             []byte{0xab, 0xcd},
+		NodeManagerAddress: "1.2.3.4",
+		State:              proto.GcsNodeInfo_ALIVE,
+	}, nil)
+
+	if got := mock.delCalls(); len(got) != 0 {
+		t.Fatalf("InternalKVDel calls = %v, want none for a non-DEAD node", got)
+	}
+}
+
+func TestRemoveAgentAddrNilClient(t *testing.T) {
+	ds := NewDataSource(nil, nil, nil, nil)
+	// A data source without a GCS client must not panic on node updates.
+	ds.removeAgentAddr(context.Background(), &proto.GcsNodeInfo{
+		NodeId: []byte{0xab, 0xcd},
+		State:  proto.GcsNodeInfo_DEAD,
+	}, nil)
+}
+
+func TestRemoveAgentAddrContinuesAfterFailure(t *testing.T) {
+	mock := &mockGCSServer{kvDelFail: map[string]bool{
+		"dashboard/DASHBOARD_AGENT_ADDR_NODE_ID_PREFIX:abcd": true,
+	}}
+	client, stop := startMock(t, mock)
+	defer stop()
+
+	ds := NewDataSource(client, nil, nil, nil)
+	ds.removeAgentAddr(context.Background(), &proto.GcsNodeInfo{
+		NodeId:             []byte{0xab, 0xcd},
+		NodeManagerAddress: "1.2.3.4",
+		State:              proto.GcsNodeInfo_DEAD,
+	}, nil)
+
+	want := []string{
+		"dashboard/DASHBOARD_AGENT_ADDR_NODE_ID_PREFIX:abcd",
+		"dashboard/DASHBOARD_AGENT_ADDR_IP_PREFIX:1.2.3.4",
+	}
+	if got := mock.delCalls(); !slices.Equal(got, want) {
+		t.Fatalf("InternalKVDel calls = %v, want both keys even after the first fails", got)
+	}
+}
+
+func TestDataSourceStartRemovesDeadAgentAddr(t *testing.T) {
+	mock := &mockGCSServer{nodeInfo: []*proto.GcsNodeInfo{{
+		NodeId:             []byte{0xab, 0xcd},
+		NodeManagerAddress: "1.2.3.4",
+		State:              proto.GcsNodeInfo_DEAD,
+	}}}
+	client, stop := startMock(t, mock)
+	defer stop()
+
+	ds := NewDataSource(client, nil, nil, nil)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	if err := ds.Start(ctx); err != nil {
+		t.Fatalf("Start() = %v, want nil", err)
+	}
+
+	want := []string{
+		"dashboard/DASHBOARD_AGENT_ADDR_NODE_ID_PREFIX:abcd",
+		"dashboard/DASHBOARD_AGENT_ADDR_IP_PREFIX:1.2.3.4",
+	}
+	if !waitFor(t, 3*time.Second, func() bool { return slices.Equal(mock.delCalls(), want) }) {
+		t.Fatalf("InternalKVDel calls = %v, want %v", mock.delCalls(), want)
 	}
 }

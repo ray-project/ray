@@ -98,11 +98,18 @@ type ActorCreationOptions struct {
 	MaxTaskRetries int
 
 	// MaxConcurrency is the maximum number of concurrent calls for the actor.
-	// 0 means use the default concurrency, -1 means unlimited.
+	// 0 means use the default: 1000 for an async actor (matching Python's
+	// DEFAULT_MAX_CONCURRENCY_ASYNC), 1 (serialized) otherwise. -1 means
+	// unlimited.
 	MaxConcurrency int
 
 	// PlacementGroup is the placement group for this actor.
 	PlacementGroup *PlacementGroupOptions
+
+	// NodeAffinity pins the actor to a specific node (head-node pinning).
+	// When set, it takes precedence over PlacementGroup and the default
+	// scheduling strategy.
+	NodeAffinity *NodeAffinityOptions
 
 	// ConcurrencyGroups is the list of concurrency groups for this actor.
 	// Each group can have its own maximum concurrent calls limit.
@@ -184,6 +191,16 @@ type PlacementGroupOptions struct {
 	// BundleIndex is the index of the bundle to use.
 	// Placement groups divide resources into bundles, and this specifies which bundle to use.
 	BundleIndex int
+}
+
+// NodeAffinityOptions pins an actor to a node.
+type NodeAffinityOptions struct {
+	// NodeID is the target node ID as a hex string.
+	NodeID string
+
+	// Soft allows the scheduler to spill to another node when the target node
+	// is unavailable. When false, the actor waits for the target node.
+	Soft bool
 }
 
 // RetryPolicy contains retry policy for tasks.
