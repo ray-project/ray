@@ -305,10 +305,7 @@ class LLMRouter:
         return {"status": "ok"}
 
     def __del__(self) -> None:
-        """Clean up tracker metrics and token channel ZMQ sockets."""
-        kv_token_tracker = getattr(self, "_kv_token_tracker", None)
-        if kv_token_tracker is not None:
-            kv_token_tracker.close()
+        """Close the token channel ZMQ sockets upon cleanup."""
         token_sender = getattr(self, "_token_sender", None)
         if token_sender is not None:
             token_sender.close()

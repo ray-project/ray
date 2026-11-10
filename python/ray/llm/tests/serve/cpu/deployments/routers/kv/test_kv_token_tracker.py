@@ -4,7 +4,6 @@ registration, ``KVAwareRouter`` binding to it, and the
 """
 
 import asyncio
-import math
 import sys
 from typing import List
 from unittest.mock import MagicMock
@@ -153,12 +152,6 @@ def test_tracker_publishes_prefill_gauge_and_autoscaling_snapshot(tracker_with_m
         assert published[-1] == tracker._get_autoscaling_snapshot()
 
 
-def test_tracker_clears_prefill_gauge_on_close(tracker_with_metrics):
-    tracker, gauge = tracker_with_metrics
-    tracker.close()
-    assert math.isnan(gauge.set.call_args.args[0])
-
-
 def test_ingress_passes_router_identity_to_tracker(monkeypatch):
     from ray.llm._internal.serve.routing_policies.kv_aware import token_channel
 
@@ -176,11 +169,6 @@ def test_ingress_passes_router_identity_to_tracker(monkeypatch):
     builder.assert_called_once_with(
         config, server.deployment_id, router_handle_id="handle", router_actor_id="actor"
     )
-    # Invoke the ingress's cleanup hook without starting the ASGI lifespan wrapper.
-    super(LLMRouter, router).__del__()
-    builder.return_value.close.assert_called_once_with()
-    router._kv_token_tracker = None
-    router._token_sender = None
 
 
 def test_indexer_threads_from_config(monkeypatch):

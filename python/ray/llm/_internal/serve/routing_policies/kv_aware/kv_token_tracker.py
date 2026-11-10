@@ -398,10 +398,6 @@ class KVTokenTracker:
         except Exception:
             logger.exception("Autoscaling metrics callback failed.")
 
-    def close(self) -> None:
-        """Mark router metrics unavailable when the ingress is cleaned up."""
-        self._uncached_prefill_tokens_gauge.set(math.nan)
-
     def _create_selection_service(self) -> None:
         """Create the router-local Dynamo selection service for this deployment."""
         # Imported here, not at module scope, to keep Dynamo's pyo3 extension off
