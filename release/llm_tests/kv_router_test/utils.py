@@ -8,7 +8,7 @@ exposes the tracker's state as handle-callable methods.
 """
 
 import asyncio
-from contextlib import contextmanager
+from contextlib import asynccontextmanager, contextmanager
 from dataclasses import asdict
 from pathlib import Path
 import sys
@@ -398,14 +398,23 @@ class PDRouter(LLMPDRouter):
     async def _choose_replica(self, handle, *args, **kwargs):
         selection = await super()._choose_replica(handle, *args, **kwargs)
         is_prefill = handle.deployment_id == self._prefill.deployment_id
+        self._record_pick("prefill" if is_prefill else "decode", selection)
+        return selection
+
+    @asynccontextmanager
+    async def _reserve_prefill_replica(self, *args, **kwargs):
+        async with super()._reserve_prefill_replica(*args, **kwargs) as selection:
+            self._record_pick("prefill", selection)
+            yield selection
+
+    def _record_pick(self, stage, selection):
         self._picks.append(
             (
-                "prefill" if is_prefill else "decode",
+                stage,
                 selection._request_metadata.session_id,
                 selection._replica.replica_id.to_full_id_str(),
             )
         )
-        return selection
 
     def _trackers(self):
         return {"prefill": self._prefill_tracker, "decode": self._kv_token_tracker}

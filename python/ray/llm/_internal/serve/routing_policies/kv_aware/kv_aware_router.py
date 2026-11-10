@@ -139,6 +139,7 @@ class KVAwareRouter(MultiplexMixin, RequestRouter):
             # gets its own KV namespace. Empty means the base model.
             lora_name=pending_request.metadata.multiplexed_model_id or None,
             session_id=pending_request.metadata.session_id or None,
+            internal_request_id=pending_request.metadata.internal_request_id,
         )
         return [[worker_id_to_replica[selection["worker_id"]]]]
 

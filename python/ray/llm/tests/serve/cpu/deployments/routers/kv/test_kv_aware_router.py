@@ -237,6 +237,7 @@ class _SelectWorkerStub:
         self.expected_output_tokens = None
         self.lora_name = None
         self.session_kwargs = None
+        self.internal_request_id = None
 
     async def __call__(
         self,
@@ -245,12 +246,14 @@ class _SelectWorkerStub:
         allowed_worker_ids,
         expected_output_tokens=None,
         lora_name=None,
+        internal_request_id=None,
         **session_kwargs,
     ):
         self.token_ids = token_ids
         self.allowed = allowed_worker_ids
         self.expected_output_tokens = expected_output_tokens
         self.lora_name = lora_name
+        self.internal_request_id = internal_request_id
         self.session_kwargs = session_kwargs
         return {
             "worker_id": self._worker_id,
@@ -325,6 +328,9 @@ async def test_choose_replicas_routes_to_selected_worker():
     assert select.expected_output_tokens is None
     assert select.lora_name is None
     assert select.session_kwargs == {"session_id": "sess-1"}
+    # Serve's internal id of the routing call, so a reselection of the same call
+    # replaces its booking.
+    assert select.internal_request_id == "int-1"
 
 
 @pytest.mark.asyncio

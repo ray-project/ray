@@ -1,13 +1,16 @@
 """Router application for KV-aware prefill/decode disaggregation."""
 
+import asyncio
 import base64
+import contextlib
 import json
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, AsyncIterator, Dict, List, Optional, Union
 
 from fastapi import HTTPException, Request
 from fastapi.responses import JSONResponse
 
 from ray import serve
+from ray.exceptions import RayError
 from ray.llm._internal.serve.core.configs.openai_api_models import ErrorResponse
 from ray.llm._internal.serve.core.ingress.router import (
     _BODY_TRUNCATED_HEADER,
@@ -15,24 +18,27 @@ from ray.llm._internal.serve.core.ingress.router import (
     _parse_request_body,
     _with_request_options,
 )
+from ray.llm._internal.serve.core.protocol import RawRequestInfo
 from ray.llm._internal.serve.routing_policies.kv_aware.constants import (
     DECODE_SELECTION_SVC_ENV,
     KV_TRANSFER_PARAMS_HEADER,
     PD_BACKEND_APP_NAME,
-    PD_PREFILL_ENDPOINT_KEY,
     PREFILL_SELECTION_SVC_ENV,
+    REQUEST_TOKEN_IDS_KWARG,
 )
 from ray.llm._internal.serve.routing_policies.kv_aware.vllm.pd_prefill import (
     PDRequest,
-    PrefillClient,
-    PrefillRequest,
     PrefillResult,
     parse_pd_request,
 )
 from ray.serve._private.constants import (
+    RAY_SERVE_HAPROXY_INGRESS_REQUEST_ROUTER_TIMEOUT_S,
     RAY_SERVE_INGRESS_REQUEST_ROUTER_OPT_HEADERS_FIELD,
     SERVE_INGRESS_ROUTER_REQUEST_PATH_HEADER,
 )
+from ray.serve._private.request_router.replica_wrapper import ReplicaSelection
+from ray.serve.exceptions import RayServeException
+from ray.serve.handle import DeploymentHandle
 
 
 @serve._router_application
@@ -43,13 +49,16 @@ class LLMPDRouter(LLMRouter):
     config, lifecycle endpoint, and replica mesh. A session binds to a P
     replica and to a D replica separately.
 
-    Only ZMQ crosses replicas: the router runs prefill on the selected P
-    replica with a ZMQ call, and both engines report lifecycle events to their
-    stage's tracker on this router.
+    The router runs prefill on the selected P replica with a Serve handle call.
+    Both engines report lifecycle events over ZMQ to their stage's tracker on
+    this router.
 
     Truncated bodies are rejected. Other routes and bodies that fail validation
     go to a D replica, which serves them itself.
     """
+
+    # Past HAProxy's routing timeout, nobody awaits the decision.
+    _prefill_timeout_s: float = RAY_SERVE_HAPROXY_INGRESS_REQUEST_ROUTER_TIMEOUT_S
 
     async def __init__(
         self,
@@ -61,7 +70,6 @@ class LLMPDRouter(LLMRouter):
         self._prefill = serve.get_deployment_handle(
             prefill_deployment, app_name=PD_BACKEND_APP_NAME
         )
-        self._prefill_client = PrefillClient()
         # LLMRouter's _kv_token_tracker tracks the decode deployment.
         await super().__init__(
             serve.get_deployment_handle(
@@ -138,38 +146,73 @@ class LLMPDRouter(LLMRouter):
         session_id: Optional[str],
     ) -> PrefillResult:
         """Select a P replica, which books its prefill load, then run prefill
-        there over ZMQ."""
-        prefill = _with_request_options(self._prefill, multiplexed_model_id, session_id)
-        selection = await self._choose_replica(prefill, pd_request, token_ids)
-        # P's KVAwareRouter booked the selection under the request's id. P runs
-        # the request, and reports its lifecycle, under the same id.
-        request_id = selection._request_metadata.request_id
-        endpoint = selection.replica_metadata.get(PD_PREFILL_ENDPOINT_KEY)
-        prefill_request = PrefillRequest(
-            path=request.headers.get(SERVE_INGRESS_ROUTER_REQUEST_PATH_HEADER, ""),
-            body=await request.body(),
-            token_ids=token_ids,
-            request_id=request_id,
-            lifecycle_owner=self._prefill_tracker.lifecycle_endpoint,
-            multiplexed_model_id=multiplexed_model_id,
-            headers=dict(request.headers),
-        )
+        there with a handle call."""
+        prefill = _with_request_options(
+            self._prefill, multiplexed_model_id, session_id
+        ).prefill
+        # The handle call carries this route request's id: P's KVAwareRouter
+        # books the selection under it, and P runs the request, and reports its
+        # lifecycle, under it.
+        request_id = serve.context._get_serve_request_context().request_id
         try:
-            if not endpoint:
-                raise RuntimeError(
-                    f"Prefill replica {selection.replica_id} does not serve "
-                    "P/D prefill calls."
-                )
-            return await self._prefill_client.prefill(endpoint, prefill_request)
+            # Selection is inside the timeout too: Serve retries a reserved
+            # selection until a replica takes it.
+            return await asyncio.wait_for(
+                self._call_prefill(prefill, request, pd_request, token_ids),
+                self._prefill_timeout_s,
+            )
         except BaseException as e:
             # The engine may never report a prefill that failed or was
             # cancelled, so free its booking now. A later report is a no-op.
             self._prefill_tracker.release_request(request_id)
-            if isinstance(e, (ConnectionError, TimeoutError)):
-                # P was lost or timed out. route() returns RuntimeError as a
-                # retryable 503.
-                raise RuntimeError(f"Prefill on {endpoint} failed: {e!r}") from e
+            if isinstance(e, (RayError, RayServeException, asyncio.TimeoutError)):
+                # P was lost, failed the call, or timed out. route() returns
+                # RuntimeError as a retryable 503.
+                raise RuntimeError(
+                    f"Prefill on {self._prefill.deployment_name} failed: {e!r}"
+                ) from e
             raise
+
+    async def _call_prefill(
+        self,
+        prefill: DeploymentHandle,
+        request: Request,
+        pd_request: PDRequest,
+        token_ids: List[int],
+    ) -> PrefillResult:
+        """Run ``prefill`` on the P replica it selects, with a handle call."""
+        async with self._reserve_prefill_replica(
+            prefill, pd_request, token_ids
+        ) as selection:
+            response = prefill.dispatch(
+                selection,
+                pd_request,
+                RawRequestInfo(headers=dict(request.headers)),
+                token_ids,
+                lifecycle_owner=self._prefill_tracker.lifecycle_endpoint,
+            )
+            try:
+                # Awaited before the selection exits, which Serve requires of a
+                # dispatched call.
+                return await response
+            except asyncio.CancelledError:
+                # Timed out or cancelled: stop the prefill nobody awaits.
+                response.cancel()
+                raise
+
+    @contextlib.asynccontextmanager
+    async def _reserve_prefill_replica(
+        self,
+        prefill: DeploymentHandle,
+        pd_request: PDRequest,
+        token_ids: List[int],
+    ) -> AsyncIterator[ReplicaSelection]:
+        """Select a P replica with P's KVAwareRouter, which books its prefill
+        load, and reserve a slot on it for the handle call."""
+        async with prefill.choose_replica(
+            pd_request, **{REQUEST_TOKEN_IDS_KWARG: token_ids}
+        ) as selection:
+            yield selection
 
     def _build_decision(
         self, replica_id: str, headers: Dict[str, str]
@@ -179,7 +222,3 @@ class LLMPDRouter(LLMRouter):
             "replica_id": replica_id,
             RAY_SERVE_INGRESS_REQUEST_ROUTER_OPT_HEADERS_FIELD: headers,
         }
-
-    async def __del__(self) -> None:
-        await self._prefill_client.close()
-        await super().__del__()

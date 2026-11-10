@@ -100,6 +100,8 @@ class RequestLifecycle:
     total_blocks: int = 0
     # Monotonic admission time, for the TTL eviction sweep.
     created_at: float = field(default_factory=time.monotonic)
+    # Serve's internal id of the routing call that booked the request.
+    internal_request_id: Optional[str] = None
 
 
 class WorkerSelection(TypedDict):
@@ -532,12 +534,16 @@ class KVTokenTracker:
         expected_output_tokens: Optional[int] = None,
         lora_name: Optional[str] = None,
         session_id: Optional[str] = None,
+        internal_request_id: Optional[str] = None,
     ) -> WorkerSelection:
         """Score the allowed workers for a request based on KV-cache overlap and
         load and pick the best one.
 
         Session requests reuse their selected worker while it remains eligible
         and session affinity hasn't expired. Every request still reserves load.
+
+        Selecting again for the routing call that booked ``request_id`` replaces
+        that booking.
 
         Args:
             request_id: Unique identifier for the request being routed.
@@ -551,6 +557,9 @@ class KVTokenTracker:
                 omitting it on a LoRA request scores against the wrong
                 namespace and never matches.
             session_id: The request's session, if any.
+            internal_request_id: Serve's internal id of the routing call. Serve
+                selects again for a call whose selected replica can't take it
+                (e.g. its slot reservation fails).
 
         Returns:
             The selected worker (see ``WorkerSelection``).
@@ -566,6 +575,15 @@ class KVTokenTracker:
                 "installed in the deployment's environment."
             )
         await self._evict_stale_requests()
+        booked = self._requests.get(request_id)
+        if (
+            booked is not None
+            and internal_request_id
+            and booked.internal_request_id == internal_request_id
+        ):
+            # The selection service books an id once, so free this call's
+            # earlier booking before booking again.
+            await self.on_request_completed(request_id)
         request = {
             "model_name": _MODEL_NAME,
             "routing_group": _ROUTING_GROUP,
@@ -590,6 +608,7 @@ class KVTokenTracker:
             selection["worker_id"],
             len(token_ids),
             expected_output_tokens,
+            internal_request_id,
         )
         return {
             "worker_id": selection["worker_id"],
@@ -623,6 +642,7 @@ class KVTokenTracker:
         worker_id: int,
         prompt_tokens: int,
         expected_output_tokens: Optional[int],
+        internal_request_id: Optional[str] = None,
     ) -> None:
         old = self._requests.pop(request_id, None)
         if old is not None:
@@ -637,6 +657,7 @@ class KVTokenTracker:
             prompt_tokens=prompt_tokens,
             expected_output_tokens=expected_output_tokens,
             total_blocks=math.ceil(prompt_tokens / block_size),
+            internal_request_id=internal_request_id,
         )
         self._request_ids_by_worker.setdefault(worker_id, set()).add(request_id)
 

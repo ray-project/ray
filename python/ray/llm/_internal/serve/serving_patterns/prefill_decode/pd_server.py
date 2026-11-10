@@ -36,13 +36,9 @@ from ray.llm._internal.serve.core.server.llm_server import LLMServer
 from ray.llm._internal.serve.engines.vllm.kv_transfer.base import BaseConnectorBackend
 from ray.llm._internal.serve.routing_policies.kv_aware.constants import (
     KV_TRANSFER_PARAMS_HEADER,
-    PD_PREFILL_ENDPOINT_KEY,
 )
-from ray.llm._internal.serve.routing_policies.kv_aware.kv_aware_router import (
-    is_kv_aware,
-)
-from ray.llm._internal.serve.routing_policies.kv_aware.vllm.pd_prefill import (
-    PrefillService,
+from ray.llm._internal.serve.routing_policies.kv_aware.lifecycle import (
+    bind_request_lifecycle_owner,
 )
 from ray.llm._internal.serve.serving_patterns.data_parallel.dp_server import DPServer
 from ray.llm._internal.serve.utils.broadcast import broadcast
@@ -688,33 +684,24 @@ class PDPrefillServer(LLMServer):
     """Prefill-side LLM server for P/D disaggregation.
 
     This is a standard LLMServer with an additional ``prewarm_prefill``
-    method used during the pre-warm handshake. A KV-aware prefill replica also
-    serves the P/D router's prefill calls over ZMQ, running each with
-    ``prefill``.
+    method used during the pre-warm handshake. The KV-aware P/D router runs
+    prefill on a prefill replica with a handle call to ``prefill``.
     """
-
-    _prefill_service: Optional[PrefillService] = None
-    _prefill_endpoint: Optional[str] = None
-
-    async def start(self):
-        await super().start()
-        if is_kv_aware(self._llm_config):
-            # The KV-aware P/D router selects this replica, then runs prefill
-            # here over ZMQ.
-            self._prefill_service = PrefillService(self.prefill)
-            self._prefill_endpoint = await self._prefill_service.start()
 
     async def prefill(
         self,
         request: RequestType,
         raw_request_info: RawRequestInfo,
         request_token_ids: List[int],
+        lifecycle_owner: Optional[str] = None,
     ) -> Union[Dict[str, Any], ErrorResponse]:
         """Run prefill for the KV-aware P/D router; return D's KV transfer params,
         or P's ``ErrorResponse`` for the router to return to the client.
 
         ``request_token_ids`` are the prompt token IDs the router selected this
-        replica with; the engine reuses them instead of tokenizing again.
+        replica with; the engine reuses them instead of tokenizing again. The
+        engine reports the request's lifecycle events to ``lifecycle_owner``,
+        the router's prefill tracker.
         """
         backend = self._llm_config.kv_connector_backend
         prefill_request = backend.prepare_prefill_request(request=request, peer=None)
@@ -725,10 +712,11 @@ class PDPrefillServer(LLMServer):
             else self.completions
         )
         transfer_params = None
-        async for chunk in await method(prefill_request, raw_request_info):
-            if isinstance(chunk, ErrorResponse):
-                return chunk
-            transfer_params = chunk.kv_transfer_params
+        with bind_request_lifecycle_owner(lifecycle_owner):
+            async for chunk in await method(prefill_request, raw_request_info):
+                if isinstance(chunk, ErrorResponse):
+                    return chunk
+                transfer_params = chunk.kv_transfer_params
         return transfer_params
 
     async def record_replica_metadata(self) -> Dict[str, Any]:
@@ -744,20 +732,11 @@ class PDPrefillServer(LLMServer):
         server's ``_llm_config``. The replica-metadata hook is captured after
         engine init, so for connector deployments the backend is present by
         then; with no backend stored there is nothing to publish.
-
-        A KV-aware replica also publishes the endpoint that serves the P/D
-        router's prefill calls.
         """
         backend = getattr(self._llm_config, "kv_connector_backend", None)
-        metadata = backend.replica_metadata() if backend is not None else {}
-        if self._prefill_endpoint is not None:
-            metadata = {**metadata, PD_PREFILL_ENDPOINT_KEY: self._prefill_endpoint}
-        return metadata
-
-    async def __del__(self) -> None:
-        if self._prefill_service is not None:
-            await self._prefill_service.close()
-        await super().__del__()
+        if backend is None:
+            return {}
+        return backend.replica_metadata()
 
     async def prewarm_prefill(
         self, prefill_request: CompletionRequest

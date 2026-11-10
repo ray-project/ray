@@ -20,9 +20,6 @@ KV_TOKEN_METADATA_KEY = "kv_token_metadata"
 KV_TRANSFER_PARAMS_HEADER = SERVE_INGRESS_ROUTER_HEADER_PREFIX + "kv-transfer-params"
 # P/D: the backend application the P/D router application routes to.
 PD_BACKEND_APP_NAME = "pd-backend"
-# replica_metadata key under which a prefill replica advertises the ZMQ endpoint
-# that runs prefill for the P/D router.
-PD_PREFILL_ENDPOINT_KEY = "kv_prefill_endpoint"
 
 # Router config of each P/D stage's selection service. Cost per replica, lowest
 # wins:

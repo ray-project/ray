@@ -156,7 +156,9 @@ class RecordingKVTokenTracker(KVTokenTracker):
         if state is None:
             return None
         snapshot = asdict(state)
-        snapshot.pop("created_at", None)  # internal TTL bookkeeping, not asserted on
+        # Internal TTL and routing-call bookkeeping, not asserted on.
+        snapshot.pop("created_at", None)
+        snapshot.pop("internal_request_id", None)
         return snapshot
 
     async def get_active_request_ids(self):
@@ -185,7 +187,9 @@ class LocalKVTokenTracker(KVTokenTracker):
         if state is None:
             return None
         snapshot = asdict(state)
-        snapshot.pop("created_at", None)  # internal TTL bookkeeping, not asserted on
+        # Internal TTL and routing-call bookkeeping, not asserted on.
+        snapshot.pop("created_at", None)
+        snapshot.pop("internal_request_id", None)
         return snapshot
 
     async def get_active_request_ids(self):
