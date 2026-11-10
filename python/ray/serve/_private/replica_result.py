@@ -321,6 +321,10 @@ class gRPCReplicaResult(ReplicaResult):
         # called when the request finishes even without the user
         # explicitly consuming the response.
         self._consume_task = None
+        # Set when `cancel()` cancels the call, so reads raise immediately
+        # instead of returning results buffered before the consume task
+        # observes the cancellation.
+        self._locally_cancelled = False
         if self._use_queue:
             # `_grpc_call_loop` is always set when `_use_queue` is.
             assert self._grpc_call_loop is not None
@@ -413,12 +417,9 @@ class gRPCReplicaResult(ReplicaResult):
             assert self._gen is not None
             async for resp in self._gen:
                 self._result_queue.put_nowait(resp)
-        except asyncio.CancelledError as e:
-            # The call was cancelled (e.g., `DeploymentResponseGenerator.cancel`).
-            # Cancellation must take effect immediately, so drop buffered results.
-            self._result_queue.set_error(e, discard_messages=True)
         except BaseException as e:
-            # Transport failure: return already-buffered results before the error.
+            # Return already-buffered results before the error. Local
+            # cancellation is handled in `_get_internal` instead.
             self._result_queue.set_error(e)
         finally:
             self._result_queue.close()
@@ -438,6 +439,8 @@ class gRPCReplicaResult(ReplicaResult):
         if self._gen is None:
             return await self._call
         elif self._use_queue:
+            if self._locally_cancelled:
+                raise asyncio.CancelledError()
             return await self._result_queue.get_one_message()
         else:
             return await self._gen.__anext__()
@@ -595,7 +598,10 @@ class gRPCReplicaResult(ReplicaResult):
         self._call.add_done_callback(callback)
 
     def cancel(self):
-        self._call.cancel()
+        # `cancel()` returns False if the call already finished, in which case
+        # its buffered results are still returned.
+        if self._call.cancel():
+            self._locally_cancelled = True
 
     def to_object_ref(self) -> ray.ObjectRef:
         raise OBJ_REF_NOT_SUPPORTED_ERROR

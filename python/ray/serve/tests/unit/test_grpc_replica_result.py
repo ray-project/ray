@@ -38,6 +38,7 @@ class FakegRPCStreamCall:
         *,
         event: threading.Event = None,
         transport_error: BaseException = None,
+        keep_open: bool = False,
     ):
         self._loop = asyncio.get_running_loop()
         self._items = items
@@ -45,6 +46,9 @@ class FakegRPCStreamCall:
         # Raised from `__anext__` after all items are returned, like a gRPC
         # stream that fails mid-way (e.g. the replica dies).
         self._transport_error = transport_error
+        # Block after all items are returned, like a stream still in progress.
+        self._keep_open = keep_open
+        self._done = False
 
     def is_empty(self) -> bool:
         assert len(self._items) == 0
@@ -58,6 +62,9 @@ class FakegRPCStreamCall:
             raise RuntimeError("Tried to fetch from a different loop!")
 
         if not self._items:
+            if self._keep_open:
+                await self._loop.create_future()
+            self._done = True
             if self._transport_error is not None:
                 raise self._transport_error
             raise StopAsyncIteration
@@ -73,6 +80,11 @@ class FakegRPCStreamCall:
 
     def add_done_callback(self, cb):
         pass
+
+    def cancel(self) -> bool:
+        # Like `grpc.aio.Call.cancel`, returns False if the call already
+        # finished. The cancellation is never delivered to the consume task.
+        return not self._done
 
 
 @pytest.fixture
@@ -170,6 +182,7 @@ class TestSeparateLoop:
         event: threading.Event = None,
         error=None,
         transport_error: BaseException = None,
+        keep_open: bool = False,
     ):
         if error:
             fake_call = FakegRPCStreamCall([(error, True)], event=event)
@@ -178,6 +191,7 @@ class TestSeparateLoop:
                 [(d, False) for d in data],
                 event=event,
                 transport_error=transport_error,
+                keep_open=keep_open,
             )
         return gRPCReplicaResult(
             fake_call,
@@ -277,33 +291,53 @@ class TestSeparateLoop:
                 results.append(r)
         assert results == [1, 2, 3]
 
-    def test_streaming_cancelled_discards_buffered_results_sync(
+    def _make_buffered_streaming_request(self, loop, keep_open):
+        # Wait until results [1, 2, 3] are buffered in the queue.
+        fut = asyncio.run_coroutine_threadsafe(
+            self.make_fake_streaming_request(
+                [1, 2, 3], loop, on_separate_loop=True, keep_open=keep_open
+            ),
+            loop=loop,
+        )
+        replica_result = fut.result()
+        wait_for_condition(replica_result._call.is_empty, retry_interval_ms=10)
+        return replica_result
+
+    def test_streaming_cancel_discards_buffered_results_sync(
         self, create_asyncio_event_loop_in_thread
     ):
-        """Cancellation raises immediately instead of returning buffered results."""
+        """Reads right after `cancel()` raise instead of returning buffered results."""
         loop, _ = create_asyncio_event_loop_in_thread
-        # A locally cancelled gRPC call raises `asyncio.CancelledError`.
-        replica_result = self._make_failed_streaming_request(
-            loop, asyncio.CancelledError()
-        )
+        replica_result = self._make_buffered_streaming_request(loop, keep_open=True)
 
+        replica_result.cancel()
         for _ in range(3):
             with pytest.raises(RequestCancelledError):
                 replica_result.__next__()
 
     @pytest.mark.asyncio
-    async def test_streaming_cancelled_discards_buffered_results_async(
+    async def test_streaming_cancel_discards_buffered_results_async(
         self, create_asyncio_event_loop_in_thread
     ):
-        """Cancellation raises immediately instead of returning buffered results."""
+        """Reads right after `cancel()` raise instead of returning buffered results."""
         loop, _ = create_asyncio_event_loop_in_thread
-        replica_result = self._make_failed_streaming_request(
-            loop, asyncio.CancelledError()
-        )
+        replica_result = self._make_buffered_streaming_request(loop, keep_open=True)
 
+        replica_result.cancel()
         for _ in range(3):
             with pytest.raises(asyncio.CancelledError):
                 await replica_result.__anext__()
+
+    def test_streaming_cancel_after_finished_returns_results(
+        self, create_asyncio_event_loop_in_thread
+    ):
+        """`cancel()` on a finished call is a no-op, so buffered results are kept."""
+        loop, _ = create_asyncio_event_loop_in_thread
+        replica_result = self._make_buffered_streaming_request(loop, keep_open=False)
+        wait_for_condition(replica_result._consume_task.done, retry_interval_ms=10)
+
+        replica_result.cancel()
+        assert list(replica_result) == [1, 2, 3]
 
     @pytest.mark.asyncio
     async def test_streaming_blocked(self, create_asyncio_event_loop_in_thread):
