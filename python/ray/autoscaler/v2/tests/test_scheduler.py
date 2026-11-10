@@ -4960,6 +4960,32 @@ def test_multihost_tpu_whole_replica_launch_and_termination(case):
         assert {t.instance_id for t in m_cap.to_terminate} == {
             f"q{i}" for i in range(4)
         } and m_cap.cluster_resources["TPU-v6e-16-head"] == 1.0
+        assert {
+            t.instance_id
+            for t in _sched(
+                head_cfgs,
+                [_pending_tpu(f"rq{i}", Instance.REQUESTED) for i in range(4)]
+                + [_pending_tpu(f"al{i}", Instance.ALLOCATED) for i in range(4)],
+                max_nodes=4,
+            ).to_terminate
+        } == {f"al{i}" for i in range(4)}
+        assert {
+            t.instance_id
+            for t in _sched(
+                {
+                    "cpu": NodeTypeConfig(
+                        name="cpu",
+                        resources={"CPU": 2},
+                        min_worker_nodes=0,
+                        max_worker_nodes=1,
+                    )
+                },
+                [
+                    _pending_node("cpu", "rq", Instance.REQUESTED),
+                    _pending_node("cpu", "al", Instance.ALLOCATED),
+                ],
+            ).to_terminate
+        } == {"al"}
 
     elif case == "repro2_idle_e_f_f2_g_h_b":
         for s0_n, s1_n in ((4, 3), (3, 3), (3, 0)):

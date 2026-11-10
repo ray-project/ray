@@ -1472,6 +1472,8 @@ class Reconciler:
                     termination_request=terminate_request,
                     details=f"terminating ray: {terminate_request.details}",
                 )
+            elif terminate_request.instance_status == IMInstance.RAY_STOP_REQUESTED:
+                continue
             else:
                 updates[terminate_request.instance_id] = IMInstanceUpdateEvent(
                     instance_id=instance_id,
@@ -1486,19 +1488,77 @@ class Reconciler:
                 skipped_requested,
             )
 
+        deferred = [
+            r
+            for r in reply.to_terminate
+            if r.instance_id not in updates
+            and r.instance_status != IMInstance.RAY_STOP_REQUESTED
+        ]
+        pending_launches = [[req.instance_type, req.count] for req in to_launch]
+        if deferred and pending_launches:
+            deferred_same_type: Dict[NodeType, int] = defaultdict(int)
+            deferred_global_by_type: Dict[NodeType, int] = defaultdict(int)
+            active_by_type: Dict[NodeType, int] = defaultdict(int)
+            active_total = 0
+            node_type_configs = autoscaling_config.get_node_type_configs() or {}
+            max_num_nodes = autoscaling_config.get_max_num_nodes()
+            for r in deferred:
+                inst = im_instances_by_instance_id.get(r.instance_id)
+                r_type = r.instance_type or (inst.instance_type if inst else "")
+                if r.cause == TerminationRequest.Cause.MAX_NUM_NODES:
+                    deferred_global_by_type[r_type] += 1
+                elif r.cause != TerminationRequest.Cause.IDLE:
+                    deferred_same_type[r_type] += 1
+            for inst in im_instances:
+                if (
+                    inst.instance_id not in updates
+                    and inst.status != IMInstance.RAY_STOP_REQUESTED
+                    and InstanceUtil.is_ray_running_reachable(inst.status)
+                ):
+                    active_total += 1
+                    if inst.node_kind != NodeKind.HEAD:
+                        active_by_type[inst.instance_type] += 1
+            for item in pending_launches:
+                nt = item[0]
+                take_same = min(item[1], deferred_same_type[nt])
+                item[1] -= take_same
+                deferred_same_type[nt] -= take_same
+                take_global_same = min(item[1], deferred_global_by_type[nt])
+                item[1] -= take_global_same
+                deferred_global_by_type[nt] -= take_global_same
+            deferred_global = sum(deferred_global_by_type.values())
+            for item in pending_launches:
+                nt, count = item
+                take_global = min(count, deferred_global)
+                count -= take_global
+                deferred_global -= take_global
+                if nt in node_type_configs:
+                    count = min(
+                        count,
+                        max(
+                            0,
+                            node_type_configs[nt].max_worker_nodes - active_by_type[nt],
+                        ),
+                    )
+                if max_num_nodes is not None:
+                    count = min(count, max(0, max_num_nodes - active_total))
+                size = replica_sizes.get(nt, 1)
+                if size > 1:
+                    count -= count % size
+                item[1] = count
+                active_by_type[nt] += count
+                active_total += count
+
         # Add new instances.
-        for launch_request in to_launch:
-            for _ in range(launch_request.count):
+        for nt, count in pending_launches:
+            for _ in range(count):
                 instance_id = InstanceUtil.random_instance_id()
                 updates[instance_id] = IMInstanceUpdateEvent(
                     instance_id=instance_id,
                     new_instance_status=IMInstance.QUEUED,
-                    instance_type=launch_request.instance_type,
+                    instance_type=nt,
                     upsert=True,
-                    details=(
-                        f"queuing new instance of {launch_request.instance_type} "
-                        "from scheduler"
-                    ),
+                    details=(f"queuing new instance of {nt} " "from scheduler"),
                 )
 
         if isinstance(cloud_provider, KubeRayProvider):

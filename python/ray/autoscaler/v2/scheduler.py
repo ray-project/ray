@@ -976,6 +976,17 @@ class ResourceDemandScheduler(IResourceScheduler):
         Instance.REQUESTED: 2,
         Instance.QUEUED: 3,
     }
+    # Cancelability order for max-worker scale-down: prefer un-queued TO_LAUNCH
+    # nodes (-1) and immediately cancelable pending states (QUEUED -> ALLOCATED ->
+    # RAY_INSTALLING) before in-flight REQUESTED instances that cannot be canceled
+    # until cloud allocation completes.
+    _PENDING_TERMINATION_ORDER = {
+        None: -1,
+        Instance.QUEUED: 0,
+        Instance.ALLOCATED: 1,
+        Instance.RAY_INSTALLING: 2,
+        Instance.REQUESTED: 3,
+    }
 
     def __init__(self, event_logger: Optional[AutoscalerEventLogger] = None):
         self._event_logger = event_logger
@@ -2045,7 +2056,14 @@ class ResourceDemandScheduler(IResourceScheduler):
             if head_node:
                 remained_nodes.append(head_node)
         else:
-            nodes.sort(key=ResourceDemandScheduler._sort_nodes_for_termination)
+            nodes.sort(
+                key=lambda n: (
+                    ResourceDemandScheduler._sort_nodes_for_termination(n),
+                    ResourceDemandScheduler._PENDING_TERMINATION_ORDER.get(
+                        n.im_instance_status, 4
+                    ),
+                )
+            )
             terminated_nodes, remained_nodes = (
                 nodes[:num_to_terminate],
                 # The head could be None if there's no head node being reported yet
@@ -2059,7 +2077,10 @@ class ResourceDemandScheduler(IResourceScheduler):
         ], "Other termination causes don't have to select nodes for termination."
 
         for node in terminated_nodes:
+            was_to_launch = node.status == SchedulingNodeStatus.TO_LAUNCH
             node.status = SchedulingNodeStatus.TO_TERMINATE
+            if was_to_launch:
+                continue
             node.termination_request = TerminationRequest(
                 id=str(uuid.uuid4()),
                 instance_id=node.im_instance_id,
@@ -3674,7 +3695,7 @@ class ResourceDemandScheduler(IResourceScheduler):
         """Group worker nodes into ordered termination units, keeping multi-worker
         replicas whole so replica-atomic providers never lose active sibling hosts."""
         sort_key = ResourceDemandScheduler._sort_nodes_for_termination
-        prog_rank = ResourceDemandScheduler._progress_rank
+        term_order = ResourceDemandScheduler._PENDING_TERMINATION_ORDER
         base = {id(n): sort_key(n) for n in nodes}
 
         def _dom_key(nt: NodeType) -> Optional[str]:
@@ -3686,11 +3707,11 @@ class ResourceDemandScheduler(IResourceScheduler):
             )
 
         def _prog_key(u: List[SchedulingNode]) -> Tuple[bool, int, float]:
-            ranks = [prog_rank(m) for m in u]
+            ranks = [term_order.get(m.im_instance_status, 4) for m in u]
             return (
                 len(u) < replica_sizes.get(u[0].node_type, 1),
-                -min(ranks),
-                -sum(ranks) / len(ranks),
+                max(ranks),
+                sum(ranks) / len(ranks),
             )
 
         ranked_units: List[
@@ -3711,7 +3732,10 @@ class ResourceDemandScheduler(IResourceScheduler):
 
         for (nt, rid), unit in grouped.items():
             dk = _dom_key(nt)
-            u_sorted = sorted(unit, key=lambda m: (base[id(m)], -prog_rank(m)))
+            u_sorted = sorted(
+                unit,
+                key=lambda m: (base[id(m)], term_order.get(m.im_instance_status, 4)),
+            )
             worst = max(base[id(m)] for m in u_sorted)
             if dk and rid in pinned_domains.get(dk, ()):
                 worst = max(worst, (True, 0, 0.0))

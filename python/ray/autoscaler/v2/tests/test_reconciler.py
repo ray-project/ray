@@ -3355,6 +3355,19 @@ class TestReconciler:
                 max_worker_nodes=0,
                 replica_config=WorkerReplicaConfig(workers_per_replica=4),
             ),
+            "cpu": NodeTypeConfig(
+                name="cpu",
+                resources={"CPU": 2},
+                min_worker_nodes=2,
+                max_worker_nodes=2,
+            ),
+            "gpu": NodeTypeConfig(
+                name="gpu",
+                resources={"GPU": 1},
+                min_worker_nodes=1,
+                max_worker_nodes=1,
+                launch_config_hash="v2",
+            ),
         }
         TestReconciler._add_instances(
             p_store,
@@ -3385,6 +3398,9 @@ class TestReconciler:
                 create_instance(
                     "r-3", status=Instance.REQUESTED, instance_type="tpu16"
                 ),
+                create_instance(
+                    "gpu-req", status=Instance.REQUESTED, instance_type="gpu"
+                ),
                 outdated_inst,
             ],
         )
@@ -3405,15 +3421,22 @@ class TestReconciler:
             ),
             scheduler=ResourceDemandScheduler(),
             autoscaling_config=MockAutoscalingConfig(
-                configs={"node_type_configs": tpu_cap0}
+                configs={"node_type_configs": tpu_cap0, "max_num_worker_nodes": 6}
             ),
             cloud_provider=MagicMock(),
             non_terminated_cloud_instances=b_cloud,
             _logger=part_log,
         )
-        # Only outdated g2-outdated drains; partial booting G1 + REQUESTED r-2/r-3 defer!
-        assert [(e.instance_id, e.new_instance_status) for e in p_sub.events] == [
-            ("g2-outdated", Instance.RAY_STOP_REQUESTED)
+        # Only outdated g2-outdated drains; partial booting G1 + REQUESTED r-2/r-3/gpu-req
+        # defer, outdated gpu-req suppresses its same-type min_worker_nodes replacement launch,
+        # and only 1 of the 2 min_worker_nodes cpu launches is queued so active nodes
+        # (h + g1-0 + g1-1 + r-2 + r-3 + gpu-req + 1 cpu = 7) do not exceed max_num_nodes=7.
+        assert [
+            (e.instance_type or e.instance_id, e.new_instance_status)
+            for e in p_sub.events
+        ] == [
+            ("g2-outdated", Instance.RAY_STOP_REQUESTED),
+            ("cpu", Instance.QUEUED),
         ]
         assert any(
             "partial replica or in-flight REQUESTED pods, waiting for remaining replica pods"
