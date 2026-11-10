@@ -80,7 +80,7 @@ httplib2==0.20.4
 httptools==0.8.0
 httpx @ file:///home/conda/feedstock_root/build_artifacts/httpx_1733663348460/work
 hyperframe @ file:///home/conda/feedstock_root/build_artifacts/hyperframe_1733298771451/work
-idna==3.12
+idna==3.18
 importlib-metadata==6.11.0
 installer @ file:///home/conda/feedstock_root/build_artifacts/python-installer_1778554130319/work
 isodate==0.7.2
