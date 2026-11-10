@@ -54,6 +54,7 @@ aiohttp==3.14.4
     # via
     #   -r python/requirements.txt
     #   -r python/requirements/cloud-requirements.txt
+    #   -r python/requirements/security-requirements.txt
     #   -r python/requirements/test-requirements.txt
     #   aiobotocore
     #   aiohttp-cors
@@ -1520,6 +1521,7 @@ packaging==26.3
     #   torchmetrics
     #   transformers
     #   utilsforecast
+    #   virtualenv
     #   wandb
     #   wheel
 pandas==2.3.3
@@ -1589,7 +1591,6 @@ platformdirs==4.9.6
     #   black
     #   jupyter-core
     #   moocore
-    #   python-discovery
     #   snowflake-connector-python
     #   textual
     #   virtualenv
@@ -2499,6 +2500,7 @@ typing-extensions==4.16.0
     # via
     #   -r python/requirements/serve/serve-test-requirements.txt
     #   -r python/requirements/test-requirements.txt
+    #   aiohttp
     #   aiosignal
     #   alembic
     #   anyio
@@ -2614,6 +2616,7 @@ vine==5.1.0
 virtualenv==21.14.12
     # via
     #   -r python/requirements.txt
+    #   -r python/requirements/security-requirements.txt
     #   -r python/requirements/test-requirements.txt
     #   pre-commit
     #   pytest-virtualenv
