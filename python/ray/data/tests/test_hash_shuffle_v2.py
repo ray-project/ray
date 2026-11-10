@@ -610,6 +610,61 @@ def test_shuffle_reduce_task_merges_label_selector(
     }
 
 
+def _complete_map_tasks_out_of_order(op, task_outputs, map_done_return):
+    """Submit len(task_outputs) patched map tasks, then complete them last-first."""
+    op.start(ExecutionOptions(), noop_counter())
+    with patch(
+        "ray.data._internal.execution.operators.shuffle_operators."
+        + (
+            "shuffle_map_operator._shuffle_map_task"
+            if isinstance(op, ShuffleMapOp)
+            else "disk_shuffle_map_operator._disk_shuffle_map_task"
+        )
+    ) as map_task:
+        map_task.options.return_value.remote.return_value = MagicMock()
+        for _ in task_outputs:
+            op._submit_shuffle_map_task([], [])
+    op._inputs_complete = True
+    with patch("ray.get", return_value=map_done_return), patch(
+        "ray.put", side_effect=tuple
+    ):
+        for task_idx in reversed(range(len(task_outputs))):
+            op._handle_map_done(task_idx, task_outputs[task_idx], [])
+
+
+def test_shuffle_map_op_orders_shards_by_task_index(restore_data_context):
+    op = ShuffleMapOp(
+        InputDataBuffer(restore_data_context, []),
+        restore_data_context,
+        num_partitions=1,
+        partition_fn=lambda table: {},
+    )
+    meta = BlockMetadata(num_rows=1, size_bytes=1, exec_stats=None, input_files=None)
+    _complete_map_tasks_out_of_order(
+        op,
+        [["shard-of-task-0"], ["shard-of-task-1"], ["shard-of-task-2"]],
+        (meta, {0: (1, 1)}, None),
+    )
+
+    assert op._output_queue.get_next().block_refs == [
+        "shard-of-task-0",
+        "shard-of-task-1",
+        "shard-of-task-2",
+    ]
+
+
+def test_disk_shuffle_map_op_orders_handles_by_task_index(restore_data_context):
+    op = DiskHashShuffleMapOp(
+        InputDataBuffer(restore_data_context, []),
+        restore_data_context,
+        num_partitions=1,
+        partition_fn=lambda table: {},
+    )
+    _complete_map_tasks_out_of_order(op, ["handle-0", "handle-1", "handle-2"], {})
+
+    assert op._shared_handles_ref == ("handle-0", "handle-1", "handle-2")
+
+
 # --- Multi-input reduce -------------------------------------------------------
 # TODO: move these multi-input ShuffleReduceOp tests (and the _get_shard_batch
 # shuffle_tasks tests above) into a dedicated operator/task-level test file --

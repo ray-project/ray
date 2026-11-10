@@ -153,7 +153,8 @@ class DiskHashShuffleMapOp(InternalQueueOperatorMixin, PhysicalOperator):
         # ``_completed_handle_refs``; at emit time we ``ray.put`` that list
         # once into ``_shared_handles_ref`` and every partition wrapper
         # points at that single ref (O(1) per-reducer arg serialization).
-        self._completed_handle_refs: List[ObjectRef] = []
+        # Keyed by map task index so reducers see shards in a fixed order.
+        self._completed_handle_refs: Dict[int, ObjectRef] = {}
         self._shared_handles_ref: Optional[ObjectRef] = None
         # First non-None schema seen; propagated onto every wrapper so
         # downstream ops (fusion, empty-partition fast path) don't see None.
@@ -341,7 +342,7 @@ class DiskHashShuffleMapOp(InternalQueueOperatorMixin, PhysicalOperator):
             schema=None,
             owns_blocks=False,
         )
-        self._completed_handle_refs.append(handle_ref)
+        self._completed_handle_refs[task_idx] = handle_ref
 
         for bundle in input_bundles:
             bundle.destroy_if_owned()
@@ -388,7 +389,12 @@ class DiskHashShuffleMapOp(InternalQueueOperatorMixin, PhysicalOperator):
 
         # One Ray object shared across all N wrappers.
         # pyrefly: ignore[bad-assignment]
-        self._shared_handles_ref = ray.put(self._completed_handle_refs)
+        self._shared_handles_ref = ray.put(
+            [
+                self._completed_handle_refs[i]
+                for i in sorted(self._completed_handle_refs)
+            ]
+        )
 
         partition_bytes = self.get_partition_bytes()
         for partition_id in range(self._num_partitions):
@@ -483,7 +489,7 @@ class DiskHashShuffleMapOp(InternalQueueOperatorMixin, PhysicalOperator):
 
         seen: set = set()
         seen_nodes: set = set()
-        for ref in self._completed_handle_refs:
+        for ref in self._completed_handle_refs.values():
             try:
                 # pyrefly: ignore[no-matching-overload]
                 handle = ray.get(ref)

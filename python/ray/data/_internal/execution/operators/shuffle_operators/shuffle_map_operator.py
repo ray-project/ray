@@ -145,6 +145,10 @@ class ShuffleMapOp(InternalQueueOperatorMixin, PhysicalOperator):
         self._partition_staging: List[FIFOBundleQueue] = [
             FIFOBundleQueue() for _ in range(num_partitions)
         ]
+        # Map task index of each staged shard, in staging order.
+        self._partition_shard_task_idx: List[List[int]] = [
+            [] for _ in range(num_partitions)
+        ]
 
         # -- Per-partition total bytes ---------------------------------------
         self._partition_bytes: Dict[int, int] = defaultdict(int)
@@ -311,6 +315,7 @@ class ShuffleMapOp(InternalQueueOperatorMixin, PhysicalOperator):
                 owns_blocks=True,
             )
             self._partition_staging[partition_id].add(shard_bundle)
+            self._partition_shard_task_idx[partition_id].append(task_idx)
             self._partition_bytes[partition_id] += nbytes
 
         for bundle in input_bundles:
@@ -358,6 +363,10 @@ class ShuffleMapOp(InternalQueueOperatorMixin, PhysicalOperator):
             shards: List[RefBundle] = []
             while staging.has_next():
                 shards.append(staging.get_next())
+            # Map tasks finish in arbitrary order; fix the shard order so a
+            # reducer's input, and therefore its output, is the same on every run.
+            task_idxs = self._partition_shard_task_idx[partition_id]
+            shards = [s for _, s in sorted(zip(task_idxs, shards), key=lambda t: t[0])]
 
             merged = RefBundle.merge_ref_bundles(shards)
             # Stamp the partition_id sentinel onto the merged bundle's
@@ -417,6 +426,7 @@ class ShuffleMapOp(InternalQueueOperatorMixin, PhysicalOperator):
         self._merge_buffer_bytes_by_node.clear()
         for queue in self._partition_staging:
             queue.clear()
+        self._partition_shard_task_idx = [[] for _ in self._partition_staging]
         self._output_queue.clear()
 
     def get_stats(self) -> Dict[str, List[BlockStats]]:
