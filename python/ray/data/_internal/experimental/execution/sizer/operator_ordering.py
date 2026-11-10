@@ -15,12 +15,20 @@ from typing import (
     TypeVar,
 )
 
+from ray.data._internal.util import GiB
+
 if TYPE_CHECKING:
     from ray.data._internal.execution.interfaces.common import NodeIdStr
     from ray.data._internal.execution.streaming_executor_state import Topology
     from ray.data._internal.experimental.execution.operators.actor_pool_map_operator import (  # noqa: E501
         ExperimentalActorPoolMapOperator,
     )
+
+# Assumed physical memory per CPU core (bytes), ~4 GiB: the common
+# hyperscaler ratio. An op whose per-actor memory request exceeds this times
+# its CPUs is memory-bound for ordering (``is_large_memory``). Ops with the
+# default memory reservation (4 GiB per CPU minus the system's share) are not.
+MEMORY_PER_CPU_BYTES: int = 4 * GiB
 
 OpKey = TypeVar("OpKey", bound=Hashable)
 
@@ -35,8 +43,14 @@ class OpOrderingSignals:
     has_label_selector: bool
     is_gpu: bool
     is_fixed_concurrency: bool
-    # How many nodes the op can be scheduled on this tick. None = unknown.
-    num_schedulable_nodes: Optional[int] = None
+    # Memory request large relative to the actor's CPUs (memory-bound).
+    is_large_memory: bool = False
+    # Serving fewer actors than its min_size: the pipeline cannot run until it
+    # gets them, so it outranks every other tier.
+    below_min_size: bool = False
+    # How many nodes the op can be scheduled on this tick. 0 before the first
+    # tick snapshot (initial sizing), where every op ties.
+    num_schedulable_nodes: int = 0
 
     @classmethod
     def from_operator(
@@ -44,18 +58,21 @@ class OpOrderingSignals:
         op: "ExperimentalActorPoolMapOperator",
         *,
         topo_index: int,
-        num_schedulable_nodes: Optional[int] = None,
+        num_schedulable_nodes: int = 0,
     ) -> "OpOrderingSignals":
         """Derive the sort signals from an operator, so all knowledge of what
         the tiers mean lives in this module."""
         pool = op.actor_pool
         constraint = op.placement_constraint()
+        per_actor = pool.per_actor_resource_usage()
         return cls(
             topo_index=topo_index,
             has_placement_group=constraint.has_placement_group,
             has_label_selector=constraint.has_label_selector,
-            is_gpu=pool.per_actor_resource_usage().gpu > 0,
+            is_gpu=per_actor.gpu > 0,
             is_fixed_concurrency=pool.min_size() == pool.max_size(),
+            is_large_memory=per_actor.memory > per_actor.cpu * MEMORY_PER_CPU_BYTES,
+            below_min_size=pool.serving_size() < pool.min_size(),
             num_schedulable_nodes=num_schedulable_nodes,
         )
 
@@ -65,8 +82,13 @@ class ScarcityFirstOrdering:
 
     An unconstrained (or abundant-resource) op must not camp on the scarce
     nodes a constrained op needs. Tiers (lowest first): placement group,
-    label selector, GPU, fixed concurrency, everything else. An op takes its
-    lowest tier.
+    label selector, GPU, fixed concurrency, large memory, everything else. An
+    op takes its lowest tier.
+
+    Ops below min_size go ahead of all others, since until every op has its
+    minimum the pipeline cannot run end to end. Within that group the tiers
+    still apply: at initial sizing every op is below min, and an unconstrained
+    op placed first would camp on a constrained op's nodes.
     """
 
     @staticmethod
@@ -79,19 +101,20 @@ class ScarcityFirstOrdering:
             return 2
         if signals.is_fixed_concurrency:
             return 3
-        return 4
+        if signals.is_large_memory:
+            return 4
+        return 5
 
     def order(self, signals: Dict[OpKey, OpOrderingSignals]) -> List[OpKey]:
         """Return the operator keys in processing order (first processed first)."""
 
-        def key(op: OpKey) -> Tuple[int, float, int]:
+        def key(op: OpKey) -> Tuple[bool, int, int, int]:
             op_signals = signals[op]
             # Within a tier, fewer schedulable nodes goes first: an op that
             # fits on 1 node must be placed before one that fits on 5, or the
             # wider op can take the narrow op's only node.
-            if op_signals.num_schedulable_nodes is None:
-                return (self._tier(op_signals), float("inf"), -op_signals.topo_index)
             return (
+                not op_signals.below_min_size,
                 self._tier(op_signals),
                 op_signals.num_schedulable_nodes,
                 -op_signals.topo_index,
@@ -117,7 +140,7 @@ def ordered_actor_pool_ops(
         op: OpOrderingSignals.from_operator(
             op,
             topo_index=topo_index_of[op],
-            num_schedulable_nodes=(len(schedulable[op]) if op in schedulable else None),
+            num_schedulable_nodes=len(schedulable.get(op, ())),
         )
         for op in ops
         if op in topo_index_of

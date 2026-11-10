@@ -16,15 +16,18 @@ worker_nodes:
       min_nodes: 10
       max_nodes: 10
       market_type: ON_DEMAND
+      # The CPU stages select this label, so they never land on GPU nodes.
+      labels:
+        node-pool: cpu
 
-    # "GPU" workers: large memory nodes with logical GPU resources, no CPUs.
+    # "GPU" workers: large memory nodes with logical GPU resources.
     # r5.4xlarge: 16 vCPUs, 128 GiB memory (~48 GiB object store).
-    # We override resources to expose only GPU (no CPU) so that only GPU tasks
-    # are scheduled here.
+    # We override resources to expose one CPU per logical GPU, for the GPU
+    # stage's actors. The CPU stages are pinned to the CPU workers by label.
     - instance_type: r5.4xlarge
       min_nodes: 2
       max_nodes: 2
       market_type: ON_DEMAND
       resources:
-        CPU: 0
+        CPU: 4
         GPU: 4
