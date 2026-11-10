@@ -135,6 +135,8 @@ try:
             pyarrow_version >= parse_version("14.0.1")
             and RAY_DATA_AUTOLOAD_PYEXTENSIONTYPE
         ):
+            # pyrefly: ignore[missing-attribute]  # gone in pyarrow >= 21; this
+            # branch only runs on older pyarrow (version-guarded above).
             pa.PyExtensionType.set_auto_load(True)
 
 except ModuleNotFoundError:
