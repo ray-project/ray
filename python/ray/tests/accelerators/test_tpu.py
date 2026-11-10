@@ -1,3 +1,4 @@
+import errno
 import os
 import sys
 from unittest import mock
@@ -167,6 +168,174 @@ def test_is_vfio_group_a_tpu_unicode_decode_error_fails_closed(mock_list):
     )
     with patch("builtins.open", open_mock):
         assert tpu._is_vfio_group_a_tpu(96) is False
+
+
+@pytest.fixture
+def vfio_sysfs(monkeypatch):
+    """Mock a tpu7x host with 4 dual-VF chips (8 non-monotonic VFIO groups) + 1 non-TPU group."""
+    for var in (tpu.TPU_VISIBLE_CHIPS_ENV_VAR, tpu.TPU_VISIBLE_DEVICES_ENV_VAR):
+        monkeypatch.delenv(var, raising=False)
+
+    # Real tpu7x PCI BDF layout (non-monotonic IOMMU groups across root buses 00 and c0)
+    # plus an NVIDIA BlueField-3 RShim VFIO group (/dev/vfio/96, vendor 0x15b3).
+    groups = {
+        4: ("0000:00:03.0", "0x1ae0"),  # Chip 0, VF 0 (device 0)
+        5: ("0000:00:03.1", "0x1ae0"),  # Chip 0, VF 1 (device 1)
+        3: ("0000:00:04.0", "0x1ae0"),  # Chip 1, VF 0 (device 2)
+        0: ("0000:00:04.1", "0x1ae0"),  # Chip 1, VF 1 (device 3)
+        6: ("0000:c0:00.0", "0x1ae0"),  # Chip 2, VF 0 (device 4)
+        2: ("0000:c0:00.1", "0x1ae0"),  # Chip 2, VF 1 (device 5)
+        1: ("0000:c0:02.0", "0x1ae0"),  # Chip 3, VF 0 (device 6)
+        7: ("0000:c0:02.1", "0x1ae0"),  # Chip 3, VF 1 (device 7)
+        96: ("0016:03:00.2", "0x15b3"),  # Non-TPU vfio-pci device
+    }
+    listdir_map = {"/dev/vfio": ["vfio"] + [str(g) for g in groups]}
+    vendor_map = {}
+    for group, (bdf, vendor) in groups.items():
+        sysfs_dir = f"/sys/kernel/iommu_groups/{group}/devices"
+        listdir_map[sysfs_dir] = [bdf]
+        vendor_map[os.path.join(sysfs_dir, bdf, "vendor")] = f"{vendor}\n"
+
+    def fake_listdir(path):
+        if path in listdir_map:
+            return listdir_map[path]
+        raise FileNotFoundError(path)
+
+    def fake_open(path, *args, **kwargs):
+        if path in vendor_map:
+            return mock.mock_open(read_data=vendor_map[path])()
+        raise FileNotFoundError(path)
+
+    with (
+        patch("os.listdir", side_effect=fake_listdir),
+        patch("builtins.open", side_effect=fake_open),
+    ):
+        yield
+
+
+@pytest.mark.parametrize(
+    "env, visible_devices, expected",
+    [
+        pytest.param(
+            {},
+            None,
+            [
+                "/dev/vfio/4",
+                "/dev/vfio/5",
+                "/dev/vfio/3",
+                "/dev/vfio/0",
+                "/dev/vfio/6",
+                "/dev/vfio/2",
+                "/dev/vfio/1",
+                "/dev/vfio/7",
+            ],
+            id="full_host_bdf_sorted_excludes_non_tpu",
+        ),
+        pytest.param(
+            {"TPU_VISIBLE_CHIPS": "1,3"},
+            None,
+            ["/dev/vfio/3", "/dev/vfio/0", "/dev/vfio/1", "/dev/vfio/7"],
+            id="subhost_visible_chips_expands_dual_vf",
+        ),
+        pytest.param(
+            {"TPU_VISIBLE_CHIPS": "2,3", "TPU_VISIBLE_DEVICES": "0,1"},
+            None,
+            ["/dev/vfio/6", "/dev/vfio/2", "/dev/vfio/1", "/dev/vfio/7"],
+            id="chip_mask_ignores_visible_devices",
+        ),
+        pytest.param(
+            {"TPU_VISIBLE_CHIPS": "2"},
+            "5",
+            ["/dev/vfio/2"],
+            id="explicit_per_device_override_for_torchtpu",
+        ),
+        pytest.param(
+            {},
+            "",
+            [],
+            id="empty_explicit_index_probes_nothing",
+        ),
+        pytest.param(
+            {"TPU_VISIBLE_CHIPS": ""},
+            None,
+            [],
+            id="empty_visible_chips",
+        ),
+    ],
+)
+def test_get_current_process_tpu_vfio_devices(
+    vfio_sysfs, monkeypatch, env, visible_devices, expected
+):
+    """Resolves worker-scoped TPU VFIO devices across full-host, sub-host, and per-VF modes."""
+    for k, v in env.items():
+        monkeypatch.setenv(k, v)
+    assert (
+        tpu.get_current_process_tpu_vfio_devices(visible_devices=visible_devices)
+        == expected
+    )
+
+
+def test_get_current_process_tpu_vfio_devices_missing_vfio():
+    """TPU v4 (/dev/accel*) hosts without /dev/vfio return []."""
+    with patch("os.listdir", side_effect=FileNotFoundError("/dev/vfio")):
+        assert tpu.get_current_process_tpu_vfio_devices() == []
+
+
+def test_wait_for_tpu_vfio_ready_polls_busy_and_closes_fds(vfio_sysfs, monkeypatch):
+    """Polls only worker-assigned VFIO groups on EBUSY, ignores non-EBUSY, and closes fds."""
+    monkeypatch.setenv("TPU_VISIBLE_CHIPS", "2")  # Chip 2 -> /dev/vfio/6, /dev/vfio/2
+    ebusy_remaining = {"/dev/vfio/2": 2}
+    opened_paths = []
+    closed_fds = []
+
+    def fake_os_open(path, flags):
+        opened_paths.append(path)
+        if path not in ("/dev/vfio/6", "/dev/vfio/2"):
+            raise AssertionError(f"must not probe peer VFIO group {path}")
+        if path == "/dev/vfio/6":
+            raise PermissionError(errno.EACCES, "Permission denied")
+        if ebusy_remaining.get(path, 0) > 0:
+            ebusy_remaining[path] -= 1
+            raise OSError(errno.EBUSY, "Device or resource busy")
+        return 99
+
+    sleep_calls = []
+    with (
+        patch("os.open", side_effect=fake_os_open),
+        patch("os.close", side_effect=closed_fds.append),
+        patch.object(tpu.time, "sleep", side_effect=sleep_calls.append),
+    ):
+        tpu.wait_for_tpu_vfio_ready(timeout_s=5.0)
+
+    assert opened_paths == [
+        "/dev/vfio/6",
+        "/dev/vfio/2",
+        "/dev/vfio/2",
+        "/dev/vfio/2",
+    ]
+    assert closed_fds == [99]
+    assert len(sleep_calls) == 2
+
+
+def test_wait_for_tpu_vfio_ready_timeout_warns(vfio_sysfs, propagate_logs, caplog):
+    """Logs a warning and returns cleanly when EBUSY persists past timeout_s."""
+    clock = [100.0]
+
+    with (
+        patch("os.open", side_effect=OSError(errno.EBUSY, "Device or resource busy")),
+        patch.object(tpu.time, "monotonic", side_effect=lambda: clock[0]),
+        patch.object(
+            tpu.time,
+            "sleep",
+            side_effect=lambda dt: clock.__setitem__(0, clock[0] + dt),
+        ),
+    ):
+        tpu.wait_for_tpu_vfio_ready(timeout_s=0.12, visible_devices="5")
+
+    assert (
+        "Timed out after 0.12s waiting for TPU VFIO devices to be released: ['/dev/vfio/2']."
+        in caplog.text
+    )
 
 
 @pytest.mark.parametrize(
@@ -365,6 +534,7 @@ def test_set_tpu_visible_ids_and_bounds(mock_glob, test_case):
             )
             assert os.environ[tpu.TPU_HOST_BOUNDS_ENV_VAR] == tpu.TPU_SINGLE_HOST_BOUNDS
             assert os.environ[tpu.TPU_VISIBLE_CHIPS_ENV_VAR] == ",".join(tpu_chips)
+            assert os.environ[tpu.TPU_VISIBLE_DEVICES_ENV_VAR] == ",".join(tpu_chips)
         elif len(tpu_chips) == 2:
             assert (
                 os.environ[tpu.TPU_CHIPS_PER_HOST_BOUNDS_ENV_VAR]
@@ -372,37 +542,50 @@ def test_set_tpu_visible_ids_and_bounds(mock_glob, test_case):
             )
             assert os.environ[tpu.TPU_HOST_BOUNDS_ENV_VAR] == tpu.TPU_SINGLE_HOST_BOUNDS
             assert os.environ[tpu.TPU_VISIBLE_CHIPS_ENV_VAR] == ",".join(tpu_chips)
+            assert os.environ[tpu.TPU_VISIBLE_DEVICES_ENV_VAR] == ",".join(tpu_chips)
         elif len(tpu_chips) == 4:
             # Check that nothing is set, let the ML framework use the defaults.
             assert os.environ.get(tpu.TPU_CHIPS_PER_HOST_BOUNDS_ENV_VAR, None) is None
             assert os.environ.get(tpu.TPU_SINGLE_HOST_BOUNDS, None) is None
             assert os.environ.get(tpu.TPU_VISIBLE_CHIPS_ENV_VAR, None) is None
+            assert os.environ.get(tpu.TPU_VISIBLE_DEVICES_ENV_VAR, None) is None
         else:  # len(tpu_chips) == 8
             assert os.environ.get(tpu.TPU_CHIPS_PER_HOST_BOUNDS_ENV_VAR, None) is None
             assert os.environ.get(tpu.TPU_SINGLE_HOST_BOUNDS, None) is None
             assert os.environ.get(tpu.TPU_VISIBLE_CHIPS_ENV_VAR, None) is None
+            assert os.environ.get(tpu.TPU_VISIBLE_DEVICES_ENV_VAR, None) is None
 
 
 @pytest.mark.parametrize(
-    "device_ids, expected_chips, expected_bounds",
+    "device_ids, expected_chips, expected_devices, expected_bounds",
     [
-        # 2 logical devices, both on physical chip 0.
-        (["0", "1"], "0", tpu.TPU_CHIPS_PER_HOST_BOUNDS_1_CHIP_CONFIG),
+        # 2 logical devices (even passed out of order), both on physical chip 0.
+        (["1", "0"], "0", "0,1", tpu.TPU_CHIPS_PER_HOST_BOUNDS_1_CHIP_CONFIG),
         # 4 logical devices spanning physical chips 0 and 1.
-        (["0", "1", "2", "3"], "0,1", tpu.TPU_CHIPS_PER_HOST_BOUNDS_2_CHIP_CONFIG),
+        (
+            ["0", "1", "2", "3"],
+            "0,1",
+            "0,1,2,3",
+            tpu.TPU_CHIPS_PER_HOST_BOUNDS_2_CHIP_CONFIG,
+        ),
         # The other half of the node maps onto the other half of the chips.
-        (["4", "5", "6", "7"], "2,3", tpu.TPU_CHIPS_PER_HOST_BOUNDS_2_CHIP_CONFIG),
+        (
+            ["4", "5", "6", "7"],
+            "2,3",
+            "4,5,6,7",
+            tpu.TPU_CHIPS_PER_HOST_BOUNDS_2_CHIP_CONFIG,
+        ),
         # Every device on the node: let the ML framework use the defaults.
-        ([str(i) for i in range(8)], None, None),
+        ([str(i) for i in range(8)], None, None, None),
     ],
 )
 @patch("glob.glob")
 def test_set_tpu_visible_ids_and_bounds_dual_device(
-    mock_glob, device_ids, expected_chips, expected_bounds
+    mock_glob, device_ids, expected_chips, expected_devices, expected_bounds
 ):
     """Dual-device chips (v7x) expose 2 logical devices per physical chip, so the
-    device IDs Ray assigns must be collapsed onto chips before being written to
-    TPU_VISIBLE_CHIPS.
+    device IDs Ray assigns are collapsed onto chips for TPU_VISIBLE_CHIPS while
+    remaining uncollapsed in TPU_VISIBLE_DEVICES.
     """
     # 4 physical chips, enumerated by the driver as 8 logical devices.
     mock_glob.return_value = ["/dev/accel" + str(x) for x in range(8)]
@@ -412,15 +595,14 @@ def test_set_tpu_visible_ids_and_bounds_dual_device(
         TPUAcceleratorManager.get_current_node_num_accelerators.cache_clear()
         TPUAcceleratorManager.set_current_process_visible_accelerator_ids(device_ids)
         assert os.environ.get(tpu.TPU_VISIBLE_CHIPS_ENV_VAR) == expected_chips
+        assert os.environ.get(tpu.TPU_VISIBLE_DEVICES_ENV_VAR) == expected_devices
         assert os.environ.get(tpu.TPU_CHIPS_PER_HOST_BOUNDS_ENV_VAR) == expected_bounds
 
 
 @patch("glob.glob")
 def test_set_tpu_visible_ids_sub_chip_allocation(mock_glob):
-    """A sub-chip allocation is masked to the chip containing it, not rejected.
-
-    TPU_VISIBLE_CHIPS has whole-chip granularity, so either device of a
-    dual-device chip resolves to the same mask.
+    """A sub-chip allocation masks TPU_VISIBLE_CHIPS to the physical chip while
+    preserving the exact logical device ID in TPU_VISIBLE_DEVICES.
     """
     mock_glob.return_value = ["/dev/accel" + str(x) for x in range(8)]
     for device_id in ("0", "1"):
@@ -432,6 +614,7 @@ def test_set_tpu_visible_ids_sub_chip_allocation(mock_glob):
                 [device_id]
             )
             assert os.environ[tpu.TPU_VISIBLE_CHIPS_ENV_VAR] == "0"
+            assert os.environ[tpu.TPU_VISIBLE_DEVICES_ENV_VAR] == device_id
             assert (
                 os.environ[tpu.TPU_CHIPS_PER_HOST_BOUNDS_ENV_VAR]
                 == tpu.TPU_CHIPS_PER_HOST_BOUNDS_1_CHIP_CONFIG
@@ -525,6 +708,7 @@ def test_set_tpu_visible_ids_sub_chip_allocation(mock_glob):
             {
                 tpu.NOSET_TPU_VISIBLE_CHIPS_ENV_VAR: "1",
                 tpu.TPU_VISIBLE_CHIPS_ENV_VAR: "3",
+                tpu.TPU_VISIBLE_DEVICES_ENV_VAR: "3",
                 tpu.TPU_CHIPS_PER_HOST_BOUNDS_ENV_VAR: "1,1,1",
                 tpu.TPU_HOST_BOUNDS_ENV_VAR: "4,4,1",
             },
@@ -550,6 +734,7 @@ def test_set_tpu_visible_ids_preserves_explicit_bounds(
         TPUAcceleratorManager.get_current_node_num_accelerators.cache_clear()
         TPUAcceleratorManager.set_current_process_visible_accelerator_ids(tpu_chips)
         assert os.environ.get(tpu.TPU_VISIBLE_CHIPS_ENV_VAR) == expected_visible_chips
+        assert os.environ.get(tpu.TPU_VISIBLE_DEVICES_ENV_VAR) == expected_visible_chips
         assert (
             os.environ.get(tpu.TPU_CHIPS_PER_HOST_BOUNDS_ENV_VAR)
             == expected_chip_bounds
@@ -574,11 +759,13 @@ def test_set_tpu_visible_ids_reused_worker_bounds_cleanup(
     with patch.dict("os.environ", {}, clear=True):
         TPUAcceleratorManager.set_current_process_visible_accelerator_ids(["0"])
         assert os.environ.get(tpu.TPU_VISIBLE_CHIPS_ENV_VAR) == "0"
+        assert os.environ.get(tpu.TPU_VISIBLE_DEVICES_ENV_VAR) == "0"
         assert os.environ.get(tpu.TPU_CHIPS_PER_HOST_BOUNDS_ENV_VAR) == "1,1,1"
         assert os.environ.get(tpu.TPU_HOST_BOUNDS_ENV_VAR) == "1,1,1"
 
         TPUAcceleratorManager.set_current_process_visible_accelerator_ids(["0", "1"])
         assert os.environ.get(tpu.TPU_VISIBLE_CHIPS_ENV_VAR) == "0,1"
+        assert os.environ.get(tpu.TPU_VISIBLE_DEVICES_ENV_VAR) == "0,1"
         assert os.environ.get(tpu.TPU_CHIPS_PER_HOST_BOUNDS_ENV_VAR) == "1,2,1"
         assert os.environ.get(tpu.TPU_HOST_BOUNDS_ENV_VAR) == "1,1,1"
 
@@ -586,16 +773,19 @@ def test_set_tpu_visible_ids_reused_worker_bounds_cleanup(
             ["0", "1", "2", "3"]
         )
         assert os.environ.get(tpu.TPU_VISIBLE_CHIPS_ENV_VAR) == expected_visible_chips
+        assert os.environ.get(tpu.TPU_VISIBLE_DEVICES_ENV_VAR) == expected_visible_chips
         assert os.environ.get(tpu.TPU_CHIPS_PER_HOST_BOUNDS_ENV_VAR) is None
         assert os.environ.get(tpu.TPU_HOST_BOUNDS_ENV_VAR) is None
 
         TPUAcceleratorManager.set_current_process_visible_accelerator_ids(["0"])
         assert os.environ.get(tpu.TPU_VISIBLE_CHIPS_ENV_VAR) == "0"
+        assert os.environ.get(tpu.TPU_VISIBLE_DEVICES_ENV_VAR) == "0"
         assert os.environ.get(tpu.TPU_CHIPS_PER_HOST_BOUNDS_ENV_VAR) == "1,1,1"
         assert os.environ.get(tpu.TPU_HOST_BOUNDS_ENV_VAR) == "1,1,1"
 
         TPUAcceleratorManager.set_current_process_visible_accelerator_ids([])
         assert os.environ.get(tpu.TPU_VISIBLE_CHIPS_ENV_VAR) == ""
+        assert os.environ.get(tpu.TPU_VISIBLE_DEVICES_ENV_VAR) == ""
         assert os.environ.get(tpu.TPU_CHIPS_PER_HOST_BOUNDS_ENV_VAR) is None
         assert os.environ.get(tpu.TPU_HOST_BOUNDS_ENV_VAR) is None
 
@@ -603,29 +793,64 @@ def test_set_tpu_visible_ids_reused_worker_bounds_cleanup(
             ["0", "1", "2", "3"]
         )
         assert os.environ.get(tpu.TPU_VISIBLE_CHIPS_ENV_VAR) == expected_visible_chips
+        assert os.environ.get(tpu.TPU_VISIBLE_DEVICES_ENV_VAR) == expected_visible_chips
         assert os.environ.get(tpu.TPU_CHIPS_PER_HOST_BOUNDS_ENV_VAR) is None
         assert os.environ.get(tpu.TPU_HOST_BOUNDS_ENV_VAR) is None
 
 
-def test_tpu_worker_noset_visible_chips_preserves_framework_env(shutdown_only):
-    """Verify real Ray workers with NOSET=1 preserve per-actor TPU env vars without IndexError."""
+def test_tpu_worker_visible_devices_and_chips(shutdown_only):
+    """Verify real Ray workers set both TPU_VISIBLE_DEVICES and TPU_VISIBLE_CHIPS,
+    and preserve caller-supplied env vars when NOSET=1."""
     ray.init(num_cpus=8, resources={"TPU": 8})
 
     @ray.remote(num_cpus=0.5, resources={"TPU": 1})
-    class FrameworkTPUWorker:
+    class TPUWorker:
         def get_tpu_state(self):
             return {
                 "accelerator_ids": ray.get_runtime_context().get_accelerator_ids()[
                     "TPU"
                 ],
                 "visible_chips": os.environ.get(tpu.TPU_VISIBLE_CHIPS_ENV_VAR),
+                "visible_devices": os.environ.get(tpu.TPU_VISIBLE_DEVICES_ENV_VAR),
                 "chip_bounds": os.environ.get(tpu.TPU_CHIPS_PER_HOST_BOUNDS_ENV_VAR),
                 "host_bounds": os.environ.get(tpu.TPU_HOST_BOUNDS_ENV_VAR),
             }
 
+    # 1. Default Ray-managed worker env vars with RAY_TPU_RESOURCE_PER_CHIP=2:
+    #    8 workers each get 1 logical device (0..7) and 1 physical chip (0..3).
+    managed_workers = [
+        TPUWorker.options(
+            runtime_env={"env_vars": {tpu.RAY_TPU_RESOURCE_PER_CHIP_ENV_VAR: "2"}}
+        ).remote()
+        for _ in range(8)
+    ]
+    managed_states = ray.get([w.get_tpu_state.remote() for w in managed_workers])
+    assert sorted(s["visible_devices"] for s in managed_states) == [
+        str(i) for i in range(8)
+    ]
+    assert sorted(s["visible_chips"] for s in managed_states) == [
+        "0",
+        "0",
+        "1",
+        "1",
+        "2",
+        "2",
+        "3",
+        "3",
+    ]
+    for s in managed_states:
+        dev_id = int(s["accelerator_ids"][0])
+        assert s["visible_devices"] == str(dev_id)
+        assert s["visible_chips"] == str(dev_id // 2)
+        assert s["chip_bounds"] == "1,1,1"
+        assert s["host_bounds"] == "1,1,1"
+    for w in managed_workers:
+        ray.kill(w)
+
+    # 2. Framework-managed workers with NOSET=1 preserve per-actor TPU env vars.
     for resource_per_chip, host_bounds in [(1, "2,2,1"), (2, "2,2,4")]:
         workers = [
-            FrameworkTPUWorker.options(
+            TPUWorker.options(
                 runtime_env={
                     "env_vars": {
                         tpu.NOSET_TPU_VISIBLE_CHIPS_ENV_VAR: "1",
@@ -641,8 +866,62 @@ def test_tpu_worker_noset_visible_chips_preserves_framework_env(shutdown_only):
         for i, state in enumerate(ray.get([w.get_tpu_state.remote() for w in workers])):
             assert int(state["accelerator_ids"][0]) // resource_per_chip == i
             assert state["visible_chips"] == str(i)
+            assert state["visible_devices"] is None
             assert state["chip_bounds"] == "1,1,1"
             assert state["host_bounds"] == host_bounds
+        for w in workers:
+            ray.kill(w)
+
+
+def test_tpu_task_env_restored_on_reused_worker(shutdown_only):
+    """A reused worker restores every TPU env var a normal task changed, not just
+    TPU_VISIBLE_CHIPS, so the next task sees the container's original values
+    (for example the chip/host bounds the GKE device plugin injects).
+    """
+    ray.init(num_cpus=1, resources={"TPU": 4})
+    tracked_env_vars = (
+        tpu.TPU_VISIBLE_CHIPS_ENV_VAR,
+        tpu.TPU_VISIBLE_DEVICES_ENV_VAR,
+        tpu.TPU_CHIPS_PER_HOST_BOUNDS_ENV_VAR,
+        tpu.TPU_HOST_BOUNDS_ENV_VAR,
+    )
+    container_env = {
+        tpu.TPU_CHIPS_PER_HOST_BOUNDS_ENV_VAR: "2,2,1",
+        tpu.TPU_HOST_BOUNDS_ENV_VAR: "2,2,1",
+    }
+
+    def snapshot_env():
+        return {
+            "pid": os.getpid(),
+            **{var: os.environ.get(var) for var in tracked_env_vars},
+        }
+
+    tpu_task = ray.remote(
+        resources={"TPU": 1}, runtime_env={"env_vars": container_env}
+    )(snapshot_env)
+    cpu_task = ray.remote(runtime_env={"env_vars": container_env})(snapshot_env)
+
+    tpu_env = ray.get(tpu_task.remote())
+    assert tpu_env[tpu.TPU_VISIBLE_CHIPS_ENV_VAR] in {"0", "1", "2", "3"}
+    assert (
+        tpu_env[tpu.TPU_VISIBLE_DEVICES_ENV_VAR]
+        == tpu_env[tpu.TPU_VISIBLE_CHIPS_ENV_VAR]
+    )
+    assert tpu_env[tpu.TPU_CHIPS_PER_HOST_BOUNDS_ENV_VAR] == "1,1,1"
+    assert tpu_env[tpu.TPU_HOST_BOUNDS_ENV_VAR] == "1,1,1"
+
+    # Idle workers are reused most-recently-released first, so the CPU task
+    # normally lands on the TPU task's process; retry in case it does not.
+    for _ in range(10):
+        cpu_env = ray.get(cpu_task.remote())
+        if cpu_env["pid"] == tpu_env["pid"]:
+            break
+    else:
+        pytest.fail("CPU task never reused the TPU task's worker process.")
+    assert cpu_env[tpu.TPU_VISIBLE_CHIPS_ENV_VAR] is None
+    assert cpu_env[tpu.TPU_VISIBLE_DEVICES_ENV_VAR] is None
+    assert cpu_env[tpu.TPU_CHIPS_PER_HOST_BOUNDS_ENV_VAR] == "2,2,1"
+    assert cpu_env[tpu.TPU_HOST_BOUNDS_ENV_VAR] == "2,2,1"
 
 
 def test_get_current_process_visible_accelerator_ids(monkeypatch):

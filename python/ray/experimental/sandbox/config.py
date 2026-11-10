@@ -257,7 +257,11 @@ class SandboxConfig:
         image: Container image for the sandbox environment.
         cpu: Number of CPU cores allocated to the sandbox.
         memory: Amount of memory allocated to the sandbox (e.g. "1Gi", "512Mi").
-        env: Environment variables to inject into the sandbox.
+        env: Environment variables to inject into the sandbox. For GPU
+            sandboxes, NVIDIA_DRIVER_CAPABILITIES also sets the driver
+            capabilities runsc allows, such as compute,utility,profiling.
+            Without it, gVisor uses compute,utility. An image's environment
+            cannot raise the allowed capabilities.
         workdir: Working directory for commands (the process cwd). None
             (default) uses the image's WORKDIR, or "/" if the image sets
             none. On a readonly rootfs, an *explicitly* passed workdir is
@@ -344,6 +348,11 @@ class SandboxConfig:
             directory later appear inside the sandbox too, so one sandbox can
             be handed data after it starts; it can never write there.
             Replaces any existing OCI mounts at the same sandbox path.
+        oom_score_adj: Linux OOM-killer score adjustment for the sandbox's
+            host processes, from -1000 (exempt) to 1000 (most likely to be
+            killed). None inherits the creating process's value. Set to 0
+            to avoid inheriting a protected manager's OOM immunity.
+            Lowering the value may require CAP_SYS_RESOURCE.
     """
 
     image: str
@@ -367,6 +376,7 @@ class SandboxConfig:
     _ignore_cgroups: bool = field(default=False, repr=False, compare=False)
     disk: Union[str, int, float] = 0
     mounts: Optional[Dict[str, str]] = None
+    oom_score_adj: Optional[int] = None
 
     def __post_init__(self):
         self.cpu = 0.0 if self.cpu is None else float(self.cpu)
@@ -389,6 +399,11 @@ class SandboxConfig:
                     raise ValueError(
                         "mounts must map absolute paths to absolute paths."
                     )
+        if self.oom_score_adj is not None and (
+            type(self.oom_score_adj) is not int
+            or not -1000 <= self.oom_score_adj <= 1000
+        ):
+            raise ValueError("oom_score_adj must be an integer from -1000 to 1000.")
         if self.network not in VALID_NETWORK_MODES:
             raise ValueError(
                 f"Invalid network mode '{self.network}'. "
