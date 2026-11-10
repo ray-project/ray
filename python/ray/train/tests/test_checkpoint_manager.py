@@ -194,6 +194,35 @@ def test_checkpoint_without_score_ranks_worst(order, checkpoint_paths):
     assert Path(checkpoint_paths[4]).exists()
 
 
+@pytest.mark.parametrize("order", ["min", "max"])
+def test_latest_checkpoint_without_score_is_not_best(order, checkpoint_paths):
+    """A checkpoint without the score attribute is not the best checkpoint,
+    even when it is the latest one."""
+    manager = _CheckpointManager(
+        checkpoint_config=CheckpointConfig(
+            checkpoint_score_attribute="score",
+            checkpoint_score_order=order,
+        )
+    )
+
+    sign = 1 if order == "min" else -1
+    scores = [3, 5, None]
+    for i, score in enumerate(scores):
+        metrics = {"iter": i} if score is None else {"iter": i, "score": sign * score}
+        manager.register_checkpoint(
+            _TrainingResult(
+                checkpoint=Checkpoint.from_directory(checkpoint_paths[i]),
+                metrics=metrics,
+            )
+        )
+
+    assert manager.best_checkpoint_result.metrics["iter"] == 0
+    assert [
+        tracked_checkpoint.metrics["iter"]
+        for tracked_checkpoint in manager.best_checkpoint_results
+    ] == [2, 1, 0]
+
+
 def test_missing_score_attribute_logged_once_per_checkpoint(
     checkpoint_paths, caplog, propagate_logs
 ):
