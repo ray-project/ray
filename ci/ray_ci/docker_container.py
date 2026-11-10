@@ -7,6 +7,7 @@ from ci.ray_ci.configs import (
     DEFAULT_ARCHITECTURE,
     DEFAULT_PYTHON_TAG_VERSION,
     DEFAULT_TPU_PYTHON_TAG_VERSION,
+    PYTHON_VERSIONS,
 )
 from ci.ray_ci.linux_container import LinuxContainer
 from ci.ray_ci.supported_images import (
@@ -83,8 +84,12 @@ class DockerContainer(LinuxContainer):
             assert platform in PLATFORMS_RAY_LLM
             assert architecture in ARCHITECTURES_RAY_LLM
         else:
-            # ray or ray-extra
-            assert python_version in PYTHON_VERSIONS_RAY
+            # ray or ray-extra. PYTHON_VERSIONS_RAY is the set of python
+            # versions we publish; CI still builds test-only images for
+            # python versions that are no longer published (e.g. 3.10 for
+            # the HA integration and kuberay tests), so validate against
+            # every python version CI can build instead.
+            assert python_version in PYTHON_VERSIONS
             assert platform in PLATFORMS_RAY
             assert architecture in ARCHITECTURES_RAY
 

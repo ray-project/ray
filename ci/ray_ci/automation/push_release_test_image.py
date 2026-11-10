@@ -212,7 +212,7 @@ class ReleaseTestImagePushContext:
 
     def _python_suffixes(self) -> List[str]:
         """Get python version suffixes (includes empty for default version)."""
-        return get_python_suffixes(self.python_version)
+        return get_python_suffixes(self.python_version, self.platform)
 
     def _platform_suffixes(self) -> List[str]:
         """Get platform suffixes (includes aliases like -gpu for GPU_PLATFORM)."""

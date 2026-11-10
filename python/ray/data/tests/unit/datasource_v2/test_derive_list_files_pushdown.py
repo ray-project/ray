@@ -24,6 +24,9 @@ from ray.data._internal.datasource_v2.common.non_sampling_file_indexer import (
 from ray.data._internal.datasource_v2.formats.parquet.parquet_datasource_v2 import (
     ParquetDatasourceV2,
 )
+from ray.data._internal.datasource_v2.formats.parquet.parquet_scanner import (
+    ParquetScanner,
+)
 from ray.data._internal.logical.interfaces import (
     LogicalOperator,
     LogicalPlan,
@@ -31,6 +34,7 @@ from ray.data._internal.logical.interfaces import (
     Rule,
 )
 from ray.data._internal.logical.operators import (
+    Count,
     Filter,
     Limit,
     ListFiles,
@@ -119,6 +123,55 @@ def test_derives_state_the_scanner_accepted(tmp_path):
     assert list_files.predicate is predicate
     assert list_files.projected_columns == ["a"]
     assert list_files.limit == 5
+
+
+@pytest.mark.parametrize(
+    "shuffle_config,expected_limit",
+    [
+        (None, 10),
+        (FileShuffleConfig(seed=1), 10),
+        (FileShuffleConfig(seed=1, small_chunks_shuffle=True), None),
+    ],
+    ids=["no_shuffle", "file_shuffle", "small_chunks_shuffle"],
+)
+def test_partition_condition_reaches_reader_with_shuffle_aware_listing_limit(
+    tmp_path, shuffle_config, expected_limit
+):
+    read_files = _mk_read_files(tmp_path)
+    schema = read_files.schema.append(pa.field("year", pa.string()))
+    scanner = ParquetScanner(
+        schema=schema,
+        partitioning=Partitioning(PartitionStyle.HIVE, field_names=["year"]),
+    ).prune_partitions(col("year") == "2024")
+    scanner, _ = scanner.push_filters(col("a") > 2)
+    assert isinstance(scanner, ParquetScanner)
+    scanner = scanner.push_limit(10)
+    assert isinstance(scanner, ParquetScanner)
+    read_files = replace(
+        read_files,
+        scanner=scanner,
+        input_dependencies=[
+            replace(
+                _source_list_files(read_files),
+                shuffle_config_factory=lambda: shuffle_config,
+            )
+        ],
+    )
+    list_files = _list_files_of(_apply(read_files))
+    assert list_files.limit == expected_limit
+    assert scanner.pushed_limit() == 10
+    assert list_files.predicate is not None
+    assert list_files.partition_pruner is not None
+    assert list_files.predicate.structurally_equals(col("a") > 2)
+    assert list_files.partition_pruner.should_include(str(tmp_path / "root.parquet"))
+    assert not list_files.partition_pruner.should_include(
+        str(tmp_path / "year=2023" / "data.parquet")
+    )
+    reader = scanner.create_reader()
+    assert reader._predicate is not None
+    assert reader._predicate.structurally_equals(
+        (col("a") > 2) & (col("year") == "2024")
+    )
 
 
 @pytest.mark.parametrize(
@@ -220,6 +273,51 @@ def test_state_is_cleared_when_consumer_is_not_read_files(tmp_path):
 
     assert derived.predicate is None
     assert derived.limit is None
+
+
+def test_final_pushdown_is_left_alone(tmp_path):
+    """``pushdown_is_final`` keeps constraints a rule set for a non-``ReadFiles``.
+
+    ``PushdownCountFiles`` replaces the ``ReadFiles`` with a ``MapBatches``
+    that applies the filter through the same reader, so clearing the listing's
+    predicate would list the whole table and count it unfiltered.
+    """
+    read_files = _mk_read_files(tmp_path)
+    predicate = col("a") > 2
+    list_files = replace(
+        _source_list_files(read_files),
+        predicate=predicate,
+        pushdown_is_final=True,
+    )
+    count_rows = MapBatches(
+        fn=lambda batch: batch,
+        input_dependencies=[list_files],
+        batch_format="pyarrow",
+        can_modify_num_rows=True,
+    )
+
+    derived = _list_files_of(_apply(count_rows))
+
+    assert derived.predicate is predicate
+
+
+def test_count_pushdown_marks_its_listing_final(tmp_path):
+    """The real ``PushdownCountFiles`` sets ``pushdown_is_final`` on its listing.
+
+    Parquet only counts from footers with no filter, so the pinned predicate
+    here is ``None``; ``test_final_pushdown_is_left_alone`` covers one surviving.
+    """
+    read_files = _mk_read_files(tmp_path)
+
+    optimized = LogicalOptimizer().optimize(
+        LogicalPlan(
+            dag=Count(input_dependencies=[read_files]),
+            context=DataContext.get_current(),
+        )
+    )
+
+    assert isinstance(optimized.dag, MapBatches)
+    assert _list_files_of(optimized).pushdown_is_final
 
 
 class _WeakenScannerPredicate(Rule):

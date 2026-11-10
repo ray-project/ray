@@ -60,12 +60,12 @@ def get_python_suffixes(python_version: str, platform: str = "cpu") -> List[str]
     """
     Get python version suffixes (includes empty for default version).
 
-    For the default python tag version (3.12 on TPU, 3.10 otherwise),
+    For the default python tag version (3.12 on TPU, 3.11 otherwise),
     returns both the explicit suffix and an empty suffix.
 
     Examples:
-        ("3.10", "cpu") -> ["-py310", ""]
-        ("3.11", "cpu") -> ["-py311"]
+        ("3.11", "cpu") -> ["-py311", ""]
+        ("3.12", "cpu") -> ["-py312"]
         ("3.12", "tpu") -> ["-py312", ""]
     """
     default_version = (

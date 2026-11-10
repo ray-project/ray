@@ -55,13 +55,13 @@ class TestFormatPythonTag:
 class TestGetPythonSuffixes:
     def test_default_python_version_includes_empty(self):
         """DEFAULT_PYTHON_TAG_VERSION gets both explicit and empty suffix."""
-        assert DEFAULT_PYTHON_TAG_VERSION == "3.10"
-        suffixes = get_python_suffixes("3.10")
-        assert suffixes == ["-py310", ""]
+        assert DEFAULT_PYTHON_TAG_VERSION == "3.11"
+        suffixes = get_python_suffixes("3.11")
+        assert suffixes == ["-py311", ""]
 
     def test_non_default_python_version(self):
         """Non-default python versions only get explicit suffix."""
-        assert get_python_suffixes("3.11") == ["-py311"]
+        assert get_python_suffixes("3.10") == ["-py310"]
         assert get_python_suffixes("3.12") == ["-py312"]
 
     def test_tpu_default_python_version_includes_empty(self):
