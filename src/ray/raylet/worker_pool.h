@@ -692,8 +692,15 @@ class WorkerPool : public WorkerPoolInterface {
   /// @brief Fence a cancelled launch, release startup quota, and transfer cleanup.
   /// @param language Worker pool containing the launch.
   /// @param worker_id Stable launch identity, including before registration.
-  void StopWorkerContainer(const Language &language, const WorkerID &worker_id);
-  void SendStopWorkerContainer(const Language &language, const WorkerID &worker_id);
+  /// @param state State for the worker's language.
+  /// @param info Container worker process that is pending registration.
+  void StopWorkerContainer(const Language &language,
+                           const WorkerID &worker_id,
+                           State &state,
+                           WorkerProcessInfo &info);
+  void SendStopWorkerContainer(State &state,
+                               const WorkerID &worker_id,
+                               const WorkerProcessInfo &info);
   absl::flat_hash_set<WorkerID> pending_container_cancellations_;
 
   /// Increase worker OOM scores to avoid raylet crashes from heap memory

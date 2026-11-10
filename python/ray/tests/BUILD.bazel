@@ -104,6 +104,7 @@ py_test_module_list(
         "test_job.py",
         "test_kill_subprocesses.py",
         "test_memstat.py",
+        "test_worker_container_manager.py",
     ],
     tags = [
         "exclusive",

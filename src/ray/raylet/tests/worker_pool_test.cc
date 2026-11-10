@@ -2869,6 +2869,18 @@ TEST_F(WorkerPoolTest, ContainerCleanupDoesNotHoldStartupQuota) {
         Language::PYTHON, rpc::WorkerType::WORKER, JOB_ID, &status);
     EXPECT_EQ(status, PopWorkerStatus::OK);
     EXPECT_TRUE(ordinary.IsValid());
+    // Grow worker_processes while cancellation RPCs are outstanding, so their
+    // callbacks and retries must look up entries again after a possible rehash.
+    for (int i = 0; i < 32; ++i) {
+      auto [proc, worker_id] = worker_pool_->StartWorkerProcess(
+          Language::PYTHON, rpc::WorkerType::WORKER, JOB_ID, &status);
+      ASSERT_EQ(status, PopWorkerStatus::OK);
+      auto worker = worker_pool_->CreateWorker(worker_id, nullptr, Language::PYTHON);
+      ASSERT_TRUE(
+          worker_pool_->RegisterWorker(worker, proc.GetId(), [](Status, int) {}).ok());
+      worker_pool_->OnWorkerStarted(worker);
+    }
+    EXPECT_EQ(worker_pool_->NumWorkersStarting(), 1);
     // A transport failure retains cancellation for retry, without holding quota.
     agent_ptr->container_cleanup_callbacks.front()(false);
   });

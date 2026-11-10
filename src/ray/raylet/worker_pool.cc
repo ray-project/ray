@@ -308,65 +308,54 @@ void WorkerPool::RemoveWorkerProcess(State &state, const WorkerID &worker_id) {
 }
 
 void WorkerPool::StopWorkerContainer(const Language &language,
-                                     const WorkerID &worker_id) {
-  auto &state = GetStateForLanguage(language);
-  auto it = state.worker_processes.find(worker_id);
-  if (it == state.worker_processes.end() || it->second.cleanup_requested) return;
-  auto &info = it->second;
+                                     const WorkerID &worker_id,
+                                     State &state,
+                                     WorkerProcessInfo &info) {
+  if (info.cleanup_requested) return;
   info.cleanup_requested = true;
-  const bool was_starting = info.is_pending_registration;
-  const auto worker_type = info.worker_type;
   info.is_pending_registration = false;
   if (auto worker = GetWorker(state.registered_workers, worker_id)) {
     worker->MarkDead();
   }
   pending_container_cancellations_.insert(worker_id);
-  SendStopWorkerContainer(language, worker_id);
-  // Cleanup is not worker startup. Release this language/type's quota now,
-  // irrespective of engine progress or control-plane transport failure.
-  if (was_starting && IsIOWorkerType(worker_type)) {
-    GetIOWorkerStateFromWorkerType(worker_type, state).num_starting_io_workers--;
-  }
-  TryStartIOWorkers(language);
-  if (worker_type == rpc::WorkerType::WORKER) TryPendingStartRequests(language);
+  SendStopWorkerContainer(state, worker_id, info);
+  // Container workers are ordinary workers. Release startup quota independently
+  // of cancellation delivery, without retaining info across new worker starts.
+  TryPendingStartRequests(language);
   starting_worker_timeout_callback_();
 }
 
-void WorkerPool::SendStopWorkerContainer(const Language &language,
-                                         const WorkerID &worker_id) {
-  auto &state = GetStateForLanguage(language);
-  auto it = state.worker_processes.find(worker_id);
-  if (it == state.worker_processes.end()) return;
+void WorkerPool::SendStopWorkerContainer(State &state,
+                                         const WorkerID &worker_id,
+                                         const WorkerProcessInfo &info) {
+  // State entries are fixed after construction, but worker_processes can rehash.
+  // Only use info synchronously; look up the worker again in callbacks.
   runtime_env_agent_client_->StopWorkerContainer(
       worker_id,
       node_id_,
-      it->second.job_id,
-      it->second.container_deadline_ms,
-      [this, language, worker_id](bool accepted) {
-        io_service_->post(
-            [this, language, worker_id, accepted]() {
-              auto &state = GetStateForLanguage(language);
-              auto it = state.worker_processes.find(worker_id);
-              if (it == state.worker_processes.end()) return;
-              if (!accepted) {
-                RAY_LOG(WARNING)
-                    << "Container cancellation delivery failed; retrying. Worker ID: "
-                    << worker_id;
-                it->second.cleanup_retry_timer = execute_after(
-                    *io_service_,
-                    [this, language, worker_id]() {
-                      SendStopWorkerContainer(language, worker_id);
-                    },
-                    std::chrono::milliseconds(
-                        RayConfig::instance().agent_manager_retry_interval_ms()));
-                return;
-              }
-              pending_container_cancellations_.erase(worker_id);
-              DeleteRuntimeEnvIfPossible(
-                  it->second.runtime_env_info.serialized_runtime_env());
-              RemoveWorkerProcess(state, worker_id);
-            },
-            "WorkerPool.ContainerCancellationAccepted");
+      info.job_id,
+      info.container_deadline_ms,
+      [this, &state, worker_id](bool accepted) {
+        auto it = state.worker_processes.find(worker_id);
+        if (it == state.worker_processes.end()) return;
+        if (!accepted) {
+          RAY_LOG(WARNING)
+              << "Container cancellation delivery failed; retrying. Worker ID: "
+              << worker_id;
+          it->second.cleanup_retry_timer = execute_after(
+              *io_service_,
+              [this, &state, worker_id]() {
+                auto it = state.worker_processes.find(worker_id);
+                if (it == state.worker_processes.end()) return;
+                SendStopWorkerContainer(state, worker_id, it->second);
+              },
+              std::chrono::milliseconds(
+                  RayConfig::instance().agent_manager_retry_interval_ms()));
+          return;
+        }
+        pending_container_cancellations_.erase(worker_id);
+        DeleteRuntimeEnvIfPossible(it->second.runtime_env_info.serialized_runtime_env());
+        RemoveWorkerProcess(state, worker_id);
       });
 }
 
@@ -674,7 +663,7 @@ std::tuple<const ProcessInterface &, WorkerID> WorkerPool::StartWorkerProcess(
                   if (it != state.worker_processes.end() &&
                       it->second.is_pending_registration) {
                     if (it->second.proc->IsAlive()) it->second.proc->Kill();
-                    StopWorkerContainer(language, worker_id);
+                    StopWorkerContainer(language, worker_id, state, it->second);
                   }
                 },
                 "WorkerPool.ContainerRegistrationFailed");
@@ -786,8 +775,7 @@ void WorkerPool::MonitorStartingWorkerProcess(const WorkerID &worker_id,
     // Since this process times out to start, remove it from worker_processes
     // to avoid the zombie worker.
     auto it = state.worker_processes.find(worker_id);
-    if (it != state.worker_processes.end() && it->second.is_pending_registration &&
-        !it->second.cleanup_requested) {
+    if (it != state.worker_processes.end() && it->second.is_pending_registration) {
       RAY_LOG(ERROR)
           << "Some workers of the worker process(" << it->second.proc->GetId()
           << ") have not registered within the timeout. "
@@ -801,7 +789,7 @@ void WorkerPool::MonitorStartingWorkerProcess(const WorkerID &worker_id,
 
       process_failed_pending_registration_++;
       if (it->second.has_container) {
-        StopWorkerContainer(language, worker_id);
+        StopWorkerContainer(language, worker_id, state, it->second);
         return;
       }
       DeleteRuntimeEnvIfPossible(it->second.runtime_env_info.serialized_runtime_env());
@@ -1799,7 +1787,7 @@ void WorkerPool::DisconnectWorker(const std::shared_ptr<WorkerInterface> &worker
                                          it->second.has_container &&
                                          it->second.is_pending_registration;
   if (container_cleanup_pending) {
-    StopWorkerContainer(worker->GetLanguage(), worker->WorkerId());
+    StopWorkerContainer(worker->GetLanguage(), worker->WorkerId(), state, it->second);
   } else if (it != state.worker_processes.end() && !it->second.cleanup_requested) {
     const auto serialized_runtime_env =
         it->second.runtime_env_info.serialized_runtime_env();
