@@ -1495,37 +1495,89 @@ class Reconciler:
             and r.instance_status != IMInstance.RAY_STOP_REQUESTED
         ]
         pending_launches = [[req.instance_type, req.count] for req in to_launch]
-        if deferred and pending_launches:
+        if pending_launches:
             active_by_type: Dict[NodeType, int] = defaultdict(int)
             active_total = 0
-            node_type_configs = autoscaling_config.get_node_type_configs() or {}
-            max_num_nodes = autoscaling_config.get_max_num_nodes()
+            held_by_type: Dict[NodeType, int] = defaultdict(int)
+            active_reps: Set[Tuple[NodeType, str]] = set()
+            reach_by_rep: Dict[Tuple[NodeType, str], int] = defaultdict(int)
+            has_run_by_rep: Set[Tuple[NodeType, str]] = set()
+            nonreach_by_rep: Set[Tuple[NodeType, str]] = set()
+            req_types: Set[NodeType] = set()
             for inst in im_instances:
-                if (
-                    inst.instance_id not in updates
-                    and inst.status != IMInstance.RAY_STOP_REQUESTED
-                    and InstanceUtil.is_ray_running_reachable(inst.status)
-                ):
+                st = (
+                    updates[inst.instance_id].new_instance_status
+                    if inst.instance_id in updates
+                    else inst.status
+                )
+                reachable = (
+                    st != IMInstance.RAY_STOP_REQUESTED
+                    and InstanceUtil.is_ray_running_reachable(st)
+                )
+                if reachable:
                     active_total += 1
                     active_by_type[inst.instance_type] += 1
-            for item in pending_launches:
-                nt, count = item
-                if nt in node_type_configs:
-                    count = min(
-                        count,
-                        max(
-                            0,
-                            node_type_configs[nt].max_worker_nodes - active_by_type[nt],
-                        ),
-                    )
-                if max_num_nodes is not None:
-                    count = min(count, max(0, max_num_nodes - active_total))
-                size = replica_sizes.get(nt, 1)
-                if size > 1:
-                    count -= count % size
-                item[1] = count
-                active_by_type[nt] += count
-                active_total += count
+                    if st == IMInstance.REQUESTED:
+                        req_types.add(inst.instance_type)
+                c_inst = (
+                    cloud_instances.get(inst.cloud_instance_id)
+                    if inst.node_kind != NodeKind.HEAD
+                    and inst.cloud_instance_id
+                    and inst.instance_type in replica_sizes
+                    else None
+                )
+                if c_inst is not None and c_inst.replica_id:
+                    rk = (inst.instance_type, c_inst.replica_id)
+                    if st in (
+                        IMInstance.ALLOCATED,
+                        IMInstance.RAY_INSTALLING,
+                        IMInstance.RAY_RUNNING,
+                        IMInstance.RAY_STOP_REQUESTED,
+                        IMInstance.RAY_STOPPING,
+                    ):
+                        active_reps.add(rk)
+                    if reachable:
+                        reach_by_rep[rk] += 1
+                        if st == IMInstance.RAY_RUNNING:
+                            has_run_by_rep.add(rk)
+                    elif st != IMInstance.TERMINATED:
+                        nonreach_by_rep.add(rk)
+            for nt, rep_id in active_reps:
+                size = replica_sizes[nt]
+                r_cnt = reach_by_rep[(nt, rep_id)]
+                if r_cnt < size and (
+                    (nt, rep_id) in nonreach_by_rep
+                    or (nt, rep_id) in has_run_by_rep
+                    or nt not in req_types
+                ):
+                    gap = size - r_cnt
+                    active_by_type[nt] += gap
+                    active_total += gap
+                    held_by_type[nt] += size
+            if deferred or held_by_type:
+                node_type_configs = autoscaling_config.get_node_type_configs() or {}
+                max_num_nodes = autoscaling_config.get_max_num_nodes()
+                for item in pending_launches:
+                    nt, count = item
+                    if nt in held_by_type:
+                        count = max(0, count - held_by_type[nt])
+                    if nt in node_type_configs:
+                        count = min(
+                            count,
+                            max(
+                                0,
+                                node_type_configs[nt].max_worker_nodes
+                                - active_by_type[nt],
+                            ),
+                        )
+                    if max_num_nodes is not None:
+                        count = min(count, max(0, max_num_nodes - active_total))
+                    size = replica_sizes.get(nt, 1)
+                    if size > 1:
+                        count -= count % size
+                    item[1] = count
+                    active_by_type[nt] += count
+                    active_total += count
 
         # Add new instances.
         for nt, count in pending_launches:
