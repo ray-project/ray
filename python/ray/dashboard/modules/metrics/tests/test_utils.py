@@ -9,6 +9,23 @@ from ray.dashboard.modules.metrics.metrics_head import (
 )
 
 
+def test_router_prefill_panel_keeps_each_handle_separate():
+    from ray.dashboard.modules.metrics.grafana_dashboard_factory import (
+        generate_serve_deployment_grafana_dashboard,
+    )
+
+    dashboard, _ = generate_serve_deployment_grafana_dashboard()
+    panels = json.loads(dashboard)["panels"]
+    panel = next(
+        p for p in panels if p["title"] == "Uncached prefill tokens per router"
+    )
+    assert panel["stack"] is False
+    target = panel["targets"][0]
+    assert target["expr"].startswith("ray_serve_router_uncached_prefill_tokens{")
+    assert "{{handle}}" in target["legendFormat"]
+    assert "{{actor_id}}" in target["legendFormat"]
+
+
 @pytest.mark.parametrize(
     "headers, raises_error",
     [

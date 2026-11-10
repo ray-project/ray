@@ -224,6 +224,25 @@ SERVE_DEPLOYMENT_GRAFANA_PANELS = [
         stack=False,
     ),
     Panel(
+        id=16,
+        title="Uncached prefill tokens per router",
+        description=(
+            "Current outstanding uncached prefill tokens reported by each router handle. "
+            "Raw snapshots, not lookback means. Routers report replicated global views; "
+            "do not sum the lines to estimate total workload."
+        ),
+        unit="tokens",
+        targets=[
+            Target(
+                expr="ray_serve_router_uncached_prefill_tokens{{{global_filters}}}",
+                legend="{{application}}#{{deployment}}#{{handle}}#{{actor_id}}",
+            ),
+        ],
+        fill=0,
+        stack=False,
+        grid_pos=GridPos(8, 5, 16, 8),
+    ),
+    Panel(
         id=15,
         title="Multiplexed model cache hit rate",
         description="The cache hit rate of multiplexed models for the deployment.",
