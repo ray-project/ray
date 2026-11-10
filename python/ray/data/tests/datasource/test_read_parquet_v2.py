@@ -1094,6 +1094,24 @@ def test_count_pushdown_uses_footer_matches_for_filter(
     assert sorted(row["a"] for row in rows) == [3, 4]
 
 
+def test_count_pushdown_preserves_read_remote_args(tmp_path, restore_ctx):
+    """Filtered count reads partial runs with the read's resource config."""
+    from ray.data._internal.logical.operators.map_operator import MapBatches
+
+    _write(tmp_path / "data.parquet", pa.table({"a": [1, 2, 3, 4]}))
+
+    restore_ctx.use_datasource_v2 = True
+    ds = ray.data.read_parquet(
+        str(tmp_path),
+        ray_remote_args={"resources": {"count_pushdown_test": 0.001}},
+    ).filter(expr=col("a") > 2)
+
+    dag = _optimized_count_plan(ds).dag
+    assert isinstance(dag, MapBatches)
+    assert dag.ray_remote_args["resources"] == {"count_pushdown_test": 0.001}
+    assert "num_cpus" in dag.ray_remote_args
+
+
 @pytest.mark.parametrize("merge_schema", [False, True])
 def test_count_pushdown_declines_limit(tmp_path, restore_ctx, merge_schema):
     """A limit makes the listing stop early, so metadata cannot answer count()."""

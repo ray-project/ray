@@ -45,6 +45,23 @@ def test_file_chunk_round_trips_through_a_manifest():
     assert FileChunk.from_metadata(manifest.file_chunk_metadatas[0]) == run
 
 
+def test_split_fully_matched_rows_contract():
+    """The helper counts matched runs and reads everything else by index."""
+    from ray.data._internal.logical.rules.pushdown_count_files import (
+        _split_fully_matched_rows,
+    )
+
+    matched = FileChunk(unit_ids=(0,), num_rows=5, size_bytes=10, fully_matched=True)
+    partial = FileChunk(unit_ids=(1,), num_rows=3, size_bytes=10, fully_matched=False)
+    manifest = FileManifest.construct_manifest(
+        paths=["whole", "matched", "partial"],
+        sizes=[10, 10, 10],
+        chunk_metadatas=[None, matched.to_metadata(), partial.to_metadata()],
+    )
+
+    assert _split_fully_matched_rows(manifest) == (5, [0, 2])
+
+
 if __name__ == "__main__":
     import sys
 

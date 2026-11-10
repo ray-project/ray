@@ -156,10 +156,11 @@ def _try_unfiltered_count_pushdown(
     metadata_reader: SupportsMetadata = reader
 
     def count_rows(batch: "pa.Table") -> "pa.Table":
+        # Apply the same scan-side pruning the read path does. Exact row counts
+        # alone do not account for scanners that override ``prune_input_split``.
+        manifest = scanner.prune_input_split(_manifest_from_batch(batch))
         total_rows = 0
-        for block_metadata in metadata_reader.read_metadata(
-            _manifest_from_batch(batch)
-        ):
+        for block_metadata in metadata_reader.read_metadata(manifest):
             total_rows += block_metadata.num_rows or 0
         return _count_result(total_rows)
 
@@ -207,11 +208,14 @@ def _try_filtered_count_pushdown(
     )
 
     def count_rows(batch: "pa.Table") -> "pa.Table":
-        manifest = _manifest_from_batch(batch)
+        # Prune before splitting: rows the scan would drop must not contribute
+        # as fully matched, and the remaining indices must point at the pruned
+        # manifest.
+        manifest = reader_scanner.prune_input_split(_manifest_from_batch(batch))
         total_rows, to_read = _split_fully_matched_rows(manifest)
         if to_read:
             reader = reader_scanner.create_reader()
-            partial_manifest = FileManifest(batch.take(to_read))
+            partial_manifest = FileManifest(manifest.as_block().take(to_read))
             for table in reader.read(partial_manifest):
                 total_rows += table.num_rows
         return _count_result(total_rows)
@@ -224,7 +228,12 @@ def _try_filtered_count_pushdown(
     )
 
 
-def _make_count_op(pushdown: _CountPushdown) -> MapBatches:
+def _make_count_op(pushdown: _CountPushdown, read_files: ReadFiles) -> MapBatches:
+    # A filtered count decodes partial runs, so it must inherit the read's
+    # compute strategy and remote args (resources, runtime_env, GPUs, ...).
+    # The strategy's CPU default only applies when the user did not set one.
+    remote_args = dict(read_files.ray_remote_args)
+    remote_args.setdefault("num_cpus", pushdown.num_cpus)
     return MapBatches(
         fn=pushdown.count_rows,
         input_dependencies=[pushdown.list_files],
@@ -233,7 +242,8 @@ def _make_count_op(pushdown: _CountPushdown) -> MapBatches:
         min_rows_per_bundled_input=pushdown.batch_size,
         zero_copy_batch=True,
         can_modify_num_rows=True,
-        ray_remote_args={"num_cpus": pushdown.num_cpus},
+        compute=read_files.compute,
+        ray_remote_args=remote_args,
     )
 
 
@@ -290,4 +300,4 @@ class PushdownCountFiles(Rule):
         if strategy is None:
             return plan
 
-        return LogicalPlan(_make_count_op(strategy), plan.context)
+        return LogicalPlan(_make_count_op(strategy, read_files), plan.context)
