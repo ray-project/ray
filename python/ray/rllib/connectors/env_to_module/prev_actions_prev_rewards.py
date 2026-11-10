@@ -28,6 +28,10 @@ class PrevActionsPrevRewards(ConnectorV2):
     already a dict), and adds "prev_rewards" and "prev_actions"
     to this dict. The original observations are stored under the self.ORIG_OBS_KEY in
     that dict.
+    - Encodes each previous action as follows: Discrete actions are one-hot
+    encoded, MultiDiscrete actions get one one-hot vector per component, and all
+    other action spaces (for example MultiBinary or Box) are flattened to their
+    raw values. Timesteps before the start of the episode are filled with zeros.
     - If your RLModule does not handle dict inputs, you will have to plug in an
     `FlattenObservations` connector piece after this one.
     - Does NOT work in a Learner pipeline as it operates on individual observation
