@@ -16,6 +16,34 @@ KV_TOKEN_KEY_HEADER = SERVE_INGRESS_ROUTER_HEADER_PREFIX + "kv-token-key"
 # to LLMRouter.
 KV_TOKEN_METADATA_KEY = "kv_token_metadata"
 
+# P/D: prefill's KV transfer params (base64 JSON) for the selected decode replica.
+KV_TRANSFER_PARAMS_HEADER = SERVE_INGRESS_ROUTER_HEADER_PREFIX + "kv-transfer-params"
+# P/D: the backend application the P/D router application routes to.
+PD_BACKEND_APP_NAME = "pd-backend"
+# replica_metadata key under which a prefill replica advertises the ZMQ endpoint
+# that runs prefill for the P/D router.
+PD_PREFILL_ENDPOINT_KEY = "kv_prefill_endpoint"
+
+# Router config of each P/D stage's selection service. Cost per replica, lowest
+# wins:
+# - Prefill: queued prefill tokens plus the request's uncached tokens. The scale
+#   makes them outweigh booked KV blocks, which only break ties.
+# - Decode: booked KV blocks only. D pulls the prompt's KV from P, so cache
+#   overlap earns no credit and the prompt books no prefill load.
+# The selection service reads them from DYN_ROUTER_* env vars once, at
+# construction; its replica mesh carries each booking's prefill tracking to peers.
+# TODO (jeffreywang): Pass these to SelectionService directly once it accepts a
+# router config, and disable active-block tracking for prefill instead of
+# scaling its load once SelectionService honors that.
+PREFILL_SELECTION_SVC_ENV = {
+    "DYN_ROUTER_PREFILL_LOAD_SCALE": "1000000",  # Prefill cost outweighs KV blocks.
+}
+DECODE_SELECTION_SVC_ENV = {
+    "DYN_ROUTER_KV_OVERLAP_SCORE_CREDIT": "0",  # No credit for KV cache overlap.
+    "DYN_ROUTER_ASSUME_KV_REUSE": "false",  # Book all prompt blocks as new load.
+    "DYN_ROUTER_TRACK_PREFILL_TOKENS": "false",  # Prompt tokens add no prefill load.
+}
+
 # Prompt-token channel resource bounds. Sending is best effort: if a ZMQ
 # pipe is unavailable or backed up, the router omits the token key and the
 # engine falls back to normal tokenization.
@@ -63,7 +91,8 @@ DEFAULT_SESSION_AFFINITY_TTL_S = 1800.0
 # request's candidates; hard affinity would reject the request instead.
 SESSION_AFFINITY_MODE = "soft"
 
-# routing_stats key under which an LLMRouter advertises its replica-mesh endpoint.
+# routing_stats key under which an LLMRouter advertises its replica-mesh
+# endpoints, one per tracked LLMServer deployment: {deployment name: endpoint}.
 KV_REPLICA_SYNC_METADATA_KEY = "kv_replica_sync_metadata"
 # Header carrying the selecting LLMRouter's lifecycle endpoint to the LLMServer.
 KV_LIFECYCLE_OWNER_HEADER = SERVE_INGRESS_ROUTER_HEADER_PREFIX + "kv-lifecycle-owner"

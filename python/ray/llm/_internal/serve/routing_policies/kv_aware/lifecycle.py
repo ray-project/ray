@@ -1,8 +1,17 @@
+"""LifecycleEventForwarder: Push events to the selecting router over ZMQ.
+LifecycleReceiver: Receive and apply events on the selecting router.
+LifecycleCodec: Encode and decode the shared msgpack wire format.
+RequestLifecycleOwnerMiddleware: Bind the router's endpoint from the request
+    header throughout the handler and response stream.
+bind_request_lifecycle_owner: Bind the router's endpoint for a request that
+    arrives without HTTP, e.g. a P/D prefill call.
+"""
+
 import asyncio
 import contextlib
 import contextvars
 from enum import Enum
-from typing import Awaitable, Callable, List, Optional
+from typing import Awaitable, Callable, Iterator, List, Optional
 
 import msgpack
 import zmq
@@ -47,6 +56,19 @@ def get_request_lifecycle_owner() -> Optional[str]:
     return _request_lifecycle_owner.get()
 
 
+@contextlib.contextmanager
+def bind_request_lifecycle_owner(owner: Optional[str]) -> Iterator[None]:
+    """Report the lifecycle events of requests run in this block to ``owner``.
+
+    Bind before the request starts: tasks it spawns inherit the owner.
+    """
+    token = _request_lifecycle_owner.set(owner)
+    try:
+        yield
+    finally:
+        _request_lifecycle_owner.reset(token)
+
+
 class RequestLifecycleOwnerMiddleware:
     """Bind the owner before vLLM spawns its handler task, through streaming."""
 
@@ -60,13 +82,9 @@ class RequestLifecycleOwnerMiddleware:
 
         # vLLM prepares the response in a child task but consumes the stream
         # outside it. Bind here so both inherit the request's owner.
-        token = _request_lifecycle_owner.set(
-            Headers(scope=scope).get(KV_LIFECYCLE_OWNER_HEADER)
-        )
-        try:
+        owner = Headers(scope=scope).get(KV_LIFECYCLE_OWNER_HEADER)
+        with bind_request_lifecycle_owner(owner):
             await self.app(scope, receive, send)
-        finally:
-            _request_lifecycle_owner.reset(token)
 
 
 class LifecycleCodec:

@@ -1091,5 +1091,33 @@ def test_build_app_router_application_requires_route_prefix(monkeypatch):
         built_app.validate_router_application()
 
 
+def test_router_app_target_allows_custom_router(monkeypatch):
+    """An app routed by a router application keeps its custom request router.
+
+    Under HAProxy a custom request router normally requires an ingress request
+    router. A router-application target needs none: the router application
+    picks its replicas, using the target's request router.
+    """
+    monkeypatch.setattr("ray.serve._private.build_app.RAY_SERVE_ENABLE_HA_PROXY", True)
+
+    @serve.deployment(
+        request_router_config=RequestRouterConfig(request_router_class=RoundRobinRouter)
+    )
+    class Backend:
+        pass
+
+    built = build_app(
+        Backend.bind()._with_router_application_target(),
+        name="backend",
+        make_deployment_handle=FakeDeploymentHandle.from_deployment,
+    )
+    assert (
+        built.deployments[
+            0
+        ]._deployment_config.request_router_config.get_request_router_class()
+        is RoundRobinRouter
+    )
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", "-s", __file__]))

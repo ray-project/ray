@@ -176,7 +176,7 @@ class TestDirectStreamingLLMRouter:
             return_value=("127.0.0.1", 9001, "DeploymentName#replica", None)
         )
 
-        # Truncated prefix is not valid JSON so json.loads fails.
+        # Truncated prefix is not valid JSON so parsing fails.
         body = b'{"model":"x","prompt":"' + (b"x" * 1024)
         request = _FakeRequest(body, headers={"x-body-truncated": "1058/90000"})
 

@@ -3,8 +3,12 @@
 local DIRECT_RESPONSE_HEADER = "${DIRECT_RESPONSE_HEADER}"
 local ORIGINAL_METHOD_HEADER = "${ORIGINAL_METHOD_HEADER}"
 
--- router backend -> { app, p = route prefix, local_pool, remote_pool }
+-- router backend -> { app, p = route prefix, s = session hash path, local_pool, remote_pool }
 local ROUTERS = ${ROUTERS}
+-- HAProxy's private listener, which hashes a session to a router replica.
+local ROUTER_SOCKET = ${ROUTER_SOCKET}
+-- Set on errors the private listener generates, e.g. when no router is up.
+local ROUTER_FAILED_HEADER = "x-serve-router-failed"
 
 -- app name -> { b = backend, p = route prefix, d = ingress deployment, r = { replica_id = server } }
 local APPS = ${APPS}
@@ -155,26 +159,37 @@ local function route(txn, router)
         path = moved_path("/internal/route", "/", router.p),
     }
 
-    local start = _rr_cursor[router.app] or 0
-    _rr_cursor[router.app] = start + 1
     local response, reason
+    local session_id = session_id_from(hdrs)
+    if router.s and session_id and session_id ~= "" then
+        -- A session's requests reach the same router replica from every proxy,
+        -- so the replica can reuse state across turns, e.g. tokenized prefixes.
+        -- The private listener also fails over to another replica.
+        request.path = router.s
+        request.headers = headers .. header_line("x-serve-router-session-id", session_id)
+        -- The listener selects the router's hash backend by path, not by Host.
+        response, reason = call_router({host = ROUTER_SOCKET, host_header = "localhost"}, request)
+    else
+        local start = _rr_cursor[router.app] or 0
+        _rr_cursor[router.app] = start + 1
 
-    local function try_pool(pool)
-        local pool_response, pool_reason
-        for i = 0, #pool - 1 do
-            pool_response, pool_reason = call_router(pool[(start + i) % #pool + 1], request)
-            if pool_response or pool_reason ~= "router_unreachable" then
-                break
+        local function try_pool(pool)
+            local pool_response, pool_reason
+            for i = 0, #pool - 1 do
+                pool_response, pool_reason = call_router(pool[(start + i) % #pool + 1], request)
+                if pool_response or pool_reason ~= "router_unreachable" then
+                    break
+                end
             end
+            return pool_response, pool_reason
         end
-        return pool_response, pool_reason
-    end
 
-    if #router.local_pool > 0 then
-        response, reason = try_pool(router.local_pool)
-    end
-    if not response and (reason == nil or reason == "router_unreachable") and #router.remote_pool > 0 then
-        response, reason = try_pool(router.remote_pool)
+        if #router.local_pool > 0 then
+            response, reason = try_pool(router.local_pool)
+        end
+        if not response and (reason == nil or reason == "router_unreachable") and #router.remote_pool > 0 then
+            response, reason = try_pool(router.remote_pool)
+        end
     end
     if not response then
         return fail(txn, reason)
@@ -183,6 +198,10 @@ local function route(txn, router)
     local status, head, response_body = parse_response(response)
     if not status then
         return fail(txn, "malformed_decision")
+    end
+    local listener_failure = response_header(head, ROUTER_FAILED_HEADER)
+    if listener_failure then
+        return fail(txn, listener_failure)
     end
     if response_header(head, DIRECT_RESPONSE_HEADER) == "1" then
         if not reply_with(txn, status, head, response_body) then
@@ -219,6 +238,7 @@ local function route(txn, router)
         return fail(txn, "replica_unavailable")
     end
 
+    set_router_response_headers(txn, response_body)
     txn.http:req_set_path(moved_path(txn.sf:path(), router.p, target.p))
     txn:set_var("txn.router_server", server_name)
     txn:set_var("txn.router_backend", target.b)

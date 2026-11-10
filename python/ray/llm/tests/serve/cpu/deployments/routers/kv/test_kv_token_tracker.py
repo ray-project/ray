@@ -6,6 +6,7 @@ LLMRouter replicas.
 
 import asyncio
 import gc
+import os
 import socket
 import subprocess
 import sys
@@ -56,9 +57,9 @@ import psutil
 
 @pytest.fixture(autouse=True)
 def reset_process_global():
-    set_kv_token_tracker(None)
+    kv_token_tracker._KV_TOKEN_TRACKERS.clear()
     yield
-    set_kv_token_tracker(None)
+    kv_token_tracker._KV_TOKEN_TRACKERS.clear()
 
 
 class _SpyTracker:
@@ -70,10 +71,12 @@ class _SpyTracker:
         indexer_threads,
         serve_deployment_id,
         session_affinity_ttl_s,
+        selection_svc_env,
     ):
         self.indexer_threads = indexer_threads
         self.serve_deployment_id = serve_deployment_id
         self.session_affinity_ttl_s = session_affinity_ttl_s
+        self.selection_svc_env = selection_svc_env
 
 
 class _StandaloneTracker(KVTokenTracker):
@@ -108,8 +111,34 @@ def test_build_registers_tracker(monkeypatch):
     id and registers it so the same-process router/ingress can reach it."""
     monkeypatch.setattr(kv_token_tracker, "KVTokenTracker", _SpyTracker)
     tracker = build_kv_token_tracker(_llm_config(), "dep-id")
-    assert get_kv_token_tracker() is tracker
+    assert get_kv_token_tracker("dep-id") is tracker
     assert tracker.serve_deployment_id == "dep-id"
+    assert tracker.selection_svc_env is None
+
+
+def test_build_registers_a_tracker_per_deployment(monkeypatch):
+    """A P/D router tracks P and D in one process, each with its own router
+    config."""
+    monkeypatch.setattr(kv_token_tracker, "KVTokenTracker", _SpyTracker)
+    prefill = build_kv_token_tracker(_llm_config(), "prefill", {"DYN_A": "1"})
+    decode = build_kv_token_tracker(_llm_config(), "decode", {"DYN_B": "2"})
+    assert get_kv_token_tracker("prefill") is prefill
+    assert get_kv_token_tracker("decode") is decode
+    assert prefill.selection_svc_env == {"DYN_A": "1"}
+    assert decode.selection_svc_env == {"DYN_B": "2"}
+
+
+def test_override_env_restores_environment(monkeypatch):
+    """Overrides apply only inside the block; prior values and absences return."""
+    monkeypatch.setenv("DYN_ROUTER_SET", "old")
+    monkeypatch.delenv("DYN_ROUTER_UNSET", raising=False)
+    with kv_token_tracker._override_env(
+        {"DYN_ROUTER_SET": "new", "DYN_ROUTER_UNSET": "1"}
+    ):
+        assert os.environ["DYN_ROUTER_SET"] == "new"
+        assert os.environ["DYN_ROUTER_UNSET"] == "1"
+    assert os.environ["DYN_ROUTER_SET"] == "old"
+    assert "DYN_ROUTER_UNSET" not in os.environ
 
 
 def test_indexer_threads_from_config(monkeypatch):
@@ -175,8 +204,9 @@ def test_session_ttl_config(monkeypatch, ttl_s, as_object):
 def test_router_binds_tracker():
     """KVAwareRouter picks up the tracker the LLMRouter registered."""
     sentinel = object()
-    set_kv_token_tracker(sentinel)
+    set_kv_token_tracker(sentinel, "dep-id")
     router = KVAwareRouter.__new__(KVAwareRouter)
+    router._deployment_id = "dep-id"
     router.initialize_state()
     assert router._kv_token_tracker is sentinel
 
@@ -342,7 +372,7 @@ async def _check_router_shutdown():
                     key: UpdatedObject(
                         workers
                         if key[1] == tracker._serve_deployment_id
-                        else _router_targets({"peer": endpoints[1]}),
+                        else _router_targets({"peer": {"LLMServer": endpoints[1]}}),
                         1,
                         time.time(),
                     )
@@ -352,7 +382,7 @@ async def _check_router_shutdown():
         finally:
             forwarder.close()
             await LLMRouter.__del__(
-                SimpleNamespace(_kv_token_tracker=tracker, _token_sender=sender)
+                SimpleNamespace(_kv_token_trackers=[tracker], _token_sender=sender)
             )
         await asyncio.sleep(0)
         assert receive_task.done()
@@ -406,6 +436,8 @@ def _router_replica_id(unique_id):
 
 
 def _router_targets(endpoints_by_id):
+    """LLMRouter replicas by id, each advertising ``{mesh: endpoint}`` or a
+    bare endpoint for the mesh of a tracker built without a deployment id."""
     return DeploymentTargetInfo(
         is_available=True,
         running_replicas=[
@@ -417,7 +449,11 @@ def _router_targets(endpoints_by_id):
                 actor_name=f"actor-{uid}",
                 max_ongoing_requests=1000,
                 routing_stats=(
-                    {"kv_replica_sync_metadata": {"endpoint": endpoint}}
+                    {
+                        "kv_replica_sync_metadata": (
+                            endpoint if isinstance(endpoint, dict) else {"": endpoint}
+                        )
+                    }
                     if endpoint
                     else {}
                 ),
@@ -456,6 +492,32 @@ async def test_router_targets_drive_replica_mesh_peers():
     # "c" restarts on its own endpoint: the connection stays.
     assert await update({"self": own, "b2": "tcp://b:2", "c2": "tcp://c:1"}) == []
     assert svc.list_replica_peers() == ["tcp://b:2", "tcp://c:1"]
+
+
+@pytest.mark.asyncio
+async def test_pd_trackers_peer_only_within_their_stage():
+    """A P/D router advertises one mesh endpoint per stage. Each stage's
+    tracker peers only with the same stage on other routers, so P and D load
+    and session bindings never mix."""
+    prefill, decode = (
+        DeploymentID(name="Prefill:m", app_name="pd-backend"),
+        DeploymentID(name="Decode:m", app_name="pd-backend"),
+    )
+    router = {
+        "b": {prefill.name: "tcp://b:1", decode.name: "tcp://b:2"},
+        "c": {prefill.name: "tcp://c:1", decode.name: "tcp://c:2"},
+    }
+    for deployment_id, expected in [
+        (prefill, ["tcp://b:1", "tcp://c:1"]),
+        (decode, ["tcp://b:2", "tcp://c:2"]),
+    ]:
+        tracker = _NoLongPollTracker(serve_deployment_id=deployment_id)
+        tracker._svc.shutdown()
+        svc = tracker._svc = _PeerRecordingService()
+        tracker._router_replica_id = _router_replica_id("self")
+        tracker._on_router_targets(_router_targets(router))
+        await asyncio.gather(*tracker._pending_tasks)
+        assert svc.list_replica_peers() == expected
 
 
 @pytest.mark.asyncio

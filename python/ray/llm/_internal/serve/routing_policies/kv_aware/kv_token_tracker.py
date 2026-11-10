@@ -1,7 +1,9 @@
 import asyncio
+import contextlib
 import hashlib
 import logging
 import math
+import os
 import time
 from collections import OrderedDict
 from dataclasses import dataclass, field
@@ -19,7 +21,7 @@ from ray.llm._internal.serve.routing_policies.kv_aware.constants import (
     REQUEST_TRACKING_TTL_S,
     SESSION_AFFINITY_MODE,
 )
-from ray.serve._private.common import DeploymentTargetInfo
+from ray.serve._private.common import DeploymentID, DeploymentTargetInfo
 from ray.serve._private.constants import (
     SERVE_CONTROLLER_NAME,
     SERVE_LOGGER_NAME,
@@ -50,6 +52,21 @@ LIFECYCLE_HOOKS = frozenset(
         "on_request_completed",
     }
 )
+
+
+@contextlib.contextmanager
+def _override_env(overrides: Dict[str, str]):
+    """Set ``overrides`` in os.environ within the block, then restore them."""
+    saved = {name: os.environ.get(name) for name in overrides}
+    os.environ.update(overrides)
+    try:
+        yield
+    finally:
+        for name, value in saved.items():
+            if value is None:
+                os.environ.pop(name, None)
+            else:
+                os.environ[name] = value
 
 
 def get_worker_id(replica_unique_id: str) -> int:
@@ -124,17 +141,25 @@ class KVTokenTracker:
        replica mesh, so all routers score on the same load and pin sessions
        alike. The mesh syncs on Dynamo's threads, off the router's event loop,
        which stays free for routing.
+
+    A P/D router runs one tracker per stage. Each tracker has its own selection
+    service, router config, lifecycle endpoint, and replica mesh, so load and
+    session bindings never cross stages.
     """
 
     def __init__(
         self,
         indexer_threads: int = DEFAULT_KV_INDEXER_THREADS,
-        serve_deployment_id: Optional[Any] = None,
+        serve_deployment_id: Optional[DeploymentID] = None,
         session_affinity_ttl_s: float = DEFAULT_SESSION_AFFINITY_TTL_S,
+        selection_svc_env: Optional[Dict[str, str]] = None,
     ):
         # The tracked LLMServer deployment id, passed in by the LLMRouter
         # that builds the tracker.
         self._serve_deployment_id = serve_deployment_id
+        # DYN_ROUTER_* router config of this tracker's selection service (e.g. a
+        # P/D stage's cost model).
+        self._selection_svc_env = selection_svc_env or {}
         # Peer routers' replica-mesh endpoints, from the latest LongPoll update.
         self._replica_sync_peers: Set[str] = set()
         self._replica_sync_lock = asyncio.Lock()
@@ -202,13 +227,16 @@ class KVTokenTracker:
         for attempt in range(1, _REPLICA_SYNC_BIND_ATTEMPTS + 1):
             self._replica_sync_port = find_free_port()
             try:
-                # Session bindings replicate over the replica mesh with the load.
-                self._svc = SelectionService(
-                    indexer_threads=self._indexer_threads,
-                    replica_sync_port=self._replica_sync_port,
-                    session_affinity_ttl_secs=self._session_affinity_ttl_s or None,
-                    session_affinity_mode=SESSION_AFFINITY_MODE,
-                )
+                # SelectionService reads its router config from the environment
+                # once, at construction. Session bindings replicate over the
+                # replica mesh with the load.
+                with _override_env(self._selection_svc_env):
+                    self._svc = SelectionService(
+                        indexer_threads=self._indexer_threads,
+                        replica_sync_port=self._replica_sync_port,
+                        session_affinity_ttl_secs=self._session_affinity_ttl_s or None,
+                        session_affinity_mode=SESSION_AFFINITY_MODE,
+                    )
                 break
             except Exception as e:
                 if attempt == _REPLICA_SYNC_BIND_ATTEMPTS:
@@ -376,16 +404,23 @@ class KVTokenTracker:
             await self._svc.shutdown_async()
             self._svc = None
 
+    @property
+    def _replica_sync_key(self) -> str:
+        """Names this tracker's mesh among those a router replica advertises:
+        trackers of the same LLMServer deployment peer with each other."""
+        return getattr(self._serve_deployment_id, "name", "")
+
     def replica_sync_routing_stats(self) -> Dict[str, Any]:
-        """Routing stats advertising this router's replica-mesh endpoint."""
+        """Routing stats advertising this tracker's replica-mesh endpoint."""
         if self._svc is None:
             return {}
         endpoint = f"tcp://{ray.util.get_node_ip_address()}:{self._replica_sync_port}"
-        return {KV_REPLICA_SYNC_METADATA_KEY: {"endpoint": endpoint}}
+        return {KV_REPLICA_SYNC_METADATA_KEY: {self._replica_sync_key: endpoint}}
 
     def _on_router_targets(self, target_info: DeploymentTargetInfo) -> None:
         """LongPoll listener: keep the selection service's replica-mesh peers in
-        sync with the running LLMRouter replicas that advertise an endpoint."""
+        sync with the running LLMRouter replicas that advertise an endpoint
+        for this tracker's mesh."""
         if self._stopping:
             return
         peers: Set[str] = set()
@@ -395,8 +430,9 @@ class KVTokenTracker:
                 metadata, dict
             ):
                 continue
-            if metadata.get("endpoint"):
-                peers.add(metadata["endpoint"])
+            endpoint = metadata.get(self._replica_sync_key)
+            if endpoint:
+                peers.add(endpoint)
         if peers == self._replica_sync_peers:
             return
         self._replica_sync_peers = peers
@@ -654,6 +690,12 @@ class KVTokenTracker:
             state.total_blocks += 1
             self._svc.add_output_block(request_id, decay_fraction=decay_fraction)
 
+    def release_request(self, request_id: str) -> None:
+        """Free ``request_id``'s booking without waiting, for a request whose
+        engine may never report it (e.g. its dispatch failed). Idempotent with
+        the engine's own completion event."""
+        self._schedule(self.on_request_completed(request_id))
+
     async def on_request_completed(self, request_id: str) -> None:
         """Free ``request_id`` from the selection service's active load and the
         local view."""
@@ -703,24 +745,29 @@ class KVTokenTracker:
         return max(0.0, 1.0 - state.output_tokens / state.expected_output_tokens)
 
 
-_KV_TOKEN_TRACKER: Optional["KVTokenTracker"] = None
+# Keyed by the tracked deployment, so one router process can track P and D.
+_KV_TOKEN_TRACKERS: Dict[DeploymentID, "KVTokenTracker"] = {}
 
 
-def set_kv_token_tracker(tracker: "KVTokenTracker") -> None:
-    global _KV_TOKEN_TRACKER
-    _KV_TOKEN_TRACKER = tracker
+def set_kv_token_tracker(
+    tracker: "KVTokenTracker", deployment_id: DeploymentID
+) -> None:
+    _KV_TOKEN_TRACKERS[deployment_id] = tracker
 
 
-def get_kv_token_tracker() -> Optional["KVTokenTracker"]:
-    return _KV_TOKEN_TRACKER
+def get_kv_token_tracker(deployment_id: DeploymentID) -> Optional["KVTokenTracker"]:
+    return _KV_TOKEN_TRACKERS.get(deployment_id)
 
 
 def build_kv_token_tracker(
-    llm_config: "LLMConfig", serve_deployment_id: Any
+    llm_config: "LLMConfig",
+    serve_deployment_id: DeploymentID,
+    selection_svc_env: Optional[Dict[str, str]] = None,
 ) -> "KVTokenTracker":
-    """Build the ``KVTokenTracker`` and register it in this process's global
-    so the same-process ``KVAwareRouter`` can reach it. Must be called from the
-    ingress replica's event loop (the tracker binds a LongPollClient to it).
+    """Build the ``KVTokenTracker`` for ``serve_deployment_id`` and register it
+    in this process so the same-process ``KVAwareRouter`` of that deployment
+    can reach it. Must be called from the ingress replica's event loop (the
+    tracker binds a LongPollClient to it).
     """
     router_config = llm_config.deployment_config.get("request_router_config") or {}
     router_kwargs = (
@@ -736,6 +783,7 @@ def build_kv_token_tracker(
             KV_INDEXER_THREADS_KEY, DEFAULT_KV_INDEXER_THREADS
         ),
         serve_deployment_id=serve_deployment_id,
+        selection_svc_env=selection_svc_env,
     )
-    set_kv_token_tracker(tracker)
+    set_kv_token_tracker(tracker, serve_deployment_id)
     return tracker

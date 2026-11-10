@@ -186,6 +186,7 @@ def build_app(
         RAY_SERVE_ENABLE_HA_PROXY
         and ingress_request_router is None
         and _has_custom_request_router(app._bound_deployment)
+        and not app._router_application_target
     ):
         raise RayServeException(CUSTOM_INGRESS_REQUEST_ROUTER_UNSUPPORTED_ERROR)
 

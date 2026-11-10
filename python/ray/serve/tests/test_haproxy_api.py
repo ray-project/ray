@@ -12,6 +12,7 @@ import sys
 import tempfile
 import threading
 import time
+from types import SimpleNamespace
 from typing import Optional, Tuple
 from unittest import mock
 
@@ -26,7 +27,7 @@ from starlette.responses import StreamingResponse
 
 import ray
 from ray import serve
-from ray._common.network_utils import find_free_port
+from ray._common.network_utils import find_free_port, get_localhost_ip
 from ray._common.test_utils import (
     async_wait_for_condition,
     fetch_prometheus_metrics,
@@ -43,6 +44,7 @@ from ray.serve._private.constants import (
     SERVE_INGRESS_ROUTER_HEADER_PREFIX,
     SERVE_INGRESS_ROUTER_REQUEST_PATH_HEADER,
     SERVE_MULTIPLEXED_MODEL_ID,
+    SERVE_SESSION_ID,
 )
 from ray.serve._private.haproxy import (
     BackendConfig,
@@ -82,7 +84,10 @@ def check_haproxy_ready(stats_port: int, timeout: int = 2) -> bool:
 
 
 def _serve_fastapi_app(
-    app: FastAPI, port: int, ready_check, timeout_keep_alive: int = 60
+    app: FastAPI,
+    port: int,
+    ready_check,
+    timeout_keep_alive: int = 60,
 ):
     """Run `app` on uvicorn in a daemon thread; block until `ready_check()` is True."""
     config = uvicorn.Config(
@@ -675,8 +680,6 @@ def test_routers_and_targets_prefers_colocated_router():
 
 def test_write_ingress_request_router_lua_pools_colocated_routers(haproxy_api_cleanup):
     """Multiple co-located routers render as a pool in the app's ROUTERS entry."""
-    from ray._common.network_utils import get_localhost_ip
-
     local = get_localhost_ip()
     with tempfile.TemporaryDirectory() as temp_dir:
         backend = BackendConfig(
@@ -1130,7 +1133,9 @@ def _create_replica_server(port: int, replica_id_header: str):
 
 
 def _create_router_server(
-    port: int, replica_id_to_return: str, extra_response: Optional[dict] = None
+    port: int,
+    replica_id_to_return: str,
+    extra_response: Optional[dict] = None,
 ):
     """Fake /internal/route. Captures request data forwarded by HAProxy."""
     app = FastAPI()
@@ -1194,6 +1199,8 @@ async def _start_router_haproxy(
         ),
         stats_port=stats_port,
         socket_path=os.path.join(temp_dir, "admin.sock"),
+        server_state_base=temp_dir,
+        server_state_file=os.path.join(temp_dir, "server-state"),
         has_received_routes=True,
         has_received_servers=True,
         http_health_check_path="/-/healthz",
@@ -1395,6 +1402,199 @@ async def test_ingress_request_router_end_to_end(haproxy_api_cleanup, monkeypatc
                 (replica_a, replica_b, router),
                 (replica_a_thread, replica_b_thread, router_thread),
             )
+
+
+@pytest_asyncio.fixture
+async def ingress_router_pool(haproxy_api_cleanup, monkeypatch, tmp_path):
+    """Serve three fake routers and expose the selected router in HTTP responses."""
+    monkeypatch.setattr(haproxy, "RAY_SERVE_INGRESS_REQUEST_ROUTER_FORWARD_BODY", True)
+    monkeypatch.setattr(haproxy, "get_localhost_ip", lambda: "127.0.0.1")
+    replica_port = find_free_port()
+    router_ports = [find_free_port() for _ in range(3)]
+    actor_name = "SERVE_REPLICA::app#dep#aaa"
+    router_header = SERVE_INGRESS_ROUTER_HEADER_PREFIX + "test-router"
+    replica, replica_thread = _create_replica_server(
+        replica_port, replica_id_header="A"
+    )
+    routers = []
+
+    def create_router(index):
+        return _create_router_server(
+            router_ports[index],
+            replica_id_to_return=actor_name,
+            extra_response={
+                RAY_SERVE_INGRESS_REQUEST_ROUTER_OPT_HEADERS_FIELD: {
+                    router_header: str(index)
+                }
+            },
+        )
+
+    async def start_proxy(name, reverse=False, nbthread=1):
+        directory = tmp_path / name
+        directory.mkdir()
+        port = find_free_port()
+        backend = BackendConfig(
+            name="llm",
+            path_prefix="/",
+            app_name="llm",
+            http_health_check_path="/-/healthz",
+            servers=[
+                ServerConfig(
+                    name="A", host="127.0.0.1", port=replica_port, replica_id=actor_name
+                )
+            ],
+            ingress_request_router_servers=[
+                ServerConfig(name=f"router_{i}", host="127.0.0.1", port=router_port)
+                for i, router_port in enumerate(router_ports)
+            ],
+        )
+        if reverse:
+            backend.ingress_request_router_servers.reverse()
+        api = await _start_router_haproxy(
+            str(directory),
+            port,
+            find_free_port(),
+            {"llm": backend},
+            haproxy_api_cleanup,
+            nbthread=nbthread,
+            enable_hap_optimization=True,
+            metrics_port=find_free_port(),
+        )
+        return api, backend, port
+
+    def post(port, headers=None):
+        response = requests.post(
+            f"http://127.0.0.1:{port}/predict",
+            json={"prompt": "hi"},
+            headers=headers,
+            timeout=5,
+        )
+        assert response.status_code == 200, response.text
+        assert response.headers["x-replica-id"] == "A"
+        return int(response.headers[f"echo-{router_header}"])
+
+    def stop_router(index):
+        server, thread, _ = routers[index]
+        _shutdown_fake_servers((server,), (thread,))
+
+    def restart_router(index):
+        routers[index] = create_router(index)
+
+    try:
+        for i in range(3):
+            routers.append(create_router(i))
+        yield SimpleNamespace(
+            start_proxy=start_proxy,
+            post=post,
+            stop_router=stop_router,
+            restart_router=restart_router,
+        )
+    finally:
+        _shutdown_fake_servers(
+            [replica] + [server for server, _, _ in routers],
+            [replica_thread] + [thread for _, thread, _ in routers],
+        )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("force_id_collision", [False, True])
+async def test_router_session_affinity(
+    ingress_router_pool, monkeypatch, force_id_collision
+):
+    """Session owners agree across proxies regardless of server ordering."""
+    if force_id_collision:
+        # Exercise ID collision resolution and wraparound through real routing.
+        monkeypatch.setattr(haproxy, "crc32", lambda _: (1 << 20) - 1)
+    pool = ingress_router_pool
+    _, _, first_port = await pool.start_proxy("first", nbthread=1)
+    # Session routing must not depend on Lua's per-thread round-robin cursors.
+    _, _, second_port = await pool.start_proxy("second", reverse=True, nbthread=2)
+    owners = {
+        f"session-{i}": pool.post(first_port, {SERVE_SESSION_ID: f"session-{i}"})
+        for i in range(32)
+    }
+    assert set(owners.values()) == {0, 1, 2}
+    for sid, owner in owners.items():
+        assert pool.post(first_port, {SERVE_SESSION_ID: sid}) == owner
+        assert pool.post(second_port, {SERVE_SESSION_ID: sid}) == owner
+
+
+@pytest.mark.asyncio
+async def test_router_session_reload(ingress_router_pool):
+    """Pool updates preserve unaffected sessions and restore owners on readdition."""
+    pool = ingress_router_pool
+    api, backend, port = await pool.start_proxy("proxy")
+    owners = {
+        f"session-{i}": pool.post(port, {SERVE_SESSION_ID: f"session-{i}"})
+        for i in range(32)
+    }
+    original_servers = backend.ingress_request_router_servers
+    removed = 1
+    backend.ingress_request_router_servers = [
+        s for s in original_servers if s.name != f"router_{removed}"
+    ]
+    api.set_backend_configs({"llm": backend})
+    await api.reload()
+    for sid, owner in owners.items():
+        replacement = pool.post(port, {SERVE_SESSION_ID: sid})
+        assert replacement != removed
+        if owner != removed:
+            assert replacement == owner
+    backend.ingress_request_router_servers = original_servers
+    api.set_backend_configs({"llm": backend})
+    await api.reload()
+    for sid, owner in owners.items():
+        assert pool.post(port, {SERVE_SESSION_ID: sid}) == owner
+
+
+@pytest.mark.asyncio
+async def test_router_session_failover(ingress_router_pool):
+    """Router failure moves its sessions; recovery restores their owners."""
+    pool = ingress_router_pool
+    _, _, port = await pool.start_proxy("proxy")
+    owners = {
+        f"session-{i}": pool.post(port, {SERVE_SESSION_ID: f"session-{i}"})
+        for i in range(32)
+    }
+    sid = next(iter(owners))
+    failed_owner = owners[sid]
+    pool.stop_router(failed_owner)
+    await async_wait_for_condition(
+        lambda: pool.post(port, {SERVE_SESSION_ID: sid}) != failed_owner, timeout=10
+    )
+    for session, owner in owners.items():
+        if owner != failed_owner:
+            assert pool.post(port, {SERVE_SESSION_ID: session}) == owner
+    pool.restart_router(failed_owner)
+    await async_wait_for_condition(
+        lambda: pool.post(port, {SERVE_SESSION_ID: sid}) == failed_owner, timeout=10
+    )
+    for session, owner in owners.items():
+        assert pool.post(port, {SERVE_SESSION_ID: session}) == owner
+
+
+@pytest.mark.asyncio
+async def test_router_session_headers(ingress_router_pool):
+    """Client session headers control affinity; missing or empty values use round robin."""
+    pool = ingress_router_pool
+    _, _, port = await pool.start_proxy("proxy")
+    sid = "session-0"
+    owner = pool.post(port, {SERVE_SESSION_ID: sid})
+    mixed_header = SERVE_SESSION_ID.upper().replace("-", "_", 1)
+    assert pool.post(port, {mixed_header: sid}) == owner
+    spoofed_sid = next(
+        f"session-{i}"
+        for i in range(1, 32)
+        if pool.post(port, {SERVE_SESSION_ID: f"session-{i}"}) != owner
+    )
+    assert (
+        pool.post(
+            port, {SERVE_SESSION_ID: sid, "x-serve-router-session-id": spoofed_sid}
+        )
+        == owner
+    )
+    assert {pool.post(port) for _ in range(3)} == {0, 1, 2}
+    assert {pool.post(port, {SERVE_SESSION_ID: ""}) for _ in range(3)} == {0, 1, 2}
 
 
 @pytest.mark.asyncio
