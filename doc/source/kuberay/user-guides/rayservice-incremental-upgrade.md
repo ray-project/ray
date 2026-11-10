@@ -351,7 +351,7 @@ The HTTPRoute that KubeRay creates matches every path and sets no `hostnames`. O
 KubeRay doesn't progress an upgrade until the Gateway is ready and accepts the HTTPRoute. To check the HTTPRoute, confirm that the `Accepted` and `ResolvedRefs` conditions under `status.parents` are `True`:
 
 ```bash
-kubectl get httproute <rayservice-name>-httproute -o yaml
+kubectl get httproute <rayservice-name>-httproute -n <rayservice-namespace> -o yaml
 ```
 
 ## How to upgrade safely?
