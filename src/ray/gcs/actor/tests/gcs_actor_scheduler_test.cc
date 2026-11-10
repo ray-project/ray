@@ -15,6 +15,7 @@
 
 #include <gtest/gtest.h>
 
+#include <future>
 #include <memory>
 #include <string>
 #include <unordered_map>
@@ -77,10 +78,26 @@ class FakeGcsActorTable : public gcs::GcsActorTable {
   void Put(const ActorID &key,
            const rpc::ActorTableData &value,
            Postable<void(Status)> callback) override {
+    if (hold_put_callbacks_) {
+      held_put_callbacks_.push_back(std::move(callback));
+      return;
+    }
     std::move(callback).Post("FakeGcsActorTable.Put", Status::OK());
   }
 
+  // Completes the Puts held while hold_put_callbacks_ was set, to simulate a slow
+  // storage backend.
+  void ReleaseHeldPutCallbacks() {
+    for (auto &callback : held_put_callbacks_) {
+      std::move(callback).Post("FakeGcsActorTable.Put", Status::OK());
+    }
+    held_put_callbacks_.clear();
+  }
+
+  bool hold_put_callbacks_ = false;
+
  private:
+  std::vector<Postable<void(Status)>> held_put_callbacks_;
   std::shared_ptr<gcs::InMemoryStoreClient> store_client_ =
       std::make_shared<gcs::InMemoryStoreClient>();
 };
@@ -598,6 +615,49 @@ TEST_F(GcsActorSchedulerTest, TestWorkerFailedWhenCreating) {
   ASSERT_EQ(0, worker_client_->GetNumCallbacks());
   ASSERT_EQ(0, gcs_actor_scheduler_->num_retry_creating_count_);
 
+  ASSERT_EQ(0, success_actors_.size());
+  ASSERT_EQ(0, failure_actors_.size());
+}
+
+TEST_F(GcsActorSchedulerTest, TestActorKilledWhilePersistingLeasedWorker) {
+  auto node = GenNodeInfo();
+  auto node_id = NodeID::FromBinary(node->node_id());
+  gcs_node_manager_->AddNode(node);
+  ASSERT_EQ(1, gcs_node_manager_->GetAllAliveNodes().size());
+
+  auto job_id = JobID::FromInt(1);
+  auto create_actor_request = GenCreateActorRequest(job_id);
+  auto actor = std::make_shared<gcs::GcsActor>(
+      create_actor_request.task_spec(), "", counter, fake_ray_event_recorder_, "");
+
+  gcs_actor_scheduler_->Schedule(actor);
+  ASSERT_EQ(1, raylet_client_->callbacks.size());
+
+  // Grant a worker while the actor table Put is still in flight.
+  gcs_actor_table_->hold_put_callbacks_ = true;
+  auto worker_id = WorkerID::FromRandom();
+  ASSERT_TRUE(raylet_client_->GrantWorkerLease(node->node_manager_address(),
+                                               node->node_manager_port(),
+                                               worker_id,
+                                               node_id,
+                                               NodeID::Nil()));
+
+  // Kill the actor before the Put completes, as GcsActorManager::DestroyActor does.
+  ASSERT_EQ(actor->GetActorID(),
+            gcs_actor_scheduler_->CancelOnWorker(node_id, worker_id));
+  actor->UpdateState(rpc::ActorTableData::DEAD);
+  gcs_actor_table_->ReleaseHeldPutCallbacks();
+
+  // The creation task is never pushed, so the leased worker has no actor ID yet and
+  // must be killed with a nil actor ID, otherwise its lease is leaked.
+  std::promise<void> put_callback_ran;
+  io_context_->GetIoService().post([&]() { put_callback_ran.set_value(); },
+                                   "GcsActorSchedulerTest.WaitForPutCallback");
+  put_callback_ran.get_future().wait();
+  // Verify a lease free request is sent
+  ASSERT_EQ(1, raylet_client_->killed_actors.size());
+  ASSERT_EQ(ActorID::Nil(), raylet_client_->killed_actors.front());
+  ASSERT_EQ(0, worker_client_->GetNumCallbacks());
   ASSERT_EQ(0, success_actors_.size());
   ASSERT_EQ(0, failure_actors_.size());
 }
