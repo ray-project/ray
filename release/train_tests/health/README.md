@@ -39,9 +39,11 @@ RUN sudo apt-get update && sudo apt-get install -y --allow-change-held-packages 
 RUN pip install torch
 ```
 
-`nccl_hang.py` preloads the system NCCL into the workers
-(`harness.nccl_runtime_env()`). A node without `ncclras` fails the pre-flight
-check, which evicts it and says why. `gpu_faults.py` needs neither.
+`nccl_hang.py` preloads the system NCCL into the workers when it's newer than
+torch's (`harness.nccl_runtime_env()`); an older one lacks symbols torch needs.
+`check_cluster.py` prints both versions. A node without `ncclras`, or with an
+NCCL older than 2.28, fails the pre-flight check, which evicts it and says why.
+`gpu_faults.py` and `gr00t_recovery.py` need neither.
 
 ## Setup
 

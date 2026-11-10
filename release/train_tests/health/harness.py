@@ -7,6 +7,7 @@ seconds after the fault.
 """
 import json
 import os
+import re
 import sys
 import time
 from dataclasses import dataclass
@@ -84,14 +85,37 @@ def connect(
 SYSTEM_LIBNCCL = "/usr/lib/x86_64-linux-gnu/libnccl.so.2"
 
 
+def system_nccl_version() -> Optional[Tuple[int, ...]]:
+    """The version of the system NCCL, from the file ``SYSTEM_LIBNCCL`` links
+    to, such as ``libnccl.so.2.28.7``."""
+    match = re.search(
+        r"libnccl\.so\.(\d+)\.(\d+)\.(\d+)$", os.path.realpath(SYSTEM_LIBNCCL)
+    )
+    return tuple(int(g) for g in match.groups()) if match else None
+
+
+def torch_nccl_version() -> Optional[Tuple[int, ...]]:
+    """The version of the NCCL torch loads."""
+    try:
+        import torch
+
+        version = torch.cuda.nccl.version()
+    except Exception:  # noqa: BLE001
+        return None
+    if isinstance(version, int):  # older torch: 22809 for 2.28.9
+        return version // 10000, version // 100 % 100, version % 100
+    return tuple(version)
+
+
 def nccl_runtime_env() -> Dict:
     """The job's ``runtime_env`` for NCCL RAS: arm the PyTorch Flight Recorder,
-    and preload the system NCCL when there is one. ``torch<=2.10`` bundles NCCL
-    2.27.5, before ``ncclras -f json``; NCCL 2.x is ABI-stable, so a newer
-    library under it works."""
+    and preload the system NCCL when it's newer than torch's. ``torch<=2.10``
+    bundles NCCL 2.27.5, before ``ncclras -f json``; NCCL 2.x is ABI-stable, so
+    a newer library under torch works, and an older one may not."""
     os.environ.setdefault("TORCH_FR_BUFFER_SIZE", "2000")
     env_vars = {"TORCH_FR_BUFFER_SIZE": os.environ["TORCH_FR_BUFFER_SIZE"]}
-    if os.path.exists(SYSTEM_LIBNCCL):
+    system, bundled = system_nccl_version(), torch_nccl_version()
+    if system and bundled and system > bundled:
         preload = [p for p in (os.environ.get("LD_PRELOAD"), SYSTEM_LIBNCCL) if p]
         env_vars["LD_PRELOAD"] = " ".join(preload)
     return {"env_vars": env_vars}
