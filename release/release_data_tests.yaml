@@ -831,7 +831,7 @@
             RAY_DATA_ENABLE_CHUNKED_TENSOR_TAKE: "0"
 
 - name: "shuffle_batches.fastpath_{{take_enabled}}"
-  python: "3.10"
+  python: "3.11"
   frequency: manual
   cluster:
     anyscale_sdk_2026: true
