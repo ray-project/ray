@@ -485,6 +485,62 @@ def test_batching_metrics(metrics_start_shutdown):
     )
 
 
+def test_autoscaling_prefill_tokens_metric(metrics_start_shutdown):
+    """Router input is exported without an LLM or token autoscaling policy."""
+    from ray.serve._private.autoscaling_state import DeploymentAutoscalingState
+    from ray.serve._private.common import (
+        DeploymentHandleSource,
+        DeploymentID,
+        HandleMetricReport,
+        TimeStampedValue,
+    )
+    from ray.serve._private.config import DeploymentConfig, ReplicaConfig
+    from ray.serve._private.deployment_info import DeploymentInfo
+    from ray.serve.config import AutoscalingConfig
+
+    dep_id = DeploymentID("SyntheticRouter", "prefill_metrics_app")
+    state = DeploymentAutoscalingState(dep_id)
+    state.register(
+        DeploymentInfo(
+            deployment_config=DeploymentConfig(
+                autoscaling_config=AutoscalingConfig(min_replicas=1, max_replicas=2)
+            ),
+            replica_config=ReplicaConfig.create(lambda: None),
+            start_time_ms=0,
+            deployer_job_id="",
+        ),
+        curr_target_num_replicas=1,
+    )
+    # Both handles report the same global workload, not additive work.
+    for handle_id in ("router-1", "router-2"):
+        now = time.time()
+        state.record_request_metrics_for_handle(
+            HandleMetricReport(
+                deployment_id=dep_id,
+                handle_id=handle_id,
+                actor_id="",
+                handle_source=DeploymentHandleSource.UNKNOWN,
+                queued_requests=[],
+                metrics={},
+                timestamp=now,
+                router_metrics={
+                    "outstanding_effective_prefill_tokens": [
+                        TimeStampedValue(now, 12345)
+                    ]
+                },
+            )
+        )
+    state.get_decision_num_replicas(1)
+    wait_for_metric(
+        check_metric_float,
+        budget_s=METRICS_FIRST_EXPORT_TIMEOUT_S,
+        metric="ray_serve_llm_autoscaling_outstanding_prefill_tokens",
+        expected=12345,
+        expected_tags={"deployment": dep_id.name, "application": dep_id.app_name},
+        timeseries=PrometheusTimeseries(),
+    )
+
+
 def test_autoscaling_metrics(metrics_start_shutdown):
     """Test that autoscaling metrics are emitted correctly.
 

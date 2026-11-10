@@ -357,6 +357,17 @@ class DeploymentAutoscalingState:
             tag_keys=("deployment", "application"),
         )
 
+        self.autoscaling_outstanding_prefill_tokens_gauge = metrics.Gauge(
+            "serve_llm_autoscaling_outstanding_prefill_tokens",
+            description=(
+                "Outstanding uncached prefill tokens reported by routers to the "
+                "autoscaler. Maximum latest snapshot across live reporting handles, "
+                "not a lookback mean. NaN when previously available reports disappear."
+            ),
+            tag_keys=("deployment", "application"),
+        )
+        self._has_recorded_prefill_tokens = False
+
         self.autoscaling_policy_execution_time_gauge = metrics.Gauge(
             "serve_autoscaling_policy_execution_time_ms",
             description=(
@@ -661,6 +672,7 @@ class DeploymentAutoscalingState:
         total_num_requests: float,
         policy_execution_time_ms: float,
         policy_scope: str,
+        raw_router_metrics: Optional[Dict[str, Dict[str, TimeSeries]]] = None,
     ):
         tags = {
             "deployment": self._deployment_id.name,
@@ -668,6 +680,26 @@ class DeploymentAutoscalingState:
         }
         self.autoscaling_decision_gauge.set(decision_num_replicas, tags=tags)
         self.autoscaling_total_requests_gauge.set(total_num_requests, tags=tags)
+        prefill_by_handle = (raw_router_metrics or {}).get(
+            "outstanding_effective_prefill_tokens", {}
+        )
+        # Routers report replicated global snapshots, so take the maximum latest
+        # value rather than summing handles or averaging their histories.
+        outstanding_prefill_tokens = max(
+            (
+                max(0, series[-1].value)
+                for series in prefill_by_handle.values()
+                if series
+            ),
+            default=None,
+        )
+        if outstanding_prefill_tokens is not None:
+            self.autoscaling_outstanding_prefill_tokens_gauge.set(
+                outstanding_prefill_tokens, tags=tags
+            )
+            self._has_recorded_prefill_tokens = True
+        elif self._has_recorded_prefill_tokens:
+            self.autoscaling_outstanding_prefill_tokens_gauge.set(math.nan, tags=tags)
         # Stash the decision's value for the scale up/down log to reuse.
         self._last_decision_total_num_requests = total_num_requests
         self.autoscaling_policy_execution_time_gauge.set(
@@ -705,6 +737,7 @@ class DeploymentAutoscalingState:
             autoscaling_context.total_num_requests,
             policy_execution_time_ms,
             "deployment",
+            raw_router_metrics=autoscaling_context.raw_router_metrics,
         )
 
         if _skip_bound_check:
@@ -1256,6 +1289,9 @@ class ApplicationAutoscalingState:
                     autoscaling_contexts[deployment_id].total_num_requests,
                     policy_execution_time_ms,
                     "application",
+                    raw_router_metrics=autoscaling_contexts[
+                        deployment_id
+                    ].raw_router_metrics,
                 )
                 results[deployment_id] = (
                     self._deployment_autoscaling_states[deployment_id].apply_bounds(
