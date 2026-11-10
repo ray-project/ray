@@ -1,8 +1,9 @@
 import dataclasses
 import logging
+import math
 from dataclasses import dataclass
 from enum import Enum, auto
-from typing import Any, List, Literal, Optional, Sequence, Set, cast
+from typing import Any, Callable, List, Literal, Optional, Sequence, Set, cast
 
 import pyarrow as pa
 
@@ -51,6 +52,9 @@ class _AggSpec:
     output_name: str
     partial_name: str
     field_type: pa.DataType
+    # Reproduces the original aggregate's zero for an all-empty input. It is
+    # only used by the final reduce when every manifest batch was empty.
+    zero_factory: Callable[[], Any]
 
 
 class _PartialState(Enum):
@@ -64,13 +68,16 @@ class _PartialExtremum:
 
     The state machine is:
 
-    - ``UNSET``: no non-null value has been seen.
+    - ``UNSET``: no candidate value has been seen. NaN observations are
+      tracked separately, because Arrow ignores them when a real value exists
+      but returns NaN for an all-NaN input.
     - ``VALUED``: ``_value`` holds the running extremum.
-    - ``POISONED``: ``ignore_nulls=False`` and a null was seen, so the result
-      must be null regardless of later values. Terminal.
+    - ``POISONED``: ``ignore_nulls=False`` and a real null was seen, so the
+      result must be null regardless of later values. Terminal.
 
-    ``result()`` is the running value only in ``VALUED``; ``UNSET`` and
-    ``POISONED`` both reduce to null.
+    ``result()`` is the running value only in ``VALUED``; ``UNSET`` after only
+    NaN observations returns NaN, and every other unset/poisoned state reduces
+    to null.
     """
 
     def __init__(self, kind: _Extremum, ignore_nulls: bool):
@@ -78,6 +85,10 @@ class _PartialExtremum:
         self._ignore_nulls = ignore_nulls
         self._state = _PartialState.UNSET
         self._value: Optional[Any] = None
+        # Arrow's min/max kernel ignores NaN when any non-NaN value exists,
+        # and returns NaN only for an all-NaN input. Track that separately
+        # from a real null, which poisons ``ignore_nulls=False``.
+        self._saw_nan = False
 
     def observe_null(self) -> None:
         """Record that this input contains at least one null value."""
@@ -86,8 +97,11 @@ class _PartialExtremum:
             self._value = None
 
     def observe(self, value: Any) -> None:
-        """Record one non-null candidate value."""
+        """Record one candidate value."""
         if self._state is _PartialState.POISONED:
+            return
+        if _is_nan(value):
+            self._saw_nan = True
             return
         if self._state is _PartialState.UNSET:
             self._state = _PartialState.VALUED
@@ -99,7 +113,16 @@ class _PartialExtremum:
             )
 
     def result(self) -> Optional[Any]:
-        return self._value if self._state is _PartialState.VALUED else None
+        if self._state is _PartialState.VALUED:
+            return self._value
+        if self._state is _PartialState.UNSET and self._saw_nan:
+            return float("nan")
+        return None
+
+    @property
+    def is_unset(self) -> bool:
+        """Whether this batch observed no rows at all."""
+        return self._state is _PartialState.UNSET and not self._saw_nan
 
 
 class _InexactStatistics(Exception):
@@ -111,14 +134,21 @@ def _manifest_from_batch(batch: pa.Table) -> FileManifest:
     return FileManifest(batch)
 
 
+def _is_nan(value: Any) -> bool:
+    try:
+        return math.isnan(value)
+    except TypeError:
+        return False
+
+
 def _cast(value: Any, field_type: pa.DataType) -> Any:
     return pa.scalar(value, type=field_type).as_py()
 
 
 def _fold_footer_stats(
     spec: _AggSpec, stats: Sequence[ColumnStatistics]
-) -> Optional[Any]:
-    """Fold one manifest batch's footer bounds into a single partial value."""
+) -> _PartialExtremum:
+    """Fold one manifest batch's footer bounds into a partial accumulator."""
     partial = _PartialExtremum(spec.kind, spec.ignore_nulls)
     for column_stats in stats:
         state = column_stats.state
@@ -138,14 +168,14 @@ def _fold_footer_stats(
         if column_stats.null_count:
             partial.observe_null()
         partial.observe(_cast(bound, spec.field_type))
-    return partial.result()
+    return partial
 
 
 def _partials_from_stats(
     reader: SupportsColumnStatistics,
     manifest: FileManifest,
     specs: Sequence[_AggSpec],
-) -> Optional[List[Optional[Any]]]:
+) -> Optional[List[_PartialExtremum]]:
     """One partial per aggregate, or ``None`` when the footer cannot answer."""
     targets = list(dict.fromkeys(spec.target for spec in specs))
     try:
@@ -158,14 +188,18 @@ def _partials_from_stats(
         return [_fold_footer_stats(spec, per_target[spec.target]) for spec in specs]
     except (
         _InexactStatistics,
+        AttributeError,
         KeyError,
+        OSError,
+        RuntimeError,
         TypeError,
         ValueError,
         pa.ArrowException,
     ):
         # ``read_column_statistics`` is a trust boundary between the reader
-        # and this rule: a short result, a missing column, an inexact file, or
-        # a bound that cannot be decoded all mean "read this manifest".
+        # and this rule: a short result, a missing column, an inexact file, an
+        # I/O error, or a bound that cannot be decoded all mean "read this
+        # manifest".
         return None
 
 
@@ -173,12 +207,14 @@ def _values_from_read(
     reader: Reader[FileManifest],
     manifest: FileManifest,
     specs: Sequence[_AggSpec],
-) -> List[Optional[Any]]:
+) -> List[_PartialExtremum]:
     """Fallback: read the target columns and fold their min/max."""
     import pyarrow.compute as pc
 
     partials = [_PartialExtremum(spec.kind, spec.ignore_nulls) for spec in specs]
     for table in reader.read(manifest):
+        if table.num_rows == 0:
+            continue
         for partial, spec in zip(partials, specs):
             if spec.target not in table.column_names:
                 # A missing column is null-filled by the reader.
@@ -196,7 +232,12 @@ def _values_from_read(
             value = scalar.as_py()
             if value is not None:
                 partial.observe(_cast(value, spec.field_type))
-    return [partial.result() for partial in partials]
+    return partials
+
+
+def _zero_factory(fn: AggregateFn) -> Callable[[], Any]:
+    """The original aggregate's zero, for an all-empty input."""
+    return lambda: fn.init(None)
 
 
 def _build_specs(
@@ -208,6 +249,10 @@ def _build_specs(
     specs: List[_AggSpec] = []
     for idx, fn in enumerate(aggs):
         if not isinstance(fn, (Min, Max)):
+            return None
+        if type(fn) is not Min and type(fn) is not Max:
+            # Subclasses may override aggregate_block/finalize/zero_factory;
+            # rebuilding a plain Min/Max would silently discard those.
             return None
         target = fn.get_target_column()
         if not isinstance(target, str):
@@ -231,6 +276,9 @@ def _build_specs(
                 output_name=fn.name,
                 partial_name=f"{_PARTIAL_PREFIX}{idx}",
                 field_type=field.type,
+                # ``init`` is the null-safe zero wrapper. Reusing it preserves a
+                # user-supplied ``zero_factory`` for an all-empty dataset.
+                zero_factory=_zero_factory(fn),
             )
         )
     return specs
@@ -240,7 +288,7 @@ def _try_rewrite(agg: Aggregate) -> Optional[Aggregate]:
     """Rewrite a global Min/Max aggregate over an unfiltered file read."""
     if agg.key is not None or not agg.aggs:
         return None
-    if not all(isinstance(fn, (Min, Max)) for fn in agg.aggs):
+    if not all(type(fn) is Min or type(fn) is Max for fn in agg.aggs):
         return None
     if len(agg.input_dependencies) != 1:
         return None
@@ -322,26 +370,41 @@ def _try_rewrite(agg: Aggregate) -> Optional[Aggregate]:
         # Readers are created on the worker, as in the normal read path;
         # serializing a pre-built reader does not preserve its scan state.
         reader = read_scanner.create_reader()
-        values = (
+        accumulators = (
             _partials_from_stats(reader, manifest, built_specs)
             if isinstance(reader, SupportsColumnStatistics)
             else None
         )
-        if values is None:
+        if accumulators is None:
             logger.debug(
                 "Reading %d file(s): footer statistics unavailable", len(manifest)
             )
-            values = _values_from_read(
+            accumulators = _values_from_read(
                 cast(Reader[FileManifest], reader), manifest, built_specs
             )
 
-        # One row per manifest batch. The final aggregate reduces those rows
-        # across batches, so a multi-batch dataset cannot be truncated by
-        # ``Dataset.min()``/``max()``'s final ``take(1)``.
+        # Empty files contribute no rows. Emitting a null row here would make
+        # the final ``Min/Max(ignore_nulls=False)`` treat them as observed
+        # nulls and could return null despite non-null values in other
+        # batches, so an empty batch emits no partial row at all. The final
+        # aggregate then falls back to its zero factory (``+inf``/``-inf``).
+        if all(accumulator.is_unset for accumulator in accumulators):
+            return pa.table(
+                {
+                    spec.partial_name: pa.array([], type=spec.field_type)
+                    for spec in built_specs
+                }
+            )
+
+        # One row per non-empty manifest batch. The final aggregate reduces
+        # those rows across batches, so a multi-batch dataset cannot be
+        # truncated by ``Dataset.min()``/``max()``'s final ``take(1)``.
         return pa.table(
             {
-                spec.partial_name: pa.array([value], type=spec.field_type)
-                for spec, value in zip(built_specs, values)
+                spec.partial_name: pa.array(
+                    [accumulator.result()], type=spec.field_type
+                )
+                for spec, accumulator in zip(built_specs, accumulators)
             }
         )
 
@@ -362,6 +425,10 @@ def _try_rewrite(agg: Aggregate) -> Optional[Aggregate]:
             "on": spec.partial_name,
             "ignore_nulls": spec.ignore_nulls,
             "alias_name": spec.output_name,
+            # Preserve a user-supplied ``zero_factory``: an all-empty dataset
+            # reduces to the rebuilt aggregate's zero, and the default would
+            # silently replace a custom sentinel.
+            "zero_factory": spec.zero_factory,
         }
         final_aggs.append(Min(**kwargs) if spec.kind == "min" else Max(**kwargs))
 

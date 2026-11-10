@@ -46,6 +46,10 @@ class ColumnStatistics:
     state: ColumnStatisticsState
 
     def __post_init__(self) -> None:
+        if not isinstance(self.state, ColumnStatisticsState):
+            raise TypeError(
+                f"state must be a ColumnStatisticsState, got {self.state!r}"
+            )
         if self.num_rows < 0:
             raise ValueError(f"num_rows must be non-negative, got {self.num_rows}")
 

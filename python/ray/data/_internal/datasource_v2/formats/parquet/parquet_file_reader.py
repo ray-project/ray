@@ -706,9 +706,14 @@ class ParquetFileReader(FileReader, SupportsMetadata, SupportsColumnStatistics):
 
         paths = [str(path) for path in file_manifest.paths]
         file_sizes = file_manifest.known_file_sizes
-        # The two manifest views are parallel arrays; a length mismatch would
-        # silently drop rows from ``Executor.map``.
-        assert len(paths) == len(file_sizes), (len(paths), len(file_sizes))
+        # The two manifest views are parallel arrays; a mismatch would
+        # silently truncate ``Executor.map`` to the shorter view.
+        if len(paths) != len(file_sizes):
+            raise ValueError(
+                f"manifest has {len(paths)} paths but {len(file_sizes)} sizes"
+            )
+        # The pool is torn down when this iterator is exhausted or closed;
+        # both call sites drain it.
         with ThreadPoolExecutor() as executor:
             yield from executor.map(_apply, paths, file_sizes)
 

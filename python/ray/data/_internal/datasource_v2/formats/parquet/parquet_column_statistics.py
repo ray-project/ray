@@ -64,18 +64,22 @@ def column_statistics(metadata: pq.FileMetaData, column: str) -> ColumnStatistic
             return ColumnStatistics.unknown(num_rows)
 
         null_count += row_group_stats.null_count
-        if row_group_stats.has_min_max:
-            if min_value is None:
-                min_value = row_group_stats.min
-            else:
-                min_value = min(min_value, row_group_stats.min)
-            if max_value is None:
-                max_value = row_group_stats.max
-            else:
-                max_value = max(max_value, row_group_stats.max)
-        elif row_group_stats.null_count != row_group.num_rows:
+        if row_group_stats.null_count == row_group.num_rows:
+            # All-null row groups contribute no bounds. Some writers still
+            # emit placeholder bounds, which must not be folded.
+            continue
+        if not row_group_stats.has_min_max:
             # Non-null values exist but no bounds; the footer cannot settle it.
             return ColumnStatistics.unknown(num_rows)
+
+        if min_value is None:
+            min_value = row_group_stats.min
+        else:
+            min_value = min(min_value, row_group_stats.min)
+        if max_value is None:
+            max_value = row_group_stats.max
+        else:
+            max_value = max(max_value, row_group_stats.max)
 
     # The footer's row count is the sum of its row groups. If they disagree,
     # the null counts do not cover the file and no result can be trusted.

@@ -9,6 +9,7 @@ integration tests rather than under ``tests/unit/``.
 
 import json
 import logging
+import math
 import os
 from dataclasses import dataclass, fields
 from pathlib import Path
@@ -696,6 +697,13 @@ def _optimized_count_plan(ds):
     return LogicalOptimizer().optimize(LogicalPlan(count_op, ds.context))
 
 
+class _DoubledMin(Min):
+    """A Min subclass whose override must disable the rewrite."""
+
+    def finalize(self, accumulator):
+        return None if accumulator is None else accumulator * 2
+
+
 def _optimized_min_max_plan(ds, aggs, *, key=None):
     """The plan ``Dataset.min()``/``max()`` executes, without executing it."""
     from ray.data._internal.logical.interfaces import LogicalPlan
@@ -948,6 +956,113 @@ def test_min_max_nulls_and_empty_dataset(tmp_path, restore_ctx):
     assert empty_ds.min("x") is None
     assert empty_ds.max("x") is None
     assert empty_ds.groupby(None).min().take_all() == [{"min(x)": None}]
+
+
+def test_min_max_empty_metadata_batch_does_not_poison(
+    tmp_path, restore_ctx, monkeypatch
+):
+    """A metadata batch of only 0-row files contributes no value.
+
+    It used to emit a one-row null partial, which the final
+    ``Min/Max(ignore_nulls=False)`` reads as "a null was observed".
+    """
+    for i in range(16):
+        _write(
+            tmp_path / f"a_empty_{i:02d}.parquet",
+            pa.table({"x": pa.array([], pa.int64())}),
+        )
+    _write(tmp_path / "z_values.parquet", pa.table({"x": [5, 6]}))
+
+    monkeypatch.setattr(restore_ctx.execution_options, "preserve_order", True)
+    restore_ctx.use_datasource_v2 = True
+    ds = ray.data.read_parquet(str(tmp_path))
+
+    assert ds.min("x", ignore_nulls=False) == 5
+    assert ds.max("x", ignore_nulls=False) == 6
+    assert ds.min("x") == 5
+    assert ds.max("x") == 6
+    # A custom zero must not leak into a batch that has values.
+    assert ds.aggregate(Min("x", ignore_nulls=False, zero_factory=lambda: 42)) == {
+        "min(x)": 5
+    }
+    assert ds.aggregate(Max("x", ignore_nulls=False, zero_factory=lambda: -7)) == {
+        "max(x)": 6
+    }
+
+
+def test_min_max_all_empty_matches_stock_aggregate(tmp_path, restore_ctx, monkeypatch):
+    for i in range(17):  # More than one metadata batch.
+        _write(
+            tmp_path / f"empty_{i:02d}.parquet",
+            pa.table({"x": pa.array([], pa.int64())}),
+        )
+
+    monkeypatch.setattr(restore_ctx.execution_options, "preserve_order", True)
+    restore_ctx.use_datasource_v2 = True
+    ds = ray.data.read_parquet(str(tmp_path))
+
+    assert ds.min("x", ignore_nulls=False) == float("inf")
+    assert ds.max("x", ignore_nulls=False) == float("-inf")
+    assert ds.min("x", ignore_nulls=True) is None
+    assert ds.max("x", ignore_nulls=True) is None
+    assert ds.groupby(None).min().take_all() == [{"min(x)": None}]
+    assert ds.aggregate(Min("x", ignore_nulls=False, zero_factory=lambda: 42)) == {
+        "min(x)": 42
+    }
+    assert ds.aggregate(Max("x", ignore_nulls=False, zero_factory=lambda: -7)) == {
+        "max(x)": -7
+    }
+    assert ds.aggregate(Min("x", ignore_nulls=True, zero_factory=lambda: 42)) == {
+        "min(x)": None
+    }
+
+
+def test_min_max_declines_subclasses(tmp_path, restore_ctx):
+    _write(tmp_path / "data.parquet", pa.table({"x": [5, 1, 9]}))
+
+    restore_ctx.use_datasource_v2 = True
+    ds = ray.data.read_parquet(str(tmp_path))
+
+    agg = _DoubledMin("x")
+    assert ds.aggregate(agg) == {"min(x)": 2}
+    dag = _optimized_min_max_plan(ds, [agg]).dag
+    assert any(isinstance(op, ReadFiles) for op in _walk(dag))
+
+
+@pytest.mark.parametrize(
+    "files,expected",
+    [
+        ([[float("nan")], [3.0]], 3.0),
+        ([[3.0], [float("nan")]], 3.0),
+        ([[float("nan")], [float("nan")]], None),
+    ],
+)
+def test_min_max_nan_across_files(tmp_path, restore_ctx, monkeypatch, files, expected):
+    """NaN is ignored when a value exists, regardless of file order."""
+    for i, values in enumerate(files):
+        _write(
+            tmp_path / f"f{i:02d}.parquet",
+            pa.table({"f": pa.array(values, pa.float64())}),
+        )
+
+    monkeypatch.setattr(restore_ctx.execution_options, "preserve_order", True)
+    restore_ctx.use_datasource_v2 = True
+    ds = ray.data.read_parquet(str(tmp_path))
+
+    if expected is None:
+        assert ds.min("f") is None
+        assert ds.max("f") is None
+        min_value = ds.min("f", ignore_nulls=False)
+        max_value = ds.max("f", ignore_nulls=False)
+        assert isinstance(min_value, float)
+        assert isinstance(max_value, float)
+        assert math.isnan(min_value)
+        assert math.isnan(max_value)
+    else:
+        assert ds.min("f") == expected
+        assert ds.max("f") == expected
+        assert ds.min("f", ignore_nulls=False) == expected
+        assert ds.max("f", ignore_nulls=False) == expected
 
 
 def test_min_max_falls_back_for_missing_stats_and_strings(tmp_path, restore_ctx):
