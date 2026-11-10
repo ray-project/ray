@@ -233,6 +233,14 @@ The second case is a read-only sandbox whose mounts need mount points the image 
 
 Any sandbox can end up in one of these cases, so every node that runs sandboxes needs to install the necessary tools to support overlayfs root filesystems. A worker with mount privileges mounts them directly, with the kernel's `erofs` driver on a loop device, or with `erofsfuse` if that fails. A worker without them mounts them with `erofsfuse` in a new user namespace for each sandbox, which needs Linux 5.11 or later. A worker running as root maps every id to itself in that namespace, so files keep their owners from the image. A worker running as any other user needs subordinate uids and gids for the Ray user to keep them, at least 65536 of each. Ray maps them with `newuidmap` and `newgidmap` from the `uidmap` package.
 
+If neither kernel EROFS nor FUSE is available, Ray uses an **extracted-rootfs
+fallback**: `fsck.erofs` extracts the cached EROFS image once into a shared lower
+directory, rather than mounting the image. Extraction is locked and
+published atomically. Each sandbox bind-mounts that directory read-only inside its
+own mount namespace and uses a private writable overlay above it. CDI hooks and
+container writes never modify the shared image or lower directory. This needs
+overlayfs and namespace permissions, but not `/dev/fuse` or the kernel EROFS driver.
+
 On a worker that can't mount an overlayfs root filesystem, a sandbox with such hooks fails to start, and a read-only sandbox with missing mount points runs on gVisor's private writable overlay instead, with a warning. For how to fix this, see [Troubleshooting](#troubleshooting).
 
 ## Usage patterns and examples
@@ -416,6 +424,8 @@ ray.get(pool.close.remote())
 
 Ray validates `SandboxRuntime.create()`'s `gpu_ids` the same way as a `Sandbox`'s assigned GPUs. A sandbox can only access GPUs Ray assigned to the calling actor or task, and sandbox creation fails if Ray assigned it none.
 
+To request NVIDIA profiling capabilities, pass `env={"NVIDIA_DRIVER_CAPABILITIES": "compute,utility,profiling"}` when you create the GPU sandbox. Ray forwards this value to runsc's `--nvproxy-allowed-driver-capabilities` flag. Without an explicit request, gVisor uses `compute,utility`. The image's environment cannot raise the allowed capabilities.
+
 ### Manage sandboxes inside custom actors with SandboxRuntime
 
 If you're building custom RL environment actors or specialized rollout workers, embed `SandboxRuntime` directly inside your custom actors for fine-grained sandbox lifecycle control:
@@ -490,7 +500,7 @@ A profile is the keyword arguments of `create` plus a `size`, the number of sand
 
 A sandbox that a `create` call takes still counts toward the size until it's deleted, whether by `delete`, by its TTL, or by a checkpoint that stops it. Only then does the runtime boot a new one in its place. As a result, a pool never holds more sandboxes than its size. A `create` call that finds no booted sandbox boots one as usual, outside the pool.
 
-Everything fixed at boot must match the profile: image, CPU, memory, disk, workdir, network, DNS, egress allowlist, capabilities, shell, GPUs, mounts, `oom_score_adj`, `readonly`, and `rootless`. The call's `env`, `ttl_seconds`, and `timeout_seconds` don't need to match. A sandbox taken from the pool runs every command with the call's `env` on top of the profile's, and its TTL starts at the `create` call. A `create` call that matches no profile boots a sandbox as usual.
+Everything fixed at boot must match the profile: image, CPU, memory, disk, workdir, network, DNS, egress allowlist, capabilities, shell, GPUs, mounts, `oom_score_adj`, `readonly`, and `rootless`. So must a GPU sandbox's `NVIDIA_DRIVER_CAPABILITIES` in `env`, which sets the driver capabilities gVisor allows it when it boots. The call's other `env`, `ttl_seconds`, and `timeout_seconds` don't need to match. A sandbox taken from the pool runs every command with the call's `env` on top of the profile's, and its TTL starts at the `create` call. A `create` call that matches no profile boots a sandbox as usual.
 
 Call `close` to delete the sandboxes the pool still holds.
 

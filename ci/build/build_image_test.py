@@ -24,35 +24,35 @@ class TestRayImageName(unittest.TestCase):
     """Test RayImage.wanda_image_name property."""
 
     def test_ray_cpu(self):
-        ri = RayImage("ray", "3.10", "cpu")
-        self.assertEqual(ri.wanda_image_name, "ray-py3.10-cpu")
+        ri = RayImage("ray", "3.11", "cpu")
+        self.assertEqual(ri.wanda_image_name, "ray-py3.11-cpu")
 
     def test_ray_cuda(self):
-        ri = RayImage("ray", "3.10", "cu12.8.1-cudnn")
-        self.assertEqual(ri.wanda_image_name, "ray-py3.10-cu12.8.1-cudnn")
+        ri = RayImage("ray", "3.11", "cu12.8.1-cudnn")
+        self.assertEqual(ri.wanda_image_name, "ray-py3.11-cu12.8.1-cudnn")
 
     def test_ray_extra_cpu(self):
-        ri = RayImage("ray-extra", "3.10", "cpu")
-        self.assertEqual(ri.wanda_image_name, "ray-extra-py3.10-cpu")
+        ri = RayImage("ray-extra", "3.11", "cpu")
+        self.assertEqual(ri.wanda_image_name, "ray-extra-py3.11-cpu")
 
     def test_ray_llm_cuda(self):
         ri = RayImage("ray-llm", "3.12", "cu13.0.0-cudnn")
         self.assertEqual(ri.wanda_image_name, "ray-llm-py3.12-cu13.0.0-cudnn")
 
     def test_aarch64_suffix(self):
-        ri = RayImage("ray", "3.10", "cpu", "aarch64")
-        self.assertEqual(ri.wanda_image_name, "ray-py3.10-cpu-aarch64")
+        ri = RayImage("ray", "3.11", "cpu", "aarch64")
+        self.assertEqual(ri.wanda_image_name, "ray-py3.11-cpu-aarch64")
 
 
 class TestRayImageValidation(unittest.TestCase):
     """Test RayImage.validate()."""
 
     def test_valid_ray(self):
-        RayImage("ray", "3.10", "cpu").validate()
+        RayImage("ray", "3.11", "cpu").validate()
 
     def test_unknown_type(self):
         with self.assertRaises(RayImageError):
-            RayImage("bad-type", "3.10", "cpu").validate()
+            RayImage("bad-type", "3.11", "cpu").validate()
 
     def test_invalid_python(self):
         with self.assertRaises(RayImageError):
@@ -60,7 +60,7 @@ class TestRayImageValidation(unittest.TestCase):
 
     def test_invalid_platform(self):
         with self.assertRaises(RayImageError):
-            RayImage("ray", "3.10", "nonexistent").validate()
+            RayImage("ray", "3.11", "nonexistent").validate()
 
     def test_invalid_architecture(self):
         with self.assertRaises(RayImageError):
@@ -72,7 +72,7 @@ class TestGetWandaSpecPath(unittest.TestCase):
 
     def _spec(self, image_type, platform):
         return RayImage(
-            image_type=image_type, python_version="3.10", platform=platform
+            image_type=image_type, python_version="3.11", platform=platform
         ).get_wanda_spec_path()
 
     def test_ray_cpu(self):
@@ -146,7 +146,7 @@ class TestValidation(unittest.TestCase):
 
 def _config(**kwargs):
     image_type = kwargs.pop("image_type", "ray")
-    python_version = kwargs.pop("python_version", "3.10")
+    python_version = kwargs.pop("python_version", "3.11")
     image_platform = kwargs.pop("platform", "cpu")
     architecture = kwargs.pop("architecture", "x86_64")
     ray_version = kwargs.pop("ray_version", "3.0.0.dev0")
@@ -204,16 +204,16 @@ class TestConfigWandaImageTag(unittest.TestCase):
 
     def test_ray_cpu(self):
         c = _config()
-        self.assertEqual(c.ray_image.wanda_image_name, "ray-py3.10-cpu")
-        self.assertEqual(c.wanda_image_tag, f"{REGISTRY_PREFIX}ray-py3.10-cpu")
+        self.assertEqual(c.ray_image.wanda_image_name, "ray-py3.11-cpu")
+        self.assertEqual(c.wanda_image_tag, f"{REGISTRY_PREFIX}ray-py3.11-cpu")
 
     def test_ray_cuda(self):
         c = _config(platform="cu12.8.1-cudnn")
-        self.assertEqual(c.ray_image.wanda_image_name, "ray-py3.10-cu12.8.1-cudnn")
+        self.assertEqual(c.ray_image.wanda_image_name, "ray-py3.11-cu12.8.1-cudnn")
 
     def test_ray_extra_cpu(self):
         c = _config(image_type="ray-extra")
-        self.assertEqual(c.ray_image.wanda_image_name, "ray-extra-py3.10-cpu")
+        self.assertEqual(c.ray_image.wanda_image_name, "ray-extra-py3.11-cpu")
 
     def test_ray_llm_cuda(self):
         c = _config(
@@ -223,7 +223,7 @@ class TestConfigWandaImageTag(unittest.TestCase):
 
     def test_aarch64_suffix(self):
         c = _config(architecture="aarch64")
-        self.assertEqual(c.ray_image.wanda_image_name, "ray-py3.10-cpu-aarch64")
+        self.assertEqual(c.ray_image.wanda_image_name, "ray-py3.11-cpu-aarch64")
 
 
 class TestConfigNightlyAlias(unittest.TestCase):
@@ -275,7 +275,7 @@ class TestBuildEnv(unittest.TestCase):
 
     def test_cpu_env(self):
         env = _config().build_env
-        self.assertEqual(env["PYTHON_VERSION"], "3.10")
+        self.assertEqual(env["PYTHON_VERSION"], "3.11")
         self.assertEqual(env["HOSTTYPE"], "x86_64")
         self.assertEqual(env["ARCH_SUFFIX"], "")
         self.assertEqual(env["IS_LOCAL_BUILD"], "true")
@@ -368,10 +368,10 @@ class TestFromArgs(unittest.TestCase):
                 mock.patch("build_image.find_ray_root", return_value=ray_root),
                 mock.patch("build_image.get_git_commit", return_value="abc1234"),
             ):
-                config = ImageBuildConfig.from_args("ray", "3.10", "cpu")
+                config = ImageBuildConfig.from_args("ray", "3.11", "cpu")
 
             self.assertEqual(config.ray_image.image_type, "ray")
-            self.assertEqual(config.ray_image.python_version, "3.10")
+            self.assertEqual(config.ray_image.python_version, "3.11")
             self.assertEqual(config.ray_image.platform, "cpu")
             self.assertEqual(config.ray_image.architecture, "x86_64")
             self.assertEqual(config.ray_image.arch_suffix, "")
@@ -398,7 +398,7 @@ class TestFromArgs(unittest.TestCase):
             ),
         ):
             with self.assertRaises(BuildError):
-                ImageBuildConfig.from_args("ray-extra", "3.10", "tpu")
+                ImageBuildConfig.from_args("ray-extra", "3.11", "tpu")
 
     def test_from_args_accepts_aarch64(self):
         with tempfile.TemporaryDirectory() as tmpdir:

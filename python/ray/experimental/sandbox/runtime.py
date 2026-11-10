@@ -49,8 +49,10 @@ def _boot_key(cfg: SandboxConfig) -> Optional[tuple]:
     """What a booted sandbox must share with a create to stand in for it.
 
     Everything that is fixed when the sandbox boots; ``env``, ``ttl_seconds``
-    and ``timeout_seconds`` are not. None for a create no booted sandbox can
-    serve (a custom OCI spec transform).
+    and ``timeout_seconds`` are not, except that a GPU sandbox's
+    ``NVIDIA_DRIVER_CAPABILITIES`` sets the driver capabilities runsc allows
+    it at boot. None for a create no booted sandbox can serve (a custom OCI
+    spec transform).
     """
     if cfg._oci_spec_transform_fn is not None:
         return None
@@ -71,6 +73,7 @@ def _boot_key(cfg: SandboxConfig) -> Optional[tuple]:
         tuple(cfg.gpu_ids or ()),
         tuple(sorted((cfg.mounts or {}).items())),
         cfg.oom_score_adj,
+        (cfg.env or {}).get("NVIDIA_DRIVER_CAPABILITIES") if cfg.gpu_ids else None,
     )
 
 
@@ -502,7 +505,9 @@ class SandboxRuntime:
             profiles, each the ``create()`` keyword arguments of one boot
             configuration plus its pool ``"size"``. A create whose arguments
             match a profile's (``env``, ``ttl_seconds`` and
-            ``timeout_seconds`` aside) takes a booted sandbox at once, which
+            ``timeout_seconds`` aside, though a GPU sandbox's
+            ``NVIDIA_DRIVER_CAPABILITIES`` must match too, since it's fixed
+            at boot) takes a booted sandbox at once, which
             runs every command with the create's ``env`` (on top of the
             profile's). A profile holds at most ``size`` sandboxes, ready or
             in use: the runtime boots a new one when a sandbox it handed out
