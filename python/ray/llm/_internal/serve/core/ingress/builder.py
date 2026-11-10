@@ -311,7 +311,7 @@ def build_openai_app(builder_config: dict) -> Application:
         direct_deployment = _build_direct_streaming_llm_deployment(llm_config)
         if shared_kv_router:
             # The shared router owns replica selection and lifecycle accounting.
-            return direct_deployment
+            return direct_deployment._as_router_application_target()
         logger.info(
             "Direct streaming enabled: "
             "LLMServer=ingress, LLMRouter=ingress_request_router"

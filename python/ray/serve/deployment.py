@@ -65,6 +65,7 @@ class Application:
         self._bound_deployment = bound_deployment
         # Optional peer ingress request router for ingress bypass mode.
         self._ingress_request_router: Optional["Application"] = None
+        self._is_router_application_target = False
 
     def _with_ingress_request_router(
         self, ingress_request_router: "Application"
@@ -72,6 +73,11 @@ class Application:
         # Internal-only, unstable hook for the Serve LLM direct-ingress stack.
         # This is not a stable public Serve API.
         self._ingress_request_router = ingress_request_router
+        return self
+
+    def _as_router_application_target(self) -> "Application":
+        """Allow a router application to use this app's custom request router."""
+        self._is_router_application_target = True
         return self
 
 
