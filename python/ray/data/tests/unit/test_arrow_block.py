@@ -64,6 +64,12 @@ class TestArrowBlockColumnAccessor:
 
         assert result == expected
 
+    def test_integer_sum_does_not_overflow(self, arr, as_py):
+        arr = pa.array([2**62] * 8, type=pa.int64())
+        accessor = ArrowBlockColumnAccessor(arr)
+
+        assert accessor.sum(ignore_nulls=True) == 2**65
+
     @pytest.mark.parametrize(
         "ignore_nulls, expected",
         [

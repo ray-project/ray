@@ -4,6 +4,49 @@ import pyarrow as pa
 import pyarrow.compute as pc
 
 
+# An integer column can be summed without losing information by widening it to
+# a decimal accumulator before invoking Arrow's grouped sum kernel.  Decimal128
+# has enough precision for the largest practical sum of int64/uint64 data while
+# keeping the accumulator compact enough for the vectorized aggregation path.
+_INTEGER_SUM_TYPE = pa.decimal128(38, 0)
+
+
+def _prepare_integer_sum_column(
+    agg_index: int, source_col: Optional[str], block: "pa.Table"
+) -> "pa.Table":
+    """Create a widened input column for integer sum/mean aggregations.
+
+    The original source column is left untouched.  Keeping a per-aggregation
+    derived column is important when the same source column is used by multiple
+    aggregations, and it also lets Decimal inputs retain their original type.
+    """
+
+    input_col = f"__agg{agg_index}_sum_input"
+    source = block[source_col]
+    if pa.types.is_integer(source.type):
+        source = pc.cast(source, _INTEGER_SUM_TYPE)
+    return block.append_column(input_col, source)
+
+
+def _prepare_integer_sum_and_marker(
+    agg_index: int, source_col: Optional[str], block: "pa.Table"
+) -> "pa.Table":
+    """Prepare a sum input column and record whether it was widened."""
+
+    input_col = f"__agg{agg_index}_sum_input"
+    marker_col = f"__agg{agg_index}_sum_widened"
+    source = block[source_col]
+    widened = pa.types.is_integer(source.type)
+    if widened:
+        source = pc.cast(source, _INTEGER_SUM_TYPE)
+
+    block = block.append_column(input_col, source)
+    return block.append_column(
+        marker_col,
+        pa.array([int(widened)] * block.num_rows, type=pa.int8()),
+    )
+
+
 def is_boolean_arrow_type(t: "pa.DataType") -> bool:
     """Whether ``t`` is boolean, including dictionary/run-end encoded booleans."""
     if pa.types.is_dictionary(t) or pa.types.is_run_end_encoded(t):
@@ -75,6 +118,20 @@ def _finalize_mean(merged: "pa.Table", component_cols: Tuple[str, ...]):
     return pc.divide(pc.cast(merged[sum_col], pa.float64()), denominator)
 
 
+def _finalize_sum(merged: "pa.Table", component_cols: Tuple[str, ...]):
+    sum_col, widened_col = component_cols
+
+    # Integer inputs use a decimal accumulator.  Return an int64 column when
+    # possible to preserve the historical result type, but retain the widened
+    # decimal result if the exact total does not fit in int64.
+    if pc.max(merged[widened_col]).as_py() == 1:
+        try:
+            return pc.cast(merged[sum_col], pa.int64(), safe=True)
+        except (pa.ArrowInvalid, pa.ArrowNotImplementedError):
+            pass
+    return merged[sum_col]
+
+
 def _finalize_pct(merged: "pa.Table", component_cols: Tuple[str, ...]):
     numerator_col, denominator_col = component_cols
     numerator = pc.cast(merged[numerator_col], pa.float64())
@@ -90,14 +147,17 @@ def _finalize_pct(merged: "pa.Table", component_cols: Tuple[str, ...]):
 # --- spec builders (an AggregateFn picks one in its _arrow_agg_spec) ----------
 def sum_spec() -> ArrowAggSpec:
     return ArrowAggSpec(
-        components=("sum",),
+        components=("sum", "widened"),
+        prep=_prepare_integer_sum_and_marker,
         raw_agg_specs=lambda agg_index, source_col, options: [
-            (source_col, "sum", options.value_opts)
+            (f"__agg{agg_index}_sum_input", "sum", options.value_opts),
+            (f"__agg{agg_index}_sum_widened", "max", options.value_opts),
         ],
         merge_specs=lambda input_cols, options: [
-            (input_cols[0], "sum", options.value_opts)
+            (input_cols[0], "sum", options.value_opts),
+            (input_cols[1], "max", options.value_opts),
         ],
-        finalize=lambda merged, component_cols: merged[component_cols[0]],
+        finalize=_finalize_sum,
     )
 
 
@@ -135,9 +195,10 @@ def minmax_spec(kind: str) -> ArrowAggSpec:
 def mean_spec() -> ArrowAggSpec:
     return ArrowAggSpec(
         components=("sum", "count"),
+        prep=_prepare_integer_sum_column,
         raw_agg_specs=lambda agg_index, source_col, options: [
-            (source_col, "sum", options.value_opts),
-            (source_col, "count", options.count_opts),
+            (f"__agg{agg_index}_sum_input", "sum", options.value_opts),
+            (f"__agg{agg_index}_sum_input", "count", options.count_opts),
         ],
         merge_specs=lambda input_cols, options: [
             (input_cols[0], "sum", options.value_opts),

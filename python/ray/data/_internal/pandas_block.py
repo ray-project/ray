@@ -18,7 +18,12 @@ from typing import (
 
 import numpy as np
 import pandas as pd
-from pandas.api.types import is_object_dtype, is_scalar, is_string_dtype
+from pandas.api.types import (
+    is_integer_dtype,
+    is_object_dtype,
+    is_scalar,
+    is_string_dtype,
+)
 
 from ray.data._internal.numpy_support import convert_to_numpy
 from ray.data._internal.row import row_repr, row_repr_pretty, row_str
@@ -333,6 +338,19 @@ class PandasBlockColumnAccessor(BlockColumnAccessor):
         # NOTE: We pass `min_count=1` to workaround quirky Pandas behavior,
         #       where (by default) when min_count=0 it will return 0.0 for
         #       all-null/NaN series
+        if is_integer_dtype(self._column.dtype):
+            # Pandas uses the Series dtype for integer reductions, so int64
+            # accumulation wraps before the result can be converted to Python.
+            # Use Python integers for the integer path while preserving Pandas'
+            # existing null behavior when nulls must not be ignored.
+            if not ignore_nulls and self._column.isna().any():
+                return self._column.sum(skipna=False, min_count=1)
+            return sum(
+                int(value)
+                for value in self._column.tolist()
+                if not pd.isna(value)
+            )
+
         return self._column.sum(skipna=ignore_nulls, min_count=1)
 
     def min(self, *, ignore_nulls: bool, as_py: bool = True) -> Optional[U]:

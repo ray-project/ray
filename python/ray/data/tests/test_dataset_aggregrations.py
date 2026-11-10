@@ -179,6 +179,21 @@ def test_global_tabular_mean(ray_start_regular_shared_2_cpus, ds_format, num_par
     assert pd.isnull(nan_ds.mean("A", ignore_nulls=False))
 
 
+@pytest.mark.parametrize("ds_format", ["pyarrow", "pandas"])
+def test_integer_sum_and_mean_do_not_overflow(
+    ray_start_regular_shared_2_cpus, ds_format
+):
+    values = [{"g": 0, "v": 2**62} for _ in range(8)]
+    ds = ray.data.from_items(values, override_num_blocks=4)
+    if ds_format == "pandas":
+        ds = ds.map_batches(lambda batch: batch, batch_size=None, batch_format="pandas")
+
+    assert ds.sum("v") == 2**65
+    assert ds.mean("v") == float(2**62)
+    assert ds.groupby("g").sum("v").take_all() == [{"g": 0, "sum(v)": 2**65}]
+    assert ds.groupby("g").mean("v").take_all() == [{"g": 0, "mean(v)": float(2**62)}]
+
+
 @pytest.mark.parametrize("num_parts", [1, 30])
 @pytest.mark.parametrize("ds_format", ["arrow", "pandas"])
 def test_global_tabular_std(ray_start_regular_shared_2_cpus, ds_format, num_parts):

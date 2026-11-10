@@ -57,6 +57,12 @@ class TestPandasBlockColumnAccessor:
         result = accessor.sum(ignore_nulls=ignore_nulls, as_py=True)
         assert result == expected or is_null(result) and is_null(expected)
 
+    def test_integer_sum_does_not_overflow(self, arr):
+        series = pd.Series([2**62] * 8, dtype="int64")
+        accessor = PandasBlockColumnAccessor(series)
+
+        assert accessor.sum(ignore_nulls=True, as_py=True) == 2**65
+
     @pytest.mark.parametrize(
         "ignore_nulls, expected",
         [
@@ -116,6 +122,18 @@ class TestPandasBlockColumnAccessor:
         assert all(
             [a == b or is_null(a) and is_null(b) for a, b in zip(expected, result)]
         )
+
+
+@pytest.mark.parametrize(
+    "dtype",
+    ["Int64", pytest.param(pd.ArrowDtype(pa.int64()), id="arrow-backed")],
+)
+def test_nullable_integer_sum_does_not_overflow_or_crash_on_nulls(dtype):
+    series = pd.Series([2**62] * 8 + [None], dtype=dtype)
+    accessor = PandasBlockColumnAccessor(series)
+
+    assert accessor.sum(ignore_nulls=True, as_py=True) == 2**65
+    assert pd.isna(accessor.sum(ignore_nulls=False, as_py=True))
 
 
 class TestPandasBlockColumnAccessorAllNullSeries:
