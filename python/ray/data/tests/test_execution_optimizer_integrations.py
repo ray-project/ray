@@ -134,7 +134,7 @@ def test_from_huggingface_e2e(ray_start_regular_shared_2_cpus):
 
     from ray.data.tests.datasource.test_huggingface import hfds_assert_equals
 
-    data = datasets.load_dataset("tweet_eval", "emotion")
+    data = datasets.load_dataset("cardiffnlp/tweet_eval", "emotion")
     assert isinstance(data, datasets.DatasetDict)
     ray_datasets = {
         "train": ray.data.from_huggingface(data["train"]),
