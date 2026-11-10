@@ -549,8 +549,12 @@ async def test_cancelled_batch_queue_while_filling_sets_dequeued_request_excepti
     queue.put(request)
 
     # Cancel once the request is dequeued into a batch that is still filling.
+    # Wait until the event is cleared too: before Python 3.12, cancelling
+    # asyncio.wait_for after its inner wait has finished is swallowed.
     await async_wait_for_condition(
-        lambda: bool(queue._current_batch), retry_interval_ms=1
+        lambda: bool(queue._current_batch)
+        and not queue.requests_available_event.is_set(),
+        retry_interval_ms=1,
     )
     queue.shutdown()
     with pytest.raises(asyncio.CancelledError):
@@ -656,6 +660,55 @@ async def test_multiplexed_batch_queue_recreated_after_cleanup():
     assert await request.future == "block"
 
 
+@pytest.mark.asyncio
+async def test_debug_helpers_cover_every_model_queue():
+    release = asyncio.Event()
+
+    async def blocked_batch(requests):
+        await release.wait()
+        return requests
+
+    wrapper = _LazyBatchQueueWrapper(max_batch_size=1, handle_batch_func=blocked_batch)
+    queues = [wrapper.get_queue(model_id) for model_id in ["model-a", "model-b"]]
+    futures = []
+    try:
+        for queue, model_id in zip(queues, ["model-a", "model-b"]):
+            request = _make_single_request(blocked_batch, "request", model_id)
+            queue.put(request)
+            futures.append(request.future)
+        # Each queue runs a blocked batch, and its loop waits for a permit.
+        await async_wait_for_condition(
+            lambda: all(queue.tasks for queue in queues), retry_interval_ms=1
+        )
+
+        start_times = wrapper._get_curr_iteration_start_times().start_times
+        assert sorted(start_times) == sorted(
+            start_time
+            for queue in queues
+            for start_time in queue.curr_iteration_start_times.values()
+        )
+        assert len(start_times) == 2
+        stacks = await wrapper._get_handling_task_stack()
+        assert stacks.count("Stack for") == 2
+
+        # The wrapper's task is alive only while every queue's loop is.
+        assert await wrapper._is_batching_task_alive()
+        await _shut_down_queues([queues[0]])
+        assert not await wrapper._is_batching_task_alive()
+
+        release.set()
+        assert await asyncio.gather(*futures) == ["request", "request"]
+    finally:
+        all_queues = queues + [
+            queue for queue in wrapper._queues.values() if queue not in queues
+        ]
+        batch_tasks = [task for queue in all_queues for task in queue.tasks]
+        await _shut_down_queues(all_queues)
+        release.set()
+        await asyncio.gather(*batch_tasks, return_exceptions=True)
+        _discard_futures(futures)
+
+
 METRIC_ATTRIBUTES = [
     "_batch_wait_time_histogram",
     "_batch_execution_time_histogram",
@@ -723,21 +776,24 @@ async def test_shared_queue_length_gauge_reports_all_model_queues(monkeypatch):
             queue.put(request)
             futures.append(request.future)
 
-        await async_wait_for_condition(lambda: bool(recorded), retry_interval_ms=1)
+        # Wait for model-a's second record, so that shutting it down cancels a
+        # pending wait. Before Python 3.12, cancelling asyncio.wait_for after
+        # its inner wait has finished is swallowed.
+        await async_wait_for_condition(lambda: len(recorded) >= 2, retry_interval_ms=1)
         assert recorded[-1] == (2, {"function_name": "blocked_batch"})
     finally:
         await _shut_down_queues(queues)
         _discard_futures(futures)
 
 
+BATCH_SETTER_CASES = [
+    ("set_max_batch_size", "max_batch_size", 7),
+    ("set_batch_wait_timeout_s", "batch_wait_timeout_s", 3.5),
+]
+
+
 @pytest.mark.asyncio
-@pytest.mark.parametrize(
-    "setter, attribute, new_value",
-    [
-        ("set_max_batch_size", "max_batch_size", 7),
-        ("set_batch_wait_timeout_s", "batch_wait_timeout_s", 3.5),
-    ],
-)
+@pytest.mark.parametrize("setter, attribute, new_value", BATCH_SETTER_CASES)
 async def test_batch_setters_apply_to_existing_and_new_queues(
     setter, attribute, new_value
 ):
@@ -753,13 +809,7 @@ async def test_batch_setters_apply_to_existing_and_new_queues(
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize(
-    "setter, attribute, new_value",
-    [
-        ("set_max_batch_size", "max_batch_size", 7),
-        ("set_batch_wait_timeout_s", "batch_wait_timeout_s", 3.5),
-    ],
-)
+@pytest.mark.parametrize("setter, attribute, new_value", BATCH_SETTER_CASES)
 async def test_batch_setter_during_queue_construction_is_kept(
     monkeypatch, setter, attribute, new_value
 ):
