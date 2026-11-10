@@ -228,10 +228,12 @@ class OperatorSizer:
     ) -> None:
         """Phase 1: apply the cross-operator corrections.
 
-        These land before the per-op passes on purpose: a correction's claims
-        are targeted pendings in committed accounting, so the passes below
-        already see the space they reserved. Operators a rule claimed are
-        blocked on the guard, so the warm loop leaves them alone this tick.
+        These land before the per-op passes on purpose: a correction debits
+        what it claims (or holds for a later tick) off the shared free map, and
+        what it places becomes targeted pendings in committed accounting, so
+        the passes below already see the space it reserved. Operators a rule
+        claimed are blocked on the guard, so the warm loop leaves them alone
+        this tick.
         """
         for placed in self._optimizer.optimize_pipeline(
             self._topology,
