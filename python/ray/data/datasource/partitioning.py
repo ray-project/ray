@@ -347,17 +347,14 @@ class PathPartitionParser:
 
         try:
             if schema is None:
-                # A null value (see ``null_fallback``) has no type of its own,
-                # and kernels such as ``is_in`` reject a null-typed column.
-                # Type it as the path's other values parse: the type from
-                # ``field_types``, else string.
-                path_schema = _partition_field_types_to_pa_schema(
-                    list(partition_values), self._scheme.field_types
-                )
+                # Kernels such as ``is_in`` reject a null-typed column, so
+                # give a null value a type.
                 partition_table = pa.table(
                     {
                         col: (
-                            pa.nulls(1, path_schema.field(col).type)
+                            pa.nulls(
+                                1, _null_partition_type(col, self._scheme.field_types)
+                            )
                             if val is None
                             else [val]
                         )
@@ -528,6 +525,7 @@ class PathPartitionFilter:
         field_names: Optional[List[str]] = None,
         field_types: Optional[Dict[str, PartitionDataType]] = None,
         filesystem: Optional["pyarrow.fs.FileSystem"] = None,
+        null_fallback: Optional[str] = None,
     ) -> "PathPartitionFilter":
         """Creates a path-based partition filter using a flattened argument list.
 
@@ -535,8 +533,9 @@ class PathPartitionFilter:
             filter_fn: Callback used to filter partitions. Takes a dictionary mapping
                 partition keys to values as input. Unpartitioned files are denoted with
                 an empty input dictionary. Returns `True` to read a file for that
-                partition or `False` to skip it. Partition keys and values are always
-                strings read from the filesystem path. For example, this removes all
+                partition or `False` to skip it. Partition keys and values are
+                strings read from the filesystem path, except that a value equal to
+                ``null_fallback`` is ``None``. For example, this removes all
                 unpartitioned files:
 
                 .. code:: python
@@ -571,11 +570,21 @@ class PathPartitionFilter:
             field_types: A dictionary that maps partition key names to their desired
                 data type. If not provided, the data type defaults to string.
             filesystem: Filesystem that will be used for partition path file I/O.
+            null_fallback: HIVE partition value that stands for a null value, such
+                as ``HIVE_DEFAULT_PARTITION``. Pass the same value as the read's
+                ``Partitioning`` so the filter sees the nulls the data has.
 
         Returns:
             The new path-based partition filter.
         """
-        scheme = Partitioning(style, base_dir, field_names, field_types, filesystem)
+        scheme = Partitioning(
+            style,
+            base_dir,
+            field_names,
+            field_types,
+            filesystem,
+            null_fallback=null_fallback,
+        )
         path_partition_parser = PathPartitionParser(scheme)
         return PathPartitionFilter(path_partition_parser, filter_fn)
 
@@ -591,9 +600,10 @@ class PathPartitionFilter:
             filter_fn: Callback used to filter partitions. Takes a dictionary mapping
                 partition keys to values as input. Unpartitioned files are denoted with
                 an empty input dictionary. Returns `True` to read a file for that
-                partition or `False` to skip it. Partition keys and values are always
-                strings read from the filesystem path. For example, this removes all
-                unpartitioned files:
+                partition or `False` to skip it. Partition keys and values are
+                strings read from the filesystem path, except that a value equal to
+                the parser's ``null_fallback`` is ``None``. For example, this
+                removes all unpartitioned files:
                 ``lambda d: True if d else False``
                 This raises an assertion error for any unpartitioned file found:
                 ``lambda d: assert d, "Expected all files to be partitioned!"``
@@ -705,6 +715,18 @@ def _partition_field_types_to_pa_schema(
         pa_type = type_map.get(py_type, pa.string())
         fields.append(pa.field(name, pa_type))
     return pa.schema(fields)
+
+
+def _null_partition_type(
+    name: str, field_types: Optional[Dict[str, PartitionDataType]]
+) -> "pyarrow.DataType":
+    """Arrow type for a null value of partition field ``name``.
+
+    A null path value (see ``Partitioning.null_fallback``) has no type of its
+    own, so it takes the type the field's other values parse as: the type from
+    ``field_types``, else string.
+    """
+    return _partition_field_types_to_pa_schema([name], field_types or {}).field(0).type
 
 
 def _cast_value(value: str, data_type: PartitionDataType) -> Any:

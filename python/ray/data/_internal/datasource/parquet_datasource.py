@@ -69,6 +69,7 @@ from ray.data.datasource.partitioning import (
     Partitioning,
     PathPartitionFilter,
     PathPartitionParser,
+    _null_partition_type,
 )
 from ray.data.datasource.path_util import _resolve_paths_and_filesystem
 from ray.data.expressions import Expr
@@ -1227,7 +1228,9 @@ def _read_batches_from(
 
         def _postprocess_table(table):
             if partition_col_values:
-                table = _add_partitions_to_table(partition_col_values, table)
+                table = _add_partitions_to_table(
+                    partition_col_values, table, partitioning.field_types
+                )
 
             if include_path:
                 table = ArrowBlockAccessor.for_block(table).fill_column(
@@ -1656,12 +1659,21 @@ def _sample_fragments(
 
 
 def _add_partitions_to_table(
-    partition_col_values: Dict[str, PartitionDataType], table: "pyarrow.Table"
+    partition_col_values: Dict[str, PartitionDataType],
+    table: "pyarrow.Table",
+    field_types: Optional[Dict[str, PartitionDataType]] = None,
 ) -> "pyarrow.Table":
+    import pyarrow as pa
 
     for partition_col, value in partition_col_values.items():
         field_index = table.schema.get_field_index(partition_col)
         if field_index == -1:
+            if value is None:
+                # Typed like the field's other values, so a block from a null
+                # partition doesn't get a null-typed column.
+                value = pa.scalar(
+                    None, type=_null_partition_type(partition_col, field_types)
+                )
             table = BlockAccessor.for_block(table).fill_column(partition_col, value)
         elif log_once(f"duplicate_partition_field_{partition_col}"):
             logger.warning(

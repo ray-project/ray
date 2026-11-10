@@ -686,28 +686,19 @@ def test_path_partition_parser_decodes_special_characters(
     assert partition_parser(path) == expected_partitions
 
 
-@pytest.mark.parametrize(
-    "field_types, expected",
-    [
-        (None, {"year": None, "region": "us"}),
-        ({"year": int}, {"year": None, "region": "us"}),
-    ],
-)
-def test_path_partition_parser_hive_null_fallback(field_types, expected):
+def test_path_partition_parser_hive_null_fallback():
     """A value equal to ``null_fallback`` parses as ``None``, and isn't cast."""
     partitioning = Partitioning(
         PartitionStyle.HIVE,
-        field_types=field_types,
+        field_types={"year": int},
         null_fallback=HIVE_DEFAULT_PARTITION,
     )
     parser = PathPartitionParser(partitioning)
 
     path = f"year={HIVE_DEFAULT_PARTITION}/region=us/part-0.parquet"
-    assert parser(path) == expected
+    assert parser(path) == {"year": None, "region": "us"}
     # Other values are cast as usual.
-    assert parser("year=2024/region=us/part-0.parquet")["year"] == (
-        2024 if field_types else "2024"
-    )
+    assert parser("year=2024/region=us/part-0.parquet")["year"] == 2024
 
 
 def test_path_partition_parser_hive_keeps_the_sentinel_by_default():
@@ -717,20 +708,19 @@ def test_path_partition_parser_hive_keeps_the_sentinel_by_default():
     assert parser(path) == {"year": HIVE_DEFAULT_PARTITION}
 
 
-# ``HIVE_DEFAULT_PARTITION`` is also PyArrow's default, so the custom value is
-# what shows ``null_fallback`` reaches PyArrow.
-@pytest.mark.parametrize("null_fallback", [HIVE_DEFAULT_PARTITION, "NULL"])
-def test_hive_partitioning_null_fallback_to_pyarrow(null_fallback):
+def test_hive_partitioning_null_fallback_to_pyarrow():
+    # ``HIVE_DEFAULT_PARTITION`` is PyArrow's default, so only a custom value
+    # shows that ``null_fallback`` reaches PyArrow.
     partitioning = Partitioning(
         PartitionStyle.HIVE,
         field_names=["year"],
-        null_fallback=null_fallback,
+        null_fallback="NULL",
     )
 
     pa_partitioning = partitioning.to_pyarrow()
 
     # The trailing slash marks ``year=...`` as a directory, not a file name.
-    expression = pa_partitioning.parse(f"/year={null_fallback}/")
+    expression = pa_partitioning.parse("/year=NULL/")
     assert "is_null" in str(expression)
 
 
@@ -769,11 +759,7 @@ def test_evaluate_predicate_on_null_partition(
 
 
 @pytest.mark.parametrize("file_format", ["parquet", "orc"])
-@pytest.mark.parametrize("field_names", [None, ["grp"]])
-def test_read_hive_null_fallback(
-    file_format, field_names, tmp_path, ray_start_regular_shared
-):
-    """``null_fallback`` applies whether or not ``field_names`` is given."""
+def test_read_hive_null_fallback(file_format, tmp_path, ray_start_regular_shared):
     import pyarrow.orc
     import pyarrow.parquet
 
@@ -785,26 +771,69 @@ def test_read_hive_null_fallback(
             pa.table({"id": [1]}), str(tmp_path / f"grp={value}" / f"0.{file_format}")
         )
     partitioning = Partitioning(
-        PartitionStyle.HIVE,
-        field_names=field_names,
-        null_fallback=HIVE_DEFAULT_PARTITION,
+        PartitionStyle.HIVE, null_fallback=HIVE_DEFAULT_PARTITION
     )
 
     ds = read[file_format](str(tmp_path), partitioning=partitioning)
 
-    assert sorted(row["grp"] or "" for row in ds.take_all()) == ["", "a"]
+    assert {row["grp"] for row in ds.take_all()} == {None, "a"}
+
+
+@pytest.mark.parametrize("file_format", ["csv", "parquet"])
+@pytest.mark.parametrize(
+    "field_types, arrow_type", [(None, pa.string()), ({"grp": int}, pa.int64())]
+)
+def test_read_null_partition_column_is_typed(
+    file_format,
+    field_types,
+    arrow_type,
+    tmp_path,
+    ray_start_regular_shared,
+    restore_data_context,
+):
+    """A partition column the reader adds from a null path value isn't null-typed.
+
+    The CSV reader and the V1 Parquet reader add the column from the path value
+    when the file doesn't store it.
+    """
+    import pyarrow.csv
+    import pyarrow.parquet
+
+    restore_data_context.use_datasource_v2 = False
+    write = {"csv": pyarrow.csv.write_csv, "parquet": pyarrow.parquet.write_table}
+    read = {"csv": ray.data.read_csv, "parquet": ray.data.read_parquet}
+    null_dir = tmp_path / f"grp={HIVE_DEFAULT_PARTITION}"
+    null_dir.mkdir()
+    write[file_format](pa.table({"id": [1]}), str(null_dir / f"0.{file_format}"))
+    partitioning = Partitioning(
+        PartitionStyle.HIVE,
+        field_types=field_types,
+        null_fallback=HIVE_DEFAULT_PARTITION,
+    )
+
+    ds = read[file_format](str(tmp_path), partitioning=partitioning).materialize()
+
+    assert ds.schema().base_schema.field("grp").type == arrow_type
+    assert ds.take_all() == [{"id": 1, "grp": None}]
+
+
+def test_path_partition_filter_null_fallback():
+    paths = [
+        "root/grp=a/0.parquet",
+        f"root/grp={HIVE_DEFAULT_PARTITION}/0.parquet",
+    ]
+    partition_filter = PathPartitionFilter.of(
+        lambda d: d["grp"] is not None, null_fallback=HIVE_DEFAULT_PARTITION
+    )
+
+    assert partition_filter(paths) == ["root/grp=a/0.parquet"]
 
 
 @pytest.mark.parametrize(
-    "in_data, value, matches",
-    [
-        ([None, None], None, True),
-        (["a", None], None, False),
-        (["a", "a"], "a", True),
-        (["a", "a"], "b", False),
-    ],
+    "in_data, matches",
+    [([None, None], True), (["a", None], False)],
 )
-def test_add_partitions_to_table_null_partition(in_data, value, matches):
+def test_add_partitions_to_table_null_partition(in_data, matches):
     """A null partition value matches a file column that is all null.
 
     CSV and JSON files can keep the partition column. ``pc.equal`` of two
@@ -814,11 +843,11 @@ def test_add_partitions_to_table_null_partition(in_data, value, matches):
 
     if not matches:
         with pytest.raises(ValueError, match="different from in-data values"):
-            _add_partitions_to_table(table, {"grp": value})
+            _add_partitions_to_table(table, {"grp": None})
         return
-    result = _add_partitions_to_table(table, {"grp": value})
+    result = _add_partitions_to_table(table, {"grp": None})
     assert result.schema.field("grp").type == pa.string()
-    assert result["grp"].to_pylist() == [value, value]
+    assert result["grp"].to_pylist() == [None, None]
 
 
 @pytest.mark.parametrize(

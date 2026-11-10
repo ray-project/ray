@@ -37,9 +37,11 @@ from ray.data.datasource.file_meta_provider import (
     DefaultFileMetadataProvider,
 )
 from ray.data.datasource.partitioning import (
+    PartitionDataType,
     Partitioning,
     PathPartitionFilter,
     PathPartitionParser,
+    _null_partition_type,
 )
 from ray.data.datasource.path_util import (
     _has_file_extension,
@@ -326,7 +328,9 @@ class FileBasedDatasource(Datasource):
                     match=self._data_context.retried_io_errors,
                 ):
                     if partitions:
-                        block = _add_partitions(block, partitions)
+                        block = _add_partitions(
+                            block, partitions, partitioning.field_types
+                        )
                     if self._include_paths:
                         block_accessor = BlockAccessor.for_block(block)
                         block = block_accessor.fill_column("path", read_path)
@@ -484,27 +488,36 @@ class FileBasedDatasource(Datasource):
 
 
 def _add_partitions(
-    data: Union["pyarrow.Table", "pd.DataFrame"], partitions: Dict[str, Any]
+    data: Union["pyarrow.Table", "pd.DataFrame"],
+    partitions: Dict[str, Any],
+    field_types: Optional[Dict[str, PartitionDataType]] = None,
 ) -> Union["pyarrow.Table", "pd.DataFrame"]:
     import pandas as pd
     import pyarrow as pa
 
     assert isinstance(data, (pa.Table, pd.DataFrame))
     if isinstance(data, pa.Table):
-        return _add_partitions_to_table(data, partitions)
+        return _add_partitions_to_table(data, partitions, field_types)
     if isinstance(data, pd.DataFrame):
         return _add_partitions_to_dataframe(data, partitions)
 
 
 def _add_partitions_to_table(
-    table: "pyarrow.Table", partitions: Dict[str, Any]
+    table: "pyarrow.Table",
+    partitions: Dict[str, Any],
+    field_types: Optional[Dict[str, PartitionDataType]] = None,
 ) -> "pyarrow.Table":
     import pyarrow as pa
     import pyarrow.compute as pc
 
     column_names = set(table.column_names)
     for field, value in partitions.items():
-        column = pa.array([value] * len(table))
+        if value is None:
+            # Typed like the field's other values, so a block from a null
+            # partition doesn't get a null-typed column.
+            column = pa.nulls(len(table), _null_partition_type(field, field_types))
+        else:
+            column = pa.array([value] * len(table))
         if field in column_names:
             column_type = table.schema.field(field).type
             try:
