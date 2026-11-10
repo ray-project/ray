@@ -305,15 +305,24 @@ def test_interleaved_heavy_files(
 
 @pytest.mark.parametrize("max_bin", [1, 50, 1000])
 @pytest.mark.parametrize("split_coalesced", [False, True])
-def test_bin_of_runs_requests_its_bytes(max_bin: int, split_coalesced: bool) -> None:
-    # Whatever the layout, a bin asks its read task for the bytes it packed: the
-    # 500-byte run over a 50-byte cap gets a bin of its own and asks for all 500,
-    # and a split coalesced run asks for the pieces that landed in each bin.
-    coalesced = _run((0, 1, 2), 90, unit_sizes=(30, 30, 30), unit_rows=(3, 3, 4))
+def test_bin_of_runs_requests_its_memory_estimates(
+    max_bin: int, split_coalesced: bool
+) -> None:
+    # Whatever the layout, a bin asks its read task for its runs' memory
+    # estimates, here twice their bytes: the 500-byte run over a 50-byte cap gets
+    # a bin of its own and asks for 1000, and a split coalesced run's pieces ask
+    # for their share.
+    def units(path: str, sizes: list[int]) -> FileManifest:
+        runs = [_run((i,), s, memory=2 * s) for i, s in enumerate(sizes)]
+        return _file(path, sum(sizes), runs)
+
+    coalesced = _run(
+        (0, 1, 2), 90, unit_sizes=(30, 30, 30), unit_rows=(3, 3, 4), memory=180
+    )
     files = [
-        _units("a", [30, 30, 30]),
-        _units("b", [500]),
-        _units("c", [10]),
+        units("a", [30, 30, 30]),
+        units("b", [500]),
+        units("c", [10]),
         _file("d", 90, [coalesced]),
     ]
     bins = _pack(
@@ -323,17 +332,20 @@ def test_bin_of_runs_requests_its_bytes(max_bin: int, split_coalesced: bool) -> 
         split_coalesced=split_coalesced,
     )
     totals = [sum(c["size_bytes"] for c in b.file_chunk_metadatas) for b in bins]
-    assert [_consumer_memory_bytes(b) for b in bins] == totals
+    assert [_consumer_memory_bytes(b) for b in bins] == [2 * t for t in totals]
     assert sum(totals) == 690
 
 
-def test_bin_with_whole_file_requests_nothing() -> None:
-    # A whole-file row's bytes are its on-disk size, not a memory estimate, so
-    # the read task keeps its default request.
+def test_bin_without_memory_estimates_requests_nothing() -> None:
+    # A whole-file row's bytes are its on-disk size, and a run from an indexer
+    # other than Parquet's carries no estimate, so the read task keeps its
+    # default request.
     whole = FileManifest.construct_manifest(
         paths=["w"], sizes=[40], chunk_metadatas=[None]
     )
-    assert _pack([whole], max_bin_bytes=100, per_bin=_consumer_memory_bytes) == [None]
+    for manifest in (whole, _units("u", [30])):
+        bins = _pack([manifest], max_bin_bytes=100, per_bin=_consumer_memory_bytes)
+        assert bins == [None]
 
 
 def _with_extra(manifest: FileManifest, values: list[str]) -> FileManifest:

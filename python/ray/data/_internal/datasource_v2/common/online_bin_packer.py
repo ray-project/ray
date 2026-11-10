@@ -531,10 +531,11 @@ class OnlineBinPacker(FilePartitioner):
         for file in files:
             assert file.size is not None
             sizes.append(file.size)
-        # A run's bytes estimate the memory reading it takes, so a bin of runs is
-        # what its read task requests; a whole file's are its on-disk size.
+        # The bin's read task requests its runs' summed memory estimates; nothing
+        # when the bin holds a whole file or a run without an estimate.
+        runs = [item.run for item in bin_.items if item.run is not None]
         consumer_memory_bytes = (
-            None if any(item.run is None for item in bin_.items) else bin_.total_bytes
+            _sum_memory(runs) if len(runs) == len(bin_.items) else None
         )
         return FileManifest.construct_manifest(
             paths=[file.path for file in files],
