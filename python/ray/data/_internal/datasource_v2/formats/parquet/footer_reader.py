@@ -490,16 +490,14 @@ class FooterReader:
         # for each group. The read-column lookup reads leaf paths off row group 0,
         # which a file with no row groups has none of; it sizes nothing either way.
         original_filter = self.filter
-        pruning_filter = original_filter
-        derived_filter_applied = False
+        derived_filter: "pc.Expression" | None = None
         if self.filter_expr is not None:
             try:
                 derived = _derived_statistics_predicate(
                     self.filter_expr, metadata.schema.to_arrow_schema()
                 )
                 if derived is not None:
-                    pruning_filter = derived.to_pyarrow()
-                    derived_filter_applied = True
+                    derived_filter = derived.to_pyarrow()
             except Exception as e:
                 logger.debug(
                     "Could not derive a Parquet statistics predicate: %s",
@@ -532,13 +530,27 @@ class FooterReader:
             # skip anyway. Each returned fragment views a single surviving group.
             # Fail closed on any split error -- keep every group -- so a type
             # mismatch or similar cannot abort the rest of the read_footers batch.
-            # Unsupported float predicates, including negations, can
-            # match NaNs that Parquet min/max statistics do not record.
-            surviving: list[int] | None = (
-                None
-                if filter_leaves.has_float_leaf and not derived_filter_applied
-                else self._try_split_by_row_group(fragment, pruning_filter, path)
+            surviving: list[int] | None = self._try_split_by_row_group(
+                fragment, original_filter, path
             )
+            if derived_filter is not None:
+                # PyArrow keeps every group it cannot disprove, so filters it
+                # cannot evaluate against statistics (arithmetic on a column,
+                # a string prefix) come back with all groups alive. The derived
+                # predicate is a necessary condition the statistics CAN
+                # evaluate, so intersecting the two survivor lists only drops
+                # groups no matching row can reach, and never a group the
+                # original split would have kept. A failed split here means
+                # "pruning cannot be applied", so the derived survivors stand
+                # in for it rather than narrowing it.
+                derived_surviving = self._try_split_by_row_group(
+                    fragment, derived_filter, path
+                )
+                if surviving is None:
+                    surviving = derived_surviving
+                elif derived_surviving is not None:
+                    candidates = set(derived_surviving)
+                    surviving = [rg for rg in surviving if rg in candidates]
             rg_indices: Iterable[int] = (
                 unprocessed_rg_ids if surviving is None else surviving
             )
