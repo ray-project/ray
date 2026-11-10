@@ -345,11 +345,10 @@ class PandasBlockColumnAccessor(BlockColumnAccessor):
             # existing null behavior when nulls must not be ignored.
             if not ignore_nulls and self._column.isna().any():
                 return self._column.sum(skipna=False, min_count=1)
-            return sum(
-                int(value)
-                for value in self._column.tolist()
-                if not pd.isna(value)
-            )
+            # An object-dtype Series makes Pandas use Python's arbitrary
+            # precision integers for the reduction without materializing a
+            # separate Python list of every value.
+            return self._column.dropna().astype(object).sum()
 
         return self._column.sum(skipna=ignore_nulls, min_count=1)
 
