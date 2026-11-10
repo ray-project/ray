@@ -1496,19 +1496,10 @@ class Reconciler:
         ]
         pending_launches = [[req.instance_type, req.count] for req in to_launch]
         if deferred and pending_launches:
-            deferred_same_type: Dict[NodeType, int] = defaultdict(int)
-            deferred_global_by_type: Dict[NodeType, int] = defaultdict(int)
             active_by_type: Dict[NodeType, int] = defaultdict(int)
             active_total = 0
             node_type_configs = autoscaling_config.get_node_type_configs() or {}
             max_num_nodes = autoscaling_config.get_max_num_nodes()
-            for r in deferred:
-                inst = im_instances_by_instance_id.get(r.instance_id)
-                r_type = r.instance_type or (inst.instance_type if inst else "")
-                if r.cause == TerminationRequest.Cause.MAX_NUM_NODES:
-                    deferred_global_by_type[r_type] += 1
-                elif r.cause != TerminationRequest.Cause.IDLE:
-                    deferred_same_type[r_type] += 1
             for inst in im_instances:
                 if (
                     inst.instance_id not in updates
@@ -1516,22 +1507,9 @@ class Reconciler:
                     and InstanceUtil.is_ray_running_reachable(inst.status)
                 ):
                     active_total += 1
-                    if inst.node_kind != NodeKind.HEAD:
-                        active_by_type[inst.instance_type] += 1
-            for item in pending_launches:
-                nt = item[0]
-                take_same = min(item[1], deferred_same_type[nt])
-                item[1] -= take_same
-                deferred_same_type[nt] -= take_same
-                take_global_same = min(item[1], deferred_global_by_type[nt])
-                item[1] -= take_global_same
-                deferred_global_by_type[nt] -= take_global_same
-            deferred_global = sum(deferred_global_by_type.values())
+                    active_by_type[inst.instance_type] += 1
             for item in pending_launches:
                 nt, count = item
-                take_global = min(count, deferred_global)
-                count -= take_global
-                deferred_global -= take_global
                 if nt in node_type_configs:
                     count = min(
                         count,

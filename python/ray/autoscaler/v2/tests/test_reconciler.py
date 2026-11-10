@@ -3355,18 +3355,18 @@ class TestReconciler:
                 max_worker_nodes=0,
                 replica_config=WorkerReplicaConfig(workers_per_replica=4),
             ),
+            "tpu_active": NodeTypeConfig(
+                name="tpu_active",
+                resources={"CPU": 4, "TPU": 4},
+                min_worker_nodes=8,
+                max_worker_nodes=8,
+                replica_config=WorkerReplicaConfig(workers_per_replica=4),
+            ),
             "cpu": NodeTypeConfig(
                 name="cpu",
                 resources={"CPU": 2},
                 min_worker_nodes=2,
                 max_worker_nodes=2,
-            ),
-            "gpu": NodeTypeConfig(
-                name="gpu",
-                resources={"GPU": 1},
-                min_worker_nodes=1,
-                max_worker_nodes=1,
-                launch_config_hash="v2",
             ),
         }
         TestReconciler._add_instances(
@@ -3399,7 +3399,10 @@ class TestReconciler:
                     "r-3", status=Instance.REQUESTED, instance_type="tpu16"
                 ),
                 create_instance(
-                    "gpu-req", status=Instance.REQUESTED, instance_type="gpu"
+                    "r-active", status=Instance.REQUESTED, instance_type="tpu_active"
+                ),
+                create_instance(
+                    "gpu-req", status=Instance.REQUESTED, instance_type="stale_gpu"
                 ),
                 outdated_inst,
             ],
@@ -3421,21 +3424,24 @@ class TestReconciler:
             ),
             scheduler=ResourceDemandScheduler(),
             autoscaling_config=MockAutoscalingConfig(
-                configs={"node_type_configs": tpu_cap0, "max_num_worker_nodes": 6}
+                configs={"node_type_configs": tpu_cap0, "max_num_worker_nodes": 11}
             ),
             cloud_provider=MagicMock(),
             non_terminated_cloud_instances=b_cloud,
             _logger=part_log,
         )
         # Only outdated g2-outdated drains; partial booting G1 + REQUESTED r-2/r-3/gpu-req
-        # defer, outdated gpu-req suppresses its same-type min_worker_nodes replacement launch,
-        # and only 1 of the 2 min_worker_nodes cpu launches is queued so active nodes
-        # (h + g1-0 + g1-1 + r-2 + r-3 + gpu-req + 1 cpu = 7) do not exceed max_num_nodes=7.
+        # defer, whole-replica launch for tpu_active (4 hosts, with 1 existing REQUESTED
+        # host and max_worker_nodes=8 -> 7 slots free) is preserved, and only 1 of the 2
+        # min_worker_nodes cpu launches is queued so active nodes
+        # (h + g1-0 + g1-1 + r-2 + r-3 + r-active + gpu-req + 4 tpu_active + 1 cpu = 12)
+        # do not exceed max_num_nodes=12.
         assert [
             (e.instance_type or e.instance_id, e.new_instance_status)
             for e in p_sub.events
         ] == [
             ("g2-outdated", Instance.RAY_STOP_REQUESTED),
+            *(("tpu_active", Instance.QUEUED) for _ in range(4)),
             ("cpu", Instance.QUEUED),
         ]
         assert any(
@@ -3444,6 +3450,43 @@ class TestReconciler:
             and "G1" in str(c)
             for c in part_log.warning.call_args_list
         )
+        for max_w, expected_queued in ((8, 0), (12, 4)):
+            p_sub.clear()
+            tpu_cap0["tpu_active"].max_worker_nodes = max_w
+            mock_sched = MagicMock()
+            mock_sched.schedule.return_value = SchedulingReply(
+                to_terminate=[
+                    TerminationRequest(
+                        id="t-req",
+                        instance_id="r-active",
+                        instance_type="tpu_active",
+                        instance_status=Instance.REQUESTED,
+                        cause=TerminationRequest.Cause.OUTDATED,
+                    )
+                ],
+                to_launch=[
+                    LaunchRequest(
+                        id="l-rep",
+                        instance_type="tpu_active",
+                        count=4,
+                        request_ts_ms=1,
+                    )
+                ],
+            )
+            Reconciler._scale_cluster(
+                autoscaling_state=MagicMock(),
+                instance_manager=p_im,
+                cloud_resource_monitor=CloudResourceMonitor(),
+                ray_state=ClusterResourceState(),
+                scheduler=mock_sched,
+                autoscaling_config=MockAutoscalingConfig(
+                    configs={"node_type_configs": tpu_cap0, "max_num_worker_nodes": 20}
+                ),
+                cloud_provider=MagicMock(),
+                non_terminated_cloud_instances=b_cloud,
+                _logger=part_log,
+            )
+            assert len(p_sub.events) == expected_queued
 
 
 if __name__ == "__main__":
