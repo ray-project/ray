@@ -129,6 +129,18 @@ async def test_score_tokenize_rows_with_overrides_tokenize_separately(overrides)
 
 
 @pytest.mark.asyncio
+async def test_score_tokenize_extraction_anchor_in_query():
+    # The engine sees the concatenated sequence as one item, so SGLang's check
+    # for an extraction token in the query has to run here.
+    udf, _ = _make_udf(score_extraction_token_id=ord("x"))
+    [output] = await _run(udf, [{"query": "q", "items": ["axb"]}])
+    assert output["item_token_ids"] == [_ids("qaxb", True)]
+
+    with pytest.raises(ValueError, match="query contains the score extraction"):
+        await _run(udf, [{"query": "qx", "items": ["a"]}])
+
+
+@pytest.mark.asyncio
 async def test_score_tokenize_without_special_tokens():
     udf, _ = _make_udf(add_special_tokens=False, enable_mis=True)
     [output] = await _run(udf, [{"query": "q", "items": ["a"]}])

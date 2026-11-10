@@ -1,6 +1,6 @@
 """Tokenize stage for the SGLang score task."""
 
-from typing import Any, AsyncIterator, Dict, List, Type
+from typing import Any, AsyncIterator, Dict, List, Optional, Type
 
 from ray.llm._internal.batch.stages.base import (
     StatefulStage,
@@ -20,6 +20,7 @@ class SGLangScoreTokenizeUDF(TokenizeUDF):
         add_special_tokens: bool = True,
         enable_mis: bool = False,
         item_first: bool = False,
+        score_extraction_token_id: Optional[int] = None,
     ):
         """Tokenize the `query` and `items` text columns of score rows.
 
@@ -30,6 +31,8 @@ class SGLangScoreTokenizeUDF(TokenizeUDF):
           query is tokenized with special tokens and each item without.
         - Otherwise, each `query + item` text is tokenized as one sequence and
           `query_token_ids` is empty, because the engine concatenates the two.
+          With score extraction, a query containing the extraction token is
+          rejected, as SGLang does, since its anchors would be scored as items.
 
         Args:
             data_column: The data column name.
@@ -39,11 +42,13 @@ class SGLangScoreTokenizeUDF(TokenizeUDF):
             add_special_tokens: Whether to add the tokenizer's special tokens.
             enable_mis: Whether the engine runs multi-item scoring.
             item_first: Whether each item goes before the query.
+            score_extraction_token_id: The score extraction token ID, if set.
         """
         super().__init__(data_column, expected_input_keys, model, trust_remote_code)
         self.add_special_tokens = add_special_tokens
         self.enable_mis = enable_mis
         self.item_first = item_first
+        self.score_extraction_token_id = score_extraction_token_id
 
     async def udf(self, batch: List[Dict[str, Any]]) -> AsyncIterator[Dict[str, Any]]:
         """Tokenize a batch of score rows.
@@ -59,6 +64,8 @@ class SGLangScoreTokenizeUDF(TokenizeUDF):
         plain_texts: List[str] = []
         # Per row: whether the query is tokenized on its own, and the items.
         plans = []
+        # Concatenated queries that must not contain the extraction token.
+        anchor_checked_queries: List[str] = []
         for row in batch:
             query = _as_text(row["query"], "query")
             items = [_as_text(item, "items") for item in _as_text_list(row["items"])]
@@ -67,11 +74,23 @@ class SGLangScoreTokenizeUDF(TokenizeUDF):
                 special_texts.append(query)
                 plain_texts.extend(items)
             else:
+                if self.score_extraction_token_id is not None and query:
+                    anchor_checked_queries.append(query)
                 special_texts.extend(
                     f"{item}{query}" if self.item_first else f"{query}{item}"
                     for item in items
                 )
             plans.append((separate, len(items)))
+
+        for query_ids in self._tokenize(
+            anchor_checked_queries, self.add_special_tokens
+        ):
+            if self.score_extraction_token_id in query_ids:
+                raise ValueError(
+                    "The query contains the score extraction token "
+                    f"{self.score_extraction_token_id}; it must only appear in "
+                    "items."
+                )
 
         special_ids = self._tokenize(special_texts, self.add_special_tokens)
         plain_ids = self._tokenize(plain_texts, False)

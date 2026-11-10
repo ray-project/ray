@@ -68,6 +68,7 @@ def test_score_stage_kwargs(hf_config):
     assert tokenize.fn_constructor_kwargs["model"] == "other-tokenizer"
     assert tokenize.fn_constructor_kwargs["enable_mis"] is True
     assert tokenize.fn_constructor_kwargs["item_first"] is False
+    assert tokenize.fn_constructor_kwargs["score_extraction_token_id"] is None
 
     engine = processor.get_stage_by_name("SGLangEngineStage")
     assert engine.fn_constructor_kwargs["task_kwargs"] == {

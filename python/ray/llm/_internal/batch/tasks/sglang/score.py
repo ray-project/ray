@@ -146,6 +146,7 @@ class _SGLangScoreTask(_SGLangTask):
             add_special_tokens=add_special_tokens,
             enable_mis=bool(config.engine_kwargs.get("enable_mis")),
             item_first=config.task_kwargs["item_first"],
+            score_extraction_token_id=config.task_kwargs["score_extraction_token_id"],
         )
         return SGLangScoreTokenizeStage(
             fn_constructor_kwargs=kwargs,
