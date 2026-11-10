@@ -239,6 +239,10 @@ class InvalidTracingConfigError(ValueError):
     has an invalid signature."""
 
 
+class TracingSetupError(RuntimeError):
+    """A proxy failed to set tracing up, e.g. its exporter raised when called."""
+
+
 def check_tracing_exporter_import_path(
     tracing_config: "TracingConfig",
 ) -> None:

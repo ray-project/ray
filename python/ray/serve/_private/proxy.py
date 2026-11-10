@@ -95,6 +95,7 @@ from ray.serve._private.proxy_router import ProxyRouter
 from ray.serve._private.request_ingress_metrics import RequestIngressMetrics
 from ray.serve._private.routing_config import RoutingConfigVersion
 from ray.serve._private.tracing_utils import (
+    TracingSetupError,
     is_span_recording,
     set_http_span_attributes,
     set_rpc_span_attributes,
@@ -1491,12 +1492,19 @@ class ProxyActorInterface(ABC):
         self._update_logging_config(logging_config)
 
         # OpenTelemetry allows one tracer provider per process, so set tracing
-        # up once, here. Let a failure raise so it surfaces at startup.
-        if setup_tracing(
-            component_name="proxy",
-            component_id=self._node_ip_address,
-            tracing_config=tracing_config,
-        ):
+        # up once, here. A failure raises TracingSetupError, which serve.start
+        # tells apart from other proxy startup failures.
+        try:
+            tracing_set_up = setup_tracing(
+                component_name="proxy",
+                component_id=self._node_ip_address,
+                tracing_config=tracing_config,
+            )
+        except Exception as e:
+            raise TracingSetupError(
+                f"Failed to set up tracing for the proxy: {type(e).__name__}: {e}"
+            ) from e
+        if tracing_set_up:
             logger.info("Successfully set up tracing for proxy")
 
     @abstractmethod

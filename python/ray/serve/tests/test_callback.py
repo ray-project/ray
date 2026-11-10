@@ -12,13 +12,18 @@ from starlette.middleware import Middleware
 import ray
 import ray.serve._private.controller
 from ray import serve
+from ray._common.test_utils import wait_for_condition
 from ray.exceptions import RayActorError
 from ray.serve._private.test_utils import get_application_url, skip_if_haproxy
 from ray.serve._private.utils import call_function_from_import_path
 from ray.serve.config import HTTPOptions, gRPCOptions
 from ray.serve.context import _get_global_client
-from ray.serve.exceptions import RayServeException
-from ray.serve.schema import LoggingConfig, TracingConfig
+from ray.serve.schema import (
+    LoggingConfig,
+    ProxyStatus,
+    ServeInstanceDetails,
+    TracingConfig,
+)
 
 
 # ==== Callbacks used in this test ====
@@ -239,17 +244,37 @@ def test_http_proxy_return_aribitary_objects(ray_instance):
 )
 @skip_if_haproxy(
     "under direct ingress the http_proxy_callback middleware runs on the replica "
-    "HTTP server, not a native proxy, so a failing callback doesn't fail "
-    "serve.start"
+    "HTTP server, not a native proxy, so a failing callback restarts the replica "
+    "and this test's assertion that the proxy keeps restarting no longer applies"
 )
-def test_http_proxy_callback_failures(ray_instance):
-    """A failing proxy callback fails serve.start, which shuts down the Serve
-    instance it created, so each retry starts fresh and fails the same way."""
-    for _ in range(2):
-        with pytest.raises(RayActorError):
-            serve.start()
-        with pytest.raises(RayServeException, match="no Serve instance running"):
-            _get_global_client()
+def test_http_proxy_callback_failures(ray_instance, capsys):
+    """Test http proxy keeps restarting when callback function fails"""
+
+    try:
+        serve.start()
+    except RayActorError:
+        # serve.start will fail because the http proxy is not started successfully
+        # and client use proxy handle to check the proxy readiness, so it will raise
+        # RayActorError.
+        pass
+
+    client = _get_global_client()
+
+    def check_http_proxy_keep_restarting():
+        # The proxy will be under "STARTING" status and keep restarting.
+        prev_actor_id = None
+        while True:
+            serve_details = ServeInstanceDetails(**client.get_serve_details())
+            for _, proxy_info in serve_details.proxies.items():
+                if proxy_info.status != ProxyStatus.STARTING:
+                    return False
+                if prev_actor_id is None:
+                    prev_actor_id = proxy_info.actor_id
+                    break
+                elif prev_actor_id != proxy_info.actor_id:
+                    return True
+
+    wait_for_condition(check_http_proxy_keep_restarting)
 
 
 if __name__ == "__main__":

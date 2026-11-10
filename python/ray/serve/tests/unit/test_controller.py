@@ -1,4 +1,5 @@
 import asyncio
+import itertools
 import pickle
 from copy import deepcopy
 from types import SimpleNamespace
@@ -6,8 +7,18 @@ from unittest import mock
 
 import pytest
 
-from ray.exceptions import ActorDiedError, GetTimeoutError, RayActorError, RayTaskError
-from ray.serve._private import api, controller as controller_module
+from ray.exceptions import (
+    ActorDiedError,
+    GetTimeoutError,
+    RayActorError,
+    RayError,
+    RayTaskError,
+)
+from ray.serve._private import (
+    api,
+    controller as controller_module,
+    proxy as proxy_module,
+)
 from ray.serve._private.api import _get_actor_init_error
 from ray.serve._private.common import TargetCapacityDirection
 from ray.serve._private.controller import (
@@ -20,13 +31,19 @@ from ray.serve._private.controller_health_metrics_tracker import (
     _HEALTH_METRICS_HISTORY_SIZE,
     ControllerHealthMetricsTracker,
 )
-from ray.serve._private.tracing_utils import InvalidTracingConfigError
+from ray.serve._private.constants import SERVE_CONTROLLER_NAME, SERVE_NAMESPACE
+from ray.serve._private.tracing_utils import (
+    InvalidTracingConfigError,
+    TracingSetupError,
+)
 from ray.serve.schema import (
     ControllerHealthMetrics,
     DurationStats,
     HTTPOptionsSchema,
+    LoggingConfig,
     ServeApplicationSchema,
     ServeDeploySchema,
+    TracingConfig,
 )
 
 
@@ -745,35 +762,79 @@ def test_get_actor_init_error():
     assert _get_actor_init_error(RayActorError(actor_init_failed=True)) is None
 
 
+class _FakeClock:
+    """Stands in for time.monotonic; sleeping advances it."""
+
+    def __init__(self):
+        self.now = 0.0
+
+    def monotonic(self):
+        return self.now
+
+    def sleep(self, seconds):
+        self.now += seconds
+
+
 @pytest.mark.parametrize(
-    "shutdown_results,kill_error,expected_waits,expect_restart",
+    "shutdown_error,lookups,expected_log",
     [
-        # Controller exited: nothing left to do.
-        ([ActorDiedError()], None, 1, False),
-        # Shutdown hung: restart the controller so it finishes, then wait again.
-        ([GetTimeoutError(), ActorDiedError()], None, 2, True),
-        # The restarted controller is still shutting down: leave it to finish.
-        ([GetTimeoutError(), GetTimeoutError()], None, 2, True),
-        # The restart failed: don't wait again.
-        ([GetTimeoutError()], RuntimeError("kill failed"), 1, True),
+        # The controller exited and released its name.
+        (ActorDiedError(), [ValueError()], None),
+        # A RayActorError from a restarting controller doesn't count as exited:
+        # wait until it releases its name.
+        (ActorDiedError(), ["ours", "ours", ValueError()], None),
+        # The name now belongs to a controller another call created.
+        (ActorDiedError(), ["other"], None),
+        # The controller is still shutting down at the deadline.
+        (ActorDiedError(), itertools.repeat("ours"), "warning"),
+        # Shutdown hangs past the deadline.
+        (GetTimeoutError(), itertools.repeat("ours"), "warning"),
+        # Looking the controller up fails.
+        (ActorDiedError(), [RuntimeError("GCS unavailable")], "exception"),
     ],
+    ids=["exited", "restarting", "name_reused", "slow", "hung", "lookup_fails"],
 )
-def test_shutdown_after_failed_start(
-    shutdown_results, kill_error, expected_waits, expect_restart
-):
-    controller = mock.MagicMock()
-    with mock.patch.object(
-        api.ray, "get", side_effect=shutdown_results
-    ), mock.patch.object(api.ray, "kill", side_effect=kill_error) as kill:
+def test_shutdown_after_failed_start(shutdown_error, lookups, expected_log):
+    controller = mock.MagicMock(_actor_id="ours")
+    clock = _FakeClock()
+    scripted = isinstance(lookups, list)
+    lookups = iter(lookups)
+
+    def get(_ref, timeout):
+        if isinstance(shutdown_error, GetTimeoutError):
+            clock.now += timeout
+        raise shutdown_error
+
+    def get_actor(name, namespace):
+        assert (name, namespace) == (SERVE_CONTROLLER_NAME, SERVE_NAMESPACE)
+        lookup = next(lookups)
+        if isinstance(lookup, Exception):
+            raise lookup
+        return SimpleNamespace(_actor_id=lookup)
+
+    with mock.patch.object(api, "time", clock), mock.patch.object(
+        api.ray, "get", side_effect=get
+    ), mock.patch.object(
+        api.ray, "get_actor", side_effect=get_actor
+    ), mock.patch.object(
+        api.ray, "kill"
+    ) as kill, mock.patch.object(
+        api, "logger"
+    ) as logger:
         # Never raises, so the caller's original startup error survives.
         api._shutdown_after_failed_start(controller)
-    # Only the controller this call created is shut down.
-    assert controller.graceful_shutdown.remote.call_count == expected_waits
-    if expect_restart:
-        # Never killed for good, which would leave the shutdown flag behind.
-        kill.assert_called_once_with(controller, no_restart=False)
-    else:
-        kill.assert_not_called()
+
+    controller.graceful_shutdown.remote.assert_called_once_with()
+    if scripted:
+        # Returned only after the last lookup: the name release, not the
+        # RayActorError, marks the controller as exited.
+        assert next(lookups, None) is None
+    # Never killed, so the controller clears its own shutdown flag.
+    kill.assert_not_called()
+    # Bounded by the shutdown timeout.
+    assert clock.now <= api._FAILED_START_SHUTDOWN_TIMEOUT_S + 0.1
+    assert logger.warning.called == (expected_log == "warning")
+    assert logger.exception.called == (expected_log == "exception")
 
 
 class _FakeKVStore:
@@ -815,11 +876,12 @@ def _controller_for_shutdown(kv_store, ready_for_shutdown):
 
 
 def test_restarted_controller_clears_shutdown_flag():
-    """The shutdown flag lifecycle that _shutdown_after_failed_start relies on.
+    """Why _shutdown_after_failed_start never kills the controller.
 
     A controller that hangs mid-shutdown leaves the flag in the KV store. Killed
     for good, it would stay there and the next controller would shut itself
-    down. Restarted, the controller finishes the shutdown and deletes the flag.
+    down. After a crash, Ray restarts the controller, which finishes the
+    shutdown and deletes the flag.
     """
     kv_store = _FakeKVStore()
     hung = _controller_for_shutdown(kv_store, ready_for_shutdown=False)
@@ -841,13 +903,35 @@ def test_restarted_controller_clears_shutdown_flag():
     assert not _controller_for_shutdown(kv_store, True)._shutting_down
 
 
-def _proxy_startup_error(error_type):
-    cause = RuntimeError("exporter failed")
-    if error_type is RayTaskError:
-        # What ready() surfaces when the proxy's server fails to start.
-        return RayTaskError("ready", "tb", cause).as_instanceof_cause()
-    # What a proxy constructor failure (e.g. tracing setup) surfaces.
-    return ActorDiedError.from_task_error(RayTaskError("__init__", "tb", cause))
+def _proxy_init_error(setup_error: Exception) -> Exception:
+    """Run the proxy's __init__ with setup_tracing raising; return its error."""
+    proxy_stub = SimpleNamespace(_update_logging_config=lambda _config: None)
+    with mock.patch.object(proxy_module, "setup_tracing", side_effect=setup_error):
+        with pytest.raises(Exception) as exc:
+            proxy_module.ProxyActorInterface.__init__(
+                proxy_stub,
+                node_id="node",
+                node_ip_address="127.0.0.1",
+                logging_config=LoggingConfig(),
+                tracing_config=TracingConfig(enabled=True),
+            )
+    return exc.value
+
+
+def test_proxy_wraps_tracing_setup_failure():
+    error = _proxy_init_error(RuntimeError("exporter failed"))
+    assert isinstance(error, TracingSetupError)
+    assert "RuntimeError: exporter failed" in str(error)
+
+
+def _proxy_died_in_init(cause: Exception) -> RayActorError:
+    """What the caller gets for a proxy whose __init__ raised ``cause``.
+
+    Wraps it as the worker does (see _raylet.pyx), then round-trips it through
+    the serialization that carries it to the caller.
+    """
+    error = ActorDiedError.from_task_error(RayTaskError("__init__", "tb", cause))
+    return RayError.from_bytes(error.to_bytes())
 
 
 @pytest.fixture
@@ -865,14 +949,26 @@ def no_running_serve():
 
 
 @pytest.mark.parametrize("use_async", [False, True])
-@pytest.mark.parametrize("error_type", [ActorDiedError, RayTaskError])
-def test_failed_proxy_start_shuts_down_new_controller(
-    no_running_serve, use_async, error_type
-):
-    """A proxy startup failure shuts down the controller this call created and
-    re-raises the original error, so a retry doesn't find a broken instance."""
+@pytest.mark.parametrize(
+    "make_error,expect_cleanup",
+    [
+        (lambda: _proxy_died_in_init(_proxy_init_error(RuntimeError("bad"))), True),
+        (lambda: _proxy_died_in_init(RuntimeError("callback failed")), False),
+        (
+            lambda: RayTaskError(
+                "ready", "tb", RuntimeError("bind failed")
+            ).as_instanceof_cause(),
+            False,
+        ),
+        (lambda: ActorDiedError(), False),
+    ],
+    ids=["tracing_setup", "other_init_error", "ready_error", "proxy_died"],
+)
+def test_failed_proxy_start(no_running_serve, use_async, make_error, expect_cleanup):
+    """Only a proxy tracing setup failure shuts down the controller this call
+    created. Either way the original error is re-raised and no client is set."""
     controller = object()
-    error = _proxy_startup_error(error_type)
+    error = make_error()
 
     async def failing_ready():
         raise error
@@ -890,7 +986,9 @@ def test_failed_proxy_start_shuts_down_new_controller(
                 api.serve_start()
 
     assert exc.value is error
-    cleanup.assert_called_once_with(controller)
+    assert cleanup.called == expect_cleanup
+    if expect_cleanup:
+        cleanup.assert_called_once_with(controller)
     no_running_serve.assert_not_called()
 
 

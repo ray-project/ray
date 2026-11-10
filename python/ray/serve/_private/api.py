@@ -1,6 +1,7 @@
 import asyncio
 import inspect
 import logging
+import time
 
 # Exists on all supported versions; pyrefly mis-resolves it at python-version 3.9.
 from types import FunctionType  # pyrefly: ignore[missing-module-attribute]
@@ -12,15 +13,19 @@ import ray
 from ray import ObjectRef
 from ray._common.usage import usage_lib
 from ray.actor import ActorHandle
-from ray.exceptions import RayActorError, RayError, RayTaskError
+from ray.exceptions import RayActorError, RayTaskError
 from ray.serve._private.client import ServeControllerClient
 from ray.serve._private.constants import (
     HTTP_PROXY_TIMEOUT,
+    SERVE_CONTROLLER_NAME,
     SERVE_LOGGER_NAME,
     SERVE_NAMESPACE,
 )
 from ray.serve._private.default_impl import get_controller_impl
-from ray.serve._private.tracing_utils import InvalidTracingConfigError
+from ray.serve._private.tracing_utils import (
+    InvalidTracingConfigError,
+    TracingSetupError,
+)
 from ray.serve.config import (
     ControllerOptions,
     HTTPOptions,
@@ -120,37 +125,56 @@ def _get_actor_init_error(error: RayActorError) -> Optional[BaseException]:
     return task_error.cause if isinstance(task_error, RayTaskError) else None
 
 
-def _wait_for_controller_shutdown(controller: ActorHandle) -> bool:
-    """Shut down the controller and return whether it exited within 30s."""
+def _is_tracing_setup_failure(error: RayActorError) -> bool:
+    """Whether a proxy failed to start because it couldn't set tracing up."""
+    return isinstance(_get_actor_init_error(error), TracingSetupError)
+
+
+_FAILED_START_SHUTDOWN_TIMEOUT_S = 30
+
+
+def _controller_name_released(controller: ActorHandle) -> bool:
     try:
-        # Waits until the controller exits and releases its name, which
-        # surfaces as RayActorError.
-        ray.get(controller.graceful_shutdown.remote(), timeout=30)  # type: ignore[attr-defined]
-    except RayActorError:
+        current = ray.get_actor(SERVE_CONTROLLER_NAME, namespace=SERVE_NAMESPACE)
+    except ValueError:
         return True
-    except Exception:
-        logger.exception("Failed to shut down Serve after a failed start.")
-    return False
+    return current._actor_id != controller._actor_id
 
 
 def _shutdown_after_failed_start(controller: ActorHandle) -> None:
     """Shut down a Serve instance this call created but failed to start.
 
-    Otherwise a later call would connect to it as if it were healthy. Cleanup
-    errors are logged so the caller still sees the original startup error.
+    Otherwise a retry would connect to it as if it were healthy. The controller
+    isn't killed, so even if it's slow or restarts midway, it finishes the
+    shutdown and clears its persisted shutdown flag itself. Cleanup errors are
+    logged so the caller still sees the original startup error.
     """
-    if _wait_for_controller_shutdown(controller):
-        return
-    # Restart the controller instead of killing it for good. The restarted
-    # controller sees the persisted shutdown flag, finishes the shutdown and
-    # deletes the flag. Otherwise the flag would make the next controller
-    # shut itself down.
+    deadline = time.monotonic() + _FAILED_START_SHUTDOWN_TIMEOUT_S
     try:
-        ray.kill(controller, no_restart=False)
+        # Returns only by raising RayActorError, when the controller exits.
+        ray.get(
+            controller.graceful_shutdown.remote(),  # type: ignore[attr-defined]
+            timeout=_FAILED_START_SHUTDOWN_TIMEOUT_S,
+        )
+    except (RayActorError, ray.exceptions.GetTimeoutError):
+        # Checked below: whether the controller exited or is still shutting down.
+        pass
     except Exception:
-        logger.exception("Failed to restart the Serve controller after a failed start.")
-        return
-    _wait_for_controller_shutdown(controller)
+        logger.exception("Failed to shut down Serve after a failed start.")
+    try:
+        # A RayActorError can also come from a controller that crashed and is
+        # restarting. It has exited for good once it releases its name.
+        while not _controller_name_released(controller):
+            if time.monotonic() >= deadline:
+                logger.warning(
+                    "Serve is still shutting down after a failed start. Until "
+                    "it finishes, serve.start connects to it instead of "
+                    "starting a new instance."
+                )
+                return
+            time.sleep(0.1)
+    except Exception:
+        logger.exception("Failed to check that Serve shut down after a failed start.")
 
 
 def _create_controller_and_proxy_refs(
@@ -308,9 +332,10 @@ async def serve_start_async(
             raise TimeoutError(
                 f"HTTP proxies not available after {HTTP_PROXY_TIMEOUT}s."
             )
-        except RayError:
-            # A proxy failed to start, e.g. its tracing setup raised.
-            await asyncio.to_thread(_shutdown_after_failed_start, controller)
+        except RayActorError as e:
+            # Serve recovers from other proxy failures by replacing the proxy.
+            if _is_tracing_setup_failure(e):
+                await asyncio.to_thread(_shutdown_after_failed_start, controller)
             raise
 
     client = ServeControllerClient(controller)
@@ -428,9 +453,10 @@ def serve_start(
             raise TimeoutError(
                 f"HTTP proxies not available after {HTTP_PROXY_TIMEOUT}s."
             )
-        except RayError:
-            # A proxy failed to start, e.g. its tracing setup raised.
-            _shutdown_after_failed_start(controller)
+        except RayActorError as e:
+            # Serve recovers from other proxy failures by replacing the proxy.
+            if _is_tracing_setup_failure(e):
+                _shutdown_after_failed_start(controller)
             raise
 
     client = ServeControllerClient(controller)
