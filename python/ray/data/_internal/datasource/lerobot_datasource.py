@@ -31,6 +31,7 @@ import pyarrow.parquet as pq
 
 import ray
 from ray.data._internal.datasource._lerobot_compat import new_decoder_cache
+from ray.data._internal.datasource.image_utils import _ALLOWED_PIL_FORMATS
 from ray.data._internal.object_extensions.arrow import raise_on_pickle_object_columns
 from ray.data._internal.util import (
     _check_import,
@@ -1343,7 +1344,10 @@ def _decode_image_frames(
                     f"image column {ik!r}: row has neither inline bytes nor a path"
                 )
             arr = np.asarray(
-                Image.open(io.BytesIO(data)).convert("RGB"), dtype=np.uint8
+                Image.open(io.BytesIO(data), formats=_ALLOWED_PIL_FORMATS).convert(
+                    "RGB"
+                ),
+                dtype=np.uint8,
             )
             frames.append(arr)
         decoded[ik] = frames

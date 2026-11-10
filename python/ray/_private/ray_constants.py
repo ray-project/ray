@@ -562,7 +562,8 @@ HEALTHCHECK_EXPIRATION_S = os.environ.get("RAY_HEALTHCHECK_EXPIRATION_S", 10)
 
 # Env vars that Ray sets to the number of CPUs assigned to a task or actor, unless
 # the user already set them. Override with the comma-separated
-# RAY_NUM_THREADS_ENV_VARS; an empty string disables this. Adding RAYON_NUM_THREADS
+# RAY_NUM_THREADS_ENV_VARS; an empty string disables this, except on Windows, which
+# deletes an env var set to an empty string. Adding RAYON_NUM_THREADS
 # also sizes the Rayon thread pool that Hugging Face `tokenizers` uses.
 DEFAULT_NUM_THREADS_ENV_VARS = "OMP_NUM_THREADS"
 

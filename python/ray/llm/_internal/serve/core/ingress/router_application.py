@@ -422,6 +422,7 @@ class RouterApplication:
                 self._llm_configs[model_id], handle.deployment_id
             )
             tracker.start_replica_broadcast(self._self_handle, model_id=model_id)
+            tracker.subscribe_token_endpoints(self._token_sender.connect)
             self._kv_trackers[model_id] = tracker
         # Start tracking replicas now, on the replica's event loop.
         if not handle.is_initialized:

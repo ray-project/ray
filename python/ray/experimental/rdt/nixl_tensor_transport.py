@@ -1,3 +1,4 @@
+import contextlib
 import functools
 import glob
 import logging
@@ -169,6 +170,9 @@ class NixlTensorTransport(TensorTransportManager):
         self._remote_agents: OrderedDict = OrderedDict()
         # Guards _remote_agents only, held briefly and never while waiting for an agent lock.
         self._remote_agent_cache_lock = threading.Lock()
+        # Per thread, the cleanups that a finalizer deferred while the thread holds the
+        # cache lock, or None when it does not hold it.
+        self._local = threading.local()
         # One lock per remote agent. Fetching from an agent, polling its transfers and
         # removing it all hold it, so an agent is never removed with a transfer in flight.
         # Locks are never deleted, so an agent always has the same one. It is reentrant
@@ -176,6 +180,9 @@ class NixlTensorTransport(TensorTransportManager):
         self._remote_agent_locks: Dict[str, Any] = {}
         # Transfers that may still be in flight on each remote agent.
         self._inflight_xfers: Dict[str, set] = {}
+        # Handles to release once the polling of an agent's transfers ends. An agent
+        # has an entry only while it is being polled.
+        self._deferred_releases: Dict[str, List[Any]] = {}
         # Increment the version whenever memory is deregistered.
         self._nixl_agent_meta_version = 0
         self._memory_pool: Optional[MemoryPoolManager] = None
@@ -628,6 +635,12 @@ class NixlTensorTransport(TensorTransportManager):
         remove_tensor_descs: bool,
     ) -> None:
         """Cleans up resources after a transfer completes or fails."""
+        deferred = getattr(self._local, "deferred", None)
+        if deferred is not None:
+            deferred.append(
+                (obj_id, tensors, xfer_handle, remote_name, remove_tensor_descs)
+            )
+            return
         # We could raise errors or NIXL could raise errors like NIXL_ERR_REMOTE_DISCONNECT,
         # so doing best effort cleanup.
         nixl_agent = self._nixl_agent
@@ -642,7 +655,11 @@ class NixlTensorTransport(TensorTransportManager):
                 inflight = self._inflight_xfers.get(remote_name, set())
                 if xfer_handle:
                     inflight.discard(xfer_handle)
-                    nixl_agent.release_xfer_handle(xfer_handle)
+                    deferred = self._deferred_releases.get(remote_name)
+                    if deferred is None:
+                        nixl_agent.release_xfer_handle(xfer_handle)
+                    else:
+                        deferred.append(xfer_handle)
                 # Without the cache, the last transfer on the agent removes it.
                 if NIXL_REMOTE_AGENT_CACHE_MAXSIZE == 0 and not inflight:
                     nixl_agent.remove_remote_agent(remote_name)
@@ -651,6 +668,26 @@ class NixlTensorTransport(TensorTransportManager):
 
     def _remote_agent_lock(self, remote_name: str) -> Any:
         return self._remote_agent_locks.setdefault(remote_name, threading.RLock())
+
+    @contextlib.contextmanager
+    def _cache_guard(self):
+        """Holds the cache lock.
+
+        Garbage collection can run _cleanup_transfer on this thread meanwhile, and it
+        would wait for an agent lock. So _cleanup_transfer defers to the release here.
+        """
+        deferred = []
+        try:
+            with self._remote_agent_cache_lock:
+                self._local.deferred = deferred
+                yield
+        finally:
+            self._local.deferred = None
+            for args in deferred:
+                try:
+                    self._cleanup_transfer(*args)
+                except Exception:
+                    logger.exception("Failed to run deferred transfer cleanup")
 
     def _finish_transfers(self, remote_name: str) -> None:
         """Polls the transfers in flight on the agent until they are no longer in progress.
@@ -661,19 +698,28 @@ class NixlTensorTransport(TensorTransportManager):
         # On timeout the removal fails the stuck transfer instead of hanging here.
         deadline = time.monotonic() + RDT_FETCH_FAIL_TIMEOUT_SECONDS
         inflight = self._inflight_xfers.get(remote_name, set())
-        for xfer_handle in list(inflight):
-            try:
-                # A finalizer on this thread may release the handle meanwhile.
-                while (
-                    xfer_handle in inflight
-                    and nixl_agent.check_xfer_state(xfer_handle) == "PROC"
-                    and time.monotonic() < deadline
-                ):
-                    time.sleep(0.001)
-            except Exception:
-                # The error surfaces from wait_fetch_complete.
-                pass
-        inflight.clear()
+        # Garbage collection can run _cleanup_transfer on this thread while it polls.
+        # That defers releasing handles to the end, so a polled handle is never freed.
+        deferred = self._deferred_releases[remote_name] = []
+        try:
+            for xfer_handle in list(inflight):
+                try:
+                    while (
+                        nixl_agent.check_xfer_state(xfer_handle) == "PROC"
+                        and time.monotonic() < deadline
+                    ):
+                        time.sleep(0.001)
+                except Exception:
+                    # The error surfaces from wait_fetch_complete.
+                    pass
+            inflight.clear()
+        finally:
+            del self._deferred_releases[remote_name]
+            for xfer_handle in deferred:
+                try:
+                    nixl_agent.release_xfer_handle(xfer_handle)
+                except Exception:
+                    logger.exception("Failed to release deferred transfer handle")
 
     def _prepare_remote_agent(
         self, remote_name: str, version: int, remote_nixl_agent_meta: bytes
@@ -686,7 +732,7 @@ class NixlTensorTransport(TensorTransportManager):
         """
         nixl_agent = self.get_nixl_agent()
         if NIXL_REMOTE_AGENT_CACHE_MAXSIZE > 0:
-            with self._remote_agent_cache_lock:
+            with self._cache_guard():
                 cached_version = self._remote_agents.get(remote_name)
             # A different version means memory was deregistered. We need to remove the
             # remote agent before adding it, because `nixlRemoteSection` currently does
@@ -694,12 +740,12 @@ class NixlTensorTransport(TensorTransportManager):
             # memory overlap). Removing it fails the transfers still in flight on it.
             if cached_version is not None and cached_version != version:
                 self._finish_transfers(remote_name)
-                with self._remote_agent_cache_lock:
+                with self._cache_guard():
                     del self._remote_agents[remote_name]
                 nixl_agent.remove_remote_agent(remote_name)
         nixl_agent.add_remote_agent(remote_nixl_agent_meta)
         if NIXL_REMOTE_AGENT_CACHE_MAXSIZE > 0:
-            with self._remote_agent_cache_lock:
+            with self._cache_guard():
                 self._remote_agents[remote_name] = version
                 self._remote_agents.move_to_end(remote_name)
 
@@ -710,7 +756,7 @@ class NixlTensorTransport(TensorTransportManager):
         agent locks.
         """
         while True:
-            with self._remote_agent_cache_lock:
+            with self._cache_guard():
                 if (
                     remote_name in self._remote_agents
                     or len(self._remote_agents) < NIXL_REMOTE_AGENT_CACHE_MAXSIZE
@@ -718,12 +764,12 @@ class NixlTensorTransport(TensorTransportManager):
                     return
                 victim = next(iter(self._remote_agents))
             with self._remote_agent_lock(victim):
-                with self._remote_agent_cache_lock:
+                with self._cache_guard():
                     cached = victim in self._remote_agents
                 # Another thread may have evicted it while we waited for the lock.
                 if cached:
                     self._finish_transfers(victim)
-                    with self._remote_agent_cache_lock:
+                    with self._cache_guard():
                         self._remote_agents.pop(victim, None)
                     self.get_nixl_agent().remove_remote_agent(victim)
 
