@@ -507,6 +507,24 @@ def test_boot_key_covers_every_boot_time_field():
     assert _boot_key(SandboxConfig(**base, _oci_spec_transform_fn=dict)) is None
 
 
+def test_boot_key_matches_a_gpu_sandboxs_driver_capabilities():
+    """A GPU sandbox's NVIDIA_DRIVER_CAPABILITIES sets runsc's allowed driver
+    capabilities at boot, so it is part of the boot key; elsewhere env stays
+    per-create."""
+    from ray.experimental.sandbox.config import SandboxConfig
+    from ray.experimental.sandbox.runtime import _boot_key
+
+    caps = {"NVIDIA_DRIVER_CAPABILITIES": "compute,utility,profiling"}
+    gpu = {"image": "img", "gpu_ids": ["0"]}
+    assert _boot_key(SandboxConfig(**gpu, env=caps)) != _boot_key(SandboxConfig(**gpu))
+    assert _boot_key(SandboxConfig(**gpu, env={**caps, "A": "1"})) == _boot_key(
+        SandboxConfig(**gpu, env=caps)
+    )
+    assert _boot_key(SandboxConfig(image="img", env=caps)) == _boot_key(
+        SandboxConfig(image="img")
+    )
+
+
 def test_close_deletes_the_booted_sandboxes():
     runtime = _pooled_runtime([{"image": "img", "size": 2}])
     runtime.close()
