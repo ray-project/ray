@@ -42,15 +42,18 @@ class RandomShufflePartitioner(TaskScopedPartitioner):
         block_indices = itertools.count()
 
         def _partition(block: pa.Table) -> Dict[int, pa.Table]:
-            block_seed = (
-                None
-                if self._seed is None
-                else _derive_seed(self._seed, task_index, next(block_indices))
-            )
-            slices = self._slice_fn(shuffle(block, block_seed))
+            block_index = next(block_indices)
+            if self._seed is None:
+                row_seed = target_seed = None
+            else:
+                # Separate streams: from one seed the row and target permutations
+                # are identical when num_rows == num_partitions, undoing the shuffle.
+                row_seed = _derive_seed(self._seed, task_index, block_index, 0)
+                target_seed = _derive_seed(self._seed, task_index, block_index, 1)
+            slices = self._slice_fn(shuffle(block, row_seed))
             # Small blocks yield fewer slices than partitions; spreading them
             # over a random subset keeps low partition ids from filling first.
-            targets = np.random.RandomState(block_seed).permutation(
+            targets = np.random.RandomState(target_seed).permutation(
                 self._num_partitions
             )
             return {int(targets[i]): table for i, table in slices.items()}

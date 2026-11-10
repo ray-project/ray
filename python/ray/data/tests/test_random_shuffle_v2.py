@@ -76,6 +76,18 @@ def test_random_partitioner_is_seeded_per_task_and_block():
     assert not first[0].equals(second[0])
 
 
+def test_random_partitioner_mixes_when_rows_equal_partitions():
+    """Row and target permutations must not cancel out for num_rows == num_partitions."""
+    block = pa.table({"id": list(range(8))})
+    partitioner = RandomShufflePartitioner(8, seed=5)
+    placements = {
+        tuple(partitions[p]["id"][0].as_py() for p in range(8))
+        for partitions in (partitioner.bind(task)(block) for task in range(4))
+    }
+    assert tuple(range(8)) not in placements
+    assert len(placements) > 1
+
+
 def test_random_partitioner_spreads_small_blocks():
     """Three rows into ten partitions must not always fill partitions 0..2."""
     block = pa.table({"id": [1, 2, 3]})
