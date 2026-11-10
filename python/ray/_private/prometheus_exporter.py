@@ -269,6 +269,7 @@ class PrometheusStatsExporter(base_exporter.StatsExporter):
         self._gatherer = gatherer
         self._collector = collector
         self._transport = transport(self)
+        self._httpd = None
         self._port = self.serve_http()
         REGISTRY.register(self._collector)
 
@@ -327,12 +328,18 @@ class PrometheusStatsExporter(base_exporter.StatsExporter):
 
     def serve_http(self):
         """serve_http serves the Prometheus endpoint."""
-        from ray._common.network_utils import get_all_interfaces_ip
-
-        address = self.options.address or get_all_interfaces_ip()
-        httpd = start_metrics_wsgi_server(self.options.port, make_wsgi_app(), address)
+        self._httpd = start_metrics_wsgi_server(
+            self.options.port, make_wsgi_app(), self.options.address
+        )
         # Return the actual port (in case port=0 was specified)
-        return httpd.server_address[1]
+        return self._httpd.server_address[1]
+
+    def shutdown(self):
+        """Stop the Prometheus HTTP server if it is running."""
+        if self._httpd is not None:
+            self._httpd.shutdown()
+            self._httpd.server_close()
+            self._httpd = None
 
 
 def new_stats_exporter(option):

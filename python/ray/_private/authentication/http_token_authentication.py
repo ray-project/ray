@@ -179,8 +179,8 @@ def start_metrics_http_server(port: int, registry, addr: Optional[str] = None) -
     ``prometheus_client.start_http_server``, but requiring the token when token
     auth is on.
 
-    If ``addr`` is None, bind to all interfaces for the host's IP family
-    (``0.0.0.0`` for IPv4, ``::`` for IPv6)."""
+    If ``addr`` is None or empty, bind to all interfaces for the host's IP
+    family (``0.0.0.0`` for IPv4, ``::`` for IPv6)."""
     from prometheus_client import make_wsgi_app
 
     start_metrics_wsgi_server(port, make_wsgi_app(registry), addr)
@@ -194,8 +194,9 @@ def start_metrics_wsgi_server(
     ``reuse_port``, other processes that set SO_REUSEPORT can bind the same
     port. Returns the server so the caller can shut it down.
 
-    If ``addr`` is None, bind to all interfaces for the host's IP family."""
-    if addr is None:
+    If ``addr`` is None or empty, bind to all interfaces for the host's IP
+    family."""
+    if not addr:
         from ray._common.network_utils import get_all_interfaces_ip
 
         addr = get_all_interfaces_ip()

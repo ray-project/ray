@@ -617,16 +617,18 @@ def _ok_app(environ, start_response):
     return [b"ok"]
 
 
+@pytest.mark.parametrize("addr", [None, ""])
 @pytest.mark.skipif(
     not _ipv6_loopback_available(), reason="IPv6 loopback is not available"
 )
-def test_start_metrics_wsgi_server_binds_all_interfaces_for_ipv6(monkeypatch):
+def test_start_metrics_wsgi_server_binds_all_interfaces_for_ipv6(monkeypatch, addr):
     monkeypatch.setattr(
         "ray._common.network_utils.get_all_interfaces_ip", lambda: "::1"
     )
     monkeypatch.setenv("RAY_AUTH_SKIP_METRICS", "1")
-    httpd = start_metrics_wsgi_server(0, _ok_app)
+    httpd = start_metrics_wsgi_server(0, _ok_app, addr=addr)
     try:
+        assert httpd.server_address[0] == "::1"
         conn = http.client.HTTPConnection("::1", httpd.server_address[1], timeout=5)
         try:
             conn.request("GET", "/metrics")
@@ -640,13 +642,19 @@ def test_start_metrics_wsgi_server_binds_all_interfaces_for_ipv6(monkeypatch):
         httpd.server_close()
 
 
+@pytest.mark.parametrize("address", ["::1", ""])
 @pytest.mark.skipif(
     not _ipv6_loopback_available(), reason="IPv6 loopback is not available"
 )
-def test_prometheus_stats_exporter_binds_ipv6(monkeypatch):
+def test_prometheus_stats_exporter_binds_ipv6(monkeypatch, address):
     monkeypatch.setenv("RAY_AUTH_SKIP_METRICS", "1")
+    if address == "":
+        monkeypatch.setattr(
+            "ray._common.network_utils.get_all_interfaces_ip", lambda: "::1"
+        )
+    namespace = "test_ipv6_default" if address == "" else "test_ipv6_loopback"
     exporter = prometheus_exporter.new_stats_exporter(
-        prometheus_exporter.Options(namespace="test_ipv6", port=0, address="::1")
+        prometheus_exporter.Options(namespace=namespace, port=0, address=address)
     )
     try:
         conn = http.client.HTTPConnection("::1", exporter.port, timeout=5)
@@ -657,6 +665,7 @@ def test_prometheus_stats_exporter_binds_ipv6(monkeypatch):
         finally:
             conn.close()
     finally:
+        exporter.shutdown()
         REGISTRY.unregister(exporter.collector)
 
 
