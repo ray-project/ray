@@ -2,6 +2,7 @@ import datetime
 
 import pyarrow as pa
 import pyarrow.parquet as pq
+import pytest
 
 from ray.data._internal.datasource_v2.formats.parquet.parquet_column_statistics import (
     column_statistics,
@@ -107,3 +108,9 @@ def test_missing_statistics_and_nested_columns_are_unknown(tmp_path):
         column_statistics(_metadata(nested_path), "outer").state
         is ColumnStatisticsState.UNKNOWN
     )
+
+
+if __name__ == "__main__":
+    import sys
+
+    sys.exit(pytest.main(["-v", __file__]))
