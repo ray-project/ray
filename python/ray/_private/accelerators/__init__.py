@@ -8,6 +8,7 @@ from ray._private.accelerators.amd_gpu import AMDGPUAcceleratorManager
 from ray._private.accelerators.apple_gpu import AppleGPUAcceleratorManager
 from ray._private.accelerators.furiosa import FuriosaAcceleratorManager
 from ray._private.accelerators.hpu import HPUAcceleratorManager
+from ray._private.accelerators.iluvatar_gpu import IluvatarGPUAcceleratorManager
 from ray._private.accelerators.intel_gpu import IntelGPUAcceleratorManager
 from ray._private.accelerators.mblt import MBLTAcceleratorManager
 from ray._private.accelerators.metax_gpu import MetaxGPUAcceleratorManager
@@ -35,6 +36,7 @@ def get_all_accelerator_managers() -> Set[AcceleratorManager]:
         FuriosaAcceleratorManager,
         MBLTAcceleratorManager,
         TTNPUAcceleratorManager,
+        IluvatarGPUAcceleratorManager,
     }
 
 
@@ -74,6 +76,8 @@ def get_accelerator_manager_for_resource(
             resource_name_to_accelerator_manager["GPU"] = AppleGPUAcceleratorManager
         elif MetaxGPUAcceleratorManager.get_current_node_num_accelerators() > 0:
             resource_name_to_accelerator_manager["GPU"] = MetaxGPUAcceleratorManager
+        elif IluvatarGPUAcceleratorManager.get_current_node_num_accelerators() > 0:
+            resource_name_to_accelerator_manager["GPU"] = IluvatarGPUAcceleratorManager
         else:
             resource_name_to_accelerator_manager["GPU"] = NvidiaGPUAcceleratorManager
         get_accelerator_manager_for_resource._resource_name_to_accelerator_manager = (
@@ -95,6 +99,7 @@ __all__ = [
     "MetaxGPUAcceleratorManager",
     "FuriosaAcceleratorManager",
     "TTNPUAcceleratorManager",
+    "IluvatarGPUAcceleratorManager",
     "get_all_accelerator_managers",
     "get_all_accelerator_resource_names",
     "get_accelerator_manager_for_resource",

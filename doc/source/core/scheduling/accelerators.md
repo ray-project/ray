@@ -46,6 +46,9 @@ Ray Core natively supports the following accelerators:
 * - METAX GPU
   - GPU
   - Experimental, supported by the community
+* - Iluvatar CoreX
+  - GPU
+  - Experimental, supported by the community
 * - FuriosaAI
   - FURIOSA
   - Experimental, supported by the community
@@ -125,6 +128,15 @@ You can set the `RBLN_DEVICES` environment variable before starting a Ray node t
 :sync: METAX GPU
 :::{tip}
 You can set the `CUDA_VISIBLE_DEVICES` environment variable before starting a Ray node to limit the METAX GPUs that are visible to Ray. For example, `CUDA_VISIBLE_DEVICES=1,3 ray start --head --num-gpus=2` lets Ray only see devices 1 and 3.
+:::
+::::
+
+::::{tab-item} Iluvatar CoreX
+:sync: Iluvatar CoreX
+:::{tip}
+You can set the `CUDA_VISIBLE_DEVICES` environment variable before starting a Ray node to limit the Iluvatar CoreX GPUs that are visible to Ray. For example, `CUDA_VISIBLE_DEVICES=1,3 ray start --head --num-gpus=2` lets Ray only see devices 1 and 3.
+
+Ensure that the Iluvatar SDK's `libixml.so` is on the system library search path. If needed, add its directory to `LD_LIBRARY_PATH` before starting Ray.
 :::
 ::::
 
@@ -523,6 +535,47 @@ ray.get(gpu_task.remote())
 ```
 :::
 
+:::{tab-item} Iluvatar CoreX
+:sync: Iluvatar CoreX
+```{testcode}
+:hide:
+
+ray.shutdown()
+```
+
+```{testcode}
+import os
+import ray
+
+ray.init(num_gpus=2)
+
+@ray.remote(num_gpus=1)
+class GPUActor:
+    def ping(self):
+        print("GPU IDs: {}".format(ray.get_runtime_context().get_accelerator_ids()["GPU"]))
+        print("CUDA_VISIBLE_DEVICES: {}".format(os.environ["CUDA_VISIBLE_DEVICES"]))
+
+@ray.remote(num_gpus=1)
+def gpu_task():
+    print("GPU IDs: {}".format(ray.get_runtime_context().get_accelerator_ids()["GPU"]))
+    print("CUDA_VISIBLE_DEVICES: {}".format(os.environ["CUDA_VISIBLE_DEVICES"]))
+
+gpu_actor = GPUActor.remote()
+ray.get(gpu_actor.ping.remote())
+# The actor uses the first GPU so the task uses the second one.
+ray.get(gpu_task.remote())
+```
+
+```{testoutput}
+:options: +MOCK
+
+(GPUActor pid=52420) GPU IDs: [0]
+(GPUActor pid=52420) CUDA_VISIBLE_DEVICES: 0
+(gpu_task pid=51830) GPU IDs: [1]
+(gpu_task pid=51830) CUDA_VISIBLE_DEVICES: 1
+```
+:::
+
 :::{tab-item} FuriosaAI
 :sync: FuriosaAI
 ```{testcode}
@@ -747,6 +800,29 @@ Rebellions RBLN doesn't support fractional resources.
 
 :::{tab-item} METAX GPU
 :sync: METAX GPU
+```{testcode}
+:hide:
+
+ray.shutdown()
+```
+
+```{testcode}
+ray.init(num_cpus=4, num_gpus=1)
+
+@ray.remote(num_gpus=0.25)
+def f():
+    import time
+
+    time.sleep(1)
+
+# The four tasks created here can execute concurrently
+# and share the same GPU.
+ray.get([f.remote() for _ in range(4)])
+```
+:::
+
+:::{tab-item} Iluvatar CoreX
+:sync: Iluvatar CoreX
 ```{testcode}
 :hide:
 
