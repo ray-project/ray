@@ -72,7 +72,7 @@ kind create cluster --image=kindest/node:v1.26.0
 ```
 
 ### Step 2: Install the KubeRay operator
-Install the KubeRay operator, following [these instructions](operator-installation.md). The minimum version for this guide is v1.8.0. To use this feature, the `RayCronJob` feature gate must be enabled. To enable the feature gate when installing the kuberay operator, run the following command:
+Install the KubeRay operator with the `RayCronJob` feature gate enabled. The minimum version for this guide is v1.8.0. Run the following command instead of the Helm command in the [KubeRay operator installation guide](operator-installation.md):
 
 ```sh
 helm repo add kuberay https://ray-project.github.io/kuberay-helm/
