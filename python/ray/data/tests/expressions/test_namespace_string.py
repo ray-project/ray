@@ -279,6 +279,20 @@ class TestStringTransform:
         expected = pd.DataFrame({"val": ["aaa"], "replaced": ["XXa"]})
         assert rows_same(result, expected)
 
+    def test_replace_slice(self, ray_start_regular_shared, dataset_format):
+        values = ["abcd", "你好世界", "aéb", "🙂abc", None]
+        ds = _create_dataset([{"val": value} for value in values], dataset_format)
+        result = ds.with_column(
+            "replaced", col("val").str.replace_slice(1, 2, "X")
+        ).take_all()
+        assert [row["replaced"] for row in result] == [
+            "aXcd",
+            "你X世界",
+            "aXb",
+            "🙂Xbc",
+            None,
+        ]
+
     def test_repeat(self, ray_start_regular_shared, dataset_format):
         """Test str.repeat() repeats strings."""
         data = [{"val": "A"}]

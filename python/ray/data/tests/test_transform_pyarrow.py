@@ -214,6 +214,69 @@ def test_concat_with_mixed_tensor_types_and_native_pyarrow_types(tensor_format_c
     assert ds.count() == num_rows
 
 
+def test_concat_identical_schema_skips_unification(monkeypatch):
+    from ray.data._internal.arrow_ops import transform_pyarrow
+
+    tables = [
+        pa.table(
+            {
+                "id": pa.array([i], type=pa.int64()),
+                "value": pa.array([f"value_{i}"]),
+            }
+        )
+        for i in range(32)
+    ]
+
+    def unexpected_unification(*args, **kwargs):
+        pytest.fail(
+            "Schema unification should be skipped "
+            "when all input schemas are identical."
+        )
+
+    monkeypatch.setattr(
+        transform_pyarrow,
+        "unify_schemas",
+        unexpected_unification,
+    )
+
+    result = transform_pyarrow.concat(tables)
+
+    assert result.num_rows == 32
+    assert result.schema.equals(tables[0].schema)
+    assert result.column("id").to_pylist() == list(range(32))
+
+
+def test_concat_different_schemas_uses_unification(monkeypatch):
+    from ray.data._internal.arrow_ops import transform_pyarrow
+
+    tables = [
+        pa.table({"value": pa.array([1], type=pa.int32())}),
+        pa.table({"value": pa.array([2], type=pa.int64())}),
+    ]
+
+    original_unify = transform_pyarrow.unify_schemas
+    calls = []
+
+    def tracked_unification(*args, **kwargs):
+        calls.append(1)
+        return original_unify(*args, **kwargs)
+
+    monkeypatch.setattr(
+        transform_pyarrow,
+        "unify_schemas",
+        tracked_unification,
+    )
+
+    result = transform_pyarrow.concat(
+        tables,
+        promote_types=True,
+    )
+
+    assert len(calls) == 1
+    assert result.column("value").to_pylist() == [1, 2]
+    assert result.schema.field("value").type == pa.int64()
+
+
 if __name__ == "__main__":
     import sys
 

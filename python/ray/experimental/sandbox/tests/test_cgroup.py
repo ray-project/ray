@@ -272,6 +272,9 @@ def test_backend_applies_oom_priority_to_start_exec_and_file_io(
         commands.append(args)
         if limited:
             (Path(args[3]) / "cgroup.procs").write_text(str(process.pid))
+        if "--pid-file" in args:
+            # As `runsc run` does once the container exists.
+            Path(args[args.index("--pid-file") + 1]).write_text(str(process.pid))
         return process
 
     monkeypatch.setattr(subprocess, "Popen", popen)
