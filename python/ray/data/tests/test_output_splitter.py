@@ -2,7 +2,7 @@ import collections
 import itertools
 import random
 from dataclasses import replace
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -102,6 +102,40 @@ def test_split_operator_random(ray_start_regular_shared, equal, random_seed):
         assert actual == expected
     else:
         assert sum(len(output_splits[i]) for i in range(3)) == num_inputs, output_splits
+
+
+@pytest.mark.parametrize("num_splits", [1, 2, 17])
+def test_dispatch_bookkeeping_matches_reference(num_splits):
+    input_op = InputDataBuffer(DataContext.get_current(), [])
+    op = OutputSplitter(
+        input_op,
+        num_splits,
+        equal=True,
+        data_context=DataContext.get_current(),
+    )
+    op._buffer = MagicMock()
+    output_rows = [0] * num_splits
+    random_generator = random.Random(0)
+
+    for _ in range(100):
+        expected_index = min(range(num_splits), key=output_rows.__getitem__)
+        assert op._select_next_output_index() == expected_index
+
+        num_rows = random_generator.randint(0, 100)
+        op._record_output(expected_index, num_rows)
+        output_rows[expected_index] += num_rows
+        assert op._num_output == output_rows
+
+        target_index = random_generator.randrange(num_splits)
+        target_num_rows = random_generator.randint(0, 100)
+        buffer_rows = random_generator.randint(target_num_rows, 10_000)
+        op._buffer.num_rows.return_value = buffer_rows
+        projected = output_rows.copy()
+        projected[target_index] += target_num_rows
+        required_rows = sum(max(projected) - rows for rows in projected)
+        assert op._can_safely_dispatch(target_index, target_num_rows) == (
+            buffer_rows - target_num_rows >= required_rows
+        )
 
 
 def test_split_operator_locality_hints(ray_start_regular_shared):

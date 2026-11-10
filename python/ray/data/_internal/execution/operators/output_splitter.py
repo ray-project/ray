@@ -1,3 +1,4 @@
+import heapq
 import logging
 import math
 import time
@@ -85,6 +86,9 @@ class OutputSplitter(InternalQueueOperatorMixin, PhysicalOperator):
         self._output_queue: FIFOBundleQueue = FIFOBundleQueue()
         # The number of rows output to each output split so far.
         self._num_output: List[int] = [0 for _ in range(n)]
+        self._output_rows_heap = [(0, i) for i in range(n)]
+        self._total_output_rows = 0
+        self._max_output_rows = 0
         # The time of the overhead for the output splitter (operator level)
         self._output_splitter_overhead_time = 0
 
@@ -339,7 +343,7 @@ class OutputSplitter(InternalQueueOperatorMixin, PhysicalOperator):
 
             target_bundle = replace(target_bundle, output_split_idx=target_output_index)
 
-            self._num_output[target_output_index] += target_bundle.num_rows()
+            self._record_output(target_output_index, target_bundle.num_rows())
             self._output_queue.add(target_bundle)
             self._metrics.on_output_queued(target_bundle)
 
@@ -353,8 +357,17 @@ class OutputSplitter(InternalQueueOperatorMixin, PhysicalOperator):
 
     def _select_next_output_index(self) -> int:
         # Greedily dispatch to the consumer with the least data so far.
-        i, _ = min(enumerate(self._num_output), key=lambda t: t[1])
-        return i
+        return self._output_rows_heap[0][1]
+
+    def _record_output(self, target_index: int, num_rows: int) -> None:
+        new_num_rows = self._num_output[target_index] + num_rows
+        self._num_output[target_index] = new_num_rows
+        self._total_output_rows += num_rows
+        self._max_output_rows = max(self._max_output_rows, new_num_rows)
+        if len(self._output_rows_heap) == 1:
+            self._output_rows_heap[0] = (new_num_rows, target_index)
+        else:
+            heapq.heapreplace(self._output_rows_heap, (new_num_rows, target_index))
 
     def _find_preferred_bundle(self, target_output_index: int) -> Optional[RefBundle]:
         if self._locality_hints:
@@ -372,20 +385,16 @@ class OutputSplitter(InternalQueueOperatorMixin, PhysicalOperator):
             # If not in equals mode, dispatch away with no buffer requirements.
             return True
 
-        # Simulate dispatching a bundle to the target receiver
-        output_distribution = self._num_output.copy()
-        output_distribution[target_index] += target_num_rows
-        buffer_requirement = self._calculate_buffer_requirement(output_distribution)
+        projected_max = max(
+            self._max_output_rows,
+            self._num_output[target_index] + target_num_rows,
+        )
+        projected_total = self._total_output_rows + target_num_rows
+        buffer_requirement = len(self._num_output) * projected_max - projected_total
         # Subtract target bundle size from the projected buffer
         buffer_size = self._buffer.num_rows() - target_num_rows
         # Check if we have enough rows LEFT after dispatching to equalize.
         return buffer_size >= buffer_requirement
-
-    def _calculate_buffer_requirement(self, output_distribution: List[int]) -> int:
-        # Calculate the new number of rows that we'd need to equalize the row
-        # distribution after the bundle dispatch.
-        max_n = max(output_distribution)
-        return sum([max_n - n for n in output_distribution])
 
     def _split_from_buffer(self, nrow: int) -> List[RefBundle]:
         output = []
