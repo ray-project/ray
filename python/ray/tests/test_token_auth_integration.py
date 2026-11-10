@@ -1393,14 +1393,14 @@ def test_k8s_token_auth_with_auth_disabled_is_config_error(entry_point, tmp_path
         "ray.init": [
             sys.executable,
             "-c",
-            f"import ray; ray.init(_temp_dir='{temp_dir}')",
+            f"import ray; ray.init(_temp_dir={str(temp_dir)!r})",
         ],
         "Cluster": [
             sys.executable,
             "-c",
             "from ray.cluster_utils import Cluster; "
             "Cluster(initialize_head=True, enable_token_auth=False, "
-            f"head_node_args={{'temp_dir': '{temp_dir}'}})",
+            f"head_node_args={{'temp_dir': {str(temp_dir)!r}}})",
         ],
         "gcs_server": [
             GCS_SERVER_EXECUTABLE,

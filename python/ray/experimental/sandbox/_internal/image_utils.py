@@ -1101,6 +1101,34 @@ def evict_least_recently_used_images(
         logger.info("Evicted cached sandbox image %s (%d bytes)", name, size)
 
 
+def reserve_image_cache_space(image_dir: str, needed_bytes: int) -> None:
+    """Evict other cached images until ``needed_bytes`` more fit in the cache.
+
+    Args:
+        image_dir: The cached image that is about to grow.
+        needed_bytes: How much it grows by.
+
+    Raises:
+        SandboxCreationError: If the cache's free-space floor can't be kept.
+    """
+    images_dir = os.path.dirname(image_dir)
+    max_cache = image_cache_max_bytes(images_dir)
+    min_free = image_cache_min_free_bytes(images_dir) + needed_bytes
+    evict_least_recently_used_images(
+        images_dir,
+        max(max_cache - needed_bytes, 0) if max_cache > 0 else None,
+        keep=os.path.basename(image_dir),
+        min_free_bytes=min_free,
+    )
+    free = _free_bytes(images_dir)
+    if free is not None and free < min_free:
+        raise SandboxCreationError(
+            f"Not enough disk space to extract the image rootfs: need {min_free} "
+            f"bytes free, including the image cache's free-space floor, "
+            f"but only {free} are."
+        )
+
+
 # Flattening an image's layers and streaming the tree into mkfs.erofs read
 # and write every file through tarfile, which holds the interpreter lock, so
 # a process that pulls several images at once would build them one at a
@@ -1260,6 +1288,12 @@ def pull_and_extract_container_image(
                 ):
                     _drop_stale_rootfs_tree(target_dir)
                     return _finish()
+
+            if _has_users(target_dir):
+                raise SandboxCreationError(
+                    f"Cannot refresh cached image {image!r} while sandboxes are "
+                    "using it. Stop those sandboxes before retrying."
+                )
 
             # Checked before any download: without it the pull cannot finish.
             require_mkfs_erofs()

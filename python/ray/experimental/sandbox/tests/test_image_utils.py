@@ -1483,9 +1483,8 @@ def test_old_format_cache_repulls_once(tmp_path):
     assert os.path.getmtime(os.path.join(image_dir, ROOTFS_IMAGE)) == built_at
 
 
-def test_repull_keeps_tree_for_running_sandboxes(tmp_path):
-    """Sandboxes running on an old extracted-directory entry keep their pins
-    and their tree across the rebuild; the tree goes once none is left."""
+@pytest.mark.parametrize("old_format", [False, True])
+def test_repull_rejects_images_in_use(tmp_path, monkeypatch, old_format: bool) -> None:
     from ray.experimental.sandbox._internal.image_utils import _release_image_use
 
     local_tar = tmp_path / "sample.tar"
@@ -1494,24 +1493,38 @@ def test_repull_keeps_tree_for_running_sandboxes(tmp_path):
     image_dir = pull_and_extract_container_image(
         str(local_tar), images_dir=str(images_dir), instance_id="sb-old"
     )
-    _forge_old_directory_cache(image_dir)
+    lower = os.path.join(image_dir, f"{ROOTFS_IMAGE}.rootfs")
+    os.makedirs(lower)
+    with open(os.path.join(lower, "hello.txt"), "w") as f:
+        f.write("live sandbox data")
+    if old_format:
+        _forge_old_directory_cache(image_dir)
+    else:
+        stale = os.path.getmtime(local_tar) - 10
+        os.utime(os.path.join(image_dir, ".extracted"), (stale, stale))
 
-    again = pull_and_extract_container_image(
-        str(local_tar), images_dir=str(images_dir), instance_id="sb-new"
-    )
-    assert again == image_dir
-    assert os.path.isfile(os.path.join(image_dir, ROOTFS_IMAGE))
-    # The old tree moved over intact for sb-old's gofer.
-    assert os.path.isfile(os.path.join(image_dir, "rootfs", "bin", "sh"))
-    assert set(os.listdir(os.path.join(image_dir, ".users"))) == {"sb-old", "sb-new"}
+    with monkeypatch.context() as m:
+        m.setattr(
+            image_utils,
+            "require_mkfs_erofs",
+            lambda: pytest.fail("Refresh must be rejected before preparing a download"),
+        )
+        with pytest.raises(SandboxCreationError, match="Stop those sandboxes"):
+            pull_and_extract_container_image(
+                str(local_tar), images_dir=str(images_dir), instance_id="sb-new"
+            )
 
-    # Still in use: a further hit leaves the tree alone.
-    pull_and_extract_container_image(str(local_tar), images_dir=str(images_dir))
-    assert os.path.isdir(os.path.join(image_dir, "rootfs"))
+    assert open(os.path.join(lower, "hello.txt")).read() == "live sandbox data"
+    assert os.listdir(os.path.join(image_dir, ".users")) == ["sb-old"]
 
     _release_image_use(image_dir, "sb-old")
-    _release_image_use(image_dir, "sb-new")
-    pull_and_extract_container_image(str(local_tar), images_dir=str(images_dir))
+    assert (
+        pull_and_extract_container_image(
+            str(local_tar), images_dir=str(images_dir), instance_id="sb-new"
+        )
+        == image_dir
+    )
+    assert not os.path.exists(lower)
     assert not os.path.exists(os.path.join(image_dir, "rootfs"))
     assert os.path.isfile(os.path.join(image_dir, ROOTFS_IMAGE))
 

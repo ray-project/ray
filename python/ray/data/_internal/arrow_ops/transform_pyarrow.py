@@ -14,6 +14,7 @@ from ray.data._internal.tensor_extensions.arrow import (
     MIN_PYARROW_VERSION_CHUNKED_ARRAY_TO_NUMPY_ZERO_COPY_ONLY,
     get_arrow_extension_fixed_shape_tensor_types,
     get_arrow_extension_tensor_types,
+    native_tensor_array_to_numpy,
     unify_tensor_arrays,
     unify_tensor_types,
 )
@@ -23,6 +24,7 @@ from ray.data._internal.tensor_extensions.chunked_tensor_take import (
     _TakeFallbackReason,
     try_prepare_chunked_tensor_take,
 )
+from ray.data._internal.tensor_extensions.utils import create_ragged_ndarray
 from ray.data._internal.utils.arrow_utils import get_pyarrow_version
 from ray.data._internal.utils.transform_pyarrow import (
     _concatenate_extension_column,
@@ -577,7 +579,8 @@ def _reconcile_field(
 
     # Handle special cases in priority order
 
-    # 1. Tensor fields
+    # 1. Tensor fields. A block whose column is typed null, that is a column
+    #    of only None values, unifies to the tensor type with null rows.
     tensor_types = get_arrow_extension_tensor_types()
     tensor_field_types = [t for t in non_null_types if isinstance(t, tensor_types)]
 
@@ -666,10 +669,11 @@ def unify_schemas(
     # Deduplicate schemas. Calling this before PyArrow's unify_schemas is more efficient (100x faster).
 
     # Remove metadata for hashability
-    schema_to_compare = schemas[0].remove_metadata()
+    schema_to_compare = schemas[0]
     schemas_to_unify = [schemas[0]]
+
     for schema in schemas[1:]:
-        if not schema.remove_metadata().equals(schema_to_compare):
+        if not schema.equals(schema_to_compare, check_metadata=False):
             schemas_to_unify.append(schema)
 
     pyarrow_exception = None
@@ -679,12 +683,13 @@ def unify_schemas(
 
     # Try PyArrow's unification first, only reconcile for tensor fields
     try:
-        return _unify_schemas_pyarrow(schemas_to_unify, promote_types)
+        unified = _unify_schemas_pyarrow(schemas_to_unify, promote_types)
     except (pyarrow.lib.ArrowTypeError, pyarrow.lib.ArrowInvalid) as e:
         # If we raise only on non tensor errors, it fails to unify PythonObjectType and pyarrow primitives.
         # Look at test_pyarrow_conversion_error_handling for an example.
         pyarrow_exception = e
-        pass
+    else:
+        return unified
 
     # Reconcile diverging fields
     overrides = _reconcile_diverging_fields(schemas_to_unify, promote_types)
@@ -704,13 +709,12 @@ def unify_schemas(
             for field in schema
         ]
         updated_schemas.append(pyarrow.schema(fields, metadata=schema.metadata))
-    schemas_to_unify = updated_schemas
 
     # Final unification with overrides applied
     try:
-        return _unify_schemas_pyarrow(schemas_to_unify, promote_types)
+        return _unify_schemas_pyarrow(updated_schemas, promote_types)
     except Exception as e:
-        schemas_str = "\n-----\n".join(str(s) for s in schemas_to_unify)
+        schemas_str = "\n-----\n".join(str(s) for s in updated_schemas)
         logger.error(f"Failed to unify schemas: {schemas_str}", exc_info=e)
         raise
 
@@ -857,7 +861,7 @@ def _backfill_missing_fields(
                 # Convert to variable-shaped if needed
                 if _is_native_tensor_type(current_array.type):
                     current_array = ArrowVariableShapedTensorArray.from_numpy(
-                        current_array.to_numpy_ndarray()
+                        native_tensor_array_to_numpy(current_array)
                     )
                 else:
                     current_array = current_array.to_var_shaped_tensor_array(
@@ -1311,6 +1315,11 @@ def concat(
     if len(blocks) == 1:
         return blocks[0]
 
+    # Fast path: skip schema unification when all input schemas match.
+    first_schema = blocks[0].schema
+    if all(block.schema == first_schema for block in blocks):
+        return pa.concat_tables(blocks)
+
     # If the result contains pyarrow schemas, unify them
     schemas_to_unify = [b.schema for b in blocks]
     try:
@@ -1327,10 +1336,6 @@ def concat(
             matched_blocks.append(block)
         else:
             mismatched_blocks.append(block)
-
-    # Fast path: all blocks already share the unified schema.
-    if len(matched_blocks) == len(blocks):
-        return pa.concat_tables(blocks)
 
     if preserve_order is None:
         preserve_order = DataContext.get_current().execution_options.preserve_order
@@ -1501,16 +1506,22 @@ def to_numpy(
         if _is_native_tensor_type(array.type):
             # This is zero-copy. We use to_numpy_ndarray() because to_numpy
             # will flatten n-dim array into 1d.
-            return array.to_numpy_ndarray()
+            return native_tensor_array_to_numpy(array)
         return array.to_numpy(zero_copy_only=zero_copy_only)
     elif isinstance(array, pa.ChunkedArray):
         if pa.types.is_null(array.type):
             return np.full(array.length(), np.nan, dtype=np.float32)
         if _is_native_tensor_type(array.type):
             # Convert each chunk to numpy, then stack them
-            numpy_chunks = [chunk.to_numpy_ndarray() for chunk in array.chunks]
+            numpy_chunks = [native_tensor_array_to_numpy(c) for c in array.chunks]
             if len(numpy_chunks) == 0:
                 return np.empty((0,) + tuple(array.type.shape))
+            if array.null_count > 0:
+                # A chunk with a null row is one ndarray per row and a chunk
+                # without is dense, so join them row by row.
+                return create_ragged_ndarray(
+                    [row for chunk in numpy_chunks for row in chunk]
+                )
             return np.vstack(numpy_chunks)
         if PYARROW_VERSION >= MIN_PYARROW_VERSION_CHUNKED_ARRAY_TO_NUMPY_ZERO_COPY_ONLY:
             return array.to_numpy(zero_copy_only=zero_copy_only)
