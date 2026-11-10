@@ -1595,7 +1595,9 @@ def test_layer_cache_scan_handles_filesystem_errors(tmp_path, operation):
         expected = []
     elif operation == "stat":
         expected = paths[1:]
-    assert [os.path.join(str(tmp_path), name) for _, name, _ in entries] == expected
+    assert (
+        sorted(os.path.join(str(tmp_path), name) for _, name, _ in entries) == expected
+    )
 
 
 def test_layer_cache_rejects_wrong_digest_and_cleans_partial(tmp_path, monkeypatch):
