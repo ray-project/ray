@@ -5,6 +5,7 @@ from concurrent.futures import Future, ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, AbstractSet, Iterable, Iterator, NamedTuple, Tuple
 
+import numpy as np
 import pyarrow as pa
 import pyarrow.dataset as pds
 import pyarrow.fs as pafs
@@ -89,6 +90,190 @@ class _FilterLeaves(NamedTuple):
     has_float_leaf: bool = False
 
 
+def _derived_statistics_predicate(expr: Expr, schema: pa.Schema) -> Expr | None:
+    """Return a necessary condition that Parquet statistics can evaluate."""
+    import pyarrow.compute as pc
+
+    from ray.data.expressions import (
+        BinaryExpr,
+        ColumnExpr,
+        LiteralExpr,
+        Operation,
+        PyArrowComputeUDFExpr,
+        UnaryExpr,
+    )
+
+    if isinstance(expr, BinaryExpr) and expr.op in (
+        Operation.AND,
+        Operation.OR,
+    ):
+        left = _derived_statistics_predicate(expr.left, schema)
+        right = _derived_statistics_predicate(expr.right, schema)
+
+        if expr.op == Operation.AND:
+            if left is None:
+                return right
+            if right is None:
+                return left
+            return left & right
+
+        # Both branches must be represented for OR.
+        # Otherwise we could drop rows matching the other branch.
+        if left is not None and right is not None:
+            return left | right
+        return None
+
+    # Retain comparisons that are safe for Parquet statistics pruning.
+    if isinstance(expr, BinaryExpr) and expr.op in (
+        Operation.EQ,
+        Operation.NE,
+        Operation.LT,
+        Operation.LE,
+        Operation.GT,
+        Operation.GE,
+    ):
+        column = None
+        if isinstance(expr.left, ColumnExpr) and isinstance(expr.right, LiteralExpr):
+            column = expr.left
+        elif isinstance(expr.left, LiteralExpr) and isinstance(expr.right, ColumnExpr):
+            column = expr.right
+
+        if column is not None:
+            idx = schema.get_field_index(column.name)
+            if (
+                expr.op == Operation.NE
+                and idx >= 0
+                and pa.types.is_floating(schema.field(idx).type)
+            ):
+                # Parquet min/max omit NaNs, although they may satisfy !=.
+                return column.is_not_null()
+            return expr
+
+    if isinstance(expr, UnaryExpr) and expr.op in (
+        Operation.IS_NULL,
+        Operation.IS_NOT_NULL,
+    ):
+        if isinstance(expr.operand, ColumnExpr):
+            return expr
+
+    # Keep a conservative null-inclusive membership bound.
+    if (
+        isinstance(expr, BinaryExpr)
+        and expr.op in (Operation.IN, Operation.NOT_IN)
+        and isinstance(expr.left, ColumnExpr)
+        and isinstance(expr.right, LiteralExpr)
+    ):
+        idx = schema.get_field_index(expr.left.name)
+        if idx >= 0 and not pa.types.is_floating(schema.field(idx).type):
+            # PyArrow is_in can match nulls when the value set contains None.
+            if (
+                expr.op == Operation.IN
+                and isinstance(expr.right.value, list)
+                and all(value is not None for value in expr.right.value)
+            ):
+                return expr
+            return expr | expr.left.is_null()
+
+    if (
+        isinstance(expr, BinaryExpr)
+        and expr.op in (Operation.GE, Operation.GT)
+        and isinstance(expr.left, BinaryExpr)
+        and expr.left.op == Operation.ADD
+        and isinstance(expr.right, LiteralExpr)
+    ):
+        addition = expr.left
+        column: ColumnExpr | None = None
+        literal: LiteralExpr | None = None
+        if isinstance(addition.left, ColumnExpr) and isinstance(
+            addition.right, LiteralExpr
+        ):
+            column, literal = addition.left, addition.right
+        elif isinstance(addition.left, LiteralExpr) and isinstance(
+            addition.right, ColumnExpr
+        ):
+            column, literal = addition.right, addition.left
+
+        if column is not None and literal is not None:
+            offset = literal.value
+            target = expr.right.value
+            idx = schema.get_field_index(column.name)
+
+            # Positive integer addition cannot turn a value below this bound
+            # into a match, even if addition overflows at the upper end.
+            value_type = schema.field(idx).type if idx >= 0 else None
+
+            # Mixed signed/unsigned kernels can narrow uint64 to int64.
+            # Keep uint64 conservative until its cast semantics are modeled.
+            if value_type is not None and (
+                pa.types.is_signed_integer(value_type)
+                or (
+                    pa.types.is_unsigned_integer(value_type)
+                    and value_type.bit_width < 64
+                )
+            ):
+                bit_width = value_type.bit_width
+                if pa.types.is_signed_integer(value_type):
+                    min_value = -(1 << (bit_width - 1))
+                    max_value = (1 << (bit_width - 1)) - 1
+                else:
+                    min_value = 0
+                    max_value = (1 << bit_width) - 1
+
+                if (
+                    isinstance(offset, (int, np.integer))
+                    and not isinstance(offset, (bool, np.bool_))
+                    and isinstance(target, (int, np.integer))
+                    and not isinstance(target, (bool, np.bool_))
+                ):
+                    # Python ints avoid overflow in NumPy scalar subtraction.
+                    offset_val = int(offset)
+                    target_val = int(target)
+                    if (
+                        0 < offset_val <= max_value
+                        and min_value <= target_val <= max_value
+                    ):
+                        bound = target_val - offset_val
+                        if min_value <= bound <= max_value:
+                            if expr.op == Operation.GE:
+                                return column >= bound
+                            return column > bound
+
+    if (
+        isinstance(expr, PyArrowComputeUDFExpr)
+        and expr.pc_func is pc.starts_with
+        and len(expr.args) == 1
+        and isinstance(expr.args[0], ColumnExpr)
+        and len(expr.pc_positional) == 1
+        and not expr.pc_kwargs
+    ):
+        column = expr.args[0]
+        prefix = expr.pc_positional[0]
+        idx = schema.get_field_index(column.name)
+
+        if (
+            idx >= 0
+            and (
+                pa.types.is_string(schema.field(idx).type)
+                or pa.types.is_large_string(schema.field(idx).type)
+            )
+            and isinstance(prefix, str)
+            and prefix
+            and not any(0xD800 <= ord(ch) <= 0xDFFF for ch in prefix)
+        ):
+            lower = column >= prefix
+            last = ord(prefix[-1])
+
+            # When no valid next character exists, the lower bound alone
+            # is still safe.
+            if last in (0xD7FF, 0x10FFFF):
+                return lower
+
+            upper = prefix[:-1] + chr(last + 1)
+            return lower & (column < upper)
+
+    return None
+
+
 class FooterReader:
     """Reads Parquet footers and chunks files into row-group runs.
 
@@ -127,6 +312,7 @@ class FooterReader:
         )
         self.filesystem = filesystem
         self.pool = ThreadPoolExecutor(max_workers=io_concurrency)
+        self.filter_expr = filter_expr
         # Match Arrow's process-wide pools to the actor's IO concurrency so
         # nested S3/footer work isn't bottlenecked on the default 8 threads.
         pa.set_io_thread_count(io_concurrency)
@@ -303,6 +489,21 @@ class FooterReader:
         # single schema, so resolve them once rather than rescanning every leaf
         # for each group. The read-column lookup reads leaf paths off row group 0,
         # which a file with no row groups has none of; it sizes nothing either way.
+        original_filter = self.filter
+        derived_filter: "pc.Expression" | None = None
+        if self.filter_expr is not None:
+            try:
+                derived = _derived_statistics_predicate(
+                    self.filter_expr, metadata.schema.to_arrow_schema()
+                )
+                if derived is not None:
+                    derived_filter = derived.to_pyarrow()
+            except Exception as e:
+                logger.debug(
+                    "Could not derive a Parquet statistics predicate: %s",
+                    e,
+                    exc_info=True,
+                )
         filter_leaves = self._locate_filter_columns(metadata.schema)
         leaf_indices = (
             self._read_leaf_indices(metadata.row_group(0))
@@ -323,15 +524,33 @@ class FooterReader:
             # the listing stop early and the resumed job return too few rows.
             fragment = fragment.subset(row_group_ids=unprocessed_rg_ids)
 
-        if self.filter is not None and filter_leaves.all_filter_columns_found:
+        if original_filter is not None and filter_leaves.all_filter_columns_found:
             # Predicate pushdown: drop row groups whose Parquet statistics
             # contradict the filter, so we never emit chunks the reader would
             # skip anyway. Each returned fragment views a single surviving group.
             # Fail closed on any split error -- keep every group -- so a type
             # mismatch or similar cannot abort the rest of the read_footers batch.
             surviving: list[int] | None = self._try_split_by_row_group(
-                fragment, self.filter, path
+                fragment, original_filter, path
             )
+            if derived_filter is not None:
+                # PyArrow keeps every group it cannot disprove, so filters it
+                # cannot evaluate against statistics (arithmetic on a column,
+                # a string prefix) come back with all groups alive. The derived
+                # predicate is a necessary condition the statistics CAN
+                # evaluate, so intersecting the two survivor lists only drops
+                # groups no matching row can reach, and never a group the
+                # original split would have kept. A failed split here means
+                # "pruning cannot be applied", so the derived survivors stand
+                # in for it rather than narrowing it.
+                derived_surviving = self._try_split_by_row_group(
+                    fragment, derived_filter, path
+                )
+                if surviving is None:
+                    surviving = derived_surviving
+                elif derived_surviving is not None:
+                    candidates = set(derived_surviving)
+                    surviving = [rg for rg in surviving if rg in candidates]
             rg_indices: Iterable[int] = (
                 unprocessed_rg_ids if surviving is None else surviving
             )
@@ -341,7 +560,9 @@ class FooterReader:
             # out. For those, num_rows is an exact survivor count and can drive
             # the limit push-down. Any failure defaults to "not fully matched",
             # which is always safe (falls back to the post-filter stop).
-            not_fully_ids = self._try_split_by_row_group(fragment, ~self.filter, path)
+            not_fully_ids = self._try_split_by_row_group(
+                fragment, ~original_filter, path
+            )
             not_fully = set(rg_indices) if not_fully_ids is None else set(not_fully_ids)
             # The negation test alone is not sufficient: ``~filter`` can prune a
             # group that still holds a row the filter does not return, and then
@@ -355,7 +576,7 @@ class FooterReader:
                 and self._rg_can_fully_match(metadata.row_group(i), filter_leaves)
                 for i in rg_indices
             }
-        elif self.filter is not None:
+        elif original_filter is not None:
             # A predicate column is absent from this file's schema. PyArrow's
             # split_by_row_group raises ArrowInvalid ("No match for FieldRef.Name")
             # in that case, which would abort the whole read_footers batch.
