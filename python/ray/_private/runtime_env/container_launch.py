@@ -1,4 +1,8 @@
-"""Request node-local creation, then exec attach without changing the shim PID."""
+"""Bridge launcher processes and the runtime env agent for worker containers.
+
+The agent splits ``podman run`` options and owns ``podman create``. The launcher
+requests creation over HTTP, then execs ``podman start`` to run the worker.
+"""
 
 import http.client
 import ipaddress
@@ -9,11 +13,16 @@ from urllib.parse import urlsplit
 
 
 def split_container_options(options, help_text):
-    """Separate run-only flags using the installed Podman's option schema.
+    """Split run options into create/start settings in the runtime env agent.
 
-    Cobra's help distinguishes bare booleans from flags with a value. Read it
-    once per agent, rather than maintaining a version-specific boolean allowlist.
-    Values are consumed verbatim, including values beginning with a dash.
+    The agent fetches Podman's help once. Its option declarations distinguish
+    bare booleans from flags with a value, avoiding a version-specific flag list.
+
+    ``options`` contains expanded run option tokens, without the image or command.
+    ``help_text`` combines Podman's ``--help`` and ``run --help`` output.
+
+    The result contains create options, start options, and two booleans telling
+    the launcher to discard stdout and stderr, respectively.
     """
     schema, aliases = {}, {}
     for line in help_text.splitlines():
@@ -39,11 +48,15 @@ def split_container_options(options, help_text):
                 index += 1
                 if index == len(options):
                     raise ValueError(f"{name} requires a value")
+                # A declared value is data even if it looks like a flag, as in
+                # ``--label --detach``.
                 value = options[index]
             elif not separator:
                 value = "true"
             parsed.append((name, value))
         elif token.startswith("-") and len(token) > 1 and token != "--":
+            # Expand combined flags such as -dit. A value-taking short flag
+            # consumes the remaining suffix, or the next token, verbatim.
             flags = token[1:]
             while flags:
                 short, flags = flags[0], flags[1:]
@@ -71,6 +84,8 @@ def split_container_options(options, help_text):
             raise ValueError("Invalid Podman boolean option")
         return value.lower() in {"true", "1", "t"}
 
+    # Container configuration belongs to create; attachment and signal handling
+    # belong to the launcher's start. Detach means omitting start --attach.
     create, start, streams = [], [], set()
     detached, interactive = False, False
     for name, value in parsed:
@@ -90,6 +105,8 @@ def split_container_options(options, help_text):
         start.insert(0, "--attach")
         if interactive and (not streams or "stdin" in streams):
             start.append("--interactive")
+    # start --attach cannot select individual output streams. The launcher
+    # redirects unselected streams to /dev/null to preserve run -a semantics.
     return (
         create,
         start,
@@ -99,6 +116,16 @@ def split_container_options(options, help_text):
 
 
 def run_worker_container(address, options, entrypoint, launcher_env):
+    """Request creation from the agent, then exec start in the worker launcher.
+
+    ``address`` is the agent's loopback control address, including its port.
+    ``options`` contains expanded run options, including any --entrypoint option;
+    ``entrypoint`` is the create command's positional tail: [image, *worker_args].
+    ``launcher_env`` is the host environment for both create and start.
+
+    On success, exec replaces this process with Podman rather than spawning a
+    second launcher. The agent owns container creation and cancellation.
+    """
     from ray._private.authentication.http_token_authentication import (
         get_auth_headers_if_auth_enabled,
     )
@@ -109,8 +136,11 @@ def run_worker_container(address, options, entrypoint, launcher_env):
     endpoint = urlsplit("http://" + address)
     if not ipaddress.ip_address(endpoint.hostname).is_loopback:
         raise RuntimeError("Worker container control requires a loopback endpoint")
+    # Raylet supplies one absolute monotonic startup deadline for all attempts.
     deadline_ms = int(launcher_env["RAY_WORKER_CONTAINER_DEADLINE_MS"])
     deadline = deadline_ms / 1000
+    # Reuse the identity and inputs after a lost reply. The agent makes retries
+    # idempotent by retaining the launch record and sharing one creation task.
     request = protocol.CreateWorkerContainerRequest(
         launch=protocol.WorkerContainerLaunch(
             launch_id=launcher_env["RAY_WORKER_CONTAINER_LAUNCH_ID"],
@@ -144,6 +174,8 @@ def run_worker_container(address, options, entrypoint, launcher_env):
             reply = protocol.CreateWorkerContainerReply.FromString(body)
             break
         except (OSError, http.client.HTTPException):
+            # Only transport failures retry, with backoff bounded by the startup
+            # deadline. HTTP error statuses and agent/protobuf errors fail directly.
             time.sleep(max(0, min(delay, deadline - time.monotonic())))
             delay = min(delay * 2, 1)
         finally:
@@ -157,4 +189,5 @@ def run_worker_container(address, options, entrypoint, launcher_env):
             with open(os.devnull, "w") as sink:
                 os.dup2(sink.fileno(), stream)
     command = ["podman", "start", *reply.start_options, reply.container_id]
+    # Keep the launcher's PID; the container's Python worker is a separate process.
     os.execvpe(command[0], command, launcher_env)
