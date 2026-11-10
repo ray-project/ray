@@ -21,6 +21,7 @@ from ray.serve._private import (
 )
 from ray.serve._private.api import _get_actor_init_error
 from ray.serve._private.common import TargetCapacityDirection
+from ray.serve._private.constants import SERVE_CONTROLLER_NAME, SERVE_NAMESPACE
 from ray.serve._private.controller import (
     SHUTDOWN_IN_PROGRESS_KEY,
     ServeController,
@@ -31,7 +32,6 @@ from ray.serve._private.controller_health_metrics_tracker import (
     _HEALTH_METRICS_HISTORY_SIZE,
     ControllerHealthMetricsTracker,
 )
-from ray.serve._private.constants import SERVE_CONTROLLER_NAME, SERVE_NAMESPACE
 from ray.serve._private.tracing_utils import (
     InvalidTracingConfigError,
     TracingSetupError,
