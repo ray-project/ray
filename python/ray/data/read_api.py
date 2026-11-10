@@ -7015,5 +7015,5 @@ def _delta_file_sizes(dt: "DeltaTable") -> Dict[str, int]:
         for path, size in zip(
             actions["path"].to_pylist(), actions["size_bytes"].to_pylist()
         )
-        if size is not None
+        if path is not None and size is not None
     }
