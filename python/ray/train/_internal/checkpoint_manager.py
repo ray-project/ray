@@ -98,13 +98,14 @@ class _CheckpointManager:
             checkpoint_result: Tracked training result containing the checkpoint
                 and associated metrics to add to bookkeeping.
         """
-        self._latest_checkpoint_result = checkpoint_result
-
         score_attr = self._checkpoint_config.checkpoint_score_attribute
         if ray_constants.env_bool(TUNE_ONLY_STORE_CHECKPOINT_SCORE_ATTRIBUTE, False):
+            # The score attribute can be a nested key such as "a/b", so look it
+            # up in the flattened metrics.
+            flat_metrics = flatten_dict(checkpoint_result.metrics)
             metrics = (
-                {score_attr: checkpoint_result.metrics[score_attr]}
-                if score_attr in checkpoint_result.metrics
+                {score_attr: flat_metrics[score_attr]}
+                if score_attr in flat_metrics
                 else {}
             )
             checkpoint_result = _TrainingResult(
@@ -112,9 +113,11 @@ class _CheckpointManager:
                 metrics=metrics,
             )
 
-        if score_attr is not None and score_attr in checkpoint_result.metrics:
+        self._latest_checkpoint_result = checkpoint_result
+        if score_attr is not None:
             # If we're ordering by a score, insert the checkpoint
-            # so that the list remains sorted.
+            # so that the list remains sorted. A checkpoint without the
+            # score ranks worst (see `_get_checkpoint_score`).
             _insert_into_sorted_list(
                 self._checkpoint_results,
                 checkpoint_result,

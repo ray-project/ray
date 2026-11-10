@@ -106,46 +106,46 @@ def test_keep_checkpoints_by_score(order, checkpoint_paths):
             assert not Path(checkpoint_path).exists()
 
 
-def test_keep_latest_checkpoint(checkpoint_paths):
+@pytest.mark.parametrize("only_store_score_attr", [False, True])
+@pytest.mark.parametrize(
+    "metrics_fn",
+    [
+        lambda v: {"nested/score": v},
+        lambda v: {"nested": {"score": v}},
+    ],
+)
+def test_keep_latest_checkpoint(
+    only_store_score_attr, metrics_fn, checkpoint_paths, monkeypatch
+):
+    if only_store_score_attr:
+        monkeypatch.setenv(TUNE_ONLY_STORE_CHECKPOINT_SCORE_ATTRIBUTE, "1")
     manager = _CheckpointManager(
         checkpoint_config=CheckpointConfig(
             num_to_keep=2,
-            checkpoint_score_attribute="score",
+            checkpoint_score_attribute="nested/score",
             checkpoint_score_order="max",
         )
     )
 
-    manager.register_checkpoint(
-        _TrainingResult(
-            checkpoint=Checkpoint.from_directory(checkpoint_paths[0]),
-            metrics={"score": 3.0},
+    for i, score in enumerate([3.0, 2.0, 1.0]):
+        manager.register_checkpoint(
+            _TrainingResult(
+                checkpoint=Checkpoint.from_directory(checkpoint_paths[i]),
+                metrics=metrics_fn(score),
+            )
         )
-    )
-    manager.register_checkpoint(
-        _TrainingResult(
-            checkpoint=Checkpoint.from_directory(checkpoint_paths[1]),
-            metrics={"score": 2.0},
-        )
-    )
-    manager.register_checkpoint(
-        _TrainingResult(
-            checkpoint=Checkpoint.from_directory(checkpoint_paths[2]),
-            metrics={"score": 1.0},
-        )
-    )
 
     assert len(manager.best_checkpoint_results) == 2
+    assert manager.best_checkpoint_result.checkpoint.path == checkpoint_paths[0]
 
     # The latest checkpoint with the lowest score should not be deleted yet.
-    assert manager.latest_checkpoint_result.metrics["score"] == 1.0
-
-    # The latest checkpoint with the lowest score should not be deleted yet.
+    assert manager.latest_checkpoint_result.checkpoint.path == checkpoint_paths[2]
     assert Path(checkpoint_paths[2]).exists()
 
     manager.register_checkpoint(
         _TrainingResult(
             checkpoint=Checkpoint.from_directory(checkpoint_paths[3]),
-            metrics={"score": 0.0},
+            metrics=metrics_fn(0.0),
         )
     )
     # A newer checkpoint came in. Even though the new one has a lower score, there are
@@ -153,7 +153,7 @@ def test_keep_latest_checkpoint(checkpoint_paths):
     assert not Path(checkpoint_paths[2]).exists()
 
     # Quick sanity check to make sure that the new checkpoint is kept.
-    assert manager.latest_checkpoint_result.metrics["score"] == 0.0
+    assert manager.latest_checkpoint_result.checkpoint.path == checkpoint_paths[3]
     assert Path(checkpoint_paths[3]).exists()
 
     # The original 2 checkpoints should still exist
@@ -245,14 +245,24 @@ def test_nested_get_checkpoint_score(metrics):
 
 
 @pytest.mark.parametrize("has_score_attr", [True, False])
-def test_only_store_score_attr(has_score_attr, checkpoint_paths, monkeypatch):
+@pytest.mark.parametrize(
+    "score_attr,metrics_fn",
+    [
+        ("score", lambda v: {"score": v}),
+        ("nested/score", lambda v: {"nested/score": v}),
+        ("nested/score", lambda v: {"nested": {"score": v}}),
+    ],
+)
+def test_only_store_score_attr(
+    has_score_attr, score_attr, metrics_fn, checkpoint_paths, monkeypatch
+):
     monkeypatch.setenv(TUNE_ONLY_STORE_CHECKPOINT_SCORE_ATTRIBUTE, "1")
 
     # Set up CheckpointManager.
     if has_score_attr:
         checkpoint_config = CheckpointConfig(
             num_to_keep=None,
-            checkpoint_score_attribute="score",
+            checkpoint_score_attribute=score_attr,
             checkpoint_score_order="max",
         )
     else:
@@ -263,13 +273,13 @@ def test_only_store_score_attr(has_score_attr, checkpoint_paths, monkeypatch):
     manager.register_checkpoint(
         _TrainingResult(
             checkpoint=Checkpoint.from_directory(checkpoint_paths[0]),
-            metrics={"score": 3.0},
+            metrics=metrics_fn(3.0),
         )
     )
     manager.register_checkpoint(
         _TrainingResult(
             checkpoint=Checkpoint.from_directory(checkpoint_paths[1]),
-            metrics={"score": 1.0, "another_unsaved_metric": 6.0},
+            metrics={**metrics_fn(1.0), "another_unsaved_metric": 6.0},
         )
     )
     manager.register_checkpoint(
@@ -280,12 +290,13 @@ def test_only_store_score_attr(has_score_attr, checkpoint_paths, monkeypatch):
     )
     assert len(manager.best_checkpoint_results) == 3
     if has_score_attr:
-        assert manager.best_checkpoint_results[0].metrics == {"score": 1.0}
-        assert manager.best_checkpoint_results[0].checkpoint.path == checkpoint_paths[1]
-        assert manager.best_checkpoint_results[1].metrics == {"score": 3.0}
-        assert manager.best_checkpoint_results[1].checkpoint.path == checkpoint_paths[0]
-        assert manager.best_checkpoint_results[2].metrics == {}
-        assert manager.best_checkpoint_results[2].checkpoint.path == checkpoint_paths[2]
+        # The checkpoint without the score ranks worst.
+        assert manager.best_checkpoint_results[0].metrics == {}
+        assert manager.best_checkpoint_results[0].checkpoint.path == checkpoint_paths[2]
+        assert manager.best_checkpoint_results[1].metrics == {score_attr: 1.0}
+        assert manager.best_checkpoint_results[1].checkpoint.path == checkpoint_paths[1]
+        assert manager.best_checkpoint_results[2].metrics == {score_attr: 3.0}
+        assert manager.best_checkpoint_results[2].checkpoint.path == checkpoint_paths[0]
     else:
         assert manager.best_checkpoint_results[0].metrics == {}
         assert manager.best_checkpoint_results[0].checkpoint.path == checkpoint_paths[0]
