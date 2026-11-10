@@ -40,6 +40,12 @@ class BinaryUrls:
 
 
 class FootsiesBinary:
+    # A healthy game server is ready within ~40 s, even with dozens of them starting on
+    # one node. A few in a thousand never get ready (the process lives, but doesn't
+    # serve gRPC), so after this long, kill it and launch a new one.
+    STARTUP_TIMEOUT_S = 120
+    MAX_START_ATTEMPTS = 3
+
     def __init__(self, config: EnvContext, port: int):
         self._urls = BinaryUrls()
         self.config = config
@@ -111,70 +117,52 @@ class FootsiesBinary:
             self.binary_to_download == "linux_server"
             or self.binary_to_download == "linux_windowed"
         ):
-            process = subprocess.Popen(
-                [game_binary_path, "--port", str(self.port)],
-                stdout=stdout_dest,
-                stderr=stderr_dest,
-            )
+            command = [game_binary_path, "--port", str(self.port)]
         else:
-            process = subprocess.Popen(
-                [
-                    "arch",
-                    "-x86_64",
-                    game_binary_path,
-                    "--port",
-                    str(self.port),
-                ],
-                stdout=stdout_dest,
-                stderr=stderr_dest,
-            )
+            command = ["arch", "-x86_64", game_binary_path, "--port", str(self.port)]
 
-        # check if the game server is running correctly
-        timeout = 2
+        for attempt in range(1, self.MAX_START_ATTEMPTS + 1):
+            process = subprocess.Popen(command, stdout=stdout_dest, stderr=stderr_dest)
+            if self._wait_until_ready(process):
+                logger.info("Game ready!")
+                return process.pid
+            logger.warning(
+                f"RLlib {self.__class__.__name__}: Game server on port {self.port} "
+                f"isn't ready after {self.STARTUP_TIMEOUT_S} s (exit code "
+                f"{process.poll()}), attempt {attempt}/{self.MAX_START_ATTEMPTS}."
+            )
+            process.kill()
+            process.wait()
+        raise RuntimeError(
+            f"Footsies game server on port {self.port} didn't start in "
+            f"{self.MAX_START_ATTEMPTS} attempts."
+        )
+
+    def _wait_until_ready(self, process: subprocess.Popen) -> bool:
+        """Starts the game and returns whether it's ready before the timeout."""
+        deadline = time.monotonic() + self.STARTUP_TIMEOUT_S
         channel = grpc.insecure_channel(f"localhost:{self.port}")
         stub = footsies_pb2_grpc.FootsiesGameServiceStub(channel)
-
-        # step 1: try to start the game
-        while True:
-            try:
-                stub.StartGame(footsies_pb2.Empty())
-                logger.info("Game ready!")
-                break
-            except grpc.RpcError as e:
-                code = e.code()
-                if code in (
-                    grpc.StatusCode.UNAVAILABLE,
-                    grpc.StatusCode.DEADLINE_EXCEEDED,
-                ):
-                    logger.info(f"RLlib {self.__class__.__name__}: Game not ready...")
-                    time.sleep(timeout)
-                    continue
-                raise
-
-        # step 2: check if the game is ready
-        ready = False
-        while not ready:
-            try:
-                ready = stub.IsReady(footsies_pb2.Empty()).value
-                if not ready:
-                    logger.info(f"RLlib {self.__class__.__name__}: Game not ready...")
-                    time.sleep(timeout)
-                    continue
-                else:
-                    logger.info("Game ready!")
-                    break
-            except grpc.RpcError as e:
-                if e.code() in (
-                    grpc.StatusCode.UNAVAILABLE,
-                    grpc.StatusCode.DEADLINE_EXCEEDED,
-                ):
-                    time.sleep(timeout)
-                    logger.info(f"RLlib {self.__class__.__name__}: Game not ready...")
-                    continue
-                raise
-
-        channel.close()
-        return process.pid
+        game_started = False
+        try:
+            while time.monotonic() < deadline and process.poll() is None:
+                try:
+                    if not game_started:
+                        stub.StartGame(footsies_pb2.Empty(), timeout=5)
+                        game_started = True
+                    if stub.IsReady(footsies_pb2.Empty(), timeout=5).value:
+                        return True
+                except grpc.RpcError as e:
+                    if e.code() not in (
+                        grpc.StatusCode.UNAVAILABLE,
+                        grpc.StatusCode.DEADLINE_EXCEEDED,
+                    ):
+                        raise
+                logger.info(f"RLlib {self.__class__.__name__}: Game not ready...")
+                time.sleep(1)
+            return False
+        finally:
+            channel.close()
 
     def _download_game_binary(self):
         # As multiple actors might try to download all at the same time.

@@ -133,10 +133,16 @@ def test_periodic_flush_on_file_size_threshold(tmp_path):
 
     checkpointer.record_yielded_batch(_create_batch([4, 5, 6]))
 
-    # We've reached the threshold, which triggers a flush.
-    wait_for_condition(lambda: checkpoint_path.is_file(), timeout=1)
+    # We've reached the threshold, which triggers a flush on a background thread.
+    def read_checkpoint_ids():
+        # The file can exist before the background write finishes.
+        try:
+            return pq.read_table(checkpoint_path).column("id").to_pylist()
+        except (FileNotFoundError, pa.ArrowInvalid):
+            return None
 
-    assert checkpoint_path.is_file()
+    wait_for_condition(lambda: read_checkpoint_ids() == [1, 2, 3, 4, 5, 6], timeout=10)
+
     assert pq.read_table(checkpoint_path).column("id").to_pylist() == [1, 2, 3, 4, 5, 6]
 
 

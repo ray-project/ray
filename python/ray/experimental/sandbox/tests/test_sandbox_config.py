@@ -76,6 +76,25 @@ def test_mounts_require_absolute_paths(mounts: dict[str, str]) -> None:
         SandboxConfig(image="busybox:latest", mounts=mounts)
 
 
+@pytest.mark.parametrize("value", [-1001, 1001, True, False, 0.0, "0"])
+def test_invalid_oom_score_adj_rejected(value):
+    with pytest.raises(ValueError, match="oom_score_adj"):
+        SandboxConfig(image="busybox:latest", oom_score_adj=value)
+
+
+@pytest.mark.parametrize("value", [None, -1000, 0, 1000])
+def test_oom_score_adj_with_mounts_and_gpus(value: int | None) -> None:
+    config = SandboxConfig(
+        image="busybox:latest",
+        mounts={"/data": "/srv/inbox"},
+        gpu_ids=[0],
+        oom_score_adj=value,
+    )
+    assert config.oom_score_adj == value
+    assert config.mounts == {"/data": "/srv/inbox"}
+    assert config.gpu_ids == ["0"]
+
+
 def test_invalid_network_mode_rejected():
     with pytest.raises(ValueError, match="network mode"):
         SandboxConfig(image="python:3.10-slim", network="bridge")
@@ -212,6 +231,38 @@ def test_disk_requires_a_writable_rootfs():
         SandboxConfig(image="python:3.10-slim", readonly=False, disk=-1)
     with pytest.raises(ValueError):
         SandboxConfig(image="python:3.10-slim", readonly=False, disk="lots")
+
+
+def test_gpu_ids_config():
+    config = SandboxConfig(image="python:3.10-slim")
+    assert config.gpu_ids is None
+
+    config = SandboxConfig(image="python:3.10-slim", gpu_ids=["0", "1"])
+    assert config.gpu_ids == ["0", "1"]
+
+    # ray.get_gpu_ids() returns integer indices unless CUDA_VISIBLE_DEVICES was
+    # set when the worker started.
+    config = SandboxConfig(image="python:3.10-slim", gpu_ids=[0, 1])
+    assert config.gpu_ids == ["0", "1"]
+
+
+@pytest.mark.parametrize(
+    "gpu_ids",
+    [
+        [],
+        "0",
+        ["0", ""],
+        [-1],
+        [True],
+        [1.0],
+        [None],
+        ["0", "0"],
+        [0, "0"],
+    ],
+)
+def test_invalid_gpu_ids_rejected(gpu_ids):
+    with pytest.raises(ValueError, match="gpu_ids"):
+        SandboxConfig(image="python:3.10-slim", gpu_ids=gpu_ids)
 
 
 def test_parse_memory_bytes():
