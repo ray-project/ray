@@ -765,18 +765,13 @@ The autoscaling delay metrics `ray_serve_autoscaling_replica_metrics_delay_ms` a
 | `ray_serve_autoscaling_target_replicas` | Gauge | `deployment`, `application` | Target number of replicas the autoscaler is trying to reach. Compare with actual replicas to identify scaling lag. |
 | `ray_serve_autoscaling_desired_replicas` | Gauge | `deployment`, `application` | Raw autoscaling decision (number of replicas) from the policy *before* applying `min_replicas`/`max_replicas` bounds. |
 | `ray_serve_autoscaling_total_requests` | Gauge | `deployment`, `application` | Total number of requests (queued + in-flight) as seen by the autoscaler. This is the input to the scaling decision. |
-| `ray_serve_router_uncached_prefill_tokens` | Gauge | `deployment`, `application`, `handle`, `actor_id` | Current outstanding uncached prefill tokens reported by each router handle. A raw snapshot, not a lookback mean. Unset until the router reports prefill tokens; `NaN` when the snapshot no longer includes them or the router shuts down. |
+| `ray_serve_router_uncached_prefill_tokens` | Gauge | `deployment`, `application`, `handle`, `actor_id` | Current outstanding uncached prefill tokens reported by each router handle. |
 | `ray_serve_autoscaling_target_ongoing_requests` | Gauge | `deployment`, `application` | Configured `target_ongoing_requests` per replica. Divide `ray_serve_autoscaling_total_requests` by this value to compute the raw desired replica count for the default policy and detect autoscaling regressions. |
 | `ray_serve_autoscaling_policy_execution_time_ms` | Gauge | `deployment`, `application`, `policy_scope` | Time taken to execute the autoscaling policy in milliseconds. `policy_scope` is `deployment` or `application`. |
 | `ray_serve_autoscaling_replica_metrics_delay_ms` | Histogram | `deployment`, `application` | Time taken for replica metrics to reach the controller in milliseconds. High values may indicate controller overload. |
 | `ray_serve_autoscaling_handle_metrics_delay_ms` | Histogram | `deployment`, `application` | Time taken for handle metrics to reach the controller in milliseconds. High values may indicate controller overload. |
 | `ray_serve_record_autoscaling_stats_failed_total` | Counter | `application`, `deployment`, `replica`, `exception_name` | Total number of failed attempts to collect autoscaling metrics on replica from user defined function. Non-zero values indicate error in user code. |
 | `ray_serve_user_autoscaling_stats_latency_ms` | Histogram | `application`, `deployment`, `replica` | Histogram of time taken to execute the user-defined autoscaling stats function in milliseconds. |
-
-The **Uncached prefill tokens per router** panel on the Serve Deployment dashboard
-shows a separate line for each router handle. Routers report replicated global
-workload views, so don't sum these lines to estimate total prefill work. Like other
-gauges, the metric preserves the latest exported value rather than every update.
 
 ### Model multiplexing metrics
 
