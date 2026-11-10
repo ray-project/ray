@@ -482,12 +482,21 @@ def test_shuffle_reduce_task_uses_operator_name():
     assert shuffle_reduce_task.options.call_args.kwargs["name"] == name
 
 
-def test_disk_shuffle_map_task_uses_context_label_selector(restore_data_context):
+@pytest.mark.parametrize(
+    "map_cls, task_path",
+    [
+        (ShuffleMapOp, "shuffle_map_operator._shuffle_map_task"),
+        (DiskHashShuffleMapOp, "disk_shuffle_map_operator._disk_shuffle_map_task"),
+    ],
+)
+def test_shuffle_map_task_uses_context_label_selector(
+    restore_data_context, map_cls, task_path
+):
     restore_data_context.execution_options.label_selector = {
         "subcluster": "train",
         "zone": "us-west",
     }
-    op = DiskHashShuffleMapOp(
+    op = map_cls(
         InputDataBuffer(restore_data_context, []),
         restore_data_context,
         num_partitions=1,
@@ -496,8 +505,7 @@ def test_disk_shuffle_map_task_uses_context_label_selector(restore_data_context)
     op.start(ExecutionOptions(), noop_counter())
 
     with patch(
-        "ray.data._internal.execution.operators.shuffle_operators."
-        "disk_shuffle_map_operator._disk_shuffle_map_task"
+        f"ray.data._internal.execution.operators.shuffle_operators.{task_path}"
     ) as shuffle_map_task:
         shuffle_map_task.options.return_value.remote.return_value = MagicMock()
         op._submit_shuffle_map_task([], [])
@@ -550,18 +558,31 @@ def test_shuffle_map_task_applies_map_ray_remote_args(
     assert op._map_resource_usage.cpu == 2
 
 
-def test_disk_shuffle_reduce_task_merges_label_selector(restore_data_context):
+@pytest.mark.parametrize(
+    "map_cls, reduce_cls, task_path",
+    [
+        (ShuffleMapOp, ShuffleReduceOp, "shuffle_reduce_operator._shuffle_reduce_task"),
+        (
+            DiskHashShuffleMapOp,
+            DiskHashShuffleReduceOp,
+            "disk_shuffle_reduce_operator._disk_shuffle_reduce_task",
+        ),
+    ],
+)
+def test_shuffle_reduce_task_merges_label_selector(
+    restore_data_context, map_cls, reduce_cls, task_path
+):
     restore_data_context.execution_options.label_selector = {
         "subcluster": "train",
         "zone": "us-west",
     }
-    map_op = DiskHashShuffleMapOp(
+    map_op = map_cls(
         InputDataBuffer(restore_data_context, []),
         restore_data_context,
         num_partitions=1,
         partition_fn=lambda table: {},
     )
-    op = DiskHashShuffleReduceOp(
+    op = reduce_cls(
         map_op,
         restore_data_context,
         num_partitions=1,
@@ -573,8 +594,7 @@ def test_disk_shuffle_reduce_task_merges_label_selector(restore_data_context):
     op.start(ExecutionOptions(), noop_counter())
 
     with patch(
-        "ray.data._internal.execution.operators.shuffle_operators."
-        "disk_shuffle_reduce_operator._disk_shuffle_reduce_task"
+        f"ray.data._internal.execution.operators.shuffle_operators.{task_path}"
     ) as shuffle_reduce_task:
         shuffle_reduce_task.options.return_value.remote.return_value = MagicMock()
         op._submit_reduce_task(0, [RefBundle((), schema=None, owns_blocks=True)])
