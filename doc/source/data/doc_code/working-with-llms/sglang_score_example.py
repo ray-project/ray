@@ -11,7 +11,7 @@ from ray.data.llm import SGLangEngineProcessorConfig, build_processor
 
 model = "Qwen/Qwen3-0.6B"
 tokenizer = AutoTokenizer.from_pretrained(model)
-# The score of each item is the probability of these tokens following it.
+# With apply_softmax=True, each item's scores are normalized over Yes and No.
 label_token_ids = [
     tokenizer.encode(word, add_special_tokens=False)[0] for word in ("Yes", "No")
 ]

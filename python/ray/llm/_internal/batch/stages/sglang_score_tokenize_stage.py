@@ -25,14 +25,16 @@ class SGLangScoreTokenizeUDF(TokenizeUDF):
         """Tokenize the `query` and `items` text columns of score rows.
 
         The token IDs match what SGLang's `Engine.score` builds from the same
-        text, so scores don't depend on where tokenization runs:
+        text:
 
         - With multi-item scoring, or with embedding overrides in the row, the
-          query is tokenized with special tokens and each item without.
-        - Otherwise, each `query + item` text is tokenized as one sequence and
-          `query_token_ids` is empty, because the engine concatenates the two.
-          With score extraction, a query containing the extraction token is
-          rejected, as SGLang does, since its anchors would be scored as items.
+          query is tokenized on its own, with special tokens if
+          `add_special_tokens` is set, and each item without.
+        - Otherwise, each `query + item` text (`item + query` with
+          `item_first`) is tokenized as one sequence and `query_token_ids` is
+          empty, because the engine concatenates the two. With score
+          extraction, a query containing the extraction token is rejected,
+          as SGLang does, since its tokens would be scored as part of an item.
 
         Args:
             data_column: The data column name.
@@ -64,8 +66,8 @@ class SGLangScoreTokenizeUDF(TokenizeUDF):
         plain_texts: List[str] = []
         # Per row: whether the query is tokenized on its own, and the items.
         plans = []
-        # Concatenated queries that must not contain the extraction token.
-        anchor_checked_queries: List[str] = []
+        # Queries to check for the extraction token before concatenation.
+        queries_to_check: List[str] = []
         for row in batch:
             query = _as_text(row["query"], "query")
             items = [_as_text(item, "items") for item in _as_text_list(row["items"])]
@@ -75,16 +77,14 @@ class SGLangScoreTokenizeUDF(TokenizeUDF):
                 plain_texts.extend(items)
             else:
                 if self.score_extraction_token_id is not None and query:
-                    anchor_checked_queries.append(query)
+                    queries_to_check.append(query)
                 special_texts.extend(
                     f"{item}{query}" if self.item_first else f"{query}{item}"
                     for item in items
                 )
             plans.append((separate, len(items)))
 
-        for query_ids in self._tokenize(
-            anchor_checked_queries, self.add_special_tokens
-        ):
+        for query_ids in self._tokenize(queries_to_check, self.add_special_tokens):
             if self.score_extraction_token_id in query_ids:
                 raise ValueError(
                     "The query contains the score extraction token "
@@ -165,4 +165,13 @@ class SGLangScoreTokenizeStage(StatefulStage):
         return {
             "query": "The query text (str).",
             "items": "The item texts (List[str]).",
+        }
+
+    def get_optional_input_keys(self) -> Dict[str, str]:
+        """The optional input keys of the stage and their descriptions."""
+        return {
+            "query_embed_overrides": "Embedding overrides for the query, "
+            "shaped [num_overrides, hidden_dim].",
+            "item_embed_overrides": "Embedding overrides for each item "
+            "(one entry or None per item).",
         }

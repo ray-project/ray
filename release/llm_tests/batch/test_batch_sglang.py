@@ -199,14 +199,28 @@ def test_sglang_score_matches_engine(label_token_ids):
     expected = ray.get(_score_with_engine.remote(SCORE_ROWS, label_token_ids))
 
     _assert_scores_close(scores, expected)
-    # Sanity check that the model, not noise, produced the scores.
+    # Paris should have the highest Yes score of the three cities.
     assert np.argmax(np.asarray(scores[0])[:, 0]) == 0
 
 
-def test_sglang_score_mis_matches_single_item(label_token_ids):
+def test_sglang_score_mis_matches_single_item(score_tokenizer, label_token_ids):
+    # Token IDs, because MIS tokenizes the query and items separately while
+    # single-item scoring tokenizes `query + item` text, which can merge tokens
+    # at the boundary.
+    rows = [
+        {
+            "id": row["id"],
+            "query_token_ids": score_tokenizer.encode(row["query"]),
+            "item_token_ids": [
+                score_tokenizer.encode(item, add_special_tokens=False)
+                for item in row["items"]
+            ],
+        }
+        for row in SCORE_ROWS
+    ]
     task_kwargs = dict(label_token_ids=label_token_ids, apply_softmax=True)
-    single_item = _run_score(SCORE_ROWS, task_kwargs, enable_mis=False)
-    multi_item = _run_score(SCORE_ROWS, task_kwargs, enable_mis=True)
+    single_item = _run_score(rows, task_kwargs, enable_mis=False, tokenize_stage=False)
+    multi_item = _run_score(rows, task_kwargs, enable_mis=True, tokenize_stage=False)
 
     _assert_scores_close(multi_item, single_item)
 

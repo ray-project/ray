@@ -342,7 +342,7 @@ Classification models differ in the following ways:
 
 ## Score items against a query with SGLang
 
-{class}`SGLangEngineProcessorConfig <ray.data.llm.SGLangEngineProcessorConfig>` supports `task_type="score"`, which runs SGLang's [score API](https://docs.sglang.io/basic_usage/native_api.html). Each row holds one `query` and a list of `items`, and `row["scores"]` holds one score list per item, in item order. Set `enable_mis=True` in `engine_kwargs` to score all items of a row in one forward pass with SGLang's multi-item scoring.
+{class}`SGLangEngineProcessorConfig <ray.data.llm.SGLangEngineProcessorConfig>` supports `task_type="score"`, which runs SGLang's [score API](https://docs.sglang.io/basic_usage/native_api.html). Each row holds one `query` and a list of `items`, and `row["scores"]` holds one score list per item, in item order. Set `enable_mis=True` in `engine_kwargs` to score all items of a row in one forward pass with SGLang's multi-item scoring. As in SGLang, multi-item scoring tokenizes the query and items separately instead of as one `query + item` text, so tokens at the boundary, and the scores, can differ slightly.
 
 ```{literalinclude} doc_code/working-with-llms/sglang_score_example.py
 :language: python
@@ -352,10 +352,10 @@ Classification models differ in the following ways:
 
 Configure the score task with the following settings:
 
-- `task_kwargs`: the `Engine.score` options `label_token_ids`, `apply_softmax`, `item_first`, `embed_override_token_id`, and `score_extraction_token_id`. See the [SGLang score API](https://docs.sglang.io/basic_usage/native_api.html) for what each option does.
+- `task_kwargs`: the `Engine.score` options `label_token_ids`, `apply_softmax`, `item_first`, `embed_override_token_id`, and `score_extraction_token_id`. Generative models require `label_token_ids`, and each item's score list follows their order. See the [SGLang score API](https://docs.sglang.io/basic_usage/native_api.html) for what each option does.
 - Input columns: `query` and `items` text. To pass token IDs instead, set `tokenize_stage=False` and provide `query_token_ids` and `item_token_ids`.
-- Embedding overrides: add a `query_embed_overrides` column shaped `[num_markers, hidden_dim]`, or an `item_embed_overrides` column with one such entry, or `None`, per item. Each vector replaces the embedding at the next `embed_override_token_id` position.
-- Score extraction: with `score_extraction_token_id` set, each entry of `row["scores"]` holds one score list for each occurrence of that token in the item.
+- Embedding overrides: set `embed_override_token_id`, and add a `query_embed_overrides` column shaped `[num_overrides, hidden_dim]`, an `item_embed_overrides` column with one such entry, or `None`, per item, or both. In each sequence, the vectors replace the embeddings at the `embed_override_token_id` positions, in order.
+- Score extraction: with `score_extraction_token_id` set, each entry of `row["scores"]` holds one score list for each occurrence of that token in the item. It doesn't support `item_first` or `allow_auto_truncate`, and without multi-item scoring it needs `disable_radix_cache=True` and `chunked_prefill_size=-1` in `engine_kwargs`.
 
 
 (openai_compatible_api_endpoint)=

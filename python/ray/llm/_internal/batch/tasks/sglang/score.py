@@ -107,10 +107,10 @@ class _SGLangScoreTask(_SGLangTask):
         "item_token_ids": "The token IDs of each item (List[List[int]]).",
     }
     optional_input_keys = {
-        "query_embed_overrides": "Embedding overrides for the query "
-        "markers, shaped [num_markers, hidden_dim].",
-        "item_embed_overrides": "Embedding overrides for each item's "
-        "markers (one entry or None per item).",
+        "query_embed_overrides": "Embedding overrides for the query, "
+        "shaped [num_overrides, hidden_dim].",
+        "item_embed_overrides": "Embedding overrides for each item "
+        "(one entry or None per item).",
     }
     # There is no chat to template and nothing to detokenize.
     unsupported_stages = ("chat_template_stage", "detokenize_stage")
@@ -211,8 +211,8 @@ class _SGLangScoreTask(_SGLangTask):
         )
 
     async def run(self, engine: Any, request: SGLangScoreRequest) -> Dict[str, Any]:
-        # `async_score`, because the synchronous `score` runs its own event
-        # loop and would deadlock inside this one.
+        # The synchronous `score` drives its own event loop, which can't run
+        # inside this already-running one.
         result = await engine.async_score(
             query=request.query_token_ids,
             items=request.item_token_ids,
