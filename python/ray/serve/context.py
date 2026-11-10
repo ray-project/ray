@@ -336,6 +336,8 @@ class _RequestContext:
     # This is extracted from _ray_trace_ctx kwarg at the replica entry point
     # Advanced users can access this to propagate tracing to external systems
     _ray_trace_ctx: Optional[dict] = None
+    # Router application that selected this request's target replica.
+    router_application_name: Optional[str] = None
 
 
 _serve_request_context = contextvars.ContextVar(
@@ -387,6 +389,7 @@ def _set_request_context(
             app_name=app_name or current_request_context.app_name,
             multiplexed_model_id=multiplexed_model_id
             or current_request_context.multiplexed_model_id,
+            router_application_name=current_request_context.router_application_name,
         )
     )
 

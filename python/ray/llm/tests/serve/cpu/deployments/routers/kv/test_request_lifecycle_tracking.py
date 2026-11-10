@@ -24,11 +24,9 @@ from ray.llm._internal.serve.routing_policies.kv_aware.kv_token_tracker import (
     get_worker_id,
 )
 from ray.llm._internal.serve.routing_policies.kv_aware.vllm.token_tracking import (
-    RouterApplicationLifecycleMiddleware,
     enable_token_tracking,
 )
 from ray.llm.tests.serve.mocks.mock_vllm_engine import MockAsyncLLM
-from ray.serve._private.constants import SERVE_ROUTER_APPLICATION_NAME_HEADER
 from ray.serve.llm.request_router import KVAwareRouter
 
 # The @ray.remote actors below are pickled by reference, so a worker must import
@@ -644,7 +642,7 @@ def test_decorator_returns_subclass():
 
 
 @pytest.mark.asyncio
-async def test_routed_request_reports_to_router_application(monkeypatch):
+async def test_concurrent_requests_report_to_their_router_application(monkeypatch):
     class RouterApplicationTarget:
         def __init__(self):
             self.model_id = None
@@ -654,11 +652,26 @@ async def test_routed_request_reports_to_router_application(monkeypatch):
             self.model_id = model_id
             self.events.extend(events)
 
-    target = RouterApplicationTarget()
+        async def on_lifecycle_events(self, events):
+            self.events.extend(events)
+
+    targets = {
+        name: RouterApplicationTarget() for name in ("router-a", "router-b", None)
+    }
+    resolved = []
+
+    def get_router_handle(deployment, app_name):
+        resolved.append(app_name)
+        return _BroadcastHandle(targets[app_name])
+
     monkeypatch.setattr(
         serve,
         "get_deployment_handle",
-        lambda deployment, app_name: _BroadcastHandle(target),
+        get_router_handle,
+    )
+    monkeypatch.setattr(
+        "ray.llm._internal.serve.routing_policies.kv_aware.vllm.token_tracking.get_llm_router_handle",
+        lambda: _BroadcastHandle(targets[None]),
     )
     monkeypatch.setattr(
         serve,
@@ -669,36 +682,38 @@ async def test_routed_request_reports_to_router_application(monkeypatch):
     )
     engine = enable_token_tracking(MockAsyncLLM, model_id="model-a")(delta_steps(2))
 
-    async def app(scope, receive, send):
-        await consume(
-            engine.generate(
-                PROMPT,
-                SamplingParams(output_kind=RequestOutputKind.DELTA),
-                "request-1",
+    async def request(router_application, index):
+        request_id = f"request-{router_application}-{index}"
+        token = serve.context._serve_request_context.set(
+            serve.context._RequestContext(
+                request_id=request_id, router_application_name=router_application
             )
         )
-
-    middleware = RouterApplicationLifecycleMiddleware(app)
-    await middleware(
-        {
-            "type": "http",
-            "headers": [
-                (
-                    SERVE_ROUTER_APPLICATION_NAME_HEADER.encode(),
-                    b"control-app",
+        try:
+            await consume(
+                engine.generate(
+                    PROMPT,
+                    SamplingParams(output_kind=RequestOutputKind.DELTA),
+                    request_id,
                 )
-            ],
-        },
-        None,
-        None,
-    )
+            )
+        finally:
+            serve.context._serve_request_context.reset(token)
+
+    for index in range(2):
+        await asyncio.gather(*(request(name, index) for name in targets))
     await drain(engine)
 
-    assert target.model_id == "model-a"
-    assert [name for name, _ in target.events] == [
-        "on_prefill_complete",
-        "on_request_completed",
-    ]
+    assert sorted(resolved) == ["router-a", "router-b"]
+    for router_application, target in targets.items():
+        assert target.model_id == (
+            "model-a" if router_application is not None else None
+        )
+        assert target.events == [
+            (event, (f"request-{router_application}-{index}",))
+            for index in range(2)
+            for event in ("on_prefill_complete", "on_request_completed")
+        ]
 
 
 @pytest.mark.asyncio

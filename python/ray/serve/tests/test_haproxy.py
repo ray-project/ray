@@ -43,6 +43,7 @@ from ray.serve._private.constants import (
     RAY_SERVE_ENABLE_HA_PROXY,
     SERVE_INGRESS_ROUTER_REQUEST_PATH_HEADER,
     SERVE_NAMESPACE,
+    SERVE_ROUTER_APPLICATION_NAME_HEADER,
     SERVE_ROUTER_APPLICATION_ORIGINAL_METHOD_HEADER,
     SERVE_SESSION_ID,
 )
@@ -1543,6 +1544,7 @@ def test_router_application_dispatches_across_applications(
                     "replica_id": serve.get_replica_context().replica_id.to_full_id_str(),
                     "request_id": request.headers.get("x-request-id"),
                     "path": request.url.path,
+                    "router_application": serve.context._get_serve_request_context().router_application_name,
                 }
 
         return Backend.bind()
@@ -1631,6 +1633,7 @@ def test_router_application_dispatches_across_applications(
         assert resp.status_code == 200, resp.text
         body = resp.json()
         assert body["request_id"] == f"req-{i}"
+        assert body["router_application"] == "router"
         assert body["path"] == f"/v1/{model}/v1/chat/completions"
         assert f"::{model}#Backend#" in body["replica_id"]
         served[f"req-{i}"] = body["replica_id"]
@@ -1650,8 +1653,12 @@ def test_router_application_dispatches_across_applications(
     assert resp.json() == {"error": "unknown model"}
 
     # Direct application routes are unchanged.
-    resp = httpx.post("http://localhost:8000/v1/model-a/v1/chat/completions")
+    resp = httpx.post(
+        "http://localhost:8000/v1/model-a/v1/chat/completions",
+        headers={SERVE_ROUTER_APPLICATION_NAME_HEADER: "forged-router"},
+    )
     assert "::model-a#Backend#" in resp.json()["replica_id"]
+    assert resp.json()["router_application"] is None
 
     serve.shutdown()
 

@@ -419,7 +419,7 @@ class RouterApplication:
             if session_id:
                 handle = handle.options(session_id=session_id)
             request_token_ids = None
-            if state is not None:
+            if state is not None and routing_payload is not None:
                 request_token_ids = await asyncio.wait_for(
                     state.tokenize(
                         routing_payload,
@@ -439,7 +439,7 @@ class RouterApplication:
                 state.stage_prompt_tokens(
                     replica_id, token_endpoint, request_token_ids, routing_payload
                 )
-                if state is not None
+                if state is not None and request_token_ids
                 else {}
             )
         except TokenizeError as e:
@@ -514,6 +514,7 @@ class RouterApplication:
     def get_deployment_options(
         cls, llm_configs: Optional[List[LLMConfig]] = None
     ) -> Dict[str, Any]:
+        """Build the shared tokenizer environment once when constructing the app."""
         options = copy.deepcopy(DEFAULT_INGRESS_OPTIONS)
         env_vars = {}
         for config in llm_configs or []:
@@ -521,8 +522,10 @@ class RouterApplication:
                 continue
             model_env_vars = (config.runtime_env or {}).get("env_vars") or {}
             for name, value in model_env_vars.items():
+                # Each model's API key is checked separately by the router.
                 if name == "VLLM_API_KEY":
                     continue
+                # All tokenizers share one process environment.
                 if name in env_vars and env_vars[name] != value:
                     raise ValueError(
                         f"KV-aware model configs must agree on runtime env var {name}."

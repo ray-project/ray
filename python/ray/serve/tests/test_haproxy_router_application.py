@@ -23,6 +23,7 @@ from ray.serve._private.common import RequestProtocol
 from ray.serve._private.constants import (
     RAY_SERVE_ENABLE_HA_PROXY,
     SERVE_INGRESS_ROUTER_REQUEST_PATH_HEADER,
+    SERVE_MULTIPLEXED_MODEL_ID,
     SERVE_ROUTER_APPLICATION_DIRECT_RESPONSE_HEADER,
     SERVE_ROUTER_APPLICATION_NAME_HEADER,
     SERVE_ROUTER_APPLICATION_ORIGINAL_METHOD_HEADER,
@@ -263,6 +264,7 @@ def _fake_replica(port: int, name: str) -> uvicorn.Server:
             "router_application": request.headers.get(
                 SERVE_ROUTER_APPLICATION_NAME_HEADER
             ),
+            "multiplexed_model_id": request.headers.get(SERVE_MULTIPLEXED_MODEL_ID),
         }
 
     return _serve(app, port)
@@ -333,6 +335,7 @@ async def _router_cluster(
     router_scaled_to_zero: bool = False,
     router_fallback: bool = False,
     remote_router: bool = False,
+    target_ingress_router: bool = False,
 ):
     """HAProxy with a router at `router_prefix` and model-a, model-b, control."""
     with tempfile.TemporaryDirectory() as temp_dir:
@@ -368,7 +371,22 @@ async def _router_cluster(
                     else None
                 ),
             ),
-            _backend("model-a", "/v1/model-a", [_server("model-a", "a1", ports["a1"])]),
+            _backend(
+                "model-a",
+                "/v1/model-a",
+                [_server("model-a", "a1", ports["a1"])],
+                ingress_request_router_servers=(
+                    [
+                        ServerConfig(
+                            name="target-ingress-router",
+                            host="127.0.0.1",
+                            port=ports["r1"],
+                        )
+                    ]
+                    if target_ingress_router
+                    else []
+                ),
+            ),
             _backend(
                 "model-b",
                 "/v1/model-b",
@@ -491,26 +509,39 @@ async def test_post_dispatches_to_selected_replica(router_cluster):
 
 
 @pytest.mark.asyncio
-async def test_applies_router_application_request_headers(router_cluster):
-    url, router, _ = router_cluster
-    router.response = (
-        200,
-        json.dumps(
-            {
-                "application": "model-a",
-                "replica_id": _replica_id("model-a", "a1"),
-                "request_headers": {"x-serve-router-kv-token-key": "token-key"},
-            }
-        ),
-    )
+@pytest.mark.parametrize("target_ingress_router", [False, True])
+async def test_applies_router_application_request_headers(target_ingress_router):
+    async with _router_cluster(target_ingress_router=target_ingress_router) as (
+        url,
+        router,
+        _,
+    ):
+        router.response = (
+            200,
+            json.dumps(
+                {
+                    "application": "model-a",
+                    "replica_id": _replica_id("model-a", "a1"),
+                    "request_headers": {
+                        "x-serve-router-kv-token-key": "token-key",
+                        SERVE_MULTIPLEXED_MODEL_ID: "trusted-adapter",
+                    },
+                }
+            ),
+        )
 
-    resp = _chat(url, {})
+        resp = _chat(
+            url, {}, headers={SERVE_ROUTER_APPLICATION_NAME_HEADER: "forged-router"}
+        )
 
-    assert resp.status_code == 200, resp.text
-    assert resp.json()["serve_headers"] == [
-        SERVE_ROUTER_APPLICATION_NAME_HEADER,
-        "x-serve-router-kv-token-key",
-    ]
+        assert resp.status_code == 200, resp.text
+        assert resp.json()["serve_headers"] == [
+            SERVE_ROUTER_APPLICATION_NAME_HEADER,
+            "x-serve-router-kv-token-key",
+        ]
+        assert resp.json()["router_application"] == "router"
+        assert resp.json()["multiplexed_model_id"] == "trusted-adapter"
+        assert len(router.calls) == 1
 
 
 @pytest.mark.asyncio

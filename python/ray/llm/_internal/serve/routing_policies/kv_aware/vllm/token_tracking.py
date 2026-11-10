@@ -1,9 +1,6 @@
 import asyncio
-import contextvars
 from typing import Dict, Optional, Type
 
-from starlette.datastructures import Headers
-from starlette.types import ASGIApp, Receive, Scope, Send
 from vllm.outputs import RequestOutput
 from vllm.sampling_params import RequestOutputKind
 from vllm.v1.engine.async_llm import AsyncLLM
@@ -18,32 +15,11 @@ from ray.llm._internal.serve.routing_policies.kv_aware.kv_token_tracker import (
     get_worker_id,
 )
 from ray.llm._internal.serve.utils.server_utils import get_serve_request_id
-from ray.serve._private.constants import SERVE_ROUTER_APPLICATION_NAME_HEADER
 from ray.serve.handle import DeploymentHandle
 
 logger = get_logger(__name__)
 
 ROUTER_APPLICATION_DEPLOYMENT_NAME = "RouterApplication"
-_router_application = contextvars.ContextVar("router_application", default=None)
-
-
-class RouterApplicationLifecycleMiddleware:
-    """Expose the originating router application to KV lifecycle tracking."""
-
-    def __init__(self, app: ASGIApp) -> None:
-        self.app = app
-
-    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
-        if scope["type"] != "http":
-            await self.app(scope, receive, send)
-            return
-        token = _router_application.set(
-            Headers(scope=scope).get(SERVE_ROUTER_APPLICATION_NAME_HEADER)
-        )
-        try:
-            await self.app(scope, receive, send)
-        finally:
-            _router_application.reset(token)
 
 
 class LifecycleEventForwarder:
@@ -187,7 +163,9 @@ def enable_token_tracking(
         def _resolve_lifecycle_forwarder(self) -> Optional[LifecycleEventForwarder]:
             if self._lifecycle_forwarders is None:
                 self._lifecycle_forwarders = {}
-            router_application = _router_application.get()
+            router_application = (
+                serve.context._get_serve_request_context().router_application_name
+            )
             if router_application not in self._lifecycle_forwarders:
                 try:
                     if router_application is None:

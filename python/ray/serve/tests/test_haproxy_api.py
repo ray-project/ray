@@ -1086,10 +1086,7 @@ def test_ingress_request_router_forward_body_gate_renders(
             assert "wait-for-body" not in cfg, cfg
             assert "local FORWARD_BODY = false" in lua, lua
         assert f"maxconn {RAY_SERVE_HAPROXY_MAXCONN}" in cfg, cfg
-        assert (
-            "http-request del-header x-serve-router- -m beg "
-            "if has_ingress_request_router_app"
-        ) in cfg
+        assert ("http-request del-header x-serve-router- -m beg\n") in cfg
         assert (
             "http-request del-header serve_multiplexed_model_id "
             "if has_ingress_request_router_app"

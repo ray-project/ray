@@ -28,8 +28,12 @@ class KVRouterState:
     """Tokenizer, tracker and token channel for one KV-aware target deployment."""
 
     def __init__(self, llm_config: "LLMConfig"):
-        # Keep vLLM and pyzmq off the non-KV router import path.
+        # Lazy import: pyzmq is not a Ray runtime dependency, so keep it off
+        # the non-KV ingress import path.
         from ray.llm._internal.serve.routing_policies.kv_aware import token_channel
+
+        # Lazy import: this module pulls in vLLM's renderer;
+        # keep it off the non-KV ingress import path.
         from ray.llm._internal.serve.routing_policies.kv_aware.vllm.tokenizer import (  # noqa: E501
             Tokenizer,
         )

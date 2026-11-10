@@ -154,6 +154,8 @@ class LLMRouter:
                 get_llm_router_handle,
             )
 
+            # Build the tracker before _handle._init() below, which initializes
+            # the KVAwareRouter that looks it up.
             self._kv_state = KVRouterState(llm_config)
             self._kv_state.start_tracking(server.deployment_id, get_llm_router_handle())
             await self._kv_state.tokenizer_task
@@ -179,7 +181,7 @@ class LLMRouter:
         # Tokenize only a parseable, routable body; a truncated or unparseable
         # body has no routing payload, so fall back to token-less routing.
         request_token_ids = None
-        if self._kv_state is not None:
+        if self._kv_state is not None and routing_payload is not None:
             request_path = request.headers.get(SERVE_INGRESS_ROUTER_REQUEST_PATH_HEADER)
             try:
                 request_token_ids = await self._kv_state.tokenize(
@@ -214,7 +216,7 @@ class LLMRouter:
         request_headers = {}
         if multiplexed_model_id:
             request_headers[SERVE_MULTIPLEXED_MODEL_ID] = multiplexed_model_id
-        if self._kv_state is not None:
+        if self._kv_state is not None and request_token_ids:
             request_headers.update(
                 self._kv_state.stage_prompt_tokens(
                     replica_id, token_endpoint, request_token_ids, routing_payload

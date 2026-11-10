@@ -465,7 +465,7 @@ SERVE_ROUTER_APPLICATION_ORIGINAL_METHOD_HEADER = (
     SERVE_INGRESS_ROUTER_HEADER_PREFIX + "original-method"
 )
 
-# Identifies the router application that selected a request's target replica.
+# Routes KV lifecycle events back to the router application that booked the request.
 SERVE_ROUTER_APPLICATION_NAME_HEADER = (
     SERVE_INGRESS_ROUTER_HEADER_PREFIX + "application"
 )
