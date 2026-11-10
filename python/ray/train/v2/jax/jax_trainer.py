@@ -75,7 +75,7 @@ class JaxTrainer(DataParallelTrainer):
         ...
         ...     trainer = JaxTrainer(
         ...         train_loop_per_worker=train_loop_per_worker,
-        ...         train_loop_config={"argv": absolute_argv},
+        ...         train_loop_config={"argv": argv},
         ...         scaling_config=tpu_scaling_config,
         ...         run_config=RunConfig(
         ...             name="maxtext_jaxtrainer",

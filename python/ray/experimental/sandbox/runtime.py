@@ -196,6 +196,7 @@ class SandboxRuntime:
         env: Optional[Dict[str, str]] = None,
         shell: Optional[str] = None,
         user: Optional[str] = None,
+        combine_output: bool = False,
     ) -> ExecResult:
         """Execute a command inside the specified sandbox.
 
@@ -211,6 +212,8 @@ class SandboxRuntime:
                 user (optionally ":group") name, resolved against the
                 /etc/passwd and /etc/group inside the running sandbox
                 (default: the image user).
+            combine_output: Return stdout and stderr together, as raw bytes in
+                the order written, in ``ExecResult.output``.
 
         Returns:
             ExecResult containing exit code, stdout, and stderr.
@@ -223,6 +226,7 @@ class SandboxRuntime:
             env=env,
             shell=shell,
             user=user,
+            combine_output=combine_output,
         )
 
     async def exec_async(
@@ -234,6 +238,7 @@ class SandboxRuntime:
         env: Optional[Dict[str, str]] = None,
         shell: Optional[str] = None,
         user: Optional[str] = None,
+        combine_output: bool = False,
     ) -> ExecResult:
         """Execute a command inside the specified sandbox asynchronously.
 
@@ -249,6 +254,8 @@ class SandboxRuntime:
                 user (optionally ":group") name, resolved against the
                 /etc/passwd and /etc/group inside the running sandbox
                 (default: the image user).
+            combine_output: Return stdout and stderr together, as raw bytes in
+                the order written, in ``ExecResult.output``.
 
         Returns:
             ExecResult containing exit code, stdout, and stderr.
@@ -262,6 +269,7 @@ class SandboxRuntime:
             env=env,
             shell=shell,
             user=user,
+            combine_output=combine_output,
         )
 
     def upload_file(self, instance_id: str, local_path: str, remote_path: str) -> None:

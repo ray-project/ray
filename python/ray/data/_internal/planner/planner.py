@@ -50,6 +50,7 @@ from ray.data._internal.logical.operators import (
     Project,
     Read,
     ReadFiles,
+    ShuffleBatches,
     StreamingRepartition,
     StreamingSplit,
     Union,
@@ -71,6 +72,7 @@ from ray.data._internal.planner.plan_download_op import plan_download_op
 from ray.data._internal.planner.plan_list_files_op import plan_list_files_op
 from ray.data._internal.planner.plan_read_files_op import plan_read_files_op
 from ray.data._internal.planner.plan_read_op import plan_read_op
+from ray.data._internal.planner.plan_shuffle_batches_op import plan_shuffle_batches_op
 from ray.data._internal.planner.plan_udf_map_op import (
     plan_filter_op,
     plan_project_op,
@@ -270,6 +272,7 @@ class Planner:
         Count: plan_count_op,
         Project: plan_project_op,
         StreamingRepartition: plan_streaming_repartition_op,
+        ShuffleBatches: plan_shuffle_batches_op,
         Join: plan_join_op,
         StreamingSplit: plan_streaming_split_op,
         Download: plan_download_op,

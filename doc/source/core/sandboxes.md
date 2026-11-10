@@ -233,6 +233,14 @@ The second case is a read-only sandbox whose mounts need mount points the image 
 
 Any sandbox can end up in one of these cases, so every node that runs sandboxes needs to install the necessary tools to support overlayfs root filesystems. A worker with mount privileges mounts them directly, with the kernel's `erofs` driver on a loop device, or with `erofsfuse` if that fails. A worker without them mounts them with `erofsfuse` in a new user namespace for each sandbox, which needs Linux 5.11 or later. A worker running as root maps every id to itself in that namespace, so files keep their owners from the image. A worker running as any other user needs subordinate uids and gids for the Ray user to keep them, at least 65536 of each. Ray maps them with `newuidmap` and `newgidmap` from the `uidmap` package.
 
+If neither kernel EROFS nor FUSE is available, Ray uses an **extracted-rootfs
+fallback**: `fsck.erofs` extracts the cached EROFS image once into a shared lower
+directory, rather than mounting the image. Extraction is locked and
+published atomically. Each sandbox bind-mounts that directory read-only inside its
+own mount namespace and uses a private writable overlay above it. CDI hooks and
+container writes never modify the shared image or lower directory. This needs
+overlayfs and namespace permissions, but not `/dev/fuse` or the kernel EROFS driver.
+
 On a worker that can't mount an overlayfs root filesystem, a sandbox with such hooks fails to start, and a read-only sandbox with missing mount points runs on gVisor's private writable overlay instead, with a warning. For how to fix this, see [Troubleshooting](#troubleshooting).
 
 ## Usage patterns and examples
@@ -415,6 +423,8 @@ ray.get(pool.close.remote())
 ```
 
 Ray validates `SandboxRuntime.create()`'s `gpu_ids` the same way as a `Sandbox`'s assigned GPUs. A sandbox can only access GPUs Ray assigned to the calling actor or task, and sandbox creation fails if Ray assigned it none.
+
+To request NVIDIA profiling capabilities, pass `env={"NVIDIA_DRIVER_CAPABILITIES": "compute,utility,profiling"}` when you create the GPU sandbox. Ray forwards this value to runsc's `--nvproxy-allowed-driver-capabilities` flag. Without an explicit request, gVisor uses `compute,utility`. The image's environment cannot raise the allowed capabilities.
 
 ### Manage sandboxes inside custom actors with SandboxRuntime
 

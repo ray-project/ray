@@ -13,13 +13,14 @@ compile_on_one_rank mode behind the opt-in VLLM_COMPILE_ON_ONE_RANK, which this
 module turns on; torch 2.13 does not have the mode, so on torch 2.13 this
 module patches the two places Inductor bakes the device instead.
 
-`apply` runs in each vLLM worker process from Serve LLM's
-worker_process_setup_hook.
+Serve LLM's worker_process_setup_hook calls `install`, which runs `apply` once
+vllm is imported in the worker process, never before: see `install`.
 """
 
 import logging
 import os
 import re
+import sys
 
 logger = logging.getLogger(__name__)
 
@@ -28,6 +29,84 @@ _DEVICE_LITERALS = re.compile(
     r"(torch\.cuda\._DeviceGuard|torch\.cuda\.set_device|(?<![\w.])get_raw_stream)\(\d+\)"
 )
 _CURRENT_DEVICE = "__import__('torch').cuda.current_device()"
+
+
+def install() -> None:
+    """Run `apply` right after vllm is imported, without importing torch or vllm.
+
+    This runs from Serve LLM's worker_process_setup_hook, when the worker process
+    starts and before Ray sets OMP_NUM_THREADS to the actor's CPUs. Torch sizes its
+    thread pool when it is first imported, so importing it here would size it to
+    the host's cores instead of the actor's CPUs. vllm is first imported inside the
+    actor's tasks, after Ray has set OMP_NUM_THREADS.
+    """
+    if "vllm" in sys.modules:
+        _apply_or_warn()
+        return
+    sys.meta_path.insert(0, _ApplyAfterVllmImport())
+
+
+class _ApplyAfterVllmImport:
+    """Import hook that runs `apply` once the vllm package has executed.
+
+    It stays on sys.meta_path until then: a lookup that does not import, such as
+    `importlib.util.find_spec("vllm")`, must not use it up.
+    """
+
+    def find_spec(self, fullname, path=None, target=None):
+        if fullname != "vllm":
+            return None
+        spec = None
+        for finder in sys.meta_path:
+            if finder is self or not hasattr(finder, "find_spec"):
+                continue
+            spec = finder.find_spec(fullname, path, target)
+            if spec is not None:
+                break
+        if spec is None or spec.loader is None:
+            return spec
+        exec_module = getattr(spec.loader, "exec_module", None)
+        if exec_module is None:
+            logger.warning(
+                "Device-neutral compile cache backport not applied: vllm's loader "
+                "%r has no exec_module.",
+                spec.loader,
+            )
+            return spec
+
+        def exec_module_then_apply(module):
+            exec_module(module)
+            self._uninstall()
+            _apply_or_warn()
+
+        try:
+            spec.loader.exec_module = exec_module_then_apply
+        except (AttributeError, TypeError):
+            logger.warning(
+                "Device-neutral compile cache backport not applied: cannot hook "
+                "vllm's loader %r.",
+                spec.loader,
+            )
+        return spec
+
+    def _uninstall(self) -> None:
+        try:
+            sys.meta_path.remove(self)
+        except ValueError:
+            pass
+
+
+def _apply_or_warn() -> None:
+    # The backport reaches into private torch and vLLM internals; if they move,
+    # lose the device-neutral cache rather than fail the worker.
+    try:
+        apply()
+    except Exception:
+        logger.warning(
+            "Device-neutral compile cache backport not applied; replicas on "
+            "different GPU indices must not share a compile cache.",
+            exc_info=True,
+        )
 
 
 def apply() -> None:
