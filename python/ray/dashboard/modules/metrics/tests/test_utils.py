@@ -16,12 +16,18 @@ def test_router_prefill_panel_keeps_each_handle_separate():
 
     dashboard, _ = generate_serve_deployment_grafana_dashboard()
     panels = json.loads(dashboard)["panels"]
+    row = next(p for p in panels if p["title"] == "KV Router")
+    assert row["type"] == "row"
+    assert row["collapsed"] is True
+    assert all(p["title"] != "Uncached prefill tokens per router" for p in panels)
     panel = next(
-        p for p in panels if p["title"] == "Uncached prefill tokens per router"
+        p for p in row["panels"] if p["title"] == "Uncached prefill tokens per router"
     )
     assert panel["stack"] is False
     target = panel["targets"][0]
     assert target["expr"].startswith("ray_serve_router_uncached_prefill_tokens{")
+    # Like CPU offloading panels, leave absent metrics empty instead of filling zero.
+    assert "or vector(0)" not in target["expr"]
     assert "{{handle}}" in target["legendFormat"]
     assert "{{actor_id}}" in target["legendFormat"]
 

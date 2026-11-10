@@ -4,6 +4,7 @@ from ray.dashboard.modules.metrics.dashboards.common import (
     DashboardConfig,
     GridPos,
     Panel,
+    Row,
     Target,
 )
 
@@ -224,6 +225,22 @@ SERVE_DEPLOYMENT_GRAFANA_PANELS = [
         stack=False,
     ),
     Panel(
+        id=15,
+        title="Multiplexed model cache hit rate",
+        description="The cache hit rate of multiplexed models for the deployment.",
+        unit="%",
+        targets=[
+            Target(
+                expr="(1 - sum(rate(ray_serve_multiplexed_models_load_counter_total{{{global_filters}}}[5m]))/sum(rate(ray_serve_multiplexed_get_model_requests_counter_total{{{global_filters}}}[5m])))",
+                legend="{{application}}#{{deployment}}#{{replica}}",
+            ),
+        ],
+        grid_pos=GridPos(0, 5, 8, 8),
+    ),
+]
+
+_KV_ROUTER_PANELS = [
+    Panel(
         id=16,
         title="Uncached prefill tokens per router",
         description=(
@@ -240,25 +257,11 @@ SERVE_DEPLOYMENT_GRAFANA_PANELS = [
         ],
         fill=0,
         stack=False,
-        grid_pos=GridPos(8, 5, 16, 8),
-    ),
-    Panel(
-        id=15,
-        title="Multiplexed model cache hit rate",
-        description="The cache hit rate of multiplexed models for the deployment.",
-        unit="%",
-        targets=[
-            Target(
-                expr="(1 - sum(rate(ray_serve_multiplexed_models_load_counter_total{{{global_filters}}}[5m]))/sum(rate(ray_serve_multiplexed_get_model_requests_counter_total{{{global_filters}}}[5m])))",
-                legend="{{application}}#{{deployment}}#{{replica}}",
-            ),
-        ],
-        grid_pos=GridPos(0, 5, 8, 8),
     ),
 ]
 
 ids = []
-for panel in SERVE_DEPLOYMENT_GRAFANA_PANELS:
+for panel in [*SERVE_DEPLOYMENT_GRAFANA_PANELS, *_KV_ROUTER_PANELS]:
     ids.append(panel.id)
 
 ids.sort()
@@ -271,6 +274,7 @@ serve_deployment_dashboard_config = DashboardConfig(
     name="SERVE_DEPLOYMENT",
     default_uid="rayServeDeploymentDashboard",
     panels=SERVE_DEPLOYMENT_GRAFANA_PANELS,
+    rows=[Row(title="KV Router", id=101, panels=_KV_ROUTER_PANELS, collapsed=True)],
     standard_global_filters=[
         'application=~"$Application"',
         'deployment=~"$Deployment"',
