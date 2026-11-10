@@ -4,6 +4,7 @@ import sys
 from collections import OrderedDict
 from dataclasses import asdict
 from types import SimpleNamespace
+from unittest.mock import Mock
 
 import pytest
 from vllm.outputs import CompletionOutput, RequestOutput
@@ -134,6 +135,7 @@ class RecordingKVTokenTracker(KVTokenTracker):
         self._requests = OrderedDict()
         self._outstanding_effective_prefill_tokens = 0
         self._autoscaling_metrics_callback = None
+        self._uncached_prefill_tokens_gauge = Mock()
         self._request_ids_by_worker = {}
         self._completed_request_ids = OrderedDict()
         self._pending_tasks = set()
@@ -187,6 +189,7 @@ class LocalKVTokenTracker(KVTokenTracker):
         self._requests = OrderedDict()
         self._outstanding_effective_prefill_tokens = 0
         self._autoscaling_metrics_callback = None
+        self._uncached_prefill_tokens_gauge = Mock()
         self._request_ids_by_worker = {}
         self._completed_request_ids = OrderedDict()
         self._pending_tasks = set()
@@ -767,12 +770,14 @@ async def test_autoscaling_snapshot_tracks_request_phases():
     expected = {OUTSTANDING_EFFECTIVE_PREFILL_TOKENS: 6}
     assert await actor.get_autoscaling_snapshot() == expected
     assert published[-1] == expected
+    actor._uncached_prefill_tokens_gauge.set.assert_called_with(6)
 
     # Prefill completion drops the request's prefill tokens.
     await actor.on_prefill_complete("a")
     expected = {OUTSTANDING_EFFECTIVE_PREFILL_TOKENS: 3}
     assert await actor.get_autoscaling_snapshot() == expected
     assert published[-1] == expected
+    actor._uncached_prefill_tokens_gauge.set.assert_called_with(3)
 
     # Duplicate lifecycle events are idempotent.
     await actor.on_prefill_complete("a")
@@ -787,6 +792,7 @@ async def test_autoscaling_snapshot_tracks_request_phases():
     expected = {OUTSTANDING_EFFECTIVE_PREFILL_TOKENS: 0}
     assert await actor.get_autoscaling_snapshot() == expected
     assert published[-1] == expected
+    actor._uncached_prefill_tokens_gauge.set.assert_called_with(0)
 
 
 @pytest.mark.asyncio

@@ -4,6 +4,7 @@ registration, ``KVAwareRouter`` binding to it, and the
 """
 
 import asyncio
+import math
 import sys
 from typing import List
 from unittest.mock import MagicMock
@@ -39,10 +40,20 @@ def reset_process_global():
 class _SpyTracker:
     """Records constructor kwargs; skips the real selection service + LongPoll."""
 
-    def __init__(self, *, indexer_threads, serve_deployment_id, session_affinity_ttl_s):
+    def __init__(
+        self,
+        *,
+        indexer_threads,
+        serve_deployment_id,
+        session_affinity_ttl_s,
+        router_handle_id,
+        router_actor_id,
+    ):
         self.session_affinity_ttl_s = session_affinity_ttl_s
         self.indexer_threads = indexer_threads
         self.serve_deployment_id = serve_deployment_id
+        self.router_handle_id = router_handle_id
+        self.router_actor_id = router_actor_id
 
 
 class _NoLongPollTracker(KVTokenTracker):
@@ -85,10 +96,91 @@ def test_build_registers_tracker(monkeypatch):
     """build_kv_token_tracker builds the tracker with the explicit deployment
     id and registers it so the same-process router/ingress can reach it."""
     monkeypatch.setattr(kv_token_tracker, "KVTokenTracker", _SpyTracker)
-    tracker = build_kv_token_tracker(_llm_config(), "dep-id")
+    tracker = build_kv_token_tracker(
+        _llm_config(), "dep-id", router_handle_id="handle", router_actor_id="actor"
+    )
     assert get_kv_token_tracker() is tracker
     assert tracker.serve_deployment_id == "dep-id"
     assert tracker.session_affinity_ttl_s == 1800
+    assert tracker.router_handle_id == "handle"
+    assert tracker.router_actor_id == "actor"
+
+
+@pytest.fixture
+def tracker_with_metrics(monkeypatch):
+    gauge = MagicMock()
+    monkeypatch.setattr(
+        kv_token_tracker.metrics, "Gauge", MagicMock(return_value=gauge)
+    )
+    monkeypatch.setattr(KVTokenTracker, "_create_selection_service", lambda self: None)
+    monkeypatch.setattr(KVTokenTracker, "_start_replica_tracking", lambda self: None)
+    tracker = KVTokenTracker(
+        serve_deployment_id=DeploymentID("model", "app"),
+        router_handle_id="handle",
+        router_actor_id="actor",
+    )
+    return tracker, gauge
+
+
+def test_tracker_initializes_prefill_gauge(tracker_with_metrics):
+    _, gauge = tracker_with_metrics
+    assert kv_token_tracker.metrics.Gauge.call_args.args == (
+        "serve_router_uncached_prefill_tokens",
+    )
+    gauge.set_default_tags.assert_called_once_with(
+        {
+            "deployment": "model",
+            "application": "app",
+            "handle": "handle",
+            "actor_id": "actor",
+        }
+    )
+    gauge.set.assert_called_once_with(0)
+
+
+def test_tracker_publishes_prefill_gauge_and_autoscaling_snapshot(tracker_with_metrics):
+    tracker, gauge = tracker_with_metrics
+    tracker._outstanding_effective_prefill_tokens = 1000
+    tracker._publish_autoscaling_snapshot()
+    gauge.set.assert_called_with(1000)
+
+    published = []
+    tracker.set_autoscaling_metrics_callback(published.append)
+    for tokens in (300, 0):
+        tracker._outstanding_effective_prefill_tokens = tokens
+        tracker._publish_autoscaling_snapshot()
+        gauge.set.assert_called_with(tokens)
+        assert published[-1] == tracker._get_autoscaling_snapshot()
+
+
+def test_tracker_clears_prefill_gauge_on_close(tracker_with_metrics):
+    tracker, gauge = tracker_with_metrics
+    tracker.close()
+    assert math.isnan(gauge.set.call_args.args[0])
+
+
+def test_ingress_passes_router_identity_to_tracker(monkeypatch):
+    from ray.llm._internal.serve.routing_policies.kv_aware import token_channel
+
+    builder = MagicMock()
+    monkeypatch.setattr(kv_token_tracker, "build_kv_token_tracker", builder)
+    monkeypatch.setattr(kv_token_tracker, "get_llm_router_handle", MagicMock())
+    monkeypatch.setattr(token_channel, "TokenSender", MagicMock())
+    monkeypatch.setattr(
+        ray, "get_runtime_context", lambda: MagicMock(get_actor_id=lambda: "actor")
+    )
+    server = MagicMock(deployment_id=DeploymentID("model", "app"), handle_id="handle")
+    config = _llm_config()
+    router = LLMRouter.__new__(LLMRouter)
+    router._start_kv_token_tracking(config, server)
+    builder.assert_called_once_with(
+        config, server.deployment_id, router_handle_id="handle", router_actor_id="actor"
+    )
+    # Invoke the ingress's cleanup hook without starting the ASGI lifespan wrapper.
+    super(LLMRouter, router).__del__()
+    builder.return_value.close.assert_called_once_with()
+    router._kv_token_tracker = None
+    router._token_sender = None
 
 
 def test_indexer_threads_from_config(monkeypatch):

@@ -195,7 +195,6 @@ class RouterMetricsManager:
         self.metrics_store = InMemoryMetricsStore()
         self._router_metrics_store = InMemoryMetricsStore()
         self._latest_custom_router_metrics: Dict[str, float] = {}
-        self._uncached_prefill_tokens_gauge: Optional[metrics.Gauge] = None
         # The config for the deployment this router sends requests to will be broadcast
         # by the controller. That means it is not available until we get the first
         # update. This includes an optional autoscaling config.
@@ -407,28 +406,6 @@ class RouterMetricsManager:
             validated[name] = float(value)
 
         self._latest_custom_router_metrics = validated
-        prefill_tokens = validated.get("outstanding_effective_prefill_tokens")
-        if prefill_tokens is not None:
-            if self._uncached_prefill_tokens_gauge is None:
-                self._uncached_prefill_tokens_gauge = metrics.Gauge(
-                    "serve_router_uncached_prefill_tokens",
-                    description=(
-                        "Current outstanding uncached prefill tokens reported by "
-                        "this router. A raw snapshot, not a lookback mean."
-                    ),
-                    tag_keys=("deployment", "application", "handle", "actor_id"),
-                )
-                self._uncached_prefill_tokens_gauge.set_default_tags(
-                    {
-                        "deployment": self._deployment_id.name,
-                        "application": self._deployment_id.app_name,
-                        "handle": self._handle_id,
-                        "actor_id": self._self_actor_id,
-                    }
-                )
-            self._uncached_prefill_tokens_gauge.set(prefill_tokens)
-        elif self._uncached_prefill_tokens_gauge is not None:
-            self._uncached_prefill_tokens_gauge.set(math.nan)
 
     def inc_num_queued_requests(self):
         self.num_queued_requests += 1
@@ -593,8 +570,6 @@ class RouterMetricsManager:
     async def shutdown(self):
         """Shutdown metrics manager gracefully."""
 
-        if self._uncached_prefill_tokens_gauge is not None:
-            self._uncached_prefill_tokens_gauge.set(math.nan)
         if self.metrics_pusher:
             await self.metrics_pusher.graceful_shutdown()
 

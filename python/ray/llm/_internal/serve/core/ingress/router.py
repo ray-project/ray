@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 
 from fastapi import FastAPI, HTTPException, Request
 
+import ray
 from ray import serve
 from ray.llm._internal.common.utils.lora_utils import get_base_model_id
 from ray.llm._internal.serve.observability.logging import get_logger
@@ -185,7 +186,10 @@ class LLMRouter:
         )
 
         self._kv_token_tracker = build_kv_token_tracker(
-            llm_config, server.deployment_id
+            llm_config,
+            server.deployment_id,
+            router_handle_id=server.handle_id,
+            router_actor_id=ray.get_runtime_context().get_actor_id() or "",
         )
         self._kv_token_tracker.start_replica_broadcast(get_llm_router_handle())
         # Lazy import: pyzmq is not a Ray runtime dependency, so keep it off
@@ -301,7 +305,10 @@ class LLMRouter:
         return {"status": "ok"}
 
     def __del__(self) -> None:
-        """Close the token channel ZMQ sockets upon cleanup."""
+        """Clean up tracker metrics and token channel ZMQ sockets."""
+        kv_token_tracker = getattr(self, "_kv_token_tracker", None)
+        if kv_token_tracker is not None:
+            kv_token_tracker.close()
         token_sender = getattr(self, "_token_sender", None)
         if token_sender is not None:
             token_sender.close()
