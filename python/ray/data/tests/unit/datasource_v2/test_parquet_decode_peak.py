@@ -96,7 +96,7 @@ def _estimate(path, columns=None, threads=1, **format_kwargs):
     tops = [column.path.split(".")[0] for column in schema_columns]
     names = columns or metadata.schema.to_arrow_schema().names
     column_leaves = [[j for j, top in enumerate(tops) if top == name] for name in names]
-    work = estimate_row_group_work(
+    decoded, buffers = estimate_row_group_work(
         row_group=row_group,
         columns=schema_columns,
         column_leaves=column_leaves,
@@ -107,7 +107,7 @@ def _estimate(path, columns=None, threads=1, **format_kwargs):
     return estimate_row_group_peak(
         row_group=row_group,
         leaf_indices=sorted(j for leaf_indices in column_leaves for j in leaf_indices),
-        row_group_work=work,
+        row_group_work=decoded + buffers,
         file_size=path.stat().st_size,
     )
 
