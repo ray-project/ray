@@ -1,7 +1,8 @@
 import dataclasses
 import logging
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional, Sequence, cast
+from enum import Enum, auto
+from typing import Any, List, Literal, Optional, Sequence, Set, cast
 
 import pyarrow as pa
 
@@ -15,9 +16,11 @@ from ray.data._internal.datasource_v2.interfaces.file_manifest import (
 from ray.data._internal.datasource_v2.interfaces.pushdown import (
     SupportsColumnPruning,
 )
+from ray.data._internal.datasource_v2.interfaces.reader import Reader
 from ray.data._internal.datasource_v2.interfaces.scanner import Scanner
 from ray.data._internal.datasource_v2.interfaces.supports_column_statistics import (
     ColumnStatistics,
+    ColumnStatisticsState,
     SupportsColumnStatistics,
 )
 from ray.data._internal.logical.interfaces import LogicalPlan, Rule
@@ -29,20 +32,78 @@ from ray.data.aggregate import AggregateFn, Max, Min
 logger = logging.getLogger(__name__)
 
 _PARTIAL_PREFIX = "__ray_meta_minmax_"
-_BATCH_SIZE = 16
+# One footer-read task per this many files: the work is network-bound, so a
+# task should amortize its scheduling cost over several footers.
+_FILES_PER_TASK = 16
+# A partial batch may fall back to a full read, so reserve a whole CPU.
 _TASK_NUM_CPUS = 1.0
+
+_Extremum = Literal["min", "max"]
 
 
 @dataclass(frozen=True)
 class _AggSpec:
     """How one original Min/Max maps onto a partial column and final reduce."""
 
-    kind: str  # "min" or "max"
+    kind: _Extremum
     target: str
     ignore_nulls: bool
     output_name: str
     partial_name: str
-    field_type: Any
+    field_type: pa.DataType
+
+
+class _PartialState(Enum):
+    UNSET = auto()
+    VALUED = auto()
+    POISONED = auto()
+
+
+class _PartialExtremum:
+    """Fold observations into one aggregate's partial min/max.
+
+    The state machine is:
+
+    - ``UNSET``: no non-null value has been seen.
+    - ``VALUED``: ``_value`` holds the running extremum.
+    - ``POISONED``: ``ignore_nulls=False`` and a null was seen, so the result
+      must be null regardless of later values. Terminal.
+
+    ``result()`` is the running value only in ``VALUED``; ``UNSET`` and
+    ``POISONED`` both reduce to null.
+    """
+
+    def __init__(self, kind: _Extremum, ignore_nulls: bool):
+        self._kind = kind
+        self._ignore_nulls = ignore_nulls
+        self._state = _PartialState.UNSET
+        self._value: Optional[Any] = None
+
+    def observe_null(self) -> None:
+        """Record that this input contains at least one null value."""
+        if not self._ignore_nulls:
+            self._state = _PartialState.POISONED
+            self._value = None
+
+    def observe(self, value: Any) -> None:
+        """Record one non-null candidate value."""
+        if self._state is _PartialState.POISONED:
+            return
+        if self._state is _PartialState.UNSET:
+            self._state = _PartialState.VALUED
+            self._value = value
+        else:
+            current = cast(Any, self._value)
+            self._value = (
+                min(current, value) if self._kind == "min" else max(current, value)
+            )
+
+    def result(self) -> Optional[Any]:
+        return self._value if self._state is _PartialState.VALUED else None
+
+
+class _InexactStatistics(Exception):
+    """Footer statistics cannot answer a column, so the manifest must be read."""
 
 
 def _manifest_from_batch(batch: pa.Table) -> FileManifest:
@@ -50,114 +111,108 @@ def _manifest_from_batch(batch: pa.Table) -> FileManifest:
     return FileManifest(batch)
 
 
-def _cast(value, field_type):
+def _cast(value: Any, field_type: pa.DataType) -> Any:
     return pa.scalar(value, type=field_type).as_py()
 
 
-def _value_from_stats(
+def _fold_footer_stats(
     spec: _AggSpec, stats: Sequence[ColumnStatistics]
 ) -> Optional[Any]:
-    """Fold one file set's footer bounds into a single partial value."""
-    value: Optional[Any] = None
+    """Fold one manifest batch's footer bounds into a single partial value."""
+    partial = _PartialExtremum(spec.kind, spec.ignore_nulls)
     for column_stats in stats:
-        if not column_stats.exact:
-            raise ValueError("column statistics are not exact")
-        if column_stats.num_rows == 0:
+        state = column_stats.state
+        if state is ColumnStatisticsState.UNKNOWN:
+            raise _InexactStatistics(spec.target)
+        if state is ColumnStatisticsState.EMPTY:
             continue
-        if not spec.ignore_nulls and (
-            column_stats.null_count is None or column_stats.null_count > 0
-        ):
-            return None
+        if state is ColumnStatisticsState.ALL_NULL:
+            partial.observe_null()
+            continue
+
         bound = column_stats.min if spec.kind == "min" else column_stats.max
         if bound is None:
-            continue
-        bound = _cast(bound, spec.field_type)
-        if value is None:
-            value = bound
-        elif spec.kind == "min":
-            value = min(value, bound)
-        else:
-            value = max(value, bound)
-    return value
+            # ``BOUNDED`` guarantees a bound; a fallback beats a crash if a
+            # reader ever violates the contract.
+            raise _InexactStatistics(spec.target)
+        if column_stats.null_count:
+            partial.observe_null()
+        partial.observe(_cast(bound, spec.field_type))
+    return partial.result()
+
+
+def _partials_from_stats(
+    reader: SupportsColumnStatistics,
+    manifest: FileManifest,
+    specs: Sequence[_AggSpec],
+) -> Optional[List[Optional[Any]]]:
+    """One partial per aggregate, or ``None`` when the footer cannot answer."""
+    targets = list(dict.fromkeys(spec.target for spec in specs))
+    try:
+        per_file = list(reader.read_column_statistics(manifest, targets))
+        if len(per_file) != len(manifest):
+            return None
+        per_target = {
+            target: [stats[target] for stats in per_file] for target in targets
+        }
+        return [_fold_footer_stats(spec, per_target[spec.target]) for spec in specs]
+    except (
+        _InexactStatistics,
+        KeyError,
+        TypeError,
+        ValueError,
+        pa.ArrowException,
+    ):
+        # ``read_column_statistics`` is a trust boundary between the reader
+        # and this rule: a short result, a missing column, an inexact file, or
+        # a bound that cannot be decoded all mean "read this manifest".
+        return None
 
 
 def _values_from_read(
-    reader_scanner: Scanner,
+    reader: Reader[FileManifest],
     manifest: FileManifest,
     specs: Sequence[_AggSpec],
-) -> List[Any]:
+) -> List[Optional[Any]]:
     """Fallback: read the target columns and fold their min/max."""
     import pyarrow.compute as pc
 
-    reader = reader_scanner.create_reader()
-    values: List[Any] = [None] * len(specs)
-    poisoned = [False] * len(specs)
+    partials = [_PartialExtremum(spec.kind, spec.ignore_nulls) for spec in specs]
     for table in reader.read(manifest):
-        for idx, spec in enumerate(specs):
+        for partial, spec in zip(partials, specs):
             if spec.target not in table.column_names:
-                # A missing column is null-filled by the reader; for
-                # ignore_nulls=False those nulls poison the aggregate.
-                if not spec.ignore_nulls:
-                    poisoned[idx] = True
+                # A missing column is null-filled by the reader.
+                partial.observe_null()
                 continue
+
             column = table.column(spec.target)
-            if not spec.ignore_nulls and column.null_count > 0:
-                poisoned[idx] = True
-                continue
-            if spec.kind == "min":
-                scalar = pc.min(column, skip_nulls=spec.ignore_nulls)
-            else:
-                scalar = pc.max(column, skip_nulls=spec.ignore_nulls)
+            if column.null_count:
+                partial.observe_null()
+            scalar = (
+                pc.min(column, skip_nulls=spec.ignore_nulls)
+                if spec.kind == "min"
+                else pc.max(column, skip_nulls=spec.ignore_nulls)
+            )
             value = scalar.as_py()
-            if value is None:
-                continue
-            value = _cast(value, spec.field_type)
-            if values[idx] is None:
-                values[idx] = value
-            elif spec.kind == "min":
-                values[idx] = min(values[idx], value)
-            else:
-                values[idx] = max(values[idx], value)
-
-    for idx in range(len(specs)):
-        if poisoned[idx]:
-            values[idx] = None
-    return values
+            if value is not None:
+                partial.observe(_cast(value, spec.field_type))
+    return [partial.result() for partial in partials]
 
 
-def _try_rewrite(agg: Aggregate) -> Optional[Aggregate]:
-    """Rewrite a global Min/Max aggregate over an unfiltered file read."""
-    if agg.key is not None or not agg.aggs:
-        return None
-    if not all(isinstance(fn, (Min, Max)) for fn in agg.aggs):
-        return None
-
-    read_files = agg.input_dependencies[0]
-    if not isinstance(read_files, ReadFiles) or read_files.block_udf is not None:
-        return None
-
-    scanner = read_files.scanner
-    if not scanner.metadata_row_count_is_exact():
-        return None
-
-    try:
-        schema = scanner.read_schema()
-    except Exception:
-        return None
-
-    partition_columns = set(getattr(scanner, "partition_columns", set()))
-    synthesized_columns = {
-        column.name for column in getattr(scanner, "synthesized_columns", ())
-    }
-
+def _build_specs(
+    aggs: Sequence[AggregateFn],
+    schema: pa.Schema,
+    excluded_columns: Set[str],
+) -> Optional[List[_AggSpec]]:
+    """Translate Min/Max aggs into partial columns, or ``None`` to decline."""
     specs: List[_AggSpec] = []
-    for idx, fn in enumerate(agg.aggs):
+    for idx, fn in enumerate(aggs):
         if not isinstance(fn, (Min, Max)):
             return None
         target = fn.get_target_column()
         if not isinstance(target, str):
             return None
-        if target in partition_columns or target in synthesized_columns:
+        if target in excluded_columns:
             return None
         field = schema.field(target) if target in schema.names else None
         if field is None:
@@ -178,26 +233,79 @@ def _try_rewrite(agg: Aggregate) -> Optional[Aggregate]:
                 field_type=field.type,
             )
         )
+    return specs
 
-    reader = scanner.create_reader()
-    if not isinstance(reader, SupportsColumnStatistics):
+
+def _try_rewrite(agg: Aggregate) -> Optional[Aggregate]:
+    """Rewrite a global Min/Max aggregate over an unfiltered file read."""
+    if agg.key is not None or not agg.aggs:
+        return None
+    if not all(isinstance(fn, (Min, Max)) for fn in agg.aggs):
+        return None
+    if len(agg.input_dependencies) != 1:
+        return None
+
+    read_files = agg.input_dependencies[0]
+    if not isinstance(read_files, ReadFiles) or read_files.block_udf is not None:
+        return None
+    if len(read_files.input_dependencies) != 1:
+        return None
+
+    scanner = read_files.scanner
+    # Reuse the count-exactness gate: footer bounds, like footer row counts,
+    # are only valid when no pushdown drops rows -- including filters that a
+    # scanner applies from construction rather than through the pushdown API.
+    if not scanner.metadata_row_count_is_exact():
         return None
 
     list_files = read_files.input_dependencies[0]
     if not isinstance(list_files, ListFiles):
         return None
 
+    # Footer statistics are file-level, so every manifest row must be a whole
+    # file. A chunking indexer would ask for the same file once per chunk.
     whole_file_indexer = list_files.file_indexer.as_whole_file_indexer()
     if whole_file_indexer is None:
         return None
 
     pushdown = derive_list_files_pushdown(scanner)
-    assert (
-        pushdown.predicate is None
-    ), "metadata_row_count_is_exact must refuse a filter"
-    assert pushdown.limit is None, "metadata_row_count_is_exact must refuse a limit"
-    assert pushdown.partition_pruner is None
+    if (
+        pushdown.predicate is not None
+        or pushdown.limit is not None
+        or pushdown.partition_pruner is not None
+    ):
+        return None
 
+    # Check before reading the schema: formats whose reader cannot answer
+    # statistics should not pay for schema inference just to be declined.
+    base_reader = scanner.create_reader()
+    if not isinstance(base_reader, SupportsColumnStatistics):
+        return None
+
+    try:
+        schema = scanner.read_schema()
+    except Exception:
+        return None
+
+    # These attributes are format-specific. A synthesized or partition column
+    # has no footer of its own, so it can never be answered from metadata.
+    excluded_columns = set(getattr(scanner, "partition_columns", set())) | {
+        column.name for column in getattr(scanner, "synthesized_columns", ())
+    }
+    specs = _build_specs(agg.aggs, schema, excluded_columns)
+    if specs is None:
+        return None
+    # Bind a non-optional local so the closure below keeps the narrowed type.
+    built_specs: List[_AggSpec] = specs
+
+    targets = list(dict.fromkeys(spec.target for spec in built_specs))
+    read_scanner: Scanner = scanner
+    if isinstance(scanner, SupportsColumnPruning):
+        read_scanner = cast(Scanner, scanner.prune_columns(targets))
+
+    # Rebuild ``ListFiles`` so listing emits each file exactly once and does no
+    # metadata IO of its own. Every pushdown is clear above; the replacement
+    # only drops chunking/indexing behavior.
     list_files = dataclasses.replace(
         list_files,
         file_partitioner=None,
@@ -209,33 +317,31 @@ def _try_rewrite(agg: Aggregate) -> Optional[Aggregate]:
         pushdown_is_final=True,
     )
 
-    targets = list(dict.fromkeys(spec.target for spec in specs))
-    reader_scanner: Scanner = scanner
-    if isinstance(scanner, SupportsColumnPruning):
-        reader_scanner = cast(Scanner, scanner.prune_columns(targets))
-
     def partials(batch: pa.Table) -> pa.Table:
         manifest = _manifest_from_batch(batch)
-        stats_reader = reader_scanner.create_reader()
-        assert isinstance(stats_reader, SupportsColumnStatistics)
-        per_file = list(stats_reader.read_column_statistics(manifest, targets))
-        assert len(per_file) == len(manifest)
-        per_target: Dict[str, List[ColumnStatistics]] = {
-            target: [stats[target] for stats in per_file] for target in targets
-        }
+        # Readers are created on the worker, as in the normal read path;
+        # serializing a pre-built reader does not preserve its scan state.
+        reader = read_scanner.create_reader()
+        values = (
+            _partials_from_stats(reader, manifest, built_specs)
+            if isinstance(reader, SupportsColumnStatistics)
+            else None
+        )
+        if values is None:
+            logger.debug(
+                "Reading %d file(s): footer statistics unavailable", len(manifest)
+            )
+            values = _values_from_read(
+                cast(Reader[FileManifest], reader), manifest, built_specs
+            )
 
-        try:
-            values = [
-                _value_from_stats(spec, per_target[spec.target]) for spec in specs
-            ]
-        except Exception:
-            # Any stat that cannot be decoded or cast is safe to re-read.
-            values = _values_from_read(reader_scanner, manifest, specs)
-
+        # One row per manifest batch. The final aggregate reduces those rows
+        # across batches, so a multi-batch dataset cannot be truncated by
+        # ``Dataset.min()``/``max()``'s final ``take(1)``.
         return pa.table(
             {
                 spec.partial_name: pa.array([value], type=spec.field_type)
-                for spec, value in zip(specs, values)
+                for spec, value in zip(built_specs, values)
             }
         )
 
@@ -243,20 +349,20 @@ def _try_rewrite(agg: Aggregate) -> Optional[Aggregate]:
         fn=partials,
         input_dependencies=[list_files],
         batch_format="pyarrow",
-        batch_size=_BATCH_SIZE,
-        min_rows_per_bundled_input=_BATCH_SIZE,
+        batch_size=_FILES_PER_TASK,
+        min_rows_per_bundled_input=_FILES_PER_TASK,
         zero_copy_batch=True,
         can_modify_num_rows=True,
         ray_remote_args={"num_cpus": _TASK_NUM_CPUS},
     )
 
     final_aggs: List[AggregateFn] = []
-    for spec in specs:
-        kwargs = dict(
-            on=spec.partial_name,
-            ignore_nulls=spec.ignore_nulls,
-            alias_name=spec.output_name,
-        )
+    for spec in built_specs:
+        kwargs = {
+            "on": spec.partial_name,
+            "ignore_nulls": spec.ignore_nulls,
+            "alias_name": spec.output_name,
+        }
         final_aggs.append(Min(**kwargs) if spec.kind == "min" else Max(**kwargs))
 
     return dataclasses.replace(
@@ -273,6 +379,11 @@ class PushdownMinMaxFiles(Rule):
     rewritten. The rewritten plan keeps the original global ``Aggregate`` on
     top of per-batch partials, so multiple metadata batches cannot be mistaken
     for a single final value.
+
+    The rule is deliberately fail-open. Every applicability check that cannot
+    be proven from the plan leaves the plan untouched, and a manifest batch
+    whose statistics are unknown is read instead. A wrong bound is silent;
+    declining only costs the read that would have happened anyway.
     """
 
     def apply(self, plan: LogicalPlan) -> LogicalPlan:  # pyrefly: ignore[bad-override]

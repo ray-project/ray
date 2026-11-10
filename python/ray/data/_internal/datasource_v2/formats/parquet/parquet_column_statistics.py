@@ -1,7 +1,7 @@
 """Extract exact per-column min/max/null counts from a Parquet footer.
 
 Only scalar, non-repeated leaves whose bounds Parquet stores exactly are
-answered. Everything else returns ``exact=False`` and the caller reads the
+answered. Everything else returns ``state=UNKNOWN`` and the caller reads the
 file instead: a wrong min/max is silent, a fallback is merely slower.
 """
 
@@ -11,6 +11,7 @@ import pyarrow.parquet as pq
 
 from ray.data._internal.datasource_v2.interfaces.supports_column_statistics import (
     ColumnStatistics,
+    ColumnStatisticsState,
 )
 
 # Bounds for these physical types are exact in Parquet. Floats may carry NaN
@@ -25,9 +26,9 @@ def _resolve_leaf(schema: pq.ParquetSchema, column: str) -> Optional[int]:
     A nested column is ambiguous here -- its statistics are per leaf, not per
     top-level value -- and a repeated leaf has no single row value either.
     """
-    exact = [idx for idx in range(len(schema)) if schema.column(idx).path == column]
-    if len(exact) == 1 and schema.column(exact[0]).max_repetition_level == 0:
-        return exact[0]
+    matches = [idx for idx in range(len(schema)) if schema.column(idx).path == column]
+    if len(matches) == 1 and schema.column(matches[0]).max_repetition_level == 0:
+        return matches[0]
     return None
 
 
@@ -46,29 +47,40 @@ def column_statistics(metadata: pq.FileMetaData, column: str) -> ColumnStatistic
     if leaf.physical_type not in _EXACT_PHYSICAL_TYPES:
         return ColumnStatistics.unknown(num_rows)
 
+    total_rows = 0
     null_count = 0
     min_value = None
     max_value = None
     for rg_idx in range(metadata.num_row_groups):
         row_group = metadata.row_group(rg_idx)
+        total_rows += row_group.num_rows
         if row_group.num_rows == 0:
             continue
 
-        statistics = row_group.column(leaf_idx).statistics
-        if statistics is None or not statistics.has_null_count:
+        row_group_stats = row_group.column(leaf_idx).statistics
+        if row_group_stats is None or not row_group_stats.has_null_count:
             return ColumnStatistics.unknown(num_rows)
-        if statistics.null_count < 0 or statistics.null_count > row_group.num_rows:
+        if not 0 <= row_group_stats.null_count <= row_group.num_rows:
             return ColumnStatistics.unknown(num_rows)
 
-        null_count += statistics.null_count
-        if statistics.has_min_max:
-            if min_value is None or statistics.min < min_value:
-                min_value = statistics.min
-            if max_value is None or statistics.max > max_value:
-                max_value = statistics.max
-        elif statistics.null_count != row_group.num_rows:
+        null_count += row_group_stats.null_count
+        if row_group_stats.has_min_max:
+            if min_value is None:
+                min_value = row_group_stats.min
+            else:
+                min_value = min(min_value, row_group_stats.min)
+            if max_value is None:
+                max_value = row_group_stats.max
+            else:
+                max_value = max(max_value, row_group_stats.max)
+        elif row_group_stats.null_count != row_group.num_rows:
             # Non-null values exist but no bounds; the footer cannot settle it.
             return ColumnStatistics.unknown(num_rows)
+
+    # The footer's row count is the sum of its row groups. If they disagree,
+    # the null counts do not cover the file and no result can be trusted.
+    if total_rows != num_rows:
+        return ColumnStatistics.unknown(num_rows)
 
     if num_rows == 0:
         return ColumnStatistics(
@@ -76,18 +88,24 @@ def column_statistics(metadata: pq.FileMetaData, column: str) -> ColumnStatistic
             null_count=0,
             min=None,
             max=None,
-            exact=True,
+            state=ColumnStatisticsState.EMPTY,
         )
 
-    if min_value is None and null_count < num_rows:
-        return ColumnStatistics.unknown(num_rows)
+    if min_value is None:
+        if null_count != num_rows:
+            return ColumnStatistics.unknown(num_rows)
+        state = ColumnStatisticsState.ALL_NULL
+    else:
+        if max_value is None or null_count >= num_rows:
+            return ColumnStatistics.unknown(num_rows)
+        state = ColumnStatisticsState.BOUNDED
 
     return ColumnStatistics(
         num_rows=num_rows,
         null_count=null_count,
         min=min_value,
         max=max_value,
-        exact=True,
+        state=state,
     )
 
 

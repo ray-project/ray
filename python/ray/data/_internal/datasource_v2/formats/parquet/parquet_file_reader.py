@@ -4,12 +4,14 @@ from concurrent.futures import ThreadPoolExecutor
 from typing import (
     TYPE_CHECKING,
     Any,
+    Callable,
     Dict,
     Iterator,
     List,
     Optional,
     Sequence,
     Set,
+    TypeVar,
 )
 
 import pyarrow as pa
@@ -71,6 +73,7 @@ from ray.util.debug import log_once
 logger = logging.getLogger(__name__)
 
 _UNSET = object()
+_T = TypeVar("_T")
 
 # Per-stream read-ahead buffer for ``use_buffered_stream=True``. PyArrow's
 # default (~8 KiB) produces many tiny range requests on S3; 8 MiB
@@ -663,7 +666,7 @@ class ParquetFileReader(FileReader, SupportsMetadata, SupportsColumnStatistics):
         return kwargs
 
     @staticmethod
-    def _read_file_metadata(
+    def _read_footer(
         path: str,
         file_size: Optional[int],
         filesystem: FileSystem,
@@ -684,6 +687,31 @@ class ParquetFileReader(FileReader, SupportsMetadata, SupportsColumnStatistics):
             match=retried_io_errors,
         )
 
+    def _map_footers(
+        self,
+        file_manifest: FileManifest,
+        fn: Callable[[pq.FileMetaData], _T],
+    ) -> Iterator[_T]:
+        """Apply ``fn`` to each row's footer concurrently, in manifest order."""
+        from pyarrow.fs import LocalFileSystem
+
+        from ray.data._internal.util import filesystem_for_sized_opens
+        from ray.data.context import DataContext
+
+        filesystem = filesystem_for_sized_opens(self._filesystem or LocalFileSystem())
+        retried_io_errors = DataContext.get_current().retried_io_errors
+
+        def _apply(path: str, file_size: Optional[int]) -> _T:
+            return fn(self._read_footer(path, file_size, filesystem, retried_io_errors))
+
+        paths = [str(path) for path in file_manifest.paths]
+        file_sizes = file_manifest.known_file_sizes
+        # The two manifest views are parallel arrays; a length mismatch would
+        # silently drop rows from ``Executor.map``.
+        assert len(paths) == len(file_sizes), (len(paths), len(file_sizes))
+        with ThreadPoolExecutor() as executor:
+            yield from executor.map(_apply, paths, file_sizes)
+
     @override
     def read_metadata(self, file_manifest: FileManifest) -> Iterator[BlockMetadata]:
         """Yield one ``BlockMetadata`` per file, with ``num_rows`` from the footer.
@@ -692,53 +720,31 @@ class ParquetFileReader(FileReader, SupportsMetadata, SupportsColumnStatistics):
         columns -- so ``PushdownCountFiles`` can answer ``count()`` cheaply.
         Footers are fetched concurrently since each read is network-bound.
         """
-        from pyarrow.fs import LocalFileSystem
-
-        from ray.data._internal.util import filesystem_for_sized_opens
-        from ray.data.context import DataContext
-
-        filesystem = filesystem_for_sized_opens(self._filesystem or LocalFileSystem())
-        retried_io_errors = DataContext.get_current().retried_io_errors
-
-        def _num_rows(path: str, file_size: Optional[int]) -> int:
-            return self._read_file_metadata(
-                path, file_size, filesystem, retried_io_errors
-            ).num_rows
-
-        paths = [str(p) for p in file_manifest.paths]
-        with ThreadPoolExecutor() as executor:
-            for num_rows in executor.map(
-                _num_rows, paths, file_manifest.known_file_sizes
-            ):
-                yield BlockMetadata(
-                    num_rows=num_rows,
-                    size_bytes=None,
-                    exec_stats=None,
-                    input_files=None,
-                )
+        for num_rows in self._map_footers(
+            file_manifest, lambda metadata: metadata.num_rows
+        ):
+            yield BlockMetadata(
+                num_rows=num_rows,
+                size_bytes=None,
+                exec_stats=None,
+                input_files=None,
+            )
 
     @override
     def read_column_statistics(
         self, file_manifest: FileManifest, columns: Sequence[str]
     ) -> Iterator[Dict[str, ColumnStatistics]]:
-        """Yield exact footer min/max/null counts for ``columns`` per file."""
-        from pyarrow.fs import LocalFileSystem
+        """Yield exact footer min/max/null counts for ``columns`` per file.
 
-        from ray.data._internal.util import filesystem_for_sized_opens
-        from ray.data.context import DataContext
-
-        filesystem = filesystem_for_sized_opens(self._filesystem or LocalFileSystem())
-        retried_io_errors = DataContext.get_current().retried_io_errors
-
-        def _stats(path: str, file_size: Optional[int]) -> Dict[str, ColumnStatistics]:
-            metadata = self._read_file_metadata(
-                path, file_size, filesystem, retried_io_errors
-            )
-            return {column: column_statistics(metadata, column) for column in columns}
-
-        paths = [str(p) for p in file_manifest.paths]
-        with ThreadPoolExecutor() as executor:
-            yield from executor.map(_stats, paths, file_manifest.known_file_sizes)
+        One footer read serves every requested column; each mapping is in the
+        same order as ``file_manifest``.
+        """
+        yield from self._map_footers(
+            file_manifest,
+            lambda metadata: {
+                column: column_statistics(metadata, column) for column in columns
+            },
+        )
 
     @override
     def available_metadata(self) -> Set[MetadataType]:
