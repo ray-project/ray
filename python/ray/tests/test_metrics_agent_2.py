@@ -1,4 +1,6 @@
+import http.client
 import random
+import socket
 import sys
 import time
 from typing import List
@@ -22,6 +24,9 @@ from ray._common.test_utils import (
     fetch_prometheus_metrics,
     fetch_raw_prometheus,
     wait_for_condition,
+)
+from ray._private.authentication.http_token_authentication import (
+    start_metrics_wsgi_server,
 )
 from ray._private.metrics_agent import (
     RAY_WORKER_TIMEOUT_S,
@@ -594,6 +599,65 @@ def test_collect_node_metrics_with_recommended_cardinality():
     )
     # Metrics are already at node level, so they should be returned as is.
     assert len(aggregated_metrics) == 2
+
+
+def _ipv6_loopback_available() -> bool:
+    if not socket.has_ipv6:
+        return False
+    try:
+        with socket.socket(socket.AF_INET6, socket.SOCK_STREAM) as sock:
+            sock.bind(("::1", 0))
+    except OSError:
+        return False
+    return True
+
+
+def _ok_app(environ, start_response):
+    start_response("200 OK", [("Content-Type", "text/plain")])
+    return [b"ok"]
+
+
+@pytest.mark.skipif(
+    not _ipv6_loopback_available(), reason="IPv6 loopback is not available"
+)
+def test_start_metrics_wsgi_server_binds_all_interfaces_for_ipv6(monkeypatch):
+    monkeypatch.setattr(
+        "ray._common.network_utils.get_all_interfaces_ip", lambda: "::1"
+    )
+    monkeypatch.setenv("RAY_AUTH_SKIP_METRICS", "1")
+    httpd = start_metrics_wsgi_server(0, _ok_app)
+    try:
+        conn = http.client.HTTPConnection("::1", httpd.server_address[1], timeout=5)
+        try:
+            conn.request("GET", "/metrics")
+            resp = conn.getresponse()
+            assert resp.status == 200
+            assert resp.read() == b"ok"
+        finally:
+            conn.close()
+    finally:
+        httpd.shutdown()
+        httpd.server_close()
+
+
+@pytest.mark.skipif(
+    not _ipv6_loopback_available(), reason="IPv6 loopback is not available"
+)
+def test_prometheus_stats_exporter_binds_ipv6(monkeypatch):
+    monkeypatch.setenv("RAY_AUTH_SKIP_METRICS", "1")
+    exporter = prometheus_exporter.new_stats_exporter(
+        prometheus_exporter.Options(namespace="test_ipv6", port=0, address="::1")
+    )
+    try:
+        conn = http.client.HTTPConnection("::1", exporter.port, timeout=5)
+        try:
+            conn.request("GET", "/metrics")
+            resp = conn.getresponse()
+            assert resp.status == 200
+        finally:
+            conn.close()
+    finally:
+        REGISTRY.unregister(exporter.collector)
 
 
 if __name__ == "__main__":

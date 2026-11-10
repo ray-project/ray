@@ -174,22 +174,32 @@ class _SilentHandler(WSGIRequestHandler):
         pass
 
 
-def start_metrics_http_server(port: int, registry, addr: str = "0.0.0.0") -> None:
+def start_metrics_http_server(port: int, registry, addr: Optional[str] = None) -> None:
     """Serve ``registry`` on ``addr:port`` from a daemon thread, like
     ``prometheus_client.start_http_server``, but requiring the token when token
-    auth is on."""
+    auth is on.
+
+    If ``addr`` is None, bind to all interfaces for the host's IP family
+    (``0.0.0.0`` for IPv4, ``::`` for IPv6)."""
     from prometheus_client import make_wsgi_app
 
     start_metrics_wsgi_server(port, make_wsgi_app(registry), addr)
 
 
 def start_metrics_wsgi_server(
-    port: int, app, addr: str = "0.0.0.0", reuse_port: bool = False
+    port: int, app, addr: Optional[str] = None, reuse_port: bool = False
 ) -> WSGIServer:
     """Serve the WSGI metrics ``app`` on ``addr:port`` from a daemon thread,
     behind the same token check as start_metrics_http_server. With
     ``reuse_port``, other processes that set SO_REUSEPORT can bind the same
-    port. Returns the server so the caller can shut it down."""
+    port. Returns the server so the caller can shut it down.
+
+    If ``addr`` is None, bind to all interfaces for the host's IP family."""
+    if addr is None:
+        from ray._common.network_utils import get_all_interfaces_ip
+
+        addr = get_all_interfaces_ip()
+
     family, _, _, _, sockaddr = socket.getaddrinfo(
         addr, port, type=socket.SOCK_STREAM, flags=socket.AI_PASSIVE
     )[0]

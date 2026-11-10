@@ -5,9 +5,7 @@
 
 import logging
 import re
-import threading
 from typing import Any
-from wsgiref.simple_server import make_server
 
 from opencensus.common.transports import sync
 from opencensus.stats import aggregation_data as aggregation_data_module, base_exporter
@@ -22,7 +20,7 @@ from prometheus_client.core import (
 )
 
 from ray._private.authentication.http_token_authentication import (
-    get_token_auth_wsgi_app,
+    start_metrics_wsgi_server,
 )
 
 logger = logging.getLogger(__name__)
@@ -31,8 +29,8 @@ logger = logging.getLogger(__name__)
 class Options(object):
     """Options contains options for configuring the exporter.
 
-    The address can be empty as the prometheus client will
-    assume it's localhost.
+    An empty address binds to all interfaces for the host's IP family
+    (``0.0.0.0`` for IPv4, ``::`` for IPv6).
 
     Args:
         namespace: The prometheus namespace to be used. Defaults to ''.
@@ -70,7 +68,7 @@ class Options(object):
 
     @property
     def address(self):
-        """Endpoint address (default is localhost)"""
+        """Endpoint address (default is all interfaces)"""
         return self._address
 
 
@@ -329,13 +327,10 @@ class PrometheusStatsExporter(base_exporter.StatsExporter):
 
     def serve_http(self):
         """serve_http serves the Prometheus endpoint."""
-        address = self.options.address or ""
-        httpd = make_server(
-            address, self.options.port, get_token_auth_wsgi_app(make_wsgi_app())
-        )
-        t = threading.Thread(target=httpd.serve_forever)
-        t.daemon = True
-        t.start()
+        from ray._common.network_utils import get_all_interfaces_ip
+
+        address = self.options.address or get_all_interfaces_ip()
+        httpd = start_metrics_wsgi_server(self.options.port, make_wsgi_app(), address)
         # Return the actual port (in case port=0 was specified)
         return httpd.server_address[1]
 
