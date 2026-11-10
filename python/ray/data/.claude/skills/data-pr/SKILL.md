@@ -71,9 +71,8 @@ Fix only what the author agrees to.
   rebase: `python -m pytest python/ray/data/tests/<test_file>.py -x`.
 
 ## 5. Commit
-`[Data]` prefix, signed as root `AGENTS.md` requires, including
-`git rebase --signoff` and `git cherry-pick -s`: signing after the PR is open
-means force-pushing.
+`[Data]` prefix. Sign every commit (`git commit -s`, `git rebase --signoff`,
+`git cherry-pick -s`): signing after the PR is open means force-pushing.
 
 ## 6. Description and approval
 Write the description to `python/ray/data/AGENTS.md`'s template, with root
