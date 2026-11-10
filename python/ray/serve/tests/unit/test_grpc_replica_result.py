@@ -2,10 +2,12 @@ import asyncio
 import sys
 import threading
 
+import grpc
 import pytest
 
 from ray import ActorID, cloudpickle
 from ray._common.test_utils import wait_for_condition
+from ray.exceptions import ActorUnavailableError
 from ray.serve._private.common import RequestMetadata
 from ray.serve._private.replica_result import gRPCReplicaResult
 from ray.serve.exceptions import RequestCancelledError
@@ -281,12 +283,16 @@ class TestSeparateLoop:
     ):
         """Results buffered before a stream failure are returned before the error."""
         loop, _ = create_asyncio_event_loop_in_thread
+        # The replica dying mid-stream surfaces as an UNAVAILABLE AioRpcError.
         replica_result = self._make_failed_streaming_request(
-            loop, RuntimeError("stream broke")
+            loop,
+            grpc.aio.AioRpcError(
+                grpc.StatusCode.UNAVAILABLE, grpc.aio.Metadata(), grpc.aio.Metadata()
+            ),
         )
 
         results = []
-        with pytest.raises(RuntimeError, match="stream broke"):
+        with pytest.raises(ActorUnavailableError):
             async for r in replica_result:
                 results.append(r)
         assert results == [1, 2, 3]
