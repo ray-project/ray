@@ -16,6 +16,7 @@ import subprocess
 import tarfile
 import tempfile
 import threading
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -842,6 +843,225 @@ def build_erofs_image(
             raise SandboxCreationError(f"mkfs.erofs failed: {message}")
 
 
+# Set to "0" to build every image from downloaded layers, even with a
+# mkfs.erofs that can pull an image from its registry itself.
+_EROFS_OCI_ENV = "RAY_SANDBOX_EROFS_OCI"
+# Directories runsc mounts over, so an image built by mkfs.erofs --oci gets
+# them whether or not it ships them: being there is all that matters. The
+# root is listed too, as an incremental build resets a directory it meets
+# only as the parent of a new entry.
+_OCI_SEED_DIRS = {
+    "": 0o755,
+    "proc": 0o755,
+    "sys": 0o755,
+    "dev": 0o755,
+    "dev/pts": 0o755,
+    "dev/shm": 0o755,
+    "run": 0o755,
+    "tmp": 0o1777,
+}
+# dump.erofs's TYPE column for a directory (EROFS_FT_DIR).
+_EROFS_FT_DIR = 2
+
+
+@lru_cache(maxsize=8)
+def _mkfs_erofs_supports_oci(mkfs: str) -> bool:
+    """Whether ``mkfs`` can build an image straight from a registry.
+
+    ``--oci`` needs erofs-utils 1.9+ built with ``--enable-oci`` (libcurl and
+    json-c), which distribution packages often leave out.
+    """
+    try:
+        res = subprocess.run(
+            [mkfs, "--help"], capture_output=True, text=True, timeout=30
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+    return "--oci" in res.stdout + res.stderr
+
+
+def _oci_reference(image: str) -> Optional[Tuple[str, bool]]:
+    """How ``mkfs.erofs --oci`` names ``image``, and whether it must use
+    plain HTTP to reach it; None for an image only the layer pipeline pulls.
+
+    ``mkfs.erofs`` reads tags but not digests, and takes a reference's first
+    component for a registry only when it has a dot or a port.
+
+    Args:
+        image: Container image reference or path to a local tar archive.
+
+    Returns:
+        The reference and whether the registry is plain HTTP, or None.
+    """
+    if os.path.isfile(image) or image.endswith(".tar"):
+        return None
+    if image.startswith(("/", "./", "../")) or "@" in image:
+        return None
+    registry, repo, reference = parse_image_ref(image)
+    host, repo = apply_registry_mirror(registry, repo)
+    insecure = host.startswith("http://")
+    host = host.split("://", 1)[-1].rstrip("/")
+    if "/" in host or ("." not in host and ":" not in host):
+        return None
+    return f"{host}/{repo}:{reference}", insecure
+
+
+def _erofs_listdir(dump: str, image: str, path: str) -> Optional[Dict[str, int]]:
+    """{name: dump.erofs file type} of directory ``path`` in ``image``, or
+    None if it isn't one."""
+    res = subprocess.run(
+        [dump, "--ls", f"--path={path}", image], capture_output=True, text=True
+    )
+    if res.returncode != 0 or "FILENAME" not in res.stdout:
+        return None
+    entries = {}
+    for line in res.stdout.split("FILENAME", 1)[1].splitlines():
+        fields = line.split(None, 2)
+        if len(fields) == 3 and fields[0].isdigit() and fields[1].isdigit():
+            entries[fields[2]] = int(fields[1])
+    return entries
+
+
+def _seed_erofs_image(mkfs: str, image_path: str) -> None:
+    """Give an image built by ``mkfs.erofs --oci`` what ``_seed_tmp`` and
+    ``_seed_mountpoints`` give an extracted tree, with an incremental pass.
+
+    The mount-point directories and ``/tmp`` (1777, kept non-empty) are
+    written over whatever the image has; the files in ``/etc`` only where
+    missing, since an image's own may show through. Seeding through a
+    symlinked ``/etc``, ``/tmp`` or ``/dev`` would need ``_resolve_in_root``,
+    so such an image is left to the layer pipeline.
+
+    Unlike extraction, this doesn't fix the directories ``mkfs.erofs`` makes
+    up for a layer that names files but not their parents, and no earlier
+    layer created: they stay 0777 and the worker's, where extraction (and
+    Docker) makes them 0755 and root's. Image builders write those entries,
+    so only hand-made layers (``tar`` of a file list) are affected.
+
+    Args:
+        mkfs: The ``mkfs.erofs`` that built the image.
+        image_path: The image, changed in place.
+
+    Raises:
+        RuntimeError: If the image can't be seeded this way.
+    """
+    dump = os.path.join(os.path.dirname(mkfs), "dump.erofs")
+    if not os.access(dump, os.X_OK):
+        raise RuntimeError(f"{dump} is missing")
+    root = _erofs_listdir(dump, image_path, "/")
+    if root is None:
+        raise RuntimeError("dump.erofs can't list the image's root")
+    for name in ("dev", "etc", "proc", "run", "sys", "tmp"):
+        if root.get(name, _EROFS_FT_DIR) != _EROFS_FT_DIR:
+            raise RuntimeError(f"the image's /{name} isn't a directory")
+    etc = (_erofs_listdir(dump, image_path, "/etc") or {}) if "etc" in root else {}
+    missing = [f for f in _MOUNTPOINT_FILES if os.path.basename(f) not in etc]
+
+    def entry(name: str, kind: bytes, mode: int) -> tarfile.TarInfo:
+        ti = tarfile.TarInfo(name)
+        ti.type, ti.mode, ti.mtime = kind, mode, int(time.time())
+        return ti
+
+    seeds = io.BytesIO()
+    with tarfile.open(fileobj=seeds, mode="w", format=tarfile.PAX_FORMAT) as tar:
+        for rel, mode in _OCI_SEED_DIRS.items():
+            tar.addfile(entry(rel or "./", tarfile.DIRTYPE, mode))
+        tar.addfile(entry("tmp/.ray-sandbox-keep", tarfile.REGTYPE, 0o644))
+        if missing:
+            tar.addfile(entry("etc", tarfile.DIRTYPE, 0o755))
+        for rel in missing:
+            tar.addfile(entry(rel, tarfile.REGTYPE, 0o644))
+    res = subprocess.run(
+        [mkfs, "--incremental=data", "--tar=f", f"-b{mmap.PAGESIZE}"]
+        + ["-E^inline_data", "--quiet", image_path],
+        input=seeds.getvalue(),
+        capture_output=True,
+    )
+    if res.returncode != 0:
+        message = (res.stdout + res.stderr).decode(errors="replace").strip()
+        raise RuntimeError(f"seeding the image failed: {message[-500:]}")
+
+
+def _build_erofs_image_from_registry(
+    image: str, image_dir: str, out_path: str, timeout_seconds: float
+) -> bool:
+    """Build ``out_path`` for registry image ``image`` with ``mkfs.erofs
+    --oci``, which writes each layer into the image as it downloads it.
+
+    That skips extracting the layers to disk and re-packing the tree, which
+    is most of a cold pull's time. The image config is fetched meanwhile.
+    ``mkfs.erofs`` authenticates on its own, from the ``auths`` in the
+    node's Docker config; a pull it can't make (credential helpers, a
+    platform the image index doesn't name exactly) fails and falls back.
+
+    Args:
+        image: Container image reference or path to a local tar archive.
+        image_dir: Directory that receives the image config.
+        out_path: Destination image file.
+        timeout_seconds: Network request timeout for the config fetch.
+
+    Returns:
+        True if the image is built; False, with nothing at ``out_path``, if
+        this node's ``mkfs.erofs`` can't build it, so the caller builds it
+        from downloaded layers.
+
+    Raises:
+        SandboxCreationError: When the image cannot be resolved.
+    """
+    mkfs = mkfs_erofs_path()
+    source = _oci_reference(image)
+    if (
+        os.environ.get(_EROFS_OCI_ENV, "1") == "0"
+        or mkfs is None
+        or source is None
+        or not _mkfs_erofs_supports_oci(mkfs)
+    ):
+        return False
+    ref, insecure = source
+    try:
+        with tempfile.TemporaryFile() as output:
+            # The output goes to a file, not a pipe that could fill up.
+            proc = subprocess.Popen(
+                [
+                    mkfs,
+                    "--oci=f,insecure" if insecure else "--oci=f",
+                    # Apply the layers' whiteouts instead of keeping them.
+                    "--ovlfs-strip=1",
+                    f"-b{mmap.PAGESIZE}",
+                    "-E^inline_data",
+                    "--quiet",
+                    out_path,
+                    ref,
+                ],
+                stdin=subprocess.DEVNULL,
+                stdout=output,
+                stderr=subprocess.STDOUT,
+            )
+            try:
+                _extract_image_layers(
+                    image, image_dir, image_dir, timeout_seconds, image_dir, False
+                )
+                returncode = proc.wait()
+            except BaseException:
+                proc.kill()
+                proc.wait()
+                raise
+            if returncode != 0:
+                output.seek(0)
+                message = output.read().decode(errors="replace").strip()[-500:]
+                raise RuntimeError(f"mkfs.erofs exited with {returncode}: {message}")
+        _seed_erofs_image(mkfs, out_path)
+    except (RuntimeError, OSError) as err:
+        logger.warning(
+            f"Building image '{image}' with mkfs.erofs --oci failed, so it is "
+            f"built from the downloaded layers instead: {err}"
+        )
+        with contextlib.suppress(FileNotFoundError):
+            os.unlink(out_path)
+        return False
+    return True
+
+
 _IMAGE_CACHE_MAX_BYTES_ENV = "RAY_SANDBOX_IMAGE_CACHE_MAX_BYTES"
 _IMAGE_CACHE_MIN_FREE_BYTES_ENV = "RAY_SANDBOX_IMAGE_CACHE_MIN_FREE_BYTES"
 # Subdirectory of each cached image holding one marker file per live sandbox.
@@ -1211,16 +1431,20 @@ def pull_and_extract_container_image(
             tmp_rootfs_dir = os.path.join(tmp_extract_dir, "rootfs")
             os.makedirs(tmp_rootfs_dir, mode=0o755, exist_ok=True)
             try:
-                ownership = _extract_image_layers(
-                    image, tmp_rootfs_dir, tmp_extract_dir, timeout_seconds, images_dir
-                )
-                _seed_tmp(tmp_rootfs_dir)
-                _seed_mountpoints(tmp_rootfs_dir)
-                build_erofs_image(
-                    tmp_rootfs_dir,
-                    ownership,
-                    os.path.join(tmp_extract_dir, ROOTFS_IMAGE),
-                )
+                rootfs_image = os.path.join(tmp_extract_dir, ROOTFS_IMAGE)
+                if not _build_erofs_image_from_registry(
+                    image, tmp_extract_dir, rootfs_image, timeout_seconds
+                ):
+                    ownership = _extract_image_layers(
+                        image,
+                        tmp_rootfs_dir,
+                        tmp_extract_dir,
+                        timeout_seconds,
+                        images_dir,
+                    )
+                    _seed_tmp(tmp_rootfs_dir)
+                    _seed_mountpoints(tmp_rootfs_dir)
+                    build_erofs_image(tmp_rootfs_dir, ownership, rootfs_image)
             except Exception:
                 shutil.rmtree(tmp_extract_dir, ignore_errors=True)
                 raise
@@ -1363,6 +1587,7 @@ def _extract_image_layers(
     image_dir: str,
     timeout_seconds: float,
     blob_dir: str,
+    layers: bool = True,
 ) -> Dict[str, Tuple[int, int]]:
     """Flatten ``image`` into ``rootfs_dir`` and return its recorded owners.
 
@@ -1376,6 +1601,7 @@ def _extract_image_layers(
         image_dir: Directory that receives the image config.
         timeout_seconds: Network request timeout.
         blob_dir: Directory for temporary layer blobs.
+        layers: False to stop once a registry image's config is written.
 
     Returns:
         {path: (uid, gid)} for every path shipped with a non-root owner.
@@ -1468,16 +1694,18 @@ def _extract_image_layers(
                         f_cfg.write(config_bytes)
             except Exception as e:
                 logger.warning(f"Failed to fetch image config blob: {e}")
-
-        layers = manifest_data.get("layers", [])
         if not layers:
+            return ownership
+
+        layer_descs = manifest_data.get("layers", [])
+        if not layer_descs:
             raise SandboxCreationError(
                 f"No layers found in manifest for image '{image}'"
             )
 
         blob_urls = [
             f"{registry_base_url(registry)}/v2/{repo}/blobs/{layer['digest']}"
-            for layer in layers
+            for layer in layer_descs
         ]
         with contextlib.closing(
             _download_blobs(blob_urls, headers, auth_header, timeout_seconds, blob_dir)
