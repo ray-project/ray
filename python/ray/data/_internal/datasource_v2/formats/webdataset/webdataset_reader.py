@@ -1,5 +1,6 @@
 """Worker-side reader for WebDataset tar shards."""
 
+import functools
 import io
 from typing import TYPE_CHECKING, Any, Dict, Iterator, List, Optional, Sequence, Tuple
 
@@ -16,7 +17,7 @@ from ray.data._internal.datasource_v2.interfaces.synthesized_columns import (
     ReadUnitPosition,
     SynthesizedColumn,
 )
-from ray.data._internal.util import infer_compression
+from ray.data._internal.util import infer_compression, iterate_with_retry
 from ray.data.context import DataContext
 from ray.util.annotations import DeveloperAPI
 
@@ -90,33 +91,39 @@ class WebDatasetReader(Reader[FileManifest]):
     def read(self, input_split: FileManifest) -> Iterator[pa.Table]:
         retried_io_errors = DataContext.get_current().retried_io_errors
         for path in input_split.paths.tolist():
-            unit = ReadUnit(id=path, source=path)
-            rows_before = 0
-            with self._open_stream(path) as stream:
-                rows = iter_webdataset_rows(
-                    stream,
-                    path,
-                    decoder=self._decoder,
-                    fileselect=self._fileselect,
-                    filerename=self._filerename,
-                    suffixes=self._suffixes,
-                    verbose_open=self._verbose_open,
-                    expand_json=self._expand_json,
-                    allow_unsafe_deserialization=self._allow_unsafe_deserialization,
-                    retried_io_errors=retried_io_errors,
-                    # Grayscale and color images get the same ndim, so every
-                    # chunk converts to the same Arrow tensor type.
-                    expand_grayscale=True,
-                )
-                chunk = []
-                for row in rows:
-                    chunk.append(row)
-                    if len(chunk) >= WEBDATASET_READ_CHUNK_SIZE:
-                        yield self._finalize(chunk, unit, rows_before)
-                        rows_before += len(chunk)
-                        chunk = []
-                if chunk:
+            yield from iterate_with_retry(
+                functools.partial(self._read_shard, path),
+                description=f"read {path}",
+                match=retried_io_errors,
+            )
+
+    def _read_shard(self, path: str) -> Iterator[pa.Table]:
+        unit = ReadUnit(id=path, source=path)
+        rows_before = 0
+        with self._open_stream(path) as stream:
+            rows = iter_webdataset_rows(
+                stream,
+                path,
+                decoder=self._decoder,
+                fileselect=self._fileselect,
+                filerename=self._filerename,
+                suffixes=self._suffixes,
+                verbose_open=self._verbose_open,
+                expand_json=self._expand_json,
+                allow_unsafe_deserialization=self._allow_unsafe_deserialization,
+                # Grayscale and color images get the same ndim, so every
+                # chunk converts to the same Arrow tensor type.
+                expand_grayscale=True,
+            )
+            chunk = []
+            for row in rows:
+                chunk.append(row)
+                if len(chunk) >= WEBDATASET_READ_CHUNK_SIZE:
                     yield self._finalize(chunk, unit, rows_before)
+                    rows_before += len(chunk)
+                    chunk = []
+            if chunk:
+                yield self._finalize(chunk, unit, rows_before)
 
     def _open_stream(self, path: str) -> "pa.NativeFile":
         open_args = dict(self._open_stream_args)

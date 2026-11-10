@@ -10,6 +10,7 @@ import tarfile
 import numpy as np
 import pandas as pd
 import pyarrow as pa
+import pyarrow.fs
 import pytest
 import webdataset as wds
 
@@ -646,6 +647,186 @@ def test_read_webdataset_v2_npy_mixed_ndim(ray_start_2_cpus, tmp_path, monkeypat
 
     with pytest.raises(Exception, match="both objects and tensors"):
         ray.data.read_webdataset([path]).take_all()
+
+
+class _FailOnceReader:
+    """Raise a retryable error once, after ``fail_after`` bytes have been read.
+
+    ``marker`` is a file so the failure happens once across retries and processes.
+    """
+
+    def __init__(self, f, marker, fail_after):
+        self._f, self._marker, self._fail_after, self._pos = f, marker, fail_after, 0
+
+    def read(self, size=-1):
+        if not os.path.exists(self._marker):
+            if self._pos >= self._fail_after:
+                open(self._marker, "w").close()
+                raise OSError(ray.data.DataContext.get_current().retried_io_errors[0])
+            if size is None or size < 0 or self._pos + size > self._fail_after:
+                size = self._fail_after - self._pos
+        data = self._f.read(size)
+        self._pos += len(data)
+        return data
+
+    def readable(self):
+        return True
+
+    def seekable(self):
+        return False
+
+    def close(self):
+        self._f.close()
+
+    @property
+    def closed(self):
+        return self._f.closed
+
+
+class _FailOnceFileSystemHandler(pa.fs.FileSystemHandler):
+    def __init__(self, marker, fail_after):
+        self._fs = pa.fs.LocalFileSystem()
+        self._marker, self._fail_after = marker, fail_after
+
+    def __eq__(self, other):
+        return isinstance(other, _FailOnceFileSystemHandler)
+
+    def __ne__(self, other):
+        return not self == other
+
+    def get_type_name(self):
+        return "fail-once"
+
+    def normalize_path(self, path):
+        return self._fs.normalize_path(path)
+
+    def get_file_info(self, paths):
+        return self._fs.get_file_info(paths)
+
+    def get_file_info_selector(self, selector):
+        return self._fs.get_file_info(selector)
+
+    def open_input_stream(self, path):
+        f = _FailOnceReader(open(path, "rb"), self._marker, self._fail_after)
+        return pa.PythonFile(f, mode="r")
+
+    def open_input_file(self, path):
+        return self._fs.open_input_file(path)
+
+    def create_dir(self, path, recursive):
+        raise NotImplementedError
+
+    def delete_dir(self, path):
+        raise NotImplementedError
+
+    def delete_dir_contents(self, path, missing_dir_ok=False):
+        raise NotImplementedError
+
+    def delete_root_dir_contents(self):
+        raise NotImplementedError
+
+    def delete_file(self, path):
+        raise NotImplementedError
+
+    def move(self, src, dest):
+        raise NotImplementedError
+
+    def copy_file(self, src, dest):
+        raise NotImplementedError
+
+    def open_output_stream(self, path, metadata):
+        raise NotImplementedError
+
+    def open_append_stream(self, path, metadata):
+        raise NotImplementedError
+
+
+def test_read_webdataset_v2_retries_transient_error_mid_read(
+    ray_start_2_cpus, tmp_path, monkeypatch
+):
+    # A tar stream can't be rewound, so a retry must reopen the shard instead of
+    # resuming on the stream that failed. Resuming would skip samples.
+    from ray.data.context import DataContext
+
+    monkeypatch.setattr(DataContext.get_current(), "use_datasource_v2", True)
+    path = os.path.join(tmp_path, "data", "data-000000.tar")
+    os.makedirs(os.path.dirname(path))
+    with TarWriter(path) as writer:
+        for i in range(1000):
+            writer.write(f"{i:06d}.txt", f"{i:06d}".encode() * 50)
+    fs = pa.fs.PyFileSystem(
+        _FailOnceFileSystemHandler(
+            str(tmp_path / "failed"), fail_after=os.path.getsize(path) // 2
+        )
+    )
+
+    rows = ray.data.read_webdataset(path, filesystem=fs, decoder=None).take_all()
+
+    assert os.path.exists(tmp_path / "failed")
+    assert sorted(row["__key__"] for row in rows) == [f"{i:06d}" for i in range(1000)]
+
+
+def test_webdataset_datasource_v2_keeps_source_paths(tmp_path):
+    from ray.data._internal.datasource_v2.formats.webdataset.webdataset_datasource_v2 import (  # noqa: E501
+        WebDatasetDatasourceV2,
+    )
+
+    path = os.path.join(tmp_path, "data-000000.tar")
+    with TarWriter(path) as writer:
+        writer.write("000000.txt", b"a")
+
+    datasource = WebDatasetDatasourceV2(paths=[f"file://{path}"])
+
+    assert datasource.paths == [path]
+    assert datasource.source_paths == [f"file://{path}"]
+
+
+def test_read_webdataset_v2_expand_json_skips_samples_without_json(
+    ray_start_2_cpus, tmp_path, monkeypatch
+):
+    from ray.data.context import DataContext
+
+    monkeypatch.setattr(DataContext.get_current(), "use_datasource_v2", True)
+    path = os.path.join(tmp_path, "data-000000.tar")
+    with TarWriter(path) as writer:
+        writer.write("000000.cls", b"0")
+        writer.write("000000.json", b'{"width": 640}')
+        writer.write("000001.cls", b"1")
+
+    rows = sorted(
+        ray.data.read_webdataset(path, expand_json=True).take_all(),
+        key=lambda row: row["__key__"],
+    )
+
+    assert [row["width"] for row in rows] == [640, None]
+
+
+def test_read_webdataset_v2_expand_json_rejects_colliding_field(
+    ray_start_2_cpus, tmp_path, monkeypatch
+):
+    from ray.data.context import DataContext
+
+    monkeypatch.setattr(DataContext.get_current(), "use_datasource_v2", True)
+    path = os.path.join(tmp_path, "data-000000.tar")
+    with TarWriter(path) as writer:
+        writer.write("000000.cls", b"1")
+        writer.write("000000.json", b'{"cls": 5}')
+
+    with pytest.raises(Exception, match="expand_json can't add JSON field 'cls'"):
+        ray.data.read_webdataset(path, expand_json=True).take_all()
+
+
+def test_group_by_keys_duplicate_member_without_meta():
+    from ray.data._internal.datasource_v2.formats.webdataset.webdataset_utils import (
+        _group_by_keys,
+    )
+
+    data = [
+        {"fname": "001.jpg", "data": b"a"},
+        {"fname": "001.jpg", "data": b"b"},
+    ]
+    with pytest.raises(ValueError, match="duplicate file name"):
+        list(_group_by_keys(data))
 
 
 if __name__ == "__main__":

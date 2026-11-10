@@ -8,10 +8,9 @@ import json
 import re
 import tarfile
 from functools import partial
-from typing import Any, Callable, Dict, Iterable, Iterator, List, Optional, Union
+from typing import Any, Callable, Dict, Iterable, Iterator, Optional, Union
 
 from ray.data._internal.datasource_v2.common.image_utils import _ALLOWED_PIL_FORMATS
-from ray.data._internal.util import iterate_with_retry
 
 ALLOW_UNSAFE_DESERIALIZATION_ENV_VAR = (
     "RAY_DATA_WEBDATASET_ALLOW_UNSAFE_DESERIALIZATION"
@@ -140,24 +139,24 @@ def _tar_file_iterator(
         selected file in the tar stream.
     """
     meta = meta or {}
-    stream = tarfile.open(fileobj=fileobj, mode="r|*")
-    if verbose_open:
-        print(f"start {meta}")
-    for tarinfo in stream:
-        fname = tarinfo.name
-        if not tarinfo.isreg() or fname is None:
-            continue
-        member = stream.extractfile(tarinfo)
-        assert member is not None  # Regular files always have contents.
-        data = member.read()
-        fname = _apply_list(filerename, fname)
-        assert isinstance(fname, str)
-        if not _check_suffix(fname, fileselect):
-            continue
-        result = dict(fname=fname, data=data)
-        yield result
-    if verbose_open:
-        print(f"done {meta}")
+    with tarfile.open(fileobj=fileobj, mode="r|*") as stream:
+        if verbose_open:
+            print(f"start {meta}")
+        for tarinfo in stream:
+            fname = tarinfo.name
+            if not tarinfo.isreg() or fname is None:
+                continue
+            member = stream.extractfile(tarinfo)
+            assert member is not None  # Regular files always have contents.
+            data = member.read()
+            fname = _apply_list(filerename, fname)
+            assert isinstance(fname, str)
+            if not _check_suffix(fname, fileselect):
+                continue
+            result = dict(fname=fname, data=data)
+            yield result
+        if verbose_open:
+            print(f"done {meta}")
 
 
 def _group_by_keys(
@@ -223,7 +222,7 @@ def _group_by_keys(
         if suffix in current_sample:
             raise ValueError(
                 f"{fname}: duplicate file name in tar file "
-                + f"{suffix} {current_sample.keys()}, tar is {meta['__url__']}"
+                + f"{suffix} {current_sample.keys()}, tar is {meta.get('__url__')}"
             )
         if suffixes is None or _check_suffix(suffix, suffixes):
             current_sample[suffix] = value
@@ -331,7 +330,6 @@ def iter_webdataset_rows(
     verbose_open: bool,
     expand_json: bool,
     allow_unsafe_deserialization: bool,
-    retried_io_errors: Optional[List[str]],
     expand_grayscale: bool = False,
 ) -> Iterator[Dict[str, Any]]:
     """Yield one decoded row dict per WebDataset sample in a tar stream.
@@ -347,11 +345,11 @@ def iter_webdataset_rows(
         filerename: Patterns or function renaming files while reading.
         suffixes: Patterns or function selecting suffixes while grouping.
         verbose_open: Print progress when starting and finishing the tar.
-        expand_json: Expand the ``json`` member's fields into columns.
+        expand_json: Expand the ``json`` member's fields into columns. Samples
+            without a ``json`` member are left as is, and a field whose name
+            matches an existing column raises ``ValueError``.
         allow_unsafe_deserialization: Allow pickle/torch deserialization in
             the default decoder.
-        retried_io_errors: Error message patterns to retry on while
-            iterating the tar stream (``DataContext.retried_io_errors``).
         expand_grayscale: Make the default decoder return grayscale images
             as (H, W, 1).
 
@@ -359,21 +357,12 @@ def iter_webdataset_rows(
         Dict[str, Any]: One row per sample.
     """
 
-    def get_tar_file_iterator():
-        return _tar_file_iterator(
-            stream,
-            fileselect=fileselect,
-            filerename=filerename,
-            verbose_open=verbose_open,
-        )
-
-    # S3 can raise transient errors during iteration
-    files = iterate_with_retry(
-        get_tar_file_iterator,
-        "iterate tar file",
-        match=retried_io_errors,
+    files = _tar_file_iterator(
+        stream,
+        fileselect=fileselect,
+        filerename=filerename,
+        verbose_open=verbose_open,
     )
-
     samples = _group_by_keys(files, meta=dict(__url__=path), suffixes=suffixes)
     default_decoder = partial(
         _default_decoder,
@@ -384,7 +373,7 @@ def iter_webdataset_rows(
     for sample in samples:
         if decoder is not None:
             sample = _apply_list(decoder, sample, default=default_decoder)
-        if expand_json:
+        if expand_json and "json" in sample:
             if isinstance(sample["json"], bytes):
                 parsed_json = json.loads(sample["json"].decode("utf-8"))
             elif isinstance(sample["json"], str):
@@ -396,9 +385,13 @@ def iter_webdataset_rows(
                     f"Unsupported data type" f" {type(sample['json'])} for sample"
                 )
             for k, v in parsed_json.items():
-                if k not in sample:
-                    sample[k] = []
-                sample[k].append(v)
+                if k in sample:
+                    raise ValueError(
+                        f"expand_json can't add JSON field {k!r} to sample "
+                        f"{sample.get('__key__')!r} in {path}: the sample already "
+                        f"has a column named {k!r}."
+                    )
+                sample[k] = [v]
         yield {
             k: v[0] if isinstance(v, list) and len(v) == 1 else v
             for k, v in sample.items()
