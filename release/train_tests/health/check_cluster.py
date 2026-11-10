@@ -18,10 +18,11 @@ import ray
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
 sys.path.insert(0, str(Path(__file__).parent))
+import gpu_health  # noqa: E402
 import harness  # noqa: E402
 import nccl_ras_health  # noqa: E402
 
-harness.ship_by_value(harness, nccl_ras_health)
+harness.ship_by_value(gpu_health, harness, nccl_ras_health)
 
 CHECKOUT_TRAIN = Path(__file__).resolve().parents[3] / "python" / "ray" / "train"
 

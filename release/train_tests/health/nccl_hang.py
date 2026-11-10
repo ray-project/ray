@@ -30,10 +30,11 @@ from pathlib import Path
 import ray
 
 sys.path.insert(0, str(Path(__file__).parent))
+import gpu_health  # noqa: E402
 import harness  # noqa: E402
 import nccl_ras_health  # noqa: E402
 
-harness.ship_by_value(harness, nccl_ras_health)
+harness.ship_by_value(gpu_health, harness, nccl_ras_health)
 
 POLL_S = 2
 CONFIRM_S = 20
