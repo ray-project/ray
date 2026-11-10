@@ -28,6 +28,9 @@ from ray.data._internal.datasource_v2.common.file_reader import (
     FileReader,
 )
 from ray.data._internal.datasource_v2.formats.parquet.footer_reader import _leaf_matches
+from ray.data._internal.datasource_v2.formats.parquet.parquet_column_statistics import (
+    column_statistics,
+)
 from ray.data._internal.datasource_v2.formats.parquet.parquet_file_chunking_utils import (
     _fragments_from_row_group_ids,
     _with_io_retry,
@@ -46,6 +49,10 @@ from ray.data._internal.datasource_v2.interfaces.file_manifest import FileManife
 from ray.data._internal.datasource_v2.interfaces.read_units import (
     ReadUnit,
     ReadUnitFragment,
+)
+from ray.data._internal.datasource_v2.interfaces.supports_column_statistics import (
+    ColumnStatistics,
+    SupportsColumnStatistics,
 )
 from ray.data._internal.datasource_v2.interfaces.supports_metadata import (
     MetadataType,
@@ -193,7 +200,7 @@ def _estimate_batch_size_from_chunk_stats(
 
 
 @DeveloperAPI
-class ParquetFileReader(FileReader, SupportsMetadata):
+class ParquetFileReader(FileReader, SupportsMetadata, SupportsColumnStatistics):
     """Parquet-specific file reader with adaptive batch sizing.
 
     Extends :class:`FileReader` with:
@@ -655,6 +662,28 @@ class ParquetFileReader(FileReader, SupportsMetadata):
         }
         return kwargs
 
+    @staticmethod
+    def _read_file_metadata(
+        path: str,
+        file_size: Optional[int],
+        filesystem: FileSystem,
+        retried_io_errors: List[str],
+    ) -> pq.FileMetaData:
+        from ray.data._internal.util import call_with_retry
+
+        # A fragment, unlike ``pq.read_metadata``, takes the listing's size,
+        # which spares the open a request for it (a HEAD on S3).
+        fragment = pds.ParquetFileFormat().make_fragment(
+            path, filesystem=filesystem, file_size=file_size
+        )
+        # Getting the footer requires network calls, so it may fail with
+        # transient errors; retry them.
+        return call_with_retry(
+            lambda: fragment.metadata,
+            description=f"read Parquet footer for {path}",
+            match=retried_io_errors,
+        )
+
     @override
     def read_metadata(self, file_manifest: FileManifest) -> Iterator[BlockMetadata]:
         """Yield one ``BlockMetadata`` per file, with ``num_rows`` from the footer.
@@ -665,26 +694,16 @@ class ParquetFileReader(FileReader, SupportsMetadata):
         """
         from pyarrow.fs import LocalFileSystem
 
-        from ray.data._internal.util import call_with_retry, filesystem_for_sized_opens
+        from ray.data._internal.util import filesystem_for_sized_opens
         from ray.data.context import DataContext
 
         filesystem = filesystem_for_sized_opens(self._filesystem or LocalFileSystem())
         retried_io_errors = DataContext.get_current().retried_io_errors
 
         def _num_rows(path: str, file_size: Optional[int]) -> int:
-            # A fragment, unlike ``pq.read_metadata``, takes the listing's
-            # size, which spares the open a request for it (a HEAD on S3).
-            fragment = pds.ParquetFileFormat().make_fragment(
-                path, filesystem=filesystem, file_size=file_size
-            )
-            # Getting the footer requires network calls, so it may fail with
-            # transient errors; retry them.
-            metadata = call_with_retry(
-                lambda: fragment.metadata,
-                description=f"read Parquet footer for {path}",
-                match=retried_io_errors,
-            )
-            return metadata.num_rows
+            return self._read_file_metadata(
+                path, file_size, filesystem, retried_io_errors
+            ).num_rows
 
         paths = [str(p) for p in file_manifest.paths]
         with ThreadPoolExecutor() as executor:
@@ -697,6 +716,29 @@ class ParquetFileReader(FileReader, SupportsMetadata):
                     exec_stats=None,
                     input_files=None,
                 )
+
+    @override
+    def read_column_statistics(
+        self, file_manifest: FileManifest, columns: Sequence[str]
+    ) -> Iterator[Dict[str, ColumnStatistics]]:
+        """Yield exact footer min/max/null counts for ``columns`` per file."""
+        from pyarrow.fs import LocalFileSystem
+
+        from ray.data._internal.util import filesystem_for_sized_opens
+        from ray.data.context import DataContext
+
+        filesystem = filesystem_for_sized_opens(self._filesystem or LocalFileSystem())
+        retried_io_errors = DataContext.get_current().retried_io_errors
+
+        def _stats(path: str, file_size: Optional[int]) -> Dict[str, ColumnStatistics]:
+            metadata = self._read_file_metadata(
+                path, file_size, filesystem, retried_io_errors
+            )
+            return {column: column_statistics(metadata, column) for column in columns}
+
+        paths = [str(p) for p in file_manifest.paths]
+        with ThreadPoolExecutor() as executor:
+            yield from executor.map(_stats, paths, file_manifest.known_file_sizes)
 
     @override
     def available_metadata(self) -> Set[MetadataType]:

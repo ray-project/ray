@@ -15,6 +15,7 @@ from .operator_fusion import FuseOperators, are_remote_args_compatible
 from .predicate_pushdown import PredicatePushdown
 from .projection_pushdown import ProjectionPushdown
 from .pushdown_count_files import PushdownCountFiles
+from .pushdown_min_max_files import PushdownMinMaxFiles
 from .set_read_parallelism import (
     SetReadParallelismRule,
     compute_additional_split_factor,
@@ -34,6 +35,7 @@ __all__ = [
     "PredicatePushdown",
     "ProjectionPushdown",
     "PushdownCountFiles",
+    "PushdownMinMaxFiles",
     "SetReadParallelismRule",
     "are_remote_args_compatible",
     "compute_additional_split_factor",

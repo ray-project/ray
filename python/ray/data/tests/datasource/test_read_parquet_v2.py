@@ -38,7 +38,9 @@ from ray.data._internal.datasource_v2.formats.parquet.parquet_scanner import (
 )
 from ray.data._internal.datasource_v2.interfaces.file_manifest import FileManifest
 from ray.data._internal.datasource_v2.interfaces.pushdown import SupportsLimitPushdown
-from ray.data._internal.logical.operators import ListFiles, ReadFiles
+from ray.data._internal.logical.operators import Limit, ListFiles, ReadFiles
+from ray.data._internal.logical.operators.all_to_all_operator import Aggregate
+from ray.data.aggregate import Max, Min, Sum
 from ray.data.context import DataContext
 from ray.data.datasource import FileShuffleConfig
 from ray.data.datasource.partitioning import Partitioning, PartitionStyle
@@ -694,6 +696,24 @@ def _optimized_count_plan(ds):
     return LogicalOptimizer().optimize(LogicalPlan(count_op, ds.context))
 
 
+def _optimized_min_max_plan(ds, aggs, *, key=None):
+    """The plan ``Dataset.min()``/``max()`` executes, without executing it."""
+    from ray.data._internal.logical.interfaces import LogicalPlan
+    from ray.data._internal.logical.optimizers import LogicalOptimizer
+
+    aggregate = Aggregate(
+        key=key,
+        aggs=aggs,
+        input_dependencies=[ds._logical_plan.dag],
+    )
+    return LogicalOptimizer().optimize(
+        LogicalPlan(
+            Limit(limit=1, input_dependencies=[aggregate]),
+            ds.context,
+        )
+    )
+
+
 def _walk(op):
     yield op
     for child in op.input_dependencies:
@@ -827,6 +847,271 @@ def test_count_pushdown_skip_paths_tolerates_missing_path(tmp_path, restore_ctx)
     ds = ray.data.read_parquet([str(a), missing], skip_paths=[missing])
 
     assert ds.count() == 2
+
+
+def test_min_max_pushdown_replaces_footer_indexer(tmp_path, restore_ctx):
+    """Global min/max use footer stats and keep a final global reduce."""
+    from ray.data._internal.datasource_v2.common.non_sampling_file_indexer import (
+        NonSamplingFileIndexer,
+    )
+    from ray.data._internal.logical.operators.map_operator import MapBatches
+
+    pq.write_table(
+        pa.table(
+            {
+                "x": [3, 1, 2, 5, 4, 0],
+                "y": [10, 20, 30, 40, 50, 60],
+            }
+        ),
+        str(tmp_path / "data.parquet"),
+        row_group_size=2,
+    )
+
+    restore_ctx.use_datasource_v2 = True
+    ds = ray.data.read_parquet(str(tmp_path))
+
+    dag = _optimized_min_max_plan(ds, [Min("x"), Max("x")]).dag
+    assert isinstance(dag, Limit)
+    assert not any(isinstance(op, ReadFiles) for op in _walk(dag))
+
+    assert any(isinstance(op, MapBatches) for op in _walk(dag))
+    (list_files_op,) = [op for op in _walk(dag) if isinstance(op, ListFiles)]
+    assert isinstance(list_files_op.file_indexer, NonSamplingFileIndexer)
+    assert list_files_op.file_partitioner is None
+    assert list_files_op.pushdown_is_final
+
+    assert ds.min("x") == 0
+    assert ds.max("x") == 5
+    assert ds.min() == {"min(x)": 0, "min(y)": 10}
+    assert ds.min(["x", "y"]) == {"min(x)": 0, "min(y)": 10}
+    assert ds.aggregate(Min("x", alias_name="lo"), Max("y", alias_name="hi")) == {
+        "lo": 0,
+        "hi": 60,
+    }
+    assert ds.aggregate(Min("x"), Min("x")) == {"min(x)": 0, "min(x)_2": 0}
+
+
+def test_min_max_matches_rows_across_many_files(tmp_path, restore_ctx):
+    """More files than one metadata batch still produce one final reduce row."""
+    for i in range(20):
+        pq.write_table(
+            pa.table({"id": list(range(i * 100, (i + 1) * 100))}),
+            str(tmp_path / f"f{i}.parquet"),
+            row_group_size=10,
+        )
+
+    restore_ctx.use_datasource_v2 = True
+    ds = ray.data.read_parquet(str(tmp_path))
+
+    assert ds.min("id") == 0
+    assert ds.max("id") == 1999
+    assert ds.groupby(None).min().take_all() == [{"min(id)": 0}]
+    assert ds.groupby(None).max().take_all() == [{"max(id)": 1999}]
+
+    dag = _optimized_min_max_plan(ds, [Min("id")]).dag
+    assert not any(isinstance(op, ReadFiles) for op in _walk(dag))
+
+
+def test_min_max_nulls_and_empty_dataset(tmp_path, restore_ctx):
+    pq.write_table(
+        pa.table(
+            {
+                "x": [1, None, 3],
+                "all_null": pa.array([None, None, None], pa.int64()),
+                "f": [1.0, float("nan"), 3.0],
+                "f_all_nan": [float("nan")] * 3,
+            }
+        ),
+        str(tmp_path / "data.parquet"),
+        row_group_size=2,
+    )
+    empty = tmp_path / "empty"
+    empty.mkdir()
+    pq.write_table(
+        pa.table({"x": pa.array([], pa.int64())}),
+        str(empty / "empty.parquet"),
+    )
+
+    restore_ctx.use_datasource_v2 = True
+    ds = ray.data.read_parquet(str(tmp_path / "data.parquet"))
+    assert ds.min("x") == 1
+    assert ds.max("x") == 3
+    assert ds.min("x", ignore_nulls=False) is None
+    assert ds.max("all_null") is None
+    assert ds.max("all_null", ignore_nulls=False) is None
+    # Float stats are not used; the fallback read still matches Arrow semantics.
+    assert ds.max("f") == 3.0
+    # All-NaN columns produce no bound in Ray's aggregate path.
+    assert ds.max("f_all_nan") is None
+
+    empty_ds = ray.data.read_parquet(str(empty))
+    assert empty_ds.min("x") is None
+    assert empty_ds.max("x") is None
+    assert empty_ds.groupby(None).min().take_all() == [{"min(x)": None}]
+
+
+def test_min_max_falls_back_for_missing_stats_and_strings(tmp_path, restore_ctx):
+    pq.write_table(
+        pa.table(
+            {
+                "x": [5, 1, 3],
+                "s": ["b", "a", "c"],
+                "f": [2.0, 1.0, float("nan")],
+            }
+        ),
+        str(tmp_path / "with_stats.parquet"),
+    )
+    pq.write_table(
+        pa.table({"x": [0, 4, 2]}),
+        str(tmp_path / "without_stats.parquet"),
+        write_statistics=False,
+    )
+
+    restore_ctx.use_datasource_v2 = True
+    ds = ray.data.read_parquet(str(tmp_path))
+
+    assert ds.min("x") == 0
+    assert ds.max("x") == 5
+    assert ds.min("s") == "a"
+    assert ds.max("s") == "c"
+    assert ds.max("f") == 2.0
+
+
+def test_min_max_schema_evolution(tmp_path, restore_ctx):
+    pq.write_table(
+        pa.table({"x": [1, 2]}),
+        str(tmp_path / "has_x.parquet"),
+    )
+    pq.write_table(
+        pa.table({"y": [3, 4]}),
+        str(tmp_path / "only_y.parquet"),
+    )
+
+    restore_ctx.use_datasource_v2 = True
+    ds = ray.data.read_parquet(str(tmp_path), merge_schema=True)
+
+    assert ds.min("x") == 1
+    assert ds.max("y") == 4
+    # The file without ``x`` null-fills it, so skip_nulls=False must see nulls.
+    assert ds.min("x", ignore_nulls=False) is None
+
+
+def test_min_max_declines_filter_and_limit(tmp_path, restore_ctx):
+    _write(tmp_path / "data.parquet", pa.table({"x": [1, 2, 3, 4]}))
+
+    restore_ctx.use_datasource_v2 = True
+    ds = ray.data.read_parquet(str(tmp_path))
+
+    filtered = ds.filter(expr=col("x") > 1)
+    assert any(
+        isinstance(op, ReadFiles)
+        for op in _walk(_optimized_min_max_plan(filtered, [Min("x")]).dag)
+    )
+    assert filtered.min("x") == 2
+
+    limited = ds.limit(2)
+    assert any(
+        isinstance(op, ReadFiles)
+        for op in _walk(_optimized_min_max_plan(limited, [Min("x")]).dag)
+    )
+    assert limited.min("x") == 1
+
+
+def test_min_max_declines_groupby_and_mixed_aggs(tmp_path, restore_ctx):
+    _write(
+        tmp_path / "data.parquet",
+        pa.table({"g": [1, 1, 2, 2], "x": [3, 1, 4, 2]}),
+    )
+
+    restore_ctx.use_datasource_v2 = True
+    ds = ray.data.read_parquet(str(tmp_path))
+
+    grouped = _optimized_min_max_plan(ds, [Min("x")], key="g")
+    assert any(isinstance(op, ReadFiles) for op in _walk(grouped.dag))
+    assert sorted(ds.groupby("g").min().take_all(), key=lambda row: row["g"]) == [
+        {"g": 1, "min(x)": 1},
+        {"g": 2, "min(x)": 2},
+    ]
+
+    mixed = _optimized_min_max_plan(ds, [Min("x"), Sum("x")])
+    assert any(isinstance(op, ReadFiles) for op in _walk(mixed.dag))
+    assert ds.aggregate(Min("x"), Sum("x")) == {"min(x)": 1, "sum(x)": 10}
+
+
+def test_min_max_honors_skip_paths(tmp_path, restore_ctx):
+    a = tmp_path / "a.parquet"
+    b = tmp_path / "b.parquet"
+    _write(a, pa.table({"x": [5, 6]}))
+    _write(b, pa.table({"x": [-10, -20]}))
+
+    restore_ctx.use_datasource_v2 = True
+    ds = ray.data.read_parquet([str(a), str(b)], skip_paths=[str(b)])
+
+    assert ds.min("x") == 5
+    assert ds.max("x") == 6
+
+
+def test_min_max_declines_partition_and_synthesized_columns(tmp_path, restore_ctx):
+    flat = tmp_path / "flat"
+    flat.mkdir()
+    _write(flat / "a.parquet", pa.table({"x": [1, 2]}))
+    _write(flat / "b.parquet", pa.table({"x": [3, 4]}))
+
+    restore_ctx.use_datasource_v2 = True
+    with_paths = ray.data.read_parquet(str(flat), include_paths=True)
+    assert any(
+        isinstance(op, ReadFiles)
+        for op in _walk(_optimized_min_max_plan(with_paths, [Min("path")]).dag)
+    )
+    path_min = with_paths.min("path")
+    assert isinstance(path_min, str)
+    assert path_min.endswith(".parquet")
+
+    partition_root = tmp_path / "partitioned"
+    (partition_root / "year=2024").mkdir(parents=True)
+    (partition_root / "year=2025").mkdir(parents=True)
+    _write(
+        partition_root / "year=2024" / "a.parquet",
+        pa.table({"id": [1, 2], "year": pa.array([2024, 2024], pa.int64())}),
+    )
+    _write(
+        partition_root / "year=2025" / "b.parquet",
+        pa.table({"id": [3, 4], "year": pa.array([2025, 2025], pa.int64())}),
+    )
+    partitioned = ray.data.read_parquet(
+        str(partition_root), partitioning=Partitioning(PartitionStyle.HIVE)
+    )
+    assert any(
+        isinstance(op, ReadFiles)
+        for op in _walk(_optimized_min_max_plan(partitioned, [Min("year")]).dag)
+    )
+    assert partitioned.min("year") == 2024
+
+
+def test_min_max_timestamp_footer(tmp_path, restore_ctx):
+    import datetime
+
+    timestamps = [
+        datetime.datetime(2026, 1, 1) + datetime.timedelta(days=i) for i in range(12)
+    ]
+    pq.write_table(
+        pa.table(
+            {
+                "ts": timestamps,
+                "x": list(range(12)),
+            }
+        ),
+        str(tmp_path / "data.parquet"),
+        row_group_size=4,
+    )
+
+    restore_ctx.use_datasource_v2 = True
+    ds = ray.data.read_parquet(str(tmp_path))
+
+    assert ds.min("ts") == timestamps[0]
+    assert ds.max("ts") == timestamps[-1]
+    dag = _optimized_min_max_plan(ds, [Min("ts"), Max("ts")]).dag
+    assert not any(isinstance(op, ReadFiles) for op in _walk(dag))
 
 
 def test_merge_schema_discovers_column_after_default_sample(tmp_path, restore_ctx):
