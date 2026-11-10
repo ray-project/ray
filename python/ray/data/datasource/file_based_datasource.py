@@ -513,9 +513,15 @@ def _add_partitions_to_table(
     column_names = set(table.column_names)
     for field, value in partitions.items():
         if value is None:
-            # Typed like the field's other values, so a block from a null
-            # partition doesn't get a null-typed column.
-            column = pa.nulls(len(table), _null_partition_type(field, field_types))
+            # Typed like the file's column if it has one (which may be
+            # ``null``, inferred from an all-null CSV column), else like the
+            # field's other values, so an added column isn't null-typed.
+            null_type = (
+                table.schema.field(field).type
+                if field in column_names
+                else _null_partition_type(field, field_types)
+            )
+            column = pa.nulls(len(table), null_type)
         else:
             column = pa.array([value] * len(table))
         if field in column_names:

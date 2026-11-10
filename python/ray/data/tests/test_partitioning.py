@@ -831,22 +831,31 @@ def test_path_partition_filter_null_fallback():
 
 @pytest.mark.parametrize(
     "in_data, matches",
-    [([None, None], True), (["a", None], False)],
+    [
+        (pa.array([None, None], pa.string()), True),
+        # A CSV/JSON column that is all empty is inferred as ``null``.
+        (pa.nulls(2), True),
+        (pa.array(["a", None], pa.string()), False),
+    ],
 )
 def test_add_partitions_to_table_null_partition(in_data, matches):
     """A null partition value matches a file column that is all null.
 
     CSV and JSON files can keep the partition column. ``pc.equal`` of two
     nulls is null, which used to reject a null column under a null partition.
+    The column keeps the file's type, not the ``field_types`` one.
     """
-    table = pa.table({"grp": pa.array(in_data, pa.string())})
+    table = pa.table({"grp": in_data})
+
+    def add():
+        return _add_partitions_to_table(table, {"grp": None}, {"grp": int})
 
     if not matches:
         with pytest.raises(ValueError, match="different from in-data values"):
-            _add_partitions_to_table(table, {"grp": None})
+            add()
         return
-    result = _add_partitions_to_table(table, {"grp": None})
-    assert result.schema.field("grp").type == pa.string()
+    result = add()
+    assert result.schema.field("grp").type == in_data.type
     assert result["grp"].to_pylist() == [None, None]
 
 
