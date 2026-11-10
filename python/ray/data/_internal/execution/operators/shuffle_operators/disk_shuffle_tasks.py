@@ -2,7 +2,6 @@ import os
 import pickle
 import random
 import struct
-import tempfile
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import (
@@ -39,6 +38,7 @@ from ray.data._internal.execution.operators.shuffle_operators.disk_shuffle_runti
     _PartitionWriter,
     _PwriteSink,
     _read_ipc,
+    disk_shuffle_dirs,
     handle_to_block,
 )
 
@@ -244,10 +244,6 @@ class DiskShuffleWriteFn:
         self._compression = compression
         self._block_transformer = block_transformer
 
-    @property
-    def block_transformer(self) -> Optional[BlockTransformer]:
-        return self._block_transformer
-
     def __call__(self, blocks: Iterable[Block], ctx: "TaskContext") -> Iterator[Block]:
         handle = _write_disk_shuffle_file(
             blocks,
@@ -394,9 +390,7 @@ def _disk_shuffle_reduce_task(
         yield from _emit_blocks(_no_input_blocks())
     else:
         shuffle_id = next(s for srcs in sources_by_input for s in srcs).shuffle_id
-        staging_dir = os.path.join(
-            tempfile.gettempdir(), f"ray_shuffle_disk_{shuffle_id}_reduce"
-        )
+        _, staging_dir = disk_shuffle_dirs(shuffle_id)
         os.makedirs(staging_dir, exist_ok=True)
         prefetch_file = os.path.join(staging_dir, f"reduce_p{partition_id}.bin")
 

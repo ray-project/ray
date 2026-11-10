@@ -25,6 +25,7 @@ from ray.data._internal.execution.operators.shuffle_operators.shuffle_map_operat
 from ray.data._internal.execution.operators.task_pool_map_operator import (
     TaskPoolMapOperator,
 )
+from ray.data._internal.execution.operators.zip_operator import ZipOperator
 from ray.data._internal.execution.resource_manager import ResourceManager
 from ray.data._internal.execution.streaming_executor_state import OpState
 from ray.data.context import DataContext
@@ -288,6 +289,15 @@ class TestDownstreamCapacityBackpressurePolicy:
             topology, data_context=context, resource_manager=rm
         )
         assert policy.can_add_input(op) is True
+
+    @pytest.mark.parametrize(
+        "op_class",
+        [HashShufflingOperatorBase, AllToAllOperator, ShuffleMapOp, ZipOperator],
+    )
+    def test_is_blocking_materializing_overrides(self, op_class):
+        """Test that the former blocking-materializing classes report True."""
+        op = MagicMock(spec=op_class)
+        assert op_class.is_blocking_materializing.fget(op) is True
 
     def test_backpressure_applied_when_materializer_is_beyond_downstream_eligible_op(
         self,

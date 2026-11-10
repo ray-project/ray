@@ -555,17 +555,18 @@ def test_shuffle_input_batch_bytes_controls_map_task_batching(
         op.add_input(bundle, 0)
     op.all_inputs_done()
 
-    assert len(op.get_active_tasks()) == expected_num_tasks
-
-    # Drain the tasks so none outlives the test. With no reduce op in the
-    # loop, nothing else removes the disk writer's files.
-    run_op_tasks_sync(op)
-    if build_map_op is plan_disk_hash_shuffle_map:
-        file_servers = set()
-        while op.has_next():
-            handle = handle_from_block(ray.get(op.get_next().block_refs[0]))
-            file_servers.add((handle["shuffle_id"], handle["node_id"]))
-        teardown_disk_shuffle(file_servers)
+    try:
+        assert len(op.get_active_tasks()) == expected_num_tasks
+    finally:
+        # Drain the tasks so none outlives the test. With no reduce op in the
+        # loop, nothing else removes the disk writer's files.
+        run_op_tasks_sync(op)
+        if build_map_op is plan_disk_hash_shuffle_map:
+            file_servers = set()
+            while op.has_next():
+                handle = handle_from_block(ray.get(op.get_next().block_refs[0]))
+                file_servers.add((handle["shuffle_id"], handle["node_id"]))
+            teardown_disk_shuffle(file_servers)
 
 
 def test_shuffle_map_task_uses_operator_name():

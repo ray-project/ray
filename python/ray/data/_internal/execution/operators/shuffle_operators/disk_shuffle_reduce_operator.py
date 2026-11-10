@@ -88,7 +88,6 @@ class DiskHashShuffleReduceOp(PhysicalOperator):
         fused_output_map_transformer: Optional["MapTransformer"] = None,
         fused_output_map_task_kwargs: Optional[Dict[str, Any]] = None,
         fused_output_map_target_max_block_size_override: Optional[int] = None,
-        blocking_materializing: bool = False,
     ):
         input_ops: List[PhysicalOperator] = (
             [input_op] if isinstance(input_op, PhysicalOperator) else list(input_op)
@@ -101,7 +100,6 @@ class DiskHashShuffleReduceOp(PhysicalOperator):
             name=name,
             input_dependencies=input_ops,
             data_context=data_context,
-            blocking_materializing=blocking_materializing,
         )
 
         self._num_inputs: int = len(input_ops)
@@ -168,10 +166,11 @@ class DiskHashShuffleReduceOp(PhysicalOperator):
 
     def _add_input_inner(self, refs: RefBundle, input_index: int) -> None:
         assert 0 <= input_index < self._num_inputs
-        for entry in refs.blocks:
-            handle_block = ray.get(entry.ref)  # pyrefly: ignore[no-matching-overload]
+        handle_refs = [entry.ref for entry in refs.blocks]
+        handle_blocks = ray.get(handle_refs)  # pyrefly: ignore[no-matching-overload]
+        for ref, handle_block in zip(handle_refs, handle_blocks):
             self._record_handle(handle_from_block(handle_block), input_index)
-            self._handle_refs_by_input[input_index].append(entry.ref)
+            self._handle_refs_by_input[input_index].append(ref)
         self._handle_bundles.append(refs)
 
     def _record_handle(self, handle: Mapping[str, Any], input_index: int) -> None:
