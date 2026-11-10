@@ -53,11 +53,22 @@ HISTOGRAM_BAR_CHART_TARGET_TEMPLATE = {
 }
 
 
+TIME_SERIES_BAR_CHART_TARGET_TEMPLATE = {
+    "editorMode": "code",
+    "expr": "0",
+    "instant": False,
+    "legendFormat": "",
+    "range": True,
+    "refId": "A",
+}
+
+
 @DeveloperAPI
 class TargetTemplate(Enum):
     GRAPH = GRAPH_TARGET_TEMPLATE
     HEATMAP = HEATMAP_TARGET_TEMPLATE
     HISTOGRAM_BAR_CHART = HISTOGRAM_BAR_CHART_TARGET_TEMPLATE
+    TIME_SERIES_BAR_CHART = TIME_SERIES_BAR_CHART_TARGET_TEMPLATE
 
 
 @DeveloperAPI
@@ -73,11 +84,13 @@ class Target:
     Attributes:
         expr: The prometheus query to evaluate.
         legend: The legend string to format for each time-series.
+        interval: Minimum query interval (a floor for $__interval), e.g. "1m".
     """
 
     expr: str
     legend: str
     template: Optional[TargetTemplate] = TargetTemplate.GRAPH
+    interval: Optional[str] = None
 
 
 HEATMAP_TEMPLATE = {
@@ -483,6 +496,62 @@ BAR_CHART_PANEL_TEMPLATE = {
     "yaxis": {"align": False, "alignLevel": None},
 }
 
+# Grafana "barchart" panel plotting time-series values as stacked bars centered
+# on zero, so paired positive/negative series (e.g. up/down deltas) diverge
+# around the x-axis.
+TIME_SERIES_BAR_CHART_PANEL_TEMPLATE = {
+    "datasource": r"${datasource}",
+    "description": "<Description>",
+    "fieldConfig": {
+        "defaults": {
+            "custom": {
+                "lineWidth": 1,
+                "fillOpacity": 80,
+                "gradientMode": "none",
+                "axisPlacement": "auto",
+                "axisLabel": "",
+                "axisColorMode": "text",
+                "axisBorderShow": False,
+                "scaleDistribution": {"type": "linear"},
+                "axisCenteredZero": True,
+                "hideFrom": {"tooltip": False, "viz": False, "legend": False},
+                "thresholdsStyle": {"mode": "off"},
+            },
+            "color": {"mode": "palette-classic"},
+            "mappings": [],
+            "thresholds": {
+                "mode": "absolute",
+                "steps": [{"color": "green", "value": None}],
+            },
+        },
+        "overrides": [],
+    },
+    "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0},
+    "id": 2,
+    "options": {
+        "orientation": "auto",
+        "xTickLabelRotation": 45,
+        "xTickLabelSpacing": 0,
+        "showValue": "never",
+        "stacking": "normal",
+        "groupWidth": 0.7,
+        "barWidth": 0.97,
+        "barRadius": 0,
+        "fullHighlight": False,
+        "tooltip": {"mode": "multi", "sort": "none"},
+        "legend": {
+            "showLegend": True,
+            "displayMode": "list",
+            "placement": "bottom",
+            "calcs": [],
+        },
+        "text": {},
+    },
+    "targets": [],
+    "title": "<Title>",
+    "type": "barchart",
+}
+
 TABLE_PANEL_TEMPLATE = {
     "datasource": r"${datasource}",
     "description": "<Description>",
@@ -522,6 +591,7 @@ class PanelTemplate(Enum):
     STAT = STAT_PANEL_TEMPLATE
     GAUGE = GAUGE_PANEL_TEMPLATE
     BAR_CHART = BAR_CHART_PANEL_TEMPLATE
+    TIME_SERIES_BAR_CHART = TIME_SERIES_BAR_CHART_PANEL_TEMPLATE
     TABLE = TABLE_PANEL_TEMPLATE
 
 
@@ -561,6 +631,11 @@ class Panel:
         heatmap_color_scheme: Color scheme for heatmap panels (e.g., "Spectral", "RdYlGn").
         heatmap_color_reverse: Whether to reverse the heatmap color scheme.
         heatmap_yaxis_label: Y-axis label for heatmap panels.
+        field_config_overrides: Grafana fieldConfig.overrides entries (per-series
+            styling such as fixed colors), applied verbatim to the panel.
+        template_overrides: Panel JSON keys deep-merged over the rendered
+            template, for per-panel tweaks the template doesn't parameterize
+            (e.g. maxDataPoints, options.showValue).
     """
 
     title: str
@@ -584,6 +659,8 @@ class Panel:
     heatmap_color_scheme: Optional[str] = None
     heatmap_color_reverse: Optional[bool] = None
     heatmap_yaxis_label: Optional[str] = None
+    field_config_overrides: Optional[List[Dict[str, Any]]] = None
+    template_overrides: Optional[Dict[str, Any]] = None
 
 
 @DeveloperAPI
