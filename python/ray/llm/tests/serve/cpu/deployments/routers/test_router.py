@@ -70,7 +70,7 @@ def _new_direct_router(handle=None):
     router = LLMRouter.__new__(LLMRouter)
     router._handle = handle or MagicMock()
     # Routing tests don't exercise tokenization; that lives in test_tokenizer.py.
-    router._tokenizer = None
+    router._kv_state = None
     router._base_model_id = None
     return router
 

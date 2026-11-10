@@ -5,6 +5,7 @@ registration, ``KVAwareRouter`` binding to it, and the
 
 import asyncio
 import sys
+from types import SimpleNamespace
 from typing import List
 
 import pytest
@@ -293,7 +294,7 @@ async def test_lifecycle_booking_end_to_end():
         assert _active_requests(tracker, worker_id) == 1
 
         router = LLMRouter.__new__(LLMRouter)
-        router._kv_token_tracker = tracker
+        router._kv_state = SimpleNamespace(tracker=tracker)
         await router.on_lifecycle_events([("on_prefill_complete", ("req-e2e",))])
         assert _active_requests(tracker, worker_id) == 1
         await router.on_lifecycle_events([("on_request_completed", ("req-e2e",))])
@@ -458,7 +459,7 @@ async def _broadcast_one_selection(session_id=None):
 async def _apply_from(source, peer, updates) -> None:
     """Deliver ``updates`` from ``source`` through the peer's LLMRouter intake."""
     router = LLMRouter.__new__(LLMRouter)
-    router._kv_token_tracker = peer
+    router._kv_state = SimpleNamespace(tracker=peer)
     await router.on_replica_updates(source._replication_writer_id, updates)
     await peer.flush_replica_updates()
 
