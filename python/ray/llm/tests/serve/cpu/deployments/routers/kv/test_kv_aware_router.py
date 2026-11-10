@@ -13,6 +13,7 @@ import pytest
 from ray.llm._internal.serve.core.configs.llm_config import LLMConfig
 from ray.llm._internal.serve.core.ingress.builder import (
     LLMServingArgs,
+    _build_openai_ingress_request_router,
     build_openai_app,
 )
 from ray.llm._internal.serve.routing_policies.kv_aware.constants import (
@@ -114,6 +115,9 @@ def test_build_openai_app_configures_kv_routing(monkeypatch, shared_router):
     app = build_openai_app(LLMServingArgs(llm_configs=[llm_config]))
 
     assert (app._ingress_request_router is None) == (shared_router is not None)
+    if shared_router is not None:
+        with pytest.raises(ValueError, match="cannot attach LLMRouter"):
+            _build_openai_ingress_request_router(server=app, llm_config=llm_config)
     kv_events_config = llm_config.engine_kwargs.get("kv_events_config")
     assert kv_events_config is not None
     assert kv_events_config["enable_kv_cache_events"] is True

@@ -111,6 +111,19 @@ def _build_openai_ingress_request_router(
     Pre-routing tokenization is wired on only when ``llm_config`` configures a
     KVAwareRouter, the sole policy that scores replicas on prompt token IDs.
     """
+    kv_aware = is_kv_aware(llm_config)
+    if (
+        kv_aware
+        and get_kv_router_application_name(
+            llm_config.deployment_config.get("request_router_config")
+        )
+        is not None
+    ):
+        raise ValueError(
+            "A model with kv_router_application_name cannot attach LLMRouter. "
+            "Use build_openai_app to deploy the model for shared KV routing."
+        )
+
     from ray.llm._internal.serve.core.ingress.router import LLMRouter
 
     if (
@@ -125,9 +138,7 @@ def _build_openai_ingress_request_router(
     ray_actor_options: Dict[str, Any] = {
         "num_cpus": 0,
         "runtime_env": get_llm_serve_runtime_env(
-            _get_tokenizing_router_runtime_env(llm_config)
-            if is_kv_aware(llm_config)
-            else None
+            _get_tokenizing_router_runtime_env(llm_config) if kv_aware else None
         ),
     }
     deployment = serve.deployment(
@@ -137,7 +148,7 @@ def _build_openai_ingress_request_router(
     )
     return deployment.bind(
         server=server,
-        llm_config=llm_config if is_kv_aware(llm_config) else None,
+        llm_config=llm_config if kv_aware else None,
         base_model_id=(
             llm_config.model_id if llm_config.lora_config is not None else None
         ),
@@ -401,7 +412,8 @@ def build_openai_router_app(
 ) -> Application:
     """Build a router for independently deployed OpenAI model applications.
 
-    For KV-aware models, set ``kv_router_application_name`` in the model's
+    For KV-aware models built with ``build_openai_app``, set
+    ``kv_router_application_name`` in the model's
     ``deployment_config.request_router_config.request_router_kwargs`` to this
     router's Serve application name. The model is then built without a local
     LLMRouter, and its engine reports lifecycle events to the shared router.
