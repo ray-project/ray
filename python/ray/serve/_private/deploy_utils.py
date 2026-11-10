@@ -12,6 +12,7 @@ from ray.serve._private.constants import (
     RAY_SERVE_DIRECT_INGRESS_MIN_DRAINING_PERIOD_S,
     RAY_SERVE_DIRECT_INGRESS_SHUTDOWN_BUFFER_S,
     RAY_SERVE_ENABLE_DIRECT_INGRESS,
+    REPLICA_HEALTH_CHECK_UNHEALTHY_THRESHOLD,
     SERVE_LOGGER_NAME,
 )
 from ray.serve._private.deployment_info import DeploymentInfo
@@ -84,6 +85,15 @@ def deploy_args_to_deployment_info(
     """
 
     deployment_config = DeploymentConfig.from_proto_bytes(deployment_config_proto_bytes)
+
+    if (
+        "health_check_unhealthy_threshold"
+        not in deployment_config.user_configured_option_names
+    ):
+        # Resolve the default in the controller, not the driver or app build task.
+        deployment_config.health_check_unhealthy_threshold = (
+            REPLICA_HEALTH_CHECK_UNHEALTHY_THRESHOLD
+        )
 
     if ingress and RAY_SERVE_ENABLE_DIRECT_INGRESS:
         # Floor the timeout so the controller's force-kill can't cut the

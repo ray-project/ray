@@ -1884,6 +1884,7 @@ class TestOverrideDeploymentInfo:
                     graceful_shutdown_timeout_s=40,
                     health_check_period_s=20,
                     health_check_timeout_s=60,
+                    health_check_unhealthy_threshold=5,
                 )
             ],
         )
@@ -1898,6 +1899,64 @@ class TestOverrideDeploymentInfo:
         assert updated_info.deployment_config.graceful_shutdown_timeout_s == 40
         assert updated_info.deployment_config.health_check_period_s == 20
         assert updated_info.deployment_config.health_check_timeout_s == 60
+        assert updated_info.deployment_config.health_check_unhealthy_threshold == 5
+
+    @pytest.mark.parametrize("code_threshold", [None, 7])
+    def test_health_check_threshold_override_and_removal(
+        self, info, monkeypatch, code_threshold
+    ):
+        monkeypatch.setattr(
+            "ray.serve._private.deploy_utils.REPLICA_HEALTH_CHECK_UNHEALTHY_THRESHOLD",
+            5,
+        )
+        options = (
+            {}
+            if code_threshold is None
+            else {"health_check_unhealthy_threshold": code_threshold}
+        )
+
+        @serve.deployment(**options)
+        def probe():
+            pass
+
+        built_info = deploy_args_to_deployment_info(
+            deployment_name="A",
+            deployment_config_proto_bytes=probe._deployment_config.to_proto_bytes(),
+            replica_config_proto_bytes=info.replica_config.to_proto_bytes(),
+            deployer_job_id="test",
+            app_name="app",
+        )
+        base_threshold = 5 if code_threshold is None else code_threshold
+        assert built_info.deployment_config.health_check_unhealthy_threshold == (
+            base_threshold
+        )
+        config = ServeApplicationSchema.model_validate(
+            {
+                "name": "app",
+                "import_path": "test.import.path",
+                "deployments": [{"name": "A", "health_check_unhealthy_threshold": 3}],
+            }
+        )
+        base_infos = {"A": built_info}
+        overridden = override_deployment_info(base_infos, config)
+        assert overridden["A"].deployment_config.health_check_unhealthy_threshold == 3
+        assert "health_check_unhealthy_threshold" in (
+            overridden["A"].deployment_config.user_configured_option_names
+        )
+        assert built_info.deployment_config.health_check_unhealthy_threshold == (
+            base_threshold
+        )
+
+        # Reapply to the original build, as ApplicationState does on config updates.
+        config.deployments = [DeploymentSchema(name="A")]
+        restored = override_deployment_info(base_infos, config)
+        assert restored["A"].deployment_config.health_check_unhealthy_threshold == (
+            base_threshold
+        )
+        assert (
+            "health_check_unhealthy_threshold"
+            in restored["A"].deployment_config.user_configured_option_names
+        ) is (code_threshold is not None)
 
     def test_noop_deployment_override_keeps_actor_options(self, info):
         original_actor_options = dict(info.replica_config.ray_actor_options)

@@ -470,6 +470,15 @@ class DeploymentSchema(BaseModel):
         ),
         gt=0,
     )
+    health_check_unhealthy_threshold: int = Field(
+        default=DEFAULT.VALUE,
+        description=(
+            "Consecutive failed health checks before replacing a replica. "
+            "Defaults to RAY_SERVE_REPLICA_HEALTH_CHECK_UNHEALTHY_THRESHOLD, "
+            "or 3 if unset. Changes apply without restarting replicas."
+        ),
+        gt=0,
+    )
     ray_actor_options: RayActorOptionsSchema = Field(
         default=DEFAULT.VALUE, description="Options set for each replica actor."
     )
@@ -766,6 +775,9 @@ def _deployment_info_to_schema(name: str, info: DeploymentInfo) -> DeploymentSch
         graceful_shutdown_timeout_s=info.deployment_config.graceful_shutdown_timeout_s,
         health_check_period_s=info.deployment_config.health_check_period_s,
         health_check_timeout_s=info.deployment_config.health_check_timeout_s,
+        health_check_unhealthy_threshold=(
+            info.deployment_config.health_check_unhealthy_threshold
+        ),
         ray_actor_options=info.replica_config.ray_actor_options,
         request_router_config=info.deployment_config.request_router_config,
         rolling_update_percentage=info.deployment_config.rolling_update_percentage,

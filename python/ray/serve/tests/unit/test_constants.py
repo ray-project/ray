@@ -1,3 +1,4 @@
+import json
 import subprocess
 import sys
 
@@ -42,15 +43,85 @@ def test_health_check_thresholds_from_env(
         [
             sys.executable,
             "-c",
-            "from ray.serve._private import deployment_state as ds; "
-            "print(ds.REPLICA_HEALTH_CHECK_UNHEALTHY_THRESHOLD, "
-            "ds.DEPLOYMENT_ACTOR_HEALTH_CHECK_UNHEALTHY_THRESHOLD)",
+            "from ray.serve._private.config import DeploymentConfig; "
+            "from ray.serve._private.constants import "
+            "DEPLOYMENT_ACTOR_HEALTH_CHECK_UNHEALTHY_THRESHOLD; "
+            "print(DeploymentConfig().health_check_unhealthy_threshold, "
+            "DEPLOYMENT_ACTOR_HEALTH_CHECK_UNHEALTHY_THRESHOLD)",
         ],
         capture_output=True,
         text=True,
     )
     assert result.returncode == 0, result.stderr
     assert result.stdout.strip() == expected
+
+
+@pytest.fixture
+def driver_deployment_args():
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            """
+import json
+from ray import serve
+
+@serve.deployment
+def probe():
+    pass
+
+deployments = [
+    probe,
+    probe.options(health_check_unhealthy_threshold=3),
+    probe.options(health_check_unhealthy_threshold=7),
+]
+print(json.dumps({
+    "configs": [d._deployment_config.to_proto_bytes().hex() for d in deployments],
+    "replica": probe._replica_config.to_proto_bytes().hex(),
+}))
+""",
+        ],
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode == 0, result.stderr
+    return result.stdout
+
+
+def test_controller_env_default_with_explicit_deployment_overrides(
+    monkeypatch, driver_deployment_args
+):
+    # The driver has no ENV override; the controller supplies the default.
+    monkeypatch.setenv("RAY_SERVE_REPLICA_HEALTH_CHECK_UNHEALTHY_THRESHOLD", "5")
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            """
+import json
+import sys
+from ray.serve._private.deploy_utils import deploy_args_to_deployment_info
+
+args = json.load(sys.stdin)
+thresholds = []
+for config in args["configs"]:
+    info = deploy_args_to_deployment_info(
+        deployment_name="probe",
+        deployment_config_proto_bytes=bytes.fromhex(config),
+        replica_config_proto_bytes=bytes.fromhex(args["replica"]),
+        deployer_job_id="test",
+        app_name="app",
+    )
+    thresholds.append(info.deployment_config.health_check_unhealthy_threshold)
+print(json.dumps(thresholds))
+""",
+        ],
+        input=driver_deployment_args,
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode == 0, result.stderr
+    assert json.loads(result.stdout) == [5, 3, 7]
 
 
 @pytest.mark.parametrize(

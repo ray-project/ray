@@ -558,6 +558,7 @@ class _DeploymentOptions(TypedDict, total=False):
     graceful_shutdown_timeout_s: Default[float]
     health_check_period_s: Default[float]
     health_check_timeout_s: Default[float]
+    health_check_unhealthy_threshold: Default[int]
     logging_config: Default[Union[Dict, LoggingConfig, None]]
     request_router_config: Default[Union[Dict, RequestRouterConfig, None]]
     max_constructor_retry_count: Default[int]
@@ -603,6 +604,7 @@ def deployment(
     graceful_shutdown_timeout_s: Default[float] = DEFAULT.VALUE,
     health_check_period_s: Default[float] = DEFAULT.VALUE,
     health_check_timeout_s: Default[float] = DEFAULT.VALUE,
+    health_check_unhealthy_threshold: Default[int] = DEFAULT.VALUE,
     logging_config: Default[Union[Dict, LoggingConfig, None]] = DEFAULT.VALUE,
     request_router_config: Default[
         Union[Dict, RequestRouterConfig, None]
@@ -689,6 +691,11 @@ def deployment(
             method in your deployment that raises an exception when unhealthy.
         health_check_timeout_s: Duration in seconds, that replicas wait for a health
             check method to return before considering it as failed. Defaults to 30s.
+        health_check_unhealthy_threshold: Positive number of consecutive failed
+            health checks before replacing a replica. Defaults to
+            `RAY_SERVE_REPLICA_HEALTH_CHECK_UNHEALTHY_THRESHOLD`, or 3 if unset.
+            Changes apply without restarting replicas. Confirmed actor death
+            still triggers immediate replacement.
         logging_config: Logging config options for the deployment. If provided,
             the config will be used to set up the Serve logger on the deployment.
         request_router_config: Config for the request router used for this deployment.
@@ -793,6 +800,7 @@ def deployment(
         graceful_shutdown_timeout_s=graceful_shutdown_timeout_s,
         health_check_period_s=health_check_period_s,
         health_check_timeout_s=health_check_timeout_s,
+        health_check_unhealthy_threshold=health_check_unhealthy_threshold,
         logging_config=logging_config,
         request_router_config=request_router_config,
         max_constructor_retry_count=max_constructor_retry_count,

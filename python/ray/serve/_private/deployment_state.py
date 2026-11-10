@@ -90,7 +90,6 @@ from ray.serve._private.constants import (
     RAY_SERVE_STATUS_GAUGE_REPORT_INTERVAL_S,
     RAY_SERVE_STOP_FAILED_ROLLING_UPDATES,
     RAY_SERVE_USE_PACK_SCHEDULING_STRATEGY,
-    REPLICA_HEALTH_CHECK_UNHEALTHY_THRESHOLD,
     REPLICA_STARTUP_SHUTDOWN_LATENCY_BUCKETS_MS,
     REQUEST_LATENCY_BUCKETS_MS,
     SERVE_LOGGER_NAME,
@@ -1222,6 +1221,10 @@ class ActorReplicaWrapper:
         return self.deployment_config.health_check_timeout_s
 
     @property
+    def health_check_unhealthy_threshold(self) -> int:
+        return self.deployment_config.health_check_unhealthy_threshold
+
+    @property
     def http_port(self) -> Optional[int]:
         return self._http_port
 
@@ -2099,7 +2102,7 @@ class ActorReplicaWrapper:
                 self._consecutive_health_check_failures += 1
             if (
                 self._consecutive_health_check_failures
-                >= REPLICA_HEALTH_CHECK_UNHEALTHY_THRESHOLD
+                >= self.health_check_unhealthy_threshold
             ):
                 logger.warning(
                     f"Replica {self._replica_id} failed the health "
@@ -2111,7 +2114,7 @@ class ActorReplicaWrapper:
             self._consecutive_health_check_failures += 1
             if (
                 self._consecutive_health_check_failures
-                >= REPLICA_HEALTH_CHECK_UNHEALTHY_THRESHOLD
+                >= self.health_check_unhealthy_threshold
             ):
                 logger.warning(
                     f"Actor for {self._replica_id} is temporarily unavailable after "
@@ -2123,7 +2126,7 @@ class ActorReplicaWrapper:
                 logger.warning(
                     f"Actor for {self._replica_id} is temporarily unavailable "
                     f"({self._consecutive_health_check_failures}/"
-                    f"{REPLICA_HEALTH_CHECK_UNHEALTHY_THRESHOLD}); will retry."
+                    f"{self.health_check_unhealthy_threshold}); will retry."
                 )
         elif response is ReplicaHealthCheckResponse.ACTOR_CRASHED:
             # Actor crashed, mark the replica unhealthy immediately.

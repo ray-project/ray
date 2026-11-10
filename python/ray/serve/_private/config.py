@@ -29,6 +29,7 @@ from ray.serve._private.constants import (
     DEFAULT_MAX_ONGOING_REQUESTS,
     DEFAULT_ROLLING_UPDATE_PERCENTAGE,
     MAX_REPLICAS_PER_NODE_MAX_VALUE,
+    REPLICA_HEALTH_CHECK_UNHEALTHY_THRESHOLD,
 )
 from ray.serve._private.utils import DEFAULT, DeploymentOptionUpdateType
 from ray.serve.config import (
@@ -153,6 +154,8 @@ class DeploymentConfig(BaseModel):
         health_check_timeout_s: Timeout that the controller waits for a
             response from the replica's health check before marking it
             unhealthy.
+        health_check_unhealthy_threshold: Consecutive failed health checks before
+            the controller marks a replica unhealthy.
         autoscaling_config: Autoscaling configuration.
         logging_config: Configuration for deployment logs.
         user_configured_option_names: The names of options manually
@@ -211,6 +214,10 @@ class DeploymentConfig(BaseModel):
     )
     health_check_timeout_s: PositiveFloat = Field(
         default=DEFAULT_HEALTH_CHECK_TIMEOUT_S,
+        update_type=DeploymentOptionUpdateType.NeedsReconfigure,
+    )
+    health_check_unhealthy_threshold: PositiveInt = Field(
+        default=REPLICA_HEALTH_CHECK_UNHEALTHY_THRESHOLD,
         update_type=DeploymentOptionUpdateType.NeedsReconfigure,
     )
 

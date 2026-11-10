@@ -1594,6 +1594,7 @@ def test_redeploy_different_num_replicas(mock_deployment_state_manager):
         ("graceful_shutdown_wait_loop_s", DEFAULT_GRACEFUL_SHUTDOWN_WAIT_LOOP_S + 1),
         ("health_check_period_s", DEFAULT_HEALTH_CHECK_PERIOD_S + 1),
         ("health_check_timeout_s", DEFAULT_HEALTH_CHECK_TIMEOUT_S + 1),
+        ("health_check_unhealthy_threshold", 5),
     ],
 )
 def test_deploy_new_config_same_code_version(
@@ -4954,6 +4955,10 @@ class TestActorReplicaWrapper:
         assert actor_replica.max_ongoing_requests == DEFAULT_MAX_ONGOING_REQUESTS
         assert actor_replica.health_check_period_s == DEFAULT_HEALTH_CHECK_PERIOD_S
         assert actor_replica.health_check_timeout_s == DEFAULT_HEALTH_CHECK_TIMEOUT_S
+        assert (
+            actor_replica.health_check_unhealthy_threshold
+            == REPLICA_HEALTH_CHECK_UNHEALTHY_THRESHOLD
+        )
 
     def test_max_concurrency_override(self):
         actor_replica = ActorReplicaWrapper(
@@ -4999,8 +5004,9 @@ class TestActorReplicaWrapper:
     ):
         """A successful check resets the counter before the threshold is reached."""
         actor_replica = actor_replica_wrapper
-        with patch(
-            "ray.serve._private.deployment_state.REPLICA_HEALTH_CHECK_UNHEALTHY_THRESHOLD",
+        with patch.object(
+            actor_replica.deployment_config,
+            "health_check_unhealthy_threshold",
             3,
         ):
             with (
@@ -5058,9 +5064,10 @@ class TestActorReplicaWrapper:
         immediately, regardless of the ActorUnavailableError threshold."""
         actor_replica = actor_replica_wrapper
         with (
-            patch(
-                "ray.serve._private.deployment_state.REPLICA_HEALTH_CHECK_UNHEALTHY_THRESHOLD",
-                3,
+            patch.object(
+                actor_replica.deployment_config,
+                "health_check_unhealthy_threshold",
+                5,
             ),
             patch(
                 "ray.serve._private.deployment_state.check_obj_ref_ready_nowait",
@@ -5073,6 +5080,62 @@ class TestActorReplicaWrapper:
         ):
             actor_replica._probe_ref = object()
             assert actor_replica.check_health() is False
+
+    def test_health_check_threshold_is_per_deployment(self, actor_replica_wrapper):
+        first = actor_replica_wrapper
+        second = ActorReplicaWrapper(
+            version=DeploymentVersion(
+                "1", DeploymentConfig(health_check_unhealthy_threshold=5), {}
+            ),
+            replica_id=ReplicaID("other", DeploymentID("other", "test_app")),
+        )
+        second._actor_handle = MagicMock()
+        with (
+            patch.object(ds_mod, "check_obj_ref_ready_nowait", return_value=True),
+            patch.object(
+                ds_mod.ray, "get", side_effect=ActorUnavailableError("net", None)
+            ),
+        ):
+            for failures in range(1, 4):
+                first._probe_ref = object()
+                second._probe_ref = object()
+                assert first.check_health() is (failures < 3)
+                assert second.check_health() is True
+            for failures in range(4, 6):
+                second._probe_ref = object()
+                assert second.check_health() is (failures < 5)
+
+    @pytest.mark.parametrize("old_threshold,new_threshold", [(3, 5), (5, 3)])
+    def test_health_check_threshold_reconfigure_preserves_failure_count(
+        self, actor_replica_wrapper, old_threshold, new_threshold
+    ):
+        wrapper = actor_replica_wrapper
+        wrapper._version = DeploymentVersion(
+            "1", DeploymentConfig(health_check_unhealthy_threshold=old_threshold), {}
+        )
+        with (
+            patch.object(ds_mod, "check_obj_ref_ready_nowait", return_value=True),
+            patch.object(
+                ds_mod.ray, "get", side_effect=ActorUnavailableError("net", None)
+            ),
+        ):
+            for _ in range(2):
+                wrapper._probe_ref = object()
+                assert wrapper.check_health() is True
+
+            new_version = DeploymentVersion(
+                "1",
+                DeploymentConfig(health_check_unhealthy_threshold=new_threshold),
+                {},
+            )
+            assert wrapper.reconfigure(new_version, wrapper._rank) is False
+            wrapper._actor_handle.reconfigure.remote.assert_not_called()
+            assert wrapper._consecutive_health_check_failures == 2
+            assert wrapper.health_check_unhealthy_threshold == new_threshold
+
+            for failures in range(3, new_threshold + 1):
+                wrapper._probe_ref = object()
+                assert wrapper.check_health() is (failures < new_threshold)
 
 
 @pytest.mark.parametrize("deployment_actor", [False, True])
@@ -5104,10 +5167,8 @@ def test_health_check_failure_thresholds(
         wrapper = deployment_actor_wrapper
     else:
         wrapper = actor_replica_wrapper
-    monkeypatch.setattr(
-        ds_mod,
-        "REPLICA_HEALTH_CHECK_UNHEALTHY_THRESHOLD",
-        1 if deployment_actor else threshold,
+    actor_replica_wrapper.deployment_config.health_check_unhealthy_threshold = (
+        1 if deployment_actor else threshold
     )
     monkeypatch.setattr(
         ds_mod,
@@ -13988,18 +14049,21 @@ class TestPushedHealthEndToEnd:
         assert not replica._actor.health_check_called  # no probe was needed
         check_counts(ds, total=1, by_state=[(ReplicaState.RUNNING, 1, None)])
 
+    @pytest.mark.parametrize("threshold", [3, 5])
     def test_enough_unhealthy_pushes_stop_the_replica(
-        self, mock_deployment_state_manager
+        self, mock_deployment_state_manager, threshold
     ):
         create_dsm, timer, _, _ = mock_deployment_state_manager
         dsm: DeploymentStateManager = create_dsm()
-        info, _ = deployment_info(num_replicas=1, version="1")
+        info, _ = deployment_info(
+            num_replicas=1, version="1", health_check_unhealthy_threshold=threshold
+        )
         assert dsm.deploy(TEST_DEPLOYMENT_ID, info)
         ds = dsm._get_deployment_state_for_testing(TEST_DEPLOYMENT_ID)
         replica = self._running_replica(dsm, ds)
         replica_id = replica.replica_id
 
-        for failures in range(1, REPLICA_HEALTH_CHECK_UNHEALTHY_THRESHOLD):
+        for failures in range(1, threshold):
             dsm.record_replica_health(
                 replica_id, timer.time(), healthy=False, consecutive_failures=failures
             )
@@ -14011,7 +14075,7 @@ class TestPushedHealthEndToEnd:
             replica_id,
             timer.time(),
             healthy=False,
-            consecutive_failures=REPLICA_HEALTH_CHECK_UNHEALTHY_THRESHOLD,
+            consecutive_failures=threshold,
         )
         dsm.update()
         # The same tick that stops it starts its replacement, to hold num_replicas.
@@ -14296,9 +14360,12 @@ class TestPushedHealthWrapper:
         assert wrapper.last_health_check_failed is (None if expected_healthy else True)
         wrapper._actor_handle.check_health.remote.assert_called_once()
 
-    def test_a_pushed_count_reaching_the_threshold_marks_the_replica_unhealthy(self):
+    @pytest.mark.parametrize("threshold", [3, 5])
+    def test_a_pushed_count_reaching_the_threshold_marks_the_replica_unhealthy(
+        self, threshold
+    ):
         wrapper, timer = self._wrapper()
-        threshold = REPLICA_HEALTH_CHECK_UNHEALTHY_THRESHOLD
+        wrapper.deployment_config.health_check_unhealthy_threshold = threshold
         wrapper.record_pushed_health(timer.time(), False, threshold - 1)
         assert wrapper.check_health() is True
         assert wrapper._consecutive_health_check_failures == threshold - 1

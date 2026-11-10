@@ -238,6 +238,7 @@ class TestDeploymentSchema:
             "graceful_shutdown_timeout_s": 49,
             "health_check_period_s": 11,
             "health_check_timeout_s": 11,
+            "health_check_unhealthy_threshold": 5,
             "max_ongoing_requests": 32,
             "ray_actor_options": {
                 "runtime_env": {
@@ -265,6 +266,7 @@ class TestDeploymentSchema:
             "max_ongoing_requests",
             "health_check_period_s",
             "health_check_timeout_s",
+            "health_check_unhealthy_threshold",
         ]
         for field in gt_zero_fields:
             deployment_schema[field] = 0
@@ -288,6 +290,11 @@ class TestDeploymentSchema:
             with pytest.raises(ValidationError):
                 DeploymentSchema.model_validate(deployment_schema)
             deployment_schema[field] = None
+
+    @pytest.mark.parametrize("threshold", [0, -1, 1.5, "invalid", None])
+    def test_health_check_unhealthy_threshold_validation(self, threshold):
+        with pytest.raises(ValidationError):
+            DeploymentSchema(name="test", health_check_unhealthy_threshold=threshold)
 
     def test_validate_max_queued_requests(self):
         # Ensure ValidationError is raised when max_queued_requests is not -1 or > 1.
@@ -1221,6 +1228,36 @@ def test_unset_fields_schema_to_deployment_ray_actor_options():
     assert deployment.ray_actor_options["num_cpus"] == 1
 
 
+@pytest.mark.parametrize("threshold", [None, 5])
+def test_health_check_unhealthy_threshold_schema_roundtrip(threshold):
+    options = (
+        {} if threshold is None else {"health_check_unhealthy_threshold": threshold}
+    )
+
+    @serve.deployment(**options)
+    def f():
+        pass
+
+    schema = deployment_to_schema(f)
+    restored = schema_to_deployment(schema)
+    assert (
+        restored._deployment_config.health_check_unhealthy_threshold
+        == f._deployment_config.health_check_unhealthy_threshold
+    )
+    if threshold is None:
+        assert schema.health_check_unhealthy_threshold is DEFAULT.VALUE
+        assert (
+            "health_check_unhealthy_threshold"
+            not in restored._deployment_config.user_configured_option_names
+        )
+    else:
+        assert schema.health_check_unhealthy_threshold == threshold
+        assert (
+            "health_check_unhealthy_threshold"
+            in restored._deployment_config.user_configured_option_names
+        )
+
+
 def test_gang_scheduling_config_deployment_schema_roundtrip():
     # Ensure deployment_to_schema -> schema_to_deployment preserves gang config
     gang_config = GangSchedulingConfig(gang_size=2, gang_placement_strategy="SPREAD")
@@ -1644,6 +1681,21 @@ def test_deployment_info_to_schema_includes_max_replicas_per_node():
 
     schema = _deployment_info_to_schema("test_deployment", info)
     assert schema.max_replicas_per_node == 3
+
+
+def test_deployment_info_to_schema_includes_health_check_unhealthy_threshold():
+    info = DeploymentInfo(
+        deployment_config=DeploymentConfig(health_check_unhealthy_threshold=7),
+        replica_config=ReplicaConfig.create(
+            deployment_def="", init_args=(), init_kwargs={}
+        ),
+        start_time_ms=0,
+        deployer_job_id="fake_job_id",
+    )
+
+    schema = _deployment_info_to_schema("test_deployment", info)
+    assert schema.health_check_unhealthy_threshold == 7
+    assert schema.model_dump()["health_check_unhealthy_threshold"] == 7
 
 
 @pytest.mark.parametrize("user_config", ["updated", ["updated"]])

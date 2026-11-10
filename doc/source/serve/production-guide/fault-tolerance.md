@@ -31,7 +31,7 @@ Serve provides some [fault tolerance](serve-ft-detail) features out of the box. 
 
 By default, the Serve controller periodically health-checks each Serve deployment replica and restarts it on failure.
 
-To change how many consecutive health check failures trigger replica replacement, set `RAY_SERVE_REPLICA_HEALTH_CHECK_UNHEALTHY_THRESHOLD` to a positive integer in the Serve controller's environment before it starts. The default is `3`. This setting applies to all deployments managed by the controller and doesn't change `health_check_period_s`.
+Set the `health_check_unhealthy_threshold` deployment option to a positive integer to change how many consecutive health check failures trigger replica replacement. Changes apply without restarting replicas and don't change `health_check_period_s`. For deployments that don't set this option, the default comes from `RAY_SERVE_REPLICA_HEALTH_CHECK_UNHEALTHY_THRESHOLD` in the Serve controller's startup environment, or `3` if unset.
 
 Application health check failures, timeouts, and `ActorUnavailableError` share this threshold. A successful health check resets the failure counter. Confirmed actor death still triggers immediate replacement.
 
