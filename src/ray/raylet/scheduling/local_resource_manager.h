@@ -160,6 +160,9 @@ class LocalResourceManager : public syncer::ReporterInterface {
   void PopulateResourceViewSyncMessage(
       syncer::ResourceViewSyncMessage &resource_view_sync_message) const;
 
+  // Only serves the GCS resource-load puller. Fills just the fields it reads
+  void PopulateGcsPullerResourceInfo(rpc::ResourcesData &resources_data) const;
+
   /// Record the metrics.
   void RecordMetrics() const;
 
