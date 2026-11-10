@@ -17,9 +17,11 @@ class ConfigureMapTaskMemoryRule(Rule, abc.ABC):
     def apply(self, plan: PhysicalPlan) -> PhysicalPlan:
         visited = set()
         for op in plan.dag.post_order_iter():
-            if op in visited or not isinstance(op, MapOperator):
+            if op in visited:
                 continue
             visited.add(op)
+            if not isinstance(op, MapOperator):
+                continue
 
             def ray_remote_args_fn(
                 op: MapOperator = op, original_ray_remote_args_fn=op._ray_remote_args_fn

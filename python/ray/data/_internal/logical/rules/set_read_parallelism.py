@@ -1,6 +1,6 @@
-from collections import deque
 import logging
 import math
+from collections import deque
 from typing import Optional, Tuple, Union
 
 from ray import available_resources as ray_available_resources
