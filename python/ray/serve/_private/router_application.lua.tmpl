@@ -2,7 +2,6 @@
 
 local DIRECT_RESPONSE_HEADER = "${DIRECT_RESPONSE_HEADER}"
 local ORIGINAL_METHOD_HEADER = "${ORIGINAL_METHOD_HEADER}"
-local ROUTER_APPLICATION_HEADER = "${ROUTER_APPLICATION_HEADER}"
 
 -- router backend -> { app, p = route prefix, local_pool, remote_pool }
 local ROUTERS = ${ROUTERS}
@@ -221,7 +220,6 @@ local function route(txn, router)
     end
 
     set_router_response_headers(txn, response_body)
-    txn.http:req_set_header(ROUTER_APPLICATION_HEADER, router.app)
     txn.http:req_set_path(moved_path(txn.sf:path(), router.p, target.p))
     txn:set_var("txn.router_server", server_name)
     txn:set_var("txn.router_backend", target.b)

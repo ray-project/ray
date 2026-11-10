@@ -1,7 +1,8 @@
 import logging
 import random
-from typing import List, Optional
+from typing import List, Optional, Union
 
+from ray import serve
 from ray.llm._internal.serve.core.configs.llm_config import LLMConfig
 from ray.llm._internal.serve.routing_policies.kv_aware.constants import (
     DEFAULT_SESSION_AFFINITY_TTL_S,
@@ -52,6 +53,7 @@ class KVAwareRouter(MultiplexMixin, RequestRouter):
     def initialize_state(
         self,
         session_affinity_ttl_s: float = DEFAULT_SESSION_AFFINITY_TTL_S,
+        kv_router_application_name: Optional[str] = None,
     ):
         """Bind to the tracker registered for this deployment.
 
@@ -61,10 +63,19 @@ class KVAwareRouter(MultiplexMixin, RequestRouter):
             session_affinity_ttl_s: How long to keep an idle session on the same
                 replica, in seconds. Defaults to 1800 (30 minutes).
                 ``0`` disables session pinning.
+            kv_router_application_name: Serve application that owns KV routing
+                for this model. When omitted, the model's LLMRouter owns it.
         """
         self._kv_token_tracker = get_kv_token_tracker(
             getattr(self, "_deployment_id", None)
         )
+        if (
+            self._kv_token_tracker is not None
+            and kv_router_application_name is not None
+        ):
+            context = serve.context._get_internal_replica_context()
+            if context is None or context.app_name != kv_router_application_name:
+                self._kv_token_tracker = None
         if self._kv_token_tracker is None:
             logger.warning(
                 "No KVTokenTracker in this process (%s); KVAwareRouter "
@@ -152,3 +163,17 @@ def is_kv_aware(llm_config: LLMConfig) -> bool:
     return isinstance(request_router_config, RequestRouterConfig) and issubclass(
         request_router_config.get_request_router_class(), KVAwareRouter
     )
+
+
+def get_kv_router_application_name(
+    request_router_config: Union[RequestRouterConfig, dict, None],
+) -> Optional[str]:
+    """Read the shared KV router owner from the model's request router config."""
+    if isinstance(request_router_config, dict):
+        request_router_config = RequestRouterConfig(**request_router_config)
+    if request_router_config is None:
+        return None
+    name = request_router_config.request_router_kwargs.get("kv_router_application_name")
+    if name is not None and (not isinstance(name, str) or not name.strip()):
+        raise ValueError("kv_router_application_name must be a nonempty app name.")
+    return name

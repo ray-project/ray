@@ -39,6 +39,7 @@ from ray.serve._private.constants import (
     SERVE_ROUTER_APPLICATION_ORIGINAL_METHOD_HEADER,
     SERVE_SESSION_ID,
 )
+from ray.serve.config import RequestRouterConfig
 from ray.serve.exceptions import DeploymentUnavailableError, RayServeException
 from ray.serve.llm.request_router import KVAwareRouter
 
@@ -458,10 +459,12 @@ class TestRoutingDecision:
 
         model_apps = {"model-a": "app-a", "model-b": "app-b", "model-c": "app-c"}
         configs = _llm_configs(model_apps)
+        request_router_config = RequestRouterConfig(
+            request_router_class=KVAwareRouter,
+            request_router_kwargs={"kv_router_application_name": "router"},
+        )
         for config in configs[:2]:
-            config.deployment_config = {
-                "request_router_config": {"request_router_class": KVAwareRouter}
-            }
+            config.deployment_config = {"request_router_config": request_router_config}
         token_ids = {"model-a": [1, 2], "model-b": [3, 4]}
         trackers = {}
 
@@ -499,11 +502,28 @@ class TestRoutingDecision:
         monkeypatch.setattr(
             router_application_module.serve, "get_deployment_handle", MagicMock()
         )
+        client = MagicMock()
+        client.get_deployment_info.return_value = (
+            SimpleNamespace(
+                deployment_config=SimpleNamespace(
+                    request_router_config=request_router_config
+                )
+            ),
+            None,
+        )
+        monkeypatch.setattr(
+            router_application_module.serve.context,
+            "_get_global_client",
+            lambda: client,
+        )
         kv_token_tracker.set_kv_token_tracker(None)
         router, handles, patcher = _new_router(model_apps, llm_configs=configs)
         try:
             await asyncio.gather(*router._handles.values())
             assert set(router._kv_states) == {"model-a", "model-b"}
+            assert {
+                call.args for call in client.get_deployment_info.call_args_list
+            } == {("Ingress", "app-a"), ("Ingress", "app-b")}
             for model_id, ids in token_ids.items():
                 handle = handles[model_apps[model_id]]
                 handle.routing_stats = {
@@ -550,6 +570,35 @@ class TestRoutingDecision:
         finally:
             patcher.stop()
             kv_token_tracker.set_kv_token_tracker(None)
+
+    @pytest.mark.parametrize("deployed_owner", [None, "other-router"])
+    def test_cannot_track_a_model_owned_by_another_router(
+        self, monkeypatch, deployed_owner
+    ):
+        router = RouterApplication.__new__(RouterApplication)
+        router._app_name = "router"
+        client = MagicMock()
+        client.get_deployment_info.return_value = (
+            SimpleNamespace(
+                deployment_config=SimpleNamespace(
+                    request_router_config=RequestRouterConfig(
+                        request_router_class=KVAwareRouter,
+                        request_router_kwargs={
+                            "kv_router_application_name": deployed_owner
+                        },
+                    )
+                )
+            ),
+            None,
+        )
+        monkeypatch.setattr(
+            router_application_module.serve.context,
+            "_get_global_client",
+            lambda: client,
+        )
+
+        with pytest.raises(RayServeException, match="set to 'router'"):
+            router._check_kv_router_owner(FakeHandle("model-app"))
 
     @pytest.mark.asyncio
     async def test_resolves_handles_at_startup_and_reuses_them(self):

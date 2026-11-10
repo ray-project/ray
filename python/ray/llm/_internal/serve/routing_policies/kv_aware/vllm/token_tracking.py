@@ -1,5 +1,5 @@
 import asyncio
-from typing import Dict, Optional, Type
+from typing import Optional, Type
 
 from vllm.outputs import RequestOutput
 from vllm.sampling_params import RequestOutputKind
@@ -150,39 +150,31 @@ def enable_token_tracking(
     engine_cls: Type[AsyncLLM],
     report_decode_progress: bool = False,
     model_id: Optional[str] = None,
+    kv_router_application_name: Optional[str] = None,
 ) -> Type[AsyncLLM]:
     """Decorator adding KV-router request lifecycle tracking."""
 
     class TokenTrackingEngine(engine_cls):
-        _lifecycle_forwarders: Optional[
-            Dict[Optional[str], LifecycleEventForwarder]
-        ] = None
+        _lifecycle_forwarder: Optional[LifecycleEventForwarder] = None
         _resolve_warned: bool = False
         _report_decode_progress: bool = report_decode_progress
 
         def _resolve_lifecycle_forwarder(self) -> Optional[LifecycleEventForwarder]:
-            if self._lifecycle_forwarders is None:
-                self._lifecycle_forwarders = {}
-            router_application = (
-                serve.context._get_serve_request_context().router_application_name
-            )
-            if router_application not in self._lifecycle_forwarders:
+            if self._lifecycle_forwarder is None:
                 try:
-                    if router_application is None:
+                    if kv_router_application_name is None:
                         handle = get_llm_router_handle()
                         destination_model_id = None
                     else:
                         handle = serve.get_deployment_handle(
                             ROUTER_APPLICATION_DEPLOYMENT_NAME,
-                            app_name=router_application,
+                            app_name=kv_router_application_name,
                         )
                         destination_model_id = model_id
                     worker_id = get_worker_id(
                         serve.get_replica_context().replica_id.unique_id
                     )
-                    self._lifecycle_forwarders[
-                        router_application
-                    ] = LifecycleEventForwarder(
+                    self._lifecycle_forwarder = LifecycleEventForwarder(
                         handle,
                         worker_id,
                         model_id=destination_model_id,
@@ -192,12 +184,11 @@ def enable_token_tracking(
                     if not self._resolve_warned:
                         self._resolve_warned = True
                         logger.warning("KV token tracking disabled: %s", e)
-            return self._lifecycle_forwarders.get(router_application)
+            return self._lifecycle_forwarder
 
         def shutdown(self, *args, **kwargs):
-            if self._lifecycle_forwarders is not None:
-                for forwarder in self._lifecycle_forwarders.values():
-                    forwarder.close()
+            if self._lifecycle_forwarder is not None:
+                self._lifecycle_forwarder.close()
             return super().shutdown(*args, **kwargs)
 
         async def generate(self, prompt, sampling_params, request_id, *args, **kwargs):

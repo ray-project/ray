@@ -111,7 +111,6 @@ from ray.serve._private.constants import (
     SERVE_LOGGER_NAME,
     SERVE_MULTIPLEXED_MODEL_ID,
     SERVE_NAMESPACE,
-    SERVE_ROUTER_APPLICATION_NAME_HEADER,
     USER_HEALTH_CHECK_PROBE_INTERVAL_S,
     USER_HEALTH_CHECK_PROBE_MAX_FAIL,
     USER_HEALTH_CHECK_PROBE_TIMEOUT_S,
@@ -2523,7 +2522,6 @@ class Replica:
                     cancel_on_parent_request_cancel=self._ingress
                     and RAY_SERVE_ENABLE_DIRECT_INGRESS,
                     _ray_trace_ctx=ray_trace_ctx,
-                    router_application_name=request_metadata.router_application_name,
                 )
             )
 
@@ -3250,10 +3248,6 @@ class Replica:
             _http_method=scope.get("method", "WS").upper(),
             is_direct_ingress=True,
             _client=format_client_address(scope.get("client")),
-            router_application_name=headers.get(
-                SERVE_ROUTER_APPLICATION_NAME_HEADER.encode(), b""
-            ).decode()
-            or None,
         )
 
         if not self._can_accept_request(request_metadata):

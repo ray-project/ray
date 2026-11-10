@@ -26,6 +26,7 @@ from ray.llm._internal.serve.core.server.builder import (
 from ray.llm._internal.serve.core.server.llm_server import LLMServer
 from ray.llm._internal.serve.observability.logging import get_logger
 from ray.llm._internal.serve.routing_policies.kv_aware.kv_aware_router import (
+    get_kv_router_application_name,
     is_kv_aware,
 )
 from ray.serve._private.constants import (
@@ -266,9 +267,21 @@ def build_openai_app(builder_config: dict) -> Application:
     builder_config = LLMServingArgs.model_validate(builder_config)
     llm_configs = builder_config.llm_configs
 
-    # Direct streaming attaches LLMRouter as the ingress request router and
-    # uses the LLMServer deployment itself as the ingress app, so it returns
-    # before the regular OpenAiIngress wiring.
+    shared_kv_router = any(
+        is_kv_aware(config)
+        and get_kv_router_application_name(
+            config.deployment_config.get("request_router_config")
+        )
+        is not None
+        for config in llm_configs
+    )
+    if shared_kv_router and not (
+        RAY_SERVE_ENABLE_HA_PROXY and RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING
+    ):
+        raise ValueError("A shared KV router requires HAProxy and direct streaming.")
+
+    # Direct streaming uses LLMServer itself as the ingress. Attach LLMRouter
+    # for replica selection when the model owns its routing.
     if RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING:
         if len(llm_configs) > 1:
             raise ValueError(
@@ -281,14 +294,20 @@ def build_openai_app(builder_config: dict) -> Application:
             builder_config.ingress_deployment_config,
             builder_config.ingress_cls_config,
         )
-        direct_deployment = _build_direct_streaming_llm_deployment(llm_configs[0])
+        llm_config = llm_configs[0]
+        if shared_kv_router and llm_config.lora_config is not None:
+            raise ValueError("A shared KV router does not support LoRA configs.")
+        direct_deployment = _build_direct_streaming_llm_deployment(llm_config)
+        if shared_kv_router:
+            # The shared router owns replica selection and lifecycle accounting.
+            return direct_deployment
         logger.info(
             "Direct streaming enabled: "
             "LLMServer=ingress, LLMRouter=ingress_request_router"
         )
         return direct_deployment._with_ingress_request_router(
             _build_openai_ingress_request_router(
-                server=direct_deployment, llm_config=llm_configs[0]
+                server=direct_deployment, llm_config=llm_config
             )
         )
 
@@ -380,7 +399,13 @@ class OpenAIRouterArgs(BaseModelExtended):
 def build_openai_router_app(
     router_args: dict,
 ) -> Application:
-    """Build a router for independently deployed OpenAI model applications."""
+    """Build a router for independently deployed OpenAI model applications.
+
+    For KV-aware models, set ``kv_router_application_name`` in the model's
+    ``deployment_config.request_router_config.request_router_kwargs`` to this
+    router's Serve application name. The model is then built without a local
+    LLMRouter, and its engine reports lifecycle events to the shared router.
+    """
     # Import lazily: router_application imports router, whose module-level
     # @serve.ingress(FastAPI()) fails when fastapi is mocked, as in the docs
     # build, which breaks `import ray.serve.llm`.

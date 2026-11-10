@@ -37,6 +37,8 @@ from ray.llm._internal.serve.routing_policies.kv_aware.constants import (
     REQUEST_TOKEN_IDS_KWARG,
 )
 from ray.llm._internal.serve.routing_policies.kv_aware.kv_aware_router import (
+    KVAwareRouter,
+    get_kv_router_application_name,
     is_kv_aware,
 )
 from ray.llm._internal.serve.routing_policies.kv_aware.kv_token_tracker import (
@@ -196,6 +198,7 @@ class RouterApplication:
         }
         if self._kv_states:
             context = serve.get_replica_context()
+            self._app_name = context.app_name
             self._self_handle = serve.get_deployment_handle(
                 context.deployment, app_name=context.app_name
             )
@@ -361,21 +364,25 @@ class RouterApplication:
         )
 
     async def _resolve_handle(self, model_id: str, app_name: str) -> DeploymentHandle:
-        """Look up the application's handle, retrying until it is deployed."""
+        """Look up the application's handle once it is ready for routing."""
+        state = self._kv_states.get(model_id)
         backoff_s = HANDLE_RETRY_INITIAL_S
         first_failure_s = None
         last_log_s = 0.0
         while True:
             try:
                 handle = await asyncio.to_thread(serve.get_app_handle, app_name)
+                if state is not None:
+                    await asyncio.to_thread(self._check_kv_router_owner, handle)
                 break
-            # Not deployed yet (or misnamed), no controller yet, or controller restarting.
+            # The target may still be deploying or waiting for the matching
+            # ownership configuration.
             except (RayServeException, RayError) as e:
                 now = time.monotonic()
                 if first_failure_s is None:
                     first_failure_s = last_log_s = now
                     logger.warning(
-                        "Model application %s is not available yet; retrying: %r",
+                        "Model application %s is not ready to route; retrying: %r",
                         app_name,
                         e,
                     )
@@ -391,7 +398,6 @@ class RouterApplication:
                 backoff_s = min(backoff_s * 2, HANDLE_RETRY_MAX_S)
         if first_failure_s is not None:
             logger.info("Model application %s is now available.", app_name)
-        state = self._kv_states.get(model_id)
         if state is not None:
             state.start_tracking(
                 handle.deployment_id, self._self_handle, model_id=model_id
@@ -400,6 +406,26 @@ class RouterApplication:
         if not handle.is_initialized:
             handle._init()
         return handle
+
+    def _check_kv_router_owner(self, handle: DeploymentHandle) -> None:
+        # Read deployment config from the controller so a scaled-to-zero model
+        # does not have to start a replica to tell us who owns its KV routing.
+        try:
+            info, _ = serve.context._get_global_client().get_deployment_info(
+                handle.deployment_id.name, handle.deployment_id.app_name
+            )
+        except KeyError as e:
+            raise RayServeException(str(e)) from e
+        config = info.deployment_config.request_router_config
+        if (
+            not issubclass(config.get_request_router_class(), KVAwareRouter)
+            or get_kv_router_application_name(config) != self._app_name
+        ):
+            raise RayServeException(
+                f"Model application {handle.deployment_id.app_name!r} must use "
+                "KVAwareRouter with kv_router_application_name set to "
+                f"{self._app_name!r} in request_router_kwargs."
+            )
 
     async def _decide(
         self,

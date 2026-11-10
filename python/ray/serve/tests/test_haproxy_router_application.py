@@ -25,7 +25,6 @@ from ray.serve._private.constants import (
     SERVE_INGRESS_ROUTER_REQUEST_PATH_HEADER,
     SERVE_MULTIPLEXED_MODEL_ID,
     SERVE_ROUTER_APPLICATION_DIRECT_RESPONSE_HEADER,
-    SERVE_ROUTER_APPLICATION_NAME_HEADER,
     SERVE_ROUTER_APPLICATION_ORIGINAL_METHOD_HEADER,
 )
 from ray.serve._private.haproxy import (
@@ -261,10 +260,8 @@ def _fake_replica(port: int, name: str) -> uvicorn.Server:
             "serve_headers": sorted(
                 k for k in request.headers if k.startswith("x-serve-")
             ),
-            "router_application": request.headers.get(
-                SERVE_ROUTER_APPLICATION_NAME_HEADER
-            ),
             "multiplexed_model_id": request.headers.get(SERVE_MULTIPLEXED_MODEL_ID),
+            "token_key": request.headers.get("x-serve-router-kv-token-key"),
         }
 
     return _serve(app, port)
@@ -480,8 +477,7 @@ async def test_post_dispatches_to_selected_replica(router_cluster):
         assert served["path"] == f"/v1/{app}/v1/chat/completions"
         assert served["query"] == "x=1"
         assert json.loads(served["body"]) == body
-        assert served["serve_headers"] == [SERVE_ROUTER_APPLICATION_NAME_HEADER]
-        assert served["router_application"] == "router"
+        assert served["serve_headers"] == []
         call = router.calls[-1]
         assert call["method"] == "POST"
         assert call["path"] == "/internal/route"
@@ -530,16 +526,11 @@ async def test_applies_router_application_request_headers(target_ingress_router)
             ),
         )
 
-        resp = _chat(
-            url, {}, headers={SERVE_ROUTER_APPLICATION_NAME_HEADER: "forged-router"}
-        )
+        resp = _chat(url, {}, headers={"x-serve-router-kv-token-key": "untrusted-key"})
 
         assert resp.status_code == 200, resp.text
-        assert resp.json()["serve_headers"] == [
-            SERVE_ROUTER_APPLICATION_NAME_HEADER,
-            "x-serve-router-kv-token-key",
-        ]
-        assert resp.json()["router_application"] == "router"
+        assert resp.json()["serve_headers"] == ["x-serve-router-kv-token-key"]
+        assert resp.json()["token_key"] == "token-key"
         assert resp.json()["multiplexed_model_id"] == "trusted-adapter"
         assert len(router.calls) == 1
 

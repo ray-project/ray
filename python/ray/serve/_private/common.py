@@ -885,8 +885,6 @@ class RequestMetadata:
 
     # Token for a replica-side slot reserved by choose_replica().
     _reserved_slot_token: Optional[str] = None
-    # Router application that selected this request's target replica.
-    router_application_name: Optional[str] = None
 
     @property
     def is_http_request(self) -> bool:

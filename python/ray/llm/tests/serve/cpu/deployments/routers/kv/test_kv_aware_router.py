@@ -98,12 +98,22 @@ def test_non_kv_router_warns_kv_events_config():
     assert "KVAwareRouter" in logger.warning.call_args.args[0]
 
 
-def test_build_openai_app_configures_kv_routing():
+@pytest.mark.parametrize("shared_router", [None, "shared-router"])
+def test_build_openai_app_configures_kv_routing(monkeypatch, shared_router):
     """A KVAwareRouter LLMConfig enables the engine's KV-cache events at build
     time, so the tracker the LLMRouter ingress builds has events to index."""
     llm_config = build_test_llm_config()
-    build_openai_app(LLMServingArgs(llm_configs=[llm_config]))
+    monkeypatch.setattr(
+        "ray.llm._internal.serve.core.ingress.builder.RAY_SERVE_ENABLE_HA_PROXY",
+        True,
+    )
+    if shared_router is not None:
+        llm_config.deployment_config["request_router_config"][
+            "request_router_kwargs"
+        ] = {"kv_router_application_name": shared_router}
+    app = build_openai_app(LLMServingArgs(llm_configs=[llm_config]))
 
+    assert (app._ingress_request_router is None) == (shared_router is not None)
     kv_events_config = llm_config.engine_kwargs.get("kv_events_config")
     assert kv_events_config is not None
     assert kv_events_config["enable_kv_cache_events"] is True

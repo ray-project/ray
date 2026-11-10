@@ -275,9 +275,7 @@ async def consume(stream, limit=None):
 
 async def drain(engine):
     """Wait for the engine forwarder's queued lifecycle batches to land."""
-    await asyncio.gather(
-        *(forwarder.flush() for forwarder in engine._lifecycle_forwarders.values())
-    )
+    await engine._lifecycle_forwarder.flush()
 
 
 def decode_counts(events):
@@ -642,36 +640,25 @@ def test_decorator_returns_subclass():
 
 
 @pytest.mark.asyncio
-async def test_concurrent_requests_report_to_their_router_application(monkeypatch):
+async def test_requests_report_to_the_configured_router_application(monkeypatch):
     class RouterApplicationTarget:
         def __init__(self):
-            self.model_id = None
-            self.events = []
+            self.batches = []
 
         async def on_model_lifecycle_events(self, model_id, events):
-            self.model_id = model_id
-            self.events.extend(events)
+            self.batches.append((model_id, events))
 
-        async def on_lifecycle_events(self, events):
-            self.events.extend(events)
-
-    targets = {
-        name: RouterApplicationTarget() for name in ("router-a", "router-b", None)
-    }
+    target = RouterApplicationTarget()
     resolved = []
 
     def get_router_handle(deployment, app_name):
-        resolved.append(app_name)
-        return _BroadcastHandle(targets[app_name])
+        resolved.append((deployment, app_name))
+        return _BroadcastHandle(target)
 
     monkeypatch.setattr(
         serve,
         "get_deployment_handle",
         get_router_handle,
-    )
-    monkeypatch.setattr(
-        "ray.llm._internal.serve.routing_policies.kv_aware.vllm.token_tracking.get_llm_router_handle",
-        lambda: _BroadcastHandle(targets[None]),
     )
     monkeypatch.setattr(
         serve,
@@ -680,40 +667,27 @@ async def test_concurrent_requests_report_to_their_router_application(monkeypatc
             replica_id=SimpleNamespace(unique_id=REPLICA_UNIQUE_ID)
         ),
     )
-    engine = enable_token_tracking(MockAsyncLLM, model_id="model-a")(delta_steps(2))
-
-    async def request(router_application, index):
-        request_id = f"request-{router_application}-{index}"
-        token = serve.context._serve_request_context.set(
-            serve.context._RequestContext(
-                request_id=request_id, router_application_name=router_application
-            )
-        )
-        try:
-            await consume(
-                engine.generate(
-                    PROMPT,
-                    SamplingParams(output_kind=RequestOutputKind.DELTA),
-                    request_id,
-                )
-            )
-        finally:
-            serve.context._serve_request_context.reset(token)
+    engine = enable_token_tracking(
+        MockAsyncLLM, model_id="model-a", kv_router_application_name="shared-router"
+    )(delta_steps(2))
 
     for index in range(2):
-        await asyncio.gather(*(request(name, index) for name in targets))
+        await consume(
+            engine.generate(
+                PROMPT,
+                SamplingParams(output_kind=RequestOutputKind.DELTA),
+                f"request-{index}",
+            )
+        )
     await drain(engine)
 
-    assert sorted(resolved) == ["router-a", "router-b"]
-    for router_application, target in targets.items():
-        assert target.model_id == (
-            "model-a" if router_application is not None else None
-        )
-        assert target.events == [
-            (event, (f"request-{router_application}-{index}",))
-            for index in range(2)
-            for event in ("on_prefill_complete", "on_request_completed")
-        ]
+    assert resolved == [("RouterApplication", "shared-router")]
+    assert {model_id for model_id, _ in target.batches} == {"model-a"}
+    assert [event for _, events in target.batches for event in events] == [
+        (event, (f"request-{index}",))
+        for index in range(2)
+        for event in ("on_prefill_complete", "on_request_completed")
+    ]
 
 
 @pytest.mark.asyncio
@@ -738,7 +712,7 @@ async def test_passthrough_without_llm_router(monkeypatch):
     )
 
     assert len(outputs) == 2
-    assert engine._lifecycle_forwarders == {}  # resolution failed; retried next call
+    assert engine._lifecycle_forwarder is None  # Retried on the next call.
 
 
 @pytest.mark.parametrize(

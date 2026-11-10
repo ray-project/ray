@@ -7,29 +7,11 @@ from fastapi.responses import PlainTextResponse
 
 from ray import serve
 from ray.serve._private.test_utils import get_application_url
-from ray.serve.context import (
-    _get_serve_request_context,
-    _RequestContext,
-    _serve_request_context,
-    _set_request_context,
-)
+from ray.serve.context import _get_serve_request_context
 
 
 def _get_request_context_route() -> str:
     return _get_serve_request_context().route
-
-
-def test_context_updates_preserve_router_application():
-    token = _serve_request_context.set(
-        _RequestContext(router_application_name="router")
-    )
-    try:
-        _set_request_context(request_id="updated")
-        context = _get_serve_request_context()
-        assert context.router_application_name == "router"
-        assert context.request_id == "updated"
-    finally:
-        _serve_request_context.reset(token)
 
 
 class TestHTTPRoute:

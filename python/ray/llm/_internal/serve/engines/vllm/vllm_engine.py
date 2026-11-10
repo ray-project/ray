@@ -65,6 +65,7 @@ from ray.llm._internal.serve.routing_policies.kv_aware import (
     token_channel,
 )
 from ray.llm._internal.serve.routing_policies.kv_aware.kv_aware_router import (
+    get_kv_router_application_name,
     is_kv_aware,
 )
 from ray.llm._internal.serve.routing_policies.kv_aware.vllm.kv_events import (
@@ -651,6 +652,9 @@ class VLLMEngine(LLMEngine):
                 AsyncLLM,
                 report_decode_progress=RAY_SERVE_LLM_ENABLE_DECODE_BLOCK_PROGRESS,
                 model_id=self.llm_config.model_id,
+                kv_router_application_name=get_kv_router_application_name(
+                    self.llm_config.deployment_config.get("request_router_config")
+                ),
             )
         engine_client = engine_cls(
             vllm_config=vllm_engine_config,
