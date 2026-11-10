@@ -163,10 +163,6 @@ class ReportHead(SubprocessModule):
             thread_name_prefix="reporter_head_executor",
         )
 
-        # Fetched from GCS only once on startup in run(). It's static throughout the
-        # the cluster's lifetime.
-        self.cluster_metadata = None
-
         self._health_checker = HealthChecker(self.gcs_client)
 
     def _profiling_disabled_response(self) -> aiohttp.web.Response:
@@ -222,7 +218,7 @@ class ReportHead(SubprocessModule):
         return dashboard_optional_utils.rest_response(
             status_code=dashboard_utils.HTTPStatusCode.OK,
             message="",
-            **self.cluster_metadata,
+            **(await self._get_cluster_metadata()),
         )
 
     @routes.get("/api/cluster_status")
@@ -280,8 +276,7 @@ class ReportHead(SubprocessModule):
             )
 
     async def get_task_ids_running_in_a_worker(self, worker_id: str) -> List[str]:
-        """
-        Retrieves the task IDs of running tasks associated with a specific worker.
+        """Retrieves the task IDs of running tasks associated with a specific worker.
 
         Args:
             worker_id: The ID of the worker.
@@ -1150,9 +1145,7 @@ class ReportHead(SubprocessModule):
 
     @routes.get("/api/prometheus/sd")
     async def prometheus_service_discovery(self, req) -> aiohttp.web.Response:
-        """
-        Expose Prometheus metrics targets through HTTP Service Discovery.
-        """
+        """Expose Prometheus metrics targets through HTTP Service Discovery."""
         content = self.service_discovery.get_latest_service_discovery_content()
         if not isinstance(content, list):
             error_message = "service discovery error: content is not a list"
@@ -1173,8 +1166,7 @@ class ReportHead(SubprocessModule):
     async def _get_stub_address_by_node_id(
         self, node_id: NodeID
     ) -> Optional[Tuple[NodeID, str, int, int]]:
-        """
-        Given a NodeID, get agent port from InternalKV.
+        """Given a NodeID, get agent port from InternalKV.
 
         returns a tuple of (ip, http_port, grpc_port).
 
@@ -1231,8 +1223,14 @@ class ReportHead(SubprocessModule):
         self.service_discovery.daemon = True
         self.service_discovery.start()
 
+    async def _get_cluster_metadata(self) -> dict:
+        """Read the cluster metadata, empty until some head has stored it.
+
+        Read per request rather than cached at startup: no head stores it while
+        its GCS is passive, and a promoted one rewrites it.
+        """
         cluster_metadata = await self.gcs_client.async_internal_kv_get(
             CLUSTER_METADATA_KEY,
             namespace=KV_NAMESPACE_CLUSTER,
         )
-        self.cluster_metadata = json.loads(cluster_metadata.decode("utf-8"))
+        return json.loads(cluster_metadata.decode("utf-8")) if cluster_metadata else {}
