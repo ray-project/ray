@@ -1,7 +1,8 @@
 """End-to-end reads through the footer-based Parquet chunking path.
 
 Drives ``FooterFileIndexer`` via ``ray.data.read_parquet``, covering
-predicate / limit / projection push-down. The pure-logic pieces
+predicate / limit / projection push-down, and the fault tolerance of the
+``FooterReaderActor`` pool. The pure-logic pieces
 (coalescing, bin packing) are unit-tested in
 ``python/ray/data/tests/unit/datasource_v2/test_online_bin_packer.py``.
 """
@@ -181,6 +182,54 @@ def test_e2e_row_group_shuffle_mixes_files(footer_parquet, monkeypatch):
     # ...but runs of one file no longer arrive back to back.
     files = [run[0] // _N_PER_FILE for run in runs]
     assert sum(a != b for a, b in zip(files, files[1:])) > _N_FILES - 1
+
+
+# ---------------------------------------------------------------------------
+# Fault tolerance of FooterReader actors
+# ---------------------------------------------------------------------------
+
+
+def test_read_footers_actor_returns_all_file_chunks_after_actor_death(footer_parquet):
+    import os
+    import signal
+
+    from pyarrow.fs import LocalFileSystem
+
+    import ray
+    from ray.data._internal.datasource_v2.formats.parquet.footer_reader import (
+        FooterReaderActor,
+    )
+    from ray.data._internal.datasource_v2.interfaces.file_indexer import FileInfo
+
+    paths = [
+        os.path.join(footer_parquet, name)
+        for name in sorted(os.listdir(footer_parquet))
+    ]
+    file_infos = [FileInfo(path=p, size=os.path.getsize(p)) for p in paths]
+
+    actor = FooterReaderActor.remote(LocalFileSystem())
+    # ``ActorProxy`` stubs don't model the built-in ``__ray_call__``.
+    # pyrefly: ignore[missing-attribute]
+    pid: int = ray.get(actor.__ray_call__.remote(lambda self: os.getpid()))
+
+    # Backpressure keeps the generator at most one batch ahead of the caller, so
+    # it can't finish before the kill. The actor dies after the caller consumed
+    # the first batch, and the retry must not repeat it.
+    # pyrefly: ignore[missing-attribute]
+    gen = actor.read_footers.options(_generator_backpressure_num_objects=1).remote(
+        file_infos
+    )
+    chunked_files = list(ray.get(next(gen)))
+    os.kill(pid, signal.SIGKILL)
+    for ref in gen:
+        chunked_files.extend(ray.get(ref))
+
+    assert [chunked.file.path for chunked in chunked_files] == paths
+    assert sum(
+        row_group.num_rows
+        for chunked in chunked_files
+        for row_group in chunked.row_groups
+    ) == (_N_PER_FILE * _N_FILES)
 
 
 if __name__ == "__main__":

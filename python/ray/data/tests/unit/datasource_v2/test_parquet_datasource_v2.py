@@ -384,25 +384,19 @@ def test_footer_indexer_skip_paths_ignores_missing_named_path(tmp_path):
     assert [info.path for info in infos] == [datasource.paths[0]]
 
 
-class _RecordingFooterActor:
-    """Stands in for a ``FooterReaderActor`` handle, recording call kwargs.
+class _FakeFooterActor:
+    """Stands in for a ``FooterReaderActor`` handle.
 
     Lets the wiring be asserted without spinning up Ray: ``read_footers.remote``
-    returns the batch's chunks inline, shaped like the streaming generator the
-    driver expects (an iterable of refs, each resolving to a list of
-    ``ChunkedFile``).
+    returns the batch's chunks inline, in ``batch`` order like the real
+    ``read_footers``, shaped like the streaming generator the driver expects (an
+    iterable of refs, each resolving to a list of ``ChunkedFile``).
     """
 
-    def __init__(self, calls):
-        self._calls = calls
+    def __init__(self):
         self.read_footers = self
 
-    def remote(self, batch, *, result_batch_size, preserve_order):
-        self._calls.append(preserve_order)
-        # Mimic the real ``read_footers``: honoring the flag yields in ``batch``
-        # order, otherwise in completion order -- stubbed as reversed, standing in
-        # for any IO-timing permutation.
-        ordered = batch if preserve_order else list(reversed(batch))
+    def remote(self, batch, *, result_batch_size):
         return [
             [
                 ChunkedFile(
@@ -412,17 +406,15 @@ class _RecordingFooterActor:
                     ),
                 )
             ]
-            for file in ordered
+            for file in batch
         ]
 
 
 @pytest.fixture
-def recorded_preserve_order_flags(monkeypatch):
-    """Yield the ``preserve_order`` flags ``read_footers`` was invoked with."""
+def fake_footer_actors(monkeypatch):
+    """Replace the ``FooterReaderActor`` pool with in-process fakes."""
     import ray
     from ray.data._internal.datasource_v2.formats.parquet import footer_file_indexer
-
-    calls = []
 
     class _FakeActorClass:
         @staticmethod
@@ -430,7 +422,7 @@ def recorded_preserve_order_flags(monkeypatch):
             class _Builder:
                 @staticmethod
                 def remote(*_args, **_kwargs):
-                    return _RecordingFooterActor(calls)
+                    return _FakeFooterActor()
 
             return _Builder
 
@@ -438,47 +430,10 @@ def recorded_preserve_order_flags(monkeypatch):
     # The driver resolves refs and tears the pool down; neither needs a real Ray.
     monkeypatch.setattr(ray, "get", lambda ref: ref)
     monkeypatch.setattr(ray, "kill", lambda _actor: None)
-    return calls
-
-
-@pytest.mark.parametrize("preserve_order", [True, False])
-def test_footer_indexer_forwards_preserve_order_to_footer_reads(
-    tmp_path, monkeypatch, recorded_preserve_order_flags, preserve_order
-):
-    """``preserve_order`` must reach ``read_footers``, not just path discovery.
-
-    ``read_footers`` yields in completion order by default, so a dropped flag
-    leaves manifest order -- and therefore bin packing and downstream read-task
-    order -- dependent on footer IO timing.
-    """
-    monkeypatch.setenv("RAY_DATA_PARQUET_FOOTER_NUM_ACTORS", "2")
-    # More files than one footer batch holds, so several dispatches are recorded.
-    monkeypatch.setenv("RAY_DATA_PARQUET_FOOTER_BATCH_SIZE", "2")
-    paths = []
-    for i in range(5):
-        path = tmp_path / f"f{i}.parquet"
-        _write_parquet(str(path), pa.table({"a": [i]}))
-        paths.append(str(path))
-
-    datasource = ParquetDatasourceV2(paths)
-    indexer = datasource._get_file_indexer()
-    assert isinstance(indexer, FooterFileIndexer)
-
-    manifests = list(
-        indexer.list_files(
-            pa.array(datasource.paths),
-            filesystem=datasource.filesystem,
-            preserve_order=preserve_order,
-        )
-    )
-
-    assert manifests, "expected the footer path to emit manifests"
-    # 5 files at a batch size of 2 -> 3 dispatched batches.
-    assert recorded_preserve_order_flags == [preserve_order] * 3
 
 
 def test_footer_indexer_preserves_listing_order_across_batches(
-    tmp_path, monkeypatch, recorded_preserve_order_flags
+    tmp_path, monkeypatch, fake_footer_actors
 ):
     """Order must hold across footer batches, not only within one.
 
