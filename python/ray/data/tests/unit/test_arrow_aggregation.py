@@ -61,6 +61,20 @@ def test_unsigned_integer_sum_does_not_overflow():
     assert result.to_pylist() == [2**64]
 
 
+def test_unsigned_integer_sum_preserves_uint64_when_it_fits():
+    agg = sum_spec()
+    partial = _aggregate(
+        pa.table({"g": [0], "v": pa.array([2**62], type=pa.uint64())}),
+        agg,
+        "v",
+    )
+
+    result = agg.finalize(partial, tuple(agg.components))
+
+    assert result.type == pa.uint64()
+    assert result.to_pylist() == [2**62]
+
+
 def test_decimal_sum_is_not_widened():
     agg = sum_spec()
     partial = _aggregate(

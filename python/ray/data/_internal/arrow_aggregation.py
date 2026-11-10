@@ -9,6 +9,8 @@ import pyarrow.compute as pc
 # has enough precision for the largest practical sum of int64/uint64 data while
 # keeping the accumulator compact enough for the vectorized aggregation path.
 _INTEGER_SUM_TYPE = pa.decimal128(38, 0)
+_SIGNED_INTEGER_MARKER = 1
+_UNSIGNED_INTEGER_MARKER = 2
 
 
 def _prepare_integer_sum_column(
@@ -31,19 +33,25 @@ def _prepare_integer_sum_column(
 def _prepare_integer_sum_and_marker(
     agg_index: int, source_col: Optional[str], block: "pa.Table"
 ) -> "pa.Table":
-    """Prepare a sum input column and record whether it was widened."""
+    """Prepare a sum input column and record its integer signedness."""
 
     input_col = f"__agg{agg_index}_sum_input"
     marker_col = f"__agg{agg_index}_sum_widened"
     source = block[source_col]
-    widened = pa.types.is_integer(source.type)
-    if widened:
+    if pa.types.is_unsigned_integer(source.type):
+        marker = _UNSIGNED_INTEGER_MARKER
+    elif pa.types.is_integer(source.type):
+        marker = _SIGNED_INTEGER_MARKER
+    else:
+        marker = 0
+
+    if marker:
         source = pc.cast(source, _INTEGER_SUM_TYPE)
 
     block = block.append_column(input_col, source)
     return block.append_column(
         marker_col,
-        pa.array([int(widened)] * block.num_rows, type=pa.int8()),
+        pa.array([marker] * block.num_rows, type=pa.int8()),
     )
 
 
@@ -121,12 +129,16 @@ def _finalize_mean(merged: "pa.Table", component_cols: Tuple[str, ...]):
 def _finalize_sum(merged: "pa.Table", component_cols: Tuple[str, ...]):
     sum_col, widened_col = component_cols
 
-    # Integer inputs use a decimal accumulator.  Return an int64 column when
-    # possible to preserve the historical result type, but retain the widened
-    # decimal result if the exact total does not fit in int64.
-    if pc.max(merged[widened_col]).as_py() == 1:
+    # Integer inputs use a decimal accumulator.  Return the historical native
+    # result type when possible, but retain the widened decimal result if the
+    # exact total does not fit in that type.
+    marker = pc.max(merged[widened_col]).as_py()
+    if marker in (_SIGNED_INTEGER_MARKER, _UNSIGNED_INTEGER_MARKER):
+        output_type = (
+            pa.uint64() if marker == _UNSIGNED_INTEGER_MARKER else pa.int64()
+        )
         try:
-            return pc.cast(merged[sum_col], pa.int64(), safe=True)
+            return pc.cast(merged[sum_col], output_type, safe=True)
         except (pa.ArrowInvalid, pa.ArrowNotImplementedError):
             pass
     return merged[sum_col]
