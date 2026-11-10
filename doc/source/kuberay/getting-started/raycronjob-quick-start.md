@@ -28,7 +28,7 @@ The `RayCronJob` CRD acts as an automated scheduler specifically designed to cre
 
 * `schedule` - The cron schedule string defining when a new Ray job should be created and run (e.g., `* * * * *` for every minute).
 * `jobTemplate` - The template for the RayJob that the controller creates on each scheduled run.
-  * `metadata` (Optional): Labels and annotations that the controller copies onto each RayJob, such as a Kueue `kueue.x-k8s.io/queue-name` label.
+  * `metadata` (Optional; KubeRay v1.8.0+): Labels and annotations that the controller copies onto each RayJob, such as a Kueue `kueue.x-k8s.io/queue-name` label.
   * `spec` - A standard RayJob spec. See [RayJob Configuration](kuberay-rayjob-quickstart) for the supported fields.
 * `suspend` (Optional): If `suspend` is true, the controller suspends the scheduling of future jobs. This does not apply to or interrupt any `RayJob`s that have already been created and are currently running.
 * `timeZone` (Optional): The time zone for the `schedule`, in [IANA Time Zone Database](https://en.wikipedia.org/wiki/List_of_tz_database_time_zones) format (e.g., `America/Los_Angeles`). If omitted, the schedule uses the local time zone of the KubeRay operator. Do not set `TZ` or `CRON_TZ` in the `schedule` string, use this field instead.
