@@ -739,6 +739,16 @@ class GravitinoCatalog(Catalog):
         reader: ReaderFormat,
         mode: CatalogAccessMode = CatalogAccessMode.READ,
     ) -> ResolvedSource:
+        """Resolve a Gravitino table to an Iceberg REST configuration.
+
+        Args:
+            table: Three-part ``catalog.schema.table`` identifier.
+            reader: Requested table format; only Iceberg is supported.
+            mode: Requested read or write access mode.
+
+        Returns:
+            The PyIceberg catalog configuration and table identifier.
+        """
         if not isinstance(reader, ReaderFormat):
             raise ValueError("reader must be a ReaderFormat value.")
         if not isinstance(mode, CatalogAccessMode):

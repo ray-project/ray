@@ -382,6 +382,7 @@ def test_actual_pyiceberg_auth_configuration(
 ):
     """Exercise the installed PyIceberg API rather than only asserting kwargs."""
     from pyiceberg.catalog import load_catalog
+    from pyiceberg.catalog.rest import RestCatalog
 
     # Inherited authentication must not override explicit authentication or noop.
     monkeypatch.setattr(
@@ -418,7 +419,9 @@ def test_actual_pyiceberg_auth_configuration(
             assert observed == []
             return
         resolved = catalog.resolve("cat.db.tbl", reader=ReaderFormat.ICEBERG)
+        assert resolved.catalog_kwargs is not None
         iceberg = load_catalog("compatibility", **resolved.catalog_kwargs)
+        assert isinstance(iceberg, RestCatalog)
         try:
             assert observed == [expected]
         finally:

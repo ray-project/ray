@@ -174,7 +174,8 @@ def test_iceberg_rest_auth_denial(ray_start_regular_shared):
     catalog = _make_catalog(rest_kwargs=_identity_settings("DENIED_REST_KWARGS"))
     identifier = _required_env("ICEBERG_READ_TABLE")
     catalog.resolve(identifier, reader=ReaderFormat.ICEBERG)
-    with pytest.raises((UnauthorizedError, ForbiddenError)):
+    auth_errors: tuple[type[Exception], ...] = (UnauthorizedError, ForbiddenError)
+    with pytest.raises(auth_errors):
         ray.data.read_iceberg(table_identifier=identifier, catalog=catalog).take_all()
 
 
@@ -186,7 +187,8 @@ def test_missing_iceberg_object(ray_start_regular_shared, gravitino_catalog, mis
         if missing == "catalog"
         else f"{catalog_name}.{schema_name}.missing_table"
     )
-    with pytest.raises((RESTError, NoSuchTableError)) as caught:
+    missing_errors: tuple[type[Exception], ...] = (RESTError, NoSuchTableError)
+    with pytest.raises(missing_errors) as caught:
         ray.data.read_iceberg(
             table_identifier=identifier, catalog=gravitino_catalog
         ).take_all()
@@ -213,6 +215,8 @@ def test_iceberg_worker_storage_read_denial(ray_start_regular_shared):
         }
     )
     resolved = catalog.resolve(identifier, reader=ReaderFormat.ICEBERG)
+    assert resolved.catalog_kwargs is not None
+    assert resolved.table_identifier is not None
     table = load_catalog("denied", **resolved.catalog_kwargs).load_table(
         resolved.table_identifier
     )
@@ -231,6 +235,8 @@ def test_iceberg_worker_storage_write_denial(ray_start_regular_shared):
         }
     )
     resolved = catalog.resolve(identifier, reader=ReaderFormat.ICEBERG)
+    assert resolved.catalog_kwargs is not None
+    assert resolved.table_identifier is not None
     table = load_catalog("denied", **resolved.catalog_kwargs).load_table(
         resolved.table_identifier
     )
