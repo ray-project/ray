@@ -15,6 +15,7 @@ from typing import (
     Tuple,
 )
 
+from ray.data._internal.execution.execution_flags import SIZER_WARMUP_TIMEOUT_S
 from ray.data._internal.execution.interfaces import ExecutionResources
 from ray.data._internal.execution.interfaces.common import NodeIdStr
 from ray.data._internal.execution.resource_manager import (
@@ -109,11 +110,15 @@ class SizingTicker:
         unknown_pg_cap_by_op: Optional[
             Dict["ExperimentalActorPoolMapOperator", int]
         ] = None,
+        warmup_timeout_s: float = SIZER_WARMUP_TIMEOUT_S,
     ):
         self._profiles = profiles
         self.cadence_s = cadence_s
         self.clock = clock
         self.warmup: bool = True
+        self._warmup_timeout_s = warmup_timeout_s
+        # Time of the first tick; the warmup timeout counts from here.
+        self._warmup_started_t: Optional[float] = None
         self.critical_ops: Tuple[
             "ExperimentalActorPoolMapOperator", ...
         ] = self._resolve_critical_ops(profiles.topology)
@@ -138,7 +143,7 @@ class SizingTicker:
             return None
         self._warn_if_loop_lagging(now)
         self.last_eval_t = now
-        self._update_warmup_latch()
+        self._update_warmup_latch(now)
 
         capacity = self.build_capacity_snapshot(cluster_view)
         return TickContext(
@@ -171,20 +176,35 @@ class SizingTicker:
             self.cadence_s,
         )
 
-    def _update_warmup_latch(self) -> None:
+    def _update_warmup_latch(self, now: float) -> None:
         """Warmup ends for good once every critical op has produced its first
         output: the pipeline is flowing end to end, so feedback beats
         feedforward from here on.
 
         A critical op that finished without producing (an empty branch of a union)
-        does not hold warmup open.
+        does not hold warmup open. Nor does one that never produces within the
+        warmup timeout: leaving warmup early only hands sizing to the warm
+        phase, which can still move capacity to it.
         """
         if not self.warmup:
             return
-        if any(
-            op.metrics.num_task_outputs_generated == 0 and not op.has_completed()
+        if self._warmup_started_t is None:
+            self._warmup_started_t = now
+        waiting_on = [
+            op
             for op in self.critical_ops
-        ):
+            if op.metrics.num_task_outputs_generated == 0 and not op.has_completed()
+        ]
+        if waiting_on:
+            if now - self._warmup_started_t < self._warmup_timeout_s:
+                return
+            logger.warning(
+                "OperatorSizer: warmup timed out after %.0fs with no output yet "
+                "from %s; switching to the warm phase.",
+                now - self._warmup_started_t,
+                ", ".join(op.name for op in waiting_on),
+            )
+            self.warmup = False
             return
         logger.info(
             "OperatorSizer: warmup complete (%s produced first output)",

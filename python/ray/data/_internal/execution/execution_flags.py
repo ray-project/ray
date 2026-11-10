@@ -119,6 +119,13 @@ SIZER_UTIL_THRESHOLD: float = env_float("RAY_DATA_SIZER_UTIL_THRESHOLD", 1.75)
 # have not landed by then.
 SIZER_TRANSFER_TIMEOUT_S: float = env_float("RAY_DATA_SIZER_TRANSFER_TIMEOUT_S", 60.0)
 
+# Pipeline optimizer: for this many sizer ticks (SIZER_CADENCE_S each) after a
+# transfer closes, a transfer that would move its capacity back is refused as
+# thrashing. Bounded so a transfer that turns out wrong can still be undone.
+SIZER_TRANSFER_THRASH_WINDOW_TICKS: int = env_integer(
+    "RAY_DATA_SIZER_TRANSFER_THRASH_WINDOW_TICKS", 20
+)
+
 # Length of the optimizer's per-operator signal windows, in samples. One
 # sample is taken per scheduling-loop step.
 SIZER_SIGNAL_WINDOW_SAMPLES: int = env_integer(
@@ -129,6 +136,12 @@ SIZER_SIGNAL_WINDOW_SAMPLES: int = env_integer(
 # the cluster as settled. Capacity transfers wait for this: while the cluster
 # is still growing, the autoscaler gives starved ops capacity.
 SIZER_CLUSTER_SETTLE_S: float = env_float("RAY_DATA_SIZER_CLUSTER_SETTLE_S", 15.0)
+
+# Seconds the sizer stays in warmup at most. Warmup normally ends once every
+# critical operator has produced output; if one never does (e.g. it cannot get
+# an actor), the sizer moves to the warm phase anyway, whose feedback loop and
+# capacity transfers can unstick it.
+SIZER_WARMUP_TIMEOUT_S: float = env_float("RAY_DATA_SIZER_WARMUP_TIMEOUT_S", 300.0)
 
 # Consecutive sizing ticks with an unplaced ask before an operator qualifies
 # as a capacity-transfer recipient.
