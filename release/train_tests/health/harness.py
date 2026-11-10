@@ -163,10 +163,17 @@ class Timeline(ControllerCallback):
         name = type(current_state).__name__
         if name == "RunningState" and type(previous_state).__name__ != name:
             record("RUNNING", "the attempt's training started")
-        error = getattr(current_state, "training_failed_error", None)
+        # A shutdown carries its error on the state it leads to.
+        error = getattr(current_state, "training_failed_error", None) or getattr(
+            getattr(current_state, "next_state", None), "training_failed_error", None
+        )
         if error is not None:
-            text = str(error).strip().splitlines()[-1][:200]
-            record(name.replace("State", "").upper(), text)
+            lines = [
+                line
+                for line in str(error).strip().splitlines()
+                if line.strip() and not line.startswith("Training failed due to")
+            ]
+            record(name.replace("State", "").upper(), lines[0][:200] if lines else "")
 
 
 def _fault_time(events) -> Optional[float]:
@@ -182,11 +189,17 @@ def print_timeline(events, title: str) -> None:
         print(f"    {at}  {kind:<12} {detail}")
 
 
-def seconds_to(events, kinds) -> Optional[float]:
-    """Seconds from the fault firing to the first event of one of ``kinds``."""
+def seconds_to(events, kinds, prefix: str = "") -> Optional[float]:
+    """Seconds from the fault firing to the first event of one of ``kinds``
+    whose detail starts with ``prefix``."""
     injected = _fault_time(events)
     hit = next(
-        (t for t, kind, _ in events if kind in kinds and t >= (injected or 0)), None
+        (
+            t
+            for t, kind, detail in events
+            if kind in kinds and detail.startswith(prefix) and t >= (injected or 0)
+        ),
+        None,
     )
     if injected is None or hit is None:
         return None

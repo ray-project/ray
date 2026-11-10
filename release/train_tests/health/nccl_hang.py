@@ -19,7 +19,7 @@ Both runs train the same job with the same fault and timing: RAS polled every
           ``health_diagnostics/``, then reattempts, which with
           ``max_failures=0`` ends the run with ``HealthCheckError``.
 
-Pass: both catch the hang within a few seconds of each other, and neither
+Pass: both confirm the hang within a few seconds of each other, and neither
 fires on the slow step.
 """
 import os
@@ -122,10 +122,15 @@ def run(mode: str, fault_name: str, workers: int) -> dict:
     if storage:
         print("\n  artifacts:")
         harness.list_artifacts(os.path.join(storage, name))
-    detected = {"DIAGNOSE", "SHUTTINGDOWN", "RESTARTING", "REATTEMPT"}
+    # When each detector confirmed the hang: the merged one raises
+    # NCCLHangError, which shuts the run down, and the health one diagnoses.
+    if mode == "merged":
+        confirmed_s = harness.seconds_to(timeline, {"SHUTTINGDOWN", "RESTARTING"})
+    else:
+        confirmed_s = harness.seconds_to(timeline, {"DIAGNOSE"}, prefix="NCCL hang")
     return {
         "error": type(error).__name__ if error else None,
-        "detected_s": harness.seconds_to(timeline, detected),
+        "detected_s": confirmed_s,
     }
 
 
@@ -143,7 +148,7 @@ def main() -> int:
     for (mode, fault), r in results.items():
         seconds = f"{r['detected_s']:.1f}s" if r["detected_s"] is not None else "never"
         print(
-            f"  {mode:<7} {fault:<9} detected after {seconds:<8} ended with {r['error']}"
+            f"  {mode:<7} {fault:<9} confirmed after {seconds:<8} ended with {r['error']}"
         )
         if fault == "hang":
             ok &= r["error"] is not None and r["detected_s"] is not None
