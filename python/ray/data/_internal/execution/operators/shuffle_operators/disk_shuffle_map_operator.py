@@ -86,10 +86,17 @@ class DiskHashShuffleMapOp(InternalQueueOperatorMixin, PhysicalOperator):
         self._block_transformer: Optional[BlockTransformer] = block_transformer
 
         # -- Map task config -------------------------------------------------
-        self._shuffle_map_task_num_cpus: float = map_cpus
         self._map_runtime_env: Optional[Dict[str, Any]] = map_runtime_env
         # User ray.remote options; they override defaults, runtime_env merges.
         self._map_ray_remote_args: Dict[str, Any] = dict(map_ray_remote_args or {})
+        # User overrides apply to the task options and to the resource estimates
+        # the executor budgets against, so both see the same ask.
+        self._shuffle_map_task_num_cpus: float = float(
+            self._map_ray_remote_args.get("num_cpus", map_cpus)
+        )
+        self._shuffle_map_task_num_gpus: float = float(
+            self._map_ray_remote_args.get("num_gpus", 0)
+        )
 
         # -- Pre-map merge ---------------------------------------------------
         # Buffered blocks are coalesced per node into a single map task once
@@ -217,18 +224,11 @@ class DiskHashShuffleMapOp(InternalQueueOperatorMixin, PhysicalOperator):
         cur_task_idx = self._next_shuffle_map_task_idx
         self._next_shuffle_map_task_idx += 1
 
-        resources: Dict[str, Any] = {"num_cpus": self._shuffle_map_task_num_cpus}
-        if estimated_bytes > 0:
-            resources["memory"] = estimated_bytes * SHUFFLE_PEAK_MEMORY_MULTIPLIER
+        resources = self._map_task_resources(
+            int(estimated_bytes * SHUFFLE_PEAK_MEMORY_MULTIPLIER)
+        )
         user_args = dict(self._map_ray_remote_args)
         user_runtime_env = user_args.pop("runtime_env", None)
-        resources.update(
-            {
-                k: user_args[k]
-                for k in ("num_cpus", "num_gpus", "memory")
-                if k in user_args
-            }
-        )
 
         ray_options: Dict[str, Any] = {**resources, **user_args, "name": self.name}
         if target_node_id is not None and "scheduling_strategy" not in user_args:
@@ -541,6 +541,7 @@ class DiskHashShuffleMapOp(InternalQueueOperatorMixin, PhysicalOperator):
     def current_logical_usage(self) -> ExecutionResources:
         return ExecutionResources(
             cpu=self._map_resource_usage.cpu,
+            gpu=self._map_resource_usage.gpu,
             memory=self._map_resource_usage.memory,
         )
 
@@ -551,10 +552,17 @@ class DiskHashShuffleMapOp(InternalQueueOperatorMixin, PhysicalOperator):
     def incremental_resource_usage(self) -> ExecutionResources:
         avg_input = self._metrics.average_bytes_inputs_per_task
         memory = int(avg_input * SHUFFLE_PEAK_MEMORY_MULTIPLIER) if avg_input else 0
-        return ExecutionResources(
-            cpu=self._shuffle_map_task_num_cpus,
-            memory=memory,
-        )
+        return ExecutionResources.from_resource_dict(self._map_task_resources(memory))
+
+    def _map_task_resources(self, memory_estimate: int) -> Dict[str, Any]:
+        """Per-task resources: operator defaults with the user's overrides applied."""
+        resources: Dict[str, Any] = {"num_cpus": self._shuffle_map_task_num_cpus}
+        if self._shuffle_map_task_num_gpus:
+            resources["num_gpus"] = self._shuffle_map_task_num_gpus
+        memory = self._map_ray_remote_args.get("memory", memory_estimate)
+        if memory > 0:
+            resources["memory"] = int(memory)
+        return resources
 
     def min_scheduling_resources(self) -> ExecutionResources:
         return self.incremental_resource_usage()
