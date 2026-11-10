@@ -64,6 +64,20 @@ class TestPandasBlockColumnAccessor:
         assert accessor.sum(ignore_nulls=True, as_py=True) == 2**65
 
     @pytest.mark.parametrize(
+        "dtype, values, expected",
+        [
+            ("int8", [127, 1], 128),
+            ("uint8", [255, 1], 256),
+            ("uint64", [2**64 - 1, 1], 2**64),
+        ],
+    )
+    def test_narrow_integer_sum_does_not_wrap(self, arr, dtype, values, expected):
+        series = pd.Series(values, dtype=dtype)
+        accessor = PandasBlockColumnAccessor(series)
+
+        assert accessor.sum(ignore_nulls=True, as_py=True) == expected
+
+    @pytest.mark.parametrize(
         "ignore_nulls, expected",
         [
             (True, 1),
