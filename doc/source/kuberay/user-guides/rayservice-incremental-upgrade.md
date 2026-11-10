@@ -489,7 +489,7 @@ This block is required *only* if `type` is set to `NewClusterWithIncrementalUpgr
 | `maxSurgePercent` | `int32` | The percentage of *capacity* (Serve replicas) to add to the new cluster in each scaling step. For example, a value of `20` means the new cluster's `target_capacity` will increase in 20% increments (0% -> 20% -> 40%...). Must be between 0 and 100. | No | `100` |
 | `stepSizePercent` | `int32` | The percentage of *traffic* to shift from the old to the new cluster during each interval. Must be between 0 and 100. | **Yes** | N/A |
 | `intervalSeconds` | `int32` | The time in seconds to wait between shifting traffic by `stepSizePercent`. | **Yes** | N/A |
-| `gatewayClassName` | `string` | The `metadata.name` of the `GatewayClass` resource KubeRay should use to create `Gateway` and `HTTPRoute` objects. | **Yes**, unless you set `gatewayRef` | N/A |
+| `gatewayClassName` | `string` | The `metadata.name` of the GatewayClass that KubeRay uses to create the Gateway and HTTPRoute. | **Yes**, unless you set `gatewayRef` | N/A |
 | `gatewayRef` | `object` | The existing Gateway to attach the HTTPRoute to. KubeRay doesn't create a Gateway when you set this field. Requires KubeRay v1.8.0 or later. | **Yes**, unless you set `gatewayClassName` | N/A |
 
 ### `RayService.spec.upgradeStrategy.clusterUpgradeOptions.gatewayRef`
