@@ -21,7 +21,6 @@ from typing import (
 import numpy as np
 
 import ray
-from ray._common.utils import env_bool
 from ray._private.auto_init_hook import wrap_auto_init
 from ray.data._internal.compute import ComputeStrategy
 from ray.data._internal.datasource.audio_datasource import AudioDatasource
@@ -4052,11 +4051,8 @@ def read_webdataset(
     .. _tf.train.Example: https://www.tensorflow.org/api_docs/python/tf/train/Example
     """  # noqa: E501
 
-    # TODO: Keep WebDataset on V1 unless opted in until parity is verified;
-    # decide the final gating.
-    if DataContext.get_current().use_datasource_v2 and env_bool(
-        "RAY_DATA_USE_WEBDATASET_DATASOURCE_V2", False
-    ):
+    ctx = DataContext.get_current()
+    if ctx.use_datasource_v2:
         from ray.data._internal.datasource_v2.formats.webdataset.webdataset_datasource_v2 import (
             WebDatasetDatasourceV2,
         )

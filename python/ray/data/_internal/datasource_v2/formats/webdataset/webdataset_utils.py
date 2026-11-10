@@ -1,12 +1,6 @@
 # Copyright NVIDIA Corporation 2023
 # SPDX-License-Identifier: Apache-2.0
-"""WebDataset read helpers shared by the V2 WebDataset datasource and reader.
-
-These used to live in the legacy
-``ray.data._internal.datasource.webdataset_datasource`` module. They moved here so
-that ``datasource_v2`` does not depend on the legacy package; the legacy module
-imports them from here instead.
-"""
+"""WebDataset read helpers shared by the V2 WebDataset datasource and reader."""
 
 import fnmatch
 import io
@@ -14,7 +8,7 @@ import json
 import re
 import tarfile
 from functools import partial
-from typing import Any, Callable, Dict, Iterator, List, Optional, Union
+from typing import Any, Callable, Dict, Iterable, Iterator, List, Optional, Union
 
 from ray.data._internal.datasource_v2.common.image_utils import _ALLOWED_PIL_FORMATS
 from ray.data._internal.util import iterate_with_retry
@@ -22,9 +16,6 @@ from ray.data._internal.util import iterate_with_retry
 ALLOW_UNSAFE_DESERIALIZATION_ENV_VAR = (
     "RAY_DATA_WEBDATASET_ALLOW_UNSAFE_DESERIALIZATION"
 )
-
-# File extensions a WebDataset datasource lists by default.
-WEBDATASET_FILE_EXTENSIONS: List[str] = ["tar"]
 
 # Number of samples accumulated into each emitted block.
 WEBDATASET_READ_CHUNK_SIZE = 512
@@ -54,7 +45,7 @@ def _base_plus_ext(path: str):
     return match.group(1), match.group(2)
 
 
-def _valid_sample(sample: Dict[str, Any]):
+def _valid_sample(sample: Optional[Dict[str, Any]]):
     """Check whether a sample is valid.
 
     Args:
@@ -72,8 +63,10 @@ def _valid_sample(sample: Dict[str, Any]):
 
 
 def _apply_list(
-    f: Union[Callable, List[Callable]], sample: Dict[str, Any], default: Callable = None
-):
+    f: Optional[Union[bool, str, Callable, list]],
+    sample: Any,
+    default: Optional[Callable] = None,
+) -> Any:
     """Apply a list of functions to a sample.
 
     Args:
@@ -96,7 +89,7 @@ def _apply_list(
     return sample
 
 
-def _check_suffix(suffix: str, suffixes: Union[list, callable]):
+def _check_suffix(suffix: str, suffixes: Optional[Union[list, Callable]]):
     """Check whether a suffix is valid.
 
     Suffixes can be either None (=accept everything), a callable,
@@ -125,10 +118,10 @@ def _check_suffix(suffix: str, suffixes: Union[list, callable]):
 
 def _tar_file_iterator(
     fileobj: Any,
-    fileselect: Optional[Union[bool, callable, list]] = None,
-    filerename: Optional[Union[bool, callable, list]] = None,
+    fileselect: Optional[Union[list, Callable]] = None,
+    filerename: Optional[Union[list, Callable]] = None,
     verbose_open: bool = False,
-    meta: dict = None,
+    meta: Optional[dict] = None,
 ) -> Iterator[Dict[str, Any]]:
     """Iterate over tar file, yielding filename, content pairs for the given tar stream.
 
@@ -154,7 +147,9 @@ def _tar_file_iterator(
         fname = tarinfo.name
         if not tarinfo.isreg() or fname is None:
             continue
-        data = stream.extractfile(tarinfo).read()
+        member = stream.extractfile(tarinfo)
+        assert member is not None  # Regular files always have contents.
+        data = member.read()
         fname = _apply_list(filerename, fname)
         assert isinstance(fname, str)
         if not _check_suffix(fname, fileselect):
@@ -166,10 +161,10 @@ def _tar_file_iterator(
 
 
 def _group_by_keys(
-    data: List[Dict[str, Any]],
-    keys: callable = _base_plus_ext,
-    suffixes: Optional[Union[list, callable]] = None,
-    meta: dict = None,
+    data: Iterable[Dict[str, Any]],
+    keys: Callable = _base_plus_ext,
+    suffixes: Optional[Union[list, Callable]] = None,
+    meta: Optional[dict] = None,
 ) -> Iterator[Dict[str, Any]]:
     """Return function over iterator that groups key, value pairs into samples.
 
@@ -192,7 +187,7 @@ def _group_by_keys(
         combined into a single dictionary.
     """
     meta = meta or {}
-    current_sample = None
+    current_sample: Optional[Dict[str, Any]] = None
     seen_keys: set = set()
     for filesample in data:
         assert isinstance(filesample, dict)
@@ -232,7 +227,7 @@ def _group_by_keys(
             )
         if suffixes is None or _check_suffix(suffix, suffixes):
             current_sample[suffix] = value
-    if _valid_sample(current_sample):
+    if current_sample is not None and _valid_sample(current_sample):
         current_sample.update(meta)
         yield current_sample
 
@@ -241,6 +236,7 @@ def _default_decoder(
     sample: Dict[str, Any],
     format: Optional[Union[bool, str]] = True,
     allow_unsafe: bool = False,
+    expand_grayscale: bool = False,
 ):
     """A default decoder for webdataset.
 
@@ -254,6 +250,8 @@ def _default_decoder(
         format: optional image format hint (e.g. ``"PIL"`` to return PIL
             images instead of numpy arrays).
         allow_unsafe: if True, allow pickle/torch deserialization
+        expand_grayscale: if True, decode grayscale images as (H, W, 1)
+            instead of (H, W), so every image has three dimensions.
 
     Returns:
         The sample with values decoded according to their key extension.
@@ -281,7 +279,10 @@ def _default_decoder(
             if format == "PIL":
                 sample[key] = image
             else:
-                sample[key] = np.asarray(image)
+                image = np.asarray(image)
+                if expand_grayscale and image.ndim == 2:
+                    image = image[:, :, np.newaxis]
+                sample[key] = image
         elif extension == "json":
             sample[key] = json.loads(value)
         elif extension == "npy":
@@ -289,7 +290,7 @@ def _default_decoder(
 
             sample[key] = np.load(io.BytesIO(value))
         elif extension == "mp":
-            import msgpack
+            import msgpack  # pyrefly: ignore[missing-import]
 
             sample[key] = msgpack.unpackb(value, raw=False)
         elif extension in ["pt", "pth"]:
@@ -323,20 +324,17 @@ def iter_webdataset_rows(
     stream: Any,
     path: str,
     *,
-    decoder: Optional[Union[bool, str, callable, list]],
-    fileselect: Optional[Union[bool, callable, list]],
-    filerename: Optional[Union[bool, callable, list]],
-    suffixes: Optional[Union[bool, callable, list]],
+    decoder: Optional[Union[bool, str, Callable, list]],
+    fileselect: Optional[Union[list, Callable]],
+    filerename: Optional[Union[list, Callable]],
+    suffixes: Optional[Union[list, Callable]],
     verbose_open: bool,
     expand_json: bool,
     allow_unsafe_deserialization: bool,
     retried_io_errors: Optional[List[str]],
+    expand_grayscale: bool = False,
 ) -> Iterator[Dict[str, Any]]:
     """Yield one decoded row dict per WebDataset sample in a tar stream.
-
-    Shared by the legacy ``WebDatasetDatasource`` and ``WebDatasetReader`` so
-    both read paths group, decode and expand samples the same way; each only
-    decides how to batch the rows into blocks.
 
     Note that ``fileselect`` selects files during reading, while ``suffixes``
     selects files during the grouping step.
@@ -354,6 +352,8 @@ def iter_webdataset_rows(
             the default decoder.
         retried_io_errors: Error message patterns to retry on while
             iterating the tar stream (``DataContext.retried_io_errors``).
+        expand_grayscale: Make the default decoder return grayscale images
+            as (H, W, 1).
 
     Yields:
         Dict[str, Any]: One row per sample.
@@ -376,7 +376,9 @@ def iter_webdataset_rows(
 
     samples = _group_by_keys(files, meta=dict(__url__=path), suffixes=suffixes)
     default_decoder = partial(
-        _default_decoder, allow_unsafe=allow_unsafe_deserialization
+        _default_decoder,
+        allow_unsafe=allow_unsafe_deserialization,
+        expand_grayscale=expand_grayscale,
     )
 
     for sample in samples:

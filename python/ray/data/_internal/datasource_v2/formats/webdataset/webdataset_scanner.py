@@ -7,7 +7,9 @@ from ray.data._internal.datasource_v2.common.file_scanner import FileScanner
 from ray.data._internal.datasource_v2.formats.webdataset.webdataset_reader import (
     WebDatasetReader,
 )
-from ray.data._internal.datasource_v2.interfaces.synthesized_columns import SynthesizedColumn
+from ray.data._internal.datasource_v2.interfaces.synthesized_columns import (
+    SynthesizedColumn,
+)
 from ray.util.annotations import DeveloperAPI
 
 if TYPE_CHECKING:
@@ -19,10 +21,7 @@ if TYPE_CHECKING:
 class WebDatasetScanner(FileScanner):
     """Scanner for WebDataset tar shards.
 
-    Tar archives are not an Arrow dataset format, so this extends
-    ``FileScanner`` rather than ``ArrowFileScanner`` and supports no filter,
-    projection or limit pushdown, matching the legacy reader. File shuffle and
-    partition pruning come from ``FileScanner``.
+    Supports no filter, projection or limit pushdown.
     """
 
     schema: pa.Schema

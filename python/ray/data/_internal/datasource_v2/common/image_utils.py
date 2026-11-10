@@ -1,9 +1,4 @@
-"""Image decoding helpers shared by datasources.
-
-These used to live in the legacy ``ray.data._internal.datasource.image_utils``
-module. They moved here so that ``datasource_v2`` does not depend on the legacy
-package; the legacy module imports them from here instead.
-"""
+"""Image decoding helpers shared by datasources."""
 
 # Allowlist of PIL plugins the reader is permitted to decode with. PIL selects a
 # plugin by file signature, not by extension, so without this a payload named
