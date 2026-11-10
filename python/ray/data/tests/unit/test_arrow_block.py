@@ -12,6 +12,7 @@ from ray.data._internal.arrow_block import (
     _get_max_chunk_size,
 )
 from ray.data._internal.arrow_ops.transform_pyarrow import combine_chunked_array, concat
+from ray.data._internal.size_estimator import SizeEstimator
 from ray.data._internal.tensor_extensions.arrow import (
     ArrowTensorArray,
 )
@@ -275,6 +276,7 @@ def test_arrow_block_concat():
 def test_table_block_builder_compaction_row_and_size_accounting(monkeypatch):
     import ray.data._internal.table_block as table_block_mod
 
+    monkeypatch.setattr(SizeEstimator, "_real_size", lambda self, item: 16)
     monkeypatch.setattr(table_block_mod, "MAX_UNCOMPACTED_SIZE_BYTES", 1)
 
     builder = ArrowBlockBuilder()
@@ -293,10 +295,17 @@ def test_table_block_builder_compaction_row_and_size_accounting(monkeypatch):
     built = builder.build()
     assert built.num_rows == 2
     assert built.to_pydict() == {"a": [1, 2], "b": ["hello", "world"]}
-    assert builder.get_estimated_memory_usage() == ArrowBlockAccessor.for_block(built).size_bytes()
+    assert (
+        builder.get_estimated_memory_usage()
+        == ArrowBlockAccessor.for_block(built).size_bytes()
+    )
 
 
-def test_table_block_builder_interleaved_add_and_add_block_preserves_order():
+def test_table_block_builder_interleaved_add_and_add_block_preserves_order(
+    monkeypatch,
+):
+    monkeypatch.setattr(SizeEstimator, "_real_size", lambda self, item: 16)
+
     builder = ArrowBlockBuilder()
     builder.add({"a": 1})
     builder.add({"a": 2})
