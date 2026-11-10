@@ -230,7 +230,7 @@ class ParquetDatasourceV2(FileDataSourceV2):
             OnlineBinPacker,
         )
 
-        # Bins are budgeted on the estimated decode peak, so a read task's decode
+        # Bins are budgeted on the estimated decoded size, so a read task's output
         # stays near ``target_max_block_size``. Without a block target ``read_api``
         # passes ``sys.maxsize``, one bin for every file, so that takes the default.
         hints = kwargs.get("hints")

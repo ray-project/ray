@@ -113,8 +113,9 @@ class _FileSizing(NamedTuple):
     read: Read  # the columns it appends
 
 
-# A row group's peak bytes for the leaves in it the estimator doesn't model: this
-# many times their uncompressed bytes, and never less than the floor.
+# What a row group's leaves the estimator doesn't model add to its decoded size,
+# and so to its peak: this many times their uncompressed bytes, and never less
+# than the floor.
 _UNMODELLED_RATIO = 4
 _UNMODELLED_MIN_BYTES = 12 << 20
 
@@ -186,7 +187,7 @@ class FooterReader:
             else list(DEFAULT_RETRIED_IO_ERRORS)
         )
         # Coalescing target: merge contiguous row groups into chunks of
-        # ~coalesce_bytes of decode peak before returning them, so the driver packs
+        # ~coalesce_bytes of decoded size before returning them, so the driver packs
         # fewer items. 0 disables coalescing (one chunk per physical row group).
         self.coalesce_bytes = coalesce_bytes
         # Read unit ids a checkpoint already finished (``"<path>#rg<N>"`` for a
@@ -323,17 +324,19 @@ class FooterReader:
             ),
         )
 
-    def _row_group_peak(
+    def _row_group_sizes(
         self,
         row_group: RowGroupMetaData,
         sizing: _FileSizing,
         size_stats: list[LeafSizeStats | None] | None,
-    ) -> int:
-        """PyArrow's estimated peak bytes decoding ``row_group`` as a read task does,
-        leaning high: a read task over its budget is what runs a node out of memory."""
+    ) -> tuple[int, int]:
+        """``row_group``'s estimated decoded bytes, and PyArrow's estimated peak
+        bytes decoding it as a read task does. Both lean high: a read task over its
+        estimate is what runs a node out of memory."""
+        buffers = 0
         if sizing.profiles is None:
             # A file the estimator doesn't model; the columns Ray appends still count.
-            work = estimate_added_columns(row_group=row_group, read=sizing.read)
+            decoded = estimate_added_columns(row_group=row_group, read=sizing.read)
             unmodelled = list(sizing.leaf_indices)
         else:
             chunks = leaf_chunks(
@@ -343,7 +346,7 @@ class FooterReader:
                 size_stats=size_stats,
             )
             leaves = {leaf.index: leaf for leaf in chunks}
-            work = estimate_row_group_work(
+            decoded, buffers = estimate_row_group_work(
                 row_group=row_group,
                 columns=sizing.columns,
                 column_leaves=sizing.column_leaves,
@@ -353,7 +356,7 @@ class FooterReader:
             )
             unmodelled = [j for j in sizing.leaf_indices if j not in leaves]
             if self.pinned_schema is None:
-                work += estimate_added_columns(row_group=row_group, read=sizing.read)
+                decoded += estimate_added_columns(row_group=row_group, read=sizing.read)
             else:
                 assert sizing.file_schema is not None
                 # Here ``cast_leaves`` is empty unless ``cast_profiles`` was built.
@@ -369,7 +372,7 @@ class FooterReader:
                 for name, indices in sizing.cast_leaves.items():
                     cast = {leaf.index for leaf in cast_leaves[name]}
                     unmodelled += [j for j in indices if j not in cast]
-                work += estimate_cast(
+                decoded += estimate_cast(
                     row_group=row_group,
                     column_leaves=cast_leaves,
                     file_schema=sizing.file_schema,
@@ -379,13 +382,14 @@ class FooterReader:
         if unmodelled:
             # A leaf or cast the estimator doesn't model, such as a string without
             # SizeStatistics, a view, a dictionary or a struct gaining a field.
-            work += _unmodelled_bytes(row_group=row_group, leaf_indices=unmodelled)
-        return estimate_row_group_peak(
+            decoded += _unmodelled_bytes(row_group=row_group, leaf_indices=unmodelled)
+        peak = estimate_row_group_peak(
             row_group=row_group,
             leaf_indices=sizing.leaf_indices,
-            row_group_work=work,
+            row_group_work=decoded + buffers,
             file_size=sizing.size,
         )
+        return decoded, peak
 
     def _locate_filter_columns(self, schema: ParquetSchema) -> _FilterLeaves:
         # Resolve the predicate's column names to Parquet leaf-column indices,
@@ -582,7 +586,7 @@ class FooterReader:
             sizing = self._file_sizing(file=file, fragment=fragment, metadata=metadata)
             for rg_idx in rg_indices:
                 row_group = metadata.row_group(rg_idx)
-                peak = self._row_group_peak(
+                decoded, peak = self._row_group_sizes(
                     row_group=row_group,
                     sizing=sizing,
                     size_stats=None if size_stats is None else size_stats[rg_idx],
@@ -591,7 +595,8 @@ class FooterReader:
                     FileChunk(
                         unit_ids=(rg_idx,),
                         num_rows=row_group.num_rows,
-                        size_bytes=peak,
+                        size_bytes=decoded,
+                        memory_bytes=peak,
                         fully_matched=fully_by_idx.get(rg_idx, True),
                     )
                 )

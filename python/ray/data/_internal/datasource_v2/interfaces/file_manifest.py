@@ -28,8 +28,8 @@ class FileChunk:
     pairwise-disjoint unit ids — a single run for a file listed once, one run
     per copy when the user lists the same path repeatedly. The
     packer only sums ``size_bytes`` against its budget; the indexer decides
-    what the number measures (Parquet records PyArrow's peak memory decoding
-    the run, estimated from the footer).
+    what the number measures (Parquet records the run's decoded Arrow size,
+    estimated from the footer).
     """
 
     unit_ids: Tuple[int, ...]
@@ -42,6 +42,9 @@ class FileChunk:
     # one unit, so a partitioner can split the run at exact boundaries.
     unit_sizes: Tuple[int, ...] = ()
     unit_rows: Tuple[int, ...] = ()
+    # The memory reading the run takes, or ``None`` when the indexer makes no
+    # estimate. Parquet records PyArrow's decode peak, estimated from the footer.
+    memory_bytes: Optional[int] = None
 
     def __post_init__(self):
         for name in ("unit_sizes", "unit_rows"):
@@ -64,6 +67,12 @@ class FileChunk:
             fully_matched=bool(metadata["fully_matched"]),
             unit_sizes=tuple(metadata["unit_sizes"]),
             unit_rows=tuple(metadata["unit_rows"]),
+            # A null among the rows makes Arrow return the others as floats.
+            memory_bytes=(
+                None
+                if metadata["memory_bytes"] is None
+                else int(metadata["memory_bytes"])
+            ),
         )
 
 

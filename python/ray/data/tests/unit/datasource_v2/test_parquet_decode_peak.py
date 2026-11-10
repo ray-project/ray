@@ -77,8 +77,19 @@ def _read_and_chunk(path, **kwargs):
     )
 
 
+def _peaks(path, **kwargs):
+    """Each row group's ``memory_bytes``, the estimated decode peak, as the footer
+    reader lists it."""
+    peaks = []
+    for run in _read_and_chunk(path, **kwargs).row_groups:
+        assert run.memory_bytes is not None
+        peaks.append(run.memory_bytes)
+    return peaks
+
+
 def _sizes(path, **kwargs):
-    """Each row group's ``size_bytes`` as the footer reader lists it."""
+    """Each row group's ``size_bytes``, the estimated decoded size, as the footer
+    reader lists it."""
     return [run.size_bytes for run in _read_and_chunk(path, **kwargs).row_groups]
 
 
@@ -135,7 +146,7 @@ def test_estimate_bounds_measured_peak(tmp_path, monkeypatch, label):
     path = tmp_path / f"{label}.parquet"
     pq.write_table(table, path, row_group_size=N, **write_kwargs)
     monkeypatch.setattr(reader, "READER_CPU_COUNT", threads)
-    (estimate,) = _sizes(path, projected_cols=columns, format_kwargs=format_kwargs)
+    (estimate,) = _peaks(path, projected_cols=columns, format_kwargs=format_kwargs)
     ratio = estimate / _peak(
         path=path, columns=columns, threads=threads, **format_kwargs
     )
@@ -175,7 +186,7 @@ def test_small_unmodelled_row_groups_pay_the_floor(tmp_path, monkeypatch, unmode
         }
     pq.write_table(_mixed(), path, row_group_size=M // 4, **write_kwargs)
     charge = reader._UNMODELLED_MIN_BYTES
-    sizes = _sizes(path)
+    sizes = _peaks(path)
     assert len(sizes) == 4
     assert all(charge < size < charge + (1 << 20) for size in sizes), sizes
 
@@ -197,7 +208,7 @@ def test_large_unmodelled_leaves_pay_by_their_uncompressed_bytes(tmp_path, monke
     strings = pq.read_metadata(path).row_group(0).column(1).total_uncompressed_size
     charge = reader._UNMODELLED_RATIO * strings
     assert charge > reader._UNMODELLED_MIN_BYTES
-    (size,) = _sizes(path)
+    (size,) = _peaks(path)
     assert charge < size < charge + (8 << 20), (size, charge)
 
 
@@ -210,8 +221,8 @@ def test_unmodelled_file_counts_the_added_columns(tmp_path, monkeypatch):
     table = _mixed()
     pq.write_table(table, path, row_group_size=M // 4)
     filled = table.schema.append(pa.field("notes", pa.string()))
-    plain = _sizes(path, read_schema=table.schema)
-    assert all(a > b for a, b in zip(_sizes(path, read_schema=filled), plain))
+    plain = _peaks(path, read_schema=table.schema)
+    assert all(a > b for a, b in zip(_peaks(path, read_schema=filled), plain))
 
 
 def test_filtered_read_without_the_file_schema_sizes_every_column(
@@ -246,7 +257,7 @@ def test_filtered_read_without_the_file_schema_sizes_every_column(
         }
     )
     pq.write_table(table, path, row_group_size=N, use_dictionary=False)
-    assert _sizes(path, filter_expr=col("i") > 0) == _sizes(path)
+    assert _peaks(path, filter_expr=col("i") > 0) == _peaks(path)
 
 
 def test_pinned_schema_adds_the_cast_and_the_added_columns(tmp_path):
@@ -256,12 +267,12 @@ def test_pinned_schema_adds_the_cast_and_the_added_columns(tmp_path):
     pq.write_table(
         pa.table({"a": pa.array(np.arange(M), pa.int32())}), path, row_group_size=M // 2
     )
-    plain = _sizes(path)
+    plain = _peaks(path)
     widened = pa.schema([("a", pa.int64())])
     filled = pa.schema([("a", pa.int32()), ("notes", pa.string())])
 
     for read_schema in (widened, filled):
-        sizes = _sizes(path, read_schema=read_schema)
+        sizes = _peaks(path, read_schema=read_schema)
         assert len(sizes) == len(plain) == 2
         assert all(size > plain_size for size, plain_size in zip(sizes, plain))
 
@@ -273,7 +284,7 @@ def test_dotted_column_beside_its_prefix_counts_once(tmp_path):
         path = tmp_path / f"{second}.parquet"
         values = pa.array(np.arange(M, dtype="int64"))
         pq.write_table(pa.table({"user": values, second: values}), path)
-        sizes.append(_sizes(path))
+        sizes.append(_peaks(path))
     assert sizes[0] == sizes[1]
 
 
@@ -311,6 +322,18 @@ def test_bins_stay_under_the_budget(tmp_path):
 
     totals = _bin_totals(path=path, max_bin_bytes=min(estimates) - 1)
     assert sorted(totals) == sorted(estimates)
+
+
+@requires_pyarrow_23
+def test_size_is_the_decoded_size_under_the_peak(tmp_path):
+    """``size_bytes`` estimates the decoded row group, which the decode peak exceeds."""
+    path = tmp_path / "f.parquet"
+    pq.write_table(_mixed(), path, row_group_size=M // 4)
+    parquet = pq.ParquetFile(path)
+    true = [parquet.read_row_group(i).nbytes for i in range(parquet.num_row_groups)]
+    sizes, peaks = _sizes(path), _peaks(path)
+    assert all(0.95 <= size / t <= 1.05 for size, t in zip(sizes, true)), (sizes, true)
+    assert all(size < peak for size, peak in zip(sizes, peaks))
 
 
 if __name__ == "__main__":
