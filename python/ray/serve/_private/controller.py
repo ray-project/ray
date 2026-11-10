@@ -347,10 +347,6 @@ class ServeController:
 
         self._last_broadcasted_fallback_targets: Dict[RequestProtocol, Target] = {}
 
-        self._last_autoscaling_snapshot_keys: Dict[DeploymentID, tuple] = {}
-        self._autoscaling_enabled_deployment_ids: List[DeploymentID] = []
-        self._refresh_autoscaling_deployments_cache()
-
     def _log_throughput_opt_message(self) -> None:
         msg = "Throughput optimized Ray Serve enabled with the following configurations:\n"
         if RAY_SERVE_ENABLE_DIRECT_INGRESS:
@@ -637,60 +633,14 @@ class ServeController:
         new_proxy_nodes.add(self._controller_node_id)
         self._proxy_nodes = new_proxy_nodes
 
-    def _refresh_autoscaling_deployments_cache(self) -> None:
-        result = []
-        for app_name in self.application_state_manager.list_app_names():
-            for dep_name in self.application_state_manager.get_app_target_deployments(
-                app_name
-            ):
-                dep_id = DeploymentID(name=dep_name, app_name=app_name)
-                dep_info = self.deployment_state_manager.get_deployment(dep_id)
-                if (
-                    dep_info is not None
-                    and dep_info.deployment_config.autoscaling_config
-                ):
-                    result.append(dep_id)
-        self._autoscaling_enabled_deployment_ids = result
-        # Prune against the autoscaling-enabled set, not every live deployment: a
-        # deployment that turns autoscaling off and back on gets a fresh state, and
-        # a stale key would suppress its first snapshot.
-        enabled = set(result)
-        self._last_autoscaling_snapshot_keys = {
-            k: v
-            for k, v in self._last_autoscaling_snapshot_keys.items()
-            if k in enabled
-        }
-
     def _emit_deployment_autoscaling_snapshots(self) -> None:
-        """Emit structured autoscaling snapshot logs in a single batch per loop."""
+        """Write the snapshots that changed this loop as one structured log line."""
         if self._autoscaling_logger is None:
             return
-
-        snapshots_to_log: List[Dict[str, Any]] = []
-        logged_keys: Dict[DeploymentID, tuple] = {}
-
-        for dep_id in self._autoscaling_enabled_deployment_ids:
-            key = self.autoscaling_state_manager.get_cached_snapshot_key(dep_id)
-            if key is None:
-                continue
-
-            if key == self._last_autoscaling_snapshot_keys.get(dep_id):
-                continue
-
-            deployment_snapshot = (
-                self.autoscaling_state_manager.get_deployment_snapshot(dep_id)
-            )
-            if deployment_snapshot is None:
-                continue
-
-            snapshots_to_log.append(deployment_snapshot.model_dump(exclude_none=True))
-            logged_keys[dep_id] = key
-
-        if snapshots_to_log:
-            # Single write per control-loop iteration
-            self._autoscaling_logger.info({"snapshots": snapshots_to_log})
-            # Record keys only after the write, so a failure retries next loop.
-            self._last_autoscaling_snapshot_keys.update(logged_keys)
+        logger_ = self._autoscaling_logger
+        self.autoscaling_state_manager.log_deployment_snapshots(
+            lambda snapshots: logger_.info({"snapshots": snapshots})
+        )
 
     async def run_control_loop(self) -> None:
         # NOTE(edoakes): we catch all exceptions here and simply log them,
@@ -782,28 +732,20 @@ class ServeController:
         except Exception:
             logger.exception("Exception updating deployment state.")
 
-        any_target_state_changed = False
         try:
             asm_update_start_time = time.time()
-            any_target_state_changed = self.application_state_manager.update()
+            self.application_state_manager.update()
             asm_duration = time.time() - asm_update_start_time
             self.asm_update_duration_gauge_s.set(asm_duration)
             self._health_metrics_tracker.record_asm_update_duration(asm_duration)
         except Exception:
             logger.exception("Exception updating application state.")
-            # Targets may have changed before the exception; refresh to be safe.
-            any_target_state_changed = True
-
-        if any_recovering or any_target_state_changed:
-            try:
-                self._refresh_autoscaling_deployments_cache()
-            except Exception:
-                logger.exception("Exception refreshing autoscaling deployments cache.")
 
         try:
             self._emit_deployment_autoscaling_snapshots()
         except Exception:
             logger.exception("Exception emitting deployment autoscaling snapshots.")
+
         # Update the proxy nodes set before updating the proxy states,
         # so they are more consistent.
         node_update_start_time = time.time()

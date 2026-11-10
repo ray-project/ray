@@ -25,7 +25,6 @@ from ray.serve._private.common import (
     RUNNING_REQUESTS_KEY,
     ApplicationName,
     AutoscalingSnapshotError,
-    AutoscalingStatus,
     DeploymentHandleSource,
     DeploymentID,
     DeploymentSnapshot,
@@ -54,10 +53,18 @@ from ray.serve.autoscaling_policy import (
     _apply_autoscaling_config,
 )
 from ray.serve.config import AutoscalingContext, AutoscalingPolicy
+from ray.serve.schema import AutoscalingStatus
 from ray.util import metrics
 
 if TYPE_CHECKING:
     from ray.serve.config import AutoscalingConfig
+
+# How each scaling direction reads in an autoscaling snapshot log.
+_SCALING_STATUS_TEXT = {
+    AutoscalingStatus.UPSCALING: "scaling up",
+    AutoscalingStatus.DOWNSCALING: "scaling down",
+    AutoscalingStatus.STABLE: "stable",
+}
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
@@ -331,6 +338,10 @@ class DeploymentAutoscalingState:
         self._target_capacity_direction: Optional[TargetCapacityDirection] = None
         self._cached_deployment_snapshot: Optional[DeploymentSnapshot] = None
         self._cached_snapshot_key: Optional[tuple] = None
+        # Key of the last snapshot written to the log. It lives here rather than on
+        # the controller, so it goes away with this state when autoscaling is turned
+        # off and a re-enabled deployment logs its first snapshot again.
+        self._last_logged_snapshot_key: Optional[tuple] = None
         # Track timestamps of last scale up and scale down events
         self._last_scale_up_time: Optional[float] = None
         self._last_scale_down_time: Optional[float] = None
@@ -1021,11 +1032,11 @@ class DeploymentAutoscalingState:
         queued_requests = float(self._get_queued_requests())
 
         if target_replicas > current_replicas:
-            scaling_status_raw = AutoscalingStatus.UPSCALE
+            scaling_status = AutoscalingStatus.UPSCALING
         elif target_replicas < current_replicas:
-            scaling_status_raw = AutoscalingStatus.DOWNSCALE
+            scaling_status = AutoscalingStatus.DOWNSCALING
         else:
-            scaling_status_raw = AutoscalingStatus.STABLE
+            scaling_status = AutoscalingStatus.STABLE
 
         latest_metrics_timestamp = self._latest_metrics_timestamp()
         if latest_metrics_timestamp is not None:
@@ -1048,7 +1059,7 @@ class DeploymentAutoscalingState:
             target_replicas=target_replicas,
             min_replicas=min_replicas,
             max_replicas=max_replicas,
-            scaling_status=AutoscalingStatus.format_scaling_status(scaling_status_raw),
+            scaling_status=_SCALING_STATUS_TEXT[scaling_status],
             policy_name=f"{policy.__module__}.{policy.__name__}",
             look_back_period_s=look_back_period_s,
             queued_requests=queued_requests,
@@ -1061,8 +1072,19 @@ class DeploymentAutoscalingState:
         )
         return self._cached_deployment_snapshot
 
-    def get_cached_snapshot_key(self) -> Optional[tuple]:
-        return self._cached_snapshot_key
+    def get_unlogged_snapshot(self) -> Optional[Tuple[tuple, DeploymentSnapshot]]:
+        """The latest decision's snapshot and its key, unless that key was the last
+        one logged. Builds the snapshot only in that case."""
+        key = self._cached_snapshot_key
+        if key is None or key == self._last_logged_snapshot_key:
+            return None
+        snapshot = self.get_deployment_snapshot()
+        if snapshot is None:
+            return None
+        return key, snapshot
+
+    def mark_snapshot_logged(self, key: tuple) -> None:
+        self._last_logged_snapshot_key = key
 
     def get_replica_metrics(self) -> Dict[str, List[TimeSeries]]:
         """Get the raw replica metrics dict."""
@@ -1610,18 +1632,20 @@ class AutoscalingStateManager:
         for app_state in self._app_autoscaling_states.values():
             app_state.drop_stale_handle_metrics(alive_serve_actor_ids)
 
-    def get_deployment_snapshot(
-        self, deployment_id: DeploymentID
-    ) -> Optional[DeploymentSnapshot]:
-        app_state = self._app_autoscaling_states.get(deployment_id.app_name)
-        if not app_state:
-            return None
-        dep_state = app_state._deployment_autoscaling_states.get(deployment_id)
-        return dep_state.get_deployment_snapshot() if dep_state else None
-
-    def get_cached_snapshot_key(self, deployment_id: DeploymentID) -> Optional[tuple]:
-        app_state = self._app_autoscaling_states.get(deployment_id.app_name)
-        if not app_state:
-            return None
-        dep_state = app_state._deployment_autoscaling_states.get(deployment_id)
-        return dep_state.get_cached_snapshot_key() if dep_state else None
+    def log_deployment_snapshots(
+        self, write: Callable[[List[Dict[str, Any]]], None]
+    ) -> None:
+        """Pass every deployment snapshot that changed since it was last logged to
+        `write` in one call. Each is marked logged only after `write` returns, so a
+        failed write is retried on the next call."""
+        pending = []
+        for app_state in self._app_autoscaling_states.values():
+            for dep_state in app_state._deployment_autoscaling_states.values():
+                unlogged = dep_state.get_unlogged_snapshot()
+                if unlogged is not None:
+                    pending.append((dep_state, *unlogged))
+        if not pending:
+            return
+        write([snapshot.model_dump(exclude_none=True) for _, _, snapshot in pending])
+        for dep_state, key, _ in pending:
+            dep_state.mark_snapshot_logged(key)

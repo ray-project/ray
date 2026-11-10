@@ -4,7 +4,7 @@ import glob
 import json
 import os
 import time
-from typing import Any, Dict, List, Optional, Sequence
+from typing import Any, Dict, Iterator, List, Optional, Sequence
 from unittest import mock
 
 import pytest
@@ -539,65 +539,49 @@ def _parse_snapshot_payload(message: Any) -> Optional[Dict[str, Any]]:
     return None
 
 
-def _parse_batched_snapshots_from_log(
-    log_paths: Sequence[str],
-    target_deployment_name: Optional[str] = None,
-) -> List[Dict[str, Any]]:
-    """Parse autoscaling snapshots from batched log format.
-
-    The new log format writes snapshots in batches:
-    {"snapshots": [snap1, snap2, ...]}
-
-    Args:
-        log_paths: List of log file paths to parse.
-        target_deployment_name: If provided, only return snapshots for this deployment.
-
-    Returns:
-        List of individual snapshot dicts, sorted by timestamp.
-    """
-    snaps = []
+def _iter_snapshot_batches(log_paths: Sequence[str]) -> Iterator[List[Dict[str, Any]]]:
+    """Yield the deployment snapshots of each log line, one list per batch."""
     for path in log_paths:
         if not os.path.exists(path):
             continue
         with open(path, "r", encoding="utf-8", errors="ignore") as f:
             for line in f:
-                # Try to parse the line as JSON first
                 try:
                     rec = json.loads(line)
                 except json.JSONDecodeError:
                     continue
-
-                # Get the message field
-                message = rec.get("message", "")
-                if not message:
+                payload = _parse_snapshot_payload(rec.get("message"))
+                if not payload or "snapshots" not in payload:
                     continue
+                yield [
+                    snap
+                    for snap in payload["snapshots"]
+                    if isinstance(snap, dict)
+                    and snap.get("snapshot_type") == "deployment"
+                ]
 
-                # Parse the message payload
-                payload = _parse_snapshot_payload(message)
-                if not payload:
-                    continue
 
-                # Handle batched format: {"snapshots": [...]}
-                if "snapshots" in payload:
-                    for snap in payload.get("snapshots", []):
-                        if not isinstance(snap, dict):
-                            continue
-                        if snap.get("snapshot_type") != "deployment":
-                            continue
-                        if (
-                            target_deployment_name is None
-                            or snap.get("deployment") == target_deployment_name
-                        ):
-                            snaps.append(snap)
-                # Handle legacy single snapshot format (for backward compatibility)
-                elif payload.get("snapshot_type") == "deployment":
-                    if (
-                        target_deployment_name is None
-                        or payload.get("deployment") == target_deployment_name
-                    ):
-                        snaps.append(payload)
-
+def _parse_batched_snapshots_from_log(
+    log_paths: Sequence[str],
+    target_deployment_name: Optional[str] = None,
+) -> List[Dict[str, Any]]:
+    """Snapshots from all batches, optionally for one deployment, by timestamp."""
+    snaps = [
+        snap
+        for batch in _iter_snapshot_batches(log_paths)
+        for snap in batch
+        if target_deployment_name is None
+        or snap.get("deployment") == target_deployment_name
+    ]
     return sorted(snaps, key=lambda s: s.get("timestamp_str", ""))
+
+
+def _snapshot_log_paths() -> List[str]:
+    return glob.glob(os.path.join(get_serve_logs_dir(), "autoscaling_snapshot_*.log"))
+
+
+def _read_deployment_snapshots(deployment_name: str) -> List[Dict[str, Any]]:
+    return _parse_batched_snapshots_from_log(_snapshot_log_paths(), deployment_name)
 
 
 def test_autoscaling_snapshot_log_emitted_and_well_formed(serve_instance):
@@ -626,25 +610,21 @@ def test_autoscaling_snapshot_log_emitted_and_well_formed(serve_instance):
 
     handle = serve.run(snap_app.bind())
 
-    serve_logs_dir = get_serve_logs_dir()
-
-    def get_snapshots():
-        """Read all snapshots for deployment from batched log format."""
-        log_paths = glob.glob(
-            os.path.join(serve_logs_dir, "autoscaling_snapshot_*.log")
-        )
-        return _parse_batched_snapshots_from_log(log_paths, DEPLOY_NAME)
-
     def wait_for_replicas(current, timeout=10):
         """Wait for exact current replica count."""
         wait_for_condition(
-            lambda: any(s.get("current_replicas") == current for s in get_snapshots()),
+            lambda: any(
+                s.get("current_replicas") == current
+                for s in _read_deployment_snapshots(DEPLOY_NAME)
+            ),
             timeout=timeout,
         )
 
     # Wait for initial replica to be ready
     wait_for_replicas(1, timeout=5)
-    initial = [s for s in get_snapshots() if s["current_replicas"] == 1][0]
+    initial = [
+        s for s in _read_deployment_snapshots(DEPLOY_NAME) if s["current_replicas"] == 1
+    ][0]
     assert initial["current_replicas"] == 1
     assert initial["min_replicas"] == 1
     assert initial["max_replicas"] == 2
@@ -653,7 +633,7 @@ def test_autoscaling_snapshot_log_emitted_and_well_formed(serve_instance):
     # Wait for scaling to 2 replicas.
     wait_for_replicas(2, timeout=5)
 
-    all_snaps = get_snapshots()
+    all_snaps = _read_deployment_snapshots(DEPLOY_NAME)
 
     snap_1 = next((s for s in all_snaps if s["current_replicas"] == 1), None)
     snap_2 = next((s for s in all_snaps if s["current_replicas"] == 2), None)
@@ -702,13 +682,8 @@ def test_autoscaling_snapshot_not_emitted_without_config(serve_instance):
 
     serve.run(app.bind())
 
-    serve_logs_dir = get_serve_logs_dir()
-    candidate_paths = sorted(
-        glob.glob(os.path.join(serve_logs_dir, "autoscaling_snapshot_*.log"))
-    )
-    assert (
-        candidate_paths
-    ), f"No autoscaling snapshot logs found; checked {serve_logs_dir}"
+    candidate_paths = _snapshot_log_paths()
+    assert candidate_paths, "No autoscaling snapshot logs found"
 
     found = _parse_batched_snapshots_from_log(candidate_paths, DEPLOY_NAME)
 
@@ -741,34 +716,23 @@ def test_autoscaling_snapshot_not_emitted_every_iteration(serve_instance):
 
     serve.run(app.bind())
 
-    serve_logs_dir = get_serve_logs_dir()
-
-    def get_snapshots():
-        log_paths = glob.glob(
-            os.path.join(serve_logs_dir, "autoscaling_snapshot_*.log")
-        )
-        return _parse_batched_snapshots_from_log(log_paths, DEPLOY_NAME)
-
     # Wait until the first stable snapshot shows up
     def has_initial_snapshot():
-        snaps = get_snapshots()
+        snaps = _read_deployment_snapshots(DEPLOY_NAME)
         return bool(snaps) and snaps[-1]["current_replicas"] == 1
 
     wait_for_condition(has_initial_snapshot, timeout=10)
 
     controller = _get_global_client()._controller
 
-    # ensure deployment is in autoscaling cache
-    ray.get(controller._refresh_autoscaling_deployments_cache.remote())
-
     # Count current snapshots
-    initial_count = len(get_snapshots())
+    initial_count = len(_read_deployment_snapshots(DEPLOY_NAME))
 
     # Force multiple emits
     for _ in range(5):
         ray.get(controller._emit_deployment_autoscaling_snapshots.remote())
 
-    final_count = len(get_snapshots())
+    final_count = len(_read_deployment_snapshots(DEPLOY_NAME))
 
     # No new snapshots should be added after the first stable write
     assert final_count == initial_count
@@ -818,46 +782,19 @@ def test_autoscaling_snapshot_batched_single_write_per_loop(serve_instance):
     app = Ingress.bind(*deployments)
     serve.run(app, name=APP_NAME, route_prefix=f"/{APP_NAME}")
 
-    serve_logs_dir = get_serve_logs_dir()
-
     def get_batch_payloads():
-        """Return list of (deployment_names_set, batch_dict) for target deployments."""
-        log_paths = glob.glob(
-            os.path.join(serve_logs_dir, "autoscaling_snapshot_*.log")
-        )
+        """Return (deployment_names_set, batch_dict) for each batch with targets."""
         batches = []
-        for path in log_paths:
-            if not os.path.exists(path):
-                continue
-            with open(path, "r", encoding="utf-8", errors="ignore") as f:
-                for line in f:
-                    try:
-                        rec = json.loads(line)
-                    except json.JSONDecodeError:
-                        continue
-
-                    message = rec.get("message")
-                    if message is None:
-                        continue
-
-                    payload = _parse_snapshot_payload(message)
-                    if not payload or "snapshots" not in payload:
-                        continue
-
-                    names_in_batch = set()
-                    target_snaps = []
-                    for snap in payload.get("snapshots", []):
-                        if not isinstance(snap, dict):
-                            continue
-                        if snap.get("snapshot_type") != "deployment":
-                            continue
-                        dep_name = snap.get("deployment")
-                        if snap.get("app") == APP_NAME and dep_name in deployment_names:
-                            names_in_batch.add(dep_name)
-                            target_snaps.append(snap)
-
-                    if names_in_batch:
-                        batches.append((names_in_batch, {"snapshots": target_snaps}))
+        for batch in _iter_snapshot_batches(_snapshot_log_paths()):
+            target_snaps = [
+                snap
+                for snap in batch
+                if snap.get("app") == APP_NAME
+                and snap.get("deployment") in deployment_names
+            ]
+            if target_snaps:
+                names = {snap["deployment"] for snap in target_snaps}
+                batches.append((names, {"snapshots": target_snaps}))
         return batches
 
     # Wait until a batch containing ALL deployments appears
