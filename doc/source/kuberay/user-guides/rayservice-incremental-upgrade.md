@@ -40,7 +40,7 @@ Before you can use this feature, you **must** have the following set up in your 
     spec:
         controllerName: istio.io/gateway-controller
     ```
-    Use the `metadata.name`, for example `istio`, in the `gatewayClassName` field of the `RayService` spec.
+    Use the `metadata.name`, for example `istio`, in the `gatewayClassName` field of the `RayService` spec. To use an existing Gateway instead, see {ref}`kuberay-rayservice-incremental-upgrade-gateway-ref`.
 
 4.  **Ray Autoscaler:** Incremental upgrades require the Ray Autoscaler to be enabled in your `RayCluster` spec, as KubeRay manages the upgrade by adjusting the `target_capacity` for Ray Serve which adjusts the number of Serve replicas for each deployment. These Serve replicas are translated into a resource load which the Ray autoscaler considers when determining the number of Pods to provision with KubeRay. For information on enabling and configuring Ray autoscaling on Kubernetes, see [KubeRay Autoscaling](configuring-autoscaling.md).
 
@@ -318,6 +318,42 @@ status:
       namespace: default
 ```
 
+(kuberay-rayservice-incremental-upgrade-gateway-ref)=
+## Attach to an existing Gateway
+
+By default, KubeRay creates a Gateway for each RayService from `gatewayClassName`. To attach the RayService's HTTPRoute to an existing Gateway instead, such as one that your cluster admin manages, set `gatewayRef`. This option requires KubeRay v1.8.0 or later.
+
+KubeRay never creates, updates, or deletes the referenced Gateway. The Gateway must already exist and must allow HTTPRoutes from the RayService's namespace in `spec.listeners[].allowedRoutes`. If the Gateway doesn't exist, KubeRay emits a `FailedToGetGateway` warning event on the RayService.
+
+```yaml
+spec:
+  upgradeStrategy:
+    type: NewClusterWithIncrementalUpgrade
+    clusterUpgradeOptions:
+      # Set gatewayRef instead of gatewayClassName.
+      gatewayRef:
+        name: shared-gateway
+        # Omit to use the RayService's namespace.
+        namespace: gateway
+        # Omit to attach to every listener that accepts the HTTPRoute.
+        sectionName: http
+      stepSizePercent: 10
+      intervalSeconds: 30
+      maxSurgePercent: 10
+```
+
+For a complete manifest and an example Gateway, see [`ray-service.incremental-upgrade-gateway-ref.yaml`](https://github.com/kuberay-project/kuberay/blob/master/ray-operator/config/samples/ray-service.incremental-upgrade-gateway-ref.yaml).
+
+:::{caution}
+The HTTPRoute that KubeRay creates matches every path and sets no `hostnames`. On a Gateway that other applications share, use `sectionName` or `port` to attach it to a listener that serves only this RayService.
+:::
+
+KubeRay doesn't progress an upgrade until the Gateway is ready and accepts the HTTPRoute. To check the HTTPRoute, confirm that the `Accepted` and `ResolvedRefs` conditions under `status.parents` are `True`:
+
+```bash
+kubectl get httproute <rayservice-name>-httproute -o yaml
+```
+
 ## How to upgrade safely?
 
 Since this feature is beta and remains open to adjustments based on feedback, we recommend conservative parameter settings to minimize risk during upgrades.
@@ -446,14 +482,26 @@ This section details the new and updated fields in the `RayService` CRD.
 
 ### `RayService.spec.upgradeStrategy.clusterUpgradeOptions`
 
-This block is required *only* if `type` is set to `NewClusterWithIncrementalUpgrade`.
+This block is required *only* if `type` is set to `NewClusterWithIncrementalUpgrade`. Set either `gatewayClassName` or `gatewayRef`, but not both.
 
 | Field | Type | Description | Required | Default |
 | :--- | :--- | :--- | :--- | :--- |
 | `maxSurgePercent` | `int32` | The percentage of *capacity* (Serve replicas) to add to the new cluster in each scaling step. For example, a value of `20` means the new cluster's `target_capacity` will increase in 20% increments (0% -> 20% -> 40%...). Must be between 0 and 100. | No | `100` |
 | `stepSizePercent` | `int32` | The percentage of *traffic* to shift from the old to the new cluster during each interval. Must be between 0 and 100. | **Yes** | N/A |
 | `intervalSeconds` | `int32` | The time in seconds to wait between shifting traffic by `stepSizePercent`. | **Yes** | N/A |
-| `gatewayClassName` | `string` | The `metadata.name` of the `GatewayClass` resource KubeRay should use to create `Gateway` and `HTTPRoute` objects. | **Yes** | N/A |
+| `gatewayClassName` | `string` | The `metadata.name` of the `GatewayClass` resource KubeRay should use to create `Gateway` and `HTTPRoute` objects. | **Yes**, unless you set `gatewayRef` | N/A |
+| `gatewayRef` | `object` | The existing Gateway to attach the HTTPRoute to. KubeRay doesn't create a Gateway when you set this field. Requires KubeRay v1.8.0 or later. | **Yes**, unless you set `gatewayClassName` | N/A |
+
+### `RayService.spec.upgradeStrategy.clusterUpgradeOptions.gatewayRef`
+
+This block identifies the existing Gateway and listener that the HTTPRoute attaches to.
+
+| Field | Type | Description | Required | Default |
+| :--- | :--- | :--- | :--- | :--- |
+| `name` | `string` | The name of the Gateway. | **Yes** | N/A |
+| `namespace` | `string` | The namespace of the Gateway. | No | The RayService's namespace |
+| `sectionName` | `string` | The name of the Gateway listener to attach the HTTPRoute to. If you omit it, the HTTPRoute attaches to every listener that accepts it. | No | N/A |
+| `port` | `int32` | The port of the Gateway listener to attach the HTTPRoute to. If you also set `sectionName`, the listener must match both. | No | N/A |
 
 ### `RayService.status.activeServiceStatus` & `RayService.status.pendingServiceStatus`
 
