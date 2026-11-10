@@ -140,7 +140,7 @@ def test_per_node_allocation_and_change_tracking():
     assert reporter.seconds_since_allocation_change() < age_after_first + 1.0
 
     view = reporter.get_cluster_view()
-    assert view.alloc_by_node["node1"].cpu == 2
+    assert view.reserved_by_node["node1"].cpu == 2
     assert view.labels_by_node == {} and view.pg_bundles == {}
 
 
