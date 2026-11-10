@@ -405,10 +405,9 @@ def test_default_decoder_rejects_unsafe_extensions(
     with TarWriter(path) as tf:
         tf.write(filename, b"fake-payload")
 
-    # V2 decodes the first chunk to infer the schema, so the error can already
-    # come from ``read_webdataset``.
+    ds = ray.data.read_webdataset(paths=[str(tmp_path)])
     with pytest.raises(Exception, match="Refusing to"):
-        ray.data.read_webdataset(paths=[str(tmp_path)]).take_all()
+        ds.take_all()
 
 
 def test_default_decoder_allows_unsafe_with_env_var(

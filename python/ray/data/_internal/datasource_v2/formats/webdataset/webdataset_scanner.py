@@ -24,7 +24,7 @@ class WebDatasetScanner(FileScanner):
     Supports no filter, projection or limit pushdown.
     """
 
-    schema: pa.Schema
+    schema: Optional[pa.Schema]
     filesystem: "FileSystem"
     decoder: Optional[Any] = True
     fileselect: Optional[Any] = None
@@ -36,7 +36,7 @@ class WebDatasetScanner(FileScanner):
     open_stream_args: Dict[str, Any] = field(default_factory=dict)
     synthesized_columns: Tuple[SynthesizedColumn, ...] = ()
 
-    def read_schema(self) -> pa.Schema:
+    def read_schema(self) -> Optional[pa.Schema]:
         return self.schema
 
     def create_reader(self) -> WebDatasetReader:

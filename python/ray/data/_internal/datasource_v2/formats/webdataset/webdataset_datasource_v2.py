@@ -19,9 +19,6 @@ from ray.data._internal.datasource_v2.common.round_robin_partitioner import (
     RoundRobinPartitioner,
 )
 from ray.data._internal.datasource_v2.common.synthesized_columns import PathColumn
-from ray.data._internal.datasource_v2.formats.webdataset.webdataset_reader import (
-    WebDatasetReader,
-)
 from ray.data._internal.datasource_v2.formats.webdataset.webdataset_scanner import (
     WebDatasetScanner,
 )
@@ -74,8 +71,7 @@ class WebDatasetDatasourceV2(FileDataSourceV2):
     """V2 datasource that lists tar shards and reads them with WebDatasetScanner.
 
     RoundRobinPartitioner groups shards into read tasks by estimated
-    in-memory size, and the schema comes from decoding the first chunk of
-    the first shard.
+    in-memory size. The schema is resolved from the first read block.
     """
 
     def __init__(
@@ -162,35 +158,18 @@ class WebDatasetDatasourceV2(FileDataSourceV2):
     def schema_needs_file_sample(self) -> bool:
         return True
 
-    def infer_schema(self, sample: Optional[FileManifest]) -> pa.Schema:
-        """Read the first chunk of samples from the first shard and use the
-        schema of the resulting table.
+    def infer_schema(self, sample: Optional[FileManifest]) -> Optional[pa.Schema]:
+        """Return ``None`` so the schema is resolved from the first read block.
+
+        A tar shard stores no schema, and decoded column types depend on the
+        decoder, so the schema is only known after decoding samples. Decoding
+        them here would run on the driver and hold a whole chunk in its memory.
         """
-        assert sample is not None, "WebDataset always receives a sample"
-
-        schema = pa.schema([])
-        if len(sample) > 0:
-            reader = self._create_reader(synthesized_columns=())
-            first_shard = FileManifest.construct_manifest(
-                paths=sample.paths.tolist()[:1],
-                sizes=sample.file_sizes.tolist()[:1],
-                chunk_metadatas=[None],
-            )
-            first_table = next(iter(reader.read(first_shard)), None)
-            if first_table is not None:
-                schema = first_table.schema
-
-        for column in self._synthesized_columns:
-            idx = schema.get_field_index(column.name)
-            if idx == -1:
-                schema = schema.append(pa.field(column.name, column.type))
-            elif schema.field(idx).type != column.type:
-                schema = schema.set(idx, pa.field(column.name, column.type))
-        return schema
+        return None
 
     def create_scanner(
         self,
-        schema: pa.Schema,
+        schema: Optional[pa.Schema],
         filesystem: Optional["FileSystem"] = None,
         **options: Any,
     ) -> WebDatasetScanner:
@@ -208,18 +187,4 @@ class WebDatasetDatasourceV2(FileDataSourceV2):
             synthesized_columns=self._synthesized_columns,
             partitioning=options.get("partitioning"),
             shuffle=self._shuffle,
-        )
-
-    def _create_reader(self, synthesized_columns) -> WebDatasetReader:
-        return WebDatasetReader(
-            filesystem=self._filesystem,
-            decoder=self._decoder,
-            fileselect=self._fileselect,
-            filerename=self._filerename,
-            suffixes=self._suffixes,
-            verbose_open=self._verbose_open,
-            expand_json=self._expand_json,
-            allow_unsafe_deserialization=self._allow_unsafe_deserialization,
-            open_stream_args=dict(self._open_stream_args),
-            synthesized_columns=synthesized_columns,
         )
