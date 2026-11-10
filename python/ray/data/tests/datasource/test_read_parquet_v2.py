@@ -1068,26 +1068,55 @@ def test_count_pushdown_preserves_list_files_fields(tmp_path, restore_ctx, read_
     assert rebuilt.partition_filter is original.partition_filter
 
 
-@pytest.mark.parametrize("case", ["predicate", "limit"])
 @pytest.mark.parametrize("merge_schema", [False, True])
-def test_count_pushdown_declines_row_reducing_reads(
-    tmp_path, restore_ctx, case, merge_schema
+def test_count_pushdown_uses_footer_matches_for_filter(
+    tmp_path, restore_ctx, merge_schema
 ):
-    """A row-reducing pushdown makes footer ``num_rows`` an overcount."""
-    from ray.data.expressions import col
+    """A filtered count keeps the footer indexer and uses fully-matched runs."""
+    from ray.data._internal.logical.operators.map_operator import MapBatches
 
     _write(tmp_path / "data.parquet", pa.table({"a": [1, 2, 3, 4]}))
 
     restore_ctx.use_datasource_v2 = True
-    ds = ray.data.read_parquet(str(tmp_path), merge_schema=merge_schema)
-    ds = ds.filter(expr=col("a") > 2) if case == "predicate" else ds.limit(2)
+    ds = ray.data.read_parquet(str(tmp_path), merge_schema=merge_schema).filter(
+        expr=col("a") > 2
+    )
+
+    dag = _optimized_count_plan(ds).dag
+    assert isinstance(dag, MapBatches)
+    assert not any(isinstance(op, ReadFiles) for op in _walk(dag))
+
+    (list_files_op,) = [op for op in _walk(dag) if isinstance(op, ListFiles)]
+    assert isinstance(list_files_op.file_indexer, FooterFileIndexer)
+    assert list_files_op.file_partitioner is None
+    assert ds.count() == 2
+    rows = ds.take_all()
+    assert sorted(row["a"] for row in rows) == [3, 4]
+
+
+@pytest.mark.parametrize("merge_schema", [False, True])
+def test_count_pushdown_declines_limit(tmp_path, restore_ctx, merge_schema):
+    """A limit makes the listing stop early, so metadata cannot answer count()."""
+    _write(tmp_path / "data.parquet", pa.table({"a": [1, 2, 3, 4]}))
+
+    restore_ctx.use_datasource_v2 = True
+    ds = ray.data.read_parquet(str(tmp_path), merge_schema=merge_schema).limit(2)
 
     assert any(isinstance(op, ReadFiles) for op in _walk(_optimized_count_plan(ds).dag))
     assert ds.count() == 2
-    rows = ds.take_all()
-    assert len(rows) == 2
-    if case == "predicate":
-        assert sorted(row["a"] for row in rows) == [3, 4]
+
+
+def test_count_pushdown_declines_synthesized_columns(tmp_path, restore_ctx):
+    """A synthesized-column predicate can't be evaluated with an empty projection."""
+    _write(tmp_path / "data.parquet", pa.table({"a": [1, 2, 3]}))
+
+    restore_ctx.use_datasource_v2 = True
+    ds = ray.data.read_parquet(str(tmp_path), include_paths=True).filter(
+        expr=col("a") > 0
+    )
+
+    assert any(isinstance(op, ReadFiles) for op in _walk(_optimized_count_plan(ds).dag))
+    assert ds.count() == 3
 
 
 @pytest.mark.parametrize(
@@ -1114,6 +1143,137 @@ def test_count_matches_rows(
     restore_ctx.use_datasource_v2 = True
 
     assert ray.data.read_parquet(str(tmp_path)).count() == num_files * rows_per_file
+
+
+@pytest.mark.parametrize(
+    "predicate, expected",
+    [
+        pytest.param(col("id") >= 0, 400, id="all"),
+        pytest.param(col("id") >= 200, 200, id="fully_matched_files"),
+        pytest.param(col("id") >= 225, 175, id="partial_row_group"),
+        pytest.param(col("id") >= 1000, 0, id="empty"),
+    ],
+)
+def test_count_pushdown_filtered_count_matches_rows(
+    tmp_path, restore_ctx, predicate, expected
+):
+    restore_ctx.use_datasource_v2 = True
+    for i in range(4):
+        pq.write_table(
+            pa.table({"id": list(range(i * 100, (i + 1) * 100))}),
+            str(tmp_path / f"f{i}.parquet"),
+            row_group_size=50,
+        )
+
+    ds = ray.data.read_parquet(str(tmp_path)).filter(expr=predicate)
+    assert ds.count() == expected
+    assert len(ds.take_all()) == expected
+
+
+def test_count_pushdown_reads_only_partial_runs(tmp_path, restore_ctx, monkeypatch):
+    """Fully matched runs come from footers; only unsettled runs are read."""
+    from dataclasses import dataclass, fields
+    from pathlib import Path
+    from typing import Iterator
+
+    for i in range(4):
+        pq.write_table(
+            pa.table({"id": list(range(i * 100, (i + 1) * 100))}),
+            str(tmp_path / f"f{i}.parquet"),
+            row_group_size=50,
+        )
+
+    restore_ctx.use_datasource_v2 = True
+    trace_path = tmp_path / "worker-reads.jsonl"
+    original_create_scanner = ParquetDatasourceV2.create_scanner
+
+    @dataclass(frozen=True)
+    class RecordingScanner(ParquetScanner):
+        def create_reader(self) -> ParquetFileReader:
+            reader = super().create_reader()
+            original_read = reader.read
+
+            def traced_read(input_split: FileManifest) -> Iterator[pa.Table]:
+                chunks: list = []
+                for metadata in input_split.file_chunk_metadatas:
+                    chunks.append(
+                        None
+                        if metadata is None
+                        else {
+                            "unit_ids": [int(unit) for unit in metadata["unit_ids"]],
+                            "num_rows": int(metadata["num_rows"]),
+                            "fully_matched": bool(metadata["fully_matched"]),
+                        }
+                    )
+                with open(trace_path, "a", encoding="utf-8") as trace:
+                    trace.write(
+                        json.dumps(
+                            {
+                                "paths": input_split.paths.tolist(),
+                                "chunks": chunks,
+                            }
+                        )
+                        + "\n"
+                    )
+                yield from original_read(input_split)
+
+            reader.read = traced_read
+            return reader
+
+    def create_scanner(datasource, schema, filesystem=None, **options):
+        scanner = original_create_scanner(datasource, schema, filesystem, **options)
+        return RecordingScanner(
+            **{field.name: getattr(scanner, field.name) for field in fields(scanner)}
+        )
+
+    monkeypatch.setattr(ParquetDatasourceV2, "create_scanner", create_scanner)
+
+    # Every surviving run is fully matched: count() must not read any data.
+    all_matched = ray.data.read_parquet(str(tmp_path)).filter(expr=col("id") >= 200)
+    assert all_matched.count() == 200
+    assert not Path(trace_path).exists()
+
+    # f2's first row group is partial; f3 is fully matched and must be skipped.
+    partial = ray.data.read_parquet(str(tmp_path)).filter(expr=col("id") >= 225)
+    assert partial.count() == 175
+
+    records = [json.loads(line) for line in Path(trace_path).read_text().splitlines()]
+    assert records
+    assert {path for record in records for path in record["paths"]} == {
+        str(tmp_path / "f2.parquet")
+    }
+    assert all(
+        not chunk["fully_matched"] for record in records for chunk in record["chunks"]
+    )
+
+
+@pytest.mark.parametrize("case", ["nulls", "floats", "no_stats"])
+def test_count_pushdown_filtered_count_fails_closed(tmp_path, restore_ctx, case):
+    """Stats that cannot prove a full match must fall back to reading."""
+    restore_ctx.use_datasource_v2 = True
+
+    if case == "nulls":
+        table = pa.table({"id": [1, None, 3, 4]})
+        predicate = col("id") > 0
+        write_statistics = True
+    elif case == "floats":
+        table = pa.table({"id": [1.0, 2.0, float("nan"), 4.0]})
+        predicate = col("id") > 1.0
+        write_statistics = True
+    else:
+        table = pa.table({"id": [1, 2, 3, 4]})
+        predicate = col("id") > 1
+        write_statistics = False
+
+    pq.write_table(
+        table,
+        str(tmp_path / "data.parquet"),
+        row_group_size=2,
+        write_statistics=write_statistics,
+    )
+
+    ds = ray.data.read_parquet(str(tmp_path)).filter(expr=predicate)
+    assert ds.count() == len(ds.take_all())
 
 
 def test_count_pushdown_honors_skip_paths(tmp_path, restore_ctx):

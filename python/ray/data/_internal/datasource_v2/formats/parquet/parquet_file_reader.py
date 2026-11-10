@@ -194,8 +194,10 @@ def _estimate_batch_size_from_chunk_stats(
     )
     if estimated_in_mem_row_size == 0:
         return None
-    # Never request more rows than the chunk actually contains.
-    return min(math.ceil(target_block_size / estimated_in_mem_row_size), num_rows)
+    # Never request more rows than the chunk actually contains. ``num_rows``
+    # comes from manifest chunk metadata, which may be a NumPy scalar; PyArrow's
+    # scanner requires a Python int.
+    return int(min(math.ceil(target_block_size / estimated_in_mem_row_size), num_rows))
 
 
 @DeveloperAPI

@@ -141,6 +141,12 @@ class FooterFileIndexer(NonSamplingFileIndexer):
     :class:`~ray.data._internal.datasource_v2.common.online_bin_packer.OnlineBinPacker`.
     """
 
+    def emits_fully_matched_chunks(self) -> bool:
+        # ``FooterReader`` computes the flag against the listing predicate and
+        # only sets it when footer statistics prove every row in the run
+        # survives the filter.
+        return True
+
     def __init__(
         self,
         *,

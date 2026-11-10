@@ -1,14 +1,19 @@
 import dataclasses
 import logging
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING, Optional, cast
 
 from ray.data._internal.datasource_v2.common.pushdown_utils import (
     derive_list_files_pushdown,
 )
 from ray.data._internal.datasource_v2.interfaces.file_manifest import (
     PATH_COLUMN_NAME,
+    FileChunk,
     FileManifest,
 )
+from ray.data._internal.datasource_v2.interfaces.pushdown import (
+    SupportsColumnPruning,
+)
+from ray.data._internal.datasource_v2.interfaces.scanner import Scanner
 from ray.data._internal.datasource_v2.interfaces.supports_metadata import (
     MetadataType,
     SupportsMetadata,
@@ -25,36 +30,31 @@ logger = logging.getLogger(__name__)
 
 
 class PushdownCountFiles(Rule):
-    """Answer ``Dataset.count()`` from file metadata instead of reading data.
+    """Answer ``Dataset.count()`` without reading data when metadata can prove it.
 
-    When a ``Count`` sits directly on top of a bare DataSourceV2 ``ReadFiles``
-    (optionally through a row-preserving ``Project``) whose reader implements
-    :class:`~ray.data._internal.datasource_v2.interfaces.supports_metadata.SupportsMetadata`,
-    this rule rewrites the plan to::
+    Two strategies are supported:
 
-        Count(ReadFiles(ListFiles))  ->  MapBatches(count_rows, ListFiles)
+    * **Unfiltered count.** When the scanner's row count is exact, rebuild
+      ``ListFiles`` with a whole-file indexer and sum
+      ``SupportsMetadata.read_metadata()`` in the parallel count pass. Listing
+      does no metadata IO; each file appears exactly once.
+    * **Filtered count.** When the listing emits exact
+      ``FileChunk.fully_matched`` metadata, keep that metadata-aware indexer
+      and sum ``num_rows`` for runs whose footer statistics prove every row
+      matches the predicate. Read only the runs the footer could not settle.
 
-    ``count_rows`` sums ``read_metadata()`` (e.g. Parquet-footer row counts),
-    so no data columns are read. The upstream ``ListFiles`` is rebuilt with a
-    plain whole-file indexer and no partitioner, so (a) each file appears in
-    exactly one manifest row -- no over-counting -- and (b) listing does no
-    metadata IO of its own: footers are read once, in the parallel count pass.
-
-    Two things must hold, and each component is asked rather than type-tested.
-    The scan's row count must be answerable from file metadata
-    (``metadata_row_count_is_exact``), and the listing must emit each file
-    exactly once (``as_whole_file_indexer``). Both hooks default to "no": a
-    wrong count is silent, while declining just falls back to a real read.
-
-    Note this *replaces* metadata-aware indexers such as the footer-based
-    Parquet one, rather than reconfiguring them: those override ``list_files``
-    outright, so reconfiguring is a silent no-op and they would footer-sweep
-    every file during listing and pack them into a single read unit.
+    Both paths fail closed: over-claiming makes ``count()`` silently wrong,
+    while declining just falls back to a real read. The scanner and indexer
+    capability hooks make each component responsible for its own guarantee.
     """
 
     # Default CPU allocation per task is 1; lower it so at least 2 footer-read
     # tasks can run per core (the work is network-bound, not CPU-bound).
     _PER_TASK_NUM_CPUS_ALLOCATION = 0.5
+
+    # Manifest rows per filtered count task. Fully matched rows are cheap;
+    # batching keeps task overhead down while parallelizing the partial reads.
+    _FILTERED_COUNT_BATCH_SIZE = 16
 
     def apply(self, plan: LogicalPlan) -> LogicalPlan:  # pyrefly: ignore[bad-override]
         count = plan.dag
@@ -73,19 +73,8 @@ class PushdownCountFiles(Rule):
         if not isinstance(read_files, ReadFiles) or read_files.block_udf is not None:
             return plan
 
-        # A limit, or a filter the source cannot account for in its metadata,
-        # would make the metadata ``num_rows`` an overcount. Column projection
-        # is fine: it changes width, not row count.
         scanner = read_files.scanner
-        if not scanner.metadata_row_count_is_exact():
-            return plan
-
-        reader = scanner.create_reader()
-        if (
-            not isinstance(reader, SupportsMetadata)
-            or MetadataType.NUM_ROWS not in reader.available_metadata()
-        ):
-            return plan
+        pushdown = derive_list_files_pushdown(scanner)
 
         assert len(read_files.input_dependencies) == 1, len(
             read_files.input_dependencies
@@ -93,59 +82,122 @@ class PushdownCountFiles(Rule):
         list_files = read_files.input_dependencies[0]
         assert isinstance(list_files, ListFiles), list_files
 
-        # Rebuild ``ListFiles`` to list each file exactly once: disable
-        # partitioning and swap in a plain whole-file indexer. Mutating the
-        # existing indexer's chunker isn't enough -- a metadata-aware indexer
-        # (e.g. the footer-based Parquet one) overrides ``list_files`` outright
-        # and ignores its chunker, so it would keep footer-sweeping during
-        # listing and could emit a path once per bin, over-counting it.
-        base_indexer = list_files.file_indexer
-        whole_file_indexer = base_indexer.as_whole_file_indexer()
-        if whole_file_indexer is None:
-            # The indexer can't promise one manifest row per file -- it may chunk
-            # files or do its own metadata IO -- so leave the plan alone and let
-            # ``count()`` fall back to the regular read path.
-            logger.debug(
-                "Skipping count pushdown: %s cannot provide a whole-file indexer",
-                type(base_indexer).__name__,
+        if scanner.metadata_row_count_is_exact():
+            # Unfiltered path: metadata gives an exact row count for every file.
+            reader = scanner.create_reader()
+            if (
+                not isinstance(reader, SupportsMetadata)
+                or MetadataType.NUM_ROWS not in reader.available_metadata()
+            ):
+                return plan
+
+            # Rebuild ``ListFiles`` to list each file exactly once: disable
+            # partitioning and swap in a plain whole-file indexer. Mutating the
+            # existing indexer's chunker isn't enough -- a metadata-aware indexer
+            # (e.g. the footer-based Parquet one) overrides ``list_files``
+            # outright and ignores its chunker, so it would keep footer-sweeping
+            # during listing and could emit a path once per bin, over-counting it.
+            whole_file_indexer = list_files.file_indexer.as_whole_file_indexer()
+            if whole_file_indexer is None:
+                logger.debug(
+                    "Skipping count pushdown: %s cannot provide a whole-file indexer",
+                    type(list_files.file_indexer).__name__,
+                )
+                return plan
+
+            assert (
+                pushdown.limit is None
+            ), "metadata_row_count_is_exact must refuse a limit"
+            list_files = dataclasses.replace(
+                list_files,
+                file_partitioner=None,
+                file_indexer=whole_file_indexer,
+                predicate=pushdown.predicate,
+                projected_columns=None,
+                limit=None,
+                partition_pruner=None,
+                pushdown_is_final=True,
             )
+
+            # ``reader`` is narrowed to ``SupportsMetadata`` by the guard above,
+            # but that narrowing is lost inside the closure -- bind a typed local.
+            metadata_reader: SupportsMetadata = reader
+            batch_size: Optional[int] = metadata_reader.get_target_metadata_batch_size()
+
+            def count_rows(batch: "pa.Table") -> "pa.Table":
+                import pyarrow as pa
+
+                assert PATH_COLUMN_NAME in batch.column_names, batch.column_names
+                total_rows = 0
+                for block_metadata in metadata_reader.read_metadata(
+                    FileManifest(batch)
+                ):
+                    total_rows += block_metadata.num_rows or 0
+                return pa.table({Count.COLUMN_NAME: pa.array([total_rows])})
+
+            num_cpus = self._PER_TASK_NUM_CPUS_ALLOCATION
+        elif (
+            pushdown.predicate is not None
+            and pushdown.limit is None
+            and pushdown.partition_pruner is None
+            # Synthesized columns (path / row_hash) are not materialized by the
+            # empty count projection, so a predicate on them must read normally.
+            and not getattr(scanner, "synthesized_columns", ())
+            and list_files.file_indexer.emits_fully_matched_chunks()
+        ):
+            # Filtered path: the listing already classified each run with the
+            # same predicate. Sum runs whose footers prove every row matches and
+            # read only the rest. Capture the scanner, not a reader: a reader
+            # built on the driver carries the ``_UNSET`` batch-size sentinel
+            # through pickling, which breaks its identity check on the worker.
+            reader_scanner: Scanner = scanner
+            if isinstance(scanner, SupportsColumnPruning):
+                reader_scanner = cast(Scanner, scanner.prune_columns([]))
+
+            list_files = dataclasses.replace(
+                list_files,
+                # Keep the metadata-aware indexer so its fully_matched flags
+                # survive. Disable packing so each run stays independently
+                # countable/readable.
+                file_partitioner=None,
+                predicate=pushdown.predicate,
+                # ``count()`` needs no data columns; the reader still reads
+                # predicate columns for partial runs.
+                projected_columns=[],
+                limit=None,
+                partition_pruner=None,
+                pushdown_is_final=True,
+            )
+
+            batch_size = self._FILTERED_COUNT_BATCH_SIZE
+
+            def count_rows(batch: "pa.Table") -> "pa.Table":
+                import pyarrow as pa
+
+                assert PATH_COLUMN_NAME in batch.column_names, batch.column_names
+                manifest = FileManifest(batch)
+                total_rows = 0
+                partial_indices = []
+                for idx, chunk_metadata in enumerate(manifest.file_chunk_metadatas):
+                    if chunk_metadata is not None:
+                        chunk = FileChunk.from_metadata(chunk_metadata)
+                        if chunk.fully_matched:
+                            total_rows += chunk.num_rows
+                            continue
+                    partial_indices.append(idx)
+
+                if partial_indices:
+                    reader = reader_scanner.create_reader()
+                    partial_manifest = FileManifest(batch.take(partial_indices))
+                    for table in reader.read(partial_manifest):
+                        total_rows += table.num_rows
+
+                return pa.table({Count.COLUMN_NAME: pa.array([total_rows])})
+
+            # This path may decode partial runs, so reserve a full CPU.
+            num_cpus = 1.0
+        else:
             return plan
-
-        # Keep the scanner's predicate on the listing: ``count_rows`` applies
-        # that same filter through the same reader the deleted ``ReadFiles``
-        # would have used, so the listing prunes by exactly what the consumer
-        # applies. The rest stay unset -- ``metadata_row_count_is_exact`` is
-        # false under a limit or a partition pruner, and ``projected_columns``
-        # only fed the indexer this rule just replaced.
-        pushdown = derive_list_files_pushdown(scanner)
-        assert pushdown.limit is None, "metadata_row_count_is_exact must refuse a limit"
-
-        # ``ListFiles`` is frozen, so ``replace`` it with a fresh indexer.
-        list_files = dataclasses.replace(
-            list_files,
-            file_partitioner=None,
-            file_indexer=whole_file_indexer,
-            predicate=pushdown.predicate,
-            projected_columns=None,
-            limit=None,
-            partition_pruner=None,
-            pushdown_is_final=True,
-        )
-
-        # ``reader`` is narrowed to ``SupportsMetadata`` by the guard above, but
-        # that narrowing is lost inside the ``count_rows`` closure -- bind a
-        # typed local so its declared type carries into the closure.
-        metadata_reader: SupportsMetadata = reader
-        batch_size: Optional[int] = metadata_reader.get_target_metadata_batch_size()
-
-        def count_rows(batch: "pa.Table") -> "pa.Table":
-            import pyarrow as pa
-
-            assert PATH_COLUMN_NAME in batch.column_names, batch.column_names
-            total_rows = 0
-            for block_metadata in metadata_reader.read_metadata(FileManifest(batch)):
-                total_rows += block_metadata.num_rows or 0
-            return pa.table({Count.COLUMN_NAME: pa.array([total_rows])})
 
         count_rows_op = MapBatches(
             fn=count_rows,
@@ -155,7 +207,7 @@ class PushdownCountFiles(Rule):
             min_rows_per_bundled_input=batch_size,
             zero_copy_batch=True,
             can_modify_num_rows=True,
-            ray_remote_args={"num_cpus": self._PER_TASK_NUM_CPUS_ALLOCATION},
+            ray_remote_args={"num_cpus": num_cpus},
         )
 
         return LogicalPlan(count_rows_op, plan.context)

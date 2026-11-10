@@ -45,6 +45,17 @@ class FileIndexer(ABC):
         """
         return None
 
+    def emits_fully_matched_chunks(self) -> bool:
+        """Whether ``FileChunk.fully_matched`` is exact for this listing.
+
+        A filtered count can sum ``num_rows`` for runs marked ``fully_matched``
+        and read only the remaining runs. That is safe only when the indexer
+        computes the flag from the same predicate it was given, so the default
+        is ``False``: a wrong count is silent, while declining just reads the
+        data.
+        """
+        return False
+
     @abstractmethod
     def list_files(
         self,
