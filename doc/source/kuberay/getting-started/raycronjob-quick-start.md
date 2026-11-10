@@ -6,38 +6,30 @@ myst:
 
 (kuberay-raycronjob-quickstart)=
 
-# RayCronJob Quickstart
+# RayCronJob quickstart
+
+A RayCronJob creates RayJobs on a recurring schedule, the same way a Kubernetes CronJob creates Jobs.
+
+:::{note}
+RayCronJob is alpha and disabled by default. To use it, enable the `RayCronJob` feature gate.
+:::
 
 ## Prerequisites
 
-* KubeRay v1.8.0 or newer. RayCronJob is alpha.
-* A running Kubernetes cluster.
-* The KubeRay operator installed and running in your cluster.
+* KubeRay v1.8.0 or newer
 
-## What is a RayCronJob?
+## Configure a RayCronJob
 
-A `RayCronJob` is a Custom Resource (CR) that allows you to run `RayJob` workloads on a recurring, time-based schedule. It is heavily inspired by the native Kubernetes `CronJob` and brings automated, scheduled execution to your distributed Ray applications.
+The RayCronJob spec has four fields:
 
+* `schedule`: The cron schedule for creating RayJobs, such as `*/5 * * * *` for every five minutes.
+* `jobTemplate`: The template for the RayJobs that the RayCronJob creates.
+  * `metadata`: Optional. Labels and annotations to copy onto each RayJob, such as a Kueue `kueue.x-k8s.io/queue-name` label.
+  * `spec`: The RayJob spec. See the {ref}`RayJob quickstart <kuberay-rayjob-quickstart>` for its fields.
+* `timeZone`: Optional. The [time zone](https://en.wikipedia.org/wiki/List_of_tz_database_time_zones) for `schedule`, such as `America/Los_Angeles`. Defaults to the KubeRay operator's local time zone. Don't put `TZ` or `CRON_TZ` in `schedule`.
+* `suspend`: Optional. Set it to `true` to stop creating RayJobs. Existing RayJobs keep running.
 
-This is particularly useful for recurring tasks such as scheduled model retraining, nightly batch inferences, or regular data processing pipelines.
-
-
-## RayCronJob Configuration
-
-The `RayCronJob` CRD acts as an automated scheduler specifically designed to create and manage **RayJob** custom resources on a recurring basis. It does not execute workloads directly. Instead, it acts as a controller that creates a new `RayJob` each time the schedule triggers.
-
-* `schedule` - The cron schedule string defining when a new Ray job should be created and run (e.g., `* * * * *` for every minute).
-* `jobTemplate` - The template for the RayJob that the controller creates on each scheduled run.
-  * `metadata` (Optional): Labels and annotations that the controller copies onto each RayJob, such as a Kueue `kueue.x-k8s.io/queue-name` label.
-  * `spec` - A standard RayJob spec. See [RayJob Configuration](kuberay-rayjob-quickstart) for the supported fields.
-* `suspend` (Optional): If `suspend` is true, the controller suspends the scheduling of future jobs. This does not apply to or interrupt any `RayJob`s that have already been created and are currently running.
-* `timeZone` (Optional): The time zone for the `schedule`, in [IANA Time Zone Database](https://en.wikipedia.org/wiki/List_of_tz_database_time_zones) format (e.g., `America/Los_Angeles`). If omitted, the schedule uses the local time zone of the KubeRay operator. Do not set `TZ` or `CRON_TZ` in the `schedule` string, use this field instead.
-
-## How to Configure a RayCronJob
-
-Configuring a `RayCronJob` requires wrapping a standard `RayJob` specification inside `jobTemplate.spec`, alongside your scheduling parameters.
-
-The high-level structure looks like this:
+The following RayCronJob creates a RayJob every five minutes:
 
 ```yaml
 apiVersion: ray.io/v1
@@ -45,69 +37,66 @@ kind: RayCronJob
 metadata:
   name: example-raycronjob
 spec:
-  schedule: "*/5 * * * *" # Run every 5 minutes
-  timeZone: "America/Los_Angeles" # Optional, defaults to the operator's local time zone
+  schedule: "*/5 * * * *"
+  timeZone: "America/Los_Angeles"
   jobTemplate:
-    metadata: # Optional, copied onto each RayJob
+    metadata:
       labels:
         kueue.x-k8s.io/queue-name: user-queue
     spec:
-      # Everything below here is a standard RayJob spec
       entrypoint: python /home/ray/samples/sample_code.py
-      # ... (RayCluster spec, runtimeEnv, etc.)
+      # Add the other RayJob fields, such as rayClusterSpec.
 ```
 
 :::{note}
-KubeRay v1.6 and v1.7 take the RayJob spec fields directly under `jobTemplate`. Starting in v1.8.0, the API server rejects that format. Move those fields under `jobTemplate.spec`.
+KubeRay v1.6 and v1.7 take the RayJob spec fields directly under `jobTemplate`. Starting in v1.8.0, the API server rejects that format. Move the fields under `jobTemplate.spec`.
 :::
 
-## How to Run a Simple RayCronJob
+## Run a RayCronJob
 
-Let's deploy a simple `RayCronJob` that executes a short Python script every minute.
+This example runs a short Python script every minute.
 
-### Step 1: Create a Kubernetes cluster with Kind
+### Step 1: Create a Kubernetes cluster with kind
 
-```sh
+```bash
 kind create cluster --image=kindest/node:v1.26.0
 ```
 
 ### Step 2: Install the KubeRay operator
-Install the KubeRay operator, following [these instructions](operator-installation.md). The minimum version for this guide is v1.8.0. To use this feature, the `RayCronJob` feature gate must be enabled. To enable the feature gate when installing the kuberay operator, run the following command:
 
-```sh
+Install the KubeRay operator with the `RayCronJob` feature gate enabled:
+
+```bash
 helm repo add kuberay https://ray-project.github.io/kuberay-helm/
 helm repo update
 
-# Install KubeRay operator v1.8.0 with the RayCronJob feature gate enabled
+# Install KubeRay operator v1.8.0 with the RayCronJob feature gate enabled.
 helm install kuberay-operator kuberay/kuberay-operator \
   --version 1.8.0 \
   --set "featureGates[0].name=RayCronJob" \
   --set "featureGates[0].enabled=true"
 ```
 
-### Step 3: Install a RayCronJob
+### Step 3: Create a RayCronJob
 
-```sh
+```bash
 kubectl apply -f https://raw.githubusercontent.com/kuberay-project/kuberay/v1.8.0/ray-operator/config/samples/ray-cronjob.sample.yaml
 ```
 
 ### Step 4: Monitor the RayCronJob
 
-Check the status of your `RayCronJob`. The `SCHEDULE` field should be visible, while `LAST SCHEDULE` may be empty until the first run.
+Check the RayCronJob. `LAST SCHEDULE` stays empty until the first run.
 
-```sh
+```bash
 kubectl get raycronjob raycronjob-sample
-
-#You should see output listing the RayCronJob created
 # [Example output]
-
 # NAME                SCHEDULE    TIMEZONE   LAST SCHEDULE   AGE   SUSPEND
 # raycronjob-sample   * * * * *                              8s
 ```
 
-Because our schedule is `* * * * *`, a new `RayJob` will be generated at the start of the next minute. You can watch the `RayJob` instances being created:
+The sample's schedule is `* * * * *`, so the RayCronJob creates a RayJob at the start of every minute. Watch the RayJobs, and press Ctrl+C to stop:
 
-```shell
+```bash
 kubectl get rayjob -w
 # [Example output]
 # NAME                         JOB STATUS   DEPLOYMENT STATUS   RAY CLUSTER NAME                   START TIME             END TIME               AGE
@@ -115,18 +104,14 @@ kubectl get rayjob -w
 # raycronjob-sample-29904996   RUNNING      Running             raycronjob-sample-29904996-qjh7t   2026-11-10T08:36:00Z                          40s
 # raycronjob-sample-29904996   SUCCEEDED    Complete            raycronjob-sample-29904996-qjh7t   2026-11-10T08:36:00Z   2026-11-10T08:36:50Z   50s
 # raycronjob-sample-29904997                Initializing        raycronjob-sample-29904997-pc4ls   2026-11-10T08:37:00Z                          0s
-# (Press Ctrl+C to stop watching once the job completes)
 ```
 
-### Step 5: Check the output of the RayCronJob
+### Step 5: Check the Ray job output
 
-```shell
-# From the previous step, note the RayJob name label (e.g., raycronjob-sample-29904996)
-# Use it to fetch the submitter pod logs directly:
+Each RayJob submits its Ray job through a Kubernetes Job with the same name. Get the Job's logs, replacing `<rayjob-name>` with a name from the previous step, such as `raycronjob-sample-29904996`:
+
+```bash
 kubectl logs -l=job-name=<rayjob-name>
-# Example:
-# kubectl logs -l=job-name=raycronjob-sample-29904996
-
 # [Example output]
 # ...
 # test_counter got 1
@@ -139,17 +124,12 @@ kubectl logs -l=job-name=<rayjob-name>
 # 2026-11-10 00:36:46,970 SUCC cli.py:67 -- ------------------------------------------------
 ```
 
-### Step 6: Clean Up
+### Step 6: Clean up
 
-To stop the recurring jobs and delete the resource, run:
+Delete the RayCronJob, the KubeRay operator, and the kind cluster:
 
 ```bash
-# Step 6.1: Delete the RayCronJob
 kubectl delete -f https://raw.githubusercontent.com/kuberay-project/kuberay/v1.8.0/ray-operator/config/samples/ray-cronjob.sample.yaml
-
-# Step 6.2: Delete the KubeRay operator
 helm uninstall kuberay-operator
-
-# Step 6.3: Delete the Kubernetes cluster
 kind delete cluster
 ```
