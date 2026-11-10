@@ -111,7 +111,7 @@ class _ObjectCache:
                 return False
 
             # If any other objects are expected to be cached, don't cache
-            if any(v > 0 for v in self._max_num_objects.values()):
+            if self._max_num_objects:
                 return False
 
         # Otherwise, cache (for now).
@@ -171,14 +171,14 @@ class _ObjectCache:
 
         for key in list(self._cached_objects.keys()):
             objs = self._cached_objects[key]
-            max_cached = max(self._max_num_objects[key], 0) if not force_all else 0
+            max_cached = self._max_num_objects[key] if not force_all else 0
 
             while len(objs) > max_cached:
                 if (
                     self._num_cached_objects == 1
                     and keep_one
                     # Only keep this object if we don't expect a different one
-                    and not any(v > 0 for v in self._max_num_objects.values())
+                    and not self._max_num_objects
                 ):
                     break
                 self._num_cached_objects -= 1
