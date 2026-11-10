@@ -35,7 +35,6 @@ import nccl_ras_health  # noqa: E402
 
 harness.ship_by_value(harness, nccl_ras_health)
 
-WORKERS = int(os.environ.get("HEALTH_TEST_WORKERS", "8"))
 POLL_S = 2
 CONFIRM_S = 20
 FAULTS = {
@@ -70,7 +69,7 @@ def make_train_func(fault, steps: int):
     return train_func
 
 
-def run(mode: str, fault_name: str) -> dict:
+def run(mode: str, fault_name: str, workers: int) -> dict:
     from ray.train import FailureConfig, RunConfig, ScalingConfig
     from ray.train.health import HealthConfig
     from ray.train.torch import TorchTrainer
@@ -101,7 +100,7 @@ def run(mode: str, fault_name: str) -> dict:
     events = harness.start_events()
     trainer = TorchTrainer(
         make_train_func(fault, steps=100_000 if fault_name == "hang" else 400),
-        scaling_config=ScalingConfig(num_workers=WORKERS, use_gpu=True),
+        scaling_config=ScalingConfig(num_workers=workers, use_gpu=True),
         run_config=RunConfig(
             name=name,
             storage_path=storage,
@@ -133,8 +132,10 @@ def main() -> int:
     args = sys.argv[1:]
     modes = [a for a in args if a in ("merged", "health")] or ["merged", "health"]
     faults = [a for a in args if a in FAULTS] or ["hang"]
-    ray.init(address="auto", runtime_env=harness.nccl_runtime_env())
-    results = {(m, f): run(m, f) for f in faults for m in modes}
+    workers, _ = harness.connect(
+        workers=harness.workers_from_env(), runtime_env=harness.nccl_runtime_env()
+    )
+    results = {(m, f): run(m, f, workers) for f in faults for m in modes}
 
     print("\n" + "=" * 78)
     ok = True

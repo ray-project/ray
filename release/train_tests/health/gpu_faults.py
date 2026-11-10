@@ -3,25 +3,24 @@
 
     python gpu_faults.py                  # every scenario, on the running cluster
     python gpu_faults.py workflow         # one of them
-    python gpu_faults.py --local workflow # a local CPU cluster: 2 nodes, gloo
+    python gpu_faults.py --local workflow # a local CPU cluster: 4 nodes, gloo
 
-Scenarios, on 2 nodes A and B:
+Scenarios, one worker per GPU:
 
   workflow  A pre-flight all-reduce over every worker, with training stopped
             (``HealthCheck(stop_workers=True)``), passes and training starts.
             Rank 0 then makes its node A slow and hot. ``GpuSpeedProbe`` sees A
             slow, ``DiagnoseASlowNode`` diagnoses with ``GpuTemperatureProbe``,
-            which finds A too hot, and ``ReattemptOnAHotNode`` reattempts. With ``max_failures=0`` the run ends with
-            ``HealthCheckError``.
+            which finds A too hot, and ``ReattemptOnAHotNode`` reattempts. With
+            ``max_failures=0`` the run ends with ``HealthCheckError``.
   xid79     The last rank injects XID 79 (GPU fallen off the bus) on its node
             B. ``EvictOnFatalGpuEvent`` evicts B, outside the retry budget,
-            and training restarts. Nothing drains B, so the restart lands on it
-            again; B is evicted only once, so training then finishes.
+            and training restarts. Nothing drains B, so the restart can land on
+            it again; B is evicted only once, so training then finishes.
 
 Pass: each scenario's decisions and ending match.
 """
 import argparse
-import os
 import sys
 import time
 from dataclasses import dataclass
@@ -83,7 +82,7 @@ SCENARIOS = {
         fault=GpuEventFault(
             rank=-1,
             at_step=20,
-            event=gpu_health.xid_event(79, gpu=3),
+            event=gpu_health.xid_event(79, gpu=0),
         ),
         preflight=lambda: [],
         inflight=lambda: [gpu_health.gpu_health_event_check()],
@@ -159,32 +158,26 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("scenarios", nargs="*", help=f"some of {list(SCENARIOS)}")
     parser.add_argument(
-        "--local", action="store_true", help="a local 2-node CPU cluster"
+        "--local", action="store_true", help="a local cluster of 4 single-CPU nodes"
     )
     parser.add_argument(
-        "--workers", type=int, default=int(os.environ.get("HEALTH_TEST_WORKERS", "8"))
+        "--workers",
+        type=int,
+        default=harness.workers_from_env(),
+        help="how many workers to train; by default one per GPU, or per local node",
     )
     args = parser.parse_args()
     unknown = set(args.scenarios) - set(SCENARIOS)
     if unknown:
         parser.error(f"unknown scenarios {sorted(unknown)}")
 
-    if args.local:
-        from ray.cluster_utils import Cluster
-
-        cluster = Cluster(initialize_head=True, head_node_args={"num_cpus": 0})
-        for _ in range(2):
-            cluster.add_node(num_cpus=2)
-        cluster.wait_for_nodes()
-        ray.init(address=cluster.address)
-        workers, use_gpu = 4, False
-    else:
-        ray.init(address="auto")
-        workers, use_gpu = args.workers, True
+    workers, use_gpu = harness.connect(args.local, args.workers)
 
     results = {
         name: run(name, workers, use_gpu) for name in args.scenarios or SCENARIOS
     }
+    # Disconnect before the local cluster's exit hook stops its nodes.
+    ray.shutdown()
     print("\n" + "=" * 78)
     for name, ok in results.items():
         print(f"  {name:<10} {'PASS' if ok else 'FAIL'}")

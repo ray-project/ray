@@ -34,6 +34,52 @@ def storage_path() -> Optional[str]:
     return SHARED_STORAGE if os.path.isdir(SHARED_STORAGE) else None
 
 
+# Nodes of the local cluster, one CPU worker each, like 4 nodes of 1 GPU.
+LOCAL_NODES = 4
+
+
+def workers_from_env() -> Optional[int]:
+    """``HEALTH_TEST_WORKERS``, if set."""
+    value = os.environ.get("HEALTH_TEST_WORKERS")
+    return int(value) if value else None
+
+
+def connect(
+    local: bool = False,
+    workers: Optional[int] = None,
+    runtime_env: Optional[Dict] = None,
+) -> Tuple[int, bool]:
+    """Start a local cluster of ``LOCAL_NODES`` single-CPU nodes, or connect to
+    the running cluster.
+
+    Args:
+        local: Whether to start a local cluster.
+        workers: How many workers to train, if not one per node of the local
+            cluster or one per GPU of the running cluster.
+        runtime_env: The job's ``runtime_env``.
+
+    Returns:
+        How many workers to train, and whether they use GPUs.
+    """
+    if local:
+        from ray.cluster_utils import Cluster
+
+        cluster = Cluster(initialize_head=True, head_node_args={"num_cpus": 0})
+        for _ in range(LOCAL_NODES):
+            cluster.add_node(num_cpus=1)
+        cluster.wait_for_nodes()
+        ray.init(address=cluster.address, runtime_env=runtime_env)
+        return workers or LOCAL_NODES, False
+    ray.init(address="auto", runtime_env=runtime_env)
+    gpus = int(ray.cluster_resources().get("GPU", 0))
+    if not (workers or gpus):
+        raise RuntimeError(
+            "The cluster has no GPUs up: give it fixed-size GPU worker nodes, "
+            "or set HEALTH_TEST_WORKERS."
+        )
+    return workers or gpus, True
+
+
 # The apt `libnccl2`, which ships the `ncclras` client, on x86_64 Ubuntu.
 SYSTEM_LIBNCCL = "/usr/lib/x86_64-linux-gnu/libnccl.so.2"
 

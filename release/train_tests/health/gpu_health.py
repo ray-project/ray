@@ -14,8 +14,7 @@ As in NVSentinel, an event is fatal when its recommended action isn't
 probes here read it there, so the tests need no broken GPU. NVSentinel injects
 the same faults into a real DCGM with ``dcgmi test --inject --gpuid N -f 230
 -v 79`` (field 230 is the XID). Without an injected event,
-``GpuTemperatureProbe`` and ``GpuSpeedProbe`` read the real GPUs with
-``nvidia-smi`` when they can.
+``GpuTemperatureProbe`` reads the real GPUs with ``nvidia-smi`` when it can.
 
 Scripts using this module call ``harness.ship_by_value(gpu_health)``.
 """
@@ -147,20 +146,11 @@ def gpu_health_event_check(poll_interval_s: float = 1.0) -> PeriodicHealthCheck:
 # ----------------------------------------------------------------------
 class GpuSpeedProbe(NodeProbe):
     """This node's relative GPU speed, 1.0 being full speed: the injected
-    ``relative_speed``, or SM clock over max SM clock."""
+    ``relative_speed``, else 1.0."""
 
     def poll(self) -> ProbeResult:
         event = read_injected_event() or {}
-        if "relative_speed" in event:
-            return ProbeResult(
-                metrics={"relative_speed": float(event["relative_speed"])}
-            )
-        try:
-            clocks = _nvidia_smi_query("clocks.sm")
-            max_clocks = _nvidia_smi_query("clocks.max.sm")
-            speed = min(c / m for c, m in zip(clocks, max_clocks) if m)
-        except Exception:  # noqa: BLE001
-            speed = 1.0
+        speed = float(event.get("relative_speed", 1.0))
         return ProbeResult(metrics={"relative_speed": speed})
 
 
