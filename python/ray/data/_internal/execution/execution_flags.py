@@ -85,6 +85,55 @@ PENDING_ACTOR_EXPIRY_S: int = env_integer("RAY_DATA_PENDING_ACTOR_EXPIRY_S", 300
 # pool emits a (debounced, aggregated) WARNING that it is holding node capacity.
 DRAIN_STALL_WARN_S: int = env_integer("RAY_DATA_DRAIN_STALL_WARN_S", 120)
 
+# --- OperatorSizer -----------------------------------------------------------
+
+# How often (seconds) the sizer evaluates sizing. The executor calls in every
+# scheduling-loop step (~100ms), but queue signals are noise below ~1s and
+# actor startup dominates anything decided faster.
+SIZER_CADENCE_S: float = env_float("RAY_DATA_SIZER_CADENCE_S", 2.0)
+
+# Warmup equal-share: fraction of the allocation shared out across autoscaled
+# operators; the rest is headroom for the warm loop to grow into.
+SIZER_RESERVATION_RATIO: float = env_float("RAY_DATA_SIZER_RESERVATION_RATIO", 0.8)
+
+# Warm-loop growth / shrink steps, as fractions of the pool's current size.
+SIZER_UPSCALE_FACTOR: float = env_float("RAY_DATA_SIZER_UPSCALE_FACTOR", 0.5)
+SIZER_DOWNSCALE_FACTOR: float = env_float("RAY_DATA_SIZER_DOWNSCALE_FACTOR", 0.1)
+
+# Consecutive fully-idle sizing ticks before the warm loop drains a pool.
+SIZER_DOWNSCALE_HYSTERESIS: int = env_integer("RAY_DATA_SIZER_DOWNSCALE_HYSTERESIS", 3)
+
+# Fraction of RUNNING actors with an exhausted pull budget at which an
+# operator's output reads as backpressured to the warm loop and the optimizer.
+SIZER_OUTQUEUE_FULL_FRACTION: float = env_float(
+    "RAY_DATA_SIZER_OUTQUEUE_FULL_FRACTION", 0.5
+)
+
+# Demand-target utilization divisor: the warm loop grows a fed pool only toward
+# its backlog-based actor count divided by this, so a cold-start empty output
+# queue cannot drive unbounded growth that fills the cluster. Matches the
+# standard actor autoscaler's default upscaling threshold.
+SIZER_UTIL_THRESHOLD: float = env_float("RAY_DATA_SIZER_UTIL_THRESHOLD", 1.75)
+
+# Pipeline optimizer: cancel a capacity transfer whose claimed pending actors
+# have not landed by then.
+SIZER_TRANSFER_TIMEOUT_S: float = env_float("RAY_DATA_SIZER_TRANSFER_TIMEOUT_S", 60.0)
+
+# Length of the optimizer's per-operator signal windows, in samples. One
+# sample is taken per scheduling-loop step.
+SIZER_SIGNAL_WINDOW_SAMPLES: int = env_integer(
+    "RAY_DATA_SIZER_SIGNAL_WINDOW_SAMPLES", 20
+)
+
+# Seconds the dataset's allocation must stay unchanged before the sizer treats
+# the cluster as settled. Capacity transfers wait for this: while the cluster
+# is still growing, the autoscaler gives starved ops capacity.
+SIZER_CLUSTER_SETTLE_S: float = env_float("RAY_DATA_SIZER_CLUSTER_SETTLE_S", 15.0)
+
+# Consecutive sizing ticks with an unplaced ask before an operator qualifies
+# as a capacity-transfer recipient.
+SIZER_SHORTFALL_TICKS: int = env_integer("RAY_DATA_SIZER_SHORTFALL_TICKS", 3)
+
 
 def actor_only_backend_enabled(
     data_context: Optional["DataContext"] = None,

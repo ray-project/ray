@@ -1,6 +1,7 @@
 # ruff: noqa: E501
 
 from dataclasses import replace
+from typing import List
 
 from ray.dashboard.modules.metrics.dashboards.common import (
     DashboardConfig,
@@ -2019,6 +2020,246 @@ ACTOR_ONLY_OP_NUM_ACTORS_TOTAL_PANEL = Panel(
     stack=False,
 )
 
+# --- Actor Only Sizer -------------------------------------------------------
+
+# Fixed colors keyed on the operator's position suffix (Ray Data names
+# operators `<name>_<position>`), so an operator's up (positive) and down
+# (negative) series share a color for any pipeline, and colors are consistent
+# across the sizer panels. `/_0$/` cannot match `..._10`: the character before
+# the trailing 0 must be the underscore.
+SIZER_OPERATOR_COLOR_OVERRIDES = [
+    {
+        "matcher": {"id": "byRegexp", "options": f"/_{position}$/"},
+        "properties": [
+            {"id": "color", "value": {"fixedColor": color, "mode": "fixed"}}
+        ],
+    }
+    for position, color in enumerate(
+        [
+            "blue",
+            "#FADE2A",
+            "orange",
+            "purple",
+            "red",
+            "#dbe7d9",
+            "green",
+            "#8AB8FF",
+        ]
+    )
+]
+
+# Appended to every sizer actor-delta panel: those panels count only what the
+# sizer's own passes did, so a pool that changed size because the optimizer
+# moved actors shows no bar here. Point readers at the row that does show it.
+SIZER_OPTIMIZER_NOTE = (
+    " Actor moves made by the pipeline optimizer (capacity transfers, "
+    "silent-bottleneck grants) are not counted here -- see the Actor Only "
+    "Pipeline Optimizer row."
+)
+
+# Coarse buckets keep per-interval bars readable, with the change printed on
+# each bar.
+SIZER_PER_INTERVAL_TEMPLATE_OVERRIDES = {
+    "maxDataPoints": 30,
+    "options": {"showValue": "auto", "text": {"valueSize": 10}},
+}
+
+
+def _sizer_delta_selector(phase: str, direction: str) -> str:
+    return (
+        "ray_data_sizer_actor_delta_total{{{global_filters}, "
+        f'operator=~"$Operator", phase="{phase}", direction="{direction}"}}}}'
+    )
+
+
+def _sizer_delta_total(phase: str, direction: str, offset: str = "") -> str:
+    return (
+        "sum("
+        + _sizer_delta_selector(phase, direction)
+        + offset
+        + ") by (dataset, operator)"
+    )
+
+
+def _per_interval_expr(phase: str, direction: str) -> str:
+    """Change per $__interval of a cumulative counter, counting a series' first
+    sample as a jump from zero. increase() drops the birth value, which hides
+    scaling that finishes before the series' first export (e.g. fixed-size
+    pools placed at bootstrap).
+    """
+    total = _sizer_delta_total(phase, direction)
+    prev = _sizer_delta_total(phase, direction, offset=" offset $__interval")
+    return "round(" + total + " - (" + prev + " or 0 * " + total + "))"
+
+
+def _sizer_up_down_targets(phase: str, per_interval: bool) -> List[Target]:
+    """Up as positive bars, down as negative bars, per operator."""
+    if per_interval:
+        up_expr = _per_interval_expr(phase, "up")
+        down_expr = "-1 * " + _per_interval_expr(phase, "down")
+        interval = "1m"
+    else:
+        up_expr = _sizer_delta_total(phase, "up")
+        down_expr = "-1 * " + _sizer_delta_total(phase, "down")
+        interval = None
+    return [
+        Target(
+            expr=expr,
+            legend="{{operator}}",
+            template=TargetTemplate.TIME_SERIES_BAR_CHART,
+            interval=interval,
+        )
+        for expr in (up_expr, down_expr)
+    ]
+
+
+SIZER_HOW_MANY_UP_DOWN_PANEL = Panel(
+    id=_ids.next(),
+    title="Sizer How Many Up/Down",
+    description=(
+        "Cumulative actors the OperatorSizer's scale_how_many requested adding "
+        "(up, positive bars) and removing (down, negative bars), per operator."
+        + SIZER_OPTIMIZER_NOTE
+    ),
+    unit="short",
+    targets=_sizer_up_down_targets("per_op_how_many", per_interval=False),
+    template=PanelTemplate.TIME_SERIES_BAR_CHART,
+    field_config_overrides=SIZER_OPERATOR_COLOR_OVERRIDES,
+)
+
+SIZER_HOW_MANY_UP_DOWN_PER_INTERVAL_PANEL = Panel(
+    id=_ids.next(),
+    title="Sizer How Many Up/Down (change per interval)",
+    description=(
+        "Actors the OperatorSizer's scale_how_many requested adding (up, "
+        "positive bars) and removing (down, negative bars) in each interval, "
+        "per operator." + SIZER_OPTIMIZER_NOTE
+    ),
+    unit="short",
+    targets=_sizer_up_down_targets("per_op_how_many", per_interval=True),
+    template=PanelTemplate.TIME_SERIES_BAR_CHART,
+    field_config_overrides=SIZER_OPERATOR_COLOR_OVERRIDES,
+    template_overrides=SIZER_PER_INTERVAL_TEMPLATE_OVERRIDES,
+)
+
+SIZER_WHERE_UP_DOWN_PANEL = Panel(
+    id=_ids.next(),
+    title="Sizer Where Up/Down",
+    description=(
+        "Cumulative actors the OperatorSizer's scale_where placed (up, positive "
+        "bars) and removed (down, negative bars), per operator." + SIZER_OPTIMIZER_NOTE
+    ),
+    unit="short",
+    targets=_sizer_up_down_targets("per_op_where", per_interval=False),
+    template=PanelTemplate.TIME_SERIES_BAR_CHART,
+    field_config_overrides=SIZER_OPERATOR_COLOR_OVERRIDES,
+)
+
+SIZER_WHERE_UP_DOWN_PER_INTERVAL_PANEL = Panel(
+    id=_ids.next(),
+    title="Sizer Where Up/Down (change per interval)",
+    description=(
+        "Actors the OperatorSizer's scale_where placed (up, positive bars) and "
+        "removed (down, negative bars) in each interval, per operator."
+        + SIZER_OPTIMIZER_NOTE
+    ),
+    unit="short",
+    targets=_sizer_up_down_targets("per_op_where", per_interval=True),
+    template=PanelTemplate.TIME_SERIES_BAR_CHART,
+    field_config_overrides=SIZER_OPERATOR_COLOR_OVERRIDES,
+    template_overrides=SIZER_PER_INTERVAL_TEMPLATE_OVERRIDES,
+)
+
+SIZER_TICK_DURATION_PANEL = Panel(
+    id=_ids.next(),
+    title="Sizer Tick Duration by Phase",
+    description=(
+        "OperatorSizer control-loop wall time per phase, as percentiles over "
+        "the scrape window (every scheduling-loop step is sampled). prepare: "
+        "signal sampling plus the tick's cluster snapshot | cross_op_optimize: "
+        "the pipeline optimizer rules | per_op_how_many: per-operator sizing | "
+        "per_op_where: placement | apply: applying the requests | e2e: one "
+        "whole perform_sizing_decision call (all sizer phases end to end)."
+    ),
+    unit="s",
+    targets=[
+        Target(
+            expr="histogram_quantile(0.5, sum by (dataset, phase, le) (rate(ray_data_sizer_tick_duration_s_bucket{{{global_filters}}}[$__rate_interval])))",
+            legend="p50 {{phase}}: {{dataset}}",
+        ),
+        Target(
+            expr="histogram_quantile(0.99, sum by (dataset, phase, le) (rate(ray_data_sizer_tick_duration_s_bucket{{{global_filters}}}[$__rate_interval])))",
+            legend="p99 {{phase}}: {{dataset}}",
+        ),
+    ],
+    fill=0,
+    stack=False,
+)
+
+# Each cumulative panel sits beside its per-interval variant in the two-column
+# layout; the tick-duration panel is per-dataset (no operator tag), so it sits
+# on its own at the end rather than breaking a pair.
+ACTOR_ONLY_SIZER_PANELS = [
+    SIZER_HOW_MANY_UP_DOWN_PANEL,
+    SIZER_HOW_MANY_UP_DOWN_PER_INTERVAL_PANEL,
+    SIZER_WHERE_UP_DOWN_PANEL,
+    SIZER_WHERE_UP_DOWN_PER_INTERVAL_PANEL,
+    SIZER_TICK_DURATION_PANEL,
+]
+
+# --- Actor Only Pipeline Optimizer (counter-only; views via increase()) -----
+
+OPTIMIZER_ACTIONS_RATE_PANEL = Panel(
+    id=_ids.next(),
+    title="Optimizer Actions (rate)",
+    description="Optimizer actions per 5m. capacity_transfer: fired -> landed | lost | timeout (victim-backed). silent_bottleneck: granted (from free capacity). Series rise and fall because this is a sliding window; the underlying counters never decrease.",
+    unit="short",
+    targets=[
+        Target(
+            expr="sum(increase(ray_data_pipeline_optimizer_actions_total{{{global_filters}}}[5m])) by (dataset, optimization, recipient, result)",
+            legend="{{optimization}} {{result}} -> {{recipient}}: {{dataset}}",
+        )
+    ],
+    fill=0,
+    stack=False,
+)
+
+OPTIMIZER_CORRECTIVE_TRANSFERS_PANEL = Panel(
+    id=_ids.next(),
+    title="Corrective Transfers",
+    description="Actors moved per 5m as donor -> recipient edges; spikes align with fired actions, so per-transfer counts are readable. Grants never appear here (no victims).",
+    unit="short",
+    targets=[
+        Target(
+            expr="sum(increase(ray_data_pipeline_optimizer_capacity_transfers_total{{{global_filters}}}[5m])) by (dataset, donor, recipient)",
+            legend="{{donor}} -> {{recipient}}: {{dataset}}",
+        )
+    ],
+    fill=0,
+    stack=False,
+)
+
+OPTIMIZER_REFUSALS_PANEL = Panel(
+    id=_ids.next(),
+    title="Optimizer Refusals by Reason",
+    description="Why an optimization refused to act, per 5m. warmup: sizer bootstrapping | cluster_settling: allocation still changing (transfers only) | no_donor_surplus: ops are starved but nothing has provable surplus (normal during an autoscaling ramp) | no_free_capacity: silent grant wanted actors but no node had room (the want is bridged to capacity_transfer) | capacity_already_free: normal sizing will grant | victims_insufficient: no nodes could assemble the shape | thrashing: would invert a recent transfer.",
+    unit="short",
+    targets=[
+        Target(
+            expr="sum(increase(ray_data_pipeline_optimizer_refusals_total{{{global_filters}}}[5m])) by (dataset, optimization, reason)",
+            legend="{{optimization}} {{reason}}: {{dataset}}",
+        )
+    ],
+    fill=0,
+    stack=False,
+)
+
+PIPELINE_OPTIMIZER_PANELS = [
+    OPTIMIZER_ACTIONS_RATE_PANEL,
+    OPTIMIZER_CORRECTIVE_TRANSFERS_PANEL,
+    OPTIMIZER_REFUSALS_PANEL,
+]
+
 # Grafana panel ids must be unique across the dashboard, so the overview
 # re-uses detailed panels as copies with fresh ids.
 ACTOR_ONLY_OVERVIEW_PANELS = [
@@ -2279,6 +2520,18 @@ DATA_GRAFANA_ROWS = [
         title="Actor Only Output Limits",
         id=_ids.next(),
         panels=ACTOR_ONLY_OUTPUT_LIMITS_PANELS,
+        collapsed=True,
+    ),
+    Row(
+        title="Actor Only Sizer",
+        id=_ids.next(),
+        panels=ACTOR_ONLY_SIZER_PANELS,
+        collapsed=True,
+    ),
+    Row(
+        title="Actor Only Pipeline Optimizer",
+        id=_ids.next(),
+        panels=PIPELINE_OPTIMIZER_PANELS,
         collapsed=True,
     ),
     Row(

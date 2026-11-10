@@ -98,7 +98,7 @@ def process_completed_tasks(
                         # (e.g. its target node died). The pool has already
                         # dropped the pending entry; the sizer re-places on its
                         # next tick, so this must not abort the loop.
-                        logger.warning(
+                        logger.debug(
                             f"An actor of {op.name} failed to start; "
                             "reconciling on the next sizing tick.",
                             exc_info=True,
