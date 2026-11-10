@@ -14,8 +14,6 @@ from enum import Enum
 from typing import TYPE_CHECKING, Any, Callable, Dict, Optional, Tuple
 from urllib.parse import urljoin, urlparse
 
-from packaging.version import parse as parse_version
-
 from ray.util.annotations import DeveloperAPI, PublicAPI
 
 if TYPE_CHECKING:
@@ -50,53 +48,6 @@ _AZURE_STORAGE_SAS_TOKEN = "AZURE_STORAGE_SAS_TOKEN"
 # deltalake's object_store config key for a SAS, passed via `storage_options`
 # rather than the environment so it pickles into the read tasks.
 _AZURE_STORAGE_SAS_TOKEN_OPTION = "azure_storage_sas_token"
-
-# `pyarrow.fs.AzureFileSystem` gained a `sas_token` parameter in pyarrow 20.0.0
-# (apache/arrow#45705). Before that it accepts only `account_key`, and reads no
-# SAS environment variable, so a Unity Catalog SAS cannot reach it by any route.
-_AZURE_SAS_PYARROW_VERSION_MIN = "20.0.0"
-
-
-def _check_azure_sas_pyarrow_support() -> None:
-    """Raise if pyarrow is too old to authenticate with a vended Azure SAS.
-
-    Only the Parquet reader needs this: it is filesystem-only, so the SAS has to
-    reach it through a `pyarrow.fs.AzureFileSystem`. Delta is unaffected -- its
-    credential travels in `storage_options` to deltalake's object_store, which
-    has its own Azure client and no pyarrow floor.
-
-    Failing here is worth the strictness: pyarrow's Azure filesystem does not
-    report a missing credential as a Python error. It falls through to
-    `DefaultAzureCredential`, which either stalls on the instance-metadata
-    endpoint or, over a plain-HTTP endpoint, calls `abort()` in C++ and takes
-    the whole process down with SIGABRT -- uncatchable from Python.
-    """
-    from ray.data._internal.utils.arrow_utils import get_pyarrow_version
-
-    version = get_pyarrow_version()
-    minimum = parse_version(_AZURE_SAS_PYARROW_VERSION_MIN)
-    if version is None:
-        # Version undetectable (pyarrow vendored inside another package). Warn
-        # rather than block -- the same stance `_check_pyarrow_version` takes.
-        logger.warning(
-            "Reading an Azure-backed Parquet table through Unity Catalog needs "
-            "pyarrow >= %s to use the vended SAS, but the installed pyarrow "
-            "version could not be determined.",
-            _AZURE_SAS_PYARROW_VERSION_MIN,
-        )
-        return
-    if version < minimum:
-        raise ImportError(
-            f"Reading an Azure-backed Parquet table through Unity Catalog "
-            f"requires pyarrow >= {_AZURE_SAS_PYARROW_VERSION_MIN}, but "
-            f"{version} is installed. Unity Catalog vends a SAS token, and "
-            f"`pyarrow.fs.AzureFileSystem` only accepts one from pyarrow "
-            f"{_AZURE_SAS_PYARROW_VERSION_MIN} onwards (apache/arrow#45705). "
-            f'Upgrade with `pip install -U "pyarrow>='
-            f'{_AZURE_SAS_PYARROW_VERSION_MIN}"`, or read the table as Delta '
-            f"(`ray.data.read_delta`), which carries the SAS in "
-            f"`storage_options` and has no pyarrow floor."
-        )
 
 
 def _parse_azure_url(url: str) -> Tuple[str, str, str]:
@@ -341,15 +292,13 @@ class DatabricksUnityCatalog(Catalog):
         # Azure. Delta needs no filesystem -- the SAS travels in
         # `storage_options` below, which deltalake's object_store reads and
         # which pickles into the read tasks. Parquet is filesystem-only, so it
-        # needs an explicit `AzureFileSystem` carrying the SAS; that requires
-        # pyarrow >= 20, hence the check.
+        # needs an explicit `AzureFileSystem` carrying the SAS.
         storage_options = None
         if creds.azure_user_delegation_sas is not None:
             storage_options = self._azure_storage_options(
                 creds.azure_user_delegation_sas
             )
             if reader is ReaderFormat.PARQUET:
-                _check_azure_sas_pyarrow_support()
                 filesystem = self._build_azure_filesystem(
                     table_url, creds.azure_user_delegation_sas
                 )

@@ -287,7 +287,7 @@ class FileBasedDatasource(Datasource):
             paths, file_sizes, self._shuffle, execution_idx
         )
 
-        filesystem = _wrap_s3_serialization_workaround(self._filesystem)
+        filesystem = self._filesystem
 
         if open_stream_args is None:
             open_stream_args = {}
@@ -297,7 +297,7 @@ class FileBasedDatasource(Datasource):
         ) -> Iterable[Block]:
             nonlocal filesystem, open_stream_args, partitioning
 
-            fs = _unwrap_s3_serialization_workaround(filesystem)
+            fs = filesystem
 
             for read_path in read_paths:
                 partitions: Dict[str, str] = {}
@@ -554,59 +554,6 @@ def _add_partitions_to_dataframe(
         df[field] = column
 
     return df
-
-
-def _wrap_s3_serialization_workaround(filesystem: "pyarrow.fs.FileSystem"):
-    # This is needed because pa.fs.S3FileSystem assumes pa.fs is already
-    # imported before deserialization. See #17085.
-    import pyarrow as pa
-    import pyarrow.fs
-
-    base_fs = filesystem
-    if isinstance(filesystem, RetryingPyFileSystem):
-        base_fs = filesystem.unwrap()
-
-    if isinstance(base_fs, pa.fs.S3FileSystem):
-        return _S3FileSystemWrapper(filesystem)
-
-    return filesystem
-
-
-def _unwrap_s3_serialization_workaround(
-    filesystem: Union["pyarrow.fs.FileSystem", "_S3FileSystemWrapper"],
-):
-    if isinstance(filesystem, _S3FileSystemWrapper):
-        filesystem = filesystem.unwrap()
-    return filesystem
-
-
-class _S3FileSystemWrapper:
-    """pyarrow.fs.S3FileSystem wrapper that can be deserialized safely.
-
-    Importing pyarrow.fs during reconstruction triggers the pyarrow
-    S3 subsystem initialization.
-
-    NOTE: This is only needed for pyarrow<14.0.0 and should be removed
-        once the minimum supported pyarrow version exceeds that.
-        See https://github.com/apache/arrow/pull/38375 for context.
-    """
-
-    def __init__(self, fs: "pyarrow.fs.FileSystem"):
-        self._fs = fs
-
-    def unwrap(self):
-        return self._fs
-
-    @classmethod
-    def _reconstruct(cls, fs_reconstruct, fs_args):
-        # Implicitly trigger S3 subsystem initialization by importing
-        # pyarrow.fs.
-        import pyarrow.fs  # noqa: F401
-
-        return cls(fs_reconstruct(*fs_args))
-
-    def __reduce__(self):
-        return _S3FileSystemWrapper._reconstruct, self._fs.__reduce__()
 
 
 def _resolve_kwargs(

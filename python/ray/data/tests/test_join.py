@@ -3,12 +3,10 @@ from typing import Optional
 import numpy as np
 import pandas as pd
 import pytest
-from packaging.version import parse as parse_version
 
 import ray
 from ray.data._internal.logical.operators import JoinType
 from ray.data._internal.util import MiB, rows_same
-from ray.data._internal.utils.arrow_utils import get_pyarrow_version
 from ray.data.context import DataContext, ShuffleStrategy
 from ray.data.dataset import Dataset
 from ray.exceptions import RayTaskError
@@ -703,12 +701,6 @@ def test_should_not_index_empty_schema_tables():
     )
 
 
-@pytest.mark.skipif(
-    get_pyarrow_version() < parse_version("10.0.0"),
-    reason="""Joins use empty arrays with type coercion. This pyarrow
-    version does not support type coercion of extension types, which
-    are needed for tensors.""",
-)
 @pytest.mark.parametrize(
     "join_type",
     [

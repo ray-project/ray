@@ -4,24 +4,13 @@ from unittest import mock
 import pandas as pd
 import pyarrow as pa
 import pytest
-from packaging.version import parse as parse_version
 
 import ray
 from ray.data import Schema
 from ray.data._internal.util import rows_same
-from ray.data._internal.utils.arrow_utils import get_pyarrow_version
 from ray.data.tests.conftest import *  # noqa
 from ray.data.tests.mock_http_server import *  # noqa
 from ray.tests.conftest import *  # noqa
-
-# deltalake's write_deltalake requires pyarrow >= 15 for the Arrow C Stream interface.
-_pa_version = get_pyarrow_version()
-assert _pa_version is not None, "pyarrow must be installed to run these tests"
-
-pytestmark = pytest.mark.skipif(
-    _pa_version < parse_version("15.0.0"),
-    reason="deltalake write_deltalake requires pyarrow >= 15.0",
-)
 
 
 @pytest.mark.parametrize(
