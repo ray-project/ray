@@ -153,7 +153,8 @@ class DatasetManager:
         state_dict: Optional["RowIDBasedStateDict"],
     ) -> "CheckpointConfig":
         """Translate the training ingest checkpoint config to the CheckpointConfig
-        expected by the base dataset for configuring restoration.
+        expected by the base dataset for configuring restoration and auto-generating
+        the ID column.
 
         If there is no state dict provided, or the state dict was captured at an
         epoch boundary, disable checkpoint restoration.
@@ -165,8 +166,17 @@ class DatasetManager:
             state_dict.restoration_checkpoint_path_filter if should_restore else None
         )
 
+        # With `generate_id_column`, the reader generates the ID column, so it
+        # needs the config even when there's nothing to restore.
+        id_column, generated_id_column = (
+            (None, dataset_checkpoint_config.id_column)
+            if dataset_checkpoint_config.generate_id_column
+            else (dataset_checkpoint_config.id_column, None)
+        )
+
         restore_checkpoint_config = CheckpointConfig(
-            id_column=dataset_checkpoint_config.id_column,
+            id_column=id_column,
+            generated_id_column=generated_id_column,
             checkpoint_path=dataset_checkpoint_config.checkpoint_path,
             checkpoint_path_partition_filter=checkpoint_path_partition_filter,
             override_filesystem=dataset_checkpoint_config.override_filesystem,
@@ -242,11 +252,16 @@ class DatasetManager:
                 iterator = iterators[world_rank]
 
                 # Cache the split coordinators for resource cleanup.
+                from ray.data._internal.iterator.push_split_iterator import (
+                    PushBasedDataIterator,
+                )
                 from ray.data._internal.iterator.stream_split_iterator import (
                     StreamSplitDataIterator,
                 )
 
-                if isinstance(iterator, StreamSplitDataIterator):
+                if isinstance(
+                    iterator, (StreamSplitDataIterator, PushBasedDataIterator)
+                ):
                     self._coordinator_actors.append(iterator._coord_actor)
 
                 # Cache the dataset iterators for future use.
