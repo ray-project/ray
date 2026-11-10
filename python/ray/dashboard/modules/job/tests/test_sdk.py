@@ -191,18 +191,30 @@ def test_submit_job_with_module_object_in_py_modules(tmp_path):
             )
 
     client = TestClient()
-    runtime_env = {"py_modules": [my_module]}
+    runtime_env = {"working_dir": str(module_dir), "py_modules": [my_module]}
     assert (
         client.submit_job(entrypoint="echo hi", runtime_env=runtime_env) == "test_job"
     )
-    assert runtime_env == {"py_modules": [my_module]}
+    assert runtime_env == {"working_dir": str(module_dir), "py_modules": [my_module]}
 
-    get_request, put_request, submit_request = client.requests
+    (
+        working_dir_get,
+        working_dir_put,
+        get_request,
+        put_request,
+        submit_request,
+    ) = client.requests
+    assert working_dir_get[:2] == ("GET", working_dir_put[1])
+    assert working_dir_put[1] != put_request[1]
+    with zipfile.ZipFile(io.BytesIO(working_dir_put[2]["data"])) as package:
+        assert "__init__.py" in package.namelist()
     assert get_request[:2] == ("GET", put_request[1])
     with zipfile.ZipFile(io.BytesIO(put_request[2]["data"])) as package:
         assert "my_module/__init__.py" in package.namelist()
     assert submit_request[:2] == ("POST", "/api/jobs/")
-    (package_uri,) = submit_request[2]["json_data"]["runtime_env"]["py_modules"]
+    submitted_env = submit_request[2]["json_data"]["runtime_env"]
+    (package_uri,) = submitted_env["py_modules"]
+    assert submitted_env["working_dir"] != package_uri
     assert package_uri.startswith("gcs://")
 
 

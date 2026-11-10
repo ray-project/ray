@@ -51,6 +51,7 @@ from ray._private.runtime_env.packaging import (
     upload_package_to_gcs,
 )
 from ray._private.runtime_env.protocol import ProtocolsProvider
+from ray._private.runtime_env.py_modules import upload_py_modules_if_needed
 from ray._private.runtime_env.working_dir import upload_working_dir_if_needed
 from ray.experimental.internal_kv import (
     _initialize_internal_kv,
@@ -206,6 +207,24 @@ class TestGetURIForDirectory:
             f.write(random_string())
 
         assert {get_uri_for_directory(random_dir, include_gitignore=True)} != uris
+
+    def test_uri_reflects_archive_root(self, tmp_path, monkeypatch):
+        first = tmp_path / "module_a"
+        second = tmp_path / "module_b"
+        for directory in (first, second):
+            directory.mkdir()
+            (directory / "__init__.py").touch()
+
+        flat_uri = get_uri_for_directory(first, include_gitignore=True)
+        assert flat_uri == get_uri_for_directory(second, include_gitignore=True)
+        monkeypatch.setattr(
+            "ray._private.runtime_env.py_modules.upload_package_if_needed",
+            lambda *args, **kwargs: None,
+        )
+        runtime_env = upload_py_modules_if_needed(
+            {"py_modules": [first, second]}, include_gitignore=True
+        )
+        assert len({flat_uri, *runtime_env["py_modules"]}) == 3
 
     def test_relative_paths(self, random_dir):
         # Check that relative or absolute paths result in the same URI.
