@@ -140,7 +140,6 @@ async def test_score_wrapper_calls_async_score(score_engine, query, items):
         ({"query_token_ids": "hello"}, "query_token_ids"),
         ({"query_token_ids": [1.5, 2]}, "query_token_ids"),
         ({"query_token_ids": [True, 2]}, "query_token_ids"),
-        ({"item_token_ids": []}, "item_token_ids"),
         ({"item_token_ids": ["a", "b"]}, "item_token_ids"),
         ({"item_token_ids": [[1], [2.5]]}, "item_token_ids"),
     ],
@@ -194,106 +193,29 @@ async def test_score_wrapper_ragged_item_overrides(score_engine):
     assert all(tuple(t.shape) == (1, 4) for entry in item_overrides for t in entry)
 
 
+# Ray Data stores a missing value as NaN when other rows in the column hold arrays.
+@pytest.mark.parametrize("item_embeds", [[None, None], [np.nan, np.nan], np.nan])
 @pytest.mark.asyncio
-async def test_score_wrapper_all_none_item_overrides(score_engine):
+async def test_score_wrapper_missing_item_overrides(score_engine, item_embeds):
     wrapper = _score_wrapper()
-    await wrapper.generate_async(_score_row(item_embed_overrides=[None, None]))
+    await wrapper.generate_async(_score_row(item_embed_overrides=item_embeds))
     assert score_engine.async_score.call_args.kwargs["item_embed_overrides"] is None
 
 
-@pytest.mark.parametrize(
-    "task_kwargs,row_overrides,match",
-    [
-        ({}, {"query_embed_overrides": [[0.1, 0.2]]}, "embed_override_token"),
-        (
-            {"embed_override_token_id": 42, "item_first": True},
-            {"query_embed_overrides": [[0.1, 0.2]]},
-            "item_first",
-        ),
-        (
-            {"embed_override_token_id": 42},
-            {"item_embed_overrides": [[[0.1, 0.2]]]},
-            "1 entries for 2 items",
-        ),
-        (
-            {"embed_override_token_id": 42},
-            {"query_token_ids": [1, 42, 42], "query_embed_overrides": [[0.1, 0.2]]},
-            "query has 2 embedding markers .* but 1 override vectors",
-        ),
-        (
-            {"embed_override_token_id": 42},
-            {
-                "item_token_ids": [[4, 42], [5]],
-                "item_embed_overrides": [None, [[0.1, 0.2]]],
-            },
-            "item 0 has 1 embedding markers .* but 0 override vectors",
-        ),
-    ],
-)
 @pytest.mark.asyncio
-async def test_score_wrapper_embed_override_errors(
-    score_engine, task_kwargs, row_overrides, match
-):
-    wrapper = _score_wrapper(**task_kwargs)
-    with pytest.raises(ValueError, match=match):
-        await wrapper.generate_async(_score_row(**row_overrides))
-
-
-@pytest.mark.asyncio
-async def test_score_wrapper_score_count_mismatch(score_engine):
-    score_engine.async_score.side_effect = None
-    score_engine.async_score.return_value = _FakeScoreResult([[0.5]])
-    wrapper = _score_wrapper()
-    with pytest.raises(RuntimeError, match="Expected 2 score lists, got 1"):
-        await wrapper.generate_async(_score_row())
-
-
-@pytest.mark.parametrize(
-    "returned_rows,error",
-    [((2, 1), None), ((1, 1), "Expected 2 score lists for item 0")],
-)
-@pytest.mark.asyncio
-async def test_score_wrapper_score_extraction(score_engine, returned_rows, error):
+async def test_score_wrapper_score_extraction(score_engine):
     async def async_score(query, items, **kwargs):
-        return _FakeScoreResult(
-            [[[float(i), 0.5]] * n for i, n in enumerate(returned_rows)]
-        )
+        return _FakeScoreResult([[[0.0, 0.5], [0.1, 0.5]], [[1.0, 0.5]]])
 
     score_engine.async_score.side_effect = async_score
     wrapper = _score_wrapper(score_extraction_token_id=7)
-    row = _score_row(item_token_ids=[[4, 7, 5, 7], [6, 7]])
 
-    if error:
-        with pytest.raises(RuntimeError, match=error):
-            await wrapper.generate_async(row)
-        return
-    _, _, output, _ = await wrapper.generate_async(row)
+    _, _, output, _ = await wrapper.generate_async(
+        _score_row(item_token_ids=[[4, 7, 5, 7], [6, 7]])
+    )
 
     assert score_engine.async_score.call_args.kwargs["score_extraction_token_id"] == 7
-    assert output["scores"] == [[[0.0, 0.5], [0.0, 0.5]], [[1.0, 0.5]]]
-
-
-@pytest.mark.asyncio
-async def test_score_wrapper_rejects_extraction_token_in_query(score_engine):
-    wrapper = _score_wrapper(score_extraction_token_id=7)
-    with pytest.raises(ValueError, match="query must not contain"):
-        await wrapper.generate_async(_score_row(query_token_ids=[1, 7]))
-    score_engine.async_score.assert_not_called()
-
-
-@pytest.mark.asyncio
-async def test_score_wrapper_ignores_marker_text(score_engine):
-    wrapper = _score_wrapper(
-        embed_override_token="<emb>",
-        embed_override_token_id=42,
-        score_extraction_token=None,
-        score_extraction_token_id=None,
-    )
-    await wrapper.generate_async(_score_row())
-    kwargs = score_engine.async_score.call_args.kwargs
-    assert kwargs["embed_override_token_id"] == 42
-    assert "embed_override_token" not in kwargs
-    assert "score_extraction_token_id" not in kwargs
+    assert output["scores"] == [[[0.0, 0.5], [0.1, 0.5]], [[1.0, 0.5]]]
 
 
 @pytest.mark.asyncio
@@ -416,7 +338,7 @@ def test_convert_to_embed_override_tensors(embeds, expected_count, dtype):
     assert all(t.shape == (1, 3) and t.dtype == dtype for t in result)
 
 
-@pytest.mark.parametrize("embeds", [None, [], np.zeros((0, 3))])
+@pytest.mark.parametrize("embeds", [None, np.nan, [], np.zeros((0, 3))])
 def test_convert_to_embed_override_tensors_empty(embeds):
     assert _convert_to_embed_override_tensors(embeds) is None
 

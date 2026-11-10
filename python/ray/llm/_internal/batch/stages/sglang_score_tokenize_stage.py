@@ -1,49 +1,16 @@
 """Tokenize stage for the SGLang score task."""
 
-from typing import Any, AsyncIterator, Dict, List, Optional, Tuple, Type
+from typing import Any, AsyncIterator, Dict, List, Type
 
 from ray.llm._internal.batch.stages.base import (
     StatefulStage,
     StatefulStageUDF,
 )
-from ray.llm._internal.batch.utils import get_cached_tokenizer, load_tokenizer
+from ray.llm._internal.batch.stages.common import is_missing
+from ray.llm._internal.batch.stages.tokenize_stage import TokenizeUDF
 
 
-def resolve_marker_token(tokenizer: Any, token: str, setting: str) -> int:
-    """Resolve marker text, such as the embedding marker, to a single token ID.
-
-    Args:
-        tokenizer: The Hugging Face tokenizer.
-        token: The marker text, for example a registered special token.
-        setting: The score option that holds the marker, used in error messages.
-
-    Returns:
-        The marker's token ID.
-    """
-    token_ids = list(tokenizer(token, add_special_tokens=False)["input_ids"])
-    if len(token_ids) != 1:
-        raise ValueError(
-            f"'{setting}' {token!r} tokenizes to {len(token_ids)} "
-            "tokens. Use a single token, such as a registered special token."
-        )
-    token_id = int(token_ids[0])
-    if token_id == getattr(tokenizer, "unk_token_id", None):
-        raise ValueError(f"'{setting}' {token!r} isn't in the tokenizer vocabulary.")
-    # The marker must stay one token when surrounded by text, so check that
-    # it appears exactly once in a few probes. Comparing against the
-    # neighbors tokenized alone would fail on SentencePiece tokenizers.
-    for probe in (f"a{token}b", f" x {token} y ", f"{token}{token}"):
-        expected = probe.count(token)
-        probe_ids = tokenizer(probe, add_special_tokens=False)["input_ids"]
-        if list(probe_ids).count(token_id) != expected:
-            raise ValueError(
-                f"'{setting}' {token!r} merges with surrounding "
-                "text. Register it as a special token."
-            )
-    return token_id
-
-
-class SGLangScoreTokenizeUDF(StatefulStageUDF):
+class SGLangScoreTokenizeUDF(TokenizeUDF):
     def __init__(
         self,
         data_column: str,
@@ -51,64 +18,32 @@ class SGLangScoreTokenizeUDF(StatefulStageUDF):
         model: str,
         trust_remote_code: bool = False,
         add_special_tokens: bool = True,
-        embed_override_token: Optional[str] = None,
-        embed_override_token_id: Optional[int] = None,
-        score_extraction_token: Optional[str] = None,
-        score_extraction_token_id: Optional[int] = None,
+        enable_mis: bool = False,
+        item_first: bool = False,
     ):
         """Tokenize the `query` and `items` text columns of score rows.
+
+        The token IDs match what SGLang's `Engine.score` builds from the same
+        text, so scores don't depend on where tokenization runs:
+
+        - With multi-item scoring, or with embedding overrides in the row, the
+          query is tokenized with special tokens and each item without.
+        - Otherwise, each `query + item` text is tokenized as one sequence and
+          `query_token_ids` is empty, because the engine concatenates the two.
 
         Args:
             data_column: The data column name.
             expected_input_keys: The expected input keys of the stage.
             model: The model to use for tokenization.
             trust_remote_code: Whether to trust remote code when loading the model.
-            add_special_tokens: Whether to add the tokenizer's special tokens
-                around each query+item sequence.
-            embed_override_token: The embedding marker text. If set, each row
-                is checked to tokenize every marker to `embed_override_token_id`.
-            embed_override_token_id: The embedding marker's token ID. It must
-                not be a special token the tokenizer adds around sequences.
-            score_extraction_token: The score extraction token text. If set,
-                each row is checked the same way as `embed_override_token`.
-            score_extraction_token_id: The score extraction token's ID,
-                checked the same way as `embed_override_token_id`.
+            add_special_tokens: Whether to add the tokenizer's special tokens.
+            enable_mis: Whether the engine runs multi-item scoring.
+            item_first: Whether each item goes before the query.
         """
-        super().__init__(data_column, expected_input_keys)
-        self.tokenizer = get_cached_tokenizer(load_tokenizer(model, trust_remote_code))
-        # SGLang scores the concatenation query + item, so the special tokens
-        # wrap that sequence: the prefix goes on the query, the suffix on items.
-        self.query_prefix, self.item_suffix = (
-            _sequence_special_tokens(self.tokenizer) if add_special_tokens else ([], [])
-        )
-        # SGLang and the engine stage count markers on the wrapped sequence, so
-        # a marker that is also a wrapping special token would be overcounted.
-        wrapping_token_ids = set(self.query_prefix) | set(self.item_suffix)
-        # (marker text, token ID) pairs whose counts are checked on every row.
-        self.markers: List[Tuple[str, int]] = []
-        for name, token, token_id in (
-            ("embed_override_token", embed_override_token, embed_override_token_id),
-            (
-                "score_extraction_token",
-                score_extraction_token,
-                score_extraction_token_id,
-            ),
-        ):
-            if token is not None and token_id is None:
-                raise ValueError(f"'{name}' requires '{name}_id'.")
-            if token_id is None:
-                continue
-            if token_id in wrapping_token_ids:
-                marker = token if token is not None else token_id
-                raise ValueError(
-                    f"'{name}' {marker!r} is also a special token the tokenizer "
-                    "adds around each query and item sequence, so its count "
-                    "wouldn't match the markers in the text. Use a different "
-                    "token, or set tokenize_stage=False and pass pre-tokenized "
-                    "'query_token_ids' and 'item_token_ids'."
-                )
-            if token is not None:
-                self.markers.append((token, token_id))
+        super().__init__(data_column, expected_input_keys, model, trust_remote_code)
+        self.add_special_tokens = add_special_tokens
+        self.enable_mis = enable_mis
+        self.item_first = item_first
 
     async def udf(self, batch: List[Dict[str, Any]]) -> AsyncIterator[Dict[str, Any]]:
         """Tokenize a batch of score rows.
@@ -119,66 +54,64 @@ class SGLangScoreTokenizeUDF(StatefulStageUDF):
         Yields:
             Dict[str, Any]: Rows with `query_token_ids` and `item_token_ids`.
         """
-        queries = [_as_text(row["query"], "query") for row in batch]
-        items_per_row = [
-            [_as_text(item, "items") for item in _as_text_list(row["items"])]
-            for row in batch
-        ]
+        # Texts tokenized with and without special tokens, each in one call.
+        special_texts: List[str] = []
+        plain_texts: List[str] = []
+        # Per row: whether the query is tokenized on its own, and the items.
+        plans = []
+        for row in batch:
+            query = _as_text(row["query"], "query")
+            items = [_as_text(item, "items") for item in _as_text_list(row["items"])]
+            separate = self.enable_mis or _has_embed_overrides(row)
+            if separate:
+                special_texts.append(query)
+                plain_texts.extend(items)
+            else:
+                special_texts.extend(
+                    f"{item}{query}" if self.item_first else f"{query}{item}"
+                    for item in items
+                )
+            plans.append((separate, len(items)))
 
-        # Tokenize every query and item in one call, then regroup by row.
-        flat_texts = queries + [item for items in items_per_row for item in items]
-        flat_token_ids = (
-            self.tokenizer(flat_texts, add_special_tokens=False)["input_ids"]
-            if flat_texts
-            else []
-        )
-        flat_item_token_ids = flat_token_ids[len(queries) :]
+        special_ids = self._tokenize(special_texts, self.add_special_tokens)
+        plain_ids = self._tokenize(plain_texts, False)
 
-        offset = 0
-        for row, query, items, query_ids in zip(
-            batch, queries, items_per_row, flat_token_ids
-        ):
-            item_ids = flat_item_token_ids[offset : offset + len(items)]
-            offset += len(items)
-            for token, token_id in self.markers:
-                _check_marker_count(token, token_id, query, query_ids, "query")
-                for text, ids in zip(items, item_ids):
-                    _check_marker_count(token, token_id, text, ids, "items")
+        special_pos = plain_pos = 0
+        for row, (separate, num_items) in zip(batch, plans):
+            if separate:
+                query_token_ids = special_ids[special_pos]
+                special_pos += 1
+                item_token_ids = plain_ids[plain_pos : plain_pos + num_items]
+                plain_pos += num_items
+            else:
+                query_token_ids = []
+                item_token_ids = special_ids[special_pos : special_pos + num_items]
+                special_pos += num_items
             yield {
                 self.IDX_IN_BATCH_COLUMN: row[self.IDX_IN_BATCH_COLUMN],
-                "query_token_ids": self.query_prefix + list(query_ids),
-                "item_token_ids": [list(ids) + self.item_suffix for ids in item_ids],
+                "query_token_ids": query_token_ids,
+                "item_token_ids": item_token_ids,
             }
 
-
-def _check_marker_count(
-    token: str, token_id: int, text: str, token_ids: List[int], column: str
-) -> None:
-    """Raise if a marker in `text` didn't tokenize to the marker token ID."""
-    expected = text.count(token)
-    actual = list(token_ids).count(token_id)
-    if actual != expected:
-        raise ValueError(
-            f"Marker {token!r} occurs {expected} times in '{column}' text but "
-            f"{actual} times in its token IDs. Register it as a special token."
-        )
+    def _tokenize(self, texts: List[str], add_special_tokens: bool) -> List[List[int]]:
+        if not texts:
+            return []
+        token_ids = self.tokenizer(texts, add_special_tokens=add_special_tokens)
+        return [list(ids) for ids in token_ids["input_ids"]]
 
 
-def _sequence_special_tokens(tokenizer: Any) -> Tuple[List[int], List[int]]:
-    """Return the special tokens the tokenizer adds before and after a sequence.
+def _has_embed_overrides(row: Dict[str, Any]) -> bool:
+    """Whether the row has any query or item embedding overrides."""
+    if _is_set(row.get("query_embed_overrides")):
+        return True
+    item_overrides = row.get("item_embed_overrides")
+    if is_missing(item_overrides):
+        return False
+    return any(_is_set(entry) for entry in item_overrides)
 
-    Found by tokenizing a probe with and without special tokens, because fast
-    tokenizers add them in a post-processor rather than a method we can call.
-    """
-    core = list(tokenizer("hello", add_special_tokens=False)["input_ids"])
-    wrapped = list(tokenizer("hello", add_special_tokens=True)["input_ids"])
-    for index in range(len(wrapped) - len(core) + 1):
-        if core and wrapped[index : index + len(core)] == core:
-            return wrapped[:index], wrapped[index + len(core) :]
-    raise ValueError(
-        f"Can't find the special tokens {type(tokenizer).__name__} adds. "
-        "Set tokenize_stage=False and pass query_token_ids and item_token_ids."
-    )
+
+def _is_set(value: Any) -> bool:
+    return not is_missing(value) and len(value) > 0
 
 
 def _as_text_list(value: Any) -> List[Any]:

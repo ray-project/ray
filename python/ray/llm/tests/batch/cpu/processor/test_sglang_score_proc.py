@@ -2,7 +2,7 @@
 
 import sys
 from types import SimpleNamespace
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import pytest
 
@@ -19,25 +19,6 @@ def hf_config():
     config = SimpleNamespace(architectures=["LlamaForCausalLM"], vocab_size=1000)
     with patch("transformers.AutoConfig.from_pretrained", return_value=config):
         yield config
-
-
-@pytest.fixture
-def marker_tokenizer():
-    """Patch the tokenizer used to resolve the embedding marker to ID 77."""
-
-    def tokenize(text, add_special_tokens=False):
-        ids = []
-        for part in text.split("<emb>"):
-            ids.extend(ord(c) for c in part)
-            ids.append(77)
-        return {"input_ids": ids[:-1]}
-
-    tokenizer = MagicMock(side_effect=tokenize, unk_token_id=0)
-    with patch(
-        "ray.llm._internal.batch.utils.load_tokenizer",
-        return_value=tokenizer,
-    ):
-        yield tokenizer
 
 
 def _score_config(task_kwargs=None, **kwargs):
@@ -85,15 +66,15 @@ def test_score_stage_kwargs(hf_config):
     tokenize = processor.get_stage_by_name("SGLangScoreTokenizeStage")
     assert tokenize.map_batches_kwargs["batch_size"] == 13
     assert tokenize.fn_constructor_kwargs["model"] == "other-tokenizer"
+    assert tokenize.fn_constructor_kwargs["enable_mis"] is True
+    assert tokenize.fn_constructor_kwargs["item_first"] is False
 
     engine = processor.get_stage_by_name("SGLangEngineStage")
     assert engine.fn_constructor_kwargs["task_kwargs"] == {
         "label_token_ids": [10, 20],
         "apply_softmax": True,
         "item_first": False,
-        "embed_override_token": None,
         "embed_override_token_id": None,
-        "score_extraction_token": None,
         "score_extraction_token_id": None,
     }
     engine_kwargs = engine.fn_constructor_kwargs["engine_kwargs"]
@@ -110,76 +91,6 @@ def test_score_config_round_trip(hf_config):
     )
 
 
-def test_score_embed_override_token_resolved_on_driver(hf_config, marker_tokenizer):
-    processor = ProcessorBuilder.build(
-        _score_config(
-            task_kwargs={"label_token_ids": [10], "embed_override_token": "<emb>"}
-        )
-    )
-
-    tokenize = processor.get_stage_by_name("SGLangScoreTokenizeStage")
-    assert tokenize.fn_constructor_kwargs["embed_override_token"] == "<emb>"
-    assert tokenize.fn_constructor_kwargs["embed_override_token_id"] == 77
-    engine = processor.get_stage_by_name("SGLangEngineStage")
-    assert engine.fn_constructor_kwargs["task_kwargs"]["embed_override_token_id"] == 77
-
-
-def test_score_extraction_token_resolved_on_driver(hf_config, marker_tokenizer):
-    processor = ProcessorBuilder.build(
-        _score_config(
-            task_kwargs={"label_token_ids": [10], "score_extraction_token": "<emb>"},
-            engine_kwargs={"enable_mis": True},
-        )
-    )
-
-    tokenize = processor.get_stage_by_name("SGLangScoreTokenizeStage")
-    assert tokenize.fn_constructor_kwargs["score_extraction_token"] == "<emb>"
-    assert tokenize.fn_constructor_kwargs["score_extraction_token_id"] == 77
-    assert "embed_override_token" not in tokenize.fn_constructor_kwargs
-    task_kwargs = processor.get_stage_by_name(
-        "SGLangEngineStage"
-    ).fn_constructor_kwargs["task_kwargs"]
-    assert task_kwargs["score_extraction_token_id"] == 77
-    marker_tokenizer.assert_called()
-
-
-def test_score_marker_text_and_id_must_match(hf_config, marker_tokenizer):
-    with pytest.raises(ValueError, match="resolves to token ID 77, but"):
-        ProcessorBuilder.build(
-            _score_config(
-                task_kwargs={
-                    "label_token_ids": [10],
-                    "embed_override_token": "<emb>",
-                    "embed_override_token_id": 3,
-                }
-            )
-        )
-
-
-def test_score_prepare_config_is_idempotent(hf_config, marker_tokenizer):
-    from ray.llm._internal.batch.tasks.sglang.score import _SGLangScoreTask
-
-    config = _score_config(
-        task_kwargs={"label_token_ids": [10], "embed_override_token": "<emb>"}
-    )
-    once = _SGLangScoreTask.prepare_config(config)
-    twice = _SGLangScoreTask.prepare_config(once)
-    assert twice.task_kwargs == once.task_kwargs
-    assert twice.task_kwargs["embed_override_token_id"] == 77
-
-
-def test_score_marker_text_hints_id_when_driver_load_fails(hf_config):
-    with patch(
-        "ray.llm._internal.batch.utils.load_tokenizer",
-        side_effect=OSError("gated"),
-    ), pytest.raises(RuntimeError, match="Set 'embed_override_token_id' instead"):
-        ProcessorBuilder.build(
-            _score_config(
-                task_kwargs={"label_token_ids": [10], "embed_override_token": "<emb>"}
-            )
-        )
-
-
 @pytest.mark.parametrize("add_special_tokens", [True, False])
 def test_score_build_tokenize_stage_add_special_tokens(hf_config, add_special_tokens):
     from ray.llm._internal.batch.stages.configs import TokenizerStageConfig
@@ -192,17 +103,6 @@ def test_score_build_tokenize_stage_add_special_tokens(hf_config, add_special_to
         add_special_tokens=add_special_tokens,
     )
     assert stage.fn_constructor_kwargs["add_special_tokens"] is add_special_tokens
-
-
-def test_score_marker_ids_forwarded_to_tokenize_stage(hf_config):
-    processor = ProcessorBuilder.build(
-        _score_config(
-            task_kwargs={"label_token_ids": [10], "embed_override_token_id": 42}
-        )
-    )
-    tokenize = processor.get_stage_by_name("SGLangScoreTokenizeStage")
-    assert tokenize.fn_constructor_kwargs["embed_override_token_id"] == 42
-    assert "embed_override_token" not in tokenize.fn_constructor_kwargs
 
 
 @pytest.mark.parametrize(
@@ -233,7 +133,6 @@ def test_task_kwargs_validation(hf_config, task_kwargs, kwargs, match):
             {"engine_kwargs": {"enable_mis": True}, "tokenize_stage": False},
             "enable_mis",
         ),
-        ({"label_token_ids": [10], "item_first": True}, {}, "tokenize stage"),
         (
             {"label_token_ids": [10]},
             {"engine_kwargs": {"apply_softmax": True}},
@@ -281,7 +180,7 @@ def test_task_kwargs_validation(hf_config, task_kwargs, kwargs, match):
                 "score_extraction_token_id": 5,
             },
             {"engine_kwargs": {"enable_mis": True}},
-            "both token ID 5",
+            "must differ",
         ),
     ],
 )
@@ -300,14 +199,15 @@ def test_score_build_validation(hf_config, task_kwargs, kwargs, match):
             {"label_token_ids": [10], "item_first": True},
         ),
     ],
-    ids=["classifier_without_labels", "unknown_config", "item_first_token_ids"],
+    ids=["classifier_without_labels", "unknown_config", "item_first"],
 )
 def test_score_build_accepts(hf_config_value, task_kwargs, caplog):
     with patch("transformers.AutoConfig.from_pretrained", return_value=hf_config_value):
-        processor = ProcessorBuilder.build(
-            _score_config(task_kwargs=task_kwargs, tokenize_stage=False)
-        )
-    assert processor.list_stage_names() == ["SGLangEngineStage"]
+        processor = ProcessorBuilder.build(_score_config(task_kwargs=task_kwargs))
+    assert processor.list_stage_names() == [
+        "SGLangScoreTokenizeStage",
+        "SGLangEngineStage",
+    ]
     skipped = "aren't checked against the model" in caplog.text
     assert skipped is (hf_config_value is None)
 

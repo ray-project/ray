@@ -232,9 +232,11 @@ class SGLangEngineProcessorConfig(_SGLangEngineProcessorConfig, ProcessorConfig)
         task_type: The task type to use: 'generate' (default) or 'score'. See
             :ref:`sglang_score` for the score task.
         task_kwargs: Options for the task type. The 'generate' task takes none.
-            The 'score' task takes label_token_ids, apply_softmax, item_first,
-            embed_override_token, embed_override_token_id,
-            score_extraction_token, and score_extraction_token_id.
+            The 'score' task takes the ``Engine.score`` options label_token_ids,
+            apply_softmax, item_first, embed_override_token_id, and
+            score_extraction_token_id. See the
+            `SGLang score API <https://docs.sglang.io/basic_usage/native_api.html>`_
+            for what each option does.
         runtime_env: The runtime environment to use for the SGLang engine. See
             :ref:`this doc <handling_dependencies>` for more details.
         max_pending_requests: The maximum number of pending requests. If not specified,

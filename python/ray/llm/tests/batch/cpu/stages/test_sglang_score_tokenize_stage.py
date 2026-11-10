@@ -7,71 +7,44 @@ import pytest
 from ray.llm._internal.batch.stages.sglang_score_tokenize_stage import (
     SGLangScoreTokenizeStage,
     SGLangScoreTokenizeUDF,
-    _sequence_special_tokens,
-    resolve_marker_token,
 )
 
 BOS = 900
-SEP = 901
-MARKER = "<emb>"
-MARKER_ID = 77
+EOS = 901
 
 
 class FakeTokenizer:
-    """Maps each character to its code point and `<emb>` to `MARKER_ID`.
+    """Maps each character to its code point, wrapped in BOS/EOS if asked."""
 
-    `metaspace` mimics SentencePiece by shifting a sequence's first token, and
-    `split_marker=False` tokenizes the marker character by character.
-    """
-
-    unk_token_id = 0
-
-    def __init__(self, prefix=(), suffix=(), metaspace=False, split_marker=True):
-        self.prefix = list(prefix)
-        self.suffix = list(suffix)
-        self.metaspace = metaspace
-        self.split_marker = split_marker
-        self.batch_calls = []
-
-    def _encode(self, text):
-        parts = text.split(MARKER) if self.split_marker else [text]
-        ids = []
-        for i, part in enumerate(parts):
-            if i:
-                ids.append(MARKER_ID)
-            ids.extend(ord(c) for c in part)
-        if self.metaspace and text and not text.startswith(MARKER):
-            ids[0] += 1000
-        return ids
+    def __init__(self):
+        self.calls = []
 
     def __call__(self, texts, add_special_tokens=True):
-        single = isinstance(texts, str)
-        if not single:
-            self.batch_calls.append(list(texts))
-        batch = [texts] if single else texts
-        ids = [
-            (self.prefix + self._encode(t) + self.suffix)
-            if add_special_tokens
-            else self._encode(t)
-            for t in batch
-        ]
-        return {"input_ids": ids[0] if single else ids}
+        self.calls.append((list(texts), add_special_tokens))
+        ids = [[ord(c) for c in text] for text in texts]
+        if add_special_tokens:
+            ids = [[BOS] + row + [EOS] for row in ids]
+        return {"input_ids": ids}
 
 
-def _make_udf(tokenizer, **kwargs):
-    with patch(
-        "ray.llm._internal.batch.stages.sglang_score_tokenize_stage.load_tokenizer",
-        return_value=tokenizer,
-    ), patch(
-        "ray.llm._internal.batch.stages.sglang_score_tokenize_stage.get_cached_tokenizer",
-        side_effect=lambda t: t,
-    ):
-        return SGLangScoreTokenizeUDF(
+def _ids(text, special=False):
+    ids = [ord(c) for c in text]
+    return [BOS] + ids + [EOS] if special else ids
+
+
+def _make_udf(**kwargs):
+    tokenizer = FakeTokenizer()
+    module = "ray.llm._internal.batch.stages.tokenize_stage"
+    with patch(f"{module}.download_model_files", return_value="path"), patch(
+        "transformers.AutoTokenizer.from_pretrained", return_value=tokenizer
+    ), patch(f"{module}.get_cached_tokenizer", side_effect=lambda t: t):
+        udf = SGLangScoreTokenizeUDF(
             data_column="__data",
             expected_input_keys=["query", "items"],
             model="test-model",
             **kwargs,
         )
+    return udf, tokenizer
 
 
 async def _run(udf, rows):
@@ -82,19 +55,10 @@ async def _run(udf, rows):
     return outputs
 
 
-@pytest.mark.parametrize(
-    "prefix,suffix",
-    [([], []), ([BOS], []), ([BOS], [SEP]), ([], [SEP])],
-)
-def test_sequence_special_tokens(prefix, suffix):
-    tokenizer = FakeTokenizer(prefix=prefix, suffix=suffix)
-    assert _sequence_special_tokens(tokenizer) == (prefix, suffix)
-
-
 @pytest.mark.asyncio
-async def test_score_tokenize_udf():
-    tokenizer = FakeTokenizer(prefix=[BOS], suffix=[SEP])
-    udf = _make_udf(tokenizer)
+async def test_score_tokenize_concatenates_query_and_item():
+    # Without MIS, SGLang tokenizes each `query + item` text as one sequence.
+    udf, tokenizer = _make_udf()
     rows = [
         {"query": "q", "items": ["ab", "c"]},
         {"query": "rs", "items": np.array(["d"])},
@@ -102,24 +66,74 @@ async def test_score_tokenize_udf():
 
     outputs = await _run(udf, rows)
 
-    assert tokenizer.batch_calls == [["q", "rs", "ab", "c", "d"]]
-    assert [o["query_token_ids"] for o in outputs] == [
-        [BOS, ord("q")],
-        [BOS, ord("r"), ord("s")],
-    ]
+    assert tokenizer.calls == [(["qab", "qc", "rsd"], True)]
+    assert [o["query_token_ids"] for o in outputs] == [[], []]
     assert [o["item_token_ids"] for o in outputs] == [
-        [[ord("a"), ord("b"), SEP], [ord("c"), SEP]],
-        [[ord("d"), SEP]],
+        [_ids("qab", True), _ids("qc", True)],
+        [_ids("rsd", True)],
     ]
     assert outputs[0]["query"] == "q"
 
 
 @pytest.mark.asyncio
-async def test_score_tokenize_udf_without_special_tokens():
-    udf = _make_udf(FakeTokenizer(prefix=[BOS], suffix=[SEP]), add_special_tokens=False)
+async def test_score_tokenize_item_first():
+    udf, _ = _make_udf(item_first=True)
     [output] = await _run(udf, [{"query": "q", "items": ["a"]}])
-    assert output["query_token_ids"] == [ord("q")]
-    assert output["item_token_ids"] == [[ord("a")]]
+    assert output["item_token_ids"] == [_ids("aq", True)]
+
+
+@pytest.mark.asyncio
+async def test_score_tokenize_mis_adds_special_tokens_to_query_only():
+    udf, tokenizer = _make_udf(enable_mis=True)
+    outputs = await _run(
+        udf,
+        [{"query": "q", "items": ["ab", "c"]}, {"query": "r", "items": ["d"]}],
+    )
+
+    assert tokenizer.calls == [(["q", "r"], True), (["ab", "c", "d"], False)]
+    assert [o["query_token_ids"] for o in outputs] == [_ids("q", True), _ids("r", True)]
+    assert [o["item_token_ids"] for o in outputs] == [
+        [_ids("ab"), _ids("c")],
+        [_ids("d")],
+    ]
+
+
+@pytest.mark.parametrize(
+    "overrides",
+    [
+        {"query_embed_overrides": np.ones((1, 4))},
+        {"item_embed_overrides": [None, np.ones((1, 4))]},
+    ],
+)
+@pytest.mark.asyncio
+async def test_score_tokenize_rows_with_overrides_tokenize_separately(overrides):
+    # SGLang tokenizes the query and items separately when a row has
+    # embedding overrides, so marker positions are found in each sequence.
+    udf, _ = _make_udf()
+    rows = [
+        {"query": "q", "items": ["a", "b"], **overrides},
+        # Ray Data stores missing overrides as NaN next to array rows.
+        {
+            "query": "r",
+            "items": ["c", "d"],
+            "query_embed_overrides": np.nan,
+            "item_embed_overrides": [None, np.nan],
+        },
+    ]
+    with_overrides, without = await _run(udf, rows)
+
+    assert with_overrides["query_token_ids"] == _ids("q", True)
+    assert with_overrides["item_token_ids"] == [_ids("a"), _ids("b")]
+    assert without["query_token_ids"] == []
+    assert without["item_token_ids"] == [_ids("rc", True), _ids("rd", True)]
+
+
+@pytest.mark.asyncio
+async def test_score_tokenize_without_special_tokens():
+    udf, _ = _make_udf(add_special_tokens=False, enable_mis=True)
+    [output] = await _run(udf, [{"query": "q", "items": ["a"]}])
+    assert output["query_token_ids"] == _ids("q")
+    assert output["item_token_ids"] == [_ids("a")]
 
 
 @pytest.mark.parametrize(
@@ -131,101 +145,10 @@ async def test_score_tokenize_udf_without_special_tokens():
     ],
 )
 @pytest.mark.asyncio
-async def test_score_tokenize_udf_rejects_non_text(row, match):
-    udf = _make_udf(FakeTokenizer())
+async def test_score_tokenize_rejects_non_text(row, match):
+    udf, _ = _make_udf()
     with pytest.raises(ValueError, match=match):
         await _run(udf, [row])
-
-
-@pytest.mark.asyncio
-async def test_score_tokenize_udf_checks_markers():
-    udf = _make_udf(
-        FakeTokenizer(),
-        embed_override_token=MARKER,
-        embed_override_token_id=MARKER_ID,
-    )
-    [output] = await _run(udf, [{"query": f"a{MARKER}", "items": [f"{MARKER}b"]}])
-    assert output["query_token_ids"] == [ord("a"), MARKER_ID]
-
-    udf.tokenizer.split_marker = False
-    with pytest.raises(ValueError, match="occurs 1 times in 'query' text but 0"):
-        await _run(udf, [{"query": f"a{MARKER}", "items": ["b"]}])
-
-
-@pytest.mark.asyncio
-async def test_score_tokenize_udf_checks_extraction_tokens():
-    udf = _make_udf(
-        FakeTokenizer(),
-        score_extraction_token=MARKER,
-        score_extraction_token_id=MARKER_ID,
-    )
-    [output] = await _run(udf, [{"query": "q", "items": [f"a{MARKER}b{MARKER}"]}])
-    assert output["item_token_ids"] == [[ord("a"), MARKER_ID, ord("b"), MARKER_ID]]
-
-    udf.tokenizer.split_marker = False
-    with pytest.raises(ValueError, match="occurs 1 times in 'items' text but 0"):
-        await _run(udf, [{"query": "q", "items": [f"a{MARKER}"]}])
-
-
-@pytest.mark.parametrize(
-    "prefix,suffix", [([MARKER_ID], []), ([], [MARKER_ID]), ([BOS], [MARKER_ID])]
-)
-@pytest.mark.parametrize("name", ["embed_override_token", "score_extraction_token"])
-@pytest.mark.parametrize("with_text", [True, False])
-def test_score_tokenize_udf_rejects_marker_that_wraps_sequences(
-    prefix, suffix, name, with_text
-):
-    tokenizer = FakeTokenizer(prefix=prefix, suffix=suffix)
-    kwargs = {f"{name}_id": MARKER_ID}
-    if with_text:
-        kwargs[name] = MARKER
-    with pytest.raises(ValueError, match="special token the tokenizer adds"):
-        _make_udf(tokenizer, **kwargs)
-
-
-def test_score_tokenize_udf_allows_marker_without_special_tokens():
-    tokenizer = FakeTokenizer(prefix=[BOS], suffix=[MARKER_ID])
-    udf = _make_udf(
-        tokenizer,
-        add_special_tokens=False,
-        score_extraction_token=MARKER,
-        score_extraction_token_id=MARKER_ID,
-    )
-    assert udf.markers == [(MARKER, MARKER_ID)]
-
-
-def test_score_tokenize_udf_requires_marker_id():
-    with pytest.raises(ValueError, match="requires 'embed_override_token_id'"):
-        _make_udf(FakeTokenizer(), embed_override_token=MARKER)
-
-
-@pytest.mark.parametrize("metaspace", [False, True])
-def test_resolve_marker_token(metaspace):
-    tokenizer = FakeTokenizer(metaspace=metaspace)
-    assert resolve_marker_token(tokenizer, MARKER, "embed_override_token") == MARKER_ID
-
-
-@pytest.mark.parametrize(
-    "tokenizer,token,match",
-    [
-        (FakeTokenizer(split_marker=False), MARKER, "tokenizes to 5 tokens"),
-        (FakeTokenizer(), "\x00", "isn't in the tokenizer vocabulary"),
-    ],
-)
-def test_resolve_marker_token_errors(tokenizer, token, match):
-    with pytest.raises(ValueError, match=match):
-        resolve_marker_token(tokenizer, token, "embed_override_token")
-
-
-def test_resolve_marker_token_rejects_merging_marker():
-    class MergingTokenizer(FakeTokenizer):
-        def _encode(self, text):
-            if text == MARKER:
-                return [MARKER_ID]
-            return [ord(c) for c in text]
-
-    with pytest.raises(ValueError, match="merges with surrounding text"):
-        resolve_marker_token(MergingTokenizer(), MARKER, "embed_override_token")
 
 
 def test_score_tokenize_stage_input_keys():

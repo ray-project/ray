@@ -12,6 +12,14 @@ def truncate_str(s: str, max_length: int, suffix: str = "...[truncated]") -> str
     return s[:max_length] + suffix
 
 
+def is_missing(value: Any) -> bool:
+    """Whether a row value is missing.
+
+    Ray Data stores `None` as NaN in a column whose other rows hold arrays.
+    """
+    return value is None or (isinstance(value, float) and np.isnan(value))
+
+
 def maybe_convert_ndarray_to_list(
     params: Union[np.ndarray, List[Any], Dict[str, Any]]
 ) -> Union[List[Any], Dict[str, Any]]:
