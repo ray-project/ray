@@ -640,6 +640,11 @@ TEST_F(GcsPlacementGroupManagerTest, TestReschedulingRetry) {
   fake_placement_group_scheduler_->placement_groups_.pop_back();
   gcs_placement_group_manager_->OnPlacementGroupCreationFailed(
       placement_group, GetExpBackOff(), true);
+  // The failure doesn't trigger another attempt by itself.
+  RunIOService();
+  ASSERT_EQ(fake_placement_group_scheduler_->GetPlacementGroupCount(), 0);
+  // It's retried on the next scheduling trigger, e.g. Tick.
+  gcs_placement_group_manager_->SchedulePendingPlacementGroups();
   ASSERT_TRUE(WaitForCondition(
       [this]() {
         RunIOService();
@@ -1236,6 +1241,8 @@ TEST_F(GcsPlacementGroupManagerTest, TestStats) {
     placement_group->UpdateState(rpc::PlacementGroupTableData::RESCHEDULING);
     gcs_placement_group_manager_->OnPlacementGroupCreationFailed(
         placement_group, GetExpBackOff(), /*is_feasible*/ true);
+    // A failed RESCHEDULING placement group is retried on the next scheduling trigger.
+    gcs_placement_group_manager_->SchedulePendingPlacementGroups();
     ASSERT_TRUE(WaitForCondition(
         [this]() {
           RunIOService();

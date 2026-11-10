@@ -48,7 +48,7 @@ class HorovodTrainer(DataParallelTrainer):
         ...     # checkpoint data.
         ...     train.report(...)
         ...
-        ...     # Returns dict of last saved checkpoint.
+        ...     # Returns the last saved checkpoint, or None.
         ...     train.get_checkpoint()
         ...
         ...     # Returns the Dataset shard for the given key.
