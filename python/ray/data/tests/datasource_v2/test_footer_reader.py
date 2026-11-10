@@ -148,10 +148,15 @@ class TestReadAndChunk:
         def total(c):
             return sum(rg.size_bytes for rg in c.row_groups)
 
-        # Each projection sizes only its own column, but carries the file's I/O.
-        assert 0 < total(ids) < total(full)
-        assert 0 < total(pads) < total(full)
-        assert total(full) < total(ids) + total(pads)
+        def peak(c):
+            return sum(rg.memory_bytes for rg in c.row_groups)
+
+        # Each projection sizes only its own column; its peak also carries the
+        # file's I/O.
+        assert total(ids) + total(pads) == total(full)
+        assert 0 < peak(ids) < peak(full)
+        assert 0 < peak(pads) < peak(full)
+        assert peak(full) < peak(ids) + peak(pads)
         assert [rg.num_rows for rg in ids.row_groups] == [
             rg.num_rows for rg in full.row_groups
         ]

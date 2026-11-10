@@ -65,8 +65,8 @@ def estimate_row_group_work(
     leaves: Mapping[int, LeafChunk],
     counted: Set[int],
     decode_threads: int,
-) -> int:
-    """One row group's decoded columns, plus the buffers of the ``decode_threads``
+) -> Tuple[int, int]:
+    """One row group's decoded columns, and the buffers of the ``decode_threads``
     largest columns, or of every column if it is 0 or less: ``column_leaves`` holds
     each column read, in ``columns=`` order, as its leaf indices; ``leaves`` the
     unpinned leaves modelled; ``counted`` the ancestors sized."""
@@ -99,7 +99,7 @@ def estimate_row_group_work(
     # Each CPU thread decodes one column at a time.
     if decode_threads > 0:
         buffers = sorted(buffers)[-decode_threads:]
-    return decoded + sum(buffers)
+    return decoded, sum(buffers)
 
 
 def estimate_leaf_work(

@@ -18,6 +18,7 @@ def _run(
     fully_matched: bool = True,
     unit_sizes: tuple[int, ...] = (),
     unit_rows: tuple[int, ...] = (),
+    memory: Optional[int] = None,
 ) -> ChunkMetadata:
     return FileChunk(
         unit_ids=ids,
@@ -26,6 +27,7 @@ def _run(
         fully_matched=fully_matched,
         unit_sizes=unit_sizes,
         unit_rows=unit_rows,
+        memory_bytes=memory,
     ).to_metadata()
 
 
@@ -427,6 +429,23 @@ def test_manifest_without_source_columns_is_unchanged() -> None:
 
     manifest = packer.next_partition()
     assert manifest.extra_columns is None
+
+
+@pytest.mark.parametrize("split_coalesced", [False, True])
+def test_packed_runs_carry_their_memory_estimates(split_coalesced: bool) -> None:
+    # A bin's run sums its pieces' memory estimates, and a split coalesced run's
+    # pieces share its estimate by their bytes; here memory is twice the bytes.
+    coalesced = _run(
+        (0, 1, 2), 90, unit_sizes=(30, 30, 30), unit_rows=(3, 3, 4), memory=180
+    )
+    packer = OnlineBinPacker(max_bin_bytes=50, split_coalesced=split_coalesced)
+    packer.add_input(_file("a", 1000, [coalesced, _run((3,), 20, memory=40)]))
+    packer.finalize()
+    chunks = []
+    while packer.has_partition():
+        chunks.extend(packer.next_partition().file_chunk_metadatas)
+    assert all(c["memory_bytes"] == 2 * c["size_bytes"] for c in chunks)
+    assert sum(c["memory_bytes"] for c in chunks) == 220
 
 
 if __name__ == "__main__":
