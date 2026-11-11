@@ -173,6 +173,55 @@ def _null(_value) -> None:
     return None
 
 
+def _stream_model(model: type, name: str, **overrides: Any) -> type:
+    """Return a copy of one of vLLM's stream response models, plus ``overrides``.
+
+    vLLM's ``OpenAIBaseModel`` runs a Python wrap validator on every
+    construction to debug-log unknown input keys (~1 us per model, twice per
+    streamed event). vLLM's generators construct these response models with
+    known keys only, so it never logs. The copy keeps vLLM's fields (in order),
+    types, defaults and config and omits only that validator. If the model has
+    any other validator or serializer, or different config, subclass instead so
+    behavior stays exact.
+
+    Args:
+        model: vLLM response model to copy.
+        name: Name of the new model.
+        **overrides: Field definitions ``(annotation, default or FieldInfo)``.
+
+    Returns:
+        The new pydantic model class.
+    """
+    from copy import copy
+
+    from pydantic import ConfigDict, create_model
+
+    decorators = model.__pydantic_decorators__
+    exact_copy = (
+        dict(model.model_config) == {"extra": "allow"}
+        and list(decorators.model_validators) == ["__log_extra_fields__"]
+        and not any(
+            getattr(decorators, kind)
+            for kind in (
+                "validators",
+                "field_validators",
+                "root_validators",
+                "field_serializers",
+                "model_serializers",
+                "computed_fields",
+            )
+        )
+    )
+    if not exact_copy:
+        return create_model(name, __base__=model, **overrides)
+    fields = {
+        field: (info.annotation, copy(info))
+        for field, info in model.model_fields.items()
+    }
+    fields.update(overrides)
+    return create_model(name, __config__=ConfigDict(extra="allow"), **fields)
+
+
 @lru_cache(maxsize=1)
 def _completion_models():
     """Response models that add the token count during native validation.
@@ -201,45 +250,53 @@ def _completion_models():
         CompletionStreamResponse,
     )
 
-    Listed = Annotated[int, BeforeValidator(length_hint)]
-    Hidden = Annotated[Any, PlainSerializer(_null, return_type=None)]
-
-    class VisibleIdsChoice(CompletionResponseStreamChoice):
-        ray_token_count: Listed = Field(default=0, validation_alias="token_ids")
-
-    class HiddenListedChoice(VisibleIdsChoice):
-        prompt_token_ids: Hidden = None
-        token_ids: Hidden = None
-
-    class HiddenCountedChoice(CompletionResponseStreamChoice):
-        ray_token_count: int = Field(default=0, validation_alias="token_ids")
-        prompt_token_ids: Optional[List[int]] = Field(
-            default=None, validation_alias="weight_versions"
-        )
-        token_ids: Optional[List[int]] = Field(
-            default=None, validation_alias="weight_versions"
-        )
-        # Consumes the prompt IDs passed for the internal return_token_ids,
-        # without validating or serializing them.
-        ray_prompt_token_ids: Any = Field(
-            default=None, validation_alias="prompt_token_ids", exclude=True
-        )
-
-    models = {}
-    for key, choice in (
-        ((True, False), VisibleIdsChoice),
-        ((False, False), HiddenListedChoice),
-        ((False, True), HiddenCountedChoice),
-    ):
-        models[key] = (
+    listed_count = (
+        Annotated[int, BeforeValidator(length_hint)],
+        Field(default=0, validation_alias="token_ids"),
+    )
+    hidden = (Annotated[Any, PlainSerializer(_null, return_type=None)], None)
+    native_null = (
+        Optional[List[int]],
+        Field(default=None, validation_alias="weight_versions"),
+    )
+    choices = {
+        (True, False): _stream_model(
+            CompletionResponseStreamChoice,
+            "VisibleIdsChoice",
+            ray_token_count=listed_count,
+        ),
+        (False, False): _stream_model(
+            CompletionResponseStreamChoice,
+            "HiddenListedChoice",
+            prompt_token_ids=hidden,
+            token_ids=hidden,
+            ray_token_count=listed_count,
+        ),
+        (False, True): _stream_model(
+            CompletionResponseStreamChoice,
+            "HiddenCountedChoice",
+            prompt_token_ids=native_null,
+            token_ids=native_null,
+            ray_token_count=(int, Field(default=0, validation_alias="token_ids")),
+            # Consumes the prompt IDs passed for the internal return_token_ids,
+            # without validating or serializing them.
+            ray_prompt_token_ids=(
+                Any,
+                Field(default=None, validation_alias="prompt_token_ids", exclude=True),
+            ),
+        ),
+    }
+    return {
+        key: (
             choice,
-            type(
+            _stream_model(
+                CompletionStreamResponse,
                 choice.__name__.replace("Choice", "Response"),
-                (CompletionStreamResponse,),
-                {"__annotations__": {"choices": list[choice]}},
+                choices=(List[choice], ...),
             ),
         )
-    return models
+        for key, choice in choices.items()
+    }
 
 
 def _completion_generators(original):
@@ -347,9 +404,15 @@ def _install_chat_counts(serving) -> None:
             super().__init__(request, *args, **kwargs)
             registries[id(request)].append(self)
 
+    choice = _stream_model(module.ChatCompletionResponseStreamChoice, "ChatChoice")
+    response = _stream_model(
+        module.ChatCompletionStreamResponse, "ChatResponse", choices=(List[choice], ...)
+    )
     raw = _clone(
         cls.chat_completion_stream_generator_raw,
         ChatStreamProcessor=CountingProcessor,
+        ChatCompletionResponseStreamChoice=choice,
+        ChatCompletionStreamResponse=response,
     )
     # The serialization loop below mirrors vLLM's chat_completion_stream_generator.
     if "chat_completion_stream_generator_raw" not in (

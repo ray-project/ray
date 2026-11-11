@@ -289,3 +289,60 @@ async def test_request_count_isolation(echo):
         choices=[completion.CompletionResponseStreamChoice(index=0, text="x")],
     )
     assert "ray_token_count" not in ordinary.model_dump_json()
+
+
+def test_stream_model_copies_match_vllm():
+    """Copies keep vLLM's fields, order and serialization, minus only the
+    per-construction extra-field logging validator."""
+    from vllm.entrypoints.openai.chat_completion.protocol import (
+        ChatCompletionResponseStreamChoice,
+        ChatCompletionStreamResponse,
+        DeltaMessage,
+    )
+    from vllm.entrypoints.openai.completion.protocol import (
+        CompletionResponseStreamChoice,
+        CompletionStreamResponse,
+    )
+
+    class CitedDelta(DeltaMessage):
+        citations: list = []
+
+    for model in (
+        CompletionResponseStreamChoice,
+        CompletionStreamResponse,
+        ChatCompletionResponseStreamChoice,
+        ChatCompletionStreamResponse,
+    ):
+        copied = llm_metrics._stream_model(model, "Copied")
+        assert list(copied.model_fields) == list(model.model_fields)
+        assert not copied.__pydantic_decorators__.model_validators
+
+    native_choice = ChatCompletionResponseStreamChoice(
+        index=1, delta=CitedDelta(content="x", citations=["a"]), finish_reason=None
+    )
+    choice = llm_metrics._stream_model(ChatCompletionResponseStreamChoice, "Choice")
+    copied_choice = choice(
+        index=1, delta=CitedDelta(content="x", citations=["a"]), finish_reason=None
+    )
+    assert copied_choice.model_dump_json(
+        exclude_unset=True
+    ) == native_choice.model_dump_json(exclude_unset=True)
+    assert '"citations":["a"]' in copied_choice.model_dump_json()
+
+
+def test_stream_model_falls_back_to_subclass():
+    """Models with other validators are subclassed so their behavior stays."""
+    from pydantic import field_validator
+    from vllm.entrypoints.serve.engine.protocol import OpenAIBaseModel
+
+    class Validated(OpenAIBaseModel):
+        value: int
+
+        @field_validator("value")
+        @classmethod
+        def double(cls, value):
+            return value * 2
+
+    copied = llm_metrics._stream_model(Validated, "Copied")
+    assert issubclass(copied, Validated)
+    assert copied(value=2).value == 4
