@@ -33,6 +33,7 @@ from ray.data.tests.unit.datasource_v2.mcap_testing import (
     SHARED_SCHEMA,
     STEP,
     SeekLog,
+    as_read_task,
     chunks_read,
     infer_schema,
     list_manifests,
@@ -377,23 +378,23 @@ def test_reader_cuts_tables_at_target_block_size(chunked_file):
     """A 1-byte target block size yields a table per message, and no target yields
     one table."""
     datasource = MCAPDatasourceV2([chunked_file])
-    (manifest,) = list_manifests(datasource)
+    task = as_read_task(*list_manifests(datasource))
     scanner = scanner_for(datasource)
 
     one_byte = dataclasses.replace(scanner, target_block_size=1)
-    tables = list(one_byte.create_reader().read(manifest))
+    tables = list(one_byte.create_reader().read(task))
     assert len(tables) == CHUNKED_FILE_MESSAGES
     assert all(t.num_rows == 1 for t in tables)
 
     unbounded = dataclasses.replace(scanner, target_block_size=None)
-    assert len(list(unbounded.create_reader().read(manifest))) == 1
+    assert len(list(unbounded.create_reader().read(task))) == 1
 
 
 def test_scanner_prunes_columns_and_pushes_limit(chunked_file):
     """A pruned, limited scanner reads only its columns and rows, and an empty
     projection still yields every row."""
     datasource = MCAPDatasourceV2([chunked_file], include_paths=True)
-    (manifest,) = list_manifests(datasource)
+    task = as_read_task(*list_manifests(datasource))
     scanner = scanner_for(datasource)
 
     assert isinstance(scanner, MCAPScanner)
@@ -401,13 +402,13 @@ def test_scanner_prunes_columns_and_pushes_limit(chunked_file):
     assert pruned.read_schema().names == ["log_time", "path"]
     assert pruned.pushed_limit() == 4
 
-    table = pa.concat_tables(list(pruned.create_reader().read(manifest)))
+    table = pa.concat_tables(list(pruned.create_reader().read(task)))
     assert table.column_names == ["log_time", "path"]
     assert table.num_rows == 4
 
     # An empty projection, as in ``count()``, keeps the row count through a stub column.
     empty = scanner.prune_columns([])
-    table = pa.concat_tables(list(empty.create_reader().read(manifest)))
+    table = pa.concat_tables(list(empty.create_reader().read(task)))
     assert table.num_rows == CHUNKED_FILE_MESSAGES
     assert empty.read_schema().names == []
     assert empty.prune_columns(["topic"]).read_schema().names == []
@@ -556,11 +557,11 @@ def test_reader_cuts_tables_at_the_target_counting_every_column(tmp_path):
     path = os.path.join(tmp_path, "mixed.mcap")
     write_mixed_channels(path, num_messages=400)
     datasource = MCAPDatasourceV2([path], include_row_id=True, include_paths=True)
-    (manifest,) = list_manifests(datasource)
+    task = as_read_task(*list_manifests(datasource))
     target = 8 * 1024
     scanner = dataclasses.replace(scanner_for(datasource), target_block_size=target)
 
-    tables = list(scanner.create_reader().read(manifest))
+    tables = list(scanner.create_reader().read(task))
 
     assert len(tables) > 1
     # One row of about 350 bytes past the target, at most.
