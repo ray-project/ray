@@ -32,6 +32,8 @@ pip_requirements_parser
 typing-extensions>=4.10
 jsonschema>=4.23.0
 certifi>=2026.10.19
+aiohttp>=3.14.4
+idna>=3.15
 h11>=0.16.0
 google-cloud-logging
 packaging==25.0
