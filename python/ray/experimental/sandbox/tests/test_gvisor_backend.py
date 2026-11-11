@@ -40,6 +40,7 @@ from ray.experimental.sandbox.backend.gvisor import (
     _namespace_ids,
     _render_egress_ruleset,
     _write_egress_ruleset,
+    runsc_env,
 )
 from ray.experimental.sandbox.config import (
     ALLOW_ALL_CIDRS,
@@ -347,24 +348,6 @@ def _gpu_sandbox_config():
     return GVisorSandboxConfig(image="busybox:latest", shell="/bin/sh", gpu_ids=["0"])
 
 
-def test_gvisor_backend_nvproxy_flag():
-    """An NVIDIA GPU CDI spec resolves to --nvproxy, and a sandbox without
-    GPUs never gets it."""
-    backend = GVisorSandboxBackend()
-    with (
-        patch(
-            "ray.experimental.sandbox._internal.cdi.get_spec",
-            return_value=cdi_lib.CDISpec("nvidia.com/gpu", {"devices": []}),
-        ),
-        patch.object(backend, "_check_runsc_runs_cdi_hooks"),
-        patch.object(backend, "_check_nvidia_driver_supported"),
-    ):
-        assert backend._resolve_gpu_run_args() == ["--nvproxy"]
-
-    cfg_no_gpu = GVisorSandboxConfig(image="busybox:latest", shell="/bin/sh")
-    assert "--nvproxy" not in backend._build_run_command(cfg_no_gpu, "/tmp/rd", "sb-1")
-
-
 def _fake_runsc_version(monkeypatch, version):
     """Have `runsc --version` report ``version``."""
     output = f"runsc version {version}\nspec: 1.2.1\n"
@@ -396,6 +379,25 @@ def test_runsc_built_from_source_is_accepted_with_a_warning(monkeypatch, sandbox
     with sandbox_log.at_level("WARNING", logger=gvisor.__name__):
         GVisorSandboxBackend()._check_runsc_runs_cdi_hooks()
     assert "release-20260520.0 or newer" in sandbox_log.text
+
+
+def test_gpu_checks_run_runsc_with_runsc_env(monkeypatch):
+    """The runsc calls that check GPU support get runsc_env()'s GOMAXPROCS,
+    like every other runsc call."""
+    monkeypatch.delenv("GOMAXPROCS", raising=False)
+    envs = []
+
+    def run(args, **kwargs):
+        envs.append(kwargs.get("env") or {})
+        if "--version" in args:
+            return subprocess.CompletedProcess(args, 0, "runsc version x\n", "")
+        return subprocess.CompletedProcess(args, 0, "580.126.20\n", "")
+
+    monkeypatch.setattr(gvisor.subprocess, "run", run)
+    backend = GVisorSandboxBackend()
+    backend._check_runsc_runs_cdi_hooks()
+    assert backend._list_nvproxy_supported_drivers() == {"580.126.20"}
+    assert [env.get("GOMAXPROCS") for env in envs] == ["2", "2"]
 
 
 def test_validate_gpu_ids_accepts_subset_of_ray_assignment():
@@ -1413,23 +1415,6 @@ def test_create_sandbox_erofs_sandbox_skips_overlay(tmp_path, monkeypatch):
 
     assert captured["rootfs_overlay"] is None
     assert manager.rootfs_image_calls == []
-
-
-def test_create_sandbox_passes_gpu_run_args(tmp_path, monkeypatch):
-    """A sandbox with gpu_ids on an NVIDIA node runs runsc with --nvproxy."""
-    monkeypatch.setattr("ray.get_gpu_ids", lambda: ["0"])
-    monkeypatch.setattr(
-        "ray.experimental.sandbox._internal.cdi.get_spec",
-        lambda resource_name: cdi_lib.CDISpec("nvidia.com/gpu", {"devices": []}),
-    )
-    monkeypatch.setattr(
-        GVisorSandboxBackend, "_check_runsc_runs_cdi_hooks", lambda self: None
-    )
-    monkeypatch.setattr(
-        GVisorSandboxBackend, "_check_nvidia_driver_supported", lambda self: None
-    )
-    captured, _ = _create_until_run(tmp_path, monkeypatch, False, gpu_ids=["0"])
-    assert captured["gpu_run_args"] == ["--nvproxy"]
 
 
 def _create_overlayfs_sandbox(tmp_path, monkeypatch, manager):
@@ -3340,6 +3325,61 @@ def test_resolve_exec_user(monkeypatch):
     monkeypatch.setattr(backend, "read_file", unreadable)
     with pytest.raises(SandboxExecError, match="cannot read /etc/passwd"):
         backend._resolve_exec_user("sb-1", "postfix")
+
+
+def test_runsc_env_caps_gomaxprocs_unless_set(monkeypatch):
+    """runsc CLI calls run with GOMAXPROCS=2, as gVisor's containerd shim
+    runs them, unless the worker's environment sets it."""
+    monkeypatch.delenv("GOMAXPROCS", raising=False)
+    assert runsc_env()["GOMAXPROCS"] == "2"
+    monkeypatch.setenv("GOMAXPROCS", "8")
+    assert runsc_env()["GOMAXPROCS"] == "8"
+
+
+def test_runsc_run_starts_with_gomaxprocs(monkeypatch):
+    """A sandbox's attached `runsc run` gets runsc_env()'s GOMAXPROCS."""
+    monkeypatch.delenv("GOMAXPROCS", raising=False)
+    backend = GVisorSandboxBackend()
+    sandbox_id = backend.create_sandbox(
+        GVisorSandboxConfig(image="busybox:latest", shell="/bin/sh")
+    )
+    try:
+        proc = backend._sandbox_metadata[sandbox_id]["proc"]
+        with open(f"/proc/{proc.pid}/environ", "rb") as f:
+            assert b"GOMAXPROCS=2" in f.read().split(b"\0")
+    finally:
+        backend.delete_sandbox(sandbox_id)
+
+
+def test_exec_kill_and_reclaim_run_runsc_with_gomaxprocs(private_bundles, monkeypatch):
+    """Killing a timed-out command's processes and reclaiming an unowned
+    bundle run runsc with runsc_env()'s GOMAXPROCS too."""
+    monkeypatch.delenv("GOMAXPROCS", raising=False)
+    monkeypatch.delenv("RAY_SANDBOX_IGNORE_CGROUPS", raising=False)
+    # Log GOMAXPROCS with the arguments, and list no processes, so the kill
+    # falls back to the command's own PID.
+    (private_bundles / "runsc").write_text(
+        "#!/bin/sh\n"
+        'echo "GOMAXPROCS=$GOMAXPROCS $*" >> "$(dirname "$0")/runsc.log"\n'
+        'case " $* " in *" trace "*) exit 1 ;; esac\n'
+    )
+    sandbox_id = "ray-sandbox-00000000000f"
+    config = GVisorSandboxConfig(image="busybox:latest", rootless=False)
+    backend = GVisorSandboxBackend(image_manager=_RecordingImageManager())
+    pid_file = private_bundles / "exec.pid"
+    pid_file.write_text("7")
+    backend._kill_exec(config, sandbox_id, str(pid_file))
+    root = Path(gvisor._RAY_SANDBOX_DIR, sandbox_id)
+    root.mkdir(parents=True)
+    # An owner file that no live owner holds or names: the bundle is unowned.
+    (root / ".owner").write_text(json.dumps({"image": "busybox:latest"}))
+    assert backend._reclaim_unowned_bundles() == [sandbox_id]
+    assert (private_bundles / "runsc.log").read_text().splitlines() == [
+        f"GOMAXPROCS=2 --root /tmp/runsc trace procfs {sandbox_id}",
+        f"GOMAXPROCS=2 --root /tmp/runsc kill --pid 7 {sandbox_id} SIGKILL",
+        f"GOMAXPROCS=2 --root /tmp/runsc kill {sandbox_id} SIGKILL",
+        f"GOMAXPROCS=2 --root /tmp/runsc delete -force {sandbox_id}",
+    ]
 
 
 if __name__ == "__main__":

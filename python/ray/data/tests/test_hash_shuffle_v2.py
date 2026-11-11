@@ -840,17 +840,25 @@ def _make_multi_input_reduce_op(reduce_fn, num_inputs=2, num_partitions=2):
     )
 
 
-def _drain_reduce_op(op, feed):
-    """Run `op` over `feed` (bundle, input_index) pairs and return output tables."""
+def _drain_reduce_op_bundles(op, feed):
+    """Run `op` over `feed` (bundle, input_index) pairs and return each output
+    bundle's tables."""
     op.start(ExecutionOptions(), noop_counter())
     for bundle, input_index in feed:
         op.add_input(bundle, input_index)
     op.all_inputs_done()
     run_op_tasks_sync(op)
-    tables = []
+    bundles = []
     while op.has_next():
-        for ref in op.get_next().block_refs:
-            tables.append(ray.get(ref))
+        bundles.append([ray.get(ref) for ref in op.get_next().block_refs])
+    return bundles
+
+
+def _drain_reduce_op(op, feed):
+    """Run `op` over `feed` (bundle, input_index) pairs and return output tables."""
+    tables = []
+    for bundle_tables in _drain_reduce_op_bundles(op, feed):
+        tables.extend(bundle_tables)
     return tables
 
 
@@ -885,6 +893,78 @@ def test_reduce_op_runs_when_an_input_is_missing(ray_start_regular_shared_2_cpus
     out = pa.concat_tables(_drain_reduce_op(op, feed))
     assert out.column("src").to_pylist() == ["L"]
     assert op.has_completed()
+
+
+def _yield_each_shard_reduce_fn(fail_partition=None):
+    """Yields one output block per shard, so a partition can yield several."""
+
+    def _reduce(partition_id, tables_by_input):
+        yield from tables_by_input[0]
+        if partition_id == fail_partition:
+            raise ValueError(f"reduce of partition {partition_id} failed")
+
+    return _reduce
+
+
+def _run_whole_partition_reduce_op(reduce_fn, feed):
+    """Runs a one-input reduce op in whole-partition mode over ``feed``. Returns
+    a (block count, sorted ``v`` values) pair per output bundle, sorted."""
+    op = _make_multi_input_reduce_op(reduce_fn, num_inputs=1)
+    op.set_emit_whole_partitions()
+    bundles = _drain_reduce_op_bundles(op, [(bundle, 0) for bundle in feed])
+    assert op.metrics.obj_store_mem_internal_outqueue == 0
+    outputs = []
+    for tables in bundles:
+        values = pa.concat_tables(tables).column("v").to_pylist()
+        outputs.append((len(tables), sorted(values)))
+    return sorted(outputs)
+
+
+def test_reduce_op_emits_whole_partitions(ray_start_regular_shared_2_cpus):
+    """Each partition's output blocks come out together as one bundle."""
+    shards = [_ipc_shard_bundle(0, pa.table({"v": [v]})) for v in range(3)]
+    feed = [
+        RefBundle.merge_ref_bundles(shards),
+        _ipc_shard_bundle(1, pa.table({"v": [9]})),
+    ]
+    outputs = _run_whole_partition_reduce_op(_yield_each_shard_reduce_fn(), feed)
+    assert outputs == [(1, [9]), (3, [0, 1, 2])]
+
+
+def test_reduce_op_emits_whole_partition_after_retry(
+    ray_start_regular_shared_2_cpus, tmp_path
+):
+    """A reduce task whose worker dies after yielding a block is retried, and
+    its partition still comes out once, as one bundle."""
+    crashed = tmp_path / "crashed"
+
+    def _reduce(partition_id, tables_by_input):
+        for table in tables_by_input[0]:
+            yield table
+            if not crashed.exists():
+                crashed.touch()
+                os._exit(1)
+
+    shards = [_ipc_shard_bundle(0, pa.table({"v": [v]})) for v in range(3)]
+    outputs = _run_whole_partition_reduce_op(
+        _reduce, [RefBundle.merge_ref_bundles(shards)]
+    )
+    assert crashed.exists()
+    assert outputs == [(3, [0, 1, 2])]
+
+
+def test_reduce_op_drops_failed_partition(ray_start_regular_shared_2_cpus):
+    """Blocks held for a partition whose reduce task fails aren't emitted."""
+    op = _make_multi_input_reduce_op(
+        _yield_each_shard_reduce_fn(fail_partition=0), num_inputs=1
+    )
+    op.set_emit_whole_partitions()
+    feed = [(_ipc_shard_bundle(0, pa.table({"v": [1]})), 0)]
+    with pytest.raises(Exception, match="reduce of partition 0 failed"):
+        _drain_reduce_op(op, feed)
+
+    assert not op.has_next()
+    assert op.metrics.obj_store_mem_internal_outqueue == 0
 
 
 _V2_OP_CLASSES = [

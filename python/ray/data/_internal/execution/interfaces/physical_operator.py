@@ -33,6 +33,7 @@ from ray.data._internal.execution.interfaces.execution_options import (
 )
 from ray.data._internal.execution.interfaces.op_runtime_metrics import OpRuntimeMetrics
 from ray.data._internal.logical.interfaces import LogicalOperator, Operator
+from ray.data._internal.logical.interfaces.partitioning import HashPartitioning
 from ray.data._internal.output_buffer import OutputBlockSizeOption
 from ray.data._internal.stats import StatsDict, Timer
 from ray.data.block import (
@@ -688,6 +689,7 @@ class PhysicalOperator(Operator):
         # The LogicalOperator(s) which were translated to create this PhysicalOperator.
         # Set via `PhysicalOperator.set_logical_operators()`.
         self._logical_operators: List[LogicalOperator] = []
+        self._output_partitioning: Optional[HashPartitioning] = None
         self._data_context = data_context
         self._id = str(uuid.uuid4())
         # Initialize metrics after data_context is set
@@ -735,6 +737,14 @@ class PhysicalOperator(Operator):
     @property
     def output_dependencies(self) -> List["PhysicalOperator"]:
         return self._output_dependencies
+
+    @property
+    def output_partitioning(self) -> Optional[HashPartitioning]:
+        """How this operator's output is hash-partitioned, or ``None`` if unknown.
+
+        Lets EliminateAggregateShuffle skip a redundant group-by shuffle.
+        """
+        return self._output_partitioning
 
     def post_order_iter(self) -> Iterator["PhysicalOperator"]:
         return super().post_order_iter()  # type: ignore
@@ -906,6 +916,16 @@ class PhysicalOperator(Operator):
     def _extra_metrics(self) -> Dict[str, Any]:
         """Subclasses should override this method to report extra metrics
         that are specific to them."""
+        return {}
+
+    def get_phase_metrics(self) -> Dict[str, OpRuntimeMetrics]:
+        """Returns runtime metrics for each internal phase of this operator.
+
+        Operators that run several phases behind one operator (e.g. a GPU
+        shuffle's shuffle and finalize stages) override this so each phase
+        whose metrics are not already ``metrics`` is exported alongside it
+        under its own tag. Keys are phase names.
+        """
         return {}
 
     def _get_logical_args(self) -> Dict[str, Dict[str, Any]]:

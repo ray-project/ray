@@ -102,6 +102,23 @@ _CPUS_LOCK_FILE = "cpus.lock"
 # overlay state.
 _RAY_SANDBOX_DIR = "/tmp/ray/sandbox"
 
+
+def runsc_env() -> Dict[str, str]:
+    """The environment for runsc CLI subprocesses: GOMAXPROCS=2 unless set.
+
+    Each runsc CLI call (run, restore, exec, state, kill, delete, spec, trace,
+    pause, resume, checkpoint) is a Go process, and Go sizes its runtime to every CPU it can see: on a many-core
+    node, dozens of concurrent calls then cost much more CPU than their work
+    (measured on a 64-core node, 64 `runsc exec` calls at a time: 0.023 CPU-s
+    per exec, 0.013 with GOMAXPROCS=2). gVisor's containerd shim runs runsc
+    with GOMAXPROCS=2 for this reason, and runsc doesn't pass the variable on
+    to the sandbox and gofer processes it starts.
+    """
+    env = dict(os.environ)
+    env.setdefault("GOMAXPROCS", "2")
+    return env
+
+
 # `runsc run --pid-file` (and `runsc restore`) writes this file once the
 # container exists. The start loop stats it every _START_POLL_SECONDS and
 # asks `runsc state` (a Go process per call) whether the container runs only
@@ -727,7 +744,7 @@ class GVisorSandboxBackend(BaseSandboxBackend):
         # argv construction.
         gpu_run_args = []
         if config.gpu_ids:
-            gpu_run_args = self._resolve_gpu_run_args()
+            gpu_run_args = self._resolve_gpu_run_args(config.env)
 
         try:
             # The instance id pins the image in the cache while this sandbox
@@ -998,6 +1015,7 @@ class GVisorSandboxBackend(BaseSandboxBackend):
                 stdin=subprocess.DEVNULL,
                 stdout=subprocess.DEVNULL,
                 stderr=stderr_file,
+                env=runsc_env(),
             )
         except Exception:
             stderr_file.close()
@@ -1035,6 +1053,7 @@ class GVisorSandboxBackend(BaseSandboxBackend):
                             capture_output=True,
                             text=True,
                             timeout=max(1.0, timeout - (time.time() - start_time)),
+                            env=runsc_env(),
                         )
                     except subprocess.TimeoutExpired:
                         res = None
@@ -1090,7 +1109,9 @@ class GVisorSandboxBackend(BaseSandboxBackend):
             kill_args = self._runsc_base_args(config)
             kill_args.extend(["kill", sandbox_id, "SIGKILL"])
             try:
-                subprocess.run(kill_args, capture_output=True, timeout=5)
+                subprocess.run(
+                    kill_args, capture_output=True, timeout=5, env=runsc_env()
+                )
             except subprocess.TimeoutExpired:
                 pass
 
@@ -1382,6 +1403,7 @@ class GVisorSandboxBackend(BaseSandboxBackend):
                 stdin=subprocess.DEVNULL,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT if combine_output else subprocess.PIPE,
+                env=runsc_env(),
             )
             try:
                 stdout, stderr = proc.communicate(timeout=timeout)
@@ -1443,6 +1465,7 @@ class GVisorSandboxBackend(BaseSandboxBackend):
                     base_args + ["kill", "--pid", str(pid), sandbox_id, "SIGKILL"],
                     capture_output=True,
                     timeout=10,
+                    env=runsc_env(),
                 )
             except (OSError, subprocess.TimeoutExpired):
                 pass
@@ -1461,6 +1484,7 @@ class GVisorSandboxBackend(BaseSandboxBackend):
                     text=True,
                     errors="replace",
                     timeout=10,
+                    env=runsc_env(),
                 )
                 if dump.returncode == 0:
                     pids = _exec_processes(dump.stdout, root_pid)
@@ -1535,6 +1559,7 @@ class GVisorSandboxBackend(BaseSandboxBackend):
             stdin=subprocess.PIPE,
             stdout=subprocess.DEVNULL,
             stderr=subprocess.PIPE,
+            env=runsc_env(),
         )
         _, stderr = proc.communicate(input=content)
         return proc.returncode, stderr
@@ -1554,6 +1579,7 @@ class GVisorSandboxBackend(BaseSandboxBackend):
             stdin=subprocess.DEVNULL,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
+            env=runsc_env(),
         )
         stdout, stderr = proc.communicate()
         if proc.returncode != 0:
@@ -1593,7 +1619,11 @@ class GVisorSandboxBackend(BaseSandboxBackend):
         """Execute a runsc lifecycle control command (e.g. pause, resume, state)."""
         args = self._runsc_base_args(config) + [subcommand, *extra_args, sandbox_id]
         res = subprocess.run(
-            args, capture_output=True, text=True, timeout=timeout_seconds
+            args,
+            capture_output=True,
+            text=True,
+            timeout=timeout_seconds,
+            env=runsc_env(),
         )
         if res.returncode != 0:
             raise SandboxError(
@@ -1741,6 +1771,7 @@ class GVisorSandboxBackend(BaseSandboxBackend):
                         capture_output=True,
                         text=True,
                         timeout=timeout_seconds,
+                        env=runsc_env(),
                     )
                 except subprocess.TimeoutExpired:
                     # The timeout kills only the runsc client: the save goes
@@ -2147,7 +2178,7 @@ class GVisorSandboxBackend(BaseSandboxBackend):
         """
         del_args = self._runsc_base_args(config) + ["delete", "-force", sandbox_id]
         try:
-            subprocess.run(del_args, capture_output=True, timeout=10)
+            subprocess.run(del_args, capture_output=True, timeout=10, env=runsc_env())
         except (subprocess.TimeoutExpired, OSError):
             pass
 
@@ -2560,7 +2591,10 @@ class GVisorSandboxBackend(BaseSandboxBackend):
             ):
                 try:
                     subprocess.run(
-                        [*runsc_args, *action], capture_output=True, timeout=10
+                        [*runsc_args, *action],
+                        capture_output=True,
+                        timeout=10,
+                        env=runsc_env(),
                     )
                 except (OSError, subprocess.TimeoutExpired):
                     pass
@@ -2614,12 +2648,20 @@ class GVisorSandboxBackend(BaseSandboxBackend):
                 "only access GPUs Ray scheduled to its owning actor or task."
             )
 
-    def _resolve_gpu_run_args(self) -> List[str]:
+    def _resolve_gpu_run_args(self, env: Optional[Dict[str, str]]) -> List[str]:
         """The runsc flags GPU passthrough needs for this node's GPU CDI kind.
         Only nvidia.com/gpu is supported, which needs --nvproxy.
 
+        Only the caller's NVIDIA_DRIVER_CAPABILITIES can raise the allowed
+        capabilities, such as compute,utility,profiling for Nsight Compute.
+        Image environment variables cannot raise them. Without an explicit
+        request, gVisor keeps its compute,utility default.
+
+        Args:
+            env: The environment supplied by the caller.
+
         Returns:
-            The runsc flags, ``["--nvproxy"]``.
+            The runsc flags, such as ``["--nvproxy"]``.
 
         Raises:
             SandboxCreationError: If this node has no GPU CDI spec, its kind
@@ -2636,7 +2678,11 @@ class GVisorSandboxBackend(BaseSandboxBackend):
             )
         self._check_runsc_runs_cdi_hooks()
         self._check_nvidia_driver_supported()
-        return ["--nvproxy"]
+        args = ["--nvproxy"]
+        capabilities = (env or {}).get("NVIDIA_DRIVER_CAPABILITIES")
+        if capabilities:
+            args.append(f"--nvproxy-allowed-driver-capabilities={capabilities}")
+        return args
 
     @functools.lru_cache(maxsize=None)  # noqa: B019
     def _check_runsc_runs_cdi_hooks(self) -> None:
@@ -2652,6 +2698,7 @@ class GVisorSandboxBackend(BaseSandboxBackend):
                 timeout=10,
                 text=True,
                 check=True,
+                env=runsc_env(),
             )
         except (subprocess.CalledProcessError, subprocess.TimeoutExpired, OSError) as e:
             raise SandboxCreationError(
@@ -2703,6 +2750,7 @@ class GVisorSandboxBackend(BaseSandboxBackend):
                 timeout=10,
                 text=True,
                 check=True,
+                env=runsc_env(),
             )
         except (subprocess.CalledProcessError, subprocess.TimeoutExpired, OSError) as e:
             stderr = getattr(e, "stderr", None)

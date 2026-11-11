@@ -172,6 +172,10 @@ def _deduce_default_enable_disk_shuffle() -> bool:
 
 DEFAULT_ENABLE_DISK_SHUFFLE = _deduce_default_enable_disk_shuffle()
 
+DEFAULT_ENABLE_AGGREGATE_SHUFFLE_ELIMINATION = env_bool(
+    "RAY_DATA_ENABLE_AGGREGATE_SHUFFLE_ELIMINATION", True
+)
+
 DEFAULT_SCHEDULING_STRATEGY = "SPREAD"
 
 # This default enables locality-based scheduling in Ray for tasks where arg data
@@ -922,6 +926,11 @@ class DataContext:
             environment variable (``False`` when unset). Deprecated
             aliases: ``use_external_hash_shuffle`` and the
             ``RAY_DATA_ENABLE_EXTERNAL_SHUFFLE`` environment variable.
+        enable_aggregate_shuffle_elimination: Whether a group-by skips its shuffle
+            when its input is already hash-partitioned on its keys under the
+            ``SHUFFLE_V2`` strategy, e.g. right after a join on those keys.
+            Defaults to the ``RAY_DATA_ENABLE_AGGREGATE_SHUFFLE_ELIMINATION``
+            environment variable (``True`` when unset).
         max_hash_shuffle_aggregators: Maximum number of aggregating actors that can be
             provisioned for hash-shuffle aggregations.
         min_hash_shuffle_aggregator_wait_time_in_s: Minimum time to wait for hash
@@ -1082,6 +1091,12 @@ class DataContext:
     # hash-shuffle operations (keyed repartition, aggregations, joins).
     # When False, use the object-store path.
     use_disk_based_hash_shuffle: bool = DEFAULT_ENABLE_DISK_SHUFFLE
+
+    # Whether EliminateAggregateShuffle may skip a group-by's shuffle when its
+    # input is already hash-partitioned on its keys (SHUFFLE_V2 only).
+    enable_aggregate_shuffle_elimination: bool = (
+        DEFAULT_ENABLE_AGGREGATE_SHUFFLE_ELIMINATION
+    )
 
     ################################################################
     # GPU Shuffle configuration
