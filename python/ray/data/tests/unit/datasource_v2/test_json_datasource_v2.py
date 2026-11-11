@@ -15,6 +15,7 @@ from ray.data._internal.datasource_v2.common.line_chunk_file_indexer import (
 from ray.data._internal.datasource_v2.common.non_sampling_file_indexer import (
     NonSamplingFileIndexer,
 )
+from ray.data._internal.datasource_v2.formats.json import json_datasource_v2
 from ray.data._internal.datasource_v2.formats.json.json_datasource_v2 import (
     JsonDatasourceV2,
 )
@@ -112,6 +113,49 @@ def test_falls_back_to_json_load_for_a_top_level_array(tmp_path):
     path.write_text(json.dumps([{"one": [1]}, {"one": [1, 2]}]))
     table = _read_all(JsonDatasourceV2([str(path)]), [str(path)])
     assert table.to_pylist() == [{"one": [1]}, {"one": [1, 2]}]
+
+
+_ROWS_OVER_ONE_MIB = [{"s": "x" * 1000}] * 1100
+
+
+@pytest.mark.parametrize(
+    "text,reads_whole_file",
+    [
+        pytest.param(
+            "".join(json.dumps(row) + "\n" for row in _ROWS_OVER_ONE_MIB),
+            False,
+            id="json-lines",
+        ),
+        pytest.param(json.dumps(_ROWS_OVER_ONE_MIB), True, id="one-line-array"),
+        pytest.param(json.dumps(_ROWS_OVER_ONE_MIB, indent=1), True, id="array"),
+    ],
+)
+def test_infers_the_schema_from_a_prefix_unless_the_file_is_one_document(
+    tmp_path, monkeypatch, text, reads_whole_file
+):
+    # A top-level array can't be parsed from a prefix, so planning reads it
+    # whole on the driver.
+    whole_file_reads = []
+    original = json_datasource_v2.read_whole_json_file
+
+    def read_whole_json_file(path, filesystem):
+        whole_file_reads.append(path)
+        return original(path, filesystem)
+
+    monkeypatch.setattr(
+        json_datasource_v2, "read_whole_json_file", read_whole_json_file
+    )
+    path = tmp_path / "a.json"
+    path.write_text(text)
+
+    schema = JsonDatasourceV2([str(path)]).infer_schema(
+        FileManifest.construct_manifest(
+            paths=[str(path)], sizes=[path.stat().st_size], chunk_metadatas=[None]
+        )
+    )
+
+    assert schema == pa.schema([("s", pa.string())])
+    assert whole_file_reads == ([str(path)] if reads_whole_file else [])
 
 
 def test_lines_true_reports_the_file_of_a_bad_line(tmp_path):
