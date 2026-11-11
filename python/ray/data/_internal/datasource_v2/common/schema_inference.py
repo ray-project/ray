@@ -3,13 +3,14 @@
 import logging
 import math
 from concurrent.futures import ThreadPoolExecutor
-from typing import Any, Callable, Dict, List, Optional, cast
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 import pyarrow as pa
 from pyarrow.fs import FileSystem
 
 import ray
 from ray import ObjectRef
+from ray._common.utils import env_float, env_integer
 from ray.data._internal.datasource_v2.interfaces.file_manifest import FileManifest
 from ray.data._internal.execution.util import merge_label_selector
 from ray.data._internal.remote_fn import cached_remote_fn
@@ -21,41 +22,51 @@ from ray.util.scheduling_strategies import (
 )
 
 _SCHEMA_READ_BATCH_SIZE = 256
+_FULL_SCHEMA_INFERENCE_MIN_FILES = env_integer(
+    "RAY_DATA_FULL_SCHEMA_INFERENCE_MIN_FILES", 2048
+)
+_FULL_SCHEMA_INFERENCE_MAX_TASKS = env_integer(
+    "RAY_DATA_FULL_SCHEMA_INFERENCE_MAX_TASKS", 16
+)
+_FULL_SCHEMA_INFERENCE_NUM_CPUS = env_float(
+    "RAY_DATA_FULL_SCHEMA_INFERENCE_NUM_CPUS", 0.5
+)
+_FULL_SCHEMA_INFERENCE_BATCH_SIZE = env_integer(
+    "RAY_DATA_FULL_SCHEMA_INFERENCE_BATCH_SIZE", 256
+)
+_FULL_SCHEMA_INFERENCE_IO_CONCURRENCY = env_integer(
+    "RAY_DATA_FULL_SCHEMA_INFERENCE_IO_CONCURRENCY", 4
+)
+_FULL_SCHEMA_INFERENCE_FIRST_RESULT_TIMEOUT_S = 30
 logger = logging.getLogger(__name__)
 
 
 def _read_schema_batch(
-    paths: List[str], filesystem: FileSystem, format_name: str, context: DataContext
-) -> List[bytes]:
+    paths: List[str],
+    sizes: List[Optional[int]],
+    filesystem: FileSystem,
+    read_schema: Callable,
+    format_name: str,
+    context: DataContext,
+    io_concurrency: int,
+) -> List[Tuple[int, bytes]]:
     DataContext._set_current(context)
-    read_schema: Callable[[Any], pa.Schema]
-    if format_name == "Parquet":
-        import pyarrow.parquet as pq
 
-        read_schema = pq.read_schema
-    elif format_name == "ORC":
-        import pyarrow.orc as orc
-
-        def read_orc_schema(source: Any) -> pa.Schema:
-            return orc.ORCFile(source).schema
-
-        read_schema = read_orc_schema
-    else:
-        raise ValueError(f"Unsupported schema format: {format_name}")
-
-    def read_file(path: str) -> bytes:
+    def read_file(item: Tuple[str, Optional[int]]) -> bytes:
+        path, size = item
         try:
-            with filesystem.open_input_file(path) as source:
-                return read_schema(source).serialize().to_pybytes()
+            return read_schema(path, filesystem, size).serialize().to_pybytes()
         except (OSError, pa.ArrowInvalid, pa.ArrowTypeError) as error:
             raise type(error)(
                 f"Failed to read {format_name} schema from {path!r}: {error}"
             ) from error
 
-    with ThreadPoolExecutor(
-        max_workers=min(context.full_schema_inference_io_concurrency, len(paths))
-    ) as executor:
-        return list(executor.map(read_file, paths))
+    with ThreadPoolExecutor(max_workers=min(io_concurrency, len(paths))) as executor:
+        values = executor.map(read_file, zip(paths, sizes))
+        unique: Dict[bytes, int] = {}
+        for index, value in enumerate(values):
+            unique.setdefault(value, index)
+    return [(index, value) for value, index in unique.items()]
 
 
 def _schema_task_options(
@@ -101,100 +112,99 @@ def _schema_task_options(
     return {key: value for key, value in remote_args.items() if key in supported}
 
 
-def _validate_full_schema_config(context: DataContext) -> None:
-    for suffix, minimum in (
-        ("min_files", 0),
-        ("max_tasks", 1),
-        ("batch_size", 1),
-        ("io_concurrency", 1),
-    ):
-        name = f"full_schema_inference_{suffix}"
-        value = getattr(context, name)
-        if isinstance(value, bool) or not isinstance(value, int) or value < minimum:
-            raise ValueError(f"{name} must be an integer >= {minimum}, got {value!r}")
-    num_cpus = context.full_schema_inference_num_cpus
-    if (
-        isinstance(num_cpus, bool)
-        or not isinstance(num_cpus, (int, float))
-        or not math.isfinite(num_cpus)
-        or num_cpus <= 0
-    ):
-        raise ValueError("full_schema_inference_num_cpus must be finite and positive")
-
-
 def infer_full_schema_from_files(
     sample: FileManifest,
     filesystem: FileSystem,
     *,
     format_name: str,
+    read_schema: Callable,
     ray_remote_args: Dict[str, Any],
     supports_distributed_reads: bool,
 ) -> Optional[pa.Schema]:
     """Read schemas on workers and merge once in candidate order on the driver.
 
     Return None when the caller should use its existing driver inference.
-    The task window bounds submitted batches. Consecutive identical IPC payloads
-    share a decoded schema within this call; candidate references remain O(files).
+    Each task returns distinct exact IPC payloads and their first positions.
+    The driver restores candidate order before the one-shot merge.
     """
     context = DataContext.get_current()
-    _validate_full_schema_config(context)
     paths: List[str] = sample.paths.tolist()
     if not paths:
         return pa.schema([])
-    if (
-        not supports_distributed_reads
-        or len(paths) <= context.full_schema_inference_min_files
-    ):
+    if not supports_distributed_reads or len(paths) <= _FULL_SCHEMA_INFERENCE_MIN_FILES:
         return None
     options = _schema_task_options(
         merge_label_selector(ray_remote_args, context.execution_options.label_selector),
-        context.full_schema_inference_num_cpus,
+        _FULL_SCHEMA_INFERENCE_NUM_CPUS,
     )
     if options is None:
         return None
-    batch_size = context.full_schema_inference_batch_size
+    batch_size = _FULL_SCHEMA_INFERENCE_BATCH_SIZE
     window = min(
-        context.full_schema_inference_max_tasks,
+        _FULL_SCHEMA_INFERENCE_MAX_TASKS,
         max(
             1,
             math.ceil(
-                ray.cluster_resources().get("CPU", 1)
-                / context.full_schema_inference_num_cpus
+                ray.cluster_resources().get("CPU", 1) / _FULL_SCHEMA_INFERENCE_NUM_CPUS
             ),
         ),
     )
-    if window * min(context.full_schema_inference_io_concurrency, batch_size) < min(
+    if window * min(_FULL_SCHEMA_INFERENCE_IO_CONCURRENCY, batch_size) < min(
         16, batch_size
     ):
         return None
     read_remote = cached_remote_fn(_read_schema_batch, max_retries=2).options(
-        num_cpus=context.full_schema_inference_num_cpus, **options
+        num_cpus=_FULL_SCHEMA_INFERENCE_NUM_CPUS, **options
     )
-    schemas: List[Optional[pa.Schema]] = [None] * len(paths)
-    pending: Dict[ObjectRef[List[bytes]], int] = {}
-    last_payload: Optional[bytes] = None
-    last_schema: Optional[pa.Schema] = None
+    sizes = sample.known_file_sizes
+    schemas: List[Tuple[int, pa.Schema]] = []
+    pending: Dict[ObjectRef[List[Tuple[int, bytes]]], int] = {}
     start = 0
+    first_result = True
     try:
         while start < len(paths) or pending:
             while start < len(paths) and len(pending) < window:
                 stop = min(start + batch_size, len(paths))
                 ref = read_remote.remote(
-                    paths[start:stop], filesystem, format_name, context
+                    paths[start:stop],
+                    sizes[start:stop],
+                    filesystem,
+                    read_schema,
+                    format_name,
+                    context,
+                    _FULL_SCHEMA_INFERENCE_IO_CONCURRENCY,
                 )
                 pending[ref] = start
                 start = stop
-            ready, _ = ray.wait(list(pending), num_returns=1)
+            ready, _ = ray.wait(
+                list(pending),
+                num_returns=1,
+                timeout=(
+                    _FULL_SCHEMA_INFERENCE_FIRST_RESULT_TIMEOUT_S
+                    if first_result
+                    else None
+                ),
+            )
+            if not ready:
+                logger.warning(
+                    "Timed out waiting for the first distributed %s schema read; "
+                    "falling back to driver schema reads.",
+                    format_name,
+                )
+                return None
+            first_result = False
             ref = ready[0]
             offset = pending.pop(ref)
-            for index, value in enumerate(ray.get(ref)):
-                if value != last_payload:
-                    last_schema = pa.ipc.read_schema(pa.BufferReader(value))
-                    last_payload = value
-                assert last_schema is not None
-                schemas[offset + index] = last_schema
-        assert all(schema is not None for schema in schemas)
-        return _merge_file_schemas(paths, cast(List[pa.Schema], schemas), format_name)
+            for index, value in ray.get(ref):
+                schemas.append(
+                    (offset + index, pa.ipc.read_schema(pa.BufferReader(value)))
+                )
+        schemas.sort(key=lambda item: item[0])
+        return _merge_file_schemas(
+            [paths[index] for index, _ in schemas],
+            [schema for _, schema in schemas],
+            format_name,
+        )
     finally:
         for ref in pending:
             try:

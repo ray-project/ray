@@ -1,8 +1,12 @@
 """Task admission, ordered schema reads and cancellation contracts."""
 
+import json
+import os
+import subprocess
+import sys
 from copy import deepcopy
 from typing import Any, Dict
-from unittest.mock import Mock
+from unittest.mock import Mock, PropertyMock
 
 import pyarrow as pa
 import pyarrow.fs as pafs
@@ -10,6 +14,11 @@ import pytest
 
 import ray
 from ray.data._internal.datasource_v2.common import schema_inference as inference
+from ray.data._internal.datasource_v2.formats.orc import orc_datasource_v2
+from ray.data._internal.datasource_v2.formats.parquet import parquet_datasource_v2
+from ray.data._internal.datasource_v2.formats.parquet.parquet_datasource_v2 import (
+    _read_parquet_schema,
+)
 from ray.data._internal.datasource_v2.interfaces.file_manifest import FileManifest
 from ray.data._internal.util import unify_schemas_with_validation
 from ray.data.context import DataContext
@@ -17,6 +26,26 @@ from ray.util.scheduling_strategies import (
     NodeAffinitySchedulingStrategy,
     PlacementGroupSchedulingStrategy,
 )
+
+
+def test_schema_config_reads_environment(monkeypatch):
+    settings = {
+        "MIN_FILES": "7",
+        "MAX_TASKS": "2",
+        "NUM_CPUS": "1.25",
+        "BATCH_SIZE": "3",
+        "IO_CONCURRENCY": "5",
+    }
+    for suffix, value in settings.items():
+        monkeypatch.setenv(f"RAY_DATA_FULL_SCHEMA_INFERENCE_{suffix}", value)
+    command = (
+        "import json; from ray.data._internal.datasource_v2.common "
+        "import schema_inference as s; "
+        f"print(json.dumps([getattr(s, '_FULL_SCHEMA_INFERENCE_' + k) for k in {list(settings)!r}]))"
+    )
+    result = subprocess.check_output([sys.executable, "-c", command], env=os.environ)
+    assert json.loads(result) == [7, 2, 1.25, 3, 5]
+    assert not hasattr(DataContext(), "full_schema_inference_min_files")
 
 
 @pytest.mark.parametrize(
@@ -75,35 +104,6 @@ def test_schema_task_admission(case_args, allowed):
 
 
 @pytest.mark.parametrize(
-    "suffix,value",
-    [
-        ("min_files", -1),
-        ("max_tasks", 0),
-        ("batch_size", 0),
-        ("io_concurrency", 0),
-        ("batch_size", 1.5),
-        ("max_tasks", True),
-        ("num_cpus", 0),
-        ("num_cpus", float("nan")),
-        ("num_cpus", True),
-        ("num_cpus", "0.5"),
-    ],
-)
-def test_invalid_schema_config(monkeypatch, suffix, value):
-    name = f"full_schema_inference_{suffix}"
-    monkeypatch.setattr(DataContext.get_current(), name, value)
-    sample = FileManifest.construct_manifest(paths=[], sizes=[], chunk_metadatas=[])
-    with pytest.raises(ValueError, match=name):
-        inference.infer_full_schema_from_files(
-            sample,
-            pafs.LocalFileSystem(),
-            format_name="Parquet",
-            ray_remote_args={},
-            supports_distributed_reads=True,
-        )
-
-
-@pytest.mark.parametrize(
     "read_args,cpus,io_concurrency,threshold,window,schema_case",
     [
         ({}, 4, 4, 0, 0, "unique"),
@@ -126,7 +126,9 @@ def test_ordered_reads_and_task_options(
         batch_size=8,
         io_concurrency=io_concurrency,
     ).items():
-        monkeypatch.setattr(context, f"full_schema_inference_{suffix}", value)
+        monkeypatch.setattr(
+            inference, f"_FULL_SCHEMA_INFERENCE_{suffix.upper()}", value
+        )
     selector = {"pool": "context", "zone": "a"}
     monkeypatch.setattr(context.execution_options, "label_selector", selector)
     args: Dict[str, Any] = {
@@ -161,20 +163,26 @@ def test_ordered_reads_and_task_options(
         )
     expected = unify_schemas_with_validation(list(schemas.values()))
     sample = FileManifest.construct_manifest(
-        paths=paths, sizes=[1] * 40, chunk_metadatas=[None] * 40
+        paths=paths, sizes=list(range(1, 41)), chunk_metadatas=[None] * 40
     )
     remote = Mock()
     remote.options.return_value = remote
-    payloads, submitted, widths = {}, [], []
+    payloads, submitted, widths, timeouts = {}, [], [], []
 
-    def submit(batch, *unused):
+    def submit(batch, batch_sizes, filesystem, reader, format_name, ctx, concurrency):
+        assert batch_sizes == [int(path.removeprefix("field_")) + 1 for path in batch]
+        assert concurrency == io_concurrency
         ref = Mock(index=len(submitted))
-        payloads[ref] = [schemas[path].serialize().to_pybytes() for path in batch]
+        unique = {}
+        for index, path in enumerate(batch):
+            unique.setdefault(schemas[path].serialize().to_pybytes(), index)
+        payloads[ref] = [(index, value) for value, index in unique.items()]
         submitted.append(batch)
         return ref
 
-    def wait(refs, **unused):
+    def wait(refs, **kwargs):
         widths.append(len(refs))
+        timeouts.append(kwargs["timeout"])
         choices = [ref for ref in refs if ref.index or len(submitted) > window]
         assert choices, "Completed later batches must allow refill before the slow head"
         ref = max(choices, key=lambda ref: ref.index)
@@ -196,6 +204,7 @@ def test_ordered_reads_and_task_options(
         sample,
         pafs.LocalFileSystem(),
         format_name="Parquet",
+        read_schema=_read_parquet_schema,
         ray_remote_args=args,
         supports_distributed_reads=True,
     )
@@ -204,6 +213,8 @@ def test_ordered_reads_and_task_options(
         assert actual.equals(expected, check_metadata=True)
         assert submitted == [paths[i : i + 8] for i in range(0, 40, 8)]
         assert max(widths) == window
+        assert timeouts[0] == inference._FULL_SCHEMA_INFERENCE_FIRST_RESULT_TIMEOUT_S
+        assert all(timeout is None for timeout in timeouts[1:])
         factory.assert_called_once_with(inference._read_schema_batch, max_retries=2)
         remote.options.assert_called_once_with(
             num_cpus=2,
@@ -213,23 +224,32 @@ def test_ordered_reads_and_task_options(
         )
         merge.assert_called_once()
         received = merge.call_args.args[0]
-        assert len(received) == len(paths)
+        expected_received = []
+        for batch in submitted:
+            seen = set()
+            for path in batch:
+                value = schemas[path].serialize().to_pybytes()
+                if value not in seen:
+                    expected_received.append(schemas[path])
+                    seen.add(value)
+        assert len(received) == len(expected_received)
         assert all(
-            a.equals(b, check_metadata=True) for a, b in zip(received, schemas.values())
+            a.equals(b, check_metadata=True)
+            for a, b in zip(received, expected_received)
         )
-        assert decode.call_count == {"same": 1, "varied": 20, "unique": 40}[schema_case]
+        assert decode.call_count == {"same": 5, "varied": 15, "unique": 40}[schema_case]
         if schema_case == "same":
-            assert all(schema is received[0] for schema in received)
             decode.reset_mock()
             again = inference.infer_full_schema_from_files(
                 sample,
                 pafs.LocalFileSystem(),
                 format_name="Parquet",
+                read_schema=_read_parquet_schema,
                 ray_remote_args=args,
                 supports_distributed_reads=True,
             )
             assert again is not None and again.equals(expected, check_metadata=True)
-            decode.assert_called_once()
+            assert decode.call_count == 5
             assert merge.call_count == 2
     else:
         assert actual is None
@@ -240,14 +260,55 @@ def test_ordered_reads_and_task_options(
     assert args == original and selector == {"pool": "context", "zone": "a"}
 
 
+def test_first_schema_result_timeout_cancels_and_falls_back(monkeypatch):
+    for suffix, value in dict(min_files=0, max_tasks=2, batch_size=1).items():
+        monkeypatch.setattr(
+            inference, f"_FULL_SCHEMA_INFERENCE_{suffix.upper()}", value
+        )
+    remote = Mock()
+    remote.options.return_value = remote
+    refs = [Mock(), Mock()]
+    remote.remote.side_effect = refs
+    monkeypatch.setattr(inference, "cached_remote_fn", lambda *a, **k: remote)
+    monkeypatch.setattr(ray, "cluster_resources", lambda: {"CPU": 1})
+    wait = Mock(return_value=([], refs))
+    cancel = Mock()
+    warning = Mock()
+    monkeypatch.setattr(ray, "wait", wait)
+    monkeypatch.setattr(ray, "cancel", cancel)
+    monkeypatch.setattr(inference.logger, "warning", warning)
+    sample = FileManifest.construct_manifest(
+        paths=["a", "b"], sizes=[1, 1], chunk_metadatas=[None, None]
+    )
+    result = inference.infer_full_schema_from_files(
+        sample,
+        pafs.LocalFileSystem(),
+        format_name="Parquet",
+        read_schema=_read_parquet_schema,
+        ray_remote_args={},
+        supports_distributed_reads=True,
+    )
+    assert result is None
+    wait.assert_called_once_with(
+        refs,
+        num_returns=1,
+        timeout=inference._FULL_SCHEMA_INFERENCE_FIRST_RESULT_TIMEOUT_S,
+    )
+    assert [call.args[0] for call in cancel.call_args_list] == refs
+    assert all(call.kwargs == {"force": False} for call in cancel.call_args_list)
+    warning.assert_called_once()
+    assert "falling back to driver schema reads" in warning.call_args.args[0]
+
+
 @pytest.mark.parametrize(
     "stage,error",
     [("wait", KeyboardInterrupt), ("get", OSError), ("decode", pa.ArrowInvalid)],
 )
 def test_schema_failure_cancels_pending_tasks(monkeypatch, stage, error):
-    context = DataContext.get_current()
     for suffix, value in dict(min_files=0, max_tasks=2, batch_size=1).items():
-        monkeypatch.setattr(context, f"full_schema_inference_{suffix}", value)
+        monkeypatch.setattr(
+            inference, f"_FULL_SCHEMA_INFERENCE_{suffix.upper()}", value
+        )
     remote = Mock()
     remote.options.return_value = remote
     refs = [Mock(), Mock()]
@@ -255,7 +316,7 @@ def test_schema_failure_cancels_pending_tasks(monkeypatch, stage, error):
     monkeypatch.setattr(inference, "cached_remote_fn", lambda *a, **k: remote)
     monkeypatch.setattr(ray, "cluster_resources", lambda: {"CPU": 1})
     monkeypatch.setattr(ray, "wait", lambda *a, **k: ([refs[0]], [refs[1]]))
-    monkeypatch.setattr(ray, "get", lambda ref: [b"invalid"])
+    monkeypatch.setattr(ray, "get", lambda ref: [(0, b"invalid")])
     if stage == "decode":
         monkeypatch.setattr(
             pa.ipc, "read_schema", Mock(side_effect=error("schema failure"))
@@ -272,6 +333,7 @@ def test_schema_failure_cancels_pending_tasks(monkeypatch, stage, error):
             sample,
             pafs.LocalFileSystem(),
             format_name="Parquet",
+            read_schema=_read_parquet_schema,
             ray_remote_args={},
             supports_distributed_reads=True,
         )
@@ -281,13 +343,89 @@ def test_schema_failure_cancels_pending_tasks(monkeypatch, stage, error):
     assert all(call.kwargs == {"force": False} for call in cancel.call_args_list)
 
 
+def test_worker_returns_first_position_for_exact_payload():
+    context = DataContext.get_current()
+    values = [
+        pa.schema([pa.field("a", pa.int64())], metadata={b"version": b"one"}),
+        pa.schema([pa.field("a", pa.int64())], metadata={b"version": b"two"}),
+        pa.schema([pa.field("a", pa.int64(), nullable=False)]),
+    ]
+    ordered = [values[0], values[1], values[0], values[2], values[1]]
+    paths = [str(i) for i in range(len(ordered))]
+
+    def read(path, filesystem, size):
+        assert size == int(path) + 1
+        return ordered[int(path)]
+
+    result = inference._read_schema_batch(
+        paths,
+        [i + 1 for i in range(len(paths))],
+        pafs.LocalFileSystem(),
+        read,
+        "Parquet",
+        context,
+        4,
+    )
+    assert [index for index, _ in result] == [0, 1, 3]
+    assert [payload for _, payload in result] == [
+        values[i].serialize().to_pybytes() for i in range(3)
+    ]
+
+
+@pytest.mark.parametrize("size", [None, 123])
+def test_parquet_schema_reader_uses_listed_size_and_retries(monkeypatch, size):
+    import pyarrow.dataset as pds
+
+    expected = pa.schema([("a", pa.int64())])
+    metadata = Mock()
+    metadata.schema.to_arrow_schema.return_value = expected
+    fragment = Mock()
+    metadata_property = PropertyMock(
+        side_effect=[OSError("retryable footer error"), metadata]
+    )
+    type(fragment).metadata = metadata_property
+    file_format = Mock()
+    file_format.make_fragment.return_value = fragment
+    monkeypatch.setattr(pds, "ParquetFileFormat", lambda: file_format)
+    monkeypatch.setattr(DataContext.get_current(), "retried_io_errors", ["retryable"])
+    monkeypatch.setattr("ray._common.retry.time.sleep", lambda _: None)
+    filesystem = pafs.LocalFileSystem()
+
+    assert (
+        parquet_datasource_v2._read_parquet_schema("test.parquet", filesystem, size)
+        == expected
+    )
+    file_format.make_fragment.assert_called_once_with(
+        "test.parquet", filesystem=filesystem, file_size=size
+    )
+    assert metadata_property.call_count == 2
+
+
+def test_orc_schema_reader_retries_schema_read(monkeypatch):
+    import pyarrow.orc as orc
+
+    expected = pa.schema([("a", pa.int64())])
+    reader = Mock(
+        side_effect=[OSError("retryable footer error"), Mock(schema=expected)]
+    )
+    monkeypatch.setattr(orc, "ORCFile", reader)
+    monkeypatch.setattr(DataContext.get_current(), "retried_io_errors", ["retryable"])
+    monkeypatch.setattr("ray._common.retry.time.sleep", lambda _: None)
+
+    assert orc_datasource_v2._read_orc_schema("test.orc", None, None) == expected
+    assert reader.call_count == 2
+
+
 def test_worker_read_failure_preserves_file_and_cause(tmp_path):
     with pytest.raises(FileNotFoundError, match="missing.parquet") as error:
         inference._read_schema_batch(
             [str(tmp_path / "missing.parquet")],
+            [None],
             pafs.LocalFileSystem(),
+            _read_parquet_schema,
             "Parquet",
             DataContext.get_current(),
+            4,
         )
     assert isinstance(error.value.__cause__, FileNotFoundError)
 

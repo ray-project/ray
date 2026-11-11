@@ -379,8 +379,7 @@ def _configure_resource_group(config):
 
 
 def _configure_key_pair(config):
-    """
-    Configure SSH keypair. Use user specified custom paths, otherwise,
+    """Configure SSH keypair. Use user specified custom paths, otherwise,
     generate Ray-specific keypair in this format: "ray-autoscaler_azure_{region}_{resource_group}_{ssh_user}_{index}"
     """
     ssh_user = config["auth"]["ssh_user"]

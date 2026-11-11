@@ -24,6 +24,9 @@ class GradioIngress(ASGIAppReplicaWrapper):
 
         The builder should take no arguments and return a Gradio App (of type Interface
         or Blocks).
+
+        Args:
+            builder: A function that takes no arguments and returns a Gradio app.
         """
         io: Blocks = builder()
         super().__init__(routes.App.create_app(io))

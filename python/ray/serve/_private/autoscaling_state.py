@@ -1164,8 +1164,7 @@ class ApplicationAutoscalingState:
         deployment_to_target_num_replicas: Dict[DeploymentID, int],
         _skip_bound_check: bool = False,
     ) -> Dict[DeploymentID, int]:
-        """
-        Decide scaling for all deployments in this application by calling
+        """Decide scaling for all deployments in this application by calling
         each deployment's autoscaling policy.
         """
         if self.has_policy():
@@ -1389,8 +1388,7 @@ class AutoscalingStateManager:
         app_name: ApplicationName,
         deployment_to_target_num_replicas: Dict[DeploymentID, int],
     ) -> Dict[DeploymentID, int]:
-        """
-        Decide scaling for all deployments in the application.
+        """Decide scaling for all deployments in the application.
 
         Args:
             app_name: The name of the application.

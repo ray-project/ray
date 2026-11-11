@@ -2,15 +2,18 @@
 
 from __future__ import annotations
 
-import copy
 from typing import TYPE_CHECKING, Any, Dict, List, Literal, Optional, Union
 
 import pyarrow as pa
 from typing_extensions import override
 
+from ray._common.retry import call_with_retry
 from ray.data._internal.datasource_v2.common.file_reader import FileFormat
 from ray.data._internal.datasource_v2.common.non_sampling_file_indexer import (
     NonSamplingFileIndexer,
+)
+from ray.data._internal.datasource_v2.common.partitioning_utils import (
+    resolve_partitioning,
 )
 from ray.data._internal.datasource_v2.common.round_robin_partitioner import (
     RoundRobinPartitioner,
@@ -35,7 +38,7 @@ from ray.data._internal.datasource_v2.interfaces.file_partitioner import (
     FilePartitioner,
     PartitionHints,
 )
-from ray.data._internal.util import _is_local_scheme
+from ray.data._internal.util import _is_local_scheme, _normalize_paths_to_strings
 from ray.data.context import DataContext
 from ray.data.datasource.file_based_datasource import FileShuffleConfig
 from ray.data.datasource.partitioning import (
@@ -48,6 +51,22 @@ from ray.util.annotations import DeveloperAPI
 
 if TYPE_CHECKING:
     from pyarrow.fs import FileSystem
+
+
+def _read_orc_schema(path: str, filesystem: "FileSystem", size: Optional[int]):
+    import pyarrow.orc as orc
+
+    def read():
+        if filesystem is None:
+            return orc.ORCFile(path).schema
+        with filesystem.open_input_file(path) as source:
+            return orc.ORCFile(source).schema
+
+    return call_with_retry(
+        read,
+        description=f"read ORC schema for {path}",
+        match=DataContext.get_current().retried_io_errors,
+    )
 
 
 @DeveloperAPI
@@ -71,6 +90,9 @@ class OrcDatasourceV2(FileDataSourceV2):
             paths, filesystem
         )
         self._paths = resolved_paths
+        # The resolved paths above lose their URI scheme; lineage tracking
+        # reads the caller's paths through ``source_paths``.
+        self._source_paths = _normalize_paths_to_strings(paths)
         self._filesystem = resolved_filesystem
         self._partitioning = partitioning
         self._file_extensions = file_extensions
@@ -82,6 +104,12 @@ class OrcDatasourceV2(FileDataSourceV2):
     @override
     def paths(self) -> List[str]:
         return self._paths
+
+    @property
+    @override
+    def source_paths(self) -> List[str]:
+        """Override when :attr:`paths` is resolved and loses URI schemes."""
+        return self._source_paths
 
     @property
     @override
@@ -118,19 +146,14 @@ class OrcDatasourceV2(FileDataSourceV2):
 
     @override
     def infer_schema(self, sample: Optional[FileManifest]) -> pa.Schema:
-        import pyarrow.orc as orc
-
         assert sample is not None
         if len(sample) == 0:
             return pa.schema([])
-        sample_paths = sample.paths.tolist()
+        sample_paths: List[str] = sample.paths.tolist()
         filesystem = self._filesystem
 
         def _read_schema(path: str) -> pa.Schema:
-            if filesystem is None:
-                return orc.ORCFile(path).schema
-            with filesystem.open_input_file(path) as source:
-                return orc.ORCFile(source).schema
+            return _read_orc_schema(path, filesystem, None)
 
         schema = infer_schema_from_files(sample_paths, _read_schema, format_name="ORC")
 
@@ -146,6 +169,7 @@ class OrcDatasourceV2(FileDataSourceV2):
             sample,
             self._filesystem,
             format_name="ORC",
+            read_schema=_read_orc_schema,
             ray_remote_args=ray_remote_args,
             supports_distributed_reads=self.supports_distributed_reads,
         )
@@ -186,22 +210,8 @@ class OrcDatasourceV2(FileDataSourceV2):
     def resolve_partitioning(
         self, sample: Optional[FileManifest]
     ) -> Optional[Partitioning]:
-        if self._partitioning is None or sample is None or len(sample) == 0:
-            return copy.deepcopy(self._partitioning)
-        if self._partitioning.field_names:
-            return copy.deepcopy(self._partitioning)
-
-        parser = PathPartitionParser(self._partitioning)
-        partition_kv = parser(sample.paths.tolist()[0])
-        if not partition_kv:
-            return copy.deepcopy(self._partitioning)
-        return Partitioning(
-            style=self._partitioning.style,
-            base_dir=self._partitioning.base_dir,
-            field_names=list(partition_kv.keys()),
-            field_types=self._partitioning.field_types,
-            filesystem=self._partitioning.filesystem,
-        )
+        paths = sample.paths.tolist() if sample is not None else []
+        return resolve_partitioning(self._partitioning, paths)
 
     @override
     def create_scanner(
