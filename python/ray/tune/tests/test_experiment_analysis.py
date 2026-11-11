@@ -297,9 +297,7 @@ def test_get_last_checkpoint(experiment_analysis):
     assert last_checkpoint["ascending"] == 5 * 1  # See note
 
     # Returns None cleanly when no trial matches the requested metric
-    assert (
-        experiment_analysis.get_last_checkpoint(metric="nonexistent_metric") is None
-    )
+    assert experiment_analysis.get_last_checkpoint(metric="nonexistent_metric") is None
 
 
 def test_pickle(experiment_analysis, tmp_path):
