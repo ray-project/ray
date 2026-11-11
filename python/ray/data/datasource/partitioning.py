@@ -27,8 +27,9 @@ if TYPE_CHECKING:
 PartitionDataType = Type[Union[int, float, str, bool]]
 logger = logging.getLogger(__name__)
 
-# Directory name that Hive, Spark and PyArrow write for a null partition value.
-_HIVE_NULL_PARTITION = "__HIVE_DEFAULT_PARTITION__"
+#: Directory value that Hive, Spark and Delta Lake write for a null partition
+#: value, e.g. ``year=__HIVE_DEFAULT_PARTITION__``.
+HIVE_DEFAULT_PARTITION = "__HIVE_DEFAULT_PARTITION__"
 
 
 @DeveloperAPI
@@ -109,6 +110,10 @@ class Partitioning:
     field_types: Optional[Dict[str, PartitionDataType]] = None
     #: Filesystem that will be used for partition path file I/O.
     filesystem: Optional["pyarrow.fs.FileSystem"] = None
+    #: HIVE partition value that stands for a null value, such as
+    #: ``HIVE_DEFAULT_PARTITION``. Path values equal to it parse as ``None``.
+    #: Specify `None` to keep every path value as written.
+    null_fallback: Optional[str] = None
 
     def __post_init__(self):
         if self.base_dir is None:
@@ -151,6 +156,8 @@ class Partitioning:
         )
 
         if self.style == PartitionStyle.HIVE:
+            if self.null_fallback is not None:
+                return pds.HivePartitioning(schema, null_fallback=self.null_fallback)
             return pds.HivePartitioning(schema)
         elif self.style == PartitionStyle.DIRECTORY:
             return pds.DirectoryPartitioning(schema)
@@ -275,7 +282,7 @@ class PathPartitionParser:
             )
         self._scheme = partitioning
 
-    def __call__(self, path: str) -> Dict[str, Any]:
+    def __call__(self, path: str) -> Dict[str, str]:
         """Parses partition keys and values from a single file path.
 
         Args:
@@ -288,10 +295,16 @@ class PathPartitionParser:
         dir_path = self._dir_path_trim_base(path)
         if dir_path is None:
             return {}
-        partitions: Dict[str, Any] = self._parser_fn(dir_path)
+        partitions: Dict[str, str] = self._parser_fn(dir_path)
 
         for field, data_type in self._scheme.field_types.items():
-            partitions[field] = _cast_value(partitions[field], data_type)
+            if field not in partitions:
+                raise ValueError(
+                    f"Expected partition field {field!r} (declared in "
+                    f"`field_types`) in path {path!r}, but found {sorted(partitions)}."
+                )
+            if partitions[field] is not None:
+                partitions[field] = _cast_value(partitions[field], data_type)
 
         return partitions
 
@@ -311,8 +324,7 @@ class PathPartitionParser:
             path: File path to parse partition values from.
             predicate: Expression that references partition columns.
             schema: Logical schema used to cast path values to the reader's types.
-                If omitted, use the types from the partitioning's ``field_types``;
-                fields not listed there are strings.
+                If omitted, infer types from the parsed values as before.
 
         Returns:
             True if the partition satisfies the predicate (should read the file),
@@ -335,13 +347,19 @@ class PathPartitionParser:
 
         try:
             if schema is None:
-                # Pass the schema so a null value doesn't produce a null-typed
-                # column.
+                # Kernels such as ``is_in`` reject a null-typed column, so
+                # give a null value a type.
                 partition_table = pa.table(
-                    {col: [val] for col, val in partition_values.items()},
-                    schema=_partition_field_types_to_pa_schema(
-                        list(partition_values), self._scheme.field_types
-                    ),
+                    {
+                        col: (
+                            pa.nulls(
+                                1, _null_partition_type(col, self._scheme.field_types)
+                            )
+                            if val is None
+                            else [val]
+                        )
+                        for col, val in partition_values.items()
+                    }
                 )
             else:
                 from ray.data._internal.planner.plan_expression.expression_visitors import (
@@ -432,7 +450,8 @@ class PathPartitionParser:
 
         Returns a dictionary mapping partition keys to values given a hive-style
         partition path of the form "{key1}={value1}/{key2}={value2}/..." or an empty
-        dictionary for unpartitioned files.
+        dictionary for unpartitioned files. A value equal to the scheme's
+        ``null_fallback`` is returned as ``None``.
         """
         dirs = [d for d in dir_path.split("/") if d and (d.count("=") == 1)]
         kv_pairs = [d.split("=") for d in dirs] if dirs else []
@@ -440,6 +459,12 @@ class PathPartitionParser:
         #       ensure the values are consistent when you read them back, we need to
         #       URL-decode them. See https://github.com/apache/arrow/issues/34905.
         kv_pairs = [[key, urllib.parse.unquote(value)] for key, value in kv_pairs]
+        null_fallback = self._scheme.null_fallback
+        if null_fallback is not None:
+            kv_pairs = [
+                [key, None if value == null_fallback else value]
+                for key, value in kv_pairs
+            ]
 
         field_names = self._scheme.field_names
         if field_names and kv_pairs:
@@ -454,7 +479,7 @@ class PathPartitionParser:
                         f"Expected partition key {field_name} but found "
                         f"{kv_pairs[i][0]}"
                     )
-        return {k: None if v == _HIVE_NULL_PARTITION else v for k, v in kv_pairs}
+        return dict(kv_pairs)
 
     def _parse_dir_path(self, dir_path: str) -> Dict[str, str]:
         """Directory partition path parser.
@@ -494,12 +519,13 @@ class PathPartitionFilter:
 
     @staticmethod
     def of(
-        filter_fn: Callable[[Dict[str, Any]], bool],
+        filter_fn: Callable[[Dict[str, str]], bool],
         style: PartitionStyle = PartitionStyle.HIVE,
         base_dir: Optional[str] = None,
         field_names: Optional[List[str]] = None,
         field_types: Optional[Dict[str, PartitionDataType]] = None,
         filesystem: Optional["pyarrow.fs.FileSystem"] = None,
+        null_fallback: Optional[str] = None,
     ) -> "PathPartitionFilter":
         """Creates a path-based partition filter using a flattened argument list.
 
@@ -507,11 +533,10 @@ class PathPartitionFilter:
             filter_fn: Callback used to filter partitions. Takes a dictionary mapping
                 partition keys to values as input. Unpartitioned files are denoted with
                 an empty input dictionary. Returns `True` to read a file for that
-                partition or `False` to skip it. Partition keys and values are read
-                from the filesystem path, with values cast to ``field_types`` if
-                given; a Hive null partition (``__HIVE_DEFAULT_PARTITION__``) is
-                passed as ``None``. For example, this removes all unpartitioned
-                files:
+                partition or `False` to skip it. Partition keys and values are
+                strings read from the filesystem path, except that a value equal to
+                ``null_fallback`` is ``None``. For example, this removes all
+                unpartitioned files:
 
                 .. code:: python
 
@@ -545,18 +570,28 @@ class PathPartitionFilter:
             field_types: A dictionary that maps partition key names to their desired
                 data type. If not provided, the data type defaults to string.
             filesystem: Filesystem that will be used for partition path file I/O.
+            null_fallback: HIVE partition value that stands for a null value, such
+                as ``HIVE_DEFAULT_PARTITION``. Pass the same value as the read's
+                ``Partitioning`` so the filter sees the nulls the data has.
 
         Returns:
             The new path-based partition filter.
         """
-        scheme = Partitioning(style, base_dir, field_names, field_types, filesystem)
+        scheme = Partitioning(
+            style,
+            base_dir,
+            field_names,
+            field_types,
+            filesystem,
+            null_fallback=null_fallback,
+        )
         path_partition_parser = PathPartitionParser(scheme)
         return PathPartitionFilter(path_partition_parser, filter_fn)
 
     def __init__(
         self,
         path_partition_parser: PathPartitionParser,
-        filter_fn: Callable[[Dict[str, Any]], bool],
+        filter_fn: Callable[[Dict[str, str]], bool],
     ):
         """Creates a new path-based partition filter based on a parser.
 
@@ -565,11 +600,10 @@ class PathPartitionFilter:
             filter_fn: Callback used to filter partitions. Takes a dictionary mapping
                 partition keys to values as input. Unpartitioned files are denoted with
                 an empty input dictionary. Returns `True` to read a file for that
-                partition or `False` to skip it. Partition keys and values are read
-                from the filesystem path, with values cast to ``field_types`` if
-                given; a Hive null partition (``__HIVE_DEFAULT_PARTITION__``) is
-                passed as ``None``. For example, this removes all unpartitioned
-                files:
+                partition or `False` to skip it. Partition keys and values are
+                strings read from the filesystem path, except that a value equal to
+                the parser's ``null_fallback`` is ``None``. For example, this
+                removes all unpartitioned files:
                 ``lambda d: True if d else False``
                 This raises an assertion error for any unpartitioned file found:
                 ``lambda d: assert d, "Expected all files to be partitioned!"``
@@ -605,6 +639,14 @@ class PathPartitionFilter:
         return filtered_paths
 
     def apply(self, path: str) -> bool:
+        """Decide whether to read a file, based on the partitions in its path.
+
+        Args:
+            path: The file path to parse partition keys and values from.
+
+        Returns:
+            ``True`` if the filter function keeps the file, ``False`` to skip it.
+        """
         return self._filter_fn(self._parser(path))
 
     @property
@@ -675,9 +717,19 @@ def _partition_field_types_to_pa_schema(
     return pa.schema(fields)
 
 
-def _cast_value(value: Optional[str], data_type: PartitionDataType) -> Any:
-    if value is None:
-        return None
+def _null_partition_type(
+    name: str, field_types: Optional[Dict[str, PartitionDataType]]
+) -> "pyarrow.DataType":
+    """Arrow type for a null value of partition field ``name``.
+
+    A null path value (see ``Partitioning.null_fallback``) has no type of its
+    own, so it takes the type the field's other values parse as: the type from
+    ``field_types``, else string.
+    """
+    return _partition_field_types_to_pa_schema([name], field_types or {}).field(0).type
+
+
+def _cast_value(value: str, data_type: PartitionDataType) -> Any:
     if data_type is int:
         return int(value)
     elif data_type is float:

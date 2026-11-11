@@ -9,9 +9,7 @@ import pyarrow as pa
 from ray._common.utils import env_integer
 from ray.data._internal.compute import ActorPoolStrategy, TaskPoolStrategy
 from ray.data._internal.execution.interfaces import PhysicalOperator
-from ray.data._internal.execution.operators.actor_pool_map_operator import (
-    ActorPoolMapOperator,
-)
+from ray.data._internal.execution.operators import get_actor_pool_map_operator_cls
 from ray.data._internal.execution.operators.map_operator import MapOperator
 from ray.data._internal.execution.operators.map_transformer import (
     BlockMapTransformFn,
@@ -38,6 +36,9 @@ from ray.data._internal.planner.download_partition_actor import (
     URI_DOWNLOAD_MAX_WORKERS,
     AsyncPartitionActor,
     PartitionActor,
+)
+from ray.data._internal.planner.plan_list_files_op import (
+    _list_files_ray_remote_args,
 )
 from ray.data._internal.util import (
     RetryingPyFileSystem,
@@ -168,7 +169,7 @@ def plan_download_op(
             init_fn=init_fn,
         )
 
-        metadata_map_operator = ActorPoolMapOperator(
+        metadata_map_operator = get_actor_pool_map_operator_cls()(
             metadata_map_transformer,
             split_map_operator,
             data_context,
@@ -177,12 +178,8 @@ def plan_download_op(
             #       `ray_remote_args` since those only apply to the actual
             #       download tasks. Planning is a lightweight internal operation
             #       that doesn't need custom resource requirements.
-            ray_remote_args=None,
+            ray_remote_args=_list_files_ray_remote_args(),
             compute_strategy=metadata_compute,
-            # NOTE: Let each metadata actor stream emitted download blocks without
-            #       generator-object backpressure. Downstream operator
-            #       backpressure still controls the end-to-end pipeline.
-            ray_actor_task_remote_args={"_generator_backpressure_num_objects": -1},
         )
 
     if use_obstore_path:

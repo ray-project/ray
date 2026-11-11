@@ -26,8 +26,8 @@ Images are `tagged` with the format
 | `nightly`       | The most recent Ray development build (a recent commit from GitHub `master`) |
 
 The optional `Python version` tag specifies the Python version in the image.
-All Python versions supported by Ray are available, e.g. `py310`, `py311`, and
-`py312`. If unspecified, the tag points to an image using `Python 3.10`.
+All Python versions that Ray publishes images for are available, e.g. `py311`,
+`py312`, and `py313`. If unspecified, the tag points to an image using `Python 3.11`.
 
 The optional `Platform` tag specifies the platform where the image is intended
 for:
