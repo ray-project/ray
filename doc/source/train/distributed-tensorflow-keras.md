@@ -51,7 +51,7 @@ with tf.distribute.MultiWorkerMirroredStrategy().scope():
 
 ### Step 2: Update your `Dataset` batch size to the global batch size
 
-Because the [batch](https://www.tensorflow.org/api_docs/python/tf/data/Dataset#batch) splits evenly across worker processes, set `batch_size` to the per-worker batch size times the number of workers.
+TensorFlow splits each [batch](https://www.tensorflow.org/api_docs/python/tf/data/Dataset#batch) evenly across worker processes. Set the dataset's `batch_size` to the global batch size, which is the per-worker batch size times the number of workers.
 
 ```diff
 -batch_size = per_worker_batch_size
