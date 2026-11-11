@@ -1,7 +1,20 @@
 import logging
 import math
+import time
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, Dict, Iterator, List, Optional, Set, Tuple, Type
+from enum import Enum
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Callable,
+    Dict,
+    Iterator,
+    List,
+    Optional,
+    Set,
+    Tuple,
+    Type,
+)
 
 from ray.data._internal.arrow_block import ArrowBlockAccessor
 from ray.data._internal.arrow_ops.transform_pyarrow import (
@@ -604,6 +617,106 @@ def _append_index_column(table: "pa.Table", col_name: str) -> "pa.Table":
 
     index_col = pa.array(np.arange(table.num_rows))
     return table.append_column(col_name, index_col)
+
+
+class BuildSide(Enum):
+    """Outcome of the broadcast-join decision.
+
+    The build side is the small side that gets broadcast to every task of the
+    other (stream) side.
+    """
+
+    UNDECIDED = "undecided"
+    NONE = "none"  # No build side: regular shuffle join.
+    BUILD_LEFT = "build_left"
+    BUILD_RIGHT = "build_right"
+
+
+# Input index of each build side on the reduce operator.
+BUILD_SIDE_INPUT_INDEX: Dict[BuildSide, int] = {
+    BuildSide.BUILD_LEFT: 0,
+    BuildSide.BUILD_RIGHT: 1,
+}
+
+
+# Sides of each join type that may be broadcast.
+_VALID_BUILD_SIDES: Dict[JoinType, Set[BuildSide]] = {
+    JoinType.INNER: {BuildSide.BUILD_LEFT, BuildSide.BUILD_RIGHT},
+    JoinType.LEFT_OUTER: {BuildSide.BUILD_RIGHT},
+    JoinType.LEFT_SEMI: {BuildSide.BUILD_RIGHT},
+    JoinType.LEFT_ANTI: {BuildSide.BUILD_RIGHT},
+    JoinType.RIGHT_OUTER: {BuildSide.BUILD_LEFT},
+    JoinType.RIGHT_SEMI: {BuildSide.BUILD_LEFT},
+    JoinType.RIGHT_ANTI: {BuildSide.BUILD_LEFT},
+    JoinType.FULL_OUTER: set(),
+}
+
+
+def valid_build_sides(join_type: JoinType) -> Set[BuildSide]:
+    """Sides of ``join_type`` that may be broadcast."""
+    return set(_VALID_BUILD_SIDES[join_type])
+
+
+class _BroadcastDecision:
+    """Runtime decision of whether to broadcast one join, and which side.
+
+    Shared by the two map operators and the reduce operator of the join. Each
+    map operator reports only its own conclusion (crossed the threshold, or
+    finished under it). Every transition is immutable, once ``build_side`` leaves
+    ``UNDECIDED`` it does not change.
+    """
+
+    def __init__(
+        self,
+        can_build: Set[BuildSide],
+        *,
+        timeout_s: float = float("inf"),
+        clock: Callable[[], float] = time.monotonic,
+    ):
+        self._can_build: Set[BuildSide] = set(can_build)
+        self.build_side: BuildSide = (
+            BuildSide.UNDECIDED if self._can_build else BuildSide.NONE
+        )
+        self._timeout_s = timeout_s
+        self._clock = clock
+        # Set by the first exceed_threshold call.
+        self._deadline: float = float("inf")
+
+    def exceed_threshold(self, side: BuildSide) -> None:
+        """Remove ``side`` from _can_build as it exceed the size threshold.
+
+        The first call starts the timeout clock. When no side is left, fall
+        back to the shuffle join.
+        """
+        if self._deadline == float("inf"):
+            self._deadline = self._clock() + self._timeout_s
+        self._can_build.discard(side)
+        if not self._can_build and self.build_side is BuildSide.UNDECIDED:
+            self.build_side = BuildSide.NONE
+
+    def on_tick(self) -> None:
+        """Fall back to the shuffle join once a side has waited ``timeout_s``.
+
+        Called by the map operators on every scheduling iteration. The clock
+        starts when the first side crosses the threshold and begins holding its
+        input for the other side.
+        """
+        if self.build_side is BuildSide.UNDECIDED and self._clock() > self._deadline:
+            self.demote()
+
+    def choose_build(self, side: BuildSide) -> None:
+        """Pick ``side`` as the build side: it finished under the threshold.
+
+        First caller wins. Ignored if ``side`` is not (or no longer) allowed
+        to build.
+        """
+        if self.build_side is BuildSide.UNDECIDED and side in self._can_build:
+            self.build_side = side
+
+    def demote(self) -> None:
+        """Give up on broadcasting and fall back to the shuffle join."""
+        if self.build_side is BuildSide.UNDECIDED:
+            self.build_side = BuildSide.NONE
 
 
 class JoinOperator(HashShufflingOperatorBase):

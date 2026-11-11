@@ -158,6 +158,18 @@ DEFAULT_SHUFFLE_INPUT_BATCH_BYTES = env_integer(
     "RAY_DATA_SHUFFLE_INPUT_BATCH_BYTES", 1024 * 1024 * 1024
 )
 
+DEFAULT_ENABLE_BROADCAST_JOIN = env_bool("RAY_DATA_ENABLE_BROADCAST_JOIN", True)
+
+# Same default as Spark's ``spark.sql.autoBroadcastJoinThreshold``, see
+# https://spark.apache.org/docs/latest/sql-performance-tuning.html#automatically-broadcasting-joins
+DEFAULT_BROADCAST_JOIN_THRESHOLD_BYTES = env_integer(
+    "RAY_DATA_BROADCAST_JOIN_THRESHOLD_BYTES", 10 * 1024 * 1024
+)
+
+DEFAULT_BROADCAST_JOIN_DECISION_TIMEOUT_S = env_float(
+    "RAY_DATA_BROADCAST_JOIN_DECISION_TIMEOUT_S", 10.0
+)
+
 
 def _deduce_default_enable_disk_shuffle() -> bool:
     legacy = env_bool("RAY_DATA_ENABLE_EXTERNAL_SHUFFLE", False)
@@ -921,6 +933,23 @@ class DataContext:
             environment variable (``False`` when unset). Deprecated
             aliases: ``use_external_hash_shuffle`` and the
             ``RAY_DATA_ENABLE_EXTERNAL_SHUFFLE`` environment variable.
+        enable_broadcast_join: Whether joins under the disk-based ``SHUFFLE_V2``
+            strategy may broadcast a small side instead of shuffling both sides.
+            The side to broadcast is picked at runtime from observed bytes. When
+            neither side is small enough the join falls back to the regular
+            shuffle join. Defaults to the ``RAY_DATA_ENABLE_BROADCAST_JOIN``
+            environment variable (``True`` when unset).
+        broadcast_join_threshold_bytes: A join side whose total bytes stay below
+            this threshold is eligible to be broadcast. Defaults to the
+            ``RAY_DATA_BROADCAST_JOIN_THRESHOLD_BYTES`` environment variable
+            (10 MiB when unset, same as Spark's
+            ``spark.sql.autoBroadcastJoinThreshold``).
+        broadcast_join_decision_timeout_s: Once one side of a join has exceeded
+            ``broadcast_join_threshold_bytes``, how long the join keeps waiting
+            for the other side to finish under it before falling back to the
+            shuffle join. Defaults to
+            the ``RAY_DATA_BROADCAST_JOIN_DECISION_TIMEOUT_S`` environment
+            variable (10 seconds when unset).
         max_hash_shuffle_aggregators: Maximum number of aggregating actors that can be
             provisioned for hash-shuffle aggregations.
         min_hash_shuffle_aggregator_wait_time_in_s: Minimum time to wait for hash
@@ -1081,6 +1110,11 @@ class DataContext:
     # hash-shuffle operations (keyed repartition, aggregations, joins).
     # When False, use the object-store path.
     use_disk_based_hash_shuffle: bool = DEFAULT_ENABLE_DISK_SHUFFLE
+
+    # Broadcast join configurations.
+    enable_broadcast_join: bool = DEFAULT_ENABLE_BROADCAST_JOIN
+    broadcast_join_threshold_bytes: int = DEFAULT_BROADCAST_JOIN_THRESHOLD_BYTES
+    broadcast_join_decision_timeout_s: float = DEFAULT_BROADCAST_JOIN_DECISION_TIMEOUT_S
 
     ################################################################
     # GPU Shuffle configuration

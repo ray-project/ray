@@ -20,6 +20,11 @@ from ray.data._internal.execution.interfaces.physical_operator import (
     TaskExecDriverStats,
     estimate_total_num_of_blocks,
 )
+from ray.data._internal.execution.operators.join import (
+    BUILD_SIDE_INPUT_INDEX,
+    BuildSide,
+    _BroadcastDecision,
+)
 from ray.data._internal.execution.operators.shuffle_operators.disk_shuffle_map_operator import (  # noqa: E501
     DiskHashShuffleMapOp,
 )
@@ -27,6 +32,7 @@ from ray.data._internal.execution.operators.shuffle_operators.disk_shuffle_tasks
     _DEFAULT_FETCH_THREADS,
     _DEFAULT_MAX_BYTES_PER_FETCH,
     ReduceFn,
+    _broadcast_join_task,
     _disk_shuffle_reduce_task,
 )
 from ray.data._internal.execution.operators.shuffle_operators.shuffle_map_operator import (  # noqa: E501
@@ -84,6 +90,7 @@ class DiskHashShuffleReduceOp(PhysicalOperator):
         fused_output_map_transformer: Optional["MapTransformer"] = None,
         fused_output_map_task_kwargs: Optional[Dict[str, Any]] = None,
         fused_output_map_target_max_block_size_override: Optional[int] = None,
+        decision: Optional[_BroadcastDecision] = None,
     ):
         input_ops: List[PhysicalOperator] = (
             [input_op] if isinstance(input_op, DiskHashShuffleMapOp) else list(input_op)
@@ -127,6 +134,14 @@ class DiskHashShuffleReduceOp(PhysicalOperator):
             fused_output_map_target_max_block_size_override
         )
 
+        # -- Broadcast join --------------------------------------------------
+        # ``decision`` is shared with the upstream map operators (None for
+        # every non-join shuffle). Once it names a build side, inputs are
+        # paired as (stream bundle, one build bundle) and ``reduce_fn``
+        # runs in ``_broadcast_join_task`` instead of the disk reduce task.
+        self._decision: _BroadcastDecision = decision or _BroadcastDecision(set())
+        self._build_bundle: Optional[RefBundle] = None
+
         # -- Output queue ----------------------------------------------------
         self._output_queue: deque = deque()
 
@@ -163,6 +178,9 @@ class DiskHashShuffleReduceOp(PhysicalOperator):
 
     def _add_input_inner(self, refs: RefBundle, input_index: int) -> None:
         assert 0 <= input_index < self._num_inputs
+        if self._is_broadcast:
+            self._add_broadcast_input(refs, input_index)
+            return
         if not refs.block_refs:
             refs.destroy_if_owned()
             return
@@ -198,10 +216,86 @@ class DiskHashShuffleReduceOp(PhysicalOperator):
 
     def all_inputs_done(self) -> None:
         super().all_inputs_done()
+        if self._is_broadcast:
+            # The executor calls this only after every upstream bundle was
+            # added, so the build bundle has arrived and already flushed the
+            # pending stream bundles.
+            assert not self._pending_inputs, list(self._pending_inputs)
+            return
         for partition_id in list(self._pending_inputs.keys()):
             pending = self._pending_inputs.pop(partition_id)
             bundles = [pending.get(i) for i in range(self._num_inputs)]
             self._submit_reduce_task(partition_id, bundles)
+
+    @property
+    def _is_broadcast(self) -> bool:
+        build_side = self._decision.build_side
+        # A map operator only emits after the decision is final.
+        assert build_side is not BuildSide.UNDECIDED
+        return build_side is not BuildSide.NONE
+
+    def _add_broadcast_input(self, refs: RefBundle, input_index: int) -> None:
+        """Pair every stream bundle with the single build bundle.
+
+        Stream bundles that arrive before the build bundle wait in
+        ``_pending_inputs`` under their partition id, keyed by input index
+        exactly as the shuffle path does, so completion and shutdown handling
+        need no special case.
+        """
+        build_idx = BUILD_SIDE_INPUT_INDEX[self._decision.build_side]
+        if input_index == build_idx:
+            # The build bundle may be empty (empty dataset): no sentinel to
+            # read, and join_fn handles an empty side via the schema.
+            assert self._build_bundle is None, "build side emits a single bundle"
+            self._build_bundle = refs
+            for pid in list(self._pending_inputs):
+                stream = self._pending_inputs.pop(pid)[1 - build_idx]
+                self._submit_broadcast_join_task(pid, stream)
+            return
+        if not refs.block_refs:
+            refs.destroy_if_owned()
+            return
+        partition_id = extract_partition_id(refs)
+        if self._build_bundle is None:
+            self._pending_inputs.setdefault(partition_id, {})[input_index] = refs
+        else:
+            self._submit_broadcast_join_task(partition_id, refs)
+
+    def _submit_broadcast_join_task(self, partition_id: int, stream: RefBundle) -> None:
+        assert self._build_bundle is not None
+        build = self._build_bundle
+        estimated_bytes = sum(
+            (m.size_bytes or 0) for bundle in (stream, build) for m in bundle.metadata
+        )
+        remote_args = self._reduce_task_remote_args(
+            int(estimated_bytes * self._peak_memory_multiplier)
+            if estimated_bytes > 0
+            else 0
+        )
+        # Same scheduling rule as MapOperator: a large stream bundle uses the
+        # locality-aware strategy, a small one keeps SPREAD for load balancing.
+        if (
+            "scheduling_strategy" not in self._reduce_ray_remote_args
+            and stream.size_bytes() > self.data_context.large_args_threshold
+        ):
+            remote_args[
+                "scheduling_strategy"
+            ] = self.data_context.scheduling_strategy_large_args
+        block_gen = _broadcast_join_task.options(**remote_args).remote(
+            *stream.block_refs,  # pyrefly: ignore[bad-argument-type]
+            *build.block_refs,  # pyrefly: ignore[bad-argument-type]
+            num_stream_blocks=len(stream.block_refs),
+            build_side=BUILD_SIDE_INPUT_INDEX[self._decision.build_side],
+            join_fn=self._reduce_fn,
+            task_idx=partition_id,
+            target_max_block_size=self._target_max_block_size(),
+            map_transformer=self._fused_output_map_transformer,
+            map_task_context=self._fused_map_task_context(partition_id),
+            data_context=self.data_context,
+        )
+        # Only the stream bundle is released when the task finishes: the build
+        # bundle is shared by every task and released in _do_shutdown.
+        self._track_task(partition_id, block_gen, remote_args, done_bundles=[stream])
 
     def _submit_reduce_task(
         self,
@@ -223,36 +317,49 @@ class DiskHashShuffleReduceOp(PhysicalOperator):
             else 0
         )
 
-        target_max_block_size = (
-            None
-            if self._disallow_block_splitting
-            else self.data_context.target_max_block_size
-        )
-
-        map_task_context = None
-        if self._fused_output_map_transformer is not None:
-            map_task_context = TaskContext(
-                task_idx=partition_id,
-                op_name=self.name,
-                target_max_block_size_override=(
-                    self._fused_output_map_target_max_block_size_override
-                ),
-            )
-            map_task_context.kwargs.update(self._fused_output_map_task_kwargs)
-
         block_gen = _disk_shuffle_reduce_task.options(**reduce_options).remote(
             *handles_refs,  # pyrefly: ignore[bad-argument-type]
             partition_id=partition_id,
             reduce_fn=self._reduce_fn,
             max_bytes_per_fetch=self._max_bytes_per_fetch,
             fetch_threads=self._fetch_threads,
-            target_max_block_size=target_max_block_size,
+            target_max_block_size=self._target_max_block_size(),
             map_transformer=self._fused_output_map_transformer,
-            map_task_context=map_task_context,
+            map_task_context=self._fused_map_task_context(partition_id),
             data_context=self.data_context,
             emit_empty_partition=self._emit_empty_partitions,
         )
+        self._track_task(partition_id, block_gen, reduce_options, done_bundles=bundles)
 
+    def _target_max_block_size(self) -> Optional[int]:
+        return (
+            None
+            if self._disallow_block_splitting
+            else self.data_context.target_max_block_size
+        )
+
+    def _fused_map_task_context(self, partition_id: int) -> Optional[TaskContext]:
+        if self._fused_output_map_transformer is None:
+            return None
+        map_task_context = TaskContext(
+            task_idx=partition_id,
+            op_name=self.name,
+            target_max_block_size_override=(
+                self._fused_output_map_target_max_block_size_override
+            ),
+        )
+        map_task_context.kwargs.update(self._fused_output_map_task_kwargs)
+        return map_task_context
+
+    def _track_task(
+        self,
+        partition_id: int,
+        block_gen: Any,
+        remote_args: Dict[str, Any],
+        *,
+        done_bundles: List[Optional[RefBundle]],
+    ) -> None:
+        """Register a submitted task; ``done_bundles`` are released when it ends."""
         data_task = DataOpTask(
             task_index=partition_id,
             streaming_gen=block_gen,
@@ -262,9 +369,9 @@ class DiskHashShuffleReduceOp(PhysicalOperator):
                 self._handle_reduce_output_ready, partition_id
             ),
             task_done_callback=functools.partial(
-                self._handle_reduce_done, partition_id, bundles
+                self._handle_reduce_done, partition_id, done_bundles
             ),
-            task_resource_bundle=ExecutionResources.from_resource_dict(reduce_options),
+            task_resource_bundle=ExecutionResources.from_resource_dict(remote_args),
             operator_name=self.name,
         )
 
@@ -341,7 +448,8 @@ class DiskHashShuffleReduceOp(PhysicalOperator):
             self._num_reduce_tasks_submitted,
             self.upstream_op_num_outputs(),
             self._metrics,
-            total_num_tasks=self._num_partitions,
+            # Broadcast: one task per stream bundle, count unknown up front.
+            total_num_tasks=None if self._is_broadcast else self._num_partitions,
         )
         self._estimated_num_output_bundles = num_outputs
         self._estimated_output_num_rows = num_rows
@@ -393,6 +501,9 @@ class DiskHashShuffleReduceOp(PhysicalOperator):
             for bundle in pending.values():
                 bundle.destroy_if_owned()
         self._pending_inputs.clear()
+        if self._build_bundle is not None:
+            self._build_bundle.destroy_if_owned()
+            self._build_bundle = None
 
     def get_stats(self) -> Dict[str, List[BlockStats]]:
         return {self._name: self._output_blocks_stats}

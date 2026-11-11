@@ -7,6 +7,7 @@ import pytest
 import ray
 from ray.data._internal.execution.bundle_queue import EstimateSize
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
+from ray.data._internal.execution.operators.join import BuildSide
 from ray.data._internal.execution.operators.map_operator import MapOperator
 from ray.data._internal.execution.operators.map_transformer import (
     BatchMapTransformFn,
@@ -644,6 +645,34 @@ def test_fused_shuffle_reduce_preserves_operator_config(
     assert dag.name == (f"{prefix}(keys=('id',), partitions=4)->MapBatches(<lambda>)")
     assert dag._fused_output_map_transformer is not None
     assert dag._peak_memory_multiplier == 3
+
+
+def test_fused_join_reduce_keeps_broadcast_decision(
+    ray_start_regular_shared_2_cpus, restore_data_context
+):
+    """Fusing a map into the disk join reduce must keep the broadcast-join link.
+
+    The fusion rule rebuilds the reduce op; without ``decision`` the rebuilt
+    op would run the shuffle path while the map ops, which share the original
+    decision, emit broadcast bundles.
+    """
+    ctx = DataContext.get_current()
+    ctx.shuffle_strategy = ShuffleStrategy.SHUFFLE_V2
+    ctx.use_disk_based_hash_shuffle = True
+
+    left = ray.data.range(100)
+    right = ray.data.range(10)
+    ds = left.join(right, "inner", on=("id",), num_partitions=4).map_batches(
+        lambda b: b
+    )
+    dag = get_execution_plan(ds._logical_plan)[0].dag
+
+    assert dag.name == "DiskJoinShuffleReduce(num_partitions=4)->MapBatches(<lambda>)"
+    assert dag._fused_output_map_transformer is not None
+    assert dag._decision.build_side is BuildSide.UNDECIDED
+    # One decision object for all three ops
+    left_map, right_map = dag.input_dependencies
+    assert dag._decision is left_map._decision is right_map._decision
 
 
 def test_map_not_fused_into_shuffle_reduce_with_downstream_limit(

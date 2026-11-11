@@ -1,6 +1,16 @@
 import warnings
 from functools import partial
-from typing import TYPE_CHECKING, Callable, Dict, List, Optional, Tuple, Type, TypeVar
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Callable,
+    Dict,
+    List,
+    Optional,
+    Tuple,
+    Type,
+    TypeVar,
+)
 
 if TYPE_CHECKING:
     import pyarrow.fs
@@ -21,8 +31,11 @@ from ray.data._internal.execution.operators.input_data_buffer import (
     InputDataBuffer,
 )
 from ray.data._internal.execution.operators.join import (
+    BuildSide,
     JoinOperator,
+    _BroadcastDecision,
     _make_join_reduce_fn,
+    valid_build_sides,
 )
 from ray.data._internal.execution.operators.limit_operator import LimitOperator
 from ray.data._internal.execution.operators.mix_operator import MixOperator
@@ -161,6 +174,37 @@ def _plan_join_shuffle_v2(
 
     map_cls, reduce_cls, prefix = _select_shuffle_v2_op_classes(data_context)
 
+    reduce_fn = _make_join_reduce_fn(
+        join_type=join_type,
+        left_key_col_names=tuple(left_keys),
+        right_key_col_names=tuple(right_keys),
+        left_columns_suffix=logical_op.left_columns_suffix,
+        right_columns_suffix=logical_op.right_columns_suffix,
+        left_schema=logical_op.input_dependencies[0].infer_schema(),
+        right_schema=logical_op.input_dependencies[1].infer_schema(),
+    )
+
+    # Broadcast join (disk shuffle only): the three operators share one
+    # decision that picks the build side at runtime from observed bytes.
+    left_map_kwargs: Dict[str, Any] = {}
+    right_map_kwargs: Dict[str, Any] = {}
+    reduce_kwargs: Dict[str, Any] = {}
+    if data_context.use_disk_based_hash_shuffle:
+        can_build = (
+            valid_build_sides(join_type)
+            if data_context.enable_broadcast_join
+            else set()
+        )
+        decision = _BroadcastDecision(
+            can_build, timeout_s=data_context.broadcast_join_decision_timeout_s
+        )
+        left_map_kwargs = dict(side=BuildSide.BUILD_LEFT, decision=decision)
+        right_map_kwargs = dict(side=BuildSide.BUILD_RIGHT, decision=decision)
+        reduce_kwargs = dict(
+            decision=decision,
+            peak_memory_multiplier=_DISK_JOIN_REDUCE_PEAK_MEMORY_MULTIPLIER,
+        )
+
     left_map = map_cls(
         physical_children[0],
         data_context,
@@ -171,6 +215,7 @@ def _plan_join_shuffle_v2(
             f"{prefix}JoinShuffleMapLeft(keys={tuple(left_keys)}, "
             f"parts={num_partitions})"
         ),
+        **left_map_kwargs,
     )
     right_map = map_cls(
         physical_children[1],
@@ -182,22 +227,8 @@ def _plan_join_shuffle_v2(
             f"{prefix}JoinShuffleMapRight(keys={tuple(right_keys)}, "
             f"parts={num_partitions})"
         ),
+        **right_map_kwargs,
     )
-
-    reduce_fn = _make_join_reduce_fn(
-        join_type=join_type,
-        left_key_col_names=tuple(left_keys),
-        right_key_col_names=tuple(right_keys),
-        left_columns_suffix=logical_op.left_columns_suffix,
-        right_columns_suffix=logical_op.right_columns_suffix,
-        left_schema=logical_op.input_dependencies[0].infer_schema(),
-        right_schema=logical_op.input_dependencies[1].infer_schema(),
-    )
-    reduce_kwargs = {}
-    if data_context.use_disk_based_hash_shuffle:
-        reduce_kwargs[
-            "peak_memory_multiplier"
-        ] = _DISK_JOIN_REDUCE_PEAK_MEMORY_MULTIPLIER
     return reduce_cls(
         [left_map, right_map],
         data_context,
