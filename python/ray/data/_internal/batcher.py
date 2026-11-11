@@ -243,6 +243,7 @@ class _BufferedBlock:
         return self._accessor.slice(self._offset, self._offset + num_rows, copy=False)
 
     def advance(self, num_rows: int) -> None:
+        # Single-chunk and non-Arrow inputs use accessor slices without a cursor.
         if self._cursor is not None:
             self._cursor.advance(num_rows)
         self._offset += num_rows

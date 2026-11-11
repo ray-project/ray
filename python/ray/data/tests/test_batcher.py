@@ -295,7 +295,8 @@ def test_batcher_retries_failed_preparation(monkeypatch):
 
 
 @pytest.mark.parametrize("python_flags", [[], ["-O"]], ids=["normal", "optimized"])
-def test_batcher_releases_consumed_block(python_flags):
+@pytest.mark.parametrize("aligned", [False, True])
+def test_batcher_releases_consumed_block(python_flags, aligned):
     subprocess.check_call(
         [
             sys.executable,
@@ -303,17 +304,22 @@ def test_batcher_releases_consumed_block(python_flags):
             "-c",
             """
 import gc
+import sys
 import weakref
 import numpy as np
 import pyarrow as pa
 from ray.data._internal.batcher import Batcher
 
 values = np.arange(8)
-source = pa.table({"value": pa.chunked_array([pa.array(values[:4]), pa.array(values[4:])])})
+cut = 4 if sys.argv[1] == "aligned" else 3
+source = pa.table({
+    "value": pa.chunked_array([pa.array(values[:4]), pa.array(values[4:])]),
+    "other": pa.chunked_array([pa.array(values[:cut]), pa.array(values[cut:])]),
+})
 source_ref, values_ref = weakref.ref(source), weakref.ref(values)
 batcher = Batcher(batch_size=4, ensure_copy=True)
 batcher.add(source)
-batcher.add(pa.table({"value": list(range(8))}))
+batcher.add(pa.table({"value": list(range(8)), "other": list(range(8))}))
 del source, values
 batcher.next_batch()
 batcher.next_batch()
@@ -321,6 +327,7 @@ gc.collect()
 if source_ref() is not None or values_ref() is not None:
     raise RuntimeError("Consumed source retained with Python optimization enabled")
 """,
+            "aligned" if aligned else "misaligned",
         ]
     )
 

@@ -11,7 +11,7 @@ remain shared; contiguous output conversion, when needed, belongs to the batch.
 """
 
 from collections import deque
-from typing import Union
+from typing import List, Optional, Tuple, Union
 
 import pyarrow as pa
 
@@ -26,7 +26,7 @@ def create_arrow_block_cursor(table: pa.Table) -> ArrowBlockCursor:
     return _ColumnArrowBlockCursor(table)
 
 
-def _chunks_are_aligned(columns) -> bool:
+def _chunks_are_aligned(columns: List[pa.ChunkedArray]) -> bool:
     return len(columns) == 1 or (
         len({column.num_chunks for column in columns}) == 1
         and all(
@@ -43,9 +43,10 @@ class _AlignedArrowBlockCursor:
         self._remaining_rows = table.num_rows
         self._reader = table.to_reader()
         self._pieces: deque[pa.RecordBatch] = deque()
+        # Rows staged in _pieces but not committed; excludes unread source rows.
         self._available_rows = 0
         self._head_offset = 0
-        self._head_table = None
+        self._head_table: Optional[pa.Table] = None
 
     def peek(self, num_rows: int) -> pa.Table:
         assert 0 < num_rows <= self._remaining_rows
@@ -57,11 +58,13 @@ class _AlignedArrowBlockCursor:
 
         head = self._pieces[0]
         if num_rows <= head.num_rows - self._head_offset:
-            if self._head_table is None:
-                self._head_table = pa.Table.from_batches([head])
+            head_table = self._head_table
+            if head_table is None:
+                head_table = pa.Table.from_batches([head])
+                self._head_table = head_table
             if self._head_offset == 0 and num_rows == head.num_rows:
-                return self._head_table
-            return self._head_table.slice(self._head_offset, num_rows)
+                return head_table
+            return head_table.slice(self._head_offset, num_rows)
 
         pieces = []
         needed = num_rows
@@ -111,31 +114,44 @@ class _ColumnArrowBlockCursor:
             table.select(self._single_indices) if self._single_indices else None
         )
         self._schema = table.schema
-        self._num_rows = table.num_rows
-        self._offset = 0
-        self._positions = [(0, 0, column.chunk(0)) for column in self._columns]
-        self._cache = None
+        self._total_rows = table.num_rows
+        self._row_offset = 0
+        # Per fragmented column: chunk index, global start row, and chunk view.
+        self._positions: List[Tuple[int, int, pa.Array]] = [
+            (0, 0, column.chunk(0)) for column in self._columns
+        ]
+        # Global start row and a view ending at the first current chunk boundary.
+        self._cache: Optional[Tuple[int, pa.Table]] = None
 
-    def _make_table(self, columns, start: int, num_rows: int) -> pa.Table:
-        if self._single_table is None:
-            return pa.Table.from_arrays(columns, schema=self._schema)
+    def _make_table(
+        self,
+        chunked_columns: List[Union[pa.Array, pa.ChunkedArray]],
+        start: int,
+        num_rows: int,
+    ) -> pa.Table:
+        """Restore original column order from fragmented views and dense slices."""
+        single_table = self._single_table
+        if single_table is None:
+            return pa.Table.from_arrays(chunked_columns, schema=self._schema)
 
         # Slice continuous columns together in native code. Routing them through
         # the fragmented column loop would add Python work to wide tables.
-        singles = self._single_table.slice(start, num_rows)
-        if len(columns) == 1:
+        singles = single_table.slice(start, num_rows)
+        if len(chunked_columns) == 1:
             index = self._chunked_indices[0]
-            return singles.add_column(index, self._schema.field(index), columns[0])
+            return singles.add_column(
+                index, self._schema.field(index), chunked_columns[0]
+            )
         result_columns = [None] * len(self._schema)
         for index, column in zip(self._single_indices, singles.columns):
             result_columns[index] = column
-        for index, column in zip(self._chunked_indices, columns):
+        for index, column in zip(self._chunked_indices, chunked_columns):
             result_columns[index] = column
         return pa.Table.from_arrays(result_columns, schema=self._schema)
 
     def peek(self, num_rows: int) -> pa.Table:
-        assert 0 < num_rows <= self._num_rows - self._offset
-        start = self._offset
+        assert 0 < num_rows <= self._total_rows - self._row_offset
+        start = self._row_offset
         stop = start + num_rows
         if self._cache is not None:
             cache_start, cache = self._cache
@@ -143,12 +159,14 @@ class _ColumnArrowBlockCursor:
                 return cache.slice(start - cache_start, num_rows)
 
         positions = []
-        common_end = self._num_rows
+        common_end = self._total_rows
         for column, (index, chunk_start, chunk) in zip(self._columns, self._positions):
+            # Skip consumed and empty chunks until the current chunk contains start.
             while chunk_start + len(chunk) <= start:
                 chunk_start += len(chunk)
                 index += 1
                 chunk = column.chunk(index)
+            assert chunk_start <= start < chunk_start + len(chunk)
             positions.append((index, chunk_start, chunk))
             end = chunk_start + len(chunk)
             common_end = min(common_end, end)
@@ -199,5 +217,6 @@ class _ColumnArrowBlockCursor:
         return result
 
     def advance(self, num_rows: int) -> None:
-        assert 0 < num_rows <= self._num_rows - self._offset
-        self._offset += num_rows
+        assert 0 < num_rows <= self._total_rows - self._row_offset
+        # Indexed source columns stay intact until Batcher releases this input.
+        self._row_offset += num_rows
