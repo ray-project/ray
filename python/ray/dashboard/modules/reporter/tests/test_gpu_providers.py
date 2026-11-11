@@ -758,6 +758,26 @@ class TestGpuMetricProvider(unittest.TestCase):
         self.assertEqual(len(self.provider._providers), 2)
         self.assertFalse(self.provider._initialized)
 
+    @patch.object(GpuMetricProvider, "_detect_gpu_provider")
+    def test_initialize_disabled(self, mock_detect):
+        """Test disabled GPU metrics do not probe GPU providers."""
+        with patch(
+            "ray.dashboard.modules.reporter.gpu_providers.NvidiaGpuProvider"
+        ) as mock_nvidia_provider, patch(
+            "ray.dashboard.modules.reporter.gpu_providers.AmdGpuProvider"
+        ) as mock_amd_provider:
+            provider = GpuMetricProvider(enable_metric_report=False)
+
+        self.assertFalse(provider.initialize())
+        self.assertFalse(provider.initialize())
+        self.assertEqual(provider.get_gpu_usage(), [])
+        self.assertEqual(provider._providers, [])
+        self.assertTrue(provider._initialized)
+        self.assertFalse(provider.is_metric_report_enabled())
+        mock_nvidia_provider.assert_not_called()
+        mock_amd_provider.assert_not_called()
+        mock_detect.assert_not_called()
+
     @patch.object(NvidiaGpuProvider, "is_available", return_value=True)
     @patch.object(AmdGpuProvider, "is_available", return_value=False)
     def test_detect_gpu_provider_nvidia(

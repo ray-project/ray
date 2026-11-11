@@ -234,7 +234,11 @@ const NodeDetailPage = () => {
                 workers={nodeDetail?.workers}
                 detailPathPrefix="/actors"
                 showAcceleratorColumns={
-                  !!(nodeDetail?.gpus?.length || nodeDetail?.tpus?.length)
+                  !!(
+                    nodeDetail?.gpus?.length ||
+                    nodeDetail?.npus?.length ||
+                    nodeDetail?.tpus?.length
+                  )
                 }
               />
             </TableContainer>

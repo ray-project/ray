@@ -233,16 +233,14 @@ class GcsAutoscalerStateManagerTest : public ::testing::Test {
       const absl::flat_hash_map<std::string, double> &available_resources,
       const absl::flat_hash_map<std::string, double> &total_resources,
       int64_t idle_ms = 0,
-      bool is_draining = false,
-      int64_t draining_deadline_timestamp_ms = -1) {
+      bool is_draining = false) {
     rpc::ResourcesData resources_data;
     FillResourcesData(resources_data,
                       node_id,
                       available_resources,
                       total_resources,
                       idle_ms,
-                      is_draining,
-                      draining_deadline_timestamp_ms);
+                      is_draining);
     gcs_autoscaler_state_manager_->UpdateResourceLoadAndUsage(resources_data);
   }
 
@@ -811,13 +809,11 @@ TEST_F(GcsAutoscalerStateManagerTest, TestDrainingStatus) {
   }
 
   // Report draining info.
-  UpdateFromResourceViewSync(
-      NodeID::FromBinary(node->node_id()),
-      {/* available */ {"CPU", 2}, {"GPU", 1}},
-      /* total*/ {{"CPU", 2}, {"GPU", 1}},
-      /* idle_duration_ms */ 10,
-      /* is_draining */ true,
-      /* draining_deadline_timestamp_ms */ std::numeric_limits<int64_t>::max());
+  UpdateFromResourceViewSync(NodeID::FromBinary(node->node_id()),
+                             {/* available */ {"CPU", 2}, {"GPU", 1}},
+                             /* total*/ {{"CPU", 2}, {"GPU", 1}},
+                             /* idle_duration_ms */ 10,
+                             /* is_draining */ true);
   {
     const auto &state = GetClusterResourceStateSync();
     ASSERT_EQ(state.node_states(0).status(), rpc::autoscaler::NodeStatus::DRAINING);

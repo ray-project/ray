@@ -26,17 +26,23 @@ class ViewRequirement:
     column names (in the original data buffer), timestep shifts, and other
     options to build the view.
 
-    .. testcode::
-        :skipif: True
-
-        from ray.rllib.models.modelv2 import ModelV2
-        # The default ViewRequirement for a Model is:
-        req = ModelV2(...).view_requirements
-        print(req)
-
-    .. testoutput::
-
-        {"obs": ViewRequirement(shift=0)}
+    Examples:
+        >>> import gymnasium as gym
+        >>> from ray.rllib.models.modelv2 import ModelV2
+        >>> model = ModelV2(
+        ...     obs_space=gym.spaces.Box(-1.0, 1.0, (4,)),
+        ...     action_space=gym.spaces.Discrete(2),
+        ...     num_outputs=2,
+        ...     model_config={},
+        ...     name="model",
+        ...     framework="torch",
+        ... )
+        >>> # The default ViewRequirement for a Model is:
+        >>> req = model.view_requirements
+        >>> print(list(req))
+        ['obs']
+        >>> print(req["obs"].shift)
+        0
 
     Args:
         data_col: The data column name from the SampleBatch

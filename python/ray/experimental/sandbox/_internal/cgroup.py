@@ -129,6 +129,37 @@ def _shared_affinity(
     return sorted(sorted(load, key=lambda c: (load[c], c))[:count])
 
 
+def wrap_command(
+    command: List[str],
+    cgroup: Optional["SandboxCgroup"] = None,
+    oom_score_adj: Optional[int] = None,
+) -> List[str]:
+    """Apply sandbox placement and OOM priority in a child launcher.
+
+    Args:
+        command: The workload to execute.
+        cgroup: The sandbox's cgroup, or None to leave placement unchanged.
+        oom_score_adj: OOM score adjustment, or None to inherit it.
+
+    Returns:
+        The wrapped command, or the original when no changes are requested.
+    """
+    if cgroup is None and oom_score_adj is None:
+        return command
+    launcher = Path(__file__).with_name("cgroup_launcher.py")
+    args = [
+        sys.executable,
+        "-S",
+        str(launcher),
+        str(cgroup.path) if cgroup is not None else "",
+    ]
+    if cgroup is not None and cgroup.affinity:
+        args.extend(["--cpus", _cpu_list(set(cgroup.affinity))])
+    if oom_score_adj is not None:
+        args.extend(["--oom-score-adj", str(oom_score_adj)])
+    return [*args, *command]
+
+
 class SandboxCgroup:
     """An enforced sandbox budget."""
 
@@ -143,9 +174,7 @@ class SandboxCgroup:
         self.affinity = affinity or []
 
     def wrap(self, command: List[str]) -> List[str]:
-        launcher = Path(__file__).with_name("cgroup_launcher.py")
-        cpus = ["--cpus", _cpu_list(set(self.affinity))] if self.affinity else []
-        return [sys.executable, "-S", str(launcher), str(self.path), *cpus, *command]
+        return wrap_command(command, self)
 
     def verify(self, pid: int) -> None:
         for name, value in self.limits.items():
