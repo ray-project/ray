@@ -108,6 +108,12 @@ public class RunManager {
     } finally {
       if (p != null && p.isAlive()) {
         p.destroyForcibly();
+        try {
+          // Wait for the child to release the output file before deleting it.
+          p.waitFor(5, TimeUnit.SECONDS);
+        } catch (InterruptedException e) {
+          Thread.currentThread().interrupt();
+        }
       }
       try {
         Files.deleteIfExists(outputFile);
