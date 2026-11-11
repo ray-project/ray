@@ -125,7 +125,6 @@ class ActorPoolMapOperator(MapOperator, ReportsExtraResourceUsage):
         target_max_block_size_override: Optional[int] = None,
         on_start: Optional[Callable[[Optional["pa.Schema"]], None]] = None,
         default_logical_memory_enabled: bool = False,
-        synchronization_barrier: bool = False,
     ):
         """Create an ActorPoolMapOperator instance.
 
@@ -160,8 +159,6 @@ class ActorPoolMapOperator(MapOperator, ReportsExtraResourceUsage):
             default_logical_memory_enabled: If ``True``, the operator launches actors
                 with a default logical ``memory``. The method for choosing the
                 default is an implementation detail.
-            synchronization_barrier: If ``True``, downstream operators cannot use
-                any output until all of it exists.
         """
         super().__init__(
             map_transformer,
@@ -177,7 +174,6 @@ class ActorPoolMapOperator(MapOperator, ReportsExtraResourceUsage):
             ray_remote_args,
             on_start,
             default_logical_memory_enabled,
-            synchronization_barrier=synchronization_barrier,
         )
 
         self._min_rows_per_bundle = min_rows_per_bundle

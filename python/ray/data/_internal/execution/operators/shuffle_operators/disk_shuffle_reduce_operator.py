@@ -2,7 +2,7 @@ import functools
 import logging
 import typing
 from collections import deque
-from typing import Any, Dict, List, Mapping, Optional, Set, Tuple, Union
+from typing import Any, Dict, List, Mapping, Optional, Set, Tuple
 
 import numpy as np
 import pyarrow as pa
@@ -31,6 +31,10 @@ from ray.data._internal.execution.operators.shuffle_operators.disk_shuffle_tasks
     ReduceFn,
     _disk_shuffle_reduce_task,
 )
+from ray.data._internal.execution.operators.shuffle_operators.shuffle_map_operator import (  # noqa: E501
+    extract_partition_id,
+    make_partition_sentinel,
+)
 from ray.data._internal.execution.operators.shuffle_operators.shuffle_reduce_operator import (  # noqa: E501
     _SHUFFLE_REDUCE_RUNTIME_ENV,
     _merged_reduce_runtime_env,
@@ -42,7 +46,13 @@ from ray.data._internal.execution.operators.task_pool_map_operator import (
     TaskPoolMapOperator,
 )
 from ray.data._internal.execution.util import merge_label_selector
-from ray.data.block import BlockAccessor, BlockStats, TaskExecWorkerStats, to_stats
+from ray.data.block import (
+    BlockAccessor,
+    BlockMetadata,
+    BlockStats,
+    TaskExecWorkerStats,
+    to_stats,
+)
 from ray.data.context import DataContext
 from ray.types import ObjectRef
 
@@ -52,29 +62,176 @@ if typing.TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
+class DiskHashShuffleRegroupOp(PhysicalOperator):
+    """Regroups the disk-shuffle writers' handles into one bundle per partition.
+
+    Each writer task (``plan_disk_hash_shuffle_map``) emits one handle block,
+    and every reduce task needs all of them. This driver-only op collects the
+    handles and, once every writer is done, emits one bundle per partition, as
+    ``ShuffleMapOp`` does for the object-store reduce. The reduce then submits
+    one task per ``add_input``, which the executor's backpressure paces.
+
+    A partition's bundle holds one block entry per input: a ref to that
+    input's list of handle refs (shared by all partitions), with the
+    partition's rows and decoded bytes from that input as its metadata. The op
+    also owns end-of-shuffle cleanup (file servers and on-disk directories),
+    since it sees every mapper's handle.
+    """
+
+    def __init__(
+        self,
+        input_ops: List[PhysicalOperator],
+        data_context: DataContext,
+        *,
+        num_partitions: int,
+        name: str = "DiskHashShuffleRegroup",
+    ):
+        super().__init__(
+            name=name,
+            input_dependencies=input_ops,
+            data_context=data_context,
+        )
+        self._num_partitions: int = num_partitions
+        self._handle_bundles: List[RefBundle] = []
+        self._handle_refs_by_input: List[List[ObjectRef]] = [[] for _ in input_ops]
+        self._partition_rows_by_input: List[np.ndarray] = [
+            np.zeros(num_partitions, dtype=np.int64) for _ in input_ops
+        ]
+        self._partition_bytes_by_input: List[np.ndarray] = [
+            np.zeros(num_partitions, dtype=np.int64) for _ in input_ops
+        ]
+        self._schema_by_input: List[Optional[pa.Schema]] = [None] * len(input_ops)
+        # (shuffle_id, node_id) of every file server the mappers created.
+        self._file_servers: Set[Tuple[str, str]] = set()
+        self._output_queue: deque = deque()
+        self._estimated_num_output_bundles = num_partitions
+
+    @property
+    def num_inputs(self) -> int:
+        return len(self.input_dependencies)
+
+    @property
+    def partition_bytes_by_input(self) -> List[np.ndarray]:
+        return self._partition_bytes_by_input
+
+    @property
+    def is_synchronization_barrier(self) -> bool:
+        # Every partition's bundle needs every writer's handle.
+        return True
+
+    def throttling_disabled(self) -> bool:
+        # Launches no tasks, so it needs no share of the resource budget.
+        return True
+
+    def _add_input_inner(self, refs: RefBundle, input_index: int) -> None:
+        handle_refs = [entry.ref for entry in refs.blocks]
+        handle_blocks = ray.get(handle_refs)  # pyrefly: ignore[no-matching-overload]
+        for ref, handle_block in zip(handle_refs, handle_blocks):
+            self._record_handle(handle_from_block(handle_block), input_index)
+            self._handle_refs_by_input[input_index].append(ref)
+        self._handle_bundles.append(refs)
+
+    def _record_handle(self, handle: Mapping[str, Any], input_index: int) -> None:
+        for key, tallies in (
+            ("num_rows", self._partition_rows_by_input),
+            ("decoded_bytes", self._partition_bytes_by_input),
+        ):
+            counts = handle.get(key)
+            if counts is not None:
+                tallies[input_index] += np.asarray(counts, dtype=np.int64)
+        if self._schema_by_input[input_index] is None:
+            self._schema_by_input[input_index] = handle.get("schema")
+        shuffle_id = handle.get("shuffle_id")
+        node_id = handle.get("node_id")
+        if shuffle_id and node_id:
+            self._file_servers.add((shuffle_id, node_id))
+
+    def all_inputs_done(self) -> None:
+        super().all_inputs_done()
+        if not any(self._handle_refs_by_input):
+            return
+        shared_handles = [ray.put(refs) for refs in self._handle_refs_by_input]
+        for partition_id in range(self._num_partitions):
+            entries = tuple(
+                BlockEntry(
+                    ref=shared,  # pyrefly: ignore[bad-argument-type]
+                    metadata=BlockMetadata(
+                        num_rows=int(rows[partition_id]),
+                        size_bytes=int(nbytes[partition_id]),
+                        exec_stats=None,
+                        input_files=make_partition_sentinel(partition_id),
+                    ),
+                )
+                for shared, rows, nbytes in zip(
+                    shared_handles,
+                    self._partition_rows_by_input,
+                    self._partition_bytes_by_input,
+                )
+            )
+            bundle = RefBundle(
+                entries, schema=self._schema_by_input[0], owns_blocks=False
+            )
+            self._output_queue.append(bundle)
+            self._metrics.on_output_queued(bundle)
+
+    def has_next(self) -> bool:
+        return len(self._output_queue) > 0
+
+    def _get_next_inner(self) -> RefBundle:
+        bundle: RefBundle = self._output_queue.popleft()
+        self._metrics.on_output_dequeued(bundle)
+        return bundle
+
+    def get_active_tasks(self) -> List[OpTask]:
+        return []
+
+    def get_stats(self) -> Dict[str, List[BlockStats]]:
+        return {self._name: []}
+
+    def num_output_rows_total(self) -> Optional[int]:
+        if self.num_inputs > 1:
+            return None
+        if self._inputs_complete:
+            return int(self._partition_rows_by_input[0].sum())
+        writer = self.input_dependencies[0]
+        if (
+            isinstance(writer, TaskPoolMapOperator)
+            and len(writer._logical_operators) <= 1
+            and writer.input_dependencies
+        ):
+            return writer.input_dependencies[0].num_output_rows_total()
+        return None
+
+    def _do_shutdown(self, force: bool = False) -> None:
+        super()._do_shutdown(force)
+        self._output_queue.clear()
+        teardown_disk_shuffle(self._file_servers)
+        for bundle in self._handle_bundles:
+            bundle.destroy_if_owned()
+        self._handle_bundles.clear()
+        self._handle_refs_by_input = [[] for _ in range(self.num_inputs)]
+
+
 class DiskHashShuffleReduceOp(PhysicalOperator):
     """Disk-shuffle reduce operator.
 
-    Consumes the disk-shuffle map operator(s) built by
-    ``plan_disk_hash_shuffle_map`` directly: one handle block per completed
-    mapper in via ``_add_input_inner``, one reduce task per partition out.
-    Each handle names the mapper's on-disk file and its per-partition byte
-    ranges, rows and bytes; ``_disk_shuffle_reduce_task`` uses the handles to
+    Consumes a ``DiskHashShuffleRegroupOp``: one bundle per partition in via
+    ``_add_input_inner``, one reduce task per partition out. The bundle refs
+    each input's mapper handles, which name the mapper's on-disk file and its
+    per-partition byte ranges; ``_disk_shuffle_reduce_task`` uses them to
     fetch its partition over Arrow Flight from each mapper's
     ``ShuffleFileServer``.
 
-    Supports one or more co-partitioned upstream map operators. With multiple
-    inputs (e.g. join) every input must be partitioned into the same
-    ``num_partitions``; the reducer receives one table list per input. The op
-    also owns end-of-shuffle cleanup (file servers and on-disk directories)
-    since it is the last reader of the mapper files.
+    Supports one or more co-partitioned inputs. With multiple inputs (e.g.
+    join) every input must be partitioned into the same ``num_partitions``;
+    the reducer receives one table list per input.
     """
 
     _DEFAULT_SHUFFLE_REDUCE_TASK_NUM_CPUS = 1.0
 
     def __init__(
         self,
-        input_op: Union[PhysicalOperator, List[PhysicalOperator]],
+        input_op: DiskHashShuffleRegroupOp,
         data_context: DataContext,
         *,
         num_partitions: int,
@@ -89,20 +246,14 @@ class DiskHashShuffleReduceOp(PhysicalOperator):
         fused_output_map_task_kwargs: Optional[Dict[str, Any]] = None,
         fused_output_map_target_max_block_size_override: Optional[int] = None,
     ):
-        input_ops: List[PhysicalOperator] = (
-            [input_op] if isinstance(input_op, PhysicalOperator) else list(input_op)
-        )
-        assert input_ops, (
-            "DiskHashShuffleReduceOp requires at least one upstream "
-            "disk-shuffle map operator"
-        )
+        assert isinstance(input_op, DiskHashShuffleRegroupOp), input_op
         super().__init__(
             name=name,
-            input_dependencies=input_ops,
+            input_dependencies=[input_op],
             data_context=data_context,
         )
 
-        self._num_inputs: int = len(input_ops)
+        self._num_inputs: int = input_op.num_inputs
         self._num_partitions: int = num_partitions
         self._reduce_fn: ReduceFn = reduce_fn
         self._disallow_block_splitting: bool = disallow_block_splitting
@@ -116,22 +267,7 @@ class DiskHashShuffleReduceOp(PhysicalOperator):
             reduce_ray_remote_args or {}
         )
         self._shuffle_reduce_tasks: Dict[int, DataOpTask] = {}
-        self._pending_partitions: deque = deque()
         self._num_reduce_tasks_submitted: int = 0
-        self._handle_bundles: List[RefBundle] = []
-        self._handle_refs_by_input: List[List[ObjectRef]] = [[] for _ in input_ops]
-        self._shared_handles_by_input: List[Optional["ray.ObjectRef"]] = [None] * len(
-            input_ops
-        )
-        self._partition_rows_by_input: List[np.ndarray] = [
-            np.zeros(num_partitions, dtype=np.int64) for _ in input_ops
-        ]
-        self._partition_bytes_by_input: List[np.ndarray] = [
-            np.zeros(num_partitions, dtype=np.int64) for _ in input_ops
-        ]
-        self._schema: Optional[pa.Schema] = None
-        # (shuffle_id, node_id) of every file server the mappers created.
-        self._file_servers: Set[Tuple[str, str]] = set()
         self._fused_output_map_transformer = fused_output_map_transformer
         self._fused_output_map_task_kwargs = fused_output_map_task_kwargs or {}
         self._fused_output_map_target_max_block_size_override = (
@@ -166,57 +302,13 @@ class DiskHashShuffleReduceOp(PhysicalOperator):
         return remote_args
 
     def _add_input_inner(self, refs: RefBundle, input_index: int) -> None:
-        assert 0 <= input_index < self._num_inputs
-        handle_refs = [entry.ref for entry in refs.blocks]
-        handle_blocks = ray.get(handle_refs)  # pyrefly: ignore[no-matching-overload]
-        for ref, handle_block in zip(handle_refs, handle_blocks):
-            self._record_handle(handle_from_block(handle_block), input_index)
-            self._handle_refs_by_input[input_index].append(ref)
-        self._handle_bundles.append(refs)
+        assert input_index == 0
+        partition_id = extract_partition_id(refs)
+        if not self._try_emit_empty_partition(refs):
+            self._submit_reduce_task(partition_id, refs)
 
-    def _record_handle(self, handle: Mapping[str, Any], input_index: int) -> None:
-        for key, tallies in (
-            ("num_rows", self._partition_rows_by_input),
-            ("decoded_bytes", self._partition_bytes_by_input),
-        ):
-            counts = handle.get(key)
-            if counts is not None:
-                tallies[input_index] += np.asarray(counts, dtype=np.int64)
-        if self._schema is None:
-            self._schema = handle.get("schema")
-        shuffle_id = handle.get("shuffle_id")
-        node_id = handle.get("node_id")
-        if shuffle_id and node_id:
-            self._file_servers.add((shuffle_id, node_id))
-
-    def all_inputs_done(self) -> None:
-        super().all_inputs_done()
-        self._shared_handles_by_input = [
-            ray.put(refs) if refs else None for refs in self._handle_refs_by_input
-        ]
-        if not any(self._handle_refs_by_input):
-            return
-        for partition_id in range(self._num_partitions):
-            if not self._try_emit_empty_partition(partition_id):
-                self._pending_partitions.append(partition_id)
-
-    def notify_in_task_submission_backpressure(
-        self, in_backpressure: bool, policy_name: Optional[str] = None
-    ) -> None:
-        super().notify_in_task_submission_backpressure(in_backpressure, policy_name)
-        # TODO(you-cheng): We override notify_in_task_submission_backpressure
-        # because the reducer doesn't follow the usual paradigm of submitting a
-        # task per add_input. For reducer, a partition is only ready once every handle has
-        # arrived. It would be better to add a hook that lets custom ops access
-        # backpressure directly.
-        if not self._pending_partitions or self._is_execution_marked_finished:
-            return
-        if in_backpressure and self._shuffle_reduce_tasks:
-            return
-        self._submit_reduce_task(self._pending_partitions.popleft())
-
-    def _try_emit_empty_partition(self, partition_id: int) -> bool:
-        """Return True if ``partition_id`` was handled without a reduce task.
+    def _try_emit_empty_partition(self, refs: RefBundle) -> bool:
+        """Return True if the partition was handled without a reduce task.
 
         Only a single-input partition with no rows and a known schema, and no
         fused map (which must still run, e.g. a Write). Emits one typed empty
@@ -226,20 +318,18 @@ class DiskHashShuffleReduceOp(PhysicalOperator):
         """
         if self._num_inputs != 1 or self._fused_output_map_transformer is not None:
             return False
-        if not isinstance(self._schema, pa.Schema):
+        if not isinstance(refs.schema, pa.Schema):
             return False
-        if self._partition_rows_by_input[0][partition_id] > 0:
+        if refs.blocks[0].metadata.num_rows:
             return False
         if self._emit_empty_partitions:
-            self._emit_empty_partition(self._schema)
+            self._emit_empty_partition(refs.schema)
         return True
 
-    def _submit_reduce_task(self, partition_id: int) -> None:
-        handles_refs: List[Any] = [
-            shared if shared is not None else []
-            for shared in self._shared_handles_by_input
-        ]
-        estimated_bytes = self._partition_bytes(partition_id)
+    def _submit_reduce_task(self, partition_id: int, refs: RefBundle) -> None:
+        # One entry per input, each a ref to that input's handle list.
+        handles_refs = [entry.ref for entry in refs.blocks]
+        estimated_bytes = sum((m.size_bytes or 0) for m in refs.metadata)
         reduce_options = self._reduce_task_remote_args(
             int(estimated_bytes * self._peak_memory_multiplier)
             if estimated_bytes > 0
@@ -301,14 +391,6 @@ class DiskHashShuffleReduceOp(PhysicalOperator):
             partition_id,
             RefBundle((), schema=None, owns_blocks=False),
             task_id=data_task.get_task_id(),
-        )
-
-    def _partition_bytes(self, partition_id: int) -> int:
-        return int(
-            sum(
-                partition_bytes[partition_id]
-                for partition_bytes in self._partition_bytes_by_input
-            )
         )
 
     def _emit_empty_partition(self, schema: pa.Schema) -> None:
@@ -395,21 +477,12 @@ class DiskHashShuffleReduceOp(PhysicalOperator):
     def has_execution_finished(self) -> bool:
         if self._shuffle_reduce_tasks or self._output_queue:
             return False
-        if self._pending_partitions and not self._is_execution_marked_finished:
-            return False
         return super().has_execution_finished()
 
     def _do_shutdown(self, force: bool = False) -> None:
         super()._do_shutdown(force)
         self._shuffle_reduce_tasks.clear()
-        self._pending_partitions.clear()
         self._output_queue.clear()
-        teardown_disk_shuffle(self._file_servers)
-        for bundle in self._handle_bundles:
-            bundle.destroy_if_owned()
-        self._handle_bundles.clear()
-        self._handle_refs_by_input = [[] for _ in range(self._num_inputs)]
-        self._shared_handles_by_input = [None] * self._num_inputs
 
     def get_stats(self) -> Dict[str, List[BlockStats]]:
         return {self._name: self._output_blocks_stats}
@@ -420,16 +493,7 @@ class DiskHashShuffleReduceOp(PhysicalOperator):
         # unknown until the reducers run.
         if self._num_inputs > 1 or not self._preserves_row_count:
             return None
-        if self._inputs_complete:
-            return int(self._partition_rows_by_input[0].sum())
-        writer = self.input_dependencies[0]
-        if (
-            isinstance(writer, TaskPoolMapOperator)
-            and len(writer._logical_operators) <= 1
-            and writer.input_dependencies
-        ):
-            return writer.input_dependencies[0].num_output_rows_total()
-        return None
+        return self.input_dependencies[0].num_output_rows_total()
 
     def current_logical_usage(self) -> ExecutionResources:
         cpu: float = 0
@@ -445,7 +509,9 @@ class DiskHashShuffleReduceOp(PhysicalOperator):
     def incremental_resource_usage(self) -> ExecutionResources:
         """Per-task resource ask for the framework's budget allocator: the
         average non-empty partition's request, as for ShuffleReduceOp."""
-        total_bytes = functools.reduce(np.add, self._partition_bytes_by_input)
+        regroup_op = self.input_dependencies[0]
+        assert isinstance(regroup_op, DiskHashShuffleRegroupOp)
+        total_bytes = functools.reduce(np.add, regroup_op.partition_bytes_by_input)
         non_empty = total_bytes[total_bytes > 0]
         memory = (
             int(non_empty.mean() * self._peak_memory_multiplier)

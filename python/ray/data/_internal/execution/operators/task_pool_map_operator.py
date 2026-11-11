@@ -50,7 +50,6 @@ class TaskPoolMapOperator(MapOperator, ReportsExtraResourceUsage):
         on_start: Optional[Callable[[Optional["pa.Schema"]], None]] = None,
         isolate_workers: bool = False,
         default_logical_memory_enabled: bool = False,
-        synchronization_barrier: bool = False,
     ):
         """Create an TaskPoolMapOperator instance.
 
@@ -87,8 +86,6 @@ class TaskPoolMapOperator(MapOperator, ReportsExtraResourceUsage):
             default_logical_memory_enabled: If ``True``, the operator launches tasks
                 with a default logical ``memory``. The method for choosing the
                 default is an implementation detail.
-            synchronization_barrier: If ``True``, downstream operators cannot use
-                any output until all of it exists.
         """
         super().__init__(
             map_transformer,
@@ -104,7 +101,6 @@ class TaskPoolMapOperator(MapOperator, ReportsExtraResourceUsage):
             ray_remote_args,
             on_start,
             default_logical_memory_enabled,
-            synchronization_barrier=synchronization_barrier,
         )
 
         self._isolate_workers = isolate_workers

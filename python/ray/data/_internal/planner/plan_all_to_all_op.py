@@ -1,7 +1,7 @@
 import functools
 import logging
 import secrets
-from typing import Callable, List, Optional, Tuple
+from typing import Any, Callable, List, Optional, Tuple, Union
 
 from ray.data._internal.execution.interfaces import PhysicalOperator
 from ray.data._internal.execution.operators.base_physical_operator import (
@@ -25,6 +25,7 @@ from ray.data._internal.execution.operators.map_transformer import (
 )
 from ray.data._internal.execution.operators.shuffle_operators.disk_shuffle_reduce_operator import (  # noqa: E501
     DiskHashShuffleReduceOp,
+    DiskHashShuffleRegroupOp,
 )
 from ray.data._internal.execution.operators.shuffle_operators.disk_shuffle_runtime import (  # noqa: E501
     disk_shuffle_dirs,
@@ -88,7 +89,7 @@ def plan_disk_hash_shuffle_map(
 ) -> MapOperator:
     """Plan the disk-shuffle map stage: a task-pool ``MapOperator`` whose
     transform partitions each input bundle into one local file and yields a
-    one-row handle block for ``DiskHashShuffleReduceOp``.
+    one-row handle block for ``DiskHashShuffleRegroupOp``.
 
     Args:
         input_op: Upstream physical operator.
@@ -121,8 +122,36 @@ def plan_disk_hash_shuffle_map(
         data_context,
         name=name,
         ray_remote_args={"num_cpus": map_cpus, "runtime_env": _SHUFFLE_MAP_RUNTIME_ENV},
-        synchronization_barrier=True,
         supports_fusion=False,
+    )
+
+
+def plan_disk_hash_shuffle_reduce(
+    input_op: Union[PhysicalOperator, List[PhysicalOperator]],
+    data_context: DataContext,
+    *,
+    num_partitions: int,
+    **reduce_kwargs: Any,
+) -> DiskHashShuffleReduceOp:
+    """Plan the disk-shuffle reduce stage over the writer(s) from
+    ``plan_disk_hash_shuffle_map`` with a ``DiskHashShuffleRegroupOp`` that turns
+    their handles into one bundle per partition, then the reduce.
+
+    Args:
+        input_op: The writer, or one writer per input (e.g. join).
+        data_context: Runtime configuration.
+        num_partitions: Total number of output partitions.
+        **reduce_kwargs: Forwarded to ``DiskHashShuffleReduceOp``.
+
+    Returns:
+        The reduce operator.
+    """
+    input_ops = [input_op] if isinstance(input_op, PhysicalOperator) else input_op
+    regroup_op = DiskHashShuffleRegroupOp(
+        input_ops, data_context, num_partitions=num_partitions
+    )
+    return DiskHashShuffleReduceOp(
+        regroup_op, data_context, num_partitions=num_partitions, **reduce_kwargs
     )
 
 
@@ -139,7 +168,7 @@ def _select_shuffle_v2_op_classes(
     names.
     """
     if data_context.use_disk_based_hash_shuffle:
-        return plan_disk_hash_shuffle_map, DiskHashShuffleReduceOp, "Disk"
+        return plan_disk_hash_shuffle_map, plan_disk_hash_shuffle_reduce, "Disk"
     return (
         functools.partial(ShuffleMapOp, map_runtime_env=_SHUFFLE_MAP_RUNTIME_ENV),
         ShuffleReduceOp,
