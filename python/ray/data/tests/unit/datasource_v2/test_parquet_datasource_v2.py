@@ -833,6 +833,59 @@ def test_parquet_file_reader_reads_selected_row_groups(tmp_path):
     assert rows == sorted(expected)
 
 
+def test_parquet_file_reader_answers_fully_matched_runs_from_metadata(tmp_path):
+    """A matched run contributes its count without its file ever being opened."""
+    from ray.data._internal.arrow_block import (
+        _BATCH_SIZE_PRESERVING_STUB_COL_NAME,
+    )
+    from ray.data.expressions import col
+
+    file_path = str(tmp_path / "data.parquet")
+    _write_multi_row_group_parquet(file_path, num_rows=200, row_group_size=20)
+    # If the reader opens this path the test fails on the missing file, which
+    # is the point: a fully matched run must not be read at all.
+    never_opened = str(tmp_path / "never-opened.parquet")
+
+    matched = FileChunk(unit_ids=(0,), num_rows=20, size_bytes=160, fully_matched=True)
+    partial = FileChunk(unit_ids=(1,), num_rows=20, size_bytes=160, fully_matched=False)
+    manifest = FileManifest.construct_manifest(
+        paths=[never_opened, file_path],
+        sizes=[0, 0],
+        chunk_metadatas=[matched.to_metadata(), partial.to_metadata()],
+    )
+    reader = ParquetFileReader(columns=[], predicate=col("id") >= 0)
+
+    tables = list(reader.read(manifest))
+
+    assert tables[0].column_names == [_BATCH_SIZE_PRESERVING_STUB_COL_NAME]
+    assert tables[0].num_rows == 20
+    # The partial row group is rows [20, 40); the stub stands in for [0, 20).
+    assert sum(table.num_rows for table in tables) == 40
+
+
+def test_parquet_file_reader_exact_count_read_gate():
+    """Only an empty projection with a pushed predicate and no limit qualifies.
+
+    Each condition removes a way the stored ``num_rows`` could differ from what
+    a read would yield, so the gate is the whole trust contract of the
+    footer-only shortcut.
+    """
+    from ray.data.expressions import col
+
+    predicate = col("id") >= 0
+    cases = [
+        (ParquetFileReader(columns=[], predicate=predicate), True),
+        # No predicate: ``fully_matched`` is the field's default, not evidence.
+        (ParquetFileReader(columns=[]), False),
+        # A projection needs the column data, so the file must be opened.
+        (ParquetFileReader(predicate=predicate), False),
+        # A limit makes the answer a prefix of the manifest, not a total.
+        (ParquetFileReader(columns=[], predicate=predicate, limit=1), False),
+    ]
+    for reader, expected in cases:
+        assert reader._is_exact_count_read() is expected
+
+
 def test_parquet_file_reader_row_group_row_hashes_are_unique(tmp_path):
     """Row hashes stay unique across per-row-group sub-fragments of one file.
 

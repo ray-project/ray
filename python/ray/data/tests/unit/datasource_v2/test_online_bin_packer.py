@@ -149,6 +149,38 @@ def test_duplicated_file_keeps_one_row_per_copy() -> None:
     assert _rows(manifest) == [("a", [0, 1]), ("a", [0, 1])]
 
 
+def test_packed_runs_never_merge_across_fully_matched() -> None:
+    """A matched run and a partial run of one file stay separate manifest rows.
+
+    The reader answers a matched run from its footer, so folding it into a
+    partial run would AND the flags, mark the row partial, and read data the
+    listing had already proven whole.
+    """
+    manifest = _file(
+        "a",
+        20,
+        [
+            _run((0,), 10, rows=5, fully_matched=False),
+            _run((1,), 10, rows=7, fully_matched=True),
+        ],
+    )
+    packer = OnlineBinPacker(max_bin_bytes=1000)
+    packer.add_input(manifest)
+    packer.finalize()
+    assert packer.has_partition()
+
+    chunks = [
+        FileChunk.from_metadata(metadata)
+        for metadata in packer.next_partition().file_chunk_metadatas
+    ]
+
+    assert sorted((chunk.unit_ids, chunk.fully_matched) for chunk in chunks) == [
+        ((0,), False),
+        ((1,), True),
+    ]
+    assert sorted(chunk.num_rows for chunk in chunks) == [5, 7]
+
+
 @pytest.mark.parametrize("split_coalesced", [False, True])
 def test_packer_preserves_unit_multiplicity_of_duplicated_files(
     split_coalesced: bool,

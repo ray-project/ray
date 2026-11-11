@@ -317,18 +317,26 @@ def _group_disjoint_runs(runs: List[FileChunk]) -> List[List[FileChunk]]:
     every group's union scans it exactly N times — which copy of a
     duplicated file a run came from doesn't matter, the copies are the
     same bytes.
+
+    Runs also never merge across the ``fully_matched`` boundary. The reader
+    answers a matched run from its footer instead of reading it, so folding
+    one into a partial run would AND the flags, mark the whole row partial,
+    and force the matched bytes to be read. ``coalesce_row_groups`` keeps the
+    same boundary while listing.
     """
     id_sets: List[set] = []
+    match_classes: List[bool] = []
     groups: List[List[FileChunk]] = []
     for run in runs:
         ids = set(run.unit_ids)
-        for seen, group in zip(id_sets, groups):
-            if seen.isdisjoint(ids):
-                seen.update(ids)
+        for idx, group in enumerate(groups):
+            if match_classes[idx] == run.fully_matched and id_sets[idx].isdisjoint(ids):
+                id_sets[idx].update(ids)
                 group.append(run)
                 break
         else:
             id_sets.append(ids)
+            match_classes.append(run.fully_matched)
             groups.append([run])
     return groups
 

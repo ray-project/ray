@@ -26,6 +26,8 @@ from ray.data._internal.datasource_v2.common.file_reader import (
     _ARROW_DEFAULT_BATCH_SIZE,
     FileFormat,
     FileReader,
+    empty_projection_stub,
+    split_fully_matched,
 )
 from ray.data._internal.datasource_v2.common.partitioning_utils import (
     _evaluate_path_predicate,
@@ -757,6 +759,47 @@ class ParquetFileReader(FileReader, SupportsMetadata):
             "fragment_readahead": 1,
         }
         return kwargs
+
+    def _is_exact_count_read(self) -> bool:
+        """Whether this read needs only the number of surviving rows.
+
+        ``_columns`` must be an *empty projection*; ``None`` means "all
+        columns" and does not qualify. The remaining two conditions make the
+        listing's ``fully_matched`` flag trustworthy rather than merely
+        present: a pushed predicate is what the flag was computed against, and
+        ``ReadFiles`` refuses predicate push-down for a row-reducing
+        ``block_udf``, so no post-read transform can change the count.
+        """
+        return (
+            self._predicate is not None
+            and self._limit is None
+            and self._columns is not None
+            and len(self._columns) == 0
+        )
+
+    @override
+    def read(self, input_split: FileManifest) -> Iterator[pa.Table]:
+        """Read a manifest, answering fully matched runs from listing metadata.
+
+        ``Dataset.filter(...).count()`` reaches this reader with an empty
+        projection: it needs the number of surviving rows, not the rows. When
+        listing also proved ``FileChunk.fully_matched`` for a run, its
+        ``num_rows`` is exactly what a read would yield, so the file is never
+        opened.
+
+        Every unproven case reads. ``fully_matched`` exactness is a property of
+        the Parquet pairing: this reader is constructed by
+        ``ParquetDatasourceV2``, whose indexer is always ``FooterFileIndexer``,
+        which computes the flag against the listing predicate. An indexer that
+        leaves the flag at its default ``True`` must not feed this reader.
+        """
+        if self._is_exact_count_read():
+            stub_num_rows, input_split = split_fully_matched(input_split)
+            # ``empty_projection_stub`` allocates no buffers, so one table per
+            # run costs O(1) regardless of ``num_rows``.
+            for num_rows in stub_num_rows:
+                yield empty_projection_stub(num_rows)
+        yield from super().read(input_split)
 
     @override
     def read_metadata(self, file_manifest: FileManifest) -> Iterator[BlockMetadata]:

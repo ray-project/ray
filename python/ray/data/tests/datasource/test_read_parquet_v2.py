@@ -1069,10 +1069,13 @@ def test_count_pushdown_preserves_list_files_fields(tmp_path, restore_ctx, read_
 
 
 @pytest.mark.parametrize("merge_schema", [False, True])
-def test_count_pushdown_uses_footer_matches_for_filter(
-    tmp_path, restore_ctx, merge_schema
-):
-    """A filtered count keeps the footer indexer and uses fully-matched runs."""
+def test_count_uses_footer_matches_for_filter(tmp_path, restore_ctx, merge_schema):
+    """A filtered count keeps the read plan and answers matched runs from footers.
+
+    The optimizer deliberately does not rewrite this plan: ``ReadFiles`` already
+    receives an empty projection with the predicate pushed, so the reader is
+    the only component that needs to know a run is fully matched.
+    """
     from ray.data._internal.logical.operators.map_operator import MapBatches
 
     _write(tmp_path / "data.parquet", pa.table({"a": [1, 2, 3, 4]}))
@@ -1083,19 +1086,25 @@ def test_count_pushdown_uses_footer_matches_for_filter(
     )
 
     dag = _optimized_count_plan(ds).dag
-    assert isinstance(dag, MapBatches)
-    assert not any(isinstance(op, ReadFiles) for op in _walk(dag))
+    assert any(isinstance(op, ReadFiles) for op in _walk(dag))
+    assert not any(isinstance(op, MapBatches) for op in _walk(dag))
 
-    (list_files_op,) = [op for op in _walk(dag) if isinstance(op, ListFiles)]
-    assert isinstance(list_files_op.file_indexer, FooterFileIndexer)
-    assert list_files_op.file_partitioner is None
+    (read_files_op,) = [op for op in _walk(dag) if isinstance(op, ReadFiles)]
+    scanner = read_files_op.scanner
+    assert isinstance(scanner, ParquetScanner)
+    # ``columns`` is the pushed empty projection: a tuple, not ``None``.
+    assert scanner.columns is not None
+    assert len(scanner.columns) == 0
+    assert scanner.predicate is not None
+    assert scanner.limit is None
+
     assert ds.count() == 2
     rows = ds.take_all()
     assert sorted(row["a"] for row in rows) == [3, 4]
 
 
 def test_count_pushdown_preserves_read_remote_args(tmp_path, restore_ctx):
-    """Filtered count reads partial runs with the read's resource config."""
+    """The metadata count pass keeps the read's resource config."""
     from ray.data._internal.logical.operators.map_operator import MapBatches
 
     _write(tmp_path / "data.parquet", pa.table({"a": [1, 2, 3, 4]}))
@@ -1104,7 +1113,7 @@ def test_count_pushdown_preserves_read_remote_args(tmp_path, restore_ctx):
     ds = ray.data.read_parquet(
         str(tmp_path),
         ray_remote_args={"resources": {"count_pushdown_test": 0.001}},
-    ).filter(expr=col("a") > 2)
+    )
 
     dag = _optimized_count_plan(ds).dag
     assert isinstance(dag, MapBatches)
@@ -1112,20 +1121,57 @@ def test_count_pushdown_preserves_read_remote_args(tmp_path, restore_ctx):
     assert "num_cpus" in dag.ray_remote_args
 
 
+def test_count_with_row_reducing_block_udf_reads(tmp_path, restore_ctx):
+    """A row-reducing block UDF cannot use the footer shortcut.
+
+    ``fully_matched`` describes the scan, not the UDF's output, and stubbing
+    would change how many batches the UDF sees. ``ReadFiles`` refuses predicate
+    push-down for an arbitrary ``block_udf``, so the reader receives no
+    predicate and reads normally.
+    """
+    _write(tmp_path / "data.parquet", pa.table({"a": [1, 2, 3, 4]}))
+
+    restore_ctx.use_datasource_v2 = True
+    ds = ray.data.read_parquet(
+        str(tmp_path), _block_udf=lambda table: table.slice(0, 1)
+    ).filter(expr=col("a") > 0)
+
+    (read_files_op,) = [
+        op for op in _walk(_optimized_count_plan(ds).dag) if isinstance(op, ReadFiles)
+    ]
+    assert read_files_op.block_udf is not None
+    scanner = read_files_op.scanner
+    assert isinstance(scanner, ParquetScanner)
+    assert scanner.predicate is None
+
+    assert ds.count() == len(ds.take_all())
+
+
 @pytest.mark.parametrize("merge_schema", [False, True])
-def test_count_pushdown_declines_limit(tmp_path, restore_ctx, merge_schema):
-    """A limit makes the listing stop early, so metadata cannot answer count()."""
+def test_count_declines_limit(tmp_path, restore_ctx, merge_schema):
+    """A limit makes the result a prefix of the manifest, so it must be read."""
     _write(tmp_path / "data.parquet", pa.table({"a": [1, 2, 3, 4]}))
 
     restore_ctx.use_datasource_v2 = True
     ds = ray.data.read_parquet(str(tmp_path), merge_schema=merge_schema).limit(2)
 
-    assert any(isinstance(op, ReadFiles) for op in _walk(_optimized_count_plan(ds).dag))
+    dag = _optimized_count_plan(ds).dag
+    (read_files_op,) = [op for op in _walk(dag) if isinstance(op, ReadFiles)]
+    # The reader's fast path requires an empty projection *and* no limit; a
+    # limit needs the data columns, so ``columns`` is ``None`` here.
+    scanner = read_files_op.scanner
+    assert isinstance(scanner, ParquetScanner)
+    assert scanner.limit == 2
+    assert scanner.columns is None
     assert ds.count() == 2
 
 
-def test_count_pushdown_declines_synthesized_columns(tmp_path, restore_ctx):
-    """A synthesized-column predicate can't be evaluated with an empty projection."""
+def test_count_with_include_paths(tmp_path, restore_ctx):
+    """A synthesized column is not needed by an empty-projection count.
+
+    ``include_paths`` adds ``path`` after the read, but ``count()`` projects to
+    zero columns first, so the run can still be answered from its footer.
+    """
     _write(tmp_path / "data.parquet", pa.table({"a": [1, 2, 3]}))
 
     restore_ctx.use_datasource_v2 = True
@@ -1133,8 +1179,8 @@ def test_count_pushdown_declines_synthesized_columns(tmp_path, restore_ctx):
         expr=col("a") > 0
     )
 
-    assert any(isinstance(op, ReadFiles) for op in _walk(_optimized_count_plan(ds).dag))
     assert ds.count() == 3
+    assert len(ds.take_all()) == 3
 
 
 @pytest.mark.parametrize(
@@ -1192,7 +1238,6 @@ def test_count_pushdown_reads_only_partial_runs(tmp_path, restore_ctx, monkeypat
     """Fully matched runs come from footers; only unsettled runs are read."""
     from dataclasses import dataclass, fields
     from pathlib import Path
-    from typing import Iterator
 
     for i in range(4):
         pq.write_table(
@@ -1209,33 +1254,25 @@ def test_count_pushdown_reads_only_partial_runs(tmp_path, restore_ctx, monkeypat
     class RecordingScanner(ParquetScanner):
         def create_reader(self) -> ParquetFileReader:
             reader = super().create_reader()
-            original_read = reader.read
+            # Trace the manifest a scan is about to open. Stubbed runs never
+            # reach ``_get_fragments_to_read``, so a recorded path was read.
+            original_fragments = reader._get_fragments_to_read
 
-            def traced_read(input_split: FileManifest) -> Iterator[pa.Table]:
-                chunks: list = []
-                for metadata in input_split.file_chunk_metadatas:
-                    chunks.append(
-                        None
-                        if metadata is None
-                        else {
-                            "unit_ids": [int(unit) for unit in metadata["unit_ids"]],
-                            "num_rows": int(metadata["num_rows"]),
-                            "fully_matched": bool(metadata["fully_matched"]),
-                        }
+            def traced_fragments(dataset, manifest):
+                rows = [
+                    {
+                        "path": str(path),
+                        "unit_ids": sorted(int(unit) for unit in metadata["unit_ids"]),
+                    }
+                    for path, metadata in zip(
+                        manifest.paths, manifest.file_chunk_metadatas
                     )
+                ]
                 with open(trace_path, "a", encoding="utf-8") as trace:
-                    trace.write(
-                        json.dumps(
-                            {
-                                "paths": input_split.paths.tolist(),
-                                "chunks": chunks,
-                            }
-                        )
-                        + "\n"
-                    )
-                yield from original_read(input_split)
+                    trace.write(json.dumps(rows) + "\n")
+                return original_fragments(dataset, manifest)
 
-            reader.read = traced_read
+            reader._get_fragments_to_read = traced_fragments
             return reader
 
     def create_scanner(datasource, schema, filesystem=None, **options):
@@ -1246,7 +1283,7 @@ def test_count_pushdown_reads_only_partial_runs(tmp_path, restore_ctx, monkeypat
 
     monkeypatch.setattr(ParquetDatasourceV2, "create_scanner", create_scanner)
 
-    # Every surviving run is fully matched: count() must not read any data.
+    # Every surviving run is fully matched: count() must not open any file.
     all_matched = ray.data.read_parquet(str(tmp_path)).filter(expr=col("id") >= 200)
     assert all_matched.count() == 200
     assert not Path(trace_path).exists()
@@ -1257,12 +1294,11 @@ def test_count_pushdown_reads_only_partial_runs(tmp_path, restore_ctx, monkeypat
 
     records = [json.loads(line) for line in Path(trace_path).read_text().splitlines()]
     assert records
-    assert {path for record in records for path in record["paths"]} == {
-        str(tmp_path / "f2.parquet")
-    }
-    assert all(
-        not chunk["fully_matched"] for record in records for chunk in record["chunks"]
-    )
+    # Only f2's *partial* row group is opened. Its matched row group and f3
+    # must not be pulled into the read row by the packer's merge.
+    assert [row for record in records for row in record] == [
+        {"path": str(tmp_path / "f2.parquet"), "unit_ids": [0]}
+    ]
 
 
 @pytest.mark.parametrize("case", ["nulls", "floats", "no_stats"])
