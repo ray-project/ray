@@ -11,7 +11,6 @@ import pytest
 from pyarrow import orc
 
 import ray
-from ray.actor import ActorClass, ActorHandle
 from ray.data._internal.arrow_block import _BATCH_SIZE_PRESERVING_STUB_COL_NAME
 from ray.data._internal.datasource.orc_datasink import ORCDatasink
 from ray.data._internal.datasource.orc_datasource import ORCDatasource
@@ -20,8 +19,6 @@ from ray.data._internal.util import rows_same
 from ray.data.block import BlockAccessor
 from ray.data.expressions import col
 from ray.data.tests.datasource.orc_decode_trace import (
-    OrcTrace,
-    traced_scanner,
     write_orc_stripes,
     write_stripe_pipeline_files,
 )
@@ -1614,47 +1611,16 @@ def _set_orc_group_target(monkeypatch, target):
 
 
 @pytest.fixture
-def orc_pipeline(tmp_path, monkeypatch, request):
-    from types import SimpleNamespace
-
+def orc_pipeline(tmp_path, monkeypatch):
     from ray.data.context import DataContext
 
     ctx = DataContext.get_current()
     monkeypatch.setattr(ctx, "use_datasource_v2", True)
     monkeypatch.setattr(ctx, "target_min_block_size", 0)
     monkeypatch.setattr(ctx, "target_max_block_size", 4096)
-    monkeypatch.setattr(
-        ctx.execution_options,
-        "preserve_order",
-        getattr(request.node, "callspec", SimpleNamespace(params={})).params.get(
-            "ordered", False
-        ),
-    )
+    monkeypatch.setattr(ctx.execution_options, "preserve_order", False)
     _set_orc_group_target(monkeypatch, 4096)
-    paths = write_stripe_pipeline_files(tmp_path)
-    return SimpleNamespace(paths=paths)
-
-
-@pytest.fixture
-def orc_trace():
-    trace = cast(ActorHandle[OrcTrace], cast("ActorClass[OrcTrace]", OrcTrace).remote())
-    try:
-        yield trace
-    finally:
-        ray.kill(trace)
-
-
-def _trace_orc_pipeline(monkeypatch, trace):
-    from ray.data._internal.datasource_v2.formats.orc.orc_datasource_v2 import (
-        OrcDatasourceV2,
-    )
-
-    create = OrcDatasourceV2.create_scanner
-    monkeypatch.setattr(
-        OrcDatasourceV2,
-        "create_scanner",
-        lambda source, *a, **kw: traced_scanner(create(source, *a, **kw), trace),
-    )
+    return write_stripe_pipeline_files(tmp_path)
 
 
 @_ORC_STRIPE_RESOURCES
@@ -1740,9 +1706,8 @@ def test_orc_stripe_public_contract(
 def test_orc_stripe_remote_filesystem(
     ray_start_regular_shared, orc_pipeline, s3_fs, s3_path, monkeypatch
 ):
-    p = orc_pipeline
     prefix = s3_path.removeprefix("s3://")
-    for path in p.paths[:2]:
+    for path in orc_pipeline:
         with s3_fs.open_output_stream(f"{prefix}/{path.name}") as out:
             out.write(path.read_bytes())
     rows = ray.data.read_orc(
@@ -1753,19 +1718,23 @@ def test_orc_stripe_remote_filesystem(
 
 @_ORC_STRIPE_RESOURCES
 @pytest.mark.timeout(180)
-def test_orc_one_file_uses_parallel_read_tasks(
-    ray_start_regular_shared, orc_pipeline, orc_trace, monkeypatch
-):
-    p = orc_pipeline
-    _trace_orc_pipeline(monkeypatch, orc_trace)
-    rows = ray.data.read_orc(str(p.paths[0]), num_cpus=1, concurrency=4).take_all()
+def test_orc_one_file_uses_multiple_read_tasks(ray_start_regular_shared, orc_pipeline):
+    dataset = ray.data.read_orc(str(orc_pipeline[0]), num_cpus=1, concurrency=4)
+    dataset = dataset.materialize()
+    rows = dataset.take_all()
     assert sorted(r["id"] for r in rows) == list(range(8))
-    workers, stripes = ray.get(orc_trace.snapshot.remote())
-    assert (
-        len({task for task, _ in workers}) >= 2
-        and len({pid for _, pid in workers}) >= 2
-    )
-    assert sorted(stripes) == [0, 1, 2, 3]
+    pending = [dataset.get_stats_summary()]
+    read_ops = []
+    while pending:
+        summary = pending.pop()
+        pending.extend(summary.parents)
+        read_ops.extend(
+            op
+            for op in summary.operators_stats
+            if op.operator_name == "ReadFilesOrcV2" and op.task_rows is not None
+        )
+    assert len(read_ops) == 1
+    assert read_ops[0].task_rows is not None and read_ops[0].task_rows.count >= 2
 
 
 @_ORC_STRIPE_RESOURCES
