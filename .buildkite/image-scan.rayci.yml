@@ -1,0 +1,146 @@
+# Trivy scans of the images published nightly and at release time.
+#
+# Runs only when release-automation sets RAYCI_IMAGE_SCAN=1 on the postmerge
+# build it triggers (.buildkite/release-automation/pre_release.rayci.yml).
+# release-automation waits on that build, so every step is soft_fail: a scan
+# must never block a release. Tooling: ci/ray_ci/automation/trivy/.
+#
+# trivy_db mirrors the vulnerability DBs into the build's work repo once.
+# Each scan job then scans one (architecture, platform) group by digest, with
+# Trivy in a network-less container, and writes trivy/results/ artifacts.
+# Images sharing a platform share most layers, so a group pulls them once.
+group: image scan
+steps:
+  - label: ":shield: trivy: mirror vulnerability DBs"
+    key: trivy_db
+    if: build.env("RAYCI_IMAGE_SCAN") == "1"
+    instance_type: small
+    soft_fail: true
+    tags:
+      - docker
+      - oss
+      - skip-on-premerge
+    commands:
+      - bazel run //ci/ray_ci/automation/trivy:trivy_db --
+        --output /artifact-mount/trivy/metadata.json
+    depends_on:
+      - forge
+
+  # Disk: a group's shared layout is copied into a docker volume before the
+  # scan, so the job needs about twice the group's distinct layer size (up
+  # to ~10 GiB here) plus 2 x 3.2 GB of DBs.
+  - label: ":shield: trivy: scan ray, ray-extra {{array.platform}} (x86_64)"
+    key: images_scan
+    if: build.env("RAYCI_IMAGE_SCAN") == "1"
+    instance_type: medium
+    soft_fail: true
+    tags:
+      - docker
+      - oss
+      - skip-on-premerge
+    commands:
+      - bazel run //ci/ray_ci/automation/trivy:scan_images --
+        --architecture x86_64
+        --platform {{array.platform}}
+        --image ray:3.11 --image ray:3.12 --image ray:3.13 --image ray:3.14
+        --image ray-extra:3.11 --image ray-extra:3.12
+        --image ray-extra:3.13 --image ray-extra:3.14
+    array:
+      platform:
+        - cpu
+        - cu11.8.0-cudnn8
+        - cu12.1.1-cudnn8
+        - cu12.3.2-cudnn9
+        - cu12.4.1-cudnn
+        - cu12.5.1-cudnn
+        - cu12.6.3-cudnn
+        - cu12.8.1-cudnn
+        - cu12.9.1-cudnn
+        - cu13.0.0-cudnn
+        - cu13.3.1-cudnn
+    depends_on:
+      - trivy_db
+      - ray_images_push(*)
+      - ray_extra_images_push(*)
+      - forge
+
+  - label: ":shield: trivy: scan ray tpu (x86_64)"
+    key: images_scan_tpu
+    if: build.env("RAYCI_IMAGE_SCAN") == "1"
+    instance_type: medium
+    soft_fail: true
+    tags:
+      - docker
+      - oss
+      - skip-on-premerge
+    commands:
+      - bazel run //ci/ray_ci/automation/trivy:scan_images --
+        --architecture x86_64
+        --platform tpu
+        --image ray:3.11 --image ray:3.12 --image ray:3.13 --image ray:3.14
+    depends_on:
+      - trivy_db
+      - ray_images_push(*)
+      - forge
+
+  - label: ":shield: trivy: scan ray, ray-extra {{array.platform}} (aarch64)"
+    key: images_scan_aarch64
+    if: build.env("RAYCI_IMAGE_SCAN") == "1"
+    # Trivy only reads the layout, so arm64 images are scanned on x86_64.
+    instance_type: medium
+    soft_fail: true
+    tags:
+      - docker
+      - oss
+      - skip-on-premerge
+    commands:
+      - bazel run //ci/ray_ci/automation/trivy:scan_images --
+        --architecture aarch64
+        --platform {{array.platform}}
+        --image ray:3.11 --image ray:3.12 --image ray:3.13 --image ray:3.14
+        --image ray-extra:3.11 --image ray-extra:3.12
+        --image ray-extra:3.13 --image ray-extra:3.14
+    array:
+      platform:
+        - cpu
+        - cu11.8.0-cudnn8
+        - cu12.1.1-cudnn8
+        - cu12.3.2-cudnn9
+        - cu12.4.1-cudnn
+        - cu12.5.1-cudnn
+        - cu12.6.3-cudnn
+        - cu12.8.1-cudnn
+        - cu12.9.1-cudnn
+        - cu13.0.0-cudnn
+        - cu13.3.1-cudnn
+    depends_on:
+      - trivy_db
+      - ray_images_push_aarch64(*)
+      - ray_extra_images_push_aarch64(*)
+      - forge
+
+  - label: ":shield: trivy: scan ray-llm, ray-llm-extra ({{array.architecture}})"
+    key: images_scan_llm
+    if: build.env("RAYCI_IMAGE_SCAN") == "1"
+    instance_type: medium
+    soft_fail: true
+    tags:
+      - docker
+      - oss
+      - skip-on-premerge
+    commands:
+      - bazel run //ci/ray_ci/automation/trivy:scan_images --
+        --architecture {{array.architecture}}
+        --platform cu13.0.0-cudnn
+        --image ray-llm:3.12 --image ray-llm-extra:3.12
+    array:
+      architecture:
+        - x86_64
+        - aarch64
+    depends_on:
+      - trivy_db
+      - ray_llm_images_cuda_push(*)
+      - ray_llm_extra_images_cuda_push(*)
+      - ray_llm_images_cuda_push_aarch64(*)
+      - ray_llm_extra_images_cuda_push_aarch64(*)
+      - forge
