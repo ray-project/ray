@@ -3,6 +3,8 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Any, Dict, Iterator, Optional, Sequence
 
+import pyarrow as pa
+
 from ray.data._internal.datasource_v2.interfaces.file_manifest import FileManifest
 from ray.util.annotations import DeveloperAPI
 
@@ -120,6 +122,16 @@ class SupportsColumnStatistics(ABC):
     from an unknown result. All requested columns share one metadata read per
     file, since reading a footer is the expensive part of this API.
     """
+
+    @abstractmethod
+    def supports_column_type(self, column_type: pa.DataType) -> bool:
+        """Whether footer statistics can exactly bound a column of this type.
+
+        A planning-time hint only. ``False`` must leave the read plan untouched
+        so the column keeps the normal read path; ``True`` does not guarantee
+        that a particular file has statistics, which is the per-file
+        ``state=UNKNOWN`` answer instead.
+        """
 
     @abstractmethod
     def read_column_statistics(

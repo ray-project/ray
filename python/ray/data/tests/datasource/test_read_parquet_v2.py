@@ -947,7 +947,7 @@ def test_min_max_nulls_and_empty_dataset(tmp_path, restore_ctx):
     assert ds.min("x", ignore_nulls=False) is None
     assert ds.max("all_null") is None
     assert ds.max("all_null", ignore_nulls=False) is None
-    # Float stats are not used; the fallback read still matches Arrow semantics.
+    # Floats are declined at planning, so both stay on the read path.
     assert ds.max("f") == 3.0
     # All-NaN columns produce no bound in Ray's aggregate path.
     assert ds.max("f_all_nan") is None
@@ -1018,6 +1018,13 @@ def test_min_max_all_empty_matches_stock_aggregate(tmp_path, restore_ctx, monkey
 
 
 def test_min_max_declines_subclasses(tmp_path, restore_ctx):
+    """The guard is deliberately coarse: every Min/Max subclass is declined.
+
+    The rule replaces the aggregate's *input*, so a subclass whose
+    ``aggregate_block`` depends on more than the target column's extrema would
+    answer differently. The planner cannot inspect that, and a wrong bound is
+    silent, so it declines the whole class rather than reasoning per override.
+    """
     _write(tmp_path / "data.parquet", pa.table({"x": [5, 1, 9]}))
 
     restore_ctx.use_datasource_v2 = True
@@ -1037,8 +1044,15 @@ def test_min_max_declines_subclasses(tmp_path, restore_ctx):
         ([[float("nan")], [float("nan")]], None),
     ],
 )
-def test_min_max_nan_across_files(tmp_path, restore_ctx, monkeypatch, files, expected):
-    """NaN is ignored when a value exists, regardless of file order."""
+def test_min_max_declines_floats_with_nan(
+    tmp_path, restore_ctx, monkeypatch, files, expected
+):
+    """Float bounds are not exact, so floats decline and NaN keeps read semantics.
+
+    Parquet bounds exclude NaN, and Arrow's min/max returns NaN only for an
+    all-NaN input, so the footer cannot express the answer. Declining at
+    planning keeps that logic in the read path instead of reimplementing it.
+    """
     for i, values in enumerate(files):
         _write(
             tmp_path / f"f{i:02d}.parquet",
@@ -1048,6 +1062,9 @@ def test_min_max_nan_across_files(tmp_path, restore_ctx, monkeypatch, files, exp
     monkeypatch.setattr(restore_ctx.execution_options, "preserve_order", True)
     restore_ctx.use_datasource_v2 = True
     ds = ray.data.read_parquet(str(tmp_path))
+
+    dag = _optimized_min_max_plan(ds, [Min("f")]).dag
+    assert any(isinstance(op, ReadFiles) for op in _walk(dag))
 
     if expected is None:
         assert ds.min("f") is None
@@ -1065,31 +1082,102 @@ def test_min_max_nan_across_files(tmp_path, restore_ctx, monkeypatch, files, exp
         assert ds.max("f", ignore_nulls=False) == expected
 
 
-def test_min_max_falls_back_for_missing_stats_and_strings(tmp_path, restore_ctx):
-    pq.write_table(
-        pa.table(
-            {
-                "x": [5, 1, 3],
-                "s": ["b", "a", "c"],
-                "f": [2.0, 1.0, float("nan")],
-            }
-        ),
-        str(tmp_path / "with_stats.parquet"),
+def test_min_max_reads_only_files_without_statistics(
+    tmp_path, restore_ctx, monkeypatch
+):
+    """A file with no footer statistics is read; the known files are not."""
+    from dataclasses import dataclass, fields
+    from pathlib import Path
+
+    from ray.data._internal.datasource_v2.formats.parquet.parquet_datasource_v2 import (
+        ParquetDatasourceV2,
     )
+    from ray.data._internal.datasource_v2.formats.parquet.parquet_scanner import (
+        ParquetScanner,
+    )
+
+    known = tmp_path / "with_stats.parquet"
+    statless = tmp_path / "without_stats.parquet"
+    pq.write_table(pa.table({"x": [5, 1, 3]}), str(known))
+    pq.write_table(pa.table({"x": [0, 4, 2]}), str(statless), write_statistics=False)
+
+    restore_ctx.use_datasource_v2 = True
+    trace_path = tmp_path / "read-paths.jsonl"
+    original_create_scanner = ParquetDatasourceV2.create_scanner
+
+    @dataclass(frozen=True)
+    class RecordingScanner(ParquetScanner):
+        def create_reader(self):
+            reader = super().create_reader()
+            original_fragments = reader._get_fragments_to_read
+
+            def traced_fragments(dataset, manifest):
+                with open(trace_path, "a", encoding="utf-8") as trace:
+                    trace.write(str(sorted(manifest.paths.tolist())) + "\n")
+                return original_fragments(dataset, manifest)
+
+            reader._get_fragments_to_read = traced_fragments
+            return reader
+
+    def create_scanner(datasource, schema, filesystem=None, **options):
+        scanner = original_create_scanner(datasource, schema, filesystem, **options)
+        return RecordingScanner(
+            **{field.name: getattr(scanner, field.name) for field in fields(scanner)}
+        )
+
+    monkeypatch.setattr(ParquetDatasourceV2, "create_scanner", create_scanner)
+
+    ds = ray.data.read_parquet(str(tmp_path))
+    assert ds.min("x") == 0
+    assert ds.max("x") == 5
+
+    read_paths = set(Path(trace_path).read_text().splitlines())
+    assert read_paths == {str([str(statless)])}
+
+
+@pytest.mark.parametrize("write_statistics", [True, False], ids=["footer", "read"])
+def test_min_max_per_column_nulls_do_not_contaminate(
+    tmp_path, restore_ctx, write_statistics
+):
+    """A null in one column must not null out another column's extremum.
+
+    The summary carries one null row whose nulls are exactly the columns that
+    contain one; the other columns in that row keep a real bound. Both the
+    footer and the read summary must obey that.
+    """
     pq.write_table(
-        pa.table({"x": [0, 4, 2]}),
-        str(tmp_path / "without_stats.parquet"),
-        write_statistics=False,
+        pa.table({"a": pa.array([None, None], pa.int64()), "b": [30, 40]}),
+        str(tmp_path / "data.parquet"),
+        write_statistics=write_statistics,
     )
 
     restore_ctx.use_datasource_v2 = True
     ds = ray.data.read_parquet(str(tmp_path))
 
-    assert ds.min("x") == 0
-    assert ds.max("x") == 5
-    assert ds.min("s") == "a"
-    assert ds.max("s") == "c"
-    assert ds.max("f") == 2.0
+    assert ds.aggregate(Min("a", ignore_nulls=False), Min("b", ignore_nulls=False)) == {
+        "min(a)": None,
+        "min(b)": 30,
+    }
+    assert ds.aggregate(Max("a", ignore_nulls=False), Max("b", ignore_nulls=False)) == {
+        "max(a)": None,
+        "max(b)": 40,
+    }
+
+
+def test_min_max_preserves_read_remote_args(tmp_path, restore_ctx):
+    """The summary task may read files, so it keeps the read's resource config."""
+    from ray.data._internal.logical.operators.map_operator import MapBatches
+
+    _write(tmp_path / "data.parquet", pa.table({"x": [1, 2]}))
+
+    restore_ctx.use_datasource_v2 = True
+    ds = ray.data.read_parquet(
+        str(tmp_path), ray_remote_args={"resources": {"min_max_test": 0.001}}
+    )
+
+    dag = _optimized_min_max_plan(ds, [Min("x")]).dag
+    (map_op,) = [op for op in _walk(dag) if isinstance(op, MapBatches)]
+    assert map_op.ray_remote_args["resources"] == {"min_max_test": 0.001}
 
 
 def test_min_max_schema_evolution(tmp_path, restore_ctx):

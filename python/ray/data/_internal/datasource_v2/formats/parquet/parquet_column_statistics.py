@@ -7,6 +7,7 @@ file instead: a wrong min/max is silent, a fallback is merely slower.
 
 from typing import Optional
 
+import pyarrow as pa
 import pyarrow.parquet as pq
 
 from ray.data._internal.datasource_v2.interfaces.supports_column_statistics import (
@@ -18,6 +19,27 @@ from ray.data._internal.datasource_v2.interfaces.supports_column_statistics impo
 # (which bounds exclude) and BYTE_ARRAY bounds may be truncated by the writer,
 # so both fall back to a read.
 _EXACT_PHYSICAL_TYPES = frozenset({"INT32", "INT64", "BOOLEAN"})
+
+
+def is_exact_statistics_type(column_type: pa.DataType) -> bool:
+    """Whether a column of ``column_type`` can have exact footer bounds.
+
+    The Arrow allowlist is the logical counterpart of
+    ``_EXACT_PHYSICAL_TYPES``: only scalar types Parquet stores as INT32,
+    INT64, or BOOLEAN. Keeping it next to the physical list is what stops the
+    two from drifting, and it is why the planner can decline floats and
+    strings without the reader decoding them first.
+
+    A planning-time hint only: a file whose footer carries no statistics is
+    still ``UNKNOWN`` per file.
+    """
+    return (
+        pa.types.is_integer(column_type)
+        or pa.types.is_boolean(column_type)
+        or pa.types.is_date(column_type)
+        or pa.types.is_time(column_type)
+        or pa.types.is_timestamp(column_type)
+    )
 
 
 def _resolve_leaf(schema: pq.ParquetSchema, column: str) -> Optional[int]:

@@ -110,6 +110,50 @@ def test_missing_statistics_and_nested_columns_are_unknown(tmp_path):
     )
 
 
+def test_exact_statistics_type_matches_the_physical_allowlist():
+    """The planning hint accepts exactly the scalar types Parquet bounds exactly.
+
+    Everything else is declined before the footer is read: floats (NaN is
+    excluded from bounds), strings and binary (writers may truncate bounds),
+    and any nested, dictionary, or interval type.
+    """
+    from ray.data._internal.datasource_v2.formats.parquet.parquet_column_statistics import (
+        is_exact_statistics_type,
+    )
+
+    accepted = [
+        pa.int8(),
+        pa.int32(),
+        pa.int64(),
+        pa.uint8(),
+        pa.uint64(),
+        pa.bool_(),
+        pa.date32(),
+        pa.time32("s"),
+        pa.time64("us"),
+        pa.timestamp("ms"),
+        pa.timestamp("us", tz="UTC"),
+    ]
+    declined = [
+        pa.float32(),
+        pa.float64(),
+        pa.string(),
+        pa.large_string(),
+        pa.binary(),
+        pa.decimal128(10, 2),
+        pa.duration("ms"),
+        pa.month_day_nano_interval(),
+        pa.struct([("a", pa.int64())]),
+        pa.list_(pa.int64()),
+        pa.dictionary(pa.int8(), pa.string()),
+    ]
+
+    for column_type in accepted:
+        assert is_exact_statistics_type(column_type), column_type
+    for column_type in declined:
+        assert not is_exact_statistics_type(column_type), column_type
+
+
 if __name__ == "__main__":
     import sys
 

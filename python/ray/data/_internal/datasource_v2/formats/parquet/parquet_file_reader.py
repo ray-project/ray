@@ -32,6 +32,7 @@ from ray.data._internal.datasource_v2.common.file_reader import (
 from ray.data._internal.datasource_v2.formats.parquet.footer_reader import _leaf_matches
 from ray.data._internal.datasource_v2.formats.parquet.parquet_column_statistics import (
     column_statistics,
+    is_exact_statistics_type,
 )
 from ray.data._internal.datasource_v2.formats.parquet.parquet_file_chunking_utils import (
     _fragments_from_row_group_ids,
@@ -734,6 +735,15 @@ class ParquetFileReader(FileReader, SupportsMetadata, SupportsColumnStatistics):
                 exec_stats=None,
                 input_files=None,
             )
+
+    @override
+    def supports_column_type(self, column_type: pa.DataType) -> bool:
+        """Decline types whose footer bounds are not exact, such as floats.
+
+        Delegated to the extractor so the Arrow allowlist and the Parquet
+        physical-type allowlist cannot drift apart.
+        """
+        return is_exact_statistics_type(column_type)
 
     @override
     def read_column_statistics(
