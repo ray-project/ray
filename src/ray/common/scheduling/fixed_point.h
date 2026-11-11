@@ -72,6 +72,9 @@ class FixedPoint {
     return res;
   }
 
+  /// Number of whole times ru fits in this value, computed on the integer units.
+  int64_t operator/(FixedPoint const &ru) const { return i_ / ru.i_; }
+
   FixedPoint operator+(double const d) const {
     FixedPoint res;
     res.i_ = i_ + static_cast<int64_t>(d * kResourceUnitScaling);
