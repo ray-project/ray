@@ -262,6 +262,26 @@ def test_inexact_leaves_without_size_statistics_fall_back(tmp_path):
     )
 
 
+@pytest.mark.parametrize(
+    "encoding, slack", [("PLAIN", 1.02), ("DELTA_LENGTH_BYTE_ARRAY", 1.1)]
+)
+def test_strings_without_a_dictionary_are_bounded_by_the_footer(
+    tmp_path, encoding, slack
+):
+    """Without SizeStatistics, a string chunk with no dictionary page is sized from
+    its uncompressed bytes: never below what PyArrow allocates."""
+    values = [None if i % 7 == 0 else f"value-{i}" * (i % 4) for i in range(N)]
+    path = _write(
+        _table(values),
+        tmp_path / "f.parquet",
+        use_dictionary=False,
+        column_encoding={"a": encoding},
+    )
+
+    estimate = _estimate(path, size_statistics=_no_size_statistics)
+    assert _allocated(path) <= estimate <= slack * _allocated(path)
+
+
 def _with(stats_for_leaf_0):
     """``_read_size_statistics`` replaced by ``stats_for_leaf_0(stats)``."""
 

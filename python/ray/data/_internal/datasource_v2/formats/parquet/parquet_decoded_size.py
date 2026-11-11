@@ -405,14 +405,35 @@ class LeafChunk:
                 and 0 <= statistics.null_count <= chunk.num_values
             ):
                 self._null_count = statistics.null_count
+        # The values' bytes without their length prefixes: SizeStatistics', or for a
+        # string chunk without a dictionary page, a bound from the footer.
+        self.string_bytes = self.size_statistics_bytes
+        if self.string_bytes is None and profile.nodes[-1].kind == _BINARY:
+            self.string_bytes = self._plain_string_bytes()
 
     def modelled(self) -> bool:
-        """Whether every count is exact; a string leaf needs SizeStatistics bytes."""
+        """Whether every count is exact; a string leaf needs its values' bytes."""
         strings_known = (
-            self.profile.nodes[-1].kind != _BINARY
-            or self.size_statistics_bytes is not None
+            self.profile.nodes[-1].kind != _BINARY or self.string_bytes is not None
         )
         return strings_known and self.levels_known()
+
+    def _plain_string_bytes(self) -> int | None:
+        """At least the values' bytes of a string chunk without a dictionary page,
+        from its footer; ``None`` for any other chunk."""
+        chunk = self.chunk
+        if (
+            chunk.has_dictionary_page
+            or not set(chunk.encodings) <= _PLAIN_STRING_ENCODINGS
+            or not self.levels_known()
+        ):
+            return None
+        # PLAIN stores each value as a 4-byte length and its bytes; the levels and
+        # page headers also in the uncompressed size only raise the bound.
+        bound = chunk.total_uncompressed_size
+        if "DELTA_LENGTH_BYTE_ARRAY" not in chunk.encodings:
+            bound -= 4 * (chunk.num_values - self._below(self._max_def))
+        return max(bound, 0)
 
     def levels_known(self) -> bool:
         """Whether every array length and null count is exact."""
@@ -590,8 +611,15 @@ def _offset_width(arrow_type: pa.DataType) -> int:
 def estimate_string_bytes(leaf: LeafChunk) -> int:
     """A BYTE_ARRAY chunk's value bytes, without their length prefixes."""
     # ``LeafChunk.modelled`` keeps only string leaves with these bytes.
-    assert leaf.size_statistics_bytes is not None
-    return leaf.size_statistics_bytes
+    assert leaf.string_bytes is not None
+    return leaf.string_bytes
+
+
+# A string chunk's encodings when its footer bounds its values' bytes: no
+# dictionary or shared prefixes, and RLE or BIT_PACKED only for its levels.
+_PLAIN_STRING_ENCODINGS = frozenset(
+    {"PLAIN", "DELTA_LENGTH_BYTE_ARRAY", "RLE", "BIT_PACKED"}
+)
 
 
 # Any DELTA_BYTE_ARRAY page.
