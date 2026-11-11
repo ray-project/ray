@@ -24,6 +24,7 @@ from ray.data._internal.tensor_extensions.arrow import (
     ArrowTensorTypeV2,
     create_arrow_fixed_shape_tensor_type,
 )
+from ray.data._internal.utils.transform_pyarrow import _create_empty_table
 from ray.data.block import BlockAccessor
 from ray.data.extensions import (
     ArrowConversionError,
@@ -383,6 +384,33 @@ def test_shuffle():
     assert shuffled == pa.Table.from_pydict(
         {"index": pa.array([4, 3, 6, 8, 7, 1, 5, 2, 9, 0])}
     )
+
+
+@pytest.mark.parametrize(
+    "pa_type",
+    [
+        pa.int64(),
+        pa.string(),
+        pa.struct([("a", pa.int64())]),
+        ArrowTensorType((2, 2), pa.float32()),
+        ArrowTensorTypeV2((2, 2), pa.float32()),
+        ArrowVariableShapedTensorType(pa.float32(), 2),
+        ArrowPythonObjectType(),
+        # `from_numpy_ndarray` adds `permutation=[0, 1]`, which
+        # `Schema.empty_table()` rejects on pyarrow 26.
+        pa.FixedShapeTensorArray.from_numpy_ndarray(np.zeros((1, 2, 2))).type,
+        # `Schema.empty_table()` rejects extension types nested in a struct.
+        pa.struct([("x", ArrowTensorTypeV2((2,), pa.int64()))]),
+    ],
+)
+def test_create_empty_table(pa_type):
+    schema = pa.schema([("c", pa_type), ("i", pa.int64())], metadata={b"k": b"v"})
+
+    table = _create_empty_table(schema)
+
+    assert table.num_rows == 0
+    assert table.schema.equals(schema, check_metadata=True)
+    assert [column.num_chunks for column in table.columns] == [1, 1]
 
 
 def test_arrow_concat_empty(simple_concat_data):

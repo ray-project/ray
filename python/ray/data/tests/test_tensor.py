@@ -305,6 +305,28 @@ def test_tensors_sort(ray_start_regular_shared, tensor_format_context):
     )
 
 
+@pytest.mark.parametrize(
+    "op", ["map_groups", "repartition_keys", "repartition_shuffle", "join"]
+)
+def test_tensors_shuffle_and_join(ray_start_regular_shared, tensor_format_context, op):
+    # Shuffle and join tasks create empty blocks from the schema, which failed
+    # for native tensor columns on pyarrow 26.
+    arr = np.arange(64).reshape((4, 4, 4))
+    ds = ray.data.from_arrow(pa.table({"a": TensorArray(arr), "k": [0, 1, 0, 1]}))
+    if op == "map_groups":
+        out = ds.groupby("k").map_groups(lambda group: group)
+    elif op == "repartition_keys":
+        out = ds.repartition(4, keys=["k"])
+    elif op == "repartition_shuffle":
+        out = ds.repartition(4, shuffle=True)
+    else:
+        other = ray.data.from_items([{"k": 0, "v": "x"}, {"k": 1, "v": "y"}])
+        out = ds.join(other, join_type="inner", num_partitions=4, on=("k",))
+
+    rows = sorted(out.take_all(), key=lambda row: np.asarray(row["a"]).min())
+    np.testing.assert_equal([np.asarray(row["a"]) for row in rows], list(arr))
+
+
 def test_tensors_inferred_from_map(ray_start_regular_shared, tensor_format_context):
     tensor_format = tensor_format_context
     # With tensor_format_context, ARROW_NATIVE only runs when supported,
