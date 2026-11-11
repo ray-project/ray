@@ -251,8 +251,10 @@ braceexpand==0.1.7
     # via webdataset
 bracex==2.6
     # via wcmatch
-brotli==1.2.0
-    # via gradio
+brotli==1.2.1
+    # via
+    #   -r python/requirements/security-requirements.txt
+    #   gradio
 cachetools==5.5.2
     # via
     #   google-auth
@@ -1109,8 +1111,9 @@ msrestazure==0.6.4.post1
     # via -r python/requirements/test-requirements.txt
 mujoco==3.15.0
     # via -r python/requirements/ml/rllib-test-requirements.txt
-multidict==6.7.1
+multidict==6.9.1
     # via
+    #   -r python/requirements/security-requirements.txt
     #   aiohttp
     #   yarl
 multipledispatch==1.0.0

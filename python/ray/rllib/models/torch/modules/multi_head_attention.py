@@ -1,4 +1,5 @@
-"""
+"""Multi-head attention layer, as described in [1].
+
 [1] - Attention Is All You Need - Vaswani, Jones, Shazeer, Parmar,
       Uszkoreit, Gomez, Kaiser - Google Brain/Research, U Toronto - 2017.
       https://arxiv.org/pdf/1706.03762.pdf
@@ -18,8 +19,7 @@ class MultiHeadAttention(nn.Module):
     def __init__(
         self, in_dim: int, out_dim: int, num_heads: int, head_dim: int, **kwargs
     ):
-        """
-        in_dim: Dimension of input
+        """in_dim: Dimension of input
         out_dim: Dimension of output
         num_heads: Number of attention heads
         head_dim: Output dimension of each attention head
