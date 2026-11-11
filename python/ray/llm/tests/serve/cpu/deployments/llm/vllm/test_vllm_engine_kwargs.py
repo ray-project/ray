@@ -2,6 +2,7 @@ import sys
 
 import pytest
 
+from ray.llm._internal.serve.engines.vllm import vllm_engine
 from ray.llm._internal.serve.engines.vllm.vllm_engine import (
     _normalize_vllm_engine_kwargs,
 )
@@ -30,8 +31,6 @@ def test_offloading_connector_kv_role_default(kv_transfer_config, expected_role)
 
 def test_kv_role_default_kept_without_config_type(monkeypatch):
     """The default applies even when the field's config type can't be resolved."""
-    from ray.llm._internal.serve.engines.vllm import vllm_engine
-
     monkeypatch.setattr(vllm_engine, "_get_vllm_config_type", lambda _: None)
     normalized = _normalize_vllm_engine_kwargs(
         {"kv_transfer_config": {"kv_connector": "OffloadingConnector"}}

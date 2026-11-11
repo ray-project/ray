@@ -129,7 +129,7 @@ llm_config = LLMConfig(
 )
 ```
 
-Ray Serve LLM sets `kv_role` to `kv_both` when `kv_transfer_config` names `OffloadingConnector` without a role. vLLM's filesystem tier doesn't limit its disk usage yet, so watch the space under `root_dir`. For the other tier options, see the vLLM [KV offloading usage guide](https://docs.vllm.ai/en/stable/features/kv_offloading_usage/).
+For the other tier options, see the vLLM [KV offloading usage guide](https://docs.vllm.ai/en/stable/features/kv_offloading_usage/).
 
 ### Combine offloading with a request router
 
