@@ -1,5 +1,7 @@
 import asyncio
+import gc
 import json
+import logging
 import os
 import secrets
 import signal
@@ -7,6 +9,7 @@ import sys
 import tempfile
 import time
 import urllib.request
+import weakref
 from unittest.mock import patch
 from uuid import uuid4
 
@@ -49,11 +52,42 @@ from ray.dashboard.modules.job.tests.conftest import (
     create_job_manager,
     create_ray_cluster,
 )
+from ray.dashboard.utils import close_logger_file_descriptor
 from ray.job_submission import JobErrorType, JobStatus
 from ray.tests.conftest import call_ray_start  # noqa: F401
 from ray.util.state import get_actor, list_tasks
 
 import psutil
+
+
+def test_job_driver_loggers_are_released(tmp_path):
+    class LogClient:
+        def get_log_file_path(self, job_id):
+            return tmp_path / f"job-driver-{job_id}.log"
+
+    manager = object.__new__(JobManager)
+    manager._log_client = LogClient()
+    prefix = "ray.dashboard.modules.job.job_manager.driver-test-"
+    registered_before = {
+        name for name in logging.Logger.manager.loggerDict if name.startswith(prefix)
+    }
+
+    for index in range(200):
+        job_id = f"test-{index}"
+        driver_logger = manager._get_job_driver_logger(job_id)
+        driver_logger.warning("job log entry")
+        close_logger_file_descriptor(driver_logger)
+        assert driver_logger.handlers[0].stream is None
+        if index == 199:
+            last_logger = weakref.ref(driver_logger)
+    del driver_logger
+    gc.collect()
+
+    assert last_logger() is None
+    assert {
+        name for name in logging.Logger.manager.loggerDict if name.startswith(prefix)
+    } == registered_before
+    assert "job log entry" in (tmp_path / "job-driver-test-199.log").read_text()
 
 
 @pytest.mark.asyncio
