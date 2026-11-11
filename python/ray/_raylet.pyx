@@ -2591,6 +2591,15 @@ cdef execute_task_with_cancellation_handler(
             # Reset the num threads env vars if they were set.
             for env_var in num_threads_env_vars_set:
                 os.environ.pop(env_var, None)
+            if "OMP_NUM_THREADS" in num_threads_env_vars_set:
+                # Restore default single-thread fallback (set_num_threads_env_vars_if_unset()
+                # sets OMP_NUM_THREADS when unset) if modules were imported pre-fork.
+                for module_name in ray_constants.THREAD_POOL_MODULES:
+                    if module_name in sys.modules:
+                        try:
+                            sys.modules[module_name].set_num_threads(1)
+                        except Exception:
+                            pass
 
 
     if execution_info.max_calls != 0:
