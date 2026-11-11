@@ -859,11 +859,13 @@ def test_derived_predicate_preserves_matching_rows(
 )
 def test_derived_predicate_skips_unsafe_arithmetic(column_type, predicate):
     from ray.data._internal.datasource_v2.formats.parquet.footer_reader import (
-        _derived_statistics_predicate,
+        _add_statistics_bounds,
     )
 
-    derived = _derived_statistics_predicate(predicate, pa.schema([("x", column_type)]))
-    assert derived is None
+    # No safe bound: the leaf passes through untouched for PyArrow.
+    assert (
+        _add_statistics_bounds(predicate, pa.schema([("x", column_type)])) is predicate
+    )
 
 
 @pytest.mark.parametrize(
@@ -872,13 +874,13 @@ def test_derived_predicate_skips_unsafe_arithmetic(column_type, predicate):
 )
 def test_derived_predicate_signed_integer_widths(column_type):
     from ray.data._internal.datasource_v2.formats.parquet.footer_reader import (
-        _derived_statistics_predicate,
+        _add_statistics_bounds,
     )
 
     predicate = (col("x") + 1) >= 76
     table = pa.table({"x": pa.array([0, 74, 75, 76, 100], type=column_type)})
 
-    derived = _derived_statistics_predicate(predicate, table.schema)
+    derived = _add_statistics_bounds(predicate, table.schema)
     assert derived is not None
 
     expected = table.filter(predicate.to_pyarrow())
@@ -889,22 +891,18 @@ def test_derived_predicate_signed_integer_widths(column_type):
 @pytest.mark.parametrize("column_type", [pa.float32(), pa.float64()])
 @pytest.mark.parametrize("operator", ["and", "or"])
 def test_derived_predicate_float_null_safety(column_type, operator):
-    """A float ``!=`` in a compound weakens to a null bound, not a range.
+    """A derived bound must never contradict a NaN row.
 
-    Parquet min/max statistics omit NaNs, so a range bound on a float column
-    would be blind to NaN rows. The deriver replaces the float inequality
-    with ``is_not_null`` instead, which the statistics can evaluate without
-    ever contradicting a NaN row: every group the original filter could match
-    stays a candidate, so intersecting with the derived bound can only prune
-    groups no matching row can reach.
-
-    PyArrow's own scanner drops NaN rows for these float filters regardless
-    of what pruning does (a separate PyArrow issue), so the assertion here is
-    at the expression level: the derived bound must accept every row the
-    filter accepts.
+    Parquet min/max statistics omit NaNs, so any range bound on a float
+    column could be blind to NaN rows. The deriver therefore adds bounds only
+    to the leaf forms it models (arithmetic on integer columns, string
+    prefixes) and leaves float inequalities to PyArrow, whose own pruning
+    already handles them the way master's does. The assertion here is at the
+    expression level: the rewritten filter must accept every row the original
+    filter accepts, NaN rows included.
     """
     from ray.data._internal.datasource_v2.formats.parquet.footer_reader import (
-        _derived_statistics_predicate,
+        _add_statistics_bounds,
     )
 
     values = [1.0] * 25 + [None] * 50 + [1.0] * 25
@@ -923,7 +921,7 @@ def test_derived_predicate_float_null_safety(column_type, operator):
         arithmetic & inequality if operator == "and" else arithmetic | inequality
     )
 
-    derived = _derived_statistics_predicate(predicate, table.schema)
+    derived = _add_statistics_bounds(predicate, table.schema)
     assert derived is not None
 
     matched = table.filter(predicate.to_pyarrow())["x"].to_pylist()
@@ -947,7 +945,7 @@ def test_derived_predicate_float_null_safety(column_type, operator):
 )
 def test_derived_compound_null_and_membership(tmp_path, other):
     from ray.data._internal.datasource_v2.formats.parquet.footer_reader import (
-        _derived_statistics_predicate,
+        _add_statistics_bounds,
     )
 
     table = pa.table(
@@ -961,7 +959,7 @@ def test_derived_compound_null_and_membership(tmp_path, other):
     )
 
     predicate = ((col("x") + 1) >= 76) | other
-    derived = _derived_statistics_predicate(predicate, table.schema)
+    derived = _add_statistics_bounds(predicate, table.schema)
     assert derived is not None
 
     path, size = _write(tmp_path / "membership.parquet", table, row_group_size=25)
@@ -987,74 +985,44 @@ def test_derived_compound_null_and_membership(tmp_path, other):
 
 
 @pytest.mark.parametrize(
-    "predicate",
+    "predicate, schema",
     [
-        col("f").is_in([float("nan")]),
-        col("f").not_in([1.0]),
+        pytest.param(
+            col("f").is_in([float("nan")]),
+            pa.schema([("f", pa.float64())]),
+            id="float-in",
+        ),
+        pytest.param(
+            col("f").not_in([1.0]),
+            pa.schema([("f", pa.float64())]),
+            id="float-not-in",
+        ),
+        pytest.param(
+            col("v").is_in([None, 0]),
+            pa.schema([("v", pa.int64())]),
+            id="in-with-null",
+        ),
+        pytest.param(col("v").not_in([0]), pa.schema([("v", pa.int64())]), id="not-in"),
+        pytest.param(col("f") != 1.0, pa.schema([("f", pa.float64())]), id="float-ne"),
+        pytest.param(col("v").is_null(), pa.schema([("v", pa.int64())]), id="is-null"),
+        pytest.param(~(col("x") < 800), pa.schema([("x", pa.int64())]), id="negation"),
     ],
 )
-def test_derived_skips_float_membership(predicate):
+def test_derived_leaves_pyarrow_evaluable_forms_untouched(predicate, schema):
+    """Forms PyArrow already prunes with pass through unchanged.
+
+    PyArrow evaluates plain comparisons, null checks, membership and
+    negation against statistics itself, so the deriver must not touch them:
+    a rewritten form would just re-run the same split pass over the same
+    statistics. (Null-inclusive membership and float ``!=`` lean on
+    PyArrow's own null/NaN statistics handling, which is exactly the
+    behavior master's pruning already has.)
+    """
     from ray.data._internal.datasource_v2.formats.parquet.footer_reader import (
-        _derived_statistics_predicate,
+        _add_statistics_bounds,
     )
 
-    assert (
-        _derived_statistics_predicate(predicate, pa.schema([("f", pa.float64())]))
-        is None
-    )
-
-
-@pytest.mark.parametrize(
-    "membership, needs_null_guard, null_matches",
-    [
-        pytest.param(col("v").is_in([0]), False, False, id="in-no-null"),
-        pytest.param(col("v").is_in([None, 0]), True, True, id="in-with-null"),
-        pytest.param(col("v").not_in([0]), True, True, id="not-in"),
-    ],
-)
-def test_derived_membership_null_safety(
-    tmp_path, membership, needs_null_guard, null_matches
-):
-    from ray.data._internal.datasource_v2.formats.parquet.footer_reader import (
-        _derived_statistics_predicate,
-    )
-
-    table = pa.table(
-        {
-            "x": list(range(100)),
-            "v": pa.array(
-                [None] * 25 + [0] * 25 + [1] * 25 + [2] * 25,
-                type=pa.int64(),
-            ),
-        }
-    )
-
-    derived = _derived_statistics_predicate(membership, table.schema)
-    assert derived is not None
-    expected_bound = membership | col("v").is_null() if needs_null_guard else membership
-    assert derived.structurally_equals(expected_bound)
-
-    predicate = ((col("x") + 1) >= 76) | membership
-    path, size = _write(tmp_path / "membership-null.parquet", table, row_group_size=25)
-
-    chunks = _reader(filter_expr=predicate)._read_and_chunk(FileInfo(path, size))
-    selected = [rg.unit_ids[0] for rg in chunks.row_groups]
-
-    parquet_file = pq.ParquetFile(path)
-    required = {
-        i
-        for i in range(parquet_file.num_row_groups)
-        if parquet_file.read_row_group(i).filter(predicate.to_pyarrow()).num_rows
-    }
-    assert required.issubset(set(selected))
-
-    actual = pa.concat_tables(
-        [parquet_file.read_row_group(i) for i in selected]
-    ).filter(predicate.to_pyarrow())
-    expected = table.filter(predicate.to_pyarrow())
-
-    assert (0 in expected["x"].to_pylist()) == null_matches
-    assert actual["x"].to_pylist() == expected["x"].to_pylist()
+    assert _add_statistics_bounds(predicate, schema) is predicate
 
 
 @pytest.mark.parametrize(
@@ -1076,7 +1044,7 @@ def test_derived_integer_arithmetic_bound_safety(
     tmp_path, column_type, offset, strict, reverse_add
 ):
     from ray.data._internal.datasource_v2.formats.parquet.footer_reader import (
-        _derived_statistics_predicate,
+        _add_statistics_bounds,
     )
 
     bits = column_type.bit_width
@@ -1108,7 +1076,7 @@ def test_derived_integer_arithmetic_bound_safety(
     addition = offset + col("x") if reverse_add else col("x") + offset
     predicate = addition > 76 if strict else addition >= 76
 
-    derived = _derived_statistics_predicate(predicate, table.schema)
+    derived = _add_statistics_bounds(predicate, table.schema)
     assert derived is not None
 
     original_rows = table.filter(predicate.to_pyarrow())["x"].to_pylist()
@@ -1161,12 +1129,12 @@ def test_derived_integer_arithmetic_bound_safety(
 )
 def test_derived_unsigned_arithmetic_rejects_unsafe_bounds(column_type, offset, target):
     from ray.data._internal.datasource_v2.formats.parquet.footer_reader import (
-        _derived_statistics_predicate,
+        _add_statistics_bounds,
     )
 
     expr = (col("x") + offset) >= target
     schema = pa.schema([("x", column_type)])
-    assert _derived_statistics_predicate(expr, schema) is None
+    assert _add_statistics_bounds(expr, schema) is expr
 
 
 @pytest.mark.parametrize(
@@ -1198,6 +1166,78 @@ def test_float_filters_prune_like_master(tmp_path, predicate, expected):
 
     chunks = _reader(filter_expr=predicate)._read_and_chunk(FileInfo(path, size))
     assert [rg.unit_ids[0] for rg in chunks.row_groups] == expected
+
+
+def test_plain_comparison_runs_one_split_pass(four_row_groups, monkeypatch):
+    """A plain comparison is pruned in one pass, not split twice.
+
+    The deriver returns forms PyArrow can already evaluate unchanged, so the
+    pruning split runs on the plain filter alone. Regression for the redundant
+    second ``split_by_row_group`` run flagged in review: the same expression
+    used to be evaluated against the same statistics twice.
+    """
+    from ray.data._internal.datasource_v2.formats.parquet import footer_reader
+
+    calls = []
+    original_split = footer_reader.FooterReader._try_split_by_row_group
+
+    def counting_split(self, fragment, expr, path):
+        calls.append(expr)
+        return original_split(self, fragment, expr, path)
+
+    monkeypatch.setattr(
+        footer_reader.FooterReader, "_try_split_by_row_group", counting_split
+    )
+
+    path, size = four_row_groups
+    chunks = _reader(filter_expr=col("id") >= 50)._read_and_chunk(FileInfo(path, size))
+
+    assert [rg.unit_ids[0] for rg in chunks.row_groups] == [2, 3]
+    # One pruning pass plus one negation pass.
+    assert len(calls) == 2
+
+
+@pytest.mark.parametrize(
+    "predicate, expected_groups",
+    [
+        pytest.param(
+            ((col("x") + 1) >= 76) | ~(col("x") < 800),
+            [3],
+            id="or-with-negation-branch",
+        ),
+        pytest.param(
+            ((col("x") + 1) >= 76) | col("f").is_in([900.0]),
+            [3],
+            id="or-with-float-membership",
+        ),
+    ],
+)
+def test_derived_bound_prunes_or_branch_the_deriver_does_not_model(
+    tmp_path, predicate, expected_groups
+):
+    """An OR branch the deriver cannot model still prunes via the other's bound.
+
+    The deriver only appends bounds, never replaces leaves, so the branch it
+    cannot represent stays in the filter for PyArrow to evaluate. A row group
+    the modeled branch's bound rules out is dropped once PyArrow also rules
+    the other branch out -- which the old derived filter could not do, since
+    it required every OR branch to be modeled before it pruned at all.
+    """
+    x = list(range(100))
+    table = pa.table({"x": x, "f": [float(v) for v in x]})
+    path, size = _write(tmp_path / "or-unmodeled.parquet", table, row_group_size=25)
+    chunks = _reader(filter_expr=predicate)._read_and_chunk(FileInfo(path, size))
+
+    selected = [rg.unit_ids[0] for rg in chunks.row_groups]
+    assert selected == expected_groups
+
+    parquet_file = pq.ParquetFile(path)
+    required = {
+        i
+        for i in range(parquet_file.num_row_groups)
+        if parquet_file.read_row_group(i).filter(predicate.to_pyarrow()).num_rows
+    }
+    assert required.issubset(set(selected))
 
 
 @pytest.mark.parametrize(
@@ -1252,7 +1292,7 @@ def test_derived_unicode_prefix_boundaries(tmp_path, prefix):
 @pytest.mark.parametrize("target", [np.int32(76), np.int64(76)])
 def test_derived_numpy_integer_pruning(tmp_path, column_type, offset, target):
     from ray.data._internal.datasource_v2.formats.parquet.footer_reader import (
-        _derived_statistics_predicate,
+        _add_statistics_bounds,
     )
 
     bits = column_type.bit_width
@@ -1278,7 +1318,7 @@ def test_derived_numpy_integer_pruning(tmp_path, column_type, offset, target):
     table = pa.table({"x": pa.array(values, type=column_type)})
 
     predicate = (col("x") + offset) >= target
-    derived = _derived_statistics_predicate(predicate, table.schema)
+    derived = _add_statistics_bounds(predicate, table.schema)
     assert derived is not None
 
     expected = table.filter(predicate.to_pyarrow())
@@ -1311,12 +1351,12 @@ def test_derived_numpy_integer_pruning(tmp_path, column_type, offset, target):
 )
 def test_derived_numpy_integer_rejects_unsafe_bounds(column_type, offset, target):
     from ray.data._internal.datasource_v2.formats.parquet.footer_reader import (
-        _derived_statistics_predicate,
+        _add_statistics_bounds,
     )
 
     predicate = (col("x") + offset) >= target
     schema = pa.schema([("x", column_type)])
-    assert _derived_statistics_predicate(predicate, schema) is None
+    assert _add_statistics_bounds(predicate, schema) is predicate
 
 
 def test_derived_predicate_unicode_prefix(tmp_path):
@@ -1369,9 +1409,7 @@ def test_derived_predicate_failure_falls_back_to_original(
         def fail_to_derive(*args):
             raise error_type("Injected derivation failure")
 
-        monkeypatch.setattr(
-            footer_reader, "_derived_statistics_predicate", fail_to_derive
-        )
+        monkeypatch.setattr(footer_reader, "_add_statistics_bounds", fail_to_derive)
     else:
 
         class BrokenExpression:
@@ -1380,7 +1418,7 @@ def test_derived_predicate_failure_falls_back_to_original(
 
         monkeypatch.setattr(
             footer_reader,
-            "_derived_statistics_predicate",
+            "_add_statistics_bounds",
             lambda *args: BrokenExpression(),
         )
 
