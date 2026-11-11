@@ -62,9 +62,10 @@ class TrialPlateauStopper(Stopper):
 
     def __call__(self, trial_id: str, result: Dict):
         metric_result = result.get(self._metric)
-        if metric_result is not None:
-            self._trial_results[trial_id].append(metric_result)
         self._iter[trial_id] += 1
+        if metric_result is None:
+            return False
+        self._trial_results[trial_id].append(metric_result)
 
         # If still in grace period, do not stop yet
         if self._iter[trial_id] < self._grace_period:
@@ -72,10 +73,6 @@ class TrialPlateauStopper(Stopper):
 
         # If not enough results yet, do not stop yet
         if len(self._trial_results[trial_id]) < self._num_results:
-            return False
-
-        # If metric is missing from the current result, do not stop yet
-        if metric_result is None:
             return False
 
         # If metric threshold value not reached, do not stop yet
