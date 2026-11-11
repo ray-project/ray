@@ -788,6 +788,8 @@ def get_capacity_adjusted_gang_replicas(
     num_replicas: int,
     target_capacity: Optional[float],
     gang_size: Optional[int],
+    *,
+    round_gangs_up: bool = False,
 ) -> int:
     """Return `num_replicas` adjusted by `target_capacity`, aligned to whole gangs.
 
@@ -799,11 +801,25 @@ def get_capacity_adjusted_gang_replicas(
     `num_replicas` is expected to be a multiple of `gang_size`; configuration
     validation enforces this. If gang scheduling isn't enabled, this is
     equivalent to `get_capacity_adjusted_num_replicas`.
+
+    For an unaligned legacy value the rounding direction matters: pass
+    `round_gangs_up=True` when computing a lower bound (the result must not fall
+    below the configured value), and leave it `False` for an upper bound or an
+    exact target (the result must not exceed the configured value). A positive
+    replica count always maps to at least one gang, so an unaligned bound can't
+    silently become zero; only `target_capacity=0` or `num_replicas=0` yield 0.
     """
     if gang_size is None or gang_size <= 1:
         return get_capacity_adjusted_num_replicas(num_replicas, target_capacity)
 
-    num_gangs = num_replicas // gang_size
+    if num_replicas <= 0:
+        return 0
+
+    if round_gangs_up:
+        num_gangs = (num_replicas + gang_size - 1) // gang_size
+    else:
+        num_gangs = max(1, num_replicas // gang_size)
+
     return get_capacity_adjusted_num_replicas(num_gangs, target_capacity) * gang_size
 
 

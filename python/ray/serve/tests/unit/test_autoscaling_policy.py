@@ -5,7 +5,12 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from ray.serve._private.autoscaling_state import DeploymentAutoscalingState
-from ray.serve._private.common import DeploymentID, ReplicaID, TimeStampedValue
+from ray.serve._private.common import (
+    DeploymentID,
+    ReplicaID,
+    TargetCapacityDirection,
+    TimeStampedValue,
+)
 from ray.serve._private.config import DeploymentConfig, ReplicaConfig
 from ray.serve._private.constants import (
     CONTROL_LOOP_INTERVAL_S,
@@ -1377,6 +1382,7 @@ class TestGangSchedulingAutoscalingPolicy:
         max_replicas,
         running=0,
         target_capacity=None,
+        target_capacity_direction=None,
         initial_replicas=None,
     ):
         """Create a DeploymentAutoscalingState with gang config registered."""
@@ -1393,7 +1399,7 @@ class TestGangSchedulingAutoscalingPolicy:
             gang_size=gang_size,
         )
         info.target_capacity = target_capacity
-        info.target_capacity_direction = None
+        info.target_capacity_direction = target_capacity_direction
         info.config_changed.return_value = False
 
         state.register(info, curr_target_num_replicas=min_replicas)
@@ -1460,6 +1466,11 @@ class TestGangSchedulingAutoscalingPolicy:
             (4, 4, 8, 30, (4, 4)),
             (4, 4, 16, 25, (4, 4)),
             (4, 8, 16, 50, (4, 8)),
+            # Default bounds are not required to be gang multiples (see
+            # #67507). min_replicas=1 must still map to one gang, not zero.
+            (4, 1, 100, None, (4, 100)),
+            # Legacy unaligned max: floor to 4 so the bound is never exceeded.
+            (4, 1, 3, 50, (4, 4)),
             # Scale-to-zero is preserved.
             (4, 0, 8, 50, (0, 4)),
             (4, 0, 8, 0, (0, 0)),
@@ -1506,6 +1517,24 @@ class TestGangSchedulingAutoscalingPolicy:
         )
         decision = state.get_decision_num_replicas(curr_target_num_replicas=4)
         assert decision == 8
+
+    def test_capacity_up_lower_bound_matches_initial_replicas(self):
+        """An unaligned initial_replicas floor must not sit below the target.
+
+        register() rounds an unaligned initial target up to a whole gang. The
+        lower bound must be rounded up as well, otherwise autoscaling could
+        immediately scale below the target when capacity is increasing.
+        """
+        state = self._create_state(
+            gang_size=4,
+            min_replicas=4,
+            max_replicas=16,
+            target_capacity=100,
+            target_capacity_direction=TargetCapacityDirection.UP,
+            initial_replicas=6,
+        )
+        assert state.get_num_replicas_lower_bound() == 8
+        assert state.get_num_replicas_upper_bound() == 16
 
     def test_unaligned_initial_replicas_rounds_up_to_gang(self):
         """A legacy unaligned initial_replicas doesn't reach the scheduler."""

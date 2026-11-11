@@ -440,12 +440,14 @@ class DeploymentAutoscalingState:
                 self._config.initial_replicas,
                 self._target_capacity,
                 self._gang_size,
+                round_gangs_up=True,
             )
         else:
             return get_capacity_adjusted_gang_replicas(
                 self._config.min_replicas,
                 self._target_capacity,
                 self._gang_size,
+                round_gangs_up=True,
             )
 
     def get_num_replicas_upper_bound(self) -> int:

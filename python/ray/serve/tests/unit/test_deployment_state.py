@@ -6716,27 +6716,36 @@ class TestTargetCapacity:
         assert result == expected_output
 
     @pytest.mark.parametrize(
-        "num_replicas,gang_size,target_capacity,expected_output",
+        "num_replicas,gang_size,target_capacity,round_gangs_up,expected_output",
         [
             # No gang scheduling: behaves like get_capacity_adjusted_num_replicas.
-            (8, None, 30, 2),
-            (8, 1, 30, 2),
+            (8, None, 30, False, 2),
+            (8, 1, 30, False, 2),
             # target_capacity=None or 100 is a no-op.
-            (8, 4, None, 8),
-            (8, 4, 100, 8),
+            (8, 4, None, False, 8),
+            (8, 4, 100, False, 8),
             # Capacity is applied to gangs, not to individual replicas.
             # 2 gangs * 75% = 1.5 -> 2 gangs (half-up).
-            (8, 4, 75, 8),
-            (8, 4, 50, 4),
+            (8, 4, 75, False, 8),
+            (8, 4, 50, False, 4),
             # 2 gangs * 30% = 0.6 -> 1 gang.
-            (8, 4, 30, 4),
+            (8, 4, 30, False, 4),
             # A non-zero capacity never scales below one gang.
-            (8, 4, 1, 4),
-            (4, 4, 20, 4),
-            (16, 4, 25, 4),
+            (8, 4, 1, False, 4),
+            (4, 4, 20, False, 4),
+            (16, 4, 25, False, 4),
+            # An unaligned count maps to at least one gang (never silently 0).
+            (1, 4, None, False, 4),
+            (3, 4, 50, False, 4),
+            (2, 4, 50, False, 4),
+            # Directional rounding only matters for unaligned legacy values.
+            (6, 4, None, False, 4),
+            (6, 4, None, True, 8),
+            (10, 4, None, False, 8),
+            (10, 4, None, True, 12),
             # Zero capacity and zero replicas still scale to zero.
-            (8, 4, 0, 0),
-            (0, 4, 50, 0),
+            (8, 4, 0, False, 0),
+            (0, 4, 50, False, 0),
         ],
     )
     def test_get_capacity_adjusted_gang_replicas(
@@ -6744,10 +6753,14 @@ class TestTargetCapacity:
         num_replicas: int,
         gang_size: Optional[int],
         target_capacity: Optional[float],
+        round_gangs_up: bool,
         expected_output: int,
     ):
         result = get_capacity_adjusted_gang_replicas(
-            num_replicas, target_capacity, gang_size
+            num_replicas,
+            target_capacity,
+            gang_size,
+            round_gangs_up=round_gangs_up,
         )
         assert isinstance(result, int)
         assert result == expected_output
