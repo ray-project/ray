@@ -347,20 +347,36 @@ class ParquetDatasourceV2(FileDataSourceV2):
             # synthesized columns.
             schema = user_schema
         else:
+            path_column_name = next(
+                (
+                    c.name
+                    for c in self._synthesized_columns
+                    if isinstance(c, PathColumn)
+                ),
+                None,
+            )
 
             def _read_schema(path: str):
                 if filesystem is None:
-                    return pq.read_schema(path)
-                fragment = pds.ParquetFileFormat().make_fragment(
-                    path, filesystem=filesystem, file_size=file_sizes[path]
-                )
-                # ``make_fragment`` is lazy, so this is the footer read itself.
-                metadata = call_with_retry(
-                    lambda: fragment.metadata,
-                    description=f"read Parquet footer for {path}",
-                    match=DataContext.get_current().retried_io_errors,
-                )
-                return metadata.schema.to_arrow_schema()
+                    file_schema = pq.read_schema(path)
+                else:
+                    fragment = pds.ParquetFileFormat().make_fragment(
+                        path, filesystem=filesystem, file_size=file_sizes[path]
+                    )
+                    # ``make_fragment`` is lazy, so this is the footer read itself.
+                    metadata = call_with_retry(
+                        lambda: fragment.metadata,
+                        description=f"read Parquet footer for {path}",
+                        match=DataContext.get_current().retried_io_errors,
+                    )
+                    file_schema = metadata.schema.to_arrow_schema()
+                # The synthesized path replaces this field after reading, so
+                # its physical types need not be compatible across files.
+                if path_column_name is not None:
+                    index = file_schema.get_field_index(path_column_name)
+                    if index != -1:
+                        file_schema = file_schema.remove(index)
+                return file_schema
 
             schema = infer_schema_from_files(
                 sample_paths, _read_schema, format_name="Parquet"

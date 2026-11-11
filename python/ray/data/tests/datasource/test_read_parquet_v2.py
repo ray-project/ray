@@ -526,6 +526,69 @@ def test_read_parquet_v2_path_collision_preserves_column_order(
     assert batch.to_pylist() == [{"id": 1, path_name: str(file_path)}]
 
 
+@pytest.mark.parametrize("merge_schema", [False, True])
+@pytest.mark.parametrize("path_only", [False, True])
+@pytest.mark.parametrize(
+    ("include_paths", "path_name"), [(True, "path"), ("source_file", "source_file")]
+)
+def test_read_parquet_v2_path_overrides_incompatible_file_columns(
+    tmp_path, restore_ctx, merge_schema, path_only, include_paths, path_name
+):
+    first = tmp_path / "first.parquet"
+    second = tmp_path / "second.parquet"
+    _write(first, pa.table({path_name: [1], "id": [1]}))
+    _write(second, pa.table({path_name: ["physical"], "id": [2]}))
+
+    restore_ctx.use_datasource_v2 = True
+    ds = ray.data.read_parquet(
+        str(tmp_path), include_paths=include_paths, merge_schema=merge_schema
+    )
+    if path_only:
+        ds = ds.select_columns([path_name])
+    schema = ds.schema()
+    assert schema.names == ([path_name] if path_only else ["id", path_name])
+    assert schema.base_schema.field(path_name).type == pa.string()
+    expected = [{"id": 1, path_name: str(first)}, {"id": 2, path_name: str(second)}]
+    if path_only:
+        expected = [{path_name: row[path_name]} for row in expected]
+    assert sorted(ds.take_all(), key=lambda row: row[path_name]) == expected
+
+
+def test_read_parquet_v2_path_overrides_only_file_column(tmp_path, restore_ctx):
+    first = tmp_path / "first.parquet"
+    second = tmp_path / "second.parquet"
+    _write(first, pa.table({"source_file": [1, 2]}))
+    _write(second, pa.table({"source_file": ["physical"]}))
+
+    restore_ctx.use_datasource_v2 = True
+    ds = ray.data.read_parquet(
+        str(tmp_path), include_paths="source_file", merge_schema=True
+    )
+    assert ds.schema().names == ["source_file"]
+    assert sorted(row["source_file"] for row in ds.take_all()) == [
+        str(first),
+        str(first),
+        str(second),
+    ]
+
+
+@pytest.mark.parametrize("merge_schema", [False, True])
+def test_read_parquet_v2_path_does_not_hide_other_schema_conflicts(
+    tmp_path, restore_ctx, merge_schema
+):
+    _write(tmp_path / "first.parquet", pa.table({"source_file": [1], "id": [1]}))
+    _write(
+        tmp_path / "second.parquet",
+        pa.table({"source_file": ["physical"], "id": ["incompatible"]}),
+    )
+
+    restore_ctx.use_datasource_v2 = True
+    with pytest.raises(pa.ArrowTypeError, match="id"):
+        ray.data.read_parquet(
+            str(tmp_path), include_paths="source_file", merge_schema=merge_schema
+        )
+
+
 def test_read_parquet_custom_path_column_requires_v2(tmp_path, restore_ctx):
     file_path = tmp_path / "data.parquet"
     _write(file_path, pa.table({"id": [1]}))
