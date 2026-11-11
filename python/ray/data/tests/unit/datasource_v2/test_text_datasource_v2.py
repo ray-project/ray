@@ -218,8 +218,6 @@ def test_reader_null_fills_partition_columns_of_root_files(tmp_path):
 
 
 def test_reader_rejects_root_file_when_partition_type_is_declared(tmp_path):
-    # V1 and the ORC V2 reader raise the same way: ``field_types`` promises
-    # the key is in every path.
     root = _write(tmp_path / "root.txt", "r\n")
     reader = TextReader(
         partitioning=Partitioning(
@@ -301,8 +299,7 @@ def test_reader_retries_transient_errors(tmp_path, monkeypatch):
         return original(self, file_path, limit)
 
     monkeypatch.setattr(TextReader, "_read_file", flaky)
-    # ``tests/unit/conftest.py`` makes ``time.sleep`` raise; the retry backoff
-    # must become a no-op instead so the second attempt runs.
+    # ``tests/unit/conftest.py`` makes ``time.sleep`` raise.
     monkeypatch.setattr("ray.data._internal.util.time.sleep", lambda _: None)
 
     assert _lines(TextReader(), path) == ["a"]
@@ -376,7 +373,6 @@ def test_scanner_prunes_partitions_from_typed_paths_and_keeps_root_files(tmp_pat
     )
 
     assert scanner.partition_columns == {"year"}
-    # The root file's ``year`` is unknown from its path; the reader decides.
     assert scanner.prune_input_split(manifest).paths.tolist() == [paths[0], paths[2]]
     pruner = scanner.pushed_partition_pruner()
     assert pruner is not None
@@ -444,7 +440,6 @@ def test_datasource_reuses_generic_file_components(tmp_path):
         hints=PartitionHints(min_bucket_size=0, max_bucket_size=1024, num_buckets=1)
     )
     assert isinstance(partitioner, RoundRobinPartitioner)
-    # Listing sizes files by bytes on disk; it never reads a text file.
     estimator = partitioner._in_memory_size_estimator
     assert not isinstance(estimator, SamplingInMemorySizeEstimator)
     assert estimator.estimate_in_memory_sizes(sample).tolist() == [4]
@@ -459,7 +454,6 @@ def test_datasource_keeps_caller_paths_for_lineage(tmp_path):
 
     datasource = TextDatasourceV2([uri])
 
-    # Lineage tracking reads ``source_paths``; ``paths`` loses the scheme.
     assert datasource.source_paths == [uri]
     assert datasource.paths == [str(tmp_path)]
     assert datasource.supports_distributed_reads
@@ -538,7 +532,6 @@ def test_read_text_routes_to_v2_and_forwards_read_options(monkeypatch, tmp_path)
     assert datasource._encoding == "latin-1"
     assert datasource._drop_empty_lines is False
     assert datasource._synthesized_columns == (PathColumn(),)
-    # Keep the deprecated ``parallelism`` precedence used by ``read_datasource``.
     assert captured["kwargs"]["parallelism"] == 2
     assert captured["kwargs"]["concurrency"] == 4
     assert captured["kwargs"]["partition_filter"] is partition_filter
