@@ -6,7 +6,7 @@ import os
 import subprocess
 import tempfile
 from abc import ABC, abstractmethod
-from typing import Any, Callable, Dict, List, Optional, Union
+from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple, Union
 
 from ray.experimental.sandbox._internal import cdi, cdi_lib, overlayfs
 from ray.experimental.sandbox._internal.image_utils import (
@@ -19,6 +19,7 @@ from ray.experimental.sandbox._internal.image_utils import (
 )
 from ray.experimental.sandbox.config import DEFAULT_PUBLIC_DNS, parse_memory_bytes
 from ray.experimental.sandbox.exceptions import SandboxCreationError
+from ray.experimental.sandbox.image_build import apply_env_ops
 
 logger = logging.getLogger(__name__)
 
@@ -159,7 +160,7 @@ class BaseImageManager(ABC):
         """
         return None
 
-    def invalidate_image(self, image: str) -> None:
+    def invalidate_image(self, image: str, token: Optional[str] = None) -> bool:
         """Make the next ``pull_image`` of ``image`` fetch it afresh.
 
         A cached tag stays pinned to what was first pulled; this is how a
@@ -169,8 +170,13 @@ class BaseImageManager(ABC):
 
         Args:
             image: Container image reference or tar path.
+            token: Optional force token. A manager that records them
+                invalidates once per token and ignores repeats.
+
+        Returns:
+            False if the call was a repeat of ``token``, else True.
         """
-        return None
+        return True
 
     @abstractmethod
     def get_image_dir(self, image: str) -> str:
@@ -238,6 +244,7 @@ class BaseImageManager(ABC):
         root_path: Optional[str] = None,
         _oci_spec_transform_fn: Optional[Callable[[Dict], Optional[Dict]]] = None,
         disk: Optional[Union[str, int, float]] = None,
+        _image_env: Sequence[Tuple[str, Optional[str]]] = (),
     ) -> Dict[str, Any]:
         """Construct an OCI container configuration specification dictionary.
 
@@ -272,6 +279,9 @@ class BaseImageManager(ABC):
             disk: Size cap of the writable rootfs overlay; None or zero
                 means no cap. A capped writable overlay also holds the
                 workdir, so ``workdir_path`` is then not mounted.
+            _image_env: ``ENV`` assignments applied over the image's
+                environment, in order and expanded as Modal's image
+                builder does, beneath ``env_dict``.
 
         Returns:
             Dictionary matching the OCI runtime-spec schema (config.json).
@@ -295,6 +305,7 @@ class BaseImageManager(ABC):
         gpu_ids: Optional[List[str]] = None,
         _oci_spec_transform_fn: Optional[Callable[[Dict], Optional[Dict]]] = None,
         disk: Optional[Union[str, int, float]] = None,
+        _image_env: Sequence[Tuple[str, Optional[str]]] = (),
     ) -> str:
         """Prepare an OCI bundle directory containing config.json for a container instance.
 
@@ -316,6 +327,9 @@ class BaseImageManager(ABC):
             _oci_spec_transform_fn: Optional OCI spec transform function.
             disk: Size cap of the writable rootfs overlay (see
                 create_oci_spec).
+            _image_env: ``ENV`` assignments applied over the image's
+                environment, in order and expanded as Modal's image
+                builder does, beneath ``env_dict``.
 
         Returns:
             Path to the written config.json file.
@@ -369,7 +383,7 @@ class ImageManager(BaseImageManager):
         """
         _release_image_use(self.get_image_dir(image), instance_id)
 
-    def invalidate_image(self, image: str) -> None:
+    def invalidate_image(self, image: str, token: Optional[str] = None) -> bool:
         """Make the next ``pull_image`` of ``image`` rebuild it.
 
         See :func:`invalidate_cached_image`: sandboxes running on the cached
@@ -377,8 +391,13 @@ class ImageManager(BaseImageManager):
 
         Args:
             image: Container image name or tar path.
+            token: Optional force token: invalidate only the first time it is
+                seen for this image.
+
+        Returns:
+            False if ``token`` was already used for this image, else True.
         """
-        invalidate_cached_image(image, images_dir=self._images_dir)
+        return invalidate_cached_image(image, images_dir=self._images_dir, token=token)
 
     def get_image_dir(self, image: str) -> str:
         """Get the cached local directory path for an image.
@@ -486,6 +505,7 @@ class ImageManager(BaseImageManager):
         root_path: Optional[str] = None,
         _oci_spec_transform_fn: Optional[Callable[[Dict], Optional[Dict]]] = None,
         disk: Optional[Union[str, int, float]] = None,
+        _image_env: Sequence[Tuple[str, Optional[str]]] = (),
     ) -> Dict[str, Any]:
         """Construct an OCI container configuration specification dictionary.
 
@@ -520,6 +540,9 @@ class ImageManager(BaseImageManager):
             disk: Size cap of the writable rootfs overlay; None or zero
                 means no cap. A capped writable overlay also holds the
                 workdir, so ``workdir_path`` is then not mounted.
+            _image_env: ``ENV`` assignments applied over the image's
+                environment, in order and expanded as Modal's image
+                builder does, beneath ``env_dict``.
 
         Returns:
             Dictionary matching the OCI runtime-spec schema (config.json).
@@ -569,7 +592,13 @@ class ImageManager(BaseImageManager):
             if entry.startswith("PATH=")
         ]
         user_env = [f"{k}={v}" for k, v in (env_dict or {}).items()]
-        spec["process"]["env"] = _merge_env(base_path, self.get_envs(image), user_env)
+        image_env = self.get_envs(image)
+        if _image_env:
+            current = dict(e.split("=", 1) for e in image_env if "=" in e)
+            image_env = [
+                f"{k}={v}" for k, v in apply_env_ops(current, _image_env).items()
+            ]
+        spec["process"]["env"] = _merge_env(base_path, image_env, user_env)
 
         if capabilities is not None:
             # The key may exist with a null value in a caller-supplied base_spec.
@@ -758,6 +787,7 @@ class ImageManager(BaseImageManager):
         gpu_ids: Optional[List[str]] = None,
         _oci_spec_transform_fn: Optional[Callable[[Dict], Optional[Dict]]] = None,
         disk: Optional[Union[str, int, float]] = None,
+        _image_env: Sequence[Tuple[str, Optional[str]]] = (),
     ) -> str:
         """Prepare an OCI bundle directory containing config.json for a container instance.
 
@@ -779,6 +809,9 @@ class ImageManager(BaseImageManager):
             _oci_spec_transform_fn: Optional OCI spec transform function.
             disk: Size cap of the writable rootfs overlay (see
                 create_oci_spec).
+            _image_env: ``ENV`` assignments applied over the image's
+                environment, in order and expanded as Modal's image
+                builder does, beneath ``env_dict``.
 
         Returns:
             Path to the written config.json file.
@@ -847,6 +880,7 @@ class ImageManager(BaseImageManager):
             root_path=rootfs_dir,
             _oci_spec_transform_fn=_oci_spec_transform_fn,
             disk=disk,
+            _image_env=_image_env,
         )
 
         config_json_str = json.dumps(spec, indent=2)

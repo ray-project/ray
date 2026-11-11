@@ -889,6 +889,7 @@ class GVisorSandboxBackend(BaseSandboxBackend):
             gpu_ids=config.gpu_ids,
             _oci_spec_transform_fn=transform,
             disk=config.disk,
+            _image_env=config._image_env,
         )
         # Read back the final spec, as written to config.json.
         with open(config_json_path, encoding="utf-8") as f:
@@ -1510,6 +1511,38 @@ class GVisorSandboxBackend(BaseSandboxBackend):
         runsc_args = self._runsc_base_args(meta["config"])
         runsc_args.extend(["kill", "-pgid", str(pid), sandbox_id, "KILL"])
         return runsc_args
+
+    def export_rootfs_upper(self, sandbox_id: str, path: str) -> None:
+        """Write the sandbox's overlay upper layer to ``path`` as a tar file.
+
+        ``runsc tar rootfs-upper`` serializes only the root mount's upper
+        layer: what the sandbox created, changed or deleted, in overlayfs's
+        own encoding (see ``_internal/image_layers.normalize_overlay_diff``).
+        It always writes to a file: runsc logs to stdout, which would corrupt
+        an archive streamed there.
+
+        Args:
+            sandbox_id: Unique string identifier of the sandbox.
+            path: Host path of the tar file to write.
+
+        Raises:
+            SandboxError: runsc failed, for example because the sandbox has a
+                read-only root filesystem and so no upper layer.
+        """
+        meta = self._get_metadata_or_raise(sandbox_id)
+        args = self._runsc_base_args(meta["config"]) + [
+            "tar",
+            "rootfs-upper",
+            "--file",
+            path,
+            sandbox_id,
+        ]
+        res = subprocess.run(args, capture_output=True, text=True, env=runsc_env())
+        if res.returncode != 0:
+            raise SandboxError(
+                f"Failed to export the filesystem changes of sandbox "
+                f"'{sandbox_id}': {(res.stderr or res.stdout).strip()[-500:]}"
+            )
 
     def exec_command(
         self,
@@ -2961,6 +2994,7 @@ class GVisorSandboxBackend(BaseSandboxBackend):
         gpu_ids: Optional[List[str]] = None,
         _oci_spec_transform_fn: Optional[Callable[[Dict], Optional[Dict]]] = None,
         disk: Optional[Union[str, int, float]] = None,
+        _image_env: Sequence[Tuple[str, Optional[str]]] = (),
     ) -> str:
         return self._image_manager.prepare_oci_bundle(
             root_dir=root_dir,
@@ -2977,4 +3011,5 @@ class GVisorSandboxBackend(BaseSandboxBackend):
             gpu_ids=gpu_ids,
             _oci_spec_transform_fn=_oci_spec_transform_fn,
             disk=disk,
+            _image_env=_image_env,
         )

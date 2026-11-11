@@ -490,6 +490,31 @@ def test_gvisor_backend_nvml_failure_raises_sandbox_creation_error():
             backend._check_nvidia_driver_supported()
 
 
+def test_export_rootfs_upper_writes_through_runsc_to_a_file(monkeypatch, tmp_path):
+    """runsc logs to stdout, so the archive must go to --file, never stdout."""
+    backend = GVisorSandboxBackend()
+    cfg = GVisorSandboxConfig(image="busybox:latest", readonly=False)
+    backend._sandbox_metadata["sb"] = {"config": cfg, "root_dir": str(tmp_path)}
+    calls = []
+
+    class _Done:
+        returncode = 0
+        stdout = stderr = ""
+
+    def fake_run(args, **kwargs):
+        calls.append(args)
+        return _Done()
+
+    monkeypatch.setattr(
+        "ray.experimental.sandbox.backend.gvisor.subprocess.run", fake_run
+    )
+    out = str(tmp_path / "upper.tar")
+    backend.export_rootfs_upper("sb", out)
+    (args,) = calls
+    assert args[-5:] == ["tar", "rootfs-upper", "--file", out, "sb"]
+    assert args[: len(backend._runsc_base_args(cfg))] == backend._runsc_base_args(cfg)
+
+
 def test_string_exec_shell_configuration():
     """String commands run under config.shell (default /bin/bash) with a
     per-exec override; there is no auto-detection."""

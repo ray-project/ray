@@ -897,6 +897,30 @@ def test_image_cache_eviction_keeps_a_free_space_floor(tmp_path, monkeypatch):
     assert [d.exists() for d in images] == [False, True, False, False, False]
 
 
+def test_image_env_assignments_expand_beneath_explicit_env(tmp_path):
+    """Image.env() assignments left for the sandbox expand against the
+    image's own environment, in order, and an explicit env still wins."""
+    mgr = ImageManager(images_dir=str(tmp_path / "images"))
+    local_tar = tmp_path / "env.tar"
+    with tarfile.open(str(local_tar), "w") as tar:
+        ti = tarfile.TarInfo("f")
+        ti.size = 1
+        tar.addfile(ti, io.BytesIO(b"x"))
+    extracted_dir = mgr.pull_image(str(local_tar))
+    with open(os.path.join(extracted_dir, ".image_config.json"), "w") as f:
+        json.dump({"config": {"Env": ["PATH=/usr/bin", "V=3.12"]}}, f)
+    spec = mgr.create_oci_spec(
+        image=str(local_tar),
+        env_dict={"B": "explicit $V"},
+        _image_env=(("PATH", "/opt/bin:$PATH"), ("A", "${V}-a"), ("B", "$A")),
+    )
+    env = dict(e.split("=", 1) for e in spec["process"]["env"])
+    assert env["PATH"] == "/opt/bin:/usr/bin"
+    assert env["A"] == "3.12-a"
+    # Explicit values are taken literally, and win.
+    assert env["B"] == "explicit $V"
+
+
 def test_create_oci_spec_requires_cached_image(tmp_path):
     """Spec construction refuses a cache entry with no image rather than
     handing runsc a root it cannot mount."""
@@ -1251,6 +1275,54 @@ def test_invalidate_image_of_an_uncached_image_is_a_no_op(tmp_path):
     mgr = ImageManager(images_dir=str(tmp_path / "images"))
     mgr.invalidate_image("never-pulled:latest")
     assert not os.path.exists(str(tmp_path / "images"))
+
+
+def test_invalidate_with_a_token_happens_once_per_token(tmp_path):
+    """force_build re-pulls once per Image object, not on every create."""
+    mgr = ImageManager(images_dir=str(tmp_path / "images"))
+    local_tar = tmp_path / "app.tar"
+    _write_versioned_tar(local_tar, b"one", mtime=1_000_000)
+    mgr.pull_image(str(local_tar))
+
+    _write_versioned_tar(local_tar, b"two", mtime=1_000_000)
+    assert mgr.invalidate_image(str(local_tar), token="t1") is True
+    assert _cached_version(mgr.pull_image(str(local_tar))) == b"two"
+
+    _write_versioned_tar(local_tar, b"three", mtime=1_000_000)
+    assert mgr.invalidate_image(str(local_tar), token="t1") is False
+    assert _cached_version(mgr.pull_image(str(local_tar))) == b"two"
+
+    assert mgr.invalidate_image(str(local_tar), token="t2") is True
+    assert _cached_version(mgr.pull_image(str(local_tar))) == b"three"
+
+
+def test_a_token_is_recorded_for_an_image_not_pulled_yet(tmp_path):
+    mgr = ImageManager(images_dir=str(tmp_path / "images"))
+    assert mgr.invalidate_image("never-pulled:latest", token="t") is True
+    assert mgr.invalidate_image("never-pulled:latest", token="t") is False
+
+
+def test_a_built_layer_reference_never_reaches_a_registry(tmp_path, monkeypatch):
+    from ray.experimental.sandbox._internal.image_utils import BuiltImageEvictedError
+
+    def no_network(*args, **kwargs):
+        raise AssertionError("a built image reference was looked up remotely")
+
+    monkeypatch.setattr("urllib.request.urlopen", no_network)
+    mgr = ImageManager(images_dir=str(tmp_path / "images"))
+    with pytest.raises(BuiltImageEvictedError, match="no longer cached"):
+        mgr.pull_image("raylayer@" + "0" * 64)
+
+
+def test_a_cache_hit_refreshes_the_entry_for_lru(tmp_path):
+    mgr = ImageManager(images_dir=str(tmp_path / "images"))
+    local_tar = tmp_path / "app.tar"
+    _write_versioned_tar(local_tar, b"one", mtime=1_000_000)
+    image_dir = mgr.pull_image(str(local_tar))
+    marker = os.path.join(image_dir, ".extracted")
+    os.utime(marker, (1_500_000, 1_500_000))
+    mgr.pull_image(str(local_tar))
+    assert os.path.getmtime(marker) > 1_500_000
 
 
 if __name__ == "__main__":

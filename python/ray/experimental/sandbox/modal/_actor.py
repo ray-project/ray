@@ -23,8 +23,10 @@ from typing import Any, Deque, Dict, List, Optional, Set, Tuple, Union
 
 import ray
 from ray.experimental.sandbox.config import parse_memory_bytes
+from ray.experimental.sandbox.exceptions import SandboxImageBuildError
 from ray.experimental.sandbox.modal.exception import (
     ExecutionError,
+    ImageBuildError,
     InvalidError,
     NotFoundError,
 )
@@ -160,6 +162,10 @@ _KILL_RETRY_DELAY_SECONDS = 0.1
 # processes and its whole root filesystem.
 _DELETE_ATTEMPTS = 3
 _DELETE_RETRY_DELAY_SECONDS = 0.5
+# How long a cancelled start waits for its create to stop. A build stops
+# within a second or two (its command is killed); a sandbox being created
+# can't be interrupted, but starts within its own timeout.
+_ABANDON_CREATE_SECONDS = 30.0
 
 # The stream limit create_subprocess_exec gives a process's pipes by default.
 _SUBPROCESS_STREAM_LIMIT = 64 * 1024
@@ -629,12 +635,12 @@ class _SandboxActor:
         self,
         create_kwargs: Dict[str, Any],
         timeout: Optional[float],
-        force_pull: bool = False,
+        force_token: Optional[str] = None,
         readiness_probe: Optional["Probe"] = None,
     ):
         self._create_kwargs = create_kwargs
         self._timeout = timeout
-        self._force_pull = force_pull
+        self._force_token = force_token
         self._probe = readiness_probe
         self._runtime: Optional[SandboxRuntime] = None
         self._instance_id: Optional[str] = None
@@ -718,19 +724,27 @@ class _SandboxActor:
         # tuple caps it, and Sandbox.create passes that limit in
         # create_kwargs when there is one.
 
-        # Dropping the cached image forces the create below to pull it again.
-        # It is the only lever a caller has when a mutable tag has moved.
-        if self._force_pull:
-            await asyncio.to_thread(
-                self._runtime.image_manager.invalidate_image,
-                self._create_kwargs["image"],
-            )
+        create_kwargs = dict(self._create_kwargs)
+        # Re-pulls the cached base once per token (Modal's force_build): the
+        # only lever a caller has when a mutable tag has moved.
+        if self._force_token is not None:
+            create_kwargs["image_force_token"] = self._force_token
 
         # Creating the sandbox blocks until runsc reports it running, and the
-        # pull it may trigger is slower still. Neither belongs on the loop.
-        self._instance_id = await asyncio.to_thread(
-            self._runtime.create, **self._create_kwargs
+        # pull -- or image build -- it may trigger is slower still. None of
+        # that belongs on the loop.
+        creating = asyncio.ensure_future(
+            asyncio.to_thread(self._runtime.create, **create_kwargs)
         )
+        try:
+            # Shielded: when the caller cancels, the create still has to be
+            # stopped, and a sandbox it makes regardless deleted.
+            self._instance_id = await asyncio.shield(creating)
+        except asyncio.CancelledError:
+            await self._abandon_create(creating)
+            raise
+        except SandboxImageBuildError as err:
+            raise ImageBuildError(str(err), err.image_id or "") from err
 
         # Past this point the container exists, so anything that raises has to
         # reclaim it here. The caller cannot: it has no instance id yet, and
@@ -757,6 +771,37 @@ class _SandboxActor:
                     exc_info=True,
                 )
             raise
+
+    async def _abandon_create(self, creating: "asyncio.Future[str]") -> None:
+        """Stop a create whose caller cancelled it, and delete what it made.
+
+        The thread running the create can't be interrupted, so the image
+        build it may be running is cancelled -- its command killed, its build
+        sandboxes deleted -- and the create waited for, up to
+        ``_ABANDON_CREATE_SECONDS``. A sandbox it still makes is deleted: the
+        caller never learns its id, and kills this actor next.
+
+        Args:
+            creating: The create, running in a worker thread.
+        """
+        loop = asyncio.get_running_loop()
+        deadline = loop.time() + _ABANDON_CREATE_SECONDS
+        while not creating.done():
+            # Again on every pass: the create may not have started its build
+            # by the first.
+            await asyncio.to_thread(self._runtime.cancel_builds)
+            remaining = deadline - loop.time()
+            if remaining <= 0:
+                logger.warning(
+                    "Sandbox creation did not stop within %.0fs of being cancelled",
+                    _ABANDON_CREATE_SECONDS,
+                )
+                return
+            await asyncio.wait({creating}, timeout=min(1.0, remaining))
+        if creating.cancelled() or creating.exception() is not None:
+            return
+        self._instance_id = creating.result()
+        await self._teardown()
 
     async def get_image_config(self) -> Dict[str, Any]:
         """The base image's own config (Cmd, Entrypoint, Env, WorkingDir).
