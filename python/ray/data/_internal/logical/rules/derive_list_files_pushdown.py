@@ -11,6 +11,7 @@ from ray.data._internal.datasource_v2.common.pushdown_utils import (
     derive_list_files_pushdown,
 )
 from ray.data._internal.logical.interfaces import LogicalOperator, LogicalPlan, Rule
+from ray.data._internal.logical.operators.map_operator import Filter
 from ray.data._internal.logical.operators.read_operator import ListFiles, ReadFiles
 
 __all__ = [
@@ -81,7 +82,34 @@ class DeriveListFilesPushdown(Rule):
                 return node
             return node._with_new_input_dependencies(new_inputs)
 
-        dag = plan.dag._apply_transform(transform)
+        def clear(node: LogicalOperator) -> LogicalOperator:
+            if isinstance(node, ListFiles):
+                indexer = node.file_indexer.with_residual_pruning()
+                if indexer is not node.file_indexer:
+                    return replace(node, file_indexer=indexer)
+            return node
+
+        def configure(node: LogicalOperator) -> LogicalOperator:
+            if not isinstance(node, Filter) or node.predicate_expr is None:
+                return node
+            read = node.input_dependencies[0]
+            if not isinstance(read, ReadFiles) or read.block_udf is not None:
+                return node
+            listing = read.input_dependencies[0]
+            if not isinstance(listing, ListFiles):
+                return node
+            indexer = listing.file_indexer.with_residual_pruning(
+                read.scanner, node.predicate_expr
+            )
+            if indexer is listing.file_indexer:
+                return node
+            configured = replace(listing, file_indexer=indexer)
+            return node._with_new_input_dependencies(
+                [read._with_new_input_dependencies([configured])]
+            )
+
+        dag = plan.dag._apply_transform(clear)._apply_transform(transform)
+        dag = dag._apply_transform(configure)
 
         return LogicalPlan(dag=dag, context=plan.context)
 

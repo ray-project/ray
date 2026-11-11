@@ -193,11 +193,21 @@ class _ExprVisitor(ABC, Generic[T]):
 class _PyArrowExpressionVisitor(_ExprVisitor["pyarrow.compute.Expression"]):
     """Visitor that converts Ray Data expressions to PyArrow compute expressions."""
 
+    def __init__(self, *, preserve_scalar_types: bool = False):
+        self._preserve_scalar_types = preserve_scalar_types
+
     def visit_column(self, expr: "ColumnExpr") -> "pyarrow.compute.Expression":
         return pc.field(expr.name)
 
     def visit_literal(self, expr: "LiteralExpr") -> "pyarrow.compute.Expression":
-        return pc.scalar(expr.value)
+        if not self._preserve_scalar_types:
+            return pc.scalar(expr.value)
+        value = pyarrow.scalar(expr.value)
+        if pyarrow.types.is_null(value.type):
+            return pc.scalar(value)
+        # Binding must not narrow a scalar to an array's type based on its value.
+        # Eager compute uses the scalar's declared type for kernel dispatch.
+        return pc.scalar(value).cast(value.type)
 
     def visit_binary(self, expr: "BinaryExpr") -> "pyarrow.compute.Expression":
         import pyarrow as pa

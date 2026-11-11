@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import math
 from concurrent.futures import Future, ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from typing import (
@@ -13,6 +14,7 @@ from typing import (
 )
 
 import pyarrow as pa
+import pyarrow.compute as pc
 import pyarrow.dataset as pds
 import pyarrow.fs as pafs
 from pyarrow.parquet import ColumnSchema, ParquetSchema, RowGroupMetaData
@@ -23,6 +25,7 @@ from ray.data._internal.datasource_v2.common.file_pruners import (
 )
 from ray.data._internal.datasource_v2.common.partitioning_utils import (
     _evaluate_path_predicate,
+    _partition_table,
     _PartitionValueParser,
 )
 from ray.data._internal.datasource_v2.common.pushdown_utils import (
@@ -45,11 +48,25 @@ from ray.data._internal.planner.plan_expression.expression_visitors import (
 )
 from ray.data._internal.util import call_with_retry, filesystem_for_sized_opens
 from ray.data.datasource.partitioning import Partitioning
+from ray.data.expressions import (
+    AliasExpr,
+    BinaryExpr,
+    ColumnExpr,
+    LiteralExpr,
+    Operation,
+    UnaryExpr,
+    _PyArrowExpressionVisitor,
+)
 
 if TYPE_CHECKING:
-    import pyarrow.compute as pc
-
+    from ray.data._internal.datasource_v2.interfaces.synthesized_columns import (
+        SynthesizedColumn,
+    )
     from ray.data.expressions import Expr
+
+ResidualPruning = Tuple[
+    "Expr", Partitioning, pa.Schema, tuple["SynthesizedColumn", ...]
+]
 
 logger = logging.getLogger(__name__)
 
@@ -130,6 +147,9 @@ class FooterReader:
         partitioning: Partitioning | None = None,
         partition_pruner: PartitionPredicatePruner | None = None,
         logical_schema: pa.Schema | None = None,
+        *,
+        residual_pruning: ResidualPruning | None = None,
+        residual_read_options: pds.ParquetReadOptions | None = None,
     ):
         from ray.data.context import DEFAULT_RETRIED_IO_ERRORS
 
@@ -165,6 +185,31 @@ class FooterReader:
             if self.partitioning is not None and self._predicate is not None
             else None
         )
+        self.residual_pruning = residual_pruning
+        self.residual_read_options = residual_read_options
+        self._residual_partition_value_parser = None
+        if residual_pruning is not None:
+            try:
+                partitioning = residual_pruning[1]
+                self._residual_partition_value_parser = (
+                    self._partition_value_parser
+                    if self._partition_value_parser is not None
+                    and partitioning == self.partitioning
+                    else _PartitionValueParser(partitioning)
+                )
+            except Exception:
+                # Q's parser initialization above must still raise normally;
+                # only initialization needed exclusively by R is optional.
+                self.residual_pruning = None
+        self._can_bind_residual_partitions = True
+        if self.residual_pruning is not None and self._predicate is not None:
+            try:
+                # Validate Q's grammar once before sharing partition facts.
+                # Native expressions in compute data operands can hide field
+                # references from get_column_references, so cannot share facts.
+                _validate_residual_expression(self._predicate, self.residual_pruning[2])
+            except Exception:
+                self._can_bind_residual_partitions = False
         filter_expr = self._predicate
         self.pool = ThreadPoolExecutor(max_workers=io_concurrency)
         # Match Arrow's process-wide pools to the actor's IO concurrency so
@@ -359,7 +404,11 @@ class FooterReader:
         return not self._has_filter_nulls(row_group, filter_leaves.indices)
 
     def _try_split_by_row_group(
-        self, fragment, expr: "pc.Expression", path: str
+        self,
+        fragment,
+        expr: "pc.Expression",
+        path: str,
+        schema: pa.Schema | None = None,
     ) -> list[int] | None:
         """Row-group ids that statistics say may match ``expr``, or None on failure.
 
@@ -368,7 +417,12 @@ class FooterReader:
         exception so one mismatched file cannot abort a ``read_footers`` batch.
         """
         try:
-            return [sub.row_groups[0].id for sub in fragment.split_by_row_group(expr)]
+            fragments = (
+                fragment.split_by_row_group(expr)
+                if schema is None
+                else fragment.split_by_row_group(expr, schema=schema)
+            )
+            return [sub.row_groups[0].id for sub in fragments]
         except Exception as e:
             logger.debug(
                 "Error splitting by row group: %s for file %s",
@@ -378,13 +432,111 @@ class FooterReader:
             )
             return None
 
+    def _residual_partition_facts(
+        self, path: str
+    ) -> tuple[pc.Expression, set[str], set[str]] | None:
+        """Prepare native facts, overwritten names, and successfully bound names."""
+        parser = self._residual_partition_value_parser
+        if self.residual_pruning is None or parser is None:
+            return None
+        try:
+            expr, _, logical_schema, synthesized = self.residual_pruning
+            references = set(get_column_references(expr))
+            synthesized_names = {column.name for column in synthesized}
+            values = parser(path)
+            values = {
+                name: value
+                for name, value in values.items()
+                if name in references and name not in synthesized_names
+            }
+            # Only keys actually present in this path are facts. A missing key
+            # can be a physical column at the root, rather than an implicit NULL.
+            # With the same parser, _filter_for_file removes these keys from Q.
+            # With a different parser, do not bind any possible Q reference.
+            blocked = (
+                self.filter_columns
+                if parser is not self._partition_value_parser
+                else set()
+            )
+            if not self._can_bind_residual_partitions:
+                blocked = set(values)
+            # Preserve R's existing fallback on incompatible path conversion,
+            # even when a converted value cannot be bound as a shared fact.
+            partition_table = _partition_table(values, logical_schema)
+            partition_expression = pds.scalar(True)
+            bound_partition_columns = set()
+            for name in values:
+                if name in blocked:
+                    continue
+                scalar = partition_table[name][0]
+                if (
+                    scalar.is_valid
+                    and pa.types.is_floating(scalar.type)
+                    and math.isnan(scalar.as_py())
+                ):
+                    # NaN == NaN is not a true partition fact. Its overwrite
+                    # also makes same-named physical statistics unusable.
+                    continue
+                fact = (
+                    pds.field(name) == pds.scalar(scalar)
+                    if scalar.is_valid
+                    else pds.field(name).is_null()
+                )
+                partition_expression = partition_expression & fact
+                bound_partition_columns.add(name)
+            return partition_expression, set(values), bound_partition_columns
+        except Exception:
+            return None
+
+    def _residual_row_groups(
+        self,
+        fragment,
+        schema: ParquetSchema,
+        candidates: Iterable[int],
+        facts: tuple[pc.Expression, set[str], set[str]] | None,
+    ) -> list[int] | None:
+        """Additional possible groups, never evidence for ``fully_matched``."""
+        if self.residual_pruning is None or facts is None:
+            return None
+        candidates = list(candidates)
+        if not candidates:
+            return None
+        try:
+            expr, _, logical_schema, synthesized = self.residual_pruning
+            references = set(get_column_references(expr))
+            synthesized_names = {column.name for column in synthesized}
+            _, overwritten_columns, bound_partition_columns = facts
+            unknown_columns = (
+                (
+                    reader_unknown_columns(
+                        schema, logical_schema, references, self.residual_read_options
+                    )
+                    | overwritten_columns
+                )
+                - bound_partition_columns
+            ) | synthesized_names
+            bound = _validate_residual_expression(expr, logical_schema, unknown_columns)
+            bound = _PyArrowExpressionVisitor(preserve_scalar_types=True).visit(bound)
+            # Share the already-read metadata, but give R its own statistics
+            # cache when binding against the reader's logical schema.
+            fragment = fragment.subset(row_group_ids=candidates)
+        except Exception:
+            return None
+        return self._try_split_by_row_group(
+            fragment, bound, fragment.path, logical_schema
+        )
+
     def _read_and_chunk(self, file: FileInfo) -> ChunkedFile:
         path = file.path
+        residual_facts = self._residual_partition_facts(path)
         # The listing's size spares the open a request for it (a HEAD on S3).
         fragment = self.file_format.make_fragment(
             path,
             filesystem=filesystem_for_sized_opens(self.filesystem),
             file_size=file.size,
+            partition_expression=residual_facts[0]
+            if residual_facts is not None
+            else None,
         )
         # ``make_fragment`` is lazy, so this property is the footer read itself
         # (and caches it on the fragment). It raises on a truncated, non-Parquet,
@@ -469,6 +621,13 @@ class FooterReader:
             # No physical predicate does not prove a missing path condition.
             fully_by_idx = dict.fromkeys(rg_indices, complete_filter)
 
+        selected = self._residual_row_groups(
+            fragment, metadata.schema, rg_indices, residual_facts
+        )
+        if selected is not None:
+            possible = set(selected)
+            rg_indices = [i for i in rg_indices if i in possible]
+
         per_rg = [
             self._row_group_run(
                 row_group=metadata.row_group(rg_idx),
@@ -536,3 +695,121 @@ class FooterReader:
 
 
 FooterReaderActor = ray.remote(FooterReader)
+
+
+_COMPARISONS = frozenset(
+    (Operation.EQ, Operation.NE, Operation.LT, Operation.LE, Operation.GT, Operation.GE)
+)
+
+
+def _validate_residual_expression(expr: "Expr", schema, unknown_columns=frozenset()):
+    """Use native statistics only for an unchanged, row-local expression.
+
+    Unsafe expressions disable this optional hint as a whole. The original
+    pushed predicate and residual Filter still run, so this costs only pruning.
+    In particular, Arrow statistics can lose NaNs for negated comparisons and
+    distinguish signed zeros differently from eager IN evaluation.
+    """
+
+    def column_type(column):
+        if column.name in unknown_columns:
+            raise ValueError("Reader changes the column domain")
+        i = schema.get_field_index(column.name)
+        if i < 0:
+            raise ValueError("Unknown column")
+        t = schema.field(i).type
+        if (
+            pa.types.is_nested(t)
+            or pa.types.is_dictionary(t)
+            or isinstance(t, pa.BaseExtensionType)
+        ):
+            raise ValueError("Non-scalar reader domain")
+        return t
+
+    def visit(e):
+        if isinstance(e, AliasExpr):
+            visit(e.expr)
+        elif isinstance(e, LiteralExpr):
+            value = e.value.as_py() if isinstance(e.value, pa.Scalar) else e.value
+            if value is not None and not isinstance(value, bool):
+                raise ValueError("Not a Boolean literal")
+        elif isinstance(e, ColumnExpr):
+            if not pa.types.is_boolean(column_type(e)):
+                raise ValueError("Not a Boolean column")
+        elif isinstance(e, UnaryExpr) and e.op == Operation.NOT:
+            visit(e.operand)
+        elif (
+            isinstance(e, UnaryExpr)
+            and e.op in (Operation.IS_NULL, Operation.IS_NOT_NULL)
+            and isinstance(e.operand, ColumnExpr)
+        ):
+            column_type(e.operand)
+        elif isinstance(e, BinaryExpr) and e.op in (Operation.AND, Operation.OR):
+            visit(e.left)
+            visit(e.right)
+        elif isinstance(e, BinaryExpr) and e.op in _COMPARISONS:
+            column, literal = (
+                (e.left, e.right)
+                if isinstance(e.left, ColumnExpr)
+                else (e.right, e.left)
+            )
+            if not isinstance(column, ColumnExpr) or not isinstance(
+                literal, LiteralExpr
+            ):
+                raise ValueError("Not a column-scalar comparison")
+            value = pa.scalar(literal.value)
+            if (
+                pa.types.is_floating(column_type(column))
+                or pa.types.is_floating(value.type)
+                or pa.types.is_nested(value.type)
+            ):
+                raise ValueError("Unsafe statistics comparison")
+        elif (
+            isinstance(e, BinaryExpr)
+            and e.op in (Operation.IN, Operation.NOT_IN)
+            and isinstance(e.left, ColumnExpr)
+            and isinstance(e.right, LiteralExpr)
+        ):
+            if pa.types.is_floating(column_type(e.left)):
+                raise ValueError("Unsafe floating-point membership")
+            if not isinstance(e.right.value, list):
+                raise ValueError("Not a literal value set")
+            values_type = pa.array(e.right.value).type
+            if not pa.types.is_null(values_type) and values_type != column_type(e.left):
+                raise ValueError("Membership changes the scalar domain")
+        else:
+            raise ValueError("Not a supported row-local statistics expression")
+
+    visit(expr)
+    return expr
+
+
+def reader_unknown_columns(
+    parquet_schema, reader_schema, references, read_options=None
+):
+    """Identify incompatible reader domains; schema equality is not sufficient."""
+    physical = (
+        parquet_schema
+        if isinstance(parquet_schema, pa.Schema)
+        else parquet_schema.to_arrow_schema()
+    )
+    logical = physical if reader_schema is None else reader_schema
+    result = set()
+    for name in references:
+        i, j = physical.get_field_index(name), logical.get_field_index(name)
+        if i < 0:  # Folder-only fields remain usable partition facts.
+            continue
+        before, after = (
+            physical.field(i).type,
+            logical.field(j).type if j >= 0 else None,
+        )
+        if before != after or any(
+            isinstance(t, pa.BaseExtensionType) for t in (before, after)
+        ):
+            result.add(name)
+    if read_options is not None and read_options.coerce_int96_timestamp_unit != "ns":
+        for i in range(len(parquet_schema)):
+            leaf = parquet_schema.column(i)
+            if leaf.physical_type == "INT96":
+                result.update(_get_prefix_matches(leaf.path, references))
+    return frozenset(result)
