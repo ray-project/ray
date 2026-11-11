@@ -15,6 +15,7 @@ from ray.data._internal.datasource_v2.interfaces.file_pruner import FilePruner
 from ray.data.block import BlockColumn
 
 if TYPE_CHECKING:
+    from ray.data._internal.datasource_v2.interfaces.scanner import Scanner
     from ray.data.datasource.file_based_datasource import FileShuffleConfig
     from ray.data.expressions import Expr
 
@@ -44,6 +45,15 @@ class FileIndexer(ABC):
         with the same traversal settings.
         """
         return None
+
+    def with_residual_pruning(
+        self, scanner: Optional["Scanner"] = None, residual: Optional["Expr"] = None
+    ) -> "FileIndexer":
+        """Configure optional metadata pruning without removing the residual filter.
+
+        The default does nothing. Passing no residual clears a previous hint.
+        """
+        return self
 
     @abstractmethod
     def list_files(
