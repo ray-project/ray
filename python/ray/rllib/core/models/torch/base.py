@@ -18,33 +18,26 @@ class TorchModel(nn.Module, Model, abc.ABC):
 
     This class defines the interface for RLlib's PyTorch models.
 
-    Example usage for a single Flattening layer:
+    Examples:
+        Example usage for a single Flattening layer:
 
-    .. testcode::
-
-        from ray.rllib.core.models.configs import ModelConfig
-        from ray.rllib.core.models.torch.base import TorchModel
-        import torch
-
-        class FlattenModelConfig(ModelConfig):
-            def build(self, framework: str):
-                assert framework == "torch"
-                return TorchFlattenModel(self)
-
-        class TorchFlattenModel(TorchModel):
-            def __init__(self, config):
-                TorchModel.__init__(self, config)
-                self.flatten_layer = torch.nn.Flatten()
-
-            def _forward(self, inputs, **kwargs):
-                return self.flatten_layer(inputs)
-
-        model = FlattenModelConfig().build("torch")
-        inputs = torch.Tensor([[[1, 2]]])
-        print(model(inputs))
-
-    .. testoutput::
-
+        >>> from ray.rllib.core.models.configs import ModelConfig
+        >>> from ray.rllib.core.models.torch.base import TorchModel
+        >>> import torch
+        >>> class FlattenModelConfig(ModelConfig):
+        ...     def build(self, framework: str):
+        ...         assert framework == "torch"
+        ...         return TorchFlattenModel(self)
+        >>> class TorchFlattenModel(TorchModel):
+        ...     def __init__(self, config):
+        ...         TorchModel.__init__(self, config)
+        ...         self.flatten_layer = torch.nn.Flatten()
+        ...
+        ...     def _forward(self, inputs, **kwargs):
+        ...         return self.flatten_layer(inputs)
+        >>> model = FlattenModelConfig().build("torch")
+        >>> inputs = torch.Tensor([[[1, 2]]])
+        >>> print(model(inputs))
         tensor([[1., 2.]])
 
     """
