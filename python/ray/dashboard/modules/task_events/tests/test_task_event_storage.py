@@ -15,12 +15,20 @@ def _task_id(n: int) -> bytes:
 
 
 def _event(
-    task_id, attempt=0, task_type=None, finished=False, name="", worker=None
+    task_id,
+    attempt=0,
+    task_type=None,
+    finished=False,
+    name="",
+    worker=None,
+    runtime_env="",
 ) -> gcs_pb2.TaskEvents:
     event = gcs_pb2.TaskEvents(task_id=task_id, attempt_number=attempt, job_id=_JOB)
     if task_type is not None:
         event.task_info.type = task_type
         event.task_info.name = name
+    if runtime_env:
+        event.task_info.runtime_env_info.serialized_runtime_env = runtime_env
     if finished:
         event.state_updates.state_ts_ns[TaskStatus.FINISHED] = 1
     if worker is not None:
@@ -73,6 +81,48 @@ def test_evicted_attempt_is_rejected():
     assert store.get_task_event((_task_id(2), 0)) is None
     store.add_or_replace_task_event(_event(_task_id(2), finished=True))
     assert store.get_task_event((_task_id(2), 0)) is None
+
+
+def test_byte_bound_evicts_large_payloads_under_the_count_bound():
+    big = _event(_task_id(0), task_type=TaskType.NORMAL_TASK, runtime_env="x" * 1000)
+    store = tes.TaskEventStorage(
+        max_num_task_events=10, max_num_task_event_bytes=3 * big.ByteSize()
+    )
+    for i in range(5):
+        store.add_or_replace_task_event(
+            _event(_task_id(i), task_type=TaskType.NORMAL_TASK, runtime_env="x" * 1000)
+        )
+
+    # Five events are well under the count bound, so only the byte bound can evict here.
+    assert store.num_task_events_stored == 3
+    assert store.num_task_event_bytes_stored == 3 * big.ByteSize()
+    assert store.stats[tes.STAT_TOTAL_ATTEMPTS_DROPPED] == 2
+
+
+def test_byte_bound_disabled_when_non_positive():
+    store = tes.TaskEventStorage(max_num_task_event_bytes=-1)
+    for i in range(5):
+        store.add_or_replace_task_event(
+            _event(_task_id(i), task_type=TaskType.NORMAL_TASK, runtime_env="x" * 1000)
+        )
+
+    assert store.num_task_events_stored == 5
+
+
+def test_stored_bytes_track_merge_and_removal():
+    store = tes.TaskEventStorage()
+    task_id = TaskID.for_fake_task(JobID.from_int(1)).binary()
+    store.add_or_replace_task_event(_event(task_id, task_type=TaskType.NORMAL_TASK))
+    added = store.num_task_event_bytes_stored
+    assert added == store.get_task_event((task_id, 0)).ByteSize()
+
+    store.add_or_replace_task_event(_event(task_id, runtime_env="x" * 1000))
+    merged = store.num_task_event_bytes_stored
+    assert merged > added
+    assert merged == store.get_task_event((task_id, 0)).ByteSize()
+
+    store.record_data_loss_from_worker([TaskAttempt(task_id=task_id, attempt_number=0)])
+    assert store.num_task_event_bytes_stored == 0
 
 
 def test_profile_events_truncated_fifo(monkeypatch):
