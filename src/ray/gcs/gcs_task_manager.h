@@ -43,6 +43,7 @@ enum GcsTaskManagerCounter : std::uint8_t {
   kTotalNumTaskAttemptsDropped,
   kTotalNumProfileTaskEventsDropped,
   kNumTaskEventsStored,
+  kNumTaskEventBytesStored,
   kTotalNumActorCreationTask,
   kTotalNumActorTask,
   kTotalNumNormalTask,
@@ -88,7 +89,8 @@ class FinishedTaskActorTaskGcPolicy : public TaskEventsGcPolicyInterface {
 /// TaskEventBuffer from other components.
 ///
 /// When the maximal number of task events tracked specified by
-/// `RAY_task_events_max_num_task_in_gcs` is exceeded, older events (approximately by
+/// `RAY_task_events_max_num_task_in_gcs`, or their maximal total size specified by
+/// `RAY_task_events_max_num_bytes_in_gcs`, is exceeded, older events (approximately by
 /// insertion order) will be dropped.
 ///
 /// This class has its own io_context and io_thread, that's separate from other GCS
@@ -97,11 +99,13 @@ class GcsTaskManager : public rpc::TaskInfoGcsServiceHandler,
                        public rpc::events::RayEventExportGcsServiceHandler {
  public:
   /// Create a GcsTaskManager.
-  explicit GcsTaskManager(instrumented_io_context &io_service,
-                          std::shared_ptr<PeriodicalRunnerInterface> periodical_runner,
-                          ray::observability::MetricInterface &task_events_reported_gauge,
-                          ray::observability::MetricInterface &task_events_dropped_gauge,
-                          ray::observability::MetricInterface &task_events_stored_gauge);
+  explicit GcsTaskManager(
+      instrumented_io_context &io_service,
+      std::shared_ptr<PeriodicalRunnerInterface> periodical_runner,
+      ray::observability::MetricInterface &task_events_reported_gauge,
+      ray::observability::MetricInterface &task_events_dropped_gauge,
+      ray::observability::MetricInterface &task_events_stored_gauge,
+      ray::observability::MetricInterface &task_events_stored_bytes_gauge);
 
   /// Handles an AddTaskEventData request.
   ///
@@ -167,7 +171,8 @@ class GcsTaskManager : public rpc::TaskInfoGcsServiceHandler,
   /// It merges events from a single task attempt (same task id and attempt number) into
   /// a single rpc::TaskEvents entry, as reported by multiple rpc calls from workers.
   ///
-  /// When more than `RAY_task_events_max_num_task_in_gcs` task events are stored in the
+  /// When more than `RAY_task_events_max_num_task_in_gcs` task events, or more than
+  /// `RAY_task_events_max_num_bytes_in_gcs` bytes of them, are stored in the
   /// the storage, tasks with lower gc priority as specified by
   /// `TaskEventGcPolicyInterface` will be evicted first. When new events from the
   /// already evicted task attempts are reported to GCS, those events will also be
@@ -181,18 +186,23 @@ class GcsTaskManager : public rpc::TaskInfoGcsServiceHandler,
     ///
     /// \param max_num_task_events Max number of task events stored before replacing older
     /// ones.
+    /// \param max_num_task_event_bytes Max total size of the stored task events, in
+    /// serialized bytes, before replacing older ones.
     GcsTaskManagerStorage(size_t max_num_task_events,
+                          size_t max_num_task_event_bytes,
                           CounterMapThreadSafe<GcsTaskManagerCounter> &stats_counter,
                           std::unique_ptr<TaskEventsGcPolicyInterface> gc_policy)
         : max_num_task_events_(max_num_task_events),
+          max_num_task_event_bytes_(max_num_task_event_bytes),
           stats_counter_(stats_counter),
           gc_policy_(std::move(gc_policy)),
           task_events_list_(gc_policy_->MaxPriority(), std::list<rpc::TaskEvents>()) {}
 
     /// Add a new task event or replace an existing task event in the storage.
     ///
-    /// If there are already `RAY_task_events_max_num_task_in_gcs` in the storage, the
-    /// oldest task event will be replaced. Otherwise the `task_event` will be added.
+    /// If there are already `RAY_task_events_max_num_task_in_gcs` in the storage, or they
+    /// already occupy `RAY_task_events_max_num_bytes_in_gcs` bytes, the oldest task
+    /// events will be replaced. Otherwise the `task_event` will be added.
     ///
     /// \param task_event Task event to be added to the storage.
     /// replaced task event.
@@ -325,11 +335,20 @@ class GcsTaskManager : public rpc::TaskInfoGcsServiceHandler,
         task_list_index_ = cur_list_index;
       }
 
+      size_t GetAccountedBytes() const { return accounted_bytes_; }
+
+      void SetAccountedBytes(size_t accounted_bytes) {
+        accounted_bytes_ = accounted_bytes;
+      }
+
      private:
       /// Iterator to the task list.
       std::list<rpc::TaskEvents>::iterator iter_;
       /// Index of the task list.
       size_t task_list_index_;
+      /// Serialized size of the task events last added to the stored-byte counter, so the
+      /// counter can be adjusted exactly when the entry grows or is removed.
+      size_t accounted_bytes_ = 0;
     };
 
     /// A helper class to summarize the stats of a job.
@@ -437,6 +456,17 @@ class GcsTaskManager : public rpc::TaskInfoGcsServiceHandler,
     /// \param data
     void RecordDataLossFromWorker(const rpc::TaskEventData &data);
 
+    /// Re-measure the task events of a locator and fold the change into the stored-byte
+    /// counter. Called after every mutation of a stored entry, so the counter stays exact
+    /// as entries are merged into and trimmed.
+    ///
+    /// \param loc The task event locator.
+    void AccountTaskEventBytes(const std::shared_ptr<TaskEventLocator> &loc);
+
+    /// Return whether either the event-count or the stored-byte limit is exceeded. A
+    /// limit of 0 disables that limit.
+    bool IsOverCapacity() const;
+
     /// Evict task events from the storage when there are too many task events.
     void EvictTaskEvent();
 
@@ -451,6 +481,9 @@ class GcsTaskManager : public rpc::TaskInfoGcsServiceHandler,
 
     /// Max number of task events allowed in the storage.
     const size_t max_num_task_events_ = 0;
+
+    /// Max total size of the task events allowed in the storage, in serialized bytes.
+    const size_t max_num_task_event_bytes_ = 0;
 
     /// Reference to the counter map owned by the GcsTaskManager.
     CounterMapThreadSafe<GcsTaskManagerCounter> &stats_counter_;
@@ -514,6 +547,11 @@ class GcsTaskManager : public rpc::TaskInfoGcsServiceHandler,
   /// Test only
   size_t GetNumTaskEventsStored() { return stats_counter_.Get(kNumTaskEventsStored); }
 
+  /// Test only
+  size_t GetNumTaskEventBytesStored() {
+    return stats_counter_.Get(kNumTaskEventBytesStored);
+  }
+
   /// Dedicated IO service separated from the main service.
   instrumented_io_context &io_service_;
 
@@ -536,6 +574,7 @@ class GcsTaskManager : public rpc::TaskInfoGcsServiceHandler,
   ray::observability::MetricInterface &task_events_reported_gauge_;
   ray::observability::MetricInterface &task_events_dropped_gauge_;
   ray::observability::MetricInterface &task_events_stored_gauge_;
+  ray::observability::MetricInterface &task_events_stored_bytes_gauge_;
 
   FRIEND_TEST(GcsTaskManagerTest, TestHandleAddEventBasic);
   FRIEND_TEST(GcsTaskManagerTest, TestHandleAddTaskEventBasic);
@@ -543,6 +582,8 @@ class GcsTaskManager : public rpc::TaskInfoGcsServiceHandler,
   FRIEND_TEST(GcsTaskManagerTest, TestMergeTaskEventsSameTaskAttempt);
   FRIEND_TEST(GcsTaskManagerMemoryLimitedTest, TestLimitTaskEvents);
   FRIEND_TEST(GcsTaskManagerMemoryLimitedTest, TestIndexNoLeak);
+  FRIEND_TEST(GcsTaskManagerByteLimitedTest, TestLimitTaskEventBytes);
+  FRIEND_TEST(GcsTaskManagerByteLimitedTest, TestTaskEventBytesTrackedOnMerge);
   FRIEND_TEST(GcsTaskManagerTest, TestJobFinishesFailAllRunningTasks);
   FRIEND_TEST(GcsTaskManagerTest, TestMarkTaskAttemptFailedIfNeeded);
   FRIEND_TEST(GcsTaskManagerTest, TestTaskDataLossWorker);

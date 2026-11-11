@@ -252,9 +252,11 @@ class GcsServer {
   void InitGcsWorkerManager(const GcsInitData &gcs_init_data);
 
   /// Initialize gcs task manager.
-  void InitGcsTaskManager(ray::observability::MetricInterface &task_events_reported_gauge,
-                          ray::observability::MetricInterface &task_events_dropped_gauge,
-                          ray::observability::MetricInterface &task_events_stored_gauge);
+  void InitGcsTaskManager(
+      ray::observability::MetricInterface &task_events_reported_gauge,
+      ray::observability::MetricInterface &task_events_dropped_gauge,
+      ray::observability::MetricInterface &task_events_stored_gauge,
+      ray::observability::MetricInterface &task_events_stored_bytes_gauge);
 
   /// Initialize gcs autoscaling manager.
   void InitGcsAutoscalerStateManager(const GcsInitData &gcs_init_data);
