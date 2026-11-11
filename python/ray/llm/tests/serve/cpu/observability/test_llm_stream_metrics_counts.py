@@ -2,27 +2,12 @@
 
 import asyncio
 import json
+import re
 from types import SimpleNamespace
 
 import pytest
 
 from ray.llm._internal.serve.observability.metrics import llm_metrics
-
-
-@pytest.fixture(autouse=True)
-def native_response_factories(monkeypatch):
-    from vllm.entrypoints.openai.chat_completion import serving as chat
-    from vllm.entrypoints.openai.completion import serving as completion
-
-    # Install once in production; isolate the module-global factory in tests.
-    llm_metrics._install_token_count_response.cache_clear()
-    for module, name in (
-        (chat, "ChatCompletionStreamResponse"),
-        (completion, "CompletionStreamResponse"),
-    ):
-        monkeypatch.setattr(module, name, getattr(module, name))
-    yield
-    llm_metrics._install_token_count_response.cache_clear()
 
 
 def result(*outputs):
@@ -56,9 +41,11 @@ async def source(items):
         yield item
 
 
-async def events(stream):
+async def events(stream, wires=None):
     received = []
     async for wire in stream:
+        if wires is not None:
+            wires.append(wire)
         if wire != "data: [DONE]\n\n":
             event = json.loads(wire.removeprefix("data: "))
             assert "error" not in event, event
@@ -66,11 +53,20 @@ async def events(stream):
     return received
 
 
+def assert_native_bytes(measured, baseline):
+    """Apart from the added count, the wire bytes equal vLLM's own."""
+    stripped = [re.sub(r',"ray_token_count":\d+', "", wire) for wire in measured]
+    assert stripped == baseline
+
+
 def serving_options(serving):
     serving.enable_force_include_usage = False
     serving.enable_per_request_metrics = False
     serving.enable_prompt_tokens_details = False
     serving.system_fingerprint = None
+    serving.enable_log_outputs = False
+    serving.enable_log_deltas = False
+    serving.request_logger = None
 
 
 def without_counts(received):
@@ -80,16 +76,29 @@ def without_counts(received):
     return received
 
 
+class RequestLogger:
+    def __init__(self):
+        self.logged = []
+
+    def log_outputs(self, **kwargs):
+        self.logged.append(kwargs)
+
+
 @pytest.mark.asyncio
+@pytest.mark.parametrize("weight_versions", [False, True])
+@pytest.mark.parametrize("log_outputs", [False, True])
 @pytest.mark.parametrize("echo", [False, True])
 @pytest.mark.parametrize("return_token_ids", [False, True])
-async def test_completion_counts(echo, return_token_ids):
-    """Batched deltas, prompt/choice indexing, echo, and unchanged usage options."""
+async def test_completion_counts(echo, return_token_ids, log_outputs, weight_versions):
+    """Batched deltas, prompt/choice indexing, echo, output logging, and
+    unchanged usage options."""
     from vllm.entrypoints.openai.completion.protocol import CompletionRequest
     from vllm.entrypoints.openai.completion.serving import OpenAIServingCompletion
 
     serving = object.__new__(OpenAIServingCompletion)
     serving_options(serving)
+    serving.enable_log_outputs = serving.enable_log_deltas = log_outputs
+    serving.request_logger = RequestLogger() if log_outputs else None
     request = CompletionRequest(
         model="model",
         prompt=["prompt", "prompt"],
@@ -97,6 +106,7 @@ async def test_completion_counts(echo, return_token_ids):
         stream=True,
         echo=echo,
         return_token_ids=return_token_ids,
+        return_weight_versions=weight_versions,
         stream_options={"include_usage": True, "continuous_usage_stats": False},
     )
     original_request = request.model_dump()
@@ -120,15 +130,21 @@ async def test_completion_counts(echo, return_token_ids):
             SimpleNamespace(final_usage_info=None),
         )
 
-    baseline = await events(stream())
+    baseline_wires, measured_wires = [], []
+    baseline = await events(stream(), baseline_wires)
+    native_logs = list(serving.request_logger.logged) if log_outputs else None
     llm_metrics.enable_stream_metrics_token_counts(serving, chat=False)
-    measured = await events(stream())
+    measured = await events(stream(), measured_wires)
+    assert_native_bytes(measured_wires, baseline_wires)
     counts = [
         (choice["index"], choice["ray_token_count"])
         for event in measured
         for choice in event["choices"]
     ]
     assert counts == [(0, 3), (1, 2), (2, 4), (3, 1), (0, 4), (1, 0), (2, 2), (3, 3)]
+    if log_outputs:
+        # Logged token IDs stay the native lists when logging is enabled.
+        assert serving.request_logger.logged[len(native_logs) :] == native_logs
     assert all(event.get("usage") is None for event in measured if event["choices"])
     assert measured[-1]["usage"]["completion_tokens"] == 19
     assert without_counts(measured) == baseline
@@ -163,7 +179,7 @@ async def test_chat_suppressed_counts(hide_reasoning):
     serving.model_config = SimpleNamespace()
     serving.response_role = "assistant"
     serving._include_reasoning_tokens_details = False
-    serving.enable_log_outputs = False
+    serving.enable_auto_tools = False
     request = ChatCompletionRequest(
         model="model",
         messages=[{"role": "assistant", "content": "echo"}],
@@ -192,9 +208,11 @@ async def test_chat_suppressed_counts(hide_reasoning):
             SimpleNamespace(final_usage_info=None),
         )
 
-    baseline = await events(stream())
+    baseline_wires, measured_wires = [], []
+    baseline = await events(stream(), baseline_wires)
     llm_metrics.enable_stream_metrics_token_counts(serving, chat=True)
-    measured = await events(stream())
+    measured = await events(stream(), measured_wires)
+    assert_native_bytes(measured_wires, baseline_wires)
     counts = [
         (choice["index"], choice["ray_token_count"])
         for event in measured
@@ -229,52 +247,45 @@ async def test_chat_suppressed_counts(hide_reasoning):
 @pytest.mark.asyncio
 @pytest.mark.parametrize("echo", [False, True])
 async def test_request_count_isolation(echo):
-    """Interleaved generators and cancellation cannot leak request-local counts."""
+    """Interleaved streams and cancellation keep request-local counts; native
+    models are untouched."""
     from vllm.entrypoints.openai.completion import serving as completion
     from vllm.entrypoints.openai.completion.protocol import CompletionRequest
 
-    closed = []
-
-    async def generator(request, result_generator, request_id):
-        try:
-            async for item in result_generator:
-                for output in item[1].outputs:
-                    await asyncio.sleep(0)
-                    choice = completion.CompletionResponseStreamChoice(
-                        index=0,
-                        text=output.text,
-                        token_ids=output.token_ids
-                        if request.return_token_ids
-                        else None,
-                    )
-                    response = completion.CompletionStreamResponse(
-                        id=request_id, created=1, model="model", choices=[choice]
-                    )
-                    yield "data: " + response.model_dump_json() + "\n\n"
-        finally:
-            closed.append(request.n)
-
-    serving = SimpleNamespace(completion_stream_generator=generator)
+    serving = object.__new__(completion.OpenAIServingCompletion)
+    serving_options(serving)
     llm_metrics.enable_stream_metrics_token_counts(serving, chat=False)
 
     def stream(count):
+        request = CompletionRequest(
+            model="model", prompt="prompt", stream=True, echo=echo, max_tokens=8
+        )
+        items = [
+            (0, result((0, count, "x", None))),
+            (0, result((0, count + 1, "y", "stop"))),
+        ]
         return serving.completion_stream_generator(
-            CompletionRequest(model="model", prompt="prompt", n=count, echo=echo),
-            source([(0, result((0, count, "x", None)))]),
+            request,
+            [{}],
+            source(items),
             "same-id",
+            1,
+            "model",
+            1,
+            None,
+            SimpleNamespace(final_usage_info=None),
         )
 
     a, b = await asyncio.gather(events(stream(3)), events(stream(7)))
-    assert a[0]["choices"][0]["ray_token_count"] == 3
-    assert b[0]["choices"][0]["ray_token_count"] == 7
+    assert [c["ray_token_count"] for e in a for c in e["choices"]] == [3, 4]
+    assert [c["ray_token_count"] for e in b for c in e["choices"]] == [7, 8]
     cancelled = stream(5)
     await anext(cancelled)
     await cancelled.aclose()
-    assert sorted(closed) == [3, 5, 7]
     ordinary = completion.CompletionStreamResponse(
         id="same-id",
         created=1,
         model="model",
-        choices=[completion.CompletionResponseStreamChoice(index=0, text="ordinary")],
+        choices=[completion.CompletionResponseStreamChoice(index=0, text="x")],
     )
-    assert "ray_token_count" not in ordinary.choices[0].model_dump()
+    assert "ray_token_count" not in ordinary.model_dump_json()

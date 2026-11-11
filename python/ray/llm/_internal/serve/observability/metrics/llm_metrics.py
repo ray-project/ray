@@ -1,9 +1,11 @@
 """Streaming identity and token-count metadata for HAProxy timing metrics."""
 
 import json
+import types
 from functools import lru_cache, wraps
 from inspect import signature
-from typing import TYPE_CHECKING, Dict
+from operator import length_hint
+from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
 import ray
 from ray import serve
@@ -135,136 +137,270 @@ def add_llm_stream_metrics_headers(
             route.app = request_response(with_identity(route.get_route_handler()))
 
 
-class _StreamRequestId(str):
-    """Carry request-local counts through native response construction.
+# Per-choice count of tokens generated since that choice's previous chunk. HAProxy
+# pairs it with the chunk's native ``"choices":[{"index":I`` prefix.
+TOKEN_COUNT_FIELD = "ray_token_count"
 
-    vLLM passes this ID unchanged to each response constructor. Pydantic emits
-    the original string value; no global request map or async context is needed.
+
+def _clone(function, **globals_overrides):
+    """Return ``function`` with some module globals replaced.
+
+    The clone shares the original bytecode, defaults and closure, so it behaves
+    exactly like vLLM's function except for the names in ``globals_overrides``.
+    Lookups of those names happen at call time, never per instance.
     """
-
-    __slots__ = ("pending", "preserve_token_ids")
-
-    def __new__(cls, value, pending, preserve_token_ids):
-        instance = super().__new__(cls, value)
-        instance.pending = pending
-        instance.preserve_token_ids = preserve_token_ids
-        return instance
-
-
-@lru_cache(maxsize=2)
-def _install_token_count_response(chat: bool) -> None:
-    """Add N at native response construction, using its existing serializer."""
-    from importlib import import_module
-
-    module = import_module(
-        "vllm.entrypoints.openai."
-        + ("chat_completion" if chat else "completion")
-        + ".serving"
+    missing = set(globals_overrides) - set(function.__code__.co_names)
+    if missing:
+        raise RuntimeError(
+            f"{function.__qualname__} no longer references {sorted(missing)}; "
+            "update Ray Serve LLM streaming metrics for this vLLM version."
+        )
+    scope = dict(function.__globals__)
+    scope.update(globals_overrides)
+    clone = types.FunctionType(
+        function.__code__,
+        scope,
+        function.__name__,
+        function.__defaults__,
+        function.__closure__,
     )
-    name = "ChatCompletionStreamResponse" if chat else "CompletionStreamResponse"
-    original = getattr(module, name)
-    validate = original.__pydantic_validator__.validate_python
-
-    @wraps(original)
-    def with_counts(**kwargs):
-        identity = kwargs["id"]
-        response = validate(kwargs)
-        if isinstance(identity, _StreamRequestId):
-            for choice in response.choices:
-                if identity.pending is None:
-                    fields = choice.__dict__
-                    count = len(fields["token_ids"] or ())
-                    if not identity.preserve_token_ids:
-                        # Native validation has completed. Clear these known
-                        # optional fields without Pydantic's per-field setters
-                        # on every event; its existing serializer omits None.
-                        fields["token_ids"] = fields["prompt_token_ids"] = None
-                else:
-                    count = identity.pending.pop(choice.index, 0)
-                choice.model_extra["ray_token_count"] = count
-        return response
-
-    setattr(module, name, with_counts)
+    clone.__kwdefaults__ = function.__kwdefaults__
+    clone.__qualname__ = function.__qualname__
+    return clone
 
 
-class _TokenCountResult:
-    """Request-local view of native delta outputs, without mutating engine data.
+def _null(_value) -> None:
+    return None
 
-    Observe counts when vLLM accesses outputs, after its initial role/echo
-    responses. Counts from outputs suppressed by its parser remain pending
-    until the next emitted choice. All other engine metadata is forwarded.
+
+@lru_cache(maxsize=1)
+def _completion_models():
+    """Response models that add the token count during native validation.
+
+    vLLM passes each chunk's delta ``token_ids`` to its choice model when
+    ``return_token_ids`` is set. ``ray_token_count`` reads that same input, so
+    no Python frame runs per event. The ID fields serialize exactly as vLLM does
+    when the client did not request them (``null``); the visible variant keeps
+    them for clients that did.
+
+    Returns ``{(visible_ids, counted_by_len): (choice model, response model)}``.
+    With ``counted_by_len``, the cloned generator passes ``len(token_ids)``
+    instead of the list (see ``_completion_generators``), so the count is a
+    plain integer field; otherwise ``length_hint`` counts the list.
+
+    The ``counted_by_len`` model also serializes the hidden ID fields without
+    Python: they read vLLM's ``weight_versions`` input, which is ``None`` unless
+    the client requested weight versions (that case uses the listed model), so
+    pydantic-core writes vLLM's own ``null`` values.
     """
+    from typing import Annotated
 
-    __slots__ = ("result", "pending", "offset", "observed")
-
-    def __init__(self, pending):
-        self.pending = pending
-
-    def __getattr__(self, name):
-        return getattr(self.result, name)
-
-    @property
-    def outputs(self):
-        if not self.observed:
-            self.observed = True
-            for output in self.result.outputs:
-                index = self.offset + output.index
-                self.pending[index] = self.pending.get(index, 0) + len(output.token_ids)
-        return self.result.outputs
-
-
-def enable_stream_metrics_token_counts(serving, *, chat: bool) -> None:
-    """Carry delta counts to HAProxy through vLLM's single SSE serialization.
-
-    No clocks or metrics are recorded here. The original native async generator
-    is returned directly; its response ID carries isolated request-local counts.
-    """
-    _install_token_count_response(chat)
-    method = (
-        "chat_completion_stream_generator" if chat else "completion_stream_generator"
+    from pydantic import BeforeValidator, Field, PlainSerializer
+    from vllm.entrypoints.openai.completion.protocol import (
+        CompletionResponseStreamChoice,
+        CompletionStreamResponse,
     )
-    original = getattr(serving, method)
+
+    Listed = Annotated[int, BeforeValidator(length_hint)]
+    Hidden = Annotated[Any, PlainSerializer(_null, return_type=None)]
+
+    class VisibleIdsChoice(CompletionResponseStreamChoice):
+        ray_token_count: Listed = Field(default=0, validation_alias="token_ids")
+
+    class HiddenListedChoice(VisibleIdsChoice):
+        prompt_token_ids: Hidden = None
+        token_ids: Hidden = None
+
+    class HiddenCountedChoice(CompletionResponseStreamChoice):
+        ray_token_count: int = Field(default=0, validation_alias="token_ids")
+        prompt_token_ids: Optional[List[int]] = Field(
+            default=None, validation_alias="weight_versions"
+        )
+        token_ids: Optional[List[int]] = Field(
+            default=None, validation_alias="weight_versions"
+        )
+        # Consumes the prompt IDs passed for the internal return_token_ids,
+        # without validating or serializing them.
+        ray_prompt_token_ids: Any = Field(
+            default=None, validation_alias="prompt_token_ids", exclude=True
+        )
+
+    models = {}
+    for key, choice in (
+        ((True, False), VisibleIdsChoice),
+        ((False, False), HiddenListedChoice),
+        ((False, True), HiddenCountedChoice),
+    ):
+        models[key] = (
+            choice,
+            type(
+                choice.__name__.replace("Choice", "Response"),
+                (CompletionStreamResponse,),
+                {"__annotations__": {"choices": list[choice]}},
+            ),
+        )
+    return models
+
+
+def _completion_generators(original):
+    """Clone vLLM's completion stream generator around the counting models.
+
+    vLLM's generator calls ``as_list`` for the choice's ``token_ids`` and, only
+    when output logging is enabled, for logged IDs. Without logging, the
+    ``counted_by_len`` clone binds ``as_list`` to ``len``: the choice receives
+    the count directly, from a C builtin.
+    """
+    generators = {}
+    for (visible, counted), (choice, response) in _completion_models().items():
+        overrides = dict(
+            CompletionResponseStreamChoice=choice, CompletionStreamResponse=response
+        )
+        if counted:
+            overrides["as_list"] = len
+        generators[(visible, counted)] = _clone(original, **overrides)
+    return generators
+
+
+def _echo_generator(original, pending: Dict[int, int]):
+    """Per-request clone for echo, whose rendering changes with token IDs.
+
+    Counts arrive from the engine outputs in ``pending`` and are attached to the
+    next emitted choice; this rare path keeps vLLM's echo output unchanged.
+    """
+    from vllm.entrypoints.openai.completion.protocol import (
+        CompletionResponseStreamChoice,
+    )
+
+    def choice(**fields):
+        value = CompletionResponseStreamChoice(**fields)
+        value.__pydantic_extra__[TOKEN_COUNT_FIELD] = pending.pop(value.index, 0)
+        return value
+
+    return _clone(original, CompletionResponseStreamChoice=choice)
+
+
+async def _counted_outputs(results, pending: Dict[int, int], num_choices: int):
+    async for prompt_index, result in results:
+        for output in result.outputs:
+            index = prompt_index * num_choices + output.index
+            pending[index] = pending.get(index, 0) + len(output.token_ids)
+        yield prompt_index, result
+
+
+def _install_completion_counts(serving) -> None:
+    original = type(serving).completion_stream_generator
     parameters = signature(original)
+    generators = _completion_generators(original)
+    # The counted clone relies on as_list feeding only token IDs and logs, and on
+    # weight_versions being passed only when requested.
+    if not hasattr(serving, "enable_log_outputs") or (
+        "return_weight_versions" not in original.__code__.co_names
+    ):
+        raise RuntimeError(
+            "vLLM's completion stream generator changed; update Ray Serve LLM "
+            "streaming metrics for this vLLM version."
+        )
 
     @wraps(original)
     def with_counts(*args, **kwargs):
-        bound = parameters.bind(*args, **kwargs)
+        bound = parameters.bind(serving, *args, **kwargs)
         request = bound.arguments["request"]
-        if not chat and not request.echo:
-            # Native completions already pass delta IDs to their choice model.
-            # Use a renderer-only request copy: engine sampling parameters have
-            # already been constructed, and the client's request stays intact.
-            # IDs are removed by the response factory unless the client asked for
-            # them. This avoids wrapping the engine iterator on the common path.
-            pending = None
-            preserve_token_ids = bool(request.return_token_ids)
-            if not preserve_token_ids:
+        if request.echo:
+            pending: Dict[int, int] = {}
+            bound.arguments["result_generator"] = _counted_outputs(
+                bound.arguments["result_generator"], pending, request.n or 1
+            )
+            generator = _echo_generator(original, pending)
+        else:
+            visible = bool(request.return_token_ids)
+            if not visible:
+                # A renderer-only copy: engine sampling parameters were built
+                # from the client's request, which is left untouched.
                 bound.arguments["request"] = request.model_copy(
                     update={"return_token_ids": True}
                 )
-        else:
-            # Echo can change with return_token_ids; chat parsers can suppress
-            # outputs or hide IDs. Count native deltas lazily instead so those
-            # paths keep their exact native rendering and accumulate hidden N.
-            pending = {}
-            preserve_token_ids = bool(request.return_token_ids)
-            results = bound.arguments["result_generator"]
+            counted = (
+                not visible
+                and not serving.enable_log_outputs
+                and not request.return_weight_versions
+            )
+            generator = generators[(visible, counted)]
+        return generator(*bound.args, **bound.kwargs)
 
-            async def counted_results():
-                view = _TokenCountResult(pending)
-                async for item in results:
-                    if chat:
-                        view.result, view.offset = item, 0
-                    else:
-                        prompt_index, view.result = item
-                        view.offset = prompt_index * (request.n or 1)
-                    view.observed = False
-                    yield view if chat else (prompt_index, view)
+    serving.completion_stream_generator = with_counts
 
-            bound.arguments["result_generator"] = counted_results()
-        bound.arguments["request_id"] = _StreamRequestId(
-            bound.arguments["request_id"], pending, preserve_token_ids
+
+def _install_chat_counts(serving) -> None:
+    """Attach exact per-choice deltas of vLLM's own chat output token counts.
+
+    ``ChatStreamProcessor.num_output_tokens`` counts every generated token,
+    including tokens a reasoning/tool parser withholds; the delta since the
+    previous emitted chunk is attached during vLLM's own serialization loop.
+    """
+    from vllm.entrypoints.openai.chat_completion import serving as module
+
+    cls = type(serving)
+    registries: Dict[int, list] = {}
+
+    class CountingProcessor(module.ChatStreamProcessor):
+        def __init__(self, request, *args, **kwargs):
+            super().__init__(request, *args, **kwargs)
+            registries[id(request)].append(self)
+
+    raw = _clone(
+        cls.chat_completion_stream_generator_raw,
+        ChatStreamProcessor=CountingProcessor,
+    )
+    # The serialization loop below mirrors vLLM's chat_completion_stream_generator.
+    if "chat_completion_stream_generator_raw" not in (
+        cls.chat_completion_stream_generator.__code__.co_names
+    ):
+        raise RuntimeError(
+            "vLLM's chat stream serializer changed; update Ray Serve LLM "
+            "streaming metrics for this vLLM version."
         )
-        return original(*bound.args, **bound.kwargs)
+    ErrorResponse = module.ErrorResponse
+    logger = module.logger
 
-    setattr(serving, method, with_counts)
+    @wraps(cls.chat_completion_stream_generator)
+    async def with_counts(request, *args, **kwargs):
+        processors: list = []
+        emitted: Dict[int, int] = {}
+        registries[id(request)] = processors
+        try:
+            async for chunk in raw(serving, request, *args, **kwargs):
+                if isinstance(chunk, ErrorResponse):
+                    data = chunk.model_dump_json()
+                else:
+                    for choice in chunk.choices:
+                        total = processors[choice.index].num_output_tokens
+                        choice.__pydantic_extra__[TOKEN_COUNT_FIELD] = total - (
+                            emitted.get(choice.index, 0)
+                        )
+                        emitted[choice.index] = total
+                    data = chunk.model_dump_json(
+                        exclude_unset=True, exclude_none=not chunk.choices
+                    )
+                yield f"data: {data}\n\n"
+        except Exception as e:
+            logger.exception("Error serializing chat completion stream.")
+            data = serving.create_streaming_error_response(e)
+            yield f"data: {data}\n\n"
+        finally:
+            registries.pop(id(request), None)
+        yield "data: [DONE]\n\n"
+
+    serving.chat_completion_stream_generator = with_counts
+
+
+def enable_stream_metrics_token_counts(serving, *, chat: bool) -> None:
+    """Carry per-chunk token counts to HAProxy in vLLM's single serialization.
+
+    No clocks or metrics are recorded here; HAProxy times the chunks. Client
+    request options and native response fields are unchanged apart from the
+    added ``ray_token_count`` on every streamed choice.
+    """
+    if chat:
+        _install_chat_counts(serving)
+    else:
+        _install_completion_counts(serving)
