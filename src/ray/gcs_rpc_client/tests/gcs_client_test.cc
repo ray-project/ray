@@ -102,6 +102,7 @@ class GcsClientTest : public ::testing::TestWithParam<bool> {
         /*task_events_reported_gauge=*/task_events_reported_gauge_,
         /*task_events_dropped_gauge=*/task_events_dropped_gauge_,
         /*task_events_stored_gauge=*/task_events_stored_gauge_,
+        /*task_events_stored_bytes_gauge=*/task_events_stored_bytes_gauge_,
         /*event_recorder_dropped_events_counter=*/fake_dropped_events_counter_,
         /*storage_operation_latency_in_ms_histogram=*/
         storage_operation_latency_in_ms_histogram_,
@@ -201,6 +202,7 @@ class GcsClientTest : public ::testing::TestWithParam<bool> {
         /*task_events_reported_gauge=*/task_events_reported_gauge_,
         /*task_events_dropped_gauge=*/task_events_dropped_gauge_,
         /*task_events_stored_gauge=*/task_events_stored_gauge_,
+        /*task_events_stored_bytes_gauge=*/task_events_stored_bytes_gauge_,
         /*event_recorder_dropped_events_counter=*/fake_dropped_events_counter_,
         /*storage_operation_latency_in_ms_histogram=*/
         storage_operation_latency_in_ms_histogram_,
@@ -517,6 +519,7 @@ class GcsClientTest : public ::testing::TestWithParam<bool> {
   observability::FakeGauge task_events_reported_gauge_;
   observability::FakeGauge task_events_dropped_gauge_;
   observability::FakeGauge task_events_stored_gauge_;
+  observability::FakeGauge task_events_stored_bytes_gauge_;
   observability::FakeHistogram storage_operation_latency_in_ms_histogram_;
   observability::FakeCounter storage_operation_count_counter_;
   observability::FakeCounter redis_request_payload_bytes_sum_;

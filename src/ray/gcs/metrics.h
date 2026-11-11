@@ -33,6 +33,7 @@ struct GcsServerMetrics {
   ray::observability::MetricInterface &task_events_reported_gauge;
   ray::observability::MetricInterface &task_events_dropped_gauge;
   ray::observability::MetricInterface &task_events_stored_gauge;
+  ray::observability::MetricInterface &task_events_stored_bytes_gauge;
   ray::observability::MetricInterface &event_recorder_dropped_events_counter;
   ray::observability::MetricInterface &storage_operation_latency_in_ms_histogram;
   ray::observability::MetricInterface &storage_operation_count_counter;
@@ -138,6 +139,17 @@ inline ray::stats::Gauge GetTaskManagerTaskEventsStoredGaugeMetric() {
       /*name=*/"gcs_task_manager_task_events_stored",
       /*description=*/"Number of task events stored in GCS.",
       /*unit=*/"",
+      /*tag_keys=*/{},
+  };
+}
+
+inline ray::stats::Gauge GetTaskManagerTaskEventsStoredBytesGaugeMetric() {
+  return ray::stats::Gauge{
+      /*name=*/"gcs_task_manager_task_events_stored_bytes",
+      /*description=*/
+      "Total serialized size of the task events stored in GCS. This is the quantity the "
+      "`RAY_task_events_max_num_bytes_in_gcs` limit is enforced on.",
+      /*unit=*/"bytes",
       /*tag_keys=*/{},
   };
 }

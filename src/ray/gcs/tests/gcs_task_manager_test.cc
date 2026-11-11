@@ -52,7 +52,8 @@ class GcsTaskManagerTest : public ::testing::Test {
         PeriodicalRunner::Create(io_context_->GetIoService()),
         fake_task_events_reported_gauge_,
         fake_task_events_dropped_gauge_,
-        fake_task_events_stored_gauge_);
+        fake_task_events_stored_gauge_,
+        fake_task_events_stored_bytes_gauge_);
   }
 
   virtual void TearDown() {
@@ -396,6 +397,7 @@ class GcsTaskManagerTest : public ::testing::Test {
   observability::FakeGauge fake_task_events_reported_gauge_;
   observability::FakeGauge fake_task_events_dropped_gauge_;
   observability::FakeGauge fake_task_events_stored_gauge_;
+  observability::FakeGauge fake_task_events_stored_bytes_gauge_;
   std::unique_ptr<InstrumentedIOContextWithThread> io_context_ = nullptr;
 };
 
@@ -406,6 +408,19 @@ class GcsTaskManagerMemoryLimitedTest : public GcsTaskManagerTest {
         R"(
 {
   "task_events_max_num_task_in_gcs": 10
+}
+  )");
+  }
+};
+
+class GcsTaskManagerByteLimitedTest : public GcsTaskManagerTest {
+ public:
+  GcsTaskManagerByteLimitedTest() : GcsTaskManagerTest() {
+    RayConfig::instance().initialize(
+        R"(
+{
+  "task_events_max_num_task_in_gcs": 1000,
+  "task_events_max_num_bytes_in_gcs": 1024
 }
   )");
   }
@@ -1533,6 +1548,53 @@ TEST_F(GcsTaskManagerMemoryLimitedTest, TestLimitTaskEvents) {
     EXPECT_EQ(task_manager->GetTotalNumProfileTaskEventsDropped(),
               num_profile_events_to_drop + num_profile_events_dropped_on_worker);
   }
+}
+
+TEST_F(GcsTaskManagerByteLimitedTest, TestLimitTaskEventBytes) {
+  size_t num_bytes_limit = 1024;  // synced with test config
+  size_t num_total = 100;
+
+  // Each task event is much smaller than the byte limit while all of them together are
+  // not, and 100 task events stay far below the 1000 event limit, so only the byte limit
+  // can evict here.
+  for (size_t i = 0; i < num_total; ++i) {
+    auto events = GenTaskEvents(GenTaskIDs(1), /* attempt_number */ 0);
+    SyncAddTaskEventData(GenTaskEventsData(events));
+  }
+
+  size_t num_stored = task_manager->GetNumTaskEventsStored();
+  EXPECT_GT(num_stored, 0u);
+  EXPECT_LT(num_stored, num_total);
+  EXPECT_LE(task_manager->GetNumTaskEventBytesStored(), num_bytes_limit);
+  EXPECT_EQ(task_manager->GetTotalNumTaskAttemptsDropped(), num_total - num_stored);
+
+  // The counter driving the limit matches what is actually stored.
+  size_t num_bytes_stored = 0;
+  for (const auto &task_event : task_manager->task_event_storage_->GetTaskEvents()) {
+    num_bytes_stored += task_event.ByteSizeLong();
+  }
+  EXPECT_EQ(task_manager->GetNumTaskEventBytesStored(), num_bytes_stored);
+}
+
+TEST_F(GcsTaskManagerByteLimitedTest, TestTaskEventBytesTrackedOnMerge) {
+  auto task_ids = GenTaskIDs(1);
+  SyncAddTaskEventData(
+      GenTaskEventsData(GenTaskEvents(task_ids, /* attempt_number */ 0)));
+  size_t num_bytes_added = task_manager->GetNumTaskEventBytesStored();
+  EXPECT_GT(num_bytes_added, 0u);
+
+  // Merging more data into the same task attempt grows the stored entry, so the counter
+  // has to follow it instead of staying at the size first accounted for.
+  SyncAddTaskEventData(GenTaskEventsData(GenTaskEvents(task_ids,
+                                                       /* attempt_number */ 0,
+                                                       /* job_id */ 0,
+                                                       GenProfileEvents("event", 1, 1),
+                                                       GenStateUpdate())));
+
+  EXPECT_EQ(task_manager->GetNumTaskEventsStored(), 1u);
+  EXPECT_GT(task_manager->GetNumTaskEventBytesStored(), num_bytes_added);
+  EXPECT_EQ(task_manager->GetNumTaskEventBytesStored(),
+            task_manager->task_event_storage_->GetTaskEvents()[0].ByteSizeLong());
 }
 
 TEST_F(GcsTaskManagerTest, TestGetTaskEventsWithDriver) {
