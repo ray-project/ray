@@ -1,3 +1,4 @@
+import dataclasses
 from dataclasses import InitVar, dataclass, field, replace
 from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
@@ -15,6 +16,7 @@ from ray.data.aggregate import AggregateFn
 from ray.data.block import BlockMetadata
 
 if TYPE_CHECKING:
+    from ray.data._internal.cbo_stats.operator_statistics import OperatorStatistics
     from ray.data.block import Schema
 
 __all__ = [
@@ -57,6 +59,15 @@ class AbstractAllToAll(LogicalOperator):
             object.__setattr__(self, "_name", name)
         object.__setattr__(self, "ray_remote_args", ray_remote_args or {})
         object.__setattr__(self, "sub_progress_bar_names", sub_progress_bar_names)
+
+    def infer_statistics(self) -> Optional["OperatorStatistics"]:
+        """Row-preserving all-to-all ops pass input statistics through."""
+        if not self.input_dependencies:
+            return None
+        input_stats = self.input_dependencies[0].infer_statistics()
+        if input_stats is None:
+            return None
+        return input_stats.passthrough()
 
 
 @dataclass(frozen=True, repr=False, eq=False)
@@ -179,6 +190,12 @@ class Repartition(
         # Repartition doesn't affect filtering correctness
         return PredicatePassThroughBehavior.PASSTHROUGH
 
+    def infer_statistics(self) -> Optional["OperatorStatistics"]:
+        stats = super().infer_statistics()
+        if stats is not None and self.num_outputs is not None:
+            stats = dataclasses.replace(stats, num_blocks=self.num_outputs)
+        return stats
+
 
 @dataclass(frozen=True, repr=False, eq=False)
 class Sort(
@@ -237,6 +254,11 @@ class Aggregate(AbstractAllToAll):
                 ExchangeTaskSpec.REDUCE_SUB_PROGRESS_BAR_NAME,
             ],
         )
+
+    def infer_statistics(self) -> Optional["OperatorStatistics"]:
+        # Output cardinality depends on the number of groups, which isn't known
+        # at planning time.
+        return None
 
     def infer_schema(self) -> Optional["Schema"]:
         # Output = key field(s) from input schema + one field per aggregator.

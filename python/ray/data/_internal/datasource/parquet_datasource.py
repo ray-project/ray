@@ -442,6 +442,11 @@ class ParquetDatasource(Datasource):
             local_scheduling=self._local_scheduling,
         )
 
+        # Kept so that the CBO can read column statistics from the sampled
+        # footers without extra I/O.
+        self._sampled_fragments = sampled_fragments
+        self._sampled_file_infos = sampled_file_infos
+
         self._encoding_ratio = _estimate_files_encoding_ratio(
             sampled_fragments,
             sampled_file_infos,
@@ -1315,6 +1320,18 @@ def _parse_partition_column_values(
     return partitions
 
 
+def _column_nbytes(column: "pyarrow.Array") -> int:
+    """In-memory size of a column.
+
+    ``pyarrow.Array.nbytes`` was added in PyArrow 12, so fall back to
+    ``get_total_buffer_size()`` to keep the estimate working on older versions.
+    """
+    nbytes = getattr(column, "nbytes", None)
+    if nbytes is not None:
+        return nbytes
+    return column.get_total_buffer_size()
+
+
 def _fetch_parquet_file_info(
     fragment: _ParquetFragment,
     *,
@@ -1350,6 +1367,7 @@ def _fetch_parquet_file_info(
     to_batches_kwargs["batch_size"] = batch_size
 
     avg_row_size: Optional[int] = None
+    avg_column_sizes: Optional[Dict[str, float]] = None
     # Use first non-empty batch to estimate the avg size of the row in-memory
     for batch in _iter_batches_with_nested_fallback(
         row_group_fragment,
@@ -1359,11 +1377,16 @@ def _fetch_parquet_file_info(
     ):
         if batch.num_rows > 0:
             avg_row_size = math.ceil(batch.nbytes / batch.num_rows)
+            avg_column_sizes = {
+                name: _column_nbytes(batch.column(i)) / batch.num_rows
+                for i, name in enumerate(batch.schema.names)
+            }
             break
 
     return _ParquetFileInfo(
         avg_row_in_mem_bytes=avg_row_size,
         metadata=metadata,
+        avg_column_in_mem_bytes=avg_column_sizes,
     )
 
 
@@ -1373,6 +1396,9 @@ class _ParquetFileInfo:
     avg_row_in_mem_bytes: Optional[int]
     # Corresponding file metadata
     metadata: "pyarrow._parquet.FileMetaData"
+    # Estimated avg byte size of each column of a row (in-memory). Used by the
+    # CBO to estimate the size of projections.
+    avg_column_in_mem_bytes: Optional[Dict[str, float]] = None
 
     def estimate_in_memory_bytes(self) -> Optional[int]:
         if self.avg_row_in_mem_bytes is None:
