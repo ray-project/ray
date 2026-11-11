@@ -718,6 +718,10 @@ class DiskHashShuffleMapOp(InternalQueueOperatorMixin, PhysicalOperator):
         )
         if total_merge_buf:
             parts.append(f"merge_buf: {total_merge_buf}")
+        # Show the broadcast decision in the progress string.
+        broadcast = self._decision.progress_str(self._side)
+        if broadcast:
+            parts.append(broadcast)
         return ", ".join(parts)
 
     @property

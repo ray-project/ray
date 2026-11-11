@@ -238,9 +238,7 @@ class DiskHashShuffleReduceOp(PhysicalOperator):
         """Pair every stream bundle with the single build bundle.
 
         Stream bundles that arrive before the build bundle wait in
-        ``_pending_inputs`` under their partition id, keyed by input index
-        exactly as the shuffle path does, so completion and shutdown handling
-        need no special case.
+        ``_pending_inputs`` until it arrives.
         """
         build_idx = BUILD_SIDE_INPUT_INDEX[self._decision.build_side]
         if input_index == build_idx:
@@ -547,4 +545,9 @@ class DiskHashShuffleReduceOp(PhysicalOperator):
     def progress_str(self) -> str:
         submitted = self._num_reduce_tasks_submitted
         done = submitted - len(self._shuffle_reduce_tasks)
-        return f"reduce: {done}/{submitted}"
+        parts = [f"reduce: {done}/{submitted}"]
+        # Show the broadcast decision in the progress string.
+        broadcast = self._decision.progress_str()
+        if broadcast:
+            parts.append(broadcast)
+        return ", ".join(parts)

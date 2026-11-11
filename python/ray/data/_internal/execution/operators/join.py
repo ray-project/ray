@@ -718,6 +718,23 @@ class _BroadcastDecision:
         if self.build_side is BuildSide.UNDECIDED:
             self.build_side = BuildSide.NONE
 
+    def progress_str(self, side: Optional[BuildSide] = None) -> str:
+        """Label for the operators' progress strings.
+
+        Empty unless a build side is chosen. A map operator passes its own
+        ``side`` and gets its role (build or stream). The reduce operator
+        passes nothing and gets the build side.
+        """
+        if self.build_side in (BuildSide.UNDECIDED, BuildSide.NONE):
+            return ""
+        # Progress string for a map operator.
+        if side is not None:
+            role = "build" if side is self.build_side else "stream"
+            return f"broadcast ({role})"
+        # Progress string for the reduce operator.
+        build = "left" if self.build_side is BuildSide.BUILD_LEFT else "right"
+        return f"broadcast (build={build})"
+
 
 class JoinOperator(HashShufflingOperatorBase):
     def __init__(
