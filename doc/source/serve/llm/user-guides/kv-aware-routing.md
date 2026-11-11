@@ -125,29 +125,13 @@ request_router_config = RequestRouterConfig(
 
 Set it to `0` to disable pinning. Requests without `x-session-id` use token-load scoring and KV cache overlap.
 
-### Route on disk-resident prefixes
+### Multi-tier KV aware routing
 
-With native offloading, vLLM's `TieringOffloadingSpec` can add a filesystem tier behind the CPU tier, so a replica can reload a prefix from local disk after it leaves CPU memory. Under `KVAwareRouter`, Ray Serve LLM turns on KV events for filesystem tiers that don't set `enable_kv_events`, so the router knows which replica holds each prefix on disk and credits it with `DYN_ROUTER_DISK_CACHE_HIT_WEIGHT` (see [Tune the scoring weights](#tune-the-scoring-weights)):
+With native offloading, a replica keeps KV blocks in GPU memory, in CPU memory, and optionally in a local disk tier behind the CPU tier. Each tier publishes KV events, so the router knows which replica holds a prefix in which tier and credits a match by tier: full credit for GPU blocks, `DYN_ROUTER_HOST_CACHE_HIT_WEIGHT` for CPU blocks, and `DYN_ROUTER_DISK_CACHE_HIT_WEIGHT` for disk blocks (see [Tune the scoring weights](#tune-the-scoring-weights)). To set up the tiers, see {ref}`native KV cache offloading <native-kv-cache-offloading>` and {ref}`Add a local disk tier <native-kv-cache-disk-tier>`.
 
-```python
-engine_kwargs={
-    "enable_prefix_caching": True,
-    "kv_offloading_backend": "native",
-    "kv_offloading_size": 8,  # GiB of CPU tier per replica
-    "kv_transfer_config": {
-        "kv_connector": "OffloadingConnector",
-        "kv_role": "kv_both",
-        "kv_connector_extra_config": {
-            "spec_name": "TieringOffloadingSpec",
-            "secondary_tiers": [{"type": "fs", "root_dir": "/mnt/local-nvme/kv-cache"}],
-        },
-    },
-}
-```
+Under `KVAwareRouter`, Ray Serve LLM turns on KV events for a local disk tier unless the tier sets `enable_kv_events` or `"locality": "REMOTE"`; the router doesn't track remote tiers. Replicas on the same node share `root_dir` and can read each other's blocks, but the router credits only the replica that stored a block.
 
-Replicas on the same node use the same `root_dir`, so each can read blocks the others stored, but the router credits only the replica that stored a block. The router doesn't track tiers that set `"locality": "REMOTE"`, so Ray Serve LLM leaves their events off.
-
-vLLM's filesystem tier doesn't limit its disk usage or publish removal events yet. Watch the space under `root_dir`, and don't delete files under it while the replica runs: the router keeps crediting deleted blocks until that replica restarts.
+vLLM's filesystem tier doesn't publish removal events yet. Don't delete files under `root_dir` while the replica runs: the router keeps crediting deleted blocks until that replica restarts.
 
 ### Tuning
 
@@ -219,7 +203,7 @@ llm_config = LLMConfig(
 | `DYN_ROUTER_KV_OVERLAP_SCORE_CREDIT_DECAY` | 0.0, off | Reduces the benefit of KV cache overlap as a replica’s prefill backlog grows relative to the least-loaded candidate. Increase it when cache affinity repeatedly favors a busy replica while others remain underutilized. |
 | `DYN_ROUTER_DECODE_ACTIVE_REQUEST_WEIGHT` | 0.0, off | Adds a cost for each request a replica is already serving. Increase it when many small requests tend to concentrate on the same replica. |
 | `DYN_ROUTER_HOST_CACHE_HIT_WEIGHT` | 0.75 | Cache credit for each matched block held in CPU memory, relative to 1.0 for a block in GPU memory. Applies with {ref}`native KV cache offloading <native-kv-cache-offloading>`. |
-| `DYN_ROUTER_DISK_CACHE_HIT_WEIGHT` | 0.25 | Cache credit for each matched block held in a local disk tier, relative to 1.0 for a block in GPU memory. Applies with a local disk tier; see [Route on disk-resident prefixes](#route-on-disk-resident-prefixes). |
+| `DYN_ROUTER_DISK_CACHE_HIT_WEIGHT` | 0.25 | Cache credit for each matched block held in a local disk tier, relative to 1.0 for a block in GPU memory. Applies with a local disk tier; see [Multi-tier KV aware routing](#multi-tier-kv-aware-routing). |
 
 For the full set of selection-service settings, see NVIDIA's [standalone selection service](https://docs.nvidia.com/dynamo/knowledge-base/modular-components/router/standalone-selection) documentation.
 
