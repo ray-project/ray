@@ -117,6 +117,7 @@ ray_cc_test(
         "//src/ray/util:path_utils",
         "//src/ray/util:time",
         "@boost//:asio",
+        "@com_google_absl//absl/log:globals",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_googletest//:gtest_main",
         "@nlohmann_json",

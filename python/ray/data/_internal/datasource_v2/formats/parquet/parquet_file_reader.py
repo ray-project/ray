@@ -27,6 +27,14 @@ from ray.data._internal.datasource_v2.common.file_reader import (
     FileFormat,
     FileReader,
 )
+from ray.data._internal.datasource_v2.common.partitioning_utils import (
+    _evaluate_path_predicate,
+    _PartitionValueParser,
+)
+from ray.data._internal.datasource_v2.common.pushdown_utils import (
+    _split_predicate_by_columns,
+    combine_predicates,
+)
 from ray.data._internal.datasource_v2.formats.parquet.footer_reader import _leaf_matches
 from ray.data._internal.datasource_v2.formats.parquet.parquet_file_chunking_utils import (
     _fragments_from_row_group_ids,
@@ -267,6 +275,15 @@ class ParquetFileReader(FileReader, SupportsMetadata):
             schema=schema,
         )
         self._explicit_batch_size = batch_size
+        self._partition_value_parser = (
+            _PartitionValueParser(partitioning) if partitioning is not None else None
+        )
+        # Parquet supplies path values before its row filter. The shared
+        # post-read parser would both overwrite them and reject typed root files.
+        # Disabling it also keeps partition keys in _file_dataset_schema so root
+        # files retain their physical columns. _iter_fragment_tables removes only
+        # the keys supplied by that fragment's path before scanning it.
+        self._partition_parser = None
         self._target_block_size = target_block_size
         self._parquet_format_kwargs: Dict[str, Any] = parquet_format_kwargs or {}
         self._sampled_batch_size: int | object = (
@@ -382,8 +399,9 @@ class ParquetFileReader(FileReader, SupportsMetadata):
         Paths are deduped by :meth:`FileReader.read` before the dataset is
         built, so the dataset has exactly one fragment per file. The
         per-row chunk metadata drives the fan-out here, not the dataset
-        itself — multiple manifest rows can share a single path with
-        different row-group sets.
+        itself — multiple manifest rows can share a single path, either
+        with different row-group sets (chunking) or repeating the same
+        ones (the user listed the file more than once); each row is read.
         """
         path_to_fragment = {
             fragment.path: fragment for fragment in dataset.get_fragments()
@@ -395,7 +413,9 @@ class ParquetFileReader(FileReader, SupportsMetadata):
             c.requires_read_unit_boundaries for c in self._synthesized_columns
         )
         fragments: List[ReadUnitFragment] = []
-        for path, chunk_metadata in zip(manifest.paths, manifest.file_chunk_metadatas):
+        for path, file_size, chunk_metadata in zip(
+            manifest.paths, manifest.known_file_sizes, manifest.file_chunk_metadatas
+        ):
             fragment: pds.ParquetFileFragment = path_to_fragment[path]
             if chunk_metadata is None:
                 num_rows = None
@@ -418,9 +438,18 @@ class ParquetFileReader(FileReader, SupportsMetadata):
                         fragment,
                         chunk_metadata["unit_ids"],
                         per_row_group_offsets=per_row_group_offsets,
+                        file_size=file_size,
                     )
                 )
         return fragments
+
+    @override
+    def _get_partition_values(self, path: str) -> Dict[str, Any]:
+        return (
+            self._partition_value_parser(path)
+            if self._partition_value_parser is not None
+            else {}
+        )
 
     @override
     def _iter_fragment_tables(
@@ -428,20 +457,86 @@ class ParquetFileReader(FileReader, SupportsMetadata):
         fragment: pds.Fragment,
         scanner_kwargs: dict,
     ) -> "Iterator[pa.Table]":
+        from ray.data._internal.planner.plan_expression.expression_visitors import (
+            get_column_references,
+        )
+
+        values = self._get_partition_values(fragment.path)
+        file_dataset_schema = self._file_dataset_schema
+        schema = (
+            file_dataset_schema
+            if file_dataset_schema is not None
+            else fragment.physical_schema
+        )
+        schema = pa.schema([field for field in schema if field.name not in values])
+        physical_predicate = self._predicate
+        residual_predicate = None
+        if self._predicate is not None:
+            split = _split_predicate_by_columns(self._predicate, set(values))
+            physical_predicate = split.data_predicate
+            residual_predicate = split.residual_predicate
+            if split.partition_predicate is not None and (
+                _evaluate_path_predicate(
+                    split.partition_predicate, values, self._schema, path=fragment.path
+                )
+                is False
+            ):
+                return
+        if physical_predicate is not None:
+            physical_schema = fragment.physical_schema
+            unsafe = {
+                name
+                for name in get_column_references(physical_predicate)
+                if physical_schema.get_field_index(name) != -1
+                and schema.get_field_index(name) != -1
+                and physical_schema.field(name).type != schema.field(name).type
+            }
+            if unsafe:
+                split = _split_predicate_by_columns(physical_predicate, unsafe)
+                physical_predicate = split.data_predicate
+                residual_predicate = combine_predicates(
+                    residual_predicate,
+                    combine_predicates(
+                        split.partition_predicate, split.residual_predicate
+                    ),
+                )
+        columns = scanner_kwargs.get("columns")
+        residual_columns = (
+            set(get_column_references(residual_predicate))
+            if residual_predicate is not None
+            else set()
+        )
+        local_kwargs = dict(scanner_kwargs)
+        if columns is not None:
+            physical_columns = [name for name in columns if name not in values]
+            physical_columns.extend(
+                sorted(residual_columns - set(physical_columns) - set(values))
+            )
+            local_kwargs["columns"] = physical_columns
+        local_kwargs["filter"] = (
+            physical_predicate.to_pyarrow() if physical_predicate is not None else None
+        )
+        needed = (
+            None if self._columns is None else set(self._columns) | residual_columns
+        )
         for table in self._iter_fragment_tables_without_pickle_check(
-            fragment, scanner_kwargs
+            fragment, local_kwargs, schema, physical_predicate
         ):
             # When you unpickle untrusted data, attackers can execute arbitrary
             # code. To avoid exposing our users, raise unless the user has
             # explicitly opted in.
             raise_on_pickle_object_columns(table)
-
+            table = self._apply_partition_values(table, values, required_columns=needed)
+            if residual_predicate is not None:
+                table = table.filter(residual_predicate.to_pyarrow())
             yield table
 
     def _iter_fragment_tables_without_pickle_check(
         self,
         fragment: pds.Fragment,
         scanner_kwargs: dict,
+        file_dataset_schema: pa.Schema,
+        predicate: Optional[Expr],
     ) -> "Iterator[pa.Table]":
         """Use row-level reads for oversized nested types or differing structs."""
         import pyarrow.compute as pc
@@ -458,13 +553,12 @@ class ParquetFileReader(FileReader, SupportsMetadata):
         # forces row-level decoding of that column, which would otherwise
         # hit ARROW-5030 in the normal scanner path.
         filter_columns = (
-            get_column_references(self._predicate)
-            if self._predicate is not None
-            else None
+            get_column_references(predicate) if predicate is not None else None
         )
         read_columns = _resolve_read_columns(columns, filter_expr, filter_columns)
+        if read_columns is None:
+            read_columns = list(file_dataset_schema.names)
         needs_nested_type_fallback = _needs_nested_type_fallback(fragment, read_columns)
-        file_dataset_schema = self._file_dataset_schema
         physical_schema = fragment.physical_schema
         needs_struct_schema_alignment = False
         if file_dataset_schema is not None:
@@ -487,7 +581,9 @@ class ParquetFileReader(FileReader, SupportsMetadata):
                     break
 
         if not needs_nested_type_fallback and not needs_struct_schema_alignment:
-            yield from super()._iter_fragment_tables(fragment, scanner_kwargs)
+            scanner = fragment.scanner(**scanner_kwargs, schema=file_dataset_schema)
+            for tagged in scanner.scan_batches():
+                yield pa.Table.from_batches(batches=[tagged.record_batch])
             return
 
         if needs_nested_type_fallback and log_once(
@@ -553,8 +649,8 @@ class ParquetFileReader(FileReader, SupportsMetadata):
         # ``_file_dataset_schema``) in struct field order, integer width,
         # or missing columns. Align + cast to the same unified schema so
         # fallback and non-fallback fragments concat cleanly downstream.
-        # Scoped to ``columns`` (not ``read_columns``) since filter-only
-        # columns are projected away before alignment.
+        # Include filter-only columns until the predicate has been evaluated
+        # using the same logical types as the regular fragment scanner.
         if file_dataset_schema is not None and columns is not None:
             align_schema = pa.schema(
                 [
@@ -565,6 +661,14 @@ class ParquetFileReader(FileReader, SupportsMetadata):
             )
         else:
             align_schema = file_dataset_schema
+        assert file_dataset_schema is not None
+        filter_schema = pa.schema(
+            [
+                file_dataset_schema.field(name)
+                for name in read_columns
+                if file_dataset_schema.get_field_index(name) != -1
+            ]
+        )
 
         # Under schema evolution a filter-referenced column may live in
         # the unified dataset schema but be absent from this fragment.
@@ -606,6 +710,8 @@ class ParquetFileReader(FileReader, SupportsMetadata):
                             type=null_fill_type_by_column[column_name],
                         ),
                     )
+            table = table.select(filter_schema.names)
+            table = _align_struct_fields([table], filter_schema)[0].cast(filter_schema)
             if filter_expr is not None:
                 table = table.filter(filter_expr)
                 # Skip downstream select/align/cast on fully-filtered
@@ -661,17 +767,22 @@ class ParquetFileReader(FileReader, SupportsMetadata):
         """
         from pyarrow.fs import LocalFileSystem
 
-        from ray.data._internal.util import call_with_retry
+        from ray.data._internal.util import call_with_retry, filesystem_for_sized_opens
         from ray.data.context import DataContext
 
-        filesystem = self._filesystem or LocalFileSystem()
+        filesystem = filesystem_for_sized_opens(self._filesystem or LocalFileSystem())
         retried_io_errors = DataContext.get_current().retried_io_errors
 
-        def _num_rows(path: str) -> int:
+        def _num_rows(path: str, file_size: Optional[int]) -> int:
+            # A fragment, unlike ``pq.read_metadata``, takes the listing's
+            # size, which spares the open a request for it (a HEAD on S3).
+            fragment = pds.ParquetFileFormat().make_fragment(
+                path, filesystem=filesystem, file_size=file_size
+            )
             # Getting the footer requires network calls, so it may fail with
             # transient errors; retry them.
             metadata = call_with_retry(
-                lambda: pq.read_metadata(path, filesystem=filesystem),
+                lambda: fragment.metadata,
                 description=f"read Parquet footer for {path}",
                 match=retried_io_errors,
             )
@@ -679,7 +790,9 @@ class ParquetFileReader(FileReader, SupportsMetadata):
 
         paths = [str(p) for p in file_manifest.paths]
         with ThreadPoolExecutor() as executor:
-            for num_rows in executor.map(_num_rows, paths):
+            for num_rows in executor.map(
+                _num_rows, paths, file_manifest.known_file_sizes
+            ):
                 yield BlockMetadata(
                     num_rows=num_rows,
                     size_bytes=None,

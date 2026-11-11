@@ -7,6 +7,7 @@ predicate ``ListFiles`` prunes by but the reader never evaluates drops rows
 with no error. These tests pin that invariant, including for plan shapes no
 current rule produces but a future one could.
 """
+
 from dataclasses import replace
 from pathlib import Path
 from typing import List
@@ -23,13 +24,23 @@ from ray.data._internal.datasource_v2.common.non_sampling_file_indexer import (
 from ray.data._internal.datasource_v2.formats.parquet.parquet_datasource_v2 import (
     ParquetDatasourceV2,
 )
+from ray.data._internal.datasource_v2.formats.parquet.parquet_scanner import (
+    ParquetScanner,
+)
 from ray.data._internal.logical.interfaces import (
     LogicalOperator,
     LogicalPlan,
     Plan,
     Rule,
 )
-from ray.data._internal.logical.operators import ListFiles, ReadFiles
+from ray.data._internal.logical.operators import (
+    Count,
+    Filter,
+    Limit,
+    ListFiles,
+    Project,
+    ReadFiles,
+)
 from ray.data._internal.logical.operators.map_operator import MapBatches
 from ray.data._internal.logical.optimizers import LogicalOptimizer, get_logical_ruleset
 from ray.data._internal.logical.rules.derive_list_files_pushdown import (
@@ -37,6 +48,7 @@ from ray.data._internal.logical.rules.derive_list_files_pushdown import (
 )
 from ray.data.context import DataContext
 from ray.data.datasource import FileShuffleConfig
+from ray.data.datasource.partitioning import Partitioning, PartitionStyle
 from ray.data.expressions import col
 
 
@@ -111,6 +123,55 @@ def test_derives_state_the_scanner_accepted(tmp_path):
     assert list_files.predicate is predicate
     assert list_files.projected_columns == ["a"]
     assert list_files.limit == 5
+
+
+@pytest.mark.parametrize(
+    "shuffle_config,expected_limit",
+    [
+        (None, 10),
+        (FileShuffleConfig(seed=1), 10),
+        (FileShuffleConfig(seed=1, small_chunks_shuffle=True), None),
+    ],
+    ids=["no_shuffle", "file_shuffle", "small_chunks_shuffle"],
+)
+def test_partition_condition_reaches_reader_with_shuffle_aware_listing_limit(
+    tmp_path, shuffle_config, expected_limit
+):
+    read_files = _mk_read_files(tmp_path)
+    schema = read_files.schema.append(pa.field("year", pa.string()))
+    scanner = ParquetScanner(
+        schema=schema,
+        partitioning=Partitioning(PartitionStyle.HIVE, field_names=["year"]),
+    ).prune_partitions(col("year") == "2024")
+    scanner, _ = scanner.push_filters(col("a") > 2)
+    assert isinstance(scanner, ParquetScanner)
+    scanner = scanner.push_limit(10)
+    assert isinstance(scanner, ParquetScanner)
+    read_files = replace(
+        read_files,
+        scanner=scanner,
+        input_dependencies=[
+            replace(
+                _source_list_files(read_files),
+                shuffle_config_factory=lambda: shuffle_config,
+            )
+        ],
+    )
+    list_files = _list_files_of(_apply(read_files))
+    assert list_files.limit == expected_limit
+    assert scanner.pushed_limit() == 10
+    assert list_files.predicate is not None
+    assert list_files.partition_pruner is not None
+    assert list_files.predicate.structurally_equals(col("a") > 2)
+    assert list_files.partition_pruner.should_include(str(tmp_path / "root.parquet"))
+    assert not list_files.partition_pruner.should_include(
+        str(tmp_path / "year=2023" / "data.parquet")
+    )
+    reader = scanner.create_reader()
+    assert reader._predicate is not None
+    assert reader._predicate.structurally_equals(
+        (col("a") > 2) & (col("year") == "2024")
+    )
 
 
 @pytest.mark.parametrize(
@@ -214,6 +275,51 @@ def test_state_is_cleared_when_consumer_is_not_read_files(tmp_path):
     assert derived.limit is None
 
 
+def test_final_pushdown_is_left_alone(tmp_path):
+    """``pushdown_is_final`` keeps constraints a rule set for a non-``ReadFiles``.
+
+    ``PushdownCountFiles`` replaces the ``ReadFiles`` with a ``MapBatches``
+    that applies the filter through the same reader, so clearing the listing's
+    predicate would list the whole table and count it unfiltered.
+    """
+    read_files = _mk_read_files(tmp_path)
+    predicate = col("a") > 2
+    list_files = replace(
+        _source_list_files(read_files),
+        predicate=predicate,
+        pushdown_is_final=True,
+    )
+    count_rows = MapBatches(
+        fn=lambda batch: batch,
+        input_dependencies=[list_files],
+        batch_format="pyarrow",
+        can_modify_num_rows=True,
+    )
+
+    derived = _list_files_of(_apply(count_rows))
+
+    assert derived.predicate is predicate
+
+
+def test_count_pushdown_marks_its_listing_final(tmp_path):
+    """The real ``PushdownCountFiles`` sets ``pushdown_is_final`` on its listing.
+
+    Parquet only counts from footers with no filter, so the pinned predicate
+    here is ``None``; ``test_final_pushdown_is_left_alone`` covers one surviving.
+    """
+    read_files = _mk_read_files(tmp_path)
+
+    optimized = LogicalOptimizer().optimize(
+        LogicalPlan(
+            dag=Count(input_dependencies=[read_files]),
+            context=DataContext.get_current(),
+        )
+    )
+
+    assert isinstance(optimized.dag, MapBatches)
+    assert _list_files_of(optimized).pushdown_is_final
+
+
 class _WeakenScannerPredicate(Rule):
     """Stand-in for a future rule that rewrites the scanner's predicate."""
 
@@ -283,6 +389,67 @@ def test_optimizer_keeps_list_files_in_sync_with_the_scanner(tmp_path):
     ]
     assert scanner_predicate is not None
     assert _list_files_of(optimized).predicate is scanner_predicate
+
+
+def test_listing_partition_pruner_retains_full_schema_after_optimization(tmp_path):
+    from ray.data._internal.logical.operators import Filter
+
+    read_files = _mk_read_files(tmp_path)
+    scanner = (
+        replace(
+            _scanner_of(read_files),
+            schema=pa.schema([("a", pa.int64()), ("year", pa.int32())]),
+            partitioning=Partitioning(PartitionStyle.HIVE, field_names=["year"]),
+        )
+        .prune_columns(["a"])
+        .push_limit(1)
+    )
+    read_files = replace(read_files, scanner=scanner)
+    dag = Filter(predicate_expr=col("year") == 2024, input_dependencies=[read_files])
+
+    optimized = LogicalOptimizer().optimize(
+        LogicalPlan(dag=dag, context=DataContext.get_current())
+    )
+    list_files = _list_files_of(optimized)
+    pruner = list_files.partition_pruner
+
+    assert pruner is not None
+    assert pruner.should_include("/root/year=2024/a.parquet")
+    assert not pruner.should_include("/root/year=2023/b.parquet")
+    assert list_files.projected_columns == ["a"]
+    assert list_files.limit == 1
+
+
+@pytest.mark.parametrize("columns", [["b"], []])
+def test_block_udf_filter_keeps_listing_and_read_limit_unset(tmp_path, columns):
+    read_files = replace(_mk_read_files(tmp_path), block_udf=lambda table: table)
+    predicate = col("a") > 1
+    filtered = Filter(predicate_expr=predicate, input_dependencies=[read_files])
+    projected = Project(
+        exprs=[col(name) for name in columns], input_dependencies=[filtered]
+    )
+    dag = Limit(limit=1, input_dependencies=[projected])
+
+    optimized = LogicalOptimizer().optimize(
+        LogicalPlan(dag=dag, context=DataContext.get_current())
+    )
+    (read,) = [
+        op for op in optimized.dag.post_order_iter() if isinstance(op, ReadFiles)
+    ]
+    (remaining_filter,) = [
+        op for op in optimized.dag.post_order_iter() if isinstance(op, Filter)
+    ]
+    assert remaining_filter.predicate_expr is not None
+    assert remaining_filter.predicate_expr.structurally_equals(predicate)
+    assert "a" in read.infer_schema().names
+    scanner = _scanner_of(read)
+    assert scanner.predicate is None
+    assert scanner.partition_predicate is None
+    assert scanner.limit is None
+    listing = _list_files_of(optimized)
+    assert listing.predicate is None
+    assert listing.partition_pruner is None
+    assert listing.limit is None
 
 
 if __name__ == "__main__":

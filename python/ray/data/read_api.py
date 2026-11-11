@@ -508,6 +508,7 @@ def _read_datasource_v2(
     compute: Optional[ComputeStrategy] = None,
     partition_filter: Optional[PathPartitionFilter] = None,
     block_udf: Optional[Callable[[Any], Any]] = None,
+    block_udf_modified_columns: Optional[Set[str]] = None,
     sample_all_files_for_schema: bool = False,
     # Advanced Ray remote parameters
     label_selector: Optional[Dict[str, str]] = None,
@@ -591,12 +592,14 @@ def _read_datasource_v2(
         filesystem = datasource.filesystem
         file_extensions = datasource.file_extensions
         shuffle = datasource.shuffle
+        source_paths = datasource.source_paths
     elif isinstance(datasource, DataSourceWithMetadata):
         # The source's own indexer finds the data: nothing to walk, nothing to
         # filter by extension, no file shuffle.
         filesystem = None
         file_extensions = None
         shuffle = None
+        source_paths = datasource.paths
     else:
         raise TypeError(
             f"{type(datasource).__name__} extends DataSourceV2 directly. Extend "
@@ -733,7 +736,7 @@ def _read_datasource_v2(
         paths=list(datasource.paths),
         file_indexer=indexer,
         filesystem=filesystem,
-        source_paths=list(datasource.paths),
+        source_paths=list(source_paths),
         prelisted_file_infos=prelisted_file_infos,
         file_partitioner=partitioner,
         file_extensions=file_extensions,
@@ -751,6 +754,7 @@ def _read_datasource_v2(
         ray_remote_args=ray_remote_args,
         compute=compute_strategy,
         block_udf=block_udf,
+        block_udf_modified_columns=block_udf_modified_columns,
         input_dependencies=[list_files_op],
     )
 
@@ -1928,6 +1932,15 @@ def read_parquet(
             stacklevel=2,
         )
 
+    # Tensor decoding is a known transform of just the declared tensor
+    # columns. If a caller also supplies a custom block UDF, its effects are
+    # unknown and the read operator must retain the full predicate barrier.
+    block_udf_modified_columns = (
+        set(tensor_column_schema)
+        if tensor_column_schema is not None
+        and arrow_parquet_args.get("_block_udf") is None
+        else None
+    )
     arrow_parquet_args = _resolve_parquet_args(
         tensor_column_schema,
         **arrow_parquet_args,
@@ -2059,6 +2072,7 @@ def read_parquet(
             concurrency=concurrency,
             partition_filter=partition_filter,
             block_udf=_block_udf,
+            block_udf_modified_columns=block_udf_modified_columns,
             sample_all_files_for_schema=merge_schema,
         )
         if select_columns_after_read is not None:
@@ -3414,6 +3428,8 @@ def read_mcap(
     time_range: Optional[Union[Tuple[int, int], TimeRange]] = None,
     message_types: Optional[Union[List[str], Set[str]]] = None,
     include_metadata: bool = True,
+    log_time_order: bool = True,
+    include_row_id: bool = False,
     filesystem: Optional["pyarrow.fs.FileSystem"] = None,
     parallelism: int = -1,
     num_cpus: Optional[float] = None,
@@ -3441,6 +3457,17 @@ def read_mcap(
     MCAP is a format commonly used in robotics and autonomous systems for storing
     ROS2 messages and other time-series data. This reader provides predicate pushdown
     optimization for efficient filtering by topics, time ranges, and message types.
+
+    Each row is one message. The ``data`` column holds decoded JSON values when
+    every selected topic is JSON-encoded, and the raw payload bytes otherwise.
+    To decode the JSON topics of a recording that also has other encodings,
+    select them with ``topics`` or ``message_types``. JSON values are typed from
+    the values each read task holds: a field that only some files have is null
+    in the other rows, and a field whose type differs between files, such as a
+    number in one and a string in another, fails where their rows are combined.
+    On the V2 datasource, ``Dataset.schema()`` types them before reading, from
+    the selected messages of the first chunk that holds one. A field that first
+    appears in a later chunk or file is missing from that schema.
 
     Examples:
         :noindex:
@@ -3497,6 +3524,36 @@ def read_mcap(
             include. Only messages with matching schema names will be read.
         include_metadata: Whether to include MCAP metadata fields in the output.
             Defaults to True. When True, includes schema, channel, and message metadata.
+            On the V2 datasource, ``channel_metadata`` holds each channel's
+            metadata map as JSON text with sorted keys, such as ROS 2's
+            ``offered_qos_profiles``; read it with ``json.loads``. It and
+            ``schema_data`` are dictionary-encoded, so a block stores each of a
+            channel's values once.
+        log_time_order: Whether each file's messages come out in ascending
+            ``log_time`` order. Defaults to True. Messages with equal log times
+            keep the order they were written in. If False, messages come in the
+            order they were written. ``False`` requires the V2 datasource. On
+            the V2 datasource (``DataContext.use_datasource_v2``), a read task
+            holds about ``RAY_DATA_MCAP_BIN_PACKING_BYTES`` of estimated read
+            memory (128 MiB by default). A large file is split across several
+            tasks, and small files can share one. Each task returns each of its
+            files in order, but tasks finish in any order, so a split file is in
+            order only within each task. With
+            ``DataContext.execution_options.preserve_order``, files are not
+            split: each file is read by one task, so it comes out in order from
+            start to end, and files come out in the order they were listed. A
+            file larger than the budget then gets a task of its own and holds
+            that much memory, as the legacy reader does. A file without a chunk
+            index is always read by one task, which holds its selected messages
+            in memory to sort them.
+        include_row_id: If ``True``, add a ``row_id`` column with a deterministic
+            id per message, built from the file path and the message's position
+            in the file. A message gets the same id on every run, however the
+            read is split into tasks, so the column can serve as the
+            ``id_column`` of a :class:`~ray.data.checkpoint.CheckpointConfig`.
+            Turned on automatically when the current checkpoint config's
+            ``id_column`` is ``row_id``. Requires the V2 datasource
+            (``DataContext.use_datasource_v2``).
         filesystem: The PyArrow filesystem implementation to read from.
         parallelism: This argument is deprecated. Use ``override_num_blocks`` argument.
         num_cpus: The number of CPUs to reserve for each parallel read worker.
@@ -3552,6 +3609,63 @@ def read_mcap(
                 f"{time_range}"
             )
         time_range = TimeRange(start_time=time_range[0], end_time=time_range[1])
+
+    ctx = DataContext.get_current()
+    if ctx.use_datasource_v2:
+        from ray.data._internal.datasource_v2.formats.mcap.mcap_datasource_v2 import (
+            MCAPDatasourceV2,
+        )
+        from ray.data._internal.datasource_v2.formats.mcap.mcap_options import (
+            ROW_ID_COLUMN,
+        )
+
+        checkpoint_config = ctx.checkpoint_config
+        if (
+            checkpoint_config is not None
+            and checkpoint_config.id_column == ROW_ID_COLUMN
+        ):
+            # A checkpoint keyed on ``row_id`` needs the column in the read output.
+            include_row_id = True
+        datasource_v2 = MCAPDatasourceV2(
+            paths=paths if isinstance(paths, list) else [paths],
+            topics=topics,
+            time_range=time_range,
+            message_types=message_types,
+            include_metadata=include_metadata,
+            log_time_order=log_time_order,
+            include_row_id=include_row_id,
+            include_paths=include_paths,
+            filesystem=filesystem,
+            partitioning=partitioning,
+            partition_filter=partition_filter,
+            file_extensions=file_extensions,
+            ignore_missing_paths=ignore_missing_paths,
+            shuffle=shuffle,
+        )
+        return _read_datasource_v2(
+            datasource_v2,
+            parallelism=_get_num_output_blocks(parallelism, override_num_blocks),
+            num_cpus=num_cpus,
+            num_gpus=num_gpus,
+            memory=memory,
+            ray_remote_args=ray_remote_args,
+            label_selector=label_selector,
+            fallback_strategy=fallback_strategy,
+            max_calls=max_calls,
+            resources=resources,
+            accelerator_type=accelerator_type,
+            runtime_env=runtime_env,
+            concurrency=concurrency,
+            partition_filter=partition_filter,
+        )
+
+    if not log_time_order or include_row_id:
+        raise NotImplementedError(
+            "`log_time_order=False` and `include_row_id` on `read_mcap` require "
+            "the V2 datasource. Enable it with "
+            "`ray.data.DataContext.get_current().use_datasource_v2 = True` "
+            "(or set RAY_DATA_USE_DATASOURCE_V2=1)."
+        )
 
     datasource = MCAPDatasource(
         paths,
@@ -4769,8 +4883,7 @@ def read_hudi(
     runtime_env: Optional[Dict[str, Any]] = None,
     ray_remote_args: Optional[Dict[str, Any]] = None,
 ) -> Dataset:
-    """
-    Create a :class:`~ray.data.Dataset` from an
+    """Create a :class:`~ray.data.Dataset` from an
     `Apache Hudi table <https://hudi.apache.org>`_.
 
     Examples:
@@ -5415,8 +5528,7 @@ def read_delta_sharing_tables(
     runtime_env: Optional[Dict[str, Any]] = None,
     ray_remote_args: Optional[Dict[str, Any]] = None,
 ) -> Dataset:
-    """
-    Read data from a Delta Sharing table.
+    """Read data from a Delta Sharing table.
     Delta Sharing projct https://github.com/delta-io/delta-sharing/tree/main
 
     This function reads data from a Delta Sharing table specified by the URL.
@@ -5967,8 +6079,7 @@ def read_lance(
     runtime_env: Optional[Dict[str, Any]] = None,
     ray_remote_args: Optional[Dict[str, Any]] = None,
 ) -> Dataset:
-    """
-    Create a :class:`~ray.data.Dataset` from one or more
+    """Create a :class:`~ray.data.Dataset` from one or more
     `Lance Datasets <https://lance-format.github.io/lance-python-doc/dataset.html>`_.
 
     Examples:
@@ -6094,8 +6205,7 @@ def read_clickhouse(
     runtime_env: Optional[Dict[str, Any]] = None,
     ray_remote_args: Optional[Dict[str, Any]] = None,
 ) -> Dataset:
-    """
-    Create a :class:`~ray.data.Dataset` from a ClickHouse table or view.
+    """Create a :class:`~ray.data.Dataset` from a ClickHouse table or view.
 
     Examples:
         >>> import ray
@@ -6332,6 +6442,12 @@ def read_delta(
     - Column statistics from the Delta log for row-group pruning
     - Authentication via ``storage_options``
 
+    .. note::
+
+        Tables with column mapping (``delta.columnMapping.mode`` set to
+        ``name`` or ``id``) aren't supported yet, and ``read_delta`` raises
+        ``NotImplementedError`` for them.
+
     Examples:
 
         Read a local Delta table:
@@ -6469,6 +6585,24 @@ def read_delta(
             filesystem = pafs.SubTreeFileSystem(normalized_path, resolved.filesystem)
 
     dt = DeltaTable(path, version=version, storage_options=storage_options)
+    # The data files of a column-mapped table name their columns with physical
+    # names (such as ``col-<uuid>``) that only the log maps to the table's
+    # column names. ``to_pyarrow_dataset`` doesn't apply that mapping, and some
+    # deltalake versions (1.6.4 to 1.6.6) don't reject the table either, so the
+    # columns read back as nulls. Check the table property rather than the
+    # protocol: reader 2 / writer 5 tables declare no reader features.
+    column_mapping_mode = (dt.metadata().configuration or {}).get(
+        "delta.columnMapping.mode"
+    ) or "none"
+    if column_mapping_mode.lower() != "none":
+        raise NotImplementedError(
+            "This Delta table uses column mapping (`delta.columnMapping.mode` is "
+            f"{column_mapping_mode!r}), which `ray.data.read_delta` doesn't "
+            "support yet. Its data files store columns under physical names that "
+            "only the Delta log maps to the table's column names, so reading "
+            "them would return nulls or wrong columns. Follow "
+            "https://github.com/ray-project/ray/issues/64854 for support."
+        )
     try:
         pa_dataset = dt.to_pyarrow_dataset(filesystem=filesystem)
     except Exception as e:

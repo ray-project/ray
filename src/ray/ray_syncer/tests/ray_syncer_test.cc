@@ -44,6 +44,7 @@
 #include "ray/ray_syncer/ray_syncer_client.h"
 #include "ray/ray_syncer/ray_syncer_server.h"
 #include "ray/rpc/authentication/authentication_token.h"
+#include "ray/rpc/authentication/authentication_token_loader.h"
 #include "ray/rpc/grpc_server.h"
 #include "ray/util/env.h"
 #include "ray/util/network_util.h"
@@ -558,7 +559,8 @@ struct SyncerServerTest {
 
     auto server_address = BuildAddress("0.0.0.0", port);
     grpc::ServerBuilder builder;
-    service = std::make_unique<RaySyncerService>(*syncer);
+    service = std::make_unique<RaySyncerService>(
+        *syncer, ray::rpc::AuthenticationTokenLoader::instance().GetToken());
     grpc_service = std::make_unique<RaySyncerGrpcService>(*service);
     builder.AddListeningPort(server_address, grpc::InsecureServerCredentials());
     builder.RegisterService(grpc_service.get());
@@ -1168,15 +1170,16 @@ struct FakeRaySyncerService : public ray::rpc::syncer::RaySyncer::CallbackServic
         io_context(_io_context) {}
   grpc::ServerBidiReactor<RaySyncMessageBatch, RaySyncMessageBatch> *StartSync(
       grpc::CallbackServerContext *context) override {
-    reactor = new RayServerBidiReactor(context,
-                                       io_context,
-                                       node_id.Binary(),
-                                       message_processor,
-                                       cleanup_cb,
-                                       nullptr,
-                                       ray::rpc::AuthenticationTokenValidator::instance(),
-                                       /*max_batch_size=*/1,
-                                       /*max_batch_delay_ms=*/0);
+    reactor = new RayServerBidiReactor(
+        context,
+        io_context,
+        node_id.Binary(),
+        message_processor,
+        cleanup_cb,
+        ray::rpc::AuthenticationTokenLoader::instance().GetToken(),
+        ray::rpc::AuthenticationTokenValidator::instance(),
+        /*max_batch_size=*/1,
+        /*max_batch_delay_ms=*/0);
     return reactor;
   }
 
