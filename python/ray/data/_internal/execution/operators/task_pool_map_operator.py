@@ -168,6 +168,11 @@ class TaskPoolMapOperator(MapOperator, ReportsExtraResourceUsage):
         return self._isolate_workers
 
     @property
+    def memory_from_input_estimate(self) -> bool:
+        """Return whether each task requests its input blocks' memory estimates."""
+        return self._memory_from_input_estimate
+
+    @property
     @override
     def _input_queues(self) -> List["BaseBundleQueue"]:
         return [self._block_ref_bundler]
