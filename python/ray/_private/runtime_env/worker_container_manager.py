@@ -36,8 +36,6 @@ class Launch:
     cleanup: object = None
     expiry: object = None
     unsettled: object = None
-    failed: bool = False
-    retry_after: float = 0
     digest: str = ""
 
 
@@ -75,16 +73,10 @@ class WorkerContainerManager:
         self.session = session
 
     def check_admission(self):
-        # A failed cleanup gets another bounded attempt when there is demand.
-        # There is no permanent node-wide failure bit or healthy-worker poller.
-        for record in list(self.records.values()):
-            if record.failed and time.monotonic() >= record.retry_after:
-                self._schedule_cleanup(record)
         if self._closing or any(
             record.cancelled
             for record in self.records.values()
-            if record.cleanup is not None
-            and (record.failed or not record.cleanup.done())
+            if record.cleanup is not None and not record.cleanup.done()
         ):
             raise RuntimeError("Worker container cleanup is pending; retry the launch")
         if sum(not r.cancelled for r in self.records.values()) >= self.max_pending:
@@ -187,7 +179,6 @@ class WorkerContainerManager:
 
     def _schedule_cleanup(self, record):
         if record.cleanup is None or record.cleanup.done():
-            record.failed = False
             record.cleanup = asyncio.create_task(self._cleanup(record))
             record.cleanup.add_done_callback(lambda _: self._retire(record))
 
@@ -196,15 +187,12 @@ class WorkerContainerManager:
 
         def settled(_):
             record.unsettled = None
-            if not self._closing:
-                # The creator is now unable to materialize another container.
-                # Resume cleanup even if its previous retry budget was exhausted.
-                self._schedule_cleanup(record)
 
         completion.add_done_callback(settled)
 
     async def _cleanup(self, record):
-        for attempt in range(self.cleanup_attempts):
+        attempt = 0
+        while not self._closing:
             try:
                 if record.creator is not None:
                     try:
@@ -214,25 +202,30 @@ class WorkerContainerManager:
                 if record.unsettled is not None and not record.unsettled.done():
                     raise RuntimeError("Podman command is still running")
                 await self._remove(record.identity)
-                record.failed = False
                 return
             except (OSError, RuntimeError, asyncio.TimeoutError) as error:
                 if isinstance(error, UnsettledCommandError):
                     self._retain_command(record, error.completion)
+                attempt += 1
                 logger.warning(
                     "Container cleanup %s failed (%s/%s): %s",
                     record.identity["launch_id"],
-                    attempt + 1,
+                    attempt,
                     self.cleanup_attempts,
                     error,
                 )
-                if attempt + 1 < self.cleanup_attempts:
-                    await asyncio.sleep(2**attempt)
-        record.failed = True
-        record.retry_after = time.monotonic() + self.operation_timeout
-        logger.error(
-            "Container cleanup exhausted retries; a later launch will retry it"
-        )
+                if attempt < self.cleanup_attempts:
+                    await asyncio.sleep(2 ** (attempt - 1))
+                else:
+                    logger.error(
+                        "Container cleanup %s exhausted retries; retrying in %s seconds",
+                        record.identity["launch_id"],
+                        self.operation_timeout,
+                    )
+                    # Keep one task per cancelled launch, even without new demand.
+                    # close() cancels this sleep along with in-flight cleanup.
+                    await asyncio.sleep(self.operation_timeout)
+                    attempt = 0
 
     async def _remove(self, identity):
         query = [
@@ -256,7 +249,7 @@ class WorkerContainerManager:
                 raise RuntimeError("Worker container still exists after removal")
 
     def _retire(self, record):
-        if record.failed or (record.creator is not None and not record.creator.done()):
+        if record.creator is not None and not record.creator.done():
             return
         if record.cleanup is not None and not record.cleanup.done():
             return

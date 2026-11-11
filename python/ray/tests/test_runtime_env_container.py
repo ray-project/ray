@@ -28,6 +28,20 @@ def test_worker_cleanup(podman_docker_cluster):
 
 @pytest.mark.skipif(sys.platform != "linux", reason="Only works on Linux.")
 @pytest.mark.parametrize("use_image_uri_api", [True, False])
+def test_worker_registration_timeout(podman_docker_cluster, use_image_uri_api):
+    cmd = [
+        "python",
+        "tests/test_worker_registration_timeout.py",
+        "--image",
+        NESTED_IMAGE_NAME,
+    ]
+    if use_image_uri_api:
+        cmd.append("--use-image-uri-api")
+    run_in_container([cmd], podman_docker_cluster)
+
+
+@pytest.mark.skipif(sys.platform != "linux", reason="Only works on Linux.")
+@pytest.mark.parametrize("use_image_uri_api", [True, False])
 def test_put_get(podman_docker_cluster, use_image_uri_api):
     """Test ray.put and ray.get."""
 

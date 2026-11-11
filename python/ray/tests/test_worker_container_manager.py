@@ -38,6 +38,7 @@ class Engine:
         self.started = asyncio.Event()
         self.fail_create = False
         self.fail_remove = False
+        self.remove_attempted = asyncio.Event()
 
     async def run(self, args, environment=None, cwd=None, timeout=None):
         self.calls.append(args)
@@ -54,6 +55,7 @@ class Engine:
                 raise RuntimeError("Podman create was SIGKILLed")
             return "a" * 64
         if args[0] == "rm":
+            self.remove_attempted.set()
             if self.fail_remove:
                 raise RuntimeError("Podman storage unavailable")
             for key in list(self.containers):
@@ -170,31 +172,63 @@ def test_signalled_creator_can_finish_cleanup_instead_of_unknown_forever(tmp_pat
                 await create(manager, identity)
             await settled(manager, identity)
             assert not engine.containers
-            assert not manager.records[identity["launch_id"]].failed
 
     asyncio.run(run())
 
 
-def test_cleanup_retries_are_finite_and_disable_only_container_admission(tmp_path):
+@pytest.mark.parametrize("cleanup_attempts", [1, 2])
+def test_cleanup_recovers_without_new_demand_and_retains_expired_launch(
+    tmp_path, cleanup_attempts
+):
     async def run():
-        async with managed(tmp_path, cleanup_attempts=2) as (manager, engine):
+        async with managed(
+            tmp_path, cleanup_attempts=cleanup_attempts, operation_timeout=0.1
+        ) as (manager, engine):
+            identity = launch(ttl=0.05)
+            manager.register(identity)
+            await create(manager, identity)
+            engine.fail_remove = True
+            manager.stop(identity)
+            for _ in range(cleanup_attempts):
+                await asyncio.wait_for(engine.remove_attempted.wait(), 3)
+                engine.remove_attempted.clear()
+            cleanup = manager.records[identity["launch_id"]].cleanup
+            assert not cleanup.done()
+            # Repeated cancellation must not bypass the cooldown or fork cleanup.
+            manager.stop(identity)
+            assert manager.records[identity["launch_id"]].cleanup is cleanup
+            assert sum(args[0] == "rm" for args in engine.calls) == cleanup_attempts
+            with pytest.raises(RuntimeError, match="cleanup is pending"):
+                manager.check_admission()
+            engine.fail_remove = False
+            # No new launch, admission check, or cancellation drives this retry.
+            await asyncio.wait_for(asyncio.shield(cleanup), 1)
+            assert sum(args[0] == "rm" for args in engine.calls) == cleanup_attempts + 1
+            assert not engine.containers
+            assert identity["launch_id"] not in manager.records
+            manager.check_admission()
+            manager.register(launch("b"))
+
+    asyncio.run(run())
+
+
+def test_close_cancels_background_cleanup_retries(tmp_path):
+    async def run():
+        async with managed(tmp_path, cleanup_attempts=1, operation_timeout=0.1) as (
+            manager,
+            engine,
+        ):
             identity = launch()
             manager.register(identity)
             await create(manager, identity)
             engine.fail_remove = True
             manager.stop(identity)
-            await settled(manager, identity)
-            assert sum(args[0] == "rm" for args in engine.calls) == 2
-            assert manager.records[identity["launch_id"]].failed
-            with pytest.raises(RuntimeError, match="cleanup is pending"):
-                manager.check_admission()
-            engine.fail_remove = False
-            manager.records[identity["launch_id"]].retry_after = 0
-            with pytest.raises(RuntimeError, match="cleanup is pending"):
-                manager.check_admission()
-            await settled(manager, identity)
-            manager.check_admission()
-            manager.register(launch("b"))
+            await asyncio.wait_for(engine.remove_attempted.wait(), 1)
+            cleanup = manager.records[identity["launch_id"]].cleanup
+            await manager.close()
+            assert cleanup.cancelled()
+            await asyncio.sleep(0.15)
+            assert sum(args[0] == "rm" for args in engine.calls) == 1
 
     asyncio.run(run())
 
@@ -586,7 +620,6 @@ def test_permission_denied_retains_creator_until_exit_then_recovers(tmp_path):
             with mock.patch("os.killpg", side_effect=PermissionError):
                 with pytest.raises(RuntimeError, match="has not terminated"):
                     await create(manager, owner)
-                await settled(manager, owner)
                 assert not removed.is_set()
                 with pytest.raises(RuntimeError, match="cleanup is pending"):
                     manager.check_admission()
