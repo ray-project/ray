@@ -1,3 +1,4 @@
+
 from __future__ import annotations
 
 import logging
@@ -90,8 +91,18 @@ class _FilterLeaves(NamedTuple):
     has_float_leaf: bool = False
 
 
-def _derived_statistics_predicate(expr: Expr, schema: pa.Schema) -> Expr | None:
-    """Return a necessary condition that Parquet statistics can evaluate."""
+def _add_statistics_bounds(expr: Expr, schema: pa.Schema) -> Expr:
+    """Rewrite the leaves PyArrow cannot prune with in place: leaf -> leaf & bound.
+
+    PyArrow's row-group pruning only evaluates column-vs-literal comparisons
+    against statistics, so a wrapped arithmetic comparison or a string prefix
+    keeps every row group alive. For each such leaf this appends the bound the
+    statistics CAN evaluate. The bound is a necessary condition -- every row
+    the leaf keeps satisfies it -- so the rewritten filter never prunes a row
+    group the original filter would keep. Every other form is left untouched:
+    PyArrow already prunes plain comparisons, null checks and membership, so
+    rewriting them would only run the same split twice.
+    """
     import pyarrow.compute as pc
 
     from ray.data.expressions import (
@@ -100,80 +111,26 @@ def _derived_statistics_predicate(expr: Expr, schema: pa.Schema) -> Expr | None:
         LiteralExpr,
         Operation,
         PyArrowComputeUDFExpr,
-        UnaryExpr,
     )
 
     if isinstance(expr, BinaryExpr) and expr.op in (
         Operation.AND,
         Operation.OR,
     ):
-        left = _derived_statistics_predicate(expr.left, schema)
-        right = _derived_statistics_predicate(expr.right, schema)
-
+        left = _add_statistics_bounds(expr.left, schema)
+        right = _add_statistics_bounds(expr.right, schema)
+        if left is expr.left and right is expr.right:
+            return expr
         if expr.op == Operation.AND:
-            if left is None:
-                return right
-            if right is None:
-                return left
             return left & right
+        return left | right
 
-        # Both branches must be represented for OR.
-        # Otherwise we could drop rows matching the other branch.
-        if left is not None and right is not None:
-            return left | right
-        return None
+    # NOT is not recursed into: PyArrow cannot prove a modeled leaf true
+    # (that is exactly what makes it modeled), so a bound under a NOT could
+    # never prune a group.
 
-    # Retain comparisons that are safe for Parquet statistics pruning.
-    if isinstance(expr, BinaryExpr) and expr.op in (
-        Operation.EQ,
-        Operation.NE,
-        Operation.LT,
-        Operation.LE,
-        Operation.GT,
-        Operation.GE,
-    ):
-        column = None
-        if isinstance(expr.left, ColumnExpr) and isinstance(expr.right, LiteralExpr):
-            column = expr.left
-        elif isinstance(expr.left, LiteralExpr) and isinstance(expr.right, ColumnExpr):
-            column = expr.right
-
-        if column is not None:
-            idx = schema.get_field_index(column.name)
-            if (
-                expr.op == Operation.NE
-                and idx >= 0
-                and pa.types.is_floating(schema.field(idx).type)
-            ):
-                # Parquet min/max omit NaNs, although they may satisfy !=.
-                return column.is_not_null()
-            return expr
-
-    if isinstance(expr, UnaryExpr) and expr.op in (
-        Operation.IS_NULL,
-        Operation.IS_NOT_NULL,
-    ):
-        if isinstance(expr.operand, ColumnExpr):
-            return expr
-
-    # Keep a conservative null-inclusive membership bound.
-    if (
-        isinstance(expr, BinaryExpr)
-        and expr.op in (Operation.IN, Operation.NOT_IN)
-        and isinstance(expr.left, ColumnExpr)
-        and isinstance(expr.right, LiteralExpr)
-    ):
-        idx = schema.get_field_index(expr.left.name)
-        if idx >= 0 and not pa.types.is_floating(schema.field(idx).type):
-            # PyArrow is_in can match nulls when the value set contains None.
-            if (
-                expr.op == Operation.IN
-                and isinstance(expr.right.value, list)
-                and all(value is not None for value in expr.right.value)
-            ):
-                return expr
-            return expr | expr.left.is_null()
-
+    # (col + literal) >=/> literal: the statistics cannot evaluate the
+    # addition, but the equivalent column bound they can.
     if (
         isinstance(expr, BinaryExpr)
         and expr.op in (Operation.GE, Operation.GT)
@@ -234,10 +191,15 @@ def _derived_statistics_predicate(expr: Expr, schema: pa.Schema) -> Expr | None:
                     ):
                         bound = target_val - offset_val
                         if min_value <= bound <= max_value:
-                            if expr.op == Operation.GE:
-                                return column >= bound
-                            return column > bound
+                            necessary = (
+                                column >= bound
+                                if expr.op == Operation.GE
+                                else column > bound
+                            )
+                            return expr & necessary
 
+    # str.starts_with(col, prefix): the statistics cannot evaluate the match,
+    # but the string range it spans they can.
     if (
         isinstance(expr, PyArrowComputeUDFExpr)
         and expr.pc_func is pc.starts_with
@@ -266,12 +228,12 @@ def _derived_statistics_predicate(expr: Expr, schema: pa.Schema) -> Expr | None:
             # When no valid next character exists, the lower bound alone
             # is still safe.
             if last in (0xD7FF, 0x10FFFF):
-                return lower
+                return expr & lower
 
             upper = prefix[:-1] + chr(last + 1)
-            return lower & (column < upper)
+            return expr & lower & (column < upper)
 
-    return None
+    return expr
 
 
 class FooterReader:
@@ -490,17 +452,25 @@ class FooterReader:
         # for each group. The read-column lookup reads leaf paths off row group 0,
         # which a file with no row groups has none of; it sizes nothing either way.
         original_filter = self.filter
-        derived_filter: "pc.Expression" | None = None
+        # The deriver rewrites the leaves PyArrow cannot prune with in place
+        # (leaf -> leaf & bound): an arithmetic comparison gets the equivalent
+        # column bound, a string prefix the string range it spans. One split
+        # over the rewritten filter then prunes with the plain leaves AND the
+        # added bounds together, so an OR whose other branch PyArrow cannot
+        # evaluate prunes too. A filter with no modeled leaf comes back
+        # unchanged, so the plain filter is split exactly as before and no
+        # second pass runs over the same statistics.
+        prune_filter = original_filter
         if self.filter_expr is not None:
             try:
-                derived = _derived_statistics_predicate(
+                rewritten = _add_statistics_bounds(
                     self.filter_expr, metadata.schema.to_arrow_schema()
                 )
-                if derived is not None:
-                    derived_filter = derived.to_pyarrow()
+                if rewritten is not self.filter_expr:
+                    prune_filter = rewritten.to_pyarrow()
             except Exception as e:
                 logger.debug(
-                    "Could not derive a Parquet statistics predicate: %s",
+                    "Could not derive Parquet statistics bounds: %s",
                     e,
                     exc_info=True,
                 )
@@ -531,26 +501,15 @@ class FooterReader:
             # Fail closed on any split error -- keep every group -- so a type
             # mismatch or similar cannot abort the rest of the read_footers batch.
             surviving: list[int] | None = self._try_split_by_row_group(
-                fragment, original_filter, path
+                fragment, prune_filter, path
             )
-            if derived_filter is not None:
-                # PyArrow keeps every group it cannot disprove, so filters it
-                # cannot evaluate against statistics (arithmetic on a column,
-                # a string prefix) come back with all groups alive. The derived
-                # predicate is a necessary condition the statistics CAN
-                # evaluate, so intersecting the two survivor lists only drops
-                # groups no matching row can reach, and never a group the
-                # original split would have kept. A failed split here means
-                # "pruning cannot be applied", so the derived survivors stand
-                # in for it rather than narrowing it.
-                derived_surviving = self._try_split_by_row_group(
-                    fragment, derived_filter, path
+            if surviving is None and prune_filter is not original_filter:
+                # The added bounds could not be evaluated against this file's
+                # statistics (a type mismatch or similar). Fall back to the
+                # plain filter, so pruning never comes out weaker than it.
+                surviving = self._try_split_by_row_group(
+                    fragment, original_filter, path
                 )
-                if surviving is None:
-                    surviving = derived_surviving
-                elif derived_surviving is not None:
-                    candidates = set(derived_surviving)
-                    surviving = [rg for rg in surviving if rg in candidates]
             rg_indices: Iterable[int] = (
                 unprocessed_rg_ids if surviving is None else surviving
             )
