@@ -5,6 +5,7 @@ from typing import Any, Dict, Optional
 
 import ray
 from ray._private import ray_constants
+from ray._private.accelerators.tpu import wait_for_tpu_vfio_ready
 from ray.train._internal.utils import get_address_and_port
 from ray.train._internal.worker_group import WorkerGroup
 from ray.train.backend import Backend, BackendConfig
@@ -129,6 +130,7 @@ def _setup_jax_distributed_environment(
     jax_platforms_list = jax_platforms.split(",")
 
     if "tpu" in jax_platforms_list:
+        wait_for_tpu_vfio_ready()
         jax.distributed.initialize(master_addr_with_port, num_workers, index)
         logger.info("Initialized JAX distributed on TPU.")
     elif "cuda" in jax_platforms_list:

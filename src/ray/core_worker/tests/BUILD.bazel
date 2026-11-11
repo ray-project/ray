@@ -228,6 +228,7 @@ ray_cc_test(
     name = "core_worker_test",
     size = "small",
     srcs = ["core_worker_test.cc"],
+    auth_token = True,
     tags = ["team:core"],
     deps = [
         "//src/ray/asio:fake_periodical_runner",

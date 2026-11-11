@@ -21,11 +21,14 @@ from typing import (
 
 from typing_extensions import override
 
+from ray.data._internal.execution.interfaces.common import LogicalActorId
+
 if TYPE_CHECKING:
     import pyarrow as pa
 
     from ray.data._internal.execution.block_ref_counter import BlockRefCounter
     from ray.data._internal.execution.lineage_tracker import LineageTracker
+    from ray.data._internal.execution.resource_bank import ResourceBankBase
 import ray
 from ray.actor import ActorHandle
 from ray.core.generated import gcs_pb2
@@ -52,6 +55,7 @@ from ray.data._internal.execution.interfaces import (
     RefBundle,
     ReportsExtraResourceUsage,
     TaskContext,
+    actor_resource_dict,
 )
 from ray.data._internal.execution.node_trackers.actor_location import (
     ActorLocationTracker,
@@ -82,9 +86,6 @@ logger = logging.getLogger(__name__)
 _ACTOR_STATE_DEAD = gcs_pb2.ActorTableData.ActorState.DEAD
 _ACTOR_STATE_ALIVE = gcs_pb2.ActorTableData.ActorState.ALIVE
 _ACTOR_STATE_RESTARTING = gcs_pb2.ActorTableData.ActorState.RESTARTING
-
-# Type alias for the logical identifier of an actor (used in labels and actor-to-id maps).
-LogicalActorId = str
 
 
 def get_map_worker_cls_name(op_name: str) -> str:
@@ -293,9 +294,12 @@ class ActorPoolMapOperator(MapOperator, ReportsExtraResourceUsage):
         options: ExecutionOptions,
         block_ref_counter: "BlockRefCounter",
         lineage_tracker: Optional["LineageTracker"] = None,
+        resource_bank: Optional["ResourceBankBase"] = None,
     ):
         self._actor_locality_enabled = options.actor_locality_enabled
-        super().start(options, block_ref_counter, lineage_tracker)
+        super().start(
+            options, block_ref_counter, lineage_tracker, resource_bank=resource_bank
+        )
 
         self._actor_cls = ray.remote(**self._ray_remote_args)(self._map_worker_cls)
         self._actor_pool.scale(
@@ -394,6 +398,11 @@ class ActorPoolMapOperator(MapOperator, ReportsExtraResourceUsage):
         self._submit_metadata_task(
             res_ref,
             lambda: _task_done_callback(res_ref),
+        )
+        # The logical usage above cannot express custom resources, so record the
+        # exact creation request separately for the cluster autoscaler.
+        self._actor_pool.record_resource_request(
+            actor, actor_resource_dict(actual_remote_args)
         )
         return actor, res_ref, actor_resource_usage
 
@@ -501,13 +510,23 @@ class ActorPoolMapOperator(MapOperator, ReportsExtraResourceUsage):
             num_submitted_tasks += 1
 
             # Update locality metrics
-            if (
-                self._actor_pool.get_actor_location(actor)
-                in bundle.get_preferred_object_locations()
-            ):
+            actor_node_id = self._actor_pool.get_actor_location(actor)
+            if actor_node_id in bundle.get_preferred_object_locations():
                 self._locality_hits += 1
             else:
                 self._locality_misses += 1
+            # Cross-node input transfer: input blocks whose producing node is not
+            # the actor's node are fetched over the network.
+            remote_bytes = 0
+            remote_blocks = 0
+            for bm in bundle.metadata:
+                producer_node_id = bm.node_id
+                if producer_node_id is not None and producer_node_id != actor_node_id:
+                    remote_bytes += bm.size_bytes or 0
+                    remote_blocks += 1
+            if remote_blocks > 0:
+                self._metrics.bytes_remote_inputs_read += remote_bytes
+                self._metrics.num_remote_blocks_read += remote_blocks
 
         return num_submitted_tasks
 
@@ -526,6 +545,15 @@ class ActorPoolMapOperator(MapOperator, ReportsExtraResourceUsage):
             remote_args, self.data_context.execution_options.label_selector
         )
         return remote_args
+
+    def get_resource_requests(self) -> List[Dict[str, float]]:
+        """Report the exact shape of every actor this operator is holding.
+
+        Actors are the operator's demand; its tasks run on actors that are
+        already counted, so the base implementation (which walks in-flight
+        tasks) would report nothing for an actor pool.
+        """
+        return self._actor_pool.get_resource_requests()
 
     def has_next(self) -> bool:
         # In case there are still enqueued bundles remaining, try to
@@ -660,6 +688,18 @@ class ActorPoolMapOperator(MapOperator, ReportsExtraResourceUsage):
 
     def get_autoscaling_actor_pools(self) -> List[AutoscalingActorPool]:
         return [self._actor_pool]
+
+    @property
+    def actor_pool(self) -> AutoscalingActorPool:
+        """This operator's actor pool.
+
+        Read-only accessor for collaborators that need the pool's own
+        bookkeeping (e.g. ``ResourceBank`` sizing the prebuffered object-store
+        footprint from ``max_actor_concurrency``). It is also what makes this
+        operator satisfy the structural ``ActorPoolOperator`` protocol, so
+        removing it silently turns actor-aware accounting off.
+        """
+        return self._actor_pool
 
     def per_task_resource_allocation(self) -> ExecutionResources:
         # For Actor tasks resource allocation is determined as:
@@ -878,6 +918,10 @@ class _ActorPool(AutoscalingActorPool):
         # Per-actor resource usage, needed because ray_remote_args_fn can
         # produce different resources for each actor.
         self._actor_resource_usage: Dict[ActorHandle, ExecutionResources] = {}
+        # Per-actor exact creation request, reported to the cluster autoscaler.
+        # Kept alongside the usage above rather than folded into it because
+        # ``ExecutionResources`` cannot express custom resources.
+        self._actor_resource_requests: Dict[ActorHandle, Dict[str, float]] = {}
         # Cached aggregate resource counters.
         self._total_usage = ExecutionResources.zero()
         self._pending_or_restarting_usage = ExecutionResources.zero()
@@ -1046,6 +1090,7 @@ class _ActorPool(AutoscalingActorPool):
             # This must happen for all exceptions, not just RayError, to prevent
             # memory leaks where dead actor handles remain in _actor_to_logical_id.
             usage = self._actor_resource_usage.pop(actor)
+            self._actor_resource_requests.pop(actor, None)
             self._total_usage = self._total_usage.subtract(usage)
             self._pending_or_restarting_usage = (
                 self._pending_or_restarting_usage.subtract(usage)
@@ -1069,6 +1114,20 @@ class _ActorPool(AutoscalingActorPool):
     @override
     def get_pending_actor_refs(self) -> List[ray.ObjectRef]:
         return list(self._pending_actors.keys())
+
+    def record_resource_request(
+        self, actor: ActorHandle, request: Dict[str, float]
+    ) -> None:
+        """Record the exact resource request an actor was created with.
+
+        Called by the operator as it creates each actor, since only the
+        operator knows the remote args the actor was launched with.
+        """
+        self._actor_resource_requests[actor] = request
+
+    @override
+    def get_resource_requests(self) -> List[Dict[str, float]]:
+        return list(self._actor_resource_requests.values())
 
     @override
     def select_actors(
@@ -1306,6 +1365,7 @@ class _ActorPool(AutoscalingActorPool):
             ready_ref = next(iter(self._pending_actors.keys()))
             actor = self._pending_actors.pop(ready_ref)
             usage = self._actor_resource_usage.pop(actor)
+            self._actor_resource_requests.pop(actor, None)
             self._total_usage = self._total_usage.subtract(usage)
             self._pending_or_restarting_usage = (
                 self._pending_or_restarting_usage.subtract(usage)
@@ -1331,6 +1391,7 @@ class _ActorPool(AutoscalingActorPool):
         self._pending_actors.clear()
         for actor in pending.values():
             usage = self._actor_resource_usage.pop(actor)
+            self._actor_resource_requests.pop(actor, None)
             self._total_usage = self._total_usage.subtract(usage)
             self._pending_or_restarting_usage = (
                 self._pending_or_restarting_usage.subtract(usage)
@@ -1391,6 +1452,7 @@ class _ActorPool(AutoscalingActorPool):
         del self._actor_to_logical_id[actor]
 
         usage = self._actor_resource_usage.pop(actor)
+        self._actor_resource_requests.pop(actor, None)
         self._total_usage = self._total_usage.subtract(usage)
         if actor_state.is_restarting:
             self._pending_or_restarting_usage = (
