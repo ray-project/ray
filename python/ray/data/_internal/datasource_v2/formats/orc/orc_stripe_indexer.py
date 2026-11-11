@@ -8,6 +8,7 @@ import pyarrow as pa
 from ray.data._internal.datasource_v2.common.non_sampling_file_indexer import (
     NonSamplingFileIndexer,
 )
+from ray.data._internal.datasource_v2.common.online_bin_packer import OnlineBinPacker
 from ray.data._internal.datasource_v2.formats.orc.orc_metadata import (
     orc_read_unit_id,
     read_orc_metadata,
@@ -20,8 +21,6 @@ from ray.data._internal.datasource_v2.interfaces.file_manifest import (
     FileChunk,
     FileManifest,
 )
-from ray.data._internal.datasource_v2.interfaces.file_partitioner import FilePartitioner
-from ray.data._internal.weighted_round_robin import WeightedRoundRobinPartitioner
 
 _ORC_CHUNK_TYPE = pa.struct(
     [
@@ -163,36 +162,13 @@ class OrcStripeIndexer(NonSamplingFileIndexer):
                 return
 
 
-class OrcStripePartitioner(FilePartitioner):
-    """Group consecutive stripes by their encoded size in listing order."""
-
-    def __init__(self, target_bytes: int):
-        self._packer = WeightedRoundRobinPartitioner(
-            min_bucket_size=target_bytes,
-            max_bucket_size=target_bytes,
-            num_buckets=1,
-            emit_before_overflow=True,
-        )
-
-    @property
-    def requires_global_input(self) -> bool:
-        return True
-
-    def add_input(self, input_manifest: FileManifest):
-        for path, size, metadata in zip(
-            input_manifest.paths,
-            input_manifest.file_sizes,
-            input_manifest.file_chunk_metadatas,
-        ):
-            weight = int(size if metadata is None else metadata["size_bytes"])
-            self._packer.add_item((str(path), int(size), metadata), weight)
-
-    def has_partition(self) -> bool:
-        return self._packer.has_partition()
+class OrcStripePartitioner(OnlineBinPacker):
+    """Normalize whole-file and stripe manifest types after bin packing."""
 
     def next_partition(self) -> FileManifest:
-        paths, sizes, chunks = zip(*self._packer.next_partition())
-        return _orc_manifest(list(paths), list(sizes), list(chunks))
-
-    def finalize(self):
-        self._packer.finalize()
+        manifest = super().next_partition()
+        return _orc_manifest(
+            manifest.paths.tolist(),
+            manifest.file_sizes.tolist(),
+            manifest.file_chunk_metadatas.tolist(),
+        )

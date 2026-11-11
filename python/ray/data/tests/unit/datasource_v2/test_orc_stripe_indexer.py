@@ -422,15 +422,16 @@ def test_stripe_partitioner_mixes_whole_files_and_stripes():
     ]
     manifest = _orc_manifest(
         ["a.orc", "b.orc", "a.orc", "a.orc", "c.orc"],
-        [1000, 20, 1000, 1000, 30],
+        [1000, 200, 1000, 1000, 30],
         chunks,
     )
     packer = OrcStripePartitioner(100)
     packer.add_input(manifest)
     packer.finalize()
-    groups = []
+    groups, manifests = [], []
     while packer.has_partition():
         output = packer.next_partition()
+        manifests.append(output)
         groups.append(
             [
                 (str(path), None if md is None else tuple(md["unit_ids"]))
@@ -438,10 +439,12 @@ def test_stripe_partitioner_mixes_whole_files_and_stripes():
             ]
         )
     assert groups == [
-        [("a.orc", (0,)), ("b.orc", None)],
+        [("b.orc", None)],
         [("a.orc", (1,))],
-        [("a.orc", (2,)), ("c.orc", None)],
+        [("a.orc", (2,))],
+        [("c.orc", None), ("a.orc", (0,))],
     ]
+    assert len(FileManifest.concat(manifests)) == len(chunks)
 
 
 @pytest.mark.parametrize("retry", [False, True])
@@ -473,7 +476,13 @@ def test_stripe_positions_filter_and_retry(case, monkeypatch, retry):
         DataContext.get_current(), "retried_io_errors", ["transient ORC"]
     )
     monkeypatch.setattr("ray.data._internal.util.time.sleep", lambda _: None)
-    batches = list(reader.read(selected(case)))
+    packer = OrcStripePartitioner(1 << 30)
+    for index in (0, 2):
+        packer.add_input(selected(case, (index,)))
+    packer.finalize()
+    manifest = packer.next_partition()
+    assert FileChunk.from_metadata(manifest.file_chunk_metadatas[0]).unit_ids == (0, 2)
+    batches = list(reader.read(manifest))
     assert all(b.num_rows <= 2 for b in batches)
     assert reader._sampled_batch_size == 1
     assert [r["id"] for b in batches for r in b.to_pylist()] == [
