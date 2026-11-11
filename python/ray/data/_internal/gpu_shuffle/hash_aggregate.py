@@ -1601,6 +1601,7 @@ class GPUHashAggregateOperator(GPUShuffleOperator):
     """GPU-native hash aggregate using RAPIDS MPF for the shuffle stage."""
 
     _FINALIZE_PROGRESS_BAR_NAME = "GPU Aggregation"
+    _preserves_row_count = False
 
     def __init__(
         self,

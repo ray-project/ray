@@ -428,6 +428,8 @@ class GPUShuffleOperator(PhysicalOperator, SubProgressBarMixin):
     """
 
     _FINALIZE_PROGRESS_BAR_NAME = "GPU Reduce"
+    # A plain shuffle emits every input row; aggregation does not.
+    _preserves_row_count = True
 
     def __init__(
         self,
@@ -736,9 +738,14 @@ class GPUShuffleOperator(PhysicalOperator, SubProgressBarMixin):
         return self._phase_metrics.runtime_metrics_by_phase()
 
     def num_outputs_total(self) -> Optional[int]:
-        return self._phase_metrics.estimated_num_output_bundles
+        # ``finish_and_extract`` emits exactly one block per partition, so the
+        # total is fixed up front; the per-rank estimate is only used for rows.
+        return self._num_partitions
 
     def num_output_rows_total(self) -> Optional[int]:
+        if self._preserves_row_count and self._inputs_complete:
+            shuffle_metrics = self._phase_metrics.phase_metrics["shuffle"]
+            return shuffle_metrics.metrics.rows_inputs_of_submitted_tasks
         return self._phase_metrics.estimated_output_num_rows
 
     def get_sub_progress_bar_names(self) -> List[str]:
