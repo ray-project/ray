@@ -25,6 +25,7 @@ from ray.data._internal.datasource_v2.formats.csv.csv_datasource_v2 import (
 from ray.data._internal.datasource_v2.interfaces.file_manifest import FileManifest
 from ray.data._internal.datasource_v2.interfaces.file_partitioner import PartitionHints
 from ray.data.context import DataContext
+from ray.data.datasource.partitioning import Partitioning, PartitionStyle
 
 
 def _write(path, text: str) -> str:
@@ -47,7 +48,9 @@ def _read_all(datasource: CsvDatasourceV2, paths) -> pa.Table:
             )
         )
     )
-    reader = datasource.create_scanner(schema=schema).create_reader()
+    reader = datasource.create_scanner(
+        schema=schema, partitioning=datasource.resolve_partitioning(sample)
+    ).create_reader()
     return pa.concat_tables(list(reader.read(manifest)), promote_options="permissive")
 
 
@@ -101,6 +104,30 @@ def test_rejects_a_split_file_whose_header_differs(tmp_path, small_chunks):
     )
     with pytest.raises(ValueError, match=r"has columns \['name', 'id'\]"):
         _read_all(CsvDatasourceV2([first, second]), [first, second])
+
+
+@pytest.mark.parametrize("chunk_bytes", ["64", "1073741824"], ids=["split", "whole"])
+@pytest.mark.parametrize("country_first", [False, True])
+def test_reads_a_file_holding_its_partition_column(
+    tmp_path, monkeypatch, chunk_bytes, country_first
+):
+    monkeypatch.setenv("RAY_DATA_LINE_CHUNK_BYTES", chunk_bytes)
+    partition_dir = tmp_path / "country=US"
+    partition_dir.mkdir()
+    rows = [("country", "id")] + [("US", str(i)) for i in range(100)]
+    path = _write(
+        partition_dir / "a.csv",
+        "".join(",".join(row if country_first else row[::-1]) + "\n" for row in rows),
+    )
+
+    table = _read_all(
+        CsvDatasourceV2([path], partitioning=Partitioning(PartitionStyle.HIVE)),
+        [path],
+    )
+
+    assert table.column_names == ["id", "country"]
+    assert sorted(table.column("id").to_pylist()) == list(range(100))
+    assert set(table.column("country").to_pylist()) == {"US"}
 
 
 @pytest.mark.parametrize(

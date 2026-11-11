@@ -1,7 +1,7 @@
 """``FileReader`` for CSV on DataSource V2, splitting large files at newlines."""
 
 import copy
-from typing import TYPE_CHECKING, Any, Iterator, List
+from typing import TYPE_CHECKING, Any, FrozenSet, Iterator, List
 
 import pyarrow as pa
 import pyarrow.csv as pcsv
@@ -62,6 +62,7 @@ class CsvFileReader(LineChunkableFileReader):
         read_options: pcsv.ReadOptions,
         parse_options: pcsv.ParseOptions,
         convert_options: pcsv.ConvertOptions,
+        partition_columns_in_file: FrozenSet[str] = frozenset(),
         **line_chunkable_kwargs: Any,
     ):
         super().__init__(FileFormat.CSV, **line_chunkable_kwargs)
@@ -71,6 +72,7 @@ class CsvFileReader(LineChunkableFileReader):
         self._read_options = read_options
         self._parse_options = parse_options
         self._convert_options = convert_options
+        self._partition_columns_in_file = partition_columns_in_file
 
     @override
     def _make_format(self) -> pds.CsvFileFormat:
@@ -121,9 +123,16 @@ class CsvFileReader(LineChunkableFileReader):
         ).make_fragment(pa.py_buffer(lines))
 
     def _file_column_names(self) -> List[str]:
-        schema = self._file_dataset_schema
+        # ``_file_dataset_schema`` drops every partition key, including those
+        # the file also holds as columns; keep those, in the file's order.
+        schema = self._schema
         assert schema is not None
-        return schema.names
+        file_columns = set((self._file_dataset_schema or pa.schema([])).names)
+        return [
+            name
+            for name in schema.names
+            if name in file_columns or name in self._partition_columns_in_file
+        ]
 
     def _check_header(self, header: List[str], path: str) -> None:
         expected = self._file_column_names()
