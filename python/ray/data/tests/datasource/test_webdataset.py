@@ -829,6 +829,22 @@ def test_group_by_keys_duplicate_member_without_meta():
         list(_group_by_keys(data))
 
 
+def test_webdataset_grayscale_round_trip(ray_start_2_cpus, tmp_path, use_datasource_v2):
+    gray = np.arange(28 * 28, dtype=np.uint8).reshape(28, 28)
+    os.makedirs(tmp_path / "in")
+    with TarWriter(str(tmp_path / "in" / "data-000000.tar")) as writer:
+        writer.write("000000.png", _png_bytes(gray))
+
+    ray.data.read_webdataset(str(tmp_path / "in")).write_webdataset(
+        str(tmp_path / "out")
+    )
+    [row] = ray.data.read_webdataset(str(tmp_path / "out")).take_all()
+
+    expected_shape = (28, 28, 1) if use_datasource_v2 else (28, 28)
+    assert row["png"].shape == expected_shape
+    np.testing.assert_array_equal(row["png"].reshape(28, 28), gray)
+
+
 if __name__ == "__main__":
     import sys
 
