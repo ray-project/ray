@@ -43,6 +43,7 @@ from ray.data._internal.execution.operators.shuffle_operators.sort_shuffle_map_o
     SortShuffleMapOp,
 )
 from ray.data._internal.execution.operators.sort_shuffle import make_sort_reduce_fn
+from ray.data._internal.logical.interfaces import HashPartitioning
 from ray.data._internal.logical.operators import (
     AbstractAllToAll,
     Aggregate,
@@ -324,6 +325,16 @@ def _plan_hash_shuffle_aggregate_v2(
 
     map_cls, reduce_cls, prefix = _select_shuffle_v2_op_classes(data_context)
 
+    # Partitioned by the group-by keys; a global aggregation has none. An
+    # aggregation named after a key overwrites that column (see
+    # _finalize_aggregates), so the output isn't partitioned by it either.
+    output_partitioning = None
+    agg_names = {agg.name for agg in aggs}
+    if key_columns and not any(column in agg_names for column in key_columns):
+        output_partitioning = HashPartitioning(
+            columns=key_columns, num_partitions=num_partitions
+        )
+
     map_op = map_cls(
         input_physical_op,
         data_context,
@@ -351,6 +362,7 @@ def _plan_hash_shuffle_aggregate_v2(
             f"{prefix}HashAggregateReduce(key_columns={key_columns}, "
             f"num_partitions={num_partitions})"
         ),
+        output_partitioning=output_partitioning,
     )
     return reduce_op
 

@@ -4,13 +4,13 @@ from unittest.mock import Mock
 import pytest
 
 import ray
+from ray._common.constants import HEAD_NODE_RESOURCE_NAME
 from ray.cluster_utils import Cluster
 from ray.data._internal.cluster_autoscaler.base_autoscaling_coordinator import (
     STANDARD_RESOURCE_TYPES,
     ResourceRequestStrategy,
 )
 from ray.data._internal.cluster_autoscaler.default_autoscaling_coordinator import (
-    HEAD_NODE_RESOURCE_LABEL,
     DefaultAutoscalingCoordinator,
     _AutoscalingCoordinatorActor,
     _format_node_resources_for_log,
@@ -28,7 +28,7 @@ CLUSTER_NODES_WITH_HEAD = [
             "CPU": 10,
             "GPU": 5,
             "object_store_memory": 1000,
-            HEAD_NODE_RESOURCE_LABEL: 1,
+            HEAD_NODE_RESOURCE_NAME: 1,
         },
         "Alive": True,
     },
@@ -57,7 +57,7 @@ CLUSTER_NODES_WITHOUT_HEAD = [
             "CPU": 0,
             "GPU": 0,
             "object_store_memory": 1000,
-            HEAD_NODE_RESOURCE_LABEL: 1,
+            HEAD_NODE_RESOURCE_NAME: 1,
         },
         "Alive": True,
     },

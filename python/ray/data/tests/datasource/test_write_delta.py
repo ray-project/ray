@@ -16,13 +16,12 @@ from typing import Any, Callable, Dict, List, Optional
 from unittest import mock
 
 import pytest
-from packaging.version import parse as parse_version
 
 import ray
 from ray.data import SaveMode
-from ray.data._internal.utils.arrow_utils import get_pyarrow_version
 from ray.data.tests.catalog_test_utils import FakeCatalog
 from ray.data.tests.conftest import *  # noqa
+from ray.data.tests.delta_test_utils import write_column_mapped_table
 from ray.tests.conftest import *  # noqa
 
 try:
@@ -30,17 +29,10 @@ try:
 except ImportError:
     _deltalake_check = None
 
-_pa_version = get_pyarrow_version()
-pytestmark = [
-    pytest.mark.skipif(
-        _deltalake_check is None,
-        reason="Missing optional dependency: pip install deltalake",
-    ),
-    pytest.mark.skipif(
-        _pa_version is None or _pa_version < parse_version("15.0.0"),
-        reason="deltalake requires pyarrow >= 15.0",
-    ),
-]
+pytestmark = pytest.mark.skipif(
+    _deltalake_check is None,
+    reason="Missing optional dependency: pip install deltalake",
+)
 
 
 @pytest.fixture
@@ -989,13 +981,6 @@ def test_append_nested_fields_evolves_schema(temp_delta_path):
         == base.to_pylist() + incoming.to_pylist()
     )
 
-    # Arrow < 19 cannot fill missing struct fields when reading old files.
-    # The schema and committed data are checked above on every version.
-    # https://github.com/apache/arrow/issues/44555
-    assert _pa_version is not None
-    if _pa_version < parse_version("19.0.0"):
-        return
-
     out = sorted(_read_all(temp_delta_path), key=lambda row: row["id"])
     assert out == [
         {
@@ -1071,14 +1056,6 @@ def test_append_map_nested_fields(temp_delta_path, side, schema_mode):
         )
         == base.to_pylist() + incoming.to_pylist()
     )
-
-    # Reading evolved structs needs Arrow >= 19 (GH-44555). The value-only
-    # case also casts a nullable key child to non-nullable, needing Arrow >= 20
-    # (https://github.com/apache/arrow/issues/33592).
-    min_read_version = "20.0.0" if side == "value" else "19.0.0"
-    assert _pa_version is not None
-    if _pa_version < parse_version(min_read_version):
-        return
 
     old_key = {"x": 1, **({"y": None} if key_added else {})}
     old_value = {"x": 10, **({"y": None} if value_added else {})}
@@ -1713,8 +1690,8 @@ def test_worker_refresh_restores_environment_mutated_by_resolve(temp_delta_path)
     """A worker-side ``catalog.resolve()`` must not leave credentials behind in
     the worker process's environment.
 
-    Unity Catalog delivers vended credentials by writing them into
-    ``os.environ`` (``_apply_env``) and never restores them. A Ray worker
+    A ``Catalog`` may deliver vended credentials by writing them into
+    ``os.environ`` and never restoring them (Unity Catalog used to). A Ray worker
     process outlives the task and is reused for unrelated ones, so anything
     left there leaks into whatever runs next. The refreshed filesystem carries
     the credentials the write actually uses, so nothing needs them in the
@@ -1962,6 +1939,65 @@ def test_catalog_without_table_identifier_rejected(temp_delta_path):
 
     # Without a catalog it's simply unused, so omitting it is fine.
     assert DeltaDatasink(temp_delta_path)._table_identifier is None
+
+
+# ----------------------------------------------------------------------
+# Column mapping.
+# ----------------------------------------------------------------------
+
+
+def _data_files(path: str) -> List[str]:
+    return sorted(
+        os.path.relpath(os.path.join(root, name), path)
+        for root, _, names in os.walk(path)
+        if "_delta_log" not in root
+        for name in names
+        if name.endswith(".parquet")
+    )
+
+
+# Reader 2 / writer 5 tables declare no reader features, and deltalake 1.6.6
+# commits files to them, which engines that apply the mapping read as nulls.
+@pytest.mark.parametrize("mapping_mode", ["name", "id"])
+def test_write_rejects_column_mapping(temp_delta_path, mapping_mode):
+    """Rejected before any data file is written, and nothing is committed."""
+    write_column_mapped_table(temp_delta_path, mapping_mode)
+    files_before = _data_files(temp_delta_path)
+
+    with pytest.raises(NotImplementedError) as excinfo:
+        _write_append([{"id": 3}], temp_delta_path)
+
+    message = str(excinfo.value)
+    assert f"`delta.columnMapping.mode` is {mapping_mode!r}" in message
+    assert "https://github.com/ray-project/ray/issues/64854" in message
+    assert _delta_log_json_count(temp_delta_path) == 1
+    assert _data_files(temp_delta_path) == files_before
+
+
+def test_empty_overwrite_rejects_column_mapping(temp_delta_path):
+    """An empty dataset skips ``on_write_start``, so the commit checks too."""
+    write_column_mapped_table(temp_delta_path, "name")
+
+    with pytest.raises(NotImplementedError, match="column mapping"):
+        ray.data.from_items([]).write_delta(temp_delta_path, mode=SaveMode.OVERWRITE)
+
+    assert _delta_log_json_count(temp_delta_path) == 1
+
+
+def test_write_column_mapping_mode_none(temp_delta_path):
+    """An explicit ``none`` mode is no column mapping, so the write goes ahead."""
+    import pyarrow as pa
+    from deltalake import write_deltalake
+
+    write_deltalake(
+        temp_delta_path,
+        pa.table({"id": [1, 2]}),
+        configuration={"delta.columnMapping.mode": "none"},
+    )
+
+    _write_append([{"id": 3}], temp_delta_path)
+
+    assert sorted(row["id"] for row in _read_all(temp_delta_path)) == [1, 2, 3]
 
 
 if __name__ == "__main__":

@@ -7,16 +7,13 @@ import numpy as np
 import pandas as pd
 import pyarrow as pa
 import pytest
-from packaging.version import parse as parse_version
 
 import ray
 from ray.data._internal.arrow_ops.transform_pyarrow import (
-    MIN_PYARROW_VERSION_TYPE_PROMOTION,
     combine_chunks,
 )
 from ray.data._internal.planner.exchange.sort_task_spec import SortKey
 from ray.data._internal.util import is_nan
-from ray.data._internal.utils.arrow_utils import get_pyarrow_version
 from ray.data.aggregate import (
     AbsMax,
     AggregateFn,
@@ -32,7 +29,6 @@ from ray.data.aggregate import (
     Unique,
 )
 from ray.data.block import BlockAccessor
-from ray.data.context import ShuffleStrategy
 from ray.data.expressions import col
 from ray.data.tests.conftest import *  # noqa
 from ray.data.tests.util import named_values
@@ -408,15 +404,6 @@ def test_groupby_tabular_sum(
     configure_shuffle_method,
     disable_fallback_to_object_extension,
 ):
-    if (
-        ds_format == "pandas"
-        and get_pyarrow_version() < MIN_PYARROW_VERSION_TYPE_PROMOTION
-    ):
-        pytest.skip(
-            "PyArrow < 14 cannot unify double vs int64 schemas produced by "
-            "pandas nullable integer columns with nulls"
-        )
-
     # Test built-in sum aggregation
     random.seed(1741752320)
 
@@ -584,23 +571,6 @@ def test_groupby_arrow_multi_agg(
     ds_format,
     disable_fallback_to_object_extension,
 ):
-    using_pyarrow = (
-        ds_format == "pyarrow"
-        or
-        # NOTE: Hash-shuffle internally converts to pyarrow
-        (
-            ds_format == "pandas"
-            and configure_shuffle_method
-            in (ShuffleStrategy.HASH_SHUFFLE, ShuffleStrategy.SHUFFLE_V2)
-        )
-    )
-
-    if using_pyarrow and get_pyarrow_version() < MIN_PYARROW_VERSION_TYPE_PROMOTION:
-        pytest.skip(
-            "Pyarrow < 14.0 doesn't support type promotions (hence fails "
-            "promoting from int64 to double)"
-        )
-
     # NOTE: Do not change the seed
     random.seed(1738379113)
 
@@ -727,14 +697,6 @@ def test_groupby_multi_agg_with_nans(
     ignore_nulls,
     disable_fallback_to_object_extension,
 ):
-    using_pyarrow = ds_format == "pyarrow"
-
-    if using_pyarrow and get_pyarrow_version() < MIN_PYARROW_VERSION_TYPE_PROMOTION:
-        pytest.skip(
-            "Pyarrow < 14.0 doesn't support type promotions (hence fails "
-            "promoting from int64 to double)"
-        )
-
     # NOTE: Do not change the seed
     random.seed(1738379113)
 
@@ -1211,9 +1173,6 @@ def test_groupby_map_groups_extra_args(
     assert sorted([x["value"] for x in ds.take()]) == [6, 8, 10, 12]
 
 
-_NEED_UNWRAP_ARROW_SCALAR = get_pyarrow_version() <= parse_version("9.0.0")
-
-
 @pytest.mark.parametrize("num_parts", [1, 30])
 @pytest.mark.parametrize("ds_format", ["pyarrow", "pandas", "numpy"])
 def test_groupby_map_groups_multicolumn(
@@ -1232,17 +1191,14 @@ def test_groupby_map_groups_multicolumn(
         num_parts
     )
 
-    should_unwrap_pa_scalars = ds_format == "pyarrow" and _NEED_UNWRAP_ARROW_SCALAR
-
     def _map_group(df):
         # NOTE: Since we're grouping by A and B, these columns will be bearing
         #       the same values.
         a = df["A"][0]
         b = df["B"][0]
         return {
-            # NOTE: PA 9.0 requires explicit unwrapping into Python objects
-            "A": [a.as_py() if should_unwrap_pa_scalars else a],
-            "B": [b.as_py() if should_unwrap_pa_scalars else b],
+            "A": [a],
+            "B": [b],
             "count": [len(df["A"])],
         }
 
@@ -1286,17 +1242,14 @@ def test_groupby_map_groups_multicolumn_with_nan(
         ]
     ).repartition(num_parts)
 
-    should_unwrap_pa_scalars = ds_format == "pyarrow" and _NEED_UNWRAP_ARROW_SCALAR
-
     def _map_group(df):
         # NOTE: Since we're grouping by A and B, these columns will be bearing
         #       the same values
         a = df["A"][0]
         b = df["B"][0]
         return {
-            # NOTE: PA 9.0 requires explicit unwrapping into Python objects
-            "A": [a.as_py() if should_unwrap_pa_scalars else a],
-            "B": [b.as_py() if should_unwrap_pa_scalars else b],
+            "A": [a],
+            "B": [b],
             "count": [len(df["A"])],
         }
 

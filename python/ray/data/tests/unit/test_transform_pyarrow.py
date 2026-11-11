@@ -6,10 +6,8 @@ import numpy as np
 import pandas as pd
 import pyarrow as pa
 import pytest
-from packaging.version import parse as parse_version
 
 from ray.data._internal.arrow_ops.transform_pyarrow import (
-    MIN_PYARROW_VERSION_TYPE_PROMOTION,
     _align_struct_fields,
     _group_indices,
     _has_unhashable_pandas_types,
@@ -24,10 +22,8 @@ from ray.data._internal.arrow_ops.transform_pyarrow import (
 )
 from ray.data._internal.tensor_extensions.arrow import (
     ArrowTensorTypeV2,
-    _extension_array_concat_supported,
     create_arrow_fixed_shape_tensor_type,
 )
-from ray.data._internal.utils.arrow_utils import get_pyarrow_version
 from ray.data.block import BlockAccessor
 from ray.data.extensions import (
     ArrowConversionError,
@@ -181,10 +177,6 @@ def test_has_unhashable_pandas_types(pa_type, expected):
     assert _has_unhashable_pandas_types(schema) is expected
 
 
-@pytest.mark.skipif(
-    get_pyarrow_version() < parse_version("16.0.0"),
-    reason="list_view / large_list_view require pyarrow 16+",
-)
 def test_has_unhashable_pandas_types_list_views():
     # Regression: list_view/large_list_view also convert to Python lists in
     # pandas, so they must be flagged as unhashable like list/large_list.
@@ -769,10 +761,6 @@ def test_struct_with_arrow_variable_shaped_tensor_type(
             )
 
 
-@pytest.mark.skipif(
-    get_pyarrow_version() < MIN_PYARROW_VERSION_TYPE_PROMOTION,
-    reason="Requires PyArrow >= 14.0.0 for type promotion in nested struct fields",
-)
 def test_struct_with_diverging_primitive_types():
     """Test concatenating tables with struct fields that have diverging primitive types.
 
@@ -1073,10 +1061,6 @@ def test_unify_schemas_mixed_tensor_types(unify_schemas_mixed_tensor_data):
     assert result == data["expected_variable"]
 
 
-@pytest.mark.skipif(
-    get_pyarrow_version() < MIN_PYARROW_VERSION_TYPE_PROMOTION,
-    reason="Requires Arrow version of at least 14.0.0",
-)
 def test_unify_schemas_type_promotion(unify_schemas_type_promotion_data):
     data = unify_schemas_type_promotion_data
 
@@ -1284,10 +1268,6 @@ def test_mixed_tensor_types_variable_shaped(
         np.testing.assert_array_equal(result_tensor, expected_tensor)
 
 
-@pytest.mark.skipif(
-    not _extension_array_concat_supported(),
-    reason="ExtensionArrays support concatenation only in Pyarrow >= 12.0",
-)
 @pytest.mark.parametrize("preserve_order", [True, False])
 def test_mixed_tensor_types_in_struct(
     struct_with_mixed_tensor_types_blocks,
@@ -1327,10 +1307,6 @@ def test_mixed_tensor_types_in_struct(
             assert struct_row[key] == expected_value
 
 
-@pytest.mark.skipif(
-    not _extension_array_concat_supported(),
-    reason="ExtensionArrays support concatenation only in Pyarrow >= 12.0",
-)
 def test_nested_struct_with_mixed_tensor_types(
     nested_struct_with_mixed_tensor_types_blocks,
     nested_struct_with_mixed_tensor_types_expected,
@@ -1362,10 +1338,6 @@ def test_nested_struct_with_mixed_tensor_types(
             assert field in struct_data[0]["nested"]
 
 
-@pytest.mark.skipif(
-    not _extension_array_concat_supported(),
-    reason="ExtensionArrays support concatenation only in Pyarrow >= 12.0",
-)
 def test_multiple_tensor_fields_in_struct(
     multiple_tensor_fields_struct_blocks, multiple_tensor_fields_struct_expected
 ):
@@ -1423,10 +1395,6 @@ def test_struct_with_incompatible_tensor_dtypes_fails():
         concat([t1, t2])
 
 
-@pytest.mark.skipif(
-    not _extension_array_concat_supported(),
-    reason="ExtensionArrays support concatenation only in Pyarrow >= 12.0",
-)
 @pytest.mark.parametrize("preserve_order", [True, False])
 def test_struct_with_additional_fields(
     struct_with_additional_fields_blocks,
@@ -1468,10 +1436,6 @@ def test_struct_with_additional_fields(
             assert row["extra"] == extra_values[i]
 
 
-@pytest.mark.skipif(
-    not _extension_array_concat_supported(),
-    reason="ExtensionArrays support concatenation only in Pyarrow >= 12.0",
-)
 def test_struct_with_null_tensor_values(
     struct_with_null_tensor_values_blocks, struct_with_null_tensor_values_expected
 ):

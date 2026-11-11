@@ -17,7 +17,6 @@ from typing import (
 import numpy as np
 import pandas as pd
 import pyarrow
-from packaging.version import parse as parse_version
 
 from ray._common.utils import env_integer
 from ray.data._internal.arrow_aggregation import is_boolean_arrow_type
@@ -30,7 +29,6 @@ from ray.data._internal.tensor_extensions.arrow import (
     native_tensor_array_to_numpy,
     pyarrow_table_from_pydict,
 )
-from ray.data._internal.utils.arrow_utils import get_pyarrow_version
 from ray.data.block import (
     Block,
     BlockAccessor,
@@ -54,7 +52,6 @@ T = TypeVar("T")
 logger = logging.getLogger(__name__)
 
 
-_MIN_PYARROW_VERSION_TO_NUMPY_ZERO_COPY_ONLY = parse_version("13.0.0")
 _BATCH_SIZE_PRESERVING_STUB_COL_NAME = "__bsp_stub"
 _INTERNAL_NUM_ROWS_COUNTER_COLUMN_NAME = "__rd_internal_num_rows"
 
@@ -337,7 +334,7 @@ class ArrowBlockAccessor(TableBlockAccessor):
         from ray.data.util.data_batch_conversion import _cast_tensor_columns_to_ndarrays
 
         # We specify ignore_metadata=True because pyarrow will use the metadata
-        # to build the Table. This is handled incorrectly for older pyarrow versions
+        # to build the Table.
         ctx = DataContext.get_current()
 
         # Gated on enable_arrow_backed_pandas_conversion so callers can restore the
@@ -783,14 +780,6 @@ class ArrowBlockColumnAccessor(BlockColumnAccessor):
         return self._column.to_pylist()
 
     def to_numpy(self, zero_copy_only: bool = False) -> np.ndarray:
-        if get_pyarrow_version() < _MIN_PYARROW_VERSION_TO_NUMPY_ZERO_COPY_ONLY:
-            if isinstance(
-                self._column, pyarrow.ChunkedArray
-            ):  # NOTE: ChunkedArray in Pyarrow < 13.0.0 does not support ``zero_copy_only``
-                return self._column.to_numpy()
-            else:
-                return self._column.to_numpy(zero_copy_only=zero_copy_only)
-
         return self._column.to_numpy(zero_copy_only=zero_copy_only)
 
     def _to_arrow_compatible_container(self) -> Union[List[Any], "pyarrow.Array"]:
