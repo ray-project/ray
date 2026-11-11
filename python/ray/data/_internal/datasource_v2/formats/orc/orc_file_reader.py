@@ -29,7 +29,6 @@ from ray.data._internal.datasource_v2.formats.orc.orc_metadata import (
     require_stripe_reads,
 )
 from ray.data._internal.datasource_v2.interfaces.file_manifest import (
-    ChunkMetadata,
     FileChunk,
     FileManifest,
 )
@@ -159,9 +158,8 @@ class OrcFileReader(FileReader):
         self, dataset: pds.Dataset, manifest: FileManifest
     ) -> List[ReadUnitFragment]:
         # Stripe assignments are expanded below with their decoder already open.
-        return [
-            self._whole_file_fragment(fragment) for fragment in dataset.get_fragments()
-        ]
+        fragments = {fragment.path: fragment for fragment in dataset.get_fragments()}
+        return [self._whole_file_fragment(fragments[path]) for path in manifest.paths]
 
     def _whole_file_fragment(self, fragment):
         path = fragment.path
@@ -182,21 +180,14 @@ class OrcFileReader(FileReader):
             yield from super()._read_fragment_batches(dataset, scanner_kwargs, manifest)
             return
         fragments = {f.path: f for f in dataset.get_fragments()}
-        assignments: Dict[str, List[Optional[ChunkMetadata]]] = {}
-        for path, metadata in zip(manifest.paths, manifest.file_chunk_metadatas):
-            assignments.setdefault(path, []).append(metadata)
         rows = 0
-        for path, metadata in assignments.items():
-            if all(m is None for m in metadata):
+        for path, metadata in zip(manifest.paths, manifest.file_chunk_metadatas):
+            if metadata is None:
                 batches = super()._read_fragments_sequential(
                     iter([self._whole_file_fragment(fragments[path])]), scanner_kwargs
                 )
             else:
-                if any(m is None for m in metadata):
-                    raise ValueError(
-                        f"Mixed whole-file and stripe assignments for {path}"
-                    )
-                batches = self._read_stripes(path, metadata, scanner_kwargs)
+                batches = self._read_stripes(path, [metadata], scanner_kwargs)
             with closing(
                 cast(Generator[Tuple[pa.Table, ReadUnitPosition], None, None], batches)
             ):
@@ -345,7 +336,7 @@ class OrcFileReader(FileReader):
         scanner_kwargs: Dict[str, Any],
         scan,
     ) -> Iterator[pa.Table]:
-        partitions = self._partition_parser(path) if self._partition_parser else {}
+        partitions = self._get_partition_values(path)
         synthesized = {column.name for column in self._synthesized_columns}
         partition_names = set(partitions)
         if self._partition_parser is not None:
@@ -436,12 +427,9 @@ class OrcFileReader(FileReader):
         )
         for tagged in scan(file_schema, scan_kwargs):
             table = pa.Table.from_batches([tagged.record_batch])
-            for name, value in partitions.items():
-                if name in required_names:
-                    table = table.append_column(
-                        name,
-                        self._broadcast_partition_value(name, value, table.num_rows),
-                    )
+            table = self._apply_partition_values(
+                table, partitions, required_columns=required_names
+            )
             if residual_filter is not None:
                 table = table.filter(residual_filter)
             yield table

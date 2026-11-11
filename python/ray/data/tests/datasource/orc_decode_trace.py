@@ -1,21 +1,16 @@
 """Observe actual ORC workers and share independently checked micro fixtures."""
 
 import asyncio
-import copy
 import os
 from collections import Counter, defaultdict
 from dataclasses import fields
 from typing import cast
-from unittest.mock import patch
 
 import pyarrow as pa
 from pyarrow import orc
 
 import ray
 from ray.data._internal.datasource_v2.formats.orc.orc_scanner import OrcScanner
-from ray.data._internal.datasource_v2.formats.orc.orc_stripe_indexer import (
-    _OrcMetadataReader,
-)
 from ray.data._internal.execution.interfaces import TaskContext
 
 
@@ -51,55 +46,6 @@ class OrcTrace:
         if len(self.workers) >= 2:
             self.record("parallel")
         await self.wait("parallel")
-
-
-def traced_indexer(
-    indexer,
-    trace,
-    blocked_file=None,
-    footer_order=None,
-    failing_file=None,
-    gate_first_miss=False,
-):
-    import ray.data._internal.datasource_v2.formats.orc.orc_stripe_indexer as module
-
-    @ray.remote(num_cpus=0)
-    class MetadataReader(_OrcMetadataReader):
-        def __init__(self, filesystem, context):
-            super().__init__(filesystem, context)
-            actor_id = ray.get_runtime_context().get_actor_id()
-            ray.get(trace.record.remote("metadata_actor", "pool", actor_id))
-
-        def read(self, path):
-            name = os.path.basename(path)
-            ray.get(trace.record.remote("started", path, os.getpid()))
-            if gate_first_miss and name == "f0017.orc":
-                ray.get(trace.wait.remote("started", "f0018.orc"))
-            if name == failing_file:
-                raise OSError(f"Injected metadata failure: {path}")
-            if name == blocked_file:
-                ray.get(trace.wait.remote("release"))
-            waits = {
-                "18-first": ("f0019.orc", "f0018.orc"),
-                "19-first": ("f0018.orc", "f0019.orc"),
-            }
-            if footer_order and name == waits[footer_order][0]:
-                ray.get(trace.wait.remote("finished", waits[footer_order][1]))
-            result = super().read(path)
-            ray.get(trace.record.remote("finished", path, os.getpid()))
-            return result
-
-    result = copy.copy(indexer)
-    original = result._iter_layouts
-
-    def layouts(files, filesystem):
-        with patch.object(module, "OrcMetadataActor", MetadataReader):
-            for file, layout in original(files, filesystem):
-                ray.get(trace.record.remote("delivered", file.path))
-                yield file, layout
-
-    result._iter_layouts = layouts
-    return result
 
 
 def traced_scanner(scanner, trace, parallel_barrier=False):
@@ -152,11 +98,8 @@ def prepare_orc(paths):
 
     source = OrcDatasourceV2([str(p) for p in paths])
     indexer = source._get_file_indexer()
-    schema, indexer, packer = source.prepare_read(
-        sample_files(indexer, source.paths, source.filesystem),
-        indexer,
-        PartitionHints(0, 4096, 4),
-    )
+    schema = source.infer_schema(sample_files(indexer, source.paths, source.filesystem))
+    packer = source.get_file_partitioner(hints=PartitionHints(0, 4096, 4))
     return source, schema, indexer, packer
 
 

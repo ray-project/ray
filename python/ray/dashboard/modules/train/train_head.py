@@ -452,9 +452,7 @@ class TrainHead(SubprocessModule):
         )
 
     async def get_train_stats_actor(self):
-        """
-        Gets the train stats actor and caches it as an instance variable.
-        """
+        """Gets the train stats actor and caches it as an instance variable."""
         try:
             from ray.train._internal.state.state_actor import get_state_actor
 
@@ -470,9 +468,7 @@ class TrainHead(SubprocessModule):
         return None
 
     async def get_train_v2_state_actor(self):
-        """
-        Gets the Train state actor and caches it as an instance variable.
-        """
+        """Gets the Train state actor and caches it as an instance variable."""
         try:
             from ray.train.v2._internal.state.state_actor import get_state_actor
 

@@ -26,7 +26,6 @@ from ray.data.tests.datasource.orc_decode_trace import (
     OrcTrace,
     partitioned,
     prepare_orc,
-    traced_indexer,
     traced_scanner,
     write_orc_stripes,
     write_stripe_pipeline_files,
@@ -44,6 +43,28 @@ def orc_reader_version(request, monkeypatch):
 def _write_orc(path, table):
     with pa.OSFile(path, "wb") as sink:
         orc.write_table(table, sink)
+
+
+@pytest.mark.parametrize("explicit_type", [False, True])
+def test_read_orc_partition_conversion_error_includes_file_path(
+    ray_start_regular_shared, tmp_path, monkeypatch, explicit_type
+):
+    from ray.data.context import DataContext
+    from ray.data.datasource.partitioning import Partitioning, PartitionStyle
+
+    path = tmp_path / "year=invalid" / "data.orc"
+    path.parent.mkdir()
+    _write_orc(str(path), pa.table({"id": [1], "year": [2024]}))
+    monkeypatch.setattr(DataContext.get_current(), "use_datasource_v2", True)
+    partitioning = Partitioning(
+        PartitionStyle.HIVE, field_types={"year": int} if explicit_type else {}
+    )
+    error_type = ValueError if explicit_type else pa.ArrowInvalid
+    with pytest.raises(error_type, match="year=invalid") as error:
+        ray.data.read_orc(str(path), partitioning=partitioning).filter(
+            expr=col("year") == 2024
+        ).take_all()
+    assert str(path) in str(error.value)
 
 
 def _list_visible_files(directory):
@@ -1097,7 +1118,55 @@ def test_read_orc_v2_partition_values_match_parquet(
     )
 
 
-@pytest.mark.parametrize("operation", ["full", "project", "filter", "filter_only"])
+@pytest.mark.parametrize("reverse", [False, True])
+@pytest.mark.parametrize("numeric", [False, True])
+@pytest.mark.parametrize("mixed", [False, True])
+def test_read_orc_v2_mixed_root_partition_filter_order(
+    ray_start_regular_shared, tmp_path, monkeypatch, reverse, numeric, mixed
+):
+    from ray.data.context import DataContext
+    from ray.data.datasource.partitioning import Partitioning, PartitionStyle
+
+    monkeypatch.setattr(DataContext.get_current(), "use_datasource_v2", True)
+    matching_value = 2024 if numeric else "2024"
+    other_value = 2023 if numeric else "2023"
+    root = tmp_path / "root.orc"
+    matching_dir = tmp_path / "year=2024"
+    other_dir = tmp_path / "year=2023"
+    matching_dir.mkdir()
+    other_dir.mkdir()
+    matching = matching_dir / "data.orc"
+    other = other_dir / "data.orc"
+    _write_orc(
+        str(root), pa.table({"id": [0, -1], "year": [matching_value, other_value]})
+    )
+    _write_orc(str(matching), pa.table({"id": [1, 2]}))
+    _write_orc(str(other), pa.table({"id": [3]}))
+    paths = [str(root), str(matching), str(other)]
+    if reverse:
+        paths.reverse()
+    ds = ray.data.read_orc(
+        paths, partitioning=Partitioning(PartitionStyle.HIVE), override_num_blocks=1
+    )
+    predicate = col("year") == matching_value
+    if mixed:
+        predicate = predicate | (col("id") < 0)
+    filtered = ds.filter(expr=predicate)
+    rows = sorted(filtered.take_all(), key=lambda row: row["id"])
+    expected = [{"id": value, "year": matching_value} for value in [0, 1, 2]]
+    if mixed:
+        expected.insert(0, {"id": -1, "year": other_value})
+    assert rows == expected
+    projected = filtered.select_columns(["id"]).limit(2).take_all()
+    assert len(projected) == 2
+    assert all(set(row) == {"id"} for row in projected)
+    assert {row["id"] for row in projected}.issubset({row["id"] for row in expected})
+
+
+@pytest.mark.parametrize("reverse", [False, True])
+@pytest.mark.parametrize(
+    "operation", ["full", "project", "filter", "filter_only", "partition_filter"]
+)
 @pytest.mark.parametrize(
     "physical_type,logical_type,path_value,stored_value,root_value,expected",
     [
@@ -1144,6 +1213,7 @@ def test_read_orc_v2_stored_partition_logical_types(
     tmp_path,
     monkeypatch,
     operation,
+    reverse,
     physical_type,
     logical_type,
     path_value,
@@ -1172,16 +1242,18 @@ def test_read_orc_v2_stored_partition_logical_types(
             }
         ),
     )
-    # Sampling the root first leaves field_names unresolved. Projection must
-    # still return the same logical path values as an unprojected read.
+    # Discovery and typed path pruning must agree in either sample order.
+    paths = [str(partition), str(root)] if reverse else [str(root), str(partition)]
     ds = ray.data.read_orc(
-        [str(root), str(partition)],
+        paths,
         partitioning=Partitioning(PartitionStyle.HIVE),
         override_num_blocks=1,
     )
     assert ds.schema().base_schema.field("key").type == logical_type
     if operation in {"filter", "filter_only"}:
         ds = ds.filter(expr=(col("key") == expected) | (col("id") < 0)).limit(2)
+    if operation == "partition_filter":
+        ds = ds.filter(expr=col("key") == expected).limit(2)
     if operation == "project":
         ds = ds.select_columns(["key", "id"])
     elif operation == "filter_only":
@@ -1189,7 +1261,7 @@ def test_read_orc_v2_stored_partition_logical_types(
     rows = sorted(ds.take_all(), key=lambda row: row["id"])
     if operation == "filter_only":
         assert rows == [{"id": 1}, {"id": 2}]
-    elif operation == "filter":
+    elif operation in {"filter", "partition_filter"}:
         assert rows == [{"id": 1, "key": expected}, {"id": 2, "key": expected}]
     else:
         assert rows == [{"id": 0, "key": root_value}] + [
@@ -1560,43 +1632,18 @@ def orc_pipeline(tmp_path, monkeypatch, request):
         ray.kill(trace)
 
 
-def _trace_orc_pipeline(monkeypatch, trace, blocked_file=None, parallel_barrier=False):
+def _trace_orc_pipeline(monkeypatch, trace, parallel_barrier=False):
     from ray.data._internal.datasource_v2.formats.orc.orc_datasource_v2 import (
         OrcDatasourceV2,
     )
 
-    prepare, create = OrcDatasourceV2.prepare_read, OrcDatasourceV2.create_scanner
-
-    def prepared(source, *args, **kwargs):
-        schema, indexer, partitioner = prepare(source, *args, **kwargs)
-        return schema, traced_indexer(indexer, trace, blocked_file), partitioner
-
-    monkeypatch.setattr(OrcDatasourceV2, "prepare_read", prepared)
+    create = OrcDatasourceV2.create_scanner
     monkeypatch.setattr(
         OrcDatasourceV2,
         "create_scanner",
         lambda source, *a, **kw: traced_scanner(
             create(source, *a, **kw), trace, parallel_barrier
         ),
-    )
-
-
-def _orc_actors_stopped(trace):
-    from ray._common.test_utils import wait_for_condition
-
-    actors = [
-        v for k, _, v in ray.get(trace.snapshot.remote()) if k == "metadata_actor"
-    ]
-    assert actors
-    wait_for_condition(
-        lambda: all(
-            cast(dict[str, dict], ray._private.state.actors())
-            .get(actor, {})
-            .get("State")
-            == "DEAD"
-            for actor in actors
-        ),
-        timeout=20,
     )
 
 
@@ -1622,7 +1669,6 @@ def test_orc_stripe_public_contract(
         )
         with pytest.raises(errors, match="f0017.orc"):
             ray.data.read_orc([str(x) for x in p.paths[:17]]).count()
-        _orc_actors_stopped(p.trace)
         return
     directory = tmp_path / "year=2024"
     directory.mkdir()
@@ -1691,39 +1737,6 @@ def test_orc_stripe_public_contract(
 @_ORC_STRIPE_RESOURCES
 @pytest.mark.timeout(180)
 @pytest.mark.parametrize("ordered", [False, True])
-def test_orc_stripe_metadata_pipeline_streams_before_all_footers(
-    ray_start_regular_shared, orc_pipeline, monkeypatch, ordered
-):
-    from concurrent.futures import ThreadPoolExecutor
-
-    p = orc_pipeline
-    _trace_orc_pipeline(monkeypatch, p.trace, "f0018.orc")
-    dataset = ray.data.read_orc(
-        [str(x) for x in p.paths],
-        merge_schema=ordered,
-        concurrency=4,
-        ray_remote_args={"num_cpus": 1},
-    )
-    with ThreadPoolExecutor(max_workers=1) as pool:
-        result = pool.submit(dataset.materialize)
-        try:
-            ray.get(p.trace.wait.remote("decoded", "f0017.orc"), timeout=35)
-            ray.get(p.trace.wait.remote("finished", "f0019.orc"), timeout=35)
-            events = ray.get(p.trace.snapshot.remote())
-            assert not any(k == "delivered" and n == "f0019.orc" for k, n, _ in events)
-            started = [(int(n[1:5]), pid) for k, n, pid in events if k == "started"]
-            assert min(n for n, _ in started) == 17 and max(n for n, _ in started) <= 25
-            assert len({pid for _, pid in started}) <= 4
-        finally:
-            ray.get(p.trace.record.remote("release"))
-        assert sorted(r["id"] for r in result.result(timeout=120).take_all()) == list(
-            range(320)
-        )
-
-
-@_ORC_STRIPE_RESOURCES
-@pytest.mark.timeout(180)
-@pytest.mark.parametrize("ordered", [False, True])
 def test_orc_listing_retry_replays_consumed_manifest_prefix(
     ray_start_regular_shared, orc_pipeline, ordered
 ):
@@ -1735,9 +1748,6 @@ def test_orc_listing_retry_replays_consumed_manifest_prefix(
 
     @ray.remote(num_returns="streaming", max_retries=1)
     def listing(indexer, partitioner, trace, fail):
-        indexer = traced_indexer(
-            indexer, trace, footer_order="19-first" if fail else "18-first"
-        )
         attempt = ray.get(trace.count.remote("attempt")) if fail else 0
         for n, block in enumerate(
             partitioned(
@@ -1763,9 +1773,6 @@ def test_orc_listing_retry_replays_consumed_manifest_prefix(
             streaming.remote(indexer, partitioner, p.trace, False),
         )
     ]
-    before = [n for k, n, _ in ray.get(p.trace.snapshot.remote()) if k == "finished"]
-    assert before.index("f0018.orc") < before.index("f0019.orc")
-    ray.get(p.trace.snapshot.remote(True))
     actual = []
     for ref in cast(
         ObjectRefGenerator, streaming.remote(indexer, partitioner, p.trace, True)
@@ -1773,8 +1780,6 @@ def test_orc_listing_retry_replays_consumed_manifest_prefix(
         actual.append(cast(pa.Table, ray.get(ref)).to_pylist())
         ray.get(p.trace.count.remote("consumed", 2))
     assert actual == expected and ray.get(p.trace.count.remote("attempt")) == 3
-    after = [n for k, n, _ in ray.get(p.trace.snapshot.remote()) if k == "finished"]
-    assert after.index("f0019.orc") < after.index("f0018.orc")
     rows = [
         r["id"]
         for group in actual
@@ -1788,23 +1793,21 @@ def test_orc_listing_retry_replays_consumed_manifest_prefix(
 
 @_ORC_STRIPE_RESOURCES
 @pytest.mark.timeout(180)
-def test_orc_stripe_metadata_pool_remote(
+def test_orc_stripe_remote_filesystem(
     ray_start_regular_shared, orc_pipeline, s3_fs, s3_path, monkeypatch
 ):
     p = orc_pipeline
     prefix = s3_path.removeprefix("s3://")
-    for path in p.paths[:17]:
+    for path in p.paths[:2]:
         with s3_fs.open_output_stream(f"{prefix}/{path.name}") as out:
             out.write(path.read_bytes())
     _trace_orc_pipeline(monkeypatch, p.trace)
     rows = ray.data.read_orc(
         s3_path, filesystem=s3_fs, num_cpus=1, concurrency=4
     ).take_all()
-    assert sorted(r["id"] for r in rows) == list(range(136))
+    assert sorted(r["id"] for r in rows) == list(range(16))
     events = ray.get(p.trace.snapshot.remote())
-    assert [n for k, n, _ in events if k == "started"] == ["f0017.orc"]
-    assert any(k == "decoded" and n == "f0017.orc" for k, n, _ in events)
-    _orc_actors_stopped(p.trace)
+    assert any(k == "decoded" and n == "f0002.orc" for k, n, _ in events)
 
 
 @_ORC_STRIPE_RESOURCES
@@ -1826,58 +1829,59 @@ def test_orc_one_file_uses_parallel_read_tasks(
 
 
 @_ORC_STRIPE_RESOURCES
-@pytest.mark.timeout(180)
-@pytest.mark.parametrize("stop", ["limit", "error", "cancel"])
-def test_orc_metadata_pool_stops_on_limit_error_and_cancel(
-    ray_start_regular_shared, orc_pipeline, stop
+@pytest.mark.parametrize("ordered", [False, True])
+def test_orc_uneven_stripes_preserve_order(
+    ray_start_regular_shared, tmp_path, monkeypatch, ordered
 ):
-    p = orc_pipeline
-    source, _, indexer, _ = prepare_orc(p.paths)
-    indexer = traced_indexer(
-        indexer,
-        p.trace,
-        blocked_file=None if stop == "error" else "f0018.orc",
-        failing_file="f0018.orc" if stop == "error" else None,
-        gate_first_miss=True,
-    )
+    import random
 
-    @ray.remote(num_returns="streaming", max_retries=0)
-    def listing(indexer):
-        for manifest in indexer.list_files(
-            pa.array([str(x) for x in p.paths]),
-            filesystem=source.filesystem,
-            limit=136 if stop == "limit" else None,
-        ):
-            yield manifest.as_block()
+    from ray.data.context import DataContext
 
-    generator = cast(
-        ObjectRefGenerator,
-        listing.options(_generator_backpressure_num_objects=1).remote(indexer),
+    context = DataContext.get_current()
+    monkeypatch.setattr(context, "use_datasource_v2", True)
+    monkeypatch.setattr(context.execution_options, "preserve_order", ordered)
+    monkeypatch.setenv("RAY_DATA_ORC_BIN_PACKING_BYTES", "100000")
+    rng = random.Random(42)
+    payload = [rng.randbytes(50000 if 5 <= i < 10 else 50) for i in range(15)]
+    path = write_orc_stripes(
+        tmp_path / "uneven.orc",
+        pa.table({"id": range(15), "payload": payload}),
+        (5, 5, 5),
     )
-    try:
-        if stop == "error":
-            with pytest.raises(ray.exceptions.RayTaskError, match="f0018.orc"):
-                [ray.get(ref) for ref in generator]
-        elif stop == "cancel":
-            for _ in range(17):
-                ray.get(next(generator))
-            ray.get(p.trace.wait.remote("started", "f0018.orc"), timeout=35)
-            ray.cancel(generator, force=False)
-        else:
-            blocks = [cast(pa.Table, ray.get(ref)) for ref in generator]
-            assert len(blocks) == 17
-            assert (
-                sum(
-                    r["__file_chunk_metadata"]["num_rows"]
-                    for b in blocks
-                    for r in b.to_pylist()
-                )
-                == 136
-            )
-        _orc_actors_stopped(p.trace)
-    finally:
-        ray.get(p.trace.record.remote("release"))
-        ray.cancel(generator, force=False)
+    rows = ray.data.read_orc(str(path), override_num_blocks=3).take_all()
+    ids = [row["id"] for row in rows]
+    assert sorted(ids) == list(range(15))
+    if ordered:
+        assert ids == list(range(15))
+
+
+@_ORC_STRIPE_RESOURCES
+@pytest.mark.parametrize("include_other", [False, True], ids=["AA", "ABA"])
+def test_orc_repeated_multi_stripe_paths(
+    ray_start_regular_shared, tmp_path, monkeypatch, include_other
+):
+    from ray.data.context import DataContext
+
+    context = DataContext.get_current()
+    monkeypatch.setattr(context, "use_datasource_v2", True)
+    monkeypatch.setattr(context.execution_options, "preserve_order", True)
+    monkeypatch.setenv("RAY_DATA_ORC_BIN_PACKING_BYTES", "512")
+    first = write_orc_stripes(
+        tmp_path / "a.orc",
+        pa.table({"id": range(16), "label": [str(i) for i in range(16)]}),
+    )
+    paths = [str(first)]
+    expected = list(range(16))
+    if include_other:
+        other = write_orc_stripes(
+            tmp_path / "b.orc",
+            pa.table({"id": range(100, 116), "label": [str(i) for i in range(16)]}),
+        )
+        paths.append(str(other))
+        expected.extend(range(100, 116))
+    paths.append(str(first))
+    expected.extend(range(16))
+    assert [row["id"] for row in ray.data.read_orc(paths).take_all()] == expected
 
 
 if __name__ == "__main__":

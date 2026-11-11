@@ -36,6 +36,16 @@ class XGBoostCheckpoint(FrameworkCheckpoint):
         """Create a :py:class:`~ray.train.Checkpoint` that stores an XGBoost
         model.
 
+        Examples:
+            >>> import numpy as np  # doctest: +SKIP_EXAMPLE
+            >>> import ray
+            >>> from ray.train.xgboost import XGBoostCheckpoint
+            >>> import xgboost
+            >>> train_X = np.array([[1, 2], [3, 4]])
+            >>> train_y = np.array([0, 1])
+            >>> model = xgboost.XGBClassifier().fit(train_X, train_y)
+            >>> checkpoint = XGBoostCheckpoint.from_model(model.get_booster())
+
         Args:
             booster: The XGBoost model to store in the checkpoint.
             preprocessor: A fitted preprocessor to be applied before inference.
@@ -46,22 +56,6 @@ class XGBoostCheckpoint(FrameworkCheckpoint):
 
         Returns:
             An :py:class:`XGBoostCheckpoint` containing the specified ``Estimator``.
-
-        Examples:
-
-            ... testcode::
-
-                import numpy as np
-                import ray
-                from ray.train.xgboost import XGBoostCheckpoint
-                import xgboost
-
-                train_X = np.array([[1, 2], [3, 4]])
-                train_y = np.array([0, 1])
-
-                model = xgboost.XGBClassifier().fit(train_X, train_y)
-                checkpoint = XGBoostCheckpoint.from_model(model.get_booster())
-
         """
         checkpoint_path = Path(path or tempfile.mkdtemp())
 

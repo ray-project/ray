@@ -5,11 +5,12 @@ from dataclasses import dataclass
 from typing import Optional, Tuple, cast
 
 import pyarrow as pa
-from google.protobuf.message import DecodeError, Message
 from pyarrow import _orc, orc
 from pyarrow.fs import FileSystem, LocalFileSystem
 
 from ray.data._internal.datasource_v2.formats.orc.orc_batch_size_estimator import (
+    DecodeError,
+    Message,
     _file_tail_message_type,
     _FileTailFields,
     _FooterFields,
@@ -142,17 +143,5 @@ def read_orc_metadata(path: str, filesystem: Optional[FileSystem]) -> OrcFileMet
         filesystem,
         lambda reader, size: read_orc_layout(
             reader, path, size, allow_unsupported=True
-        ),
-    )
-
-
-def read_orc_schema_and_layout(path: str, filesystem: Optional[FileSystem]):
-    """Reuse the schema reader's footer for a bounded bootstrap seed."""
-    return read_orc_file(
-        path,
-        filesystem,
-        lambda reader, size: (
-            reader.schema,
-            read_orc_layout(reader, path, size, allow_unsupported=True),
         ),
     )

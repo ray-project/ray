@@ -88,6 +88,7 @@ def kill_one_vllm_worker():
     return target_node_id, result
 
 
+@pytest.mark.requires_2x_2GPU
 def test_llm_serve_dp_engine_fault():
     """DP deployment recovers when a vLLM GPU worker process is killed."""
     deployment_name = "DPServer:microsoft--Phi-tiny-MoE-instruct"

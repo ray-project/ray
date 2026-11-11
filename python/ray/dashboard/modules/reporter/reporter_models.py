@@ -7,8 +7,7 @@ if PYDANTIC_INSTALLED:
 
     # TODO(aguo): Use these pydantic models in the dashboard API as well.
     class ProcessGPUInfo(BaseModel):
-        """
-        Information about GPU usage for a single process.
+        """Information about GPU usage for a single process.
         NOTE: Backwards compatibility for this model must be maintained.
         If broken, the downstream dashboard API and UI code will break.
         If you must make a backwards-incompatible change, you must make sure
@@ -20,8 +19,7 @@ if PYDANTIC_INSTALLED:
         gpuUtilization: Optional[int] = None  # percentage
 
     class GpuUtilizationInfo(BaseModel):
-        """
-        GPU utilization information for a single GPU device.
+        """GPU utilization information for a single GPU device.
         NOTE: Backwards compatibility for this model must be maintained.
         If broken, the downstream dashboard API and UI code will break.
         If you must make a backwards-incompatible change, you must make sure
@@ -63,8 +61,7 @@ if PYDANTIC_INSTALLED:
         processesPids: Optional[List[ProcessNpuInfo]] = None
 
     class TpuUtilizationInfo(BaseModel):
-        """
-        TPU utilization information for a single TPU device.
+        """TPU utilization information for a single TPU device.
         NOTE: Backwards compatibility for this model must be maintained.
         If broken, the downstream dashboard API and UI code will break.
         If you must make a backwards-incompatible change, you must make sure
@@ -82,8 +79,7 @@ if PYDANTIC_INSTALLED:
         memoryTotal: int  # in bytes
 
     class CpuTimes(BaseModel):
-        """
-        CPU times information based on psutil.scputimes.
+        """CPU times information based on psutil.scputimes.
         NOTE: Backwards compatibility for this model must be maintained.
         If broken, the downstream dashboard API and UI code will break.
         If you must make a backwards-incompatible change, you must make sure
@@ -96,8 +92,7 @@ if PYDANTIC_INSTALLED:
         childrenSystem: float
 
     class MemoryInfo(BaseModel):
-        """
-        Memory information based on psutil.svmem.
+        """Memory information based on psutil.svmem.
         NOTE: Backwards compatibility for this model must be maintained.
         If broken, the downstream dashboard API and UI code will break.
         If you must make a backwards-incompatible change, you must make sure
@@ -110,8 +105,7 @@ if PYDANTIC_INSTALLED:
         pageins: Optional[float] = None
 
     class MemoryFullInfo(MemoryInfo):
-        """
-        Memory full information based on psutil.smem.
+        """Memory full information based on psutil.smem.
         NOTE: Backwards compatibility for this model must be maintained.
         If broken, the downstream dashboard API and UI code will break.
         If you must make a backwards-incompatible change, you must make sure
@@ -121,8 +115,7 @@ if PYDANTIC_INSTALLED:
         uss: float
 
     class ProcessInfo(BaseModel):
-        """
-        Process information from psutil.
+        """Process information from psutil.
         NOTE: Backwards compatibility for this model must be maintained.
         If broken, the downstream dashboard API and UI code will break.
         If you must make a backwards-incompatible change, you must make sure
@@ -164,8 +157,7 @@ if PYDANTIC_INSTALLED:
     NetworkSpeed = Tuple[float, float]  # (sendSpeed, receiveSpeed) in bytes/sec
 
     class DiskUsage(BaseModel):
-        """
-        Disk usage information based on psutil.diskusage.
+        """Disk usage information based on psutil.diskusage.
         NOTE: Backwards compatibility for this model must be maintained.
         If broken, the downstream dashboard API and UI code will break.
         If you must make a backwards-incompatible change, you must make sure
@@ -178,8 +170,7 @@ if PYDANTIC_INSTALLED:
         percent: float
 
     class StatsPayload(BaseModel):
-        """
-        Main stats payload returned by _compose_stats_payload.
+        """Main stats payload returned by _compose_stats_payload.
         NOTE: Backwards compatibility for this model must be maintained.
         If broken, the downstream dashboard API and UI code will break.
         If you must make a backwards-incompatible change, you must make sure

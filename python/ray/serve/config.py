@@ -774,7 +774,7 @@ class AutoscalingConfig(BaseModel):
         ),
     )
 
-    target_ongoing_requests: Optional[PositiveFloat] = Field(
+    target_ongoing_requests: PositiveFloat = Field(
         default=DEFAULT_TARGET_ONGOING_REQUESTS,
         description=(
             "The target number of requests being processed and queued per replica. "

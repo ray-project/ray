@@ -121,12 +121,25 @@ class NormalizeAndClipActions(ConnectorV2):
         episodes: List[EpisodeType],
         explore: Optional[bool] = None,
         shared_data: Optional[dict] = None,
-        **kwargs,
+        **kwargs: Any,
     ) -> Any:
         """Based on settings, will normalize (unsquash) and/or clip computed actions.
 
         This is such that the final actions (to be sent to the env) match the
         environment's action space and thus don't lead to an error.
+
+        Args:
+            rl_module: The RLModule that computed the actions. Unused.
+            batch: The batch with the computed actions under `Columns.ACTIONS`.
+            episodes: The episodes. Unused.
+            explore: Whether `explore` is currently on. Unused.
+            shared_data: Context data shared between connector pieces. Unused.
+            **kwargs: Forward API-compatibility kwargs.
+
+        Returns:
+            `batch`. If `normalize_actions` or `clip_actions` is set, it has a new
+            `Columns.ACTIONS_FOR_ENV` column with the unsquashed or clipped actions,
+            and `Columns.ACTIONS` is left unchanged.
         """
 
         def _unsquash_or_clip(action_for_env, env_id, agent_id, module_id):

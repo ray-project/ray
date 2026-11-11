@@ -13,13 +13,14 @@ import sys
 import threading
 import time
 from pathlib import Path
+from unittest.mock import patch
 
 import pytest
 
 import ray
 from ray.actor import ActorHandle
 from ray.experimental.sandbox import create
-from ray.experimental.sandbox._internal import image_utils, overlayfs
+from ray.experimental.sandbox._internal import cdi_lib, image_utils, overlayfs
 from ray.experimental.sandbox._internal.image_utils import (
     DEFAULT_IMAGES_DIR,
     image_cache_name,
@@ -39,6 +40,7 @@ from ray.experimental.sandbox.backend.gvisor import (
     _namespace_ids,
     _render_egress_ruleset,
     _write_egress_ruleset,
+    runsc_env,
 )
 from ray.experimental.sandbox.config import (
     ALLOW_ALL_CIDRS,
@@ -113,6 +115,54 @@ def test_create_sandbox_helper():
     ray.get(sb.terminate.remote())
 
 
+def test_create_threads_num_gpus_into_actor_options():
+    """create()'s num_gpus reaches Sandbox.options(), the same way cpu and
+    memory do. Otherwise Ray's scheduler never sees the GPU request, and
+    Sandbox.__init__ finds no GPUs in ray.get_gpu_ids(), with no error
+    telling the caller why."""
+    captured_options = {}
+
+    class _FakeSandboxHandle:
+        def remote(self, *args, **kwargs):
+            return "sandbox-actor-handle"
+
+    def fake_options(**kwargs):
+        captured_options.update(kwargs)
+        return _FakeSandboxHandle()
+
+    with patch("ray.experimental.sandbox.Sandbox.options", side_effect=fake_options):
+        create("busybox:latest", num_gpus=2)
+
+    assert captured_options.get("num_gpus") == 2
+
+
+def test_create_num_gpus_reaches_real_ray_scheduling():
+    """Spawns a real actor on a cluster with one logical GPU, so num_gpus
+    reaches Ray's scheduler without a real GPU. create() starts a separate
+    worker process that mock.patch can't reach, so whether CDI resolution
+    succeeds depends on the test machine. Either outcome shows gpu_ids
+    reached Sandbox.__init__, whether the sandbox has gpu_ids set or fails
+    with the CDI lookup error that
+    test_gvisor_backend_gpu_ids_without_cdi_spec_raises checks. The bug this
+    guards against is a sandbox with no error and no gpu_ids."""
+    if ray.is_initialized():
+        ray.shutdown()
+    ray.init(num_gpus=1)
+
+    try:
+        try:
+            # cpu=0 sets no CPU limit, which would need a cgroup on the node.
+            actor = create("busybox:latest", cpu=0, num_gpus=1)
+            config = ray.get(actor.get_config.remote())
+            assert config.gpu_ids is not None
+            ray.get(actor.delete.remote())
+            ray.kill(actor)
+        except ray.exceptions.ActorDiedError as e:
+            assert "CDI" in str(e)
+    finally:
+        ray.shutdown()
+
+
 def test_gvisor_backend_container_image_support():
     backend = GVisorSandboxBackend()
     config = GVisorSandboxConfig(
@@ -163,6 +213,25 @@ def test_gvisor_backend_invalid_image():
         workdir="/workspace",
     )
     with pytest.raises(SandboxCreationError):
+        backend.create_sandbox(config)
+
+
+def test_create_times_out_when_runsc_state_hangs(monkeypatch):
+    """A `runsc state` call that never returns can't hold a create past its
+    deadline: the create times out as it would for a slow boot."""
+    real_run = subprocess.run
+
+    def run(args, *rest, **kwargs):
+        if "state" in args:
+            raise subprocess.TimeoutExpired(args, kwargs.get("timeout"))
+        return real_run(args, *rest, **kwargs)
+
+    monkeypatch.setattr("ray.experimental.sandbox.backend.gvisor.subprocess.run", run)
+    backend = GVisorSandboxBackend()
+    config = GVisorSandboxConfig(
+        image="busybox:latest", shell="/bin/sh", timeout_seconds=2
+    )
+    with pytest.raises(SandboxTimeoutError):
         backend.create_sandbox(config)
 
 
@@ -273,6 +342,152 @@ def test_gvisor_backend_ignore_cgroups_flag():
     finally:
         if orig_env is not None:
             os.environ["RAY_SANDBOX_IGNORE_CGROUPS"] = orig_env
+
+
+def _gpu_sandbox_config():
+    return GVisorSandboxConfig(image="busybox:latest", shell="/bin/sh", gpu_ids=["0"])
+
+
+def _fake_runsc_version(monkeypatch, version):
+    """Have `runsc --version` report ``version``."""
+    output = f"runsc version {version}\nspec: 1.2.1\n"
+    monkeypatch.setattr(
+        gvisor.subprocess,
+        "run",
+        lambda args, **kwargs: subprocess.CompletedProcess(args, 0, output, ""),
+    )
+
+
+def test_runsc_release_without_cdi_hooks_is_rejected(monkeypatch):
+    """GPU sandboxes need runsc to run their CDI spec's createContainer
+    hooks, which gVisor releases before 20260520 skip."""
+    _fake_runsc_version(monkeypatch, "release-20260513.0")
+    with pytest.raises(SandboxCreationError, match="release-20260520.0"):
+        GVisorSandboxBackend()._check_runsc_runs_cdi_hooks()
+
+
+@pytest.mark.parametrize("version", ["release-20260520.0", "release-20260921.0"])
+def test_runsc_release_with_cdi_hooks_is_accepted(monkeypatch, version):
+    _fake_runsc_version(monkeypatch, version)
+    GVisorSandboxBackend()._check_runsc_runs_cdi_hooks()
+
+
+def test_runsc_built_from_source_is_accepted_with_a_warning(monkeypatch, sandbox_log):
+    """A runsc built from source reports a commit rather than a release, so
+    its support for CDI createContainer hooks can't be checked."""
+    _fake_runsc_version(monkeypatch, "80bb741691be")
+    with sandbox_log.at_level("WARNING", logger=gvisor.__name__):
+        GVisorSandboxBackend()._check_runsc_runs_cdi_hooks()
+    assert "release-20260520.0 or newer" in sandbox_log.text
+
+
+def test_gpu_checks_run_runsc_with_runsc_env(monkeypatch):
+    """The runsc calls that check GPU support get runsc_env()'s GOMAXPROCS,
+    like every other runsc call."""
+    monkeypatch.delenv("GOMAXPROCS", raising=False)
+    envs = []
+
+    def run(args, **kwargs):
+        envs.append(kwargs.get("env") or {})
+        if "--version" in args:
+            return subprocess.CompletedProcess(args, 0, "runsc version x\n", "")
+        return subprocess.CompletedProcess(args, 0, "580.126.20\n", "")
+
+    monkeypatch.setattr(gvisor.subprocess, "run", run)
+    backend = GVisorSandboxBackend()
+    backend._check_runsc_runs_cdi_hooks()
+    assert backend._list_nvproxy_supported_drivers() == {"580.126.20"}
+    assert [env.get("GOMAXPROCS") for env in envs] == ["2", "2"]
+
+
+def test_validate_gpu_ids_accepts_subset_of_ray_assignment():
+    with patch("ray.get_gpu_ids", return_value=["0", "1"]):
+        GVisorSandboxBackend._validate_gpu_ids(["0"])
+
+
+def test_validate_gpu_ids_rejects_ids_outside_ray_assignment():
+    """A sandbox can only access GPUs Ray assigned the calling actor or task,
+    so an id outside that assignment fails rather than granting CDI access
+    to a GPU Ray scheduled elsewhere."""
+    with patch("ray.get_gpu_ids", return_value=["0"]):
+        with pytest.raises(ValueError, match="are not among the GPUs"):
+            GVisorSandboxBackend._validate_gpu_ids(["1"])
+
+
+def test_validate_gpu_ids_rejects_empty_ray_assignment():
+    """An empty ray.get_gpu_ids() means Ray assigned the calling actor or task
+    no GPUs, such as when it didn't request num_gpus, so gpu_ids fails."""
+    with patch("ray.get_gpu_ids", return_value=[]):
+        with pytest.raises(ValueError, match="returned no"):
+            GVisorSandboxBackend._validate_gpu_ids(["0"])
+
+
+@pytest.mark.parametrize(
+    "mig_id",
+    [
+        "MIG-0c2a3b1e-5a1d-5b9f-8f1e-3f3d2c1b0a99",
+        "MIG-GPU-59142f9d-294d-3af7-1629-8578cba42589/1/0",
+    ],
+)
+def test_validate_gpu_ids_rejects_mig_devices(mig_id):
+    """gVisor doesn't support MIG, so a MIG device fails up front with a clear
+    error, even when Ray assigned it, rather than later inside gVisor."""
+    with patch("ray.get_gpu_ids", return_value=[mig_id]):
+        with pytest.raises(ValueError, match="are MIG devices"):
+            GVisorSandboxBackend._validate_gpu_ids([mig_id])
+
+
+def test_validate_gpu_ids_propagates_ray_get_gpu_ids_errors():
+    """An error from ray.get_gpu_ids(), such as outside a Ray task or actor,
+    propagates rather than being reported as "Ray assigned no GPUs"."""
+    with patch("ray.get_gpu_ids", side_effect=RuntimeError("not in a task")):
+        with pytest.raises(RuntimeError, match="not in a task"):
+            GVisorSandboxBackend._validate_gpu_ids(["0"])
+
+
+def test_gvisor_backend_rejects_unsupported_gpu_cdi_kind():
+    """gpu_ids resolved to a CDI kind gVisor GPU passthrough has no known
+    runsc flag for, such as a hypothetical AMD device, fails before any
+    sandbox state is created, rather than attempting unverified
+    passthrough."""
+    backend = GVisorSandboxBackend()
+    with patch("ray.get_gpu_ids", return_value=["0"]), patch(
+        "ray.experimental.sandbox._internal.cdi.get_spec",
+        return_value=cdi_lib.CDISpec("amd.com/gpu", {"devices": []}),
+    ):
+        with pytest.raises(SandboxCreationError, match="amd.com/gpu"):
+            backend.create_sandbox(_gpu_sandbox_config())
+
+
+def test_gvisor_backend_gpu_ids_without_cdi_spec_raises():
+    """When no CDI spec for this node's GPUs can be generated, a sandbox
+    requesting gpu_ids fails with a clear error. Mocks get_spec rather than
+    relying on the test machine having no nvidia-ctk on PATH, which breaks
+    if a CI image ships nvidia-ctk for unrelated reasons."""
+    backend = GVisorSandboxBackend()
+    with patch("ray.get_gpu_ids", return_value=["0"]), patch(
+        "ray.experimental.sandbox._internal.cdi.get_spec", return_value=None
+    ):
+        with pytest.raises(SandboxCreationError, match="CDI"):
+            backend.create_sandbox(_gpu_sandbox_config())
+
+
+def test_gvisor_backend_nvml_failure_raises_sandbox_creation_error():
+    """An NVML failure reading the driver version surfaces as a
+    SandboxCreationError, like every other GPU setup failure, not a raw
+    NVMLError."""
+    import ray._private.thirdparty.pynvml as pynvml
+
+    backend = GVisorSandboxBackend()
+    with patch.object(
+        backend, "_list_nvproxy_supported_drivers", return_value={"580.126.20"}
+    ), patch(
+        "ray._private.accelerators.nvidia_gpu.NvidiaGPUAcceleratorManager"
+        ".get_current_node_driver_version",
+        side_effect=pynvml.NVMLError(pynvml.NVML_ERROR_DRIVER_NOT_LOADED),
+    ):
+        with pytest.raises(SandboxCreationError, match="Driver Not Loaded"):
+            backend._check_nvidia_driver_supported()
 
 
 def test_string_exec_shell_configuration():
@@ -619,7 +834,14 @@ def test_build_run_command_has_no_overlay_flag():
     never from a runsc --overlay2 flag."""
     cmd = _run_argv("none")
     assert not any(a.startswith("--overlay2") for a in cmd)
-    assert cmd[-4:] == ["run", "--bundle", "/tmp/rd", "sb-1"]
+    assert cmd[-6:] == [
+        "run",
+        "--pid-file",
+        "/tmp/rd/sandbox.pid",
+        "--bundle",
+        "/tmp/rd",
+        "sb-1",
+    ]
 
 
 def _owned_busybox_tar(tar_path: str) -> None:
@@ -788,7 +1010,9 @@ def test_build_run_command_public_wraps_with_slirp4netns():
         "setpriv --pdeathsig KILL -- "
         "unshare --user --map-root-user --net --fork --kill-child "
     )
-    assert script.endswith("run --bundle /tmp/rd sb-1 & wait $!")
+    assert script.endswith(
+        "run --pid-file /tmp/rd/sandbox.pid --bundle /tmp/rd sb-1 & wait $!"
+    )
     for fragment in (
         "/tmp/rd/netns.pid",
         # slirp4netns stays in the foreground under the launch shell, and
@@ -846,7 +1070,14 @@ def test_build_run_command_other_modes_exec_runsc(network, rootless):
     assert cmd[:5] == ["sh", "-c", "trap '' INT QUIT; exec \"$@\"", "sh", "runsc"]
     assert "slirp4netns" not in cmd
     assert cmd[cmd.index("--network") + 1] == network
-    assert cmd[-4:] == ["run", "--bundle", "/tmp/rd", "sb-1"]
+    assert cmd[-6:] == [
+        "run",
+        "--pid-file",
+        "/tmp/rd/sandbox.pid",
+        "--bundle",
+        "/tmp/rd",
+        "sb-1",
+    ]
 
 
 _ID_MAPS = overlayfs.IdMaps(
@@ -929,7 +1160,14 @@ def test_build_run_command_overlayfs_sandbox_wraps_runsc_in_mount_namespace(
     assert runsc[0] == "runsc"
     assert runsc[runsc.index("--overlay2") + 1] == "root:dir=/tmp/rd/runsc-overlay2"
     assert runsc[runsc.index("--network") + 1] == network
-    assert runsc[-4:] == ["run", "--bundle", "/tmp/rd", "sb-1"]
+    assert runsc[-6:] == [
+        "run",
+        "--pid-file",
+        "/tmp/rd/sandbox.pid",
+        "--bundle",
+        "/tmp/rd",
+        "sb-1",
+    ]
 
 
 @pytest.mark.parametrize("in_userns", [True, False])
@@ -1088,6 +1326,7 @@ def _create_until_run(
     userns=UserNamespaceType.PRIVATE,
     image_mount_mode=ImageMountMode.FUSE,
     readonly=False,
+    gpu_ids=None,
 ):
     """Run create_sandbox with a recording image manager up to the point it
     would start runsc, and return what _build_run_command got and the
@@ -1098,10 +1337,18 @@ def _create_until_run(
     _boot_from_overlays(monkeypatch, overlay)
     captured = {}
 
-    def _capture(config, root_dir, sandbox_id, restore=None, rootfs_overlay=None):
+    def _capture(
+        config,
+        root_dir,
+        sandbox_id,
+        restore=None,
+        gpu_run_args=(),
+        rootfs_overlay=None,
+    ):
         # The failed create deletes its bundle, so check its directories now.
         captured.update(
             root_dir=root_dir,
+            gpu_run_args=gpu_run_args,
             rootfs_overlay=rootfs_overlay,
             has_tmpfs_dir=rootfs_overlay is not None
             and os.path.isdir(rootfs_overlay.tmpfs_dir),
@@ -1114,7 +1361,9 @@ def _create_until_run(
     monkeypatch.setattr(backend, "_build_run_command", _capture)
     with pytest.raises(SandboxCreationError) as err:
         backend.create_sandbox(
-            GVisorSandboxConfig(image="busybox:latest", readonly=readonly)
+            GVisorSandboxConfig(
+                image="busybox:latest", readonly=readonly, gpu_ids=gpu_ids
+            )
         )
     assert isinstance(err.value.__cause__, _StopBeforeRun)
     return captured, manager
@@ -2520,6 +2769,83 @@ def private_bundles(tmp_path, monkeypatch):
     return tmp_path
 
 
+@pytest.mark.parametrize(
+    "mounts",
+    [
+        None,
+        {},
+        {"/data": "/srv/inbox", "/weights": "/srv/model.bin"},
+        {"/existing": "/srv/replacement"},
+    ],
+)
+@pytest.mark.parametrize(
+    "existing_destinations",
+    [None, [], ["/existing"], ["/existing", "/data", "/existing"]],
+)
+@pytest.mark.parametrize("replace_spec", [False, True])
+def test_prepare_bundle_readonly_host_mounts(
+    tmp_path, monkeypatch, mounts, existing_destinations, replace_spec
+) -> None:
+    existing_mounts = [
+        {
+            "destination": destination,
+            "type": "bind",
+            "source": f"/srv/original-{i}",
+            "options": ["rbind", "rw"],
+        }
+        for i, destination in enumerate(existing_destinations or [])
+    ]
+
+    def transform(spec: dict) -> dict | None:
+        if replace_spec:
+            spec = spec.copy()
+        if existing_destinations is not None:
+            spec["mounts"] = list(existing_mounts)
+        if replace_spec:
+            return spec
+
+    inspected_specs = []
+
+    def needs_overlay(spec: dict) -> bool:
+        inspected_specs.append(spec)
+        return False
+
+    monkeypatch.setattr(overlayfs, "needs_rootfs_overlay", needs_overlay)
+    manager = _BundleRecordingImageManager(image=str(tmp_path / "rootfs.erofs"))
+    prepared_specs = []
+    prepare_oci_bundle = manager.prepare_oci_bundle
+
+    def prepare_bundle(**kwargs) -> str:
+        path = prepare_oci_bundle(**kwargs)
+        prepared_specs.append(json.loads(Path(path).read_text()))
+        return path
+
+    monkeypatch.setattr(manager, "prepare_oci_bundle", prepare_bundle)
+    backend = GVisorSandboxBackend(image_manager=manager)
+    config = GVisorSandboxConfig(
+        image="busybox:latest", mounts=mounts, _oci_spec_transform_fn=transform
+    )
+    assert backend._prepare_bundle(config, str(tmp_path), None, "/") is None
+
+    spec = json.loads((tmp_path / "config.json").read_text())
+    expected_mounts = [
+        mount for mount in existing_mounts if mount["destination"] not in (mounts or {})
+    ] + [
+        {
+            "destination": target,
+            "type": "bind",
+            "source": source,
+            "options": ["rbind", "ro"],
+        }
+        for target, source in (mounts or {}).items()
+    ]
+    assert spec.get("mounts", []) == expected_mounts
+    if existing_destinations is None and not mounts:
+        assert "mounts" not in spec
+    assert prepared_specs == [spec]
+    assert inspected_specs == [spec]
+
+
 def test_reclaim_takes_only_bundles_whose_owner_is_gone(private_bundles, monkeypatch):
     """A bundle whose owner file nobody holds loses its runsc state, its files
     and its image pin. A live owner's bundle, one still being created, one an
@@ -2999,6 +3325,61 @@ def test_resolve_exec_user(monkeypatch):
     monkeypatch.setattr(backend, "read_file", unreadable)
     with pytest.raises(SandboxExecError, match="cannot read /etc/passwd"):
         backend._resolve_exec_user("sb-1", "postfix")
+
+
+def test_runsc_env_caps_gomaxprocs_unless_set(monkeypatch):
+    """runsc CLI calls run with GOMAXPROCS=2, as gVisor's containerd shim
+    runs them, unless the worker's environment sets it."""
+    monkeypatch.delenv("GOMAXPROCS", raising=False)
+    assert runsc_env()["GOMAXPROCS"] == "2"
+    monkeypatch.setenv("GOMAXPROCS", "8")
+    assert runsc_env()["GOMAXPROCS"] == "8"
+
+
+def test_runsc_run_starts_with_gomaxprocs(monkeypatch):
+    """A sandbox's attached `runsc run` gets runsc_env()'s GOMAXPROCS."""
+    monkeypatch.delenv("GOMAXPROCS", raising=False)
+    backend = GVisorSandboxBackend()
+    sandbox_id = backend.create_sandbox(
+        GVisorSandboxConfig(image="busybox:latest", shell="/bin/sh")
+    )
+    try:
+        proc = backend._sandbox_metadata[sandbox_id]["proc"]
+        with open(f"/proc/{proc.pid}/environ", "rb") as f:
+            assert b"GOMAXPROCS=2" in f.read().split(b"\0")
+    finally:
+        backend.delete_sandbox(sandbox_id)
+
+
+def test_exec_kill_and_reclaim_run_runsc_with_gomaxprocs(private_bundles, monkeypatch):
+    """Killing a timed-out command's processes and reclaiming an unowned
+    bundle run runsc with runsc_env()'s GOMAXPROCS too."""
+    monkeypatch.delenv("GOMAXPROCS", raising=False)
+    monkeypatch.delenv("RAY_SANDBOX_IGNORE_CGROUPS", raising=False)
+    # Log GOMAXPROCS with the arguments, and list no processes, so the kill
+    # falls back to the command's own PID.
+    (private_bundles / "runsc").write_text(
+        "#!/bin/sh\n"
+        'echo "GOMAXPROCS=$GOMAXPROCS $*" >> "$(dirname "$0")/runsc.log"\n'
+        'case " $* " in *" trace "*) exit 1 ;; esac\n'
+    )
+    sandbox_id = "ray-sandbox-00000000000f"
+    config = GVisorSandboxConfig(image="busybox:latest", rootless=False)
+    backend = GVisorSandboxBackend(image_manager=_RecordingImageManager())
+    pid_file = private_bundles / "exec.pid"
+    pid_file.write_text("7")
+    backend._kill_exec(config, sandbox_id, str(pid_file))
+    root = Path(gvisor._RAY_SANDBOX_DIR, sandbox_id)
+    root.mkdir(parents=True)
+    # An owner file that no live owner holds or names: the bundle is unowned.
+    (root / ".owner").write_text(json.dumps({"image": "busybox:latest"}))
+    assert backend._reclaim_unowned_bundles() == [sandbox_id]
+    assert (private_bundles / "runsc.log").read_text().splitlines() == [
+        f"GOMAXPROCS=2 --root /tmp/runsc trace procfs {sandbox_id}",
+        f"GOMAXPROCS=2 --root /tmp/runsc kill --pid 7 {sandbox_id} SIGKILL",
+        f"GOMAXPROCS=2 --root /tmp/runsc kill {sandbox_id} SIGKILL",
+        f"GOMAXPROCS=2 --root /tmp/runsc delete -force {sandbox_id}",
+    ]
 
 
 if __name__ == "__main__":

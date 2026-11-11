@@ -1,23 +1,9 @@
 import os
 
-from ray._raylet import (
-    AuthenticationMode,
-    AuthenticationTokenLoader,
-    get_authentication_mode,
-)
+from ray._raylet import AuthenticationTokenLoader
 from ray.exceptions import AuthenticationError
 
 AUTH_TOKEN_REMOTE_PATH = "~/.ray/auth_token"
-
-
-def token_auth_enabled_locally() -> bool:
-    """Whether this process runs in token auth mode, so a launcher ships a token.
-
-    Until AUTH_MODE defaults to "token", an unset RAY_AUTH_MODE means disabled:
-    then nodes don't turn token mode on, and a shipped token would split a
-    cluster into a token-mode head and workers it rejects.
-    """
-    return get_authentication_mode() == AuthenticationMode.TOKEN
 
 
 def load_local_token() -> str:
