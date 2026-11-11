@@ -4,6 +4,7 @@ from decimal import Decimal
 import pyarrow as pa
 import pytest
 
+from ray.data.aggregate import Sum
 from ray.data._internal.arrow_aggregation import arrow_agg_options, mean_spec, sum_spec
 
 
@@ -26,6 +27,7 @@ def test_integer_sum_uses_widened_accumulator():
     merged = merged.rename_columns(["g", *agg.components])
     result = agg.finalize(merged, tuple(agg.components))
 
+    assert result.type == pa.decimal128(38, 0)
     assert result.to_pylist() == [2**65]
 
 
@@ -62,10 +64,11 @@ def test_unsigned_integer_sum_does_not_overflow():
 
     result = agg.finalize(partial, tuple(agg.components))
 
+    assert result.type == pa.decimal128(38, 0)
     assert result.to_pylist() == [2**64]
 
 
-def test_unsigned_integer_sum_preserves_uint64_when_it_fits():
+def test_unsigned_integer_sum_uses_stable_decimal_type_when_it_fits():
     agg = sum_spec()
     partial = _aggregate(
         pa.table({"g": [0], "v": pa.array([2**62], type=pa.uint64())}),
@@ -75,7 +78,7 @@ def test_unsigned_integer_sum_preserves_uint64_when_it_fits():
 
     result = agg.finalize(partial, tuple(agg.components))
 
-    assert result.type == pa.uint64()
+    assert result.type == pa.decimal128(38, 0)
     assert result.to_pylist() == [2**62]
 
 
@@ -95,7 +98,7 @@ def test_decimal_sum_is_not_widened():
         "v",
     )
 
-    assert partial["widened"].to_pylist() == [0]
+    assert partial["sum"].type == pa.decimal128(38, 2)
     assert agg.finalize(partial, tuple(agg.components)).type == pa.decimal128(38, 2)
 
 
@@ -106,6 +109,14 @@ def test_integer_mean_uses_widened_sum():
     result = agg.finalize(partial, tuple(agg.components))
 
     assert result.to_pylist() == [float(2**62)]
+
+
+@pytest.mark.parametrize("input_type", [pa.int64(), pa.uint64()])
+def test_integer_sum_output_field_matches_materialized_type(input_type):
+    output_field = Sum("v").output_field(pa.schema([("v", input_type)]))
+
+    assert output_field is not None
+    assert output_field.type == pa.decimal128(38, 0)
 
 
 if __name__ == "__main__":

@@ -24,6 +24,7 @@ import pyarrow.compute as pc
 
 from ray.data._internal.arrow_aggregation import (
     ArrowAggSpec,
+    _INTEGER_SUM_TYPE,
     count_spec,
     distinct_spec,
     is_boolean_arrow_type,
@@ -634,6 +635,16 @@ class Sum(VectorizedAggregateFnV2[Union[int, float], Union[int, float]]):
         return current_accumulator + new
 
     def output_field(self, input_schema: "pa.Schema") -> Optional["pa.Field"]:
+        if self._target_col_name is not None:
+            try:
+                input_type = input_schema.field(self._target_col_name).type
+            except (KeyError, ValueError):
+                return None
+            if pa.types.is_integer(input_type):
+                # The vectorized aggregation widens integer sums to Decimal128
+                # so the output schema remains valid if a group overflows the
+                # native integer range.
+                return pa.field(self.name, _INTEGER_SUM_TYPE, nullable=True)
         return _agg_output_field(self.name, input_schema, self._target_col_name, pc.sum)
 
     def _arrow_agg_spec(self) -> Optional[ArrowAggSpec]:

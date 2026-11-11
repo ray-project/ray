@@ -8,8 +8,6 @@ import pyarrow.compute as pc
 # has enough precision for the largest practical sum of int64/uint64 data while
 # keeping the accumulator compact enough for the vectorized aggregation path.
 _INTEGER_SUM_TYPE = pa.decimal128(38, 0)
-_SIGNED_INTEGER_MARKER = 1
-_UNSIGNED_INTEGER_MARKER = 2
 
 
 def _prepare_integer_sum_column(
@@ -27,31 +25,6 @@ def _prepare_integer_sum_column(
     if pa.types.is_integer(source.type):
         source = pc.cast(source, _INTEGER_SUM_TYPE)
     return block.append_column(input_col, source)
-
-
-def _prepare_integer_sum_and_marker(
-    agg_index: int, source_col: Optional[str], block: "pa.Table"
-) -> "pa.Table":
-    """Prepare a sum input column and record its integer signedness."""
-
-    input_col = f"__agg{agg_index}_sum_input"
-    marker_col = f"__agg{agg_index}_sum_widened"
-    source = block[source_col]
-    if pa.types.is_unsigned_integer(source.type):
-        marker = _UNSIGNED_INTEGER_MARKER
-    elif pa.types.is_integer(source.type):
-        marker = _SIGNED_INTEGER_MARKER
-    else:
-        marker = 0
-
-    if marker:
-        source = pc.cast(source, _INTEGER_SUM_TYPE)
-
-    block = block.append_column(input_col, source)
-    return block.append_column(
-        marker_col,
-        pa.array([marker] * block.num_rows, type=pa.int8()),
-    )
 
 
 def is_boolean_arrow_type(t: "pa.DataType") -> bool:
@@ -126,19 +99,10 @@ def _finalize_mean(merged: "pa.Table", component_cols: Tuple[str, ...]):
 
 
 def _finalize_sum(merged: "pa.Table", component_cols: Tuple[str, ...]):
-    sum_col, widened_col = component_cols
-
-    # Integer inputs use a decimal accumulator.  Return the historical native
-    # result type when possible, but retain the widened decimal result if the
-    # exact total does not fit in that type.
-    marker = pc.max(merged[widened_col]).as_py()
-    if marker in (_SIGNED_INTEGER_MARKER, _UNSIGNED_INTEGER_MARKER):
-        output_type = pa.uint64() if marker == _UNSIGNED_INTEGER_MARKER else pa.int64()
-        try:
-            return pc.cast(merged[sum_col], output_type, safe=True)
-        except (pa.ArrowInvalid, pa.ArrowNotImplementedError):
-            pass
-    return merged[sum_col]
+    # Integer inputs are widened to Decimal128 before aggregation, so retaining
+    # the accumulated column keeps the materialized schema stable regardless of
+    # whether the final value fits in the native integer range.
+    return merged[component_cols[0]]
 
 
 def _finalize_pct(merged: "pa.Table", component_cols: Tuple[str, ...]):
@@ -156,15 +120,13 @@ def _finalize_pct(merged: "pa.Table", component_cols: Tuple[str, ...]):
 # --- spec builders (an AggregateFn picks one in its _arrow_agg_spec) ----------
 def sum_spec() -> ArrowAggSpec:
     return ArrowAggSpec(
-        components=("sum", "widened"),
-        prep=_prepare_integer_sum_and_marker,
+        components=("sum",),
+        prep=_prepare_integer_sum_column,
         raw_agg_specs=lambda agg_index, source_col, options: [
             (f"__agg{agg_index}_sum_input", "sum", options.value_opts),
-            (f"__agg{agg_index}_sum_widened", "max", options.value_opts),
         ],
         merge_specs=lambda input_cols, options: [
             (input_cols[0], "sum", options.value_opts),
-            (input_cols[1], "max", options.value_opts),
         ],
         finalize=_finalize_sum,
     )
