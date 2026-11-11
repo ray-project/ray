@@ -12,6 +12,7 @@ from typing import (
     Literal,
     Optional,
     Sequence,
+    Tuple,
     Union,
 )
 
@@ -374,6 +375,7 @@ class Filter(AbstractUDFMap, LogicalOperatorPreservesSchema):
     can_modify_num_rows: bool = field(init=False, default=True)
     min_rows_per_bundled_input: Optional[int] = field(init=False, default=None)
     per_block_limit: Optional[int] = None
+    processed_join_conjuncts: Tuple[Expr, ...] = ()
 
     def __post_init__(self):
         assert len(self.input_dependencies) == 1, len(self.input_dependencies)
