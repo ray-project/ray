@@ -907,7 +907,23 @@ def _render_with_metrics(
     has_router: bool = True,
     router_metrics: bool | None = None,
 ) -> str:
-    """Render the HAProxy config with metrics on or off; return the text.
+    """Render the HAProxy config with metrics on or off; return the text."""
+    return _generate_with_metrics(
+        enabled,
+        stream_enabled=stream_enabled,
+        has_router=has_router,
+        router_metrics=router_metrics,
+    )[0]
+
+
+def _generate_with_metrics(
+    enabled: bool,
+    *,
+    stream_enabled: bool = False,
+    has_router: bool = True,
+    router_metrics: bool | None = None,
+):
+    """Generate the HAProxy config; return (text, HAProxyApi).
 
     Imports inside the function so the module-level test discovery doesn't
     drag in HAProxy template rendering for tests that don't need it.
@@ -960,7 +976,7 @@ def _render_with_metrics(
         )
         api._generate_config_file_internal()
         with open(os.path.join(td, "haproxy.cfg")) as f:
-            return f.read()
+            return f.read(), api
 
 
 def test_rendered_config_contains_metrics_directives_when_enabled() -> None:
@@ -984,6 +1000,78 @@ def test_stream_metrics_configuration(http_metrics, has_router) -> None:
     assert ("frontend ray_stream_metrics_export" in rendered) == active
     assert ("proto h2" in rendered) == active
     assert rendered.count("format rfc5424") == int(http_metrics)
+
+
+_TUNED = "glibc.malloc.mmap_threshold=33554432:glibc.malloc.trim_threshold=268435456"
+
+
+@pytest.mark.parametrize(
+    "bufsize, current, expected",
+    [
+        # Ray's default buffers fit HAProxy's per-thread cache.
+        (16384, "", None),
+        # Too large for glibc's heap threshold; leave glibc's defaults.
+        (64 * 1024 * 1024, "", None),
+        (8 * 1024 * 1024, "", _TUNED),
+        (
+            8 * 1024 * 1024,
+            "glibc.malloc.arena_max=2",
+            "glibc.malloc.arena_max=2:" + _TUNED,
+        ),
+        # Tunables the user already set are kept.
+        (
+            8 * 1024 * 1024,
+            "glibc.malloc.trim_threshold=1",
+            "glibc.malloc.trim_threshold=1:glibc.malloc.mmap_threshold=33554432",
+        ),
+        (
+            8 * 1024 * 1024,
+            "glibc.malloc.mmap_threshold=1:glibc.malloc.trim_threshold=1",
+            None,
+        ),
+    ],
+)
+def test_stream_metrics_haproxy_env(bufsize, current, expected) -> None:
+    from ray.serve._private.haproxy import stream_metrics_haproxy_env
+
+    environ = {"PATH": "/bin", **({"GLIBC_TUNABLES": current} if current else {})}
+    env = stream_metrics_haproxy_env(bufsize, environ)
+    if expected is None:
+        assert env is None
+    else:
+        assert env == {**environ, "GLIBC_TUNABLES": expected}
+
+
+@pytest.mark.parametrize(
+    "forward_body, stream_enabled, has_router",
+    [
+        (True, True, True),
+        (False, True, True),
+        (True, False, True),
+        (True, True, False),
+    ],
+)
+def test_stream_metrics_haproxy_process_env(
+    monkeypatch, forward_body, stream_enabled, has_router
+) -> None:
+    """Only the streaming-metrics filter with 8 MiB buffers tunes glibc."""
+    from ray.serve._private import haproxy
+
+    monkeypatch.setattr(
+        haproxy, "RAY_SERVE_INGRESS_REQUEST_ROUTER_FORWARD_BODY", forward_body
+    )
+    monkeypatch.delenv("GLIBC_TUNABLES", raising=False)
+    rendered, api = _generate_with_metrics(
+        enabled=True, stream_enabled=stream_enabled, has_router=has_router
+    )
+    large = forward_body and has_router
+    assert ("tune.bufsize 8388608" in rendered) == large
+    assert ("filter ray_stream_metrics" in rendered) == (stream_enabled and has_router)
+    if large and stream_enabled:
+        assert api._haproxy_env["GLIBC_TUNABLES"] == _TUNED
+        assert api._haproxy_env["PATH"] == os.environ["PATH"]
+    else:
+        assert api._haproxy_env is None
 
 
 @pytest.mark.parametrize("enabled", [False, True])

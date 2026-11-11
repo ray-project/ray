@@ -139,6 +139,39 @@ class TestIsOurHaproxy:
         assert api._is_our_haproxy(2_000_000_000) is False
 
 
+class TestSpawnEnvironment:
+    """HAProxy runs with the environment computed for the current config."""
+
+    @pytest.mark.parametrize("configured", [False, True])
+    def test_spawn_uses_configured_environment(
+        self, api, tmp_path, monkeypatch, configured
+    ):
+        from ray.serve._private import haproxy
+
+        dump = tmp_path / "env.txt"
+        binary = tmp_path / "fake-haproxy"
+        binary.write_text(f"#!/bin/sh\nenv > {dump}\nexit 3\n")
+        binary.chmod(0o755)
+        monkeypatch.setattr(haproxy, "get_haproxy_binary", lambda: str(binary))
+        monkeypatch.setenv("RAY_TEST_INHERITED", "1")
+        monkeypatch.delenv("GLIBC_TUNABLES", raising=False)
+        if configured:
+            # One tunable: glibc rewrites ':' separators in place when parsing.
+            api._haproxy_env = {
+                **os.environ,
+                "GLIBC_TUNABLES": "glibc.malloc.trim_threshold=268435456",
+            }
+
+        with pytest.raises(RuntimeError, match="crashed during startup"):
+            asyncio.run(api._start_and_wait_for_haproxy(timeout_s=5))
+
+        lines = dump.read_text().splitlines()
+        assert "RAY_TEST_INHERITED=1" in lines
+        assert (
+            "GLIBC_TUNABLES=glibc.malloc.trim_threshold=268435456" in lines
+        ) == configured
+
+
 class TestCountHaproxyProcesses:
     """`count_haproxy_processes` scans /proc for processes whose cmdline carries
     our config path, so the count spans live, draining, and leaked workers."""

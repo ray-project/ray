@@ -134,6 +134,47 @@ def stream_metrics_socket_path(metrics_socket_path: str, generation: str = "") -
     return f"/tmp/ray-stream-metrics-{digest}.sock"
 
 
+# HAProxy caches buffers per thread only up to `tune.memory.hot-size` (512 KiB by
+# default), so larger buffers (8 MiB with ingress-router body forwarding) come
+# from glibc. The streaming-metrics filter disables HAProxy's zero-copy
+# forwarding, so every streamed chunk needs a response buffer, and glibc's
+# dynamic thresholds then map, fault in and return that memory continuously
+# (~6k extra page faults/s at 256 streams). Fixed thresholds keep freed buffers
+# in the heap for reuse, at most 256 MiB of free heap top per glibc arena before
+# trimming. glibc caps the mmap threshold at 32 MiB on 64-bit platforms.
+_HAPROXY_POOL_CACHE_BYTES = 512 * 1024
+_GLIBC_HEAP_MAX_BUFSIZE = 16 * 1024 * 1024
+_STREAM_METRICS_GLIBC_TUNABLES = (
+    ("glibc.malloc.mmap_threshold", 32 * 1024 * 1024),
+    ("glibc.malloc.trim_threshold", 256 * 1024 * 1024),
+)
+
+
+def stream_metrics_haproxy_env(
+    bufsize: int, environ: Dict[str, str]
+) -> Optional[Dict[str, str]]:
+    """HAProxy's environment for the streaming-metrics filter, or None to inherit.
+
+    Adds glibc allocator thresholds when HAProxy's buffers bypass its per-thread
+    cache but still fit below glibc's mmap threshold. Tunables already present
+    in `GLIBC_TUNABLES` are kept as they are.
+    """
+    if not _HAPROXY_POOL_CACHE_BYTES < bufsize <= _GLIBC_HEAP_MAX_BUFSIZE:
+        return None
+    current = environ.get("GLIBC_TUNABLES", "")
+    present = {item.split("=", 1)[0] for item in current.split(":") if item}
+    added = [
+        f"{name}={value}"
+        for name, value in _STREAM_METRICS_GLIBC_TUNABLES
+        if name not in present
+    ]
+    if not added:
+        return None
+    env = dict(environ)
+    env["GLIBC_TUNABLES"] = ":".join(([current] if current else []) + added)
+    return env
+
+
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
 
@@ -987,6 +1028,9 @@ class HAProxyApi(ProxyApi):
         # Track old processes from graceful reloads that may still be draining
         self._old_procs: List[asyncio.subprocess.Process] = []
         self._stream_metrics_generation = secrets.token_hex(28)
+        # Environment for HAProxy processes spawned from the current config;
+        # None inherits this process's environment.
+        self._haproxy_env: Optional[Dict[str, str]] = None
         # Per-spawn counter for stdout/stderr file names.
         self._spawn_seq: int = 0
         # Unique per actor incarnation. A restart resets _spawn_seq to 0, so
@@ -1235,6 +1279,7 @@ class HAProxyApi(ProxyApi):
                 *args,
                 stdout=stdout_file,
                 stderr=stderr_file,
+                env=self._haproxy_env,
             )
         export_socket = stream_metrics_socket_path(
             self.cfg.metrics_socket_path, self._stream_metrics_generation
@@ -1500,6 +1545,23 @@ class HAProxyApi(ProxyApi):
             has_ingress_request_router = ingress_request_router_lua_path is not None
             router_application_lua_path = self._write_router_application_lua(
                 http_backends
+            )
+            # Mirrors the template's `tune.bufsize` and `filter` conditions.
+            bufsize = (
+                RAY_SERVE_HAPROXY_INGRESS_REQUEST_ROUTER_BUFSIZE
+                if (
+                    has_ingress_request_router
+                    and RAY_SERVE_INGRESS_REQUEST_ROUTER_FORWARD_BODY
+                )
+                or router_application_lua_path is not None
+                else self.cfg.bufsize
+            )
+            self._haproxy_env = (
+                stream_metrics_haproxy_env(bufsize, dict(os.environ))
+                if has_ingress_request_router
+                and self.cfg.metrics_enabled
+                and self.cfg.stream_metrics_enabled
+                else None
             )
 
             # Enrich HTTP backends with precomputed health check configuration strings
