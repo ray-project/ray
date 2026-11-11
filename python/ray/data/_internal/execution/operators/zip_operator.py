@@ -148,7 +148,7 @@ class ZipOperator(InternalQueueOperatorMixin, NAryOperator):
         return True
 
     @property
-    def is_blocking_materializing(self) -> bool:
+    def is_synchronization_barrier(self) -> bool:
         # TODO revert once zip becomes streaming
         return True
 

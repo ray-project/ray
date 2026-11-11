@@ -80,7 +80,7 @@ class TestDownstreamCapacityBackpressurePolicy:
         # Set up eligibility methods (used by ResourceManager.is_op_eligible)
         mock_operator.throttling_disabled.return_value = throttling_disabled
         mock_operator.has_execution_finished.return_value = has_execution_finished
-        mock_operator.is_blocking_materializing = False
+        mock_operator.is_synchronization_barrier = False
 
         op_state = MagicMock(spec=OpState)
         op_state.output_queue_bytes.return_value = 0
@@ -100,7 +100,7 @@ class TestDownstreamCapacityBackpressurePolicy:
         mock_operator.throttling_disabled = types.MethodType(
             AllToAllOperator.throttling_disabled, mock_operator
         )
-        mock_operator.is_blocking_materializing = True
+        mock_operator.is_synchronization_barrier = True
 
         op_state = MagicMock(spec=OpState)
         op_state.output_queue_bytes.return_value = 0
@@ -269,7 +269,7 @@ class TestDownstreamCapacityBackpressurePolicy:
             obj_store_mem_pending_task_inputs=100,
             throttling_disabled=throttling_disabled,
         )
-        materializing_op.is_blocking_materializing = True
+        materializing_op.is_synchronization_barrier = True
         op.output_dependencies = [materializing_op]
 
         topology = {op: op_state, materializing_op: materializing_op_state}
@@ -294,10 +294,10 @@ class TestDownstreamCapacityBackpressurePolicy:
         "op_class",
         [HashShufflingOperatorBase, AllToAllOperator, ShuffleMapOp, ZipOperator],
     )
-    def test_is_blocking_materializing_overrides(self, op_class):
-        """Test that the former blocking-materializing classes report True."""
+    def test_is_synchronization_barrier_overrides(self, op_class):
+        """Test that the former blocking-materializing classes are barriers."""
         op = MagicMock(spec=op_class)
-        assert op_class.is_blocking_materializing.fget(op) is True
+        assert op_class.is_synchronization_barrier.fget(op) is True
 
     def test_backpressure_applied_when_materializer_is_beyond_downstream_eligible_op(
         self,

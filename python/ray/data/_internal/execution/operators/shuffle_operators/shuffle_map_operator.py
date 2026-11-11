@@ -364,7 +364,7 @@ class ShuffleMapOp(InternalQueueOperatorMixin, PhysicalOperator):
         return bundle
 
     @property
-    def is_blocking_materializing(self) -> bool:
+    def is_synchronization_barrier(self) -> bool:
         return True
 
     def get_partition_bytes(self) -> Dict[int, int]:

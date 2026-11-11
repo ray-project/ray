@@ -216,7 +216,7 @@ class AllToAllOperator(
         return True
 
     @property
-    def is_blocking_materializing(self) -> bool:
+    def is_synchronization_barrier(self) -> bool:
         # The bulk fn runs on the whole input; nothing downstream can start
         # until it has.
         return True

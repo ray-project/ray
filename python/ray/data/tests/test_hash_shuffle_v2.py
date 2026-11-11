@@ -779,7 +779,7 @@ def test_disk_reduce_submits_one_partition_per_backpressure_verdict(
 
 
 def test_disk_shuffle_resource_eligibility_by_phase(ray_start_regular_shared_2_cpus):
-    """The writer is blocking materializing, like ``ShuffleMapOp``: during the
+    """The writer is a synchronization barrier, like ``ShuffleMapOp``: during the
     map phase it is the only operator eligible for resources, and once it
     completes the reduce and its tail take over. Without the mark, the idle
     reduce and the Write after it would hold a share of the pool for the whole
@@ -802,7 +802,7 @@ def test_disk_shuffle_resource_eligibility_by_phase(ray_start_regular_shared_2_c
     ).op_resource_allocator
 
     # Map phase.
-    assert writer.is_blocking_materializing
+    assert writer.is_synchronization_barrier
     assert allocator._get_eligible_ops() == [writer]
 
     # Phase boundary: the writer has nothing more to emit and the reduce has

@@ -527,7 +527,7 @@ class ResourceManager:
         """
 
         # Check if Op itself is a blocking, materializing operator
-        if op.is_blocking_materializing:
+        if op.is_synchronization_barrier:
             return True
 
         # Check if any of its direct *ineligible* downstream dependencies are
@@ -536,7 +536,7 @@ class ResourceManager:
         # NOTE: We only check ineligible downstream deps, since eligible downstream
         #       deps will have their own allocation that is adjusted appropriately
         return any(
-            op.is_blocking_materializing
+            op.is_synchronization_barrier
             for op in self._get_downstream_ineligible_ops(op)
         )
 
@@ -550,14 +550,14 @@ class ResourceManager:
         the line, and exempting it keeps Map1 from backing up.
         """
         return any(
-            downstream_op.is_blocking_materializing
+            downstream_op.is_synchronization_barrier
             for downstream_op in self.get_downstream_eligible_ops(op)
         )
 
 
 def _get_first_pending_materializing_op(topology: "Topology") -> int:
     for idx, op in enumerate(topology):
-        if op.is_blocking_materializing and not op.has_completed():
+        if op.is_synchronization_barrier and not op.has_completed():
             return idx
 
     return -1

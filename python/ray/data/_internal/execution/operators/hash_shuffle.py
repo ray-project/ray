@@ -870,7 +870,7 @@ class HashShufflingOperatorBase(PhysicalOperator, SubProgressBarMixin):
         return len(self._output_queue) > 0
 
     @property
-    def is_blocking_materializing(self) -> bool:
+    def is_synchronization_barrier(self) -> bool:
         # Partitions are finalized only after every input has been shuffled.
         return True
 

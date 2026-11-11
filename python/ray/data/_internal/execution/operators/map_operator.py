@@ -237,7 +237,7 @@ class MapOperator(LineageReconstructionMixin, PhysicalOperator, ABC):
         ray_remote_args: Optional[Dict[str, Any]],
         on_start: Optional[Callable[[Optional["pa.Schema"]], None]] = None,
         default_logical_memory_enabled: bool = False,
-        blocking_materializing: bool = False,
+        synchronization_barrier: bool = False,
     ):
         # NOTE: This constructor should not be called directly; use MapOperator.create()
         # instead.
@@ -287,7 +287,7 @@ class MapOperator(LineageReconstructionMixin, PhysicalOperator, ABC):
             [input_op],
             data_context,
             target_max_block_size_override,
-            blocking_materializing=blocking_materializing,
+            synchronization_barrier=synchronization_barrier,
         )
 
         # If set, then all output blocks will be split into
@@ -391,7 +391,7 @@ class MapOperator(LineageReconstructionMixin, PhysicalOperator, ABC):
         per_block_limit: Optional[int] = None,
         on_start: Optional[Callable[[Optional["pa.Schema"]], None]] = None,
         isolate_workers: bool = False,
-        blocking_materializing: bool = False,
+        synchronization_barrier: bool = False,
     ) -> "MapOperator":
         """Create a MapOperator.
 
@@ -432,7 +432,7 @@ class MapOperator(LineageReconstructionMixin, PhysicalOperator, ABC):
                 scheduled on the same worker processes as this operator's. This flag
                 is useful to prevent side-effects from affecting other operators, like
                 large PyArrow memory allocations.
-            blocking_materializing: If ``True``, no downstream operator can use any
+            synchronization_barrier: If ``True``, no downstream operator can use any
                 of this operator's output until all of it exists.
 
         Returns:
@@ -476,7 +476,7 @@ class MapOperator(LineageReconstructionMixin, PhysicalOperator, ABC):
                 on_start=on_start,
                 isolate_workers=isolate_workers,
                 default_logical_memory_enabled=data_context.default_map_logical_memory_enabled,
-                blocking_materializing=blocking_materializing,
+                synchronization_barrier=synchronization_barrier,
             )
         elif isinstance(compute_strategy, ActorPoolStrategy):
             from ray.data._internal.execution.operators import (
@@ -505,7 +505,7 @@ class MapOperator(LineageReconstructionMixin, PhysicalOperator, ABC):
                 ray_remote_args=ray_remote_args,
                 on_start=on_start,
                 default_logical_memory_enabled=data_context.default_map_logical_memory_enabled,
-                blocking_materializing=blocking_materializing,
+                synchronization_barrier=synchronization_barrier,
             )
         else:
             raise ValueError(f"Unsupported execution strategy {compute_strategy}")

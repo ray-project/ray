@@ -157,7 +157,7 @@ class DownstreamCapacityBackpressurePolicy(BackpressurePolicy):
             return True
 
         if any(
-            downstream_op.is_blocking_materializing
+            downstream_op.is_synchronization_barrier
             for downstream_op in self._resource_manager.get_downstream_eligible_ops(op)
         ):
             # Downstream capacity is materializing, so don't backpressure against it.
