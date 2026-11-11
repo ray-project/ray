@@ -784,6 +784,29 @@ def get_capacity_adjusted_num_replicas(
     return max(1, int(rounded_adjusted_num_replicas))
 
 
+def get_capacity_adjusted_gang_replicas(
+    num_replicas: int,
+    target_capacity: Optional[float],
+    gang_size: Optional[int],
+) -> int:
+    """Return `num_replicas` adjusted by `target_capacity`, aligned to whole gangs.
+
+    Gang-scheduled deployments allocate replicas in units of `gang_size`, so the
+    capacity adjustment is applied to the number of gangs rather than to the raw
+    replica count. Adjusting the replica count directly can produce a value that
+    isn't a multiple of `gang_size`, which is rejected by the gang scheduler.
+
+    `num_replicas` is expected to be a multiple of `gang_size`; configuration
+    validation enforces this. If gang scheduling isn't enabled, this is
+    equivalent to `get_capacity_adjusted_num_replicas`.
+    """
+    if gang_size is None or gang_size <= 1:
+        return get_capacity_adjusted_num_replicas(num_replicas, target_capacity)
+
+    num_gangs = num_replicas // gang_size
+    return get_capacity_adjusted_num_replicas(num_gangs, target_capacity) * gang_size
+
+
 def generate_request_id() -> str:
     # NOTE(edoakes): we use random.getrandbits because it reduces CPU overhead
     # significantly. This is less cryptographically secure but should be ok for

@@ -20,6 +20,7 @@ from ray.serve._private.test_utils import (
 from ray.serve._private.utils import get_all_live_placement_group_names
 from ray.serve.config import GangPlacementStrategy, GangSchedulingConfig
 from ray.serve.context import _get_global_client
+from ray.serve.schema import ServeApplicationSchema, ServeDeploySchema
 from ray.tests.conftest import *  # noqa
 from ray.util.placement_group import get_current_placement_group, placement_group_table
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
@@ -2057,6 +2058,145 @@ class TestGangMigration:
         wait_for_condition(check_complete_gangs, timeout=WAIT_TIMEOUT_S)
 
         serve.delete("app")
+        serve.shutdown()
+
+
+@serve.deployment(
+    ray_actor_options={"num_cpus": 0.1},
+    num_replicas=8,
+    gang_scheduling_config=GangSchedulingConfig(gang_size=4),
+)
+class GangTargetCapacityApp:
+    def __call__(self):
+        return os.getpid()
+
+
+@serve.deployment(
+    ray_actor_options={"num_cpus": 0.1},
+    num_replicas="auto",
+    gang_scheduling_config=GangSchedulingConfig(gang_size=4),
+    autoscaling_config={
+        "min_replicas": 4,
+        "max_replicas": 8,
+        "target_ongoing_requests": 1,
+        "upscale_delay_s": 0.1,
+        "downscale_delay_s": 10,
+        "look_back_period_s": 0.2,
+        "metrics_interval_s": 0.05,
+    },
+    max_ongoing_requests=10,
+)
+class GangAutoscalingTargetCapacityApp:
+    async def __call__(self):
+        await asyncio.sleep(10)
+        return os.getpid()
+
+
+def gang_target_capacity_app(args):
+    return GangTargetCapacityApp.bind()
+
+
+def gang_autoscaling_target_capacity_app(args):
+    return GangAutoscalingTargetCapacityApp.bind()
+
+
+class TestGangTargetCapacity:
+    """Regression tests for capacity-adjusted replica counts under gang scheduling.
+
+    `target_capacity` must be applied to whole gangs. Otherwise the adjusted
+    count isn't a multiple of `gang_size`, which the gang scheduler rejects
+    (`num_replicas_to_add ... is not divisible by gang_size`) and the
+    deployment ends up in DEPLOY_FAILED or flaps.
+    """
+
+    def test_non_autoscaling_target_capacity_is_gang_aligned(self, ray_cluster):
+        cluster = ray_cluster
+        cluster.add_node(num_cpus=2)
+        cluster.wait_for_nodes()
+        ray.init(address=cluster.address)
+        serve.start()
+        client = _get_global_client()
+
+        # 8 replicas = 2 gangs. At 30% capacity, 2 * 0.3 = 0.6 -> 1 gang (4).
+        client.deploy_apps(
+            ServeDeploySchema(
+                applications=[
+                    ServeApplicationSchema(
+                        import_path=(
+                            "ray.serve.tests.test_gang_scheduling:"
+                            "gang_target_capacity_app"
+                        ),
+                    )
+                ],
+                target_capacity=30,
+            )
+        )
+
+        wait_for_condition(
+            check_apps_running, apps=[SERVE_DEFAULT_APP_NAME], timeout=WAIT_TIMEOUT_S
+        )
+        wait_for_condition(
+            check_num_replicas_eq,
+            name="GangTargetCapacityApp",
+            target=4,
+            app_name=SERVE_DEFAULT_APP_NAME,
+            timeout=WAIT_TIMEOUT_S,
+            use_controller=True,
+        )
+
+        client.delete_apps([SERVE_DEFAULT_APP_NAME])
+        serve.shutdown()
+
+    def test_autoscaling_target_capacity_is_gang_aligned(self, ray_cluster):
+        cluster = ray_cluster
+        cluster.add_node(num_cpus=2)
+        cluster.wait_for_nodes()
+        ray.init(address=cluster.address)
+        serve.start()
+        client = _get_global_client()
+
+        client.deploy_apps(
+            ServeDeploySchema(
+                applications=[
+                    ServeApplicationSchema(
+                        import_path=(
+                            "ray.serve.tests.test_gang_scheduling:"
+                            "gang_autoscaling_target_capacity_app"
+                        ),
+                    )
+                ],
+                target_capacity=75,
+            )
+        )
+
+        # min_replicas=4 is capacity-adjusted to 1 gang (4 replicas).
+        wait_for_condition(
+            check_apps_running, apps=[SERVE_DEFAULT_APP_NAME], timeout=WAIT_TIMEOUT_S
+        )
+        wait_for_condition(
+            check_num_replicas_eq,
+            name="GangAutoscalingTargetCapacityApp",
+            target=4,
+            app_name=SERVE_DEFAULT_APP_NAME,
+            timeout=WAIT_TIMEOUT_S,
+            use_controller=True,
+        )
+
+        # Drive the autoscaler past max_replicas. The upper bound is
+        # 2 gangs * 75% = 1.5 -> 2 gangs (8), not the unaligned 6.
+        handle = serve.get_app_handle(SERVE_DEFAULT_APP_NAME)
+        _ = [handle.remote() for _ in range(20)]
+
+        wait_for_condition(
+            check_num_replicas_eq,
+            name="GangAutoscalingTargetCapacityApp",
+            target=8,
+            app_name=SERVE_DEFAULT_APP_NAME,
+            timeout=WAIT_TIMEOUT_S,
+            use_controller=True,
+        )
+
+        client.delete_apps([SERVE_DEFAULT_APP_NAME])
         serve.shutdown()
 
 

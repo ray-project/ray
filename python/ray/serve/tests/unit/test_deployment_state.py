@@ -86,6 +86,7 @@ from ray.serve._private.test_utils import (
     uninitialized_replicas_context,
 )
 from ray.serve._private.utils import (
+    get_capacity_adjusted_gang_replicas,
     get_capacity_adjusted_num_replicas,
     get_random_string,
 )
@@ -6713,6 +6714,45 @@ class TestTargetCapacity:
         result = get_capacity_adjusted_num_replicas(num_replicas, target_capacity)
         assert isinstance(result, int)
         assert result == expected_output
+
+    @pytest.mark.parametrize(
+        "num_replicas,gang_size,target_capacity,expected_output",
+        [
+            # No gang scheduling: behaves like get_capacity_adjusted_num_replicas.
+            (8, None, 30, 2),
+            (8, 1, 30, 2),
+            # target_capacity=None or 100 is a no-op.
+            (8, 4, None, 8),
+            (8, 4, 100, 8),
+            # Capacity is applied to gangs, not to individual replicas.
+            # 2 gangs * 75% = 1.5 -> 2 gangs (half-up).
+            (8, 4, 75, 8),
+            (8, 4, 50, 4),
+            # 2 gangs * 30% = 0.6 -> 1 gang.
+            (8, 4, 30, 4),
+            # A non-zero capacity never scales below one gang.
+            (8, 4, 1, 4),
+            (4, 4, 20, 4),
+            (16, 4, 25, 4),
+            # Zero capacity and zero replicas still scale to zero.
+            (8, 4, 0, 0),
+            (0, 4, 50, 0),
+        ],
+    )
+    def test_get_capacity_adjusted_gang_replicas(
+        self,
+        num_replicas: int,
+        gang_size: Optional[int],
+        target_capacity: Optional[float],
+        expected_output: int,
+    ):
+        result = get_capacity_adjusted_gang_replicas(
+            num_replicas, target_capacity, gang_size
+        )
+        assert isinstance(result, int)
+        assert result == expected_output
+        if gang_size is not None and gang_size > 1:
+            assert result % gang_size == 0
 
     def test_initial_deploy(self, mock_deployment_state_manager):
         """Deploy with target_capacity set, should apply immediately."""
