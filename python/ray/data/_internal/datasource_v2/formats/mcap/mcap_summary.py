@@ -320,12 +320,14 @@ def chunk_runs(
     chunk_indexes: Sequence["ChunkIndex"],
     row_bytes: int,
     memory: ReadMemory,
+    payload_factor: int = 1,
 ) -> List[FileChunk]:
     """Build the listing rows of one file's ``chunk_indexes``, weighted for packing.
 
     A task's peak is its table plus W + R (``read_overhead``). A chunk's share
     of the table is its uncompressed records plus ``row_bytes`` per message,
-    plus ``_BUFFER_GROWTH``. Its row weighs that share times
+    plus ``_BUFFER_GROWTH``. Each payload byte counts ``payload_factor`` bytes,
+    for payloads the reader decodes into larger values. Its row weighs that share times
     ``task_bytes / (task_bytes - W - R)``, so a full task leaves room for W + R,
     or a whole task when W + R fills one.
     """
@@ -337,9 +339,11 @@ def chunk_runs(
     room = memory.task_bytes - read_overhead(path, chunk_indexes, counts, memory)
     runs = []
     for chunk_index, num_rows in zip(chunk_indexes, counts):
-        table = (chunk_index.uncompressed_size + num_rows * row_bytes) * (
-            1 + _BUFFER_GROWTH
+        payload = max(
+            0, chunk_index.uncompressed_size - num_rows * _MESSAGE_RECORD_HEADER_BYTES
         )
+        records = chunk_index.uncompressed_size + (payload_factor - 1) * payload
+        table = (records + num_rows * row_bytes) * (1 + _BUFFER_GROWTH)
         weight = table * memory.task_bytes / room if room > 0 else memory.task_bytes
         runs.append(
             FileChunk(

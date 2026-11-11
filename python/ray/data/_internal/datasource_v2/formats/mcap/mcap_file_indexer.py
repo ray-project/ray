@@ -240,10 +240,16 @@ class MCAPSummaryIndexer(NonSamplingFileIndexer):
         ]
         if not chunk_indexes:
             return None
-        row_bytes = self._row_layout.row_bytes(
-            path, (summary.channels[c] for c in selected), summary.schemas
+        channels = [summary.channels[c] for c in selected]
+        row_bytes = self._row_layout.row_bytes(path, channels, summary.schemas)
+        runs = chunk_runs(
+            path,
+            summary,
+            chunk_indexes,
+            row_bytes,
+            self._read_memory,
+            payload_factor=self._row_layout.payload_factor(channels),
         )
-        runs = chunk_runs(path, summary, chunk_indexes, row_bytes, self._read_memory)
         manifest = FileManifest.construct_manifest(
             paths=[path] * len(runs),
             sizes=[file_info.size] * len(runs),
