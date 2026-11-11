@@ -90,6 +90,26 @@ def test_job_driver_loggers_are_released(tmp_path):
     assert "job log entry" in (tmp_path / "job-driver-test-199.log").read_text()
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Unix process watcher")
+def test_job_supervisor_reaps_watcher(tmp_path):
+    supervisor = object.__new__(JobSupervisor)
+    supervisor._job_id = "watcher-test"
+    supervisor._entrypoint = "sleep 10"
+    supervisor._watcher_process = None
+    child = supervisor._exec_entrypoint(os.environ.copy(), str(tmp_path / "job.log"))
+    watcher = supervisor._watcher_process
+    assert watcher is not None
+
+    try:
+        child.terminate()
+        child.wait(timeout=5)
+    finally:
+        supervisor._stop_watcher()
+
+    assert watcher.poll() is not None
+    assert supervisor._watcher_process is None
+
+
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
     "call_ray_start",
