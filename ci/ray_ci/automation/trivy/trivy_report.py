@@ -579,8 +579,11 @@ def _scanner_text(scanner: Mapping[str, Any]) -> str:
     text = ""
     if trivy.get("version"):
         text += f" · Trivy {trivy['version']}"
-    if db.get("updated_at"):
-        text += f" · DB {db['updated_at'][:10]}"
+    # trivy_db records the DB artifact's creation time; older metadata has
+    # the DB's own UpdatedAt.
+    db_date = db.get("updated_at") or db.get("created")
+    if db_date:
+        text += f" · DB {db_date[:10]}"
         if db.get("blob"):
             text += f" (`{db['blob'][:19]}`)"
     return text
