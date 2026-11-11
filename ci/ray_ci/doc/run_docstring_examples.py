@@ -67,10 +67,12 @@ import doctest
 import importlib
 import importlib.util
 import io
+import linecache
 import os
 import re
 import subprocess
 import sys
+import tokenize
 import traceback
 from typing import Dict, List, Optional, Tuple
 
@@ -92,6 +94,8 @@ OMITTED_LIBRARIES = {
     "torchaudio": (),
     "tensorflow": (),
     "tensorflow_datasets": (),
+    # RLlib's try_import_tfp imports it, and it needs tensorflow.
+    "tensorflow_probability": (),
     "keras": (),
     "jax": (),
     "transformers": (),
@@ -121,6 +125,143 @@ OMITTED_LIBRARIES = {
 }
 
 
+# RLlib's try_import_* functions in ray/rllib/utils/framework.py don't raise
+# when the library is missing. They return None for the module, and
+# try_import_torch and try_import_tf return stand-in objects for torch.nn and
+# tensorflow, so an example fails later with an AttributeError instead of an
+# ImportError. _rllib_stub_types finds the stand-in classes by calling those
+# functions, so a renamed or new stand-in needs no change here.
+_RLLIB_FRAMEWORK = "ray.rllib.utils.framework"
+# The names RLlib's modules and examples bind a try_import_* result that's None
+# to, mapped to the library missing. try_import_torch returns (torch, nn) and
+# RLlib aliases nn.functional, which its torch.nn stand-in sets to None, as F.
+# try_import_tf returns (tf1, tf, tfv), where tf is a stand-in, but
+# `tf, _, _ = try_import_tf()` binds tf to the first, None, value.
+# try_import_tfp returns tfp, and try_import_jax returns (jax, flax), both None
+# unless both import.
+_RLLIB_NONE_NAMES = {
+    "torch": "torch",
+    "_torch": "torch",
+    "F": "torch",
+    "tf": "tensorflow",
+    "tf1": "tensorflow",
+    "tfv": "tensorflow",
+    "_tf1": "tensorflow",
+    "_tfv": "tensorflow",
+    "tfp": "tensorflow_probability",
+    "jax": "jax",
+    "flax": "jax",
+}
+
+
+def _rllib_stub_types() -> Dict[type, str]:
+    """Map each RLlib stand-in class to the library it replaces.
+
+    Walks the objects try_import_torch and try_import_tf return, and the
+    attributes they hold, keeping the classes ray.rllib.utils.framework
+    defines. RLlib must already be imported, which it is whenever one of its
+    stand-ins raised. A library that's installed contributes no stand-ins.
+    """
+    framework = sys.modules.get(_RLLIB_FRAMEWORK)
+    if framework is None:
+        return {}
+    found = {}
+
+    def walk(value, library: str) -> None:
+        cls = value if isinstance(value, type) else type(value)
+        if cls.__module__ != _RLLIB_FRAMEWORK or cls in found:
+            return
+        found[cls] = library
+        if not isinstance(value, type):
+            for attr in vars(value).values():
+                walk(attr, library)
+
+    for value in framework.try_import_torch():
+        walk(value, "torch")
+    for value in framework.try_import_tf():
+        walk(value, "tensorflow")
+    return found
+
+
+def _dotted_chains(line: str, attr: str) -> List[List[str]]:
+    """Return the names before `.attr` in each dotted name on a line of code.
+
+    For `x = nn.functional.softplus(y)` and attr "softplus", that's
+    [["nn", "functional"]]. Comments and strings don't count, and neither does
+    a chain that starts after a call or subscript, such as `f().torch.device`.
+    """
+    tokens = []
+    try:
+        for token in tokenize.generate_tokens(io.StringIO(line).readline):
+            tokens.append(token)
+    except (tokenize.TokenError, SyntaxError):
+        # A line that continues an expression from the line before, or onto
+        # the next one. Keep the tokens read so far.
+        pass
+    chains = []
+    for i, token in enumerate(tokens):
+        if token.type != tokenize.NAME or token.string != attr:
+            continue
+        names = []
+        j = i - 1
+        while (
+            j >= 1
+            and tokens[j].type == tokenize.OP
+            and tokens[j].string == "."
+            and tokens[j - 1].type == tokenize.NAME
+        ):
+            names.insert(0, tokens[j - 1].string)
+            j -= 2
+        if not names:
+            continue
+        if j >= 0 and tokens[j].type == tokenize.OP and tokens[j].string == ".":
+            # The chain hangs off an expression, not a name.
+            continue
+        chains.append(names)
+    return chains
+
+
+def _rllib_stubbed_library(error: AttributeError) -> Optional[str]:
+    """Return the library an RLlib stand-in replaced, if it raised this error.
+
+    Matches an attribute lookup on one of RLlib's stand-in objects or classes,
+    or, in RLlib code or an RLlib docstring example, an attribute lookup on a
+    None that one of RLlib's try_import_* functions or stand-ins left in place
+    of the library, in the line that raised. That's a name in
+    _RLLIB_NONE_NAMES that's None, such as `torch`, or an attribute of a
+    stand-in that's None, such as `nn.functional`. AttributeError.obj and .name
+    need Python 3.10 or later.
+    """
+    if _RLLIB_FRAMEWORK not in sys.modules:
+        return None
+    stub_types = _rllib_stub_types()
+    obj = getattr(error, "obj", None)
+    if obj is not None:
+        return stub_types.get(obj if isinstance(obj, type) else type(obj))
+    tb = error.__traceback__
+    if tb is None or not getattr(error, "name", None):
+        return None
+    while tb.tb_next is not None:
+        tb = tb.tb_next
+    frame = tb.tb_frame
+    if not frame.f_globals.get("__name__", "").startswith("ray.rllib"):
+        return None
+    line = linecache.getline(frame.f_code.co_filename, tb.tb_lineno)
+    for root, *attrs in _dotted_chains(line, error.name):
+        # f_locals also holds closure variables, which co_varnames doesn't list.
+        value = frame.f_locals.get(root, frame.f_globals.get(root, ...))
+        if not attrs:
+            if value is None and root in _RLLIB_NONE_NAMES:
+                return _RLLIB_NONE_NAMES[root]
+            continue
+        library = stub_types.get(type(value))
+        for name in attrs:
+            value = getattr(value, name, ...)
+        if library is not None and value is None:
+            return library
+    return None
+
+
 class MissingLibrary(Exception):
     """An example needs a library in OMITTED_LIBRARIES that isn't installed."""
 
@@ -140,8 +281,9 @@ def missing_library(error: BaseException) -> Optional[str]:
     """Return the omitted, uninstalled library an import error reports, if any.
 
     Follows the exception chain for a ModuleNotFoundError's module name, since
-    Ray Data re-raises it as an ImportError with install advice. Falls back to
-    the message for a bare ImportError. Either way, a library that's installed
+    Ray Data re-raises it as an ImportError with install advice, or for an
+    AttributeError that one of RLlib's stand-ins for torch or TensorFlow
+    raised. Falls back to the message for a bare ImportError. Either way, a library that's installed
     never matches, so a full image can't skip anything.
 
     The chain stops at `raise ... from None`. An implicit context can't be
@@ -157,6 +299,10 @@ def missing_library(error: BaseException) -> Optional[str]:
             top = current.name.split(".")[0]
             if top in OMITTED_LIBRARIES and not _installed(top):
                 return top
+        if isinstance(current, AttributeError):
+            library = _rllib_stubbed_library(current)
+            if library is not None and not _installed(library):
+                return library
         if current.__cause__ is not None:
             current = current.__cause__
         elif current.__suppress_context__:
@@ -284,6 +430,14 @@ def run_docstring(
         try:
             # "single" mode echoes an expression's value, as the interactive
             # prompt the example imitates does.
+            # Register the source so tracebacks, and _rllib_stubbed_library,
+            # can read the example's lines.
+            linecache.cache[location] = (
+                len(example.source),
+                None,
+                example.source.splitlines(True),
+                location,
+            )
             code = compile(example.source, location, "single")
             with contextlib.redirect_stdout(stdout):
                 exec(code, namespace)

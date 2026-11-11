@@ -14,9 +14,9 @@ steps:
   # TensorFlow. See ci/docker/docstring.build.Dockerfile.
   - name: docstringbuild
     wanda: ci/docker/docstring.build.wanda.yaml
-    depends_on: oss-ci-base_test-multipy(python=3.10)
+    depends_on: oss-ci-base_test-multipy(python=3.11)
     env:
-      PYTHON: "3.10"
+      PYTHON: "3.11"
     tags: cibase
 
   # Runs instead of a library's test steps when the "docstring-only" label is
@@ -53,10 +53,10 @@ steps:
       - workflow
     instance_type: medium
     commands:
-      - ./ci/ray_ci/doc/run_docstring_examples.sh docstringbuild 3.10
+      - ./ci/ray_ci/doc/run_docstring_examples.sh docstringbuild 3.11
     depends_on:
       - docstringbuild
-      - ray-core-build(python=3.10)
+      - ray-core-build(python=3.11)
       - ray-dashboard-build
 
   # Runs the doctest targets for documentation prose that no library owns,
