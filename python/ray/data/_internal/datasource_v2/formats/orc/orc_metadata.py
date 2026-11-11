@@ -98,18 +98,19 @@ def read_orc_layout(
         byte_end = 3  # ORC magic
         for index, stripe in enumerate(cast(_FooterFields, footer).stripes):
             offset = _required_int(stripe, "offset")
+            # Optional protobuf integers omitted on the wire default to zero.
             length = sum(
-                _required_int(stripe, name)
+                _optional_int(stripe, name) or 0
                 for name in ("index_length", "data_length", "footer_length")
             )
-            rows = _required_int(stripe, "number_of_rows")
+            rows = _optional_int(stripe, "number_of_rows") or 0
             if offset < byte_end or length < 0 or offset + length > size:
                 raise ValueError(f"Invalid stripe {index} byte range")
             stripes.append(OrcStripeMetadata(index, rows, row, length, offset))
             row += rows
             byte_end = offset + length
         if (
-            row != _required_int(footer, "number_of_rows")
+            row != (_optional_int(footer, "number_of_rows") or 0)
             or row != reader.nrows
             or len(stripes) != reader.nstripes
         ):

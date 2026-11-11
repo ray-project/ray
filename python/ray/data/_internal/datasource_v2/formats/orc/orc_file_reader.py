@@ -187,7 +187,7 @@ class OrcFileReader(FileReader):
                     iter([self._whole_file_fragment(fragments[path])]), scanner_kwargs
                 )
             else:
-                batches = self._read_stripes(path, [metadata], scanner_kwargs)
+                batches = self._read_stripes(path, metadata, scanner_kwargs)
             with closing(
                 cast(Generator[Tuple[pa.Table, ReadUnitPosition], None, None], batches)
             ):
@@ -241,14 +241,12 @@ class OrcFileReader(FileReader):
             layout = cast(OrcFileMetadata, layout)
             stripes = layout.stripes
             assert stripes is not None
-            indices = []
-            for value in metadata:
-                run = FileChunk.from_metadata(value)
-                if any(not 0 <= i < len(stripes) for i in run.unit_ids):
-                    raise ValueError(f"Invalid ORC stripe assignment for {path}")
-                if sum(stripes[i].num_rows for i in run.unit_ids) != run.num_rows:
-                    raise ValueError(f"ORC layout changed for {path}")
-                indices.extend(run.unit_ids)
+            run = FileChunk.from_metadata(metadata)
+            indices = run.unit_ids
+            if any(not 0 <= i < len(stripes) for i in indices):
+                raise ValueError(f"Invalid ORC stripe assignment for {path}")
+            if sum(stripes[i].num_rows for i in indices) != run.num_rows:
+                raise ValueError(f"ORC layout changed for {path}")
             if len(set(indices)) != len(indices):
                 raise ValueError(f"Duplicate ORC stripe assignments for {path}")
             for index in indices:

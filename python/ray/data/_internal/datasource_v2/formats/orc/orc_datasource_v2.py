@@ -7,7 +7,6 @@ from typing import TYPE_CHECKING, List, Literal, Optional, Union
 import pyarrow as pa
 from typing_extensions import override
 
-from ray._common.utils import env_integer
 from ray.data._internal.datasource_v2.common.file_reader import FileFormat
 from ray.data._internal.datasource_v2.common.non_sampling_file_indexer import (
     NonSamplingFileIndexer,
@@ -128,10 +127,7 @@ class OrcDatasourceV2(FileDataSourceV2):
         if hints is None:
             return None
         if supports_stripe_reads():
-            target = env_integer("RAY_DATA_ORC_BIN_PACKING_BYTES", 128 * 1024 * 1024)
-            if target <= 0:
-                raise ValueError("RAY_DATA_ORC_BIN_PACKING_BYTES must be positive")
-            return OrcStripePartitioner(target)
+            return OrcStripePartitioner(128 * 1024 * 1024)
         reader = OrcFileReader(format=FileFormat.ORC, filesystem=self._filesystem)
         return RoundRobinPartitioner(SamplingInMemorySizeEstimator(reader), hints=hints)
 

@@ -25,6 +25,7 @@ from ray.data._internal.datasource_v2.common.pushdown_utils import (
 )
 from ray.data._internal.datasource_v2.common.synthesized_columns import PathColumn
 from ray.data._internal.datasource_v2.formats.orc.orc_file_reader import OrcFileReader
+from ray.data._internal.datasource_v2.formats.orc.orc_metadata import OrcStripeMetadata
 from ray.data._internal.datasource_v2.formats.orc.orc_scanner import OrcScanner
 from ray.data._internal.datasource_v2.interfaces.file_manifest import FileManifest
 from ray.data._internal.logical.operators.read_operator import ListFiles, ReadFiles
@@ -1259,7 +1260,8 @@ def test_orc_missing_predicate_column_is_null_filled(
     assert [row["id"] for batch in batches for row in batch.to_pylist()] == expected
 
 
-def test_orc_filter_cannot_hide_decoded_pickle_column(tmp_path):
+@pytest.mark.parametrize("mode", ["whole", "stripe_schema", "stripe_decoded"])
+def test_orc_filter_cannot_hide_decoded_pickle_column(tmp_path, monkeypatch, mode):
     physical_schema = pa.schema(
         [("id", pa.int64()), ("object", ArrowPythonObjectType())]
     )
@@ -1273,18 +1275,47 @@ def test_orc_filter_cannot_hide_decoded_pickle_column(tmp_path):
         def scanner(self, **kwargs):
             pytest.fail("Unsafe decoded columns must be rejected before scanning")
 
-    fragment = Fragment()
+    decoded = mode == "stripe_decoded"
+    schema = pa.schema([("id", pa.int64()), ("object", pa.large_binary())])
     reader = OrcScanner(
-        schema=physical_schema,
+        schema=schema if decoded else physical_schema,
         predicate=col("id") > 100,
         partitioning=Partitioning(PartitionStyle.HIVE),
     ).create_reader()
+    owner = Mock(schema=schema if decoded else physical_schema)
+    owner.read_stripe.return_value = pa.record_batch(
+        [
+            pa.array([0]),
+            pa.ExtensionArray.from_storage(
+                physical_schema.field("object").type,
+                pa.array([b"must not unpickle"], type=pa.large_binary()),
+            ),
+        ],
+        schema=physical_schema,
+    )
+    access = Mock(side_effect=AssertionError("unsafe table accessed"))
+    monkeypatch.setattr(pds, "dataset", access)
+    monkeypatch.setattr(
+        "ray.data._internal.object_extensions.arrow.pickle.load", access
+    )
     with pytest.raises(ValueError, match="arrow_pickled_object"):
-        list(
-            reader._iter_fragment_tables(
-                fragment, {"filter": (col("id") > 100).to_pyarrow()}
+        if mode == "whole":
+            list(
+                reader._iter_fragment_tables(
+                    Fragment(), {"filter": (col("id") > 100).to_pyarrow()}
+                )
             )
-        )
+        else:
+            list(
+                reader._iter_stripe_tables(
+                    owner,
+                    str(tmp_path / "root.orc"),
+                    OrcStripeMetadata(0, 1, 0, 1, 3),
+                    dict(columns=None, filter=None, batch_size=2),
+                )
+            )
+    assert owner.read_stripe.call_count == int(decoded)
+    access.assert_not_called()
 
 
 @pytest.mark.parametrize("mixed_or", [False, True])

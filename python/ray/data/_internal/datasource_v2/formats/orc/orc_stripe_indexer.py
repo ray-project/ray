@@ -7,12 +7,12 @@ import pyarrow as pa
 
 from ray.data._internal.datasource_v2.common.non_sampling_file_indexer import (
     NonSamplingFileIndexer,
-    _shuffle_file_infos,
 )
 from ray.data._internal.datasource_v2.formats.orc.orc_metadata import (
     orc_read_unit_id,
     read_orc_metadata,
 )
+from ray.data._internal.datasource_v2.interfaces.file_indexer import FileInfo
 from ray.data._internal.datasource_v2.interfaces.file_manifest import (
     FILE_CHUNK_METADATA_COLUMN_NAME,
     FILE_SIZE_COLUMN_NAME,
@@ -76,7 +76,7 @@ class OrcStripeIndexer(NonSamplingFileIndexer):
         execution_idx=0,
         excluded_read_unit_ids=None,
     ):
-        files = self._iter_file_infos_for_list(
+        files = super().list_files(
             paths,
             filesystem=filesystem,
             pruners=pruners,
@@ -103,33 +103,30 @@ class OrcStripeIndexer(NonSamplingFileIndexer):
         execution_idx=0,
         excluded_read_unit_ids=None,
     ):
-        if pruners:
-            file_infos = (
-                info
-                for info in file_infos
-                if all(p.should_include(info.path) for p in pruners)
-            )
-        if excluded_read_unit_ids:
-            file_infos = (
-                info for info in file_infos if info.path not in excluded_read_unit_ids
-            )
-        shuffle_config = self._replayable_shuffle(shuffle_config)
-        if shuffle_config is not None:
-            file_infos = _shuffle_file_infos(
-                list(file_infos), shuffle_config.get_seed(execution_idx)
-            )
+        files = super().list_files_from_file_infos(
+            (info for info in file_infos if info.size is not None),
+            filesystem=filesystem,
+            pruners=pruners,
+            preserve_order=preserve_order,
+            shuffle_config=self._replayable_shuffle(shuffle_config),
+            execution_idx=execution_idx,
+            excluded_read_unit_ids=excluded_read_unit_ids,
+        )
         yield from self._list_chunks(
-            file_infos, filesystem, predicate, limit, excluded_read_unit_ids
+            files, filesystem, predicate, limit, excluded_read_unit_ids
         )
 
-    def _list_chunks(self, files, filesystem, predicate, limit, excluded):
+    def _list_chunks(self, manifests, filesystem, predicate, limit, excluded):
         if limit is not None and limit <= 0:
             return
         excluded = excluded or frozenset()
         matched = 0
+        files = (
+            FileInfo(str(path), int(size))
+            for manifest in manifests
+            for path, size in zip(manifest.paths, manifest.file_sizes)
+        )
         for file in files:
-            if file.size is None or file.path in excluded:
-                continue
             layout = read_orc_metadata(file.path, filesystem)
             chunks = []
             stripes = layout.stripes

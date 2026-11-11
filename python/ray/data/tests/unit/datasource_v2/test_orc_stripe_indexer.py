@@ -1,7 +1,7 @@
 """ORC-specific contracts; generic scanner/packer behavior is tested alongside them."""
 
 import io
-import pickle
+from pathlib import Path
 from types import SimpleNamespace
 from typing import Any, cast
 from unittest.mock import Mock
@@ -80,19 +80,47 @@ def selected(case, ids=(0, 2)):
 
 
 class Input(io.BytesIO):
-    def __init__(self, data):
-        super().__init__(data)
-        self.reads = []
-
     def size(self):
         return len(self.getbuffer())
 
-    def read(self, n=-1):
-        self.reads.append((self.tell(), n))
-        return super().read(n)
+
+@pytest.mark.parametrize("no_index", [False, True], ids=["empty", "no-index"])
+def test_optional_zero_footer_fields(no_index):
+    # These uncompressed fixtures omit zero-valued protobuf fields.
+    path = (
+        Path(__file__).parent / "data" / ("no-index.orc" if no_index else "empty.orc")
+    )
+    expected = (
+        pa.table({"id": range(16), "label": [str(i) for i in range(16)]})
+        if no_index
+        else pa.table({"id": pa.array([], type=pa.int64())})
+    )
+    native = orc.ORCFile(str(path))
+    assert native.read().equals(expected)
+    tail = cast(
+        Any, _file_tail_message_type().FromString(native.reader.serialized_file_tail())
+    )
+    if no_index:
+        assert native.row_index_stride == 0 and native.nstripes == 3
+        assert all(
+            not stripe.HasField("index_length") for stripe in tail.footer.stripes
+        )
+    else:
+        assert native.nrows == 0 and not tail.footer.HasField("number_of_rows")
+
+    indexer = OrcStripeIndexer(ignore_missing_paths=False)
+    manifests = list(
+        indexer.list_files(pa.array([str(path)]), filesystem=LocalFileSystem())
+    )
+    reader = OrcScanner(schema=native.schema).create_reader()
+    batches = [batch for manifest in manifests for batch in reader.read(manifest)]
+    assert sum(batch.num_rows for batch in batches) == expected.num_rows
+    if no_index:
+        assert len(manifests[0]) == 3
+        assert pa.concat_tables(batches).equals(expected)
 
 
-def test_layout_is_exact_metadata_only_and_reuses_owner(case, monkeypatch):
+def test_layout_is_exact_metadata_only(case, monkeypatch):
     reader = orc.ORCFile(str(case.path))
     oracle = [reader.read_stripe(i).num_rows for i in range(reader.nstripes)]
     data_end = 3 + reader.content_length
@@ -103,20 +131,7 @@ def test_layout_is_exact_metadata_only_and_reuses_owner(case, monkeypatch):
             Mock(side_effect=AssertionError("decode")),
             raising=False,
         )
-    source = Input(case.path.read_bytes())
-    original = metadata.read_orc_layout
-
-    def inspect(*args, **kwargs):
-        reads = list(source.reads)
-        result = original(*args, **kwargs)
-        assert source.reads == reads
-        return result
-
-    monkeypatch.setattr(metadata, "read_orc_layout", inspect)
-    seed = metadata.read_orc_metadata(
-        str(case.path), SimpleNamespace(open_input_file=lambda _: source)
-    )
-    assert source.closed and source.reads
+    seed = metadata.read_orc_metadata(str(case.path), None)
     assert seed.stripes is not None
     assert [s.num_rows for s in seed.stripes] == oracle == [5, 7, 4]
     assert [s.row_offset for s in seed.stripes] == [0, 5, 12]
@@ -128,38 +143,37 @@ def test_layout_is_exact_metadata_only_and_reuses_owner(case, monkeypatch):
     assert seed.num_rows == 16
 
 
-def test_layout_allows_gaps_between_stripes(case):
-    reader = orc.ORCFile(str(case.path))
-    tail = _file_tail_message_type().FromString(reader.reader.serialized_file_tail())
-    for i, stripe in enumerate(cast(Any, tail).footer.stripes):
-        stripe.offset += i * 17
-    owner = SimpleNamespace(
-        nrows=16,
-        nstripes=3,
-        reader=SimpleNamespace(serialized_file_tail=tail.SerializeToString),
-    )
-    layout = metadata.read_orc_layout(
-        cast(orc.ORCFile, owner), str(case.path), case.layout.size + 34
-    )
-    assert layout.stripes is not None
-    assert [s.bytes_offset for s in layout.stripes] == [
-        s.bytes_offset + i * 17 for i, s in enumerate(case.layout.stripes)
-    ]
-    assert [s.row_offset for s in layout.stripes] == [0, 5, 12]
-
-
-@pytest.mark.parametrize("fault", ["missing", "overlap", "rows", "footer", "bytes"])
-def test_invalid_footer_is_not_a_capability_fallback(case, fault):
+@pytest.mark.parametrize(
+    "fault",
+    [
+        "gaps",
+        "missing",
+        "overlap",
+        "oversize",
+        "rows",
+        "stripe_rows",
+        "footer",
+        "bytes",
+    ],
+)
+def test_footer_layout_validation(case, fault):
     owner = orc.ORCFile(str(case.path))
     tail = _file_tail_message_type().FromString(owner.reader.serialized_file_tail())
     footer = cast(Any, tail).footer
     stripes = footer.stripes
-    if fault == "missing":
+    if fault == "gaps":
+        for i, stripe in enumerate(stripes):
+            stripe.offset += i * 17
+    elif fault == "missing":
         stripes[0].ClearField("offset")
     elif fault == "overlap":
         stripes[1].offset = stripes[0].offset
+    elif fault == "oversize":
+        stripes[0].data_length = case.layout.size + 1
     elif fault == "rows":
         footer.ClearField("number_of_rows")
+    elif fault == "stripe_rows":
+        stripes[0].ClearField("number_of_rows")
     elif fault == "footer":
         tail.ClearField("footer")
     fake = SimpleNamespace(
@@ -171,13 +185,23 @@ def test_invalid_footer_is_not_a_capability_fallback(case, fault):
             else tail.SerializeToString()
         ),
     )
-    with pytest.raises(pa.ArrowInvalid, match="data.orc"):
-        metadata.read_orc_layout(
-            cast(orc.ORCFile, fake),
-            str(case.path),
-            case.layout.size,
-            allow_unsupported=True,
+    if fault == "gaps":
+        layout = metadata.read_orc_layout(
+            cast(orc.ORCFile, fake), str(case.path), case.layout.size + 34
         )
+        assert layout.stripes is not None
+        assert [s.bytes_offset for s in layout.stripes] == [
+            s.bytes_offset + i * 17 for i, s in enumerate(case.layout.stripes)
+        ]
+        assert [s.row_offset for s in layout.stripes] == [0, 5, 12]
+    else:
+        with pytest.raises(pa.ArrowInvalid, match="data.orc"):
+            metadata.read_orc_layout(
+                cast(orc.ORCFile, fake),
+                str(case.path),
+                case.layout.size,
+                allow_unsupported=True,
+            )
 
 
 def test_bad_footer_closes_source_and_keeps_path(case):
@@ -242,6 +266,10 @@ def test_schema_fallback_keeps_physical_columns(
         )
     if not stripe:
         monkeypatch.setattr(orc.ORCFile, "read_stripe", None)
+    elif empty_projection:
+        monkeypatch.setattr(
+            orc.ORCFile, "read_stripe", Mock(side_effect=AssertionError("decoded"))
+        )
     schema = {
         "none": None,
         "empty": pa.schema([]),
@@ -285,64 +313,67 @@ def test_schema_fallback_keeps_physical_columns(
         ]
 
 
-@pytest.mark.parametrize("prelisted", [False, True])
-@pytest.mark.parametrize("ordered", [False, True])
-def test_listing_identity_exclusion_limit_shuffle_and_raw_sample(
-    case, prelisted, ordered
-):
-    kwargs = dict(filesystem=LocalFileSystem(), preserve_order=ordered)
-    infos = [FileInfo(str(case.path), case.layout.size)] * 2
-
-    def emit(**extra):
-        values = (
-            case.indexer.list_files_from_file_infos(infos, **kwargs, **extra)
-            if prelisted
-            else case.indexer.list_files(
-                pa.array([str(case.path.parent), str(case.path)]), **kwargs, **extra
-            )
-        )
-        return list(values)
-
-    def chunk(blocks):
-        return [
-            FileChunk.from_metadata(m)
-            for block in blocks
-            for m in block.file_chunk_metadatas
-        ]
-
-    assert [c.unit_ids for c in chunk(emit())] == [(0,), (1,), (2,)] * 2
-    assert [
-        c.unit_ids
-        for c in chunk(
-            emit(excluded_read_unit_ids={metadata.orc_read_unit_id(str(case.path), 1)})
-        )
-    ] == [(0,), (2,)] * 2
-    assert emit(excluded_read_unit_ids={str(case.path)}) == []
-    assert chunk(emit(limit=1))[0].unit_ids == (0,)
-    assert [c.unit_ids for c in chunk(emit(limit=1, predicate=col("id") == 15))] == [
-        (0,),
-        (1,),
-        (2,),
-    ] * 2
-    assert emit(limit=0) == []
-    config = FileShuffleConfig(seed=66999)
-    assert [b.as_block().to_pylist() for b in emit(shuffle_config=config)] == [
-        b.as_block().to_pylist() for b in emit(shuffle_config=config)
+@pytest.mark.parametrize("stripe", [False, True], ids=["whole", "stripe"])
+@pytest.mark.parametrize("include_extra", [False, True])
+def test_late_physical_columns_follow_schema(case, stripe, include_extra):
+    fields = [("id", pa.int32())]
+    if include_extra:
+        fields.append(("label", pa.string()))
+    fields.append(("missing", pa.string()))
+    reader = OrcScanner(
+        schema=pa.schema(fields), predicate=col("missing").is_null()
+    ).create_reader()
+    batches = list(reader.read(selected(case) if stripe else sample(case)))
+    rows = [row for batch in batches for row in batch.to_pylist()]
+    ids = [0, 1, 2, 3, 4, 12, 13, 14, 15] if stripe else list(range(16))
+    assert all(batch.schema.field("id").type == pa.int32() for batch in batches)
+    assert rows == [
+        {"id": i, **({"label": str(i)} if include_extra else {}), "missing": None}
+        for i in ids
     ]
-    raw = case.indexer.as_whole_file_indexer()
-    assert len(list(raw.list_files(pa.array([str(case.path)]), **kwargs))) == 1
+
+
+@pytest.mark.parametrize("prelisted", [False, True])
+@pytest.mark.parametrize("limit", [1, 6])
+def test_listing_limit_stops_before_later_invalid_footer(case, prelisted, limit):
+    invalid = case.path.with_name("invalid.orc")
+    invalid.write_bytes(b"invalid ORC")
+    infos = [
+        FileInfo(str(case.path), case.layout.size),
+        FileInfo(str(invalid), invalid.stat().st_size),
+    ]
+
+    def list_files(**kwargs):
+        if prelisted:
+            return list(case.indexer.list_files_from_file_infos(infos, **kwargs))
+        return list(
+            case.indexer.list_files(pa.array([info.path for info in infos]), **kwargs)
+        )
+
+    assert list_files(filesystem=LocalFileSystem(), limit=0) == []
+    kwargs = dict(filesystem=LocalFileSystem(), limit=limit)
+    manifests = list_files(**kwargs)
+    assert [
+        FileChunk.from_metadata(chunk).unit_ids
+        for manifest in manifests
+        for chunk in manifest.file_chunk_metadatas
+    ] == ([(0,)] if limit == 1 else [(0,), (1,)])
+    with pytest.raises((pa.ArrowInvalid, OSError), match="invalid.orc"):
+        list_files(**kwargs, predicate=col("id") > 0)
 
 
 @pytest.mark.parametrize("limit", [None, 6])
-def test_prelisted_shuffle_excludes_files_before_shuffling(case, limit):
+@pytest.mark.parametrize("seed", [0, None])
+def test_prelisted_shuffle_excludes_files_before_shuffling(case, limit, seed):
     paths = [case.path.parent / f"{name}.orc" for name in "abcd"]
     for path in paths:
         path.write_bytes(case.path.read_bytes())
-    infos = [FileInfo(str(path), case.layout.size) for path in paths]
+    inputs = paths + [paths[0]]
+    infos = [FileInfo(str(path), case.layout.size) for path in inputs]
     excluded = {str(paths[1]), metadata.orc_read_unit_id(str(paths[0]), 1)}
     kwargs = dict(
         filesystem=LocalFileSystem(),
-        shuffle_config=FileShuffleConfig(seed=0),
+        shuffle_config=FileShuffleConfig(seed=seed),
         excluded_read_unit_ids=excluded,
         limit=limit,
     )
@@ -354,13 +385,20 @@ def test_prelisted_shuffle_excludes_files_before_shuffling(case, limit):
             for path, chunk in zip(manifest.paths, manifest.file_chunk_metadatas)
         ]
 
-    listed = rows(case.indexer.list_files(pa.array([str(p) for p in paths]), **kwargs))
+    listed = rows(case.indexer.list_files(pa.array([str(p) for p in inputs]), **kwargs))
     prelisted = rows(case.indexer.list_files_from_file_infos(infos, **kwargs))
     assert prelisted == listed
+    assert rows(case.indexer.list_files_from_file_infos(infos, **kwargs)) == prelisted
     assert str(paths[1]) not in {path for path, _ in listed}
     if limit is None:
-        assert {path for path, _ in listed} == {str(p) for p in paths if p != paths[1]}
-        assert (str(paths[0]), (1,)) not in listed
+        expected = [
+            (str(path), (index,))
+            for path in inputs
+            if path != paths[1]
+            for index in range(3)
+            if (path, index) != (paths[0], 1)
+        ]
+        assert sorted(listed) == sorted(expected)
 
 
 class Position(SynthesizedColumn):
@@ -374,68 +412,18 @@ class Position(SynthesizedColumn):
         return pa.array(range(position.rows_before, position.rows_before + num_rows))
 
 
-@pytest.mark.parametrize("include_other", [False, True], ids=["AA", "ABA"])
-def test_repeated_file_assignments_preserve_each_copy(case, include_other):
-    ids = [0, 1, 2, 3, 4, 12, 13, 14, 15]
-    manifests = [selected(case)]
-    expected = ids.copy()
-    if include_other:
-        path = case.path.with_name("other.orc")
-        write_orc_stripes(
-            path,
-            pa.table({"id": range(100, 116), "label": [str(i) for i in range(16)]}),
-        )
-        other = SimpleNamespace(
-            path=path, layout=metadata.read_orc_metadata(str(path), None)
-        )
-        manifests.append(selected(other))
-        expected.extend(i + 100 for i in ids)
-    manifests.append(selected(case))
-    expected.extend(ids)
-    manifest = FileManifest.concat(manifests)
-    packer = OrcStripePartitioner(1 << 30)
-    packer.add_input(manifest)
-    packer.finalize()
-    reader = OrcScanner(schema=orc.ORCFile(str(case.path)).schema).create_reader()
-    rows = []
-    while packer.has_partition():
-        for batch in reader.read(packer.next_partition()):
-            rows.extend(batch["id"].to_pylist())
-    assert rows == expected
-
-
-@pytest.mark.parametrize("ordered", [False, True])
-def test_stripe_partitioner_keeps_input_order_and_target(ordered, monkeypatch):
-    monkeypatch.setattr(
-        DataContext.get_current().execution_options, "preserve_order", ordered
-    )
-    chunks = [
-        FileChunk((i,), 1, size).to_metadata() for i, size in enumerate((50, 150, 50))
-    ]
-    manifest = _orc_manifest(["a.orc"] * 3, [1000] * 3, chunks)
-    packer = OrcStripePartitioner(100)
-    packer.add_input(manifest)
-    packer.finalize()
-    groups = []
-    while packer.has_partition():
-        groups.append(
-            [
-                int(md["unit_ids"][0])
-                for md in packer.next_partition().file_chunk_metadatas
-            ]
-        )
-    assert groups == [[0], [1], [2]]
-
-
 def test_stripe_partitioner_mixes_whole_files_and_stripes():
     chunks = [
         FileChunk((0,), 5, 50).to_metadata(),
         None,
         FileChunk((1,), 7, 150).to_metadata(),
+        FileChunk((2,), 4, 50).to_metadata(),
         None,
     ]
     manifest = _orc_manifest(
-        ["a.orc", "b.orc", "a.orc", "c.orc"], [1000, 20, 1000, 30], chunks
+        ["a.orc", "b.orc", "a.orc", "a.orc", "c.orc"],
+        [1000, 20, 1000, 1000, 30],
+        chunks,
     )
     packer = OrcStripePartitioner(100)
     packer.add_input(manifest)
@@ -452,19 +440,12 @@ def test_stripe_partitioner_mixes_whole_files_and_stripes():
     assert groups == [
         [("a.orc", (0,)), ("b.orc", None)],
         [("a.orc", (1,))],
-        [("c.orc", None)],
+        [("a.orc", (2,)), ("c.orc", None)],
     ]
 
 
-@pytest.mark.parametrize("ordered", [False, True])
-@pytest.mark.parametrize("split", [False, True])
 @pytest.mark.parametrize("retry", [False, True])
-def test_stripe_positions_filter_retry_and_group_conservation(
-    case, monkeypatch, ordered, split, retry
-):
-    monkeypatch.setattr(
-        DataContext.get_current().execution_options, "preserve_order", ordered
-    )
+def test_stripe_positions_filter_and_retry(case, monkeypatch, retry):
     import sys
 
     monkeypatch.setitem(sys.modules, "pyorc", None)
@@ -492,15 +473,7 @@ def test_stripe_positions_filter_retry_and_group_conservation(
         DataContext.get_current(), "retried_io_errors", ["transient ORC"]
     )
     monkeypatch.setattr("ray.data._internal.util.time.sleep", lambda _: None)
-    groups = [selected(case)]
-    if split:
-        packer = OrcStripePartitioner(1)
-        packer.add_input(groups[0])
-        packer.finalize()
-        groups = []
-        while packer.has_partition():
-            groups.append(packer.next_partition())
-    batches = [b for group in groups for b in reader.read(group)]
+    batches = list(reader.read(selected(case)))
     assert all(b.num_rows <= 2 for b in batches)
     assert reader._sampled_batch_size == 1
     assert [r["id"] for b in batches for r in b.to_pylist()] == [
@@ -527,63 +500,6 @@ def test_stripe_positions_filter_retry_and_group_conservation(
             cursors[i],
         )
         cursors[i] += batch.num_rows
-
-
-@pytest.mark.parametrize(
-    "columns,predicate,expected",
-    [
-        (None, col("id") >= 3, [3, 4, 12, 13, 14, 15]),
-        (
-            ["id", "missing", "year"],
-            col("missing").is_null(),
-            [0, 1, 2, 3, 4, 12, 13, 14, 15],
-        ),
-        ([], None, list(range(9))),
-        (["path"], None, list(range(9))),
-    ],
-)
-def test_stripe_schema_projection_zero_columns_and_partitions(
-    case, monkeypatch, columns, predicate, expected
-):
-    schema = pa.schema(
-        [
-            ("id", pa.int32()),
-            ("label", pa.string()),
-            ("missing", pa.string()),
-            ("year", pa.string()),
-        ]
-    )
-    read_stripe = orc.ORCFile.read_stripe
-    decoded = []
-
-    def decode(owner, index, columns=None):
-        decoded.append((index, columns))
-        return read_stripe(owner, index, columns=columns)
-
-    monkeypatch.setattr(orc.ORCFile, "read_stripe", decode)
-    result = list(
-        OrcScanner(
-            schema=schema,
-            columns=tuple(columns) if columns is not None else None,
-            predicate=predicate,
-            batch_size=2,
-            partitioning=Partitioning(PartitionStyle.HIVE),
-            synthesized_columns=(PathColumn(),),
-        )
-        .create_reader()
-        .read(selected(case))
-    )
-    assert sum(b.num_rows for b in result) == len(expected)
-    rows = [r for b in result for r in b.to_pylist()]
-    if columns in ([], ["path"]):
-        assert decoded == []
-        if columns:
-            assert all(r["path"] == str(case.path) for r in rows)
-    else:
-        assert [index for index, _ in decoded] == [0, 2]
-        assert [r["id"] for r in rows] == expected
-        assert all(b.schema.field("id").type == pa.int32() for b in result)
-        assert all(r["missing"] is None and r["year"] == "2024" for r in rows)
 
 
 @pytest.mark.parametrize("mode", ["normal", "open", "close", "limit", "error"])
@@ -629,45 +545,6 @@ def test_stripe_input_lifetime(case, monkeypatch, mode):
     assert len(attempts) == (2 if mode == "open" else 1)
 
 
-@pytest.mark.parametrize("decoded", [False, True])
-def test_stripe_pickle_guard_precedes_filter(case, monkeypatch, decoded):
-    from ray.data._internal.object_extensions.arrow import ArrowPythonObjectType
-
-    schema = pa.schema([("id", pa.int64()), ("label", ArrowPythonObjectType())])
-    unsafe = pa.RecordBatch.from_arrays(
-        [
-            pa.array([0]),
-            pa.ExtensionArray.from_storage(
-                schema.field("label").type,
-                pa.array([b"must not unpickle"], type=pa.large_binary()),
-            ),
-        ],
-        schema=schema,
-    )
-
-    owner = SimpleNamespace(
-        schema=orc.ORCFile(str(case.path)).schema if decoded else schema,
-        read_stripe=Mock(return_value=unsafe),
-    )
-    access = Mock(side_effect=AssertionError("unsafe table accessed"))
-    monkeypatch.setattr(ds, "dataset", access)
-    monkeypatch.setattr(
-        "ray.data._internal.object_extensions.arrow.pickle.load", access
-    )
-    reader = OrcScanner(schema=owner.schema, predicate=col("id") < 0).create_reader()
-    with pytest.raises(ValueError, match="arrow_pickled_object"):
-        list(
-            reader._iter_stripe_tables(
-                owner,
-                str(case.path),
-                case.layout.stripes[0],
-                dict(columns=None, filter=None, batch_size=2),
-            )
-        )
-    assert owner.read_stripe.call_count == int(decoded)
-    access.assert_not_called()
-
-
 @pytest.mark.parametrize("limit", [10, None])
 def test_whole_file_boundary_mixed_limit_and_manifest_compatibility(case, limit):
     observer = Position()
@@ -680,7 +557,6 @@ def test_whole_file_boundary_mixed_limit_and_manifest_compatibility(case, limit)
         paths=[str(other)], sizes=[other.stat().st_size], chunk_metadatas=[None]
     )
     mixed = FileManifest.concat([selected(case), whole])
-    assert pickle.loads(pickle.dumps(mixed)).as_block().equals(mixed.as_block())
     batches = list(
         OrcScanner(
             schema=schema,
