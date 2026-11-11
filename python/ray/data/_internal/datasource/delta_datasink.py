@@ -504,14 +504,10 @@ class DeltaDatasink(Datasink[DeltaWriteResult]):
             reader=ReaderFormat.DELTA,
             mode=CatalogAccessMode.WRITE,
         )
-        # `catalog.resolve()` also writes freshly-vended credentials into this
-        # process's own environment as a side effect (e.g.
-        # `DatabricksUnityCatalog._apply_env`) -- that's what the deltalake
-        # calls in `on_write_complete` actually pick up, for any cloud the
-        # catalog supports, since delta-rs resolves credentials from the
-        # environment on each call rather than caching them at import time.
-        # The explicit fields below are applied too, for completeness, but
-        # aren't required for the driver's own commit to succeed.
+        # The deltalake calls in `on_write_complete` take their credentials
+        # from `self._storage_options`, and the worker-side Parquet writes from
+        # `self._filesystem`; the catalog returns fresh credentials in both
+        # (`DatabricksUnityCatalog` doesn't touch the environment).
         if resolved.storage_options:
             # Merge with the caller's *original* storage_options
             # (`_user_storage_options`), not the current (possibly now-stale)
@@ -610,14 +606,12 @@ class DeltaDatasink(Datasink[DeltaWriteResult]):
         ``catalog=``, a non-``None`` filesystem here can only have come from
         the catalog.
 
-        This must be decided *without* calling ``resolve()``, because
-        ``resolve()`` itself has credential-delivery side effects: Unity
-        Catalog's ``_apply_env`` writes the vended credentials into this
-        process's environment and never restores them. For a shape a worker
-        can't use anyway (Azure, which has no explicit-filesystem path
-        today), calling ``resolve()`` just to discover that would leave live
-        credentials in a worker process that Ray then reuses for unrelated
-        tasks.
+        This must be decided *without* calling ``resolve()``: it is a network
+        call, and a ``Catalog`` implementation may have credential-delivery
+        side effects (such as writing to the environment) that would leave
+        live credentials in a worker process Ray then reuses for unrelated
+        tasks. For a shape a worker can't use anyway (Azure, which has no
+        explicit-filesystem path today), that cost buys nothing.
         """
         return self._catalog is not None and self._filesystem is not None
 
@@ -663,9 +657,9 @@ class DeltaDatasink(Datasink[DeltaWriteResult]):
 
         from ray.data.catalog import CatalogAccessMode, ReaderFormat
 
-        # ``resolve()`` may also seed the vended credentials into this
-        # process's environment without restoring them (Unity Catalog's
-        # ``_apply_env``). A worker process outlives this task and gets reused
+        # A ``Catalog`` implementation may seed vended credentials into this
+        # process's environment as a side effect (``DatabricksUnityCatalog``
+        # no longer does). A worker process outlives this task and gets reused
         # for unrelated ones, so undo whatever it changed -- the refreshed
         # filesystem below carries the credentials we actually write with, so
         # nothing downstream needs them in the environment.
