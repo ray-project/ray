@@ -356,7 +356,9 @@ def test_redis_not_available(monkeypatch, call_ray_stop_only, create_auth_token)
 
 
 @pytest.mark.skipif(not external_redis_test_enabled(), reason="Only valid in redis env")
-def test_redis_wrong_password(monkeypatch, external_redis, call_ray_stop_only):
+def test_redis_wrong_password(
+    monkeypatch, external_redis, call_ray_stop_only, create_auth_token
+):
     monkeypatch.setenv("RAY_redis_db_connect_retries", "5")
     p = subprocess.run(
         "ray start --head  --redis-password=1234",
