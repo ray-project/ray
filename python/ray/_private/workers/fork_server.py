@@ -13,10 +13,11 @@ import socket
 import subprocess
 import sys
 import time
+import traceback
 from contextlib import suppress
 from pathlib import Path
 from types import ModuleType
-from typing import TYPE_CHECKING, Dict, List, Optional
+from typing import TYPE_CHECKING, Dict, List, Optional, Tuple
 
 import ray
 import ray._private.ray_constants as ray_constants
@@ -37,6 +38,61 @@ _PRE_FORK_ENV_OVERRIDES = {
     "PYTORCH_NVML_BASED_CUDA_CHECK": "1",
     "TORCH_DEVICE_BACKEND_AUTOLOAD": "0",
 }
+
+_MAX_FORK_REQUEST_BYTES = 4 * 1024 * 1024
+# Omit POLLRDHUP so half-closed clients (shutdown(SHUT_WR) after sending the request)
+# are still served; full client close raises POLLHUP on AF_UNIX SOCK_STREAM.
+_PEER_DISCONNECTED_MASK = getattr(select, "POLLHUP", 0) | getattr(select, "POLLERR", 0)
+_WORKER_LIFETIME_PIPE_W: Optional[int] = None
+_AT_FORK_REGISTERED = False
+
+
+def _close_worker_lifetime_pipe_in_grandchild() -> None:
+    global _WORKER_LIFETIME_PIPE_W
+    fd = _WORKER_LIFETIME_PIPE_W
+    _WORKER_LIFETIME_PIPE_W = None
+    if fd is not None:
+        with suppress(OSError):
+            os.close(fd)
+
+
+def _register_lifetime_pipe_at_fork_once() -> None:
+    global _AT_FORK_REGISTERED
+    if not _AT_FORK_REGISTERED and hasattr(os, "register_at_fork"):
+        os.register_at_fork(after_in_child=_close_worker_lifetime_pipe_in_grandchild)
+        _AT_FORK_REGISTERED = True
+
+
+def _is_lifeline_closed(fd: int) -> bool:
+    try:
+        return not os.read(fd, 64)
+    except BlockingIOError:
+        return False
+    except OSError:
+        return True
+
+
+def _recv_line(conn: socket.socket, timeout_s: float = 2.0) -> bytes:
+    """Read a single newline-terminated JSON request line with size and time caps."""
+    deadline = time.monotonic() + timeout_s
+    buf = bytearray()
+    while True:
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise TimeoutError("Timed out reading fork request")
+        conn.settimeout(remaining)
+        chunk = conn.recv(4096)
+        if not chunk:
+            return b""
+        nl = chunk.find(b"\n")
+        if nl != -1:
+            if len(buf) + nl + 1 > _MAX_FORK_REQUEST_BYTES:
+                raise ValueError("Fork request exceeds maximum size limit")
+            buf.extend(chunk[: nl + 1])
+            return bytes(buf)
+        if len(buf) + len(chunk) > _MAX_FORK_REQUEST_BYTES:
+            raise ValueError("Fork request exceeds maximum size limit")
+        buf.extend(chunk)
 
 
 def _bind_staging_socket(
@@ -349,7 +405,18 @@ def _run_fork_server(argv: Optional[List[str]] = None) -> Optional[ModuleType]:
     parser.add_argument("--monitor-stdin", action="store_true")
     args = parser.parse_args(argv)
 
-    signal.signal(signal.SIGCHLD, signal.SIG_IGN)
+    lifeline_fd: Optional[int] = None
+    if args.monitor_stdin:
+        lifeline_fd = os.dup(0)
+        os.set_inheritable(lifeline_fd, False)
+        os.set_blocking(lifeline_fd, False)
+        devnull_fd = os.open(os.devnull, os.O_RDONLY)
+        try:
+            os.dup2(devnull_fd, 0)
+        finally:
+            os.close(devnull_fd)
+
+    _register_lifetime_pipe_at_fork_once()
 
     # Keep library imports single-threaded before fork().
     saved_pre_fork_env = {k: os.environ.get(k) for k in _PRE_FORK_ENV_OVERRIDES}
@@ -365,9 +432,16 @@ def _run_fork_server(argv: Optional[List[str]] = None) -> Optional[ModuleType]:
         importlib.metadata.entry_points(group="torch.backends")
     )
     if getattr(sys.modules.get("torch.cuda"), "_initialized", False):
+        if lifeline_fd is not None:
+            with suppress(OSError):
+                os.close(lifeline_fd)
         raise RuntimeError(
             "Preloaded module initialized CUDA before fork(); refusing to start ForkServer"
         )
+
+    # Ignore SIGCHLD after preloading so preloaded modules calling subprocesses
+    # still observe exit codes, while forked workers are auto-reaped by the kernel.
+    signal.signal(signal.SIGCHLD, signal.SIG_IGN)
 
     gc.collect()
     gc.freeze()
@@ -381,105 +455,196 @@ def _run_fork_server(argv: Optional[List[str]] = None) -> Optional[ModuleType]:
     tmp_socket_path = os.path.join(socket_dir, tmp_name)
     Path(tmp_socket_path).unlink(missing_ok=True)
 
-    server_sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-    published_ino: Optional[int] = None
+    server_sock: Optional[socket.socket] = None
+    wakeup_r: Optional[int] = None
+    wakeup_w: Optional[int] = None
+    peer_poller = select.poll()
+    published_stat: Optional[Tuple[int, int]] = None
+    stop_requested = False
+
+    def _handle_sigterm(_signum, _frame):
+        nonlocal stop_requested
+        stop_requested = True
+
     try:
+        server_sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        wakeup_r, wakeup_w = os.pipe()
+        os.set_blocking(wakeup_r, False)
+        os.set_blocking(wakeup_w, False)
+        signal.set_wakeup_fd(wakeup_w, warn_on_full_buffer=False)
+        signal.signal(signal.SIGTERM, _handle_sigterm)
+
         _bind_staging_socket(server_sock, socket_dir, tmp_name, tmp_socket_path)
         os.chmod(tmp_socket_path, 0o600)
-        tmp_ino = os.lstat(tmp_socket_path).st_ino
+        tmp_st = os.lstat(tmp_socket_path)
         server_sock.listen(128)
-        os.replace(tmp_socket_path, socket_path)
-        published_ino = tmp_ino
+        server_sock.setblocking(False)
+        if stop_requested:
+            return None
+        if lifeline_fd is not None:
+            readable, _, _ = select.select([lifeline_fd], [], [], 0)
+            if readable and _is_lifeline_closed(lifeline_fd):
+                return None
 
-        signal.signal(signal.SIGTERM, lambda _signum, _frame: sys.exit(0))
+        os.replace(tmp_socket_path, socket_path)
+        published_stat = (tmp_st.st_dev, tmp_st.st_ino)
+
         sys.stdout.flush()
         sys.stderr.flush()
 
-        stdin_fd = sys.stdin.fileno() if args.monitor_stdin else None
-        wait_fds = [server_sock] + ([stdin_fd] if stdin_fd is not None else [])
-        while True:
+        watch_fds = [server_sock, wakeup_r]
+        if lifeline_fd is not None:
+            watch_fds.append(lifeline_fd)
+        while not stop_requested:
             try:
-                readable, _, _ = select.select(wait_fds, [], [])
-                if stdin_fd in readable and not os.read(stdin_fd, 1):
-                    break
-                if server_sock not in readable:
-                    continue
-                conn, _ = server_sock.accept()
+                readable, _, _ = select.select(watch_fds, [], [])
             except InterruptedError:
+                continue
+            except (OSError, ValueError):
+                break
+
+            if wakeup_r in readable:
+                with suppress(BlockingIOError, InterruptedError, OSError):
+                    os.read(wakeup_r, 64)
+            if lifeline_fd is not None and lifeline_fd in readable:
+                if _is_lifeline_closed(lifeline_fd):
+                    break
+            if stop_requested or server_sock not in readable:
+                continue
+
+            try:
+                conn, _ = server_sock.accept()
+            except (BlockingIOError, InterruptedError):
                 continue
             except OSError as e:
                 logger.warning(f"Fork server failed to accept a connection: {e}")
                 time.sleep(0.1)
                 continue
 
-            with conn:
-                try:
-                    conn.settimeout(2.0)
-                    with conn.makefile("rb") as f:
-                        line = f.readline()
-                    if not line:
-                        continue
-                    req = json.loads(line)
-                    if not isinstance(req, dict):
-                        raise ValueError("Fork request must be a JSON object")
-                    child_args = req.get("args", [])
-                    child_env = req.get("env", {})
-                    runtime_env_vars = req.get("runtime_env_vars", {})
-                    if (
-                        not isinstance(child_args, list)
-                        or not isinstance(child_env, dict)
-                        or not isinstance(runtime_env_vars, dict)
-                    ):
-                        raise ValueError(
-                            "'args' must be a list and 'env'/'runtime_env_vars' must be dicts"
-                        )
-                    deadline_ms = req.get("deadline_ms")
-                    if deadline_ms is not None and time.time() * 1000.0 > float(
-                        deadline_ms
-                    ):
-                        with suppress(OSError):
-                            conn.sendall(b'{"error": "request expired"}\n')
-                        continue
-                    pid = os.fork()
-                except Exception as e:
-                    logger.warning(f"Failed to handle fork request: {e}")
-                    with suppress(OSError):
-                        conn.sendall(json.dumps({"error": str(e)}).encode() + b"\n")
-                    continue
+            # Drop connections whose client already timed out and closed while queued.
+            conn_fd = conn.fileno()
+            peer_poller.register(conn_fd, _PEER_DISCONNECTED_MASK)
+            try:
+                peer_gone = bool(peer_poller.poll(0))
+            finally:
+                peer_poller.unregister(conn_fd)
+            if peer_gone:
+                conn.close()
+                continue
 
-                if pid > 0:
-                    with suppress(OSError):
-                        os.setpgid(pid, pid)
-                    try:
-                        conn.sendall(json.dumps({"pid": pid}).encode("utf-8") + b"\n")
-                    except OSError:
-                        with suppress(OSError):
-                            os.kill(pid, signal.SIGKILL)
-                    continue
+            # Create the lifetime pipe and fork immediately on accept() so the parent
+            # stays off slow clients and never pulls per-worker env_vars into its CoW heap.
+            try:
+                life_r, life_w = os.pipe()
+            except OSError as e:
+                logger.warning(f"ForkServer os.pipe() failed: {e}")
+                conn.close()
+                continue
 
-            with suppress(OSError):
-                os.setpgrp()
-            server_sock.close()
-            if stdin_fd is not None:
+            try:
+                pid = os.fork()
+            except OSError as e:
+                os.close(life_r)
+                os.close(life_w)
+                logger.warning(f"ForkServer os.fork() failed: {e}")
+                conn.close()
+                continue
+
+            if pid > 0:
+                os.close(life_w)
                 with suppress(OSError):
-                    devnull_fd = os.open(os.devnull, os.O_RDONLY)
-                    os.dup2(devnull_fd, stdin_fd)
-                    os.close(devnull_fd)
-            signal.signal(signal.SIGCHLD, signal.SIG_DFL)
-            signal.signal(signal.SIGTERM, signal.SIG_DFL)
-            signal.signal(signal.SIGINT, signal.default_int_handler)
-            signal.pthread_sigmask(signal.SIG_UNBLOCK, {signal.SIGINT})
-            _prepare_child_environment(
-                saved_pre_fork_env, child_env, child_args, runtime_env_vars
-            )
-            return default_worker
+                    os.setpgid(pid, pid)
+                try:
+                    conn.settimeout(1.0)
+                    reply = f'{{"pid":{pid}}}\n'.encode("ascii")
+                    sent = socket.send_fds(conn, [reply], [life_r])
+                    if sent < len(reply):
+                        conn.sendall(reply[sent:])
+                except OSError:
+                    with suppress(OSError):
+                        os.kill(pid, signal.SIGKILL)
+                finally:
+                    os.close(life_r)
+                    conn.close()
+                continue
+
+            # Child process: read the request after fork and exit via os._exit on any
+            # protocol/setup error so parent finally cleanup never executes.
+            try:
+                global _WORKER_LIFETIME_PIPE_W
+                os.close(life_r)
+                _WORKER_LIFETIME_PIPE_W = life_w
+                with suppress(OSError):
+                    os.setpgrp()
+                signal.set_wakeup_fd(-1)
+                signal.signal(signal.SIGCHLD, signal.SIG_DFL)
+                signal.signal(signal.SIGTERM, signal.SIG_DFL)
+                signal.signal(signal.SIGINT, signal.default_int_handler)
+                signal.pthread_sigmask(signal.SIG_UNBLOCK, {signal.SIGINT})
+
+                server_sock.close()
+                for fd_to_close in (wakeup_r, wakeup_w, lifeline_fd):
+                    if fd_to_close is not None:
+                        with suppress(OSError):
+                            os.close(fd_to_close)
+
+                try:
+                    line = _recv_line(conn, timeout_s=2.0)
+                finally:
+                    conn.close()
+
+                if not line:
+                    os._exit(0)
+
+                req = json.loads(line)
+                if not isinstance(req, dict):
+                    os._exit(1)
+                child_args = req.get("args", [])
+                child_env = req.get("env", {})
+                runtime_env_vars = req.get("runtime_env_vars", {})
+                if (
+                    not isinstance(child_args, list)
+                    or not all(isinstance(a, str) for a in child_args)
+                    or not isinstance(child_env, dict)
+                    or not all(
+                        isinstance(k, str) and isinstance(v, str)
+                        for k, v in child_env.items()
+                    )
+                    or not isinstance(runtime_env_vars, dict)
+                    or not all(
+                        isinstance(k, str) and isinstance(v, str)
+                        for k, v in runtime_env_vars.items()
+                    )
+                ):
+                    os._exit(1)
+
+                _prepare_child_environment(
+                    saved_pre_fork_env, child_env, child_args, runtime_env_vars
+                )
+                return default_worker
+            except BaseException:
+                with suppress(Exception):
+                    traceback.print_exc()
+                os._exit(1)
     finally:
         if os.getpid() == server_pid:
-            server_sock.close()
-            Path(tmp_socket_path).unlink(missing_ok=True)
-            if published_ino is not None:
+            with suppress(ValueError, OSError):
+                signal.signal(signal.SIGTERM, signal.SIG_IGN)
+            with suppress(ValueError, OSError):
+                signal.set_wakeup_fd(-1)
+            if server_sock is not None:
                 with suppress(OSError):
-                    if os.lstat(socket_path).st_ino == published_ino:
+                    server_sock.close()
+            for fd_to_close in (wakeup_r, wakeup_w, lifeline_fd):
+                if fd_to_close is not None:
+                    with suppress(OSError):
+                        os.close(fd_to_close)
+            with suppress(OSError):
+                Path(tmp_socket_path).unlink(missing_ok=True)
+            if published_stat is not None:
+                with suppress(OSError):
+                    cur_st = os.lstat(socket_path)
+                    if (cur_st.st_dev, cur_st.st_ino) == published_stat:
                         os.unlink(socket_path)
 
     return None
