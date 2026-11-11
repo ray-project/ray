@@ -759,24 +759,33 @@ def test_evaluate_predicate_on_null_partition(
 
 
 @pytest.mark.parametrize("file_format", ["parquet", "orc"])
-def test_read_hive_null_fallback(file_format, tmp_path, ray_start_regular_shared):
+@pytest.mark.parametrize("field_types, value", [(None, "1"), ({"grp": int}, 1)])
+def test_read_hive_null_fallback(
+    file_format, field_types, value, tmp_path, ray_start_regular_shared
+):
     import pyarrow.orc
     import pyarrow.parquet
 
     write = {"parquet": pyarrow.parquet.write_table, "orc": pyarrow.orc.write_table}
     read = {"parquet": ray.data.read_parquet, "orc": ray.data.read_orc}
-    for value in ["a", HIVE_DEFAULT_PARTITION]:
-        (tmp_path / f"grp={value}").mkdir()
+    for dir_value in ["1", HIVE_DEFAULT_PARTITION]:
+        (tmp_path / f"grp={dir_value}").mkdir()
         write[file_format](
-            pa.table({"id": [1]}), str(tmp_path / f"grp={value}" / f"0.{file_format}")
+            pa.table({"id": [1]}),
+            str(tmp_path / f"grp={dir_value}" / f"0.{file_format}"),
         )
     partitioning = Partitioning(
-        PartitionStyle.HIVE, null_fallback=HIVE_DEFAULT_PARTITION
+        PartitionStyle.HIVE,
+        field_types=field_types,
+        null_fallback=HIVE_DEFAULT_PARTITION,
     )
 
     ds = read[file_format](str(tmp_path), partitioning=partitioning)
 
-    assert {row["grp"] for row in ds.take_all()} == {None, "a"}
+    assert {row["grp"] for row in ds.take_all()} == {None, value}
+    # The filter is applied by pruning the partition paths.
+    filtered = ds.filter(expr=col("grp") == value).take_all()
+    assert [row["grp"] for row in filtered] == [value]
 
 
 @pytest.mark.parametrize("file_format", ["csv", "parquet"])
