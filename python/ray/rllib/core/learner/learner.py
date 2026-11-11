@@ -193,7 +193,7 @@ class Learner(Checkpointable):
         >>> config = (
         ...     PPOConfig()
         ...     .framework("torch")
-        ...     .training(model={"fcnet_hiddens": [128, 128]})
+        ...     .rl_module(model_config=DefaultModelConfig(fcnet_hiddens=[128, 128]))
         ... )
         >>> # Create a learner instance directly from our config. All we need as
         >>> # extra information here is the env to be able to extract space information
