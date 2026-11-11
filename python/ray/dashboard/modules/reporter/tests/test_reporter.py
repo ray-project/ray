@@ -740,6 +740,53 @@ def test_report_stats_gpu(tmp_path):
     assert isinstance(stats_payload, str)
 
 
+def test_report_stats_gpu_without_utilization(tmp_path):
+    """A device that reports no utilization gets no utilization record."""
+    dashboard_agent = MagicMock()
+    dashboard_agent.gcs_address = build_address("127.0.0.1", 6379)
+    dashboard_agent.session_dir = str(tmp_path)
+    dashboard_agent.node_id = ray.NodeID.from_random().hex()
+    raylet_client = MagicMock()
+    agent = ReporterAgent(dashboard_agent, raylet_client)
+    agent._is_head_node = True
+
+    stats = copy.deepcopy(STATS_TEMPLATE)
+    stats["gpus"] = [
+        {
+            "index": 0,
+            "uuid": "GPU-36e1567d-37ed-051e-f8ff-df807517b396",
+            "name": "NVIDIA A10G",
+            "utilization_gpu": 7,
+            "memory_used": 1,
+            "memory_total": 22731,
+            "processes": [],
+        },
+        {
+            "index": 1000,
+            "uuid": "MIG-9f1c0b2e-0000-0000-0000-000000000001",
+            "name": "NVIDIA A100-SXM4-40GB MIG 1g.5gb",
+            "utilization_gpu": None,
+            "memory_used": 2,
+            "memory_total": 4864,
+            "processes": [],
+        },
+    ]
+    records = agent._to_records(stats, {})
+
+    utilization_by_index = {
+        r.tags["GpuIndex"]: r.value
+        for r in records
+        if r.gauge.name == "node_gpus_utilization"
+    }
+    assert utilization_by_index == {"0": 7}
+    # Every other per-device metric is still reported for the MIG slice.
+    assert {r.gauge.name for r in records if r.tags.get("GpuIndex") == "1000"} == {
+        "node_gpus_available",
+        "node_gram_used",
+        "node_gram_available",
+    }
+
+
 def test_report_stats_gpu_power_and_temperature(tmp_path):
     """Test that GPU power and temperature metrics are reported when present in stats."""
     dashboard_agent = MagicMock()
