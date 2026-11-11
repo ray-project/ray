@@ -85,13 +85,12 @@ def _estimate(path, columns=None, threads=1, **format_kwargs):
     assert profiles is not None
     row_group = metadata.row_group(0)
     stats = read_footer_stats(metadata)
-    chunks = leaf_chunks(
+    leaves = leaf_chunks(
         row_group=row_group,
         leaf_profiles=profiles,
         leaf_indices=range(row_group.num_columns),
         size_stats=None if stats is None else stats[0],
     )
-    leaves = {leaf.index: leaf for leaf in chunks}
     schema_columns = [metadata.schema.column(j) for j in range(metadata.num_columns)]
     tops = [column.path.split(".")[0] for column in schema_columns]
     names = columns or metadata.schema.to_arrow_schema().names
