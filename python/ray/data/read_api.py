@@ -2596,7 +2596,13 @@ def read_csv(
 
         >>> ray.data.read_csv("s3://anonymous@ray-example-data/different-extensions/",
         ...     file_extensions=["csv"])
-        Dataset(num_rows=?, schema=Unknown schema)
+        shape: (?, 2)
+        ╭───────┬───────╮
+        │ a     ┆ b     │
+        │ ---   ┆ ---   │
+        │ int64 ┆ int64 │
+        ╰───────┴───────╯
+        (Dataset isn't materialized)
 
     Args:
         paths: A single file or directory, or a list of file or directory paths.
