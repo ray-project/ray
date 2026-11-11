@@ -445,7 +445,7 @@ class DiskHashShuffleReduceOp(PhysicalOperator):
     def incremental_resource_usage(self) -> ExecutionResources:
         """Per-task resource ask for the framework's budget allocator: the
         average non-empty partition's request, as for ShuffleReduceOp."""
-        total_bytes = np.sum(self._partition_bytes_by_input, axis=0)
+        total_bytes = functools.reduce(np.add, self._partition_bytes_by_input)
         non_empty = total_bytes[total_bytes > 0]
         memory = (
             int(non_empty.mean() * self._peak_memory_multiplier)
