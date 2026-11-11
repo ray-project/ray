@@ -151,13 +151,13 @@ def estimate_leaf_work(
         # for a decimal, which BYTE_ARRAY also carries.
         node = leaf.profile.nodes[-1]
         width = node.width if node.kind == _BINARY else 4
-        temporary += width * max(capacity - leaf.slots(), 0)
+        temporary += width * max(capacity - leaf.array_length(), 0)
         # The builder's copy of the values; a decimal without SizeStatistics
         # bytes at most its width each.
         if node.kind == _BINARY or leaf.size_statistics_bytes is not None:
             temporary += estimate_string_bytes(leaf=leaf)
         else:
-            temporary += node.width * leaf.slots()
+            temporary += node.width * leaf.array_length()
         # A string list's offsets are held alongside the builder: both count.
         return kept, temporary + list_offsets
     # Fixed width: the dictionary, then values and validity at capacity.
@@ -187,13 +187,14 @@ def estimate_leaf_work(
 
 def estimate_cast(
     row_group: RowGroupMetaData,
-    column_leaves: Mapping[str, Sequence[LeafChunk]],
+    column_leaves: Mapping[str, Mapping[int, LeafChunk]],
     file_schema: pa.Schema,
     pinned_schema: pa.Schema,
     read: Read,
 ) -> int:
     """What a pin's cast allocates for one row group, times 1.5: a crude bound.
-    ``column_leaves`` holds each column read as its leaves, profiled as pinned."""
+    ``column_leaves`` holds each column read as its leaves by index, profiled as
+    pinned."""
     size = estimate_added_columns(row_group=row_group, read=read)
     for name, leaves in column_leaves.items():
         before, after = file_schema.field(name).type, pinned_schema.field(name).type
@@ -201,7 +202,7 @@ def estimate_cast(
             continue
         size += estimate_row_group(
             row_group=row_group,
-            leaves=leaves,
+            leaves=leaves.values(),
             read=read._replace(added_row_bytes=0, added_row_group_bytes=0),
         )
     return int(_CAST_FACTOR * size)

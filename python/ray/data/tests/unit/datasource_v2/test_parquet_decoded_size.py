@@ -10,13 +10,22 @@ from decimal import Decimal
 from types import SimpleNamespace
 
 import numpy as np
+import pyarrow as pa
+import pyarrow.dataset as pds
+import pyarrow.parquet as pq
 import pytest
 from packaging.version import parse as parse_version
 
 from ray.data._internal.datasource_v2.formats.parquet.parquet_decoded_size import (
+    _BINARY,
+    _FIXED_SIZE_LIST,
+    _FIXED_WIDTH,
+    _LIST,
+    _STRUCT,
     _UNSUPPORTED,
     Read,
     _leaf_layout,
+    _walk,
     added_bytes,
     build_leaf_profiles,
     estimate_row_group,
@@ -26,14 +35,12 @@ from ray.data._internal.datasource_v2.formats.parquet.parquet_size_statistics im
     LeafSizeStats,
     read_footer_stats,
 )
-
-pa = pytest.importorskip("pyarrow")
-pds = pytest.importorskip("pyarrow.dataset")
-pq = pytest.importorskip("pyarrow.parquet")
+from ray.data._internal.utils.arrow_utils import get_pyarrow_version
 
 # PyArrow 17 writes no SizeStatistics; 23 does (18 to 22 unchecked).
+pyarrow_version = get_pyarrow_version()
 requires_pyarrow_23 = pytest.mark.skipif(
-    parse_version(pa.__version__) < parse_version("23.0.0"),
+    pyarrow_version is None or pyarrow_version < parse_version("23.0.0"),
     reason="PyArrow 17 writes no SizeStatistics",
 )
 
@@ -47,12 +54,14 @@ def _write(table, path, **kwargs):
     return path
 
 
-def _table(values, arrow_type=None):
-    return pa.table({"a": pa.array(values, arrow_type)})
+def _table(values, arrow_type=None, nullable=True):
+    array = pa.array(values, arrow_type)
+    return pa.table([array], schema=pa.schema([pa.field("a", array.type, nullable)]))
 
 
 def _allocated(path, columns=None, schema=None, **format_kwargs):
-    """Bytes PyArrow allocates scanning ``path`` as a Ray read task does.
+    """Bytes PyArrow allocates scanning ``path`` under ``schema`` if given, else
+    under the file's own schema.
 
     ``get_total_buffer_size``, since ``nbytes`` leaves out a nested array's bitmap.
     """
@@ -95,7 +104,9 @@ def _estimate(path, size_statistics=_read_size_statistics, added=(0, 0)):
             leaf_indices=range(metadata.num_columns),
             size_stats=None if stats is None else stats[rg_idx],
         )
-        total += estimate_row_group(row_group=row_group, leaves=leaves, read=read)
+        total += estimate_row_group(
+            row_group=row_group, leaves=leaves.values(), read=read
+        )
     return total
 
 
@@ -151,6 +162,61 @@ _CASES = [
         _table(
             [[(f"k{j}", j) for j in range(i % 3)] for i in range(N)],
             pa.map_(pa.string(), pa.int64()),
+        ),
+    ),
+    # Nulls at each level, and required fields, which add no definition level.
+    _case(
+        "struct-with-nulls",
+        _table(
+            [
+                None if i % 5 == 0 else {"x": i, "y": None if i % 7 == 0 else f"v{i}"}
+                for i in range(N)
+            ],
+            pa.struct([("x", pa.int64()), ("y", pa.string())]),
+        ),
+    ),
+    _case(
+        "required-field-under-nullable-struct",
+        _table(
+            [None if i % 5 == 0 else {"x": i, "y": f"v{i}"} for i in range(N)],
+            pa.struct([pa.field("x", pa.int64(), nullable=False), ("y", pa.string())]),
+        ),
+    ),
+    _case(
+        "list-with-nulls",
+        _table(
+            [
+                None if i % 4 == 0 else [None if j == 1 else j for j in range(i % 3)]
+                for i in range(N)
+            ],
+            pa.list_(pa.int64()),
+        ),
+    ),
+    _case(
+        "map-with-nulls",
+        _table(
+            [
+                None
+                if i % 4 == 0
+                else [(f"k{j}", None if j == 1 else j) for j in range(i % 3)]
+                for i in range(N)
+            ],
+            pa.map_(pa.string(), pa.int64()),
+        ),
+    ),
+    _case(
+        "fixed-size-list-with-null-elements",
+        _table(
+            [[None if (i + k) % 3 == 0 else 1.0 for k in range(4)] for i in range(N)],
+            pa.list_(pa.float32(), 4),
+        ),
+    ),
+    _case(
+        "required-list-of-required-ints",
+        _table(
+            [list(range(i % 3)) for i in range(N)],
+            pa.list_(pa.field("item", pa.int64(), nullable=False)),
+            nullable=False,
         ),
     ),
     # Written as a repeated group, but decoded without an offsets buffer.
@@ -265,6 +331,77 @@ def test_delta_byte_array_without_sizes_is_unmodelled(tmp_path):
 
     assert _estimate(path) == expected
     assert _estimate(path, size_statistics=_no_size_statistics) == expected
+
+
+@pytest.mark.parametrize(
+    "created_by, trusted",
+    [
+        ("parquet-rs version 53.0.0", True),
+        ("parquet-mr version 1.14.0 (build abc)", True),
+        ("parquet-cpp-arrow version 24.0.0", False),
+        ("MyETL 2.0", False),
+        (None, False),
+    ],
+)
+def test_delta_byte_array_bytes_trusted_only_from_known_writers(
+    tmp_path, created_by, trusted
+):
+    """Only writers known to count every DELTA_BYTE_ARRAY value have their bytes
+    used; any other writer's string leaves fall back."""
+    path = _write(_table(["a", "b"]), tmp_path / "f.parquet")
+    metadata = pq.read_metadata(str(path))
+    profiles = build_leaf_profiles(
+        parquet_schema=metadata.schema,
+        file_metadata=SimpleNamespace(created_by=created_by),
+    )
+    assert profiles is not None
+    (profile,) = profiles
+    assert profile is not None
+    assert profile.counts_delta_byte_array is trusted
+
+
+@pytest.mark.parametrize(
+    "arrow_type, expected",
+    [
+        (pa.int64(), [([(1, _FIXED_WIDTH)], 0)]),
+        (
+            pa.struct([("a", pa.int64()), ("b", pa.string())]),
+            [([(1, _STRUCT), (2, _FIXED_WIDTH)], 0), ([(1, _STRUCT), (3, _BINARY)], 0)],
+        ),
+        (
+            pa.list_(pa.list_(pa.int64())),
+            [([(1, _LIST), (2, _LIST), (3, _FIXED_WIDTH)], 2)],
+        ),
+        (
+            pa.list_(pa.struct([("a", pa.int64()), ("tags", pa.list_(pa.string()))])),
+            [
+                ([(1, _LIST), (2, _STRUCT), (3, _FIXED_WIDTH)], 1),
+                ([(1, _LIST), (2, _STRUCT), (4, _LIST), (5, _BINARY)], 2),
+            ],
+        ),
+        (
+            pa.map_(pa.string(), pa.int64()),
+            [
+                ([(1, _LIST), (2, _STRUCT), (3, _BINARY)], 1),
+                ([(1, _LIST), (2, _STRUCT), (4, _FIXED_WIDTH)], 1),
+            ],
+        ),
+        (
+            pa.list_(pa.float32(), 4),
+            [([(1, _FIXED_SIZE_LIST), (2, _FIXED_WIDTH)], 1)],
+        ),
+    ],
+    ids=["int", "struct", "list-of-list", "list-of-struct", "map", "fixed-size-list"],
+)
+def test_walk_records_each_leaf_with_its_ancestors(arrow_type, expected):
+    """Each leaf's ``(node_id, kind)`` from the top down, and its list depth; leaves
+    under one struct or list share its node."""
+    walk = _walk(pa.schema([("c", arrow_type)]))
+    leaves = [
+        ([(node.node_id, node.kind) for node in chain], depth)
+        for chain, depth in walk.leaves
+    ]
+    assert leaves == expected
 
 
 @pytest.mark.parametrize(
