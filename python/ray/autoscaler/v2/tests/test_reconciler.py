@@ -3560,50 +3560,57 @@ class TestReconciler:
                 ("cpu", Instance.QUEUED)
             ]
 
-        # Once all 4 pods of rep-0 reach RAY_STOPPED, the replacement replica launches.
-        stopped_store = InstanceStorage(
-            cluster_id="b_stopped", storage=InMemoryStorage()
-        )
-        stopped_sub = MockSubscriber()
-        stopped_im = InstanceManager(
-            stopped_store, instance_status_update_subscribers=[stopped_sub]
-        )
-        TestReconciler._add_instances(
-            stopped_store,
-            [
-                create_instance(
-                    "h", status=Instance.RAY_RUNNING, node_kind=NodeKind.HEAD
-                ),
-                *(
+        # Once all 4 pods of rep-0 are draining or stopped (no running/booting
+        # siblings left in the replica), replacement launches are not withheld.
+        for draining_or_stopped in (
+            Instance.RAY_STOP_REQUESTED,
+            Instance.RAY_STOPPING,
+            Instance.RAY_STOPPED,
+        ):
+            stopped_store = InstanceStorage(
+                cluster_id=f"b_stopped_{draining_or_stopped}",
+                storage=InMemoryStorage(),
+            )
+            stopped_sub = MockSubscriber()
+            stopped_im = InstanceManager(
+                stopped_store, instance_status_update_subscribers=[stopped_sub]
+            )
+            TestReconciler._add_instances(
+                stopped_store,
+                [
                     create_instance(
-                        f"hw-{i}",
-                        status=Instance.RAY_STOPPED,
-                        instance_type="tpu_active",
-                        cloud_instance_id=f"hc-{i}",
-                    )
-                    for i in range(4)
+                        "h", status=Instance.RAY_RUNNING, node_kind=NodeKind.HEAD
+                    ),
+                    *(
+                        create_instance(
+                            f"hw-{i}",
+                            status=draining_or_stopped,
+                            instance_type="tpu_active",
+                            cloud_instance_id=f"hc-{i}",
+                        )
+                        for i in range(4)
+                    ),
+                ],
+            )
+            Reconciler._scale_cluster(
+                autoscaling_state=MagicMock(),
+                instance_manager=stopped_im,
+                cloud_resource_monitor=CloudResourceMonitor(),
+                ray_state=ClusterResourceState(),
+                scheduler=held_sched,
+                autoscaling_config=MockAutoscalingConfig(
+                    configs={"node_type_configs": tpu_cap0, "max_num_worker_nodes": 5}
                 ),
-            ],
-        )
-        Reconciler._scale_cluster(
-            autoscaling_state=MagicMock(),
-            instance_manager=stopped_im,
-            cloud_resource_monitor=CloudResourceMonitor(),
-            ray_state=ClusterResourceState(),
-            scheduler=held_sched,
-            autoscaling_config=MockAutoscalingConfig(
-                configs={"node_type_configs": tpu_cap0, "max_num_worker_nodes": 5}
-            ),
-            cloud_provider=MagicMock(),
-            non_terminated_cloud_instances=held_cloud,
-            _logger=part_log,
-        )
-        assert [
-            (e.instance_type, e.new_instance_status) for e in stopped_sub.events
-        ] == [
-            *(("tpu_active", Instance.QUEUED) for _ in range(4)),
-            *(("cpu", Instance.QUEUED) for _ in range(2)),
-        ]
+                cloud_provider=MagicMock(),
+                non_terminated_cloud_instances=held_cloud,
+                _logger=part_log,
+            )
+            assert [
+                (e.instance_type, e.new_instance_status) for e in stopped_sub.events
+            ] == [
+                *(("tpu_active", Instance.QUEUED) for _ in range(4)),
+                *(("cpu", Instance.QUEUED) for _ in range(2)),
+            ]
 
 
 if __name__ == "__main__":

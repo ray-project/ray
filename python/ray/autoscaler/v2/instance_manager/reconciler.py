@@ -1501,9 +1501,8 @@ class Reconciler:
             held_by_type: Dict[NodeType, int] = defaultdict(int)
             active_reps: Set[Tuple[NodeType, str]] = set()
             reach_by_rep: Dict[Tuple[NodeType, str], int] = defaultdict(int)
-            has_run_by_rep: Set[Tuple[NodeType, str]] = set()
             nonreach_by_rep: Set[Tuple[NodeType, str]] = set()
-            req_types: Set[NodeType] = set()
+            unassigned_reach: Dict[NodeType, int] = defaultdict(int)
             for inst in im_instances:
                 st = (
                     updates[inst.instance_id].new_instance_status
@@ -1517,8 +1516,6 @@ class Reconciler:
                 if reachable:
                     active_total += 1
                     active_by_type[inst.instance_type] += 1
-                    if st == IMInstance.REQUESTED:
-                        req_types.add(inst.instance_type)
                 c_inst = (
                     cloud_instances.get(inst.cloud_instance_id)
                     if inst.node_kind != NodeKind.HEAD
@@ -1532,27 +1529,24 @@ class Reconciler:
                         IMInstance.ALLOCATED,
                         IMInstance.RAY_INSTALLING,
                         IMInstance.RAY_RUNNING,
-                        IMInstance.RAY_STOP_REQUESTED,
-                        IMInstance.RAY_STOPPING,
                     ):
                         active_reps.add(rk)
                     if reachable:
                         reach_by_rep[rk] += 1
-                        if st == IMInstance.RAY_RUNNING:
-                            has_run_by_rep.add(rk)
                     elif st != IMInstance.TERMINATED:
                         nonreach_by_rep.add(rk)
-            for nt, rep_id in active_reps:
+                elif reachable and inst.node_kind != NodeKind.HEAD:
+                    unassigned_reach[inst.instance_type] += 1
+            for nt, rep_id in sorted(active_reps):
                 size = replica_sizes[nt]
-                r_cnt = reach_by_rep[(nt, rep_id)]
-                if r_cnt < size and (
-                    (nt, rep_id) in nonreach_by_rep
-                    or (nt, rep_id) in has_run_by_rep
-                    or nt not in req_types
-                ):
-                    gap = size - r_cnt
-                    active_by_type[nt] += gap
-                    active_total += gap
+                miss = max(0, size - reach_by_rep[(nt, rep_id)])
+                if (nt, rep_id) not in nonreach_by_rep and miss > 0:
+                    covered = min(miss, unassigned_reach[nt])
+                    unassigned_reach[nt] -= covered
+                    miss -= covered
+                if miss > 0:
+                    active_by_type[nt] += miss
+                    active_total += miss
                     held_by_type[nt] += size
             if deferred or held_by_type:
                 node_type_configs = autoscaling_config.get_node_type_configs() or {}
