@@ -127,11 +127,19 @@ def with_parameters(trainable: Union[Type["Trainable"], Callable], **kwargs):
     else:
         # Function trainable
 
-        def inner(config):
-            fn_kwargs = {}
-            for k in keys:
-                fn_kwargs[k] = parameter_registry.get(prefix + k)
-            return trainable(config, **fn_kwargs)
+        def _get_kwargs():
+            return {k: parameter_registry.get(prefix + k) for k in keys}
+
+        if inspect.isgeneratorfunction(trainable):
+            # Tune iterates over the results of a generator function, so the
+            # wrapper has to be a generator function too.
+            def inner(config):
+                yield from trainable(config, **_get_kwargs())
+
+        else:
+
+            def inner(config):
+                return trainable(config, **_get_kwargs())
 
         trainable_with_params = inner
 
