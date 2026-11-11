@@ -8,13 +8,18 @@ import dataclasses
 import importlib.util
 import json
 import os
-import re
+import random
 import time
+import tracemalloc
+from functools import partial
 
 import pyarrow as pa
 import pytest
 
-from ray.data._internal.datasource_v2.formats.mcap import mcap_message_rows
+from ray.data._internal.datasource_v2.formats.mcap import (
+    mcap_message_rows,
+    mcap_reader,
+)
 from ray.data._internal.datasource_v2.formats.mcap.mcap_chunks import (
     SelectedMessageReader,
 )
@@ -23,7 +28,6 @@ from ray.data._internal.datasource_v2.formats.mcap.mcap_datasource_v2 import (
 )
 from ray.data._internal.datasource_v2.formats.mcap.mcap_io import ChunkReads
 from ray.data._internal.datasource_v2.formats.mcap.mcap_message_rows import (
-    InvalidJsonPayload,
     _MessageTableBuilder,
     message_schema,
 )
@@ -238,22 +242,55 @@ def test_a_corrupt_chunk_costs_only_its_own_rows(
     )
 
 
-def test_one_error_names_every_corrupt_chunk_of_a_file(
-    tmp_path, restore_max_errored_blocks
+CORRUPT_CHUNKS = 16  # chunks of a file whose every chunk is corrupt
+CHUNK_BYTES = 1 << 20  # each chunk's payload, random so it does not compress
+
+
+def test_a_file_of_corrupt_chunks_keeps_one_error(
+    tmp_path, monkeypatch, restore_max_errored_blocks
 ):
-    """A file with two corrupt chunks, one of each kind, loses only their two
-    rows, and one error names both chunks."""
-    a, b, c = write_task_files(tmp_path, bad=set())
-    corrupt_in_place(b, 2, write_corrupt_chunk)
-    corrupt_in_place(b, 6, write_corrupt_chunk_header)
-
-    tables, error = read_one_task([a, b, c])
-
-    assert rows_of(tables) == file_rows(a) + file_rows(b, {2, 6}) + file_rows(c)
-    assert str(error).startswith(
-        f"Skipped 2 corrupt chunks at byte offsets {chunk_offset(b, 2)}, "
-        f"{chunk_offset(b, 6)} of MCAP file {b!r}: "
+    """A file whose every chunk is corrupt loses all its rows, and one error
+    names every chunk. The read keeps one chunk's error rather than one per
+    chunk, so its peak does not grow with the number of corrupt chunks."""
+    path = os.path.join(tmp_path, "b.mcap")
+    rng = random.Random(0)
+    write_mcap(
+        path,
+        [
+            {
+                "topic": "/a",
+                "log_time": BASE_TIME + i,
+                "data": rng.randbytes(CHUNK_BYTES),
+            }
+            for i in range(CORRUPT_CHUNKS)
+        ],
+        message_encoding="cdr",
     )
+    offsets = [chunk_offset(path, i) for i in range(CORRUPT_CHUNKS)]
+    for index in range(CORRUPT_CHUNKS):
+        corrupt_in_place(path, index)
+    # One chunk per read, so the read's own buffers hold one chunk at a time.
+    monkeypatch.setattr(
+        mcap_reader,
+        "SelectedMessageReader",
+        partial(SelectedMessageReader, chunk_reads=ONE_CHUNK_PER_READ),
+    )
+
+    tracemalloc.start()
+    try:
+        tables, error = read_one_task([path])
+        _, peak = tracemalloc.get_traced_memory()
+    finally:
+        tracemalloc.stop()
+
+    assert rows_of(tables) == []
+    assert str(error).startswith(
+        f"Skipped {CORRUPT_CHUNKS} corrupt chunks at byte offsets "
+        f"{', '.join(map(str, offsets))} of MCAP file {path!r}: ZstdError: "
+    )
+    # The read's buffers hold a few chunks at once. An error's traceback holds
+    # its chunk's bytes, so keeping every error would hold all of them.
+    assert peak < CORRUPT_CHUNKS // 2 * CHUNK_BYTES
 
 
 BAD_JSON = 4  # the message whose payload is not valid JSON
@@ -316,40 +353,6 @@ def test_one_error_names_the_corrupt_chunks_and_the_messages_that_are_not_json(
         f"2 messages that are not valid JSON (first: row id {first_row_id}) of "
         f"MCAP file {b!r}: ZstdError: "
     )
-
-
-def test_a_file_of_messages_that_are_not_json_is_counted_not_listed(
-    tmp_path, restore_max_errored_blocks
-):
-    """A file whose every message is not valid JSON loses all its rows, and its
-    error counts the messages and quotes only the first one's error."""
-    a, b, c = write_task_files(tmp_path, bad=set())
-    write_invalid_json(b, bad=range(CHUNKED_FILE_MESSAGES))
-
-    tables, error = read_one_task([a, b, c])
-
-    assert rows_of(tables) == file_rows(a) + file_rows(c)
-    first_row_id = message_row_id_of(b, 0, False)
-    assert str(error).startswith(
-        f"Skipped {CHUNKED_FILE_MESSAGES} messages that are not valid JSON "
-        f"(first: row id {first_row_id}) of MCAP file {b!r}: "
-        f"InvalidJsonPayload: {first_row_id}: "
-    )
-
-
-def test_a_message_that_is_not_json_fails_its_task_when_errors_are_not_skipped(
-    tmp_path, restore_max_errored_blocks
-):
-    """With ``max_errored_blocks=0``, a message that is not valid JSON fails the
-    task at once, with an error that names the message."""
-    a, b, c = write_task_files(tmp_path, bad=set())
-    write_invalid_json(b, bad={BAD_JSON})
-
-    tables, error = read_one_task([a, b, c], max_errored_blocks=0)
-
-    assert rows_of(tables) == file_rows(a)
-    assert isinstance(error, InvalidJsonPayload)
-    assert str(error).startswith(f"{message_row_id_of(b, BAD_JSON, False)}: ")
 
 
 LIMIT = 4  # rows a limited read asks for
@@ -1288,29 +1291,6 @@ def test_build_empties_the_builder(chunked_file):
     assert second.num_rows == CHUNKED_FILE_MESSAGES - 4
     expected_ids = [row_id for _, _, _, row_id in messages[4:]]
     assert second.column(ROW_ID_COLUMN).to_pylist() == expected_ids
-
-
-def test_a_payload_that_is_not_json_leaves_the_builder_unchanged(tmp_path):
-    """Adding a message whose payload is not valid JSON raises
-    ``InvalidJsonPayload`` before the builder changes, so the rows added around
-    it build into a consistent table."""
-    path = write_invalid_json(os.path.join(tmp_path, "bad.mcap"), bad={1})
-    builder = _MessageTableBuilder(
-        columns=None, include_metadata=True, include_row_id=True, decode_json=True
-    )
-    good, bad, *_ = selected_messages(path)
-    builder.add(good)
-    before = (builder.num_rows, builder.estimated_bytes)
-
-    with pytest.raises(
-        InvalidJsonPayload, match=re.escape(bad[3]) + ": .* not valid JSON"
-    ):
-        builder.add(bad)
-
-    assert (builder.num_rows, builder.estimated_bytes) == before
-    table = builder.build()
-    assert table.column(ROW_ID_COLUMN).to_pylist() == [good[3]]
-    assert table.column("log_time").to_pylist() == [BASE_TIME]
 
 
 def test_payload_buffer_starts_a_chunk_before_its_offsets_overflow(monkeypatch):

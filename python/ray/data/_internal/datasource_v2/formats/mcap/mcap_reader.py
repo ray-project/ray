@@ -25,7 +25,6 @@ from functools import partial
 from typing import (
     TYPE_CHECKING,
     Any,
-    Dict,
     Iterator,
     List,
     Optional,
@@ -202,7 +201,7 @@ class MCAPReader(Reader[FileManifest]):
                 raise
             failures.append((owned.path, e))
             return
-        if skipped is not None and (skipped.chunks or skipped.num_messages):
+        if skipped is not None and (skipped.chunks.offsets or skipped.num_messages):
             failures.append((owned.path, _skipped_data_error(owned.path, skipped)))
 
     # -- one file ----------------------------------------------------------
@@ -433,16 +432,36 @@ class _SkippedMessage:
 
 
 @dataclass
+class _CorruptOffsets:
+    """The byte offsets of what a read skipped as corrupt, and one error.
+
+    Only the error at the lowest offset is kept. An error's traceback holds the
+    bytes that failed to parse, so keeping every error would hold every
+    corrupt chunk until the file is done.
+    """
+
+    offsets: Set[int] = field(default_factory=set)
+    lowest: Optional[int] = None
+    error: Optional[Exception] = None
+
+    def add(self, offset: int, error: Exception) -> None:
+        """Record ``offset``, keeping ``error`` if ``offset`` is the lowest."""
+        if self.lowest is None or offset < self.lowest:
+            self.lowest = offset
+            self.error = error
+        self.offsets.add(offset)
+
+
+@dataclass
 class _SkippedData:
     """What a read of one file skipped.
 
-    Every corrupt chunk is kept, with its first error. Messages that are not
-    valid JSON are counted and only the first is kept, so a file of such
-    messages costs constant memory.
+    Every corrupt chunk is named by its offset, and one error is kept for them
+    all. Messages that are not valid JSON are counted and only the first is
+    kept.
     """
 
-    # Corrupt chunks, by byte offset.
-    chunks: Dict[int, Exception] = field(default_factory=dict)
+    chunks: _CorruptOffsets = field(default_factory=_CorruptOffsets)
     num_messages: int = 0
     first_message: Optional[_SkippedMessage] = None
 
@@ -454,7 +473,7 @@ class _SkippedData:
 
     def clear(self) -> None:
         """Forget what was skipped, for a read that starts the file over."""
-        self.chunks.clear()
+        self.chunks = _CorruptOffsets()
         self.num_messages = 0
         self.first_message = None
 
@@ -481,10 +500,10 @@ def _add_message(
 
 
 def _record_corrupt_chunk(
-    corrupt: Dict[int, Exception], chunk_index: "ChunkIndex", error: Exception
+    corrupt: _CorruptOffsets, chunk_index: "ChunkIndex", error: Exception
 ) -> None:
-    """Keep the first error of each chunk a read skips as corrupt."""
-    corrupt.setdefault(chunk_index.chunk_start_offset, error)
+    """Record a chunk a read skips as corrupt."""
+    corrupt.add(chunk_index.chunk_start_offset, error)
 
 
 def _skipped_data_error(path: str, skipped: _SkippedData) -> ValueError:
@@ -493,7 +512,7 @@ def _skipped_data_error(path: str, skipped: _SkippedData) -> ValueError:
     It names every chunk and the first message, and quotes the first error:
     the first chunk's, or the first message's when no chunk was skipped.
     """
-    offsets = sorted(skipped.chunks)
+    offsets = sorted(skipped.chunks.offsets)
     parts = []
     if offsets:
         where = (
@@ -508,7 +527,8 @@ def _skipped_data_error(path: str, skipped: _SkippedData) -> ValueError:
         which = "row id" if count == 1 else "first: row id"
         parts.append(f"{count} {what} not valid JSON ({which} {message.row_id})")
     if offsets:
-        first = skipped.chunks[offsets[0]]
+        first = skipped.chunks.error
+        assert first is not None
     else:
         assert message is not None
         first = message.error
