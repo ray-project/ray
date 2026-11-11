@@ -1,6 +1,7 @@
 """Unit tests for the CSV datasource on DataSourceV2."""
 import gzip
 import io
+from typing import List
 
 import pyarrow as pa
 import pyarrow.csv as pcsv
@@ -33,7 +34,7 @@ def _write(path, text: str) -> str:
     return str(path)
 
 
-def _read_all(datasource: CsvDatasourceV2, paths) -> pa.Table:
+def _read_tables(datasource: CsvDatasourceV2, paths) -> List[pa.Table]:
     """List, plan and read ``paths`` in-process, as one read task."""
     sample = FileManifest.construct_manifest(
         paths=paths,
@@ -51,7 +52,13 @@ def _read_all(datasource: CsvDatasourceV2, paths) -> pa.Table:
     reader = datasource.create_scanner(
         schema=schema, partitioning=datasource.resolve_partitioning(sample)
     ).create_reader()
-    return pa.concat_tables(list(reader.read(manifest)), promote_options="permissive")
+    return list(reader.read(manifest))
+
+
+def _read_all(datasource: CsvDatasourceV2, paths) -> pa.Table:
+    return pa.concat_tables(
+        _read_tables(datasource, paths), promote_options="permissive"
+    )
 
 
 @pytest.fixture
@@ -104,6 +111,35 @@ def test_rejects_a_split_file_whose_header_differs(tmp_path, small_chunks):
     )
     with pytest.raises(ValueError, match=r"has columns \['name', 'id'\]"):
         _read_all(CsvDatasourceV2([first, second]), [first, second])
+
+
+_SPLIT = pytest.param(
+    "64",
+    marks=pytest.mark.xfail(strict=True, reason="Known gap in split CSV reads."),
+    id="split",
+)
+
+
+@pytest.mark.parametrize(
+    "chunk_bytes", [pytest.param("1073741824", id="whole"), _SPLIT]
+)
+def test_reads_quoted_newlines_in_a_split_file(tmp_path, monkeypatch, chunk_bytes):
+    # pyarrow parses a quoted newline without ``newlines_in_values``, so a cut
+    # can land inside a value. Here it yields extra rows instead of an error.
+    monkeypatch.setenv("RAY_DATA_LINE_CHUNK_BYTES", chunk_bytes)
+    path = _write(
+        tmp_path / "a.csv",
+        "id,score,text\n"
+        + "".join(f'{i},{i},"hello\nworld, a, b"\n' for i in range(40)),
+    )
+    tables = _read_tables(CsvDatasourceV2([path]), [path])
+
+    # Rows, not one concatenated table: the stray rows come back as strings.
+    rows = [row for table in tables for row in table.to_pylist()]
+
+    assert rows == [
+        {"id": i, "score": i, "text": "hello\nworld, a, b"} for i in range(40)
+    ]
 
 
 @pytest.mark.parametrize("chunk_bytes", ["64", "1073741824"], ids=["split", "whole"])
