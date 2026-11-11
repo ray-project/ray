@@ -19,6 +19,7 @@ LABEL io.ray.ray-version="${RAY_VERSION}"
 ENV UV_OVERRIDE=/etc/uv-overrides.txt
 
 COPY --from=wheel-source /opt/artifacts/*.whl /home/ray/
+COPY --chown=ray:users python/requirements.txt /tmp/ray-requirements.txt
 
 RUN <<EOF
 #!/bin/bash
@@ -31,10 +32,16 @@ if [[ ${#WHEEL_FILES[@]} -ne 1 ]]; then
     exit 1
 fi
 
+# All of Ray's runtime deps, as the conda-based ray-llm image has them, not just
+# the serve and llm extras. Except cupy-cuda12x: vLLM's image ships cupy-cuda13x,
+# and both install the same `cupy` package.
+grep -v '^cupy-cuda12x' /tmp/ray-requirements.txt > /tmp/ray-requirements-cu13.txt
+
 # Constraints rather than overrides: if Ray needs a version of a package that
 # differs from vLLM's, fail here so Ray's requirements get adjusted.
 uv pip install --system --no-cache --constraint /home/ray/vllm-constraints.txt \
-    "${WHEEL_FILES[0]}[serve,llm]"
+    -r /tmp/ray-requirements-cu13.txt "${WHEEL_FILES[0]}[serve,llm]"
+rm /tmp/ray-requirements.txt /tmp/ray-requirements-cu13.txt
 
 pip freeze > /home/ray/pip-freeze.txt
 

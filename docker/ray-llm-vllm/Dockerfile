@@ -119,12 +119,14 @@ rm -rf /tmp/mx-wheel /tmp/patches
 
 # Let `ray` add, upgrade and remove packages in the system Python. Re-owning only
 # directories is enough for that, and unlike `chown -R` it doesn't copy vLLM's
-# multi-GB site-packages into this layer. The include dir takes C headers that
-# wheels like greenlet ship.
+# multi-GB site-packages into this layer. Tools that replace a file (pip, uv,
+# sed -i, patch, git apply) work too; writing into a file vLLM's image shipped
+# needs sudo. The include dir takes C headers that wheels like greenlet ship.
 INCLUDE_DIR="$(python3 -c 'import sysconfig; print(sysconfig.get_path("include"))')"
 PREFIX_DIRS=(/usr/local/bin /usr/local/etc /usr/local/include /usr/local/share)
 mkdir -p "${INCLUDE_DIR}" "${PREFIX_DIRS[@]}"
 find "${SITE_PACKAGES}" "${INCLUDE_DIR}" "${PREFIX_DIRS[@]}" -type d -exec chown ray:users {} +
+
 EOF
 
 # vLLM's image sets UV_OVERRIDE so any uv install keeps its NCCL. Images built on

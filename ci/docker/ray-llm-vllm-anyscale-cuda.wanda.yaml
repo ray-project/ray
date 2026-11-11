@@ -10,6 +10,8 @@ froms:
   - "cr.ray.io/rayproject/ray-llm-vllm-py$PYTHON_VERSION-$GPU-base-extra-testdeps"  # ray-llm-vllm base with test deps
   - "cr.ray.io/rayproject/ray-wheel-py$PYTHON_VERSION$ARCH_SUFFIX"                  # Ray wheel
 dockerfile: ci/docker/ray-llm-vllm-image.Dockerfile
+srcs:
+  - python/requirements.txt
 build_args:
   - BASE_IMAGE=cr.ray.io/rayproject/ray-llm-vllm-py$PYTHON_VERSION-$GPU-base-extra-testdeps
   - RAY_WHEEL_IMAGE=cr.ray.io/rayproject/ray-wheel-py$PYTHON_VERSION$ARCH_SUFFIX
