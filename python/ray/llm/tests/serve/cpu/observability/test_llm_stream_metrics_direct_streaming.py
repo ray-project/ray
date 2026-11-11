@@ -1,6 +1,6 @@
 """Full LLM HTTP path and real Prometheus sink, with a deterministic CPU engine.
 
-C tests own parser/queue edge cases; HAProxy tests own stalled RPCs. This suite
+C tests own scanner edge cases; HAProxy tests own stalled RPCs. This suite
 owns flag OFF/ON behavior, engine identity correlation, and timing boundaries.
 """
 
@@ -89,7 +89,8 @@ def _metric_engine_cls():
                             chunk_index
                         ]
                     chunk_index += 1
-                    chunk = "data: " + json.dumps(event) + "\n\n"
+                    # Compact, like vLLM's pydantic serializer that HAProxy scans.
+                    chunk = "data: " + json.dumps(event, separators=(",", ":")) + "\n\n"
                 if isinstance(chunk, str):
                     chunk = chunk.replace("test_0", "test_0" + "x" * 5000)
                 yield chunk

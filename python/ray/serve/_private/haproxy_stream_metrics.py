@@ -1,7 +1,9 @@
 """Render HAProxy's direct, batched OpenCensus export to Ray's metrics agent."""
 
 
+import os
 import secrets
+from typing import Optional
 
 import ray
 from ray._private.node import Node
@@ -20,6 +22,37 @@ def stream_metrics_agent_address() -> str:
             return f"127.0.0.1:{node.metrics_agent_port}"
     # Configuration-only tests do not initialize Ray or start the Lua task.
     return "127.0.0.1:1"
+
+
+def stream_metrics_token_source() -> Optional[str]:
+    """Where HAProxy's exporter reads Ray's auth token, never the token itself.
+
+    Mirrors the precedence of Ray's token loader. Returns None when token auth is
+    off, "" for the inherited ``RAY_AUTH_TOKEN`` variable, else the path of the
+    existing token file, which the exporter rereads so rotated tokens apply.
+    """
+    from ray._private.authentication.authentication_utils import (
+        is_token_auth_enabled,
+    )
+
+    if not is_token_auth_enabled():
+        return None
+    from ray._private.authentication.authentication_token_setup import (
+        _get_default_token_path,
+    )
+    from ray._private.authentication.authentication_utils import (
+        is_k8s_token_auth_enabled,
+    )
+
+    if os.environ.get("RAY_AUTH_TOKEN"):
+        return ""
+    if os.environ.get("RAY_AUTH_TOKEN_PATH"):
+        return os.path.abspath(os.environ["RAY_AUTH_TOKEN_PATH"])
+    if is_k8s_token_auth_enabled():
+        k8s_path = "/var/run/secrets/ray.io/serviceaccount/token"
+        if os.path.isfile(k8s_path):
+            return k8s_path
+    return str(_get_default_token_path())
 
 
 def render_stream_metrics_export_config(
@@ -63,8 +96,11 @@ def render_stream_metrics_export_config(
         ray.__version__,
         proxy_worker_id.hex(),
     ]
+    token_source = stream_metrics_token_source()
     lines = [
         "local EXPORT_SOCKET = " + _lua_bytes(socket_path.encode()),
+        "local AUTH_TOKEN_SOURCE = "
+        + ("nil" if token_source is None else _lua_bytes(token_source.encode())),
         # Reporting identity is independent of ProxyActor: old generations
         # expire even while that actor and the new generation keep reporting.
         "local REPORT_WORKER_ID = " + _lua_bytes(bytes.fromhex(generation)),

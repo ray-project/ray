@@ -1228,16 +1228,6 @@ class HAProxyApi(ProxyApi):
         base = f"{self.cfg.socket_path}.{self._log_id}.{self._spawn_seq}"
         stdout_path = f"{base}.stdout.log"
         stderr_path = f"{base}.stderr.log"
-        child_env = None
-        if self.cfg.metrics_enabled and self.cfg.stream_metrics_enabled:
-            from ray._private.authentication.grpc_authentication_client_interceptor import (
-                _get_authentication_metadata_tuple,
-            )
-
-            child_env = os.environ.copy()
-            child_env["RAY_SERVE_STREAM_METRICS_AUTHORIZATION"] = dict(
-                _get_authentication_metadata_tuple()
-            ).get("authorization", "")
         with open(stdout_path, "wb", buffering=0) as stdout_file, open(
             stderr_path, "wb", buffering=0
         ) as stderr_file:
@@ -1245,7 +1235,6 @@ class HAProxyApi(ProxyApi):
                 *args,
                 stdout=stdout_file,
                 stderr=stderr_file,
-                env=child_env,
             )
         export_socket = stream_metrics_socket_path(
             self.cfg.metrics_socket_path, self._stream_metrics_generation
@@ -1639,7 +1628,6 @@ class HAProxyApi(ProxyApi):
                     "    option abortonclose\n"
                     "    timeout connect 1s\n"
                     "    timeout server 1s\n"
-                    '    http-request set-header authorization "%[env(RAY_SERVE_STREAM_METRICS_AUTHORIZATION)]"\n'
                     f"    server metrics_agent {agent} proto h2\n"
                 )
 
