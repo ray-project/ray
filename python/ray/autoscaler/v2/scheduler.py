@@ -1101,8 +1101,9 @@ class ResourceDemandScheduler(IResourceScheduler):
             if self._disable_launch_config_check or node.node_kind == NodeKind.HEAD:
                 return False
             cfg = self._node_type_configs.get(node.node_type)
-            return cfg is None or bool(
-                cfg.launch_config_hash
+            return cfg is None or (
+                ResourceDemandScheduler._is_running_node(node)
+                and bool(cfg.launch_config_hash)
                 and cfg.launch_config_hash != node.launch_config_hash
             )
 

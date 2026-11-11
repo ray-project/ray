@@ -7403,17 +7403,29 @@ def test_outdated_worker_outdates_its_whole_replica():
             worker_index_label_key="ray.io/tpu-worker-id",
         ),
     )
+
+    def _make_booting(inst: AutoscalerInstance) -> None:
+        inst.im_instance.status = Instance.ALLOCATED
+        inst.im_instance.node_id = ""
+        inst.im_instance.launch_config_hash = ""
+        inst.ray_node = None
+
     mixed_old = _make_lifecycle_replica(
         "rep-0", Instance.RAY_RUNNING, 4, busy=True, launch_config_hash="v1"
     )
     mixed_old[0].im_instance.launch_config_hash = "v2"
-    current = _make_lifecycle_replica(
+    _make_booting(mixed_old[3])
+
+    booting_current = _make_lifecycle_replica(
         "rep-1", Instance.RAY_RUNNING, 4, busy=True, launch_config_hash="v2"
     )
+    _make_booting(booting_current[2])
+    _make_booting(booting_current[3])
+
     reply = ResourceDemandScheduler().schedule(
         SchedulingRequest(
             node_type_configs={"tpu": cfg},
-            current_instances=mixed_old + current,
+            current_instances=mixed_old + booting_current,
             disable_launch_config_check=False,
         )
     )
