@@ -378,8 +378,8 @@ class FooterReader:
                     read=sizing.read,
                 )
         if unmodelled:
-            # A leaf or cast the estimator doesn't model, such as a string without
-            # SizeStatistics, a view, a dictionary or a struct gaining a field.
+            # A leaf or cast the estimator doesn't model, such as a dictionary-encoded
+            # string without SizeStatistics, a view or a struct gaining a field.
             decoded += _unmodelled_bytes(row_group=row_group, leaf_indices=unmodelled)
         peak = estimate_row_group_peak(
             row_group=row_group,

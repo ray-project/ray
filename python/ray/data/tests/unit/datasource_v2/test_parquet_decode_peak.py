@@ -204,7 +204,9 @@ def test_large_unmodelled_leaves_pay_by_their_uncompressed_bytes(tmp_path, monke
             "s": pa.array([f"distinct-value-{i:024d}" for i in range(N)]),
         }
     )
-    pq.write_table(table, path, row_group_size=N, use_dictionary=False)
+    # The dictionary outgrows its page and falls back to PLAIN; its page still
+    # leaves the strings unsized.
+    pq.write_table(table, path, row_group_size=N)
     strings = pq.read_metadata(path).row_group(0).column(1).total_uncompressed_size
     charge = reader._UNMODELLED_RATIO * strings
     assert charge > reader._UNMODELLED_MIN_BYTES
