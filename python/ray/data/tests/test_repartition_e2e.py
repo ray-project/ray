@@ -1,3 +1,5 @@
+import warnings
+
 import numpy as np
 import pytest
 
@@ -213,6 +215,24 @@ def test_repartition_invalid_inputs(
             target_num_rows_per_block=target_num_rows_per_block,
             shuffle=shuffle,
         )
+
+
+def test_repartition_target_num_rows_per_block_shuffle_no_warning():
+    """Reject shuffle=True without emitting a contradictory warning."""
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+
+        with pytest.raises(
+            ValueError,
+            match=r"`shuffle` must be False when `target_num_rows_per_block` is set",
+        ):
+            ray.data.Dataset.repartition(
+                None,
+                target_num_rows_per_block=3,
+                shuffle=True,
+            )
+
+    assert caught == []
 
 
 @pytest.mark.parametrize("shuffle", [True, False])

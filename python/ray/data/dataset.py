@@ -2414,10 +2414,6 @@ class Dataset:
                 warnings.warn(
                     "`sort` is ignored when `target_num_rows_per_block` is set."
                 )
-            if shuffle:
-                warnings.warn(
-                    "`shuffle` is ignored when `target_num_rows_per_block` is set."
-                )
         else:
             if strict:
                 # strict is used in row-based repartition only
