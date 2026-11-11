@@ -382,6 +382,7 @@ class AutoscalingConfig:
             return None
         node_type_configs = {}
         auth_config = self._configs.get("auth", {})
+        disable_launch_config_check = self.disable_launch_config_check()
         head_node_type = self.get_head_node_type()
         assert head_node_type
         for node_type, node_config in available_node_types.items():
@@ -403,6 +404,16 @@ class AutoscalingConfig:
                 if raw_replica is not None
                 else None
             )
+            if (
+                not disable_launch_config_check
+                and replica_config is not None
+                and replica_config.workers_per_replica > 1
+            ):
+                raise ValueError(
+                    f"Node type {node_type} has workers_per_replica="
+                    f"{replica_config.workers_per_replica} > 1, which requires "
+                    f"provider.{DISABLE_LAUNCH_CONFIG_CHECK_KEY} to be True."
+                )
             node_type_configs[node_type] = NodeTypeConfig(
                 name=node_type,
                 min_worker_nodes=node_config.get("min_workers", 0),

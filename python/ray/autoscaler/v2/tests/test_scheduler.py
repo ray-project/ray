@@ -1325,7 +1325,7 @@ def test_outdated_nodes(disable_launch_config_check):
         "type_cpu": NodeTypeConfig(
             name="type_cpu",
             resources={"CPU": 1},
-            min_worker_nodes=2,
+            min_worker_nodes=3,
             max_worker_nodes=5,
             launch_config_hash="hash1",
         ),
@@ -1390,6 +1390,16 @@ def test_outdated_nodes(disable_launch_config_check):
                     node_id=b"r-3",
                 ),
                 cloud_instance_id="c-3",
+            ),
+            make_autoscaler_instance(
+                im_instance=Instance(
+                    instance_type="type_cpu",
+                    status=Instance.ALLOCATED,
+                    launch_config_hash="",  # pending -> not compared until running
+                    instance_id="i-4",
+                ),
+                ray_node=None,
+                cloud_instance_id="c-4",
             ),
         ],
     )
@@ -7330,11 +7340,7 @@ def test_stop_requested_replica_occupancy_and_min_workers(workers_per_replica):
     cfg = NodeTypeConfig(
         name="tpu",
         resources={"CPU": 4, "TPU": 4},
-        labels=(
-            {"ray.io/tpu-slice-name": "", "ray.io/tpu-worker-id": ""}
-            if workers_per_replica > 1
-            else {}
-        ),
+        labels={},
         min_worker_nodes=0,
         max_worker_nodes=8,
         replica_config=(
@@ -7387,52 +7393,6 @@ def test_stop_requested_replica_occupancy_and_min_workers(workers_per_replica):
     )
     assert idle_reply.to_terminate == []
     assert idle_reply.to_launch == []
-
-
-def test_outdated_worker_outdates_its_whole_replica():
-    cfg = NodeTypeConfig(
-        name="tpu",
-        resources={"CPU": 4, "TPU": 4},
-        labels={"ray.io/tpu-slice-name": "", "ray.io/tpu-worker-id": ""},
-        min_worker_nodes=0,
-        max_worker_nodes=12,
-        launch_config_hash="v2",
-        replica_config=WorkerReplicaConfig(
-            workers_per_replica=4,
-            domain_label_key="ray.io/tpu-slice-name",
-            worker_index_label_key="ray.io/tpu-worker-id",
-        ),
-    )
-
-    def _make_booting(inst: AutoscalerInstance) -> None:
-        inst.im_instance.status = Instance.ALLOCATED
-        inst.im_instance.node_id = ""
-        inst.im_instance.launch_config_hash = ""
-        inst.ray_node = None
-
-    mixed_old = _make_lifecycle_replica(
-        "rep-0", Instance.RAY_RUNNING, 4, busy=True, launch_config_hash="v1"
-    )
-    mixed_old[0].im_instance.launch_config_hash = "v2"
-    _make_booting(mixed_old[3])
-
-    booting_current = _make_lifecycle_replica(
-        "rep-1", Instance.RAY_RUNNING, 4, busy=True, launch_config_hash="v2"
-    )
-    _make_booting(booting_current[2])
-    _make_booting(booting_current[3])
-
-    reply = ResourceDemandScheduler().schedule(
-        SchedulingRequest(
-            node_type_configs={"tpu": cfg},
-            current_instances=mixed_old + booting_current,
-            disable_launch_config_check=False,
-        )
-    )
-    assert sorted(r.instance_id for r in reply.to_terminate) == [
-        f"rep-0-{h}" for h in range(4)
-    ]
-    assert {r.cause for r in reply.to_terminate} == {TerminationRequest.Cause.OUTDATED}
 
 
 if __name__ == "__main__":

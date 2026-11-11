@@ -1091,21 +1091,11 @@ class ResourceDemandScheduler(IResourceScheduler):
             }
             self._init_replicas()
             self._node_type_available = self._compute_available_node_types(
-                self._nodes, self._node_type_configs, self._disable_launch_config_check
+                self._nodes, self._node_type_configs
             )
 
         def _new_pending_domain(self, tag: str = "") -> str:
             return f"{_PENDING_DOMAIN_PREFIX}{f'{tag}:' if tag else ''}{next(self._pending_domain_ids)}"
-
-        def _is_outdated_node(self, node: SchedulingNode) -> bool:
-            if self._disable_launch_config_check or node.node_kind == NodeKind.HEAD:
-                return False
-            cfg = self._node_type_configs.get(node.node_type)
-            return cfg is None or (
-                ResourceDemandScheduler._is_running_node(node)
-                and bool(cfg.launch_config_hash)
-                and cfg.launch_config_hash != node.launch_config_hash
-            )
 
         @staticmethod
         def _launch_resources(
@@ -1227,19 +1217,6 @@ class ResourceDemandScheduler(IResourceScheduler):
                         dn.append(p)
                     return take
 
-                outdated_doms = (
-                    {
-                        n.labels[dom_key]
-                        for n in type_nodes
-                        if size > 1
-                        and not n.provider_replica_id
-                        and ResourceDemandScheduler._is_running_node(n)
-                        and n.labels.get(dom_key)
-                        and self._is_outdated_node(n)
-                    }
-                    if dom_key
-                    else set()
-                )
                 for n in type_nodes:
                     if size > 1 and n.provider_replica_id:
                         by_prov[n.provider_replica_id].append(n)
@@ -1248,8 +1225,7 @@ class ResourceDemandScheduler(IResourceScheduler):
                         if d:
                             n.replica_id = d
                             n._has_runtime_domain = True
-                            if d not in outdated_doms and not self._is_outdated_node(n):
-                                running_by_dom[d].append(n)
+                            running_by_dom[d].append(n)
                         else:
                             if n.provider_replica_id:
                                 n._has_runtime_domain = True
@@ -1287,24 +1263,18 @@ class ResourceDemandScheduler(IResourceScheduler):
                     valid_doms = [
                         m.labels[dom_key]
                         for m in p_run
-                        if dom_key
-                        and m.labels.get(dom_key)
-                        and not self._is_outdated_node(m)
+                        if dom_key and m.labels.get(dom_key)
                     ]
                     rid = (
                         valid_doms[0]
                         if valid_doms
                         else self._new_pending_domain(node_type)
                     )
-                    rep_outdated = any(self._is_outdated_node(m) for m in p_nodes)
                     for m in p_run:
                         d_m = m.labels.get(dom_key) if dom_key else None
                         m._has_runtime_domain = True
-                        if rep_outdated or self._is_outdated_node(m):
-                            m.replica_id = d_m or self._new_pending_domain(node_type)
-                        else:
-                            m.replica_id = d_m or rid
-                            running_by_dom[m.replica_id].append(m)
+                        m.replica_id = d_m or rid
+                        running_by_dom[m.replica_id].append(m)
                     if p_pend:
                         _place_into(
                             rid,
@@ -1462,7 +1432,6 @@ class ResourceDemandScheduler(IResourceScheduler):
         def _missing_replica_backfill_by_type(
             nodes: List[SchedulingNode],
             node_type_configs: Dict[NodeType, NodeTypeConfig],
-            disable_launch_config_check: bool = True,
         ) -> Dict[NodeType, int]:
             """Count missing host slots across live incomplete replicas whose
             replacement pods have not yet appeared in `nodes`."""
@@ -1490,13 +1459,6 @@ class ResourceDemandScheduler(IResourceScheduler):
                     ):
                         continue
                     is_running = ResourceDemandScheduler._is_running_node(n)
-                    if (
-                        not disable_launch_config_check
-                        and is_running
-                        and cfg.launch_config_hash
-                        and cfg.launch_config_hash != n.launch_config_hash
-                    ):
-                        continue
                     k8s_count += 1
                     if n._has_runtime_domain and n.replica_id:
                         dom_running[n.replica_id] += 1
@@ -1520,7 +1482,7 @@ class ResourceDemandScheduler(IResourceScheduler):
 
         def get_missing_replica_backfill_slots(self) -> Dict[NodeType, int]:
             return self._missing_replica_backfill_by_type(
-                self._nodes, self._node_type_configs, self._disable_launch_config_check
+                self._nodes, self._node_type_configs
             )
 
         def make_replica_nodes(self, node_type: NodeType) -> List[SchedulingNode]:
@@ -1635,14 +1597,12 @@ class ResourceDemandScheduler(IResourceScheduler):
         def _compute_available_node_types(
             nodes: List[SchedulingNode],
             node_type_configs: Dict[NodeType, NodeTypeConfig],
-            disable_launch_config_check: bool = True,
         ) -> Dict[NodeType, int]:
             """Compute the number of nodes by node types available for launching based on
             the max number of workers in the config.
             Args:
                 nodes: The current existing nodes.
                 node_type_configs: The node type configs.
-                disable_launch_config_check: Whether launch config check is disabled.
             Returns:
                 A dict of node types and the number of nodes available for launching.
             """
@@ -1654,7 +1614,7 @@ class ResourceDemandScheduler(IResourceScheduler):
                 nt,
                 gap,
             ) in ResourceDemandScheduler.ScheduleContext._missing_replica_backfill_by_type(
-                nodes, node_type_configs, disable_launch_config_check
+                nodes, node_type_configs
             ).items():
                 node_type_existing[nt] += gap
 
@@ -1729,7 +1689,6 @@ class ResourceDemandScheduler(IResourceScheduler):
             self._node_type_available = self._compute_available_node_types(
                 self._nodes,
                 self._node_type_configs,
-                self._disable_launch_config_check,
             )
 
         def restricted_to(
@@ -3535,24 +3494,6 @@ class ResourceDemandScheduler(IResourceScheduler):
             # Outdated nodes check through launch config check is disabled.
             return
 
-        replica_sizes = ctx.get_multihost_replica_sizes()
-
-        def _replica_key(node: SchedulingNode) -> Optional[Tuple[NodeType, str]]:
-            rid = node.provider_replica_id or node.replica_id
-            if node.node_type in replica_sizes and rid:
-                return (node.node_type, rid)
-            return None
-
-        # A multi-worker replica is replaced as a unit, so one outdated worker
-        # outdates every worker of its replica.
-        outdated_replicas = {
-            _replica_key(node)
-            for node in nodes
-            if node.status == SchedulingNodeStatus.SCHEDULABLE
-            and ctx._is_outdated_node(node)
-        }
-        outdated_replicas.discard(None)
-
         for node in nodes:
             if node.status != SchedulingNodeStatus.SCHEDULABLE:
                 # We don't need to care about the non-running nodes.
@@ -3568,7 +3509,13 @@ class ResourceDemandScheduler(IResourceScheduler):
                     "head node"
                 )
                 continue
-            if ctx._is_outdated_node(node) or _replica_key(node) in outdated_replicas:
+            node_type = node.node_type
+            node_type_config = ctx.get_node_type_configs().get(node_type)
+            if node_type_config is None or (
+                ResourceDemandScheduler._is_running_node(node)
+                and node_type_config.launch_config_hash
+                and node_type_config.launch_config_hash != node.launch_config_hash
+            ):
                 # The node type config has been updated, and the node's launch config
                 # hash is outdated.
                 node.status = SchedulingNodeStatus.TO_TERMINATE

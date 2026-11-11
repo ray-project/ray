@@ -1733,6 +1733,7 @@ class Reconciler:
             else 0
         )
 
+        drained_terminating_reps = set()
         for instance in im_instances:
             if instance.status not in statuses_to_terminate:
                 continue
@@ -1752,15 +1753,22 @@ class Reconciler:
                 )
                 continue
 
-            if (
+            rep_key = _replica_key(instance)
+            solicited_stop = (
                 instance.status == IMInstance.RAY_STOPPED
-                and _replica_key(instance) in ray_running_reps
                 and len(instance.status_history) > 1
                 and instance.status_history[-2].instance_status
                 in (IMInstance.RAY_STOP_REQUESTED, IMInstance.RAY_STOPPING)
+            )
+            if (
+                solicited_stop
+                and rep_key in ray_running_reps
                 and not InstanceUtil.has_timeout(instance, hold_timeout_s)
             ):
                 continue
+
+            if solicited_stop and rep_key is not None:
+                drained_terminating_reps.add(rep_key)
 
             # Terminate the instance.
             updates[instance.instance_id] = IMInstanceUpdateEvent(
@@ -1770,6 +1778,22 @@ class Reconciler:
                 details="terminating instance from "
                 f"{IMInstance.InstanceStatus.Name(instance.status)}",
             )
+
+        if drained_terminating_reps:
+            for instance in im_instances:
+                if (
+                    instance.instance_id not in updates
+                    and instance.status
+                    in (IMInstance.ALLOCATED, IMInstance.RAY_INSTALLING)
+                    and _replica_key(instance) in drained_terminating_reps
+                ):
+                    updates[instance.instance_id] = IMInstanceUpdateEvent(
+                        instance_id=instance.instance_id,
+                        new_instance_status=IMInstance.TERMINATING,
+                        cloud_instance_id=instance.cloud_instance_id,
+                        details="terminating unready sibling of drained replica from "
+                        f"{IMInstance.InstanceStatus.Name(instance.status)}",
+                    )
 
         Reconciler._update_instance_manager(instance_manager, version, updates)
 

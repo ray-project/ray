@@ -3526,6 +3526,110 @@ class TestReconciler:
         ]
         assert store.get_instances()[0]["w-3"].status == Instance.ALLOCATED
 
+    def test_multihost_solicited_drain_terminates_unready_siblings_but_crash_does_not(
+        self,
+    ):
+        cfg = MockAutoscalingConfig(
+            configs={
+                "node_type_configs": {
+                    "tpu": NodeTypeConfig(
+                        name="tpu",
+                        resources={"CPU": 4, "TPU": 4},
+                        min_worker_nodes=0,
+                        max_worker_nodes=8,
+                        replica_config=WorkerReplicaConfig(workers_per_replica=4),
+                    )
+                }
+            }
+        )
+        cloud = {
+            "c-head": CloudInstance("c-head", "head", NodeKind.HEAD, True),
+            **{
+                f"c-{h}": CloudInstance(
+                    f"c-{h}", "tpu", NodeKind.WORKER, True, replica_id="rep-0"
+                )
+                for h in range(4)
+            },
+        }
+
+        # Once all draining siblings reach RAY_STOPPED, _terminate_instances must
+        # terminate the held ALLOCATED sibling in the same batch rather than orphaning it.
+        now_ns = time.time_ns()
+        drained_store = InstanceStorage(
+            cluster_id="boot_done", storage=InMemoryStorage()
+        )
+        drained_sub = MockSubscriber()
+        drained_im = InstanceManager(
+            drained_store, instance_status_update_subscribers=[drained_sub]
+        )
+        TestReconciler._add_instances(
+            drained_store,
+            [
+                *(
+                    create_instance(
+                        f"w-{h}",
+                        status=Instance.RAY_STOPPED,
+                        instance_type="tpu",
+                        cloud_instance_id=f"c-{h}",
+                        status_times=[
+                            (Instance.RAY_RUNNING, now_ns - 3),
+                            (Instance.RAY_STOP_REQUESTED, now_ns - 2),
+                            (Instance.RAY_STOPPED, now_ns - 1),
+                        ],
+                    )
+                    for h in range(3)
+                ),
+                create_instance(
+                    "w-3",
+                    status=Instance.ALLOCATED,
+                    instance_type="tpu",
+                    cloud_instance_id="c-3",
+                ),
+            ],
+        )
+        drained_sub.clear()
+        Reconciler._terminate_instances(
+            drained_im, autoscaling_config=cfg, non_terminated_cloud_instances=cloud
+        )
+        assert sorted(
+            (e.instance_id, e.new_instance_status) for e in drained_sub.events
+        ) == [(f"w-{h}", Instance.TERMINATING) for h in range(4)]
+
+        # Unsolicited crash of one worker must not terminate an ALLOCATED sibling.
+        crash_store = InstanceStorage(cluster_id="crash_sib", storage=InMemoryStorage())
+        crash_sub = MockSubscriber()
+        crash_im = InstanceManager(
+            crash_store, instance_status_update_subscribers=[crash_sub]
+        )
+        TestReconciler._add_instances(
+            crash_store,
+            [
+                create_instance(
+                    "w-0",
+                    status=Instance.RAY_STOPPED,
+                    instance_type="tpu",
+                    cloud_instance_id="c-0",
+                    status_times=[
+                        (Instance.RAY_RUNNING, now_ns - 2),
+                        (Instance.RAY_STOPPED, now_ns - 1),
+                    ],
+                ),
+                create_instance(
+                    "w-3",
+                    status=Instance.ALLOCATED,
+                    instance_type="tpu",
+                    cloud_instance_id="c-3",
+                ),
+            ],
+        )
+        crash_sub.clear()
+        Reconciler._terminate_instances(
+            crash_im, autoscaling_config=cfg, non_terminated_cloud_instances=cloud
+        )
+        assert sorted(
+            (e.instance_id, e.new_instance_status) for e in crash_sub.events
+        ) == [("w-0", Instance.TERMINATING)]
+
 
 if __name__ == "__main__":
     if os.environ.get("PARALLEL_CI"):
