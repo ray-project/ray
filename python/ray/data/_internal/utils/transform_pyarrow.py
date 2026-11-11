@@ -9,6 +9,22 @@ def _is_pa_extension_type(pa_type: "pyarrow.lib.DataType") -> bool:
     return isinstance(pa_type, pyarrow.BaseExtensionType)
 
 
+def _create_empty_table(schema: "pyarrow.Schema") -> "pyarrow.Table":
+    """Create an empty table with the given schema.
+
+    Use this instead of ``Schema.empty_table()``, which fails for some extension
+    columns: on pyarrow 26 for native ``fixed_shape_tensor`` columns with a
+    ``permutation`` (pyarrow adds one in ``from_numpy_ndarray``), and on every
+    supported version for extension types nested in a struct or list.
+    ``pyarrow.nulls`` builds each column without that conversion. The result
+    matches ``Schema.empty_table()``: one empty chunk per column and the schema
+    metadata kept.
+    """
+    return pyarrow.Table.from_arrays(
+        [pyarrow.nulls(0, type=field.type) for field in schema], schema=schema
+    )
+
+
 def _is_multi_chunk_extension_column(column: "pyarrow.ChunkedArray") -> bool:
     """Return whether a column needs multi-chunk extension-array handling."""
     return column.num_chunks > 1 and _is_pa_extension_type(column.type)

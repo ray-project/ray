@@ -51,6 +51,7 @@ from ray.data._internal.output_buffer import (
     OutputBlockSizeOption,
 )
 from ray.data._internal.table_block import TableBlockAccessor
+from ray.data._internal.utils.transform_pyarrow import _create_empty_table
 from ray.data.block import (
     Block,
     BlockAccessor,
@@ -276,7 +277,7 @@ def _disk_shuffle_reduce_task(
         out: List[List[pa.Table]] = []
         for tables, schema in zip(tables_by_input, schemas_by_input):
             if not tables and schema is not None:
-                tables = [schema.empty_table()]
+                tables = [_create_empty_table(schema)]
             out.append(tables)
         return out
 
@@ -331,7 +332,7 @@ def _disk_shuffle_reduce_task(
                 if not emit_empty_partition:
                     return
                 assert output_schema is not None
-                yield output_schema.empty_table()
+                yield _create_empty_table(output_schema)
 
         else:
 

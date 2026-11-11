@@ -15,7 +15,10 @@ from ray.data._internal.execution.operators.shuffle_operators.shuffle_tasks impo
 )
 from ray.data._internal.logical.operators import JoinType
 from ray.data._internal.util import GiB, MiB
-from ray.data._internal.utils.transform_pyarrow import _is_pa_extension_type
+from ray.data._internal.utils.transform_pyarrow import (
+    _create_empty_table,
+    _is_pa_extension_type,
+)
 from ray.data.block import Block, Schema
 from ray.data.context import DataContext
 
@@ -132,7 +135,7 @@ def _make_join_reduce_fn(
         if tables:
             return _combine(tables)
         if isinstance(schema, pa.Schema):
-            return schema.empty_table()
+            return _create_empty_table(schema)
         return None
 
     def _empty_table_with_key_schema(
@@ -140,11 +143,9 @@ def _make_join_reduce_fn(
         source_key_col_names: Tuple[str, ...],
         target_key_col_names: Tuple[str, ...],
     ) -> "pa.Table":
-        return (
-            table.select(list(source_key_col_names))
-            .schema.empty_table()
-            .rename_columns(list(target_key_col_names))
-        )
+        return _create_empty_table(
+            table.select(list(source_key_col_names)).schema
+        ).rename_columns(list(target_key_col_names))
 
     def _reduce(
         partition_id: int, tables_by_input: List[List[Block]]

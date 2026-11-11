@@ -8,6 +8,7 @@ from ray.data._internal.logical.interfaces import (
     LogicalOperatorUnifiesInputSchemas,
     PredicatePassThroughBehavior,
 )
+from ray.data._internal.utils.transform_pyarrow import _create_empty_table
 from ray.util.annotations import PublicAPI
 
 if TYPE_CHECKING:
@@ -120,9 +121,9 @@ class Zip(NAry):
         ):
             return None
         try:
-            combined = input_schemas[0].empty_table()
+            combined = _create_empty_table(input_schemas[0])
             for s in input_schemas[1:]:
-                combined = BlockAccessor.for_block(combined).zip(s.empty_table())
+                combined = BlockAccessor.for_block(combined).zip(_create_empty_table(s))
         except (pa.ArrowTypeError, pa.ArrowInvalid):
             return None
         return combined.schema
