@@ -109,6 +109,10 @@ class OrcStripeIndexer(NonSamplingFileIndexer):
                 for info in file_infos
                 if all(p.should_include(info.path) for p in pruners)
             )
+        if excluded_read_unit_ids:
+            file_infos = (
+                info for info in file_infos if info.path not in excluded_read_unit_ids
+            )
         shuffle_config = self._replayable_shuffle(shuffle_config)
         if shuffle_config is not None:
             file_infos = _shuffle_file_infos(

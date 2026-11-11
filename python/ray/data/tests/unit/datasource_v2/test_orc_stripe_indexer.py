@@ -333,6 +333,36 @@ def test_listing_identity_exclusion_limit_shuffle_and_raw_sample(
     assert len(list(raw.list_files(pa.array([str(case.path)]), **kwargs))) == 1
 
 
+@pytest.mark.parametrize("limit", [None, 6])
+def test_prelisted_shuffle_excludes_files_before_shuffling(case, limit):
+    paths = [case.path.parent / f"{name}.orc" for name in "abcd"]
+    for path in paths:
+        path.write_bytes(case.path.read_bytes())
+    infos = [FileInfo(str(path), case.layout.size) for path in paths]
+    excluded = {str(paths[1]), metadata.orc_read_unit_id(str(paths[0]), 1)}
+    kwargs = dict(
+        filesystem=LocalFileSystem(),
+        shuffle_config=FileShuffleConfig(seed=0),
+        excluded_read_unit_ids=excluded,
+        limit=limit,
+    )
+
+    def rows(manifests):
+        return [
+            (str(path), FileChunk.from_metadata(chunk).unit_ids)
+            for manifest in manifests
+            for path, chunk in zip(manifest.paths, manifest.file_chunk_metadatas)
+        ]
+
+    listed = rows(case.indexer.list_files(pa.array([str(p) for p in paths]), **kwargs))
+    prelisted = rows(case.indexer.list_files_from_file_infos(infos, **kwargs))
+    assert prelisted == listed
+    assert str(paths[1]) not in {path for path, _ in listed}
+    if limit is None:
+        assert {path for path, _ in listed} == {str(p) for p in paths if p != paths[1]}
+        assert (str(paths[0]), (1,)) not in listed
+
+
 class Position(SynthesizedColumn):
     name, type, requires_read_unit_boundaries = "position", pa.int64(), True
 
