@@ -1,3 +1,4 @@
+import logging
 import pickle
 from copy import deepcopy
 from types import SimpleNamespace
@@ -756,6 +757,22 @@ def test_autoscaling_snapshots_written_in_one_log_line():
     controller._autoscaling_logger.info.assert_called_once_with(
         {"snapshots": snapshots}
     )
+
+
+def test_autoscaling_snapshots_skipped_when_info_is_off():
+    """With the snapshot logger above INFO, no snapshot is built or marked logged,
+    so the current state is written once INFO is back on."""
+    manager = MagicMock()
+    logger = MagicMock()
+    logger.isEnabledFor.return_value = False
+    controller = SimpleNamespace(
+        autoscaling_state_manager=manager, _autoscaling_logger=logger
+    )
+
+    ServeController._emit_deployment_autoscaling_snapshots(controller)
+
+    logger.isEnabledFor.assert_called_once_with(logging.INFO)
+    manager.log_deployment_snapshots.assert_not_called()
 
 
 if __name__ == "__main__":

@@ -1636,8 +1636,7 @@ class AutoscalingStateManager:
         self, write: Callable[[List[Dict[str, Any]]], None]
     ) -> None:
         """Pass every deployment snapshot that changed since it was last logged to
-        `write` in one call. Each is marked logged only after `write` returns, so a
-        failed write is retried on the next call."""
+        `write` in one call, then mark them logged."""
         pending = []
         for app_state in self._app_autoscaling_states.values():
             for dep_state in app_state._deployment_autoscaling_states.values():

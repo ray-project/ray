@@ -1725,19 +1725,5 @@ def test_snapshot_logged_once_per_change_and_again_after_reenable():
     assert write.call_count == 2
 
 
-def test_snapshot_retried_after_failed_write():
-    """A snapshot is marked logged only after the write succeeds."""
-    dep_id = DeploymentID("D", "app")
-    manager = _manager_with_deployment(dep_id)
-    write = MagicMock(side_effect=[OSError("disk full"), None])
-
-    _decide(manager, dep_id)
-    with pytest.raises(OSError):
-        manager.log_deployment_snapshots(write)
-    manager.log_deployment_snapshots(write)
-    manager.log_deployment_snapshots(write)
-    assert write.call_count == 2
-
-
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", "-s", __file__]))

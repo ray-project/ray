@@ -725,17 +725,17 @@ def test_autoscaling_snapshot_not_emitted_every_iteration(serve_instance):
 
     controller = _get_global_client()._controller
 
-    # Count current snapshots
+    def num_control_loops() -> int:
+        return ray.get(controller.get_health_metrics.remote())["num_control_loops"]
+
     initial_count = len(_read_deployment_snapshots(DEPLOY_NAME))
 
-    # Force multiple emits
-    for _ in range(5):
-        ray.get(controller._emit_deployment_autoscaling_snapshots.remote())
+    # Let the controller run ten more full loops, each deciding and emitting.
+    start = num_control_loops()
+    wait_for_condition(lambda: num_control_loops() >= start + 10, timeout=30)
 
-    final_count = len(_read_deployment_snapshots(DEPLOY_NAME))
-
-    # No new snapshots should be added after the first stable write
-    assert final_count == initial_count
+    # The scaling numbers didn't change, so no new snapshot was written.
+    assert len(_read_deployment_snapshots(DEPLOY_NAME)) == initial_count
 
 
 def test_autoscaling_snapshot_batched_single_write_per_loop(serve_instance):

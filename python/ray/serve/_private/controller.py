@@ -635,9 +635,11 @@ class ServeController:
 
     def _emit_deployment_autoscaling_snapshots(self) -> None:
         """Write the snapshots that changed this loop as one structured log line."""
-        if self._autoscaling_logger is None:
-            return
         logger_ = self._autoscaling_logger
+        # Snapshots are logged at INFO. With a higher level they would be built and
+        # marked logged without being written, so skip them until INFO is back on.
+        if logger_ is None or not logger_.isEnabledFor(logging.INFO):
+            return
         self.autoscaling_state_manager.log_deployment_snapshots(
             lambda snapshots: logger_.info({"snapshots": snapshots})
         )
