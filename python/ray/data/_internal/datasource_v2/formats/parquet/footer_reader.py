@@ -339,13 +339,12 @@ class FooterReader:
             decoded = estimate_added_columns(row_group=row_group, read=sizing.read)
             unmodelled = list(sizing.leaf_indices)
         else:
-            chunks = leaf_chunks(
+            leaves = leaf_chunks(
                 row_group=row_group,
                 leaf_profiles=sizing.profiles,
                 leaf_indices=sizing.leaf_indices,
                 size_stats=size_stats,
             )
-            leaves = {leaf.index: leaf for leaf in chunks}
             decoded, buffers = estimate_row_group_work(
                 row_group=row_group,
                 columns=sizing.columns,
@@ -370,8 +369,7 @@ class FooterReader:
                     for name, indices in sizing.cast_leaves.items()
                 }
                 for name, indices in sizing.cast_leaves.items():
-                    cast = {leaf.index for leaf in cast_leaves[name]}
-                    unmodelled += [j for j in indices if j not in cast]
+                    unmodelled += [j for j in indices if j not in cast_leaves[name]]
                 decoded += estimate_cast(
                     row_group=row_group,
                     column_leaves=cast_leaves,
