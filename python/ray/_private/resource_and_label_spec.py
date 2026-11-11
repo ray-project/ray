@@ -482,6 +482,33 @@ class ResourceAndLabelSpec:
                     num_accelerators = min(
                         num_accelerators, len(visible_accelerator_ids)
                     )
+            elif num_accelerators > 0:
+                # Resource counts are logical, so discovery is diagnostic only
+                # when the user has explicitly configured accelerators.
+                try:
+                    detected_accelerators = (
+                        accelerator_manager.get_current_node_num_accelerators()
+                    )
+                except Exception:
+                    logger.warning(
+                        "Ray was configured with %s %s resources, but accelerator "
+                        "auto-detection failed. Check that the hardware, drivers, "
+                        "and discovery libraries are available. The configured "
+                        "resource count is unchanged.",
+                        num_accelerators,
+                        resource_name,
+                        exc_info=True,
+                    )
+                else:
+                    if detected_accelerators == 0:
+                        logger.warning(
+                            "Ray was configured with %s %s resources, but "
+                            "auto-detection found no accelerators. Check that the "
+                            "hardware, drivers, and discovery libraries are "
+                            "available. The configured resource count is unchanged.",
+                            num_accelerators,
+                            resource_name,
+                        )
 
             if num_accelerators > 0:
                 return accelerator_manager, num_accelerators
