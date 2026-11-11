@@ -16,6 +16,11 @@ from ray.llm._internal.serve.routing_policies.kv_aware.constants import (
 from ray.llm._internal.serve.routing_policies.kv_aware.kv_token_tracker import (
     get_token_endpoint,
 )
+from ray.llm._internal.serve.routing_policies.kv_aware.metrics import (
+    TokenizationBypassOutcome,
+    init_tokenization_bypass_counter,
+    record_tokenization_bypass,
+)
 from ray.serve._private.constants import (
     RAY_SERVE_INGRESS_REQUEST_ROUTER_OPT_HEADERS_FIELD,
     SERVE_INGRESS_ROUTER_REQUEST_PATH_HEADER,
@@ -190,6 +195,7 @@ class LLMRouter:
 
         self._token_sender = token_channel.TokenSender()
         self._kv_token_tracker.subscribe_token_endpoints(self._token_sender.connect)
+        init_tokenization_bypass_counter()
 
     @router_app.post("/internal/route")
     async def route(self, request: Request):
@@ -265,6 +271,8 @@ class LLMRouter:
             )
             if token_key:
                 request_headers[KV_TOKEN_KEY_HEADER] = token_key
+            else:
+                record_tokenization_bypass(TokenizationBypassOutcome.SEND_FAILED)
         if request_headers:
             response[
                 RAY_SERVE_INGRESS_REQUEST_ROUTER_OPT_HEADERS_FIELD
