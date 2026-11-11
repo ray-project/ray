@@ -4,7 +4,6 @@ from ray.dashboard.modules.metrics.dashboards.common import (
     DashboardConfig,
     GridPos,
     Panel,
-    Row,
     Target,
 )
 
@@ -239,29 +238,8 @@ SERVE_DEPLOYMENT_GRAFANA_PANELS = [
     ),
 ]
 
-_KV_ROUTER_PANELS = [
-    Panel(
-        id=16,
-        title="Uncached prefill tokens per router",
-        description=(
-            "Current outstanding uncached prefill tokens reported by each router handle. "
-            "Raw snapshots, not lookback means. Routers report replicated global views; "
-            "do not sum the lines to estimate total workload."
-        ),
-        unit="tokens",
-        targets=[
-            Target(
-                expr="ray_serve_router_uncached_prefill_tokens{{{global_filters}}}",
-                legend="{{application}}#{{deployment}}#{{handle}}#{{actor_id}}",
-            ),
-        ],
-        fill=0,
-        stack=False,
-    ),
-]
-
 ids = []
-for panel in [*SERVE_DEPLOYMENT_GRAFANA_PANELS, *_KV_ROUTER_PANELS]:
+for panel in SERVE_DEPLOYMENT_GRAFANA_PANELS:
     ids.append(panel.id)
 
 ids.sort()
@@ -274,7 +252,6 @@ serve_deployment_dashboard_config = DashboardConfig(
     name="SERVE_DEPLOYMENT",
     default_uid="rayServeDeploymentDashboard",
     panels=SERVE_DEPLOYMENT_GRAFANA_PANELS,
-    rows=[Row(title="KV Router", id=101, panels=_KV_ROUTER_PANELS, collapsed=True)],
     standard_global_filters=[
         'application=~"$Application"',
         'deployment=~"$Deployment"',
