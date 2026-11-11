@@ -40,6 +40,8 @@ __all__ = [
 ]
 
 _SHUFFLE_REDUCE_OPS = (ShuffleReduceOp, DiskHashShuffleReduceOp)
+# Set on the map ops EliminateAggregateShuffle creates.
+_ONE_PHASE_AGGREGATE_ATTR = "_is_one_phase_aggregate"
 
 
 def _shuffle_ops_before(
@@ -156,6 +158,7 @@ class EliminateAggregateShuffle(Rule):
             supports_fusion=False,
         )
         local_op.set_logical_operators(aggregate)
+        setattr(local_op, _ONE_PHASE_AGGREGATE_ATTR, True)
 
         # create() already linked source to local_op; drop the shuffle's ops.
         source._output_dependencies.remove(map_op)
@@ -200,12 +203,12 @@ class EnsureLocalAggregateReadsWholePartitions(Rule):
             self._ensure_in_dag(input_op) for input_op in op.input_dependencies
         ]
         aggregate = self._op_map.get(op)
-        # Only EliminateAggregateShuffle makes a map op from an Aggregate,
-        # besides the disk shuffle's writer, which feeds a regroup.
-        if not (isinstance(op, MapOperator) and isinstance(aggregate, Aggregate)):
-            return op
-        if any(
-            isinstance(dep, DiskHashShuffleRegroupOp) for dep in op.output_dependencies
+        # Other map ops can map to an Aggregate too, e.g. the disk shuffle's
+        # writer.
+        if not (
+            isinstance(op, MapOperator)
+            and isinstance(aggregate, Aggregate)
+            and getattr(op, _ONE_PHASE_AGGREGATE_ATTR, False)
         ):
             return op
         (source,) = op.input_dependencies
