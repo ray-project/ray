@@ -759,6 +759,17 @@ TEST_F(WorkerPoolDriverRegisteredTest, TestPrestartingWorkersCappedByLeaseCpus) 
                                 {{"CPU", 16}});
   worker_pool_->PrestartWorkers(lease_spec, 20);
   ASSERT_EQ(worker_pool_->NumWorkersStarting(), 2);
+  // Exactly 15 leases that need 2.2 CPUs each fit in 33 available CPUs.
+  worker_pool_->num_available_cpus_ = 33;
+  lease_spec = ExampleLeaseSpec(ActorID::Nil(),
+                                Language::PYTHON,
+                                JOB_ID,
+                                {},
+                                LeaseID::FromRandom(),
+                                rpc::RuntimeEnvInfo(),
+                                {{"CPU", 2.2}});
+  worker_pool_->PrestartWorkers(lease_spec, 20);
+  ASSERT_EQ(worker_pool_->NumWorkersStarting(), 15);
   worker_pool_->num_available_cpus_ = POOL_SIZE_SOFT_LIMIT;
 }
 

@@ -16,6 +16,7 @@
 
 #include <algorithm>
 #include <boost/date_time/posix_time/posix_time.hpp>
+#include <cmath>
 #include <deque>
 #include <fstream>
 #include <iostream>
@@ -1599,10 +1600,13 @@ void WorkerPool::PrestartWorkers(const LeaseSpecification &lease_spec,
   int64_t num_fitting_leases = num_available_cpus;
   // A lease that needs more than 1 CPU can only run num_available_cpus / cpus at a
   // time here. Workers beyond that never get a lease and are killed as idle.
-  const double lease_cpus =
-      lease_spec.GetRequiredResources().Get(scheduling::ResourceID::CPU()).Double();
+  const FixedPoint lease_cpus =
+      lease_spec.GetRequiredResources().Get(scheduling::ResourceID::CPU());
   if (lease_cpus > 1) {
-    num_fitting_leases = static_cast<int64_t>(num_available_cpus / lease_cpus);
+    // Divide in integer resource units: in floating point, e.g. 33 / 2.2 truncates to 14.
+    const int64_t lease_cpu_units =
+        std::llround(lease_cpus.Double() * kResourceUnitScaling);
+    num_fitting_leases = num_available_cpus * kResourceUnitScaling / lease_cpu_units;
   }
   auto desired_usable_workers = std::min<int64_t>(num_fitting_leases, backlog_size);
   if (num_usable_workers < desired_usable_workers) {
