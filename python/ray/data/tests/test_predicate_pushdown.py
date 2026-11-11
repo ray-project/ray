@@ -8,7 +8,7 @@ import pandas as pd
 import pyarrow as pa
 import pyarrow.parquet as pq
 import pytest
-from packaging.version import Version, parse as version_parse
+from packaging.version import Version
 from pytest_lazy_fixtures import lf as lazy_fixture
 
 import ray
@@ -1031,10 +1031,6 @@ class TestPyArrowComputeUDFPushdown:
             ),
         ],
     )
-    @pytest.mark.skipif(
-        version_parse(pa.__version__) < version_parse("15.0.0"),
-        reason="Requires PyArrow >= 15 for string compute UDF pushdown",
-    )
     def test_string_udf_pushdown_into_parquet(
         self, parquet_ds, build_filter, equivalent_fn
     ):
@@ -1048,10 +1044,6 @@ class TestPyArrowComputeUDFPushdown:
             optimized_plan, Filter
         ), "PyArrow-compute UDF filter should be pushed into Read"
 
-    @pytest.mark.skipif(
-        version_parse(pa.__version__) < version_parse("15.0.0"),
-        reason="Requires PyArrow >= 15 for string compute UDF pushdown",
-    )
     def test_udf_combined_with_comparison_pushdown(self, parquet_ds):
         """UDF predicate combined with comparison should both push down."""
         ds = parquet_ds.filter(
@@ -1067,10 +1059,6 @@ class TestPyArrowComputeUDFPushdown:
             optimized_plan, Filter
         ), "Combined UDF + comparison filter should be pushed into Read"
 
-    @pytest.mark.skipif(
-        version_parse(pa.__version__) < version_parse("15.0.0"),
-        reason="Requires PyArrow >= 15 for string compute UDF pushdown",
-    )
     def test_chained_udf_filters_fuse_and_push(self, parquet_ds):
         """Multiple UDF filters should fuse and push into Read."""
         ds = parquet_ds.filter(expr=col("variety").str.contains("set")).filter(
@@ -1086,10 +1074,6 @@ class TestPyArrowComputeUDFPushdown:
             optimized_plan, Filter
         ), "Chained UDF filters should fuse and push into Read"
 
-    @pytest.mark.skipif(
-        version_parse(pa.__version__) < version_parse("15.0.0"),
-        reason="Requires PyArrow >= 15 for complex type UDF pushdown",
-    )
     @pytest.mark.parametrize(
         "table,build_filter,equivalent_fn",
         [
