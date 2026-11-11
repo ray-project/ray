@@ -1,5 +1,18 @@
+load("@bazel_skylib//rules:write_file.bzl", "write_file")
 load("@py_deps_py310//:requirements.bzl", ci_require = "requirement")
 load("@rules_python//python:defs.bzl", "py_binary", "py_test")
+load(":trivy_versions.bzl", "TRIVY_SHA256", "TRIVY_SIGNER_IDENTITY", "TRIVY_VERSION")
+
+# The pin as data, so the scan tools record exactly what they ran.
+write_file(
+    name = "trivy_pin",
+    out = "trivy_pin.json",
+    content = [json.encode({
+        "signer": TRIVY_SIGNER_IDENTITY,
+        "tarball_sha256": TRIVY_SHA256,
+        "version": TRIVY_VERSION,
+    })],
+)
 
 py_binary(
     name = "trivy_report",
