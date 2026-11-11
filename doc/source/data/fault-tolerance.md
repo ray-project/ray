@@ -55,7 +55,7 @@ True
 Keep the following in mind when you turn on lineage reconstruction:
 - **Lineage reconstruction can only be enabled through setting the Ray Job Config.** `DataContext.enable_ray_data_reconstruction` reflects the job setting. Don’t set it on the `DataContext`, because that setting doesn’t propagate to the cluster. If a value on the `DataContext` conflicts with the job config, Ray Data raises a `ValueError`.
 - **Enabling Ray Data lineage reconstruction disables Ray Core lineage reconstruction automatically.** This setting stops the job’s workers from keeping the lineage of their objects, so Ray Core can’t reconstruct any object in the job. Ray Data is the only reconstruction mechanism. If a dataset can’t use Ray Data lineage reconstruction, a lost object fails that dataset. To learn which datasets are supported, see {ref}`data_fault_tolerance_supported`.
-- **Aggregations in your script turn it off for that dataset.** Methods like {meth}`Dataset.count() <ray.data.Dataset.count>` and {meth}`Dataset.sum() <ray.data.Dataset.sum>` add operators that lineage reconstruction doesn’t support. To keep reconstruction on, consume the dataset with {meth}`~ray.data.Dataset.iter_batches`, {meth}`~ray.data.Dataset.take_all`, or a write.
+- **Aggregations in your script disable lineage reconstruction for that dataset.** Methods like {meth}`Dataset.count() <ray.data.Dataset.count>` and {meth}`Dataset.sum() <ray.data.Dataset.sum>` add operators that lineage reconstruction doesn’t support. To keep reconstruction on, consume the dataset with {meth}`~ray.data.Dataset.iter_batches`, {meth}`~ray.data.Dataset.take_all`, or a write.
 
 (data_fault_tolerance_supported)=
 
