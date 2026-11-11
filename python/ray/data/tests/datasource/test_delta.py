@@ -1,4 +1,3 @@
-import json
 import os
 from unittest import mock
 
@@ -12,6 +11,7 @@ from ray.data import Schema
 from ray.data._internal.util import rows_same
 from ray.data._internal.utils.arrow_utils import get_pyarrow_version
 from ray.data.tests.conftest import *  # noqa
+from ray.data.tests.delta_test_utils import write_column_mapped_table
 from ray.data.tests.mock_http_server import *  # noqa
 from ray.tests.conftest import *  # noqa
 
@@ -213,65 +213,13 @@ def test_delta_read_deletion_vectors_message_is_actionable(tmp_path):
     assert "not yet supported by the deltalake reader" in message
 
 
-def _write_column_mapped_table(path: str, mode: str) -> None:
-    """Write a one-file reader 2 / writer 5 Delta table with column mapping.
-
-    deltalake can't write a column-mapped table: it stores the property but
-    keeps the column names in the data files and a reader 1 protocol. So the
-    log is written by hand, with the data file storing column ``id`` under the
-    physical name ``col-a1``, as Spark and Databricks write it.
-    """
-    import pyarrow.parquet as pq
-
-    os.makedirs(os.path.join(path, "_delta_log"))
-    data_file = os.path.join(path, "part-0.parquet")
-    pq.write_table(pa.table({"col-a1": pa.array([1, 2], pa.int64())}), data_file)
-
-    field = {
-        "name": "id",
-        "type": "long",
-        "nullable": True,
-        "metadata": {
-            "delta.columnMapping.id": 1,
-            "delta.columnMapping.physicalName": "col-a1",
-        },
-    }
-    actions = [
-        {"protocol": {"minReaderVersion": 2, "minWriterVersion": 5}},
-        {
-            "metaData": {
-                "id": "3c3a3d8e-0000-4000-8000-000000000000",
-                "format": {"provider": "parquet", "options": {}},
-                "schemaString": json.dumps({"type": "struct", "fields": [field]}),
-                "partitionColumns": [],
-                "configuration": {
-                    "delta.columnMapping.mode": mode,
-                    "delta.columnMapping.maxColumnId": "1",
-                },
-                "createdTime": 0,
-            }
-        },
-        {
-            "add": {
-                "path": "part-0.parquet",
-                "partitionValues": {},
-                "size": os.path.getsize(data_file),
-                "modificationTime": 0,
-                "dataChange": True,
-            }
-        },
-    ]
-    with open(os.path.join(path, "_delta_log", f"{0:020d}.json"), "w") as f:
-        f.write("\n".join(json.dumps(action) for action in actions) + "\n")
-
-
 # Reader 2 / writer 5 tables declare no reader features, so deltalake's own
 # protocol check passes and deltalake 1.6.4 to 1.6.6 returned nulls for every
 # mapped column.
 @pytest.mark.parametrize("mode", ["name", "id"])
 def test_delta_read_rejects_column_mapping(tmp_path, mode):
     path = os.path.join(tmp_path, "column_mapped")
-    _write_column_mapped_table(path, mode)
+    write_column_mapped_table(path, mode)
 
     with pytest.raises(NotImplementedError) as excinfo:
         ray.data.read_delta(path)
