@@ -497,6 +497,8 @@ class WorkerPool : public WorkerPoolInterface {
     std::vector<std::string> dynamic_options;
     /// The duration to keep the newly created worker alive before it's assigned a lease.
     std::optional<absl::Duration> worker_startup_keep_alive_duration;
+    /// True if this worker process was spawned via fork_server.py rather than execvpe.
+    bool started_via_fork_server = false;
   };
 
   /// An internal data structure that maintains the pool state per language.
@@ -551,6 +553,13 @@ class WorkerPool : public WorkerPoolInterface {
   std::list<IdleWorkerEntry> idle_of_all_languages_;
 
  private:
+  struct UnhealthyForkServerSocket {
+    int64_t until_ms = 0;
+    uint64_t st_dev = 0;
+    uint64_t st_ino = 0;
+    int consecutive_timeouts = 0;
+  };
+
   /// A helper function that returns the reference of the pool state
   /// for a given language.
   State &GetStateForLanguage(const Language &language);
@@ -677,9 +686,24 @@ class WorkerPool : public WorkerPoolInterface {
       SteadyTimePoint start,
       const rpc::RuntimeEnvInfo &runtime_env_info,
       const std::vector<std::string> &dynamic_options,
-      std::optional<absl::Duration> worker_startup_keep_alive_duration);
+      std::optional<absl::Duration> worker_startup_keep_alive_duration,
+      bool started_via_fork_server);
 
   void RemoveWorkerProcess(State &state, const WorkerID &worker_id);
+
+  /// Requests a forked Python worker from a running ForkServer socket on Linux.
+  /// Returns nullptr to fall back to StartProcess; sets `attempted_socket` once
+  /// a connect is attempted so the caller can mint a fresh WorkerID.
+  std::unique_ptr<ProcessInterface> TryStartProcessViaForkServer(
+      const Language &language,
+      rpc::WorkerType worker_type,
+      const std::vector<std::string> &worker_command_args,
+      const ProcessEnvironment &env,
+      const WorkerID &worker_id,
+      const std::vector<std::string> &dynamic_options,
+      const std::string &serialized_runtime_env_context,
+      const rpc::RuntimeEnvInfo &runtime_env_info,
+      bool &attempted_socket);
 
   /// Increase worker OOM scores to avoid raylet crashes from heap memory
   /// pressure.
@@ -755,6 +779,11 @@ class WorkerPool : public WorkerPoolInterface {
 
   /// Set of jobs whose drivers have exited.
   absl::flat_hash_set<JobID> finished_jobs_;
+
+  /// Failed or timed-out fork server sockets keyed by path and inode;
+  /// replacing a socket changes its inode and clears cooldown immediately.
+  absl::flat_hash_map<std::string, UnhealthyForkServerSocket>
+      unhealthy_fork_server_sockets_;
 
   /// A map of idle workers that are pending exit.
   absl::flat_hash_map<WorkerID, std::shared_ptr<WorkerInterface>>

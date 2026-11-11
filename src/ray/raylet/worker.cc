@@ -76,6 +76,9 @@ void Worker::KillAsync(instrumented_io_context &io_service, bool force) {
 #ifdef _WIN32
   // TODO(mehrdadn): implement graceful process termination mechanism
 #else
+  if (!proc_->IsAlive()) {
+    return;
+  }
   // Attempt to gracefully shutdown the worker before force killing it.
   kill(proc_->GetId(), SIGTERM);
 #endif

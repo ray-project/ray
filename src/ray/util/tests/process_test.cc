@@ -15,6 +15,10 @@
 #include "ray/util/process.h"
 
 #include <gtest/gtest.h>
+#ifndef _WIN32
+#include <fcntl.h>
+#include <unistd.h>
+#endif
 
 #include <algorithm>
 #include <boost/process/child.hpp>
@@ -102,5 +106,38 @@ TEST(UtilTest, CompareProcessObjects) {
 
   ASSERT_TRUE(std::equal_to<Process>()(valid1, valid1));
 }
+
+#ifndef _WIN32
+TEST(UtilTest, ProcessLifetimePipeDetectsEofAndDupCloexec) {
+  int life_pipe[2] = {-1, -1};
+  ASSERT_EQ(pipe(life_pipe), 0);
+
+  // Track getpid() with a lifetime pipe to simulate PID reuse after peer close.
+  Process proc(getpid(), life_pipe[0]);
+  int flags = fcntl(life_pipe[0], F_GETFD);
+  ASSERT_NE(flags, -1);
+  EXPECT_NE(flags & FD_CLOEXEC, 0);
+  EXPECT_TRUE(proc.IsAlive());
+
+  int dup_fd = proc.DupLifetimeFd();
+  ASSERT_GE(dup_fd, 0);
+  int dup_flags = fcntl(dup_fd, F_GETFD);
+  ASSERT_NE(dup_flags, -1);
+  EXPECT_NE(dup_flags & FD_CLOEXEC, 0);
+  Process dup_proc(getpid(), dup_fd);
+  EXPECT_TRUE(dup_proc.IsAlive());
+
+  close(life_pipe[1]);
+  EXPECT_FALSE(proc.IsAlive());
+  EXPECT_FALSE(dup_proc.IsAlive());
+  // If Kill() failed to honor POLLHUP on fd_, this would SIGKILL our own test process.
+  proc.Kill();
+  dup_proc.Kill();
+
+  // Process without a lifetime fd returns -1 from DupLifetimeFd().
+  Process pid_only(getpid());
+  EXPECT_EQ(pid_only.DupLifetimeFd(), -1);
+}
+#endif
 
 }  // namespace ray
