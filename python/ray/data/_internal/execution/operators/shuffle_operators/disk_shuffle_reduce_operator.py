@@ -73,9 +73,9 @@ class DiskHashShuffleRegroupOp(PhysicalOperator):
 
     A partition's bundle holds one block entry per input: a ref to that
     input's list of handle refs (shared by all partitions), with the
-    partition's rows and decoded bytes from that input as its metadata. The op
-    also owns end-of-shuffle cleanup (file servers and on-disk directories),
-    since it sees every mapper's handle.
+    partition's rows and decoded bytes from that input as its metadata. It
+    records every mapper's file server for ``teardown``, which the reduce calls
+    once no reducer can still need the files.
     """
 
     def __init__(
@@ -205,7 +205,11 @@ class DiskHashShuffleRegroupOp(PhysicalOperator):
     def _do_shutdown(self, force: bool = False) -> None:
         super()._do_shutdown(force)
         self._output_queue.clear()
+
+    def teardown(self) -> None:
+        """Kill the mappers' file servers and remove their shuffle files."""
         teardown_disk_shuffle(self._file_servers)
+        self._file_servers.clear()
         for bundle in self._handle_bundles:
             bundle.destroy_if_owned()
         self._handle_bundles.clear()
@@ -480,9 +484,14 @@ class DiskHashShuffleReduceOp(PhysicalOperator):
         return super().has_execution_finished()
 
     def _do_shutdown(self, force: bool = False) -> None:
+        # Cancel in-flight reducers before their mapper files go away. The
+        # executor shuts the regroup down first, so the reduce owns teardown.
         super()._do_shutdown(force)
         self._shuffle_reduce_tasks.clear()
         self._output_queue.clear()
+        regroup_op = self.input_dependencies[0]
+        assert isinstance(regroup_op, DiskHashShuffleRegroupOp)
+        regroup_op.teardown()
 
     def get_stats(self) -> Dict[str, List[BlockStats]]:
         return {self._name: self._output_blocks_stats}
