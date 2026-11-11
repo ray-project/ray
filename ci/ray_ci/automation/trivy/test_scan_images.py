@@ -329,6 +329,40 @@ def test_stage_needs_an_ignore_file_for_every_image_type(tmp_path: Path):
     assert oct((staging / "work" / "out").stat().st_mode & 0o7777) == "0o1777"
 
 
+def mode(path: Path) -> str:
+    return oct(path.stat().st_mode & 0o7777)
+
+
+def test_stage_makes_the_data_tree_readable_by_the_scan_user(tmp_path: Path):
+    """crane writes blobs 0600 and docker cp makes root the owner, so the
+    non-root scan user can only read what is world-readable."""
+    files = tmp_path / "runfiles"
+    files.mkdir()
+    (files / "trivy").write_bytes(b"\x7fELF")
+    (files / "trivy").chmod(0o500)
+    (files / "ray.trivyignore.yaml").write_text("vulnerabilities: []\n")
+    rlocation = mock.Mock()
+    rlocation.Rlocation = lambda p: str(files / Path(p).name)
+    layout = tmp_path / "layout"
+    blob = layout / "blobs" / "sha256" / "abc"
+    blob.parent.mkdir(parents=True)
+    blob.write_bytes(b"layer")
+    blob.chmod(0o600)
+    blob.parent.chmod(0o700)
+    db = tmp_path / "db"
+    db.mkdir()
+    (db / "trivy.db").write_bytes(b"db")
+    (db / "trivy.db").chmod(0o600)
+    with mock.patch.object(scan_images.runfiles, "Create", return_value=rlocation):
+        staging = scan_images.stage(tmp_path / "w", layout, {"db": db}, {"ray"})
+    data = staging / "data"
+    assert mode(data / "trivy") == "0o755"
+    assert mode(data / "layout" / "blobs" / "sha256" / "abc") == "0o644"
+    assert mode(data / "layout" / "blobs" / "sha256") == "0o755"
+    assert mode(data / "db" / "trivy.db") == "0o644"
+    assert mode(data / "ignore" / "ray.trivyignore.yaml") == "0o644"
+
+
 @pytest.mark.parametrize(("errors", "code"), [([], 0), (["boom"], 1)])
 def test_main_exits_nonzero_when_any_image_was_not_scanned(
     tmp_path: Path, errors: list, code: int

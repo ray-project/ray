@@ -349,6 +349,16 @@ class ContainedTrivy:
         _run(["docker", "cp", f"{self.loader}:/work/out/{target.name}.json", str(dest)])
 
 
+def _make_world_readable(root: Path) -> None:
+    for path in [root, *root.rglob("*")]:
+        if path.is_symlink():
+            continue
+        if path.is_dir() or path.stat().st_mode & 0o100:
+            path.chmod(0o755)
+        else:
+            path.chmod(0o644)
+
+
 def stage(
     workdir: Path, layout: Path, dbs: dict[str, Path], image_types: set[str]
 ) -> Path:
@@ -370,6 +380,10 @@ def stage(
     shutil.move(str(layout), data / "layout")
     for name, path in dbs.items():
         shutil.move(str(path), data / name.replace("_", "-"))
+
+    # crane writes blobs 0600 and docker cp makes root the owner, so the
+    # non-root scan user can only read what is world-readable.
+    _make_world_readable(data)
 
     work = staging / "work"
     for sub in ("cache", "out", "tmp", "home"):
