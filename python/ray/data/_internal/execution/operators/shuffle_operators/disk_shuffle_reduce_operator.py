@@ -486,12 +486,14 @@ class DiskHashShuffleReduceOp(PhysicalOperator):
     def _do_shutdown(self, force: bool = False) -> None:
         # Cancel in-flight reducers before their mapper files go away. The
         # executor shuts the regroup down first, so the reduce owns teardown.
-        super()._do_shutdown(force)
-        self._shuffle_reduce_tasks.clear()
-        self._output_queue.clear()
-        regroup_op = self.input_dependencies[0]
-        assert isinstance(regroup_op, DiskHashShuffleRegroupOp)
-        regroup_op.teardown()
+        try:
+            super()._do_shutdown(force)
+        finally:
+            self._shuffle_reduce_tasks.clear()
+            self._output_queue.clear()
+            regroup_op = self.input_dependencies[0]
+            assert isinstance(regroup_op, DiskHashShuffleRegroupOp)
+            regroup_op.teardown()
 
     def get_stats(self) -> Dict[str, List[BlockStats]]:
         return {self._name: self._output_blocks_stats}
