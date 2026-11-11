@@ -16,6 +16,11 @@ from ray.data._internal.execution.streaming_executor_state import (
 from ray.data.exceptions import LineageReconstructionError
 from ray.exceptions import ObjectLostError
 
+
+def _lost_error() -> ObjectLostError:
+    return ObjectLostError(ray.ObjectRef.nil().hex(), None, "injected by test")
+
+
 # ---------------------------------------------------------------------------
 # Aborting the lost task
 # ---------------------------------------------------------------------------
@@ -54,7 +59,7 @@ def test_mark_aborted_fires_the_done_callback_exactly_once():
     """
     done_calls = []
     task = _abortable_task(_recording_done_callback(done_calls))
-    error = ObjectLostError(ray.ObjectRef.nil().hex(), None, "injected by test")
+    error = _lost_error()
 
     task.mark_aborted(error)
     task.mark_aborted(error)
@@ -77,7 +82,7 @@ def test_aborted_drained_task_runs_done_callback_once():
     task = _abortable_task(_recording_done_callback(done_calls))
     fetcher = ThreadedMetadataFetcher()
     fetcher._drained_tasks.add(task)
-    error = ObjectLostError(ray.ObjectRef.nil().hex(), None, "injected by test")
+    error = _lost_error()
     task.mark_aborted(error)
 
     fetcher._fire_done_callbacks()
@@ -95,7 +100,7 @@ def test_started_reconstruction_aborts_for_reconstruction():
     # A plan with no seeds to resubmit. The test only checks how the lost task is
     # aborted.
     tracker.register_task_failed.return_value = (set(), "plan_a")
-    lost_error = ObjectLostError(ray.ObjectRef.nil().hex(), None, "injected by test")
+    lost_error = _lost_error()
 
     _reconstruct_lost_object({}, tracker, MagicMock(), task, lost_error)
 
@@ -171,7 +176,7 @@ def test_reconstruction_stamp_survives_schema_divergence():
     bundle = RefBundle(
         blocks=(
             BlockEntry(
-                ray.ObjectRef(b"1" * 28),  # pyrefly: ignore[bad-argument-type]
+                ray.ObjectRef.nil(),  # pyrefly: ignore[bad-argument-type]
                 meta,
             ),
         ),

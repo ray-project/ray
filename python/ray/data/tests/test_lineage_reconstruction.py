@@ -42,6 +42,10 @@ reconstruction_enabled = pytest.mark.parametrize(
 )
 
 
+def _lost_error() -> ObjectLostError:
+    return ObjectLostError(ray.ObjectRef.nil().hex(), None, "injected by test")
+
+
 def _nodes(tracker):
     return tracker._lineage_task_id_to_task_node
 
@@ -134,7 +138,7 @@ def _lose(topology: Dict, tracker: LineageTracker, lost_task_id: str) -> None:
         tracker,
         MagicMock(),
         task,
-        ObjectLostError(ray.ObjectRef.nil().hex(), None, "injected by test"),
+        _lost_error(),
     )
 
 
@@ -432,7 +436,7 @@ def test_lost_reconstruction_task_is_re_traced_under_its_plan(
         tracker,
         MagicMock(),
         consumer_task,
-        ObjectLostError(ray.ObjectRef.nil().hex(), None, "injected by test"),
+        _lost_error(),
     )
 
     # The seed is re-injected again, under the leaf's plan.
@@ -464,7 +468,7 @@ def test_failed_reconstruction_aborts_the_lost_task_once(
     def lost_output(self, max_bytes_to_read, metadata_fetcher):
         # A lost output stays lost: every read raises until the executor stops
         # polling the task.
-        raise ObjectLostError(ray.ObjectRef.nil().hex(), None, "injected by test")
+        raise _lost_error()
 
     monkeypatch.setattr(
         "ray.data._internal.execution.streaming_executor_state."
@@ -537,6 +541,8 @@ def lose_on(injector) -> Callable:
 
     def lose(batch):
         if ray.get(injector.should_lose.remote(batch["id"].tolist())):
+            # Not `_lost_error()`. This runs on a worker, which can't import this
+            # test module.
             raise ObjectLostError(ray.ObjectRef.nil().hex(), None, "injected by test")
         return batch
 
@@ -582,7 +588,11 @@ def _fan_out(injector) -> Dataset:
 
 
 def _three_operators(injector) -> Dataset:
-    """Read tasks feed a middle map, which feeds the lossy map."""
+    """Read tasks feed a middle map, which feeds the lossy map.
+
+    Each middle task reads two 10-row read blocks, and each lossy task reads several
+    middle outputs, so rows fan in at both maps.
+    """
     return (
         ray.data.range(NUM_ROWS, override_num_blocks=10)
         .map_batches(lambda batch: batch, batch_size=20, num_cpus=0.5)
@@ -660,7 +670,10 @@ def test_write_after_a_lost_block_writes_every_row_once(
 
 
 def _strict_repartition(injector):
-    """A strict repartition, whose bundler slices blocks across tasks."""
+    """A strict repartition, whose bundler slices blocks across tasks.
+
+    7 doesn't divide the 10-row blocks, so the bundler has to slice them.
+    """
     _linear(injector).repartition(target_num_rows_per_block=7, strict=True).take_all()
 
 
