@@ -85,16 +85,24 @@ class RequestLogger:
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("closed", [True, False])
 @pytest.mark.parametrize("weight_versions", [False, True])
 @pytest.mark.parametrize("log_outputs", [False, True])
 @pytest.mark.parametrize("echo", [False, True])
 @pytest.mark.parametrize("return_token_ids", [False, True])
-async def test_completion_counts(echo, return_token_ids, log_outputs, weight_versions):
+async def test_completion_counts(
+    echo, return_token_ids, log_outputs, weight_versions, closed, monkeypatch
+):
     """Batched deltas, prompt/choice indexing, echo, output logging, and
-    unchanged usage options."""
+    unchanged usage options, with closed choices and with the fallback."""
     from vllm.entrypoints.openai.completion.protocol import CompletionRequest
     from vllm.entrypoints.openai.completion.serving import OpenAIServingCompletion
 
+    assert llm_metrics._closed_choices(
+        OpenAIServingCompletion.completion_stream_generator
+    )
+    if not closed:
+        monkeypatch.setattr(llm_metrics, "_closed_choices", lambda generator: False)
     serving = object.__new__(OpenAIServingCompletion)
     serving_options(serving)
     serving.enable_log_outputs = serving.enable_log_deltas = log_outputs
@@ -346,3 +354,43 @@ def test_stream_model_falls_back_to_subclass():
     copied = llm_metrics._stream_model(Validated, "Copied")
     assert issubclass(copied, Validated)
     assert copied(value=2).value == 4
+    with pytest.raises(ValueError):
+        llm_metrics._stream_model(Validated, "Closed", extra="ignore")
+
+
+def test_closed_choices_require_declared_inputs():
+    """Choices ignore unknown input only if vLLM passes declared fields only and
+    never reads choices back."""
+    from vllm.entrypoints.openai.completion.protocol import (
+        CompletionResponseStreamChoice as Choice,
+    )
+
+    def declared():
+        return Choice(index=0, text="", token_ids=None)
+
+    def undeclared():
+        return Choice(index=0, text="", citations=None)
+
+    def reads_back(chunk):
+        chunk.choices[0].citations = Choice(index=0, text="")
+
+    def no_choice():
+        return Choice(0, "")
+
+    def unpacked(fields):
+        Choice(index=0, text="")
+        return Choice(**fields)
+
+    def nested():
+        Choice(index=0, text="")
+        return lambda chunk: chunk.choices
+
+    assert llm_metrics._closed_choices(declared)
+    for generator in (undeclared, reads_back, no_choice, unpacked, nested):
+        assert not llm_metrics._closed_choices(generator)
+    closed = llm_metrics._completion_models(True)[(False, True)][0]
+    assert closed.model_config["extra"] == "ignore"
+    choice = closed(index=0, text="", prompt_token_ids=[1], token_ids=2)
+    assert choice.model_dump_json(exclude_unset=True) == (
+        '{"index":0,"text":"","ray_token_count":2}'
+    )

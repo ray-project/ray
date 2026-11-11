@@ -173,31 +173,14 @@ def _null(_value) -> None:
     return None
 
 
-def _stream_model(model: type, name: str, **overrides: Any) -> type:
-    """Return a copy of one of vLLM's stream response models, plus ``overrides``.
+def _copyable(model: type) -> bool:
+    """Whether a field-for-field copy of ``model`` behaves exactly like it.
 
-    vLLM's ``OpenAIBaseModel`` runs a Python wrap validator on every
-    construction to debug-log unknown input keys (~1 us per model, twice per
-    streamed event). vLLM's generators construct these response models with
-    known keys only, so it never logs. The copy keeps vLLM's fields (in order),
-    types, defaults and config and omits only that validator. If the model has
-    any other validator or serializer, or different config, subclass instead so
-    behavior stays exact.
-
-    Args:
-        model: vLLM response model to copy.
-        name: Name of the new model.
-        **overrides: Field definitions ``(annotation, default or FieldInfo)``.
-
-    Returns:
-        The new pydantic model class.
+    True when vLLM's extra-field logging validator is the model's only validator
+    or serializer and its config is vLLM's default.
     """
-    from copy import copy
-
-    from pydantic import ConfigDict, create_model
-
     decorators = model.__pydantic_decorators__
-    exact_copy = (
+    return (
         dict(model.model_config) == {"extra": "allow"}
         and list(decorators.model_validators) == ["__log_extra_fields__"]
         and not any(
@@ -212,18 +195,90 @@ def _stream_model(model: type, name: str, **overrides: Any) -> type:
             )
         )
     )
-    if not exact_copy:
+
+
+def _stream_model(
+    model: type, name: str, *, extra: str = "allow", **overrides: Any
+) -> type:
+    """Return a copy of one of vLLM's stream response models, plus ``overrides``.
+
+    vLLM's ``OpenAIBaseModel`` runs a Python wrap validator on every
+    construction to debug-log unknown input keys (~1 us per model, twice per
+    streamed event). vLLM's generators construct these response models with
+    known keys only, so it never logs. The copy keeps vLLM's fields (in order),
+    types, defaults and config and omits only that validator. If the model has
+    any other validator or serializer, or different config, subclass instead so
+    behavior stays exact.
+
+    Args:
+        model: vLLM response model to copy.
+        name: Name of the new model.
+        extra: ``"ignore"`` skips the per-instance extras dict that vLLM's
+            ``"allow"`` builds (~0.2 us per construction). Only for callers that
+            pass declared fields only and never set attributes on instances, and
+            only for copyable models.
+        **overrides: Field definitions ``(annotation, default or FieldInfo)``.
+
+    Returns:
+        The new pydantic model class.
+    """
+    from copy import copy
+
+    from pydantic import ConfigDict, create_model
+
+    if not _copyable(model):
+        if extra != "allow":
+            raise ValueError(f"{model.__name__} cannot be copied with extra={extra}")
         return create_model(name, __base__=model, **overrides)
     fields = {
         field: (info.annotation, copy(info))
         for field, info in model.model_fields.items()
     }
     fields.update(overrides)
-    return create_model(name, __config__=ConfigDict(extra="allow"), **fields)
+    return create_model(name, __config__=ConfigDict(extra=extra), **fields)
 
 
-@lru_cache(maxsize=1)
-def _completion_models():
+def _closed_choices(generator) -> bool:
+    """Whether ``generator``'s stream choices may ignore unknown input.
+
+    Python stores a call's keyword names as a code constant; the choice
+    construction is the call passing ``index`` and ``text``. If every such call
+    passes declared fields only, vLLM's ``extra="allow"`` never stores anything
+    in the extras dict, so ``extra="ignore"`` serializes the same output. The
+    generator must also never read ``choices`` back, since a closed model
+    rejects undeclared attribute assignment where vLLM's would store it.
+    Anything this inspection cannot see (``**`` calls, nested functions) keeps
+    vLLM's ``"allow"``.
+    """
+    import dis
+
+    from vllm.entrypoints.openai.completion.protocol import (
+        CompletionResponseStreamChoice,
+    )
+
+    if not _copyable(CompletionResponseStreamChoice):
+        return False
+    code = generator.__code__
+    if any(isinstance(value, types.CodeType) for value in code.co_consts) or any(
+        instruction.opname == "CALL_FUNCTION_EX"
+        for instruction in dis.get_instructions(code)
+    ):
+        return False
+    calls = [
+        names
+        for names in code.co_consts
+        if isinstance(names, tuple) and {"index", "text"} <= set(names)
+    ]
+    declared = CompletionResponseStreamChoice.model_fields.keys()
+    return (
+        bool(calls)
+        and "choices" not in code.co_names
+        and all(set(names) <= declared for names in calls)
+    )
+
+
+@lru_cache(maxsize=2)
+def _completion_models(closed: bool):
     """Response models that add the token count during native validation.
 
     vLLM passes each chunk's delta ``token_ids`` to its choice model when
@@ -240,7 +295,10 @@ def _completion_models():
     The ``counted_by_len`` model also serializes the hidden ID fields without
     Python: they read vLLM's ``weight_versions`` input, which is ``None`` unless
     the client requested weight versions (that case uses the listed model), so
-    pydantic-core writes vLLM's own ``null`` values.
+    pydantic-core writes vLLM's own ``null`` values. The prompt IDs passed for
+    the internal ``return_token_ids`` must not be serialized: with ``closed``
+    (see ``_closed_choices``) the choice ignores that undeclared input, and
+    otherwise an excluded field consumes it.
     """
     from typing import Annotated
 
@@ -259,6 +317,16 @@ def _completion_models():
         Optional[List[int]],
         Field(default=None, validation_alias="weight_versions"),
     )
+    counted = dict(
+        prompt_token_ids=native_null,
+        token_ids=native_null,
+        ray_token_count=(int, Field(default=0, validation_alias="token_ids")),
+    )
+    if not closed:
+        counted["ray_prompt_token_ids"] = (
+            Any,
+            Field(default=None, validation_alias="prompt_token_ids", exclude=True),
+        )
     choices = {
         (True, False): _stream_model(
             CompletionResponseStreamChoice,
@@ -275,15 +343,8 @@ def _completion_models():
         (False, True): _stream_model(
             CompletionResponseStreamChoice,
             "HiddenCountedChoice",
-            prompt_token_ids=native_null,
-            token_ids=native_null,
-            ray_token_count=(int, Field(default=0, validation_alias="token_ids")),
-            # Consumes the prompt IDs passed for the internal return_token_ids,
-            # without validating or serializing them.
-            ray_prompt_token_ids=(
-                Any,
-                Field(default=None, validation_alias="prompt_token_ids", exclude=True),
-            ),
+            extra="ignore" if closed else "allow",
+            **counted,
         ),
     }
     return {
@@ -308,7 +369,8 @@ def _completion_generators(original):
     the count directly, from a C builtin.
     """
     generators = {}
-    for (visible, counted), (choice, response) in _completion_models().items():
+    models = _completion_models(_closed_choices(original))
+    for (visible, counted), (choice, response) in models.items():
         overrides = dict(
             CompletionResponseStreamChoice=choice, CompletionStreamResponse=response
         )
