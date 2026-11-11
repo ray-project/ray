@@ -454,29 +454,3 @@ py_test(
         ci_require("pytest"),
     ],
 )
-
-py_binary(
-    name = "trivy_report",
-    srcs = ["trivy_report.py"],
-    exec_compatible_with = ["//bazel:py3"],
-    deps = [
-        ci_require("click"),
-    ],
-)
-
-py_test(
-    name = "test_trivy_report",
-    size = "small",
-    srcs = ["test_trivy_report.py"],
-    data = glob(["testdata/trivy/*.json"]),
-    exec_compatible_with = ["//bazel:py3"],
-    tags = [
-        "ci_unit",
-        "team:ci",
-    ],
-    deps = [
-        ":trivy_report",
-        ci_require("click"),
-        ci_require("pytest"),
-    ],
-)

@@ -10,8 +10,8 @@ from unittest import mock
 import pytest
 from click.testing import CliRunner
 
-from ci.ray_ci.automation import trivy_report
-from ci.ray_ci.automation.trivy_report import (
+from ci.ray_ci.automation.trivy import trivy_report
+from ci.ray_ci.automation.trivy.trivy_report import (
     EXIT_CLEAN,
     EXIT_FINDINGS,
     EXIT_INCOMPLETE,
@@ -26,7 +26,7 @@ from ci.ray_ci.automation.trivy_report import (
     render_annotation,
 )
 
-FIXTURES = Path(__file__).parent / "testdata" / "trivy"
+FIXTURES = Path(__file__).parent / "testdata"
 
 # (name, image_type, python_version, platform, architecture, fixture)
 CPU = ("ray-py3.12-cpu", "ray", "3.12", "cpu", "x86_64", "ray-py3.12-cpu.json")

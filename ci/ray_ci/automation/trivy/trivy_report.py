@@ -10,7 +10,7 @@ Only fixable CRITICAL/HIGH findings count against the build. Exit codes:
 precedence over 3).
 
 Example:
-    bazel run //ci/ray_ci/automation:trivy_report -- \\
+    bazel run //ci/ray_ci/automation/trivy:trivy_report -- \\
         trivy/results --output-dir trivy --metadata trivy/metadata.json --annotate
 """
 
