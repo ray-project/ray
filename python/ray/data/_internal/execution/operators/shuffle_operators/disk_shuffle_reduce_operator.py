@@ -116,6 +116,7 @@ class DiskHashShuffleReduceOp(PhysicalOperator):
             reduce_ray_remote_args or {}
         )
         self._shuffle_reduce_tasks: Dict[int, DataOpTask] = {}
+        self._pending_partitions: deque = deque()
         self._num_reduce_tasks_submitted: int = 0
         self._handle_bundles: List[RefBundle] = []
         self._handle_refs_by_input: List[List[ObjectRef]] = [[] for _ in input_ops]
@@ -197,7 +198,22 @@ class DiskHashShuffleReduceOp(PhysicalOperator):
             return
         for partition_id in range(self._num_partitions):
             if not self._try_emit_empty_partition(partition_id):
-                self._submit_reduce_task(partition_id)
+                self._pending_partitions.append(partition_id)
+
+    def notify_in_task_submission_backpressure(
+        self, in_backpressure: bool, policy_name: Optional[str] = None
+    ) -> None:
+        super().notify_in_task_submission_backpressure(in_backpressure, policy_name)
+        # TODO(you-cheng): We override notify_in_task_submission_backpressure
+        # because the reducer doesn't follow the usual paradigm of submitting a
+        # task per add_input. For reducer, a partition is only ready once every handle has
+        # arrived. It would be better to add a hook that lets custom ops access
+        # backpressure directly.
+        if not self._pending_partitions or self._is_execution_marked_finished:
+            return
+        if in_backpressure and self._shuffle_reduce_tasks:
+            return
+        self._submit_reduce_task(self._pending_partitions.popleft())
 
     def _try_emit_empty_partition(self, partition_id: int) -> bool:
         """Return True if ``partition_id`` was handled without a reduce task.
@@ -379,11 +395,14 @@ class DiskHashShuffleReduceOp(PhysicalOperator):
     def has_execution_finished(self) -> bool:
         if self._shuffle_reduce_tasks or self._output_queue:
             return False
+        if self._pending_partitions and not self._is_execution_marked_finished:
+            return False
         return super().has_execution_finished()
 
     def _do_shutdown(self, force: bool = False) -> None:
         super()._do_shutdown(force)
         self._shuffle_reduce_tasks.clear()
+        self._pending_partitions.clear()
         self._output_queue.clear()
         teardown_disk_shuffle(self._file_servers)
         for bundle in self._handle_bundles:

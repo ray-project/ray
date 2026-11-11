@@ -712,8 +712,7 @@ def test_disk_reduce_regroups_handles_into_one_task_per_partition(
 ):
     """The writer emits one handle block per task. The reduce tallies rows
     per partition from them and, once all inputs are done, emits empty
-    partitions without a task and submits one task per remaining partition,
-    all at once; Ray's scheduler paces them by their resource requests."""
+    partitions without a task and queues one task per remaining partition."""
     ctx = DataContext.get_current()
     writer = plan_disk_hash_shuffle_map(
         InputDataBuffer(ctx, []), ctx, num_partitions=3, partition_fn=lambda t: {}
@@ -733,7 +732,50 @@ def test_disk_reduce_regroups_handles_into_one_task_per_partition(
         reduce_op.all_inputs_done()
     # Partition 1 is empty: one typed empty block queued, no task.
     assert [b.num_rows() for b in reduce_op._output_queue] == [0]
-    assert [c.args[0] for c in submit.call_args_list] == [0, 2]
+    assert list(reduce_op._pending_partitions) == [0, 2]
+    submit.assert_not_called()
+
+
+def test_disk_reduce_submits_one_partition_per_backpressure_verdict(
+    ray_start_regular_shared_2_cpus,
+):
+    """Partitions don't reach the reduce through add_input, so it admits one
+    per executor backpressure verdict: none while backpressured with a task
+    running, one when nothing runs, and none after a downstream Limit marks
+    it finished."""
+    ctx = DataContext.get_current()
+    writer = plan_disk_hash_shuffle_map(
+        InputDataBuffer(ctx, []), ctx, num_partitions=3, partition_fn=lambda t: {}
+    )
+    reduce_op = DiskHashShuffleReduceOp(
+        writer, ctx, num_partitions=3, reduce_fn=lambda *args: []
+    )
+    reduce_op.start(ExecutionOptions(), BlockRefCounter())
+    reduce_op.add_input(_handle_bundle({"num_rows": np.array([1, 1, 1])}), 0)
+
+    def submit(partition_id):
+        reduce_op._shuffle_reduce_tasks[partition_id] = MagicMock()
+
+    with patch.object(reduce_op, "_submit_reduce_task", side_effect=submit):
+        reduce_op.all_inputs_done()
+        assert not reduce_op._shuffle_reduce_tasks
+
+        # Nothing running: admitted even under backpressure.
+        reduce_op.notify_in_task_submission_backpressure(True)
+        assert list(reduce_op._shuffle_reduce_tasks) == [0]
+        # A task is running: backpressure holds the rest.
+        reduce_op.notify_in_task_submission_backpressure(True)
+        assert list(reduce_op._shuffle_reduce_tasks) == [0]
+        # One per verdict once backpressure lifts.
+        reduce_op.notify_in_task_submission_backpressure(False)
+        assert list(reduce_op._shuffle_reduce_tasks) == [0, 1]
+        assert not reduce_op.has_execution_finished()
+
+        reduce_op._shuffle_reduce_tasks.clear()
+        reduce_op.mark_execution_finished()
+        reduce_op.notify_in_task_submission_backpressure(False)
+        assert not reduce_op._shuffle_reduce_tasks
+        assert reduce_op.has_execution_finished()
 
 
 def test_disk_shuffle_resource_eligibility_by_phase(ray_start_regular_shared_2_cpus):
