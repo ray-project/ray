@@ -89,6 +89,7 @@ from ray.data._internal.execution.util import (
     merge_label_selector,
     yield_block_with_stats,
 )
+from ray.data._internal.logical.interfaces.partitioning import HashPartitioning
 from ray.data._internal.stats import StatsDict
 from ray.data._internal.util import MemoryProfiler, iterate_with_retry
 from ray.data.block import (
@@ -384,6 +385,7 @@ class MapOperator(LineageReconstructionMixin, PhysicalOperator, ABC):
         per_block_limit: Optional[int] = None,
         on_start: Optional[Callable[[Optional["pa.Schema"]], None]] = None,
         isolate_workers: bool = False,
+        output_partitioning: Optional[HashPartitioning] = None,
     ) -> "MapOperator":
         """Create a MapOperator.
 
@@ -424,6 +426,7 @@ class MapOperator(LineageReconstructionMixin, PhysicalOperator, ABC):
                 scheduled on the same worker processes as this operator's. This flag
                 is useful to prevent side-effects from affecting other operators, like
                 large PyArrow memory allocations.
+            output_partitioning: See ``PhysicalOperator.output_partitioning``.
 
         Returns:
             A ``MapOperator`` instance whose concrete subclass depends on the
@@ -450,7 +453,7 @@ class MapOperator(LineageReconstructionMixin, PhysicalOperator, ABC):
             )
 
             TaskPoolMapOperator = get_task_pool_map_operator_cls()
-            return TaskPoolMapOperator(
+            op = TaskPoolMapOperator(
                 map_transformer,
                 input_op,
                 data_context,
@@ -479,7 +482,7 @@ class MapOperator(LineageReconstructionMixin, PhysicalOperator, ABC):
                 )
 
             ActorPoolMapOperator = get_actor_pool_map_operator_cls()
-            return ActorPoolMapOperator(
+            op = ActorPoolMapOperator(
                 map_transformer,
                 input_op,
                 data_context,
@@ -497,6 +500,8 @@ class MapOperator(LineageReconstructionMixin, PhysicalOperator, ABC):
             )
         else:
             raise ValueError(f"Unsupported execution strategy {compute_strategy}")
+        op._output_partitioning = output_partitioning
+        return op
 
     def start(
         self,

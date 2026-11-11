@@ -2,6 +2,7 @@ from dataclasses import InitVar, dataclass, field, replace
 from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
 from ray.data._internal.logical.interfaces import (
+    ClusteredDistribution,
     LogicalOperator,
     LogicalOperatorPreservesSchema,
     LogicalOperatorSupportsPredicatePassThrough,
@@ -237,6 +238,14 @@ class Aggregate(AbstractAllToAll):
                 ExchangeTaskSpec.REDUCE_SUB_PROGRESS_BAR_NAME,
             ],
         )
+
+    @property
+    def required_input_distribution(self) -> Optional[ClusteredDistribution]:
+        """Each group in one partition; ``None`` for a global aggregation."""
+        key_columns = SortKey(self.key).get_columns()
+        if not key_columns:
+            return None
+        return ClusteredDistribution(tuple(key_columns))
 
     def infer_schema(self) -> Optional["Schema"]:
         # Output = key field(s) from input schema + one field per aggregator.
