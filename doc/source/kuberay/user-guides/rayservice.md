@@ -258,8 +258,8 @@ kubectl describe rayclusters $YOUR_RAY_CLUSTER
 #   ...
 #   Replicas:  1
 
-# Step 8.4: Update `spec.rayClusterConfig.rayVersion` to `2.100.0`.
-# This field determines the Autoscaler sidecar image, and triggers a zero downtime upgrade.
+# Step 8.4: Update `spec.rayClusterConfig.headGroupSpec.template.spec.containers[0].resources.limits.memory` from `5Gi` to `8Gi`.
+# This field isn't one of the exceptions above, so it triggers a zero downtime upgrade.
 kubectl apply -f ray-service.sample.yaml
 
 # Step 8.5: List all RayCluster custom resources in the `default` namespace.
