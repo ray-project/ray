@@ -5,6 +5,12 @@ import sys
 import pytest
 
 
+def _run_python(code, **kwargs):
+    return subprocess.run(
+        [sys.executable, "-c", code], capture_output=True, text=True, **kwargs
+    )
+
+
 @pytest.fixture(autouse=True)
 def clear_health_check_threshold_env(monkeypatch):
     monkeypatch.delenv(
@@ -39,18 +45,12 @@ def test_health_check_thresholds_from_env(
         )
 
     # Constants are read at import time, so check what a fresh controller imports.
-    result = subprocess.run(
-        [
-            sys.executable,
-            "-c",
-            "from ray.serve._private.config import DeploymentConfig; "
-            "from ray.serve._private.constants import "
-            "DEPLOYMENT_ACTOR_HEALTH_CHECK_UNHEALTHY_THRESHOLD; "
-            "print(DeploymentConfig().health_check_unhealthy_threshold, "
-            "DEPLOYMENT_ACTOR_HEALTH_CHECK_UNHEALTHY_THRESHOLD)",
-        ],
-        capture_output=True,
-        text=True,
+    result = _run_python(
+        "from ray.serve._private.config import DeploymentConfig; "
+        "from ray.serve._private.constants import "
+        "DEPLOYMENT_ACTOR_HEALTH_CHECK_UNHEALTHY_THRESHOLD; "
+        "print(DeploymentConfig().health_check_unhealthy_threshold, "
+        "DEPLOYMENT_ACTOR_HEALTH_CHECK_UNHEALTHY_THRESHOLD)"
     )
     assert result.returncode == 0, result.stderr
     assert result.stdout.strip() == expected
@@ -58,11 +58,8 @@ def test_health_check_thresholds_from_env(
 
 @pytest.fixture
 def driver_deployment_args():
-    result = subprocess.run(
-        [
-            sys.executable,
-            "-c",
-            """
+    result = _run_python(
+        """
 import json
 from ray import serve
 
@@ -79,10 +76,7 @@ print(json.dumps({
     "configs": [d._deployment_config.to_proto_bytes().hex() for d in deployments],
     "replica": probe._replica_config.to_proto_bytes().hex(),
 }))
-""",
-        ],
-        capture_output=True,
-        text=True,
+"""
     )
     assert result.returncode == 0, result.stderr
     return result.stdout
@@ -93,11 +87,8 @@ def test_controller_env_default_with_explicit_deployment_overrides(
 ):
     # The driver has no ENV override; the controller supplies the default.
     monkeypatch.setenv("RAY_SERVE_REPLICA_HEALTH_CHECK_UNHEALTHY_THRESHOLD", "5")
-    result = subprocess.run(
-        [
-            sys.executable,
-            "-c",
-            """
+    result = _run_python(
+        """
 import json
 import sys
 from ray.serve._private.deploy_utils import deploy_args_to_deployment_info
@@ -115,10 +106,7 @@ for config in args["configs"]:
     thresholds.append(info.deployment_config.health_check_unhealthy_threshold)
 print(json.dumps(thresholds))
 """,
-        ],
         input=driver_deployment_args,
-        capture_output=True,
-        text=True,
     )
     assert result.returncode == 0, result.stderr
     assert json.loads(result.stdout) == [5, 3, 7]
@@ -136,11 +124,7 @@ print(json.dumps(thresholds))
 )
 def test_invalid_replica_health_check_threshold(monkeypatch, value, error):
     monkeypatch.setenv("RAY_SERVE_REPLICA_HEALTH_CHECK_UNHEALTHY_THRESHOLD", value)
-    result = subprocess.run(
-        [sys.executable, "-c", "import ray.serve._private.constants"],
-        capture_output=True,
-        text=True,
-    )
+    result = _run_python("import ray.serve._private.constants")
     assert result.returncode != 0
     assert "ValueError" in result.stderr
     assert "RAY_SERVE_REPLICA_HEALTH_CHECK_UNHEALTHY_THRESHOLD" in result.stderr
