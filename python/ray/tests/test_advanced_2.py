@@ -228,6 +228,9 @@ def test_fractional_resources(shutdown_only):
     with pytest.raises(ValueError):
         Foo2._remote([], {}, resources={"TPU": 2.5})
 
+    with pytest.raises(ValueError):
+        placement_group([{"GPU": 1.5}])
+
 
 def test_fractional_memory_round_down(shutdown_only):
     @ray.remote

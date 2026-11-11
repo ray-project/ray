@@ -30,9 +30,7 @@ pip install "ray[train]" torch "transformers[torch]" datasets evaluate numpy sci
 
 The final code has the following structure:
 
-```{testcode}
-:skipif: True
-
+```python
 from ray.train.torch import TorchTrainer
 from ray.train import ScalingConfig
 
@@ -164,9 +162,7 @@ with result.checkpoint.as_directory() as checkpoint_dir:
 :::{tab-item} Hugging Face Transformers
 <!-- This snippet isn't tested because it doesn't use any Ray code. -->
 
-```{testcode}
-:skipif: True
-
+```python
 # Adapted from Hugging Face tutorial: https://huggingface.co/docs/transformers/training
 
 import numpy as np
@@ -303,9 +299,7 @@ Ray 2.7 introduced the unified {class}`~ray.train.torch.TorchTrainer` API. It al
 :::{tab-item} Deprecated `TransformersTrainer`
 <!-- This snippet isn't tested because it contains skeleton code. -->
 
-```{testcode}
-:skipif: True
-
+```python
 import transformers
 from transformers import AutoConfig, AutoModelForCausalLM
 from datasets import load_dataset
@@ -362,9 +356,7 @@ result = ray_trainer.fit()
 :::{tab-item} `TorchTrainer`
 <!-- This snippet isn't tested because it contains skeleton code. -->
 
-```{testcode}
-:skipif: True
-
+```python
 import transformers
 from transformers import AutoConfig, AutoModelForCausalLM
 from datasets import load_dataset

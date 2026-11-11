@@ -275,6 +275,190 @@ class TestActorPoolAutoscaling:
         autoscaler.try_trigger_scaling()
         assert actor_pool.current_size() == max_size - 1
 
+    def test_downscale_not_blocked_by_pending_actors(self):
+        """Pending actors don't pin a pool the visible work no longer justifies.
+
+        Pending actors are also how a pool waits for resources, so when the
+        cluster has no free capacity they can stay unstarted for a while. Once
+        the backlog is drained, such a pool must still be able to scale down,
+        releasing pending actors first.
+        """
+        actor_pool = MockAutoscalingActorPool(
+            min_size=2,
+            max_size=8,
+            max_tasks_in_flight_per_actor=4,
+            per_actor_resource_usage=ExecutionResources(cpu=1),
+        )
+        # 2 running + 2 pending actors, util = 1 / 4 = 0.25, no enqueued
+        # backlog: the visible work only justifies a single actor.
+        actor_pool.scale(ActorPoolScalingRequest(delta=2))
+        for _ in range(2):
+            actor_pool.pending_to_running()
+        actor_pool.scale(ActorPoolScalingRequest(delta=2))
+        actor_pool._current_in_flight_tasks = 1
+
+        autoscaler = _make_autoscaler(actor_pool, enqueued_input_blocks=0)
+        autoscaler.try_trigger_scaling()
+
+        # One actor was released, and it was a pending one.
+        assert actor_pool.current_size() == 3
+        assert actor_pool.num_pending_actors() == 1
+        assert actor_pool.num_running_actors() == 2
+
+    def test_downscale_skipped_while_pending_actors_are_needed(self):
+        """Don't cancel pending actors while the visible work still needs them.
+
+        Pending actors carry resource requests that let the cluster autoscaler
+        add nodes. After a big upscale, those requests must be kept while the
+        in-flight tasks plus the enqueued backlog still justify the pool size;
+        otherwise the pool can shrink below what the backlog needs.
+        """
+        actor_pool = MockAutoscalingActorPool(
+            min_size=1,
+            max_size=8,
+            max_tasks_in_flight_per_actor=4,
+            per_actor_resource_usage=ExecutionResources(cpu=1),
+        )
+        # 2 running + 6 pending actors, with 6 enqueued blocks (ie 6 more
+        # tasks). The visible work needs ceil((4 + 6) / 1.0) = 10 actors, so
+        # the pool must not shrink even though its util is 4 / 8 = 0.5.
+        actor_pool.scale(ActorPoolScalingRequest(delta=2))
+        for _ in range(2):
+            actor_pool.pending_to_running()
+        actor_pool.scale(ActorPoolScalingRequest(delta=6))
+        actor_pool._current_in_flight_tasks = 4
+
+        autoscaler = _make_autoscaler(actor_pool, enqueued_input_blocks=6)
+        requests = []
+        original_scale = actor_pool.scale
+        actor_pool.scale = MagicMock(
+            side_effect=lambda req: (requests.append(req), original_scale(req))[1]
+        )
+
+        autoscaler.try_trigger_scaling()
+
+        assert requests[-1].delta == 0
+        assert requests[-1].reason == "no downscaling while pending actors are needed"
+        assert actor_pool.current_size() == 8
+        assert actor_pool.num_pending_actors() == 6
+
+        # At exactly the required size (delta == 0) the pending actors are
+        # still kept: the pool is not larger than what the work needs.
+        actor_pool._current_in_flight_tasks = 2
+        autoscaler.try_trigger_scaling()
+        assert requests[-1].delta == 0
+        assert requests[-1].reason == "no downscaling while pending actors are needed"
+        assert actor_pool.current_size() == 8
+
+        # Once the backlog drains, the visible work only needs 6 actors and the
+        # pool scales down, releasing one of the pending actors.
+        actor_pool._current_in_flight_tasks = 0
+        autoscaler.try_trigger_scaling()
+
+        assert actor_pool.current_size() == 7
+        assert actor_pool.num_pending_actors() == 5
+        assert actor_pool.num_running_actors() == 2
+
+    def test_pending_actors_kept_when_in_flight_dips_but_backlog_remains(self):
+        """An in-flight dip must not release pending actors the backlog needs.
+
+        ``get_pool_util()`` only accounts for in-flight tasks, so a gap between
+        bundles can look like an idle pool even though the input backlog still
+        requires the pending actors.
+        """
+        actor_pool = MockAutoscalingActorPool(
+            min_size=1,
+            max_size=8,
+            max_tasks_in_flight_per_actor=4,
+            per_actor_resource_usage=ExecutionResources(cpu=1),
+        )
+        # 2 running + 6 pending actors, no task in flight (util = 0), but a
+        # large backlog: the visible work still needs far more than 8 actors.
+        actor_pool.scale(ActorPoolScalingRequest(delta=2))
+        for _ in range(2):
+            actor_pool.pending_to_running()
+        actor_pool.scale(ActorPoolScalingRequest(delta=6))
+        actor_pool._current_in_flight_tasks = 0
+
+        autoscaler = _make_autoscaler(actor_pool, enqueued_input_blocks=100)
+        requests = []
+        original_scale = actor_pool.scale
+        actor_pool.scale = MagicMock(
+            side_effect=lambda req: (requests.append(req), original_scale(req))[1]
+        )
+
+        autoscaler.try_trigger_scaling()
+
+        assert requests[-1].delta == 0
+        assert requests[-1].reason == "no downscaling while pending actors are needed"
+        assert actor_pool.current_size() == 8
+        assert actor_pool.num_pending_actors() == 6
+
+    def test_pending_actors_released_when_backlog_shrinks(self):
+        """Release pending actors once the visible work no longer needs them.
+
+        Even when the running actors are saturated with the last few tasks,
+        pending actors should be released if the pool is larger than what the
+        remaining work (in-flight tasks plus backlog) would need.
+        """
+        actor_pool = MockAutoscalingActorPool(
+            min_size=1,
+            max_size=8,
+            max_tasks_in_flight_per_actor=4,
+            per_actor_resource_usage=ExecutionResources(cpu=1),
+        )
+        # 2 running + 6 pending actors, 2 tasks in flight (the running actors
+        # are saturated) and no backlog: the visible work only needs 2 actors.
+        actor_pool.scale(ActorPoolScalingRequest(delta=2))
+        for _ in range(2):
+            actor_pool.pending_to_running()
+        actor_pool.scale(ActorPoolScalingRequest(delta=6))
+        actor_pool._current_in_flight_tasks = 2
+
+        autoscaler = _make_autoscaler(actor_pool, enqueued_input_blocks=0)
+        requests = []
+        original_scale = actor_pool.scale
+        actor_pool.scale = MagicMock(
+            side_effect=lambda req: (requests.append(req), original_scale(req))[1]
+        )
+
+        autoscaler.try_trigger_scaling()
+
+        assert requests[-1].delta == -1
+        assert requests[-1].reason == "utilization of 0.25 <= 0.5"
+        assert actor_pool.current_size() == 7
+        assert actor_pool.num_pending_actors() == 5
+        assert actor_pool.num_running_actors() == 2
+
+    def test_downscale_skipped_while_all_actors_are_starting(self):
+        """Nothing is released while the whole pool is still starting.
+
+        This keeps start-up (and `initial_size` pre-warming) from being torn
+        down before any actor became ready.
+        """
+        actor_pool = MockAutoscalingActorPool(
+            min_size=1,
+            max_size=8,
+            max_tasks_in_flight_per_actor=4,
+            per_actor_resource_usage=ExecutionResources(cpu=1),
+        )
+        # 3 pending actors, no running actor yet, no task in flight (util = 0)
+        actor_pool.scale(ActorPoolScalingRequest(delta=3))
+
+        autoscaler = _make_autoscaler(actor_pool)
+        requests = []
+        original_scale = actor_pool.scale
+        actor_pool.scale = MagicMock(
+            side_effect=lambda req: (requests.append(req), original_scale(req))[1]
+        )
+
+        autoscaler.try_trigger_scaling()
+
+        assert requests[-1].delta == 0
+        assert requests[-1].reason == "no downscaling while all actors are starting"
+        assert actor_pool.current_size() == 3
+        assert actor_pool.num_pending_actors() == 3
+
     @pytest.mark.parametrize(
         "in_flight_tasks, enqueued_input_blocks, avg_inputs_per_task, expected_size",
         (

@@ -1,8 +1,7 @@
 # @OldAPIStack
 
 # LICENSE: MIT
-"""
-Adapted from https://github.com/karpathy/minGPT
+"""Adapted from https://github.com/karpathy/minGPT
 
 Full definition of a GPT Language Model, all of it in this single file.
 References:
@@ -44,8 +43,7 @@ class GPTConfig:
 
 @Deprecated(error=False)
 class NewGELU(nn.Module):
-    """
-    Implementation of the GELU activation function currently in Google BERT
+    """Implementation of the GELU activation function currently in Google BERT
     repo (identical to OpenAI GPT).
     Reference: Gaussian Error Linear Units (GELU) paper:
     https://arxiv.org/abs/1606.08415
@@ -66,8 +64,7 @@ class NewGELU(nn.Module):
 
 @Deprecated(error=False)
 class CausalSelfAttention(nn.Module):
-    """
-    Vanilla multi-head masked self-attention layer with a projection at the end.
+    """Vanilla multi-head masked self-attention layer with a projection at the end.
     It is possible to use torch.nn.MultiheadAttention here but I am including an
     explicit implementation here to show that there is nothing too scary here.
     """
@@ -163,8 +160,7 @@ def configure_gpt_optimizer(
     betas: Tuple[float, float] = (0.9, 0.95),
     **kwargs,
 ) -> torch.optim.Optimizer:
-    """
-    This long function is unfortunately doing something very simple and is
+    """This long function is unfortunately doing something very simple and is
     being very defensive: We are separating out all parameters of the model
     into two buckets: those that will experience weight decay for regularization
     and those that won't (biases, and layernorm/embedding weights). We are then
@@ -259,8 +255,7 @@ class GPT(nn.Module):
             torch.nn.init.ones_(module.weight)
 
     def forward(self, input_embeds, attention_masks=None, return_attentions=False):
-        """
-        input_embeds: [batch_size x seq_len x n_embed]
+        """input_embeds: [batch_size x seq_len x n_embed]
         attention_masks: [batch_size x seq_len], 0 don't attend, 1 attend
         """
         B, T, C = input_embeds.size()

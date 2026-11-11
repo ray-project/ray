@@ -18,6 +18,18 @@ ray_cc_test(
     deps = [
         "//src/ray/common:grpc_util",
         "//src/ray/common:ray_config",
+        "//src/ray/util:env",
+    ],
+)
+
+ray_cc_test(
+    name = "runtime_env_redaction_test",
+    size = "small",
+    srcs = ["runtime_env_redaction_test.cc"],
+    tags = ["team:core"],
+    deps = [
+        "//src/ray/common:runtime_env_redaction",
+        "@nlohmann_json",
     ],
 )
 
@@ -29,6 +41,7 @@ ray_cc_test(
     deps = [
         "//src/ray/common:id",
         "//src/ray/protobuf:common_cc_proto",
+        "@com_google_absl//absl/random",
     ],
 )
 

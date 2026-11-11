@@ -28,6 +28,9 @@ python/ray/dashboard/dashboard.py: dashboard linux_wheels core_python
 python/ray/util/dask/dask.py: core_python dask
 python/ray/dag/dag.py: core_python cgraphs_direct_transport
 python/ray/experimental/rdt/rdt_manager.py: core_python cgraphs_direct_transport
+python/ray/experimental/sandbox/config.py: core_python sandbox_tests
+python/ray/experimental/sandbox/_internal/cdi_lib.py: core_python sandbox_tests
+python/ray/_private/accelerators/nvidia_gpu.py: ml tune train data serve core_python dashboard linux_wheels macos_wheels java sandbox_tests
 
 # === RLlib ===
 
@@ -35,12 +38,12 @@ python/ray/rllib/rllib.py: rllib rllib_gpu rllib_directly
 
 # === Python Core ===
 
-python/core.py: ml tune train data serve llm core_python dashboard linux_wheels macos_wheels java
+python/core.py: ml tune train data serve core_python dashboard linux_wheels macos_wheels java
 python/setup.py: ml tune train serve workflow data core_python dashboard linux_wheels macos_wheels java python_dependencies min_build
 python/requirements/test-requirements.txt: ml tune train serve workflow data core_python dashboard linux_wheels macos_wheels java python_dependencies min_build
 python/requirements_compiled.txt: ml tune train serve workflow data core_python dashboard linux_wheels macos_wheels java python_dependencies min_build
 python/requirements_compiled_py3.13.txt: ml tune train serve workflow data core_python dashboard linux_wheels macos_wheels java python_dependencies min_build
-python/_raylet.pyx: ml tune train data serve llm core_python dashboard linux_wheels macos_wheels java
+python/_raylet.pyx: ml tune train data serve core_python dashboard linux_wheels macos_wheels java
 
 # === Raydepsets lock files and configs ===
 # macos_depset lock is consumed by the mac smoke test (macos_wheels) AND
@@ -179,9 +182,10 @@ doc/source/ray-contribute/doc_code/example_module.py: doc
 doc/source/cluster/doc_code/README.md:
 doc/source/ray-contribute/doc_code/README.md:
 doc/source/cluster/doc_code/diagram.png:
-# The authoring boilerplate is excluded from the Sphinx build and backs no bazel
-# target, so it emits nothing at all.
-doc/source/_templates/template.ipynb:
+# Nothing under _templates/ is a page, and no bazel target names it. No rule
+# names the directory either, so its theme templates fall through to the broad
+# `doc/` skip and emit nothing.
+doc/source/_templates/layout.html:
 # Documentation validation infra stays on the `doc` tag. The Sphinx config, the
 # modules it imports, the in-repo build extensions, and the doc-build helper
 # scripts build the docs, so they route to the `doc` build and validation only,
@@ -237,6 +241,10 @@ doc/update_cache_env.py: doc
 doc/rtd_doctor.py: doc
 doc/test_no_new_rst.py: doc
 doc/test_prose_doctest_targets.py: doc
+doc/test_doc_assets.py: doc
+# The doc asset allowlists are read only by the lint step, which runs on every
+# PR, so they route to nothing here.
+doc/asset_allowlists/notebooks.txt:
 # Pre-routed ahead of the files landing with ray-project/ray#64458. The
 # llms.txt test is a hermetic Sphinx test that imports no Ray code, so it
 # belongs on the doc build side, not on a library example step.
@@ -259,6 +267,14 @@ doc/source/_intersphinx/README.md:
 # rather than `python_dependencies`.
 python/deplocks/docs/docbuild_depset_py3.11.lock: doc doc_api deplock_check
 ci/raydepsets/configs/docs.depsets.yaml: doc doc_api deplock_check
+# The docstring examples lock and its input feed only the label-gated
+# docstringbuild image, so they run just the lock check.
+python/deplocks/docs/docstring_examples_base_depset_py3.10.lock: deplock_check
+python/deplocks/docs/docstring_examples_depset_py3.10.lock: deplock_check
+python/requirements/doc/docstring-examples-requirements.txt: deplock_check
+# Its image definition runs nothing: only the label-gated step consumes it.
+ci/docker/docstring.build.Dockerfile:
+ci/docker/docstring.build.wanda.yaml:
 # Redirect YAML selects the dedicated lightweight check and nothing else: no
 # docbuild, no API checks, no per-team doc tests. The README beside it is prose
 # and stays unrouted, which is what the second case locks in.
@@ -272,16 +288,16 @@ doc/redirects/README.md:
 # such as rllib/README.rst, used to match that tree's directory rule and fan a
 # content-only edit out to the whole library suite (rllib/README.rst alone
 # pulled in the rllib component tests); release/*.md emitted `tools`. The global
-# rule also subsumes the standalone README.rst/SECURITY.md/CONTRIBUTING.rst skip
+# rule also subsumes the standalone README.md/SECURITY.md/CONTRIBUTING.rst skip
 # entries and the release/*.md route, which were removed as dead code.
 python/ray/rllib/README.md:
 python/ray/rllib/algorithms/ppo/README.md:
 python/ray/data/tests/unit/README.md:
-python/ray/tune/README.rst:
-src/ray/design_docs/task_states.rst:
+python/ray/tune/README.md:
+src/ray/design_docs/task_states.md:
 release/benchmarks/README.md:
 AGENTS.md:
-README.rst:
+README.md:
 CONTRIBUTING.rst:
 SECURITY.md:
 # Guard: source, tests, and config beside a skipped README still route to their
@@ -302,6 +318,8 @@ release/release_tests.yaml: tools
 
 ci/lint/lint.sh: tools
 ci/ray_ci/tester.py: tools
+ci/ray_ci/data/run_hive_integration.sh: data tools
+ci/ray_ci/data/test_run_hive_integration.py: data tools
 ci/ci.sh: tools
 # Windows CI driver scripts trigger the Windows test steps, not just tools.
 ci/ray_ci/windows/build_base.sh: windows tools

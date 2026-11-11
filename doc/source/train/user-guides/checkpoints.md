@@ -126,9 +126,7 @@ Ray Train provides the callback implementation {class}`~ray.train.huggingface.tr
 
 For example, evaluation metrics such as `eval_loss` are logged during evaluation. To keep the best three checkpoints according to `eval_loss`, align the saving and evaluation frequency. The following are two examples of valid configurations:
 
-```{testcode}
-:skipif: True
-
+```python
 args = TrainingArguments(
     ...,
     evaluation_strategy="epoch",
