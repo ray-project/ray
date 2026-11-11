@@ -39,13 +39,16 @@ _FILES_PER_TASK = 16
 _TASK_NUM_CPUS = 1.0
 
 # Errors that make one footer pass untrustworthy. A short result, a missing
-# column, an I/O error, or a bound that cannot be decoded all mean the same
-# thing: read this batch instead. ``UNKNOWN`` is *not* an error -- it is a
-# per-row instruction to read that row.
+# column, an I/O error, or a bound that cannot be stored in the target schema
+# all mean the same thing: read this batch instead. ``UNKNOWN`` is *not* an
+# error -- it is a per-row instruction to read that row. ``OverflowError`` is
+# separate from ``ValueError`` and is what PyArrow raises for an integer bound
+# outside the column's range.
 _TRUST_ERRORS = (
     AttributeError,
     KeyError,
     OSError,
+    OverflowError,
     RuntimeError,
     TypeError,
     ValueError,
@@ -213,22 +216,91 @@ def _footer_statistics(
     manifest: FileManifest,
     targets: Sequence[str],
 ) -> Optional[List[Dict[str, ColumnStatistics]]]:
-    """Per-row statistics in manifest order, or ``None`` if the pass is untrusted.
+    """Per-row statistics in manifest order, or ``None`` if unalignable.
 
     ``UNKNOWN`` is a per-row answer and is returned as-is. ``None`` means the
-    result cannot be aligned with the manifest -- short, malformed, or failed
-    -- so every row in the batch must be read.
+    result is short or missing a target, so no row can be trusted. Errors from
+    the read itself are handled by the caller's trust boundary.
     """
-    try:
-        per_file = list(reader.read_column_statistics(manifest, targets))
-    except _TRUST_ERRORS:
-        logger.debug("column statistics unusable; reading the batch", exc_info=True)
-        return None
+    per_file = list(reader.read_column_statistics(manifest, targets))
     if len(per_file) != len(manifest):
         return None
     if any(target not in stats for stats in per_file for target in targets):
         return None
     return per_file
+
+
+def _summarize(
+    reader: Reader[FileManifest],
+    manifest: FileManifest,
+    targets: Sequence[str],
+    target_schema: pa.Schema,
+) -> Optional[pa.Table]:
+    """Build the summary rows, or ``None`` when no statistics are available.
+
+    ``UNKNOWN`` rows are read and summarized the same way, so a known footer
+    never causes a read.
+    """
+    if not isinstance(reader, SupportsColumnStatistics):
+        return None
+    per_file = _footer_statistics(reader, manifest, targets)
+    if per_file is None:
+        return None
+
+    known: List[Dict[str, ColumnStatistics]] = []
+    unknown: List[int] = []
+    for idx, stats in enumerate(per_file):
+        if any(
+            stats[target].state is ColumnStatisticsState.UNKNOWN for target in targets
+        ):
+            unknown.append(idx)
+        else:
+            known.append(stats)
+
+    tables: List[pa.Table] = []
+    if known:
+        tables.append(_summary_table(known, target_schema))
+    if unknown:
+        # Read only the rows the footer could not settle. Their real rows join
+        # the same aggregate, so a known file never causes a read.
+        subset = FileManifest(
+            manifest.as_block().take(pa.array(unknown, type=pa.int64()))
+        )
+        for table in reader.read(subset):
+            if table.num_rows:
+                tables.append(
+                    _summary_table(
+                        [_read_statistics(table, target_schema)], target_schema
+                    )
+                )
+    if not tables:
+        return pa.Table.from_pylist([], schema=target_schema)
+    return pa.concat_tables(tables)
+
+
+def _summarize_or_read(
+    reader: Reader[FileManifest],
+    manifest: FileManifest,
+    targets: Sequence[str],
+    target_schema: pa.Schema,
+) -> pa.Table:
+    """Summarize a batch, degrading to a read when any part is untrusted.
+
+    This is the rule's whole trust boundary. Fetching footers is not the only
+    step that can fail: a bound may not be storable in the target schema (a
+    reader contract violation), a ``ColumnStatistics`` invariant may reject an
+    inconsistent null count, or the reader may return an unexpected type. Each
+    of those must produce the rows a normal read would, never an exception from
+    a worker.
+    """
+    try:
+        table = _summarize(reader, manifest, targets, target_schema)
+    except _TRUST_ERRORS:
+        logger.debug("column statistics unusable; reading the batch", exc_info=True)
+        table = None
+    if table is not None:
+        return table
+    return _read_projection(reader, manifest, target_schema)
 
 
 def _try_rewrite(agg: Aggregate) -> Optional[Aggregate]:
@@ -315,46 +387,7 @@ def _try_rewrite(agg: Aggregate) -> Optional[Aggregate]:
         # Readers are created on the worker, as in the normal read path;
         # serializing a pre-built reader does not preserve its scan state.
         reader = read_scanner.create_reader()
-        per_file = (
-            _footer_statistics(reader, manifest, target_names)
-            if isinstance(reader, SupportsColumnStatistics)
-            else None
-        )
-        if per_file is None:
-            return _read_projection(
-                cast(Reader[FileManifest], reader), manifest, target_schema
-            )
-
-        known: List[Dict[str, ColumnStatistics]] = []
-        unknown: List[int] = []
-        for idx, stats in enumerate(per_file):
-            if any(
-                stats[target].state is ColumnStatisticsState.UNKNOWN
-                for target in target_names
-            ):
-                unknown.append(idx)
-            else:
-                known.append(stats)
-
-        tables: List[pa.Table] = []
-        if known:
-            tables.append(_summary_table(known, target_schema))
-        if unknown:
-            # Read only the rows the footer could not settle. Their real rows
-            # join the same aggregate, so a known file never causes a read.
-            subset = FileManifest(
-                manifest.as_block().take(pa.array(unknown, type=pa.int64()))
-            )
-            for table in reader.read(subset):
-                if table.num_rows:
-                    tables.append(
-                        _summary_table(
-                            [_read_statistics(table, target_schema)], target_schema
-                        )
-                    )
-        if not tables:
-            return pa.Table.from_pylist([], schema=target_schema)
-        return pa.concat_tables(tables)
+        return _summarize_or_read(reader, manifest, target_names, target_schema)
 
     # The summary task may read the files whose footer cannot answer, so it
     # inherits the read's compute strategy and remote args (resources,
