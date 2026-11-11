@@ -6,6 +6,7 @@ estimate is checked against the measured peak of a real read.
 
 import gc
 import importlib.util
+import json
 import os
 import random
 import sys
@@ -55,22 +56,31 @@ SMALL_CHUNKS = 64 << 10  # chunk size that splits the file into many chunks
 ONE_CHUNK = 1 << 30
 
 
-def write_small_messages(path: str, chunk_size: int) -> str:
-    """Write ``NUM_MESSAGES`` payloads of ``PAYLOAD_BYTES`` on one channel, half
-    random so that zstd compresses them partly, timed and numbered as a recorder
-    writes them."""
+def write_small_messages(path: str, chunk_size: int, encoding: str = "cdr") -> str:
+    """Write ``NUM_MESSAGES`` small payloads on one channel, timed and numbered
+    as a recorder writes them.
+
+    A CDR payload is ``PAYLOAD_BYTES``, half random so that zstd compresses it
+    partly. A JSON payload is an object of two numbers, which the reader decodes.
+    """
     rng = random.Random(0)
     half = PAYLOAD_BYTES // 2
+
+    def payload(i: int) -> bytes:
+        if encoding == "json":
+            return json.dumps({"x": rng.random(), "i": i}).encode()
+        return rng.randbytes(half) + bytes(half)
+
     messages = [
         {
             "topic": "/a",
             "log_time": EPOCH_NS + i * 1000,
             "sequence": i,
-            "data": rng.randbytes(half) + bytes(half),
+            "data": payload(i),
         }
         for i in range(NUM_MESSAGES)
     ]
-    write_mcap(path, messages, chunk_size=chunk_size, message_encoding="cdr")
+    write_mcap(path, messages, chunk_size=chunk_size, message_encoding=encoding)
     return path
 
 
@@ -147,14 +157,18 @@ def test_bytearray_spare_capacity_is_an_eighth():
     assert 1 + _BUFFER_GROWTH - 0.01 <= worst <= 1 + _BUFFER_GROWTH + 1e-4
 
 
+@pytest.mark.parametrize("encoding", ["cdr", "json"])
 @pytest.mark.parametrize("log_time_order", [True, False])
 @pytest.mark.parametrize("chunk_size", [ONE_CHUNK, SMALL_CHUNKS])
 def test_estimate_bounds_the_measured_peak_of_a_read(
-    tmp_path, log_time_order, chunk_size
+    tmp_path, log_time_order, chunk_size, encoding
 ):
     """The estimate T + W + R for a task that reads the whole file is at least
-    the measured peak of reading it, and less than twice that."""
-    path = write_small_messages(os.path.join(tmp_path, "small.mcap"), chunk_size)
+    the measured peak of reading it, and less than twice that. JSON payloads
+    are decoded into Python values, which hold several times their bytes."""
+    path = write_small_messages(
+        os.path.join(tmp_path, "small.mcap"), chunk_size, encoding
+    )
     datasource = MCAPDatasourceV2([path], log_time_order=log_time_order)
     (manifest,) = list_manifests(datasource)
     task = as_read_task(manifest)
