@@ -442,6 +442,7 @@ class KubeRayProvider(ICloudInstanceProvider):
                 1, _worker_group_num_of_hosts(raycluster, group_index) or 1
             )
             # the num_workers from the scale request is multiplied by numOfHosts, so we need to divide it back.
+            unaligned_workers = num_workers % group_num_of_hosts
             target_replicas = max(group_min_replicas, num_workers // group_num_of_hosts)
             # Cap the replica count to maxReplicas.
             original_target_replicas = target_replicas
@@ -456,6 +457,10 @@ class KubeRayProvider(ICloudInstanceProvider):
                 rejected_replicas = original_target_replicas - target_replicas
                 if rejected_replicas > 0:
                     rejected_nodes[node_type] = rejected_replicas * group_num_of_hosts
+            if unaligned_workers > 0:
+                rejected_nodes[node_type] = (
+                    rejected_nodes.get(node_type, 0) + unaligned_workers
+                )
             # Check if we need to change the target count.
             if target_replicas == _worker_group_replicas(raycluster, group_index):
                 # No patch required.

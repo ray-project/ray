@@ -1402,6 +1402,19 @@ class KubeRayProviderIntegrationTest(unittest.TestCase):
             }
         ]
 
+        # 7. Unaligned scale-up count (e.g. 6 workers for numOfHosts=4) patches
+        # 1 replica (4 workers) and reports the 2 unaligned workers via LaunchNodeError.
+        prov_unaligned, client_unaligned = _run_provider(replicas=0, min_rep=0, pods=[])
+        prov_unaligned.launch(shape={"tpu-group": 6}, request_id="up-unaligned")
+        assert client_unaligned.get_patches("rayclusters/test") == [
+            {"op": "replace", "path": "/spec/workerGroupSpecs/0/replicas", "value": 1}
+        ]
+        errs = prov_unaligned.poll_errors()
+        assert len(errs) == 1
+        assert errs[0].node_type == "tpu-group"
+        assert errs[0].count == 2
+        assert errs[0].request_id == "up-unaligned"
+
 
 if __name__ == "__main__":
     if os.environ.get("PARALLEL_CI"):

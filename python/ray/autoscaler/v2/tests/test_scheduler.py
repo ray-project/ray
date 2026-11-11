@@ -7149,6 +7149,128 @@ def test_label_selector_attempt_cache_prefix_and_tier_invalidation():
         assert cached == uncached
         assert not cached[1]
 
+    # Staggered 2-replica materialization (1 busy running pod in rep-0, 1 idle
+    # allocated pod in rep-1, and 6 REQUESTED pods) commits 8 slots (not 12) and
+    # launches a 3rd replica under max_worker_nodes=12 when 11 tasks are pending.
+    cfg_12 = {
+        "tpu": NodeTypeConfig(
+            name="tpu",
+            resources={"CPU": 4, "TPU": 4},
+            labels={"ray.io/tpu-slice-name": "", "ray.io/tpu-worker-id": ""},
+            min_worker_nodes=0,
+            max_worker_nodes=12,
+            replica_config=WorkerReplicaConfig(
+                workers_per_replica=4,
+                domain_label_key="ray.io/tpu-slice-name",
+                worker_index_label_key="ray.io/tpu-worker-id",
+            ),
+        ),
+        "cpu": NodeTypeConfig(
+            name="cpu", resources={"CPU": 4}, min_worker_nodes=0, max_worker_nodes=4
+        ),
+    }
+    insts_r4 = [
+        AutoscalerInstance(
+            im_instance=Instance(
+                instance_id="r0-0",
+                instance_type="tpu",
+                status=Instance.RAY_RUNNING,
+                node_id="n0",
+                cloud_instance_id="c0-0",
+            ),
+            ray_node=NodeState(
+                node_id=b"n0",
+                instance_id="c0-0",
+                ray_node_type_name="tpu",
+                status=NodeStatus.RUNNING,
+                total_resources={"CPU": 4, "TPU": 4},
+                available_resources={"CPU": 0, "TPU": 0},
+                labels={"ray.io/tpu-slice-name": "rep-0", "ray.io/tpu-worker-id": "0"},
+            ),
+            cloud_instance_id="c0-0",
+            cloud_instance_replica_id="rep-0",
+        ),
+        AutoscalerInstance(
+            im_instance=Instance(
+                instance_id="r1-0",
+                instance_type="tpu",
+                status=Instance.ALLOCATED,
+                cloud_instance_id="c1-0",
+            ),
+            cloud_instance_id="c1-0",
+            cloud_instance_replica_id="rep-1",
+        ),
+        *(
+            AutoscalerInstance(
+                im_instance=Instance(
+                    instance_id=f"req-{i}",
+                    instance_type="tpu",
+                    status=Instance.REQUESTED,
+                    launch_request_id="L-init",
+                )
+            )
+            for i in range(6)
+        ),
+    ]
+    reply_r4 = ResourceDemandScheduler().schedule(
+        SchedulingRequest(
+            node_type_configs=cfg_12,
+            current_instances=insts_r4,
+            disable_launch_config_check=True,
+            resource_requests=[
+                ResourceRequestByCount(
+                    request=ResourceRequest(resources_bundle={"TPU": 4}), count=11
+                )
+            ],
+        )
+    )
+    assert {r.instance_type: r.count for r in reply_r4.to_launch} == {"tpu": 4}
+
+    # RAY_STOP_REQUESTED on multi-host replica returns None in SchedulingNode.new
+    # while single-host RAY_STOP_REQUESTED stays schedulable.
+    assert (
+        SchedulingNode.new(
+            AutoscalerInstance(
+                im_instance=Instance(
+                    instance_id="mh-stop",
+                    instance_type="tpu",
+                    status=Instance.RAY_STOP_REQUESTED,
+                ),
+                ray_node=NodeState(
+                    node_id=b"mhs",
+                    ray_node_type_name="tpu",
+                    status=NodeStatus.IDLE,
+                    total_resources={"CPU": 4, "TPU": 4},
+                    available_resources={"CPU": 4, "TPU": 4},
+                ),
+            ),
+            cfg_12,
+            True,
+        )
+        is None
+    )
+    assert (
+        SchedulingNode.new(
+            AutoscalerInstance(
+                im_instance=Instance(
+                    instance_id="sh-stop",
+                    instance_type="cpu",
+                    status=Instance.RAY_STOP_REQUESTED,
+                ),
+                ray_node=NodeState(
+                    node_id=b"shs",
+                    ray_node_type_name="cpu",
+                    status=NodeStatus.IDLE,
+                    total_resources={"CPU": 4},
+                    available_resources={"CPU": 4},
+                ),
+            ),
+            cfg_12,
+            True,
+        )
+        is not None
+    )
+
 
 if __name__ == "__main__":
     if os.environ.get("PARALLEL_CI"):

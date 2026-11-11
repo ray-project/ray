@@ -2902,6 +2902,80 @@ class TestReconciler:
         assert [i.instance_id for i in res_ct["cpu"]] == [f"c{i}" for i in range(4)]
         assert "tpu16" not in res_ct
 
+        # Retried multi-host QUEUED stragglers (launch_request_id != "") re-enter
+        # REQUESTED without % size rounding <4 stragglers to 0 or mixing them into
+        # fresh QUEUED replica batches.
+        retried_2 = [
+            create_instance(
+                f"ret-{i}",
+                status=Instance.QUEUED,
+                instance_type="tpu16",
+                launch_request_id="req-old",
+                status_times=[(Instance.QUEUED, 1 + i)],
+            )
+            for i in range(2)
+        ]
+        assert [
+            i.instance_id
+            for i in Reconciler._compute_to_launch(
+                retried_2, [], [], 1.0, 100, {"tpu16": 4}
+            )["tpu16"]
+        ] == ["ret-0", "ret-1"]
+        assert [
+            i.instance_id
+            for i in Reconciler._compute_to_launch(
+                retried_2 + r0_and_strays[:4], [], [], 1.0, 100, {"tpu16": 4}
+            )["tpu16"]
+        ] == ["ret-0", "ret-1", *(f"r0-{i}" for i in range(4))]
+
+        # In-place replacement pod in rep-0 (launch_request_id="L0") must not steal
+        # REQUESTED slots belonging to a newer replica launch (launch_request_id="L1").
+        a3_store = InstanceStorage(cluster_id="a3_repl", storage=InMemoryStorage())
+        a3_im = InstanceManager(a3_store, instance_status_update_subscribers=[])
+        TestReconciler._add_instances(
+            a3_store,
+            [
+                *(
+                    create_instance(
+                        f"r0-{i}",
+                        status=Instance.RAY_RUNNING,
+                        instance_type="tpu16",
+                        cloud_instance_id=f"c0-{i}",
+                        launch_request_id="L0",
+                    )
+                    for i in range(3)
+                ),
+                *(
+                    create_instance(
+                        f"r1-{i}",
+                        status=Instance.REQUESTED,
+                        instance_type="tpu16",
+                        launch_request_id="L1",
+                        status_times=[(Instance.REQUESTED, 10 + i)],
+                    )
+                    for i in range(4)
+                ),
+            ],
+        )
+        a3_cloud = {
+            f"c0-{i}": CloudInstance(
+                f"c0-{i}", "tpu16", NodeKind.WORKER, True, replica_id="rep-0"
+            )
+            for i in range(4)
+        }
+        Reconciler._handle_cloud_instance_allocation(a3_im, a3_cloud, [])
+        assert all(
+            a3_store.get_instances()[0][f"r1-{i}"].status == Instance.REQUESTED
+            for i in range(4)
+        )
+        Reconciler._handle_extra_cloud_instances(a3_im, a3_cloud, [])
+        adopted_c03 = [
+            inst
+            for inst in a3_store.get_instances()[0].values()
+            if inst.cloud_instance_id == "c0-3"
+        ]
+        assert len(adopted_c03) == 1 and adopted_c03[0].status == Instance.ALLOCATED
+
         # Solicited degraded-slice drain (repro7 A/B), mixed solicited+unsolicited
         # replica completion (repro8), and bounded replica_id unsolicited-fault hold
         # with warning logs (Probes 2/3 & repro7 C).
@@ -3087,8 +3161,10 @@ class TestReconciler:
         # (c) Partial-replica stops (both unsolicited single-pod faults and staggered/
         # mid-recreation solicited non-OUTDATED stops) with an active same-replica_id
         # sibling are held (INFO before transient_status_warn_interval_s, WARNING after)
-        # up to terminating_status_timeout_s, while OUTDATED stops, TERMINATION_FAILED,
-        # and unlabeled legacy pods terminate immediately.
+        # Unsolicited crash, solicited RAY_STOPPED (including outdated config hash),
+        # ALLOCATION_TIMEOUT, and RAY_INSTALL_FAILED with a live sibling are held up
+        # to terminating_status_timeout_s, while TERMINATION_FAILED and unlabeled
+        # legacy pods terminate immediately.
         v6e_16_hashed = {
             "tpu16": NodeTypeConfig(
                 name="tpu16",
@@ -3106,7 +3182,7 @@ class TestReconciler:
             cloud_instance_id="c1-3",
             status_times=[
                 (Instance.RAY_STOP_REQUESTED, 1 * s_to_ns),
-                (Instance.RAY_STOPPED, now_ns),
+                (Instance.RAY_STOPPED, now_ns - 5 * s_to_ns),
             ],
         )
         s1_outdated.launch_config_hash = "hash-v1"
@@ -3202,12 +3278,25 @@ class TestReconciler:
                 _logger=warn_log,
             )
         assert {e.instance_id for e in hold_sub.events} == {
-            "s1-outdated",
             "s1-termfail",
             "legacy-crash",
         }
         assert warn_log.warning.call_count == 0
-        assert warn_log.info.call_count == 4
+        assert warn_log.info.call_count == 5
+
+        # Late Ray registration during the hold window for ALLOCATION_TIMEOUT /
+        # RAY_INSTALL_FAILED preserves the faulted status without raising AssertionError.
+        for held_st in (Instance.ALLOCATION_TIMEOUT, Instance.RAY_INSTALL_FAILED):
+            for ray_st in (
+                NodeStatus.RUNNING,
+                NodeStatus.IDLE,
+                NodeStatus.DRAINING,
+                NodeStatus.DEAD,
+            ):
+                assert (
+                    Reconciler._reconciled_im_status_from_ray_status(ray_st, held_st)
+                    == held_st
+                )
 
         # After transient_status_warn_interval_s (15s > 10s, still <= 30s timeout),
         # held instances stay held and escalate to WARNING.
@@ -3224,7 +3313,7 @@ class TestReconciler:
                 _logger=warn_log,
             )
         assert hold_sub.events == []
-        assert warn_log.warning.call_count == 4
+        assert warn_log.warning.call_count == 5
 
         # Once terminating_status_timeout_s elapses (repro7 C), held zombies are
         # released to TERMINATING with a WARNING log even though live siblings stay active.
@@ -3245,8 +3334,9 @@ class TestReconciler:
             "s0-timeout",
             "s0-instfail",
             "s1-sol",
+            "s1-outdated",
         }
-        assert warn_log.warning.call_count == 4
+        assert warn_log.warning.call_count == 5
         hold_insts, _ = hold_store.get_instances()
         assert hold_insts["s0-live"].status == Instance.RAY_RUNNING
         assert hold_insts["s1-live"].status == Instance.RAY_RUNNING
@@ -3489,11 +3579,10 @@ class TestReconciler:
             assert len(p_sub.events) == expected_queued
 
         # Held multi-host replica with a faulted/draining pod and no new terminations
-        # in the current tick (to_terminate=[]): withhold replacement launches for the
-        # degraded replica's type (even when max_worker_nodes=8 allows 2 replicas) and
-        # reserve all 4 replica slots against max_num_nodes until the entire replica
-        # stops.
-        tpu_cap0["tpu_active"].max_worker_nodes = 8
+        # in the current tick (to_terminate=[]): reserve all 4 replica slots against
+        # max_worker_nodes and max_num_nodes until the entire replica stops, while
+        # still permitting a 2nd replica when max_worker_nodes=8 allows 2 replicas.
+        tpu_cap0["tpu_active"].max_worker_nodes = 4
         held_cloud = {
             f"hc-{i}": CloudInstance(
                 f"hc-{i}", "tpu_active", True, NodeKind.WORKER, replica_id="rep-0"
@@ -3553,12 +3642,52 @@ class TestReconciler:
                 non_terminated_cloud_instances=held_cloud,
                 _logger=part_log,
             )
-            # tpu_active replacement is withheld while rep-0 is held, and rep-0 still
-            # reserves all 4 worker slots against max_num_worker_nodes=5 so only 1 cpu
-            # worker is queued.
+            # At max_worker_nodes=4, rep-0 reserves all 4 tpu_active slots and 4 of the
+            # 5 cluster worker slots so only 1 cpu worker is queued.
             assert [(e.instance_type, e.new_instance_status) for e in h_sub.events] == [
                 ("cpu", Instance.QUEUED)
             ]
+
+        # When max_worker_nodes=8 allows 2 replicas, a held pod in rep-0 does not
+        # freeze scaling up a 2nd independent replica.
+        tpu_cap0["tpu_active"].max_worker_nodes = 8
+        h8_store = InstanceStorage(cluster_id="b_held_max8", storage=InMemoryStorage())
+        h8_sub = MockSubscriber()
+        h8_im = InstanceManager(h8_store, instance_status_update_subscribers=[h8_sub])
+        TestReconciler._add_instances(
+            h8_store,
+            [
+                create_instance(
+                    "h", status=Instance.RAY_RUNNING, node_kind=NodeKind.HEAD
+                ),
+                *(
+                    create_instance(
+                        f"hw-{i}",
+                        status=Instance.RAY_RUNNING if i < 3 else Instance.RAY_STOPPED,
+                        instance_type="tpu_active",
+                        cloud_instance_id=f"hc-{i}",
+                    )
+                    for i in range(4)
+                ),
+            ],
+        )
+        Reconciler._scale_cluster(
+            autoscaling_state=MagicMock(),
+            instance_manager=h8_im,
+            cloud_resource_monitor=CloudResourceMonitor(),
+            ray_state=ClusterResourceState(),
+            scheduler=held_sched,
+            autoscaling_config=MockAutoscalingConfig(
+                configs={"node_type_configs": tpu_cap0, "max_num_worker_nodes": 9}
+            ),
+            cloud_provider=MagicMock(),
+            non_terminated_cloud_instances=held_cloud,
+            _logger=part_log,
+        )
+        assert [(e.instance_type, e.new_instance_status) for e in h8_sub.events] == [
+            *(("tpu_active", Instance.QUEUED) for _ in range(4)),
+            ("cpu", Instance.QUEUED),
+        ]
 
         # Once all 4 pods of rep-0 are draining or stopped (no running/booting
         # siblings left in the replica), replacement launches are not withheld.

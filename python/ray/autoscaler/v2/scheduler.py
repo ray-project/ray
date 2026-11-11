@@ -339,6 +339,8 @@ class SchedulingNode:
     provider_replica_id: Optional[str] = None
     # Whether the node belongs to an authoritative runtime/provider replica group.
     _has_runtime_domain: bool = False
+    # Whether the IM instance has already been assigned a cloud launch_request_id.
+    _has_launch_request: bool = False
 
     def __init__(
         self,
@@ -380,6 +382,7 @@ class SchedulingNode:
         self.replica_id: Optional[str] = None
         self.provider_replica_id: Optional[str] = provider_replica_id or None
         self._has_runtime_domain: bool = False
+        self._has_launch_request: bool = False
 
     def get_available_resources(self, resource_request_source: ResourceRequestSource):
         """Get the available resources for the given resource request source."""
@@ -526,7 +529,15 @@ class SchedulingNode:
                 provider_replica_id=instance.cloud_instance_replica_id,
             )
 
-        return SchedulingNode.from_node_config(
+        if (
+            instance.im_instance.status == Instance.RAY_STOP_REQUESTED
+            and node_config is not None
+            and node_config.replica_config is not None
+            and node_config.replica_config.workers_per_replica > 1
+        ):
+            return None
+
+        node = SchedulingNode.from_node_config(
             node_config,
             SchedulingNodeStatus.SCHEDULABLE,
             node_kind=instance.im_instance.node_kind,
@@ -534,6 +545,8 @@ class SchedulingNode:
             im_instance_status=instance.im_instance.status,
             provider_replica_id=instance.cloud_instance_replica_id,
         )
+        node._has_launch_request = bool(instance.im_instance.launch_request_id)
+        return node
 
     @staticmethod
     def is_schedulable(instance: AutoscalerInstance) -> bool:
@@ -999,11 +1012,19 @@ class ResourceDemandScheduler(IResourceScheduler):
         self._pending_node_since_s: Dict[Tuple[NodeType, str], float] = {}
 
     @staticmethod
+    def _is_unrequested_queued(node: SchedulingNode) -> bool:
+        return (
+            node.im_instance_status == Instance.QUEUED and not node._has_launch_request
+        )
+
+    @staticmethod
     def _progress_rank(node: SchedulingNode) -> int:
         if ResourceDemandScheduler._is_running_node(node):
             return -1
         if node.status == SchedulingNodeStatus.TO_LAUNCH:
             return 5
+        if node.im_instance_status == Instance.QUEUED and node._has_launch_request:
+            return ResourceDemandScheduler._PENDING_PROGRESSION[Instance.REQUESTED]
         return ResourceDemandScheduler._PENDING_PROGRESSION.get(
             node.im_instance_status, 4
         )
@@ -1446,7 +1467,7 @@ class ResourceDemandScheduler(IResourceScheduler):
                 ):
                     continue
                 size = cfg.replica_config.workers_per_replica
-                k8s_count = booting_count = unpaired_booting = 0
+                k8s_count = booting_count = 0
                 dom_running: Counter = Counter()
                 paired_known: Counter = Counter()
                 for n in nodes:
@@ -1458,7 +1479,7 @@ class ResourceDemandScheduler(IResourceScheduler):
                             SchedulingNodeStatus.TO_TERMINATE,
                             SchedulingNodeStatus.TO_LAUNCH,
                         )
-                        or n.im_instance_status == Instance.QUEUED
+                        or ResourceDemandScheduler._is_unrequested_queued(n)
                     ):
                         continue
                     is_running = ResourceDemandScheduler._is_running_node(n)
@@ -1476,22 +1497,12 @@ class ResourceDemandScheduler(IResourceScheduler):
                         booting_count += 1
                         if n.replica_id:
                             paired_known[n.replica_id] += 1
-                        else:
-                            unpaired_booting += 1
                 dom_committed = sum(
                     max(size, cnt + paired_known.get(rid, 0))
                     for rid, cnt in dom_running.items()
                 )
-                unpaired_booting += sum(
-                    cnt for rid, cnt in paired_known.items() if rid not in dom_running
-                )
                 raw_gap = sum(max(0, size - cnt) for cnt in dom_running.values())
-                extra = max(
-                    (max(0, booting_count - raw_gap) + size - 1) // size,
-                    (unpaired_booting + size - 1) // size
-                    if any(n.provider_replica_id for n in nodes if n.node_type == nt)
-                    else 0,
-                )
+                extra = (max(0, booting_count - raw_gap) + size - 1) // size
                 committed = max(
                     ((k8s_count + size - 1) // size) * size,
                     dom_committed + extra * size,
@@ -3643,7 +3654,7 @@ class ResourceDemandScheduler(IResourceScheduler):
                     and not (
                         len(by_rep.get(n.replica_id or "", ())) == size
                         and all(
-                            m.im_instance_status == Instance.QUEUED
+                            ResourceDemandScheduler._is_unrequested_queued(m)
                             for m in by_rep[n.replica_id]
                         )
                     ),
@@ -3706,8 +3717,13 @@ class ResourceDemandScheduler(IResourceScheduler):
                 else None
             )
 
+        def _term_rank(m: SchedulingNode) -> int:
+            if m.im_instance_status == Instance.QUEUED and m._has_launch_request:
+                return term_order[Instance.REQUESTED]
+            return term_order.get(m.im_instance_status, 4)
+
         def _prog_key(u: List[SchedulingNode]) -> Tuple[bool, int, float]:
-            ranks = [term_order.get(m.im_instance_status, 4) for m in u]
+            ranks = [_term_rank(m) for m in u]
             return (
                 len(u) < replica_sizes.get(u[0].node_type, 1),
                 max(ranks),
@@ -3734,7 +3750,7 @@ class ResourceDemandScheduler(IResourceScheduler):
             dk = _dom_key(nt)
             u_sorted = sorted(
                 unit,
-                key=lambda m: (base[id(m)], term_order.get(m.im_instance_status, 4)),
+                key=lambda m: (base[id(m)], _term_rank(m)),
             )
             worst = max(base[id(m)] for m in u_sorted)
             if dk and rid in pinned_domains.get(dk, ()):
@@ -3792,7 +3808,7 @@ class ResourceDemandScheduler(IResourceScheduler):
             for n in nodes
             if n.node_kind != NodeKind.HEAD
             and n.status == SchedulingNodeStatus.SCHEDULABLE
-            and n.im_instance_status != Instance.QUEUED
+            and not ResourceDemandScheduler._is_unrequested_queued(n)
         )
         idle_timeouts: Dict[int, float] = {}
         for n in nodes:
@@ -3827,14 +3843,16 @@ class ResourceDemandScheduler(IResourceScheduler):
             for rid, r_nodes in sorted(
                 replica_nodes_by_type.get(node_type, {}).items()
             ):
-                if len(r_nodes) == size and all(
-                    m.im_instance_status == Instance.QUEUED and id(m) in idle_timeouts
-                    for m in r_nodes
+                if all(
+                    ResourceDemandScheduler._is_unrequested_queued(m) for m in r_nodes
                 ):
-                    units.append(r_nodes)
+                    if all(id(m) in idle_timeouts for m in r_nodes):
+                        units.append(r_nodes)
                 elif all(m._has_runtime_domain for m in r_nodes):
                     known.append((rid, r_nodes))
-                else:
+                elif all(
+                    ResourceDemandScheduler._progress_rank(m) < 3 for m in r_nodes
+                ):
                     unknown.append(r_nodes)
 
             has_active_inc = False
@@ -3883,7 +3901,7 @@ class ResourceDemandScheduler(IResourceScheduler):
             non_queued = sum(
                 n.node_kind != NodeKind.HEAD
                 and n.status == SchedulingNodeStatus.SCHEDULABLE
-                and n.im_instance_status != Instance.QUEUED
+                and not ResourceDemandScheduler._is_unrequested_queued(n)
                 for n in unit
             )
             rem = count_by_node_type.get(nt, 0) - terminate_nodes_by_type[nt]
