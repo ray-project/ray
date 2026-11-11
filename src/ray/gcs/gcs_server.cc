@@ -274,7 +274,8 @@ GcsServer::GcsServer(const ray::gcs::GcsServerConfig &config,
       /*clock=*/clock_,
       /*subscriber_timeout_ms=*/RayConfig::instance().subscriber_timeout_ms(),
       /*publish_batch_size_=*/RayConfig::instance().publish_batch_size(),
-      /*publisher_id=*/NodeID::FromRandom());
+      /*publisher_id=*/NodeID::FromRandom(),
+      /*use_per_subscriber_publisher_id=*/true);
 
   gcs_publisher_ = std::make_unique<pubsub::GcsPublisher>(std::move(inner_publisher));
 

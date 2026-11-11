@@ -220,10 +220,12 @@ class Subscriber : public SubscriberInterface {
       const int64_t max_command_batch_size,
       std::function<std::shared_ptr<SubscriberClientInterface>(const rpc::Address &)>
           get_client,
-      instrumented_io_context *callback_service)
+      instrumented_io_context *callback_service,
+      std::function<void()> subscription_reset_callback = nullptr)
       : subscriber_id_(subscriber_id),
         max_command_batch_size_(max_command_batch_size),
-        get_client_(std::move(get_client)) {
+        get_client_(std::move(get_client)),
+        subscription_reset_callback_(std::move(subscription_reset_callback)) {
     for (auto type : channels) {
       channels_.emplace(type,
                         std::make_unique<SubscriberChannel>(type, callback_service));
@@ -328,6 +330,10 @@ class Subscriber : public SubscriberInterface {
   const std::function<std::shared_ptr<SubscriberClientInterface>(const rpc::Address &)>
       get_client_;
 
+  /// Called with mutex_ held when a subscription stream ID is first received or
+  /// changes. Must only schedule recovery, never re-enter Subscriber synchronously.
+  const std::function<void()> subscription_reset_callback_;
+
   /// Protects below fields. Since the coordinator runs in a core worker, it should be
   /// thread safe.
   mutable absl::Mutex mutex_;
@@ -354,7 +360,7 @@ class Subscriber : public SubscriberInterface {
       ABSL_GUARDED_BY(mutex_);
 
   /// Keeps track of last processed <publisher_id, sequence_id> by publisher.
-  /// Note the publisher_id only change if gcs failover.
+  /// GCS uses a distinct publisher_id for each lifetime of its SubscriberState.
   absl::flat_hash_map<UniqueID, std::pair<UniqueID, int64_t>> processed_sequences_
       ABSL_GUARDED_BY(mutex_);
 };

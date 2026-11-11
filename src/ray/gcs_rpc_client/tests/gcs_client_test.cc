@@ -39,16 +39,18 @@ namespace ray {
 
 class GcsClientTest : public ::testing::TestWithParam<bool> {
  public:
-  GcsClientTest() : no_redis_(GetParam()) {
+  explicit GcsClientTest(int64_t subscriber_timeout_ms = 300000) : no_redis_(GetParam()) {
     RayConfig::instance().initialize(
         absl::Substitute(R"(
 {
   "maximum_gcs_destroyed_actor_cached_count": 10,
   "maximum_gcs_dead_node_cached_count": 10,
-  "gcs_storage": $0
+  "gcs_storage": $0,
+  "subscriber_timeout_ms": $1
 }
   )",
-                         no_redis_ ? "\"memory\"" : "\"redis\""));
+                         no_redis_ ? "\"memory\"" : "\"redis\"",
+                         subscriber_timeout_ms));
     if (!no_redis_) {
       TestSetupUtil::StartUpRedisServers(std::vector<int>());
     }
@@ -165,9 +167,11 @@ class GcsClientTest : public ::testing::TestWithParam<bool> {
                                   gcs_server_->GetClusterId(),
                                   /*allow_cluster_id_nil=*/false,
                                   /*fetch_cluster_id_if_nil=*/false);
-    gcs_client_ = std::make_unique<gcs::GcsClient>(options);
+    gcs_client_ = std::make_unique<gcs::GcsClient>(options, "", gcs_client_id_);
     RAY_CHECK_OK(gcs_client_->Connect(*client_io_service_));
   }
+
+  const UniqueID gcs_client_id_ = UniqueID::FromRandom();
 
   void StampContext(grpc::ClientContext &context) {
     context.AddMetadata(kClusterIdKey, gcs_client_->GetClusterId().Hex());
@@ -458,12 +462,17 @@ class GcsClientTest : public ::testing::TestWithParam<bool> {
   bool SubscribeToWorkerFailure(
       const WorkerID &worker_id,
       const rpc::ItemCallback<rpc::WorkerDeltaData> &subscribe) {
-    std::promise<bool> promise;
+    // Recovery replays the keyed subscription's completion callback. Keep its
+    // state alive and fulfill the initial wait only once.
+    auto promise = std::make_shared<std::promise<bool>>();
+    auto completed = std::make_shared<std::atomic<bool>>(false);
     gcs_client_->Workers().AsyncSubscribeToWorkerFailure(
-        worker_id, subscribe, [&promise](Status status) {
-          promise.set_value(status.ok());
+        worker_id, subscribe, [promise, completed](Status status) {
+          if (!completed->exchange(true)) {
+            promise->set_value(status.ok());
+          }
         });
-    return WaitReady(promise.get_future(), timeout_ms_);
+    return WaitReady(promise->get_future(), timeout_ms_);
   }
 
   bool ReportWorkerFailure(
@@ -610,15 +619,25 @@ TEST_P(GcsClientTest, TestJobInfo) {
   auto job_table_data = GenJobTableData(add_job_id);
 
   // Subscribe to all jobs.
-  std::atomic<int> job_updates(0);
-  auto on_subscribe = [&job_updates](const JobID &job_id, const rpc::JobTableData &data) {
-    job_updates++;
+  std::atomic<bool> saw_running(false);
+  std::atomic<bool> saw_finished(false);
+  auto on_subscribe = [&](const JobID &job_id, const rpc::JobTableData &data) {
+    EXPECT_EQ(job_id, add_job_id);
+    if (data.is_dead()) {
+      saw_finished = true;
+    } else {
+      saw_running = true;
+    }
   };
   ASSERT_TRUE(SubscribeToAllJobs(on_subscribe));
 
   ASSERT_TRUE(AddJob(job_table_data));
+  EXPECT_TRUE(
+      WaitForCondition([&]() { return saw_running.load(); }, timeout_ms_.count()));
   ASSERT_TRUE(MarkJobFinished(add_job_id));
-  WaitForExpectedCount(job_updates, 2);
+  // The first stream ID also triggers a snapshot; duplicate notifications are valid.
+  EXPECT_TRUE(
+      WaitForCondition([&]() { return saw_finished.load(); }, timeout_ms_.count()));
 }
 
 TEST_P(GcsClientTest, TestGetNextJobID) {
@@ -822,6 +841,114 @@ TEST_P(GcsClientTest, TestJobTableResubscribe) {
   ASSERT_TRUE(MarkJobFinished(job_id));
   WaitForExpectedCount(job_update_count, 3);
 }
+
+class GcsSubscriptionRecoveryTest : public GcsClientTest {
+ public:
+  GcsSubscriptionRecoveryTest() : GcsClientTest(/*subscriber_timeout_ms=*/500) {}
+
+  void TearDown() override {
+    GcsClientTest::TearDown();
+    RayConfig::instance().initialize(R"({"subscriber_timeout_ms": 300000})");
+  }
+};
+
+TEST_P(GcsSubscriptionRecoveryTest, ActorSubscriptionRecoversWithoutGcsRestart) {
+  const auto job_id = JobID::FromInt(1);
+  AddJob(job_id);
+  const auto actor = GenActorTableData(job_id);
+  const auto actor_id = ActorID::FromBinary(actor->actor_id());
+  ASSERT_TRUE(RegisterActor(actor));
+  std::atomic<int> actor_updates(0);
+  std::atomic<bool> saw_dead(false);
+  ASSERT_TRUE(
+      SubscribeActor(actor_id, [&](const ActorID &, const rpc::ActorTableData &data) {
+        ++actor_updates;
+        if (data.state() == rpc::ActorTableData::DEAD) {
+          saw_dead = true;
+        }
+      }));
+  // Drain both the initial fetch and the first stream's recovery fetch before
+  // pausing, so a queued fetch cannot mask missing recovery later in the test.
+  ASSERT_TRUE(
+      WaitForCondition([&]() { return actor_updates.load() >= 2; }, timeout_ms_.count()));
+
+  // Pause only the client event loop. GCS continues running in the same process.
+  client_io_service_->stop();
+  client_io_service_thread_->join();
+  auto channel = grpc::CreateChannel(BuildAddress("127.0.0.1", config_.grpc_server_port),
+                                     grpc::InsecureChannelCredentials());
+  auto pubsub_stub = rpc::InternalPubSubGcsService::NewStub(channel);
+  auto poll = [&](const UniqueID &subscriber_id, const std::string &publisher_id) {
+    grpc::ClientContext context;
+    StampContext(context);
+    context.set_deadline(std::chrono::system_clock::now() + timeout_ms_);
+    rpc::GcsSubscriberPollRequest request;
+    request.set_subscriber_id(subscriber_id.Binary());
+    request.set_publisher_id(publisher_id);
+    rpc::GcsSubscriberPollReply reply;
+    EXPECT_TRUE(pubsub_stub->GcsSubscriberPoll(&context, request, &reply).ok());
+    return reply;
+  };
+  const auto old_stream = poll(gcs_client_id_, "").publisher_id();
+  // An existing poll is flushed after one timeout, then the inactive state is
+  // removed. Leave enough time for the periodic checks, and verify the new ID.
+  std::this_thread::sleep_for(1500ms);
+
+  // A separate subscriber observes publication completion while the original
+  // client remains paused. This rules out recovery by a late DEAD notification.
+  const auto observer_id = UniqueID::FromRandom();
+  grpc::ClientContext subscribe_context;
+  StampContext(subscribe_context);
+  subscribe_context.set_deadline(std::chrono::system_clock::now() + timeout_ms_);
+  rpc::GcsSubscriberCommandBatchRequest subscribe_request;
+  subscribe_request.set_subscriber_id(observer_id.Binary());
+  auto *command = subscribe_request.add_commands();
+  command->set_channel_type(rpc::ChannelType::GCS_ACTOR_CHANNEL);
+  command->set_key_id(actor_id.Binary());
+  command->mutable_subscribe_message();
+  rpc::GcsSubscriberCommandBatchReply subscribe_reply;
+  EXPECT_TRUE(pubsub_stub
+                  ->GcsSubscriberCommandBatch(
+                      &subscribe_context, subscribe_request, &subscribe_reply)
+                  .ok());
+  const auto observer_stream = poll(observer_id, "").publisher_id();
+
+  auto actor_stub = rpc::ActorInfoGcsService::NewStub(channel);
+  grpc::ClientContext kill_context;
+  StampContext(kill_context);
+  kill_context.set_deadline(std::chrono::system_clock::now() + timeout_ms_);
+  rpc::KillActorViaGcsRequest kill_request;
+  kill_request.set_actor_id(actor_id.Binary());
+  kill_request.set_force_kill(true);
+  kill_request.set_no_restart(true);
+  rpc::KillActorViaGcsReply kill_reply;
+  EXPECT_TRUE(actor_stub->KillActorViaGcs(&kill_context, kill_request, &kill_reply).ok());
+  const auto notification = poll(observer_id, observer_stream);
+  EXPECT_EQ(notification.pub_messages_size(), 1);
+  if (!notification.pub_messages().empty()) {
+    EXPECT_EQ(notification.pub_messages(0).actor_message().state(),
+              rpc::ActorTableData::DEAD);
+  }
+  const auto new_stream = poll(gcs_client_id_, old_stream).publisher_id();
+  EXPECT_FALSE(new_stream.empty());
+  EXPECT_NE(new_stream, old_stream);
+  EXPECT_FALSE(saw_dead.load());
+
+  // No notification is published after this point. Recovery must re-register
+  // through GcsClient::AsyncResubscribe and fetch the current Actor state.
+  client_io_service_->restart();
+  client_io_service_thread_ = std::make_unique<std::thread>([this]() {
+    auto work = boost::asio::make_work_guard(*client_io_service_);
+    client_io_service_->run();
+  });
+  EXPECT_TRUE(WaitForCondition([&]() { return saw_dead.load(); }, timeout_ms_.count()));
+  UnsubscribeActor(actor_id);
+  WaitForActorUnsubscribed(actor_id);
+}
+
+INSTANTIATE_TEST_SUITE_P(GcsSubscriptionRecoveryTest,
+                         GcsSubscriptionRecoveryTest,
+                         ::testing::Bool());
 
 TEST_P(GcsClientTest, TestActorTableResubscribe) {
   // TODO(mwtian): Support resubscribing with GCS pubsub.

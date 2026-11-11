@@ -118,8 +118,7 @@ Status PythonGcsSubscriber::DoPoll(int64_t timeout_ms, rpc::PubMessage *message)
       if (publisher_id_ != "") {
         RAY_LOG(DEBUG) << "Replied publisher_id " << reply.publisher_id()
                        << " different from " << publisher_id_
-                       << ", this should only happen"
-                       << " during GCS failover.";
+                       << "; publisher or subscriber state has changed.";
       }
       publisher_id_ = reply.publisher_id();
       max_processed_sequence_id_ = 0;

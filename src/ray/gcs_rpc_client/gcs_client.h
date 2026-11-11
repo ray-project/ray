@@ -271,6 +271,8 @@ class RAY_EXPORT GcsClient : public std::enable_shared_from_this<GcsClient> {
   // Gcs rpc client
   std::unique_ptr<rpc::ClientCallManager> client_call_manager_;
   std::function<void()> resubscribe_func_;
+  // Invalidated on Disconnect so queued subscription recovery cannot use this client.
+  std::shared_ptr<bool> resubscribe_lifetime_;
   std::string local_address_;
 };
 
