@@ -1183,8 +1183,8 @@ class SlicePlacementGroup:
             master_addr: Optional IP address or hostname of the rank-0 master node.
                 If omitted, slice 0 uses its first worker hostname and other slices
                 resolve the placed IP of slice 0's host 0 (pass
-                ``spg.get_worker_addrs(slice_index)[0]`` when running independent
-                single-slice worlds).
+                ``spg.get_worker_addrs(slice_index)[0]`` once that slice is ready
+                when running independent single-slice worlds).
 
         Returns:
             A dictionary mapping PyTorch/TPU environment variables to their values.

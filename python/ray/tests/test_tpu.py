@@ -3587,13 +3587,6 @@ def test_placement_group_torchtpu_env_vars(_clean_ray, ray_tpu_cluster, monkeypa
     monkeypatch.setenv(
         "TORCH_TPU_SLICEBUILDER_ADDRESSES", "192.168.1.1:8471,192.168.1.2:8471"
     )
-    spg = ray.util.tpu.slice_placement_group(
-        topology="2x2x2",
-        accelerator_version="v4",
-        num_slices=2,
-        resources_per_bundle={"CPU": 0, "TPU": 1},
-    )
-    ray.get(spg.placement_group.ready(), timeout=10)
     # Give each live raylet in the two v4-16 slices a distinct host IP so
     # multi-slice MASTER_ADDR vs. slice-local addresses cannot pass vacuously
     # on a single-machine 127.0.0.1 cluster.
@@ -3616,75 +3609,97 @@ def test_placement_group_torchtpu_env_vars(_clean_ray, ray_tpu_cluster, monkeypa
 
     monkeypatch.setattr("ray.nodes", _nodes_with_distinct_slice_ips)
 
-    s0_addrs = spg.get_worker_addrs(0)
-    s1_addrs = spg.get_worker_addrs(1)
-    assert len(s0_addrs) == 2 and None not in s0_addrs
-    assert len(s1_addrs) == 2 and None not in s1_addrs
-    assert s0_addrs != s1_addrs
-    assert [addr.split(".")[-1] for addr in s0_addrs] == ["1", "2"]
-    assert [addr.split(".")[-1] for addr in s1_addrs] == ["1", "2"]
+    for pg_per_slice in (False, True):
+        spg = ray.util.tpu.slice_placement_group(
+            topology="2x2x2",
+            accelerator_version="v4",
+            num_slices=2,
+            resources_per_bundle={"CPU": 0, "TPU": 1},
+            pg_per_slice=pg_per_slice,
+        )
+        pgs = spg.slice_placement_groups if pg_per_slice else [spg.placement_group]
+        ray.get([pg.ready() for pg in pgs], timeout=10)
 
-    expected_sb_s0 = ",".join(
-        f"{host}:{8471 + i}" for host in s0_addrs for i in range(4)
-    )
-    expected_sb_s1 = ",".join(
-        f"{host}:{8471 + i}" for host in s1_addrs for i in range(4)
-    )
-    assert spg.get_torchtpu_env_vars() == {
-        "TORCH_TPU_TOPOLOGY": "2,2,2",
-        "TORCH_TPU_SLICEBUILDER_ADDRESSES": expected_sb_s0,
-        "TPU_WORKER_HOSTNAMES": ",".join(s0_addrs),
-        "MASTER_ADDR": s0_addrs[0],
-    }
-    # Slice 1 gets its own slice-local hostnames and slicebuilder endpoints, while
-    # MASTER_ADDR defaults to global rank 0 (host 0 of slice 0) for torch.distributed
-    # TCPStore rendezvous.
-    assert spg.get_torchtpu_env_vars(1, slice_index=1) == {
-        "TORCH_TPU_TOPOLOGY": "2,2,2",
-        "TORCH_TPU_SLICEBUILDER_ADDRESSES": expected_sb_s1,
-        "TPU_WORKER_HOSTNAMES": ",".join(s1_addrs),
-        "TPU_WORKER_ID": "1",
-        "MASTER_ADDR": s0_addrs[0],
-    }
-    # Callers running independent single-slice worlds can override master_addr per slice.
-    assert (
-        spg.get_torchtpu_env_vars(0, slice_index=1, master_addr=s1_addrs[0])[
-            "MASTER_ADDR"
-        ]
-        == s1_addrs[0]
-    )
-    # Positional worker_id matches get_jax_env_vars(worker_id, slice_index).
-    assert spg.get_torchtpu_env_vars(0)["TPU_WORKER_ID"] == "0"
-    assert spg.get_torchtpu_env_vars(1)["TPU_WORKER_ID"] == "1"
+        s0_addrs = spg.get_worker_addrs(0)
+        s1_addrs = spg.get_worker_addrs(1)
+        assert len(s0_addrs) == 2 and None not in s0_addrs
+        assert len(s1_addrs) == 2 and None not in s1_addrs
+        assert s0_addrs[0] != s1_addrs[0]
+        assert [addr.split(".")[-1] for addr in s0_addrs] == ["1", "2"]
+        assert [addr.split(".")[-1] for addr in s1_addrs] == ["1", "2"]
 
-    explicit_s0 = spg.get_torchtpu_env_vars(
-        worker_id=0, worker_hostnames=["host-a", "host-b"]
-    )
-    assert explicit_s0["TPU_WORKER_HOSTNAMES"] == "host-a,host-b"
-    assert explicit_s0["MASTER_ADDR"] == "host-a"
-    explicit_s1 = spg.get_torchtpu_env_vars(
-        worker_id=0, slice_index=1, worker_hostnames=["host-c", "host-d"]
-    )
-    assert explicit_s1["TPU_WORKER_HOSTNAMES"] == "host-c,host-d"
-    assert explicit_s1["MASTER_ADDR"] == s0_addrs[0]
+        expected_sb_s0 = ",".join(
+            f"{host}:{8471 + i}" for host in s0_addrs for i in range(4)
+        )
+        expected_sb_s1 = ",".join(
+            f"{host}:{8471 + i}" for host in s1_addrs for i in range(4)
+        )
+        assert spg.get_torchtpu_env_vars() == {
+            "TORCH_TPU_TOPOLOGY": "2,2,2",
+            "TORCH_TPU_SLICEBUILDER_ADDRESSES": expected_sb_s0,
+            "TPU_WORKER_HOSTNAMES": ",".join(s0_addrs),
+            "MASTER_ADDR": s0_addrs[0],
+        }
+        # Slice 1 gets its own slice-local hostnames and slicebuilder endpoints, while
+        # MASTER_ADDR defaults to global rank 0 (host 0 of slice 0) for torch.distributed
+        # TCPStore rendezvous across all workers in both slices.
+        for wid in (0, 1):
+            assert spg.get_torchtpu_env_vars(wid, slice_index=0)[
+                "TPU_WORKER_ID"
+            ] == str(wid)
+            assert spg.get_torchtpu_env_vars(wid, slice_index=1) == {
+                "TORCH_TPU_TOPOLOGY": "2,2,2",
+                "TORCH_TPU_SLICEBUILDER_ADDRESSES": expected_sb_s1,
+                "TPU_WORKER_HOSTNAMES": ",".join(s1_addrs),
+                "TPU_WORKER_ID": str(wid),
+                "MASTER_ADDR": s0_addrs[0],
+            }
+        # Callers running independent single-slice worlds can override master_addr per slice.
+        assert (
+            spg.get_torchtpu_env_vars(0, slice_index=1, master_addr=s1_addrs[0])[
+                "MASTER_ADDR"
+            ]
+            == s1_addrs[0]
+        )
 
-    with pytest.raises(ValueError, match="slice_index 2 is out of range"):
-        spg.get_torchtpu_env_vars(slice_index=2)
-    with pytest.raises(ValueError, match="out of bounds"):
-        spg.get_torchtpu_env_vars(worker_id=2)
+        explicit_s0 = spg.get_torchtpu_env_vars(
+            worker_id=0, worker_hostnames=["host-a", "host-b"]
+        )
+        assert explicit_s0["TPU_WORKER_HOSTNAMES"] == "host-a,host-b"
+        assert explicit_s0["MASTER_ADDR"] == "host-a"
+        explicit_s1 = spg.get_torchtpu_env_vars(
+            worker_id=0, slice_index=1, worker_hostnames=["host-c", "host-d"]
+        )
+        assert explicit_s1["TPU_WORKER_HOSTNAMES"] == "host-c,host-d"
+        assert explicit_s1["MASTER_ADDR"] == s0_addrs[0]
 
-    spg.shutdown()
-    monkeypatch.setattr("ray.nodes", orig_ray_nodes)
+        with pytest.raises(ValueError, match="slice_index 2 is out of range"):
+            spg.get_torchtpu_env_vars(slice_index=2)
+        with pytest.raises(ValueError, match="out of bounds"):
+            spg.get_torchtpu_env_vars(worker_id=2)
 
-    # Unplaced SlicePlacementGroup (2x4 v6e needs TPU=8 per host; cluster nodes have TPU=4)
-    # must not leak ambient env vars or resolve MASTER_ADDR from an unplaced slice 0.
-    spg_unplaced = SlicePlacementGroup(
-        topology="2x4", accelerator_version="v6e", num_slices=2
+        spg.shutdown()
+
+    # Partially placed SlicePlacementGroup (slice 0 unplaced, slice 1 placed on
+    # test-slice-1) must not leak ambient env vars on slice 0 or resolve MASTER_ADDR
+    # from an unplaced slice 0 when slice 1 is ready.
+    slice_name_key = ray._raylet.RAY_NODE_TPU_SLICE_NAME_KEY
+    spg_partial = SlicePlacementGroup(
+        topology="2x2x2",
+        accelerator_version="v4",
+        num_slices=2,
+        resources_per_bundle={"CPU": 0, "TPU": 1},
+        pg_per_slice=True,
+        bundle_label_selector=(
+            [{slice_name_key: "unplaced-slice-0"}] * 8
+            + [{slice_name_key: "test-slice-1"}] * 8
+        ),
     )
+    ray.get(spg_partial.slice_placement_groups[1].ready(), timeout=10)
     with pytest.raises(RuntimeError, match="Could not resolve TPU_WORKER_HOSTNAMES"):
-        spg_unplaced.get_torchtpu_env_vars(worker_id=0)
+        spg_partial.get_torchtpu_env_vars(worker_id=0)
     assert (
-        spg_unplaced.get_torchtpu_env_vars(slice_index=0, worker_hostnames=["dns-0"])[
+        spg_partial.get_torchtpu_env_vars(slice_index=0, worker_hostnames=["dns-0"])[
             "MASTER_ADDR"
         ]
         == "dns-0"
@@ -3692,14 +3707,17 @@ def test_placement_group_torchtpu_env_vars(_clean_ray, ray_tpu_cluster, monkeypa
     with pytest.raises(
         RuntimeError, match="Could not resolve MASTER_ADDR from slice 0"
     ):
-        spg_unplaced.get_torchtpu_env_vars(slice_index=1, worker_hostnames=["dns-1"])
-    assert (
-        spg_unplaced.get_torchtpu_env_vars(
-            slice_index=1, worker_hostnames=["dns-1"], master_addr="dns-0"
-        )["MASTER_ADDR"]
-        == "dns-0"
+        spg_partial.get_torchtpu_env_vars(0, slice_index=1)
+    with pytest.raises(
+        RuntimeError, match="Could not resolve MASTER_ADDR from slice 0"
+    ):
+        spg_partial.get_torchtpu_env_vars(slice_index=1, worker_hostnames=["dns-1"])
+    partial_s1 = spg_partial.get_torchtpu_env_vars(
+        0, slice_index=1, master_addr="dns-0"
     )
-    spg_unplaced.shutdown()
+    assert partial_s1["TPU_WORKER_HOSTNAMES"] == "10.0.1.1,10.0.1.2"
+    assert partial_s1["MASTER_ADDR"] == "dns-0"
+    spg_partial.shutdown()
 
     # SubslicePlacementGroup via _build_subslice_pg (unplaced on ray_tpu_cluster).
     sg_v6e = ray.util.tpu._build_subslice_pg(
