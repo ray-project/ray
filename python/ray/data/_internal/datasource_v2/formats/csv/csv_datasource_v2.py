@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
+from typing import TYPE_CHECKING, Any, Dict, FrozenSet, List, Optional, Tuple
 
 import pyarrow as pa
 import pyarrow.csv as pcsv
@@ -44,6 +44,7 @@ class CsvScanner(ArrowFileScanner):
     """Configure CSV reads through :class:`CsvFileReader`."""
 
     synthesized_columns: Tuple[SynthesizedColumn, ...] = ()
+    partition_columns_in_file: FrozenSet[str] = frozenset()
     chunk_size: int = 0
     read_options: Optional[pcsv.ReadOptions] = None
     parse_options: Optional[pcsv.ParseOptions] = None
@@ -66,6 +67,7 @@ class CsvScanner(ArrowFileScanner):
             read_options=self.read_options,
             parse_options=self.parse_options,
             convert_options=self.convert_options,
+            partition_columns_in_file=self.partition_columns_in_file,
             chunk_size=self.chunk_size,
             batch_size=self.batch_size or _ARROW_DEFAULT_BATCH_SIZE,
             columns=list(self.columns) if self.columns is not None else None,
@@ -144,6 +146,7 @@ class CsvDatasourceV2(LineChunkableDatasourceV2):
             filesystem=filesystem or self._filesystem,
             partitioning=options.get("partitioning", self._partitioning),
             synthesized_columns=self._synthesized_columns,
+            partition_columns_in_file=self._partition_columns_in_file,
             chunk_size=self._chunk_size,
             read_options=self._read_options,
             parse_options=self._parse_options,
