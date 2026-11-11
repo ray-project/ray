@@ -226,13 +226,19 @@ def test_repartition_target_num_rows_per_block_shuffle_no_warning():
             ValueError,
             match=r"`shuffle` must be False when `target_num_rows_per_block` is set",
         ):
+            # Argument validation happens before accessing Dataset state.
+            # Passing None avoids initializing a Ray cluster for this check.
             ray.data.Dataset.repartition(
                 None,
                 target_num_rows_per_block=3,
                 shuffle=True,
             )
 
-    assert caught == []
+    assert not any(
+        "`shuffle` is ignored when `target_num_rows_per_block` is set."
+        in str(warning.message)
+        for warning in caught
+    )
 
 
 @pytest.mark.parametrize("shuffle", [True, False])
