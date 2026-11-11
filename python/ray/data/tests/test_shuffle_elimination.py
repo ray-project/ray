@@ -571,6 +571,34 @@ def test_empty_join_output(ray_start_regular_shared_2_cpus, configure_shuffle_me
     assert ds.take_all() == []
 
 
+def test_aggregate_alias_overwriting_key_drops_partitioning(
+    ray_start_regular_shared_2_cpus, restore_data_context
+):
+    """An aggregation named after a key overwrites that column, so the output
+    isn't partitioned by it and a later group-by on it keeps its shuffle."""
+    restore_data_context.shuffle_strategy = ShuffleStrategy.SHUFFLE_V2
+    ids = np.arange(NUM_ROWS)
+    ds = _from_columns(id=ids % 10, v=np.ones(NUM_ROWS, dtype=np.int64))
+    first = ds.groupby("id", num_partitions=NUM_PARTITIONS).aggregate(
+        Sum(on="v", alias_name="id")
+    )
+    assert _planned_dag(first).output_partitioning is None
+    # Every group sums to the same value, so the overwritten key has one group.
+    second = first.groupby("id").aggregate(Count(alias_name="c"))
+    assert not _skips_aggregate_shuffle(second)
+    assert second.take_all() == [{"id": NUM_ROWS // 10, "c": 10}]
+
+
+def test_elimination_can_be_disabled(
+    ray_start_regular_shared_2_cpus, restore_data_context
+):
+    restore_data_context.shuffle_strategy = ShuffleStrategy.SHUFFLE_V2
+    restore_data_context.enable_aggregate_shuffle_elimination = False
+    ds, expected = _sum_every_column(_join(), ["id"])
+    assert not _skips_aggregate_shuffle(ds)
+    _assert_same_rows(ds, expected, ["id"])
+
+
 def test_global_aggregation_keeps_shuffle(ray_start_regular_shared_2_cpus):
     joined = _join()
     ds = joined.groupby(None).aggregate(Sum(on="rval", alias_name="s"))

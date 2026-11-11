@@ -285,9 +285,12 @@ def _plan_hash_shuffle_aggregate_v2(
 
     map_cls, reduce_cls, prefix = _select_shuffle_v2_op_classes(data_context)
 
-    # Partitioned by the group-by keys; a global aggregation has none.
+    # Partitioned by the group-by keys; a global aggregation has none. An
+    # aggregation named after a key overwrites that column (see
+    # _finalize_aggregates), so the output isn't partitioned by it either.
     output_partitioning = None
-    if key_columns:
+    agg_names = {agg.name for agg in aggs}
+    if key_columns and not any(column in agg_names for column in key_columns):
         output_partitioning = HashPartitioning(
             columns=key_columns, num_partitions=num_partitions
         )

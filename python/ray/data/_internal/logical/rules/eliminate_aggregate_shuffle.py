@@ -68,6 +68,8 @@ class EliminateAggregateShuffle(Rule):
 
     def apply(self, plan: Plan) -> Plan:
         assert isinstance(plan, PhysicalPlan)
+        if not plan.context.enable_aggregate_shuffle_elimination:
+            return plan
         self._op_map = plan.op_map.copy()
         dag = self._eliminate_in_dag(plan.dag)
         return PhysicalPlan(dag, self._op_map, plan.context)
