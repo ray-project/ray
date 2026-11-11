@@ -524,6 +524,11 @@ class ListFiles(LogicalOperator, SourceOperator):
     # Drops whole files by path. Unlike ``predicate`` above (row-group stats,
     # blind to partition columns), this is what makes ``limit`` safe here.
     partition_pruner: Optional["FilePruner"] = None
+    # Set by a rule that has already fixed the constraints above and knows its
+    # consumer applies them, even though that consumer is not a ``ReadFiles``.
+    # ``DeriveListFilesPushdown`` then leaves this node alone instead of
+    # clearing it. Only ``PushdownCountFiles`` sets it today.
+    pushdown_is_final: bool = False
     _name: str = field(init=False, repr=False)
     _input_dependencies: List[LogicalOperator] = field(
         init=False, repr=False, default_factory=list

@@ -2,6 +2,7 @@ import os
 import sys
 import time
 from collections import defaultdict, deque
+from unittest import mock
 
 import pytest
 
@@ -19,7 +20,11 @@ from ray.train.health import (
     ProbeResult,
     Reattempt,
 )
-from ray.train.health._internal.manager import HealthManager, merge_decisions
+from ray.train.health._internal.manager import (
+    HealthManager,
+    _to_health_state,
+    merge_decisions,
+)
 from ray.train.health._internal.node_monitor import NodeMonitorStatus
 from ray.train.health._internal.node_monitor_group import NodeMonitorGroupPollStatus
 from ray.train.health._internal.probe_utils import ScheduledProbe, merge_probes
@@ -40,8 +45,13 @@ class Comms(ControllerProbe):
         return {"comm0": ProbeResult()}
 
 
+class Broken(ControllerProbe):
+    def poll(self):
+        raise RuntimeError("ncclras not found")
+
+
 class Always(Evaluator):
-    """Returns ``decision``, and records the results it decides on."""
+    """Returns ``decision``, and records the states it decides on."""
 
     def __init__(self, decision):
         self.decision = decision
@@ -49,7 +59,7 @@ class Always(Evaluator):
         self.resets = 0
 
     def evaluate(self, state):
-        self.seen.append(state.probe_results)
+        self.seen.append(state)
         return self.decision
 
     def on_reset(self):
@@ -103,16 +113,25 @@ def _diagnose(reason):
 
 
 def _fake_temps(manager, results):
-    """Make each poll of ``manager`` get the next of ``results`` as node n1's
-    ``Temp`` result."""
+    """Replace the monitors of ``manager`` with a fake whose polls give the next
+    of ``results`` as node n1's ``Temp`` result, and whose on-demand polls give
+    nothing."""
     results = iter(results)
-    manager._node_monitor_group.poll_status = lambda timeout: (
-        NodeMonitorGroupPollStatus(
+    manager._node_monitor_group = mock.Mock(
+        poll_status=lambda timeout: NodeMonitorGroupPollStatus(
             node_monitor_statuses={
                 "n1": NodeMonitorStatus(probe_results={"Temp": next(results)})
             }
-        )
+        ),
+        poll_probe_results=lambda: NodeMonitorGroupPollStatus(node_monitor_statuses={}),
     )
+
+
+@pytest.fixture
+def fake_node_id(monkeypatch):
+    """Let ``reset()`` run without Ray, with a fake controller node ID."""
+    context = mock.Mock(get_node_id=lambda: "controller")
+    monkeypatch.setattr(ray, "get_runtime_context", lambda: context)
 
 
 def _wait_for(fn, timeout_s=15.0):
@@ -185,10 +204,11 @@ def test_every_inflight_evaluator_decides_on_every_evaluation():
     manager.evaluate_inflight_checks(timeout=0)
     manager.evaluate_inflight_checks(timeout=0)
     for evaluator in (fast, slow):
-        assert [seen["Temp"]["n1"].timestamp_s for seen in evaluator.seen] == [1.0, 2.0]
+        timestamps = [s.probe_results["Temp"]["n1"].timestamp_s for s in evaluator.seen]
+        assert timestamps == [1.0, 2.0]
 
 
-def test_an_evaluator_decides_on_the_history_it_keeps():
+def test_an_evaluator_decides_on_the_history_it_keeps(fake_node_id):
     evaluator = EvictHotGpu(samples=3)
     manager = HealthManager([_check(evaluators=[evaluator])])
     # The probe samples at 1s, 2s, 3s and 4s; the 1s sample stays the latest for
@@ -215,21 +235,22 @@ def test_an_evaluator_decides_on_the_history_it_keeps():
     assert evaluator.history == {}
 
 
-def test_reset_drops_the_results_and_resets_the_evaluators():
+def test_reset_drops_the_results_and_resets_the_evaluators(fake_node_id):
     evaluator = Always(Noop())
     manager = HealthManager([_check(evaluators=[evaluator])])
     _fake_temps(manager, [ProbeResult(timestamp_s=1.0)])
     manager.evaluate_inflight_checks(timeout=0)
-    assert manager._latest_results
+    assert manager._last_node_monitor_group_status.node_monitor_statuses
 
     manager.reset([])
-    assert manager._latest_results == {}
+    assert manager._last_node_monitor_group_status.node_monitor_statuses == {}
     assert evaluator.resets == 1
 
 
-def test_an_evicted_node_is_not_evicted_again():
+def test_an_evicted_node_is_not_evicted_again(fake_node_id):
     evaluator = Always(Evict(reason="hot", target_nodes=["n1"]))
     manager = HealthManager([_check(evaluators=[evaluator])])
+    _fake_temps(manager, [ProbeResult()] * 3)
     assert manager.evaluate_inflight_checks(timeout=0) == Evict(
         reason="hot", target_nodes=["n1"]
     )
@@ -250,6 +271,7 @@ def test_an_evicted_node_is_not_evicted_again():
 )
 def test_a_failing_evaluator_is_skipped_and_logged_once(broken, caplog, propagate_logs):
     manager = HealthManager([_check(evaluators=[broken, Always(Reattempt())])])
+    _fake_temps(manager, [ProbeResult()] * 2)
     assert manager.evaluate_inflight_checks(timeout=0) == Reattempt()
     assert manager.evaluate_inflight_checks(timeout=0) == Reattempt()
     assert len([r for r in caplog.records if "failed" in r.getMessage()]) == 1
@@ -257,6 +279,7 @@ def test_a_failing_evaluator_is_skipped_and_logged_once(broken, caplog, propagat
 
 def test_on_demand_checks_run_apart_from_the_inflight_checks():
     manager = HealthManager([_check(evaluators=[Always(Reattempt(reason="hang"))])])
+    _fake_temps(manager, [ProbeResult()])
     diagnosis = Always(Evict(reason="diagnosed", target_nodes=["n1"]))
     manager.start_on_demand_checks(
         [HealthCheck(evaluator_creator=lambda: [diagnosis])], timeout=10
@@ -268,25 +291,91 @@ def test_on_demand_checks_run_apart_from_the_inflight_checks():
     )
 
 
+def test_on_demand_checks_decide_noop_before_any_start():
+    assert HealthManager([]).evaluate_on_demand_checks() == Noop()
+
+
+def test_a_failed_monitor_gives_each_of_its_probes_its_error():
+    error = RuntimeError("monitor gone")
+    status = NodeMonitorGroupPollStatus(
+        node_monitor_statuses={"n1": NodeMonitorStatus(monitor_error=error)},
+        controller_node_monitor_status=NodeMonitorStatus(monitor_error=error),
+    )
+    state = _to_health_state(status, [Temp(), Comms()])
+    assert list(state.probe_results) == ["Temp"]
+    assert state.probe_results["Temp"]["n1"].error is error
+    assert state.probe_errors == {"Comms": error}
+
+
+def test_a_controller_monitor_that_answers_again_has_no_error():
+    comms = {"comm0": ProbeResult()}
+    statuses = iter(
+        [
+            NodeMonitorStatus(probe_results={"Comms": comms}),
+            NodeMonitorStatus(monitor_error=TimeoutError("poll hangs")),
+            NodeMonitorStatus(probe_results={"Comms": comms}),
+        ]
+    )
+    evaluator = Always(Noop())
+    manager = HealthManager([_check(probes=[Comms()], evaluators=[evaluator])])
+    manager._node_monitor_group = mock.Mock(
+        poll_status=lambda timeout: NodeMonitorGroupPollStatus(
+            node_monitor_statuses={},
+            controller_node_monitor_status=next(statuses),
+        )
+    )
+    for _ in range(3):
+        manager.evaluate_inflight_checks(timeout=0)
+
+    answered, failed, answered_again = evaluator.seen
+    assert answered.probe_results == {"Comms": comms}
+    assert isinstance(failed.probe_errors["Comms"], TimeoutError)
+    assert answered_again.probe_results == {"Comms": comms}
+    assert answered_again.probe_errors == {}
+
+
 def test_node_probes_are_sampled_on_the_nodes_of_each_attempt(ray_start_4_cpus):
     node_id = ray.get_runtime_context().get_node_id()
-    manager = HealthManager([_check(0.1, probes=[Temp()])])
+    evaluator = Always(Noop())
+    manager = HealthManager([_check(0.1, probes=[Temp()], evaluators=[evaluator])])
     manager.reset([node_id])
 
     def latest_temp():
         manager.evaluate_inflight_checks(timeout=10)
-        return manager._latest_results.get("Temp", {}).get(node_id)
+        return evaluator.seen[-1].probe_results.get("Temp", {}).get(node_id)
 
     try:
         assert _wait_for(latest_temp).metrics == {"temp_c": 60.0}
 
         # A failed monitor stops, with its results, until the next attempt.
-        ray.kill(manager._node_monitor_group._monitors[node_id])
+        ray.kill(manager._node_monitor_group._worker_node_monitors[node_id])
         _wait_for(lambda: latest_temp() is None)
-        assert manager._node_monitor_group.node_ids == []
+        assert manager._node_monitor_group.worker_node_ids == []
 
         manager.reset([node_id])
         assert _wait_for(latest_temp).metrics == {"temp_c": 60.0}
+    finally:
+        manager.shutdown()
+
+
+def test_controller_probes_are_sampled_on_the_controller_node(ray_start_4_cpus):
+    evaluator = Always(Noop())
+    manager = HealthManager([_check(0.1, probes=[Comms()], evaluators=[evaluator])])
+    manager.reset([])
+
+    def latest():
+        manager.evaluate_inflight_checks(timeout=10)
+        return evaluator.seen[-1]
+
+    try:
+        results = _wait_for(lambda: latest().probe_results)
+        assert list(results["Comms"]) == ["comm0"]
+
+        # While the monitor is down, each ControllerProbe has its error.
+        ray.kill(manager._node_monitor_group._controller_node_monitor)
+        errors = _wait_for(lambda: latest().probe_errors)
+        assert isinstance(errors["Comms"], ray.exceptions.RayActorError)
+        assert evaluator.seen[-1].probe_results == {}
     finally:
         manager.shutdown()
 
@@ -297,14 +386,18 @@ def test_on_demand_checks_poll_their_probes_once_on_each_node(ray_start_4_cpus):
     manager.reset([node_id])
     evaluator = Always(Reattempt(reason="diagnosed"))
     check = HealthCheck(
-        probe_creator=lambda: [Pid()], evaluator_creator=lambda: [evaluator]
+        probe_creator=lambda: [Pid(), Comms(), Broken()],
+        evaluator_creator=lambda: [evaluator],
     )
     try:
         manager.start_on_demand_checks([check], timeout=30)
         assert _wait_for(manager.evaluate_on_demand_checks) == Reattempt(
             reason="diagnosed"
         )
-        assert evaluator.seen[0]["Pid"][node_id].metrics["pid"] != os.getpid()
+        (state,) = evaluator.seen
+        assert state.probe_results["Pid"][node_id].metrics["pid"] != os.getpid()
+        assert list(state.probe_results["Comms"]) == ["comm0"]
+        assert isinstance(state.probe_errors["Broken"], RuntimeError)
     finally:
         manager.shutdown()
 

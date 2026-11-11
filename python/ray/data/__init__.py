@@ -94,6 +94,7 @@ from ray.data.catalog import (
     ReaderFormat,
     ResolvedSource,
     DatabricksUnityCatalog,
+    GravitinoCatalog,
 )
 
 # Module-level cached global functions for callable classes. It needs to be defined here
@@ -214,6 +215,7 @@ __all__ = [
     "ReaderFormat",
     "ResolvedSource",
     "DatabricksUnityCatalog",
+    "GravitinoCatalog",
     "KafkaAuthConfig",
     "Preprocessor",
 ]
