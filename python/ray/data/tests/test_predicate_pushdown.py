@@ -998,6 +998,180 @@ class TestProjectionWithFilterEdgeCases:
             )
 
 
+class TestMixedConjunctsThroughProject:
+    """A filter that mixes computed and stored columns is split at the ``Project``.
+
+    The ``AND`` conjuncts that only use columns the ``Project`` passes through
+    (or renames) are pushed below it, and into the read where supported. The
+    conjuncts that use a computed column stay above it.
+    """
+
+    @pytest.fixture
+    def parquet_path(self, ray_start_regular_shared, tmp_path):
+        # 4 files of 100 rows. ``x`` is 0..399 across files, ``z`` is 0..99 in each.
+        for i in range(4):
+            pq.write_table(
+                pa.table(
+                    {
+                        "x": list(range(i * 100, (i + 1) * 100)),
+                        "z": list(range(100)),
+                    }
+                ),
+                tmp_path / f"part_{i}.parquet",
+            )
+        return str(tmp_path)
+
+    @staticmethod
+    def _pushed_read_predicate(ds: Dataset):
+        optimized_plan = LogicalOptimizer().optimize(ds._logical_plan)
+        (read_op,) = get_operators_of_type(optimized_plan, ReadFiles)
+        return read_op.get_current_predicate()
+
+    @staticmethod
+    def _remaining_filters(ds: Dataset) -> List[Filter]:
+        optimized_plan = LogicalOptimizer().optimize(ds._logical_plan)
+        return get_operators_of_type(optimized_plan, Filter)
+
+    def test_and_with_computed_column_pushes_stored_column_conjunct(self, parquet_path):
+        ds = (
+            ray.data.read_parquet(parquet_path)
+            .with_column("y", col("x") + 1)
+            .filter(expr=(col("x") >= 300) & (col("y") > 0))
+        )
+
+        assert ds.count() == 100
+        pushed = self._pushed_read_predicate(ds)
+        assert pushed is not None and pushed.structurally_equals(col("x") >= 300)
+        (residual,) = self._remaining_filters(ds)
+        assert residual.predicate_expr.structurally_equals(col("y") > 0)
+        # The residual Filter stays above the Project.
+        optimized_plan = LogicalOptimizer().optimize(ds._logical_plan)
+        assert plan_operator_comes_before(optimized_plan, Project, Filter)
+
+    def test_chained_filters_with_computed_column(self, parquet_path):
+        # The two filters fuse into one ``AND`` first, then the fused filter is split.
+        ds = (
+            ray.data.read_parquet(parquet_path)
+            .with_column("y", col("x") + 1)
+            .filter(expr=col("x") >= 300)
+            .filter(expr=col("y") > 0)
+        )
+
+        assert ds.count() == 100
+        pushed = self._pushed_read_predicate(ds)
+        assert pushed is not None and pushed.structurally_equals(col("x") >= 300)
+        (residual,) = self._remaining_filters(ds)
+        assert residual.predicate_expr.structurally_equals(col("y") > 0)
+
+    def test_nested_and_pushes_all_stored_column_conjuncts(self, parquet_path):
+        ds = (
+            ray.data.read_parquet(parquet_path)
+            .with_column("y", col("x") + 1)
+            .filter(expr=(col("y") > 0) & ((col("x") >= 300) & (col("z") < 10)))
+        )
+
+        assert ds.count() == 10
+        pushed = self._pushed_read_predicate(ds)
+        assert pushed is not None and pushed.structurally_equals(
+            (col("x") >= 300) & (col("z") < 10)
+        )
+        (residual,) = self._remaining_filters(ds)
+        assert residual.predicate_expr.structurally_equals(col("y") > 0)
+
+    def test_or_is_not_split(self, parquet_path):
+        ds = (
+            ray.data.read_parquet(parquet_path)
+            .with_column("y", col("x") + 1)
+            .filter(expr=(col("x") >= 300) | (col("y") > 0))
+        )
+
+        # Every row has ``y > 0``, so a (wrong) pushed ``x >= 300`` would drop rows.
+        assert ds.count() == 400
+        assert self._pushed_read_predicate(ds) is None
+        (residual,) = self._remaining_filters(ds)
+        assert residual.predicate_expr.structurally_equals(
+            (col("x") >= 300) | (col("y") > 0)
+        )
+
+    def test_not_conjunct_is_kept_whole(self, parquet_path):
+        # ``~(x < 300)`` only uses a stored column and is pushed as one conjunct.
+        # ``~(y <= 0)`` uses the computed column and stays above.
+        ds = (
+            ray.data.read_parquet(parquet_path)
+            .with_column("y", col("x") + 1)
+            .filter(expr=(~(col("x") < 300)) & (~(col("y") <= 0)))
+        )
+
+        assert ds.count() == 100
+        pushed = self._pushed_read_predicate(ds)
+        assert pushed is not None and pushed.structurally_equals(~(col("x") < 300))
+        (residual,) = self._remaining_filters(ds)
+        assert residual.predicate_expr.structurally_equals(~(col("y") <= 0))
+
+    def test_only_computed_conjuncts_are_not_pushed(self, parquet_path):
+        ds = (
+            ray.data.read_parquet(parquet_path)
+            .with_column("y", col("x") + 1)
+            .with_column("w", col("y") * 2)
+            .filter(expr=(col("y") > 0) & (col("w") > 0))
+        )
+
+        assert ds.count() == 400
+        assert self._pushed_read_predicate(ds) is None
+        (residual,) = self._remaining_filters(ds)
+        assert residual.predicate_expr.structurally_equals(
+            (col("y") > 0) & (col("w") > 0)
+        )
+
+    def test_conjunct_on_overwritten_column_stays_above(self, parquet_path):
+        # ``with_column("x", ...)`` replaces ``x``, so the filter's ``x`` is the new
+        # value and must not be pushed below the Project. ``z`` still can be.
+        ds = (
+            ray.data.read_parquet(parquet_path)
+            .with_column("x", col("x") * 0)
+            .filter(expr=(col("x") >= 300) & (col("z") < 10))
+        )
+
+        assert ds.count() == 0
+        pushed = self._pushed_read_predicate(ds)
+        assert pushed is not None and pushed.structurally_equals(col("z") < 10)
+        (residual,) = self._remaining_filters(ds)
+        assert residual.predicate_expr.structurally_equals(col("x") >= 300)
+
+    def test_rename_then_with_column_rebinds_pushed_conjunct(self, parquet_path):
+        ds = (
+            ray.data.read_parquet(parquet_path)
+            .rename_columns({"x": "X"})
+            .with_column("y", col("X") + 1)
+            .filter(expr=(col("X") >= 300) & (col("y") > 0))
+        )
+
+        assert ds.count() == 100
+        # The pushed conjunct uses the on-disk name, not the renamed one.
+        pushed = self._pushed_read_predicate(ds)
+        assert pushed is not None and pushed.structurally_equals(col("x") >= 300)
+        (residual,) = self._remaining_filters(ds)
+        assert residual.predicate_expr.structurally_equals(col("y") > 0)
+
+    def test_split_keeps_results_when_nothing_is_pushed_into_read(
+        self, ray_start_regular_shared
+    ):
+        ds = (
+            ray.data.from_items([{"a": i, "b": 2 * i} for i in range(10)])
+            .with_column("c", col("a") + col("b"))
+            .filter(expr=(col("a") >= 5) & (col("c") % 2 == 0))
+        )
+
+        assert sorted(r["a"] for r in ds.take_all()) == [6, 8]
+        optimized_plan = LogicalOptimizer().optimize(ds._logical_plan)
+        # ``a >= 5`` moved below the Project and ``c`` stays above it.
+        filters = get_operators_of_type(optimized_plan, Filter)
+        assert len(filters) == 2
+        assert filters[0].predicate_expr.structurally_equals(col("a") >= 5)
+        assert filters[1].predicate_expr.structurally_equals(col("c") % 2 == 0)
+        assert plan_operator_comes_before(optimized_plan, Filter, Project)
+
+
 class TestPyArrowComputeUDFPushdown:
     """Tests for predicate pushdown of PyArrow-compute-backed UDF expressions.
 
