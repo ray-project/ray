@@ -9,8 +9,7 @@ from ray.data._internal.execution.operators.shuffle_operators.shuffle_tasks impo
     BlockTransformer,
     ReduceFn,
 )
-from ray.data._internal.table_block import TableBlockAccessor
-from ray.data.block import Block, BlockAccessor, BlockType
+from ray.data.block import Block, BlockAccessor
 
 if TYPE_CHECKING:
     from ray.data._internal.execution.interfaces import TaskContext
@@ -146,9 +145,7 @@ def _make_complete_aggregating_block_fn(
     def _aggregate(blocks: Iterable[Block], ctx: "TaskContext") -> Iterable[Block]:
         tables: List[pa.Table] = []
         for block in blocks:
-            table = TableBlockAccessor.try_convert_block_type(
-                block, block_type=BlockType.ARROW
-            )
+            table = BlockAccessor.for_block(block).to_arrow()
             block_schema = BlockAccessor.for_block(table).schema()
             for agg in aggs:
                 agg._validate(block_schema)
