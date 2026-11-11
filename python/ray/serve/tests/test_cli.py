@@ -107,6 +107,90 @@ def test_deploy_config_default_num_replicas_no_replica_restart(
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
+def test_deploy_config_locality_routing_no_replica_restart(serve_instance, tmp_path):
+    """YAML locality routing flags are applied via `serve deploy` without rolling replicas."""
+
+    client = serve_instance
+    config = {
+        "applications": [
+            {
+                "name": SERVE_DEFAULT_APP_NAME,
+                "import_path": "ray.serve.tests.test_config_files.pid.node",
+                "deployments": [
+                    {
+                        "name": "f",
+                        "prefer_local_node_routing": False,
+                        "prefer_local_az_routing": True,
+                    }
+                ],
+            }
+        ]
+    }
+    success_message_fragment = b"Sent deploy request successfully."
+    config_file_name = str(tmp_path / "serve_config.yaml")
+
+    def write_config() -> None:
+        with open(config_file_name, "w") as config_file:
+            yaml.safe_dump(config, config_file)
+
+    def check_running_with_one_replica() -> bool:
+        status = serve.status()
+        app_status = status.applications.get(SERVE_DEFAULT_APP_NAME)
+        if app_status is None or app_status.status != "RUNNING":
+            return False
+
+        deployment_status = app_status.deployments.get("f")
+        if deployment_status is None:
+            return False
+
+        return deployment_status.replica_states.get("RUNNING", 0) == 1
+
+    def get_locality_routing_flags() -> tuple[bool, bool]:
+        deployment_config = client.get_serve_details()["applications"][
+            SERVE_DEFAULT_APP_NAME
+        ]["deployments"]["f"]["deployment_config"]
+        return (
+            deployment_config["prefer_local_node_routing"],
+            deployment_config["prefer_local_az_routing"],
+        )
+
+    def check_locality_routing_flags(
+        prefer_local_node_routing: bool, prefer_local_az_routing: bool
+    ) -> bool:
+        if not check_running_with_one_replica():
+            return False
+        return get_locality_routing_flags() == (
+            prefer_local_node_routing,
+            prefer_local_az_routing,
+        )
+
+    def get_pid() -> int:
+        url = get_application_url()
+        return httpx.get(url).json()[0]
+
+    write_config()
+    deploy_response = subprocess.check_output(["serve", "deploy", config_file_name])
+    assert success_message_fragment in deploy_response
+    wait_for_condition(lambda: check_locality_routing_flags(False, True), timeout=60)
+    initial_pid = get_pid()
+
+    config["applications"][0]["deployments"] = [
+        {
+            "name": "f",
+            "prefer_local_node_routing": True,
+            "prefer_local_az_routing": False,
+        }
+    ]
+    write_config()
+    deploy_response = subprocess.check_output(["serve", "deploy", config_file_name])
+    assert success_message_fragment in deploy_response
+    wait_for_condition(lambda: check_locality_routing_flags(True, False), timeout=60)
+
+    observed_pids = [get_pid() for _ in range(5)]
+    assert observed_pids == [initial_pid] * len(observed_pids)
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
 def test_deploy_config_tracing_config_declarative_flow(
     serve_instance, tmp_path, request
 ):
