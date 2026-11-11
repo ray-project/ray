@@ -7226,8 +7226,8 @@ def test_label_selector_attempt_cache_prefix_and_tier_invalidation():
     )
     assert {r.instance_type: r.count for r in reply_r4.to_launch} == {"tpu": 4}
 
-    # RAY_STOP_REQUESTED on multi-host replica returns None in SchedulingNode.new
-    # while single-host RAY_STOP_REQUESTED stays schedulable.
+    # RAY_STOP_REQUESTED keeps occupying its slot (the stop can still be rejected)
+    # for multi-host replicas exactly like single-host nodes.
     assert (
         SchedulingNode.new(
             AutoscalerInstance(
@@ -7247,7 +7247,7 @@ def test_label_selector_attempt_cache_prefix_and_tier_invalidation():
             cfg_12,
             True,
         )
-        is None
+        is not None
     )
     assert (
         SchedulingNode.new(
@@ -7270,6 +7270,157 @@ def test_label_selector_attempt_cache_prefix_and_tier_invalidation():
         )
         is not None
     )
+
+
+def _make_lifecycle_replica(
+    rep: str,
+    status: Instance.InstanceStatus,
+    size: int,
+    busy: bool,
+    launch_config_hash: str = "",
+    count: int = 4,
+    with_provider_replica_id: bool = True,
+) -> List[AutoscalerInstance]:
+    instances = []
+    for h in range(count):
+        nid = f"{rep}-{h}".encode().ljust(28, b"0")
+        inst = Instance(
+            instance_id=f"{rep}-{h}",
+            instance_type="tpu",
+            status=status,
+            node_id=nid.hex(),
+            cloud_instance_id=f"c-{rep}-{h}",
+            node_kind=NodeKind.WORKER,
+            launch_config_hash=launch_config_hash,
+            status_history=[
+                Instance.StatusHistory(
+                    instance_status=status, timestamp_ns=time.time_ns()
+                )
+            ],
+        )
+        avail = 0 if busy else 4
+        ray_node = NodeState(
+            node_id=nid,
+            instance_id=f"c-{rep}-{h}",
+            ray_node_type_name="tpu",
+            status=NodeStatus.RUNNING if busy else NodeStatus.IDLE,
+            total_resources={"CPU": 4, "TPU": 4},
+            available_resources={"CPU": avail, "TPU": avail},
+            labels=(
+                {"ray.io/tpu-slice-name": rep, "ray.io/tpu-worker-id": str(h)}
+                if size > 1
+                else {}
+            ),
+        )
+        instances.append(
+            AutoscalerInstance(
+                im_instance=inst,
+                ray_node=ray_node,
+                cloud_instance_id=f"c-{rep}-{h}",
+                cloud_instance_replica_id=(
+                    rep if (size > 1 and with_provider_replica_id) else None
+                ),
+            )
+        )
+    return instances
+
+
+@pytest.mark.parametrize("workers_per_replica", [1, 4])
+def test_stop_requested_replica_occupancy_and_min_workers(workers_per_replica):
+    cfg = NodeTypeConfig(
+        name="tpu",
+        resources={"CPU": 4, "TPU": 4},
+        labels=(
+            {"ray.io/tpu-slice-name": "", "ray.io/tpu-worker-id": ""}
+            if workers_per_replica > 1
+            else {}
+        ),
+        min_worker_nodes=0,
+        max_worker_nodes=8,
+        replica_config=(
+            WorkerReplicaConfig(
+                workers_per_replica=workers_per_replica,
+                domain_label_key="ray.io/tpu-slice-name",
+                worker_index_label_key="ray.io/tpu-worker-id",
+            )
+            if workers_per_replica > 1
+            else None
+        ),
+    )
+    # Draining replica still occupies max_worker_nodes until stop is accepted.
+    busy_and_draining = _make_lifecycle_replica(
+        "rep-0", Instance.RAY_RUNNING, workers_per_replica, busy=True
+    ) + _make_lifecycle_replica(
+        "rep-1", Instance.RAY_STOP_REQUESTED, workers_per_replica, busy=False
+    )
+    launch_reply = ResourceDemandScheduler().schedule(
+        SchedulingRequest(
+            node_type_configs={"tpu": cfg},
+            current_instances=busy_and_draining,
+            disable_launch_config_check=True,
+            resource_requests=[
+                ResourceRequestByCount(
+                    request=ResourceRequest(resources_bundle={"TPU": 4}), count=4
+                )
+            ],
+        )
+    )
+    assert launch_reply.to_launch == []
+
+    # Draining replica must not count toward min_worker_nodes during idle scale-down.
+    idle_and_draining = _make_lifecycle_replica(
+        "rep-0", Instance.RAY_STOP_REQUESTED, workers_per_replica, busy=False
+    ) + _make_lifecycle_replica(
+        "rep-1", Instance.RAY_RUNNING, workers_per_replica, busy=False
+    )
+    for inst in idle_and_draining:
+        inst.ray_node.idle_duration_ms = 60_000
+    cfg_min = copy.deepcopy(cfg)
+    cfg_min.min_worker_nodes = 4
+    idle_reply = ResourceDemandScheduler().schedule(
+        SchedulingRequest(
+            node_type_configs={"tpu": cfg_min},
+            current_instances=idle_and_draining,
+            disable_launch_config_check=True,
+            idle_timeout_s=10,
+        )
+    )
+    assert idle_reply.to_terminate == []
+    assert idle_reply.to_launch == []
+
+
+def test_outdated_worker_outdates_its_whole_replica():
+    cfg = NodeTypeConfig(
+        name="tpu",
+        resources={"CPU": 4, "TPU": 4},
+        labels={"ray.io/tpu-slice-name": "", "ray.io/tpu-worker-id": ""},
+        min_worker_nodes=0,
+        max_worker_nodes=12,
+        launch_config_hash="v2",
+        replica_config=WorkerReplicaConfig(
+            workers_per_replica=4,
+            domain_label_key="ray.io/tpu-slice-name",
+            worker_index_label_key="ray.io/tpu-worker-id",
+        ),
+    )
+    mixed_old = _make_lifecycle_replica(
+        "rep-0", Instance.RAY_RUNNING, 4, busy=True, launch_config_hash="v1"
+    )
+    mixed_old[0].im_instance.launch_config_hash = "v2"
+    current = _make_lifecycle_replica(
+        "rep-1", Instance.RAY_RUNNING, 4, busy=True, launch_config_hash="v2"
+    )
+    reply = ResourceDemandScheduler().schedule(
+        SchedulingRequest(
+            node_type_configs={"tpu": cfg},
+            current_instances=mixed_old + current,
+            disable_launch_config_check=False,
+        )
+    )
+    assert sorted(r.instance_id for r in reply.to_terminate) == [
+        f"rep-0-{h}" for h in range(4)
+    ]
+    assert {r.cause for r in reply.to_terminate} == {TerminationRequest.Cause.OUTDATED}
 
 
 if __name__ == "__main__":

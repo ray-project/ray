@@ -1355,10 +1355,10 @@ class KubeRayProviderIntegrationTest(unittest.TestCase):
             },
         ]
 
-        # 4. Fault/outdated evictions inside surviving replicas (even when >= numOfHosts
-        # pods are evicted across two replicas) keep replicas=2 so KubeRay heals each
-        # replica instead of shrinking a live slice (scale-downs never pass partial
-        # groups thanks to Reconciler._scale_cluster + cloud_instance_replica_id).
+        # 4. KubeRay deletes a multi-host replica when any of its pods is named in
+        # workersToDelete, so terminating pods of two replicas removes both replicas
+        # (replicas 2 -> 0) and names every pod of both; the scheduler relaunches
+        # whatever is still needed.
         prov_z, client_z = _run_provider(
             replicas=2,
             min_rep=0,
@@ -1369,11 +1369,23 @@ class KubeRayProviderIntegrationTest(unittest.TestCase):
             ids=["r0-2", "r0-3", "r1-2", "r1-3"], request_id="evict-faulted-pods"
         )
         assert client_z.get_patches("rayclusters/test") == [
+            {"op": "replace", "path": "/spec/workerGroupSpecs/0/replicas", "value": 0},
             {
                 "op": "replace",
                 "path": "/spec/workerGroupSpecs/0/scaleStrategy",
-                "value": {"workersToDelete": ["r0-2", "r0-3", "r1-2", "r1-3"]},
-            }
+                "value": {
+                    "workersToDelete": [
+                        "r0-2",
+                        "r0-3",
+                        "r1-2",
+                        "r1-3",
+                        "r0-0",
+                        "r0-1",
+                        "r1-0",
+                        "r1-1",
+                    ]
+                },
+            },
         ]
 
         # 5. Scale up +4 workers while existing rep-0 has only 2/4 pods materialized
@@ -1414,6 +1426,44 @@ class KubeRayProviderIntegrationTest(unittest.TestCase):
         assert errs[0].node_type == "tpu-group"
         assert errs[0].count == 2
         assert errs[0].request_id == "up-unaligned"
+
+        # 8. Stray unlabeled pod in a labeled multi-host group does not make an
+        # aligned whole-replica launch fail with LaunchNodeError.
+        prov_stray, client_stray = _run_provider(
+            replicas=1,
+            min_rep=0,
+            pods=[*(_pod(f"r0-{i}", rep="rep-0") for i in range(4))]
+            + [_pod("stray", rep=None)],
+        )
+        prov_stray.launch(shape={"tpu-group": 4}, request_id="up-stray")
+        assert client_stray.get_patches("rayclusters/test") == [
+            {"op": "replace", "path": "/spec/workerGroupSpecs/0/replicas", "value": 2}
+        ]
+        assert prov_stray.poll_errors() == []
+
+        # 9. Terminating a single worker names all pods of that replica so a
+        # mid-deletion pod list still blocks premature launches until gone.
+        prov_half, client_half = _run_provider(
+            replicas=2,
+            min_rep=0,
+            pods=[*(_pod(f"r0-{i}", rep="rep-0") for i in range(4))]
+            + [*(_pod(f"r1-{i}", rep="rep-1") for i in range(4))],
+        )
+        prov_half.terminate(ids=["r0-2"], request_id="term-single")
+        for op in client_half.get_patches("rayclusters/test"):
+            _, _, _, idx, field = op["path"].split("/")
+            client_half._ray_cluster["spec"]["workerGroupSpecs"][int(idx)][field] = op[
+                "value"
+            ]
+        client_half._patches.clear()
+        client_half._pod_list["items"] = [
+            p for p in client_half._pod_list["items"] if p["metadata"]["name"] != "r0-2"
+        ]
+        prov_half.launch(shape={"tpu-group": 4}, request_id="launch-mid-del")
+        assert client_half._patches == {}
+        assert [(e.node_type, e.count) for e in prov_half.poll_errors()] == [
+            ("tpu-group", 4)
+        ]
 
 
 if __name__ == "__main__":

@@ -322,8 +322,6 @@ class Reconciler:
             instance_manager=instance_manager,
             autoscaling_config=autoscaling_config,
             non_terminated_cloud_instances=non_terminated_cloud_instances,
-            reconcile_config=autoscaling_config.get_instance_reconcile_config(),
-            _logger=_logger or logger,
         )
 
         Reconciler._handle_instances_launch(
@@ -385,14 +383,6 @@ class Reconciler:
             and instance.status
             not in [IMInstance.TERMINATED, IMInstance.ALLOCATION_FAILED]
         }
-        replica_launch_ids: Dict[Tuple[NodeType, str], Set[str]] = defaultdict(set)
-        for instance in im_instances:
-            if instance.cloud_instance_id in assigned_cloud_instance_ids:
-                c_inst = non_terminated_cloud_instances.get(instance.cloud_instance_id)
-                if c_inst is not None and c_inst.replica_id:
-                    replica_launch_ids[(instance.instance_type, c_inst.replica_id)].add(
-                        instance.launch_request_id
-                    )
         # A single launch request could launch multiple node types, so a launch
         # request id alone doesn't identify a launch error: key the errors by
         # (request id, node type) so that errors of different node types from the
@@ -437,7 +427,6 @@ class Reconciler:
                 unassigned_cloud_instances_by_type,
                 launch_errors,
                 remaining_launch_failures,
-                replica_launch_ids,
             )
             if not update_event:
                 continue
@@ -453,7 +442,6 @@ class Reconciler:
         unassigned_cloud_instances_by_type: Dict[str, List[CloudInstance]],
         launch_errors: Dict[Tuple[str, NodeType], LaunchNodeError],
         remaining_launch_failures: Dict[Tuple[str, NodeType], int],
-        replica_launch_ids: Optional[Dict[Tuple[NodeType, str], Set[str]]] = None,
     ) -> Optional[IMInstanceUpdateEvent]:
         """Allocate, or fail the cloud instance allocation for the instance.
 
@@ -464,8 +452,6 @@ class Reconciler:
                 (launch request id, node type).
             remaining_launch_failures: Remaining number of instances to fail for
                 each (launch request id, node type), from LaunchNodeError.count.
-            replica_launch_ids: Optional map of `(node_type, replica_id)` to the
-                `launch_request_id`s already bound to that replica.
 
         Returns:
             Instance update to ALLOCATED: if there's a matching unassigned cloud
@@ -481,23 +467,10 @@ class Reconciler:
         # TODO(rickyx): We could also look at the launch request id
         # on the cloud node and the im instance later once all node providers
         # support request id. For now, we only look at the instance type.
-        candidates = unassigned_cloud_instances_by_type.get(
-            im_instance.instance_type, []
-        )
-        for idx in range(len(candidates) - 1, -1, -1):
-            c_inst = candidates[idx]
-            rk = (
-                (im_instance.instance_type, c_inst.replica_id)
-                if replica_launch_ids is not None and c_inst.replica_id
-                else None
-            )
-            if rk is not None and rk in replica_launch_ids:
-                if im_instance.launch_request_id not in replica_launch_ids[rk]:
-                    continue
-            unassigned_cloud_instance = candidates.pop(idx)
-            if rk is not None:
-                replica_launch_ids[rk].add(im_instance.launch_request_id)
-            break
+        if len(unassigned_cloud_instances_by_type.get(im_instance.instance_type, [])):
+            unassigned_cloud_instance = unassigned_cloud_instances_by_type[
+                im_instance.instance_type
+            ].pop()
 
         if unassigned_cloud_instance:
             return IMInstanceUpdateEvent(
@@ -914,8 +887,6 @@ class Reconciler:
         if (
             cur_im_status == reconciled_im_status
             or cur_im_status
-            in (IMInstance.ALLOCATION_TIMEOUT, IMInstance.RAY_INSTALL_FAILED)
-            or cur_im_status
             in InstanceUtil.get_reachable_statuses(reconciled_im_status)
         ):
             # No need to reconcile if the instance is already in the reconciled status
@@ -1262,7 +1233,6 @@ class Reconciler:
             IMInstance.RAY_STOPPING,
             # These should just be transient, we will terminate instances with this
             # status in the next reconciler step.
-            IMInstance.ALLOCATION_TIMEOUT,
             IMInstance.RAY_INSTALL_FAILED,
             IMInstance.RAY_STOPPED,
             IMInstance.TERMINATION_FAILED,
@@ -1451,10 +1421,7 @@ class Reconciler:
         # Scale the clusters if needed.
         to_launch = reply.to_launch
         replica_sizes = Reconciler._get_multihost_replica_sizes(autoscaling_config)
-        (
-            to_terminate,
-            sync_stop_reps,
-        ) = Reconciler._filter_partial_replica_terminations(
+        to_terminate = Reconciler._filter_partial_replica_terminations(
             to_terminate=reply.to_terminate,
             im_instances=im_instances,
             im_instances_by_instance_id=im_instances_by_instance_id,
@@ -1462,6 +1429,30 @@ class Reconciler:
             replica_sizes=replica_sizes,
             _logger=_logger,
         )
+
+        def _replica_key(inst: IMInstance) -> Optional[Tuple[NodeType, str]]:
+            c_inst = cloud_instances.get(inst.cloud_instance_id)
+            if (
+                c_inst is not None
+                and c_inst.replica_id
+                and inst.instance_type in replica_sizes
+            ):
+                return (inst.instance_type, c_inst.replica_id)
+            return None
+
+        # Replicas with a Ray stop pending after this tick. The cloud provider
+        # deletes a replica as a unit, so their not-yet-running pods wait for the
+        # stop to be accepted instead of deleting the replica under it.
+        stopping_reps = {
+            _replica_key(inst)
+            for inst in im_instances
+            if inst.status == IMInstance.RAY_STOP_REQUESTED
+        } | {
+            _replica_key(im_instances_by_instance_id[req.instance_id])
+            for req in to_terminate
+            if req.instance_status == IMInstance.RAY_RUNNING
+        }
+        stopping_reps.discard(None)
 
         updates = {}
         skipped_requested: List[str] = []
@@ -1491,29 +1482,12 @@ class Reconciler:
                 IMInstance.RAY_INSTALLING,
             ):
                 # The instance is not yet running, so we can't request to stop/drain Ray.
-                # If sibling raylets in the same provider replica are draining or stopped,
-                # move through RAY_STOPPED so _terminate_instances deletes the whole
-                # replica in one cloud provider request once all siblings stop.
-                c_to_term = (
-                    cloud_instances.get(im_instance_to_terminate.cloud_instance_id)
-                    if im_instance_to_terminate.cloud_instance_id
-                    else None
-                )
-                rep_key = (
-                    (im_instance_to_terminate.instance_type, c_to_term.replica_id)
-                    if c_to_term is not None
-                    and c_to_term.replica_id
-                    and im_instance_to_terminate.instance_type in replica_sizes
-                    else None
-                )
-                target_status = (
-                    IMInstance.RAY_STOPPED
-                    if rep_key in sync_stop_reps
-                    else IMInstance.TERMINATING
-                )
+                # Therefore, we can skip the RAY_STOP_REQUESTED state and directly terminate the node.
+                if _replica_key(im_instance_to_terminate) in stopping_reps:
+                    continue
                 updates[terminate_request.instance_id] = IMInstanceUpdateEvent(
                     instance_id=instance_id,
-                    new_instance_status=target_status,
+                    new_instance_status=IMInstance.TERMINATING,
                     cloud_instance_id=im_instance_to_terminate.cloud_instance_id,
                     termination_request=terminate_request,
                     details=f"terminating ray: {terminate_request.details}",
@@ -1541,81 +1515,39 @@ class Reconciler:
             and r.instance_status != IMInstance.RAY_STOP_REQUESTED
         ]
         pending_launches = [[req.instance_type, req.count] for req in to_launch]
-        if pending_launches:
+        if deferred and pending_launches:
+            # The scheduler planned these launches assuming its terminations apply
+            # this tick. Deferred ones keep occupying their slots, so cap the
+            # launches by the instances that actually remain.
             active_by_type: Dict[NodeType, int] = defaultdict(int)
             active_total = 0
-            has_missing_replica_slots = False
-            active_reps: Set[Tuple[NodeType, str]] = set()
-            reach_by_rep: Dict[Tuple[NodeType, str], int] = defaultdict(int)
-            nonreach_by_rep: Dict[Tuple[NodeType, str], int] = defaultdict(int)
-            unassigned_reach: Dict[NodeType, int] = defaultdict(int)
             for inst in im_instances:
                 st = (
                     updates[inst.instance_id].new_instance_status
                     if inst.instance_id in updates
                     else inst.status
                 )
-                reachable = (
-                    st != IMInstance.RAY_STOP_REQUESTED
-                    and InstanceUtil.is_ray_running_reachable(st)
-                )
-                if reachable:
+                if InstanceUtil.is_ray_running_reachable(st):
                     active_total += 1
                     active_by_type[inst.instance_type] += 1
-                c_inst = (
-                    cloud_instances.get(inst.cloud_instance_id)
-                    if inst.node_kind != NodeKind.HEAD
-                    and inst.cloud_instance_id
-                    and inst.instance_type in replica_sizes
-                    else None
-                )
-                if c_inst is not None and c_inst.replica_id:
-                    rk = (inst.instance_type, c_inst.replica_id)
-                    if st in (
-                        IMInstance.ALLOCATED,
-                        IMInstance.RAY_INSTALLING,
-                        IMInstance.RAY_RUNNING,
-                    ):
-                        active_reps.add(rk)
-                    if reachable:
-                        reach_by_rep[rk] += 1
-                    elif st != IMInstance.TERMINATED:
-                        nonreach_by_rep[rk] += 1
-                elif reachable and inst.node_kind != NodeKind.HEAD:
-                    unassigned_reach[inst.instance_type] += 1
-            for nt, rep_id in sorted(active_reps):
-                size = replica_sizes[nt]
-                rk = (nt, rep_id)
-                unassigned_slots = max(0, size - reach_by_rep[rk] - nonreach_by_rep[rk])
-                covered = min(unassigned_slots, unassigned_reach[nt])
-                unassigned_reach[nt] -= covered
-                miss = max(0, size - reach_by_rep[rk] - covered)
-                if miss > 0:
-                    active_by_type[nt] += miss
-                    active_total += miss
-                    has_missing_replica_slots = True
-            if deferred or has_missing_replica_slots:
-                node_type_configs = autoscaling_config.get_node_type_configs() or {}
-                max_num_nodes = autoscaling_config.get_max_num_nodes()
-                for item in pending_launches:
-                    nt, count = item
-                    if nt in node_type_configs:
-                        count = min(
-                            count,
-                            max(
-                                0,
-                                node_type_configs[nt].max_worker_nodes
-                                - active_by_type[nt],
-                            ),
-                        )
-                    if max_num_nodes is not None:
-                        count = min(count, max(0, max_num_nodes - active_total))
-                    size = replica_sizes.get(nt, 1)
-                    if size > 1:
-                        count -= count % size
-                    item[1] = count
-                    active_by_type[nt] += count
-                    active_total += count
+            node_type_configs = autoscaling_config.get_node_type_configs() or {}
+            max_num_nodes = autoscaling_config.get_max_num_nodes()
+            for item in pending_launches:
+                nt, count = item
+                if nt in node_type_configs:
+                    count = min(
+                        count,
+                        max(
+                            0,
+                            node_type_configs[nt].max_worker_nodes - active_by_type[nt],
+                        ),
+                    )
+                if max_num_nodes is not None:
+                    count = min(count, max(0, max_num_nodes - active_total))
+                count -= count % replica_sizes.get(nt, 1)
+                item[1] = count
+                active_by_type[nt] += count
+                active_total += count
 
         # Add new instances.
         for nt, count in pending_launches:
@@ -1642,12 +1574,11 @@ class Reconciler:
         cloud_instances: Dict[CloudInstanceId, CloudInstance],
         replica_sizes: Dict[NodeType, int],
         _logger: logging.Logger = logger,
-    ) -> Tuple[List[TerminationRequest], Set[Tuple[NodeType, str]]]:
-        """Keep only whole-replica multi-worker scale-downs (deferring partial or
-        mid-materialization replicas) and return replicas with draining/stopped siblings."""
-        sync_stop_reps: Set[Tuple[NodeType, str]] = set()
+    ) -> List[TerminationRequest]:
+        """Keep only whole-replica multi-worker scale-downs, deferring partial or
+        mid-materialization replicas."""
         if not (to_terminate and replica_sizes and cloud_instances):
-            return list(to_terminate), sync_stop_reps
+            return list(to_terminate)
 
         booting_cids = {
             i.cloud_instance_id
@@ -1727,47 +1658,7 @@ class Reconciler:
                 dict(skipped_by_rep),
             )
 
-        if kept_terminate:
-            for inst in im_instances:
-                c_i = (
-                    cloud_instances.get(inst.cloud_instance_id)
-                    if inst.cloud_instance_id
-                    else None
-                )
-                if (
-                    c_i is not None
-                    and c_i.replica_id
-                    and inst.instance_type in replica_sizes
-                    and inst.status
-                    in (
-                        IMInstance.RAY_STOP_REQUESTED,
-                        IMInstance.RAY_STOPPING,
-                        IMInstance.RAY_STOPPED,
-                    )
-                ):
-                    sync_stop_reps.add((inst.instance_type, c_i.replica_id))
-            for req in kept_terminate:
-                if req.instance_status not in (
-                    IMInstance.QUEUED,
-                    IMInstance.REQUESTED,
-                    IMInstance.ALLOCATED,
-                    IMInstance.RAY_INSTALLING,
-                ):
-                    inst = im_instances_by_instance_id.get(req.instance_id)
-                    c_i = (
-                        cloud_instances.get(inst.cloud_instance_id)
-                        if inst is not None and inst.cloud_instance_id
-                        else None
-                    )
-                    if (
-                        inst is not None
-                        and c_i is not None
-                        and c_i.replica_id
-                        and inst.instance_type in replica_sizes
-                    ):
-                        sync_stop_reps.add((inst.instance_type, c_i.replica_id))
-
-        return kept_terminate, sync_stop_reps
+        return kept_terminate
 
     @staticmethod
     def _terminate_instances(
@@ -1776,8 +1667,6 @@ class Reconciler:
         non_terminated_cloud_instances: Optional[
             Dict[CloudInstanceId, CloudInstance]
         ] = None,
-        reconcile_config: Optional[InstanceReconcileConfig] = None,
-        _logger: logging.Logger = logger,
     ):
         """Terminate instances with the below statuses:
             - RAY_STOPPED: ray was stopped on the cloud instance.
@@ -1789,11 +1678,11 @@ class Reconciler:
 
         Args:
             instance_manager: The instance manager to reconcile.
-            autoscaling_config: Optional autoscaling config for multi-worker replicas.
-            non_terminated_cloud_instances: Optional cloud instances exposing replica_id.
-            reconcile_config: Optional reconcile timeout config bounding held faults.
-            _logger: Logger for warning when holding or releasing faulted instances.
+            autoscaling_config: The autoscaling config, for multi-worker replicas.
+            non_terminated_cloud_instances: The non-terminated cloud instances,
+                which carry the provider replica id of each worker.
         """
+
         im_instances, version = Reconciler._get_im_instances(instance_manager)
         updates = {}
         statuses_to_terminate = {
@@ -1814,35 +1703,35 @@ class Reconciler:
             for instance in im_instances
             if instance.cloud_instance_id and instance.status not in inactive_statuses
         }
+        # The cloud provider deletes a multi-worker replica as a unit. When a
+        # requested stop was accepted by some workers of a replica but another still
+        # runs Ray (its stop was rejected or is pending), the stopped workers wait,
+        # up to terminating_status_timeout_s, so the replica is not deleted under
+        # work that is still running.
         replica_sizes = Reconciler._get_multihost_replica_sizes(autoscaling_config)
         cloud_instances = non_terminated_cloud_instances or {}
-        active_replica_statuses = {
-            IMInstance.ALLOCATED,
-            IMInstance.RAY_INSTALLING,
-            IMInstance.RAY_RUNNING,
-            IMInstance.RAY_STOP_REQUESTED,
-            IMInstance.RAY_STOPPING,
+
+        def _replica_key(inst: IMInstance) -> Optional[Tuple[NodeType, str]]:
+            c_inst = cloud_instances.get(inst.cloud_instance_id)
+            if (
+                c_inst is not None
+                and c_inst.replica_id
+                and inst.instance_type in replica_sizes
+            ):
+                return (inst.instance_type, c_inst.replica_id)
+            return None
+
+        ray_running_reps = {
+            _replica_key(inst)
+            for inst in im_instances
+            if inst.status in (IMInstance.RAY_RUNNING, IMInstance.RAY_STOP_REQUESTED)
         }
-        active_by_replica: Dict[Tuple[NodeType, str], List[str]] = defaultdict(list)
-        if replica_sizes and cloud_instances:
-            for inst in im_instances:
-                if (
-                    inst.node_kind != NodeKind.HEAD
-                    and inst.instance_type in replica_sizes
-                    and inst.status in active_replica_statuses
-                ):
-                    c_inst = cloud_instances.get(inst.cloud_instance_id)
-                    if c_inst is not None and c_inst.replica_id:
-                        active_by_replica[
-                            (inst.instance_type, c_inst.replica_id)
-                        ].append(inst.instance_id)
-        default_rec_cfg = (
-            reconcile_config
-            if reconcile_config is not None
-            else InstanceReconcileConfig()
+        ray_running_reps.discard(None)
+        hold_timeout_s = (
+            autoscaling_config.get_instance_reconcile_config().terminating_status_timeout_s
+            if autoscaling_config is not None
+            else 0
         )
-        hold_timeout_s = default_rec_cfg.terminating_status_timeout_s
-        warn_interval_s = default_rec_cfg.transient_status_warn_interval_s
 
         for instance in im_instances:
             if instance.status not in statuses_to_terminate:
@@ -1863,63 +1752,15 @@ class Reconciler:
                 )
                 continue
 
-            # Hold multi-worker replica stops/faults while sibling instances sharing
-            # the exact provider replica_id are still active, bounded by
-            # terminating_status_timeout_s so replica scale-downs delete whole
-            # replicas atomically and single-pod faults let the provider heal first.
             if (
-                instance.node_kind != NodeKind.HEAD
-                and instance.instance_type in replica_sizes
-                and instance.status != IMInstance.TERMINATION_FAILED
+                instance.status == IMInstance.RAY_STOPPED
+                and _replica_key(instance) in ray_running_reps
+                and len(instance.status_history) > 1
+                and instance.status_history[-2].instance_status
+                in (IMInstance.RAY_STOP_REQUESTED, IMInstance.RAY_STOPPING)
+                and not InstanceUtil.has_timeout(instance, hold_timeout_s)
             ):
-                c_inst = cloud_instances.get(instance.cloud_instance_id)
-                rep_id = c_inst.replica_id if c_inst is not None else None
-                siblings = (
-                    active_by_replica.get((instance.instance_type, rep_id))
-                    if rep_id
-                    else None
-                )
-                if siblings:
-                    status_name = IMInstance.InstanceStatus.Name(instance.status)
-                    status_times = InstanceUtil.get_status_transition_times_ns(
-                        instance, select_instance_status=instance.status
-                    )
-                    elapsed_ns = (
-                        max(0, time.time_ns() - max(status_times))
-                        if status_times
-                        else 0
-                    )
-                    if elapsed_ns <= hold_timeout_s * 1_000_000_000:
-                        log_fn = (
-                            _logger.warning
-                            if elapsed_ns > warn_interval_s * 1_000_000_000
-                            else _logger.info
-                        )
-                        log_fn(
-                            "Holding termination of faulted instance %s "
-                            "(%s, cloud_instance_id=%s) in replica %s while sibling "
-                            "instances %s remain active (elapsed=%ds, timeout=%ds).",
-                            instance.instance_id,
-                            status_name,
-                            instance.cloud_instance_id,
-                            rep_id,
-                            siblings,
-                            int(elapsed_ns // 1_000_000_000),
-                            hold_timeout_s,
-                        )
-                        continue
-                    _logger.warning(
-                        "Releasing faulted instance %s (%s, cloud_instance_id=%s) "
-                        "in replica %s for termination after %ds (> timeout=%ds) "
-                        "with active sibling instances %s.",
-                        instance.instance_id,
-                        status_name,
-                        instance.cloud_instance_id,
-                        rep_id,
-                        int(elapsed_ns // 1_000_000_000),
-                        hold_timeout_s,
-                        siblings,
-                    )
+                continue
 
             # Terminate the instance.
             updates[instance.instance_id] = IMInstanceUpdateEvent(

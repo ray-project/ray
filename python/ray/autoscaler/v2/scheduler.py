@@ -529,14 +529,6 @@ class SchedulingNode:
                 provider_replica_id=instance.cloud_instance_replica_id,
             )
 
-        if (
-            instance.im_instance.status == Instance.RAY_STOP_REQUESTED
-            and node_config is not None
-            and node_config.replica_config is not None
-            and node_config.replica_config.workers_per_replica > 1
-        ):
-            return None
-
         node = SchedulingNode.from_node_config(
             node_config,
             SchedulingNodeStatus.SCHEDULABLE,
@@ -1234,6 +1226,19 @@ class ResourceDemandScheduler(IResourceScheduler):
                         dn.append(p)
                     return take
 
+                outdated_doms = (
+                    {
+                        n.labels[dom_key]
+                        for n in type_nodes
+                        if size > 1
+                        and not n.provider_replica_id
+                        and ResourceDemandScheduler._is_running_node(n)
+                        and n.labels.get(dom_key)
+                        and self._is_outdated_node(n)
+                    }
+                    if dom_key
+                    else set()
+                )
                 for n in type_nodes:
                     if size > 1 and n.provider_replica_id:
                         by_prov[n.provider_replica_id].append(n)
@@ -1242,7 +1247,7 @@ class ResourceDemandScheduler(IResourceScheduler):
                         if d:
                             n.replica_id = d
                             n._has_runtime_domain = True
-                            if not self._is_outdated_node(n):
+                            if d not in outdated_doms and not self._is_outdated_node(n):
                                 running_by_dom[d].append(n)
                         else:
                             if n.provider_replica_id:
@@ -1290,10 +1295,11 @@ class ResourceDemandScheduler(IResourceScheduler):
                         if valid_doms
                         else self._new_pending_domain(node_type)
                     )
+                    rep_outdated = any(self._is_outdated_node(m) for m in p_nodes)
                     for m in p_run:
                         d_m = m.labels.get(dom_key) if dom_key else None
                         m._has_runtime_domain = True
-                        if self._is_outdated_node(m):
+                        if rep_outdated or self._is_outdated_node(m):
                             m.replica_id = d_m or self._new_pending_domain(node_type)
                         else:
                             m.replica_id = d_m or rid
@@ -3528,6 +3534,24 @@ class ResourceDemandScheduler(IResourceScheduler):
             # Outdated nodes check through launch config check is disabled.
             return
 
+        replica_sizes = ctx.get_multihost_replica_sizes()
+
+        def _replica_key(node: SchedulingNode) -> Optional[Tuple[NodeType, str]]:
+            rid = node.provider_replica_id or node.replica_id
+            if node.node_type in replica_sizes and rid:
+                return (node.node_type, rid)
+            return None
+
+        # A multi-worker replica is replaced as a unit, so one outdated worker
+        # outdates every worker of its replica.
+        outdated_replicas = {
+            _replica_key(node)
+            for node in nodes
+            if node.status == SchedulingNodeStatus.SCHEDULABLE
+            and ctx._is_outdated_node(node)
+        }
+        outdated_replicas.discard(None)
+
         for node in nodes:
             if node.status != SchedulingNodeStatus.SCHEDULABLE:
                 # We don't need to care about the non-running nodes.
@@ -3543,12 +3567,7 @@ class ResourceDemandScheduler(IResourceScheduler):
                     "head node"
                 )
                 continue
-            node_type = node.node_type
-            node_type_config = ctx.get_node_type_configs().get(node_type)
-            if node_type_config is None or (
-                node_type_config.launch_config_hash
-                and node_type_config.launch_config_hash != node.launch_config_hash
-            ):
+            if ctx._is_outdated_node(node) or _replica_key(node) in outdated_replicas:
                 # The node type config has been updated, and the node's launch config
                 # hash is outdated.
                 node.status = SchedulingNodeStatus.TO_TERMINATE
@@ -3810,6 +3829,15 @@ class ResourceDemandScheduler(IResourceScheduler):
             and n.status == SchedulingNodeStatus.SCHEDULABLE
             and not ResourceDemandScheduler._is_unrequested_queued(n)
         )
+        # A node whose Ray stop is already requested is leaving, so it must not
+        # count toward min_worker_nodes when choosing more nodes to idle terminate.
+        for n in nodes:
+            if (
+                n.status == SchedulingNodeStatus.SCHEDULABLE
+                and n.im_instance_status == Instance.RAY_STOP_REQUESTED
+            ):
+                count_by_node_type[n.node_type] -= 1
+                non_queued_count_by_type[n.node_type] -= 1
         idle_timeouts: Dict[int, float] = {}
         for n in nodes:
             t = ResourceDemandScheduler._idle_timeout_for_node(

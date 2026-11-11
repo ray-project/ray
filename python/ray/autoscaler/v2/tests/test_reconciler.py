@@ -2811,7 +2811,7 @@ class TestReconciler:
         cloud_8 = {}
         for idx, e in enumerate(sub1.events):
             cid = f"pod-{idx}"
-            cloud_8[cid] = CloudInstance(cid, "tpu16", True, NodeKind.WORKER)
+            cloud_8[cid] = CloudInstance(cid, "tpu16", NodeKind.WORKER, True)
         sub1.clear()
         Reconciler.reconcile(
             instance_manager=im,
@@ -2928,58 +2928,9 @@ class TestReconciler:
             )["tpu16"]
         ] == ["ret-0", "ret-1", *(f"r0-{i}" for i in range(4))]
 
-        # In-place replacement pod in rep-0 (launch_request_id="L0") must not steal
-        # REQUESTED slots belonging to a newer replica launch (launch_request_id="L1").
-        a3_store = InstanceStorage(cluster_id="a3_repl", storage=InMemoryStorage())
-        a3_im = InstanceManager(a3_store, instance_status_update_subscribers=[])
-        TestReconciler._add_instances(
-            a3_store,
-            [
-                *(
-                    create_instance(
-                        f"r0-{i}",
-                        status=Instance.RAY_RUNNING,
-                        instance_type="tpu16",
-                        cloud_instance_id=f"c0-{i}",
-                        launch_request_id="L0",
-                    )
-                    for i in range(3)
-                ),
-                *(
-                    create_instance(
-                        f"r1-{i}",
-                        status=Instance.REQUESTED,
-                        instance_type="tpu16",
-                        launch_request_id="L1",
-                        status_times=[(Instance.REQUESTED, 10 + i)],
-                    )
-                    for i in range(4)
-                ),
-            ],
-        )
-        a3_cloud = {
-            f"c0-{i}": CloudInstance(
-                f"c0-{i}", "tpu16", NodeKind.WORKER, True, replica_id="rep-0"
-            )
-            for i in range(4)
-        }
-        Reconciler._handle_cloud_instance_allocation(a3_im, a3_cloud, [])
-        assert all(
-            a3_store.get_instances()[0][f"r1-{i}"].status == Instance.REQUESTED
-            for i in range(4)
-        )
-        Reconciler._handle_extra_cloud_instances(a3_im, a3_cloud, [])
-        adopted_c03 = [
-            inst
-            for inst in a3_store.get_instances()[0].values()
-            if inst.cloud_instance_id == "c0-3"
-        ]
-        assert len(adopted_c03) == 1 and adopted_c03[0].status == Instance.ALLOCATED
-
         # Solicited degraded-slice drain (repro7 A/B), mixed solicited+unsolicited
         # replica completion (repro8), and bounded replica_id unsolicited-fault hold
         # with warning logs (Probes 2/3 & repro7 C).
-        now_ns = 1_000 * s_to_ns
         rep_cloud = {
             "c-head": CloudInstance("c-head", "head", NodeKind.HEAD, True),
             **{
@@ -3157,189 +3108,6 @@ class TestReconciler:
             non_terminated_cloud_instances=rep_cloud,
         )
         assert {e.instance_id for e in s8_sub.events} == {f"s0-{i}" for i in range(4)}
-
-        # (c) Partial-replica stops (both unsolicited single-pod faults and staggered/
-        # mid-recreation solicited non-OUTDATED stops) with an active same-replica_id
-        # sibling are held (INFO before transient_status_warn_interval_s, WARNING after)
-        # Unsolicited crash, solicited RAY_STOPPED (including outdated config hash),
-        # ALLOCATION_TIMEOUT, and RAY_INSTALL_FAILED with a live sibling are held up
-        # to terminating_status_timeout_s, while TERMINATION_FAILED and unlabeled
-        # legacy pods terminate immediately.
-        v6e_16_hashed = {
-            "tpu16": NodeTypeConfig(
-                name="tpu16",
-                resources={"CPU": 4, "TPU": 4},
-                min_worker_nodes=0,
-                max_worker_nodes=16,
-                launch_config_hash="hash-v2",
-                replica_config=WorkerReplicaConfig(workers_per_replica=4),
-            )
-        }
-        s1_outdated = create_instance(
-            "s1-outdated",
-            status=Instance.RAY_STOPPED,
-            instance_type="tpu16",
-            cloud_instance_id="c1-3",
-            status_times=[
-                (Instance.RAY_STOP_REQUESTED, 1 * s_to_ns),
-                (Instance.RAY_STOPPED, now_ns - 5 * s_to_ns),
-            ],
-        )
-        s1_outdated.launch_config_hash = "hash-v1"
-        s0_crash = create_instance(
-            "s0-crash",
-            status=Instance.RAY_STOPPED,
-            instance_type="tpu16",
-            cloud_instance_id="c0-1",
-            status_times=[
-                (Instance.RAY_STOP_REQUESTED, 1 * s_to_ns),
-                (Instance.RAY_RUNNING, 2 * s_to_ns),
-                (Instance.RAY_STOPPED, now_ns - 5 * s_to_ns),
-            ],
-        )
-        s0_crash.launch_config_hash = "hash-v1"
-        s1_sol = create_instance(
-            "s1-sol",
-            status=Instance.RAY_STOPPED,
-            instance_type="tpu16",
-            cloud_instance_id="c1-0",
-            status_times=[
-                (Instance.RAY_STOP_REQUESTED, 1 * s_to_ns),
-                (Instance.RAY_STOPPED, now_ns - 5 * s_to_ns),
-            ],
-        )
-        s1_sol.launch_config_hash = "hash-v2"
-        hold_store = InstanceStorage(cluster_id="hold_test", storage=InMemoryStorage())
-        hold_sub = MockSubscriber()
-        hold_im = InstanceManager(
-            hold_store, instance_status_update_subscribers=[hold_sub]
-        )
-        TestReconciler._add_instances(
-            hold_store,
-            [
-                create_instance(
-                    "s0-live",
-                    status=Instance.RAY_RUNNING,
-                    instance_type="tpu16",
-                    cloud_instance_id="c0-0",
-                ),
-                s0_crash,
-                create_instance(
-                    "s0-timeout",
-                    status=Instance.ALLOCATION_TIMEOUT,
-                    instance_type="tpu16",
-                    cloud_instance_id="c0-2",
-                    status_times=[(Instance.ALLOCATION_TIMEOUT, now_ns - 5 * s_to_ns)],
-                ),
-                create_instance(
-                    "s0-instfail",
-                    status=Instance.RAY_INSTALL_FAILED,
-                    instance_type="tpu16",
-                    cloud_instance_id="c0-3",
-                    status_times=[(Instance.RAY_INSTALL_FAILED, now_ns - 5 * s_to_ns)],
-                ),
-                s1_sol,
-                create_instance(
-                    "s1-live",
-                    status=Instance.RAY_RUNNING,
-                    instance_type="tpu16",
-                    cloud_instance_id="c1-1",
-                ),
-                create_instance(
-                    "s1-termfail",
-                    status=Instance.TERMINATION_FAILED,
-                    instance_type="tpu16",
-                    cloud_instance_id="c1-2",
-                    status_times=[(Instance.TERMINATION_FAILED, now_ns)],
-                ),
-                s1_outdated,
-                create_instance(
-                    "legacy-crash",
-                    status=Instance.RAY_STOPPED,
-                    instance_type="tpu16",
-                    cloud_instance_id="c-legacy",
-                    status_times=[(Instance.RAY_STOPPED, now_ns)],
-                ),
-            ],
-        )
-        rec_cfg = InstanceReconcileConfig(
-            terminating_status_timeout_s=30, transient_status_warn_interval_s=10
-        )
-        warn_log = MagicMock()
-        hold_sub.clear()
-        with mock.patch("time.time_ns", return_value=now_ns):
-            Reconciler._terminate_instances(
-                hold_im,
-                autoscaling_config=MockAutoscalingConfig(
-                    configs={"node_type_configs": v6e_16_hashed}
-                ),
-                non_terminated_cloud_instances=rep_cloud,
-                reconcile_config=rec_cfg,
-                _logger=warn_log,
-            )
-        assert {e.instance_id for e in hold_sub.events} == {
-            "s1-termfail",
-            "legacy-crash",
-        }
-        assert warn_log.warning.call_count == 0
-        assert warn_log.info.call_count == 5
-
-        # Late Ray registration during the hold window for ALLOCATION_TIMEOUT /
-        # RAY_INSTALL_FAILED preserves the faulted status without raising AssertionError.
-        for held_st in (Instance.ALLOCATION_TIMEOUT, Instance.RAY_INSTALL_FAILED):
-            for ray_st in (
-                NodeStatus.RUNNING,
-                NodeStatus.IDLE,
-                NodeStatus.DRAINING,
-                NodeStatus.DEAD,
-            ):
-                assert (
-                    Reconciler._reconciled_im_status_from_ray_status(ray_st, held_st)
-                    == held_st
-                )
-
-        # After transient_status_warn_interval_s (15s > 10s, still <= 30s timeout),
-        # held instances stay held and escalate to WARNING.
-        warn_log.reset_mock()
-        hold_sub.clear()
-        with mock.patch("time.time_ns", return_value=now_ns + 10 * s_to_ns):
-            Reconciler._terminate_instances(
-                hold_im,
-                autoscaling_config=MockAutoscalingConfig(
-                    configs={"node_type_configs": v6e_16_hashed}
-                ),
-                non_terminated_cloud_instances=rep_cloud,
-                reconcile_config=rec_cfg,
-                _logger=warn_log,
-            )
-        assert hold_sub.events == []
-        assert warn_log.warning.call_count == 5
-
-        # Once terminating_status_timeout_s elapses (repro7 C), held zombies are
-        # released to TERMINATING with a WARNING log even though live siblings stay active.
-        warn_log.reset_mock()
-        hold_sub.clear()
-        with mock.patch("time.time_ns", return_value=now_ns + 30 * s_to_ns):
-            Reconciler._terminate_instances(
-                hold_im,
-                autoscaling_config=MockAutoscalingConfig(
-                    configs={"node_type_configs": v6e_16_hashed}
-                ),
-                non_terminated_cloud_instances=rep_cloud,
-                reconcile_config=rec_cfg,
-                _logger=warn_log,
-            )
-        assert {e.instance_id for e in hold_sub.events} == {
-            "s0-crash",
-            "s0-timeout",
-            "s0-instfail",
-            "s1-sol",
-            "s1-outdated",
-        }
-        assert warn_log.warning.call_count == 5
-        hold_insts, _ = hold_store.get_instances()
-        assert hold_insts["s0-live"].status == Instance.RAY_RUNNING
-        assert hold_insts["s1-live"].status == Instance.RAY_RUNNING
 
         # (d) _scale_cluster plumbs cloud_instance_replica_id so reshuffled booting
         # slices drain as exact KubeRay replicas (B1b), and defers partial/in-flight
@@ -3522,17 +3290,16 @@ class TestReconciler:
         )
         # Only outdated g2-outdated drains; partial booting G1 + REQUESTED r-2/r-3/gpu-req
         # defer, whole-replica launch for tpu_active (4 hosts, with 1 existing REQUESTED
-        # host and max_worker_nodes=8 -> 7 slots free) is preserved, and only 1 of the 2
-        # min_worker_nodes cpu launches is queued so active nodes
-        # (h + g1-0 + g1-1 + r-2 + r-3 + r-active + gpu-req + 4 tpu_active + 1 cpu = 12)
-        # do not exceed max_num_nodes=12.
+        # host and max_worker_nodes=8 -> 7 slots free) is preserved, and neither
+        # min_worker_nodes cpu launch is queued because active nodes
+        # (h + g1-0 + g1-1 + r-2 + r-3 + r-active + gpu-req + 4 tpu_active = 11) plus
+        # the still-draining g2-outdated (RAY_STOP_REQUESTED) reach max_num_nodes=12.
         assert [
             (e.instance_type or e.instance_id, e.new_instance_status)
             for e in p_sub.events
         ] == [
             ("g2-outdated", Instance.RAY_STOP_REQUESTED),
             *(("tpu_active", Instance.QUEUED) for _ in range(4)),
-            ("cpu", Instance.QUEUED),
         ]
         assert any(
             "partial replica or in-flight REQUESTED pods, waiting for remaining replica pods"
@@ -3578,168 +3345,186 @@ class TestReconciler:
             )
             assert len(p_sub.events) == expected_queued
 
-        # Held multi-host replica with a faulted/draining pod and no new terminations
-        # in the current tick (to_terminate=[]): reserve all 4 replica slots against
-        # max_worker_nodes and max_num_nodes until the entire replica stops, while
-        # still permitting a 2nd replica when max_worker_nodes=8 allows 2 replicas.
-        tpu_cap0["tpu_active"].max_worker_nodes = 4
-        held_cloud = {
-            f"hc-{i}": CloudInstance(
-                f"hc-{i}", "tpu_active", True, NodeKind.WORKER, replica_id="rep-0"
+    def test_multihost_crashed_worker_terminates_while_drained_worker_waits(self):
+        cfg = MockAutoscalingConfig(
+            configs={
+                "node_type_configs": {
+                    "tpu": NodeTypeConfig(
+                        name="tpu",
+                        resources={"CPU": 4, "TPU": 4},
+                        min_worker_nodes=0,
+                        max_worker_nodes=8,
+                        replica_config=WorkerReplicaConfig(workers_per_replica=4),
+                    )
+                }
+            }
+        )
+        cloud = {
+            f"c-{h}": CloudInstance(
+                f"c-{h}", "tpu", NodeKind.WORKER, True, replica_id="rep-0"
             )
-            for i in range(4)
+            for h in range(4)
         }
-        for held_status in (
-            Instance.RAY_STOPPED,
-            Instance.RAY_INSTALL_FAILED,
-            Instance.ALLOCATION_TIMEOUT,
-            Instance.RAY_STOP_REQUESTED,
-        ):
-            h_store = InstanceStorage(
-                cluster_id=f"b_held_{held_status}", storage=InMemoryStorage()
-            )
-            h_sub = MockSubscriber()
-            h_im = InstanceManager(h_store, instance_status_update_subscribers=[h_sub])
-            TestReconciler._add_instances(
-                h_store,
-                [
-                    create_instance(
-                        "h", status=Instance.RAY_RUNNING, node_kind=NodeKind.HEAD
-                    ),
-                    *(
-                        create_instance(
-                            f"hw-{i}",
-                            status=Instance.RAY_RUNNING if i < 3 else held_status,
-                            instance_type="tpu_active",
-                            cloud_instance_id=f"hc-{i}",
-                        )
-                        for i in range(4)
-                    ),
-                ],
-            )
-            held_sched = MagicMock()
-            held_sched.schedule.return_value = SchedulingReply(
-                to_terminate=[],
-                to_launch=[
-                    LaunchRequest(
-                        id="l-tpu", instance_type="tpu_active", count=4, request_ts_ms=1
-                    ),
-                    LaunchRequest(
-                        id="l-cpu", instance_type="cpu", count=2, request_ts_ms=1
-                    ),
-                ],
-            )
-            Reconciler._scale_cluster(
-                autoscaling_state=MagicMock(),
-                instance_manager=h_im,
-                cloud_resource_monitor=CloudResourceMonitor(),
-                ray_state=ClusterResourceState(),
-                scheduler=held_sched,
-                autoscaling_config=MockAutoscalingConfig(
-                    configs={"node_type_configs": tpu_cap0, "max_num_worker_nodes": 5}
-                ),
-                cloud_provider=MagicMock(),
-                non_terminated_cloud_instances=held_cloud,
-                _logger=part_log,
-            )
-            # At max_worker_nodes=4, rep-0 reserves all 4 tpu_active slots and 4 of the
-            # 5 cluster worker slots so only 1 cpu worker is queued.
-            assert [(e.instance_type, e.new_instance_status) for e in h_sub.events] == [
-                ("cpu", Instance.QUEUED)
-            ]
+        now_ns = time.time_ns()
 
-        # When max_worker_nodes=8 allows 2 replicas, a held pod in rep-0 does not
-        # freeze scaling up a 2nd independent replica.
-        tpu_cap0["tpu_active"].max_worker_nodes = 8
-        h8_store = InstanceStorage(cluster_id="b_held_max8", storage=InMemoryStorage())
-        h8_sub = MockSubscriber()
-        h8_im = InstanceManager(h8_store, instance_status_update_subscribers=[h8_sub])
+        # Spontaneous raylet exit (RAY_RUNNING -> RAY_STOPPED) terminates immediately.
+        crash_store = InstanceStorage(cluster_id="crash", storage=InMemoryStorage())
+        crash_sub = MockSubscriber()
+        crash_im = InstanceManager(
+            crash_store, instance_status_update_subscribers=[crash_sub]
+        )
         TestReconciler._add_instances(
-            h8_store,
+            crash_store,
             [
-                create_instance(
-                    "h", status=Instance.RAY_RUNNING, node_kind=NodeKind.HEAD
-                ),
                 *(
                     create_instance(
-                        f"hw-{i}",
-                        status=Instance.RAY_RUNNING if i < 3 else Instance.RAY_STOPPED,
-                        instance_type="tpu_active",
-                        cloud_instance_id=f"hc-{i}",
+                        f"w-{h}",
+                        status=Instance.RAY_RUNNING,
+                        instance_type="tpu",
+                        cloud_instance_id=f"c-{h}",
                     )
-                    for i in range(4)
+                    for h in range(3)
+                ),
+                create_instance(
+                    "w-3",
+                    status=Instance.RAY_STOPPED,
+                    instance_type="tpu",
+                    cloud_instance_id="c-3",
+                    status_times=[
+                        (Instance.RAY_RUNNING, now_ns - 2),
+                        (Instance.RAY_STOPPED, now_ns - 1),
+                    ],
                 ),
             ],
         )
-        Reconciler._scale_cluster(
-            autoscaling_state=MagicMock(),
-            instance_manager=h8_im,
-            cloud_resource_monitor=CloudResourceMonitor(),
-            ray_state=ClusterResourceState(),
-            scheduler=held_sched,
-            autoscaling_config=MockAutoscalingConfig(
-                configs={"node_type_configs": tpu_cap0, "max_num_worker_nodes": 9}
-            ),
-            cloud_provider=MagicMock(),
-            non_terminated_cloud_instances=held_cloud,
-            _logger=part_log,
+        crash_sub.clear()
+        Reconciler._terminate_instances(
+            crash_im, autoscaling_config=cfg, non_terminated_cloud_instances=cloud
         )
-        assert [(e.instance_type, e.new_instance_status) for e in h8_sub.events] == [
-            *(("tpu_active", Instance.QUEUED) for _ in range(4)),
-            ("cpu", Instance.QUEUED),
+        assert [(e.instance_id, e.new_instance_status) for e in crash_sub.events] == [
+            ("w-3", Instance.TERMINATING)
         ]
 
-        # Once all 4 pods of rep-0 are draining or stopped (no running/booting
-        # siblings left in the replica), replacement launches are not withheld.
-        for draining_or_stopped in (
-            Instance.RAY_STOP_REQUESTED,
-            Instance.RAY_STOPPING,
-            Instance.RAY_STOPPED,
-        ):
-            stopped_store = InstanceStorage(
-                cluster_id=f"b_stopped_{draining_or_stopped}",
-                storage=InMemoryStorage(),
-            )
-            stopped_sub = MockSubscriber()
-            stopped_im = InstanceManager(
-                stopped_store, instance_status_update_subscribers=[stopped_sub]
-            )
-            TestReconciler._add_instances(
-                stopped_store,
-                [
+        # Solicited stop (RAY_STOP_REQUESTED -> RAY_STOPPED) waits while siblings run.
+        drain_store = InstanceStorage(cluster_id="drain", storage=InMemoryStorage())
+        drain_sub = MockSubscriber()
+        drain_im = InstanceManager(
+            drain_store, instance_status_update_subscribers=[drain_sub]
+        )
+        TestReconciler._add_instances(
+            drain_store,
+            [
+                *(
                     create_instance(
-                        "h", status=Instance.RAY_RUNNING, node_kind=NodeKind.HEAD
-                    ),
-                    *(
-                        create_instance(
-                            f"hw-{i}",
-                            status=draining_or_stopped,
-                            instance_type="tpu_active",
-                            cloud_instance_id=f"hc-{i}",
-                        )
-                        for i in range(4)
-                    ),
-                ],
-            )
-            Reconciler._scale_cluster(
-                autoscaling_state=MagicMock(),
-                instance_manager=stopped_im,
-                cloud_resource_monitor=CloudResourceMonitor(),
-                ray_state=ClusterResourceState(),
-                scheduler=held_sched,
-                autoscaling_config=MockAutoscalingConfig(
-                    configs={"node_type_configs": tpu_cap0, "max_num_worker_nodes": 5}
+                        f"w-{h}",
+                        status=Instance.RAY_RUNNING,
+                        instance_type="tpu",
+                        cloud_instance_id=f"c-{h}",
+                    )
+                    for h in range(3)
                 ),
-                cloud_provider=MagicMock(),
-                non_terminated_cloud_instances=held_cloud,
-                _logger=part_log,
-            )
-            assert [
-                (e.instance_type, e.new_instance_status) for e in stopped_sub.events
-            ] == [
-                *(("tpu_active", Instance.QUEUED) for _ in range(4)),
-                *(("cpu", Instance.QUEUED) for _ in range(2)),
-            ]
+                create_instance(
+                    "w-3",
+                    status=Instance.RAY_STOPPED,
+                    instance_type="tpu",
+                    cloud_instance_id="c-3",
+                    status_times=[
+                        (Instance.RAY_RUNNING, now_ns - 3),
+                        (Instance.RAY_STOP_REQUESTED, now_ns - 2),
+                        (Instance.RAY_STOPPED, now_ns - 1),
+                    ],
+                ),
+            ],
+        )
+        drain_sub.clear()
+        Reconciler._terminate_instances(
+            drain_im, autoscaling_config=cfg, non_terminated_cloud_instances=cloud
+        )
+        assert drain_sub.events == []
+
+    def test_multihost_idle_scale_down_leaves_booting_worker_until_drain_accepted(self):
+        cfg = MockAutoscalingConfig(
+            configs={
+                "node_type_configs": {
+                    "tpu": NodeTypeConfig(
+                        name="tpu",
+                        resources={"CPU": 4, "TPU": 4},
+                        min_worker_nodes=0,
+                        max_worker_nodes=8,
+                        replica_config=WorkerReplicaConfig(workers_per_replica=4),
+                    )
+                }
+            }
+        )
+        store = InstanceStorage(cluster_id="boot_hold", storage=InMemoryStorage())
+        sub = MockSubscriber()
+        im = InstanceManager(store, instance_status_update_subscribers=[sub])
+        insts = [
+            create_instance(
+                "head",
+                status=Instance.RAY_RUNNING,
+                instance_type="head",
+                node_kind=NodeKind.HEAD,
+                cloud_instance_id="c-head",
+            ),
+            *(
+                create_instance(
+                    f"w-{h}",
+                    status=Instance.RAY_RUNNING,
+                    instance_type="tpu",
+                    cloud_instance_id=f"c-{h}",
+                    ray_node_id=f"n-{h}",
+                )
+                for h in range(3)
+            ),
+            create_instance(
+                "w-3",
+                status=Instance.ALLOCATED,
+                instance_type="tpu",
+                cloud_instance_id="c-3",
+            ),
+        ]
+        TestReconciler._add_instances(store, insts)
+        workers = insts[1:]
+        cloud = {
+            "c-head": CloudInstance("c-head", "head", NodeKind.HEAD, True),
+            **{
+                f"c-{h}": CloudInstance(
+                    f"c-{h}", "tpu", NodeKind.WORKER, True, replica_id="rep-0"
+                )
+                for h in range(4)
+            },
+        }
+        sched = MagicMock()
+        sched.schedule.return_value = SchedulingReply(
+            to_launch=[],
+            to_terminate=[
+                TerminationRequest(
+                    id=f"t-{h}",
+                    instance_id=workers[h].instance_id,
+                    ray_node_id=workers[h].node_id,
+                    instance_type="tpu",
+                    instance_status=workers[h].status,
+                    cause=TerminationRequest.Cause.IDLE,
+                )
+                for h in range(4)
+            ],
+        )
+        sub.clear()
+        Reconciler._scale_cluster(
+            autoscaling_state=MagicMock(),
+            instance_manager=im,
+            cloud_resource_monitor=CloudResourceMonitor(),
+            ray_state=ClusterResourceState(),
+            scheduler=sched,
+            autoscaling_config=cfg,
+            cloud_provider=MagicMock(),
+            non_terminated_cloud_instances=cloud,
+        )
+        assert sorted((e.instance_id, e.new_instance_status) for e in sub.events) == [
+            (f"w-{h}", Instance.RAY_STOP_REQUESTED) for h in range(3)
+        ]
+        assert store.get_instances()[0]["w-3"].status == Instance.ALLOCATED
 
 
 if __name__ == "__main__":

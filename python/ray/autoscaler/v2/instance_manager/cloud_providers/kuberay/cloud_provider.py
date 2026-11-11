@@ -346,21 +346,23 @@ class KubeRayProvider(ICloudInstanceProvider):
             )
             by_replica = pods_by_type_replica.get(node_type)
             if num_of_hosts > 1 and by_replica:
-                # Each distinct KubeRay replica_id represents one replica group even
-                # when mid-boot or mid-recreation with < num_of_hosts pods materialized,
-                # preventing integer floor division from dropping surviving replicas.
-                effective_observed = (
-                    len(by_replica) * num_of_hosts + unlabeled_workers_dict[node_type]
-                )
-                fully_deleted = sum(
-                    all(p.cloud_instance_id in to_delete_id_set for p in r_pods)
+                # KubeRay reconciles a multi-host group by replica name: each replica
+                # counts whole even while < num_of_hosts pods exist, and naming any
+                # of its pods in workersToDelete deletes the whole replica. Name all
+                # of its pods, so the replica reads as pending deletion until every
+                # pod is gone.
+                effective_observed = len(by_replica) * num_of_hosts
+                removed_replicas = [
+                    r_pods
                     for r_pods in by_replica.values()
-                )
-                unlabeled_deleted = sum(
-                    not p.replica_id
-                    for p in to_delete_instances_by_type.get(node_type, ())
-                )
-                removed_workers = fully_deleted * num_of_hosts + unlabeled_deleted
+                    if any(p.cloud_instance_id in to_delete_id_set for p in r_pods)
+                ]
+                for r_pods in removed_replicas:
+                    for pod in r_pods:
+                        if pod.cloud_instance_id not in to_delete_id_set:
+                            to_delete_id_set.add(pod.cloud_instance_id)
+                            to_delete_instances_by_type[node_type].append(pod)
+                removed_workers = len(removed_replicas) * num_of_hosts
             else:
                 labeled_count = (
                     sum(len(r_pods) for r_pods in by_replica.values())
