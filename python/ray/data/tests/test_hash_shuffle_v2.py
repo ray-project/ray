@@ -641,6 +641,48 @@ def test_shuffle_reduce_task_merges_label_selector(
     }
 
 
+@pytest.mark.parametrize(
+    "map_cls, reduce_cls, task_path",
+    [
+        (ShuffleMapOp, ShuffleReduceOp, "shuffle_reduce_operator._shuffle_reduce_task"),
+        (
+            DiskHashShuffleMapOp,
+            DiskHashShuffleReduceOp,
+            "disk_shuffle_reduce_operator._disk_shuffle_reduce_task",
+        ),
+    ],
+)
+def test_shuffle_reduce_task_applies_reduce_ray_remote_args(
+    restore_data_context, map_cls, reduce_cls, task_path
+):
+    map_op = map_cls(
+        InputDataBuffer(restore_data_context, []),
+        restore_data_context,
+        num_partitions=1,
+        partition_fn=lambda table: {},
+    )
+    op = reduce_cls(
+        map_op,
+        restore_data_context,
+        num_partitions=1,
+        reduce_fn=lambda partition_id, tables_by_input: iter(()),
+        reduce_ray_remote_args={"num_cpus": 2, "num_gpus": 1},
+    )
+    op.start(ExecutionOptions(), noop_counter())
+
+    with patch(
+        f"ray.data._internal.execution.operators.shuffle_operators.{task_path}"
+    ) as shuffle_reduce_task:
+        shuffle_reduce_task.options.return_value.remote.return_value = MagicMock()
+        op._submit_reduce_task(0, [RefBundle((), schema=None, owns_blocks=True)])
+
+    kwargs = shuffle_reduce_task.options.call_args.kwargs
+    assert (kwargs["num_cpus"], kwargs["num_gpus"]) == (2, 1)
+    # Estimates and logical usage must advertise the same ask as the task.
+    for usage in (op.incremental_resource_usage(), op.current_logical_usage()):
+        assert (usage.cpu, usage.gpu) == (2, 1)
+
+
 def _complete_map_tasks_out_of_order(op, task_outputs, map_done_return):
     """Submit len(task_outputs) patched map tasks, then complete them last-first."""
     op.start(ExecutionOptions(), noop_counter())
