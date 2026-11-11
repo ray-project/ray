@@ -178,6 +178,17 @@ def _marker(name: str, like: tarfile.TarInfo) -> tarfile.TarInfo:
     return info
 
 
+def validate_commit(base_image: str, target: str, images_dir: str) -> None:
+    """Raise if ``target`` or the cached ``base_image`` can't be committed.
+
+    These are the checks ``push_image`` makes that need no export or registry.
+    """
+    _, _, tag = parse_image_ref(target)
+    if tag.startswith("sha256:"):
+        raise SandboxError(f"Commit target '{target}' needs a tag, not a digest")
+    _load_base(images_dir, base_image)
+
+
 def push_image(
     base_image: str,
     target: str,

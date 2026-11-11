@@ -12,7 +12,7 @@ from ray.experimental.sandbox.backend.base import (
 )
 from ray.experimental.sandbox.backend.gvisor import GVisorSandboxBackend
 from ray.experimental.sandbox.config import SandboxConfig, parse_memory_bytes
-from ray.experimental.sandbox.exceptions import SandboxCreationError
+from ray.experimental.sandbox.exceptions import SandboxCreationError, SandboxError
 from ray.experimental.sandbox.image_manager import ImageManager
 from ray.util.annotations import PublicAPI
 
@@ -366,6 +366,7 @@ class SandboxRuntime:
     ) -> str:
         """Push the sandbox's base image and root filesystem changes to a registry.
 
+        The sandbox must have been created with ``readonly=False``.
         Mounts aren't included. Commit leaves the sandbox in the state it was
         in: a running sandbox is paused only while its changes are exported,
         and a paused sandbox stays paused. Registry credentials come from
@@ -381,6 +382,14 @@ class SandboxRuntime:
             The immutable ``registry/repo@sha256:...`` reference.
         """
         cfg = self._backend.get_config(instance_id)
+        # Fail before the export, which pauses a running sandbox.
+        if cfg.readonly:
+            raise SandboxError(
+                f"Cannot commit sandbox '{instance_id}': its root filesystem is "
+                "read-only, so it has no changes to export. Create the sandbox "
+                "with readonly=False to commit it."
+            )
+        image_push.validate_commit(cfg.image, image, self._image_manager.images_dir)
         with tempfile.TemporaryDirectory(
             prefix="commit-", dir=self._backend.sandbox_dir(instance_id)
         ) as directory:

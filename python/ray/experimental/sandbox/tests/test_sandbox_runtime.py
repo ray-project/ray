@@ -6,6 +6,7 @@ shipped behind a green suite.
 """
 
 import asyncio
+import json
 import os
 import subprocess
 import sys
@@ -14,7 +15,9 @@ from unittest.mock import Mock
 
 import pytest
 
+from ray.experimental.sandbox._internal.image_utils import image_cache_name
 from ray.experimental.sandbox.backend.base import ExecResult, SandboxStatus
+from ray.experimental.sandbox.config import SandboxConfig
 from ray.experimental.sandbox.exceptions import SandboxError
 from ray.experimental.sandbox.runtime import SandboxRuntime
 
@@ -293,6 +296,40 @@ def test_export_rootfs_preserves_pause_state(tmp_path, monkeypatch, paused, fail
         ["tar", "rootfs-upper", "--file", str(tmp_path / "rootfs.tar"), "sandbox"]
     ]
     assert [timeout for _, timeout in calls] == ([7] if paused else [60, 7, 60])
+
+
+@pytest.mark.parametrize(
+    "readonly, target, cached_base, match",
+    [
+        (True, "registry.example/target:new", True, "readonly=False"),
+        (
+            False,
+            f"registry.example/target@sha256:{'0' * 64}",
+            True,
+            "needs a tag, not a digest",
+        ),
+        (False, "registry.example/target:new", False, "Cannot commit base image"),
+    ],
+)
+def test_commit_fails_before_exporting_the_rootfs(
+    tmp_path, readonly: bool, target: str, cached_base: bool, match: str
+) -> None:
+    base = "registry.example/source:old"
+    if cached_base:
+        image_dir = tmp_path / image_cache_name(base)
+        image_dir.mkdir()
+        (image_dir / ".manifest.json").write_text(json.dumps({"config": {}}))
+        (image_dir / ".image_config.json").write_text("{}")
+    runtime = _fake_runtime()
+    runtime._image_manager = Mock(images_dir=str(tmp_path))
+    runtime._backend = Mock()
+    runtime._backend.get_config.return_value = SandboxConfig(
+        image=base, readonly=readonly
+    )
+
+    with pytest.raises(SandboxError, match=match):
+        runtime.commit("sandbox", target)
+    runtime._backend.export_rootfs_changes.assert_not_called()
 
 
 def test_ttl_is_enforced_by_the_runtime():

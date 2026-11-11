@@ -337,6 +337,8 @@ A `readonly=True` sandbox keeps its root filesystem read-only, so `disk` caps it
 ### Commit a sandbox to an image
 
 Call `SandboxRuntime.commit()` to push a sandbox's base image and root filesystem changes to a registry.
+Commit requires a writable root filesystem, so create the sandbox with `readonly=False`.
+A sandbox with the default `readonly=True` has no root filesystem changes to export, because its only writable path is a `workdir` mount, and `commit()` raises a `SandboxError` for it.
 Commit leaves the sandbox in the state it was in: a running sandbox is paused only while its changes are exported, and a paused sandbox stays paused.
 The image doesn't include bind mounts or changes made from the host.
 Registry credentials come from `$DOCKER_CONFIG/config.json` and must allow push.
