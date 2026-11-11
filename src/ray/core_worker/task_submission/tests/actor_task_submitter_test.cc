@@ -84,6 +84,7 @@ class FakeWorkerClient : public rpc::FakeCoreWorkerClient {
                      bool skip_queue,
                      rpc::ClientCallback<rpc::PushTaskReply> &&callback) override {
     received_seq_nos.push_back(request->sequence_number());
+    intended_worker_ids.push_back(request->intended_worker_id());
     callbacks.emplace(std::make_pair(TaskID::FromBinary(request->task_spec().task_id()),
                                      request->task_spec().attempt_number()),
                       callback);
@@ -102,6 +103,7 @@ class FakeWorkerClient : public rpc::FakeCoreWorkerClient {
   rpc::Address addr;
   absl::flat_hash_map<TaskAttempt, rpc::ClientCallback<rpc::PushTaskReply>> callbacks;
   std::vector<int64_t> received_seq_nos;
+  std::vector<std::string> intended_worker_ids;
   int64_t acked_seqno = 0;
 };
 
@@ -612,6 +614,8 @@ TEST_P(ActorTaskSubmitterTest, TestActorRestartOutOfOrderGcs) {
   rpc::Address addr;
   auto worker_id = WorkerID::FromRandom();
   addr.set_worker_id(worker_id.Binary());
+  addr.set_ip_address("127.0.0.1");
+  const auto old_addr = addr;
   ActorID actor_id = ActorID::Of(JobID::FromInt(0), TaskID::Nil(), 0);
   submitter_.AddActorQueueIfNotExists(actor_id,
                                       -1,
@@ -632,13 +636,17 @@ TEST_P(ActorTaskSubmitterTest, TestActorRestartOutOfOrderGcs) {
   ASSERT_EQ(task_manager_->complete_pending_task_calls.size(), 1);
   EXPECT_EQ(task_manager_->complete_pending_task_calls[0], task1.TaskId());
 
-  // Actor restarts, but we don't receive the disconnect message until later.
-  addr.set_port(1);
+  // A new instance reuses the endpoint before we receive RESTARTING.
+  const auto restarted_worker_id = WorkerID::FromRandom();
+  addr.set_worker_id(restarted_worker_id.Binary());
   submitter_.ConnectActor(actor_id, addr, 1);
+  // An older ALIVE must not restore the previous worker identity.
+  submitter_.ConnectActor(actor_id, old_addr, 0);
   // Submit a task.
   auto task2 = CreateActorTaskHelper(actor_id, worker_id, 1);
   submitter_.SubmitTask(task2);
   ASSERT_EQ(io_context.poll_one(), 1);
+  ASSERT_EQ(worker_client_->intended_worker_ids.back(), restarted_worker_id.Binary());
   task_manager_->complete_pending_task_calls.clear();
   ASSERT_TRUE(worker_client_->ReplyPushTask(task2.GetTaskAttempt(), Status::OK()));
   ASSERT_EQ(task_manager_->complete_pending_task_calls.size(), 1);
@@ -652,6 +660,7 @@ TEST_P(ActorTaskSubmitterTest, TestActorRestartOutOfOrderGcs) {
   auto task3 = CreateActorTaskHelper(actor_id, worker_id, 2);
   submitter_.SubmitTask(task3);
   ASSERT_EQ(io_context.poll_one(), 1);
+  ASSERT_EQ(worker_client_->intended_worker_ids.back(), restarted_worker_id.Binary());
   task_manager_->complete_pending_task_calls.clear();
   ASSERT_TRUE(worker_client_->ReplyPushTask(task3.GetTaskAttempt(), Status::OK()));
   ASSERT_EQ(task_manager_->complete_pending_task_calls.size(), 1);
@@ -694,6 +703,64 @@ TEST_P(ActorTaskSubmitterTest, TestActorRestartOutOfOrderGcs) {
   ASSERT_EQ(io_context.poll_one(), 0);
   ASSERT_EQ(task_manager_->fail_or_retry_pending_task_calls.size(), 1);
   EXPECT_EQ(task_manager_->fail_or_retry_pending_task_calls[0], task5.TaskId());
+}
+
+TEST_P(ActorTaskSubmitterTest, TestSameEndpointConnectionIdentity) {
+  const auto caller_worker_id = WorkerID::FromRandom();
+  rpc::Address addr;
+  addr.set_ip_address("127.0.0.1");
+  addr.set_port(10001);
+  addr.set_worker_id(WorkerID::FromRandom().Binary());
+  const auto actor_id = ActorID::Of(JobID::FromInt(0), TaskID::Nil(), 0);
+  submitter_.AddActorQueueIfNotExists(actor_id,
+                                      -1,
+                                      GetParam(),
+                                      /*fail_if_actor_unreachable=*/false,
+                                      /*owned=*/false);
+  submitter_.ConnectActor(actor_id, addr, 0);
+
+  // Check each identity component independently: a different worker at the same
+  // generation, then a higher generation with the same worker ID.
+  int64_t num_restarts = 0;
+  for (int64_t step = 0; step < 2; ++step) {
+    const auto task = CreateActorTaskHelper(actor_id, caller_worker_id, 2 * step);
+    submitter_.SubmitTask(task);
+    ASSERT_EQ(io_context.poll_one(), 1);
+    ASSERT_EQ(worker_client_->intended_worker_ids.back(), addr.worker_id());
+
+    task_manager_->complete_pending_task_calls.clear();
+    task_manager_->fail_or_retry_pending_task_calls.clear();
+    submitter_.ConnectActor(actor_id, addr, num_restarts);
+    ASSERT_EQ(worker_client_->callbacks.size(), 1);
+    EXPECT_TRUE(task_manager_->fail_or_retry_pending_task_calls.empty());
+
+    if (step == 0) {
+      addr.set_worker_id(WorkerID::FromRandom().Binary());
+    } else {
+      ++num_restarts;
+    }
+    submitter_.ConnectActor(actor_id, addr, num_restarts);
+    ASSERT_EQ(task_manager_->fail_or_retry_pending_task_calls.size(), 1);
+    EXPECT_EQ(task_manager_->fail_or_retry_pending_task_calls[0], task.TaskId());
+
+    // A late reply from the replaced connection cannot complete or fail the
+    // attempt again. The fake retains it just as an in-flight RPC would.
+    task_manager_->fail_or_retry_pending_task_calls.clear();
+    ASSERT_TRUE(worker_client_->ReplyPushTask(task.GetTaskAttempt(), Status::OK()));
+    EXPECT_TRUE(task_manager_->complete_pending_task_calls.empty());
+    EXPECT_TRUE(task_manager_->fail_or_retry_pending_task_calls.empty());
+
+    const auto next_task =
+        CreateActorTaskHelper(actor_id, caller_worker_id, 2 * step + 1);
+    submitter_.SubmitTask(next_task);
+    ASSERT_EQ(io_context.poll_one(), 1);
+    ASSERT_EQ(worker_client_->intended_worker_ids.back(), addr.worker_id());
+    submitter_.ConnectActor(actor_id, addr, num_restarts);
+    ASSERT_TRUE(worker_client_->ReplyPushTask(next_task.GetTaskAttempt(), Status::OK()));
+    ASSERT_EQ(task_manager_->complete_pending_task_calls.size(), 1);
+    EXPECT_EQ(task_manager_->complete_pending_task_calls[0], next_task.TaskId());
+    EXPECT_TRUE(task_manager_->fail_or_retry_pending_task_calls.empty());
+  }
 }
 
 TEST_P(ActorTaskSubmitterTest, TestActorRestartFailInflightTasks) {
