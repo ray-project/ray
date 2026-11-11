@@ -479,12 +479,11 @@ class ExperimentAnalysis:
         checkpoints_and_metrics = self._get_trial_checkpoints_with_metric(trial, metric)
 
         # Filter out missing (None) and nan metric values. Sorting nan values leads to undefined behavior.
-        checkpoints_and_metrics = list(
-            filter(
-                lambda x: x[1] is not None and not is_nan(x[1]),
-                checkpoints_and_metrics,
-            )
-        )
+        checkpoints_and_metrics = [
+            x
+            for x in checkpoints_and_metrics
+            if x[1] is not None and not is_nan(x[1])
+        ]
 
         if not checkpoints_and_metrics:
             logger.error(f"No checkpoints have been found for trial {trial}.")
