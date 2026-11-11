@@ -37,9 +37,11 @@ from ray.data.datasource.file_meta_provider import (
     DefaultFileMetadataProvider,
 )
 from ray.data.datasource.partitioning import (
+    PartitionDataType,
     Partitioning,
     PathPartitionFilter,
     PathPartitionParser,
+    _null_partition_type,
 )
 from ray.data.datasource.path_util import (
     _has_file_extension,
@@ -326,7 +328,9 @@ class FileBasedDatasource(Datasource):
                     match=self._data_context.retried_io_errors,
                 ):
                     if partitions:
-                        block = _add_partitions(block, partitions)
+                        block = _add_partitions(
+                            block, partitions, partitioning.field_types
+                        )
                     if self._include_paths:
                         block_accessor = BlockAccessor.for_block(block)
                         block = block_accessor.fill_column("path", read_path)
@@ -484,27 +488,42 @@ class FileBasedDatasource(Datasource):
 
 
 def _add_partitions(
-    data: Union["pyarrow.Table", "pd.DataFrame"], partitions: Dict[str, Any]
+    data: Union["pyarrow.Table", "pd.DataFrame"],
+    partitions: Dict[str, Any],
+    field_types: Optional[Dict[str, PartitionDataType]] = None,
 ) -> Union["pyarrow.Table", "pd.DataFrame"]:
     import pandas as pd
     import pyarrow as pa
 
     assert isinstance(data, (pa.Table, pd.DataFrame))
     if isinstance(data, pa.Table):
-        return _add_partitions_to_table(data, partitions)
+        return _add_partitions_to_table(data, partitions, field_types)
     if isinstance(data, pd.DataFrame):
         return _add_partitions_to_dataframe(data, partitions)
 
 
 def _add_partitions_to_table(
-    table: "pyarrow.Table", partitions: Dict[str, Any]
+    table: "pyarrow.Table",
+    partitions: Dict[str, Any],
+    field_types: Optional[Dict[str, PartitionDataType]] = None,
 ) -> "pyarrow.Table":
     import pyarrow as pa
     import pyarrow.compute as pc
 
     column_names = set(table.column_names)
     for field, value in partitions.items():
-        column = pa.array([value] * len(table))
+        if value is None:
+            # Typed like the file's column if it has one (which may be
+            # ``null``, inferred from an all-null CSV column), else like the
+            # field's other values, so an added column isn't null-typed.
+            null_type = (
+                table.schema.field(field).type
+                if field in column_names
+                else _null_partition_type(field, field_types)
+            )
+            column = pa.nulls(len(table), null_type)
+        else:
+            column = pa.array([value] * len(table))
         if field in column_names:
             column_type = table.schema.field(field).type
             try:
@@ -515,8 +534,14 @@ def _add_partitions_to_table(
                     f"to target type {column_type}."
                 ) from e
 
-            values_are_equal = pc.all(pc.equal(column, table[field]))
-            values_are_equal = values_are_equal.as_py()
+            if value is None:
+                # ``pc.equal`` of two nulls is null, not true. A null
+                # partition value (see ``Partitioning.null_fallback``)
+                # matches only a column that is all null.
+                values_are_equal = table[field].null_count == len(table)
+            else:
+                values_are_equal = pc.all(pc.equal(column, table[field]))
+                values_are_equal = values_are_equal.as_py()
 
             if not values_are_equal:
                 raise ValueError(
