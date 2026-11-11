@@ -288,6 +288,9 @@ class _BatchQueue:
         self.tasks: Set[asyncio.Task] = set()
         # Requests dequeued into the batch that is still being assembled.
         self._current_batch: List[_SingleRequest] = []
+        # put() records the queue length only while the loop waits for a
+        # permit, because the loop can't record it then.
+        self._waiting_for_permit = False
 
         # Used for observability.
         self.curr_iteration_start_times: Dict[asyncio.Task, float] = {}
@@ -347,6 +350,13 @@ class _BatchQueue:
     def put(self, request: Tuple[_SingleRequest, asyncio.Future]) -> None:
         self.queue.put_nowait(request)
         self.requests_available_event.set()
+        if self._waiting_for_permit:
+            self._record_queue_length()
+
+    def _record_queue_length(self) -> None:
+        self._batch_queue_length_gauge.set(
+            self._queue_length_fn(), tags={"function_name": self._function_name}
+        )
 
     def _compute_batch_size(self, batch: List[_SingleRequest]) -> int:
         """Compute the effective batch size using batch_size_fn or len()."""
@@ -400,9 +410,7 @@ class _BatchQueue:
         timeout_start_time = min(first_item.enqueue_time, batch_start_time)
         while True:
             # Record queue length metric.
-            self._batch_queue_length_gauge.set(
-                self._queue_length_fn(), tags={"function_name": self._function_name}
-            )
+            self._record_queue_length()
 
             remaining_batch_time_s = max(
                 batch_wait_timeout_s - (time.time() - timeout_start_time), 0
@@ -561,16 +569,18 @@ class _BatchQueue:
             # Take the permit before forming the batch, so requests that arrive
             # while every permit is in use join one batch instead of each
             # waiting for a permit in a batch of its own.
-            await self.semaphore.acquire()
+            self._waiting_for_permit = True
+            try:
+                await self.semaphore.acquire()
+            finally:
+                self._waiting_for_permit = False
             try:
                 batch, _ = await self.wait_for_batch()
+                self._record_queue_length()
                 # The permit is released in _handle_completed_task.
                 task = asyncio.create_task(self._process_batch_inner(func, batch))
-            except BaseException as e:
+            except BaseException:
                 self.semaphore.release()
-                if isinstance(e, asyncio.CancelledError):
-                    for request in self._current_batch:
-                        _set_exception_if_not_done(request.future, e)
                 raise
             finally:
                 self._current_batch = []
@@ -827,24 +837,19 @@ class _LazyBatchQueueWrapper:
         """
 
         return all(
-            queue._handle_batch_task is not None and not queue._handle_batch_task.done()
-            for queue in self._queues_or_default()
+            not queue._handle_batch_task.done() for queue in self._queues_or_default()
         )
 
     async def _get_handling_task_stack(self) -> Optional[str]:
-        """Gets the stacks for the _BatchQueues' background tasks.
-
-        Returns None if no _BatchQueue has a background task.
-        """
+        """Gets the stacks for the _BatchQueues' background tasks."""
 
         stack_traces = []
         for queue in self._queues_or_default():
-            if queue._handle_batch_task is not None:
-                str_buffer = io.StringIO()
-                queue._handle_batch_task.print_stack(file=str_buffer)
-                stack_traces.append(str_buffer.getvalue())
+            str_buffer = io.StringIO()
+            queue._handle_batch_task.print_stack(file=str_buffer)
+            stack_traces.append(str_buffer.getvalue())
 
-        return "\n".join(stack_traces) if stack_traces else None
+        return "\n".join(stack_traces)
 
 
 def _validate_max_batch_size(max_batch_size):
