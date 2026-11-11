@@ -563,6 +563,37 @@ def test_shuffle_map_task_applies_map_ray_remote_args(
 
 
 @pytest.mark.parametrize(
+    "map_cls, task_path",
+    [
+        (ShuffleMapOp, "shuffle_map_operator._shuffle_map_task"),
+        (DiskHashShuffleMapOp, "disk_shuffle_map_operator._disk_shuffle_map_task"),
+    ],
+)
+def test_shuffle_map_task_treats_none_resources_as_defaults(
+    restore_data_context, map_cls, task_path
+):
+    op = map_cls(
+        InputDataBuffer(restore_data_context, []),
+        restore_data_context,
+        num_partitions=1,
+        partition_fn=lambda table: {},
+        map_ray_remote_args={"num_cpus": None, "num_gpus": None, "memory": None},
+    )
+    op.start(ExecutionOptions(), noop_counter())
+
+    with patch(
+        f"ray.data._internal.execution.operators.shuffle_operators.{task_path}"
+    ) as shuffle_map_task:
+        shuffle_map_task.options.return_value.remote.return_value = MagicMock()
+        op._submit_shuffle_map_task([], [])
+
+    kwargs = shuffle_map_task.options.call_args.kwargs
+    assert kwargs["num_cpus"] == 1
+    assert "num_gpus" not in kwargs
+    assert op.incremental_resource_usage().cpu == 1
+
+
+@pytest.mark.parametrize(
     "map_cls, reduce_cls, task_path",
     [
         (ShuffleMapOp, ShuffleReduceOp, "shuffle_reduce_operator._shuffle_reduce_task"),

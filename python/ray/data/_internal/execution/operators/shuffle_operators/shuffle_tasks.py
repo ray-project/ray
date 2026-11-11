@@ -74,6 +74,12 @@ def resolve_partition_fn(
 SHUFFLE_PEAK_MEMORY_MULTIPLIER = 2
 
 
+def resource_override(ray_remote_args: Dict[str, Any], key: str, default: Any) -> Any:
+    """User value for a resource option; ``None`` means "use the default", as in Ray."""
+    value = ray_remote_args.get(key)
+    return default if value is None else value
+
+
 def merge_runtime_envs(
     base: Optional[Dict[str, Any]], user: Dict[str, Any]
 ) -> Dict[str, Any]:

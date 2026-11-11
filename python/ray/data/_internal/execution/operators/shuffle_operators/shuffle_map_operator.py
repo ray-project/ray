@@ -29,6 +29,7 @@ from ray.data._internal.execution.operators.shuffle_operators.shuffle_tasks impo
     TaskScopedPartitioner,
     _shuffle_map_task,
     merge_runtime_envs,
+    resource_override,
 )
 from ray.data._internal.execution.util import merge_label_selector
 from ray.data.block import Block, BlockMetadata, BlockStats
@@ -116,10 +117,10 @@ class ShuffleMapOp(InternalQueueOperatorMixin, PhysicalOperator):
         self._map_ray_remote_args: Dict[str, Any] = dict(map_ray_remote_args or {})
         # Resolved once so task options and resource estimates see the same ask.
         self._shuffle_map_task_num_cpus: float = float(
-            self._map_ray_remote_args.get("num_cpus", map_cpus)
+            resource_override(self._map_ray_remote_args, "num_cpus", map_cpus)
         )
         self._shuffle_map_task_num_gpus: float = float(
-            self._map_ray_remote_args.get("num_gpus", 0)
+            resource_override(self._map_ray_remote_args, "num_gpus", 0)
         )
         self._peak_memory_multiplier: float = peak_memory_multiplier
 
@@ -229,7 +230,10 @@ class ShuffleMapOp(InternalQueueOperatorMixin, PhysicalOperator):
         resources = self._map_task_resources(
             int(estimated_bytes * self._peak_memory_multiplier)
         )
-        user_args = dict(self._map_ray_remote_args)
+        # None means "unset" to ray.remote, so it must not override the defaults.
+        user_args = {
+            k: v for k, v in self._map_ray_remote_args.items() if v is not None
+        }
         user_runtime_env = user_args.pop("runtime_env", None)
 
         ray_options: Dict[str, Any] = {
@@ -461,7 +465,7 @@ class ShuffleMapOp(InternalQueueOperatorMixin, PhysicalOperator):
         resources: Dict[str, Any] = {"num_cpus": self._shuffle_map_task_num_cpus}
         if self._shuffle_map_task_num_gpus:
             resources["num_gpus"] = self._shuffle_map_task_num_gpus
-        memory = self._map_ray_remote_args.get("memory", memory_estimate)
+        memory = resource_override(self._map_ray_remote_args, "memory", memory_estimate)
         if memory > 0:
             resources["memory"] = int(memory)
         return resources
