@@ -482,13 +482,41 @@ def test_shuffle_reduce_task_uses_operator_name():
     assert shuffle_reduce_task.options.call_args.kwargs["name"] == name
 
 
-@pytest.mark.parametrize(
-    "map_cls, task_path",
-    [
-        (ShuffleMapOp, "shuffle_map_operator._shuffle_map_task"),
-        (DiskHashShuffleMapOp, "disk_shuffle_map_operator._disk_shuffle_map_task"),
-    ],
-)
+_MAP_OPS = [
+    (ShuffleMapOp, "shuffle_map_operator._shuffle_map_task"),
+    (DiskHashShuffleMapOp, "disk_shuffle_map_operator._disk_shuffle_map_task"),
+]
+_REDUCE_OPS = [
+    (ShuffleMapOp, ShuffleReduceOp, "shuffle_reduce_operator._shuffle_reduce_task"),
+    (
+        DiskHashShuffleMapOp,
+        DiskHashShuffleReduceOp,
+        "disk_shuffle_reduce_operator._disk_shuffle_reduce_task",
+    ),
+]
+
+
+def _submitted_task_options(op, task_path, submit):
+    """Start ``op``, submit one task with its remote function patched, and
+    return the kwargs passed to ``.options``."""
+    op.start(ExecutionOptions(), noop_counter())
+    with patch(
+        f"ray.data._internal.execution.operators.shuffle_operators.{task_path}"
+    ) as task:
+        task.options.return_value.remote.return_value = MagicMock()
+        submit(op)
+    return task.options.call_args.kwargs
+
+
+def _submit_map_task(op):
+    op._submit_shuffle_map_task([], [])
+
+
+def _submit_reduce_task(op):
+    op._submit_reduce_task(0, [RefBundle((), schema=None, owns_blocks=True)])
+
+
+@pytest.mark.parametrize("map_cls, task_path", _MAP_OPS)
 def test_shuffle_map_task_uses_context_label_selector(
     restore_data_context, map_cls, task_path
 ):
@@ -502,29 +530,36 @@ def test_shuffle_map_task_uses_context_label_selector(
         num_partitions=1,
         partition_fn=lambda table: {},
     )
-    op.start(ExecutionOptions(), noop_counter())
 
-    with patch(
-        f"ray.data._internal.execution.operators.shuffle_operators.{task_path}"
-    ) as shuffle_map_task:
-        shuffle_map_task.options.return_value.remote.return_value = MagicMock()
-        op._submit_shuffle_map_task([], [])
-
-    assert shuffle_map_task.options.call_args.kwargs["label_selector"] == {
-        "subcluster": "train",
-        "zone": "us-west",
-    }
+    kwargs = _submitted_task_options(op, task_path, _submit_map_task)
+    assert kwargs["label_selector"] == {"subcluster": "train", "zone": "us-west"}
 
 
+@pytest.mark.parametrize("map_cls, task_path", _MAP_OPS)
 @pytest.mark.parametrize(
-    "map_cls, task_path",
+    "remote_args, expected_options",
     [
-        (ShuffleMapOp, "shuffle_map_operator._shuffle_map_task"),
-        (DiskHashShuffleMapOp, "disk_shuffle_map_operator._disk_shuffle_map_task"),
+        (
+            {
+                "num_cpus": 2,
+                "num_gpus": 1,
+                "resources": {"bar": 1},
+                "runtime_env": {"env_vars": {"CUSTOM": "x"}},
+                "name": "ignored",
+            },
+            {
+                "num_cpus": 2,
+                "num_gpus": 1,
+                "resources": {"bar": 1},
+                "runtime_env": {"env_vars": {"POLARS_MAX_THREADS": "1", "CUSTOM": "x"}},
+            },
+        ),
+        # None means "default" to ray.remote and must not override the operator's ask.
+        ({"num_cpus": None, "num_gpus": None, "memory": None}, {"num_cpus": 1}),
     ],
 )
 def test_shuffle_map_task_applies_map_ray_remote_args(
-    restore_data_context, map_cls, task_path
+    restore_data_context, map_cls, task_path, remote_args, expected_options
 ):
     op = map_cls(
         InputDataBuffer(restore_data_context, []),
@@ -532,79 +567,20 @@ def test_shuffle_map_task_applies_map_ray_remote_args(
         num_partitions=1,
         partition_fn=lambda table: {},
         map_runtime_env={"env_vars": {"POLARS_MAX_THREADS": "1"}},
-        map_ray_remote_args={
-            "num_cpus": 2,
-            "num_gpus": 1,
-            "resources": {"bar": 1},
-            "runtime_env": {"env_vars": {"CUSTOM": "x"}},
-            "name": "ignored",
-        },
+        map_ray_remote_args=remote_args,
     )
-    op.start(ExecutionOptions(), noop_counter())
 
-    with patch(
-        f"ray.data._internal.execution.operators.shuffle_operators.{task_path}"
-    ) as shuffle_map_task:
-        shuffle_map_task.options.return_value.remote.return_value = MagicMock()
-        op._submit_shuffle_map_task([], [])
-
-    kwargs = shuffle_map_task.options.call_args.kwargs
-    assert kwargs["num_cpus"] == 2
-    assert kwargs["num_gpus"] == 1
-    assert kwargs["resources"] == {"bar": 1}
-    assert kwargs["runtime_env"]["env_vars"] == {
-        "POLARS_MAX_THREADS": "1",
-        "CUSTOM": "x",
-    }
+    kwargs = _submitted_task_options(op, task_path, _submit_map_task)
+    assert {k: kwargs[k] for k in expected_options} == expected_options
     assert kwargs["name"] == op.name
     # Estimates and logical usage must advertise the same ask as the task.
+    expected_usage = (kwargs["num_cpus"], kwargs.get("num_gpus", 0))
     for usage in (op.incremental_resource_usage(), op.current_logical_usage()):
-        assert (usage.cpu, usage.gpu) == (2, 1)
+        assert (usage.cpu, usage.gpu) == expected_usage
 
 
-@pytest.mark.parametrize(
-    "map_cls, task_path",
-    [
-        (ShuffleMapOp, "shuffle_map_operator._shuffle_map_task"),
-        (DiskHashShuffleMapOp, "disk_shuffle_map_operator._disk_shuffle_map_task"),
-    ],
-)
-def test_shuffle_map_task_treats_none_resources_as_defaults(
-    restore_data_context, map_cls, task_path
-):
-    op = map_cls(
-        InputDataBuffer(restore_data_context, []),
-        restore_data_context,
-        num_partitions=1,
-        partition_fn=lambda table: {},
-        map_ray_remote_args={"num_cpus": None, "num_gpus": None, "memory": None},
-    )
-    op.start(ExecutionOptions(), noop_counter())
-
-    with patch(
-        f"ray.data._internal.execution.operators.shuffle_operators.{task_path}"
-    ) as shuffle_map_task:
-        shuffle_map_task.options.return_value.remote.return_value = MagicMock()
-        op._submit_shuffle_map_task([], [])
-
-    kwargs = shuffle_map_task.options.call_args.kwargs
-    assert kwargs["num_cpus"] == 1
-    assert "num_gpus" not in kwargs
-    assert op.incremental_resource_usage().cpu == 1
-
-
-@pytest.mark.parametrize(
-    "map_cls, reduce_cls, task_path",
-    [
-        (ShuffleMapOp, ShuffleReduceOp, "shuffle_reduce_operator._shuffle_reduce_task"),
-        (
-            DiskHashShuffleMapOp,
-            DiskHashShuffleReduceOp,
-            "disk_shuffle_reduce_operator._disk_shuffle_reduce_task",
-        ),
-    ],
-)
-def test_shuffle_reduce_task_merges_label_selector(
+@pytest.mark.parametrize("map_cls, reduce_cls, task_path", _REDUCE_OPS)
+def test_shuffle_reduce_task_applies_reduce_ray_remote_args(
     restore_data_context, map_cls, reduce_cls, task_path
 ):
     restore_data_context.execution_options.label_selector = {
@@ -623,61 +599,18 @@ def test_shuffle_reduce_task_merges_label_selector(
         num_partitions=1,
         reduce_fn=lambda partition_id, tables_by_input: iter(()),
         reduce_ray_remote_args={
-            "label_selector": {"subcluster": "validation", "node": "worker-1"}
+            "num_cpus": 2,
+            "num_gpus": 1,
+            "label_selector": {"subcluster": "validation", "node": "worker-1"},
         },
     )
-    op.start(ExecutionOptions(), noop_counter())
 
-    with patch(
-        f"ray.data._internal.execution.operators.shuffle_operators.{task_path}"
-    ) as shuffle_reduce_task:
-        shuffle_reduce_task.options.return_value.remote.return_value = MagicMock()
-        op._submit_reduce_task(0, [RefBundle((), schema=None, owns_blocks=True)])
-
-    assert shuffle_reduce_task.options.call_args.kwargs["label_selector"] == {
+    kwargs = _submitted_task_options(op, task_path, _submit_reduce_task)
+    assert kwargs["label_selector"] == {
         "subcluster": "validation",
         "zone": "us-west",
         "node": "worker-1",
     }
-
-
-@pytest.mark.parametrize(
-    "map_cls, reduce_cls, task_path",
-    [
-        (ShuffleMapOp, ShuffleReduceOp, "shuffle_reduce_operator._shuffle_reduce_task"),
-        (
-            DiskHashShuffleMapOp,
-            DiskHashShuffleReduceOp,
-            "disk_shuffle_reduce_operator._disk_shuffle_reduce_task",
-        ),
-    ],
-)
-def test_shuffle_reduce_task_applies_reduce_ray_remote_args(
-    restore_data_context, map_cls, reduce_cls, task_path
-):
-    map_op = map_cls(
-        InputDataBuffer(restore_data_context, []),
-        restore_data_context,
-        num_partitions=1,
-        partition_fn=lambda table: {},
-    )
-    op = reduce_cls(
-        map_op,
-        restore_data_context,
-        num_partitions=1,
-        reduce_fn=lambda partition_id, tables_by_input: iter(()),
-        reduce_ray_remote_args={"num_cpus": 2, "num_gpus": 1},
-    )
-    op.start(ExecutionOptions(), noop_counter())
-
-    with patch(
-        f"ray.data._internal.execution.operators.shuffle_operators.{task_path}"
-    ) as shuffle_reduce_task:
-        shuffle_reduce_task.options.return_value.remote.return_value = MagicMock()
-        op._submit_reduce_task(0, [RefBundle((), schema=None, owns_blocks=True)])
-
-    kwargs = shuffle_reduce_task.options.call_args.kwargs
-    assert (kwargs["num_cpus"], kwargs["num_gpus"]) == (2, 1)
     # Estimates and logical usage must advertise the same ask as the task.
     for usage in (op.incremental_resource_usage(), op.current_logical_usage()):
         assert (usage.cpu, usage.gpu) == (2, 1)
@@ -685,14 +618,10 @@ def test_shuffle_reduce_task_applies_reduce_ray_remote_args(
 
 def _complete_map_tasks_out_of_order(op, task_outputs, map_done_return):
     """Submit len(task_outputs) patched map tasks, then complete them last-first."""
+    task_path = next(p for cls, p in _MAP_OPS if isinstance(op, cls))
     op.start(ExecutionOptions(), noop_counter())
     with patch(
-        "ray.data._internal.execution.operators.shuffle_operators."
-        + (
-            "shuffle_map_operator._shuffle_map_task"
-            if isinstance(op, ShuffleMapOp)
-            else "disk_shuffle_map_operator._disk_shuffle_map_task"
-        )
+        f"ray.data._internal.execution.operators.shuffle_operators.{task_path}"
     ) as map_task:
         map_task.options.return_value.remote.return_value = MagicMock()
         for _ in task_outputs:

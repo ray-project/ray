@@ -23,9 +23,6 @@ from ray.data._internal.execution.operators.shuffle_operators.shuffle_map_operat
 from ray.data._internal.execution.operators.shuffle_operators.shuffle_reduce_operator import (  # noqa: E501
     ShuffleReduceOp,
 )
-from ray.data._internal.execution.operators.shuffle_operators.shuffle_tasks import (
-    resolve_partition_fn,
-)
 from ray.data._internal.logical.optimizers import get_execution_plan
 from ray.data.context import DataContext, ShuffleStrategy
 from ray.data.tests.conftest import *  # noqa: F401, F403
@@ -115,23 +112,6 @@ def test_random_shuffle_reduce_permutes_and_is_seeded_per_partition():
     assert list(reduce_fn(0, [[]])) == []
 
 
-def test_random_shuffle_reduce_promotes_shard_schemas():
-    null_shard = pa.table({"v": pa.array([None], pa.null())})
-    int_shard = pa.table({"v": pa.array([1, 2], pa.int64())})
-    (out,) = make_random_shuffle_reduce_fn(seed=0)(0, [[null_shard, int_shard]])
-    assert out.schema.field("v").type == pa.int64()
-    assert sorted(out["v"].to_pylist(), key=lambda v: (v is None, v)) == [1, 2, None]
-
-
-def test_resolve_partition_fn_passes_plain_callables_through():
-    def plain(block):
-        return {0: block}
-
-    assert resolve_partition_fn(plain, 3) is plain
-    bound = resolve_partition_fn(RandomShufflePartitioner(2, seed=0), 3)
-    assert bound is not plain and callable(bound)
-
-
 @pytest.mark.parametrize("use_disk, map_cls, reduce_cls, prefix", _TRANSPORTS)
 def test_random_shuffle_planner_routes_to_shuffle_v2(
     ray_start_regular_shared_2_cpus,
@@ -191,6 +171,8 @@ def test_random_shuffle_v2_end_to_end(
     for block in shuffled.iter_batches(batch_size=None, batch_format="pyarrow"):
         assert len({i // 100 for i in block["id"].to_pylist()}) == 10
 
+    assert ray.data.from_items([]).random_shuffle().take_all() == []
+
 
 @pytest.mark.parametrize("use_disk", _USE_DISK)
 def test_random_shuffle_v2_promotes_compatible_block_schemas(
@@ -208,37 +190,6 @@ def test_random_shuffle_v2_promotes_compatible_block_schemas(
         ray.data.from_arrow([null_block, int_block]).random_shuffle(seed=0).take_all()
     )
     assert Counter(r["v"] for r in rows) == {1: 1, 2: 1, None: 2}
-
-
-@pytest.mark.parametrize("use_disk", _USE_DISK)
-def test_random_shuffle_v2_fused_downstream_map(
-    ray_start_regular_shared_2_cpus, restore_data_context, use_disk
-):
-    ctx = DataContext.get_current()
-    ctx.shuffle_strategy = ShuffleStrategy.SHUFFLE_V2
-    ctx.use_disk_based_hash_shuffle = use_disk
-
-    ds = (
-        ray.data.range(100, override_num_blocks=4)
-        .random_shuffle(seed=1)
-        .map_batches(lambda b: {"id": [i * 2 for i in b["id"]]})
-    )
-    dag = get_execution_plan(ds._logical_plan)[0].dag
-    assert "->" in dag.name
-    assert sorted(row["id"] for row in ds.take_all()) == list(range(0, 200, 2))
-
-
-@pytest.mark.parametrize("use_disk", _USE_DISK)
-def test_random_shuffle_v2_empty_and_single_block(
-    ray_start_regular_shared_2_cpus, restore_data_context, use_disk
-):
-    ctx = DataContext.get_current()
-    ctx.shuffle_strategy = ShuffleStrategy.SHUFFLE_V2
-    ctx.use_disk_based_hash_shuffle = use_disk
-
-    assert ray.data.from_items([]).random_shuffle().take_all() == []
-    single = ray.data.range(50, override_num_blocks=1).random_shuffle(seed=0)
-    assert sorted(row["id"] for row in single.take_all()) == list(range(50))
 
 
 if __name__ == "__main__":

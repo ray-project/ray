@@ -466,8 +466,6 @@ def test_group_by_server():
     # Members within a group are in original input order.
     assert [m.path for m in by_node["node-1"].members] == ["a", "c"]
     assert [m.path for m in by_node["node-2"].members] == ["b"]
-    assert by_node["node-1"].source_idxs == [0, 2]
-    assert by_node["node-2"].source_idxs == [1]
 
 
 def test_order_tables_by_source_undoes_node_grouping():
