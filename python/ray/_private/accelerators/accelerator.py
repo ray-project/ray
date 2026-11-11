@@ -1,4 +1,6 @@
 from abc import ABC, abstractmethod
+from dataclasses import dataclass, field
+from enum import Enum
 from typing import Dict, List, Optional, Tuple
 
 # https://github.com/ray-project/ray/issues/54868
@@ -11,6 +13,74 @@ from typing import Dict, List, Optional, Tuple
 # Ray would override accelerator env vars even when zero accelerators are assigned.
 #
 RAY_ACCEL_ENV_VAR_OVERRIDE_ON_ZERO_ENV_VAR = "RAY_ACCEL_ENV_VAR_OVERRIDE_ON_ZERO"
+
+
+class AcceleratorInventoryStatus(str, Enum):
+    """The status of an accelerator inventory discovery.
+
+    A successful *empty* inventory (``OK`` with zero devices) is intentionally
+    distinct from ``UNAVAILABLE`` (driver/library absent or uninitializable) and
+    ``UNSUPPORTED`` (no discovery extension for this family). Callers must not
+    collapse these into "no accelerators found".
+    """
+
+    OK = "ok"
+    UNSUPPORTED = "unsupported"
+    UNAVAILABLE = "unavailable"
+    ERROR = "error"
+
+
+@dataclass(frozen=True)
+class AcceleratorDevice:
+    """A single accelerator device visible to the node agent.
+
+    This is a read-only hardware inventory record. It describes the physical
+    (or MIG) device the node agent can see, not free resources or scheduling
+    guarantees.
+
+    Attributes:
+        vendor: The vendor name, e.g. "nvidia".
+        resource_family: The Ray resource family name, e.g. "GPU".
+        model: The driver-reported model/name, e.g. "Tesla V100-SXM2-16GB".
+        uuid: The stable hardware UUID from the driver. Required and non-empty:
+            a device whose UUID cannot be determined is surfaced as an error,
+            never as a device with an empty or invented UUID.
+        memory_total_bytes: Total physical memory in bytes.
+        pci_bus_id: Normalized PCI bus ID with a numeric domain formatted to at
+            least 4 hex digits, e.g. "0000:3b:00.0". None if unknown or
+            malformed.
+        numa_node: The CPU NUMA node closest to this device, read from Linux
+            sysfs. None if unknown or not applicable (non-Linux).
+        kind: "gpu" for a physical GPU or "mig" for a MIG instance.
+        parent_uuid: For MIG instances, the UUID of the parent physical GPU.
+            None for physical GPUs.
+    """
+
+    vendor: str
+    resource_family: str
+    model: str
+    uuid: str
+    memory_total_bytes: int
+    pci_bus_id: Optional[str] = None
+    numa_node: Optional[int] = None
+    kind: str = "gpu"
+    parent_uuid: Optional[str] = None
+
+
+@dataclass(frozen=True)
+class AcceleratorInventory:
+    """The result of discovering a node's accelerator devices.
+
+    Attributes:
+        status: Whether discovery succeeded and, if not, why.
+        devices: The discovered devices. Meaningful only when status is OK.
+        status_message: Human-readable detail for non-OK statuses or partial
+            failures.
+    """
+
+    status: AcceleratorInventoryStatus
+    devices: List[AcceleratorDevice] = field(default_factory=list)
+    status_message: Optional[str] = None
 
 
 class AcceleratorManager(ABC):
@@ -189,5 +259,26 @@ class AcceleratorManager(ABC):
             is a real error, not "unsupported". Callers should let
             that exception propagate as a fatal error rather than
             treating it like this method's None return.
+        """
+        return None
+
+    @staticmethod
+    def get_current_node_accelerator_inventory() -> Optional[AcceleratorInventory]:
+        """Discover the accelerators of this family visible to the node agent.
+
+        This is a read-only hardware inventory of the devices the node agent
+        can see (physical devices and, for families that expose them, MIG
+        instances). It is NOT a free-resource count and makes no scheduling
+        guarantee.
+
+        The default implementation returns None, meaning this accelerator
+        family has no inventory discovery implementation. A family that
+        implements discovery returns an ``AcceleratorInventory`` whose
+        ``status`` distinguishes a successful (possibly empty) inventory from
+        an unsupported family, an unavailable driver, or an unexpected error.
+
+        Returns:
+            An ``AcceleratorInventory`` if this family supports discovery, or
+            None if it does not.
         """
         return None

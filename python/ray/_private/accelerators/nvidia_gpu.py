@@ -5,9 +5,15 @@ import os
 import re
 import shutil
 import subprocess
+import sys
 from typing import Dict, List, Optional, Tuple
 
-from ray._private.accelerators.accelerator import AcceleratorManager
+from ray._private.accelerators.accelerator import (
+    AcceleratorDevice,
+    AcceleratorInventory,
+    AcceleratorInventoryStatus,
+    AcceleratorManager,
+)
 from ray._private.ray_constants import env_bool
 
 logger = logging.getLogger(__name__)
@@ -129,6 +135,217 @@ class NvidiaGPUAcceleratorManager(AcceleratorManager):
         # accelerator_type label like "GeForce-RTX-5090".
         cleaned = re.sub(r"^NVIDIA\s+", "", name).strip()
         return cleaned.replace(" ", "-") if cleaned else None
+
+    @staticmethod
+    def get_current_node_accelerator_inventory() -> Optional[AcceleratorInventory]:
+        """Discover the physical NVIDIA GPUs visible to the node agent.
+
+        This reports the physical GPUs NVML enumerates on the node. It is a
+        read-only hardware inventory of the node-agent-visible physical
+        devices, NOT a free-resource count and NOT a scheduling guarantee.
+
+        ``CUDA_VISIBLE_DEVICES`` is a per-process CUDA-side filter and is not
+        applied here: NVML enumerates physical devices regardless of it, so the
+        inventory reflects node-visible hardware rather than any worker's
+        visibility. MIG instances are out of scope for this first
+        implementation and are not returned; physical GPUs are always reported
+        with ``kind == "gpu"`` and no parent UUID.
+
+        Returns:
+            An ``AcceleratorInventory`` with:
+
+            - ``status == OK`` and the list of physical GPUs (possibly empty)
+              when NVML initializes and enumerates devices.
+            - ``status == UNAVAILABLE`` when NVML cannot initialize (e.g. no
+              NVIDIA driver is loaded).
+            - ``status == ERROR`` when enumeration fails, including when a
+              device's required fields (UUID, name, memory) cannot be read.
+              A required-field failure is surfaced explicitly rather than
+              silently dropping the device.
+        """
+        import ray._private.thirdparty.pynvml as pynvml
+
+        try:
+            pynvml.nvmlInit()
+        except pynvml.NVMLError_LibraryNotFound:
+            # The NVIDIA NVML library isn't installed, so NVIDIA hardware
+            # isn't present to inventory. This is distinct from a driver that
+            # is installed but failed to initialize (below).
+            return AcceleratorInventory(
+                status=AcceleratorInventoryStatus.UNSUPPORTED,
+                status_message="NVIDIA NVML library is not installed.",
+            )
+        except pynvml.NVMLError as e:
+            return AcceleratorInventory(
+                status=AcceleratorInventoryStatus.UNAVAILABLE,
+                status_message=f"NVML failed to initialize: {e}",
+            )
+
+        try:
+            try:
+                device_count = pynvml.nvmlDeviceGetCount()
+            except pynvml.NVMLError as e:
+                return AcceleratorInventory(
+                    status=AcceleratorInventoryStatus.ERROR,
+                    status_message=f"Failed to enumerate NVIDIA devices: {e}",
+                )
+
+            devices: List[AcceleratorDevice] = []
+            for index in range(device_count):
+                try:
+                    handle = pynvml.nvmlDeviceGetHandleByIndex(index)
+                except pynvml.NVMLError as e:
+                    return AcceleratorInventory(
+                        status=AcceleratorInventoryStatus.ERROR,
+                        status_message=(
+                            f"Failed to get handle for NVIDIA device {index}: {e}"
+                        ),
+                    )
+                try:
+                    device = NvidiaGPUAcceleratorManager._get_physical_device(
+                        pynvml, handle
+                    )
+                except (pynvml.NVMLError, ValueError) as e:
+                    # A required field (UUID/name/memory) could not be read. Do
+                    # not silently drop the device or invent a UUID.
+                    return AcceleratorInventory(
+                        status=AcceleratorInventoryStatus.ERROR,
+                        status_message=(
+                            f"Failed to inventory NVIDIA device {index}: {e}"
+                        ),
+                    )
+                devices.append(device)
+
+            return AcceleratorInventory(
+                status=AcceleratorInventoryStatus.OK, devices=devices
+            )
+        finally:
+            try:
+                pynvml.nvmlShutdown()
+            except pynvml.NVMLError:
+                # Shutdown failure must not mask the inventory result.
+                pass
+
+    @staticmethod
+    def _get_physical_device(pynvml, handle) -> AcceleratorDevice:
+        """Read the required and optional fields of one physical GPU.
+
+        Required fields (model, UUID, total memory) raise ``pynvml.NVMLError``
+        (or ``ValueError`` for an empty model/UUID) when they cannot be
+        obtained, so the caller surfaces an explicit error rather than emitting
+        a partial or fabricated device. Optional fields (PCI bus ID, CPU NUMA
+        node) degrade to None when unreadable.
+        """
+        name = NvidiaGPUAcceleratorManager._decode_nvml_string(
+            pynvml.nvmlDeviceGetName(handle)
+        )
+        if not name:
+            # A device without a model name cannot be usefully reported; an
+            # empty name is not a valid identity.
+            raise ValueError("NVML returned an empty device name")
+        uuid = NvidiaGPUAcceleratorManager._decode_nvml_string(
+            pynvml.nvmlDeviceGetUUID(handle)
+        )
+        if not uuid:
+            # A device without a stable UUID cannot be safely reported; an
+            # empty UUID is not a valid identity.
+            raise ValueError("NVML returned an empty device UUID")
+        memory_total = int(pynvml.nvmlDeviceGetMemoryInfo(handle).total)
+
+        pci_bus_id = None
+        try:
+            pci_info = pynvml.nvmlDeviceGetPciInfo(handle)
+            raw_bus_id = NvidiaGPUAcceleratorManager._decode_nvml_string(pci_info.busId)
+            pci_bus_id = NvidiaGPUAcceleratorManager._normalize_pci_bus_id(raw_bus_id)
+        except pynvml.NVMLError:
+            pci_bus_id = None
+
+        numa_node = NvidiaGPUAcceleratorManager._get_cpu_numa_node_from_pci(pci_bus_id)
+
+        return AcceleratorDevice(
+            vendor="nvidia",
+            resource_family=NvidiaGPUAcceleratorManager.get_resource_name(),
+            model=name,
+            uuid=uuid,
+            memory_total_bytes=memory_total,
+            pci_bus_id=pci_bus_id,
+            numa_node=numa_node,
+            kind="gpu",
+            parent_uuid=None,
+        )
+
+    @staticmethod
+    def _get_cpu_numa_node_from_pci(
+        pci_bus_id: Optional[str],
+    ) -> Optional[int]:
+        """Read the CPU NUMA node closest to a PCI device from Linux sysfs.
+
+        CPU NUMA locality comes from the Linux kernel via
+        ``/sys/bus/pci/devices/<bdf>/numa_node``, not from
+        ``nvmlDeviceGetNumaNodeId`` (which reports the GPU's own NUMA node on
+        platforms where GPUs are NUMA nodes, not the CPU's locality). The value
+        is read only on Linux; any missing, malformed, unreadable, or negative
+        value maps to None (unknown), never to node 0.
+        """
+        if not pci_bus_id or sys.platform != "linux":
+            return None
+        numa_path = f"/sys/bus/pci/devices/{pci_bus_id}/numa_node"
+        try:
+            with open(numa_path, encoding="utf-8") as f:
+                raw = f.read().strip()
+        except OSError:
+            return None
+        if not raw:
+            return None
+        try:
+            node = int(raw)
+        except ValueError:
+            return None
+        if node < 0:
+            return None
+        return node
+
+    @staticmethod
+    def _decode_nvml_string(value) -> str:
+        """Decode a pynvml string/bytes return value to ``str``."""
+        if isinstance(value, bytes):
+            return value.decode("utf-8")
+        return str(value)
+
+    @staticmethod
+    def _normalize_pci_bus_id(bus_id: Optional[str]) -> Optional[str]:
+        """Normalize an NVML PCI bus ID to Linux/sysfs BDF form.
+
+        NVML reports the PCI domain as 4 or 8 hex digits depending on the
+        driver, while Linux sysfs uses a numeric domain formatted to at least 4
+        hex digits. The domain is parsed as a number and reformatted without
+        truncating nonzero high bits, and the bus/device/function are
+        validated against PCI bounds. A malformed or out-of-bounds bus ID
+        returns None (never a raw unchecked string that could be used as a
+        path or identity).
+        """
+        if not bus_id:
+            return None
+        if isinstance(bus_id, bytes):
+            bus_id = bus_id.decode("utf-8")
+        bus_id = bus_id.strip().strip("\x00")
+        match = re.match(
+            r"^([0-9A-Fa-f]+):([0-9A-Fa-f]+):([0-9A-Fa-f]+)\.([0-9A-Fa-f]+)$",
+            bus_id,
+        )
+        if not match:
+            return None
+        domain_s, bus_s, device_s, function_s = match.groups()
+        domain = int(domain_s, 16)
+        bus = int(bus_s, 16)
+        device = int(device_s, 16)
+        function = int(function_s, 16)
+        # Reject out-of-range PCI components rather than passing them through.
+        if bus > 0xFF or device > 0x1F or function > 0x7:
+            return None
+        # Preserve nonzero high domain bits; only pad to a minimum of 4 digits.
+        domain_hex = format(domain, "x").rjust(4, "0")
+        return f"{domain_hex}:{bus:02x}:{device:02x}.{function:x}"
 
     @staticmethod
     def validate_resource_request_quantity(

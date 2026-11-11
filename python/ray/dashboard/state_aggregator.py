@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import time
 from concurrent.futures import ThreadPoolExecutor
 from itertools import islice
 from typing import List, Optional
@@ -9,6 +10,7 @@ from ray import NodeID
 from ray._common.utils import get_or_create_event_loop
 from ray._private.profiling import chrome_tracing_dump
 from ray._private.ray_constants import env_integer
+from ray.core.generated import reporter_pb2
 from ray.dashboard.state_api_utils import do_filter
 from ray.dashboard.utils import compose_state_message
 from ray.runtime_env import RuntimeEnv
@@ -53,6 +55,61 @@ NODE_QUERY_FAILURE_WARNING = (
     "(3) There's an unexpected network issue. Please check the "
     "{log_command} to find the root cause."
 )
+
+# Bound the number of concurrent reporter-agent inventory RPCs issued while
+# enriching ``list_nodes(detail=True)``. The whole enrichment phase shares a
+# single deadline, so this only limits fan-out, not total latency. A fixed
+# positive constant (rather than a config knob) avoids a zero-value deadlock.
+ACCELERATOR_INVENTORY_MAX_CONCURRENCY = 16
+
+_ACCELERATOR_INVENTORY_STATUS_TO_STR = {
+    reporter_pb2.ACCELERATOR_INVENTORY_STATUS_OK: "ok",
+    reporter_pb2.ACCELERATOR_INVENTORY_STATUS_UNSUPPORTED: "unsupported",
+    reporter_pb2.ACCELERATOR_INVENTORY_STATUS_UNAVAILABLE: "unavailable",
+    reporter_pb2.ACCELERATOR_INVENTORY_STATUS_ERROR: "error",
+    # UNSPECIFIED from a stale/buggy agent is surfaced as unavailable rather
+    # than being mistaken for a valid status.
+    reporter_pb2.ACCELERATOR_INVENTORY_STATUS_UNSPECIFIED: "unavailable",
+}
+
+
+def _accelerator_inventory_status_to_str(status: int) -> str:
+    return _ACCELERATOR_INVENTORY_STATUS_TO_STR.get(status, "unavailable")
+
+
+def _accelerator_inventory_unavailable(message: str) -> dict:
+    """An explicit 'unavailable' inventory for a node whose agent could not be
+    reached, preserving the node result instead of dropping it."""
+    return {"status": "unavailable", "status_message": message, "devices": []}
+
+
+def _accelerator_inventory_reply_to_dict(reply) -> dict:
+    """Convert a ``GetAcceleratorInventoryReply`` (or None) into the stable
+    ``NodeState.accelerator_inventory`` dict shape."""
+    if reply is None:
+        return _accelerator_inventory_unavailable(
+            "The node's agent is not registered (the node may be dead)."
+        )
+    devices = []
+    for device in reply.devices:
+        devices.append(
+            {
+                "vendor": device.vendor,
+                "resource_family": device.resource_family,
+                "model": device.model,
+                "uuid": device.uuid,
+                "memory_total_bytes": device.memory_total_bytes,
+                "pci_bus_id": device.pci_bus_id or None,
+                "numa_node": device.numa_node if device.HasField("numa_node") else None,
+                "kind": device.kind,
+                "parent_uuid": device.parent_uuid or None,
+            }
+        )
+    return {
+        "status": _accelerator_inventory_status_to_str(reply.status),
+        "status_message": reply.status_message or None,
+        "devices": devices,
+    }
 
 
 # TODO(sang): Move the class to state/state_manager.py.
@@ -190,6 +247,9 @@ class StateAPIManager:
             {node_id -> node_data_in_dict}
             node_data_in_dict's schema is in NodeState
         """
+        # The overall budget for this request starts before the GCS query, so
+        # the accelerator-inventory enrichment can only use what remains.
+        deadline = time.monotonic() + option.timeout
         try:
             reply = await self._client.get_all_node_info(
                 timeout=option.timeout, filters=option.filters
@@ -197,7 +257,7 @@ class StateAPIManager:
         except DataSourceUnavailable:
             raise DataSourceUnavailable(GCS_QUERY_FAILURE_WARNING)
 
-        def transform(reply) -> ListApiResponse:
+        def transform(reply):
             node_infos, num_truncated = reply
             result = []
             for node_info in node_infos.values():
@@ -223,16 +283,73 @@ class StateAPIManager:
             # Sort to make the output deterministic.
             result.sort(key=lambda entry: entry["node_id"])
             result = list(islice(result, option.limit))
-            return ListApiResponse(
-                result=result,
-                total=total,
-                num_after_truncation=num_after_truncation,
-                num_filtered=num_filtered,
-            )
+            return result, total, num_after_truncation, num_filtered
 
-        return await get_or_create_event_loop().run_in_executor(
+        (
+            result,
+            total,
+            num_after_truncation,
+            num_filtered,
+        ) = await get_or_create_event_loop().run_in_executor(
             self._thread_pool_executor, transform, reply
         )
+
+        # The accelerator inventory is queried only for detail=True, and only
+        # for the final filtered/limited set of alive nodes, so a dead node or
+        # an out-of-scope node never triggers an extra RPC.
+        if option.detail:
+            await self._attach_accelerator_inventory(result, deadline)
+
+        return ListApiResponse(
+            result=result,
+            total=total,
+            num_after_truncation=num_after_truncation,
+            num_filtered=num_filtered,
+        )
+
+    async def _attach_accelerator_inventory(
+        self, result: List[dict], deadline: float
+    ) -> None:
+        """Populate ``accelerator_inventory`` on each alive node in ``result``.
+
+        The enrichment phase shares the single request deadline (``deadline``,
+        a ``time.monotonic`` timestamp) across the KV lookups, semaphore waits,
+        and gRPC calls, with bounded concurrency. Every node row is preserved;
+        an unreachable/dead agent or an expired deadline yields an explicit
+        ``unavailable`` status rather than dropping the row.
+        """
+        alive = [entry for entry in result if entry.get("state") == "ALIVE"]
+        if not alive:
+            return
+
+        semaphore = asyncio.Semaphore(ACCELERATOR_INVENTORY_MAX_CONCURRENCY)
+
+        async def fetch(entry: dict) -> None:
+            node_id = entry["node_id"]
+            async with semaphore:
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    entry["accelerator_inventory"] = _accelerator_inventory_unavailable(
+                        "Timed out before querying the node's agent."
+                    )
+                    return
+                try:
+                    reply = await self._client.get_accelerator_inventory(
+                        node_id, timeout=remaining
+                    )
+                    entry[
+                        "accelerator_inventory"
+                    ] = _accelerator_inventory_reply_to_dict(reply)
+                except asyncio.TimeoutError:
+                    entry["accelerator_inventory"] = _accelerator_inventory_unavailable(
+                        "Timed out querying the node's agent."
+                    )
+                except DataSourceUnavailable as e:
+                    entry["accelerator_inventory"] = _accelerator_inventory_unavailable(
+                        str(e)
+                    )
+
+        await asyncio.gather(*(fetch(entry) for entry in alive))
 
     async def list_workers(self, *, option: ListApiOptions) -> ListApiResponse:
         """List all worker information from the cluster.

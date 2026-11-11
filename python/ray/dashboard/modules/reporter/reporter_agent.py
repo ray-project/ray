@@ -31,6 +31,10 @@ from ray._common.utils import (
     get_or_create_event_loop,
 )
 from ray._private import utils
+from ray._private.accelerators.accelerator import (
+    AcceleratorInventory,
+    AcceleratorInventoryStatus,
+)
 from ray._private.gcs_passive_utils import (
     PassiveLatch,
     is_refused_by_passive_gcs,
@@ -95,6 +99,99 @@ from ray.exceptions import (
 import psutil
 
 logger = logging.getLogger(__name__)
+
+# Map the vendor-neutral discovery status to the reporter proto enum.
+_ACCELERATOR_INVENTORY_STATUS_TO_PROTO = {
+    AcceleratorInventoryStatus.OK: reporter_pb2.ACCELERATOR_INVENTORY_STATUS_OK,
+    AcceleratorInventoryStatus.UNSUPPORTED: (
+        reporter_pb2.ACCELERATOR_INVENTORY_STATUS_UNSUPPORTED
+    ),
+    AcceleratorInventoryStatus.UNAVAILABLE: (
+        reporter_pb2.ACCELERATOR_INVENTORY_STATUS_UNAVAILABLE
+    ),
+    AcceleratorInventoryStatus.ERROR: reporter_pb2.ACCELERATOR_INVENTORY_STATUS_ERROR,
+}
+
+
+def _discover_accelerator_inventory() -> AcceleratorInventory:
+    """Discover the node's accelerators through the vendor-neutral extension.
+
+    Iterates every registered accelerator manager and asks each for its
+    inventory. Managers without an inventory implementation return None and are
+    skipped. Aggregation is conservative: any ERROR (a supported provider that
+    failed) is surfaced as ERROR rather than being hidden behind a successful
+    inventory from another provider, so a complete inventory is never claimed
+    when a supported provider failed.
+    """
+    from ray._private.accelerators import get_all_accelerator_managers
+
+    results: List[AcceleratorInventory] = []
+    for manager in get_all_accelerator_managers():
+        inventory = manager.get_current_node_accelerator_inventory()
+        if inventory is not None:
+            results.append(inventory)
+
+    if not results:
+        return AcceleratorInventory(
+            status=AcceleratorInventoryStatus.UNSUPPORTED,
+            status_message=(
+                "No accelerator inventory discovery implementation is available "
+                "on this node."
+            ),
+        )
+
+    # An error (detected-but-failed hardware) is the most severe: don't claim a
+    # complete OK inventory when a supported provider failed.
+    for result in results:
+        if result.status is AcceleratorInventoryStatus.ERROR:
+            return result
+
+    ok = [r for r in results if r.status is AcceleratorInventoryStatus.OK]
+    if ok:
+        devices = [device for r in ok for device in r.devices]
+        return AcceleratorInventory(
+            status=AcceleratorInventoryStatus.OK, devices=devices
+        )
+
+    # A provider whose driver is absent/uninitializable is more informative
+    # than a blanket "unsupported".
+    for result in results:
+        if result.status is AcceleratorInventoryStatus.UNAVAILABLE:
+            return result
+
+    return AcceleratorInventory(
+        status=AcceleratorInventoryStatus.UNSUPPORTED,
+        status_message=(
+            "No accelerator inventory discovery implementation is available "
+            "on this node."
+        ),
+    )
+
+
+def _accelerator_inventory_to_reply(
+    inventory: AcceleratorInventory,
+) -> reporter_pb2.GetAcceleratorInventoryReply:
+    """Serialize a typed ``AcceleratorInventory`` into the reporter reply."""
+    reply = reporter_pb2.GetAcceleratorInventoryReply()
+    reply.status = _ACCELERATOR_INVENTORY_STATUS_TO_PROTO[inventory.status]
+    if inventory.status_message:
+        reply.status_message = inventory.status_message
+    for device in inventory.devices:
+        d = reply.devices.add()
+        d.vendor = device.vendor
+        d.resource_family = device.resource_family
+        d.model = device.model
+        d.uuid = device.uuid
+        d.memory_total_bytes = device.memory_total_bytes
+        if device.pci_bus_id is not None:
+            d.pci_bus_id = device.pci_bus_id
+        if device.numa_node is not None:
+            d.numa_node = device.numa_node
+        d.kind = device.kind
+        if device.parent_uuid is not None:
+            d.parent_uuid = device.parent_uuid
+    return reply
+
 
 enable_tpu_usage_check = True
 
@@ -652,9 +749,7 @@ class ReporterAgent(
                 else -1
             ),
         )
-        self._key = (
-            f"{reporter_consts.REPORTER_PREFIX}" f"{self._dashboard_agent.node_id}"
-        )
+        self._key = f"{reporter_consts.REPORTER_PREFIX}{self._dashboard_agent.node_id}"
 
         self._executor = ThreadPoolExecutor(
             max_workers=RAY_DASHBOARD_REPORTER_AGENT_TPE_MAX_WORKERS,
@@ -682,6 +777,14 @@ class ReporterAgent(
             enable_metric_report=dashboard_agent.enable_gpu_metrics
         )
         self._npu_metric_provider = NpuMetricProvider()
+
+        # Read-only accelerator inventory, cached for the node's lifetime.
+        # Only a successful (OK) discovery is cached; unavailable/unsupported/
+        # error results are re-probed on the next request. A shared task
+        # performs the actual discovery so concurrent first requests coalesce,
+        # and individual waiters are shielded from each other's cancellation.
+        self._accelerator_inventory_cache: Optional[AcceleratorInventory] = None
+        self._accelerator_inventory_task: Optional[asyncio.Task] = None
 
         if raylet_client:
             self._raylet_client = raylet_client
@@ -770,6 +873,60 @@ class ReporterAgent(
         It is used to check if the reporter agent is ready to receive requests.
         """
         return reporter_pb2.HealthCheckReply()
+
+    async def GetAcceleratorInventory(
+        self,
+        _request: reporter_pb2.GetAcceleratorInventoryRequest,
+        _context: ServicerContext,
+    ) -> reporter_pb2.GetAcceleratorInventoryReply:
+        """Return a read-only inventory of this node's accelerator devices.
+
+        Discovery runs off the event loop and is cached for the node's
+        lifetime. Concurrent first requests coalesce onto a single shared
+        discovery task; only a successful (OK) result is cached, so a
+        transient unavailable/error status is retried on the next request.
+        """
+        return _accelerator_inventory_to_reply(await self._get_accelerator_inventory())
+
+    async def _get_accelerator_inventory(self) -> AcceleratorInventory:
+        if self._accelerator_inventory_cache is not None:
+            return self._accelerator_inventory_cache
+
+        task = self._accelerator_inventory_task
+        if task is None or task.done():
+            task = asyncio.get_running_loop().create_task(
+                self._run_accelerator_inventory_discovery()
+            )
+            self._accelerator_inventory_task = task
+
+        # Shield so a single waiter's cancellation never cancels the shared
+        # discovery and strands other coalesced waiters.
+        return await asyncio.shield(task)
+
+    async def _run_accelerator_inventory_discovery(self) -> AcceleratorInventory:
+        try:
+            try:
+                inventory = await get_or_create_event_loop().run_in_executor(
+                    self._executor, _discover_accelerator_inventory
+                )
+            except Exception as e:
+                # Surface an unexpected discovery failure as an explicit ERROR
+                # inventory (logged, not hidden) so a broken node still answers
+                # rather than taking down node listing.
+                logger.exception("Accelerator inventory discovery failed")
+                inventory = AcceleratorInventory(
+                    status=AcceleratorInventoryStatus.ERROR,
+                    status_message=f"{type(e).__name__}: {e}",
+                )
+            if inventory.status is AcceleratorInventoryStatus.OK:
+                self._accelerator_inventory_cache = inventory
+            return inventory
+        finally:
+            # Clear the shared task so a subsequent request after a non-OK
+            # result re-discovers, while a concurrent waiter that already
+            # captured the task can still await its (completed) result.
+            if self._accelerator_inventory_task is asyncio.current_task():
+                self._accelerator_inventory_task = None
 
     async def ReportOCMetrics(self, request, context):
         # Do nothing if metrics collection is disabled.
