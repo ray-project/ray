@@ -1,6 +1,8 @@
+import sys
 from decimal import Decimal
 
 import pyarrow as pa
+import pytest
 
 from ray.data._internal.arrow_aggregation import arrow_agg_options, mean_spec, sum_spec
 
@@ -33,8 +35,10 @@ def test_integer_sum_does_not_overflow_when_merging_partials():
         _aggregate(pa.table({"g": [0] * 4, "v": [2**60] * 4}), agg, "v"),
         _aggregate(pa.table({"g": [0] * 4, "v": [2**60] * 4}), agg, "v"),
     ]
-    merged = pa.concat_tables(partials).group_by(["g"]).aggregate(
-        agg.merge_specs(tuple(agg.components), arrow_agg_options(True))
+    merged = (
+        pa.concat_tables(partials)
+        .group_by(["g"])
+        .aggregate(agg.merge_specs(tuple(agg.components), arrow_agg_options(True)))
     )
     merged = merged.rename_columns(["g", *agg.components])
 
@@ -102,3 +106,7 @@ def test_integer_mean_uses_widened_sum():
     result = agg.finalize(partial, tuple(agg.components))
 
     assert result.to_pylist() == [float(2**62)]
+
+
+if __name__ == "__main__":
+    sys.exit(pytest.main(["-v", __file__]))

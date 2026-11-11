@@ -3,7 +3,6 @@ from typing import Callable, List, NamedTuple, Optional, Tuple
 import pyarrow as pa
 import pyarrow.compute as pc
 
-
 # An integer column can be summed without losing information by widening it to
 # a decimal accumulator before invoking Arrow's grouped sum kernel.  Decimal128
 # has enough precision for the largest practical sum of int64/uint64 data while
@@ -134,9 +133,7 @@ def _finalize_sum(merged: "pa.Table", component_cols: Tuple[str, ...]):
     # exact total does not fit in that type.
     marker = pc.max(merged[widened_col]).as_py()
     if marker in (_SIGNED_INTEGER_MARKER, _UNSIGNED_INTEGER_MARKER):
-        output_type = (
-            pa.uint64() if marker == _UNSIGNED_INTEGER_MARKER else pa.int64()
-        )
+        output_type = pa.uint64() if marker == _UNSIGNED_INTEGER_MARKER else pa.int64()
         try:
             return pc.cast(merged[sum_col], output_type, safe=True)
         except (pa.ArrowInvalid, pa.ArrowNotImplementedError):
