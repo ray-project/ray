@@ -219,6 +219,21 @@ def test_default_properties(experiment_analysis):
     assert len(experiment_analysis.results) == NUM_TRIALS
     assert len(experiment_analysis.results_df) == NUM_TRIALS
 
+    orig_metric = experiment_analysis.default_metric
+    try:
+        experiment_analysis.default_metric = "maybe_nan"
+        assert experiment_analysis.best_trial is None
+        with pytest.raises(ValueError, match="No best trial found"):
+            _ = experiment_analysis.best_checkpoint
+        with pytest.raises(ValueError, match="No best trial found"):
+            _ = experiment_analysis.best_dataframe
+        with pytest.raises(ValueError, match="No best trial found"):
+            _ = experiment_analysis.best_result
+        with pytest.raises(ValueError, match="No best trial found"):
+            _ = experiment_analysis.best_result_df
+    finally:
+        experiment_analysis.default_metric = orig_metric
+
 
 def test_get_best_config(experiment_analysis):
     assert experiment_analysis.get_best_config()["id"] == NUM_TRIALS
@@ -262,6 +277,12 @@ def test_get_best_checkpoint(experiment_analysis):
     )
     assert best_checkpoint["maybe_nan"] == NON_NAN_VALUE
 
+    # Filter checkpoints missing the requested metric (unflattened_lookup -> None)
+    assert (
+        experiment_analysis.get_best_checkpoint(best_trial, metric="nonexistent_metric")
+        is None
+    )
+
 
 def test_get_last_checkpoint(experiment_analysis):
     # Defaults to getting the last checkpoint of the best trial.
@@ -274,6 +295,11 @@ def test_get_last_checkpoint(experiment_analysis):
         )
     )
     assert last_checkpoint["ascending"] == 5 * 1  # See note
+
+    # Returns None cleanly when no trial matches the requested metric
+    assert (
+        experiment_analysis.get_last_checkpoint(metric="nonexistent_metric") is None
+    )
 
 
 def test_pickle(experiment_analysis, tmp_path):
