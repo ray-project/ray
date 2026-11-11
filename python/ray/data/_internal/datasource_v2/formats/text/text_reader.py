@@ -1,17 +1,8 @@
 """``TextReader``: reads whole text files into one ``text`` column of lines.
 
-PyArrow's dataset layer has no plain-text format, so this reader does not
-extend ``FileReader``. It implements ``Reader.read`` directly, the way the
-MCAP reader does: open each file the manifest names, decode it with the
-user's encoding, split it into lines, and finish the table with the
-path-derived partition columns and synthesized columns.
-
-Line semantics match V1 ``TextDatasource``: ``str.splitlines()`` decides
-where lines end (``\\n``, ``\\r\\n``, ``\\r`` and the other Unicode line
-boundaries), a last line without a trailing newline still counts, and
-``drop_empty_lines`` removes lines that are empty or whitespace only. A
-compressed file is decoded by its extension, as V1 does through
-``infer_compression``.
+``pyarrow.dataset`` has no plain-text format, so this implements ``Reader.read``
+directly, like the MCAP reader. Line semantics match V1 ``TextDatasource``:
+``str.splitlines()`` splits, and ``drop_empty_lines`` drops whitespace-only lines.
 """
 
 import io
@@ -45,19 +36,12 @@ from ray.data.datasource.partitioning import (
 from ray.data.expressions import Expr
 from ray.util.annotations import DeveloperAPI
 
-# The one data column ``read_text`` produces. V1 ``TextDatasource`` reads it
-# from here, so the name has one source.
 TEXT_COLUMN_NAME = "text"
 
 
 @DeveloperAPI
 class TextReader(Reader[FileManifest]):
-    """Reads the text files a manifest assigns to one task, one table per file.
-
-    Created by ``TextScanner.create_reader`` with every pushdown applied:
-    the projected columns, the per-manifest row limit and the partition
-    predicate, which decides per file whether it is opened at all.
-    """
+    """Reads the text files a manifest assigns to one task, one table per file."""
 
     def __init__(
         self,
@@ -79,14 +63,11 @@ class TextReader(Reader[FileManifest]):
             drop_empty_lines: Whether to drop lines that are empty or
                 whitespace only.
             columns: Columns to produce, in order; ``None`` for all of them.
-            limit: Stop after this many rows per manifest (a read task may
-                receive several manifests; the ``Limit`` operator above enforces
-                the total).
+            limit: Stop after this many rows per manifest.
             filesystem: Filesystem the paths resolve against; local when ``None``.
             partitioning: Path partitioning whose values become columns.
-            partition_predicate: Pushed-down predicate over partition columns.
-                Evaluated once per file on its path values, with nulls for
-                keys the path lacks; a file it rejects is not opened.
+            partition_predicate: Pushed-down predicate over partition columns,
+                evaluated per file on its path values; a rejected file is not opened.
             synthesized_columns: Columns appended to every table rather than
                 read, e.g. ``PathColumn`` for ``include_paths``.
             schema: Dataset schema, used to type partition columns.
@@ -106,13 +87,7 @@ class TextReader(Reader[FileManifest]):
         self._schema = schema
 
     def read(self, input_split: FileManifest) -> Iterator[pa.Table]:
-        """Read the files named by ``input_split``, one table per manifest row.
-
-        A path listed twice is read twice, as ``FileReader`` does. With
-        ``limit``, reading stops at that many rows: no later file is opened.
-        A file whose partition values fail the partition predicate is not
-        opened either. Empty files yield nothing.
-        """
+        """Read the files named by ``input_split``, one table per file."""
         from ray.data.context import DataContext
 
         if len(input_split) == 0:
@@ -152,25 +127,16 @@ class TextReader(Reader[FileManifest]):
         if not lines:
             return
         if self._columns is not None and TEXT_COLUMN_NAME not in self._columns:
-            # Projected away (``count()``, ``select_columns(["year"])``): the
-            # file is still decoded for its row count, but no string column
-            # is built. ``_finish`` replaces the stub with the wanted columns.
+            # ``text`` is projected away (``count()``): keep only the row count.
             table = pa.table(
                 {_BATCH_SIZE_PRESERVING_STUB_COL_NAME: pa.nulls(len(lines))}
             )
         else:
-            # Past 2 GiB of text, ``pa.array`` returns a chunked array rather
-            # than overflowing the int32 offsets; the table takes either.
             table = pa.table({TEXT_COLUMN_NAME: pa.array(lines, type=pa.string())})
         yield self._finish(table, path)
 
     def _read_bytes(self, path: str) -> bytes:
-        """Return the file's decompressed bytes, inferring the codec from its name.
-
-        Mirrors V1's ``FileBasedDatasource._open_input_source``: Arrow decodes
-        gzip, bz2, zstd, lz4 and brotli streams; snappy has no streaming
-        decoder in Arrow, so python-snappy decompresses it.
-        """
+        """Return the file's decompressed bytes, inferring the codec from its name."""
         filesystem = self._filesystem or LocalFileSystem()
         compression = infer_compression(path)
         if compression == "snappy":
@@ -181,23 +147,14 @@ class TextReader(Reader[FileManifest]):
             return f.readall()
 
     def _partition_matches(self, path: str) -> bool:
-        """Evaluate the partition predicate on this file's path values.
-
-        A key the path lacks is a null, the value the file's rows get, so
-        ``col("year").is_null()`` keeps a root file and ``col("year") != 2024``
-        drops it, as filtering its rows would.
-        """
+        """Return whether the path's partition values pass the pushed-down predicate."""
         if self._partition_predicate is None:
             return True
         referenced = dict.fromkeys(get_column_references(self._partition_predicate))
         if not referenced:
-            # Nothing path-dependent to decide here; leave it to the rows.
             return True
         parsed = self._partition_parser(path) if self._partition_parser else {}
-        # Same evaluator as listing-time pruning, so both agree on every path.
-        # A key the path lacks is passed as ``None`` explicitly: the evaluator
-        # types it by the schema like any other value, and a null result
-        # (``null != 2024``) is False, as filtering the rows would be.
+        # Same evaluator as listing-time pruning; a key the path lacks is a null.
         values = {name: parsed.get(name) for name in referenced}
         return bool(
             _evaluate_path_predicate(
@@ -224,21 +181,13 @@ class TextReader(Reader[FileManifest]):
                     )
                 kept = [_BATCH_SIZE_PRESERVING_STUB_COL_NAME]
             table = table.select(kept)
-        # The table holds plain strings, so it can't carry a pickled-object
-        # column; the gate is called anyway so every reader of external
-        # input goes through it.
         raise_on_pickle_object_columns(table)
         return table
 
     def _fill_missing_planned_columns(
         self, table: pa.Table, wanted: Optional[Set[str]]
     ) -> pa.Table:
-        """Null-fill planned columns this file's path lacks, in schema order.
-
-        A file outside the partition directories (a root file next to
-        ``year=2024/``) has no value for ``year``; every task's blocks must
-        still share the planned schema.
-        """
+        """Null-fill planned columns this file's path lacks, in schema order."""
         schema = self._schema
         if schema is None:
             return table
@@ -256,10 +205,7 @@ class TextReader(Reader[FileManifest]):
     def _append_partition_columns(
         self, table: pa.Table, path: str, wanted: Optional[Set[str]]
     ) -> pa.Table:
-        """Append the partition values parsed from ``path``, if wanted.
-
-        A path value replaces a same-named column, as ``FileReader`` does.
-        """
+        """Append the partition values parsed from ``path``, if wanted."""
         if self._partition_parser is None:
             return table
         num_rows = table.num_rows

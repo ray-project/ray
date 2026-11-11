@@ -59,11 +59,8 @@ if TYPE_CHECKING:
 class _TextFileIndexer(NonSamplingFileIndexer):
     """``NonSamplingFileIndexer`` that keeps empty files.
 
-    The base indexer skips zero-size files because an empty Parquet or ORC
-    file is corrupt. An empty text file is a valid file with no lines, and
-    V1 reads it as such; skipping it would turn a directory of empty logs
-    into a "no files found" error. Files whose size the filesystem does not
-    report are still skipped: task sizing needs a size.
+    The base indexer skips zero-size files; an empty text file is a valid file
+    with no lines, as V1 reads it. Files of unknown size are still skipped.
     """
 
     @override
@@ -103,14 +100,7 @@ class _TextFileIndexer(NonSamplingFileIndexer):
 
 
 class _OnDiskSizeEstimator(InMemorySizeEstimator):
-    """Size text files by their bytes on disk, without opening any.
-
-    UTF-8 text decodes to an Arrow string column of about the same size, so
-    the on-disk size is the estimate, as V1 sizes text reads. Sampling a
-    file instead would read one whole text file per listing task, and text
-    files are routinely gigabytes. A compressed file is under-estimated by
-    its compression ratio; that only makes its read task larger, as in V1.
-    """
+    """Size text files by their bytes on disk, as V1 does, without opening any."""
 
     def estimate_in_memory_sizes(self, manifest: FileManifest) -> np.ndarray:
         return manifest.file_sizes
@@ -120,11 +110,8 @@ class _OnDiskSizeEstimator(InMemorySizeEstimator):
 class TextDatasourceV2(FileDataSourceV2):
     """V2 datasource that lists text files and reads them with ``TextScanner``.
 
-    Every file is one read unit, read whole, as in V1, and empty files are
-    listed rather than skipped. The schema is fixed:
-    one ``text`` string column, plus the partition columns found in the
-    sampled paths and the ``path`` column when ``include_paths`` is set. No
-    file is opened while planning.
+    Each file is one read unit, read whole. The schema is fixed: ``text``, the
+    partition columns found in the sampled paths, and ``path`` for ``include_paths``.
     """
 
     def __init__(
@@ -199,8 +186,7 @@ class TextDatasourceV2(FileDataSourceV2):
     @property
     @override
     def schema_needs_file_sample(self) -> bool:
-        # The schema is fixed, but the sampled paths decide the partition
-        # columns, and sampling is what reports "no files found".
+        # Sampled paths decide the partition columns and report "no files found".
         return True
 
     @override

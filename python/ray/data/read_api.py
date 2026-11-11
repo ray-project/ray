@@ -2685,10 +2685,8 @@ def _text_read_uses_v2(
 ) -> bool:
     """Whether ``read_text`` routes through DataSource V2.
 
-    V2 has no ``open_stream_args``, so a read that sets
-    ``arrow_open_stream_args`` keeps the V1 reader. So does an HTTP read: V2
-    listing needs each file's size from ``get_file_info`` and skips files
-    whose size the server does not report, while V1 never asks HTTP for sizes.
+    V2 has no ``open_stream_args``, and its listing needs file sizes that HTTP
+    servers often do not report, so those reads keep the V1 reader.
     """
     from ray.data.datasource.path_util import _is_http_filesystem, _is_http_url
 
@@ -2707,7 +2705,6 @@ def _text_read_uses_v2(
         from fsspec.implementations.http import HTTPFileSystem
     except ImportError:
         return True
-    # A bare fsspec filesystem is wrapped later by ``_resolve_paths_and_filesystem``.
     return not isinstance(filesystem, HTTPFileSystem)
 
 

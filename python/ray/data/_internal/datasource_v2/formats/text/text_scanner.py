@@ -28,15 +28,9 @@ from ray.util.annotations import DeveloperAPI
 class TextScanner(FileScanner, SupportsColumnPruning, SupportsLimitPushdown):
     """Scanner for plain-text files on DataSource V2.
 
-    Holds the ``read_text`` options and the pushdowns the optimizer applies:
-    column pruning and a per-task row limit, from the ``Supports*`` mixins,
-    and partition pruning from :class:`FileScanner`. Filters are not pushed
-    down: the ``Filter`` operator stays above the read, as in V1. The reader
-    decodes lines in Python rather than through ``pyarrow.dataset``, so this
-    scanner must not extend ``ArrowFileScanner`` and claim its pushdowns.
-
-    ``schema`` is the planned schema: the ``text`` column, then the
-    partition and synthesized columns, so a projection selects any of them.
+    Supports column pruning, a per-task row limit and partition pruning. Filter
+    pushdown is not claimed: the reader decodes lines in Python, not through
+    ``pyarrow.dataset``, so this scanner must not extend ``ArrowFileScanner``.
     """
 
     schema: pa.Schema
@@ -47,13 +41,7 @@ class TextScanner(FileScanner, SupportsColumnPruning, SupportsLimitPushdown):
 
     @override
     def _create_partition_pruner(self) -> Optional[FilePruner]:
-        """Prune by typed path values; keep files whose path lacks a key.
-
-        A file outside the partition directories reads with null partition
-        values, so a predicate such as ``col("year").is_null()`` may be true
-        for it. Listing keeps such files (``keep_unknown``) and the reader
-        evaluates the predicate against the nulls before opening the file.
-        """
+        """Prune by path values; a file whose path lacks a key is left to the reader."""
         if self.partitioning is None or self.partition_predicate is None:
             return None
         return PartitionPredicatePruner(
