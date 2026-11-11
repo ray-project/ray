@@ -121,11 +121,14 @@ rm -rf /tmp/mx-wheel /tmp/patches
 # directories is enough for that, and unlike `chown -R` it doesn't copy vLLM's
 # multi-GB site-packages into this layer. Tools that replace a file (pip, uv,
 # sed -i, patch, git apply) work too; writing into a file vLLM's image shipped
-# needs sudo. The include dir takes C headers that wheels like greenlet ship.
+# needs sudo. The include dir takes C headers that wheels like greenlet ship; the
+# data dir (/usr/local) takes wheels' data files, like ray-haproxy's license.
 INCLUDE_DIR="$(python3 -c 'import sysconfig; print(sysconfig.get_path("include"))')"
-PREFIX_DIRS=(/usr/local/bin /usr/local/etc /usr/local/include /usr/local/share)
+DATA_DIR="$(python3 -c 'import sysconfig; print(sysconfig.get_path("data"))')"
+PREFIX_DIRS=("${DATA_DIR}"/{bin,etc,include,share})
 mkdir -p "${INCLUDE_DIR}" "${PREFIX_DIRS[@]}"
 find "${SITE_PACKAGES}" "${INCLUDE_DIR}" "${PREFIX_DIRS[@]}" -type d -exec chown ray:users {} +
+find "${DATA_DIR}" -maxdepth 1 -type d -exec chown ray:users {} +
 
 EOF
 
