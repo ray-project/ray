@@ -24,6 +24,7 @@ from ray.data._internal.execution.interfaces import (
     ExecutionResources,
     PhysicalOperator,
     RefBundle,
+    actor_resource_dict,
 )
 from ray.data._internal.execution.interfaces.physical_operator import (
     DataOpTask,
@@ -46,6 +47,7 @@ if typing.TYPE_CHECKING:
     from ray.data._internal.execution.block_ref_counter import BlockRefCounter
     from ray.data._internal.execution.interfaces.physical_operator import ActorPoolInfo
     from ray.data._internal.execution.lineage_tracker import LineageTracker
+    from ray.data._internal.execution.resource_bank import ResourceBankBase
     from ray.data._internal.progress.base_progress import BaseProgressBar
 
 logger = logging.getLogger(__name__)
@@ -217,6 +219,10 @@ class GPUShuffleActor:
 # GPURankPool — lifecycle manager for a set of GPUShuffleActors
 # ---------------------------------------------------------------------------
 
+# Resource options for every rank actor, shared by ``GPURankPool.start`` and the
+# autoscaler demand report so the two cannot disagree.
+_RANK_ACTOR_RESOURCE_OPTIONS: Dict[str, Any] = {"num_gpus": 1}
+
 
 class GPURankPool:
     """Manages the lifecycle of ``GPUShuffleActor`` instances.
@@ -270,7 +276,7 @@ class GPURankPool:
         )
         actor_cls = self._actor_cls_factory()
         actor_options: Dict[str, typing.Any] = {
-            "num_gpus": 1,
+            **_RANK_ACTOR_RESOURCE_OPTIONS,
             "scheduling_strategy": "SPREAD",
         }
         if self._label_selector:
@@ -422,6 +428,8 @@ class GPUShuffleOperator(PhysicalOperator, SubProgressBarMixin):
     """
 
     _FINALIZE_PROGRESS_BAR_NAME = "GPU Reduce"
+    # A plain shuffle emits every input row; aggregation does not.
+    _preserves_row_count = True
 
     def __init__(
         self,
@@ -504,8 +512,11 @@ class GPUShuffleOperator(PhysicalOperator, SubProgressBarMixin):
         options: ExecutionOptions,
         block_ref_counter: "BlockRefCounter",
         lineage_tracker: Optional["LineageTracker"] = None,
+        resource_bank: Optional["ResourceBankBase"] = None,
     ) -> None:
-        super().start(options, block_ref_counter, lineage_tracker)
+        super().start(
+            options, block_ref_counter, lineage_tracker, resource_bank=resource_bank
+        )
         self._rank_pool.start()
 
     def _add_input_inner(self, bundle: RefBundle, input_index: int) -> None:
@@ -655,6 +666,16 @@ class GPUShuffleOperator(PhysicalOperator, SubProgressBarMixin):
     def get_active_tasks(self) -> List[OpTask]:
         return list(self._insert_tasks.values()) + list(self._extraction_tasks.values())
 
+    def get_resource_requests(self) -> List[Dict[str, float]]:
+        requests = self._get_base_resource_requests()
+        if not self._rank_pool.is_shutdown:
+            rank_request = actor_resource_dict(_RANK_ACTOR_RESOURCE_OPTIONS)
+            requests.extend(
+                dict(rank_request)
+                for _ in range(len(self._rank_pool.actors) or self._rank_pool.nranks)
+            )
+        return requests
+
     def has_completed(self) -> bool:
         return (
             self._finalization_started
@@ -717,9 +738,14 @@ class GPUShuffleOperator(PhysicalOperator, SubProgressBarMixin):
         return self._phase_metrics.runtime_metrics_by_phase()
 
     def num_outputs_total(self) -> Optional[int]:
-        return self._phase_metrics.estimated_num_output_bundles
+        # ``finish_and_extract`` emits exactly one block per partition, so the
+        # total is fixed up front; the per-rank estimate is only used for rows.
+        return self._num_partitions
 
     def num_output_rows_total(self) -> Optional[int]:
+        if self._preserves_row_count and self._inputs_complete:
+            shuffle_metrics = self._phase_metrics.phase_metrics["shuffle"]
+            return shuffle_metrics.metrics.rows_inputs_of_submitted_tasks
         return self._phase_metrics.estimated_output_num_rows
 
     def get_sub_progress_bar_names(self) -> List[str]:

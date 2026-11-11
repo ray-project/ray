@@ -66,6 +66,25 @@ def _make_bundle(num_blocks: int = 1) -> RefBundle:
     return RefBundle(blocks, schema=None, owns_blocks=False)
 
 
+def _make_output_bundle(partition_id: int, num_rows: int) -> RefBundle:
+    """An extraction output as ``finish_and_extract`` yields it."""
+    meta = BlockMetadata(
+        num_rows=num_rows,
+        size_bytes=8 * num_rows,
+        exec_stats=BlockExecStats(wall_time_s=0, block_ser_time_s=0),
+        input_files=None,
+        node_id="n0",
+    )
+    schema = pa.schema([("k", pa.int64())]).with_metadata(
+        {hash_shuffle._GPU_PARTITION_ID_KEY: str(partition_id).encode()}
+    )
+    return RefBundle(
+        [BlockEntry(ray.ObjectRef(bytes([partition_id]) * 28), meta)],
+        schema=schema,
+        owns_blocks=True,
+    )
+
+
 def _enqueue_output(op: GPUShuffleOperator, bundle: RefBundle, partition_id: int):
     """Queue an output the way ``_on_bundle_ready`` does, so dequeue accounting matches."""
     op._output_queue.add(bundle, key=partition_id)
@@ -539,6 +558,41 @@ class TestGPUShuffleOperatorFinalization:
         # Output must be in partition order 0, 1, 2, 3 — not insertion order 3, 2, 1, 0
         assert results == [bundles[i] for i in range(4)]
 
+    def _finish_rank(self, op: GPUShuffleOperator, rank: int, num_bundles: int):
+        """Stream *num_bundles* ten-row partitions for *rank*, then finish it."""
+        task = op._extraction_tasks[rank]
+        for i in range(num_bundles):
+            task._output_ready_callback(_make_output_bundle(i, num_rows=10))
+        task._task_done_callback(None, TaskExecWorkerStats(task_wall_time_s=1.0), None)
+
+    def test_num_outputs_total_is_num_partitions_despite_rank_skew(self):
+        """Five partitions over two ranks split 3/2; the first finished rank
+        must not scale its share up to six."""
+        op, _ = self._make_op(nranks=2, num_partitions=5)
+        assert op.num_outputs_total() == 5
+        op._inputs_complete = True
+        op._try_finalize()
+
+        self._finish_rank(op, rank=0, num_bundles=3)
+        assert op.num_outputs_total() == 5
+        assert op._phase_metrics.estimated_num_output_bundles == 6
+
+    def test_num_output_rows_total_is_input_rows_once_inputs_complete(self):
+        op, _ = self._make_op(nranks=2, num_partitions=4)
+        shuffle = op._phase_metrics.phase_metrics["shuffle"]
+        for i in range(3):
+            shuffle.on_task_submitted(i, _make_bundle(1))  # 10 rows each
+        assert op.num_output_rows_total() is None
+
+        op._inputs_complete = True
+        assert op.num_output_rows_total() == 30
+
+        # A skewed first rank leaves the exact total alone.
+        op._try_finalize()
+        self._finish_rank(op, rank=0, num_bundles=2)
+        assert op._phase_metrics.estimated_output_num_rows == 40
+        assert op.num_output_rows_total() == 30
+
     def test_get_active_tasks_combines_both_phases(self):
         op, _ = self._make_op()
         insert_task = MagicMock()
@@ -572,24 +626,6 @@ class TestGPUShuffleOperatorFinalization:
 # ---------------------------------------------------------------------------
 # GPUShuffleOperator: metrics, progress bars and stats
 # ---------------------------------------------------------------------------
-
-
-def _make_output_bundle(partition_id: int, num_rows: int) -> RefBundle:
-    """An extraction output as ``finish_and_extract`` yields it."""
-    meta = BlockMetadata(
-        num_rows=num_rows,
-        size_bytes=8 * num_rows,
-        exec_stats=BlockExecStats(wall_time_s=0, block_ser_time_s=0, node_id="n0"),
-        input_files=None,
-    )
-    schema = pa.schema([("k", pa.int64())]).with_metadata(
-        {hash_shuffle._GPU_PARTITION_ID_KEY: str(partition_id).encode()}
-    )
-    return RefBundle(
-        [BlockEntry(ray.ObjectRef(bytes([partition_id]) * 28), meta)],
-        schema=schema,
-        owns_blocks=True,
-    )
 
 
 class TestGPUShuffleOperatorMetrics:
@@ -677,8 +713,8 @@ class TestGPUShuffleOperatorMetrics:
         op = self._make_op()
         self._run_insert_phase(op)
         self._run_extraction_phase(op)
-        assert op.num_outputs_total() == self.NUM_PARTITIONS
-        assert op.num_output_rows_total() == (
+        assert op._phase_metrics.estimated_num_output_bundles == self.NUM_PARTITIONS
+        assert op._phase_metrics.estimated_output_num_rows == (
             self.NUM_PARTITIONS * self.ROWS_PER_PARTITION
         )
 
@@ -695,21 +731,23 @@ class TestGPUShuffleOperatorMetrics:
             op._extraction_tasks[rank]._output_ready_callback(
                 _make_output_bundle(partition_id, self.ROWS_PER_PARTITION)
             )
-        assert op.num_outputs_total() is None
+        assert op.num_outputs_total() == self.NUM_PARTITIONS
+        assert op._phase_metrics.estimated_output_num_rows is None
 
         tasks = list(op._extraction_tasks.values())
         tasks[0]._task_done_callback(
             None, TaskExecWorkerStats(task_wall_time_s=1.0), None
         )
-        assert op.num_outputs_total() == self.NUM_PARTITIONS
+        assert op._phase_metrics.estimated_output_num_rows == (
+            self.NUM_PARTITIONS * self.ROWS_PER_PARTITION
+        )
         for task in tasks[1:]:
             task._task_done_callback(
                 None, TaskExecWorkerStats(task_wall_time_s=1.0), None
             )
         assert op.num_outputs_total() == self.NUM_PARTITIONS
-        assert op.num_output_rows_total() == (
-            self.NUM_PARTITIONS * self.ROWS_PER_PARTITION
-        )
+        # Shuffle preserves rows, so the total is the input row count.
+        assert op.num_output_rows_total() == self.NUM_BLOCKS * 10
 
     def test_progress_bars_advance_by_rows(self):
         op = self._make_op()
@@ -731,12 +769,9 @@ class TestGPUShuffleOperatorMetrics:
             sum(c.kwargs["increment"] for c in reduce_bar.update.call_args_list)
             == self.NUM_PARTITIONS * self.ROWS_PER_PARTITION
         )
-        # Input rows seed the total at finalize start; finished ranks replace it.
-        totals = [c.kwargs["total"] for c in reduce_bar.update.call_args_list]
-        assert [t for t in totals if t is not None][0] == input_rows
-        assert [t for t in totals if t is not None][-1] == (
-            self.NUM_PARTITIONS * self.ROWS_PER_PARTITION
-        )
+        # A shuffle's total is its input row count from finalize start onward.
+        totals = {c.kwargs["total"] for c in reduce_bar.update.call_args_list}
+        assert totals - {None} == {input_rows}
 
     def test_stats_keyed_by_phase(self):
         op = self._make_op()

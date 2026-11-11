@@ -274,6 +274,7 @@ class RouterMetricsManager:
             if not is_retry and self.should_send_scaled_to_zero_optimized_push(
                 curr_num_replicas=num_curr_replicas
             ):
+                self._add_autoscaling_metrics_point()
                 self.push_autoscaling_metrics_to_controller()
 
             yield
@@ -328,6 +329,7 @@ class RouterMetricsManager:
             # least one queued request on this router, then immediately
             # push handle metric to the controller.
             if self.should_send_scaled_to_zero_optimized_push(curr_num_replicas):
+                self._add_autoscaling_metrics_point()
                 self.push_autoscaling_metrics_to_controller()
 
             # Record number of queued + ongoing requests at regular
@@ -955,12 +957,12 @@ class AsyncioRouter:
         if isinstance(result, ActorDiedError):
             return result
 
-        if isinstance(result, RayTaskError) and isinstance(
-            getattr(result, "cause", None), ActorDiedError
-        ):
-            # RayTaskError wrapping ActorDiedError (e.g., from failed object ref
-            # resolution in chained deployment calls).
-            return result.cause
+        if isinstance(result, RayTaskError):
+            cause = getattr(result, "cause", None)
+            if isinstance(cause, ActorDiedError):
+                # RayTaskError wrapping ActorDiedError (e.g., from failed object ref
+                # resolution in chained deployment calls).
+                return cause
 
         return None
 
@@ -1308,13 +1310,17 @@ class AsyncioRouter:
                 # retry loop with the same PendingRequest, without probing or
                 # reserving capacity on replicas. Close the generator to clean up
                 # its backoff accounting on success and cancellation.
-                candidates = self._active_request_router._choose_replicas_with_backoff(
-                    pr
-                )
-                try:
-                    replica = (await candidates.__anext__())[0]
-                finally:
-                    await candidates.aclose()
+                with self._metrics_manager.wrap_queued_request(
+                    is_retry=False,
+                    num_curr_replicas=len(self._active_request_router.curr_replicas),
+                ):
+                    candidates = (
+                        self._active_request_router._choose_replicas_with_backoff(pr)
+                    )
+                    try:
+                        replica = (await candidates.__anext__())[0]
+                    finally:
+                        await candidates.aclose()
                 slot_token = None
                 # Pick-only callers send the request themselves (e.g. the
                 # direct-streaming LLM ingress router through HAProxy), so this
