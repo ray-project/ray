@@ -1,0 +1,16 @@
+# Release test dependencies for ray-llm-vllm. Unlike other image types, this
+# installs the unpinned LLM test requirements rather than a lock, so they resolve
+# against the vLLM image's package versions (UV_OVERRIDE in
+# docker/ray-llm-vllm/Dockerfile).
+name: "ray-llm-vllm-py$PYTHON_VERSION-cu$CUDA_VERSION-base-extra-testdeps"
+froms: ["cr.ray.io/rayproject/ray-llm-vllm-py$PYTHON_VERSION-cu$CUDA_VERSION-base-extra"]
+dockerfile: release/ray_release/byod/byod.Dockerfile
+srcs:
+  - release/ray_release/byod/requirements_llm_byod_$PYTHON_VERSION.txt
+build_args:
+  - BASE_IMAGE=cr.ray.io/rayproject/ray-llm-vllm-py$PYTHON_VERSION-cu$CUDA_VERSION-base-extra
+  - PYTHON_VERSION
+  - PIP_REQUIREMENTS=release/ray_release/byod/requirements_llm_byod_$PYTHON_VERSION.txt
+  - RAYCI_IMAGE_PIP_INDEX_URL
+tags:
+  - cr.ray.io/rayproject/ray-llm-vllm-py$PYTHON_VERSION-cu$CUDA_VERSION-base-extra-testdeps

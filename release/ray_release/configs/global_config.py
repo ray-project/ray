@@ -22,6 +22,7 @@ class GlobalConfig(TypedDict):
     release_image_step_ray_cpu: str
     release_image_step_ray_cuda: str
     release_image_step_ray_llm: str
+    release_image_step_ray_llm_vllm: str
     release_image_step_ray_torch_cuda: str
 
 
@@ -111,6 +112,9 @@ def _init_global_config(config_file: str):
         release_image_step_ray_llm=config_content.get("release_image_step", {}).get(
             "ray_llm"
         ),
+        release_image_step_ray_llm_vllm=config_content.get(
+            "release_image_step", {}
+        ).get("ray_llm_vllm"),
         release_image_step_ray_torch_cuda=config_content.get(
             "release_image_step", {}
         ).get("ray_torch_cuda"),

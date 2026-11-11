@@ -315,6 +315,27 @@ steps:
       - ray-wheel-build($)
       - ray-llmbaseextra($)
 
+  - name: ray-llm-vllm-image-cuda-build
+    label: "wanda: ray-llm-vllm py{{array.python}} cu{{array.cuda}} (x86_64)"
+    wanda: ci/docker/ray-llm-vllm-image-cuda.wanda.yaml
+    array:
+      python:
+        - "3.12"
+      cuda:
+        - "13.0.0-cudnn"
+    env_file: rayci.env
+    env:
+      PYTHON_VERSION: "{{array.python}}"
+      CUDA_VERSION: "{{array.cuda}}"
+      ARCH_SUFFIX: ""
+    tags:
+      - python_dependencies
+      - docker
+      - oss
+    depends_on:
+      - ray-wheel-build($)
+      - ray-llm-vllmbase($)
+
   - label: ":crane: publish: ray-extra py{{array.python}} (x86_64)"
     key: ray_extra_images_push
     instance_type: small

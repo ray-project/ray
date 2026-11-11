@@ -35,18 +35,24 @@ APT_PKGS=(
     apt-transport-https
     ca-certificates
     htop
-    libaio1
-    libgl1-mesa-glx
     libglfw3
     libjemalloc-dev
     libosmesa6-dev
     lsb-release
 )
+# Ubuntu 24.04 (images built on vllm/vllm-openai) renamed libaio1 and dropped
+# libgl1-mesa-glx.
+if [[ "$(. /etc/os-release && echo "${VERSION_ID}")" == "24.04" ]]; then
+    APT_PKGS+=(libaio1t64 libgl1)
+else
+    APT_PKGS+=(libaio1 libgl1-mesa-glx)
+fi
 
 sudo apt-get update -y
 sudo apt-get install -y --no-install-recommends "${APT_PKGS[@]}"
 sudo apt-get autoclean
-sudo rm -rf /etc/apt/sources.list.d/*
+# Ubuntu 24.04 keeps its own archive in sources.list.d/ubuntu.sources.
+sudo find /etc/apt/sources.list.d -mindepth 1 ! -name ubuntu.sources -delete
 
 sudo mkdir -p /etc/apt/keyrings
 curl -sLS https://packages.microsoft.com/keys/microsoft.asc |
@@ -70,7 +76,13 @@ make -C /tmp/wrk -j
 sudo cp /tmp/wrk/wrk /usr/local/bin/wrk
 rm -rf /tmp/wrk
 
-"$HOME/anaconda3/bin/pip" install --no-cache-dir -r extra-test-requirements.txt
+if [[ -x "$HOME/anaconda3/bin/pip" ]]; then
+    "$HOME/anaconda3/bin/pip" install --no-cache-dir -r extra-test-requirements.txt
+else
+    # Images built on vllm/vllm-openai have no conda; uv also keeps their vLLM
+    # package versions (UV_OVERRIDE in docker/ray-llm-vllm/Dockerfile).
+    uv pip install --system --no-cache -r extra-test-requirements.txt
+fi
 
 EOF
 

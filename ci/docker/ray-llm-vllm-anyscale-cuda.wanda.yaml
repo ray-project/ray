@@ -1,0 +1,17 @@
+# Ray-LLM (vLLM base) Anyscale CUDA Image (for release tests)
+# Installs the Ray wheel into the ray-llm-vllm base-extra-testdeps image.
+# push_release_test_image publishes it to anyscale/ray-llm as
+# <version>-py312-vllm-cu130, which release tests select with
+# RAY_RELEASE_LLM_IMAGE=vllm (byod type llm-vllm-cu130).
+#
+name: "ray-llm-vllm-anyscale-py$PYTHON_VERSION-$GPU$ARCH_SUFFIX"
+disable_caching: true
+froms:
+  - "cr.ray.io/rayproject/ray-llm-vllm-py$PYTHON_VERSION-$GPU-base-extra-testdeps"  # ray-llm-vllm base with test deps
+  - "cr.ray.io/rayproject/ray-wheel-py$PYTHON_VERSION$ARCH_SUFFIX"                  # Ray wheel
+dockerfile: ci/docker/ray-llm-vllm-image.Dockerfile
+build_args:
+  - BASE_IMAGE=cr.ray.io/rayproject/ray-llm-vllm-py$PYTHON_VERSION-$GPU-base-extra-testdeps
+  - RAY_WHEEL_IMAGE=cr.ray.io/rayproject/ray-wheel-py$PYTHON_VERSION$ARCH_SUFFIX
+  - RAY_COMMIT=$BUILDKITE_COMMIT
+  - RAY_VERSION

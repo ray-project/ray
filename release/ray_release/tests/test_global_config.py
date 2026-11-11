@@ -40,6 +40,7 @@ release_image_step:
   ray_cpu: anyscalecpubuild
   ray_cuda: anyscalecudabuild
   ray_llm: anyscalellmbuild
+  ray_llm_vllm: anyscalellmvllmbuild
   ray_torch_cuda: anyscaletorchcudabuild
 """
 
@@ -63,6 +64,7 @@ def test_init_global_config() -> None:
         assert config["release_image_step_ray_cpu"] == "anyscalecpubuild"
         assert config["release_image_step_ray_cuda"] == "anyscalecudabuild"
         assert config["release_image_step_ray_llm"] == "anyscalellmbuild"
+        assert config["release_image_step_ray_llm_vllm"] == "anyscalellmvllmbuild"
         assert config["release_image_step_ray_torch_cuda"] == "anyscaletorchcudabuild"
         assert config["byod_ecr"] == "029272617770.dkr.ecr.us-west-2.amazonaws.com"
         assert config["byod_ecr_region"] == "us-west-2"

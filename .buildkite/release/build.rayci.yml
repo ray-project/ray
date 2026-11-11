@@ -52,6 +52,36 @@ steps:
     depends_on:
       - ray-llmbaseextra($)
 
+  - name: ray-llm-vllmbaseextra
+    label: "wanda: ray-llm-vllm-py{{array.python}}-cu{{array.cuda}}-base-extra"
+    wanda: docker/base-extra/cuda.wanda.yaml
+    array:
+      python:
+        - "3.12"
+      cuda:
+        - "13.0.0-cudnn"
+    env:
+      PYTHON_VERSION: "{{array.python}}"
+      CUDA_VERSION: "{{array.cuda}}"
+      IMAGE_TYPE: "ray-llm-vllm"
+      ARCH_SUFFIX: ""
+    depends_on:
+      - ray-llm-vllmbase($)
+
+  - name: ray-llm-vllmbaseextra-testdeps
+    label: "wanda: ray.py{{array.python}}.llm-vllm.base-extra-testdeps (cuda {{array.cuda}})"
+    wanda: docker/ray-llm-vllm/base-extra-testdeps.wanda.yaml
+    array:
+      python:
+        - "3.12"
+      cuda:
+        - "13.0.0-cudnn"
+    env:
+      PYTHON_VERSION: "{{array.python}}"
+      CUDA_VERSION: "{{array.cuda}}"
+    depends_on:
+      - ray-llm-vllmbaseextra($)
+
   - name: ray-torchcudabase
     label: "wanda: ray-torch.py{{array.python}}.cu{{array.cuda}}.base"
     wanda: docker/ray-torch/cuda.wanda.yaml
@@ -215,6 +245,47 @@ steps:
     depends_on:
       - forge
       - ray-llm-anyscale-cuda-build($)
+    array:
+      gpu:
+        - cu13.0.0-cudnn
+      python:
+        - "3.12"
+
+  # Selected when release tests run with RAY_RELEASE_LLM_IMAGE=vllm.
+  - name: ray-llm-vllm-anyscale-cuda-build
+    label: "wanda: ray-llm-vllm-anyscale py{{array.python}} {{array.gpu}}"
+    wanda: ci/docker/ray-llm-vllm-anyscale-cuda.wanda.yaml
+    env_file: rayci.env
+    array:
+      gpu:
+        - "cu13.0.0-cudnn"
+      python:
+        - "3.12"
+    env:
+      PYTHON_VERSION: "{{array.python}}"
+      GPU: "{{array.gpu}}"
+      ARCH_SUFFIX: ""
+    tags:
+      - oss
+    depends_on:
+      - ray-wheel-build($)
+      - ray-llm-vllmbaseextra-testdeps($)
+
+  - label: ":crane: publish: ray-llm-vllm-anyscale py{{array.python}} {{array.gpu}}"
+    key: anyscalellmvllmbuild
+    instance_type: release-medium
+    mount_buildkite_agent: true
+    tags:
+      - oss
+    commands:
+      - bazel run //ci/ray_ci/automation:push_release_test_image --
+        --python-version {{array.python}}
+        --platform {{array.gpu}}
+        --image-type ray-llm-vllm
+        --upload
+    depends_on:
+      - forge
+      - ray-llm-vllm-anyscale-cuda-build($)
     array:
       gpu:
         - cu13.0.0-cudnn
