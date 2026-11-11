@@ -102,8 +102,8 @@ def test_local_mode_metrics_only_report_keeps_checkpoint():
     def train_fn():
         with create_dict_checkpoint({}) as checkpoint:
             ray.train.report(metrics={"epoch": 0}, checkpoint=checkpoint)
-        ray.train.report(metrics={"epoch": 1})
-        assert ray.train.get_checkpoint()
+            ray.train.report(metrics={"epoch": 1})
+            assert ray.train.get_checkpoint() == checkpoint
 
     trainer = DataParallelTrainer(train_fn, scaling_config=ScalingConfig(num_workers=0))
     result = trainer.fit()
