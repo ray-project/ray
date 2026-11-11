@@ -473,14 +473,13 @@ def test_group_by_server():
 def test_order_tables_by_source_undoes_node_grouping():
     import pyarrow as pa
 
-    # Map tasks 0 and 2 ran on node-1, task 1 on node-2 (two ranges), so the
-    # decoded tables arrive as [t0, t2], [t1a, t1b]; the reducer must see them
-    # in map task order regardless of which node each task landed on.
+    # Tasks 0 and 2 on node-1, task 1 (two ranges) on node-2: the fetch groups
+    # decode as [t0, t2], [t1a, t1b] but the reducer must see task order.
     s0 = _SourceRef("shuffle-0", "node-1", _FileRanges("a", [(0, 4)]))
     s1 = _SourceRef("shuffle-0", "node-2", _FileRanges("b", [(0, 8), (8, 8)]))
     s2 = _SourceRef("shuffle-0", "node-1", _FileRanges("c", [(0, 2)]))
     groups = _group_by_server([s0, s1, s2])
-    t0, t1a, t1b, t2 = (pa.table({"v": [i]}) for i in range(4))
+    t0, t1a, t1b, t2 = [pa.table({"v": [i]}) for i in range(4)]
 
     ordered = _order_tables_by_source(groups, [[t0, t2], [t1a, t1b]])
 

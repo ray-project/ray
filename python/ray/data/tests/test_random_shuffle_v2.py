@@ -1,3 +1,5 @@
+from collections import Counter
+
 import pyarrow as pa
 import pytest
 
@@ -205,12 +207,7 @@ def test_random_shuffle_v2_promotes_compatible_block_schemas(
     rows = (
         ray.data.from_arrow([null_block, int_block]).random_shuffle(seed=0).take_all()
     )
-    assert sorted((r["v"] for r in rows), key=lambda v: (v is None, v)) == [
-        1,
-        2,
-        None,
-        None,
-    ]
+    assert Counter(r["v"] for r in rows) == {1: 1, 2: 1, None: 2}
 
 
 @pytest.mark.parametrize("use_disk", _USE_DISK)

@@ -114,8 +114,7 @@ class ShuffleMapOp(InternalQueueOperatorMixin, PhysicalOperator):
         # -- Map task config -------------------------------------------------
         self._map_runtime_env: Optional[Dict[str, Any]] = map_runtime_env
         self._map_ray_remote_args: Dict[str, Any] = dict(map_ray_remote_args or {})
-        # User overrides apply to the task options and to the resource estimates
-        # the executor budgets against, so both see the same ask.
+        # Resolved once so task options and resource estimates see the same ask.
         self._shuffle_map_task_num_cpus: float = float(
             self._map_ray_remote_args.get("num_cpus", map_cpus)
         )

@@ -363,9 +363,8 @@ def _disk_shuffle_reduce_task(
             # pwrite lands in page cache so the decode-side ``pread``s hit cache.
             total_size, base_offsets, node_sizes = _compute_prefetch_layout(flat_groups)
 
-            # One slot per fetch group: regions decode as they land but are
-            # reassembled in map task order below, so the reduce input depends on
-            # neither fetch timing nor map task placement.
+            # One slot per fetch group so regions decode as they land;
+            # _order_tables_by_source restores map task order afterwards.
             tables_by_group: List[List[pa.Table]] = [[] for _ in flat_groups]
             output_buffer: Optional[BlockOutputBuffer] = None
             # Codec from data_context.shuffle_compression (same field the map used).
