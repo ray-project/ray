@@ -714,8 +714,9 @@ class DataContext:
         min_parallelism: This setting is deprecated. Use ``read_op_min_num_blocks``
             instead.
         read_op_min_num_blocks: Minimum number of read output blocks for a dataset.
-        use_datasource_v2: When True, ``ray.data.read_parquet()`` and
-            ``ray.data.read_orc()`` route through the DataSourceV2 pipeline.
+        use_datasource_v2: When True, ``ray.data.read_parquet()``,
+            ``ray.data.read_orc()`` and ``ray.data.read_text()`` route through
+            the DataSourceV2 pipeline.
             Defaults to True; override with ``RAY_DATA_USE_DATASOURCE_V2``
             (``0`` for V1, ``1`` for V2).
         small_shuffle_chunk_size: Target uncompressed size in bytes of the row-group
