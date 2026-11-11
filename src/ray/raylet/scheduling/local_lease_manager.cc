@@ -227,10 +227,18 @@ void LocalLeaseManager::GrantScheduledLeasesToWorkers() {
 
     const auto &sched_cls_desc =
         SchedulingClassToIds::GetSchedulingClassDescriptor(scheduling_class);
-    // CPU demand per lease in this scheduling class. Used for the fair-share
-    // gate check and for incremental updates when a lease is erased.
+    // CPU of this scheduling class's resource set. Used for the fair-share gate
+    // check and for total_cpu_granted_leases.
     const double cpu_per_lease =
         sched_cls_desc->resource_set.Get(scheduling::ResourceID::CPU()).Double();
+    // CPU required per lease, used for total_cpu_requests and num_classes_with_cpu.
+    // This must match the precompute above, which can differ from cpu_per_lease
+    // for actor creation leases (e.g. 0 required CPU but 1 placement CPU).
+    const double cpu_request_per_lease = leases_to_grant_queue.front()
+                                             ->lease_.GetLeaseSpecification()
+                                             .GetRequiredResources()
+                                             .Get(scheduling::ResourceID::CPU())
+                                             .Double();
 
     // Compare total CPU requests with the node's total CPU capacity. If the requests
     // exceed the capacity, check if fair granting is needed.
@@ -313,8 +321,8 @@ void LocalLeaseManager::GrantScheduledLeasesToWorkers() {
           bool did_spill = TrySpillback(work, is_infeasible);
           if (did_spill) {
             work_it = leases_to_grant_queue.erase(work_it);
-            if (cpu_per_lease > 0) {
-              total_cpu_requests -= cpu_per_lease;
+            if (cpu_request_per_lease > 0) {
+              total_cpu_requests -= cpu_request_per_lease;
             }
             continue;
           }
@@ -339,8 +347,8 @@ void LocalLeaseManager::GrantScheduledLeasesToWorkers() {
           cluster_resource_scheduler_.GetLocalResourceManager().MaybeMarkFootprintAsBusy(
               WorkFootprint::PULLING_TASK_ARGUMENTS);
           work_it = leases_to_grant_queue.erase(work_it);
-          if (cpu_per_lease > 0) {
-            total_cpu_requests -= cpu_per_lease;
+          if (cpu_request_per_lease > 0) {
+            total_cpu_requests -= cpu_request_per_lease;
           }
           RAY_LOG(DEBUG) << "Failed to pin arguments for lease " << lease_id;
         } else {
@@ -385,8 +393,8 @@ void LocalLeaseManager::GrantScheduledLeasesToWorkers() {
           break;
         }
         work_it = leases_to_grant_queue.erase(work_it);
-        if (cpu_per_lease > 0) {
-          total_cpu_requests -= cpu_per_lease;
+        if (cpu_request_per_lease > 0) {
+          total_cpu_requests -= cpu_request_per_lease;
         }
       } else {
         // Force us to recalculate the next update time the next time a task
@@ -438,8 +446,8 @@ void LocalLeaseManager::GrantScheduledLeasesToWorkers() {
       RAY_LOG(ERROR) << "A lease got granted to a node even though it was infeasible. "
                         "Please report an issue on GitHub.\nLease: "
                      << front_lease.DebugString();
-      if (cpu_per_lease > 0) {
-        total_cpu_requests -= leases_to_grant_queue.size() * cpu_per_lease;
+      if (cpu_request_per_lease > 0) {
+        total_cpu_requests -= leases_to_grant_queue.size() * cpu_request_per_lease;
       }
       auto leases_to_grant_queue_iter = leases_to_grant_queue.begin();
       while (leases_to_grant_queue_iter != leases_to_grant_queue.end()) {
@@ -456,12 +464,12 @@ void LocalLeaseManager::GrantScheduledLeasesToWorkers() {
             leases_to_grant_queue.erase(leases_to_grant_queue_iter);
       }
       leases_to_grant_.erase(shapes_it++);
-      if (cpu_per_lease > 0) {
+      if (cpu_request_per_lease > 0) {
         num_classes_with_cpu--;
       }
     } else if (leases_to_grant_queue.empty()) {
       leases_to_grant_.erase(shapes_it++);
-      if (cpu_per_lease > 0) {
+      if (cpu_request_per_lease > 0) {
         num_classes_with_cpu--;
       }
     } else {
