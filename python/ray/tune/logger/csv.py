@@ -59,8 +59,17 @@ class CSVLoggerCallback(LoggerCallback):
         result = flatten_dict(tmp, delimiter="/")
 
         if not self._trial_csv[trial]:
+            fieldnames = list(result.keys())
+            if self._trial_continue[trial]:
+                local_file_path = Path(trial.local_path, EXPR_PROGRESS_FILE)
+                with local_file_path.open("rt", newline="") as f:
+                    existing_header = next(csv.reader(f), None)
+                if existing_header:
+                    fieldnames = existing_header
+                else:
+                    self._trial_continue[trial] = False
             self._trial_csv[trial] = csv.DictWriter(
-                self._trial_files[trial], result.keys()
+                self._trial_files[trial], fieldnames
             )
             if not self._trial_continue[trial]:
                 self._trial_csv[trial].writeheader()

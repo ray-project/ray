@@ -122,6 +122,44 @@ class LoggerSuite(unittest.TestCase):
         # Assert header has been written to progress.csv
         assert "training_iteration" in csv_lines[0]
 
+    def testCSVResumePreservesHeaderFieldnames(self):
+        """Test that resuming a trial preserves the existing CSV column order."""
+        config = {"a": 2, "b": 5}
+        t = Trial(evaluated_params=config, trial_id="csv_resume", logdir=self.test_dir)
+        logger = CSVLoggerCallback()
+        logger.on_trial_result(
+            0, [], t, {"metric_a": 1, "metric_b": 2, "training_iteration": 1}
+        )
+        logger.on_trial_complete(1, [], t)
+
+        resumed_logger = CSVLoggerCallback()
+        resumed_logger.on_trial_result(
+            1,
+            [],
+            t,
+            {
+                "training_iteration": 2,
+                "metric_b": 20,
+                "metric_a": 10,
+                "extra_metric": 99,
+            },
+        )
+        resumed_logger.on_trial_complete(2, [], t)
+
+        result_file = os.path.join(self.test_dir, EXPR_PROGRESS_FILE)
+        with open(result_file, "rt", newline="") as fp:
+            rows = list(csv.DictReader(fp))
+
+        self.assertEqual(len(rows), 2)
+        self.assertEqual(
+            rows[0],
+            {"metric_a": "1", "metric_b": "2", "training_iteration": "1"},
+        )
+        self.assertEqual(
+            rows[1],
+            {"metric_a": "10", "metric_b": "20", "training_iteration": "2"},
+        )
+
     def _validate_csv_result(self):
         results = []
         result_file = os.path.join(self.test_dir, EXPR_PROGRESS_FILE)
