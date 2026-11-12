@@ -41,18 +41,52 @@ class JSONDatasink(BlockBasedFileDatasink):
 
         df = block.to_pandas()
         date_unit = writer_args.get("date_unit", "ms")
+        date_format = writer_args.get("date_format")
+        # Same default as to_json(): ISO for orient="table", epoch otherwise.
+        is_epoch = date_format == "epoch" or (date_format is None and orient != "table")
+        # Invalid date_unit values are left for to_json() to reject.
+        valid_unit = date_unit in ("s", "ms", "us", "ns")
+        if is_epoch and valid_unit:
+            df = _cast_arrow_dates_to_epoch(df, date_unit)
         # TODO: Remove this workaround once Ray requires pandas >= 3.
         # orient="table" is skipped: it writes dates as ISO strings by default,
         # which pandas < 3 already gets right, and the epoch cast below would
         # turn them into numbers.
-        # Invalid date_unit values are left for to_json() to reject.
-        if _PANDAS_LT_3 and orient != "table" and date_unit in ("s", "ms", "us", "ns"):
-            is_epoch = writer_args.get("date_format") in (None, "epoch")
+        if _PANDAS_LT_3 and orient != "table" and valid_unit:
             df = _fix_non_nanosecond_columns(
                 df, epoch_unit=date_unit if is_epoch else None
             )
 
         df.to_json(file, orient=orient, lines=lines, **writer_args)
+
+
+def _cast_arrow_dates_to_epoch(df: pd.DataFrame, date_unit: str) -> pd.DataFrame:
+    """Cast ``pd.ArrowDtype`` date32 and date64 columns to integers in ``date_unit``.
+
+    pandas 3 ``to_json`` raises ``NotImplementedError`` on these columns when it
+    writes epoch values. The integers are what pandas < 3 writes for them.
+    """
+    # Go by position because column names can repeat.
+    positions = [
+        i
+        for i, dtype in enumerate(df.dtypes)
+        if isinstance(dtype, pd.ArrowDtype)
+        and pyarrow.types.is_date(dtype.pyarrow_dtype)
+    ]
+    if not positions:
+        return df
+
+    df = df.copy(deep=False)
+    for i in positions:
+        values = (
+            pyarrow.array(df.iloc[:, i])
+            .cast(pyarrow.timestamp(date_unit))
+            .cast(pyarrow.int64())
+        )
+        df.isetitem(
+            i, pd.Series(values, index=df.index, dtype=pd.ArrowDtype(pyarrow.int64()))
+        )
+    return df
 
 
 def _fix_non_nanosecond_columns(
