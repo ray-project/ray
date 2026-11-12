@@ -7,9 +7,12 @@ import numpy as np
 import pyarrow as pa
 import pytest
 
+from ray.data.checkpoint.checkpoint_filter import _add_file_key_columns
 from ray.data.checkpoint.generated_id import (
     _COMPACTED_CHECKPOINT_SCHEMA,
+    FILE_NAME_FIELD,
     GENERATED_ID_COLUMN_TYPE,
+    PATH_PREFIX_FIELD,
     GeneratedIdCheckpoint,
     _build_generated_ids,
     _checkpoint_from_compacted,
@@ -108,6 +111,27 @@ def test_compact_handles_unsorted_and_interleaved_row_groups():
         {"unit_id": f"{PATH}#rg1", "partial_mask": [True, True, False, False]},
         {"unit_id": f"{PATH}#rg2", "partial_mask": [False, True, False, True]},
     ]
+
+
+def test_file_key_columns_use_64_bit_offsets():
+    """The grouping keys must be ``large_string``, not ``string``.
+
+    They repeat a file's directory and name on every committed row, and the
+    group-by joins each shuffle partition's chunks into one array. A
+    ``string`` array holds at most 2 GiB, so a partition with tens of millions
+    of committed rows failed with ``ArrowInvalid: offset overflow while
+    concatenating arrays``. Proving that takes over 2 GiB of keys, so this
+    checks the type that prevents it.
+    """
+    ids = _ids(PATH, [(0, [0, 1]), (1, [2])])
+
+    keyed = _add_file_key_columns(pa.table({"generated_id": ids}), "generated_id")
+
+    assert keyed.schema.field(PATH_PREFIX_FIELD).type == pa.large_string()
+    assert keyed.schema.field(FILE_NAME_FIELD).type == pa.large_string()
+    assert keyed[PATH_PREFIX_FIELD].to_pylist() == ["bucket/dir"] * 3
+    assert keyed[FILE_NAME_FIELD].to_pylist() == ["a.parquet"] * 3
+    assert keyed["generated_id"].equals(ids)
 
 
 def test_checkpoint_names_whole_file_when_all_row_groups_done():

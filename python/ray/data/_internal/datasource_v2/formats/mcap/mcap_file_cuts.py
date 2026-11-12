@@ -119,7 +119,11 @@ def _read_keeps_order() -> bool:
 
 
 def _rows_by_file(manifest: FileManifest) -> Iterator[FileManifest]:
-    """The manifest's rows grouped by file, in listing order."""
+    """The manifest's rows grouped by file, in listing order.
+
+    A listing manifest holds one listed file, so a path listed twice arrives as
+    two manifests and its copies stay apart.
+    """
     rows_by_path: Dict[str, List[int]] = {}
     for i, path in enumerate(manifest.paths):
         rows_by_path.setdefault(str(path), []).append(i)
