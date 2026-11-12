@@ -1325,6 +1325,7 @@ The community maintains the following connectors, which integrate Ray Data with 
 * [Apache Doris Ray Connector](https://github.com/jiangxt2/ray-doris): Reads and writes data between Ray Data and [Apache Doris](https://doris.apache.org/).
 * [Kinetica Ray Connector](https://github.com/kineticadb/kinetica-ray): Reads and writes data between Ray Data and [Kinetica](https://www.kinetica.com/).
 * [Qdrant Ray Connector](https://github.com/qdrant-labs/qdrant-ray): Writes Ray datasets to [Qdrant](https://qdrant.tech/) in parallel.
+* [Redis ADBC Driver](https://github.com/redis/redis-adbc-driver/blob/main/docs/integrations/ray.md): Reads and writes data between Ray Data and [Redis](https://redis.io/) through an Arrow Database Connectivity (ADBC) driver.
 
 ## Performance considerations
 

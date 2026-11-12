@@ -56,6 +56,7 @@ def is_default_app_running():
         (2, 2),  # TPxPP=4 > 2 GPUs/node, FORCES cross-node placement
     ],
 )
+@pytest.mark.requires_2x_2GPU
 def test_llm_serve_multi_node(tp_size, pp_size):
     """Test multi-node Ray Serve LLM deployment with custom placement groups.
 
@@ -71,7 +72,7 @@ def test_llm_serve_multi_node(tp_size, pp_size):
     llm_config = LLMConfig(
         model_loading_config=ModelLoadingConfig(
             model_id="opt-1.3b",
-            model_source="facebook/opt-1.3b",
+            model_source="Qwen/Qwen3.5-0.8B",
         ),
         deployment_config=dict(
             autoscaling_config=dict(
@@ -102,13 +103,39 @@ def test_llm_serve_multi_node(tp_size, pp_size):
     [
         # Cluster: 2 nodes x 2 GPUs = 4 total GPUs
         # TP=1 cases
-        (1, 2, None, {"bundles": [{"GPU": 1, "CPU": 1}]}),  # Single group, single node
-        (1, 4, None, {"bundles": [{"GPU": 1, "CPU": 1}]}),  # Single group, multi-node
-        (1, 2, 2, {"bundles": [{"GPU": 1, "CPU": 1}]}),  # Multi-group, multi-node
+        pytest.param(
+            1,
+            2,
+            None,
+            {"bundles": [{"GPU": 1, "CPU": 1}]},
+            marks=pytest.mark.requires_2GPU,
+        ),  # Single group, single node
+        pytest.param(
+            1,
+            4,
+            None,
+            {"bundles": [{"GPU": 1, "CPU": 1}]},
+            marks=pytest.mark.requires_2x_2GPU,
+        ),  # Single group, multi-node
+        pytest.param(
+            1,
+            2,
+            2,
+            {"bundles": [{"GPU": 1, "CPU": 1}]},
+            marks=pytest.mark.requires_2x_2GPU,
+        ),  # Multi-group, multi-node
         # TP=2 cases — auto-generates correct bundles from TP size
-        (2, 2, 1, None),  # TP, single group, multi-node
+        pytest.param(
+            2, 2, 1, None, marks=pytest.mark.requires_2x_2GPU
+        ),  # TP, single group, multi-node
         # TP=2 cases — explicit placement_group_config with 2 bundles for TP=2
-        (2, 2, None, {"bundles": [{"GPU": 1, "CPU": 1}, {"GPU": 1}]}),
+        pytest.param(
+            2,
+            2,
+            None,
+            {"bundles": [{"GPU": 1, "CPU": 1}, {"GPU": 1}]},
+            marks=pytest.mark.requires_2x_2GPU,
+        ),
     ],
 )
 def test_llm_serve_data_parallelism(
@@ -144,6 +171,7 @@ def test_llm_serve_data_parallelism(
     wait_for_condition(is_default_app_running, timeout=300)
 
 
+@pytest.mark.requires_2x_2GPU
 def test_llm_serve_data_parallelism_autoscaling():
     """Test that DP deployment with autoscaling scales up under load."""
     dp_size = 2
@@ -244,6 +272,7 @@ def test_llm_serve_data_parallelism_autoscaling():
     assert running % dp_size == 0
 
 
+@pytest.mark.requires_2x_2GPU
 def test_llm_serve_data_parallelism_cleanup():
     """Test that Data Parallelism KV entries are cleaned up on shutdown."""
     placement_group_config = {
@@ -279,6 +308,7 @@ def test_llm_serve_data_parallelism_cleanup():
     shutdown_serve_and_wait_for_controller()
 
 
+@pytest.mark.requires_2x_2GPU
 def test_llm_serve_data_parallelism_declarative():
     """Test Data Parallelism deployment via declarative config."""
     config_path = CONFIGS_DIR / "serve_phi_tiny_moe_dp2_gang.yaml"
@@ -292,6 +322,7 @@ def test_llm_serve_data_parallelism_declarative():
     wait_for_condition(is_default_app_running, timeout=300)
 
 
+@pytest.mark.requires_2x_2GPU
 def test_llm_serve_prefill_decode_with_data_parallelism():
     """Test Prefill-Decode disaggregation with Data Parallelism and Expert Parallelism.
 
@@ -363,6 +394,7 @@ def test_llm_serve_prefill_decode_with_data_parallelism():
     wait_for_condition(is_default_app_running, timeout=300)
 
 
+@pytest.mark.requires_2x_2GPU
 def test_llm_serve_data_parallelism_worker_fault():
     """Test DP deployment recovers after replica death."""
 

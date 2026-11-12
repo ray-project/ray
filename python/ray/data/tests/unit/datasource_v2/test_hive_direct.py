@@ -598,6 +598,60 @@ def test_scanner_options_preserve_native_behavior(tmp_path, monkeypatch, file_fo
     assert reader._ignore_prefixes == (prefixes if file_format == "parquet" else None)
 
 
+@pytest.mark.parametrize(
+    "positional,batch_size", [(False, None), (False, 7), (True, None)]
+)
+def test_orc_adaptive_batch_size_with_hive_projection(
+    tmp_path, monkeypatch, positional, batch_size
+):
+    from dataclasses import replace
+
+    from ray.data._internal.datasource_v2.common.file_reader import (
+        _ARROW_DEFAULT_BATCH_SIZE,
+    )
+    from ray.data.context import DataContext
+    from ray.data.expressions import col
+
+    monkeypatch.setattr(DataContext.get_current(), "target_max_block_size", 65536)
+    table = pa.table(
+        {"id": range(256), "payload": [f"{i:04d}" + "x" * 4092 for i in range(256)]}
+    )
+    physical = table.rename_columns(["old_id", "old_payload"]) if positional else table
+    path = _write_table_file(tmp_path / "part", "orc", physical)
+    source = HiveDirectDatasource(
+        HiveFileTable(
+            str(tmp_path), "orc", table.schema, force_positional_evolution=positional
+        )
+    )
+    scanner = source.create_scanner(source.infer_schema(None))
+    assert scanner.target_block_size == 65536
+    scanner = replace(scanner, batch_size=batch_size)
+    scanner, residual = scanner.push_filters(col("id") >= 128)
+    assert residual is None
+    scanner = scanner.prune_columns(["payload"])
+    reader = scanner.create_reader()
+    assert isinstance(reader, hive_direct._HiveOrcFileReader)
+    scan = MagicMock(wraps=reader._iter_fragment_tables)
+    reader._iter_fragment_tables = scan
+    manifest = FileManifest.construct_manifest(
+        paths=[str(path)], sizes=[path.stat().st_size], chunk_metadatas=[None]
+    )
+
+    result = pa.concat_tables(list(reader.read(manifest)))
+    assert (
+        result.select(["payload"]).to_pylist()
+        == table.slice(128).select(["payload"]).to_pylist()
+    )
+    actual_size = scan.call_args.kwargs["scanner_kwargs"]["batch_size"]
+    if batch_size is not None:
+        assert actual_size == batch_size
+    elif positional:
+        assert actual_size == _ARROW_DEFAULT_BATCH_SIZE
+    else:
+        assert 0 < actual_size < _ARROW_DEFAULT_BATCH_SIZE
+    assert reader._target_block_size == 65536
+
+
 @pytest.mark.parametrize("file_format", ["parquet", "orc"])
 @pytest.mark.parametrize(
     "merge_schema,file_count,should_warn",

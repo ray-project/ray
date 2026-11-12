@@ -89,8 +89,7 @@ class CloudwatchHelper:
             raise e
 
     def _update_cloudwatch_config(self, config_type: str, is_head_node: bool) -> None:
-        """
-        check whether update operations are needed in
+        """check whether update operations are needed in
         cloudwatch related configs
         """
         cwa_installed = self._setup_cwa()
@@ -290,8 +289,7 @@ class CloudwatchHelper:
     def _replace_config_variables(
         self, string: str, node_id: str, cluster_name: str, region: str
     ) -> str:
-        """
-        replace known config variable occurrences in the input string
+        """replace known config variable occurrences in the input string
         does not replace variables with undefined or empty strings
         """
 
@@ -310,8 +308,7 @@ class CloudwatchHelper:
         cluster_name: str,
         region: str,
     ) -> Union[str, Dict[str, Any]]:
-        """
-        Replace known config variable occurrences in the input collection.
+        """Replace known config variable occurrences in the input collection.
         The input collection must be either a dict or list.
         Returns a tuple consisting of the output collection and the number of
         modified strings in the collection (which is not necessarily equal to
@@ -354,8 +351,7 @@ class CloudwatchHelper:
     def _set_cloudwatch_ssm_config_param(
         self, parameter_name: str, config_type: str
     ) -> str:
-        """
-        get cloudwatch config for the given param and config type from SSM
+        """get cloudwatch config for the given param and config type from SSM
         if it exists, put it in the SSM param store if not
         """
         try:
@@ -385,9 +381,7 @@ class CloudwatchHelper:
         return parameter_value
 
     def _get_ssm_param(self, parameter_name: str) -> str:
-        """
-        get the SSM parameter value associated with the given parameter name
-        """
+        """get the SSM parameter value associated with the given parameter name"""
         response = self.ssm_client.get_parameter(Name=parameter_name)
         logger.info("Successfully fetch ssm parameter: {}".format(parameter_name))
         res = response.get("Parameter", {})
@@ -467,8 +461,7 @@ class CloudwatchHelper:
         self._put_ssm_param(param, param_name)
 
     def _replace_cwa_config_vars(self, config_type: str) -> Dict[str, Any]:
-        """
-        replace {instance_id}, {region}, {cluster_name}
+        """replace {instance_id}, {region}, {cluster_name}
         variable occurrences in Unified Cloudwatch Agent config file
         """
         cwa_config = self._load_config_file(config_type)
@@ -481,9 +474,7 @@ class CloudwatchHelper:
         return cwa_config
 
     def _replace_dashboard_config_vars(self, config_type: str) -> List[str]:
-        """
-        replace known variable occurrences in CloudWatch Dashboard config file
-        """
+        """replace known variable occurrences in CloudWatch Dashboard config file"""
         data = self._load_config_file(config_type)
         widgets = []
         for item in data:
@@ -497,8 +488,7 @@ class CloudwatchHelper:
         return widgets
 
     def _replace_alarm_config_vars(self, config_type: str) -> List[str]:
-        """
-        replace {instance_id}, {region}, {cluster_name}
+        """replace {instance_id}, {region}, {cluster_name}
         variable occurrences in cloudwatch alarm config file
         """
         data = self._load_config_file(config_type)
@@ -624,8 +614,7 @@ class CloudwatchHelper:
             )
 
     def _ensure_cwa_installed_ssm(self, node_id: str) -> bool:
-        """
-        Check if Unified Cloudwatch Agent is installed via ssm run command.
+        """Check if Unified Cloudwatch Agent is installed via ssm run command.
         If not, notify user to use an AMI with
         the Unified CloudWatch Agent installed.
         """
@@ -667,8 +656,7 @@ class CloudwatchHelper:
         return filters
 
     def _check_cwa_installed_ec2_tag(self) -> List[str]:
-        """
-        Filtering all nodes to get nodes
+        """Filtering all nodes to get nodes
         without Unified CloudWatch Agent installed
         """
         try:

@@ -74,8 +74,7 @@ class LogstreamClient:
                     return
 
     def _process_rpc_error(self, e: grpc.RpcError) -> bool:
-        """
-        Processes RPC errors that occur while reading from data stream.
+        """Processes RPC errors that occur while reading from data stream.
         Returns True if the error can be recovered from, False otherwise.
         """
         if self.client_worker._can_reconnect(e):

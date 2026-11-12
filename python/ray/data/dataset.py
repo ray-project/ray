@@ -86,6 +86,7 @@ from ray.data._internal.logical.operators import (
     RandomizeBlocks,
     RandomShuffle,
     Repartition,
+    ShuffleBatches,
     Sort,
     StreamingRepartition,
     StreamingSplit,
@@ -95,7 +96,7 @@ from ray.data._internal.logical.operators import (
 )
 from ray.data._internal.pandas_block import PandasBlockBuilder, PandasBlockSchema
 from ray.data._internal.planner.exchange.sort_task_spec import SortKey
-from ray.data._internal.random_config import RandomSeedConfig
+from ray.data._internal.random_config import RandomSeedConfig, get_timestamp_seed
 from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data._internal.split import _get_num_rows, _split_at_indices
 from ray.data._internal.stats import DatasetStats, DatasetStatsSummary, _StatsManager
@@ -362,6 +363,17 @@ class Dataset:
 
         The constructor is not part of the Dataset API. Use the ``ray.data.*``
         read methods to construct a dataset.
+
+        Args:
+            logical_plan: The logical plan that produces this dataset.
+            context: The :class:`~ray.data.DataContext` for this dataset.
+            in_stats: The initial execution statistics. They seed the stats for input
+                that the executor can't observe, such as data from the ``from_*``
+                APIs.
+            cache: The execution cache. If ``None``, the dataset starts with an empty
+                cache.
+            dataset_name: The name of the dataset, used as a prefix for metrics
+                tags.
         """
         usage_lib.record_library_usage("dataset")  # Legacy telemetry name.
 
@@ -402,6 +414,19 @@ class Dataset:
     def copy(
         ds: "Dataset", _deep_copy: bool = False, _as: Optional[type] = None
     ) -> "Dataset":
+        """Create a new Dataset from the state of an existing one.
+
+        Args:
+            ds: The dataset to copy.
+            _deep_copy: If ``True``, the new dataset gets copies of the logical plan,
+                context, and stats, and a deep copy of the execution cache. If
+                ``False``, it shares the plan, context, and stats, and gets a copy of
+                the execution cache.
+            _as: The class of the new dataset. Defaults to the class of ``ds``.
+
+        Returns:
+            A new dataset of class ``_as``.
+        """
         if not _as:
             _as = type(ds)
         if _deep_copy:
@@ -424,7 +449,7 @@ class Dataset:
     @PublicAPI(api_group=BT_API_GROUP)
     def map(
         self,
-        fn: Callable[[Dict[str, Any]], Dict[str, Any]],
+        fn: UserDefinedFunction[Dict[str, Any], Dict[str, Any]],
         *,
         compute: Optional[ComputeStrategy] = None,
         fn_args: Optional[Iterable[Any]] = None,
@@ -598,10 +623,13 @@ class Dataset:
     def _set_name(self, name: Optional[str]):
         self.set_name(name)
 
-    def set_name(self, name: Optional[str]):
+    def set_name(self, name: Optional[str]) -> None:
         """Set the name of the dataset.
 
         Used as a prefix for metrics tags.
+
+        Args:
+            name: The name of the dataset, or ``None`` to clear it.
         """
         self._dataset_name = name
 
@@ -618,6 +646,9 @@ class Dataset:
     def get_dataset_id(self) -> str:
         """Unique ID of the dataset, including the dataset name,
         UUID, and current execution index.
+
+        Returns:
+            The dataset ID.
         """
         return self._get_dataset_id_for_run(self._run_index)
 
@@ -1022,8 +1053,7 @@ class Dataset:
         runtime_env: Optional[Dict[str, Any]] = None,
         **ray_remote_args,
     ) -> "Dataset":
-        """
-        Add or overwrite multiple columns via expressions in a single projection.
+        """Add or overwrite multiple columns via expressions in a single projection.
 
         This is the multi-column counterpart of :meth:`with_column`. All
         expressions are evaluated within one projection over the existing
@@ -1153,8 +1183,7 @@ class Dataset:
         runtime_env: Optional[Dict[str, Any]] = None,
         **ray_remote_args,
     ) -> "Dataset":
-        """
-        Add a new column to the dataset via an expression.
+        """Add a new column to the dataset via an expression.
 
         This method allows you to add a new column to a dataset by applying an
         expression. The expression can be composed of existing columns, literals,
@@ -1292,7 +1321,7 @@ class Dataset:
         ],
         *,
         batch_format: Optional[str] = "pandas",
-        compute: Optional[str] = None,
+        compute: Optional[ComputeStrategy] = None,
         concurrency: Optional[int] = None,
         num_cpus: Optional[float] = None,
         num_gpus: Optional[float] = None,
@@ -1449,7 +1478,7 @@ class Dataset:
         self,
         cols: List[str],
         *,
-        compute: Optional[str] = None,
+        compute: Optional[ComputeStrategy] = None,
         concurrency: Optional[int] = None,
         num_cpus: Optional[float] = None,
         num_gpus: Optional[float] = None,
@@ -1591,7 +1620,7 @@ class Dataset:
         self,
         cols: Union[str, List[str]],
         *,
-        compute: Union[str, ComputeStrategy] = None,
+        compute: Optional[ComputeStrategy] = None,
         concurrency: Optional[int] = None,
         num_cpus: Optional[float] = None,
         num_gpus: Optional[float] = None,
@@ -1724,7 +1753,7 @@ class Dataset:
         accelerator_type: Optional[str] = None,
         runtime_env: Optional[Dict[str, Any]] = None,
         **ray_remote_args,
-    ):
+    ) -> "Dataset":
         """Rename columns in the dataset.
 
         Examples:
@@ -2048,7 +2077,7 @@ class Dataset:
         fn: Optional[UserDefinedFunction[Dict[str, Any], bool]] = None,
         expr: Optional[Union[str, Expr]] = None,
         *,
-        compute: Union[str, ComputeStrategy] = None,
+        compute: Optional[ComputeStrategy] = None,
         fn_args: Optional[Iterable[Any]] = None,
         fn_kwargs: Optional[Dict[str, Any]] = None,
         fn_constructor_args: Optional[Iterable[Any]] = None,
@@ -2430,12 +2459,107 @@ class Dataset:
         logical_plan = LogicalPlan(op, self.context)
         return Dataset._from_parent(self, logical_plan)
 
+    @PublicAPI(api_group=SSR_API_GROUP, stability="alpha")
+    def shuffle_batches(
+        self,
+        batch_size: int | None = None,
+        *,
+        seed: int | RandomSeedConfig | None = None,
+        compute: TaskPoolStrategy | None = None,
+        num_cpus: float | None = None,
+        memory: float | None = None,
+    ) -> "Dataset":
+        """Shuffle rows within batches using parallel Ray Data tasks.
+
+        Each batch receives a uniform random permutation. With ``batch_size=None``,
+        shuffle each input block independently. A positive ``batch_size`` uses
+        target-sized batching, as in :meth:`map_batches`. Batches can span input
+        blocks, but each task's final batch can be smaller, including in the middle
+        of the dataset. Shuffle batches are independent of consumer batch sizes
+        and output block sizes.
+
+        A downstream :meth:`limit` can reduce the input before shuffling, so its
+        result can differ from a prefix of the unlimited shuffle.
+
+        To construct exact windows, call :meth:`repartition` with
+        ``target_num_rows_per_block`` and ``strict=True``, then shuffle each block
+        with ``batch_size=None``. Only the final window can be smaller. Window
+        boundaries follow the upstream execution order.
+
+        This operation streams results without materializing the whole dataset.
+        Rows don't move between shuffle batches, and batches aren't randomly
+        reordered. Use :meth:`random_shuffle` for global row shuffling. See
+        :ref:`shuffling_data` for usage and performance considerations.
+
+        Examples:
+            >>> import ray
+            >>> ds = ray.data.range(20, override_num_blocks=4)
+            >>> shuffled = ds.shuffle_batches(batch_size=8, seed=42)
+            >>> sum(len(b) for b in shuffled.iter_batches(batch_format="pyarrow"))
+            20
+            >>> # Shuffle exact eight-row windows, except the final remainder.
+            >>> exact = ds.repartition(
+            ...     target_num_rows_per_block=8, strict=True
+            ... ).shuffle_batches(seed=42)
+            >>> sum(len(b) for b in exact.iter_batches(batch_format="pyarrow"))
+            20
+
+        Args:
+            batch_size: Target rows per shuffle batch. If None, shuffle each
+                input block independently. Defaults to None.
+                A value of one returns the input unchanged.
+            seed: Optional integer seed or :class:`RandomSeedConfig`. An integer
+                repeats permutations for the same input layout and task grouping.
+                Enable ``preserve_order`` on the dataset's execution options for
+                reproducible output order. None reseeds between executions.
+            compute: Optional task-pool strategy controlling shuffle parallelism.
+            num_cpus: CPU reservation for each shuffle map task.
+            memory: Heap-memory scheduling reservation per shuffle task, in bytes.
+                This is not a hard memory limit.
+
+        Returns:
+            A Dataset with rows shuffled within each batch.
+        """
+        if batch_size is not None:
+            if isinstance(batch_size, bool) or not isinstance(batch_size, int):
+                raise TypeError("batch_size must be an integer or None")
+            if batch_size <= 0:
+                raise ValueError("batch_size must be positive")
+        if compute is not None and not isinstance(compute, TaskPoolStrategy):
+            raise TypeError("shuffle_batches currently supports TaskPoolStrategy only")
+
+        seed_config = RandomSeedConfig.create_seed_config(seed)
+        if seed_config.seed is not None:
+            # Validate on the driver rather than failing a remote shuffle task.
+            np.random.SeedSequence(seed_config.seed)
+        if batch_size == 1:
+            return self
+        if seed_config.seed is None:
+            # Pin the base seed so task retries replay the same permutation.
+            seed_config = RandomSeedConfig(
+                seed=get_timestamp_seed(), reseed_after_execution=True
+            )
+
+        remote_args = {}
+        if num_cpus is not None:
+            remote_args["num_cpus"] = num_cpus
+        if memory is not None:
+            remote_args["memory"] = memory
+        op = ShuffleBatches(
+            input_dependencies=[self._logical_plan.dag],
+            batch_size=batch_size,
+            seed_config=seed_config,
+            compute=compute,
+            ray_remote_args=remote_args,
+        )
+        return Dataset._from_parent(self, LogicalPlan(op, self.context))
+
     @AllToAllAPI
     @PublicAPI(api_group=SSR_API_GROUP)
     def random_shuffle(
         self,
         *,
-        seed: Optional[int | RandomSeedConfig] = None,
+        seed: Optional[Union[int, RandomSeedConfig]] = None,
         num_blocks: Optional[int] = None,
         **ray_remote_args,
     ) -> "Dataset":
@@ -2516,7 +2640,7 @@ class Dataset:
     def randomize_block_order(
         self,
         *,
-        seed: Optional[int | RandomSeedConfig] = None,
+        seed: Optional[Union[int, RandomSeedConfig]] = None,
     ) -> "Dataset":
         """Randomly shuffle the :ref:`blocks <dataset_concept>` of this :class:`Dataset`.
 
@@ -2565,7 +2689,7 @@ class Dataset:
 
     @PublicAPI(api_group=BT_API_GROUP)
     def random_sample(
-        self, fraction: float, *, seed: Optional[int | RandomSeedConfig] = None
+        self, fraction: float, *, seed: Optional[Union[int, RandomSeedConfig]] = None
     ) -> "Dataset":
         """Returns a new :class:`Dataset` containing a random fraction of the rows.
         In other words, this method "randomly filters" the rows of the dataset without
@@ -3372,8 +3496,7 @@ class Dataset:
             raise ValueError("hash_column is not supported for random split")
 
         def random_split(batch: pa.Table):
-            """
-            Perform a random split on a batch: each row goes to train with probability (1 - test_proportion),
+            """Perform a random split on a batch: each row goes to train with probability (1 - test_proportion),
             or to test otherwise.
 
             This version ensures that the random choices are **stable per Ray task execution** by seeding
@@ -3442,8 +3565,13 @@ class Dataset:
     def union(self, *other: "Dataset") -> "Dataset":
         """Concatenate :class:`Datasets <ray.data.Dataset>` across rows.
 
-        The order of the blocks in the datasets is preserved, as is the
-        relative ordering between the datasets passed in the argument list.
+        The union doesn't append one dataset after another. By default, it
+        emits blocks in the order the input datasets produce them, so the
+        output order isn't deterministic. If you set
+        ``DataContext.execution_options.preserve_order`` to ``True``, it
+        interleaves blocks round-robin: one block from each dataset in
+        argument order, then the next block from each, until every dataset
+        runs out. Within each dataset, blocks keep their order.
 
         .. caution::
             Unioned datasets aren't lineage-serializable. As a result, they can't be
@@ -3452,10 +3580,13 @@ class Dataset:
         Examples:
 
             >>> import ray
-            >>> ds1 = ray.data.range(2)
-            >>> ds2 = ray.data.range(3)
-            >>> ds1.union(ds2).take_all()  # doctest: +SKIP
-            [{'id': 0}, {'id': 1}, {'id': 0}, {'id': 1}, {'id': 2}]
+            >>> ctx = ray.data.DataContext.get_current()
+            >>> ctx.execution_options.preserve_order = True
+            >>> ds1 = ray.data.range(4, override_num_blocks=2)
+            >>> ds2 = ray.data.range(4, override_num_blocks=2)
+            >>> [row["id"] for row in ds1.union(ds2).take_all()]
+            [0, 1, 0, 1, 2, 3, 2, 3]
+            >>> ctx.execution_options.preserve_order = False
 
         Args:
             *other: The datasets to combine with this one. The datasets
@@ -3572,8 +3703,8 @@ class Dataset:
         ds: "Dataset",
         join_type: str,
         num_partitions: int,
-        on: Tuple[str] = ("id",),
-        right_on: Optional[Tuple[str]] = None,
+        on: Tuple[str, ...] = ("id",),
+        right_on: Optional[Tuple[str, ...]] = None,
         left_suffix: Optional[str] = None,
         right_suffix: Optional[str] = None,
         *,
@@ -3630,7 +3761,7 @@ class Dataset:
 
         Examples:
 
-            >>> import ray  # doctest: +SKIP_EXAMPLE
+            >>> import ray
             >>> doubles_ds = ray.data.range(4).map(
             ...     lambda row: {"id": row["id"], "double": int(row["id"]) * 2}
             ... )
@@ -4253,7 +4384,7 @@ class Dataset:
         self,
         key: Union[str, List[str]],
         descending: Union[bool, List[bool]] = False,
-        boundaries: List[Union[int, float]] = None,
+        boundaries: Optional[List[Union[int, float]]] = None,
     ) -> "Dataset":
         """Sort the dataset by the specified key column or key function.
         The `key` parameter must be specified (i.e., it cannot be `None`).
@@ -4795,8 +4926,7 @@ class Dataset:
             80
 
         Returns:
-            The in-memory size of the dataset in bytes, or None if the
-            in-memory size is not known.
+            The in-memory size of the dataset in bytes.
         """
         # If the size is known from metadata, return it.
         if self._logical_plan.dag.infer_metadata().size_bytes is not None:
@@ -4840,7 +4970,7 @@ class Dataset:
         min_rows_per_file: Optional[int] = None,
         max_rows_per_file: Optional[int] = None,
         min_bytes_per_file: Optional[int] = None,
-        ray_remote_args: Dict[str, Any] = None,
+        ray_remote_args: Optional[Dict[str, Any]] = None,
         concurrency: Optional[int] = None,
         num_rows_per_file: Optional[int] = None,
         mode: SaveMode = SaveMode.APPEND,
@@ -4899,7 +5029,7 @@ class Dataset:
                 look like. The filename is expected to be templatized with `{i}`
                 to ensure unique filenames when writing multiple files. If it's not
                 templatized, Ray Data will add `{i}` to the filename to ensure
-                compatibility with the pyarrow `write_to_dataset <https://arrow.apache.org/docs/python/generated/pyarrow.parquet.write_to_dataset.html>`_.
+                compatibility with the pyarrow `write_dataset <https://arrow.apache.org/docs/python/generated/pyarrow.dataset.write_dataset.html>`_.
             arrow_parquet_args_fn: Callable that returns a dictionary of write
                 arguments that are provided to `pyarrow.parquet.ParquetWriter() <https:/\
                     /arrow.apache.org/docs/python/generated/\
@@ -5049,7 +5179,7 @@ class Dataset:
         filename_provider: Optional[FilenameProvider] = None,
         pandas_json_args_fn: Optional[Callable[[], Dict[str, Any]]] = None,
         min_rows_per_file: Optional[int] = None,
-        ray_remote_args: Dict[str, Any] = None,
+        ray_remote_args: Optional[Dict[str, Any]] = None,
         concurrency: Optional[int] = None,
         num_rows_per_file: Optional[int] = None,
         mode: SaveMode = SaveMode.APPEND,
@@ -5175,7 +5305,7 @@ class Dataset:
         overwrite_filter: Optional["Expr"] = None,
         upsert_kwargs: Optional[Dict[str, Any]] = None,
         overwrite_kwargs: Optional[Dict[str, Any]] = None,
-        ray_remote_args: Dict[str, Any] = None,
+        ray_remote_args: Optional[Dict[str, Any]] = None,
         concurrency: Optional[int] = None,
     ) -> None:
         """Writes the :class:`~ray.data.Dataset` to an Iceberg table.
@@ -5460,7 +5590,7 @@ class Dataset:
         try_create_dir: bool = True,
         arrow_open_stream_args: Optional[Dict[str, Any]] = None,
         filename_provider: Optional[FilenameProvider] = None,
-        ray_remote_args: Dict[str, Any] = None,
+        ray_remote_args: Optional[Dict[str, Any]] = None,
         concurrency: Optional[int] = None,
         mode: SaveMode = SaveMode.APPEND,
     ) -> None:
@@ -5538,7 +5668,7 @@ class Dataset:
         filename_provider: Optional[FilenameProvider] = None,
         arrow_csv_args_fn: Optional[Callable[[], Dict[str, Any]]] = None,
         min_rows_per_file: Optional[int] = None,
-        ray_remote_args: Dict[str, Any] = None,
+        ray_remote_args: Optional[Dict[str, Any]] = None,
         concurrency: Optional[int] = None,
         num_rows_per_file: Optional[int] = None,
         mode: SaveMode = SaveMode.APPEND,
@@ -5786,7 +5916,7 @@ class Dataset:
         arrow_open_stream_args: Optional[Dict[str, Any]] = None,
         filename_provider: Optional[FilenameProvider] = None,
         min_rows_per_file: Optional[int] = None,
-        ray_remote_args: Dict[str, Any] = None,
+        ray_remote_args: Optional[Dict[str, Any]] = None,
         concurrency: Optional[int] = None,
         num_rows_per_file: Optional[int] = None,
         mode: SaveMode = SaveMode.APPEND,
@@ -5896,7 +6026,7 @@ class Dataset:
         arrow_open_stream_args: Optional[Dict[str, Any]] = None,
         filename_provider: Optional[FilenameProvider] = None,
         min_rows_per_file: Optional[int] = None,
-        ray_remote_args: Dict[str, Any] = None,
+        ray_remote_args: Optional[Dict[str, Any]] = None,
         encoder: WebDatasetEncoderConfig = True,
         concurrency: Optional[int] = None,
         num_rows_per_file: Optional[int] = None,
@@ -5995,7 +6125,7 @@ class Dataset:
         arrow_open_stream_args: Optional[Dict[str, Any]] = None,
         filename_provider: Optional[FilenameProvider] = None,
         min_rows_per_file: Optional[int] = None,
-        ray_remote_args: Dict[str, Any] = None,
+        ray_remote_args: Optional[Dict[str, Any]] = None,
         concurrency: Optional[int] = None,
         num_rows_per_file: Optional[int] = None,
         mode: SaveMode = SaveMode.APPEND,
@@ -6103,34 +6233,26 @@ class Dataset:
 
         Examples:
 
-            .. testcode::
-
-                import sqlite3
-                import ray
-
-                connection = sqlite3.connect("example.db")
-                connection.cursor().execute("CREATE TABLE movie(title, year, score)")
-                dataset = ray.data.from_items([
-                    {"title": "Monty Python and the Holy Grail", "year": 1975, "score": 8.2},
-                    {"title": "And Now for Something Completely Different", "year": 1971, "score": 7.5}
-                ])
-
-                dataset.write_sql(
-                    "INSERT INTO movie VALUES(?, ?, ?)", lambda: sqlite3.connect("example.db")
-                )
-
-                result = connection.cursor().execute("SELECT * FROM movie ORDER BY year")
-                print(result.fetchall())
-
-            .. testoutput::
-
-                [('And Now for Something Completely Different', 1971, 7.5), ('Monty Python and the Holy Grail', 1975, 8.2)]
-
-            .. testcode::
-                :hide:
-
-                import os
-                os.remove("example.db")
+            >>> import os
+            >>> import sqlite3
+            >>> import tempfile
+            >>> import ray
+            >>> db_dir = tempfile.TemporaryDirectory()
+            >>> db_path = os.path.join(db_dir.name, "example.db")
+            >>> connection = sqlite3.connect(db_path)
+            >>> _ = connection.execute("CREATE TABLE movie(title, year, score)")
+            >>> dataset = ray.data.from_items([
+            ...     {"title": "Monty Python and the Holy Grail", "year": 1975, "score": 8.2},
+            ...     {"title": "And Now for Something Completely Different", "year": 1971, "score": 7.5}
+            ... ])
+            >>> dataset.write_sql(
+            ...     "INSERT INTO movie VALUES(?, ?, ?)", lambda: sqlite3.connect(db_path)
+            ... )
+            >>> result = connection.execute("SELECT * FROM movie ORDER BY year")
+            >>> print(result.fetchall())
+            [('And Now for Something Completely Different', 1971, 7.5), ('Monty Python and the Holy Grail', 1975, 8.2)]
+            >>> connection.close()
+            >>> db_dir.cleanup()
 
         Arguments:
             sql: An ``INSERT INTO`` statement that specifies the table to write to. The
@@ -6156,11 +6278,11 @@ class Dataset:
     def write_snowflake(
         self,
         table: str,
-        connection_parameters: str,
+        connection_parameters: Dict[str, Any],
         *,
-        ray_remote_args: Dict[str, Any] = None,
+        ray_remote_args: Optional[Dict[str, Any]] = None,
         concurrency: Optional[int] = None,
-    ):
+    ) -> None:
         """Write this ``Dataset`` to a Snowflake table.
 
         Examples:
@@ -6214,7 +6336,7 @@ class Dataset:
         uri: str,
         database: str,
         collection: str,
-        ray_remote_args: Dict[str, Any] = None,
+        ray_remote_args: Optional[Dict[str, Any]] = None,
         concurrency: Optional[int] = None,
     ) -> None:
         """Writes the :class:`~ray.data.Dataset` to a MongoDB database.
@@ -6285,7 +6407,7 @@ class Dataset:
         dataset: str,
         max_retry_cnt: int = 10,
         overwrite_table: Optional[bool] = True,
-        ray_remote_args: Dict[str, Any] = None,
+        ray_remote_args: Optional[Dict[str, Any]] = None,
         concurrency: Optional[int] = None,
     ) -> None:
         """Write the dataset to a BigQuery dataset table.
@@ -6360,7 +6482,7 @@ class Dataset:
         client_kwargs: Optional[Dict[str, Any]] = None,
         table_settings: Optional[ClickHouseTableSettings] = None,
         max_insert_block_rows: Optional[int] = None,
-        ray_remote_args: Dict[str, Any] = None,
+        ray_remote_args: Optional[Dict[str, Any]] = None,
         concurrency: Optional[int] = None,
     ) -> None:
         """Write the dataset to a ClickHouse dataset table.
@@ -6491,7 +6613,7 @@ class Dataset:
         vector_column: str = "vector",
         batch_size: int = 10000,
         distance_metric: str = "cosine_distance",
-        ray_remote_args: Dict[str, Any] = None,
+        ray_remote_args: Optional[Dict[str, Any]] = None,
         concurrency: Optional[int] = None,
     ) -> None:
         """Write the dataset to a Turbopuffer vector database namespace.
@@ -6608,20 +6730,24 @@ class Dataset:
         table_id: Optional[List[str]] = None,
         namespace_impl: Optional[str] = None,
         namespace_properties: Optional[Dict[str, str]] = None,
-        ray_remote_args: Dict[str, Any] = None,
+        ray_remote_args: Optional[Dict[str, Any]] = None,
         concurrency: Optional[int] = None,
     ) -> None:
         """Write the dataset to a Lance dataset.
 
         Examples:
-             .. testcode::
-                import ray
-                import pandas as pd
-                from ray.data import SaveMode
-
-                docs = [{"title": "Lance data sink test"} for key in range(4)]
-                ds = ray.data.from_pandas(pd.DataFrame(docs))
-                ds.write_lance("/tmp/lance_data/", mode=SaveMode.OVERWRITE)
+            >>> import os
+            >>> import tempfile
+            >>> import pandas as pd
+            >>> import ray
+            >>> from ray.data import SaveMode
+            >>> lance_dir = tempfile.TemporaryDirectory()
+            >>> docs = [{"title": "Lance data sink test"} for key in range(4)]
+            >>> ds = ray.data.from_pandas(pd.DataFrame(docs))
+            >>> ds.write_lance(
+            ...     os.path.join(lance_dir.name, "lance_data"), mode=SaveMode.OVERWRITE
+            ... )
+            >>> lance_dir.cleanup()
 
         Args:
             path: The path to the destination Lance dataset. Ignored when namespace
@@ -6681,8 +6807,7 @@ class Dataset:
         ray_remote_args: Optional[Dict[str, Any]] = None,
         concurrency: Optional[int] = None,
     ) -> None:
-        """
-        Convenience method to write Ray Dataset to Kafka.
+        """Convenience method to write Ray Dataset to Kafka.
 
         Examples:
             >>> import ray  # doctest: +SKIP_EXAMPLE
@@ -6721,7 +6846,7 @@ class Dataset:
         self,
         datasink: Datasink,
         *,
-        ray_remote_args: Dict[str, Any] = None,
+        ray_remote_args: Optional[Dict[str, Any]] = None,
         concurrency: Optional[int] = None,
     ) -> None:
         """Writes the dataset to a custom :class:`~ray.data.Datasink`.
@@ -6883,10 +7008,13 @@ class Dataset:
         Time complexity: O(1)
 
         Args:
-            prefetch_batches: The number of batches to fetch ahead of the current batch
-                to fetch. If set to greater than 0, a separate threadpool is used
-                to fetch the objects to the local node and format the batches. Defaults
-                to 1.
+            prefetch_batches: The number of batches to fetch ahead of the current batch.
+                Ray Data prepares batches in background threads while your code consumes
+                the current one. If greater than 0, a thread pool formats the batches.
+                The pool has ``prefetch_batches`` threads, up to a limit of 4. To change
+                the limit, set the ``RAY_DATA_MAX_FORMAT_THREADPOOL_NUM_WORKERS``
+                environment variable. If 0, Ray Data doesn't prefetch blocks and formats
+                each batch without the thread pool. Defaults to 1.
             batch_size: The number of rows in each batch, or ``None`` to use entire
                 blocks as batches (blocks may contain different numbers of rows).
                 The final batch may include fewer than ``batch_size`` rows if
@@ -6897,11 +7025,14 @@ class Dataset:
                 ``pyarrow.Table``. If ``"cudf"`` [Experimental], batches are
                 ``cudf.DataFrame``.
             drop_last: Whether to drop the last batch if it's incomplete.
-            local_shuffle_buffer_size: If not ``None``, the data is randomly shuffled
-                using a local in-memory shuffle buffer, and this value serves as the
-                minimum number of rows that must be in the local in-memory shuffle
-                buffer in order to yield a batch. When there are no more rows to add to
-                the buffer, the remaining rows in the buffer are drained.
+            local_shuffle_buffer_size: If not ``None``, Ray Data randomly shuffles the
+                data using a local in-memory shuffle buffer, and this value serves as
+                the minimum number of rows that must be in the buffer to yield a batch.
+                When there are no more rows to add to the buffer, Ray Data drains the
+                remaining rows. A larger buffer makes the shuffle more random but might
+                increase the latency to the first batch. If this value is smaller than
+                ``batch_size``, Ray Data rounds it up to ``batch_size``. Local shuffling
+                raises a ``ValueError`` if ``batch_size`` is ``None``.
             local_shuffle_seed: The seed to use for the local random shuffle.
             _collate_fn: A custom function to collate each batch of data.
 
@@ -6975,10 +7106,14 @@ class Dataset:
         Time complexity: O(1)
 
         Args:
-            prefetch_batches: The number of batches to fetch ahead of the current batch
-                to fetch. If set to greater than 0, a separate threadpool is used
-                to fetch the objects to the local node, format the batches, and apply
-                the ``collate_fn``. Defaults to 1.
+            prefetch_batches: The number of batches to fetch ahead of the current batch.
+                Ray Data prepares batches in background threads while your code consumes
+                the current one. If greater than 0, a thread pool formats the batches
+                and applies ``collate_fn``. The pool has ``prefetch_batches`` threads,
+                up to a limit of 4. To change the limit, set the
+                ``RAY_DATA_MAX_FORMAT_THREADPOOL_NUM_WORKERS`` environment variable. If
+                0, Ray Data doesn't prefetch blocks and formats and collates each batch
+                without the thread pool. Defaults to 1.
             batch_size: The number of rows in each batch, or ``None`` to use entire
                 blocks as batches (blocks may contain different number of rows).
                 The final batch may include fewer than ``batch_size`` rows if
@@ -7005,12 +7140,14 @@ class Dataset:
                 experimental and is subject to change. You can't use this parameter in
                 conjunction with ``dtypes``.
             drop_last: Whether to drop the last batch if it's incomplete.
-            local_shuffle_buffer_size: If not ``None``, the data is randomly shuffled
-                using a local in-memory shuffle buffer, and this value serves as the
-                minimum number of rows that must be in the local in-memory shuffle
-                buffer in order to yield a batch. When there are no more rows to add to
-                the buffer, the remaining rows in the buffer are drained.
-                ``batch_size`` must also be specified when using local shuffling.
+            local_shuffle_buffer_size: If not ``None``, Ray Data randomly shuffles the
+                data using a local in-memory shuffle buffer, and this value serves as
+                the minimum number of rows that must be in the buffer to yield a batch.
+                When there are no more rows to add to the buffer, Ray Data drains the
+                remaining rows. A larger buffer makes the shuffle more random but might
+                increase the latency to the first batch. If this value is smaller than
+                ``batch_size``, Ray Data rounds it up to ``batch_size``. Local shuffling
+                raises a ``ValueError`` if ``batch_size`` is ``None``.
             local_shuffle_seed: The seed to use for the local random shuffle.
             pin_memory: [Alpha] Pin memory if True and the `collate_fn` output is a
                 `TensorBatchType`. It is recommended to use this flag to pin
@@ -7084,7 +7221,14 @@ class Dataset:
             [5.1 4.9] [0 0]
 
         Args:
-            prefetch_batches: The number of batches to fetch ahead. Defaults to 1.
+            prefetch_batches: The number of batches to fetch ahead of the current batch.
+                Ray Data prepares batches in background threads while your code consumes
+                the current one. If greater than 0, a thread pool formats the batches
+                and applies ``collate_fn``. The pool has ``prefetch_batches`` threads,
+                up to a limit of 4. To change the limit, set the
+                ``RAY_DATA_MAX_FORMAT_THREADPOOL_NUM_WORKERS`` environment variable. If
+                0, Ray Data doesn't prefetch blocks and formats and collates each batch
+                without the thread pool. Defaults to 1.
             batch_size: The number of rows in each batch. Must be divisible
                 by the number of local devices. Defaults to 256.
             dtypes: The JAX dtype(s) for the created array(s); if None, the dtype
@@ -7106,12 +7250,14 @@ class Dataset:
                 Note: This function is called in a multi-threaded context; avoid using
                 thread-unsafe code.
             drop_last: Whether to drop the last batch if it's incomplete. Defaults to False.
-            local_shuffle_buffer_size: If not ``None``, the data is randomly shuffled
-                using a local in-memory shuffle buffer, and this value serves as the
-                minimum number of rows that must be in the local in-memory shuffle
-                buffer in order to yield a batch. When there are no more rows to add to
-                the buffer, the remaining rows in the buffer are drained.
-                ``batch_size`` must also be specified when using local shuffling.
+            local_shuffle_buffer_size: If not ``None``, Ray Data randomly shuffles the
+                data using a local in-memory shuffle buffer, and this value serves as
+                the minimum number of rows that must be in the buffer to yield a batch.
+                When there are no more rows to add to the buffer, Ray Data drains the
+                remaining rows. A larger buffer makes the shuffle more random but might
+                increase the latency to the first batch. If this value is smaller than
+                ``batch_size``, Ray Data rounds it up to ``batch_size``. Local shuffling
+                raises a ``ValueError`` if ``batch_size`` is ``None``.
             local_shuffle_seed: The seed to use for the local random shuffle.
             synchronize_batches: Whether to synchronize batch shapes across all hosts.
                 Setting this to False can improve performance if you guarantee that all
@@ -7177,10 +7323,13 @@ class Dataset:
         Time complexity: O(1)
 
         Args:
-            prefetch_batches: The number of batches to fetch ahead of the current batch
-                to fetch. If set to greater than 0, a separate threadpool is used
-                to fetch the objects to the local node, format the batches, and apply
-                the ``collate_fn``. Defaults to 1.
+            prefetch_batches: The number of batches to fetch ahead of the current batch.
+                Ray Data prepares batches in background threads while your code consumes
+                the current one. If greater than 0, a thread pool formats the batches.
+                The pool has ``prefetch_batches`` threads, up to a limit of 4. To change
+                the limit, set the ``RAY_DATA_MAX_FORMAT_THREADPOOL_NUM_WORKERS``
+                environment variable. If 0, Ray Data doesn't prefetch blocks and formats
+                each batch without the thread pool. Defaults to 1.
             batch_size: The number of rows in each batch, or ``None`` to use entire
                 blocks as batches (blocks may contain different numbers of rows).
                 The final batch may include fewer than ``batch_size`` rows if
@@ -7188,12 +7337,14 @@ class Dataset:
             dtypes: The TensorFlow dtype(s) for the created tensor(s); if ``None``, the
                 dtype is inferred from the tensor data.
             drop_last: Whether to drop the last batch if it's incomplete.
-            local_shuffle_buffer_size: If not ``None``, the data is randomly shuffled
-                using a local in-memory shuffle buffer, and this value serves as the
-                minimum number of rows that must be in the local in-memory shuffle
-                buffer in order to yield a batch. When there are no more rows to add to
-                the buffer, the remaining rows in the buffer are drained.
-                ``batch_size`` must also be specified when using local shuffling.
+            local_shuffle_buffer_size: If not ``None``, Ray Data randomly shuffles the
+                data using a local in-memory shuffle buffer, and this value serves as
+                the minimum number of rows that must be in the buffer to yield a batch.
+                When there are no more rows to add to the buffer, Ray Data drains the
+                remaining rows. A larger buffer makes the shuffle more random but might
+                increase the latency to the first batch. If this value is smaller than
+                ``batch_size``, Ray Data rounds it up to ``batch_size``. Local shuffling
+                raises a ``ValueError`` if ``batch_size`` is ``None``.
             local_shuffle_seed: The seed to use for the local random shuffle.
 
         Returns:
@@ -7224,15 +7375,21 @@ class Dataset:
         feature_columns: Union[str, List[str]],
         label_columns: Union[str, List[str]],
         *,
-        additional_columns: Union[str, List[str]] = None,
+        additional_columns: Optional[Union[str, List[str]]] = None,
         prefetch_batches: int = 1,
         batch_size: int = 1,
         drop_last: bool = False,
         local_shuffle_buffer_size: Optional[int] = None,
         local_shuffle_seed: Optional[int] = None,
-        feature_type_spec: Union["tf.TypeSpec", Dict[str, "tf.TypeSpec"]] = None,
-        label_type_spec: Union["tf.TypeSpec", Dict[str, "tf.TypeSpec"]] = None,
-        additional_type_spec: Union["tf.TypeSpec", Dict[str, "tf.TypeSpec"]] = None,
+        feature_type_spec: Optional[
+            Union["tf.TypeSpec", Dict[str, "tf.TypeSpec"]]
+        ] = None,
+        label_type_spec: Optional[
+            Union["tf.TypeSpec", Dict[str, "tf.TypeSpec"]]
+        ] = None,
+        additional_type_spec: Optional[
+            Union["tf.TypeSpec", Dict[str, "tf.TypeSpec"]]
+        ] = None,
     ) -> "tf.data.Dataset":
         """Return a `TensorFlow Dataset <https://www.tensorflow.org/api_docs/python/tf/data/Dataset/>`_
         over this :class:`~ray.data.Dataset`.
@@ -7311,23 +7468,26 @@ class Dataset:
             additional_columns: Columns that correspond to sample weights or other metadata.
                 If this is a string, the weight data is a tensor. If this is a list, the
                 weight data is a ``dict`` that maps column names to their tensor representation.
-            prefetch_batches: The number of batches to fetch ahead of the current batch
-                to fetch. If set to greater than 0, a separate threadpool is used
-                to fetch the objects to the local node, format the batches, and apply
-                the collate_fn. Defaults to 1.
+            prefetch_batches: The number of batches to fetch ahead of the current batch.
+                Ray Data prepares batches in background threads while your code consumes
+                the current one. If greater than 0, a thread pool formats the batches.
+                The pool has ``prefetch_batches`` threads, up to a limit of 4. To change
+                the limit, set the ``RAY_DATA_MAX_FORMAT_THREADPOOL_NUM_WORKERS``
+                environment variable. If 0, Ray Data doesn't prefetch blocks and formats
+                each batch without the thread pool. Defaults to 1.
             batch_size: Record batch size. Defaults to 1.
             drop_last: Set to True to drop the last incomplete batch,
                 if the dataset size is not divisible by the batch size. If
                 False and the size of the stream is not divisible by the batch
                 size, then the last batch is smaller. Defaults to False.
-            local_shuffle_buffer_size: If non-None, the data is randomly shuffled
-                using a local in-memory shuffle buffer, and this value will serve as the
-                minimum number of rows that must be in the local in-memory shuffle
-                buffer in order to yield a batch. When there are no more rows to add to
-                the buffer, the remaining rows in the buffer is drained. This
-                buffer size must be greater than or equal to ``batch_size``, and
-                therefore ``batch_size`` must also be specified when using local
-                shuffling.
+            local_shuffle_buffer_size: If not ``None``, Ray Data randomly shuffles the
+                data using a local in-memory shuffle buffer, and this value serves as
+                the minimum number of rows that must be in the buffer to yield a batch.
+                When there are no more rows to add to the buffer, Ray Data drains the
+                remaining rows. A larger buffer makes the shuffle more random but might
+                increase the latency to the first batch. If this value is smaller than
+                ``batch_size``, Ray Data rounds it up to ``batch_size``. Local shuffling
+                raises a ``ValueError`` if ``batch_size`` is ``None``.
             local_shuffle_seed: The seed to use for the local random shuffle.
             feature_type_spec: The `tf.TypeSpec` of `feature_columns`. If there is
                 only one column, specify a `tf.TypeSpec`. If there are multiple columns,
@@ -7588,7 +7748,7 @@ class Dataset:
 
     @ConsumptionAPI(pattern="Time complexity:")
     @PublicAPI(api_group=IOC_API_GROUP)
-    def to_pandas(self, limit: int = None) -> "pandas.DataFrame":
+    def to_pandas(self, limit: Optional[int] = None) -> "pandas.DataFrame":
         """Convert this :class:`~ray.data.Dataset` to a single pandas DataFrame.
 
         This method errors if the number of rows exceeds the provided ``limit``.
@@ -7931,7 +8091,7 @@ class Dataset:
         return self.get_stats_summary().to_string()
 
     @PublicAPI(api_group=IM_API_GROUP, stability="alpha")
-    def explain(self):
+    def explain(self) -> None:
         """Show the logical plan and physical plan of the dataset.
 
         Examples:
@@ -8052,8 +8212,7 @@ class Dataset:
 
     @DeveloperAPI
     def serialize_lineage(self) -> bytes:
-        """
-        Serialize this dataset's lineage, not the actual data or the existing data
+        """Serialize this dataset's lineage, not the actual data or the existing data
         futures, to bytes that can be stored and later deserialized, possibly on a
         different cluster.
 
@@ -8125,8 +8284,7 @@ class Dataset:
     @staticmethod
     @DeveloperAPI
     def deserialize_lineage(serialized_ds: bytes) -> "Dataset":
-        """
-        Deserialize the provided lineage-serialized Dataset.
+        """Deserialize the provided lineage-serialized Dataset.
 
         This uses pickle, and assumes that the provided serialized bytes were
         serialized using :py:meth:`Dataset.serialize_lineage`.
@@ -8666,8 +8824,7 @@ class Schema:
         *,
         data_context: Optional[DataContext] = None,
     ):
-        """
-        Initialize a :class:`Schema` wrapper around an Arrow or Pandas schema.
+        """Initialize a :class:`Schema` wrapper around an Arrow or Pandas schema.
 
         Args:
             base_schema: The underlying Arrow or Pandas schema.

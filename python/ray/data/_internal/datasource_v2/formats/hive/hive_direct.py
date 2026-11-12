@@ -26,10 +26,7 @@ from urllib.parse import urlsplit
 import pyarrow as pa
 import pyarrow.dataset as pds
 
-from ray.data._internal.datasource_v2.common.file_reader import (
-    _ARROW_DEFAULT_BATCH_SIZE,
-    FileFormat,
-)
+from ray.data._internal.datasource_v2.common.file_reader import FileFormat
 from ray.data._internal.datasource_v2.common.listing_utils import sample_files
 from ray.data._internal.datasource_v2.common.schema_inference import (
     _FULL_SCHEMA_INFERENCE_WARNING_FILE_COUNT,
@@ -708,13 +705,14 @@ class _HiveOrcFileReader(OrcFileReader):
             self._schema_evolution_case_sensitive,
             required,
         )
-        assert self._schema is not None
+        schema = self._schema
+        assert schema is not None
         fields = list(physical)
         projection = {}
         for field, index in zip(self._hive_schema, indices):
             if required is not None and field.name not in required:
                 continue
-            target = self._schema.field(field.name).type
+            target = schema.field(field.name).type
             if index < 0:
                 projection[field.name] = pds.scalar(pa.scalar(None, type=target))
             else:
@@ -756,15 +754,14 @@ class _HiveOrcScanner(OrcScanner):
             tolerate_missing_schema=self.tolerate_missing_schema,
             schema_evolution_case_sensitive=self.schema_evolution_case_sensitive,
             format=FileFormat.ORC,
-            batch_size=self.batch_size
-            if self.batch_size is not None
-            else _ARROW_DEFAULT_BATCH_SIZE,
+            batch_size=self.batch_size,
             columns=list(self.columns) if self.columns is not None else None,
             predicate=self.predicate,
             limit=self.limit,
             filesystem=self.filesystem,
             ignore_prefixes=self.ignore_prefixes,
             schema=self.schema,
+            target_block_size=self.target_block_size,
         )
 
 
