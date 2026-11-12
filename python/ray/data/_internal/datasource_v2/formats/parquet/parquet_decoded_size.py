@@ -667,8 +667,20 @@ def detect_delta_byte_array(chunk: ColumnChunkMetaData) -> bool:
     return "DELTA_BYTE_ARRAY" in chunk.encodings
 
 
-# Ray's schema pin: every batch is cast to the dataset schema, unless that holds
-# an extension type (``readers.file_reader.casts_to_schema``).
+# A read involves three schemas:
+# 1. The file's Parquet schema: how the columns are stored. A leaf is one stored
+#    column of primitive values, so a struct of three ints is three leaves. The
+#    footer records its numbers (value counts, null counts, string bytes) per leaf.
+# 2. The file's Arrow schema: what PyArrow decodes those leaves into. A decoded
+#    value's size often differs from the stored one's:
+#    - A 4-byte INT32 annotated Int(16) decodes to a 2-byte int16.
+#    - A 4-byte FIXED_LEN_BYTE_ARRAY Decimal(9, 2) decodes to a 16-byte decimal128.
+#    - A 12-byte INT96 decodes to an 8-byte timestamp[ns].
+#    - A BYTE_ARRAY String decodes to string (4-byte offsets), large_string (8-byte
+#      offsets) or a dictionary, whichever the footer's ARROW:schema metadata says.
+#    - An INT32 annotated Null decodes to a null array, which holds no bytes.
+# 3. Ray's pin, the dataset schema every batch is then cast to, unless it holds an
+#    extension type (``FileReader._file_dataset_schema``).
 def pinned_type(field: pa.Field, pinned_schema: pa.Schema | None) -> pa.DataType | None:
     """The type the pin casts a file column to, or ``None`` if it keeps its own."""
     if pinned_schema is None:
