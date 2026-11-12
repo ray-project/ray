@@ -385,14 +385,16 @@ class SandboxAPISettings(BaseModel):
         ),
     )
     host_mode: Literal["actor", "node"] = Field(
-        default="actor",
+        default="node",
         description=(
             "How the gRPC facade hosts sandboxes (the REST app always uses "
-            "'actor'). 'actor': one detached SandboxHost actor (one Ray "
-            "worker process) per sandbox. 'node': one SandboxNodeHost actor "
-            "per node hosts every sandbox placed there, and each sandbox's "
-            "resources are reserved by a one-bundle placement group; creates "
-            "skip a worker process start. Named sandboxes always use 'actor'."
+            "'actor'). 'node': one SandboxNodeHost actor per node hosts every "
+            "sandbox placed there, so a create starts no Ray worker process "
+            "and registers no actor; the sandboxes' resources are reserved "
+            "by placement groups they share (see reservation_slab_cpus). "
+            "'actor': one detached SandboxHost actor (one Ray worker "
+            "process, about 130 MiB) per sandbox, which bounds creates by "
+            "how fast Ray starts actors. Named sandboxes always use 'actor'."
         ),
     )
     warm_pool: List[Dict[str, Any]] = Field(
@@ -411,7 +413,7 @@ class SandboxAPISettings(BaseModel):
         ),
     )
     host_channel: bool = Field(
-        default=False,
+        default=True,
         description=(
             "With host_mode='node': API replicas call node hosts over a direct "
             "connection each (served on the host's event loop) instead of Ray "
@@ -420,7 +422,7 @@ class SandboxAPISettings(BaseModel):
         ),
     )
     reservation_slab_cpus: float = Field(
-        default=0.0,
+        default=4.0,
         ge=0,
         description=(
             "With host_mode='node': CPUs each node host reserves at a time "
