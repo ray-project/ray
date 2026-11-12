@@ -443,8 +443,8 @@ class ReplicaMetricsManager:
         self._pending_health_push_healthy: bool = True
         # Set while the replica reconfigures; see pause_self_health().
         self._self_health_paused: bool = False
-        # Bumped by each pause, so a check a whole reconfigure ran inside, which sees
-        # the flag clear at both ends, is still told apart.
+        # Bumped by each resume. A check that ends mid-reconfigure sees the pause flag;
+        # one still running when it ends sees the flag clear, so it is told by this.
         self._self_health_epoch: int = 0
 
         # If the interval is set to 0, eagerly sets all metrics.
@@ -743,10 +743,10 @@ class ReplicaMetricsManager:
         health-check an UPDATING replica, so it would apply a failure seen now only once
         the replica is RUNNING again, and could replace one that had since recovered."""
         self._self_health_paused = True
-        self._self_health_epoch += 1
 
     def resume_self_health(self) -> None:
         self._self_health_paused = False
+        self._self_health_epoch += 1
 
     @property
     def self_health_paused(self) -> bool:
@@ -2514,8 +2514,8 @@ class Replica:
     def _cache_health_verdict(self, error: Optional[str], epoch: int) -> None:
         """Cache a finished check for probes and /-/healthz; error is None if it passed.
 
-        A cancelled check confirmed nothing and never gets here. One that a reconfigure
-        started during is dropped too, as it may describe that, whether or not the
+        A cancelled check confirmed nothing and never gets here. One that overlapped a
+        reconfigure at all is dropped too, as it may describe that, even if the
         reconfigure is over by the time it ends; epoch is the one it started in.
         """
         manager = self._metrics_manager

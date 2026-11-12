@@ -1858,14 +1858,20 @@ class TestReplicaHealthVerdict:
         assert r._health_checked_at is None
 
     @pytest.mark.asyncio
-    @pytest.mark.parametrize("finished", [False, True])
-    async def test_a_check_a_reconfigure_overtakes_leaves_the_cached_verdict(
-        self, finished
+    @pytest.mark.parametrize("overlap", ["ends_during", "spans", "starts_during"])
+    async def test_a_check_a_reconfigure_overlaps_leaves_the_cached_verdict(
+        self, overlap
     ):
-        """A reconfigure began part way through, so the verdict may describe it, and
-        probes and /-/healthz would still read it once the replica is RUNNING. That
-        holds whether or not the reconfigure is over by the time the check returns."""
+        """The verdict may describe the reconfigure, and probes and /-/healthz would
+        still read it once the replica is RUNNING, however the two overlapped. A probe
+        that gets the lock mid-reconfigure starts while the pause is already on."""
+        from ray.serve._private.replica import ReplicaMetricsManager
+
         r = self._replica()
+        manager = ReplicaMetricsManager.__new__(ReplicaMetricsManager)
+        manager._self_health_paused = False
+        manager._self_health_epoch = 0
+        r._metrics_manager = manager
         r._healthy = True
         r._health_checked_at = 1.0
         started = asyncio.Event()
@@ -1879,11 +1885,14 @@ class TestReplicaHealthVerdict:
         r._user_callable_wrapper.call_user_health_check.side_effect = (
             lambda: fails_once_released()
         )
+        if overlap == "starts_during":
+            manager.pause_self_health()
         check = asyncio.create_task(r._run_user_health_check())
         await started.wait()
-        # What pause_self_health() leaves behind, and resume_self_health() after it.
-        r._metrics_manager.self_health_epoch += 1
-        r._metrics_manager.self_health_paused = not finished
+        if overlap != "starts_during":
+            manager.pause_self_health()
+        if overlap != "ends_during":
+            manager.resume_self_health()
         release.set()
         with pytest.raises(RuntimeError, match="intended to fail"):
             await check
