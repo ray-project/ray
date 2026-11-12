@@ -4,19 +4,19 @@ import numpy as np
 import pyarrow as pa
 import pytest
 
-from ray.data._internal.datasource_v2.listing.file_manifest import (
+from ray.data._internal.datasource_v2.common.listing_utils import partition_files
+from ray.data._internal.datasource_v2.common.round_robin_partitioner import (
+    RoundRobinPartitioner,
+)
+from ray.data._internal.datasource_v2.interfaces.file_manifest import (
     FILE_CHUNK_METADATA_COLUMN_NAME,
     FILE_SIZE_COLUMN_NAME,
     PATH_COLUMN_NAME,
 )
-from ray.data._internal.datasource_v2.listing.listing_utils import partition_files
-from ray.data._internal.datasource_v2.partitioners.file_partitioner import (
+from ray.data._internal.datasource_v2.interfaces.file_partitioner import (
     PartitionHints,
 )
-from ray.data._internal.datasource_v2.partitioners.round_robin_partitioner import (
-    RoundRobinPartitioner,
-)
-from ray.data._internal.datasource_v2.readers.in_memory_size_estimator import (
+from ray.data._internal.datasource_v2.interfaces.in_memory_size_estimator import (
     InMemorySizeEstimator,
 )
 from ray.data._internal.weighted_round_robin import WeightedRoundRobinPartitioner

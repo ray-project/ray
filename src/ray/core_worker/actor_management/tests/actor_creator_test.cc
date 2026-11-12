@@ -16,10 +16,9 @@
 
 #include <memory>
 
-#include "gmock/gmock.h"
 #include "gtest/gtest.h"
-#include "mock/ray/gcs_client/gcs_client.h"
 #include "ray/common/test_utils.h"
+#include "ray/gcs_rpc_client/fake_gcs_client.h"
 #include "ray/util/path_utils.h"
 #include "ray/util/raii.h"
 
@@ -30,7 +29,7 @@ class ActorCreatorTest : public ::testing::Test {
  public:
   ActorCreatorTest() {}
   void SetUp() override {
-    gcs_client = std::make_shared<ray::gcs::MockGcsClient>();
+    gcs_client = std::make_shared<ray::gcs::FakeGcsClient>();
     actor_creator = std::make_unique<ActorCreator>(gcs_client->Actors());
   }
   TaskSpecification GetTaskSpec(const ActorID &actor_id) {
@@ -41,7 +40,7 @@ class ActorCreatorTest : public ::testing::Test {
     task_spec.mutable_actor_creation_task_spec()->CopyFrom(actor_creation_task_spec);
     return TaskSpecification(task_spec);
   }
-  std::shared_ptr<ray::gcs::MockGcsClient> gcs_client;
+  std::shared_ptr<ray::gcs::FakeGcsClient> gcs_client;
   std::unique_ptr<ActorCreator> actor_creator;
 };
 
@@ -51,7 +50,7 @@ TEST_F(ActorCreatorTest, IsRegister) {
   auto task_spec = GetTaskSpec(actor_id);
   actor_creator->AsyncRegisterActor(task_spec, nullptr);
   ASSERT_TRUE(actor_creator->IsActorInRegistering(actor_id));
-  gcs_client->mock_actor_accessor->async_register_actor_callback_(Status::OK());
+  gcs_client->fake_actor_accessor->async_register_actor_callback_(Status::OK());
   ASSERT_FALSE(actor_creator->IsActorInRegistering(actor_id));
 }
 
@@ -68,7 +67,7 @@ TEST_F(ActorCreatorTest, AsyncWaitForFinish) {
   for (int i = 0; i < 10; ++i) {
     actor_creator->AsyncWaitForActorRegisterFinish(actor_id, per_finish_cb);
   }
-  gcs_client->mock_actor_accessor->async_register_actor_callback_(Status::OK());
+  gcs_client->fake_actor_accessor->async_register_actor_callback_(Status::OK());
   ASSERT_FALSE(actor_creator->IsActorInRegistering(actor_id));
   ASSERT_EQ(11, count);
 }

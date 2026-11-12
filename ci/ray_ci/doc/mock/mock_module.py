@@ -91,7 +91,7 @@ class InheritedAnnotation(MockClass):
 @Deprecated
 class MockDeprecatedClass:
     """
-    A directly-deprecated class. Documenting it is an error the check must catch.
+    A directly-deprecated class. The API policy requires documenting it.
     """
 
     pass

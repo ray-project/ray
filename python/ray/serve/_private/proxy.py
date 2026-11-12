@@ -19,9 +19,6 @@ from typing import (
 )
 
 import grpc
-import starlette
-import starlette.routing
-from packaging import version
 from starlette.types import Receive
 
 import ray
@@ -96,6 +93,7 @@ from ray.serve._private.proxy_request_response import (
 from ray.serve._private.proxy_response_generator import ProxyResponseGenerator
 from ray.serve._private.proxy_router import ProxyRouter
 from ray.serve._private.request_ingress_metrics import RequestIngressMetrics
+from ray.serve._private.routing_config import RoutingConfigVersion
 from ray.serve._private.tracing_utils import (
     is_span_recording,
     set_http_span_attributes,
@@ -405,16 +403,10 @@ class GenericProxy(ABC):
             # Modify the path and root path so that reverse lookups and redirection
             # work as expected. We do this here instead of in replicas so it can be
             # changed without restarting the replicas.
-            route_path = proxy_request.route_path
             if route_prefix != "/" and self.protocol == RequestProtocol.HTTP:
                 proxy_request = cast(ASGIProxyRequest, proxy_request)
                 assert not route_prefix.endswith("/")
                 proxy_request.set_root_path(proxy_request.root_path + route_prefix)
-                # NOTE(edoakes): starlette<0.33.0 expected the ASGI 'root_prefix'
-                # to be stripped from the 'path', which wasn't technically following
-                # the standard. See https://github.com/encode/starlette/pull/2352.
-                if version.parse(starlette.__version__) < version.parse("0.33.0"):
-                    proxy_request.set_path(route_path.replace(route_prefix, "", 1))
 
             # NOTE(abrar): we try to match to a specific route pattern (e.g., /api/{user_id})
             # for logs & metrics when available. If no pattern matches, we fall back to the
@@ -1509,11 +1501,17 @@ class ProxyActorInterface(ABC):
         pass
 
     @abstractmethod
-    async def serving(self, wait_for_applications_running: bool = True) -> None:
+    async def serving(
+        self,
+        wait_for_applications_running: bool = True,
+        expected_routing_config_version: Optional[RoutingConfigVersion] = None,
+    ) -> None:
         """Wait for the proxy to be ready to serve requests.
 
         Args:
             wait_for_applications_running: Whether to wait for the applications to be running
+            expected_routing_config_version: Routing configuration that must have
+                been applied before the proxy is considered ready.
 
         Returns:
             None
@@ -1835,7 +1833,11 @@ class ProxyActor(ProxyActorInterface):
             ]
         )
 
-    async def serving(self, wait_for_applications_running: bool = True) -> None:
+    async def serving(
+        self,
+        wait_for_applications_running: bool = True,
+        expected_routing_config_version: Optional[RoutingConfigVersion] = None,
+    ) -> None:
         """Wait for the proxy to be ready to serve requests."""
         return
 

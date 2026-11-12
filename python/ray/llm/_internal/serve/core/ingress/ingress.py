@@ -29,6 +29,7 @@ from ray.llm._internal.serve.constants import (
     DEFAULT_LLM_ROUTER_HTTP_TIMEOUT,
     DEFAULT_MAX_ONGOING_REQUESTS,
     DEFAULT_MAX_TARGET_ONGOING_REQUESTS,
+    get_llm_serve_runtime_env,
 )
 from ray.llm._internal.serve.core.configs.llm_config import LLMConfig
 from ray.llm._internal.serve.core.configs.openai_api_models import (
@@ -174,8 +175,7 @@ def make_fastapi_ingress(
     endpoint_map: Optional[Dict[str, Callable[[FastAPI], Callable]]] = None,
     app: Optional[FastAPI] = None,
 ):
-    """
-    Create a Ray Serve ingress deployment from a class and endpoint mapping.
+    """Create a Ray Serve ingress deployment from a class and endpoint mapping.
 
     Args:
         cls: The class to convert into an ingress deployment
@@ -305,15 +305,21 @@ class OpenAiIngress(DeploymentProtocol):
         if model_id not in self._configured_serve_handles:
             base_model_id = get_base_model_id(model_id)
             if base_model_id in self._default_serve_handles:
+                # Serve LLM explicitly uses gRPC for lower-overhead
+                # ingress-to-model calls.
                 if model_id == base_model_id:
                     default_handle = self._default_serve_handles[model_id]
-                    configured_handle = default_handle.options(stream=True)
+                    configured_handle = default_handle.options(
+                        stream=True,
+                        _by_reference=False,
+                    )
                     self._configured_serve_handles[model_id] = configured_handle
                 else:
                     default_handle = self._default_serve_handles[base_model_id]
                     configured_handle = default_handle.options(
                         stream=True,
                         multiplexed_model_id=model_id,
+                        _by_reference=False,
                     )
                     self._configured_serve_handles[model_id] = configured_handle
             else:
@@ -689,6 +695,7 @@ class OpenAiIngress(DeploymentProtocol):
             A dictionary containing the deployment options for the ingress deployment.
         """
         options = copy.deepcopy(DEFAULT_INGRESS_OPTIONS)
+        options["ray_actor_options"] = {"runtime_env": get_llm_serve_runtime_env()}
         if _all_models_scale_to_zero(llm_configs):
             options.setdefault("autoscaling_config", {})["min_replicas"] = 0
         return options

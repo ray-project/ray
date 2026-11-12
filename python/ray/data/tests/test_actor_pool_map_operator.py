@@ -33,6 +33,7 @@ from ray.data._internal.execution.interfaces import (
     ExecutionOptions,
     ExecutionResources,
     PhysicalOperator,
+    actor_resource_dict,
 )
 from ray.data._internal.execution.interfaces.ref_bundle import BlockEntry, RefBundle
 from ray.data._internal.execution.interfaces.task_context import TaskContext
@@ -146,9 +147,13 @@ class TestActorPool(unittest.TestCase):
         labels: Dict[str, Any],
         logical_actor_id: str = "Actor1",
     ) -> Tuple[ActorHandle, ObjectRef[Any], ExecutionResources]:
-        actor = PoolWorker.options(_labels=labels).remote(self._actor_node_id)
+        actor_options = {"num_cpus": 1, "_labels": labels}
+        actor = PoolWorker.options(**actor_options).remote(self._actor_node_id)
         ready_ref = actor.get_location.remote()
         self._last_created_actor_and_ready_ref = actor, ready_ref
+        # Mirrors `ActorPoolMapOperator._start_actor`, which registers the exact
+        # creation request with the pool as it creates each actor.
+        self._pool.record_resource_request(actor, actor_resource_dict(actor_options))
         return actor, ready_ref, ExecutionResources(cpu=1)
 
     def _create_actor_pool(
@@ -172,6 +177,7 @@ class TestActorPool(unittest.TestCase):
             map_worker_cls_name=map_worker_cls_name,
             config=config,
         )
+        self._pool = pool
         return pool
 
     def _add_pending_actor(
@@ -217,6 +223,20 @@ class TestActorPool(unittest.TestCase):
         assert pool.max_size() == 4
         assert pool.current_size() == 0
         assert pool.max_tasks_in_flight_per_actor() == 4
+
+    def test_resource_requests_track_pending_actors(self):
+        """The pool reports one exact request per actor it is holding."""
+        pool = self._create_actor_pool()
+
+        self._add_pending_actor(pool)
+
+        assert pool.get_resource_requests() == [{"CPU": 1}]
+
+        # Removing the actor releases its request, so a finished pool stops
+        # asking the cluster autoscaler for capacity.
+        pool._try_remove_pending_actor()
+
+        assert pool.get_resource_requests() == []
 
     def test_can_scale_down(self):
         pool = self._create_actor_pool(min_size=1, max_size=4)
@@ -1360,6 +1380,58 @@ def test_completed_when_downstream_op_has_finished_execution(ray_start_regular_s
     # ASSERT: Since the downstream operator has finished execution, the actor pool
     # operator should consider itself completed.
     assert actor_pool_map_op.has_completed()
+
+
+def test_dead_actor_released_and_replaced_e2e(shutdown_only, restore_data_context):
+    """A dead actor must be released from the pool and replaced (#62746).
+
+    With a fixed-size pool and `max_errored_blocks = -1`, an actor that dies
+    mid-pipeline (e.g. `sys.exit(0)` inside the UDF) used to stay in
+    `_running_actors` forever: the pool's size never dropped, the autoscaler
+    never created a replacement, and the pipeline silently hung.
+    """
+    import sys as _sys
+
+    ray.shutdown()
+    ray.init(num_cpus=2)
+
+    ctx = ray.data.DataContext.get_current()
+    ctx.max_errored_blocks = -1
+
+    @ray.remote(num_cpus=0)
+    class DeathFlag:
+        def __init__(self):
+            self._died = False
+
+        def should_die(self) -> bool:
+            died, self._died = self._died, True
+            return not died
+
+    flag = DeathFlag.remote()
+
+    class DiesOnce:
+        def __init__(self):
+            self._counter = 0
+
+        def __call__(self, batch):
+            self._counter += 1
+            if self._counter == 3 and ray.get(flag.should_die.remote()):
+                _sys.exit(0)
+            return batch
+
+    ds = (
+        ray.data.range(20, override_num_blocks=20)
+        .map_batches(
+            DiesOnce,
+            batch_size=1,
+            compute=ray.data.ActorPoolStrategy(size=1),
+        )
+        .materialize()
+    )
+
+    # The pipeline completes (instead of hanging), with only the blocks that
+    # were in flight on the dead actor dropped.
+    assert ds.count() > 0
 
 
 def test_actor_pool_fault_tolerance_e2e(ray_start_cluster, restore_data_context):

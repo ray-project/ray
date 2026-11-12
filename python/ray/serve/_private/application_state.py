@@ -15,6 +15,7 @@ from ray.exceptions import RayTaskError, RuntimeEnvSetupError
 from ray.serve._private.autoscaling_state import AutoscalingStateManager
 from ray.serve._private.build_app import (
     CUSTOM_INGRESS_REQUEST_ROUTER_UNSUPPORTED_ERROR,
+    ROUTER_APPLICATION_REQUIRES_ROUTE_PREFIX_ERROR,
     BuiltApplication,
     build_app,
 )
@@ -268,8 +269,7 @@ class ApplicationState:
         logging_config: LoggingConfig,
         external_scaler_enabled: bool,
     ):
-        """
-        Initialize an ApplicationState instance.
+        """Initialize an ApplicationState instance.
 
         Args:
             name: Application name.
@@ -289,6 +289,7 @@ class ApplicationState:
         self._route_prefix: Optional[str] = None
         self._ingress_deployment_name: Optional[str] = None
         self._ingress_request_router_deployment_name: Optional[str] = None
+        self._is_router_application = False
 
         self._status: ApplicationStatus = ApplicationStatus.DEPLOYING
         self._deployment_timestamp = time.time()
@@ -366,6 +367,10 @@ class ApplicationState:
         return self._ingress_request_router_deployment_name
 
     @property
+    def is_router_application(self) -> bool:
+        return self._is_router_application
+
+    @property
     def api_type(self) -> APIType:
         return self._target_state.api_type
 
@@ -436,11 +441,13 @@ class ApplicationState:
 
         ingress_deployment_name = None
         ingress_request_router_deployment_name = None
+        is_router_application = False
 
         if deployment_infos is not None:
             for name, info in deployment_infos.items():
                 if info.ingress:
                     ingress_deployment_name = name
+                    is_router_application = info.router_application
                 if info.ingress_request_router:
                     ingress_request_router_deployment_name = name
 
@@ -457,20 +464,26 @@ class ApplicationState:
             build=build,
         )
 
-        if (
-            ingress_request_router_deployment_name is not None
-            and ingress_request_router_deployment_name
-            != self._ingress_request_router_deployment_name
-        ):
-            logger.info(
-                f"Application '{self._name}' has ingress request router "
-                f"deployment '{ingress_request_router_deployment_name}' configured."
-            )
+        if deployment_infos is not None:
+            if (
+                ingress_request_router_deployment_name is not None
+                and ingress_request_router_deployment_name
+                != self._ingress_request_router_deployment_name
+            ):
+                logger.info(
+                    f"Application '{self._name}' has ingress request router "
+                    f"deployment '{ingress_request_router_deployment_name}' configured."
+                )
 
-        self._ingress_deployment_name = ingress_deployment_name
-        self._ingress_request_router_deployment_name = (
-            ingress_request_router_deployment_name
-        )
+            # A declarative redeploy temporarily sets deployment_infos=None while
+            # the replacement application is building, but the previous
+            # deployments continue serving. Keep describing that live application
+            # until a completed build (or deletion, represented by {}) replaces it.
+            self._ingress_deployment_name = ingress_deployment_name
+            self._ingress_request_router_deployment_name = (
+                ingress_request_router_deployment_name
+            )
+            self._is_router_application = is_router_application
         self._target_state = target_state
 
     def _set_target_state_deleting(self):
@@ -547,8 +560,7 @@ class ApplicationState:
         return self._autoscaling_state_manager.should_autoscale_application(self._name)
 
     def autoscale(self) -> bool:
-        """
-        Apply the autoscaling decisions for the application.
+        """Apply the autoscaling decisions for the application.
         If the application has deployment-level autoscaling, it will apply the autoscaling decisions for each deployment.
 
         Returns:
@@ -1502,6 +1514,12 @@ class ApplicationStateManager:
 
         return self._application_states[name].ingress_request_router_deployment
 
+    def is_router_application(self, name: str) -> bool:
+        if name not in self._application_states:
+            return False
+
+        return self._application_states[name].is_router_application
+
     def get_app_source(self, name: str) -> APIType:
         return self._application_states[name].api_type
 
@@ -1737,6 +1755,17 @@ def build_serve_application(
             import_attr(import_path), args
         )
 
+        ingress_name = app._bound_deployment.name
+        if (
+            RAY_SERVE_ENABLE_HA_PROXY
+            and app._ingress_request_router is None
+            and deployment_to_request_router_cls.get(
+                ingress_name, DEFAULT_REQUEST_ROUTER_PATH
+            )
+            != DEFAULT_REQUEST_ROUTER_PATH
+        ):
+            raise RayServeException(CUSTOM_INGRESS_REQUEST_ROUTER_UNSUPPORTED_ERROR)
+
         deploy_args_list = []
         built_app: BuiltApplication = build_app(
             app,
@@ -1806,6 +1835,7 @@ def build_serve_application(
                     uses_multiplexing=_callable_uses_multiplexing(
                         deployment.func_or_class
                     ),
+                    router_application=is_ingress and built_app.is_router_application,
                 )
             )
 
@@ -2070,16 +2100,12 @@ def override_deployment_info(
             app_route_prefix is not DEFAULT.VALUE
             and deployment.route_prefix is not None
         ):
+            if deployment.router_application and app_route_prefix is None:
+                raise RayServeException(
+                    ROUTER_APPLICATION_REQUIRES_ROUTE_PREFIX_ERROR.format(
+                        name=override_config.name
+                    )
+                )
             deployment.route_prefix = app_route_prefix
-
-    # build_app cannot see config overrides, so re-check the post-override
-    # ingress router here.
-    if RAY_SERVE_ENABLE_HA_PROXY and not any(
-        info.ingress_request_router for info in deployment_infos.values()
-    ):
-        for info in deployment_infos.values():
-            request_router_config = info.deployment_config.request_router_config
-            if info.ingress and not request_router_config.is_default_request_router():
-                raise RayServeException(CUSTOM_INGRESS_REQUEST_ROUTER_UNSUPPORTED_ERROR)
 
     return deployment_infos

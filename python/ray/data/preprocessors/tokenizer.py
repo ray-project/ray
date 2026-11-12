@@ -89,14 +89,20 @@ class Tokenizer(SerializablePreprocessorBase):
 
     @property
     def columns(self) -> List[str]:
+        """The columns to tokenize."""
         return self._columns
 
     @property
     def tokenization_fn(self) -> Callable[[str], List[str]]:
+        """The function used to generate tokens."""
         return self._tokenization_fn
 
     @property
     def output_columns(self) -> List[str]:
+        """The names of the transformed columns.
+
+        Same as ``columns`` if you didn't set ``output_columns``.
+        """
         return self._output_columns
 
     def _transform_pandas(self, df: pd.DataFrame):

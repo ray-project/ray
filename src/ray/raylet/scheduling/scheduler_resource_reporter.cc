@@ -30,12 +30,6 @@ namespace raylet {
 
 namespace {
 
-bool HasHardNodeAffinity(const LabelSelector &label_selector) {
-  const std::optional<absl::flat_hash_set<std::string>> hard_node_affinity_values =
-      GetHardNodeAffinityValues(label_selector);
-  return hard_node_affinity_values.has_value() && !hard_node_affinity_values->empty();
-}
-
 bool AllLabelSelectorsAreHardNodeAffinity(
     const SchedulingClassDescriptor &scheduling_class_descriptor) {
   if (!HasHardNodeAffinity(scheduling_class_descriptor.label_selector)) {
@@ -85,7 +79,6 @@ void SchedulerResourceReporter::FillResourceUsage(rpc::ResourcesData &data) cons
     return;
   }
 
-  auto resource_loads = data.mutable_resource_load();
   auto resource_load_by_shape =
       data.mutable_resource_load_by_shape()->mutable_resource_demands();
 
@@ -132,11 +125,6 @@ void SchedulerResourceReporter::FillResourceUsage(rpc::ResourcesData &data) cons
       for (const auto &resource : resources) {
         const auto &label = resource.first;
         const auto &quantity = resource.second;
-
-        if (count != 0) {
-          // Add to `resource_loads`.
-          (*resource_loads)[label] += quantity * count;
-        }
         // Add to `resource_load_by_shape`.
         (*by_shape_entry->mutable_shape())[label] = quantity;
       }

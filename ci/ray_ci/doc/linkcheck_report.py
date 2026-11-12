@@ -1,12 +1,18 @@
 #!/usr/bin/env python3
-"""Post-process Sphinx linkcheck output and alert on confirmed-broken links.
+"""Post-process Sphinx linkcheck output into a confirmed-broken link report.
 
-The nightly ``doc: linkcheck`` step runs ``make -C doc linkcheck_all``, which
-writes a machine-readable ``output.json`` (one JSON record per line). That step
-is ``soft_fail``, so a broken link never fails the build and, today, reaches no
-one. This script turns that output into an actionable signal: it filters the
-reported-broken external links down to the ones that are genuinely dead, then
-posts them to Slack.
+The ``doc: linkcheck`` step runs ``make -C doc linkcheck_all``, which writes a
+machine-readable ``output.json`` (one JSON record per line). That step is
+``soft_fail``, so a broken link never fails the build. This script filters the
+reported-broken external links down to the ones that are genuinely dead, prints
+them, and writes them to a ``linkcheck-report.json`` build artifact.
+
+The step holds no Slack credential. A scheduled job maintained by the docs
+team reads the artifact through the Buildkite API and posts a weekday digest
+to the docs Slack channel. That job falls back to parsing the printed
+``broken<TAB>code<TAB>uri<TAB>file`` lines and the ``confirmed=N
+inconclusive=M`` summary when the artifact is missing, so keep their format
+stable.
 
 The filter mirrors the Anyscale docs external-link scan. A single concurrent
 crawl draws transient rejections from hosts that rate-limit or bot-filter by
@@ -18,7 +24,7 @@ cooldown:
 * anything else, including a 3xx from a failed redirect chain: confirmed
   broken.
 
-The script never fails the build; the Slack alert is the signal.
+The script never fails the build; the report is the signal.
 """
 
 import json
@@ -34,8 +40,10 @@ ACCEPT_CODES = {403}
 # tests without waiting out the production cooldown.
 COOLDOWN = int(os.environ.get("LINKCHECK_RECHECK_COOLDOWN", "120"))
 BACKOFF = int(os.environ.get("LINKCHECK_RECHECK_BACKOFF", "30"))
-WEBHOOK_ENV = "DOCS_LINKCHECK_SLACK_WEBHOOK"
-MAX_SLACK_ROWS = 15
+# The Buildkite agent uploads everything in the host's /tmp/artifacts, which the
+# job container mounts here.
+ARTIFACT_DIR = "/artifact-mount"
+REPORT_NAME = "linkcheck-report.json"
 
 
 def recheck(url: str) -> int:
@@ -70,7 +78,8 @@ def load_broken(path: str) -> list:
 
     Returns:
         The records whose status is ``broken`` or ``timeout`` and whose URI is
-        external.
+        external, or None when the file doesn't exist because linkcheck didn't
+        produce a result.
     """
     broken = []
     try:
@@ -87,6 +96,7 @@ def load_broken(path: str) -> list:
                     broken.append(record)
     except FileNotFoundError:
         print(f"::warning:: {path} not found; skipping report.")
+        return None
     return broken
 
 
@@ -124,55 +134,33 @@ def confirm(broken: list) -> tuple:
     return confirmed, inconclusive
 
 
-def format_message(confirmed: list, inconclusive: list) -> str:
-    """Return the Slack message body for a set of confirmed-broken links.
+def write_report(confirmed: list, inconclusive: list) -> None:
+    """Write the confirmed and inconclusive links to the build artifact.
+
+    Does nothing outside CI, where the artifact directory doesn't exist.
 
     Args:
         confirmed: Links that failed the re-check.
         inconclusive: Links that stayed rate-limited (429) on re-check.
-
-    Returns:
-        The Slack message text.
     """
-    rows = []
-    for record in confirmed[:MAX_SLACK_ROWS]:
-        code = record.get("recheck_code", record.get("code", "ERR"))
-        source = f"{record.get('filename', '?')}:{record.get('lineno', 0)}"
-        rows.append(f"• `{code}` {record['uri']}\n    ↳ {source}")
-    text = (
-        f":rotating_light: *Ray docs: {len(confirmed)} broken external link(s)*\n"
-        + "\n".join(rows)
-    )
-    if len(confirmed) > MAX_SLACK_ROWS:
-        text += f"\n_…and {len(confirmed) - MAX_SLACK_ROWS} more. See the build log._"
-    if inconclusive:
-        text += (
-            f"\n\n_{len(inconclusive)} link(s) stayed rate-limited (429) on "
-            "re-check and couldn't be verified; not counted as broken._"
-        )
-    return text
-
-
-def post_to_slack(text: str) -> None:
-    """Post ``text`` to the Slack webhook, if one is configured.
-
-    Args:
-        text: The message body to send.
-    """
-    webhook = os.environ.get(WEBHOOK_ENV)
-    if not webhook:
-        print(f"::warning:: {WEBHOOK_ENV} is not set; skipping Slack alert.")
+    if not os.path.isdir(ARTIFACT_DIR):
         return
-    payload = json.dumps({"text": text}).encode()
-    request = urllib.request.Request(
-        webhook, data=payload, headers={"Content-Type": "application/json"}
-    )
-    try:
-        with urllib.request.urlopen(request, timeout=30) as resp:
-            if resp.status != 200:
-                print(f"::warning:: Slack webhook returned HTTP {resp.status}.")
-    except Exception as err:
-        print(f"::warning:: Failed to post to Slack: {err}")
+    report = {
+        "confirmed": [
+            {
+                "code": record.get("recheck_code", "ERR"),
+                "uri": record["uri"],
+                "filename": record.get("filename"),
+                "lineno": record.get("lineno"),
+            }
+            for record in confirmed
+        ],
+        "inconclusive_count": len(inconclusive),
+    }
+    path = os.path.join(ARTIFACT_DIR, REPORT_NAME)
+    with open(path, "w", encoding="utf-8") as handle:
+        json.dump(report, handle, indent=2)
+    print(f"Wrote {path}.")
 
 
 def main(path: str) -> int:
@@ -182,11 +170,16 @@ def main(path: str) -> int:
         path: Path to the Sphinx linkcheck ``output.json``.
 
     Returns:
-        Always 0. The Slack alert is the signal; this never fails the build.
+        Always 0. The report is the signal; this never fails the build.
     """
     broken = load_broken(path)
+    if broken is None:
+        # No report at all, not an all-clear one, so a consumer can tell a run
+        # that never produced output apart from a clean run.
+        return 0
     if not broken:
         print("linkcheck: no broken external links reported.")
+        write_report([], [])
         return 0
 
     print(f"Re-checking {len(broken)} reported-broken link(s) after {COOLDOWN}s.")
@@ -198,8 +191,7 @@ def main(path: str) -> int:
         code = record.get("recheck_code", "ERR")
         print(f"broken\t{code}\t{record['uri']}\t{record.get('filename')}")
 
-    if confirmed:
-        post_to_slack(format_message(confirmed, inconclusive))
+    write_report(confirmed, inconclusive)
     return 0
 
 

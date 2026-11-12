@@ -14,6 +14,7 @@ from ray._common.utils import try_to_create_directory
 from ray._private.runtime_env import dependency_utils, virtualenv_utils
 from ray._private.runtime_env.plugin import RuntimeEnvPlugin
 from ray._private.runtime_env.protocol import Protocol
+from ray._private.runtime_env.redaction import redact_runtime_env
 from ray._private.runtime_env.utils import check_output_cmd
 from ray._private.utils import get_directory_size_bytes
 
@@ -136,7 +137,9 @@ class PipProcessor:
                 f"`{sys.executable} -m pip install virtualenv`"
                 f"to enable pip runtime env."
             )
-        logger.debug("Setting up pip for runtime_env: %s", runtime_env)
+        logger.debug(
+            "Setting up pip for runtime_env: %s", redact_runtime_env(runtime_env)
+        )
         self._target_dir = target_dir
         self._runtime_env = runtime_env
         self._logger = logger

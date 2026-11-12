@@ -4,12 +4,13 @@ import sys
 import time
 from types import SimpleNamespace
 from typing import AsyncGenerator, Optional
-from unittest.mock import AsyncMock, patch
+from unittest.mock import patch
 
 import numpy as np
 import pytest
 from fastapi.testclient import TestClient
-from vllm.entrypoints.launchers.cli_args import make_arg_parser
+from starlette.datastructures import State
+from vllm.entrypoints.common.cli_args import make_arg_parser
 from vllm.utils.argparse_utils import FlexibleArgumentParser
 from vllm.v1.engine.exceptions import EngineDeadError
 
@@ -654,6 +655,9 @@ class TestGetDeploymentOptions:
             serve_options["ray_actor_options"]["runtime_env"]["env_vars"]["FOO"]
             == "bar"
         )
+        env_vars = serve_options["ray_actor_options"]["runtime_env"]["env_vars"]
+        assert env_vars["RAY_SERVE_RUN_USER_CODE_IN_SEPARATE_THREAD"] == "0"
+        assert env_vars["RAY_SERVE_RUN_ROUTER_IN_SEPARATE_LOOP"] == "0"
         assert (
             "worker_process_setup_hook"
             in serve_options["ray_actor_options"]["runtime_env"]
@@ -689,10 +693,30 @@ class TestGetDeploymentOptions:
             serve_options["ray_actor_options"]["runtime_env"]["env_vars"]["FOO"]
             == "bar"
         )
+        env_vars = serve_options["ray_actor_options"]["runtime_env"]["env_vars"]
+        assert env_vars["RAY_SERVE_RUN_USER_CODE_IN_SEPARATE_THREAD"] == "0"
+        assert env_vars["RAY_SERVE_RUN_ROUTER_IN_SEPARATE_LOOP"] == "0"
         assert (
             "worker_process_setup_hook"
             in serve_options["ray_actor_options"]["runtime_env"]
         )
+
+    def test_serve_llm_replica_loop_env_overrides_are_respected(self):
+        llm_config = LLMConfig(
+            model_loading_config=ModelLoadingConfig(model_id="test_model"),
+            runtime_env={
+                "env_vars": {
+                    "RAY_SERVE_RUN_USER_CODE_IN_SEPARATE_THREAD": "1",
+                    "RAY_SERVE_RUN_ROUTER_IN_SEPARATE_LOOP": "1",
+                }
+            },
+        )
+
+        env_vars = LLMServer.get_deployment_options(llm_config)["ray_actor_options"][
+            "runtime_env"
+        ]["env_vars"]
+        assert env_vars["RAY_SERVE_RUN_USER_CODE_IN_SEPARATE_THREAD"] == "1"
+        assert env_vars["RAY_SERVE_RUN_ROUTER_IN_SEPARATE_LOOP"] == "1"
 
     def test_deferred_placement_group_for_tpu_topology(self):
         """Test that Serve skips PG creation when deferred placement group is required."""
@@ -818,15 +842,13 @@ class TestBuildAsgiApp:
         engine._vllm_args = vllm_args
         engine._engine_client = SimpleNamespace(model_config=None)
         engine._token_receiver = None
+        engine._app_state = State()
 
-        # init_app_state needs a live engine; supply only what the handler reads.
-        with patch(
-            "vllm.entrypoints.openai.api_server.init_app_state",
-            new_callable=AsyncMock,
-        ):
-            app = await engine.build_asgi_app()
+        app = await engine.build_asgi_app()
         app.state.args = vllm_args
-        app.state.engine_client = SimpleNamespace(errored=True, is_running=False)
+        app.state.engine_client = SimpleNamespace(
+            errored=True, is_running=False, should_keep_api_server_alive=False
+        )
 
         @app.get("/engine_dead")
         async def engine_dead():
@@ -835,7 +857,7 @@ class TestBuildAsgiApp:
         response = TestClient(app, raise_server_exceptions=False).get("/engine_dead")
 
         assert response.status_code == 500
-        assert "EngineCore encountered an issue" in response.json()["error"]["message"]
+        assert response.json()["error"]["message"] == EngineDeadError.CLIENT_MESSAGE
 
 
 if __name__ == "__main__":

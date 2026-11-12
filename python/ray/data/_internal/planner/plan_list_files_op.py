@@ -18,18 +18,20 @@ from __future__ import annotations
 
 import logging
 from functools import partial
-from typing import List
+from typing import List, cast
 
 import numpy as np
 import pyarrow as pa
 
 import ray
-from ray.data._internal.datasource_v2.listing.file_manifest import (
-    PATH_COLUMN_NAME,
-)
-from ray.data._internal.datasource_v2.listing.listing_utils import (
+from ray.data._internal.compute import TaskPoolStrategy
+from ray.data._internal.datasource_v2.common.listing_utils import (
     list_files_for_each_block,
     partition_files,
+)
+from ray.data._internal.datasource_v2.interfaces.file_manifest import PATH_COLUMN_NAME
+from ray.data._internal.execution.execution_flags import (
+    actor_only_backend_enabled,
 )
 from ray.data._internal.execution.interfaces import (
     BlockEntry,
@@ -48,6 +50,7 @@ from ray.data._internal.execution.operators.map_transformer import (
 from ray.data._internal.logical.operators import ListFiles
 from ray.data.block import Block, BlockAccessor
 from ray.data.context import DataContext
+from ray.types import ObjectRef
 
 logger = logging.getLogger(__name__)
 
@@ -55,6 +58,34 @@ logger = logging.getLogger(__name__)
 # pass a single directory (one task); this matters when users hand in
 # thousands of explicit paths.
 DEFAULT_MAX_NUM_LIST_FILES_TASKS = 200
+
+
+def _num_listing_tasks(num_paths: int, should_parallelize: bool) -> int:
+    """Number of parallel listing tasks = one listing block per worker.
+
+    Used for BOTH the input-bundle split and the ListFiles pool size cap, so
+    they stay in sync. Without the pool cap the actor-only backend's sizer gives
+    this trivial source a full equal-share warmup target (observed ~479 actors
+    at scale); capping it at the listing-block count is the genuine parallelism.
+    A single prefix (the common case) lists in one task -> 1.
+    """
+    if should_parallelize and num_paths:
+        return min(DEFAULT_MAX_NUM_LIST_FILES_TASKS, num_paths)
+    return 1
+
+
+def _list_files_ray_remote_args() -> dict:
+    ray_remote_args = {
+        "_generator_backpressure_num_objects": -1,
+    }
+    if actor_only_backend_enabled():
+        # The actor-only backend runs ListFiles as an actor pool, which is
+        # additionally subject to the actor-wide generator cap under core
+        # actor backpressure; opt out of that too. Actor-creation-only
+        # option, so it is set only when ops run as actors (task option
+        # validation rejects it on the task path).
+        ray_remote_args["_actor_generator_backpressure_num_objects"] = -1
+    return ray_remote_args
 
 
 def plan_list_files_op(
@@ -73,12 +104,20 @@ def plan_list_files_op(
 
     shuffle_config = op.shuffle_config_factory()
 
+    # Cap the ListFiles pool at the listing-block count (see _num_listing_tasks).
+    # maybe_promote_compute_strategy turns TaskPoolStrategy(size=N) into a fixed
+    # ActorPoolStrategy(size=N) under the actor-only backend; for the common
+    # single-prefix read N=1, so ListFiles becomes a (1,1) pool the sizer leaves
+    # alone. TaskPool mode is unaffected in type (just a max-concurrency cap).
+    num_list_tasks = _num_listing_tasks(len(op.paths), shuffle_config is None)
+
     transform_fns: List[MapTransformFn] = [
         BlockMapTransformFn(
             partial(
                 list_files_for_each_block,
                 indexer=indexer,
                 filesystem=filesystem,
+                prelisted_file_infos=op.prelisted_file_infos is not None,
                 file_extensions=file_extensions,
                 partition_filter=partition_filter,
                 partition_pruner=op.partition_pruner,
@@ -122,9 +161,12 @@ def plan_list_files_op(
         ),
         data_context,
         name="ListFiles",
-        # Listing is extremely fast; default backpressure would starve the
-        # downstream reader of inputs.
-        ray_remote_args={"_generator_backpressure_num_objects": -1},
+        # One worker per listing block; never the sizer's equal share (see
+        # num_list_tasks above).
+        compute_strategy=TaskPoolStrategy(size=num_list_tasks),
+        # Listing is extremely fast and moves no data; default backpressure
+        # would starve the downstream reader of inputs.
+        ray_remote_args=_list_files_ray_remote_args(),
         # Don't fuse into the downstream ``ReadFiles`` — listing and reading
         # have different resource profiles.
         supports_fusion=False,
@@ -139,15 +181,36 @@ def _create_input_data_buffer(
     *,
     should_parallelize: bool,
 ) -> InputDataBuffer:
-    """Wrap ``op.paths`` into listing-input RefBundles.
+    """Wrap root paths or retained file infos into listing-input RefBundles.
 
-    Each bundle's block is a 1-column arrow table ``{"__path": [paths...]}``
-    that :func:`list_files_for_each_block` expands into manifest blocks.
+    Prelisted blocks share one bundle so the listing transform can apply a
+    global file shuffle and feed one bin packer with the complete stream.
     """
+    if op.prelisted_file_infos is not None:
+        entries = []
+        for block in op.prelisted_file_infos:
+            metadata = BlockAccessor.for_block(block).get_metadata(
+                input_files=None, block_exec_stats=None
+            )
+            prelisted_block_ref = cast(ObjectRef[Block], ray.put(block))
+            entries.append(BlockEntry(prelisted_block_ref, metadata))
+        if not entries:
+            return InputDataBuffer(data_context, input_data=[])
+        return InputDataBuffer(
+            data_context,
+            input_data=[
+                RefBundle(
+                    tuple(entries),
+                    owns_blocks=False,
+                    schema=BlockAccessor.for_block(op.prelisted_file_infos[0]).schema(),
+                )
+            ],
+        )
+
     if should_parallelize and op.paths:
         path_splits = np.array_split(
             list(op.paths),
-            min(DEFAULT_MAX_NUM_LIST_FILES_TASKS, len(op.paths)),
+            _num_listing_tasks(len(op.paths), should_parallelize),
         )
     else:
         path_splits = [list(op.paths)]

@@ -6,6 +6,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from ray.serve._private.common import RequestMetadata
+from ray.serve._private.constants import MIN_GRACEFUL_SHUTDOWN_WAIT_LOOP_S
 from ray.serve._private.replica import Replica
 
 
@@ -397,6 +398,96 @@ class TestDrainOngoingRequests:
             await Replica._drain_ongoing_requests(fake)
 
         assert events == [("sleep", 0.05), ("check",)]
+
+    @staticmethod
+    @contextmanager
+    def _fake_clock(clock):
+        """Each `asyncio.sleep` advances the replica's `time.monotonic` instead
+        of waiting. Yields the mocked logger.
+
+        A loop that sleeps for 0 never advances this clock, so callers wrap the
+        drain in `asyncio.wait_for` to fail instead of hanging.
+        """
+        real_sleep = asyncio.sleep
+
+        async def fake_sleep(delay, result=None, *args, **kwargs):
+            clock[0] += delay
+            await real_sleep(0)
+            return result
+
+        # Replace only the replica's `time`: the event loop also reads
+        # `time.monotonic`, and `asyncio.wait_for` needs its real clock.
+        fake_time = MagicMock(monotonic=lambda: clock[0])
+        with patch("asyncio.sleep", fake_sleep), patch(
+            "ray.serve._private.replica.time", fake_time
+        ), patch("ray.serve._private.replica.logger") as logger:
+            yield logger
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("wait_loop_period_s", [0, 0.001])
+    async def test_short_wait_loop_sleeps_the_floor(self, wait_loop_period_s):
+        """`graceful_shutdown_wait_loop_s=0` is allowed, but must not make the
+        drain loop spin with `asyncio.sleep(0)`; values below the floor are
+        raised to it too."""
+        fake, events = self._make_fake(wait_loop_period_s=wait_loop_period_s)
+
+        with _record_sleeps(events):
+            await Replica._drain_ongoing_requests(fake)
+
+        assert events == [("sleep", MIN_GRACEFUL_SHUTDOWN_WAIT_LOOP_S), ("check",)]
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "wait_loop_period_s,expected_checks,expected_logs",
+        [
+            # Checks every 10ms for 5s, but logs once per second. 501, not 500:
+            # summing 0.01s sleeps in `_fake_clock` drifts just below 5.0, so
+            # the request still looks ongoing at the 500th check.
+            (0, 501, 5),
+            # The default wait loop is longer than the log interval, so every
+            # check that is still waiting logs, as before.
+            (2, 3, 2),
+        ],
+    )
+    async def test_waiting_log_is_rate_limited(
+        self, wait_loop_period_s, expected_checks, expected_logs
+    ):
+        """One request stays ongoing for 5s."""
+        clock = [0.0]
+        fake, events = self._make_fake(wait_loop_period_s)
+
+        def get_num_ongoing_requests():
+            events.append(("check",))
+            return 1 if clock[0] < 5 else 0
+
+        fake.get_num_ongoing_requests = get_num_ongoing_requests
+
+        with self._fake_clock(clock) as logger:
+            await asyncio.wait_for(Replica._drain_ongoing_requests(fake), timeout=2)
+
+        waiting_logs = [
+            c for c in logger.info.call_args_list if c.args[0].startswith("Waiting")
+        ]
+        assert len(events) == expected_checks
+        assert len(waiting_logs) == expected_logs
+
+    @pytest.mark.asyncio
+    async def test_idle_min_draining_period_is_rate_limited(self):
+        """With direct ingress, an idle replica still waits out the minimum
+        draining period; a zero wait loop must not log on every check."""
+        clock = [0.0]
+        fake, events = self._make_fake(wait_loop_period_s=0)
+
+        with self._fake_clock(clock) as logger:
+            await asyncio.wait_for(
+                Replica._drain_ongoing_requests(fake, min_draining_period_s=30),
+                timeout=2,
+            )
+
+        waiting_logs = [
+            c for c in logger.info.call_args_list if c.args[0].startswith("Waiting")
+        ]
+        assert len(waiting_logs) == 30
 
 
 class TestGracefulShutdownIsIdempotent:

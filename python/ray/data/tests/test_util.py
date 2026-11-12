@@ -1,8 +1,10 @@
+import sys
 from typing import Any, Dict, List, Optional, Type
 
 import numpy as np
 import pandas as pd
 import pyarrow as pa
+import pyarrow.fs as pa_fs
 import pytest
 from typing_extensions import Hashable
 
@@ -27,11 +29,15 @@ from ray.data._internal.usage.util import (
 )
 from ray.data._internal.util import (
     NULL_SENTINEL,
+    RetryingPyFileSystem,
+    filesystem_for_sized_opens,
+    find_insertion_index,
     find_partition_index,
     get_max_task_capacity,
     iterate_with_retry,
     merge_resources_to_ray_remote_args,
     rows_same,
+    unify_block_metadata_schema,
 )
 from ray.data.tests.conftest import *  # noqa: F401, F403
 
@@ -54,6 +60,46 @@ def _check_usage_record(op_names: List[str], clear_after_check: Optional[bool] =
 
 # Utilities for structural logical plan inspection
 # These provide type-safe alternatives to string-based plan matching
+
+
+def assert_plans_structurally_equal(actual: LogicalPlan, expected: LogicalPlan) -> None:
+    """Assert the same operators in post order with structurally equal Filter and
+    read predicates (``dag_str`` omits scanner predicates and truncates).
+    """
+    from ray.data._internal.logical.interfaces import (
+        LogicalOperatorSupportsPredicatePushdown,
+    )
+    from ray.data._internal.logical.operators import Filter
+
+    actual_ops = list(actual.dag.post_order_iter())
+    expected_ops = list(expected.dag.post_order_iter())
+    assert len(actual_ops) == len(expected_ops), (
+        f"Different number of operators:\n{actual.dag.dag_str}\n"
+        f"{expected.dag.dag_str}"
+    )
+    for actual_op, expected_op in zip(actual_ops, expected_ops):
+        assert type(actual_op) is type(expected_op) and (
+            actual_op.name == expected_op.name
+        ), f"{actual_op} != {expected_op}"
+        if isinstance(actual_op, Filter) and actual_op.predicate_expr is not None:
+            assert expected_op.predicate_expr is not None
+            assert actual_op.predicate_expr.structurally_equals(
+                expected_op.predicate_expr
+            ), f"{actual_op.predicate_expr!r} != {expected_op.predicate_expr!r}"
+        if (
+            isinstance(actual_op, LogicalOperatorSupportsPredicatePushdown)
+            and actual_op.supports_predicate_pushdown()
+        ):
+            actual_pred = actual_op.get_current_predicate()
+            expected_pred = expected_op.get_current_predicate()
+            if actual_pred is None or expected_pred is None:
+                assert (
+                    actual_pred is None and expected_pred is None
+                ), f"{actual_pred!r} != {expected_pred!r}"
+            else:
+                assert actual_pred.structurally_equals(
+                    expected_pred
+                ), f"{actual_pred!r} != {expected_pred!r}"
 
 
 def plan_has_operator(plan: LogicalPlan, op_type: Type[LogicalOperator]) -> bool:
@@ -369,6 +415,7 @@ def test_iterate_with_retry_unwrap_cause():
     assert attempts == 1
 
 
+@pytest.mark.skipif(sys.version_info < (3, 11), reason="add_note is Python 3.11+")
 @pytest.mark.parametrize("retryable", [False, True])
 def test_iterate_with_retry_annotates_s3_permissions(monkeypatch, retryable):
     monkeypatch.setattr("time.sleep", lambda _: None)
@@ -415,7 +462,9 @@ def test_iterate_with_retry_annotates_s3_permissions(monkeypatch, retryable):
         )
     assert str(exc_info.value) == (
         "When testing for existence of bucket 'my-bucket': "
-        "AWS Error ACCESS_DENIED during HeadBucket operation: No response body.\n"
+        "AWS Error ACCESS_DENIED during HeadBucket operation: No response body."
+    )
+    assert exc_info.value.__notes__ == [
         f"{retry_line}\n"
         "This looks like an AWS S3 permissions error. Make sure your "
         "credentials have the correct permissions. If this problem persists, "
@@ -425,6 +474,39 @@ def test_iterate_with_retry_annotates_s3_permissions(monkeypatch, retryable):
         "configure `ray.data.DataContext.get_current()` (`retried_io_errors` "
         "for I/O; `retried_map_errors` and `max_map_retries` for any task) "
         "if you believe this to be transient."
+    ]
+
+
+@pytest.mark.parametrize(
+    "make_exc",
+    [
+        lambda: ValueError("boom"),
+        # The third positional arg of an OSError is the filename.
+        lambda: OSError(2, "No such file or directory"),
+        # The constructor only accepts an ActorDiedErrorContext.
+        lambda: ray.exceptions.ActorDiedError(),
+    ],
+)
+def test_iterate_with_retry_raises_picklable_exception(make_exc):
+    # A task's exception is pickled and rebuilt in the driver, so the retry
+    # context must not change how the exception unpickles.
+    def failing_iterable():
+        raise make_exc()
+        yield
+
+    with pytest.raises(Exception) as exc_info:
+        list(
+            iterate_with_retry(
+                failing_iterable, description="read data", match=[], max_attempts=1
+            )
+        )
+
+    original = make_exc()
+    rebuilt = ray.cloudpickle.loads(ray.cloudpickle.dumps(exc_info.value))
+    assert type(rebuilt) is type(original)
+    assert str(rebuilt) == str(original)
+    assert getattr(rebuilt, "__notes__", None) == getattr(
+        exc_info.value, "__notes__", None
     )
 
 
@@ -473,11 +555,35 @@ def test_iterate_with_retry_matches_class_name():
         ("[unclosed", "some error message", False),
         # No match at all.
         ("rate limit", "connection refused", False),
+        # PyArrow's S3FileSystem spelling of a transient credential-lookup
+        # failure; retried by default via DEFAULT_RETRIED_IO_ERRORS (DATA-3602).
+        (
+            "AWS Error ACCESS_DENIED during HeadBucket operation",
+            "OSError: When testing for existence of bucket "
+            "'ray-data-write-benchmark': AWS Error ACCESS_DENIED during "
+            "HeadBucket operation: No response body",
+            True,
+        ),
     ],
 )
 def test_matches_error(pattern, error_message, expected):
     """Retry helper matches substring first, then regex; invalid patterns do not raise."""
     assert matches_error(pattern, error_message) is expected
+
+
+def test_unify_block_metadata_schema_all_empty_blocks():
+    """Blocks are not filtered on num_rows when unifying schemas: an empty
+    block still carries a valid schema (issue #59946)."""
+    from ray.data.block import BlockMetadataWithSchema
+
+    empty = pa.table({"apples": pa.array([], pa.int32())})
+    empty_meta = BlockMetadataWithSchema.from_block(empty)
+    assert unify_block_metadata_schema([empty_meta]) == empty.schema
+
+    # Empty-block schemas participate in unification (int32 promotes to int64).
+    non_empty = pa.table({"apples": pa.array([1], pa.int64())})
+    non_empty_meta = BlockMetadataWithSchema.from_block(non_empty)
+    assert unify_block_metadata_schema([empty_meta, non_empty_meta]) == non_empty.schema
 
 
 def test_find_partition_index_single_column_ascending():
@@ -565,6 +671,35 @@ def test_find_partition_index_duplicates_descending():
     assert find_partition_index(table, (1,), sort_key) == 5
     # Insert (3,) -> belongs at index 0
     assert find_partition_index(table, (3,), sort_key) == 0
+
+
+def test_find_insertion_index_descending_uses_slice_view(monkeypatch):
+    def disallow_arange(*args, **kwargs):
+        raise AssertionError("np.arange should not be called in find_insertion_index")
+
+    col1 = np.array([5, 5, 5, 3, 3, 1], dtype=np.int64)
+    col2 = np.array([10, 20, 30, 30, 10, 5], dtype=np.int64)
+    monkeypatch.setattr(np, "arange", disallow_arange)
+
+    assert (
+        find_insertion_index(
+            key_columns=[col1, col2],
+            pivot=(5, 20),
+            descending=[True, False],
+            has_nulls=[False, False],
+        )
+        == 2
+    )
+    assert (
+        find_insertion_index(
+            key_columns=[col1, col2],
+            pivot=(3, 20),
+            descending=[True, True],
+            start_from_idx=3,
+            has_nulls=[False, False],
+        )
+        == 4
+    )
 
 
 def test_merge_resources_to_ray_remote_args():
@@ -674,6 +809,23 @@ def test_execution_options_label_selector_field():
 
     options = ExecutionOptions(label_selector={"subcluster": "train"})
     assert options.label_selector == {"subcluster": "train"}
+
+
+def test_filesystem_for_sized_opens_unwraps_only_s3():
+    s3 = pa_fs.S3FileSystem(anonymous=True, region="us-east-1")
+    assert (
+        filesystem_for_sized_opens(RetryingPyFileSystem.wrap(s3, retryable_errors=[]))
+        is s3
+    )
+    local = RetryingPyFileSystem.wrap(pa_fs.LocalFileSystem(), retryable_errors=[])
+    assert filesystem_for_sized_opens(local) is local
+
+
+def test_filesystem_for_sized_opens_without_s3_support(monkeypatch):
+    # A pyarrow build without S3 support has no ``pyarrow.fs.S3FileSystem``.
+    monkeypatch.delattr(pa_fs, "S3FileSystem")
+    local = RetryingPyFileSystem.wrap(pa_fs.LocalFileSystem(), retryable_errors=[])
+    assert filesystem_for_sized_opens(local) is local
 
 
 if __name__ == "__main__":
