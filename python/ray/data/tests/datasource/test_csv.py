@@ -267,15 +267,19 @@ def test_read_csv_v2_preserve_order_keeps_chunks_in_order(
     assert [row["id"] for row in rows] == list(range(500)) * 2
 
 
-def test_read_csv_v2_rejects_a_split_file_with_another_column_order(
+def test_read_csv_v2_reads_a_split_file_with_another_column_order(
     ray_start_regular_shared, tmp_path, csv_v2_small_chunks
 ):
     (tmp_path / "a.csv").write_text("id,name\n1,x\n")
     (tmp_path / "b.csv").write_text(
         "name,id\n" + "".join(f"n{i},{i}\n" for i in range(200))
     )
-    with pytest.raises(ValueError, match="has columns"):
-        ray.data.read_csv(str(tmp_path), partitioning=None).materialize()
+
+    rows = ray.data.read_csv(str(tmp_path), partitioning=None).take_all()
+
+    assert {(row["id"], row["name"]) for row in rows} == {(1, "x")} | {
+        (i, f"n{i}") for i in range(200)
+    }
 
 
 if __name__ == "__main__":

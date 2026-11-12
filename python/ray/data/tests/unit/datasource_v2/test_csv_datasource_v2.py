@@ -1,4 +1,5 @@
 """Unit tests for the CSV datasource on DataSourceV2."""
+import collections
 import gzip
 import io
 from typing import List
@@ -22,6 +23,7 @@ from ray.data._internal.datasource_v2.common.size_estimators import (
 )
 from ray.data._internal.datasource_v2.formats.csv.csv_datasource_v2 import (
     CsvDatasourceV2,
+    CsvFileIndexer,
 )
 from ray.data._internal.datasource_v2.interfaces.file_manifest import FileManifest
 from ray.data._internal.datasource_v2.interfaces.file_partitioner import PartitionHints
@@ -97,6 +99,7 @@ def test_infers_types_per_chunk(tmp_path, small_chunks):
 def test_reads_headerless_files_in_chunks(tmp_path, small_chunks, read_options):
     path = _write(tmp_path / "a.csv", "".join(f"{i},n{i}\n" for i in range(200)))
     datasource = CsvDatasourceV2([path], arrow_csv_args={"read_options": read_options})
+    assert type(datasource._get_file_indexer()) is LineChunkFileIndexer
 
     table = _read_all(datasource, [path])
 
@@ -104,13 +107,64 @@ def test_reads_headerless_files_in_chunks(tmp_path, small_chunks, read_options):
     assert sorted(table.column(0).to_pylist()) == list(range(200))
 
 
-def test_rejects_a_split_file_whose_header_differs(tmp_path, small_chunks):
+def test_names_a_split_file_from_its_own_header(tmp_path, small_chunks):
     first = _write(tmp_path / "a.csv", "id,name\n1,x\n")
     second = _write(
         tmp_path / "b.csv", "name,id\n" + "".join(f"n{i},{i}\n" for i in range(100))
     )
-    with pytest.raises(ValueError, match=r"has columns \['name', 'id'\]"):
-        _read_all(CsvDatasourceV2([first, second]), [first, second])
+
+    table = _read_all(CsvDatasourceV2([first, second]), [first, second])
+
+    rows = {(row["id"], row["name"]) for row in table.to_pylist()}
+    assert rows == {(1, "x")} | {(i, f"n{i}") for i in range(100)}
+
+
+def test_lists_a_split_file_with_its_column_names(tmp_path, small_chunks):
+    split = _write(tmp_path / "a.csv", '"order id",amount\n' + "1,2\n" * 100)
+    whole = _write(tmp_path / "b.csv", "x\n1\n")
+    datasource = CsvDatasourceV2([split, whole])
+    indexer = datasource._get_file_indexer()
+    assert isinstance(indexer, CsvFileIndexer)
+
+    manifest = FileManifest.concat(
+        list(
+            indexer.list_files(
+                pa.array([split, whole]), filesystem=datasource.filesystem
+            )
+        )
+    )
+
+    names = [
+        None if metadata is None else tuple(metadata["column_names"])
+        for metadata in manifest.file_chunk_metadatas
+    ]
+    assert names.count(None) == 1
+    assert set(names) - {None} == {("order id", "amount")}
+
+
+@pytest.mark.parametrize(
+    "chunk_bytes", [str(4 << 20), str(8 << 20)], ids=["split", "whole"]
+)
+def test_infers_types_from_every_row_of_a_large_chunk(
+    tmp_path, monkeypatch, chunk_bytes
+):
+    # pyarrow infers a block's types from its first MiB, which has no notes.
+    monkeypatch.setenv("RAY_DATA_LINE_CHUNK_BYTES", chunk_bytes)
+
+    def rows(note: str, price: str) -> str:
+        return "".join(f"{i},{'x' * 60},{note},{price}\n" for i in range(30_000))
+
+    path = _write(
+        tmp_path / "a.csv", "id,pad,note,price\n" + rows("", "10") + rows("late", "7.5")
+    )
+
+    table = _read_all(CsvDatasourceV2([path]), [path])
+
+    assert table.column("note").to_pylist().count("late") == 30_000
+    assert collections.Counter(table.column("price").to_pylist()) == {
+        10: 30_000,
+        7.5: 30_000,
+    }
 
 
 _SPLIT = pytest.param(
