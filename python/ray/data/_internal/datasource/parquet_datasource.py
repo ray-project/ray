@@ -17,7 +17,6 @@ from typing import (
 )
 
 import numpy as np
-from packaging.version import parse as parse_version
 
 import ray
 from ray._common.utils import env_bool, env_integer
@@ -50,7 +49,6 @@ from ray.data._internal.util import (
     _is_local_scheme,
     iterate_with_retry,
 )
-from ray.data._internal.utils.arrow_utils import get_pyarrow_version
 from ray.data.block import Block, BlockAccessor, BlockMetadata
 from ray.data.context import DataContext
 from ray.data.datasource import Datasource
@@ -69,6 +67,7 @@ from ray.data.datasource.partitioning import (
     Partitioning,
     PathPartitionFilter,
     PathPartitionParser,
+    _null_partition_type,
 )
 from ray.data.datasource.path_util import _resolve_paths_and_filesystem
 from ray.data.expressions import Expr
@@ -86,10 +85,6 @@ Shape = Tuple[int, ...]
 TensorColumnSchema = Dict[ColumnName, Tuple[np.dtype, Shape]]
 
 logger = logging.getLogger(__name__)
-
-
-MIN_PYARROW_TO_BATCHES_READAHEAD = parse_version("10.0.0")
-_MIN_PYARROW_VERSION_FS_FACTORY_INSPECT_PROMOTE_OPTIONS = parse_version("22.0.0")
 
 
 # The `num_cpus` for each metadata prefetching task.
@@ -135,8 +130,6 @@ PARQUET_ENCODING_RATIO_ESTIMATE_MAX_NUM_SAMPLES = 10
 # The number of rows to read from each file for sampling. Try to keep it low to avoid
 # reading too much data into memory.
 PARQUET_ENCODING_RATIO_ESTIMATE_NUM_ROWS = 1024
-
-_MIN_PYARROW_VERSION_FOR_SCANNER_DEFAULTS = parse_version("12.0.1")
 
 
 class _ParquetFragment:
@@ -481,12 +474,18 @@ class ParquetDatasource(Datasource):
         shuffle: "FileShuffleConfig" | Literal["files"] | None = None,
         include_paths: bool = False,
         include_row_hash: bool = False,
+        known_file_sizes: Optional[Dict[str, int]] = None,
     ) -> "ParquetDatasource":
         """Create a ParquetDatasource from a pre-built PyArrow dataset.
 
         This bypasses path resolution, file listing, and dataset construction —
         useful when another system (e.g. delta-rs) has already built a PyArrow
         dataset with the correct filesystem, schema, and fragment metadata.
+
+        ``known_file_sizes`` maps fragment paths to sizes the caller already
+        knows (e.g. from a Delta log). Only paths missing from it are looked up
+        with ``get_file_info``, which costs one request per file on object
+        storage.
         """
         import pyarrow as pa
         from pyarrow.fs import LocalFileSystem
@@ -517,8 +516,13 @@ class ParquetDatasource(Datasource):
                     ray._raylet.RAY_NODE_ID_KEY: ray.get_runtime_context().get_node_id()
                 }
 
-            infos = filesystem.get_file_info(pq_paths)
-            file_sizes = [info.size if info.size is not None else 0 for info in infos]
+            sizes = dict(known_file_sizes or {})
+            unknown_paths = [path for path in pq_paths if path not in sizes]
+            if unknown_paths:
+                infos = filesystem.get_file_info(unknown_paths)
+                for path, info in zip(unknown_paths, infos):
+                    sizes[path] = info.size if info.size is not None else 0
+            file_sizes = [sizes[path] for path in pq_paths]
         else:
             file_sizes = []
 
@@ -579,27 +583,22 @@ class ParquetDatasource(Datasource):
 
         # Override default `batch_readahead` value to reduce amount of data prefetched
         # by Pyarrow's Parquet reader
-        pyarrow_version = get_pyarrow_version()
-        if (
-            pyarrow_version is not None
-            and pyarrow_version >= _MIN_PYARROW_VERSION_FOR_SCANNER_DEFAULTS
-        ):
-            scanner_kwargs.setdefault("batch_readahead", self._DEFAULT_BATCH_READAHEAD)
-            scanner_kwargs.setdefault(
-                "fragment_readahead", self._DEFAULT_FRAGMENT_READAHEAD
-            )
+        scanner_kwargs.setdefault("batch_readahead", self._DEFAULT_BATCH_READAHEAD)
+        scanner_kwargs.setdefault(
+            "fragment_readahead", self._DEFAULT_FRAGMENT_READAHEAD
+        )
 
-            # Refer https://arrow.apache.org/docs/python/generated/pyarrow.dataset.ParquetFragmentScanOptions.html
-            # Read files through buffered input streams rather than loading
-            # entire row groups at once.
-            if self._DEFAULT_FRAGMENT_USE_BUFFERED_STREAM:
-                scanner_kwargs.setdefault(
-                    "fragment_scan_options",
-                    pds.ParquetFragmentScanOptions(
-                        use_buffered_stream=True,
-                        buffer_size=self._DEFAULT_FRAGMENT_SCAN_BUFFER_SIZE,
-                    ),
-                )
+        # Refer https://arrow.apache.org/docs/python/generated/pyarrow.dataset.ParquetFragmentScanOptions.html
+        # Read files through buffered input streams rather than loading
+        # entire row groups at once.
+        if self._DEFAULT_FRAGMENT_USE_BUFFERED_STREAM:
+            scanner_kwargs.setdefault(
+                "fragment_scan_options",
+                pds.ParquetFragmentScanOptions(
+                    use_buffered_stream=True,
+                    buffer_size=self._DEFAULT_FRAGMENT_SCAN_BUFFER_SIZE,
+                ),
+            )
 
         return scanner_kwargs
 
@@ -1227,7 +1226,9 @@ def _read_batches_from(
 
         def _postprocess_table(table):
             if partition_col_values:
-                table = _add_partitions_to_table(partition_col_values, table)
+                table = _add_partitions_to_table(
+                    partition_col_values, table, partitioning.field_types
+                )
 
             if include_path:
                 table = ArrowBlockAccessor.for_block(table).fill_column(
@@ -1343,9 +1344,8 @@ def _fetch_parquet_file_info(
 
     to_batches_kwargs = {}
 
-    if get_pyarrow_version() >= MIN_PYARROW_TO_BATCHES_READAHEAD:
-        # Limit prefetching to just 1 batch
-        to_batches_kwargs["batch_readahead"] = 1
+    # Limit prefetching to just 1 batch
+    to_batches_kwargs["batch_readahead"] = 1
 
     to_batches_kwargs["batch_size"] = batch_size
 
@@ -1588,7 +1588,6 @@ def _infer_schema(
     inspect_num_fragments: Optional[int],
     filesystem: Optional["pyarrow.fs.FileSystem"],
 ) -> "pyarrow.Schema":
-    import pyarrow as pa
     import pyarrow.dataset as pds
 
     factory = pds.FileSystemDatasetFactory(
@@ -1597,35 +1596,13 @@ def _infer_schema(
         format=pds.ParquetFileFormat(),
     )
 
-    # NOTE: By default we're inspecting all the fragments.
-    #       The ``fragments`` kwarg was added in PyArrow 21.0 (previously
-    #       all fragments were inspected unconditionally).
-    #       PyArrow 22.0 added ``promote_options`` for proper null→concrete
-    #       type promotion across fragments (GH-46629).
-    pa_version = get_pyarrow_version()
-
-    if pa_version >= _MIN_PYARROW_VERSION_FS_FACTORY_INSPECT_PROMOTE_OPTIONS:
-        inspect_kwargs = {
-            "fragments": inspect_num_fragments,
-            "promote_options": "permissive",
-        }
-    else:
-        inspect_kwargs = {}
-
-    schema = factory.inspect(**inspect_kwargs)
-
-    # Before Pyarrow 22.0, ``factory.inspect`` doesn't promote ``null`` types
-    # to concrete types when unifying schemas across fragments (which
-    # happens when some files have all-null values for a column).
-    #
-    # In that case we manually collect physical schemas from all fragments and
-    # call ``pa.unify_schemas`` to correctly promote the types.
-    if pa_version < _MIN_PYARROW_VERSION_FS_FACTORY_INSPECT_PROMOTE_OPTIONS and any(
-        field.type == pa.null() for field in schema
-    ):
-        dataset = factory.finish(schema)
-        fragment_schemas = [f.physical_schema for f in dataset.get_fragments()]
-        schema = pa.unify_schemas([schema] + fragment_schemas)
+    # ``promote_options="permissive"`` makes ``inspect`` promote ``null`` types
+    # to concrete types when unifying schemas across fragments (which happens
+    # when some files have all-null values for a column); see GH-46629.
+    schema = factory.inspect(
+        fragments=inspect_num_fragments,
+        promote_options="permissive",
+    )
 
     return schema
 
@@ -1656,12 +1633,21 @@ def _sample_fragments(
 
 
 def _add_partitions_to_table(
-    partition_col_values: Dict[str, PartitionDataType], table: "pyarrow.Table"
+    partition_col_values: Dict[str, PartitionDataType],
+    table: "pyarrow.Table",
+    field_types: Optional[Dict[str, PartitionDataType]] = None,
 ) -> "pyarrow.Table":
+    import pyarrow as pa
 
     for partition_col, value in partition_col_values.items():
         field_index = table.schema.get_field_index(partition_col)
         if field_index == -1:
+            if value is None:
+                # Typed like the field's other values, so a block from a null
+                # partition doesn't get a null-typed column.
+                value = pa.scalar(
+                    None, type=_null_partition_type(partition_col, field_types)
+                )
             table = BlockAccessor.for_block(table).fill_column(partition_col, value)
         elif log_once(f"duplicate_partition_field_{partition_col}"):
             logger.warning(
