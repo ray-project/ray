@@ -5111,8 +5111,8 @@ TEST_F(TaskManagerLineageTest, MarkGeneratorFailedAndResubmitKeepsPendingCount) 
   ASSERT_EQ(manager_.NumPendingTasks(), 1);
   ASSERT_EQ(num_retries_, 0);
 
-  // Two recovery cycles, because the miscount was additive: one attempt was counted
-  // twice per cycle, so an unfixed second cycle reaches 3 rather than 1.
+  // The second cycle resubmits an attempt that is itself a resubmit, and must keep the
+  // count at 1 too.
   for (int cycle = 1; cycle <= 2; cycle++) {
     manager_.MarkDependenciesResolved(spec.TaskId());
     manager_.MarkTaskWaitingForExecution(
@@ -5122,10 +5122,8 @@ TEST_F(TaskManagerLineageTest, MarkGeneratorFailedAndResubmitKeepsPendingCount) 
     ASSERT_EQ(manager_.ResubmitTask(spec.TaskId(), &task_deps), std::nullopt);
     ASSERT_EQ(manager_.NumPendingTasks(), 1);
 
-    // The generator's reply arrives, so the queued resubmit fires. The task was already
-    // counted as pending and only one attempt is in flight afterwards, so the count must
-    // not change. CompletePendingTask and FailPendingTask are not called on this path,
-    // which is why the resubmit has to release the finished attempt's count itself.
+    // The generator's reply arrives and the queued resubmit fires. One attempt is in
+    // flight before and after, so the count must not change.
     manager_.MarkGeneratorFailedAndResubmit(spec.TaskId());
     ASSERT_EQ(manager_.NumPendingTasks(), 1);
     // The resubmit actually happened, so the count above is not right for the wrong

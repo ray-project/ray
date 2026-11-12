@@ -614,10 +614,10 @@ void TaskManager::MarkGeneratorFailedAndResubmit(const TaskID &task_id) {
                   rpc::TaskStatus::FAILED,
                   worker::TaskStatusEvent::TaskStateUpdate(error_info));
 
-    // This attempt is over, but neither CompletePendingTask nor FailPendingTask runs on
-    // this path, so release its pending count here. SetupTaskEntryForResubmit adds the
-    // count back for the new attempt, and its other caller reaches it with a task that
-    // has already been released.
+    // Neither CompletePendingTask nor FailPendingTask runs on this path, so release the
+    // finished attempt's count before SetupTaskEntryForResubmit adds one for the new one.
+    // The decrement stays here because ResubmitTask, its other caller, arrives with the
+    // count already released.
     num_pending_tasks_--;
     SetupTaskEntryForResubmit(task_entry);
     spec = task_entry.spec_;
