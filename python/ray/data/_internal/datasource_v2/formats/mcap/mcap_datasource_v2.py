@@ -81,7 +81,8 @@ if TYPE_CHECKING:
     from ray.data.datasource.file_based_datasource import FileShuffleConfig
 
 # Chunks are packed into read tasks of about this many bytes of estimated read
-# memory (``mcap_summary.chunk_run``).
+# memory (``mcap_summary.chunk_runs``). A listing task holds at most this many
+# bytes of summary sections at once.
 _BIN_PACKING_BYTES = env_integer("RAY_DATA_MCAP_BIN_PACKING_BYTES", 128 * MiB)
 # How many partly filled read tasks the packer keeps open at once.
 _BIN_PACKING_MAX_SHARED_OPEN_BINS = env_integer(
@@ -164,6 +165,7 @@ class MCAPDatasourceV2(FileDataSourceV2):
             selection=self._selection,
             ignore_missing_paths=self._ignore_missing_paths,
             read_task_bytes=_BIN_PACKING_BYTES,
+            log_time_order=self._log_time_order,
             row_layout=MessageRowLayout(
                 include_metadata=self._include_metadata,
                 include_row_id=self._include_row_id,
@@ -238,6 +240,7 @@ class MCAPDatasourceV2(FileDataSourceV2):
                 self._filesystem,
                 sample.paths.tolist(),
                 self._listed_paths,
+                summary_budget_bytes=_BIN_PACKING_BYTES,
             )
             if len(sample) > 0
             else None
