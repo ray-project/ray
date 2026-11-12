@@ -1167,7 +1167,7 @@ The facade hosts sandboxes on one actor per node. A create is a call to the acto
 * `host_channel`: the facade calls each node's actor over a direct connection instead of Ray actor calls, which a busy actor starts one at a time. Set it to `false` to use Ray calls only.
 * `host_mode="actor"`: each sandbox gets a Ray actor of its own, as with the REST API and with named sandboxes. Each actor is a Ray worker process of about 130 MiB that takes about a CPU-second to start, and creates go only as fast as Ray starts actors.
 
-Only sandboxes that request nothing but CPUs share placement groups. A sandbox that also requests memory reserves a group of its own, and so does a sandbox that finds every node full, which shows the autoscaler what it needs.
+Only sandboxes that request nothing but CPUs share placement groups. A sandbox that also requests memory reserves a group of its own, and so does a sandbox that finds every node full, which shows the autoscaler what it needs. That create waits up to `scheduling_grace_seconds`, 60 seconds by default, for a node with room. Then it answers `UNAVAILABLE`, which the client SDK retries, and each retry reserves the resources again.
 
 When a client names an image, such as with `modal.Image.from_registry`, every node starts pulling it, and the client's image build finishes once the nodes have it or after two minutes. A sandbox created on a node that doesn't have its image yet pulls it first.
 

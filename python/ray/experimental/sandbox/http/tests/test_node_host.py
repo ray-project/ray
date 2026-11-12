@@ -1,5 +1,6 @@
 import asyncio
 import collections
+import inspect
 import sys
 import time
 from types import SimpleNamespace
@@ -7,6 +8,7 @@ from types import SimpleNamespace
 import pytest
 
 from ray.experimental.sandbox.http import node_host, resolver as resolver_module
+from ray.experimental.sandbox.http.host import SandboxHost
 from ray.experimental.sandbox.http.node_host import SandboxNodeHost, _Slab
 from ray.experimental.sandbox.http.resolver import (
     NODE_HOST_PREFIX,
@@ -92,6 +94,37 @@ def test_refill_boots_one_at_a_time_while_execs_are_busy(busy, expected_peak):
         return _Sandbox.peak, len(host._warm["key"]), host._warm_booting["key"]
 
     assert asyncio.run(scenario()) == (expected_peak, 8, 0)
+
+
+def test_network_access_updates_reach_the_sandbox():
+    class _Networked(_Sandbox):
+        async def set_network_access(self, cidr_allowlist):
+            self.cidr_allowlist = cidr_allowlist
+            return {"cidr_allowlist": cidr_allowlist}
+
+    async def scenario():
+        host = _host()
+        sandbox = host._sandboxes["sb-here"] = _Networked()
+        updated = await host.set_network_access("sb-here", ["1.1.1.1/32"])
+        missing = await host.set_network_access("sb-gone", ["1.1.1.1/32"])
+        return sandbox.cidr_allowlist, updated, missing
+
+    applied, updated, missing = asyncio.run(scenario())
+    assert applied == updated["cidr_allowlist"] == ["1.1.1.1/32"]
+    assert missing["error_code"] == "sandbox_not_found"
+
+
+def test_the_node_host_has_every_method_the_api_calls_on_a_sandbox():
+    """A hosted handle calls the node host's method of the same name, so each
+    ``SandboxHost`` method the API layers call needs one there."""
+    # The node host calls these on its sandboxes itself.
+    own = {"adopt", "container_running", "finish", "to_dict"}
+    called = {
+        name
+        for name, _ in inspect.getmembers(SandboxHost, inspect.isfunction)
+        if not name.startswith("_")
+    } - own
+    assert sorted(n for n in called if not hasattr(SandboxNodeHost, n)) == []
 
 
 class _FailingSandbox(_Sandbox):

@@ -734,6 +734,14 @@ class SandboxNodeHost:
             }
         return await host.describe(wait_seconds, until_booted)
 
+    async def set_network_access(
+        self, sandbox_id: str, cidr_allowlist: List[str]
+    ) -> Dict[str, Any]:
+        host = self._sandboxes.get(sandbox_id)
+        if host is None:
+            return _gone(sandbox_id)
+        return await host.set_network_access(cidr_allowlist)
+
     async def start_exec(
         self, sandbox_id: str, *args: Any, **kwargs: Any
     ) -> Dict[str, Any]:

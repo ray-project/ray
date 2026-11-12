@@ -381,7 +381,9 @@ class SandboxAPISettings(BaseModel):
             "pending instead of blocking. A cluster that is adding nodes "
             "routinely takes tens of seconds to place an actor; requests "
             "never fail on this budget, they report pending and the client "
-            "polls."
+            "polls. With host_mode='node', it's also how long a create whose "
+            "every node is full waits for a node with room before it answers "
+            "UNAVAILABLE, which clients retry."
         ),
     )
     host_mode: Literal["actor", "node"] = Field(

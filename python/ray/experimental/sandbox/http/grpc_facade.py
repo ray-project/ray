@@ -106,6 +106,9 @@ _TASK_ID_GRACE_SECONDS = 5.0
 _PREPULL_WAIT_SECONDS = 120.0
 # Images whose pulls a replica remembers having started.
 _MAX_PREPULLED_IMAGES = 256
+# How long a replica waits before it starts an image's pulls again, when the
+# last ones didn't leave the image on every node host.
+_PREPULL_RETRY_SECONDS = 30.0
 _PULL_TIMEOUT_SECONDS = 1800.0
 _START_TIMEOUT_SECONDS = 120.0
 _READ_BOUND_SECONDS = 600.0
@@ -687,6 +690,11 @@ class _ControlServicer(ModalClientServicer):
     def _prepull(self, image: str) -> Optional["asyncio.Future"]:
         """Start pulling ``image`` on every node host, once per image.
 
+        Pulls that left the image on every node host aren't started again.
+        Ones that didn't, because a pull failed or outlasted the wait or no
+        node was up yet, are forgotten after ``_PREPULL_RETRY_SECONDS``, so a
+        later request for the image starts them again.
+
         Args:
             image: The image reference.
 
@@ -702,9 +710,22 @@ class _ControlServicer(ModalClientServicer):
         if pull is None:
             pull = asyncio.ensure_future(prepull(image, _PREPULL_WAIT_SECONDS))
             pulls[image] = pull
+            pull.add_done_callback(lambda done: self._settle_prepull(image, done))
             if len(pulls) > _MAX_PREPULLED_IMAGES:
                 pulls.pop(next(iter(pulls)))
         return pull
+
+    def _settle_prepull(self, image: str, done: "asyncio.Future") -> None:
+        result = None if done.cancelled() or done.exception() else done.result()
+        if result and 0 < result.get("hosts", 0) <= result.get("pulled", 0):
+            return
+        pulls = self._state.prepulls
+
+        def forget() -> None:
+            if pulls.get(image) is done:
+                del pulls[image]
+
+        asyncio.get_running_loop().call_later(_PREPULL_RETRY_SECONDS, forget)
 
     @_rpc
     async def SandboxCreate(self, request: Any, grpc_context: Any) -> Any:
@@ -790,8 +811,11 @@ class _ControlServicer(ModalClientServicer):
                     sandbox_id, actor_options, ctor_kwargs, get_if_exists=get_if_exists
                 )
             except asyncio.TimeoutError:
+                # UNAVAILABLE, which clients retry: each try reserves the
+                # sandbox's resources again, so a cluster that is adding
+                # nodes keeps seeing the demand until one has room.
                 raise _RpcError(
-                    StatusCode.RESOURCE_EXHAUSTED,
+                    StatusCode.UNAVAILABLE,
                     "no node has room for the sandbox's resources yet",
                 )
             if isinstance(handle, HostedSandboxHandle):
@@ -1186,6 +1210,7 @@ class _RouterServicer(TaskCommandRouterServicer):
         result = await _bounded(
             handle.set_network_access.remote(cidrs), extra_wait=10.0
         )
+        _check_found(result)
         error_code = result.get("error_code")
         if error_code == "invalid":
             raise _RpcError(
