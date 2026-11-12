@@ -18,7 +18,6 @@ from ray.data._internal.execution.operators.base_physical_operator import (
     AllToAllOperator,
 )
 from ray.data._internal.tensor_extensions.arrow import ArrowTensorArray
-from ray.data._internal.utils.arrow_utils import get_pyarrow_version
 from ray.data._internal.utils.cache import _disable_timed_cache_for_tests
 from ray.data.block import BlockExecStats, BlockMetadata
 from ray.data.constants import TENSOR_COLUMN_NAME
@@ -27,7 +26,12 @@ from ray.data.tests.mock_server import *  # noqa
 
 # Trigger pytest hook to automatically zip test cluster logs to archive dir on failure
 from ray.tests.conftest import *  # noqa
-from ray.tests.conftest import _ray_start
+from ray.tests.conftest import (  # noqa: F401
+    _isolate_token_auth_state,
+    _ray_start,
+    _restore_token_auth_env,
+    _token_auth_env_baseline,
+)
 from ray.util.debug import reset_log_once
 from ray.util.state import list_actors
 
@@ -52,7 +56,7 @@ def mock_all_to_all_op(input_op, name="MockAllToAll"):
         data_context=ray.data.DataContext.get_current(),
         name=name,
     )
-    op.start = MagicMock(side_effect=lambda *_: None)
+    op.start = MagicMock(side_effect=lambda *_, **__: None)
     return op
 
 
@@ -171,13 +175,9 @@ def s3_fs_with_anonymous_crendential(
 def _s3_fs(aws_credentials, s3_server, s3_path):
     import urllib.parse
 
-    from packaging.version import parse as parse_version
-
     kwargs = aws_credentials.copy()
-
-    if get_pyarrow_version() >= parse_version("9.0.0"):
-        kwargs["allow_bucket_creation"] = True
-        kwargs["allow_bucket_deletion"] = True
+    kwargs["allow_bucket_creation"] = True
+    kwargs["allow_bucket_deletion"] = True
 
     fs = None
     try:
@@ -276,32 +276,19 @@ def restore_data_context(request):
 
 
 def _get_supported_tensor_formats():
-    """Get list of supported tensor formats based on PyArrow version.
+    """Get the list of supported tensor formats."""
+    from ray.data._internal.tensor_extensions.arrow import FixedShapeTensorFormat
 
-    Returns V1, V2, and ARROW_NATIVE only if PyArrow >= 16 (which supports
-    native FixedShapeTensorScalar, FixedShapeTensorType, FixedShapeTensorArray).
-    """
-    from ray.data._internal.tensor_extensions.arrow import (
-        MIN_PYARROW_VERSION_FIXED_SHAPE_TENSOR_SCALAR,
-        FixedShapeTensorFormat,
-    )
-
-    formats = [FixedShapeTensorFormat.V1, FixedShapeTensorFormat.V2]
-    if get_pyarrow_version() >= MIN_PYARROW_VERSION_FIXED_SHAPE_TENSOR_SCALAR:
-        formats.append(FixedShapeTensorFormat.ARROW_NATIVE)
-    return formats
+    return [
+        FixedShapeTensorFormat.V1,
+        FixedShapeTensorFormat.V2,
+        FixedShapeTensorFormat.ARROW_NATIVE,
+    ]
 
 
 @pytest.fixture(params=_get_supported_tensor_formats())
 def tensor_format(request):
-    """Fixture that yields supported tensor formats.
-
-    Yields V1, V2 for all PyArrow versions.
-    Yields ARROW_NATIVE only when PyArrow >= 16.
-
-    This allows tests to use `tensor_format.to_type()` safely without
-    needing fallback logic for unsupported PyArrow versions.
-    """
+    """Fixture that yields supported tensor formats (V1, V2, ARROW_NATIVE)."""
     return request.param
 
 
@@ -534,16 +521,17 @@ def op_two_block():
 
     block_delay = 20
     block_meta_list = []
+    unix_base_s = 1_700_000_000.0
     for i in range(len(block_params["num_rows"])):
         start_time_s = time.perf_counter() + i * block_delay
         # The blocks are executing from [0, 5] and [20, 30].
         block_exec_stats = BlockExecStats(
             start_time_s=start_time_s,
             end_time_s=start_time_s + block_params["wall_time"][i],
+            start_unix_time_s=unix_base_s + i * block_delay,
             wall_time_s=block_params["wall_time"][i],
             cpu_time_s=block_params["cpu_time"][i],
             block_transform_time_s=block_params["block_transform_time"][i],
-            node_id=block_params["node_id"][i],
             task_idx=block_params["task_idx"][i],
         )
         block_meta_list.append(
@@ -552,6 +540,7 @@ def op_two_block():
                 size_bytes=block_params["size_bytes"][i],
                 input_files=None,
                 exec_stats=block_exec_stats,
+                node_id=block_params["node_id"][i],
             )
         )
     return block_params, block_meta_list

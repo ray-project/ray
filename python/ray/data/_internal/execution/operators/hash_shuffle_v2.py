@@ -8,11 +8,7 @@ from ray.data._internal.execution.operators.shuffle_operators.shuffle_tasks impo
     ReduceFn,
 )
 
-# Isolate shuffle map workers into a dedicated worker pool so that
-# ReadParquet/Project tasks don't run on the same workers.  Without this,
-# shared memory pages from object store accesses (mmap'd during
-# combine_chunks) accumulate across task types and inflate worker RSS.
-_SHUFFLE_MAP_RUNTIME_ENV = {"env_vars": {"RAY_DATA_SHUFFLE_MAP_WORKER": "1"}}
+_SHUFFLE_MAP_RUNTIME_ENV = {"env_vars": {"POLARS_MAX_THREADS": "1"}}
 
 
 def _make_hash_partition_fn(key_columns: List[str], num_partitions: int) -> PartitionFn:
@@ -22,6 +18,27 @@ def _make_hash_partition_fn(key_columns: List[str], num_partitions: int) -> Part
         return hash_partition(
             block, hash_cols=key_columns, num_partitions=num_partitions
         )
+
+    return _partition
+
+
+def _make_slice_partition_fn(num_partitions: int) -> PartitionFn:
+    """Return a partitioner that assigns balanced contiguous slices in order."""
+
+    def _partition(block: pa.Table) -> Dict[int, pa.Table]:
+        partitions: Dict[int, pa.Table] = {}
+        num_rows = block.num_rows
+        if num_rows == 0:
+            return partitions
+
+        num_slices = min(num_partitions, num_rows)
+        slice_size, remainder = divmod(num_rows, num_slices)
+        row_start = 0
+        for partition_id in range(num_slices):
+            current_slice_size = slice_size + (1 if partition_id < remainder else 0)
+            partitions[partition_id] = block.slice(row_start, current_slice_size)
+            row_start += current_slice_size
+        return partitions
 
     return _partition
 

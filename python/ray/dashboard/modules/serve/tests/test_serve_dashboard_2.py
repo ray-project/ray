@@ -118,15 +118,15 @@ def test_put_with_http_options(ray_start_stop, option, override):
     }
     deploy_config_multi_app(original_serve_config_json, SERVE_HEAD_URL)
 
-    # Wait for deployments to be up
+    # Wait for deployments to be up. Requests omit root_path, as if a proxy in
+    # front of Serve stripped it.
     wait_for_condition(
-        lambda: requests.post("http://localhost:8000/serve/app1", json=["ADD", 2]).text
+        lambda: requests.post("http://localhost:8000/app1", json=["ADD", 2]).text
         == "4 pizzas please!",
         timeout=15,
     )
     wait_for_condition(
-        lambda: requests.post("http://localhost:8000/serve/app2").text
-        == "wonderful world",
+        lambda: requests.post("http://localhost:8000/app2").text == "wonderful world",
         timeout=15,
     )
 
@@ -151,10 +151,10 @@ def test_put_with_http_options(ray_start_stop, option, override):
 
     # Deployments should still be up
     assert (
-        requests.post("http://localhost:8000/serve/app1", json=["ADD", 2]).text
+        requests.post("http://localhost:8000/app1", json=["ADD", 2]).text
         == "4 pizzas please!"
     )
-    assert requests.post("http://localhost:8000/serve/app2").text == "wonderful world"
+    assert requests.post("http://localhost:8000/app2").text == "wonderful world"
 
 
 def test_put_with_grpc_options(ray_start_stop):
@@ -199,8 +199,7 @@ def test_put_with_grpc_options(ray_start_stop):
 
     # Ensure HTTP requests are still working
     wait_for_condition(
-        lambda: requests.post("http://localhost:8000/serve/app2").text
-        == "wonderful world",
+        lambda: requests.post("http://localhost:8000/app2").text == "wonderful world",
         timeout=15,
     )
 

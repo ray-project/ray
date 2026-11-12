@@ -90,8 +90,8 @@ A cloud mirror is validated against {class}`~ray.serve.llm.CloudMirrorConfig` an
 For the full list, see the [vLLM engine arguments](https://docs.vllm.ai/en/latest/configuration/engine_args/). `disable_log_stats=True` is rejected when `log_engine_metrics` is enabled, because engine metrics require log stats.
 
 ## Accelerators and placement
+
 Set `accelerator_type` to the accelerator each replica should be scheduled on. Common GPU values include `A10G`, `A100`, `H100`, `H200`, `L4`, `L40S`, and `T4`. TPUs such as `TPU-V4`, `TPU-V5P`, and `TPU-V6E` are also supported. `A10` is normalized to `A10G`. An unsupported value raises a validation error. For topology-aware TPU slices, see {doc}`TPU serving <tpu>`.
-Set `accelerator_type` to the accelerator each replica should be scheduled on. Common GPU values include `A10G`, `A100`, `H100`, `H200`, `L4`, `L40S`, and `T4`. TPUs such as `TPU-V4`, `TPU-V5P`, and `TPU-V6E` are also supported. For topology-aware TPU slices, see {doc}`TPU serving <tpu>`. `A10` is normalized to `A10G`. An unsupported value raises a validation error.
 
 `accelerator_config` is inferred from `accelerator_type` (or from `placement_group_config` bundles) and rarely needs to be set explicitly.
 
@@ -127,7 +127,7 @@ deployment_config=dict(
 )
 ```
 
-Set `num_replicas="auto"` to let Serve autoscale. Use `request_router_config` to plug in a custom router, for example for {doc}`prefix-aware routing <prefix-aware-routing>`. For the meaning of each option, see the [Ray Serve deployment configuration](https://docs.ray.io/en/latest/serve/configure-serve-deployment.html) docs.
+Set `num_replicas="auto"` to let Serve autoscale. Use `request_router_config` to plug in a custom router, for example for {doc}`prefix-aware routing <prefix-aware-routing>`. For the meaning of each option, see the [Ray Serve deployment configuration](../../configure-serve-deployment.md) docs.
 
 ## LoRA
 

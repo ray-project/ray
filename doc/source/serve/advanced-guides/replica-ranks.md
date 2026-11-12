@@ -12,7 +12,7 @@ myst:
 This API is experimental and may change between Ray minor versions.
 :::
 
-Replica ranks provide a unique identifier for **each replica within a deployment**. Each replica receives a **`ReplicaRank` object** containing rank information and **a world size (the total number of replicas)**. The rank object includes a global rank (an integer from 0 to N-1), a node rank, and a local rank on the node.
+Replica ranks identify each replica within a deployment. Each replica receives a `ReplicaRank` object and a `world_size`, the target number of replicas. The rank object includes a global rank, a node rank, and a local rank on the node. Global ranks converge to 0 through N-1, where N is the target replica count. During an in-place update with `max_surge_percent > 0`, a replacement can receive a rank at or above `world_size`.
 
 ## Access replica ranks
 
@@ -38,7 +38,7 @@ The [`ReplicaContext`](../api/doc/ray.serve.context.ReplicaContext.rst) provides
 - `world_size`: The target number of replicas for the deployment.
 
 The `ReplicaRank` object contains three fields:
-- `rank`: The global rank (an integer from 0 to N-1) representing this replica's unique identifier across all nodes.
+- `rank`: The replica's unique integer rank across all nodes in the deployment. Ranks converge to 0 through N-1 after the deployment reaches `HEALTHY`.
 - `node_rank`: The rank of the node this replica runs on (an integer from 0 to M-1 where M is the number of nodes).
 - `local_rank`: The rank of this replica on its node (an integer from 0 to K-1 where K is the number of replicas on this node).
 
@@ -79,9 +79,9 @@ The following example shows how to implement `reconfigure` to handle rank change
 
 Ray Serve automatically calls your `reconfigure` method in the following situations:
 
-1. **At replica startup:** When a replica starts, if your deployment has both a `reconfigure` method and a `user_config`, Ray Serve calls `reconfigure` after running `__init__`. This lets you initialize rank-aware state without duplicating code between `__init__` and `reconfigure`.
-2. **When you update user_config:** When you redeploy with a new `user_config`, Ray Serve calls `reconfigure` on all running replicas. If your `reconfigure` method includes `rank` as a parameter, Ray Serve passes both the new `user_config` and the current rank as a `ReplicaRank` object.
-3. **When a replica's rank changes:** During downscaling, ranks may be reassigned to maintain contiguity (0 to N-1). If your `reconfigure` method includes `rank` as a parameter and your deployment has a `user_config`, Ray Serve calls `reconfigure` with the existing `user_config` and the new rank as a `ReplicaRank` object.
+1. **At replica startup:** Ray Serve calls `reconfigure` after `__init__` if you provide a `user_config` or the method accepts a `rank` parameter. During an in-place update with `max_surge_percent > 0`, the rank passed at startup can be at or above `world_size`.
+2. **When you update user_config:** When you redeploy with a new `user_config`, Ray Serve applies it through `reconfigure`. During an in-place update with `max_surge_percent > 0`, this can wait until replica replacement finishes. If your `reconfigure` method includes `rank` as a parameter, Ray Serve passes both the new `user_config` and the current rank as a `ReplicaRank` object.
+3. **When a replica's rank changes:** After downscaling or an in-place update with `max_surge_percent > 0`, the controller may reassign ranks to restore contiguity. If your `reconfigure` method accepts `rank`, Ray Serve passes the existing `user_config` and the updated `ReplicaRank` object.
 
 :::{note}
 **Requirements to receive rank updates:**
@@ -89,9 +89,8 @@ Ray Serve automatically calls your `reconfigure` method in the following situati
 To get rank changes through `reconfigure`, your deployment needs:
 - A class-based deployment (function deployments don't support `reconfigure`)
 - A `reconfigure` method with `rank` as a parameter: `def reconfigure(self, user_config, rank: ReplicaRank)`
-- A `user_config` in your deployment (even if it's just an empty dict: `user_config={}`)
 
-Without a `user_config`, Ray Serve won't call `reconfigure` for rank changes.
+If you don't provide a `user_config`, the method receives `None` for that argument.
 :::
 
 :::{tip}
@@ -103,9 +102,17 @@ If you'd like different behavior for when `reconfigure` is called with rank chan
 :::{note}
 **Rank reassignment is eventually consistent**
 
-When replicas are removed during downscaling, rank reassignment to maintain contiguity (0 to N-1) doesn't happen immediately. The controller performs rank consistency checks and reassignment only when the deployment reaches a `HEALTHY` state in its update loop. This means there can be a brief period after downscaling where ranks are non-contiguous before the controller reassigns them.
+After downscaling or an in-place update with `max_surge_percent > 0`, rank reassignment to maintain contiguity (0 to N-1) doesn't happen immediately. The controller performs rank consistency checks and reassignment only when the deployment reaches a `HEALTHY` state in its update loop. This means there can be a brief period where ranks are non-contiguous before the controller reassigns them.
 
 This design choice prevents rank reassignment from interfering with ongoing deployment updates and rollouts. If you need immediate rank reassignment or different behavior, [open a GitHub issue](https://github.com/ray-project/ray/issues/new/choose) to discuss your use case with the Ray Serve team.
+:::
+
+:::{note}
+**In-place updates with surge can exceed the rank range**
+
+During an in-place update with `max_surge_percent > 0`, replacement replicas start while old replicas still hold their ranks. A replacement can initialize with a rank at or above `world_size`. For a single-replica deployment, the replacement starts with rank 1 and `world_size` 1.
+
+Don't use rank to index a structure of size `world_size` during such an in-place update, including in `__init__` or `reconfigure`. After the deployment reaches `HEALTHY`, the controller restores ranks to 0 through N-1. To receive rank changes through `reconfigure`, follow the requirements above. Ranks are scoped to each deployment, so separate deployments in a service rollout don't share rank assignments.
 :::
 
 :::{note}
@@ -118,65 +125,82 @@ If you need rank-aware scheduling or eviction (for example, to colocate replicas
 
 Ray Serve manages replica ranks automatically throughout the deployment lifecycle. The system maintains these invariants:
 
-1. Ranks are contiguous integers from 0 to N-1.
+1. Ranks converge to contiguous integers from 0 to N-1 after the deployment reaches `HEALTHY`. During an in-place update with `max_surge_percent > 0`, ranks can be at or above `world_size`.
 2. Each running replica has exactly one rank.
-3. No two replicas share the same rank.
+3. No two replicas within the same deployment share a global rank.
 
 ### Rank assignment lifecycle
 
 The following table shows how ranks and world size behave during different events:
 
-| Event | Local Rank | World Size |
+| Event | Global rank | World size |
 |-------|------------|------------|
 | Upscaling | No change for existing replicas | Increases to target count |
 | Downscaling | Can change to maintain contiguity | Decreases to target count |
-| Other replica dies(will be restarted) | No change | No change |
-| Self replica dies | No change | No change |
+| Replica replacement after a crash | Replacement receives the lowest available rank | No change unless the target count changes |
+| In-place update with `max_surge_percent > 0` | Replacements can start at or above `world_size`; ranks converge after the update | Target replica count |
 
 :::{note}
-World size always reflects the target number of replicas configured for the deployment, not the current number of running replicas. During scaling operations, the world size updates immediately to the new target, even while replicas are still starting or stopping.
+World size always reflects the target number of replicas configured for the deployment, not the current number of running replicas.
 :::
 
 ### Rank lifecycle state machine
 
-```
+```text
 ┌─────────────────────────────────────────────────────────────┐
-│                    DEPLOYMENT LIFECYCLE                      │
+│                    DEPLOYMENT LIFECYCLE                     │
 └─────────────────────────────────────────────────────────────┘
 
-Initial Deployment / Upscaling:
-┌──────────┐      assign      ┌──────────┐
-│ No Rank  │ ───────────────> │ Rank: N-1│
-└──────────┘                  └──────────┘
-                              (Contiguous: 0, 1, 2, ..., N-1)
+Initial deployment / upscaling:
+┌──────────┐      assign      ┌──────────────────┐
+│ No rank  │ ───────────────> │ Lowest available │
+└──────────┘                  │ rank             │
+                              └──────────────────┘
 
-Replica Crash:
-┌──────────┐     release      ┌──────────┐     assign    ┌──────────┐
-│ Rank: K  │ ───────────────> │ Released │ ────────────> │ Rank: K  │
-│ (Dead)   │                  │          │               │ (New)    │
-└──────────┘                  └──────────┘               └──────────┘
-(K can be any rank from 0 to N-1)
+Replica crash:
+┌──────────────┐   release    ┌──────────┐   assign    ┌──────────────────┐
+│ Rank: K      │ ───────────> │ Released │ ──────────> │ Lowest available │
+│ Stopped      │              │          │             │ rank (may be K)  │
+└──────────────┘              └──────────┘             └──────────────────┘
 
-:::{note}
-When a replica crashes, Ray Serve automatically starts a replacement replica and assigns it the **same rank** as the crashed replica. This ensures rank contiguity is maintained without reassigning other replicas.
-:::
+In-place update with max_surge_percent > 0:
+Example: one replica, world_size = 1 throughout the update.
+
+┌──────────────┐  start replacement   ┌──────────────┬──────────────┐
+│ Old replica  │ ───────────────────> │ Old replica  │ Replacement  │
+│ Rank: 0      │                      │ Rank: 0      │ Rank: 1      │
+└──────────────┘                      └──────────────┴──────────────┘
+                                                     │
+                                Replacement ready; old replica stops
+                                                     │
+                                                     v
+                                     ┌─────────────────────────────┐
+                                     │ Replacement retains rank 1  │
+                                     │ until rank reassignment     │
+                                     └─────────────────────────────┘
+                                                     │
+                                   Deployment HEALTHY; reassign rank
+                                                     │
+                                                     v
+                                     ┌─────────────────────────────┐
+                                     │ Same replacement, rank 0    │
+                                     │ No replica restart          │
+                                     └─────────────────────────────┘
 
 Downscaling:
-┌──────────┐     release      ┌──────────┐
-│ Rank: K  │ ───────────────> │ Released │
-│ (Stopped)│                  │          │
-└──────────┘                  └──────────┘
+┌──────────────┐   release    ┌──────────┐
+│ Rank: K      │ ───────────> │ Released │
+│ Stopped      │              │          │
+└──────────────┘              └──────────┘
           │
-          └──> Remaining replicas may be reassigned to maintain
-               contiguity: [0, 1, 2, ..., M-1] where M < N
-(K can be any rank from 0 to N-1)
+          └──> Once HEALTHY, remaining ranks converge to 0 through M-1,
+               where M is the reduced target replica count.
 
-Controller Recovery:
-┌──────────┐     recover      ┌──────────┐
-│ Running  │ ───────────────> │ Rank: N  │
-│ Replicas │                  │(Restored)│
-└──────────┘                  └──────────┘
-(Controller queries replicas to reconstruct rank state)
+Controller recovery:
+┌──────────┐   query ranks   ┌──────────────────┐
+│ Running  │ ──────────────> │ Rank assignments │
+│ replicas │                 │ restored         │
+└──────────┘                 └──────────────────┘
 ```
 
 ### Detailed lifecycle events
@@ -185,8 +209,8 @@ Controller Recovery:
 
 2. **Rank release on shutdown**: Ranks are released only after a replica fully stops, which occurs during graceful shutdown or downscaling. Ray Serve preserves existing rank assignments as much as possible to minimize disruption.
 
-3. **Handling replica crashes**: If a replica crashes unexpectedly, the system releases its rank and assigns the **same rank** to the replacement replica. This means if replica with rank 3 crashes, the new replacement replica will also receive rank 3. The replacement receives its rank during initialization, and other replicas keep their existing ranks unchanged.
+3. **Handling replica crashes**: After a crashed replica fully stops, the controller releases its rank. A replacement receives the lowest available rank, which can be the crashed replica's rank. Don't depend on a replacement retaining a specific rank.
 
 4. **Controller crash and recovery**: When the controller recovers from a crash, it reconstructs the rank state by querying all running replicas for their assigned ranks. Ranks aren't checkpointed; the system re-learns them directly from replicas during recovery.
 
-5. **Maintaining rank contiguity**: After downscaling, the system may reassign ranks to remaining replicas to maintain contiguity (0 to N-1). Ray Serve minimizes reassignments by only changing ranks when necessary.
+5. **Maintaining rank contiguity**: After downscaling or an in-place update with `max_surge_percent > 0`, the controller may reassign ranks once the deployment reaches `HEALTHY` to restore contiguity (0 to N-1). Ray Serve minimizes reassignments by only changing ranks when necessary.

@@ -25,30 +25,12 @@ import uuid
 import pytest
 
 import ray
-from ray.data._internal.utils.arrow_utils import get_pyarrow_version
 from ray.data.tests.catalog_test_utils import FakeCatalog
 from ray.data.tests.conftest import *  # noqa
 from ray.tests.conftest import *  # noqa
 
 pa = pytest.importorskip("pyarrow")
 pytest.importorskip("deltalake")
-
-from packaging.version import parse as parse_version  # noqa: E402
-
-_pa_version = get_pyarrow_version()
-pytestmark = pytest.mark.skipif(
-    _pa_version is None or _pa_version < parse_version("15.0.0"),
-    reason="deltalake requires pyarrow >= 15.0",
-)
-
-# On pyarrow<19 ``read_delta`` hands partition columns back as the raw Hive path
-# strings rather than their declared types, so a partitioned round trip can't be
-# value-compared there. See the longer note in ``test_write_delta.py``; it's a
-# read-path gap, unrelated to the catalog wiring this file covers.
-_skip_without_typed_partition_values = pytest.mark.skipif(
-    _pa_version is None or _pa_version < parse_version("19.0.0"),
-    reason="read_delta returns partition values as untyped Hive path strings on pyarrow<19",
-)
 
 
 @pytest.fixture
@@ -147,7 +129,6 @@ def test_multi_block_write_via_catalog_round_trips(
     assert _read_back(path, storage_options) == rows
 
 
-@_skip_without_typed_partition_values
 def test_partitioned_write_via_catalog_round_trips(
     ray_start_regular_shared, s3_delta_table
 ):

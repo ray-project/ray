@@ -5,19 +5,20 @@ from typing import Dict, List, Mapping, Optional, Sequence, Tuple
 import pytest
 
 from ray.data._internal.execution.lineage_tracker import (
-    DataTaskId,
+    LineageTaskId,
     LineageTracker,
     ObjectReuseStatus,
     OutputIndex,
     ParentBlockOutput,
-    PlanId,
+    ReconstructionPlanId,
 )
+from ray.data.tests.unit.lineage_tracker_util import release_inputs_and_submit
 
 
 @dataclass(frozen=True)
 class PlanRef:
-    """A stand-in for a plan ID, which only the tracker can hand out.
-    Used to get a reference to the plan ID handed out by the tracker.
+    """A stand-in for a reconstruction plan ID, which only the tracker can hand out.
+    Used to get a reference to the reconstruction plan ID handed out by the tracker.
     """
 
     name: str
@@ -38,23 +39,24 @@ class Action:
 class Submit(Action):
     """``register_task_submission``."""
 
-    data_task_id: DataTaskId
-    dependencies: Mapping[DataTaskId, Sequence[OutputIndex]] = field(
+    lineage_task_id: LineageTaskId
+    dependencies: Mapping[LineageTaskId, Sequence[OutputIndex]] = field(
         default_factory=dict
     )
     plan: Optional[PlanRef] = None
 
     def apply(self, runner: "_ActionRunner") -> None:
-        runner.tracker.register_task_submission(
-            self.data_task_id,
-            dependencies=[
+        release_inputs_and_submit(
+            runner.tracker,
+            self.lineage_task_id,
+            [
                 ParentBlockOutput(
-                    parent_data_task_id=parent_task_id, output_index=output_index
+                    parent_lineage_task_id=parent_task_id, output_index=output_index
                 )
                 for parent_task_id, output_indices in self.dependencies.items()
                 for output_index in output_indices
             ],
-            plan_id=runner.resolve_optional(self.plan),
+            runner.resolve_optional(self.plan),
         )
 
 
@@ -62,13 +64,14 @@ class Submit(Action):
 class Complete(Action):
     """``register_task_complete``."""
 
-    data_task_id: DataTaskId
+    lineage_task_id: LineageTaskId
     #: The plan this completion is for, or ``None`` for a fresh attempt.
     plan: Optional[PlanRef] = None
 
     def apply(self, runner: "_ActionRunner") -> None:
         runner.tracker.register_task_complete(
-            self.data_task_id, plan_id=runner.resolve_optional(self.plan)
+            self.lineage_task_id,
+            reconstruction_plan_id=runner.resolve_optional(self.plan),
         )
 
 
@@ -76,47 +79,52 @@ class Complete(Action):
 class Fail(Action):
     """``register_task_failed``, with the seed tasks it must report.
 
-    The returned plan ID is bound to the plan ref passed.
+    The returned reconstruction plan ID is bound to the plan ref passed.
     All subsequent failures of the same reconstruction attempt
     must pass the same plan ref.
     """
 
-    data_task_id: DataTaskId
-    expected_seed_task_ids: Sequence[DataTaskId]
+    lineage_task_id: LineageTaskId
+    expected_seed_task_ids: Sequence[LineageTaskId]
     plan: PlanRef
 
     def apply(self, runner: "_ActionRunner") -> None:
-        bound_plan_id = runner.bound_plan_id(self.plan)
-        seed_task_ids, plan_id = runner.tracker.register_task_failed(
-            self.data_task_id, plan_id=bound_plan_id
+        bound_reconstruction_plan_id = runner.bound_reconstruction_plan_id(self.plan)
+        seed_task_ids, reconstruction_plan_id = runner.tracker.register_task_failed(
+            self.lineage_task_id, reconstruction_plan_id=bound_reconstruction_plan_id
         )
         assert seed_task_ids == list(self.expected_seed_task_ids)
-        assert plan_id is not None
-        if bound_plan_id is None:
-            runner.bind(self.plan, plan_id)
+        assert reconstruction_plan_id is not None
+        if bound_reconstruction_plan_id is None:
+            runner.bind(self.plan, reconstruction_plan_id)
         else:
-            assert plan_id == bound_plan_id
+            assert reconstruction_plan_id == bound_reconstruction_plan_id
 
 
 @dataclass(frozen=True)
 class ExpectPendingChildren(Action):
     """``get_pending_children``, with the mapping it must return."""
 
-    data_task_id: DataTaskId
+    lineage_task_id: LineageTaskId
     plan: PlanRef
     #: Each pending child task ID mapped to the output indices every one of its
-    #: parents produced for it.
-    expected: Mapping[DataTaskId, Mapping[DataTaskId, Sequence[OutputIndex]]]
+    #: parents produced for it, listed parent by parent in the child's input order.
+    #: None of these scenarios interleave parents within a child's input, so the
+    #: flattened mapping is the child's exact input order.
+    expected: Mapping[LineageTaskId, Mapping[LineageTaskId, Sequence[OutputIndex]]]
 
     def apply(self, runner: "_ActionRunner") -> None:
         pending_children = runner.tracker.get_pending_children(
-            self.data_task_id, plan_id=runner.resolve(self.plan)
+            self.lineage_task_id, reconstruction_plan_id=runner.resolve(self.plan)
         )
         assert pending_children == {
-            child_task_id: {
-                parent_task_id: list(output_indices)
+            child_task_id: [
+                ParentBlockOutput(
+                    parent_lineage_task_id=parent_task_id, output_index=output_index
+                )
                 for parent_task_id, output_indices in dependencies_by_parent.items()
-            }
+                for output_index in output_indices
+            ]
             for child_task_id, dependencies_by_parent in self.expected.items()
         }
 
@@ -125,7 +133,7 @@ class ExpectPendingChildren(Action):
 class ExpectObjectReuseStatus(Action):
     """``get_object_reuse_status``, with the status it must return."""
 
-    data_task_id: DataTaskId
+    lineage_task_id: LineageTaskId
     output_index: OutputIndex
     plan: PlanRef
     expected: ObjectReuseStatus
@@ -133,9 +141,9 @@ class ExpectObjectReuseStatus(Action):
     def apply(self, runner: "_ActionRunner") -> None:
         assert (
             runner.tracker.get_object_reuse_status(
-                self.data_task_id,
+                self.lineage_task_id,
                 output_index=self.output_index,
-                plan_id=runner.resolve(self.plan),
+                reconstruction_plan_id=runner.resolve(self.plan),
             )
             == self.expected
         )
@@ -146,32 +154,38 @@ class _ActionRunner:
 
     def __init__(self) -> None:
         self.tracker = LineageTracker()
-        self._plan_ids: Dict[str, PlanId] = {}
+        self._reconstruction_plan_ids: Dict[str, ReconstructionPlanId] = {}
 
-    def bound_plan_id(self, plan_ref: PlanRef) -> Optional[PlanId]:
-        """The plan ID bound to ``plan_ref``, or ``None`` if none is yet."""
-        return self._plan_ids.get(plan_ref.name)
+    def bound_reconstruction_plan_id(
+        self, plan_ref: PlanRef
+    ) -> Optional[ReconstructionPlanId]:
+        """The reconstruction plan ID bound to ``plan_ref``, or ``None`` if none is yet."""
+        return self._reconstruction_plan_ids.get(plan_ref.name)
 
-    def resolve(self, plan_ref: PlanRef) -> PlanId:
-        """The plan ID ``plan_ref`` stands for. The plan must already be open."""
+    def resolve(self, plan_ref: PlanRef) -> ReconstructionPlanId:
+        """The reconstruction plan ID ``plan_ref`` stands for. The plan must already be open."""
         assert (
-            plan_ref.name in self._plan_ids
+            plan_ref.name in self._reconstruction_plan_ids
         ), f"Plan {plan_ref.name!r} is named before a failure opened it."
-        return self._plan_ids[plan_ref.name]
+        return self._reconstruction_plan_ids[plan_ref.name]
 
-    def resolve_optional(self, plan_ref: Optional[PlanRef]) -> Optional[PlanId]:
-        """The plan ID ``plan_ref`` stands for, or ``None`` for a fresh attempt."""
+    def resolve_optional(
+        self, plan_ref: Optional[PlanRef]
+    ) -> Optional[ReconstructionPlanId]:
+        """The reconstruction plan ID ``plan_ref`` stands for, or ``None`` for a fresh attempt."""
         if plan_ref is None:
             return None
         return self.resolve(plan_ref)
 
-    def bind(self, plan_ref: PlanRef, plan_id: PlanId) -> None:
-        """Bind the plan ID a failure just opened to ``plan_ref``."""
-        assert plan_id not in self._plan_ids.values(), (
-            f"Plan {plan_id!r} opened for {plan_ref.name!r} is already in flight "
-            f"as {self._plan_ids!r}."
+    def bind(
+        self, plan_ref: PlanRef, reconstruction_plan_id: ReconstructionPlanId
+    ) -> None:
+        """Bind the reconstruction plan ID a failure just opened to ``plan_ref``."""
+        assert reconstruction_plan_id not in self._reconstruction_plan_ids.values(), (
+            f"Plan {reconstruction_plan_id!r} opened for {plan_ref.name!r} is already in flight "
+            f"as {self._reconstruction_plan_ids!r}."
         )
-        self._plan_ids[plan_ref.name] = plan_id
+        self._reconstruction_plan_ids[plan_ref.name] = reconstruction_plan_id
 
 
 def run_actions(actions: Sequence[Action]) -> None:
@@ -187,7 +201,7 @@ def run_actions(actions: Sequence[Action]) -> None:
 
 
 _SEED_TASK_IDS = ["seed_task_0", "seed_task_1"]
-_CHILD_TASK_ID: DataTaskId = "child_task"
+_CHILD_TASK_ID: LineageTaskId = "child_task"
 #: The plan opened by the failure of the child every fan-in case fails.
 _CHILD_PLAN = PlanRef("child_plan")
 
@@ -342,10 +356,10 @@ def test_fan_in_child_fail_recovers_all_seeds_and_reuse_status_multi_input():
     )
 
 
-_SEED: DataTaskId = "seed_task"
-_LEFT: DataTaskId = "left_task"
-_RIGHT: DataTaskId = "right_task"
-_COMMON: DataTaskId = "common_task"
+_SEED: LineageTaskId = "seed_task"
+_LEFT: LineageTaskId = "left_task"
+_RIGHT: LineageTaskId = "right_task"
+_COMMON: LineageTaskId = "common_task"
 _PLAN = PlanRef("diamond_plan")
 
 _PENDING_COMMON_CHILD = {_COMMON: {_LEFT: [0], _RIGHT: [0]}}
@@ -553,17 +567,19 @@ class AllToAllGraph:
         """The shape, as it reads in the test id of every case built on it."""
         return "widths_" + "_".join(str(width) for width in self.layer_widths)
 
-    def task(self, stage: int, position: int) -> DataTaskId:
+    def task(self, stage: int, position: int) -> LineageTaskId:
         return f"stage_{stage}_task_{position}"
 
     def positions(self, stage: int) -> List[int]:
         """Every task position within ``stage``."""
         return list(range(self.layer_widths[stage]))
 
-    def tasks(self, stage: int) -> List[DataTaskId]:
+    def tasks(self, stage: int) -> List[LineageTaskId]:
         return [self.task(stage, position) for position in self.positions(stage)]
 
-    def inputs(self, stage: int, position: int) -> Dict[DataTaskId, List[OutputIndex]]:
+    def inputs(
+        self, stage: int, position: int
+    ) -> Dict[LineageTaskId, List[OutputIndex]]:
         """The blocks the task at ``position`` in ``stage`` takes from above.
 
         Every task of the stage above produces one output block per consumer, and
@@ -965,6 +981,66 @@ def test_all_to_all_failure_recovery(actions: List[Action]):
     task of it fails or two.
     """
     run_actions(actions)
+
+
+def test_retry_does_not_release_a_queued_sibling_again():
+    """A retry within a plan re-runs a shared parent, but does not release a
+    sibling whose input is already queued.
+
+    Graph::
+
+        seed --output 0--> left  --\\
+             --output 1--> right --+--> common
+
+    ``common`` fails, so the seed re-runs and releases the input of both
+    branches. ``left`` is submitted and loses its output, while ``right``'s
+    input is still queued. The retry re-runs the seed for the same plan, which
+    must re-produce only ``left``'s input.
+    """
+    tracker = LineageTracker()
+    seed, left, right, common = "seed", "left", "right", "common"
+    left_input = [ParentBlockOutput(parent_lineage_task_id=seed, output_index=0)]
+    right_input = [ParentBlockOutput(parent_lineage_task_id=seed, output_index=1)]
+
+    tracker.register_task_submission(seed, [])
+    tracker.register_task_submission(left, left_input)
+    tracker.register_task_submission(right, right_input)
+    tracker.register_task_submission(
+        common,
+        [
+            ParentBlockOutput(parent_lineage_task_id=left, output_index=0),
+            ParentBlockOutput(parent_lineage_task_id=right, output_index=0),
+        ],
+    )
+
+    _, plan = tracker.register_task_failed(common)
+    tracker.register_task_submission(seed, [], plan)
+    assert set(tracker.get_pending_children(seed, plan)) == {left, right}
+    # The seed completes and releases both branches' input.
+    for output_index in (0, 1):
+        tracker.register_block_queued(seed, output_index, plan)
+
+    # left is submitted and loses its output. right's input is still queued.
+    tracker.register_task_submission(left, left_input, plan)
+    assert tracker.register_task_failed(left, plan) == ([seed], plan)
+    tracker.register_task_submission(seed, [], plan)
+
+    assert tracker.get_pending_children(seed, plan) == {
+        left: [ParentBlockOutput(parent_lineage_task_id=seed, output_index=0)]
+    }
+    assert (
+        tracker.get_object_reuse_status(seed, 0, plan)
+        == ObjectReuseStatus.OBJECT_REUSED
+    )
+    assert (
+        tracker.get_object_reuse_status(seed, 1, plan)
+        == ObjectReuseStatus.OBJECT_PRUNED
+    )
+    with pytest.raises(ValueError, match="the plan does not owe it"):
+        tracker.register_block_queued(seed, 1, plan)
+
+    # The queued input from the first release is still valid for right.
+    tracker.register_task_submission(right, right_input, plan)
 
 
 if __name__ == "__main__":

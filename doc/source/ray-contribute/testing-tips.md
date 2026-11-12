@@ -28,7 +28,7 @@ To overcome this, override the detected resources by setting them in `ray.init`,
 
 It's safest to start a new Ray cluster for each test.
 
-```{testcode}
+```python
 import unittest
 
 class RayTest(unittest.TestCase):
@@ -49,7 +49,7 @@ Across 20 tests, this ends up being 90 seconds of added overhead.
 
 Reusing a Ray cluster across tests can provide significant speedups to your test suite. This reduces the overhead to a constant, amortized quantity:
 
-```{testcode}
+```python
 class RayClassTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
@@ -74,7 +74,7 @@ If writing an application for a cluster setting, you may want to mock a multi-no
 On Windows, support for multi-node Ray clusters is experimental and untested. If you run into issues, file a report at <https://github.com/ray-project/ray/issues>.
 :::
 
-```{testcode}
+```python
 from ray.cluster_utils import Cluster
 
 # Starts a head-node for the cluster.
@@ -87,7 +87,7 @@ cluster = Cluster(
 
 After starting a cluster, you can execute a typical ray script in the same process:
 
-```{testcode}
+```python
 import ray
 
 ray.init(address=cluster.address)
@@ -111,7 +111,7 @@ for _ in range(1000):
 
 You can also add multiple nodes, each with different resource quantities:
 
-```{testcode}
+```python
 mock_node = cluster.add_node(num_cpus=10)
 
 assert ray.cluster_resources()["CPU"] == 20
@@ -119,7 +119,7 @@ assert ray.cluster_resources()["CPU"] == 20
 
 You can also remove nodes, which is useful when testing failure-handling logic:
 
-```{testcode}
+```python
 cluster.remove_node(mock_node)
 
 assert ray.cluster_resources()["CPU"] == 10
