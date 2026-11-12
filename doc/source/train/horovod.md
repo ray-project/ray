@@ -8,6 +8,10 @@ myst:
 
 # Get started with distributed training using Horovod
 
+:::{warning}
+`HorovodTrainer` is deprecated and scheduled for removal. Ray Train V2, the default, doesn't support it, and constructing a `HorovodTrainer` raises a `DeprecationWarning`. Use {class}`TorchTrainer <ray.train.torch.TorchTrainer>` or {class}`TensorflowTrainer <ray.train.tensorflow.TensorflowTrainer>` instead. To keep running existing Horovod code, set `RAY_TRAIN_V2_ENABLED=0` to fall back to the previous implementation.
+:::
+
 Ray Train configures the Horovod environment and rendezvous server for you, so you can run your `DistributedOptimizer` training script. For more information, see the [Horovod documentation](https://horovod.readthedocs.io/en/stable/index.html).
 
 ## Quickstart
@@ -28,13 +32,7 @@ If you're new to Horovod, see the [Horovod guide](https://horovod.readthedocs.io
 
 A trainer is the primary Ray Train class for managing state and running training. For Horovod, set up a {class}`~ray.train.horovod.HorovodTrainer` as in the following example:
 
-```{testcode}
-:hide:
-
-train_func = lambda: None
-```
-
-```{testcode}
+```python
 from ray.train import ScalingConfig
 from ray.train.horovod import HorovodTrainer
 # For GPU Training, set `use_gpu` to True.
@@ -49,9 +47,7 @@ Always use a `HorovodTrainer` when you train with Horovod, regardless of the tra
 
 To customize the backend setup, pass a {class}`~ray.train.horovod.HorovodConfig`:
 
-```{testcode}
-:skipif: True
-
+```python
 from ray.train import ScalingConfig
 from ray.train.horovod import HorovodTrainer, HorovodConfig
 
@@ -68,9 +64,7 @@ For more configuration options, see the {py:class}`~ray.train.data_parallel_trai
 
 After you have a distributed training function and a trainer, call `trainer.fit()` to start training:
 
-```{testcode}
-:skipif: True
-
+```python
 trainer.fit()
 ```
 

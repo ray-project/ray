@@ -152,7 +152,7 @@ class Worker:
        return self.send
 
    def destroy(self):
-       collective.destroy_group()
+       collective.destroy_collective_group()
 
 # imperative
 num_workers = 2

@@ -797,8 +797,7 @@ class BlockMapTransformFn(MapTransformFn):
         output_block_size_option: Optional[OutputBlockSizeOption] = None,
         should_report_custom_op_stats: bool = False,
     ):
-        """
-        Initializes the object with a transformation function, accompanying options, and
+        """Initializes the object with a transformation function, accompanying options, and
         configuration for handling blocks during processing.
 
         Args:

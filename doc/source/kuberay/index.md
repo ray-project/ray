@@ -20,7 +20,7 @@ troubleshooting/index
 references/index
 ```
 
-[KubeRay](https://github.com/ray-project/kuberay) is the officially supported Kubernetes operator for Ray. It provides a Kubernetes-native way to deploy and manage Ray clusters. KubeRay runs each Ray node as a Kubernetes Pod, so each Ray cluster consists of a head Pod and a collection of worker Pods.
+[KubeRay](https://github.com/kuberay-project/kuberay) is the officially supported Kubernetes operator for Ray. It provides a Kubernetes-native way to deploy and manage Ray clusters. KubeRay runs each Ray node as a Kubernetes Pod, so each Ray cluster consists of a head Pod and a collection of worker Pods.
 
 ```{eval-rst}
 .. image:: images/ray_on_kubernetes.png
@@ -158,4 +158,4 @@ Troubleshooting guides
 
 ## About KubeRay
 
-KubeRay lives in the [KubeRay GitHub repository](https://github.com/ray-project/kuberay), under the broader [Ray project](https://github.com/ray-project/). Several companies use KubeRay to run production Ray deployments. To track progress, report bugs, propose new features, or contribute to the project, visit the repository.
+KubeRay lives in the [KubeRay GitHub repository](https://github.com/kuberay-project/kuberay), under the broader [Ray project](https://github.com/ray-project/). Several companies use KubeRay to run production Ray deployments. To track progress, report bugs, propose new features, or contribute to the project, visit the repository.

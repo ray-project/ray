@@ -496,7 +496,8 @@ For {py:meth}`~ray.rllib.core.rl_module.rl_module.RLModule._forward_inference`, 
 :::{tab-item} Returning "actions" key
 
 ```python
-from ray.rllib.core import Columns, TorchRLModule
+from ray.rllib.core import Columns
+from ray.rllib.core.rl_module.torch import TorchRLModule
 
 class MyTorchPolicy(TorchRLModule):
     ...
@@ -519,7 +520,8 @@ class MyTorchPolicy(TorchRLModule):
 :::{tab-item} Not returning "actions" key
 
 ```python
-from ray.rllib.core import Columns, TorchRLModule
+from ray.rllib.core import Columns
+from ray.rllib.core.rl_module.torch import TorchRLModule
 
 class MyTorchPolicy(TorchRLModule):
     ...

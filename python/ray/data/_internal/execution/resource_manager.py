@@ -277,6 +277,35 @@ class ResourceManager:
         """Return the global pending resource usage at the current time."""
         return self._global_pending_usage
 
+    def is_blocked_on_consumer(self) -> bool:
+        """Whether the last op is waiting for the consumer to read its outputs.
+
+        More nodes won't help then, since they won't speed up the consumer.
+        """
+        for op in reversed(self._topology):
+            # Skip finished ops and pass-through ops, e.g., OutputSplitter.
+            if not self.is_op_eligible(op) and op.num_active_tasks() == 0:
+                continue
+            return self._is_blocked_on_object_store_memory(op)
+        # Every op has finished, so only outputs are left.
+        return True
+
+    def _is_blocked_on_object_store_memory(self, op: PhysicalOperator) -> bool:
+        """Whether the op is held back by its unread outputs in the object store,
+        rather than by CPU, GPU, or memory."""
+        if op.in_task_output_backpressure:
+            return True
+        if op.num_active_tasks() > 0:
+            return False
+        # An idle op short on CPU, GPU, or memory for its next task needs more nodes.
+        budget = self.get_budget(op)
+        if budget is not None and not op.incremental_resource_usage().satisfies_limit(
+            budget, ignore_object_store_memory=True
+        ):
+            return False
+        # Otherwise, if it can't submit tasks, it's waiting on object store memory.
+        return op.in_task_submission_backpressure
+
     def get_global_limits(self) -> ExecutionResources:
         """Return the global resource limits at the current time.
 
@@ -477,8 +506,7 @@ class ResourceManager:
         return None
 
     def _get_completed_ops_usage(self) -> ExecutionResources:
-        """
-        Resource reservation is based on the number of eligible operators.
+        """Resource reservation is based on the number of eligible operators.
         However, there might be completed operators that still have blocks in their output queue, which we need to exclude them from the reservation.
         And we also need to exclude the downstream ineligible operators.
 
@@ -836,9 +864,15 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
         if not op.incremental_resource_usage().satisfies_limit(budget):
             return False
 
-        if not self._is_task_submission_blocked_on_output_budget(op, budget):
+        # The estimate is None until the op's first output, so admit the task then.
+        expected_output_bytes = (
+            op.metrics.obj_store_mem_max_pending_output_per_task or 0
+        )
+        if budget.object_store_memory >= expected_output_bytes:
             return True
 
+        # Object-store budget can't hold another task's outputs.
+        #
         # NOTE: Returning True below also stops ``OutputBackpressureGuard.should_unblock``
         #       from relaxing the upstream op's output backpressure. That guard unblocks
         #       an op when a downstream op can't submit new tasks; here this op still can
@@ -859,15 +893,6 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
             self._is_execution_object_store_under_pressure()
             and op.num_active_tasks() == 0
             and self._topology[op].total_enqueued_input_blocks() > 0
-        )
-
-    @staticmethod
-    def _is_task_submission_blocked_on_output_budget(
-        op: PhysicalOperator, budget: ExecutionResources
-    ) -> bool:
-        """Whether the task-output estimate exceeds the remaining budget."""
-        return budget.object_store_memory < (
-            op.metrics.obj_store_mem_max_pending_output_per_task or 0
         )
 
     def get_budget(self, op: PhysicalOperator) -> Optional[ExecutionResources]:

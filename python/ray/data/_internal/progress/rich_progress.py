@@ -59,8 +59,7 @@ class RichSubProgressBar(BaseProgressBar):
         tid: TaskID = None,
         max_name_length: int = 100,
     ):
-        """
-        Initialize sub-progress bar
+        """Initialize sub-progress bar
 
         Args:
             name: name of sub-progress bar
@@ -376,8 +375,7 @@ class _ProgressMetrics:
 def _get_progress_metrics(
     start_time: float, completed_rows: int, total_rows: Optional[int]
 ) -> _ProgressMetrics:
-    """
-    Args:
+    """Args:
         start_time: time when progress tracking started
         completed_rows: cumulative rows outputted
         total_rows: total rows expected (can be unknown)
