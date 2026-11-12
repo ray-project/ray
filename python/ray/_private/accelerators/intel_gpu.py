@@ -130,12 +130,14 @@ def _get_gpu_names() -> List[str]:
     try:
         names = _get_level_zero_gpu_names()
     except Exception:
+        logger.debug("Failed to detect Intel GPUs through Level Zero.", exc_info=True)
         names = []
     if names:
         return names
     try:
         return _get_dpctl_gpu_names()
     except Exception:
+        logger.debug("Failed to detect Intel GPUs through dpctl.", exc_info=True)
         return []
 
 
