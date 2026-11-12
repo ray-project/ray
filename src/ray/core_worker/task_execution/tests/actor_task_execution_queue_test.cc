@@ -554,8 +554,8 @@ TEST(OrderedActorTaskExecutionQueueTest, TestSeqWaitTimeoutNotPushedOutByLaterTa
   // Later arrivals must not restart the reorder deadline: a client that keeps submitting
   // would otherwise hold the gap open forever and this group would stop making progress.
   instrumented_io_context io_service;
-  MockWaiter waiter;
-  MockTaskEventBuffer task_event_buffer;
+  FakeWaiter waiter;
+  FakeTaskEventBuffer task_event_buffer;
   [[maybe_unused]] ray::observability::FakeRayEventRecorder ray_task_event_recorder;
 
   std::vector<ConcurrencyGroup> concurrency_groups{ConcurrencyGroup{"io", 1, {}}};
