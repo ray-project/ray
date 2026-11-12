@@ -35,6 +35,7 @@ from ray.data._internal.execution.operators.shuffle_operators.shuffle_tasks impo
     ReduceFn,
     _shuffle_reduce_task,
 )
+from ray.data._internal.execution.util import merge_runtime_envs
 from ray.data._internal.logical.interfaces.partitioning import HashPartitioning
 from ray.data.block import BlockAccessor, BlockStats, TaskExecWorkerStats, to_stats
 from ray.data.context import DataContext
@@ -46,15 +47,6 @@ logger = logging.getLogger(__name__)
 
 
 _SHUFFLE_REDUCE_RUNTIME_ENV = {"env_vars": {"POLARS_MAX_THREADS": "1"}}
-
-
-def _merged_reduce_runtime_env(user_runtime_env: Dict[str, Any]) -> Dict[str, Any]:
-    merged = {**_SHUFFLE_REDUCE_RUNTIME_ENV, **user_runtime_env}
-    merged["env_vars"] = {
-        **_SHUFFLE_REDUCE_RUNTIME_ENV["env_vars"],
-        **user_runtime_env.get("env_vars", {}),
-    }
-    return merged
 
 
 class ShuffleReduceOp(PhysicalOperator):
@@ -198,7 +190,9 @@ class ShuffleReduceOp(PhysicalOperator):
         user_runtime_env = user_args.pop("runtime_env", None)
         remote_args.update(user_args)
         if user_runtime_env is not None:
-            remote_args["runtime_env"] = _merged_reduce_runtime_env(user_runtime_env)
+            remote_args["runtime_env"] = merge_runtime_envs(
+                _SHUFFLE_REDUCE_RUNTIME_ENV, user_runtime_env
+            )
         remote_args["name"] = self.name
         remote_args["num_returns"] = "streaming"
         return remote_args

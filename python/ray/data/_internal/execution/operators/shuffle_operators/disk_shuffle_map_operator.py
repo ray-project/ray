@@ -36,10 +36,12 @@ from ray.data._internal.execution.operators.shuffle_operators.shuffle_map_operat
 )
 from ray.data._internal.execution.operators.shuffle_operators.shuffle_tasks import (
     SHUFFLE_PEAK_MEMORY_MULTIPLIER,
+)
+from ray.data._internal.execution.util import (
+    merge_label_selector,
     merge_runtime_envs,
     resource_override,
 )
-from ray.data._internal.execution.util import merge_label_selector
 from ray.data.block import BlockExecStats, BlockMetadata, BlockStats
 from ray.data.context import DataContext
 from ray.types import ObjectRef
