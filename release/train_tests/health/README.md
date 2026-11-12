@@ -88,7 +88,7 @@ shares.
 
 ### `gpu_faults.py workflow`
 
-1. Pre-flight, with training stopped (`HealthCheck(stop_workers=True)`):
+1. Pre-flight, with training stopped (`HealthCheck(requires_idle_workers=True)`):
    `AllReduceProbe` all-reduces a one over every worker's process group, and
    `EvictNodesFailingAllReduce` passes it.
 2. Training starts. At step 20 rank 0 injects a thermal event on its node A,

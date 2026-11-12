@@ -290,5 +290,5 @@ def all_reduce_preflight_check() -> HealthCheck:
     return HealthCheck(
         probe_creator=lambda: [AllReduceProbe()],
         evaluator_creator=lambda: [EvictNodesFailingAllReduce()],
-        stop_workers=True,
+        requires_idle_workers=True,
     )

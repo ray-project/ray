@@ -8,7 +8,7 @@
 Scenarios, one worker per GPU:
 
   workflow  A pre-flight all-reduce over every worker, with training stopped
-            (``HealthCheck(stop_workers=True)``), passes and training starts.
+            (``HealthCheck(requires_idle_workers=True)``), passes and training starts.
             Rank 0 then makes its node A slow and hot. ``GpuSpeedProbe`` sees A
             slow, ``DiagnoseASlowNode`` diagnoses with ``GpuTemperatureProbe``,
             which finds A too hot, and ``ReattemptOnAHotNode`` reattempts. With
