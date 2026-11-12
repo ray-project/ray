@@ -145,7 +145,6 @@ def test_level_zero_loader_default_name(platform, expected):
     with (
         patch.object(intel_gpu.sys, "platform", platform),
         patch.object(intel_gpu.ctypes, "CDLL", fake_cdll),
-        patch.object(intel_gpu.ctypes.util, "find_library", return_value=None),
     ):
         assert intel_gpu._load_level_zero_loader() is None
     assert tried == [expected]
