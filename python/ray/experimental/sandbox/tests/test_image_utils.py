@@ -1690,6 +1690,12 @@ def test_layer_cache_reclaimed_before_images(tmp_path, monkeypatch, pressure):
         lambda _: 100 - sum(10 for path in paths if os.path.exists(path)),
     )
 
+    if pressure == "size":
+        # A cache hit doesn't grow the cache, so it leaves the size cap to
+        # the next pull.
+        other_tar = tmp_path / "other.tar"
+        _write_sample_tar(other_tar)
+        pull_and_extract_container_image(str(other_tar), images_dir)
     assert pull_and_extract_container_image(str(local_tar), images_dir) == image_dir
     assert [os.path.exists(path) for path in paths] == [False, True]
     assert _image_file(image_dir, "hello.txt") == b"hello"
