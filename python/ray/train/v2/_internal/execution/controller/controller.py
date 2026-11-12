@@ -10,6 +10,9 @@ import pandas as pd
 import ray
 import ray._private.ray_constants as ray_constants
 from ray.exceptions import AsyncioActorExit
+from ray.train.health import Diagnose, Evict, HealthDecision, Noop, Reattempt
+from ray.train.health._internal.manager import HealthManager
+from ray.train.v2._internal.callbacks.health_callback import HealthCallback
 from ray.train.v2._internal.constants import (
     DEFAULT_ENABLE_CONTROLLER_LOGGING,
     DEFAULT_ENABLE_PREEMPTION_WATCHER,
@@ -75,6 +78,7 @@ from ray.train.v2._internal.util import (
 from ray.train.v2.api.callback import RayTrainCallback
 from ray.train.v2.api.exceptions import (
     ControllerError,
+    HealthCheckError,
     PreemptionError,
     TrainingFailedError,
 )
@@ -221,6 +225,16 @@ class TrainController:
 
             self._worker_group_callbacks_to_propagate.append(PreemptionCallback())
 
+        self._health_manager = None
+        self._health_callback = None
+        health_config = self._run_config.health_config
+        if health_config is not None:
+            self._health_manager = HealthManager(health_config.inflight_checks)
+            self._health_callback = HealthCallback(
+                self._health_manager, health_config.preflight_checks
+            )
+            self._worker_group_callbacks_to_propagate.append(self._health_callback)
+
         self._worker_group: Optional[WorkerGroup] = None
         self._state = InitializingState()
         self._return_value: Optional[Any] = None
@@ -311,10 +325,17 @@ class TrainController:
             # Standard: full restart.
             if self._worker_group:
                 self._shutdown_worker_group()
-            self._start_worker_group(
-                num_workers=decision.num_workers,
-                resources_per_worker=decision.resources_per_worker,
-            )
+            try:
+                self._start_worker_group(
+                    num_workers=decision.num_workers,
+                    resources_per_worker=decision.resources_per_worker,
+                )
+            except HealthCheckError as e:
+                # Only HealthCallback.after_worker_group_start raises this: a
+                # pre-flight check that requires idle workers decided to
+                # Reattempt or Evict. WorkerGroup._start() shut down the
+                # started workers before re-raising it.
+                return self._execute_health_decision(e.decision)
 
         return TrainControllerLoopIterationResult(
             run_attempt_id=self._get_run_attempt_id(),
@@ -694,6 +715,13 @@ class TrainController:
                     failure_decision, training_failed_error=worker_group_error
                 )
 
+            if self._health_manager is not None:
+                health_decision = self._health_manager.evaluate()
+                if not isinstance(health_decision, Noop):
+                    health_result = self._execute_health_decision(health_decision)
+                    if health_result:
+                        return health_result
+
             scaling_decision = (
                 self._scaling_policy.make_decision_for_running_worker_group(
                     worker_group_state=self.get_worker_group().get_worker_group_state(),
@@ -729,6 +757,68 @@ class TrainController:
             return await self._shutdown()
         else:
             raise ValueError(f"Unexpected controller state: {controller_state}")
+
+    def _execute_health_decision(
+        self, decision: HealthDecision
+    ) -> Optional[TrainControllerLoopIterationResult]:
+        """Act on a health decision: from the pre-flight checks before
+        training, or from the in-flight checks or a ``Diagnose`` during
+        training.
+
+        A ``Reattempt`` restarts the worker group through the failure policy,
+        like a worker error. An ``Evict`` restarts it outside the failure
+        policy. A ``Diagnose`` starts its checks while training continues, and
+        a later ``HealthManager.evaluate()`` decides on their results. If a
+        check requires idle workers, the ``Diagnose`` restarts the worker group
+        outside the failure policy instead, and the checks run at the start of
+        the next attempt, like pre-flight checks.
+
+        Args:
+            decision: The health decision, other than a ``Noop``.
+
+        Returns:
+            The result of the iteration, or ``None`` to keep running.
+        """
+        failure_result = self._run_controller_hook("after_health_decision", decision)
+        if failure_result:
+            return failure_result
+
+        error = HealthCheckError(decision)
+        if isinstance(decision, Diagnose):
+            if not any(check.requires_idle_workers for check in decision.checks):
+                logger.info("Diagnosing while training continues: %s", decision.reason)
+                self._health_manager.start_on_demand_checks(decision.checks)
+                return None
+            logger.warning(
+                "Restarting the worker group to diagnose: %s", decision.reason
+            )
+            self._health_callback.run_at_next_start(decision.checks)
+            return TrainControllerLoopIterationResult(
+                run_attempt_id=self._get_run_attempt_id(),
+                previous_state=self.get_state(),
+                next_state=self._get_retry_state(self.get_state(), error),
+            )
+
+        if isinstance(decision, Reattempt):
+            logger.warning("Reattempting: %s", decision.reason)
+            failure_decision = self._failure_policy.make_decision(
+                training_failed_error=error
+            )
+            return self._execute_failure_decision(
+                failure_decision, training_failed_error=error
+            )
+        if isinstance(decision, Evict):
+            logger.warning(
+                "Evicting nodes %s and restarting the worker group: %s",
+                decision.target_nodes,
+                decision.reason,
+            )
+            return TrainControllerLoopIterationResult(
+                run_attempt_id=self._get_run_attempt_id(),
+                previous_state=self.get_state(),
+                next_state=self._get_retry_state(self.get_state(), error),
+            )
+        return None
 
     @staticmethod
     def _is_training_succeeded(

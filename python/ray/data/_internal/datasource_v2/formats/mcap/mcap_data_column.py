@@ -342,13 +342,13 @@ def _summaries(
     """
     for path, summary_read in read_summaries(filesystem, paths, lambda path: path):
         try:
-            summary = summary_read.result()
+            listed = summary_read.result()
         except Exception as exc:  # noqa: BLE001 - not an MCAP file
             if not skip_unreadable:
                 raise
             logger.debug("Skipping %s for the schema: %s", path, exc)
             continue
-        yield path, summary
+        yield path, None if listed is None else listed.summary
 
 
 def _paths_past_sample(listed: Iterable[str], sampled: Set[str]) -> List[str]:
