@@ -128,6 +128,8 @@ class HealthManager:
         self._last_node_monitor_group_status = NodeMonitorGroupPollStatus(
             node_monitor_statuses={}
         )
+        # The last status of each worker, by world rank, merged over the polls.
+        self._last_worker_statuses: Dict[int, "WorkerStatus"] = {}
         # The probes and evaluators of the on-demand checks that are running.
         self._on_demand_probes: List[Probe] = []
         self._on_demand_evaluators: List[Evaluator] = []
@@ -156,6 +158,7 @@ class HealthManager:
         self._last_node_monitor_group_status = NodeMonitorGroupPollStatus(
             node_monitor_statuses={}
         )
+        self._last_worker_statuses = {}
         self._on_demand_evaluators = []
         self._node_monitor_group.shutdown()
         self._node_monitor_group.start_worker_node_monitors(node_ids)
@@ -213,17 +216,20 @@ class HealthManager:
             worker_statuses: ``{world rank: WorkerStatus}`` from the worker
                 group's latest poll, with each worker's ``WorkerProbe`` results
                 and health report.
-            timeout: Timeout in seconds to wait for the latest results.
+            timeout: Timeout in seconds to wait for the ``NodeMonitor``\\ s'
+                latest results. The worker group polled ``worker_statuses``
+                already.
 
         Returns:
             The health decision to carry out. ``Noop()`` if there is nothing to
             do.
         """
         self._poll_node_monitor_group_status(timeout)
+        self._merge_worker_statuses(worker_statuses or {})
         state = _to_health_state(
             self._last_node_monitor_group_status,
             self._inflight_probes,
-            worker_statuses,
+            self._last_worker_statuses,
         )
         return self._decide(self._inflight_evaluators, state)
 
@@ -296,6 +302,33 @@ class HealthManager:
             time.sleep(DEFAULT_ON_DEMAND_PROBE_POLL_INTERVAL_S)
             decision = self.evaluate_on_demand_checks()
         return decision
+
+    def _merge_worker_statuses(
+        self, worker_statuses: Mapping[int, "WorkerStatus"]
+    ) -> None:
+        """Merge each worker's new status into its last one. A worker keeps its
+        last ``WorkerProbe`` results and health report while its poll hangs.
+
+        Args:
+            worker_statuses: ``{world rank: WorkerStatus}`` from the worker
+                group's latest poll.
+        """
+        for rank, new_status in worker_statuses.items():
+            last_status = self._last_worker_statuses.get(rank)
+            if last_status is not None:
+                new_status = replace(
+                    new_status,
+                    probe_results={
+                        **last_status.probe_results,
+                        **new_status.probe_results,
+                    },
+                    health_report=(
+                        new_status.health_report
+                        if new_status.health_report is not None
+                        else last_status.health_report
+                    ),
+                )
+            self._last_worker_statuses[rank] = new_status
 
     def _poll_node_monitor_group_status(self, timeout: float) -> None:
         """Poll each ``NodeMonitor``, and merge its new status into its last

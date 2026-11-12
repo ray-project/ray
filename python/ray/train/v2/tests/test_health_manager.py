@@ -250,6 +250,48 @@ def test_worker_results_and_health_reports_reach_the_evaluators():
     assert state.health_reports == {0: report}
 
 
+def test_a_worker_whose_poll_hangs_keeps_its_last_results():
+    evaluator = Always(Noop())
+    manager = HealthManager([_check(probes=[StepTime()], evaluators=[evaluator])])
+    _fake_temps(manager, [ProbeResult(), ProbeResult(), ProbeResult()])
+    step_times = [ProbeResult(timestamp_s=1.0), ProbeResult(timestamp_s=2.0)]
+    reports = [ProbeResult(step=1), ProbeResult(step=2)]
+
+    manager.evaluate_inflight_checks(
+        {
+            0: WorkerStatus(
+                running=True,
+                probe_results={"StepTime": step_times[0]},
+                health_report=reports[0],
+            )
+        },
+        timeout=0,
+    )
+    # A hanging poll gives an empty status.
+    manager.evaluate_inflight_checks({0: WorkerStatus(running=True)}, timeout=0)
+    manager.evaluate_inflight_checks(
+        {
+            0: WorkerStatus(
+                running=True,
+                probe_results={"StepTime": step_times[1]},
+                health_report=reports[1],
+            )
+        },
+        timeout=0,
+    )
+
+    assert [state.probe_results["StepTime"] for state in evaluator.seen] == [
+        {0: step_times[0]},
+        {0: step_times[0]},
+        {0: step_times[1]},
+    ]
+    assert [state.health_reports for state in evaluator.seen] == [
+        {0: reports[0]},
+        {0: reports[0]},
+        {0: reports[1]},
+    ]
+
+
 def test_an_evaluator_decides_on_the_history_it_keeps(fake_node_id):
     evaluator = EvictHotGpu(samples=3)
     manager = HealthManager([_check(evaluators=[evaluator])])
@@ -281,11 +323,16 @@ def test_reset_drops_the_results_and_resets_the_evaluators(fake_node_id):
     evaluator = Always(Noop())
     manager = HealthManager([_check(evaluators=[evaluator])])
     _fake_temps(manager, [ProbeResult(timestamp_s=1.0)])
-    manager.evaluate_inflight_checks(timeout=0)
+    manager.evaluate_inflight_checks(
+        {0: WorkerStatus(running=True, health_report=ProbeResult(step=1))},
+        timeout=0,
+    )
     assert manager._last_node_monitor_group_status.node_monitor_statuses
+    assert manager._last_worker_statuses
 
     manager.reset([])
     assert manager._last_node_monitor_group_status.node_monitor_statuses == {}
+    assert manager._last_worker_statuses == {}
     assert evaluator.resets == 1
 
 
