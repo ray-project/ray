@@ -133,7 +133,7 @@ Note that a `ray::ServeReplica::simple_app::BaseService` and a `ray::ProxyActor`
 
 ## Step 6: Send requests to the Serve apps by the Kubernetes serve service
 
-`rayservice-no-ray-serve-serve-svc` does traffic routing among all the workers that have Ray Serve replicas. Although one worker Pod is unready, Ray Serve can still route the traffic to the ready worker Pod with a Ray Serve replica running. Therefore, users can still send requests to the app and receive responses from it.
+`rayservice-no-ray-serve-replica-serve-svc` does traffic routing among all the workers that have Ray Serve replicas. Although one worker Pod is unready, Ray Serve can still route the traffic to the ready worker Pod with a Ray Serve replica running. Therefore, users can still send requests to the app and receive responses from it.
 
 ```sh
 # Step 6.1: Run a curl Pod.
