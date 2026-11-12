@@ -29,3 +29,17 @@ func NewRouterForTest(mods []Module) (http.Handler, error) {
 	}
 	return &aiohttpRouter{mux: mux}, nil
 }
+
+// ServeGRPCServerForTest builds the agent gRPC server, starts serving it on an
+// ephemeral port and returns the bound address plus a stop function. It lets
+// the external test package exercise the real interceptor chain through a real
+// client without exporting grpcServer itself.
+func ServeGRPCServerForTest(cfg Config, mods []Module) (string, func(), error) {
+	cfg.GRPCPort = 0
+	srv, err := newGRPCServer(cfg, mods)
+	if err != nil {
+		return "", nil, err
+	}
+	go func() { _ = srv.serve() }()
+	return srv.listener.Addr().String(), srv.stop, nil
+}

@@ -43,22 +43,33 @@ func TestAuthenticationConstants(t *testing.T) {
 	}
 }
 
-func TestTokenAuthEnabledModes(t *testing.T) {
+// TestAuthModePredicates pins the case-insensitive auth mode matrix: both
+// predicates must agree with the C++ GetAuthenticationMode lowercasing, and
+// TokenModeEnabled must stay narrower than TokenAuthEnabled so the gRPC gate
+// does not enforce in k8s mode.
+func TestAuthModePredicates(t *testing.T) {
 	cases := []struct {
-		mode string
-		want bool
+		mode      string
+		wantAny   bool
+		wantToken bool
 	}{
-		{"", false},
-		{"disabled", false},
-		{"token", true},
-		{"k8s", true},
-		{"unknown", false},
+		{"token", true, true},
+		{"TOKEN", true, true},
+		{"Token", true, true},
+		{"k8s", true, false},
+		{"K8S", true, false},
+		{"disabled", false, false},
+		{"", false, false},
+		{"unknown", false, false},
 	}
 	for _, c := range cases {
 		t.Run(c.mode, func(t *testing.T) {
 			t.Setenv("RAY_AUTH_MODE", c.mode)
-			if got := TokenAuthEnabled(); got != c.want {
-				t.Fatalf("TokenAuthEnabled() = %v, want %v for mode %q", got, c.want, c.mode)
+			if got := TokenAuthEnabled(); got != c.wantAny {
+				t.Fatalf("TokenAuthEnabled() = %v, want %v for mode %q", got, c.wantAny, c.mode)
+			}
+			if got := TokenModeEnabled(); got != c.wantToken {
+				t.Fatalf("TokenModeEnabled() = %v, want %v for mode %q", got, c.wantToken, c.mode)
 			}
 		})
 	}
@@ -73,7 +84,10 @@ func TestAuthenticationModeName(t *testing.T) {
 		{"disabled", "disabled"},
 		{"unknown", "disabled"},
 		{"token", "token"},
+		{"TOKEN", "token"},
+		{"Token", "token"},
 		{"k8s", "k8s"},
+		{"K8S", "k8s"},
 	}
 	for _, c := range cases {
 		t.Run(c.mode, func(t *testing.T) {
@@ -162,13 +176,17 @@ func TestValidateRequestTokenNoExpectedToken(t *testing.T) {
 // back to the k8s validator and rejects the token when the cluster environment
 // is absent (no service host/port env), never to the static token.
 func TestValidateRequestTokenK8sModeWithoutCluster(t *testing.T) {
-	t.Setenv("RAY_AUTH_MODE", "k8s")
 	t.Setenv("RAY_AUTH_TOKEN", "env-token")
 	t.Setenv("KUBERNETES_SERVICE_HOST", "")
 	t.Setenv("KUBERNETES_SERVICE_PORT", "")
 
-	if ValidateRequestToken("Bearer env-token") {
-		t.Fatal("expected k8s mode to reject the token when the k8s client cannot initialize")
+	// Both spellings must route to the k8s validator rather than the static
+	// token comparison.
+	for _, mode := range []string{"k8s", "K8S"} {
+		t.Setenv("RAY_AUTH_MODE", mode)
+		if ValidateRequestToken("Bearer env-token") {
+			t.Fatalf("mode %q: expected the k8s validator to reject the token when the k8s client cannot initialize", mode)
+		}
 	}
 }
 

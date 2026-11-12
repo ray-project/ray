@@ -372,11 +372,18 @@ func runDashboardAgent(ctx context.Context) error {
 		"is_head", cfg.IsHead,
 	)
 
+	// Derive a cancellable context so the raylet health watch can shut the
+	// agent down when the raylet dies, mirroring the Python dashboard agent's
+	// create_check_raylet_task.
+	runCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	agent.StartParentWatcher(runCtx, cancel, cfg.LogDir)
+
 	mods, err := buildModules(*cfg)
 	if err != nil {
 		return err
 	}
-	return runAgentFn(ctx, *cfg, mods)
+	return runAgentFn(runCtx, *cfg, mods)
 }
 
 // buildModules assembles the modules the dashboard agent runs with. The log

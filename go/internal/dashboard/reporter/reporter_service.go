@@ -2,6 +2,7 @@ package reporter
 
 import (
 	"context"
+	"errors"
 	"time"
 
 	"github.com/ray-project/ray/go/internal/dashboard/agent"
@@ -68,6 +69,10 @@ func NewReporterService(cfg agent.Config) (*ReporterService, error) {
 	if err != nil {
 		return nil, err
 	}
+	// Start the dynolog monitoring daemon up front so a later gpu_profile can
+	// run, mirroring the Python reporter agent's constructor. A disabled node or
+	// a launch failure is logged inside and never fails the reporter.
+	manager.StartMonitoringDaemon()
 	return &ReporterService{
 		profileManager:            manager,
 		metricsCollectionDisabled: cfg.MetricsCollectionDisabled,
@@ -100,15 +105,28 @@ func (s *ReporterService) CpuProfiling(_ context.Context, req *proto.CpuProfilin
 	return &proto.CpuProfilingReply{Success: success, Output: output}, nil
 }
 
-// GpuProfiling reports why GPU profiling cannot serve the request. The Go
-// reporter does not implement the dynolog gputrace path, so it degrades, but
-// the node capability and process liveness diagnostics of the Python
-// GpuProfilingManager are preserved.
-func (s *ReporterService) GpuProfiling(_ context.Context, req *proto.GpuProfilingRequest) (*proto.GpuProfilingReply, error) {
+// GpuProfiling runs a dynolog gputrace against the requested pid and returns
+// the trace path relative to the log directory, mirroring the Python reporter
+// agent's gpu_profile handler.
+func (s *ReporterService) GpuProfiling(ctx context.Context, req *proto.GpuProfilingRequest) (*proto.GpuProfilingReply, error) {
 	if req == nil {
 		return nil, status.Error(codes.InvalidArgument, "request must not be nil")
 	}
-	success, output := s.profileManager.GpuProfile(int(req.GetPid()), int(req.GetNumIterations()))
+	success, output, err := s.profileManager.GpuProfile(ctx, int(req.GetPid()), int(req.GetNumIterations()))
+	if err != nil {
+		// A cancelled or expired request context means the caller is gone, so
+		// the reply can never be delivered; surface the context sentinel rather
+		// than a timeout. Map both sentinels: a caller that set an RPC deadline
+		// shorter than the internal wait sees context.DeadlineExceeded, and a
+		// client keying retry logic off codes.DeadlineExceeded must not receive
+		// codes.Unknown.
+		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+			return nil, status.FromContextError(err).Err()
+		}
+		// Python raises RuntimeError here, which the RPC surfaces as an error
+		// rather than a reply with success=false.
+		return nil, status.Error(codes.Unknown, err.Error())
+	}
 	return &proto.GpuProfilingReply{Success: success, Output: output}, nil
 }
 

@@ -543,12 +543,18 @@ func TestPersistAgentPortsPublishesBoundExportPort(t *testing.T) {
 	}
 }
 
-// TestNewGRPCServerBindsAllInterfaces verifies the gRPC listener is reachable
-// from both localhost (the raylet's MetricsAgentClient dials localhost) and
-// this host's non-loopback address (head-side consumers dial the pod IP
-// resolved through ports_by_node).
+// TestNewGRPCServerBindsAllInterfaces verifies that on a non-localhost node the
+// gRPC listener is reachable from both localhost (the raylet's
+// MetricsAgentClient dials localhost) and this host's non-loopback address
+// (head-side consumers dial the pod IP resolved through ports_by_node). The
+// localhost node case, which binds the loopback address only, is covered by
+// TestAgentGRPCBindsLoopbackForLocalhostNode.
 func TestNewGRPCServerBindsAllInterfaces(t *testing.T) {
-	srv, err := newGRPCServer(Config{NodeIP: "127.0.0.1", GRPCPort: 0}, nil)
+	// Any non-localhost node IP selects the all-interfaces branch. The literal
+	// does not have to be reachable: the listener binds the wildcard address,
+	// which the dials below exercise through localhost and this host's actual
+	// non-loopback address.
+	srv, err := newGRPCServer(Config{NodeIP: "192.0.2.10", GRPCPort: 0}, nil)
 	if err != nil {
 		t.Fatalf("newGRPCServer: %v", err)
 	}

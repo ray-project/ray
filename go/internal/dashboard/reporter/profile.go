@@ -6,9 +6,12 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"runtime"
 	"strconv"
 	"strings"
+	"sync/atomic"
+	"syscall"
 	"time"
 
 	"github.com/ray-project/ray/go/pkg/log"
@@ -181,24 +184,128 @@ const gpuProfilingDeadProcessMessage = "The requested process to profile with pi
 	"%s is no longer running. " +
 	"GPU profiling is not available for this process."
 
-// gpuProfilingUnavailableMessage is returned when GPU profiling is enabled on
-// the node but the Go reporter does not implement the dynolog gputrace
-// execution path. It keeps the degradation explicit instead of reporting a
-// success that never produced a trace file.
-const gpuProfilingUnavailableMessage = "GPU profiling is not implemented in the Go reporter: " +
-	"the dynolog gputrace execution path is unavailable."
+// gpuProfilingNoProcessesMatchedMessage reproduces the Python
+// GpuProfilingManager._NO_PROCESSES_MATCHED_ERROR_MESSAGE verbatim.
+const gpuProfilingNoProcessesMatchedMessage = "The profiling command failed for pid=%d on node %s. " +
+	"There are a few potential reasons for this:\n" +
+	"1. The `KINETO_USE_DAEMON=1 KINETO_DAEMON_INIT_DELAY_S=5` environment variables " +
+	"are not set for the training worker processes.\n" +
+	"2. The process requested for profiling is not running a " +
+	"PyTorch training script. GPU profiling is only supported for " +
+	"PyTorch training scripts, typically launched via " +
+	"`ray.train.torch.TorchTrainer`."
+
+// gpuProfilingDaemonNotRunningMessage is returned when the dynolog daemon has
+// exited since it was launched.
+const gpuProfilingDaemonNotRunningMessage = "GPU monitoring daemon (pid=%d) is not running on node %s. " +
+	"See log for more details: %s"
+
+// gpuProfilingDaemonNotStartedMessage reproduces the Python RuntimeError raised
+// when gpu_profile runs before start_monitoring_daemon.
+const gpuProfilingDaemonNotStartedMessage = "Must call `start_monitoring_daemon` before profiling."
+
+// gpuProfilingTimedOutMessage mirrors the Python _wait_for_trace_file timeout.
+const gpuProfilingTimedOutMessage = "GPU profiling timed out after %d seconds, please try again."
+
+// dynologPort is the port the dynolog monitoring daemon listens on, mirroring
+// GpuProfilingManager._DYNOLOG_PORT.
+const dynologPort = 65406
+
+// noProcessesMatchedPrefix marks a dyno gputrace stdout that matched no
+// process, mirroring _NO_PROCESSES_MATCHED_ERROR_MESSAGE_PREFIX.
+const noProcessesMatchedPrefix = "No processes were matched"
+
+// gpuProfileTimeoutSeconds bounds the wait for the trace file, mirroring
+// _DEFAULT_TIMEOUT_S. A variable so tests can shorten it.
+var gpuProfileTimeoutSeconds = 5 * 60
+
+// gpuProfileTraceWaitInterval is the trace file poll interval, mirroring the
+// Python _wait_for_trace_file sleep. A variable so tests can collapse it.
+var gpuProfileTraceWaitInterval = 250 * time.Millisecond
+
+// gpuTraceTimestamp returns the timestamp embedded in a trace file name,
+// mirroring Python's datetime.now().strftime("%Y%m%d%H%M%S"). A variable so
+// tests can pin it.
+var gpuTraceTimestamp = func() string { return time.Now().Format("20060102150405") }
+
+// gpuProfilingDaemonAlive reports whether the dynolog daemon is still running,
+// mirroring the Python poll()-based is_monitoring_daemon_running. A variable so
+// tests can drive the daemon-died branch.
+var gpuProfilingDaemonAlive = func(pid int) bool {
+	state, err := processState(pid)
+	return err == nil && state != procStateZombie
+}
+
+// launchDynologDaemon starts the dynolog monitoring daemon, redirecting its
+// output to logPath, and returns its pid. Setpgid detaches it into its own
+// process group, mirroring Python's start_new_session=True so it survives
+// signal delivery to the agent's group. A variable so tests need no dynolog
+// binary.
+var launchDynologDaemon = func(logPath string, port int, bin string) (int, error) {
+	logFile, err := os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
+	if err != nil {
+		return 0, err
+	}
+	cmd := exec.Command(bin, "--enable_ipc_monitor", "--port", strconv.Itoa(port))
+	cmd.Stdout = logFile
+	cmd.Stderr = logFile
+	cmd.Stdin = nil
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	if err := cmd.Start(); err != nil {
+		logFile.Close()
+		return 0, err
+	}
+	// The child holds its own duplicate of the descriptor, so close the parent's.
+	logFile.Close()
+	// Reap the daemon when it exits so it does not linger as a zombie in the
+	// agent's process table until the agent itself terminates.
+	go func() { _ = cmd.Wait() }()
+	return cmd.Process.Pid, nil
+}
 
 // lookPath resolves an executable on PATH. It is a package-level variable so
 // tests can exercise the GPU profiling branches without installing dynolog and
 // dyno on the build machine.
 var lookPath = exec.LookPath
 
-// probeNodeHasGPUs runs nvidia-smi and reports whether it succeeded,
-// mirroring the Python GpuProfilingManager.node_has_gpus. Any failure (binary
-// missing, non-zero exit, permission denied) counts as "no GPUs".
+// gpuProbeTimeout bounds the nvidia-smi probe, mirroring the Python
+// GpuProfilingManager.node_has_gpus timeout=10. The probe runs in the
+// reporter constructor on the agent startup path, so an unbounded probe on a
+// wedged GPU driver would hang the agent before it binds any port. A variable
+// so tests can collapse it.
+var gpuProbeTimeout = 10 * time.Second
+
+// gpuProbeBinary and gpuProbeArgs are the probe argv, reproducing the Python
+// GpuProfilingManager.node_has_gpus command verbatim. They are variables so
+// tests can point the probe at a fake process instead of relying on the build
+// machine's nvidia-smi; the command is still built by probeNodeHasGPUs, so the
+// timeout under test stays in production code.
+var (
+	gpuProbeBinary = "nvidia-smi"
+	gpuProbeArgs   = []string{"--query-gpu=name", "--format=csv,noheader"}
+)
+
+// probeNodeHasGPUs runs nvidia-smi and reports whether it succeeded, mirroring
+// the Python GpuProfilingManager.node_has_gpus: the same arguments Python
+// passes, a 10-second timeout, a warning on timeout, and any other failure
+// (binary missing, non-zero exit, permission denied) counts as "no GPUs".
 func probeNodeHasGPUs() bool {
-	_, err := runCommand("nvidia-smi")
-	return err == nil
+	ctx, cancel := context.WithTimeout(context.Background(), gpuProbeTimeout)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, gpuProbeBinary, gpuProbeArgs...)
+	// stderr=subprocess.DEVNULL in Python: the failure detail is not used, and
+	// a nil writer makes os/exec discard the child's output rather than
+	// inherit the agent's stdio.
+	cmd.Stderr = nil
+	if err := cmd.Run(); err != nil {
+		if ctx.Err() == context.DeadlineExceeded {
+			// go/pkg/log has no Warning level, so Info (visible by default) is
+			// used, matching the Python logger.warning call site.
+			log.Log.Info("nvidia-smi command timed out after 10s. GPU profiling may not function correctly.")
+		}
+		return false
+	}
+	return true
 }
 
 // nodeHasGPUs reports whether this node has GPUs. It is a package-level
@@ -222,19 +329,30 @@ var gpuProfilingPIDAlive = func(pid int) bool {
 type ProfileManager struct {
 	profileDir string
 	ipAddress  string
+	// profilesDir holds GPU trace files and the dynolog daemon log.
+	profilesDir string
 	// dynologBin and dynoBin cache the dynolog tool paths resolved at
 	// construction time, mirroring the shutil.which calls of the Python
 	// GpuProfilingManager constructor. An empty value means the tool is
 	// missing and GPU profiling is disabled.
 	dynologBin string
 	dynoBin    string
+	// nodeHasGPUs caches the GPU probe, mirroring the functools.cache of the
+	// Python GpuProfilingManager, so gpuProfilingEnabled does not fork
+	// nvidia-smi on every call.
+	nodeHasGPUs bool
+	// daemonPID is the pid of the launched dynolog daemon, 0 when none was
+	// launched. Recording the pid (rather than a started flag) lets GpuProfile
+	// verify the daemon is still alive the way Python's
+	// is_monitoring_daemon_running does.
+	daemonPID atomic.Int32
 }
 
 // NewProfileManager builds a ProfileManager writing profile artifacts under
-// the given directory, creating the directory and its memray subdirectory if
-// they do not yet exist (mirroring the Python constructors). ipAddress is
-// reported in the GPU profiling error messages. It returns an error if either
-// directory cannot be created.
+// the given directory, creating the directory and its memray and profiles
+// subdirectories if they do not yet exist (mirroring the Python constructors).
+// ipAddress is reported in the GPU profiling error messages. It returns an
+// error if any directory cannot be created.
 func NewProfileManager(profileDir string, ipAddress string) (*ProfileManager, error) {
 	if err := os.MkdirAll(profileDir, 0755); err != nil {
 		return nil, fmt.Errorf("failed to create profile dir %q: %w", profileDir, err)
@@ -242,13 +360,19 @@ func NewProfileManager(profileDir string, ipAddress string) (*ProfileManager, er
 	if err := os.MkdirAll(profileDir+"/memray", 0755); err != nil {
 		return nil, fmt.Errorf("failed to create memray dir %q: %w", profileDir+"/memray", err)
 	}
+	profilesDir := filepath.Join(profileDir, "profiles")
+	if err := os.MkdirAll(profilesDir, 0o755); err != nil {
+		return nil, fmt.Errorf("failed to create profiles dir %q: %w", profilesDir, err)
+	}
 	dynologBin, _ := lookPath("dynolog")
 	dynoBin, _ := lookPath("dyno")
 	return &ProfileManager{
-		profileDir: profileDir,
-		ipAddress:  ipAddress,
-		dynologBin: dynologBin,
-		dynoBin:    dynoBin,
+		profileDir:  profileDir,
+		ipAddress:   ipAddress,
+		profilesDir: profilesDir,
+		dynologBin:  dynologBin,
+		dynoBin:     dynoBin,
+		nodeHasGPUs: nodeHasGPUs(),
 	}, nil
 }
 
@@ -256,7 +380,7 @@ func NewProfileManager(profileDir string, ipAddress string) (*ProfileManager, er
 // mirroring the Python GpuProfilingManager.enabled property: the node must have
 // GPUs and both dynolog tools must be installed.
 func (m *ProfileManager) gpuProfilingEnabled() bool {
-	return nodeHasGPUs() && m.dynologBin != "" && m.dynoBin != ""
+	return m.nodeHasGPUs && m.dynologBin != "" && m.dynoBin != ""
 }
 
 // profilerPermissionsMessage is the permission guidance Python's
@@ -408,30 +532,126 @@ func (m *ProfileManager) CPUProfile(pid int, format string, duration int, native
 	return true, string(data)
 }
 
-// GpuProfile reports why GPU profiling cannot serve this request. The Go
-// reporter does not implement the dynolog gputrace execution path, but the
-// node capability and process liveness checks of the Python
-// GpuProfilingManager.gpu_profile are reproduced so the head node receives the
-// same precise diagnostics: a disabled node, a dead target process and an
-// unimplemented execution path are distinguishable instead of collapsing into
-// one generic message.
-func (m *ProfileManager) GpuProfile(pid int, numIterations int) (bool, string) {
+// daemonLogPath is where the dynolog daemon writes its output, mirroring the
+// Python _daemon_log_file_path naming.
+func (m *ProfileManager) daemonLogPath() string {
+	return filepath.Join(m.profilesDir, fmt.Sprintf("dynolog_daemon_%d.log", os.Getpid()))
+}
+
+// StartMonitoringDaemon launches the dynolog monitoring daemon that gputrace
+// talks to. It is a no-op on a disabled node and when a daemon is already
+// running. Failures are logged and never returned, mirroring the Python
+// start_monitoring_daemon, so a node without a working dynolog still serves its
+// reporter endpoints.
+func (m *ProfileManager) StartMonitoringDaemon() {
+	if !m.gpuProfilingEnabled() {
+		log.Log.V(1).Info("GPU profiling is disabled, skipping daemon setup", "node_ip", m.ipAddress)
+		return
+	}
+	if pid := m.daemonPID.Load(); pid != 0 && gpuProfilingDaemonAlive(int(pid)) {
+		log.Log.V(1).Info("GPU profiling monitoring daemon is already running", "pid", pid)
+		return
+	}
+	logPath := m.daemonLogPath()
+	pid, err := launchDynologDaemon(logPath, dynologPort, m.dynologBin)
+	if err != nil {
+		log.Log.Error(err, "failed to launch the GPU profiling monitoring daemon", "log_path", logPath)
+		return
+	}
+	m.daemonPID.Store(int32(pid))
+	log.Log.Info("launched the GPU profiling monitoring daemon",
+		"pid", pid, "port", dynologPort, "log_path", logPath)
+}
+
+// GpuProfile runs `dyno gputrace` against pid and waits for the trace file it
+// produces, mirroring GpuProfilingManager.gpu_profile. The returned string is
+// the trace file path relative to the log directory, or an error message. A
+// non-nil error is reserved for the states Python models as an exception (the
+// daemon was never started, or the request context was cancelled), which the
+// caller surfaces as a gRPC error rather than as a failed-but-successful reply.
+// ctx bounds the wait for the trace file so a disconnected caller does not
+// leave a poll loop running to the deadline.
+func (m *ProfileManager) GpuProfile(ctx context.Context, pid int, numIterations int) (bool, string, error) {
 	if err := validatePID(pid); err != nil {
-		return false, err.Error()
+		return false, err.Error(), nil
 	}
 	if !m.gpuProfilingEnabled() {
 		log.Log.V(1).Info("GPU profiling is not enabled on this node",
 			"node_ip", m.ipAddress, "pid", pid, "num_iterations", numIterations)
-		return false, fmt.Sprintf(gpuProfilingDisabledMessage, m.ipAddress)
+		return false, fmt.Sprintf(gpuProfilingDisabledMessage, m.ipAddress), nil
+	}
+	daemonPID := m.daemonPID.Load()
+	if daemonPID == 0 {
+		return false, "", fmt.Errorf("%s", gpuProfilingDaemonNotStartedMessage)
+	}
+	if !gpuProfilingDaemonAlive(int(daemonPID)) {
+		msg := fmt.Sprintf(gpuProfilingDaemonNotRunningMessage, daemonPID, m.ipAddress, m.daemonLogPath())
+		log.Log.Error(fmt.Errorf("%s", msg), "GPU profiling daemon is gone", "pid", daemonPID)
+		return false, msg, nil
 	}
 	if !gpuProfilingPIDAlive(pid) {
 		log.Log.Info("the requested process for GPU profiling is no longer running",
 			"node_ip", m.ipAddress, "pid", pid)
-		return false, fmt.Sprintf(gpuProfilingDeadProcessMessage, pid, m.ipAddress)
+		return false, fmt.Sprintf(gpuProfilingDeadProcessMessage, pid, m.ipAddress), nil
 	}
-	log.Log.Info("GPU profiling is enabled on this node but is not implemented in the Go reporter",
-		"node_ip", m.ipAddress, "pid", pid, "num_iterations", numIterations)
-	return false, gpuProfilingUnavailableMessage
+
+	traceName := fmt.Sprintf("gputrace_%s_%s.json", m.ipAddress, gpuTraceTimestamp())
+	tracePath := filepath.Join(m.profilesDir, traceName)
+	args := []string{
+		"--port", strconv.Itoa(dynologPort),
+		"gputrace",
+		"--pids", strconv.Itoa(pid),
+		"--log-file", tracePath,
+		"--process-limit", "1",
+		"--iterations", strconv.Itoa(numIterations),
+	}
+	command := strings.Join(append([]string{m.dynoBin}, args...), " ")
+	res := runCommandDetail(m.dynoBin, args...)
+	if res.ExitCode != 0 {
+		return false, formatFailedCommand(command, "dyno", res), nil
+	}
+	if strings.Contains(res.Stdout, noProcessesMatchedPrefix) {
+		msg := fmt.Sprintf(gpuProfilingNoProcessesMatchedMessage, pid, m.ipAddress)
+		log.Log.Error(fmt.Errorf("%s", msg), "GPU profiling matched no processes", "pid", pid)
+		return false, msg, nil
+	}
+
+	// dyno returns as soon as the trace is queued: it writes <prefix>.tmp.json
+	// and renames it to <prefix>.json when the trace is complete, so the
+	// completion signal is the file appearing under the wildcard name.
+	pattern := strings.Replace(traceName, ".json", "*.json", 1)
+	return m.waitForTraceFile(ctx, pid, pattern)
+}
+
+// waitForTraceFile polls for the trace file until it appears, the timeout
+// expires, the target process dies, or ctx is cancelled, mirroring
+// _wait_for_trace_file.
+func (m *ProfileManager) waitForTraceFile(ctx context.Context, pid int, pattern string) (bool, string, error) {
+	deadline := time.Now().Add(time.Duration(gpuProfileTimeoutSeconds) * time.Second)
+	for {
+		matches, err := filepath.Glob(filepath.Join(m.profilesDir, pattern))
+		if err == nil && len(matches) > 0 {
+			rel, relErr := filepath.Rel(m.profileDir, matches[0])
+			if relErr != nil {
+				rel = matches[0]
+			}
+			log.Log.Info("GPU profiling finished", "trace_file", rel)
+			return true, rel, nil
+		}
+		if !time.Now().Before(deadline) {
+			return false, fmt.Sprintf(gpuProfilingTimedOutMessage, gpuProfileTimeoutSeconds), nil
+		}
+		timer := time.NewTimer(gpuProfileTraceWaitInterval)
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			return false, "", ctx.Err()
+		case <-timer.C:
+		}
+		if !gpuProfilingPIDAlive(pid) {
+			return false, fmt.Sprintf(gpuProfilingDeadProcessMessage, pid, m.ipAddress), nil
+		}
+	}
 }
 
 // MemoryProfileAttach attaches a memray profiler to pid, generating a

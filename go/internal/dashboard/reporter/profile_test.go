@@ -1,7 +1,7 @@
 package reporter
 
 import (
-	"errors"
+	"context"
 	"os"
 	"os/exec"
 	"strconv"
@@ -16,12 +16,17 @@ const testNodeIP = "10.0.0.7"
 
 // stubGpuProfiling installs deterministic GPU profiling seams for the duration
 // of a test: nodeHasGPUs and lookPath are replaced so no real nvidia-smi or
-// dynolog installation is required, and gpuProfilingPIDAlive is replaced so the
-// dead-process branch does not depend on the machine's process table.
+// dynolog installation is required, gpuProfilingPIDAlive is replaced so the
+// dead-process branch does not depend on the machine's process table, and the
+// monitoring daemon is pinned as alive while its launcher always fails so no
+// dynolog process is ever started.
 func stubGpuProfiling(t *testing.T, hasGPUs bool, dynologPath, dynoPath string, pidAlive func(int) bool) {
 	t.Helper()
 	origNodeHasGPUs, origLookPath, origPIDAlive := nodeHasGPUs, lookPath, gpuProfilingPIDAlive
+	origDaemonAlive, origLaunch := gpuProfilingDaemonAlive, launchDynologDaemon
 	nodeHasGPUs = func() bool { return hasGPUs }
+	gpuProfilingDaemonAlive = func(int) bool { return true }
+	launchDynologDaemon = func(string, int, string) (int, error) { return 0, exec.ErrNotFound }
 	lookPath = func(name string) (string, error) {
 		switch name {
 		case "dynolog":
@@ -42,6 +47,7 @@ func stubGpuProfiling(t *testing.T, hasGPUs bool, dynologPath, dynoPath string, 
 	}
 	t.Cleanup(func() {
 		nodeHasGPUs, lookPath, gpuProfilingPIDAlive = origNodeHasGPUs, origLookPath, origPIDAlive
+		gpuProfilingDaemonAlive, launchDynologDaemon = origDaemonAlive, origLaunch
 	})
 }
 
@@ -53,6 +59,20 @@ func newTestManager(t *testing.T, dir string) *ProfileManager {
 	if err != nil {
 		t.Fatalf("NewProfileManager(%q) error = %v", dir, err)
 	}
+	return m
+}
+
+// gpuTestDaemonPID is the monitoring daemon pid recorded by
+// newGPUManagerWithDaemon.
+const gpuTestDaemonPID int32 = 777
+
+// newGPUManagerWithDaemon builds a manager that already records a running
+// monitoring daemon, so gpu_profile proceeds past the start_monitoring_daemon
+// precondition.
+func newGPUManagerWithDaemon(t *testing.T) *ProfileManager {
+	t.Helper()
+	m := newTestManager(t, t.TempDir())
+	m.daemonPID.Store(gpuTestDaemonPID)
 	return m
 }
 
@@ -1046,7 +1066,7 @@ func TestProfileNewManagerCreatesDirectories(t *testing.T) {
 	if _, err := NewProfileManager(profileDir, testNodeIP); err != nil {
 		t.Fatalf("NewProfileManager error = %v", err)
 	}
-	for _, p := range []string{profileDir, profileDir + "/memray"} {
+	for _, p := range []string{profileDir, profileDir + "/memray", profileDir + "/profiles"} {
 		if _, err := os.Stat(p); err != nil {
 			t.Errorf("expected directory %s to exist, got %v", p, err)
 		}
@@ -1092,7 +1112,10 @@ func TestProfileGpuProfileRejectsInvalidPID(t *testing.T) {
 	m := newTestManager(t, t.TempDir())
 
 	for _, pid := range []int{0, -1, -1234} {
-		success, output := m.GpuProfile(pid, 10)
+		success, output, err := m.GpuProfile(context.Background(), pid, 10)
+		if err != nil {
+			t.Errorf("GpuProfile(pid=%d) error = %v, want nil", pid, err)
+		}
 		if success {
 			t.Errorf("GpuProfile(pid=%d) success = true, want false", pid)
 		}
@@ -1106,7 +1129,10 @@ func TestProfileGpuProfileDisabledWithoutGPUs(t *testing.T) {
 	stubGpuProfiling(t, false, "/usr/bin/dynolog", "/usr/bin/dyno", func(int) bool { return true })
 	m := newTestManager(t, t.TempDir())
 
-	success, output := m.GpuProfile(123, 10)
+	success, output, err := m.GpuProfile(context.Background(), 123, 10)
+	if err != nil {
+		t.Errorf("GpuProfile error = %v, want nil (a disabled node is a reply, not an error)", err)
+	}
 	if success {
 		t.Errorf("GpuProfile success = true, want false (disabled)")
 	}
@@ -1134,7 +1160,10 @@ func TestProfileGpuProfileDisabledWithoutDynolog(t *testing.T) {
 			stubGpuProfiling(t, true, tc.dynologPath, tc.dynoPath, func(int) bool { return true })
 			m := newTestManager(t, t.TempDir())
 
-			success, output := m.GpuProfile(123, 10)
+			success, output, err := m.GpuProfile(context.Background(), 123, 10)
+			if err != nil {
+				t.Errorf("GpuProfile error = %v, want nil (a missing tool is a reply, not an error)", err)
+			}
 			if success {
 				t.Errorf("GpuProfile success = true, want false (disabled)")
 			}
@@ -1147,9 +1176,12 @@ func TestProfileGpuProfileDisabledWithoutDynolog(t *testing.T) {
 
 func TestProfileGpuProfileDeadProcess(t *testing.T) {
 	stubGpuProfiling(t, true, "/usr/bin/dynolog", "/usr/bin/dyno", func(int) bool { return false })
-	m := newTestManager(t, t.TempDir())
+	m := newGPUManagerWithDaemon(t)
 
-	success, output := m.GpuProfile(4242, 10)
+	success, output, err := m.GpuProfile(context.Background(), 4242, 10)
+	if err != nil {
+		t.Errorf("GpuProfile error = %v, want nil (a dead target is a reply, not an error)", err)
+	}
 	if success {
 		t.Errorf("GpuProfile success = true, want false (dead process)")
 	}
@@ -1172,7 +1204,10 @@ func TestProfileGpuProfileDisabledTakesPrecedence(t *testing.T) {
 	stubGpuProfiling(t, false, "", "", func(int) bool { return false })
 	m := newTestManager(t, t.TempDir())
 
-	success, output := m.GpuProfile(4242, 10)
+	success, output, err := m.GpuProfile(context.Background(), 4242, 10)
+	if err != nil {
+		t.Errorf("GpuProfile error = %v, want nil (a disabled node wins over the dead process)", err)
+	}
 	if success {
 		t.Errorf("GpuProfile success = true, want false (disabled)")
 	}
@@ -1184,7 +1219,11 @@ func TestProfileGpuProfileDisabledTakesPrecedence(t *testing.T) {
 	}
 }
 
-func TestProfileGpuProfileEnabledButUnimplemented(t *testing.T) {
+// TestProfileGpuProfileWithoutDaemonReturnsError pins the one state Python
+// models as an exception: gpu_profile ran on an enabled node before
+// start_monitoring_daemon, so the caller must surface an error instead of a
+// failed-but-successful reply.
+func TestProfileGpuProfileWithoutDaemonReturnsError(t *testing.T) {
 	stubGpuProfiling(t, true, "/usr/bin/dynolog", "/usr/bin/dyno", func(int) bool { return true })
 
 	cap := &cmdCapture{}
@@ -1193,16 +1232,19 @@ func TestProfileGpuProfileEnabledButUnimplemented(t *testing.T) {
 	defer func() { runCommandDetail = orig }()
 
 	m := newTestManager(t, t.TempDir())
-	success, output := m.GpuProfile(123, 10)
+	success, output, err := m.GpuProfile(context.Background(), 123, 10)
 
-	if success {
-		t.Errorf("GpuProfile success = true, want false (degraded)")
+	if err == nil {
+		t.Fatal("GpuProfile returned no error although no daemon was started")
 	}
-	if output != gpuProfilingUnavailableMessage {
-		t.Errorf("GpuProfile output = %q, want %q", output, gpuProfilingUnavailableMessage)
+	if !strings.Contains(err.Error(), gpuProfilingDaemonNotStartedMessage) {
+		t.Errorf("GpuProfile error = %v, want it to contain %q", err, gpuProfilingDaemonNotStartedMessage)
+	}
+	if success || output != "" {
+		t.Errorf("GpuProfile success = %v, output = %q, want (false, \"\") alongside the error", success, output)
 	}
 	if cap.callCount() != 0 {
-		t.Errorf("GpuProfile executed %d commands, want 0 (no external command)", cap.callCount())
+		t.Errorf("GpuProfile executed %d commands, want 0 (no dyno run without a daemon)", cap.callCount())
 	}
 }
 
@@ -1244,37 +1286,71 @@ func TestProfileManagerGpuProfilingEnabledRequiresAll(t *testing.T) {
 	}
 }
 
+// stubGPUProbeArgv points the nvidia-smi probe at a fake binary for the
+// duration of a test, so no test depends on the build machine's nvidia-smi.
+func stubGPUProbeArgv(t *testing.T, binary string, args ...string) {
+	t.Helper()
+	origBinary, origArgs := gpuProbeBinary, gpuProbeArgs
+	gpuProbeBinary, gpuProbeArgs = binary, args
+	t.Cleanup(func() { gpuProbeBinary, gpuProbeArgs = origBinary, origArgs })
+}
+
+// TestGPUProbeMatchesPythonArguments pins the probe argv to the command
+// GpuProfilingManager.node_has_gpus runs.
+func TestGPUProbeMatchesPythonArguments(t *testing.T) {
+	if gpuProbeBinary != "nvidia-smi" {
+		t.Errorf("gpuProbeBinary = %q, want %q", gpuProbeBinary, "nvidia-smi")
+	}
+	want := []string{"--query-gpu=name", "--format=csv,noheader"}
+	if strings.Join(gpuProbeArgs, " ") != strings.Join(want, " ") {
+		t.Errorf("gpuProbeArgs = %v, want %v", gpuProbeArgs, want)
+	}
+}
+
 // TestProbeNodeHasGPUs covers the production nvidia-smi probe: only a
 // successful exit counts as "GPUs present".
 func TestProbeNodeHasGPUs(t *testing.T) {
-	orig := runCommand
-	defer func() { runCommand = orig }()
+	cases := []struct {
+		name string
+		argv []string
+		want bool
+	}{
+		{"success", []string{"/bin/true"}, true},
+		{"missing binary", []string{"/nonexistent/nvidia-smi"}, false},
+		{"non-zero exit", []string{"/bin/false"}, false},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			stubGPUProbeArgv(t, c.argv[0], c.argv[1:]...)
+			if got := probeNodeHasGPUs(); got != c.want {
+				t.Errorf("probeNodeHasGPUs() = %v, want %v", got, c.want)
+			}
+		})
+	}
+}
 
-	runCommand = func(name string, arg ...string) ([]byte, error) {
-		if name != "nvidia-smi" {
-			t.Errorf("probe ran %q, want nvidia-smi", name)
-		}
-		if len(arg) != 0 {
-			t.Errorf("probe args = %v, want none", arg)
-		}
-		return []byte("GPU 0: Tesla T4\n"), nil
-	}
-	if !probeNodeHasGPUs() {
-		t.Error("probeNodeHasGPUs() = false when nvidia-smi succeeds, want true")
-	}
+// TestProbeNodeHasGPUsHonoursTheTimeout pins the timeout contract: a probe that
+// never returns must be killed at gpuProbeTimeout and report "no GPUs" instead
+// of blocking the reporter constructor, which runs on the agent startup path.
+func TestProbeNodeHasGPUsHonoursTheTimeout(t *testing.T) {
+	const collapsed = 50 * time.Millisecond
+	origTimeout := gpuProbeTimeout
+	gpuProbeTimeout = collapsed
+	t.Cleanup(func() { gpuProbeTimeout = origTimeout })
 
-	runCommand = func(name string, arg ...string) ([]byte, error) {
-		return nil, exec.ErrNotFound
-	}
+	// A child that outlives the collapsed timeout by a wide margin.
+	stubGPUProbeArgv(t, "/bin/sleep", "30")
+
+	start := time.Now()
 	if probeNodeHasGPUs() {
-		t.Error("probeNodeHasGPUs() = true when nvidia-smi is missing, want false")
+		t.Fatal("probeNodeHasGPUs() = true for a probe that never exits, want false")
 	}
-
-	runCommand = func(name string, arg ...string) ([]byte, error) {
-		return []byte("NVIDIA-SMI has failed"), errors.New("exit status 9")
+	elapsed := time.Since(start)
+	if elapsed >= 2*time.Second {
+		t.Fatalf("probe took %v, want it bounded by gpuProbeTimeout (%v): the probe is unbounded", elapsed, collapsed)
 	}
-	if probeNodeHasGPUs() {
-		t.Error("probeNodeHasGPUs() = true when nvidia-smi exits non-zero, want false")
+	if elapsed < collapsed {
+		t.Fatalf("probe returned after %v, want at least gpuProbeTimeout (%v) so the timeout was the reason", elapsed, collapsed)
 	}
 }
 

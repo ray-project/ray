@@ -31,6 +31,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/ray-project/ray/go/internal/dashboard/auth"
 	"github.com/ray-project/ray/go/internal/dashboard/head"
 	"github.com/ray-project/ray/go/pkg/log"
 	"github.com/ray-project/ray/go/proto"
@@ -433,7 +434,10 @@ func (l *LogHead) listLogs(ctx context.Context, nodeID, glob string, timeout int
 	if addrs.grpcPort <= 0 {
 		return nil, fmt.Errorf("agent on node %s has no gRPC server", nodeID)
 	}
-	conn, err := grpc.DialContext(ctx, buildAddress(addrs.ip, addrs.grpcPort), grpc.WithTransportCredentials(insecure.NewCredentials()))
+	conn, err := grpc.DialContext(ctx, buildAddress(addrs.ip, addrs.grpcPort),
+		grpc.WithTransportCredentials(insecure.NewCredentials()),
+		grpc.WithPerRPCCredentials(auth.TokenCredential{}),
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -462,7 +466,10 @@ func (l *LogHead) streamLogFile(ctx context.Context, w io.Writer, nodeID, filena
 	if addrs.grpcPort <= 0 {
 		return fmt.Errorf("agent on node %s has no gRPC server", nodeID)
 	}
-	conn, err := grpc.DialContext(ctx, buildAddress(addrs.ip, addrs.grpcPort), grpc.WithTransportCredentials(insecure.NewCredentials()))
+	conn, err := grpc.DialContext(ctx, buildAddress(addrs.ip, addrs.grpcPort),
+		grpc.WithTransportCredentials(insecure.NewCredentials()),
+		grpc.WithPerRPCCredentials(auth.TokenCredential{}),
+	)
 	if err != nil {
 		return err
 	}

@@ -38,20 +38,33 @@ const (
 )
 
 // TokenAuthEnabled reports whether token authentication is enabled via the
-// RAY_AUTH_MODE environment variable, aligned with the C++ get_authentication_mode.
+// RAY_AUTH_MODE environment variable. The comparison is case-insensitive: the
+// C++ GetAuthenticationMode lowercases the value before comparing
+// (authentication_mode.cc), and the gcs dial layer already relies on that.
 func TokenAuthEnabled() bool {
 	mode := os.Getenv("RAY_AUTH_MODE")
-	return mode == "token" || mode == "k8s"
+	return strings.EqualFold(mode, "token") || strings.EqualFold(mode, "k8s")
+}
+
+// TokenModeEnabled reports whether the auth mode is token, the narrower gate
+// the gRPC server interceptor enforces under: the C++ raylet attaches client
+// credentials only in TOKEN mode (it maps "k8s" to DISABLED), so enforcing in
+// k8s mode would reject the raylet's credential-free metrics calls.
+func TokenModeEnabled() bool {
+	return strings.EqualFold(os.Getenv("RAY_AUTH_MODE"), "token")
 }
 
 // AuthenticationModeName returns the mode name string for the
 // /api/authentication_mode endpoint, aligned with
-// authentication_utils.get_authentication_mode_name.
+// authentication_utils.get_authentication_mode_name. The value is normalised
+// to lower case, mirroring the C++ comparison; a raw "TOKEN" env value with a
+// case-sensitive enablement check would otherwise report a mode the rest of
+// the process does not consider enabled.
 func AuthenticationModeName() string {
 	if !TokenAuthEnabled() {
 		return "disabled"
 	}
-	return os.Getenv("RAY_AUTH_MODE")
+	return strings.ToLower(strings.TrimSpace(os.Getenv("RAY_AUTH_MODE")))
 }
 
 // Environment variables read by RequestToken, matching the C++
@@ -163,7 +176,9 @@ func ValidateRequestToken(header string) bool {
 	if token == "" {
 		return false
 	}
-	if os.Getenv("RAY_AUTH_MODE") == "k8s" {
+	// The k8s validator is the non-token branch of the enabled modes, so the
+	// comparison is case-insensitive like TokenAuthEnabled.
+	if !TokenModeEnabled() && TokenAuthEnabled() {
 		return k8sTokenValidator.validate(token)
 	}
 	expected := expectedToken()

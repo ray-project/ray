@@ -7,6 +7,7 @@ go_library(
         "consts.go",
         "grpc_server.go",
         "http_server.go",
+        "parent_watcher.go",
         "port_persistence.go",
         "router.go",
     ],
@@ -29,8 +30,11 @@ go_test(
     srcs = [
         "agent_test.go",
         "export_test.go",
+        "grpc_auth_test.go",
+        "grpc_bind_addr_test.go",
         "job_routes_test.go",
         "log_routes_test.go",
+        "parent_watcher_test.go",
     ],
     embed = [":agent"],
     deps = [

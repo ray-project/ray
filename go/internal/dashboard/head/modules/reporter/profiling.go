@@ -22,6 +22,7 @@ import (
 	"net/url"
 	"strconv"
 
+	"github.com/ray-project/ray/go/internal/dashboard/auth"
 	"github.com/ray-project/ray/go/internal/dashboard/head"
 	"github.com/ray-project/ray/go/pkg/log"
 	"github.com/ray-project/ray/go/proto"
@@ -83,7 +84,10 @@ func (r *ReportHead) getAgentAddrByIP(ctx context.Context, ip string) (*agentAdd
 
 // newReporterStub dials the reporter gRPC service on ip:grpc_port.
 func newReporterStub(ctx context.Context, addrs *agentAddrs) (proto.ReporterServiceClient, *grpc.ClientConn, error) {
-	conn, err := grpc.DialContext(ctx, buildAddress(addrs.ip, addrs.grpcPort), grpc.WithTransportCredentials(insecure.NewCredentials()))
+	conn, err := grpc.DialContext(ctx, buildAddress(addrs.ip, addrs.grpcPort),
+		grpc.WithTransportCredentials(insecure.NewCredentials()),
+		grpc.WithPerRPCCredentials(auth.TokenCredential{}),
+	)
 	if err != nil {
 		return nil, nil, err
 	}

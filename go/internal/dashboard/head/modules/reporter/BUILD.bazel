@@ -13,6 +13,7 @@ go_library(
     importpath = "github.com/ray-project/ray/go/internal/dashboard/head/modules/reporter",
     visibility = ["//go:__subpackages__"],
     deps = [
+        "//go/internal/dashboard/auth",
         "//go/internal/dashboard/head",
         "//go/pkg/log",
         "//go/proto",

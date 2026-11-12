@@ -10,6 +10,8 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/ray-project/ray/go/internal/dashboard/agent"
 	"github.com/ray-project/ray/go/proto"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
 func u32p(v uint32) *uint32 { return &v }
@@ -140,8 +142,8 @@ func TestReporterServiceCpuProfiling(t *testing.T) {
 }
 
 func TestReporterServiceGpuProfiling(t *testing.T) {
-	// This node has no GPUs, so the RPC must report the disabled diagnostic and
-	// name the configured node address.
+	// This node has no GPUs, so the RPC must report the disabled diagnostic as a
+	// reply rather than as a gRPC error, and name the configured node address.
 	stubGpuProfiling(t, false, "/usr/bin/dynolog", "/usr/bin/dyno", nil)
 	s := newTestReporterService(t, t.TempDir())
 	rep, err := s.GpuProfiling(context.Background(), &proto.GpuProfilingRequest{Pid: 5, NumIterations: u32p(10)})
@@ -149,10 +151,55 @@ func TestReporterServiceGpuProfiling(t *testing.T) {
 		t.Fatalf("GpuProfiling: %v", err)
 	}
 	if rep.GetSuccess() {
-		t.Error("GpuProfiling success = true, want degraded")
+		t.Error("GpuProfiling success = true, want the disabled diagnostic")
 	}
 	if !strings.Contains(rep.GetOutput(), "GPU profiling is not enabled on node "+testNodeIP) {
 		t.Errorf("GpuProfiling output = %q, want the disabled message naming %s", rep.GetOutput(), testNodeIP)
+	}
+}
+
+// TestReporterServiceGpuProfilingWithoutDaemonReturnsUnknownStatus pins the one
+// GPU profiling failure Python raises as an exception: profiling on an enabled
+// node before the monitoring daemon was started must surface as a gRPC error
+// instead of a reply with success=false.
+func TestReporterServiceGpuProfilingWithoutDaemonReturnsUnknownStatus(t *testing.T) {
+	stubGpuProfiling(t, true, "/usr/bin/dynolog", "/usr/bin/dyno", nil)
+	s := newTestReporterService(t, t.TempDir())
+
+	rep, err := s.GpuProfiling(context.Background(), &proto.GpuProfilingRequest{Pid: 5, NumIterations: u32p(10)})
+	if err == nil {
+		t.Fatalf("GpuProfiling returned no error although no daemon was started (reply %v)", rep)
+	}
+	if code := status.Code(err); code != codes.Unknown {
+		t.Errorf("GpuProfiling status code = %v, want %v", code, codes.Unknown)
+	}
+	if !strings.Contains(err.Error(), "Must call `start_monitoring_daemon` before profiling.") {
+		t.Errorf("GpuProfiling error = %v, want the Python RuntimeError message", err)
+	}
+	if rep != nil {
+		t.Errorf("GpuProfiling reply = %v, want nil alongside the error", rep)
+	}
+}
+
+// TestReporterServiceGpuProfilingMapsExpiredContextToDeadlineExceeded pins the
+// handler-level mapping: a caller whose RPC deadline expires during the trace
+// wait must see codes.DeadlineExceeded, not codes.Unknown, so client retry and
+// timeout logic keyed off that code behaves as it does against the Python agent.
+func TestReporterServiceGpuProfilingMapsExpiredContextToDeadlineExceeded(t *testing.T) {
+	s := &ReporterService{profileManager: newGPUManager(t, true, &gpuTestHooks{daemonPid: 777, daemonAlive: true})}
+	// Only the caller's deadline can end the wait: the internal timeout is far
+	// away and the stubbed command never creates a trace file.
+	gpuProfileTimeoutSeconds = 60
+
+	ctx, cancel := context.WithDeadline(context.Background(), time.Now().Add(30*time.Millisecond))
+	defer cancel()
+
+	rep, err := s.GpuProfiling(ctx, &proto.GpuProfilingRequest{Pid: 1234, NumIterations: u32p(10)})
+	if code := status.Code(err); code != codes.DeadlineExceeded {
+		t.Fatalf("GpuProfiling status code = %v, want %v", code, codes.DeadlineExceeded)
+	}
+	if rep != nil {
+		t.Fatalf("GpuProfiling reply = %v, want nil alongside the error", rep)
 	}
 }
 

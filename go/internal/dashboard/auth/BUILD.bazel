@@ -20,6 +20,7 @@ go_library(
         "auth.go",
         "browser.go",
         "cors.go",
+        "grpc.go",
         "k8s.go",
     ],
     importpath = "github.com/ray-project/ray/go/internal/dashboard/auth",
@@ -27,6 +28,11 @@ go_library(
     deps = [
         "//go/pkg/gcs",
         "//go/pkg/log",
+        "@org_golang_google_grpc//:go_default_library",
+        "@org_golang_google_grpc//codes",
+        "@org_golang_google_grpc//credentials",
+        "@org_golang_google_grpc//metadata",
+        "@org_golang_google_grpc//status",
     ],
 )
 
@@ -36,6 +42,7 @@ go_test(
         "auth_test.go",
         "browser_test.go",
         "cors_test.go",
+        "grpc_test.go",
         "k8s_test.go",
         "token_test.go",
     ],
@@ -43,5 +50,9 @@ go_test(
     deps = [
         "//go/pkg/gcs",
         "@com_github_coder_websocket//:websocket",
+        "@org_golang_google_grpc//:go_default_library",
+        "@org_golang_google_grpc//codes",
+        "@org_golang_google_grpc//metadata",
+        "@org_golang_google_grpc//status",
     ],
 )

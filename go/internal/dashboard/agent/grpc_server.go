@@ -18,8 +18,11 @@ import (
 	"context"
 	"fmt"
 	"net"
+	"strconv"
 	"time"
 
+	"github.com/ray-project/ray/go/internal/common"
+	"github.com/ray-project/ray/go/internal/dashboard/auth"
 	"github.com/ray-project/ray/go/pkg/log"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
@@ -59,26 +62,46 @@ func unaryRecoveryInterceptor(ctx context.Context, req interface{}, info *grpc.U
 
 // newGRPCServer builds the gRPC server, registers services from every module,
 // and binds the configured listen address.
+//
+// The recovery interceptor is chained outermost so a panic anywhere after it —
+// including inside the authentication interceptor — still becomes an Internal
+// status instead of taking the agent process down.
 func newGRPCServer(cfg Config, mods []Module) (*grpcServer, error) {
 	s := grpc.NewServer(
 		grpc.MaxRecvMsgSize(grpcMaxMessageSize),
 		grpc.MaxSendMsgSize(grpcMaxMessageSize),
-		grpc.ChainUnaryInterceptor(unaryRecoveryInterceptor),
+		grpc.ChainUnaryInterceptor(unaryRecoveryInterceptor, auth.GRPCUnaryServerInterceptor),
+		grpc.ChainStreamInterceptor(auth.GRPCStreamServerInterceptor),
 	)
 	for _, m := range mods {
 		if err := m.RegisterGRPC(s); err != nil {
 			return nil, fmt.Errorf("register gRPC services: %w", err)
 		}
 	}
-	// Bind on all interfaces: the raylet's MetricsAgentClient dials localhost
-	// from inside the container, while head-side consumers dial the pod IP
-	// resolved through ports_by_node, so both must reach this listener. Mirror
-	// the Python agent, which binds non-localhost nodes on all interfaces.
-	lis, err := net.Listen("tcp", fmt.Sprintf(":%d", cfg.GRPCPort))
+	lis, err := net.Listen("tcp", grpcBindAddr(cfg))
 	if err != nil {
 		return nil, fmt.Errorf("listen on gRPC addr: %w", err)
 	}
 	return &grpcServer{server: s, listener: lis}, nil
+}
+
+// grpcBindAddr returns the address the gRPC server binds, mirroring the Python
+// agent: a localhost node binds the resolved loopback address, any other node
+// binds every interface so the raylet and head-side consumers can both reach
+// it. Binding all interfaces on a localhost node would publish the metrics and
+// log services to the network for no reason.
+func grpcBindAddr(cfg Config) string {
+	if common.IsLocalhost(cfg.NodeIP) {
+		return bindAddrForHost(common.GetLocalhostIP(), cfg.GRPCPort)
+	}
+	return bindAddrForHost("", cfg.GRPCPort)
+}
+
+// bindAddrForHost joins a host and port into a listen address. An empty
+// host means every interface. net.JoinHostPort brackets an IPv6 literal,
+// which a plain "%s:%d" format would turn into an invalid address.
+func bindAddrForHost(host string, port int) string {
+	return net.JoinHostPort(host, strconv.Itoa(port))
 }
 
 // serve accepts connections on the bound listener until the server is stopped.

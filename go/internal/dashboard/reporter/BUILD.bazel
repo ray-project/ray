@@ -71,6 +71,7 @@ go_test(
         "exporter_test.go",
         "gpu_collector_test.go",
         "gpu_mig_test.go",
+        "gpu_profiling_test.go",
         "gpu_utilization_test.go",
         "grpc_metric_name_test.go",
         "k8s_adapter_test.go",
@@ -107,6 +108,8 @@ go_test(
         "@io_opentelemetry_go_proto_otlp//metrics/v1:metrics",
         "@io_opentelemetry_go_proto_otlp//resource/v1:resource",
         "@org_golang_google_grpc//:go_default_library",
+        "@org_golang_google_grpc//codes",
         "@org_golang_google_grpc//credentials/insecure",
+        "@org_golang_google_grpc//status",
     ],
 )
