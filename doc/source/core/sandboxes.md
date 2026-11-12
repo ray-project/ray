@@ -1160,7 +1160,11 @@ ingress-nginx defaults to 1 MiB per request and 60 seconds without data from the
 
 #### How the facade hosts sandboxes
 
-The facade hosts sandboxes on one actor per node. A create is a call to the actor on the node it picks, so it starts no Ray worker process and registers no actor with Ray. Each node's actor reserves CPUs for its sandboxes in placement groups that many sandboxes share, and it reserves each group in the background, so a create doesn't wait for Ray to place one. These arguments change that:
+The facade hosts sandboxes on one actor per node. A create is a call to the actor on the node it picks, so it starts no Ray worker process and registers no actor with Ray. Each node's actor reserves CPUs for its sandboxes in placement groups that many sandboxes share, and it reserves each group in the background, so a create doesn't wait for Ray to place one.
+
+You don't size these actors. Each node has one, whatever the node's size, and it reserves no CPUs for itself. How many sandboxes a node takes depends only on the CPUs that each sandbox requests, which is the client's `cpu`, or `default_actor_num_cpus` when the client names none. A node with 32 CPUs hosts 32 sandboxes that request 1 CPU each, or 256 that request 0.125.
+
+These arguments change how the actors host sandboxes:
 
 * `reservation_slab_cpus`: the smallest placement group a node's actor reserves, 4 CPUs by default. Each group is at least as large as what the node already holds, so a node that fills up takes a handful of groups. Set it to 0 to give each sandbox a placement group of its own.
 * `warm_pool`: each node keeps sandboxes booted for the listed profiles, for example `[{"image": "python:3.12-slim", "network": "none", "size": 100, "cpu": 0.25}]`. A create with a profile's image and network, no workdir, and no resource limits takes one of them at once. With `cpu`, the node also reserves `size` times `cpu` CPUs for the pool.
