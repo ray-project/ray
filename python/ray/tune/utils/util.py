@@ -126,17 +126,17 @@ def retry_fn(
     sleep_time: int = 1,
     timeout: Optional[Number] = None,
 ) -> bool:
+    def _try_fn(attempt_errored: threading.Event):
+        try:
+            fn()
+        except exception_type as e:
+            logger.warning(e)
+            attempt_errored.set()
+
     for i in range(num_retries):
         errored = threading.Event()
 
-        def _try_fn(attempt_errored: threading.Event = errored):
-            try:
-                fn()
-            except exception_type as e:
-                logger.warning(e)
-                attempt_errored.set()
-
-        proc = threading.Thread(target=_try_fn)
+        proc = threading.Thread(target=_try_fn, args=(errored,))
         proc.daemon = True
         proc.start()
         proc.join(timeout=timeout)

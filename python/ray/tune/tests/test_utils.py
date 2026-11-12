@@ -95,23 +95,23 @@ def test_retry_fn_timeout(tmpdir):
 def test_retry_fn_stale_thread_does_not_poison_next_attempt():
     attempt = 0
     attempt2_started = threading.Event()
-    attempt1_finished = threading.Event()
+    attempt1_thread = None
 
     def _fn():
-        nonlocal attempt
+        nonlocal attempt, attempt1_thread
         attempt += 1
         if attempt == 1:
-            attempt2_started.wait(timeout=2.0)
-            try:
-                raise RuntimeError("stale attempt failed after timeout")
-            finally:
-                attempt1_finished.set()
+            attempt1_thread = threading.current_thread()
+            assert attempt2_started.wait(timeout=2.0)
+            raise RuntimeError("stale attempt failed after timeout")
         attempt2_started.set()
-        assert attempt1_finished.wait(timeout=2.0)
+        assert attempt1_thread is not None
+        attempt1_thread.join(timeout=2.0)
+        assert not attempt1_thread.is_alive()
 
     assert retry_fn(
         fn=_fn,
-        exception_type=RuntimeError,
+        exception_type=(RuntimeError, AssertionError),
         num_retries=2,
         sleep_time=0,
         timeout=0.05,
