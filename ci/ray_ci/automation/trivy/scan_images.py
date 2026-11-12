@@ -79,6 +79,10 @@ IMAGE_MANIFEST_TYPES = frozenset(
     }
 )
 OCI_ARCH = {"x86_64": "amd64", "aarch64": "arm64"}
+# Nightly tags embed the publish date (nightly.<yymmdd>.<sha>), which a scan
+# can't know for sure: it may run after midnight. The digest identifies the
+# image; these tags are left out of status records.
+DATED_TAG = re.compile(r"^nightly\.\d{6}\.")
 DB_FILES = {
     "db": {"trivy.db", "metadata.json"},
     "java_db": {"trivy-java.db", "metadata.json"},
@@ -129,6 +133,7 @@ class Target:
             "published_tags": [
                 f"{self.ctx.docker_hub_repo}:{tag}"
                 for tag in self.ctx.destination_tags()
+                if not DATED_TAG.match(tag)
             ],
             "status": "scanned" if self.scanned and not self.error else "error",
             "error": self.error,

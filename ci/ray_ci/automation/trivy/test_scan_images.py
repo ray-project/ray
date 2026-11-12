@@ -12,6 +12,7 @@ import click
 import pytest
 from click.testing import CliRunner
 
+from ci.ray_ci.automation import push_ray_image
 from ci.ray_ci.automation.trivy import registry, scan_images
 from ci.ray_ci.automation.trivy.scan_images import (
     ContainedTrivy,
@@ -629,6 +630,33 @@ def test_check_target_validates_the_digest_it_will_scan():
         ("manifest", f"{target.repo}@sha256:d1"),
         ("config", f"{target.repo}@sha256:d1"),
     ]
+
+
+def test_recorded_tags_do_not_depend_on_when_the_scan_runs():
+    """Nightly tags embed the publish date, which a scan after midnight
+    can't reproduce; only tags the scan can know for sure are recorded."""
+    (target,) = build_targets(
+        [("ray", "3.12")],
+        "cpu",
+        "x86_64",
+        WORK_REPO,
+        "abc123",
+        "master",
+        "80ceee083e49b1ae709c149d3a15862fe12ce8cb",
+        "nightly",
+        "false",
+    )
+
+    def tags_at(when: datetime) -> list:
+        with mock.patch.object(push_ray_image, "datetime") as clock:
+            clock.now.return_value = when
+            return target.status_record()["published_tags"]
+
+    before = tags_at(datetime(2026, 11, 12, 23, 50))
+    after = tags_at(datetime(2026, 11, 13, 0, 10))
+    assert before == after
+    assert "rayproject/ray:nightly-py312-cpu" in before
+    assert not any(".2611" in tag for tag in before)
 
 
 if __name__ == "__main__":
