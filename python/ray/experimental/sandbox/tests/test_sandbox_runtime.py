@@ -16,6 +16,7 @@ import pytest
 
 from ray.experimental.sandbox.backend.base import ExecResult, SandboxStatus
 from ray.experimental.sandbox.runtime import SandboxRuntime
+from ray.util.annotations import RayDeprecationWarning
 
 
 class _FakeImageManager:
@@ -131,7 +132,6 @@ def test_create_forwards_config_fields_to_backend():
         dns=["10.0.0.2"],
         capabilities=["CAP_CHOWN"],
         rootless=True,
-        readonly=False,
         shell="/bin/bash",
         oom_score_adj=0,
     )
@@ -144,9 +144,23 @@ def test_create_forwards_config_fields_to_backend():
     assert config.dns == ["10.0.0.2"]
     assert config.capabilities == ["CAP_CHOWN"]
     assert config.rootless is True
-    assert config.readonly is False
     assert config.shell == "/bin/bash"
     assert config.oom_score_adj == 0
+
+
+@pytest.mark.parametrize("readonly", [True, False])
+def test_create_ignores_the_removed_readonly_option(readonly):
+    """Callers written for the readonly option still pass it, mostly as
+    readonly=False. It warns and changes nothing: every sandbox is writable."""
+    runtime = _fake_runtime()
+    with pytest.warns(RayDeprecationWarning, match="'readonly' option was removed"):
+        runtime.create(image="fake:latest", readonly=readonly)
+    (config,) = runtime._backend.configs
+    assert not hasattr(config, "readonly")
+
+    # Other unknown options still fail.
+    with pytest.raises(TypeError, match="writable"):
+        runtime.create(image="fake:latest", writable=True)
 
 
 def _fake_running_backend(tmp_path):

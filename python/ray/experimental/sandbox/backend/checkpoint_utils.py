@@ -142,7 +142,6 @@ def create_manifest(
     sandbox_id: str,
     config: SandboxConfig,
     cwd: str,
-    workdir: Optional[str],
     leave_running: bool,
     node_id: Optional[str] = None,
     compression: str = "none",
@@ -155,7 +154,6 @@ def create_manifest(
         sandbox_id: The checkpointed sandbox's ID.
         config: The checkpointed sandbox's configuration.
         cwd: The sandbox's working directory.
-        workdir: The host directory mounted at the workdir, if any.
         leave_running: Whether the source kept running.
         node_id: The node the checkpoint was taken on; the current one if
             None.
@@ -187,13 +185,11 @@ def create_manifest(
         # can't be saved; a restore must pass the same one.
         "oci_spec_transform": config._oci_spec_transform_fn is not None,
         "cwd": cwd,
-        "workdir": workdir,
         "config": {
             "image": config.image,
             "cpu": config.cpu,
             "memory": config.memory,
             "network": config.network,
-            "readonly": config.readonly,
             "shell": config.shell,
             "rootless": config.rootless,
             "env": config.env,
@@ -240,17 +236,13 @@ def load_checkpoint_manifest(checkpoint_path: str) -> Tuple[Dict[str, Any], str]
 
 
 # Configuration that the checkpointed memory state depends on: the image
-# and the mounts, root filesystem mode and network stack that the guest
-# kernel was saved with, plus what runsc's restore spec validation (on by
-# default) compares: process.capabilities and the dev.gvisor.* annotations,
-# which carry ``disk`` as the rootfs overlay size. A restore can't change
-# them. ``workdir`` is one of them only on a readonly rootfs, where it is a
-# host-backed mount.
+# and the mounts and network stack that the guest kernel was saved with,
+# plus what runsc's restore spec validation (on by default) compares:
+# process.capabilities and the dev.gvisor.* annotations, which carry ``disk``
+# as the rootfs overlay size. A restore can't change them.
 _RESTORE_IMMUTABLE_FIELDS = (
     "image",
     "network",
-    "readonly",
-    "workdir",
     "rootless",
     "capabilities",
     "disk",
@@ -284,10 +276,24 @@ def build_restored_config(
     Raises:
         SandboxError: If an override changes a field in
             ``_RESTORE_IMMUTABLE_FIELDS``, which the restored memory state
-            depends on, or if the source used an ``_oci_spec_transform_fn``
-            and the restore doesn't pass one.
+            depends on, if the source used an ``_oci_spec_transform_fn``
+            and the restore doesn't pass one, or if the checkpoint is of a
+            sandbox with a read-only root filesystem.
     """
     cfg_dict = dict(manifest.get("config", {}))
+    # Checkpoints from before the ``readonly`` option was removed record it.
+    # The memory state of a read-only sandbox was saved with a root
+    # filesystem that has no overlay, a host-backed workdir and a tmpfs on
+    # /tmp, none of which a sandbox gets now, and runsc restores only into
+    # the spec the checkpoint was taken with.
+    if cfg_dict.pop("readonly", False):
+        raise SandboxError(
+            "The checkpoint is of a sandbox created with readonly=True, an "
+            "option this Ray version no longer has: every sandbox now has a "
+            "writable root filesystem, and the checkpoint's saved state "
+            "depends on a read-only one. Restore it with the Ray version "
+            "that took it."
+        )
     if cpu is not None:
         cfg_dict["cpu"] = cpu
     if memory is not None:
@@ -306,9 +312,7 @@ def build_restored_config(
     for k, v in kwargs.items():
         if k not in valid_fields or v is None:
             continue
-        immutable = k in _RESTORE_IMMUTABLE_FIELDS and not (
-            k == "workdir" and not cfg_dict.get("readonly", True)
-        )
+        immutable = k in _RESTORE_IMMUTABLE_FIELDS
         if immutable and k in cfg_dict and v != cfg_dict[k]:
             raise SandboxError(
                 f"Cannot restore with {k}={v!r}: the checkpoint was taken with "
@@ -370,10 +374,9 @@ class StagedCheckpoint:
     def copy_bundle_filesystems(
         self,
         root_dir: str,
-        workdir: Optional[str],
         sandbox_id: str,
     ) -> None:
-        """Snapshot the container overlay filesystem and writable workdir into staging."""
+        """Snapshot the container overlay filesystem into staging."""
         saved_rootfs = os.path.join(root_dir, "rootfs")
         if os.path.isdir(saved_rootfs):
             dest_rootfs = os.path.join(self.fs_dir, "rootfs")
@@ -386,17 +389,6 @@ class StagedCheckpoint:
             except Exception as e:
                 raise SandboxError(
                     f"Failed to copy rootfs overlay for sandbox '{sandbox_id}': {e}"
-                ) from e
-
-        if workdir and os.path.isdir(workdir):
-            try:
-                copy_fs_tree(
-                    workdir,
-                    os.path.join(self.fs_dir, "workdir"),
-                )
-            except Exception as e:
-                raise SandboxError(
-                    f"Failed to copy workdir for sandbox '{sandbox_id}': {e}"
                 ) from e
 
         bundle_config_path = os.path.join(root_dir, "config.json")

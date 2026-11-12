@@ -55,8 +55,8 @@ class ResourceSpec(BaseModel):
         default=None,
         gt=0,
         description=(
-            "Size cap of the sandbox's writable rootfs, in MiB. Writes past it "
-            "fail with ENOSPC. Requires readonly=false or a workdir."
+            "Size cap of the sandbox's root filesystem overlay, in MiB. "
+            "Writes past it fail with ENOSPC."
         ),
     )
     custom: Optional[Dict[str, float]] = Field(
@@ -146,7 +146,6 @@ class CreateSandboxRequest(BaseModel):
             "otherwise gets 403."
         ),
     )
-    readonly: bool = True
     resources: Optional[ResourceSpec] = None
     labels: Dict[str, str] = Field(default_factory=dict)
     capabilities: Optional[List[str]] = Field(
@@ -178,21 +177,6 @@ class CreateSandboxRequest(BaseModel):
         if network not in VALID_NETWORK_MODES:
             raise ValueError(f"network must be one of {VALID_NETWORK_MODES}")
         return network
-
-    @model_validator(mode="after")
-    def _validate_disk_limit(self) -> "CreateSandboxRequest":
-        # The same rule as SandboxConfig's, answered with a 422 up front.
-        if (
-            self.resources
-            and self.resources.disk_limit_mb
-            and self.readonly
-            and not self.workdir
-        ):
-            raise ValueError(
-                "resources.disk_limit_mb caps the writable rootfs; it requires "
-                "readonly=false or a workdir"
-            )
-        return self
 
     @model_validator(mode="after")
     def _validate_cidr_allowlist(self) -> "CreateSandboxRequest":

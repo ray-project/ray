@@ -65,7 +65,7 @@ class TestCheckpointRestore(unittest.TestCase):
         spec that boots straight from the image."""
         path = os.path.join(root_dir, "config.json")
         with open(path, "w", encoding="utf-8") as f:
-            json.dump({"root": {"path": "rootfs", "readonly": True}}, f)
+            json.dump({"root": {"path": "rootfs", "readonly": False}}, f)
         return path
 
     @staticmethod
@@ -156,21 +156,18 @@ class TestCheckpointRestore(unittest.TestCase):
             image="busybox:latest",
             rootless=rootless,
             network=network,
-            readonly=True,
             workdir="/workspace",
         )
         sandbox_id = "ray-sandbox-test-123"
         root_dir = os.path.join(self.temp_dir, "instances", sandbox_id)
         os.makedirs(os.path.join(root_dir, "bundle"), exist_ok=True)
         os.makedirs(os.path.join(root_dir, "rootfs"), exist_ok=True)
-        os.makedirs(os.path.join(root_dir, "workdir"), exist_ok=True)
         with open(os.path.join(root_dir, "config.json"), "w") as f:
             f.write("{}")
 
         self.backend._sandbox_metadata[sandbox_id] = {
             "config": config,
             "root_dir": root_dir,
-            "workdir": os.path.join(root_dir, "workdir"),
             "cwd": "/workspace",
             "proc": self._running_proc(),
             "status": SandboxStatus.RUNNING,
@@ -189,11 +186,9 @@ class TestCheckpointRestore(unittest.TestCase):
         sandbox_id, root_dir = self._create_mock_sandbox(rootless=False)
         old_proc = self.backend._sandbox_metadata[sandbox_id]["proc"]
 
-        # Write dummy files to upper rootfs and workdir
+        # Write a dummy file to the upper rootfs
         with open(os.path.join(root_dir, "rootfs", "file_in_overlay.txt"), "w") as f:
             f.write("test overlay content")
-        with open(os.path.join(root_dir, "workdir", "file_in_workdir.txt"), "w") as f:
-            f.write("test workdir content")
 
         dest_checkpoint_dir = os.path.join(self.temp_dir, "my_checkpoint")
 
@@ -220,14 +215,16 @@ class TestCheckpointRestore(unittest.TestCase):
         assert manifest["image"] == "busybox:latest"
         assert manifest["sandbox_id"] == sandbox_id
         assert manifest["compression"] == "none"
+        # Neither the removed option nor a host workdir is recorded.
+        assert "readonly" not in manifest["config"]
+        assert "workdir" not in manifest
+        assert manifest["config"]["workdir"] == "/workspace"
 
-        # Check that upper layer and workdir were copied
+        # Check that the upper layer was copied. The workdir is part of it.
         assert os.path.isfile(
             os.path.join(checkpoint_path, "fs", "rootfs", "file_in_overlay.txt")
         )
-        assert os.path.isfile(
-            os.path.join(checkpoint_path, "fs", "workdir", "file_in_workdir.txt")
-        )
+        assert os.listdir(os.path.join(checkpoint_path, "fs")) == ["rootfs"]
 
         # runsc checkpoint stops the sandbox: --leave-running would restore it
         # under a container that the exiting launch process deletes.
@@ -435,7 +432,6 @@ class TestCheckpointRestore(unittest.TestCase):
                 "image": "busybox:latest",
                 "rootless": False,
                 "network": "none",
-                "readonly": True,
             },
         }
         with open(os.path.join(ckpt_dir, "manifest.json"), "w") as f:
@@ -474,10 +470,8 @@ class TestCheckpointRestore(unittest.TestCase):
         ckpt_dir = os.path.join(self.temp_dir, "valid_checkpoint")
         state_dir = os.path.join(ckpt_dir, "state")
         fs_upper = os.path.join(ckpt_dir, "fs", "rootfs")
-        fs_workdir = os.path.join(ckpt_dir, "fs", "workdir")
         os.makedirs(state_dir, exist_ok=True)
         os.makedirs(fs_upper, exist_ok=True)
-        os.makedirs(fs_workdir, exist_ok=True)
 
         with open(os.path.join(fs_upper, "saved.txt"), "w") as f:
             f.write("restored upper data")
@@ -494,7 +488,9 @@ class TestCheckpointRestore(unittest.TestCase):
                 "workdir": "/workspace",
                 "rootless": False,
                 "network": "none",
-                "readonly": True,
+                # Checkpoints from before the readonly option was removed
+                # record it. A writable sandbox's still restores.
+                "readonly": False,
             },
         }
         with open(os.path.join(ckpt_dir, "manifest.json"), "w") as f:
@@ -552,7 +548,6 @@ class TestCheckpointRestore(unittest.TestCase):
                 "workdir": "/orig",
                 "rootless": False,
                 "network": "none",
-                "readonly": True,
             },
         }
         with open(os.path.join(ckpt_dir, "manifest.json"), "w") as f:
@@ -582,7 +577,6 @@ class TestCheckpointRestore(unittest.TestCase):
             assert meta["config"].env == {"ORIG": "VAL"}
             assert meta["config"].workdir == "/orig"
             assert meta["config"].network == "none"
-            assert meta["config"].readonly is True
 
     def test_default_checkpoint_path_format(self):
         sandbox_id, _ = self._create_mock_sandbox(rootless=False)
@@ -658,11 +652,8 @@ class TestCheckpointRestore(unittest.TestCase):
     def test_checkpoint_clears_existing_destination(self):
         sandbox_id, root_dir = self._create_mock_sandbox(rootless=False)
         rootfs_dir = os.path.join(root_dir, "rootfs")
-        workdir_dir = self.backend._sandbox_metadata[sandbox_id]["workdir"]
         with open(os.path.join(rootfs_dir, "active.txt"), "w") as f:
             f.write("active rootfs")
-        with open(os.path.join(workdir_dir, "active.py"), "w") as f:
-            f.write("active workdir")
 
         ckpt_dir = os.path.join(self.temp_dir, "fixed_path_checkpoint")
         state_dir = os.path.join(ckpt_dir, "state")
@@ -695,7 +686,6 @@ class TestCheckpointRestore(unittest.TestCase):
         assert not os.path.exists(stale_rootfs)
         assert not os.path.exists(stale_workdir)
         assert os.path.isfile(os.path.join(ckpt_dir, "fs", "rootfs", "active.txt"))
-        assert os.path.isfile(os.path.join(ckpt_dir, "fs", "workdir", "active.py"))
         assert os.path.isfile(os.path.join(ckpt_dir, "manifest.json"))
 
     def test_checkpoint_to_existing_file_raises(self):
@@ -836,7 +826,6 @@ class TestCheckpointRestore(unittest.TestCase):
                 "rootless": False,
                 "network": "public",
                 "dns": ["8.8.8.8", "8.8.4.4"],
-                "readonly": True,
             },
         }
         with open(os.path.join(ckpt_dir, "manifest.json"), "w") as f:
@@ -844,8 +833,6 @@ class TestCheckpointRestore(unittest.TestCase):
 
         for override in (
             {"network": "none"},
-            {"readonly": False},
-            {"workdir": "/elsewhere"},
             {"image": "alpine:latest"},
         ):
             (field,) = override
@@ -853,20 +840,19 @@ class TestCheckpointRestore(unittest.TestCase):
                 self.backend.restore_sandbox(ckpt_dir, **override)
         self.image_manager.pull_image.assert_not_called()
 
-    def test_restore_copies_workdir_to_host_workdir(self):
-        ckpt_dir = os.path.join(self.temp_dir, "workdir_checkpoint")
-        state_dir = os.path.join(ckpt_dir, "state")
-        fs_workdir = os.path.join(ckpt_dir, "fs", "workdir")
-        os.makedirs(state_dir, exist_ok=True)
-        os.makedirs(fs_workdir, exist_ok=True)
-
-        with open(os.path.join(fs_workdir, "app.py"), "w") as f:
-            f.write("print('hello from workdir')")
-
+    def test_restore_refuses_a_readonly_sandboxs_checkpoint(self):
+        """A checkpoint of a sandbox created with the removed readonly=True
+        option was saved with a read-only root, a host-backed workdir and a
+        tmpfs on /tmp. A sandbox gets none of them now, and runsc restores
+        only into the spec the checkpoint was taken with."""
+        ckpt_dir = os.path.join(self.temp_dir, "readonly_checkpoint")
+        os.makedirs(os.path.join(ckpt_dir, "state"))
+        os.makedirs(os.path.join(ckpt_dir, "fs", "workdir"))
         manifest = {
             "version": "1.0",
             "image": "busybox:latest",
             "sandbox_id": "ray-sandbox-src",
+            "workdir": "/tmp/ray/sandbox/ray-sandbox-src/workspace",
             "config": {
                 "image": "busybox:latest",
                 "workdir": "/workspace",
@@ -878,45 +864,44 @@ class TestCheckpointRestore(unittest.TestCase):
         with open(os.path.join(ckpt_dir, "manifest.json"), "w") as f:
             json.dump(manifest, f)
 
-        stack, _, _ = self._fake_runsc()
+        stack, _, mock_popen = self._fake_runsc()
         with stack:
-            restored_id = self.backend.restore_sandbox(ckpt_dir, workdir="/workspace")
-        meta = self.backend._sandbox_metadata[restored_id]
-        assert meta["config"].readonly is True
-        assert meta["workdir"] == os.path.join(meta["root_dir"], "workspace")
-        restored_file = os.path.join(meta["workdir"], "app.py")
-        assert os.path.isfile(restored_file)
-        with open(restored_file) as f:
-            assert f.read() == "print('hello from workdir')"
-        prep = self.image_manager.prepare_oci_bundle.call_args.kwargs
-        assert prep["workdir_path"] == meta["workdir"]
-        assert prep["container_cwd"] == "/workspace"
+            with pytest.raises(SandboxError, match="created with readonly=True"):
+                self.backend.restore_sandbox(ckpt_dir)
+        assert not mock_popen.called
+        self.image_manager.pull_image.assert_not_called()
 
-    def test_restore_workdir_path_traversal_rejected(self):
-        ckpt_dir = os.path.join(self.temp_dir, "traversal_checkpoint")
-        state_dir = os.path.join(ckpt_dir, "state")
-        os.makedirs(state_dir, exist_ok=True)
-
+    def test_restore_keeps_the_workdir_as_the_cwd(self):
+        """The workdir is only the working directory. Its files come back
+        with the rest of the root filesystem, and no host directory backs
+        it, so a path that climbs out of the root never reaches the host."""
+        ckpt_dir = os.path.join(self.temp_dir, "workdir_checkpoint")
+        os.makedirs(os.path.join(ckpt_dir, "state"))
         manifest = {
             "version": "1.0",
             "image": "busybox:latest",
-            "sandbox_id": "ray-sandbox-trav",
+            "sandbox_id": "ray-sandbox-src",
             "config": {
                 "image": "busybox:latest",
                 "workdir": "/../../../../etc/cron.d",
                 "rootless": False,
                 "network": "none",
-                "readonly": True,
             },
         }
         with open(os.path.join(ckpt_dir, "manifest.json"), "w") as f:
             json.dump(manifest, f)
 
-        stack, _, mock_popen = self._fake_runsc()
+        stack, _, _ = self._fake_runsc()
         with stack:
-            with pytest.raises(SandboxCreationError, match="Path traversal detected"):
-                self.backend.restore_sandbox(ckpt_dir)
-        assert not mock_popen.called
+            restored_id = self.backend.restore_sandbox(ckpt_dir)
+        meta = self.backend._sandbox_metadata[restored_id]
+        assert "workdir" not in meta
+        assert meta["cwd"] == "/../../../../etc/cron.d"
+        prep = self.image_manager.prepare_oci_bundle.call_args.kwargs
+        assert "workdir_path" not in prep
+        assert prep["container_cwd"] == "/../../../../etc/cron.d"
+        # Only the bundle's own files exist on the host.
+        assert not os.path.exists(os.path.join(meta["root_dir"], "etc"))
 
     def test_restore_preserves_and_applies_oci_spec_transform_fn(self):
         ckpt_dir = os.path.join(self.temp_dir, "transform_checkpoint")
@@ -932,7 +917,6 @@ class TestCheckpointRestore(unittest.TestCase):
                 "workdir": "/workspace",
                 "rootless": False,
                 "network": "none",
-                "readonly": True,
             },
         }
         with open(os.path.join(ckpt_dir, "manifest.json"), "w") as f:
@@ -986,7 +970,6 @@ class TestCheckpointRestore(unittest.TestCase):
                 "rootless": False,
                 "network": "public",
                 "dns": ["8.8.8.8"],
-                "readonly": True,
                 "env": {"FOO": "BAR"},
                 "disk": "1Gi",
                 "cidr_allowlist": ["203.0.113.0/24"],
@@ -1032,7 +1015,7 @@ class TestCheckpointRestore(unittest.TestCase):
         assert prep["dns"] == ["1.1.1.1"]
         assert prep["disk"] == "1Gi"
         assert prep["network"] == "public"
-        assert prep["readonly"] is True
+        assert "readonly" not in prep
         assert prep["_oci_spec_transform_fn"] is sample_transform
         assert meta["egress_allowlist"] == ["198.51.100.0/24"]
         assert meta["owner_file"] is not None
@@ -1281,6 +1264,7 @@ class TestCheckpointRestore(unittest.TestCase):
                 env={"MY_VAR": "VAL"},
                 workdir="/custom/workdir",
                 network="none",
+                # Callers written for the removed option still pass it.
                 readonly=False,
                 capabilities=["CAP_NET_ADMIN"],
                 disk="500M",
@@ -1294,7 +1278,6 @@ class TestCheckpointRestore(unittest.TestCase):
                 env={"MY_VAR": "VAL"},
                 workdir="/custom/workdir",
                 network="none",
-                readonly=False,
                 capabilities=["CAP_NET_ADMIN"],
                 disk="500M",
             )

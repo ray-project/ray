@@ -178,11 +178,9 @@ class BaseImageManager(ABC):
         self,
         image: str,
         container_cwd: str = "/",
-        workdir_path: Optional[str] = None,
         env_dict: Optional[Dict[str, str]] = None,
         cpu: Optional[float] = None,
         memory: Optional[Union[str, int, float]] = None,
-        readonly: bool = True,
         capabilities: Optional[List[str]] = None,
         network: str = "none",
         resolv_conf_source: Optional[str] = None,
@@ -196,14 +194,12 @@ class BaseImageManager(ABC):
 
         Args:
             image: Container image name or tar path.
-            container_cwd: Working directory inside the container.
-            workdir_path: Optional host directory to bind-mount read-write
-                at container_cwd — the single writable path on a readonly
-                rootfs. None mounts nothing.
+            container_cwd: Working directory inside the container. runsc
+                creates it in the root filesystem overlay if the image
+                lacks it.
             env_dict: Optional environment variables dictionary overriding image envs.
             cpu: CPU core allocation.
             memory: Memory allocation specifier.
-            readonly: Whether rootfs is mounted read-only.
             capabilities: None keeps the runtime default; otherwise the
                 bounding/effective/permitted sets are written exactly.
             network: Sandbox network mode; "host" and "public" drop the
@@ -222,9 +218,8 @@ class BaseImageManager(ABC):
                 kernel overlay on this directory, and the spec has no gVisor
                 rootfs annotations.
             _oci_spec_transform_fn: Optional callback to transform the final spec.
-            disk: Size cap of the writable rootfs overlay; None or zero
-                means no cap. A capped writable overlay also holds the
-                workdir, so ``workdir_path`` is then not mounted.
+            disk: Size cap of the root filesystem overlay; None or zero
+                means no cap.
 
         Returns:
             Dictionary matching the OCI runtime-spec schema (config.json).
@@ -235,13 +230,11 @@ class BaseImageManager(ABC):
     def prepare_oci_bundle(
         self,
         root_dir: str,
-        workdir_path: str,
         container_cwd: str,
         image: str,
         env_dict: Optional[Dict[str, str]] = None,
         cpu: Optional[float] = None,
         memory: Optional[Union[str, int, float]] = None,
-        readonly: bool = True,
         capabilities: Optional[List[str]] = None,
         network: str = "none",
         dns: Optional[List[str]] = None,
@@ -253,21 +246,18 @@ class BaseImageManager(ABC):
 
         Args:
             root_dir: Host directory for the container bundle.
-            workdir_path: Optional host directory bind-mounted read-write at
-                container_cwd (see create_oci_spec). None mounts nothing.
             container_cwd: Working directory inside container.
             image: Container image name or tar path.
             env_dict: Environment variables dictionary.
             cpu: CPU core allocation.
             memory: Memory allocation specifier.
-            readonly: Read-only rootfs flag.
             capabilities: Optional additional Linux capabilities (see create_oci_spec).
             network: Sandbox network mode; picks the resolv.conf to mount
                 ("public"/dns: generated, "host": the host's own).
             dns: Optional nameserver IPs for the generated resolv.conf.
             gpu_ids: Optional GPU device ids/UUIDs to expose via CDI.
             _oci_spec_transform_fn: Optional OCI spec transform function.
-            disk: Size cap of the writable rootfs overlay (see
+            disk: Size cap of the root filesystem overlay (see
                 create_oci_spec).
 
         Returns:
@@ -415,11 +405,9 @@ class ImageManager(BaseImageManager):
         self,
         image: str,
         container_cwd: str = "/",
-        workdir_path: Optional[str] = None,
         env_dict: Optional[Dict[str, str]] = None,
         cpu: Optional[float] = None,
         memory: Optional[Union[str, int, float]] = None,
-        readonly: bool = True,
         capabilities: Optional[List[str]] = None,
         network: str = "none",
         resolv_conf_source: Optional[str] = None,
@@ -433,14 +421,12 @@ class ImageManager(BaseImageManager):
 
         Args:
             image: Container image name or tar path.
-            container_cwd: Working directory inside the container.
-            workdir_path: Optional host directory to bind-mount read-write
-                at container_cwd — the single writable path on a readonly
-                rootfs. None mounts nothing.
+            container_cwd: Working directory inside the container. runsc
+                creates it in the root filesystem overlay if the image
+                lacks it.
             env_dict: Optional environment variables dictionary overriding image envs.
             cpu: CPU core allocation.
             memory: Memory allocation specifier.
-            readonly: Whether rootfs is mounted read-only.
             capabilities: None keeps the runtime default; otherwise the
                 bounding/effective/permitted sets are written exactly.
             network: Sandbox network mode; "host" and "public" drop the
@@ -459,9 +445,8 @@ class ImageManager(BaseImageManager):
                 kernel overlay on this directory, and the spec has no gVisor
                 rootfs annotations.
             _oci_spec_transform_fn: Optional callback to transform the final spec.
-            disk: Size cap of the writable rootfs overlay; None or zero
-                means no cap. A capped writable overlay also holds the
-                workdir, so ``workdir_path`` is then not mounted.
+            disk: Size cap of the root filesystem overlay; None or zero
+                means no cap.
 
         Returns:
             Dictionary matching the OCI runtime-spec schema (config.json).
@@ -486,12 +471,10 @@ class ImageManager(BaseImageManager):
         rootfs = root_path or os.path.join(image_dir, "root")
         os.makedirs(rootfs, exist_ok=True)
         disk_bytes = parse_memory_bytes(disk) or 0
-        if not readonly and disk_bytes > 0:
-            # A bind-mounted host workdir would take writes past the cap,
-            # so the workdir stays in the overlay (runsc creates it).
-            workdir_path = None
         spec["root"]["path"] = rootfs
-        spec["root"]["readonly"] = readonly
+        # Every sandbox writes to a private overlay over the image, which is
+        # discarded with it. runsc layers no overlay over a read-only root.
+        spec["root"]["readonly"] = False
 
         spec.setdefault("process", {})
         spec["process"]["args"] = ["sleep", "infinity"]
@@ -526,24 +509,6 @@ class ImageManager(BaseImageManager):
         mounts = spec.get("mounts", [])
         existing_dests = {m.get("destination") for m in mounts}
 
-        if workdir_path:
-            default_binds = [
-                (container_cwd, workdir_path),
-            ]
-            for dest, src in default_binds:
-                if dest != "/" and dest not in existing_dests and os.path.exists(src):
-                    mounts.append(
-                        {
-                            "destination": dest,
-                            "type": "bind",
-                            "source": src,
-                            "options": [
-                                "rbind",
-                                "rw" if dest == container_cwd else "ro",
-                            ],
-                        }
-                    )
-                    existing_dests.add(dest)
         if network in ("host", "public"):
             # The default spec carries an empty "network" namespace, which
             # would leave the sandbox loopback-only despite --network=host.
@@ -591,18 +556,6 @@ class ImageManager(BaseImageManager):
             )
             existing_dests.add(_ETC_HOSTS)
 
-        # Keep /tmp writable on a readonly rootfs, as it is under Docker.
-        if readonly and "/tmp" not in existing_dests:
-            mounts.append(
-                {
-                    "destination": "/tmp",
-                    "type": "tmpfs",
-                    "source": "tmpfs",
-                    "options": ["nosuid", "nodev", "mode=1777"],
-                }
-            )
-            existing_dests.add("/tmp")
-
         spec["mounts"] = mounts
 
         # Configure OCI cgroup resource limits for CPU and memory
@@ -626,73 +579,34 @@ class ImageManager(BaseImageManager):
             if result is not None:
                 spec = result
 
-        # runsc applies no overlay to a read-only root, and can't create mount
-        # points in the image, so a readonly sandbox whose mounts need some
-        # boots from a kernel overlay instead. A worker that can't mount one
-        # runs it on a private writable overlay, whose writes are discarded
-        # with it.
-        if self._needs_writable_root_fallback(spec):
-            logger.warning(
-                "readonly=True, but this worker can't mount an overlayfs rootfs, "
-                "and runsc cannot create this sandbox's mount points in a "
-                "read-only EROFS image, so it runs on a private writable overlay "
-                "(its writes are discarded with it)."
-            )
-            spec["root"]["readonly"] = False
-
         # Only a sandbox that boots straight from the EROFS image needs the
-        # gVisor rootfs annotations, and a writable one its private overlay.
+        # gVisor rootfs annotations, which also give it its private overlay.
         # Whether it does depends on the final spec, including anything the
         # transform added. An overlayfs sandbox instead runs on the kernel
-        # overlay the backend mounts at root.path.
+        # overlay the backend mounts at root.path, with gVisor's --overlay2
+        # layer over it.
         if not overlayfs.needs_rootfs_overlay(spec):
             annotations = spec.setdefault("annotations", {})
             annotations["dev.gvisor.spec.rootfs.source"] = erofs_image
             annotations["dev.gvisor.spec.rootfs.type"] = "erofs"
-            if not spec["root"].get("readonly"):
-                annotations["dev.gvisor.spec.rootfs.overlay"] = "self"
-                if disk_bytes > 0:
-                    # gVisor sizes the overlay's upper layer from this
-                    # annotation, so writes past it fail with ENOSPC. The
-                    # --overlay2 flag's size doesn't apply to a rootfs that
-                    # annotations configure.
-                    annotations["dev.gvisor.spec.rootfs.options"] = f"size={disk_bytes}"
+            annotations["dev.gvisor.spec.rootfs.overlay"] = "self"
+            if disk_bytes > 0:
+                # gVisor sizes the overlay's upper layer from this
+                # annotation, so writes past it fail with ENOSPC. The
+                # --overlay2 flag's size doesn't apply to a rootfs that
+                # annotations configure.
+                annotations["dev.gvisor.spec.rootfs.options"] = f"size={disk_bytes}"
 
         return spec
-
-    @staticmethod
-    def _needs_writable_root_fallback(spec: Dict[str, Any]) -> bool:
-        """Whether a readonly sandbox needs a writable root to boot.
-
-        Args:
-            spec: The final OCI spec.
-
-        Returns:
-            True if the root is read-only, the spec has no hooks that need a
-            kernel overlay, some of the spec's mounts need mount points the
-            image may not have, and this worker can't mount a kernel overlay to
-            create them.
-        """
-        if not spec["root"].get("readonly"):
-            return False
-        if overlayfs.has_prestart_hooks(spec):
-            return False
-        if len(overlayfs.missing_mount_points(spec)) == 0:
-            return False
-        if overlayfs.can_mount_rootfs_overlay():
-            return False
-        return True
 
     def prepare_oci_bundle(
         self,
         root_dir: str,
-        workdir_path: str,
         container_cwd: str,
         image: str,
         env_dict: Optional[Dict[str, str]] = None,
         cpu: Optional[float] = None,
         memory: Optional[Union[str, int, float]] = None,
-        readonly: bool = True,
         capabilities: Optional[List[str]] = None,
         network: str = "none",
         dns: Optional[List[str]] = None,
@@ -704,21 +618,18 @@ class ImageManager(BaseImageManager):
 
         Args:
             root_dir: Host directory for the container bundle.
-            workdir_path: Optional host directory bind-mounted read-write at
-                container_cwd (see create_oci_spec). None mounts nothing.
             container_cwd: Working directory inside container.
             image: Container image name or tar path.
             env_dict: Environment variables dictionary.
             cpu: CPU core allocation.
             memory: Memory allocation specifier.
-            readonly: Read-only rootfs flag.
             capabilities: Optional additional Linux capabilities (see create_oci_spec).
             network: Sandbox network mode; picks the resolv.conf to mount
                 ("public"/dns: generated, "host": the host's own).
             dns: Optional nameserver IPs for the generated resolv.conf.
             gpu_ids: Optional GPU device ids/UUIDs to expose via CDI.
             _oci_spec_transform_fn: Optional OCI spec transform function.
-            disk: Size cap of the writable rootfs overlay (see
+            disk: Size cap of the root filesystem overlay (see
                 create_oci_spec).
 
         Returns:
@@ -776,11 +687,9 @@ class ImageManager(BaseImageManager):
         spec = self.create_oci_spec(
             image=image,
             container_cwd=container_cwd,
-            workdir_path=workdir_path,
             env_dict=env_dict,
             cpu=cpu,
             memory=memory,
-            readonly=readonly,
             capabilities=capabilities,
             network=network,
             resolv_conf_source=resolv_conf_source,

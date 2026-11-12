@@ -34,7 +34,7 @@ def _client(resolver: FakeResolver, settings: SandboxAPISettings = None) -> Test
 
 
 def _create_sandbox(client: TestClient, **overrides) -> dict:
-    body = {"image": "python:3.12-slim", "readonly": False, **overrides}
+    body = {"image": "python:3.12-slim", **overrides}
     response = client.post(f"{BASE}/sandboxes", json=body)
     assert response.status_code == 202, response.text
     return response.json()
@@ -123,7 +123,21 @@ def test_create_then_poll_until_running(fake_resolver: FakeResolver) -> None:
         assert running["error"] is None
 
         (runtime,) = fake_resolver.runtimes
-        assert runtime.create_calls[0]["readonly"] is False
+        assert "readonly" not in runtime.create_calls[0]
+
+
+@pytest.mark.parametrize("readonly", [True, False])
+def test_create_ignores_the_removed_readonly_field(
+    fake_resolver: FakeResolver, readonly: bool
+) -> None:
+    """Clients written for the readonly field still send it. The request is
+    accepted and the field isn't passed on: every sandbox is writable."""
+    with _client(fake_resolver) as client:
+        info = _create_sandbox(client, readonly=readonly)
+        _wait_running(client, info["sandbox_id"])
+
+    (runtime,) = fake_resolver.runtimes
+    assert "readonly" not in runtime.create_calls[0]
 
 
 def test_create_maps_resources_to_actor_options_and_limits(
@@ -157,27 +171,15 @@ def test_create_passes_the_disk_limit_to_the_runtime(
     fake_resolver: FakeResolver,
 ) -> None:
     with _client(fake_resolver) as client:
+        # Every sandbox has an overlay to cap, with or without a workdir.
         info = _create_sandbox(client, resources={"disk_limit_mb": 10240})
         _wait_running(client, info["sandbox_id"])
-        # A readonly rootfs with a workdir runs on a private writable overlay.
         info = _create_sandbox(
             client,
-            readonly=True,
             workdir="/workspace",
             resources={"disk_limit_mb": 512},
         )
         _wait_running(client, info["sandbox_id"])
-        # Without a workdir, a read-only rootfs has nothing for the cap to bound.
-        response = client.post(
-            f"{BASE}/sandboxes",
-            json={
-                "image": "python:3.12-slim",
-                "readonly": True,
-                "resources": {"disk_limit_mb": 10240},
-            },
-        )
-        assert response.status_code == 422
-        assert "readonly=false or a workdir" in response.text
 
     assert [r.create_calls[0]["disk"] for r in fake_resolver.runtimes] == [
         "10240Mi",

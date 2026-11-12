@@ -124,16 +124,20 @@ RayJob completed successfully!
 
 You can verify that untrusted code running inside an active sandbox cannot compromise the host environment or escape its sandbox boundary:
 
-### Filesystem write protection
+### Filesystem isolation
 
-By default, base root filesystems are mounted read-only (`readonly=True`). Only the designated `workdir` is writable.
+A sandbox writes to a private overlay on top of its image. Its writes never reach the node, the cached image, or another sandbox, and Ray discards them with the sandbox.
 
 ```python
-# Assuming an active sandbox `sb = sandbox.create(...)`
-# Attempting to modify /etc or rootfs will fail
+# Assuming two active sandboxes from the same image,
+# `sb = sandbox.create(...)` and `other = sandbox.create(...)`
 res = ray.get(sb.exec.remote("touch /etc/hacked.txt"))
+print(res.exit_code)  # 0, because the write lands in sb's private overlay
+
+# The other sandbox never sees the file
+res = ray.get(other.exec.remote("ls /etc/hacked.txt"))
 print(res.exit_code)  # Non-zero exit code
-print(res.stderr)     # "Read-only file system"
+print(res.stderr)     # "No such file or directory"
 ```
 
 ### Network isolation

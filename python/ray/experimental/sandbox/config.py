@@ -264,10 +264,8 @@ class SandboxConfig:
             cannot raise the allowed capabilities.
         workdir: Working directory for commands (the process cwd). None
             (default) uses the image's WORKDIR, or "/" if the image sets
-            none. On a readonly rootfs, an *explicitly* passed workdir is
-            also bind-mounted as the sandbox's only writable path
-            (host-backed scratch); an inherited image WORKDIR is never
-            silently made writable.
+            none. A workdir the image lacks is created in the sandbox's
+            root filesystem.
         ttl_seconds: Optional time-to-live in seconds, measured wall-clock
             from creation (not idle time). None (default) or <= 0 disables it.
         timeout_seconds: Timeout in seconds for sandbox creation.
@@ -321,22 +319,15 @@ class SandboxConfig:
         shell: Shell for *string* commands (list commands bypass it).
             Defaults to "/bin/bash", which string commands overwhelmingly
             assume; set to "/bin/sh" for images without bash.
-        readonly: If True (default), the rootfs is read-only and only an
-            explicitly passed ``workdir`` is writable — with no workdir,
-            nothing on the rootfs is (safe by default; standard tmpfs mounts
-            such as /tmp remain writable). If False, the entire rootfs is
-            writable through the per-sandbox copy-on-write overlay: image
-            content stays visible, sandboxes don't interfere with each
-            other, and the base image is never modified.
-        disk: Size cap of the writable rootfs overlay (e.g. "10Gi"), in the
-            units ``memory`` takes. Writes past it fail with ENOSPC inside
+        disk: Size cap of the sandbox's root filesystem overlay (e.g.
+            "10Gi"), in the units ``memory`` takes. Every sandbox writes to
+            a private copy-on-write overlay over its image: image content
+            stays visible, sandboxes don't interfere with each other, the
+            cached image is never modified, and the overlay is discarded
+            with the sandbox. Writes past the cap fail with ENOSPC inside
             the sandbox, and the sandbox keeps running. Zero (default) means
-            no cap. Requires ``readonly=False`` or a ``workdir``: a readonly
-            rootfs stays read-only, so the cap applies to its explicit
-            workdir, whose writes then go to a file in the sandbox's
-            directory on the node instead of the workdir's host directory.
-            In-memory mounts such as /dev/shm count toward the sandbox's
-            memory instead.
+            no cap. In-memory mounts such as /dev/shm count toward the
+            sandbox's memory instead.
         gpu_ids: GPU ids or UUIDs, in the format ``ray.get_gpu_ids()`` uses,
             to expose inside the sandbox through CDI. None (default) gives no
             GPU access. Every id must be one Ray assigned the calling actor or
@@ -368,7 +359,6 @@ class SandboxConfig:
     cidr_allowlist: Optional[List[str]] = None
     capabilities: Optional[List[str]] = None
     shell: str = "/bin/bash"
-    readonly: bool = True
     gpu_ids: Optional[List[Union[int, str]]] = None
     _oci_spec_transform_fn: Optional[Callable[[Dict], Optional[Dict]]] = field(
         default=None, repr=False, compare=False
@@ -433,13 +423,6 @@ class SandboxConfig:
         disk_bytes = parse_memory_bytes(self.disk) or 0
         if disk_bytes < 0:
             raise ValueError("disk must be non-negative")
-        if disk_bytes > 0 and self.readonly and not self.workdir:
-            # Only a read-only rootfs without a workdir has no overlay to cap
-            # (see ImageManager.create_oci_spec).
-            raise ValueError(
-                "disk caps the writable rootfs; it requires readonly=False or "
-                "a workdir"
-            )
         self._validate_gpu_ids()
 
     def _validate_gpu_ids(self):

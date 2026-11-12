@@ -34,7 +34,6 @@ EXPECTED_MODEL_FIELDS = {
         "ttl_seconds",
         "network",
         "rootless",
-        "readonly",
         "resources",
         "labels",
         "capabilities",

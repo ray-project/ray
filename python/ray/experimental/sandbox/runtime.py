@@ -1,6 +1,7 @@
 import asyncio
 import os
 import threading
+import warnings
 from typing import Callable, Dict, List, Optional, Union
 
 from ray.experimental.sandbox._internal.cgroup import SandboxCgroupManager
@@ -12,7 +13,7 @@ from ray.experimental.sandbox.backend.gvisor import GVisorSandboxBackend
 from ray.experimental.sandbox.config import SandboxConfig, parse_memory_bytes
 from ray.experimental.sandbox.exceptions import SandboxCreationError
 from ray.experimental.sandbox.image_manager import ImageManager
-from ray.util.annotations import PublicAPI
+from ray.util.annotations import PublicAPI, RayDeprecationWarning
 
 
 @PublicAPI(stability="alpha")
@@ -93,7 +94,6 @@ class SandboxRuntime:
         dns: Optional[List[str]] = None,
         cidr_allowlist: Optional[List[str]] = None,
         capabilities: Optional[List[str]] = None,
-        readonly: bool = True,
         gpu_ids: Optional[List[Union[int, str]]] = None,
         _oci_spec_transform_fn: Optional[Callable[[Dict], Optional[Dict]]] = None,
         _ignore_cgroups: bool = False,
@@ -102,15 +102,18 @@ class SandboxRuntime:
     ) -> str:
         """Provision the sandbox instance and return unique instance ID.
 
+        The sandbox writes to a private copy-on-write overlay over its image.
+        Sandboxes that share an image don't see each other's writes, the
+        cached image is never modified, and the overlay is discarded with
+        the sandbox.
+
         Args:
             image: Container image for the sandbox environment.
             cpu: Number of CPU cores allocated to the sandbox.
             memory: Amount of memory allocated to the sandbox (e.g. "1Gi", "512Mi").
             env: Environment variables to inject into the sandbox.
             workdir: Working directory for commands; None uses the image's
-                WORKDIR. On a readonly rootfs an explicit workdir is also the
-                sandbox's only writable path; see
-                :class:`~ray.experimental.sandbox.config.SandboxConfig`.
+                WORKDIR.
             ttl_seconds: Optional time-to-live in seconds, wall-clock from
                 creation (not idle time), enforced by this runtime with a
                 daemon timer. None (default) or <= 0 disables it.
@@ -132,26 +135,32 @@ class SandboxRuntime:
             capabilities: Linux capabilities, written exactly (None keeps
                 the runtime default; ``[]`` means none). Use
                 ``DOCKER_DEFAULT_CAPABILITIES`` for Docker parity.
-            readonly: If True (default), mount container image rootfs in read-only mode
-                such that only ``workdir`` is writable. If False, the entire root filesystem
-                is writable. Writes are isolated within a per-sandbox copy-on-write overlay
-                filesystem, ensuring multiple sandboxes running the same container image do
-                not interfere with each other or modify the base image.
             gpu_ids: GPU device ids/UUIDs to expose via CDI; see
                 :class:`~ray.experimental.sandbox.config.SandboxConfig`.
             _oci_spec_transform_fn: PRIVATE — development/testing only. Called with the fully-built OCI
                 spec dict before it is written; may mutate in place or return a new dict. Must be
                 cloudpickle-serializable. No stability guarantees. Accepts a transform function.
             _ignore_cgroups: PRIVATE — testing only. If True, passes --ignore-cgroups to runsc.
-            disk: Size cap of the writable rootfs (e.g. "10Gi"); writes past
-                it fail with ENOSPC. Zero means no cap. Requires
-                ``readonly=False`` or a ``workdir``; see
+            disk: Size cap of the root filesystem overlay (e.g. "10Gi");
+                writes past it fail with ENOSPC. Zero means no cap; see
                 :class:`~ray.experimental.sandbox.config.SandboxConfig`.
-            **kwargs: Additional parameters.
+            **kwargs: Additional parameters. ``readonly`` is accepted and
+                ignored, with a deprecation warning.
 
         Returns:
             A unique string identifier for the created sandbox.
         """
+        if "readonly" in kwargs:
+            # The option is gone, but callers written for it still pass it,
+            # mostly as readonly=False.
+            kwargs.pop("readonly")
+            warnings.warn(
+                "The sandbox 'readonly' option was removed and is ignored. Every "
+                "sandbox now writes to a private overlay over its image, which "
+                "is discarded with the sandbox. Stop passing 'readonly'.",
+                RayDeprecationWarning,
+                stacklevel=2,
+            )
         cfg = SandboxConfig(
             image=image,
             cpu=cpu,
@@ -165,7 +174,6 @@ class SandboxRuntime:
             dns=dns,
             cidr_allowlist=cidr_allowlist,
             capabilities=capabilities,
-            readonly=readonly,
             gpu_ids=gpu_ids,
             _oci_spec_transform_fn=_oci_spec_transform_fn,
             _ignore_cgroups=_ignore_cgroups,

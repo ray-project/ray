@@ -14,15 +14,17 @@ from ray.experimental.sandbox.runtime import SandboxRuntime
 class Sandbox:
     """Ray actor proxy for managing scheduling, lifecycle, command execution, and file I/O for an isolated sandbox instance.
 
+    The sandbox writes to a private copy-on-write overlay over its image.
+    Sandboxes that share an image don't see each other's writes, the cached
+    image is never modified, and the overlay is discarded with the sandbox.
+
     Args:
         image: Container image for the sandbox environment.
         cpu: Number of CPU cores allocated to the sandbox.
         memory: Amount of memory allocated to the sandbox (e.g. "1Gi", "512Mi").
         env: Environment variables to inject into the sandbox.
         workdir: Working directory for commands; None uses the image's
-            WORKDIR. On a readonly rootfs an explicit workdir is also the
-            sandbox's only writable path; see
-            :class:`~ray.experimental.sandbox.config.SandboxConfig`.
+            WORKDIR.
         ttl_seconds: Optional time-to-live in seconds, wall-clock from
             creation (not idle time). None (default) or <= 0 disables it.
         timeout_seconds: Timeout in seconds for sandbox creation.
@@ -42,17 +44,12 @@ class Sandbox:
         capabilities: Linux capabilities, written exactly (None keeps the
             runtime default; ``[]`` means none); see
             ``DOCKER_DEFAULT_CAPABILITIES``.
-        readonly: If True (default), mount container image rootfs in read-only mode
-            such that only ``workdir`` is writable. If False, the entire root filesystem
-            is writable. Writes are isolated within a per-sandbox copy-on-write overlay
-            filesystem, ensuring multiple sandboxes running the same container image do
-            not interfere with each other or modify the base image.
-        disk: Size cap of the writable rootfs (e.g. "10Gi"); writes past it
-            fail with ENOSPC. Zero (default) means no cap. Requires
-            ``readonly=False`` or a ``workdir``; see
+        disk: Size cap of the root filesystem overlay (e.g. "10Gi"); writes
+            past it fail with ENOSPC. Zero (default) means no cap; see
             :class:`~ray.experimental.sandbox.config.SandboxConfig`.
         restore_from: Path to checkpoint directory if restoring an existing sandbox.
-        **kwargs: Additional parameters passed to runtime.
+        **kwargs: Additional parameters passed to runtime. ``readonly`` is
+            accepted and ignored, with a deprecation warning on create.
     """
 
     def __init__(
@@ -69,7 +66,6 @@ class Sandbox:
         dns: Optional[List[str]] = None,
         cidr_allowlist: Optional[List[str]] = None,
         capabilities: Optional[List[str]] = None,
-        readonly: Optional[bool] = None,
         disk: Union[str, int, float] = 0,
         restore_from: Optional[str] = None,
         **kwargs,
@@ -85,8 +81,6 @@ class Sandbox:
         # so that the checkpoint's recorded resource limits are preserved.
         if not restore_from:
             env = env or {}
-            if readonly is None:
-                readonly = True
             try:
                 assigned = ray.get_runtime_context().get_assigned_resources()
                 if cpu is None and "CPU" in assigned and assigned["CPU"] > 0:
@@ -100,6 +94,8 @@ class Sandbox:
         self.runtime = SandboxRuntime()
         if restore_from:
             restore_kwargs = dict(kwargs)
+            # Callers written for the removed option still pass it.
+            restore_kwargs.pop("readonly", None)
             if env is not None:
                 restore_kwargs["env"] = env
             if workdir is not None:
@@ -112,8 +108,6 @@ class Sandbox:
                 restore_kwargs["cidr_allowlist"] = cidr_allowlist
             if capabilities is not None:
                 restore_kwargs["capabilities"] = capabilities
-            if readonly is not None:
-                restore_kwargs["readonly"] = readonly
             if disk:
                 restore_kwargs["disk"] = disk
 
@@ -148,7 +142,6 @@ class Sandbox:
                 dns=dns,
                 cidr_allowlist=cidr_allowlist,
                 capabilities=capabilities,
-                readonly=readonly,
                 disk=disk,
                 gpu_ids=gpu_ids,
                 **kwargs,

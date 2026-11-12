@@ -38,7 +38,6 @@ class TestCheckpointUtils(unittest.TestCase):
             sandbox_id="test-sb-123",
             config=config,
             cwd="/workspace",
-            workdir="/workspace",
             leave_running=True,
         )
 
@@ -94,7 +93,6 @@ class TestCheckpointUtils(unittest.TestCase):
         config = SandboxConfig(
             image="busybox:latest",
             network="public",
-            readonly=False,
             disk="2Gi",
             cidr_allowlist=["203.0.113.0/24"],
             mounts={"/data": "/srv/inbox"},
@@ -104,11 +102,11 @@ class TestCheckpointUtils(unittest.TestCase):
             sandbox_id="test-sb",
             config=config,
             cwd="/",
-            workdir=None,
             leave_running=True,
             compression="flate-best-speed",
         )
         assert manifest["compression"] == "flate-best-speed"
+        assert "readonly" not in manifest["config"]
         assert manifest["config"]["disk"] == "2Gi"
         assert manifest["config"]["cidr_allowlist"] == ["203.0.113.0/24"]
         # The recorded disk, allowlist and mounts come back on restore.
@@ -126,7 +124,6 @@ class TestCheckpointUtils(unittest.TestCase):
             "config": {
                 "image": "busybox:latest",
                 "network": "none",
-                "readonly": True,
                 "workdir": "/workspace",
                 "rootless": False,
                 "capabilities": None,
@@ -140,21 +137,18 @@ class TestCheckpointUtils(unittest.TestCase):
             ("mounts", {"/data": "/srv/other"}),
             ("image", "alpine:latest"),
             ("network", "public"),
-            ("readonly", False),
-            ("workdir", "/other"),
             ("rootless", True),
         ):
             with pytest.raises(SandboxError, match=f"Cannot restore with {field}="):
                 build_restored_config(manifest, **{field: value})
         # Passing the recorded value, or None, is not a change.
-        restored = build_restored_config(
-            manifest, network="none", readonly=True, workdir="/workspace", image=None
-        )
+        restored = build_restored_config(manifest, network="none", image=None)
         assert restored.network == "none"
 
-    def test_build_restored_config_workdir_is_free_on_a_writable_rootfs(self):
-        # Without a readonly rootfs, the workdir is only the working
-        # directory, not a mount.
+    def test_build_restored_config_workdir_can_change(self):
+        # The workdir is only the working directory, not a mount. Checkpoints
+        # from before the readonly option was removed record readonly=False
+        # for a writable sandbox, and still restore.
         manifest = {
             "config": {
                 "image": "busybox:latest",
@@ -163,7 +157,25 @@ class TestCheckpointUtils(unittest.TestCase):
                 "rootless": False,
             }
         }
-        assert build_restored_config(manifest, workdir="/other").workdir == "/other"
+        restored = build_restored_config(manifest, workdir="/other")
+        assert restored.workdir == "/other"
+        assert not hasattr(restored, "readonly")
+        # A readonly override, which restore used to accept, is ignored.
+        assert build_restored_config(manifest, readonly=False).workdir == "/workspace"
+
+    def test_build_restored_config_rejects_a_readonly_checkpoint(self):
+        # Its memory state was saved with a root filesystem that has no
+        # overlay, a host-backed workdir and a tmpfs on /tmp.
+        manifest = {
+            "config": {
+                "image": "busybox:latest",
+                "readonly": True,
+                "workdir": "/workspace",
+                "rootless": False,
+            }
+        }
+        with pytest.raises(SandboxError, match="created with readonly=True"):
+            build_restored_config(manifest)
 
     def test_build_restored_config_requires_the_source_transform(self):
         manifest = {
@@ -246,10 +258,10 @@ class TestCheckpointUtils(unittest.TestCase):
 
     def test_harden_permissions_preserves_guest_file_modes(self):
         target_dir = os.path.join(self.temp_dir, "perm_bundle")
-        workdir = os.path.join(self.temp_dir, "workdir")
-        os.makedirs(workdir, exist_ok=True)
+        rootfs = os.path.join(self.temp_dir, "rootfs")
+        os.makedirs(rootfs, exist_ok=True)
 
-        guest_file = os.path.join(workdir, "readable.txt")
+        guest_file = os.path.join(rootfs, "readable.txt")
         with open(guest_file, "w") as f:
             f.write("public content")
         os.chmod(guest_file, 0o644)
@@ -257,14 +269,13 @@ class TestCheckpointUtils(unittest.TestCase):
         with StagedCheckpoint(target_dir) as stage:
             stage.copy_bundle_filesystems(
                 root_dir=self.temp_dir,
-                workdir=workdir,
                 sandbox_id="test-sb-perm",
             )
             stage.harden_permissions(rootless=True)
 
-        staged_guest_file = os.path.join(target_dir, "fs", "workdir", "readable.txt")
+        staged_guest_file = os.path.join(target_dir, "fs", "rootfs", "readable.txt")
         assert os.path.exists(staged_guest_file)
-        # Verify that guest file mode 0644 was preserved inside fs/workdir
+        # Verify that guest file mode 0644 was preserved inside fs/rootfs
         mode = os.stat(staged_guest_file).st_mode & 0o777
         assert mode == 0o644
 
@@ -304,7 +315,6 @@ class TestCheckpointUtils(unittest.TestCase):
             sandbox_id="sb-local",
             config=config,
             cwd="/",
-            workdir="/workspace",
             leave_running=True,
             node_id="node_1",
         )
