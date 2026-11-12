@@ -45,7 +45,13 @@ print(ds)
 ```
 
 ```{testoutput}
-Dataset(num_rows=..., schema=...)
+shape: (?, 5)
+╭───────────────────┬──────────────────┬───────────────────┬──────────────────┬────────╮
+│ sepal length (cm) ┆ sepal width (cm) ┆ petal length (cm) ┆ petal width (cm) ┆ target │
+│ ---               ┆ ---              ┆ ---               ┆ ---              ┆ ---    │
+│ double            ┆ double           ┆ double            ┆ double           ┆ int64  │
+╰───────────────────┴──────────────────┴───────────────────┴──────────────────┴────────╯
+(Dataset isn't materialized)
 ```
 
 (inspecting-rows)=

@@ -52,7 +52,12 @@ from ray.data._internal.datasource_v2.interfaces.file_partitioner import (
     FilePartitioner,
     PartitionHints,
 )
-from ray.data._internal.util import MiB, _is_local_scheme, _normalize_paths_to_strings
+from ray.data._internal.util import (
+    MiB,
+    RetryingPyFileSystem,
+    _is_local_scheme,
+    _normalize_paths_to_strings,
+)
 from ray.data.context import DataContext
 from ray.data.datasource.file_based_datasource import FileShuffleConfig
 from ray.data.datasource.partitioning import (
@@ -95,7 +100,10 @@ class LineChunkableDatasourceV2(FileDataSourceV2):
         # The resolved paths above lose their URI scheme; lineage tracking
         # reads the caller's paths through ``source_paths``.
         self._source_paths = _normalize_paths_to_strings(paths)
-        self._filesystem = resolved_filesystem
+        self._filesystem = RetryingPyFileSystem.wrap(
+            resolved_filesystem,
+            retryable_errors=DataContext.get_current().retried_io_errors,
+        )
         self._partitioning = partitioning
         self._file_extensions = file_extensions
         self._ignore_missing_paths = ignore_missing_paths

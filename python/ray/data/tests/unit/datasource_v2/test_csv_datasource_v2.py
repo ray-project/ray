@@ -27,6 +27,7 @@ from ray.data._internal.datasource_v2.formats.csv.csv_datasource_v2 import (
 )
 from ray.data._internal.datasource_v2.interfaces.file_manifest import FileManifest
 from ray.data._internal.datasource_v2.interfaces.file_partitioner import PartitionHints
+from ray.data._internal.util import RetryingPyFileSystem
 from ray.data.context import DataContext
 from ray.data.datasource.partitioning import Partitioning, PartitionStyle
 
@@ -252,6 +253,13 @@ def test_reads_snappy_files_whole(tmp_path):
     table = _read_all(CsvDatasourceV2([path]), [path])
 
     assert table.to_pylist() == [{"id": 1, "name": "a"}, {"id": 2, "name": "b"}]
+
+
+def test_retries_filesystem_io_errors(tmp_path):
+    path = _write(tmp_path / "a.csv", "id\n1\n")
+    filesystem = CsvDatasourceV2([path]).filesystem
+    assert isinstance(filesystem, RetryingPyFileSystem)
+    assert filesystem.retryable_errors == DataContext.get_current().retried_io_errors
 
 
 def test_wraps_parse_errors_like_v1(tmp_path):
