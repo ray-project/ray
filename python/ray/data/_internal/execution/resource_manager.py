@@ -10,6 +10,7 @@ from typing import (
     Iterable,
     List,
     Optional,
+    Tuple,
 )
 
 from ray._common.utils import env_bool, env_float
@@ -785,7 +786,10 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
 
             reserved_for_tasks = default_reserved.subtract(reserved_for_outputs)
 
-            min_resource_usage, max_resource_usage = op.min_max_resource_requirements()
+            (
+                min_resource_usage,
+                max_resource_usage,
+            ) = self._min_max_resource_requirements(op)
 
             if min_resource_usage is not None:
                 reserved_for_tasks = reserved_for_tasks.max(min_resource_usage)
@@ -897,6 +901,18 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
 
     def get_budget(self, op: PhysicalOperator) -> Optional[ExecutionResources]:
         return self._op_budgets.get(op)
+
+    def _min_max_resource_requirements(
+        self, op: PhysicalOperator
+    ) -> Tuple[ExecutionResources, ExecutionResources]:
+        """Get ``op``'s resource bounds, including its currently queued input.
+
+        Operators that bound their demand by runnable work need to know how many
+        input blocks are available to them, which only the topology tracks.
+        """
+        return op.min_max_resource_requirements(
+            num_queued_input_blocks=self._topology[op].total_enqueued_input_blocks()
+        )
 
     def get_output_budget(self, op: PhysicalOperator) -> Optional[int]:
         return self._output_budgets.get(op)
@@ -1099,7 +1115,7 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
             # Cap op_shared so that total allocation doesn't exceed max_resource_usage.
             # Total allocation = max(total_reserved, op_usage) + op_shared
             # This ensures excess resources stay in remaining_shared for other operators.
-            _, max_resource_usage = op.min_max_resource_requirements()
+            _, max_resource_usage = self._min_max_resource_requirements(op)
             if max_resource_usage != ExecutionResources.inf():
                 total_reserved = self._get_total_reserved(op)
                 op_usage = self._resource_manager.get_op_usage(op)

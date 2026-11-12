@@ -589,6 +589,7 @@ class ActorPoolMapOperator(MapOperator, ReportsExtraResourceUsage):
 
     def min_max_resource_requirements(
         self,
+        num_queued_input_blocks: int = 0,
     ) -> Tuple[ExecutionResources, ExecutionResources]:
         min_actors = self._actor_pool.min_size()
         max_actors = self._actor_pool.max_size()

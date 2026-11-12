@@ -278,13 +278,26 @@ class TaskPoolMapOperator(MapOperator, ReportsExtraResourceUsage):
     def get_max_concurrency_limit(self) -> Optional[int]:
         return self._max_concurrency
 
+    def _num_runnable_tasks(self, num_queued_input_blocks: int) -> int:
+        """Number of tasks this operator could run with the work it holds now.
+
+        This counts tasks that are already submitted plus input blocks queued
+        for dispatch. Input that hasn't arrived yet is excluded on purpose: the
+        fair-share allocator re-evaluates this bound every scheduling round, and
+        reserving for work that can't run yet would keep resources away from
+        downstream runnable operators.
+        """
+        return self._metrics.num_tasks_running + num_queued_input_blocks
+
     def min_max_resource_requirements(
         self,
+        num_queued_input_blocks: int = 0,
     ) -> Tuple[ExecutionResources, ExecutionResources]:
         """Returns min/max resource requirements for this operator.
 
         - Min: resources needed for one task (minimum to make progress)
-        - Max: resources for max_concurrency tasks (if set), else infinite
+        - Max: resources for ``max_concurrency`` tasks if the user configured a
+          limit, otherwise resources for the tasks that can run right now.
         """
         per_task = self.per_task_resource_allocation()
         obj_store_per_task = (
@@ -295,9 +308,17 @@ class TaskPoolMapOperator(MapOperator, ReportsExtraResourceUsage):
 
         # Cap resources to 0 if this operator doesn't use them.
         # This prevents operators from hoarding resource budget they don't need.
-        max_concurrency = (
-            self._max_concurrency if self._max_concurrency is not None else float("inf")
-        )
+        if self._max_concurrency is not None:
+            # A user-configured concurrency limit is a deliberate bound; keep
+            # reporting it even when fewer inputs are available right now.
+            max_concurrency = self._max_concurrency
+        else:
+            # Without a configured limit, an operator with one runnable input
+            # can only run one task, so reporting infinite demand would let it
+            # hold budget it cannot use. With no queued work at all, keep the
+            # bound unbounded: there is nothing to hoard budget from.
+            num_runnable = self._num_runnable_tasks(num_queued_input_blocks)
+            max_concurrency = num_runnable if num_runnable > 0 else float("inf")
         max_resource_usage = ExecutionResources(
             cpu=0 if per_task.cpu == 0 else per_task.cpu * max_concurrency,
             gpu=0 if per_task.gpu == 0 else per_task.gpu * max_concurrency,

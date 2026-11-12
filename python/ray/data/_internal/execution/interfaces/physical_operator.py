@@ -1194,6 +1194,7 @@ class PhysicalOperator(Operator):
 
     def min_max_resource_requirements(
         self,
+        num_queued_input_blocks: int = 0,
     ) -> Tuple[ExecutionResources, ExecutionResources]:
         """Returns lower/upper boundary of resource requirements for this operator:
 
@@ -1201,6 +1202,12 @@ class PhysicalOperator(Operator):
         (for most operators this is 0, except the ones that utilize actors)
         - Maximum: upper bound (max) of how many resources this operator could
         utilize.
+
+        Args:
+            num_queued_input_blocks: Number of input blocks currently queued for
+                this operator, including its internal input buffers. Operators
+                whose demand is bounded by runnable work (e.g. task pools) use
+                this to report a tighter upper bound.
         """
         return ExecutionResources.zero(), ExecutionResources.inf()
 
