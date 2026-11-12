@@ -73,6 +73,25 @@ def _validate_nested_list(arr_type: pyarrow.DataType) -> None:
         )
 
 
+def _valid_list_parent_indices(arr: pyarrow.Array) -> pyarrow.Array:
+    """Return the parent row index of each value that ``pc.list_flatten`` yields.
+
+    Arrow allows a null list slot to still span values in the child array (for
+    example, a list field extracted from a null struct row). ``pc.list_flatten``
+    skips those values, but ``pc.list_parent_indices`` still reports them, so
+    the two arrays can differ in length. Drop the entries that belong to null
+    rows so the result lines up with ``pc.list_flatten(arr)``.
+
+    Example: arr = [[3, 1], null (spans [9, 8]), [7]]
+        list_parent_indices -> [0, 0, 1, 1, 2]
+        result              -> [0, 0, 2]
+    """
+    parent_indices = pc.list_parent_indices(arr)
+    if arr.null_count == 0:
+        return parent_indices
+    return pc.filter(parent_indices, pc.take(arr.is_valid(), parent_indices))
+
+
 @dataclass
 class _ListNamespace:
     """Namespace for list operations on expression columns.
@@ -235,7 +254,7 @@ class _ListNamespace:
             # Flatten to (row_index, value) pairs, sort within each row by value.
             values = pc.list_flatten(sort_arr)
             if len(values):
-                row_indices = pc.list_parent_indices(sort_arr)
+                row_indices = _valid_list_parent_indices(sort_arr)
                 struct = pyarrow.StructArray.from_arrays(
                     [row_indices, values],
                     ["row", "value"],
@@ -296,8 +315,8 @@ class _ListNamespace:
                 # parent(arr)=[0,0,1,1], parent(inner)=[0,0,1,2] -> row_indices=[0,0,0,1]
                 # counts=[3,1,0] -> offsets=[0,3,4,4]
                 row_indices: pyarrow.Array = pc.take(
-                    pc.list_parent_indices(arr),
-                    pc.list_parent_indices(inner_lists),
+                    _valid_list_parent_indices(arr),
+                    _valid_list_parent_indices(inner_lists),
                 )
 
                 vc: pyarrow.StructArray = pc.value_counts(row_indices)
