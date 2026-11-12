@@ -4,6 +4,18 @@ steps:
   - name: forge
     wanda: ci/docker/forge.wanda.yaml
 
+  # Bazel 8+ release binaries need glibc >= 2.25, but Ray builds its Linux
+  # wheels inside manylinux2014 (CentOS 7, glibc 2.17) so that they keep running
+  # on glibc 2.17 systems. This step compiles Bazel from source inside
+  # manylinux2014 and ships it with a JDK 21 that also runs on glibc 2.17
+  # (ci/docker/bazel-glibc217.Dockerfile). Every image that runs Bazel inside
+  # manylinux2014 depends on it. Wanda caches it, so it only rebuilds when
+  # .bazelversion changes.
+  # TODO: upgrade the wheel build image from manylinux2014 to manylinux_2_28
+  # (glibc 2.28, which raises the user glibc floor to 2.28). The official Bazel
+  # binary then runs there, so remove this step, the bazel-glibc217 depends_on
+  # edges and the bazel-glibc217 COPY blocks in the ray-core, ray-cpp-core,
+  # ray-java and manylinux-retag Dockerfiles.
   - name: bazel-glibc217-x86_64
     label: "wanda: bazel for manylinux2014 (x86_64)"
     wanda: ci/docker/bazel-glibc217.wanda.yaml
@@ -13,6 +25,7 @@ steps:
 
   - name: manylinux-x86_64
     wanda: ci/docker/manylinux.wanda.yaml
+    # TODO: drop after the move to manylinux_2_28 (see _forge.rayci.yml).
     depends_on: bazel-glibc217-x86_64
     env_file: rayci.env
     env:
