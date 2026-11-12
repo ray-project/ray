@@ -1,11 +1,11 @@
 {
   "ray": {
     "defaults": {
-      "python": "3.10",
+      "python": "3.11",
       "gpu_platform": "cu12.1.1-cudnn8",
       "architecture": "x86_64"
     },
-    "python": ["3.10", "3.11", "3.12", "3.13", "3.14"],
+    "python": ["3.11", "3.12", "3.13", "3.14"],
     "architectures": ["x86_64", "aarch64"],
     "exceptions": [
       {

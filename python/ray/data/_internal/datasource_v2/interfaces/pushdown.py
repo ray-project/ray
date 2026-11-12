@@ -1,6 +1,8 @@
 from abc import ABC, abstractmethod
-from dataclasses import dataclass
+from dataclasses import dataclass, field, replace
 from typing import TYPE_CHECKING, List, Optional, Set, Tuple
+
+from typing_extensions import Self
 
 from ray.data.expressions import Expr
 from ray.util.annotations import DeveloperAPI
@@ -55,26 +57,41 @@ class SupportsFilterPushdown(ABC):
 
 
 @DeveloperAPI
+@dataclass(frozen=True)
 class SupportsColumnPruning(ABC):
     """Mixin for scanners that support column pruning/projection pushdown.
 
     Column pruning allows reading only the columns needed by the query,
     which is especially beneficial for columnar formats like Parquet.
+
+    Mix this in to get column pruning. Your scanner should:
+
+    1. Be a frozen dataclass, so the methods below can copy it.
+    2. Read :attr:`columns` when it builds its reader -- that is where the
+       accepted projection ends up.
     """
 
-    @abstractmethod
-    def prune_columns(self, columns: List[str]) -> "Scanner":
+    # kw_only for the same reason as ``FileScanner``'s fields: a subclass must
+    # stay free to declare its own required fields.
+    columns: Optional[Tuple[str, ...]] = field(default=None, kw_only=True)
+
+    def prune_columns(self, columns: List[str]) -> Self:
         """Prune the scanner to only read the specified columns.
 
         Args:
             columns: List of column names to read.
 
         Returns:
-            New Scanner instance configured to read only the specified columns.
+            A copy of this scanner configured to read only those columns.
         """
-        ...
+        if self.columns is not None:
+            # Intersect: pruning an already-pruned scanner can only narrow it.
+            # ``is not None``, not truthiness -- an empty projection is a real
+            # state (``count()`` asks for zero columns) and must not re-widen.
+            kept = set(self.columns)
+            columns = [name for name in columns if name in kept]
+        return replace(self, columns=tuple(columns))
 
-    @abstractmethod
     def pruned_column_names(self) -> Optional[Tuple[str, ...]]:
         """Physical column names selected after pruning, if any.
 
@@ -83,28 +100,40 @@ class SupportsColumnPruning(ABC):
             A tuple (possibly empty) after :meth:`prune_columns` has been
             applied, listing on-disk / reader column names in read order.
         """
-        ...
+        return self.columns
 
 
 @DeveloperAPI
+@dataclass(frozen=True)
 class SupportsLimitPushdown(ABC):
     """Mixin for scanners that support limit pushdown.
 
     Limit pushdown allows the scanner to stop early once the required number
     of rows has been read.
+
+    Mix this in to get limit pushdown. Your scanner should:
+
+    1. Be a frozen dataclass, so the methods below can copy it.
+    2. Read :attr:`limit` when it builds its reader.
+
+    Applying the limit per read unit rather than across the whole scan is
+    fine: the ``Limit`` operator above the read enforces the total, so reading
+    too many rows is wasted work, never a wrong answer.
     """
 
-    @abstractmethod
-    def push_limit(self, limit: int) -> "Scanner":
+    limit: Optional[int] = field(default=None, kw_only=True)
+
+    def push_limit(self, limit: int) -> Self:
         """Push a row limit down to the scanner.
 
         Args:
             limit: Maximum number of rows to read.
 
         Returns:
-            New Scanner instance with the limit applied.
+            A copy of this scanner with the limit applied.
         """
-        ...
+        combined = limit if self.limit is None else min(self.limit, limit)
+        return replace(self, limit=combined)
 
     def pushed_limit(self) -> Optional[int]:
         """The row limit this scanner will stop at, if any.
@@ -112,11 +141,8 @@ class SupportsLimitPushdown(ABC):
         This is the accepted result of :meth:`push_limit`. Planning derives
         early-stop listing from it, so it must never be smaller than the limit
         the scanner actually honors.
-
-        Concrete rather than abstract, for the same reason as
-        :meth:`SupportsFilterPushdown.pushed_predicate`.
         """
-        return None
+        return self.limit
 
 
 @DeveloperAPI

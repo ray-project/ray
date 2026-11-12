@@ -5,10 +5,12 @@ import subprocess
 import sys
 import time
 from typing import Union
+from unittest.mock import MagicMock, patch
 
 import httpx
 import pytest
 import yaml
+from click.testing import CliRunner
 from pydantic import BaseModel
 
 from ray import serve
@@ -16,6 +18,7 @@ from ray._common.test_utils import wait_for_condition
 from ray._private.authentication.http_token_authentication import (
     get_auth_headers_if_auth_enabled,
 )
+from ray.serve import scripts as serve_scripts
 from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME
 from ray.serve._private.test_utils import get_application_url
 from ray.serve.handle import DeploymentHandle
@@ -147,6 +150,38 @@ def build_echo_app_typed(args: TypedArgs):
 k8sFNode = global_f.options(
     num_replicas=2, ray_actor_options={"num_cpus": 2, "num_gpus": 1}
 ).bind()
+
+
+def test_run_metrics_export_port():
+    """`serve run --metrics-export-port` forwards the port to `ray.init()`."""
+    with (
+        patch("ray.serve.scripts.ray.is_initialized", return_value=False),
+        patch("ray.serve.scripts.ray.init") as mock_ray_init,
+        patch("ray.serve.scripts.import_attr", return_value=MagicMock()),
+        patch(
+            "ray.serve.scripts._private_api."
+            "call_user_app_builder_with_args_if_necessary",
+            side_effect=lambda app, args: app,
+        ),
+        patch(
+            "ray.serve.scripts._private_api.serve_start",
+            return_value=MagicMock(),
+        ),
+        patch("ray.serve.scripts.serve.run"),
+    ):
+        result = CliRunner().invoke(
+            serve_scripts.run,
+            [
+                "--metrics-export-port",
+                "12345",
+                "--non-blocking",
+                "fake_module:app",
+            ],
+        )
+
+    assert result.exit_code == 0, result.output
+    mock_ray_init.assert_called_once()
+    assert mock_ray_init.call_args.kwargs["_metrics_export_port"] == 12345
 
 
 class TestRun:

@@ -1,0 +1,82 @@
+"""The MCAP ``Scanner``: the read's options plus the optimizer's pushdowns."""
+
+from dataclasses import dataclass
+from typing import Optional, Tuple
+
+import pyarrow as pa
+from pyarrow.fs import FileSystem
+
+from ray.data._internal.datasource_v2.common.file_scanner import FileScanner
+from ray.data._internal.datasource_v2.formats.mcap.mcap_options import MCAPSelection
+from ray.data._internal.datasource_v2.formats.mcap.mcap_reader import MCAPReader
+from ray.data._internal.datasource_v2.interfaces.pushdown import (
+    SupportsColumnPruning,
+    SupportsLimitPushdown,
+)
+from ray.data._internal.datasource_v2.interfaces.synthesized_columns import (
+    SynthesizedColumn,
+)
+from ray.util.annotations import DeveloperAPI
+
+
+@DeveloperAPI
+@dataclass(frozen=True)
+class MCAPScanner(FileScanner, SupportsColumnPruning, SupportsLimitPushdown):
+    """Scanner for MCAP files on Datasource V2.
+
+    Holds the message selection from ``read_mcap`` and the pushdowns the
+    optimizer applies: column pruning and a per-task row limit. A pruned read
+    neither builds nor JSON-decodes the columns it drops. Column pruning and
+    the limit come from the ``Supports*`` mixins, partition pruning from
+    :class:`FileScanner`. Other filters are not pushed down.
+
+    The planned ``schema`` fixes what ``data`` holds in every block: decoded
+    JSON values when every selected channel of the sampled files is
+    JSON-encoded, and the payload bytes otherwise.
+    """
+
+    schema: pa.Schema
+    selection: MCAPSelection = MCAPSelection()
+    include_metadata: bool = True
+    include_row_id: bool = False
+    log_time_order: bool = True
+    filesystem: Optional[FileSystem] = None
+    synthesized_columns: Tuple[SynthesizedColumn, ...] = ()
+    target_block_size: Optional[int] = None
+
+    def read_schema(self) -> pa.Schema:
+        """Return the dataset schema after column pruning.
+
+        ``schema`` already includes the partition and synthesized columns, so a
+        projection selects them like any other column.
+        """
+        if self.columns is None:
+            return self.schema
+        fields = []
+        for name in self.columns:
+            idx = self.schema.get_field_index(name)
+            assert idx >= 0, f"Column {name} not found in schema"
+            fields.append(self.schema.field(idx))
+        return pa.schema(fields)
+
+    @property
+    def decodes_json(self) -> bool:
+        """Whether ``data`` holds decoded JSON values rather than bytes."""
+        idx = self.schema.get_field_index("data")
+        return idx != -1 and self.schema.field(idx).type != pa.binary()
+
+    def create_reader(self) -> MCAPReader:
+        return MCAPReader(
+            selection=self.selection,
+            include_metadata=self.include_metadata,
+            include_row_id=self.include_row_id,
+            log_time_order=self.log_time_order,
+            columns=list(self.columns) if self.columns is not None else None,
+            limit=self.limit,
+            filesystem=self.filesystem,
+            partitioning=self.partitioning,
+            synthesized_columns=self.synthesized_columns,
+            target_block_size=self.target_block_size,
+            schema=self.schema,
+            decode_json=self.decodes_json,
+        )
