@@ -57,14 +57,17 @@ COMPUTED_RETRY_AFTER_MIN_S = 1
 class DrainRateEstimator:
     """Busy clock: how long the component takes per drain while it's working.
 
-    Two running totals feed it: drains (the monotonic drain counter) and busy
-    seconds. `record_drain` is called on the hot path for every drain event and
-    only increments an integer. `sample` runs periodically; an interval counts
-    as busy if work was pending at the sample or at least one drain happened
-    during it, and only busy intervals add to the busy clock. Idle time is
-    ignored, so it can't look like slow draining.
+    `record_drain` is called on the hot path for every drain event and only
+    increments the monotonic drain counter. `sample` runs periodically; an
+    interval counts as busy only if requests were waiting in the component's
+    queue at the sample. Busy intervals add their length to the busy clock and
+    their drains to a separate count of busy drains. Every other interval is
+    skipped along with its drains, so light traffic with no backlog doesn't
+    train the estimator: a drain that empties the queue right away says
+    nothing about how fast a backlog drains. An interval with queued requests
+    and no drains is still busy, so a stall keeps growing the estimate.
 
-    After every busy sample the pair (busy clock B, drain counter N) is a
+    After every busy sample the pair (busy clock B, busy drains N) is a
     checkpoint. The window runs from the most recent checkpoint that is at
     least `min_window_drains` drains and at least `min_window_busy_s` busy
     seconds behind the newest one (or from the oldest checkpoint, until one
@@ -104,14 +107,19 @@ class DrainRateEstimator:
         self._min_window_busy_s = min_window_busy_s
         self._clock = clock
 
-        # Monotonic total; never reset, so the acceptance harness can measure
-        # ground-truth drain time as "time until the counter advances by D".
+        # Monotonic total of every drain event; never reset, so the acceptance
+        # harness can measure ground-truth drain time as "time until the
+        # counter advances by D".
         self._drain_counter = 0
+        # Cumulative drains in busy intervals only, since the last reset. The
+        # checkpoints use this instead of `_drain_counter`, so drains in
+        # skipped intervals never enter a window through a later difference.
+        self._busy_drains = 0
 
         # Cumulative busy seconds since the last reset; only busy intervals
         # advance it.
         self._busy_clock_s = 0.0
-        # Checkpoints `(busy clock, drain counter)` at sample boundaries, oldest
+        # Checkpoints `(busy clock, busy drains)` at sample boundaries, oldest
         # first; the first one is the window start. Only checkpoints that can
         # still become a window start are kept (see `_update_window`).
         self._checkpoints: Deque[Tuple[float, int]] = deque([(0.0, 0)])
@@ -177,7 +185,8 @@ class DrainRateEstimator:
         The drain counter itself is left untouched.
         """
         self._busy_clock_s = 0.0
-        self._checkpoints = deque([(0.0, self._drain_counter)])
+        self._busy_drains = 0
+        self._checkpoints = deque([(0.0, 0)])
         self._window_busy_s = 0.0
         self._window_drains = 0
         self._num_samples = 0
@@ -187,11 +196,12 @@ class DrainRateEstimator:
     def sample(self, has_pending_work: bool) -> None:
         """Add the interval since the previous call to the busy clock if busy.
 
-        `has_pending_work` tells whether the component currently has work that
-        could drain. The interval is busy if work is pending (a stall still
-        adds busy time, so the estimate grows with it) or if anything drained
-        during it (so the last drains of a burst aren't lost when the queue
-        has just emptied). Otherwise it is idle and skipped.
+        `has_pending_work` tells whether requests are waiting in the
+        component's queue right now. Only then is the interval busy: its length
+        goes to the busy clock and its drains to the busy drains, even if it
+        had no drains (a stall still adds busy time, so the estimate grows
+        with it). Otherwise the interval is skipped and its drains are
+        discarded for the estimate; they still count in `drain_counter`.
         """
         now = self._clock()
         counter = self._drain_counter
@@ -199,7 +209,7 @@ class DrainRateEstimator:
             # First call only establishes the baseline.
             self._last_sample_time = now
             self._last_sample_counter = counter
-            self._checkpoints = deque([(self._busy_clock_s, counter)])
+            self._checkpoints = deque([(self._busy_clock_s, self._busy_drains)])
             return
 
         elapsed_s = now - self._last_sample_time
@@ -207,14 +217,17 @@ class DrainRateEstimator:
         if elapsed_s <= 0:
             return
 
+        # Advance the baseline even for a skipped interval, so its drains
+        # can't be counted in a later busy interval.
         self._last_sample_time = now
         self._last_sample_counter = counter
-        if drains == 0 and not has_pending_work:
+        if not has_pending_work:
             return
 
         self._busy_clock_s += elapsed_s
+        self._busy_drains += drains
         self._num_samples += 1
-        self._checkpoints.append((self._busy_clock_s, counter))
+        self._checkpoints.append((self._busy_clock_s, self._busy_drains))
         self._update_window()
 
     def _update_window(self) -> None:
@@ -226,8 +239,8 @@ class DrainRateEstimator:
         `min_window_drains` behind) and `busy_cut` (the latest one at least
         `min_window_busy_s` behind). As B and N grow, both only move forward.
         So a checkpoint can be a future window start only if it is at or after
-        today's `busy_cut`, or it is the last one before the drain counter
-        rises (the only kind `drain_cut` lands on). Anything else, and anything
+        today's `busy_cut`, or it is the last one before the busy drains
+        rise (the only kind `drain_cut` lands on). Anything else, and anything
         before today's start, is dropped. Since the values are cumulative,
         dropping a checkpoint never changes a window's busy time or drains.
         """

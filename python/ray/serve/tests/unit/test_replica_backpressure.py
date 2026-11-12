@@ -360,19 +360,51 @@ class TestDirectIngressRejection:
         assert decision.pre_jitter_s == 6
         assert retry_after == b"6"
 
-    def test_pending_work_is_queued_or_running(self):
-        """A replica's drains are completions, so a running request is pending
-        work even with nothing queued."""
+    def test_pending_work_is_queued_only(self):
+        """Only requests waiting in the replica's queue make an interval busy.
+        A running request with an empty queue doesn't, so light traffic
+        doesn't train the estimator."""
         fake = _make_fake_replica(max_ongoing_requests=1)
         fake._metrics_manager.get_num_ongoing_requests.return_value = 0
+        assert not fake._has_pending_drain_work()
+
+        fake._metrics_manager.get_num_ongoing_requests.return_value = 1
         assert not fake._has_pending_drain_work()
 
         fake._num_queued_requests = 1
         assert fake._has_pending_drain_work()
 
-        fake._num_queued_requests = 0
+    def test_running_only_and_completions_dont_make_an_interval_busy(self):
+        """Drive the replica's tracker with a fake clock. Completions with an
+        empty queue and running-only intervals advance the drain counter but
+        not the busy clock or warmup; a queued request makes the next
+        interval busy even with no completion in it."""
+        fake = _make_fake_replica(max_ongoing_requests=1)
+        now_s = [0.0]
+        estimator = DrainRateEstimator(warmup_samples=1, clock=lambda: now_s[0])
+        tracker = DrainRateTracker(
+            has_pending_work=fake._has_pending_drain_work, estimator=estimator
+        )
+        tracker._sample()
+
+        # One request running, nothing queued, two completions: not busy.
         fake._metrics_manager.get_num_ongoing_requests.return_value = 1
-        assert fake._has_pending_drain_work()
+        tracker.record_drain()
+        tracker.record_drain()
+        now_s[0] += 1
+        tracker._sample()
+        assert tracker.drain_counter == 2
+        assert estimator.num_samples == 0
+        assert estimator.busy_clock_s == 0
+
+        # A request is queued behind the running one: busy, no completion.
+        fake._num_queued_requests = 1
+        now_s[0] += 1
+        tracker._sample()
+        assert estimator.num_samples == 1
+        assert estimator.busy_clock_s == 1
+        # The two earlier completions don't leak into the window.
+        assert estimator.drains_in_window == 0
 
 
 class TestDirectIngressRejectionRequestId:

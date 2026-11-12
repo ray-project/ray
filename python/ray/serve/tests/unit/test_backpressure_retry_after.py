@@ -166,14 +166,17 @@ class TestDrainRateEstimator:
         observe_interval(estimator, 0, has_pending_work=True)
         assert estimator.busy_seconds == 33
 
-    def test_final_drain_interval_counts_as_busy(self):
-        """An interval in which the queue emptied still drained requests, so
-        it counts even though nothing is pending at the sample."""
+    def test_drains_without_queued_work_are_skipped(self):
+        """Drains in an interval that ends with an empty queue count in the
+        drain counter but not in the estimate: no busy time, no window
+        drains, no warmup."""
         estimator = make_estimator()
         observe_interval(estimator, 3, has_pending_work=False)
-        assert estimator.num_samples == 1
-        assert estimator.busy_seconds == 1
-        assert estimator.drains_in_window == 3
+        assert estimator.drain_counter == 3
+        assert estimator.num_samples == 0
+        assert estimator.busy_clock_s == 0
+        assert estimator.drains_in_window == 0
+        assert estimator.seconds_per_drain is None
 
     def test_fast_drains(self):
         """Many drains per second: the 10 busy seconds bound the window, and
@@ -298,7 +301,7 @@ class TestDrainRateEstimator:
         assert not estimator.warm
         assert estimator.drain_counter == 5
         assert estimator.busy_clock_s == 0
-        assert list(estimator._checkpoints) == [(0.0, 5)]
+        assert list(estimator._checkpoints) == [(0.0, 0)]
 
         # Drains recorded before the reset don't leak into the next interval.
         estimator.sample(has_pending_work=True)
@@ -471,6 +474,7 @@ class TestMatchesReference:
             estimator = make_estimator()
             full_history = [(0.0, 0)]
             busy_clock_s = 0.0
+            busy_drains = 0
             for _ in range(2000):
                 drains = 0 if rng.random() < 0.6 else rng.choice([1, 1, 2, 8, 20])
                 pending = rng.random() < 0.7
@@ -482,13 +486,102 @@ class TestMatchesReference:
                 observe_interval(
                     estimator, drains, elapsed_s=elapsed_s, has_pending_work=pending
                 )
-                if drains or pending:
+                # Only intervals with queued work count, with their own
+                # drains; drains in skipped intervals are left out.
+                if pending:
                     busy_clock_s += elapsed_s
-                    full_history.append((busy_clock_s, estimator.drain_counter))
+                    busy_drains += drains
+                    full_history.append((busy_clock_s, busy_drains))
                 if len(full_history) > 1:
                     assert estimator.seconds_per_drain == pytest.approx(
                         reference_seconds_per_drain(full_history)
                     )
+
+
+class TestQueuedWorkRule:
+    """Only intervals with requests queued at the sample train the estimator.
+    Before this rule, an interval with a drain counted as a full busy second
+    even with an empty queue, so light traffic taught it about 1 s per drain
+    and a burst of 65 got about 65 s."""
+
+    @staticmethod
+    def _decide(estimator: DrainRateEstimator, depth: int) -> RetryAfterDecision:
+        return compute_retry_after_decision(
+            backpressure_config=BackpressureConfig(
+                retry_after_policy="queue_drain_rate", retry_after_s=5
+            ),
+            observed_queue_depth=depth,
+            estimator=estimator,
+            request_id="req-1",
+            rand=CountingRand(0.5),
+        )
+
+    def test_light_traffic_then_burst(self):
+        estimator = make_estimator(warmup_samples=3)
+        # 60 s at 0.5 req/s: one drain every 2 s, the queue empty at every
+        # sample.
+        for second in range(1, 61):
+            observe_interval(
+                estimator, 1 if second % 2 == 0 else 0, has_pending_work=False
+            )
+        assert estimator.drain_counter == 30
+        assert estimator.busy_clock_s == 0
+        assert estimator.num_samples == 0
+        assert not estimator.warm
+
+        # A burst queues 65 requests: the static fallback, not ~65 s.
+        decision = self._decide(estimator, 65)
+        assert decision.fallback_rung == "static_fallback"
+        assert decision.post_jitter_s == 5
+
+        # The component then drains 10 requests per second with requests
+        # still queued at each sample.
+        queued = 65
+        rungs = []
+        for _ in range(3):
+            queued -= 10
+            observe_interval(estimator, 10, has_pending_work=queued > 0)
+            rungs.append(self._decide(estimator, queued).fallback_rung)
+        assert rungs == ["static_fallback", "static_fallback", "computed"]
+        assert estimator.drain_counter == 60
+        # Only the saturated seconds count: 3 busy seconds, 30 drains.
+        assert estimator.busy_seconds == 3
+        assert estimator.drains_in_window == 30
+        decision = self._decide(estimator, 65)
+        assert decision.pre_jitter_s == pytest.approx(6.5)
+        assert decision.post_jitter_s == 7
+
+    def test_skipped_interval_drains_dont_leak_between_busy_intervals(self):
+        estimator = make_estimator()
+        observe_interval(estimator, 2)
+        observe_interval(estimator, 5, has_pending_work=False)
+        observe_interval(estimator, 1)
+        assert estimator.drain_counter == 8
+        assert estimator.busy_clock_s == 2
+        assert estimator.drains_in_window == 3
+
+    def test_idle_traffic_drains_dont_leak_into_saturation(self):
+        estimator = make_estimator(warmup_samples=3)
+        for second in range(1, 41):
+            observe_interval(
+                estimator, 1 if second % 2 == 0 else 0, has_pending_work=False
+            )
+        # Light traffic right up to the burst: the last skipped interval
+        # has drains too.
+        observe_interval(estimator, 3, has_pending_work=False)
+
+        # Sustained saturation: 4 drains per second with requests queued.
+        observe_interval(estimator, 4)
+        assert estimator.busy_seconds == 1
+        assert estimator.drains_in_window == 4
+        for _ in range(19):
+            observe_interval(estimator, 4)
+        assert estimator.drain_counter == 20 + 3 + 80
+        assert estimator.busy_clock_s == 20
+        # The window is the last 10 busy seconds: 40 drains.
+        assert estimator.busy_seconds == 10
+        assert estimator.drains_in_window == 40
+        assert estimator.estimate_s(8) == pytest.approx(2.0)
 
 
 class TestGroundTruthInstrumentation:

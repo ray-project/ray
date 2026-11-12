@@ -589,8 +589,9 @@ class BackpressureConfig(BaseModel):
             drain: the queue depth at rejection times the recently observed
             busy time per drain, at least 1 second, then jittered.
             It falls back to `retry_after_s` (or no header if unset) until
-            enough traffic has been observed. The value is a hint, not a
-            guarantee that a retry at that time will be admitted.
+            the component has spent a few seconds with requests queued. The
+            value is a hint, not a guarantee that a retry at that time will
+            be admitted.
     """
 
     # Reject unknown keys so typos (e.g. `retry_after` instead of

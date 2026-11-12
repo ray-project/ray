@@ -3814,7 +3814,7 @@ class TestRouterDrainCounter:
     ):
         """The router counts an interval as busy only while its own queue has
         requests: requests already running on replicas can't be drained by
-        it any further."""
+        it any further, and an assignment alone doesn't make it busy."""
         router, fake_request_router = setup_router
         fake_request_router.set_replica_to_return(_fake_replica())
         router.update_deployment_config(
@@ -3831,21 +3831,25 @@ class TestRouterDrainCounter:
         tracker._estimator = estimator
         tracker._sample()
 
-        # A request running on a replica, nothing queued: idle.
+        # A request assigned and running on a replica, nothing queued: the
+        # assignment counts as a drain but the interval isn't busy.
         await router.assign_request(dummy_request_metadata())
         clock.now_s += 1
         tracker._sample()
-        # The assignment itself was a drain in that interval, so it counted.
-        assert estimator.num_samples == 1
+        assert metrics_manager._get_drain_counter() == 1
+        assert estimator.num_samples == 0
+        assert estimator.busy_clock_s == 0
         clock.now_s += 1
         tracker._sample()
-        assert estimator.num_samples == 1
+        assert estimator.num_samples == 0
 
-        # Something queued: busy.
+        # Something queued: busy, even with no assignment in the interval.
         metrics_manager.inc_num_queued_requests()
         clock.now_s += 1
         tracker._sample()
-        assert estimator.num_samples == 2
+        assert estimator.num_samples == 1
+        assert estimator.busy_clock_s == 1
+        assert estimator.drains_in_window == 0
 
     async def test_ground_truth_reached_after_depth_assignments(
         self, setup_router: Tuple[AsyncioRouter, FakeRequestRouter]
