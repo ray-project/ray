@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from typing import Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 # https://github.com/ray-project/ray/issues/54868
 # Ray no longer overrides accelerator ids environment variables when the number
@@ -156,6 +156,44 @@ class AcceleratorManager(ABC):
 
         Returns:
             A dictionary mapping accelerator related label keys to values.
+        """
+        return None
+
+    @staticmethod
+    def get_node_group_accelerator_labels(
+        node_selector: Dict[str, str],
+        annotations: Optional[Dict[str, str]] = None,
+    ) -> Optional[Dict[str, str]]:
+        """Get accelerator-related Ray node labels for a node group from its
+        pod nodeSelector and optional pod annotations.
+
+        Args:
+            node_selector: The pod spec nodeSelector dictionary.
+            annotations: Optional pod metadata annotations dictionary.
+
+        Returns:
+            A dictionary mapping accelerator-related label keys to values, or
+            None if not applicable.
+        """
+        return None
+
+    @staticmethod
+    def get_node_group_additional_resources(
+        resources: Dict[str, Any],
+        node_selector: Dict[str, str],
+        annotations: Optional[Dict[str, str]] = None,
+    ) -> Optional[Dict[str, int]]:
+        """Get any additional Ray resources derived for a node group from its
+        pod nodeSelector and optional pod annotations.
+
+        Args:
+            resources: Base Ray resources already parsed for the node group.
+            node_selector: The pod spec nodeSelector dictionary.
+            annotations: Optional pod metadata annotations dictionary.
+
+        Returns:
+            A dictionary of additional node-group resources, or None if not
+            applicable.
         """
         return None
 

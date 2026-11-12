@@ -1080,6 +1080,187 @@ def test_get_num_tpu_visible_chips_per_host():
     assert tpu.get_num_tpu_visible_chips_per_host("v5p-8") == 4
 
 
+@pytest.mark.parametrize(
+    "node_selector, expected_labels",
+    [
+        pytest.param(
+            {
+                "cloud.google.com/gke-tpu-accelerator": "tpu-v6e-slice",
+                "cloud.google.com/gke-tpu-topology": "4x4",
+            },
+            {
+                "ray.io/accelerator-type": "TPU-V6E",
+                "ray.io/tpu-topology": "4x4",
+                "ray.io/tpu-pod-type": "v6e-16",
+            },
+            id="v6e",
+        ),
+        pytest.param(
+            {
+                "cloud.google.com/gke-tpu-accelerator": "tpu7x",
+                "cloud.google.com/gke-tpu-topology": "2x2x2",
+            },
+            {
+                "ray.io/accelerator-type": "TPU-V7X",
+                "ray.io/tpu-topology": "2x2x2",
+                "ray.io/tpu-pod-type": "v7x-16",
+            },
+            id="tpu7x",
+        ),
+        pytest.param(
+            {
+                "cloud.google.com/gke-tpu-accelerator": "tpu-v5p-slice",
+                "cloud.google.com/gke-tpu-topology": " 2X2X4 ",
+            },
+            {
+                "ray.io/accelerator-type": "TPU-V5P",
+                "ray.io/tpu-topology": "2x2x4",
+                "ray.io/tpu-pod-type": "v5p-32",
+            },
+            id="v5p-normalized",
+        ),
+        pytest.param(
+            {
+                "cloud.google.com/gke-tpu-accelerator": "tpu-v6e-slice",
+                "cloud.google.com/gke-tpu-topology": "2x2x2",
+            },
+            None,
+            id="invalid-topology-for-generation",
+        ),
+        pytest.param(
+            {
+                "cloud.google.com/gke-tpu-accelerator": "tpu-v6e-slice",
+                "cloud.google.com/gke-tpu-topology": "4x",
+            },
+            None,
+            id="malformed-topology",
+        ),
+        pytest.param(
+            {"cloud.google.com/gke-tpu-accelerator": "tpu-v6e-slice"},
+            None,
+            id="missing-topology",
+        ),
+        pytest.param(
+            {"cloud.google.com/gke-accelerator": "nvidia-h100-80gb"},
+            None,
+            id="non-tpu",
+        ),
+    ],
+)
+def test_get_node_group_accelerator_labels(node_selector, expected_labels):
+    assert (
+        TPUAcceleratorManager.get_node_group_accelerator_labels(node_selector)
+        == expected_labels
+    )
+
+
+def test_base_accelerator_manager_hooks_are_none():
+    from ray._private.accelerators.accelerator import AcceleratorManager
+
+    assert AcceleratorManager.get_node_group_accelerator_labels({}) is None
+    assert (
+        AcceleratorManager.get_node_group_additional_resources({"GPU": 8}, {}) is None
+    )
+    assert tpu.GKE_TPU_SLICE_TOPOLOGY_ANNOTATION == (
+        "cloud.google.com/gke-tpu-slice-topology"
+    )
+
+
+@pytest.mark.parametrize(
+    "resources, node_selector, annotations, expected_labels, expected_resources",
+    [
+        pytest.param(
+            {"CPU": 4, "TPU": 8},
+            {"cloud.google.com/gke-tpu-accelerator": "tpu7x"},
+            {"cloud.google.com/gke-tpu-slice-topology": "2x2x2"},
+            {
+                "ray.io/accelerator-type": "TPU-V7X",
+                "ray.io/tpu-topology": "2x2x2",
+                "ray.io/tpu-pod-type": "v7x-16",
+            },
+            {"TPU-v7x-16-head": 1},
+            id="dynamic-slicing-annotation",
+        ),
+        pytest.param(
+            {"CPU": 4, "TPU": 8},
+            {
+                "cloud.google.com/gke-tpu-accelerator": "tpu7x",
+                "cloud.google.com/gke-tpu-topology": "4x4x4",
+            },
+            {"cloud.google.com/gke-tpu-slice-topology": "2x2x2"},
+            {
+                "ray.io/accelerator-type": "TPU-V7X",
+                "ray.io/tpu-topology": "2x2x2",
+                "ray.io/tpu-pod-type": "v7x-16",
+            },
+            {"TPU-v7x-16-head": 1},
+            id="dynamic-slicing-overrides-pool-selector",
+        ),
+        pytest.param(
+            {"CPU": 4, "TPU": 4},
+            {
+                "cloud.google.com/gke-tpu-accelerator": "tpu-v6e-slice",
+                "cloud.google.com/gke-tpu-topology": "2x4",
+            },
+            {"cloud.google.com/gke-tpu-slice-topology": "  "},
+            {
+                "ray.io/accelerator-type": "TPU-V6E",
+                "ray.io/tpu-topology": "2x4",
+                "ray.io/tpu-pod-type": "v6e-8",
+            },
+            {"TPU-v6e-8-head": 1},
+            id="blank-annotation-falls-back-to-selector",
+        ),
+        pytest.param(
+            {"CPU": 4, "TPU": 4},
+            {
+                "cloud.google.com/gke-tpu-accelerator": "tpu7x",
+                "cloud.google.com/gke-tpu-slice-topology": "2x2x1",
+            },
+            None,
+            None,
+            None,
+            id="slice-topology-on-node-selector-ignored",
+        ),
+        pytest.param(
+            {"CPU": 4, "GPU": 8},
+            {"cloud.google.com/gke-tpu-accelerator": "tpu7x"},
+            {"cloud.google.com/gke-tpu-slice-topology": "2x2x2"},
+            {
+                "ray.io/accelerator-type": "TPU-V7X",
+                "ray.io/tpu-topology": "2x2x2",
+                "ray.io/tpu-pod-type": "v7x-16",
+            },
+            None,
+            id="non-tpu-resources-skip-head-resource",
+        ),
+        pytest.param(
+            {"CPU": 4, "TPU": 4},
+            {"cloud.google.com/gke-tpu-accelerator": "tpu-v6e-slice"},
+            None,
+            None,
+            None,
+            id="missing-topology-returns-none",
+        ),
+    ],
+)
+def test_get_node_group_dynamic_slicing_and_additional_resources(
+    resources, node_selector, annotations, expected_labels, expected_resources
+):
+    assert (
+        TPUAcceleratorManager.get_node_group_accelerator_labels(
+            node_selector, annotations
+        )
+        == expected_labels
+    )
+    assert (
+        TPUAcceleratorManager.get_node_group_additional_resources(
+            resources, node_selector, annotations
+        )
+        == expected_resources
+    )
+
+
 # Subslice topology test helpers
 
 

@@ -9,9 +9,11 @@ import pytest
 import requests
 import yaml
 
-from ray.autoscaler._private.kuberay.autoscaling_config import (
+from ray._private.accelerators.tpu import (
     GKE_TPU_ACCELERATOR_LABEL,
     GKE_TPU_TOPOLOGY_LABEL,
+)
+from ray.autoscaler._private.kuberay.autoscaling_config import (
     AutoscalingConfigProducer,
     _derive_autoscaling_config_from_ray_cr,
     _get_custom_resources,
@@ -116,7 +118,11 @@ def _get_basic_autoscaling_config() -> dict:
             # Same as "small-group" with a TPU resource entry added
             # and modified max_workers and node_config.
             "tpu-group": {
-                "labels": {},
+                "labels": {
+                    "ray.io/accelerator-type": "TPU-V4",
+                    "ray.io/tpu-topology": "2x2x2",
+                    "ray.io/tpu-pod-type": "v4-16",
+                },
                 "max_workers": 8,
                 "min_workers": 0,
                 "node_config": {},
@@ -229,6 +235,12 @@ def _get_ray_cr_with_top_level_labels() -> dict:
     cr = get_basic_ray_cr()
     # This top-level structured labels take priority.
     cr["spec"]["workerGroupSpecs"][0]["labels"] = {"instance-type": "mx5"}
+    # Top-level labels are merged over, and override, labels derived from the
+    # TPU nodeSelector.
+    cr["spec"]["workerGroupSpecs"][2]["labels"] = {
+        "ray.io/market-type": "spot",
+        "ray.io/tpu-pod-type": "v4-16-custom",
+    }
 
     # rayStartParams labels field should be ignored.
     cr["spec"]["workerGroupSpecs"][0]["rayStartParams"]["labels"] = "instance-type=n2"
@@ -238,6 +250,9 @@ def _get_ray_cr_with_top_level_labels() -> dict:
 def _get_autoscaling_config_with_top_level_labels() -> dict:
     config = _get_basic_autoscaling_config()
     config["available_node_types"]["small-group"]["labels"] = {"instance-type": "mx5"}
+    config["available_node_types"]["tpu-group"]["labels"].update(
+        {"ray.io/market-type": "spot", "ray.io/tpu-pod-type": "v4-16-custom"}
+    )
     return config
 
 
@@ -407,6 +422,13 @@ def _get_autoscaling_config_with_v7x() -> dict[str, Any]:
     config = _get_basic_autoscaling_config()
     config["available_node_types"]["tpu-group"]["resources"]["TPU-v7x-16-head"] = 1
     config["available_node_types"]["tpu-group"]["resources"].pop("TPU-v4-16-head", None)
+    config["available_node_types"]["tpu-group"]["labels"].update(
+        {
+            "ray.io/accelerator-type": "TPU-V7X",
+            "ray.io/tpu-topology": "2x2x2",
+            "ray.io/tpu-pod-type": "v7x-16",
+        }
+    )
     return config
 
 
@@ -430,6 +452,13 @@ def _get_autoscaling_config_with_v5litepod() -> dict[str, Any]:
     config = _get_basic_autoscaling_config()
     config["available_node_types"]["tpu-group"]["resources"]["TPU-v5litepod-8-head"] = 1
     config["available_node_types"]["tpu-group"]["resources"].pop("TPU-v4-16-head", None)
+    config["available_node_types"]["tpu-group"]["labels"].update(
+        {
+            "ray.io/accelerator-type": "TPU-V5LITEPOD",
+            "ray.io/tpu-topology": "2x4",
+            "ray.io/tpu-pod-type": "v5litepod-8",
+        }
+    )
     return config
 
 
@@ -732,6 +761,18 @@ TPU_TYPES_DATA = (
             "v7x-16",
             id="tpu-v7x-test",
         ),
+        pytest.param(
+            "tpu-v6e-slice",
+            "4x",
+            None,
+            id="tpu-malformed-topology",
+        ),
+        pytest.param(
+            "tpu-v6e-slice",
+            "2x2x2",
+            None,
+            id="tpu-mismatched-generation-topology",
+        ),
     ]
 )
 
@@ -942,6 +983,22 @@ def test_get_ray_resources_from_group_spec(
 
 
 @pytest.mark.skipif(platform.system() == "Windows", reason="Not relevant.")
+def test_get_ray_resources_malformed_tpu_topology_skips_head_resource():
+    group_spec = copy.deepcopy(get_basic_ray_cr()["spec"]["workerGroupSpecs"][2])
+    group_spec["template"]["spec"]["nodeSelector"] = {
+        "cloud.google.com/gke-tpu-accelerator": "tpu-v6e-slice",
+        "cloud.google.com/gke-tpu-topology": "4x",
+    }
+    assert _get_ray_resources_from_group_spec(group_spec, False) == {
+        "CPU": 1,
+        "memory": 536870912,
+        "Custom2": 5,
+        "Custom3": 1,
+        "TPU": 4,
+    }
+
+
+@pytest.mark.skipif(platform.system() == "Windows", reason="Not relevant.")
 def test_top_level_resources_override_warnings():
     """
     Verify all override warnings are logged when a top-level `resources` field is used in
@@ -975,6 +1032,91 @@ def test_top_level_resources_override_warnings():
         # Assert that all expected calls were made, in any order.
         mock_logger.warning.assert_has_calls(expected_calls, any_order=True)
         assert mock_logger.warning.call_count == 4
+
+
+@pytest.mark.skipif(platform.system() == "Windows", reason="Not relevant.")
+def test_dynamic_slicing_tpu_labels_and_resources():
+    """Verify GKE TPU Dynamic Slicing pod annotations, single-host TPU, and
+    zero-TPU groups derive expected default labels and head resources."""
+    from ray.autoscaler.v2.instance_manager.config import AutoscalingConfig
+
+    cr = get_basic_ray_cr()
+    cr["metadata"]["namespace"] = "default"
+    cr["spec"]["workerGroupSpecs"][1]["numOfHosts"] = 4
+    cr["spec"]["workerGroupSpecs"][1]["maxReplicas"] = 2
+
+    # GKE TPU Dynamic Slicing worker group: topology lives on pod annotation
+    # `cloud.google.com/gke-tpu-slice-topology` without `gke-tpu-topology` selector.
+    tpu_ds = cr["spec"]["workerGroupSpecs"][2]
+    tpu_ds["template"]["spec"]["nodeSelector"] = {
+        "cloud.google.com/gke-tpu-accelerator": "tpu7x",
+    }
+    tpu_ds["template"].setdefault("metadata", {}).setdefault("annotations", {})[
+        "cloud.google.com/gke-tpu-slice-topology"
+    ] = "2x2x2"
+    tpu_ds["resources"] = {"TPU": "8"}
+    tpu_ds["numOfHosts"] = 2
+    tpu_ds["maxReplicas"] = 3
+
+    # Dynamic Slicing overriding a larger shared pool selector (`4x4x4` -> `2x2x2`),
+    # plus a single-host TPU group (`numOfHosts=1`) and zero-TPU groups.
+    tpu_override = copy.deepcopy(tpu_ds)
+    tpu_override["groupName"] = "tpu-ds-override"
+    tpu_override["template"]["spec"]["nodeSelector"][
+        "cloud.google.com/gke-tpu-topology"
+    ] = "4x4x4"
+
+    tpu_single = copy.deepcopy(tpu_ds)
+    tpu_single["groupName"] = "tpu-single"
+    tpu_single["numOfHosts"] = 1
+    tpu_single["template"]["metadata"]["annotations"][
+        "cloud.google.com/gke-tpu-slice-topology"
+    ] = "2x2x1"
+    tpu_zero = copy.deepcopy(tpu_ds)
+    tpu_zero["groupName"] = "tpu-zero-hosts"
+    tpu_zero["numOfHosts"] = 0
+    tpu_zero["template"]["metadata"] = {}
+    tpu_zero["template"]["spec"]["nodeSelector"] = {
+        "cloud.google.com/gke-tpu-accelerator": "tpu7x",
+        "cloud.google.com/gke-tpu-topology": "2x2x1",
+    }
+    tpu_zero_res = copy.deepcopy(tpu_zero)
+    tpu_zero_res["groupName"] = "tpu-zero-resource"
+    tpu_zero_res["resources"] = {"CPU": "4", "TPU": "0"}
+    tpu_zero_res["numOfHosts"] = 1
+    cpu_zero_tpu = copy.deepcopy(cr["spec"]["workerGroupSpecs"][0])
+    cpu_zero_tpu["groupName"] = "cpu-zero-tpu"
+    cpu_zero_tpu["resources"] = {"CPU": "4", "TPU": "0"}
+    cr["spec"]["workerGroupSpecs"].extend(
+        [tpu_override, tpu_single, tpu_zero, tpu_zero_res, cpu_zero_tpu]
+    )
+
+    derived = _derive_autoscaling_config_from_ray_cr(cr)
+    autoscaling_cfg = AutoscalingConfig(configs=derived)
+    nt_cfgs = autoscaling_cfg.get_node_type_configs()
+
+    for name in ("tpu-zero-resource", "cpu-zero-tpu"):
+        assert not any(
+            k.startswith("TPU-") and k.endswith("-head")
+            for k in nt_cfgs[name].resources
+        )
+    assert nt_cfgs["gpu-group"].max_worker_nodes == 8
+    for name in ("tpu-group", "tpu-ds-override"):
+        assert nt_cfgs[name].max_worker_nodes == 6
+        assert nt_cfgs[name].labels == {
+            "ray.io/accelerator-type": "TPU-V7X",
+            "ray.io/tpu-topology": "2x2x2",
+            "ray.io/tpu-pod-type": "v7x-16",
+        }
+        assert nt_cfgs[name].resources["TPU-v7x-16-head"] == 1
+    for name in ("tpu-single", "tpu-zero-hosts"):
+        assert nt_cfgs[name].max_worker_nodes == 3
+        assert nt_cfgs[name].labels == {
+            "ray.io/accelerator-type": "TPU-V7X",
+            "ray.io/tpu-topology": "2x2x1",
+            "ray.io/tpu-pod-type": "v7x-8",
+        }
+        assert nt_cfgs[name].resources["TPU-v7x-8-head"] == 1
 
 
 if __name__ == "__main__":
