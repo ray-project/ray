@@ -13,6 +13,7 @@ pytestmark = [
         reason="Ray on spark only supports running on POSIX system.",
     ),
     pytest.mark.timeout(1500),
+    pytest.mark.usefixtures("create_auth_token"),
 ]
 
 

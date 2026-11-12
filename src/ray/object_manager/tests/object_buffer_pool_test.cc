@@ -18,16 +18,13 @@
 #include <memory>
 #include <string>
 
-#include "gmock/gmock.h"
 #include "gtest/gtest.h"
-#include "mock/ray/object_manager/plasma/client.h"
 #include "ray/common/id.h"
+#include "ray/object_manager/plasma/fake_plasma_client.h"
 
 namespace ray {
 
-using ::testing::_;
-
-class CustomMockPlasmaClient : public plasma::MockPlasmaClient {
+class CustomFakePlasmaClient : public plasma::FakePlasmaClient {
  public:
   ray::Status CreateAndSpillIfNeeded(const ObjectID &object_id,
                                      const ray::rpc::Address &owner_address,
@@ -47,9 +44,9 @@ class ObjectBufferPoolTest : public ::testing::Test {
  public:
   ObjectBufferPoolTest()
       : chunk_size_(1000),
-        mock_plasma_client_(std::make_shared<CustomMockPlasmaClient>()),
-        object_buffer_pool_(mock_plasma_client_, chunk_size_),
-        mock_data_(chunk_size_, 'x') {}
+        fake_plasma_client_(std::make_shared<CustomFakePlasmaClient>()),
+        object_buffer_pool_(fake_plasma_client_, chunk_size_),
+        fake_data_(chunk_size_, 'x') {}
 
   void AssertNoLeaks() {
     absl::MutexLock lock(&object_buffer_pool_.pool_mutex_);
@@ -58,9 +55,9 @@ class ObjectBufferPoolTest : public ::testing::Test {
   }
 
   uint64_t chunk_size_;
-  std::shared_ptr<CustomMockPlasmaClient> mock_plasma_client_;
+  std::shared_ptr<CustomFakePlasmaClient> fake_plasma_client_;
   ObjectBufferPool object_buffer_pool_;
-  std::string mock_data_;
+  std::string fake_data_;
 };
 
 TEST_F(ObjectBufferPoolTest, TestBasic) {
@@ -71,9 +68,10 @@ TEST_F(ObjectBufferPoolTest, TestBasic) {
       object_buffer_pool_.CreateChunk(obj_id, owner_address, chunk_size_, 0, 0).ok());
   ASSERT_FALSE(
       object_buffer_pool_.CreateChunk(obj_id, owner_address, chunk_size_, 0, 0).ok());
-  EXPECT_CALL(*mock_plasma_client_, Seal(obj_id));
-  EXPECT_CALL(*mock_plasma_client_, Release(obj_id));
-  object_buffer_pool_.WriteChunk(obj_id, chunk_size_, 0, 0, mock_data_);
+  fake_plasma_client_->ClearCallRecords();
+  object_buffer_pool_.WriteChunk(obj_id, chunk_size_, 0, 0, fake_data_);
+  EXPECT_EQ(fake_plasma_client_->sealed_objects, (std::vector<ObjectID>{obj_id}));
+  EXPECT_EQ(fake_plasma_client_->released_objects, (std::vector<ObjectID>{obj_id}));
 }
 
 TEST_F(ObjectBufferPoolTest, TestMultiChunk) {
@@ -88,11 +86,12 @@ TEST_F(ObjectBufferPoolTest, TestMultiChunk) {
         object_buffer_pool_.CreateChunk(obj_id, owner_address, 3 * chunk_size_, 0, i)
             .ok());
   }
-  EXPECT_CALL(*mock_plasma_client_, Seal(obj_id));
-  EXPECT_CALL(*mock_plasma_client_, Release(obj_id));
+  fake_plasma_client_->ClearCallRecords();
   for (int i = 0; i < 3; i++) {
-    object_buffer_pool_.WriteChunk(obj_id, 3 * chunk_size_, 0, i, mock_data_);
+    object_buffer_pool_.WriteChunk(obj_id, 3 * chunk_size_, 0, i, fake_data_);
   }
+  EXPECT_EQ(fake_plasma_client_->sealed_objects, (std::vector<ObjectID>{obj_id}));
+  EXPECT_EQ(fake_plasma_client_->released_objects, (std::vector<ObjectID>{obj_id}));
 }
 
 TEST_F(ObjectBufferPoolTest, TestAbort) {
@@ -103,14 +102,16 @@ TEST_F(ObjectBufferPoolTest, TestAbort) {
       object_buffer_pool_.CreateChunk(obj_id, owner_address, chunk_size_, 0, 0).ok());
   ASSERT_FALSE(
       object_buffer_pool_.CreateChunk(obj_id, owner_address, chunk_size_, 0, 0).ok());
-  EXPECT_CALL(*mock_plasma_client_, Abort(obj_id));
+  fake_plasma_client_->ClearCallRecords();
   object_buffer_pool_.AbortCreate(obj_id);
+  EXPECT_EQ(fake_plasma_client_->aborted_objects, (std::vector<ObjectID>{obj_id}));
   ASSERT_TRUE(
       object_buffer_pool_.CreateChunk(obj_id, owner_address, chunk_size_, 0, 0).ok());
 
-  EXPECT_CALL(*mock_plasma_client_, Seal(obj_id));
-  EXPECT_CALL(*mock_plasma_client_, Release(obj_id));
-  object_buffer_pool_.WriteChunk(obj_id, chunk_size_, 0, 0, mock_data_);
+  fake_plasma_client_->ClearCallRecords();
+  object_buffer_pool_.WriteChunk(obj_id, chunk_size_, 0, 0, fake_data_);
+  EXPECT_EQ(fake_plasma_client_->sealed_objects, (std::vector<ObjectID>{obj_id}));
+  EXPECT_EQ(fake_plasma_client_->released_objects, (std::vector<ObjectID>{obj_id}));
 }
 
 TEST_F(ObjectBufferPoolTest, TestSizeMismatch) {
@@ -121,23 +122,26 @@ TEST_F(ObjectBufferPoolTest, TestSizeMismatch) {
   int64_t data_size_2 = 2 * chunk_size_;
   ASSERT_TRUE(
       object_buffer_pool_.CreateChunk(obj_id, owner_address, data_size_1, 0, 0).ok());
-  object_buffer_pool_.WriteChunk(obj_id, data_size_1, 0, 0, mock_data_);
+  object_buffer_pool_.WriteChunk(obj_id, data_size_1, 0, 0, fake_data_);
 
-  // Object gets created again with a different size.
-  EXPECT_CALL(*mock_plasma_client_, Release(obj_id));
-  EXPECT_CALL(*mock_plasma_client_, Abort(obj_id));
+  // Object gets created again with a different size: the partial buffer is
+  // released and aborted.
+  fake_plasma_client_->ClearCallRecords();
   ASSERT_TRUE(
       object_buffer_pool_.CreateChunk(obj_id, owner_address, data_size_2, 0, 1).ok());
-  object_buffer_pool_.WriteChunk(obj_id, data_size_2, 0, 1, mock_data_);
+  object_buffer_pool_.WriteChunk(obj_id, data_size_2, 0, 1, fake_data_);
+  EXPECT_EQ(fake_plasma_client_->released_objects, (std::vector<ObjectID>{obj_id}));
+  EXPECT_EQ(fake_plasma_client_->aborted_objects, (std::vector<ObjectID>{obj_id}));
 
   ASSERT_TRUE(
       object_buffer_pool_.CreateChunk(obj_id, owner_address, data_size_2, 0, 0).ok());
   // Writing a chunk with a stale data size has no effect.
-  object_buffer_pool_.WriteChunk(obj_id, data_size_1, 0, 0, mock_data_);
+  object_buffer_pool_.WriteChunk(obj_id, data_size_1, 0, 0, fake_data_);
 
-  EXPECT_CALL(*mock_plasma_client_, Seal(obj_id));
-  EXPECT_CALL(*mock_plasma_client_, Release(obj_id));
-  object_buffer_pool_.WriteChunk(obj_id, data_size_2, 0, 0, mock_data_);
+  fake_plasma_client_->ClearCallRecords();
+  object_buffer_pool_.WriteChunk(obj_id, data_size_2, 0, 0, fake_data_);
+  EXPECT_EQ(fake_plasma_client_->sealed_objects, (std::vector<ObjectID>{obj_id}));
+  EXPECT_EQ(fake_plasma_client_->released_objects, (std::vector<ObjectID>{obj_id}));
 }
 
 }  // namespace ray

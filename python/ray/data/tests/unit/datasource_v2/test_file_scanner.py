@@ -5,31 +5,33 @@ pruning from ``FileScanner`` itself. These tests use a scanner that
 implements nothing beyond the two abstract methods and check that a
 predicate on a partition column still reaches it.
 """
+
 from dataclasses import dataclass
-from typing import Iterator
+from typing import Iterator, Optional
 
 import pyarrow as pa
 import pytest
 from pyarrow.fs import LocalFileSystem
 
-from ray.data._internal.datasource_v2.listing.file_indexer import (
+from ray.data._internal.datasource_v2.common.file_pruners import (
+    PartitionPredicatePruner,
+)
+from ray.data._internal.datasource_v2.common.file_scanner import FileScanner
+from ray.data._internal.datasource_v2.common.non_sampling_file_indexer import (
     NonSamplingFileIndexer,
 )
-from ray.data._internal.datasource_v2.listing.file_manifest import (
+from ray.data._internal.datasource_v2.common.pushdown_utils import (
+    derive_list_files_pushdown,
+)
+from ray.data._internal.datasource_v2.interfaces.file_manifest import (
     FILE_CHUNK_METADATA_COLUMN_NAME,
     FILE_SIZE_COLUMN_NAME,
     PATH_COLUMN_NAME,
     FileManifest,
 )
-from ray.data._internal.datasource_v2.listing.file_pruners import (
-    PartitionPredicatePruner,
-)
-from ray.data._internal.datasource_v2.logical_optimizers import (
-    SupportsFilterPushdown,
-    derive_list_files_pushdown,
-)
-from ray.data._internal.datasource_v2.readers.base_reader import Reader
-from ray.data._internal.datasource_v2.scanners.file_scanner import FileScanner
+from ray.data._internal.datasource_v2.interfaces.file_pruner import FilePruner
+from ray.data._internal.datasource_v2.interfaces.pushdown import SupportsFilterPushdown
+from ray.data._internal.datasource_v2.interfaces.reader import Reader
 from ray.data._internal.logical.operators import Filter, ListFiles, ReadFiles
 from ray.data.datasource.partitioning import Partitioning, PartitionStyle
 from ray.data.expressions import col
@@ -54,6 +56,11 @@ class _PartitionOnlyScanner(FileScanner):
 
     def create_reader(self) -> Reader[FileManifest]:
         return _NoopReader()
+
+
+class _NoListingPartitionOnlyScanner(_PartitionOnlyScanner):
+    def pushed_partition_pruner(self) -> Optional[FilePruner]:
+        return None
 
 
 def _read_files(scanner: FileScanner) -> ReadFiles:
@@ -157,6 +164,36 @@ def test_prune_input_split_drops_files_by_path():
     assert list(kept.paths) == ["/root/country=US/a.csv", "/root/country=US/c.csv"]
     # Without a spec there is nothing to parse, so the split passes through.
     assert _PartitionOnlyScanner().prune_input_split(manifest) is manifest
+
+
+@pytest.mark.parametrize("country", ["US", "CA", "missing"])
+@pytest.mark.parametrize("empty", [False, True])
+def test_read_pruning_does_not_depend_on_listing_hook(country, empty):
+    scanner = _NoListingPartitionOnlyScanner(partitioning=PARTITIONING)
+    op = _read_files(scanner)
+    result = op.apply_predicate(col("country") == country)
+    assert isinstance(result, ReadFiles)
+    assert isinstance(result.scanner, _NoListingPartitionOnlyScanner)
+    scanner = result.scanner
+    assert derive_list_files_pushdown(scanner).partition_pruner is None
+    paths = (
+        []
+        if empty
+        else [
+            "/root/country=US/a.csv",
+            "/root/country=CA/b.csv",
+            "/root/country=US/c.csv",
+        ]
+    )
+    manifest = _manifest(*paths)
+    expected = [i for i, path in enumerate(paths) if f"country={country}/" in path]
+    actual = scanner.prune_input_split(manifest).as_block()
+    assert actual.equals(manifest.as_block().take(pa.array(expected, type=pa.int64())))
+
+    mixed = op.apply_predicate((col("country") == country) & (col("a") > 0))
+    assert isinstance(mixed, Filter)
+    assert mixed.predicate_expr is not None
+    assert mixed.predicate_expr.structurally_equals(col("a") > 0)
 
 
 if __name__ == "__main__":

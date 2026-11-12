@@ -51,6 +51,7 @@ from ray.exceptions import (
     AsyncioActorExit,
     PendingCallsLimitExceeded,
     RpcError,
+    GcsPassiveError,
     ObjectRefStreamEndOfStreamError,
 )
 
@@ -108,7 +109,7 @@ cdef int check_status(const CRayStatus& status) except -1 nogil:
     elif status.IsNotFound():
         raise ValueError(message)
     elif status.IsGcsPassive():
-        raise RpcError(message, rpc_code=CGrpcStatusCode.UNAVAILABLE)
+        raise GcsPassiveError(message, rpc_code=CGrpcStatusCode.UNAVAILABLE)
     elif status.IsObjectNotFound():
         raise ValueError(message)
     elif status.IsObjectUnknownOwner():

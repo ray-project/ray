@@ -274,9 +274,15 @@ def test_empty_dataset(ray_start_regular_shared):
     ds = ray.data.range(1)
     ds = ds.filter(lambda x: x["id"] > 1)
     ds = ds.materialize()
-    assert (
-        str(ds)
-        == "MaterializedDataset(num_blocks=1, num_rows=0, schema=Unknown schema)"
+    # The filter drops every row, but the block keeps the input schema.
+    assert str(ds) == (
+        "shape: (0, 1)\n"
+        "╭───────╮\n"
+        "│ id    │\n"
+        "│ ---   │\n"
+        "│ int64 │\n"
+        "╰───────╯\n"
+        "(Showing 0 of 0 rows)"
     )
 
     # Test map on empty dataset.

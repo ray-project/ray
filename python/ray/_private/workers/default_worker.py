@@ -200,12 +200,9 @@ parser.add_argument(
     ),
 )
 
-if __name__ == "__main__":
-    # NOTE(sang): For some reason, if we move the code below
-    # to a separate function, tensorflow will capture that method
-    # as a step function. For more details, check out
-    # https://github.com/ray-project/ray/pull/12225#issue-525059663.
-    args = parser.parse_args()
+
+def initialize_default_worker(argv=None):
+    args = parser.parse_args(argv)
     ray._private.ray_logging.setup_logger(args.logging_level, args.logging_format)
     worker_launched_time_ms = time.time_ns() // 1e6
     if args.worker_type == "WORKER":
@@ -319,6 +316,15 @@ if __name__ == "__main__":
         if error is not None:
             worker.core_worker.drain_and_exit_worker("system", error)
 
+    return mode, worker
+
+
+if __name__ == "__main__":
+    # NOTE(sang): For some reason, if we move the main_loop call below
+    # to a separate function, tensorflow will capture that method
+    # as a step function. For more details, check out
+    # https://github.com/ray-project/ray/pull/12225#issue-525059663.
+    mode, worker = initialize_default_worker()
     if mode == ray.WORKER_MODE:
         worker.main_loop()
     elif mode in [ray.RESTORE_WORKER_MODE, ray.SPILL_WORKER_MODE]:

@@ -16,6 +16,7 @@ from ray.autoscaler._private.constants import (
     DEFAULT_UPSCALING_SPEED,
     DISABLE_LAUNCH_CONFIG_CHECK_KEY,
     DISABLE_NODE_UPDATERS_KEY,
+    RAY_AUTOSCALER_PENDING_NODE_IDLE_TIMEOUT_S,
 )
 from ray.autoscaler._private.kuberay.autoscaling_config import AutoscalingConfigProducer
 from ray.autoscaler._private.monitor import BASE_READONLY_CONFIG
@@ -111,12 +112,22 @@ class InstanceReconcileConfig:
     max_num_retry_request_to_allocate: int = env_integer(
         "RAY_AUTOSCALER_RECONCILE_MAX_NUM_RETRY_REQUEST_TO_ALLOCATE", 3
     )
+    # How long to retain a TERMINATED instance record before garbage collecting
+    # it from the instance storage. TERMINATED is a terminal state and nothing
+    # else removes these records, so without GC the storage—and the per-cycle
+    # reconcile cost and serialized AutoscalingState that scan it—grow without
+    # bound on instance-churning clusters. The default retains a full day of
+    # terminations so the status_history of recently reclaimed nodes stays
+    # inspectable for post-incident triage (e.g. overnight scaling issues),
+    # while bounding steady-state memory to roughly one day of churn.
+    terminated_instance_gc_retention_s: int = env_integer(
+        "RAY_AUTOSCALER_RECONCILE_TERMINATED_INSTANCE_GC_RETENTION_S", 24 * 60 * 60
+    )
 
 
 @dataclass
 class NodeTypeConfig:
-    """
-    NodeTypeConfig is the helper class to provide node type specific configs.
+    """NodeTypeConfig is the helper class to provide node type specific configs.
     This maps to subset of the `available_node_types` field in the
     autoscaling config.
     """
@@ -146,8 +157,7 @@ class NodeTypeConfig:
 
 
 class AutoscalingConfig:
-    """
-    AutoscalingConfig is the helper class to provide autoscaling
+    """AutoscalingConfig is the helper class to provide autoscaling
     related configs.
 
     # TODO(rickyx):
@@ -202,16 +212,16 @@ class AutoscalingConfig:
         )
 
     def get_docker_config(self, ray_node_type: NodeType) -> Dict[str, Any]:
-        """
-        Return the docker config for the specified node type.
-            If it's a head node, the image will be chosen in the following order:
-                1. Node specific docker image.
-                2. The 'docker' config's 'head_image' field.
-                3. The 'docker' config's 'image' field.
-            If it's a worker node, the image will be chosen in the following order:
-                1. Node specific docker image.
-                2. The 'docker' config's 'worker_image' field.
-                3. The 'docker' config's 'image' field.
+        """Return the docker config for the specified node type.
+
+        If it's a head node, the image will be chosen in the following order:
+            1. The 'docker' config's 'head_image' field.
+            2. The 'docker' config's 'image' field.
+
+        If it's a worker node, the image will be chosen in the following order:
+            1. The node type's 'docker.worker_image' field.
+            2. The 'docker' config's 'worker_image' field.
+            3. The 'docker' config's 'image' field.
         """
         # TODO(rickyx): It's unfortunate we have multiple fields in ray-schema.json
         #  that can specify docker images. We should consolidate them.
@@ -254,8 +264,7 @@ class AutoscalingConfig:
         return self._configs.get("head_start_ray_commands", [])
 
     def get_worker_setup_commands(self, ray_node_type: NodeType) -> List[str]:
-        """
-        Return the worker setup commands for the specified node type.
+        """Return the worker setup commands for the specified node type.
 
         If the node type specific worker setup commands are not specified,
         return the global worker setup commands.
@@ -273,8 +282,7 @@ class AutoscalingConfig:
         return worker_setup_command
 
     def get_initialization_commands(self, ray_node_type: NodeType) -> List[str]:
-        """
-        Return the initialization commands for the specified node type.
+        """Return the initialization commands for the specified node type.
 
         If the node type specific initialization commands are not specified,
         return the global initialization commands.
@@ -327,8 +335,7 @@ class AutoscalingConfig:
             raise ValueError(f"Unknown provider {provider}")
 
     def get_node_type_configs(self) -> Dict[NodeType, NodeTypeConfig]:
-        """
-        Returns the node type configs from the `available_node_types` field.
+        """Returns the node type configs from the `available_node_types` field.
 
         Returns:
             Dict[NodeType, NodeTypeConfig]: The node type configs.
@@ -361,8 +368,7 @@ class AutoscalingConfig:
         return node_type_configs
 
     def get_head_node_type(self) -> NodeType:
-        """
-        Returns the head node type.
+        """Returns the head node type.
 
         If there is only one node type, return the only node type as the head
         node type.
@@ -397,11 +403,16 @@ class AutoscalingConfig:
         return provider_config.get(DISABLE_NODE_UPDATERS_KEY, False)
 
     def get_idle_timeout_s(self) -> Optional[float]:
-        """
-        Returns the idle timeout in seconds if present in config, otherwise None.
-        """
+        """Returns the idle timeout in seconds if present in config, otherwise None."""
         idle_timeout_s = self.get_config("idle_timeout_minutes", None)
         return idle_timeout_s * 60 if idle_timeout_s is not None else None
+
+    def get_pending_idle_timeout_s(self) -> Optional[float]:
+        """Returns the idle timeout in seconds for the pending nodes not needed by any
+        resource demands, or None if they should never be terminated for it.
+        """
+        timeout_s = RAY_AUTOSCALER_PENDING_NODE_IDLE_TIMEOUT_S
+        return float(timeout_s) if timeout_s >= 0 else None
 
     def disable_launch_config_check(self) -> bool:
         provider_config = self.get_provider_config()
@@ -473,11 +484,6 @@ class FileConfigReader(IConfigReader):
             return AutoscalingConfig(config, skip_content_hash=self._skip_content_hash)
 
     def get_cached_autoscaling_config(self) -> AutoscalingConfig:
-        """
-        Returns:
-            AutoscalingConfig: The autoscaling config.
-        """
-
         return self._cached_config
 
     def refresh_cached_autoscaling_config(self):
@@ -495,15 +501,10 @@ class KubeRayConfigReader(IConfigReader):
         return AutoscalingConfig(self._config_producer())
 
     def get_cached_autoscaling_config(self) -> AutoscalingConfig:
-        """
-        Returns:
-            AutoscalingConfig: The autoscaling config.
-        """
         return self._cached_config
 
     def refresh_cached_autoscaling_config(self):
-        """
-        Reads the configs from the K8s RayCluster CR.
+        """Reads the configs from the K8s RayCluster CR.
 
         This reads from the K8s API server every time to pick up changes.
         """

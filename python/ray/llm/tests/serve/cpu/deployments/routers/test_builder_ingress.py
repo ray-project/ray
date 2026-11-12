@@ -13,6 +13,7 @@ from ray._common.test_utils import wait_for_condition
 from ray.llm._internal.serve.constants import DEFAULT_MAX_TARGET_ONGOING_REQUESTS
 from ray.llm._internal.serve.core.configs.llm_config import (
     LLMConfig,
+    LoraConfig,
     ModelLoadingConfig,
 )
 from ray.llm._internal.serve.core.ingress.builder import (
@@ -415,6 +416,26 @@ class TestBuildOpenaiApp:
         assert request_router_config.request_router_class == (
             f"{RoundRobinRouter.__module__}.{RoundRobinRouter.__name__}"
         )
+
+    def test_lora_requires_body(
+        self, llm_config, disable_placement_bundles, monkeypatch
+    ):
+        monkeypatch.setattr(
+            "ray.llm._internal.serve.core.ingress.builder."
+            "RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING",
+            True,
+        )
+        monkeypatch.setattr(
+            "ray.llm._internal.serve.core.ingress.builder."
+            "RAY_SERVE_INGRESS_REQUEST_ROUTER_FORWARD_BODY",
+            False,
+        )
+        llm_config.lora_config = LoraConfig(dynamic_lora_loading_path=None)
+
+        with pytest.raises(
+            ValueError, match="RAY_SERVE_INGRESS_REQUEST_ROUTER_FORWARD_BODY"
+        ):
+            build_openai_app(LLMServingArgs(llm_configs=[llm_config]))
 
     def test_direct_streaming_user_request_router_config_wins(
         self, llm_config, disable_placement_bundles, monkeypatch

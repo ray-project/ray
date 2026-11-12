@@ -1,11 +1,9 @@
 import pandas as pd
 import pyarrow as pa
 import pytest
-from packaging.version import parse as parse_version
 
 import ray
 from ray.data._internal.util import rows_same
-from ray.data._internal.utils.arrow_utils import get_pyarrow_version
 from ray.data.aggregate import (
     ApproximateQuantile,
     ApproximateTopK,
@@ -49,7 +47,7 @@ class TestDtypeAggregatorsForDataset:
                 {"num": "DataType(arrow:int64)", "str": "DataType(arrow:string)"},
                 11,  # 1 numerical * 8 + 1 string * 3
             ),
-            # Boolean treated as numerical
+            # Boolean treated as numerical (0/1)
             (
                 [{"bool_col": True, "int_col": 1}],
                 {
@@ -118,10 +116,6 @@ class TestDtypeAggregatorsForDataset:
 
         assert [type(agg) for agg in result.aggregators] == [Count, Mean]
 
-    @pytest.mark.skipif(
-        get_pyarrow_version() < parse_version("14.0.0"),
-        reason="Requires pyarrow >= 14.0.0",
-    )
     def test_custom_dtype_mapping_pattern_precedence(self):
         """Test that specific custom mappings take precedence over default patterns."""
         import datetime
@@ -146,10 +140,6 @@ class TestDtypeAggregatorsForDataset:
         assert len(result.aggregators) == 1
         assert isinstance(result.aggregators[0], Count)
 
-    @pytest.mark.skipif(
-        get_pyarrow_version() < parse_version("14.0.0"),
-        reason="Requires pyarrow >= 14.0.0",
-    )
     @pytest.mark.parametrize(
         "pa_type",
         [
@@ -218,10 +208,6 @@ class TestIndividualAggregatorFunctions:
 class TestDefaultDtypeAggregators:
     """Test suite for _default_dtype_aggregators function."""
 
-    @pytest.mark.skipif(
-        get_pyarrow_version() < parse_version("14.0.0"),
-        reason="Requires pyarrow >= 14.0.0",
-    )
     @pytest.mark.parametrize(
         "dtype_factory,expected_agg_types,uses_pattern_matching",
         [
@@ -266,7 +252,7 @@ class TestDefaultDtypeAggregators:
                     ZeroPercentage,
                 ],
                 False,
-            ),  # Numerical
+            ),  # Boolean treated as numerical (0/1)
             (
                 DataType.string,
                 [Count, MissingValuePercentage, ApproximateTopK],
@@ -360,6 +346,82 @@ class TestDatasetSummary:
         )
 
         assert rows_same(actual_subset, expected)
+
+    def test_summary_boolean_column(self):
+        """Boolean columns get the full numerical statistics (issue #62235).
+
+        Booleans are treated as 0/1 numbers: Std and ZeroPercentage used to
+        crash with ArrowNotImplementedError because PyArrow has no boolean
+        kernels for ``subtract``/``equal(bool, int)``.
+        """
+        import numpy as np
+
+        ds = ray.data.from_items(
+            [
+                {"flag": True, "age": 25},
+                {"flag": False, "age": 30},
+                {"flag": True, "age": 35},
+                {"flag": None, "age": 40},
+            ]
+        )
+
+        summary = ds.summary()
+        actual = summary.to_pandas()
+        assert "flag" in actual.columns
+
+        stats = dict(zip(actual["statistic"], actual["flag"]))
+        assert stats["count"] == 4
+        assert stats["mean"] == pytest.approx(2 / 3)
+        assert stats["min"] is False
+        assert stats["max"] is True
+        assert stats["missing_pct"] == pytest.approx(25.0)
+        # 0/1 semantics for the numerical-only statistics.
+        assert stats["std"] == pytest.approx(np.std([1, 0, 1], ddof=0))
+        # One of three non-null values is False (= 0).
+        assert stats["zero_pct"] == pytest.approx(100.0 / 3)
+        # Median of [1, 0, 1].
+        assert stats["approx_quantile[0]"] == pytest.approx(1.0)
+
+    def test_boolean_workarounds_handle_dictionary_encoding(self):
+        """The 0/1 casts for Std/ZeroPercentage must also apply to
+        dictionary-encoded booleans, which ``DataType.is_boolean_type`` treats
+        as boolean."""
+        import numpy as np
+        import pyarrow as pa
+
+        from ray.data._internal.arrow_aggregation import _zero_indicator
+        from ray.data._internal.arrow_block import ArrowBlockColumnAccessor
+        from ray.data.aggregate import ZeroPercentage
+
+        flags = pa.array([True, False, True, None]).dictionary_encode()
+
+        indicator = _zero_indicator(pa.chunked_array([flags]))
+        assert indicator.to_pylist() == [0, 1, 0, None]
+
+        zero_count, non_null_count = ZeroPercentage(on="flag").aggregate_block(
+            pa.table({"flag": flags})
+        )
+        assert (zero_count, non_null_count) == (1, 3)
+
+        accessor = ArrowBlockColumnAccessor(pa.chunked_array([flags]))
+        ssd = accessor.sum_of_squared_diffs_from_mean(ignore_nulls=True, mean=2 / 3)
+        assert ssd == pytest.approx(np.sum((np.array([1, 0, 1]) - 2 / 3) ** 2))
+
+    def test_zero_percentage_on_pandas_boolean_block(self):
+        """ZeroPercentage must handle pandas blocks, whose column accessor
+        returns a plain Python list rather than an Arrow container, including
+        boolean columns (treated as 0/1)."""
+        from ray.data.aggregate import ZeroPercentage
+
+        block = pd.DataFrame({"flag": [True, False, True, None]})
+        zp = ZeroPercentage(on="flag")
+        zero_count, non_null_count = zp.aggregate_block(block)
+        assert (zero_count, non_null_count) == (1, 3)
+
+        # Non-boolean pandas columns keep working.
+        block_num = pd.DataFrame({"v": [0, 1, 0, None]})
+        zero_count, non_null_count = ZeroPercentage(on="v").aggregate_block(block_num)
+        assert (zero_count, non_null_count) == (2, 3)
 
     def test_summary_with_column_filter(self):
         """Test summary with specific columns."""

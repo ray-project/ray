@@ -17,6 +17,7 @@ from ray.data._internal.arrow_block import (
     ArrowBlockAccessor,
     ArrowBlockBuilder,
     ArrowRow,
+    _arrow_backed_pandas_dtype,
 )
 from ray.data._internal.arrow_ops.transform_pyarrow import combine_chunked_array
 from ray.data._internal.util import GiB, MiB
@@ -230,7 +231,7 @@ def test_dict_doesnt_fallback_to_pandas_block(ray_start_regular_shared):
 
     ds = ray.data.range(10).map_batches(fn)
     ds = ds.materialize()
-    block = ray.get(ds.get_internal_block_refs()[0])
+    block = ray.get(next(ds.iter_internal_ref_bundles()).block_refs[0])
     assert isinstance(block, pa.Table), type(block)
     df_from_block = block.to_pandas()
     assert df_from_block["data_dict"].iloc[0] == {"data": 0}
@@ -242,7 +243,7 @@ def test_dict_doesnt_fallback_to_pandas_block(ray_start_regular_shared):
 
     ds2 = ray.data.range(10).map_batches(fn2)
     ds2 = ds2.materialize()
-    block = ray.get(ds2.get_internal_block_refs()[0])
+    block = ray.get(next(ds2.iter_internal_ref_bundles()).block_refs[0])
     assert isinstance(block, pa.Table), type(block)
     df_from_block = block.to_pandas()
     assert df_from_block["data_none"].iloc[0] is None
@@ -328,24 +329,59 @@ def test_arrow_block_timestamp_ns(ray_start_regular_shared):
             pa.list_(pa.string()),
             [["a", "b"], None],
         ),
+        # Types with a null type nested inside. Before pandas 3.1, the cast in
+        # pd.ArrowDtype.__from_arrow__ resizes the null child to the number of
+        # rows, so each case holds more child elements than rows.
+        (
+            pa.array([[None] * 3, [None, None], [], None], type=pa.list_(pa.null())),
+            None,
+            pa.list_(pa.null()),
+            [[None] * 3, [None, None], [], None],
+        ),
+        (
+            pa.array(
+                [[[None, None], [None]], [[None], [None]], None],
+                type=pa.list_(pa.list_(pa.null())),
+            ),
+            None,
+            pa.list_(pa.list_(pa.null())),
+            [[[None, None], [None]], [[None], [None]], None],
+        ),
+        # A slice of a block, as a UDF sees it when batch_size is smaller than
+        # the block. The cast aborts the process on the slice offset.
+        (
+            pa.array([[None], [None, None], [None]], type=pa.list_(pa.null()))[1:],
+            None,
+            pa.list_(pa.null()),
+            [[None, None], [None]],
+        ),
     ],
 )
 def test_arrow_block_to_pandas_preserves_arrow_types_through_roundtrip(
     input_array, transform, expected_type, expected_values
 ):
+    """A column converts to a plain Arrow-backed pandas column, round-trips to the
+    same Arrow type and values, and converts to pandas again from the
+    round-tripped block."""
     table = pa.table({"x": input_array})
 
     df = ArrowBlockAccessor(table).to_pandas()
-    assert isinstance(df.dtypes["x"], pd.ArrowDtype)
-    assert df.dtypes["x"].pyarrow_dtype == expected_type
+    assert type(df.dtypes["x"]) is pd.ArrowDtype
+    assert df.dtypes["x"] == pd.ArrowDtype(expected_type)
+    assert pd.ArrowDtype(expected_type) == df.dtypes["x"]
 
     if transform is not None:
         df = transform(df)
 
     roundtripped = BlockAccessor.for_block(df).to_arrow()
+    # The round-tripped block carries pandas metadata naming the Arrow-backed
+    # dtype, which pandas cannot parse back from its string form.
+    df_again = ArrowBlockAccessor(roundtripped).to_pandas()
 
     assert roundtripped.schema.field("x").type == expected_type
     assert roundtripped.to_pydict() == {"x": expected_values}
+    assert df_again.dtypes["x"] == pd.ArrowDtype(expected_type)
+    assert pa.array(df_again["x"].array).to_pylist() == expected_values
 
 
 def test_arrow_block_to_pandas_null_type_is_not_arrow_backed():
@@ -367,6 +403,20 @@ def test_arrow_block_to_pandas_null_type_is_not_arrow_backed():
     # Filling the nulls now works and yields the fill value's type.
     filled = BlockAccessor.for_block(df.fillna({"x": 3.0})).to_arrow()
     assert filled.to_pydict() == {"x": [3.0, 3.0]}
+
+
+def test_arrow_backed_pandas_dtype_for_nested_null_equals_plain_dtype():
+    """The dtype the types mapper returns for a nested-null type compares equal
+    to, and hashes like, the plain ``pd.ArrowDtype`` of that type."""
+    nested_null = pa.list_(pa.null())
+
+    mapped = _arrow_backed_pandas_dtype(nested_null)
+    plain = pd.ArrowDtype(nested_null)
+
+    assert mapped == plain
+    assert plain == mapped
+    assert hash(mapped) == hash(plain)
+    assert mapped == str(plain)
 
 
 def test_pandas_udf_can_fill_per_block_null_columns(ray_start_regular_shared):
@@ -474,6 +524,54 @@ def test_to_pandas_does_not_downcast_out_of_range_floats(
     assert float_value in df["v"].dropna().tolist()
 
 
+def test_to_pandas_empty_dataset_preserves_columns(ray_start_regular_shared):
+    """`to_pandas()` on an empty dataset must keep the schema's columns.
+
+    Regression test for #59946: an empty Arrow table with columns was converted
+    to a column-less pandas DataFrame because `to_pandas()` builds only from the
+    (zero) batches of an empty dataset and ignored the known schema.
+    """
+    ds = ray.data.from_arrow_refs(
+        [ray.put(pa.table([pa.array([], pa.int32())], ["apples"]))]
+    )
+    df = ds.to_pandas()
+    assert list(df.columns) == ["apples"]
+    assert len(df) == 0
+    # The empty-dataset dtype must match what a non-empty dataset of the same
+    # schema produces (routed through the same BlockAccessor conversion).
+    nonempty = ray.data.from_arrow_refs(
+        [ray.put(pa.table([pa.array([1], pa.int32())], ["apples"]))]
+    ).to_pandas()
+    assert df["apples"].dtype == nonempty["apples"].dtype
+
+    # Multiple columns are preserved too.
+    ds2 = ray.data.from_arrow_refs(
+        [
+            ray.put(
+                pa.table(
+                    [pa.array([], pa.int32()), pa.array([], pa.string())], ["a", "b"]
+                )
+            )
+        ]
+    )
+    assert list(ds2.to_pandas().columns) == ["a", "b"]
+
+    # Pandas-backed empty datasets preserve columns and dtypes too.
+    pandas_df = pd.DataFrame(
+        {"a": pd.Series([], dtype="int64"), "b": pd.Series([], dtype="float64")}
+    )
+    ds3 = ray.data.from_pandas(pandas_df)
+    df3 = ds3.to_pandas()
+    assert list(df3.columns) == ["a", "b"]
+    assert df3["a"].dtype == np.int64
+    assert df3["b"].dtype == np.float64
+
+    # A dataset with no blocks at all (and hence no schema) still converts
+    # cleanly to an empty, column-less DataFrame.
+    df4 = ray.data.range(0).to_pandas()
+    assert len(df4) == 0
+
+
 @pytest.fixture
 def arrow_row():
     table = pa.table({"a": [1, 2, 3], "b": [10.5, 20.5, 30.5]})
@@ -513,6 +611,74 @@ def test_arrow_row_unwraps_scalars_but_not_tensors():
 
     assert type(row["a"]) is int
     np.testing.assert_array_equal(row["emb"], np.array([1]))
+
+
+def test_batches_keep_tensor_column_with_missing_rows(
+    ray_start_regular_shared, tensor_format_context
+):
+    """A UDF that returns None for some rows of a tensor column keeps the column
+    a tensor column, in every fixed-shape tensor format. A batch without a
+    missing row is one stacked array, a batch with one is an ndarray per row
+    with None for the missing row, and pandas sees the missing rows as NA."""
+    from ray.data.extensions import get_arrow_extension_tensor_types
+
+    def decode(batch):
+        row = int(batch["id"][0])
+        return {"img": [None if row == 5 else np.full((2, 2), row, np.float32)]}
+
+    ds = ray.data.range(8).map_batches(decode, batch_size=1)
+    batches = list(ds.iter_batches(batch_size=4, batch_format="numpy"))
+
+    assert isinstance(
+        ds.schema().base_schema.field("img").type, get_arrow_extension_tensor_types()
+    )
+    stacked = [b["img"] for b in batches if b["img"].dtype != object]
+    with_none = [b["img"] for b in batches if b["img"].dtype == object]
+    assert [arr.shape for arr in stacked] == [(4, 2, 2)]
+    assert len(with_none) == 1 and sum(row is None for row in with_none[0]) == 1
+    assert list(ds.to_pandas()["img"].isna()) == [i == 5 for i in range(8)]
+
+
+@pytest.mark.parametrize(
+    "null_rows",
+    [{0}, {5}, {0, 1}, {2, 3}, {0, 2, 4}],
+    ids=["first", "last", "first_batch", "middle_batch", "every_batch_start"],
+)
+@pytest.mark.parametrize("ragged", [False, True], ids=["fixed", "ragged"])
+@pytest.mark.parametrize("num_blocks", [1, 2])
+def test_batches_keep_tensor_column_when_batch_starts_with_none(
+    ray_start_regular_shared, tensor_format_context, null_rows, ragged, num_blocks
+):
+    """A UDF batch whose first tensor row is None still builds a tensor column.
+    Six rows in batches of two, so a None can lead a batch, end a batch, or
+    fill one, and with two blocks a block of one tensor shape meets a block
+    of another. The rows read back as the tensors and None in order, as
+    numpy, pandas and a second pandas UDF."""
+
+    def tensor(i):
+        return np.full((i + 1, 2) if ragged else (2, 2), i, np.float32)
+
+    def decode(batch):
+        ids = batch["id"].tolist()
+        return {"id": ids, "x": [None if i in null_rows else tensor(i) for i in ids]}
+
+    ds = ray.data.range(6, override_num_blocks=num_blocks).map_batches(
+        decode, batch_size=2
+    )
+
+    def check(rows):
+        assert len(rows) == 6
+        for i, row in enumerate(rows):
+            if i in null_rows:
+                assert row is None
+            else:
+                np.testing.assert_array_equal(row, tensor(i))
+
+    check(list(next(iter(ds.iter_batches(batch_size=6, batch_format="numpy")))["x"]))
+    check(ds.to_pandas()["x"].tolist())
+    check(
+        [r["x"] for r in ds.map_batches(lambda b: b, batch_format="pandas").take_all()]
+    )
 
 
 if __name__ == "__main__":

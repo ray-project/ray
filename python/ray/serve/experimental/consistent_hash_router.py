@@ -146,9 +146,7 @@ class ConsistentHashRouter(RequestRouter):
         )
 
     def update_replicas(self, replicas: List[RunningReplica]) -> None:
-        """
-        Update available replicas and rebuild the ring when the set changes.
-        """
+        """Update available replicas and rebuild the ring when the set changes."""
         super().update_replicas(replicas)
 
         new_snapshot = frozenset(self._replica_id_set)
@@ -158,8 +156,7 @@ class ConsistentHashRouter(RequestRouter):
         self._rebuild_ring(new_snapshot)
 
     def _rebuild_ring(self, new_snapshot: FrozenSet[ReplicaID]) -> None:
-        """
-        Rebuild ring state from the current replica set.
+        """Rebuild ring state from the current replica set.
 
         Every vnode is hashed from f"{unique_id}:{vnode_index}". Using
         the replica's unique_id rather than the full ReplicaID keeps the
@@ -206,8 +203,7 @@ class ConsistentHashRouter(RequestRouter):
         return metadata.internal_request_id
 
     def _lookup_ranked_replicas(self, routing_key: str) -> List[ReplicaID]:
-        """
-        Walk the ring and return the primary plus up to K distinct
+        """Walk the ring and return the primary plus up to K distinct
         clockwise successor replicas.
         """
         if not self._ring_hashes:

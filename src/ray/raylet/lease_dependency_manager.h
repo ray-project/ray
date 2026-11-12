@@ -26,7 +26,7 @@
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "ray/common/id.h"
-#include "ray/object_manager/object_manager.h"
+#include "ray/object_manager/object_manager_interface.h"
 #include "ray/util/counter_map.h"
 
 namespace ray {
