@@ -15,10 +15,17 @@
 #include "ray/common/id.h"
 
 #include <gtest/gtest.h>
+#ifndef _WIN32
+#include <sys/wait.h>
+#include <unistd.h>
+#endif
 
+#include <string>
+#include <thread>
 #include <utility>
 
 #include "absl/container/flat_hash_set.h"
+#include "absl/random/random.h"
 
 namespace ray {
 
@@ -123,6 +130,74 @@ TEST(ObjectIDTest, TestObjectID) {
     TestRandomObjectId();
   }
 }
+
+#ifndef _WIN32
+TEST(ObjectIDTest, TestFromRandomForkSafety) {
+  // Initialize both Abseil's process-global RandenPool and FillRandom's thread-local
+  // PRNG before fork(), so any reliance on cloned RandenPool state across sibling
+  // forked processes or newly spawned child threads will collide.
+  (void)absl::BitGen{};
+  const ObjectID pre_fork_id = ObjectID::FromRandom();
+  ASSERT_FALSE(pre_fork_id.IsNil());
+
+  constexpr int kNumChildren = 4;
+  int pipefds[kNumChildren][2];
+  pid_t child_pids[kNumChildren];
+
+  for (int i = 0; i < kNumChildren; ++i) {
+    ASSERT_EQ(pipe(pipefds[i]), 0);
+    pid_t pid = fork();
+    ASSERT_GE(pid, 0);
+    if (pid == 0) {
+      for (int j = 0; j <= i; ++j) {
+        close(pipefds[j][0]);
+      }
+      const std::string main_binary = ObjectID::FromRandom().Binary();
+      std::string thread_binary;
+      std::thread child_thread(
+          [&thread_binary]() { thread_binary = ObjectID::FromRandom().Binary(); });
+      child_thread.join();
+
+      const std::string payload = main_binary + thread_binary;
+      ssize_t written = write(pipefds[i][1], payload.data(), payload.size());
+      close(pipefds[i][1]);
+      _exit(written == static_cast<ssize_t>(payload.size()) ? 0 : 1);
+    }
+    close(pipefds[i][1]);
+    child_pids[i] = pid;
+  }
+
+  const ObjectID parent_id = ObjectID::FromRandom();
+  absl::flat_hash_set<ObjectID> seen_ids = {pre_fork_id, parent_id};
+  ASSERT_EQ(seen_ids.size(), 2u);
+
+  for (int i = 0; i < kNumChildren; ++i) {
+    std::string buf(2 * ObjectID::Size(), '\0');
+    size_t total_read = 0;
+    while (total_read < buf.size()) {
+      ssize_t n = read(pipefds[i][0], buf.data() + total_read, buf.size() - total_read);
+      if (n <= 0) {
+        break;
+      }
+      total_read += static_cast<size_t>(n);
+    }
+    close(pipefds[i][0]);
+
+    int status = 0;
+    ASSERT_EQ(waitpid(child_pids[i], &status, 0), child_pids[i]);
+    ASSERT_TRUE(WIFEXITED(status));
+    ASSERT_EQ(WEXITSTATUS(status), 0);
+    ASSERT_EQ(total_read, buf.size());
+
+    const ObjectID child_main_id = ObjectID::FromBinary(buf.substr(0, ObjectID::Size()));
+    const ObjectID child_thread_id =
+        ObjectID::FromBinary(buf.substr(ObjectID::Size(), ObjectID::Size()));
+    ASSERT_TRUE(seen_ids.insert(child_main_id).second);
+    ASSERT_TRUE(seen_ids.insert(child_thread_id).second);
+  }
+  ASSERT_EQ(seen_ids.size(), static_cast<size_t>(2 + 2 * kNumChildren));
+}
+#endif
 
 TEST(NilTest, TestIsNil) {
   ASSERT_TRUE(TaskID().IsNil());

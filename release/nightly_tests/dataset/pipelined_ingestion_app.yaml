@@ -2,7 +2,7 @@ base_image: {{ env["RAY_IMAGE_ML_NIGHTLY_GPU"] }}
 env_vars: {"RAY_lineage_pinning_enabled": "1", "RAY_record_ref_creation_sites": "1"}
 python:
   pip_packages:
-    - pyarrow<7.0.0
+    - pyarrow
     - cmake
   conda_packages: []
 

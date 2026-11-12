@@ -13,6 +13,7 @@ from ray.data._internal.block_batching.interfaces import (
 )
 from ray.data._internal.block_batching.util import (
     ActorBlockPrefetcher,
+    DisabledBlockPrefetcher,
     WaitBlockPrefetcher,
     blocks_to_batches,
     collate,
@@ -167,16 +168,17 @@ class BatchIterator:
         self._prefetch_bytes_callback = prefetch_bytes_callback
         self._preserve_order = preserve_order
 
-        actor_prefetcher_enabled = (
-            prefetch_batches > 0
-            and DataContext.get_current().actor_prefetcher_enabled
+        self._prefetcher: BlockPrefetcher
+        if prefetch_batches <= 0:
+            # Nothing is prefetched, so don't start a prefetcher thread.
+            self._prefetcher = DisabledBlockPrefetcher()
+        elif (
+            DataContext.get_current().actor_prefetcher_enabled
             and not ray.util.client.ray.is_connected()
-        )
-        self._prefetcher = (
-            ActorBlockPrefetcher()
-            if actor_prefetcher_enabled
-            else WaitBlockPrefetcher()
-        )
+        ):
+            self._prefetcher = ActorBlockPrefetcher()
+        else:
+            self._prefetcher = WaitBlockPrefetcher()
         self._yielded_first_batch = False
 
         # This stores the last time we updated the metrics.
@@ -274,17 +276,28 @@ class BatchIterator:
 
         self.before_epoch_start()
 
-        while True:
-            with self.get_next_batch_context():
-                blocked_start_s = time.perf_counter()
-                try:
-                    batch = next(batch_iter)
-                except StopIteration:
-                    break
-                blocked_end_s = time.perf_counter()
-            self._attribute_blocked_time(batch, blocked_start_s, blocked_end_s)
-            with self.yield_batch_context(batch):
-                yield batch.data
+        try:
+            while True:
+                with self.get_next_batch_context():
+                    blocked_start_s = time.perf_counter()
+                    try:
+                        batch = next(batch_iter)
+                    except StopIteration:
+                        break
+                    blocked_end_s = time.perf_counter()
+                self._attribute_blocked_time(batch, blocked_start_s, blocked_end_s)
+                with self.yield_batch_context(batch):
+                    yield batch.data
+        finally:
+            # A consumer that stops early (``break``, ``close()``, or dropping
+            # the iterator) leaves the pipeline suspended in its background
+            # thread, where the prefetcher would otherwise only be stopped if
+            # that thread's generators are garbage collected. A prefetcher
+            # that isn't stopped keeps its thread, and the blocks it last
+            # prefetched, alive for the life of the process. Stop it here, on
+            # the consumer's thread, after signaling the pipeline to stop.
+            batch_iter.close()
+            self._prefetcher.stop()
 
         self.after_epoch_end()
 
@@ -481,58 +494,62 @@ def prefetch_batches_locally(
     sliding_window = collections.deque()
     current_window_size = 0
 
-    if num_batches_to_prefetch <= 0:
-        if stats:
-            stats.iter_prefetched_bytes = 0
-        for ref_bundle in ref_bundles:
-            for block_ref in ref_bundle.block_refs:
-                yield block_ref
-        return
+    # Stop the prefetcher however iteration ends, including when the consumer
+    # closes this generator early or an upstream error is raised.
+    try:
+        if num_batches_to_prefetch <= 0:
+            if stats:
+                stats.iter_prefetched_bytes = 0
+            for ref_bundle in ref_bundles:
+                for block_ref in ref_bundle.block_refs:
+                    yield block_ref
+            return
 
-    if batch_size is not None:
-        num_rows_to_prefetch = num_batches_to_prefetch * batch_size
-    else:
-        num_rows_to_prefetch = None
+        if batch_size is not None:
+            num_rows_to_prefetch = num_batches_to_prefetch * batch_size
+        else:
+            num_rows_to_prefetch = None
 
-    # Create and fetch the initial window.
-    # Stop adding if the number of rows in this window is greater than requested
-    # batch size, or if the batch size is None and the number of blocks in this window
-    # is greater than requested batches to prefetch.
-    while (batch_size is not None and current_window_size < num_rows_to_prefetch) or (
-        batch_size is None and len(sliding_window) < num_batches_to_prefetch
-    ):
-        try:
-            next_ref_bundle = get_next_ref_bundle()
-            sliding_window.extend(next_ref_bundle.blocks)
-            current_window_size += next_ref_bundle.num_rows()
-        except StopIteration:
-            break
-
-    prefetcher.prefetch_blocks([entry.ref for entry in sliding_window])
-    if stats:
-        stats.iter_prefetched_bytes = sum(
-            entry.metadata.size_bytes or 0 for entry in sliding_window
-        )
-
-    while sliding_window:
-        entry = sliding_window.popleft()
-        current_window_size -= entry.metadata.num_rows
-        if batch_size is None or current_window_size < num_rows_to_prefetch:
+        # Create and fetch the initial window.
+        # Stop adding if the number of rows in this window is greater than requested
+        # batch size, or if the batch size is None and the number of blocks in this
+        # window is greater than requested batches to prefetch.
+        while (
+            batch_size is not None and current_window_size < num_rows_to_prefetch
+        ) or (batch_size is None and len(sliding_window) < num_batches_to_prefetch):
             try:
                 next_ref_bundle = get_next_ref_bundle()
-                for next_entry in next_ref_bundle.blocks:
-                    sliding_window.append(next_entry)
-                    current_window_size += next_entry.metadata.num_rows
-                prefetcher.prefetch_blocks([entry.ref for entry in sliding_window])
+                sliding_window.extend(next_ref_bundle.blocks)
+                current_window_size += next_ref_bundle.num_rows()
             except StopIteration:
-                pass
+                break
+
+        prefetcher.prefetch_blocks([entry.ref for entry in sliding_window])
         if stats:
             stats.iter_prefetched_bytes = sum(
                 entry.metadata.size_bytes or 0 for entry in sliding_window
             )
-        yield entry.ref
-        trace_deallocation(entry.ref, loc="iter_batches")
-    prefetcher.stop()
+
+        while sliding_window:
+            entry = sliding_window.popleft()
+            current_window_size -= entry.metadata.num_rows
+            if batch_size is None or current_window_size < num_rows_to_prefetch:
+                try:
+                    next_ref_bundle = get_next_ref_bundle()
+                    for next_entry in next_ref_bundle.blocks:
+                        sliding_window.append(next_entry)
+                        current_window_size += next_entry.metadata.num_rows
+                    prefetcher.prefetch_blocks([entry.ref for entry in sliding_window])
+                except StopIteration:
+                    pass
+            if stats:
+                stats.iter_prefetched_bytes = sum(
+                    entry.metadata.size_bytes or 0 for entry in sliding_window
+                )
+            yield entry.ref
+            trace_deallocation(entry.ref, loc="iter_batches")
+    finally:
+        prefetcher.stop()
 
 
 def restore_original_order(batch_iter: Iterator[Batch]) -> Iterator[Batch]:

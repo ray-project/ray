@@ -12,10 +12,14 @@ import pyarrow.parquet as pq
 import pytest
 
 import ray
-from ray.data._internal.arrow_ops.transform_pyarrow import (
-    MIN_PYARROW_VERSION_TYPE_PROMOTION,
+from ray.data._internal.execution.operators.actor_pool_map_operator import (
+    ActorPoolMapOperator,
 )
-from ray.data._internal.utils.arrow_utils import get_pyarrow_version
+from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
+from ray.data._internal.execution.operators.task_pool_map_operator import (
+    TaskPoolMapOperator,
+)
+from ray.data._internal.logical.optimizers import get_execution_plan
 from ray.data.context import DataContext
 from ray.data.dataset import Dataset
 from ray.data.tests.conftest import *  # noqa
@@ -634,6 +638,19 @@ def test_map_batches_block_bundling_skewed_auto(
     assert ds._logical_plan.initial_num_blocks() == num_out_blocks
 
 
+def test_map_batches_empty_numpy_tensor(
+    ray_start_regular_shared, disable_fallback_to_object_extension
+):
+    ds = ray.data.from_numpy(np.ones((2, 2, 2), dtype=np.int32))
+
+    result = ds.map_batches(
+        lambda batch: {name: values[:0] for name, values in batch.items()},
+        batch_format="numpy",
+    ).materialize()
+
+    assert result.count() == 0
+
+
 def test_map_batches_preserve_empty_blocks(
     ray_start_regular_shared, target_max_block_size_infinite_or_default
 ):
@@ -802,10 +819,6 @@ def test_map_batches_async_generator_fast_yield(
     assert len(output) == len(expected_output), (len(output), len(expected_output))
 
 
-@pytest.mark.skipif(
-    get_pyarrow_version() < MIN_PYARROW_VERSION_TYPE_PROMOTION,
-    reason="Requires PyArrow >= 14.0.0 for type promotion in nested struct fields",
-)
 def test_map_batches_struct_field_type_divergence(shutdown_only):
     """Test map_batches with struct fields that have diverging primitive types."""
 
@@ -836,6 +849,69 @@ def test_map_batches_struct_field_type_divergence(shutdown_only):
     # Rows with a=1.5 should have float a, with b=None
     assert rows[2]["data"] == {"a": 1.5, "b": None, "c": 100}
     assert rows[3]["data"] == {"a": 1.5, "b": None, "c": 100}
+
+
+@pytest.mark.parametrize("is_generator", [False, True])
+def test_map_batches_sync_udf_not_fused_with_async_actor(shutdown_only, is_generator):
+    """A sync UDF must not fuse into an async callable-class operator.
+
+    Regression test for https://github.com/ray-project/ray/issues/57729. An async
+    UDF hosts an event loop on the map worker's thread, so fusing would make the
+    sync UDF's ``asyncio.run()`` fail with "cannot be called from a running event
+    loop". The two operators must stay separate at plan time.
+    """
+
+    def _load_batch(batch):
+        async def _load_all():
+            return await asyncio.gather(
+                *(asyncio.to_thread(lambda p: p, item) for item in batch["id"])
+            )
+
+        batch["data"] = asyncio.run(_load_all())
+        return batch
+
+    def sync_udf(batch):
+        return _load_batch(batch)
+
+    def sync_generator_udf(batch):
+        yield _load_batch(batch)
+
+    class AsyncActor:
+        # Stays async on purpose: it is what makes the fused worker host a loop.
+        async def __call__(self, batch):
+            await asyncio.sleep(0.001)
+            return batch
+
+    n = 4
+    ds = (
+        ray.data.range(n, override_num_blocks=n)
+        .map_batches(sync_generator_udf if is_generator else sync_udf)
+        .map_batches(AsyncActor, concurrency=1)
+    )
+
+    # Plan-time assertion: the operators stay separate. Fused, the sync UDF runs
+    # on the async worker's event-loop thread and `asyncio.run()` above raises.
+    # Walk the linear DAG from the sink back to the source, then reverse it so
+    # the list reads source -> sink.
+    ops = []
+    op = get_execution_plan(ds._logical_plan)[0].dag
+    while op is not None:
+        ops.append(op)
+        assert len(op.input_dependencies) <= 1, op.input_dependencies
+        op = op.input_dependencies[0] if op.input_dependencies else None
+    ops.reverse()
+
+    # Expected: Input -> ReadRange->MapBatches(sync) -> MapBatches(AsyncActor).
+    assert len(ops) == 3, ops
+    input_op, sync_op, async_op = ops
+    assert isinstance(input_op, InputDataBuffer), ops
+    assert isinstance(sync_op, TaskPoolMapOperator), ops
+    assert isinstance(async_op, ActorPoolMapOperator), ops
+    assert async_op.input_dependencies == [sync_op]
+
+    result = ds.take_all()
+    assert len(result) == n
+    assert sorted(row["data"] for row in result) == list(range(n))
 
 
 if __name__ == "__main__":

@@ -6,6 +6,7 @@ try:
         Application,
         Deployment,
         RunTarget,
+        _router_application,
         _run,
         _run_many,
         delete,
@@ -47,6 +48,7 @@ ray._private.worker.blocking_get_inside_async_warned = True
 __all__ = [
     "_run",
     "_run_many",
+    "_router_application",
     "batch",
     "start",
     "ControllerOptions",

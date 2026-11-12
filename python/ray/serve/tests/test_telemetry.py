@@ -9,9 +9,11 @@ from ray._common.test_utils import TelemetryCallsite, check_library_usage_teleme
 
 
 @pytest.fixture
-def reset_usage_lib(ray_shutdown):
+def reset_usage_lib():
     yield
-    ray.shutdown()
+    # wait_for_processes=True so the next test's ray.init() doesn't race a
+    # still-terminating raylet, which on Windows makes the driver exit.
+    ray.shutdown(wait_for_processes=True)
     ray_usage_lib.reset_global_state()
 
 

@@ -64,6 +64,17 @@ class _AbstractKBinsDiscretizer(SerializablePreprocessorBase):
                 "in it."
             )
 
+    def _validate_bins_are_positive(self):
+        # `bins=0` is translated to a single-edge array before reaching
+        # `pd.cut`, which then silently returns an all-null column. Only
+        # integers are checked here; `_fit` rejects other types by name.
+        counts = self.bins.values() if isinstance(self.bins, dict) else [self.bins]
+        for count in counts:
+            if isinstance(count, int) and count <= 0:
+                raise ValueError(
+                    f"bins must be a positive integer, but got {count} instead."
+                )
+
     def __repr__(self):
         return (
             f"{self.__class__.__name__}("
@@ -204,6 +215,7 @@ class CustomKBinsDiscretizer(_AbstractKBinsDiscretizer):
 
     @property
     def columns(self) -> List[str]:
+        """The columns to discretize."""
         return self._columns
 
     @property
@@ -214,28 +226,48 @@ class CustomKBinsDiscretizer(_AbstractKBinsDiscretizer):
         pd.IntervalIndex,
         Dict[str, Union[Iterable[float], pd.IntervalIndex]],
     ]:
+        """The custom bin edges.
+
+        An iterable of numbers, a ``pd.IntervalIndex``, or a mapping from columns to
+        either of them.
+        """
         return self._bins
 
     @property
     def right(self) -> bool:
+        """Whether bins include the rightmost edge."""
         return self._right
 
     @property
     def include_lowest(self) -> bool:
+        """Whether the first interval is left-inclusive."""
         return self._include_lowest
 
     @property
     def duplicates(self) -> str:
+        """What to do if bin edges aren't unique.
+
+        ``"raise"`` raises a ``ValueError``, and ``"drop"`` drops the duplicates.
+        """
         return self._duplicates
 
     @property
     def dtypes(
         self,
     ) -> Optional[Dict[str, Union[pd.CategoricalDtype, Type[np.integer]]]]:
+        """The output dtype for each column.
+
+        A mapping from columns to ``pd.CategoricalDtype`` objects or ``np.integer``
+        types.
+        """
         return self._dtypes
 
     @property
     def output_columns(self) -> List[str]:
+        """The names of the transformed columns.
+
+        Same as ``columns`` if you didn't set ``output_columns``.
+        """
         return self._output_columns
 
     _is_fittable = False
@@ -393,6 +425,7 @@ class UniformKBinsDiscretizer(_AbstractKBinsDiscretizer):
         super().__init__()
         self._columns = columns
         self._bins = bins
+        self._validate_bins_are_positive()
         self._right = right
         self._include_lowest = include_lowest
         self._duplicates = duplicates
@@ -405,32 +438,52 @@ class UniformKBinsDiscretizer(_AbstractKBinsDiscretizer):
 
     @property
     def columns(self) -> List[str]:
+        """The columns to discretize."""
         return self._columns
 
     @property
     def bins(self) -> Union[int, Dict[str, int]]:
+        """The number of equal-width bins.
+
+        An integer for all columns, or a mapping from columns to integers.
+        """
         return self._bins
 
     @property
     def right(self) -> bool:
+        """Whether bins include the rightmost edge."""
         return self._right
 
     @property
     def include_lowest(self) -> bool:
+        """Whether the first interval is left-inclusive."""
         return self._include_lowest
 
     @property
     def duplicates(self) -> str:
+        """What to do if bin edges aren't unique.
+
+        ``"raise"`` raises a ``ValueError``, and ``"drop"`` drops the duplicates.
+        """
         return self._duplicates
 
     @property
     def dtypes(
         self,
     ) -> Optional[Dict[str, Union[pd.CategoricalDtype, Type[np.integer]]]]:
+        """The output dtype for each column.
+
+        A mapping from columns to ``pd.CategoricalDtype`` objects or ``np.integer``
+        types.
+        """
         return self._dtypes
 
     @property
     def output_columns(self) -> List[str]:
+        """The names of the transformed columns.
+
+        Same as ``columns`` if you didn't set ``output_columns``.
+        """
         return self._output_columns
 
     def _fit(self, dataset: "Dataset") -> SerializablePreprocessorBase:

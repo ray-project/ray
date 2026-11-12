@@ -32,6 +32,7 @@ import ray
 from ray.data._internal.arrow_ops import transform_pyarrow
 from ray.data._internal.util import MiB
 from ray.data._internal.utils.transform_pyarrow import _is_pa_extension_type
+from ray.data.block import BlockExecStats
 from ray.exceptions import (
     ActorDiedError,
     ActorUnavailableError,
@@ -83,7 +84,7 @@ def _codec_for(compression: Optional[str]) -> Optional["pa.Codec"]:
 
 
 def _encode_shard(
-    table: pa.Table, compression: Optional[str] = "zstd", combine_native: bool = False
+    table: pa.Table, compression: Optional[str] = "lz4", combine_native: bool = False
 ) -> pa.Buffer:
     """Encode a partition shard as a whole-frame blob (one codec frame per shard,
     vs Arrow's per-buffer IPC compression)."""
@@ -110,7 +111,7 @@ def _encode_shard(
 
 
 def _read_ipc(
-    buf: Union[bytes, "pa.Buffer", memoryview], compression: Optional[str] = "zstd"
+    buf: Union[bytes, "pa.Buffer", memoryview], compression: Optional[str] = "lz4"
 ) -> pa.Table:
     """Decode a whole-frame shard: read the u64 size header, one decompress of
     the rest (per ``compression``, same value the map encoded with), then read
@@ -158,6 +159,7 @@ class ShuffleHandle(TypedDict, total=False):
     num_partitions: int
     total_bytes: int
     compression: Optional[str]
+    exec_stats: Optional["BlockExecStats"]
 
 
 class _Endpoint(NamedTuple):

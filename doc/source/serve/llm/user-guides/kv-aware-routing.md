@@ -26,7 +26,7 @@ The best policy depends on your workload. You can configure different routers th
 | `RoundRobinRouter` | Request order | Prompts share little beyond the system prompt, and you want the simplest even spread. | No KV cache awareness. |
 | `ConsistentHashRouter` | Hash of the `x-session-id` header | Clients can provide a session ID and each session’s history forms the reusable prefix. | A session with more turns or longer input or output sequences can saturate its replica. |
 | `PrefixCacheAffinityRouter` | Prompt text matched against a router-maintained prefix tree | Requests frequently share a long textual prefixes. | Approximates engine KV cache state from prompt text and falls back to power of two choices when queue lengths become imbalanced. |
-| `KVAwareRouter` | Token load: the request's remaining prefill work after accounting for KV cache overlap, plus the replica's active prefill and decode work | Replicas carry uneven token load, GPU memory is under pressure, or requests share prefixes beyond the system prompt. | Requires direct streaming, and its extra overhead may not pay off on simple, uniform workloads. |
+| `KVAwareRouter` | Token load: the request's remaining prefill work after accounting for KV cache overlap, plus the replica's active prefill and decode work, with session pinning through `x-session-id` | Replicas carry uneven token load, GPU memory is under pressure, or requests share prefixes beyond the system prompt. | Requires direct streaming, and its extra overhead may not pay off on simple, uniform workloads. |
 
 ## Installation
 
@@ -100,6 +100,30 @@ applications:
 Run `serve run config.yaml`.
 :::
 ::::
+
+### Use session pinning
+
+Send the same `x-session-id` header on each turn of a conversation to improve KV cache reuse:
+
+```bash
+curl http://localhost:8000/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -H "x-session-id: chat-123" \
+  -d '{"model": "qwen3-0.6b", "messages": [{"role": "user", "content": "Hello!"}]}'
+```
+
+The first request selects a replica by estimated token load and KV cache overlap. Later turns stay on that replica even when another has lower load or more cached tokens. After the session's idle timeout, or if the replica becomes unavailable or ineligible, the router selects again.
+
+Session pinning is enabled by default with a 30-minute idle timeout. Set `session_affinity_ttl_s` in seconds to change it:
+
+```python
+request_router_config = RequestRouterConfig(
+    request_router_class=KVAwareRouter,
+    request_router_kwargs={"session_affinity_ttl_s": 600},
+)
+```
+
+Set it to `0` to disable pinning. Requests without `x-session-id` use token-load scoring and KV cache overlap.
 
 ### Tuning
 
@@ -181,12 +205,18 @@ The router scores requests using token IDs, so each request is tokenized at the 
 
 - **Tokenization is not repeated at the engine.** The ingress sends the tokenized prompt to the selected engine replica, avoiding duplicate tokenization. The tokens are sent over a separate channel and may arrive before the corresponding HTTP request, so the engine replica temporarily **stages** them until the request arrives. Delivery is best effort: if the token payload is missing or has expired, the engine simply tokenizes the prompt again. The `RAY_SERVE_LLM_KV_TOKEN_STAGING_*` variables control how long and how much token data each engine replica can stage.
 
+You can use `KVAwareRouter` with Anthropic Messages (`/v1/messages`) clients such as Claude Code. Use the same routing configuration as for OpenAI requests.
+
 
 ### Scaling the ingress tier
 
 Serve runs one ingress replica per proxy node by default. Raise `RAY_SERVE_INGRESS_ROUTER_REPLICAS_PER_NODE` when tokenizing and scoring at the ingress bound throughput. Two per node is usually enough, though the right number depends on your traffic.
 
 Ray Serve LLM keeps the KV cache and token load views synchronized across ingress replicas. These views are **eventually consistent**: token load and engine updates are propagated in the background, so an ingress replica may briefly make routing decisions based on a slightly stale KV cache or token load view.
+
+## Router availability
+
+If the ingress router fails to route a request, Ray Serve LLM can send it to an available model replica. These requests may not follow KV-aware routing, reducing cache reuse until the router recovers. Fallback is automatic. Set `RAY_SERVE_INGRESS_REQUEST_ROUTER_METRICS_ENABLED=1` to monitor router failures and fallback requests.
 
 ## Limitations
 

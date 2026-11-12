@@ -62,7 +62,6 @@ from ray._common.constants import RAY_WARN_BLOCKING_GET_INSIDE_ASYNC_ENV_VAR
 from ray._common.network_utils import get_localhost_ip
 from ray._common.utils import load_class
 from ray._private.authentication.authentication_token_setup import (
-    enable_token_auth_by_default,
     ensure_token_if_auth_enabled,
 )
 from ray._private.client_mode_hook import client_mode_hook
@@ -78,6 +77,7 @@ from ray._private.ray_logging.logging_config import LoggingConfig
 from ray._private.resource_isolation_config import ResourceIsolationConfig
 from ray._private.runtime_env.constants import RAY_JOB_CONFIG_JSON_ENV_VAR
 from ray._private.runtime_env.py_modules import upload_py_modules_if_needed
+from ray._private.runtime_env.redaction import redact_runtime_env
 from ray._private.runtime_env.setup_hook import (
     upload_worker_process_setup_hook_if_needed,
 )
@@ -92,6 +92,7 @@ from ray._raylet import (
 from ray.actor import ActorClass
 from ray.exceptions import (
     ActorHandleNotFoundError,
+    AuthenticationError,
     ObjectStoreFullError,
     RayError,
     RaySystemError,
@@ -663,9 +664,7 @@ class Worker:
 
     @contextmanager
     def worker_paused_by_debugger(self):
-        """
-        Updates the worker num paused threads when the worker is paused by debugger
-        """
+        """Updates the worker num paused threads when the worker is paused by debugger"""
         try:
             worker_id = self.core_worker.get_worker_id()
             ray._private.state.update_worker_num_paused_threads(worker_id, 1)
@@ -1151,10 +1150,15 @@ class Worker:
         # TPU_VISIBLE_CHIPS, ..) then respect that in the sense that only IDs
         # that appear in (CUDA_VISIBLE_DEVICES, ONEAPI_DEVICE_SELECTOR,
         # HIP_VISIBLE_DEVICES, NEURON_RT_VISIBLE_CORES, TPU_VISIBLE_CHIPS, ..)
-        # should be returned.
+        # should be returned. When set via a worker's runtime_env, original_ids
+        # may be narrower than the node raylet's resource pool, so raylet slot
+        # indices in assigned_ids can exceed len(original_ids).
         if self.original_visible_accelerator_ids.get(resource_name, None) is not None:
             original_ids = self.original_visible_accelerator_ids[resource_name]
-            assigned_ids = {str(original_ids[i]) for i in assigned_ids}
+            if all(i < len(original_ids) for i in assigned_ids):
+                assigned_ids = {str(original_ids[i]) for i in assigned_ids}
+            else:
+                assigned_ids = {str(x) for x in original_ids}
         return list(assigned_ids)
 
     def shutdown_rdt_manager(self):
@@ -1233,9 +1237,7 @@ def get_dashboard_url():
 
 
 def _remove_protocol_from_url(url: Optional[str]) -> str:
-    """
-    Helper function to remove protocol from URL if it exists.
-    """
+    """Helper function to remove protocol from URL if it exists."""
     if not url:
         return url
     parsed_url = urllib.parse.urlparse(url)
@@ -1247,9 +1249,7 @@ def _remove_protocol_from_url(url: Optional[str]) -> str:
 
 
 class BaseContext(metaclass=ABCMeta):
-    """
-    Base class for RayContext and ClientContext
-    """
+    """Base class for RayContext and ClientContext"""
 
     dashboard_url: Optional[str]
     python_version: str
@@ -1257,8 +1257,7 @@ class BaseContext(metaclass=ABCMeta):
 
     @abstractmethod
     def disconnect(self):
-        """
-        If this context is for directly attaching to a cluster, disconnect
+        """If this context is for directly attaching to a cluster, disconnect
         will call ray.shutdown(). Otherwise, if the context is for a ray
         client connection, the client will be disconnected.
         """
@@ -1347,9 +1346,7 @@ class BaseContext(metaclass=ABCMeta):
 
 @dataclass
 class RayContext(BaseContext, Mapping):
-    """
-    Context manager for attached drivers.
-    """
+    """Context manager for attached drivers."""
 
     dashboard_url: Optional[str]
     python_version: str
@@ -1411,8 +1408,7 @@ _global_node = None
 def _maybe_modify_runtime_env(
     runtime_env: Optional[Dict[str, Any]], _skip_env_hook: bool
 ) -> Dict[str, Any]:
-    """
-    If you set RAY_ENABLE_UV_RUN_RUNTIME_ENV, which is the default, and run the driver with `uv run`,
+    """If you set RAY_ENABLE_UV_RUN_RUNTIME_ENV, which is the default, and run the driver with `uv run`,
     this function sets up a runtime environment that replicates the driver's environment to the
     workers. Otherwise, if a runtime environment hook is present it will modify the runtime environment.
     """
@@ -1465,8 +1461,7 @@ def init(
     proxy_server_url: Optional[str] = None,
     **kwargs,
 ) -> BaseContext:
-    """
-    Connect to an existing Ray cluster or start one and connect to it.
+    """Connect to an existing Ray cluster or start one and connect to it.
 
     This method handles two cases; either a Ray cluster already exists and we
     just attach this driver to it or we start all of the processes associated
@@ -1797,9 +1792,10 @@ def init(
             # None means there was a conflict.
             raise ValueError(
                 "Failed to merge the Job's runtime env "
-                f"{injected_job_config.runtime_env} with "
-                f"a ray.init's runtime env {driver_runtime_env} because "
-                "of a conflict. Specifying the same runtime_env fields "
+                f"{redact_runtime_env(injected_job_config.runtime_env)} with "
+                f"a ray.init's runtime env {redact_runtime_env(driver_runtime_env)} "
+                "because of a conflict. "
+                "Specifying the same runtime_env fields "
                 "or the same environment variable keys is not allowed. "
                 "Use RAY_OVERRIDE_JOB_RUNTIME_ENV=1 to instruct Ray to "
                 "combine Job and Driver's runtime environment in the event of "
@@ -1863,8 +1859,6 @@ def init(
 
     if bootstrap_address is None:
         # In this case, we need to start a new cluster.
-
-        enable_token_auth_by_default()
 
         # Setup and verify authentication for new cluster
         ensure_token_if_auth_enabled(_system_config, create_token_if_missing=True)
@@ -1986,6 +1980,9 @@ def init(
                 spawn_reaper=False,
                 connect_only=True,
             )
+        except AuthenticationError:
+            # A ConnectionError subclass; keep its fix text instead of wrapping it.
+            raise
         except (ConnectionError, RuntimeError) as e:
             if gcs_address == ray._private.utils.read_ray_address(_temp_dir):
                 logger.info(
@@ -2914,10 +2911,10 @@ def get(
 
     Related patterns and anti-patterns:
 
-    - :doc:`/ray-core/patterns/ray-get-loop`
-    - :doc:`/ray-core/patterns/unnecessary-ray-get`
-    - :doc:`/ray-core/patterns/ray-get-submission-order`
-    - :doc:`/ray-core/patterns/ray-get-too-many-objects`
+    - :doc:`/core/patterns/ray-get-loop`
+    - :doc:`/core/patterns/unnecessary-ray-get`
+    - :doc:`/core/patterns/ray-get-submission-order`
+    - :doc:`/core/patterns/ray-get-too-many-objects`
 
 
     Args:
@@ -3046,9 +3043,9 @@ def put(
 
     Related patterns and anti-patterns:
 
-    - :doc:`/ray-core/patterns/return-ray-put`
-    - :doc:`/ray-core/patterns/pass-large-arg-by-value`
-    - :doc:`/ray-core/patterns/closure-capture-large-objects`
+    - :doc:`/core/patterns/return-ray-put`
+    - :doc:`/core/patterns/pass-large-arg-by-value`
+    - :doc:`/core/patterns/closure-capture-large-objects`
 
     Args:
         value: The Python object to be stored.
@@ -3104,8 +3101,9 @@ def wait(
 
     If timeout is set, the function returns either when the requested number of
     IDs are ready or when the timeout is reached, whichever occurs first. If it
-    is not set, the function simply waits until that number of objects is ready
-    and returns that exact number of object refs.
+    is not set, the function uses a timeout of 10**6 seconds (about 11.6 days),
+    so it waits until that number of objects is ready, or until that timeout
+    is reached.
 
     `ray_waitables` is a list of :class:`~ray.ObjectRef` and
     :class:`~ray.ObjectRefGenerator`.
@@ -3134,8 +3132,8 @@ def wait(
 
     Related patterns and anti-patterns:
 
-    - :doc:`/ray-core/patterns/limit-pending-tasks`
-    - :doc:`/ray-core/patterns/ray-get-submission-order`
+    - :doc:`/core/patterns/limit-pending-tasks`
+    - :doc:`/core/patterns/ray-get-submission-order`
 
     Args:
         ray_waitables: List of :class:`~ObjectRef` or
@@ -3143,7 +3141,7 @@ def wait(
             not be ready. Note that these must be unique.
         num_returns: The number of ray_waitables that should be returned.
         timeout: The maximum amount of time in seconds to wait before
-            returning.
+            returning. If None, Ray uses 10**6 seconds.
         fetch_local: If True, wait for the object to be downloaded onto
             the local node before returning it as ready. If the `ray_waitable`
             is a generator, it will wait until the next object in the generator
@@ -3526,8 +3524,9 @@ def cancel(
         Cancelled Tasks aren't retried. `max_task_retries` aren't respected.
 
         Calling ray.get on a cancelled Task raises a TaskCancelledError
-        if the Task has been scheduled or interrupted.
-        It raises a WorkerCrashedError if `force=True`.
+        if the Task has been scheduled or interrupted. This also holds
+        if `force=True`: even though Ray kills the worker running the Task,
+        ray.get raises a TaskCancelledError, not a WorkerCrashedError.
 
         If `recursive=True`, all the child Tasks and Actor Tasks
         are cancelled. If `force=True` and `recursive=True`, `force=True`
