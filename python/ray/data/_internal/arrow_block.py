@@ -17,7 +17,6 @@ from typing import (
 import numpy as np
 import pandas as pd
 import pyarrow
-from packaging.version import parse as parse_version
 
 from ray._common.utils import env_integer
 from ray.data._internal.arrow_aggregation import is_boolean_arrow_type
@@ -27,9 +26,9 @@ from ray.data._internal.row import row_repr, row_repr_pretty, row_str
 from ray.data._internal.table_block import TableBlockAccessor, TableBlockBuilder
 from ray.data._internal.tensor_extensions.arrow import (
     convert_to_pyarrow_array,
+    native_tensor_array_to_numpy,
     pyarrow_table_from_pydict,
 )
-from ray.data._internal.utils.arrow_utils import get_pyarrow_version
 from ray.data.block import (
     Block,
     BlockAccessor,
@@ -53,7 +52,6 @@ T = TypeVar("T")
 logger = logging.getLogger(__name__)
 
 
-_MIN_PYARROW_VERSION_TO_NUMPY_ZERO_COPY_ONLY = parse_version("13.0.0")
 _BATCH_SIZE_PRESERVING_STUB_COL_NAME = "__bsp_stub"
 _INTERNAL_NUM_ROWS_COUNTER_COLUMN_NAME = "__rd_internal_num_rows"
 
@@ -231,12 +229,49 @@ def _get_max_chunk_size(
 #   .to_arrow() coerces all-null columns back to pa.null(), so the
 #   round-trip is unchanged. A column that is all-null in every block
 #   therefore stays null-typed rather than being promoted.
+# - Types with a null type nested inside (list<null>, struct<a: null>, ...)
+#   get _ArrowDtypeWithoutIdentityCast. Before pandas 3.1,
+#   pd.ArrowDtype.__from_arrow__ casts a column even to its own type, and
+#   Arrow's cast resizes a nested null child to the number of rows. A
+#   list<null> [[None, None], [None]] then comes back as [[None, None], []].
 def _arrow_backed_pandas_dtype(t: "pyarrow.DataType") -> Optional["pd.ArrowDtype"]:
     if isinstance(t, pyarrow.BaseExtensionType) or pyarrow.types.is_dictionary(t):
         return None
     if pyarrow.types.is_null(t):
         return None
+    if _has_nested_null_type(t):
+        return _ArrowDtypeWithoutIdentityCast(t)
     return pd.ArrowDtype(t)
+
+
+def _has_nested_null_type(t: "pyarrow.DataType") -> bool:
+    for i in range(t.num_fields):
+        child = t.field(i).type
+        if pyarrow.types.is_null(child) or _has_nested_null_type(child):
+            return True
+    return False
+
+
+# TODO: Remove this class and the nested-null branch of _arrow_backed_pandas_dtype
+# once Ray requires pandas >= 3.1, whose pd.ArrowDtype skips the identity cast.
+class _ArrowDtypeWithoutIdentityCast(pd.ArrowDtype):
+    """``pd.ArrowDtype`` that skips the cast of a column to its own type, as
+    pandas 3.1 does. It compares equal to the plain ``pd.ArrowDtype`` of the
+    same Arrow type, and the column it builds carries that plain dtype."""
+
+    def __from_arrow__(
+        self, array: Union["pyarrow.Array", "pyarrow.ChunkedArray"]
+    ) -> "pd.arrays.ArrowExtensionArray":
+        if array.type != self.pyarrow_dtype:
+            array = array.cast(self.pyarrow_dtype, safe=True)
+        return pd.arrays.ArrowExtensionArray(array)
+
+    # pandas' ExtensionDtype.__eq__ returns False for an instance of another
+    # class, so without this a plain pd.ArrowDtype never equals this one.
+    def __eq__(self, other: object) -> bool:
+        return pd.ArrowDtype(self.pyarrow_dtype) == other
+
+    __hash__ = pd.ArrowDtype.__hash__
 
 
 class ArrowBlockAccessor(TableBlockAccessor):
@@ -299,7 +334,7 @@ class ArrowBlockAccessor(TableBlockAccessor):
         from ray.data.util.data_batch_conversion import _cast_tensor_columns_to_ndarrays
 
         # We specify ignore_metadata=True because pyarrow will use the metadata
-        # to build the Table. This is handled incorrectly for older pyarrow versions
+        # to build the Table.
         ctx = DataContext.get_current()
 
         # Gated on enable_arrow_backed_pandas_conversion so callers can restore the
@@ -406,7 +441,7 @@ class ArrowBlockAccessor(TableBlockAccessor):
 
     def take(
         self,
-        indices: Union[List[int], "pyarrow.Array", "pyarrow.ChunkedArray"],
+        indices: Union[List[int], np.ndarray, "pyarrow.Array", "pyarrow.ChunkedArray"],
     ) -> "pyarrow.Table":
         """Select rows from the underlying table.
 
@@ -624,7 +659,7 @@ def _iter_rows_from_batch_with_tensors(
     col_values = []
     for column in batch.columns:
         if _is_native_tensor_type(column.type):
-            col_values.append(column.to_numpy_ndarray())
+            col_values.append(native_tensor_array_to_numpy(column))
         else:
             col_values.append(column.to_pylist())
 
@@ -745,14 +780,6 @@ class ArrowBlockColumnAccessor(BlockColumnAccessor):
         return self._column.to_pylist()
 
     def to_numpy(self, zero_copy_only: bool = False) -> np.ndarray:
-        if get_pyarrow_version() < _MIN_PYARROW_VERSION_TO_NUMPY_ZERO_COPY_ONLY:
-            if isinstance(
-                self._column, pyarrow.ChunkedArray
-            ):  # NOTE: ChunkedArray in Pyarrow < 13.0.0 does not support ``zero_copy_only``
-                return self._column.to_numpy()
-            else:
-                return self._column.to_numpy(zero_copy_only=zero_copy_only)
-
         return self._column.to_numpy(zero_copy_only=zero_copy_only)
 
     def _to_arrow_compatible_container(self) -> Union[List[Any], "pyarrow.Array"]:

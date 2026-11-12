@@ -20,6 +20,7 @@ from ray.data._internal.block_batching.interfaces import (
     ResolvedBlock,
 )
 from ray.data._internal.block_batching.util import (
+    WaitBlockPrefetcher,
     _calculate_ref_hits,
     blocks_to_batches,
     collate,
@@ -482,6 +483,28 @@ def test_calculate_ref_hits(ray_start_regular_shared):
         ctx.enable_get_object_locations_for_metrics = (
             prev_enable_get_object_locations_for_metrics
         )
+
+
+def test_wait_block_prefetcher_releases_blocks_while_idle(ray_start_regular_shared):
+    """Once a prefetch request is served, the parked prefetcher thread must not
+    keep the blocks alive. A thread that holds them can pin them in the object
+    store, and in their spill files, indefinitely."""
+    prefetcher = WaitBlockPrefetcher()
+    try:
+        block_ref = ray.put(np.zeros(1024, dtype=np.uint8))
+        # ``get_all_reference_counts`` is keyed by the hex object ID as bytes.
+        block_id = block_ref.hex().encode()
+        prefetcher.prefetch_blocks([block_ref])
+        del block_ref
+
+        core_worker = ray._private.worker.global_worker.core_worker
+        deadline = time.monotonic() + 5
+        while block_id in core_worker.get_all_reference_counts():
+            if time.monotonic() > deadline:
+                pytest.fail("The idle prefetcher thread still references the block.")
+            time.sleep(0.05)
+    finally:
+        prefetcher.stop()
 
 
 def _identity(it: Iterator[int]) -> Iterator[int]:

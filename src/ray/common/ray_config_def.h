@@ -719,6 +719,10 @@ RAY_CONFIG(uint64_t, gcs_mark_task_failed_on_worker_dead_delay_ms, /*  1 secs */
 /// Whether or not we enable metrics collection.
 RAY_CONFIG(bool, enable_metrics_collection, true)
 
+/// Whether the dashboard agent collects GPU metrics. Disabling this avoids
+/// polling GPU management libraries such as NVML.
+RAY_CONFIG(bool, enable_gpu_metrics_collection, true)
+
 /// Determine if the high cardinality labels such as WorkerId, task and actor Name
 /// should be used in the metrics. For the complete definition, see
 /// RAY_METRIC_CARDINALITY_LEVEL in ray_constants.py
@@ -1296,3 +1300,11 @@ RAY_CONFIG(uint64_t, gcs_resource_broadcast_max_batch_delay_ms, 0)
 // Whether to enable/disable multiple gRPC connections to improve object transfer
 // throughput.
 RAY_CONFIG(bool, experimental_object_manager_enable_multiple_connections, true)
+
+/// If true, Python workers are forked from a warm fork server process
+/// instead of starting a new Python interpreter from scratch.
+RAY_CONFIG(bool, enable_worker_fork_server, false)
+
+/// Timeout in milliseconds for a fork server socket request before falling back to
+/// starting a fresh worker process.
+RAY_CONFIG(int64_t, worker_fork_server_timeout_ms, 500)

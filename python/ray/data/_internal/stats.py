@@ -34,7 +34,6 @@ from ray.data._internal.execution.interfaces.distribution_tracker import (
 )
 from ray.data._internal.execution.interfaces.execution_options import safe_round
 from ray.data._internal.execution.interfaces.op_runtime_metrics import (
-    NODE_UNKNOWN,
     MetricDefinition,
     MetricsGroup,
     MetricsType,
@@ -48,7 +47,7 @@ from ray.data._internal.metadata_exporter import (
     get_dataset_metadata_exporter,
 )
 from ray.data._internal.util import capfirst
-from ray.data.block import BlockStats
+from ray.data.block import UNKNOWN_NODE_ID, BlockStats
 from ray.data.context import DataContext
 from ray.util.annotations import DeveloperAPI
 from ray.util.metrics import Counter, Gauge, Histogram, Metric
@@ -824,7 +823,7 @@ class _StatsActor:
                     # only needs to be done up to once per loop
                     self._rebuild_ray_nodes_cache()
 
-                node_ip = self._ray_nodes_cache.get(node_id, NODE_UNKNOWN)
+                node_ip = self._ray_nodes_cache.get(node_id, UNKNOWN_NODE_ID)
 
                 tags = self._create_tags(dataset_tag=dataset_tag, node_ip_tag=node_ip)
                 for metric_name, metric_value in node_metrics.items():
@@ -1154,13 +1153,27 @@ class _StatsManager:
         op_metrics: List[OpRuntimeMetrics],
         operator_tags: List[str],
         state: Dict[str, Any],
+        phase_metrics: Optional[Dict[str, Dict[str, OpRuntimeMetrics]]] = None,
     ):
-        per_node_metrics = _StatsManager._aggregate_per_node_metrics(op_metrics)
+        """Push operator metrics, plus per-phase metrics keyed by operator tag
+        then phase name, to the stats actor."""
         op_metrics_dicts = [metric.as_dict() for metric in op_metrics]
+        tags = list(operator_tags)
+        per_node_sources = []
+        for metric, tag in zip(op_metrics, operator_tags):
+            phases = (phase_metrics or {}).get(tag) or {}
+            # The operator carries its output phase's per-node data; the other
+            # phases hold theirs alone.
+            per_node_sources.append(metric)
+            per_node_sources.extend(phases.values())
+            for name, phase in phases.items():
+                op_metrics_dicts.append(phase.as_dict(include_resource_usage=False))
+                tags.append(f"{tag}/{name}")
+        per_node_metrics = _StatsManager._aggregate_per_node_metrics(per_node_sources)
         args = (
             dataset_tag,
             op_metrics_dicts,
-            operator_tags,
+            tags,
             state,
             per_node_metrics,
         )
@@ -1830,7 +1843,7 @@ class OperatorStatsSummary:
                         stage_time_accs.append(_StatsAccumulator())
                     for acc, seconds in zip(stage_time_accs, es.stage_time_s):
                         acc.add(seconds)
-                tasks_per_node[es.node_id].add(es.task_idx)
+                tasks_per_node[block_meta.node_id].add(es.task_idx)
                 if es.start_unix_time_s is not None and es.wall_time_s is not None:
                     earliest_start_time = min(earliest_start_time, es.start_unix_time_s)
                     latest_end_time = max(

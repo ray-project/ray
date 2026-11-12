@@ -34,7 +34,9 @@ class ValidationTaskConfig:
             Note that we always pass `checkpoint` as the first argument to the
             validation function.
         timeout_s: Timeout in seconds for this validation task.
-            ``None`` is no timeout.
+            In ``ValidationConfig.task_config``, ``None`` means no timeout.
+            In a ``ValidationTaskConfig`` passed to report(), ``None`` uses
+            ``ValidationConfig.task_config.timeout_s``.
     """
 
     fn_kwargs: Optional[Dict[str, Any]] = None
