@@ -17,6 +17,7 @@ from ray.data._internal.execution.interfaces import (
     RefBundle,
     ReportsExtraResourceUsage,
     TaskContext,
+    task_resource_dict,
 )
 from ray.data._internal.execution.operators.map_operator import (
     MapOperator,
@@ -192,6 +193,7 @@ class TaskPoolMapOperator(MapOperator, ReportsExtraResourceUsage):
         dynamic_ray_remote_args = self._get_dynamic_ray_remote_args(input_bundle=bundle)
         dynamic_ray_remote_args["name"] = self.name
         logical_usage = ExecutionResources.from_resource_dict(dynamic_ray_remote_args)
+        resource_request = task_resource_dict(dynamic_ray_remote_args)
 
         if (
             "_generator_backpressure_num_objects" not in dynamic_ray_remote_args
@@ -220,7 +222,12 @@ class TaskPoolMapOperator(MapOperator, ReportsExtraResourceUsage):
                 logical_usage
             )
 
-        self._submit_data_task(gen, bundle, task_done_callback=task_done_callback)
+        self._submit_data_task(
+            gen,
+            bundle,
+            task_done_callback=task_done_callback,
+            task_resource_request=resource_request,
+        )
 
     def progress_str(self) -> str:
         return ""

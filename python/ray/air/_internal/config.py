@@ -18,8 +18,7 @@ def ensure_only_allowed_dataclass_keys_updated(
     dataclass: dataclasses.dataclass,
     allowed_keys: Iterable[str],
 ):
-    """
-    Validate dataclass by raising an exception if any key not included in
+    """Validate dataclass by raising an exception if any key not included in
     ``allowed_keys`` differs from the default value.
 
     A ``ValueError`` will also be raised if any of the ``allowed_keys``

@@ -1,6 +1,5 @@
 # __deepspeed_torch_basic_example_no_raydata_start__
-"""
-Minimal Ray Train + DeepSpeed example adapted from
+"""Minimal Ray Train + DeepSpeed example adapted from
 https://github.com/huggingface/accelerate/blob/main/examples/nlp_example.py
 
 Fine-tune a BERT model with DeepSpeed ZeRO-3 and Ray Train

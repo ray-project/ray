@@ -6,18 +6,12 @@ These tests require Ray and test end-to-end string namespace expression evaluati
 import pandas as pd
 import pyarrow as pa
 import pytest
-from packaging import version
 
 import ray
 from ray.data._internal.util import rows_same
 from ray.data.expressions import col
 from ray.data.tests.conftest import *  # noqa
 from ray.tests.conftest import *  # noqa
-
-pytestmark = pytest.mark.skipif(
-    version.parse(pa.__version__) < version.parse("19.0.0"),
-    reason="Namespace expressions tests require PyArrow >= 19.0",
-)
 
 
 def _create_dataset(items_data, dataset_format, arrow_table=None):
@@ -284,6 +278,20 @@ class TestStringTransform:
         ).to_pandas()
         expected = pd.DataFrame({"val": ["aaa"], "replaced": ["XXa"]})
         assert rows_same(result, expected)
+
+    def test_replace_slice(self, ray_start_regular_shared, dataset_format):
+        values = ["abcd", "你好世界", "aéb", "🙂abc", None]
+        ds = _create_dataset([{"val": value} for value in values], dataset_format)
+        result = ds.with_column(
+            "replaced", col("val").str.replace_slice(1, 2, "X")
+        ).take_all()
+        assert [row["replaced"] for row in result] == [
+            "aXcd",
+            "你X世界",
+            "aXb",
+            "🙂Xbc",
+            None,
+        ]
 
     def test_repeat(self, ray_start_regular_shared, dataset_format):
         """Test str.repeat() repeats strings."""

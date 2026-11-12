@@ -1,9 +1,12 @@
+import errno
 import glob
+import itertools
 import logging
 import os
 import re
+import time
 from functools import lru_cache
-from typing import Dict, List, Optional, Set, Tuple
+from typing import Dict, List, Optional, Sequence, Set, Tuple
 
 import requests
 
@@ -40,6 +43,7 @@ GCE_TPU_INSTANCE_ID_KEY = "instance-id"
 GCE_TPU_WORKER_ID_KEY = "agent-worker-number"
 
 TPU_VISIBLE_CHIPS_ENV_VAR = "TPU_VISIBLE_CHIPS"
+TPU_VISIBLE_DEVICES_ENV_VAR = "TPU_VISIBLE_DEVICES"
 RAY_TPU_RESOURCE_PER_CHIP_ENV_VAR = "RAY_TPU_RESOURCE_PER_CHIP"
 
 NOSET_TPU_VISIBLE_CHIPS_ENV_VAR = "RAY_EXPERIMENTAL_NOSET_TPU_VISIBLE_CHIPS"
@@ -51,9 +55,24 @@ NOSET_TPU_VISIBLE_CHIPS_ENV_VAR = "RAY_EXPERIMENTAL_NOSET_TPU_VISIBLE_CHIPS"
 TPU_CHIPS_PER_HOST_BOUNDS_ENV_VAR = "TPU_CHIPS_PER_HOST_BOUNDS"
 TPU_CHIPS_PER_HOST_BOUNDS_1_CHIP_CONFIG = "1,1,1"
 TPU_CHIPS_PER_HOST_BOUNDS_2_CHIP_CONFIG = "1,2,1"
+TPU_CHIPS_PER_HOST_BOUNDS_MAP: Dict[int, str] = {
+    1: TPU_CHIPS_PER_HOST_BOUNDS_1_CHIP_CONFIG,
+    2: TPU_CHIPS_PER_HOST_BOUNDS_2_CHIP_CONFIG,
+    4: "2,2,1",
+    8: "2,4,1",
+}
 
 TPU_HOST_BOUNDS_ENV_VAR = "TPU_HOST_BOUNDS"
 TPU_SINGLE_HOST_BOUNDS = "1,1,1"
+
+# Environment variables libtpu reads to form a multi-host process mesh.
+TPU_CHIPS_PER_PROCESS_BOUNDS_ENV_VAR = "TPU_CHIPS_PER_PROCESS_BOUNDS"
+TPU_PROCESS_BOUNDS_ENV_VAR = "TPU_PROCESS_BOUNDS"
+TPU_PROCESS_ADDRESSES_ENV_VAR = "TPU_PROCESS_ADDRESSES"
+TPU_PROCESS_PORT_ENV_VAR = "TPU_PROCESS_PORT"
+DEFAULT_TPU_PROCESS_PORT = "8471"
+TPU_WORKER_HOSTNAMES_ENV_VAR = "TPU_WORKER_HOSTNAMES"
+TPU_WORKER_ID_ENV_VAR = "TPU_WORKER_ID"
 
 # By default TPU VMs come with 4 chips per host and 2 tensorcores per chip.
 # For more details: https://cloud.google.com/tpu/docs/system-architecture-tpu-vm
@@ -63,6 +82,20 @@ DEFAULT_TPU_NUM_CORES_PER_CHIP = 2
 # PCI vendor ID for Google TPUs (used to validate VFIO devices).
 # See https://cloud.google.com/tpu/docs/custom-os-image.
 TPU_PCI_VENDOR_ID = "0x1ae0"
+
+# VFIO teardown after SIGKILL took 2.07-2.39s on TPU v7x (256 GiB HBM
+# allocated); 10s gives ~4x headroom.
+DEFAULT_TPU_VFIO_READY_TIMEOUT_S = 10.0
+_TPU_VFIO_POLL_INTERVAL_S = 0.05
+
+# Default port for MegaScale coordinator in multi-slice TPU training.
+DEFAULT_MEGASCALE_PORT = "8081"
+
+# TorchTPU (torch_tpu) environment variables and defaults.
+# Port 8471 matches DEFAULT_TPU_PROCESS_PORT and kuberay-tpu-webhook's base port.
+TORCH_TPU_TOPOLOGY_ENV_VAR = "TORCH_TPU_TOPOLOGY"
+TORCH_TPU_SLICEBUILDER_ADDRESSES_ENV_VAR = "TORCH_TPU_SLICEBUILDER_ADDRESSES"
+DEFAULT_TORCH_TPU_SLICEBUILDER_PORT = 8471
 
 # Accelerators that support up to 8 chips per host for single-host topologies: v5e, v6e
 TPU_8_CHIPS_PER_HOST_TYPES = ("v5litepod", "v6e")
@@ -101,7 +134,7 @@ def _get_larger_3d_topologies(max_x: int, max_y: int, max_z: int) -> Set[str]:
 # The valid TPU topologies for each of the TPU types.
 VALID_TPU_TOPOLOGY = {
     "v2": {"4x4", "4x8", "8x8", "8x16", "16x16"},
-    "v3": {"4x4", "4x8", "8x8", "8x16", "16x16", "16x32", "32x32"},
+    "v3": {"2x2", "4x4", "4x8", "8x8", "8x16", "16x16", "16x32", "32x32"},
     "v4": {"2x2x1", "2x2x2", "2x2x4", "2x4x4"}.union(
         _get_larger_3d_topologies(12, 12, 16)
     ),
@@ -111,57 +144,14 @@ VALID_TPU_TOPOLOGY = {
         "2x2x4",
         "2x4x4",
     }.union(_get_larger_3d_topologies(16, 16, 24)),
-    "v5litepod": {"1x1", "2x2", "2x4", "2x8", "4x4", "4x8", "8x8", "8x16", "16x16"},
-    "v6e": {"1x1", "2x2", "2x4", "2x8", "4x4", "4x8", "8x8", "8x16", "16x16"},
+    "v5litepod": {"1x1", "2x2", "2x4", "4x4", "4x8", "8x8", "8x16", "16x16"},
+    "v6e": {"1x1", "2x2", "2x4", "4x4", "4x8", "8x8", "8x16", "16x16"},
     "v7x": {
         "2x2x1",
         "2x2x2",
         "2x2x4",
         "2x4x4",
-        "4x4x4",
-        "4x4x8",
-        "4x8x8",
-        "8x8x8",
-        "8x8x16",
-        "8x16x16",
-    },
-}
-
-
-# Worker grid dimensions for each valid TPU topology.
-# Maps topology -> (worker_y, worker_x) for 2D, (worker_z, worker_y, worker_x) for 3D.
-# Assumes DEFAULT_TPU_NUM_CHIPS_PER_HOST (4) chips per worker for most types.
-# For v5e/v6e single-host topologies with 8 chips, the worker count is 1.
-#
-# Entries are ordered by ascending total worker count (sum of dims). This ordering
-# is required by _build_subslice_labels, which relies on it for early termination.
-#
-# NOTE: Large v3-only topologies ("16x32", "32x32") and the v5litepod-only "2x8"
-# topology are intentionally omitted; subslicing those parent sizes is not yet
-# supported and will raise ValueError at subslice_placement_group() call time.
-_VALID_TOPOLOGY_WORKER_DIMS_2D: Dict[str, Tuple[int, int]] = {
-    "2x2": (1, 1),
-    "2x4": (1, 2),
-    "4x4": (2, 2),
-    "4x8": (2, 4),
-    "8x8": (4, 4),
-    "8x16": (4, 8),
-    "16x16": (8, 8),
-}
-
-_VALID_TOPOLOGY_WORKER_DIMS_3D: Dict[str, Tuple[int, int, int]] = {
-    "2x2x1": (1, 1, 1),
-    "2x2x2": (1, 1, 2),
-    "2x2x4": (1, 1, 4),
-    "2x4x4": (1, 2, 4),
-    "4x4x4": (2, 2, 4),
-    "4x4x8": (2, 2, 8),
-    "4x8x8": (2, 4, 8),
-    "8x8x8": (4, 4, 8),
-    "8x8x16": (4, 4, 16),
-    "8x16x16": (4, 8, 16),
-    "16x16x16": (8, 8, 16),
-    "16x16x24": (8, 8, 24),
+    }.union(_get_larger_3d_topologies(16, 24, 24)),
 }
 
 
@@ -170,26 +160,30 @@ def _parse_topology_dims(topology: str) -> Tuple[int, ...]:
     return tuple(int(d) for d in topology.strip().lower().split("x"))
 
 
+# Worker grid dimensions for each valid TPU topology.
+# Maps topology -> (worker_x, worker_y) for 2D, (worker_x, worker_y, worker_z) for 3D.
+# Assumes DEFAULT_TPU_NUM_CHIPS_PER_HOST (4) chips per worker for most types
+# (2x2 in 2D, 2x2x1 in 3D); single-chip "1x1" has no multi-chip worker grid.
+# For v5e/v6e single-host topologies with 8 chips, the worker count is 1.
 @lru_cache(maxsize=None)
 def _get_worker_dims_for_topology(topology: str) -> Tuple[int, ...]:
-    """Return the worker-grid dimensions for *topology*: (y, x) for 2D,
-    (z, y, x) for 3D. Raises ``ValueError`` for unknown topologies.
+    """Return the worker-grid dimensions for a topology: (x, y) for 2D,
+    (x, y, z) for 3D, in the same axis order as the topology string.
+    Raises ``ValueError`` for unknown topologies.
     """
-    dims = _parse_topology_dims(topology)
-    if len(dims) == 2:
-        if topology not in _VALID_TOPOLOGY_WORKER_DIMS_2D:
-            raise ValueError(
-                f"Unknown 2D topology: '{topology}'. "
-                f"Valid: {list(_VALID_TOPOLOGY_WORKER_DIMS_2D.keys())}"
-            )
-        return _VALID_TOPOLOGY_WORKER_DIMS_2D[topology]
-    else:
-        if topology not in _VALID_TOPOLOGY_WORKER_DIMS_3D:
-            raise ValueError(
-                f"Unknown 3D topology: '{topology}'. "
-                f"Valid: {list(_VALID_TOPOLOGY_WORKER_DIMS_3D.keys())}"
-            )
-        return _VALID_TOPOLOGY_WORKER_DIMS_3D[topology]
+    topology_norm = topology.strip().lower()
+    dims = _parse_topology_dims(topology_norm)
+    if len(dims) not in (2, 3):
+        raise ValueError(f"Unsupported topology dimensionality for '{topology}'.")
+    if (
+        dims[0] < 2
+        or dims[1] < 2
+        or not any(
+            topology_norm in topologies for topologies in VALID_TPU_TOPOLOGY.values()
+        )
+    ):
+        raise ValueError(f"Unknown {len(dims)}D topology: '{topology}'.")
+    return (dims[0] // 2, dims[1] // 2, *dims[2:])
 
 
 def _get_default_chips_per_vm(topology: str, accelerator_version: str) -> int:
@@ -237,6 +231,41 @@ def _accelerator_type_check(accelerator_type: str):
         )
 
 
+def normalize_torchtpu_topology(
+    topology: str,
+    tpu_resource_per_chip: int = 1,
+    accelerator_type: Optional[str] = None,
+) -> str:
+    """Normalizes TPU topology strings for TorchTPU (e.g. '4x4' -> '4,4,1'; '2x2x4' with tpu_resource_per_chip=2 -> '2,2,4,2')."""
+    if type(tpu_resource_per_chip) is not int:
+        raise TypeError(
+            f"tpu_resource_per_chip must be an integer, got {type(tpu_resource_per_chip)}."
+        )
+    if tpu_resource_per_chip <= 0:
+        raise ValueError("tpu_resource_per_chip must be positive")
+
+    if not isinstance(topology, str):
+        raise ValueError(f"Invalid topology string: {topology!r}")
+
+    dims = [d.strip() for d in topology.lower().replace("x", ",").split(",")]
+    if len(dims) not in (2, 3, 4) or not all(
+        d.isdecimal() and int(d) > 0 for d in dims
+    ):
+        raise ValueError(f"Invalid topology string: {topology!r}")
+    dims = [str(int(d)) for d in dims]
+
+    # 2D topologies (e.g. "2x4") are padded with 1 for the Z dimension ("2,4,1").
+    if len(dims) == 2:
+        dims.append("1")
+    # For dual-device TPUs (or when tpu_resource_per_chip > 1), expand 3D to 4D ("2,4,1,2").
+    if len(dims) == 3:
+        if normalize_tpu_accelerator_type(accelerator_type).startswith("v7x"):
+            dims.append("2")
+        elif tpu_resource_per_chip > 1:
+            dims.append(str(tpu_resource_per_chip))
+    return ",".join(dims)
+
+
 def get_total_chips_from_accelerator_type(accelerator_type: str) -> int:
     """Calculates total chips from a GCP accelerator ("pod") type string (e.g. "v6e-16")."""
     _accelerator_type_check(accelerator_type)
@@ -276,8 +305,7 @@ def get_tpu_cores_per_chip(accelerator_type: str) -> int:
 
 
 def get_num_chips_from_topology(topology: str) -> int:
-    """
-    Calculates the total number of chips in a TPU topology.
+    """Calculates the total number of chips in a TPU topology.
     Ex: "2x2x2" -> 8
     """
     total_chips = 1
@@ -348,8 +376,14 @@ def get_chips_per_host(topology: str, accelerator_version: str) -> int:
     return DEFAULT_TPU_NUM_CHIPS_PER_HOST
 
 
-# Label prefix for subslice labels set on TPU nodes after discovery.
-TPU_SUBSLICE_LABEL_PREFIX = "ray.io/tpu-subslice-"
+def _linear_index(position: Sequence[int], dims: Sequence[int]) -> int:
+    """Returns the index of a grid position, with the first axis varying fastest."""
+    index = 0
+    stride = 1
+    for pos, dim in zip(position, dims):
+        index += pos * stride
+        stride *= dim
+    return index
 
 
 def _get_physical_worker_id_from_coords(
@@ -357,129 +391,85 @@ def _get_physical_worker_id_from_coords(
     parent_topology: str,
 ) -> int:
     """Compute the physical worker position (0-based linear mesh index) from a
-    worker's libtpu chip coordinates.
+    worker's chip coordinates.
 
     Each worker owns a block of chips sized by the parent topology's chip
     grid divided by its worker grid; the worker's mesh position is the
-    minimum (x, y[, z]) chip coordinate divided by that block size.
-    *coords_list* entries are [x, y] (2D) or [x, y, z] (3D). Raises
-    ``ValueError`` if the coordinates don't match the topology.
+    minimum chip coordinate divided by that block size, linearized with x
+    varying fastest. coords_list entries are [x, y] or [x, y, z]; axes
+    beyond the topology's are ignored. Raises ``ValueError`` if the
+    coordinates don't match the topology.
     """
     if not coords_list:
         raise ValueError("coords_list cannot be empty")
     worker_dims = _get_worker_dims_for_topology(parent_topology)
     chip_dims = _parse_topology_dims(parent_topology)
 
-    if len(worker_dims) == 2:
-        # 2D: each coordinate is [x, y]
-        topo_y, topo_x = chip_dims
-        worker_dim_y, worker_dim_x = worker_dims
-
-        min_x = min(c[0] for c in coords_list)
-        min_y = min(c[1] for c in coords_list)
-
-        # Determine block dimensions
-        block_y = max(1, topo_y // worker_dim_y)
-        block_x = max(1, topo_x // worker_dim_x)
-
-        wx = min_x // block_x
-        wy = min_y // block_y
-
-        if wx >= worker_dim_x or wy >= worker_dim_y:
-            raise ValueError(
-                f"Computed worker position ({wx}, {wy}) is out of bounds "
-                f"for parent topology '{parent_topology}' with worker dims "
-                f"({worker_dim_y}, {worker_dim_x})."
-            )
-
-        return wy * worker_dim_x + wx
-    else:
-        # 3D: each coordinate is [x, y] or [x, y, z].
-        worker_dim_z, worker_dim_y, worker_dim_x = worker_dims
-        topo_z, topo_y, topo_x = chip_dims
-
-        block_z = max(1, topo_z // worker_dim_z)
-        block_y = max(1, topo_y // worker_dim_y)
-        block_x = max(1, topo_x // worker_dim_x)
-
-        min_x = min(c[0] for c in coords_list)
-        min_y = min(c[1] for c in coords_list)
-
-        # Check if z coordinates are present.
-        has_z = any(len(c) >= 3 for c in coords_list)
-        if not has_z:
-            wz = 0
-        else:
-            min_z = min(c[2] if len(c) >= 3 else 0 for c in coords_list)
-            wz = min_z // block_z
-
-        wx = min_x // block_x
-        wy = min_y // block_y
-
-        if wx >= worker_dim_x or wy >= worker_dim_y or wz >= worker_dim_z:
-            raise ValueError(
-                f"Computed worker position ({wx}, {wy}, {wz}) is out of bounds "
-                f"for parent topology '{parent_topology}' with worker dims "
-                f"({worker_dim_z}, {worker_dim_y}, {worker_dim_x})."
-            )
-
-        return wz * worker_dim_y * worker_dim_x + wy * worker_dim_x + wx
+    worker_pos = tuple(
+        min(c[axis] for c in coords_list) // (chip_dim // worker_dim)
+        for axis, (chip_dim, worker_dim) in enumerate(zip(chip_dims, worker_dims))
+    )
+    if any(not (0 <= pos < dim) for pos, dim in zip(worker_pos, worker_dims)):
+        raise ValueError(
+            f"Computed worker position {worker_pos} is out of bounds "
+            f"for parent topology '{parent_topology}' with worker dims "
+            f"{worker_dims}."
+        )
+    return _linear_index(worker_pos, worker_dims)
 
 
-def _build_subslice_labels(
+def _query_local_tpu_chip_coordinates(num_hosts: int) -> List[List[int]]:
+    """Return one [x, y, z] coordinate list per local TPU chip, queried via JAX.
+
+    On a multi-host slice TPU_WORKER_HOSTNAMES must list all num_hosts hosts
+    so that PJRT reports slice-wide rather than host-local coordinates.
+    """
+    resolved_hosts = [
+        h.strip()
+        for h in os.environ.get(TPU_WORKER_HOSTNAMES_ENV_VAR, "").split(",")
+        if h.strip()
+    ]
+    # Without every peer's hostname, PJRT initializes as a single host and
+    # reports host-local coordinates instead of global slice coordinates.
+    if num_hosts > 1 and len(resolved_hosts) < num_hosts:
+        raise RuntimeError(
+            f"TPU chip coordinate discovery on a {num_hosts}-host slice requires "
+            f"all worker hostnames in {TPU_WORKER_HOSTNAMES_ENV_VAR}, got "
+            f"{len(resolved_hosts)}."
+        )
+
+    try:
+        import jax  # type: ignore[import-untyped]
+    except ImportError as e:
+        raise RuntimeError(
+            "JAX is required for TPU subslice discovery. "
+            "Install jax[tpu] on all TPU worker nodes."
+        ) from e
+
+    return [list(d.coords) for d in jax.local_devices(backend="tpu")]
+
+
+def _get_subslice_index(
     physical_worker_id: int,
     parent_topology: str,
-) -> Dict[str, str]:
-    """Compute subslice labels for the worker at *physical_worker_id* in
-    *parent_topology*.
-
-    For each valid sub-topology smaller than the parent, determines which
-    subslice index this worker belongs to based on its mesh position.
-    Returns a dict mapping label keys (e.g. "ray.io/tpu-subslice-2x4") to
-    subslice index strings (e.g. "0").
+    subslice_topology: str,
+) -> int:
+    """Return the 0-based index of the subslice_topology block that contains
+    physical_worker_id (from _get_physical_worker_id_from_coords, not the
+    GKE tpu-worker-id label) within parent_topology's worker grid, with x
+    varying fastest.
     """
-    worker_dims = _get_worker_dims_for_topology(parent_topology)
-
-    if len(worker_dims) == 2:
-        dim_y, dim_x = worker_dims
-        idx_y = physical_worker_id // dim_x
-        idx_x = physical_worker_id % dim_x
-
-        # NOTE: _VALID_TOPOLOGY_WORKER_DIMS_2D must be in ascending order by
-        # total worker count. The 'break' below relies on this property: once
-        # we reach the parent topology, all subsequent entries are at least as
-        # large and need not be examined.
-        labels: Dict[str, str] = {}
-        for sub_shape, (sub_y, sub_x) in _VALID_TOPOLOGY_WORKER_DIMS_2D.items():
-            if sub_y > dim_y or sub_x > dim_x:
-                continue
-            if sub_shape == parent_topology:
-                break
-            subslice_id = (idx_y // sub_y) * (dim_x // sub_x) + (idx_x // sub_x)
-            labels[f"{TPU_SUBSLICE_LABEL_PREFIX}{sub_shape}"] = str(subslice_id)
-        return labels
-    else:
-        dim_z, dim_y, dim_x = worker_dims
-        wz = physical_worker_id // (dim_y * dim_x)
-        remainder = physical_worker_id % (dim_y * dim_x)
-        wy = remainder // dim_x
-        wx = remainder % dim_x
-
-        # NOTE: _VALID_TOPOLOGY_WORKER_DIMS_3D must be in ascending order by
-        # total worker count. The 'break' relies on this property.
-        labels = {}
-        for sub_shape, (sub_z, sub_y, sub_x) in _VALID_TOPOLOGY_WORKER_DIMS_3D.items():
-            if sub_z > dim_z or sub_y > dim_y or sub_x > dim_x:
-                continue
-            if sub_shape == parent_topology:
-                break
-            subslice_id = (
-                (wz // sub_z) * (dim_y // sub_y) * (dim_x // sub_x)
-                + (wy // sub_y) * (dim_x // sub_x)
-                + (wx // sub_x)
-            )
-            labels[f"{TPU_SUBSLICE_LABEL_PREFIX}{sub_shape}"] = str(subslice_id)
-        return labels
+    parent_dims = _get_worker_dims_for_topology(parent_topology)
+    sub_dims = _get_worker_dims_for_topology(subslice_topology)
+    worker_pos = []
+    remainder = physical_worker_id
+    for dim in parent_dims:
+        remainder, pos = divmod(remainder, dim)
+        worker_pos.append(pos)
+    return _linear_index(
+        [pos // sub for pos, sub in zip(worker_pos, sub_dims)],
+        [dim // sub for dim, sub in zip(parent_dims, sub_dims)],
+    )
 
 
 DEFAULT_TPU_HEAD_RESERVATION_TIMEOUT_S: float = 100.0
@@ -590,12 +580,17 @@ def _is_vfio_group_a_tpu(group: int) -> bool:
         closed because a false positive here would prevent the actual
         accelerators (e.g. NVIDIA GPUs) from being registered.
     """
+    return _tpu_vfio_bdf(group) is not None
+
+
+def _tpu_vfio_bdf(group: int) -> Optional[str]:
+    """Return the sysfs PCI BDF name if VFIO ``group`` is a Google TPU, else None."""
     sysfs_root = f"/sys/kernel/iommu_groups/{group}/devices"
     try:
         devices = os.listdir(sysfs_root)
     except OSError as e:
         logger.debug("Unable to inspect VFIO group %s at %s: %s", group, sysfs_root, e)
-        return False
+        return None
     for device in devices:
         vendor_path = os.path.join(sysfs_root, device, "vendor")
         try:
@@ -610,8 +605,125 @@ def _is_vfio_group_a_tpu(group: int) -> bool:
             )
             continue
         if vendor.lower() == TPU_PCI_VENDOR_ID:
+            return device.lower()
+    return None
+
+
+def _discover_tpu_vfio_devices() -> List[List[str]]:
+    """Return Google TPU ``/dev/vfio/<group>`` paths grouped by physical chip.
+
+    Chips, and the PCI functions within each chip, are in PCI address order.
+    A chip that exposes several functions, such as a TPU v7x chip, contributes
+    one path per function.
+    """
+    try:
+        entries = os.listdir("/dev/vfio")
+    except OSError:
+        return []
+
+    located = sorted(
+        (bdf, f"/dev/vfio/{entry}")
+        for entry in entries
+        if entry.isdigit() and (bdf := _tpu_vfio_bdf(int(entry))) is not None
+    )
+    return [
+        [path for _, path in chip]
+        for _, chip in itertools.groupby(
+            located, key=lambda item: item[0].partition(".")[0]
+        )
+    ]
+
+
+def _parse_indices(raw: str) -> List[int]:
+    return [int(t) for t in raw.split(",") if t.strip().isdecimal()]
+
+
+def get_current_process_tpu_vfio_devices(
+    visible_devices: Optional[str] = None,
+) -> List[str]:
+    """Return the TPU ``/dev/vfio/<group>`` paths that this process will open.
+
+    Args:
+        visible_devices: Comma-separated device indices, counted over all TPU
+            PCI functions on the host in PCI address order. If None, selects
+            every function on the chips listed in ``TPU_VISIBLE_CHIPS``, or on
+            all chips if the variable is unset.
+
+    Returns:
+        The selected paths. Hosts without TPU VFIO groups, such as TPU v4 hosts
+        that expose ``/dev/accel*``, return an empty list.
+    """
+    chips = _discover_tpu_vfio_devices()
+    all_paths = [path for chip in chips for path in chip]
+    if visible_devices is not None:
+        indices = _parse_indices(visible_devices)
+        return [all_paths[i] for i in indices if i < len(all_paths)]
+    mask = os.environ.get(TPU_VISIBLE_CHIPS_ENV_VAR)
+    if mask is None:
+        return all_paths
+    return [path for i in _parse_indices(mask) if i < len(chips) for path in chips[i]]
+
+
+def _vfio_group_busy(path: str) -> bool:
+    try:
+        fd = os.open(path, os.O_RDWR)
+    except OSError as exc:
+        if exc.errno == errno.EBUSY:
             return True
+        logger.debug("Skipping non-EBUSY error while probing %s: %s", path, exc)
+        return False
+    os.close(fd)
     return False
+
+
+def wait_for_tpu_vfio_ready(
+    timeout_s: float = DEFAULT_TPU_VFIO_READY_TIMEOUT_S,
+    visible_devices: Optional[str] = None,
+) -> None:
+    """Wait until the kernel releases the TPU VFIO groups this process will open.
+
+    When ``ray.kill`` sends SIGKILL to a TPU worker, the Raylet releases the
+    worker's TPU placement group bundle as soon as the worker's IPC socket
+    closes, while the kernel is still tearing down the worker's VFIO devices
+    and IOMMU DMA mappings. libtpu and TorchTPU open each ``/dev/vfio/<group>``
+    once without retrying, so a replacement worker that starts in that window
+    fails with EBUSY.
+
+    Call this before the process opens its TPU devices. VFIO group opens are
+    exclusive, so this probes only the groups that this process will open.
+
+    Args:
+        timeout_s: Seconds to poll before logging a warning and returning. A
+            probe can block in the kernel until the previous owner's release
+            finishes, and the timeout doesn't interrupt a blocked probe.
+        visible_devices: Forwarded to
+            :func:`get_current_process_tpu_vfio_devices`.
+    """
+    start_time = time.monotonic()
+    busy_devs = [
+        dev
+        for dev in get_current_process_tpu_vfio_devices(visible_devices)
+        if _vfio_group_busy(dev)
+    ]
+    pending = busy_devs
+    while pending:
+        if time.monotonic() - start_time >= timeout_s:
+            logger.warning(
+                "Timed out after %.2fs waiting for TPU VFIO devices to be released: %s. "
+                "Proceeding with TPU initialization; libtpu may fail with EBUSY.",
+                timeout_s,
+                pending,
+            )
+            return
+        time.sleep(_TPU_VFIO_POLL_INTERVAL_S)
+        pending = [dev for dev in pending if _vfio_group_busy(dev)]
+
+    if busy_devs:
+        logger.info(
+            "TPU VFIO devices %s became ready after %.2fs.",
+            busy_devs,
+            time.monotonic() - start_time,
+        )
 
 
 def normalize_tpu_accelerator_type(accelerator_type: Optional[str]) -> str:
@@ -797,17 +909,16 @@ class TPUAcceleratorManager(AcceleratorManager):
 
         To access a subset of the TPU visible chips, we must use a combination of
         environment variables that tells the compiler (via ML framework) the:
-        - Visible chips
+        - Visible chips and logical devices
         - The physical bounds of chips per host
         - The host bounds within the context of a TPU pod.
 
         See: https://github.com/google/jax/issues/14977 for an example/more details.
 
-        TPU_VISIBLE_CHIPS has whole-chip granularity, so an allocation covering
-        part of a chip is masked to the whole chip and sees every device on it.
-        Frameworks that bind one process per device (TorchTPU) overwrite this
-        mask with their own; frameworks that claim every visible device (JAX)
-        need whole-chip allocations to avoid contending for the same chip.
+        TPU_VISIBLE_CHIPS masks physical chips, while TPU_VISIBLE_DEVICES
+        tracks the logical device IDs assigned by Ray. Per-device frameworks
+        (TorchTPU) read TPU_VISIBLE_DEVICES; whole-chip frameworks (JAX) read
+        TPU_VISIBLE_CHIPS and require whole-chip allocations.
 
         Args:
             visible_tpu_chips: List of str representing TPU chips, or device IDs
@@ -816,40 +927,60 @@ class TPUAcceleratorManager(AcceleratorManager):
         if env_bool(NOSET_TPU_VISIBLE_CHIPS_ENV_VAR, False):
             return
 
-        num_accelerators_on_node = (
-            TPUAcceleratorManager.get_current_node_num_accelerators()
-        )
-        # When autodetected, resource_and_label_spec caps a node's TPU resources
-        # at this count, so an allocation matching it holds the whole node.
-        if len(visible_tpu_chips) == num_accelerators_on_node:
-            # Let the ML framework use the defaults
-            os.environ.pop(TPU_CHIPS_PER_HOST_BOUNDS_ENV_VAR, None)
-            os.environ.pop(TPU_HOST_BOUNDS_ENV_VAR, None)
-            return
-
         # TPU_VISIBLE_CHIPS masks physical chips, but Ray assigns one ID per
         # logical device when RAY_TPU_RESOURCE_PER_CHIP > 1, so collapse them.
         resource_per_chip = get_tpu_resource_per_chip()
-        if resource_per_chip == 1:
-            physical_chips = visible_tpu_chips
-        else:
-            physical_chips = sorted(
-                {int(device_id) // resource_per_chip for device_id in visible_tpu_chips}
-            )
+        physical_chips = sorted(
+            {int(device_id) // resource_per_chip for device_id in visible_tpu_chips}
+        )
 
-        os.environ[
-            TPUAcceleratorManager.get_visible_accelerator_ids_env_var()
-        ] = ",".join(str(chip) for chip in physical_chips)
-        if len(physical_chips) == 1:
-            os.environ[
-                TPU_CHIPS_PER_HOST_BOUNDS_ENV_VAR
-            ] = TPU_CHIPS_PER_HOST_BOUNDS_1_CHIP_CONFIG
-            os.environ[TPU_HOST_BOUNDS_ENV_VAR] = TPU_SINGLE_HOST_BOUNDS
-        elif len(physical_chips) == 2:
-            os.environ[
-                TPU_CHIPS_PER_HOST_BOUNDS_ENV_VAR
-            ] = TPU_CHIPS_PER_HOST_BOUNDS_2_CHIP_CONFIG
-            os.environ[TPU_HOST_BOUNDS_ENV_VAR] = TPU_SINGLE_HOST_BOUNDS
+        stale_subhost_bounds = len(physical_chips) not in (1, 2) and os.environ.get(
+            TPU_CHIPS_PER_HOST_BOUNDS_ENV_VAR
+        ) in (
+            TPU_CHIPS_PER_HOST_BOUNDS_1_CHIP_CONFIG,
+            TPU_CHIPS_PER_HOST_BOUNDS_2_CHIP_CONFIG,
+        )
+
+        # When autodetected, resource_and_label_spec caps a node's TPU resources
+        # at this count, so an allocation matching it holds the whole node.
+        if (
+            len(visible_tpu_chips)
+            == TPUAcceleratorManager.get_current_node_num_accelerators()
+        ):
+            os.environ.pop(TPU_VISIBLE_CHIPS_ENV_VAR, None)
+            os.environ.pop(TPU_VISIBLE_DEVICES_ENV_VAR, None)
+            # If this worker on a >2-chip node previously ran a 1- or 2-chip
+            # sub-host task, clear the stale sub-host overrides so the ML
+            # framework uses the full-node defaults.
+            if stale_subhost_bounds:
+                os.environ.pop(TPU_CHIPS_PER_HOST_BOUNDS_ENV_VAR, None)
+                os.environ.pop(TPU_HOST_BOUNDS_ENV_VAR, None)
+            return
+
+        os.environ[TPU_VISIBLE_CHIPS_ENV_VAR] = ",".join(
+            str(chip) for chip in physical_chips
+        )
+        os.environ[TPU_VISIBLE_DEVICES_ENV_VAR] = ",".join(
+            sorted(visible_tpu_chips, key=int)
+        )
+        if len(physical_chips) in (1, 2):
+            expected_chip_bounds = (
+                TPU_CHIPS_PER_HOST_BOUNDS_1_CHIP_CONFIG
+                if len(physical_chips) == 1
+                else TPU_CHIPS_PER_HOST_BOUNDS_2_CHIP_CONFIG
+            )
+            if (
+                os.environ.get(TPU_CHIPS_PER_HOST_BOUNDS_ENV_VAR)
+                != expected_chip_bounds
+            ):
+                os.environ[TPU_CHIPS_PER_HOST_BOUNDS_ENV_VAR] = expected_chip_bounds
+                if os.environ.get(TPU_HOST_BOUNDS_ENV_VAR) != TPU_SINGLE_HOST_BOUNDS:
+                    os.environ[TPU_HOST_BOUNDS_ENV_VAR] = TPU_SINGLE_HOST_BOUNDS
+            else:
+                os.environ.setdefault(TPU_HOST_BOUNDS_ENV_VAR, TPU_SINGLE_HOST_BOUNDS)
+        elif stale_subhost_bounds:
+            os.environ.pop(TPU_CHIPS_PER_HOST_BOUNDS_ENV_VAR, None)
+            os.environ.pop(TPU_HOST_BOUNDS_ENV_VAR, None)
 
     @staticmethod
     def get_current_node_tpu_pod_type() -> Optional[str]:

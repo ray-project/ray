@@ -11,7 +11,14 @@ import pyarrow.parquet as pq
 import pytest
 from pyarrow.fs import LocalFileSystem
 
-from ray.data._internal.datasource_v2.listing.footer_reader import FooterReader
+from ray.data._internal.datasource_v2.common.file_pruners import (
+    PartitionPredicatePruner,
+)
+from ray.data._internal.datasource_v2.formats.parquet.footer_reader import (
+    FooterReader,
+)
+from ray.data._internal.datasource_v2.interfaces.file_indexer import FileInfo
+from ray.data.datasource.partitioning import Partitioning, PartitionStyle
 from ray.data.expressions import col
 
 
@@ -45,6 +52,160 @@ def _rg_can_fully_match(reader, metadata, rg_idx=0):
     """Run the fully-match guard the way ``_read_and_chunk`` does."""
     row_group = metadata.row_group(rg_idx)
     return reader._rg_can_fully_match(row_group, _filter_leaves(reader, metadata))
+
+
+def test_partition_parser_is_reused_by_concurrent_footer_reads(tmp_path, monkeypatch):
+    normalizations = []
+    normalize = Partitioning._normalize_base_dir
+
+    def track_normalization(scheme):
+        normalizations.append(scheme.base_dir)
+        normalize(scheme)
+
+    monkeypatch.setattr(Partitioning, "_normalize_base_dir", track_normalization)
+    table = pa.table({"id": [1], "year": [2024]})
+    files = []
+    for name in ["root.parquet", "year=2024/a.parquet", "year=2024/b.parquet"]:
+        path = tmp_path / name
+        path.parent.mkdir(exist_ok=True)
+        files.append(FileInfo(*_write(path, table, row_group_size=1)))
+    reader = _reader(
+        filter_expr=col("year") == 2024,
+        partitioning=Partitioning(PartitionStyle.HIVE, base_dir=str(tmp_path)),
+        logical_schema=table.schema,
+    )
+    assert normalizations == [str(tmp_path)]
+    with reader.pool as pool:
+        chunks = list(pool.map(reader._read_and_chunk, files))
+    assert [chunk.file for chunk in chunks] == files
+    assert all(len(chunk.row_groups) == 1 for chunk in chunks)
+    assert all(chunk.row_groups[0].fully_matched for chunk in chunks)
+    assert normalizations == [str(tmp_path)]
+
+
+@pytest.mark.parametrize("coalesce_bytes", [0, 1 << 20])
+def test_partition_filter_root_survivor_counts_are_not_file_counts(
+    tmp_path, coalesce_bytes
+):
+    root = tmp_path / "root.parquet"
+    table = pa.table({"id": list(range(100)), "year": ["2024"] + ["2023"] * 99})
+    path, size = _write(root, table, row_group_size=100)
+    scheme = Partitioning(PartitionStyle.HIVE, field_names=["year"])
+    pruner = PartitionPredicatePruner(
+        scheme, col("year") == "2024", schema=table.schema, keep_unknown=True
+    )
+    assert pruner.should_include(path)
+    chunks = _reader(
+        partitioning=scheme,
+        partition_pruner=pruner,
+        coalesce_bytes=coalesce_bytes,
+    )._read_and_chunk(FileInfo(path, size))
+    assert sum(group.num_rows for group in chunks.row_groups) == 100
+    assert not any(group.fully_matched for group in chunks.row_groups)
+
+
+@pytest.mark.parametrize("physical_year", ["2023", "2024"])
+def test_path_value_overrides_physical_statistics_and_preserves_exact_counts(
+    tmp_path, physical_year
+):
+    path = tmp_path / "year=2024" / "data.parquet"
+    path.parent.mkdir()
+    table = pa.table({"id": list(range(40)), "year": [physical_year] * 40})
+    path, size = _write(path, table, row_group_size=20)
+    scheme = Partitioning(PartitionStyle.HIVE, field_names=["year"])
+    pruner = PartitionPredicatePruner(
+        scheme, col("year") == "2024", schema=table.schema, keep_unknown=True
+    )
+    reader = _reader(partitioning=scheme, partition_pruner=pruner)
+    chunks = reader._read_and_chunk(FileInfo(path, size))
+    assert len(chunks.row_groups) == 2
+    assert all(group.fully_matched for group in chunks.row_groups)
+    assert sum(group.num_rows for group in chunks.row_groups) == 40
+
+
+def test_partition_filter_keeps_physical_statistics_pruning(tmp_path):
+    path = tmp_path / "year=2024" / "data.parquet"
+    path.parent.mkdir()
+    table = pa.table({"id": list(range(100))})
+    path, size = _write(path, table, row_group_size=25)
+    schema = table.schema.append(pa.field("year", pa.string()))
+    scheme = Partitioning(PartitionStyle.HIVE, field_names=["year"])
+    pruner = PartitionPredicatePruner(
+        scheme, col("year") == "2024", schema=schema, keep_unknown=True
+    )
+    chunks = _reader(
+        filter_expr=col("id") >= 50, partitioning=scheme, partition_pruner=pruner
+    )._read_and_chunk(FileInfo(path, size))
+    assert [group.unit_ids for group in chunks.row_groups] == [(2,), (3,)]
+    assert all(group.fully_matched for group in chunks.row_groups)
+
+
+def test_unsampled_partition_column_does_not_use_overridden_statistics(tmp_path):
+    path = tmp_path / "year=2024" / "data.parquet"
+    path.parent.mkdir()
+    path, size = _write(
+        path, pa.table({"id": [1, 2], "year": ["2023", "2023"]}), row_group_size=1
+    )
+    chunks = _reader(
+        filter_expr=col("year") == "2024",
+        partitioning=Partitioning(PartitionStyle.HIVE),
+    )._read_and_chunk(FileInfo(path, size))
+    assert len(chunks.row_groups) == 2
+    assert not any(group.fully_matched for group in chunks.row_groups)
+
+
+def test_root_physical_condition_can_still_prove_exact_survivors(tmp_path):
+    table = pa.table({"id": list(range(40)), "year": ["2024"] * 40})
+    path, size = _write(tmp_path / "root.parquet", table, row_group_size=20)
+    scheme = Partitioning(PartitionStyle.HIVE, field_names=["year"])
+    pruner = PartitionPredicatePruner(
+        scheme, col("year") == "2024", schema=table.schema, keep_unknown=True
+    )
+    chunks = _reader(partition_pruner=pruner)._read_and_chunk(FileInfo(path, size))
+    assert len(chunks.row_groups) == 2
+    assert all(group.fully_matched for group in chunks.row_groups)
+
+
+def test_root_statistics_with_different_logical_type_remain_unknown(tmp_path):
+    table = pa.table({"id": [1, 2], "year": ["2024", "2024"]})
+    path, size = _write(tmp_path / "root.parquet", table, row_group_size=1)
+    schema = pa.schema([("id", pa.int64()), ("year", pa.int64())])
+    scheme = Partitioning(PartitionStyle.HIVE, field_names=["year"])
+    pruner = PartitionPredicatePruner(
+        scheme, col("year") == 2024, schema=schema, keep_unknown=True
+    )
+    chunks = _reader(partition_pruner=pruner)._read_and_chunk(FileInfo(path, size))
+    assert len(chunks.row_groups) == 2
+    assert not any(group.fully_matched for group in chunks.row_groups)
+
+
+def test_footer_partition_conversion_error_has_path_and_cause(tmp_path):
+    path = tmp_path / "year=invalid" / "data.parquet"
+    path.parent.mkdir()
+    table = pa.table({"id": [1], "year": [2024]})
+    pq.write_table(table, path)
+    pruner = PartitionPredicatePruner(
+        Partitioning(PartitionStyle.HIVE),
+        col("year") == 2024,
+        schema=table.schema,
+        keep_unknown=True,
+    )
+    reader = _reader(partition_pruner=pruner)
+    with pytest.raises(pa.ArrowInvalid) as error:
+        reader._filter_for_file(str(path), pq.ParquetFile(path).metadata.schema)
+    assert str(path) in str(error.value)
+    assert isinstance(error.value.__cause__, pa.ArrowInvalid)
+
+
+def test_declared_schema_cast_prevents_raw_statistics_pruning(tmp_path):
+    table = pa.table({"year": pa.array([2.50000001], type=pa.float64())})
+    path, size = _write(tmp_path / "root.parquet", table, row_group_size=1)
+    chunks = _reader(
+        filter_expr=col("year") == 2.5,
+        logical_schema=pa.schema([("year", pa.float32())]),
+    )._read_and_chunk(FileInfo(path, size))
+    assert len(chunks.row_groups) == 1
+    assert not chunks.row_groups[0].fully_matched
 
 
 class _FakeStatistics:
@@ -96,32 +257,35 @@ class TestReadAndChunk:
     def test_yields_every_row_group_without_a_predicate(self, four_row_groups):
         path, size = four_row_groups
 
-        chunks = _reader()._read_and_chunk(path, size)
+        chunks = _reader()._read_and_chunk(FileInfo(path, size))
 
-        assert chunks.path == path
-        assert chunks.size == size
-        assert [rg.rg_idx for rg in chunks.row_groups] == [0, 1, 2, 3]
+        assert chunks.file == FileInfo(path, size)
+        assert [rg.unit_ids[0] for rg in chunks.row_groups] == [0, 1, 2, 3]
         assert [rg.num_rows for rg in chunks.row_groups] == [25, 25, 25, 25]
         # No predicate means every group is an exact survivor, which is what
         # lets limit push-down count rows without re-filtering.
         assert all(rg.fully_matched for rg in chunks.row_groups)
-        assert all(rg.uncompressed_size > 0 for rg in chunks.row_groups)
+        assert all(rg.size_bytes > 0 for rg in chunks.row_groups)
 
     def test_predicate_prunes_row_groups_by_statistics(self, four_row_groups):
         path, size = four_row_groups
 
         # id >= 50 excludes the first two row groups (0-24, 25-49) outright.
-        chunks = _reader(filter_expr=col("id") >= 50)._read_and_chunk(path, size)
+        chunks = _reader(filter_expr=col("id") >= 50)._read_and_chunk(
+            FileInfo(path, size)
+        )
 
-        assert [rg.rg_idx for rg in chunks.row_groups] == [2, 3]
+        assert [rg.unit_ids[0] for rg in chunks.row_groups] == [2, 3]
 
     def test_fully_matched_marks_only_wholly_surviving_groups(self, four_row_groups):
         path, size = four_row_groups
 
         # id >= 30 splits row group 1 (25-49) and fully covers 2 and 3.
-        chunks = _reader(filter_expr=col("id") >= 30)._read_and_chunk(path, size)
+        chunks = _reader(filter_expr=col("id") >= 30)._read_and_chunk(
+            FileInfo(path, size)
+        )
 
-        by_idx = {rg.rg_idx: rg.fully_matched for rg in chunks.row_groups}
+        by_idx = {rg.unit_ids[0]: rg.fully_matched for rg in chunks.row_groups}
         assert by_idx[1] is False, "partially matching group must not count as exact"
         assert by_idx[2] is True
         assert by_idx[3] is True
@@ -129,18 +293,20 @@ class TestReadAndChunk:
     def test_predicate_matching_nothing_yields_no_row_groups(self, four_row_groups):
         path, size = four_row_groups
 
-        chunks = _reader(filter_expr=col("id") > 10_000)._read_and_chunk(path, size)
+        chunks = _reader(filter_expr=col("id") > 10_000)._read_and_chunk(
+            FileInfo(path, size)
+        )
 
         assert chunks.row_groups == ()
 
     def test_projection_accounts_only_the_projected_columns(self, four_row_groups):
         path, size = four_row_groups
-        full = _reader()._read_and_chunk(path, size)
-        ids = _reader(projected_cols=["id"])._read_and_chunk(path, size)
-        pads = _reader(projected_cols=["pad"])._read_and_chunk(path, size)
+        full = _reader()._read_and_chunk(FileInfo(path, size))
+        ids = _reader(projected_cols=["id"])._read_and_chunk(FileInfo(path, size))
+        pads = _reader(projected_cols=["pad"])._read_and_chunk(FileInfo(path, size))
 
         def total(c):
-            return sum(rg.uncompressed_size for rg in c.row_groups)
+            return sum(rg.size_bytes for rg in c.row_groups)
 
         assert total(ids) + total(pads) == total(full)
         assert 0 < total(ids) < total(full)
@@ -162,8 +328,8 @@ class TestReadAndChunk:
         def sizes(**kwargs):
             reader = _reader(**kwargs)
             return [
-                rg.uncompressed_size
-                for rg in reader._read_and_chunk(path, size).row_groups
+                rg.size_bytes
+                for rg in reader._read_and_chunk(FileInfo(path, size)).row_groups
             ]
 
         filtered = sizes(projected_cols=["id"], filter_expr=predicate)
@@ -176,9 +342,11 @@ class TestReadAndChunk:
     def test_coalescing_merges_contiguous_groups(self, four_row_groups):
         path, size = four_row_groups
 
-        uncoalesced = _reader()._read_and_chunk(path, size)
-        per_rg = uncoalesced.row_groups[0].uncompressed_size
-        coalesced = _reader(coalesce_bytes=per_rg * 2)._read_and_chunk(path, size)
+        uncoalesced = _reader()._read_and_chunk(FileInfo(path, size))
+        per_rg = uncoalesced.row_groups[0].size_bytes
+        coalesced = _reader(coalesce_bytes=per_rg * 2)._read_and_chunk(
+            FileInfo(path, size)
+        )
 
         assert len(coalesced.row_groups) < len(uncoalesced.row_groups)
         # Coalescing regroups descriptors; it must not lose rows.
@@ -218,7 +386,9 @@ class TestNullsAreNeverExactSurvivors:
             row_group_size=len(values),
         )
 
-        chunks = _reader(filter_expr=col("id") >= 30)._read_and_chunk(path, size)
+        chunks = _reader(filter_expr=col("id") >= 30)._read_and_chunk(
+            FileInfo(path, size)
+        )
 
         # Measured rather than restated: this guard exists because a null row
         # passes neither the filter nor its negation, so pin what the filter
@@ -263,7 +433,8 @@ class TestNullsAreNeverExactSurvivors:
 
         assert _has_filter_nulls(reader, pq.ParquetFile(path).metadata)
         assert not any(
-            rg.fully_matched for rg in reader._read_and_chunk(path, size).row_groups
+            rg.fully_matched
+            for rg in reader._read_and_chunk(FileInfo(path, size)).row_groups
         )
 
     @pytest.mark.parametrize(
@@ -357,7 +528,7 @@ class TestNullsAreNeverExactSurvivors:
                 )
 
         reader.file_format = _Format(reader.file_format, reader.filter)
-        chunks = reader._read_and_chunk(path, size)
+        chunks = reader._read_and_chunk(FileInfo(path, size))
 
         assert not any(rg.fully_matched for rg in chunks.row_groups)
 
@@ -389,7 +560,7 @@ class TestFloatsAreNeverExactSurvivors:
         assert statistics.null_count == 0 and statistics.has_null_count
         assert not _has_filter_nulls(reader, metadata)
 
-        chunks = reader._read_and_chunk(path, size)
+        chunks = reader._read_and_chunk(FileInfo(path, size))
 
         # Two of the three rows survive, so the group's num_rows would
         # over-count and limit push-down would stop a row early.
@@ -409,9 +580,11 @@ class TestFloatsAreNeverExactSurvivors:
             row_group_size=3,
         )
 
-        chunks = _reader(filter_expr=col("id") >= 30)._read_and_chunk(path, size)
+        chunks = _reader(filter_expr=col("id") >= 30)._read_and_chunk(
+            FileInfo(path, size)
+        )
 
-        assert [rg.rg_idx for rg in chunks.row_groups] == [0]
+        assert [rg.unit_ids[0] for rg in chunks.row_groups] == [0]
         assert not any(rg.fully_matched for rg in chunks.row_groups)
 
     def test_a_float_leaf_outside_the_predicate_stays_exact(self, tmp_path):
@@ -427,7 +600,9 @@ class TestFloatsAreNeverExactSurvivors:
             row_group_size=3,
         )
 
-        chunks = _reader(filter_expr=col("id") >= 30)._read_and_chunk(path, size)
+        chunks = _reader(filter_expr=col("id") >= 30)._read_and_chunk(
+            FileInfo(path, size)
+        )
 
         assert all(rg.fully_matched for rg in chunks.row_groups)
 
@@ -508,9 +683,9 @@ class TestMissingFilterColumnsSkipPruning:
             row_group_size=2,
         )
 
-        chunks = _reader(filter_expr=col("b") > 0)._read_and_chunk(path, size)
+        chunks = _reader(filter_expr=col("b") > 0)._read_and_chunk(FileInfo(path, size))
 
-        assert [rg.rg_idx for rg in chunks.row_groups] == [0, 1]
+        assert [rg.unit_ids[0] for rg in chunks.row_groups] == [0, 1]
         assert not any(rg.fully_matched for rg in chunks.row_groups)
 
     def test_does_not_abort_sibling_files_in_the_batch(self, tmp_path):
@@ -528,10 +703,10 @@ class TestMissingFilterColumnsSkipPruning:
         reader = _reader(filter_expr=col("b") > 0)
         batches = list(
             reader.read_footers(  # pyrefly: ignore[not-callable]
-                [with_b, without_b], result_batch_size=1
+                [FileInfo(*with_b), FileInfo(*without_b)], result_batch_size=1
             )
         )
-        by_path = {fc.path: fc for batch in batches for fc in batch}
+        by_path = {fc.file.path: fc for batch in batches for fc in batch}
 
         assert set(by_path) == {with_b[0], without_b[0]}
         assert all(rg.fully_matched for rg in by_path[with_b[0]].row_groups)
@@ -560,9 +735,9 @@ class TestMissingFilterColumnsSkipPruning:
                 return _Raises(self._real.make_fragment(*args, **kwargs))
 
         reader.file_format = _Format(reader.file_format)
-        chunks = reader._read_and_chunk(path, size)
+        chunks = reader._read_and_chunk(FileInfo(path, size))
 
-        assert [rg.rg_idx for rg in chunks.row_groups] == [0, 1, 2, 3]
+        assert [rg.unit_ids[0] for rg in chunks.row_groups] == [0, 1, 2, 3]
         assert not any(rg.fully_matched for rg in chunks.row_groups)
 
 
@@ -611,13 +786,15 @@ class TestReadLeafIndices:
     def test_projection_matching_no_leaf_sizes_all_columns(self, four_row_groups):
         path, size = four_row_groups
 
-        absent = _reader(projected_cols=["absent"])._read_and_chunk(path, size)
-        full = _reader()._read_and_chunk(path, size)
+        absent = _reader(projected_cols=["absent"])._read_and_chunk(
+            FileInfo(path, size)
+        )
+        full = _reader()._read_and_chunk(FileInfo(path, size))
 
-        assert [rg.uncompressed_size for rg in absent.row_groups] == [
-            rg.uncompressed_size for rg in full.row_groups
+        assert [rg.size_bytes for rg in absent.row_groups] == [
+            rg.size_bytes for rg in full.row_groups
         ]
-        assert all(rg.uncompressed_size > 0 for rg in absent.row_groups)
+        assert all(rg.size_bytes > 0 for rg in absent.row_groups)
 
     def test_nested_column_expands_to_all_its_leaves(self, tmp_path):
         table = pa.table(
@@ -642,7 +819,9 @@ class TestReadFootersBatching:
         files = []
         for i in range(3):
             table = pa.table({"id": list(range(10))})
-            files.append(_write(tmp_path / f"f{i}.parquet", table, row_group_size=5))
+            files.append(
+                FileInfo(*_write(tmp_path / f"f{i}.parquet", table, row_group_size=5))
+            )
         return files
 
     @pytest.mark.parametrize(
@@ -663,8 +842,8 @@ class TestReadFootersBatching:
 
         assert [len(b) for b in batches] == expected_batch_sizes
         # Every file appears exactly once regardless of batching.
-        paths = [fc.path for batch in batches for fc in batch]
-        assert sorted(paths) == sorted(p for p, _ in three_files)
+        paths = [fc.file.path for batch in batches for fc in batch]
+        assert sorted(paths) == sorted(f.path for f in three_files)
 
     def test_empty_input_yields_nothing(self):
         # pyrefly: ignore[not-callable]
@@ -679,13 +858,13 @@ class TestReadFootersBatching:
         )
         read_and_chunk = reader._read_and_chunk
         delay_by_path = {
-            path: 0.05 * (len(three_files) - i)
-            for i, (path, _) in enumerate(three_files)
+            file.path: 0.05 * (len(three_files) - i)
+            for i, file in enumerate(three_files)
         }
 
-        def delayed_read_and_chunk(path, size):
-            time.sleep(delay_by_path[path])
-            return read_and_chunk(path, size)
+        def delayed_read_and_chunk(file):
+            time.sleep(delay_by_path[file.path])
+            return read_and_chunk(file)
 
         monkeypatch.setattr(reader, "_read_and_chunk", delayed_read_and_chunk)
 
@@ -695,8 +874,8 @@ class TestReadFootersBatching:
             )
         )
 
-        paths = [fc.path for batch in batches for fc in batch]
-        assert paths == [path for path, _ in three_files]
+        paths = [fc.file.path for batch in batches for fc in batch]
+        assert paths == [f.path for f in three_files]
 
 
 if __name__ == "__main__":

@@ -1,0 +1,4 @@
+# Layered on the ray-torch image for the xgboost/lightgbm train batch inference
+# benchmarks, which need both libraries but not the rest of the cpu test deps.
+xgboost
+lightgbm

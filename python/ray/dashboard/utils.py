@@ -83,8 +83,7 @@ class DashboardAgentModule(abc.ABC):
     @staticmethod
     @abc.abstractclassmethod
     def is_minimal_module():
-        """
-        Return True if the module is minimal, meaning it
+        """Return True if the module is minimal, meaning it
         should work with `pip install ray` that doesn't requires additional
         dependencies.
         """
@@ -106,6 +105,9 @@ class DashboardHeadModuleConfig:
     ip: str
     http_host: str
     http_port: int
+    # The head's own client, shared so that modules observe the leadership its
+    # CheckAlive loop caches. A private client would never see a promotion.
+    gcs_client: GcsClient
 
 
 class DashboardHeadModule(abc.ABC):
@@ -116,7 +118,6 @@ class DashboardHeadModule(abc.ABC):
             config: The DashboardHeadModuleConfig instance.
         """
         self._config = config
-        self._gcs_client = None
         self._aiogrpc_gcs_channel = None  # lazy init
         self._http_session = None  # lazy init
 
@@ -173,14 +174,7 @@ class DashboardHeadModule(abc.ABC):
 
     @property
     def gcs_client(self):
-        if self._gcs_client is None:
-            self._gcs_client = GcsClient(
-                address=self._config.gcs_address,
-                cluster_id=self._config.cluster_id_hex,
-            )
-            if not internal_kv._internal_kv_initialized():
-                internal_kv._initialize_internal_kv(self._gcs_client)
-        return self._gcs_client
+        return self._config.gcs_client
 
     @property
     def aiogrpc_gcs_channel(self):
@@ -195,25 +189,21 @@ class DashboardHeadModule(abc.ABC):
 
     @abc.abstractmethod
     async def run(self):
-        """
-        Run the module in an asyncio loop. A head module can provide
+        """Run the module in an asyncio loop. A head module can provide
         servicers to the server.
         """
 
     @staticmethod
     @abc.abstractclassmethod
     def is_minimal_module():
-        """
-        Return True if the module is minimal, meaning it
+        """Return True if the module is minimal, meaning it
         should work with `pip install ray` that doesn't requires additional
         dependencies.
         """
 
     @classmethod
     def is_enabled(cls) -> bool:
-        """
-        Return True if the module is enabled and should be loaded.
-        """
+        """Return True if the module is enabled and should be loaded."""
         return True
 
 
@@ -313,9 +303,7 @@ def dashboard_module(enable):
 
 
 def get_all_modules(module_type):
-    """
-    Get all importable modules that are subclass of a given module type.
-    """
+    """Get all importable modules that are subclass of a given module type."""
     logger.info(f"Get all modules by type: {module_type.__name__}")
     import ray.dashboard.modules
 
@@ -687,7 +675,7 @@ def ray_address_to_api_server_url(address: Optional[str]) -> str:
     address = services.canonicalize_bootstrap_address_or_die(address)
     gcs_client = GcsClient(address=address)
 
-    ray.experimental.internal_kv._initialize_internal_kv(gcs_client)
+    internal_kv._initialize_internal_kv(gcs_client)
     api_server_url = ray._private.utils.internal_kv_get_with_retry(
         gcs_client,
         ray_constants.DASHBOARD_ADDRESS,

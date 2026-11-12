@@ -14,9 +14,9 @@
 
 #include "ray/core_worker/core_worker.h"
 
-#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 
+#include <algorithm>
 #include <future>
 #include <memory>
 #include <string>
@@ -26,8 +26,6 @@
 
 #include "absl/container/flat_hash_set.h"
 #include "absl/time/clock.h"
-#include "mock/ray/gcs_client/gcs_client.h"
-#include "mock/ray/object_manager/plasma/client.h"
 #include "ray/asio/fake_periodical_runner.h"
 #include "ray/common/buffer.h"
 #include "ray/common/ray_config.h"
@@ -48,6 +46,7 @@
 #include "ray/core_worker/task_submission/normal_task_submitter.h"
 #include "ray/core_worker_rpc_client/core_worker_client_pool.h"
 #include "ray/core_worker_rpc_client/fake_core_worker_client.h"
+#include "ray/gcs_rpc_client/fake_gcs_client.h"
 #include "ray/object_manager/plasma/fake_plasma_client.h"
 #include "ray/observability/fake_metric.h"
 #include "ray/observability/fake_ray_event_recorder.h"
@@ -59,10 +58,6 @@
 
 namespace ray {
 namespace core {
-
-using ::testing::_;
-using ::testing::InvokeWithoutArgs;
-using ::testing::Return;
 
 class CoreWorkerTest : public ::testing::Test {
  public:
@@ -114,7 +109,7 @@ class CoreWorkerTest : public ::testing::Test {
     auto raylet_client_pool = std::make_shared<rpc::RayletClientPool>(
         [](const rpc::Address &) { return std::make_shared<rpc::FakeRayletClient>(); });
 
-    mock_gcs_client_ = std::make_shared<gcs::MockGcsClient>();
+    fake_gcs_client_ = std::make_shared<gcs::FakeGcsClient>();
 
     auto fake_local_raylet_rpc_client = std::make_shared<rpc::FakeRayletClient>();
     local_raylet_client_ = fake_local_raylet_rpc_client;
@@ -179,7 +174,7 @@ class CoreWorkerTest : public ::testing::Test {
         rpc_address_);
 
     auto task_event_buffer = std::make_unique<worker::TaskEventBufferImpl>(
-        std::make_unique<gcs::MockGcsClient>(),
+        std::make_unique<gcs::FakeGcsClient>(),
         std::make_unique<rpc::EventAggregatorClientImpl>(0, *client_call_manager_),
         "test_session",
         NodeID::Nil(),
@@ -201,9 +196,10 @@ class CoreWorkerTest : public ::testing::Test {
         [](const ActorID &actor_id) {
           return std::make_shared<rpc::FakeCoreWorkerClient>();
         },
-        mock_gcs_client_,
+        fake_gcs_client_,
         fake_task_by_state_gauge_,
         fake_total_lineage_bytes_gauge_,
+        fake_task_retry_submissions_counter_,
         /*free_actor_object_callback=*/[](const ObjectID &object_id) {},
         /*set_direct_transport_metadata=*/[](const ObjectID &, const std::string &) {},
         /*free_stale_unconsumed_generator_objects_async=*/
@@ -219,21 +215,22 @@ class CoreWorkerTest : public ::testing::Test {
         *task_manager_,
         *reference_counter_,
         *memory_store_,
-        [](const ObjectID &object_id, rpc::ErrorType reason, bool pin_object) {});
+        [](const ObjectID &object_id, rpc::ErrorType reason, bool pin_object) {},
+        fake_object_recovery_attempts_counter_);
 
     auto lease_policy = std::unique_ptr<LeasePolicyInterface>(
         std::make_unique<LocalLeasePolicy>(rpc_address_));
 
     auto lease_request_rate_limiter = std::make_shared<StaticLeaseRequestRateLimiter>(10);
 
-    actor_creator_ = std::make_shared<ActorCreator>(mock_gcs_client_->Actors());
+    actor_creator_ = std::make_shared<ActorCreator>(fake_gcs_client_->Actors());
 
     auto normal_task_submitter = std::make_unique<NormalTaskSubmitter>(
         rpc_address_,
         fake_local_raylet_rpc_client,
         core_worker_client_pool,
         raylet_client_pool,
-        mock_gcs_client_,
+        fake_gcs_client_,
         std::move(lease_policy),
         memory_store_,
         *task_manager_,
@@ -251,7 +248,7 @@ class CoreWorkerTest : public ::testing::Test {
     auto actor_task_submitter = std::make_unique<ActorTaskSubmitter>(
         *core_worker_client_pool,
         *raylet_client_pool,
-        mock_gcs_client_,
+        fake_gcs_client_,
         *memory_store_,
         *task_manager_,
         *actor_creator_,
@@ -264,7 +261,7 @@ class CoreWorkerTest : public ::testing::Test {
     actor_task_submitter_ = actor_task_submitter.get();
 
     auto actor_manager = std::make_unique<ActorManager>(
-        mock_gcs_client_, *actor_task_submitter, *reference_counter_);
+        fake_gcs_client_, *actor_task_submitter, *reference_counter_);
 
     auto periodical_runner = std::make_unique<FakePeriodicalRunner>();
 
@@ -280,7 +277,7 @@ class CoreWorkerTest : public ::testing::Test {
         std::move(periodical_runner),
         std::move(core_worker_server),
         std::move(rpc_address_),
-        mock_gcs_client_,
+        fake_gcs_client_,
         std::move(fake_raylet_ipc_client),
         std::move(fake_local_raylet_rpc_client),
         io_thread_,
@@ -334,12 +331,14 @@ class CoreWorkerTest : public ::testing::Test {
   std::shared_ptr<rpc::FakeRayletClient> local_raylet_client_;
   pubsub::Publisher *object_info_publisher_;
   std::shared_ptr<TaskManager> task_manager_;
-  std::shared_ptr<gcs::MockGcsClient> mock_gcs_client_;
+  std::shared_ptr<gcs::FakeGcsClient> fake_gcs_client_;
   std::shared_ptr<ActorCreator> actor_creator_;
   std::shared_ptr<CoreWorker> core_worker_;
   ray::observability::FakeRayEventRecorder fake_ray_event_recorder_;
   ray::observability::FakeGauge fake_task_by_state_gauge_;
   ray::observability::FakeGauge fake_actor_by_state_gauge_;
+  ray::observability::FakeCounter fake_task_retry_submissions_counter_;
+  ray::observability::FakeCounter fake_object_recovery_attempts_counter_;
   ray::observability::FakeGauge fake_total_lineage_bytes_gauge_;
   ray::observability::FakeHistogram fake_scheduler_placement_time_ms_histogram_;
   ray::observability::FakeGauge fake_owned_object_count_gauge_;
@@ -527,15 +526,7 @@ TEST_F(CoreWorkerTest, GeneratorBackpressureSubscribesToOwnerFailureOnly) {
   rpc::Address owner_address;
   owner_address.set_worker_id(owner_worker_id.Binary());
 
-  // Backpressure registration must never install the all-workers failure
-  // subscription. established once per owner no matter how
-  // many generator tasks it submits.
-  EXPECT_CALL(*mock_gcs_client_->mock_worker_accessor,
-              AsyncSubscribeToWorkerFailures(_, _))
-      .Times(0);
-  EXPECT_CALL(*mock_gcs_client_->mock_worker_accessor,
-              AsyncSubscribeToWorkerFailure(owner_worker_id, _, _))
-      .Times(1);
+  auto *worker_accessor = fake_gcs_client_->fake_worker_accessor;
 
   auto waiter = std::make_shared<TaskGeneratorBackpressureWaiter>(
       /*generator_backpressure_num_objects=*/1, []() { return Status::OK(); });
@@ -545,20 +536,34 @@ TEST_F(CoreWorkerTest, GeneratorBackpressureSubscribesToOwnerFailureOnly) {
   core_worker_->RegisterGeneratorBackpressureState(
       ObjectID::FromRandom(), waiter, /*actor_metadata=*/nullptr, owner_address);
 
+  // Backpressure registration must never install the all-workers failure
+  // subscription; it establishes exactly one keyed subscription per owner no
+  // matter how many generator tasks it submits.
+  EXPECT_EQ(worker_accessor->async_subscribe_to_worker_failures_call_count, 0);
+  EXPECT_EQ(std::count(worker_accessor->async_subscribe_to_worker_failure_calls.begin(),
+                       worker_accessor->async_subscribe_to_worker_failure_calls.end(),
+                       owner_worker_id),
+            1);
+
   // Once the owner dies its keyed subscription can never fire again, so the
   // sweep drops it.
-  EXPECT_CALL(*mock_gcs_client_->mock_worker_accessor,
-              AsyncUnsubscribeFromWorkerFailure(owner_worker_id))
-      .Times(1);
+  worker_accessor->async_unsubscribe_from_worker_failure_calls.clear();
   core_worker_->HandleOwnerDied(owner_worker_id);
+  EXPECT_EQ(
+      std::count(worker_accessor->async_unsubscribe_from_worker_failure_calls.begin(),
+                 worker_accessor->async_unsubscribe_from_worker_failure_calls.end(),
+                 owner_worker_id),
+      1);
 
   // With the owner gone, a fresh registration for it re-subscribes (the
   // liveness fetch after subscribing re-detects the death in production).
-  EXPECT_CALL(*mock_gcs_client_->mock_worker_accessor,
-              AsyncSubscribeToWorkerFailure(owner_worker_id, _, _))
-      .Times(1);
+  worker_accessor->async_subscribe_to_worker_failure_calls.clear();
   core_worker_->RegisterGeneratorBackpressureState(
       ObjectID::FromRandom(), waiter, /*actor_metadata=*/nullptr, owner_address);
+  EXPECT_EQ(std::count(worker_accessor->async_subscribe_to_worker_failure_calls.begin(),
+                       worker_accessor->async_subscribe_to_worker_failure_calls.end(),
+                       owner_worker_id),
+            1);
 }
 
 TEST_F(CoreWorkerTest, GeneratorBackpressureLivenessFetchTreatsMissingOwnerAsDead) {
@@ -566,28 +571,29 @@ TEST_F(CoreWorkerTest, GeneratorBackpressureLivenessFetchTreatsMissingOwnerAsDea
   rpc::Address owner_address;
   owner_address.set_worker_id(owner_worker_id.Binary());
 
-  rpc::StatusCallback subscribe_done;
-  EXPECT_CALL(*mock_gcs_client_->mock_worker_accessor,
-              AsyncSubscribeToWorkerFailure(owner_worker_id, _, _))
-      .WillOnce(::testing::SaveArg<2>(&subscribe_done));
-  EXPECT_CALL(*mock_gcs_client_->mock_worker_accessor, AsyncGet(owner_worker_id, _))
-      .WillOnce(::testing::Invoke(
-          [](const WorkerID &,
-             const rpc::OptionalItemCallback<rpc::WorkerTableData> &callback) {
-            // Alive workers are always in the worker table, so a missing row
-            // after a successful subscribe means dead-and-trimmed.
-            callback(Status::OK(), std::nullopt);
-          }));
-  EXPECT_CALL(*mock_gcs_client_->mock_worker_accessor,
-              AsyncUnsubscribeFromWorkerFailure(owner_worker_id))
-      .Times(1);
+  auto *worker_accessor = fake_gcs_client_->fake_worker_accessor;
+  // Alive workers are always in the worker table, so a missing row after a
+  // successful subscribe means dead-and-trimmed.
+  worker_accessor->async_get_hook =
+      [](const WorkerID &,
+         const rpc::OptionalItemCallback<rpc::WorkerTableData> &callback) {
+        callback(Status::OK(), std::nullopt);
+      };
 
   auto waiter = std::make_shared<TaskGeneratorBackpressureWaiter>(
       /*generator_backpressure_num_objects=*/1, []() { return Status::OK(); });
   core_worker_->RegisterGeneratorBackpressureState(
       ObjectID::FromRandom(), waiter, /*actor_metadata=*/nullptr, owner_address);
+  rpc::StatusCallback subscribe_done =
+      worker_accessor->async_subscribe_to_worker_failure_done;
   ASSERT_TRUE(subscribe_done);
+  worker_accessor->async_unsubscribe_from_worker_failure_calls.clear();
   subscribe_done(Status::OK());
+  EXPECT_EQ(
+      std::count(worker_accessor->async_unsubscribe_from_worker_failure_calls.begin(),
+                 worker_accessor->async_unsubscribe_from_worker_failure_calls.end(),
+                 owner_worker_id),
+      1);
 }
 
 TEST_F(CoreWorkerTest, GeneratorBackpressureSubscribeFailureKeepsClaimForResubscribe) {
@@ -595,40 +601,46 @@ TEST_F(CoreWorkerTest, GeneratorBackpressureSubscribeFailureKeepsClaimForResubsc
   rpc::Address owner_address;
   owner_address.set_worker_id(owner_worker_id.Binary());
 
-  rpc::StatusCallback subscribe_done;
-  EXPECT_CALL(*mock_gcs_client_->mock_worker_accessor,
-              AsyncSubscribeToWorkerFailure(owner_worker_id, _, _))
-      .Times(1)
-      .WillOnce(::testing::SaveArg<2>(&subscribe_done));
+  auto *worker_accessor = fake_gcs_client_->fake_worker_accessor;
 
   auto waiter = std::make_shared<TaskGeneratorBackpressureWaiter>(
       /*generator_backpressure_num_objects=*/1, []() { return Status::OK(); });
   core_worker_->RegisterGeneratorBackpressureState(
       ObjectID::FromRandom(), waiter, /*actor_metadata=*/nullptr, owner_address);
+  EXPECT_EQ(std::count(worker_accessor->async_subscribe_to_worker_failure_calls.begin(),
+                       worker_accessor->async_subscribe_to_worker_failure_calls.end(),
+                       owner_worker_id),
+            1);
+  rpc::StatusCallback subscribe_done =
+      worker_accessor->async_subscribe_to_worker_failure_done;
   ASSERT_TRUE(subscribe_done);
 
   // Subscribe failed but the owner is alive: keep the bookkeeping so
   // AsyncResubscribe can replay the stored operation. Do not unsubscribe.
-  EXPECT_CALL(*mock_gcs_client_->mock_worker_accessor, AsyncGet(owner_worker_id, _))
-      .WillOnce(::testing::Invoke(
-          [](const WorkerID &,
-             const rpc::OptionalItemCallback<rpc::WorkerTableData> &callback) {
-            rpc::WorkerTableData alive;
-            alive.set_is_alive(true);
-            callback(Status::OK(), alive);
-          }));
-  EXPECT_CALL(*mock_gcs_client_->mock_worker_accessor,
-              AsyncUnsubscribeFromWorkerFailure(owner_worker_id))
-      .Times(0);
+  worker_accessor->async_get_hook =
+      [](const WorkerID &,
+         const rpc::OptionalItemCallback<rpc::WorkerTableData> &callback) {
+        rpc::WorkerTableData alive;
+        alive.set_is_alive(true);
+        callback(Status::OK(), alive);
+      };
+  worker_accessor->async_unsubscribe_from_worker_failure_calls.clear();
   subscribe_done(Status::IOError("subscribe failed"));
+  EXPECT_EQ(
+      std::count(worker_accessor->async_unsubscribe_from_worker_failure_calls.begin(),
+                 worker_accessor->async_unsubscribe_from_worker_failure_calls.end(),
+                 owner_worker_id),
+      0);
 
   // Still subscribed: another registration must not start a duplicate
   // subscribe.
-  EXPECT_CALL(*mock_gcs_client_->mock_worker_accessor,
-              AsyncSubscribeToWorkerFailure(owner_worker_id, _, _))
-      .Times(0);
+  worker_accessor->async_subscribe_to_worker_failure_calls.clear();
   core_worker_->RegisterGeneratorBackpressureState(
       ObjectID::FromRandom(), waiter, /*actor_metadata=*/nullptr, owner_address);
+  EXPECT_EQ(std::count(worker_accessor->async_subscribe_to_worker_failure_calls.begin(),
+                       worker_accessor->async_subscribe_to_worker_failure_calls.end(),
+                       owner_worker_id),
+            0);
 }
 
 TEST_F(CoreWorkerTest, GeneratorBackpressureFailedSubscribeMissingOwnerDoesNotSweep) {
@@ -636,28 +648,29 @@ TEST_F(CoreWorkerTest, GeneratorBackpressureFailedSubscribeMissingOwnerDoesNotSw
   rpc::Address owner_address;
   owner_address.set_worker_id(owner_worker_id.Binary());
 
-  rpc::StatusCallback subscribe_done;
-  EXPECT_CALL(*mock_gcs_client_->mock_worker_accessor,
-              AsyncSubscribeToWorkerFailure(owner_worker_id, _, _))
-      .WillOnce(::testing::SaveArg<2>(&subscribe_done));
-  EXPECT_CALL(*mock_gcs_client_->mock_worker_accessor, AsyncGet(owner_worker_id, _))
-      .WillOnce(::testing::Invoke(
-          [](const WorkerID &,
-             const rpc::OptionalItemCallback<rpc::WorkerTableData> &callback) {
-            // Ambiguous: the subscribe failed and the row is missing, so
-            // there is no evidence the owner is dead. Do not sweep.
-            callback(Status::OK(), std::nullopt);
-          }));
-  EXPECT_CALL(*mock_gcs_client_->mock_worker_accessor,
-              AsyncUnsubscribeFromWorkerFailure(owner_worker_id))
-      .Times(0);
+  auto *worker_accessor = fake_gcs_client_->fake_worker_accessor;
+  // Ambiguous: the subscribe failed and the row is missing, so there is no
+  // evidence the owner is dead. Do not sweep.
+  worker_accessor->async_get_hook =
+      [](const WorkerID &,
+         const rpc::OptionalItemCallback<rpc::WorkerTableData> &callback) {
+        callback(Status::OK(), std::nullopt);
+      };
 
   auto waiter = std::make_shared<TaskGeneratorBackpressureWaiter>(
       /*generator_backpressure_num_objects=*/1, []() { return Status::OK(); });
   core_worker_->RegisterGeneratorBackpressureState(
       ObjectID::FromRandom(), waiter, /*actor_metadata=*/nullptr, owner_address);
+  rpc::StatusCallback subscribe_done =
+      worker_accessor->async_subscribe_to_worker_failure_done;
   ASSERT_TRUE(subscribe_done);
+  worker_accessor->async_unsubscribe_from_worker_failure_calls.clear();
   subscribe_done(Status::IOError("subscribe failed"));
+  EXPECT_EQ(
+      std::count(worker_accessor->async_unsubscribe_from_worker_failure_calls.begin(),
+                 worker_accessor->async_unsubscribe_from_worker_failure_calls.end(),
+                 owner_worker_id),
+      0);
 }
 
 TEST_F(CoreWorkerTest, HandleGetObjectStatusIdempotency) {
@@ -1091,7 +1104,7 @@ TEST_F(CoreWorkerTest, NamedActorRegisterFailureReleasesHandleReference) {
         R"({"serialized_runtime_env": "{\"env_vars\": {\"T\": \"1\"}}"})");
   };
 
-  mock_gcs_client_->mock_actor_accessor->sync_register_actor_status_ =
+  fake_gcs_client_->fake_actor_accessor->sync_register_actor_status_ =
       Status::TimedOut("injected registration timeout");
   ActorID actor_id;
   auto status = core_worker_->CreateActor(function,
@@ -1104,7 +1117,7 @@ TEST_F(CoreWorkerTest, NamedActorRegisterFailureReleasesHandleReference) {
   EXPECT_FALSE(reference_counter_->HasReference(ObjectID::ForActorHandle(actor_id)));
   EXPECT_EQ(task_manager_->NumPendingTasks(), 0);
 
-  mock_gcs_client_->mock_actor_accessor->sync_register_actor_status_ = Status::OK();
+  fake_gcs_client_->fake_actor_accessor->sync_register_actor_status_ = Status::OK();
   ActorID ok_actor_id;
   status = core_worker_->CreateActor(function,
                                      {},
@@ -1540,7 +1553,7 @@ TEST_P(HandleWaitForActorRefDeletedWhileRegisteringRetriesTest,
       });
 
   ASSERT_EQ(callback_count, 0);
-  mock_gcs_client_->mock_actor_accessor->async_register_actor_callback_(Status::OK());
+  fake_gcs_client_->fake_actor_accessor->async_register_actor_callback_(Status::OK());
   // Triggers the callbacks passed to AsyncWaitForActorRegisterFinish
   ASSERT_FALSE(actor_creator_->IsActorInRegistering(actor_id));
 

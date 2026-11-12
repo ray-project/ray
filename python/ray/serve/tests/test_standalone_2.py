@@ -17,7 +17,10 @@ from ray.serve._private.constants import (
 )
 from ray.serve._private.test_utils import expected_proxy_actors
 from ray.serve.context import _get_global_client
-from ray.tests.conftest import call_ray_stop_only  # noqa: F401
+from ray.tests.conftest import (  # noqa: F401
+    call_ray_stop_only,
+    hold_test_auth_mode,
+)
 from ray.util.state import list_actors
 
 
@@ -34,14 +37,15 @@ def shutdown_ray_and_serve():
 
 @contextmanager
 def start_and_shutdown_ray_cli():
-    subprocess.check_output(["ray", "stop", "--force"])
-    wait_for_condition(_check_ray_stop, timeout=15)
-    subprocess.check_output(["ray", "start", "--head"])
+    with hold_test_auth_mode():
+        subprocess.check_output(["ray", "stop", "--force"])
+        wait_for_condition(_check_ray_stop, timeout=15)
+        subprocess.check_output(["ray", "start", "--head"])
 
-    yield
+        yield
 
-    subprocess.check_output(["ray", "stop", "--force"])
-    wait_for_condition(_check_ray_stop, timeout=15)
+        subprocess.check_output(["ray", "stop", "--force"])
+        wait_for_condition(_check_ray_stop, timeout=15)
 
 
 @pytest.fixture(scope="function")
