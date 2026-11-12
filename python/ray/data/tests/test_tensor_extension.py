@@ -6,11 +6,9 @@ import numpy as np
 import pandas as pd
 import pyarrow as pa
 import pytest
-from packaging.version import parse as parse_version
 
 from ray.data._internal.arrow_ops.transform_pyarrow import combine_chunked_array
 from ray.data._internal.tensor_extensions.arrow import (
-    MIN_PYARROW_VERSION_FIXED_SHAPE_TENSOR_SCALAR,
     ArrowConversionError,
     ArrowTensorArray,
     ArrowTensorType,
@@ -21,10 +19,8 @@ from ray.data._internal.tensor_extensions.arrow import (
     FixedShapeTensorType,
     _are_contiguous_1d_views,
     _concat_ndarrays,
-    _extension_array_concat_supported,
     concat_tensor_arrays,
     create_arrow_fixed_shape_tensor_type,
-    fixed_shape_extension_scalar_to_ndarray,
     native_tensor_array_to_numpy,
     unify_tensor_arrays,
 )
@@ -38,7 +34,6 @@ from ray.data._internal.tensor_extensions.utils import (
     _should_convert_to_tensor,
     create_ragged_ndarray,
 )
-from ray.data._internal.utils.arrow_utils import get_pyarrow_version
 from ray.data.context import DataContext
 
 
@@ -548,46 +543,21 @@ def test_arrow_tensor_array_getitem(chunked, tensor_format_context):
     if chunked:
         t_arr = pa.chunked_array(t_arr)
 
-    pyarrow_version = get_pyarrow_version()
+    for idx in range(outer_dim):
+        item = t_arr[idx]
+        # Returns native FixedShapeTensorScalar
+        np.testing.assert_array_equal(item.to_numpy(), arr[idx])
 
-    if (
-        chunked
-        and pyarrow_version >= parse_version("8.0.0")
-        and pyarrow_version < parse_version("9.0.0")
-    ):
-        for idx in range(outer_dim):
-            item = t_arr[idx]
-            assert isinstance(item, pa.ExtensionScalar)
-            item = item.type._extension_scalar_to_ndarray(item)
+        # NOTE: In addition we verify that for existing ``ArrowTensorScalar``
+        #       implements `__array__` method therefore implementing Numpy
+        #       array protocol
+        if tensor_format != FixedShapeTensorFormat.ARROW_NATIVE:
             np.testing.assert_array_equal(item, arr[idx])
-    else:
-        for idx in range(outer_dim):
-            item = t_arr[idx]
-            if pyarrow_version >= parse_version("16.0.0"):
-                # Returns native FixedShapeTensorScalar
-                np.testing.assert_array_equal(item.to_numpy(), arr[idx])
-            else:
-                # Returns an ExtensionScalar, item.type: FixedShapeTensorType
-                np.testing.assert_array_equal(
-                    fixed_shape_extension_scalar_to_ndarray(item), arr[idx]
-                )
-
-            # NOTE: In addition we verify that for existing ``ArrowTensorScalar``
-            #       implements `__array__` method therefore implementing Numpy
-            #       array protocol
-            if tensor_format != FixedShapeTensorFormat.ARROW_NATIVE:
-                np.testing.assert_array_equal(item, arr[idx])
 
     # Test __iter__.
     for t_subarr, subarr in zip(t_arr, arr):
-        if pyarrow_version >= parse_version("16.0.0"):
-            # Returns native FixedShapeTensorScalar
-            np.testing.assert_array_equal(t_subarr.to_numpy(), subarr)
-        else:
-            # Returns an ExtensionScalar
-            np.testing.assert_array_equal(
-                fixed_shape_extension_scalar_to_ndarray(t_subarr), subarr
-            )
+        # Returns native FixedShapeTensorScalar
+        np.testing.assert_array_equal(t_subarr.to_numpy(), subarr)
 
     # Test to_pylist.
     # Note: With tensor_format_context fixture, ARROW_NATIVE is only tested when
@@ -612,28 +582,10 @@ def test_arrow_tensor_array_getitem(chunked, tensor_format_context):
 
     np.testing.assert_array_equal(t_arr2_npy, arr[1:])
 
-    if (
-        chunked
-        and pyarrow_version >= parse_version("8.0.0")
-        and pyarrow_version < parse_version("9.0.0")
-        and tensor_format != FixedShapeTensorFormat.ARROW_NATIVE
-    ):
-        for idx in range(1, outer_dim):
-            item = t_arr2[idx - 1]
-            assert isinstance(item, pa.ExtensionScalar)
-            item = item.type._extension_scalar_to_ndarray(item)
-            np.testing.assert_array_equal(item, arr[idx])
-    else:
-        for idx in range(1, outer_dim):
-            item = t_arr2[idx - 1]
-            if pyarrow_version >= parse_version("16.0.0"):
-                # Returns native FixedShapeTensorScalar
-                np.testing.assert_array_equal(item.to_numpy(), arr[idx])
-            else:
-                # Returns an ExtensionScalar
-                np.testing.assert_array_equal(
-                    fixed_shape_extension_scalar_to_ndarray(item), arr[idx]
-                )
+    for idx in range(1, outer_dim):
+        item = t_arr2[idx - 1]
+        # Returns native FixedShapeTensorScalar
+        np.testing.assert_array_equal(item.to_numpy(), arr[idx])
 
 
 @pytest.mark.parametrize("chunked", [False, True])
@@ -651,20 +603,8 @@ def test_arrow_variable_shaped_tensor_array_getitem(chunked, tensor_format_conte
     if chunked:
         t_arr = pa.chunked_array(t_arr)
 
-    pyarrow_version = get_pyarrow_version()
-    if (
-        chunked
-        and pyarrow_version >= parse_version("8.0.0")
-        and pyarrow_version < parse_version("9.0.0")
-    ):
-        for idx in range(outer_dim):
-            item = t_arr[idx]
-            assert isinstance(item, pa.ExtensionScalar)
-            item = item.type._extension_scalar_to_ndarray(item)
-            np.testing.assert_array_equal(item, arr[idx])
-    else:
-        for idx in range(outer_dim):
-            np.testing.assert_array_equal(t_arr[idx], arr[idx])
+    for idx in range(outer_dim):
+        np.testing.assert_array_equal(t_arr[idx], arr[idx])
 
     # Test __iter__.
     for t_subarr, subarr in zip(t_arr, arr):
@@ -690,19 +630,8 @@ def test_arrow_variable_shaped_tensor_array_getitem(chunked, tensor_format_conte
     for t_subarr, subarr in zip(t_arr2_npy, arr[1:]):
         np.testing.assert_array_equal(t_subarr, subarr)
 
-    if (
-        chunked
-        and pyarrow_version >= parse_version("8.0.0")
-        and pyarrow_version < parse_version("9.0.0")
-    ):
-        for idx in range(1, outer_dim):
-            item = t_arr2[idx - 1]
-            assert isinstance(item, pa.ExtensionScalar)
-            item = item.type._extension_scalar_to_ndarray(item)
-            np.testing.assert_array_equal(item, arr[idx])
-    else:
-        for idx in range(1, outer_dim):
-            np.testing.assert_array_equal(t_arr2[idx - 1], arr[idx])
+    for idx in range(1, outer_dim):
+        np.testing.assert_array_equal(t_arr2[idx - 1], arr[idx])
 
 
 @pytest.mark.parametrize(
@@ -932,10 +861,6 @@ class TestCreateFixedShapeTensorType:
         assert tensor_type.value_type == dtype
 
 
-@pytest.mark.skipif(
-    not _extension_array_concat_supported(),
-    reason="ExtensionArrays support concatenation only in Pyarrow >= 12.0",
-)
 def test_arrow_fixed_shape_tensor_format_eq_with_concat(tensor_format_context):
     """Test that ArrowTensorType, ArrowTensorTypeV2, and native tensor type __eq__
     methods work correctly when concatenating Arrow arrays with the same tensor type."""
@@ -966,10 +891,6 @@ def test_arrow_fixed_shape_tensor_format_eq_with_concat(tensor_format_context):
     np.testing.assert_array_equal(concatenated.to_numpy_ndarray(), expected)
 
 
-@pytest.mark.skipif(
-    not _extension_array_concat_supported(),
-    reason="ExtensionArrays support concatenation only in Pyarrow >= 12.0",
-)
 def test_arrow_variable_shaped_tensor_type_eq_with_concat():
     """Test that ArrowVariableShapedTensorType __eq__ method works correctly
     when concatenating Arrow arrays with variable shaped tensors."""
@@ -1857,10 +1778,6 @@ def test_unify_tensor_arrays_with_all_null_chunk(restore_data_context, tensor_fo
     np.testing.assert_array_equal(column.to_pylist()[2], np.ones((3, 2), np.float32))
 
 
-@pytest.mark.skipif(
-    get_pyarrow_version() < MIN_PYARROW_VERSION_FIXED_SHAPE_TENSOR_SCALAR,
-    reason="pyarrow native fixed-shape tensors need pyarrow >= 16",
-)
 def test_native_tensor_array_to_numpy_with_null_rows():
     """A pyarrow native fixed-shape tensor array with a null row converts to
     one ndarray per row with None for the null row, instead of the zeros that

@@ -277,6 +277,16 @@ def set_num_threads_env_vars_if_unset() -> List[str]:
     num_threads = str(max(math.floor(num_assigned_cpus), 1))
     for name in unset_env_vars:
         os.environ[name] = num_threads
+    if "OMP_NUM_THREADS" in unset_env_vars:
+        # If modules like torch were pre-imported before fork(), their internal thread
+        # pool is already initialized and ignores subsequent os.environ["OMP_NUM_THREADS"]
+        # updates.
+        for module_name in ray_constants.THREAD_POOL_MODULES:
+            if module_name in sys.modules:
+                try:
+                    sys.modules[module_name].set_num_threads(int(num_threads))
+                except Exception:
+                    pass
     return unset_env_vars
 
 

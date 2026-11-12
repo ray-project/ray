@@ -856,7 +856,9 @@ def test_live_object_store_total_bytes_sums_all_live_components():
     assert object_store.total_bytes() == 600
 
 
-def test_real_actor_pool_operator_satisfies_the_actor_pool_protocol():
+def test_real_actor_pool_operator_satisfies_the_actor_pool_protocol(
+    monkeypatch: pytest.MonkeyPatch,
+):
     """A protocol member no real operator implements makes ``isinstance``
     silently return False, turning the prebuffer term off everywhere instead of
     failing. Pin the real operator so it cannot drift from the fake."""
@@ -870,7 +872,10 @@ def test_real_actor_pool_operator_satisfies_the_actor_pool_protocol():
     assert isinstance(op, ActorPoolOperator)
     assert isinstance(op.actor_pool, ActorPoolAccounting)
     # And a task-based operator must NOT match, or it would be charged a
-    # prebuffer it has no actors to fill.
+    # prebuffer it has no actors to fill. The actor-only backend promotes every
+    # task pool to an actor pool (``maybe_promote_compute_strategy``), so this
+    # half only has a task operator to check with the backend switched off.
+    monkeypatch.delenv("RAY_DATA_ACTOR_ONLY_BACKEND", raising=False)
     task_op = MapOperator.create(
         map_transformer=MagicMock(),
         input_op=InputDataBuffer(data_context, input_data=MagicMock()),

@@ -146,6 +146,7 @@ if TYPE_CHECKING:
     import pyspark
     import tensorflow as tf
     import torch
+    from deltalake import DeltaTable
     from pyiceberg.expressions import BooleanExpression
     from tensorflow_metadata.proto.v0 import schema_pb2
 
@@ -6394,6 +6395,9 @@ def read_delta(
     filesystem: Optional["pyarrow.fs.FileSystem"] = None,
     catalog: Optional["Catalog"] = None,
     columns: Optional[List[str]] = None,
+    partition_filters: Optional[
+        Union[List[Tuple[str, str, Any]], List[List[Tuple[str, str, Any]]]]
+    ] = None,
     parallelism: int = -1,
     num_cpus: Optional[float] = None,
     num_gpus: Optional[float] = None,
@@ -6453,6 +6457,13 @@ def read_delta(
         ...     storage_options={"use_azure_cli": "true"},
         ... )
 
+        Read only the files of one partition:
+
+        >>> ds = ray.data.read_delta(  # doctest: +SKIP
+        ...     "s3://bucket/delta-table/",
+        ...     partition_filters=[("date", "=", "2026-01-02")],
+        ... )
+
     Args:
         path: A single path to a Delta Lake table. Multiple tables are not
             supported.
@@ -6482,6 +6493,14 @@ def read_delta(
             the catalog resolves the physical location and credentials.
         columns: A list of column names to read. Only the specified columns are
             read during the file scan.
+        partition_filters: Filters on the table's partition columns, so only the
+            matching partitions' files are listed and read. Uses ``deltalake``'s
+            tuple format: ``(column, op, value)`` with ``op`` one of ``=``,
+            ``!=``, ``<``, ``<=``, ``>``, ``>=``, ``in`` and ``not in``. A flat
+            list of tuples is an AND of them, and a list of such lists is an OR
+            of the inner ANDs (this form needs ``deltalake`` 1.6.6 or later).
+            Every column must be a partition column, so the result is exact. To
+            filter on other columns, use :meth:`~ray.data.Dataset.filter`.
         parallelism: This argument is deprecated. Use ``override_num_blocks`` argument.
         num_cpus: The number of CPUs to reserve for each parallel read worker.
         num_gpus: The number of GPUs to reserve for each parallel read worker. For
@@ -6584,8 +6603,15 @@ def read_delta(
             "them would return nulls or wrong columns. Follow "
             "https://github.com/ray-project/ray/issues/64854 for support."
         )
+    partition_filter_kwargs = (
+        _delta_partition_filter_kwargs(dt, partition_filters)
+        if partition_filters is not None
+        else {}
+    )
     try:
-        pa_dataset = dt.to_pyarrow_dataset(filesystem=filesystem)
+        pa_dataset = dt.to_pyarrow_dataset(
+            filesystem=filesystem, **partition_filter_kwargs
+        )
     except Exception as e:
         error_msg = str(e)
         # from: https://github.com/delta-io/delta-rs/blob/main/python/deltalake/table.py
@@ -6630,6 +6656,7 @@ def read_delta(
         to_batch_kwargs=arrow_parquet_args if arrow_parquet_args else None,
         shuffle=shuffle,
         include_paths=include_paths,
+        known_file_sizes=_delta_file_sizes(dt),
     )
 
     return read_datasource(
@@ -6897,3 +6924,96 @@ def _get_num_output_blocks(
     elif override_num_blocks is not None:
         parallelism = override_num_blocks
     return parallelism
+
+
+def _delta_partition_filter_kwargs(
+    dt: "DeltaTable",
+    partition_filters: Union[
+        List[Tuple[str, str, Any]], List[List[Tuple[str, str, Any]]]
+    ],
+) -> Dict[str, Any]:
+    """The ``to_pyarrow_dataset`` argument that applies ``partition_filters``.
+
+    deltalake 1.6.6 added ``file_pruning_predicate``, which takes an AND list
+    or an OR of AND lists, and deprecated ``partitions``, which older versions
+    use and which only takes an AND list.
+
+    Args:
+        dt: The table being read.
+        partition_filters: ``read_delta``'s ``partition_filters``.
+
+    Returns:
+        Keyword arguments for ``DeltaTable.to_pyarrow_dataset``.
+    """
+    from deltalake import DeltaTable
+
+    if not isinstance(partition_filters, list) or not partition_filters:
+        raise ValueError(
+            "`partition_filters` must be a non-empty list of (column, op, value) "
+            "tuples, or a list of such lists."
+        )
+    is_dnf = all(isinstance(group, list) for group in partition_filters)
+    groups = partition_filters if is_dnf else [partition_filters]
+    partition_columns = set(dt.metadata().partition_columns)
+    for group in groups:
+        if not isinstance(group, list) or not group:
+            raise ValueError(
+                "`partition_filters` must be a list of (column, op, value) tuples, "
+                f"or a list of such lists; got {partition_filters!r}."
+            )
+        for condition in group:
+            if not isinstance(condition, tuple) or len(condition) != 3:
+                raise ValueError(
+                    "Each partition filter must be a (column, op, value) tuple; "
+                    f"got {condition!r}."
+                )
+            # deltalake also accepts other columns, but prunes those only by
+            # file statistics, so non-matching rows would come back. Keep the
+            # result exact.
+            if condition[0] not in partition_columns:
+                raise ValueError(
+                    "`partition_filters` can only use partition columns, but "
+                    f"{condition[0]!r} isn't one (partition columns: "
+                    f"{sorted(partition_columns)}). Use `Dataset.filter` to "
+                    "filter on other columns."
+                )
+
+    parameters = inspect.signature(DeltaTable.to_pyarrow_dataset).parameters
+    if "file_pruning_predicate" in parameters:
+        return {"file_pruning_predicate": partition_filters}
+    if is_dnf:
+        raise ValueError(
+            "`partition_filters` with OR groups (a list of lists) needs deltalake "
+            "1.6.6 or later. Upgrade deltalake, or pass a single list of "
+            "conditions to AND them."
+        )
+    return {"partitions": partition_filters}
+
+
+def _delta_file_sizes(dt: "DeltaTable") -> Dict[str, int]:
+    """File sizes from the Delta log, keyed by ``to_pyarrow_dataset`` fragment path.
+
+    Lets the reader skip a ``get_file_info`` call (one request on object
+    storage) per file. The log stores paths URL-encoded once more than the
+    fragment paths ``to_pyarrow_dataset`` builds, so they're decoded once.
+
+    Args:
+        dt: The table being read.
+
+    Returns:
+        A map from fragment path to file size in bytes.
+    """
+    import urllib.parse
+
+    import pyarrow as pa
+
+    # deltalake 1.x returns an arro3-core table; ``pa.table`` converts it
+    # through the Arrow C stream interface.
+    actions = pa.table(dt.get_add_actions(flatten=True)).select(["path", "size_bytes"])
+    return {
+        urllib.parse.unquote(path): size
+        for path, size in zip(
+            actions["path"].to_pylist(), actions["size_bytes"].to_pylist()
+        )
+        if path is not None and size is not None
+    }

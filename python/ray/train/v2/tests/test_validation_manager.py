@@ -205,6 +205,50 @@ def test_checkpoint_validation_management_failure(tmp_path):
     )
 
 
+@pytest.mark.parametrize(
+    "default_timeout_s, validation, expected_timeout_s",
+    [
+        (60, True, 60),
+        (60, ValidationTaskConfig(fn_kwargs={"arg": 1}), 60),
+        (60, ValidationTaskConfig(timeout_s=5), 5),
+        (None, ValidationTaskConfig(timeout_s=5), 5),
+        (None, ValidationTaskConfig(fn_kwargs={"arg": 1}), None),
+        (None, True, None),
+    ],
+)
+def test_validation_timeout_defaults_to_task_config(
+    tmp_path, default_timeout_s, validation, expected_timeout_s
+):
+    """A per-report ValidationTaskConfig without timeout_s uses the default."""
+    vm = validation_manager.ValidationManager(
+        checkpoint_manager=create_autospec(CheckpointManager, instance=True),
+        validation_config=ValidationConfig(
+            fn=lambda checkpoint, **kwargs: {},
+            task_config=ValidationTaskConfig(timeout_s=default_timeout_s),
+        ),
+    )
+    training_report = create_dummy_training_reports(
+        num_results=1,
+        storage_context=StorageContext(
+            storage_path=tmp_path,
+            experiment_dir_name="validation_timeout_defaults_experiment",
+        ),
+    )[0]
+
+    vm.after_report(
+        training_report=_TrainingReport(
+            metrics=training_report.metrics,
+            checkpoint=training_report.checkpoint,
+            validation=validation,
+        ),
+        metrics={},
+    )
+    assert vm._kick_off_validations() == 1
+    (pending,) = vm._pending_validations.values()
+    ray.get(list(vm._pending_validations.keys()))
+    assert pending.timeout_s == expected_timeout_s
+
+
 def test_checkpoint_validation_management_success_after_retry(tmp_path):
     @ray.remote
     class Counter:
