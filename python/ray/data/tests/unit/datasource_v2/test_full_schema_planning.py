@@ -184,9 +184,14 @@ def test_ordered_reads_and_task_options(
     def wait(refs, **kwargs):
         widths.append(len(refs))
         timeouts.append(kwargs["timeout"])
-        choices = [ref for ref in refs if ref.index or len(submitted) > window]
-        assert choices, "Completed later batches must allow refill before the slow head"
-        ref = max(choices, key=lambda ref: ref.index)
+        if schema_case == "same":
+            ref = min(refs, key=lambda ref: ref.index)
+        else:
+            choices = [ref for ref in refs if ref.index or len(submitted) > window]
+            assert (
+                choices
+            ), "Completed later batches must allow refill before the slow head"
+            ref = max(choices, key=lambda ref: ref.index)
         return [ref], [other for other in refs if other is not ref]
 
     remote.remote.side_effect = submit
@@ -212,7 +217,7 @@ def test_ordered_reads_and_task_options(
     if window:
         assert actual is not None and expected is not None
         assert actual.equals(expected, check_metadata=True)
-        assert submitted == [paths[i : i + 8] for i in range(0, 40, 8)]
+        assert submitted == [paths[:1], *[paths[i : i + 8] for i in range(1, 40, 8)]]
         assert max(widths) == window
         assert timeouts[0] == inference._FULL_SCHEMA_INFERENCE_FIRST_RESULT_TIMEOUT_S
         assert all(timeout is None for timeout in timeouts[1:])
@@ -238,7 +243,7 @@ def test_ordered_reads_and_task_options(
             a.equals(b, check_metadata=True)
             for a, b in zip(received, expected_received)
         )
-        assert decode.call_count == {"same": 5, "varied": 15, "unique": 40}[schema_case]
+        assert decode.call_count == {"same": 6, "varied": 20, "unique": 40}[schema_case]
         if schema_case == "same":
             decode.reset_mock()
             again = inference.infer_full_schema_from_files(
@@ -250,7 +255,7 @@ def test_ordered_reads_and_task_options(
                 supports_distributed_reads=True,
             )
             assert again is not None and again.equals(expected, check_metadata=True)
-            assert decode.call_count == 5
+            assert decode.call_count == 6
             assert merge.call_count == 2
     else:
         assert actual is None
@@ -262,7 +267,7 @@ def test_ordered_reads_and_task_options(
 
 
 def test_first_schema_result_timeout_cancels_and_falls_back(monkeypatch):
-    for suffix, value in dict(min_files=0, max_tasks=2, batch_size=1).items():
+    for suffix, value in dict(min_files=0, max_tasks=2, batch_size=2).items():
         monkeypatch.setattr(
             inference, f"_FULL_SCHEMA_INFERENCE_{suffix.upper()}", value
         )
@@ -279,7 +284,7 @@ def test_first_schema_result_timeout_cancels_and_falls_back(monkeypatch):
     monkeypatch.setattr(ray, "cancel", cancel)
     monkeypatch.setattr(inference.logger, "warning", warning)
     sample = FileManifest.construct_manifest(
-        paths=["a", "b"], sizes=[1, 1], chunk_metadatas=[None, None]
+        paths=["a", "b", "c"], sizes=[1, 2, 3], chunk_metadatas=[None, None, None]
     )
     result = inference.infer_full_schema_from_files(
         sample,
@@ -290,6 +295,11 @@ def test_first_schema_result_timeout_cancels_and_falls_back(monkeypatch):
         supports_distributed_reads=True,
     )
     assert result is None
+    assert [call.args[0] for call in remote.remote.call_args_list] == [
+        ["a"],
+        ["b", "c"],
+    ]
+    assert [call.args[1] for call in remote.remote.call_args_list] == [[1], [2, 3]]
     wait.assert_called_once_with(
         refs,
         num_returns=1,

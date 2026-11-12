@@ -181,7 +181,8 @@ def infer_full_schema_from_files(
     try:
         while start < len(paths) or pending:
             while start < len(paths) and len(pending) < window:
-                stop = min(start + batch_size, len(paths))
+                # Let the first task report progress without reading a full batch.
+                stop = min(start + (1 if start == 0 else batch_size), len(paths))
                 ref = read_remote.remote(
                     paths[start:stop],
                     sizes[start:stop],
