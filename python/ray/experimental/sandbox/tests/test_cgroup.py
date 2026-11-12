@@ -285,6 +285,49 @@ def test_a_cgroups_cpus_take_precedence_over_the_window(tmp_path: Path) -> None:
     assert command[4:6] == ["--cpus", "0,1"]
 
 
+def test_a_sandbox_with_only_a_memory_limit_gets_a_cpu_window(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """A memory limit gives a sandbox a cgroup but no CPU limit, so the window
+    applies, and the launcher joins the cgroup and sets the window. A CPU
+    limit keeps the window away, even when its cgroup chose no CPUs because
+    the limit covers the whole pool."""
+    monkeypatch.setattr(
+        os, "sched_getaffinity", lambda pid: set(range(16)), raising=False
+    )
+    monkeypatch.setattr(cgroup, "_window_next", 0)
+    monkeypatch.setenv("RAY_SANDBOX_CPU_WINDOW", "4")
+    memory_only = cgroup.SandboxCgroup(tmp_path, {"memory.max": "1073741824"})
+    window = cgroup.unlimited_cpu_window(memory_only)
+    assert window == [0, 1, 2, 3]
+    command = cgroup.wrap_command(["workload"], memory_only, cpus=window)
+    assert command[3:6] == [str(tmp_path), "--cpus", "0,1,2,3"]
+    whole_pool = cgroup.SandboxCgroup(tmp_path, {"cpu.max": "1600000 100000"})
+    assert cgroup.unlimited_cpu_window(whole_pool) is None
+    assert cgroup.wrap_command(["workload"], whole_pool)[3:] == [
+        str(tmp_path),
+        "workload",
+    ]
+    # The backend passes the sandbox's cgroup when it asks for a window.
+    launched = []
+
+    def popen(args, **kwargs):
+        launched.append(list(args))
+        raise OSError("stop here")
+
+    monkeypatch.setattr(gvisor.subprocess, "Popen", popen)
+    backend = GVisorSandboxBackend()
+    config = SandboxConfig(image="busybox:latest")
+    for group in (memory_only, whole_pool):
+        with pytest.raises(OSError):
+            backend._run_until_running(config, "sb-1", str(tmp_path), group)
+    assert launched[0][3:6] == [str(tmp_path), "--cpus", "4,5,6,7"]
+    assert "--cpus" not in launched[1]
+    monkeypatch.setenv("RAY_SANDBOX_CPU_WINDOW", "many")
+    with pytest.raises(ValueError, match="RAY_SANDBOX_CPU_WINDOW"):
+        cgroup.unlimited_cpu_window(whole_pool)
+
+
 def test_a_sandbox_without_limits_boots_on_the_nodes_cpu_window(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:

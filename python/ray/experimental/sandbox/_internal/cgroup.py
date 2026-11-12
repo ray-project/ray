@@ -138,8 +138,10 @@ _window_lock = threading.Lock()
 _window_next: Optional[int] = None
 
 
-def unlimited_cpu_window() -> Optional[List[int]]:
-    """The CPUs for the next sandbox that sets no CPU limit.
+def unlimited_cpu_window(
+    cgroup: Optional["SandboxCgroup"] = None,
+) -> Optional[List[int]]:
+    """The CPUs for the next sandbox, if it sets no CPU limit.
 
     gVisor sizes a sandbox's vCPUs and thread pools from the CPUs its
     processes may run on. A sandbox with no limit sees every CPU of the
@@ -151,9 +153,15 @@ def unlimited_cpu_window() -> Optional[List[int]]:
     once there are more sandboxes than windows: a window sizes a sandbox,
     it doesn't reserve CPUs for it. Unset or ``0`` leaves every CPU.
 
+    Args:
+        cgroup: The sandbox's cgroup, if it has one. A sandbox with only a
+            memory limit has a cgroup and no CPU limit, so it gets a window
+            too. One with a CPU limit keeps the CPUs its cgroup chose.
+
     Returns:
-        The window's CPUs, or None when the sandbox keeps every CPU: the
-        variable is unset, or the node has no more CPUs than the window.
+        The window's CPUs, or None when the sandbox keeps its CPUs: it has a
+        CPU limit, the variable is unset, or the node has no more CPUs than
+        the window.
 
     Raises:
         ValueError: If the variable isn't a non-negative integer.
@@ -167,6 +175,8 @@ def unlimited_cpu_window() -> Optional[List[int]]:
         size = -1
     if size < 0:
         raise ValueError(f"{_CPU_WINDOW_ENV}={raw!r} isn't a number of CPUs such as 8")
+    if cgroup is not None and "cpu.max" in cgroup.limits:
+        return None
     cpus = sorted(os.sched_getaffinity(0))
     size = max(size, _MIN_SANDBOX_CPUS) if size else 0
     if size == 0 or size >= len(cpus):
@@ -193,8 +203,9 @@ def wrap_command(
         command: The workload to execute.
         cgroup: The sandbox's cgroup, or None to leave placement unchanged.
         oom_score_adj: OOM score adjustment, or None to inherit it.
-        cpus: The CPUs to run a sandbox without a cgroup on, or None for
-            every CPU. A cgroup's own CPUs take precedence.
+        cpus: The CPUs to run a sandbox on whose cgroup, if it has one,
+            chose none, or None for every CPU. A cgroup's own CPUs take
+            precedence.
 
     Returns:
         The wrapped command, or the original when no changes are requested.
