@@ -1147,7 +1147,6 @@ class ResourceDemandScheduler(IResourceScheduler):
 
         def _init_replicas(self) -> None:
             """Group running and pending worker nodes into canonical fixed replicas."""
-            scarce_skip = {"CPU", "memory", "object_store_memory"}
             for node_type, cfg in self._node_type_configs.items():
                 rc = cfg.replica_config
                 if rc is None:
@@ -1166,7 +1165,6 @@ class ResourceDemandScheduler(IResourceScheduler):
                     and n.node_kind != NodeKind.HEAD
                     and n.status != SchedulingNodeStatus.TO_TERMINATE
                 ]
-                active_count = len(type_nodes)
                 running_by_dom: Dict[str, List[SchedulingNode]] = defaultdict(list)
                 by_prov: Dict[str, List[SchedulingNode]] = defaultdict(list)
                 running_unlabeled: List[SchedulingNode] = []
@@ -1197,9 +1195,7 @@ class ResourceDemandScheduler(IResourceScheduler):
                             else {str(i) for i in range(len(dn))}
                         )
                         has_h = _has_head(dn)
-                        slots = [
-                            h for h in range(size) if str(h) not in present
-                        ] or list(range(size))
+                        slots = [h for h in range(size) if str(h) not in present]
                         if has_h and 0 in slots:
                             slots.remove(0)
                             slots.append(0)
@@ -1313,27 +1309,11 @@ class ResourceDemandScheduler(IResourceScheduler):
                             n.im_instance_id or "",
                         )
                     )
-                    chunk = max(1, size if not dom_key else 1)
+                    chunk = size if not dom_key else 1
                     for i in range(0, len(running_unlabeled), chunk):
                         rid = self._new_pending_domain(node_type)
-                        grp = running_unlabeled[i : i + chunk]
-                        for m in grp:
+                        for m in running_unlabeled[i : i + chunk]:
                             m.replica_id = rid
-                        for h_idx in range(
-                            len(grp),
-                            len(grp)
-                            + (
-                                min(chunk - len(grp), len(booting_pods))
-                                if not dom_key
-                                else 0
-                            ),
-                        ):
-                            self._assign_replica_slot(
-                                booting_pods.pop(0),
-                                rid,
-                                h_idx,
-                                keep_head=bool(head_keys) and h_idx == 0,
-                            )
 
                 if size == 1:
                     for n in pending:
@@ -1343,80 +1323,52 @@ class ResourceDemandScheduler(IResourceScheduler):
                     continue
 
                 if running_by_dom and booting_pods:
-                    scarce_keys = [
-                        k for k in cfg.resources if k not in scarce_skip | head_keys
-                    ] or [k for k in cfg.resources if k not in head_keys]
-
-                    def _scarce_idle(dn: List[SchedulingNode]) -> bool:
-                        return all(
-                            m.get_available_resources(
-                                ResourceRequestSource.PENDING_DEMAND
-                            ).get(k, 0.0)
-                            >= min(
-                                m.total_resources.get(k, 0.0), cfg.resources.get(k, 0.0)
-                            )
-                            - 1e-9
-                            for m in dn
-                            for k in scarce_keys
-                        )
-
-                    def _fill(d: str, dn: List[SchedulingNode], limit: int) -> int:
-                        return _place_into(d, dn, booting_pods, limit, known=False)
-
-                    def _budget(rem: int) -> int:
-                        if active_count > cfg.max_worker_nodes:
-                            return rem % size
-                        max_new = max(
-                            0,
-                            (
-                                cfg.max_worker_nodes
-                                - len(running_by_dom) * size
-                                - len(uncreated_pending)
-                            )
-                            // size,
-                        )
-                        return rem - min(rem // size, max_new) * size
-
                     incomplete = sorted(
                         ((d, dn) for d, dn in running_by_dom.items() if len(dn) < size),
                         key=lambda x: (
-                            (0, False, 0)
+                            0
                             if x[0] in pinned
-                            else (1, False, max(m.idle_duration_ms for m in x[1]))
-                            if _scarce_idle(x[1])
-                            else (2, _has_head(x[1]), 0),
+                            else (
+                                1
+                                if not any(
+                                    ResourceDemandScheduler._is_running_node(m)
+                                    for m in x[1]
+                                )
+                                else 2
+                            ),
                             size - len(x[1]),
                             x[0],
                         ),
                     )
+                    # Pinned domains absorb only unattributed cloud pods (not new
+                    # REQUESTED launches); purely booting replicas absorb remaining
+                    # half-allocated slots; leftover non-multiples fill any gap.
                     for d, dn in incomplete:
                         if d in pinned:
-                            _fill(d, dn, size - len(dn))
-
-                    spare = _budget(len(booting_pods))
-                    idle_inc = [
-                        (d, dn)
-                        for d, dn in incomplete
-                        if d not in pinned and len(dn) < size and _scarce_idle(dn)
-                    ]
-                    batch_end = need_sum = 0
-                    for idx, (_, dn) in enumerate(idle_inc, start=1):
-                        need_sum += size - len(dn)
-                        if need_sum > len(booting_pods):
-                            break
-                        if (
-                            need_sum <= spare
-                            or (need_sum - spare) % size == 0
-                            or need_sum % size == 0
+                            cloud_rem = sum(
+                                1
+                                for p in booting_pods
+                                if ResourceDemandScheduler._progress_rank(p) < 2
+                            )
+                            _place_into(
+                                d,
+                                dn,
+                                booting_pods,
+                                min(size - len(dn), cloud_rem),
+                                known=False,
+                            )
+                        elif not any(
+                            ResourceDemandScheduler._is_running_node(m) for m in dn
                         ):
-                            batch_end = idx
-                    for d, dn in idle_inc[:batch_end]:
-                        _fill(d, dn, size - len(dn))
-
-                    spare = _budget(len(booting_pods))
+                            _place_into(
+                                d, dn, booting_pods, size - len(dn), known=False
+                            )
+                    spare = len(booting_pods) % size
                     for d, dn in incomplete:
                         if len(dn) < size and spare > 0:
-                            spare -= _fill(d, dn, spare)
+                            spare -= _place_into(
+                                d, dn, booting_pods, spare, known=False
+                            )
 
                 for group in (booting_pods, uncreated_pending):
                     for i in range(0, len(group), size):
@@ -1444,8 +1396,7 @@ class ResourceDemandScheduler(IResourceScheduler):
                     continue
                 size = cfg.replica_config.workers_per_replica
                 k8s_count = booting_count = 0
-                dom_running: Counter = Counter()
-                paired_known: Counter = Counter()
+                dom_counts: Counter = Counter()
                 for n in nodes:
                     if (
                         n.node_type != nt
@@ -1458,19 +1409,13 @@ class ResourceDemandScheduler(IResourceScheduler):
                         or ResourceDemandScheduler._is_unrequested_queued(n)
                     ):
                         continue
-                    is_running = ResourceDemandScheduler._is_running_node(n)
                     k8s_count += 1
                     if n._has_runtime_domain and n.replica_id:
-                        dom_running[n.replica_id] += 1
-                    elif not is_running:
+                        dom_counts[n.replica_id] += 1
+                    elif not ResourceDemandScheduler._is_running_node(n):
                         booting_count += 1
-                        if n.replica_id:
-                            paired_known[n.replica_id] += 1
-                dom_committed = sum(
-                    max(size, cnt + paired_known.get(rid, 0))
-                    for rid, cnt in dom_running.items()
-                )
-                raw_gap = sum(max(0, size - cnt) for cnt in dom_running.values())
+                dom_committed = sum(max(size, cnt) for cnt in dom_counts.values())
+                raw_gap = sum(max(0, size - cnt) for cnt in dom_counts.values())
                 extra = (max(0, booting_count - raw_gap) + size - 1) // size
                 committed = max(
                     ((k8s_count + size - 1) // size) * size,
@@ -2872,6 +2817,8 @@ class ResourceDemandScheduler(IResourceScheduler):
                         max_num_nodes
                         - (len(all_nodes) - len(pool))
                         - missing_backfill_total
+                        # `_try_schedule` re-adds backfill derived from `pool` alone.
+                        + sum(nt_ctx.get_missing_replica_backfill_slots().values())
                     )
                 scheduled, infeasible = ResourceDemandScheduler._try_schedule(
                     nt_ctx, requests, ResourceRequestSource.PENDING_DEMAND
@@ -3838,23 +3785,44 @@ class ResourceDemandScheduler(IResourceScheduler):
                     if unknown_m:
                         unknown.append(unknown_m)
 
-            idle_inc_known: List[List[SchedulingNode]] = []
+            # Incomplete replicas may still have unattributed siblings in `flat`:
+            # KubeRay stamps `provider_replica_id` on every pod in a multi-host
+            # group and deletes partial groups atomically on reconcile, so running
+            # provider-identified replicas know all their existing pods and scale
+            # down independently; running non-provider replicas wait only for opaque
+            # cloud pods (progress_rank < 2); purely booting incomplete replicas
+            # wait for any remaining REQUESTED/cloud pods in `flat`.
+            idle_running_inc: List[List[SchedulingNode]] = []
+            idle_booting_inc: List[List[SchedulingNode]] = []
             has_active_inc = False
             for rid, rn in known:
-                if len(rn) >= size:
-                    if all(id(m) in idle_timeouts for m in rn):
-                        units.append(rn)
-                elif (
-                    all(id(m) in idle_timeouts for m in rn)
-                    and rid not in pinned_for_type
+                has_running = any(
+                    ResourceDemandScheduler._is_running_node(m) for m in rn
+                )
+                is_idle = all(id(m) in idle_timeouts for m in rn) and not (
+                    rid in pinned_for_type and len(rn) < size
+                )
+                if len(rn) >= size or (
+                    has_running and all(m.provider_replica_id for m in rn)
                 ):
-                    idle_inc_known.append(rn)
-                else:
+                    if is_idle:
+                        units.append(rn)
+                elif not is_idle:
                     has_active_inc = True
+                elif has_running:
+                    idle_running_inc.append(rn)
+                else:
+                    idle_booting_inc.append(rn)
 
             flat = [m for rn in unknown for m in rn]
+            has_unknown_cloud_pod = any(
+                ResourceDemandScheduler._progress_rank(m) < 2 for m in flat
+            )
+            if not has_unknown_cloud_pod:
+                units.extend(idle_running_inc)
+                idle_running_inc = []
             if not flat:
-                units.extend(idle_inc_known)
+                units.extend(idle_booting_inc)
             elif not has_active_inc and all(id(m) in idle_timeouts for m in flat):
                 flat.sort(
                     key=lambda m: (
@@ -3863,8 +3831,9 @@ class ResourceDemandScheduler(IResourceScheduler):
                     ),
                     reverse=True,
                 )
-                if idle_inc_known:
-                    units.append([m for rn in idle_inc_known for m in rn] + flat)
+                paired_inc = idle_running_inc + idle_booting_inc
+                if paired_inc:
+                    units.append([m for rn in paired_inc for m in rn] + flat)
                 elif len(flat) % size == 0:
                     units.extend(flat[i : i + size] for i in range(0, len(flat), size))
                 else:

@@ -1218,8 +1218,106 @@ def test_base_accelerator_manager_replica_metadata_is_none():
     from ray._private.accelerators.accelerator import AcceleratorManager
 
     assert AcceleratorManager.get_node_group_replica_metadata({"GPU": 8}, {}) is None
+    assert (
+        AcceleratorManager.get_node_group_additional_resources({"GPU": 8}, {}) is None
+    )
     assert tpu.GKE_TPU_SLICE_TOPOLOGY_ANNOTATION == (
         "cloud.google.com/gke-tpu-slice-topology"
+    )
+
+
+@pytest.mark.parametrize(
+    "resources, node_selector, annotations, expected_labels, expected_resources",
+    [
+        pytest.param(
+            {"CPU": 4, "TPU": 8},
+            {"cloud.google.com/gke-tpu-accelerator": "tpu7x"},
+            {"cloud.google.com/gke-tpu-slice-topology": "2x2x2"},
+            {
+                "ray.io/accelerator-type": "TPU-V7X",
+                "ray.io/tpu-topology": "2x2x2",
+                "ray.io/tpu-pod-type": "v7x-16",
+            },
+            {"TPU-v7x-16-head": 1},
+            id="dynamic-slicing-annotation",
+        ),
+        pytest.param(
+            {"CPU": 4, "TPU": 8},
+            {
+                "cloud.google.com/gke-tpu-accelerator": "tpu7x",
+                "cloud.google.com/gke-tpu-topology": "4x4x4",
+            },
+            {"cloud.google.com/gke-tpu-slice-topology": "2x2x2"},
+            {
+                "ray.io/accelerator-type": "TPU-V7X",
+                "ray.io/tpu-topology": "2x2x2",
+                "ray.io/tpu-pod-type": "v7x-16",
+            },
+            {"TPU-v7x-16-head": 1},
+            id="dynamic-slicing-overrides-pool-selector",
+        ),
+        pytest.param(
+            {"CPU": 4, "TPU": 4},
+            {
+                "cloud.google.com/gke-tpu-accelerator": "tpu-v6e-slice",
+                "cloud.google.com/gke-tpu-topology": "2x4",
+            },
+            {"cloud.google.com/gke-tpu-slice-topology": "  "},
+            {
+                "ray.io/accelerator-type": "TPU-V6E",
+                "ray.io/tpu-topology": "2x4",
+                "ray.io/tpu-pod-type": "v6e-8",
+            },
+            {"TPU-v6e-8-head": 1},
+            id="blank-annotation-falls-back-to-selector",
+        ),
+        pytest.param(
+            {"CPU": 4, "TPU": 4},
+            {
+                "cloud.google.com/gke-tpu-accelerator": "tpu7x",
+                "cloud.google.com/gke-tpu-slice-topology": "2x2x1",
+            },
+            None,
+            None,
+            None,
+            id="slice-topology-on-node-selector-ignored",
+        ),
+        pytest.param(
+            {"CPU": 4, "GPU": 8},
+            {"cloud.google.com/gke-tpu-accelerator": "tpu7x"},
+            {"cloud.google.com/gke-tpu-slice-topology": "2x2x2"},
+            {
+                "ray.io/accelerator-type": "TPU-V7X",
+                "ray.io/tpu-topology": "2x2x2",
+                "ray.io/tpu-pod-type": "v7x-16",
+            },
+            None,
+            id="non-tpu-resources-skip-head-resource",
+        ),
+        pytest.param(
+            {"CPU": 4, "TPU": 4},
+            {"cloud.google.com/gke-tpu-accelerator": "tpu-v6e-slice"},
+            None,
+            None,
+            None,
+            id="missing-topology-returns-none",
+        ),
+    ],
+)
+def test_get_node_group_dynamic_slicing_and_additional_resources(
+    resources, node_selector, annotations, expected_labels, expected_resources
+):
+    assert (
+        TPUAcceleratorManager.get_node_group_accelerator_labels(
+            node_selector, annotations
+        )
+        == expected_labels
+    )
+    assert (
+        TPUAcceleratorManager.get_node_group_additional_resources(
+            resources, node_selector, annotations
+        )
+        == expected_resources
     )
 
 

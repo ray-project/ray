@@ -4407,9 +4407,10 @@ def _run_node(
     labels: Dict[str, str],
     used: Optional[Dict[str, float]] = None,
     idle_ms: int = 0,
+    rep: Optional[str] = None,
 ) -> AutoscalerInstance:
     used = used or {}
-    return make_autoscaler_instance(
+    inst = make_autoscaler_instance(
         im_instance=Instance(
             instance_type=nt,
             status=Instance.RAY_RUNNING,
@@ -4427,12 +4428,19 @@ def _run_node(
         ),
         cloud_instance_id=f"cloud-{iid}",
     )
+    inst.cloud_instance_replica_id = rep
+    return inst
 
 
-def _pending_node(nt: str, iid: str, status=Instance.REQUESTED) -> AutoscalerInstance:
-    return make_autoscaler_instance(
-        im_instance=Instance(instance_type=nt, status=status, instance_id=iid)
+def _pending_node(
+    nt: str, iid: str, status=Instance.REQUESTED, rep: Optional[str] = None
+) -> AutoscalerInstance:
+    inst = make_autoscaler_instance(
+        im_instance=Instance(instance_type=nt, status=status, instance_id=iid),
+        cloud_instance_id=f"cloud-{iid}" if rep else None,
     )
+    inst.cloud_instance_replica_id = rep
+    return inst
 
 
 def _resource_request(
@@ -4583,21 +4591,26 @@ def _tpu_host(
     used: Optional[Dict[str, float]] = None,
     idle_ms: int = 0,
     head: bool = False,
+    rep: Optional[str] = None,
     **extra: float,
 ) -> AutoscalerInstance:
     res = {"CPU": 4, "TPU": 4, **({"TPU-v6e-16-head": 1} if head else {}), **extra}
     lbls = {**TPU_LABELS, _SLICE: s, _WID: str(w)}
-    return _run_node("tpu_4x4", iid, res, lbls, used, idle_ms)
+    return _run_node("tpu_4x4", iid, res, lbls, used, idle_ms, rep=rep)
 
 
 def _pending_tpu(
-    iid: str, status=Instance.ALLOCATED, nt: str = "tpu_4x4"
+    iid: str,
+    status=Instance.ALLOCATED,
+    nt: str = "tpu_4x4",
+    rep: Optional[str] = None,
 ) -> AutoscalerInstance:
-    return _pending_node(nt, iid, status)
+    return _pending_node(nt, iid, status, rep=rep)
 
 
-def _booting_slice(idx: int) -> List[AutoscalerInstance]:
+def _booting_slice(idx: int, with_rep: bool = True) -> List[AutoscalerInstance]:
     u = {"CPU": 1, "object_store_memory": 100}
+    rep = f"slice-{idx}" if with_rep else None
     return [
         _tpu_host(
             f"s{idx}-0",
@@ -4605,21 +4618,28 @@ def _booting_slice(idx: int) -> List[AutoscalerInstance]:
             0,
             u,
             object_store_memory=1000,
+            rep=rep,
             **{f"slice-{idx}": 1},
         ),
-        _tpu_host(f"s{idx}-1", f"slice-{idx}", 1, u, object_store_memory=1000),
-        _pending_node("tpu_4x4", f"s{idx}-p2"),
-        _pending_node("tpu_4x4", f"s{idx}-p3"),
+        _tpu_host(f"s{idx}-1", f"slice-{idx}", 1, u, object_store_memory=1000, rep=rep),
+        _pending_tpu(f"s{idx}-p2", rep=rep),
+        _pending_tpu(f"s{idx}-p3", rep=rep),
     ]
 
 
-_DEG_B0 = [_tpu_host("s0-0", "slice-0", 0, {"TPU": 4}), _tpu_host("s0-1", "slice-0", 1)]
-_DEG_B1 = [_tpu_host("s1-0", "slice-1", 0, {"TPU": 4}), _tpu_host("s1-1", "slice-1", 1)]
+_DEG_B0 = [
+    _tpu_host("s0-0", "slice-0", 0, {"TPU": 4}, rep="slice-0"),
+    _tpu_host("s0-1", "slice-0", 1, rep="slice-0"),
+]
+_DEG_B1 = [
+    _tpu_host("s1-0", "slice-1", 0, {"TPU": 4}, rep="slice-1"),
+    _tpu_host("s1-1", "slice-1", 1, rep="slice-1"),
+]
 _DEG_B_IDLE = _DEG_B0 + [
-    _tpu_host("s1-0", "slice-1", 0, {"CPU": 1}),
-    _tpu_host("s1-1", "slice-1", 1, {"CPU": 1}),
-    _pending_node("tpu_4x4", "p0"),
-    _pending_node("tpu_4x4", "p1"),
+    _tpu_host("s1-0", "slice-1", 0, {"CPU": 1}, rep="slice-1"),
+    _tpu_host("s1-1", "slice-1", 1, {"CPU": 1}, rep="slice-1"),
+    _pending_tpu("p0", rep="slice-1"),
+    _pending_tpu("p1", rep="slice-1"),
 ]
 _IDLE_S0 = [_tpu_host(f"s0-{w}", "slice-0", w) for w in range(4)]
 _P4 = [_pending_tpu(f"p{w}") for w in range(4)]
@@ -4644,6 +4664,7 @@ _PG_CPU = GangResourceRequest(requests=[_mk_req({"CPU": 2}, [(_AFF, "pg", "")])]
         (TPU_CONFIGS, [_tpu_gang()], None, ({"tpu_4x4": 4}, 0)),
         (TPU_CONFIGS, [_tpu_gang()] * 2, None, ({"tpu_4x4": 8}, 0)),
         (TPU_CONFIGS, [_tpu_gang()], _booting_slice(0), ({}, 0)),
+        (TPU_CONFIGS, [_tpu_gang()], _booting_slice(0, with_rep=False), ({}, 0)),
         (TPU_CONFIGS, [_tpu_gang()] * 2, _booting_slice(0), ({"tpu_4x4": 4}, 0)),
         (
             TPU_CONFIGS,
@@ -4817,9 +4838,13 @@ _PG_CPU = GangResourceRequest(requests=[_mk_req({"CPU": 2}, [(_AFF, "pg", "")])]
         (
             TPU_CONFIGS,
             [_tpu_gang()] * 2,
-            [_tpu_host("s1-0", "slice-1", 0, idle_ms=5000)]
-            + [_tpu_host(f"s2-{w}", "slice-2", w, idle_ms=5000) for w in range(3)]
-            + _P4,
+            [_tpu_host("s1-0", "slice-1", 0, idle_ms=5000, rep="slice-1")]
+            + [
+                _tpu_host(f"s2-{w}", "slice-2", w, idle_ms=5000, rep="slice-2")
+                for w in range(3)
+            ]
+            + [_pending_tpu(f"p{w}", rep="slice-1") for w in range(3)]
+            + [_pending_tpu("p3", rep="slice-2")],
             ({}, 0),
         ),
     ],
@@ -4827,6 +4852,7 @@ _PG_CPU = GangResourceRequest(requests=[_mk_req({"CPU": 2}, [(_AFF, "pg", "")])]
         "scale_zero_1",
         "scale_zero_2",
         "staggered_1",
+        "staggered_1_legacy_no_rep",
         "staggered_2g_1s",
         "staggered_2s",
         "pinned_extra_pend",
@@ -4858,7 +4884,7 @@ _PG_CPU = GangResourceRequest(requests=[_mk_req({"CPU": 2}, [(_AFF, "pg", "")])]
         "two_pinned_deg_slices",
         "not_in_launches_new",
         "not_in_with_pinned",
-        "probe_1b_staggered_2_gangs_idle_gt_0",
+        "staggered_2_slices_idle_gt_0",
     ],
 )
 def test_gang_locality_requirement_tpu_slices(cfgs, gangs, insts, exp):
@@ -4871,9 +4897,9 @@ def test_gang_locality_requirement_tpu_slices(cfgs, gangs, insts, exp):
     [
         "demands_spread_avail_crc_ippr",
         "idle_and_max_cap_subslice_protection",
-        "repro2_idle_e_f_f2_g_h_b",
-        "repro2_i_j_and_p2_2_exact_timestamp_release",
-        "repro6_and_probe1_staggered_busy_shield",
+        "idle_scale_down_whole_and_min_workers",
+        "pending_idle_priority_and_timestamp_release",
+        "staggered_boot_protects_busy_slice",
         "pinned_rescheduling_head_and_queued_crc",
         "impossible_and_contradictory_pins",
     ],
@@ -4997,7 +5023,7 @@ def test_multihost_tpu_whole_replica_launch_and_termination(case):
             ).to_terminate
         } == {"al"}
 
-    elif case == "repro2_idle_e_f_f2_g_h_b":
+    elif case == "idle_scale_down_whole_and_min_workers":
         for s0_n, s1_n in ((4, 3), (3, 3), (3, 0)):
             insts = [
                 _tpu_host(f"s0-{w}", "slice-0", w, idle_ms=90_000, head=(w == 0))
@@ -5041,7 +5067,7 @@ def test_multihost_tpu_whole_replica_launch_and_termination(case):
                 == exp_n
             )
 
-    elif case == "repro2_i_j_and_p2_2_exact_timestamp_release":
+    elif case == "pending_idle_priority_and_timestamp_release":
         q4 = [_pending_tpu(f"q{i}", Instance.QUEUED) for i in range(4)]
         rep_i = _sched(
             {"tpu_4x4": _tpu_config(min_workers=4)},
@@ -5102,7 +5128,7 @@ def test_multihost_tpu_whole_replica_launch_and_termination(case):
         assert len(rep_p2.to_terminate) == 4
         assert sp2._pending_unneeded_since_s["tpu_4x4"] == [fresh_ts] * 4
 
-    elif case == "repro6_and_probe1_staggered_busy_shield":
+    elif case == "staggered_boot_protects_busy_slice":
         for max_w in (16, 4):
             rep6 = _sched(
                 {"tpu_4x4": _tpu_config(max_workers=max_w, resources=_HEAD_RES)},
@@ -5239,8 +5265,8 @@ def test_multihost_tpu_whole_replica_launch_and_termination(case):
     [
         "slot_norm_and_wid_selectors",
         "staggered_subslice_and_cross_gang_tiers",
-        "s1_s2_s3_progression_and_head_renorm",
-        "s4_s5_fallback_capacity_and_provider_boundary",
+        "slot_progression_and_head_normalization",
+        "fallback_capacity_and_provider_boundary",
     ],
 )
 def test_multihost_tpu_slot_normalization_and_invariants(case):
@@ -5303,24 +5329,30 @@ def test_multihost_tpu_slot_normalization_and_invariants(case):
             )
 
     elif case == "staggered_subslice_and_cross_gang_tiers":
-        stag = [
-            _tpu_host(
-                f"s{s}-{w}",
-                f"slice-{s}",
-                w,
-                {"TPU": 4} if (s, w) not in ((0, 2), (2, 3)) else None,
-                head=(w == 0),
-            )
-            for s, ws in ((0, (0, 1, 2)), (1, (1, 2)), (2, (1, 2, 3)))
-            for w in ws
-        ] + _P4
+        stag = (
+            [
+                _tpu_host(
+                    f"s{s}-{w}",
+                    f"slice-{s}",
+                    w,
+                    {"TPU": 4} if (s, w) not in ((0, 2), (2, 3)) else None,
+                    head=(w == 0),
+                    rep=f"slice-{s}",
+                )
+                for s, ws in ((0, (0, 1, 2)), (1, (1, 2)), (2, (1, 2, 3)))
+                for w in ws
+            ]
+            + [_pending_tpu("p0", rep="slice-0")]
+            + [_pending_tpu("p1", rep="slice-1"), _pending_tpu("p2", rep="slice-1")]
+            + [_pending_tpu("p3", rep="slice-2")]
+        )
         assert _schedule_gangs(
             {"tpu_4x4": _tpu_config(max_workers=12)},
             [_tpu_gang((None, None))] * 3,
             stag,
         ) == ({}, 0)
         assert _schedule_gangs(TPU_CONFIGS, [_tpu_gang((None, None))] * 3, stag) == (
-            {"tpu_4x4": 4},
+            {},
             0,
         )
         w01 = [
@@ -5378,7 +5410,7 @@ def test_multihost_tpu_slot_normalization_and_invariants(case):
             )
         ] == ["ca"]
 
-    elif case == "s1_s2_s3_progression_and_head_renorm":
+    elif case == "slot_progression_and_head_normalization":
         s1 = _sched(
             TPU_CONFIGS,
             [_pending_tpu(f"q{i}", Instance.QUEUED) for i in range(8)],
@@ -5484,7 +5516,7 @@ def test_multihost_tpu_slot_normalization_and_invariants(case):
                 and not sr.infeasible_gang_resource_requests
             )
 
-    elif case == "s4_s5_fallback_capacity_and_provider_boundary":
+    elif case == "fallback_capacity_and_provider_boundary":
         h_cfgs = {"tpu_4x4": _tpu_config(resources=_HEAD_RES)}
         q8 = [_pending_tpu(f"q{i}", Instance.QUEUED) for i in range(8)]
         fb = _sched(
@@ -5826,7 +5858,12 @@ def test_gang_locality_requirement_gpu_domains(case):
 
 
 @pytest.mark.parametrize(
-    "case", ["divisibility_and_bounds", "npu_tier_vs_running", "repro1_gpu_lws"]
+    "case",
+    [
+        "divisibility_and_bounds",
+        "npu_tier_vs_running",
+        "domainless_replica_group_scaling",
+    ],
 )
 def test_generic_worker_replica_config_and_locality_invariants(case):
     """Generic WorkerReplicaConfig invariants: divisibility validation, disjoint slot
@@ -5928,7 +5965,7 @@ def test_generic_worker_replica_config_and_locality_invariants(case):
                 if n.get_sched_requests(ResourceRequestSource.PENDING_DEMAND)
             ] == [exp]
 
-    elif case == "repro1_gpu_lws":
+    elif case == "domainless_replica_group_scaling":
 
         def _lws(sz=4, mn=0, mx=12):
             return {
@@ -7159,136 +7196,14 @@ def test_label_selector_attempt_cache_prefix_and_tier_invalidation():
         assert cached == uncached
         assert not cached[1]
 
-    # Staggered 2-replica materialization (1 busy running pod in rep-0, 1 idle
-    # allocated pod in rep-1, and 6 REQUESTED pods) commits 8 slots (not 12) and
-    # launches a 3rd replica under max_worker_nodes=12 when 11 tasks are pending.
-    cfg_12 = {
-        "tpu": NodeTypeConfig(
-            name="tpu",
-            resources={"CPU": 4, "TPU": 4},
-            labels={"ray.io/tpu-slice-name": "", "ray.io/tpu-worker-id": ""},
-            min_worker_nodes=0,
-            max_worker_nodes=12,
-            replica_config=WorkerReplicaConfig(
-                workers_per_replica=4,
-                domain_label_key="ray.io/tpu-slice-name",
-                worker_index_label_key="ray.io/tpu-worker-id",
-            ),
-        ),
-        "cpu": NodeTypeConfig(
-            name="cpu", resources={"CPU": 4}, min_worker_nodes=0, max_worker_nodes=4
-        ),
-    }
-    insts_r4 = [
-        AutoscalerInstance(
-            im_instance=Instance(
-                instance_id="r0-0",
-                instance_type="tpu",
-                status=Instance.RAY_RUNNING,
-                node_id="n0",
-                cloud_instance_id="c0-0",
-            ),
-            ray_node=NodeState(
-                node_id=b"n0",
-                instance_id="c0-0",
-                ray_node_type_name="tpu",
-                status=NodeStatus.RUNNING,
-                total_resources={"CPU": 4, "TPU": 4},
-                available_resources={"CPU": 0, "TPU": 0},
-                labels={"ray.io/tpu-slice-name": "rep-0", "ray.io/tpu-worker-id": "0"},
-            ),
-            cloud_instance_id="c0-0",
-            cloud_instance_replica_id="rep-0",
-        ),
-        AutoscalerInstance(
-            im_instance=Instance(
-                instance_id="r1-0",
-                instance_type="tpu",
-                status=Instance.ALLOCATED,
-                cloud_instance_id="c1-0",
-            ),
-            cloud_instance_id="c1-0",
-            cloud_instance_replica_id="rep-1",
-        ),
-        *(
-            AutoscalerInstance(
-                im_instance=Instance(
-                    instance_id=f"req-{i}",
-                    instance_type="tpu",
-                    status=Instance.REQUESTED,
-                    launch_request_id="L-init",
-                )
-            )
-            for i in range(6)
-        ),
-    ]
-    reply_r4 = ResourceDemandScheduler().schedule(
-        SchedulingRequest(
-            node_type_configs=cfg_12,
-            current_instances=insts_r4,
-            disable_launch_config_check=True,
-            resource_requests=[
-                ResourceRequestByCount(
-                    request=ResourceRequest(resources_bundle={"TPU": 4}), count=11
-                )
-            ],
-        )
-    )
-    assert {r.instance_type: r.count for r in reply_r4.to_launch} == {"tpu": 4}
-
-    # RAY_STOP_REQUESTED keeps occupying its slot (the stop can still be rejected)
-    # for multi-host replicas exactly like single-host nodes.
-    assert (
-        SchedulingNode.new(
-            AutoscalerInstance(
-                im_instance=Instance(
-                    instance_id="mh-stop",
-                    instance_type="tpu",
-                    status=Instance.RAY_STOP_REQUESTED,
-                ),
-                ray_node=NodeState(
-                    node_id=b"mhs",
-                    ray_node_type_name="tpu",
-                    status=NodeStatus.IDLE,
-                    total_resources={"CPU": 4, "TPU": 4},
-                    available_resources={"CPU": 4, "TPU": 4},
-                ),
-            ),
-            cfg_12,
-            True,
-        )
-        is not None
-    )
-    assert (
-        SchedulingNode.new(
-            AutoscalerInstance(
-                im_instance=Instance(
-                    instance_id="sh-stop",
-                    instance_type="cpu",
-                    status=Instance.RAY_STOP_REQUESTED,
-                ),
-                ray_node=NodeState(
-                    node_id=b"shs",
-                    ray_node_type_name="cpu",
-                    status=NodeStatus.IDLE,
-                    total_resources={"CPU": 4},
-                    available_resources={"CPU": 4},
-                ),
-            ),
-            cfg_12,
-            True,
-        )
-        is not None
-    )
-
 
 def _make_lifecycle_replica(
     rep: str,
     status: Instance.InstanceStatus,
     size: int,
     busy: bool,
-    launch_config_hash: str = "",
     count: int = 4,
+    idle_ms: int = 0,
     with_provider_replica_id: bool = True,
 ) -> List[AutoscalerInstance]:
     instances = []
@@ -7301,7 +7216,6 @@ def _make_lifecycle_replica(
             node_id=nid.hex(),
             cloud_instance_id=f"c-{rep}-{h}",
             node_kind=NodeKind.WORKER,
-            launch_config_hash=launch_config_hash,
             status_history=[
                 Instance.StatusHistory(
                     instance_status=status, timestamp_ns=time.time_ns()
@@ -7314,6 +7228,7 @@ def _make_lifecycle_replica(
             instance_id=f"c-{rep}-{h}",
             ray_node_type_name="tpu",
             status=NodeStatus.RUNNING if busy else NodeStatus.IDLE,
+            idle_duration_ms=idle_ms,
             total_resources={"CPU": 4, "TPU": 4},
             available_resources={"CPU": avail, "TPU": avail},
             labels=(
@@ -7335,160 +7250,286 @@ def _make_lifecycle_replica(
     return instances
 
 
+def _lifecycle_tpu_cfg(
+    size: int = 4, min_w: int = 0, max_w: int = 16
+) -> Dict[str, NodeTypeConfig]:
+    return {
+        "tpu": NodeTypeConfig(
+            name="tpu",
+            resources={"CPU": 4, "TPU": 4},
+            labels={"ray.io/tpu-slice-name": "", "ray.io/tpu-worker-id": ""}
+            if size > 1
+            else {},
+            min_worker_nodes=min_w,
+            max_worker_nodes=max_w,
+            replica_config=(
+                WorkerReplicaConfig(
+                    workers_per_replica=size,
+                    domain_label_key="ray.io/tpu-slice-name",
+                    worker_index_label_key="ray.io/tpu-worker-id",
+                )
+                if size > 1
+                else None
+            ),
+        )
+    }
+
+
 @pytest.mark.parametrize("workers_per_replica", [1, 4])
 def test_stop_requested_replica_occupancy_and_min_workers(workers_per_replica):
-    cfg = NodeTypeConfig(
-        name="tpu",
-        resources={"CPU": 4, "TPU": 4},
-        labels={},
-        min_worker_nodes=0,
-        max_worker_nodes=8,
-        replica_config=(
-            WorkerReplicaConfig(
-                workers_per_replica=workers_per_replica,
-                domain_label_key="ray.io/tpu-slice-name",
-                worker_index_label_key="ray.io/tpu-worker-id",
-            )
-            if workers_per_replica > 1
-            else None
-        ),
-    )
-    # Draining replica still occupies max_worker_nodes until stop is accepted.
+    cfg = _lifecycle_tpu_cfg(workers_per_replica, max_w=8)
     busy_and_draining = _make_lifecycle_replica(
         "rep-0", Instance.RAY_RUNNING, workers_per_replica, busy=True
     ) + _make_lifecycle_replica(
         "rep-1", Instance.RAY_STOP_REQUESTED, workers_per_replica, busy=False
     )
-    launch_reply = ResourceDemandScheduler().schedule(
-        SchedulingRequest(
-            node_type_configs={"tpu": cfg},
-            current_instances=busy_and_draining,
-            disable_launch_config_check=True,
-            resource_requests=[
-                ResourceRequestByCount(
-                    request=ResourceRequest(resources_bundle={"TPU": 4}), count=4
-                )
-            ],
-        )
+    assert (
+        _sched(
+            cfg,
+            busy_and_draining,
+            reqs=[_resource_request({"TPU": 4}, 4)],
+        ).to_launch
+        == []
     )
-    assert launch_reply.to_launch == []
-
-    # Draining replica must not count toward min_worker_nodes during idle scale-down.
     idle_and_draining = _make_lifecycle_replica(
-        "rep-0", Instance.RAY_STOP_REQUESTED, workers_per_replica, busy=False
-    ) + _make_lifecycle_replica(
-        "rep-1", Instance.RAY_RUNNING, workers_per_replica, busy=False
-    )
-    for inst in idle_and_draining:
-        inst.ray_node.idle_duration_ms = 60_000
-    cfg_min = copy.deepcopy(cfg)
-    cfg_min.min_worker_nodes = 4
-    idle_reply = ResourceDemandScheduler().schedule(
-        SchedulingRequest(
-            node_type_configs={"tpu": cfg_min},
-            current_instances=idle_and_draining,
-            disable_launch_config_check=True,
-            idle_timeout_s=10,
-        )
-    )
-    assert idle_reply.to_terminate == []
-    assert idle_reply.to_launch == []
-
-
-def test_multihost_mixed_runtime_domain_replica_idle_not_split():
-    cfg = NodeTypeConfig(
-        name="tpu",
-        resources={"CPU": 4, "TPU": 4},
-        labels={},
-        min_worker_nodes=0,
-        max_worker_nodes=12,
-        replica_config=WorkerReplicaConfig(
-            workers_per_replica=4,
-            domain_label_key="ray.io/tpu-slice-name",
-            worker_index_label_key="ray.io/tpu-worker-id",
-        ),
-    )
-    busy_full = _make_lifecycle_replica(
-        "rep-healthy",
-        Instance.RAY_RUNNING,
-        4,
-        busy=True,
-        count=4,
-        with_provider_replica_id=False,
-    )
-    idle_running = _make_lifecycle_replica(
         "rep-0",
-        Instance.RAY_RUNNING,
-        4,
+        Instance.RAY_STOP_REQUESTED,
+        workers_per_replica,
         busy=False,
-        count=2,
-        with_provider_replica_id=False,
+        idle_ms=60_000,
+    ) + _make_lifecycle_replica(
+        "rep-1", Instance.RAY_RUNNING, workers_per_replica, busy=False, idle_ms=60_000
     )
-    for inst in idle_running:
-        inst.ray_node.idle_duration_ms = 60_000
-    allocated = [
-        AutoscalerInstance(
-            im_instance=Instance(
-                instance_id=iid,
-                instance_type="tpu",
-                status=Instance.ALLOCATED,
-                cloud_instance_id=f"c-{iid}",
-                node_kind=NodeKind.WORKER,
-            ),
-            cloud_instance_id=f"c-{iid}",
+    assert _launch_and_terminate(
+        _sched(
+            _lifecycle_tpu_cfg(workers_per_replica, min_w=4, max_w=8),
+            idle_and_draining,
+            idle_s=10,
         )
-        for iid in ("alloc-0", "alloc-1", "stray")
-    ]
-    sched = ResourceDemandScheduler()
-    req = SchedulingRequest(
-        node_type_configs={"tpu": cfg},
-        current_instances=busy_full + idle_running + allocated,
-        disable_launch_config_check=True,
-        idle_timeout_s=10,
-        pending_idle_timeout_s=10,
+    ) == ({}, [])
+
+
+def test_multihost_staggered_materialization_and_degraded_termination():
+    # Staggered 2-replica materialization (1 running pod in rep-0, 1 allocated pod
+    # in rep-1, 6 REQUESTED) commits 8 slots and launches a 3rd replica under max=12.
+    insts_r4 = (
+        _make_lifecycle_replica("rep-0", Instance.RAY_RUNNING, 4, busy=True, count=1)
+        + [_pending_node("tpu", "r1-0", Instance.ALLOCATED, rep="rep-1")]
+        + [_pending_node("tpu", f"req-{i}", Instance.REQUESTED) for i in range(6)]
     )
-    clock = iter([100.0, 120.0])
-    with patch(
-        "ray.autoscaler.v2.scheduler.time.monotonic",
-        side_effect=lambda: next(clock, 120.0),
-    ):
-        sched.schedule(req)
-        reply = sched.schedule(req)
-    term_ids = {r.instance_id for r in reply.to_terminate}
-    assert term_ids == {"rep-0-0", "rep-0-1", "alloc-0", "alloc-1", "stray"}
+    assert _launch_and_terminate(
+        _sched(
+            _lifecycle_tpu_cfg(4, max_w=12),
+            insts_r4,
+            reqs=[_resource_request({"TPU": 4}, 11)],
+        )
+    ) == ({"tpu": 4}, [])
+
+    # Unattributed booting pods join idle degraded non-provider replica atomically.
+    mixed_insts = (
+        _make_lifecycle_replica(
+            "rep-healthy",
+            Instance.RAY_RUNNING,
+            4,
+            busy=True,
+            with_provider_replica_id=False,
+        )
+        + _make_lifecycle_replica(
+            "rep-0",
+            Instance.RAY_RUNNING,
+            4,
+            busy=False,
+            count=2,
+            idle_ms=60_000,
+            with_provider_replica_id=False,
+        )
+        + [
+            _pending_node("tpu", iid, Instance.ALLOCATED)
+            for iid in ("a0", "a1", "stray")
+        ]
+    )
+    assert {
+        t.instance_id
+        for t in _sched(
+            _lifecycle_tpu_cfg(4, max_w=12),
+            mixed_insts,
+            idle_s=10,
+            pending_idle_s=10,
+            unneeded={"tpu": [0.0, 0.0, 0.0]},
+        ).to_terminate
+    } == {"rep-0-0", "rep-0-1", "a0", "a1", "stray"}
+
+    # Degraded running replica terminates before complete idle replica under max cap.
+    full_and_deg = _make_lifecycle_replica(
+        "full", Instance.RAY_RUNNING, 4, busy=False, count=4, idle_ms=60_000
+    ) + _make_lifecycle_replica(
+        "deg", Instance.RAY_RUNNING, 4, busy=False, count=3, idle_ms=60_000
+    )
+    assert sorted(
+        t.instance_id
+        for t in _sched(_lifecycle_tpu_cfg(4, max_w=4), full_and_deg).to_terminate
+    ) == ["deg-0", "deg-1", "deg-2"]
+
+    # Degraded idle replica (with or without provider_replica_id) is never blocked
+    # by in-flight REQUESTED launches for new replicas.
+    req4 = [_pending_node("tpu", f"req-{i}", Instance.REQUESTED) for i in range(4)]
+    for with_rep in (True, False):
+        deg = _make_lifecycle_replica(
+            "deg",
+            Instance.RAY_RUNNING,
+            4,
+            busy=False,
+            count=3,
+            idle_ms=60_000,
+            with_provider_replica_id=with_rep,
+        )
+        assert sorted(
+            t.instance_id
+            for t in _sched(_lifecycle_tpu_cfg(), deg + req4, idle_s=10).to_terminate
+        ) == ["deg-0", "deg-1", "deg-2"]
+
+    # Provider-identified degraded replicas scale down independently under min=4 even
+    # when an unattributed ALLOCATED pod is idle or fresh; conversely, a half-allocated
+    # booting replica shields its REQUESTED siblings when fresh and scales down
+    # atomically with them once all slots expire.
+    deg_a = _make_lifecycle_replica(
+        "deg-a", Instance.RAY_RUNNING, 4, busy=False, count=3, idle_ms=90_000
+    )
+    deg_b = _make_lifecycle_replica(
+        "deg-b", Instance.RAY_RUNNING, 4, busy=False, count=3, idle_ms=60_000
+    )
+    stray = _pending_node("tpu", "stray", Instance.ALLOCATED)
+    assert [
+        t.instance_id
+        for t in _sched(
+            _lifecycle_tpu_cfg(4, min_w=4),
+            deg_a + deg_b + [stray],
+            idle_s=10,
+            pending_idle_s=10,
+            unneeded={"tpu": [0.0]},
+        ).to_terminate
+    ] == ["stray"]
+    assert sorted(
+        t.instance_id
+        for t in _sched(
+            _lifecycle_tpu_cfg(4, min_w=4),
+            deg_a + deg_b + [stray],
+            idle_s=10,
+            pending_idle_s=10,
+        ).to_terminate
+    ) == ["deg-a-0", "deg-a-1", "deg-a-2"]
+
+    now = time.monotonic()
+    half_alloc = [
+        _pending_node("tpu", f"g1-{i}", Instance.ALLOCATED, rep="G1") for i in range(2)
+    ] + [_pending_node("tpu", f"req-{i}", Instance.REQUESTED) for i in range(2)]
+    # Half-allocated booting replica waits while its REQUESTED siblings are in flight.
+    assert (
+        _sched(
+            _lifecycle_tpu_cfg(),
+            half_alloc,
+            pending_idle_s=10,
+            unneeded={"tpu": [now - 100.0, now - 100.0]},
+        ).to_terminate
+        == []
+    )
+    # Once all 4 pods materialize (or its REQUESTED siblings disappear), G1 scales
+    # down cleanly even when another slice has REQUESTED launches in flight.
+    full_alloc = [
+        _pending_node("tpu", f"g1-{i}", Instance.ALLOCATED, rep="G1") for i in range(4)
+    ] + req4
+    assert sorted(
+        t.instance_id
+        for t in _sched(
+            _lifecycle_tpu_cfg(),
+            full_alloc,
+            pending_idle_s=10,
+            unneeded={"tpu": [now - 100.0] * 4},
+        ).to_terminate
+    ) == ["g1-0", "g1-1", "g1-2", "g1-3"]
+    assert sorted(
+        t.instance_id
+        for t in _sched(
+            _lifecycle_tpu_cfg(),
+            half_alloc[:2],
+            pending_idle_s=10,
+            unneeded={"tpu": [now - 100.0] * 2},
+        ).to_terminate
+    ) == ["g1-0", "g1-1"]
 
 
-def test_multihost_degraded_running_replica_terminated_before_complete_replica():
-    cfg = NodeTypeConfig(
-        name="tpu",
-        resources={"CPU": 4, "TPU": 4},
-        labels={},
+def test_unlabeled_locality_gang_tight_max_num_nodes_with_booting_replica():
+    """Unlabeled locality fallback must not double-count replica backfill."""
+    head_cfg = NodeTypeConfig(
+        name="head", resources={"CPU": 4}, min_worker_nodes=0, max_worker_nodes=1
+    )
+    gpu_cfg = NodeTypeConfig(
+        name="gpu",
+        resources={"CPU": 8, "GPU": 4},
         min_worker_nodes=0,
-        max_worker_nodes=4,
-        replica_config=WorkerReplicaConfig(
-            workers_per_replica=4,
-            domain_label_key="ray.io/tpu-slice-name",
-            worker_index_label_key="ray.io/tpu-worker-id",
+        max_worker_nodes=8,
+        replica_config=WorkerReplicaConfig(workers_per_replica=4),
+    )
+    head = AutoscalerInstance(
+        im_instance=Instance(
+            instance_id="head",
+            instance_type="head",
+            status=Instance.RAY_RUNNING,
+            node_id="ray-head",
+            cloud_instance_id="pod-head",
+            node_kind=NodeKind.HEAD,
         ),
+        ray_node=NodeState(
+            node_id=b"ray-head".ljust(28, b"\0"),
+            status=NodeStatus.IDLE,
+            total_resources={"CPU": 4},
+            available_resources={"CPU": 4},
+        ),
+        cloud_instance_id="pod-head",
     )
-    full = _make_lifecycle_replica("full", Instance.RAY_RUNNING, 4, busy=False, count=4)
-    degraded = _make_lifecycle_replica(
-        "deg", Instance.RAY_RUNNING, 4, busy=False, count=3
-    )
-    for inst in full + degraded:
-        inst.ray_node.idle_duration_ms = 60_000
-    reply = ResourceDemandScheduler().schedule(
-        SchedulingRequest(
-            node_type_configs={"tpu": cfg},
-            current_instances=full + degraded,
-            disable_launch_config_check=True,
-        )
-    )
-    assert sorted(req.instance_id for req in reply.to_terminate) == [
-        "deg-0",
-        "deg-1",
-        "deg-2",
+    half_booting = [
+        _pending_node("gpu", f"p-{i}", Instance.ALLOCATED, rep="rep-0")
+        for i in range(2)
     ]
+    mid_boot_full = [
+        _run_node(
+            "gpu",
+            f"r-{i}",
+            {"CPU": 8, "GPU": 4},
+            {},
+            used={"CPU": 8, "GPU": 4},
+            rep="rep-0",
+        )
+        for i in range(2)
+    ] + half_booting
+    reqs4 = []
+    for _ in range(4):
+        req = ResourceRequest(resources_bundle={"CPU": 4, "GPU": 4})
+        pc = req.placement_constraints.add()
+        pc.anti_affinity.label_name = "_pg"
+        pc.anti_affinity.label_value = "gpu_pg"
+        reqs4.append(req)
+    gang = GangResourceRequest(
+        bundle_selectors=[
+            BundleSelector(
+                resource_requests=reqs4,
+                locality_requirement=LocalityRequirement(
+                    locality_constraint=LocalityConstraint(
+                        label_name="ray.io/gpu-domain",
+                        placement_strategy=PlacementStrategy.STRICT_PACK,
+                    )
+                ),
+            )
+        ]
+    )
+    cfgs = {"head": head_cfg, "gpu": gpu_cfg}
+    for workers in (half_booting, mid_boot_full):
+        rep_tight = _sched(cfgs, [head] + workers, gangs=[gang], max_nodes=8)
+        assert _launch_and_terminate(rep_tight) == ({}, [])
+        assert len(rep_tight.infeasible_gang_resource_requests) == 1
+        rep_fit = _sched(cfgs, [head] + workers, gangs=[gang], max_nodes=9)
+        assert _launch_and_terminate(rep_fit) == ({"gpu": 4}, [])
+        assert rep_fit.infeasible_gang_resource_requests == []
 
 
 if __name__ == "__main__":

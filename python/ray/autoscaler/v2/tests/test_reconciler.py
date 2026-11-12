@@ -2846,7 +2846,7 @@ class TestReconciler:
         assert len(sub_cons.events) == 4
 
         # Non-multiple QUEUED counts never split a multi-host replica or strand a
-        # fractional REQUESTED instance (repro3 Cases A, B, C, D, E, F, G).
+        # fractional REQUESTED instance.
         def _q(iid, ts, nt="tpu16"):
             return create_instance(
                 iid,
@@ -2929,9 +2929,61 @@ class TestReconciler:
             )["tpu16"]
         ] == ["ret-0", "ret-1", *(f"r0-{i}" for i in range(4))]
 
-        # Solicited degraded-slice drain (repro7 A/B), mixed solicited+unsolicited
-        # replica completion (repro8), and bounded replica_id unsolicited-fault hold
-        # with warning logs (Probes 2/3 & repro7 C).
+    @staticmethod
+    def _setup_multihost_reconcile_env(
+        cluster_id: str,
+        instances,
+        max_worker_nodes: int = 8,
+        workers_per_replica: int = 4,
+    ):
+        cfg = MockAutoscalingConfig(
+            configs={
+                "node_type_configs": {
+                    "tpu": NodeTypeConfig(
+                        name="tpu",
+                        resources={"CPU": 4, "TPU": 4},
+                        min_worker_nodes=0,
+                        max_worker_nodes=max_worker_nodes,
+                        replica_config=WorkerReplicaConfig(
+                            workers_per_replica=workers_per_replica
+                        ),
+                    )
+                }
+            }
+        )
+        store = InstanceStorage(cluster_id=cluster_id, storage=InMemoryStorage())
+        sub = MockSubscriber()
+        im = InstanceManager(store, instance_status_update_subscribers=[sub])
+        TestReconciler._add_instances(store, instances)
+        sub.clear()
+        return cfg, store, sub, im
+
+    @staticmethod
+    def _replica_cloud(rep_ranges, include_head: bool = False):
+        cloud = (
+            {"c-head": CloudInstance("c-head", "head", NodeKind.HEAD, True)}
+            if include_head
+            else {}
+        )
+        for rep, indices in rep_ranges.items():
+            for h in indices:
+                cloud[f"c-{h}"] = CloudInstance(
+                    f"c-{h}", "tpu", NodeKind.WORKER, True, replica_id=rep
+                )
+        return cloud
+
+    def test_multihost_replica_drain_and_partial_termination_filtering(self):
+        """Solicited drains, mixed crash+drain completion, and partial-replica
+        termination filtering preserve replica atomicity without pod churn."""
+        v6e_16 = {
+            "tpu16": NodeTypeConfig(
+                name="tpu16",
+                resources={"CPU": 8, "GPU": 4},
+                min_worker_nodes=0,
+                max_worker_nodes=16,
+                replica_config=WorkerReplicaConfig(workers_per_replica=4),
+            )
+        }
         rep_cloud = {
             "c-head": CloudInstance("c-head", "head", NodeKind.HEAD, True),
             **{
@@ -2956,8 +3008,7 @@ class TestReconciler:
         }
 
         # (a) Solicited drain of degraded slice (3 RAY_RUNNING + 1 TERMINATED) plus
-        # solicited ALLOCATED termination while rep-1 is busy: drains/terminates
-        # immediately without bucket filtering or RAY_STOPPED detours.
+        # solicited ALLOCATED termination while rep-1 is busy drains immediately.
         s7_store = InstanceStorage(cluster_id="repro7a", storage=InMemoryStorage())
         s7_im = InstanceManager(s7_store, instance_status_update_subscribers=[])
         TestReconciler._add_instances(
@@ -3061,7 +3112,7 @@ class TestReconciler:
         assert inst7["alloc-0"].status == Instance.TERMINATING
         assert all(inst7[f"s1-{i}"].status == Instance.RAY_RUNNING for i in range(4))
 
-        # (b) repro8: 3 solicited RAY_STOPPED + 1 unsolicited crashed RAY_STOPPED in
+        # (b) 3 solicited RAY_STOPPED + 1 unsolicited crashed RAY_STOPPED in
         # rep-0 terminate cleanly in 1 tick while rep-1 remains RAY_RUNNING.
         s8_store = InstanceStorage(cluster_id="repro8", storage=InMemoryStorage())
         s8_sub = MockSubscriber()
@@ -3110,9 +3161,8 @@ class TestReconciler:
         )
         assert {e.instance_id for e in s8_sub.events} == {f"s0-{i}" for i in range(4)}
 
-        # (d) _scale_cluster plumbs cloud_instance_replica_id so reshuffled booting
-        # slices drain as exact KubeRay replicas (B1b), and defers partial/in-flight
-        # booting replica scale-downs with one WARNING instead of pod churn (B1a).
+        # (c) _scale_cluster plumbs cloud_instance_replica_id so reshuffled booting
+        # slices drain as exact KubeRay replicas and defers partial booting scale-downs.
         head_cfg = NodeTypeConfig(
             name="head", resources={"CPU": 1}, min_worker_nodes=0, max_worker_nodes=0
         )
@@ -3347,35 +3397,12 @@ class TestReconciler:
             assert len(p_sub.events) == expected_queued
 
     def test_multihost_crashed_worker_terminates_while_drained_worker_waits(self):
-        cfg = MockAutoscalingConfig(
-            configs={
-                "node_type_configs": {
-                    "tpu": NodeTypeConfig(
-                        name="tpu",
-                        resources={"CPU": 4, "TPU": 4},
-                        min_worker_nodes=0,
-                        max_worker_nodes=8,
-                        replica_config=WorkerReplicaConfig(workers_per_replica=4),
-                    )
-                }
-            }
-        )
-        cloud = {
-            f"c-{h}": CloudInstance(
-                f"c-{h}", "tpu", NodeKind.WORKER, True, replica_id="rep-0"
-            )
-            for h in range(4)
-        }
+        cloud = self._replica_cloud({"rep-0": range(4)})
         now_ns = time.time_ns()
 
         # Spontaneous raylet exit (RAY_RUNNING -> RAY_STOPPED) terminates immediately.
-        crash_store = InstanceStorage(cluster_id="crash", storage=InMemoryStorage())
-        crash_sub = MockSubscriber()
-        crash_im = InstanceManager(
-            crash_store, instance_status_update_subscribers=[crash_sub]
-        )
-        TestReconciler._add_instances(
-            crash_store,
+        cfg, _, crash_sub, crash_im = self._setup_multihost_reconcile_env(
+            "crash",
             [
                 *(
                     create_instance(
@@ -3398,7 +3425,6 @@ class TestReconciler:
                 ),
             ],
         )
-        crash_sub.clear()
         Reconciler._terminate_instances(
             crash_im, autoscaling_config=cfg, non_terminated_cloud_instances=cloud
         )
@@ -3407,13 +3433,8 @@ class TestReconciler:
         ]
 
         # Solicited stop (RAY_STOP_REQUESTED -> RAY_STOPPED) waits while siblings run.
-        drain_store = InstanceStorage(cluster_id="drain", storage=InMemoryStorage())
-        drain_sub = MockSubscriber()
-        drain_im = InstanceManager(
-            drain_store, instance_status_update_subscribers=[drain_sub]
-        )
-        TestReconciler._add_instances(
-            drain_store,
+        cfg, _, drain_sub, drain_im = self._setup_multihost_reconcile_env(
+            "drain",
             [
                 *(
                     create_instance(
@@ -3437,37 +3458,13 @@ class TestReconciler:
                 ),
             ],
         )
-        drain_sub.clear()
         Reconciler._terminate_instances(
             drain_im, autoscaling_config=cfg, non_terminated_cloud_instances=cloud
         )
         assert drain_sub.events == []
 
     def test_multihost_idle_scale_down_leaves_booting_worker_until_drain_accepted(self):
-        cfg = MockAutoscalingConfig(
-            configs={
-                "node_type_configs": {
-                    "tpu": NodeTypeConfig(
-                        name="tpu",
-                        resources={"CPU": 4, "TPU": 4},
-                        min_worker_nodes=0,
-                        max_worker_nodes=8,
-                        replica_config=WorkerReplicaConfig(workers_per_replica=4),
-                    )
-                }
-            }
-        )
-        store = InstanceStorage(cluster_id="boot_hold", storage=InMemoryStorage())
-        sub = MockSubscriber()
-        im = InstanceManager(store, instance_status_update_subscribers=[sub])
-        insts = [
-            create_instance(
-                "head",
-                status=Instance.RAY_RUNNING,
-                instance_type="head",
-                node_kind=NodeKind.HEAD,
-                cloud_instance_id="c-head",
-            ),
+        workers = [
             *(
                 create_instance(
                     f"w-{h}",
@@ -3485,17 +3482,20 @@ class TestReconciler:
                 cloud_instance_id="c-3",
             ),
         ]
-        TestReconciler._add_instances(store, insts)
-        workers = insts[1:]
-        cloud = {
-            "c-head": CloudInstance("c-head", "head", NodeKind.HEAD, True),
-            **{
-                f"c-{h}": CloudInstance(
-                    f"c-{h}", "tpu", NodeKind.WORKER, True, replica_id="rep-0"
-                )
-                for h in range(4)
-            },
-        }
+        cfg, store, sub, im = self._setup_multihost_reconcile_env(
+            "boot_hold",
+            [
+                create_instance(
+                    "head",
+                    status=Instance.RAY_RUNNING,
+                    instance_type="head",
+                    node_kind=NodeKind.HEAD,
+                    cloud_instance_id="c-head",
+                ),
+                *workers,
+            ],
+        )
+        cloud = self._replica_cloud({"rep-0": range(4)}, include_head=True)
         sched = MagicMock()
         sched.schedule.return_value = SchedulingReply(
             to_launch=[],
@@ -3511,7 +3511,6 @@ class TestReconciler:
                 for h in range(4)
             ],
         )
-        sub.clear()
         Reconciler._scale_cluster(
             autoscaling_state=MagicMock(),
             instance_manager=im,
@@ -3530,41 +3529,13 @@ class TestReconciler:
     def test_multihost_solicited_drain_terminates_unready_siblings_but_crash_does_not(
         self,
     ):
-        cfg = MockAutoscalingConfig(
-            configs={
-                "node_type_configs": {
-                    "tpu": NodeTypeConfig(
-                        name="tpu",
-                        resources={"CPU": 4, "TPU": 4},
-                        min_worker_nodes=0,
-                        max_worker_nodes=8,
-                        replica_config=WorkerReplicaConfig(workers_per_replica=4),
-                    )
-                }
-            }
-        )
-        cloud = {
-            "c-head": CloudInstance("c-head", "head", NodeKind.HEAD, True),
-            **{
-                f"c-{h}": CloudInstance(
-                    f"c-{h}", "tpu", NodeKind.WORKER, True, replica_id="rep-0"
-                )
-                for h in range(4)
-            },
-        }
+        cloud = self._replica_cloud({"rep-0": range(4)}, include_head=True)
+        now_ns = time.time_ns()
 
         # Once all draining siblings reach RAY_STOPPED, _terminate_instances must
         # terminate the held ALLOCATED sibling in the same batch rather than orphaning it.
-        now_ns = time.time_ns()
-        drained_store = InstanceStorage(
-            cluster_id="boot_done", storage=InMemoryStorage()
-        )
-        drained_sub = MockSubscriber()
-        drained_im = InstanceManager(
-            drained_store, instance_status_update_subscribers=[drained_sub]
-        )
-        TestReconciler._add_instances(
-            drained_store,
+        cfg, _, drained_sub, drained_im = self._setup_multihost_reconcile_env(
+            "boot_done",
             [
                 *(
                     create_instance(
@@ -3588,7 +3559,6 @@ class TestReconciler:
                 ),
             ],
         )
-        drained_sub.clear()
         Reconciler._terminate_instances(
             drained_im, autoscaling_config=cfg, non_terminated_cloud_instances=cloud
         )
@@ -3597,13 +3567,8 @@ class TestReconciler:
         ) == [(f"w-{h}", Instance.TERMINATING) for h in range(4)]
 
         # Unsolicited crash of one worker must not terminate an ALLOCATED sibling.
-        crash_store = InstanceStorage(cluster_id="crash_sib", storage=InMemoryStorage())
-        crash_sub = MockSubscriber()
-        crash_im = InstanceManager(
-            crash_store, instance_status_update_subscribers=[crash_sub]
-        )
-        TestReconciler._add_instances(
-            crash_store,
+        cfg, _, crash_sub, crash_im = self._setup_multihost_reconcile_env(
+            "crash_sib",
             [
                 create_instance(
                     "w-0",
@@ -3623,7 +3588,6 @@ class TestReconciler:
                 ),
             ],
         )
-        crash_sub.clear()
         Reconciler._terminate_instances(
             crash_im, autoscaling_config=cfg, non_terminated_cloud_instances=cloud
         )
@@ -3640,27 +3604,12 @@ class TestReconciler:
         ],
     )
     def test_multihost_drain_hold_timeout_leaves_unready_siblings(self, sibling_status):
-        cfg = MockAutoscalingConfig(
-            configs={
-                "node_type_configs": {
-                    "tpu": NodeTypeConfig(
-                        name="tpu",
-                        resources={"CPU": 4, "TPU": 4},
-                        min_worker_nodes=0,
-                        max_worker_nodes=8,
-                        replica_config=WorkerReplicaConfig(workers_per_replica=4),
-                    )
-                }
-            }
-        )
+        now_ns = time.time_ns()
+        cfg, store, sub, im = self._setup_multihost_reconcile_env("hold_timeout", [])
         hold_timeout_s = (
             cfg.get_instance_reconcile_config().terminating_status_timeout_s
         )
-        now_ns = time.time_ns()
         expired_ns = now_ns - (hold_timeout_s + 60) * 10**9
-        store = InstanceStorage(cluster_id="hold_timeout", storage=InMemoryStorage())
-        sub = MockSubscriber()
-        im = InstanceManager(store, instance_status_update_subscribers=[sub])
         TestReconciler._add_instances(
             store,
             [
@@ -3718,20 +3667,7 @@ class TestReconciler:
                 ),
             ],
         )
-        cloud = {
-            **{
-                f"c-{h}": CloudInstance(
-                    f"c-{h}", "tpu", NodeKind.WORKER, True, replica_id="rep-0"
-                )
-                for h in range(4)
-            },
-            **{
-                f"c-{h}": CloudInstance(
-                    f"c-{h}", "tpu", NodeKind.WORKER, True, replica_id="rep-1"
-                )
-                for h in range(4, 8)
-            },
-        }
+        cloud = self._replica_cloud({"rep-0": range(4), "rep-1": range(4, 8)})
         sub.clear()
         Reconciler._terminate_instances(
             im, autoscaling_config=cfg, non_terminated_cloud_instances=cloud
@@ -3757,25 +3693,9 @@ class TestReconciler:
         ]
 
     def test_multihost_ray_stopping_sibling_defers_unready_and_stopped_siblings(self):
-        cfg = MockAutoscalingConfig(
-            configs={
-                "node_type_configs": {
-                    "tpu": NodeTypeConfig(
-                        name="tpu",
-                        resources={"CPU": 4, "TPU": 4},
-                        min_worker_nodes=0,
-                        max_worker_nodes=8,
-                        replica_config=WorkerReplicaConfig(workers_per_replica=4),
-                    )
-                }
-            }
-        )
         now_ns = time.time_ns()
-        store = InstanceStorage(cluster_id="stopping_hold", storage=InMemoryStorage())
-        sub = MockSubscriber()
-        im = InstanceManager(store, instance_status_update_subscribers=[sub])
-        TestReconciler._add_instances(
-            store,
+        cfg, store, sub, im = self._setup_multihost_reconcile_env(
+            "stopping_hold",
             [
                 create_instance(
                     "head",
@@ -3810,15 +3730,7 @@ class TestReconciler:
                 ),
             ],
         )
-        cloud = {
-            "c-head": CloudInstance("c-head", "head", NodeKind.HEAD, True),
-            **{
-                f"c-{h}": CloudInstance(
-                    f"c-{h}", "tpu", NodeKind.WORKER, True, replica_id="rep-0"
-                )
-                for h in range(3)
-            },
-        }
+        cloud = self._replica_cloud({"rep-0": range(3)}, include_head=True)
         sched = MagicMock()
         sched.schedule.return_value = SchedulingReply(
             to_launch=[],
@@ -3832,7 +3744,6 @@ class TestReconciler:
                 )
             ],
         )
-        sub.clear()
         Reconciler._scale_cluster(
             autoscaling_state=MagicMock(),
             instance_manager=im,

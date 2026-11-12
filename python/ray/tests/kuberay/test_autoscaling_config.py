@@ -9,9 +9,11 @@ import pytest
 import requests
 import yaml
 
-from ray.autoscaler._private.kuberay.autoscaling_config import (
+from ray._private.accelerators.tpu import (
     GKE_TPU_ACCELERATOR_LABEL,
     GKE_TPU_TOPOLOGY_LABEL,
+)
+from ray.autoscaler._private.kuberay.autoscaling_config import (
     AutoscalingConfigProducer,
     _derive_autoscaling_config_from_ray_cr,
     _get_custom_resources,
@@ -1093,7 +1095,7 @@ def test_dynamic_slicing_and_multihost_replica_config():
     tpu_zero["template"]["metadata"] = {}
     tpu_zero["template"]["spec"]["nodeSelector"] = {
         "cloud.google.com/gke-tpu-accelerator": "tpu7x",
-        "cloud.google.com/gke-tpu-slice-topology": "2x2x1",
+        "cloud.google.com/gke-tpu-topology": "2x2x1",
     }
     cr["spec"]["workerGroupSpecs"].extend([tpu_override, tpu_single, tpu_zero])
 
