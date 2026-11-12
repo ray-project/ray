@@ -20,7 +20,7 @@ from __future__ import annotations
 
 import copy
 import dataclasses
-from typing import TYPE_CHECKING, FrozenSet, List, Literal, Optional, Union
+from typing import TYPE_CHECKING, List, Literal, Optional, Union
 
 import pyarrow as pa
 from typing_extensions import override
@@ -101,10 +101,6 @@ class LineChunkableDatasourceV2(FileDataSourceV2):
         self._ignore_missing_paths = ignore_missing_paths
         self._shuffle = shuffle
         self._synthesized_columns = (PathColumn(),) if include_paths else ()
-        # Partition keys that the sampled files also hold as columns. Set by
-        # ``infer_schema``, since the schema it returns can't tell them apart
-        # from partition columns that exist only in the path.
-        self._partition_columns_in_file: FrozenSet[str] = frozenset()
         # Read once here and carried to the indexer and the readers, so both
         # map a chunk index to the same byte range.
         self._chunk_size = env_integer("RAY_DATA_LINE_CHUNK_BYTES", 128 * MiB)
@@ -191,11 +187,6 @@ class LineChunkableDatasourceV2(FileDataSourceV2):
                 partition_schema = _partition_field_types_to_pa_schema(
                     field_names=partition_names,
                     field_types=resolved_partitioning.field_types or {},
-                )
-                self._partition_columns_in_file = frozenset(
-                    name
-                    for name in partition_names
-                    if schema.get_field_index(name) != -1
                 )
                 for name in partition_names:
                     if schema.get_field_index(name) == -1:

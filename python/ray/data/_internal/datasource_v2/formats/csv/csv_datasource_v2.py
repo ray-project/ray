@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, Dict, FrozenSet, List, Optional, Tuple
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 
 import pyarrow as pa
 import pyarrow.csv as pcsv
@@ -15,15 +15,26 @@ from ray.data._internal.datasource_v2.common.arrow_file_scanner import (
 from ray.data._internal.datasource_v2.common.file_reader import (
     _ARROW_DEFAULT_BATCH_SIZE,
 )
+from ray.data._internal.datasource_v2.common.line_chunk_file_indexer import (
+    LineChunkFileIndexer,
+)
 from ray.data._internal.datasource_v2.common.line_chunkable_datasource_v2 import (
     LineChunkableDatasourceV2,
 )
+from ray.data._internal.datasource_v2.common.line_chunking import read_line_aligned
 from ray.data._internal.datasource_v2.formats.csv.csv_file_reader import (
+    COLUMN_NAMES_KEY,
     CsvFileReader,
     csv_file_format,
+    has_header,
     invalid_csv_error,
     read_snappy_buffer,
 )
+from ray.data._internal.datasource_v2.interfaces.file_indexer import (
+    FileIndexer,
+    FileInfo,
+)
+from ray.data._internal.datasource_v2.interfaces.file_manifest import ChunkMetadata
 from ray.data._internal.datasource_v2.interfaces.synthesized_columns import (
     SynthesizedColumn,
 )
@@ -38,13 +49,54 @@ if TYPE_CHECKING:
 CSV_V2_ARGS = frozenset({"read_options", "parse_options", "convert_options"})
 
 
+class CsvFileIndexer(LineChunkFileIndexer):
+    """Lists CSV files in chunks, storing each split file's column names.
+
+    A chunk after the first has no header, so the indexer reads the split
+    file's header line once and puts its column names in every chunk's
+    metadata.
+    """
+
+    def __init__(
+        self,
+        *,
+        filesystem: "FileSystem",
+        read_options: pcsv.ReadOptions,
+        parse_options: pcsv.ParseOptions,
+        **line_chunk_kwargs: Any,
+    ):
+        super().__init__(**line_chunk_kwargs)
+        self._filesystem = filesystem
+        # Default convert options, so ``include_columns`` can't drop names.
+        self._header_format = csv_file_format(
+            read_options, parse_options, pcsv.ConvertOptions()
+        )
+
+    @override
+    def _chunk_metadatas_of_file(
+        self, file_info: FileInfo
+    ) -> List[Optional[ChunkMetadata]]:
+        metadatas = super()._chunk_metadatas_of_file(file_info)
+        if metadatas == [None]:
+            return metadatas
+        assert file_info.size is not None
+        # ponytail: one header read per split file, serially in the listing
+        # task. Read them in a thread pool if listing many large files is slow.
+        with self._filesystem.open_input_file(file_info.path) as file:
+            header = read_line_aligned(file, start=0, end=1, file_size=file_info.size)
+        names = self._header_format.inspect(pa.py_buffer(header)).names
+        return [
+            None if metadata is None else {**metadata, COLUMN_NAMES_KEY: names}
+            for metadata in metadatas
+        ]
+
+
 @DeveloperAPI
 @dataclass(frozen=True)
 class CsvScanner(ArrowFileScanner):
     """Configure CSV reads through :class:`CsvFileReader`."""
 
     synthesized_columns: Tuple[SynthesizedColumn, ...] = ()
-    partition_columns_in_file: FrozenSet[str] = frozenset()
     chunk_size: int = 0
     read_options: Optional[pcsv.ReadOptions] = None
     parse_options: Optional[pcsv.ParseOptions] = None
@@ -67,7 +119,6 @@ class CsvScanner(ArrowFileScanner):
             read_options=self.read_options,
             parse_options=self.parse_options,
             convert_options=self.convert_options,
-            partition_columns_in_file=self.partition_columns_in_file,
             chunk_size=self.chunk_size,
             batch_size=self.batch_size or _ARROW_DEFAULT_BATCH_SIZE,
             columns=list(self.columns) if self.columns is not None else None,
@@ -123,6 +174,18 @@ class CsvDatasourceV2(LineChunkableDatasourceV2):
         )
 
     @override
+    def _get_file_indexer(self) -> FileIndexer:
+        if self._can_split_files() and has_header(self._read_options):
+            return CsvFileIndexer(
+                chunk_size=self._chunk_size,
+                ignore_missing_paths=self._ignore_missing_paths,
+                filesystem=self._filesystem,
+                read_options=self._read_options,
+                parse_options=self._parse_options,
+            )
+        return super()._get_file_indexer()
+
+    @override
     def _read_file_schema(self, path: str) -> pa.Schema:
         file_format = csv_file_format(
             self._read_options, self._parse_options, self._convert_options
@@ -146,7 +209,6 @@ class CsvDatasourceV2(LineChunkableDatasourceV2):
             filesystem=filesystem or self._filesystem,
             partitioning=options.get("partitioning", self._partitioning),
             synthesized_columns=self._synthesized_columns,
-            partition_columns_in_file=self._partition_columns_in_file,
             chunk_size=self._chunk_size,
             read_options=self._read_options,
             parse_options=self._parse_options,

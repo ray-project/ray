@@ -1,7 +1,7 @@
 """``FileReader`` for CSV on DataSource V2, splitting large files at newlines."""
 
 import copy
-from typing import TYPE_CHECKING, Any, FrozenSet, Iterator, List
+from typing import TYPE_CHECKING, Any, Dict, Iterator, List
 
 import pyarrow as pa
 import pyarrow.csv as pcsv
@@ -11,7 +11,9 @@ from typing_extensions import override
 from ray.data._internal.datasource_v2.common.file_reader import FileFormat
 from ray.data._internal.datasource_v2.common.line_chunkable_file_reader import (
     LineChunkableFileReader,
+    one_block_size,
 )
+from ray.data._internal.datasource_v2.interfaces.file_manifest import FileManifest
 from ray.data._internal.datasource_v2.interfaces.read_units import ReadUnitFragment
 from ray.data._internal.util import infer_compression
 from ray.data.datasource.file_based_datasource import _decompress_snappy
@@ -30,6 +32,15 @@ def csv_file_format(
         parse_options=parse_options,
         convert_options=convert_options,
     )
+
+
+# Chunk metadata key for a split file's column names, read from its header.
+COLUMN_NAMES_KEY = "column_names"
+
+
+def has_header(read_options: pcsv.ReadOptions) -> bool:
+    """Whether a CSV file's first line names its columns."""
+    return not (read_options.column_names or read_options.autogenerate_column_names)
 
 
 def invalid_csv_error(path: str) -> ValueError:
@@ -51,9 +62,9 @@ def read_snappy_buffer(path: str, filesystem: "FileSystem") -> pa.Buffer:
 class CsvFileReader(LineChunkableFileReader):
     """Reads CSV files whole or in byte-range chunks.
 
-    A chunk after the first has no header, so it is parsed with the
-    plan-time schema's column names. The chunk at byte 0 checks that its
-    header matches those names, in order.
+    A chunk after the first has no header. It is parsed with its file's own
+    column names, which ``CsvFileIndexer`` read while listing and stored in
+    the chunk's metadata.
     """
 
     def __init__(
@@ -62,7 +73,6 @@ class CsvFileReader(LineChunkableFileReader):
         read_options: pcsv.ReadOptions,
         parse_options: pcsv.ParseOptions,
         convert_options: pcsv.ConvertOptions,
-        partition_columns_in_file: FrozenSet[str] = frozenset(),
         **line_chunkable_kwargs: Any,
     ):
         super().__init__(FileFormat.CSV, **line_chunkable_kwargs)
@@ -72,13 +82,26 @@ class CsvFileReader(LineChunkableFileReader):
         self._read_options = read_options
         self._parse_options = parse_options
         self._convert_options = convert_options
-        self._partition_columns_in_file = partition_columns_in_file
+        self._column_names_by_path: Dict[str, List[str]] = {}
 
     @override
     def _make_format(self) -> pds.CsvFileFormat:
         return csv_file_format(
             self._read_options, self._parse_options, self._convert_options
         )
+
+    @override
+    def _get_fragments_to_read(
+        self,
+        dataset: pds.Dataset,
+        manifest: FileManifest,
+    ) -> List[ReadUnitFragment]:
+        self._column_names_by_path = {
+            path: [str(name) for name in metadata[COLUMN_NAMES_KEY]]
+            for path, metadata in zip(manifest.paths, manifest.file_chunk_metadatas)
+            if metadata is not None and COLUMN_NAMES_KEY in metadata
+        }
+        return super()._get_fragments_to_read(dataset, manifest)
 
     @override
     def _iter_unit_tables(
@@ -104,46 +127,10 @@ class CsvFileReader(LineChunkableFileReader):
     def _make_chunk_fragment(
         self, lines: memoryview, *, starts_at_file_start: bool, path: str
     ) -> pds.Fragment:
-        has_header = not (
-            self._read_options.column_names
-            or self._read_options.autogenerate_column_names
-        )
-        if starts_at_file_start or not has_header:
-            fragment = self._make_format().make_fragment(pa.py_buffer(lines))
-            if has_header:
-                self._check_header(fragment.physical_schema.names, path)
-            return fragment
-
-        headerless_options = copy.deepcopy(self._read_options)
-        headerless_options.column_names = self._file_column_names()
-        headerless_options.skip_rows = 0
-        headerless_options.skip_rows_after_names = 0
+        read_options = copy.deepcopy(self._read_options)
+        read_options.block_size = one_block_size(lines)
+        if not starts_at_file_start and has_header(read_options):
+            read_options.column_names = self._column_names_by_path[path]
         return csv_file_format(
-            headerless_options, self._parse_options, self._convert_options
+            read_options, self._parse_options, self._convert_options
         ).make_fragment(pa.py_buffer(lines))
-
-    def _file_column_names(self) -> List[str]:
-        # ``_file_dataset_schema`` drops every partition key, including those
-        # the file also holds as columns; keep those, in the file's order.
-        schema = self._schema
-        assert schema is not None
-        file_columns = set((self._file_dataset_schema or pa.schema([])).names)
-        return [
-            name
-            for name in schema.names
-            if name in file_columns or name in self._partition_columns_in_file
-        ]
-
-    def _check_header(self, header: List[str], path: str) -> None:
-        expected = self._file_column_names()
-        if header != expected:
-            raise ValueError(
-                f"CSV file {path} has columns {header}, but the files sampled "
-                f"for the schema have {expected}. `read_csv` splits files larger "
-                f"than {self._chunk_size} bytes and names the columns of each "
-                "later piece from the sampled schema, so every such file must "
-                "list the same columns in the same order. Set "
-                "RAY_DATA_LINE_CHUNK_BYTES above the file size to read it "
-                "whole, or set "
-                "`ray.data.DataContext.get_current().use_datasource_v2 = False`."
-            )
