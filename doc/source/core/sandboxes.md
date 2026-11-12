@@ -1183,7 +1183,7 @@ Creating a sandbox takes a boot on its node and a few calls to the facade. To cr
 Serve's HAProxy and any proxy in front of the facade also cap what one deployment carries, and their defaults are low for this API:
 
 * The client SDK keeps one command-router connection open for each sandbox it runs commands in, and Serve's HAProxy accepts 4,096 connections by default. Past that, new connections wait. Set `RAY_SERVE_HAPROXY_MAXCONN` on every node to more than the sandboxes you expect, and raise `RAY_SERVE_HAPROXY_NBTHREAD` from its default of 4 for bursts.
-* A proxy allows about 100 calls in flight on each client connection by default. A client process that waits on hundreds of sandboxes at once queues the calls past that. Raise `RAY_SERVE_HAPROXY_H2_FE_MAX_CONCURRENT_STREAMS` and `RAY_SERVE_HAPROXY_H2_BE_MAX_CONCURRENT_STREAMS`, and with Envoy Gateway set `http2.maxConcurrentStreams` in a `ClientTrafficPolicy` on the Gateway.
+* Serve's HAProxy and Envoy Gateway each allow 100 calls in flight on a client connection by default. A client process that waits on more sandboxes than that, such as with `Sandbox.wait`, holds every slot, and its other calls then wait for seconds. Raise `RAY_SERVE_HAPROXY_H2_FE_MAX_CONCURRENT_STREAMS` and `RAY_SERVE_HAPROXY_H2_BE_MAX_CONCURRENT_STREAMS`, and with Envoy Gateway set `http2.maxConcurrentStreams` in a `ClientTrafficPolicy` on the Gateway.
 * Envoy stops sending a backend more than 1,024 requests at once by default, and fails the others with `reset reason: overflow`. A burst of creates passes that. With Envoy Gateway, raise the limits in the `BackendTrafficPolicy` that turns the route timeout off:
 
 ```yaml
