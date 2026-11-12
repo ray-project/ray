@@ -292,6 +292,8 @@ def _plan_random_shuffle_v2(
         data_context,
         num_partitions=num_partitions,
         reduce_fn=make_random_shuffle_reduce_fn(seed),
+        # Partition order is the only block order a seed can reproduce.
+        preserve_partition_order=data_context.execution_options.preserve_order,
         peak_memory_multiplier=_RANDOM_SHUFFLE_REDUCE_PEAK_MEMORY_MULTIPLIER,
         reduce_ray_remote_args=logical_op.ray_remote_args,
         name=f"DiskRandomShuffleReduce(partitions={num_partitions})",

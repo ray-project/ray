@@ -586,6 +586,42 @@ def test_disk_shuffle_map_op_orders_handles_by_task_index(restore_data_context):
     assert op._shared_handles_ref == ("handle-0", "handle-1", "handle-2")
 
 
+def test_disk_shuffle_reduce_op_emits_partitions_in_order(restore_data_context):
+    map_op = DiskHashShuffleMapOp(
+        InputDataBuffer(restore_data_context, []),
+        restore_data_context,
+        num_partitions=2,
+        partition_fn=lambda table: {},
+    )
+    op = DiskHashShuffleReduceOp(
+        map_op,
+        restore_data_context,
+        num_partitions=2,
+        reduce_fn=lambda partition_id, tables_by_input: iter(()),
+        preserve_partition_order=True,
+    )
+    op.start(ExecutionOptions(), noop_counter())
+    with patch(
+        "ray.data._internal.execution.operators.shuffle_operators."
+        "disk_shuffle_reduce_operator._disk_shuffle_reduce_task"
+    ) as reduce_task:
+        reduce_task.options.return_value.remote.return_value = MagicMock()
+        for partition_id in range(2):
+            op._submit_reduce_task(
+                partition_id, [RefBundle((), schema=None, owns_blocks=True)]
+            )
+
+    # Partition 1 finishes first; its output must wait behind partition 0's.
+    outputs = [RefBundle((), schema=None, owns_blocks=True) for _ in range(2)]
+    for partition_id in (1, 0):
+        op._handle_reduce_output_ready(partition_id, outputs[partition_id])
+        assert op.has_next() == (partition_id == 0)
+        op._handle_reduce_done(partition_id, [], None, None, None, False)
+
+    assert [op.get_next() for _ in range(2)] == outputs
+    assert not op.has_next()
+
+
 def test_disk_shuffle_reduce_task_applies_reduce_ray_remote_args(restore_data_context):
     restore_data_context.execution_options.label_selector = {
         "subcluster": "train",

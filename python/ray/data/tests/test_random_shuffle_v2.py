@@ -118,6 +118,13 @@ def test_random_shuffle_planner_routes_to_disk_shuffle_v2(
     assert map_op.name == "DiskRandomShuffleMap(partitions=2)"
     assert isinstance(map_op._partition_fn, RandomShufflePartitioner)
     assert map_op._map_ray_remote_args == {"resources": {"bar": 1}}
+    assert not dag._preserve_partition_order
+
+    disk_shuffle_v2.execution_options.preserve_order = True
+    ds_ordered = ray.data.range(10, override_num_blocks=2).random_shuffle()
+    ordered_dag = get_execution_plan(ds_ordered._logical_plan)[0].dag
+    assert isinstance(ordered_dag, DiskHashShuffleReduceOp)
+    assert ordered_dag._preserve_partition_order
 
     # Without the disk transport, SHUFFLE_V2 keeps the legacy all-to-all op.
     disk_shuffle_v2.use_disk_based_hash_shuffle = False
@@ -130,6 +137,8 @@ def test_random_shuffle_planner_routes_to_disk_shuffle_v2(
 def test_random_shuffle_v2_end_to_end(ray_start_regular_shared_2_cpus, disk_shuffle_v2):
     # One map task per input block, so reducers merge shards from several mappers.
     disk_shuffle_v2.shuffle_input_batch_bytes = 0
+    # Block order is only reproducible when partitions are emitted in order.
+    disk_shuffle_v2.execution_options.preserve_order = True
 
     ds = ray.data.range(1000, override_num_blocks=10)
     seeded = [row["id"] for row in ds.random_shuffle(seed=7).take_all()]
