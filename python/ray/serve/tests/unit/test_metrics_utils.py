@@ -1517,6 +1517,7 @@ class TestSelfHealthPush:
         m._pending_health_push_started_at = 0.0
         m._pending_health_push_healthy = True
         m._self_health_paused = False
+        m._self_health_epoch = 0
         m._metrics_push_lock = threading.Lock()
         m._controller_handle = Mock()
         m._metrics_pusher = MetricsPusher()
@@ -1647,7 +1648,10 @@ class TestSelfHealthPush:
         assert m._consecutive_failures == 1
 
     @pytest.mark.asyncio
-    async def test_a_check_running_when_a_reconfigure_starts_is_dropped(self):
+    @pytest.mark.parametrize("finished", [False, True])
+    async def test_a_check_running_when_a_reconfigure_starts_is_dropped(self, finished):
+        """Whether or not the reconfigure is over by the time the check returns: one
+        that ran entirely inside it leaves the pause flag clear at both ends."""
         m = self._manager()
         started = asyncio.Event()
         release = asyncio.Event()
@@ -1661,6 +1665,8 @@ class TestSelfHealthPush:
         check = asyncio.create_task(m._eval_and_push_self_health())
         await started.wait()
         m.pause_self_health()
+        if finished:
+            m.resume_self_health()
         release.set()
         await check
         m._controller_handle.record_replica_health.remote.assert_not_called()
@@ -1766,7 +1772,9 @@ class TestReplicaHealthVerdict:
         r._health_check_lock = asyncio.Lock()
         r._user_callable_wrapper = Mock()
         r._user_callable_wrapper.call_user_health_check.return_value = None
-        r._metrics_manager = SimpleNamespace(self_health_paused=False)
+        r._metrics_manager = SimpleNamespace(
+            self_health_paused=False, self_health_epoch=0
+        )
         return r
 
     @pytest.mark.asyncio
@@ -1850,20 +1858,35 @@ class TestReplicaHealthVerdict:
         assert r._health_checked_at is None
 
     @pytest.mark.asyncio
-    async def test_a_check_that_ends_while_paused_leaves_the_cached_verdict(self):
+    @pytest.mark.parametrize("finished", [False, True])
+    async def test_a_check_a_reconfigure_overtakes_leaves_the_cached_verdict(
+        self, finished
+    ):
         """A reconfigure began part way through, so the verdict may describe it, and
-        probes and /-/healthz would still read it once the replica is RUNNING."""
+        probes and /-/healthz would still read it once the replica is RUNNING. That
+        holds whether or not the reconfigure is over by the time the check returns."""
         r = self._replica()
         r._healthy = True
         r._health_checked_at = 1.0
-        r._metrics_manager.self_health_paused = True
+        started = asyncio.Event()
+        release = asyncio.Event()
 
-        async def bad():
+        async def fails_once_released():
+            started.set()
+            await release.wait()
             raise RuntimeError("intended to fail")
 
-        r._user_callable_wrapper.call_user_health_check.side_effect = lambda: bad()
+        r._user_callable_wrapper.call_user_health_check.side_effect = (
+            lambda: fails_once_released()
+        )
+        check = asyncio.create_task(r._run_user_health_check())
+        await started.wait()
+        # What pause_self_health() leaves behind, and resume_self_health() after it.
+        r._metrics_manager.self_health_epoch += 1
+        r._metrics_manager.self_health_paused = not finished
+        release.set()
         with pytest.raises(RuntimeError, match="intended to fail"):
-            await r._run_user_health_check()
+            await check
         assert r._healthy is True
         assert r._health_checked_at == 1.0
         assert r._last_self_health_error is None
@@ -1936,6 +1959,27 @@ class TestReconfigurePausesSelfHealth:
         with pytest.raises(RuntimeError, match="intended to fail"):
             await r.reconfigure(DeploymentConfig(user_config={"v": 2}), None)
         r._metrics_manager.resume_self_health.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_a_failure_cached_before_a_reconfigure_does_not_answer_a_probe(self):
+        """An unhealthy verdict never expires, and this one predates whatever the
+        reconfigure changed, so the first probe after it runs the user check rather
+        than charge the old failure to a replica that may have recovered."""
+        from ray.serve._private.config import DeploymentConfig
+
+        r = self._replica()
+        r._metrics_manager.self_health_paused = False
+        r._metrics_manager.self_health_epoch = 0
+        r._self_health_active = True
+        r._healthy = False
+        r._health_checked_at = time.time()
+        r._last_self_health_error = "intended to fail"
+        r._health_check_lock = asyncio.Lock()
+        r._user_callable_wrapper.call_user_health_check.return_value = None
+        await r.reconfigure(DeploymentConfig(), None)
+        await r.check_health()
+        r._user_callable_wrapper.call_user_health_check.assert_called_once()
+        assert r._healthy is True
 
 
 class TestBoundedPushGuard:

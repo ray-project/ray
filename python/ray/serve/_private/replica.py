@@ -443,6 +443,9 @@ class ReplicaMetricsManager:
         self._pending_health_push_healthy: bool = True
         # Set while the replica reconfigures; see pause_self_health().
         self._self_health_paused: bool = False
+        # Bumped by each pause, so a check a whole reconfigure ran inside, which sees
+        # the flag clear at both ends, is still told apart.
+        self._self_health_epoch: int = 0
 
         # If the interval is set to 0, eagerly sets all metrics.
         self._cached_metrics_enabled = RAY_SERVE_METRICS_EXPORT_INTERVAL_MS != 0
@@ -740,6 +743,7 @@ class ReplicaMetricsManager:
         health-check an UPDATING replica, so it would apply a failure seen now only once
         the replica is RUNNING again, and could replace one that had since recovered."""
         self._self_health_paused = True
+        self._self_health_epoch += 1
 
     def resume_self_health(self) -> None:
         self._self_health_paused = False
@@ -748,9 +752,14 @@ class ReplicaMetricsManager:
     def self_health_paused(self) -> bool:
         return self._self_health_paused
 
+    @property
+    def self_health_epoch(self) -> int:
+        return self._self_health_epoch
+
     async def _eval_and_push_self_health(self):
         if self._self_health_paused:
             return
+        epoch = self._self_health_epoch
         # Invariant: the pusher registers this task only after setting the callable,
         # so narrow the Optional for the type checkers.
         eval_fn = self._eval_self_health_fn
@@ -774,7 +783,7 @@ class ReplicaMetricsManager:
             # Shutting down: an interrupted check confirmed nothing, so neither count
             # it nor tell the controller.
             return
-        if self._self_health_paused:
+        if self._self_health_paused or self._self_health_epoch != epoch:
             # A reconfigure started part way through, so this verdict may reflect it.
             return
         counted_at = time.time()
@@ -2073,6 +2082,9 @@ class Replica:
         route_prefix: Optional[str] = None,
     ):
         self._metrics_manager.pause_self_health()
+        # The cached verdict predates whatever this changes, and an unhealthy one never
+        # expires, so the next probe runs the user check instead of replaying it.
+        self._health_checked_at = None
         try:
             user_config_changed = (
                 deployment_config.user_config != self._deployment_config.user_config
@@ -2483,6 +2495,7 @@ class Replica:
             await self._run_user_health_check_locked()
 
     async def _run_user_health_check_locked(self):
+        epoch = self._metrics_manager.self_health_epoch
         try:
             # Runs the user-defined check_health on the user code loop if defined.
             # Otherwise, if the background watchdog has detected the user loop is
@@ -2492,19 +2505,23 @@ class Replica:
             f = self._user_callable_wrapper.call_user_health_check()
             if f is not None:
                 await f
-            self._cache_health_verdict(error=None)
+            self._cache_health_verdict(error=None, epoch=epoch)
         except Exception as e:
             logger.warning("Replica health check failed.")
-            self._cache_health_verdict(error=repr(e))
+            self._cache_health_verdict(error=repr(e), epoch=epoch)
             raise e from None
 
-    def _cache_health_verdict(self, error: Optional[str]) -> None:
+    def _cache_health_verdict(self, error: Optional[str], epoch: int) -> None:
         """Cache a finished check for probes and /-/healthz; error is None if it passed.
 
-        A cancelled check confirmed nothing and never gets here. One that ends while a
-        reconfigure has the self-check paused is dropped too, as it may describe that.
+        A cancelled check confirmed nothing and never gets here. One that a reconfigure
+        started during is dropped too, as it may describe that, whether or not the
+        reconfigure is over by the time it ends; epoch is the one it started in.
         """
-        if self._self_health_active and self._metrics_manager.self_health_paused:
+        manager = self._metrics_manager
+        if self._self_health_active and (
+            manager.self_health_paused or manager.self_health_epoch != epoch
+        ):
             return
         self._healthy = error is None
         if error is not None:
