@@ -586,12 +586,12 @@ TEST(OrderedActorTaskExecutionQueueTest, TestSeqWaitTimeoutNotPushedOutByLaterTa
   ASSERT_TRUE(WaitForCondition([&n_executed]() { return n_executed == 1; }, 1000));
   ASSERT_EQ(n_canceled, 0);
 
-  // Keep tasks arriving more often than the 1s deadline. Each arrival used to re-arm the
-  // timer, so it never fired. restart() is defensive: run_for leaves the context stopped
-  // if the work queue ever drains, which this loop's exit condition otherwise hides.
-  const auto give_up_at = std::chrono::steady_clock::now() + std::chrono::seconds(3);
+  // Keep tasks arriving more often than the 1s deadline, for up to 3s. Each arrival used
+  // to re-arm the timer, so it never fired. restart() is defensive: run_for leaves the
+  // context stopped if the work queue ever drains, which this loop's exit condition
+  // otherwise hides.
   int seq_no = 3;
-  while (n_canceled == 0 && std::chrono::steady_clock::now() < give_up_at) {
+  for (int i = 0; i < 30 && n_canceled == 0; ++i) {
     io_service.restart();
     io_service.run_for(std::chrono::milliseconds(100));
     EnqueueWithFetch(queue, waiter, seq_no++, -1, MakeTaskToExecute(task_spec));
@@ -784,9 +784,8 @@ TEST(OrderedActorTaskExecutionQueueTest, TestPerConcurrencyGroupOrdering) {
   EnqueueWithFetch(queue, waiter, 1, -1, MakeTaskToExecute(task_b1));
 
   // Tasks reach execute_task through the executor, not this io_service; the only io work
-  // the queue posts is the reorder timer. poll() rather than run_one() so the wait for
-  // that timer does not block: it must not fire here, and the cancel_task above FAILs if
-  // it does.
+  // the queue posts is the reorder timer. poll() rather than run_one(), which would block
+  // until that timer expires and cancel the tasks.
   io_service.poll();
   ASSERT_TRUE(WaitForCondition([&n_accept]() { return n_accept == 2; }, 1000));
   ASSERT_EQ(n_accept, 2);

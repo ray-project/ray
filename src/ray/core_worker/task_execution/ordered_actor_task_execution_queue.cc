@@ -292,8 +292,8 @@ void OrderedActorTaskExecutionQueue::ExecuteQueuedTasks() {
       //
       // Later arrivals must not restart the deadline while the group is still waiting for
       // the same seq_no. Re-arming it on every arrival would let a steady stream of later
-      // tasks — in this group or, via the enclosing loop over groups, in any other group
-      // of this client — push it out indefinitely, so the missing seq_no would never be
+      // tasks, in this group or (via the enclosing loop over groups) in any other group
+      // of this client, push it out indefinitely, so the missing seq_no would never be
       // skipped.
       if (group_state.wait_timer_seq_no != group_state.next_seq_no) {
         group_state.wait_timer_seq_no = group_state.next_seq_no;
@@ -309,7 +309,7 @@ void OrderedActorTaskExecutionQueue::ExecuteQueuedTasks() {
           if (error == boost::asio::error::operation_aborted) {
             return;  // Timer deadline was adjusted.
           }
-          // An expiry that is already queued cannot be called back, so the group may
+          // An expiry that is already queued cannot be cancelled, so the group may
           // have moved past this seq_no, or been disarmed, while this handler waited
           // its turn. Cancelling everything then would be wrong.
           auto it = group_states_.find(group_name_in);
