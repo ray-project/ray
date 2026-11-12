@@ -331,6 +331,12 @@ class WorkerPool : public WorkerPoolInterface {
   void PopWorker(const LeaseSpecification &lease_spec,
                  const PopWorkerCallback &callback) override;
 
+  /**
+   * @brief Get or start a worker matching the lease and its resource limits.
+   * @param lease_spec Lease the worker must be able to execute.
+   * @param worker_resource_limits Limits required for startup and worker reuse.
+   * @param callback Callback invoked when a worker is available or startup fails.
+   */
   void PopWorker(const LeaseSpecification &lease_spec,
                  const rpc::WorkerResourceLimits &worker_resource_limits,
                  const PopWorkerCallback &callback) override;
@@ -677,6 +683,14 @@ class WorkerPool : public WorkerPoolInterface {
                              const JobID &job_id,
                              const GetOrCreateRuntimeEnvCallback &callback);
 
+  /**
+   * @brief Create a runtime environment asynchronously with request-specific limits.
+   * @param serialized_runtime_env JSON-serialized runtime environment.
+   * @param runtime_env_config Runtime environment setup configuration.
+   * @param job_id Job requesting the environment.
+   * @param worker_resource_limits Limits to apply to this worker's context.
+   * @param callback Callback invoked with the setup result.
+   */
   void GetOrCreateRuntimeEnv(const std::string &serialized_runtime_env,
                              const rpc::RuntimeEnvConfig &runtime_env_config,
                              const JobID &job_id,

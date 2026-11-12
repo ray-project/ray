@@ -98,9 +98,23 @@ TEST_F(WorkerResourceLimitsTest, LeavesNonImageRuntimeEnvUnchanged) {
   const ResourceSet resources(
       absl::flat_hash_map<std::string, double>{{"CPU", 1}, {"memory", 1024}});
 
-  EXPECT_FALSE(HasWorkerResourceLimits(
-      BuildWorkerResourceLimits(R"({"env_vars":{"KEY":"value"}})", resources)));
-  EXPECT_FALSE(HasWorkerResourceLimits(BuildWorkerResourceLimits("{}", resources)));
+  for (const std::string &runtime_env : {
+           R"({"env_vars":{"KEY":"value"}})",
+           "{}",
+           "null",
+           "false",
+           "42",
+           R"("image_uri")",
+           R"([{"image_uri":"podman://ray:latest"}])",
+           R"({"image_uri":null})",
+           R"({"image_uri":42})",
+           R"({"image_uri":""})",
+           "invalid json",
+       }) {
+    EXPECT_FALSE(
+        HasWorkerResourceLimits(BuildWorkerResourceLimits(runtime_env, resources)))
+        << runtime_env;
+  }
 }
 
 TEST_F(WorkerResourceLimitsTest, DisabledLeavesImageRuntimeEnvUnchanged) {

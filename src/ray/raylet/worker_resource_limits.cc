@@ -38,6 +38,9 @@ constexpr double kMinRepresentableCpus =
 bool IsImageUriRuntimeEnv(const std::string &serialized_runtime_env) {
   try {
     const auto runtime_env = nlohmann::json::parse(serialized_runtime_env);
+    if (!runtime_env.is_object()) {
+      return false;
+    }
     const auto image_uri = runtime_env.find("image_uri");
     return image_uri != runtime_env.end() && image_uri->is_string() &&
            !image_uri->get_ref<const std::string &>().empty();

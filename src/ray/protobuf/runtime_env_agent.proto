@@ -48,6 +48,9 @@ message GetOrCreateRuntimeEnvRequest {
   /// For details, checkout "//src/ray/common/id.h".
   bytes job_id = 3;
   string source_process = 4;
+  /// Request-specific limits applied to a copy of the cached runtime env context.
+  /// Repeating a request must not accumulate limits in the shared cached context.
+  /// An absent message preserves the default, unlimited worker behavior.
   WorkerResourceLimits worker_resource_limits = 5;
 }
 

@@ -22,15 +22,32 @@
 namespace ray {
 namespace raylet {
 
-/// Build a normalized per-worker limit profile from resources assigned to a lease.
-/// Placement group aliases are deduplicated. An empty profile is returned when the
-/// feature is disabled or the runtime environment is not an image_uri environment.
+/**
+ * @brief Build a normalized per-worker limit profile, deduplicating placement group
+ * aliases.
+ * @param serialized_runtime_env JSON-serialized runtime environment for the lease.
+ * @param resources Resources assigned to the lease.
+ * @return Normalized limits, including a validation error for unrepresentable requests.
+ * Returns an empty profile when the feature is disabled or the runtime environment
+ * does not specify a nonempty image_uri.
+ */
 rpc::WorkerResourceLimits BuildWorkerResourceLimits(
     const std::string &serialized_runtime_env, const ResourceSet &resources);
 
+/**
+ * @brief Compare worker resource profiles for worker reuse.
+ * @param left First profile.
+ * @param right Second profile.
+ * @return Whether all limits and validation errors match.
+ */
 bool WorkerResourceLimitsEqual(const rpc::WorkerResourceLimits &left,
                                const rpc::WorkerResourceLimits &right);
 
+/**
+ * @brief Check whether a profile requires per-worker handling.
+ * @param limits Profile to inspect.
+ * @return Whether any limit or validation error is set.
+ */
 bool HasWorkerResourceLimits(const rpc::WorkerResourceLimits &limits);
 
 }  // namespace raylet
