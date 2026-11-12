@@ -2506,6 +2506,7 @@ class Replica:
         3) Records per-request metrics via the metrics manager.
         """
 
+        request_finished = concurrent.futures.Future()
         with self._tracing_context(request_metadata):
             # `_serve_request_context` is declared without a type parameter and
             # with `default=None`, so checkers infer `ContextVar[None]`.
@@ -2522,13 +2523,19 @@ class Replica:
                     cancel_on_parent_request_cancel=self._ingress
                     and RAY_SERVE_ENABLE_DIRECT_INGRESS,
                     _ray_trace_ctx=ray_trace_ctx,
+                    _finished=request_finished,
                 )
             )
 
-            with self._handle_errors_and_metrics(
-                request_metadata
-            ) as status_code_callback:
-                yield status_code_callback
+            try:
+                with self._handle_errors_and_metrics(
+                    request_metadata
+                ) as status_code_callback:
+                    yield status_code_callback
+            finally:
+                # Releases what was held for the request, such as pins on
+                # multiplexed models.
+                request_finished.set_result(None)
 
     @_wrap_grpc_call
     async def HandleRequest(

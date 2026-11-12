@@ -3,6 +3,7 @@ can use this state to access metadata or the Serve controller.
 """
 
 import asyncio
+import concurrent.futures
 import contextvars
 import logging
 import os
@@ -336,6 +337,9 @@ class _RequestContext:
     # This is extracted from _ray_trace_ctx kwarg at the replica entry point
     # Advanced users can access this to propagate tracing to external systems
     _ray_trace_ctx: Optional[dict] = None
+    # Resolved by the replica when the request has finished, from the replica's
+    # event loop thread. None outside a replica request.
+    _finished: Optional[concurrent.futures.Future] = None
 
 
 _serve_request_context = contextvars.ContextVar(
