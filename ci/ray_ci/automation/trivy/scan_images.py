@@ -34,7 +34,7 @@ import tempfile
 import uuid
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Optional, Sequence
+from typing import Any, Callable, Optional, Sequence
 
 import click
 import runfiles
@@ -90,6 +90,8 @@ class Target:
     digest: str = ""
     error: str = ""
     db: dict[str, Any] = field(default_factory=dict)
+    # Set only once the result file is written.
+    scanned: bool = False
 
     @property
     def name(self) -> str:
@@ -120,7 +122,7 @@ class Target:
                 f"{self.ctx.docker_hub_repo}:{tag}"
                 for tag in self.ctx.destination_tags()
             ],
-            "status": "error" if self.error else "scanned",
+            "status": "scanned" if self.scanned and not self.error else "error",
             "error": self.error,
             "trivy_db": self.db,
         }
@@ -165,6 +167,13 @@ def build_targets(
     return targets
 
 
+def _describe(e: BaseException) -> str:
+    """Expected failures read as their message; anything else names its type."""
+    if isinstance(e, (ScanError, registry.RegistryError)):
+        return str(e)
+    return f"{type(e).__name__}: {e}"
+
+
 def check_target(target: Target, architecture: str) -> None:
     """Record the digest, or why this ref must not be scanned."""
     try:
@@ -180,8 +189,8 @@ def check_target(target: Target, architecture: str) -> None:
             target.error = f"{target.ref} is {found}, expected {OCI_ARCH[architecture]}"
             return
         target.digest = registry.digest(target.ref)
-    except registry.RegistryError as e:
-        target.error = str(e)
+    except Exception as e:
+        target.error = _describe(e)
 
 
 def check_layout(layout: Path, digests: set[str]) -> None:
@@ -409,45 +418,66 @@ def scan_group(
     results_dir: Path,
     workdir: Path,
     base_image: str,
+    login: Callable[[], None] = lambda: None,
 ) -> None:
-    """Scan every target; each one ends with a status record either way."""
-    for target in targets:
-        check_target(target, architecture)
-    ready = [t for t in targets if not t.error]
+    """Scan every target. Each one ends with a status record either way, and
+    any failure, expected or not, becomes the affected images' error."""
     try:
+        login()
+        for target in targets:
+            check_target(target, architecture)
+        ready = [t for t in targets if not t.error]
         if ready:
-            dbs: dict[str, Path] = {}
-            pins: dict[str, Any] = {}
-            for source in DB_SOURCES:
-                dbs[source.name], pins[source.name] = fetch_db(
-                    source, db_repo, build_id, workdir
-                )
-            layout = workdir / "layout"
-            platform = f"linux/{OCI_ARCH[architecture]}"
-            registry.pull(sorted({t.pinned_ref for t in ready}), layout, platform)
-            check_layout(layout, {t.digest for t in ready})
-            staging = stage(workdir, layout, dbs, {t.image_type for t in ready})
-            with ContainedTrivy(base_image) as trivy:
-                trivy.load(staging)
-                shutil.rmtree(staging)
-                for target in ready:
-                    target.db = pins
-                    raw = workdir / f"{target.name}.json"
-                    try:
-                        trivy.scan(target, raw)
-                        with open(raw, "rb") as src, gzip.open(
-                            results_dir / f"{target.name}.json.gz", "wb"
-                        ) as out:
-                            shutil.copyfileobj(src, out)
-                        raw.unlink()
-                    except (ScanError, OSError) as e:
-                        target.error = str(e)
-    except (ScanError, registry.RegistryError, OSError) as e:
-        for target in ready:
-            target.error = target.error or f"group failed before scanning: {e}"
+            _scan_ready(
+                ready, architecture, db_repo, build_id, results_dir, workdir, base_image
+            )
+    except Exception as e:
+        for target in targets:
+            if not target.error and not target.scanned:
+                target.error = f"group failed before scanning: {_describe(e)}"
     finally:
         for target in targets:
+            if not target.error and not target.scanned:
+                target.error = "scan did not complete"
             write_status(results_dir, target)
+
+
+def _scan_ready(
+    ready: Sequence[Target],
+    architecture: str,
+    db_repo: str,
+    build_id: str,
+    results_dir: Path,
+    workdir: Path,
+    base_image: str,
+) -> None:
+    dbs: dict[str, Path] = {}
+    pins: dict[str, Any] = {}
+    for source in DB_SOURCES:
+        dbs[source.name], pins[source.name] = fetch_db(
+            source, db_repo, build_id, workdir
+        )
+    layout = workdir / "layout"
+    platform = f"linux/{OCI_ARCH[architecture]}"
+    registry.pull(sorted({t.pinned_ref for t in ready}), layout, platform)
+    check_layout(layout, {t.digest for t in ready})
+    staging = stage(workdir, layout, dbs, {t.image_type for t in ready})
+    with ContainedTrivy(base_image) as trivy:
+        trivy.load(staging)
+        shutil.rmtree(staging)
+        for target in ready:
+            target.db = pins
+            raw = workdir / f"{target.name}.json"
+            try:
+                trivy.scan(target, raw)
+                with open(raw, "rb") as src, gzip.open(
+                    results_dir / f"{target.name}.json.gz", "wb"
+                ) as out:
+                    shutil.copyfileobj(src, out)
+                raw.unlink()
+                target.scanned = True
+            except Exception as e:
+                target.error = _describe(e)
 
 
 @click.command()
@@ -504,8 +534,11 @@ def main(
         pull_request,
     )
     db_repo = db_repo or rayci_work_repo
-    for repo in {rayci_work_repo, db_repo}:
-        registry.login_if_ecr(repo, ecr_docker_login)
+
+    def login() -> None:
+        for repo in sorted({rayci_work_repo, db_repo}):
+            registry.login_if_ecr(repo, ecr_docker_login)
+
     results_dir.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(dir=work_dir) as tmp:
         scan_group(
@@ -516,6 +549,7 @@ def main(
             results_dir,
             Path(tmp),
             base_image,
+            login,
         )
     failed = [t for t in targets if t.error]
     for target in failed:

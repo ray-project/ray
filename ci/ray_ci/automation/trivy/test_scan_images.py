@@ -20,6 +20,7 @@ from ci.ray_ci.automation.trivy.scan_images import (
     parse_image,
     scan_group,
 )
+from ci.ray_ci.automation.trivy.trivy_db import TrivyDbError
 from ci.ray_ci.automation.trivy.trivy_report import load_scans
 
 FIXTURE = Path(__file__).parent / "testdata" / "ray-py3.12-cpu.json"
@@ -368,6 +369,8 @@ def test_main_exits_nonzero_when_any_image_was_not_scanned(
     tmp_path: Path, errors: list, code: int
 ):
     def fake_scan_group(group, *args):
+        login = args[-1]
+        login()
         for target, error in zip(group, errors):
             target.error = error
 
@@ -402,6 +405,85 @@ def test_main_exits_nonzero_when_any_image_was_not_scanned(
         WORK_REPO,
         "localhost:5000/citemp",
     }
+
+
+def statuses(results: Path) -> dict:
+    return {
+        p.name.removesuffix(".status.json"): json.loads(p.read_text())
+        for p in results.glob("*.status.json")
+    }
+
+
+def test_an_unexpected_group_error_is_recorded_for_every_image(tmp_path: Path):
+    group = targets(("ray", "3.11"), ("ray", "3.12"))
+    with mock.patch.multiple(
+        scan_images.registry,
+        manifest=mock.Mock(return_value={"mediaType": OCI_MANIFEST}),
+        config=mock.Mock(return_value={"architecture": "amd64"}),
+        digest=mock.Mock(return_value="sha256:d"),
+    ), mock.patch.object(
+        scan_images, "fetch_db", side_effect=TrivyDbError("expected one layer, found 0")
+    ):
+        scan_group(group, "x86_64", WORK_REPO, "abc123", tmp_path, tmp_path, "base")
+    for record in statuses(tmp_path).values():
+        assert record["status"] == "error"
+        assert "TrivyDbError: expected one layer, found 0" in record["error"]
+
+
+def test_an_unexpected_check_error_is_recorded(tmp_path: Path):
+    group = targets(("ray", "3.12"))
+    with mock.patch.object(
+        scan_images.registry, "manifest", side_effect=json.JSONDecodeError("bad", "", 0)
+    ):
+        scan_group(group, "x86_64", WORK_REPO, "abc123", tmp_path, tmp_path, "base")
+    (record,) = statuses(tmp_path).values()
+    assert record["status"] == "error"
+    assert "JSONDecodeError" in record["error"]
+
+
+def test_a_login_failure_is_recorded_for_every_image(tmp_path: Path):
+    results = tmp_path / "r"
+    with mock.patch.object(
+        scan_images.registry, "login_if_ecr", side_effect=RuntimeError("ExpiredToken")
+    ):
+        result = CliRunner().invoke(
+            scan_images.main,
+            [
+                "--architecture",
+                "x86_64",
+                "--platform",
+                "cpu",
+                "--image",
+                "ray:3.11",
+                "--image",
+                "ray:3.12",
+                "--results-dir",
+                str(results),
+                "--rayci-work-repo",
+                WORK_REPO,
+                "--rayci-build-id",
+                "abc123",
+                "--branch",
+                "master",
+                "--commit",
+                "80ceee083e49b1ae709c149d3a15862fe12ce8cb",
+            ],
+        )
+    assert result.exit_code == 1, result.output
+    records = statuses(results)
+    assert sorted(records) == ["ray-py3.11-cpu", "ray-py3.12-cpu"]
+    for record in records.values():
+        assert record["status"] == "error"
+        assert "RuntimeError: ExpiredToken" in record["error"]
+
+
+def test_an_image_without_a_result_is_never_reported_scanned(tmp_path: Path):
+    group = targets(("ray", "3.12"))
+    docker = FakeDocker()
+    with mock.patch.object(scan_images.ContainedTrivy, "scan", lambda *a: None):
+        results = run_group(tmp_path, group, docker, {})
+    (record,) = statuses(results).values()
+    assert record["status"] == "error"
 
 
 if __name__ == "__main__":
