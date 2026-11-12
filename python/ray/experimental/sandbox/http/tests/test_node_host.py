@@ -125,6 +125,9 @@ def test_the_node_host_has_every_method_the_api_calls_on_a_sandbox():
         if not name.startswith("_")
     } - own
     assert sorted(n for n in called if not hasattr(SandboxNodeHost, n)) == []
+    # Replicas make those calls over the host channel. Only a hosted sandbox's
+    # boot never comes from a replica: the node host starts it.
+    assert called - {"boot"} <= node_host.CHANNEL_METHODS
 
 
 class _FailingSandbox(_Sandbox):

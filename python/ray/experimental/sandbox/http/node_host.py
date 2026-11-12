@@ -73,6 +73,7 @@ CHANNEL_METHODS = frozenset(
     {
         "admit",
         "describe",
+        "set_network_access",
         "start_exec",
         "get_exec",
         "get_exec_by_key",
