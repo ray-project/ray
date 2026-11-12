@@ -183,20 +183,23 @@ def _describe(e: BaseException) -> str:
 
 
 def check_target(target: Target, architecture: str) -> None:
-    """Record the digest, or why this ref must not be scanned."""
+    """Record the digest, or why this ref must not be scanned. The checks
+    run on the digest itself, since the tag can be re-pushed meanwhile."""
     try:
-        manifest = registry.manifest(target.ref)
+        digest = registry.digest(target.ref)
+        pinned = f"{target.repo}@{digest}"
+        manifest = registry.manifest(pinned)
         if manifest.get("mediaType") not in IMAGE_MANIFEST_TYPES:
             target.error = (
-                f"{target.ref} is {manifest.get('mediaType')}, not a "
+                f"{pinned} is {manifest.get('mediaType')}, not a "
                 "single-platform image manifest"
             )
             return
-        found = registry.config(target.ref).get("architecture")
+        found = registry.config(pinned).get("architecture")
         if found != OCI_ARCH[architecture]:
-            target.error = f"{target.ref} is {found}, expected {OCI_ARCH[architecture]}"
+            target.error = f"{pinned} is {found}, expected {OCI_ARCH[architecture]}"
             return
-        target.digest = registry.digest(target.ref)
+        target.digest = digest
     except Exception as e:
         target.error = _describe(e)
 

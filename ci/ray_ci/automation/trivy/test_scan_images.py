@@ -30,6 +30,17 @@ OCI_MANIFEST = "application/vnd.oci.image.manifest.v1+json"
 OCI_INDEX = "application/vnd.oci.image.index.v1+json"
 
 
+@pytest.fixture(autouse=True)
+def no_real_processes(monkeypatch):
+    """Fail any test that would run real crane or docker, i.e. reach a
+    registry or the docker host instead of the fakes."""
+
+    def refuse(args, *a, **k):
+        raise AssertionError(f"test tried to run {list(args)[:3]}")
+
+    monkeypatch.setattr(scan_images.subprocess, "run", refuse)
+
+
 def targets(*images: tuple, platform: str = "cpu", arch: str = "x86_64") -> list:
     return build_targets(
         list(images),
@@ -203,11 +214,17 @@ def run_group(tmp_path: Path, group: list, docker: FakeDocker, manifests: dict):
     results = tmp_path / "results"
     results.mkdir()
 
-    def manifest(ref):
-        return {"mediaType": manifests.get(ref, OCI_MANIFEST)}
+    tags_by_digest = {}
 
     def digest(ref, platform=None):
-        return "sha256:" + hashlib.sha256(ref.encode()).hexdigest()
+        d = "sha256:" + hashlib.sha256(ref.encode()).hexdigest()
+        tags_by_digest[d] = ref
+        return d
+
+    def manifest(ref):
+        # Manifests are fetched by digest; `manifests` is keyed by tag.
+        tag = tags_by_digest[ref.rsplit("@", 1)[1]]
+        return {"mediaType": manifests.get(tag, OCI_MANIFEST)}
 
     def fake_stage(workdir, layout, dbs, image_types):
         (workdir / "staging").mkdir()
@@ -446,8 +463,10 @@ def test_an_unexpected_group_error_is_recorded_for_every_image(tmp_path: Path):
 
 def test_an_unexpected_check_error_is_recorded(tmp_path: Path):
     group = targets(("ray", "3.12"))
-    with mock.patch.object(
-        scan_images.registry, "manifest", side_effect=json.JSONDecodeError("bad", "", 0)
+    with mock.patch.multiple(
+        scan_images.registry,
+        digest=mock.Mock(return_value="sha256:d1"),
+        manifest=mock.Mock(side_effect=json.JSONDecodeError("bad", "", 0)),
     ):
         scan_group(group, "x86_64", WORK_REPO, "abc123", tmp_path, tmp_path, "base")
     (record,) = statuses(tmp_path).values()
@@ -582,6 +601,34 @@ def test_stale_leftovers_from_earlier_jobs_are_removed():
     assert all(
         "label=ray-trivy-scan=1" in " ".join(c) for c in calls if "ls" in c or "ps" in c
     )
+
+
+def test_check_target_validates_the_digest_it_will_scan():
+    """The tag may be re-pushed at any time; the checks must apply to the
+    exact digest that gets pulled and scanned."""
+    (target,) = targets(("ray", "3.12"))
+    seen = []
+
+    def manifest(ref):
+        seen.append(("manifest", ref))
+        return {"mediaType": OCI_MANIFEST}
+
+    def config(ref):
+        seen.append(("config", ref))
+        return {"architecture": "amd64"}
+
+    with mock.patch.multiple(
+        scan_images.registry,
+        manifest=manifest,
+        config=config,
+        digest=mock.Mock(return_value="sha256:d1"),
+    ):
+        check_target(target, "x86_64")
+    assert target.digest == "sha256:d1"
+    assert seen == [
+        ("manifest", f"{target.repo}@sha256:d1"),
+        ("config", f"{target.repo}@sha256:d1"),
+    ]
 
 
 if __name__ == "__main__":
