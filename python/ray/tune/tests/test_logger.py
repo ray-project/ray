@@ -9,6 +9,7 @@ import unittest
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
+from unittest import mock
 
 import numpy as np
 import pytest
@@ -159,6 +160,28 @@ class LoggerSuite(unittest.TestCase):
             rows[1],
             {"metric_a": "10", "metric_b": "20", "training_iteration": "2"},
         )
+
+        # Verify graceful fallback when reading the existing header fails.
+        corrupt_dir = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, corrupt_dir, True)
+        with open(os.path.join(corrupt_dir, EXPR_PROGRESS_FILE), "wt") as fp:
+            fp.write("old_col\n1\n")
+        t_corrupt = Trial(
+            evaluated_params=config, trial_id="csv_corrupt", logdir=corrupt_dir
+        )
+        fallback_logger = CSVLoggerCallback()
+        with mock.patch(
+            "ray.tune.logger.csv.csv.reader", side_effect=csv.Error("corrupt")
+        ):
+            fallback_logger.on_trial_result(
+                0, [], t_corrupt, {"new_col": 42, "training_iteration": 1}
+            )
+        fallback_logger.on_trial_complete(1, [], t_corrupt)
+        self.assertFalse(fallback_logger._trial_continue[t_corrupt])
+        with open(os.path.join(corrupt_dir, EXPR_PROGRESS_FILE), "rt") as fp:
+            lines = [line.strip() for line in fp if line.strip()]
+        self.assertIn("new_col,training_iteration", lines)
+        self.assertIn("42,1", lines)
 
     def _validate_csv_result(self):
         results = []
