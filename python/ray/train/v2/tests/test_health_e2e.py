@@ -17,10 +17,14 @@ from ray.train.health import (
     Noop,
     PeriodicHealthCheck,
     ProbeResult,
+    Reattempt,
+    WorkerProbe,
 )
+from ray.train.torch import TorchTrainer
 from ray.train.v2._internal.constants import HEALTH_CHECK_INTERVAL_S_ENV_VAR
 from ray.train.v2.api.callback import UserCallback
 from ray.train.v2.api.data_parallel_trainer import DataParallelTrainer
+from ray.train.v2.api.exceptions import HealthCheckError
 
 
 @pytest.fixture
@@ -110,6 +114,13 @@ class DiagnosisProbe(NodeProbe):
         return ProbeResult(metrics={"bad": float(is_bad)})
 
 
+class RankProbe(WorkerProbe):
+    """Answers on each worker it runs on."""
+
+    def poll(self) -> ProbeResult:
+        return ProbeResult()
+
+
 class EvictBadNodes(Evaluator):
     def evaluate(self, state):
         results = state.probe_results.get("DiagnosisProbe", {})
@@ -117,21 +128,28 @@ class EvictBadNodes(Evaluator):
         decision = Noop()
         if bad_nodes:
             decision = Evict(reason="bad node", target_nodes=bad_nodes)
-        ray.get(_scenario().record.remote(("diagnosis", type(decision).__name__)))
+        ranks = sorted(state.probe_results.get("RankProbe", {}))
+        event = ("diagnosis", type(decision).__name__, ranks)
+        ray.get(_scenario().record.remote(event))
         return decision
 
 
 class DiagnoseOnIssue(Evaluator):
-    """Diagnoses when its probe starts to report an issue."""
+    """Diagnoses when its probe, and the workers' health reports if
+    ``report_metric`` is set, start to report an issue."""
 
-    def __init__(self, probe_name, requires_idle_workers=False):
+    def __init__(self, probe_name, report_metric=None, requires_idle_workers=False):
         self._probe_name = probe_name
+        self._report_metric = report_metric
         self._requires_idle_workers = requires_idle_workers
         self._had_issue = False
 
     def evaluate(self, state):
         results = state.probe_results.get(self._probe_name, {}).values()
         has_issue = any(r.metrics.get("issue") for r in results)
+        if self._report_metric:
+            reports = state.health_reports.values()
+            has_issue &= any(r.metrics.get(self._report_metric) for r in reports)
         started = has_issue and not self._had_issue
         self._had_issue = has_issue
         if not started:
@@ -140,7 +158,7 @@ class DiagnoseOnIssue(Evaluator):
             reason=f"{self._probe_name} reports an issue",
             checks=[
                 HealthCheck(
-                    probe_creator=lambda: [DiagnosisProbe()],
+                    probe_creator=lambda: [DiagnosisProbe(), RankProbe()],
                     evaluator_creator=lambda: [EvictBadNodes()],
                     requires_idle_workers=self._requires_idle_workers,
                 )
@@ -171,10 +189,13 @@ def diagnose_train_fn():
         return
 
     time.sleep(1)
-    # Probe A reports an issue, and its diagnosis finds nothing to act on.
+    # Probe A and the training step report an issue, and their diagnosis finds
+    # nothing to act on.
+    ray.train.health.report({"slow_step": 1.0})
     ray.get(scenario.set.remote(issue_a=True))
-    _wait_for_event(scenario, ("diagnosis", "Noop"))
+    _wait_for_event(scenario, ("diagnosis", "Noop", [0]))
     ray.get(scenario.set.remote(issue_a=False))
+    ray.train.health.report({"slow_step": 0.0})
     time.sleep(1)
     # Probe B reports an issue, and its diagnosis finds this node bad.
     ray.get(scenario.set.remote(issue_b=True, bad_node=node_id))
@@ -194,7 +215,7 @@ def test_diagnose_keeps_training_or_evicts(cluster):
                     PeriodicHealthCheck(
                         probe_creator=lambda: [ProbeA(), ProbeB()],
                         evaluator_creator=lambda: [
-                            DiagnoseOnIssue("ProbeA"),
+                            DiagnoseOnIssue("ProbeA", report_metric="slow_step"),
                             DiagnoseOnIssue("ProbeB"),
                         ],
                         poll_interval_s=0.1,
@@ -207,9 +228,9 @@ def test_diagnose_keeps_training_or_evicts(cluster):
 
     assert ray.get(scenario.get_events.remote()) == [
         ("decision", "Diagnose"),
-        ("diagnosis", "Noop"),
+        ("diagnosis", "Noop", [0]),
         ("decision", "Diagnose"),
-        ("diagnosis", "Evict"),
+        ("diagnosis", "Evict", [0]),
         ("decision", "Evict"),
     ]
     # The eviction restarted the worker group.
@@ -253,7 +274,7 @@ def test_a_diagnose_that_requires_idle_workers_runs_before_training_resumes(clus
     assert ray.get(scenario.get_events.remote()) == [
         ("attempt", 0),
         ("decision", "Diagnose"),
-        ("diagnosis", "Noop"),
+        ("diagnosis", "Noop", [0]),
         ("attempt", 1),
     ]
 
@@ -303,6 +324,123 @@ def test_preflight_checks_can_evict_before_training_starts(cluster):
     # started, and the second attempt's found nothing to act on.
     assert ray.get(scenario.get_events.remote()) == [("decision", "Evict")]
     assert len(ray.get(scenario.get_node_ids.remote())) == 1
+
+
+class AllReduceProbe(WorkerProbe):
+    """All-reduces a one on every worker."""
+
+    def poll(self) -> ProbeResult:
+        import torch
+        import torch.distributed as dist
+
+        ones = torch.ones(1)
+        dist.all_reduce(ones)
+        return ProbeResult(metrics={"sum": ones.item()})
+
+
+class RecordAllReduce(Evaluator):
+    def evaluate(self, state):
+        results = state.probe_results.get("AllReduceProbe", {}).values()
+        sums = sorted(r.metrics.get("sum") for r in results)
+        ray.get(_scenario().record.remote(("all-reduce", sums)))
+        return Noop()
+
+
+class SpeedProbe(NodeProbe):
+    """Reports whether its node is the slow node."""
+
+    def poll(self) -> ProbeResult:
+        slow_node = ray.get(_scenario().get.remote("slow_node"))
+        is_slow = slow_node == ray.get_runtime_context().get_node_id()
+        return ProbeResult(metrics={"slow": float(is_slow)})
+
+
+class TempProbe(NodeProbe):
+    """Reports its node's temperature: the hot node is hotter."""
+
+    def poll(self) -> ProbeResult:
+        hot_node = ray.get(_scenario().get.remote("hot_node"))
+        is_hot = hot_node == ray.get_runtime_context().get_node_id()
+        return ProbeResult(metrics={"temp_c": 90.0 if is_hot else 60.0})
+
+
+class ReattemptOnAHotterNode(Evaluator):
+    def evaluate(self, state):
+        temps = [r.metrics["temp_c"] for r in state.probe_results["TempProbe"].values()]
+        if max(temps) - min(temps) > 10:
+            return Reattempt(reason="a node is hotter than the others")
+        return Noop()
+
+
+class DiagnoseASlowNode(Evaluator):
+    """Diagnoses the nodes' temperatures when a node starts to be slow."""
+
+    def __init__(self):
+        self._had_slow_node = False
+
+    def evaluate(self, state):
+        results = state.probe_results.get("SpeedProbe", {}).values()
+        has_slow_node = any(r.metrics.get("slow") for r in results)
+        started = has_slow_node and not self._had_slow_node
+        self._had_slow_node = has_slow_node
+        if not started:
+            return Noop()
+        return Diagnose(
+            reason="a node is slower than the others",
+            checks=[
+                HealthCheck(
+                    probe_creator=lambda: [TempProbe()],
+                    evaluator_creator=lambda: [ReattemptOnAHotterNode()],
+                )
+            ],
+        )
+
+
+def slow_and_hot_train_fn():
+    if ray.train.get_context().get_world_rank() == 0:
+        node_id = ray.get_runtime_context().get_node_id()
+        ray.get(_scenario().set.remote(slow_node=node_id, hot_node=node_id))
+    time.sleep(60)
+
+
+def test_preflight_all_reduce_then_a_diagnosis_that_reattempts(cluster):
+    """Two workers on two nodes: the pre-flight all-reduce passes and training
+    starts; a slow node is diagnosed as hotter, which reattempts, and with
+    max_failures=0 the run fails."""
+    scenario = Scenario.options(name="scenario").remote()
+    trainer = TorchTrainer(
+        slow_and_hot_train_fn,
+        scaling_config=ray.train.ScalingConfig(num_workers=2),
+        run_config=ray.train.RunConfig(
+            failure_config=ray.train.FailureConfig(max_failures=0),
+            callbacks=[RecordHealthDecisions()],
+            health_config=HealthConfig(
+                preflight_checks=[
+                    HealthCheck(
+                        probe_creator=lambda: [AllReduceProbe()],
+                        evaluator_creator=lambda: [RecordAllReduce()],
+                        requires_idle_workers=True,
+                    )
+                ],
+                inflight_checks=[
+                    PeriodicHealthCheck(
+                        probe_creator=lambda: [SpeedProbe()],
+                        evaluator_creator=lambda: [DiagnoseASlowNode()],
+                        poll_interval_s=0.1,
+                    )
+                ],
+            ),
+        ),
+    )
+    with pytest.raises(HealthCheckError) as error:
+        trainer.fit()
+
+    assert isinstance(error.value.decision, Reattempt)
+    assert ray.get(scenario.get_events.remote()) == [
+        ("all-reduce", [2.0, 2.0]),
+        ("decision", "Diagnose"),
+        ("decision", "Reattempt"),
+    ]
 
 
 if __name__ == "__main__":

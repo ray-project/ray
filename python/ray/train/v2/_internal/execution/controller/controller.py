@@ -716,7 +716,9 @@ class TrainController:
                 )
 
             if self._health_manager is not None:
-                health_decision = self._health_manager.evaluate()
+                health_decision = self._health_manager.evaluate(
+                    worker_group_status.worker_statuses
+                )
                 if not isinstance(health_decision, Noop):
                     health_result = self._execute_health_decision(health_decision)
                     if health_result:
