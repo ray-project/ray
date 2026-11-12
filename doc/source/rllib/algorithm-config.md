@@ -130,7 +130,7 @@ For more details, see the {ref}`RL environment guide <rllib-environments-doc>`.
 Install both [Atari](https://ale.farama.org/environments/) and [MuJoCo](https://gymnasium.farama.org/environments/mujoco) to run all of RLlib's {ref}`tuned examples <rllib-tuned-examples-docs>`:
 
 ```bash
-pip install "gymnasium[atari,accept-rom-license,mujoco]"
+pip install "gymnasium[mujoco]" ale-py
 ```
 :::
 
