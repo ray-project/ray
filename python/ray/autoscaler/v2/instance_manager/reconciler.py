@@ -258,45 +258,59 @@ def _build_multihost_replica_view(
     # Reattach terminal rows only when they belong to a live replica incarnation
     # (same batch still non-terminal on `rk`, or same live untagged cloud pod
     # after a raylet restart) or to an incomplete mid-boot replica whose batch
-    # is still waiting on remaining pods. Fully torn-down historical replicas
-    # stay ignored so recreated replicas reusing the same `replica_id` can bind.
-    for (rk, lid), rows in term_rows_by_rep_lid.items():
-        nt, rid = rk
-        term_cids = {r.cloud_instance_id for r in rows}
-        has_teardown = any(
+    # is still waiting on remaining pods. Fully torn-down or preempted prior
+    # incarnations stay ignored so recreated replicas reusing `replica_id` bind.
+    def _has_teardown(inst_rows: List[IMInstance]) -> bool:
+        return any(
             h.instance_status in teardown_history_statuses
-            for r in rows
+            for r in inst_rows
             for h in r.status_history
         )
-        term_times = [
-            ts
-            for r in rows
-            for ts in InstanceUtil.get_status_transition_times_ns(
+
+    for (rk, lid), rows in term_rows_by_rep_lid.items():
+        nt, rid = rk
+        cutoffs: Set[int] = set()
+        live_alloc = min_live_alloc_ns.get((rk, lid))
+        if live_alloc is not None:
+            cutoffs.add(live_alloc)
+        row_terms: List[Tuple[IMInstance, Optional[int]]] = []
+        for r in rows:
+            r_allocs = InstanceUtil.get_status_transition_times_ns(
+                r, IMInstance.ALLOCATED
+            )
+            if r_allocs:
+                cutoffs.add(min(r_allocs))
+            r_terms = InstanceUtil.get_status_transition_times_ns(
                 r, IMInstance.TERMINATED
             )
-        ]
-        live_alloc = min_live_alloc_ns.get((rk, lid))
-        prior_torn_down_incarnation = (
-            has_teardown
-            and live_alloc is not None
-            and bool(term_times)
-            and max(term_times) < live_alloc
-        )
-        same_live_incarnation = (
-            rk in view.assigned_reps
-            and not prior_torn_down_incarnation
-            and (
+            row_terms.append((r, max(r_terms) if r_terms else None))
+        for cutoff in sorted(cutoffs):
+            before: List[IMInstance] = []
+            after: List[Tuple[IMInstance, Optional[int]]] = []
+            for r, r_term in row_terms:
+                if r_term is not None and r_term < cutoff:
+                    before.append(r)
+                else:
+                    after.append((r, r_term))
+            before_cids = {r.cloud_instance_id for r in before}
+            if _has_teardown(before) or len(before_cids) >= replica_sizes[nt]:
+                row_terms = after
+        rows = [r for r, _ in row_terms]
+        if not rows:
+            continue
+        term_cids = {r.cloud_instance_id for r in rows}
+        has_teardown = _has_teardown(rows)
+        if rk in view.assigned_reps:
+            if not (
                 lid in view.rep_lids[rk]
                 or (not has_teardown and bool(term_cids & untagged_active_cids[rk]))
-            )
-        )
-        mid_boot_eviction = (
-            rk not in view.assigned_reps
-            and view.in_flight_by_lid[(nt, lid)] > 0
+            ):
+                continue
+        elif not (
+            view.in_flight_by_lid[(nt, lid)] > 0
             and len(term_cids) < replica_sizes[nt]
             and not has_teardown
-        )
-        if not (same_live_incarnation or mid_boot_eviction):
+        ):
             continue
         view.assigned_reps.add(rk)
         view.claimed_reps_by_lid[(nt, lid)].add(rid)

@@ -5586,6 +5586,157 @@ class TestReconciler:
         assert same_insts["s-new-0"].cloud_instance_id == "csnew-0"
         assert same_insts["s-new-1"].cloud_instance_id == "csnew-1"
 
+        # 8. Same-batch reuse after full preemption (no TERMINATING history) AND
+        # with a newer termination on the recreated slice still ignores the dead
+        # prior incarnation while counting the new incarnation's eviction.
+        cfg4, preempt_store, _, preempt_im = self._setup_multihost_reconcile_env(
+            "same_batch_preempt_reuse",
+            [
+                *(
+                    create_instance(
+                        f"p-old-{h}",
+                        status=Instance.TERMINATED,
+                        instance_type="tpu",
+                        cloud_instance_id=f"cpold-{h}",
+                        cloud_instance_replica_id="rep-0",
+                        launch_request_id="lid-p",
+                        status_times=[
+                            (Instance.ALLOCATED, 1),
+                            (Instance.TERMINATED, 3),
+                        ],
+                    )
+                    for h in range(4)
+                ),
+                *(
+                    create_instance(
+                        f"p-new-{h}",
+                        status=Instance.REQUESTED,
+                        instance_type="tpu",
+                        launch_request_id="lid-p",
+                        status_times=[(Instance.REQUESTED, 10 + h)],
+                    )
+                    for h in range(4)
+                ),
+            ],
+            max_worker_nodes=8,
+            workers_per_replica=4,
+        )
+        # First 2 pods of recreated rep-0 arrive across ticks.
+        Reconciler._handle_cloud_instance_allocation(
+            preempt_im,
+            {
+                "cpnew-0": CloudInstance(
+                    "cpnew-0", "tpu", NodeKind.WORKER, True, replica_id="rep-0"
+                ),
+                "cpnew-1": CloudInstance(
+                    "cpnew-1", "tpu", NodeKind.WORKER, True, replica_id="rep-0"
+                ),
+            },
+            [],
+            autoscaling_config=cfg4,
+        )
+        # Pod cpnew-1 is evicted mid-boot (newer termination than live_alloc),
+        # while cpnew-2 and cpnew-3 arrive next tick -> must still bind!
+        Reconciler._handle_cloud_instance_terminated(
+            preempt_im,
+            {
+                "cpnew-0": CloudInstance(
+                    "cpnew-0", "tpu", NodeKind.WORKER, True, replica_id="rep-0"
+                )
+            },
+        )
+        Reconciler._handle_cloud_instance_allocation(
+            preempt_im,
+            {
+                "cpnew-0": CloudInstance(
+                    "cpnew-0", "tpu", NodeKind.WORKER, True, replica_id="rep-0"
+                ),
+                "cpnew-2": CloudInstance(
+                    "cpnew-2", "tpu", NodeKind.WORKER, True, replica_id="rep-0"
+                ),
+                "cpnew-3": CloudInstance(
+                    "cpnew-3", "tpu", NodeKind.WORKER, True, replica_id="rep-0"
+                ),
+            },
+            [],
+            autoscaling_config=cfg4,
+        )
+        preempt_insts, _ = preempt_store.get_instances()
+        assert {preempt_insts[f"p-new-{h}"].cloud_instance_id for h in range(4)} == {
+            "cpnew-0",
+            "cpnew-1",
+            "cpnew-2",
+            "cpnew-3",
+        }
+
+        # 9. Same-batch reuse after a dead prior incarnation where the sole
+        # allocated pod of the recreated replica is evicted mid-boot before the
+        # remaining 3 pods arrive (no live rows on rep-0 yet): the prior
+        # incarnation is pruned at the newer pod's ALLOCATED cutoff so rep-0
+        # stays attached to the active batch.
+        cfg5, mid2_store, _, mid2_im = self._setup_multihost_reconcile_env(
+            "same_batch_double_incarnation_mid_boot",
+            [
+                *(
+                    create_instance(
+                        f"d-old-{h}",
+                        status=Instance.TERMINATED,
+                        instance_type="tpu",
+                        cloud_instance_id=f"cdold-{h}",
+                        cloud_instance_replica_id="rep-0",
+                        launch_request_id="lid-d",
+                        status_times=[
+                            (Instance.ALLOCATED, 1),
+                            (Instance.TERMINATED, 3),
+                        ],
+                    )
+                    for h in range(4)
+                ),
+                create_instance(
+                    "d-new-0",
+                    status=Instance.TERMINATED,
+                    instance_type="tpu",
+                    cloud_instance_id="cdnew-0",
+                    cloud_instance_replica_id="rep-0",
+                    launch_request_id="lid-d",
+                    status_times=[
+                        (Instance.ALLOCATED, 100),
+                        (Instance.TERMINATED, 105),
+                    ],
+                ),
+                *(
+                    create_instance(
+                        f"d-new-{h}",
+                        status=Instance.REQUESTED,
+                        instance_type="tpu",
+                        launch_request_id="lid-d",
+                        status_times=[(Instance.REQUESTED, 90 + h)],
+                    )
+                    for h in range(1, 4)
+                ),
+            ],
+            max_worker_nodes=8,
+            workers_per_replica=4,
+        )
+        Reconciler._handle_cloud_instance_allocation(
+            mid2_im,
+            {
+                f"cdnew-{h}": CloudInstance(
+                    f"cdnew-{h}", "tpu", NodeKind.WORKER, True, replica_id="rep-0"
+                )
+                for h in range(1, 4)
+            },
+            [],
+            autoscaling_config=cfg5,
+        )
+        mid2_insts, _ = mid2_store.get_instances()
+        assert {mid2_insts[f"d-new-{h}"].cloud_instance_id for h in range(4)} == {
+            "cdnew-0",
+            "cdnew-1",
+            "cdnew-2",
+            "cdnew-3",
+        }
+
 
 if __name__ == "__main__":
     if os.environ.get("PARALLEL_CI"):
