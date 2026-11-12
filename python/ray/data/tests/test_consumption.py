@@ -17,7 +17,6 @@ from ray.data._internal.execution.interfaces.ref_bundle import (
     _ref_bundles_iterator_to_block_refs_list,
 )
 from ray.data.block import BlockAccessor
-from ray.data.context import ShuffleStrategy
 from ray.data.dataset import Dataset, MaterializedDataset
 from ray.data.datasource.util import (
     _validate_head_node_resources_for_local_scheduling,
@@ -447,9 +446,6 @@ def test_dataset_repr_gap(ray_start_regular_shared, restore_data_context):
 
 
 def test_dataset_explain(ray_start_regular_shared, capsys):
-    # The expected physical plan below is the legacy all-to-all shuffle.
-    ctx = ray.data.context.DataContext.get_current()
-    ctx.shuffle_strategy = ShuffleStrategy.SORT_SHUFFLE_PULL_BASED
     ds = ray.data.range(10, override_num_blocks=10)
     ds = ds.map(lambda x: x)
 

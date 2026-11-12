@@ -2,7 +2,7 @@ import dataclasses
 import functools
 import logging
 from collections import defaultdict
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any, Dict, List, Optional, Tuple
 
 import ray
 from ray.data._internal.execution.bundle_queue import (
@@ -26,12 +26,8 @@ from ray.data._internal.execution.operators.shuffle_operators.shuffle_tasks impo
     SHUFFLE_PEAK_MEMORY_MULTIPLIER,
     BlockTransformer,
     PartitionFn,
-    TaskScopedPartitioner,
     _shuffle_map_task,
-    merge_runtime_envs,
-    resource_override,
 )
-from ray.data._internal.execution.util import merge_label_selector
 from ray.data.block import Block, BlockMetadata, BlockStats
 from ray.data.context import DataContext
 from ray.types import ObjectRef
@@ -77,9 +73,6 @@ class ShuffleMapOp(InternalQueueOperatorMixin, PhysicalOperator):
             May change the block schema.
         map_runtime_env: Optional runtime_env for map tasks; useful to
             isolate map workers from other ops.
-        map_ray_remote_args: Optional user ``ray.remote`` options for map
-            tasks (e.g. custom resources). They override the defaults; a
-            ``runtime_env`` is merged onto ``map_runtime_env``.
         map_cpus: CPU request per map task.
         peak_memory_multiplier: Multiplier applied to a task's input bytes to
             derive its memory request.
@@ -94,10 +87,9 @@ class ShuffleMapOp(InternalQueueOperatorMixin, PhysicalOperator):
         data_context: DataContext,
         *,
         num_partitions: int,
-        partition_fn: Union[PartitionFn, TaskScopedPartitioner],
+        partition_fn: PartitionFn,
         block_transformer: Optional[BlockTransformer] = None,
         map_runtime_env: Optional[Dict[str, Any]] = None,
-        map_ray_remote_args: Optional[Dict[str, Any]] = None,
         map_cpus: float = _DEFAULT_SHUFFLE_MAP_TASK_NUM_CPUS,
         peak_memory_multiplier: float = SHUFFLE_PEAK_MEMORY_MULTIPLIER,
         name: str = "ShuffleMap",
@@ -109,19 +101,12 @@ class ShuffleMapOp(InternalQueueOperatorMixin, PhysicalOperator):
         )
 
         self._num_partitions: int = num_partitions
-        self._partition_fn: Union[PartitionFn, TaskScopedPartitioner] = partition_fn
+        self._partition_fn: PartitionFn = partition_fn
         self._block_transformer: Optional[BlockTransformer] = block_transformer
 
         # -- Map task config -------------------------------------------------
+        self._shuffle_map_task_num_cpus: float = map_cpus
         self._map_runtime_env: Optional[Dict[str, Any]] = map_runtime_env
-        self._map_ray_remote_args: Dict[str, Any] = dict(map_ray_remote_args or {})
-        # Resolved once so task options and resource estimates see the same ask.
-        self._shuffle_map_task_num_cpus: float = float(
-            resource_override(self._map_ray_remote_args, "num_cpus", map_cpus)
-        )
-        self._shuffle_map_task_num_gpus: float = float(
-            resource_override(self._map_ray_remote_args, "num_gpus", 0)
-        )
         self._peak_memory_multiplier: float = peak_memory_multiplier
 
         # -- Pre-map merge ---------------------------------------------------
@@ -144,10 +129,6 @@ class ShuffleMapOp(InternalQueueOperatorMixin, PhysicalOperator):
         # -- Per-partition staging queues ------------------------------------
         self._partition_staging: List[FIFOBundleQueue] = [
             FIFOBundleQueue() for _ in range(num_partitions)
-        ]
-        # Map task index of each staged shard, in staging order.
-        self._partition_shard_task_idx: List[List[int]] = [
-            [] for _ in range(num_partitions)
         ]
 
         # -- Per-partition total bytes ---------------------------------------
@@ -227,32 +208,21 @@ class ShuffleMapOp(InternalQueueOperatorMixin, PhysicalOperator):
         cur_task_idx = self._next_shuffle_map_task_idx
         self._next_shuffle_map_task_idx += 1
 
-        resources = self._map_task_resources(
-            int(estimated_bytes * self._peak_memory_multiplier)
-        )
-        # None means "unset" to ray.remote, so it must not override the defaults.
-        user_args = {
-            k: v for k, v in self._map_ray_remote_args.items() if v is not None
-        }
-        user_runtime_env = user_args.pop("runtime_env", None)
+        resources: Dict[str, Any] = {"num_cpus": self._shuffle_map_task_num_cpus}
+        if estimated_bytes > 0:
+            resources["memory"] = int(estimated_bytes * self._peak_memory_multiplier)
 
         ray_options: Dict[str, Any] = {
             **resources,
-            **user_args,
             "name": self.name,
             "num_returns": self._num_partitions + 1,
         }
-        if target_node_id is not None and "scheduling_strategy" not in user_args:
+        if target_node_id is not None:
             ray_options["scheduling_strategy"] = NodeAffinitySchedulingStrategy(
                 target_node_id, soft=True
             )
-        if self._map_runtime_env is not None or user_runtime_env is not None:
-            ray_options["runtime_env"] = merge_runtime_envs(
-                self._map_runtime_env, user_runtime_env or {}
-            )
-        ray_options = merge_label_selector(
-            ray_options, self.data_context.execution_options.label_selector
-        )
+        if self._map_runtime_env is not None:
+            ray_options["runtime_env"] = self._map_runtime_env
 
         map_refs = _shuffle_map_task.options(**ray_options).remote(
             *block_refs,
@@ -260,7 +230,6 @@ class ShuffleMapOp(InternalQueueOperatorMixin, PhysicalOperator):
             num_partitions=self._num_partitions,
             compression=self.data_context.shuffle_compression,
             block_transformer=self._block_transformer,
-            task_index=cur_task_idx,
         )
         metadata_ref = map_refs[0]
         partition_refs = list(map_refs[1:])
@@ -318,7 +287,6 @@ class ShuffleMapOp(InternalQueueOperatorMixin, PhysicalOperator):
                 owns_blocks=True,
             )
             self._partition_staging[partition_id].add(shard_bundle)
-            self._partition_shard_task_idx[partition_id].append(task_idx)
             self._partition_bytes[partition_id] += nbytes
 
         for bundle in input_bundles:
@@ -366,10 +334,6 @@ class ShuffleMapOp(InternalQueueOperatorMixin, PhysicalOperator):
             shards: List[RefBundle] = []
             while staging.has_next():
                 shards.append(staging.get_next())
-            # Map tasks finish in arbitrary order; fix the shard order so a
-            # reducer's input, and therefore its output, is the same on every run.
-            task_idxs = self._partition_shard_task_idx[partition_id]
-            shards = [s for _, s in sorted(zip(task_idxs, shards), key=lambda t: t[0])]
 
             merged = RefBundle.merge_ref_bundles(shards)
             # Stamp the partition_id sentinel onto the merged bundle's
@@ -429,7 +393,6 @@ class ShuffleMapOp(InternalQueueOperatorMixin, PhysicalOperator):
         self._merge_buffer_bytes_by_node.clear()
         for queue in self._partition_staging:
             queue.clear()
-        self._partition_shard_task_idx = [[] for _ in self._partition_staging]
         self._output_queue.clear()
 
     def get_stats(self) -> Dict[str, List[BlockStats]]:
@@ -446,7 +409,6 @@ class ShuffleMapOp(InternalQueueOperatorMixin, PhysicalOperator):
     def current_logical_usage(self) -> ExecutionResources:
         return ExecutionResources(
             cpu=self._map_resource_usage.cpu,
-            gpu=self._map_resource_usage.gpu,
             memory=self._map_resource_usage.memory,
         )
 
@@ -458,17 +420,10 @@ class ShuffleMapOp(InternalQueueOperatorMixin, PhysicalOperator):
     def incremental_resource_usage(self) -> ExecutionResources:
         avg_input = self._metrics.average_bytes_inputs_per_task
         memory = int(avg_input * self._peak_memory_multiplier) if avg_input else 0
-        return ExecutionResources.from_resource_dict(self._map_task_resources(memory))
-
-    def _map_task_resources(self, memory_estimate: int) -> Dict[str, Any]:
-        """Per-task resources: operator defaults with the user's overrides applied."""
-        resources: Dict[str, Any] = {"num_cpus": self._shuffle_map_task_num_cpus}
-        if self._shuffle_map_task_num_gpus:
-            resources["num_gpus"] = self._shuffle_map_task_num_gpus
-        memory = resource_override(self._map_ray_remote_args, "memory", memory_estimate)
-        if memory > 0:
-            resources["memory"] = int(memory)
-        return resources
+        return ExecutionResources(
+            cpu=self._shuffle_map_task_num_cpus,
+            memory=memory,
+        )
 
     def min_scheduling_resources(self) -> ExecutionResources:
         return self.incremental_resource_usage()

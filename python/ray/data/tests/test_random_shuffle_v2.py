@@ -17,28 +17,18 @@ from ray.data._internal.execution.operators.shuffle_operators.disk_shuffle_map_o
 from ray.data._internal.execution.operators.shuffle_operators.disk_shuffle_reduce_operator import (  # noqa: E501
     DiskHashShuffleReduceOp,
 )
-from ray.data._internal.execution.operators.shuffle_operators.shuffle_map_operator import (  # noqa: E501
-    ShuffleMapOp,
-)
-from ray.data._internal.execution.operators.shuffle_operators.shuffle_reduce_operator import (  # noqa: E501
-    ShuffleReduceOp,
-)
 from ray.data._internal.logical.optimizers import get_execution_plan
 from ray.data.context import DataContext, ShuffleStrategy
 from ray.data.tests.conftest import *  # noqa: F401, F403
 from ray.tests.conftest import *  # noqa: F401, F403
 
-_TRANSPORTS = [
-    pytest.param(False, ShuffleMapOp, ShuffleReduceOp, "", id="object_store"),
-    pytest.param(
-        True, DiskHashShuffleMapOp, DiskHashShuffleReduceOp, "Disk", id="disk"
-    ),
-]
 
-_USE_DISK = [
-    pytest.param(False, id="object_store"),
-    pytest.param(True, id="disk"),
-]
+@pytest.fixture
+def disk_shuffle_v2(restore_data_context):
+    ctx = DataContext.get_current()
+    ctx.shuffle_strategy = ShuffleStrategy.SHUFFLE_V2
+    ctx.use_disk_based_hash_shuffle = True
+    return ctx
 
 
 def _ids(partitions):
@@ -112,48 +102,34 @@ def test_random_shuffle_reduce_permutes_and_is_seeded_per_partition():
     assert list(reduce_fn(0, [[]])) == []
 
 
-@pytest.mark.parametrize("use_disk, map_cls, reduce_cls, prefix", _TRANSPORTS)
-def test_random_shuffle_planner_routes_to_shuffle_v2(
-    ray_start_regular_shared_2_cpus,
-    restore_data_context,
-    use_disk,
-    map_cls,
-    reduce_cls,
-    prefix,
+def test_random_shuffle_planner_routes_to_disk_shuffle_v2(
+    ray_start_regular_shared_2_cpus, disk_shuffle_v2
 ):
-    ctx = DataContext.get_current()
-    ctx.shuffle_strategy = ShuffleStrategy.SHUFFLE_V2
-    ctx.use_disk_based_hash_shuffle = use_disk
     ds = ray.data.range(10, override_num_blocks=2).random_shuffle(
         seed=0, resources={"bar": 1}
     )
 
     dag = get_execution_plan(ds._logical_plan)[0].dag
-    assert isinstance(dag, reduce_cls)
-    assert dag.name == f"{prefix}RandomShuffleReduce(partitions=2)"
+    assert isinstance(dag, DiskHashShuffleReduceOp)
+    assert dag.name == "DiskRandomShuffleReduce(partitions=2)"
     assert dag._reduce_ray_remote_args == {"resources": {"bar": 1}}
     map_op = dag.input_dependencies[0]
-    assert isinstance(map_op, map_cls)
-    assert map_op.name == f"{prefix}RandomShuffleMap(partitions=2)"
+    assert isinstance(map_op, DiskHashShuffleMapOp)
+    assert map_op.name == "DiskRandomShuffleMap(partitions=2)"
     assert isinstance(map_op._partition_fn, RandomShufflePartitioner)
     assert map_op._map_ray_remote_args == {"resources": {"bar": 1}}
 
-    ctx.shuffle_strategy = ShuffleStrategy.SORT_SHUFFLE_PULL_BASED
+    # Without the disk transport, SHUFFLE_V2 keeps the legacy all-to-all op.
+    disk_shuffle_v2.use_disk_based_hash_shuffle = False
     ds_legacy = ray.data.range(10, override_num_blocks=2).random_shuffle()
     assert isinstance(
         get_execution_plan(ds_legacy._logical_plan)[0].dag, AllToAllOperator
     )
 
 
-@pytest.mark.parametrize("use_disk", _USE_DISK)
-def test_random_shuffle_v2_end_to_end(
-    ray_start_regular_shared_2_cpus, restore_data_context, use_disk
-):
-    ctx = DataContext.get_current()
-    ctx.shuffle_strategy = ShuffleStrategy.SHUFFLE_V2
-    ctx.use_disk_based_hash_shuffle = use_disk
+def test_random_shuffle_v2_end_to_end(ray_start_regular_shared_2_cpus, disk_shuffle_v2):
     # One map task per input block, so reducers merge shards from several mappers.
-    ctx.shuffle_input_batch_bytes = 0
+    disk_shuffle_v2.shuffle_input_batch_bytes = 0
 
     ds = ray.data.range(1000, override_num_blocks=10)
     seeded = [row["id"] for row in ds.random_shuffle(seed=7).take_all()]
@@ -174,14 +150,9 @@ def test_random_shuffle_v2_end_to_end(
     assert ray.data.from_items([]).random_shuffle().take_all() == []
 
 
-@pytest.mark.parametrize("use_disk", _USE_DISK)
 def test_random_shuffle_v2_promotes_compatible_block_schemas(
-    ray_start_regular_shared_2_cpus, restore_data_context, use_disk
+    ray_start_regular_shared_2_cpus, disk_shuffle_v2
 ):
-    ctx = DataContext.get_current()
-    ctx.shuffle_strategy = ShuffleStrategy.SHUFFLE_V2
-    ctx.use_disk_based_hash_shuffle = use_disk
-
     # Default batching sends both blocks to one map task, so a partition's shards
     # carry a null and an int64 version of the same column.
     null_block = pa.table({"v": pa.array([None, None], type=pa.null())})

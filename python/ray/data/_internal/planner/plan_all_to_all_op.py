@@ -269,32 +269,31 @@ def _plan_random_shuffle_v2(
     logical_op: RandomShuffle,
     input_physical_op: PhysicalOperator,
 ) -> PhysicalOperator:
-    """Build the Map -> Reduce DAG for a SHUFFLE_V2 random shuffle."""
+    """Build the disk Map -> Reduce DAG for a SHUFFLE_V2 random shuffle."""
     # Pinned at plan time so retried tasks reproduce their output.
     seed = get_single_integer_random_seed(logical_op.seed_config, data_context)
     num_partitions = (
         logical_op.input_dependencies[0].estimated_num_outputs()
         or data_context.default_hash_shuffle_parallelism
     )
-    map_cls, reduce_cls, prefix = _select_shuffle_v2_op_classes(data_context)
 
-    map_op = map_cls(
+    map_op = DiskHashShuffleMapOp(
         input_physical_op,
         data_context,
         num_partitions=num_partitions,
         partition_fn=RandomShufflePartitioner(num_partitions, seed),
         map_runtime_env=_SHUFFLE_MAP_RUNTIME_ENV,
         map_ray_remote_args=logical_op.ray_remote_args,
-        name=f"{prefix}RandomShuffleMap(partitions={num_partitions})",
+        name=f"DiskRandomShuffleMap(partitions={num_partitions})",
     )
-    return reduce_cls(
+    return DiskHashShuffleReduceOp(
         map_op,
         data_context,
         num_partitions=num_partitions,
         reduce_fn=make_random_shuffle_reduce_fn(seed),
         peak_memory_multiplier=_RANDOM_SHUFFLE_REDUCE_PEAK_MEMORY_MULTIPLIER,
         reduce_ray_remote_args=logical_op.ray_remote_args,
-        name=f"{prefix}RandomShuffleReduce(partitions={num_partitions})",
+        name=f"DiskRandomShuffleReduce(partitions={num_partitions})",
     )
 
 
@@ -446,7 +445,12 @@ def plan_all_to_all_op(
         # want to inherit the upstream op's target max block size.
 
     elif isinstance(op, RandomShuffle):
-        if data_context.shuffle_strategy == ShuffleStrategy.SHUFFLE_V2:
+        # Only the disk transport gets a v2 random shuffle; the object-store
+        # transport is being retired, so it keeps the legacy all-to-all op.
+        if (
+            data_context.shuffle_strategy == ShuffleStrategy.SHUFFLE_V2
+            and data_context.use_disk_based_hash_shuffle
+        ):
             return _plan_random_shuffle_v2(data_context, op, input_physical_dag)
         debug_limit_shuffle_execution_to_num_blocks = data_context.get_config(
             "debug_limit_shuffle_execution_to_num_blocks", None

@@ -49,8 +49,6 @@ def test_sort_object_ref_warnings(
     propagate_logs,
     caplog,
 ):
-    if configure_shuffle_method == ShuffleStrategy.SHUFFLE_V2:
-        pytest.skip("Driver-memory estimates are emitted by the legacy all-to-all op")
     # Test that we warn iff expected driver memory usage from
     # storing ObjectRefs is higher than the configured
     # threshold.
@@ -84,8 +82,6 @@ def test_sort_inlined_objects_warnings(
     propagate_logs,
     caplog,
 ):
-    if configure_shuffle_method == ShuffleStrategy.SHUFFLE_V2:
-        pytest.skip("Driver-memory estimates are emitted by the legacy all-to-all op")
     # Test that we warn iff expected driver memory usage from
     # storing tiny Ray objects on driver heap is higher than
     # the configured threshold.

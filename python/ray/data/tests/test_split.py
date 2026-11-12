@@ -756,16 +756,10 @@ def test_train_test_split(ray_start_regular_shared_2_cpus):
     assert extract_values("id", train.take()) == [0, 1, 2, 3, 4, 5]
     assert extract_values("id", test.take()) == [6, 7]
 
-    # shuffle: the permutation depends on the shuffle implementation, so check
-    # the split is complete, moved rows, and is reproducible for a fixed seed.
+    # shuffle
     train, test = ds.train_test_split(test_size=0.25, shuffle=True, seed=1)
-    train_ids = extract_values("id", train.take())
-    test_ids = extract_values("id", test.take())
-    assert len(train_ids) == 6 and len(test_ids) == 2
-    assert sorted(train_ids + test_ids) == list(range(8))
-    assert train_ids != [0, 1, 2, 3, 4, 5]
-    train_again, _ = ds.train_test_split(test_size=0.25, shuffle=True, seed=1)
-    assert extract_values("id", train_again.take()) == train_ids
+    assert extract_values("id", train.take()) == [7, 4, 6, 0, 5, 2]
+    assert extract_values("id", test.take()) == [1, 3]
 
     # error handling
     with pytest.raises(TypeError):

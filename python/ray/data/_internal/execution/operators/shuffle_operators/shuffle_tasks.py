@@ -148,18 +148,16 @@ def _encode_partition_ipc(
 @ray.remote  # pyrefly: ignore[no-matching-overload]
 def _shuffle_map_task(
     *blocks: Block,
-    partition_fn: Union[PartitionFn, TaskScopedPartitioner],
+    partition_fn: PartitionFn,
     num_partitions: int,
     compression: Optional[str],
     block_transformer: Optional[BlockTransformer] = None,
-    task_index: int = 0,
 ) -> Tuple[
     Union[Tuple[BlockMetadata, Dict[int, Tuple[int, int]], "pa.Schema"], pa.Buffer],
     ...,
 ]:
     """Map stage: partition the input blocks and return one shard per partition."""
     stats = BlockExecStats.builder()
-    partition_fn = resolve_partition_fn(partition_fn, task_index)
 
     # Use BlockAccessor so we also work for non-Arrow blocks (pandas, numpy)
     accessors = [BlockAccessor.for_block(b) for b in blocks]
