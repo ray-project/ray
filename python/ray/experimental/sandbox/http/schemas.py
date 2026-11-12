@@ -389,6 +389,42 @@ class SandboxAPISettings(BaseModel):
         ge=0,
         description="Actor CPU reservation when the request has no cpu_request.",
     )
+    num_sandbox_actors: Optional[int] = Field(
+        default=None,
+        ge=1,
+        description=(
+            "Number of persistent detached sandbox host actors used to "
+            "multiplex sandboxes across a fixed actor pool instead of "
+            "creating one Ray actor per sandbox. None (the default) creates "
+            "one detached actor per sandbox."
+        ),
+    )
+    sandbox_actor_num_cpus: Optional[float] = Field(
+        default=None,
+        ge=0,
+        description=(
+            "CPU reservation (num_cpus) for each multiplexed sandbox actor "
+            "when num_sandbox_actors is set. Defaults to "
+            "default_actor_num_cpus when None."
+        ),
+    )
+    sandbox_actor_memory_mb: Optional[float] = Field(
+        default=None,
+        gt=0,
+        description=(
+            "Memory reservation in MiB for each multiplexed sandbox actor "
+            "when num_sandbox_actors is set. None sets no Ray memory "
+            "reservation on the actor."
+        ),
+    )
+    sandbox_actor_max_concurrency: int = Field(
+        default=10000,
+        ge=1,
+        description=(
+            "Maximum concurrent async method calls per multiplexed sandbox "
+            "actor when num_sandbox_actors is set."
+        ),
+    )
     default_capabilities: List[str] = Field(
         default_factory=lambda: list(DOCKER_DEFAULT_CAPABILITIES)
     )
@@ -403,6 +439,18 @@ class SandboxAPISettings(BaseModel):
                 f"a subset of {VALID_NETWORK_MODES}"
             )
         return modes
+
+    @model_validator(mode="after")
+    def _validate_multiplexed_actor_settings(self) -> "SandboxAPISettings":
+        if self.num_sandbox_actors is None and (
+            self.sandbox_actor_num_cpus is not None
+            or self.sandbox_actor_memory_mb is not None
+        ):
+            raise ValueError(
+                "sandbox_actor_num_cpus and sandbox_actor_memory_mb require "
+                "num_sandbox_actors to be set"
+            )
+        return self
 
 
 def _require_token_env(settings: SandboxAPISettings) -> None:

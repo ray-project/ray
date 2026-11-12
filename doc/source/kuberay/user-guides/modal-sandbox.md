@@ -448,6 +448,37 @@ sb.terminate()
 
 To block additional internal or public IP ranges across every sandbox on the cluster, set `RAY_SANDBOX_EGRESS_DENY` to a comma-separated list of CIDR blocks in the `ray-worker` container environment. See {ref}`Restrict egress to an allowlist <ray-sandbox-egress-allowlist>` for full details on egress filtering.
 
+## Optional: Multiplex sandboxes across a fixed actor pool
+
+By default, the facade schedules one detached `SandboxHost` actor for each sandbox. On large clusters that create thousands or millions of short-lived sandboxes, set `num_sandbox_actors` in `serveConfigV2` to multiplex sandboxes onto a fixed pool of `MultiSandboxHost` actors instead. Pooling eliminates per-sandbox Ray actor scheduling and worker process startup overhead.
+
+Configure the pool size and each actor's resource reservation in the application `args`:
+
+```yaml
+  serveConfigV2: |
+    grpc_options:
+      port: 9000
+      grpc_servicer_functions:
+        - ray.experimental.sandbox.http.grpc_facade.add_servicers_to_server
+    applications:
+      - name: sandbox-facade
+        route_prefix: /
+        import_path: ray.experimental.sandbox.http.grpc_app:build_app
+        args:
+          advertise_url: http://127.0.0.1:9000
+          max_ttl_seconds: 86400
+          num_sandbox_actors: 2
+          sandbox_actor_num_cpus: 4.0
+          sandbox_actor_memory_mb: 8192
+```
+
+The pool accepts the following settings:
+
+* `num_sandbox_actors`: Number of detached `MultiSandboxHost` actors in the pool. Omit this field to create one actor per sandbox.
+* `sandbox_actor_num_cpus`: Ray CPU reservation (`num_cpus`) for each pooled actor. Defaults to `default_actor_num_cpus` when omitted.
+* `sandbox_actor_memory_mb`: Ray memory reservation in MiB for each pooled actor.
+* `sandbox_actor_max_concurrency`: Maximum concurrent async calls per pooled actor. Defaults to `10000`.
+
 ## Optional: Expose the service behind a TLS Gateway
 
 The Modal Python SDK accepts plaintext `http://` URLs only when connecting to `localhost` or `127.0.0.1`. To connect from remote machines without port-forwarding, configure a TLS proxy on port 443 in front of `rayservice-modal-sandbox-serve-svc` and remove `advertise_url` from `serveConfigV2`:

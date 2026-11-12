@@ -75,6 +75,7 @@ from ray.experimental.sandbox.http.resolver import (
     _is_actor_gone,
     _is_actor_unavailable,
     _is_unschedulable,
+    is_multiplexed_handle,
 )
 from ray.experimental.sandbox.http.schemas import SandboxAPISettings
 from ray.util.annotations import DeveloperAPI, PublicAPI
@@ -90,6 +91,7 @@ _EXIT_TIMEOUT = 124
 _EXIT_ERROR = 126
 
 _LONG_POLL_SECONDS = 15.0
+_GET_TASK_ID_WAIT_SECONDS = 10.0
 _WAIT_MAX_SECONDS = 55.0
 # How long a non-blocking poll (SandboxWait with timeout=0) may wait on an
 # actor that is not answering before reporting "still running".
@@ -285,7 +287,48 @@ class _FacadeState:
             handle = cached(sandbox_id)
             if handle is not None:
                 return handle
+        if getattr(self.resolver, "is_multiplexed", False) and hasattr(
+            self.resolver, "ensure_pool_async"
+        ):
+            await self.resolver.ensure_pool_async()
+            if cached is not None:
+                handle = cached(sandbox_id)
+                if handle is not None:
+                    return handle
         return await asyncio.to_thread(self.resolver.get, sandbox_id)
+
+    async def create(
+        self,
+        sandbox_id: str,
+        actor_options: Dict[str, Any],
+        ctor_kwargs: Dict[str, Any],
+        *,
+        get_if_exists: bool,
+    ) -> Any:
+        create_async = getattr(self.resolver, "create_async", None)
+        if create_async is not None:
+            return await _bounded(
+                create_async(
+                    sandbox_id,
+                    actor_options,
+                    ctor_kwargs,
+                    get_if_exists=get_if_exists,
+                ),
+                grace=self.settings.scheduling_grace_seconds,
+            )
+        return await asyncio.to_thread(
+            self.resolver.create,
+            sandbox_id,
+            actor_options,
+            ctor_kwargs,
+            get_if_exists=get_if_exists,
+        )
+
+    def next_sandbox_id(self) -> str:
+        mint = getattr(self.resolver, "next_sandbox_id", None)
+        if mint is not None:
+            return mint()
+        return _new_sandbox_id()
 
     async def require_handle(self, sandbox_id: str) -> Any:
         handle = await self.lookup(sandbox_id)
@@ -294,8 +337,18 @@ class _FacadeState:
         return handle
 
     async def kill(self, sandbox_id: str, handle: Any) -> None:
+        if is_multiplexed_handle(handle):
+            return
         self.resolver.forget(sandbox_id)
         await asyncio.to_thread(self.resolver.kill, handle)
+
+
+def _check_not_found_dict(result: Any) -> Any:
+    if isinstance(result, dict) and result.get("error_code") == "sandbox_not_found":
+        raise _RpcError(
+            StatusCode.NOT_FOUND, result.get("message", "sandbox not found")
+        )
+    return result
 
 
 def _actor_error(exc: Exception) -> Optional[_RpcError]:
@@ -332,7 +385,7 @@ async def _bounded(
     if grace is None:
         grace = _SCHEDULING_GRACE_SECONDS
     try:
-        return await asyncio.wait_for(awaitable, timeout=extra_wait + grace)
+        result = await asyncio.wait_for(awaitable, timeout=extra_wait + grace)
     except asyncio.TimeoutError:
         raise _RpcError(
             StatusCode.UNAVAILABLE,
@@ -343,6 +396,7 @@ async def _bounded(
         if mapped is not None:
             raise mapped
         raise
+    return _check_not_found_dict(result)
 
 
 async def _unbounded(awaitable: Any) -> Any:
@@ -353,12 +407,13 @@ async def _unbounded(awaitable: Any) -> Any:
     ran. Callers bound the client's wait separately and let this continue.
     """
     try:
-        return await awaitable
+        result = await awaitable
     except Exception as exc:
         mapped = _actor_error(exc)
         if mapped is not None:
             raise mapped
         raise
+    return _check_not_found_dict(result)
 
 
 async def _is_alive(handle: Any) -> bool:
@@ -630,19 +685,20 @@ class _ControlServicer(ModalClientServicer):
 
         if definition.name:
             # Names are unique per app while the sandbox lives, so a named
-            # create is idempotent: retries converge on the existing actor.
+            # create is idempotent: retries converge on the existing sandbox.
             sandbox_id = _new_sandbox_id(f"{request.app_id}/{definition.name}")
-            existing = await state.lookup(sandbox_id)
-            if existing is not None:
-                if await _is_alive(existing):
-                    # boot() is idempotent: sending it again covers a first
-                    # create whose boot call never reached the actor.
-                    existing.boot.remote()
-                    return sandbox_id
-                # The previous actor died (node loss, OOM); recreate it.
-                await state.kill(sandbox_id, existing)
+            if not getattr(state.resolver, "is_multiplexed", False):
+                existing = await state.lookup(sandbox_id)
+                if existing is not None:
+                    if await _is_alive(existing):
+                        # boot() is idempotent: sending it again covers a first
+                        # create whose boot call never reached the actor.
+                        existing.boot.remote()
+                        return sandbox_id
+                    # The previous actor died (node loss, OOM); recreate it.
+                    await state.kill(sandbox_id, existing)
         else:
-            sandbox_id = _new_sandbox_id()
+            sandbox_id = state.next_sandbox_id()
 
         network, cidr_allowlist = _network_policy(definition)
 
@@ -690,8 +746,7 @@ class _ControlServicer(ModalClientServicer):
             "max_exec_history": settings.max_exec_history,
             "max_file_bytes": settings.max_file_bytes,
         }
-        handle = await asyncio.to_thread(
-            state.resolver.create,
+        handle = await state.create(
             sandbox_id,
             actor_options,
             {"sandbox_id": sandbox_id, "spec": spec, "settings": host_settings},
@@ -714,7 +769,11 @@ class _ControlServicer(ModalClientServicer):
         handle = await self._state.require_handle(request.sandbox_id)
         try:
             info = await _bounded(
-                handle.describe.remote(wait_seconds=1.0), extra_wait=1.0
+                handle.describe.remote(
+                    wait_seconds=_GET_TASK_ID_WAIT_SECONDS,
+                    wait_until_booted=True,
+                ),
+                extra_wait=_GET_TASK_ID_WAIT_SECONDS,
             )
         except _RpcError as exc:
             if exc.code != StatusCode.UNAVAILABLE:
@@ -1193,10 +1252,38 @@ def main(argv: Optional[List[str]] = None) -> None:
             "that nothing but an authenticating proxy can reach."
         ),
     )
+    parser.add_argument(
+        "--num-sandbox-actors",
+        type=int,
+        default=None,
+        help="Pool size of multiplexed sandbox actors (default: 1 actor per sandbox)",
+    )
+    parser.add_argument(
+        "--sandbox-actor-num-cpus",
+        type=float,
+        default=None,
+        help="CPU reservation per multiplexed sandbox actor",
+    )
+    parser.add_argument(
+        "--sandbox-actor-memory-mb",
+        type=float,
+        default=None,
+        help="Memory reservation in MiB per multiplexed sandbox actor",
+    )
     args = parser.parse_args(argv)
     advertise = args.advertise_url or f"http://{args.host}:{args.port}"
 
-    settings = SandboxAPISettings()
+    settings_kwargs: Dict[str, Any] = {}
+    if args.num_sandbox_actors is not None:
+        settings_kwargs["num_sandbox_actors"] = args.num_sandbox_actors
+    if args.sandbox_actor_num_cpus is not None:
+        settings_kwargs["sandbox_actor_num_cpus"] = args.sandbox_actor_num_cpus
+    if args.sandbox_actor_memory_mb is not None:
+        settings_kwargs["sandbox_actor_memory_mb"] = args.sandbox_actor_memory_mb
+    try:
+        settings = SandboxAPISettings(**settings_kwargs)
+    except ValueError as exc:
+        parser.error(str(exc))
     authenticated = bool(os.environ.get(settings.token_env_var))
     exposed = not authenticated and not _is_loopback(args.host)
     if exposed and not args.allow_unauthenticated:

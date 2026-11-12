@@ -19,6 +19,7 @@ from typing import Any
 _EXPORTS = {
     "build_app": "app",
     "create_app": "app",
+    "MultiSandboxHost": "host",
     "SandboxHost": "host",
     "DOCKER_DEFAULT_CAPABILITIES": "schemas",
     "CreateSandboxRequest": "schemas",

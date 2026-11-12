@@ -19,6 +19,7 @@ call passes the same token check. The facade keeps no state of its own
 Requires ``ray[serve]``.
 """
 
+import asyncio
 from typing import Any, Callable, Dict, Optional
 
 from ray.experimental.sandbox.http.grpc_facade import RaySandboxFacade
@@ -53,6 +54,19 @@ class _FacadeIngress(RaySandboxFacade):
         super().__init__(
             settings, handle_resolver=resolver, advertise_url=advertise_url
         )
+        self._pool_warmup_task: Optional["asyncio.Task[Any]"] = None
+        active_resolver = self._state.resolver
+        if getattr(active_resolver, "is_multiplexed", False) and hasattr(
+            active_resolver, "ensure_pool_async"
+        ):
+            try:
+                loop = asyncio.get_running_loop()
+            except RuntimeError:
+                loop = None
+            if loop is not None:
+                self._pool_warmup_task = loop.create_task(
+                    active_resolver.ensure_pool_async()
+                )
 
     async def __call__(self, request: Any) -> Any:
         """Answer HTTP requests: the application serves only gRPC."""
