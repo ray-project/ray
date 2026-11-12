@@ -267,10 +267,13 @@ class HealthManager:
                 ``Diagnose``.
             timeout: Timeout in seconds for the nodes and workers to answer.
         """
+        # New evaluators for each run: the checks differ from run to run, such
+        # as the pre-flight checks, then a Diagnose's, and an evaluator can
+        # keep state from the run it was created for.
         self._on_demand_evaluators = [
             evaluator for check in checks for evaluator in check.evaluator_creator()
         ]
-        # Nothing would read the results.
+        # No results to check.
         if not self._on_demand_evaluators:
             return
         probes = {p.probe_name(): p for check in checks for p in check.probe_creator()}
