@@ -12,7 +12,7 @@ class LogTimer:
         self._show_status = show_status
 
     def __enter__(self):
-        self._start_time = datetime.datetime.utcnow()
+        self._start_time = datetime.datetime.now(datetime.timezone.utc)
 
     def __exit__(self, *error_vals):
         if cli_logger.log_style != "record":
