@@ -25,7 +25,6 @@ from typing import (
     DefaultDict,
     Deque,
     Dict,
-    FrozenSet,
     Generator,
     Hashable,
     List,
@@ -153,7 +152,12 @@ from ray.serve._private.logging_utils import (
 from ray.serve._private.metrics_utils import InMemoryMetricsStore, MetricsPusher
 from ray.serve._private.proxy_request_response import ResponseStatus, gRPCStreamingType
 from ray.serve._private.replica_response_generator import ReplicaResponseGenerator
-from ray.serve._private.request_ingress_metrics import RequestIngressMetrics
+from ray.serve._private.request_ingress_metrics import (
+    DEPLOYMENT_REQUEST_ERROR_TAG_KEYS,
+    REQUEST_ERROR_TAG_KEYS,
+    REQUEST_TAG_KEYS,
+    RequestIngressMetrics,
+)
 from ray.serve._private.rolling_window import (
     RollingWindowAccumulator,
     RollingWindowMax,
@@ -555,19 +559,21 @@ class ReplicaMetricsManager:
                 self._add_ingress_metrics(RequestProtocol.HTTP)
 
             if self._cached_metrics_enabled:
-                # Mapping from protocol -> {request_tags -> value}.
+                # Mapping from protocol -> {request_tags -> value}. Keys are
+                # tuples of tag values in the canonical order of the matching
+                # metric's tag keys; dicts are built once per tag set at flush.
                 self._cached_ingress_request_counter: DefaultDict[
-                    RequestProtocol, DefaultDict[FrozenSet[Tuple[str, str]], int]
+                    RequestProtocol, DefaultDict[Tuple[str, ...], int]
                 ] = defaultdict(lambda: defaultdict(int))
                 self._cached_ingress_request_error_counter: DefaultDict[
-                    RequestProtocol, DefaultDict[FrozenSet[Tuple[str, str]], int]
+                    RequestProtocol, DefaultDict[Tuple[str, ...], int]
                 ] = defaultdict(lambda: defaultdict(int))
                 self._cached_deployment_request_error_counter: DefaultDict[
-                    RequestProtocol, DefaultDict[FrozenSet[Tuple[str, str]], int]
+                    RequestProtocol, DefaultDict[Tuple[str, ...], int]
                 ] = defaultdict(lambda: defaultdict(int))
                 self._cached_ingress_processing_latencies: DefaultDict[
                     RequestProtocol,
-                    DefaultDict[FrozenSet[Tuple[str, str]], Deque[float]],
+                    DefaultDict[Tuple[str, ...], Deque[float]],
                 ] = defaultdict(lambda: defaultdict(deque))
 
     @property
@@ -618,10 +624,9 @@ class ReplicaMetricsManager:
         self._cached_error_counter.clear()
 
         for route, latencies in self._cached_latencies.items():
-            for latency_ms in latencies:
-                self._processing_latency_tracker.observe(
-                    latency_ms, tags={"route": route}
-                )
+            self._processing_latency_tracker._observe_many(
+                latencies, tags={"route": route}
+            )
         self._cached_latencies.clear()
 
         self._num_ongoing_requests_gauge.set(self._num_ongoing_requests)
@@ -634,32 +639,45 @@ class ReplicaMetricsManager:
             protocol_metrics.set_num_ongoing_requests(
                 self._ingress_ongoing_requests[protocol]
             )
-            for request_tags, count in self._cached_ingress_request_counter[
+            for request_key, count in self._cached_ingress_request_counter[
                 protocol
             ].items():
-                protocol_metrics.request_counter.inc(count, tags=dict(request_tags))
+                protocol_metrics.request_counter.inc(
+                    count,
+                    tags=RequestIngressMetrics.tags_from_key(
+                        request_key, REQUEST_TAG_KEYS
+                    ),
+                )
 
-            for request_tags, count in self._cached_ingress_request_error_counter[
+            for request_key, count in self._cached_ingress_request_error_counter[
                 protocol
             ].items():
                 protocol_metrics.request_error_counter.inc(
-                    count, tags=dict(request_tags)
+                    count,
+                    tags=RequestIngressMetrics.tags_from_key(
+                        request_key, REQUEST_ERROR_TAG_KEYS
+                    ),
                 )
 
-            for request_tags, count in self._cached_deployment_request_error_counter[
+            for request_key, count in self._cached_deployment_request_error_counter[
                 protocol
             ].items():
                 protocol_metrics.deployment_request_error_counter.inc(
-                    count, tags=dict(request_tags)
+                    count,
+                    tags=RequestIngressMetrics.tags_from_key(
+                        request_key, DEPLOYMENT_REQUEST_ERROR_TAG_KEYS
+                    ),
                 )
 
-            for latency_tags, latencies in self._cached_ingress_processing_latencies[
+            for latency_key, latencies in self._cached_ingress_processing_latencies[
                 protocol
             ].items():
-                for latency_ms in latencies:
-                    protocol_metrics.processing_latency_tracker.observe(
-                        latency_ms, tags=dict(latency_tags)
-                    )
+                protocol_metrics.processing_latency_tracker._observe_many(
+                    latencies,
+                    tags=RequestIngressMetrics.tags_from_key(
+                        latency_key, REQUEST_TAG_KEYS
+                    ),
+                )
 
         self._cached_ingress_request_counter.clear()
         self._cached_ingress_request_error_counter.clear()
@@ -929,40 +947,36 @@ class ReplicaMetricsManager:
             return
 
         if self._cached_metrics_enabled:
-            # Cached path: accumulate per-tag-set counts/latencies keyed by the same
-            # canonical tag schemas used by the direct emit path, and flush them in
-            # `_report_cached_metrics`.
-            request_tags = RequestIngressMetrics.request_tags(
+            # Cached path: accumulate per-tag-set counts/latencies keyed by a
+            # tuple of tag values in canonical order, and rebuild the tag dict
+            # only once per tag set in `_report_cached_metrics`.
+            request_key = RequestIngressMetrics.request_tags_key(
                 route=route,
                 method=method,
                 application=app_name,
                 status_code=status_code,
             )
-            self._cached_ingress_request_counter[protocol][
-                frozenset(request_tags.items())
-            ] += 1
-            self._cached_ingress_processing_latencies[protocol][
-                frozenset(request_tags.items())
-            ].append(latency_ms)
+            self._cached_ingress_request_counter[protocol][request_key] += 1
+            self._cached_ingress_processing_latencies[protocol][request_key].append(
+                latency_ms
+            )
             if is_error:
-                request_error_tags = RequestIngressMetrics.request_error_tags(
-                    route=route,
-                    method=method,
-                    application=app_name,
-                    status_code=status_code,
-                )
-                deployment_error_tags = RequestIngressMetrics.deployment_error_tags(
-                    route=route,
-                    method=method,
-                    application=app_name,
-                    status_code=status_code,
-                    deployment=deployment_name,
-                )
                 self._cached_ingress_request_error_counter[protocol][
-                    frozenset(request_error_tags.items())
+                    RequestIngressMetrics.request_error_tags_key(
+                        route=route,
+                        method=method,
+                        application=app_name,
+                        status_code=status_code,
+                    )
                 ] += 1
                 self._cached_deployment_request_error_counter[protocol][
-                    frozenset(deployment_error_tags.items())
+                    RequestIngressMetrics.deployment_error_tags_key(
+                        route=route,
+                        method=method,
+                        application=app_name,
+                        status_code=status_code,
+                        deployment=deployment_name,
+                    )
                 ] += 1
         else:
             self._ingress_metrics[protocol].record_request(
