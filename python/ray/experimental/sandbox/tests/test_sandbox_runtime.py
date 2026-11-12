@@ -148,19 +148,40 @@ def test_create_forwards_config_fields_to_backend():
     assert config.oom_score_adj == 0
 
 
-@pytest.mark.parametrize("readonly", [True, False])
-def test_create_ignores_the_removed_readonly_option(readonly):
-    """Callers written for the readonly option still pass it, mostly as
+def test_create_ignores_readonly_false():
+    """Callers written for the removed readonly option still pass
     readonly=False. It warns and changes nothing: every sandbox is writable."""
     runtime = _fake_runtime()
     with pytest.warns(RayDeprecationWarning, match="'readonly' option was removed"):
-        runtime.create(image="fake:latest", readonly=readonly)
+        runtime.create(image="fake:latest", readonly=False)
     (config,) = runtime._backend.configs
     assert not hasattr(config, "readonly")
 
     # Other unknown options still fail.
     with pytest.raises(TypeError, match="writable"):
         runtime.create(image="fake:latest", writable=True)
+
+
+def test_create_refuses_readonly_true():
+    """readonly=True asked for a root filesystem the sandbox can't write.
+    No sandbox has one now, so the call fails instead of starting a writable
+    sandbox."""
+    runtime = _fake_runtime()
+    with pytest.raises(ValueError, match="readonly=True is no longer supported"):
+        runtime.create(image="fake:latest", readonly=True)
+    assert runtime._backend.configs == []
+
+
+def test_restore_handles_the_removed_readonly_option():
+    runtime = _fake_runtime()
+    runtime._backend.restore_sandbox = Mock(return_value="restored-1")
+    with pytest.raises(ValueError, match="readonly=True is no longer supported"):
+        runtime.restore("/ckpt", readonly=True)
+    runtime._backend.restore_sandbox.assert_not_called()
+
+    with pytest.warns(RayDeprecationWarning, match="'readonly' option was removed"):
+        assert runtime.restore("/ckpt", readonly=False) == "restored-1"
+    assert "readonly" not in runtime._backend.restore_sandbox.call_args.kwargs
 
 
 def _fake_running_backend(tmp_path):

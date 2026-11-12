@@ -5,7 +5,7 @@ from ray.experimental.sandbox.backend.base import (
     ExecResult,
     SandboxStatus,
 )
-from ray.experimental.sandbox.config import SandboxConfig
+from ray.experimental.sandbox.config import SandboxConfig, pop_removed_readonly
 from ray.experimental.sandbox.exceptions import SandboxNotFoundError
 from ray.experimental.sandbox.runtime import SandboxRuntime
 
@@ -48,8 +48,10 @@ class Sandbox:
             past it fail with ENOSPC. Zero (default) means no cap; see
             :class:`~ray.experimental.sandbox.config.SandboxConfig`.
         restore_from: Path to checkpoint directory if restoring an existing sandbox.
-        **kwargs: Additional parameters passed to runtime. ``readonly`` is
-            accepted and ignored, with a deprecation warning on create.
+        **kwargs: Additional parameters passed to runtime. The removed
+            ``readonly`` option is still recognized: ``readonly=False`` is
+            ignored with a deprecation warning, and ``readonly=True`` raises
+            a ``ValueError``.
     """
 
     def __init__(
@@ -75,6 +77,8 @@ class Sandbox:
                 "Sandbox does not accept 'gpu_ids'. A sandbox gets every GPU "
                 "Ray assigned this actor, from ray.get_gpu_ids()."
             )
+        # Callers written for the removed option still pass it.
+        pop_removed_readonly(kwargs)
 
         # Extract CPU and memory from Ray assigned resources if not explicitly provided
         # For restore_from, do not default to actor-assigned resources unless explicitly requested,
@@ -94,8 +98,6 @@ class Sandbox:
         self.runtime = SandboxRuntime()
         if restore_from:
             restore_kwargs = dict(kwargs)
-            # Callers written for the removed option still pass it.
-            restore_kwargs.pop("readonly", None)
             if env is not None:
                 restore_kwargs["env"] = env
             if workdir is not None:

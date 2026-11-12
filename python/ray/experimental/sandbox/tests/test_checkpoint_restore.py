@@ -25,6 +25,7 @@ from ray.experimental.sandbox.exceptions import (
     SandboxTimeoutError,
 )
 from ray.experimental.sandbox.runtime import SandboxRuntime
+from ray.util.annotations import RayDeprecationWarning
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
 
@@ -1259,16 +1260,22 @@ class TestCheckpointRestore(unittest.TestCase):
             underlying_class = getattr(
                 sandbox_api.Sandbox, "__ray_actor_class__", sandbox_api.Sandbox
             )
-            _ = underlying_class(
-                restore_from="/test/ckpt",
-                env={"MY_VAR": "VAL"},
-                workdir="/custom/workdir",
-                network="none",
-                # Callers written for the removed option still pass it.
-                readonly=False,
-                capabilities=["CAP_NET_ADMIN"],
-                disk="500M",
-            )
+            # The removed option: readonly=True is refused before anything is
+            # restored, and readonly=False warns and isn't passed on.
+            with pytest.raises(ValueError, match="readonly=True is no longer"):
+                underlying_class(restore_from="/test/ckpt", readonly=True)
+            mock_rt.restore.assert_not_called()
+
+            with pytest.warns(RayDeprecationWarning, match="'readonly' option"):
+                _ = underlying_class(
+                    restore_from="/test/ckpt",
+                    env={"MY_VAR": "VAL"},
+                    workdir="/custom/workdir",
+                    network="none",
+                    readonly=False,
+                    capabilities=["CAP_NET_ADMIN"],
+                    disk="500M",
+                )
             mock_rt.restore.assert_called_once_with(
                 checkpoint_path="/test/ckpt",
                 cpu=None,

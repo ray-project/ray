@@ -280,7 +280,7 @@ ray.get(sb.delete.remote())
 Write source files directly into the sandbox, or upload local files from the host before execution. A sandbox can write anywhere in its root filesystem. Its writes go to a private overlay on top of the image, so they never reach the cached image or another sandbox, and Ray discards them with the sandbox. Set `workdir`, such as `/workspace`, to choose the directory that commands run in. If the image doesn't have that directory, the sandbox starts with an empty one.
 
 :::{note}
-Earlier Ray versions had a `readonly` option, which defaulted to a read-only root filesystem. Ray ignores the option and warns when a call still passes it.
+Earlier Ray versions had a `readonly` option, which defaulted to a read-only root filesystem. Ray ignores `readonly=False` with a deprecation warning. `readonly=True` raises a `ValueError`, because no sandbox has a read-only root filesystem anymore.
 :::
 
 ```python
@@ -963,7 +963,7 @@ Keep this server behavior in mind:
 
 * **TTL**: Every sandbox gets a TTL that reclaims both the sandbox and its hosting actor. Request it with `ttl_seconds`, capped and defaulted by the server's `max_ttl_seconds`.
 * **Resources**: `resources` separates cluster reservations from enforced sandbox budgets. `cpu_request`, `memory_request_mb`, and `custom` Ray resources reserve cluster capacity, and custom resources such as `{"gvisor": 1}` pin sandboxes to runsc-equipped nodes. `cpu_limit` and `memory_limit_mb` become host cgroup caps on provisioned nodes, and creation fails if the node can't enforce them. Requests default to the limits. `disk_limit_mb` caps the sandbox's root filesystem overlay. See [Cap disk use](#cap-disk-use).
-* **Root filesystem**: Every sandbox has a writable root filesystem. The server ignores the `readonly` field that earlier versions accepted.
+* **Root filesystem**: Every sandbox has a writable root filesystem. Earlier versions accepted a `readonly` field. The server ignores `readonly: false` and answers `422` to `readonly: true`.
 * **Capabilities**: By default sandboxes get Docker's default Linux capability set so images behave the way they do under Docker. Ray's own default is far narrower and breaks `apt-get` and `tar`. The sets are written exactly, so `capabilities: []` runs the sandbox with no capabilities at all.
 * **Network modes**: The server accepts `none`, the default, and `public`. It answers `403 forbidden` to `host` and `sandbox` unless its `allowed_network_modes` setting lists them, and to `rootless: false` unless you set `allow_rootful`. `host` gives a sandbox the node's network and every Ray port on it, and `sandbox` needs a rootful runsc, so allow them only for trusted clients. See [Networking and DNS](#networking-and-dns).
 * **Egress allowlists**: A `public` sandbox takes `cidr_allowlist` at creation, with the same entries and defaults as the Python API. See [Restrict egress to an allowlist](#restrict-egress-to-an-allowlist). The HTTP API can't change the allowlist afterward.

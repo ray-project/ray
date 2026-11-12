@@ -1,7 +1,6 @@
 import asyncio
 import os
 import threading
-import warnings
 from typing import Callable, Dict, List, Optional, Union
 
 from ray.experimental.sandbox._internal.cgroup import SandboxCgroupManager
@@ -10,10 +9,14 @@ from ray.experimental.sandbox.backend.base import (
     SandboxStatus,
 )
 from ray.experimental.sandbox.backend.gvisor import GVisorSandboxBackend
-from ray.experimental.sandbox.config import SandboxConfig, parse_memory_bytes
+from ray.experimental.sandbox.config import (
+    SandboxConfig,
+    parse_memory_bytes,
+    pop_removed_readonly,
+)
 from ray.experimental.sandbox.exceptions import SandboxCreationError
 from ray.experimental.sandbox.image_manager import ImageManager
-from ray.util.annotations import PublicAPI, RayDeprecationWarning
+from ray.util.annotations import PublicAPI
 
 
 @PublicAPI(stability="alpha")
@@ -144,23 +147,16 @@ class SandboxRuntime:
             disk: Size cap of the root filesystem overlay (e.g. "10Gi");
                 writes past it fail with ENOSPC. Zero means no cap; see
                 :class:`~ray.experimental.sandbox.config.SandboxConfig`.
-            **kwargs: Additional parameters. ``readonly`` is accepted and
-                ignored, with a deprecation warning.
+            **kwargs: Additional parameters. The removed ``readonly`` option
+                is still recognized: ``readonly=False`` is ignored with a
+                deprecation warning, and ``readonly=True`` raises a
+                ``ValueError``.
 
         Returns:
             A unique string identifier for the created sandbox.
         """
-        if "readonly" in kwargs:
-            # The option is gone, but callers written for it still pass it,
-            # mostly as readonly=False.
-            kwargs.pop("readonly")
-            warnings.warn(
-                "The sandbox 'readonly' option was removed and is ignored. Every "
-                "sandbox now writes to a private overlay over its image, which "
-                "is discarded with the sandbox. Stop passing 'readonly'.",
-                RayDeprecationWarning,
-                stacklevel=2,
-            )
+        # The option is gone, but callers written for it still pass it.
+        pop_removed_readonly(kwargs)
         cfg = SandboxConfig(
             image=image,
             cpu=cpu,
@@ -422,11 +418,13 @@ class SandboxRuntime:
             memory: Memory allocation override.
             ttl_seconds: Optional time-to-live for the restored sandbox.
             timeout_seconds: Timeout for the restore operation.
-            **kwargs: Backend-specific arguments.
+            **kwargs: Backend-specific arguments. The removed ``readonly``
+                option is handled as in ``create``.
 
         Returns:
             A unique string identifier for the restored sandbox.
         """
+        pop_removed_readonly(kwargs)
         instance_id = self._backend.restore_sandbox(
             checkpoint_path=checkpoint_path,
             cpu=cpu,

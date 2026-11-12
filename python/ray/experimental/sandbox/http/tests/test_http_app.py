@@ -126,18 +126,33 @@ def test_create_then_poll_until_running(fake_resolver: FakeResolver) -> None:
         assert "readonly" not in runtime.create_calls[0]
 
 
-@pytest.mark.parametrize("readonly", [True, False])
-def test_create_ignores_the_removed_readonly_field(
-    fake_resolver: FakeResolver, readonly: bool
-) -> None:
-    """Clients written for the readonly field still send it. The request is
-    accepted and the field isn't passed on: every sandbox is writable."""
+@pytest.mark.parametrize("readonly", [False, "false", 0, None])
+def test_create_ignores_readonly_false(fake_resolver: FakeResolver, readonly) -> None:
+    """Clients written for the removed readonly field still send
+    readonly=false. The request is accepted and the field isn't passed on:
+    every sandbox is writable."""
     with _client(fake_resolver) as client:
         info = _create_sandbox(client, readonly=readonly)
         _wait_running(client, info["sandbox_id"])
 
     (runtime,) = fake_resolver.runtimes
     assert "readonly" not in runtime.create_calls[0]
+
+
+@pytest.mark.parametrize("readonly", [True, "true", 1])
+def test_create_readonly_true_is_422(fake_resolver: FakeResolver, readonly) -> None:
+    """readonly=true asked for a root filesystem the sandbox can't write. No
+    sandbox has one now, so the request is refused instead of answered with
+    a writable sandbox."""
+    with _client(fake_resolver) as client:
+        response = client.post(
+            f"{BASE}/sandboxes",
+            json={"image": "python:3.12-slim", "readonly": readonly},
+        )
+        assert response.status_code == 422, response.text
+        assert "readonly=true is no longer supported" in response.text
+
+    assert fake_resolver.runtimes == []
 
 
 def test_create_maps_resources_to_actor_options_and_limits(

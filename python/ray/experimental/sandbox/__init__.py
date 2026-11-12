@@ -18,6 +18,7 @@ from ray.experimental.sandbox.config import (
     DEFAULT_PUBLIC_DNS,
     DOCKER_DEFAULT_CAPABILITIES,
     parse_memory_bytes,
+    pop_removed_readonly,
 )
 from ray.experimental.sandbox.exceptions import (
     SandboxCreationError,
@@ -100,12 +101,17 @@ def create(
         num_gpus: Number of GPUs to schedule the sandbox actor with. The
             sandbox gets every GPU Ray assigns the actor, exposed through CDI.
             This is the only way to give a sandbox created here GPUs.
-        **kwargs: Additional options. ``readonly`` is accepted and ignored,
-            with a deprecation warning.
+        **kwargs: Additional options. The removed ``readonly`` option is
+            still recognized: ``readonly=False`` is ignored with a
+            deprecation warning, and ``readonly=True`` raises a
+            ``ValueError``.
 
     Returns:
         A Sandbox actor handle.
     """
+    # Checked here so that readonly=True fails in the caller, not in the
+    # actor's constructor.
+    pop_removed_readonly(kwargs)
     actor_opts = {}
     # Separate Ray actor options from Sandbox container configuration
     from ray._common.ray_option_utils import actor_options as _RAY_ACTOR_OPTIONS_SCHEMA
@@ -175,11 +181,13 @@ def restore(
         ttl_seconds: Optional time-to-live in seconds.
         timeout_seconds: Timeout in seconds for restore.
         resources: Custom logical resource requirements for the Ray actor.
-        **kwargs: Additional options.
+        **kwargs: Additional options. The removed ``readonly`` option is
+            handled as in ``create``.
 
     Returns:
         A Sandbox actor handle.
     """
+    pop_removed_readonly(kwargs)
     recorded_cpu = None
     recorded_memory = None
     target_node_id = None

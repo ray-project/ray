@@ -2,8 +2,11 @@ import ipaddress
 import math
 import os
 import re
+import warnings
 from dataclasses import dataclass, field
-from typing import Callable, Dict, Iterable, List, Optional, Tuple, Union
+from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple, Union
+
+from ray.util.annotations import RayDeprecationWarning
 
 # Sandbox network modes. "none", "host", and "sandbox" map directly to runsc
 # --network; "public" runs runsc with host networking inside a per-sandbox
@@ -206,6 +209,40 @@ DOCKER_DEFAULT_CAPABILITIES = [
     "CAP_SETUID",
     "CAP_SYS_CHROOT",
 ]
+
+
+def pop_removed_readonly(options: Dict[str, Any], stacklevel: int = 2) -> None:
+    """Take the removed ``readonly`` option out of a caller's keyword arguments.
+
+    ``readonly=False`` asked for what every sandbox has now, so it is dropped
+    with a deprecation warning. ``readonly=True`` asked for a restriction
+    that no longer exists, so it is refused: ignoring it would hand the
+    caller a sandbox that can write where it was told not to.
+
+    Args:
+        options: The keyword arguments a caller passed. ``readonly`` is
+            removed in place.
+        stacklevel: The ``warnings.warn`` stacklevel, counted from the
+            function that calls this one.
+
+    Raises:
+        ValueError: If ``readonly`` is true.
+    """
+    if "readonly" not in options:
+        return
+    if options.pop("readonly"):
+        raise ValueError(
+            "readonly=True is no longer supported: every sandbox writes to a "
+            "private overlay over its image, which is discarded with the "
+            "sandbox. Remove the 'readonly' argument."
+        )
+    warnings.warn(
+        "The sandbox 'readonly' option was removed, and readonly=False is "
+        "ignored: every sandbox writes to a private overlay over its image, "
+        "which is discarded with the sandbox. Stop passing 'readonly'.",
+        RayDeprecationWarning,
+        stacklevel=stacklevel + 1,
+    )
 
 
 def parse_memory_bytes(memory: Optional[Union[str, int, float]]) -> Optional[int]:

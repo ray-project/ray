@@ -10,7 +10,13 @@ import os
 from datetime import datetime
 from typing import Dict, List, Literal, Optional, Union
 
-from pydantic import BaseModel, Field, field_validator, model_validator
+from pydantic import (
+    BaseModel,
+    Field,
+    TypeAdapter,
+    field_validator,
+    model_validator,
+)
 
 # Re-exported so the wire contract documents its default in one place; the
 # canonical definition (and rationale) lives in the core sandbox config.
@@ -31,6 +37,9 @@ ExecStatusName = Literal["running", "completed", "timeout", "error"]
 
 _MAX_LABELS = 16
 _MAX_LABEL_LENGTH = 256
+
+# Reads a value the way a ``bool`` field does.
+_BOOL_ADAPTER = TypeAdapter(bool)
 
 
 @PublicAPI(stability="alpha")
@@ -168,6 +177,27 @@ class CreateSandboxRequest(BaseModel):
             "without leaking a duplicate sandbox."
         ),
     )
+
+    @model_validator(mode="before")
+    @classmethod
+    def _reject_removed_readonly(cls, data):
+        # Earlier versions had a ``readonly`` field, which defaulted to true.
+        # readonly=false asked for what every sandbox has now, and is ignored
+        # like any other unknown field. readonly=true asked for a restriction
+        # that no longer exists; ignoring it would hand the client a sandbox
+        # that can write where it was told not to. The value is read the way
+        # the field read it, so "false" and 0 still mean false.
+        if isinstance(data, dict) and data.get("readonly") is not None:
+            readonly = _BOOL_ADAPTER.validate_python(data["readonly"])
+        else:
+            readonly = False
+        if readonly:
+            raise ValueError(
+                "readonly=true is no longer supported: every sandbox has a "
+                "writable root filesystem, private to it and discarded with "
+                "it. Remove the readonly field."
+            )
+        return data
 
     @field_validator("network")
     @classmethod

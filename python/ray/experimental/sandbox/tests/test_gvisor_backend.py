@@ -56,6 +56,7 @@ from ray.experimental.sandbox.exceptions import (
     SandboxTimeoutError,
 )
 from ray.experimental.sandbox.runtime import SandboxRuntime
+from ray.util.annotations import RayDeprecationWarning
 
 _BUSYBOX_CACHE = os.path.join(DEFAULT_IMAGES_DIR, image_cache_name("busybox:latest"))
 
@@ -134,6 +135,30 @@ def test_create_threads_num_gpus_into_actor_options():
         create("busybox:latest", num_gpus=2)
 
     assert captured_options.get("num_gpus") == 2
+
+
+def test_create_handles_the_removed_readonly_option_in_the_caller():
+    """create() checks the removed readonly option before it starts the
+    actor: readonly=True fails in the caller, and readonly=False warns there
+    and isn't passed on."""
+    remote_kwargs = []
+
+    class _FakeSandboxHandle:
+        def remote(self, *args, **kwargs):
+            remote_kwargs.append(kwargs)
+            return "sandbox-actor-handle"
+
+    with patch(
+        "ray.experimental.sandbox.Sandbox.options",
+        side_effect=lambda **kwargs: _FakeSandboxHandle(),
+    ):
+        with pytest.raises(ValueError, match="readonly=True is no longer supported"):
+            create("busybox:latest", readonly=True)
+        assert remote_kwargs == []
+
+        with pytest.warns(RayDeprecationWarning, match="'readonly' option was removed"):
+            create("busybox:latest", readonly=False)
+    assert "readonly" not in remote_kwargs[0]
 
 
 def test_create_num_gpus_reaches_real_ray_scheduling():
