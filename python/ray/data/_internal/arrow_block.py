@@ -696,9 +696,7 @@ class ArrowBlockColumnAccessor(BlockColumnAccessor):
         # Arrow's native integer sum kernel wraps on overflow before the scalar
         # can be converted to Python.  Widen the accumulator first, then return
         # a Python int (or the historical native scalar when it still fits).
-        res = pac.sum(
-            pac.cast(column, _INTEGER_SUM_TYPE), skip_nulls=ignore_nulls
-        )
+        res = pac.sum(pac.cast(column, _INTEGER_SUM_TYPE), skip_nulls=ignore_nulls)
         if as_py:
             value = res.as_py()
             return None if value is None else int(value)

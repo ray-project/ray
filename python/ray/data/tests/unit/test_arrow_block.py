@@ -79,9 +79,7 @@ class TestArrowBlockColumnAccessor:
         else:
             values = pc.run_end_encode(values)
 
-        result = ArrowBlockColumnAccessor(values).sum(
-            ignore_nulls=True, as_py=as_py
-        )
+        result = ArrowBlockColumnAccessor(values).sum(ignore_nulls=True, as_py=as_py)
 
         if as_py:
             assert result == 2**63
