@@ -659,5 +659,24 @@ def test_recorded_tags_do_not_depend_on_when_the_scan_runs():
     assert not any(".2611" in tag for tag in before)
 
 
+def test_db_extraction_reads_the_tarball_once(tmp_path: Path):
+    """The DBs are 0.14 and 1 GB compressed; random access into a gzip
+    stream re-inflates it, so extraction must be a single streaming pass."""
+    tarball = tmp_path / "db.tar.gz"
+    make_tar(tarball, {"trivy.db": b"x", "metadata.json": b"{}"})
+    modes = []
+    real_open = tarfile.open
+
+    def spy(name, mode="r", *args, **kwargs):
+        modes.append(mode)
+        return real_open(name, mode, *args, **kwargs)
+
+    with mock.patch.object(scan_images.tarfile, "open", spy):
+        scan_images._safe_extract(
+            tarball, tmp_path / "db", {"trivy.db", "metadata.json"}
+        )
+    assert modes == ["r|gz"]
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-vv", __file__]))

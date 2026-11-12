@@ -218,10 +218,11 @@ def check_layout(layout: Path, digests: set[str]) -> None:
 
 
 def _safe_extract(tarball: Path, dest: Path, allowed: set[str]) -> None:
-    """Extract only the expected top-level DB files."""
+    """Extract only the expected top-level DB files, in one streaming pass:
+    listing the members first would re-inflate the gzip stream."""
     dest.mkdir(parents=True)
-    with tarfile.open(tarball) as tar:
-        for member in tar.getmembers():
+    with tarfile.open(tarball, "r|gz") as tar:
+        for member in tar:
             if not member.isfile() or member.name not in allowed:
                 raise ScanError(f"unexpected entry {member.name!r} in {tarball.name}")
             with tar.extractfile(member) as src, open(dest / member.name, "wb") as out:
