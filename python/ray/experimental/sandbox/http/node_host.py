@@ -23,7 +23,7 @@ import logging
 import time
 import uuid
 from concurrent.futures import ThreadPoolExecutor
-from typing import Any, Coroutine, Dict, List, Optional, Set
+from typing import Any, Callable, Coroutine, Dict, List, Optional, Set
 
 from ray.experimental.sandbox.http.host import HostSettings, SandboxHost, SandboxSpec
 from ray.experimental.sandbox.http.host_channel import HostChannelServer
@@ -146,13 +146,58 @@ class _Slab:
             self.used[k] = max(0.0, self.used.get(k, 0.0) - v)
 
 
-def _gone(sandbox_id: str) -> Dict[str, Any]:
+def _gone(sandbox_id: str, *_: Any) -> Dict[str, Any]:
     # Never placed here, or already released: the facade answers NOT_FOUND,
     # as for a sandbox actor that no longer exists.
     return {
         "error_code": "sandbox_not_found",
         "message": f"sandbox {sandbox_id!r} not found",
     }
+
+
+def _terminated(sandbox_id: str, *_: Any) -> Dict[str, Any]:
+    return {
+        **_gone(sandbox_id),
+        "sandbox_id": sandbox_id,
+        "status": "terminated",
+        "error": None,
+    }
+
+
+def _no_exec(sandbox_id: str, exec_key: str, *_: Any) -> Dict[str, Any]:
+    return {"error_code": "exec_not_found", "message": f"unknown exec {exec_key!r}"}
+
+
+def _no_exec_id(sandbox_id: str, exec_id: str, *_: Any) -> Dict[str, Any]:
+    return {"error_code": "exec_not_found", "message": f"unknown exec id {exec_id!r}"}
+
+
+def _hosted(
+    name: str, missing: Callable[..., Any] = _gone
+) -> Callable[..., Coroutine[Any, Any, Any]]:
+    """The node host's method ``name``: the ``SandboxHost`` method of that
+    name, called on the sandbox whose id comes first.
+
+    Args:
+        name: The ``SandboxHost`` method.
+        missing: What answers for a sandbox this host doesn't have, given
+            the call's positional arguments.
+
+    Returns:
+        The method.
+    """
+
+    async def call(
+        self: "SandboxNodeHost", sandbox_id: str, *args: Any, **kwargs: Any
+    ) -> Any:
+        host = self._sandboxes.get(sandbox_id)
+        if host is None:
+            return missing(sandbox_id, *args)
+        return await getattr(host, name)(*args, **kwargs)
+
+    call.__name__ = name
+    call.__qualname__ = f"SandboxNodeHost.{name}"
+    return call
 
 
 @DeveloperAPI
@@ -456,7 +501,7 @@ class SandboxNodeHost:
         slab = self._fitting_slab(demand)
         loop = asyncio.get_running_loop()
         if slab is None and loop.time() < self._full_until:
-            return {"error_code": "full", "message": f"node {self._node_id} is full"}
+            return self._full()
         if slab is None and self._can_float(demand, loop.time()):
             self._floating[sandbox_id] = dict(demand)
             if self._float_task is None or self._float_task.done():
@@ -473,7 +518,7 @@ class SandboxNodeHost:
                 self._waiting.remove(demand)
         if slab is None:
             self._full_until = loop.time() + _FULL_SECONDS
-            return {"error_code": "full", "message": f"node {self._node_id} is full"}
+            return self._full()
         # A repeat of this admit (its reply was lost) may have finished
         # while this one waited; nothing yields from here to add().
         if sandbox_id in self._sandboxes:
@@ -481,6 +526,10 @@ class SandboxNodeHost:
         slab.take(sandbox_id, demand)
         self._slab_of[sandbox_id] = slab
         return await self.add(sandbox_id, spec, settings)
+
+    def _full(self) -> Dict[str, Any]:
+        # The caller tries another host.
+        return {"error_code": "full", "message": f"node {self._node_id} is full"}
 
     def _can_float(self, demand: Dict[str, float], now: float) -> bool:
         """Whether the node has room for ``demand`` by this host's own count:
@@ -716,126 +765,34 @@ class SandboxNodeHost:
                 )
             )
 
-    async def boot(self, sandbox_id: str) -> None:
-        host = self._sandboxes.get(sandbox_id)
-        if host is not None:
-            await host.boot()
-
-    async def describe(
-        self, sandbox_id: str, wait_seconds: float = 0.0, until_booted: bool = False
-    ) -> Dict[str, Any]:
-        host = self._sandboxes.get(sandbox_id)
-        if host is None:
-            return {
-                **_gone(sandbox_id),
-                "sandbox_id": sandbox_id,
-                "status": "terminated",
-                "error": None,
-            }
-        return await host.describe(wait_seconds, until_booted)
-
-    async def set_network_access(
-        self, sandbox_id: str, cidr_allowlist: List[str]
-    ) -> Dict[str, Any]:
-        host = self._sandboxes.get(sandbox_id)
-        if host is None:
-            return _gone(sandbox_id)
-        return await host.set_network_access(cidr_allowlist)
+    # What the API layers call on a sandbox: its id, then the arguments of
+    # the SandboxHost method of the same name. A hosted handle calls these by
+    # name (see HostedSandboxHandle), so each method the API calls needs one.
+    boot = _hosted("boot", lambda *_: None)
+    describe = _hosted("describe", _terminated)
+    set_network_access = _hosted("set_network_access")
+    get_exec = _hosted("get_exec", _no_exec_id)
+    get_exec_by_key = _hosted("get_exec_by_key", _no_exec)
+    fs_read = _hosted("fs_read")
+    fs_write_open = _hosted("fs_write_open")
+    stdin_write = _hosted("stdin_write", _no_exec)
+    stdin_status = _hosted("stdin_status", _no_exec)
+    write_file = _hosted("write_file")
+    read_file = _hosted("read_file")
+    # The sandbox leaves this host shortly after (see SandboxHost.terminate).
+    terminate = _hosted("terminate", lambda *_: {"ok": True})
 
     async def start_exec(
         self, sandbox_id: str, *args: Any, **kwargs: Any
     ) -> Dict[str, Any]:
-        host = self._sandboxes.get(sandbox_id)
+        # Counted for _busy, which slows warm refills down while execs start.
         now = time.monotonic()
         self._recent_exec_starts(now)
         self._exec_starts.append(now)
+        host = self._sandboxes.get(sandbox_id)
         if host is None:
             return _gone(sandbox_id)
         return await host.start_exec(*args, **kwargs)
-
-    async def get_exec(
-        self, sandbox_id: str, exec_id: str, wait_seconds: float = 0.0
-    ) -> Dict[str, Any]:
-        host = self._sandboxes.get(sandbox_id)
-        if host is None:
-            return {
-                "error_code": "exec_not_found",
-                "message": f"unknown exec id {exec_id!r}",
-            }
-        return await host.get_exec(exec_id, wait_seconds)
-
-    async def get_exec_by_key(
-        self, sandbox_id: str, exec_key: str, wait_seconds: float = 0.0
-    ) -> Dict[str, Any]:
-        host = self._sandboxes.get(sandbox_id)
-        if host is None:
-            return {
-                "error_code": "exec_not_found",
-                "message": f"unknown exec {exec_key!r}",
-            }
-        return await host.get_exec_by_key(exec_key, wait_seconds)
-
-    async def fs_read(
-        self, sandbox_id: str, exec_key: str, path: str
-    ) -> Dict[str, Any]:
-        host = self._sandboxes.get(sandbox_id)
-        if host is None:
-            return _gone(sandbox_id)
-        return await host.fs_read(exec_key, path)
-
-    async def fs_write_open(
-        self, sandbox_id: str, exec_key: str, path: str
-    ) -> Dict[str, Any]:
-        host = self._sandboxes.get(sandbox_id)
-        if host is None:
-            return _gone(sandbox_id)
-        return await host.fs_write_open(exec_key, path)
-
-    async def stdin_write(
-        self,
-        sandbox_id: str,
-        exec_key: str,
-        data: bytes,
-        offset: int,
-        eof: bool = False,
-    ) -> Dict[str, Any]:
-        host = self._sandboxes.get(sandbox_id)
-        if host is None:
-            return {
-                "error_code": "exec_not_found",
-                "message": f"unknown exec {exec_key!r}",
-            }
-        return await host.stdin_write(exec_key, data, offset, eof)
-
-    async def stdin_status(self, sandbox_id: str, exec_key: str) -> Dict[str, Any]:
-        host = self._sandboxes.get(sandbox_id)
-        if host is None:
-            return {
-                "error_code": "exec_not_found",
-                "message": f"unknown exec {exec_key!r}",
-            }
-        return await host.stdin_status(exec_key)
-
-    async def write_file(
-        self, sandbox_id: str, path: str, content: bytes, append: bool = False
-    ) -> Dict[str, Any]:
-        host = self._sandboxes.get(sandbox_id)
-        if host is None:
-            return _gone(sandbox_id)
-        return await host.write_file(path, content, append)
-
-    async def read_file(self, sandbox_id: str, path: str) -> Dict[str, Any]:
-        host = self._sandboxes.get(sandbox_id)
-        if host is None:
-            return _gone(sandbox_id)
-        return await host.read_file(path)
-
-    async def terminate(self, sandbox_id: str) -> Dict[str, Any]:
-        """Delete the sandbox; it leaves this host shortly after (see SandboxHost)."""
-        host = self._sandboxes.get(sandbox_id)
-        if host is None:
-            return {"ok": True}
-        return await host.terminate()
 
     async def remove(self, sandbox_id: str) -> None:
         """Delete the sandbox and leave at once (the per-actor ``ray.kill``)."""
