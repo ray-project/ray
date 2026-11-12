@@ -1233,7 +1233,7 @@ def _build_rootfs_image_in_a_child(*args) -> None:
         for line in reversed(proc.stdout.splitlines()):
             if line.startswith(_CHILD_ERROR):
                 try:
-                    message = json.loads(line[len(_CHILD_ERROR) :])
+                    message = json.loads(line[len(_CHILD_ERROR) :]) or message
                 except ValueError:
                     pass
                 break

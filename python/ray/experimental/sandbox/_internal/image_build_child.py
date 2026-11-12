@@ -31,7 +31,9 @@ def main() -> None:
     try:
         image_utils._build_rootfs_image(*args)
     except BaseException as err:
-        print(image_utils._CHILD_ERROR + json.dumps(str(err)), flush=True)
+        # MemoryError and KeyboardInterrupt, among others, have no message.
+        message = str(err) or type(err).__name__
+        print(image_utils._CHILD_ERROR + json.dumps(message), flush=True)
         sys.exit(1)
 
 

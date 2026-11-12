@@ -6,6 +6,7 @@ import json
 import mmap
 import os
 import re
+import runpy
 import shutil
 import signal
 import subprocess
@@ -13,6 +14,7 @@ import sys
 import tarfile
 import threading
 import time
+import types
 import urllib.error
 import urllib.parse
 import zlib
@@ -856,6 +858,35 @@ def test_builds_that_waited_for_a_slot_run_here_once_this_process_is_free(
     assert calls == [("here", ("a",)), ("child", ("b",)), ("here", ("c",))]
 
 
+def test_a_child_reports_an_error_that_has_no_message(monkeypatch, capsys):
+    """An error whose text is empty, such as MemoryError, comes back as its
+    type's name."""
+    child = runpy.run_path(image_utils._CHILD_ENTRYPOINT)["main"]
+
+    def build(*args):
+        raise MemoryError()
+
+    stub = types.SimpleNamespace(
+        _CHILD_ERROR=image_utils._CHILD_ERROR, _build_rootfs_image=build
+    )
+    monkeypatch.setitem(child.__globals__, "_load_image_utils", lambda packages: stub)
+    monkeypatch.setattr(sys, "argv", ["child", "{}", "[]"])
+    with pytest.raises(SystemExit):
+        child()
+    assert capsys.readouterr().out == image_utils._CHILD_ERROR + '"MemoryError"\n'
+
+
+def test_an_empty_child_error_keeps_the_exit_status(monkeypatch, tmp_path):
+    """A child that reports an empty message still fails with an explanation."""
+    child = tmp_path / "child.py"
+    child.write_text(
+        "import sys\n" "print('ray-sandbox-image-build-error: \"\"')\n" "sys.exit(3)\n"
+    )
+    monkeypatch.setattr(image_utils, "_CHILD_ENTRYPOINT", str(child))
+    with pytest.raises(SandboxCreationError, match="exit status 3"):
+        image_utils._build_rootfs_image_in_a_child("img", "/r", "/d", 5.0, "/b")
+
+
 def test_a_child_build_loads_image_utils_without_ray():
     """The child entrypoint loads image_utils and the few modules it needs,
     not Ray, whose import would cost most of a second per build."""
@@ -888,6 +919,7 @@ def test_a_child_build_loads_image_utils_without_ray():
         "ray.experimental.sandbox._internal",
         "ray.experimental.sandbox._internal.docker_config",
         "ray.experimental.sandbox._internal.image_utils",
+        "ray.experimental.sandbox._internal.layer_cache",
     }, modules
 
 
