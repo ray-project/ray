@@ -183,7 +183,7 @@ class DockerCluster:
         if config:
             self._partial_config = config
 
-        if not config.get("provider", {}).get("image"):
+        if not (self._partial_config or {}).get("provider", {}).get("image"):
             # No image specified, trying to parse from buildkite
             docker_image = os.environ.get("RAY_DOCKER_IMAGE", None)
 
@@ -206,6 +206,9 @@ class DockerCluster:
             cluster_config["provider"]["image"] = self._docker_image
 
         cluster_config["provider"]["shared_volume_dir"] = self._tempdir
+        # FakeMultiNodeDockerProvider sees only the provider section.
+        if "auth_mode" in cluster_config:
+            cluster_config["provider"]["auth_mode"] = cluster_config["auth_mode"]
 
         self._cluster_config = cluster_config
 

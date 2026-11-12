@@ -130,7 +130,7 @@ ppo.stop()
 ::::
 
 :::{note}
-When running your experiments with [Ray Tune](https://docs.ray.io/en/latest/tune/index.html), Tune calls the {py:meth}`~ray.rllib.utils.checkpoints.Checkpointable.save_to_path` method automatically on the {py:class}`~ray.rllib.algorithms.algorithm.Algorithm` instance, whenever the training iteration matches the checkpoint frequency configured through Tune. By default, Tune creates these checkpoints in `~/ray_results/[your experiment name]/[Tune trial name]/checkpoint_[sequence number]`.
+When running your experiments with [Ray Tune](../tune/index.md), Tune calls the {py:meth}`~ray.rllib.utils.checkpoints.Checkpointable.save_to_path` method automatically on the {py:class}`~ray.rllib.algorithms.algorithm.Algorithm` instance, whenever the training iteration matches the checkpoint frequency configured through Tune. By default, Tune creates these checkpoints in `~/ray_results/[your experiment name]/[Tune trial name]/checkpoint_[sequence number]`.
 :::
 
 

@@ -1,7 +1,7 @@
 ---
 myst:
   html_meta:
-    description: "Distribute JAX training across GPUs and TPUs with JaxTrainer: SPMD execution, ScalingConfig topology for TPU PodSlices, and CUDA setup."
+    description: "Distribute JAX training across GPUs and TPUs with JaxTrainer: SPMD execution, ScalingConfig topology for TPU slices, and CUDA setup."
 ---
 
 (train-jax)=
@@ -25,7 +25,7 @@ JAX and the {class}`~ray.train.v2.jax.JaxTrainer` support accelerators such as G
 
 Tensor Processing Units (TPUs) are custom accelerators that Google designed for machine learning workloads. Unlike general-purpose CPUs or parallel-processing GPUs, TPUs specialize in the large matrix and tensor computations of deep learning, which makes them efficient for that work.
 
-The primary advantage of TPUs is performance at scale. Google designed them to connect into large, multi-host configurations called "PodSlices" through a high-speed inter-chip interconnect (ICI). This design makes TPUs well suited to training large models that don't fit on a single node.
+The primary advantage of TPUs is performance at scale. Google designed them to connect into large, multi-host configurations called "Pod slices" through a high-speed inter-chip interconnect (ICI). This design makes TPUs well suited to training large models that don't fit on a single node.
 
 To learn more about configuring TPUs with KubeRay, see {ref}`kuberay-tpu`.
 
@@ -53,16 +53,14 @@ For TPU training, use {class}`~ray.train.ScalingConfig` to define your TPU slice
 * {class}`resources_per_worker <ray.train.ScalingConfig>`: A dictionary specifying the resources each worker needs. For TPUs, you typically request the number of chips per VM, such as `{"TPU": 4}`.
 * {class}`accelerator_type <ray.train.ScalingConfig>`: For TPUs, `accelerator_type` specifies the TPU generation you're using, such as `"TPU-V6E"`, so that Ray schedules your workload on the desired TPU slice.
 
-```{testcode}
-:skipif: True
-
+```python
 from ray.train import ScalingConfig
 tpu_scaling_config = ScalingConfig(num_workers=4, use_tpu=True, topology="4x4", accelerator_type="TPU-V6E")
 ```
 
 ### GPU scaling configuration
 
-For GPU training, use {class}`~ray.train.ScalingConfig` to define your GPU configuration. Each worker is one Ray Train process. By default, this configuration requests one GPU per worker. Key fields include the following:
+For GPU training, use {class}`~ray.train.ScalingConfig` to define your GPU configuration. Each worker is one Ray Train process. When you set `use_gpu=True` without `resources_per_worker`, Ray Train requests one GPU per worker. Key fields include the following:
 
 * {class}`num_workers <ray.train.ScalingConfig>`: The number of distributed training worker processes.
 * {class}`use_gpu <ray.train.ScalingConfig>`: Whether each worker uses a GPU.
@@ -81,9 +79,7 @@ For details, see {ref}`train_scaling_config`.
 
 The following example shows the final code:
 
-```{testcode}
-:skipif: True
-
+```python
 from ray.train.v2.jax import JaxTrainer
 from ray.train import ScalingConfig
 
@@ -100,16 +96,18 @@ trainer = JaxTrainer(train_func, scaling_config=scaling_config)
 result = trainer.fit()
 ```
 
-1. `train_func` is the training function, the Python code that runs on each distributed training worker.
-1. {class}`~ray.train.ScalingConfig` defines the number of distributed training workers and whether to use TPUs or GPUs.
-1. {class}`~ray.train.v2.jax.JaxTrainer` launches the distributed training job.
+- `train_func` is the training function, the Python code that runs on each distributed training worker.
+- {class}`~ray.train.ScalingConfig` defines the number of distributed training workers and whether to use TPUs or GPUs.
+- {class}`~ray.train.v2.jax.JaxTrainer` launches the distributed training job.
 
 Compare a JAX training script with and without Ray Train.
 
 ::::{tab-set}
 :::{tab-item} JAX with Ray Train
-```{testcode}
-:skipif: True
+```python
+import os
+import pickle
+import tempfile
 
 import jax
 import jax.numpy as jnp
@@ -150,8 +148,20 @@ def train_func():
     epochs = 100
     for epoch in range(epochs):
         params, opt_state, loss = train_step(params, opt_state, X, y)
-        # Report metrics back to Ray Train.
-        ray.train.report({"loss": float(loss), "epoch": epoch})
+
+        # Save a checkpoint every 10 epochs so that Ray Train can resume
+        # training after a failure. Only rank 0 writes the parameters,
+        # but every worker must call `ray.train.report`.
+        if (epoch + 1) % 10 == 0:
+            with tempfile.TemporaryDirectory() as temp_checkpoint_dir:
+                checkpoint = None
+                if ray.train.get_context().get_world_rank() == 0:
+                    with open(os.path.join(temp_checkpoint_dir, "params.pkl"), "wb") as f:
+                        pickle.dump(jax.device_get(params), f)
+                    checkpoint = ray.train.Checkpoint.from_directory(temp_checkpoint_dir)
+                ray.train.report(
+                    {"loss": float(loss), "epoch": epoch}, checkpoint=checkpoint
+                )
 
 # Define the TPU scaling configuration for your distributed job.
 scaling_config = ScalingConfig(
@@ -181,9 +191,7 @@ print(f"Training finished. Final loss: {result.metrics['loss']:.4f}")
 :::{tab-item} JAX
 <!-- This snippet isn't tested because it doesn't use any Ray code. -->
 
-```{testcode}
-:skipif: True
-
+```python
 import jax
 import jax.numpy as jnp
 import optax
@@ -311,9 +319,7 @@ For details, see {ref}`persistent-storage-guide`.
 
 To launch a distributed training job, pass the training function, scaling configuration, and run configuration to a {class}`~ray.train.v2.jax.JaxTrainer`, then call `fit()`.
 
-```{testcode}
-:skipif: True
-
+```python
 from ray.train import ScalingConfig
 
 train_func = lambda: None
@@ -324,9 +330,7 @@ scaling_config = ScalingConfig(num_workers=4, use_tpu=True, topology="4x4", acce
 run_config = None
 ```
 
-```{testcode}
-:skipif: True
-
+```python
 from ray.train.v2.jax import JaxTrainer
 
 trainer = JaxTrainer(
@@ -339,9 +343,7 @@ result = trainer.fit()
 
 When training completes, `fit()` returns a {class}`~ray.train.Result` object that contains information about the training run, including the metrics and checkpoints reported during training.
 
-```{testcode}
-:skipif: True
-
+```python
 result.metrics     # The metrics reported during training.
 result.checkpoint  # The latest checkpoint reported during training.
 result.path        # The path where logs are stored.

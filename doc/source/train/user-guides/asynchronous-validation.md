@@ -82,7 +82,8 @@ Use `map_batches` if any of the following apply:
 The following `validation_fn` uses a `TorchTrainer` to calculate average cross-entropy loss on a validation set. Note the following about this example:
 
 * You typically use `TorchTrainer` for training, but you can also use it for validation, as this example does. Training and validation can then have different resource requirements, such as A100 GPUs for training and A10G GPUs for validation.
-* The validation training function returns its metrics directly from worker 0 instead of calling `ray.train.report`. Access them through `result.return_value`. These values can't be `torch` tensors and must be Python-based, as with `ray.train.report`.
+* The validation training function returns its metrics from worker 0, and `validation_fn` reads them from `result.return_value`. Returning metrics from the training function works starting in Ray 2.56. As with `ray.train.report`, the return value can't contain `torch` tensors, so convert them to Python objects first, for example with `.item()`.
+* You can also call `ray.train.report` in the validation training function and read the metrics from `result.metrics`. Ray Train keeps reported metrics only when they come with a checkpoint, so this approach needs a placeholder checkpoint reported with `ray.train.CheckpointUploadMode.NO_UPLOAD`. Returning the metrics avoids the placeholder checkpoint, so use `return_value`.
 
 ```{literalinclude} ../doc_code/asynchronous_validation.py
 :language: python

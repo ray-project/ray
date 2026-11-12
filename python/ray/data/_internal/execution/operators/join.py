@@ -4,10 +4,6 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Dict, Iterator, List, Optional, Set, Tuple, Type
 
 from ray.data._internal.arrow_block import ArrowBlockAccessor
-from ray.data._internal.arrow_ops.transform_pyarrow import (
-    MIN_PYARROW_VERSION_RUN_END_ENCODED_TYPES,
-    MIN_PYARROW_VERSION_VIEW_TYPES,
-)
 from ray.data._internal.execution.interfaces import PhysicalOperator
 from ray.data._internal.execution.operators.hash_shuffle import (
     HashShufflingOperatorBase,
@@ -19,7 +15,6 @@ from ray.data._internal.execution.operators.shuffle_operators.shuffle_tasks impo
 )
 from ray.data._internal.logical.operators import JoinType
 from ray.data._internal.util import GiB, MiB
-from ray.data._internal.utils.arrow_utils import get_pyarrow_version
 from ray.data._internal.utils.transform_pyarrow import _is_pa_extension_type
 from ray.data.block import Block, Schema
 from ray.data.context import DataContext
@@ -419,21 +414,6 @@ def _validate_suffix_collision(
         )
 
 
-_POLARS_MAX_THREADS_ENV_VAR = "POLARS_MAX_THREADS"
-
-
-def _with_polars_thread_cap(
-    ray_remote_args: Optional[Dict[str, Any]]
-) -> Dict[str, Any]:
-    args = dict(ray_remote_args or {})
-    runtime_env = dict(args.get("runtime_env") or {})
-    env_vars = dict(runtime_env.get("env_vars") or {})
-    env_vars.setdefault(_POLARS_MAX_THREADS_ENV_VAR, "1")
-    runtime_env["env_vars"] = env_vars
-    args["runtime_env"] = runtime_env
-    return args
-
-
 def _require_polars():
     try:
         import polars as pl
@@ -535,8 +515,7 @@ def _should_index_side(
     unsupported_table: "pa.Table",
     join_type: JoinType,
 ) -> bool:
-    """
-    Determine whether to create an index column for a given side of the join.
+    """Determine whether to create an index column for a given side of the join.
 
     A column is "supported" if it is "joinable", and "unsupported" otherwise.
     A supported_table is a table with only "supported" columns. Index columns are
@@ -571,8 +550,7 @@ def _should_index_side(
 def _split_unsupported_columns(
     table: "pa.Table",
 ) -> Tuple["pa.Table", "pa.Table"]:
-    """
-    Split a PyArrow table into two tables based on column joinability.
+    """Split a PyArrow table into two tables based on column joinability.
 
     Separates columns into supported types and unsupported types that cannot be
     directly joined on but should be preserved in results.
@@ -678,8 +656,7 @@ class JoinOperator(HashShufflingOperatorBase):
 
     @staticmethod
     def _is_pa_join_not_supported(dtype: "pa.DataType") -> bool:
-        """
-        The latest pyarrow versions do not support joins where the
+        """The latest pyarrow versions do not support joins where the
         tables contain the following types below (lists,
         structs, maps, unions, extension types, etc.)
 
@@ -692,10 +669,6 @@ class JoinOperator(HashShufflingOperatorBase):
         """
         import pyarrow as pa
 
-        pyarrow_version = get_pyarrow_version()
-        is_v12 = pyarrow_version >= MIN_PYARROW_VERSION_RUN_END_ENCODED_TYPES
-        is_v16 = pyarrow_version >= MIN_PYARROW_VERSION_VIEW_TYPES
-
         return (
             pa.types.is_map(dtype)
             or pa.types.is_union(dtype)
@@ -704,15 +677,10 @@ class JoinOperator(HashShufflingOperatorBase):
             or pa.types.is_null(dtype)
             or pa.types.is_large_list(dtype)
             or pa.types.is_fixed_size_list(dtype)
-            or (is_v12 and pa.types.is_run_end_encoded(dtype))
-            or (
-                is_v16
-                and (
-                    pa.types.is_binary_view(dtype)
-                    or pa.types.is_string_view(dtype)
-                    or pa.types.is_list_view(dtype)
-                )
-            )
+            or pa.types.is_run_end_encoded(dtype)
+            or pa.types.is_binary_view(dtype)
+            or pa.types.is_string_view(dtype)
+            or pa.types.is_list_view(dtype)
         )
 
     def _get_operator_num_cpus_override(self) -> float:

@@ -3,6 +3,7 @@ from typing import TYPE_CHECKING, Callable, List, Optional
 if TYPE_CHECKING:
     from ray.data._internal.execution.block_ref_counter import BlockRefCounter
     from ray.data._internal.execution.lineage_tracker import LineageTracker
+    from ray.data._internal.execution.resource_bank import ResourceBankBase
 
 from ray.data._internal.execution.interfaces import (
     ExecutionOptions,
@@ -54,6 +55,7 @@ class InputDataBuffer(PhysicalOperator):
         options: ExecutionOptions,
         block_ref_counter: "BlockRefCounter",
         lineage_tracker: Optional["LineageTracker"] = None,
+        resource_bank: Optional["ResourceBankBase"] = None,
     ) -> None:
         if not self._is_input_initialized:
             self._input_data = self._input_data_factory(
@@ -66,7 +68,17 @@ class InputDataBuffer(PhysicalOperator):
         # so we record input metrics here
         for bundle in self._input_data:
             self._metrics.on_input_received(bundle)
-        super().start(options, block_ref_counter, lineage_tracker)
+        if resource_bank is not None:
+            # This operator's blocks already exist in the object store (they were
+            # `ray.put` before execution began), so register them as outputs here.
+            for bundle in self._input_data:
+                for entry in bundle.blocks:
+                    resource_bank.on_new_output(
+                        op=self, ref=entry.ref, bm=entry.metadata
+                    )
+        super().start(
+            options, block_ref_counter, lineage_tracker, resource_bank=resource_bank
+        )
 
     def has_next(self) -> bool:
         return self._input_data_index < len(self._input_data)

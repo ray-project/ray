@@ -64,6 +64,8 @@ Catalog
 
    DatabricksUnityCatalog
 
+   GravitinoCatalog
+
 .. autosummary::
    :nosignatures:
    :toctree: doc/
@@ -296,6 +298,15 @@ SQL Databases
    :toctree: doc/
 
    read_sql
+
+HiveServer2
+^^^^^^^^^^^
+
+.. autosummary::
+   :nosignatures:
+   :toctree: doc/
+
+   read_hive
 
 Snowflake
 ^^^^^^^^^

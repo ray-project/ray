@@ -269,6 +269,11 @@ CONTROLLER_MAX_CONCURRENCY = get_env_int_positive(
 
 DEFAULT_GRACEFUL_SHUTDOWN_TIMEOUT_S = 20
 DEFAULT_GRACEFUL_SHUTDOWN_WAIT_LOOP_S = 2
+#: `graceful_shutdown_wait_loop_s` may be 0. A draining replica still sleeps at
+#: least this long between checks, and logs that it is waiting at most once per
+#: `DRAIN_WAITING_LOG_INTERVAL_S`.
+MIN_GRACEFUL_SHUTDOWN_WAIT_LOOP_S = 0.01
+DRAIN_WAITING_LOG_INTERVAL_S = 1.0
 DEFAULT_HEALTH_CHECK_PERIOD_S = 10
 
 # Dependency ordered shutdown deletes deployments in tiers, callers before
@@ -450,8 +455,18 @@ SERVE_SESSION_ID = get_env_str("RAY_SERVE_SESSION_ID_HEADER_KEY", "x-session-id"
 # returned by /internal/route.
 SERVE_INGRESS_ROUTER_HEADER_PREFIX = "x-serve-router-"
 
-# Original client path forwarded by HAProxy to /internal/route. It identifies
-# the API when different endpoints accept the same request body.
+# Marks a router-application response that HAProxy should return directly to
+# the client instead of interpreting as an application/replica decision.
+SERVE_ROUTER_APPLICATION_DIRECT_RESPONSE_HEADER = "x-serve-router-direct-response"
+
+# Original client method forwarded to a router application's internal decision
+# request. The decision transport itself always uses POST so it can carry a body.
+SERVE_ROUTER_APPLICATION_ORIGINAL_METHOD_HEADER = (
+    SERVE_INGRESS_ROUTER_HEADER_PREFIX + "original-method"
+)
+
+# Original client request target forwarded by HAProxy to /internal/route. Router
+# applications receive the path and query; ingress request routers receive the path.
 SERVE_INGRESS_ROUTER_REQUEST_PATH_HEADER = (
     SERVE_INGRESS_ROUTER_HEADER_PREFIX + "request-path"
 )
@@ -853,6 +868,13 @@ RAY_SERVE_HAPROXY_METRICS_PORT = int(
 # HAProxy stats UI port
 RAY_SERVE_HAPROXY_STATS_PORT = get_env_int("RAY_SERVE_HAPROXY_STATS_PORT", 8404)
 
+# When metrics authentication is required, HAProxy serves the exporter and
+# stats page on this owner-only Unix socket. HAProxyManager exposes them on the
+# metrics port with Ray token authentication.
+RAY_SERVE_HAPROXY_EXPORTER_SOCKET_PATH = os.environ.get(
+    "RAY_SERVE_HAPROXY_EXPORTER_SOCKET_PATH", "/tmp/haproxy-serve/exporter.sock"
+)
+
 # Per-worker-node override for the proxy's HTTP/gRPC bind ports. Head node exempt.
 # Prefer http_options.port / grpc_options.port. This override only matters when
 # proxies are colocated on one machine and need distinct ports without SO_REUSEPORT.
@@ -1051,17 +1073,19 @@ RAY_SERVE_HAPROXY_METRICS_SOCKET_PATH = os.environ.get(
     "RAY_SERVE_HAPROXY_METRICS_SOCKET_PATH", "/tmp/haproxy-serve/metrics.sock"
 )
 
+# Both ranges sit below the Linux ephemeral range (32768-60999), where Ray
+# workers bind their own listen ports.
 RAY_SERVE_DIRECT_INGRESS_MIN_HTTP_PORT = int(
     os.environ.get("RAY_SERVE_DIRECT_INGRESS_MIN_HTTP_PORT", "30000")
 )
 RAY_SERVE_DIRECT_INGRESS_MIN_GRPC_PORT = int(
-    os.environ.get("RAY_SERVE_DIRECT_INGRESS_MIN_GRPC_PORT", "40000")
+    os.environ.get("RAY_SERVE_DIRECT_INGRESS_MIN_GRPC_PORT", "31500")
 )
 RAY_SERVE_DIRECT_INGRESS_MAX_HTTP_PORT = int(
     os.environ.get("RAY_SERVE_DIRECT_INGRESS_MAX_HTTP_PORT", "31000")
 )
 RAY_SERVE_DIRECT_INGRESS_MAX_GRPC_PORT = int(
-    os.environ.get("RAY_SERVE_DIRECT_INGRESS_MAX_GRPC_PORT", "41000")
+    os.environ.get("RAY_SERVE_DIRECT_INGRESS_MAX_GRPC_PORT", "32500")
 )
 RAY_SERVE_DIRECT_INGRESS_PORT_RETRY_COUNT = int(
     os.environ.get("RAY_SERVE_DIRECT_INGRESS_PORT_RETRY_COUNT", "100")

@@ -6,6 +6,7 @@ if TYPE_CHECKING:
     import pyarrow.fs
 
     from ray.data.checkpoint import CheckpointConfig
+    from ray.data.checkpoint.generated_id import GeneratedIdCheckpoint
 
 from ray.data._internal.execution.execution_callback import ExecutionCallback
 from ray.data._internal.execution.interfaces import PhysicalOperator
@@ -22,7 +23,6 @@ from ray.data._internal.execution.operators.input_data_buffer import (
 from ray.data._internal.execution.operators.join import (
     JoinOperator,
     _make_join_reduce_fn,
-    _with_polars_thread_cap,
 )
 from ray.data._internal.execution.operators.limit_operator import LimitOperator
 from ray.data._internal.execution.operators.mix_operator import MixOperator
@@ -30,6 +30,7 @@ from ray.data._internal.execution.operators.output_splitter import OutputSplitte
 from ray.data._internal.execution.operators.union_operator import UnionOperator
 from ray.data._internal.execution.operators.zip_operator import ZipOperator
 from ray.data._internal.logical.interfaces import (
+    HashPartitioning,
     LogicalOperator,
     LogicalPlan,
     PhysicalPlan,
@@ -50,6 +51,7 @@ from ray.data._internal.logical.operators import (
     Project,
     Read,
     ReadFiles,
+    ShuffleBatches,
     StreamingRepartition,
     StreamingSplit,
     Union,
@@ -57,7 +59,9 @@ from ray.data._internal.logical.operators import (
     Zip,
 )
 from ray.data._internal.planner.checkpoint import (
+    plan_list_files_op_with_done_read_units,
     plan_read_files_op_with_checkpoint_filter,
+    plan_read_files_op_with_done_rows,
     plan_read_op_with_checkpoint_filter,
     plan_write_op_with_checkpoint_writer,
 )
@@ -69,6 +73,7 @@ from ray.data._internal.planner.plan_download_op import plan_download_op
 from ray.data._internal.planner.plan_list_files_op import plan_list_files_op
 from ray.data._internal.planner.plan_read_files_op import plan_read_files_op
 from ray.data._internal.planner.plan_read_op import plan_read_op
+from ray.data._internal.planner.plan_shuffle_batches_op import plan_shuffle_batches_op
 from ray.data._internal.planner.plan_udf_map_op import (
     plan_filter_op,
     plan_project_op,
@@ -145,6 +150,24 @@ def plan_count_op(logical_op, physical_children, data_context):
 _DISK_JOIN_REDUCE_PEAK_MEMORY_MULTIPLIER = 3
 
 
+def _join_output_partitioning(
+    join_type: JoinType, left_keys: List[str], num_partitions: int
+) -> Optional[HashPartitioning]:
+    """A SHUFFLE_V2 join's output partitioning: its left key columns.
+
+    The join keeps one column per key pair, named after the left key
+    (``on="id", right_on="rid"`` outputs ``id``). Right outer/semi/anti joins
+    keep the right key's name and aren't handled, so they get ``None``.
+    """
+    if join_type in (
+        JoinType.RIGHT_OUTER,
+        JoinType.RIGHT_SEMI,
+        JoinType.RIGHT_ANTI,
+    ):
+        return None
+    return HashPartitioning(columns=tuple(left_keys), num_partitions=num_partitions)
+
+
 def _plan_join_shuffle_v2(
     logical_op: Join,
     physical_children: List[PhysicalOperator],
@@ -200,10 +223,11 @@ def _plan_join_shuffle_v2(
         num_partitions=num_partitions,
         reduce_fn=reduce_fn,
         disallow_block_splitting=False,
-        reduce_ray_remote_args=_with_polars_thread_cap(
-            logical_op.aggregator_ray_remote_args
-        ),
+        reduce_ray_remote_args=logical_op.aggregator_ray_remote_args,
         name=f"{prefix}JoinShuffleReduce(num_partitions={num_partitions})",
+        output_partitioning=_join_output_partitioning(
+            join_type, left_keys, num_partitions
+        ),
         **reduce_kwargs,
     )
 
@@ -270,6 +294,7 @@ class Planner:
         Count: plan_count_op,
         Project: plan_project_op,
         StreamingRepartition: plan_streaming_repartition_op,
+        ShuffleBatches: plan_shuffle_batches_op,
         Join: plan_join_op,
         StreamingSplit: plan_streaming_split_op,
         Download: plan_download_op,
@@ -293,6 +318,10 @@ class Planner:
         if checkpoint_config is not None and self._check_supports_checkpointing(
             logical_plan
         ):
+            if checkpoint_config.has_generated_id_column:
+                self._validate_generated_id_plan(
+                    logical_plan, checkpoint_config.generated_id_column
+                )
             self._supports_checkpointing = True
             data_file_dir, data_file_fs = self._get_data_file_info(logical_plan)
 
@@ -309,12 +338,9 @@ class Planner:
                     Write: plan_write_op_with_checkpoint_writer,
                 }
             elif checkpoint_config.has_generated_id_column:
-                # Restoring from generated row IDs isn't wired up yet, and they
-                # can't go through the numpy-based ID filter that the
-                # ``id_column`` path plans. Until then, only write checkpoints:
-                # a rerun redoes every row. Clean up a crashed run's pending
-                # checkpoints first, which the ``id_column`` path does while
-                # loading its checkpoint.
+                # Clean up a crashed run's pending checkpoints before the
+                # checkpoint is loaded at execution start. The ``id_column``
+                # path does this while loading its checkpoint during planning.
                 if data_file_dir is not None:
                     self._clean_pending_checkpoints(
                         checkpoint_config,
@@ -322,9 +348,9 @@ class Planner:
                         data_file_dir,
                         data_file_fs,
                     )
-                self._plan_fns_for_checkpointing = {
-                    Write: plan_write_op_with_checkpoint_writer
-                }
+                self._plan_fns_for_checkpointing = self._get_plan_fns_for_generated_id(
+                    checkpoint_callback.load_checkpoint
+                )
             else:
                 # Dynamically set the plan functions for checkpointing because they
                 # need to a reference to the checkpoint ref.
@@ -443,6 +469,91 @@ class Planner:
 
         manager = IdColumnCheckpointManager(checkpoint_config, data_context)
         manager._clean_pending_checkpoints(data_file_dir, data_file_filesystem)
+
+    def _get_plan_fns_for_generated_id(
+        self,
+        load_checkpoint: Callable[[], "GeneratedIdCheckpoint"],
+    ) -> Dict[Type[LogicalOperator], PlanLogicalOpFn]:
+        """Plan functions for resuming a ``generated_id_column`` job.
+
+        Committed work is skipped without the actor-pool ``CheckpointFilter``:
+        ``ListFiles`` leaves out done files and row groups, and a step fused
+        into the ``ReadFiles`` task drops the done rows of partly done row
+        groups by their generated IDs. The checkpoint write is shared with
+        the ``id_column`` path, which keys off ``CheckpointConfig.id_column``.
+        """
+        return {
+            ListFiles: partial(
+                plan_list_files_op_with_done_read_units,
+                load_checkpoint=load_checkpoint,
+            ),
+            ReadFiles: partial(
+                plan_read_files_op_with_done_rows,
+                load_checkpoint=load_checkpoint,
+            ),
+            Write: plan_write_op_with_checkpoint_writer,
+        }
+
+    @staticmethod
+    def _validate_generated_id_plan(
+        logical_plan: LogicalPlan, generated_id_column: str
+    ) -> None:
+        """Require every source of a generated-ID plan to be a V2 Parquet read
+        that produces the generated ID column.
+
+        Generated row IDs come from Parquet row groups, so only ``ReadFiles``
+        over a ``ParquetScanner`` can produce them. ``BindGeneratedIdColumn``
+        adds the column to those reads while the plan is optimized. Only
+        plans that already support checkpointing (ending in a write or a
+        streaming split) get here, so ``schema()`` or ``count()`` on such a
+        dataset never trips this.
+        """
+        from ray.data._internal.datasource_v2.formats.parquet.parquet_scanner import (
+            ParquetScanner,
+        )
+        from ray.data.checkpoint.generated_id import GeneratedIdColumn
+        from ray.data.checkpoint.interfaces import InvalidCheckpointingConfig
+
+        def _validate(op: LogicalOperator) -> None:
+            if isinstance(op, ReadFiles):
+                if not isinstance(op.scanner, ParquetScanner):
+                    raise InvalidCheckpointingConfig(
+                        "`generated_id_column` supports only Parquet inputs, but "
+                        f"this dataset reads {op.datasource_name!r} data. Use "
+                        "`id_column` with a unique ID column instead."
+                    )
+                if (
+                    GeneratedIdColumn(generated_id_column)
+                    not in op.scanner.synthesized_columns
+                    or generated_id_column not in op.scanner.read_schema().names
+                ):
+                    raise InvalidCheckpointingConfig(
+                        "This dataset's Parquet read doesn't produce the generated "
+                        f"ID column {generated_id_column!r}. Ray Data adds it "
+                        "while optimizing the plan, unless the read keeps no "
+                        "columns."
+                    )
+                return
+            if isinstance(op, Read):
+                raise InvalidCheckpointingConfig(
+                    "`generated_id_column` supports only Parquet reads on the "
+                    "V2 datasource path (`ray.data.read_parquet` with "
+                    "`DataContext.use_datasource_v2` enabled), but this dataset "
+                    f"reads from {op.datasource.get_name()!r}. Use `id_column` "
+                    "with a unique ID column instead."
+                )
+            if not op.input_dependencies:
+                # Any other source, e.g. in-memory data from ``from_items``,
+                # has no Parquet row groups to build IDs from.
+                raise InvalidCheckpointingConfig(
+                    "`generated_id_column` supports only Parquet inputs, but "
+                    f"this dataset reads from {op.name!r}. Use `id_column` with a "
+                    "unique ID column instead."
+                )
+            for input_dependency in op.input_dependencies:
+                _validate(input_dependency)
+
+        _validate(logical_plan.dag)
 
     def _get_plan_fns_for_checkpointing(
         self,

@@ -6,7 +6,7 @@ client = OpenAI(base_url="http://localhost:8000/v1", api_key="fake-key")
 # Chat completions
 print("=== Chat Completions ===")
 chat_response = client.chat.completions.create(
-    model="Llama-3.1-8B-Instruct",
+    model="qwen3.5-0.8b",
     messages=[
         {"role": "user", "content": "List 3 countries and their capitals."},
     ],
@@ -18,7 +18,7 @@ print(chat_response.choices[0].message.content)
 # Text completions
 print("\n=== Text Completions ===")
 completion_response = client.completions.create(
-    model="Llama-3.1-8B-Instruct",
+    model="qwen3.5-0.8b",
     prompt="San Francisco is a",
     temperature=0,
     max_tokens=30,

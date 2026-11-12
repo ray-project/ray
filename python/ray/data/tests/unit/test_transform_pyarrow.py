@@ -6,14 +6,13 @@ import numpy as np
 import pandas as pd
 import pyarrow as pa
 import pytest
-from packaging.version import parse as parse_version
 
 from ray.data._internal.arrow_ops.transform_pyarrow import (
-    MIN_PYARROW_VERSION_TYPE_PROMOTION,
     _align_struct_fields,
     _group_indices,
     _has_unhashable_pandas_types,
     _has_unhashable_polars_types,
+    _hash_partition,
     _hash_partition_vectorized,
     concat,
     hash_partition,
@@ -23,10 +22,8 @@ from ray.data._internal.arrow_ops.transform_pyarrow import (
 )
 from ray.data._internal.tensor_extensions.arrow import (
     ArrowTensorTypeV2,
-    _extension_array_concat_supported,
     create_arrow_fixed_shape_tensor_type,
 )
-from ray.data._internal.utils.arrow_utils import get_pyarrow_version
 from ray.data.block import BlockAccessor
 from ray.data.extensions import (
     ArrowConversionError,
@@ -180,10 +177,6 @@ def test_has_unhashable_pandas_types(pa_type, expected):
     assert _has_unhashable_pandas_types(schema) is expected
 
 
-@pytest.mark.skipif(
-    get_pyarrow_version() < parse_version("16.0.0"),
-    reason="list_view / large_list_view require pyarrow 16+",
-)
 def test_has_unhashable_pandas_types_list_views():
     # Regression: list_view/large_list_view also convert to Python lists in
     # pandas, so they must be flagged as unhashable like list/large_list.
@@ -342,6 +335,25 @@ def test_hash_partition_polars_consistent_across_blocks():
     key_to_partition = dict(zip(t1["k"].to_pylist(), h1.tolist()))
     for key, pid in zip(t2["k"].to_pylist(), h2.tolist()):
         assert key_to_partition.setdefault(key, pid) == pid, key
+
+
+@pytest.mark.parametrize(
+    "dtype,values",
+    [
+        (pa.bool_(), [True, False, True]),
+        (pa.int32(), [1, 2, 3]),
+        (pa.int64(), [1, 2**53 + 1, 3]),
+        (pa.uint64(), [1, 2**63 + 1, 3]),
+    ],
+)
+def test_hash_partition_nullable_dtype_consistent_across_blocks(dtype, values):
+    without_null = pa.table({"k": pa.array(values, type=dtype)})
+    with_null = pa.table({"k": pa.array([None] + values, type=dtype)})
+
+    expected = _hash_partition(without_null, num_partitions=2)
+    actual = _hash_partition(with_null, num_partitions=2)[1:]
+
+    np.testing.assert_array_equal(actual, expected)
 
 
 def test_hash_partition_falls_back_when_polars_fails(monkeypatch):
@@ -749,10 +761,6 @@ def test_struct_with_arrow_variable_shaped_tensor_type(
             )
 
 
-@pytest.mark.skipif(
-    get_pyarrow_version() < MIN_PYARROW_VERSION_TYPE_PROMOTION,
-    reason="Requires PyArrow >= 14.0.0 for type promotion in nested struct fields",
-)
 def test_struct_with_diverging_primitive_types():
     """Test concatenating tables with struct fields that have diverging primitive types.
 
@@ -808,9 +816,40 @@ def test_struct_with_diverging_primitive_types():
 
 
 def test_arrow_concat_object_with_tensor_fails(object_with_tensor_fails_blocks):
+    """A column that holds Python objects in one block and tensors in another
+    cannot be concatenated, and the error names the column."""
     with pytest.raises(ArrowConversionError) as exc_info:
         concat(object_with_tensor_fails_blocks)
-    assert "objects and tensors" in str(exc_info.value.__cause__)
+    assert "objects and tensors: a" in str(exc_info.value.__cause__)
+
+
+@pytest.mark.parametrize("last_shape", [(2,), (3,)])
+def test_arrow_concat_tensor_with_null_keeps_tensor_type(last_shape):
+    """A column that is a tensor in one block and null in another concatenates
+    to a tensor column whose null rows read back as None. Holds whether or not
+    the tensor blocks share a shape."""
+    from ray.data.extensions import get_arrow_extension_tensor_types
+
+    tensors = pa.table({"a": ArrowTensorArray.from_numpy(np.array([[1, 2], [3, 4]]))})
+    nulls = pa.table({"a": pa.nulls(2)})
+    # A second shape makes PyArrow's own unification fail, so the override path runs.
+    last = pa.table(
+        {"a": ArrowTensorArray.from_numpy(np.ones((1,) + last_shape, dtype=np.int64))}
+    )
+
+    result = concat([tensors, nulls, last], preserve_order=True)
+
+    column = result.column("a")
+    assert isinstance(result.schema.field("a").type, get_arrow_extension_tensor_types())
+    assert column.null_count == 2
+    expected = [[1, 2], [3, 4], None, None, [1] * last_shape[0]]
+    assert [None if row is None else row.tolist() for row in column.to_pylist()] == (
+        expected
+    )
+    # A batch with a null row is one ndarray per row, with None for the null row.
+    as_numpy = column.combine_chunks().to_numpy(zero_copy_only=False)
+    assert as_numpy.dtype == object
+    assert [None if row is None else row.tolist() for row in as_numpy] == expected
 
 
 def test_unify_schemas(unify_schemas_basic_schemas, unify_schemas_multicol_schemas):
@@ -928,9 +967,39 @@ def test_unify_schemas_incompatible_tensor_dtypes(
 
 
 def test_unify_schemas_objects_and_tensors(unify_schemas_objects_and_tensors_schemas):
-    """Test error handling for intersection of objects and tensors."""
+    """A column that is an object type in one schema and a tensor type in
+    another does not unify, in either order."""
     with pytest.raises(ValueError, match="Found columns with both objects and tensors"):
         unify_schemas(unify_schemas_objects_and_tensors_schemas)
+    with pytest.raises(ValueError, match="Found columns with both objects and tensors"):
+        unify_schemas(unify_schemas_objects_and_tensors_schemas[::-1])
+
+
+def test_unify_schemas_objects_with_null_stay_objects():
+    """A null arm next to an object column leaves the column an object column."""
+    from ray.data._internal.object_extensions.arrow import ArrowPythonObjectType
+
+    objects = pa.schema([("col", ArrowPythonObjectType())])
+    nulls = pa.schema([("col", pa.null())])
+
+    assert unify_schemas([objects, nulls]) == objects
+    assert unify_schemas([nulls, objects]) == objects
+
+
+@pytest.mark.parametrize("other_shape", [(2, 2), (3, 3)])
+def test_unify_schemas_tensor_with_null_keeps_tensor_type(other_shape):
+    """A null arm does not change what tensor schemas unify to: the null rows
+    fit in the tensor column. Holds whether the tensor schemas share a shape or
+    need reconciling first."""
+    tensor = pa.schema([("col", ArrowTensorType((2, 2), pa.int32()))])
+    # A second shape makes PyArrow's own unification fail, so the override path runs.
+    other = pa.schema([("col", ArrowTensorType(other_shape, pa.int32()))])
+    nulls = pa.schema([("col", pa.null())])
+
+    without_nulls = unify_schemas([tensor, other])
+
+    assert unify_schemas([tensor, nulls, other]) == without_nulls
+    assert unify_schemas([nulls, tensor, other]) == without_nulls
 
 
 def test_unify_schemas_missing_tensor_fields(
@@ -992,10 +1061,6 @@ def test_unify_schemas_mixed_tensor_types(unify_schemas_mixed_tensor_data):
     assert result == data["expected_variable"]
 
 
-@pytest.mark.skipif(
-    get_pyarrow_version() < MIN_PYARROW_VERSION_TYPE_PROMOTION,
-    reason="Requires Arrow version of at least 14.0.0",
-)
 def test_unify_schemas_type_promotion(unify_schemas_type_promotion_data):
     data = unify_schemas_type_promotion_data
 
@@ -1203,10 +1268,6 @@ def test_mixed_tensor_types_variable_shaped(
         np.testing.assert_array_equal(result_tensor, expected_tensor)
 
 
-@pytest.mark.skipif(
-    not _extension_array_concat_supported(),
-    reason="ExtensionArrays support concatenation only in Pyarrow >= 12.0",
-)
 @pytest.mark.parametrize("preserve_order", [True, False])
 def test_mixed_tensor_types_in_struct(
     struct_with_mixed_tensor_types_blocks,
@@ -1246,10 +1307,6 @@ def test_mixed_tensor_types_in_struct(
             assert struct_row[key] == expected_value
 
 
-@pytest.mark.skipif(
-    not _extension_array_concat_supported(),
-    reason="ExtensionArrays support concatenation only in Pyarrow >= 12.0",
-)
 def test_nested_struct_with_mixed_tensor_types(
     nested_struct_with_mixed_tensor_types_blocks,
     nested_struct_with_mixed_tensor_types_expected,
@@ -1281,10 +1338,6 @@ def test_nested_struct_with_mixed_tensor_types(
             assert field in struct_data[0]["nested"]
 
 
-@pytest.mark.skipif(
-    not _extension_array_concat_supported(),
-    reason="ExtensionArrays support concatenation only in Pyarrow >= 12.0",
-)
 def test_multiple_tensor_fields_in_struct(
     multiple_tensor_fields_struct_blocks, multiple_tensor_fields_struct_expected
 ):
@@ -1342,10 +1395,6 @@ def test_struct_with_incompatible_tensor_dtypes_fails():
         concat([t1, t2])
 
 
-@pytest.mark.skipif(
-    not _extension_array_concat_supported(),
-    reason="ExtensionArrays support concatenation only in Pyarrow >= 12.0",
-)
 @pytest.mark.parametrize("preserve_order", [True, False])
 def test_struct_with_additional_fields(
     struct_with_additional_fields_blocks,
@@ -1387,10 +1436,6 @@ def test_struct_with_additional_fields(
             assert row["extra"] == extra_values[i]
 
 
-@pytest.mark.skipif(
-    not _extension_array_concat_supported(),
-    reason="ExtensionArrays support concatenation only in Pyarrow >= 12.0",
-)
 def test_struct_with_null_tensor_values(
     struct_with_null_tensor_values_blocks, struct_with_null_tensor_values_expected
 ):
@@ -1792,6 +1837,68 @@ def test_align_struct_fields_nested(nested_struct_blocks, nested_struct_schema):
     ]
 
 
+def test_align_struct_fields_drops_extra_nested_fields():
+    """Extra physical struct fields are dropped when aligning to a schema."""
+    physical_schema = pa.schema(
+        [
+            pa.field(
+                "outer",
+                pa.struct(
+                    [
+                        pa.field(
+                            "inner",
+                            pa.struct(
+                                [
+                                    pa.field("a", pa.int64()),
+                                    pa.field("extra", pa.string()),
+                                ]
+                            ),
+                        ),
+                        pa.field("extra_outer", pa.bool_()),
+                    ]
+                ),
+            )
+        ]
+    )
+    target_schema = pa.schema(
+        [
+            pa.field(
+                "outer",
+                pa.struct(
+                    [
+                        pa.field(
+                            "inner",
+                            pa.struct(
+                                [
+                                    pa.field("a", pa.int64()),
+                                    pa.field("late", pa.string()),
+                                ]
+                            ),
+                        )
+                    ]
+                ),
+            )
+        ]
+    )
+    block = pa.Table.from_pylist(
+        [
+            {"outer": {"inner": {"a": 1, "extra": "discard"}, "extra_outer": True}},
+            {"outer": None},
+            {"outer": {"inner": None, "extra_outer": False}},
+        ],
+        schema=physical_schema,
+    )
+
+    aligned = _align_struct_fields([block], target_schema)[0]
+
+    assert aligned.schema == target_schema
+    assert aligned.to_pylist() == [
+        {"outer": {"inner": {"a": 1, "late": None}}},
+        {"outer": None},
+        {"outer": {"inner": None}},
+    ]
+
+
 def test_align_struct_fields_missing_column(
     missing_column_blocks, missing_column_schema
 ):
@@ -2038,6 +2145,26 @@ def test_concat_nested_non_struct_field():
 
     with pytest.raises(ArrowConversionError, match="Failed to unify schemas"):
         concat([t1, t2])
+
+
+def test_concat_objects_and_tensors_error_lists_columns_and_types():
+    """The error names every conflicting column and its types, untruncated."""
+    objects = ArrowPythonObjectArray.from_objects([[np.zeros(2), np.zeros(3)]])
+    tensors = ArrowTensorArray.from_numpy(np.zeros((1, 2, 2)))
+    t1 = pa.table({"a": objects, "b": objects})
+    t2 = pa.table({"a": tensors, "b": tensors})
+
+    with pytest.raises(ArrowConversionError) as exc_info:
+        concat([t1, t2])
+
+    message = str(exc_info.value)
+    assert "Failed to unify schemas across 2 blocks." in message
+    assert "Found columns with both objects and tensors: a, b" in message
+    for column in ["a", "b"]:
+        assert (
+            f"'{column}': {t1.schema.field(column).type} (1 block), "
+            f"{t2.schema.field(column).type} (1 block)"
+        ) in message
 
 
 def test_concat_nested_all_null_field():
@@ -3171,16 +3298,6 @@ def unify_schemas_incompatible_tensor_schemas():
 
 
 @pytest.fixture
-def unify_schemas_objects_and_tensors_schemas():
-    """Fixture for objects and tensors unify schemas test data."""
-    from ray.data._internal.object_extensions.arrow import ArrowPythonObjectType
-
-    schema1 = pa.schema([("col", ArrowPythonObjectType())])
-    schema2 = pa.schema([("col", ArrowTensorType((2, 2), pa.int32()))])
-    return [schema1, schema2]
-
-
-@pytest.fixture
 def unify_schemas_missing_tensor_fields_schemas():
     """Fixture for missing tensor fields unify schemas test data."""
     schema1 = pa.schema(
@@ -3283,8 +3400,22 @@ def unify_schemas_nested_struct_tensors_schemas():
 
 
 @pytest.fixture
+def unify_schemas_objects_and_tensors_schemas():
+    """An object schema and a tensor schema for the same column ``col``."""
+    from ray.data._internal.object_extensions.arrow import ArrowPythonObjectType
+
+    schema1 = pa.schema([("col", ArrowPythonObjectType())])
+    schema2 = pa.schema([("col", ArrowTensorType((2, 2), pa.int32()))])
+    return [schema1, schema2]
+
+
+@pytest.fixture
 def object_with_tensor_fails_blocks():
-    """Blocks that should fail when concatenating objects with tensors."""
+    """An object block followed by a tensor block, for the same column ``a``.
+
+    block 1: a = [obj, obj]            (ArrowPythonObjectType)
+    block 2: a = [[1, 2], [3, 4]]      (ArrowTensorType, shape (2,))
+    """
     obj = types.SimpleNamespace(a=1, b="test")
     t1 = pa.table({"a": ArrowPythonObjectArray.from_objects([obj, obj])})
     # Create tensor array with proper extension type

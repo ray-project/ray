@@ -89,6 +89,10 @@ def inject_prompt_token_ids(
             e,
         )
         return
+    # vLLM rejects an empty forwarded list instead of tokenizing the prompt
+    # (vllm-project/vllm#55771).
+    if not token_ids:
+        return
 
     kv_transfer_params = getattr(request, "kv_transfer_params", None)
     if not isinstance(kv_transfer_params, dict):

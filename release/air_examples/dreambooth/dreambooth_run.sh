@@ -1,1 +1,0 @@
-../../../doc/source/templates/05_dreambooth_finetuning/dreambooth_run.sh
