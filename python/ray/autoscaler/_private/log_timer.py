@@ -18,7 +18,7 @@ class LogTimer:
         if cli_logger.log_style != "record":
             return
 
-        td = datetime.datetime.utcnow() - self._start_time
+        td = datetime.datetime.now(datetime.timezone.utc) - self._start_time
         status = ""
         if self._show_status:
             status = "failed" if any(error_vals) else "succeeded"
