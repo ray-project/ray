@@ -674,8 +674,8 @@ TEST(OrderedActorTaskExecutionQueueTest, TestRetryInOrderOrderedActorTaskExecuti
 }
 
 // Stop() cancels the queued retry while its args-ready callback stays registered with
-// the waiter, so the callback runs after the entry is gone and must find nothing. The
-// stale-entry version instead recorded a task event for it.
+// the waiter, so the callback runs after the entry is gone and must find nothing. With
+// a pointer to the popped entry it read freed memory instead.
 TEST(OrderedActorTaskExecutionQueueTest, TestRetryArgsReadyAfterStop) {
   instrumented_io_context io_service;
   FakeWaiter waiter;
@@ -760,6 +760,54 @@ TEST(OrderedActorTaskExecutionQueueTest, TestConcurrentRetryArgsReadyOutOfOrder)
 
   pool_manager->GetDefaultExecutor()->Join();
   ASSERT_EQ(accept_seq_nos, (std::vector<int64_t>{1, 0}));
+
+  queue.Stop();
+}
+
+TEST(OrderedActorTaskExecutionQueueTest, TestRetryAttemptsOfOneTaskArgsReadyOutOfOrder) {
+  // Two attempts of one task waiting for args at once: the args-ready callback must
+  // pick its own attempt, not the first queued entry with the same task id.
+  instrumented_io_context io_service;
+  FakeWaiter waiter;
+  FakeTaskEventBuffer task_event_buffer;
+  [[maybe_unused]] ray::observability::FakeRayEventRecorder ray_task_event_recorder;
+  std::vector<ConcurrencyGroup> concurrency_groups{ConcurrencyGroup{"io", 1, {}}};
+  auto pool_manager =
+      std::make_shared<ConcurrencyGroupManager<BoundedExecutor>>(concurrency_groups);
+
+  std::vector<int32_t> accept_attempts;
+  std::atomic<int> n_accept = 0;
+  auto execute_task = [&accept_attempts, &n_accept](TaskToExecute &task) {
+    accept_attempts.push_back(task.TaskSpec().AttemptNumber());
+    n_accept++;
+  };
+  auto cancel_task = [](const TaskToExecute &, const Status &) { FAIL(); };
+
+  OrderedActorTaskExecutionQueue queue(io_service,
+                                       waiter,
+                                       task_event_buffer,
+                                       ray_task_event_recorder,
+                                       pool_manager,
+                                       2,
+                                       execute_task,
+                                       cancel_task);
+
+  const TaskID task_id = TaskID::FromRandom(JobID::FromInt(1));
+  for (int32_t attempt : {1, 2}) {
+    auto spec = CreateActorTaskSpec(attempt - 1, /*is_retry=*/true, /*dependency=*/true);
+    spec.GetMutableMessage().set_task_id(task_id.Binary());
+    spec.GetMutableMessage().set_attempt_number(attempt);
+    EnqueueWithFetch(queue, waiter, attempt - 1, -1, MakeTaskToExecute(spec));
+  }
+  ASSERT_EQ(n_accept, 0);
+
+  waiter.Complete(1);
+  ASSERT_TRUE(WaitForCondition([&n_accept]() { return n_accept == 1; }, 1000));
+  waiter.Complete(0);
+  ASSERT_TRUE(WaitForCondition([&n_accept]() { return n_accept == 2; }, 1000));
+
+  pool_manager->GetDefaultExecutor()->Join();
+  ASSERT_EQ(accept_attempts, (std::vector<int32_t>{2, 1}));
 
   queue.Stop();
 }
